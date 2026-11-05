@@ -31,8 +31,9 @@ function urlsOf(config: ConsoleConfig, id: string): RoundUrls {
   return { url: `http://127.0.0.1:${config.port}${hash}`, lanUrl };
 }
 
-function textLines({ id, frames, feedback, asker, url, lanUrl }: ImportReport): string[] {
-  return [id, `frames: ${frames}`, `feedback: ${feedback}`, ...(asker === undefined ? [] : [`asked by: ${asker}`]), url, ...(lanUrl === null ? [] : [lanUrl])];
+function textLines({ id, frames, feedback, superseded = [], asker, url, lanUrl }: ImportReport): string[] {
+  const supersededLines = superseded.map((target) => `supersedes ${target.id}: ${target.outcome}`);
+  return [id, `frames: ${frames}`, `feedback: ${feedback}`, ...supersededLines, ...(asker === undefined ? [] : [`asked by: ${asker}`]), url, ...(lanUrl === null ? [] : [lanUrl])];
 }
 
 interface ImportArgs {
@@ -76,7 +77,7 @@ export async function runVerb<T>(run: () => Promise<T>, print: (result: T) => st
 /** The seat is checked before anything lands; a round imported again keeps its first asker. */
 async function importWithAsker(config: ConsoleConfig, dir: string, seat: string | null): Promise<ImportReport> {
   if (seat !== null && !SEAT_NAME.test(seat)) fail(`import refused: seat "${seat}" is not an agent-chat name (lowercase letters, digits and dashes)`, EXIT.USAGE);
-  const result = await importRound({ source: dir, roundsDir: config.roundsDir });
+  const result = await importRound({ source: dir, roundsDir: config.roundsDir, ...(config.storybooksDir !== undefined && { storybooksDir: config.storybooksDir }) });
   const asker = seat === null ? undefined : await recordAsker(path.join(path.resolve(config.roundsDir), result.id), { seat, initiative: null }, new Date());
   return { ...result, ...urlsOf(config, result.id), ...(asker !== undefined && { asker: asker.seat }) };
 }

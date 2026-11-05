@@ -183,7 +183,7 @@ the thing today:
 | `canInitiate` | false | false | true |
 | `deliveryCeiling` | `accepted` | `accepted` | `accepted` |
 | `buttons` | true | false | true |
-| `buttonStates` | false, pending a spike | false | true |
+| `buttonStates` | false, pending a spike | false | false |
 | `edits`, `reactions`, `chatActions` | true | false | true |
 | `drafts`, `draftStreaming`, `threads` | false | false | false |
 

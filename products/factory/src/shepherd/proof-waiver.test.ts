@@ -18,11 +18,12 @@ import { sleep } from "../workflows/land.js";
 import { shepherdEventMigration } from "./events.js";
 import { FIX_PROOF_CHECK } from "./fix-proof.js";
 import { SEAT_NOTICE_STEPS, seatNoticeRoute, unhandledSendBack } from "./gate-route.js";
-import type { GateRun } from "./gates.js";
+import type { GateRun } from "./run-state.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { shepherdPrWorkflow } from "./pr.js";
-import { proofWaiverMigration } from "./proof-waiver.js";
+import { proofWaiverMigration } from "./proof-waiver-table.js";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes } from "./review.js";
 import { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, shepherdMigration, shepherdStoreRef, sliceMigration, type ShepherdStoreRef } from "./store.js";
 
@@ -38,7 +39,7 @@ afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
 function proofLine(head: string, verdict: ProofVerdict): string {
   const counts: FixProofResult["counts"] = { reproduces: verdict === "reproduced" ? 1 : 0, "passes-on-base": 0, "new-api": 0, "fails-on-head": 0, "not-run": 0 };
-  return formatResultLine({ head, mergeBase: BASE, verdict, counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false });
+  return formatResultLine({ head, mergeBase: BASE, base: "main", verdict, counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false });
 }
 
 const fixProofRun = (head: string): CheckRun => ({ ...successRun(FIX_PROOF_CHECK, JOB[head]!), headSha: head, pullRequests: [{ number: 1, baseRef: "main" }] });

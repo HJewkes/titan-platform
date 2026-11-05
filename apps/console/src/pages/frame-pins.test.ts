@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeTarget, hitBox, isTap, nextPinId, pngSurface, pointerPin, type Pin, type TargetBox } from "./frame-pins.js";
+import { describeTarget, hitBox, isTap, nextPinId, pinsDrawnAt, pngSurface, pngWidth, pointerPin, type Pin, type TargetBox } from "./frame-pins.js";
 
 const pin = (id: string): Pin => ({ id, width: 375, x: 0, y: 0, xPct: 0, yPct: 0, note: "" });
 
@@ -33,6 +33,27 @@ describe("pngSurface", () => {
   it("has no surface before the image has a size, and no element under any point", () => {
     expect(pngSurface({ viewportWidth: 375 }, { width: 0, height: 0 })).toBeUndefined();
     expect(pngSurface({}, { width: 10, height: 10 })?.hitTest(1, 1)).toBeUndefined();
+  });
+});
+
+describe("pngWidth", () => {
+  it("takes the declared widths before the PNG's pixels, and has none while it declares none and has not loaded", () => {
+    expect(pngWidth({ viewportWidth: 390, referenceWidth: 1440 }, undefined)).toBe(390);
+    expect(pngWidth({ referenceWidth: 1440 }, { width: 2880 })).toBe(1440);
+    expect(pngWidth({}, { width: 2880 })).toBe(2880);
+    expect(pngWidth({}, { width: 0 })).toBeUndefined();
+  });
+});
+
+describe("pinsDrawnAt", () => {
+  const at = (id: string, width?: number) => ({ id, ...(width !== undefined && { width }) });
+
+  it("keeps the pins placed at the render's width and those with no width, dropping another width's", () => {
+    expect(pinsDrawnAt([at("a-1", 390), at("a-2", 1440), at("a-3")], 390).map((pin) => pin.id)).toEqual(["a-1", "a-3"]);
+  });
+
+  it("keeps every pin while the render's width is not known", () => {
+    expect(pinsDrawnAt([at("a-1", 390), at("a-2", 1440)], undefined)).toHaveLength(2);
   });
 });
 

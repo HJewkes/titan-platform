@@ -6,6 +6,8 @@ import { openFactoryHost, type FactoryHost } from "../host.js";
 import { readCi, type CiSnapshot } from "./land-ci.js";
 import { LAND_STEPS, land, landRoutes, type LandOutcome } from "./land.js";
 import { prSnapshot } from "./pr-snapshot.js";
+import { readPath } from "../narrow.js";
+import { partialFake } from "@titan-design/test-kit";
 
 const REPOS = ["octo/a", "octo/b", "octo/c", "octo/d", "octo/e"];
 const CONTEXTS = ["validate", "dag-check"];
@@ -19,9 +21,12 @@ afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
 /** One fake per repo behind one wire, as the service's one port reaches every repo. */
 function multiRepoWire(fakes: Map<string, FakeGitHub>): GitHubWire {
-  return new Proxy({} as GitHubWire, {
-    get: (_target, method: string) => {
-      return (repo: string, ...rest: unknown[]) => (fakes.get(repo)!.wire as unknown as Record<string, (...args: unknown[]) => unknown>)[method]!(repo, ...rest);
+  return new Proxy(partialFake<GitHubWire>(), {
+    get: (_target, method: string) => (repo: string, ...rest: unknown[]) => {
+      const wire = fakes.get(repo)!.wire;
+      const call = readPath(wire, method);
+      if (typeof call !== "function") throw new Error(`the fake wire has no ${method}`);
+      return Reflect.apply(call, wire, [repo, ...rest]);
     },
   });
 }
@@ -163,7 +168,7 @@ describe("PR snapshot", () => {
     expect(fake.notModified).toBe(1);
   });
 
-  it("reads a pending head's checks again only after the pending interval, and a settled head not at all within its window", async () => {
+  it("reads a pending head's checks and statuses again only after the pending interval, and a settled head not at all within its window", async () => {
     const fake = fakeGitHub();
     const sha = fakeSha("one");
     let clock = 0;
@@ -180,7 +185,32 @@ describe("PR snapshot", () => {
     await snapshot.checkRuns("o/r", sha, allCompleted);
 
     expect(settled.map((run) => run.status)).toEqual(["completed"]);
-    expect(fake.calls).toEqual(["listCheckRuns", "listCheckRuns"]);
+    expect(fake.calls).toEqual(["listCheckRuns", "listCommitStatuses", "listCheckRuns", "listCommitStatuses"]);
+  });
+
+  it("caches a head's statuses beside its runs, named by the sha they were read for", async () => {
+    const fake = fakeGitHub();
+    const sha = fakeSha("one");
+    const snapshot = prSnapshot(githubPort(fake.wire), { now: () => 0 });
+    fake.setRuns(sha, [successRun("validate", 1)]);
+    fake.statuses.set(sha, [{ context: "deploy", state: "failure", targetUrl: "https://ci.example.test/1", description: "Preview failed" }]);
+
+    await snapshot.checkRuns("o/r", sha, allCompleted);
+
+    expect(snapshot.cachedRuns("o/r", sha)).toMatchObject({ sha, statuses: [{ context: "deploy", state: "failure", description: "Preview failed" }], settled: true, at: 0 });
+  });
+
+  it("still answers a head's runs when its status read fails, and caches its statuses as null", async () => {
+    const fake = fakeGitHub();
+    const sha = fakeSha("one");
+    const snapshot = prSnapshot(githubPort(fake.wire), { now: () => 0 });
+    fake.setRuns(sha, [successRun("validate", 1)]);
+    fake.readFaults.listCommitStatuses = [new Error("HTTP 502")];
+
+    const runs = await snapshot.checkRuns("o/r", sha, allCompleted);
+
+    expect(runs.map((run) => run.name)).toEqual(["validate"]);
+    expect(snapshot.cachedRuns("o/r", sha)?.statuses).toBeNull();
   });
 
   it("revalidates the list with its old ETag after an invalidate: a 304 keeps the rows and a 200 replaces them", async () => {
@@ -216,7 +246,7 @@ describe("PR snapshot", () => {
     const runs = await snapshot.checkRuns("o/r", sha, allCompleted);
 
     expect(runs.map((run) => run.conclusion)).toEqual(["success"]);
-    expect(fake.calls).toEqual(["revalidateOpenPrs", "getPr", "listCheckRuns", "revalidateOpenPrs", "getPr", "listCheckRuns"]);
+    expect(fake.calls).toEqual(["revalidateOpenPrs", "getPr", "listCheckRuns", "listCommitStatuses", "revalidateOpenPrs", "getPr", "listCheckRuns", "listCommitStatuses"]);
   });
 
   it("does not cache a check read that an invalidate overtook, so a re-run's runs are read fresh", async () => {

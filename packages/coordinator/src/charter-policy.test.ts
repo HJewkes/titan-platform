@@ -4,9 +4,15 @@ import charter from "./fixtures/charter.json" with { type: "json" };
 
 function withoutKey(path: readonly string[]): Record<string, unknown> {
   const copy: Record<string, unknown> = structuredClone(charter);
-  let node = copy;
-  for (const key of path.slice(0, -1)) node = node[key] as Record<string, unknown>;
-  delete node[path.at(-1) as string];
+  let node: object = copy;
+  for (const key of path.slice(0, -1)) {
+    const next: unknown = Reflect.get(node, key);
+    if (typeof next !== "object" || next === null) throw new Error(`no object at ${key}`);
+    node = next;
+  }
+  const last = path.at(-1);
+  if (last === undefined) throw new Error("empty path");
+  Reflect.deleteProperty(node, last);
   return copy;
 }
 

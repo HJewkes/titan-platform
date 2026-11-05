@@ -6,7 +6,7 @@ import type { Hono } from "hono";
 import type * as AuthModule from "./auth.js";
 import { createDaemonAuth, ensureTokenFile, getRequestAuth, type DaemonAuth } from "./auth.js";
 import { EventHub } from "./events.js";
-import { buildHttpApp, type HttpAppOptions } from "./http.js";
+import { buildHttpApp, type HttpAppOptions, type RpcSample } from "./http.js";
 import { createTestContext, createTestRegistry, type TestContext } from "./test-fixtures.js";
 
 vi.mock("./auth.js", async (importOriginal) => {
@@ -27,7 +27,8 @@ function buildApp(overrides: Partial<HttpAppOptions<TestContext>> = {}): Hono {
 const CLI_HEADERS = { "content-type": "application/json", "x-titan-client": "test-cli" };
 
 async function postRpc(app: Hono, name: string, body?: string, init: RequestInit = {}): Promise<Response> {
-  const headers = { ...CLI_HEADERS, ...(init.headers as Record<string, string> | undefined) };
+  const headers = new Headers(CLI_HEADERS);
+  new Headers(init.headers).forEach((value, name) => headers.set(name, value));
   return app.request(`/rpc/${name}`, { method: "POST", body, ...init, headers });
 }
 
@@ -47,10 +48,9 @@ describe("/health", () => {
   it("reports version, port, and the product's health extension", async () => {
     const app = buildApp({ health: () => ({ index: { pending: true } }) });
 
-    const body = (await (await app.request("/health")).json()) as Record<string, unknown>;
+    const body: unknown = await (await app.request("/health")).json();
 
-    expect(body).toMatchObject({ ok: true, version: "1.2.3", port: 7400, index: { pending: true } });
-    expect(typeof body.uptime_ms).toBe("number");
+    expect(body).toMatchObject({ ok: true, version: "1.2.3", port: 7400, index: { pending: true }, uptime_ms: expect.any(Number) });
   });
 });
 
@@ -88,9 +88,8 @@ describe("POST /rpc/:name", () => {
     const res = await postRpc(buildApp(), "greet", JSON.stringify({ name: 42 }));
 
     expect(res.status).toBe(400);
-    const body = (await res.json()) as { ok: boolean; code: number; error: string };
-    expect(body).toMatchObject({ ok: false, code: 65 });
-    expect(body.error).toContain("Invalid arguments");
+    const body: unknown = await res.json();
+    expect(body).toMatchObject({ ok: false, code: 65, error: expect.stringContaining("Invalid arguments") });
   });
 
   it("answers 500 with the thrown error's code", async () => {
@@ -122,6 +121,52 @@ describe("POST /rpc/:name", () => {
 
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ ok: false, error: "redacted", code: 70 });
+  });
+});
+
+describe("POST /rpc/:name observer", () => {
+  it("reports name, status and the exact byte length of the body it sent for each rpc", async () => {
+    const samples: RpcSample[] = [];
+    const app = buildApp({ onRpc: (sample) => samples.push(sample) });
+
+    const ok = await postRpc(app, "greet", JSON.stringify({ name: "wörld" }));
+    const sent = await ok.text();
+    const failed = await postRpc(app, "boom", "{}");
+    const failedBody = await failed.text();
+    const missing = await postRpc(app, "nope", "{}");
+    const missingBody = await missing.text();
+
+    expect(samples.map(({ name, status, bytes }) => ({ name, status, bytes }))).toEqual([
+      { name: "greet", status: 200, bytes: Buffer.byteLength(sent) },
+      { name: "boom", status: 500, bytes: Buffer.byteLength(failedBody) },
+      { name: "(unknown)", status: 404, bytes: Buffer.byteLength(missingBody) },
+    ]);
+    expect(samples.map((sample) => sample.surface)).toEqual(["http", "http", "http"]);
+    expect(samples.every((sample) => sample.ms >= 0)).toBe(true);
+  });
+
+  it("never puts arguments or the body in a sample", async () => {
+    const samples: RpcSample[] = [];
+    const app = buildApp({ onRpc: (sample) => samples.push(sample) });
+
+    await postRpc(app, "greet", JSON.stringify({ name: "secret-x" }));
+
+    expect(JSON.stringify(samples)).not.toContain("secret-x");
+    expect(Object.keys(samples[0]!).sort()).toEqual(["bytes", "ms", "name", "status", "surface"]);
+  });
+
+  it("an observer that throws never changes the rpc's answer", async () => {
+    const app = buildApp({
+      onRpc: () => {
+        throw new Error("telemetry down");
+      },
+    });
+
+    const res = await postRpc(app, "greet", JSON.stringify({ name: "world" }));
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(await res.json()).toMatchObject({ ok: true, data: { greeting: "hello world" } });
   });
 });
 

@@ -1,7 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { performance } from 'node:perf_hooks';
 import type * as SessionAnalytics from '@titan-design/session-analytics';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -12,13 +11,12 @@ import { runRefresh, type RefreshOptions } from '../../src/session-index/refresh
 import { renderTranscript } from '../session-index/fixture.js';
 import { scaffold } from '../workspace-index/fixture.js';
 
-/** Stands in for the measured 420 to 525 ms `writeEpisodes` costs per session on the live graph. */
-const SESSION_COST_MS = 200;
 const STALE_SESSIONS = 10;
 
-const slowEpisodes = vi.hoisted(() => ({
+/** Counts the episode step's chunks: one `writeEpisodes` call per session. */
+const episodeChunks = vi.hoisted(() => ({
   enabled: false,
-  firstCallAt: 0,
+  started: 0,
   onFirstCall: (): void => {},
 }));
 
@@ -27,13 +25,9 @@ vi.mock('@titan-design/session-analytics', async (importOriginal) => {
   return {
     ...actual,
     writeEpisodes: (...args: Parameters<typeof actual.writeEpisodes>) => {
-      if (slowEpisodes.enabled) {
-        if (slowEpisodes.firstCallAt === 0) {
-          slowEpisodes.firstCallAt = performance.now();
-          slowEpisodes.onFirstCall();
-        }
-        const until = performance.now() + SESSION_COST_MS * args[1].length;
-        while (performance.now() < until);
+      if (episodeChunks.enabled) {
+        episodeChunks.started += 1;
+        if (episodeChunks.started === 1) episodeChunks.onFirstCall();
       }
       return actual.writeEpisodes(...args);
     },
@@ -56,7 +50,7 @@ beforeEach(() => {
   graph = openGraph(dbPath);
   vi.stubEnv('AGENT_CHAT_HOME', path.join(dir, 'agent-chat'));
   vi.stubEnv('AW_INDEX_MIN_INTERVAL_MS', '1');
-  Object.assign(slowEpisodes, { enabled: false, firstCallAt: 0 });
+  Object.assign(episodeChunks, { enabled: false, started: 0 });
 });
 
 afterEach(() => {
@@ -104,9 +98,9 @@ describe('context.related during a daemon refresh pass', () => {
     await staleEpisodeBacklog();
     const pass = { done: false };
     const firstSession = new Promise<void>((resolve) => {
-      slowEpisodes.onFirstCall = resolve;
+      episodeChunks.onFirstCall = resolve;
     });
-    slowEpisodes.enabled = true;
+    episodeChunks.enabled = true;
 
     const running = refresh({ yieldPoint: yieldToReaders }).finally(() => {
       pass.done = true;
@@ -116,12 +110,12 @@ describe('context.related during a daemon refresh pass', () => {
       { for: 'the alpha lesson', initiative: 'alpha' },
       { activeRoot, dbPath, hitLog: async () => null },
     );
-    const answeredAfterMs = performance.now() - slowEpisodes.firstCallAt;
+    const chunksAtAnswer = episodeChunks.started;
     const passRunningAtAnswer = !pass.done;
     const summary = await running;
 
     // One chunk already running plus the query; a second chunk means the pass cut in.
-    expect(answeredAfterMs).toBeLessThan(2 * SESSION_COST_MS);
+    expect(chunksAtAnswer).toBe(1);
     expect(result.hits.length).toBeGreaterThan(0);
     expect(passRunningAtAnswer).toBe(true);
     expect(summary.episodesWritten).toBe(STALE_SESSIONS);

@@ -26,14 +26,14 @@ export function reclassMarkMigration(version = 25): Migration {
   return { version, name: "factory:shepherd_event_reclass", up: (db) => db.exec("ALTER TABLE shepherd_event ADD COLUMN reclass INTEGER NOT NULL DEFAULT 0") };
 }
 
-/** SQLite cannot alter a CHECK, so the table is rebuilt with the repair-stop kinds; ids, rows and indexes carry over. */
-const REPAIR_STOP_KINDS_DDL = `
+/** SQLite cannot alter a CHECK, so the table is rebuilt with `kinds`; ids, rows and indexes carry over. */
+const rebuildWithKinds = (kinds: readonly string[]): string => `
   CREATE TABLE shepherd_event_next (
     id       INTEGER PRIMARY KEY AUTOINCREMENT,
     run_id   TEXT,
     repo     TEXT NOT NULL,
     pr       INTEGER,
-    kind     TEXT NOT NULL CHECK (kind IN ('hold', 'release', 'freeze', 'thaw', 'repair-stop', 'repair-go')),
+    kind     TEXT NOT NULL CHECK (kind IN (${kinds.map((kind) => `'${kind}'`).join(", ")})),
     reason   TEXT,
     actor    TEXT,
     at       TEXT NOT NULL,
@@ -49,14 +49,34 @@ const REPAIR_STOP_KINDS_DDL = `
 
 /** Lets the event history take the repair-stop kinds; runs after `reclassMarkMigration`, whose column it keeps. */
 export function widenEventKinds(db: Db): void {
-  db.exec(REPAIR_STOP_KINDS_DDL);
+  db.exec(rebuildWithKinds(["hold", "release", "freeze", "thaw", "repair-stop", "repair-go"]));
 }
 
-export const EVENT_KINDS = ["hold", "release", "freeze", "thaw", "repair-stop", "repair-go"] as const;
+const GATE_CANCEL_KINDS = ["hold", "release", "freeze", "thaw", "repair-stop", "repair-go", "gate-cancel"] as const;
+
+/** A main gate a sweep cancelled because the freeze episode it asked about had thawed (TP-3952). */
+export function gateCancelKindMigration(version = 39): Migration {
+  return { version, name: "factory:shepherd_event_gate_cancel", up: (db) => db.exec(rebuildWithKinds(GATE_CANCEL_KINDS)) };
+}
+
+const ORDER_KINDS = [...GATE_CANCEL_KINDS, "order-reserve", "order-release", "order-expired"] as const;
+
+/** A merge-order reservation taken, released (by its run or a seat's break-glass clear) or expired past its TTL (TP-4098 D). */
+export function orderEventKindsMigration(version = 44): Migration {
+  return { version, name: "factory:shepherd_event_merge_order", up: (db) => db.exec(rebuildWithKinds(ORDER_KINDS)) };
+}
+
+export const EVENT_KINDS = [...ORDER_KINDS, "order-wait"] as const;
+
+/** A merge step that started waiting behind another PR's merge-order reservation (TP-4133). */
+export function orderWaitKindMigration(version = 45): Migration {
+  return { version, name: "factory:shepherd_event_order_wait", up: (db) => db.exec(rebuildWithKinds(EVENT_KINDS)) };
+}
+
 export type EventKind = (typeof EVENT_KINDS)[number];
 
 export interface ShepherdEvent {
-  /** Null for a freeze or thaw, or a path repair stop, which belong to a repo, not a run. */
+  /** Null for a freeze or thaw, or a path repair stop, which belong to a repo, not a run; a gate-cancel names the run whose gate it closed. */
   runId: string | null;
   repo: string;
   pr: number | null;
@@ -107,7 +127,7 @@ export function appendEvent(db: Db, event: Partial<ShepherdEvent> & Pick<Shepher
 
 /** A run's hold and release events, plus its repo's freeze and thaw events, oldest first. */
 export function eventsFor(db: Db, runId: string, repo: string): ShepherdEvent[] {
-  const rows = db.prepare("SELECT * FROM shepherd_event WHERE run_id = ? OR (run_id IS NULL AND repo = ?) ORDER BY id").all(runId, repo.toLowerCase()) as EventRow[];
+  const rows = db.prepare<[string, string], EventRow>("SELECT * FROM shepherd_event WHERE run_id = ? OR (run_id IS NULL AND repo = ?) ORDER BY id").all(runId, repo.toLowerCase());
   return rows.map(fromRow);
 }
 
@@ -118,7 +138,7 @@ export function latestChangeId(db: Db, runId: string): number {
 
 /** Every event at or after `since` (an ISO time), oldest first; what stats reads to attribute hold time. */
 export function eventsSince(db: Db, since = ""): ShepherdEvent[] {
-  return (db.prepare("SELECT * FROM shepherd_event WHERE at >= ? ORDER BY id").all(since) as EventRow[]).map(fromRow);
+  return db.prepare<[string], EventRow>("SELECT * FROM shepherd_event WHERE at >= ? ORDER BY id").all(since).map(fromRow);
 }
 
 function fromRow(row: EventRow): ShepherdEvent {

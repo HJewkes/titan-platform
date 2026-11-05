@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "testsReaching flows the test bits once per test, as a closure per test did",
+      "file": "packages/code-graph/src/analysis/test-reach.ts",
+      "find": "  for (let c = components.length - 1; c >= 0; c--) {",
+      "replace": "  for (let pass = 0; pass < tests.length; pass++) for (let c = components.length - 1; c >= 0; c--) {",
+      "kills": [
+        "computeTestKindMetrics at scale counts 3k tests over a 20k-function call chain in one pass, not one closure per test"
+      ]
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import { LINEAR_WORK_LIMIT, callMeter, hostileGlobs, linearWork } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
 import { AllowFileError, isAllowed, parseAllow } from "./allow.js";
 
@@ -93,5 +94,22 @@ describe("allow globs", () => {
     ["deep nesting", "docs/" + "{a,".repeat(40000) + "b" + "}".repeat(40000)],
   ])("turns %s into an AllowFileError, never a raw error", (_name, glob) => {
     expect(() => parseAllow(`${glob} home-path TP-1 reason`)).toThrow(AllowFileError);
+  });
+
+  it.each(hostileGlobs())("checks a non-matching path in linear work for %s", (_name, { glob, path, steady }) => {
+    const allow = parseAllow(`${glob} home-path TP-1 reason`);
+    const results: boolean[] = [];
+    // fix-proof's glob NFA reads each character once through charAt; a backtracking RegExp reads none, and fails at size 1.
+    const steps = callMeter([[String.prototype, "charAt"]]);
+    try {
+      const { ratio } = linearWork((size) => {
+        const input = path(size);
+        return () => void results.push(isAllowed(allow, input, "home-path"));
+      }, { from: 1, to: 1024, steady, meter: steps.calls });
+      expect(ratio).toBeLessThan(LINEAR_WORK_LIMIT);
+    } finally {
+      steps.restore();
+    }
+    expect(results).not.toContain(true);
   });
 });

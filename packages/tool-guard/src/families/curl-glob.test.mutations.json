@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a glob past the cap reads the rest of the text before it refuses",
+      "file": "packages/tool-guard/src/families/curl-glob.ts",
+      "find": "      if (!parsed || total > cap) return null;",
+      "replace": "      if (!parsed) return null;\n      if (total > cap) {\n        for (let j = i; j < text.length; j++) text.charAt(j);\n        return null;\n      }",
+      "kills": [
+        "expandCurlGlob returns null where curl refuses the glob or it is too large refuses a long run of wide ranges without listing them",
+        "expandCurlGlob returns null where curl refuses the glob or it is too large refuses a long run of ranges each under the cap without listing them"
+      ]
+    }
+  ]
+}

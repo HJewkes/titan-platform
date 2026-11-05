@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "related ignores the servable predicate",
+      "file": "products/active-work/src/search/related.ts",
+      "find": " && servable(hit.initiative))",
+      "replace": ")",
+      "kills": [
+        "context.related and the charter a spawn is served no row from a human-only initiative",
+        "context.related and the charter a spawn with an unreadable charter is served only its own initiative"
+      ]
+    },
+    {
+      "name": "the human-only filter applies only to untriggered calls",
+      "file": "products/active-work/src/commands/context-related.ts",
+      "find": "if (args.trigger === undefined) return () => true;",
+      "replace": "if (args.trigger !== undefined) return () => true;",
+      "kills": [
+        "context.related and the charter a spawn is served no row from a human-only initiative"
+      ]
+    },
+    {
+      "name": "an unreadable charter serves every initiative",
+      "file": "products/active-work/src/commands/context-related.ts",
+      "find": "if (!humanOnly.known) return (initiative) => initiative !== null && initiative === args.initiative;",
+      "replace": "if (!humanOnly.known) return () => true;",
+      "kills": [
+        "context.related and the charter a spawn with an unreadable charter is served only its own initiative"
+      ]
+    },
+    {
+      "name": "an unreadable charter is not reported as degraded",
+      "file": "products/active-work/src/commands/context-related.ts",
+      "find": "      result.degraded.push({ source: 'charter', reason: 'unreadable', message });\n",
+      "replace": "",
+      "kills": [
+        "context.related and the charter a spawn with an unreadable charter is served only its own initiative"
+      ]
+    }
+  ]
+}

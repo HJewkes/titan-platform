@@ -143,7 +143,7 @@ function toolCallTurn(payload: Json | null, subtype: string, timestamp: string |
     role: "assistant",
     kind: "tool_call",
     timestamp,
-    text: `[tool ${qualified}] ${truncate(oneLine(JSON.stringify(selected.value) ?? ""), 200)}`,
+    text: `[tool ${qualified}] ${truncate(oneLine(JSON.stringify(selected.value)), 200)}`,
     representation: "canonical",
     sidechain: null,
     toolResultError: null,

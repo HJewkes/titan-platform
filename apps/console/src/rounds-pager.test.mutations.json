@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the last section still offers Next",
+      "file": "apps/console/src/pages/RoundPager.tsx",
+      "find": "isDisabled={next === undefined}",
+      "replace": "isDisabled={false}",
+      "kills": [
+        "a round of several sections shows one section at a time, and Next and Back step between them"
+      ]
+    },
+    {
+      "name": "a phone wraps Next under Back again",
+      "file": "apps/console/src/pages/RoundPager.tsx",
+      "find": "const ONE_ROW_ON_PHONE = \"max-md:flex-nowrap\";",
+      "replace": "const ONE_ROW_ON_PHONE = \"\";",
+      "kills": [
+        "a round of several sections keeps Back and Next on one row and the section list on one sideways-scrolling row on a phone"
+      ]
+    }
+  ]
+}

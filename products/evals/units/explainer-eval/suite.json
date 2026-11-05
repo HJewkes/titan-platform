@@ -1,0 +1,130 @@
+{
+  "schema": "titan.suite/v1",
+  "unit": {
+    "id": "explainer-eval",
+    "version": "1.0.0"
+  },
+  "id": "explainer-eval-checks",
+  "version": "1.0.0",
+  "cases": [
+    "aee8b9ff8d83fad61dde89cf21857b47138be9264c726e54d156e0331cc82bb2",
+    "cf1a5cbca0a2bcf5a14e78aa40f18ab6a1645f323023ef18765451974be78170",
+    "f6980f07346ee4cf3e035305d157553a78de311a6e62e2868e14b254503912eb"
+  ],
+  "checks": [
+    {
+      "id": "l0",
+      "family": "deterministic",
+      "role": "required",
+      "scope": "eval/",
+      "critical": true,
+      "type": "command",
+      "params": {
+        "argv": [
+          "explainer",
+          "stage",
+          "eval",
+          "--json"
+        ],
+        "in": "input.inputs",
+        "verdict": "checks[name=l0]",
+        "gate": true
+      }
+    },
+    {
+      "id": "pace",
+      "family": "deterministic",
+      "role": "required",
+      "scope": "eval/",
+      "critical": true,
+      "type": "command",
+      "params": {
+        "argv": [
+          "explainer",
+          "stage",
+          "eval",
+          "--json"
+        ],
+        "in": "input.inputs",
+        "verdict": "checks[name=pace]",
+        "gate": true
+      }
+    },
+    {
+      "id": "judge-cold-rubric",
+      "family": "deterministic",
+      "role": "reported",
+      "scope": "eval/",
+      "type": "command",
+      "params": {
+        "argv": [
+          "explainer",
+          "stage",
+          "eval",
+          "--json"
+        ],
+        "in": "input.inputs",
+        "verdict": "outputs.cold-rubric",
+        "judge": true
+      }
+    },
+    {
+      "id": "judge-cold",
+      "family": "deterministic",
+      "role": "reported",
+      "scope": "eval/",
+      "type": "command",
+      "params": {
+        "argv": [
+          "explainer",
+          "eval",
+          "cold",
+          "--json"
+        ],
+        "in": "input.inputs",
+        "verdict": "stdout",
+        "judge": true
+      }
+    },
+    {
+      "id": "judge-items",
+      "family": "deterministic",
+      "role": "reported",
+      "scope": "eval/",
+      "type": "command",
+      "params": {
+        "argv": [
+          "explainer",
+          "eval",
+          "items",
+          "--json"
+        ],
+        "in": "input.inputs",
+        "verdict": "stdout",
+        "judge": true
+      }
+    },
+    {
+      "id": "cost-usd",
+      "family": "metric",
+      "role": "reported",
+      "scope": "eval/",
+      "metric": "cost_usd"
+    },
+    {
+      "id": "wall-ms",
+      "family": "metric",
+      "role": "reported",
+      "scope": "eval/",
+      "metric": "wall_ms"
+    },
+    {
+      "id": "retries",
+      "family": "metric",
+      "role": "reported",
+      "scope": "eval/",
+      "metric": "retries"
+    }
+  ],
+  "trials": 1
+}

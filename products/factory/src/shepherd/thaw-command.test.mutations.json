@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a hand thaw skips the red sha check",
+      "file": "products/factory/src/shepherd/freeze-episode.ts",
+      "find": "if (live.redSha.toLowerCase() !== redSha.toLowerCase()) return",
+      "replace": "if (false) return",
+      "kills": [
+        "shepherd thaw refuses a red sha that is not the episode's, so a moved red is never thawed blind"
+      ]
+    },
+    {
+      "name": "a hand thaw records no reason",
+      "file": "products/factory/src/shepherd/freeze-episode.ts",
+      "find": "freezes.release(repo, live.episode, actor, `${HAND_THAW} ${reason}`)",
+      "replace": "freezes.release(repo, live.episode, actor, HAND_THAW)",
+      "kills": [
+        "shepherd thaw thaws the live episode, records the caller and reason, and leaves its fix task open"
+      ]
+    },
+    {
+      "name": "a hand thaw leaves the episode's main gates pending",
+      "file": "products/factory/src/shepherd/thaw-command.ts",
+      "find": "const closedGates = closeThawedMainGates(ctx.host, services);",
+      "replace": "const closedGates: ClosedMainGate[] = [];",
+      "kills": [
+        "shepherd thaw and the episode's pending main gates cancels a pending main-red-again gate with a gate-cancel event, and the run cleans up"
+      ]
+    },
+    {
+      "name": "a failed alert fails the thaw",
+      "file": "products/factory/src/shepherd/thaw-command.ts",
+      "find": "  } catch (error) {",
+      "replace": "  } catch (error) {\n    if (seat !== undefined) throw error;",
+      "kills": [
+        "shepherd thaw still thaws when the alert fails, and logs the failure as an error line"
+      ]
+    },
+    {
+      "name": "the alert skips the repo's red seat",
+      "file": "products/factory/src/shepherd/main-watch.ts",
+      "find": "return redRoute(ports, repo, registeredSeat(book, repo), async () => undefined);",
+      "replace": "return Promise.resolve(ports.hubSeat());",
+      "kills": [
+        "shepherd thaw alerts the repo's red seat with the repo, sha, caller and reason"
+      ]
+    }
+  ]
+}

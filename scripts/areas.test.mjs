@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { deriveAreas, loadAreas, renderAreaSection, replaceAreaSection, writeAreas } from "./areas.mjs";
-import { areasReminder } from "./new-package.mjs";
+import { TIERS, areasReminder } from "./new-package.mjs";
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
 const FIXTURE = join(REPO, "scripts", "fixtures", "areas", "categories.yml");
@@ -82,6 +82,12 @@ describe("area registry write", () => {
     const written = parse(readFileSync(file, "utf8"));
     expect(written.area).toEqual(areas);
     expect(written.cos).toEqual(["standard", "fixed"]);
+  });
+
+  it("writes an area in every tier new:package offers, so pm's tier list cannot drift", async () => {
+    const file = fixtureCopy();
+    const everyTier = Object.fromEntries(TIERS.map((tier) => [tier, [`packages/tier-${tier}`]]));
+    await expect(writeAreas(file, deriveAreas(everyTier, []))).resolves.toBeUndefined();
   });
 
   it("refuses to write a registry pm rejects and leaves the file unchanged", async () => {

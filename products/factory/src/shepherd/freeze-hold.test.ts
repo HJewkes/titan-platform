@@ -7,13 +7,14 @@ import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened, outsideActions, swallowUpdates } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import { freezeStoreRef, type FreezeStoreRef } from "./freeze.js";
 import type { ShepherdPhases, WakeRequest } from "./phases.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { shepherdStoreRef, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import { watchRow } from "./view.js";
+import type { ExitNoticePorts } from "./ports.js";
 
 const RED = fakeSha("main-red");
 const hosts: FactoryHost[] = [];
@@ -281,7 +282,7 @@ describe("a ci-red wake under a frozen main", () => {
     w.freeze.get().freeze(REPO, RED);
     const runId = start(w);
 
-    await vi.waitFor(() => expect(stepIds(w, runId)).toContain("sh-freeze-hold:1"), { timeout: 10_000 });
+    await vi.waitFor(() => expect(stepIds(w, runId)).toContain("sh-freeze-hold:1"));
 
     expect(resultOf(w, runId, "sh-freeze-wait:0")).toMatchObject({ result: { thawed: false, expired: true, headSha: H1 } });
     expect(w.host.runtime.status(runId)?.status).toBe("running");
@@ -457,7 +458,7 @@ describe("a ci-red wake on a PR whose base head is red", () => {
     baseFails(w, ["validate"]);
     const runId = start(w);
 
-    await vi.waitFor(() => expect(stepIds(w, runId)).toContain("sh-freeze-hold:1"), { timeout: 10_000 });
+    await vi.waitFor(() => expect(stepIds(w, runId)).toContain("sh-freeze-hold:1"));
 
     expect(resultOf(w, runId, "sh-base-wait:0")).toMatchObject({ result: { baseMoved: false, expired: true, headSha: H1 } });
     expect(w.host.runtime.status(runId)?.status).toBe("running");

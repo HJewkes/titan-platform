@@ -1,12 +1,13 @@
 import type { RepoSlug } from "@titan-design/github";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
-import { GATE_DEMOTIONS, recordAutoPass, type GateDemotions } from "./auto-pass.js";
+import { DIAGNOSIS_RULE, GATE_DEMOTIONS, recordAutoPass, type GateDemotions } from "./auto-pass.js";
+import { escalateToDeadEnd } from "./dead-end-route.js";
 import { noticeHeldSeat } from "./gate-route.js";
 import { awaitNewHead } from "./gates.js";
 import { LeaveLand } from "./leave-land.js";
 import { requestDiagnosis } from "./no-verdict-diagnosis.js";
-import { freshNoVerdictState, noteReviewerStep, type NoVerdictState } from "./no-verdict-round.js";
+import { freshNoVerdictState, noteReviewerStep, startRound, type NoVerdictState } from "./no-verdict-round.js";
 import { tapped } from "./review-cause.js";
 import type { Verdict } from "./phases.js";
 import { REVIEW_INTENT_STEP } from "./review.js";
@@ -54,7 +55,7 @@ type FailedRoundsRoute =
 export async function demoteFailedRounds(run: FailedRoundsRun, headSha: string, escalated: Escalated, demotions: GateDemotions = GATE_DEMOTIONS): Promise<FailedRoundsRoute> {
   if (escalated.escalation !== "failed-rounds") return { route: "gate", escalated };
   if (escalated.words === SEAT_HELD_ROUNDS_WORDS) return demotions.failedFallback ? { route: "notice", to: "seat-held", escalated } : { route: "gate", escalated };
-  if (demotions.neverVerdictDiagnosis && escalated.neverVerdict === true && escalated.words === undefined) return { route: "diagnose", escalated };
+  if (demotions.neverVerdictDiagnosis && (escalated.neverVerdict === true || escalated.repeatedNoVerdict === true) && escalated.words === undefined) return { route: "diagnose", escalated };
   if (!demotions.failedRounds || escalated.words !== undefined || !escalated.infraOnly) return { route: "gate", escalated };
   if (run.fallbackReviewed) {
     const failedToo = { ...escalated, detail: `${escalated.detail}; the fallback fresh reviewer failed too` };
@@ -87,7 +88,7 @@ export function noteReviewerAccount(run: FailedRoundsState, stepId: string, resu
 
 /** The run's context for one review, tapped for the account it bills and the reviewers it dispatches; the round starts with none. */
 export function tappedReview(run: FailedRoundsState & { ctx: WorkflowContext }): WorkflowContext {
-  run.roundReviewers = [];
+  startRound(run);
   return tapped(run.ctx, (stepId, result) => {
     noteReviewerAccount(run, stepId, result);
     noteReviewerStep(run, stepId, result);
@@ -109,14 +110,11 @@ async function tellFailedRounds(run: FailedRoundsRun, headSha: string, notice: N
 
 /**
  * Ops or the seat hears, and the run waits for a new head, whose rounds count afresh. Only a notice that could not go
- * out asks the owner, naming why, so the PR never waits on nobody.
+ * out asks the seat's dead-end gate, else the owner, naming why, so the PR never waits on nobody.
  */
 async function noticeOrGate(run: FailedRoundsRun, headSha: string, notice: Notice): Promise<boolean> {
   const told = await tellFailedRounds(run, headSha, notice);
-  if (told?.sent === false) {
-    run.escalations.set(headSha, { ...notice.escalated, detail: `${notice.escalated.detail} (${told.detail})` });
-    return true;
-  }
+  if (told?.sent === false) return escalateToDeadEnd(run, headSha, { ...notice.escalated, detail: `${notice.escalated.detail} (${told.detail})` });
   return awaitNewHeadAfresh(run, headSha);
 }
 
@@ -126,28 +124,30 @@ async function awaitNewHeadAfresh(run: FailedRoundsRun, headSha: string): Promis
   throw new LeaveLand(await awaitNewHead(run, headSha));
 }
 
+const NEVER_VERDICT_WHY = "no adversary verdict in any round";
+const REPEATED_WHY = "the round repeated the last one's panel outcome and missing seats at this head, with every member started and none timed out";
+
 /**
  * A planner reads the silent reviewers' sessions and the serve log, and the run waits for a new head. A planner that could
  * not start leaves the ops notice, or the owner gate where that notice is reverted, so the PR never waits on nobody.
  */
 async function diagnoseOrNotice(run: FailedRoundsRun, headSha: string, escalated: Escalated): Promise<boolean> {
-  const detail = `${escalated.detail}; no adversary verdict in any round, so a planner diagnoses why instead of a fourth review or the owner.`;
+  const why = escalated.repeatedNoVerdict === true ? REPEATED_WHY : NEVER_VERDICT_WHY;
+  const detail = `${escalated.detail}; ${why}, so a planner diagnoses why instead of another review or the owner.`;
   const evidence = [`head ${headSha}`, `failed rounds: ${run.failedOutcomes.join(", ")}`, `reviewers with no verdict: ${run.failedReviewers.filter((reviewer) => reviewer.verdict !== true).length}`];
-  await recordAutoPass(run.ctx, { ...run.target, rule: "D7/no-verdict-diagnosis", headSha, detail, evidence });
+  await recordAutoPass(run.ctx, { ...run.target, rule: DIAGNOSIS_RULE, headSha, detail, evidence });
   const diagnosis = await requestDiagnosis(run, headSha);
   if (diagnosis.spawned) return awaitNewHeadAfresh(run, headSha);
   const unspawned = { ...escalated, detail: `${escalated.detail}; the diagnosis planner did not start: ${diagnosis.reason ?? "no reason given"}` };
   if (GATE_DEMOTIONS.failedFallback) return noticeOrGate(run, headSha, { route: "notice", to: "review-infra", escalated: unspawned });
-  run.escalations.set(headSha, unspawned);
-  return true;
+  return escalateToDeadEnd(run, headSha, unspawned);
 }
 
-/** True goes on to the merge decision, where the owner gate opens; false reviews the head again with the D7 fallback reviewer. */
+/** True goes on to the merge decision, where the owner gate opens unless a dead end asked the seat (TP-4759); false reviews the head again with the D7 fallback reviewer. */
 export async function onEscalated(run: FailedRoundsRun, headSha: string, escalated: Escalated): Promise<boolean> {
   const demoted = await demoteFailedRounds(run, headSha, escalated);
   if (demoted.route === "review-again") return false;
   if (demoted.route === "diagnose") return diagnoseOrNotice(run, headSha, demoted.escalated);
   if (demoted.route === "notice") return noticeOrGate(run, headSha, demoted);
-  run.escalations.set(headSha, demoted.escalated);
-  return true;
+  return escalateToDeadEnd(run, headSha, demoted.escalated);
 }

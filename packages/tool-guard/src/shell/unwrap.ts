@@ -117,6 +117,8 @@ export interface Unwrapped {
   assigned: Assignment[];
   /** The command word as typed, after literal expansion: `./x.sh`, `/usr/bin/git`; null when `name` is. */
   path: string | null;
+  /** The command word when it is a `<( )` (`exec <(...)`, `env <(...)`): the program asked to run is its output. */
+  program?: WordToken;
   /** The command word is only known at run time and no external runner stood before it: what it runs is read as written, not as a wrapper's operand. */
   runtimeHead?: true;
   /** Shell text a wrapper option runs (`npx -c`, `env -S`); `name` is then the wrapper. */
@@ -218,7 +220,8 @@ function command(words: WordToken[], i: number, assigned: Unwrapped["assigned"])
   const first = words[i];
   if (!first) return { name: null, path: null, args: [], assigned };
   if (first.dynamic) return { name: null, path: null, args: words.slice(i), assigned };
-  return { name: commandName(first.value), path: first.value, args: words.slice(i + 1), assigned };
+  const program = first.procsub === undefined ? {} : { program: first };
+  return { name: commandName(first.value), path: first.value, args: words.slice(i + 1), assigned, ...program };
 }
 
 /** `words` with the long options of a wrapper at `i` spelled out; an ambiguous one is read both ways instead. */

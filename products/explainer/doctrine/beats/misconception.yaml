@@ -1,0 +1,10 @@
+schema: beat-spec/v1
+type: misconception
+summary: "What people believe, then what is true."
+role: explain
+component: { name: CompareBeat, maturity: spike }
+slots: misconception
+speech: { band: concept }
+durationS: [6, 10, 18]
+preset: false
+recipe: "State the common belief fairly, then the reality, with a source when one exists. The reality line is the payoff; give it the longer hold."

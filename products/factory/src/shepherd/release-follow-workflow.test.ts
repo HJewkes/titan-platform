@@ -5,7 +5,8 @@ import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import type { FixTaskFields } from "./main-red.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { VERSION_PACKAGES_BRANCH } from "./release.js";
 import { RELEASE_FOLLOW_STEP, type VersionRegistry } from "./release-follow.js";
@@ -91,7 +92,7 @@ describe("shepherd-pr follows a merged Version Packages PR to npm", () => {
     const w = world({ main: "failure" });
     const runId = startRelease(w);
 
-    await vi.waitFor(() => expect(w.host.runtime.status(runId)?.status).toBe("paused"), { timeout: 10_000 });
+    await vi.waitFor(() => expect(w.host.runtime.status(runId)?.status).toBe("paused"));
 
     expect(mainCiOf(w, runId)).toMatchObject({ verdict: "red" });
     expect(followOf(w, runId)).toBeUndefined();

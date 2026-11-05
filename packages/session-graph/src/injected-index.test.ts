@@ -65,10 +65,10 @@ describe("indexing a Claude transcript with injected context", () => {
   it("indexes no prompt span for a turn that is entirely injected", async () => {
     await indexClaudeFixture();
 
-    const prompts = graph.db.prepare("SELECT count(*) AS n FROM search_span WHERE field = 'prompt'").get() as { n: number };
+    const prompts = graph.db.prepare<[], { n: number }>("SELECT count(*) AS n FROM search_span WHERE field = 'prompt'").get();
 
     expect(promptHits("channelword")).toHaveLength(0);
-    expect(prompts.n).toBe(2);
+    expect(prompts?.n).toBe(2);
   });
 
   it("keeps tool-result echoes out of a user turn's prompt text", async () => {
@@ -81,9 +81,9 @@ describe("indexing a Claude transcript with injected context", () => {
   it("still records every user line as a fact", async () => {
     await indexClaudeFixture();
 
-    const facts = graph.db.prepare("SELECT count(*) AS n FROM fact").get() as { n: number };
+    const facts = graph.db.prepare<[], { n: number }>("SELECT count(*) AS n FROM fact").get();
 
-    expect(facts.n).toBe(LINES.length);
+    expect(facts?.n).toBe(LINES.length);
   });
 });
 
@@ -123,12 +123,12 @@ describe("indexing a normalized session with injected context", () => {
   it("strips injected blocks from prompt spans and keeps every structural row", async () => {
     await indexCodexFixture();
 
-    const messages = graph.db.prepare("SELECT count(*) AS n FROM normalized_event WHERE kind = 'message'").get() as { n: number };
+    const messages = graph.db.prepare<[], { n: number }>("SELECT count(*) AS n FROM normalized_event WHERE kind = 'message'").get();
 
     expect(promptHits("briefword")).toHaveLength(0);
     expect(promptHits("reminderword")).toHaveLength(0);
     expect(promptHits("humanword")).toHaveLength(1);
-    expect(messages.n).toBe(2);
+    expect(messages?.n).toBe(2);
   });
 });
 

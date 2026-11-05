@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { relativeImports } from "../test-support/relative-imports.js";
 import { kindMoveRefusal, TASK_KINDS, testOnlyMoveRefusal, type TaskKind } from "./task-kind.js";
 
 const TESTS_ONLY = { kind: "test-only" } as const;
@@ -54,5 +55,16 @@ describe("testOnlyMoveRefusal", () => {
 
   it("needs no diff to tighten an ungated kind into test-only", () => {
     expect(testOnlyMoveRefusal("feature", undefined)).toBeUndefined();
+  });
+});
+
+describe("task-kind leaf", () => {
+  it("imports only test-only-diff.ts, never register-kind.ts", () => {
+    expect(relativeImports("shepherd/task-kind.ts")).toEqual(["./test-only-diff.js"]);
+  });
+
+  it("store.ts and register-args.ts read KindMove from task-kind.ts, not register-kind.ts", () => {
+    expect(relativeImports("shepherd/store.ts")).not.toContain("./register-kind.js");
+    expect(relativeImports("shepherd/register-args.ts")).not.toContain("./register-kind.js");
   });
 });

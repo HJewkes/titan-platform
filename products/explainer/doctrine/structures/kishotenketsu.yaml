@@ -1,0 +1,29 @@
+schema: narrative-structure/v1
+id: kishotenketsu
+version: 0.1.0
+source: "story-structure §2.4 (kishōtenketsu), §4 row 5"
+summary: "Introduce, develop, twist with an unexpected angle, reconcile: an elegant idea with no conflict."
+fit:
+  ask: "Is the headline an elegant idea with no real problem?"
+  all: [elegant-idea]
+  none: [central-problem]
+blocks:
+  - { id: introduction, goal: "The idea in its plain form.", share: 0.2 }
+  - { id: development, goal: "The idea developed.", share: 0.3 }
+  - { id: twist, goal: "The unexpected angle that recasts it.", share: 0.25 }
+  - { id: reconcile, goal: "The two halves joined, then the takeaway.", share: 0.25 }
+hook: "Open on the idea at work, not on a problem it does not have."
+ending: "takeaways+button"
+spine:
+  - title: Idea
+    body: |-
+      <The idea in one sentence, with one fact id.>
+  - title: Development
+    body: |-
+      <How the idea plays out in its plain form.>
+  - title: Twist
+    body: |-
+      <The angle that recasts it, and the beat that shows it.>
+  - title: Reconciliation
+    body: |-
+      <How the twist and the plain form fit together.>

@@ -1,28 +1,20 @@
-import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { gitIn, seedRepo, withHistory } from "@titan-design/test-kit/git";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { CLOSURE_LOCK_DRIVER, type GitConfigEntry } from "../merge-drivers.js";
 import { REVIEW_STEPS } from "./review.js";
 import { CARRY_STEP, carry, carryCacheDir, localMergeTree, type CarryResult } from "./tree-carry.js";
 
 const REPO = "acme/widgets";
-const TEST_GIT_ENV = {
-  ...process.env,
-  GIT_CONFIG_NOSYSTEM: "1",
-  GIT_CONFIG_GLOBAL: "/dev/null",
-  GIT_AUTHOR_NAME: "Test",
-  GIT_AUTHOR_EMAIL: "test@example.com",
-  GIT_COMMITTER_NAME: "Test",
-  GIT_COMMITTER_EMAIL: "test@example.com",
-};
 
 let root: string;
 let origin: string;
 let stateDir: string;
 
 function git(...args: string[]): string {
-  return execFileSync("git", ["-C", origin, ...args], { encoding: "utf8", env: TEST_GIT_ENV, stdio: ["ignore", "pipe", "pipe"] }).trim();
+  return gitIn(origin)(...args);
 }
 
 function commit(file: string, text: string): string {
@@ -43,13 +35,12 @@ function mergeMain(): string {
 
 /** main at m0 and the reviewed head H1 on `feature`, with main moved on by one unrelated commit. */
 function reviewedHead(): { m0: string; h1: string } {
-  const m0 = commit("a.txt", "a0\n");
-  commit("b.txt", "b0\n");
-  branchAt("feature", "HEAD");
-  const h1 = commit("a.txt", "a1\n");
-  branchAt("main", "main");
-  commit("b.txt", "b1\n");
-  branchAt("feature", "feature");
+  const [m0 = "", , , h1 = ""] = withHistory(origin, [
+    { files: { "a.txt": "a0\n" }, message: "edit a.txt" },
+    { files: { "b.txt": "b0\n" }, message: "edit b.txt" },
+    { files: { "b.txt": "b1\n" }, message: "edit b.txt" },
+    { branch: "feature", from: ":2", files: { "a.txt": "a1\n" }, message: "edit a.txt" },
+  ]);
   return { m0, h1 };
 }
 
@@ -60,7 +51,7 @@ beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "tree-carry-"));
   origin = join(root, "origin");
   stateDir = join(root, "state");
-  execFileSync("git", ["init", "-q", "-b", "main", origin], { env: TEST_GIT_ENV });
+  seedRepo(origin, {});
   git("config", "uploadpack.allowAnySHA1InWant", "true");
 });
 
@@ -86,6 +77,52 @@ describe("carry", { timeout: 30_000 }, () => {
     const h3 = mergeMain();
 
     expect(await probe(h1, h3)).toMatchObject({ equal: true });
+  });
+
+  it("reads the PR diff as unchanged across a merge-up over an unreviewed merge-up (TP-3725)", async () => {
+    const { h1 } = reviewedHead();
+    mergeMain();
+    branchAt("main", "main");
+    commit("c.txt", "c1\n");
+    branchAt("feature", "feature");
+    const h3 = mergeMain();
+
+    expect(await probe(h1, h3)).toMatchObject({ equal: true, firstParent: git("rev-parse", `${h3}^1`), patchEqual: true });
+  });
+
+  it("reads the PR diff as unchanged when main moved the lines above the PR's hunk", async () => {
+    const numbered = Array.from({ length: 20 }, (_, i) => `${i + 1}\n`);
+    commit("a.txt", numbered.join(""));
+    branchAt("feature", "HEAD");
+    const h1 = commit("a.txt", numbered.join("").replace("15\n", "fifteen\n"));
+    branchAt("main", "main");
+    commit("b.txt", "b1\n");
+    branchAt("feature", "feature");
+    mergeMain();
+    branchAt("main", "main");
+    commit("a.txt", `0\n${numbered.join("")}`);
+    branchAt("feature", "feature");
+    const h3 = mergeMain();
+
+    expect(await probe(h1, h3)).toMatchObject({ equal: true, patchEqual: true });
+  });
+
+  it("reads the PR diff as changed when main already landed the PR's own hunk, though the trees are equal", async () => {
+    const { h1 } = reviewedHead();
+    mergeMain();
+    branchAt("main", "main");
+    commit("a.txt", "a1\n");
+    branchAt("feature", "feature");
+    const h3 = mergeMain();
+
+    expect(await probe(h1, h3)).toMatchObject({ equal: true, patchEqual: false });
+  });
+
+  it("reads no PR diff for a merge-up straight onto the reviewed head", async () => {
+    const { h1 } = reviewedHead();
+    const h2 = mergeMain();
+
+    expect(await probe(h1, h2)).not.toHaveProperty("patchEqual");
   });
 
   it("answers not equal when the implementer committed between the reviewed head and the update", async () => {
@@ -197,5 +234,42 @@ describe("localMergeTree", { timeout: 30_000 }, () => {
   it("answers unread for a head that is not a sha without touching git", async () => {
     expect(await mergeTree("--upload-pack=x")).toMatch(/^unread: invalid input/);
     expect(existsSync(join(stateDir, "git-cache"))).toBe(false);
+  });
+});
+
+describe("the git cache's closure-lock merge driver (TP-4752)", { timeout: 30_000 }, () => {
+  const LOCK = "products/factory/src/registry/closure.lock.json";
+  const lock = (a: string, b: string): string => `${JSON.stringify({ "step-a": a, "step-b": b }, null, 2)}\n`;
+  const driverOf = (entries: readonly GitConfigEntry[]) => entries.find(({ key }) => key === "merge.closure-lock.driver")?.value ?? "";
+
+  /** main and the reviewed head each move a different step's row on adjacent lines, which a text merge conflicts on. */
+  function lockedHeads(): { h1: string; h2: string } {
+    const [, h1 = ""] = withHistory(origin, [
+      { files: { ".gitattributes": `${LOCK} merge=closure-lock\n`, [LOCK]: lock("a0", "b0") }, message: "add lock" },
+      { branch: "feature", from: ":1", files: { [LOCK]: lock("a1", "b0") }, message: "move step-a" },
+      { branch: "main", from: ":1", files: { [LOCK]: lock("a0", "b1") }, message: "move step-b" },
+    ]);
+    git("config", "merge.closure-lock.driver", driverOf(CLOSURE_LOCK_DRIVER));
+    branchAt("feature", "feature");
+    return { h1, h2: mergeMain() };
+  }
+
+  it("sets merge.closure-lock.driver in the cache clone before it merges, without pnpm prepare", async () => {
+    reviewedHead();
+
+    await probe(git("rev-parse", "feature"), git("rev-parse", "feature"));
+
+    const cache = gitIn(carryCacheDir(stateDir, REPO));
+    expect(cache("config", "--get", "merge.closure-lock.driver")).toBe(driverOf(CLOSURE_LOCK_DRIVER));
+    expect(cache("config", "--get", "attr.tree")).toBe("refs/remotes/origin/main");
+    expect(driverOf(CLOSURE_LOCK_DRIVER)).toMatch(/closure-lock-merge\.mjs' %O %A %B$/);
+  });
+
+  it("carries a MERGE across a merge-main whose closure.lock.json both sides moved, as the driver merged it", async () => {
+    const { h1, h2 } = lockedHeads();
+
+    const result = await probe(h1, h2);
+
+    expect(result).toMatchObject({ equal: true, mergeTree: git("rev-parse", `${h2}^{tree}`) });
   });
 });

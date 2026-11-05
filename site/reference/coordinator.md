@@ -36,8 +36,8 @@ Changes to that document are a revision log. `applyEdit` sets one schema-declare
 copy and re-checks the whole document, `diffDocuments` lists the changed leaves, and
 `verifyChain` checks that each revision names the previous one's `revisionSha` as its parent,
 so a forked or rewritten log fails. `EDITABLE_FIELDS` is the allowlist of fields an editor may
-change, each with its bounds and when its readers pick the change up; `checkEditableValue`
-refuses any path no row matches.
+change, each with its schema (bounds for a number, an enum, a name or a path list) and when its
+readers pick the change up; `checkEditableValue` refuses any path no row matches.
 
 ## When to reach for it
 

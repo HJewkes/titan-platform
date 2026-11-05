@@ -21,9 +21,9 @@ interface AggregateDbRow {
   max: number | null;
 }
 
-interface AllStatement<P extends unknown[]> {
+interface AllStatement<P extends unknown[], R> {
   readonly source: string;
-  all(...params: P): unknown[];
+  all(...params: P): R[];
 }
 
 /** One node's value for one metric, joined to the node's own vocabulary columns. */
@@ -46,13 +46,13 @@ interface TopMetricDbRow {
 }
 
 export interface TargetedStatements {
-  listMetricsForNode: AllStatement<[snapshotId: number, nodeId: string]>;
-  listEdgesTouching: AllStatement<[{ snapshotId: number; nodeId: string }]>;
-  aggregateMetric: AllStatement<[snapshotId: number, name: string]>;
-  aggregateMetrics: AllStatement<[snapshotId: number]>;
-  listMetricNames: AllStatement<[snapshotId: number]>;
-  topByMetric: AllStatement<[snapshotId: number, metric: string, limit: number]>;
-  topByMetricOfKind: AllStatement<[snapshotId: number, metric: string, kind: string, limit: number]>;
+  listMetricsForNode: AllStatement<[snapshotId: number, nodeId: string], MetricDbRow>;
+  listEdgesTouching: AllStatement<[{ snapshotId: number; nodeId: string }], EdgeDbRow>;
+  aggregateMetric: AllStatement<[snapshotId: number, name: string], AggregateDbRow>;
+  aggregateMetrics: AllStatement<[snapshotId: number], AggregateDbRow>;
+  listMetricNames: AllStatement<[snapshotId: number], { name: string }>;
+  topByMetric: AllStatement<[snapshotId: number, metric: string, limit: number], TopMetricDbRow>;
+  topByMetricOfKind: AllStatement<[snapshotId: number, metric: string, kind: string, limit: number], TopMetricDbRow>;
 }
 
 const EDGE_COLS = "src_id, dst_id, kind, attrs";
@@ -68,37 +68,37 @@ const TOP_ORDER = "ORDER BY m.value DESC LIMIT ?";
 /** Reads that touch one node or one metric instead of a whole snapshot; each is an index search. */
 export function prepareTargetedStatements(db: Db): TargetedStatements {
   return {
-    listMetricsForNode: db.prepare(
+    listMetricsForNode: db.prepare<[number, string], MetricDbRow>(
       "SELECT node_id, name, value, unit FROM metric WHERE snapshot_id = ? AND node_id = ?",
     ),
     // The second arm skips self-loops so an edge from a node to itself comes back once.
-    listEdgesTouching: db.prepare(
+    listEdgesTouching: db.prepare<[{ snapshotId: number; nodeId: string }], EdgeDbRow>(
       `SELECT ${EDGE_COLS} FROM edge WHERE snapshot_id = @snapshotId AND src_id = @nodeId
        UNION ALL
        SELECT ${EDGE_COLS} FROM edge WHERE snapshot_id = @snapshotId AND dst_id = @nodeId AND src_id <> @nodeId`,
     ),
-    aggregateMetric: db.prepare(
+    aggregateMetric: db.prepare<[number, string], AggregateDbRow>(
       `${AGGREGATE_SELECT} WHERE m.snapshot_id = ? AND m.name = ? GROUP BY n.kind ORDER BY n.kind`,
     ),
-    aggregateMetrics: db.prepare(
+    aggregateMetrics: db.prepare<[number], AggregateDbRow>(
       `${AGGREGATE_SELECT} WHERE m.snapshot_id = ? GROUP BY m.name, n.kind ORDER BY m.name, n.kind`,
     ),
-    listMetricNames: db.prepare("SELECT DISTINCT name FROM metric WHERE snapshot_id = ? ORDER BY name"),
-    topByMetric: db.prepare(`${TOP_SELECT} ${TOP_ORDER}`),
-    topByMetricOfKind: db.prepare(`${TOP_SELECT} AND n.kind = ? ${TOP_ORDER}`),
+    listMetricNames: db.prepare<[number], { name: string }>("SELECT DISTINCT name FROM metric WHERE snapshot_id = ? ORDER BY name"),
+    topByMetric: db.prepare<[number, string, number], TopMetricDbRow>(`${TOP_SELECT} ${TOP_ORDER}`),
+    topByMetricOfKind: db.prepare<[number, string, string, number], TopMetricDbRow>(`${TOP_SELECT} AND n.kind = ? ${TOP_ORDER}`),
   };
 }
 
 export function readMetricsForNode(stmts: TargetedStatements, snapshotId: number, nodeId: string): GraphMetric[] {
-  return (stmts.listMetricsForNode.all(snapshotId, nodeId) as MetricDbRow[]).map(rowToMetric);
+  return stmts.listMetricsForNode.all(snapshotId, nodeId).map(rowToMetric);
 }
 
 export function readEdgesTouching(stmts: TargetedStatements, snapshotId: number, nodeId: string): GraphEdge[] {
-  return (stmts.listEdgesTouching.all({ snapshotId, nodeId }) as EdgeDbRow[]).map(rowToEdge);
+  return stmts.listEdgesTouching.all({ snapshotId, nodeId }).map(rowToEdge);
 }
 
 export function readMetricNames(stmts: TargetedStatements, snapshotId: number): string[] {
-  return (stmts.listMetricNames.all(snapshotId) as Array<{ name: string }>).map((r) => r.name);
+  return stmts.listMetricNames.all(snapshotId).map((r) => r.name);
 }
 
 export function readTopByMetric(
@@ -106,11 +106,10 @@ export function readTopByMetric(
   opts: { snapshotId: number; metric: string; limit?: number; kind?: string },
 ): TopMetricRow[] {
   const limit = opts.limit ?? 20;
-  const rows = (
+  const rows =
     opts.kind === undefined
       ? stmts.topByMetric.all(opts.snapshotId, opts.metric, limit)
-      : stmts.topByMetricOfKind.all(opts.snapshotId, opts.metric, opts.kind, limit)
-  ) as TopMetricDbRow[];
+      : stmts.topByMetricOfKind.all(opts.snapshotId, opts.metric, opts.kind, limit);
   return rows.map((r) => ({
     nodeId: r.node_id,
     name: r.name,
@@ -122,9 +121,7 @@ export function readTopByMetric(
 }
 
 export function readMetricAggregates(stmts: TargetedStatements, snapshotId: number, name?: string): MetricAggregate[] {
-  const rows = (
-    name === undefined ? stmts.aggregateMetrics.all(snapshotId) : stmts.aggregateMetric.all(snapshotId, name)
-  ) as AggregateDbRow[];
+  const rows = name === undefined ? stmts.aggregateMetrics.all(snapshotId) : stmts.aggregateMetric.all(snapshotId, name);
   return rows.map((r) => ({
     name: r.name,
     nodeKind: r.node_kind as NodeKind,

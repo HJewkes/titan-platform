@@ -8,6 +8,7 @@ export interface Finding {
   readonly location: string;
   readonly rule: RuleId;
   readonly termIndex?: number;
+  readonly category?: string;
   readonly kind?: TokenKind;
 }
 
@@ -36,11 +37,12 @@ export function zeroCounts(): RuleCounts {
 }
 
 /** Copies only the hit's identifying fields, so no stray property reaches a report. */
-export function toFinding(location: string, { rule, termIndex, kind }: RuleHit): Finding {
+export function toFinding(location: string, { rule, termIndex, category, kind }: RuleHit): Finding {
   return {
     location,
     rule,
     ...(termIndex === undefined ? {} : { termIndex }),
+    ...(category === undefined ? {} : { category }),
     ...(kind === undefined ? {} : { kind }),
   };
 }

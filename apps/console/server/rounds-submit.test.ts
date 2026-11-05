@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { RequestAuth } from "@titan-design/daemon";
 import { EXIT, invokeCommand } from "@titan-design/registry";
-import { ANSWERS_FILE, createDecisionLog, type DecisionLog, type DecisionLogResult } from "./decision-log.js";
+import { ANSWERS_FILE, createDecisionLog, type DecisionLog, type DecisionLogResult, type HumanOnly, type RoundDecisionLog } from "./decision-log.js";
 import type { RoundListeners } from "./listeners.js";
 import type { ConsoleContext } from "./owner-guard.js";
 import { FIXTURE_ROUNDS, PANELS_HEAD, TILES_HEAD, twoPrRound } from "./round-fixtures.js";
@@ -31,17 +31,20 @@ function ownerContext(ownerWrites = true): ConsoleContext {
   return { warnings: [], format: "json", surface: "http", auth: SESSION_AUTH, ownerWrites };
 }
 
-function submit(args: Record<string, unknown>, ctx = ownerContext(), decisionLog?: DecisionLog, listeners?: RoundListeners) {
+function submit(args: Record<string, unknown>, ctx = ownerContext(), decisionLog?: RoundDecisionLog, listeners?: RoundListeners) {
   return invokeCommand(roundsSubmitCommands({ dir }, decisionLog, listeners)["rounds.submit"], args, ctx);
 }
 
 function spyLog(result: DecisionLogResult = { ledger: "written", decisions: "not-a-decision" }) {
   const calls: Parameters<DecisionLog["record"]>[] = [];
-  const log: DecisionLog = {
-    record: async (...args) => {
-      calls.push(args);
-      return result;
-    },
+  const record: DecisionLog["record"] = async (...args) => {
+    calls.push(args);
+    return result;
+  };
+  const log: RoundDecisionLog = {
+    record,
+    recordAll: async (entries) => Promise.all(entries.map(({ item, answer }) => record(item, answer))),
+    recordLiveViewed: async () => "written",
   };
   return { log, calls };
 }
@@ -295,7 +298,7 @@ describe("rounds.submit", () => {
   it("runs the decision log and then the round listener for a submitted round", async () => {
     const order: string[] = [];
     const { log } = spyLog();
-    const recording: DecisionLog = { record: async (...args) => (order.push("log"), log.record(...args)) };
+    const recording: RoundDecisionLog = { ...log, recordAll: async (entries) => (order.push("log"), log.recordAll(entries)) };
     const listeners: RoundListeners = {
       afterRoundSubmit: async (id, result) => void order.push(`listener:${id}:${result.status}`),
       sweep: async () => undefined,
@@ -798,5 +801,71 @@ describe("a design round's per-frame verdicts, comments and pins (TP-3773)", () 
     expect((await sentFrames()).map(({ key, verdict, comment, annotations }) => ({ key, verdict, comment, annotations }))).toEqual(
       ["beacon-idle", "beacon-busy", "beacon-error", "beacon-muted", "beacon-sketch"].map((key) => ({ key, verdict: null, comment: "", annotations: [] })),
     );
+  });
+});
+
+describe("a long round sends in about one human-only read (TP-4001)", () => {
+  const KILN = "kiln-schedule-r2";
+  const EXTRA = Array.from({ length: 8 }, (_, n) => `extra-${n + 1}`);
+  const TWELVE_ANSWERS = [
+    { questionId: "ramp-default", pick: "Single slope" },
+    { questionId: "hold-clarity", value: 4 },
+    { questionId: "report-columns", picks: ["Segment"] },
+    { questionId: "report-notes", text: "Print the cone number." },
+    ...EXTRA.map((questionId) => ({ questionId, value: 3 })),
+  ];
+  /** Real but short, so twelve serial reads (3.6 s) and one (0.3 s) are far apart on any CI runner. */
+  const READ_MS = 300;
+  let kilnSha: string;
+
+  beforeEach(async () => {
+    await cp(path.join(FIXTURE_ROUNDS.dir, KILN), path.join(dir, KILN), { recursive: true });
+    const file = path.join(dir, KILN, "round.json");
+    const round = JSON.parse(await readFile(file, "utf8"));
+    round.questions.push(...EXTRA.map((id) => ({ id, kind: "scale", prompt: `How clear is ${id}?`, min: 1, max: 5 })));
+    round.sections.at(-1).questionIds.push(...EXTRA);
+    const bytes = Buffer.from(JSON.stringify(round));
+    await writeFile(file, bytes);
+    kilnSha = sha256(bytes);
+  });
+
+  function slowHumanOnly(initiatives: string[] = []) {
+    const reads = { calls: 0 };
+    const humanOnly = async (): Promise<HumanOnly> => {
+      reads.calls += 1;
+      await new Promise((resolve) => setTimeout(resolve, READ_MS));
+      return { known: true, initiatives: new Set(initiatives) };
+    };
+    return { reads, decisionLog: createDecisionLog({ stateDir: path.join(root, "state"), decisionsFile: null, humanOnly }) };
+  }
+
+  it("reads the human-only list once for twelve answers and logs all twelve", async () => {
+    const { reads, decisionLog } = slowHumanOnly();
+
+    const { envelope } = await submit({ id: KILN, manifestSha256: kilnSha, answers: TWELVE_ANSWERS }, ownerContext(), decisionLog);
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", log: TWELVE_ANSWERS.map(({ questionId }) => ({ questionId, ledger: "written" })) } });
+    expect(reads.calls).toBe(1);
+  });
+
+  it("responds in about one read's latency, not twelve", async () => {
+    const { decisionLog } = slowHumanOnly();
+    const started = performance.now();
+
+    await submit({ id: KILN, manifestSha256: kilnSha, answers: TWELVE_ANSWERS }, ownerContext(), decisionLog);
+
+    expect(performance.now() - started).toBeLessThan(3 * READ_MS);
+  });
+
+  it("responds while the round listener is still running, and keeps the submit when it fails", async () => {
+    const hung: RoundListeners = { afterRoundSubmit: () => new Promise(() => undefined), sweep: async () => undefined };
+    const failing: RoundListeners = { afterRoundSubmit: () => Promise.reject(new Error("factory down")), sweep: async () => undefined };
+
+    const first = await submit({ id: KILN, manifestSha256: kilnSha, answers: TWELVE_ANSWERS.slice(0, 1) }, ownerContext(), undefined, hung);
+    await rm(path.join(dir, KILN, "feedback.json"));
+    const second = await submit({ id: KILN, manifestSha256: kilnSha, answers: TWELVE_ANSWERS.slice(0, 1) }, ownerContext(), undefined, failing);
+
+    expect([first.envelope, second.envelope]).toEqual([0, 1].map(() => expect.objectContaining({ ok: true, data: expect.objectContaining({ status: "submitted" }) })));
+    expect(await exists(feedbackOf(KILN))).toBe(true);
   });
 });

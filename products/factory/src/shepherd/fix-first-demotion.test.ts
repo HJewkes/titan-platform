@@ -11,16 +11,16 @@ import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { GATE_DEMOTIONS } from "./auto-pass.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import { onFixFirstEscalated, type FixFirstDemotionRun } from "./fix-first-demotion.js";
 import type { ShepherdPhases } from "./phases.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import type { Presence } from "./presence.js";
 import { reviewPhase } from "./review.js";
 import { DEFAULT_ADVERSARY_PROFILE } from "./review-panel-plan.js";
-import type { RosterReader } from "./roster.js";
 import { shepherdStoreRef, type ShepherdStore } from "./store.js";
+import type { ExitNoticePorts, RosterReader } from "./ports.js";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
@@ -181,6 +181,8 @@ describe("D8: a replay of tp#1808, three FIX_FIRSTs on a tool-guard PR", () => {
 
 describe("D8 with GATE_DEMOTIONS.fixFirstRunaway false", () => {
   withDemotionOff("fixFirstRunaway");
+  // "As before" is also before TP-4759, whose seat gate would take the runaway this repo's seat is named for.
+  withDemotionOff("deadEndSeat");
 
   it("gates the third FIX_FIRST at approve-merge as before, with no convergence review", async () => {
     const w = tp1808Run({ convergence: () => "MERGE", fixFirstAt: RUNAWAY_AT_H3 });

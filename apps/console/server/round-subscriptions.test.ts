@@ -11,7 +11,7 @@ import { resolveConfig } from "./config.js";
 import { createRoundListeners, type ListenerDeps } from "./listeners.js";
 import type { ConsoleContext } from "./owner-guard.js";
 import { answerNotice } from "./round-asker.js";
-import { FIXTURE_ROUNDS } from "./round-fixtures.js";
+import { FIXTURE_ROUNDS, settledListeners } from "./round-fixtures.js";
 import { listSubscriptions, normalTarget, subscribe, subscriptionsDirOf, unsubscribe } from "./round-subscriptions.js";
 import { roundsSubmitCommands } from "./rounds-submit.js";
 
@@ -204,9 +204,11 @@ describe("rounds import --seat, then the owner answers", () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     await importRoundCli(config, { dir: source, seat: "seat-importer", json: false });
     const manifestSha256 = createHash("sha256").update(await readFile(path.join(IMPORT_FIXTURE, "round.json"))).digest("hex");
-    const submit = roundsSubmitCommands({ dir: config.roundsDir }, undefined, listeners())["rounds.submit"];
+    const afterSubmit = settledListeners(listeners());
+    const submit = roundsSubmitCommands({ dir: config.roundsDir }, undefined, afterSubmit)["rounds.submit"];
 
     await invokeCommand(submit, { id: "sample-batch-r2", manifestSha256, answers: [{ questionId: "ship-cards", pick: "Don't ship", comment: "The card edge clips." }] }, ownerContext());
+    await afterSubmit.settled();
     await listeners().sweep();
 
     expect(sent).toEqual([{ seat: "seat-importer", text: answerNotice("sample-batch-r2", feedbackPath("sample-batch-r2"), "asker", true) }]);

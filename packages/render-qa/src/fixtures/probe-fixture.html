@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>render-qa probe fixture</title>
+    <style>
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #0d1117; color: #f0f3f6; font-family: sans-serif; }
+      .xp-band-top { position: absolute; left: 0; top: 0; width: 1920px; height: 112px; box-sizing: border-box; padding: 0 60px; overflow: hidden; }
+      .xp-headline { margin: 0; width: 11ch; font: 48px/56px monospace; }
+      #stage { position: absolute; left: 60px; top: 160px; width: 1800px; height: 760px; }
+      .wrap { position: absolute; left: 0; top: 0; width: 1800px; height: 760px; }
+      .card { position: absolute; left: 100px; top: 100px; width: 600px; height: 200px; background: #161b22; }
+      .marker { position: absolute; left: 1600px; top: 600px; width: 40px; height: 40px; background: #58a6ff; }
+      .reveal { position: absolute; left: 900px; top: 100px; width: 400px; clip-path: inset(0px 0px 50%); font-size: 42px; line-height: 50px; }
+    </style>
+  </head>
+  <body>
+    <header class="xp-band-top"><h1 class="xp-headline" id="headline"></h1></header>
+    <div id="stage"></div>
+    <script>
+      // One 4 s beat, `b1-clip`. Its headline wraps to three 56 px lines (one word per line at 11ch) inside a 112 px
+      // band that has no paint but hides its overflow, so the third line is cut (the X3 b20 miss). The stage stays
+      // empty for the first second; from 1 s it holds an empty full-stage wrapper, a filled card, a decor marker and a
+      // label revealed through a clip-path inset that shows its top half.
+      const DURATION_S = 4
+      const CONTENT_S = 1
+      const HEADLINE = 'overflowed wrapping headline'
+      const stage = document.getElementById('stage')
+      document.getElementById('headline').textContent = HEADLINE
+
+      function seek(t) {
+        stage.innerHTML = t < CONTENT_S ? '' : '<div class="wrap"><div class="card"><span class="card-label">Card</span></div>'
+          + '<div class="marker" data-qa-decor></div><div class="reveal">Revealed label on two lines</div></div>'
+      }
+
+      seek(0)
+      window.__titanMotion = { seek, ready: () => document.fonts.ready.then(() => undefined), duration: DURATION_S }
+    </script>
+  </body>
+</html>

@@ -33,7 +33,7 @@ describe("the build footer", () => {
 
   it("shows nothing when the build was not stamped", async () => {
     renderWithBuild(null);
-    await screen.findAllByRole("tab");
+    await screen.findByRole("navigation", { name: "Primary" });
     expect(screen.queryByTestId("build-footer")).toBeNull();
   });
 });

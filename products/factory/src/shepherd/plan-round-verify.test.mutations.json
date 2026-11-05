@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a pinned file is never compared with its blob at the ref",
+      "file": "products/factory/src/shepherd/plan-round-verify.ts",
+      "find": "if (actual === blob) return undefined;",
+      "replace": "return undefined;",
+      "kills": [
+        "verifying a head against its plan fails a pinned file whose bytes drifted, naming both blobs and the re-ask"
+      ]
+    },
+    {
+      "name": "a rename's source is left out of the changed set",
+      "file": "products/factory/src/shepherd/plan-round-verify.ts",
+      "find": "paths.push(...tokens.slice(i + 1, i + 1 + width));",
+      "replace": "paths.push(...tokens.slice(i + width, i + 1 + width));",
+      "kills": [
+        "verifying a head against its plan fails a changed path the plan does not list, a rename's source included"
+      ]
+    },
+    {
+      "name": "every file with inline content is compared, skill files included",
+      "file": "products/factory/src/shepherd/plan-round-verify.ts",
+      "find": "const pinned = predictGates(plan, undefined).ciPolicy?.files ?? [];",
+      "replace": "const pinned = predictGates({ ...plan, ciPolicy: true, ciPolicyKeys: [\"other\"] }, undefined).ciPolicy?.files ?? [];",
+      "kills": [
+        "verifying a head against its plan lets a skill-only plan's skill file change content, and fails a new skill path"
+      ]
+    },
+    {
+      "name": "a path missing at --pin-from is read as an empty blob, not null",
+      "file": "products/factory/src/cli-shepherd-plan-round.ts",
+      "find": "return parsed?.code === 0 ? parsed.stdout.trim() : null;",
+      "replace": "return parsed?.code === 0 ? parsed.stdout.trim() : \"\";",
+      "kills": [
+        "re-asking with --pin-from pins each file to its blob at the ref, null where the ref lacks it, and refuses inline content"
+      ]
+    },
+    {
+      "name": "--pin-from accepts a path that also gives its content inline",
+      "file": "products/factory/src/shepherd/plan-round.ts",
+      "find": "if (inline.length > 0) throw new PlanRoundRefused(`--pin-from",
+      "replace": "if (inline.length > 99) throw new PlanRoundRefused(`--pin-from",
+      "kills": [
+        "re-asking with --pin-from pins each file to its blob at the ref, null where the ref lacks it, and refuses inline content"
+      ]
+    }
+  ]
+}

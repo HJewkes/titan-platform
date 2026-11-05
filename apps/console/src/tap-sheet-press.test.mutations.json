@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "Confirm keeps one press responder across the read-back",
+      "file": "apps/console/src/pages/TapSheet.tsx",
+      "find": "<Button key={sheet.status} color=\"success\"",
+      "replace": "<Button color=\"success\"",
+      "kills": [
+        "a tap sheet on a slow runner takes a Confirm pressed the moment the read-back paints"
+      ]
+    }
+  ]
+}

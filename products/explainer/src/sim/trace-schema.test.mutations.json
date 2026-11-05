@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the step track is uncapped",
+      "file": "products/explainer/src/sim/trace-schema.ts",
+      "find": "z.array(SimStepSchema).max(MAX_SIM_STEPS)",
+      "replace": "z.array(SimStepSchema)",
+      "kills": [
+        "explainer.sim-trace/v1 accepts a run of 64 steps and rejects one of 65"
+      ]
+    },
+    {
+      "name": "a run may emit no statistic",
+      "file": "products/explainer/src/sim/trace-schema.ts",
+      "find": ".refine((stats) => Object.keys(stats).length > 0, \"a run emits at least one statistic\")",
+      "replace": "",
+      "kills": [
+        "explainer.sim-trace/v1 rejects a run with no stats, and one with empty stats"
+      ]
+    }
+  ]
+}

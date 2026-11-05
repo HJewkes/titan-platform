@@ -24,7 +24,7 @@ import { OPEN_FLAGS, ROUND_ID, readCapped, readManifest, roundDirExists, type Ro
 export const MAX_FRAME_BYTES = 8 * 1024 * 1024;
 const MAX_INDEX_BYTES = 1024 * 1024;
 const FRAMES_INDEX = path.join("frames", "frames.json");
-const FRAME_KEY = /^[A-Za-z0-9_-]{1,128}$/;
+export const FRAME_KEY = /^[A-Za-z0-9_-]{1,128}$/;
 /** review-schema's `imagePath`: a relative .png path with no `..` segment. */
 const IMAGE_PATH = /^(?![/\\]|[A-Za-z]:)(?!(.*[/\\])?\.\.([/\\]|$)).+\.[Pp][Nn][Gg]$/;
 const TARGETS_PATH = /^(?![/\\]|[A-Za-z]:)(?!(.*[/\\])?\.\.([/\\]|$)).+\.json$/;
@@ -176,6 +176,9 @@ async function readInside(roundDir: string, rel: string, cap: number): Promise<B
   }
 }
 
+/** Any other file a round carries beside its frames, such as its Storybook sidecar, read with the same defences. */
+export const readRoundBytes = (roundDir: string, rel: string, cap: number): Promise<Buffer> => readInside(path.resolve(roundDir), rel, cap);
+
 /** A round without a frames index is fine; one with an unreadable or invalid index has no frame that can be trusted. */
 async function readFramesIndex(roundDir: string): Promise<FramesIndex | null> {
   const present = await lstat(path.join(roundDir, FRAMES_INDEX)).then(
@@ -261,12 +264,16 @@ export async function readFrameBytes(
   return { bytes, sha256 };
 }
 
-async function readFrame(roundDir: string, rel: string, expectedSha256?: string): Promise<FrameRead> {
-  const { bytes, sha256 } = await readFrameBytes(roundDir, rel, expectedSha256);
+/** One PNG the round's index lists, checked against the sha256 the index gives it whenever it gives one. */
+export const readListedPng = (roundDir: string, index: FrameIndex, rel: string): Promise<{ bytes: Buffer; sha256: string }> =>
+  readFrameBytes(roundDir, rel, index.sha256.get(canonical(roundDir, rel)));
+
+async function readFrame(roundDir: string, index: FrameIndex, rel: string): Promise<FrameRead> {
+  const { bytes, sha256 } = await readListedPng(roundDir, index, rel);
   return { contentType: "image/png", bytes: bytes.length, sha256, base64: bytes.toString("base64") };
 }
 
-async function roundFrameIndex(dir: string, id: string): Promise<{ roundDir: string; index: FrameIndex }> {
+export async function roundFrameIndex(dir: string, id: string): Promise<{ roundDir: string; index: FrameIndex }> {
   if (!(await roundDirExists(dir, id))) throw failure(`No round named "${id}"`, EXIT.NOINPUT);
   const roundDir = path.resolve(dir, id);
   return { roundDir, index: await frameIndex(roundDir) };
@@ -308,7 +315,7 @@ export async function getFrame({ dir }: RoundsSource, id: string, key: string, v
   const { roundDir, index } = await roundFrameIndex(dir, id);
   const file = index.entries.get(key)?.files[view];
   if (file === undefined) throw refusal(`round ${id} lists no ${view} view of "${key}"`);
-  return readFrame(roundDir, file, index.sha256.get(canonical(roundDir, file)));
+  return readFrame(roundDir, index, file);
 }
 
 export function roundFramesCommands(source: RoundsSource) {

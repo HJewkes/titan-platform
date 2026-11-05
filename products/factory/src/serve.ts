@@ -2,54 +2,69 @@ import { createRequire } from "node:module";
 import { hostname } from "node:os";
 import { dirname } from "node:path";
 import { consoleLogger, daemonPaths, readPidFile, startDaemon, type DaemonHandle, type EventHub, type Logger, type StartDaemonOptions } from "@titan-design/daemon";
+import type { Db } from "@titan-design/store-sqlite";
 import { routedRunner } from "@titan-design/workflow";
 import { behindMain, type BehindMain } from "./behind-main.js";
 import { openServeBot, type BotHealth, type BotIdentity } from "./bot-identity.js";
 import { buildSha } from "./build-info.js";
+import { ownClosure } from "./checkout-closure.js";
+import { factoryStateDir } from "./config.js";
 import { startDeployPacer } from "./deploy-pacer-sweep.js";
-import { DEPLOY_WATCH_MS, type DeployWatch } from "./deploy-watch.js";
+import type { DeployWatch } from "./deploy-watch.js";
 import { gateNotifyWatch, type GateNotifyOptions, type GateNotifyWatch } from "./gate-notify-sweep.js";
 import { githubHealth, type GithubHealth } from "./github-health.js";
 import type { GithubApiHealth } from "./github-api/status.js";
+import { startUsageLog } from "./github-api/usage-meter.js";
 import { createPassStamp, resolveSources, type PassStamp, type SourcesReader } from "./github-sources/mode.js";
 import { restartDivergedLogged } from "./shepherd/diverged-sweep.js";
 import type { DeployPacerOptions } from "./shepherd/deploy-pacer.js";
 import { busyRuns } from "./restart-drain.js";
-import { heldRun } from "./serve-holds.js";
+import { gateQueuedRun, heldRun } from "./serve-holds.js";
 import { timestampConsole } from "./serve-log.js";
 import { startUnlessLive, type HealthProbe } from "./serve-beside-live.js";
 import { startLoopDelayWatch } from "./serve-loop-delay.js";
 import { SHUTDOWN_SWEEP_GRACE_MS, closeServer } from "./serve-shutdown.js";
 import { untilStopped } from "./serve-signal.js";
+import { startDeployWatch, sweepFixers } from "./serve-sweeps.js";
 import { logAgentChatCalls } from "./serve-agent-chat-timing.js";
-import { startReconcilerSweep, type ReconcilerServeOptions } from "./reconciler/service.js";
+import type { ServeReconciler } from "./reconciler/bot-ports.js";
+import { startServeReconciler, type ReconcilerHealth } from "./serve-reconciler.js";
 import { recordStartOrWarn, type ServeStart } from "./serve-starts.js";
 import { serveHealth } from "./serve-health.js";
+import { markerGcSweep, markerShadowOptions } from "./serve-markers.js";
+import { seatCheckout } from "./shepherd/seat-checkout.js";
 import { startServeIngress, type ServeIngressOptions } from "./serve-ingress.js";
 import type { IngressListener, IngressStatus } from "./ingress/listen.js";
 import type { FactoryHost, FactoryHostOptions } from "./host.js";
-import type { NeedsSources } from "./needs/rpc.js";
+import type { FactoryContext, NeedsSources } from "./context.js";
 import { loadOwnerKeys, type OwnerKeys } from "./owner-keys.js";
-import { createFactoryRegistry, factoryContext, type FactoryContext } from "./registry.js";
+import { startStandingAnswerSweep } from "./owner-ops/standing-answers.js";
+import { keptNeedsSources } from "./needs/command.js";
+import { createFactoryRegistry, factoryContext } from "./registry.js";
 import { mountServeRoutes, type ConsoleAnswersServeOptions } from "./serve-routes.js";
 import { startSweep, type Sweep } from "./sweep.js";
 import type { ShepherdServices } from "./shepherd/services.js";
 import { openFramedHost, type FramedHostOptions } from "./shepherd/frames.js";
 import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
+import type { ClearedMainGate } from "./shepherd/main-ci-cleared.js";
 import { startHeadMovedSweep, type HeadMovedSweepOptions } from "./shepherd/head-moved-sweep.js";
 import { startVisualDeliverySweep } from "./shepherd/visual-delivery-sweep.js";
 import { startRoundShipSweep } from "./shepherd/round-ship-sweep.js";
 import { recheckHeld, resyncShepherd, supersedeTransientGates } from "./shepherd/resync.js";
+import { closeThawedMainGates } from "./shepherd/thawed-main-gates.js";
+import { watchThaws } from "./shepherd/thaw-watch.js";
 import { markRevertedRuns } from "./shepherd/reverts.js";
-import type { FreezeStoreRef } from "./shepherd/freeze.js";
-import { FIXER_RETIRE_MS, retireEndedFixers, type FixerRetirePorts } from "./shepherd/fixer-retire.js";
+import { FIXER_RETIRE_MS, type FixerRetirePorts } from "./shepherd/fixer-retire.js";
 import { MAIN_WATCH_MS, openMainWatch, type MainWatchPorts } from "./shepherd/main-watch.js";
 import { SEAT_DIGEST_MS, fileSeatDigestMemory, sweepSeatDigests, type SeatDigestPorts } from "./shepherd/seat-digest.js";
+import { digestPacer } from "./shepherd/seat-digest-pace.js";
+import { startCiTimingFallback, type CiTimingFallbackPorts } from "./ci-timing-fallback.js";
 import { bindCarryStateDir } from "./shepherd/tree-carry.js";
 import { sweepReviewCheckouts, type ReviewCheckoutSweepDeps } from "./shepherd/review-checkout-sweep.js";
 import { RELEASE_SWEEP_MS, TOOLCHAIN_SWEEP_MS, sweepReleases, sweepToolchains } from "./shepherd/package-sweeps.js";
+import { readPath } from "./narrow.js";
 
-export type { FactoryContext } from "./registry.js";
+export type { FactoryContext } from "./context.js";
 export { factoryHealth } from "./serve-health.js";
 
 export const FACTORY_PORT = 7410;
@@ -60,7 +75,7 @@ const IN_MEMORY_DB = ":memory:";
 const CHECKOUT_SWEEP_MS = 3_600_000;
 /** With no reader the reconciler runs as a polling deployment at the default interval, as the absent config block means. */
 const DEFAULT_SOURCES: SourcesReader = () => resolveSources({});
-const { version: FACTORY_VERSION } = createRequire(import.meta.url)("../package.json") as { version: string };
+const FACTORY_VERSION = String(readPath(createRequire(import.meta.url)("../package.json"), "version"));
 
 export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweepOptions, FramedHostOptions, ConsoleAnswersServeOptions {
   /** Holds the daemon pid file, the one-server-per-directory lock; defaults to the database's directory. */
@@ -82,13 +97,13 @@ export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweep
   sources?: SourcesReader;
   /** Behind health's `githubApi` field: the bot pool's state per call class; absent means no field until the bot client binds it. */
   githubApi?: () => GithubApiHealth;
-  /** The GitHub backstop and the bot ports it reads through; absent, or `enabled` off, means serve starts no reconciler. */
-  reconciler?: ReconcilerServeOptions;
+  /** The GitHub backstop, built over the bot's access alone; absent, `enabled` off, or a bot that cannot run it means serve starts no reconciler. */
+  reconciler?: ServeReconciler;
   /** The webhook ingress listener beside the daemon, gated per request by `sources`; absent means serve binds no ingress port. */
   ingress?: ServeIngressOptions;
   /** Replaces the baked-in build sha behind health's `build` field; tests inject it. */
   build?: { sha: string; behindMain?: BehindMain };
-  /** Where health's `lastDeploy` reads deploy.json; defaults to the XDG state dir the deployer writes. */
+  /** Where health's `lastDeploy` reads deploy.json and the console's deploy-pause-clear finds the pause; defaults to the XDG state dir the deployer writes. */
   deployStateDir?: string;
   /** Resync Shepherd's runs and gates with GitHub before the first adoption; defaults to true. */
   resyncOnStart?: boolean;
@@ -102,12 +117,12 @@ export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweep
   fixerRetire?: FixerRetirePorts;
   /** Where each seat's digest of open gates, told fix rounds and finished runs goes on a change; absent means serve sends none. */
   seatDigest?: SeatDigestPorts;
+  /** Dispatches the CI timing workflow when GitHub's own schedule has not started one by mid-day UTC; absent means serve dispatches nothing. */
+  ciTimingFallback?: CiTimingFallbackPorts;
   /** Posts pending decision gates to agent-chat's human queue and resolves them from the answers; absent means serve asks nothing. */
   gateNotify?: GateNotifyOptions;
   /** The audience an owner proof must name; defaults to this machine's hostname. */
   aud?: string;
-  /** Replaces the root-owned key directory read at start; tests inject it. No flag or config reaches this. */
-  ownerKeys?: () => OwnerKeys;
   /** Replaces the bot identity read from the code-fixed `BOT_TOKEN_PATH`; tests inject it. No flag or config reaches this. */
   bot?: () => BotIdentity;
   /** Replaces the live owner-queue adapters behind needs.list and needs.count; tests inject it. */
@@ -136,14 +151,19 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const stateDir = stateDirOf(options);
   const log = options.logger ?? consoleLogger;
   const bot = openServeBot(options.bot, log, stateDir);
-  const { host, frames } = openFramedHost({ ...options, capabilities: { ...options.capabilities, ...bot.capabilities } });
+  const opened: { db?: Db } = {};
+  const markerShadow = options.markerShadow ?? markerShadowOptions(options.routes.config?.get().markers, () => opened.db!, stateDir, seatCheckout(), options.now);
+  const { host, frames } = openFramedHost({ ...options, markerShadow, capabilities: { ...options.capabilities, ...bot.capabilities } });
+  opened.db = host.db;
   const github = options.github ?? githubHealth();
   void github.refresh();
   const build = buildHealth(options);
   const notify = options.gateNotify && gateNotifyWatch(host, options.gateNotify, log);
   const ingressRef: { listener?: IngressListener } = {};
+  const reconcilerRef: { health: ReconcilerHealth } = { health: "disabled" };
   const passStamp = createPassStamp();
-  const daemon = frames.started(await startCountedDaemon(host, options, github, build, log, { notify, ingress: () => ingressRef.listener?.status(), passStamp, bot: bot.health }));
+  const extras: ServeExtras = { notify, ingress: () => ingressRef.listener?.status(), passStamp, bot: bot.health, reconciler: () => reconcilerRef.health };
+  const daemon = frames.started(await startCountedDaemon(host, options, github, build, log, extras));
   const ingress = (ingressRef.listener = await startServeIngress(host, options, log));
   const loopDelay = startLoopDelayWatch({ log });
   const unbindCarry = bindCarryStateDir(stateDir);
@@ -168,14 +188,19 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const mainSweep = mainWatch && startSweep(mainWatch.tick, MAIN_WATCH_MS, "main CI watch", log);
   void mainSweep?.tick();
   const digestSweep = startSeatDigest(host, services, options.seatDigest, stateDir, log);
-  const busy = () => busyRuns(host.runtime.list(["running"]), routedRunner(options.routes).routeFor, heldRun(services)).length;
+  const ciTimingSweep = startCiTimingFallback(options.ciTimingFallback, log);
+  const busy = () => busyRuns(host.runtime.list(["running"]), routedRunner(options.routes).routeFor, heldRun(services), gateQueuedRun(services)).length;
   const pacerSweep = startDeployPacer(options.deployPacer, { now: options.now ?? Date.now, runningSha: build.sha, busy }, log);
   const notifySweep = notify?.start();
   const deliverySweep = startVisualDeliverySweep(host, services, log);
   const shipSweep = startRoundShipSweep(host, services, options.consoleAnswers?.roundsDir, log, options.now);
-  const reconcilerSweep = startReconcilerSweep(options.reconciler, options.sources ?? DEFAULT_SOURCES, host.db, log, options.now, passStamp);
+  const standingSweep = startStandingAnswerSweep(host, services, { actionsDir: options.consoleAnswers?.actionsDir, stateDir, now: options.now, tell: options.consoleAnswers?.tellOwner }, log);
+  const reconciler = startServeReconciler(options.reconciler, bot.access(), { sources: options.sources ?? DEFAULT_SOURCES, db: host.db, log, now: options.now, stamp: passStamp });
+  reconcilerRef.health = reconciler.health;
   const sweeps = [sweep, goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep];
-  sweeps.push(digestSweep, pacerSweep, notifySweep, deliverySweep, shipSweep, reconcilerSweep);
+  sweeps.push(digestSweep, ciTimingSweep, pacerSweep, notifySweep, deliverySweep, shipSweep, standingSweep, reconciler.sweep);
+  sweeps.push(markerGcSweep(options.routes.config?.get().markers, host.db, options.dbPath, log, options.now));
+  if (bot.usage) sweeps.push(...startUsageLog(bot.usage, "bot", log));
   const close = () => closeServer({ sweeps, watches: [thaws, frames, loopDelay], mainWatch, ingress, daemon, unbindCarry, host }, log, options.shutdownGraceMs ?? SHUTDOWN_SWEEP_GRACE_MS);
   return { port: daemon.port, host, hub: daemon.hub, close: () => (closing ??= close()) };
 }
@@ -222,10 +247,10 @@ async function startCountedDaemon(host: FactoryHost, options: FactoryServerOptio
 
 /** Keys are read once at start, so /health and the route always agree; installing or rotating a key means a restart. */
 function ownerProofs(options: FactoryServerOptions): OwnerProofs {
-  return { keys: (options.ownerKeys ?? loadOwnerKeys)(), aud: options.aud ?? hostname() };
+  return { keys: loadOwnerKeys(), aud: options.aud ?? hostname() };
 }
 
-type ServeExtras = Pick<DaemonExtras, "notify" | "ingress" | "passStamp" | "bot">;
+type ServeExtras = Pick<DaemonExtras, "notify" | "ingress" | "passStamp" | "bot" | "reconciler">;
 
 interface DaemonExtras {
   proofs: OwnerProofs;
@@ -235,30 +260,35 @@ interface DaemonExtras {
   ingress: () => IngressStatus | undefined;
   passStamp: PassStamp;
   bot: () => BotHealth;
+  /** Set once serve has decided on the reconciler, after the daemon is up. */
+  reconciler: () => ReconcilerHealth;
 }
 
 function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github: GithubHealth, build: BuildHealth, extras: DaemonExtras): StartDaemonOptions<FactoryContext> {
-  const { proofs, start, notify, ingress, passStamp, bot } = extras;
+  const { proofs, start, notify, ingress, passStamp, bot, reconciler } = extras;
   const { routeFor } = routedRunner(options.routes);
   const log = options.logger ?? consoleLogger;
+  const deployStateDir = options.deployStateDir ?? factoryStateDir(process.env);
+  const needsSources = options.needsSources ?? keptNeedsSources(process.env, host.gates);
   return {
     registry: createFactoryRegistry(log),
-    createContext: () => factoryContext(host, options.routes, proofs.aud, options.needsSources),
+    createContext: () => factoryContext(host, options.routes, proofs.aud, needsSources),
     version: FACTORY_VERSION,
     stateDir: stateDirOf(options),
     port: options.port ?? FACTORY_PORT,
     host: options.hostname,
     toolPrefix: TOOL_PREFIX,
     mcpName: "titan-factory",
-    health: () => serveHealth(host, options, { github, build, routeFor, ownerKeys: proofs.keys, start: start(), notify, ingress: ingress(), passStamp, bot: bot() }),
-    mountRoutes: (app) => mountServeRoutes(app, { host, ...proofs, now: options.now ?? Date.now, routes: options.routes, consoleAnswers: options.consoleAnswers, stateDir: stateDirOf(options), log }),
+    health: () => serveHealth(host, options, { github, build, routeFor, ownerKeys: proofs.keys, start: start(), notify, ingress: ingress(), passStamp, bot: bot(), reconciler: reconciler() }),
+    mountRoutes: (app) =>
+      mountServeRoutes(app, { host, ...proofs, now: options.now ?? Date.now, routes: options.routes, consoleAnswers: options.consoleAnswers, stateDir: stateDirOf(options), deployStateDir, log }),
     logger: options.logger,
   };
 }
 
 function buildHealth(options: FactoryServerOptions): BuildHealth {
   const sha = options.build?.sha ?? buildSha();
-  const probe = options.build?.behindMain ?? behindMain({ sha });
+  const probe = options.build?.behindMain ?? behindMain({ sha, closure: ownClosure });
   void probe.refresh();
   return { sha, status: probe.status, refresh: probe.refresh };
 }
@@ -266,8 +296,9 @@ function buildHealth(options: FactoryServerOptions): BuildHealth {
 function startSeatDigest(host: FactoryHost, services: ShepherdServices | undefined, ports: SeatDigestPorts | undefined, stateDir: string, log: Logger): Sweep | undefined {
   if (services === undefined || ports === undefined) return undefined;
   const memory = fileSeatDigestMemory(stateDir);
+  const pacer = ports.pacing && digestPacer(ports.pacing);
   const tickOnce = async (): Promise<void> => {
-    const { sent, failed } = await sweepSeatDigests(host, services, ports, memory);
+    const { sent, failed } = await sweepSeatDigests(host, services, ports, memory, new Date(), pacer);
     if (sent.length > 0) log.info({ seats: sent }, "sent seat digests");
     for (const failure of failed) log.warn({ ...failure }, "could not send a seat digest; the next sweep tries again");
   };
@@ -295,7 +326,9 @@ async function recheckBeforeAdopt(host: FactoryHost, services: ShepherdServices,
 
 async function endGone(host: FactoryHost, services: ShepherdServices, log: Logger, thawed: Set<string>): Promise<void> {
   const onCancelFailed = (runId: string, cause: string) => log.warn({ runId, cause }, "could not cancel a run whose PR left Shepherd");
-  for (const ended of await endRunsGoneElsewhere(host, services, { onCancelFailed })) log.info({ ...ended }, "ended a run whose PR left Shepherd");
+  const onMainGreen = (cleared: ClearedMainGate) => log.info({ ...cleared }, "cleared a main-ci-timeout gate on a green main containing the merge");
+  for (const ended of await endRunsGoneElsewhere(host, services, { onCancelFailed, onMainGreen })) log.info({ ...ended }, "ended a run whose PR left Shepherd");
+  for (const closed of closeThawedMainGates(host, services)) log.info({ ...closed }, "cancelled a main gate whose freeze episode had thawed");
   for (const repo of [...thawed]) await sweepThawed(host, services, log, thawed, repo);
 }
 
@@ -317,25 +350,6 @@ async function sweepThawed(host: FactoryHost, services: ShepherdServices, log: L
   for (const failed of reverts.errors) log.warn({ ...failed }, "could not read main for reverts");
 }
 
-interface ThawWatch {
-  /** Repos thawed, or with a run's hold eased, since the sweep last read them. */
-  thawed: Set<string>;
-  /** Runs `start` on each later thaw or eased hold, outside its own call, so a gate the freeze caused is not left waiting out the sweep interval. */
-  onThaw(start: () => void): void;
-  stop(): void;
-}
-
-/** Watches from before resync and the first adoption, so a thaw then is still swept; a thaw keeps an owner hold's gate, so a hold easing here queues its repo too. */
-function watchThaws(services: ShepherdServices | undefined): ThawWatch {
-  const thawed = new Set<string>();
-  let start = (): void => undefined;
-  const queue = (repo: string): void => void (thawed.add(repo), queueMicrotask(() => start()));
-  const stopThaws = services?.freeze?.onThaw(queue);
-  const store: ShepherdServices["store"] | undefined = services?.store;
-  const stopReleases = store?.onChange?.((registration, change) => void (change === "hold-eased" && queue(registration.repo)));
-  return { thawed, onThaw: (next) => void (start = next), stop: () => (stopThaws?.(), stopReleases?.()) };
-}
-
 /** Runs before the first adoption, so no run whose PR left Shepherd is driven again; a failure is logged and startup goes on. */
 async function resync(host: FactoryHost, services: ShepherdServices, log: Logger, held: Set<string>): Promise<void> {
   try {
@@ -354,19 +368,4 @@ export async function sweepCheckouts(log: Logger, deps: ReviewCheckoutSweepDeps 
   const onError = (path: string, error: unknown): void =>
     log.warn({ path, err: error instanceof Error ? error.message : String(error) }, "review checkout sweep failed on an entry");
   for (const path of await sweepReviewCheckouts({ ...deps, onError })) log.info({ path }, "removed a stale review checkout");
-}
-
-export async function sweepFixers(ports: FixerRetirePorts, freeze: FreezeStoreRef, log: Logger): Promise<void> {
-  for (const note of await retireEndedFixers(ports, freeze.get().activeFreezes())) {
-    if (note.outcome === "retired") log.info({ ...note }, "retired an ended main-red fixer");
-    else log.warn({ ...note }, "left an ended main-red fixer");
-  }
-}
-
-/** The first tick is not awaited: its redeploy.log read and index.lock probe (lsof, pgrep) must not hold up the start. */
-function startDeployWatch(watch: DeployWatch | undefined, log: Logger): Sweep | undefined {
-  if (watch?.startupWarning) log.warn({}, watch.startupWarning);
-  const sweep = watch && startSweep(watch.tick, DEPLOY_WATCH_MS, "deploy watch", log);
-  void sweep?.tick();
-  return sweep;
 }

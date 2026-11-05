@@ -17,7 +17,7 @@ interface TtsToken {
 
 const g2p = misakiEnglish();
 
-// Each misakiEnglish() reloads the dictionary (~0.6 s measured); CI load once stretched one test past vitest's 5 s default.
+// The first misakiEnglish() grows the dictionary (~0.6 s measured); CI load once stretched one test past vitest's 5 s default.
 const LOAD_TIMEOUT_MS = 20_000;
 
 describe("misakiEnglish", { timeout: LOAD_TIMEOUT_MS }, () => {
@@ -63,6 +63,30 @@ describe("misakiEnglish", { timeout: LOAD_TIMEOUT_MS }, () => {
   it("reports a stable version naming misaki 0.9.4", () => {
     expect(g2p.version).toMatch(/^misaki-0\.9\.4\+[0-9a-f]{16}$/);
     expect(misakiEnglish().version).toBe(g2p.version);
+  });
+
+  it("reads a caller word with its phonemes in any casing, ahead of the shipped lexicon", () => {
+    const withWords = misakiEnglish({ words: { zxqv: "zˈɪk", live: "lˈIv" } });
+
+    const tokens = withWords.tokens("Zxqv, we live here.");
+
+    expect(tokens.map((tk) => [tk.text, tk.phonemes, tk.rating])).toEqual(
+      expect.arrayContaining([
+        ["Zxqv", "zˈɪk", 5],
+        ["live", "lˈIv", 5],
+        ["here", "hˈɪɹ", 4],
+      ]),
+    );
+  });
+
+  it("keeps the base version with no words and changes it once words are given", () => {
+    const empty = misakiEnglish({ words: {} });
+    const one = misakiEnglish({ words: { zxqv: "zˈɪk" } });
+    const other = misakiEnglish({ words: { zxqv: "zˈæk" } });
+
+    expect(empty.version).toBe(g2p.version);
+    expect(one.version).toMatch(new RegExp(`^${g2p.version.replaceAll(".", "\\.").replaceAll("+", "\\+")}\\+words\\.[0-9a-f]{12}$`));
+    expect(other.version).not.toBe(one.version);
   });
 
   it("gives tokens speech-vet accepts as PhonemeToken", () => {

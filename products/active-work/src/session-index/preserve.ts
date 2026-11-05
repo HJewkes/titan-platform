@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { WorkspaceGraph } from './graph.js';
 
 /**
@@ -88,23 +89,40 @@ export function preserveRow(graph: WorkspaceGraph, row: PreservedRow): void {
 
 export function listPreserved(graph: WorkspaceGraph): PreservedRow[] {
   const rows = graph.db
-    .prepare('SELECT * FROM preserved_row ORDER BY table_name, row_key')
-    .all() as {
-    table_name: string;
-    identity: string;
-    row_key: string;
-    payload: string;
-    origin: string;
-    mode: PreserveMode;
-  }[];
-  return rows.map((row) => ({
-    table: row.table_name,
-    identity: JSON.parse(row.identity) as string[],
-    key: row.row_key,
-    payload: JSON.parse(row.payload) as Record<string, string | number | null>,
-    origin: row.origin,
-    mode: row.mode,
-  }));
+    .prepare<
+      [],
+      {
+        table_name: string;
+        identity: string;
+        row_key: string;
+        payload: string;
+        origin: string;
+        mode: PreserveMode;
+      }
+    >('SELECT * FROM preserved_row ORDER BY table_name, row_key')
+    .all();
+  return rows.flatMap((row) => {
+    const identity = parseJsonColumn(row.identity, IdentitySchema);
+    const payload = parseJsonColumn(row.payload, PayloadSchema);
+    if (identity === null || payload === null) {
+      process.stderr.write(`preserved_row ${row.table_name}/${row.row_key}: malformed JSON; skipped\n`);
+      return [];
+    }
+    const { table_name: table, row_key: key, origin, mode } = row;
+    return [{ table, identity, key, payload, origin, mode }];
+  });
+}
+
+const IdentitySchema = z.array(z.string());
+const PayloadSchema = z.record(z.string(), z.union([z.string(), z.number(), z.null()]));
+
+function parseJsonColumn<S extends z.ZodType>(text: string, schema: S): z.output<S> | null {
+  try {
+    const parsed = schema.safeParse(JSON.parse(text));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Stop preserving a row — for one recovered by mistake, or superseded by a real source. */
@@ -150,8 +168,16 @@ const UNREACHABLE_SESSIONS = `
  * leaves no derived row for a `merge` to land on, and a transcript that comes
  * back must win over the copy.
  */
-const SESSION_OWNED: { table: string; identity: string[]; key: (row: Row) => string }[] = [
-  { table: 'session', identity: ['session_id'], key: (r) => String(r.session_id) },
+const SESSION_OWNED: {
+  table: string;
+  identity: string[];
+  key: (row: Row) => string;
+}[] = [
+  {
+    table: 'session',
+    identity: ['session_id'],
+    key: (r) => String(r.session_id),
+  },
   { table: 'turn', identity: ['prompt_id'], key: (r) => String(r.prompt_id) },
   {
     table: 'session_model_usage',
@@ -173,7 +199,8 @@ const SESSION_OWNED: { table: string; identity: string[]; key: (row: Row) => str
     identity: ['session_id', 'file_path', 'ts'],
     key: (r) => `${r.session_id}:${r.file_path}:${r.ts}`,
   },
-  // `transcript_id` is stable here: `resetIndex` rewinds the transcript table and never deletes it.
+  // `transcript_id` is stable here: `resetIndex` rewinds the transcript table and never deletes it, and
+  // `miner rebuild` carries it into the new file with its ids (`rebuild-carry.ts`).
   {
     table: 'request',
     identity: ['transcript_id', 'request_id'],
@@ -184,7 +211,11 @@ const SESSION_OWNED: { table: string; identity: string[]; key: (row: Row) => str
     identity: ['transcript_id', 'byte_offset'],
     key: (r) => `${r.transcript_id}:${r.byte_offset}`,
   },
-  { table: 'session_origin', identity: ['session_id'], key: (r) => String(r.session_id) },
+  {
+    table: 'session_origin',
+    identity: ['session_id'],
+    key: (r) => String(r.session_id),
+  },
 ];
 
 type Row = Record<string, string | number | null>;
@@ -196,6 +227,13 @@ function payloadOf(row: Row): Row {
   return Object.fromEntries(Object.entries(row).filter(([column]) => !SYNTHETIC_KEYS.has(column)));
 }
 
+function unreachableSessionIds(graph: WorkspaceGraph): string[] {
+  return graph.db
+    .prepare<[], { session_id: string }>(UNREACHABLE_SESSIONS)
+    .all()
+    .map((row) => row.session_id);
+}
+
 /**
  * Declare every row a rebuild could not reproduce, before one runs.
  *
@@ -204,17 +242,17 @@ function payloadOf(row: Row): Row {
  * failure it exists to prevent, not a smaller version of it.
  */
 export function preserveUnreachable(graph: WorkspaceGraph, origin: string): number {
-  const ids = (graph.db.prepare(UNREACHABLE_SESSIONS).all() as { session_id: string }[]).map(
-    (row) => row.session_id,
-  );
+  const ids = unreachableSessionIds(graph);
   if (ids.length === 0) return 0;
   const placeholders = ids.map(() => '?').join(', ');
   let preserved = 0;
   graph.db.transaction(() => {
     for (const spec of SESSION_OWNED) {
       const rows = graph.db
-        .prepare(`SELECT * FROM "${spec.table}" WHERE session_id IN (${placeholders})`)
-        .all(...ids) as Row[];
+        .prepare<string[], Row>(
+          `SELECT * FROM "${spec.table}" WHERE session_id IN (${placeholders})`,
+        )
+        .all(...ids);
       for (const row of rows) {
         const payload = payloadOf(row);
         preserveRow(graph, {

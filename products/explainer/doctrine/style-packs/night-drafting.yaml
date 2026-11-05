@@ -1,0 +1,19 @@
+# A dark pack: the near-black frame, strong hairlines and a cool accent, for arguments that need precision.
+schema: style-pack/v1
+id: night-drafting
+theme: dark
+feel: "The near-black frame ground with strong hairline rules, flat surfaces, one cool teal accent and a single sans face; motion is measured and settles without bounce."
+tokens:
+  ground: color-background-frame
+  surface: color-surface-base
+  text: color-text-primary
+  textMuted: color-text-tertiary
+  accent: color-brand-secondary-light
+  accentSoft: color-brand-secondary-muted
+  rule: color-hairline-strong
+  lift: lift-1
+  heading: font-family-sans
+  body: font-family-sans
+  code: font-family-mono
+  duration: duration-normal
+  ease: ease-out

@@ -1,3 +1,4 @@
+import { LinearRegExp } from "@titan-design/fix-proof/linear-regexp";
 import type { AllowEntryType, Rules } from "./rules.js";
 import { findHits } from "./shapes.js";
 import type { ShapeId } from "./shapes.js";
@@ -48,7 +49,7 @@ function compileGlob(glob: string): RegExp {
     else if (ch === "?") source += "[^/]";
     else source += ch.replace(/[.+^${}()|[\]\\]/g, "\\$&");
   }
-  return new RegExp(`^${source}$`);
+  return new LinearRegExp(`^${source}$`);
 }
 
 function matchesAny(globs: readonly string[], file: string): boolean {

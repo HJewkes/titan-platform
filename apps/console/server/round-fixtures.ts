@@ -4,9 +4,24 @@ import { createHash } from "node:crypto";
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { RoundListeners } from "./listeners.js";
 import type { RoundsSource } from "./rounds.js";
 
 export const FIXTURE_ROUNDS: RoundsSource = { dir: path.join(import.meta.dirname, "..", "fixtures", "rounds") };
+
+/** `rounds.submit` responds without waiting on its listener (TP-4001); `settled` waits for every run it started. */
+export function settledListeners(listeners: RoundListeners): RoundListeners & { settled: () => Promise<void> } {
+  const runs: Promise<void>[] = [];
+  return {
+    afterRoundSubmit: (roundId, result) => {
+      const run = listeners.afterRoundSubmit(roundId, result);
+      runs.push(run);
+      return run;
+    },
+    sweep: () => listeners.sweep(),
+    settled: async () => void (await Promise.allSettled(runs)),
+  };
+}
 
 export interface StagedRound {
   source: RoundsSource;
@@ -76,6 +91,25 @@ export async function stagedIndexedRound(from: string, id: string, roundJson: un
   await mkdir(path.join(dir, "frames"), { recursive: true });
   await writeFile(path.join(dir, "frames", "frames.json"), JSON.stringify({ schema: "titan-review/frames@1", unit: id, round: 1, frames: records }));
   return staged;
+}
+
+export interface CopiedRounds {
+  source: RoundsSource;
+  /** Writes `id`'s withdrawn.json as `round-withdraw.ts` would, so a page test can withdraw a round at any point. */
+  withdraw: (id: string, reason: string) => Promise<void>;
+  remove: () => Promise<void>;
+}
+
+/** A temp copy of every fixture round, so a page test can change the rounds dir under a page it already loaded. */
+export async function copiedRounds(): Promise<CopiedRounds> {
+  const root = await mkdtemp(path.join(tmpdir(), "copied-rounds-"));
+  await cp(FIXTURE_ROUNDS.dir, root, { recursive: true });
+  const body = (reason: string) => JSON.stringify({ schema: "titan-console/withdrawn@1", reason, at: "2031-03-04T12:00:00.000Z" });
+  return {
+    source: { dir: root },
+    withdraw: (id, reason) => writeFile(path.join(root, id, "withdrawn.json"), body(reason)),
+    remove: () => rm(root, { recursive: true, force: true }),
+  };
 }
 
 /** A temp rounds dir holding fixture round `id` sent with `feedback`, so a page test reads it back through rounds.get. */

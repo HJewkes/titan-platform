@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a revealed recommendation never hides again",
+      "file": "apps/console/src/pages/RoundReveal.tsx",
+      "find": "reveals.setOpen(question.id, !open);",
+      "replace": "reveals.setOpen(question.id, true);",
+      "kills": [
+        "revealing a withheld recommendation hides a revealed recommendation again while the question is unanswered"
+      ]
+    }
+  ]
+}

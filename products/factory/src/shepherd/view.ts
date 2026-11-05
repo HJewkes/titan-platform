@@ -3,118 +3,45 @@ import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepOf } from "../coordinator-evidence.js";
 import { stepIdMatches } from "../definition.js";
-import { AutoPassedSchema, autoPassField } from "./auto-pass.js";
+import { attestedField } from "./attest-field.js";
+import { autoPassField } from "./auto-pass.js";
 import { heldView, holdWait, waitsOnHold } from "./hold-view.js";
-import { EVENT_KINDS, type ShepherdEvent } from "./events.js";
+import type { ShepherdEvent } from "./events.js";
+import { ciTimeoutEntry, numberedTimeouts } from "./ci-timeout-entry.js";
 import { g10UnreviewedStall, type HoldWait } from "./g10-unreviewed-stall.js";
+import { ciWaitHead } from "../workflows/ci-wait-head.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
-import { OWNER_GATE_REASONS } from "./policy.js";
-import { NONE_KINDS, liveLastNone } from "./none-reason.js";
+import { liveLastNone } from "./none-reason.js";
 import { MAX_NOT_STARTED_REVIEWS, notStartedStreak, reviewerName } from "./review-steps.js";
 import { reviewWait } from "./review-wait.js";
+import { MERGE_EVIDENCE_STEP } from "./merge-facts.js";
 import { TERMINAL_PHASE, endedAt, runOutcome } from "./run-end.js";
-import { STAGES, stageSpans } from "./stage-times.js";
-import { PhaseSchema, stepPhase, type Phase } from "./step-phase.js";
-import { spawnQueuePosition } from "./spawn-gate.js";
+import { stageSpans } from "./stage-times.js";
+import { stepPhase, type Phase } from "./step-phase.js";
+import { RiskTierSchema, TimelineEntrySchema, WAKE_KINDS, WAKE_MODES, WatchRowSchema, type TimelineEntry, type WatchRow } from "./view-schema.js";
+import { PHASE_STALL_LIMIT_MS } from "./phase-limits.js";
+import { spawnQueuePosition } from "./review-queue.js";
 import type { Registration } from "./store.js";
 import type { TrainHolder } from "./train.js";
 import type { WakeInput, WakeStepResult } from "./wake.js";
 
-const KINDS = ["ci-red", "review", "conflict", "fix-proof"] as const;
-const MODES = ["resume", "successor", "live"] as const;
 type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 /** Resolves to the list only when it names exactly the members of wake.ts's union, so a kind or mode added there fails the build here. */
 type Tied<List extends readonly string[], Union extends string> = [Same<List[number], Union>] extends [true] ? List : never;
-const WAKE_KINDS: Tied<typeof KINDS, WakeInput["kind"]> = KINDS;
-const WAKE_MODES: Tied<typeof MODES, Extract<WakeStepResult, { kind: "woken" }>["mode"]> = MODES;
+WAKE_KINDS satisfies Tied<typeof WAKE_KINDS, WakeInput["kind"]>;
+WAKE_MODES satisfies Tied<typeof WAKE_MODES, Extract<WakeStepResult, { kind: "woken" }>["mode"]>;
 
 export { PhaseSchema, stepPhase, type Phase } from "./step-phase.js";
 
-/** The read model `shepherd.list` and `shepherd.timeline` return; TP-466 section 2 pins these shapes for the UI. */
-export const WatchRowSchema = z.object({
-  repo: z.string(),
-  pr: z.number().int().nullable(),
-  branch: z.string(),
-  runId: z.string(),
-  task: z.string(),
-  phase: PhaseSchema,
-  headSha: z.string().nullable(),
-  phaseSince: z.string(),
-  nextAction: z.string(),
-  pendingGate: z.object({ gateId: z.string(), stepId: z.string(), since: z.string() }).nullable(),
-  held: z.object({ reason: z.string(), satisfiedAt: z.string().optional(), satisfiedBy: z.string().optional() }).nullable(),
-  stalled: z.object({ reason: z.string() }).nullable(),
-  /** How the run ended: `merged`, or `stopped` with the land reason; null while it runs and for runs older than the record. */
-  outcome: z.object({ kind: z.enum(["merged", "stopped"]), reason: z.string().nullable() }).nullable(),
-  /** The stage a live run is in and the whole minutes it has spent there; absent for a finished run and in rows older than the field. */
-  stage: z.object({ name: z.enum(STAGES), minutes: z.number().int() }).nullable().optional(),
-  /** Why an owner-gate run asks the owner; absent for other policies and for runs registered before the field. */
-  ownerGateReason: z.enum(OWNER_GATE_REASONS).optional(),
-  /** Whole minutes from the run's registration to its end, or to now while it runs. */
-  totalMinutes: z.number().int().optional(),
-  /** The registration's implementer and slice label, each null when it names none (only a slice-less run closes its task). Absent in rows older than the fields. */
-  implementer: z.string().nullable().optional(),
-  slice: z.string().nullable().optional(),
-  /** The agent name the newest started `sh-review` dispatched; null before any reviewer started. Absent in rows older than the field. */
-  reviewer: z.string().nullable().optional(),
-  /** Why the newest head-level review step ended in `none`; null for a finished run or one whose last review gave a verdict. Absent in rows older than the field. */
-  lastNone: z.object({ kind: z.enum(NONE_KINDS), text: z.string() }).nullable().optional(),
-  repoFrozen: z.object({ repo: z.string(), reason: z.string(), actor: z.string(), since: z.string() }).optional(),
-  autoPassed: AutoPassedSchema.optional(),
-});
-export type WatchRow = z.infer<typeof WatchRowSchema>;
+const RiskTierRecord = z.looseObject({ result: z.looseObject({ record: z.looseObject({ riskTier: RiskTierSchema }) }) });
 
-export const TimelineEntrySchema = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("step"),
-    stepId: z.string(),
-    iteration: z.number().int(),
-    startedAt: z.string().nullable(),
-    completedAt: z.string().nullable(),
-    signal: z.string().nullable(),
-    status: z.enum(["running", "done", "failed"]),
-  }),
-  z.object({ kind: z.literal("ci"), stepId: z.string(), headSha: z.string(), conclusion: z.string(), runUrl: z.string().nullable() }),
-  z.object({
-    kind: z.literal("wake"),
-    stepId: z.string(),
-    /** Null where the step's record does not say: an implementer wake records its outcome, not its request. */
-    request: z.enum(WAKE_KINDS).nullable(),
-    /** Null for the FIX_FIRST counter, which is recorded before the wake it counts. */
-    outcome: z.enum(["woken", "unhandled"]).nullable(),
-    agent: z.string().nullable(),
-    mode: z.enum(WAKE_MODES).nullable(),
-    sessionId: z.string().nullable(),
-    /** Why a held wake started no fixer: agent-chat's refusal of the successor. */
-    held: z.string().optional(),
-  }),
-  z.object({
-    kind: z.literal("verdict"),
-    stepId: z.string(),
-    verdict: z.enum(["MERGE", "FIX_FIRST", "none"]),
-    headSha: z.string().nullable(),
-    locator: z.object({ path: z.string(), start: z.number(), end: z.number() }).nullable(),
-    reviewer: z.string().nullable(),
-  }),
-  z.object({
-    kind: z.literal("gate"),
-    stepId: z.string(),
-    gateId: z.string(),
-    status: z.string(),
-    createdAt: z.string(),
-    resolvedAt: z.string().nullable(),
-    resolvedBy: z.string().nullable(),
-  }),
-  z.object({
-    kind: z.literal("event"),
-    event: z.enum(EVENT_KINDS),
-    reason: z.string().nullable(),
-    actor: z.string().nullable(),
-    at: z.string(),
-    headSha: z.string().nullable(),
-  }),
-]);
-export type TimelineEntry = z.infer<typeof TimelineEntrySchema>;
+/** The tier the newest merge evidence at `head` recorded; evidence from before the field, or at another head, gives none. */
+function riskTierAt(steps: readonly StepResult[], head: string | null): { riskTier?: z.infer<typeof RiskTierSchema> } {
+  if (head === null) return {};
+  const evidence = steps.filter((result) => result.stepId === `${MERGE_EVIDENCE_STEP}:${head}`).at(-1);
+  const parsed = RiskTierRecord.safeParse(evidence?.data);
+  return parsed.success ? { riskTier: parsed.data.result.record.riskTier } : {};
+}
 
 export const PrTimelineSchema = z.object({ row: WatchRowSchema, entries: z.array(TimelineEntrySchema) });
 export type PrTimeline = z.infer<typeof PrTimelineSchema>;
@@ -170,6 +97,10 @@ function admissionWait({ repo, pr }: Registration): string | undefined {
   return wait && position ? `${wait}; waiting for a spawn slot, ${position}` : wait;
 }
 
+/** sh-cleanup can wait an hour per part on agents to exit, long after main CI was read, so it must not read as a main CI wait. */
+const cleanupWait = (run: WorkflowRun, phase: Phase): string | undefined =>
+  phase === "post-merge" && run.currentStep !== null && stepIdMatches("sh-cleanup", run.currentStep) ? "cleaning up after the merge: head branch, task and agents" : undefined;
+
 const BaseCheckData = z.object({ result: z.object({ allowed: z.literal(false), reason: z.string() }) });
 
 /** While a head waits for its PR to be retargeted, the refused base is the next action. */
@@ -223,14 +154,6 @@ export interface RowInput {
 
 const MINUTE = 60_000;
 
-/** Longest a run may sit in a phase before it reads as stalled; phases that wait on a person or an agent by design have no limit. */
-export const PHASE_STALL_LIMIT_MS: Readonly<Partial<Record<Phase, number>>> = {
-  ci: 60 * MINUTE,
-  fixing: 240 * MINUTE,
-  review: 120 * MINUTE,
-  merging: 15 * MINUTE,
-};
-
 function overstayReason(phase: Phase, since: string, now: Date): string | undefined {
   const limit = PHASE_STALL_LIMIT_MS[phase];
   const elapsed = now.getTime() - Date.parse(since);
@@ -255,10 +178,23 @@ function liveStage(run: WorkflowRun, steps: readonly StepResult[], phase: Phase,
   return { name: holding ? "hold" : open.stage, minutes: Math.floor((open.endedAt - open.startedAt) / MINUTE) };
 }
 
+const ciWaitRunning = (run: WorkflowRun): boolean => run.status === "running" && run.currentStep !== null && stepIdMatches("ci-wait", run.currentStep);
+
+/**
+ * A running ci-wait judges only the head it read itself, noted in memory per read; until its first read in this serve
+ * (a restarted step, or reads that keep failing) the head is unknown, and an older step's head is not the one it judges (TP-4767).
+ */
+function rowHead(run: WorkflowRun, steps: readonly StepResult[], { repo, pr }: Registration): string | null {
+  if (ciWaitRunning(run)) return ciWaitHead(run.currentStep, repo, pr) ?? null;
+  return steps.map(headOf).filter((head) => head !== undefined).at(-1) ?? null;
+}
+
+const CI_HEAD_UNREAD = "waiting for CI (head not yet read)";
+
 /** One watch-list row; a failed run, a review the broker keeps refusing, or a phase past its limit reads as stalled. */
 export function watchRow({ registration, run, pending, train, now = new Date() }: RowInput): WatchRow {
   const steps = completedSteps(run);
-  const headSha = steps.map(headOf).filter((head) => head !== undefined).at(-1) ?? null;
+  const headSha = rowHead(run, steps, registration);
   const phase = runPhase(run, steps);
   const held = heldView(registration);
   const holding = phase === "merging" && waitsOnHold(run, held, headSha);
@@ -273,7 +209,7 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     phase,
     headSha,
     phaseSince: since,
-    nextAction: freezeWait(run, steps) ?? baseWait(run, steps) ?? heldWakeWait(run, steps) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending && stepOf(pending.gate.id), registration, train?.runId === run.id ? undefined : train)),
+    nextAction: freezeWait(run, steps) ?? baseWait(run, steps) ?? heldWakeWait(run, steps) ?? cleanupWait(run, phase) ?? (headSha === null && ciWaitRunning(run) && !pending ? CI_HEAD_UNREAD : undefined) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending && stepOf(pending.gate.id), registration, train?.runId === run.id ? undefined : train)),
     pendingGate: pending ? { gateId: pending.gate.id, stepId: stepOf(pending.gate.id), since: pending.gate.createdAt } : null,
     held,
     stalled: asStalled(stallReason(run, steps, phase, since, now, { registration, headSha, holding })),
@@ -283,7 +219,7 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     implementer: registration.implementer || null,
     slice: registration.slice ?? null,
     reviewer: reviewerName(steps),
-    lastNone: liveLastNone(run, steps), ...autoPassField(steps),
+    lastNone: liveLastNone(run, steps), ...autoPassField(steps), ...attestedField(steps), ...riskTierAt(steps, headSha),
   };
 }
 
@@ -296,12 +232,13 @@ export function timelineEntries(run: WorkflowRun, gates: readonly GateRecord[], 
   }));
   const opened = gates.map((gate) => ({ at: gate.createdAt, entry: gateEntry(gate) }));
   const changes = events.map((event) => ({ at: event.at, entry: eventEntry(event) }));
-  return [...done, ...running, ...opened, ...changes].sort((a, b) => a.at.localeCompare(b.at)).map(({ entry }) => entry);
+  return numberedTimeouts([...done, ...running, ...opened, ...changes].sort((a, b) => a.at.localeCompare(b.at)).map(({ entry }) => entry));
 }
 
 function stepEntry(result: StepResult): TimelineEntry {
   const payload = (result.data as { result?: unknown } | undefined)?.result;
   const ci = stepPhase(result.stepId) === "ci" ? CiSnapshotResult.safeParse(payload) : undefined;
+  if (ci?.success && ci.data.timedOut) return ciTimeoutEntry(result, ci.data.headSha, ci.data.timedOut);
   if (ci?.success) return { kind: "ci", stepId: result.stepId, headSha: ci.data.headSha, conclusion: ci.data.verdict, runUrl: null };
   const recorded = recordedEntry(result.stepId, payload);
   if (recorded !== undefined) return recorded;

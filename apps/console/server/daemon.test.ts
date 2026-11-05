@@ -15,7 +15,7 @@ import type { ConsoleConfig } from "./config.js";
 import { createLoginLink, rotateLanToken, startConsoleDaemon } from "./daemon.js";
 import { fixtureAnswer } from "./fixtures.js";
 import { createConsoleRegistry, recordFirstPaint } from "./registry.js";
-import { closedPort, send, sessionCookie, startFakeBroker, startFakeDaemon, writeSelfSignedCert, type FakeDaemon, type Reply, type SelfSignedPair } from "./test-support.js";
+import { STORY_ROUND_ID, closedPort, importStoryRound, send, sessionCookie, startFakeBroker, startFakeDaemon, writeSelfSignedCert, type FakeDaemon, type Reply, type SelfSignedPair } from "./test-support.js";
 import { createSources } from "./upstreams.js";
 
 // The one seam for the LAN suite: the daemon refuses all of 127/8 as a remote host through a
@@ -256,10 +256,49 @@ describe("login-link and token rotate", () => {
     expect(createLoginLink(lanConfig()) === createLoginLink(lanConfig())).toBe(false);
   });
 
-  it("falls back to the bound address when there is no LAN name, and refuses when there is neither", () => {
-    expect(new URL(createLoginLink({ ...lanConfig(), lanNames: [], lanHost: "192.0.2.1" })).origin).toBe("https://192.0.2.1:7500");
-    expect(new URL(createLoginLink({ ...lanConfig(), lanNames: [], lanHost: "2001:db8::a" })).origin).toBe("https://[2001:db8::a]:7500");
-    expect(() => createLoginLink({ ...lanConfig(), lanNames: [] })).toThrow(/TITAN_CONSOLE_LAN_NAMES/);
+  /** A certificate of its own, so the suite's pair for `lan-box` stays as it is. */
+  async function certFor(names: readonly string[]): Promise<ConsoleConfig["lanTls"]> {
+    const certDir = await mkdtemp(path.join(dir, "cert-"));
+    const own = writeSelfSignedCert(certDir, names);
+    return { certFile: own.certFile, keyFile: own.keyFile };
+  }
+
+  it("names the certificate's FQDN when the LAN names are the bare hostname defaults", async () => {
+    const lanTls = await certFor(["box.example.ts.net"]);
+
+    const url = new URL(createLoginLink({ ...lanConfig(), lanNames: ["box", "box.local"], lanTls }));
+
+    expect(url.origin).toBe("https://box.example.ts.net:7500");
+  });
+
+  it("names the first LAN name the certificate covers, skipping one it does not", async () => {
+    const lanTls = await certFor(["box.example.ts.net", "alt.example.ts.net"]);
+
+    const url = new URL(createLoginLink({ ...lanConfig(), lanNames: ["box", "alt.example.ts.net", "box.example.ts.net"], lanTls }));
+
+    expect(url.origin).toBe("https://alt.example.ts.net:7500");
+  });
+
+  it("finds the one certificate under the state dir's tls/ when TITAN_CONSOLE_TLS_CERT is unset", async () => {
+    const tlsDir = path.join(config.stateDir, "tls");
+    await mkdir(tlsDir, { recursive: true });
+    writeSelfSignedCert(tlsDir, ["box.example.ts.net"]);
+
+    const url = new URL(createLoginLink({ ...lanConfig(), lanNames: ["box"], lanTls: null }));
+
+    expect(url.origin).toBe("https://box.example.ts.net:7500");
+  });
+
+  it("refuses with no certificate to read, rather than print a name nothing covers", () => {
+    expect(() => createLoginLink({ ...lanConfig(), lanNames: ["box"], lanTls: null })).toThrow(/TITAN_CONSOLE_TLS_CERT/);
+  });
+
+  it("falls back to the bound address the certificate covers, and refuses when it covers none", async () => {
+    const lanTls = await certFor(["192.0.2.1", "2001:db8::a"]);
+
+    expect(new URL(createLoginLink({ ...lanConfig(), lanNames: [], lanHost: "192.0.2.1", lanTls })).origin).toBe("https://192.0.2.1:7500");
+    expect(new URL(createLoginLink({ ...lanConfig(), lanNames: [], lanHost: "2001:db8::a", lanTls })).origin).toBe("https://[2001:db8::a]:7500");
+    expect(() => createLoginLink({ ...lanConfig(), lanNames: ["box"], lanHost: "192.0.2.9", lanTls })).toThrow(/covers none of TITAN_CONSOLE_LAN_NAMES/);
   });
 
   it("refuses an ephemeral port, which no link could name", () => {
@@ -363,6 +402,8 @@ describe.skipIf(process.platform !== "linux")("the console in LAN mode (127.0.0.
   async function startFakeFactory(): Promise<{ hosts: string[] }> {
     const hosts: string[] = [];
     const server = createServer((req, res) => {
+      // The events relay dials /events on its own schedule; only the reads a request makes are under test.
+      if (req.url === "/events") return void res.writeHead(404).end();
       hosts.push(req.headers.host ?? "");
       req.resume().on("end", () => {
         res.writeHead(200, { "content-type": "application/json" });
@@ -473,6 +514,54 @@ describe.skipIf(process.platform !== "linux")("the console in LAN mode (127.0.0.
     const lanName = await send("127.0.0.1", port, "GET", "/health", { host: `${NAME}:${port}` });
 
     expect([health.status, shell.status, lanName.status]).toEqual([200, 200, 403]);
+  });
+
+  /** LAN mode with the story origin on an ephemeral port and the synthetic story round imported. */
+  async function startStoryLan(): Promise<{ lanConfig: ConsoleConfig; buildId: string; storyPort: number }> {
+    const storybooksDir = path.join(dir, "state", "storybooks");
+    const buildId = await importStoryRound({ scratch: dir, roundsDir: config.roundsDir, storybooksDir });
+    const lanConfig = await startLan({ storyPort: 0, storybooksDir });
+    return { lanConfig, buildId, storyPort: handle!.contentPort! };
+  }
+
+  const storyLan = (storyPort: number, route: string, headers: Record<string, string> = {}): Promise<Reply> =>
+    sendLan(storyPort, "GET", route, { host: `${NAME}:${storyPort}`, ...headers });
+
+  it("serves the LAN story origin only with the cookie the console's own sign-in set, framed only by the console's pages", async () => {
+    const { lanConfig, buildId, storyPort } = await startStoryLan();
+    const credential = await signIn(lanConfig);
+
+    const anonymous = await storyLan(storyPort, `/sb/${buildId}/iframe.html`);
+    const signedIn = await storyLan(storyPort, `/sb/${buildId}/iframe.html`, credential);
+
+    expect([anonymous.status, signedIn.status]).toEqual([401, 200]);
+    const csp = String(signedIn.headers["content-security-policy"]);
+    expect(csp.endsWith(`; frame-ancestors http://127.0.0.1:${port} http://localhost:${port} https://${NAME}:${port} https://${LAN}:${port}`)).toBe(true);
+    expect(csp).not.toContain(`:${storyPort}`);
+  });
+
+  it("refuses an rpc call that carries the story origin's Origin, on the LAN and on loopback", async () => {
+    const { lanConfig, storyPort } = await startStoryLan();
+    const credential = await signIn(lanConfig);
+    const loopbackRpc = (origin: string) => send("127.0.0.1", port, "POST", "/rpc/rounds.list", { ...json, origin }, "{}");
+
+    const fromStoryLan = await rpc("rounds.list", { ...credential, origin: `https://${NAME}:${storyPort}` });
+    const fromStoryLoopback = await loopbackRpc(`http://127.0.0.1:${storyPort}`);
+    const fromConsole = await loopbackRpc(`http://127.0.0.1:${port}`);
+
+    expect([fromStoryLan.status, fromStoryLoopback.status, fromConsole.status]).toEqual([403, 403, 200]);
+  });
+
+  it("names the LAN story origin to a signed-in LAN rounds.get, and the loopback one on loopback", async () => {
+    const { lanConfig, storyPort } = await startStoryLan();
+    const credential = await signIn(lanConfig);
+    const args = { id: STORY_ROUND_ID };
+
+    const viaLan = await rpc("rounds.get", credential, args);
+    const viaLoopback = await send("127.0.0.1", port, "POST", "/rpc/rounds.get", { ...json, "x-titan-client": "test" }, JSON.stringify(args));
+
+    expect(JSON.parse(viaLan.body)).toMatchObject({ ok: true, data: { live: { origin: `https://${NAME}:${storyPort}` } } });
+    expect(JSON.parse(viaLoopback.body)).toMatchObject({ ok: true, data: { live: { origin: `http://127.0.0.1:${storyPort}` } } });
   });
 
   it("logs out with a JSON POST, which clears the cookie, and refuses a form-encoded or cross-site one", async () => {
@@ -619,6 +708,20 @@ describe.skipIf(process.platform !== "linux")("the console's LAN listener under 
 
     expect([own.status, foreign.status, portless.status]).toEqual([200, 403, 403]);
     expect([foreign.body, portless.body].some((body) => body.includes("console shell"))).toBe(false);
+  });
+
+  it("answers every listed name the certificate covers, and 403 to a covered name that is not listed", async () => {
+    const certDir = path.join(dir, "fqdn-cert");
+    await mkdir(certDir);
+    pair = writeSelfSignedCert(certDir, ["box.example.ts.net", NAME, "spare.example.ts.net"]);
+    await startLan(silentLogger, { lanNames: ["box.example.ts.net", NAME], lanTls: { certFile: pair.certFile, keyFile: pair.keyFile } });
+    const credential = await signIn();
+
+    const statuses = await Promise.all(
+      ["box.example.ts.net", NAME, "spare.example.ts.net"].map(async (host) => (await sendLan(port, "GET", "/", { host: `${host}:${port}`, accept: "text/html", ...credential })).status),
+    );
+
+    expect(statuses).toEqual([200, 200, 403]);
   });
 
   it("answers 401 to the old bearer after token rotate, and 200 to the new one", async () => {

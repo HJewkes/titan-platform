@@ -1,27 +1,18 @@
-import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { gitIn, seedRepo, withHistory } from "@titan-design/test-kit/git";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ownMergeUp, type OwnMergeUpResult } from "./own-merge-up.js";
 
 const REPO = "acme/widgets";
-const TEST_GIT_ENV = {
-  ...process.env,
-  GIT_CONFIG_NOSYSTEM: "1",
-  GIT_CONFIG_GLOBAL: "/dev/null",
-  GIT_AUTHOR_NAME: "Test",
-  GIT_AUTHOR_EMAIL: "test@example.com",
-  GIT_COMMITTER_NAME: "Test",
-  GIT_COMMITTER_EMAIL: "test@example.com",
-};
 
 let root: string;
 let origin: string;
 let stateDir: string;
 
 function git(...args: string[]): string {
-  return execFileSync("git", ["-C", origin, ...args], { encoding: "utf8", env: TEST_GIT_ENV, stdio: ["ignore", "pipe", "pipe"] }).trim();
+  return gitIn(origin)(...args);
 }
 
 function write(file: string, text: string): void {
@@ -41,10 +32,12 @@ const head = (): string => git("rev-parse", "HEAD");
 
 /** main holds two files; `feature` changes src/a.ts and is returned as the approved head, with the checkout on feature. */
 function approvedFeature(): string {
-  commit("src/a.ts", body("a"));
-  commit("src/b.ts", body("b"));
-  git("checkout", "-q", "-B", "feature", "HEAD");
-  return commit("src/a.ts", body("a").replace("a 1\n", "a one\n"));
+  const [, , approved = ""] = withHistory(origin, [
+    { files: { "src/a.ts": body("a") }, message: "edit src/a.ts" },
+    { files: { "src/b.ts": body("b") }, message: "edit src/b.ts" },
+    { branch: "feature", from: "main", files: { "src/a.ts": body("a").replace("a 1\n", "a one\n") }, message: "edit src/a.ts" },
+  ]);
+  return approved;
 }
 
 function mainCommit(file: string, text: string): string {
@@ -65,7 +58,7 @@ beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "own-merge-up-"));
   origin = join(root, "origin");
   stateDir = join(root, "state");
-  execFileSync("git", ["init", "-q", "-b", "main", origin], { env: TEST_GIT_ENV });
+  seedRepo(origin, {});
   git("config", "uploadpack.allowAnySHA1InWant", "true");
 });
 

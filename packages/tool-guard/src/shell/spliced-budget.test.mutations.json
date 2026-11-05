@@ -1,0 +1,16 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the spliced-text budget never refuses a line",
+      "file": "packages/tool-guard/src/shell/unsure-readings.ts",
+      "find": "  if (cost > budget.splicedLeft) throw new SplicedReadingError();",
+      "replace": "  if (cost > budget.splicedLeft && cost < 0) throw new SplicedReadingError();",
+      "kills": [
+        "the budget for text that splicing a substitution's output adds refuses an 8 KiB line of eight nested evals with work linear in its length, not after 2^8 walks",
+        "the budget for text that splicing a substitution's output adds throws rather than reading a line past the budget as if it had no spliced readings",
+        "the budget for text that splicing a substitution's output adds denies a benign line past the budget too, since what it would run is unchecked"
+      ]
+    }
+  ]
+}

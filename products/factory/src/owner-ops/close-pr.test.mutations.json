@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "close-pr closes without comparing GitHub's head to the confirmed head",
+      "file": "products/factory/src/owner-ops/close-pr.ts",
+      "find": "  if (pull.headSha !== op.headSha) return { outcome: \"moved\", currentHead: pull.headSha };\n",
+      "replace": "",
+      "kills": ["close-pr answers moved and closes nothing when the PR is open at another head"]
+    },
+    {
+      "name": "close-pr ignores its own done row on a replay",
+      "file": "products/factory/src/owner-ops/close-pr.ts",
+      "find": "  if (history.some(closedByThis)) return { outcome: \"already\", closedHead: op.headSha };\n",
+      "replace": "",
+      "kills": ["close-pr answers already on a replay after done, and closes only once"]
+    },
+    {
+      "name": "close-pr reads an interrupted earlier call as closed elsewhere",
+      "file": "products/factory/src/owner-ops/close-pr.ts",
+      "find": "return interrupted(history) && !pull.merged ? finishInterrupted(op, deps) : gone(op, pull);",
+      "replace": "return gone(op, pull);",
+      "kills": ["close-pr finishes a started row with no done whose close landed: already, and the Shepherd run it skipped ends"]
+    },
+    {
+      "name": "close-pr leaves the PR's Shepherd run live after the close",
+      "file": "products/factory/src/owner-ops/close-pr.ts",
+      "find": "  await deps.port.closePr(op.repo, op.pr);\n  await endShepherdRun(deps, op);\n",
+      "replace": "  await deps.port.closePr(op.repo, op.pr);\n",
+      "kills": ["close-pr ends the PR's live Shepherd run after the close"]
+    },
+    {
+      "name": "close-pr counts this call's own started row as an interrupted earlier call",
+      "file": "products/factory/src/owner-ops/close-pr.ts",
+      "find": "return started - (history.length - started) > 1;",
+      "replace": "return started - (history.length - started) > 0;",
+      "kills": ["close-pr answers gone for a PR closed elsewhere with no ledger row for this record"]
+    }
+  ]
+}

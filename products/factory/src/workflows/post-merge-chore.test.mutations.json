@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the prune ignores whether the step settled",
+      "file": "products/factory/src/workflows/post-merge-chore.ts",
+      "find": "if (!marker.success || !settled(marker.data.step)) continue;",
+      "replace": "if (!marker.success) continue;",
+      "kills": [
+        "pruneChores removes every attempt's files of a settled step and leaves other steps and unreadable markers",
+        "chorePruning prunes a recorded step's leftover files at bind and keeps an unrecorded step's, which a restart still reconciles"
+      ]
+    },
+    {
+      "name": "the prune removes an unreadable marker",
+      "file": "products/factory/src/workflows/post-merge-chore.ts",
+      "find": "if (!marker.success || !settled(marker.data.step)) continue;",
+      "replace": "if (marker.success && !settled(marker.data.step)) continue;",
+      "kills": [
+        "pruneChores removes every attempt's files of a settled step and leaves other steps and unreadable markers"
+      ]
+    },
+    {
+      "name": "the host drops the routes' event hook",
+      "file": "products/factory/src/host.ts",
+      "find": "onEvent: composeRoutes({ onEvent: options.onEvent }, options.routes).onEvent,",
+      "replace": "onEvent: options.onEvent,",
+      "kills": [
+        "chorePruning removes a landed PR's chore files once the post-merge step records, and the run holds its result by then"
+      ]
+    },
+    {
+      "name": "the bind sweep treats every step as recorded",
+      "file": "products/factory/src/workflows/chore-prune.ts",
+      "find": "return Object.values(results).some((result) => result.stepId === step.stepId && result.iteration === step.iteration);",
+      "replace": "return Object.values(results).length >= 0;",
+      "kills": [
+        "chorePruning prunes a recorded step's leftover files at bind and keeps an unrecorded step's, which a restart still reconciles"
+      ]
+    }
+  ]
+}

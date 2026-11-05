@@ -1,0 +1,48 @@
+{
+  "tasks": [
+    {
+      "id": "DM-5",
+      "title": "Add a desk dashboard",
+      "status": "open",
+      "tags": [],
+      "created": "2026-03-11T09:00:00Z",
+      "done_at": null
+    },
+    {
+      "id": "DM-1",
+      "title": "Wire the parcel scanner",
+      "status": "open",
+      "tags": [],
+      "created": "2026-03-01",
+      "done_at": null
+    },
+    {
+      "id": "DM-2",
+      "title": "Draft the label printer spec",
+      "status": "done",
+      "tags": [],
+      "created": "2026-03-01",
+      "done_at": "2026-03-11T15:00:00Z"
+    },
+    {
+      "id": "DM-3",
+      "title": "Pick a courier for overnight runs",
+      "status": "open",
+      "tags": [
+        "needs-owner"
+      ],
+      "created": "2026-03-01",
+      "done_at": null
+    },
+    {
+      "id": "DM-4",
+      "title": "Retry failed scans",
+      "status": "open",
+      "tags": [
+        "blocked"
+      ],
+      "created": "2026-03-01",
+      "done_at": null
+    }
+  ]
+}

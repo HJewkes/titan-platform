@@ -97,13 +97,17 @@ export function checkNoTestsDirectories(root) {
   });
 }
 
-/** R47: packages take zod as a peer, never a regular dependency. */
+/**
+ * R47: packages take zod as a peer, never a regular dependency. A package that ships a bin is
+ * exempt: `npx -p` runs the bin with no host to supply the peer, and legacy-peer-deps skips it (TP-3897).
+ */
 export function checkZodIsPeer(root) {
   return workspaceDirs(root, ["packages"])
     .map((dir) => readJson(join(dir, "package.json")))
-    .filter((pkg) => pkg.dependencies?.zod)
+    .filter((pkg) => pkg.dependencies?.zod && !pkg.bin)
     .map(
-      (pkg) => `\`${pkg.name}\` lists zod under dependencies. Move it to peerDependencies and devDependencies.`,
+      (pkg) =>
+        `\`${pkg.name}\` lists zod under dependencies. Move it to peerDependencies and devDependencies, unless the package ships a bin.`,
     );
 }
 
@@ -159,6 +163,18 @@ export function checkTurboBuildContract(root) {
   return messages;
 }
 
+/**
+ * R54: turbo hashes the root's `workspace:` dependencies into every task, so one edit to any of them would miss the
+ * whole cache. A `link:` dependency gives the same root node_modules entry, which egress-scan's pre-push hook needs,
+ * and turbo leaves it out of the hash.
+ */
+export function checkRootHasNoWorkspaceDependencies(root) {
+  const pkg = readJson(join(root, "package.json"));
+  return DEPENDENCY_FIELDS.flatMap((field) => Object.entries(pkg[field] ?? {}))
+    .filter(([, spec]) => spec.startsWith("workspace:"))
+    .map(([dep]) => `The root \`package.json\` depends on \`${dep}\`, which keys every turbo task on it. Call its dist by path, or use \`link:\` if something resolves it through the root node_modules.`);
+}
+
 const isWarn = (setting) => {
   const level = Array.isArray(setting) ? setting[0] : setting;
   return level === "warn" || level === 1;
@@ -188,6 +204,11 @@ function workspaceGlobs(root) {
 function resolveWorkspaceGlob(root, glob) {
   const dirs = glob.endsWith("/*") ? subdirs(join(root, glob.slice(0, -2))) : [join(root, glob)];
   return dirs.filter((dir) => existsSync(join(dir, "package.json"))).map((dir) => relative(root, dir));
+}
+
+/** Every pnpm workspace member's directory, relative to root, as `pnpm-workspace.yaml` lists them. */
+export function workspaceMemberDirs(root) {
+  return workspaceGlobs(root).flatMap((glob) => resolveWorkspaceGlob(root, glob));
 }
 
 /** R55: the root lint command reaches every workspace dir; workspaces carry no lint script of their own. */
@@ -230,7 +251,7 @@ function undeclaredImports(root, dir, members) {
 
 /** R58: a workspace member declares every workspace package it imports; test scoping follows only declared edges. */
 export function checkWorkspaceImportsDeclared(root) {
-  const dirs = workspaceGlobs(root).flatMap((glob) => resolveWorkspaceGlob(root, glob));
+  const dirs = workspaceMemberDirs(root);
   const members = new Set(dirs.map((dir) => readJson(join(root, dir, "package.json")).name));
   return [...new Set(dirs.flatMap((dir) => undeclaredImports(root, dir, members)))];
 }
@@ -286,4 +307,33 @@ export function checkNoPython(root) {
   const fileViolations = files.map((file) => `\`${relative(root, file)}\` is Python. Write it in TypeScript; titan-platform releases no Python tools (decision 373).`);
   const scriptViolations = workspaceDirs(root, PYTHON_GROUPS).flatMap((dir) => pythonScripts(root, dir));
   return [...fileViolations, ...scriptViolations];
+}
+
+const BOT_TOKEN_READER = /\bparseGitHubToken\b|\bBOT_TOKEN_PATH\b|bot-token-path|bot-token-layout|github-bot\.token/;
+// The reader (bot-identity.ts) and the modules that define or pin the path; everything else reaches the bot only through `BotAccess`.
+const BOT_TOKEN_READERS = new Set([
+  "products/factory/src/bot-identity.ts",
+  "products/factory/src/bot-identity.test.ts",
+  "products/factory/src/bot-token-path.ts",
+  "products/factory/src/bot-token-path.test.ts",
+  "products/factory/src/bot-token-layout.ts",
+  "products/factory/src/serve-bot.test.ts",
+  "products/factory/src/test-support/serve-child-main.ts",
+  "packages/github/src/github-token.ts",
+  "packages/github/src/github-token.test.ts",
+  "packages/github/src/index.ts",
+  "packages/github/api/index.d.ts",
+  "packages/tool-guard/src/paths.ts",
+  "packages/tool-guard/src/families/secret.test.ts",
+]);
+const isCommentLine = (line) => /^\s*(?:\/\/|\/?\*)/.test(line);
+
+/** TP-3412: no module but the bot identity reads the bot token file or imports the token reader. */
+export function checkBotTokenReaders(root) {
+  const files = WORKSPACE_GROUPS.flatMap((group) => subdirs(join(root, group))).flatMap((dir) => sourceFiles(dir));
+  return files
+    .map((file) => relative(root, file).split(sep).join("/"))
+    .filter((path) => !BOT_TOKEN_READERS.has(path))
+    .filter((path) => readFileSync(join(root, path), "utf8").split("\n").some((line) => !isCommentLine(line) && BOT_TOKEN_READER.test(line)))
+    .map((path) => `\`${path}\` reads the bot token file or imports its reader. Only \`products/factory/src/bot-identity.ts\` may; take a \`BotAccess\` from it instead (TP-3412).`);
 }

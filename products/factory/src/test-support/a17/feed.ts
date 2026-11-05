@@ -44,9 +44,9 @@ export interface Feed {
   transient(fact: GithubFact): Promise<Step[]>;
   /** The fact's delivery as GitHub posts it, signed with the feed's webhook secret unless `secret` says otherwise. */
   post(fact: GithubFact, options?: { deliveryId?: string; secret?: string }): Promise<IngressAnswer>;
-  /** GitHub answers the bot's next `reads` reads with `answer`, a limit or failure, instead of its state. */
+  /** GitHub answers the bot's next `reads` snapshot reads with `answer`, a limit or failure, instead of its state. */
   limit(answer: PoolAnswer, reads?: number): void;
-  /** Reads GitHub has answered the bot, the start pass's included. */
+  /** Snapshot reads GitHub has answered the bot, the start pass's included; the gate and compare reads are not counted. */
   reads(): number;
   /** The head GitHub shows for an open PR, as a fresh read or `ls-remote` answers it. */
   head(repo: string, pr: number): string | undefined;
@@ -97,21 +97,31 @@ interface Github {
   onSnapshot(repo: string): void;
 }
 
-/** The bot's real pool over a fake transport and the factory's own pool-state table; the tip guard confirms only a tip a pushed fact put on main. */
+/** The gates always answer a change, so every pass snapshots; the ruleset list is the world's, as GitHub's read returns it. */
+function gatesOf(world: World, repo: string): BackstopAnswer {
+  return { status: 200, headers: {}, gates: { changed: true, etags: {}, reads: 3, notModified: 0, rulesets: { notModified: false, unreadable: false, rulesets: world.rulesets(repo), etag: null } } };
+}
+
+/**
+ * The bot's real pool over a fake transport and the factory's own pool-state table, with the production gates and guard.
+ * The world's pushes are fast-forwards, and `ls-remote` answers what GitHub shows now.
+ */
 function botPorts(github: Github, db: Db, timers: PoolTimers, key: CiKeyFn): BotPorts {
   const { world } = github;
   const send = (call: BackstopCall): Promise<BackstopAnswer> => {
+    if (call.kind === "gates") return Promise.resolve(gatesOf(world, call.repo));
+    if (call.kind === "ancestry") return Promise.resolve({ status: 200, headers: {}, ancestry: call.base === call.head ? "identical" : "ahead" });
     github.reads += 1;
-    if (call.kind === "snapshot") github.onSnapshot(call.request.repo);
+    github.onSnapshot(call.request.repo);
     const limited = github.limits.shift();
     if (limited !== undefined) return Promise.resolve(limited);
-    if (call.kind === "gates") return Promise.resolve({ status: 200, headers: {}, gates: { changed: true, etags: {} } });
     return Promise.resolve({ status: 200, headers: {}, snapshot: world.snapshot(call.request.repo) });
   };
   const poolState = sqlitePoolStateStore(db, timers.now);
   const pool = githubApiPool<BackstopCall, BackstopAnswer>({ identity: BOT, send, clock: timers, state: poolState, probe: () => Promise.resolve(rateLimitAnswer(4999, 4999)) });
-  const observe = createObserve({ guard: { confirmHead: () => ({ kind: "confirmed" }), confirmTip: (repo, _branch, sha) => (world.tip(repo) === sha ? { kind: "confirmed" } : { kind: "pending" }) }, now: timers.now });
-  return { identity: BOT, login: BOT, pool, poolState, conditionalGates: false, observe: (repo, snapshot, cursor) => rekeyedObservation(observe(repo, snapshot, cursor), key) };
+  const lsRemote: BotPorts["lsRemote"] = (repo, ref) => Promise.resolve(("pr" in ref ? world.head(repo, ref.pr) : world.tip(repo)) ?? null);
+  const observe = createObserve({ now: timers.now });
+  return { identity: BOT, login: BOT, pool, poolState, conditionalGates: true, lsRemote, observe: (...args) => rekeyedObservation(observe(...args), key) };
 }
 
 function signedRequest(delivery: { event: string; body: unknown }, guid: string, secret: string) {
@@ -203,7 +213,7 @@ export async function openFeed(mode: A17Mode, options: FeedOptions = {}): Promis
   let passes = 0;
   const github: Github = { world: githubWorld(), limits: [], reads: 0, onSnapshot: (repo) => void (repo === FEED_REPOS[0] && (passes += 1)) };
   const bot = botPorts(github, db, timers, key);
-  const sweep = startReconcilerSweep({ config: { enabled: true, intervalMs: 300_000, fullEvery: 1, repos: [...FEED_REPOS] }, bot }, sources, db, recordingLog(lines), clock.now);
+  const sweep = startReconcilerSweep({ config: { enabled: true, fullEvery: 1, repos: [...FEED_REPOS] }, bot }, sources, db, recordingLog(lines), clock.now);
   if (sweep === undefined) throw new Error("the harness reconciler did not start");
   await sweep.inFlight();
   const ingress: IngressDeps = { sources, secret: () => WEBHOOK_SECRET, project: (event, payload) => rekeyedProjection(projectDelivery(event, payload), key), db, now: clock.now, log: recordingLog([]) };

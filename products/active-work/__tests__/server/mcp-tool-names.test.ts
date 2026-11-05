@@ -29,6 +29,11 @@ describe('MCP tool names', () => {
     expect(commandNameToToolName('artifact.add-branch')).toBe('active__artifact__add-branch');
   });
 
+  it('has no spawn tool, because an MCP spawn would reach the broker as the human, not the caller', () => {
+    const actual = registry.list().map((cmd) => commandNameToToolName(cmd.name));
+    expect(actual).not.toContain('active__spawn');
+  });
+
   it('is sorted, so a consumer diffing the list sees only real changes', () => {
     const actual = registry.list().map((cmd) => cmd.name);
     expect(actual).toEqual([...actual].sort((a, b) => a.localeCompare(b)));

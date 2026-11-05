@@ -1,0 +1,76 @@
+{
+  "schema": "titan.variant/v1",
+  "unit": {
+    "id": "explainer-video",
+    "version": "1.0.0"
+  },
+  "id": "champion",
+  "topology": {
+    "module": "products/explainer/src/workflow/pipeline.ts",
+    "export": "videoWorkflow",
+    "sourceSha256": "561618aa8773f31f167988a55adeb422522b4039304553444ac242a1e4b614f7"
+  },
+  "steps": {
+    "script": {
+      "kind": "unit",
+      "unit": {
+        "id": "explainer-script",
+        "version": "1.0.0"
+      },
+      "variant": "champion"
+    },
+    "rewrite": {
+      "kind": "unit",
+      "unit": {
+        "id": "explainer-rewrite",
+        "version": "1.0.0"
+      },
+      "variant": "champion"
+    },
+    "eval": {
+      "kind": "unit",
+      "unit": {
+        "id": "explainer-eval",
+        "version": "1.0.0"
+      },
+      "variant": "champion"
+    },
+    "tts": {
+      "kind": "unit",
+      "unit": {
+        "id": "explainer-tts",
+        "version": "1.0.0"
+      },
+      "variant": "champion"
+    },
+    "render": {
+      "kind": "unit",
+      "unit": {
+        "id": "explainer-render",
+        "version": "1.0.0"
+      },
+      "variant": "champion"
+    },
+    "qa": {
+      "kind": "unit",
+      "unit": {
+        "id": "explainer-qa",
+        "version": "1.0.0"
+      },
+      "variant": "champion"
+    },
+    "sheets": {
+      "kind": "unit",
+      "unit": {
+        "id": "explainer-sheets",
+        "version": "1.0.0"
+      },
+      "variant": "champion"
+    },
+    "export": {
+      "kind": "code",
+      "onRestart": "repeat"
+    }
+  },
+  "notes": "Every stage on its champion variant; swapping one stage's variant changes this hash and nothing else."
+}

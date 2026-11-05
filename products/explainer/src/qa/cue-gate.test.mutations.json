@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the probe pass seeks back to 0 after the inspection",
+      "file": "products/explainer/src/qa/cue-gate.ts",
+      "find": "page.probe([moment])",
+      "replace": "page.probe([{ ...moment, t: 0 }])",
+      "kills": [
+        "cue gate clock completes the inspect and probe passes over one page"
+      ]
+    },
+    {
+      "name": "the probe pass is dropped",
+      "file": "products/explainer/src/qa/cue-gate.ts",
+      "find": "if (probe) probed.push(...(await page.probe([moment])));",
+      "replace": "",
+      "kills": [
+        "cue gate clock completes the inspect and probe passes over one page"
+      ]
+    }
+  ]
+}

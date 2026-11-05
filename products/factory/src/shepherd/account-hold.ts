@@ -4,6 +4,8 @@ import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
+import { accountsFrom } from "./account-fallback.js";
+import type { SpawnAccounts } from "./agents.js";
 import { DEFAULT_ACCOUNT, accountAlertText, accountHoldReason, believedReset, parseLimitReset, type ReviewAccounts } from "./account-limit.js";
 import type { AccountLimitStore } from "./account-store.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
@@ -95,10 +97,40 @@ export function accountWithHeadroom(deps: ShepherdDeps, dirs: readonly string[],
   }
 }
 
+/** A successor never holds, so with no account left or the limits unreadable it takes the first, as it did before rotation. */
+function headroomOrFirst(deps: ShepherdDeps, dirs: readonly [string, ...string[]]): string {
+  try {
+    return usableAccount(accountLimitsOf(deps), dirs) ?? dirs[0];
+  } catch {
+    return dirs[0];
+  }
+}
+
+/**
+ * The config directory a successor spawns under: the rotation's first account with headroom, picked as a review picks, with
+ * agent-chat's default account spawned under none. No rotation wired leaves `agentChatConfigDir`.
+ */
+export function successorConfigDir(deps: ShepherdDeps): string | undefined {
+  const [first, ...rest] = deps.successorAccounts?.() ?? [];
+  if (first === undefined) return deps.agentChatConfigDir;
+  const account = headroomOrFirst(deps, [first, ...rest]);
+  return account === DEFAULT_ACCOUNT ? undefined : account;
+}
+
+/** The successor's account, then the rotation's later accounts, which its spawn falls back to on an account-limit refusal. */
+export function successorSpawnAccounts(deps: ShepherdDeps): SpawnAccounts {
+  const configDir = successorConfigDir(deps);
+  const fallbackConfigDirs = accountsFrom(deps.successorAccounts?.() ?? [], configDir ?? DEFAULT_ACCOUNT).slice(1);
+  return { ...(configDir !== undefined && { configDir }), fallbackConfigDirs };
+}
+
 /** The client's recorded reset wins over the one in the notice's text; either is believed only within `believedReset`'s bounds. */
+export function markLimit(limits: AccountLimitStore, limit: Exhausted & { notice: string }, now: number): { resetsAt: number } {
+  return limits.markExhausted(limit.account, believedReset(limit.resetsAt ?? parseLimitReset(limit.notice, now), now), limit.notice);
+}
+
 function noteLimit(limits: AccountLimitStore, input: HoldInput, now: number) {
-  if (input.notice === undefined) return limits.exhausted(input.account);
-  return limits.markExhausted(input.account, believedReset(input.resetsAt ?? parseLimitReset(input.notice, now), now), input.notice);
+  return input.notice === undefined ? limits.exhausted(input.account) : markLimit(limits, { ...input, notice: input.notice }, now);
 }
 
 /** Claims the alert first, so two runs on one account send one; an alert that fails gives the claim back. */

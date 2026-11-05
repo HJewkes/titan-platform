@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { readCommand } from "./owner-guard.js";
+import { readCommand, type ConsoleContext } from "./owner-guard.js";
 import { getRound, listRounds, roundDetail, roundSummary, type RoundsSource } from "./rounds.js";
 
 export function roundsCommands(source: RoundsSource) {
@@ -16,7 +16,7 @@ export function roundsCommands(source: RoundsSource) {
       description: "One review round's manifest; an unsent after-answer round comes without its recommendations, and a Ship round with its proven head's lineage",
       args: z.object({ id: z.string().min(1).max(64) }),
       result: roundDetail,
-      run: ({ id }) => getRound(source, id),
+      run: ({ id }, ctx: ConsoleContext) => getRound(source, id, { remote: ctx.auth !== null }),
     }),
   };
 }

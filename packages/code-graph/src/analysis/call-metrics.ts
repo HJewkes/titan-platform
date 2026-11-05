@@ -1,4 +1,4 @@
-import { readParamShape, type CallEdgeAttrs, type CallSite, type ParamShape } from "../extractors/call-sites.js";
+import { readCallSites, readParamShape, type CallSite, type ParamShape } from "../extractors/call-sites.js";
 import { parseSymbolId } from "../extractors/ids.js";
 import type { GraphEdge, GraphMetric, GraphNode } from "../types.js";
 
@@ -50,7 +50,7 @@ function collectInbound(edges: Iterable<GraphEdge>): Map<string, Inbound> {
     let entry = inbound.get(edge.dstId);
     if (!entry) inbound.set(edge.dstId, (entry = { callers: new Set(), sites: [] }));
     if (edge.srcId !== edge.dstId) entry.callers.add(edge.srcId);
-    entry.sites.push(...((edge.attrs as CallEdgeAttrs | undefined)?.sites ?? []));
+    entry.sites.push(...readCallSites(edge.attrs));
   }
   return inbound;
 }

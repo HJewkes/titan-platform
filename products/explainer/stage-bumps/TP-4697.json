@@ -1,0 +1,1 @@
+{ "stages": ["script", "rewrite", "eval"], "why": "A daily says no PR, task or script id aloud: the script prompt and guide forbid it, Q-V15 fails it, and the rewrite may cut an id but not change one" }

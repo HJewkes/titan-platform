@@ -4,6 +4,7 @@ import path from "node:path";
 import { invokeCommand } from "@titan-design/registry";
 import { MIGRATION_TABLE_NAME, SchemaTooNewError } from "@titan-design/store-sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { PRICE_TABLE_VERSION } from "@titan-design/session-analytics";
 import { runCli } from "./cli.js";
 import { drainIngest, drainTemplates } from "./commands/drain.js";
@@ -95,6 +96,20 @@ describe("session-miner commands", () => {
     expect(templates.envelope.data![0]).toMatchObject({ occurrenceCount: 2 });
     expect(templates.envelope.data![0]!.maskedSignature).toContain("TypeError");
   });
+
+  it("drain refuses a malformed stored snapshot", async () => {
+    await run(refresh, {});
+    const malformed = JSON.stringify({ version: 1, partitions: [{ partition: "tool_result" }] });
+    const db = ctx.graph().db;
+    db.prepare("INSERT INTO clusterer_snapshot (id, snapshot, saved_at) VALUES (1, ?, ?)").run(malformed, "2026-07-01T00:00:00Z");
+
+    const refused = await run(drainIngest, {});
+
+    expect(refused.envelope.ok).toBe(false);
+    expect(refused.envelope.error).toContain("invalid clusterer snapshot");
+    expect(db.prepare("SELECT snapshot FROM clusterer_snapshot WHERE id = 1").get()).toEqual({ snapshot: malformed });
+    expect(db.prepare("SELECT count(*) AS n FROM template").get()).toEqual({ n: 0 });
+  });
 });
 
 describe("cli", () => {
@@ -103,7 +118,7 @@ describe("cli", () => {
     const io = { stdout: (t: string) => out.push(t), stderr: () => undefined, env: {} };
     const code = await runCli(["--json", "--state", config.stateDir, "--corpus", config.corpusRoot, "refresh", "--limit", "1"], io);
     expect(code).toBe(0);
-    const envelope = JSON.parse(out.join("")) as { ok: boolean; data: { indexed: number } };
+    const envelope = z.object({ ok: z.boolean(), data: z.object({ indexed: z.number() }) }).parse(JSON.parse(out.join("")));
     expect(envelope).toMatchObject({ ok: true, data: { indexed: 1 } });
     expect(await runCli(["--state", config.stateDir, "session", "show", "missing"], io)).toBe(66);
     expect(await runCli(["definitely-not-a-command"], io)).toBe(64);
@@ -120,9 +135,9 @@ describe("daemon", () => {
         headers: { "content-type": "application/json", "x-titan-client": "test" },
       });
       expect(res.status).toBe(200);
-      const body = (await res.json()) as { ok: boolean; data: { sessions: number } };
+      const body = z.object({ ok: z.boolean(), data: z.object({ sessions: z.number() }) }).parse(await res.json());
       expect(body).toMatchObject({ ok: true, data: { sessions: 1 } });
-      const health = (await (await fetch(`http://127.0.0.1:${handle.port}/health`)).json()) as { sessions?: number };
+      const health = z.object({ sessions: z.number().optional() }).parse(await (await fetch(`http://127.0.0.1:${handle.port}/health`)).json());
       expect(health.sessions).toBe(1);
       const bad = await fetch(`http://127.0.0.1:${handle.port}/rpc/search`, { method: "POST", headers: { "content-type": "application/json", "x-titan-client": "test" }, body: JSON.stringify({ limit: 5 }) });
       expect(bad.status).toBe(400);
@@ -159,5 +174,16 @@ describe("price reconciliation", () => {
 
     const row = ctx.graph().db.prepare("SELECT input_usd_mtok, table_version FROM price WHERE model = 'claude-opus-5-5'").get();
     expect(row).toEqual({ input_usd_mtok: 4, table_version: PRICE_TABLE_VERSION });
+  });
+});
+
+describe("session-miner refresh emit policy (TP-880)", () => {
+  it("keeps tool_result spans and context_block rows that search, drain and insights read", async () => {
+    await run(refresh, {});
+    const db = ctx.graph().db;
+    const count = (sql: string) => db.prepare(sql).get();
+
+    expect(count("SELECT count(*) AS n FROM search_span WHERE field = 'tool_result'")).not.toEqual({ n: 0 });
+    expect(count("SELECT count(*) AS n FROM context_block")).not.toEqual({ n: 0 });
   });
 });

@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { FIXTURE_TSCONFIG } from "./incremental.test-helpers.js";
+import { FIXTURE_TSCONFIG, openTestStore } from "./incremental.test-helpers.js";
 import { indexPaths } from "./indexer.js";
-import { openCodeGraph, type CodeGraphStore } from "./store.js";
+import type { CodeGraphStore } from "./store.js";
 
 const A_TS = "export const A = 1;\n";
 const B_TS = `import { A } from "./a.js";
@@ -34,6 +34,18 @@ function count(items: string[]): number {
   return items.length;
 }
 `;
+const GEN_MJS = `import { A } from "./a.js";
+
+export function run(argv) {
+  return argv.includes("--check") ? A : 0;
+}
+`;
+const LEGACY_CJS = `function pad(text) {
+  return text.padStart(4);
+}
+
+module.exports = { pad };
+`;
 const PY = `import json
 
 
@@ -48,7 +60,7 @@ async function makeProject(): Promise<{ root: string; store: CodeGraphStore }> {
   await fs.writeFile(path.join(root, "src/a.ts"), A_TS);
   await fs.writeFile(path.join(root, "src/b.ts"), B_TS);
   await fs.writeFile(path.join(root, "src/index.ts"), INDEX_TS);
-  return { root, store: openCodeGraph(path.join(root, "graph.sqlite3")) };
+  return { root, store: openTestStore(path.join(root, "graph.sqlite3")) };
 }
 
 describe("indexPaths", () => {
@@ -141,6 +153,30 @@ describe("indexPaths", () => {
     expect(metric("src/List.tsx", "function_count")).toBe(2);
     expect(metric("src/List.tsx#List", "symbol_cyclomatic")).toBe(4);
     expect(metric("src/List.tsx#count", "symbol_cyclomatic")).toBe(1);
+  });
+
+  // TP-4161: each case goes red if its extension is dropped from code-parser's typescript filter.
+  it("indexes a .mjs script's symbols and its import of a .ts module", async () => {
+    await fs.writeFile(path.join(root, "src/gen.mjs"), GEN_MJS);
+
+    const result = await index();
+
+    const nodes = store.listNodes(result.snapshotId, { includeSymbols: true });
+    expect(nodes.find((n) => n.id === "src/gen.mjs")).toMatchObject({ kind: "file", language: "typescript" });
+    expect(nodes.map((n) => n.id)).toContain("src/gen.mjs#run");
+    expect(store.listEdges(result.snapshotId)).toContainEqual(
+      expect.objectContaining({ srcId: "src/gen.mjs", dstId: "src/a.ts", kind: "imports" }),
+    );
+  });
+
+  it("indexes a .cjs module's function symbol", async () => {
+    await fs.writeFile(path.join(root, "src/legacy.cjs"), LEGACY_CJS);
+
+    const result = await index();
+
+    const nodes = store.listNodes(result.snapshotId, { includeSymbols: true });
+    expect(nodes.find((n) => n.id === "src/legacy.cjs")).toMatchObject({ kind: "file", language: "typescript" });
+    expect(nodes.map((n) => n.id)).toContain("src/legacy.cjs#pad");
   });
 
   it("links a co-located test to its source (linked_test_count)", async () => {

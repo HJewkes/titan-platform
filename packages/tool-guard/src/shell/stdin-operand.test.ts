@@ -7,6 +7,11 @@ import { nodeContext } from "../context.js";
 import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
+import { countWork } from "../test-support/work-count.js";
+import { shellOracle } from "../test-support/shell-rows.js";
+
+/** The refusal reads 340 characters of the 64 KB line; reading the here-string once per reading of the line would be many times the line. */
+const WORK_PER_CHAR = 2;
 
 const PUSH = "git push --no-verify origin HEAD:main";
 const SHELLS = ["bash", "zsh", "dash", "sh"].filter((s) => spawnSync(s, ["-c", "true"]).status === 0);
@@ -36,41 +41,48 @@ async function decision(command: string): Promise<string | null> {
 /**
  * Runs `line` under `shell` in a scratch dir whose `real.sh` holds `echo hi`, with a fake `git` first on PATH that
  * leaves a marker, and reports whether the push ran. `script` takes the place of `-c`'s string so a `cd` stays inside it.
+ * A describe adds its rows and runs them all through one driver (TP-4453).
  */
-function pushRuns(shell: string, line: string): boolean {
-  const scratch = realpathSync.native(mkdtempSync(join(tmpdir(), "stdin-operand-run-")));
-  try {
+const pushRunsOracle = () =>
+  shellOracle("stdin-operand-run-", (dir, shell: string, line: string) => {
+    const scratch = realpathSync.native(dir);
     mkdirSync(join(scratch, "bin"));
     writeFileSync(join(scratch, "bin", "git"), `#!/bin/sh\ntouch '${join(scratch, "mk")}'\n`);
     chmodSync(join(scratch, "bin", "git"), 0o755);
     writeFileSync(join(scratch, "real.sh"), "echo hi\n");
     writeFileSync(join(scratch, "line.sh"), `${line}\n`);
-    const env = { ...process.env, ZDOTDIR: scratch, PATH: `${join(scratch, "bin")}:${process.env.PATH ?? ""}` };
-    spawnSync(shell, ["line.sh"], { cwd: scratch, env, stdio: "ignore", timeout: 10_000 });
-    return existsSync(join(scratch, "mk"));
-  } finally {
-    rmSync(scratch, { recursive: true, force: true });
-  }
-}
+    return {
+      run: { program: shell, args: ["line.sh"], cwd: scratch, extraEnv: { ZDOTDIR: scratch, PATH: `${join(scratch, "bin")}:${process.env.PATH ?? ""}` } },
+      read: () => existsSync(join(scratch, "mk")),
+    };
+  });
 
 /** Feeds PUSH on stdin through a pipe, which every shell here takes; bash and zsh also take a here-string. */
 const FED = (inner: string): string => `printf '%s\\n' '${PUSH}' | ${inner}`;
 
 describe.each(SHELLS)("a %s script operand that is really stdin runs the push (premise for the rows below)", (shell) => {
+  const SYMLINK = FED(`{ ln -sf /dev/stdin real.sh; ${shell} real.sh; }`);
+  const CWD = FED(`{ cd /dev && ${shell} stdin; }`);
+  const HIDDEN_CWD = FED(`{ D=/dev; cd "$D" && ${shell} stdin; }`);
+  const CONTROL = FED(`${shell} real.sh`);
+  const pushRuns = pushRunsOracle();
+  for (const line of [SYMLINK, CWD, HIDDEN_CWD, CONTROL]) pushRuns.add(shell, line);
+  pushRuns.beforeAll();
+
   it("runs the push when `ln -sf /dev/stdin` replaces an existing file", () => {
-    expect(pushRuns(shell, FED(`{ ln -sf /dev/stdin real.sh; ${shell} real.sh; }`))).toBe(true);
+    expect(pushRuns.get(shell, SYMLINK)).toBe(true);
   });
 
   it("runs the push under a cwd that makes the operand stdin", () => {
-    expect(pushRuns(shell, FED(`{ cd /dev && ${shell} stdin; }`))).toBe(true);
+    expect(pushRuns.get(shell, CWD)).toBe(true);
   });
 
   it("runs the push under a cwd the line cannot show", () => {
-    expect(pushRuns(shell, FED(`{ D=/dev; cd "$D" && ${shell} stdin; }`))).toBe(true);
+    expect(pushRuns.get(shell, HIDDEN_CWD)).toBe(true);
   });
 
   it("runs the stdin script of an ordinary operand never, as the control", () => {
-    expect(pushRuns(shell, FED(`${shell} real.sh`))).toBe(false);
+    expect(pushRuns.get(shell, CONTROL)).toBe(false);
   });
 });
 
@@ -168,13 +180,13 @@ describe("stdin text that is data for a literal operand, not a script", () => {
 });
 
 describe("stdin text read for a literal operand is charged to the script budget", () => {
-  it("refuses or reads a 64KB here-string under an operand without timing out", async () => {
-    const started = Date.now();
+  it("refuses or reads a 64KB here-string under an operand with work linear in its length", async () => {
     const big = `${"#".repeat(64 * 1024)}\n${PUSH}`;
+    const command = `bash real.sh <<< '${big}'`;
+    let verdict: string | null = null;
 
-    const verdict = await decision(`bash real.sh <<< '${big}'`);
+    await countWork(async () => (verdict = await decision(command)), command.length * WORK_PER_CHAR);
 
     expect(verdict).toBe("deny");
-    expect(Date.now() - started).toBeLessThan(4000);
   });
 });

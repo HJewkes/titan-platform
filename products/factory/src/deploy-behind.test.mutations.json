@@ -1,0 +1,34 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an unreadable closure hides every commit",
+      "file": "products/factory/src/deploy-behind.ts",
+      "find": "  if (closure === undefined) return true;",
+      "replace": "  if (closure === undefined) return false;",
+      "kills": [
+        "commits the deploy pacer would skip counts every commit when the build closure cannot be read"
+      ]
+    },
+    {
+      "name": "a commit that reaches no build path still counts",
+      "file": "products/factory/src/deploy-behind.ts",
+      "find": "  if (touched.length === 0) return false;",
+      "replace": "  if (touched.length === 0) return true;",
+      "kills": [
+        "commits the deploy pacer would skip reads no lag when serve's only missing commit changes no path the factory build reads",
+        "commits the deploy pacer would skip starts the alarm clock at the oldest commit that reaches the build",
+        "against a real checkout reads the closure from the checkout and skips a docs-only commit"
+      ]
+    },
+    {
+      "name": "a version-only release bump counts as a build change",
+      "file": "products/factory/src/deploy-behind.ts",
+      "find": "  return (await runtimeTouched(git, touched, `${commit.sha}^`, commit.sha)).length > 0;",
+      "replace": "  return touched.length > 0;",
+      "kills": [
+        "commits the deploy pacer would skip skips a release that only bumps a factory manifest's version, as the deployer does"
+      ]
+    }
+  ]
+}

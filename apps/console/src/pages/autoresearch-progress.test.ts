@@ -65,6 +65,10 @@ describe("autoresearch σ band", () => {
     expect(bandFor(NOISE, { sigma: 0.5 })).toEqual({ halfWidth: 1.5, locked: false });
   });
 
+  it("keeps the default band below minPairs pairs, however large the unlocked σ, as the engine's band() does", () => {
+    expect(bandFor(NOISE, { sigma: 4, pairs: NOISE.minPairs - 1 })).toEqual({ halfWidth: NOISE.defaultBandPp, locked: false });
+  });
+
   it("widens the unlocked band past the default when 2σ_est is larger", () => {
     expect(bandFor(NOISE, { sigma: 1, pairs: 4 })).toEqual({ halfWidth: 2, locked: false });
   });

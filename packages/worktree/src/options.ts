@@ -6,6 +6,7 @@ export const DEFAULT_BASE_PATH = ".worktrees";
 /** Ownership marker: the sweep treats only branches carrying this prefix as its own. */
 export const BRANCH_PREFIX = "agent-chat/";
 export const DEFAULT_FETCH_TIMEOUT_MS = 15_000;
+export const DEFAULT_GH_TIMEOUT_MS = 3_000;
 
 /**
  * Grace window between an agent exiting and its worktree becoming reclaimable.
@@ -38,6 +39,8 @@ export interface WorktreeOptions {
   branchPrefix?: string;
   /** Bound on fetching origin's default branch before cutting a new one. */
   fetchTimeoutMs?: number;
+  /** Bound on each `gh pr view` a release makes; a `gh` that outlives it supplies no landing proof. */
+  ghTimeoutMs?: number;
   /** Bound on one `git worktree add`; the add is killed and the repo's queue moves on when it passes. */
   addTimeoutMs?: number;
   /** Runs each `git worktree add`; tests inject one to observe how adds interleave. */

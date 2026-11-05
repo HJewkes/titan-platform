@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FIXTURE_CWD, FIXTURE_LINES, SESSION, eventsForLines, offsetAfterLine, renderTranscript } from "./fixture.js";
 import type { TranscriptDelta } from "./fold.js";
 import { TranscriptParseError, extractTranscript, lastTimestampBefore, readTranscriptEvents } from "./read.js";
+import { SPAN_TEXT_CAP } from "./text.js";
 
 let dir: string;
 let transcript: string;
@@ -17,16 +18,41 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-const relationsOf = (delta: TranscriptDelta) => delta.edges.map((e) => `${e.sourceRef} ${e.relation} ${e.targetRef}`);
+/** `last-prompt` repeats a prompt its own line already recorded, so it emits no fact. */
+const FACT_LINE_COUNT = FIXTURE_LINES.filter((l) => l.type !== "last-prompt").length;
+
+const relationsOf =(delta: TranscriptDelta) => delta.edges.map((e) => `${e.sourceRef} ${e.relation} ${e.targetRef}`);
 
 describe("extractTranscript", () => {
-  it("emits one fact per non-blank line, tagged by event type", async () => {
+  it("emits one fact per non-blank line except last-prompt, tagged by event type", async () => {
     const result = await extractTranscript(transcript);
-    expect(result.facts).toHaveLength(FIXTURE_LINES.length);
+    expect(result.facts).toHaveLength(FACT_LINE_COUNT);
     const types = new Set(result.facts.map((f) => f.eventType));
     for (const t of ["user_prompt", "tool_decision", "assistant_response", "tool_result_error", "pr_link", "system_compact_boundary"]) {
       expect(types, t).toContain(t);
     }
+  });
+
+  it("keeps tool spans and context blocks when no emit policy is passed", async () => {
+    const result = await extractTranscript(transcript);
+    expect(result.spans.map((s) => s.field)).toEqual(expect.arrayContaining(["tool_input", "tool_result"]));
+    expect(result.contextBlocks.length).toBeGreaterThan(0);
+  });
+
+  it("drops tool spans and context blocks when the read options turn them off", async () => {
+    const result = await extractTranscript(transcript, { toolSpans: false, contextBlocks: false });
+    expect(result.spans.map((s) => s.field)).not.toContain("tool_result");
+    expect(result.contextBlocks).toEqual([]);
+  });
+
+  it("caps a span at SPAN_TEXT_CAP by default and reads it whole when spanTextCap is Infinity", async () => {
+    const long = "x".repeat(SPAN_TEXT_CAP + 500);
+    const line = { type: "assistant", sessionId: SESSION, timestamp: "2026-10-29T00:00:00Z", message: { role: "assistant", id: "msg-long", content: [{ type: "text", text: long }] } };
+    writeFileSync(transcript, renderTranscript([...FIXTURE_LINES, line]), "utf8");
+    const lastResponse = (delta: TranscriptDelta) => delta.spans.filter((span) => span.field === "assistant_response").at(-1)?.text;
+
+    expect(lastResponse(await extractTranscript(transcript))).toHaveLength(SPAN_TEXT_CAP);
+    expect(lastResponse(await extractTranscript(transcript, { spanTextCap: Infinity }))).toBe(long);
   });
 
   it("folds session metadata and turns", async () => {
@@ -100,7 +126,7 @@ describe("extractTranscript", () => {
 
     const rewound = await extractTranscript(transcript, { fromByteOffset: watermark, priorPrefixHash: "stale" });
     expect(rewound).toMatchObject({ restartedFromZero: true, startByteOffset: 0 });
-    expect(rewound.facts).toHaveLength(FIXTURE_LINES.length);
+    expect(rewound.facts).toHaveLength(FACT_LINE_COUNT);
   });
 
   it("throws a locating error for a malformed line", async () => {

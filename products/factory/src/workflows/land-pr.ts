@@ -30,6 +30,8 @@ export interface LandPrParams {
   repo: RepoSlug;
   pr: number;
   task?: string;
+  /** Param `update=false`: land stops `behind` rather than updating the branch (merge-at-head pins the owner's head). */
+  update?: false;
 }
 
 export interface LandPrState {
@@ -45,7 +47,7 @@ export function landPrParams(ctx: WorkflowContext): LandPrParams {
   if (!repo) throw new Error("land-pr: param repo is required");
   if (!Number.isInteger(pr) || pr <= 0) throw new Error(`land-pr: param pr must be a positive integer, got ${ctx.param("pr")}`);
   const task = ctx.param("task");
-  return { repo, pr, ...(task ? { task } : {}) };
+  return { repo, pr, ...(task ? { task } : {}), ...(ctx.param("update") === "false" && { update: false as const }) };
 }
 
 /**
@@ -56,7 +58,7 @@ export async function landPr(ctx: WorkflowContext, params: LandPrParams, options
   await step(ctx, "snapshot", params, SnapshotResult);
   const state: LandPrState = { round: 0, reruns: 0, waits: 0 };
   for (;;) {
-    const outcome = await land(ctx, { repo: params.repo, pr: params.pr, taskIds: taskIdOf(params.task), round: state.round }, options);
+    const outcome = await land(ctx, { repo: params.repo, pr: params.pr, taskIds: taskIdOf(params.task), round: state.round, ...(params.update === false && { update: false as const }) }, options);
     if (outcome.kind === "merged") await postMerge(ctx, { repo: params.repo, pr: params.pr, mergeSha: outcome.mergeSha });
     if (outcome.kind !== "ci-failed") return outcome;
     const stop = await onCiFailed(ctx, params, outcome, state);

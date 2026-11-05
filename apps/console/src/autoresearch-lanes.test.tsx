@@ -6,11 +6,10 @@ import { RpcProvider } from "@titan-design/react-app";
 import { successEnvelope } from "@titan-design/registry";
 import { snapshotKey, staticSource, type DataSource, type Snapshot } from "@titan-design/rpc-client";
 import type { ArRunView } from "../server/autoresearch-view.js";
-import { AR_RUN_FIXTURE } from "../server/twin/autoresearch.js";
+import { AR_RUN_FIXTURE, AR_RUN_PRE_S3A } from "../server/twin/autoresearch.js";
 import { TWIN_NOW } from "../server/twin/clock.js";
 import { twinSnapshot } from "../server/twin/snapshot.js";
 import { App } from "./App.js";
-import { RUN_POLL_MS } from "./pages/autoresearch-live.js";
 
 let twin: Snapshot;
 
@@ -28,7 +27,7 @@ const RUN_ROUTE = "#/autoresearch/ar-7c1e";
 const IMPLEMENTING = "i-77aa2b4c6d8e";
 const EVALUATING = "i-c22d9e1f3a5b";
 
-/** Counts each read the page makes, so a test can see a poll refetch the run. */
+/** Counts each read the page makes, so a test can see whether the page refetches the run on its own. */
 function countingSource(snapshot: Snapshot): DataSource & { reads: string[] } {
   const inner = staticSource({ snapshot });
   const reads: string[] = [];
@@ -53,10 +52,10 @@ const DIFF = { stat: { files: 1, insertions: 2, deletions: 1 }, patch: "--- a/sr
 
 const withRun = (run: ArRunView): Snapshot => ({ ...twin, calls: { ...twin.calls, [snapshotKey("autoresearch.run", { runId: run.runId })]: successEnvelope(run) } });
 
-/** The fixture with its round-2 L0 stop moved into the newest round, so the board holds a decided card too. */
-function withDecidedCard(): ArRunView {
-  const rounds = AR_RUN_FIXTURE.rounds.map((round, index, all) => (index === all.length - 1 ? { ...round, ladders: [...round.ladders, ...all[1]!.ladders] } : round));
-  return { ...AR_RUN_FIXTURE, rounds };
+/** The run with its round-2 L0 stop moved into the newest round, so the board holds a decided card too. */
+function withDecidedCard(run: ArRunView = AR_RUN_FIXTURE): ArRunView {
+  const rounds = run.rounds.map((round, index, all) => (index === all.length - 1 ? { ...round, ladders: [...round.ladders, ...all[1]!.ladders] } : round));
+  return { ...run, runId: AR_RUN_FIXTURE.runId, rounds };
 }
 
 const spinners = (card: HTMLElement): number => within(card).queryAllByRole("progressbar", { hidden: true }).length;
@@ -96,7 +95,7 @@ describe("the autoresearch lanes board", () => {
   });
 
   it("says when the run has not recorded an idea's implementer", async () => {
-    renderConsole(RUN_ROUTE, withRun(withDecidedCard()));
+    renderConsole(RUN_ROUTE, withRun(withDecidedCard(AR_RUN_PRE_S3A)));
 
     expect(within(await screen.findByTestId("autoresearch-card-i-5b3c7e9a1d0f")).getByText("implementer not recorded yet")).toBeTruthy();
   });
@@ -157,7 +156,7 @@ describe("the autoresearch lanes board", () => {
   });
 });
 
-describe("the lanes board's clock and poll", () => {
+describe("the lanes board's clock", () => {
   it("runs a restarted stage's timer from firstStartedAt and ticks it", async () => {
     vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
     vi.setSystemTime(TWIN_NOW);
@@ -170,24 +169,13 @@ describe("the lanes board's clock and poll", () => {
     expect(within(stages).getByText("L2 7m…")).toBeTruthy();
   });
 
-  it("refetches the run every 15 s while it runs", async () => {
+  it("never refetches a running run on a timer, leaving that to the factory's relayed frames", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     const source = renderConsole(RUN_ROUTE);
     await screen.findByTestId("autoresearch-lanes");
     const before = source.reads.filter((name) => name === "autoresearch.run").length;
 
-    act(() => vi.advanceTimersByTime(RUN_POLL_MS));
-
-    await waitFor(() => expect(source.reads.filter((name) => name === "autoresearch.run").length).toBe(before + 1));
-  });
-
-  it("stops polling once the run is no longer running", async () => {
-    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
-    const source = renderConsole(RUN_ROUTE, withRun({ ...AR_RUN_FIXTURE, status: "completed", completedAt: AR_RUN_FIXTURE.startedAt }));
-    await screen.findByTestId("autoresearch-lanes");
-    const before = source.reads.filter((name) => name === "autoresearch.run").length;
-
-    act(() => vi.advanceTimersByTime(RUN_POLL_MS * 3));
+    act(() => vi.advanceTimersByTime(60_000));
 
     expect(source.reads.filter((name) => name === "autoresearch.run").length).toBe(before);
   });

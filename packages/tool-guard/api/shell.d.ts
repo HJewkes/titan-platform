@@ -31,6 +31,11 @@ interface WordToken {
         text: string;
         at: number[];
     };
+    /** On a spliced word, the `[start, end)` ranges of `value` read outside every quote and escape; trusted only while `value` is still `text`. */
+    bare?: {
+        text: string;
+        spans: Array<[number, number]>;
+    };
     /** Token lists of command substitutions, which run even when quoted. */
     subs: Token[][];
     /** Where each `$( )` or backquote's output lands in `value`, which leaves it out, and which of `subs` it is. */
@@ -144,6 +149,8 @@ interface SimpleCommand {
     name: string | null;
     /** The command word as typed, after literal expansion (`./x.sh`, `~/bin/x`); null when `name` is. */
     path: string | null;
+    /** The command word when it is a `<( )` (`exec <(...)`): its output is read as the program's script. */
+    program?: WordToken;
     args: WordToken[];
     /** Literal `NAME=value` prefixes. */
     env: Record<string, string>;
@@ -226,6 +233,10 @@ interface GitInvocation {
     otherPaths: Array<string | null>;
     /** `-c key=value` overrides. */
     config: string[];
+    /** `--config-env key=ENVVAR` entries, whose values live in the environment. */
+    configEnv: string[];
+    /** `-c` entries, as typed, that are dynamic or that a case attribute may have changed. */
+    configUnsure: string[];
     sub: string | null;
     /** True when the subcommand is, or an unquoted dynamic option word could split into, a word git could run as anything. */
     subDynamic: boolean;

@@ -1,4 +1,8 @@
-import { staleEpisodeSessions, writeEpisodes } from '@titan-design/session-analytics';
+import {
+  staleEpisodeSessions,
+  staleEpisodeSessionsYielding,
+  writeEpisodes,
+} from '@titan-design/session-analytics';
 import { EPISODE_TABLE } from '@titan-design/session-graph';
 import type { WorkspaceGraph } from './graph.js';
 
@@ -79,10 +83,10 @@ function episodeCandidates(graph: WorkspaceGraph, changed: Set<string>): string[
  * Every changed session that may be stale, plus up to `limit` more from the
  * backlog when `sweep` is set. `Infinity` clears it.
  *
- * Only the sweep calls `staleEpisodeSessions`: it reads session-analytics'
- * `request_dedup` view, a window over the whole `request` table that a session
- * scope cannot narrow, so it costs about a second of main thread on the live
- * graph whatever its scope (TP-343). A pass that does not sweep never runs it.
+ * Only the sweep reads the whole backlog, a page of sessions at a time with a
+ * yield after each: as one `staleEpisodeSessions` call it cost about a second
+ * of main thread on the live graph (TP-343, TP-4175). A pass that does not
+ * sweep never runs it.
  *
  * One session per `writeEpisodes` call, yielding after each: a session costs
  * about 450 ms on the live graph, so one batched call held the daemon's event
@@ -97,7 +101,9 @@ export async function refreshEpisodes(
 ): Promise<EpisodePass> {
   const changed = sessionsChangedSince(graph, before);
   const due = episodeCandidates(graph, changed);
-  const stale = sweep ? staleEpisodeSessions(graph.db).filter((id) => !changed.has(id)) : [];
+  const stale = sweep
+    ? (await staleEpisodeSessionsYielding(graph.db, yieldPoint)).filter((id) => !changed.has(id))
+    : [];
   const batch = stale.slice(0, limit);
   let written = 0;
   for (const sessionId of [...due, ...batch]) {

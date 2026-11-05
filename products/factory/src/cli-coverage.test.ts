@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDatabase } from "@titan-design/store-sqlite";
 import { WorkflowRunStore, type WorkflowRun } from "@titan-design/workflow";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { runCli } from "./cli.js";
 import { openFactoryHost } from "./host.js";
 import { ShepherdStore } from "./shepherd/store.js";
@@ -15,6 +15,7 @@ const AT = "2026-10-08T12:00:00.000Z";
 const dirs: string[] = [];
 
 afterEach(() => {
+  vi.useRealTimers();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -122,16 +123,17 @@ describe("shepherd coverage verb", () => {
   });
 
   it("defaults to the 24 hours ending now", async () => {
+    const now = Date.parse(END);
+    vi.useFakeTimers({ toFake: ["Date"], now });
     const f = fixture(1, [1]);
     const dir = join(f.env.XDG_CONFIG_HOME!, "..");
-    writeFileSync(join(dir, "logs", "titan-coord", "dispatch.jsonl"), mergedLines([1], new Date(Date.now() - HOUR).toISOString()) + mergedLines([2], new Date(Date.now() - 25 * HOUR).toISOString()));
+    writeFileSync(join(dir, "logs", "titan-coord", "dispatch.jsonl"), mergedLines([1], new Date(now - HOUR).toISOString()) + mergedLines([2], new Date(now - 25 * HOUR).toISOString()));
 
     const { code, out } = await coverage(f, "--json");
 
     expect(code).toBe(0);
     const report = JSON.parse(out);
-    expect(report.window.end - report.window.start).toBe(24 * HOUR);
-    expect(Math.abs(report.window.end - Date.now())).toBeLessThan(60_000);
+    expect(report.window).toEqual({ start: now - 24 * HOUR, end: now });
     expect(report.total).toEqual({ merged: 1, excluded: 0, shepherd: 1, share: 1 });
   });
 

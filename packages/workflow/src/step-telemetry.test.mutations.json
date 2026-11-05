@@ -1,0 +1,39 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a completed result drops its restart count",
+      "file": "packages/workflow/src/context.ts",
+      "find": "restarts: completed.restarts,",
+      "replace": "",
+      "kills": [
+        "step timing on a completed result records a single try's start as both its start and its first start, with no restarts",
+        "step timing on a completed result keeps the first start and the restart count after a restart re-dispatches the step"
+      ]
+    },
+    {
+      "name": "events go out without the runtime clock's time",
+      "file": "packages/workflow/src/runtime.ts",
+      "find": "options.onEvent?.({ ...event, at: this.isoNow() })",
+      "replace": "options.onEvent?.(event)",
+      "kills": ["workflow events carry the runtime clock's time as `at`"]
+    },
+    {
+      "name": "a code record route drops its body's usage",
+      "file": "packages/workflow/src/code-step.ts",
+      "find": ", ...(usage ? { usage } : {}) }",
+      "replace": " }",
+      "kills": [
+        "a code record route that reports usage records the usage as the step's and keeps it off the stored record",
+        "a code record route that reports usage is summed against a fan-out's budget like a dispatch's usage"
+      ]
+    },
+    {
+      "name": "the trace places an attempt at its completion even when its start is recorded",
+      "file": "packages/workflow/src/trace-projection.ts",
+      "find": "result.startedAt ?? result.completedAt",
+      "replace": "result.completedAt",
+      "kills": ["step timing on a completed result traces an attempt at the start its result recorded"]
+    }
+  ]
+}

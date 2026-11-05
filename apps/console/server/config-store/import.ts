@@ -55,6 +55,9 @@ class TreeRefusal extends Error {
   }
 }
 
+/** Only the errno code: a raw fs error message names the absolute path. */
+const errnoOf = (error: unknown): string => (error instanceof Error && "code" in error && typeof error.code === "string" ? error.code : "unknown error");
+
 const refuse = (file: string, fieldPath: string, message: string): never => {
   throw new TreeRefusal([{ file, path: fieldPath, message }]);
 };
@@ -83,7 +86,7 @@ function commentNotes(file: string, doc: Document): string[] {
 
 /** Null when the file has no front matter. */
 async function readFrontMatter(tree: string, file: string): Promise<FrontMatter | null> {
-  const text = await readFile(path.join(tree, file), "utf8").catch(() => refuse(file, "", "the file is unreadable"));
+  const text = await readFile(path.join(tree, file), "utf8").catch((error: unknown) => refuse(file, "", `the file is unreadable: ${errnoOf(error)}`));
   const match = FRONT_MATTER.exec(text);
   if (!match) return null;
   const doc = parseDocument(match[1] ?? "");
@@ -99,7 +102,7 @@ async function isDirectory(dir: string): Promise<boolean> {
 async function seatFileNames(tree: string): Promise<string[]> {
   const inSeats = await isDirectory(path.join(tree, SEATS_DIR));
   const dir = inSeats ? path.join(tree, SEATS_DIR) : tree;
-  const names = await readdir(dir).catch(() => refuse(inSeats ? SEATS_DIR : ".", "", "the directory is unreadable"));
+  const names = await readdir(dir).catch((error: unknown) => refuse(inSeats ? SEATS_DIR : ".", "", `the directory is unreadable: ${errnoOf(error)}`));
   return names
     .filter((name) => name.endsWith(".md") && (inSeats || name !== CHARTER_FILE))
     .sort()

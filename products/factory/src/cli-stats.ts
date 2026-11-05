@@ -5,7 +5,7 @@ import type { MetricsEntryRead } from "@titan-design/health/metrics";
 import { openDatabase } from "@titan-design/store-sqlite";
 import { WorkflowRunStore, type WorkflowRun, type WorkflowStatus } from "@titan-design/workflow";
 import type { Command } from "commander";
-import type { CliIo } from "./cli.js";
+import type { CliIo } from "./cli-types.js";
 import { parseSinceOption } from "./digest/command.js";
 import { gateStats, visualGateStats, type GateStatsRow, type VisualGateStats } from "./shepherd/gate-stats.js";
 import { SHEPHERD_WORKFLOW } from "./shepherd/services.js";
@@ -21,7 +21,8 @@ import { perRunExport } from "./shepherd/per-run-export.js";
 import { ShepherdStore } from "./shepherd/store.js";
 import { overrideLines, overrideStats, type OverrideRow } from "./shepherd/override-stats.js";
 import { failureStats, formatFailures } from "./shepherd/stats-failures.js";
-import { shepherdStats, type StatsRow } from "./shepherd/stats.js";
+import { shepherdStats, type StatsRange, type StatsRow } from "./shepherd/stats.js";
+import { formatReviewShadow, reviewShadowStats } from "./shepherd/review-shadow-stats.js";
 import { claudeTranscripts, formatReviewCost, reviewCost } from "./shepherd/stats-cost.js";
 import { formatRedAfterMerge, redAfterMerge } from "./shepherd/stats-quality.js";
 import { shadowsIn } from "./shepherd/train-shadow.js";
@@ -37,6 +38,7 @@ interface StatsOpts {
   json?: boolean;
   cost?: boolean;
   rereviews?: boolean;
+  reviewShadow?: boolean;
   failures?: boolean;
   slo?: boolean;
   registry?: string;
@@ -45,6 +47,8 @@ interface StatsOpts {
   reviews?: boolean;
   repo?: string;
   rows?: boolean;
+  /** YYYY-MM-DD: the day fix rounds split into before and after. */
+  sinceScoped?: string;
   /** Minutes, parsed from `90m`, `6h` or `7d`. */
   since?: number;
 }
@@ -107,7 +111,7 @@ async function reviewsReport(db: ReturnType<typeof openDatabase>, opts: StatsOpt
   try {
     const runs = ledgerRuns(db).runs(store.refreshedThrough());
     const refresh = await refreshReviewStats({ store, runs: { runs: () => runs }, retire: readRetireCosts(seatLogsDir(io.env)), transcripts: claudeTranscripts() });
-    const report = reviewReport(store.db, { from: opts.from, to: opts.to, repo: opts.repo }, now, opts.rows);
+    const report = reviewReport(store.db, { from: opts.from, to: opts.to, repo: opts.repo, ...(opts.sinceScoped && { sinceScoped: Date.parse(`${opts.sinceScoped}T00:00:00Z`) }) }, now, opts.rows);
     if (opts.json) return `${JSON.stringify({ ...report, refresh }, null, 2)}\n`;
     return `${formatReviewReport(report)}refresh: ${refresh.added} new reviews, ${refresh.repriced} repriced, ${refresh.transcriptReads} transcript reads\n`;
   } finally {
@@ -138,10 +142,10 @@ function gatesReport(db: ReturnType<typeof openDatabase>, opts: StatsOpts, now: 
 
 /** `--since` is the meter's own window, so it pairs only with `--gates` and never with the day range. */
 function usageError(opts: StatsOpts): string | undefined {
-  const bad = [opts.from, opts.to].find((date) => date !== undefined && !DATE.test(date));
+  const bad = [opts.from, opts.to, opts.sinceScoped].find((date) => date !== undefined && !DATE.test(date));
   if (bad !== undefined) return `expected YYYY-MM-DD, got ${JSON.stringify(bad)}`;
   if (opts.perRun && !opts.json) return "--per-run prints JSON only; add --json";
-  if ((opts.repo !== undefined || opts.rows) && !opts.reviews) return "--repo and --rows apply only to --reviews";
+  if ((opts.repo !== undefined || opts.rows || opts.sinceScoped !== undefined) && !opts.reviews) return "--repo, --rows and --since-scoped apply only to --reviews";
   if (opts.rows && !opts.json) return "--rows prints JSON only; add --json";
   if (opts.gates && opts.since === undefined) return "--gates needs --since, e.g. --since 7d";
   if (opts.since !== undefined && !opts.gates) return "--since applies only to --gates";
@@ -161,12 +165,18 @@ function sloReport(entry: MetricsEntryRead, db: ReturnType<typeof openDatabase>,
   return evaluateSlo(entry, base, { from: opts.from, to: opts.to }).then((results) => (opts.json ? `${JSON.stringify({ slo: results }, null, 2)}\n` : formatSlo(results)));
 }
 
+function shadowReport(runs: readonly WorkflowRun[], range: StatsRange, json: boolean | undefined): string {
+  const rows = reviewShadowStats(runs, range);
+  return json ? `${JSON.stringify({ reviewShadow: rows }, null, 2)}\n` : formatReviewShadow(rows);
+}
+
 /** The review causes are their own section, after the others, so the other sections read as before. */
 function statsReport(db: ReturnType<typeof openDatabase>, opts: StatsOpts, now: number): string {
   const range = { from: opts.from, to: opts.to };
   const runs = shepherdRuns(db);
   const causes = reviewCauseStats(runs, range);
   if (opts.rereviews) return causesReport(causes, opts.json);
+  if (opts.reviewShadow) return shadowReport(runs, range, opts.json);
   const rows = shepherdStats(runs, range);
   const friction = ownerFriction(readAllGates(db), now, range);
   const stages = stageStats(runs, range);
@@ -219,14 +229,16 @@ export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () =
     .option("--to <date>", "last day, YYYY-MM-DD (UTC), inclusive")
     .option("--json", "print the rows as JSON")
     .option("--cost", "instead: reviewer dollars and tokens per merged PR, per repo and ISO week, read from the verdicts' transcripts")
-    .option("--reviews", "instead: refresh review-stats.sqlite3 beside the database, then print per-review dollars, review and queue minutes (p50, p90, mean, total) by repo, ISO week, model and verdict, and per-PR rounds, dollars and review minutes")
+    .option("--reviews", "instead: refresh review-stats.sqlite3 beside the database, then print per-review dollars, tokens, review and queue minutes (p50, p90, mean, total) by repo, ISO week, model, verdict, and shape and cause (first, fix-round, convergence, other), per-PR rounds, dollars and review minutes, and fix-round p50 and p90 dollars and tokens per shape before and after the cutoff, split scoped vs full after it")
     .option("--repo <owner/name>", "with --reviews: only this repo")
     .option("--rows", "with --reviews --json: also print every review row")
+    .option("--since-scoped <date>", "with --reviews: split fix rounds before and after this day, YYYY-MM-DD (UTC); default the first scoped round")
     .option("--rereviews", "print only the review dispatches per repo and ISO week, counted by why each was dispatched")
+    .option("--review-shadow", "print only review-workflow's shadow per repo and ISO week (review.workflow: shadow): heads, shadow rounds, would-actions, heads sent to the fixer by round 2, and heads it would have stopped that then merged")
     .option("--slo", "instead: each metric in metrics/shepherd.yml with its value over its SLO window (or --from/--to), its SLO, and pass or fail")
     .option("--registry <file>", "the titan.metrics/v1 entry --slo reads (default: this checkout's metrics/shepherd.yml)")
     .option("--per-run", "instead, with --json: one record per shepherd-pr run started in range, with its stage minutes, review rounds and merge path")
-    .option("--failures", "also count failed runs per repo and ISO week by failure class (ci-timeout, gh-api-5xx, land-rules, update-branch, other)")
+    .option("--failures", "also count failed runs per repo and ISO week by failure class (ci-timeout, gh-api-5xx, gh-rate-limit, land-rules, update-branch, other)")
     .option("--gates", "instead, with --since: gates opened in the window per policy row and resolver (owner-terminal, owner-remote, coordinator, delegate, unanswered), with decisions by value, cancelled-unanswered, pending, and median and max wait hours; plus visual-gate latency (median, p90) and re-asks per PR")
     .option("--since <window>", "the --gates window back from now: 90m, 6h or 7d", parseSinceOption)
     .action((opts: StatsOpts) => statsAction(opts, io, dbPath, setExit, now));

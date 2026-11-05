@@ -1,9 +1,13 @@
 import type { ReactNode } from "react";
-import { Alert, EmptyState, Section, SectionContent, SectionHeader, Spinner, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, EmptyState, Section, SectionContent, SectionHeader, Tab, TabList, Tabs, Typography, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
+import { open, type Route } from "../router.js";
 import { HostsSection } from "./ConfigHosts.js";
+import { PerfTab } from "./ConfigPerf.js";
 import { ConfigRowCard, DuplicateCard, type ConfigRow, type DuplicateRow } from "./ConfigRows.js";
+import { PHONE_TAP } from "./phone.js";
 
 type Surfaces = ConsoleCommands["config.surfaces"]["result"];
 type ConfigFile = Surfaces["files"][number];
@@ -33,7 +37,22 @@ function groupSurfaces({ files, rows }: Pick<Surfaces, "files" | "rows">): { tit
 }
 
 /** Every config row this host's console reads, drift first, then the other hosts' reports. Read-only: a terminal row shows the command that edits its line. */
-export function ConfigPage(): ReactNode {
+export function ConfigPage({ route }: { route: Route }): ReactNode {
+  const perf = new URLSearchParams(route.query).get("tab") === "perf";
+  return (
+    <VStack gap={4}>
+      <Tabs index={perf ? 1 : 0} onChange={(index) => open({ view: "config", ...(index === 1 ? { query: "tab=perf" } : {}) })}>
+        <TabList>
+          <Tab className={PHONE_TAP}>Settings</Tab>
+          <Tab className={PHONE_TAP}>Perf</Tab>
+        </TabList>
+      </Tabs>
+      {perf ? <PerfTab /> : <ConfigSettings />}
+    </VStack>
+  );
+}
+
+function ConfigSettings(): ReactNode {
   const surfaces = useQuery("config.surfaces");
   const drift = useQuery("config.drift");
   return (

@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the re-time adds up to 20 s to a beat",
+      "file": "products/explainer/src/script-budget.ts",
+      "find": "const RETIME_MAX_S = 2;",
+      "replace": "const RETIME_MAX_S = 20;",
+      "kills": [
+        "the script stage's word-budget re-time leaves a beat 8 words over, which needs 3 more seconds, as it came, so the gate still fails"
+      ]
+    },
+    {
+      "name": "the re-time raises a beat past the 20 s beat band",
+      "file": "products/explainer/src/script-budget.ts",
+      "find": "need - beat.plannedS > RETIME_MAX_S || need > MAX_BEAT_S)",
+      "replace": "need - beat.plannedS > RETIME_MAX_S)",
+      "kills": [
+        "the script stage's word-budget re-time does not raise a 19 s close that needs 21 s past the 20 s beat band"
+      ]
+    },
+    {
+      "name": "the re-time plans the draft past the profile's maximum runtime",
+      "file": "products/explainer/src/script-budget.ts",
+      "find": "return plannedTotal(next) <= profile.runtime.maxS ? next : undefined;",
+      "replace": "return next;",
+      "kills": [
+        "the script stage's word-budget re-time refuses a re-time that would plan the draft past the profile's 240 s maximum, measured by the word-budget faults a chapter reader passes"
+      ]
+    },
+    {
+      "name": "the re-time plans a chapter past its block's longest airtime",
+      "file": "products/explainer/src/script-budget.ts",
+      "find": "if (blockS !== undefined && chapterSeconds(next, beat.chapter) > blockS) return undefined;",
+      "replace": "",
+      "kills": [
+        "the script stage's word-budget re-time refuses a re-time that would plan a chapter past its block's longest airtime"
+      ]
+    }
+  ]
+}

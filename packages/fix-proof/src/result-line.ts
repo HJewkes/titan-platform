@@ -6,6 +6,8 @@ export const RESULT_PREFIX = "fix-proof/v1 ";
 export const RESULT_LINE_MAX_BYTES = 4096;
 const MAX_ERROR_CHARS = 200;
 const SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+/** fix-proof-run.sh's shown_ref: a plain ref alphabet with `?` for anything else, or `<none>` for an empty ref. */
+const SHOWN_REF = /^(?:[A-Za-z0-9._/+?-]+|<none>)$/;
 
 export interface FixProofResult {
   head: string;
@@ -19,8 +21,15 @@ export interface FixProofResult {
   /** True when format dropped entries to fit the 4 KB line. */
   truncated: boolean;
   error?: string;
-  /** The mutation check, present only for a diff of test material alone that adds or changes a mutation spec. */
+  /**
+   * The mutation check, present for a diff of test material alone that adds or changes a mutation spec, and as an error
+   * beside an `error` verdict for a source diff whose spec has a kill naming no test at head.
+   */
   mutants?: MutantsResult;
+  /** The base branch the line judged, as fix-proof-run.sh shows a ref; a judge that predates it prints none. */
+  base?: string;
+  /** Only on a `refused` line: the default branch fix-proof runs against, which `base` is not. */
+  defaultBranch?: string;
 }
 
 export type ParsedResultLine = { ok: true; result: FixProofResult } | { ok: false; error: string };
@@ -38,10 +47,21 @@ export function provedByMutants(result: FixProofResult): boolean {
   return result.verdict === "vacuous" && mutants?.verdict === "killed" && covered && headPasses;
 }
 
+// Spelled out so a new test class fails to compile here instead of leaving a count missing.
+function countsBy(read: (name: TestClass) => number): Record<TestClass, number> {
+  return {
+    reproduces: read("reproduces"),
+    "passes-on-base": read("passes-on-base"),
+    "new-api": read("new-api"),
+    "fails-on-head": read("fails-on-head"),
+    "not-run": read("not-run"),
+  };
+}
+
 /** Joins a plan and its classification into the result a runner prints for head. */
 export function toResult(args: { head: string; mergeBase: string; plan: FixProofPlan; classification: Classification }): FixProofResult {
   const { classification, plan } = args;
-  const counts = Object.fromEntries(TEST_CLASSES.map((name) => [name, 0])) as Record<TestClass, number>;
+  const counts = countsBy(() => 0);
   classification.tests.forEach((test) => (counts[test.class] += 1));
   const result: FixProofResult = {
     head: args.head,
@@ -63,7 +83,7 @@ function canonical(result: FixProofResult): FixProofResult {
     head: result.head,
     mergeBase: result.mergeBase,
     verdict: result.verdict,
-    counts: Object.fromEntries(TEST_CLASSES.map((name) => [name, result.counts[name]])) as Record<TestClass, number>,
+    counts: countsBy((name) => result.counts[name]),
     notCollected: [...result.notCollected],
     deletedTests: [...result.deletedTests],
     configEdited: result.configEdited,
@@ -72,6 +92,8 @@ function canonical(result: FixProofResult): FixProofResult {
   };
   if (result.error !== undefined) out.error = result.error;
   if (result.mutants !== undefined) out.mutants = canonicalMutants(result.mutants);
+  if (result.base !== undefined) out.base = result.base;
+  if (result.defaultBranch !== undefined) out.defaultBranch = result.defaultBranch;
   return out;
 }
 
@@ -162,14 +184,25 @@ export function parseResultLine(line: string): ParsedResultLine {
   } catch {
     return { ok: false, error: "result is not valid JSON" };
   }
-  const invalid = validate(parsed);
-  if (invalid !== null) return { ok: false, error: invalid };
-  const result = parsed as FixProofResult;
+  try {
+    assertValidResult(parsed);
+  } catch (error) {
+    if (error instanceof InvalidResultError) return { ok: false, error: error.message };
+    throw error;
+  }
+  const result = parsed;
   if (JSON.stringify(canonical(result)) !== json) return { ok: false, error: "result is not canonical: duplicate, reordered or padded keys" };
   return { ok: true, result };
 }
 
 type UnknownRecord = Record<string, unknown>;
+
+class InvalidResultError extends Error {}
+
+function assertValidResult(value: unknown): asserts value is FixProofResult {
+  const invalid = validate(value);
+  if (invalid !== null) throw new InvalidResultError(invalid);
+}
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -190,7 +223,10 @@ function validateCounts(value: unknown): string | null {
   if (!isRecord(value)) return "counts must be an object";
   const keys = checkKeys(value, TEST_CLASSES, [], "counts.");
   if (keys !== null) return keys;
-  const bad = TEST_CLASSES.find((name) => !Number.isSafeInteger(value[name]) || (value[name] as number) < 0);
+  const bad = TEST_CLASSES.find((name) => {
+    const count = value[name];
+    return typeof count !== "number" || !Number.isSafeInteger(count) || count < 0;
+  });
   return bad === undefined ? null : `counts.${bad} must be a non-negative integer`;
 }
 
@@ -240,12 +276,28 @@ function validateScalars(value: UnknownRecord): string | null {
   return null;
 }
 
+const isShownRef = (value: unknown): boolean => typeof value === "string" && SHOWN_REF.test(value);
+
+/** A refused line ran nothing, so it carries no count or test, and it names both refs so no reader parses its error text. */
+function validateRefs(value: UnknownRecord): string | null {
+  if (value.base !== undefined && !isShownRef(value.base)) return "base must be a branch name as fix-proof-run.sh shows one";
+  if (value.verdict !== "refused") return value.defaultBranch === undefined ? null : "defaultBranch is set only on a refused line";
+  if (value.base === undefined || !isShownRef(value.defaultBranch)) return "a refused line must name its base and the default branch";
+  const { counts } = value;
+  const counted = !isRecord(counts) || TEST_CLASSES.some((name) => counts[name] !== 0);
+  return counted || !Array.isArray(value.tests) || value.tests.length > 0 ? "a refused line must have no count and no test" : null;
+}
+
 function validate(value: unknown): string | null {
   if (!isRecord(value)) return "result must be an object";
   const problem =
-    checkKeys(value, RESULT_KEYS, ["error", "mutants"], "") ?? validateScalars(value) ?? validateCounts(value.counts) ?? validateMutants(value.mutants, value.truncated);
+    checkKeys(value, RESULT_KEYS, ["error", "mutants", "base", "defaultBranch"], "") ??
+    validateScalars(value) ??
+    validateCounts(value.counts) ??
+    validateMutants(value.mutants, value.truncated) ??
+    validateRefs(value);
   if (problem !== null) return problem;
-  if (value.verdict === "reproduced" && (value.counts as UnknownRecord).reproduces === 0) return "verdict reproduced with no reproducing test";
+  if (value.verdict === "reproduced" && isRecord(value.counts) && value.counts.reproduces === 0) return "verdict reproduced with no reproducing test";
   if (!Array.isArray(value.tests)) return "tests must be an array";
   return value.tests.map(validateTest).find((error) => error !== null) ?? null;
 }

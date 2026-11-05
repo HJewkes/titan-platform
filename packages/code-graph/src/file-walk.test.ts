@@ -43,6 +43,18 @@ describe("walkSourceFiles", () => {
     expect(found).toContain("src/script.py");
   });
 
+  it("skips Python virtualenvs and caches but still finds sibling sources", async () => {
+    await fs.mkdir(path.join(root, ".venv/lib"), { recursive: true });
+    await fs.writeFile(path.join(root, ".venv/lib/dep.py"), "x = 1\n");
+    await fs.mkdir(path.join(root, "toolenv/lib"), { recursive: true });
+    await fs.writeFile(path.join(root, "toolenv/pyvenv.cfg"), "home = /usr/bin\n");
+    await fs.writeFile(path.join(root, "toolenv/lib/dep.py"), "x = 2\n");
+    await fs.mkdir(path.join(root, "src/__pycache__"), { recursive: true });
+    await fs.writeFile(path.join(root, "src/__pycache__/script.py"), "x = 3\n");
+    const found = (await walkSourceFiles([root], ["python"])).map(rel).sort();
+    expect(found).toEqual(["src/script.py"]);
+  });
+
   it("dedupes a file reachable from two overlapping roots", async () => {
     const found = await walkSourceFiles([root, path.join(root, "src")], ["typescript"]);
     const aHits = found.filter((f) => f.endsWith("/a.ts")).length;

@@ -1,0 +1,38 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the settled sample ignores settleBy and lands inside the outro fade",
+      "file": "packages/render-qa/src/moments.ts",
+      "find": "const settled = settledSample(ts, endS - (options.settleBy?.(beat) ?? 0))",
+      "replace": "const settled = settledSample(ts, endS)",
+      "kills": [
+        "sweepMoments against the archived sweep golden redesign-explainer-v4: the 2 Hz sweep with the outro fade rule equals the golden",
+        "sweepMoments against the archived sweep golden review-addendum-v5: the 2 Hz sweep with the outro fade rule equals the golden",
+        "sweepMoments the settled sample is the last one before end - settleBy, even when later samples fall in the fade"
+      ]
+    },
+    {
+      "name": "the sweep grid restarts at each beat instead of counting from the video start",
+      "file": "packages/render-qa/src/moments.ts",
+      "find": "const ts = gridTimes(startS, endS, hz)",
+      "replace": "const ts = gridTimes(0, endS - startS, hz).map((t) => round3(t + startS))",
+      "kills": [
+        "sweepMoments against the archived sweep golden redesign-explainer-v4: the 2 Hz sweep with the outro fade rule equals the golden",
+        "sweepMoments against the archived sweep golden review-addendum-v5: the 2 Hz sweep with the outro fade rule equals the golden",
+        "sweepMoments the settled sample is the last one before end - settleBy, even when later samples fall in the fade",
+        "sweepMoments without settleBy every beat settles on its last sample",
+        "sweepMoments the grid counts from the video start, so a beat starting between samples begins at the next one"
+      ]
+    },
+    {
+      "name": "a zero sweep rate is accepted and samples nothing",
+      "file": "packages/render-qa/src/moments.ts",
+      "find": "if (!Number.isFinite(hz) || hz <= 0) throw",
+      "replace": "if (!Number.isFinite(hz) || hz < 0) throw",
+      "kills": [
+        "sweepMoments a rate that is not a positive number is refused instead of looping or sampling nothing"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "every frame verdict press records Rejected",
+      "file": "apps/console/src/pages/FrameFeedback.tsx",
+      "find": "onPress={() => feedback.pressVerdict(frameKey, verdict)}",
+      "replace": "onPress={() => feedback.pressVerdict(frameKey, \"rejected\")}",
+      "kills": [
+        "a design round with a motion's progress stills sends a verdict for the still on screen, keyed as its own variant, and marks its step"
+      ]
+    }
+  ]
+}

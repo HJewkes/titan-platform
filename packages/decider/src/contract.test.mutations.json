@@ -1,0 +1,34 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "threshold lookup compares the raw category spelling",
+      "file": "packages/decider/src/contract.ts",
+      "find": "policyCategory(name) === key && row.minConfidence",
+      "replace": "name === category && row.minConfidence",
+      "kills": [
+        "minConfidenceFor reads the tech_design row for \"Tech Design\"",
+        "validate reads the tech_design row's threshold for a 'Tech Design' input"
+      ]
+    },
+    {
+      "name": "two matching spellings take the loosest threshold",
+      "file": "packages/decider/src/contract.ts",
+      "find": "Math.max(...matches)",
+      "replace": "Math.min(...matches)",
+      "kills": [
+        "minConfidenceFor takes the strictest threshold when two spellings share a key"
+      ]
+    },
+    {
+      "name": "the routing adapter drops each row's threshold",
+      "file": "packages/decider/src/policy.ts",
+      "find": "[row.category, { minConfidence: row.minConfidence }]",
+      "replace": "[row.category, {}]",
+      "kills": [
+        "minConfidenceFor agrees with categoryPolicy for every category of a routing policy",
+        "validate reads the tech_design row's threshold for a 'Tech Design' input"
+      ]
+    }
+  ]
+}

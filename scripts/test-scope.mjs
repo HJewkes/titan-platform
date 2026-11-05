@@ -8,14 +8,15 @@ import { appendFileSync, globSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
+import { lockfileScope } from "./lockfile-scope.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const ROOT_TESTS = "scripts/";
+const LOCKFILE = "pnpm-lock.yaml";
 
 // Root inputs every test can depend on, and this scoping itself.
 const FULL_PATHS = new Set([
   "package.json",
-  "pnpm-lock.yaml",
   "pnpm-workspace.yaml",
   ".node-version",
   ".npmrc",
@@ -25,8 +26,14 @@ const FULL_PATHS = new Set([
   "eslint.config.js",
   "eslint.typed.config.js",
   "scripts/vitest-tmpdir.mjs",
+  "scripts/vitest-wait-budget.mjs",
+  "scripts/vitest-file-watchdog.mjs",
+  "scripts/vitest-file-timing.mjs",
+  "scripts/wait-budget.mjs",
+  "products/factory/src/test-support/vitest-setup.ts",
   "scripts/test-affected.mjs",
   "scripts/test-scope.mjs",
+  "scripts/lockfile-scope.mjs",
 ]);
 const FULL_PREFIXES = ["scripts/fixtures/", ".github/"];
 
@@ -34,15 +41,10 @@ const FULL_PREFIXES = ["scripts/fixtures/", ".github/"];
 const ROOT_TEST_INPUTS = new Set(["AGENTS.md", "CLAUDE.md"]);
 
 // Read by no test, live or by fixture; docs:build, lint and the changeset guard cover them.
-const NO_TEST_PATHS = new Set([
-  "README.md",
-  "CAPABILITIES.md",
-  "LICENSE",
-  "NOTICE",
-  "eslint-suppressions.json",
-  "eslint-suppressions.typed.json",
-]);
+const NO_TEST_PATHS = new Set(["README.md", "CAPABILITIES.md", "LICENSE", "NOTICE"]);
 const NO_TEST_PREFIXES = [".changeset/", "site/"];
+// A baseline changes what lint reports, not what a package's tests do, so only the script tests that guard baselines run.
+const LINT_BASELINE = /(?:^|\/)eslint-suppressions(?:\.typed)?\.json$/;
 
 // Edges the package graph cannot see, added on top of a path's own tests: files outside a package that its tests
 // read, and root scripts its tests run with what they load. factory's audit/production.test.ts runs
@@ -60,6 +62,7 @@ const startsWithAny = (path, prefixes) => prefixes.some((prefix) => path.startsW
 
 /** The tests a path owns: its member, the root script tests, none ([]), or null for a path this does not know. */
 function ownTestDirs(path, memberDirs) {
+  if (LINT_BASELINE.test(path)) return [ROOT_TESTS];
   const member = memberDirs.find((dir) => path.startsWith(dir));
   if (member) return [member];
   if (ROOT_TEST_INPUTS.has(path) || path.startsWith(ROOT_TESTS) || path.startsWith("templates/")) return [ROOT_TESTS];
@@ -105,15 +108,15 @@ function reverseClosure(dirs, dependents) {
 
 /**
  * The tests a diff needs. Root script tests join every scoped run: several read the live workspace layout, and they
- * take seconds.
+ * take seconds. `readLock` returns the lockfile text at the merge base and the head, read only when the diff has it.
  */
-export function testScope(changedFiles, workspace) {
+export function testScope(changedFiles, workspace, readLock = () => null) {
   if (changedFiles.length === 0) return { mode: "full", reason: "empty diff" };
   const memberDirs = workspace.map((member) => member.dir).sort((a, b) => b.length - a.length);
   const touched = new Set();
   for (const path of changedFiles) {
-    const verdict = classifyPath(path, memberDirs);
-    if (verdict.kind === "full") return { mode: "full", reason: path };
+    const verdict = path === LOCKFILE ? lockfileScope(readLock(), memberDirs) : classifyPath(path, memberDirs);
+    if (verdict.kind === "full") return { mode: "full", reason: verdict.reason ?? path };
     if (verdict.kind === "dirs") verdict.dirs.forEach((dir) => touched.add(dir));
   }
   if (touched.size === 0) return { mode: "none" };
@@ -140,22 +143,37 @@ function changedFiles(base, head, cwd = ROOT) {
   return out.split("\n").filter(Boolean);
 }
 
+/** pnpm-lock.yaml on both sides of that diff; maxBuffer because the lockfile nears execFileSync's 1 MiB default. */
+function lockSides(base, head, cwd = ROOT) {
+  const git = (...args) => execFileSync("git", args, { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  const mergeBase = git("merge-base", base, head).trim();
+  return { base: git("show", `${mergeBase}:${LOCKFILE}`), head: git("show", `${head}:${LOCKFILE}`) };
+}
+
 /** The scope for this CI event: full unless a pull request other than the release PR names both ends of its diff. */
-export function scopeForEvent(env, readChanged, loadWorkspace) {
+export function scopeForEvent(env, readChanged, loadWorkspace, readLock = lockSides) {
   if (env.EVENT_NAME !== "pull_request") return { mode: "full", reason: `event ${env.EVENT_NAME || "unknown"}` };
   if (env.HEAD_REF === "changeset-release/main") return { mode: "full", reason: "release PR" };
   if (!env.BASE_SHA || !env.HEAD_SHA) return { mode: "full", reason: "no base or head sha" };
   try {
-    return testScope(readChanged(env.BASE_SHA, env.HEAD_SHA), loadWorkspace());
+    const sides = () => readLock(env.BASE_SHA, env.HEAD_SHA);
+    return testScope(readChanged(env.BASE_SHA, env.HEAD_SHA), loadWorkspace(), sides);
   } catch (err) {
     return { mode: "full", reason: `scope unreadable: ${err.message.split("\n")[0]}` };
   }
 }
 
-export function vitestArgs(scope) {
-  const args = ["run", "--passWithNoTests"];
+// On CI a hang must fail and name its file (TP-4287). hanging-process lists the handles that keep vitest from exiting
+// after its last file; the watchdog names a file whose worker never yields. Locally they are noise, as is the per-file
+// timing artifact (TP-4436).
+export const CI_REPORTERS = ["default", "hanging-process", "./scripts/vitest-file-watchdog.mjs", "./scripts/vitest-file-timing.mjs"];
+
+export function vitestArgs(scope, env = {}) {
+  const reporters = env.CI ? CI_REPORTERS.map((reporter) => `--reporter=${reporter}`) : [];
+  const args = ["run", "--passWithNoTests", ...reporters];
   if (scope.mode !== "scoped") return args;
-  return [...args, "--project", "threads", "--project", "repo", "--project", "forks", ...scope.dirs];
+  const projects = ["threads", "factory", "explainer", "console", "isolated", "repo", "forks", "perf", "active-work", "active-work-forks"];
+  return [...args, ...projects.flatMap((project) => ["--project", project]), ...scope.dirs];
 }
 
 function describeScope(scope) {
@@ -171,7 +189,7 @@ function main() {
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${line}\n`);
   if (!process.argv.includes("--run") || scope.mode === "none") return;
   const vitest = join(ROOT, "node_modules", "vitest", "vitest.mjs");
-  const result = spawnSync(process.execPath, [vitest, ...vitestArgs(scope)], { cwd: ROOT, stdio: "inherit" });
+  const result = spawnSync(process.execPath, [vitest, ...vitestArgs(scope, process.env)], { cwd: ROOT, stdio: "inherit" });
   process.exitCode = result.status ?? 1;
 }
 

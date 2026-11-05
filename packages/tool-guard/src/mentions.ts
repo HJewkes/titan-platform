@@ -111,7 +111,7 @@ function matchPath(path: string, scan: Scan): Found | null {
 function matchLiteralOrLink(path: string, scan: Scan): Found | null {
   const direct = matchLiteral(path, scan);
   if (direct) return direct;
-  const real = safeReadLink(scan.ctx, path);
+  const real = scan.ctx.readLink(path);
   if (real === null || real === path) return null;
   const linked = matchLiteral(real, scan);
   return linked && { ...linked, via: "symlink" };
@@ -125,14 +125,6 @@ function matchLiteral(path: string, scan: Scan): Found | null {
 
 function found(entry: { id: string } | null, via: Via): Found | null {
   return entry ? { id: entry.id, via } : null;
-}
-
-function safeReadLink(ctx: ClassifyContext, path: string): string | null {
-  try {
-    return ctx.readLink(path);
-  } catch {
-    return null;
-  }
 }
 
 function basenameMentions(text: string, list: GuardedList): Found[] {

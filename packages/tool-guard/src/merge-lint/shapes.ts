@@ -1,4 +1,4 @@
-export type ShapeId = "gh-pr-merge" | "rest-pr-merge" | "rest-branch-merge" | "graphql-merge" | "octokit-merge";
+export type ShapeId = "gh-pr-merge" | "rest-pr-merge" | "rest-branch-merge" | "graphql-merge" | "octokit-merge" | "git-refspec-push";
 
 export interface Shape {
   id: ShapeId;
@@ -31,6 +31,18 @@ export const SHAPES: readonly Shape[] = [
   // GraphQL is case-sensitive.
   { id: "graphql-merge", pattern: /\b(?:mergePullRequest|enablePullRequestAutoMerge|enqueuePullRequest)\b/g },
   { id: "octokit-merge", pattern: /\bpulls\.merge\s*\(/g },
+  // A push naming a destination ref writes a branch with no PR; only declared ratchets may.
+  // The first alternation is an argv `"push"` with a `:${` or `:refs/heads/` argument before the array closes; the second is a shell line.
+  {
+    id: "git-refspec-push",
+    pattern: new RegExp(
+      [
+        String.raw`["'` + "`" + String.raw`]push["'` + "`" + String.raw`][^\]\n]*?:(?:\$\{|refs/heads/)`,
+        String.raw`\bgit\s+push\b[^\n]*?\S:(?:refs/heads/|\$\{)`,
+      ].join("|"),
+      "gi",
+    ),
+  },
 ];
 
 export interface ShapeHit {

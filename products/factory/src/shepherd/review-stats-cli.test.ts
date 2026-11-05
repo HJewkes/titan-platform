@@ -70,6 +70,88 @@ async function stats(fx: { db: string; env: Record<string, string> }, ...args: s
   return { code, out: out.join(""), err: err.join("") };
 }
 
+/** A round with the labels the ledger gives it: its intent's cause, the member's shape, and whether its brief was scoped. */
+interface Labelled {
+  session: string;
+  at: number;
+  cause: string;
+  shape?: string;
+  scoped?: boolean;
+  usd: number;
+}
+
+function labelledSteps(rounds: readonly Labelled[]): WorkflowRun["stepResults"] {
+  const steps: WorkflowRun["stepResults"] = {};
+  const stamp = (key: string, at: number, result: Record<string, unknown>) => (steps[key] = { stepId: key.replace(/:\d+$/, ""), iteration: 0, agentId: null, signal: null, completedAt: new Date(at).toISOString(), data: { result } });
+  rounds.forEach((r, i) => {
+    const head = `h${i}`;
+    const member = r.shape === undefined ? "" : `:${r.shape}`;
+    stamp(`sh-review-intent:${head}:0`, r.at, { kind: "intent", head, reviewer: `rv-${r.session}`, mode: "spawn", cause: { cause: r.cause } });
+    stamp(`sh-review:${head}${member}:0`, r.at, { kind: "dispatched", head, reviewer: `rv-${r.session}`, at: r.at, startedAt: r.at, sessionId: r.session, ...(r.scoped !== undefined && { scoped: r.scoped }) });
+    stamp(`sh-await-verdict:${head}${member}:0`, r.at + 10 * MIN, { kind: "verdict", verdict: "MERGE", head });
+  });
+  return steps;
+}
+
+const labelled = (session: string, at: number, cause: string, usd: number, extra: Partial<Labelled> = {}): Labelled => ({ session, at, cause, usd, ...extra });
+
+/** Correctness: a first review, three fix rounds before the first scoped one, then a scoped and a full fix round; one adversary fix round. */
+const LABELLED = [
+  labelled("c1", DAY1, "first", 1),
+  labelled("c2", DAY1 + 60 * MIN, "fix-round", 2),
+  labelled("c3", DAY1 + 120 * MIN, "fix-round", 3),
+  labelled("c4", DAY1 + 180 * MIN, "fix-round", 10),
+  labelled("a1", DAY1 + 200 * MIN, "fix-round", 6, { shape: "adversary" }),
+  labelled("c5", DAY2, "fix-round", 0.5, { scoped: true }),
+  labelled("c6", DAY2 + 60 * MIN, "fix-round", 4, { scoped: false }),
+];
+
+function labelledFixture(): { db: string; env: Record<string, string> } {
+  const dir = mkdtempSync(join(tmpdir(), "review-stats-cli-"));
+  const db = join(dir, "factory.sqlite3");
+  openFactoryHost({ dbPath: db, workflows: factoryWorkflows, routes: factoryRoutes() }).close();
+  const ledger = openDatabase(db);
+  const run: WorkflowRun = { id: "run-1", workflowName: "shepherd-pr", params: { repo: "Acme/Widgets", pr: "1" }, status: "completed", currentStep: null, stepResults: labelledSteps(LABELLED), activeSteps: {}, revision: 0, ownerGeneration: 0, startedAt: new Date(DAY1).toISOString(), completedAt: new Date(DAY2 + 120 * MIN).toISOString(), error: null };
+  new WorkflowRunStore(ledger).create(run);
+  ledger.close();
+  const logs = join(dir, "autonomy", "logs", "shepherd");
+  mkdirSync(logs, { recursive: true });
+  const usage = (usd: number) => ({ input: usd * 100_000, cache_read: 0, cache_write_5m: 0, cache_write_1h: 0, output: 0 });
+  writeFileSync(join(logs, "dispatch.jsonl"), `${LABELLED.map((r) => JSON.stringify({ outcome: "retired", session_id: r.session, usd_est: r.usd, usage: usage(r.usd) })).join("\n")}\n`);
+  return { db, env: { AUTONOMY_ROOT: join(dir, "autonomy") } };
+}
+
+describe("shepherd stats --reviews by cause and shape", () => {
+  it("prints fix-round p50 and p90 dollars and tokens per shape, before and after the first scoped round, split scoped vs full", async () => {
+    const report = JSON.parse((await stats(labelledFixture(), "--json")).out);
+
+    expect(Object.keys(report.perReview.byCauseShape)).toEqual(["adversary fix-round", "correctness first", "correctness fix-round"]);
+    expect(report.perReview.byCauseShape["correctness fix-round"]).toMatchObject({ n: 5, usd: { p50: 3 }, tokens: { p50: 300_000 } });
+    expect(report.rereview.cutoff).toBe(new Date(DAY2 + 10 * MIN).toISOString());
+    expect(report.rereview.cutoffFrom).toBe("first-scoped");
+    expect(report.rereview.byShape.correctness).toEqual({
+      before: { n: 3, unpriced: 0, usd: { p50: 3, p90: 10, total: 15 }, tokens: { p50: 300_000, p90: 1_000_000, total: 1_500_000 } },
+      after: { n: 2, unpriced: 0, usd: { p50: 2.25, p90: 4, total: 4.5 }, tokens: { p50: 225_000, p90: 400_000, total: 450_000 } },
+      afterScoped: { n: 1, unpriced: 0, usd: { p50: 0.5, p90: 0.5, total: 0.5 }, tokens: { p50: 50_000, p90: 50_000, total: 50_000 } },
+      afterFull: { n: 1, unpriced: 0, usd: { p50: 4, p90: 4, total: 4 }, tokens: { p50: 400_000, p90: 400_000, total: 400_000 } },
+    });
+    expect(report.rereview.byShape.adversary.before).toMatchObject({ n: 1, usd: { p50: 6 } });
+  });
+
+  it("splits at --since-scoped when given, and prints the split in text mode", async () => {
+    const fx = labelledFixture();
+
+    const report = JSON.parse((await stats(fx, "--json", "--since-scoped", "2026-10-07")).out);
+    const text = (await stats(fx, "--since-scoped", "2026-10-06")).out;
+
+    expect(report.rereview).toMatchObject({ cutoff: "2026-10-07T00:00:00.000Z", cutoffFrom: "since-scoped" });
+    expect(report.rereview.byShape.correctness.before.n).toBe(5);
+    expect(report.rereview.byShape.correctness.after.n).toBe(0);
+    expect(text).toContain("fix-round re-reviews, cutoff 2026-10-06T00:00:00.000Z (since-scoped):");
+    expect(text).toContain("  correctness  after scoped n 1  usd p50 $0.50 p90 $0.50 total $0.50  tokens p50 50000 p90 50000");
+  });
+});
+
 describe("shepherd stats --reviews", () => {
   it("prints the v1 shape with per-review distributions and their cuts, and per-PR totals summed over rounds", async () => {
     const fx = fixture();
@@ -145,6 +227,6 @@ describe("shepherd stats --reviews", () => {
 
     expect(rows).toMatchObject({ code: 2, err: "error: --rows prints JSON only; add --json\n" });
     expect(repo).toBe(2);
-    expect(err.join("")).toBe("error: --repo and --rows apply only to --reviews\n");
+    expect(err.join("")).toBe("error: --repo, --rows and --since-scoped apply only to --reviews\n");
   });
 });

@@ -1,3 +1,5 @@
+import { LinearRegExp } from "@titan-design/fix-proof/linear-regexp";
+
 /** Glob when the pattern has a `*` (`**` crosses directories, `*` stays in a segment); otherwise a case-sensitive substring. */
 export function patternToRegex(pattern: string): RegExp {
   if (!pattern.includes("*")) {
@@ -15,7 +17,7 @@ export function patternToRegex(pattern: string): RegExp {
       out += escapeRegex(c);
     }
   }
-  return new RegExp(`^${out}$`);
+  return new LinearRegExp(`^${out}$`);
 }
 
 export function compilePatterns(patterns: readonly string[] | undefined): RegExp[] {

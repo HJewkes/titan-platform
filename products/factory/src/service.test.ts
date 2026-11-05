@@ -2,9 +2,10 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { stableNodePath } from "@titan-design/daemon/service";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCli } from "./cli.js";
-import { plistPath, renderPlist, renderUnit, SERVICE_LABEL, serviceLabel, servicePath, stableNodePath, UNIT_NAME, unitPath, type NodeProbe } from "./service.js";
+import { plistPath, renderPlist, renderUnit, SERVICE_LABEL, serviceLabel, servicePath, UNIT_NAME, unitPath } from "./service.js";
 import { systemServicePorts } from "./service-ports.js";
 
 const SYSTEM_PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
@@ -217,23 +218,46 @@ describe("titan-factory service unit", () => {
     expect(directive(renderUnit({ ...options, binPath: '/srv/a"b\\c/bin.js' }), "ExecStart")).toEqual([`${options.nodePath} "/srv/a\\"b\\\\c/bin.js" serve`]);
   });
 
+  it("renders byte-identical text for spaces, quotes, %, $, unicode and empty values", () => {
+    const unit = renderUnit({
+      nodePath: "/opt/n 'q'/node",
+      binPath: "/srv/é 日本/100%/bin.js",
+      logDir: "/var/lög",
+      path: "",
+      workingDirectory: "",
+      port: 7411,
+    });
+
+    expect(unit).toBe(
+      [
+        "[Unit]",
+        "Description=titan-factory serve",
+        "",
+        "[Service]",
+        "Type=simple",
+        "WorkingDirectory=",
+        `ExecStart="/opt/n 'q'/node" "/srv/é 日本/100%%/bin.js" serve --port 7411`,
+        "Restart=on-failure",
+        "RestartSec=5",
+        "TimeoutStopSec=60",
+        "LimitCORE=0",
+        "Environment=PATH=",
+        "StandardOutput=append:/var/lög/serve.out.log",
+        "StandardError=append:/var/lög/serve.err.log",
+        "",
+        "[Install]",
+        "WantedBy=default.target",
+        "",
+      ].join("\n"),
+    );
+  });
+
   it("lives under XDG_CONFIG_HOME when it is absolute, else under ~/.config", () => {
     expect(unitPath("/srv/tester")).toBe("/srv/tester/.config/systemd/user/titan-factory.service");
     expect(unitPath("/srv/tester", "/xdg/config")).toBe("/xdg/config/systemd/user/titan-factory.service");
     expect(unitPath("/srv/tester", "relative/config")).toBe("/srv/tester/.config/systemd/user/titan-factory.service");
   });
 });
-
-/** Symlinks map a path to the Cellar binary they point at; anything else is absent, and realpath throws on it like the real one. */
-function probeOf(links: Record<string, string>): NodeProbe {
-  return {
-    exists: (p) => p in links,
-    realpath: (p) => {
-      if (!(p in links)) throw new Error(`ENOENT ${p}`);
-      return links[p]!;
-    },
-  };
-}
 
 describe("servicePath", () => {
   it("names the directories of gh, agent-chat, claude and node, then launchd's own", () => {
@@ -267,35 +291,5 @@ describe("servicePath: a directory with a colon", () => {
     const which = (binary: string): string | undefined => (binary === "claude" ? "/opt/cl:aude/bin/claude" : TOOLS[binary]);
 
     expect(() => servicePath(which, "/opt/node/bin/node")).toThrow(/\/opt\/cl:aude\/bin\/claude cannot go on the service PATH/);
-  });
-});
-
-describe("stableNodePath", () => {
-  const cellar = "/opt/homebrew/Cellar/node/22.1.0/bin/node";
-
-  it("maps a Cellar path to the prefix bin/node symlink when it resolves to the same binary", () => {
-    expect(stableNodePath(cellar, probeOf({ "/opt/homebrew/bin/node": cellar, [cellar]: cellar }))).toBe("/opt/homebrew/bin/node");
-    const intel = "/usr/local/Cellar/node/22.1.0/bin/node";
-    expect(stableNodePath(intel, probeOf({ "/usr/local/bin/node": intel, [intel]: intel }))).toBe("/usr/local/bin/node");
-  });
-
-  it("maps a versioned formula through the opt symlink", () => {
-    const path = "/usr/local/Cellar/node@20/20.9.0/bin/node";
-
-    expect(stableNodePath(path, probeOf({ "/usr/local/opt/node@20/bin/node": path, [path]: path }))).toBe("/usr/local/opt/node@20/bin/node");
-  });
-
-  it("keeps the Cellar path when the symlink is absent", () => {
-    expect(stableNodePath(cellar, probeOf({ [cellar]: cellar }))).toBe(cellar);
-  });
-
-  it("keeps the Cellar path when the symlink points at a different binary", () => {
-    const other = "/opt/homebrew/Cellar/node/23.0.0/bin/node";
-
-    expect(stableNodePath(cellar, probeOf({ "/opt/homebrew/bin/node": other, [cellar]: cellar, [other]: other }))).toBe(cellar);
-  });
-
-  it("keeps a non-Homebrew path untouched", () => {
-    expect(stableNodePath("/Users/x/.nvm/versions/node/v22/bin/node", probeOf({}))).toBe("/Users/x/.nvm/versions/node/v22/bin/node");
   });
 });

@@ -109,20 +109,24 @@ disk even with `force`. Assigned allocations remain exempt before branch-keeping
 
 ## Git child transport policy
 
-`gitChildEnv`, the package's internal git calls, and `setupEnv` use the existing dispatcher's
-CC-1095 policy. `pinGitProtocols(value)` intersects an explicit colon-separated list with
-`file:git:http:https:ssh`; an unset value uses that list, while an empty value stays empty.
-Unknown and differently cased names are discarded. Local file remotes remain supported.
-Dispatcher identity prefix stripping and `GIT_TERMINAL_PROMPT=0` are preserved.
-The protocol pin is derived from the original caller list and restored after custom
-prefix stripping, so even a `GIT_` strip cannot erase it or widen that list.
-`withPinnedGitProtocols(env)` applies only the same transport pin without stripping fields.
+`gitChildEnv`, the package's internal git calls, and `setupEnv` keep `ext::` off without
+overriding the caller's own protocol config (CC-1095, CC-1336):
 
-The existing policy is carried unchanged: when the caller leaves GIT_ALLOW_PROTOCOL unset,
-its default safe list can outrank a per-command `protocol.allow=never` or
-`protocol.<name>.allow=never` config. That separate inherited CC-1336 limitation is not fixed
-by this extraction. Callers needing no transports can supply `GIT_ALLOW_PROTOCOL=""`.
-The dispatcher retains its separate agent/shim/process environment wiring.
+- `pinGitProtocols(value)` returns `undefined`, meaning leave GIT_ALLOW_PROTOCOL unset, when
+  the value is unset or exactly the legacy `file:git:http:https:ssh` that earlier releases
+  exported. Any other value is the caller's choice and is intersected with that safe list;
+  unknown and differently cased names are dropped, and an empty value stays empty.
+- Every pinned environment gets `protocol.ext.allow=never` as its last `GIT_CONFIG_COUNT`
+  pair. That command-scope pair outranks every config file, include and `protocol.allow`;
+  only the caller's own `-c` beats it. git reads every other protocol policy itself, so a
+  repo's `protocol.ssh.allow=never` still refuses ssh. Caller pairs are kept; the pair is not
+  added twice; a count git would die on throws.
+- `gitChildEnv` strips dispatcher identity prefixes, sets `GIT_TERMINAL_PROMPT=0`, then pins,
+  so even a `GIT_` strip cannot erase the pair or widen the caller's original list.
+- `withPinnedGitProtocols(env)` applies only the pin, without stripping fields.
+
+A local `file` submodule clone now follows git's default `protocol.file.allow=user`, which a
+submodule child denies. The dispatcher retains its separate agent/shim/process environment wiring.
 
 ## Where it came from
 

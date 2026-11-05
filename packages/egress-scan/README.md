@@ -106,6 +106,34 @@ ignores `--text`, so for a merge read the message with `--no-patch --format=%B` 
 with `--diff-merges=separate --format=`, and pass the patch to `parseDiff`. Scan each commit, not
 only the range endpoints: a leak added and then removed is still in the pushed history.
 
+## Spawn-time hooks dir
+
+`@titan-design/egress-scan/hooks` writes a git hooks directory that a launcher points an agent's
+git at through the environment, so no repo's `.git/config` changes. Its `pre-push` runs
+`titan-egress-scan pre-push` with an environment of PATH alone, refuses the push when the private
+term list is missing (`MISSING_TERMS_REFUSES`), and then runs the repo's own `pre-push`. The other
+client hooks chain straight to the repo's own. A dir named by `noRewriteHooksDir` also refuses
+each update git hands the hook that deletes a ref, updates `main` or `master`, names a ref outside
+`refs/heads/` and `refs/tags/`, or is not a fast-forward of the remote's tip, and refuses a push to a
+remote configured as a mirror.
+
+```ts
+import { gitHooksEnv, noRewriteHooksDir, passwdHome, probeScanner, writeGitHooks } from "@titan-design/egress-scan/hooks";
+
+const dir = noRewriteHooksDir(guardDir);
+const shell = { path: "/bin/sh", shebang: "#!/bin/sh -p", scrub: "command unset SHELLOPTS 2>/dev/null\n" };
+writeGitHooks(dir, { missingTermsRefuses: true, home: passwdHome(), path: brokerPath, probe: probeScanner }, { shell, shimDirs });
+spawn(agent, { env: { ...agentEnv, ...gitHooksEnv(dir) } });
+```
+
+`shimDirs` lists the agent's own git and gh shim dirs. The hook leaves them, and every relative
+entry, off its PATH, since git runs it from the worktree being pushed.
+
+The hook sees only what git hands it. git leaves a typed `git push --mirror`'s deletions off the
+hook's stdin, so an agent that first deletes its own `refs/remotes/*` can delete remote branches,
+`main` included, past the no-rewrite policy. Refuse a typed `--mirror` before git runs, in the
+agent's git shim or tool guard.
+
 ## Rules
 
 - `home-path`: `/Users/<seg>`, `/home/<seg>` and `C:\Users\<seg>`, root in any case, also
@@ -115,7 +143,7 @@ only the range endpoints: a leak added and then removed is still in the pushed h
   shapes, with any prefix.
 - `private-term`: one per line of the term list. `#` comments and blank lines are skipped.
   A plain term matches case-insensitively on word boundaries; a `re:` line is a regex
-  compiled with `iu`. A term that matches the empty string is rejected. A finding carries `termIndex`, the term's line in the file.
+  compiled with `iu`. A term that matches the empty string is rejected. A line may start with a `[category]` tag (`^[a-z][a-z0-9-]*$`) followed by the term, such as `[owner-email] re:...`; a malformed tag fails the load. To match a term that begins with `[`, write it as `re:\[...`. A finding carries `termIndex`, the term's line in the file, and `category` when the line is tagged; the report prints `[category]` in place of `#<line>`.
 - `credential-token`: a credential shape, and the finding's `kind` names which: `github`
   (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`), `anthropic` (`sk-ant-`),
   `aws-access-key` (`AKIA`/`ASIA` plus 16), `slack` (`xox[abprs]-`) and `private-key` (a PEM
@@ -130,8 +158,10 @@ only the range endpoints: a leak added and then removed is still in the pushed h
 `.egress-allow` holds `<glob> <rule-id> <reason>` lines. The reason must name a task id
 such as `TP-405`, and the glob must name at least one literal path segment.
 Braces expand (`docs/{a,b}.md`), and every alternative must name a literal segment. A glob
-that expands past 256 alternatives is malformed. A backslash is not an escape; it matches a
-literal backslash.
+that expands past 256 alternatives, is longer than 1024 characters or has more than 32 brace
+groups is malformed. Matching takes time linear in the path, so no run of `*`, `**/` or
+`*a` in a glob can stall the scan. A backslash is not an escape; it matches a literal
+backslash.
 `private-term` and `credential-token` are never allowable. `parseAllow` throws `AllowFileError`
 on any malformed line; a caller must fail the scan on it, never fall back to an empty list.
 

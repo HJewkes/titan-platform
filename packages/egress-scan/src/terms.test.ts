@@ -54,6 +54,23 @@ describe("parseTerms", () => {
     expect(String(error)).not.toContain(entry.slice(3));
   });
 
+  it("attaches the category of a tagged line and none to an untagged one", () => {
+    const rules = parseTerms("[owner-email] zq-one\nzq-two\n[private-path]\tre:zq-\\d+");
+    expect(rules.map((r) => r.category)).toEqual(["owner-email", undefined, "private-path"]);
+    expect(rules[0]?.matches("zq-one")).toBe(true);
+    expect(rules[2]?.matches("ZQ-7")).toBe(true);
+  });
+
+  it.each(["[owner-email zq-x", "[] zq-x", "[Owner] zq-x", "[owner]", "[owner]   ", "[owner]zq-x", "[a b] zq-x"])(
+    "fails a malformed tag instead of reading it as untagged: %s",
+    (line) => {
+      const error = captureError(() => parseTerms(`zq-ok\n${line}`));
+      expect(error).toBeInstanceOf(TermFileError);
+      expect(String(error)).toMatch(/line 2: malformed category tag/);
+      expect(String(error)).not.toContain("zq-x");
+    },
+  );
+
   it("fails an empty re: line", () => {
     expect(() => parseTerms("re:")).toThrow(/line 1: empty regular expression/);
   });

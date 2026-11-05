@@ -11,6 +11,7 @@ import { FeedbackSchema } from "../../server/round-schema.js";
 import { roundsSubmitCommands } from "../../server/rounds-submit.js";
 import { getRound, type RoundDetail } from "../../server/rounds.js";
 import { AnswerSourceProvider } from "../data/submit.js";
+import { getButton } from "./get-button.test-helpers.js";
 import { RoundSections, orderedQuestions, useRoundAnswers } from "./RoundSections.js";
 import { RoundSend, useRoundSend } from "./RoundSend.js";
 
@@ -92,7 +93,7 @@ const question = (id: string): HTMLElement => screen.getByTestId(`round-question
 const pick = (id: string, label: string): void => void fireEvent.click(within(question(id)).getByText(label));
 const commentOn = (prompt: string, text: string): void => void fireEvent.change(screen.getByLabelText(`Comment on ${prompt}`), { target: { value: text } });
 const required = (id: string): HTMLElement | null => screen.queryByTestId(`round-comment-required-${id}`);
-const openCheck = (): void => void fireEvent.click(screen.getByRole("button", { name: "Check and send" }));
+const openCheck = (): void => void fireEvent.click(getButton("Check and send"));
 const sendDisabled = (): boolean => screen.getByTestId("round-check-send").getAttribute("aria-disabled") === "true";
 
 describe("the built-in revision request", () => {

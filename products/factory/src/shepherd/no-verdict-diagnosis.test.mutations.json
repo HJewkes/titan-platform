@@ -1,0 +1,54 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a spawn gate deferral is a final refusal, never asked again",
+      "file": "products/factory/src/shepherd/no-verdict-diagnosis.ts",
+      "find": "      throw new ReviewerSpawnQueued(`spawn gate: ${error.message}`, { cause: error });",
+      "replace": "      throw error;",
+      "kills": [
+        "a diagnosis planner the spawn gate defers (TP-4157) asks again after the spawn-rate window, records the refusal, and starts the planner",
+        "a diagnosis planner the spawn gate defers (TP-4157) gives up after a bounded number of asks, recording every refusal",
+        "a run whose reviews never give a verdict (TP-3796) starts the planner after the spawn gate defers its first ask, with no seat notice, before waiting for a new head (TP-4157)"
+      ]
+    },
+    {
+      "name": "the deferred asks have no attempt cap",
+      "file": "products/factory/src/shepherd/no-verdict-diagnosis.ts",
+      "find": "      if (deferrals.length >= DIAGNOSIS_SPAWN_ATTEMPTS) throw",
+      "replace": "      if (false) throw",
+      "kills": [
+        "a diagnosis planner the spawn gate defers (TP-4157) gives up after a bounded number of asks, recording every refusal"
+      ]
+    },
+    {
+      "name": "the step records no deferral",
+      "file": "products/factory/src/shepherd/no-verdict-diagnosis.ts",
+      "find": "  const recorded = () => (deferrals.length > 0 ? { deferrals } : {});",
+      "replace": "  const recorded = () => ({});",
+      "kills": [
+        "a diagnosis planner the spawn gate defers (TP-4157) asks again after the spawn-rate window, records the refusal, and starts the planner",
+        "a diagnosis planner the spawn gate defers (TP-4157) gives up after a bounded number of asks, recording every refusal",
+        "a run whose reviews never give a verdict (TP-3796) starts the planner after the spawn gate defers its first ask, with no seat notice, before waiting for a new head (TP-4157)"
+      ]
+    },
+    {
+      "name": "a refusal that is no deferral is asked again too",
+      "file": "products/factory/src/shepherd/no-verdict-diagnosis.ts",
+      "find": "      if (!(error instanceof SpawnDeferred)) throw error;\n",
+      "replace": "",
+      "kills": [
+        "a diagnosis planner the spawn gate defers (TP-4157) does not ask again after a refusal that is no deferral"
+      ]
+    },
+    {
+      "name": "a round where every reviewer answered reads as one that dispatched nobody",
+      "file": "products/factory/src/shepherd/no-verdict-diagnosis.ts",
+      "find": "  if (reviewers.length === 0) return",
+      "replace": "  if (true) return",
+      "kills": [
+        "the diagnosis planner's spawn says the aggregate withheld the verdict, not a reviewer, when every dispatched reviewer answered (TP-4195)"
+      ]
+    }
+  ]
+}

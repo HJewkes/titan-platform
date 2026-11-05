@@ -215,6 +215,43 @@ describe("source and mutation buckets", () => {
     expect(result.source).toEqual([]);
   });
 
+  describe("a diff that changes only a mutation spec", () => {
+    const SPEC = "apps/console/src/frame.test.mutations.json";
+    const SIBLING = "apps/console/src/frame.test.tsx";
+    const specOnly = (headFiles: readonly string[], ...extra: string[]) =>
+      plan({ nameStatus: diff(`M\t${SPEC}`, ...extra), baseConfig: repoConfig, headFiles });
+
+    it("plans the spec's sibling test and reads the diff as test-only", () => {
+      const result = specOnly([SPEC, SIBLING, "apps/console/src/frame.tsx"]);
+
+      expect(result.tests).toEqual([SIBLING]);
+      expect(result.mutations).toEqual([SPEC]);
+      expect(testOnlyReading(result)).toEqual({ testOnly: true });
+    });
+
+    it("stays no-tests when no sibling test sits beside the spec at head", () => {
+      const result = specOnly([SPEC, "apps/console/src/frame.tsx"]);
+
+      expect(result.tests).toEqual([]);
+      expect(testOnlyReading(result)).toEqual({ testOnly: false, reason: "no-tests" });
+    });
+
+    it("stays no-tests when the caller lists no head files", () => {
+      expect(testOnlyReading(planned(`M\t${SPEC}`))).toEqual({ testOnly: false, reason: "no-tests" });
+    });
+
+    it("never plans a sibling the diff deletes", () => {
+      const result = specOnly([SPEC, SIBLING], `D\t${SIBLING}`);
+
+      expect(result.tests).toEqual([]);
+      expect(testOnlyReading(result)).toEqual({ testOnly: false, reason: "deletes-tests", paths: [SIBLING] });
+    });
+
+    it("plans no sibling when two test files could pair with the spec", () => {
+      expect(specOnly([SPEC, SIBLING, "apps/console/src/frame.test.ts"]).tests).toEqual([]);
+    });
+  });
+
   it("counts a harness path as source even where a carry glob matches it", () => {
     const result = planned("A\t.github/workflows/fixtures/x.yml", "M\tscripts/fix-proof-run.sh", "M\t.github/fix-proof.json");
 

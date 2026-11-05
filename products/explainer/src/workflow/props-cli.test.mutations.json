@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "props reports no script sha",
+      "file": "products/explainer/src/workflow/props-cli.ts",
+      "find": "scriptSha: base.scriptSha, saveBack",
+      "replace": "saveBack",
+      "kills": ["explainer props --mp4-sha reports the script artifact sha, and an edit drafted on it passes edit check"]
+    },
+    {
+      "name": "props reports the resolved sha as the script sha",
+      "file": "products/explainer/src/workflow/props-cli.ts",
+      "find": "scriptSha: base.scriptSha, saveBack",
+      "replace": "scriptSha: view.artifacts.resolved!, saveBack",
+      "kills": ["explainer props --mp4-sha reports the script artifact sha, and an edit drafted on it passes edit check"]
+    }
+  ]
+}

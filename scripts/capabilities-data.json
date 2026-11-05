@@ -28,6 +28,12 @@
       "smoke": "Run the workflow once with `inlineRunner` to prove the steps, then swap in the model runner."
     },
     {
+      "path": "Autoresearch ports: `ArPorts` (`pin`, `plan`, `allocTree`, `implement`, `staticCheck`, `micro`, `evalCase`, `ratchet`, `releaseTree`)",
+      "package": "autoresearch",
+      "credential": "No credential in the package. It never calls a model, a shell or git itself; every effect is a port the host supplies, so the host's ports carry whatever the implementer agent and the evaluator need (see the `agent` paths above).",
+      "smoke": "`pnpm vitest run packages/autoresearch` runs the whole recipe on fake ports over a local fixture repo and bare remote, at $0 and with no model call."
+    },
+    {
       "path": "Style tool runners: ESLint, ruff, and the Python audit tools",
       "package": "style-checker",
       "credential": "No credential. ESLint runs through `npx` and needs its plugins installed. ruff, `lint-imports`, vulture, pydoclint and pyright must be on PATH; an absent Python audit tool returns a warning naming its `pip install`, never a throw.",

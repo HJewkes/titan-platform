@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the Q-F4 midpoint slot reads the open's window",
+      "file": "products/explainer/src/lint-flow.ts",
+      "find": "fits: (at: number) => at >= 0.35 && at <= 0.65",
+      "replace": "fits: (at: number) => at <= 0.2",
+      "kills": [
+        "repair hints for rows whose value says too little Q-F4 names the thesis ref outside its slot and where it starts"
+      ]
+    },
+    {
+      "name": "the Q-F1 hint omits the overused connective",
+      "file": "products/explainer/src/l0-repair-hints.ts",
+      "find": "  parts.push(overused ? overuseHint(overused) : \"connective variety passes\");\n",
+      "replace": "  parts.push(\"connective variety passes\");\n",
+      "kills": [
+        "repair hints for rows whose value says too little Q-F1 names the connective that opens too many linked beats"
+      ]
+    },
+    {
+      "name": "the Q-F1 hint names no connector_in edit past the cap",
+      "file": "products/explainer/src/l0-repair-hints.ts",
+      "find": "return beats.slice(cap).map((id) => {",
+      "replace": "return beats.slice(beats.length).map((id) => {",
+      "kills": [
+        "repair hints for rows whose value says too little Q-F1 names the connector_in to set on each beat past the cap, and those edits pass the check"
+      ]
+    },
+    {
+      "name": "the Q-F1 hint drops the passing link rate",
+      "file": "products/explainer/src/l0-repair-hints.ts",
+      "find": "? `link rate passes: ${rate}` :",
+      "replace": "? \"\" :",
+      "kills": [
+        "repair hints for rows whose value says too little Q-F1 says the link rate passes and variety fails, with each value, the connective tally, and to keep the link"
+      ]
+    },
+    {
+      "name": "the Q-F1 hint drops the connective tally",
+      "file": "products/explainer/src/l0-repair-hints.ts",
+      "find": " (connectives: ${tallied(overused)})",
+      "replace": "",
+      "kills": [
+        "repair hints for rows whose value says too little Q-F1 says the link rate passes and variety fails, with each value, the connective tally, and to keep the link"
+      ]
+    }
+  ]
+}

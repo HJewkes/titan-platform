@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a second markers file mentions merge_op",
+      "file": "products/factory/src/markers/marker-store.ts",
+      "find": "such a step writes no marker. */",
+      "replace": "such a step writes no marker; merge_op. */",
+      "kills": [
+        "merge_op consumers only C7's intent check, the landed pin and the deploy's open-intent reader read merge_op, and nothing writes it yet"
+      ]
+    },
+    {
+      "name": "the landed pin reads a failed result",
+      "file": "products/factory/src/markers/pins.ts",
+      "find": "WHERE kind = 'result' AND outcome = 'merged' AND",
+      "replace": "WHERE kind = 'result' AND",
+      "kills": [
+        "merge_op consumers only C7's intent check, the landed pin and the deploy's open-intent reader read merge_op, and nothing writes it yet"
+      ]
+    },
+    {
+      "name": "the open-intent reader counts result rows as intents",
+      "file": "products/factory/src/registry/intent-readers.ts",
+      "find": "FROM merge_op i WHERE i.kind = 'intent'",
+      "replace": "FROM merge_op i WHERE i.kind IN ('intent', 'result')",
+      "kills": [
+        "merge_op consumers only C7's intent check, the landed pin and the deploy's open-intent reader read merge_op, and nothing writes it yet"
+      ]
+    }
+  ]
+}

@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { termsToKeep } from "./rewrite-guard.js";
 import type { BeatDirective, RefusalRule, RegisterEditPlan } from "./rewrite-plan.js";
+import { cuedWordsIn } from "./rewrite-spans.js";
 import { beatCues, spokenWordIndex, type ScriptBeat, type ScriptChapter } from "./script-schema.js";
 
 export interface RewritePromptDeps {
@@ -8,7 +10,7 @@ export interface RewritePromptDeps {
   guidesDir?: string;
 }
 
-type PromptBeat = Pick<ScriptBeat, "id" | "spoken" | "new_terms" | "visual">;
+type PromptBeat = Pick<ScriptBeat, "id" | "spoken" | "new_terms" | "fact_ids" | "visual">;
 
 const DEFAULT_GUIDES_DIR = fileURLToPath(new URL("../doctrine/guides/", import.meta.url));
 
@@ -28,20 +30,23 @@ function shapeLine(lengths: readonly number[]): string {
 const REFUSAL_NOTES: ReadonlyMap<string, string> = new Map(
   Object.entries({
     empty: "the line came back empty; say the beat in full",
-    entity: "a name from the original went missing; keep every name and id in the line",
+    entity: "a name from the original went missing; keep every name in the line",
     markup: "a linked word was dropped or changed; keep each one exactly as written",
     terms: "too many of the original's own words went missing; keep its wording and change less",
     length: "the line grew or shrank too far; keep it close to the original's length",
-    "number-lost": "the number left the line without its noun in a label; label it with the noun it counts",
+    "number-lost": "a number the screen shows left the line; keep saying it, and put no number in a label",
     "number-invented": "a count appeared that the original never says; add no number of your own",
-    "number-vague": "a vague word stood in for a number; keep the number or cut the clause",
-    "device-added": "it gained a colon, a semicolon, a tail or a \"let's\" the original did not have; say it as a plain sentence",
-    "label-bare": "a label held only a number; give it the noun it counts",
+    "range-split": "a range lost one of its ends; keep both ends or cut the whole range",
+    "number-vague":"a vague word stood in for a number; keep the number or cut the clause",
+    "device-added": "it gained a colon, a semicolon, a tail, a \"let's\" or a \"no X\" the original did not have; say it as a plain sentence",
+    "closer-added": "it ended on a new short summing-up line the original did not have; end where the point is made",
     "list-lost": "an item of the list left the line without a label of its own; label every item",
     "list-emptied": "keep one item of the list in the line",
     "cue-lost": "a cue word was no longer spoken; say every cue word",
     "cue-order": "the cue words came in a different order; keep the original order",
-    "new-term": "a term this beat introduces was no longer spoken; keep saying it",
+    "new-term": "a term this beat names was no longer spoken; keep saying it in full",
+    "fact-id": "a citation id was pasted into the line; say no id, and name the change by what it did",
+    "id-changed": "an id came back cut short or changed; say no id, and name the change by what it did",
     "sentence-cap": "a sentence was too long to say in one breath; split it",
     missing: "the reply left this beat out; return an entry for it",
   } satisfies Record<RefusalRule, string>),
@@ -54,17 +59,36 @@ export const refusalNote = (rule: string): string => REFUSAL_NOTES.get(rule) ?? 
 const refusalLines = (refused: readonly string[]): string[] =>
   [...new Set(refused.map(refusalNote))].map((note) => `- Your last version was not used: ${note}.`);
 
-function directiveLines(directive: BeatDirective, round: RegisterEditPlan["round"]): string[] {
-  const { numbers, triads, shape, refused } = directive;
+/** A list the plan lets collapse holds at most one cue word; the line names it so the collapse keeps that item spoken. */
+function cuedItemLines(triads: readonly string[], beat: PromptBeat): string[] {
+  const cued = [...new Set(triads.flatMap((triad) => cuedWordsIn(triad, beat.visual)))];
+  if (cued.length === 0) return [];
+  return [`- The screen cues on ${quoted(cued)}: the list item that holds each one is the item you keep in the line.`];
+}
+
+/**
+ * A daily says no id aloud (TP-4697). A cut id that leaves nothing in its place took beats under their fill floor, so
+ * the line asks for the words that say what the change did.
+ */
+const idLine = (ids: readonly string[]): string =>
+  `- Ids: this beat says ${quoted(ids)}. Cut each one and say in its place, in a few words, what that change or task did, so the line stays about as long; the screen shows the id, so put none in labels_added and add no number.`;
+
+function directiveLines(beat: PromptBeat, directive: BeatDirective, round: RegisterEditPlan["round"]): string[] {
+  const { numbers, triads, phrases, ids, shape, refused } = directive;
   return [
     ...refusalLines(refused ?? []),
     ...(shape ? [shapeLine(shape)] : []),
     ...(numbers
-      ? [`- Numbers: this beat speaks ${quoted(numbers)}. Keep the one its claim turns on and return the others as on-screen labels.`]
+      ? [`- Numbers: this beat speaks ${quoted(numbers)}. Keep the one its claim turns on and cut the others with the clause they count; put none of them in labels_added.`]
       : []),
     ...(triads
-      ? [`- Lists of three: ${quoted(triads)}. Put every item in labels_added, one each, and keep at most a single item in the line; you may say how many there are.`]
+      ? [
+          `- Lists of three: ${quoted(triads)}. Put every item in labels_added, one each, and keep at most a single item in the line; you may say how many there are.`,
+          ...cuedItemLines(triads, beat),
+        ]
       : []),
+    ...(phrases ? [`- Stock phrases: ${quoted(phrases)}. Say what each one means in plain words of your own.`] : []),
+    ...(ids ? [idLine(ids)] : []),
     ...(round > 1 ? ["- Change only what the lines above name; keep the rest of the beat as written."] : []),
   ];
 }
@@ -81,9 +105,9 @@ function renderBeat(beat: PromptBeat, directive: BeatDirective, round: RegisterE
     `## ${beat.id}`,
     `Original: ${beat.spoken}`,
     `Cue words, in order: ${cueWords(beat).join(", ") || "(none)"}`,
-    `Terms to keep: ${beat.new_terms.join(", ") || "(none)"}`,
+    `Terms to keep: ${termsToKeep(beat).join(", ") || "(none)"}`,
     "Directive:",
-    ...directiveLines(directive, round),
+    ...directiveLines(beat, directive, round),
   ].join("\n");
 }
 

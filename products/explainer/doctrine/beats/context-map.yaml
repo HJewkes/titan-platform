@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: context-map
+summary: "The system as one box among its users and neighbours."
+role: explain
+component: { name: MapBeat, maturity: spike }
+slots: context-map
+speech: { band: concept }
+durationS: [8, 12, 20]
+preset: false
+emphasis: { targets: [actors], treatments: [highlight, pointer] }
+recipe: "Show the system as one box with one to eight actors around it, each with its relation. Light each actor as it is named."

@@ -4,13 +4,21 @@ import { LocalEmbedder, type PipelineFactory } from "./local-embedder.js";
 import { OllamaEmbedder, type OllamaEmbedderOptions } from "./ollama-embedder.js";
 import { NO_PREFIXES, NOMIC_PREFIXES, vectorSpaceId } from "./prefixes.js";
 
-function recordingOllama(options: OllamaEmbedderOptions = {}): { embedder: OllamaEmbedder; sent: () => unknown[] } {
-  const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => {
-    const { input } = JSON.parse(String(init.body)) as { input: string[] };
+function requestBody(init: RequestInit | undefined): { model: string; input: string[] } {
+  const body: unknown = JSON.parse(String(init?.body));
+  if (typeof body !== "object" || body === null || !("model" in body) || !("input" in body) || !Array.isArray(body.input)) {
+    throw new Error("unexpected Ollama request body");
+  }
+  return { model: String(body.model), input: body.input.map(String) };
+}
+
+function recordingOllama(options: OllamaEmbedderOptions = {}): { embedder: OllamaEmbedder; sent: () => { model: string; input: string[] }[] } {
+  const fetchImpl = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+    const { input } = requestBody(init);
     return new Response(JSON.stringify({ embeddings: input.map(() => [1, 0]) }), { status: 200 });
   });
-  const embedder = new OllamaEmbedder({ dimensions: 2, ...options, fetch: fetchImpl as unknown as typeof fetch });
-  return { embedder, sent: () => fetchImpl.mock.calls.map(([, init]) => JSON.parse(String(init.body))) };
+  const embedder = new OllamaEmbedder({ dimensions: 2, ...options, fetch: fetchImpl });
+  return { embedder, sent: () => fetchImpl.mock.calls.map(([, init]) => requestBody(init)) };
 }
 
 function recordingLocal(model?: string): { embedder: LocalEmbedder; sent: string[][] } {
@@ -19,7 +27,7 @@ function recordingLocal(model?: string): { embedder: LocalEmbedder; sent: string
     async (texts: string[]) => (sent.push(texts), { tolist: () => texts.map(() => [1, 0]) }),
     { dispose: async () => undefined },
   );
-  const loadPipeline = async () => (async () => extractor) as unknown as PipelineFactory;
+  const loadPipeline = async (): Promise<PipelineFactory> => async () => extractor;
   return { embedder: new LocalEmbedder({ model, dimensions: 2, loadPipeline }), sent };
 }
 
@@ -53,7 +61,7 @@ describe("OllamaEmbedder prefixes", () => {
     await custom.embedder.embed(["d"]);
 
     expect(plain.sent()).toEqual([{ model: "mxbai-embed-large", input: ["q"] }]);
-    expect(custom.sent().map((b) => (b as { input: string[] }).input)).toEqual([["q"], ["search_document: d"]]);
+    expect(custom.sent().map((b) => b.input)).toEqual([["q"], ["search_document: d"]]);
   });
 });
 

@@ -1,5 +1,6 @@
 import { useMemo, type ReactNode } from "react";
-import { Alert, HStack, Spinner, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, HStack, Typography, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { ConsoleCommands } from "../../server/commands.js";
 import type { Section } from "../../server/round-schema.js";
 import type { RoundDetail } from "../../server/rounds.js";
@@ -50,7 +51,7 @@ function DesignBody({ round, listed }: { round: ValidRound; listed: FramesList }
   const variants = frameDrafts([...labels.keys()], state.frames.drafts);
   const widths = useMemo(() => declaredWidths(round, listed), [round, listed]);
   return (
-    <RoundFramesProvider roundId={round.id} manifest={round.manifest} indexed={indexed}>
+    <RoundFramesProvider roundId={round.id} manifest={round.manifest} indexed={indexed} live={round.live}>
       <FrameFeedbackProvider value={state.frames} widths={widths}>
         <VStack gap={4}>
           <DesignNotes discarded={state.draftDiscarded} withheld={round.recommendationsWithheld} />

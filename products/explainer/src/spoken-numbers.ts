@@ -25,7 +25,32 @@ const yearStep: NormalizeStep = { name: "years", apply: (text) => text.replace(Y
 
 const smallNumberStep: NormalizeStep = { name: "small-numbers", apply: (text) => text.replace(/\b\d{1,2}\b/g, (digits) => numberToWords(Number(digits))) };
 
-const SPOKEN_NUMBER_STEPS: readonly NormalizeStep[] = [rangeStep, percentStep, ageStep, ordinalStep, currencyStep, decimalStep, yearStep, cardinalStep, smallNumberStep];
+// How an identifier such as PR 2324 is voiced, should a line still say one: Q-V15 fails any that does (TP-4697).
+// Pairs is "twenty-three twenty-four", digits is "two three two four", cardinal is "two thousand three hundred twenty-four".
+type IdStyle = "pairs" | "digits" | "cardinal";
+const ID_STYLE: IdStyle = "pairs";
+
+const IDENTIFIER = /(?<lead>\b(?:PR|pull request|ticket|issue)\s+#?|#|\bTP-)(?<digits>\d{4})\b/gi;
+const readPairs = (digits: string): string => {
+  const [head, tail] = [Number(digits.slice(0, 2)), Number(digits.slice(2))];
+  if (tail === 0) return `${numberToWords(head)} hundred`;
+  return `${numberToWords(head)} ${tail < 10 ? `oh ${numberToWords(tail)}` : numberToWords(tail)}`;
+};
+const readId = (digits: string, style: IdStyle): string => {
+  if (style === "digits") return [...digits].map((d) => numberToWords(Number(d))).join(" ");
+  return style === "pairs" ? readPairs(digits) : numberToWords(Number(digits));
+};
+// A "#" or "TP-" is not a word the voice can read, so it becomes the word a listener hears.
+const readLead = (lead: string): string => {
+  if (lead === "#") return "number ";
+  return /^TP-$/i.test(lead) ? "TP " : lead.replace("#", "number ");
+};
+const identifierStep: NormalizeStep = {
+  name: "identifiers",
+  apply: (text) => text.replace(IDENTIFIER, (_m, _lead, _digits, _offset, _whole, groups: { lead: string; digits: string }) => readLead(groups.lead) + readId(groups.digits, ID_STYLE)),
+};
+
+const SPOKEN_NUMBER_STEPS: readonly NormalizeStep[] = [rangeStep, percentStep, ageStep, ordinalStep, currencyStep, decimalStep, identifierStep, yearStep, cardinalStep, smallNumberStep];
 
 const spellPiece = (piece: string): string => normalize(piece, SPOKEN_NUMBER_STEPS);
 
@@ -52,6 +77,7 @@ interface Spelled {
 }
 
 const MAGNITUDE_WORD = /^(?:k|m|bn|thousand|million|billion)\b/i;
+const ID_WORD = /^(?:PR|pull request|ticket|issue)$/i;
 const hasMarkup = (token: string): boolean => /[[\]()]/.test(token);
 
 /** Whether `next` belongs to the same spoken number as the text before it, as in "$1.4 million", "$ 5" or "40 %". */
@@ -59,6 +85,8 @@ function continuesNumber(group: string, next: string): boolean {
   if (hasMarkup(group) || hasMarkup(next)) return false;
   if (/[£$€]$/.test(group)) return /^\d/.test(next);
   if (/[£$€]\s?\d[\d,.]*$/.test(group)) return MAGNITUDE_WORD.test(next);
+  if (/^pull$/i.test(group)) return /^request$/i.test(next);
+  if (ID_WORD.test(group)) return /^#?\d{4}\b/.test(next);
   return /\d$/.test(group) && next.startsWith("%");
 }
 
@@ -218,10 +246,32 @@ export function numberForms(mention: string): string[] {
   return values.map((value, i) => (i === values.length - 1 ? `${value}${percent}` : value));
 }
 
+/**
+ * What a listener can hear in a mention: numberForms, plus a number said in pairs as one value as well. "five
+ * thirty-one" is 5 and 31, and also 531; an "and" between two numbers keeps them apart.
+ */
+export function heardForms(mention: string): string[] {
+  const forms = numberForms(mention);
+  if (/\band\b/i.test(mention)) return forms;
+  const joined = forms.slice(1).flatMap((form, i) => (/^[1-9]\d?$/.test(forms[i]!) && /^[1-9]\d$/.test(form) ? [`${forms[i]}${form}`] : []));
+  return [...forms, ...joined];
+}
+
+const NUMBERED_TERM = /^(?:(?:task|pr)\/\S*?[#-]|(?:PR|pull request|ticket|issue)\s+#?|#|TP-)(\d+)(?:\/\S+)?$/i;
+
+/**
+ * The ways a line can say the number a term names an item by, as in a fact id ("task/TP-4103/opened") or a handle
+ * ("PR 2319"): with an id lead the speller reads it in pairs, without one as a plain number.
+ */
+export function termSpellings(term: string): string[] {
+  const digits = NUMBERED_TERM.exec(term.trim())?.[1];
+  return digits === undefined ? [] : [digits, spellPiece(digits), readId(digits, ID_STYLE)];
+}
+
 export const hasSpokenDigits =(spoken: string): boolean => /\d/.test(spoken.replace(MARKUP, ""));
 
 /** Q-V12: a spoken line holds no digit, so the voice is not left to guess how a number is read. */
 export const spokenDigitsCheck: L0Check = ({ script }) => {
   const beats = script.beats.filter((beat) => hasSpokenDigits(beat.spoken)).map((beat) => beat.id);
-  return [ruleRow("Q-V12", { value: beats.length, threshold: 0, pass: beats.length === 0, beats, severity: "warning" })];
+  return [ruleRow("Q-V12", { value: beats.length, threshold: 0, pass: beats.length === 0, beats })];
 };

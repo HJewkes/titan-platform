@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "no answer asks again without fetching",
+      "file": "products/factory/src/build-ancestry.ts",
+      "find": "    await fetch();\n",
+      "replace": "",
+      "kills": [
+        "the deploy checkout's ancestry probe (TP-3963) answers for two merges made since the checkout's last fetch, moving no ref"
+      ]
+    },
+    {
+      "name": "the deploy checkout's probe never fetches",
+      "file": "products/factory/src/build-ancestry.ts",
+      "find": "cachedAncestry(fetchingAncestry(gitAncestry(checkout, run), gitFetchMain(checkout, run)))",
+      "replace": "cachedAncestry(gitAncestry(checkout, run))",
+      "kills": [
+        "the deploy checkout's ancestry probe (TP-3963) answers for two merges made since the checkout's last fetch, moving no ref"
+      ]
+    },
+    {
+      "name": "the fetch moves origin/main",
+      "file": "products/factory/src/build-ancestry.ts",
+      "find": "\"--refmap=\", ",
+      "replace": "",
+      "kills": [
+        "the deploy checkout's ancestry probe (TP-3963) answers for two merges made since the checkout's last fetch, moving no ref"
+      ]
+    },
+    {
+      "name": "a definite answer still fetches",
+      "file": "products/factory/src/build-ancestry.ts",
+      "find": "    if (typeof answer === \"boolean\") return answer;\n    await fetch();",
+      "replace": "    await fetch();",
+      "kills": [
+        "the deploy checkout's ancestry probe (TP-3963) fetches only when git has no answer"
+      ]
+    }
+  ]
+}

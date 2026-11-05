@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readFixture } from "../test-fixtures.js";
+import { asRecord, llmStep, readFixture, readFixtureObject, readVariant } from "../test-fixtures.js";
 import { parseSpec } from "./index.js";
 import type { VariantSpec } from "./index.js";
 
@@ -13,8 +13,13 @@ const FIXTURES = [
   "scorecard.json",
 ];
 
+function checksOf(suite: Record<string, unknown>): Record<string, unknown>[] {
+  if (!Array.isArray(suite.checks)) throw new Error("the fixture suite has no checks");
+  return suite.checks.map(asRecord);
+}
+
 function withLlmModel(variant: VariantSpec, model: string): unknown {
-  const step = variant.steps.summarize as Extract<VariantSpec["steps"][string], { kind: "llm" }>;
+  const step = llmStep(variant);
   return { ...variant, steps: { summarize: { ...step, model } } };
 }
 
@@ -28,8 +33,8 @@ describe("spec round trip", () => {
   });
 
   it("fills a check's scope with trial when the spec leaves it out", () => {
-    const suite = readFixture<{ checks: Record<string, unknown>[] }>("suite.json");
-    const unscoped = { ...suite.checks[0], scope: undefined };
+    const suite = readFixtureObject("suite.json");
+    const unscoped = { ...checksOf(suite)[0], scope: undefined };
 
     const parsed = parseSpec({ ...suite, checks: [unscoped] });
 
@@ -39,14 +44,14 @@ describe("spec round trip", () => {
 
 describe("strict and loose parsing", () => {
   it.each(FIXTURES)("rejects an unknown top-level key in %s when strict and keeps it when loose", (file) => {
-    const extended = { ...readFixture<object>(file), addedLater: true };
+    const extended = { ...readFixtureObject(file), addedLater: true };
 
     expect(() => parseSpec(extended, "strict")).toThrow(/addedLater|Unrecognized/);
     expect(parseSpec(extended, "loose")).toMatchObject({ addedLater: true });
   });
 
   it("rejects an unknown key nested in a step when strict and keeps it when loose", () => {
-    const variant = readFixture<VariantSpec>("variants/single-pass.json");
+    const variant = readVariant();
     const nested = { ...variant, steps: { summarize: { ...variant.steps.summarize, temperature: 0 } } };
 
     expect(() => parseSpec(nested, "strict")).toThrow();
@@ -54,14 +59,14 @@ describe("strict and loose parsing", () => {
   });
 
   it("refuses a model alias on write and reads it back when loose", () => {
-    const aliased = withLlmModel(readFixture<VariantSpec>("variants/single-pass.json"), "sonnet");
+    const aliased = withLlmModel(readVariant(), "sonnet");
 
     expect(() => parseSpec(aliased, "strict")).toThrow(/alias/);
     expect(parseSpec(aliased, "loose")).toMatchObject({ steps: { summarize: { model: "sonnet" } } });
   });
 
   it("still validates known fields when loose", () => {
-    const unit = { ...readFixture<object>("unit.json"), id: "Not Kebab" };
+    const unit = { ...readFixtureObject("unit.json"), id: "Not Kebab" };
 
     expect(() => parseSpec(unit, "loose")).toThrow();
   });
@@ -69,8 +74,8 @@ describe("strict and loose parsing", () => {
   it.each(["/srv/prompts/a.md", "~/prompts/a.md", "../outside.md", "C:/prompts/a.md"])(
     "refuses the prompt path %s so a spec never names a machine path",
     (path) => {
-      const variant = readFixture<VariantSpec>("variants/single-pass.json");
-      const step = variant.steps.summarize as Extract<VariantSpec["steps"][string], { kind: "llm" }>;
+      const variant = readVariant();
+      const step = llmStep(variant);
       const moved = { ...variant, steps: { summarize: { ...step, prompt: { ...step.prompt, path } } } };
 
       expect(() => parseSpec(moved)).toThrow(/path/);
@@ -85,14 +90,14 @@ describe("strict and loose parsing", () => {
 
 describe("schema edges", () => {
   it("requires a case's input even though any JSON value is allowed", () => {
-    const evalCase = { ...readFixture<Record<string, unknown>>("cases/standup-note.json"), input: undefined };
+    const evalCase = { ...readFixtureObject("cases/standup-note.json"), input: undefined };
 
     expect(() => parseSpec(evalCase)).toThrow(/input/);
   });
 
   it("refuses a backslash path, which is one file name on POSIX and a folder path on Windows", () => {
-    const variant = readFixture<VariantSpec>("variants/single-pass.json");
-    const step = variant.steps.summarize as Extract<VariantSpec["steps"][string], { kind: "llm" }>;
+    const variant = readVariant();
+    const step = llmStep(variant);
     const moved = { ...variant, steps: { summarize: { ...step, prompt: { ...step.prompt, path: "prompts\\summarize.md" } } } };
 
     expect(() => parseSpec(moved)).toThrow(/forward slashes/);
@@ -101,8 +106,8 @@ describe("schema edges", () => {
 
 describe("strictness inside nested refs", () => {
   it("rejects an unknown key inside a prompt ref when strict and keeps it when loose", () => {
-    const variant = readFixture<VariantSpec>("variants/single-pass.json");
-    const step = variant.steps.summarize as Extract<VariantSpec["steps"][string], { kind: "llm" }>;
+    const variant = readVariant();
+    const step = llmStep(variant);
     const extended = { ...variant, steps: { summarize: { ...step, prompt: { ...step.prompt, encoding: "utf8" } } } };
 
     expect(() => parseSpec(extended, "strict")).toThrow(/encoding|Unrecognized/);
@@ -110,9 +115,9 @@ describe("strictness inside nested refs", () => {
   });
 
   it("rejects an unknown key inside a judge when strict and keeps it when loose", () => {
-    const suite = readFixture<{ checks: Record<string, unknown>[] }>("suite.json");
-    const judge = suite.checks.find((check) => check.family === "judge") as { judge: Record<string, unknown> };
-    const extended = { ...suite, checks: [{ ...judge, judge: { ...judge.judge, temperature: 0 } }] };
+    const suite = readFixtureObject("suite.json");
+    const judge = checksOf(suite).find((check) => check.family === "judge");
+    const extended = { ...suite, checks: [{ ...judge, judge: { ...asRecord(judge?.judge), temperature: 0 } }] };
 
     expect(() => parseSpec(extended, "strict")).toThrow(/temperature|Unrecognized/);
     expect(parseSpec(extended, "loose")).toMatchObject({ checks: [{ judge: { temperature: 0 } }] });
@@ -121,7 +126,7 @@ describe("strictness inside nested refs", () => {
 
 describe("model ids", () => {
   const strictModel = (model: string) => () =>
-    parseSpec(withLlmModel(readFixture<VariantSpec>("variants/single-pass.json"), model), "strict");
+    parseSpec(withLlmModel(readVariant(), model), "strict");
 
   it.each([
     ["a bare alias", "sonnet"],

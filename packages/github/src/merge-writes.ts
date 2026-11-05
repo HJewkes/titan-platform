@@ -26,9 +26,18 @@ async function mergedAt(wire: GitHubWire, repo: RepoSlug, number: number, sha: s
   return pr.merged && pr.headSha === sha && pr.mergeSha ? { mergeSha: pr.mergeSha, done: true } : undefined;
 }
 
-export async function rerunFailed(wire: GitHubWire, repo: RepoSlug, runId: number, sleep: Sleep): Promise<WriteResult> {
+export function rerunFailed(wire: GitHubWire, repo: RepoSlug, runId: number, sleep: Sleep): Promise<WriteResult> {
+  return rerunCompletedRun(wire, repo, runId, `rerun-failed-jobs ${repo} run ${runId}`, () => wire.rerunFailedJobs(repo, runId), sleep);
+}
+
+export function rerunJob(wire: GitHubWire, repo: RepoSlug, runId: number, jobId: number, sleep: Sleep): Promise<WriteResult> {
+  return rerunCompletedRun(wire, repo, runId, `rerun ${repo} run ${runId} job ${jobId}`, () => wire.rerunJob(repo, jobId), sleep);
+}
+
+/** GitHub reruns only a completed run, and a run it requeued reads not completed, which is how a lost answer is told from a refusal. */
+async function rerunCompletedRun(wire: GitHubWire, repo: RepoSlug, runId: number, what: string, post: () => Promise<void>, sleep: Sleep): Promise<WriteResult> {
   const status = await wire.getWorkflowRunStatus(repo, runId);
   if (status !== "completed") return { done: false, skipped: "in-progress" };
   const requeued = async () => ((await wire.getWorkflowRunStatus(repo, runId)) === "completed" ? undefined : { done: true as const });
-  return writeWithReadBack(`rerun-failed-jobs ${repo} run ${runId}`, async () => (await wire.rerunFailedJobs(repo, runId), { done: true as const }), requeued, sleep);
+  return writeWithReadBack(what, async () => (await post(), { done: true as const }), requeued, sleep);
 }

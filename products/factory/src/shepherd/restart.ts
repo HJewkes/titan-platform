@@ -11,6 +11,7 @@ import { runOutcome } from "./run-end.js";
 const RESTARTABLE_STOPS: ReadonlySet<string> = new Set(["not-mergeable", "conflict", "abandoned"]);
 
 const REPLAY_DIVERGED = "replay-diverged";
+const CANCELLED = "cancelled";
 
 /** The reason the diverged sweep cancels a run with when its pull request is closed; a register after the PR reopens revives it. */
 export const DIVERGED_PR_CLOSED = "replay diverged; PR closed";
@@ -44,11 +45,15 @@ async function restartableStop(services: ShepherdServices, known: Registration, 
   return openPrRestart(services, known, { previousStop: reason });
 }
 
-/** A failed run is dead and nothing retries it; neither does a run that stopped where a fix may help. Undefined keeps the run. */
+/**
+ * A failed run is dead and nothing retries it; neither does a run that stopped where a fix may help. Undefined keeps the run.
+ * Shepherd cancels a run only when its PR read merged, closed or gone, so a cancelled run whose PR is open again restarts.
+ */
 export async function restartFor(host: FactoryHost, services: ShepherdServices, known: Registration): Promise<Restart | undefined> {
   const run = host.runtime.status(known.runId);
   if (run?.status === "failed") return {};
   if (run && isDivergedEnd(run)) return openPrRestart(services, known, { previousStop: REPLAY_DIVERGED });
+  if (run?.status === "cancelled") return openPrRestart(services, known, { previousStop: CANCELLED });
   return run?.status === "completed" ? restartableStop(services, known, run) : undefined;
 }
 

@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "no reconciler.cost line",
+      "file": "products/factory/src/reconciler/service.ts",
+      "find": "    deps.log.info({ repo, ...cost }, \"reconciler.cost\");\n",
+      "replace": "",
+      "kills": [
+        "reconciler cost line (F11) logs one reconciler.cost per repo per pass: GraphQL points, gate reads, their 304s and the kinds appended",
+        "reconciler cost line (F11) still logs a pass the pool refused, and one whose unit failed, each as spending what it sent"
+      ]
+    },
+    {
+      "name": "the cost line is skipped for a refused or failed pass",
+      "file": "products/factory/src/reconciler/service.ts",
+      "find": "  try {\n    await runUnit(repo, state, fullEvery, deps, cost);\n  } finally {\n    deps.log.info({ repo, ...cost }, \"reconciler.cost\");\n  }",
+      "replace": "  await runUnit(repo, state, fullEvery, deps, cost);\n  if (cost.graphqlCost > 0) deps.log.info({ repo, ...cost }, \"reconciler.cost\");",
+      "kills": [
+        "reconciler cost line (F11) still logs a pass the pool refused, and one whose unit failed, each as spending what it sent"
+      ]
+    },
+    {
+      "name": "a confirmed row counts as appended",
+      "file": "products/factory/src/reconciler/service.ts",
+      "find": "if (result.inserted) cost.appended[event.kind]",
+      "replace": "if (result.seq > 0) cost.appended[event.kind]",
+      "kills": [
+        "reconciler cost line (F11) counts a row a webhook already holds as no append"
+      ]
+    },
+    {
+      "name": "the guard's compare is not counted",
+      "file": "products/factory/src/reconciler/service.ts",
+      "find": "  if (answer.refused) return REFUSED;\n  cost.restCalls += 1;\n",
+      "replace": "  if (answer.refused) return REFUSED;\n",
+      "kills": [
+        "reconciler cost line (F11) counts the head guard's compare as a REST read"
+      ]
+    },
+    {
+      "name": "304s are not counted",
+      "file": "products/factory/src/reconciler/service.ts",
+      "find": "  cost.notModified += gates.value.notModified;\n",
+      "replace": "",
+      "kills": [
+        "reconciler cost line (F11) logs one reconciler.cost per repo per pass: GraphQL points, gate reads, their 304s and the kinds appended"
+      ]
+    }
+  ]
+}

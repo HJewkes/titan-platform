@@ -38,7 +38,7 @@ export function pythonDeadCode(root: Node): DeadCodeCounts {
       out.params += r.params;
     }
     for (const child of node.namedChildren) {
-      if (child) visit(child);
+      visit(child);
     }
   };
   visit(root);
@@ -50,7 +50,6 @@ function unreachableInBlock(block: Node): number {
   let seenTerminal = false;
   let count = 0;
   for (const child of block.namedChildren) {
-    if (!child) continue;
     if (seenTerminal && child.type !== "comment") count++;
     if (TERMINALS.has(child.type)) seenTerminal = true;
   }
@@ -93,7 +92,7 @@ function analyzeFunction(fn: Node): { locals: number; params: number } {
 function isStub(fn: Node): boolean {
   const body = fn.childForFieldName("body");
   return (body?.namedChildren ?? []).every((stmt) => {
-    if (!stmt || stmt.type === "comment" || stmt.type === "pass_statement") return true;
+    if (stmt.type === "comment" || stmt.type === "pass_statement") return true;
     if (stmt.type === "raise_statement") return /^raise NotImplementedError\b/.test(stmt.text);
     const expr = stmt.type === "expression_statement" ? stmt.namedChild(0) : null;
     return expr?.type === "ellipsis" || expr?.type === "string";
@@ -109,7 +108,7 @@ function ownParamNames(fn: Node): (string | null)[] {
   if (!params) return [];
   const out: (string | null)[] = [];
   for (const p of params.namedChildren) {
-    if (!p || p.type === "keyword_separator" || p.type === "positional_separator") continue;
+    if (p.type === "keyword_separator" || p.type === "positional_separator") continue;
     const id = paramIdentifier(p);
     out.push(id && !RECEIVERS.has(id.text) ? id.text : null);
   }
@@ -149,7 +148,7 @@ function ownBindings(fn: Node): OwnBindings {
 function paramIdentifiers(params: Node | null): Node[] {
   const ids: Node[] = [];
   for (const p of params?.namedChildren ?? []) {
-    const id = p ? paramIdentifier(p) : null;
+    const id = paramIdentifier(p);
     if (id) ids.push(id);
   }
   return ids;
@@ -158,7 +157,7 @@ function paramIdentifiers(params: Node | null): Node[] {
 function collectOwnBindings(node: Node, out: OwnBindings): void {
   if (SCOPE_TYPES.has(node.type)) return;
   recordOwnBinding(node, out);
-  for (const child of node.namedChildren) if (child) collectOwnBindings(child, out);
+  for (const child of node.namedChildren) collectOwnBindings(child, out);
 }
 
 function recordOwnBinding(node: Node, out: OwnBindings): void {
@@ -168,7 +167,7 @@ function recordOwnBinding(node: Node, out: OwnBindings): void {
     out.declIds.add(id.id);
   }
   if (node.type !== "global_statement" && node.type !== "nonlocal_statement") return;
-  for (const n of node.namedChildren) if (n) out.declared.add(n.text);
+  for (const n of node.namedChildren) out.declared.add(n.text);
 }
 
 /** Names bound by parameters or plain assignment inside any scope nested in the function. */
@@ -181,7 +180,7 @@ function nestedBindings(fn: Node): Set<string> {
 function collectNestedBindings(node: Node, fn: Node, nested: boolean, out: Set<string>): void {
   const inner = nested || (node !== fn && SCOPE_TYPES.has(node.type));
   if (inner) recordNestedBinding(node, out);
-  for (const child of node.namedChildren) if (child) collectNestedBindings(child, fn, inner, out);
+  for (const child of node.namedChildren) collectNestedBindings(child, fn, inner, out);
 }
 
 function recordNestedBinding(node: Node, out: Set<string>): void {
@@ -198,7 +197,7 @@ function countReferences(fn: Node, declIds: ReadonlySet<number>): Map<string, nu
     if (node.type === "identifier" && !declIds.has(node.id)) {
       out.set(node.text, (out.get(node.text) ?? 0) + 1);
     }
-    for (const child of node.namedChildren) if (child) walk(child);
+    for (const child of node.namedChildren) walk(child);
   };
   const body = fn.childForFieldName("body");
   if (body) walk(body);

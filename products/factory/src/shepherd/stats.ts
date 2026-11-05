@@ -1,4 +1,5 @@
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 
 /** A merge that waited longer than this between the reviewer's MERGE and the merge itself is slow. */
 const SLOW_WAIT_MS = 60 * 60_000;
@@ -39,7 +40,7 @@ interface MergeUps {
 /** A dispatch step's answer sits under `data.result` in the ledger. */
 export const payloadOf = (result: StepResult): Record<string, unknown> => {
   const wrapped = result.data?.result;
-  return typeof wrapped === "object" && wrapped !== null ? (wrapped as Record<string, unknown>) : {};
+  return isObjectLike(wrapped) ? wrapped : {};
 };
 export const stepName = (key: string): string => key.split(":")[0]!;
 const MS_PER_DAY = 86_400_000;
@@ -116,6 +117,15 @@ export const inStepOrder = (run: WorkflowRun): Ordered[] =>
   Object.entries(run.stepResults)
     .map(([key, result]) => ({ key, result }))
     .sort((a, b) => a.result.completedAt.localeCompare(b.result.completedAt));
+
+/** The head the run's newest CI read was at, which is the head its merge step merges; undefined before any. */
+export function lastCiHead(run: WorkflowRun): string | undefined {
+  const read = inStepOrder(run)
+    .filter(({ key }) => stepName(key) === "ci-wait")
+    .at(-1);
+  const head = read && payloadOf(read.result).headSha;
+  return typeof head === "string" ? head : undefined;
+}
 
 const FREEZE_HOLD_UPDATE = "update-branch:sh-freeze-hold:";
 

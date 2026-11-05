@@ -2,9 +2,8 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fixtureEnv, seedRepo } from "@titan-design/test-kit/git";
 import { afterEach, expect, it, vi } from "vitest";
-import { seedRepo } from "./git-fixture.js";
-import { fixtureEnv } from "./test-env.js";
 import { reclaimWorktree, sweepWorktrees } from "./sweep.js";
 
 const roots: string[] = [];

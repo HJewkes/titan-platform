@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, fakeSha, githubPort } from "@titan-design/github";
@@ -8,11 +8,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { BRANCH, callCommand, shepherdFixture, shepherdRuns, type FixtureOptions, type ShepherdFixture } from "../test-support/shepherd.js";
+import { loadSeatBook } from "./seats.js";
 import { AccountLimitStore } from "./account-store.js";
 import type { MergeEvaluation, Registered } from "./commands.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
-import { PrTimelineSchema, WatchRowSchema, type PrTimeline, type WatchRow } from "./view.js";
-import type { Waiting } from "./waiting.js";
+import { PrTimelineSchema, type PrTimeline } from "./view.js";
+import { WatchRowSchema, type WatchRow } from "./view-schema.js";
+import type { Waiting } from "./waiting-schema.js";
+
+function readOnlySeatDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), "seats-"));
+  writeFileSync(join(dir, "s.md"), `---\nschema: autonomy-seat/v1\nname: demo-seat\nrepos:\n  - remote: ${REPO}\n    read_only: true\n---\n`);
+  return dir;
+}
 
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
@@ -148,6 +156,39 @@ describe("shepherd.register", () => {
     expect(envelope).toMatchObject({ ok: false, error: expect.stringMatching(/registration refused/) });
     expect(shepherdRuns(w.host)).toEqual([]);
     expect(await w.call("shepherd.status", {})).toEqual({ ok: true, data: [] });
+  });
+
+  const NO_SEAT = `no seat lists ${REPO}; add it to a seat file under claude-channels/sources/autonomy/seats`;
+  const seatOf = (extra: object) => ({ name: "demo-seat", remotes: [] as string[], paths: {}, grants: [], ...extra });
+
+  it("a repo no seat lists is refused with the seat-file message and starts no run", async () => {
+    const w = world({ seats: { seats: [seatOf({ remotes: ["octo/other"] })], denied: [] } });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+
+    const envelope = await w.call("shepherd.register", pr1);
+
+    expect(envelope).toEqual({ ok: false, error: NO_SEAT, code: expect.anything() });
+    expect(shepherdRuns(w.host)).toEqual([]);
+  });
+
+  it("a repo a seat lists only as read_only counts as not covered", async () => {
+    const book = loadSeatBook({ seatsDir: readOnlySeatDir(), home: tmpdir() });
+    const w = world({ seats: book });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+
+    const envelope = await w.call("shepherd.register", pr1);
+
+    expect(envelope).toMatchObject({ ok: false, error: NO_SEAT });
+    expect(shepherdRuns(w.host)).toEqual([]);
+  });
+
+  it("a repo a seat lists registers under that seat", async () => {
+    const w = world({ seats: { seats: [seatOf({ remotes: [REPO] })], denied: [] } });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+
+    const { registration } = await registered(w, pr1);
+
+    expect(registration.policy).toMatchObject({ seat: "demo-seat" });
   });
 
   it("an owner-gate request with no reason is refused naming the four reasons, and starts no run", async () => {
@@ -421,6 +462,16 @@ describe("shepherd.register slice", () => {
     expect(again.registration.slice).toBeNull();
   });
 
+  it("a re-register without lastSlice keeps the stored last-slice mark", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const first = await registered(w, { ...pr1, lastSlice: true });
+
+    const again = await registered(w, { ...pr1, implementer: "impl-b" });
+
+    expect([first.registration.lastSlice, again.registration.lastSlice]).toEqual([true, true]);
+  });
+
   it("a slice and noSlice together are refused", async () => {
     const w = world({ frozen: true });
     w.fake.addPr({ headSha: H1, headRef: BRANCH });
@@ -531,17 +582,16 @@ describe("shepherd.register after a failed run", () => {
     expect(shepherdRuns(w.host)).toEqual([first.runId]);
   });
 
-  it("a cancelled run comes back unchanged", async () => {
+  it("a cancelled run whose PR closed comes back unchanged", async () => {
     const w = world({ frozen: true });
     w.fake.addPr({ headSha: H1, headRef: BRANCH });
-    const first = await registered(w, pr1);
-    w.host.runtime.cancel(first.runId, "test");
-    await w.host.runtime.wait(first.runId);
+    const first = await cancelledRegistration(w);
+    w.fake.pr(1).state = "closed";
 
     const again = await registered(w, pr1);
 
-    expect(again).toMatchObject({ runId: first.runId, created: false });
-    expect(shepherdRuns(w.host)).toEqual([first.runId]);
+    expect(again).toMatchObject({ runId: first, created: false });
+    expect(shepherdRuns(w.host)).toEqual([first]);
   });
 
   it("a completed run comes back unchanged", async () => {
@@ -555,6 +605,56 @@ describe("shepherd.register after a failed run", () => {
 
     expect(again).toMatchObject({ runId: first.runId, created: false });
     expect(shepherdRuns(w.host)).toEqual([first.runId]);
+  });
+});
+
+/** A registered run that Shepherd cancelled, as the gone-elsewhere sweep does when a PR reads closed. */
+async function cancelledRegistration(w: World, args: object = pr1): Promise<string> {
+  const { runId } = await registered(w, args);
+  w.host.runtime.cancel(runId, "closed elsewhere: demo/repo#1 was closed outside Shepherd");
+  await w.host.runtime.wait(runId);
+  return runId;
+}
+
+describe("shepherd.register after a cancelled run (TP-3731)", () => {
+  it("an open PR gets a new run at its moved head, and the registration moves to it", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const cancelled = await cancelledRegistration(w);
+    w.fake.pushHead(1, H2);
+
+    const again = await registered(w, { ...pr1, head: H2 });
+
+    expect(again).toMatchObject({ created: true, previousRunId: cancelled, previousStop: "cancelled", registration: { runId: again.runId, headSha: H2 } });
+    expect(w.host.runtime.status(again.runId)?.status).toBe("running");
+    expect(w.host.runtime.status(cancelled)?.status).toBe("cancelled");
+    expect(shepherdRuns(w.host)).toHaveLength(2);
+  });
+
+  it("the new run keeps the old run's gating hold and owner-asked hold", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const cancelled = await cancelledRegistration(w);
+    const store = w.routes.shepherd!.store.get();
+    store.hold(cancelled, "g10-review", "rev");
+    store.hold(cancelled, "owner-asked: wait for the owner");
+
+    const again = await registered(w, pr1);
+
+    expect(again.runId).not.toBe(cancelled);
+    expect(store.byPr(REPO, 1)).toMatchObject({ runId: again.runId, holdReason: "g10-review", holdReviewer: "rev", ownerHold: { reason: "owner-asked: wait for the owner" } });
+  });
+
+  it("a kindless repeat keeps the stored kind, and a move outside the fix-proof kinds is refused with the run left alone", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const cancelled = await cancelledRegistration(w, { ...pr1, kind: "correctness" });
+
+    const refused = await w.call("shepherd.register", { ...pr1, kind: "feature" });
+    const again = await registered(w, pr1);
+
+    expect(refused).toMatchObject({ ok: false, error: expect.stringMatching(/correctness.*feature/) });
+    expect(again).toMatchObject({ created: true, previousRunId: cancelled, registration: { kind: "correctness" } });
   });
 });
 

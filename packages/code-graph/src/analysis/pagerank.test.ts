@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { computePageRank } from "./pagerank.js";
+import { rowToEdge } from "../rows.js";
 import type { GraphEdge, GraphNode } from "../types.js";
 
 function file(id: string): GraphNode {
@@ -135,6 +136,16 @@ describe("computePageRank", () => {
     const calls = computePageRank(nodes, skewedEdges);
     expect(scoreOf(calls.rows, "c")).toBeGreaterThan(scoreOf(calls.rows, "b"));
     expect(skewed.iterations).toBeGreaterThan(0);
+  });
+
+  it("weighs a stored edge kind outside EdgeKind like an import", () => {
+    const nodes = ["a", "b", "c"].map(file);
+    const legacy = rowToEdge({ src_id: "a", dst_id: "c", kind: "uses", attrs: "{}" });
+
+    const { rows } = computePageRank(nodes, [imports("a", "b"), legacy]);
+
+    expect(scoreOf(rows, "c")).toBeCloseTo(scoreOf(rows, "b"), 6);
+    expect(scoreOf(rows, "c")).toBeGreaterThan(scoreOf(rows, "a"));
   });
 
   it("rows are sorted descending by score with ties broken by nodeId", () => {

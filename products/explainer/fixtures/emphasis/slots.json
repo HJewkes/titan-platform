@@ -1,0 +1,20 @@
+{
+  "b1-walk": {
+    "path": "src/total.ts",
+    "language": "ts",
+    "mode": "plain",
+    "simplified": false,
+    "lines": [
+      { "id": "open", "text": "let total = 0;" },
+      { "id": "close", "text": "return total;" }
+    ]
+  },
+  "b2-map": {
+    "nodes": [
+      { "id": "scanner", "label": "Scanner" },
+      { "id": "desk", "label": "Desk server" },
+      { "id": "ledger", "label": "Ledger" }
+    ],
+    "edges": [{ "id": "scan-to-desk", "from": "scanner", "to": "desk" }]
+  }
+}

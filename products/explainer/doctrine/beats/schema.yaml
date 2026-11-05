@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: schema
+summary: "The data model: tables, keys and relations."
+role: explain
+component: { name: SchemaCard, maturity: shipped }
+slots: schema
+speech: { band: code }
+durationS: [8, 14, 25]
+preset: false
+emphasis: { targets: [tables, relations], treatments: [highlight] }
+recipe: "Show at most six tables with their key columns, and relations between them. Highlight the one table the narration is about."

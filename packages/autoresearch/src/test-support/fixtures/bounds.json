@@ -1,0 +1,25 @@
+{
+ "schema": "ar-bounds/v1",
+ "classes": {
+  "planner-ranking": {"paths": ["bench/suite/planner/{rank,recipes,families,tasks,classes,units}.py"],
+                      "tests": ["bench/suite/tests/test_planner*.py"]},
+  "accept-gate": {"paths": ["bench/suite/gate/gates.py", "bench/suite/ledger/rules.py"],
+                  "tests": ["bench/suite/tests/test_gate*.py", "bench/suite/tests/test_ledger*.py"]},
+  "session-prompt": {"paths": ["bench/suite/runner/prompt.py", "bench/suite/planner/template.py"],
+                     "tests": ["bench/suite/tests/test_runner*.py", "bench/suite/tests/test_planner*.py"]},
+  "config-param": {"paths": ["bench/suite/planner/config.json"],
+                   "params": {"floor_gain_per_new_function": [10, 60], "hot_cc": [6, 15], "recipes.r3_min_cc": [2, 6],
+                              "recipes.r1_min_arms": [2, 6], "search.max_candidates": [4, 16],
+                              "p5.cx_improve": [0, 0.2], "p5.cx_worsen": [0, 0.2], "p5.size": [0, 0.2],
+                              "p5.iface_base": [0, 0.2], "p5.module_risk": [0, 0.2],
+                              "p5.module_lines_per_new_function": [0, 10],
+                              "p5.iface_ratio": [0.25, 1.0], "p5.crossings": [0, 3], "p5.amount_ratio": [1.0, 2.5]},
+                   "integerParams": ["hot_cc", "recipes.r3_min_cc", "recipes.r1_min_arms", "search.max_candidates",
+                                     "p5.crossings", "p5.module_lines_per_new_function"]}
+ },
+ "diff": {"oneClassPerIdea": true},
+ "test": {"required": true, "mustFailOnBase": true, "exceptClasses": ["config-param"]},
+ "banned": {"seedNames": "local seed index (training, validator and holdout; path in factory config only)",
+            "literalsOutsideConfig": "added src numeric literals other than 0, 1, 2, -1",
+            "frozenTouch": true, "newFiles": "only under the class's test globs"}
+}

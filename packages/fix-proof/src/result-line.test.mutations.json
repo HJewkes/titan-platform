@@ -1,0 +1,29 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a refused line may omit the default branch",
+      "file": "packages/fix-proof/src/result-line.ts",
+      "find": "if (value.base === undefined || !isShownRef(value.defaultBranch)) return",
+      "replace": "if (value.base === undefined) return",
+      "kills": ["the base a line judged, and a refused line refuses a refused line with no default branch"]
+    },
+    {
+      "name": "a refused line may carry counts",
+      "file": "packages/fix-proof/src/result-line.ts",
+      "find": "return counted || !Array.isArray(value.tests)",
+      "replace": "return !Array.isArray(value.tests)",
+      "kills": ["the base a line judged, and a refused line refuses a refused line with a count"]
+    },
+    {
+      "name": "a judged base escapes the shown-ref alphabet",
+      "file": "packages/fix-proof/src/result-line.ts",
+      "find": "if (value.base !== undefined && !isShownRef(value.base)) return",
+      "replace": "if (value.base !== undefined && typeof value.base !== \"string\") return",
+      "kills": [
+        "the base a line judged, and a refused line refuses a refused line with a base with a space",
+        "the base a line judged, and a refused line refuses a refused line with an empty base"
+      ]
+    }
+  ]
+}

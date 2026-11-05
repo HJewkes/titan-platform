@@ -221,9 +221,17 @@ describe("buildClaudePrintArgs", () => {
   it("passes a JSON Schema without the draft 2020-12 header the CLI rejects", () => {
     const args = buildClaudePrintArgs(printConfig({ outputSchema: okSchema }));
 
-    const schema = JSON.parse(args[args.indexOf("--json-schema") + 1]!) as Record<string, unknown>;
+    const schema: unknown = JSON.parse(args[args.indexOf("--json-schema") + 1]!);
     expect(schema).not.toHaveProperty("$schema");
     expect(schema).toMatchObject({ type: "object", required: ["ok"] });
+  });
+
+  it("runs bare: no tools, no MCP servers, no settings files and no skills or slash commands", () => {
+    const args = buildClaudePrintArgs(printConfig());
+
+    expect(args[args.indexOf("--tools") + 1]).toBe("");
+    expect(args[args.indexOf("--setting-sources") + 1]).toBe("");
+    expect(args).toEqual(expect.arrayContaining(["--strict-mcp-config", "--disable-slash-commands"]));
   });
 
   it("omits model, system prompt and schema flags when they are not configured", () => {

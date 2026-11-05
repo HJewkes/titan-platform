@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a dead registrant's spawner chain is never walked",
+      "file": "products/factory/src/shepherd/seat-digest.ts",
+      "find": "registrantSeat(lineage, roster) ?? spawnerSeat(lineage, roster)",
+      "replace": "registrantSeat(lineage, roster)",
+      "kills": [
+        "a dead registrant's seat digest goes to the live seat that spawned it (TP-4061) a dead spawned agent with a live spawner has its digest sent to the spawner",
+        "a dead registrant's seat digest goes to the live seat that spawned it (TP-4061) a dead agent whose spawner is dead too has its digest sent to the live grand-spawner"
+      ]
+    },
+    {
+      "name": "the spawner chain stops at the first hop",
+      "file": "products/factory/src/shepherd/registrant.ts",
+      "find": "    spawner = latestRow(spawner, roster)?.spawnedBy;",
+      "replace": "    spawner = undefined;",
+      "kills": [
+        "a dead registrant's seat digest goes to the live seat that spawned it (TP-4061) a dead agent whose spawner is dead too has its digest sent to the live grand-spawner"
+      ]
+    },
+    {
+      "name": "the first spawner is taken whether or not it is live",
+      "file": "products/factory/src/shepherd/registrant.ts",
+      "find": "    if (holdsLiveSession(spawner, roster)) return spawner;",
+      "replace": "    return spawner;",
+      "kills": [
+        "a dead registrant's seat digest goes to the live seat that spawned it (TP-4061) a dead agent whose spawner is dead too has its digest sent to the live grand-spawner"
+      ]
+    },
+    {
+      "name": "an unreadable roster fails the sweep instead of routing by repo seat",
+      "file": "products/factory/src/shepherd/seat-digest.ts",
+      "find": "await ports.roster().catch(unreadRoster)",
+      "replace": "await ports.roster()",
+      "kills": [
+        "a dead registrant's seat digest goes to the live seat that spawned it (TP-4061) an unreadable roster routes the digest by repo seat, as before, and logs why"
+      ]
+    }
+  ]
+}

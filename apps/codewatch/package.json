@@ -19,7 +19,7 @@
   "dependencies": {
     "@titan-design/code-read": "workspace:*",
     "@titan-design/react-app": "workspace:*",
-    "@titan-design/react-ui": "^0.21.2",
+    "@titan-design/react-ui": "^0.23.1",
     "@titan-design/rpc-client": "workspace:*",
     "@titan-design/rpc-protocol": "workspace:*",
     "react": "^19.3.0",

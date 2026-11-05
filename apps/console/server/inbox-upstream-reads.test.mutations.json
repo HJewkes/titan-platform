@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the inbox taps read the factory fresh instead of the kept read",
+      "file": "apps/console/server/commands.ts",
+      "find": "...inboxActionCommands(cached, actions, cache.invalidate),",
+      "replace": "...inboxActionCommands(sources, actions, cache.invalidate),",
+      "kills": ["inbox taps beside the inbox prepare and act reuse the inbox's fresh needs read instead of reading the factory again"]
+    },
+    {
+      "name": "a factory frame drops the kept needs read again",
+      "file": "apps/console/server/commands.ts",
+      "find": "invalidation?.on(\"factory\", cache.stale);",
+      "replace": "invalidation?.on(\"factory\", cache.invalidate);",
+      "kills": ["inbox taps beside the inbox a factory frame serves the kept needs read while one refresh runs behind it"]
+    },
+    {
+      "name": "the default view reads a strip for every planning row too",
+      "file": "apps/console/server/inbox-shown-reads.ts",
+      "find": "const shown = planning ? items : items.filter((item) => item.section !== \"planning\");",
+      "replace": "const shown = items;",
+      "kills": ["inbox.list's GitHub reads reads no gate strip for a row the default view keeps collapsed under planning"]
+    },
+    {
+      "name": "an unknown lineage is kept like a known one",
+      "file": "apps/console/server/inbox-rows.ts",
+      "find": "    if (!lineage.known) throw new UnknownLineage(lineage);\n",
+      "replace": "",
+      "kills": ["inboxReadCache serves a merge row's kept lineage while one refresh runs behind it, and never keeps an unknown one"]
+    },
+    {
+      "name": "a stale mark drops the kept factory read",
+      "file": "apps/console/server/inbox-rows.ts",
+      "find": "      needs?.stale();",
+      "replace": "      needs?.invalidate();",
+      "kills": ["inboxReadCache marks the kept reads stale without dropping them"]
+    }
+  ]
+}

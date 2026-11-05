@@ -8,11 +8,11 @@ import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
 import { FactoryConfigSchema, type FactoryConfig } from "../config.js";
 import type { FactoryHost } from "../host.js";
-import type { RosterReader } from "./roster.js";
 import type { GateReads, ShepherdServices } from "./services.js";
 import { deliverGate } from "./visual-delivery.js";
 import { configuredVisualDelivery, deliveryPortsOf, startVisualDeliverySweep, visualDeliveryWatch } from "./visual-delivery-sweep.js";
 import { packetDirFor } from "./visual-packet-trigger.js";
+import type { RosterReader } from "./ports.js";
 
 const BIN = "/srv/synthetic-owner/.local/bin/titan-review";
 const CONSOLE = ["/srv/synthetic-owner/bin/node", "/srv/synthetic-owner/console/dist/cli.js"];

@@ -3,6 +3,7 @@ import { countNormalizedEvents, countNormalizedSessions, type SessionGraph } fro
 import { z } from "zod";
 import type { MinerContext } from "../context.js";
 import { hasMinerTables } from "../miner-tables.js";
+import { countRow } from "../rows.js";
 
 export interface MinerStatus {
   dbPath: string;
@@ -32,7 +33,7 @@ export const status = defineCommand<Record<string, never>, MinerStatus, MinerCon
   result: z.custom<MinerStatus>(),
   async run(_args, ctx) {
     const graph = ctx.graph();
-    const count = (table: string) => (graph.db.prepare(`SELECT count(*) AS n FROM "${table}"`).get() as { n: number }).n;
+    const count = (table: string) => countRow.parse(graph.db.prepare(`SELECT count(*) AS n FROM "${table}"`).get()).n;
     const transcripts: Record<string, number> = {};
     for (const row of graph.transcripts.list()) transcripts[row.status] = (transcripts[row.status] ?? 0) + 1;
     return {

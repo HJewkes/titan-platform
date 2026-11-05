@@ -1,5 +1,6 @@
 import { isCaseUnsure } from "../shell/case-attrs.js";
 import type { WordToken } from "../shell/lexer.js";
+import { bareSpans } from "../shell/word-build.js";
 
 /**
  * gh's own `-F` placeholder pattern (gh 2.102), unanchored as gh applies it: `{branch}` and `:branch` become the
@@ -20,9 +21,6 @@ const fieldKeyRe = (key: string) => new RegExp(`^(?:${key}|.*\\[${key}\\])$`);
 
 const keyEnd = (text: string) => (text.includes("=") ? text.indexOf("=") : text.length);
 
-const withoutRefs = (word: WordToken) =>
-  [...word.refs].sort((a, b) => b.start - a.start).reduce((v, r) => v.slice(0, r.start) + v.slice(r.end), word.value);
-
 /**
  * Whether zsh may modify a parameter in the word, quoted or not: `"$X:l"` lower-cases X. A tracked variable keeps the
  * text as written in `typed`; the quotes it drops make `"$Y":h`, which zsh leaves alone, read the same way.
@@ -32,18 +30,25 @@ function zshModified(word: WordToken): boolean {
   return word.refs.some((r) => word.value.charAt(r.start + 1) !== "{" && /^[:[(]/.test(word.value.slice(r.end)));
 }
 
+/** The characters of `word` outside its variables, by index, and those of them read outside quotes and escapes. */
+function bareOutsideRefs(word: WordToken): { kept: number[]; bare: number[] } {
+  const spans = bareSpans(word);
+  const kept = Array.from({ length: word.value.length }, (_, i) => i).filter((i) => !word.refs.some((r) => r.start <= i && i < r.end));
+  return { kept, bare: kept.filter((i) => spans.some(([start, end]) => start <= i && i < end)) };
+}
+
 /**
  * Whether a shell expansion other than a tracked variable may rewrite the word: tilde, glob, extended glob, brace or
- * zsh `=cmd` expansion, or an expansion outside quotes that word-splits. A word not wholly inside one pair of quotes is
- * literal only when every character outside its variables is in a safe set; the lexer keeps no record of which
- * characters partial quotes or escapes cover, so they all count as bare.
+ * zsh `=cmd` expansion, or an expansion outside quotes that word-splits. A word is literal only when every character
+ * outside its variables and quotes is in a safe set, and its first such character is not a bare `=`.
  */
 export function expandsAtRunTime(word: WordToken): boolean {
   if (zshModified(word)) return true;
   if (word.quoted && !word.spliced) return false;
   if (word.unquotedExpansion) return true;
-  const bare = withoutRefs(word);
-  return bare.startsWith("=") || !SAFE_BARE_RE.test(bare);
+  const { kept, bare } = bareOutsideRefs(word);
+  const bareText = bare.map((i) => word.value.charAt(i)).join("");
+  return (kept[0] === bare[0] && bareText.startsWith("=")) || !SAFE_BARE_RE.test(bareText);
 }
 
 /**

@@ -101,9 +101,16 @@ const BROKER_DOWN_LINES = [
   /^broker restarting: .* was NOT sent; retry it within \d+ s\.$/m,
   // A bare connect failure on the socket, for a CLI that surfaces the errno.
   /^(?:Error: )?connect (?:ECONNREFUSED|ENOENT) \S*\.sock$/m,
+  // The probe under AGENT_CHAT_NO_AUTOSTART=1, which every call here sets; `agent ls` and the other
+  // legacy verbs exit 1 on it, so only their port and ask verbs carry BROKER_UNAVAILABLE_EXIT.
+  /^broker unavailable: no broker is listening and AGENT_CHAT_NO_AUTOSTART=1 forbids starting one$/m,
 ];
 
+/** agent-chat's EX_UNAVAILABLE, which its port verbs, `ask` and `answers` exit with when no broker listens or it predates the verbs. */
+export const BROKER_UNAVAILABLE_EXIT = 69;
+
 export function isBrokerUnavailable(result: SafeExecResult): boolean {
+  if (result.status === BROKER_UNAVAILABLE_EXIT) return true;
   return (
     result.status !== 0 &&
     BROKER_DOWN_LINES.some((pattern) => pattern.test(result.stderr))
@@ -144,12 +151,32 @@ export interface LaunchedBy {
   launchReason?: string;
 }
 
+/** The roles agent-chat's `--role` accepts. */
+export type AgentRole = "implementer" | "reviewer" | "shepherd-review" | "planner" | "other" | `fix-round-${number}`;
+
+/** A task id such as `tp/TP-12`: caller-derived, so it is checked to a strict shape before it reaches argv. */
+export const TASK_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/;
+
+/**
+ * What the spawn records on the agent's own row, so later readers (Shepherd's successor walk, the roster) see who the
+ * agent works for. Omitted fields leave their flags out of argv.
+ */
+export interface AgentRecord {
+  role?: AgentRole;
+  task?: string;
+}
+
+export function agentRecordArgs({ role, task }: AgentRecord): string[] {
+  if (task !== undefined && !TASK_ID_PATTERN.test(task)) throw new DispatchError(`invalid task id: '${task}'`);
+  return [...(task === undefined ? [] : ["--task", task]), ...(role === undefined ? [] : ["--role", role])];
+}
+
 export function launchedByArgs({ launchedBy, launchReason }: LaunchedBy): string[] {
   if (launchedBy === undefined) return [];
   return ["--launched-by", launchedBy, ...(launchReason === undefined ? [] : ["--launch-reason", launchReason])];
 }
 
-export interface DispatchRequest extends LaunchedBy {
+export interface DispatchRequest extends LaunchedBy, AgentRecord {
   agentChatBinPath: string;
   /** Derived by the caller, never taken from item content; unique per item, so a re-dispatch collides on purpose. */
   peerName: string;
@@ -167,6 +194,8 @@ export interface DispatchRequest extends LaunchedBy {
   configDir?: string;
   /** Where agent-chat's installed profiles live; omitted means `installedProfilesDir()`. */
   profilesDir?: string;
+  /** An existing worktree the agent adopts instead of getting a fresh one; agent-chat then makes no branch and holds no budget slot for it. */
+  worktree?: string;
 }
 
 export interface DispatchResult {
@@ -186,11 +215,12 @@ export interface DispatchResult {
  * caller quotes — which is the whole difference between a structural guarantee
  * and a practice.
  */
-export function buildSpawnArgs(req: LaunchedBy & {
+export function buildSpawnArgs(req: LaunchedBy & AgentRecord & SpawnPlacement & {
   peerName: string;
   profile: string;
   briefing?: string;
   configDir?: string;
+  worktree?: string;
 }): string[] {
   return [
     "agent",
@@ -199,8 +229,31 @@ export function buildSpawnArgs(req: LaunchedBy & {
     req.profile,
     ...(req.briefing === undefined ? [] : ["--briefing", req.briefing]),
     ...(req.configDir === undefined ? [] : ["--config-dir", req.configDir]),
+    ...(req.worktree === undefined ? [] : ["--worktree", req.worktree]),
+    ...placementArgs(req),
     ...launchedByArgs(req),
+    ...agentRecordArgs(req),
     "--brief-stdin",
+  ];
+}
+
+/** Where and on which account agent-chat runs the agent; each omitted field leaves its flag out of argv. */
+export interface SpawnPlacement {
+  /** A configured alias or hostname; omitted means the broker's own host. */
+  host?: string;
+  /** An account name, or `least-used` for the broker's pick. */
+  account?: string;
+  /** Overrides the profile's surface. */
+  surface?: string;
+  remoteControl?: boolean;
+}
+
+function placementArgs({ host, account, surface, remoteControl }: SpawnPlacement): string[] {
+  return [
+    ...(host === undefined ? [] : ["--host", host]),
+    ...(account === undefined ? [] : ["--account", account]),
+    ...(surface === undefined ? [] : ["--surface", surface]),
+    ...(remoteControl === true ? ["--remote-control"] : []),
   ];
 }
 
@@ -228,7 +281,21 @@ export async function dispatchToAgentChat(
     throw new DispatchError(`unknown profile: '${req.profile}'`);
   }
   assertInstalledHeadless(req.profile, req.profilesDir);
+  await runSpawn(req, buildSpawnArgs(req), agentChatEnv(), timeoutMs);
+  return { peerName: req.peerName };
+}
 
+/**
+ * Runs `agent-chat agent spawn` and maps every failure to a `DispatchError`,
+ * for each entry that spawns: they differ in argv and env, never in how a
+ * refusal reads.
+ */
+export async function runSpawn(
+  req: { agentChatBinPath: string; brief: string; cwd: string },
+  args: string[],
+  env: Record<string, string>,
+  timeoutMs: number,
+): Promise<SafeExecResult> {
   // Resolution is INSIDE the try: a missing or non-executable `agent-chat`
   // throws `ExecError` too, and letting that escape would crash `loop.ts`'s
   // tick with the item still claimed and nothing reported — the exact
@@ -236,43 +303,42 @@ export async function dispatchToAgentChat(
   let result;
   try {
     const bin = resolveBinaryPath(req.agentChatBinPath, "agent-chat");
-    const args = buildSpawnArgs(req);
     result = await timeAgentChatCall(args, () =>
-      execSafeAsync(bin, args, agentChatEnv(), timeoutMs, req.brief, req.cwd),
+      execSafeAsync(bin, args, env, timeoutMs, req.brief, req.cwd),
     );
   } catch (err) {
     if (err instanceof ExecTimeoutError) throw new DispatchTimeoutError(err.message);
     if (err instanceof ExecError) throw new DispatchError(err.message);
     throw err;
   }
+  if (result.status !== 0) throw spawnRefusal(result);
+  return result;
+}
 
-  if (result.status !== 0) {
-    // The CLI splits its failures across both streams, so both are read. A
-    // BROKER refusal prints on stdout — including the name collision ("the name
-    // X is held by a live agent; retire it or choose another"), the expected
-    // outcome of re-dispatching an item whose previous agent has not retired.
-    // A USAGE error goes through `fail()` on stderr, and that is the one an
-    // agent-chat too old to know `--brief-stdin` produces; reading only stdout
-    // reported it as an unexplained "exited 1".
-    //
-    // Reported verbatim either way: relay cannot resolve it, and inventing a
-    // friendlier message would hide which of the supervisor's several preflight
-    // gates actually refused.
-    if (isBrokerUnavailable(result)) throw brokerUnavailable("agent spawn", result);
-    if (isBrokerReplyTimeout(result)) {
-      throw new DispatchTimeoutError(
-        `agent-chat refused the spawn: ${result.stderr.trim()}`,
-      );
-    }
-    const reason = result.stdout.trim() || result.stderr.trim();
-    throw new DispatchError(
-      reason === ""
-        ? `agent-chat agent spawn exited ${result.status}`
-        : `agent-chat refused the spawn: ${reason}`,
+function spawnRefusal(result: SafeExecResult): DispatchError {
+  // The CLI splits its failures across both streams, so both are read. A
+  // BROKER refusal prints on stdout — including the name collision ("the name
+  // X is held by a live agent; retire it or choose another"), the expected
+  // outcome of re-dispatching an item whose previous agent has not retired.
+  // A USAGE error goes through `fail()` on stderr, and that is the one an
+  // agent-chat too old to know `--brief-stdin` produces; reading only stdout
+  // reported it as an unexplained "exited 1".
+  //
+  // Reported verbatim either way: relay cannot resolve it, and inventing a
+  // friendlier message would hide which of the supervisor's several preflight
+  // gates actually refused.
+  if (isBrokerUnavailable(result)) return brokerUnavailable("agent spawn", result);
+  if (isBrokerReplyTimeout(result)) {
+    return new DispatchTimeoutError(
+      `agent-chat refused the spawn: ${result.stderr.trim()}`,
     );
   }
-
-  return { peerName: req.peerName };
+  const reason = result.stdout.trim() || result.stderr.trim();
+  return new DispatchError(
+    reason === ""
+      ? `agent-chat agent spawn exited ${result.status}`
+      : `agent-chat refused the spawn: ${reason}`,
+  );
 }
 
 export function brokerUnavailable(

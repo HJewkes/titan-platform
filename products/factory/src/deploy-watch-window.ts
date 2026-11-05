@@ -52,6 +52,8 @@ interface WatchPorts {
   alive: (pid: number) => boolean;
   /** Called once as the window opens; absent records nothing. */
   record?: (intent: WatchIntent) => void;
+  /** Told, as the window ends, what the watch saw but did not count against the build, one newline-terminated line; absent reports nothing. */
+  report?: (text: string) => void;
 }
 
 /** How serve stood just before the restart and just after it. */
@@ -83,10 +85,29 @@ function recoveryIds(health: Health): readonly string[] | undefined {
   return Array.isArray(ids) && ids.every((id) => typeof id === "string") ? ids : undefined;
 }
 
-/** The recovery_required ids `/health` says have a closed or merged PR. */
-function prClosedIds(health: Health): ReadonlySet<string> {
-  const ids = health.recoveryPrClosed;
-  return new Set(Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : []);
+const stringsOf = (value: unknown): string[] => (Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : []);
+
+/** The recovery_required ids `/health` says have a closed or merged PR, or that strict replay parked for the diverged sweep to restart or end. */
+const excusedIds = (health: Health): ReadonlySet<string> => new Set([...stringsOf(health.recoveryPrClosed), ...stringsOf(health.recoveryReplayDiverged)]);
+
+/** The diverged runs serve's sweep restarted, each with its successor, as `/health` lists them. */
+function restartsOf(health: Health): string[] {
+  const restarts: unknown[] = Array.isArray(health.divergedRestarts) ? health.divergedRestarts : [];
+  return restarts.flatMap((restart) => {
+    const [runId, newRunId] = [field(restart, "runId"), field(restart, "newRunId")];
+    return typeof runId === "string" && typeof newRunId === "string" ? [`${runId} -> ${newRunId}`] : [];
+  });
+}
+
+/** What a changed workflow shape did to runs in flight: neither a restart with a successor nor a park awaiting the sweep is a failure of the build (TP-3889). */
+function divergedReport(health: Health): string | undefined {
+  const [restarted, parked] = [restartsOf(health), stringsOf(health.recoveryReplayDiverged)];
+  if (restarted.length === 0 && parked.length === 0) return undefined;
+  const parts = [
+    ...(restarted.length > 0 ? [`${restarted.length} run(s) restarted (${restarted.join(", ")})`] : []),
+    ...(parked.length > 0 ? [`${parked.length} run(s) parked for the diverged sweep (${parked.join(", ")})`] : []),
+  ];
+  return `replay diverged under the new build, not counted against it: ${parts.join("; ")}`;
 }
 
 /** The ids the drain still saw busy when it let the restart go. */
@@ -98,13 +119,14 @@ function interruptedBy(atRestart: Health | null): ReadonlySet<string> {
 /**
  * Runs parked as recovery_required since `before`, leaving out runs the restart interrupted mid-step: parking them is what a restart does.
  * A run whose PR is closed or merged is left out too: it has no open PR the build could break (TP-3220).
+ * So is a run strict replay parked as diverged: the sweep restarts it or ends it, and it neither failed nor threw (TP-3889).
  * A `before` that counts without listing ids stands for its count of parked runs.
  */
 function newlyParked(before: Health, end: Health, interrupted: ReadonlySet<string>): number {
   const now = recoveryIds(end);
   if (now === undefined) return count(end, RECOVERY) - count(before, RECOVERY);
-  const closed = prClosedIds(end);
-  const fresh = now.filter((id) => !interrupted.has(id) && !closed.has(id));
+  const excused = excusedIds(end);
+  const fresh = now.filter((id) => !interrupted.has(id) && !excused.has(id));
   const was = recoveryIds(before);
   return was === undefined ? fresh.length - count(before, RECOVERY) : fresh.filter((id) => !was.includes(id)).length;
 }
@@ -150,9 +172,11 @@ const describeLatency = (reading: Reading): string => (reading.kind === "miss" ?
  * The window's verdict once it has run out; the last tick is an answer, since a miss keeps the window open.
  * Run errors must stand on the last two answers, so no single tick decides them.
  */
-function atWindowEnd(readings: readonly Reading[], baseline: WatchBaseline, during: string): string | undefined {
+function atWindowEnd(readings: readonly Reading[], baseline: WatchBaseline, during: string, report?: (text: string) => void): string | undefined {
   const answers = readings.flatMap((reading) => (reading.kind === "answer" ? [reading.health] : [])).slice(-2);
   if (answers.length === 0) return undefined;
+  const diverged = divergedReport(answers.at(-1)!);
+  if (diverged !== undefined) report?.(`${diverged}\n`);
   const added = Math.min(...answers.map((health) => addedErrors(baseline, health)));
   if (added > 0) return `${added} more run(s) failed or need recovery ${during}`;
   return readings.every((reading) => reading.slow) ? `serve answered slowly on every probe (${readings.map(describeLatency).join(", ")}) ${during}` : undefined;
@@ -206,5 +230,5 @@ export async function watchServe(ports: WatchPorts, baseline: WatchBaseline, tar
     const why = reading.kind === "answer" ? drift(baseline.confirmed, reading.health, target) : undefined;
     if (why !== undefined) return `${why} ${during}`;
   }
-  return atWindowEnd(readings, baseline, during);
+  return atWindowEnd(readings, baseline, during, ports.report);
 }

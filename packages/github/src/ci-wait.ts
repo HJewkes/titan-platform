@@ -26,16 +26,20 @@ export interface CiWaitResult {
 interface PollState {
   sha: string;
   resolved: boolean;
+  /** The default branch, resolved on the first poll: it does not change mid-wait. */
+  base: string | null;
+  /** The last list read successfully. */
   rules: RequiredChecks | null;
 }
 
 /**
  * Polls until the sha's CI is green or red, or the next poll would pass the deadline. The required contexts
- * are read once. A sha GitHub does not have ends at once, because its status would read pending forever.
+ * are re-read on every poll; a failed read, or one that comes back empty after a list was recorded, keeps the
+ * last list. A sha GitHub does not have ends at once, because its status would read pending forever.
  */
 export async function ciWait(port: GitHubPort, options: CiWaitOptions): Promise<CiWaitResult> {
   const { repo, timeoutSeconds, intervalSeconds, now, sleep } = options;
-  const state: PollState = { sha: options.sha, resolved: false, rules: null };
+  const state: PollState = { sha: options.sha, resolved: false, base: options.base ?? null, rules: null };
   const start = now();
   let pending = "(no successful poll)";
   for (;;) {
@@ -68,7 +72,20 @@ async function poll(port: GitHubPort, options: CiWaitOptions, state: PollState):
     state.sha = full;
     state.resolved = true;
   }
-  state.rules ??= await loadRequiredContexts(port, repo, options.base ?? (await port.defaultBranch(repo)));
+  state.rules = await currentRules(port, options, state);
   const [runs, statuses] = await Promise.all([port.checkRuns(repo, state.sha), port.commitStatuses(repo, state.sha)]);
   return ciVerdict({ rules: state.rules, runs, statuses });
+}
+
+async function currentRules(port: GitHubPort, options: CiWaitOptions, state: PollState): Promise<RequiredChecks> {
+  state.base ??= await port.defaultBranch(options.repo);
+  const recorded = state.rules;
+  try {
+    const live = await loadRequiredContexts(port, options.repo, state.base);
+    return recorded && recorded.contexts.length > 0 && live.contexts.length === 0 ? recorded : live;
+  } catch (error) {
+    if (!recorded) throw error;
+    options.onReadError?.(error);
+    return recorded;
+  }
 }

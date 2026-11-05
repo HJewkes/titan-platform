@@ -1,0 +1,38 @@
+name: CI timing
+
+# CI wall-time percentiles against .github/ci-budget.json (TP-4436 S8). Red when a budgeted stat is over its ceiling.
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      created:
+        description: Run creation range for gh run list --created, such as 2026-01-05..2026-01-12
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  budget:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - name: Compare CI timing with the budget
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CREATED: ${{ inputs.created }}
+        run: |
+          args=(--repo "$GITHUB_REPOSITORY" --summary "$GITHUB_STEP_SUMMARY")
+          if [ -n "$CREATED" ]; then args+=(--created "$CREATED"); fi
+          node scripts/ci-timing.mjs "${args[@]}"

@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "Save turns on while explainer says renders ignore edits",
+      "file": "apps/console/src/pages/TheaterBeatEditor.tsx",
+      "find": "const enabled = props.saveBack.enabled && available",
+      "replace": "const enabled = available",
+      "kills": [
+        "Edit this beat shows Save disabled with explainer's reason while renders ignore edits"
+      ]
+    },
+    {
+      "name": "the draft keeps only the beat edited last",
+      "file": "apps/console/src/pages/TheaterBeatEditor.tsx",
+      "find": "values: { ...current.values, [beatId]: value } }));",
+      "replace": "values: { [beatId]: value } }));",
+      "kills": [
+        "Save and render saves edits to two beats as one videos.edit once explainer says renders read edits"
+      ]
+    },
+    {
+      "name": "Turn into edit opens the beat but drops the note",
+      "file": "apps/console/src/pages/TheaterBeatEditor.tsx",
+      "find": "    if (note !== undefined) setDraft((current) => ({ ...current, fromNote: { id: note.noteId, atS: note.atS } }));\n",
+      "replace": "",
+      "kills": [
+        "Turn into edit opens the beat under the note's time and saves the draft citing the note"
+      ]
+    },
+    {
+      "name": "Turn into edit opens the beat at the start, not the note's time",
+      "file": "apps/console/src/pages/TheaterPlayer.tsx",
+      "find": "({ noteId: note.id, atS: note.atS, seq:",
+      "replace": "({ noteId: note.id, atS: 0, seq:",
+      "kills": [
+        "Turn into edit opens the beat under the note's time and saves the draft citing the note"
+      ]
+    },
+    {
+      "name": "Turn into edit is offered on a note on an earlier render",
+      "file": "apps/console/src/pages/TheaterPlayer.tsx",
+      "find": "return note.current && note.kind === \"comment\"",
+      "replace": "return note.kind === \"comment\"",
+      "kills": [
+        "Turn into edit is not offered on a note made on an earlier render"
+      ]
+    }
+  ]
+}

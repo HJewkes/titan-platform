@@ -1,0 +1,10 @@
+schema: beat-system/v1
+id: chapter-question
+version: 0.1.0
+source: "video-types study §2.2 (each chapter opens a question at its map station and closes a scorecard row)"
+summary: "A chapter that opens on a question at its map station, answers it in the code, and closes on a verdict chip."
+steps:
+  - { beats: [chapter-open], does: "The chapter opens at its map station with the question it answers." }
+  - { beats: [zoom, info-flow, schema, sequence, code-walk], does: "The answer, shown where it lives." }
+  - { beats: [companion-link], does: "Where the rest of the topic lives in the companion doc.", optional: true }
+  - { beats: [verdict-chip], does: "The verdict chip that closes the chapter's scorecard row." }

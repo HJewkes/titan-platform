@@ -1,7 +1,7 @@
 import { writeDeposit } from "@titan-design/owner-queue/spool";
 import { openDatabase } from "@titan-design/store-sqlite";
 import type { Command } from "commander";
-import type { Verbs } from "../cli.js";
+import type { Verbs } from "../cli-types.js";
 import { configPath, loadConfig } from "../config.js";
 import { ownerInboxDir } from "../deploy-watch-ports.js";
 import { parseSinceOption } from "../digest/command.js";

@@ -1,12 +1,15 @@
 import { useState, type ReactNode } from "react";
-import { Alert, Button, ButtonText, Card, CardContent, DataRow, Drawer, DrawerBody, Link, Spinner, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, Button, ButtonText, Card, CardContent, DataRow, Drawer, DrawerBody, Link, Typography, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { ArLadder, ArRound, ArRunView } from "../../server/autoresearch-view.js";
 import { useQuery } from "../data/rpc.js";
 import { href, open } from "../router.js";
+import { AutoresearchIdeaRecord } from "./AutoresearchIdeaRecord.js";
 import { AutoresearchStageStepper } from "./AutoresearchStageStepper.js";
 import { RatchetMove } from "./AutoresearchRatchet.js";
-import { keptMove, reasonLabel } from "./autoresearch-format.js";
+import { depthSuffix, keptMove, reasonLabel } from "./autoresearch-format.js";
 import { implementerRoute, stageSpans } from "./autoresearch-lanes.js";
+import { PHONE_TAP, PHONE_TAP_BUTTONS, PHONE_TAP_ID_LINK } from "./phone.js";
 
 /** Design §2.2 and §2.4: the card's detail, opened by `?idea=` so a reload or a shared link reopens it. */
 export function AutoresearchIdeaDrawer({ run, ideaId, now }: { run: ArRunView; ideaId: string | undefined; now: number }): ReactNode {
@@ -15,10 +18,11 @@ export function AutoresearchIdeaDrawer({ run, ideaId, now }: { run: ArRunView; i
   const { round, ladder } = found;
   const close = () => open({ view: "autoresearch", id: run.runId });
   return (
-    <Drawer isOpen onClose={close} placement="right" size="lg" title={`${ladder.idea.id} · ${ladder.idea.cell}`} testID="autoresearch-idea-drawer">
+    <Drawer isOpen onClose={close} placement="right" size="lg" className={PHONE_TAP_BUTTONS} title={`${ladder.idea.id} · ${ladder.idea.cell}`} testID="autoresearch-idea-drawer">
       <DrawerBody scrollable>
         <VStack gap={4}>
           <IdeaFacts ladder={ladder} />
+          <AutoresearchIdeaRecord run={run} ladder={ladder} />
           <AutoresearchStageStepper spans={stageSpans(ladder, now)} testID="autoresearch-drawer-stages" />
           <Typography variant="caption" color="secondary">
             A finished stage's time runs from the previous stage's end, until the run records each stage's start.
@@ -46,7 +50,11 @@ function IdeaFacts({ ladder }: { ladder: ArLadder }): ReactNode {
       <Typography variant="body2">{idea.hypothesis}</Typography>
       <DataRow label="Expected effect" value={`${idea.expectedEffect.metric} ${idea.expectedEffect.direction} · ${idea.expectedEffect.microSignal}`} />
       <DataRow label="Source" value={idea.source} />
-      <DataRow label="Lineage" value={idea.parent === undefined ? idea.lineage : `${idea.lineage} (parent ${idea.parent})`} />
+      <DataRow
+        label="Lineage"
+        value={`${idea.parent === undefined ? idea.lineage : `${idea.lineage} (parent ${idea.parent})`}${depthSuffix(idea)}`}
+        testID="autoresearch-drawer-lineage"
+      />
       {idea.differsFrom === undefined ? null : <DataRow label="Differs from" value={idea.differsFrom} />}
       {outcome === null ? null : <DataRow label="Verdict" value={`${outcome.verdict} at ${outcome.rungReached} · ${reasonLabel(outcome.reason) ?? outcome.reason}`} />}
       {outcome?.lesson === undefined ? null : <DataRow label="Lesson" value={outcome.lesson} />}
@@ -74,7 +82,7 @@ function IdeaLinks({ run, round, ladder }: { run: ArRunView; round: ArRound; lad
 function AgentLink({ agent }: { agent: string }): ReactNode {
   const target = { view: "agents" as const, id: agent };
   return (
-    <Link color="primary" href={href(target)} onPress={() => open(target)} testID="autoresearch-drawer-agent">
+    <Link color="primary" className={PHONE_TAP_ID_LINK} href={href(target)} onPress={() => open(target)} testID="autoresearch-drawer-agent">
       {agent}
     </Link>
   );
@@ -92,7 +100,7 @@ function IdeaDiff({ runId, ladder }: { runId: string; ladder: ArLadder }): React
   if (ladder.implementUsd === null) return <DataRow label="Diff" value="the implementer has not returned a head yet" />;
   if (!shown)
     return (
-      <Button variant="outline" size="sm" onPress={() => setShown(true)} testID="autoresearch-drawer-diff">
+      <Button variant="outline" size="sm" className={PHONE_TAP} onPress={() => setShown(true)} testID="autoresearch-drawer-diff">
         <ButtonText>Show the diff</ButtonText>
       </Button>
     );
@@ -123,7 +131,7 @@ export function ImplementerLink({ ladder }: { ladder: ArLadder }): ReactNode {
   if (target === undefined) return <Typography variant="caption" color="secondary">implementer not recorded yet</Typography>;
   const label = target.view === "sessions" ? "Session log" : `Agent ${target.id}`;
   return (
-    <Link color="primary" href={href(target)} onPress={() => open(target)} testID={`autoresearch-implementer-${ladder.idea.id}`}>
+    <Link color="primary" className={PHONE_TAP_ID_LINK} href={href(target)} onPress={() => open(target)} testID={`autoresearch-implementer-${ladder.idea.id}`}>
       {label}
     </Link>
   );

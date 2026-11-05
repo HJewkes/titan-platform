@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: docs-vs-code
+summary: "What the docs say beside what the code does."
+role: evidence
+component: { name: CompareBeat, maturity: spike }
+slots: docs-vs-code
+speech: { band: code }
+durationS: [8, 14, 25]
+preset: false
+emphasis: { targets: [lines], treatments: [highlight, pointer] }
+recipe: "Quote the docs verbatim with the source, then show the lines that agree or disagree. Point at the line that settles it."

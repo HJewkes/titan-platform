@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the purity traps are never set",
+      "file": "products/explainer/src/sim/pure-run.ts",
+      "find": "for (const trap of impureCalls())",
+      "replace": "for (const trap of impureCalls().slice(6))",
+      "kills": [
+        "sweepSim and freezeSim refuses a model that calls Math.random, and restores Math.random after",
+        "sweepSim and freezeSim refuses a model that reads Date.now, and restores Date.now after"
+      ]
+    },
+    {
+      "name": "the param check accepts inherited keys",
+      "file": "products/explainer/src/sim/sweep.ts",
+      "find": "!Object.hasOwn(base, axis.param)",
+      "replace": "!(axis.param in base)",
+      "kills": [
+        "sweepSim and freezeSim refuses a sweep param that a plain object only inherits"
+      ]
+    },
+    {
+      "name": "a point is seeded by its index, not its value",
+      "file": "products/explainer/src/sim/sweep.ts",
+      "find": "pointSeed(seed, at)",
+      "replace": "pointSeed(seed, [[axis.param, axis.values.indexOf(value)]])",
+      "kills": [
+        "sweepSim and freezeSim leaves the other points' runs unchanged when a sweep point is added"
+      ]
+    },
+    {
+      "name": "the run seed ignores the sweep seed",
+      "file": "products/explainer/src/sim/pure-run.ts",
+      "find": "seededRandom(seed)",
+      "replace": "seededRandom(\"fixed\")",
+      "kills": [
+        "sweepSim and freezeSim gives a different trace for a different seed"
+      ]
+    },
+    {
+      "name": "the sha covers only the runs",
+      "file": "products/explainer/src/sim/freeze.ts",
+      "find": "sha: canonicalSha256(body)",
+      "replace": "sha: canonicalSha256(swept.runs)",
+      "kills": [
+        "sweepSim and freezeSim round-trips a frozen trace through the schema with its sha intact"
+      ]
+    }
+  ]
+}

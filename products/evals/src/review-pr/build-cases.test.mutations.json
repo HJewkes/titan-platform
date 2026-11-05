@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a head the clone lacks aborts the build",
+      "file": "products/evals/src/review-pr/build-cases.ts",
+      "find": "if (!(await holdsCommit(git, sha))) return void bump(context.skipped, \"head-unreachable\");",
+      "replace": "if (!(await holdsCommit(git, sha))) throw new Error(\"head unreachable\");",
+      "kills": [
+        "buildReviewPrCases counts a head the clone does not hold as head-unreachable and still builds the rest",
+        "buildReviewPrCases counts a caught row whose next head is missing as head-unreachable"
+      ]
+    },
+    {
+      "name": "an unusable clone is read as an absent commit",
+      "file": "products/evals/src/review-pr/build-cases.ts",
+      "find": "  await verifyClone(context, git, row.repo);\n",
+      "replace": "",
+      "kills": [
+        "buildReviewPrCases aborts when a repo's clone directory does not exist, rather than counting its heads unreachable"
+      ]
+    }
+  ]
+}

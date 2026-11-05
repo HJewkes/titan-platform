@@ -1,0 +1,22 @@
+{
+  "durationS": 2,
+  "beats": [
+    {
+      "id": "path",
+      "kind": "arch-map",
+      "startS": 0,
+      "durationS": 2,
+      "slots": {
+        "nodes": [
+          { "id": "nodes-1", "label": "Intake" },
+          { "id": "nodes-2", "label": "Router" },
+          { "id": "nodes-3", "label": "Lane" },
+          { "id": "nodes-4", "label": "Review" },
+          { "id": "nodes-5", "label": "Merge" },
+          { "id": "nodes-6", "label": "Release" }
+        ],
+        "edges": []
+      }
+    }
+  ]
+}

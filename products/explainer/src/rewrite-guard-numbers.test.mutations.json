@@ -1,0 +1,25 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the rewrite guard lets a shown number leave the line",
+      "file": "products/explainer/src/rewrite-guard.ts",
+      "find": "    ...shownUnspoken(before, after),\n",
+      "replace": "",
+      "kills": [
+        "a number the line stops saying (TP-4475) rejects the number moved onto an appended label",
+        "a number the line stops saying (TP-4475) rejects the number cut from the line while the beat's own label still shows it",
+        "a number the line stops saying (TP-4475) rejects an appended label showing a number the line never said"
+      ]
+    },
+    {
+      "name": "the rewrite guard blames a number the original already showed unsaid",
+      "file": "products/explainer/src/rewrite-guard.ts",
+      "find": "  const gained = surplus(now.map(({ fact }) => fact), was);\n",
+      "replace": "  const gained = now.map(({ fact }) => fact);\n",
+      "kills": [
+        "a number the line stops saying (TP-4475) does not count a number the original already showed without saying it"
+      ]
+    }
+  ]
+}

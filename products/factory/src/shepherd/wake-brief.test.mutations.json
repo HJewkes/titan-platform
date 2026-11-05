@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the shared boundary drops the history rule from every wake brief",
+      "file": "products/factory/src/shepherd/wake-brief.ts",
+      "find": "reason: `${wake.reason}\\n\\n${NO_REWRITE_RULE}\\n\\n${testRule}` };",
+      "replace": "reason: `${wake.reason}\\n\\n${testRule}` };",
+      "kills": [
+        "every wake brief: the branch history rule carries the rule exactly once in ci-red"
+      ]
+    },
+    {
+      "name": "ci-red keeps the no-merge-base line under a planner exception",
+      "file": "products/factory/src/shepherd/wake-brief.ts",
+      "find": "const baseRule = input.mergeBase === undefined ? ` ${BASE_IS_SHEPHERDS}` : \"\";",
+      "replace": "const baseRule = ` ${BASE_IS_SHEPHERDS}`;",
+      "kills": [
+        "wake brief: a planner's merge-base exception (TP-4242) lets a ci-red fixer merge the base in place of the line against it, fencing who allowed it and why"
+      ]
+    },
+    {
+      "name": "review comments skip the shared cleaner, so a bidi override hides a verdict line",
+      "file": "products/factory/src/shepherd/wake-brief.ts",
+      "find": ".map((line) => promptLine(line))",
+      "replace": "",
+      "kills": [
+        "review wake brief: the PR's review comments strips a right-to-left override from a comment's path and body",
+        "review wake brief: the PR's review comments quotes a verdict line hidden behind a bidi override"
+      ]
+    }
+  ]
+}

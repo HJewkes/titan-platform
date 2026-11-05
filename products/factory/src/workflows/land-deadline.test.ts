@@ -48,8 +48,14 @@ function harness(options: { jumpAtSleep?: number; greenAfterMs?: number } = {}):
   const route = routes.find((candidate) => candidate.match === "ci-wait")!;
   const prompt = JSON.stringify({ repo: REPO, pr: 1, contexts: ["validate"], strict: false });
   const ciWait = () =>
-    route.runner.run({ runId: "r", workflowName: "w", stepId: "ci-wait", iteration: 0, prompt, signal: new AbortController().signal, attempt: 1, requestKey: "k" }) as never;
+    route.runner.run({ runId: "r", workflowName: "w", stepId: "ci-wait", iteration: 0, prompt, signal: new AbortController().signal, attempt: 1, requestKey: "k" });
   return { fake, clock, polls, wakes, ciWait };
+}
+
+/** An unsettled mergeable_state ends the window with a timed-out read that land waits out again, not an error. */
+function timedOut(outcome: { ok: boolean; output?: string }): unknown {
+  expect(outcome.ok).toBe(true);
+  return JSON.parse(outcome.output!).result.timedOut;
 }
 
 describe("ci-wait deadline", () => {
@@ -69,8 +75,7 @@ describe("ci-wait deadline", () => {
 
     const wake = h.wakes[2]!;
     const pollsAfterWake = h.polls.filter((at) => at >= wake);
-    expect(outcome.ok).toBe(false);
-    expect(outcome.error).toContain("timed out");
+    expect(timedOut(outcome)).toEqual({ afterMs: TIMEOUT_MS, reason: "waiting on mergeable_state unknown" });
     expect(pollsAfterWake).toHaveLength(2);
     expect(pollsAfterWake[1]! - wake).toBeGreaterThanOrEqual(2 * MIN);
   });
@@ -80,8 +85,7 @@ describe("ci-wait deadline", () => {
 
     const outcome = await h.ciWait();
 
-    expect(outcome.ok).toBe(false);
-    expect(outcome.error).toContain("timed out");
+    expect(timedOut(outcome)).toEqual({ afterMs: TIMEOUT_MS, reason: "waiting on mergeable_state unknown" });
     expect(h.clock.now).toBeGreaterThanOrEqual(TIMEOUT_MS);
     expect(h.clock.now).toBeLessThan(TIMEOUT_MS + POLL_MS);
   });

@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a question counts twice toward its sentence",
+      "file": "products/explainer/src/listener-questions.ts",
+      "find": "counts.set(q.sentence, counts.get(q.sentence)! + 1)",
+      "replace": "counts.set(q.sentence, counts.get(q.sentence)! + 2)",
+      "kills": ["tallying one chapter's reply counts questions per sentence, with zeros, and density over the chapter's sentences"]
+    },
+    {
+      "name": "density divides by one sentence too many",
+      "file": "products/explainer/src/listener-questions.ts",
+      "find": "density: sentences.length > 0 ? questions / sentences.length : 0",
+      "replace": "density: sentences.length > 0 ? questions / (sentences.length + 1) : 0",
+      "kills": ["tallying one chapter's reply counts questions per sentence, with zeros, and density over the chapter's sentences"]
+    },
+    {
+      "name": "a list inside one sentence is flagged as spread",
+      "file": "products/explainer/src/listener-questions.ts",
+      "find": "list.sentences.length >= LIST_SPREAD_MIN_SENTENCES",
+      "replace": "list.sentences.length >= 1",
+      "kills": ["tallying one chapter's reply flags a list whose items fall in two or more sentences, in chapter order, and not one in a single sentence"]
+    },
+    {
+      "name": "a term matches inside a longer word",
+      "file": "products/explainer/src/listener-questions.ts",
+      "find": "`(?<!\\\\w)${escape(term.trim())}",
+      "replace": "`${escape(term.trim())}",
+      "kills": ["tallying one chapter's reply matches a term as whole words only"]
+    },
+    {
+      "name": "a chapter at the threshold reports red",
+      "file": "products/explainer/src/listener-questions.ts",
+      "find": "result.chapters.filter((c) => c.density > threshold)",
+      "replace": "result.chapters.filter((c) => c.density >= threshold)",
+      "kills": ["the listener verdict fails a chapter above the threshold and names it, and passes one at it"]
+    }
+  ]
+}

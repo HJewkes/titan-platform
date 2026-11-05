@@ -1,0 +1,52 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "no repair round runs",
+      "file": "products/explainer/src/workflow/layer-build.ts",
+      "find": "if (!deps.repairer) return { build, error: request.error };",
+      "replace": "if (deps.repairer !== null) return { build, error: request.error };",
+      "kills": [
+        "the repair round on a custom layer that fails the compile gate spawns one repair agent, stores the module it wrote, and counts its transcript-priced spend with its session id"
+      ]
+    },
+    {
+      "name": "the repair's spend is dropped",
+      "file": "products/explainer/src/workflow/layer-build.ts",
+      "find": "usage: addUsage(build.usage, repair.usage),",
+      "replace": "usage: build.usage,",
+      "kills": [
+        "the repair round on a custom layer that fails the compile gate spawns one repair agent, stores the module it wrote, and counts its transcript-priced spend with its session id",
+        "the repair round on a custom layer that fails the compile gate keeps a repair that still fails marked for repair, with its spend and session, and never caches it"
+      ]
+    },
+    {
+      "name": "the repaired module skips the compile gate",
+      "file": "products/explainer/src/workflow/layer-build.ts",
+      "find": "return verdict.ok ? { build: repaired } :",
+      "replace": "return verdict.ok || repaired.module.length > 0 ? { build: repaired } :",
+      "kills": [
+        "the repair round on a custom layer that fails the compile gate keeps a repair that still fails marked for repair, with its spend and session, and never caches it"
+      ]
+    },
+    {
+      "name": "a build that still fails is cached",
+      "file": "products/explainer/src/workflow/layer-build.ts",
+      "find": "    if (gated.error !== undefined) return { result: gated.build,",
+      "replace": "    cache.put(key, gated.build, { runId: step.runId, stage: STAGE });\n    if (gated.error !== undefined) return { result: gated.build,",
+      "kills": [
+        "the repair round on a custom layer that fails the compile gate keeps a repair that still fails marked for repair, with its spend and session, and never caches it",
+        "the repair round on a custom layer that fails the compile gate keeps the build marked for repair, with the repair's spend, when the agent wrote no module"
+      ]
+    },
+    {
+      "name": "the repair session id is dropped",
+      "file": "products/explainer/src/workflow/layer-build.ts",
+      "find": "...(repair.sessionId ? { repairSessionId: repair.sessionId } : {})",
+      "replace": "...({})",
+      "kills": [
+        "the repair round on a custom layer that fails the compile gate spawns one repair agent, stores the module it wrote, and counts its transcript-priced spend with its session id"
+      ]
+    }
+  ]
+}

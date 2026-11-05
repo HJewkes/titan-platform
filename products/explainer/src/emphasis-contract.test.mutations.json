@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a reversed cue range stays reversed",
+      "file": "products/explainer/src/emphasis-contract.ts",
+      "find": "words: [Math.min(at, until), Math.max(at, until)]",
+      "replace": "words: [at, until]",
+      "kills": [
+        "emphasis mapping contract orders a cue range whose until word comes before its at word"
+      ]
+    },
+    {
+      "name": "a span overlaps a cue that ends before it starts",
+      "file": "products/explainer/src/emphasis-contract.ts",
+      "find": "cue.words[0] <= words[1] && words[0] <= cue.words[1]",
+      "replace": "cue.words[0] <= words[1]",
+      "kills": [
+        "emphasis mapping contract maps a word span over words between the cues to the targets it covers"
+      ]
+    },
+    {
+      "name": "a time span drops the word that starts on its first second",
+      "file": "products/explainer/src/emphasis-contract.ts",
+      "find": "word.startS >= from && word.startS < to",
+      "replace": "word.startS > from && word.startS < to",
+      "kills": [
+        "emphasis mapping contract maps a time span to targets through the beat's word timings"
+      ]
+    },
+    {
+      "name": "a time span over no word yields a range",
+      "file": "products/explainer/src/emphasis-contract.ts",
+      "find": "return hit.length === 0 ? undefined",
+      "replace": "return hit.length < 0 ? undefined",
+      "kills": [
+        "emphasis mapping contract maps a time span that covers no spoken word to no target"
+      ]
+    }
+  ]
+}

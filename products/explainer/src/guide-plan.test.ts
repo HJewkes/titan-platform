@@ -11,6 +11,15 @@ describe("guidePlan", () => {
     expect(guide).toContain("## Rules for the plan stage");
   });
 
+  // Mutation: ignoring the structure renders design-journey's journey template for every pick.
+  it("renders the template of the structure it is given instead of design-journey's", () => {
+    const guide = guidePlan("script", { structure: "scqa" });
+
+    expect(guide).toContain("## 3. Question and answer");
+    expect(guide).toContain("## 4. Supports, by importance");
+    expect(guide).not.toContain("## 3. Journey: one task from");
+  });
+
   it("keeps code-enforced owner rules and their thresholds out of the guide", () => {
     const guide = guidePlan("plan");
 
@@ -34,6 +43,17 @@ describe("guidePlan", () => {
   it("gives the script stage, and only it, the contrast-as-a-sentence craft line", () => {
     expect(guidePlan("script")).toContain("**register-N6**: Narration, a FENCE beat above all, states a contrast as its own sentence");
     expect(guidePlan("plan")).not.toContain("register-N6");
+  });
+
+  it("tells the script stage, and only it, to keep a beat concrete when a number moves to the screen", () => {
+    const script = guidePlan("script");
+
+    const line = /\*\*register-AV3\*\*: (.*)/.exec(script)?.[1] ?? "";
+
+    expect(line).toContain("Each beat names a concrete thing");
+    expect(line).toContain('never say "some" or "many"');
+    expect(line).not.toMatch(/\d/);
+    expect(guidePlan("plan")).not.toContain("register-AV3");
   });
 
   it("states spoken register as direction, with none of the Q-V11 bands", () => {

@@ -5,6 +5,8 @@ import { parse } from "yaml";
 import { compileGlobs, expandBraces } from "@titan-design/fix-proof";
 import { isRepo } from "@titan-design/github";
 import { z } from "zod";
+import type { VisualBaselines } from "./policy-schema.js";
+import { errorMessage } from "../narrow.js";
 
 export { isRepo as isRepoKey } from "@titan-design/github";
 
@@ -113,7 +115,7 @@ export interface Seat {
   /** Repo-relative globs a PR must touch none of to merge without the owner; absent means the seat has not opted in. */
   visualPaths?: string[];
   /** The check and baseline globs that let a visual-path PR changing no baseline merge on a green check; absent keeps the glob gate. */
-  visualBaselines?: { check: string; paths: string[] };
+  visualBaselines?: VisualBaselines;
 }
 
 export interface SeatBook {
@@ -167,6 +169,12 @@ export function lookupSeat(book: SeatBook, repo: string): SeatLookup {
   return seats.length > 0 ? { kind: "seat", seat: narrowest(seats) } : { kind: "none" };
 }
 
+/** The check name the seat that owns `repo` declares for its visual baselines, if any. */
+export function seatBaselineCheck(book: SeatBook, repo: string): string | undefined {
+  const found = lookupSeat(book, repo);
+  return found.kind === "seat" ? found.seat.visualBaselines?.check : undefined;
+}
+
 /** The checkout a seat binds to `repo`; a repo no seat lists takes the one `unseated` names, keyed by owner/name in any case; a denied repo has none. */
 export function boundCheckout(book: SeatBook, repo: string, unseated: Readonly<Record<string, { path?: string }>> = {}): string | undefined {
   const found = lookupSeat(book, repo);
@@ -178,7 +186,7 @@ export function boundCheckout(book: SeatBook, repo: string, unseated: Readonly<R
 function narrowest(seats: Seat[]): Seat {
   if (seats.length === 1) return seats[0]!;
   const grants = seats[0]!.grants.filter((g) => seats.every((s) => s.grants.includes(g)));
-  const paths = Object.assign({}, ...seats.map((s) => s.paths)) as Record<string, string>;
+  const paths = Object.fromEntries(seats.flatMap((s) => Object.entries(s.paths)));
   const visualPaths = sharedVisualPaths(seats);
   const visualBaselines = visualPaths && sharedVisualBaselines(seats);
   const visual = { ...(visualPaths && { visualPaths }), ...(visualBaselines && { visualBaselines }) };
@@ -313,7 +321,7 @@ function parseFrontmatter<T>(path: string, kind: string, schema: z.ZodType<T>): 
   try {
     parsed = schema.safeParse(frontmatter(readFileSync(path, "utf8")));
   } catch (error) {
-    throw new SeatBookInvalid(`unreadable ${kind} ${path}: ${(error as Error).message}`);
+    throw new SeatBookInvalid(`unreadable ${kind} ${path}: ${errorMessage(error)}`);
   }
   if (!parsed.success) throw new SeatBookInvalid(`invalid ${kind} ${path}: ${parsed.error.issues.map((i) => `${i.path.join(".") || "$"}: ${i.message}`).join("; ")}`);
   return parsed.data;

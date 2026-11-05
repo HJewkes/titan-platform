@@ -4,11 +4,13 @@ import { viewFor } from "../views.js";
 import { AgentsRoute } from "./AgentsPage.js";
 import { AutoresearchView } from "./AutoresearchPage.js";
 import { ConfigPage } from "./ConfigPage.js";
+import { CoordinatorPage } from "./CoordinatorPage.js";
 import { HomePage } from "./HomePage.js";
 import { InboxPage } from "./InboxPage.js";
 import { InitiativeDetailPage } from "./InitiativeDetailPage.js";
 import { InitiativesPage } from "./InitiativesPage.js";
 import { KnowledgePage } from "./KnowledgePage.js";
+import { LoopsPage } from "./LoopsPage.js";
 import { Page, PageHeader, type PageMaxWidth } from "./PageShell.js";
 import { ReviewDetailPage } from "./ReviewDetailPage.js";
 import { ReviewsPage } from "./ReviewsPage.js";
@@ -21,6 +23,7 @@ import { TaskDetailPage } from "./TaskDetailPage.js";
 import { TasksPage } from "./TasksPage.js";
 import { TheaterPage } from "./TheaterPage.js";
 import { TheaterPlayer } from "./TheaterPlayer.js";
+import { TreePage } from "./TreePage.js";
 
 type PageComponent = (props: { route: Route }) => ReactNode;
 
@@ -41,6 +44,7 @@ interface Shelled {
 const WorkPage: PageComponent = ({ route }) => (route.id ? createElement(InitiativeDetailPage, { slug: route.id }) : createElement(InitiativesPage));
 const RoundsView: PageComponent = ({ route }) => (route.id ? createElement(RoundDetailPage, { id: route.id }) : createElement(RoundsPage, { query: route.query }));
 const ReviewsView: PageComponent = ({ route }) => (route.id ? createElement(ReviewDetailPage, { name: route.id }) : createElement(ReviewsPage));
+const CoordinatorView: PageComponent = ({ route }) => createElement(CoordinatorPage, { query: route.query });
 const ShepherdView: PageComponent = ({ route }) => (route.id ? createElement(ShepherdDetailPage, { id: route.id }) : createElement(ShepherdPage));
 const TasksView: PageComponent = ({ route }) => (route.id ? createElement(TaskDetailPage, { id: route.id }) : createElement(TasksPage, { query: route.query }));
 const TheaterView: PageComponent = ({ route }) => (route.id ? createElement(TheaterPlayer, { id: route.id, query: route.query }) : createElement(TheaterPage, { query: route.query }));
@@ -55,9 +59,12 @@ const SHELLED: Partial<Record<ViewKey, Shelled>> = {
   inbox: { list: WIDE, render: InboxPage },
   initiatives: { list: { maxWidth: "wide", hasOwnTitle: true }, detail: WIDE, render: WorkPage },
   tasks: { list: { maxWidth: "full" }, detail: WIDE, render: TasksView },
+  loops: { list: { maxWidth: "full" }, render: LoopsPage },
+  tree: { list: { maxWidth: "full" }, render: TreePage },
   sessions: { list: WIDE, detail: WIDE, render: SessionsRoute },
   knowledge: { list: WIDE, detail: NARROW, render: KnowledgePage },
   agents: { list: WIDE, detail: WIDE, render: AgentsRoute },
+  coordinator: { list: WIDE, render: CoordinatorView },
   rounds: { list: WIDE, detail: OWNS_LAYOUT, render: RoundsView },
   reviews: { list: WIDE, detail: NARROW, render: ReviewsView },
   theater: { list: WIDE, detail: OWNS_LAYOUT, render: TheaterView },

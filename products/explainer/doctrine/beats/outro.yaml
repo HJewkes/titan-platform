@@ -1,0 +1,10 @@
+schema: beat-spec/v1
+type: outro
+summary: "The closing line."
+role: close
+component: { name: OutroBeat, maturity: spike }
+slots: outro
+speech: { band: held }
+durationS: [2, 4, 6]
+preset: true
+recipe: "Template fill: the closing line, then fade."

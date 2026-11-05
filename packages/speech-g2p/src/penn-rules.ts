@@ -50,14 +50,27 @@ const CLITIC: Record<string, string> = {
   "'d": "MD",
   "'m": "VBP",
 };
-const BRACKET: Record<string, string> = {
-  "(": "-LRB-",
-  "[": "-LRB-",
-  "{": "-LRB-",
-  ")": "-RRB-",
-  "]": "-RRB-",
-  "}": "-RRB-",
-};
+// Punctuation whose tag never depends on its neighbours.
+const FIXED_PUNCT = new Map<string, string>([
+  ["(", "-LRB-"],
+  ["[", "-LRB-"],
+  ["{", "-LRB-"],
+  [")", "-RRB-"],
+  ["]", "-RRB-"],
+  ["}", "-RRB-"],
+  ["$", "$"],
+  ["#", "#"],
+  ["£", "$"],
+  ["€", "$"],
+  ["¥", "$"],
+  ["“", "``"],
+  ["‘", "``"],
+  ["”", "''"],
+  ["’", "''"],
+  [",", ","],
+  ["%", "NN"],
+  ["&", "CC"],
+]);
 const DO_FORMS = new Set(["do", "does", "did"]);
 
 function closedClassTag(word: string, tags: CompromiseTags): string | null {
@@ -72,27 +85,25 @@ function isPluralPossessive(tok: RawToken, prev: RawToken | undefined): boolean 
   return prev !== undefined && prev.whitespace === "" && /s$/i.test(prev.text) && tok.whitespace !== "";
 }
 
+function straightQuoteTag(prev: RawToken | undefined): string {
+  return !prev || prev.whitespace !== "" ? "``" : "''";
+}
+
+function hyphenTag(tok: RawToken, prev: RawToken | undefined): string {
+  return tok.whitespace !== "" || (prev && prev.whitespace !== "") ? ":" : "HYPH";
+}
+
 /** Tags a token that holds no letter or digit, from its text and its neighbours' spacing. */
 export function punctTag(tok: RawToken, prev: RawToken | undefined): string {
   const t = tok.text;
   if (/^\s+$/u.test(t)) return "_SP";
-  if (BRACKET[t]) return BRACKET[t];
+  const fixed = FIXED_PUNCT.get(t);
+  if (fixed) return fixed;
   if (t === "'" && isPluralPossessive(tok, prev)) return "POS";
-  if (t === "$" || t === "#") return t;
-  if (t === "£" || t === "€" || t === "¥") return "$";
-  if (t === "“" || t === "‘") return "``";
-  if (t === "”" || t === "’") return "''";
-  if (t === '"' || t === "'")
-    return !prev || prev.whitespace !== "" ? "``" : "''";
+  if (t === '"' || t === "'") return straightQuoteTag(prev);
+  if (t === "-") return hyphenTag(tok, prev);
   if (/^[.?!]+$/.test(t)) return ".";
-  if (t === ",") return ",";
-  if (t === "-")
-    return tok.whitespace !== "" || (prev && prev.whitespace !== "")
-      ? ":"
-      : "HYPH";
   if (/^([:;—–…]|\.\.\.|--)+$/.test(t)) return ":";
-  if (t === "%") return "NN";
-  if (t === "&") return "CC";
   return "NFP";
 }
 

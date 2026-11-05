@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a round at the cutoff counts as before",
+      "file": "products/factory/src/shepherd/review-stats-rereview.ts",
+      "find": "rows.filter((row) => row.at < cutoff)",
+      "replace": "rows.filter((row) => row.at <= cutoff)",
+      "kills": [
+        "shepherd stats --reviews by cause and shape prints fix-round p50 and p90 dollars and tokens per shape, before and after the first scoped round, split scoped vs full"
+      ]
+    },
+    {
+      "name": "p50 is the mean",
+      "file": "products/factory/src/shepherd/review-stats-rereview.ts",
+      "find": "p50: round(median(sorted))",
+      "replace": "p50: round(sorted.reduce((sum, value) => sum + value, 0) / sorted.length)",
+      "kills": [
+        "shepherd stats --reviews by cause and shape prints fix-round p50 and p90 dollars and tokens per shape, before and after the first scoped round, split scoped vs full"
+      ]
+    },
+    {
+      "name": "a full round after the cutoff counts as scoped",
+      "file": "products/factory/src/shepherd/review-stats-rereview.ts",
+      "find": "afterScoped: fixRoundCut(after.filter((row) => row.scoped === 1))",
+      "replace": "afterScoped: fixRoundCut(after.filter((row) => row.scoped !== null))",
+      "kills": [
+        "shepherd stats --reviews by cause and shape prints fix-round p50 and p90 dollars and tokens per shape, before and after the first scoped round, split scoped vs full",
+        "shepherd stats --reviews by cause and shape splits at --since-scoped when given, and prints the split in text mode"
+      ]
+    },
+    {
+      "name": "with no --since-scoped there is no cutoff",
+      "file": "products/factory/src/shepherd/review-stats-rereview.ts",
+      "find": "const cutoff = sinceScoped ?? firstScoped;",
+      "replace": "const cutoff = sinceScoped ?? null;",
+      "kills": [
+        "shepherd stats --reviews by cause and shape prints fix-round p50 and p90 dollars and tokens per shape, before and after the first scoped round, split scoped vs full"
+      ]
+    },
+    {
+      "name": "--since-scoped is ignored",
+      "file": "products/factory/src/cli-stats.ts",
+      "find": "...(opts.sinceScoped && { sinceScoped: Date.parse(`${opts.sinceScoped}T00:00:00Z`) })",
+      "replace": "",
+      "kills": [
+        "shepherd stats --reviews by cause and shape splits at --since-scoped when given, and prints the split in text mode"
+      ]
+    }
+  ]
+}

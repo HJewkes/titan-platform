@@ -81,6 +81,32 @@ Run it again with nothing changed and the same call reports `indexed: 0, unchang
 `resetIndex(graph)` clears every derived table and rewinds watermarks; the next refresh
 rebuilds from byte 0 to the same rows a chunked history produced.
 
+## Emit policy and echo state
+
+`indexTranscript` and `refreshCorpus` store two bulk classes only on request. Both options
+default to false:
+
+- `indexToolSpans: true` stores `tool_input` and `tool_result` search spans. Prompt and
+  assistant spans are always stored.
+- `contextBlocks: true` stores `context_block` audit rows. `refreshCorpus` passes the same
+  flag to `backfillFacets` (`BackfillOptions.contextBlocks`), which replaces a transcript's
+  audit rows, so a graph indexed with the flag off drops its `context_block` rows as each
+  stale facet is re-extracted. Turning the flag on later fills only bytes read after that;
+  the facet version does not record it, so only a rebuild fills the rest.
+
+Neither flag deletes a tool span already stored; old spans go only with a rebuild.
+
+Echo lines (session-read facts that carry `state`: titles, agent name, mode, permission mode,
+cost) store a fact only when the value changed. The last value lives in `echo_state`
+(`transcript_id`, `session_id`, `key`, `value`, keyed on the first three), so a chunked read
+stores the same facts as a whole-file read. It is per transcript: each copy of a mirrored
+session keeps its own first echo, and `purgeTranscript` clears only the purged copy's state.
+`resetIndex` clears it too. `summary.facts` still counts facts read, not facts stored.
+
+Echo lines carry no timestamp of their own. A stored echo between a tool result and the next
+assistant line used to hide that gap from `turn.thinking_ms`; a skipped echo no longer does,
+so `thinking_ms` now counts it. A graph built before this change reads lower until rebuilt.
+
 ## The task resolver
 
 A transcript states the id a command acted on and nothing else. A task's title, its
@@ -200,7 +226,7 @@ Not everything can be rebuilt from transcripts. Original sources can be pruned, 
 migrations must preserve `fact` and `session` rows rather than assuming a replay is possible.
 `resetIndex` clears the tables in `DERIVED_TABLES`, including `fact` and `session`. That is a
 deliberate reset, not a migration step. It keeps the `transcript` watermark table (rewound, not
-deleted), `price` and `session_state`, which nothing derives from transcripts, and `conversation`
+deleted), `price`, which nothing derives from transcripts, and `conversation`
 and `conversation_alias`, which are derived from `session` rows or sources but are not in
 `DERIVED_TABLES`. `session_origin` and `session_external_event` are not derived from transcripts
 either: `resetIndex` clears them and the next pass refills them from their own sources.
@@ -369,7 +395,7 @@ Migration 9, `stop storing bulk classes`, runs DDL only and deletes no row it ke
 the `artifact` table. It drops `normalized_span`, `normalized_event` and `normalized_source`
 only when every one that exists is empty, so a graph that holds Codex evidence keeps all
 three. It then creates `session_state` (`session_id`, `key`, `value`, primary key
-`(session_id, key)`) if missing.
+`(session_id, key)`) if missing; migration 14 replaces it.
 
 Migration 10, `request_cost model-id boundary`, runs DDL only and rewrites no row: it drops
 and recreates the `request_cost` view with the same columns. Only the price join changes. A
@@ -378,6 +404,11 @@ the prefix is followed by `[..]`, or by `-YYYYMMDD` with an optional `[..]`. Lon
 then latest `effective_from`, still wins. A model the prices do not list, such as an
 `claude-opus-5-9` against a `claude-opus-5` row, no longer takes the shorter prefix's rate; it
 reads `priced = 0` and shows under the cost report's `unpricedModels`.
+
+Migration 14, `echo state per transcript`, runs DDL only. It drops migration 9's
+`session_state`, which never had a writer, and creates `echo_state` with primary key
+`(transcript_id, session_id, key)`. A session can live in two transcripts, so state keyed on
+the session alone would let one copy's state suppress the other copy's echoes after a rewind.
 
 The normalized tables are now opt-in. `openSessionGraph(path, { normalized: true })` creates
 them when absent; without it a graph holds none unless migration 3 left rows in them.

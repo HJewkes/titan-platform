@@ -1,11 +1,17 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { chmodSync, readFileSync } from "node:fs";
+import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { createServer, request, type IncomingMessage, type Server } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { isIP, type AddressInfo } from "node:net";
 import path from "node:path";
+import { format } from "node:util";
 import { SESSION_COOKIE } from "@titan-design/daemon";
 import { EXIT, errorEnvelope, successEnvelope } from "@titan-design/registry";
+import { z } from "zod";
+import { importRound } from "./round-import.js";
+import { buildIdOf } from "./storybook-build.js";
 
 const RPC_PREFIX = "/rpc/";
 
@@ -208,4 +214,76 @@ export function syntheticWebm({ durationS = 2, width = 64, height = 36, audio = 
   const cluster = ebml([0x1f, 0x43, 0xb6, 0x75], Buffer.from(payload));
   const header = ebml([0x1a, 0x45, 0xdf, 0xa3], ebml([0x42, 0x82], Buffer.from("webm")));
   return Buffer.concat([header, ebml([0x18, 0x53, 0x80, 0x67], Buffer.concat([info, tracks, cluster]), null)]);
+}
+
+/** Storybook's static iframe.html boots from inline scripts like this one. */
+export const STORY_INLINE_SCRIPT = 'window.CONFIG_TYPE = "PRODUCTION";';
+
+/** Synthetic: a Storybook static build of three files, as `build-storybook` lays one out. */
+export const STORY_BUILD_FILES: Readonly<Record<string, string>> = {
+  "iframe.html": `<!doctype html><html><head><meta charset="utf-8"><script>${STORY_INLINE_SCRIPT}</script></head><body><div id="storybook-root"></div><script type="module" src="./assets/a-hash.js"></script></body></html>`,
+  "index.json": JSON.stringify({
+    v: 5,
+    entries: {
+      "lantern-card--compact": { id: "lantern-card--compact", type: "story" },
+      "lantern-card--roomy": { id: "lantern-card--roomy", type: "story" },
+    },
+  }),
+  "assets/a-hash.js": "export const a = 1;\n",
+};
+export const STORY_ROUND_ID = "lantern-cards-r1";
+const STORY_FIXTURE = path.join(import.meta.dirname, "..", "fixtures", "rounds", STORY_ROUND_ID);
+
+/**
+ * The lantern-cards fixture round with `STORY_BUILD_FILES` beside it, built at a synthetic sha and
+ * imported, so the build is in `storybooksDir` and the round in `roundsDir`. Returns the build's id.
+ */
+export async function importStoryRound({ scratch, roundsDir, storybooksDir }: { scratch: string; roundsDir: string; storybooksDir: string }): Promise<string> {
+  const source = path.join(scratch, "story-round");
+  await cp(STORY_FIXTURE, source, { recursive: true });
+  const roundFile = path.join(source, "round.json");
+  const round = z.looseObject({ questions: z.array(z.record(z.string(), z.unknown())) }).parse(JSON.parse(await readFile(roundFile, "utf8")));
+  // The fixture's pick names no frames, which the import's builder rules refuse.
+  round.questions = round.questions.map((question) => ({ ...question, frames: ["compact", "roomy"] }));
+  await writeFile(roundFile, JSON.stringify(round));
+  const files = Object.entries(STORY_BUILD_FILES).map(([rel, text]) => ({ path: rel, sha256: createHash("sha256").update(text).digest("hex"), bytes: Buffer.byteLength(text) }));
+  for (const [rel, text] of Object.entries(STORY_BUILD_FILES)) {
+    const file = path.join(source, "storybook", "static", rel);
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, text);
+  }
+  const sidecar = { schema: "titan-review/storybook@1", repo: "example-org/example-ui", sha: "a".repeat(40), dirty: false, builtAt: "2026-10-21T00:00:00Z", storybookVersion: "10.0.0", storyIds: 2, files };
+  await writeFile(path.join(source, "storybook", "storybook.json"), JSON.stringify(sidecar));
+  await importRound({ source, roundsDir, storybooksDir });
+  return buildIdOf(files);
+}
+
+export interface CliRun {
+  code: number;
+  stdout: string;
+  stderr: string;
+}
+
+// Read through a call, so the reset to undefined before the verb runs does not narrow the read after it.
+const exitCodeNow = (): number => Number(process.exitCode ?? 0);
+
+/**
+ * Runs one titan-console verb handler in process and reports it the way the spawned bin would: console.log and
+ * console.error lines become stdout and stderr, and process.exitCode the exit code.
+ */
+export async function runConsoleCli(verb: () => Promise<void>): Promise<CliRun> {
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+  const { log, error } = console;
+  const exitCode = process.exitCode;
+  console.log = (...args: unknown[]) => void stdout.push(`${format(...args)}\n`);
+  console.error = (...args: unknown[]) => void stderr.push(`${format(...args)}\n`);
+  process.exitCode = undefined;
+  try {
+    await verb();
+    return { code: exitCodeNow(), stdout: stdout.join(""), stderr: stderr.join("") };
+  } finally {
+    Object.assign(console, { log, error });
+    process.exitCode = exitCode;
+  }
 }

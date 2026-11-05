@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the backlog sweep reads every session in one call",
+      "file": "products/active-work/src/session-index/episodes.ts",
+      "find": "    ? (await staleEpisodeSessionsYielding(graph.db, yieldPoint)).filter",
+      "replace": "    ? staleEpisodeSessions(graph.db).filter",
+      "kills": [
+        "episode refresh refreshEpisodes yields to the event loop between sessions"
+      ]
+    }
+  ]
+}

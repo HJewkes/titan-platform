@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an AbortError is classified as an error",
+      "file": "apps/console/server/perf/timed-fetch.ts",
+      "find": "name === \"TimeoutError\" || name === \"AbortError\"",
+      "replace": "name === \"TimeoutError\"",
+      "kills": [
+        "timedFetch a caller's own abort is recorded as outcome timeout"
+      ]
+    }
+  ]
+}

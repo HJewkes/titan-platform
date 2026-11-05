@@ -1,19 +1,20 @@
-import { stripVTControlCharacters } from "node:util";
 import { BrokerUnavailableError, DispatchTimeoutError, dataFence } from "@titan-design/agent-dispatch";
-import { GITHUB_ACTIONS_APP_ID, isPassing, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
+import type { CheckRun, GitHubPort, RepoSlug } from "@titan-design/github";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
+import type { StepDeclaration } from "../definition.js";
 import { deadline } from "../workflows/deadline.js";
 import { codeRoute } from "../workflows/land.js";
-import { greenAfterRed, redOnlyFromCancels, type FreezeStore } from "./freeze.js";
-import type { AgentChatAgents } from "./agents.js";
+import { greenAfterRed, redOnlyFromCancels, type Freeze, type FreezeStore } from "./freeze.js";
+import type { AgentChatAgents, SpawnAccounts } from "./agents.js";
 import type { ShepherdDeps } from "./phases.js";
 import { recordAutoPass } from "./auto-pass.js";
+import { successorSpawnAccounts } from "./account-hold.js";
 import { failureOf } from "./error-class.js";
 import { DEFAULT_FIX_INITIATIVE, initiativeOf } from "./fix-initiative.js";
 import { SpawnDeferred } from "./spawn-gate.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
-import { LOG_BUDGET_BYTES, LOG_TAIL_LINES, tailBytes } from "./wake-brief.js";
+import { failedTests, failingLogs, sameFailure, type FailingRead } from "./main-red-logs.js";
 import { GITHUB_READ_GIVE_UP_MS } from "./timeouts.js";
 import { seatCheckout } from "./seat-checkout.js";
 import { FACTORY_IMPLEMENTER_PROFILE } from "./wake.js";
@@ -21,6 +22,12 @@ import { FACTORY_IMPLEMENTER_PROFILE } from "./wake.js";
 /** How long a down active-work daemon or agent-chat broker is waited out before the step gives the red main to the owner. */
 export const SH_MAIN_RED_GIVE_UP_MS = GITHUB_READ_GIVE_UP_MS;
 export const SH_MAIN_RED_POLL_MS = 30_000;
+
+export const MAIN_RERUN_STEP = "sh-main-rerun";
+
+/** The dispatch steps of a red or green main, in the order a run reaches them. */
+const MAIN_RED_STEP_IDS = ["sh-unfreeze", "sh-freeze", "sh-file-fix-task", MAIN_RERUN_STEP, "sh-spawn-fixer", "sh-thaw"];
+export const MAIN_RED_STEPS: readonly StepDeclaration[] = MAIN_RED_STEP_IDS.map((id) => ({ id, kind: "dispatch" as const }));
 
 export interface FixTaskFields {
   title: string;
@@ -30,17 +37,35 @@ export interface FixTaskFields {
   notes: string;
 }
 
+/** Active-work refused the call itself, which no retry changes; any other throw from `FixTasks` is an outage to wait out. */
+export class FixTaskRefused extends Error {
+  override readonly name = "FixTaskRefused";
+}
+
+export const notRefused = (error: unknown): boolean => !(error instanceof FixTaskRefused);
+
 /** The active-work calls `sh-file-fix-task` makes; the lookup by tag is what makes a repeated add a no-op. */
 export interface FixTasks {
   findByTag(initiative: string, tag: string): Promise<string | undefined>;
   add(initiative: string, fields: FixTaskFields): Promise<string>;
+  /** Turns a filed fix task into a flake task: replaces its done_when, adds `tag`, reopens it, then appends `notes` once. Absent means no rerun thaw. */
+  markFlake?(initiative: string, id: string, flake: FlakeFields): Promise<void>;
+}
+
+export interface FlakeFields {
+  done_when: string;
+  notes: string;
+  tag: string;
 }
 
 /** A broker that is down or a timeout is waited out; any other throw is a refusal. */
 export interface FixerAgents {
   /** `presence` is `live` while a session holds the name. */
   roster(): Promise<readonly { name: string; presence?: string }[]>;
-  spawn(name: string, brief: string, cwd: string): Promise<void>;
+  /** `accounts` is the account picked for this spawn and its fallbacks; absent means agent-chat's default. */
+  spawn(name: string, brief: string, cwd: string, accounts?: SpawnAccounts): Promise<void>;
+  /** Retires a fixer spawned for an episode that recorded another one meanwhile; absent leaves it to the ended-fixer sweep. */
+  retire?(name: string): Promise<void>;
 }
 
 /** Absent ports leave the red main with the owner: the repo still freezes, and nothing is filed or spawned. */
@@ -56,7 +81,8 @@ export interface MainRedWiring {
 /** A spawn invalidates `roster`, so a retried spawn checks a fresh roster for the fixer it may already have started. */
 export const fixersOver = (agents: AgentChatAgents): FixerAgents => ({
   roster: () => agents.roster(),
-  spawn: (name, brief, cwd) => agents.spawn({ name, profile: FACTORY_IMPLEMENTER_PROFILE, brief, cwd }),
+  spawn: (name, brief, cwd, accounts) => agents.spawn({ name, profile: FACTORY_IMPLEMENTER_PROFILE, brief, cwd, ...accounts }),
+  ...(agents.retire && { retire: agents.retire.bind(agents) }),
 });
 
 const slug = (part: string | undefined): string => (part ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32);
@@ -138,7 +164,7 @@ export function freezeStep(wiring: MainRedWiring | undefined, input: Pick<RedInp
 type Patient<T> = { value: T } | { error: string };
 
 /** Retries any throw until the give-up deadline, so a daemon that is down delays the step and never fails it. */
-async function patiently<T>(deps: ShepherdDeps, signal: AbortSignal, attempt: () => Promise<T>, retryable: (error: unknown) => boolean = () => true): Promise<Patient<T>> {
+export async function patiently<T>(deps: ShepherdDeps, signal: AbortSignal, attempt: () => Promise<T>, retryable: (error: unknown) => boolean = () => true): Promise<Patient<T>> {
   const clock = deadline({ now: deps.now, sleep: deps.sleep, timeoutMs: SH_MAIN_RED_GIVE_UP_MS });
   for (;;) {
     try {
@@ -148,39 +174,6 @@ async function patiently<T>(deps: ShepherdDeps, signal: AbortSignal, attempt: ()
     }
     await clock.sleep(deps.pollMs ?? SH_MAIN_RED_POLL_MS, signal);
   }
-}
-
-/** The failing Actions jobs at `sha` with their log tails, split evenly so one noisy job cannot crowd out the rest. */
-export async function failingLogs(port: GitHubPort, repo: RepoSlug, sha: string): Promise<{ failing: CheckRun[]; log: string }> {
-  const runs = await port.latestCheckRuns(repo, sha).catch(() => [] as CheckRun[]);
-  const failing = runs.filter((run) => run.headSha === sha && run.appId === GITHUB_ACTIONS_APP_ID && run.status === "completed" && !isPassing(run));
-  if (failing.length === 0) return { failing, log: "No failing Actions run was found at this sha." };
-  const budget = Math.floor(LOG_BUDGET_BYTES / failing.length);
-  const sections = await Promise.all(failing.map(async (run) => {
-    const header = `== ${run.name} (${run.conclusion ?? "no conclusion"}) ${run.url}\n`;
-    const log = await port.jobLogTail(repo, run.id, LOG_TAIL_LINES).catch((error: unknown) => `(log unavailable: ${failureOf(error)})`);
-    return header + tailBytes(log, Math.max(0, budget - Buffer.byteLength(header) - 1));
-  }));
-  return { failing, log: sections.join("\n") };
-}
-
-type FailingRead = Awaited<ReturnType<typeof failingLogs>>;
-
-const FAILED_TEST = /(?:^|\s)FAIL\s+(\S.*?)\s*$/;
-
-/** The test files and cases a vitest or jest log tail reports as `FAIL`, sorted and unique. */
-function failedTests(log: string): string[] {
-  const tests = log.split("\n").flatMap((line) => FAILED_TEST.exec(stripVTControlCharacters(line))?.slice(1, 2) ?? []);
-  return [...new Set(tests)].sort();
-}
-
-const sameList = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((item, index) => item === b[index]);
-const checksOf = (read: FailingRead): string[] => [...new Set(read.failing.map((run) => run.name))].sort();
-
-/** Same failing checks and same named failing tests; a red whose log names no failing test matches nothing. */
-function sameFailure(a: FailingRead, b: FailingRead): boolean {
-  const tests = failedTests(a.log);
-  return tests.length > 0 && sameList(checksOf(a), checksOf(b)) && sameList(tests, failedTests(b.log));
 }
 
 /** A fixer from an earlier episode that still stands: running on the roster, or with its registered PR still open. */
@@ -233,10 +226,17 @@ async function standingFix(deps: ShepherdDeps, wiring: MainRedWiring, input: Epi
   return undefined;
 }
 
-/** Hands this episode the standing fixer and its task, so its PR passes this freeze and `sh-spawn-fixer` reuses it. */
-function linkStanding(wiring: MainRedWiring, input: EpisodeInput, episode: number, standing: StandingFix): z.infer<typeof FixTaskResult> {
-  const freezes = wiring.freezes();
-  if (!freezes.setFixTask(input.repo, episode, standing.task) || !freezes.setFixer(input.repo, episode, standing.fixer)) return noTask(THAWED, true);
+/**
+ * Hands this episode the standing fixer and its task, so its PR passes this freeze and `sh-spawn-fixer` reuses it. A
+ * fixer, task or fix PR the episode gained while the standing fixer was looked up is kept, so its exemption never moves.
+ */
+function linkStanding(wiring: MainRedWiring, input: EpisodeInput, episode: number, standing: StandingFix): z.infer<typeof FixTaskResult> | undefined {
+  const linked = wiring.freezes().episodes.linkFix(input.repo, episode, standing.task, standing.fixer);
+  if (linked === "not-live") return noTask(THAWED, true);
+  if (linked === "kept") {
+    const kept = wiring.freezes().live(input.repo, episode)?.fixTask ?? null;
+    return kept === null ? undefined : { task: kept, thawed: false, detail: `kept the episode's own fix task; ${standing.fixer} was not linked` };
+  }
   const pr = standing.pr === null ? "" : ` and its open PR #${standing.pr}`;
   return { task: standing.task, thawed: false, detail: `linked to ${standing.fixer}${pr}: the red at ${standing.redSha} failed the same checks and tests` };
 }
@@ -271,12 +271,13 @@ export async function fileFixTask(deps: ShepherdDeps, wiring: MainRedWiring | un
   const key = mainRedKey(input.repo, input.mergeSha);
   const read = await failingLogs(deps.port, input.repo, input.mergeSha);
   const standing = await standingFix(deps, wiring, input, initiative, read).catch(() => undefined);
-  if (standing !== undefined) return linkStanding(wiring, input, live.episode, standing);
+  const linked = standing && linkStanding(wiring, input, live.episode, standing);
+  if (linked !== undefined) return linked;
   const fields = fixTaskFields(input, read, key, named === undefined);
   const id = await patiently(deps, signal, async () => {
     if (!wiring.freezes().live(input.repo, input.episode)) return undefined;
     return (await tasks.findByTag(initiative, key)) ?? (await tasks.add(initiative, fields));
-  });
+  }, notRefused);
   if ("error" in id) return noTask(`active-work did not take the fix task: ${id.error}`);
   if (id.value === undefined) return noTask(THAWED, true);
   const task = `${initiative}/${id.value}`;
@@ -290,39 +291,73 @@ function fixerBrief(name: string, input: FixerInput, failing: readonly CheckRun[
     dataFence("failing jobs", failing.map((run) => run.name).join("\n") || "none read"),
     dataFence("CI log", log),
     `Branch from the latest origin main, fix the failure, and push. Open a PR, then register it with Shepherd (\`titan-factory shepherd register\`) with task \`${input.task}\` and implementer \`${name}\`. Report the PR and end with a line \`Head: <full sha>\` naming the head you pushed.`,
+    FLAKE_FIX_REGISTER,
   ].join("\n\n");
 }
 
+/** Mirrors TP-3987's TEST_ONLY_HINT: `proceedsOnNoRepro` lets only a spec-free test-only PR past a vacuous fix-proof. */
+const FLAKE_FIX_REGISTER =
+  "If the failure is a flaky test and your fix changes only tests, register the PR with `--kind test-only` and add no `<test>.mutations.json`: with noReproProceed on, its vacuous fix-proof goes on to review, and any mutation spec keeps it NO_REPRO. The red may also thaw on Shepherd's rerun while you work; the task then holds both runs, and its done_when still asks for a root-cause fix, never a retry, a longer timeout or a quarantine.";
+
 const brokerDown = (error: unknown): boolean => error instanceof BrokerUnavailableError || error instanceof DispatchTimeoutError || error instanceof SpawnDeferred;
 
-const THAWED = "the episode thawed while the step ran";
+export const THAWED = "the episode thawed while the step ran";
 
 const noFixer = (detail: string, thawed = false): z.infer<typeof FixerResult> => ({ fixer: null, thawed, detail });
 
-/** One fixer per episode: the freeze row's fixer is reused, a name already on the roster is never spawned twice, and a marked fix PR means none is spawned. */
+/** The fixer or marked fix PR the live episode already has, which this step reuses instead of spawning. */
+function episodeFix(live: Freeze): z.infer<typeof FixerResult> | undefined {
+  if (live.fixer !== null) return { fixer: live.fixer, thawed: false, detail: "this episode already has its fixer" };
+  if (live.fixPr !== null) return { fixer: null, fixPr: live.fixPr, thawed: false, detail: `seat fix PR #${live.fixPr} is marked for this episode` };
+  return undefined;
+}
+
+/**
+ * One fixer per episode: the freeze row's fixer is reused, a name already on the roster is never spawned twice, and a
+ * marked fix PR means none is spawned. The fixer is named from the episode's first red, so every run that reaches this
+ * step for the episode agrees on one name, and the row is read again right before the spawn.
+ */
 export async function spawnFixer(deps: ShepherdDeps, wiring: MainRedWiring | undefined, input: FixerInput, signal: AbortSignal): Promise<z.infer<typeof FixerResult>> {
   if (!input.fixer) return noFixer("notify only: the policy grants no fixer");
   if (deps.advisory?.(input.repo)) return noFixer(`notify only: ${input.repo} is advisory, so Shepherd starts no fixer to push to it`);
   const live = wiring?.freezes().live(input.repo, input.episode);
   if (!wiring || !live) return noFixer(THAWED, true);
-  if (live.fixer !== null) return { fixer: live.fixer, thawed: false, detail: "this episode already has its fixer" };
-  if (live.fixPr !== null) return { fixer: null, fixPr: live.fixPr, thawed: false, detail: `seat fix PR #${live.fixPr} is marked for this episode` };
+  const standing = episodeFix(live);
+  if (standing) return standing;
   const fixers = wiring.fixers;
   if (!fixers) return noFixer("no agent-chat is configured to spawn a fixer");
   const checkout = resolveCheckout(input.repo, (wiring.checkoutFor ?? seatCheckout())(input.repo), wiring.home);
   if ("problem" in checkout) return noFixer(`${checkout.problem}, so a fixer has no checkout to start in`);
-  const name = fixerName(input.repo, input.mergeSha);
-  const { failing, log } = await failingLogs(deps.port, input.repo, input.mergeSha);
-  const brief = fixerBrief(name, input, failing, log);
-  const spawned = await patiently(deps, signal, async () => {
-    if (!wiring.freezes().live(input.repo, input.episode)) return false;
-    if (!(await fixers.roster()).some((row) => row.name === name)) await fixers.spawn(name, brief, checkout.dir);
-    return true;
-  }, brokerDown);
+  const redSha = wiring.freezes().episodes.firstRed(input.repo, live.episode) ?? live.redSha;
+  const name = fixerName(input.repo, redSha);
+  const { failing, log } = await failingLogs(deps.port, input.repo, redSha);
+  const spawn = () => fixers.spawn(name, fixerBrief(name, { ...input, mergeSha: redSha }, failing, log), checkout.dir, successorSpawnAccounts(deps));
+  const current = () => wiring.freezes().live(input.repo, input.episode);
+  const spawned = await patiently(deps, signal, () => spawnUnlessTaken(fixers, name, current, spawn), brokerDown);
   if ("error" in spawned) return noFixer(`spawning ${name} failed: ${spawned.error}`);
   if (!spawned.value) return noFixer(THAWED, true);
-  if (!wiring.freezes().setFixer(input.repo, live.episode, name)) return { fixer: name, thawed: true, detail: `${THAWED} after ${name} was spawned` };
-  return { fixer: name, thawed: false, detail: "spawned" };
+  const taken = episodeFix(spawned.value);
+  if (taken) return taken;
+  if (wiring.freezes().setFixer(input.repo, live.episode, name)) return { fixer: name, thawed: false, detail: "spawned" };
+  const kept = current()?.fixer;
+  if (kept == null) return { fixer: name, thawed: true, detail: `${THAWED} after ${name} was spawned` };
+  return { fixer: kept, thawed: false, detail: await retireExtraFixer(fixers, name, kept) };
+}
+
+/** Undefined once the episode thawed. The row is read again after the roster, the slow part, so a fixer recorded meanwhile is never joined by a second one. */
+async function spawnUnlessTaken(fixers: FixerAgents, name: string, current: () => Freeze | undefined, spawn: () => Promise<void>): Promise<Freeze | undefined> {
+  if (!current()) return undefined;
+  const onRoster = (await fixers.roster()).some((row) => row.name === name);
+  const live = current();
+  if (live && !episodeFix(live) && !onRoster) await spawn();
+  return live;
+}
+
+/** A concurrent step recorded its fixer between this spawn and its record; the recorded one keeps the exemption. */
+async function retireExtraFixer(fixers: FixerAgents, extra: string, kept: string): Promise<string> {
+  const lost = `the episode already had ${kept} when ${extra} was spawned`;
+  if (!fixers.retire) return `${lost}; no retire is wired, so ${extra} stays`;
+  return fixers.retire(extra).then(() => `${lost}; retired ${extra}`, (error: unknown) => `${lost}; retiring ${extra} failed: ${failureOf(error)}`);
 }
 
 /** A green merge clears the freeze only if it descends from the red sha and re-ran green every check that was red there. */
@@ -330,7 +365,11 @@ export async function unfreezeStep(deps: ShepherdDeps, wiring: MainRedWiring | u
   const freezes = wiring?.freezes();
   const live = freezes?.get(input.repo);
   if (!freezes || !live) return { unfrozen: false, frozen: false, episode: null, detail: "the repo is not frozen" };
-  const stays = (detail: string) => ({ unfrozen: false, frozen: true, episode: live.episode, detail });
+  // A thaw elsewhere during the reads already ran its sweep, so a frozen answer read before them strands the gate (TP-2919).
+  const stays = (detail: string) => {
+    const frozen = freezes.live(input.repo, live.episode) !== undefined;
+    return { unfrozen: false, frozen, episode: live.episode, detail: frozen ? detail : `${detail}; episode ${live.episode} thawed meanwhile` };
+  };
   try {
     const after = (await deps.port.compareFiles(input.repo, live.redSha, input.mergeSha)).mergeBaseSha === live.redSha;
     if (!after) return stays(`${input.mergeSha} does not descend from the red sha ${live.redSha}`);

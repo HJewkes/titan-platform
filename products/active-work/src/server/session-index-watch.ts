@@ -16,9 +16,11 @@ import { watchChangedPaths } from '../session-index/watch-paths.js';
 import { createDirtySet, type DirtySet, type DrainedDirtySet } from '../session-index/dirty-set.js';
 import { transcriptsFromDirty } from '../session-index/delta-pass.js';
 import { indexFreshness } from '../session-index/freshness.js';
-import { openGraph, type WorkspaceGraph } from '../session-index/graph.js';
+import type { WorkspaceGraph } from '../session-index/graph.js';
+import { openLiveGraph, type LiveGraph } from '../session-index/live-graph.js';
 import { readMachinePressure, shouldHold } from '../utils/machine-pressure.js';
 import { readerGate } from '../session-index/reader-gate.js';
+import { startWorkspaceFreshness, type WorkspaceFreshness } from './workspace-freshness.js';
 import {
   readRefreshLockHolder,
   runRefresh,
@@ -106,9 +108,12 @@ function passLogLine(summary: RefreshSummary, maxStallMs: number): object {
     scanned: summary.scanned,
     filesOpened: summary.filesOpened,
     bytesRead: summary.bytesRead,
+    rowsWritten: summary.rowsWritten,
+    dbBytes: summary.dbBytes,
     durationMs: summary.durationMs,
     maxStallMs,
     phases: summary.phases,
+    prsPolled: summary.prsPolled,
     errors: summary.errors.slice(0, LOGGED_ERRORS),
     errorCount: summary.errors.length,
   };
@@ -213,9 +218,11 @@ export interface PassRunner {
  * Both kinds drain the dirty set only once the lock is held, and put it back if
  * the pass fails, so no reported change is lost. A delta pass never waits on the
  * lock: a reader is waiting on it, and the next pass picks the paths up.
+ * `currentGraph` is asked inside the lock, where a `miner rebuild` swap cannot
+ * be halfway done.
  */
 export function passRunner(
-  graph: WorkspaceGraph,
+  currentGraph: () => Promise<WorkspaceGraph>,
   dirty: DirtySet,
   log: WatchLogger,
   signal: AbortSignal,
@@ -224,15 +231,15 @@ export function passRunner(
   const sweep = episodeSweepPolicy();
   const measured = async (options: RefreshOptions): Promise<RefreshSummary> => {
     const { result, maxStallMs } = await measureLoopStall(() =>
-      runRefresh({ graph, yieldPoint: () => yieldToReaders(signal), ...options }),
+      runRefresh({ yieldPoint: () => yieldToReaders(signal), ...options }),
     );
     lastMaxLoopStallMs = maxStallMs;
     log.info(passLogLine(result, maxStallMs), 'session index pass');
     return result;
   };
-  const full = async (drained: DrainedDirtySet): Promise<RefreshSummary> => {
+  const full = async (graph: WorkspaceGraph, drained: DrainedDirtySet): Promise<RefreshSummary> => {
     try {
-      const result = await measured({ episodeSweep: sweep.next(), dirtyPaths: drained.paths });
+      const result = await measured({ graph, episodeSweep: sweep.next(), dirtyPaths: drained.paths });
       sweep.settle(result.episodeBacklog);
       return result;
     } catch (err) {
@@ -250,10 +257,11 @@ export function passRunner(
         onLockWait?.(false);
         const drained = dirty.drain();
         try {
-          if (kind === 'full') return await full(drained);
+          const graph = await currentGraph();
+          if (kind === 'full') return await full(graph, drained);
           const roots = claudeTranscriptRoots();
           const transcripts = await transcriptsFromDirty(graph, drained, roots);
-          return await measured({ mode: 'delta', transcripts, onIndexed });
+          return await measured({ graph, mode: 'delta', transcripts, onIndexed });
         } catch (err) {
           dirty.restore(drained);
           throw err;
@@ -297,12 +305,17 @@ function createScheduler(
 }
 
 /** Readers refresh before they read; nothing to index and nothing running means already fresh. */
-function installFreshness(scheduler: RefreshScheduler, dirty: DirtySet): () => void {
-  return indexFreshness.install((budgetMs) =>
-    dirty.size === 0 && !scheduler.status().running
+export function installFreshness(
+  scheduler: Pick<RefreshScheduler, 'runNow' | 'status'>,
+  dirty: DirtySet,
+  workspace: WorkspaceFreshness,
+): () => void {
+  return indexFreshness.install((budgetMs, scope) => {
+    if (scope === 'workspace') return workspace.ensure(budgetMs);
+    return dirty.size === 0 && !scheduler.status().running
       ? Promise.resolve('fresh')
-      : scheduler.runNow(budgetMs),
-  );
+      : scheduler.runNow(budgetMs);
+  });
 }
 
 export function startSessionIndexWatch(
@@ -314,9 +327,12 @@ export function startSessionIndexWatch(
     return null;
   }
 
-  let graph: WorkspaceGraph;
+  let live: LiveGraph;
   try {
-    graph = openGraph();
+    live = openLiveGraph({
+      onCheckpointerError: (err) =>
+        log.warn({ err }, 'session index checkpoint worker failed; checkpointing on the loop'),
+    });
   } catch (err) {
     log.warn({ err }, 'session index unavailable; transcript indexing disabled');
     return null;
@@ -324,15 +340,21 @@ export function startSessionIndexWatch(
 
   const dirty = createDirtySet();
   const abort = new AbortController();
-  const runner = passRunner(graph, dirty, log, abort.signal);
+  const runner = passRunner(live.current, dirty, log, abort.signal);
   const scheduler = createScheduler(runner, dirty, log, abort.signal);
-  const uninstall = installFreshness(scheduler, dirty);
+  const { workspace, watcher: workspaceWatcher } = startWorkspaceFreshness(
+    live.current,
+    abort.signal,
+    log,
+  );
+  const uninstall = installFreshness(scheduler, dirty, workspace);
 
   // The watcher only records what changed; a reader or the poll runs the pass.
   const watchers = claudeTranscriptRoots().flatMap(({ root }) => {
     const watcher = watchRoot(root, () => {}, log, dirty);
     return watcher ? [watcher] : [];
   });
+  if (workspaceWatcher) watchers.push(workspaceWatcher);
 
   const startPoll = options.startPoll ?? startIntervalPoll;
   const stopPoll = startPoll(
@@ -351,8 +373,8 @@ export function startSessionIndexWatch(
       abort.abort(new Error('session index watcher closed'));
       stopPoll();
       for (const watcher of watchers) watcher.close();
-      await scheduler.close();
-      graph.db.close();
+      await Promise.all([scheduler.close(), workspace.idle()]);
+      await live.close();
     },
   };
 }

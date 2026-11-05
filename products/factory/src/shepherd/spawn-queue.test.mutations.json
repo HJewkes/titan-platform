@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "only the head of the queue is admitted",
+      "file": "products/factory/src/shepherd/review-queue.ts",
+      "find": "if (!ahead || index < room) return verdict;",
+      "replace": "if (!ahead || index < 1) return verdict;",
+      "kills": [
+        "the review queue admits from its front up to the free slots admits an asker at position 3 while the head has not asked again, when three slots are free"
+      ]
+    },
+    {
+      "name": "the room ignores the load check",
+      "file": "products/factory/src/shepherd/spawn-gate.ts",
+      "find": "return Math.max(1, Math.min(byLoad, bySlots));",
+      "replace": "return Math.max(1, bySlots);",
+      "kills": [
+        "the review queue admits from its front up to the free slots bounds the room by what the load check allows: one review at load5 17 under buildLoad5 20"
+      ]
+    },
+    {
+      "name": "an admitted review that is not running yet is not unabsorbed",
+      "file": "products/factory/src/shepherd/spawn-gate.ts",
+      "find": "now - startedAt < LOAD5_WINDOW_MS).length + admittedReviews;",
+      "replace": "now - startedAt < LOAD5_WINDOW_MS).length;",
+      "kills": [
+        "admitted reviews count as unabsorbed from their admission admits six of 18 reviews asking inside one second at load5 20, not all 18"
+      ]
+    },
+    {
+      "name": "a review the roster shows running stays pending too",
+      "file": "products/factory/src/shepherd/spawn-gate.ts",
+      "find": "seen: (running: readonly string[]) => running.forEach((name) => admitted.delete(name)),",
+      "replace": "seen: (running: readonly string[]) => void running,",
+      "kills": [
+        "admitted reviews count as unabsorbed from their admission stops counting an admitted review as pending once the roster shows it running, so it is not counted twice"
+      ]
+    },
+    {
+      "name": "a moved-past ask stays queued",
+      "file": "products/factory/src/shepherd/review-queue.ts",
+      "find": "  if (!movedPast) return;\n",
+      "replace": "  return;\n",
+      "kills": [
+        "a queued ask whose run moved past it leaves the queue at once drops the head of the queue whose PR moved to a new head, and lets the next asker in",
+        "a queued ask whose run moved past it leaves the queue at once drops the head of the queue whose PR merged or closed, so it is off the open list, and lets the next asker in"
+      ]
+    }
+  ]
+}

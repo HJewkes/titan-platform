@@ -17,7 +17,7 @@ import {
 import { RefreshScheduler } from '../../src/session-index/scheduler.js';
 import type * as Preserve from '../../src/session-index/preserve.js';
 import type * as WorkspaceRefresh from '../../src/workspace-index/refresh.js';
-import { FIXTURE_LINES, SESSION, renderTranscript } from './fixture.js';
+import { FACT_LINE_COUNT, FIXTURE_LINES, SESSION, renderTranscript } from './fixture.js';
 
 const phases = vi.hoisted((): string[] => []);
 
@@ -66,6 +66,19 @@ function writeTranscript(name: string, lines = FIXTURE_LINES): void {
 }
 
 describe('runRefresh', () => {
+  it('stores only prompt and reply spans and no context_block rows for a transcript with tool calls', async () => {
+    writeTranscript('a.jsonl');
+
+    await runRefresh({ skipPrOutcomes: true, graph, root });
+
+    const fields = graph.db
+      .prepare("SELECT DISTINCT field FROM search_span WHERE owner_ref LIKE 'session:%' ORDER BY field")
+      .all() as { field: string }[];
+    expect(fields.map((row) => row.field)).toEqual(['assistant_response', 'prompt']);
+    const blocks = graph.db.prepare('SELECT COUNT(*) AS n FROM context_block').get() as { n: number };
+    expect(blocks.n).toBe(0);
+  });
+
   it('a pass yields before the workspace half and before replaying preserved rows', async () => {
     writeTranscript('a.jsonl');
     phases.length = 0;
@@ -92,7 +105,7 @@ describe('runRefresh', () => {
       missing: 0,
       errors: [],
     });
-    expect(summary.factsAdded).toBe(FIXTURE_LINES.length);
+    expect(summary.factsAdded).toBe(FACT_LINE_COUNT);
     expect(summary.turnsRolledUp).toBeGreaterThan(0);
     // The rollup ran: turns are closed, which no single line can do.
     expect(
@@ -467,6 +480,32 @@ describe('withRefreshLock', () => {
     await first.release();
   });
 
+  it.each([
+    ['null', 'null'],
+    ['no pid', JSON.stringify({ command: 'x', startedAt: '2026-01-01T00:00:00.000Z' })],
+    ['no command', JSON.stringify({ pid: 1, startedAt: '2026-01-01T00:00:00.000Z' })],
+    ['a string pid', JSON.stringify({ pid: '1', command: 'x', startedAt: 'now' })],
+  ])('reads a holder file with %s as no holder', async (_label, body) => {
+    const first = await holdLock(() => writeFileSync(refreshLockHolderPath(), body));
+
+    expect(await readRefreshLockHolder()).toBeNull();
+
+    await first.release();
+  });
+
+  it('keeps unknown keys on a holder file and ignores a wrong-typed stale', async () => {
+    const startedAt = new Date().toISOString();
+    const first = await holdLock(() => {
+      const holder = { pid: process.pid, command: 'c', startedAt, stale: 'no', host: 'h' };
+      writeFileSync(refreshLockHolderPath(), JSON.stringify(holder));
+    });
+
+    const holder = await readRefreshLockHolder(Date.parse(startedAt) - 1);
+
+    expect(holder).toEqual({ pid: process.pid, command: 'c', startedAt, host: 'h' });
+    await first.release();
+  });
+
   it('stops waiting for a held lock once the signal aborts, without running fn', async () => {
     const first = await holdLock();
     const abort = new AbortController();
@@ -475,11 +514,12 @@ describe('withRefreshLock', () => {
 
     const second = withRefreshLock(fn, { signal: abort.signal, onWait });
     await vi.waitFor(() => expect(onWait).toHaveBeenCalled());
-    const started = Date.now();
     abort.abort(new Error('closing'));
+    // The abort settles the wait in microtasks; a wait that sat out its retry delay would still be pending at the next loop turn.
+    const nextTurn = new Promise((resolve) => setImmediate(() => resolve('still waiting')));
+    const settled = await Promise.race([second.catch((err: unknown) => err), nextTurn]);
 
-    await expect(second).rejects.toThrow('closing');
-    expect(Date.now() - started).toBeLessThan(500);
+    expect(settled).toMatchObject({ message: 'closing' });
     expect(fn).not.toHaveBeenCalled();
     await first.release();
   });

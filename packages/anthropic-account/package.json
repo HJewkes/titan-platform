@@ -42,10 +42,8 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit"
   },
-  "peerDependencies": {
+  "dependencies": {
+    "@titan-design/rpc-protocol": "workspace:^",
     "zod": "^4.0.0"
-  },
-  "devDependencies": {
-    "zod": "^4.4.3"
   }
 }

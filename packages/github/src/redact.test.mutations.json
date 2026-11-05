@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the exact scans search once per copy of a repeated secret",
+      "file": "packages/github/src/redact.ts",
+      "find": "const secrets = [...new Set(secretList.filter((value) => value.length > 0))];",
+      "replace": "const secrets = secretList.filter((value) => value.length > 0);",
+      "kills": [
+        "redactStreams secret list scans for 100 copies of a secret no more than for one"
+      ]
+    }
+  ]
+}

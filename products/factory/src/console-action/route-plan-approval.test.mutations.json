@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a console write claims for the first of several live registrations",
+      "file": "products/factory/src/console-action/plan-approval.ts",
+      "find": "live.length === 1 ?",
+      "replace": "live.length >= 1 ?",
+      "kills": [
+        "POST /owner/console-action plan-approval leaves the approval unclaimed when two live registrations name the task"
+      ]
+    }
+  ]
+}

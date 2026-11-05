@@ -1,0 +1,53 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the CI skip pattern drops the [no ci] alternative",
+      "file": "packages/github/src/squash-message.ts",
+      "find": "ci\\s*skip|no\\s*ci|skip",
+      "replace": "ci\\s*skip|skip",
+      "kills": [
+        "CI skip tokens in a squash message defangs [no ci] in the PR body to its inert parenthesised form",
+        "CI skip tokens in a squash message defangs [NO CI] in the PR body to its inert parenthesised form",
+        "CI skip tokens in a squash message defangs [no ci] in the title and in a commit subject",
+        "CI skip tokens in a squash message defangs tokens inside fenced, indented and inline code"
+      ]
+    },
+    {
+      "name": "the CI skip pattern matches lower case only",
+      "file": "packages/github/src/squash-message.ts",
+      "find": "actions\\s*skip)\\s*)\\]/gi;",
+      "replace": "actions\\s*skip)\\s*)\\]/g;",
+      "kills": [
+        "CI skip tokens in a squash message defangs [Skip CI] in the PR body to its inert parenthesised form",
+        "CI skip tokens in a squash message defangs [NO CI] in the PR body to its inert parenthesised form",
+        "CI skip tokens in a squash message defangs [Actions\tSkip] in the PR body to its inert parenthesised form"
+      ]
+    },
+    {
+      "name": "defangCiSkip leaves skip-checks: true trailers live",
+      "file": "packages/github/src/squash-message.ts",
+      "find": ".replace(SKIP_CHECKS, \"$1$2=\")",
+      "replace": "",
+      "kills": [
+        "CI skip tokens in a squash message defangs a \"skip-checks: true\" trailer in the PR body and a commit body",
+        "CI skip tokens in a squash message defangs a \"skip-checks:true\" trailer in the PR body and a commit body",
+        "CI skip tokens in a squash message defangs a \"Skip-Checks : TRUE\" trailer in the PR body and a commit body"
+      ]
+    },
+    {
+      "name": "defanging only the output, a re-format misses its own Changes tail",
+      "file": "packages/github/src/squash-message.ts",
+      "find": "assemble(defangInput(input))",
+      "replace": "assemble(input)",
+      "kills": ["CI skip tokens in a squash message re-formats a message that carried every token unchanged"]
+    },
+    {
+      "name": "defanging only the input misses a token an address strip joins",
+      "file": "packages/github/src/squash-message.ts",
+      "find": "  return { subject: defangCiSkip(subject), body: defangCiSkip(body) };",
+      "replace": "  return { subject, body };",
+      "kills": ["CI skip tokens in a squash message defangs a token that stripping an address joins"]
+    }
+  ]
+}

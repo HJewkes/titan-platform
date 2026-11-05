@@ -53,12 +53,6 @@ const SETTLE_TIMEOUT_MS = 15_000;
 const SNAPSHOT_MISS = "is not in this snapshot";
 
 /**
- * The page is shot offline. react-ui's stylesheet imports its web fonts from Google Fonts, so text falls back to the
- * system sans; that request alone is let fail quietly, and any other one off disk fails the capture.
- */
-const EXPECTED_OFFLINE = /^https:\/\/fonts\.googleapis\.com\//;
-
-/**
  * Resolves once the DOM has not changed for the quiet window and every image and video has loaded or failed; real
  * timers are left running. Plain source for the reason `frozenClockScript` gives.
  */
@@ -99,8 +93,9 @@ async function onSettledPage<T>(browser: Browser, url: string, viewport: Viewpor
   try {
     await context.addInitScript({ content: frozenClockScript(nowMs) });
     const errors: Error[] = [];
+    // The page is shot offline and react-ui inlines its own web fonts, so any request off disk, a font one included, fails the capture.
     await context.route(/^(?!file:)/, (route) => {
-      if (!EXPECTED_OFFLINE.test(route.request().url())) errors.push(new Error(`asked the network for ${route.request().url()}`));
+      errors.push(new Error(`asked the network for ${route.request().url()}`));
       return route.abort();
     });
     const page = await context.newPage();

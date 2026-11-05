@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "no gh command path is read as unknown",
+      "file": "packages/tool-guard/src/families/gh-path.ts",
+      "find": "  const { hidden, aliasSlot } = ghCommandLine(cmd.args);\n",
+      "replace": "  return false;\n  const { hidden, aliasSlot } = ghCommandLine(cmd.args);\n",
+      "kills": [
+        "a line that rebinds a command name denies a gh option word that varies as an unknown gh command, not as a rebinding"
+      ]
+    }
+  ]
+}

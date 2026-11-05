@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the sent-back allowlist lacks waive-proof",
+      "file": "products/factory/src/console-action/gate.ts",
+      "find": "[SENT_BACK_GATE, Object.freeze([AWAIT_NEW_HEAD, WAIVE_PROOF])]",
+      "replace": "[SENT_BACK_GATE, Object.freeze([AWAIT_NEW_HEAD])]",
+      "kills": [
+        "POST /owner/console-action waive-proof answers 409 moved with GitHub's head when the PR moved past a waive-proof record's head, and leaves the gate pending",
+        "POST /owner/console-action waive-proof resolves waive-proof on a waivable gate with the gate's head, as owner-remote bound to the record's sha256"
+      ]
+    },
+    {
+      "name": "the allowlist is not narrowed to the gate's own schema",
+      "file": "products/factory/src/console-action/gate.ts",
+      "find": "allowed.filter((decision) => offered.includes(decision))",
+      "replace": "allowed",
+      "kills": [
+        "POST /owner/console-action waive-proof refuses with 403 class a waive-proof on a sent-back gate whose schema does not offer it, leaving the gate pending"
+      ]
+    },
+    {
+      "name": "a waiver's answer omits the head its anyOf shape pins",
+      "file": "products/factory/src/console-action/gate.ts",
+      "find": " || HEAD_PINNED_DECISIONS.has(action.decision)",
+      "replace": "",
+      "kills": [
+        "POST /owner/console-action waive-proof resolves waive-proof on a waivable gate with the gate's head, as owner-remote bound to the record's sha256"
+      ]
+    }
+  ]
+}

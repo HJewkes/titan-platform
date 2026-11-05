@@ -9,6 +9,17 @@
       "kills": [
         "every math write operator, spacing and side around a computed name reads a long text without a hit in linear time: spaced operators between literal names"
       ]
+    },
+    {
+      "name": "the option walk rescans its read states every 32 states",
+      "file": "packages/tool-guard/src/shell/hooked-params.ts",
+      "find": "    seen.add(key);",
+      "replace": "    seen.add(key);\n    if (seen.size % 32 === 0) for (const done of seen) done.charCodeAt(0);",
+      "kills": [
+        "an option word the walk reads both ways reads a long run of either-letters in linear time",
+        "an option word the walk reads both ways slots the operands once when many readings end options: read, whose -p ends options in zsh",
+        "an option word the walk reads both ways slots the operands once when many readings end options: stat, whose -t ends options in BSD stat"
+      ]
     }
   ]
 }

@@ -160,4 +160,26 @@ describe("note source", () => {
 
     expect(summary).toMatchObject({ read: 0, written: 0, errors: [] });
   });
+
+  it("reports a notes path that is not a directory and keeps reading other initiatives", async () => {
+    const blocked = path.join(root, "gadgets", "sources", "notes");
+    mkdirSync(path.dirname(blocked), { recursive: true });
+    writeFileSync(blocked, "not a directory", "utf8");
+    writeFixture();
+
+    const summary = await extract();
+
+    expect(summary.errors).toEqual([expect.stringContaining(blocked)]);
+    expect(summary.written).toBe(3);
+  });
+
+  it("stays silent for an initiative with no notes directory", async () => {
+    mkdirSync(path.join(root, "gadgets"), { recursive: true });
+    writeFixture();
+
+    const summary = await extract();
+
+    expect(summary.errors).toEqual([]);
+    expect(summary.written).toBe(3);
+  });
 });

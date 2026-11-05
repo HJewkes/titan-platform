@@ -796,6 +796,12 @@ declare const coordinatorConfigSchema: z.ZodObject<{
             per_run_points: z.ZodOptional<z.ZodNumber>;
             per_day_points: z.ZodOptional<z.ZodNumber>;
             implementers: z.ZodOptional<z.ZodNumber>;
+            hand_reserve: z.ZodOptional<z.ZodNumber>;
+            brief_gate: z.ZodOptional<z.ZodEnum<{
+                off: "off";
+                shadow: "shadow";
+                on: "on";
+            }>>;
         }, z.core.$strict>>>;
         overrides: z.ZodOptional<z.ZodArray<z.ZodObject<{
             per_day_points: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
@@ -811,6 +817,30 @@ declare const coordinatorConfigSchema: z.ZodObject<{
             dispatch_five_hour_points: z.ZodOptional<z.ZodNumber>;
             pick_margin_five_hour: z.ZodOptional<z.ZodNumber>;
         }, z.core.$strict>>>;
+        capacity: z.ZodOptional<z.ZodObject<{
+            max_agents: z.ZodOptional<z.ZodNumber>;
+            reserve_slots: z.ZodOptional<z.ZodNumber>;
+            max_worktrees_per_repo: z.ZodOptional<z.ZodNumber>;
+            reserve_worktrees: z.ZodOptional<z.ZodNumber>;
+        }, z.core.$strict>>;
+        shepherd: z.ZodOptional<z.ZodObject<{
+            spawn_gate: z.ZodOptional<z.ZodObject<{
+                load5: z.ZodOptional<z.ZodNumber>;
+                build_load5: z.ZodOptional<z.ZodNumber>;
+            }, z.core.$strict>>;
+            review: z.ZodOptional<z.ZodObject<{
+                max_concurrent: z.ZodOptional<z.ZodNumber>;
+            }, z.core.$strict>>;
+        }, z.core.$strict>>;
+        pace: z.ZodOptional<z.ZodObject<{
+            mode: z.ZodEnum<{
+                off: "off";
+                shadow: "shadow";
+                on: "on";
+            }>;
+            buffer_points: z.ZodOptional<z.ZodNumber>;
+            finish_hours_before_reset: z.ZodOptional<z.ZodNumber>;
+        }, z.core.$strict>>;
     }, z.core.$strict>;
     policy: z.ZodObject<{
         hard_stops: z.ZodArray<z.ZodEnum<{
@@ -1000,22 +1030,24 @@ declare function verifyChain(revisions: readonly unknown[]): ChainResult;
 /** When a reader of the surface sees a new value. */
 type ReloadClass = "live" | "per-spawn" | "restart";
 type ConfigSurface = "coordinator" | "agent-chat" | "factory";
+type EditableValue = number | string | readonly string[];
 type EditableField = {
     surface: ConfigSurface;
     /** Dotted path within the surface; `*` matches exactly one segment. */
     pattern: string;
-    bounds: {
+    /** Present on numeric rows only; a non-numeric row's limits live in its schema. */
+    bounds?: {
         min: number;
         max: number;
         integer: boolean;
     };
-    schema: z.ZodNumber;
+    schema: z.ZodType<EditableValue>;
     reload: ReloadClass;
 };
 type EditableValueResult = {
     ok: true;
     field: EditableField;
-    value: number;
+    value: EditableValue;
 } | {
     ok: false;
     reason: "not-editable" | "invalid";
@@ -1025,7 +1057,7 @@ type EditableValueResult = {
 declare const EDITABLE_FIELDS: readonly EditableField[];
 /** The row that makes `path` on `surface` editable, or undefined when none does. */
 declare function editableField(surface: string, path: string): EditableField | undefined;
-/** Checks one proposed value against its row's bounds; never throws. */
+/** Checks one proposed value against its row's schema; never throws. */
 declare function checkEditableValue(surface: string, path: string, value: unknown): EditableValueResult;
 
-export { AUTHORED_MAX_CHARS, type AuthoredBlock, type AuthoredContinuation, type AuthoredError, type AuthoredResult, type ChainError, type ChainResult, type CharterDefaults, type CharterPolicy, type CharterPolicyError, type CharterPolicyResult, type ConfigEditResult, type ConfigRevision, type ConfigSurface, type CoordinatorConfig, type CoordinatorConfigError, type CoordinatorConfigResult, type CoordinatorOwner, type CoordinatorPolicy, type CoordinatorSeat, type DocumentChange, EDITABLE_FIELDS, type EditableField, type EditableValueResult, HARD_STOPS, HARD_STOP_CLASSES, type HardStop, type HardStopClass, type OpenQuestion, type PrefixScopes, type ReloadClass, type ResolvedSeatPolicy, SEAT_EVENT_KINDS, type SeatConcurrency, type SeatConfig, type SeatEvent, type SeatFoldError, type SeatFoldOptions, type SeatGenerationActivity, type SeatRepo, type SeatSpend, type SeatState, type SessionFacts, type StandingRule, applyEdit, authoredBlockSchema, authoredContinuationSchema, charterDefaultsSchema, charterPolicyErrorSchema, charterPolicySchema, checkCoordinatorConfig, checkEditableValue, configRevisionSchema, coordinatorConfigErrorSchema, coordinatorConfigSchema, coordinatorOwnerSchema, coordinatorPolicySchema, coordinatorSeatSchema, diffDocuments, documentSha, editableField, emptySeatState, foldSeatEvents, hardStopClassSchema, hardStopsIn, importAutonomyTree, openQuestionSchema, parseAuthored, parseCharterPolicy, projectSeatGeneration, renderAuthored, renderSeatBook, resolveSeatPolicy, revisionSha, scratchPathOf, seatBackgroundSchema, seatClaimSchema, seatConcurrencySchema, seatConfigSchema, seatEventSchema, seatFoldErrorSchema, seatHoldSchema, seatRepoSchema, seatSpendSchema, seatStateSchema, sessionFactsPrSchema, sessionFactsSchema, standingRuleSchema, verifyChain };
+export { AUTHORED_MAX_CHARS, type AuthoredBlock, type AuthoredContinuation, type AuthoredError, type AuthoredResult, type ChainError, type ChainResult, type CharterDefaults, type CharterPolicy, type CharterPolicyError, type CharterPolicyResult, type ConfigEditResult, type ConfigRevision, type ConfigSurface, type CoordinatorConfig, type CoordinatorConfigError, type CoordinatorConfigResult, type CoordinatorOwner, type CoordinatorPolicy, type CoordinatorSeat, type DocumentChange, EDITABLE_FIELDS, type EditableField, type EditableValue, type EditableValueResult, HARD_STOPS, HARD_STOP_CLASSES, type HardStop, type HardStopClass, type OpenQuestion, type PrefixScopes, type ReloadClass, type ResolvedSeatPolicy, SEAT_EVENT_KINDS, type SeatConcurrency, type SeatConfig, type SeatEvent, type SeatFoldError, type SeatFoldOptions, type SeatGenerationActivity, type SeatRepo, type SeatSpend, type SeatState, type SessionFacts, type StandingRule, applyEdit, authoredBlockSchema, authoredContinuationSchema, charterDefaultsSchema, charterPolicyErrorSchema, charterPolicySchema, checkCoordinatorConfig, checkEditableValue, configRevisionSchema, coordinatorConfigErrorSchema, coordinatorConfigSchema, coordinatorOwnerSchema, coordinatorPolicySchema, coordinatorSeatSchema, diffDocuments, documentSha, editableField, emptySeatState, foldSeatEvents, hardStopClassSchema, hardStopsIn, importAutonomyTree, openQuestionSchema, parseAuthored, parseCharterPolicy, projectSeatGeneration, renderAuthored, renderSeatBook, resolveSeatPolicy, revisionSha, scratchPathOf, seatBackgroundSchema, seatClaimSchema, seatConcurrencySchema, seatConfigSchema, seatEventSchema, seatFoldErrorSchema, seatHoldSchema, seatRepoSchema, seatSpendSchema, seatStateSchema, sessionFactsPrSchema, sessionFactsSchema, standingRuleSchema, verifyChain };

@@ -24,8 +24,17 @@ export interface SessionPatch {
   seedPrompt?: string;
 }
 
+/**
+ * The value an echo line states. Hosts rewrite these lines whether or not the value moved,
+ * so a store keeps the fact only when `value` differs from the last one stored under `key`.
+ */
+export interface EchoState {
+  key: string;
+  value: string;
+}
+
 export type SessionEvent =
-  | (EventBase & { kind: "fact"; eventType: string; promptId: string | null; toolUseId: string | null })
+  | (EventBase & { kind: "fact"; eventType: string; promptId: string | null; toolUseId: string | null; state?: EchoState })
   | (EventBase & { kind: "span"; field: SpanField; text: string })
   | (EventBase & { kind: "session"; patch: SessionPatch; turnDelta: number; commitDelta: number; pushDelta: number })
   | (EventBase & { kind: "turn"; promptId: string })

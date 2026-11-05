@@ -47,7 +47,7 @@ function lstatOrNull(target: string): Stats | null {
   try {
     return lstatSync(target);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    if (isErrnoCode(error, "ENOENT")) return null;
     throw error;
   }
 }
@@ -99,7 +99,12 @@ export async function removeWorktree(
   return undefined;
 }
 
+function isErrnoCode(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === code;
+}
+
 function firstLine(err: unknown): string {
-  const detail = String((err as { stderr?: unknown }).stderr || (err as Error).message).trim();
+  const stderr = typeof err === "object" && err !== null && "stderr" in err ? err.stderr : undefined;
+  const detail = String(stderr || (err instanceof Error ? err.message : err)).trim();
   return detail.split("\n")[0] ?? detail;
 }

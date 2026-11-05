@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "listing the push url waits for a slow remote with no timeout",
+      "file": "packages/egress-scan/src/git.ts",
+      "find": "    timeout: list.timeoutMs ?? LIST_TIMEOUT_MS,\n",
+      "replace": "",
+      "kills": [
+        "pre-push ranges a branch that merged main falls back to the full range when listing the remote outlasts the timeout"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: proof
+summary: "The checks that show it holds: failing at base, passing at head."
+role: evidence
+component: { name: ChecklistBeat, maturity: spike }
+slots: proof
+speech: { band: code }
+durationS: [6, 12, 22]
+preset: false
+emphasis: { targets: [checks], treatments: [highlight, scale] }
+recipe: "Show one to six checks with their result at base and at head; a fix proof fails at base and passes at head. Show proof, do not assert it."

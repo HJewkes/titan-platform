@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { z } from "zod";
-import { silentLogger, startDaemon, type DaemonHandle } from "@titan-design/daemon";
+import { DaemonPortInUseError, silentLogger, startDaemon, type DaemonHandle } from "@titan-design/daemon";
 import {
   EXIT,
   createRegistry,
@@ -85,6 +85,24 @@ export interface TestDaemon {
   close(): Promise<void>;
 }
 
+const REBIND_ATTEMPTS = 40;
+const REBIND_DELAY_MS = 25;
+
+/**
+ * Between close and re-listen, a parallel test's outbound socket can briefly take the freed
+ * ephemeral port as its local port, so re-binding retries instead of failing on the first EADDRINUSE.
+ */
+async function rebind(start: () => Promise<DaemonHandle>): Promise<DaemonHandle> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await start();
+    } catch (err) {
+      if (!(err instanceof DaemonPortInUseError) || attempt >= REBIND_ATTEMPTS) throw err;
+      await new Promise((resolve) => setTimeout(resolve, REBIND_DELAY_MS));
+    }
+  }
+}
+
 /** A real daemon on an ephemeral loopback port with default guards, restartable on the same port. */
 export async function startTestDaemon(registry: CommandRegistry): Promise<TestDaemon> {
   const stateDir = await mkdtemp(path.join(tmpdir(), "react-app-"));
@@ -98,7 +116,7 @@ export async function startTestDaemon(registry: CommandRegistry): Promise<TestDa
     async restart() {
       const port = daemon.handle.port;
       await daemon.handle.close();
-      daemon.handle = await start(port);
+      daemon.handle = await rebind(() => start(port));
     },
     async close() {
       await daemon.handle.close();

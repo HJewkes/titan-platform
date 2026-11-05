@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "no conflict is ever new",
+      "file": "products/factory/src/shepherd/conflict-base.ts",
+      "find": "  return lastBase !== undefined && read.baseSha !== null && read.baseSha !== lastBase && read.containsLastBase;",
+      "replace": "  return false;",
+      "kills": [
+        "TP-4098 slice A: a conflict at a new base is a new conflict wakes the implementer again, telling no seat, when main moved past the fixer's merge-main"
+      ]
+    },
+    {
+      "name": "a moved base is new though the head never merged the last one",
+      "file": "products/factory/src/shepherd/conflict-base.ts",
+      "find": " && read.containsLastBase;",
+      "replace": ";",
+      "kills": [
+        "TP-4098 slice A: a conflict at a new base is a new conflict demotes as before when main moved but the fixer's head never merged the last base"
+      ]
+    },
+    {
+      "name": "a diverged head counts as containing the last base",
+      "file": "products/factory/src/shepherd/conflict-base.ts",
+      "find": "ancestry === \"ahead\" || ancestry === \"identical\"",
+      "replace": "ancestry !== \"behind\"",
+      "kills": [
+        "TP-4098 slice A: a conflict at a new base is a new conflict demotes as before when main moved but the fixer's head never merged the last base"
+      ]
+    },
+    {
+      "name": "a failed base read throws instead of reading as the same base",
+      "file": "products/factory/src/shepherd/conflict-base.ts",
+      "find": "  } catch {\n    return { baseSha: null, containsLastBase: false };",
+      "replace": "  } catch (error) {\n    throw error;",
+      "kills": [
+        "TP-4098 slice A: a conflict at a new base is a new conflict counts an unreadable base as the same base"
+      ]
+    }
+  ]
+}

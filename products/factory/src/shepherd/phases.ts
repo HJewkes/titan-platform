@@ -2,21 +2,15 @@ import type { AgentIdentity } from "@titan-design/authority";
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { OwnerBrief, ReviewShape } from "@titan-design/review-panel";
 import type { WorkflowContext } from "@titan-design/workflow";
-import type { CleanupPorts } from "./cleanup.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
-import type { FixFirstEntry } from "./fix-first-trail.js";
-import type { RemoveDir } from "./review-checkout.js";
+import type { FixFirstEntry, FixRound } from "./fix-first-trail.js";
 import type { ReviewCause } from "./review-schemas.js";
-import type { RosterReader } from "./roster.js";
-import type { SpawnGate } from "./spawn-gate.js";
 import type { AccountLimitStoreRef } from "./account-store.js";
 import type { ShepherdStoreRef } from "./store.js";
-import type { SuiteRules } from "./suite-host.js";
 import type { PrFilesRead } from "./git-pr-files.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import type { PushWatch } from "./push-signal.js";
-import type { VisualPacketPorts } from "./visual-packet-trigger.js";
-import type { DiagnosisPorts } from "./no-verdict-diagnosis.js";
+import type { DiagnosisPorts, ReplanPorts, VisualPacketPorts } from "./spawn-ports.js";
+import type { CleanupPorts, ExitNoticePorts, RemoveDir, RosterReader, SpawnGate, SuiteRules, TaskClose } from "./ports.js";
 
 /** Which PR, which head, and which land round a phase acts for. */
 export interface PhaseTarget {
@@ -54,13 +48,16 @@ export interface ReviewRequest extends PhaseTarget {
   seatHeld?: SeatHeld;
   /** The run's FIX_FIRST trail, set only on D8's convergence review of a runaway head (TP-3734). */
   convergence?: readonly FixFirstEntry[];
+  /** A fix round after a reviewer's FIX_FIRST, which `shepherd.review.scopedRereview` may scope to the fix diff (TP-3735). */
+  fixRound?: FixRound;
 }
 
 /**
  * Why a review gave no verdict: a refusal or silence, the wait ran out, the hold's reviewer has not answered, a busy broker
- * started nobody, the reviewer's Claude account is out of usage, or the reviewer went silent while the machine stop held.
+ * started nobody, the reviewer's Claude account is out of usage, the reviewer went silent while the machine stop held, or
+ * preflight found a hard error, such as a member planned onto an uninstalled profile, before any reviewer started.
  */
-export type NoVerdictCause = "no-verdict" | "timeout" | "external-hold" | "not-started" | "account-exhausted" | "throttled";
+export type NoVerdictCause = "no-verdict" | "timeout" | "external-hold" | "not-started" | "account-exhausted" | "throttled" | "needs-fixer";
 
 /** What a panel MERGE records beside the correctness member's verdict: each member that gave one, and whether the panel met G10. */
 export interface PanelMerge {
@@ -79,6 +76,8 @@ export interface PanelMember {
   head?: string;
   /** The profile Shepherd spawned the member at. */
   profile?: string;
+  /** The `Attests:` tokens of the member's MERGE; absent attests nothing. */
+  attests?: readonly string[];
 }
 
 /** Shepherd's own MERGE at `head` that a seat reviewer's WAIT, or a seat read that can clear, still held when the seat wait ran out. */
@@ -118,6 +117,8 @@ export interface ShepherdDeps {
   agentChatBin: string;
   /** The Claude config directory a successor spawns under; absent means agent-chat's default account. */
   agentChatConfigDir?: string;
+  /** The accounts a successor may spawn under, preferred first, read per wake; the first with headroom wins. Absent means `agentChatConfigDir`. */
+  successorAccounts?: () => readonly string[];
   /** The serve process's one roster reader over `agentChatBin`; absent means each wake reads through its own. */
   roster?: RosterReader;
   /** Admits a successor spawn; absent means it is not gated. */
@@ -148,10 +149,16 @@ export interface ShepherdDeps {
   heldRepair?: "off" | "on";
   /** `on` lets a vacuous fix-proof on a test-only PR with a tests-only diff proceed to review; absent means `off`. */
   noReproProceed?: "off" | "on";
+  /** `record-fact` sends a NO_REPRO on a diff with no source path on to review, recorded on the run (TP-4275); absent means `keep-owner`. */
+  nonSourceNoRepro?: "keep-owner" | "record-fact";
+  /** `last-slice-only` closes a merged PR's task only on its last slice; absent means `keep`. */
+  taskClose?: TaskClose;
   /** `shepherd.visualPacket`: whether a visual approve-merge gate spawns its review packager; absent means `off`. */
   visualPacket?: VisualPacketPorts;
   /** The planner failed rounds with no adversary verdict spawn (TP-3796); absent records a failed spawn, so ops hears instead. */
   diagnosis?: DiagnosisPorts;
+  /** The planner a dead-end gate's replan answer spawns (TP-4759); absent records a refused spawn, so the seat is asked again. */
+  replan?: ReplanPorts;
   /** `shepherd.consoleAnswers` is configured, so each approve-merge gate offers the owner `send-back`; absent means none does. */
   consoleAnswers?: boolean;
   /** The name of the repo seat's `visualBaselines.check`; absent, or undefined for a repo, means no red head is offered for acceptance. */

@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a missing runtime capability reads as ambiguous runtime_error",
+      "file": "packages/agent/src/codex-runtime.ts",
+      "find": "      return failure(`Codex runtime preflight cannot verify required capability ${capability}`);",
+      "replace": "      return { kind: \"runtime_error\", reason: `Codex runtime preflight cannot verify required capability ${capability}` };",
+      "kills": [
+        "Codex runtime admission refuses a newer runtime missing json_events before model launch"
+      ]
+    },
+    {
+      "name": "a thrown version probe reaches the adapter as runtime_error",
+      "file": "packages/agent/src/codex-available.ts",
+      "find": "  return { kind: \"harness_mismatch\", reason: `could not verify ${phase}:",
+      "replace": "  return { kind: \"runtime_error\", reason: `could not verify ${phase}:",
+      "kills": [
+        "Codex runtime admission keeps version-probe rejection context through adapter admission"
+      ]
+    }
+  ]
+}

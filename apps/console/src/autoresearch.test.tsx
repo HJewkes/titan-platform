@@ -24,7 +24,12 @@ function renderConsole(hash: string, snapshot: Snapshot = twin): void {
   );
 }
 
-const rowValue = (header: HTMLElement, label: string): string => within(header).getByText(label).parentElement?.parentElement?.textContent ?? "";
+/** The text of the one stat in the header that shows this label. */
+function statText(header: HTMLElement, label: string): string {
+  const stats = within(header).getAllByTestId(/^autoresearch-stat-[a-z]+$/).filter((stat) => within(stat).queryByText(label) !== null);
+  expect(stats).toHaveLength(1);
+  return stats[0]?.textContent ?? "";
+}
 
 const withAnswer = (command: string, args: unknown, envelope: Snapshot["calls"][string]): Snapshot => ({ ...twin, calls: { ...twin.calls, [snapshotKey(command, args)]: envelope } });
 
@@ -44,11 +49,15 @@ describe("the autoresearch page", () => {
     const header = await screen.findByTestId("autoresearch-header");
 
     expect(within(header).getByText("fixture-target · ar-7c1e")).toBeTruthy();
-    expect(rowValue(header, "Round")).toContain("3 / 50");
-    expect(rowValue(header, "Best score")).toContain("231.2 (+3.3 vs B₀ 234.5, +5.3σ)");
-    expect(rowValue(header, "Noise")).toContain("σ 0.62 · band ±1.24");
-    expect(rowValue(header, "Decisions")).toContain("kept 1 · rejected 2 · stopped 0 · superseded 1");
-    expect(rowValue(header, "Lanes in use")).toContain("2 / 3");
+    expect(within(header).getByText("running")).toBeTruthy();
+    expect(statText(header, "Round")).toContain("3 / 50");
+    expect(statText(header, "Best score")).toContain("231.2");
+    expect(statText(header, "Best score")).toContain("+3.3 vs B₀ 234.5, +5.3σ");
+    expect(statText(header, "Noise")).toContain("σ 0.62");
+    expect(statText(header, "Noise")).toContain("band ±1.24");
+    expect(statText(header, "Decisions")).toContain("kept 1");
+    expect(statText(header, "Decisions")).toContain("rejected 2 · stopped 0 · superseded 1");
+    expect(statText(header, "Lanes in use")).toContain("2 / 3");
   });
 
   it("shows the backlog left after the picks, marking a top-K idea the draw passed over", async () => {
@@ -107,7 +116,7 @@ describe("the autoresearch page", () => {
 
   it("still opens Home for an unknown view, its rail label included", () => {
     renderConsole("#/research");
-    expect(within(screen.getByRole("tab", { name: "Home" })).getByTestId("nav-item-accent")).toBeTruthy();
+    expect(within(screen.getByRole("navigation", { name: "Primary" })).getByRole("button", { name: "Home" }).getAttribute("aria-current")).toBe("page");
     expect(screen.queryByTestId("autoresearch-header")).toBeNull();
   });
 });

@@ -1,0 +1,25 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "every dist file statically imports a package the manifest does not list",
+      "file": "packages/anthropic-account/tsup.config.ts",
+      "find": "  clean: true,",
+      "replace": "  clean: true,\n  banner: { js: 'import \"picomatch\";' },",
+      "kills": [
+        "the published dist imports only packages listed under dependencies, so the bins run under legacy-peer-deps",
+        "the published dist is scanned for the packages it really imports, so the dependency check is not vacuous"
+      ]
+    },
+    {
+      "name": "every dist file dynamically imports a package the manifest does not list",
+      "file": "packages/anthropic-account/tsup.config.ts",
+      "find": "  clean: true,",
+      "replace": "  clean: true,\n  banner: { js: 'const tp3902Late = () => import(\"picomatch\");' },",
+      "kills": [
+        "the published dist imports only packages listed under dependencies, so the bins run under legacy-peer-deps",
+        "the published dist is scanned for the packages it really imports, so the dependency check is not vacuous"
+      ]
+    }
+  ]
+}

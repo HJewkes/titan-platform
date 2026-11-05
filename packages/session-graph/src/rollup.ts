@@ -100,6 +100,27 @@ export function rollupSessions(graph: SessionGraph, sessionIds: readonly string[
   })();
 }
 
+/**
+ * `rollupSessions` one session per transaction, yielding after each: the rollup
+ * recomputes rather than accumulates, so slicing it changes no row. A throw at
+ * a yield (a shutdown abort) rolls up the rest before it propagates, so no
+ * continued turn keeps stale aggregates.
+ */
+export async function rollupYielding(graph: SessionGraph, sessionIds: readonly string[], yieldPoint: () => Promise<void>): Promise<number> {
+  const unique = [...new Set(sessionIds)];
+  let updated = 0;
+  for (const [i, sessionId] of unique.entries()) {
+    updated += rollupSessions(graph, [sessionId]);
+    try {
+      await yieldPoint();
+    } catch (err) {
+      rollupSessions(graph, unique.slice(i + 1));
+      throw err;
+    }
+  }
+  return updated;
+}
+
 /** Recount `session`'s counters from the facts of every transcript still holding these sessions, even a single one. */
 export function recountSessions(graph: SessionGraph, sessionIds: readonly string[]): void {
   if (sessionIds.length === 0) return;

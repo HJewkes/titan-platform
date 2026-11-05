@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "compile skips the board and words.json agreement check",
+      "file": "products/explainer/src/render/compile-timeline.ts",
+      "find": "  if (timing) assertSameBeats(board, timing);\n",
+      "replace": "",
+      "kills": [
+        "explainer render words.json naming a beat the board lacks fails before capture"
+      ]
+    },
+    {
+      "name": "a skipped qa gate is recorded as absent",
+      "file": "products/explainer/src/render/render-video.ts",
+      "find": "if (input.qa.mode === \"skip\") return { qaGate: \"skipped\" };",
+      "replace": "if (input.qa.mode === \"skip\") return { qaGate: \"absent\" };",
+      "kills": [
+        "explainer render a --no-qa run records qaGate skipped"
+      ]
+    }
+  ]
+}

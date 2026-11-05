@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { LinearRegExp } from "@titan-design/fix-proof/linear-regexp";
+import { describe, expect, it, vi } from "vitest";
 import { classify } from "./classify.js";
 import { containsGuarded, GUARDED_PATHS, hasGlob, matchGlob, matchGuarded, toAbsolute } from "./paths.js";
 
@@ -122,6 +123,22 @@ describe("matchGuarded", () => {
   it("anchors home patterns at the given home", () => {
     expect(matchGuarded("/srv/other/.npmrc", GUARDED_PATHS.secret, "/srv/other")?.id).toBe("home:.npmrc");
     expect(matchGuarded("/srv/other/.npmrc", GUARDED_PATHS.secret, HOME)).toBeNull();
+  });
+
+  it("answers a path each list holds by that list, asked in either order", () => {
+    const path = "/home/you/.claude/settings.json";
+
+    expect([secretId(path), configId(path), secretId(path)]).toEqual([null, "any:.claude/settings", null]);
+  });
+
+  it("tests a path a script names in every line against the patterns once, not once a line (TP-4255)", () => {
+    const tests = vi.spyOn(LinearRegExp.prototype, "test");
+    const path = "/home/you/projects/app/hi";
+
+    for (let line = 0; line < 100; line++) secretId(path);
+
+    expect(tests.mock.calls.length).toBeLessThanOrEqual(GUARDED_PATHS.secret.paths.length * 2);
+    tests.mockRestore();
   });
 });
 

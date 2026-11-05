@@ -1,0 +1,17 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "service check never names the pacer wait",
+      "file": "products/factory/src/service-check.ts",
+      "find": "return withDeployWait(await judgeAnswering(ports, job, health));",
+      "replace": "return judgeAnswering(ports, job, health);",
+      "kills": [
+        "titan-factory service check the deploy the pacer holds (TP-2427) names the pending deploy's wait reason and until-time on the ok line",
+        "titan-factory service check the deploy the pacer holds (TP-2427) carries deployWaitSha, deployWaitWhy and deployWaitUntil in --json detail",
+        "titan-factory service check the deploy the pacer holds (TP-2427) omits the until-time of a paused wait",
+        "titan-factory service check the deploy alarm and the deploy checkout's index.lock ends the deploy stalled line with the pacer's wait, keeping the alarm's detail"
+      ]
+    }
+  ]
+}

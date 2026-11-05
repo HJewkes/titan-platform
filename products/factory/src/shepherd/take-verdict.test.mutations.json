@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "takeVerdict's standing gets a default",
+      "file": "products/factory/src/shepherd/take-verdict.ts",
+      "find": "account: string, standing: ProofStanding, scope?: ScopeRound): Promise<Verdict> {",
+      "replace": "account: string, standing: ProofStanding = {}, scope?: ScopeRound): Promise<Verdict> {",
+      "kills": [
+        "taking a verdict without the round's fix-proof standing cannot take a verdict, since an empty standing reads as verified"
+      ]
+    },
+    {
+      "name": "verdictOf's standing gets a default",
+      "file": "products/factory/src/shepherd/take-verdict.ts",
+      "find": "awaited: AwaitedResult, standing: ProofStanding, panel?: Omit<AttestVerdicts, \"attests\">): Promise<Verdict> {",
+      "replace": "awaited: AwaitedResult, standing: ProofStanding = {}, panel?: Omit<AttestVerdicts, \"attests\">): Promise<Verdict> {",
+      "kills": [
+        "taking a verdict without the round's fix-proof standing cannot read an awaited verdict, since an empty standing reads as verified"
+      ]
+    }
+  ]
+}

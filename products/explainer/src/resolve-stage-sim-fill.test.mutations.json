@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the sim pass sweeps the fill's generated layer, without the owner's overrides",
+      "file": "products/explainer/src/resolve-stage.ts",
+      "find": "return found.fallback === undefined ? { slots: found.slots } :",
+      "replace": "return found.fallback === undefined ? { slots: found.generated } :",
+      "kills": [
+        "sim beats read the template fill's slots at resolve sweeps an unpinned sim beat on the slots the fill draws from its visual.slots"
+      ]
+    },
+    {
+      "name": "a sim beat with no slots stays uncut",
+      "file": "products/explainer/src/sim/sim-resolve.ts",
+      "find": "    if (\"pass\" in slots) {\n      out.traces.verdicts.push(slots);\n      continue;",
+      "replace": "    if (\"pass\" in slots) {\n      continue;",
+      "kills": [
+        "sim beats read the template fill's slots at resolve cuts a sim beat with no pin and no visual.slots, naming why in sim-traces and the notes",
+        "sim beats read the template fill's slots at resolve cuts an unpinned sim beat whose visual.slots leave the sim spec invalid"
+      ]
+    },
+    {
+      "name": "a fallen-back sim beat is swept on the fallback's slots",
+      "file": "products/explainer/src/resolve-stage.ts",
+      "find": "return found.fallback === undefined ? { slots: found.slots } : { problem:",
+      "replace": "return true ? { slots: found.slots } : { problem:",
+      "kills": [
+        "sim beats read the template fill's slots at resolve cuts a sim beat with no pin and no visual.slots, naming why in sim-traces and the notes"
+      ]
+    },
+    {
+      "name": "a refused sim beat's reason is dropped",
+      "file": "products/explainer/src/resolve-stage.ts",
+      "find": "if (\"detail\" in found) return { problem: found.detail };",
+      "replace": "if (\"detail\" in found) return { problem: \"\" };",
+      "kills": [
+        "sim beats read the template fill's slots at resolve cuts an unpinned sim beat whose visual.slots leave the sim spec invalid"
+      ]
+    }
+  ]
+}

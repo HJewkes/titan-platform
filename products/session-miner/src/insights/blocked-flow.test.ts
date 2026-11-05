@@ -4,11 +4,13 @@ import path from "node:path";
 import { FakeHttpError, fakeGitHub, githubPort } from "@titan-design/github";
 import type { BlockedFlowReport } from "@titan-design/session-analytics";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { runCli } from "../cli.js";
 import { resolveConfig } from "../config.js";
 import { startMiner } from "../serve.js";
 import { fetchPulls } from "./blocked-flow-sources.js";
 import { seedEventsDb } from "./fixture.js";
+import { blockedFlow } from "./questions.js";
 
 const HEAD_A = "a".repeat(40);
 const HEAD_B = "b".repeat(40);
@@ -76,10 +78,13 @@ async function cli(args: string[]): Promise<{ code: number; stdout: string }> {
   return { code, stdout };
 }
 
+const answerEnvelope = z.object({ data: z.object({ answer: blockedFlow.schema }) });
+const errorBody = z.object({ error: z.string() });
+
 async function ask(flags: string[]): Promise<BlockedFlowReport> {
   const { code, stdout } = await cli(["--json", "insights", "blocked-flow", "--pulls", files.pulls, ...flags]);
   expect(code).toBe(0);
-  return (JSON.parse(stdout) as { data: { answer: BlockedFlowReport } }).data.answer;
+  return answerEnvelope.parse(JSON.parse(stdout)).data.answer;
 }
 
 describe("insights blocked-flow", () => {
@@ -158,7 +163,7 @@ describe("insights blocked-flow", () => {
       });
 
       expect(res.status).toBe(400);
-      expect(((await res.json()) as { error: string }).error).toMatch(/only on the CLI/);
+      expect(errorBody.parse(await res.json()).error).toMatch(/only on the CLI/);
     } finally {
       await handle.close();
     }
@@ -169,7 +174,7 @@ async function askRefused(refusedEnv: NodeJS.ProcessEnv, flags: string[]): Promi
   let stdout = "";
   const io = { stdout: (t: string) => void (stdout += t), stderr: () => undefined, env: refusedEnv };
   const code = await runCli(["--state", path.join(dir, "state"), "--corpus", path.join(dir, "corpus"), "--json", "insights", "blocked-flow", "--pulls", files.pulls, ...WINDOW, ...flags], io);
-  return { code, answer: (JSON.parse(stdout) as { data: { answer: BlockedFlowReport } }).data.answer };
+  return { code, answer: answerEnvelope.parse(JSON.parse(stdout)).data.answer };
 }
 
 describe("insights blocked-flow refused verdicts", () => {

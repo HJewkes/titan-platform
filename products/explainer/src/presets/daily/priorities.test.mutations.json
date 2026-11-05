@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "done tasks named as priorities",
+      "file": "products/explainer/src/presets/daily/priorities.ts",
+      "find": "task.status !== \"done\" && ",
+      "replace": "",
+      "kills": [
+        "daily priorities names each lane's two open tasks with the lowest priority rank"
+      ]
+    }
+  ]
+}

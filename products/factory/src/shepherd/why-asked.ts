@@ -4,7 +4,7 @@
  */
 import { withheldInReason } from "./grant-withheld.js";
 import type { MergeGuardRow } from "./merge-facts.js";
-import type { OwnerGateReason } from "./policy.js";
+import type { OwnerGateReason } from "./policy-schema.js";
 import { transientOnlyConditions } from "./resync.js";
 import { ESCALATIONS, SEAT_HELD_ROUNDS_WORDS } from "./route-table.js";
 
@@ -41,7 +41,11 @@ const GUARD_ROWS: Readonly<Record<MergeGuardRow, Row>> = {
   "required-checks-unknown": { gateClass: "accidental", words: "Shepherd could not read which checks are required" },
   "github-path": { gateClass: "accidental", words: "it changes .github/ and the reviewer's MERGE carries no CI-policy line; a fresh review asks for one" },
   "ci-policy-weakened": { gateClass: "deliberate", words: "the reviewer says it weakens CI policy, and only you accept a weaker CI policy" },
+  "ci-policy-budget": { gateClass: "deliberate", words: "it changes only CI budget or timeout numbers, measured, with a MERGE at this head, so a coordinator may accept it (owner decision 552)" },
   "ci-policy-malformed": { gateClass: "accidental", words: "the reviewer wrote a CI-policy line Shepherd could not read, which may hide a weakening; a fresh review asks for it again" },
+  "attest-unmet": { gateClass: "accidental", words: "it claims a step's behaviour is unchanged, and no independent reviewer's MERGE at this head attests it; a fresh review or a version bump clears it" },
+  "attest-deploy-skew": { gateClass: "accidental", words: "main has registry commits the running Shepherd build lacks, so its attestation read waits for the deploy rather than judge the claims (transient deploy skew)" },
+  "old-path-untagged": { gateClass: "deliberate", words: "it changes old-path code frozen since M1b exit, and its task carries no superseded-at or survives carve-out tag" },
 };
 
 /** The gate rows of `release.ts` and the factory's catch-all default, keyed `table/row`. */

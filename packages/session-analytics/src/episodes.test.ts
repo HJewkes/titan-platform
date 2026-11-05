@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readSessionContexts } from "./cost-report-queries.js";
 import { EPISODE_REQUESTS_SQL, buildEpisodes, readEpisodeInput, staleEpisodeSessions, writeEpisodes, type EpisodeInput } from "./episodes.js";
+import { staleEpisodeSessionsYielding } from "./stale-sweep.js";
 import { createFixtureGraph, insertInbound, insertOrigin, insertRequest, insertSession, insertSignal, type FixtureGraph } from "./fixture.js";
 
 const BASE_MS = Date.parse("2026-09-20T10:00:00Z");
@@ -282,6 +283,21 @@ describe("staleEpisodeSessions", () => {
     expect(staleEpisodeSessions(fixture.graph.db, ["worker", "absent"])).toEqual(["worker"]);
   });
 
+  it("a paged sweep yields after each page and lists what one whole-graph call lists, in its order", async () => {
+    addWorker("early", at(0));
+    insertSession(fixture.graph.db, { sessionId: "late" });
+    insertRequest(fixture.graph.db, { sessionId: "late", ts: at(3) });
+    addWorker("current", at(1));
+    writeEpisodes(fixture.graph, ["current"]);
+    let yields = 0;
+
+    const paged = await staleEpisodeSessionsYielding(fixture.graph.db, async () => void (yields += 1), 1);
+
+    expect(paged).toEqual(staleEpisodeSessions(fixture.graph.db));
+    expect(paged).toEqual(["late", "early"]);
+    expect(yields).toBe(3);
+  });
+
   it("a cron-prompted session turns stale once its typed human turns pass two", () => {
     const db = fixture.graph.db;
     insertSession(db, { sessionId: "cron", seedPrompt: '[{"type":"text"}]' });
@@ -341,8 +357,8 @@ describe("scoped request dedup", () => {
 
   function viewLifetimeMs(sessionId: string): number {
     const row = fixture.graph.db
-      .prepare("SELECT MIN(ts) AS first, MAX(ts) AS last FROM request_dedup WHERE session_id = ? AND is_sidechain = 0")
-      .get(sessionId) as { first: string; last: string };
+      .prepare<[string], { first: string; last: string }>("SELECT MIN(ts) AS first, MAX(ts) AS last FROM request_dedup WHERE session_id = ? AND is_sidechain = 0")
+      .get(sessionId)!;
     return Date.parse(row.last) - Date.parse(row.first);
   }
 
@@ -451,7 +467,7 @@ describe("readEpisodeInput", () => {
   });
 
   it("episode input for one session does not scan every request", () => {
-    const plan = fixture.graph.db.prepare(`EXPLAIN QUERY PLAN ${EPISODE_REQUESTS_SQL}`).all({ sessionId: "s" }) as { detail: string }[];
+    const plan = fixture.graph.db.prepare<[object], { detail: string }>(`EXPLAIN QUERY PLAN ${EPISODE_REQUESTS_SQL}`).all({ sessionId: "s" });
     const details = plan.map((row) => row.detail);
 
     expect(details.filter((detail) => /^SCAN (r|request)\b/.test(detail))).toEqual([]);

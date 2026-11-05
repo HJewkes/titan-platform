@@ -7,13 +7,13 @@ import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened, outsideActions, spaceUpdates } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import type { ShepherdPhases, Verdict, WakeOutcome } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { sendSeatDigests, type SeatState } from "./seat-digest.js";
 import { shepherdStoreRef, type ShepherdStoreRef } from "./store.js";
 import { watchRow } from "./view.js";
+import type { ExitNoticePorts } from "./ports.js";
 
 const H2 = fakeSha("head2");
 const GONE = "no agent of impl-a's lineage is on the roster, so no checkout is known to start a successor in";
@@ -249,6 +249,17 @@ describe("an owner gate opens only when the seat notice cannot be sent", () => {
     const host = world(fake, { ...ports, seatFor: () => undefined }, phases({ kind: "unhandled", reason: GONE }));
 
     await gateOpened(host, gateId(runOf(host), "stuck-behind"));
+  });
+
+  it("opens stuck-behind for the owner when no single seat owns the repo, even though the run's registrant could be told", async () => {
+    const fake = fakeGitHub();
+    fake.onGetPr = (pr) => (fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]), (pr.behind = true));
+    const { sends, ports } = seat();
+    const host = world(fake, { ...ports, seatFor: () => undefined, lineageSeat: async () => "tp-operator" }, phases({ kind: "unhandled", reason: GONE }));
+
+    await gateOpened(host, gateId(runOf(host), "stuck-behind"));
+
+    expect(sends).toEqual([]);
   });
 
   it("leaves the owner-gate approve-merge as it was: a green, reviewed head asks the owner and tells no seat", async () => {

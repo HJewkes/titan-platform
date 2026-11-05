@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a timed-out setup step gets no SIGTERM, only the later SIGKILL",
+      "file": "packages/worktree/src/setup.ts",
+      "find": "      if (child.pid !== undefined) signalGroup(child.pid, \"SIGTERM\");\n",
+      "replace": "",
+      "kills": [
+        "the default setup runner kills a step that outlives its timeout"
+      ]
+    }
+  ]
+}

@@ -63,6 +63,7 @@ declare const DEFAULT_BASE_PATH = ".worktrees";
 /** Ownership marker: the sweep treats only branches carrying this prefix as its own. */
 declare const BRANCH_PREFIX = "agent-chat/";
 declare const DEFAULT_FETCH_TIMEOUT_MS = 15000;
+declare const DEFAULT_GH_TIMEOUT_MS = 3000;
 /**
  * Grace window between an agent exiting and its worktree becoming reclaimable.
  *
@@ -92,6 +93,8 @@ interface WorktreeOptions {
     branchPrefix?: string;
     /** Bound on fetching origin's default branch before cutting a new one. */
     fetchTimeoutMs?: number;
+    /** Bound on each `gh pr view` a release makes; a `gh` that outlives it supplies no landing proof. */
+    ghTimeoutMs?: number;
     /** Bound on one `git worktree add`; the add is killed and the repo's queue moves on when it passes. */
     addTimeoutMs?: number;
     /** Runs each `git worktree add`; tests inject one to observe how adds interleave. */
@@ -234,12 +237,13 @@ type GitRunner = (args: readonly string[], cwd: string) => Promise<string | null
 /** The transports git may use for agent-chat and its agents; `ext::` runs a shell command (CC-1095). */
 declare const SAFE_GIT_PROTOCOLS: readonly string[];
 /**
- * The caller's GIT_ALLOW_PROTOCOL narrowed to the safe list, or the whole safe list when unset.
- * git reads this list over every `protocol.*.allow` config scope, so a repo's config cannot re-enable `ext`.
+ * The caller's GIT_ALLOW_PROTOCOL narrowed to the safe list, or undefined (leave it unset) when the
+ * caller set none or the legacy full list. git reads an exported list over every `protocol.*.allow`
+ * config, so exporting one for a caller who never chose it would lift their own denies (CC-1336).
  * A caller list with nothing safe in it (`ext` alone) gives '', which git reads as allowing no transport.
  */
-declare function pinGitProtocols(value: string | undefined): string;
-/** `env` with GIT_ALLOW_PROTOCOL pinned, for a child that may run git without going through `gitChildEnv`. */
+declare function pinGitProtocols(value: string | undefined): string | undefined;
+/** `env` with the transport pin, for a child that may run git without going through `gitChildEnv`. */
 declare function withPinnedGitProtocols(env?: NodeJS.ProcessEnv): NodeJS.ProcessEnv;
 /** A git child that inherits a dispatcher's identity variables can register as the agent that spawned it. */
 declare const DEFAULT_STRIPPED_ENV_PREFIXES: readonly string[];
@@ -348,6 +352,11 @@ declare function parkWorktree(target: WorktreeRecord, recheck?: () => string | u
     reason: string;
 }>;
 
+/** Caller policy: extra ignored paths that count as disposable. `*` matches within a segment, `**` across segments; a pattern also covers everything beneath a match. */
+interface IgnoredFilesPolicy {
+    readonly disposable: readonly string[];
+}
+
 interface ReleaseCheck {
     name: "dirty" | "pushed" | "landed" | "gh";
     ok: boolean;
@@ -380,7 +389,7 @@ interface WorktreeReleaseSafety {
  * PR looks once the host deletes the remote branch. Nothing is fetched: a stale
  * local main makes this refuse until someone pulls.
  */
-declare function inspectForRelease(gitRoot: string, worktreePath: string, branch: string, baseRef: string, releaseProof?: ReleaseProof): Promise<WorktreeReleaseSafety>;
+declare function inspectForRelease(gitRoot: string, worktreePath: string, branch: string, baseRef: string, releaseProof?: ReleaseProof, ghTimeoutMs?: number, ignoredFiles?: IgnoredFilesPolicy): Promise<WorktreeReleaseSafety>;
 /** The failed checks, as one line a coordinator can act on. */
 declare function describeRefusal(safety: WorktreeReleaseSafety): string;
 
@@ -449,6 +458,8 @@ interface SweepOptions {
     now?: () => number;
     /** Synchronous presentation of an already classified holds-work observation; cannot change its status. */
     formatSafetyDetail?: (safety: Readonly<Pick<WorktreeReleaseSafety, "dirty" | "unmerged">>) => string;
+    /** Extra ignored paths that do not make a tree hold work; the built-in regenerable list always applies. */
+    ignoredFiles?: IgnoredFilesPolicy;
 }
 declare const porcelain: GitLister;
 /** Every unlocked worktree in `gitRoot` whose branch carries `branchPrefix`, from git itself. */
@@ -475,4 +486,4 @@ declare function reclaimWorktree(entry: SweptWorktree, options?: {
     reason?: string;
 }>;
 
-export { BRANCH_PREFIX, type BranchBase, DEFAULT_BASE_PATH, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_SETUP_TIMEOUT_MS, DEFAULT_STRIPPED_ENV_PREFIXES, DEFAULT_WORKTREE_BUDGET, type FoundWorktree, type GitLister, type GitPresence, type GitRunner, type HeldWorktree, MissingAssignedWorktreeRecordError, NPMRC_FILE, OriginUnreachableError, PNPM_WORKSPACE_FILE, type ParkIgnoredFilesObservation, type ParkIgnoredFilesPolicy, type ParkLocalBackingCandidate, type ParkLocalBackingObservation, type ParkLocalBackingReader, type ParkOptions, RECLAIM_GRACE_MS, type ReleaseCheck, type ReleaseProof, SAFE_GIT_PROTOCOLS, SETUP_FILE, SETUP_LOG, type SetupOutcome, type SetupReport, type SetupResult, type SetupRunner, type SetupStep, type SetupTarget, type SweepOptions, type SweepOwner, type SweepStatus, type SweptWorktree, WORKTREE_ADD_TIMEOUT_MS, type WorktreeAddRunner, type WorktreeAllocation, type WorktreeAllocator, WorktreeBudgetExhaustedError, type WorktreeCheck, WorktreeInUseError, type WorktreeOptions, type WorktreeRecord, type WorktreeReleaseOutcome, type WorktreeReleaseSafety, type WorktreeRequest, agentWorktreesIn, createWorktreeAllocator, describeRefusal, fetchDefaultTip, findGitRoot, gitChildEnv, inspectForRelease, isLive, porcelain as listWorktreesPorcelain, observedPresence, parkWorktree, parseSetupStep, pinGitProtocols, pruneStaleWorktrees, reattachWorktree, reclaimWorktree, recreateWorktree, resolveBranchBase, resolveRequestedBase, runGit, runSetupCommand, runWorktreeSetup, setupEnv, setupWorktree, sweepWorktrees, withPinnedGitProtocols };
+export { BRANCH_PREFIX, type BranchBase, DEFAULT_BASE_PATH, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_GH_TIMEOUT_MS, DEFAULT_SETUP_TIMEOUT_MS, DEFAULT_STRIPPED_ENV_PREFIXES, DEFAULT_WORKTREE_BUDGET, type FoundWorktree, type GitLister, type GitPresence, type GitRunner, type HeldWorktree, type IgnoredFilesPolicy, MissingAssignedWorktreeRecordError, NPMRC_FILE, OriginUnreachableError, PNPM_WORKSPACE_FILE, type ParkIgnoredFilesObservation, type ParkIgnoredFilesPolicy, type ParkLocalBackingCandidate, type ParkLocalBackingObservation, type ParkLocalBackingReader, type ParkOptions, RECLAIM_GRACE_MS, type ReleaseCheck, type ReleaseProof, SAFE_GIT_PROTOCOLS, SETUP_FILE, SETUP_LOG, type SetupOutcome, type SetupReport, type SetupResult, type SetupRunner, type SetupStep, type SetupTarget, type SweepOptions, type SweepOwner, type SweepStatus, type SweptWorktree, WORKTREE_ADD_TIMEOUT_MS, type WorktreeAddRunner, type WorktreeAllocation, type WorktreeAllocator, WorktreeBudgetExhaustedError, type WorktreeCheck, WorktreeInUseError, type WorktreeOptions, type WorktreeRecord, type WorktreeReleaseOutcome, type WorktreeReleaseSafety, type WorktreeRequest, agentWorktreesIn, createWorktreeAllocator, describeRefusal, fetchDefaultTip, findGitRoot, gitChildEnv, inspectForRelease, isLive, porcelain as listWorktreesPorcelain, observedPresence, parkWorktree, parseSetupStep, pinGitProtocols, pruneStaleWorktrees, reattachWorktree, reclaimWorktree, recreateWorktree, resolveBranchBase, resolveRequestedBase, runGit, runSetupCommand, runWorktreeSetup, setupEnv, setupWorktree, sweepWorktrees, withPinnedGitProtocols };

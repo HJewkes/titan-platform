@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a bare hex prefix is not resolved",
+      "file": "packages/owner-queue/src/deposit-ref.ts",
+      "find": "const hex = (isDeposit ? ref.slice(DEPOSIT_PREFIX.length) : ref).toLowerCase();",
+      "replace": "const hex = (isDeposit ? ref.slice(DEPOSIT_PREFIX.length) : \"\").toLowerCase();",
+      "kills": [
+        "resolveDepositRef finds the one deposit a bare 8-hex prefix starts, in either case"
+      ]
+    },
+    {
+      "name": "a prefix under 8 hex digits is taken",
+      "file": "packages/owner-queue/src/deposit-ref.ts",
+      "find": "/^[0-9a-f]{8,32}$/",
+      "replace": "/^[0-9a-f]{1,32}$/",
+      "kills": [
+        "resolveDepositRef reports a prefix under 8 hex digits, a non-hex ref, or no match as unknown"
+      ]
+    },
+    {
+      "name": "an ambiguous prefix picks the first match",
+      "file": "packages/owner-queue/src/deposit-ref.ts",
+      "find": "if (only !== undefined && matches.length === 1)",
+      "replace": "if (only !== undefined)",
+      "kills": [
+        "resolveDepositRef lists every full id an ambiguous prefix matches"
+      ]
+    },
+    {
+      "name": "a gate id with a hex tail is read as a prefix",
+      "file": "packages/owner-queue/src/deposit-ref.ts",
+      "find": "if (!isDeposit && ref.includes(\":\")) return { kind: \"not-deposit\" };",
+      "replace": "if (!isDeposit && ref.includes(\"/\")) return { kind: \"not-deposit\" };",
+      "kills": [
+        "resolveDepositRef marks an id of another item kind as not a deposit, even when its tail is hex"
+      ]
+    },
+    {
+      "name": "the deposit: form is not stripped",
+      "file": "packages/owner-queue/src/deposit-ref.ts",
+      "find": "isDeposit ? ref.slice(DEPOSIT_PREFIX.length) : ref",
+      "replace": "ref",
+      "kills": [
+        "resolveDepositRef finds the one deposit a deposit:-prefixed short prefix starts"
+      ]
+    }
+  ]
+}

@@ -24,6 +24,8 @@ export interface StepUsage {
   cacheWrite1hTokens?: number;
   /** The one model the step ran on; absent when several did or none was reported. */
   model?: string;
+  /** The largest prompt any request of the step sent, in tokens; absent when the runner did not report it. */
+  peakContextTokens?: number;
   /** Some spend had no price, so `costUsd` is a floor; a budget must refuse it rather than read the gap as free. */
   costUnknown?: true;
 }
@@ -41,6 +43,12 @@ export interface StepResult<TData extends Record<string, unknown> = Record<strin
   /** Condition signal parsed from the output, e.g. `needs_revision`. */
   signal: string | null;
   completedAt: string;
+  /** When the try that produced this result started; absent on gate steps and on results written before 0.14. */
+  startedAt?: string;
+  /** When the step's first attempt started, kept across retries and restarts; absent reads as `startedAt`. */
+  firstStartedAt?: string;
+  /** How many restarts re-dispatched this step before it completed; absent reads as 0. */
+  restarts?: number;
   output?: string;
   /** Structured payload: a seed's data, a gate's resolution, or a dispatch's output parsed by its schema. */
   data?: TData;
@@ -153,7 +161,7 @@ export interface WorkflowContext {
   readonly runId: string;
   readonly workflowName: string;
   param(key: string): string | undefined;
-  /** The runtime's handle for `name`, for use inside a step body; throws when none is configured. Its secrets are refused or redacted wherever the run records them. */
+  /** The runtime's handle for `name`, usable only inside a step body (a seed's function); throws `CapabilityOutsideStepError` outside one, and throws when none is configured. Its secrets are refused or redacted wherever the run records them. */
   capability(name: string): unknown;
   /** Render the template, run it through the step runner, parse signals. Retried once on a retryable failure. */
   dispatch<T extends Record<string, unknown> = Record<string, unknown>>(stepId: string, template: string, options?: DispatchOptions<T>): Promise<StepResult<T>>;
@@ -248,7 +256,8 @@ export function workflowStepRequestKey(runId: string, stepId: string, iteration:
   return `workflow:${[runId, stepId, String(iteration), String(attempt)].map(encodeURIComponent).join(":")}`;
 }
 
-export type WorkflowEvent =
+/** `at` is when the runtime emitted the event, from its clock; absent on events recorded before 0.14. */
+export type WorkflowEvent = { at?: string } & (
   | { type: "step_started"; runId: string; stepId: string; iteration: number }
   | { type: "step_complete"; runId: string; stepId: string; iteration: number; signal: string | null }
   | { type: "step_retry"; runId: string; stepId: string; attempt: number; error: string }
@@ -258,7 +267,8 @@ export type WorkflowEvent =
   | { type: "gate_opened"; runId: string; stepId: string; gateId: string; prompt: string; summary?: string }
   | { type: "workflow_complete"; runId: string }
   | { type: "workflow_failed"; runId: string; error: string }
-  | { type: "workflow_cancelled"; runId: string; reason: string };
+  | { type: "workflow_cancelled"; runId: string; reason: string }
+);
 
 export interface StepFailureDetail {
   /** The last attempt's failure could clear on a fresh call; `false` means repeating it would fail the same way. */

@@ -1,7 +1,8 @@
+import { execFileSync } from "node:child_process";
 import { rmSync } from "node:fs";
 import { afterAll, describe, expect, it } from "vitest";
-import { cachedAncestry, gitAncestry, runningHolds, type AncestryProbe } from "./build-ancestry.js";
-import { gitLine } from "./test-support/git-line.js";
+import { cachedAncestry, deployCheckoutAncestry, fetchingAncestry, gitAncestry, runningHolds, type AncestryProbe } from "./build-ancestry.js";
+import { gitBehindMain, gitLine } from "./test-support/git-line.js";
 
 const repo = gitLine();
 const { older: OLDER, newer: NEWER } = repo;
@@ -47,5 +48,34 @@ describe("the cached ancestry probe", () => {
 
     expect(asked).toEqual([OLDER, OLDER]);
     expect(third).toBe(true);
+  });
+});
+
+describe("the deploy checkout's ancestry probe (TP-3963)", () => {
+  const behind = gitBehindMain();
+  afterAll(() => rmSync(behind.dir, { recursive: true, force: true }));
+  const originMain = () => execFileSync("git", ["-C", behind.checkout, "rev-parse", "origin/main"], { encoding: "utf8" }).trim();
+
+  it("answers for two merges made since the checkout's last fetch, moving no ref", async () => {
+    const before = originMain();
+
+    const answer = await deployCheckoutAncestry(behind.checkout)(behind.older, behind.newer);
+
+    expect(answer).toBe(true);
+    expect(originMain()).toBe(before);
+  });
+
+  it("fetches only when git has no answer", async () => {
+    const fetches: string[] = [];
+    const probe = fetchingAncestry(async () => true, async () => fetches.push("fetch"));
+
+    expect(await probe(OLDER, NEWER)).toBe(true);
+    expect(fetches).toEqual([]);
+  });
+
+  it("still says why when the fetch brings nothing", async () => {
+    const probe = fetchingAncestry(async () => ({ unknown: "git merge-base exited 128" }), async () => undefined);
+
+    expect(await probe(OLDER, MISSING)).toEqual({ unknown: "git merge-base exited 128" });
   });
 });

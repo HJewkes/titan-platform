@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the daemon hook sends a workspace reader to runNow",
+      "file": "products/active-work/src/server/session-index-watch.ts",
+      "find": "    if (scope === 'workspace') return workspace.ensure(budgetMs);\n",
+      "replace": "",
+      "kills": [
+        "context.related in the daemon related does not start a transcript pass"
+      ]
+    },
+    {
+      "name": "related asks for transcript freshness again",
+      "file": "products/active-work/src/commands/context-related.ts",
+      "find": "ensureFresh(RELATED_FRESH_BUDGET_MS, 'workspace')",
+      "replace": "ensureFresh(RELATED_FRESH_BUDGET_MS, 'transcripts')",
+      "kills": [
+        "context.related in the daemon related does not start a transcript pass"
+      ]
+    }
+  ]
+}

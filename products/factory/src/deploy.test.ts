@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { EXIT, runCli } from "./cli.js";
 import { releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
 import { deployBuildLogPath, deployWindowPath } from "./deploy-output.js";
@@ -10,7 +11,9 @@ import { deployRecordPath, deployService, parseDeployRecord, type DeployOptions,
 import type { DeployIncident } from "./deploy-incident.js";
 import { clearDeployPause, deployHoldPath, deployPausePath, readDeployHolds, readDeployPause } from "./deploy-pause.js";
 import { plistPath, SERVICE_LABEL } from "./service.js";
-import type { CommandResult } from "./service-control.js";
+import type { CommandResult } from "./run-command.js";
+import { mergeLogMigration } from "./merge-log.js";
+import { openIntentsIn } from "./registry/intent-readers.js";
 
 const CHECKOUT = "/srv/repo";
 const STATE = "/xdg/state/titan-factory";
@@ -18,7 +21,7 @@ const UID = 501;
 const TARGET = `gui/${UID}/${SERVICE_LABEL}`;
 const OLD_PID = 100;
 const DEPLOYER_PID = 4242;
-const [BASE, DOCS, CORE, TIP] = ["1", "2", "3", "4"].map((digit) => digit.repeat(40)) as [string, string, string, string];
+const [BASE, DOCS, CORE, TIP] = ["1".repeat(40), "2".repeat(40), "3".repeat(40), "4".repeat(40)];
 const STRAY = "f".repeat(40);
 const HISTORY = [BASE, DOCS, CORE, TIP];
 const CHANGES: Record<string, string[]> = { [DOCS]: ["README.md"], [CORE]: ["products/factory/src/serve.ts"], [TIP]: ["site/guides/factory.md"] };
@@ -62,6 +65,8 @@ interface MachineInit {
   busy?: { runId: string; step: string; phase: string }[];
   /** After a kickstart onto a new build, `healthWithin` probes `from` to `to` (1-based, inclusive) list these runs as recovery_required. */
   parks?: { ids: string[]; from: number; to: number };
+  /** The parked runs strict replay parked as diverged, and the runs the diverged sweep restarted, each listed with a `<id>-next` successor. */
+  diverged?: { parked: string[]; restarted: string[] };
   /** pnpm-lock.yaml per commit; others get the base lockfile. */
   lockfiles?: Record<string, string>;
   /** The deploy checkout does not exist yet, so deploy must clone it. */
@@ -78,6 +83,10 @@ interface MachineInit {
   writeFails?: string;
   /** The running serve ignores SIGTERM: `kickstart -k` leaves its pid in place until `launchctl kill SIGKILL`. */
   wedged?: boolean;
+  /** Withdrawing the resolved deploy alarms throws this. */
+  resolveFails?: string;
+  /** The factory db `openIntents` reads; an Error is thrown as an unreadable db. Absent throws too. */
+  intents?: Db | Error;
 }
 
 const lockfile = (sqlite: string): string => `lockfileVersion: '9.0'\n\npackages:\n\n  better-sqlite3@${sqlite}:\n    resolution: {integrity: sha512-x}\n\n  zod@4.4.3:\n    resolution: {integrity: sha512-y}\n`;
@@ -120,6 +129,13 @@ function parkedAnswer(answer: Record<string, unknown>, parks: NonNullable<Machin
   return { ...answer, runs: { ...runs, recovery_required: ids.length }, recoveryRequired: ids };
 }
 
+function divergedAnswer(answer: Record<string, unknown>, diverged: MachineInit["diverged"]): Record<string, unknown> {
+  if (diverged === undefined) return answer;
+  const listed = Array.isArray(answer.recoveryRequired) ? answer.recoveryRequired : [];
+  const parked = diverged.parked.filter((id) => listed.includes(id));
+  return { ...answer, recoveryReplayDiverged: parked, divergedRestarts: diverged.restarted.map((runId) => ({ runId, newRunId: `${runId}-next` })) };
+}
+
 /** A launchd whose kickstart loads whatever build sits in products/factory/dist at that moment. */
 function fakeMachine(init: MachineInit = {}) {
   const unit = `<string>${init.unitElsewhere || init.absent ? "/srv/dev-tree" : CHECKOUT}/products/factory/dist/bin.js</string>`;
@@ -134,6 +150,7 @@ function fakeMachine(init: MachineInit = {}) {
   let probes = 0;
   let probesSinceStart = 0;
   const incidents: DeployIncident[] = [];
+  let resolves = 0;
   const replaced = () => job.restarted && job.serving !== running;
   const git = fakeGit(state, init);
   let stuck = init.wedged ?? false;
@@ -203,9 +220,14 @@ function fakeMachine(init: MachineInit = {}) {
       if (!answer || !replaced()) return answer;
       if (init.misreports) return { ...answer, build: { sha: init.misreports } };
       const failing = init.failsRunAfter !== undefined && probesSinceStart > init.failsRunAfter ? { ...answer, runs: { failed: 3 } } : answer;
-      return init.parks ? parkedAnswer(failing, init.parks, probesSinceStart) : failing;
+      return divergedAnswer(init.parks ? parkedAnswer(failing, init.parks, probesSinceStart) : failing, init.diverged);
     },
     incident: async (incident) => void incidents.push(incident),
+    resolveAlarms: async () => {
+      resolves += 1;
+      if (init.resolveFails !== undefined) throw new Error(init.resolveFails);
+      return 3;
+    },
     mkdir: () => undefined,
     writeFile: (path, text) => {
       if (path === init.writeFails) throw new Error(`EACCES: permission denied, open '${path}'`);
@@ -223,7 +245,11 @@ function fakeMachine(init: MachineInit = {}) {
     },
     copyTree: (from, to) => [...trees].filter(([key]) => under(key, from)).forEach(([key, value]) => trees.set(to + key.slice(from.length), value)),
     removeTree: (path) => [...trees.keys()].filter((key) => under(key, path)).forEach((key) => trees.delete(key)),
-    createExclusive: (path, text) => !files.has(path) && files.set(path, text) !== undefined,
+    createExclusive: (path, text) => {
+      if (files.has(path)) return false;
+      files.set(path, text);
+      return true;
+    },
     rename: (from, to) => {
       const text = files.get(from);
       if (text === undefined) return false;
@@ -232,12 +258,17 @@ function fakeMachine(init: MachineInit = {}) {
       return true;
     },
     isAlive: (pid) => init.alive?.includes(pid) ?? false,
+    openIntents: (steps) => {
+      calls.push(`openIntents ${steps.join(",")}`);
+      if (init.intents === undefined || init.intents instanceof Error) throw init.intents ?? new Error("this fake has no factory db");
+      return openIntentsIn(init.intents, steps);
+    },
   };
   const record = () => parseDeployRecord(files.get(RECORD));
   const mutations = () => calls.filter((call) => /^(git (merge --|reset)|pnpm|launchctl)/.test(call));
   const pause = () => readDeployPause(ports, STATE);
   const holds = () => readDeployHolds(ports, STATE);
-  return { ports, calls, files, trees, state, record, mutations, incidents, pause, holds, serving: () => job.serving, probes: () => probes, elapsed: () => clock };
+  return { ports, calls, files, trees, state, record, mutations, incidents, pause, holds, serving: () => job.serving, probes: () => probes, elapsed: () => clock, resolves: () => resolves };
 }
 
 const REMOTE = "https://example.test/org/titan-platform.git";
@@ -354,8 +385,8 @@ describe("titan-factory service deploy", () => {
     expect(machine.mutations()).toEqual([]);
   });
 
-  it("fast-forwards an untouched range without building or restarting, and records skipped", async () => {
-    const machine = fakeMachine();
+  it("fast-forwards an untouched range without building or restarting, and records skipped, when nothing on main after it reaches the factory build", async () => {
+    const machine = fakeMachine({ changes: { [DOCS]: ["README.md"], [CORE]: ["site/index.md"], [TIP]: ["site/guides/factory.md"] } });
 
     const { code } = await deploy(machine, DOCS);
 
@@ -365,11 +396,23 @@ describe("titan-factory service deploy", () => {
     expect(machine.record()).toMatchObject({ outcome: "skipped", target: DOCS, from: BASE, touched: [] });
   });
 
+  it("deploys only the asked sha when it reaches no factory path, though a later main commit whose CI was never checked does (TP-4279)", async () => {
+    const machine = fakeMachine();
+
+    const { code } = await deploy(machine, DOCS);
+
+    expect(code).toBe(0);
+    expect(machine.mutations()).toEqual([`git merge --ff-only ${DOCS}`]);
+    expect(machine.serving()).toBe(BASE);
+    expect(machine.record()).toMatchObject({ outcome: "skipped", target: DOCS, from: BASE, touched: [] });
+  });
+
   const RELEASE = { [CORE]: ["products/factory/package.json", "products/factory/CHANGELOG.md"] };
   const factoryManifest = (version: string, dependencies: Record<string, string> = {}): string => JSON.stringify({ name: "@titan-design/factory", version, dependencies });
 
   it("records a Version Packages merge as skipped without building or restarting", async () => {
-    const blobs = { [`${BASE}:products/factory/package.json`]: factoryManifest("0.18.0"), [`${CORE}:products/factory/package.json`]: factoryManifest("0.19.0") };
+    const release = factoryManifest("0.19.0");
+    const blobs = { [`${BASE}:products/factory/package.json`]: factoryManifest("0.18.0"), [`${CORE}:products/factory/package.json`]: release, [`${TIP}:products/factory/package.json`]: release };
     const machine = fakeMachine({ changes: RELEASE, blobs });
 
     const { code } = await deploy(machine, CORE);
@@ -429,14 +472,17 @@ describe("titan-factory service deploy", () => {
     expect(machine.record()).toEqual(rolledBack);
   });
 
-  it("refuses a target behind the checkout's main and names the commit to deploy instead", async () => {
-    const machine = fakeMachine({ head: TIP });
+  it("refuses as superseded, building nothing, when a rollback left the checkout's main past the asked sha (TP-4279)", async () => {
+    const rolledBack = { outcome: "rolled-back", target: CORE, from: BASE, at: "2026-10-02T00:00:00.000Z", why: "1 more run(s) failed during the watch" };
+    const machine = fakeMachine({ head: CORE, files: { [RECORD]: JSON.stringify(rolledBack) } });
 
-    const { code, err } = await deploy(machine, CORE);
+    const { code, err } = await deploy(machine, DOCS);
 
     expect(code).toBe(1);
-    expect(err).toContain(`already past ${CORE}; deploy that commit instead with titan-factory service deploy --expect ${TIP}`);
+    expect(err).toBe(`error: deploy refused: the checkout's main is at ${CORE}, already past ${DOCS}; deploy that commit instead with titan-factory service deploy --expect ${CORE}\n`);
     expect(machine.mutations()).toEqual([]);
+    expect(machine.serving()).toBe(BASE);
+    expect(machine.record()).toEqual(rolledBack);
   });
 
   it("refuses before the fast-forward when the lockfile changes a native-build package, naming it", async () => {
@@ -655,6 +701,22 @@ describe("titan-factory service deploy", () => {
     expect(machine.record()).toEqual(rolledBack);
   });
 
+  it("after a deploy rolls back and the pause is cleared, an older asked sha is refused and the next asked sha deploys (TP-4083, TP-4279)", async () => {
+    const machine = fakeMachine({ crashes: [CORE] });
+    await deploy(machine, CORE);
+    const afterRollback = { record: machine.record(), head: machine.state.head, serving: machine.serving() };
+    machine.files.delete(deployPausePath(STATE));
+
+    const reAsk = await deploy(machine, DOCS);
+    const next = await deploy(machine, TIP);
+
+    expect(afterRollback).toEqual({ record: expect.objectContaining({ outcome: "rolled-back", target: CORE }), head: CORE, serving: BASE });
+    expect(reAsk).toMatchObject({ code: 1, err: expect.stringContaining(`already past ${DOCS}; deploy that commit instead`) });
+    expect(next).toMatchObject({ code: 0 });
+    expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP, from: BASE });
+    expect(machine.serving()).toBe(TIP);
+  });
+
   it("deploys when /health does not answer, since an unknown build counts as touched", async () => {
     const machine = fakeMachine({ running: null });
 
@@ -681,6 +743,81 @@ describe("titan-factory service deploy", () => {
 
     expect(code).toBe(0);
     expect(machine.files.has(`${STATE}/deploy.lock`)).toBe(false);
+  });
+});
+
+describe("service deploy irreversible step versions (TP-3110)", () => {
+  const LOCK = "products/factory/src/registry/closure.lock.json";
+  const [HASH, NEW_HASH] = ["a".repeat(64), "b".repeat(64)];
+  const lockOf = (merge: { schemaHash: string; bump: number }): string =>
+    JSON.stringify({ "ci-wait": { closure: "c".repeat(64), schemaHash: "d".repeat(64), bump: 0 }, merge: { closure: "e".repeat(64), ...merge } });
+  const locks = (before: { schemaHash: string; bump: number }, after: { schemaHash: string; bump: number }) => ({ [`${BASE}:${LOCK}`]: lockOf(before), [`${TIP}:${LOCK}`]: lockOf(after) });
+  const dbs: Db[] = [];
+  afterEach(() => dbs.splice(0).forEach((db) => db.close()));
+
+  /** One merge intent per element, followed by its result rows in order. */
+  function intentDb(intents: readonly (readonly ("merged" | "failed" | "unknown")[])[]): Db {
+    const db = openDatabase(":memory:");
+    dbs.push(db);
+    runMigrations(db, [mergeLogMigration(1)]);
+    const insert = db.prepare("INSERT INTO merge_op (kind, intent_id, path, repo, pr, head_sha, reason_kind, reason_id, actor, at, outcome, merge_commit) VALUES (?, ?, 'lander', 'acme/widgets', ?, ?, 'item', 'synthetic-item', 'lander', '2026-01-01T00:00:00Z', ?, ?)");
+    intents.forEach((results, pr) => {
+      const id = insert.run("intent", null, pr, CORE, null, null).lastInsertRowid;
+      for (const outcome of results) insert.run("result", id, pr, CORE, outcome, outcome === "merged" ? STRAY : null);
+    });
+    return db;
+  }
+
+  it("a deploy that bumps merge while a merge intent has no result is refused and names the step", async () => {
+    const machine = fakeMachine({ blobs: locks({ schemaHash: HASH, bump: 0 }, { schemaHash: HASH, bump: 1 }), intents: intentDb([[]]) });
+
+    const { code, err } = await deploy(machine);
+
+    expect(code).toBe(1);
+    expect(err).toBe("error: deploy refused: merge changes version (aaaaaaaaaaaa+b0 -> aaaaaaaaaaaa+b1) while 1 intent(s) for it have no result; wait for them to settle (titan-factory shepherd status) and redeploy\n");
+    expect(machine.mutations()).toEqual([]);
+    expect(machine.record()).toBeUndefined();
+  });
+
+  it("the same deploy proceeds once the intent has a merged result", async () => {
+    const machine = fakeMachine({ blobs: locks({ schemaHash: HASH, bump: 0 }, { schemaHash: HASH, bump: 1 }), intents: intentDb([["merged"]]) });
+
+    const { code, err } = await deploy(machine);
+
+    expect(err).toBe("");
+    expect(code).toBe(0);
+    expect(machine.calls).toContain("openIntents merge");
+    expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP });
+  });
+
+  it("an unknown result keeps the intent open", async () => {
+    const machine = fakeMachine({ blobs: locks({ schemaHash: HASH, bump: 0 }, { schemaHash: NEW_HASH, bump: 0 }), intents: intentDb([["unknown"], ["unknown", "failed"]]) });
+
+    const { code, err } = await deploy(machine);
+
+    expect(code).toBe(1);
+    expect(err).toContain("merge changes version (aaaaaaaaaaaa+b0 -> bbbbbbbbbbbb+b0) while 1 intent(s) for it have no result");
+    expect(machine.mutations()).toEqual([]);
+  });
+
+  it("a deploy that changes no irreversible step's version never reads the db", async () => {
+    const machine = fakeMachine({ blobs: locks({ schemaHash: HASH, bump: 0 }, { schemaHash: HASH, bump: 0 }), intents: intentDb([[]]) });
+
+    const { code } = await deploy(machine);
+
+    expect(code).toBe(0);
+    expect(machine.calls.filter((call) => call.startsWith("openIntents"))).toEqual([]);
+    expect(machine.record()).toMatchObject({ outcome: "deployed" });
+  });
+
+  it("an unreadable factory db refuses a deploy that moves an irreversible step's version", async () => {
+    const machine = fakeMachine({ blobs: locks({ schemaHash: HASH, bump: 0 }, { schemaHash: HASH, bump: 1 }), intents: new Error("unable to open database file") });
+
+    const { code, err } = await deploy(machine);
+
+    expect(code).toBe(1);
+    expect(err).toContain("merge changes version (aaaaaaaaaaaa+b0 -> aaaaaaaaaaaa+b1) and its open intents cannot be read (unable to open database file)");
+    expect(machine.mutations()).toEqual([]);
   });
 });
 
@@ -753,6 +890,34 @@ describe("service deploy rollback pause", () => {
       const { code } = await deploy(machine);
 
       expect(code).toBe(1);
+      expect(machine.record()).toMatchObject({ outcome: "rolled-back", why: expect.stringContaining("1 more run(s) failed or need recovery during the 120 s watch") });
+    });
+  });
+
+  describe("after a deploy that changed a workflow's step shape, as on 2026-10-21 (TP-3889)", () => {
+    const parked = ["s7", "s8", "c1", "c2", "c3", "c4"];
+    const diverged = { parked, restarted: ["s1", "s2", "s3", "s4", "s5", "s6"] };
+
+    it("stays up when 8 runs are superseded and 4 end on closed PRs with none failed, and reports them", async () => {
+      const machine = fakeMachine({ parks: { ids: parked, from: 2, to: Infinity }, diverged });
+
+      const { code, out } = await deploy(machine);
+
+      expect(code).toBe(0);
+      expect(machine.serving()).toBe(TIP);
+      expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP });
+      expect(machine.pause()).toEqual({ paused: false });
+      expect(out).toContain("replay diverged under the new build, not counted against it: 6 run(s) restarted (s1 -> s1-next");
+      expect(out).toContain("6 run(s) parked for the diverged sweep (s7, s8, c1, c2, c3, c4)");
+    });
+
+    it("still rolls back when a run fails under the new build", async () => {
+      const machine = fakeMachine({ parks: { ids: parked, from: 2, to: Infinity }, diverged, failsRunAfter: 3 });
+
+      const { code } = await deploy(machine);
+
+      expect(code).toBe(1);
+      expect(machine.serving()).toBe(BASE);
       expect(machine.record()).toMatchObject({ outcome: "rolled-back", why: expect.stringContaining("1 more run(s) failed or need recovery during the 120 s watch") });
     });
   });
@@ -857,6 +1022,35 @@ describe("service deploy rollback pause", () => {
     expect(machine.elapsed()).toBeGreaterThanOrEqual(120_000);
     expect(machine.pause()).toEqual({ paused: false });
     expect(machine.incidents).toEqual([]);
+  });
+
+  it("withdraws the open deploy alarms once a deploy holds through its watch window", async () => {
+    const machine = fakeMachine();
+
+    const { code, out } = await deploy(machine);
+
+    expect(code).toBe(0);
+    expect(machine.resolves()).toBe(1);
+    expect(out).toContain("withdrew 3 resolved deploy alarm(s) from the owner inbox");
+  });
+
+  it("leaves the deploy alarms open when the restarted build rolls back", async () => {
+    const machine = fakeMachine({ misreports: STRAY });
+
+    const { code } = await deploy(machine);
+
+    expect(code).toBe(1);
+    expect(machine.resolves()).toBe(0);
+  });
+
+  it("still records the deploy, and says why, when the deploy alarms cannot be withdrawn", async () => {
+    const machine = fakeMachine({ resolveFails: "EACCES: the spool is not writable" });
+
+    const { code, err } = await deploy(machine);
+
+    expect(code).toBe(0);
+    expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP });
+    expect(err).toContain("error: could not withdraw resolved deploy alarms: EACCES: the spool is not writable");
   });
 
   it("raises one alert, stays paused and never retries when the restored build does not come back", async () => {
@@ -1055,7 +1249,11 @@ describe("deploy lock", () => {
       pid: DEPLOYER_PID,
       readFile: (path) => map.get(path),
       remove: (path) => void map.delete(path),
-      createExclusive: (path, text) => !map.has(path) && map.set(path, text) !== undefined,
+      createExclusive: (path, text) => {
+        if (map.has(path)) return false;
+        map.set(path, text);
+        return true;
+      },
       rename: (from, to) => {
         beforeRename?.(map);
         const text = map.get(from);

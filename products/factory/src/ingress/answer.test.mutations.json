@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an append error under a held write lock answers 200",
+      "file": "products/factory/src/ingress/answer.ts",
+      "find": "    return refuse(503, \"event log unavailable\");",
+      "replace": "    return { status: 200, body: { seq: 0, inserted: true } };",
+      "kills": [
+        "answerDelivery under lock contention answers 503 within 6 s and writes nothing while another connection holds the write lock"
+      ]
+    }
+  ]
+}

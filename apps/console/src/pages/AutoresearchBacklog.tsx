@@ -20,7 +20,8 @@ import {
   TableRow,
 } from "@titan-design/react-ui";
 import type { ArIdea, ArRound, ArRunView } from "../../server/autoresearch-view.js";
-import { shortId } from "./autoresearch-format.js";
+import { depthSuffix, shortId } from "./autoresearch-format.js";
+import { PHONE_TAP } from "./phone.js";
 
 /** Below this the backlog scrolls sideways rather than squeeze its eight columns into overlap. */
 const BACKLOG_MIN_WIDTH = 880;
@@ -89,7 +90,7 @@ function RejectedAdds({ round }: { round: ArRound }): ReactNode {
   return (
     <Accordion>
       <AccordionItem>
-        <AccordionButton>{`${round.rejected.length} adds rejected`}</AccordionButton>
+        <AccordionButton className={PHONE_TAP}>{`${round.rejected.length} adds rejected`}</AccordionButton>
         <AccordionPanel>
           <HStack gap={2} wrap>
             {round.rejected.map((entry, index) => (
@@ -135,7 +136,7 @@ function BacklogRow({ round, idea }: { round: ArRound; idea: ArIdea }): ReactNod
       <TableCell>{shortId(idea.id)}</TableCell>
       <TableCell>{idea.cell}</TableCell>
       <TableCell>{idea.hypothesis}</TableCell>
-      <TableCell>{idea.parent === undefined ? shortId(idea.lineage) : `${shortId(idea.lineage)} ← ${shortId(idea.parent)}`}</TableCell>
+      <TableCell>{`${idea.parent === undefined ? shortId(idea.lineage) : `${shortId(idea.lineage)} ← ${shortId(idea.parent)}`}${depthSuffix(idea)}`}</TableCell>
       <TableCell>{idea.source}</TableCell>
       <TableCell>
         <IdeaTags idea={idea} />

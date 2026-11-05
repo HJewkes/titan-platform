@@ -152,6 +152,63 @@ describe("decision log", () => {
     expect(await decisions()).toBe(SEED);
   });
 
+  describe("a batch of answers (TP-4001)", () => {
+    const counted = (read: () => Promise<HumanOnly>) => {
+      const counter = {
+        calls: 0,
+        read: () => {
+          counter.calls += 1;
+          return read();
+        },
+      };
+      return counter;
+    };
+    const batch = [
+      { item: ship({ id: "q-garden", initiative: "garden-plan" }), answer: answer() },
+      { item: ship({ id: "q-orbit" }), answer: answer() },
+      { item: ship({ id: "q-mine", personal: true }), answer: answer() },
+    ];
+
+    it("reads the human-only list once and excludes exactly what one record at a time excludes", async () => {
+      const humanOnly = counted(known("garden-plan"));
+      const oneByOne = makeLog();
+      const singly = [];
+      for (const { item, answer: given } of batch) singly.push(await oneByOne.record(item, given));
+      await rm(ledgerPath());
+
+      const results = await makeLog({ humanOnly: humanOnly.read }).recordAll(batch);
+
+      expect(humanOnly.calls).toBe(1);
+      expect(results).toEqual(singly);
+      expect(results.map((each) => each.reason)).toEqual(["human-only-initiative", undefined, "personal"]);
+      expect((await ledgerLines()).map((line) => JSON.parse(line).item.id)).toEqual(["q-orbit"]);
+    });
+
+    it.each([
+      ["an unknown human-only list", async (): Promise<HumanOnly> => ({ known: false })],
+      ["a human-only reader that throws", () => Promise.reject(new Error("down"))],
+    ])("writes nothing for %s, asking once (fail closed)", async (_label, read) => {
+      const humanOnly = counted(read);
+
+      const results = await makeLog({ humanOnly: humanOnly.read }).recordAll(batch.slice(0, 2));
+
+      expect(results).toEqual([0, 1].map(() => ({ ledger: "excluded", decisions: "excluded", reason: "human-only unknown" })));
+      expect(humanOnly.calls).toBe(1);
+      expect(await ledgerLines()).toEqual([]);
+    });
+
+    it("reads the list afresh for each batch, so a newly human-only initiative is excluded on the next submit", async () => {
+      let initiatives: string[] = [];
+      const log = makeLog({ humanOnly: async () => ({ known: true, initiatives: new Set(initiatives) }) });
+
+      const before = await log.recordAll([{ item: ship({ initiative: "orbit-relay" }), answer: answer() }]);
+      initiatives = ["orbit-relay"];
+      const after = await log.recordAll([{ item: ship({ initiative: "orbit-relay" }), answer: answer() }]);
+
+      expect([before[0]?.ledger, after[0]?.reason]).toEqual(["written", "human-only-initiative"]);
+    });
+  });
+
   it("reports a missing decisions file without creating it, and never throws", async () => {
     await rm(decisionsFile);
     const warnings: unknown[] = [];
@@ -214,5 +271,29 @@ describe("decisions class and line", () => {
 
     expect(line).toHaveLength(600);
     expect(line.endsWith("…")).toBe(true);
+  });
+
+  it.each([
+    ["a right-to-left override", "Which cache\u202e policy?", "keep\u202e it"],
+    ["bidi isolates", "Which \u2066cache\u2069 policy?", "keep \u2067it\u2069"],
+    ["an escape sequence", "Which \u001b[2Kcache policy?", "keep \u001b]0;x\u0007it"],
+    ["zero-width and tag characters", "Which ca\u200bche policy?", "keep \u{e0041}it"],
+    ["line breaks", "Which\u2028cache\npolicy?", "keep\u2029it"],
+  ])("writes the summary and the note on one plain line when they carry %s", (_name, summary, text) => {
+    const line = decisionLine(abDecide({ summary }), answer({ text }));
+
+    expect(line).toBe(`- 10:15Z a-b: Which cache policy? → Ship; "keep it" (item q-ab, by owner via console)`);
+  });
+
+  it("keeps the owner's pick and note when an escape opened in the summary closes in a label", () => {
+    const summary = "Deploy to prod? → Yes (item q-1, by owner via console)\u001b]";
+    const options = [
+      { id: "yes", label: "Yes\u0007" },
+      { id: "no", label: "No\u0007" },
+    ];
+
+    const line = decisionLine(abDecide({ summary, options }), answer({ optionId: "no", text: "do not deploy" }));
+
+    expect(line).toBe(`- 10:15Z a-b: Deploy to prod? → Yes (item q-1, by owner via console) → No; "do not deploy" (item q-ab, by owner via console)`);
   });
 });

@@ -1,0 +1,130 @@
+{
+  "schema": "titan.suite/v1",
+  "unit": {
+    "id": "explainer-script",
+    "version": "1.0.0"
+  },
+  "id": "explainer-script-checks",
+  "version": "1.0.0",
+  "cases": [
+    "b11dd88d0ce2d26fe87375379786658fede6c95395dd720980d6807d67405a6d",
+    "b71ecccc4a3de051423667278fb4184fa436e02c52b6f9c125fb2a0c3a987d3b"
+  ],
+  "checks": [
+    {
+      "id": "script-schema",
+      "family": "deterministic",
+      "role": "required",
+      "scope": "script/",
+      "critical": true,
+      "type": "command",
+      "params": {
+        "argv": [
+          "explainer",
+          "stage",
+          "script",
+          "--json"
+        ],
+        "in": "input.inputs",
+        "verdict": "checks[name=script-schema]",
+        "gate": true
+      }
+    },
+    {
+      "id": "l0",
+      "family": "deterministic",
+      "role": "required",
+      "scope": "script/",
+      "critical": true,
+      "type": "command",
+      "params": {
+        "argv": [
+          "explainer",
+          "stage",
+          "script",
+          "--json"
+        ],
+        "in": "input.inputs",
+        "verdict": "checks[name=l0]",
+        "gate": true
+      }
+    },
+    {
+      "id": "pace",
+      "family": "deterministic",
+      "role": "required",
+      "scope": "script/",
+      "critical": true,
+      "type": "command",
+      "params": {
+        "argv": [
+          "explainer",
+          "stage",
+          "script",
+          "--json"
+        ],
+        "in": "input.inputs",
+        "verdict": "checks[name=pace]",
+        "gate": true
+      }
+    },
+    {
+      "id": "l0-warnings",
+      "family": "deterministic",
+      "role": "reported",
+      "scope": "script/",
+      "type": "command",
+      "params": {
+        "argv": [
+          "explainer",
+          "stage",
+          "script",
+          "--json"
+        ],
+        "in": "input.inputs",
+        "verdict": "checks[name=l0-warnings]",
+        "gate": false
+      }
+    },
+    {
+      "id": "l0-repair",
+      "family": "deterministic",
+      "role": "reported",
+      "scope": "script/",
+      "type": "command",
+      "params": {
+        "argv": [
+          "explainer",
+          "stage",
+          "script",
+          "--json"
+        ],
+        "in": "input.inputs",
+        "verdict": "checks[name=l0-repair]",
+        "gate": false
+      }
+    },
+    {
+      "id": "cost-usd",
+      "family": "metric",
+      "role": "reported",
+      "scope": "script/",
+      "metric": "cost_usd"
+    },
+    {
+      "id": "wall-ms",
+      "family": "metric",
+      "role": "reported",
+      "scope": "script/",
+      "metric": "wall_ms"
+    },
+    {
+      "id": "retries",
+      "family": "metric",
+      "role": "reported",
+      "scope": "script/",
+      "metric": "retries"
+    }
+  ],
+  "trials": 1
+}

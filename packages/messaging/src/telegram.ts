@@ -1,3 +1,4 @@
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import type {
   Button,
   ButtonRow,
@@ -118,7 +119,7 @@ function editBody(
 }
 
 function readMessageId(result: unknown): string | undefined {
-  const id = (result as { message_id?: unknown } | null)?.message_id;
+  const id = isObjectLike(result) ? result.message_id : undefined;
   return typeof id === "number" ? String(id) : undefined;
 }
 

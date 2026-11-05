@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a parked card is excused by any later sample of its beat",
+      "file": "packages/render-qa/src/held.ts",
+      "find": "const enters = (x: Finding) => later.some((keys) => !keys.has(keyOf(x)))",
+      "replace": "const enters = (_x: Finding) => later.length > 0",
+      "kills": [
+        "a card that never enters the frame is still off-frame"
+      ]
+    },
+    {
+      "name": "a parked card is never excused by its entrance",
+      "file": "packages/render-qa/src/held.ts",
+      "find": "const enters = (x: Finding) => later.some((keys) => !keys.has(keyOf(x)))",
+      "replace": "const enters = (_x: Finding) => false",
+      "kills": [
+        "a card parked off frame until its cue is not off-frame once it enters",
+        "a card that enters and is cut by the frame edge mid-slide is judged on that sample"
+      ]
+    },
+    {
+      "name": "the entrance is looked for in every beat, not the card's own",
+      "file": "packages/render-qa/src/held.ts",
+      "find": "frames.slice(i + 1).filter((f) => f.beat === frame.beat)",
+      "replace": "frames.slice(i + 1)",
+      "kills": [
+        "a card parked in one beat is not excused by another beat where it is on frame"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "ships per lane not capped",
+      "file": "products/explainer/src/presets/daily/lane-rollup.ts",
+      "find": "if (taken >= ships.perLane) continue;",
+      "replace": "if (taken < 0) continue;",
+      "kills": [
+        "daily lane rollups picks at most two ships from one lane, the rest from the next lane"
+      ]
+    },
+    {
+      "name": "a task closed before the window counts as closed",
+      "file": "products/explainer/src/presets/daily/lanes.ts",
+      "find": "return at >= Date.parse(window.since) && at < Date.parse(window.until);",
+      "replace": "return !Number.isNaN(at);",
+      "kills": [
+        "daily lane rollups ranks a thread whose task closed in the window above a bigger one closed the day before"
+      ]
+    },
+    {
+      "name": "fallback lane PRs counted in every lane",
+      "file": "products/explainer/src/presets/daily/lane-rollup.ts",
+      "find": "threads.filter((thread) => thread.lane === lane.id)",
+      "replace": "threads.filter((thread) => thread.lane === lane.id || thread.lane === file.fallback)",
+      "kills": [
+        "daily lane rollups covers every merged PR exactly once, named or counted under one lane"
+      ]
+    }
+  ]
+}

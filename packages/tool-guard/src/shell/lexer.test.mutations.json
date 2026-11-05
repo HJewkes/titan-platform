@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a single-quoted part is not noted as quoted",
+      "file": "packages/tool-guard/src/shell/word-build.ts",
+      "find": "  w.value += s.src.slice(s.i + 1, end);\n  noteQuotedFrom(s, from);",
+      "replace": "  w.value += s.src.slice(s.i + 1, end);",
+      "kills": [
+        "bare spans of a spliced word records the unquoted ranges of a single-quoted value after a bare key"
+      ]
+    },
+    {
+      "name": "a double-quoted part is not noted as quoted",
+      "file": "packages/tool-guard/src/shell/lexer.ts",
+      "find": "  noteQuotedFrom(s, from);\n  s.i++;",
+      "replace": "  s.i++;",
+      "kills": [
+        "bare spans of a spliced word records the unquoted ranges of a double-quoted part between bare text",
+        "bare spans of a spliced word records the unquoted ranges of a double-quoted variable before bare text"
+      ]
+    },
+    {
+      "name": "an escaped character is not noted as quoted",
+      "file": "packages/tool-guard/src/shell/word-build.ts",
+      "find": "    noteQuotedFrom(s, w.value.length - 1);\n",
+      "replace": "",
+      "kills": [
+        "bare spans of a spliced word records the unquoted ranges of an escape"
+      ]
+    },
+    {
+      "name": "an ANSI-C string is not noted as quoted",
+      "file": "packages/tool-guard/src/shell/word-build.ts",
+      "find": "  w.value += decodeAnsiC(s.src.slice(s.i + 2, end));\n  noteQuotedFrom(s, from);",
+      "replace": "  w.value += decodeAnsiC(s.src.slice(s.i + 2, end));",
+      "kills": [
+        "bare spans of a spliced word records the unquoted ranges of an ANSI-C string before bare text"
+      ]
+    },
+    {
+      "name": "a word quoted whole also gets a span record",
+      "file": "packages/tool-guard/src/shell/word-build.ts",
+      "find": "  if (w.spliced) w.bare =",
+      "replace": "  if (w.spliced || w.quoted) w.bare =",
+      "kills": [
+        "bare spans of a spliced word keeps no record on a word read whole one way"
+      ]
+    }
+  ]
+}

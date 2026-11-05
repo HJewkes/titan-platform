@@ -13,6 +13,16 @@ export interface OllamaEmbedderOptions {
   fetch?: typeof fetch;
 }
 
+function isVector(value: unknown): value is number[] {
+  return Array.isArray(value) && value.every((n) => typeof n === "number");
+}
+
+function readEmbeddings(data: unknown): number[][] | null {
+  if (typeof data !== "object" || data === null || !("embeddings" in data)) return null;
+  const { embeddings } = data;
+  return Array.isArray(embeddings) && embeddings.every(isVector) ? embeddings : null;
+}
+
 /** Talks to Ollama's `/api/embed` over plain HTTP, so there is no SDK to depend on. */
 export class OllamaEmbedder implements Embedder {
   readonly model: string;
@@ -37,11 +47,12 @@ export class OllamaEmbedder implements Embedder {
     if (texts.length === 0) return [];
     const response = await this.post(applyPrefix(texts, this.prefixes, options.role));
     if (!response.ok) throw new Error(`Ollama embedding failed: ${response.status} ${response.statusText} (${this.baseUrl})`);
-    const data = (await response.json()) as { embeddings?: number[][] };
-    if (!Array.isArray(data.embeddings) || data.embeddings.length !== texts.length) {
-      throw new Error(`Ollama returned ${data.embeddings?.length ?? 0} embeddings for ${texts.length} texts`);
+    const data: unknown = await response.json();
+    const embeddings = readEmbeddings(data);
+    if (embeddings === null || embeddings.length !== texts.length) {
+      throw new Error(`Ollama returned ${embeddings?.length ?? 0} embeddings for ${texts.length} texts`);
     }
-    return data.embeddings;
+    return embeddings;
   }
 
   private async post(input: string[]): Promise<Response> {

@@ -642,7 +642,7 @@ describe('assembleBootstrap', () => {
         expect(prompt).toContain(INIT_OPENING);
         expect(prompt).toContain('This is an init session.');
         expect(prompt).toContain('active-work worktree set fresh-thing <path>');
-        expect(prompt).toContain('active-work task add fresh-thing --title <title>');
+        expect(prompt).toContain('active-work task add fresh-thing --title <title> --done-when <what done looks like, 40+ chars>');
         expect(prompt).toContain('active-work wrap fresh-thing');
         expect(prompt).not.toContain('Work the top task unless redirected.');
         expect(prompt).not.toContain('Starting an ad-hoc session');

@@ -16,7 +16,6 @@
           "packages/rpc-protocol",
           "packages/evidence",
           "packages/authority",
-          "packages/egress-scan",
           "packages/fix-proof",
           "packages/tool-guard",
           "packages/eslint-plugin",
@@ -24,7 +23,9 @@
           "packages/anthropic-account",
           "packages/test-kit",
           "packages/owner-proof",
-          "packages/openai-account"
+          "packages/openai-account",
+          "packages/review-burden",
+          "packages/png-delta"
         ],
         "1": [
           "packages/retrieval",
@@ -44,7 +45,9 @@
           "packages/frame-capture",
           "packages/speech-tts",
           "packages/speech-stt",
-          "packages/speech-g2p"
+          "packages/speech-g2p",
+          "packages/test-timing",
+          "packages/egress-scan"
         ],
         "2": [
           "packages/session-read",
@@ -66,7 +69,10 @@
           "packages/throughput",
           "packages/graph-layout",
           "packages/dispatch-ledger",
-          "packages/speech-vet"
+          "packages/speech-vet",
+          "packages/autoresearch",
+          "packages/review-workflow",
+          "packages/render-qa"
         ],
         "ui": [
           "packages/react-app"
@@ -80,7 +86,10 @@
           "apps/console",
           "products/titan",
           "products/explainer",
-          "products/active-work"
+          "products/active-work",
+          "products/corpus-query",
+          "products/yt-scout",
+          "products/fleet-panel"
         ]
       },
       "layers": [
@@ -95,7 +104,6 @@
           "packages/rpc-protocol",
           "packages/evidence",
           "packages/authority",
-          "packages/egress-scan",
           "packages/fix-proof",
           "packages/tool-guard",
           "packages/eslint-plugin",
@@ -103,7 +111,9 @@
           "packages/anthropic-account",
           "packages/test-kit",
           "packages/owner-proof",
-          "packages/openai-account"
+          "packages/openai-account",
+          "packages/review-burden",
+          "packages/png-delta"
         ],
         [
           "packages/retrieval",
@@ -123,7 +133,9 @@
           "packages/frame-capture",
           "packages/speech-tts",
           "packages/speech-stt",
-          "packages/speech-g2p"
+          "packages/speech-g2p",
+          "packages/test-timing",
+          "packages/egress-scan"
         ],
         [
           "packages/session-read",
@@ -145,7 +157,10 @@
           "packages/throughput",
           "packages/graph-layout",
           "packages/dispatch-ledger",
-          "packages/speech-vet"
+          "packages/speech-vet",
+          "packages/autoresearch",
+          "packages/review-workflow",
+          "packages/render-qa"
         ],
         [
           "packages/react-app"
@@ -159,7 +174,10 @@
           "apps/console",
           "products/titan",
           "products/explainer",
-          "products/active-work"
+          "products/active-work",
+          "products/corpus-query",
+          "products/yt-scout",
+          "products/fleet-panel"
         ]
       ]
     },
@@ -220,6 +238,27 @@
       "to": "products/active-work/**"
     },
     {
+      "id": "product-isolation:products/session-miner->products/corpus-query",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/session-miner/**",
+      "to": "products/corpus-query/**"
+    },
+    {
+      "id": "product-isolation:products/session-miner->products/yt-scout",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/session-miner/**",
+      "to": "products/yt-scout/**"
+    },
+    {
+      "id": "product-isolation:products/session-miner->products/fleet-panel",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/session-miner/**",
+      "to": "products/fleet-panel/**"
+    },
+    {
       "id": "product-isolation:products/retrieval-eval->products/session-miner",
       "type": "forbid-import",
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
@@ -274,6 +313,27 @@
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/retrieval-eval/**",
       "to": "products/active-work/**"
+    },
+    {
+      "id": "product-isolation:products/retrieval-eval->products/corpus-query",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/retrieval-eval/**",
+      "to": "products/corpus-query/**"
+    },
+    {
+      "id": "product-isolation:products/retrieval-eval->products/yt-scout",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/retrieval-eval/**",
+      "to": "products/yt-scout/**"
+    },
+    {
+      "id": "product-isolation:products/retrieval-eval->products/fleet-panel",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/retrieval-eval/**",
+      "to": "products/fleet-panel/**"
     },
     {
       "id": "product-isolation:apps/codewatch->products/session-miner",
@@ -332,6 +392,27 @@
       "to": "products/active-work/**"
     },
     {
+      "id": "product-isolation:apps/codewatch->products/corpus-query",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "apps/codewatch/**",
+      "to": "products/corpus-query/**"
+    },
+    {
+      "id": "product-isolation:apps/codewatch->products/yt-scout",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "apps/codewatch/**",
+      "to": "products/yt-scout/**"
+    },
+    {
+      "id": "product-isolation:apps/codewatch->products/fleet-panel",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "apps/codewatch/**",
+      "to": "products/fleet-panel/**"
+    },
+    {
       "id": "product-isolation:products/factory->products/session-miner",
       "type": "forbid-import",
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
@@ -386,6 +467,27 @@
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/factory/**",
       "to": "products/active-work/**"
+    },
+    {
+      "id": "product-isolation:products/factory->products/corpus-query",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/factory/**",
+      "to": "products/corpus-query/**"
+    },
+    {
+      "id": "product-isolation:products/factory->products/yt-scout",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/factory/**",
+      "to": "products/yt-scout/**"
+    },
+    {
+      "id": "product-isolation:products/factory->products/fleet-panel",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/factory/**",
+      "to": "products/fleet-panel/**"
     },
     {
       "id": "product-isolation:products/evals->products/session-miner",
@@ -444,6 +546,27 @@
       "to": "products/active-work/**"
     },
     {
+      "id": "product-isolation:products/evals->products/corpus-query",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/evals/**",
+      "to": "products/corpus-query/**"
+    },
+    {
+      "id": "product-isolation:products/evals->products/yt-scout",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/evals/**",
+      "to": "products/yt-scout/**"
+    },
+    {
+      "id": "product-isolation:products/evals->products/fleet-panel",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/evals/**",
+      "to": "products/fleet-panel/**"
+    },
+    {
       "id": "product-isolation:apps/console->products/session-miner",
       "type": "forbid-import",
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
@@ -498,6 +621,27 @@
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "apps/console/**",
       "to": "products/active-work/**"
+    },
+    {
+      "id": "product-isolation:apps/console->products/corpus-query",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "apps/console/**",
+      "to": "products/corpus-query/**"
+    },
+    {
+      "id": "product-isolation:apps/console->products/yt-scout",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "apps/console/**",
+      "to": "products/yt-scout/**"
+    },
+    {
+      "id": "product-isolation:apps/console->products/fleet-panel",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "apps/console/**",
+      "to": "products/fleet-panel/**"
     },
     {
       "id": "product-isolation:products/titan->products/session-miner",
@@ -556,6 +700,27 @@
       "to": "products/active-work/**"
     },
     {
+      "id": "product-isolation:products/titan->products/corpus-query",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/titan/**",
+      "to": "products/corpus-query/**"
+    },
+    {
+      "id": "product-isolation:products/titan->products/yt-scout",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/titan/**",
+      "to": "products/yt-scout/**"
+    },
+    {
+      "id": "product-isolation:products/titan->products/fleet-panel",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/titan/**",
+      "to": "products/fleet-panel/**"
+    },
+    {
       "id": "product-isolation:products/explainer->products/session-miner",
       "type": "forbid-import",
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
@@ -612,6 +777,27 @@
       "to": "products/active-work/**"
     },
     {
+      "id": "product-isolation:products/explainer->products/corpus-query",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/explainer/**",
+      "to": "products/corpus-query/**"
+    },
+    {
+      "id": "product-isolation:products/explainer->products/yt-scout",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/explainer/**",
+      "to": "products/yt-scout/**"
+    },
+    {
+      "id": "product-isolation:products/explainer->products/fleet-panel",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/explainer/**",
+      "to": "products/fleet-panel/**"
+    },
+    {
       "id": "product-isolation:products/active-work->products/session-miner",
       "type": "forbid-import",
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
@@ -666,6 +852,258 @@
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/active-work/**",
       "to": "products/explainer/**"
+    },
+    {
+      "id": "product-isolation:products/active-work->products/corpus-query",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/active-work/**",
+      "to": "products/corpus-query/**"
+    },
+    {
+      "id": "product-isolation:products/active-work->products/yt-scout",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/active-work/**",
+      "to": "products/yt-scout/**"
+    },
+    {
+      "id": "product-isolation:products/active-work->products/fleet-panel",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/active-work/**",
+      "to": "products/fleet-panel/**"
+    },
+    {
+      "id": "product-isolation:products/corpus-query->products/session-miner",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/corpus-query/**",
+      "to": "products/session-miner/**"
+    },
+    {
+      "id": "product-isolation:products/corpus-query->products/retrieval-eval",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/corpus-query/**",
+      "to": "products/retrieval-eval/**"
+    },
+    {
+      "id": "product-isolation:products/corpus-query->apps/codewatch",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/corpus-query/**",
+      "to": "apps/codewatch/**"
+    },
+    {
+      "id": "product-isolation:products/corpus-query->products/factory",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/corpus-query/**",
+      "to": "products/factory/**"
+    },
+    {
+      "id": "product-isolation:products/corpus-query->products/evals",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/corpus-query/**",
+      "to": "products/evals/**"
+    },
+    {
+      "id": "product-isolation:products/corpus-query->apps/console",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/corpus-query/**",
+      "to": "apps/console/**"
+    },
+    {
+      "id": "product-isolation:products/corpus-query->products/titan",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/corpus-query/**",
+      "to": "products/titan/**"
+    },
+    {
+      "id": "product-isolation:products/corpus-query->products/explainer",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/corpus-query/**",
+      "to": "products/explainer/**"
+    },
+    {
+      "id": "product-isolation:products/corpus-query->products/active-work",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/corpus-query/**",
+      "to": "products/active-work/**"
+    },
+    {
+      "id": "product-isolation:products/corpus-query->products/yt-scout",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/corpus-query/**",
+      "to": "products/yt-scout/**"
+    },
+    {
+      "id": "product-isolation:products/corpus-query->products/fleet-panel",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/corpus-query/**",
+      "to": "products/fleet-panel/**"
+    },
+    {
+      "id": "product-isolation:products/yt-scout->products/session-miner",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/yt-scout/**",
+      "to": "products/session-miner/**"
+    },
+    {
+      "id": "product-isolation:products/yt-scout->products/retrieval-eval",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/yt-scout/**",
+      "to": "products/retrieval-eval/**"
+    },
+    {
+      "id": "product-isolation:products/yt-scout->apps/codewatch",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/yt-scout/**",
+      "to": "apps/codewatch/**"
+    },
+    {
+      "id": "product-isolation:products/yt-scout->products/factory",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/yt-scout/**",
+      "to": "products/factory/**"
+    },
+    {
+      "id": "product-isolation:products/yt-scout->products/evals",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/yt-scout/**",
+      "to": "products/evals/**"
+    },
+    {
+      "id": "product-isolation:products/yt-scout->apps/console",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/yt-scout/**",
+      "to": "apps/console/**"
+    },
+    {
+      "id": "product-isolation:products/yt-scout->products/titan",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/yt-scout/**",
+      "to": "products/titan/**"
+    },
+    {
+      "id": "product-isolation:products/yt-scout->products/explainer",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/yt-scout/**",
+      "to": "products/explainer/**"
+    },
+    {
+      "id": "product-isolation:products/yt-scout->products/active-work",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/yt-scout/**",
+      "to": "products/active-work/**"
+    },
+    {
+      "id": "product-isolation:products/yt-scout->products/corpus-query",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/yt-scout/**",
+      "to": "products/corpus-query/**"
+    },
+    {
+      "id": "product-isolation:products/yt-scout->products/fleet-panel",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/yt-scout/**",
+      "to": "products/fleet-panel/**"
+    },
+    {
+      "id": "product-isolation:products/fleet-panel->products/session-miner",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/fleet-panel/**",
+      "to": "products/session-miner/**"
+    },
+    {
+      "id": "product-isolation:products/fleet-panel->products/retrieval-eval",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/fleet-panel/**",
+      "to": "products/retrieval-eval/**"
+    },
+    {
+      "id": "product-isolation:products/fleet-panel->apps/codewatch",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/fleet-panel/**",
+      "to": "apps/codewatch/**"
+    },
+    {
+      "id": "product-isolation:products/fleet-panel->products/factory",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/fleet-panel/**",
+      "to": "products/factory/**"
+    },
+    {
+      "id": "product-isolation:products/fleet-panel->products/evals",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/fleet-panel/**",
+      "to": "products/evals/**"
+    },
+    {
+      "id": "product-isolation:products/fleet-panel->apps/console",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/fleet-panel/**",
+      "to": "apps/console/**"
+    },
+    {
+      "id": "product-isolation:products/fleet-panel->products/titan",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/fleet-panel/**",
+      "to": "products/titan/**"
+    },
+    {
+      "id": "product-isolation:products/fleet-panel->products/explainer",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/fleet-panel/**",
+      "to": "products/explainer/**"
+    },
+    {
+      "id": "product-isolation:products/fleet-panel->products/active-work",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/fleet-panel/**",
+      "to": "products/active-work/**"
+    },
+    {
+      "id": "product-isolation:products/fleet-panel->products/corpus-query",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/fleet-panel/**",
+      "to": "products/corpus-query/**"
+    },
+    {
+      "id": "product-isolation:products/fleet-panel->products/yt-scout",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/fleet-panel/**",
+      "to": "products/yt-scout/**"
     },
     {
       "id": "code-graph-history-seam",

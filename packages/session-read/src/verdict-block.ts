@@ -18,7 +18,8 @@
  * - An optional fourth line `CI-policy: unchanged` or `CI-policy: weakened <key>(, <key>)*` (TP-2407) is read only
  *   directly after Head and only on MERGE. Keys come from a closed set, each at most once. Unlike every other rule here,
  *   the label is looked for on every raw line, fenced, indented, commented out or not, and a line is labelled when it
- *   folds to `cipolicy...` (see `foldCiPolicyLine`: NFKC, lower case, every non-alphanumeric and any list number gone).
+ *   folds to `cipolicy...` (see `foldCiPolicyLine`: NFKC, lower case, every non-alphanumeric and any list number gone)
+ *   and the label is not glued to an identifier character, as in `ci-policy-changes.ts` (see `ciPolicyLabelRest`).
  *   With no labelled line `ciPolicy` is undefined. A labelled line whose rest folds to `weakened` and known keys reads
  *   weakened wherever it sits; the canonical unchanged line counts only as the one labelled line, exact and visible at
  *   Head+1; any other labelled line reads `{ kind: "malformed" }`. Across lines the strictest reading wins: weakened
@@ -58,6 +59,9 @@ const CI_POLICY_UNCHANGED_LINE = "CI-policy: unchanged";
 const CI_POLICY_LABEL = "cipolicy";
 const CI_POLICY_WEAKENED = "weakened";
 const NOT_ALPHANUMERIC = /[^a-z0-9]/g;
+/** The raw span `foldCiPolicyLine` folds to a leading `cipolicy`: any non-letters, then the label's letters with no alphanumeric between. */
+const CI_POLICY_LABEL_SPAN = new RegExp(`^[^a-z]*${[...CI_POLICY_LABEL].join("[^a-z0-9]*")}`);
+const IDENTIFIER_CONTINUES = /^(?:[a-z0-9]|[-_.][a-z0-9])/;
 const LIST_NUMBER = /^[0-9]+/;
 const FENCE = /^(`{3,}|~{3,})/;
 const TRIMMED_SPACE = /[\s\uFEFF]/;
@@ -138,7 +142,7 @@ function readBlock(text: string, lines: (string | null)[], at: number): VerdictB
   const named = { repo: `${pr[1]}/${pr[2]}`, pr: number, head: head[1]!, lineOffset: at };
   if (verdict === "Verdict: WAIT") return { ok: false, reason: "wait", ...named };
   if (verdict === "Verdict: MERGE") {
-    const ciPolicy = readCiPolicy(text, lines[at + 3] === CI_POLICY_UNCHANGED_LINE ? at + 3 : -1);
+    const ciPolicy = readCiPolicy(text, canonicalAt(lines, at));
     return { ok: true, verdict: "MERGE", ...named, ...(ciPolicy && { ciPolicy }) };
   }
   const closer = readCloser(lines, at + 3);
@@ -159,12 +163,50 @@ function readCloser(lines: (string | null)[], at: number): VerdictBlockCloser | 
  * line, else -1.
  */
 function readCiPolicy(text: string, canonicalAt: number): CiPolicy | undefined {
-  const readings = text.split("\n").flatMap((raw, index) => {
-    const folded = foldCiPolicyLine(raw);
-    if (!folded.startsWith(CI_POLICY_LABEL)) return [];
-    return [readCiPolicyLabel(folded.slice(CI_POLICY_LABEL.length), index === canonicalAt)];
-  });
+  const readings = labelledLines(text, canonicalAt).map((line) => line.reading);
   return readings.length === 0 ? undefined : strictestCiPolicy(readings);
+}
+
+/** The Head+1 index when it holds the exact unchanged line, else -1. */
+const canonicalAt = (lines: (string | null)[], verdictAt: number): number => (lines[verdictAt + 3] === CI_POLICY_UNCHANGED_LINE ? verdictAt + 3 : -1);
+
+export interface CiPolicyLabelledLine {
+  /** The line as written, untrimmed. */
+  raw: string;
+  /** What this one line reads as before the strictest reading folds them. */
+  reading: CiPolicy;
+}
+
+function labelledLines(text: string, canonicalAt: number): CiPolicyLabelledLine[] {
+  return text.split("\n").flatMap((raw, index) => {
+    const rest = ciPolicyLabelRest(raw);
+    return rest === undefined ? [] : [{ raw, reading: readCiPolicyLabel(rest, index === canonicalAt) }];
+  });
+}
+
+/**
+ * Every labelled line a MERGE block's `ciPolicy` folds, in text order, each with its own reading; empty for any text that
+ * is not one MERGE block. A card showing why the reading is what it is reads the lines here, never through its own match.
+ */
+export function ciPolicyLabelledLines(text: string): CiPolicyLabelledLine[] {
+  const block = parseVerdictBlock(text);
+  if (!block.ok || block.verdict !== "MERGE") return [];
+  return labelledLines(text, canonicalAt(visibleLines(text), block.lineOffset));
+}
+
+/**
+ * The folded text after the label, or undefined for an unlabelled line. A label glued to an identifier character
+ * (`ci-policy-changes.ts`, `ciPolicyAt`) is a code name, not the label (TP-3237), unless its rest reads `weakened`: a
+ * weakening is never dropped, however it is spelt.
+ */
+function ciPolicyLabelRest(raw: string): string | undefined {
+  const folded = foldCiPolicyLine(raw);
+  if (!folded.startsWith(CI_POLICY_LABEL)) return undefined;
+  const rest = folded.slice(CI_POLICY_LABEL.length);
+  if (rest.startsWith(CI_POLICY_WEAKENED)) return rest;
+  const label = CI_POLICY_LABEL_SPAN.exec(raw.normalize("NFKC").toLowerCase());
+  const after = label ? label.input.slice(label[0].length) : "";
+  return IDENTIFIER_CONTINUES.test(after) ? undefined : rest;
 }
 
 /** Folds rather than matching a list of decorations, so a decoration no one listed still reads as labelled. */
@@ -211,7 +253,7 @@ export function refusedLines(text: string, refusal: VerdictBlockRefusal | "ci_po
   const block = parseVerdictBlock(text);
   const canonicalAt = "lineOffset" in block ? block.lineOffset + 3 : -1;
   const labelled = text.split("\n").flatMap((raw, index) => {
-    if (!foldCiPolicyLine(raw).startsWith(CI_POLICY_LABEL)) return [];
+    if (ciPolicyLabelRest(raw) === undefined) return [];
     return [{ line: raw.trim(), canonical: index === canonicalAt && raw.trim() === CI_POLICY_UNCHANGED_LINE }];
   });
   return blamed(labelled, (entry) => entry.canonical).map((entry) => entry.line);

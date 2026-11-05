@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: fact-flash
+summary: "One to four quick facts at speed."
+role: evidence
+component: { name: ListBeat, maturity: spike }
+slots: fact-flash
+speech: { band: concept }
+durationS: [3, 5, 9]
+preset: false
+emphasis: { targets: [facts], treatments: [scale] }
+recipe: "Fast segment: one line per fact, each landing on its word. Use for background the viewer may skip."

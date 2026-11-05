@@ -3,10 +3,14 @@ import { existsSync } from "node:fs";
 import { promisify } from "node:util";
 import { gitOrNull } from "./git.js";
 import { readMergedTipProof } from "./gh-landing.js";
-import type { ReleaseProof } from "./options.js";
-import { observeUnsavedWork, type UnsavedObservation } from "./unsaved-work.js";
+import { DEFAULT_GH_TIMEOUT_MS, type ReleaseProof } from "./options.js";
+import { observeUnsavedWork, type IgnoredFilesPolicy, type UnsavedObservation } from "./unsaved-work.js";
 
 const execFileAsync = promisify(execFile);
+
+interface ProofPolicy { mode: ReleaseProof; ghTimeoutMs: number; ignoredFiles?: IgnoredFilesPolicy }
+
+export type { IgnoredFilesPolicy };
 
 export interface ReleaseCheck {
   name: "dirty" | "pushed" | "landed" | "gh";
@@ -59,15 +63,13 @@ async function landedOn(gitRoot: string, branch: string, targets: readonly strin
   return null;
 }
 
-const GH_TIMEOUT_MS = 3_000;
-
 /** Advisory only: never required, never allowed to change the git answer. */
-async function ghPrState(gitRoot: string, branch: string): Promise<string | null> {
+async function ghPrState(gitRoot: string, branch: string, timeoutMs: number): Promise<string | null> {
   try {
     const { stdout } = await execFileAsync("gh", ["pr", "view", branch, "--json", "state", "--jq", ".state"], {
       cwd: gitRoot,
       encoding: "utf8",
-      timeout: GH_TIMEOUT_MS,
+      timeout: timeoutMs,
     });
     return stdout.trim() || null;
   } catch {
@@ -104,10 +106,10 @@ async function inspectReleaseSafety(
   worktreePath: string,
   branch: string,
   baseRef: string,
-  releaseProof: ReleaseProof,
+  proof: ProofPolicy,
   observations: UnsavedObservation[]
 ): Promise<WorktreeReleaseSafety> {
-  const unsaved = await recordUnsaved(worktreePath, observations);
+  const unsaved = await recordUnsaved(worktreePath, observations, proof.ignoredFiles);
   const dirty = unsaved !== undefined;
   const checked = [dirtyCheck(unsaved)];
 
@@ -123,7 +125,7 @@ async function inspectReleaseSafety(
   checked.push(landedCheck(target, targets));
   const safety = { dirty, unmerged: target === null, landed: target !== null, ahead, checked };
   return target === null
-    ? withExternalLanding(safety, { gitRoot, worktreePath, branch }, releaseProof, observations)
+    ? withExternalLanding(safety, { gitRoot, worktreePath, branch }, proof, observations)
     : safety;
 }
 
@@ -131,15 +133,20 @@ async function inspectReleaseSafety(
 async function withPostProofFileSafety(
   safety: WorktreeReleaseSafety,
   worktreePath: string,
-  observations: UnsavedObservation[]
+  observations: UnsavedObservation[],
+  ignoredFiles: IgnoredFilesPolicy | undefined
 ): Promise<WorktreeReleaseSafety> {
-  const afterProof = safety.landed ? await recordUnsaved(worktreePath, observations) : undefined;
+  const afterProof = safety.landed ? await recordUnsaved(worktreePath, observations, ignoredFiles) : undefined;
   if (afterProof !== undefined) safety.checked.push(dirtyCheck(afterProof));
   return { ...safety, dirty: safety.dirty || afterProof !== undefined };
 }
 
-async function recordUnsaved(worktree: string, observations: UnsavedObservation[]): Promise<string | undefined> {
-  const observation = existsSync(worktree) ? await observeUnsavedWork(worktree) : undefined;
+async function recordUnsaved(
+  worktree: string,
+  observations: UnsavedObservation[],
+  ignoredFiles: IgnoredFilesPolicy | undefined
+): Promise<string | undefined> {
+  const observation = existsSync(worktree) ? await observeUnsavedWork(worktree, ignoredFiles) : undefined;
   if (observation !== undefined) observations.push(observation);
   return observation?.detail;
 }
@@ -147,17 +154,17 @@ async function recordUnsaved(worktree: string, observations: UnsavedObservation[
 async function withExternalLanding(
   safety: WorktreeReleaseSafety,
   ref: { gitRoot: string; worktreePath: string; branch: string },
-  proofMode: ReleaseProof,
+  policy: ProofPolicy,
   observations: UnsavedObservation[]
 ): Promise<WorktreeReleaseSafety> {
-  if (proofMode === "git-or-merged-pr-tip") {
-    const proof = await readMergedTipProof(ref.gitRoot, ref.branch);
+  if (policy.mode === "git-or-merged-pr-tip") {
+    const proof = await readMergedTipProof(ref.gitRoot, ref.branch, policy.ghTimeoutMs);
     if (proof !== null) {
       safety.checked.push(proof.check);
-      return withPostProofFileSafety({ ...safety, unmerged: !proof.merged, landed: proof.merged }, ref.worktreePath, observations);
+      return withPostProofFileSafety({ ...safety, unmerged: !proof.merged, landed: proof.merged }, ref.worktreePath, observations, policy.ignoredFiles);
     }
   } else {
-    const state = await ghPrState(ref.gitRoot, ref.branch);
+    const state = await ghPrState(ref.gitRoot, ref.branch, policy.ghTimeoutMs);
     if (state !== null) safety.checked.push({ name: "gh", ok: true, detail: `gh reports the PR as ${state}` });
   }
   return safety;
@@ -169,10 +176,13 @@ export async function inspectReleaseDetails(
   worktreePath: string,
   branch: string,
   baseRef: string,
-  proofMode: ReleaseProof = "git"
+  proofMode: ReleaseProof = "git",
+  ghTimeoutMs = DEFAULT_GH_TIMEOUT_MS,
+  ignoredFiles?: IgnoredFilesPolicy
 ): Promise<{ safety: WorktreeReleaseSafety; refusalCode?: "unsaved-changes" }> {
   const observations: UnsavedObservation[] = [];
-  const safety = await inspectReleaseSafety(gitRoot, worktreePath, branch, baseRef, proofMode, observations);
+  const policy = { mode: proofMode, ghTimeoutMs, ...(ignoredFiles ? { ignoredFiles } : {}) };
+  const safety = await inspectReleaseSafety(gitRoot, worktreePath, branch, baseRef, policy, observations);
   const ordinaryOnly = safety.dirty && !safety.unmerged && observations.every(observation => observation.kind === "changes");
   return { safety, ...(ordinaryOnly ? { refusalCode: "unsaved-changes" as const } : {}) };
 }
@@ -199,9 +209,11 @@ export async function inspectForRelease(
   worktreePath: string,
   branch: string,
   baseRef: string,
-  releaseProof: ReleaseProof = "git"
+  releaseProof: ReleaseProof = "git",
+  ghTimeoutMs = DEFAULT_GH_TIMEOUT_MS,
+  ignoredFiles?: IgnoredFilesPolicy
 ): Promise<WorktreeReleaseSafety> {
-  return (await inspectReleaseDetails(gitRoot, worktreePath, branch, baseRef, releaseProof)).safety;
+  return (await inspectReleaseDetails(gitRoot, worktreePath, branch, baseRef, releaseProof, ghTimeoutMs, ignoredFiles)).safety;
 }
 
 /** The failed checks, as one line a coordinator can act on. */

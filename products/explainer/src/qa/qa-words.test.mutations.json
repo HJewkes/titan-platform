@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "qa.json pass ignores a failing G9",
+      "file": "products/explainer/src/qa/timing-gates.ts",
+      "find": "\"reading-hold\", \"G9\", \"G10\"",
+      "replace": "\"reading-hold\", \"G10\"",
+      "kills": [
+        "qa stage on-screen word gates fails the stage on headline-label-words with a 11-word headline"
+      ]
+    },
+    {
+      "name": "qa.json pass ignores a failing G10",
+      "file": "products/explainer/src/qa/timing-gates.ts",
+      "find": "\"G9\", \"G10\", \"words-per-frame\"",
+      "replace": "\"G9\", \"words-per-frame\"",
+      "kills": [
+        "qa stage on-screen word gates fails the stage on narration-shared-run when the screen repeats 5 narration words"
+      ]
+    },
+    {
+      "name": "qa words-per-frame counts code-walk beats as prose",
+      "file": "products/explainer/src/qa/timing-gates.ts",
+      "find": "const code = new Set(timeline.beats.filter((beat) => beat.kind !== undefined && CODE_KINDS.has(beat.kind))",
+      "replace": "const code = new Set(timeline.beats.filter(() => false)",
+      "kills": [
+        "qa stage on-screen word gates passes words-per-frame on a code-walk beat whose highlighted lines run past 20 words"
+      ]
+    }
+  ]
+}

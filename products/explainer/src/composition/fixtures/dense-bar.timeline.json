@@ -1,0 +1,284 @@
+{
+  "durationS": 10.0,
+  "beats": [
+    {
+      "id": "twelve",
+      "kind": "chart",
+      "startS": 0.0,
+      "durationS": 2.5,
+      "slots": {
+        "kind": "bar",
+        "series": [
+          {
+            "id": "depot-1",
+            "label": "Depot 1",
+            "value": 30
+          },
+          {
+            "id": "depot-2",
+            "label": "Depot 2",
+            "value": 40
+          },
+          {
+            "id": "depot-3",
+            "label": "Depot 3",
+            "value": 50
+          },
+          {
+            "id": "depot-4",
+            "label": "Depot 4",
+            "value": 60
+          },
+          {
+            "id": "depot-5",
+            "label": "Depot 5",
+            "value": 70
+          },
+          {
+            "id": "depot-6",
+            "label": "Depot 6",
+            "value": 80
+          },
+          {
+            "id": "depot-7",
+            "label": "Depot 7",
+            "value": 90
+          },
+          {
+            "id": "depot-8",
+            "label": "Depot 8",
+            "value": 100
+          },
+          {
+            "id": "depot-9",
+            "label": "Depot 9",
+            "value": 110
+          },
+          {
+            "id": "depot-10",
+            "label": "Depot 10",
+            "value": 120
+          },
+          {
+            "id": "depot-11",
+            "label": "Depot 11",
+            "value": 130
+          },
+          {
+            "id": "depot-12",
+            "label": "Depot 12",
+            "value": 140
+          }
+        ]
+      }
+    },
+    {
+      "id": "twelve-legend",
+      "kind": "chart",
+      "startS": 2.5,
+      "durationS": 2.5,
+      "slots": {
+        "kind": "bar",
+        "legend": true,
+        "scale": {
+          "kind": "sequential",
+          "colours": [
+            "#deebf7",
+            "#9ecae1",
+            "#6baed6",
+            "#4292c6"
+          ]
+        },
+        "series": [
+          {
+            "id": "depot-1",
+            "label": "Depot 1",
+            "value": 30
+          },
+          {
+            "id": "depot-2",
+            "label": "Depot 2",
+            "value": 40
+          },
+          {
+            "id": "depot-3",
+            "label": "Depot 3",
+            "value": 50
+          },
+          {
+            "id": "depot-4",
+            "label": "Depot 4",
+            "value": 60
+          },
+          {
+            "id": "depot-5",
+            "label": "Depot 5",
+            "value": 70
+          },
+          {
+            "id": "depot-6",
+            "label": "Depot 6",
+            "value": 80
+          },
+          {
+            "id": "depot-7",
+            "label": "Depot 7",
+            "value": 90
+          },
+          {
+            "id": "depot-8",
+            "label": "Depot 8",
+            "value": 100
+          },
+          {
+            "id": "depot-9",
+            "label": "Depot 9",
+            "value": 110
+          },
+          {
+            "id": "depot-10",
+            "label": "Depot 10",
+            "value": 120
+          },
+          {
+            "id": "depot-11",
+            "label": "Depot 11",
+            "value": 130
+          },
+          {
+            "id": "depot-12",
+            "label": "Depot 12",
+            "value": 140
+          }
+        ]
+      }
+    },
+    {
+      "id": "ten",
+      "kind": "chart",
+      "startS": 5.0,
+      "durationS": 2.5,
+      "slots": {
+        "kind": "bar",
+        "series": [
+          {
+            "id": "depot-1",
+            "label": "Depot 1",
+            "value": 30
+          },
+          {
+            "id": "depot-2",
+            "label": "Depot 2",
+            "value": 40
+          },
+          {
+            "id": "depot-3",
+            "label": "Depot 3",
+            "value": 50
+          },
+          {
+            "id": "depot-4",
+            "label": "Depot 4",
+            "value": 60
+          },
+          {
+            "id": "depot-5",
+            "label": "Depot 5",
+            "value": 70
+          },
+          {
+            "id": "depot-6",
+            "label": "Depot 6",
+            "value": 80
+          },
+          {
+            "id": "depot-7",
+            "label": "Depot 7",
+            "value": 90
+          },
+          {
+            "id": "depot-8",
+            "label": "Depot 8",
+            "value": 100
+          },
+          {
+            "id": "depot-9",
+            "label": "Depot 9",
+            "value": 110
+          },
+          {
+            "id": "depot-10",
+            "label": "Depot 10",
+            "value": 120
+          }
+        ]
+      }
+    },
+    {
+      "id": "nine-legend",
+      "kind": "chart",
+      "startS": 7.5,
+      "durationS": 2.5,
+      "slots": {
+        "kind": "bar",
+        "legend": true,
+        "scale": {
+          "kind": "sequential",
+          "colours": [
+            "#deebf7",
+            "#9ecae1",
+            "#6baed6",
+            "#4292c6"
+          ]
+        },
+        "series": [
+          {
+            "id": "depot-1",
+            "label": "Depot 1",
+            "value": 30
+          },
+          {
+            "id": "depot-2",
+            "label": "Depot 2",
+            "value": 40
+          },
+          {
+            "id": "depot-3",
+            "label": "Depot 3",
+            "value": 50
+          },
+          {
+            "id": "depot-4",
+            "label": "Depot 4",
+            "value": 60
+          },
+          {
+            "id": "depot-5",
+            "label": "Depot 5",
+            "value": 70
+          },
+          {
+            "id": "depot-6",
+            "label": "Depot 6",
+            "value": 80
+          },
+          {
+            "id": "depot-7",
+            "label": "Depot 7",
+            "value": 90
+          },
+          {
+            "id": "depot-8",
+            "label": "Depot 8",
+            "value": 100
+          },
+          {
+            "id": "depot-9",
+            "label": "Depot 9",
+            "value": 110
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the sliced rollup never yields",
+      "file": "packages/session-graph/src/rollup.ts",
+      "find": "      await yieldPoint();\n",
+      "replace": "",
+      "kills": [
+        "rollupYielding rolls up each session once, yielding after each"
+      ]
+    },
+    {
+      "name": "a repeated session id is rolled up twice",
+      "file": "packages/session-graph/src/rollup.ts",
+      "find": "  for (const [i, sessionId] of unique.entries()) {\n",
+      "replace": "  for (const [i, sessionId] of sessionIds.entries()) {\n",
+      "kills": [
+        "rollupYielding rolls up each session once, yielding after each"
+      ]
+    },
+    {
+      "name": "an abort at a yield point drops the sessions after it",
+      "file": "packages/session-graph/src/rollup.ts",
+      "find": "      rollupSessions(graph, unique.slice(i + 1));\n",
+      "replace": "",
+      "kills": [
+        "rollupYielding still rolls up the sessions after an abort at a yield point"
+      ]
+    }
+  ]
+}

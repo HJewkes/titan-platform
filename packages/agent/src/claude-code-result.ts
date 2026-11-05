@@ -7,7 +7,7 @@ export function claudeFailure(failure: AgentFailure): HarnessRunFailure {
   switch (failure.kind) {
     case "rate_limited": return { kind: "rate_limited", reason, retryAtMs: failure.retryAt?.getTime() };
     case "budget_exceeded": return { kind: "limit_exceeded", reason, unit: "usd" };
-    case "max_turns": return { kind: "runtime_error", reason: `native maxTurns reached: ${reason}` };
+    case "max_turns": return { kind: "limit_exceeded", reason: `native maxTurns reached: ${reason}`, unit: "agent_iterations" };
     case "schema_invalid": return { kind: "output_invalid", reason };
     case "inactivity_timeout": return { kind: "cancelled_unknown", reason };
     case "refusal": return { kind: "output_invalid", reason: `native refusal: ${reason}` };

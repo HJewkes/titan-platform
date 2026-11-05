@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "private task-id prefixes stop being matched",
+      "file": "products/evals/src/private/exclusion.ts",
+      "find": "if (markers.prefixes.length === 0) return slugHits;",
+      "replace": "return slugHits;",
+      "kills": [
+        "private exclusion still refuses a genuine private task id written beside a TD-* id"
+      ]
+    },
+    {
+      "name": "a body marker no longer refuses a case",
+      "file": "products/evals/src/private/exclusion.ts",
+      "find": "return privateHits(JSON.stringify(subject.body), policy.markers).length > 0 ? \"private-marker\" : undefined;",
+      "replace": "return undefined;",
+      "kills": [
+        "private exclusion still refuses a genuine private task id written beside a TD-* id"
+      ]
+    }
+  ]
+}

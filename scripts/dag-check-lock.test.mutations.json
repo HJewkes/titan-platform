@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the queue estimate is read only after a first poll delay",
+      "file": "scripts/dag-check-lock.mjs",
+      "find": "      const tooDeep = queueTooDeep(lockDir, ahead, timeoutMs, slots);",
+      "replace": "      await delay(pollMs);\n      const tooDeep = queueTooDeep(lockDir, ahead, timeoutMs, slots);",
+      "kills": [
+        "the dag-check hold log fails at once, naming the queue, the estimate and CI, when the queue ahead cannot clear in the wait budget",
+        "the dag-check hold log fails at once behind a live holder with nobody ahead when one median hold exceeds the budget"
+      ]
+    }
+  ]
+}

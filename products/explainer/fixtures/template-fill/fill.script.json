@@ -1,0 +1,407 @@
+{
+  "schema": "script/v1",
+  "id": "parcel-desk-fill",
+  "profile": "repo-tour",
+  "facts_pack": "facts.tsv",
+  "video": {
+    "audience": {
+      "persona": "Night desk clerk",
+      "proximity": "works the desk",
+      "gloss": "broad"
+    },
+    "stake": "TODO: stake",
+    "promise": "You can tell which scans the desk trusts",
+    "thesis_mechanism": "the desk checks every scan against the ledger before printing",
+    "running_example": "TODO: example",
+    "simplifications": [],
+    "close_type": "callback"
+  },
+  "chapters": [
+    {
+      "id": "ch1",
+      "label": "The refusal",
+      "question": "Why would a desk refuse a label?"
+    },
+    {
+      "id": "ch2",
+      "label": "The scan path",
+      "question": "How does a scan reach the ledger?"
+    },
+    {
+      "id": "ch3",
+      "label": "The call",
+      "question": "Should the desk ship two lanes?"
+    }
+  ],
+  "beats": [
+    {
+      "id": "b1",
+      "chapter": "ch1",
+      "function": "HOOK",
+      "mode": "explain",
+      "plannedS": 8,
+      "spoken": "A courier asks for a label on a parcel that never arrived, but the desk refuses.",
+      "fact_ids": [],
+      "visual": {
+        "assertion": "The desk refuses unknown parcels",
+        "job": "numbers",
+        "beat": "hook",
+        "labels": [
+          "The desk refuses a label",
+          "Lost parcel",
+          "Late scan"
+        ],
+        "cues": [
+          {
+            "action": "V6",
+            "target": "cards-1",
+            "atCue": "parcel"
+          },
+          {
+            "action": "V6",
+            "target": "cards-2",
+            "atCue": "refuses"
+          }
+        ]
+      }
+    },
+    {
+      "id": "b2",
+      "chapter": "ch1",
+      "function": "WHAT",
+      "mode": "explain",
+      "plannedS": 8,
+      "spoken": "The desk runs two lanes now, not one queue, and the crew covers the night shift.",
+      "fact_ids": [],
+      "visual": {
+        "assertion": "The desk refuses unknown parcels",
+        "job": "numbers",
+        "beat": "list",
+        "labels": [
+          "tick Two lanes",
+          "cross One queue",
+          "crew · Night shift"
+        ],
+        "cues": [
+          {
+            "action": "V6",
+            "target": "rows-1",
+            "atCue": "lanes"
+          },
+          {
+            "action": "V6",
+            "target": "rows-3",
+            "atCue": "night"
+          }
+        ]
+      }
+    },
+    {
+      "id": "b3",
+      "chapter": "ch1",
+      "function": "WHAT",
+      "mode": "explain",
+      "plannedS": 8,
+      "spoken": "A weekend backlog still waits for the morning crew.",
+      "fact_ids": [],
+      "visual": {
+        "assertion": "The desk refuses unknown parcels",
+        "job": "numbers",
+        "beat": "list",
+        "labels": [
+          "open Weekend backlog"
+        ],
+        "cues": [
+          {
+            "action": "V6",
+            "target": "rows-1",
+            "atCue": "backlog"
+          }
+        ]
+      }
+    },
+    {
+      "id": "b4",
+      "chapter": "ch1",
+      "function": "WHAT",
+      "mode": "explain",
+      "plannedS": 8,
+      "spoken": "Scans now clear twelve percent faster than last spring.",
+      "fact_ids": [],
+      "visual": {
+        "assertion": "The desk refuses unknown parcels",
+        "job": "numbers",
+        "beat": "stat",
+        "labels": [
+          "12 % faster"
+        ],
+        "cues": [
+          {
+            "action": "V6",
+            "target": "figures-1",
+            "atCue": "twelve"
+          }
+        ]
+      }
+    },
+    {
+      "id": "b5",
+      "chapter": "ch2",
+      "function": "WHAT",
+      "mode": "explain",
+      "plannedS": 8,
+      "spoken": "Before, one queue held every scan; after, two lanes split them.",
+      "fact_ids": [],
+      "visual": {
+        "assertion": "The desk refuses unknown parcels",
+        "job": "numbers",
+        "beat": "compare",
+        "labels": [
+          "before: One queue",
+          "after: Two lanes"
+        ],
+        "cues": [
+          {
+            "action": "V6",
+            "target": "rows-1",
+            "atCue": "before"
+          }
+        ]
+      }
+    },
+    {
+      "id": "b6",
+      "chapter": "ch2",
+      "function": "WHAT",
+      "mode": "explain",
+      "plannedS": 8,
+      "spoken": "A scan leaves the scanner, reaches the desk server, then the ledger, then the printer.",
+      "fact_ids": [],
+      "visual": {
+        "assertion": "The desk refuses unknown parcels",
+        "job": "numbers",
+        "beat": "arch-map",
+        "labels": [
+          "Scanner",
+          "Desk server",
+          "Ledger",
+          "Printer"
+        ],
+        "cues": [
+          {
+            "action": "V6",
+            "target": "nodes-1",
+            "atCue": "scanner"
+          },
+          {
+            "action": "V6",
+            "target": "nodes-2",
+            "atCue": "desk"
+          },
+          {
+            "action": "V6",
+            "target": "nodes-3",
+            "atCue": "ledger"
+          },
+          {
+            "action": "V6",
+            "target": "nodes-4",
+            "atCue": "printer"
+          }
+        ]
+      }
+    },
+    {
+      "id": "b7",
+      "chapter": "ch2",
+      "function": "WHAT",
+      "mode": "explain",
+      "plannedS": 8,
+      "spoken": "Monday saw four held scans and Tuesday twelve hundred.",
+      "fact_ids": [],
+      "visual": {
+        "assertion": "The desk refuses unknown parcels",
+        "job": "numbers",
+        "beat": "chart",
+        "labels": [
+          "Mon: 4",
+          "Tue: 1,200"
+        ],
+        "cues": [
+          {
+            "action": "V6",
+            "target": "series-1",
+            "atCue": "Monday"
+          }
+        ]
+      }
+    },
+    {
+      "id": "b8",
+      "chapter": "ch2",
+      "function": "WHAT",
+      "mode": "explain",
+      "plannedS": 8,
+      "spoken": "Held scans rose from five to seven, then fell to six.",
+      "fact_ids": [],
+      "visual": {
+        "assertion": "The desk refuses unknown parcels",
+        "job": "numbers",
+        "beat": "chart",
+        "labels": [
+          "2031-01-03: 5",
+          "2031-01-04: 7",
+          "2031-01-05: 6"
+        ],
+        "cues": [
+          {
+            "action": "V6",
+            "target": "series-1",
+            "atCue": "five"
+          },
+          {
+            "action": "V6",
+            "target": "series-2",
+            "atCue": "seven"
+          },
+          {
+            "action": "V6",
+            "target": "series-3",
+            "atCue": "six"
+          }
+        ]
+      }
+    },
+    {
+      "id": "b9",
+      "chapter": "ch2",
+      "function": "WHAT",
+      "mode": "explain",
+      "plannedS": 8,
+      "spoken": "The desk server holds scans while the ledger answers slowly.",
+      "fact_ids": [],
+      "visual": {
+        "assertion": "The desk refuses unknown parcels",
+        "job": "numbers",
+        "beat": "issue-pin",
+        "labels": [],
+        "cues": [],
+        "map_state": {
+          "level": "components",
+          "pins": [
+            {
+              "anchor": "desk-server",
+              "text": "holds scans",
+              "atCue": "holds"
+            },
+            {
+              "anchor": "ledger",
+              "text": "answers slowly",
+              "atCue": "slowly"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "b10",
+      "chapter": "ch3",
+      "function": "VERDICT",
+      "mode": "explain",
+      "plannedS": 8,
+      "spoken": "Ship it: two lanes hold, scans clear in minutes, and no label prints early.",
+      "fact_ids": [],
+      "visual": {
+        "assertion": "The desk refuses unknown parcels",
+        "job": "numbers",
+        "beat": "verdict-card",
+        "labels": [
+          "Ship it: two lanes hold",
+          "Scans clear in minutes",
+          "No label prints early"
+        ],
+        "cues": [
+          {
+            "action": "V6",
+            "target": "reasons-1",
+            "atCue": "minutes"
+          },
+          {
+            "action": "V6",
+            "target": "reasons-2",
+            "atCue": "early"
+          }
+        ]
+      }
+    },
+    {
+      "id": "b11",
+      "chapter": "ch3",
+      "function": "WHAT",
+      "mode": "explain",
+      "plannedS": 8,
+      "spoken": "The rollout takes two weeks across both lanes.",
+      "fact_ids": [],
+      "visual": {
+        "assertion": "The desk refuses unknown parcels",
+        "job": "numbers",
+        "beat": "gantt",
+        "labels": [
+          "Lane rollout"
+        ],
+        "cues": []
+      }
+    },
+    {
+      "id": "b12",
+      "chapter": "ch3",
+      "function": "CLOSE",
+      "mode": "explain",
+      "plannedS": 8,
+      "spoken": "Check the row, then print.",
+      "fact_ids": [],
+      "visual": {
+        "assertion": "The desk refuses unknown parcels",
+        "job": "numbers",
+        "beat": "button",
+        "labels": [
+          "Check the row, then print"
+        ],
+        "cues": []
+      }
+    },
+    {
+      "id": "b13",
+      "chapter": "ch3",
+      "function": "WHAT",
+      "mode": "explain",
+      "plannedS": 8,
+      "spoken": "The desk animation shows each scan moving.",
+      "fact_ids": [],
+      "visual": {
+        "assertion": "The desk refuses unknown parcels",
+        "job": "numbers",
+        "beat": "list",
+        "labels": [],
+        "cues": [],
+        "layer": "custom"
+      }
+    }
+  ],
+  "map": {
+    "nodes": [
+      {
+        "id": "scanner",
+        "label": "Scanner"
+      },
+      {
+        "id": "desk-server",
+        "label": "Desk server"
+      },
+      {
+        "id": "ledger",
+        "label": "Ledger"
+      }
+    ]
+  }
+}

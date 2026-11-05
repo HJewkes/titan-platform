@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "owner-release leaves the admitted hold-release record unspent",
+      "file": "products/factory/src/shepherd/owner-release.ts",
+      "find": "  spendHoldRelease(batches, resolver, released);\n",
+      "replace": "",
+      "kills": [
+        "titan-factory shepherd owner-release releases from an agent-chat shell once the owner signs the hold release, recording the spent record"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+schema: beat-spec/v1
+type: held
+summary: "A held frame: a breath between beats."
+role: navigate
+component: { name: BeatFrame, maturity: shipped }
+slots: held
+speech: { band: held }
+durationS: [1, 2, 3]
+preset: true
+recipe: "Template fill: hold the last frame, with at most one short line, so the previous point lands."

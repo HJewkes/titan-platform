@@ -6,7 +6,8 @@ import { SPAN_TEXT_CAP, readCodexObservations, type SessionObservationReadResult
 import type { CapabilityAssessment, HarnessSourcePort } from "@titan-design/agent-protocol/harness";
 import type { SessionGraph } from "./graph.js";
 import { ensureNormalizedSchema } from "./normalized-schema.js";
-import { unreadableStatus } from "./unreadable.js";
+import { parseJsonArray } from "./stored-json.js";
+import { hasErrorCode, unreadableStatus } from "./unreadable.js";
 import { insertObservation, observationText } from "./normalized-project.js";
 
 export interface NormalizedIndexResult { status: "indexed" | "unchanged" | "missing" | "quarantined"; conversationRef: string; observations: number; reason?: string }
@@ -41,7 +42,7 @@ async function indexNormalizedSource(graph: SessionGraph, source: SessionSourceD
   const row = graph.transcripts.ensure(source.sourceId);
   let info;
   try { info = await stat(source.path); } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    if (!hasErrorCode(error, "ENOENT")) throw error;
     graph.transcripts.markStatus(source.sourceId, "missing", "source unavailable");
     return { ...base, status: "missing" };
   }
@@ -55,8 +56,8 @@ async function indexNormalizedSource(graph: SessionGraph, source: SessionSourceD
     const insert = graph.db.prepare(`INSERT INTO ${stage}(observation) VALUES (?)`);
     for await (const observation of readObservations(source, {}, done => { result = done; })) insert.run(JSON.stringify(observation));
     if (!result) throw new Error("decoder completed without a resume boundary");
-    const boundary = (result as SessionObservationReadResult).resumeBoundary;
-    const prior = graph.db.prepare("SELECT descriptor FROM normalized_source WHERE transcript_id = ?").get(row.sourceId) as { descriptor: string } | undefined;
+    const boundary = result.resumeBoundary;
+    const prior = graph.db.prepare<[number], { descriptor: string }>("SELECT descriptor FROM normalized_source WHERE transcript_id = ?").get(row.sourceId);
     if (prior && row.contentHash === fingerprint && row.prefixHash === boundary.prefixHash && row.lastOffset === boundary.byteOffset) {
       graph.db.prepare("UPDATE normalized_source SET descriptor = ? WHERE transcript_id = ?").run(JSON.stringify(source), row.sourceId);
       graph.transcripts.markStatus(source.sourceId, "ok", null);
@@ -85,13 +86,13 @@ function applyStaged(graph: SessionGraph, stage: string, transcriptId: number, r
   graph.db.exec(`CREATE TEMP TABLE ${spans}(field TEXT, offset INTEGER, length INTEGER, text TEXT, locators TEXT, PRIMARY KEY(field,offset))`);
   let count = 0;
   try {
-    for (const row of stagedRows<{ observation: string }>(graph, stage)) {
+    for (const row of stagedRows<{ cursor: number; observation: string }>(graph, stage)) {
       const o = JSON.parse(row.observation) as NormalizedSessionObservation;
       insertObservation(graph, transcriptId, o);
       for (const p of observationText(o)) stageText(graph, spans, p.field, p.text, p.locator);
       count++;
     }
-    for (const s of stagedRows<{ field: string; offset: number; length: number; text: string; locators: string }>(graph, spans)) {
+    for (const s of stagedRows<{ cursor: number; field: string; offset: number; length: number; text: string; locators: string }>(graph, spans)) {
       const id = graph.spans.index({ ownerRef: ref, sourceId: transcriptId, field: s.field, byteOffset: s.offset, byteLength: s.length }, s.text);
       graph.db.prepare("INSERT INTO normalized_span VALUES (?,?)").run(id, s.locators);
     }
@@ -101,8 +102,8 @@ function applyStaged(graph: SessionGraph, stage: string, transcriptId: number, r
 
 function stageText(graph: SessionGraph, table: string, field: string, text: string, locator: SourceTextLocator): void {
   const line = locator.evidence.line;
-  const prior = graph.db.prepare(`SELECT text,locators FROM ${table} WHERE field = ? AND offset = ?`).get(field, line.byteOffset) as { text: string; locators: string } | undefined;
-  const locators = prior ? JSON.parse(prior.locators) as unknown[] : [];
+  const prior = graph.db.prepare<[string, number], { text: string; locators: string }>(`SELECT text,locators FROM ${table} WHERE field = ? AND offset = ?`).get(field, line.byteOffset);
+  const locators = prior ? parseJsonArray(prior.locators) : [];
   locators.push(locator);
   graph.db.prepare(`INSERT OR REPLACE INTO ${table} VALUES (?,?,?,?,?)`).run(field, line.byteOffset, line.byteLength, (prior ? `${prior.text}\n${text}` : text).slice(0, SPAN_TEXT_CAP), JSON.stringify(locators));
 }
@@ -115,11 +116,11 @@ function purgeNormalizedSource(graph: SessionGraph, transcriptId: number): void 
 
 
 /** Finish each SELECT before writing; SQLite forbids writes during an active iterator. */
-function* stagedRows<T>(graph: SessionGraph, table: string): Generator<T> {
-  const select = graph.db.prepare(`SELECT rowid AS cursor, * FROM ${table} WHERE rowid > ? ORDER BY rowid LIMIT 128`);
+function* stagedRows<T extends { cursor: number }>(graph: SessionGraph, table: string): Generator<T> {
+  const select = graph.db.prepare<[number], T>(`SELECT rowid AS cursor, * FROM ${table} WHERE rowid > ? ORDER BY rowid LIMIT 128`);
   let cursor = 0;
   for (;;) {
-    const rows = select.all(cursor) as (T & { cursor: number })[];
+    const rows = select.all(cursor);
     if (!rows.length) return;
     for (const row of rows) { cursor = row.cursor; yield row; }
   }

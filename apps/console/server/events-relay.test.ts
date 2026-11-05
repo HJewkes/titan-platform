@@ -1,14 +1,14 @@
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingHttpHeaders, type ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { silentLogger, type DaemonHandle, type SseMessage } from "@titan-design/daemon";
+import { successEnvelope } from "@titan-design/registry";
 import { liveSource, type Subscription } from "@titan-design/rpc-client";
 import type { ConsoleConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
-import { MAX_FRAME_CHARS, brokerIds, startEventsRelay, type EventsRelay, type RelayTiming, type RelayUpstream } from "./events-relay.js";
+import { MAX_FRAME_CHARS, brokerIds, factoryIds, relayUpstreams, startEventsRelay, type EventsRelay, type RelayTiming, type RelayUpstream } from "./events-relay.js";
 
 const TOKEN = "synthetic-token";
 
@@ -24,11 +24,18 @@ interface FakeStream {
   close(): Promise<void>;
 }
 
-/** A loopback `/events` that streams whatever the test writes; with `token`, a dial without that header gets 401. */
+/**
+ * A loopback `/events` that streams whatever the test writes; with `token`, a dial without that header gets 401. Any
+ * `/rpc` read answers an empty note and source list.
+ */
 async function startFakeStream(token?: string): Promise<FakeStream> {
   const dials: FakeStream["dials"] = [];
   const open = new Set<ServerResponse>();
   const server = createServer((req, res) => {
+    if (req.url?.startsWith("/rpc/")) {
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(successEnvelope({ notes: [], sources: [] })));
+      return;
+    }
     dials.push({ at: Date.now(), headers: req.headers });
     if (req.url !== "/events" || (token !== undefined && req.headers["x-agent-chat-token"] !== token)) {
       res.writeHead(token !== undefined ? 401 : 404).end();
@@ -40,8 +47,10 @@ async function startFakeStream(token?: string): Promise<FakeStream> {
     res.on("close", () => open.delete(res));
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (address === null || typeof address === "string") throw new Error("fake stream bound no TCP port");
   return {
-    port: (server.address() as AddressInfo).port,
+    port: address.port,
     dials,
     openCount: () => open.size,
     write: (text) => open.forEach((res) => res.write(text)),
@@ -50,7 +59,7 @@ async function startFakeStream(token?: string): Promise<FakeStream> {
   };
 }
 
-async function until(condition: () => boolean, timeoutMs = 3000): Promise<void> {
+async function until(condition: () => boolean, timeoutMs = 10_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!condition()) {
     if (Date.now() > deadline) throw new Error("condition not met in time");
@@ -62,6 +71,9 @@ const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve,
 
 const brokerRow = (id: number, kind: string): string =>
   `id: ${id}\nevent: ${kind}\ndata: ${JSON.stringify({ id, ts: 1, kind, actor: "coord", target: "impl", msgId: `m${id}`, ref: "task:X-1", body: "a private body", meta: '{"note":"private meta"}' })}\n\n`;
+
+const shepherdFrame = (runId: string): string =>
+  `event: shepherd\ndata: ${JSON.stringify({ v: 1, kind: "run", repo: "example-org/example-repo", pr: 12, runId, stepId: "step-private", at: "2026-01-01T00:00:00.000Z" })}\n\n`;
 
 let dir: string;
 let tokenPath: string;
@@ -109,7 +121,7 @@ function consoleConfig(activeWorkPort: number, agentChatPort: number): ConsoleCo
   };
 }
 
-describe("the console daemon's /events", () => {
+describe("the console daemon's /events", { timeout: 20_000 }, () => {
   let handle: DaemonHandle | undefined;
   let browser: Subscription | undefined;
 
@@ -149,7 +161,37 @@ describe("the console daemon's /events", () => {
   });
 });
 
-describe("the events relay", () => {
+describe("the console daemon's refreshed frame", { timeout: 20_000 }, () => {
+  let handle: DaemonHandle | undefined;
+  let browser: Subscription | undefined;
+
+  afterEach(async () => {
+    browser?.close();
+    await handle?.close();
+    handle = undefined;
+  });
+
+  it("tells the browser once the cache has read what an active-work frame moved, after serving it the old answer", async () => {
+    const activeWork = await fake();
+    handle = await startConsoleDaemon({ config: consoleConfig(activeWork.port, (await fake(TOKEN)).port), logger: silentLogger });
+    const console = liveSource({ origin: `http://127.0.0.1:${handle.port}` });
+    const received: string[] = [];
+    let open = false;
+    browser = console.subscribe({ onEvent: ({ data }) => received.push(data), onStatus: (status) => (open ||= status === "open") });
+    await until(() => open && activeWork.openCount() === 1);
+    await console.call("work.notes", {});
+
+    activeWork.write("event: change\ndata: /srv/private/root\n\n");
+    await until(() => received.length === 1);
+    await console.call("work.notes", {});
+    // work.notes makes two cached reads, and each says so as it lands; the browser coalesces them into one refetch.
+    await until(() => received.length === 3);
+
+    expect(received.map((data) => JSON.parse(data) as unknown)).toEqual([{ kind: "change" }, { kind: "refreshed" }, { kind: "refreshed" }]);
+  });
+});
+
+describe("the events relay", { timeout: 20_000 }, () => {
   const relays: EventsRelay[] = [];
   afterEach(async () => {
     await Promise.all(relays.splice(0).map((relay) => relay.close()));
@@ -166,6 +208,31 @@ describe("the events relay", () => {
     url: `http://127.0.0.1:${port}/events`,
     headers: async () => ({ "x-agent-chat-token": token }),
     pick: brokerIds,
+  });
+
+  it("tells onFrame the source of each frame and of a reopen, never for a keep-alive, and survives a throw", async () => {
+    const broker = await fake(TOKEN);
+    const seen: string[] = [];
+    relays.push(
+      startEventsRelay({
+        hub: { broadcast: () => undefined },
+        upstreams: [brokerAt(broker.port)],
+        logger: silentLogger,
+        timing: { baseDelayMs: 10, maxDelayMs: 40 },
+        onFrame: (source) => {
+          seen.push(source);
+          throw new Error("listener failed");
+        },
+      }),
+    );
+    await until(() => broker.openCount() === 1);
+
+    broker.write(`: heartbeat\n\nevent: ping\ndata: 1\n\n${brokerRow(7, "message")}${brokerRow(8, "message")}`);
+    await until(() => seen.length === 2);
+    broker.drop();
+    await until(() => seen.length === 3);
+
+    expect(seen).toEqual(["agent-chat", "agent-chat", "agent-chat"]);
   });
 
   it("redials a dropped upstream and tells the browser once, so its pages refetch what the gap missed", async () => {
@@ -279,6 +346,78 @@ describe("the events relay", () => {
     await broker.close();
 
     await until(() => broker.openCount() === 0, 500);
+  });
+});
+
+describe("the factory relay source", { timeout: 20_000 }, () => {
+  const relays: EventsRelay[] = [];
+  afterEach(async () => {
+    await Promise.all(relays.splice(0).map((relay) => relay.close()));
+  });
+
+  function factoryAt(port: number): RelayUpstream {
+    const upstream = relayUpstreams({ ...consoleConfig(1, 1), factoryPort: port }).find(({ source }) => source === "factory");
+    if (!upstream) throw new Error("no factory upstream");
+    return upstream;
+  }
+
+  it("dials the factory's /events with no broker token and relays each frame as its run id alone", async () => {
+    const factory = await fake();
+    const relayed: SseMessage[] = [];
+    relays.push(startEventsRelay({ hub: { broadcast: (message) => relayed.push(message) }, upstreams: [factoryAt(factory.port)], logger: silentLogger }));
+    await until(() => factory.openCount() === 1);
+
+    factory.write(`event: ping\ndata: 1\n\n${shepherdFrame("run-0001")}`);
+    await until(() => relayed.length === 1);
+
+    expect(relayed.map(({ event, data }) => ({ event, data: JSON.parse(data) as unknown }))).toEqual([{ event: "factory", data: { kind: "shepherd", runId: "run-0001" } }]);
+    expect(factory.dials[0]?.headers["x-agent-chat-token"]).toBeUndefined();
+    expect(factory.dials[0]?.headers.accept).toBe("text/event-stream");
+  });
+
+  it("redials a dropped factory stream with the same doubling backoff, announcing each reopen", async () => {
+    const factory = await fake();
+    const relayed: SseMessage[] = [];
+    // Asserts the delays the relay asked for against a clock that never moves, so no stream counts as stable and load cannot stretch the result.
+    const spy = vi.spyOn(globalThis, "setTimeout");
+    try {
+      relays.push(
+        startEventsRelay({
+          hub: { broadcast: (message) => relayed.push(message) },
+          upstreams: [factoryAt(factory.port)],
+          logger: silentLogger,
+          timing: { baseDelayMs: 20, maxDelayMs: 80 },
+          now: () => 0,
+        }),
+      );
+      for (let dial = 1; dial <= 3; dial++) {
+        await until(() => factory.dials.length === dial && factory.openCount() === 1);
+        factory.drop();
+      }
+      await until(() => factory.dials.length === 4 && factory.openCount() === 1 && relayed.length === 3);
+
+      const backoffs = spy.mock.calls.map(([, ms]) => ms).filter((ms) => ms !== undefined && [10, 20, 40, 80, 160].includes(ms));
+      expect(backoffs).toEqual([40, 80, 80]);
+      expect(relayed.map(({ event, data }) => ({ event, data: JSON.parse(data) as unknown }))).toEqual(Array(3).fill({ event: "factory", data: { kind: "reconnected" } }));
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+describe("factoryIds", () => {
+  it("keeps the run id and drops the repo, PR and step", () => {
+    expect(factoryIds(JSON.stringify({ v: 1, kind: "gate", repo: "example-org/example-repo", pr: 3, runId: "0b7c2a1e-0000-4000-8000-000000000001", stepId: "s" }))).toEqual({
+      runId: "0b7c2a1e-0000-4000-8000-000000000001",
+    });
+  });
+
+  it("drops a run id with spaces or slashes, a non-string run id, a frame with none, and data that is not an object", () => {
+    expect(factoryIds(JSON.stringify({ runId: "two words" }))).toEqual({});
+    expect(factoryIds(JSON.stringify({ runId: "../private" }))).toEqual({});
+    expect(factoryIds(JSON.stringify({ runId: 7 }))).toEqual({});
+    expect(factoryIds(JSON.stringify({ v: 1, kind: "external", at: "x" }))).toEqual({});
+    expect(factoryIds("not json")).toEqual({});
   });
 });
 

@@ -112,7 +112,7 @@ describe("a flag turned on while sh-held-check was in flight on the old host", (
 
   it.each(Object.entries(answers))("replays a %s at the later live offer on a third host without recovery_required", async (_decision, { answer, settles }) => {
     const { world, second, runId, steps } = await adopted();
-    await gateOpened(second, gateId(runId, "sh-visual-accept"), 10_000);
+    await gateOpened(second, gateId(runId, "sh-visual-accept"));
     expect(steps().some((stepId) => stepId.startsWith(inFlight))).toBe(true);
     const answeredAt = steps().length;
     second.gates.resolve(gateId(runId, "sh-visual-accept"), answer, OWNER);
@@ -131,7 +131,7 @@ describe("the flag on throughout and the offer itself in flight on the old host"
   it("claims the recovered offer and asks the owner at the red head instead of waking the fixer", async () => {
     const { world, second, runId } = await parkedThenAdopted("sh-visual-accept-offer", "on", "on");
 
-    await gateOpened(second, gateId(runId, "sh-visual-accept"), 10_000);
+    await gateOpened(second, gateId(runId, "sh-visual-accept"));
 
     expect(second.gates.get(gateId(runId, "sh-visual-accept"))?.prompt).toContain(`at head ${H1}`);
     expect(second.runtime.status(runId)?.activeSteps).toEqual({});

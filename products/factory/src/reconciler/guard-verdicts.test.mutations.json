@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an unreadable compare confirms the head",
+      "file": "products/factory/src/reconciler/guard-verdicts.ts",
+      "find": "if (\"kind\" in result) return UNREAD;",
+      "replace": "if (\"kind\" in result) return { kind: \"confirmed\" };",
+      "kills": [
+        "guard verdicts on an open PR's head (TP-3097 through TP-3431) answers unknown when the compare could not be read"
+      ]
+    },
+    {
+      "name": "a PR's verdict answers any sha",
+      "file": "products/factory/src/reconciler/guard-verdicts.ts",
+      "find": "return head?.sha === sha ? head.verdict : UNREAD;",
+      "replace": "return head ? head.verdict : UNREAD;",
+      "kills": [
+        "guard verdicts on an open PR's head (TP-3097 through TP-3431) confirms nothing the guard did not run on"
+      ]
+    },
+    {
+      "name": "the tip's verdict ignores the cursor it was asked against",
+      "file": "products/factory/src/reconciler/guard-verdicts.ts",
+      "find": "tip.sha === sha && tip.from === at",
+      "replace": "tip.sha === sha",
+      "kills": [
+        "guard verdicts on the main tip (TP-3431) confirms the tip only against the cursor it was classified from"
+      ]
+    },
+    {
+      "name": "a tip ls-remote confirms behind the cursor still descends from it",
+      "file": "products/factory/src/reconciler/guard-verdicts.ts",
+      "find": "verdict.by === \"fast-forward\" || verdict.by === \"bootstrap\"",
+      "replace": "verdict.by !== \"non-ancestor\"",
+      "kills": [
+        "guard verdicts on the main tip (TP-3431) confirms an ancestor of the cursor that ls-remote shows as off its line"
+      ]
+    },
+    {
+      "name": "a confirmed head moves no epoch",
+      "file": "products/factory/src/head-guard/guard.ts",
+      "find": "const moved = advanceEpoch(deps.db, { ...key, expectedEpoch: stored?.epoch ?? 0, head: read, by: verdict.by, at: deps.now().toISOString() });\n  return moved.advanced",
+      "replace": "const moved = { advanced: true as const, epoch: (stored?.epoch ?? 0) + 1 };\n  return moved.advanced",
+      "kills": [
+        "guard verdicts on an open PR's head (TP-3097 through TP-3431) confirms a first head ls-remote agrees with, and stores it as the PR's epoch"
+      ]
+    }
+  ]
+}

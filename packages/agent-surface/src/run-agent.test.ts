@@ -114,6 +114,12 @@ describe("the launcher resolving the binary it execs", () => {
 });
 
 describe("the launcher stamping the launched process", () => {
+  const pidPair = (stdout: string): [unknown, unknown] => {
+    const pair: unknown = JSON.parse(stdout);
+    if (!Array.isArray(pair)) throw new Error(`expected a pair, got ${stdout}`);
+    return [pair[0], pair[1]];
+  };
+
   const reportsLauncher = (name: string) =>
     fs.writeFileSync(fakeClaude, `process.stdout.write(JSON.stringify([process.env.${name}, String(process.ppid)]))\n`);
 
@@ -121,7 +127,7 @@ describe("the launcher stamping the launched process", () => {
     reportsLauncher("TITAN_AGENT_LAUNCHER_PID");
     writePlan({ TITAN_AGENT_LAUNCHER_PID: "1" });
 
-    const [launcher, parent] = JSON.parse(launch().stdout) as [string, string];
+    const [launcher, parent] = pidPair(launch().stdout);
 
     expect(launcher).toBe(parent);
   });
@@ -130,10 +136,7 @@ describe("the launcher stamping the launched process", () => {
     reportsLauncher("HOST_LAUNCHER_PID");
     writePlan({ HOST_LAUNCHER_PID: "1" });
 
-    const [launcher, parent] = JSON.parse(launch({}, ["--launcher-pid-env", "HOST_LAUNCHER_PID"]).stdout) as [
-      string,
-      string,
-    ];
+    const [launcher, parent] = pidPair(launch({}, ["--launcher-pid-env", "HOST_LAUNCHER_PID"]).stdout);
 
     expect(launcher).toBe(parent);
   });
@@ -201,20 +204,24 @@ describe("the launcher keeping the stderr tail of a headless claude", () => {
     expect(fs.existsSync(tailFile())).toBe(false);
   });
 
-  it("exits promptly when a grandchild keeps holding claude's stderr", () => {
+  it("exits while a grandchild still holds claude's stderr", () => {
+    const pidFile = path.join(stateDir, "grandchild.pid");
     fs.writeFileSync(
       fakeClaude,
-      "process.stdin.resume(); require('node:child_process').spawn('sleep', ['4'], { stdio: ['ignore', 'ignore', 'inherit'], detached: true }).unref(); process.stderr.write('Not logged in\\n'); process.exitCode = 3\n",
+      `process.stdin.resume(); const g = require('node:child_process').spawn('sleep', ['8'], { stdio: ['ignore', 'ignore', 'inherit'], detached: true }); g.unref(); require('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(g.pid)); process.stderr.write('Not logged in\\n'); process.exitCode = 3\n`,
     );
     writePlan({}, "the brief");
 
-    const started = Date.now();
     const result = launch();
+    const grandchild = Number(fs.readFileSync(pidFile, "utf8"));
+    // A launcher that waited for stderr to close would have outlived the grandchild, so signal 0 would find no process.
+    const alive = (() => { try { return process.kill(grandchild, 0); } catch { return false; } })();
+    if (alive) process.kill(grandchild);
 
-    expect(Date.now() - started).toBeLessThan(2500);
+    expect(alive).toBe(true);
     expect(result.status).toBe(3);
     expect(fs.readFileSync(tailFile(), "utf8")).toContain("Not logged in");
-  });
+  }, 15_000);
 
   it("waits for stderr that lands just after claude exits, so the tail keeps it", () => {
     fs.writeFileSync(

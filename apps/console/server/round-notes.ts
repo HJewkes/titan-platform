@@ -25,6 +25,8 @@ const sentAnswer = z.object({
 /** A pin as sent; its number is the suffix of its `${key}-${n}` id. */
 const sentPin = z.object({
   id: z.string(),
+  /** The render width the pin was placed at, so only that render draws it; absent on notes read before it was kept. */
+  width: z.number().optional(),
   xPct: z.number(),
   yPct: z.number(),
   note: z.string(),
@@ -64,8 +66,9 @@ const sentAnswerOf = ({ pick, picks, value, text, revisionRequested, optionNotes
   ...(recommendationSeen && { recommendationSeen }),
 });
 
-const sentPinOf = ({ id, xPct, yPct, note, target }: Feedback["variants"][number]["annotations"][number]): SentFrame["annotations"][number] => ({
+const sentPinOf = ({ id, width, xPct, yPct, note, target }: Feedback["variants"][number]["annotations"][number]): SentFrame["annotations"][number] => ({
   id,
+  width,
   xPct,
   yPct,
   note,

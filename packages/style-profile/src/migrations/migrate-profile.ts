@@ -7,7 +7,7 @@ export function migrateProfile(
   profile: Record<string, unknown>,
 ): Record<string, unknown> {
   let current = { ...profile };
-  const version = current.schemaVersion as string;
+  const version: unknown = current.schemaVersion;
 
   if (version === SCHEMA_VERSION) {
     return current;
@@ -25,7 +25,7 @@ export function migrateProfile(
 
   if (currentVersion !== SCHEMA_VERSION) {
     throw new Error(
-      `No migration path from version ${version} to ${SCHEMA_VERSION}`,
+      `No migration path from version ${String(version)} to ${SCHEMA_VERSION}`,
     );
   }
 

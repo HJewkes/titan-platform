@@ -5,12 +5,15 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { GIT_SAFETY } from "./context.js";
 import { spawnExec, type Exec } from "./exec.js";
-import { FIXED, git, makeRepo, REAL_TEST, removeRepos } from "./repo.test-helpers.js";
+import { FIXED, git, makeRepo, REAL_RUNNER, REAL_TEST, removeRepos } from "./repo.test-helpers.js";
 import { isSandboxed, sudoStub, type StubOptions } from "./sandbox.test-helpers.js";
 import { execSide, MAX_VITEST_REPORT_BYTES } from "./side.js";
 import { decodeReport } from "./transport.js";
 
 const outs: string[] = [];
+
+// Keyed on the runner contract, not the command text, so it holds for the fake runner too.
+const runsUnsandboxed = (call: { file: string; args: readonly string[] }) => call.file === "sh" && call.args.includes("--outputFile");
 
 function outDir(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fix-proof-side-"));
@@ -29,8 +32,33 @@ async function sandboxedBase(options: StubOptions) {
   const repo = makeRepo();
   const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
   const out = outDir();
-  await execSide({ repo: repo.dir, base: repo.base, head, side: "base", out, exec: stub.exec, sandboxUser: "fix-proof-sandbox" });
+  await execSide({ repo: repo.dir, base: repo.base, head, side: "base", out, exec: stub.exec, sandboxUser: "nobody" });
   return { calls: stub.calls, reports: readReports(out, ["base", "base-rerun"]) };
+}
+
+const HEAD_SCRIPTS = ["pnpm install", "sh build.sh", "report()"];
+
+function scriptOf(call: { args: readonly string[] } | undefined): string {
+  const args = call?.args ?? [];
+  return args[args.lastIndexOf("-c") + 1] ?? "";
+}
+
+const runsHeadCodeUnsandboxed = (call: { file: string; args: readonly string[] }) =>
+  call.file === "sh" && HEAD_SCRIPTS.some((script) => scriptOf(call).includes(script));
+
+// The install is answered here, so the test needs no registry; build and vitest run for real through the stub.
+async function sandboxedHead(options: StubOptions) {
+  const stub = sudoStub(options);
+  const exec: Exec = async (file, args, execOptions) => {
+    if (!(isSandboxed({ file, args }) && scriptOf({ args }).includes("pnpm install"))) return stub.exec(file, args, execOptions);
+    stub.calls.push({ file, args });
+    return { status: 0, stdout: "", stderr: "" };
+  };
+  const repo = makeRepo({ build: "sh build.sh" }, os.tmpdir(), { "pnpm-lock.yaml": "lockfileVersion: '9.0'\n", "build.sh": "true\n" });
+  const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
+  const out = outDir();
+  await execSide({ repo: repo.dir, base: repo.base, head, side: "head", out, exec, sandboxUser: "nobody" });
+  return { calls: stub.calls, out };
 }
 
 function readReports(out: string, names: readonly string[]) {
@@ -52,7 +80,7 @@ function plantingTest(plant: string): string {
 
 // The base side runs the head's test code first, so whatever it plants in the shared .git is there for the head side.
 async function baseThenHead(files: Record<string, string>) {
-  const repo = makeRepo();
+  const repo = makeRepo(REAL_RUNNER);
   const head = repo.commit({ "src/math.ts": FIXED, ...files });
   const out = outDir();
   await execSide({ repo: repo.dir, base: repo.base, head, side: "base", out });
@@ -91,7 +119,7 @@ describe("execSide", { timeout: 120_000 }, () => {
   });
 
   it("base side writes two reports with repo-relative file names", async () => {
-    const repo = makeRepo();
+    const repo = makeRepo(REAL_RUNNER);
     const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
     const out = outDir();
 
@@ -114,6 +142,60 @@ describe("execSide", { timeout: 120_000 }, () => {
       error: "head: build failed (exit 3)",
       reported: true,
     });
+  });
+
+  it("three head runs build once and write three reports", async () => {
+    const calls: string[][] = [];
+    const exec: Exec = (file, args, options) => {
+      calls.push([file, ...args]);
+      return spawnExec(file, args, options);
+    };
+    const repo = makeRepo({ build: "echo building" });
+    const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
+    const out = outDir();
+
+    await execSide({ repo: repo.dir, base: repo.base, head, side: "head", out, exec, headRuns: 3 });
+
+    expect(fs.readdirSync(out).sort()).toEqual(["head-2.report", "head-3.report", "head.report"]);
+    expect(calls.filter((call) => call.some((arg) => arg.startsWith("echo building")))).toHaveLength(1);
+    expect(calls.filter((call) => call.includes("--outputFile"))).toHaveLength(3);
+    readReports(out, ["head", "head-2", "head-3"]).forEach((report) => expect(report.ok).toBe(true));
+  });
+
+  it("no head runs set writes only head.report, byte-identical", async () => {
+    const repo = makeRepo();
+    const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
+    const [unset, one] = [outDir(), outDir()];
+
+    await execSide({ repo: repo.dir, base: repo.base, head, side: "head", out: unset });
+    await execSide({ repo: repo.dir, base: repo.base, head, side: "head", out: one, headRuns: 1 });
+
+    expect(fs.readdirSync(unset)).toEqual(["head.report"]);
+    expect(fs.readFileSync(path.join(one, "head.report"))).toEqual(fs.readFileSync(path.join(unset, "head.report")));
+  });
+
+  it.each([0, 6, 1.5])("headRuns %s writes error markers", async (headRuns) => {
+    const repo = makeRepo();
+    const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
+    const out = outDir();
+
+    await execSide({ repo: repo.dir, base: repo.base, head, side: "head", out, headRuns });
+
+    const [report] = readReports(out, ["head"]);
+    expect(report).toMatchObject({ ok: false, reported: true });
+    expect(report?.ok === false && report.error).toContain("headRuns must be an integer from 1 to 5");
+  });
+
+  it("a failed head build writes an error marker to every run's report", async () => {
+    const repo = makeRepo({ build: "exit 3" });
+    const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
+    const out = outDir();
+
+    await execSide({ repo: repo.dir, base: repo.base, head, side: "head", out, headRuns: 3 });
+
+    readReports(out, ["head", "head-2", "head-3"]).forEach((report) =>
+      expect(report).toEqual({ ok: false, error: "head: build failed (exit 3)", reported: true }),
+    );
   });
 
   it("execSide resolves when its out dir cannot be created", async () => {
@@ -171,7 +253,7 @@ describe("execSide", { timeout: 120_000 }, () => {
   });
 
   it("a head test file named with pathspec magic overlays only itself", async () => {
-    const repo = makeRepo();
+    const repo = makeRepo(REAL_RUNNER);
     const name = ":(exclude)x.test.ts";
     const head = repo.commit({ "src/math.ts": FIXED, [name]: REAL_TEST.replace('"./math"', '"./src/math"') });
     const out = outDir();
@@ -199,18 +281,18 @@ describe("execSide", { timeout: 120_000 }, () => {
 
   it("base side with a sandbox user runs every vitest call through the sandbox and chowns the tree first", async () => {
     const { calls, exec } = sudoStub();
-    const repo = makeRepo();
+    const repo = makeRepo(REAL_RUNNER);
     const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
     const out = outDir();
 
-    await execSide({ repo: repo.dir, base: repo.base, head, side: "base", out, exec, sandboxUser: "fix-proof-sandbox", budgetMs: 120_000 });
+    await execSide({ repo: repo.dir, base: repo.base, head, side: "base", out, exec, sandboxUser: "nobody", budgetMs: 120_000 });
 
     const chownTree = calls.findIndex((call) => call.file === "sudo" && call.args.includes("find"));
     const vitest = calls.flatMap((call, index) => (isSandboxed(call) ? [index] : []));
     expect(chownTree).toBeGreaterThanOrEqual(0);
     expect(vitest).toHaveLength(2);
     expect(chownTree).toBeLessThan(vitest[0] ?? -1);
-    expect(calls.filter((call) => call.file === "sh").map((call) => call.args[1])).not.toContainEqual(expect.stringContaining("vitest"));
+    expect(calls.some(runsUnsandboxed)).toBe(false);
     expect(calls.filter((call) => call.file === "sudo").at(-1)?.args.slice(0, 4)).toEqual(["-n", "--", "chown", "-R"]);
     const seconds = Number(calls[vitest[0] ?? 0]?.args[5]);
     expect(seconds).toBeGreaterThan(60);
@@ -225,13 +307,13 @@ describe("execSide", { timeout: 120_000 }, () => {
     const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
     const out = outDir();
 
-    await execSide({ repo: repo.dir, base: repo.base, head, side: "base", out, exec, sandboxUser: "fix-proof-sandbox" });
+    await execSide({ repo: repo.dir, base: repo.base, head, side: "base", out, exec, sandboxUser: "nobody" });
 
     readReports(out, ["base", "base-rerun"]).forEach((report) =>
       expect(report).toEqual({ ok: false, error: expect.stringMatching(/^base: sandbox setup failed/), reported: true }),
     );
     expect(calls.some(isSandboxed)).toBe(false);
-    expect(calls.filter((call) => call.file === "sh").map((call) => call.args[1])).not.toContainEqual(expect.stringContaining("vitest"));
+    expect(calls.some(runsUnsandboxed)).toBe(false);
   });
 
   it("a symlinked vitest output is not read", async () => {
@@ -270,15 +352,36 @@ describe("execSide", { timeout: 120_000 }, () => {
     expect(calls.some((call) => call.file === "sudo" && !call.args.includes("-R"))).toBe(false);
   });
 
-  it("head side ignores the sandbox user", async () => {
-    const { calls, exec } = sudoStub();
-    const repo = makeRepo();
-    const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
-    const out = outDir();
+  it("head side with a sandbox user runs its install, build and vitest through the sandbox after chowning the tree", async () => {
+    const { calls, out } = await sandboxedHead({});
 
-    await execSide({ repo: repo.dir, base: repo.base, head, side: "head", out, exec, sandboxUser: "fix-proof-sandbox" });
-
-    expect(calls.some((call) => call.file === "sudo")).toBe(false);
+    const chownTree = calls.findIndex((call) => call.file === "sudo" && call.args.includes("find"));
+    const sandboxed = calls.flatMap((call, index) => (isSandboxed(call) ? [index] : []));
+    expect(chownTree).toBeGreaterThanOrEqual(0);
+    expect(chownTree).toBeLessThan(sandboxed[0] ?? -1);
+    const scripts = sandboxed.map((index) => scriptOf(calls[index]));
+    expect(scripts).toEqual([expect.stringContaining("pnpm install"), expect.stringContaining("sh build.sh"), expect.stringContaining("report()")]);
+    expect(calls.some(runsHeadCodeUnsandboxed)).toBe(false);
+    expect(calls.filter((call) => call.file === "sudo").at(-1)?.args.slice(0, 4)).toEqual(["-n", "--", "chown", "-R"]);
     expect(readReports(out, ["head"])[0]?.ok).toBe(true);
+  });
+
+  it("head sandbox setup failure writes a head marker, and nothing from the head runs unsandboxed", async () => {
+    const { calls, out } = await sandboxedHead({ failing: (args) => args.includes("find") });
+
+    expect(readReports(out, ["head"])[0]).toEqual({ ok: false, error: expect.stringMatching(/^head: sandbox setup failed/), reported: true });
+    expect(calls.some(isSandboxed)).toBe(false);
+    expect(calls.some(runsHeadCodeUnsandboxed)).toBe(false);
+  });
+
+  it.each([
+    ["root", 0],
+    ["the runner's own uid", process.getuid?.() ?? -1],
+  ])("a head sandbox user that resolves to %s fails closed before any head code runs", async (_who, uid) => {
+    const { calls, out } = await sandboxedHead({ uid });
+
+    expect(readReports(out, ["head"])[0]).toEqual({ ok: false, error: expect.stringMatching(/^head: sandbox setup failed .*uid/), reported: true });
+    expect(calls.some((call) => call.file === "sudo" && !call.args.includes("-R"))).toBe(false);
+    expect(calls.some(runsHeadCodeUnsandboxed)).toBe(false);
   });
 });

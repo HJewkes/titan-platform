@@ -5,26 +5,18 @@ import type { StepRoute } from "@titan-design/workflow";
 import { codeRoute } from "../workflows/land.js";
 import { acceptExternalVerdict, externalReviewer, latestSession, readNamedReviewer } from "./external-review.js";
 import type { FreezeGuard } from "./freeze.js";
-import { provablyIndependent } from "./lineage.js";
+import { HOLD_POLL_MS, type HeldCheck, type HoldTiming, type TakeRecheck } from "./hold-timing.js";
+import { independentOfRun, type Lineage } from "./lineage.js";
 import type { HoldLookup, Registration, ShepherdStore } from "./store.js";
 import { openOrRead } from "./snapshot-reads.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import type { CarryInput, CarryResult } from "./tree-carry.js";
-import { CARRYING_KINDS } from "./carry-merge.js";
+import { CARRYING_KINDS } from "./carry-kinds.js";
 import { namesPr, type ReviewerAgent, type ReviewerReader } from "@titan-design/review-panel";
-
-export const HOLD_POLL_MS = 10_000;
 
 export class MergeHeldError extends Error {
   override readonly name = "MergeHeldError";
 }
-
-/**
- * Why a merge of `repo#pr` at `sha` must wait, read fresh; a PR merged or closed elsewhere has nothing left to wait for; any
- * other state, unknown included, keeps the hold. A hold satisfied at `sha` passes only while `sha` is still the head; no
- * `sha` means the head as read now.
- */
-export type HeldCheck = (repo: RepoSlug, pr: number, sha?: string) => Promise<string | undefined>;
 
 /** The open PR's head now; undefined for a PR merged or closed elsewhere. */
 type OpenHeadRead = (repo: RepoSlug, pr: number) => Promise<string | undefined>;
@@ -35,6 +27,8 @@ export type HoldSatisfier = (repo: RepoSlug, pr: number, sha: string, baseRef: s
 export interface HoldSatisfierDeps {
   store: () => ShepherdStore;
   roster: () => Promise<readonly ReviewerAgent[]>;
+  /** Every generation, retired ones included, that proves the reviewer independent; absent means `roster` stands for it. */
+  lineage?: () => Promise<Lineage>;
   reader: ReviewerReader;
   /** The `sh-carry` probe; absent means a satisfaction never moves to another head. */
   carry?: (input: CarryInput) => Promise<CarryResult>;
@@ -53,7 +47,9 @@ export function holdSatisfier(deps: HoldSatisfierDeps): HoldSatisfier {
     });
     if (roster === undefined) return;
     const row = latestSession(reviewer, roster);
-    if (row === undefined || !independent(row, registration, roster, store)) return;
+    if (row === undefined) return;
+    const lineage = deps.lineage ? await deps.lineage().catch(unreadLineage(repo, pr)) : { rows: roster, complete: true };
+    if (lineage === undefined || !independentOfRun(row, registration, lineage, store.authorsOf(registration.runId))) return;
     const read = { repo, pr, head: sha, reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 };
     const messages = await readNamedReviewer(deps.reader, read).catch((): undefined => undefined);
     if (messages === undefined) return registration.holdSatisfied?.head === sha ? store.unsatisfyHold(registration.runId) : undefined;
@@ -95,12 +91,11 @@ async function carrySatisfaction(deps: HoldSatisfierDeps, registration: Registra
   deps.store().satisfyHold(registration.runId, holdReviewer, at.head, { agentId: holdSatisfied.by.agentId, sessionId: holdSatisfied.by.sessionId, locator: holdSatisfied.by.locator });
 }
 
-/** The roster's lineage must clear the reviewer, and so must the run's recorded authors, by agent id and by name. */
-function independent(row: ReviewerAgent, registration: Registration, roster: readonly ReviewerAgent[], store: ShepherdStore): boolean {
-  const authors = store.authorsOf(registration.runId);
-  if (authors.some((author) => author.agentId === row.agentId || author.name === row.name)) return false;
-  return provablyIndependent(row, registration.implementer, roster);
-}
+/** A lineage outage leaves the hold as it is, like a roster outage. */
+const unreadLineage = (repo: RepoSlug, pr: number) => (error: unknown): undefined => {
+  console.error(`shepherd: ${repo}#${pr}: the lineage could not be read, so the hold stays as it is: ${error instanceof Error ? error.message : String(error)}`);
+  return undefined;
+};
 
 /** The first guard that names a reason decides; later guards are not read. */
 export function firstReason(...guards: readonly FreezeGuard[]): FreezeGuard {
@@ -148,17 +143,11 @@ export function holdingPort(port: GitHubPort, holds: () => HoldLookup, freeze?: 
   };
 }
 
-export interface HoldTiming {
-  sleep: (ms: number, signal: AbortSignal) => Promise<void>;
-  pollMs?: number;
-  now?: () => number;
-}
-
 /** What the merge step answers after a wait: no merge, so land reads CI again, since the base or the head may have moved while it was held. */
 export const AFTER_HOLD = { done: false, skipped: "held", mergeSha: "" };
 
 /** Wraps the `merge` route so a held PR waits for release, abort-safe, instead of failing on the port's refusal. */
-export function waitWhileHeld(route: StepRoute, held: HeldCheck, timing: HoldTiming, headNow: OpenHeadRead, reviewAsked?: ReviewAsked, reheld?: TakeRehold): StepRoute {
+export function waitWhileHeld(route: StepRoute, held: HeldCheck, timing: HoldTiming, headNow: OpenHeadRead, reviewAsked?: ReviewAsked, reheld?: TakeRehold, recheck?: TakeRecheck): StepRoute {
   const afterHold = codeRoute(route.match, timing.now ?? Date.now, async () => AFTER_HOLD);
   return {
     ...route,
@@ -166,7 +155,7 @@ export function waitWhileHeld(route: StepRoute, held: HeldCheck, timing: HoldTim
       run: async (input) => {
         let waited: boolean;
         try {
-          waited = await untilReleased({ held, headNow, reviewAsked, reheld }, JSON.parse(input.prompt) as MergeTarget, input.signal, timing);
+          waited = await untilReleased({ held, headNow, reviewAsked, reheld, recheck }, JSON.parse(input.prompt) as MergeTarget, input.signal, timing);
         } catch (error) {
           return { ok: false, error: redactForEvidence(error instanceof Error ? error.message : String(error)), retryable: false };
         }
@@ -193,6 +182,7 @@ interface HoldReads {
   headNow: OpenHeadRead;
   reviewAsked?: ReviewAsked;
   reheld?: TakeRehold;
+  recheck?: TakeRecheck;
 }
 
 /**
@@ -200,14 +190,15 @@ interface HoldReads {
  * moved past it, so a push ends the wait too: land then reads CI and the run reviews the new head, where the same hold
  * applies. A head that cannot be read counts as not moved. A seat's ask for Shepherd's own review at `sha` ends the wait
  * with no merge too, so the run reads CI again and reviews that head. So does a re-hold the merge guard just placed: the
- * run's next CI read reports it and tells the seat.
+ * run's next CI read reports it and tells the seat. So does a g10 release due a fresh ask at `sha`: the CI read asks it.
  */
-async function untilReleased({ held, headNow, reviewAsked, reheld }: HoldReads, target: MergeTarget, signal: AbortSignal, timing: HoldTiming): Promise<boolean> {
+async function untilReleased({ held, headNow, reviewAsked, reheld, recheck }: HoldReads, target: MergeTarget, signal: AbortSignal, timing: HoldTiming): Promise<boolean> {
   for (let waited = false; ; waited = true) {
     signal.throwIfAborted();
     if (target.sha !== undefined && reviewAsked?.(target.repo, target.pr, target.sha)) return true;
     if ((await held(target.repo, target.pr, target.sha)) === undefined) return waited;
     if (reheld?.(target.repo, target.pr)) return true;
+    if (target.sha !== undefined && recheck?.(target.repo, target.pr, target.sha)) return true;
     if (await movedPast(headNow, target)) return true;
     await timing.sleep(timing.pollMs ?? HOLD_POLL_MS, signal);
   }

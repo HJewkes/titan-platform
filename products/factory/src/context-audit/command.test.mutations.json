@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a message split over several records counts once per record",
+      "file": "products/factory/src/context-audit/scan.ts",
+      "find": "if (!m.usage || this.seen.has(id)) return;",
+      "replace": "if (!m.usage) return;",
+      "kills": [
+        "context-audit report sums each role's spend once per message id and leaves out transcripts older than the window"
+      ]
+    },
+    {
+      "name": "the first snapshot in a session wins over the newest",
+      "file": "products/factory/src/context-audit/scan.ts",
+      "find": "this.scan.snapshot = snapshotOf(a, str(j.timestamp)) ?? this.scan.snapshot;",
+      "replace": "this.scan.snapshot ??= snapshotOf(a, str(j.timestamp));",
+      "kills": [
+        "context-audit report lists the newest snapshot's layers and the instructions files per profile and role",
+        "context-audit --assert-rule passes when every listed role's newest system prompt carries the marker"
+      ]
+    },
+    {
+      "name": "a Shepherd per-PR notice counts as a digest",
+      "file": "products/factory/src/context-audit/wakes.ts",
+      "find": "return body.startsWith(\"Shepherd:\") ? \"pr-notice\" : \"host\";",
+      "replace": "return \"digest\";",
+      "kills": [
+        "context-audit wakes by trigger counts each coordinator's pushed messages by trigger across its sessions, inside the window only"
+      ]
+    },
+    {
+      "name": "a message that rode along a busy turn is not a wake",
+      "file": "products/factory/src/context-audit/scan.ts",
+      "find": "if (kind === \"queued_command\") this.scan.wakes.push(",
+      "replace": "if (kind === \"queued\") this.scan.wakes.push(",
+      "kills": [
+        "context-audit wakes by trigger counts each coordinator's pushed messages by trigger across its sessions, inside the window only"
+      ]
+    },
+    {
+      "name": "a wake stamped before the window counts",
+      "file": "products/factory/src/context-audit/report.ts",
+      "find": "if (Date.parse(at) < since) continue;",
+      "replace": "if (Date.parse(at) < 0) continue;",
+      "kills": [
+        "context-audit wakes by trigger counts each coordinator's pushed messages by trigger across its sessions, inside the window only"
+      ]
+    }
+  ]
+}

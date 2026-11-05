@@ -1,0 +1,36 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "config sections match case-sensitively",
+      "file": "packages/tool-guard/src/shell/git-config.ts",
+      "find": "  const section = key.slice(0, first).toLowerCase();",
+      "replace": "  const section = key.slice(0, first);",
+      "kills": ["pushConfig reads the push-shaping config a command passes itself a key in any case"]
+    },
+    {
+      "name": "--config-env entries are not read",
+      "file": "packages/tool-guard/src/shell/git-config.ts",
+      "find": "  if (inv.configEnv.some(mayShape) || inv.configUnsure.some(mayShape)) config.unknown = true;",
+      "replace": "  if (inv.configUnsure.some(mayShape)) config.unknown = true;",
+      "kills": [
+        "pushConfig reads the push-shaping config a command passes itself --config-env on a remote push refspec reads as unknown",
+        "pushConfig reads the push-shaping config a command passes itself --config-env as two words reads as unknown"
+      ]
+    },
+    {
+      "name": "every run-time -c entry reads as unknown",
+      "file": "packages/tool-guard/src/shell/git-config.ts",
+      "find": "  return !PLAIN_KEY_RE.test(key) || isPushShapingKey(key);",
+      "replace": "  return key !== \"\" || isPushShapingKey(key);",
+      "kills": ["pushConfig reads the push-shaping config a command passes itself an unrelated run-time value shapes nothing"]
+    },
+    {
+      "name": "a mirror remote ignores its value",
+      "file": "packages/tool-guard/src/shell/git-config.ts",
+      "find": "config.all ||= value === null || !FALSE_RE.test(value);",
+      "replace": "config.all = true;",
+      "kills": ["pushConfig reads the push-shaping config a command passes itself mirror off does not mirror"]
+    }
+  ]
+}

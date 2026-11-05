@@ -1,15 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
 import { FIXTURE_ROUNDS as source } from "../server/round-fixtures.js";
 import { getRound } from "../server/rounds.js";
-import { App } from "./App.js";
-import { AnswerSourceProvider } from "./data/submit.js";
 import { onSection, shownSection, stubScroll } from "./pages/round-pager.test-helpers.js";
 import { ROUND_KEYS } from "./pages/round-keys.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 const ROUND = "kiln-schedule-r2";
 
@@ -29,7 +28,7 @@ afterEach(() => {
 });
 
 /** Renders the synthetic paged round over a recorded snapshot, with a live answer source so it can be sent. */
-async function renderRound(): Promise<void> {
+async function renderRound({ inApp = false } = {}): Promise<void> {
   const round = await getRound(source, ROUND);
   const snapshot: Snapshot = {
     format: SNAPSHOT_FORMAT,
@@ -38,14 +37,7 @@ async function renderRound(): Promise<void> {
   };
   const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot), "text/html");
   const live = pageDataSource({ doc: page });
-  window.location.hash = `#/rounds/${ROUND}`;
-  render(
-    <RpcProvider source={live}>
-      <AnswerSourceProvider value={live}>
-        <App />
-      </AnswerSourceProvider>
-    </RpcProvider>,
-  );
+  renderPage(live, `#/rounds/${ROUND}`, { answers: live, inApp });
   await screen.findByTestId("round-question-ramp-default");
   await act(async () => undefined);
 }
@@ -64,7 +56,7 @@ const settle = (): Promise<void> => act(async () => new Promise((resolve) => set
 
 describe("Enter on a round", () => {
   it("goes to the next unanswered question, across sections", async () => {
-    await renderRound();
+    await renderRound({ inApp: true });
     pick("ramp-default", "1 Staged climb");
 
     fireEvent.keyDown(window, { key: "Enter" });

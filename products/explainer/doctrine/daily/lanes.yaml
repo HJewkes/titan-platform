@@ -1,0 +1,53 @@
+# The daily digest's lanes: who worked toward which goal. This is the doctrine default; a host keeps its live
+# goals in `<explainer data dir>/daily/lanes.yaml`, which replaces this file whole when present.
+#
+# A merged PR takes the lane of its branch seat (`agent-chat/<seat>-…`), else the lane owning its repo, else the
+# lane whose path prefixes hold most of its packages, else `fallback`. Shepherd fix rounds (`fix-…`) name no seat,
+# so they fall through to repo and paths.
+schema: daily-lanes/v1
+fallback: factory
+sideQuestTags: [kind:upkeep, flake, main-red, loop-breaker]
+rank: [role, closed, estimate, severity, prs, size]
+named:
+  lanesBlockS: 75
+  laneFloorS: 10
+  secondsPerThread: 12
+  min: 1
+  max: 4
+ships:
+  count: 3
+  perLane: 2
+lanes:
+  - id: video
+    label: Video
+    seats: [vc]
+    paths: [products/explainer, packages/speech-]
+    goals:
+      - id: daily
+        line: The daily video says what got done against the goals
+        tags: [daily, video-profiles]
+      - id: explainers
+        line: Explainer videos for repos and PRs
+        tags: [repo-explainer, motion]
+  - id: console
+    label: Console
+    seats: [csc]
+    paths: [apps/console, packages/review-panel, packages/review-workflow]
+    goals:
+      - id: one-queue
+        line: The owner works from one console queue
+        tags: [console]
+  - id: codewatch
+    label: Codewatch
+    seats: [cwc]
+    paths: [apps/codewatch]
+  - id: operator
+    label: Operator
+    seats: [tpo]
+  - id: factory
+    label: Factory
+    seats: [fc]
+    goals:
+      - id: landing
+        line: PRs land without the owner's hand
+        tags: [merge-order, review-policy]

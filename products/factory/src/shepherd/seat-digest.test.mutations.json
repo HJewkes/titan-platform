@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a run no seat is named for is read anyway",
+      "file": "products/factory/src/shepherd/seat-digest.ts",
+      "find": "    if (seat === undefined) return false;\n    return !finished",
+      "replace": "    return !finished",
+      "kills": [
+        "digest reads reads nothing for a repo no single seat owns"
+      ]
+    },
+    {
+      "name": "an unacknowledged send is never taken as told",
+      "file": "products/factory/src/shepherd/seat-digest.ts",
+      "find": "if (error instanceof DispatchTimeoutError && text !== undefined) giveUpOrWait",
+      "replace": "if (false && text !== undefined) giveUpOrWait",
+      "kills": [
+        "a send that fails is not resent every sweep when the broker never answered send_result"
+      ]
+    },
+    {
+      "name": "a refused send is held back like an unacknowledged one",
+      "file": "products/factory/src/shepherd/seat-digest.ts",
+      "find": "if (error instanceof DispatchTimeoutError && text !== undefined) giveUpOrWait",
+      "replace": "if (text !== undefined) giveUpOrWait",
+      "kills": [
+        "a send that fails is retried on every sweep when the broker refused it"
+      ]
+    }
+  ]
+}

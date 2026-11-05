@@ -1,8 +1,8 @@
-import { SOURCERS } from "./scripts.js";
 import { SHELLS } from "./mentions.js";
 import type { SimpleCommand } from "./shell/commands.js";
 import type { RedirectToken, WordToken } from "./shell/lexer.js";
 import { shellOperands } from "./shell/shell-options.js";
+import { sourcedFiles, SOURCERS } from "./shell/sourced.js";
 import { UnknownStdinError } from "./shell/unsure-readings.js";
 
 /** The tail after `/dev/fd/` or `/proc/<pid>/fd/`; anything but digits is an fd the line only names at run time. */
@@ -24,20 +24,22 @@ export function refuseFdScripts(commands: readonly SimpleCommand[]): void {
   const opened = commands.some((cmd) => !cmd.added && opensFd(cmd));
   let swapped = false;
   for (const cmd of commands) {
-    const operand = scriptOperand(cmd);
-    if (operand !== null && mayNameOpenedFd(operand, opened, swapped)) throw new UnknownStdinError();
+    if (scriptOperands(cmd).some((operand) => mayNameOpenedFd(operand, opened, swapped))) throw new UnknownStdinError();
     if (swapped && readsOwnStdin(cmd)) throw new UnknownStdinError();
     swapped ||= !cmd.added && swapsStdin(cmd);
   }
 }
 
-/** The word a shell or `source` takes as its script file: not a `-c` string, whose operands are positional parameters. */
-function scriptOperand(cmd: SimpleCommand): WordToken | null {
-  if (cmd.name === null) return null;
-  if (SOURCERS.has(cmd.name)) return cmd.args[0] ?? null;
-  if (!SHELLS.has(cmd.name)) return null;
-  const { hasC, positional } = shellOperands(cmd.args, cmd.name);
-  return hasC ? null : positional;
+/**
+ * The words a shell or `source` may run as a script file: each file `source` may read, a shell's script file and
+ * rcfile, and the positionals its script may run (`bash -c 'bash "$1"' _ /dev/fd/3`), but not a `-c` string itself.
+ */
+function scriptOperands(cmd: SimpleCommand): WordToken[] {
+  if (cmd.name === null) return [];
+  if (SOURCERS.has(cmd.name)) return sourcedFiles(cmd.args).map((file) => file.word);
+  if (!SHELLS.has(cmd.name)) return [];
+  const { hasC, positional, positionals, rcfile } = shellOperands(cmd.args, cmd.name);
+  return [hasC ? null : positional, rcfile, ...positionals].filter((word) => word !== null);
 }
 
 function mayNameOpenedFd(operand: WordToken, opened: boolean, swapped: boolean): boolean {

@@ -1,5 +1,5 @@
 import type { GitHubPort } from "@titan-design/github";
-import type { RoutedStepInput, StepRoute } from "@titan-design/workflow";
+import { codeRecordRoute, codeRoute as workflowCodeRoute, type CodeRouteOptions, type RoutedStepInput, type StepRoute } from "@titan-design/workflow";
 import type { z } from "zod";
 import { evidenceRecord } from "../evidence.js";
 import { requireBaseRequiredChecks } from "../required-checks.js";
@@ -10,6 +10,7 @@ import type { CiInput } from "./land-ci.js";
 import { afterWrite, waitForCi } from "./land-ci-wait.js";
 import type { FirstReads } from "./land-budget.js";
 import { flakyState, type FlakyChecks } from "./land-flaky.js";
+import { rerunOrphans, type OrphanRerunInput } from "./land-orphan.js";
 import { settleRun, type MergeTreeProbe, type SettleInput } from "./land-settle.js";
 import { updateBranch, type UpdateInput } from "./land-update.js";
 import { portReads, type PrSnapshot } from "./pr-snapshot.js";
@@ -45,6 +46,7 @@ export function landRoutes(deps: LandDeps): StepRoute[] {
       const ciTiming = { ...timing, timeoutMs: deps.ciTimeoutMs ?? 45 * 60_000, startedAt: clock.firstStartedAtMs };
       return waitForCi(deps, input, ciTiming, signal, flaky, firstReads);
     }),
+    codeRoute("ci-orphan-rerun", now, (input: OrphanRerunInput) => afterWrite(deps, input, rerunOrphans(deps.port, input))),
     codeRoute("update-branch", now, updateRun(deps, timing, now)),
     codeRoute("update-backoff", now, async (input: { waitMs: number; retry: number }, signal) => (await timing.sleep(input.waitMs, signal), input)),
     codeRoute("base-check", now, (input: BaseCheckInput) => checkBase(deps.port, input)),
@@ -62,21 +64,19 @@ function updateRun(deps: LandDeps, timing: Omit<Timing, "timeoutMs">, now: () =>
 
 /** `clock` carries the step's first start across a restart, so a wait that reads it resumes its deadline rather than restarting it. */
 export function codeRoute<I>(match: string, now: () => number, fn: (input: I, signal: AbortSignal, clock: StepClock) => Promise<object>): StepRoute {
-  return recordRoute(match, now, async (input: I, step) => ({ result: await fn(input, step.signal, stepClock(step)) }));
+  return workflowCodeRoute(match, (input: I, step) => fn(input, step.signal, stepClock(step)), landEvidence(match, now));
 }
 
 /** Like `codeRoute`, for a step whose record carries trace keys beside `result`. */
 function recordRoute<I>(match: string, now: () => number, fn: (input: I, step: RoutedStepInput) => Promise<object>): StepRoute {
-  const run = async (step: RoutedStepInput) => {
-    try {
-      const body = await fn(JSON.parse(step.prompt) as I, step);
-      const record = evidenceRecord(`land.${match}`, step, new Date(now()).toISOString(), body);
-      return { ok: true as const, output: JSON.stringify(record) };
-    } catch (error) {
-      return { ok: false as const, error: redactForEvidence(error instanceof Error ? error.message : String(error)), retryable: false };
-    }
+  return codeRecordRoute(match, fn, landEvidence(match, now));
+}
+
+function landEvidence(match: string, now: () => number): CodeRouteOptions {
+  return {
+    envelope: (record, step) => evidenceRecord(`land.${match}`, step, new Date(now()).toISOString(), record),
+    errorText: redactForEvidence,
   };
-  return { match, onRestart: "repeat", runner: { run } };
 }
 
 async function readRules(port: GitHubPort, input: { repo: string; pr: number }): Promise<z.infer<typeof LandRulesResult>> {

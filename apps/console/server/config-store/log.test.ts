@@ -1,4 +1,4 @@
-import { appendFileSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { revisionSha, type CoordinatorConfig } from "@titan-design/coordinator";
@@ -22,13 +22,53 @@ function raised(implementers: number): CoordinatorConfig {
   return copy;
 }
 
+function zeroByteLog(): string {
+  const file = revisionLogPath(tempDir("log"));
+  mkdirSync(path.dirname(file), { mode: 0o700 });
+  writeFileSync(file, "", { mode: 0o600 });
+  return file;
+}
+
 describe("the revision log", () => {
   it("lives under the console state dir's config/", () => {
     expect(revisionLogPath("/state")).toBe(path.join("/state", "config", "coordinator.revisions.jsonl"));
   });
 
   it("reads an absent log as empty", async () => {
-    expect(await readRevisionLog(revisionLogPath(tempDir("log")))).toEqual({ state: "empty" });
+    expect(await readRevisionLog(revisionLogPath(tempDir("log")))).toEqual({ state: "empty", exists: false });
+  });
+
+  it("reads a zero-byte log as empty and writes rev 0 into it, leaving no claim behind (TP-3685)", async () => {
+    const file = zeroByteLog();
+
+    const before = await readRevisionLog(file);
+    const zero = await appendRevision(file, { at, by: { class: "import", id: "import" }, document });
+
+    expect(before).toEqual({ state: "empty", exists: true });
+    expect([zero.rev, zero.parent, readFileSync(file, "utf8").split("\n").length]).toEqual([0, null, 2]);
+    expect(existsSync(`${file}.rev0-claim`)).toBe(false);
+  });
+
+  it("refuses rev 0 into a zero-byte log while another writer holds the claim, naming both files", async () => {
+    const file = zeroByteLog();
+    writeFileSync(`${file}.rev0-claim`, "", { mode: 0o600 });
+
+    const append = appendRevision(file, { at, by, document });
+
+    await expect(append).rejects.toThrow(RevisionLogError);
+    await expect(append).rejects.toThrow(`into ${file} (claim ${file}.rev0-claim)`);
+    expect([readFileSync(file, "utf8"), existsSync(`${file}.rev0-claim`)]).toEqual(["", true]);
+  });
+
+  it("refuses rev 0 into an absent log while another writer holds the claim, creating no log (TP-3685)", async () => {
+    const file = revisionLogPath(tempDir("log"));
+    mkdirSync(path.dirname(file), { mode: 0o700 });
+    writeFileSync(`${file}.rev0-claim`, "", { mode: 0o600 });
+
+    const append = appendRevision(file, { at, by, document });
+
+    await expect(append).rejects.toThrow(`into ${file} (claim ${file}.rev0-claim)`);
+    expect([existsSync(file), existsSync(`${file}.rev0-claim`)]).toEqual([false, true]);
   });
 
   it("numbers each appended revision and parents it on the previous one's sha", async () => {
@@ -79,6 +119,6 @@ describe("the revision log", () => {
     twoAttended.seats["seat-b"]!.attended = true;
 
     await expect(appendRevision(file, { at, by, document: twoAttended })).rejects.toThrow(/exactly one seat must be attended/);
-    expect(await readRevisionLog(file)).toEqual({ state: "empty" });
+    expect(await readRevisionLog(file)).toEqual({ state: "empty", exists: false });
   });
 });

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -6,13 +6,18 @@ import { daemonPaths, probeHealth, readPidFile, silentLogger } from "@titan-desi
 import { fakeGitHub, githubPort, successRun } from "@titan-design/github";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { EXIT, formatResume, runCli, type CliDeps } from "./cli.js";
+import { EXIT, formatResume, runCli } from "./cli.js";
+import type { CliDeps } from "./cli-types.js";
+import { configDeprecations } from "./config.js";
 import { openFactoryHost } from "./host.js";
+import { DEPRECATED_INTERVAL } from "./reconciler/config.js";
 import type { StepRoute } from "@titan-design/workflow";
 import { startFactoryServer, type FactoryServer } from "./serve.js";
 import { H1, REPO, gateId, gateOpened } from "./test-support/land.js";
 import { BRANCH, callCommand, shepherdFixture } from "./test-support/shepherd.js";
 import { landPrRoutes, landPrWorkflow } from "./workflows/land-pr.js";
+import { partialFake } from "@titan-design/test-kit";
+import { portOf } from "./test-support/fakes.js";
 
 const dirs: string[] = [];
 const cleanups: (() => Promise<void> | void)[] = [];
@@ -61,7 +66,7 @@ async function serve(dbPath: string, deps: ReturnType<typeof landDeps>): Promise
 async function deadPort(): Promise<number> {
   const probe = createServer();
   await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
-  const { port } = probe.address() as { port: number };
+  const port = portOf(probe);
   await new Promise((resolve) => probe.close(resolve));
   return port;
 }
@@ -69,6 +74,20 @@ async function deadPort(): Promise<number> {
 function runIdIn(out: string): string {
   return /^run (\S+) land-pr/m.exec(out)?.[1] ?? "";
 }
+
+describe("titan-factory --factory-config", () => {
+  it("loads the named config file even though XDG_CONFIG_HOME points elsewhere", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "factory-cli-config-"));
+    dirs.push(dir);
+    const file = join(dir, "own.json");
+    writeFileSync(file, JSON.stringify({ remoteFactory: "http://127.0.0.1:7410" }));
+
+    const { code, err } = await cli(["--factory-config", file, "resume", "--port", "1"], landDeps(), { XDG_CONFIG_HOME: join(dir, "empty") });
+
+    expect(code).not.toBe(EXIT.OK);
+    expect(err).toContain("http://127.0.0.1:7410"); // mutation: drop the preAction env assignment and the file is never read
+  });
+});
 
 describe("titan-factory land", () => {
   it("with a server up, hands the PR to it and returns while the run is still in flight on the server's lease", async () => {
@@ -157,9 +176,32 @@ describe("the serve verb's exit", () => {
   });
 });
 
+describe("the serve verb's config deprecations", () => {
+  async function serveWarnings(reconciler: object): Promise<{ code: number; warnings: unknown[] }> {
+    const dbPath = dbFile();
+    const configHome = join(dirname(dirname(dbPath)), "config");
+    mkdirSync(join(configHome, "titan-factory"), { recursive: true });
+    writeFileSync(join(configHome, "titan-factory", "config.json"), JSON.stringify({ github: { sources: "webhook" }, reconciler }));
+    const warnings: unknown[] = [];
+    const logger = { ...silentLogger, warn: (_fields: unknown, msg?: unknown) => void warnings.push(msg) };
+    const stop = new AbortController();
+    let ended = false;
+    const serving = cli(["--db", dbPath, "serve", "--port", "0"], { ...landDeps("land-rules"), logger, stop: stop.signal, configDeprecations }, { XDG_CONFIG_HOME: configHome }).finally(() => (ended = true));
+    await vi.waitFor(async () => expect(ended || (await readPidFile(daemonPaths(dirname(dbPath)))) !== null).toBe(true));
+    stop.abort();
+    const { code } = await serving;
+    return { code, warnings: warnings.filter((msg) => msg === DEPRECATED_INTERVAL) };
+  }
+
+  it("logs reconciler.intervalMs as deprecated when the config file serve reads still sets it, and nothing when it does not", async () => {
+    expect(await serveWarnings({ intervalMs: 900_000 })).toEqual({ code: EXIT.OK, warnings: [DEPRECATED_INTERVAL] });
+    expect(await serveWarnings({ enabled: false })).toEqual({ code: EXIT.OK, warnings: [] });
+  });
+});
+
 describe("gates in the resume report", () => {
   const record = { id: "run-1/approve-merge", prompt: "Merge PR #1 in octo/demo at head abc?", schema: undefined, status: "pending", createdAt: "2026-10-06T00:00:00.000Z" };
-  const report = (gate: object): Parameters<typeof formatResume>[0] => ({ resumed: [], held: [], gates: [{ runId: "run-1", stepId: "approve-merge", gate: gate as never }] });
+  const report = (gate: object): Parameters<typeof formatResume>[0] => ({ resumed: [], held: [], gates: [{ runId: "run-1", stepId: "approve-merge", gate: partialFake(gate) }] });
 
   it("gates lists summary, evidence and the recommended option; a pre-migration gate falls back to its prompt", () => {
     const briefed = {
@@ -348,6 +390,14 @@ describe("shepherd register with only a target", () => {
     const result = await cli(["--db", dbFile(), "shepherd", "register", `${REPO}#1`, "--implementer", "seat-x", "--offline", "--json", "--port", String(await deadPort())], deps);
 
     expect(JSON.parse(result.out).registration).toMatchObject({ task: "titan-platform/TP-2239", implementer: "seat-x" });
+  });
+
+  it("records the agent-chat session that ran it as the run's registrant, so the run's notices follow that session", async () => {
+    const deps = inferDeps(AGENT_BRANCH);
+
+    const result = await cli(["--db", dbFile(), "shepherd", "register", `${REPO}#1`, "--offline", "--json", "--port", String(await deadPort())], deps, { AGENT_CHAT_NAME: "tp-operator" });
+
+    expect(JSON.parse(result.out).registration).toMatchObject({ implementer: "tc-tp-2239", registrant: { name: "tp-operator", fixer: false } });
   });
 
   it("exits with a usage error naming --task and the branch when the head branch has no task id", async () => {

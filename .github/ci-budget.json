@@ -1,0 +1,13 @@
+{
+  "$comment": "Read by scripts/ci-timing.mjs (TP-4436). Each entry caps one stat, in seconds, over the last successful runs per event; push means pushes to main. kind defaults to step when step is set, else job, else run; kind queue is job start minus run creation. Step names are the ones gh run view prints.",
+  "workflow": "ci.yml",
+  "runs": { "pull_request": 30, "push": 10 },
+  "budgets": [
+    { "event": "pull_request", "job": "validate", "p90": 600 },
+    { "event": "push", "job": "validate", "p90": 720 },
+    { "event": "pull_request", "job": "dag-check", "p90": 600 },
+    { "event": "pull_request", "job": "validate", "step": "Run pnpm build", "p90": 120 },
+    { "event": "pull_request", "job": "validate", "step": "Run pnpm typecheck", "p90": 120 },
+    { "event": "pull_request", "job": "dag-check", "step": "Check the package DAG", "p90": 90 }
+  ]
+}

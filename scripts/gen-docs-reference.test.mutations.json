@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a committed count follows the files under packages/",
+      "file": "scripts/gen-docs-reference.mjs",
+      "find": "const generated = blocks(entries);",
+      "replace": "const generated = { ...blocks(entries), \"package-count\": String(readdirSync(join(base, \"packages\"), { recursive: true }).length) };",
+      "kills": [
+        "architecture page generation counts only the publishable packages under packages/ on the README",
+        "architecture page generation stays current when a test file pushes the repo's test count past a hundred (TP-3759)"
+      ]
+    },
+    {
+      "name": "a stale README goes unreported",
+      "file": "scripts/gen-docs-reference.mjs",
+      "find": ".map(({ path }) => path);",
+      "replace": ".map(({ path }) => path).filter((path) => path !== \"README.md\");",
+      "kills": [
+        "architecture page generation reports a committed page that differs from the generated text as stale"
+      ]
+    }
+  ]
+}

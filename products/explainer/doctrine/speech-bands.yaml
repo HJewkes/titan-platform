@@ -1,0 +1,15 @@
+# The speech bands a beat spec's `speech.band` names: DIRECTION C5 and C15, adopted in owner decision 317a after
+# the N3 listen test (TP-2668). C5 calls the story band "hook" and the concept band "diagram".
+#
+# wpm: the articulation rate the tts stage calibrates each beat's voice to (script words over speaking time, with
+# pauses of 0.25 s or more not counted), times the profile's voice rate.
+# wordsPerS: the density cap the word budget holds a beat's planned slot to.
+#
+# C5 gives the held band no rate. A held beat speaks at the listen test's flat 175 control; its 1.5 cap keeps it sparse.
+schema: speech-bands/v1
+bands:
+  story: { wpm: 195, wordsPerS: 3.2 }
+  concept: { wpm: 175, wordsPerS: 2.8 }
+  code: { wpm: 160, wordsPerS: 2.3 }
+  takeaways: { wpm: 180, wordsPerS: 2.8 }
+  held: { wpm: 175, wordsPerS: 1.5 }

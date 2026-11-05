@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a variety-only Q-F1 failure reports the passing link rate and no beats",
+      "file": "products/explainer/src/lint-flow.ts",
+      "find": "  if (ratio >= MIN_LINKED && overused) return ruleRow(",
+      "replace": "  if (ratio < 0) return ruleRow(",
+      "kills": [
+        "Q-F1 beat links reports the connective share against its cap, and the beats it opens, when only variety fails"
+      ]
+    },
+    {
+      "name": "the Q-F1 row names only the unlinked beats",
+      "file": "products/explainer/src/lint-flow.ts",
+      "find": "const failing = [...unlinked, ...(overused?.beats ?? [])];",
+      "replace": "const failing = unlinked;",
+      "kills": [
+        "Q-F1 beat links reports the connective share against its cap, and the beats it opens, when only variety fails"
+      ]
+    }
+  ]
+}

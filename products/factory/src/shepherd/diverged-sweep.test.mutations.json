@@ -1,0 +1,52 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the sweep restarts a run the owner approved while it was parked",
+      "file": "products/factory/src/shepherd/diverged-sweep.ts",
+      "find": "  if (merged !== undefined) {\n    sweep.merged.push(merged);\n    return;\n  }\n",
+      "replace": "",
+      "kills": [
+        "restartDivergedRuns on an owner answer given while the run was parked (TP-3918) A resolved merge on a kept diverged run with an unchanged head merges once"
+      ]
+    },
+    {
+      "name": "the carried merge ignores a head that moved after the owner's answer",
+      "file": "products/factory/src/shepherd/diverged-merge.ts",
+      "find": "  if (ci.verdict !== \"green\" || ci.headSha !== merge.headSha) return undefined;",
+      "replace": "  if (ci.verdict !== \"green\") return undefined;",
+      "kills": [
+        "restartDivergedRuns on an owner answer given while the run was parked (TP-3918) A moved head restarts and asks again, never sending a merge for the head the owner approved"
+      ]
+    },
+    {
+      "name": "the carried merge lands on a head CI does not read as green",
+      "file": "products/factory/src/shepherd/diverged-merge.ts",
+      "find": "  if (ci.verdict !== \"green\" || ci.headSha !== merge.headSha) return undefined;",
+      "replace": "  if (ci.headSha !== merge.headSha) return undefined;",
+      "kills": [
+        "restartDivergedRuns on an owner answer given while the run was parked (TP-3918) restarts as before when the approved head is behind its base on a strict repo",
+        "restartDivergedRuns on an owner answer given while the run was parked (TP-3918) restarts as before when the approved head conflicts with its base",
+        "restartDivergedRuns on an owner answer given while the run was parked (TP-3918) restarts as before when a required check is red at the approved head"
+      ]
+    },
+    {
+      "name": "the carried merge takes an answer from a resolver that is not the owner",
+      "file": "products/factory/src/shepherd/diverged-merge.ts",
+      "find": "  if (gate?.status !== \"resolved\" || !OWNER_CLASSES.includes(gate.resolvedBy?.class ?? \"\")) return undefined;",
+      "replace": "  if (gate?.status !== \"resolved\") return undefined;",
+      "kills": [
+        "restartDivergedRuns on an owner answer given while the run was parked (TP-3918) restarts as before when the merge answer came from a resolver that is not the owner"
+      ]
+    },
+    {
+      "name": "the carried merge takes a merge answer on a gate that is not land's own",
+      "file": "products/factory/src/shepherd/diverged-merge.ts",
+      "find": "  if (asked === undefined || answer?.headSha !== asked) return undefined;\n  return { gate, headSha: asked, base: landGateBase(gate.prompt) };",
+      "replace": "  if (answer === undefined) return undefined;\n  return { gate, headSha: answer.headSha, base: landGateBase(gate.prompt) };",
+      "kills": [
+        "restartDivergedRuns on an owner answer given while the run was parked (TP-3918) restarts as before when the merge answer is on an escalation that shares the approve-merge step"
+      ]
+    }
+  ]
+}

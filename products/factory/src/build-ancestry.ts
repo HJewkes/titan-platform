@@ -1,6 +1,5 @@
 import { DIRTY_SUFFIX, UNKNOWN_BUILD_SHA } from "./build-info.js";
-import type { CommandResult } from "./service-control.js";
-import { runCommand } from "./service-ports.js";
+import { runCommand, type CommandResult } from "./run-command.js";
 
 /** Whether the running build holds a target: yes, no, or why git could not tell. */
 type Holds = boolean | { unknown: string };
@@ -32,6 +31,24 @@ export function cachedAncestry(probe: AncestryProbe): AncestryProbe {
     return answer;
   };
 }
+
+/** A sha merged since the last deploy is not in the deploy checkout yet, so no answer fetches once and asks again. */
+export function fetchingAncestry(probe: AncestryProbe, fetch: () => Promise<unknown>): AncestryProbe {
+  return async (ancestor, descendant) => {
+    const answer = await probe(ancestor, descendant);
+    if (typeof answer === "boolean") return answer;
+    await fetch();
+    return probe(ancestor, descendant);
+  };
+}
+
+/** Objects only: it writes no ref and no FETCH_HEAD, so it never holds a lock a running deployer's own `git fetch origin main` needs. */
+function gitFetchMain(checkout: string, run: Run = runCommand): () => Promise<unknown> {
+  return () => run("git", ["-C", checkout, "fetch", "--quiet", "--no-write-fetch-head", "--refmap=", "origin", "main"]);
+}
+
+/** Ancestry in the deploy checkout, fetching what a merge since the last deploy brought. */
+export const deployCheckoutAncestry = (checkout: string, run: Run = runCommand): AncestryProbe => cachedAncestry(fetchingAncestry(gitAncestry(checkout, run), gitFetchMain(checkout, run)));
 
 /** A dirty build still contains its base commit; an unknown build contains nothing anyone can prove. */
 export async function runningHolds(probe: AncestryProbe, runningSha: string, target: string): Promise<Holds> {

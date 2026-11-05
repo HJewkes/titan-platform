@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-type ShapeId = "gh-pr-merge" | "rest-pr-merge" | "rest-branch-merge" | "graphql-merge" | "octokit-merge";
+type ShapeId = "gh-pr-merge" | "rest-pr-merge" | "rest-branch-merge" | "graphql-merge" | "octokit-merge" | "git-refspec-push";
 interface Shape {
     id: ShapeId;
     /** Global, so `matchAll` finds every hit; `\s+` between words lets a match cross a soft-wrapped line. */

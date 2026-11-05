@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an unknown gh path is not read as a gist upload",
+      "file": "packages/tool-guard/src/families/egress.ts",
+      "find": "return ghPathUnknown(cmd) ? [classified(\"bash.egress.gh-gist\", { host: \"gist.github.com\" })] : gist(cmd);",
+      "replace": "return gist(cmd);",
+      "kills": [
+        "a gh command whose group or verb is only known at run time reads gh $X as a gist upload",
+        "a gh command whose group or verb is only known at run time reads gh gist $X f as a gist upload"
+      ]
+    }
+  ]
+}

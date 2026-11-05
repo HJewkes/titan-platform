@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a stale base script passes",
+      "file": "products/explainer/src/slot-edit.ts",
+      "find": "if (edit.base.scriptSha !== base.scriptSha) {",
+      "replace": "if (edit.base.scriptSha === \"\") {",
+      "kills": ["applyEdit refuses an edit drafted on another script than the base run's"]
+    },
+    {
+      "name": "custom-layer beats are editable",
+      "file": "products/explainer/src/slot-edit.ts",
+      "find": "if (layer !== \"template\") return [",
+      "replace": "if (layer === undefined) return [",
+      "kills": ["applyEdit refuses a beat the script lacks and a custom-layer beat, naming each"]
+    },
+    {
+      "name": "a cue's target may be renamed away",
+      "file": "products/explainer/src/slot-edit.ts",
+      "find": "had.has(cue.target) && !has.has(cue.target)",
+      "replace": "had.has(cue.target) && has.size === 0",
+      "kills": ["applyEdit refuses renaming or deleting an element a cue targets, naming the cue"]
+    },
+    {
+      "name": "the edit writes outside visual",
+      "file": "products/explainer/src/slot-edit.ts",
+      "find": "const visual = isFields(beat) ? beat.visual : undefined;",
+      "replace": "const visual = isFields(beat) ? beat : undefined;",
+      "kills": ["applyEdit writes an accepted edit into visual.slots and visual.tune only, and diffs each field against what the render saw"]
+    },
+    {
+      "name": "a beat edit may carry other fields",
+      "file": "products/explainer/src/slot-edit.ts",
+      "find": "tune: z.record(z.string(), TuneValue.nullable()).optional() }).strict(),",
+      "replace": "tune: z.record(z.string(), TuneValue.nullable()).optional() }).loose(),",
+      "kills": ["applyEdit refuses an edit to anything outside slots and tune, naming the field"]
+    }
+  ]
+}

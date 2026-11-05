@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a thaw wait never runs the stall check",
+      "file": "products/factory/src/workflows/land-settle.ts",
+      "find": "  if (kind === \"thaw\" && attempt === THAW_STALL_ROUNDS) await unsettled.stalled?.(headSha);\n",
+      "replace": "",
+      "kills": [
+        "a thaw wait on a frozen fix-task PR a fix-task PR frozen without fix_pr gets one notice with the fix-pr command"
+      ]
+    },
+    {
+      "name": "the stall check ignores the registration's task",
+      "file": "products/factory/src/shepherd/fix-pr-stall.ts",
+      "find": "registration?.task !== freeze.fixTask || ",
+      "replace": "",
+      "kills": [
+        "a thaw wait on a frozen fix-task PR tells the seat nothing when the frozen PR is registered on another task"
+      ]
+    }
+  ]
+}

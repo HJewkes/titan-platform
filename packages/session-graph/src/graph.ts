@@ -57,7 +57,7 @@ function assertMigratedOrClose(db: Db): void {
 /** Reads without creating the migration table, which a read-only connection cannot do. */
 function appliedNames(db: Db): Map<number, string | null> {
   if (!hasTable(db, MIGRATION_TABLE_NAME)) return new Map();
-  const rows = db.prepare(`SELECT version, name FROM ${MIGRATION_TABLE_NAME}`).all() as { version: number; name: string | null }[];
+  const rows = db.prepare<[], { version: number; name: string | null }>(`SELECT version, name FROM ${MIGRATION_TABLE_NAME}`).all();
   return new Map(rows.map((r) => [r.version, r.name]));
 }
 
@@ -75,5 +75,5 @@ export function resetIndex(graph: SessionGraph): void {
 }
 
 export function allSessionIds(graph: SessionGraph): string[] {
-  return (graph.db.prepare("SELECT session_id FROM session").all() as { session_id: string }[]).map((r) => r.session_id);
+  return graph.db.prepare<[], { session_id: string }>("SELECT session_id FROM session").all().map((r) => r.session_id);
 }

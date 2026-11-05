@@ -22,8 +22,8 @@ export function activityTimes(input: BucketInput): number[] {
 export function findGaps(sortedMs: readonly number[], gapMinMs: number, calls: readonly TimelineToolCall[]): TimelineGap[] {
   const gaps: TimelineGap[] = [];
   for (let i = 1; i < sortedMs.length; i++) {
-    const startMs = sortedMs[i - 1] as number;
-    const endMs = sortedMs[i] as number;
+    const startMs = sortedMs[i - 1]!;
+    const endMs = sortedMs[i]!;
     if (endMs - startMs < gapMinMs || calls.some((call) => inFlightAcross(call, startMs, endMs))) continue;
     gaps.push({ startMs, endMs, durationMs: endMs - startMs });
   }

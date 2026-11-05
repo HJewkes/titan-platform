@@ -4,6 +4,7 @@
  * shadow phase this stays empty, or it names the drift. Read-only: it never writes the log, the
  * materialized file or the tree.
  */
+import path from "node:path";
 import { z } from "zod";
 import { diffDocuments, documentSha, revisionSha, type ConfigRevision } from "@titan-design/coordinator";
 import { readCommand } from "../owner-guard.js";
@@ -37,6 +38,22 @@ export const compareTreeResult = z.discriminatedUnion("state", [
 ]);
 export type CompareTreeResult = z.infer<typeof compareTreeResult>;
 
+/**
+ * Node's fs errors name the absolute path in `message` and `path`, and this result reaches a LAN
+ * caller, so an unexpected one is replaced by a message naming the path relative to `root`.
+ */
+export function relativeReadError(root: string, error: unknown): unknown {
+  if (!(error instanceof Error) || !("code" in error) || typeof error.code !== "string") return error;
+  const file = "path" in error && typeof error.path === "string" ? path.relative(root, error.path) : "";
+  return new Error(`cannot read ${file || "."}: ${error.code}`);
+}
+
+const rethrowRelative =
+  (root: string) =>
+  (error: unknown): never => {
+    throw relativeReadError(root, error);
+  };
+
 function headOf(revisions: readonly unknown[], head: ConfigRevision): z.infer<typeof headSchema> {
   return { rev: head.rev, at: head.at, sha: revisionSha(revisions.at(-1)), documentSha: documentSha(head.document) };
 }
@@ -44,11 +61,11 @@ function headOf(revisions: readonly unknown[], head: ConfigRevision): z.infer<ty
 /** A tree with no pools block is compared with the head's limits, so only its seats and policy can drift. */
 export async function compareTree(source: ConfigStoreSource | undefined): Promise<CompareTreeResult> {
   if (source?.autonomyTree == null) return { state: "not-configured" };
-  const log = await readRevisionLog(revisionLogPath(source.stateDir));
+  const log = await readRevisionLog(revisionLogPath(source.stateDir)).catch(rethrowRelative(source.stateDir));
   if (log.state === "empty") return { state: "no-revisions" };
   if (log.state === "invalid") return { state: "log-invalid", errors: log.errors.map((error) => `rev ${error.rev} ${error.code}: ${error.message}`) };
   const head = headOf(log.revisions, log.head);
-  const tree = await importTree(source.autonomyTree, { limits: log.head.document.limits });
+  const tree = await importTree(source.autonomyTree, { limits: log.head.document.limits }).catch(rethrowRelative(source.autonomyTree));
   if (!tree.ok) return { state: "tree-invalid", head, errors: tree.errors };
   const materialized = await readMaterialized(source.coordinatorFile, head.documentSha);
   return { state: "compared", head, materialized, limitsFrom: tree.limitsFrom, changes: diffDocuments(log.head.document, tree.document) };

@@ -7,17 +7,19 @@ import {
   type UsageMeasurement,
 } from "@titan-design/agent-protocol";
 import { describe, expect, it, vi } from "vitest";
-import { codexExecCapabilities } from "./codex-exec.js";
+import { createClaudeCodeAdapter } from "./claude-code-adapter.js";
+import { codexExecCapabilities, createCodexExecAdapter } from "./codex-exec.js";
 import { createDurableHarnessDispatcher } from "./durable-dispatcher.js";
+import { errorResult, fakeQuery, initMessage } from "./fake-query.js";
 import type { DurableHarnessSuccess } from "./durable-types.js";
 import type { CodexRunRequest, HarnessAdapter, HarnessRunFailure, HarnessRunResult } from "./harness-contracts.js";
 
 type Stored = DurableHarnessSuccess<unknown, "codex">;
 
-class MemoryLedger implements ExecutionLedger<Stored> {
-  readonly records = new Map<string, ExecutionRecord<Stored>>();
-  readonly receipts = new Map<string, ExecutionTransition<Stored>[]>();
-  rejectKind: ExecutionTransition<Stored>["kind"] | undefined;
+class MemoryLedger<S = Stored> implements ExecutionLedger<S> {
+  readonly records = new Map<string, ExecutionRecord<S>>();
+  readonly receipts = new Map<string, ExecutionTransition<S>[]>();
+  rejectKind: ExecutionTransition<S>["kind"] | undefined;
   throwReads = false;
 
   get(executionId: string) {
@@ -28,7 +30,7 @@ class MemoryLedger implements ExecutionLedger<Stored> {
   listRecoverable() { return [...this.records.values()].filter((record) => !record.terminal); }
   events(executionId: string) { return this.receipts.get(executionId) ?? []; }
 
-  apply(transition: ExecutionTransition<Stored>): ApplyExecutionTransitionResult<Stored> {
+  apply(transition: ExecutionTransition<S>): ApplyExecutionTransitionResult<S> {
     const current = this.get(transition.executionId);
     if (this.rejectKind === transition.kind) return { ok: false, kind: "ownership_lost", reason: `rejected ${transition.kind}`, current };
     try {
@@ -284,6 +286,45 @@ describe("durable harness dispatch", () => {
     const ack = await dispatcher.dispatch({ executionId: "runtime-loss", requestKey: "request-loss", request: request() });
     await expect(ack.completion).resolves.toMatchObject({ kind: "recovery_required" });
     expect(ledger.get("runtime-loss")?.phase).toBe("recovery_required");
+  });
+
+  it("persists a Claude run that reached its native maxTurns as a terminal failure", async () => {
+    const fake = fakeQuery([initMessage(), errorResult("error_max_turns", ["Reached maximum number of turns (2)"])]);
+    const env = { CLAUDE_CODE_OAUTH_TOKEN: "fake-oauth-for-test", PATH: "/usr/bin" };
+    const adapter = createClaudeCodeAdapter({ maxTurns: 2, maxBudgetUsd: 1, deps: { query: fake.run, env } });
+    const ledger = new MemoryLedger<DurableHarnessSuccess<unknown, "claude-code">>();
+    const dispatcher = createDurableHarnessDispatcher(adapter, { ledger, supervisorId: "supervisor-a", leaseMs: 60_000 });
+    const ack = await dispatcher.dispatch({
+      executionId: "max-turns",
+      requestKey: "request-max-turns",
+      request: { harness: "claude-code", prompt: "inspect", cwd: "/tmp/project", target: { kind: "fresh", namespace: "local" }, wallTimeMs: 1_000 },
+    });
+
+    await expect(ack.completion).resolves.toMatchObject({ kind: "terminal", terminal: { outcome: "failed", reason: expect.stringMatching(/^limit_exceeded: native maxTurns/) } });
+    expect(ledger.get("max-turns")?.phase).toBe("failed");
+  });
+
+  it("persists a Codex version refused before spawn as a terminal failure", async () => {
+    const start = vi.fn();
+    const adapter = createCodexExecAdapter({ auth: "cached-cli" }, { inspectVersion: async () => "codex-cli 0.1.0", start });
+    const { dispatcher, ledger } = setup(adapter);
+    const ack = await dispatcher.dispatch({ executionId: "old-codex", requestKey: "request-old-codex", request: request() });
+
+    await expect(ack.completion).resolves.toMatchObject({ kind: "terminal", terminal: { outcome: "failed", reason: expect.stringMatching(/^harness_mismatch: unsupported Codex CLI version/) } });
+    expect(ledger.get("old-codex")?.phase).toBe("failed");
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it("persists a Codex version probe that cannot spawn the CLI as a terminal failure", async () => {
+    const start = vi.fn();
+    const missing = Object.assign(new Error("spawn codex ENOENT"), { code: "ENOENT" });
+    const adapter = createCodexExecAdapter({ auth: "cached-cli" }, { inspectVersion: async () => { throw missing; }, start });
+    const { dispatcher, ledger } = setup(adapter);
+    const ack = await dispatcher.dispatch({ executionId: "no-codex", requestKey: "request-no-codex", request: request() });
+
+    await expect(ack.completion).resolves.toMatchObject({ kind: "terminal", terminal: { outcome: "failed", reason: expect.stringMatching(/^harness_mismatch: could not verify Codex CLI version: spawn codex ENOENT/) } });
+    expect(ledger.get("no-codex")?.phase).toBe("failed");
+    expect(start).not.toHaveBeenCalled();
   });
 
   it("keeps the spend of a harness failure on the failed terminal", async () => {

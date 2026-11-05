@@ -7,6 +7,7 @@ import { verifyDepositAnchors, type QuotedAnchor } from "./deposit-anchors.js";
 import { verifyDepositCite, type SessionEventTextSource } from "./deposit-cite.js";
 import { fromDeposit, ownerItemDepositSchema, type OwnerItemDeposit } from "./deposit.js";
 import { forAudience } from "./audience.js";
+import { errno } from "./errno.js";
 import { ownerItemSchema, type Audience, type OwnerAnswer, type OwnerItem } from "./schema.js";
 
 export { DepositAnchorError, type QuotedAnchor } from "./deposit-anchors.js";
@@ -18,6 +19,7 @@ export const MAX_DEPOSIT_BYTES = 64 * 1024;
 const MAX_FILE_NAME_BYTES = 255;
 const DEPOSIT_SUFFIX = ".json";
 const ANSWER_SUFFIX = ".answer.json";
+const WITHDRAWN_SUFFIX = ".withdrawn";
 const answerSchema = ownerItemSchema.shape.answer.unwrap();
 
 export type WriteResult = { file: string; created: boolean };
@@ -85,6 +87,14 @@ export function answerFileName(id: string): string {
 }
 
 /**
+ * The withdrawal marker's file name: `<id>.withdrawn` beside the deposit. It carries no `.json`
+ * suffix, so a reader that predates withdrawal never mistakes it for a deposit.
+ */
+export function withdrawnFileName(id: string): string {
+  return checkedName(`${encodeNamePart(id)}${WITHDRAWN_SUFFIX}`);
+}
+
+/**
  * Every name this deposit may already be filed under: the current name, then the name a spool
  * written before A-Z was escaped gave it, when that differs. Readers accept both; writers only
  * ever create the current one.
@@ -115,7 +125,7 @@ async function writeOnce(dir: string, name: string, body: string): Promise<Write
     await link(temp, file);
     return { file, created: true };
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EEXIST") return { file, created: false };
+    if (errno(error) === "EEXIST") return { file, created: false };
     throw error;
   } finally {
     await unlink(temp);
@@ -129,7 +139,7 @@ async function firstPresent(dir: string, names: readonly string[]): Promise<stri
       await lstat(join(dir, name));
       return join(dir, name);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      if (errno(error) !== "ENOENT") throw error;
     }
   }
   return undefined;
@@ -204,7 +214,7 @@ async function listNames(dir: string): Promise<string[]> {
   try {
     return (await readdir(dir)).sort();
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    if (errno(error) === "ENOENT") return [];
     throw error;
   }
 }
@@ -222,8 +232,9 @@ export async function readSpool(dir: string, options: { audience?: Audience } = 
       if (typeof result === "string") contents.rejects.push({ file: name, reason: result });
       else contents.items.push(result);
     } catch (error) {
-      const { code, message } = error as NodeJS.ErrnoException;
-      contents.rejects.push({ file: name, reason: code ?? message });
+      const code = errno(error);
+      const reason = typeof code === "string" ? code : error instanceof Error ? error.message : String(error);
+      contents.rejects.push({ file: name, reason });
     }
   }
   if (options.audience) contents.items = forAudience(contents.items, options.audience);
@@ -246,7 +257,7 @@ export async function readAnswer(dir: string, id: string): Promise<OwnerAnswer |
   try {
     return answerSchema.parse(JSON.parse(await readFile(file, "utf8")));
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    if (errno(error) === "ENOENT") return undefined;
     throw error;
   }
 }

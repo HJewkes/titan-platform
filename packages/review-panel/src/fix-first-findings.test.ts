@@ -1,3 +1,4 @@
+import { partialFake } from "@titan-design/test-kit";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
 import type { ReviewerMessage } from "./ports.js";
@@ -8,7 +9,7 @@ const HEAD = "a".repeat(40);
 const OLD_HEAD = "b".repeat(40);
 const target = { repo: "octo/demo", pr: 7, head: HEAD };
 const block = (verdict: string, head = HEAD) => `Verdict: ${verdict}\nPR: octo/demo#7\nHead: ${head}`;
-const said = (text: string, writtenAt: number): ReviewerMessage => ({ agentId: "a", sessionId: "s", writtenAt, text, locator: {} as SourceTextLocator });
+const said = (text: string, writtenAt: number): ReviewerMessage => ({ agentId: "a", sessionId: "s", writtenAt, text, locator: partialFake<SourceTextLocator>() });
 
 describe("fixFirstFindings", () => {
   it("joins every FIX_FIRST at the head that says more than its block, oldest first, each once", () => {
@@ -131,6 +132,7 @@ describe("ciUnreadOnly against the reviewer's probe", () => {
     ["item-shaped finding after a blank line, no heading", m(`${L}\n\n- a.ts:3 null deref crashes on empty input | guard it | high`), false],
     ["not fixed: in the item shape", m(`- ${L}\n- not fixed: null deref at a.ts:3 | still crashes | high`), false],
     ["fixed: in the item shape", m(`- ${L}\n- fixed: partially, a.ts:3 remains | x | low`), false],
+    ["partly fixed: in the item shape under Follow-ups", m(`- ${L}\n\nFollow-ups:\n- partly fixed: a.ts:3 still crashes | x | low`), false],
     ["item-shaped finding before the Follow-ups heading", m(`- ${L}\n- leak in auth.ts | fix | high\n\nFollow-ups:\n- x | y | low`), false],
     ["item-shaped finding after Follow-ups: none", m(`- ${L}\n\nFollow-ups: none\n- a.ts:3 leaks token | fix | high`), false],
     ["lone CR inside a follow-up title", m(`- ${L}\n\nFollow-ups:\n- x\rBlocking: a.ts:3 leaks | y | low`), false],

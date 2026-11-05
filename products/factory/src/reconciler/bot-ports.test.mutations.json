@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the builder leaves conditional gates off",
+      "file": "products/factory/src/reconciler/bot-ports.ts",
+      "find": "conditionalGates: true",
+      "replace": "conditionalGates: false",
+      "kills": ["production bot ports: conditional gates (TP-3431) sends no GraphQL on two quiet ticks of an unchanged repo and exactly one on the third"]
+    },
+    {
+      "name": "the pool keeps its state in memory, not the factory table",
+      "file": "products/factory/src/reconciler/bot-ports.ts",
+      "find": "clock, state: poolState, probe",
+      "replace": "clock, probe",
+      "kills": ["production bot ports: the durable pool (TP-3431) closes the bot's core-read pair in the factory table on a secondary limit, and the tick snapshots nothing"]
+    },
+    {
+      "name": "the probe never reaches GitHub",
+      "file": "products/factory/src/reconciler/bot-ports.ts",
+      "find": "probe: () => probeRateLimit(client)",
+      "replace": "probe: () => Promise.resolve({ networkError: true })",
+      "kills": ["production bot ports: the durable pool (TP-3431) reopens a closed pair through the bot's own GET /rate_limit once the limit's reset passes"]
+    },
+    {
+      "name": "the probe reads a 200 with no body",
+      "file": "products/factory/src/reconciler/bot-ports.ts",
+      "find": "return { status: response.status, body: response.data };",
+      "replace": "return { status: response.status };",
+      "kills": ["production bot ports: the durable pool (TP-3431) reopens a closed pair through the bot's own GET /rate_limit once the limit's reset passes"]
+    },
+    {
+      "name": "a changed open-PR list does not count as a change",
+      "file": "products/factory/src/reconciler/bot-transport.ts",
+      "find": "changed: !pulls.notModified || !ref.notModified",
+      "replace": "changed: !ref.notModified",
+      "kills": ["production bot ports: conditional gates (TP-3431) snapshots on the quiet tick where the pulls read changes"]
+    }
+  ]
+}

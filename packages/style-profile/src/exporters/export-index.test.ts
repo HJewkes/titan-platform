@@ -62,7 +62,7 @@ describe("exportProfile", () => {
 
   it("throws for unknown format", () => {
     expect(() =>
-      exportProfile(makeProfile(), "unknown" as never),
+      Reflect.apply(exportProfile, undefined, [makeProfile(), "unknown"]),
     ).toThrow(/unsupported export format/i);
   });
 

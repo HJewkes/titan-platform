@@ -11,6 +11,7 @@ declare const RULE_IDS: readonly RuleId[];
 /** A compiled private term. It exposes its line number, never its text or pattern. */
 interface TermRule {
     readonly index: number;
+    readonly category?: string;
     matches(text: string): boolean;
     /** Offset of the first match, or -1. Optional so a bare matcher still works; a hit then reports column 1. */
     search?(text: string): number;
@@ -18,6 +19,7 @@ interface TermRule {
 interface RuleHit {
     readonly rule: RuleId;
     readonly termIndex?: number;
+    readonly category?: string;
     readonly kind?: TokenKind;
 }
 /** Home-directory segments that are placeholders, not people. Compared case-insensitively. */
@@ -92,6 +94,7 @@ declare class TermFileError extends Error {
 /**
  * Parses a private term list: one term per line, `#` comments, blank lines ignored, matched
  * case-insensitively on word boundaries; a `re:` line is a regex source compiled with `iu`.
+ * A line may start with a `[category]` tag (lowercase letters, digits, hyphens) that findings report.
  */
 declare function parseTerms(text: string): TermRule[];
 
@@ -100,6 +103,7 @@ interface Finding {
     readonly location: string;
     readonly rule: RuleId;
     readonly termIndex?: number;
+    readonly category?: string;
     readonly kind?: TokenKind;
 }
 type RuleCounts = Record<RuleId, number>;
@@ -121,7 +125,7 @@ interface ReportSummary {
     readonly termsLoaded: boolean;
 }
 /**
- * Formats findings as `<location> <rule>[ #<termIndex>][ <kind>]` lines plus a summary. It takes no
+ * Formats findings as `<location> <rule>[ [<category>] | #<termIndex>][ <kind>]` lines plus a summary. It takes no
  * scanned text, so it cannot echo a matched line, path fragment or term.
  */
 declare function formatReport(findings: readonly Finding[], summary: ReportSummary): string[];

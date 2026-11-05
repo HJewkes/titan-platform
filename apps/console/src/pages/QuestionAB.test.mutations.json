@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an A/B side never shows as picked",
+      "file": "apps/console/src/pages/QuestionAB.tsx",
+      "find": "aria-pressed={picked}",
+      "replace": "aria-pressed={false}",
+      "kills": [
+        "an A/B question records the side picked, by its button or its digit key"
+      ]
+    },
+    {
+      "name": "a sent Neither never shows as pressed",
+      "file": "apps/console/src/pages/QuestionAB.tsx",
+      "find": "aria-pressed={revising}",
+      "replace": "aria-pressed={false}",
+      "kills": [
+        "an A/B question reads a sent Neither and its option note back after a reload, locked (TP-3767)"
+      ]
+    },
+    {
+      "name": "the two sides stack at every width",
+      "file": "apps/console/src/pages/QuestionAB.tsx",
+      "find": "sm:grid-cols-2",
+      "replace": "sm:grid-cols-1",
+      "kills": [
+        "an A/B question lays its two options side by side, each with its own frame, pick and note"
+      ]
+    },
+    {
+      "name": "a further option such as Both picks side A instead",
+      "file": "apps/console/src/pages/QuestionAB.tsx",
+      "find": "onPress={() => onChoose(option)}",
+      "replace": "onPress={() => onChoose(sides[0].option)}",
+      "kills": [
+        "an A/B question offers the round's further option, such as Both, as a pick"
+      ]
+    },
+    {
+      "name": "only the first option note is sent",
+      "file": "apps/console/src/pages/RoundAnswers.ts",
+      "find": "return options.flatMap((option) => (notes[option]?.trim()",
+      "replace": "return options.slice(0, 1).flatMap((option) => (notes[option]?.trim()",
+      "kills": [
+        "an A/B question sends a note per side in optionNotes, and typing a digit in a note picks nothing"
+      ]
+    }
+  ]
+}

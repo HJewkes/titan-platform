@@ -1,9 +1,11 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { resolveDbPath } from "../config.js";
+import { CLOSURE_LOCK_DRIVER, type GitConfigEntry } from "../merge-drivers.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { HEAD } from "./await-verdict.js";
 import { errorClass } from "./error-class.js";
@@ -24,7 +26,10 @@ export type Git = (gitDir: string, args: readonly string[], signal?: AbortSignal
 /** `fromHead` is the head whose MERGE would be carried, `head` the new green head. */
 export type CarryInput = z.infer<typeof CarryInputSchema>;
 
-/** `base` is the head's second parent, the base commit an update merged in; `firstParent` is the head it was merged into. */
+/**
+ * `base` is the head's second parent, the base commit an update merged in; `firstParent` is the head it was merged into.
+ * `patchEqual`, read only for equal trees whose first parent is not `fromHead`, says the PR's own diff is the reviewed one.
+ */
 export type CarryResult = z.infer<typeof CarryResultSchema>;
 
 export interface CarryOptions {
@@ -39,7 +44,7 @@ export interface CarryOptions {
 const Sha = z.string().regex(HEAD, "must be 40 lowercase hex characters");
 export const BranchName = z.string().regex(/^[A-Za-z0-9._/-]+$/).refine((name) => !name.startsWith("-") && !name.includes(".."), "must be a plain branch name");
 const CarryInputSchema = z.object({ repo: z.string().refine(isRepoKey, "must be owner/repo"), baseRef: BranchName, fromHead: Sha, head: Sha });
-export const CarryResultSchema = z.object({ equal: z.boolean(), base: z.string().optional(), firstParent: z.string().optional(), headTree: z.string().optional(), mergeTree: z.string().optional(), reason: z.string().optional() });
+export const CarryResultSchema = z.object({ equal: z.boolean(), base: z.string().optional(), firstParent: z.string().optional(), headTree: z.string().optional(), mergeTree: z.string().optional(), patchEqual: z.boolean().optional(), reason: z.string().optional() });
 
 /** Fails the probe with a reason; never leaves `carry`. */
 /** A git command that exited non-zero; only the subcommand and exit code are kept, since stderr can echo a remote URL or credential. */
@@ -104,13 +109,32 @@ export async function isAncestor(git: Git, dir: string, ancestor: string, descen
   return result.code === 0;
 }
 
-export async function ensureCache(git: Git, dir: string, signal?: AbortSignal): Promise<void> {
-  if (existsSync(join(dir, "HEAD"))) return;
-  mkdirSync(dirname(dir), { recursive: true });
-  await must(git, dir, ["init", "--bare", "--quiet"], signal);
+export const remoteBase = (baseRef: string): string => `refs/remotes/origin/${baseRef}`;
+
+/**
+ * A bare clone reads no `.gitattributes` unless `attr.tree` names a tree, so the base branch's own attributes are read, and a
+ * missing ref reads none, as before. With them, the merge drivers they name must be registered, or merge-tree merges as text.
+ */
+const MERGE_CONFIG: readonly GitConfigEntry[] = [{ key: "attr.tree", value: remoteBase("main") }, ...CLOSURE_LOCK_DRIVER];
+
+/**
+ * Registers the merge drivers here rather than trusting `pnpm prepare`, which never runs in the cache (TP-4752). Only a value
+ * that differs is written, so a cache already set never takes a config lock; a write git refuses leaves the lock merged as text.
+ */
+async function registerMergeDrivers(git: Git, dir: string, signal?: AbortSignal): Promise<void> {
+  for (const { key, value } of MERGE_CONFIG) {
+    const current = await git(dir, ["config", "--get", key], signal);
+    if (current.code !== 0 || current.stdout.trim() !== value) await git(dir, ["config", key, value], signal);
+  }
 }
 
-export const remoteBase = (baseRef: string): string => `refs/remotes/origin/${baseRef}`;
+export async function ensureCache(git: Git, dir: string, signal?: AbortSignal): Promise<void> {
+  if (!existsSync(join(dir, "HEAD"))) {
+    mkdirSync(dirname(dir), { recursive: true });
+    await must(git, dir, ["init", "--bare", "--quiet"], signal);
+  }
+  await registerMergeDrivers(git, dir, signal);
+}
 
 export function fetchArgs(url: string, input: CarryInput): string[] {
   return ["fetch", "--no-tags", "--no-write-fetch-head", "--quiet", url, input.fromHead, input.head, `+refs/heads/${input.baseRef}:${remoteBase(input.baseRef)}`];
@@ -137,12 +161,36 @@ async function compareTrees(git: Git, dir: string, input: CarryInput, base: stri
   return { equal: false, base, headTree, mergeTree, reason: `tree of ${input.head} differs from ${input.fromHead} merged onto ${base}` };
 }
 
+/**
+ * A patch id in the manner of `git patch-id`: the diff with its blob ids, hunk line numbers and whitespace dropped, so the
+ * same change read against a moved base hashes the same.
+ */
+function patchIdOf(diff: string): string {
+  const lines = diff.split("\n").filter((line) => !line.startsWith("index ")).map((line) => (line.startsWith("@@") ? "@@" : line.replace(/\s+/g, "")));
+  return createHash("sha256").update(lines.join("\n")).digest("hex");
+}
+
+const DIFF_ARGS = ["diff", "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", "--binary", "--full-index"];
+
+/**
+ * Whether the head's diff against the base it merged equals the reviewed head's diff against its merge base with that base.
+ * Equal trees alone pass a merge that drops a hunk main already landed; the patch ids do not. A diff git cannot write is unequal.
+ */
+async function samePrDiff(git: Git, dir: string, input: CarryInput, base: string, signal?: AbortSignal): Promise<boolean> {
+  const reviewedBase = await must(git, dir, ["merge-base", input.fromHead, base], signal);
+  const reviewed = await git(dir, [...DIFF_ARGS, reviewedBase, input.fromHead], signal);
+  const merged = await git(dir, [...DIFF_ARGS, base, input.head], signal);
+  return reviewed.code === 0 && merged.code === 0 && patchIdOf(reviewed.stdout) === patchIdOf(merged.stdout);
+}
+
 async function probe(git: Git, dir: string, url: string, input: CarryInput, signal?: AbortSignal): Promise<CarryResult> {
   await ensureCache(git, dir, signal);
   await must(git, dir, fetchArgs(url, input), signal);
   const parents = await mergeParents(git, dir, input.head, signal);
   if (!("first" in parents)) return parents;
-  return { ...(await compareTrees(git, dir, input, parents.base, signal)), firstParent: parents.first };
+  const trees = await compareTrees(git, dir, input, parents.base, signal);
+  const offLine = trees.equal && parents.first !== input.fromHead;
+  return { ...trees, firstParent: parents.first, ...(offLine && { patchEqual: await samePrDiff(git, dir, input, parents.base, signal) }) };
 }
 
 const queues = new Map<string, Promise<unknown>>();

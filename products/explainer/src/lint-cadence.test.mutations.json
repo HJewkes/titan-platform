@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "L0 never runs the cue gap row",
+      "file": "products/explainer/src/eval-l0.ts",
+      "find": "cueGapCheck, heldCountCheck, fillFloorCheck,",
+      "replace": "heldCountCheck, fillFloorCheck,",
+      "kills": [
+        "Q-D17 planned cue gaps a planned cue gap over 8 s fails"
+      ]
+    },
+    {
+      "name": "L0 never runs the held-beat or fill floor rows",
+      "file": "products/explainer/src/eval-l0.ts",
+      "find": "cueGapCheck, heldCountCheck, fillFloorCheck,",
+      "replace": "cueGapCheck,",
+      "kills": [
+        "Q-D18 held beats a script with no held beat fails against pacing.held 1-2"
+      ]
+    },
+    {
+      "name": "Q-D17 counts cues on a kind that takes none",
+      "file": "products/explainer/src/lint-cadence.ts",
+      "find": "(takesCues ? beatCues(voiced.visual) : [])",
+      "replace": "beatCues(voiced.visual)",
+      "kills": [
+        "Q-D17 on a claim-card, a kind that takes no cue counts no cue on a claim-card, which the emphasis gate would refuse and qa would never see move"
+      ]
+    },
+    {
+      "name": "Q-D17 hint never names the move a cue-less kind can take",
+      "file": "products/explainer/src/repair-hints-screen.ts",
+      "find": "return kind === undefined ? [] : [cuelessMove(beat, kind, failS)];",
+      "replace": "return [];",
+      "kills": [
+        "Q-D17 on a claim-card, a kind that takes no cue the repair hint offers a move the claim-card kind can take"
+      ]
+    },
+    {
+      "name": "Q-D18 hint offers a hold on a beat Q-D17 fails",
+      "file": "products/explainer/src/repair-hints-screen.ts",
+      "find": " && (longestCueGapS(beat) ?? Infinity) <= failS);",
+      "replace": ");",
+      "kills": [
+        "Q-D18 held beats the held-beat hint never names a beat Q-D17 fails"
+      ]
+    }
+  ]
+}

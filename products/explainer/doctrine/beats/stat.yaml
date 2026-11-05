@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: stat
+summary: "One to four numbers that carry the point."
+role: evidence
+component: { name: StatBeat, maturity: spike }
+slots: stat
+speech: { band: concept }
+durationS: [4, 7, 12]
+preset: false
+emphasis: { targets: [figures], treatments: [scale, colour] }
+recipe: "Show at most four figures, each with a label and unit, counting up to its exact value. Give an interval and a grade when the source states them. Say the number once, aloud, as it lands; never round a number the source states."

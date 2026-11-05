@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "deploy-pause-clear compares only the target, not pausedAt",
+      "file": "products/factory/src/owner-ops/pause-clear.ts",
+      "find": "pause.pausedAt === op.pausedAt && pause.target === op.target;",
+      "replace": "pause.target === op.target;",
+      "kills": ["deploy-pause-clear answers moved and leaves a newer pause P2 in place"]
+    },
+    {
+      "name": "deploy-pause-clear skips the running-deployer read",
+      "file": "products/factory/src/owner-ops/pause-clear.ts",
+      "find": "  if (running !== undefined) return refused(\"deploying\", `a deployer is running (pid ${running}); tap again once it ends`);\n",
+      "replace": "",
+      "kills": ["deploy-pause-clear refuses while a deployer holds the deploy lock, and the pause stays"]
+    },
+    {
+      "name": "deploy-pause-clear ignores its own done row on a replay",
+      "file": "products/factory/src/owner-ops/pause-clear.ts",
+      "find": "return clearedBefore ? { outcome: \"already\", clearedPause: op.pausedAt } : { outcome: \"gone\",",
+      "replace": "return { outcome: \"gone\",",
+      "kills": ["deploy-pause-clear answers already on a replay after done"]
+    },
+    {
+      "name": "deploy-pause-clear hides the manual hold that still stands",
+      "file": "products/factory/src/owner-ops/pause-clear.ts",
+      "find": "stillHeld: manualHoldReason(ports, stateDir) };",
+      "replace": "stillHeld: null };",
+      "kills": ["deploy-pause-clear clears the failure pause but never the manual hold beside it, and says deploys stay held"]
+    },
+    {
+      "name": "deploy-pause-clear keeps the deploy lock after the clear",
+      "file": "products/factory/src/owner-ops/pause-clear.ts",
+      "find": "  } finally {\n    releaseLock(ports, lock);\n  }\n",
+      "replace": "  } finally {\n  }\n",
+      "kills": ["deploy-pause-clear clears the pause that still names the record's pausedAt and target, and releases the deploy lock"]
+    }
+  ]
+}

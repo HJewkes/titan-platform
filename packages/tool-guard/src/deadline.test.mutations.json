@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the deadline timer fires a millisecond early",
+      "file": "packages/tool-guard/src/deadline.ts",
+      "find": "    timer = setTimeout(() => resolve(deny(\"timeout\")), port.deadlineMs);",
+      "replace": "    timer = setTimeout(() => resolve(deny(\"timeout\")), Math.max(0, port.deadlineMs - 1));",
+      "kills": [
+        "answerWithin a check that runs past its deadline denies a check that keeps its thread busy as its deadline passes, and not before"
+      ]
+    }
+  ]
+}

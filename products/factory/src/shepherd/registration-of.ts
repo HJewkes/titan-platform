@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { HoldSatisfiedBySchema } from "./hold-satisfaction.js";
 import { ownerHoldOf } from "./owner-hold-rows.js";
-import { EffectivePolicySchema } from "./policy.js";
+import { EffectivePolicySchema } from "./policy-schema.js";
 import { registrationFactsOf } from "./registration-facts.js";
 import type { RegistrationRow } from "./registration-row.js";
 import type { Registration } from "./store.js";
@@ -31,6 +31,7 @@ export function registrationOf(row: RegistrationRow): Registration {
     reviewRequest: row.review_request_head && row.review_request_at ? { head: row.review_request_head, at: row.review_request_at, takenAt: row.review_request_taken_at ?? null } : null,
     ownerHold,
     ...registrationFactsOf(row),
+    registrant: row.registrant ? { name: row.registrant, fixer: row.registrant_fixer === 1 } : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

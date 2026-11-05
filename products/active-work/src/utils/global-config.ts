@@ -13,6 +13,17 @@ import { getConfigRoot } from './paths.js';
  */
 export const GlobalConfigSchema = z.object({
   channels: z.array(channelTarget).optional(),
+  loops: z
+    .object({
+      ledger: z
+        .object({
+          initiative: z.string().min(1).optional(),
+          loops: z.string().min(1).optional(),
+          tree: z.string().min(1).optional(),
+        })
+        .optional(),
+    })
+    .optional(),
 });
 
 export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;

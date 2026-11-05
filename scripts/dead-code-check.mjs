@@ -8,7 +8,8 @@
 // so an adopted tree is seeded once and grows like any other path after it merges.
 // --update drops fixed entries from the baseline and adds only findings under an adopted path. --db <path> reads
 // the latest "head" snapshot of an existing code-graph database instead of indexing; dag:check writes that
-// database by rename, so it never reads a snapshot still being written.
+// database by rename, so it never reads a snapshot still being written. --paths=<dir,...> indexes only those package
+// dirs and judges only their findings and baseline entries, for verify:changed; it cannot be combined with --update.
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -249,9 +250,18 @@ function readAtRef(baseRef, file, cwd, parse) {
 }
 
 export function parseCliArgs(args) {
-  const options = { db: { type: "string" }, "report-only": { type: "boolean" }, update: { type: "boolean" } };
+  const options = { db: { type: "string" }, "report-only": { type: "boolean" }, update: { type: "boolean" }, paths: { type: "string" } };
   const { values } = parseArgs({ args, options });
-  return { db: values.db ?? null, reportOnly: values["report-only"] === true, update: values.update === true };
+  const paths = values.paths === undefined ? null : values.paths.split(",").filter(Boolean);
+  // A scoped run never sees the other packages' findings, so an update from it would drop their baseline entries.
+  if (paths !== null && values.update === true) throw new Error("--paths cannot be combined with --update");
+  return { db: values.db ?? null, reportOnly: values["report-only"] === true, update: values.update === true, paths };
+}
+
+/** A --paths run sees only those packages, so baseline entries elsewhere are neither carried nor fixed. */
+export function scopeToPaths(findings, baseline, paths) {
+  if (paths === null) return { findings, baseline };
+  return { findings: findings.filter((f) => underPath(f.id, paths)), baseline: baseline.filter((id) => underPath(id, paths)) };
 }
 
 function readPackages() {
@@ -276,12 +286,13 @@ export async function graphFromDb(dbPath) {
   }
 }
 
-async function indexGraph(workDir) {
+async function indexGraph(workDir, dirs = TIERS) {
   const graph = await import(ENTRY);
   const store = graph.openCodeGraph(path.join(workDir, "graph.db"));
   try {
-    const paths = TIERS.map((sub) => path.join(ROOT, sub)).filter((p) => existsSync(p));
-    const r = await graph.indexPaths(store, { paths, ref: "head", computeChurn: false });
+    const paths = dirs.map((sub) => path.join(ROOT, sub)).filter((p) => existsSync(p));
+    // Dead exports read nodes, edges and roles only; skipping metrics trims a scoped verify:changed run.
+    const r = await graph.indexPaths(store, { paths, ref: "head", computeChurn: false, computeMetrics: false });
     console.error(`indexed head: ${r.files} files, ${r.nodes} nodes, ${r.edges} edges`);
     const nodes = graph.listNodes(store, r.snapshotId, { includeSymbols: true });
     return { nodes, edges: graph.listEdges(store, r.snapshotId, { includeReferences: true }) };
@@ -305,15 +316,16 @@ function checkGrowth(baseline, baseRef) {
 
 /** Runs in the worker: the supervisor holds the lock and owns workDir, so an OOM here leaves neither behind. */
 async function check(workDir, args) {
-  const { db, reportOnly, update } = parseCliArgs(args);
+  const { db, reportOnly, update, paths } = parseCliArgs(args);
   const baseline = readBaseline();
   const growth = update ? [] : checkGrowth(baseline ?? [], process.env.BASE_REF);
-  const findings = currentFindings(db ? await graphFromDb(db) : await indexGraph(workDir));
+  const all = currentFindings(db ? await graphFromDb(db) : await indexGraph(workDir, paths ?? TIERS));
   if (update) {
-    writeFileSync(BASELINE, `${JSON.stringify(updatedBaseline(findings, baseline, readAdoptedPaths()), null, 2)}\n`);
+    writeFileSync(BASELINE, `${JSON.stringify(updatedBaseline(all, baseline, readAdoptedPaths()), null, 2)}\n`);
     return 0;
   }
-  const result = compareBaseline(findings, baseline ?? []);
+  const scoped = scopeToPaths(all, baseline ?? [], paths);
+  const result = compareBaseline(scoped.findings, scoped.baseline);
   console.log(formatReport(result, { reportOnly, grew: growth.length > 0 }));
   return exitCode({ growth, fresh: result.fresh, reportOnly });
 }

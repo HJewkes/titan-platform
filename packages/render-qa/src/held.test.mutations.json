@@ -1,0 +1,48 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "one transient sample of an error kind gates as a held error",
+      "file": "packages/render-qa/src/held.ts",
+      "find": "else out.info.push({ ...g, reason: 'transient' })",
+      "replace": "else out.errors.push({ ...g, reason: 'transient' })",
+      "kills": [
+        "a finding in one mid-beat sample is info, not an error (an entrance fade passing through)",
+        "samples in neighbouring beats do not make one finding held",
+        "the same text on two twin elements in neighbouring samples does not hold (two rail arrows, each mid-fade)",
+        "two samples that are not neighbours do not hold"
+      ]
+    },
+    {
+      "name": "a finding seen in one sample counts as held across samples",
+      "file": "packages/render-qa/src/held.ts",
+      "find": "else if (best >= 2) out.errors.push({ ...g, reason: 'held' })",
+      "replace": "else if (best >= 1) out.errors.push({ ...g, reason: 'held' })",
+      "kills": [
+        "a finding in one mid-beat sample is info, not an error (an entrance fade passing through)",
+        "a single sample at the settled end moment is an error",
+        "samples in neighbouring beats do not make one finding held",
+        "the same text on two twin elements in neighbouring samples does not hold (two rail arrows, each mid-fade)",
+        "two samples that are not neighbours do not hold"
+      ]
+    },
+    {
+      "name": "classify gates every known kind whatever gate list the caller passes",
+      "file": "packages/render-qa/src/held.ts",
+      "find": "if (!isErrorKind(g.finding, options.gate)) out.info.push",
+      "replace": "if (!isErrorKind(g.finding)) out.info.push",
+      "kills": [
+        "a kind left out of the gate list stays info however long it holds"
+      ]
+    },
+    {
+      "name": "the start and enter moments read every kind, not only the frame kinds",
+      "file": "packages/render-qa/src/held.ts",
+      "find": "if (TRANSIT_MOMENTS.includes(frame.kind) && !FRAME_KINDS.includes(finding.kind)) continue",
+      "replace": "if (TRANSIT_MOMENTS.includes(frame.kind) && FRAME_KINDS.includes('none')) continue",
+      "kills": [
+        "the start and enter moments read only the frame kinds; an entrance mid-fade there is not a finding"
+      ]
+    }
+  ]
+}

@@ -15,6 +15,8 @@ import { OWNER_GATE_POLICY } from "./policy.js";
 import { DEPLOY_WANTED, readWanted, type WantedStore } from "./deploy-pacer.js";
 import { deployPacerPorts, deployUnitName, isFactoryRepo, redeploy, REDEPLOY_LOG, SYSTEMD_RUN, systemDeployer, type Deployer, type DeployerPorts } from "./redeploy.js";
 import { shepherdStoreRef } from "./store.js";
+import { partialFake } from "@titan-design/test-kit";
+import type { ChildProcess } from "node:child_process";
 
 const OWN_REPO = FACTORY_REPO!;
 const SHA = "b".repeat(40);
@@ -95,7 +97,7 @@ describe("sh-redeploy after main CI", () => {
 
     const mergeSha = w.fake.pr(1).mergeSha;
     expect(fake.calls).toEqual([]);
-    expect(redeploySteps(w, runId)).toMatchObject([{ data: { result: { spawned: false, queued: true, detail: `queued ${mergeSha}; deploys after 15 min with no newer merge, at most 90 min after the first` } } }]);
+    expect(redeploySteps(w, runId)).toMatchObject([{ data: { result: { spawned: false, queued: true, detail: `queued ${mergeSha}; deploys after 15 min with no newer merge, at most 45 min after the first` } } }]);
     expect(readWanted("/state", store)).toEqual({ sha: mergeSha, firstAt: AT.toISOString(), lastAt: AT.toISOString() });
   });
 
@@ -179,11 +181,11 @@ function fakePorts(failing?: "spawn" | "mkdir" | "openAppend" | "append", refuse
     spawn: (file, args, options) => {
       fail("spawn");
       if (file === refusedFile) throw new Error(`${file} refused`);
-      calls.push({ file, args, options: options as Record<string, unknown> });
+      calls.push({ file, args, options: { ...options } });
       const own: Record<string, ((value: unknown) => void)[]> = {};
       handlers.push(own);
       const on = (event: string, handler: (value: unknown) => void) => void (own[event] ??= []).push(handler);
-      return { pid: 776 + calls.length, unref: () => void effects.push("unref"), on: on as never };
+      return Object.assign(partialFake<Pick<ChildProcess, "pid" | "unref" | "on">>(), { pid: 776 + calls.length, unref: () => void effects.push("unref"), on });
     },
     mkdir: (dir) => (fail("mkdir"), void effects.push(`mkdir ${dir}`)),
     append: (path, text) => (fail("append"), effects.push(`append ${path}`), void lines.push(text)),
@@ -213,18 +215,18 @@ describe("sh-redeploy when the deployer cannot start", () => {
 describe("redeploy", () => {
   const input = { repo: OWN_REPO, pr: 1, mergeSha: "a".repeat(40) };
 
-  it("spawns nothing when the service already runs the merge sha", () => {
+  it("spawns nothing when the service already runs the merge sha", async () => {
     const deployer = fakeDeployer(input.mergeSha);
 
-    expect(redeploy(deployer, input)).toMatchObject({ spawned: false, detail: `the service already runs ${input.mergeSha}` });
+    expect(await redeploy(deployer, input)).toMatchObject({ spawned: false, detail: `the service already runs ${input.mergeSha}` });
     expect(deployer.spawned).toEqual([]);
   });
 
-  it("spawns nothing when no deployer is wired", () => {
-    expect(redeploy(undefined, input)).toMatchObject({ spawned: false, detail: "no deployer wired" });
+  it("spawns nothing when no deployer is wired", async () => {
+    expect(await redeploy(undefined, input)).toMatchObject({ spawned: false, detail: "no deployer wired" });
   });
 
-  it("records the error class, never a URL or token from the spawn error", () => {
+  it("records the error class, never a URL or token from the spawn error", async () => {
     const deployer: Deployer = {
       runningSha: () => "unknown",
       spawn: () => {
@@ -232,19 +234,19 @@ describe("redeploy", () => {
       },
     };
 
-    const result = redeploy(deployer, input);
+    const result = await redeploy(deployer, input);
 
     expect(result).toMatchObject({ spawned: false, detail: "the deployer did not start: Error" });
     expectNoLeak(result);
   });
 
-  it("asks a deployer that queues before the running-sha check only when the sha is new", () => {
+  it("asks a deployer that queues before the running-sha check only when the sha is new", async () => {
     const deployer = { ...fakeDeployer(input.mergeSha), request: () => ({ spawned: false, queued: true, detail: "queued" }) };
 
-    expect(redeploy(deployer, input)).toMatchObject({ spawned: false, detail: `the service already runs ${input.mergeSha}` });
+    expect(await redeploy(deployer, input)).toMatchObject({ spawned: false, detail: `the service already runs ${input.mergeSha}` });
   });
 
-  it("records a request that throws as no spawn, with the error class only", () => {
+  it("records a request that throws as no spawn, with the error class only", async () => {
     const deployer: Deployer = {
       ...fakeDeployer(),
       request: () => {
@@ -252,16 +254,16 @@ describe("redeploy", () => {
       },
     };
 
-    const result = redeploy(deployer, input);
+    const result = await redeploy(deployer, input);
 
     expect(result).toEqual({ spawned: false, detail: "the deploy was not queued: Error" });
     expectNoLeak(result);
   });
 
-  it("reports no spawn when the deployer got no pid", () => {
+  it("reports no spawn when the deployer got no pid", async () => {
     const deployer: Deployer = { runningSha: () => "unknown", spawn: () => ({ pid: undefined, log: "/state/redeploy.log" }) };
 
-    expect(redeploy(deployer, input)).toMatchObject({ spawned: false });
+    expect(await redeploy(deployer, input)).toMatchObject({ spawned: false });
   });
 
   it("matches the factory's repo case-insensitively and no other", () => {
@@ -309,10 +311,10 @@ describe("deployPacerPorts", () => {
     expect(fake.lines).toEqual([`${AT.toISOString()} service deploy --expect ${SHA}\n`]);
   });
 
-  it("queues into the file the pacer reads", () => {
+  it("queues into the file the pacer reads", async () => {
     const store = memoryStore();
 
-    systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", now: () => AT }, fakePorts().ports, store).request?.(SHA);
+    await systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", now: () => AT }, fakePorts().ports, store).request?.(SHA);
 
     expect([...store.files.keys()]).toEqual([join("/state", DEPLOY_WANTED)]);
   });

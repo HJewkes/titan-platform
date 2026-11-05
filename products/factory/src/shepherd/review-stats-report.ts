@@ -1,5 +1,6 @@
 import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
+import { causeBucket, rereviewLines, rereviewOf, type Rereview } from "./review-stats-rereview.js";
 import { median, p90 } from "./stage-times.js";
 import { isoWeek } from "./stats.js";
 
@@ -8,6 +9,8 @@ interface ReviewRange {
   from?: string;
   to?: string;
   repo?: string;
+  /** Epoch ms splitting fix rounds into before and after; absent means the first scoped round. */
+  sinceScoped?: number;
 }
 
 interface Dist {
@@ -21,6 +24,7 @@ interface Cut {
   n: number;
   unpriced: number;
   usd: Dist;
+  tokens: Dist;
   reviewMinutes: Dist;
   queueMinutes: Dist;
 }
@@ -36,12 +40,21 @@ interface PrRow {
   merged: boolean;
 }
 
+/** A week's scoped fix rounds whose FIX_FIRST was checked, and the out-of-range and repeated items found in them. */
+interface ScopeCheckWeek {
+  checked: number;
+  untagged: number;
+  repeated: number;
+}
+
 interface ReviewReport {
   v: 1;
   at: string;
   range: { from: string | null; to: string | null; repo: string | null };
-  perReview: Cut & { byRepo: Record<string, Cut>; byWeek: Record<string, Cut>; byModel: Record<string, Cut>; byVerdict: Record<string, number> };
+  perReview: Cut & { byRepo: Record<string, Cut>; byWeek: Record<string, Cut>; byModel: Record<string, Cut>; byVerdict: Record<string, number>; byCauseShape: Record<string, Cut> };
   perPr: { n: number; usd: Omit<Dist, "total">; reviewMinutes: Omit<Dist, "total">; rounds: Omit<Dist, "total">; prs: PrRow[] };
+  rereview: Rereview;
+  scopeCheckByWeek: Record<string, ScopeCheckWeek>;
   rows?: ReviewRecord[];
 }
 
@@ -49,6 +62,8 @@ const ReviewSql = z.object({
   run_id: z.string(), round: z.number(), repo: z.string(), pr: z.number().nullable(), head_sha: z.string().nullable(), reviewer: z.string().nullable(),
   session_id: z.string().nullable(), model: z.string().nullable(), requested_at: z.number(), started_at: z.number().nullable(), verdict_at: z.number().nullable(),
   queue_ms: z.number().nullable(), review_ms: z.number().nullable(), verdict: z.string().nullable(), usd: z.number().nullable(), cost_source: z.string().nullable(),
+  input: z.number().nullable(), cache_read: z.number().nullable(), cache_write: z.number().nullable(), output: z.number().nullable(),
+  cause: z.string().nullable(), shape: z.string().nullable(), scoped: z.number().nullable(), scope_untagged: z.number().nullable(), scope_repeated: z.number().nullable(),
 });
 type ReviewSqlRow = z.infer<typeof ReviewSql>;
 
@@ -74,6 +89,9 @@ interface ReviewRecord {
   verdict: string | null;
   usd: number | null;
   costSource: string | null;
+  cause: string | null;
+  shape: string | null;
+  scoped: boolean | null;
 }
 
 const DAY_MS = 86_400_000;
@@ -104,11 +122,15 @@ function dist(values: readonly (number | null)[], scale: (value: number) => numb
   return { p50: scale(median(sorted)), p90: scale(p90(sorted)), mean: scale(total / sorted.length), total: scale(total) };
 }
 
+/** Every token the round billed; null when it was never priced. */
+const tokensOf = (row: ReviewSqlRow): number | null => (row.input === null ? null : row.input + (row.cache_read ?? 0) + (row.cache_write ?? 0) + (row.output ?? 0));
+
 function cut(rows: readonly ReviewSqlRow[]): Cut {
   return {
     n: rows.length,
     unpriced: rows.filter((row) => row.usd === null).length,
     usd: dist(rows.map((row) => row.usd), money),
+    tokens: dist(rows.map(tokensOf), Math.round),
     reviewMinutes: dist(rows.map((row) => row.review_ms), (ms) => tenth(ms / MINUTE_MS)),
     queueMinutes: dist(rows.map((row) => row.queue_ms), (ms) => tenth(ms / MINUTE_MS)),
   };
@@ -142,8 +164,25 @@ function prRows(db: Db, range: ReviewRange): PrRow[] {
 const record = (row: ReviewSqlRow): ReviewRecord => ({
   runId: row.run_id, round: row.round, repo: row.repo, pr: row.pr, headSha: row.head_sha, reviewer: row.reviewer, sessionId: row.session_id, model: row.model,
   requestedAt: isoOf(row.requested_at)!, startedAt: isoOf(row.started_at), verdictAt: isoOf(row.verdict_at), queueMinutes: toMinutes(row.queue_ms),
-  reviewMinutes: toMinutes(row.review_ms), verdict: row.verdict, usd: row.usd, costSource: row.cost_source,
+  reviewMinutes: toMinutes(row.review_ms), verdict: row.verdict, usd: row.usd, costSource: row.cost_source, cause: row.cause, shape: row.shape,
+  scoped: row.scoped === null ? null : row.scoped === 1,
 });
+
+const rereviewInput = (row: ReviewSqlRow) => ({ cause: row.cause, shape: row.shape, scoped: row.scoped, at: row.verdict_at ?? row.requested_at, usd: row.usd, tokens: tokensOf(row) });
+
+function scopeCheckByWeek(rows: readonly ReviewSqlRow[]): Record<string, ScopeCheckWeek> {
+  const weeks: Record<string, ScopeCheckWeek> = {};
+  for (const row of rows.filter((each) => each.scope_untagged !== null || each.scope_repeated !== null)) {
+    const week = (weeks[isoWeek(row.verdict_at ?? row.requested_at)] ??= { checked: 0, untagged: 0, repeated: 0 });
+    Object.assign(week, { checked: week.checked + 1, untagged: week.untagged + (row.scope_untagged ?? 0), repeated: week.repeated + (row.scope_repeated ?? 0) });
+  }
+  return weeks;
+}
+
+const scopeCheckLines = (weeks: Record<string, ScopeCheckWeek>): string[] => {
+  const lines = Object.entries(weeks).map(([week, c]) => `  ${week}  checked ${c.checked}  untagged ${c.untagged}  repeated ${c.repeated}`);
+  return lines.length === 0 ? [] : ["scope checks by week:", ...lines];
+};
 
 const spread = ({ p50, p90: high, mean }: Dist): Omit<Dist, "total"> => ({ p50, p90: high, mean });
 
@@ -158,6 +197,7 @@ export function reviewReport(db: Db, range: ReviewRange, now: number, withRows =
     byWeek: cutsBy(rows, (row) => isoWeek(row.verdict_at ?? row.requested_at)),
     byModel: cutsBy(rows, (row) => row.model ?? "unknown"),
     byVerdict: countBy(rows, (row) => row.verdict ?? "none"),
+    byCauseShape: cutsBy(rows, (row) => `${row.shape ?? "unknown"} ${causeBucket(row.cause)}`),
   };
   const perPr = {
     n: prs.length,
@@ -166,20 +206,29 @@ export function reviewReport(db: Db, range: ReviewRange, now: number, withRows =
     rounds: spread(dist(prs.map((pr) => pr.rounds), tenth)),
     prs,
   };
-  const report: ReviewReport = { v: 1, at: new Date(now).toISOString(), range: { from: range.from ?? null, to: range.to ?? null, repo: range.repo?.toLowerCase() ?? null }, perReview, perPr };
+  const echoed = { from: range.from ?? null, to: range.to ?? null, repo: range.repo?.toLowerCase() ?? null };
+  const rereview = rereviewOf(rows.map(rereviewInput), range.sinceScoped);
+  const report: ReviewReport = { v: 1, at: new Date(now).toISOString(), range: echoed, perReview, perPr, rereview, scopeCheckByWeek: scopeCheckByWeek(rows) };
   return withRows ? { ...report, rows: rows.map(record) } : report;
 }
 
 const usdText = (value: number | null): string => (value === null ? "-" : `$${value.toFixed(2)}`);
 const minText = (value: number | null): string => (value === null ? "-" : `${value}m`);
-const distLine = (label: string, d: Dist, text: (value: number | null) => string): string => `  ${label.padEnd(10)} p50 ${text(d.p50)}  p90 ${text(d.p90)}  mean ${text(d.mean)}  total ${text(d.total)}`;
+const distLine = (label: string, d: Dist, text: (value: number | null) => string): string =>
+  `  ${label.padEnd(10)} p50 ${text(d.p50)}  p90 ${text(d.p90)}  mean ${text(d.mean)}  total ${text(d.total)}`;
 
 function cutLines(title: string, cuts: Record<string, Cut>): string[] {
-  const lines = Object.entries(cuts).map(([name, c]) => `  ${name}  reviews ${c.n}  usd p50 ${usdText(c.usd.p50)} p90 ${usdText(c.usd.p90)} total ${usdText(c.usd.total)}  review p50 ${minText(c.reviewMinutes.p50)} p90 ${minText(c.reviewMinutes.p90)}`);
+  const lines = Object.entries(cuts).map(([name, c]) => {
+    const usd = `usd p50 ${usdText(c.usd.p50)} p90 ${usdText(c.usd.p90)} total ${usdText(c.usd.total)}`;
+    return `  ${name}  reviews ${c.n}  ${usd}  tokens p50 ${c.tokens.p50 ?? "-"} p90 ${c.tokens.p90 ?? "-"}  review p50 ${minText(c.reviewMinutes.p50)} p90 ${minText(c.reviewMinutes.p90)}`;
+  });
   return lines.length === 0 ? [] : [`${title}:`, ...lines];
 }
 
-const prLine = (pr: PrRow): string => `  ${pr.repo}#${pr.pr}  rounds ${pr.rounds}  ${usdText(pr.usd)}  review ${minText(pr.reviewMinutes)}  queue ${minText(pr.queueMinutes)}  ${pr.merged ? `merged after ${minText(pr.registeredToMergeMinutes)}` : "not merged"}`;
+const prLine = (pr: PrRow): string => {
+  const merged = pr.merged ? `merged after ${minText(pr.registeredToMergeMinutes)}` : "not merged";
+  return `  ${pr.repo}#${pr.pr}  rounds ${pr.rounds}  ${usdText(pr.usd)}  review ${minText(pr.reviewMinutes)}  queue ${minText(pr.queueMinutes)}  ${merged}`;
+};
 
 /** Text mode: the per-review distribution, its cuts, and the ten PRs whose reviews cost most. */
 export function formatReviewReport(report: ReviewReport): string {
@@ -189,7 +238,9 @@ export function formatReviewReport(report: ReviewReport): string {
   const lines = [
     `reviews ${r.n}  unpriced ${r.unpriced}  verdicts ${verdicts}`,
     distLine("usd", r.usd, usdText), distLine("review", r.reviewMinutes, minText), distLine("queue", r.queueMinutes, minText),
-    ...cutLines("by repo", r.byRepo), ...cutLines("by week", r.byWeek), ...cutLines("by model", r.byModel),
+    ...cutLines("by repo", r.byRepo), ...cutLines("by week", r.byWeek), ...cutLines("by model", r.byModel), ...cutLines("by shape and cause", r.byCauseShape),
+    ...rereviewLines(report.rereview),
+    ...scopeCheckLines(report.scopeCheckByWeek),
     `PRs ${report.perPr.n}  usd p50 ${usdText(report.perPr.usd.p50)} p90 ${usdText(report.perPr.usd.p90)}  rounds p50 ${report.perPr.rounds.p50 ?? "-"} p90 ${report.perPr.rounds.p90 ?? "-"}`,
     "top 10 PRs by review cost:", ...report.perPr.prs.slice(0, 10).map(prLine),
   ];

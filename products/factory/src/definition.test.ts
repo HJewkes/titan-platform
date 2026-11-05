@@ -1,7 +1,6 @@
 import type { AuthorizeRequest, WorkflowContext } from "@titan-design/workflow";
 import { describe, expect, it, vi } from "vitest";
-import { defineWorkflow, guardedContext, orphanSafe } from "./definition.js";
-import { SHEPHERD_STEPS } from "./shepherd/shepherd-steps.js";
+import { defineWorkflow, guardedContext } from "./definition.js";
 
 const REQUEST: AuthorizeRequest = { action: "merge", subject: { repo: "example/widgets", pr: "7", headSha: "a1b2c3" } };
 
@@ -54,14 +53,15 @@ describe("guardedContext authorize", () => {
   });
 });
 
-describe("orphanSafe", () => {
-  const shepherd = orphanSafe(defineWorkflow({ name: "shepherd-pr", steps: SHEPHERD_STEPS, run: async () => undefined }));
+describe("guardedContext registry", () => {
+  const registry = { entries: [{ name: "approve", op: "assisted" as const }] };
+  const both = defineWorkflow({ name: "governed", steps: [{ id: "approve", kind: "assisted" }, { id: "merge-authorize", kind: "authorize" }], run: async () => undefined });
 
-  it("allows dropping the read-only land and observe steps, matched by family", () => {
-    expect(["ci-wait:r3:17", "land-rules:r4", "base-check:r4:0", "sh-observe:456a09"].filter(shepherd)).toHaveLength(4);
-  });
+  it("A17: a call to an unregistered step id fails the run", async () => {
+    const ctx = fakeContext();
 
-  it("refuses steps that write, and ids no declaration covers", () => {
-    expect(["merge:r4:0", "update-branch:r3:16", "rerun:2", "approve-merge", "sh-landed", "ci-wait-long:1"].filter(shepherd)).toEqual([]);
+    await expect(guardedContext(ctx, both, registry).authorize("merge-authorize", REQUEST)).rejects.toThrow('authorize("merge-authorize") is not a registered step');
+
+    expect(ctx.authorize).not.toHaveBeenCalled();
   });
 });

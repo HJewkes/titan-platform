@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "export names the companion with the video's stem",
+      "file": "products/explainer/src/workflow/pipeline.ts",
+      "find": "[\"companion\", COMPANION_FILE]",
+      "replace": "[\"companion\", `${theater.stem}.companion.md`]",
+      "kills": [
+        "companion links through export fills the card's link at resolve and exports companion.md beside the video, where the anchor exists",
+        "companion links through export exports the companion as companion.md even when the host names it with the video's stem"
+      ]
+    },
+    {
+      "name": "export skips a companion the host does not list",
+      "file": "products/explainer/src/workflow/pipeline.ts",
+      "find": "const companion = artifacts.companion !== undefined || theater.files.companion !== undefined;",
+      "replace": "const companion = theater.files.companion !== undefined;",
+      "kills": [
+        "companion links through export fills the card's link at resolve and exports companion.md beside the video, where the anchor exists"
+      ]
+    }
+  ]
+}

@@ -44,6 +44,9 @@ titan-factory bot-token scan [--json]                         # A17: name every 
 
 `--db <path>` picks the database. Otherwise `TITAN_FACTORY_DB`, then `dbPath` in
 `$XDG_CONFIG_HOME/titan-factory/config.json`, then `$XDG_STATE_HOME/titan-factory/factory.sqlite3`.
+`--factory-config <path>` (or `TITAN_FACTORY_CONFIG`) names the config file itself and beats
+`$XDG_CONFIG_HOME`; an empty value is ignored. Use it to run a second, isolated instance on its own
+config, database and port when `XDG_CONFIG_HOME` cannot be changed.
 Owner-specific bindings live in that config file, never in this repo.
 
 ### A host whose database is frozen: `remoteFactory`
@@ -68,10 +71,14 @@ run `titan-factory service uninstall` there first.
 `gate resolve` records who answered: the owner at a terminal (`owner-terminal`, your OS user, channel
 `factory-cli`). A shell with `AGENT_CHAT_AGENT_ID` set may be an agent or the owner's `!` command in
 an agent-chat session, so there the command asks for owner presence first: the macOS Touch ID or
-login password dialog, reading `resolve gate <gate id>: <decision> at <head sha>`. A confirmed dialog
-resolves as `owner-terminal` and stores the helper's proof id as `confirmEvent`. A cancelled dialog,
-a missing helper or output that is not a UUID resolves as `coordinator`, named by `AGENT_CHAT_NAME`,
-which hitl refuses, so the command exits 1 and the gate stays pending. The command exits 2 without a
+login password dialog, reading `resolve gate <gate id>: <decision> at <head sha>`. The dialog signs a
+`titan-factory.gate-presence` statement for that gate and answer with the owner's Secure Enclave key.
+The command verifies it against `/etc/titan-factory/owner-keys`, records it in the gate batch ledger
+and resolves as `owner-terminal` with `confirmEvent: "gate-batch:<id>"`. The gate store's `authorize`
+admits that record once, for that gate only, after re-checking its signature, so a made-up
+`confirmEvent` on channel `factory-cli` is refused. A cancelled dialog, a missing helper or key, or a
+signature the key ring does not verify resolves as `coordinator`, named by `AGENT_CHAT_NAME`, which
+hitl refuses, so the command exits 1, prints why, and the gate stays pending. The command exits 2 without a
 dialog when the gate id, `decision` or `headSha` has an unexpected shape, so no field can break or
 hide a line of the dialog. A repeat of an answered resolve exits 0 before any dialog. A shell with no
 agent marker still resolves as `owner-terminal` with no dialog. `CLAUDECODE` does not count, because
@@ -80,15 +87,19 @@ or a helper path.
 
 Some answers skip the dialog and resolve as `coordinator`. Owner decision 2026-10-05 (TP-1720) lets a
 coordinator retry a stuck-behind gate. Owner decision 2026-10-07 (TP-1904, "mechanical only") adds three
-gate classes, each only on evidence the command reads fresh through the GitHub port at resolve time:
+gate classes, owner decision 529 (2026-10-22, TP-4048) a fourth, and owner decision 551 (2026-10-28,
+TP-4285) a main-ci-timeout acknowledgement, each only on evidence the command
+reads fresh through the GitHub port at resolve time:
 
 | Gate and answer | Evidence the command reads |
 |---|---|
 | `approve-merge`: `merge` at the gate's own head | the run's recorded merge decision at that head is `authority/MRG-AU`, and its reason lists only mechanical unmet MRG-AU-RV conditions (`verdict-merge-at-head`, `required-contexts-green`, `no-non-green-run`, `merge-tree-clean`), so a protected path (CODEOWNERS, docs/CODEOWNERS, .github/CODEOWNERS, .gitmodules, a non-canonical path), a missing seat grant, a frozen repo, a tainted request or a reason it cannot read stays the owner's; the seat policy is `auto`, the registration is not held and the repo is not frozen; the reviewer's `sh-await-verdict:<head>` result is MERGE at exactly that head; every required check of the base has a successful run at the head; the PR is open at the head and its `mergeable_state` reads as MERGEABLE |
 | `main-red`: `acknowledged`, `main-frozen`: `unfreeze` | the PR merged as the gate's merge sha, and the base branch's tip contains that sha with every judged check passing (the base branch's required contexts when it has them, else every Actions run) |
-| `abandon` on `approve-merge`, `stuck-behind`, `sh-sent-back` or `ci-failed` | the PR the gate names is merged or closed; an `approve-merge` abandon also needs the same non-visual merge decision as a merge |
+| `main-ci-timeout`: `acknowledged` (owner decision 551, TP-4285) | the same read, but only against the base branch's required contexts: a base with none is no evidence, as for Shepherd's own clear of the gate |
+| `abandon` on `approve-merge`, `stuck-behind`, `sh-sent-back` or `ci-failed` | the PR the gate names is merged or closed |
+| `sh-sent-back`: exactly `{"decision":"await-new-head"}` | the PR the gate names is open and its head is the head the gate's prompt asks about |
 
-The evidence (verdict step, check run ids, mergeable read, green main sha and merge base, or PR state)
+The evidence (verdict step, check run ids, mergeable read, green main sha and merge base, or PR state and head)
 is stored on the gate as `resolvedEvidence`, and the gate store re-checks it against the gate's own
 prompt, schema and brief before it admits the coordinator, so an audit can re-run the same check later.
 Any read that fails or comes back partial, a pending or red check, an unknown mergeable, a payload or PR
@@ -145,7 +156,8 @@ the first 16 hex characters of sha256 over the SPKI DER. `owner-presence sign --
 statement bytes on stdin, shows the dialog with the reason, and prints a base64url DER ECDSA P-256
 SHA-256 signature that `crypto.verify("sha256", bytes, { key: pem, dsaEncoding: "der" }, sig)`
 accepts. `--tag <tag>` picks `<tag>.se` instead, so a probe key never touches the owner key. In code,
-`signStatement(bytes, reason)` runs `sign` through the same path checks as `confirmOwner`.
+`signStatement(bytes, reason)` runs `sign` after the path checks above, and `ownerKeyId()` runs
+`pubkey --id` after the same checks.
 
 `resume` hydrates every unfinished run, drives each until it completes, fails, parks as
 `recovery_required`, or waits on a pending gate, then releases the runs and exits. A run
@@ -228,12 +240,24 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
   the registration names a `--slice`. It appends `closed by Shepherd: <owner/repo>#<n> at <merge sha> merged` to the
   task's notes first, skips a task already done (so a replay adds no second note), and records an unreachable
   active-work as a caveat on the step's result instead of failing the run.
+- `shepherd.taskClose` picks when that close happens (TP-4274). `keep`, the default when absent, is the rule above.
+  Under `last-slice-only` an unsliced PR closes its task only when it is the last slice: its body has a line
+  `Last slice: yes` (any case), or it was registered with `--last-slice`, or no other open PR is registered with the
+  same `--task` and the body has no `Last slice: no` line. Otherwise the task stays open and its notes gain
+  `slice merged: <owner/repo>#<n> at <merge sha>`. A `--slice` registration closes the task only on a last-slice
+  marker, after noting its slice landed. An unreadable PR body or open-PR list leaves the task open in this mode.
+  Every close goes through active-work's `task.done`, which writes `done_at`; the only reopen path is
+  `active-work task edit <slug> <id> status open`.
+- A slice list says nothing of a task's other `done_when` clauses, so two structural checks keep such a task open
+  (TP-4714). Under `keep`, a `--slice` PR closes its task only when it completes the list: once every slice had landed
+  before the PR, only `--last-slice` closes it. A task tag `hold:<reason>` holds against every merge in either mode,
+  `--last-slice` included. Either way the task's notes gain `task left open:` and what holds it.
 - `list` and `timeline` return the `WatchRow` and `PrTimeline` shapes in
   `src/shepherd/view.ts`, which the factory UI reads.
 - `hold` and `release` write the registration's hold, which every merge route checks.
   A hold's class is the text of its reason before the first colon (`--reason "g10-review: <detail>; <task>"`);
   `shepherd hold` refuses, with exit 65 and before anything is held, a reason whose class is not one of `serve-down`,
-  `stalled`, `no-reviewer`, `run-failed`, `visual-gate2`, `g10-review`, `g10-adversary`, `owner-asked` or `owner-review`, and a reason in one of the
+  `stalled`, `no-reviewer`, `run-failed`, `visual-gate2`, `g10-review`, `g10-adversary`, `owner-asked`, `owner-review` or `lan-gates`, and a reason in one of the
   first four (factory-defect) classes that cites no task ID (`src/shepherd/hold-reason.ts`). Two classes carry the G10 rule:
   - `g10-review` releases itself unless it names a `--reviewer` or has no hold event on record (an unreadable history
     counts as none), since either may be a review the owner assigned. When the run's `sh-await-verdict` at the PR's head, read fresh, is a MERGE from the
@@ -249,6 +273,15 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
 
   - `owner-review` records that the owner assigned the review to a person; no Shepherd MERGE releases it, only
     `shepherd release`.
+  - `lan-gates` waits on gates that cannot run in GitHub Actions. The reason names them,
+    `lan-gates: <gate>, <gate>; <detail>`, and `shepherd hold` refuses with exit 65 a list that is empty, badly spelled
+    or names a gate never declared in `shepherd_external_gate` (migration 48, `src/shepherd/gate-evidence.ts`). The
+    factory appends each gate's conclusion at a head to `shepherd_gate_evidence`. The hold is never lifted by evidence:
+    a hold read at the PR's head, as read just then, stands aside while every named gate's newest record at exactly that
+    head is `success`, so a push to a new head is held again until its own gates are green. A record at any other head, a
+    red newest record, or a hold that names a `--reviewer` keeps it held. `shepherd release` still lifts it by hand. Merge
+    order and the restart drain read the same clearance at the head the run's merge step last read CI at, so a run green
+    there keeps ordering its peers and a restart waits on its merge, as with a satisfied `g10-review` hold.
 
   Any other class waits for `shepherd release <pr> --head <sha>`. While a `g10-adversary` hold sits over a
   hold of another class, `release` must name the hold it lifts with `--class <class>`.
@@ -269,11 +302,15 @@ stays the local `titan-factory gate resolve`.
 `shepherd owner-release <owner/repo#N> --head <sha>` is the owner's release of an `owner-asked` hold, and the only
 verb that lifts one. Like `gate resolve`, it is local: it opens this host's database and is not in
 `SHEPHERD_COMMAND_MAP`, so no registry, MCP or `/rpc` caller reaches it. Its resolver is `ownerResolver` in
-`src/gate-resolve.ts`: a shell agent-chat launched (`AGENT_CHAT_AGENT_ID` set) needs the owner's presence
-proof and is refused with exit 77 without one; no coordinator allowance or evidence admits it. Any other shell
-is `owner-terminal`. It refuses, writing nothing, a PR not at `--head` and a run with no `owner-asked` hold
-(both exit 65), and lifts only the owner slot, so any other hold stays in force. The release event's actor is
-`owner-terminal:<user>`, plus `proof <id>` when presence was proved.
+`src/gate-resolve.ts`: a shell agent-chat launched (`AGENT_CHAT_AGENT_ID` set) needs the owner to sign a
+`titan-factory.hold-release` statement for this run, PR, head and owner-asked hold, and is refused with exit 77
+without one; no coordinator allowance or evidence admits it. The signed statement is recorded in the gate batch
+ledger, and `ownerRelease` re-verifies that record against the owner key ring and the live hold before it lifts
+anything (`src/owner-release-presence.ts`), then spends it. A bare UUID, a record signed by any other key and a
+statement for another PR, head or hold are all refused with exit 77. Any other shell is `owner-terminal`. It
+refuses, writing nothing, a PR not at `--head` and a run with no `owner-asked` hold (both exit 65), and lifts only
+the owner slot, so any other hold stays in force. The release event's actor is `owner-terminal:<user>`, plus
+`proof gate-batch:<id>` when the owner signed.
 
 ### Escalations
 
@@ -343,8 +380,9 @@ implementer, as for one on a model its pool no longer runs, the same wake spawns
 instead, under the same spawn load gate. Other failures are not refusals and still reach the
 owner. If agent-chat refuses the successor too, a FIX_FIRST or NO_REPRO send-back is held:
 `sh-wake-implementer` records the refusal and `held`. A held FIX_FIRST then takes the route of a
-fixer that exits with no push: `sh-exit-notice` tells the repo's seat why no fixer started, and
-the run waits for a new head with no owner gate open. When that notice is not sent, and for a
+fixer that exits with no push: `sh-held-verdict` posts the FIX_FIRST findings as one PR comment,
+marked per head so a repeat refusal posts no second one, and `sh-exit-notice` tells the repo's seat
+why no fixer started, with the findings, and the run waits for a new head with no owner gate open. When that notice is not sent, and for a
 held NO_REPRO, `sh-sent-back` opens and names the refusal. While the run waits, the watch row's
 next action and the wake's timeline entry name the refusal; the row says the seat was told only when
 `sh-exit-notice` recorded a sent notice after that wake. A ci-red or conflict wake records no `held`
@@ -399,7 +437,10 @@ Its sources:
 - Shepherd rows and pending gates, from `titan-factory serve` when one answers, else the database.
 - `agent-chat digest --json --prs --since <window>`, with a 20 s timeout.
 - Each seat's `queues/<seat>.md` numbered items under `## Morning queue (owner only)`.
-- Each seat's `logs/<seat>/dispatch.jsonl`: spawns and estimated dollars.
+- `agent-chat agent ls --json`, the broker roster: Seats counts, per coordinator, the runs merged in the window and the
+  agents spawned in it. A coordinator is the top of an agent's spawned-by chain, the seat the owner started; a merge
+  counts for the coordinator above its run's implementer.
+- `$AGENT_CHAT_HOME/pace.json`, written by agent-chat's seat watchdog: Spend lists each pool's week and 5h use.
 
 A source that fails becomes one Gaps line and the rest still render. An ask that names the
 same PR or run id as an earlier one is dropped, so a factory gate wins over a queue line
@@ -434,10 +475,11 @@ on an anonymous topic, so keep it in the owner's config and out of logs.
 ```
 
 Every key is optional. `outDir` defaults to `$XDG_STATE_HOME/titan-factory/digests`, and no
-`icloudDir` means no copy, and no `push` means no push. `push.tokenFile` is optional. `queuesDir` and `logsDir` default to `queues` and `logs` beside
-`shepherd.seatsDir`. `queuesDir` also sets the directory the `needs` owner-queue reader reads;
+`icloudDir` means no copy, and no `push` means no push. `push.tokenFile` is optional. `queuesDir` defaults to `queues` beside
+`shepherd.seatsDir`; `logsDir` is still accepted and no longer read. `queuesDir` also sets the directory the `needs` owner-queue reader reads;
 unset, that reader uses `<active root>/claude-channels/sources/autonomy/queues`. Paths must be
-absolute.
+absolute. `consoleOrigin` (for example `https://console.example.ts.net`) is the origin of the digest's
+stale-gate alarm links; it must be https and not loopback, and without it the alarm prints with no links.
 
 ## Owner-queue sources
 
@@ -489,14 +531,83 @@ never as a zero. The run stops at the `audit-review` gate for the area owner. Af
 `{"decision":"publish"}`, `titan-factory resume` writes the report to `--out`. Only `mode: initial` runs for now;
 a reaudit needs the drift check. Tests inject `AuditPorts`, so no test calls a model.
 
+## Build surface
+
+`build-surface` (`src/build-surface/`) builds a surface slice by slice from a repo's build spec: a markdown file
+whose YAML front matter is `titan.build-surface/v1` (`src/build-surface/spec.ts`). The spec names everything
+repo-specific: the clone, the base branch, the task, the gate command and its evidence path, optional preview,
+preflight and deploy commands, optional validator commands for targets, reports and reviews, the implementer and
+reviewer profiles, the run and slice budgets, the fix-round caps and the slices with their dependencies. The
+workflow itself names no repo.
+
+```
+titan-factory build-surface start owner/repo --spec docs/BUILD-SPEC.md
+titan-factory build-surface status owner/repo
+titan-factory build-surface abandon <run> --reason "PR merged by hand"
+```
+
+`start` checks the spec, then hands the run to serve if one answers (`factory.build-surface.start`), else drives
+it in-process until it waits on a human. A repo has at most one unfinished run; a second start returns it.
+`abandon` (`factory.build-surface.abandon`) ends a run whose PR was merged or closed outside Shepherd: it cancels the run's
+open gates with the actor and reason, answering none of them. It refuses unless every PR the run opened is merged or closed, and names the open one.
+Start an in-process run on the agent-chat broker's host: an off-host spawn is refused worktree isolation, and the Mac's config pins an old agent-chat.
+
+`bs-plan` reads the spec. Slices run in waves through `mapItems`, at most `concurrency` at a time, and a slice
+starts only once every slice it depends on has merged. Per slice: `bs-preflight` (the spec's command; exit 0 or 10, "re-extract", proceeds, since extraction runs at every slice start, and any other exit stops the slice), an optional one-turn
+`bs-extract` (claude-print) checked by `bs-extract-check`, `bs-branch`, then `bs-implement`, an agent-chat
+implementer on the spec's profile with the role `implementer` and the slice's task on its roster row. Each round
+its report (the last fenced JSON block of its final message, `ImplementerReportSchema`) goes to
+`bs-report-check`: the head must be the branch's remote head and the repo's validator must accept it. Then
+`bs-gates` runs the gate command with `BS_SLICE`, `BS_HEAD` and `BS_EVIDENCE` and reads one `<gate>.json` per gate
+from the evidence directory; exit 0 and every record passing at that head is green. Green gates go to
+`bs-preview` (and once per slice the owner's `device-check:<slice>` gate, when the spec names a device step), then
+`bs-review`, a read-only reviewer at that head whose report `bs-review-check` validates. Anything red resumes the
+same implementer (`bs-fix`) with the failing evidence as data. A red gate is routed first by its record's `failure.class`
+(`src/build-surface/failure-route.ts`):
+
+| `failure.class` | Route |
+| --- | --- |
+| `code`, absent or unrecognized | `bs-fix`, under the fix caps |
+| `infra` | `bs-health` (the spec's optional `gate.health`), one gate rerun, then the owner's `infra-park:<slice>` gate; no fix round is counted |
+| `gate-broken`, `spec` | stop the slice and file a task (`bs-file-task`) |
+
+When records disagree, stop beats retry and retry beats fix. A record's `failure.signature` groups failures through
+`@titan-design/cluster`: one task per group, tagged so a repeat of the same failure finds that task instead of filing another. Then `bs-pr`, `bs-shepherd` (registers the PR with
+the implementer's name, so Shepherd's wake and successor logic find that lineage), `bs-await-land` and, after
+`deploy-approve:<slice>` when `approve` is set, `bs-deploy`. Every slice merged opens `final-walk`.
+
+A slice may carry its own `preview` and `deploy` booleans. Absent inherits the spec. `false` skips that step (and, for
+deploy, its approval gate) for the slice only, and the slice's outcome lists it in `skipped`, so a skip reads as
+different from a step the spec never had. `true` only matters where the spec enables the step: a slice cannot turn on a
+preview or deploy the spec leaves out, so there it behaves as absent and nothing is recorded.
+
+A fresh `start` over a branch a stopped run left behind picks it up: when `bs-branch` finds the slice branch past
+its base and every gate record in the evidence directory for its head passing, the slice skips `bs-implement` and
+the gate rerun, and round 0 goes on to `bs-preview` and `bs-review` at that head. A branch with any failing or missing
+record is implemented again on top of what it holds. A spawn or resume the spawn gate defers (load, memory pressure,
+the admit window) waits and asks again, from one minute doubling to ten, for up to an hour, before it fails the step.
+
+Stops, all made by the workflow: a rejected report, review or target set goes back once, and a second rejection
+stops the slice; so does one gate failing `noImprovementRounds` rounds without its score improving, more than
+`maxFixRounds` fix rounds, spend over `sliceBudgetUsd`, Shepherd stopping the PR, or a moved head with red gates.
+A report whose `newPrimitivesRequested` is not empty ends its slice at once with the non-retryable stop
+`needs component: <item1>, <item2>` (items in the order given); an empty or absent list changes nothing.
+Two stopped slices, or the run budget, stop the loop and fail the run with what merged and why the rest did not.
+A gate command exiting 3 twice (a broken sensitivity proof) or a failed deploy cancels the run. `bs-implement`,
+`bs-fix` and `bs-deploy` park on a restart; every other step repeats.
+
+Not yet: the agent-chat steps report no cost, so the budgets count only claude-print spend; `final-walk`'s
+`changes` records the notes but files no tasks; there is no ledger step; and the Shepherd calls go to serve over
+loopback on its default port.
+
 ## Install as a LaunchAgent
 
 ```sh
-pnpm factory:install                  # pnpm install, build factory and its workspace deps, link the bin
+pnpm factory:install                  # pnpm install, build factory and session-miner with their workspace deps, link both bins
 titan-factory service install --mcp   # write the plist, load it, wait for /health, register the MCP endpoint
 ```
 
-`pnpm factory:install` links `~/.local/bin/titan-factory` to `products/factory/dist/bin.js` in
+`pnpm factory:install` links `~/.local/bin/titan-factory` to `products/factory/dist/bin.js` and `~/.local/bin/titan-miner` to `products/session-miner/dist/bin.js` in
 this checkout (`scripts/factory-link-bin.mjs`). The link is a path, so a rebuild needs no
 relink, and it needs neither sudo nor `pnpm setup`. A link that already points at another
 checkout is left alone unless you pass `--force`; `--bin-dir <dir>` picks another directory. The
@@ -537,8 +648,8 @@ checkout that should serve, not from a worktree that will be removed.
 | Verb | What it does | Exit 0 when |
 | --- | --- | --- |
 | `service status [--port <n>]` | Prints loaded or not, the pid, and a `/health` summary | `/health` answers and its `github` field is `ok` |
-| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`unreadable` (on Linux, `systemctl --user show` itself failed; the line carries its stderr, `detail` its `exitCode` and `stderr`), `not loaded`, `stale pid` (the pid is dead, a foreign pid answers the port, or there is no process), `crash loop`, `unresponsive` (the pid is alive but every `/health` probe timed out; `detail.probeLatenciesMs` lists each), `stale build`, `GitHub down`, `stale index.lock` (the service checkout's `.git/index.lock` with no process holding it, older than 10 minutes, named by path and age and never removed), `deploy stalled` (`/health`'s deploy block has its alarm up), then `tick failing` or `tick stale` from agent-chat's `$AGENT_CHAT_HOME/burndown-status.json`, default `~/.agent-chat/burndown-status.json`, which an absent file skips; a heartbeat older than 3 x its `intervalSeconds` is stale), then `no hub seat` (the config sets no `shepherd.hubSeat`, so a deploy alarm reaches no seat), then the advisory `stale CLI` (the `titan-factory` on PATH, resolved through symlinks, carries a baked build behind the deploy checkout's HEAD and is not the deploy bin itself; `detail` names `installedCli`, `installedBuild` and `checkoutHead`; it leaves `ok` true and exits 0, because callers stop work on a failing check and a restart does not change the CLI); `--json` adds `cause`, `pid`, `health` and `detail`; it always prints within 20 s (`SERVICE_CHECK_BUDGET_MS`) | `/health` answers from the launchd or systemd pid with `github` `ok`, deploys are not stalled, the burndown tick is not failing or stale, and a hub seat is configured; a `stale CLI` alone still exits 0 |
-| `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until `/health` lists no busy run, clears a foreign `titan-factory serve` off the port, restarts without blocking on the stop and fences a process that outlives it (see [The restart fence](#the-restart-fence)), then the same `/health` wait as install | the new process answers with `github` `ok` |
+| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`unreadable` (on Linux, `systemctl --user show` itself failed; the line carries its stderr, `detail` its `exitCode` and `stderr`), `not loaded`, `stale pid` (the pid is dead, a foreign pid answers the port, or there is no process), `crash loop`, `unresponsive` (the pid is alive but every `/health` probe timed out; `detail.probeLatenciesMs` lists each), `stale build`, `GitHub down`, `stale index.lock` (the service checkout's `.git/index.lock` with no process holding it, older than 10 minutes, named by path and age and never removed), `deploy stalled` (`/health`'s deploy block has its alarm up), then `tick failing` or `tick stale` from agent-chat's `$AGENT_CHAT_HOME/burndown-status.json`, default `~/.agent-chat/burndown-status.json`, which an absent file skips; a heartbeat older than 3 x its `intervalSeconds` is stale), then `no hub seat` (the config sets no `shepherd.hubSeat`, so a deploy alarm reaches no seat), then the advisory `stale CLI` (the `titan-factory` on PATH, resolved through symlinks, carries a baked build behind the deploy checkout's HEAD and is not the deploy bin itself; `detail` names `installedCli`, `installedBuild` and `checkoutHead`; it leaves `ok` true and exits 0, because callers stop work on a failing check and a restart does not change the CLI); `--json` adds `cause`, `pid`, `health` and `detail`; when `/health`'s `deployPending` carries a pacer `waiting`, the line, whatever its cause, ends with `; deploy <sha> waits: <why> until <time>` (no `until` for the pause) and `detail` adds `deployWaitSha`, `deployWaitWhy` and `deployWaitUntil` (null when the wait has no end); it always prints within 20 s (`SERVICE_CHECK_BUDGET_MS`) | `/health` answers from the launchd or systemd pid with `github` `ok`, deploys are not stalled, the burndown tick is not failing or stale, and a hub seat is configured; a `stale CLI` alone still exits 0 |
+| `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until the runs `/health` listed busy at the start clear, clears a foreign `titan-factory serve` off the port, restarts without blocking on the stop and fences a process that outlives it (see [The restart fence](#the-restart-fence)), then the same `/health` wait as install | the new process answers with `github` `ok` |
 | `service deploy [--expect <sha>] [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Fast-forwards the service checkout, rebuilds the factory closure when the range touches it, restarts drained, and restores `dist` on failure | the target is deployed, already deployed, or skipped as untouched |
 | `service uninstall` | Boots the job out when loaded, then removes the plist | the job is unloaded |
 | `service plist [--port <n>] [--node <path>]` | Prints the plist, or the unit on Linux, and touches nothing | always |
@@ -578,6 +689,9 @@ and exit codes as on macOS. A missing unit reads as exit 0 with `LoadState=not-f
 `not loaded`; a non-zero exit from `systemctl --user show` (no user bus because
 `XDG_RUNTIME_DIR` is unset, a permission error, a timeout, no `systemctl`) is `unreadable`,
 never `not loaded`, since the unit may well be installed.
+`service install` (including `--dry-run`) and `service uninstall` refuse on that same failure with
+systemctl's stderr (or `exit N`) and the user-bus remedy, run no mutating `systemctl` call and touch no
+file, and `service status` prints `<unit>: unreadable: ...` in place of `not loaded`.
 
 ### The restart fence
 
@@ -607,10 +721,13 @@ on port 7410`.
 does not rewrite it, so run `titan-factory service install` once after the release that adds it.
 That install restarts serve.
 
-`service restart` drains first. It polls `/health` every 5 s until its `busy` list is
-empty, and prints the busy runs once a minute. A run is busy when it is `running` and its
+`service restart` drains first. It polls `/health` every 5 s until no run that was busy at its
+first answer is still busy, and prints the busy runs once a minute. Serve keeps admitting review
+and merge steps during the drain, so a run that turns busy later does not hold the restart, and
+the drain names it instead; a park-routed step holds the restart whenever it is busy. A run is busy when it is `running` and its
 current step is in Shepherd's `review` or `merging` phase (`sh-await-verdict` included), or
-its step's route has `onRestart: "park"`. When `--drain-timeout` passes (default `45m`), the
+its step's route has `onRestart: "park"`. An `sh-review` step whose spawn the spawn gate still
+queues is not busy: it has started no reviewer, and it asks again after the restart. When `--drain-timeout` passes (default `45m`), the
 restart goes ahead, because every Shepherd step repeats safely. A park-routed step that is still
 busy refuses the restart instead, because the restart would leave its run `recovery_required`;
 `--force` restarts anyway. `--no-drain` checks `/health` once and does not wait. A service
@@ -760,6 +877,8 @@ a minute, with a 10 s timeout, so a health request never waits on gh.
 | `src/bot-token-fingerprint.ts`, `src/bot-token-scan.ts`, `src/cli-bot-token.ts` | serve's published bot-token fingerprint, the A17 leak scan over its injectable places, and the `bot-token scan` verb (see The bot token's A17 leak scan) |
 | `src/bot-token-expiry.ts` | the bot client's read of GitHub's token-expiration header: `/health.bot.expiresAt` and the 14-day ops alarm (see The bot token's expiry alarm) |
 | `src/test-support/crash.ts` | Crash harness: host A with a frozen clock hangs in a step and never releases its lease; host B, clocked past that lease, takes the run over |
+| `src/markers/marker-table.ts` | The v9.1 marker table (migration 49), shadow-only: no live writer or reader yet, and `workflow_run.step_results` stays authoritative. One row per (item, fact, pin class, pin); version and digests are columns, and the highest id at an identity is current. Triggers refuse UPDATE, DELETE and REPLACE, and refuse any marker for an item that has a reverted `landed` marker. Read values and outputs live in `factory_marker_blob` (inline up to 256 KB, a file path above); `factory_marker_root` holds the eval rows that GC keeps as roots |
+| `src/markers/marker-store.ts`, `src/markers/blob-store.ts` | The marker table's store, still with no caller. `writeMarker` appends a row and puts every read value and the output through `putBlob` by content address: up to 256 KB inline, larger as a file `<db dir>/marker-blobs/<hex digest>` written by temp file and rename, the same content stored once. Each write passes the capability guard first, and a store with no guard refuses. `readMarkerValues` names the blobs that are gone instead of throwing |
 
 ## GitHub event sources config
 
@@ -802,14 +921,15 @@ Two keys under `shepherd` in the config file turn the review phase on. Both are 
 | `shepherd.agentChatBin` | Absolute path of the `agent-chat` executable. Required when `review` or `fixer` is set. Without it a red main spawns no fixer |
 | `shepherd.review.profile` | The one agent-chat profile a reviewer is spawned with. The profile is the reviewer's tool grant |
 | `shepherd.review.configDir` | Optional. The Claude config directory of the reviewer; absent means agent-chat's default. Must be an absolute path under the agent's home, which agent-chat refuses to spawn outside of |
-| `shepherd.review.fallbackConfigDirs` | Optional list. Claude config directories a review moves to, tried in order, while `review.configDir` is out of usage; an account marked exhausted is skipped. Same rules as `review.configDir`. Absent means a review whose account is exhausted holds and alerts only |
+| `shepherd.review.fallbackConfigDirs` | Optional list. Claude config directories a review moves to, tried in order, while `review.configDir` is out of usage; an account marked exhausted is skipped. A reviewer or fixer spawn the broker refuses with `reviewer_account_limit` is retried on each later account in turn (TP-4507). Same rules as `review.configDir`. Absent means a review whose account is exhausted holds and alerts only |
 | `shepherd.review.verdictTimeoutMs` | Optional, default 30 minutes. How long `sh-await-verdict` waits for the reviewer's verdict before it answers `none` |
 | `shepherd.review.sessionStartTimeoutMs` | Optional, default 5 minutes. How long `sh-review` waits for the spawned reviewer's session to show on the roster before it answers `none` |
 | `shepherd.review.codewatchRepos` | Optional `owner/name` list. For these repos `sh-review` reads the head's `codewatch-report` CI artifact through `gh` and puts up to 3 of its questions ahead of the others in the brief, and the step records `codewatch: { found, schema, questions }`. A missing artifact, a wrong schema or a failed fetch adds no questions and never blocks the review |
 | `shepherd.review.minFreeBytes` | Optional, default 5 GiB. The spawn gate defers a reviewer while the filesystem that holds review checkouts (the app data dir's `checkouts/reviews`) has fewer free bytes |
 | `shepherd.review.minFreeInodesPct` | Optional, default 15. The spawn gate defers a reviewer while that filesystem's free inodes are under this percent of its total, or under twice the inodes the last measured checkout took, whichever is more. A filesystem with no fixed inode table has no inode floor |
 | `shepherd.review.maxConcurrent` | Optional, default 3. The spawn gate defers a reviewer while this many reviewers run |
-| `shepherd.fixer.configDir` | Optional. The Claude config directory of the fixer a red main spawns; absent means agent-chat's default. Same rules as `review.configDir` |
+| `shepherd.taskClose` | Optional, `keep` (default) or `last-slice-only`, read live. When a merged PR closes its `--task`; see `sh-cleanup` above |
+| `shepherd.fixer.configDir` | Optional. The Claude config directory of the fixer a red main spawns; absent means agent-chat's default. Same rules as `review.configDir`. A red main's fixer and a fix-round successor start here (or on `review.configDir` when absent) and moves through `review.fallbackConfigDirs` while the account is out of usage |
 
 The load fails, with `invalid config <path>: <reason>`, on any of these:
 
@@ -1038,6 +1158,74 @@ token fingerprint (the A17 fingerprint above, never the token). The set of alarm
 memory, so a restart raises it once more. serve reads the token once at start, so a rotation needs a restart:
 follow [`ops/runbooks/bot-token-rotation.md`](../../ops/runbooks/bot-token-rotation.md).
 
+### The bot token file
+
+serve reads the bot's token from `BOT_TOKEN_PATH` (`src/bot-identity.ts`):
+`~/.config/titan-factory/secrets/github-bot.token`, where `~` is the home dir in serve's passwd entry, not
+`$HOME`. No environment variable, flag or config moves it. The file is 0600 in a 0700 dir, both owned by serve's
+OS user (TP-3094 option B: serve runs as the owner's user), outside every worktree. A missing file leaves the bot
+`absent`; a symlink, a group or other bit, another owner or a non-token shape leaves it `refused`. Either way serve
+still starts. The constant lives alone in `src/bot-token-path.ts`. Under vitest, a setup file
+(`src/test-support/vitest-setup.ts`) gives `userInfo()` a fresh home under the run's temp root, and the forked serve
+child's resolve hook swaps the module for one with no path. So no test resolves the passwd home or reads the real
+token, even when it starts serve with no `bot` option.
+
+The owner writes the token; no agent reads, writes or prints it. Run one line at a time in the owner's own
+terminal, not in an agent session:
+
+```sh
+mkdir -m 700 -p ~/.config/titan-factory/secrets
+chmod 700 ~/.config/titan-factory/secrets
+umask 077
+read -rs BOT_TOKEN
+printf '%s\n' "$BOT_TOKEN" > ~/.config/titan-factory/secrets/github-bot.token.new
+unset BOT_TOKEN
+chmod 600 ~/.config/titan-factory/secrets/github-bot.token.new
+mv ~/.config/titan-factory/secrets/github-bot.token.new ~/.config/titan-factory/secrets/github-bot.token
+ls -ld ~/.config/titan-factory/secrets ~/.config/titan-factory/secrets/github-bot.token
+```
+
+Paste the token at the `read -rs` prompt; nothing shows. The `ls` lines must start with `drwx------` and
+`-rw-------`. Then `titan-factory service restart`, check that `curl -s http://127.0.0.1:7410/health | jq .bot`
+shows `state: "ok"`, and that `titan-factory bot-token scan` exits 0. Rotation, including the E16 classic-token
+check, follows [`ops/runbooks/bot-token-rotation.md`](../../ops/runbooks/bot-token-rotation.md), option B.
+
+### Bot token security
+
+Owner decision 2026-10-22 (TP-3094 option B, TP-3420): serve stays the owner's OS user, so the token file is
+readable by every process running as that user, agents included. The owner accepted this same-user residual
+rather than move serve to its own OS user (option A). Agents already hold the owner's admin GitHub token through
+the `gh` CLI, so the bot token adds three things: an approval that counts as not the author's, writes that look
+like the factory's, and a credential that works off the box until it expires.
+
+What an agent running as the owner's user could still do:
+
+- read the token by any route the tool guard misses, for example a script it writes or an interpreter that
+  builds the path at run time;
+- approve, merge, push `shepherd-train/**` branches and post statuses as the bot, directly;
+- drain the bot's rate budget and stall every factory read (a denial of service, not a breach);
+- copy the token off the box, where it works until it expires or is revoked;
+- edit serve's deploy checkout or config and wait for a restart, so serve itself misuses the token;
+- read serve's memory with ptrace, unless the kernel's Yama `ptrace_scope` is 1 or more.
+
+What limits it:
+
+- **The tool guard.** `**/titan-factory/**/*.token` is a secret path in `@titan-design/tool-guard`, so a `Read`,
+  `cat`, `cp` or `base64` of the file is refused as `secret-read` (TP-3406). It stops direct reads, not every route.
+- **No accidental exposure.** The token never enters an environment, brief, log, step output, trace or the store:
+  serve holds it in memory, reaches GitHub through octokit in-process, and hands steps only the
+  `github-bot` capability. The unit sets `LimitCORE=0`, and the file sits outside every worktree.
+- **I5 and the audit.** Agents never merge; only logged paths do, and `pnpm merge:lint` flags any other merge.
+  The reconciler raises `ops-alarm BotActionUnlogged` for a bot review, merge, status or train push with no
+  factory intent row, and never counts that review as the factory's approval. Attribution is by the merge log, so
+  a move as the bot is caught at M3's walk over main, not prevented. The detector needs `BOT_LOGIN` set.
+- **The A17 scan and expiry.** `titan-factory bot-token scan` finds a copy in any agent's environment, briefs,
+  logs, transcripts or the store. A 90-day expiry and the 14-day alarm bound a copied token, and the token keeps
+  the scopes of the bot's setup packet.
+
+Option A, with serve as its own OS user and its code, config and unit unwritable by agents, is what would close the
+read, the direct use and the misuse rows above.
+
 ## Writing a gate brief
 
 Every owner gate carries a `GateBrief` built in `src/gate-brief.ts`; build one there, never inline.
@@ -1049,6 +1237,22 @@ Every owner gate carries a `GateBrief` built in `src/gate-brief.ts`; build one t
 - A MERGE carried from another head says so (`carriedFrom`); the summary never claims the reviewer saw the head asked about.
 
 Add the gate to `gate-brief.test.ts`, which runs every brief through `snapshotBrief`.
+
+## Step registry: `src/registry/`
+
+`factoryRegistry` (`src/registry/steps/index.ts`) holds one entry per step id the factory workflows declare, split by family in `src/registry/steps/{core,shepherd,audit,build-surface,gates}.ts`. An entry names the step's op, its kind (software, AGENT or OWNER) and its effect class. The host's `abandonsOrphan` is `abandonsOrphan(stepId)`: a restart drops the orphan of a step whose entry is `read`, and parks every other class. `restart-contract.test.ts` checks the registry's parking and dropped steps against the independent lists in `restart-contract.fixture.ts`. `census.test.ts` fails when a declared step has no entry.
+
+A fact entry's `body` module is hashed with everything it imports, workspace sources included, into `src/registry/closure.lock.json`. CI's `pnpm registry:closure` fails when that lock is stale, or when a step's closure changed against `origin/main` with neither a new schema hash, a new `version.bump`, nor an attestation row naming the new closure. After a change, run `pnpm build`, then `pnpm registry:closure --write`.
+
+Attestation rows live one file per PR, `src/registry/attestations/<pr>.json`, an array of `{ step, closure, pr }` whose `pr` is the file's own number, so two PRs that each add rows never touch the same file. Shepherd's `readClaims` and the closure check read the directory as the union at the base and at the head; a ref from before the directory falls back to the retired single `attestations.json`, which the check refuses in a working tree. `closure.lock.json` merges through the `closure-lock` git driver (`.gitattributes`, registered by `pnpm install`): rows that only one side moved merge cleanly, and a step both sides moved keeps ours, which the stale-lock failure then sends to `pnpm registry:closure --write`. GitHub's own merge runs no custom driver, so a PR that moves the same step as a newer main still shows a conflict there; that PR's merged closure is new and needs a fresh attestation anyway.
+
+### Marker shadow (M1b): `src/markers/shadow.ts`
+
+`FactoryHostOptions.markerShadow` wraps each workflow's guarded context in `shadowContext`. Before each call to a step that has a fact entry, the shadow sends the fact's marker verdict to the option's `sink`: either the call would fast-forward or it would run. The step then runs live, unchanged. Afterwards the shadow appends a marker joined to the run id and memo key, unless the current row already records the same digests. The option is off by default and serve does not set it, so `step_results` stays authoritative. A shadow error goes to the sink and never reaches the run.
+
+### Inserting a step (C28): `src/runner/not-after.ts`
+
+A step inserted before a live call site would park every in-flight run whose record continues past that point, since strict replay refuses a call the record does not hold. Declare the step with `notAfter: "<fact>"` and call it through `unlessPast(ctx, stepId, () => …)`. When the run's record continues past this point without the step, the run took that path before the step existed, so `unlessPast` skips the call and returns `{ skipped: true }`; otherwise the step runs or replays as usual. The host refuses a `notAfter` naming a fact no registered step meets, and one on a recipe's first declaration (no call has been answered yet, so the rule cannot tell). `unlessPast` throws for an undeclared step and inside concurrent children (`all`). With the marker shadow on, a skip counts as a visit for the orphan trap and sends a `not-after-skip` line, and a live run whose `notAfter` fact already has a valid marker sends an `advisory` line.
 
 ## Land core: `src/workflows/land.ts`
 

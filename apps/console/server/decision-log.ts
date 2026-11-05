@@ -12,9 +12,11 @@ import { mkdir, open, type FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { LedgerRowSchema, isExcluded, type LedgerRowWire } from "@titan-design/decider";
-import type { OwnerAnswer, OwnerItem } from "@titan-design/owner-queue";
+import { promptLine, type OwnerAnswer, type OwnerItem } from "@titan-design/owner-queue";
 
 export const ANSWERS_FILE = "answers.jsonl";
+/** Kept out of `answers.jsonl`, whose rows are all decider ledger rows. */
+export const LIVE_VIEWED_FILE = "live-viewed.jsonl";
 const TAIL_BYTES = 64 * 1024;
 const MAX_LINE_CHARS = 600;
 const LEDGER_FLAGS = constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW;
@@ -56,6 +58,28 @@ export interface DecisionLog {
   record(item: DecisionItem, answer: DecisionAnswer): Promise<DecisionLogResult>;
 }
 
+/** The story variants the owner opened live before submitting a round, for an audit; no carry rule reads it (TP-3793 S7). */
+export interface LiveViewedEntry {
+  roundId: string;
+  at: string;
+  keys: readonly string[];
+  /** The round's Storybook build, or null when it carries none that parses or carries one per PR group. */
+  buildId: string | null;
+  /** A multi-PR round's build per key, the one its PR group's live view showed; null where none was pinned (TP-3968). */
+  builds?: Record<string, string | null>;
+}
+
+interface DecisionEntry {
+  item: DecisionItem;
+  answer: DecisionAnswer;
+}
+
+export interface RoundDecisionLog extends DecisionLog {
+  /** One result per entry, in order, from a single human-only read shared by the batch (TP-4001). */
+  recordAll(entries: readonly DecisionEntry[]): Promise<DecisionLogResult[]>;
+  recordLiveViewed(entry: LiveViewedEntry): Promise<"written" | "failed">;
+}
+
 export function decisionsClass(item: DecisionItem, answer: DecisionAnswer): DecisionsClass | null {
   if (item.door === "one-way") return "one-way";
   const picked = answer.optionId !== undefined || answer.optionIds !== undefined;
@@ -69,18 +93,18 @@ function pickedLabels(item: DecisionItem, answer: DecisionAnswer): string[] {
   return ids.map((id) => item.options?.find((option) => option.id === id)?.label ?? id);
 }
 
-// eslint-disable-next-line no-control-regex -- control characters are exactly what is being removed
-const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g;
-const oneLine = (text: string): string => text.replace(CONTROL, " ");
-
-/** One unnumbered bullet, so it never collides with the numbered items written by hand. */
+/**
+ * One unnumbered bullet, so it never collides with the numbered items written by hand. Each field is cleaned on its
+ * own: cleaning the joined line would let an escape opened in the summary swallow the owner's pick and note.
+ */
 export function decisionLine(item: DecisionItem, answer: DecisionAnswer): string {
-  const picks = pickedLabels(item, answer);
-  const pick = picks.length > 0 ? picks.join(", ") : (answer.text ?? "(no pick)");
-  const note = picks.length > 0 && answer.text !== undefined ? `; "${answer.text}"` : "";
+  const text = answer.text === undefined ? undefined : promptLine(answer.text);
+  const picks = pickedLabels(item, answer).map((label) => promptLine(label));
+  const pick = picks.length > 0 ? picks.join(", ") : (text ?? "(no pick)");
+  const note = picks.length > 0 && text !== undefined ? `; "${text}"` : "";
   const time = new Date(answer.at).toISOString().slice(11, 16);
-  const raw = `- ${time}Z ${decisionsClass(item, answer) ?? "answer"}: ${item.summary} → ${pick}${note} (item ${item.id}, by ${answer.by.id} via ${answer.by.channel})`;
-  const line = oneLine(raw);
+  const [summary, id, by, channel] = [item.summary, item.id, answer.by.id, answer.by.channel].map((field) => promptLine(field));
+  const line = `- ${time}Z ${decisionsClass(item, answer) ?? "answer"}: ${summary} → ${pick}${note} (item ${id}, by ${by} via ${channel})`;
   return line.length <= MAX_LINE_CHARS ? line : `${line.slice(0, MAX_LINE_CHARS - 1)}…`;
 }
 
@@ -149,7 +173,7 @@ async function appendLedger(file: string, row: Record<string, unknown>): Promise
     const stats = await handle.stat();
     const uid = process.getuid?.();
     if (!stats.isFile() || (uid !== undefined && stats.uid !== uid) || (stats.mode & 0o077) !== 0) {
-      throw new Error("answers.jsonl is not a private regular file owned by this user");
+      throw new Error(`${path.basename(file)} is not a private regular file owned by this user`);
     }
     await handle.write(`${JSON.stringify(row)}\n`);
   });
@@ -235,16 +259,38 @@ function withReason(result: Omit<DecisionLogResult, "reason">, reason: Reason | 
   return reason === null ? result : { ...result, reason };
 }
 
-export function createDecisionLog({ stateDir, decisionsFile, humanOnly, today = localDate, logger }: DecisionLogOptions): DecisionLog {
+/** The first call reads; later calls share its promise, a rejection included, which each caller still reads as unknown. */
+function readOnce(humanOnly: DecisionLogOptions["humanOnly"]): DecisionLogOptions["humanOnly"] {
+  let read: Promise<HumanOnly> | undefined;
+  return () => (read ??= humanOnly());
+}
+
+export function createDecisionLog({ stateDir, decisionsFile, humanOnly, today = localDate, logger }: DecisionLogOptions): RoundDecisionLog {
   const writer: Writer = { ledgerFile: path.join(stateDir, ANSWERS_FILE), decisionsFile, today, ...(logger ? { logger } : {}) };
   const serialize = serializer();
-  const record = async (item: DecisionItem, answer: DecisionAnswer): Promise<DecisionLogResult> => {
-    const excluded = await exclusionReason(item, answer, humanOnly).catch((): Reason => "human-only unknown");
+  const recordWith = (known: DecisionLogOptions["humanOnly"]) => async (item: DecisionItem, answer: DecisionAnswer): Promise<DecisionLogResult> => {
+    const excluded = await exclusionReason(item, answer, known).catch((): Reason => "human-only unknown");
     if (excluded !== null) return { ledger: "excluded", decisions: "excluded", reason: excluded };
     return serialize(() => writeAnswer(writer, item, answer)).catch((error: unknown) => {
       logger?.warn({ error }, "decision log: record failed");
       return { ledger: "failed" as const, decisions: "failed" as const, reason: "ledger write failed" as const };
     });
   };
-  return { record };
+  const record = recordWith(humanOnly);
+  const recordAll = async (entries: readonly DecisionEntry[]): Promise<DecisionLogResult[]> => {
+    const recordInBatch = recordWith(readOnce(humanOnly));
+    const results: DecisionLogResult[] = [];
+    for (const { item, answer } of entries) results.push(await recordInBatch(item, answer));
+    return results;
+  };
+  const liveViewedFile = path.join(stateDir, LIVE_VIEWED_FILE);
+  const recordLiveViewed = (entry: LiveViewedEntry): Promise<"written" | "failed"> =>
+    serialize(() => appendLedger(liveViewedFile, { v: 1, ...entry })).then(
+      () => "written" as const,
+      (error: unknown) => {
+        logger?.warn({ error }, "decision log: live-viewed write failed");
+        return "failed" as const;
+      },
+    );
+  return { record, recordAll, recordLiveViewed };
 }

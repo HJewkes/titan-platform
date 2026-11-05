@@ -1,6 +1,7 @@
 import type { HookEvent } from "./event.js";
 import { config } from "./families/config.js";
 import { egress } from "./families/egress.js";
+import { githubSettings } from "./families/github-settings.js";
 import { choosesHttpConfig } from "./families/http-config.js";
 import { merge } from "./families/merge.js";
 import { release } from "./families/release.js";
@@ -8,7 +9,8 @@ import { secret } from "./families/secret.js";
 import { hasDynamicName, namedReadings, wrappedReading } from "./dynamic-readings.js";
 import { afterWrites, scriptReadings } from "./line-writes.js";
 import { INTERPRETERS } from "./mentions.js";
-import { hasOpaqueShebang, isSwappableShebang, MAX_SCRIPT_DEPTH, refuseOpaqueShebang, runsNatively, ScriptDepthError, scriptTargets, SOURCERS } from "./scripts.js";
+import { hasOpaqueShebang, isSwappableShebang, MAX_SCRIPT_DEPTH, refuseOpaqueShebang, runsNatively, ScriptDepthError, scriptTargets } from "./scripts.js";
+import { SOURCERS } from "./shell/sourced.js";
 import type { ScriptTarget } from "./scripts.js";
 import { addPathWrite, newPathState, refuseSwappedShells, scriptPathState, takeScriptPath } from "./path-swap.js";
 import type { PathState } from "./path-swap.js";
@@ -23,7 +25,7 @@ import { classified } from "./spellings.js";
 import type { ClassifiedAction, ClassifyContext, Family } from "./types.js";
 
 /** The family registry. A new family adds one line here and its rows to `SPELLINGS`. */
-const FAMILIES: readonly Family[] = [secret, config, merge, release, egress];
+const FAMILIES: readonly Family[] = [secret, config, merge, release, egress, githubSettings];
 /** Names a reading of dynamic wrapper words is walked for: those a family reads differently, and those whose script `scriptActions` reads. */
 const GUARDED = new Set([...FAMILIES.flatMap((f) => [...(f.names ?? []), ...(f.verbs ?? [])]), ...SOURCERS, ...INTERPRETERS]);
 
@@ -232,6 +234,8 @@ function targetReadings(ctx: ClassifyContext, target: ScriptTarget): string[] {
   try {
     return scriptReadings(ctx, target.path);
   } catch (error) {
+    // An optional file the shell finds no regular file at runs nothing; one cut at the cap still runs past it.
+    if (target.optional && error instanceof UnreadableScriptError && error.head === null) return [];
     if ((target.kind === "shell" && !target.relayed) || !(error instanceof UnreadableScriptError)) throw error;
     return error.head === null ? [] : [error.head];
   }

@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a range past EOF is not checked",
+      "file": "products/explainer/src/resolve-citation.ts",
+      "find": "if (!range.ok) return refuse",
+      "replace": "if (range.ok === undefined) return refuse",
+      "kills": [
+        "code beat citations refuses a code beat citing a line past the end of the file",
+        "code beat citations refuses a code beat citing a file the code artifact does not hold"
+      ]
+    },
+    {
+      "name": "a code beat passes with no code artifact",
+      "file": "products/explainer/src/resolve-citation.ts",
+      "find": "if (!source) return refuse(",
+      "replace": "if (!source) return undefined && refuse(",
+      "kills": [
+        "code beat citations refuses a code beat when the run has no code artifact, and ignores beats without code"
+      ]
+    },
+    {
+      "name": "a highlight past the range end passes",
+      "file": "products/explainer/src/resolve-citation.ts",
+      "find": "line < lineStart || line > lineEnd",
+      "replace": "line < lineStart",
+      "kills": [
+        "code beat citations refuses a highlight outside the cited range"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the shim points into releases/ rather than the current symlink",
+      "file": "apps/console/server/self-update/shim.ts",
+      "find": "const cli = path.join(root, \"current\", \"apps/console/dist/cli.js\");",
+      "replace": "const cli = path.join(root, \"releases\", \"apps/console/dist/cli.js\");",
+      "kills": [
+        "the titan-console shim a verified swap puts on PATH execs node on the current symlink's cli with every argument passed through, and is executable"
+      ]
+    },
+    {
+      "name": "the shim drops its arguments",
+      "file": "apps/console/server/self-update/shim.ts",
+      "find": "return `#!/bin/sh\\nexec node ${shQuote(cli)} \"$@\"\\n`;",
+      "replace": "return `#!/bin/sh\\nexec node ${shQuote(cli)}\\n`;",
+      "kills": [
+        "the titan-console shim a verified swap puts on PATH execs node on the current symlink's cli with every argument passed through, and is executable"
+      ]
+    },
+    {
+      "name": "the shim is not executable",
+      "file": "apps/console/server/self-update/shim.ts",
+      "find": "const SHIM_MODE = 0o755;",
+      "replace": "const SHIM_MODE = 0o644;",
+      "kills": [
+        "the titan-console shim a verified swap puts on PATH execs node on the current symlink's cli with every argument passed through, and is executable"
+      ]
+    },
+    {
+      "name": "an unchanged shim is rewritten",
+      "file": "apps/console/server/self-update/shim.ts",
+      "find": "  if (unchanged(file, text)) return false;\n",
+      "replace": "",
+      "kills": [
+        "the titan-console shim a verified swap puts on PATH leaves an unchanged shim alone on the next update"
+      ]
+    },
+    {
+      "name": "a failed shim write fails the update",
+      "file": "apps/console/server/self-update/update.ts",
+      "find": "  } catch (error) {\n    update.ports.log(`error: could not write ${file}: ${error instanceof Error ? error.message : String(error)}`);\n  }",
+      "replace": "  } finally {\n    update.ports.log(`wrote ${file}`);\n  }",
+      "kills": [
+        "the titan-console shim a verified swap puts on PATH still counts the update as done, and logs why, when the shim cannot be written"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "list-or-write writes on a list action too",
+      "file": "products/factory/src/shepherd/port-access.ts",
+      "find": "(access === \"list-or-write\" && !isList(args))",
+      "replace": "access === \"list-or-write\"",
+      "kills": [
+        "shepherd port access declarations a list-or-write command reads on list and writes on any other action"
+      ]
+    },
+    {
+      "name": "list-or-write never writes",
+      "file": "products/factory/src/shepherd/port-access.ts",
+      "find": "(access === \"list-or-write\" && !isList(args))",
+      "replace": "false",
+      "kills": [
+        "shepherd port access declarations refuses in-process exactly the commands the hand-kept list named before",
+        "shepherd port access declarations a list-or-write command reads on list and writes on any other action"
+      ]
+    },
+    {
+      "name": "a write command reads on a list action",
+      "file": "products/factory/src/shepherd/port-access.ts",
+      "find": "return access === \"write\" || ",
+      "replace": "return (access === \"write\" && !isList(args)) || ",
+      "kills": [
+        "shepherd port access declarations a write command is refused even when its args carry a list action"
+      ]
+    },
+    {
+      "name": "freeze is declared a write",
+      "file": "products/factory/src/shepherd/port-access.ts",
+      "find": "\"shepherd.freeze\": \"read\",",
+      "replace": "\"shepherd.freeze\": \"write\",",
+      "kills": [
+        "shepherd port access declarations refuses in-process exactly the commands the hand-kept list named before",
+        "shepherd port access declarations a read command is never refused, whatever its action"
+      ]
+    },
+    {
+      "name": "resync is declared a read",
+      "file": "products/factory/src/shepherd/port-access.ts",
+      "find": "\"shepherd.resync\": \"write\",",
+      "replace": "\"shepherd.resync\": \"read\",",
+      "kills": [
+        "shepherd port access declarations refuses in-process exactly the commands the hand-kept list named before"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an undeclared gate is held on",
+      "file": "products/factory/src/shepherd/lan-gates.ts",
+      "find": "  if (unknown.length === 0) return;",
+      "replace": "  return;",
+      "kills": ["placing a lan-gates hold refuses with exit 65 a gate never declared, and holds nothing"]
+    },
+    {
+      "name": "any gate list is accepted",
+      "file": "products/factory/src/shepherd/lan-gates.ts",
+      "find": "  if (gates.length > 0 && bad.length === 0) return undefined;",
+      "replace": "  return undefined;",
+      "kills": ["placing a lan-gates hold refuses with exit 65 a reason that names no gate", "placing a lan-gates hold refuses with exit 65 a reason that misspells one"]
+    }
+  ]
+}

@@ -2,6 +2,7 @@ import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { appDirs, type PathOptions } from "@titan-design/app-paths";
 import { reviewCheckoutName } from "@titan-design/review-panel";
+import type { RemoveDir } from "./ports.js";
 
 /** Review checkouts are live state while a reviewer reads them, so they sit in the data dir, never in `$TMPDIR` or a cache. */
 export function reviewCheckoutRoot(opts: PathOptions = {}): string {
@@ -12,8 +13,6 @@ export function reviewCheckoutRoot(opts: PathOptions = {}): string {
 export function reviewCheckoutDir(root: string, target: { pr: number; head: string }): string {
   return join(root, reviewCheckoutName(target.pr, target.head));
 }
-
-export type RemoveDir = (path: string) => Promise<void>;
 
 const removeTree: RemoveDir = (path) => rm(path, { recursive: true, force: true });
 

@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the console sends its notices with no source",
+      "file": "apps/console/server/round-notice-transport.ts",
+      "find": "SEND_TIMEOUT_MS, { source: \"console\" })",
+      "replace": "SEND_TIMEOUT_MS, {})",
+      "kills": [
+        "seatNotifier sends a notice labelled with the console source, not as the owner typing"
+      ]
+    },
+    {
+      "name": "the console borrows Shepherd's label",
+      "file": "apps/console/server/round-notice-transport.ts",
+      "find": "{ source: \"console\" }",
+      "replace": "{ source: \"shepherd\" }",
+      "kills": [
+        "seatNotifier sends a notice labelled with the console source, not as the owner typing"
+      ]
+    }
+  ]
+}

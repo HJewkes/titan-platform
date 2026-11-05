@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { defineWorkflow } from "./definition.js";
 import { EVIDENCE_VERSION, evidenceRecord, traceRef } from "./evidence.js";
 import { openFactoryHost } from "./host.js";
+import { readPath } from "./narrow.js";
 
 describe("evidence records", () => {
   it("carry the version, kind, the run as trace id and the step attempt as span id", () => {
@@ -46,8 +47,8 @@ describe("evidence records", () => {
     host.close();
 
     const result = run.stepResults["commit:0"];
-    const record = JSON.parse(result?.output ?? "{}") as { spanId: string };
-    expect(record.spanId).toBe(traceRef({ runId: run.id, stepId: "commit", iteration: 0, attempt: 1 }).spanId);
-    expect(record.spanId).toBe(result?.agentId);
+    const spanId = readPath(JSON.parse(result?.output ?? "{}"), "spanId");
+    expect(spanId).toBe(traceRef({ runId: run.id, stepId: "commit", iteration: 0, attempt: 1 }).spanId);
+    expect(spanId).toBe(result?.agentId);
   });
 });

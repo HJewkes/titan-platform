@@ -1,24 +1,42 @@
 import type { ReactNode } from "react";
-import { Alert, BreadcrumbItem, Breadcrumbs, Card, CardContent, DateTime, FilePathLabel, HStack, Link, MarkdownProse, Pill, Spinner, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, BreadcrumbItem, Breadcrumbs, Card, CardContent, DateTime, FilePathLabel, HStack, Link, MarkdownProse, Pill, Tab, TabList, Tabs, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import { EXIT } from "@titan-design/registry";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
+import { KnowledgeGraph } from "./KnowledgeGraph.js";
+import { PageHeader } from "./PageShell.js";
+import { PHONE_TAP } from "./phone.js";
 
 type KnowledgeRecord = ConsoleCommands["work.record"]["result"];
 
-/** One note or source: `MarkdownProse` and `FilePathLabel` until react-ui has the knowledge reader (TP-859). */
-export function KnowledgeRecordPage({ recordRef }: { recordRef: string }): ReactNode {
+/**
+ * One note or source, or with `?tab=graph` the graph around any ref: the Graph tab never reads the
+ * record, so `#/knowledge/task:<id>?tab=graph` works for a task or session too.
+ */
+export function KnowledgeRecordPage({ recordRef, graph }: { recordRef: string; graph: boolean }): ReactNode {
+  return (
+    <VStack gap={4}>
+      <Trail recordRef={recordRef} />
+      <Tabs index={graph ? 1 : 0} onChange={(index) => open({ view: "knowledge", id: recordRef, ...(index === 1 ? { query: "tab=graph" } : {}) })}>
+        <TabList>
+          <Tab className={PHONE_TAP}>Record</Tab>
+          <Tab className={PHONE_TAP}>Graph</Tab>
+        </TabList>
+      </Tabs>
+      {graph ? <KnowledgeGraph center={recordRef} /> : <RecordRead recordRef={recordRef} />}
+    </VStack>
+  );
+}
+
+/** `MarkdownProse` and `FilePathLabel` until react-ui has the knowledge reader (TP-859). */
+function RecordRead({ recordRef }: { recordRef: string }): ReactNode {
   const record = useQuery("work.record", { ref: recordRef });
   if (record.status === "loading") return <Spinner size="sm" label={`Loading ${recordRef}`} />;
   if (record.data === undefined) {
     const message = record.error.code === EXIT.NOINPUT ? `No record ${recordRef}` : `Could not load ${recordRef}: ${record.error.message}`;
-    return (
-      <VStack gap={4}>
-        <Trail recordRef={recordRef} />
-        <Alert status="error" message={message} />
-      </VStack>
-    );
+    return <Alert status="error" message={message} />;
   }
   return <Reader record={record.data} />;
 }
@@ -26,9 +44,8 @@ export function KnowledgeRecordPage({ recordRef }: { recordRef: string }): React
 function Reader({ record }: { record: KnowledgeRecord }): ReactNode {
   return (
     <VStack gap={4}>
-      <Trail recordRef={record.ref} />
       <VStack gap={2}>
-        <Typography variant="h2">{record.title}</Typography>
+        <PageHeader title={record.title} />
         <Meta record={record} />
       </VStack>
       {record.truncated ? <Alert status="info" size="compact" message="This file is longer than active-work's read cap; this is its head." /> : null}
@@ -57,10 +74,13 @@ function Meta({ record }: { record: KnowledgeRecord }): ReactNode {
 }
 
 function Trail({ recordRef }: { recordRef: string }): ReactNode {
+  // A ref is one long word, so only a break inside it keeps a phone from scrolling sideways, and react-native-web's rows do not shrink to let it.
   return (
-    <Breadcrumbs>
-      <BreadcrumbItem onPress={() => open({ view: "knowledge" })}>Knowledge</BreadcrumbItem>
-      <BreadcrumbItem isCurrentPage>{recordRef}</BreadcrumbItem>
-    </Breadcrumbs>
+    <div className="min-w-0 break-all [&_*]:min-w-0 [&_*]:shrink">
+      <Breadcrumbs>
+        <BreadcrumbItem onPress={() => open({ view: "knowledge" })}>Knowledge</BreadcrumbItem>
+        <BreadcrumbItem isCurrentPage>{recordRef}</BreadcrumbItem>
+      </Breadcrumbs>
+    </div>
   );
 }

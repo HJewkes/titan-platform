@@ -1,4 +1,6 @@
-import { OWNER_GATE_REASONS, SHEPHERD_POLICY_TABLE } from "./shepherd/policy.js";
+import { SHEPHERD_POLICY_TABLE } from "./shepherd/policy.js";
+import { DEAD_END_TABLE } from "./shepherd/dead-end.js";
+import { OWNER_GATE_REASONS } from "./shepherd/policy-schema.js";
 import type { Escalation } from "./shepherd/route-table.js";
 
 type OwnerGateReason = (typeof OWNER_GATE_REASONS)[number];
@@ -27,7 +29,11 @@ const MERGE_GUARD_CLASS: Record<string, DClass> = {
   "github-path": "D6",
   "skill-path": "D21",
   "ci-policy-weakened": "D21",
+  "ci-policy-budget": "D21",
   "ci-policy-malformed": "D21",
+  "attest-unmet": "D6",
+  "attest-deploy-skew": "D5",
+  "old-path-untagged": "D6",
   "merge-state-unsettled": "D5",
   "no-facts": "D5",
   "head-mismatch": "D5",
@@ -52,6 +58,9 @@ const STEP_CLASS: Record<string, DClass> = {
   "sh-visual-accept": "D16",
 };
 
+/** TP-4759: a dead-end seat gate keeps the D-row of the owner gate it replaced. */
+const DEAD_END_CLASS: Record<string, DClass> = { "dead-end/exited-without-push": "D16", "dead-end/fix-first-runaway": "D8", "dead-end/failed-rounds": "D7" };
+
 /** The seat policy's prompt names its owner-gate reason in parentheses; a gate with none is the plain owner gate, D1. */
 function seatPolicyClass(prompt: string): DClass {
   const reason = OWNER_GATE_REASONS.find((candidate) => prompt.includes(`(${candidate})`));
@@ -63,6 +72,7 @@ function tableClass(table: string, rowId: string, prompt: string): DClass | unde
   if (table === "shepherd-merge-guard") return MERGE_GUARD_CLASS[rowId];
   if (table === "authority") return "D4";
   if (table === "shepherd-release") return "D11";
+  if (table === DEAD_END_TABLE) return DEAD_END_CLASS[rowId];
   if (table !== "shepherd-route") return undefined;
   return rowId === "policy-denial" ? seatPolicyClass(prompt) : ROUTE_CLASS[rowId];
 }

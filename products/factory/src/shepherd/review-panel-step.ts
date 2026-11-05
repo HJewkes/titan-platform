@@ -1,12 +1,13 @@
 import type { AgentIdentity } from "@titan-design/authority";
-import { DEFECT_CLASS_HEADING, FINDINGS_SEPARATOR, OVERLAY_SHAPES, aggregate, type AggregateInput, type AwaitVerdictInput, type MemberResult, type OverlayShape, type PanelPlan, type PanelPolicy, type PanelVerdict, type ReviewTarget, type ReviewerAgent, type WorkflowCiProof } from "@titan-design/review-panel";
+import { DEFECT_CLASS_HEADING, FINDINGS_SEPARATOR, OVERLAY_SHAPES, aggregate, fixProofNeedsTests, noReproProceedOf, type AggregateInput, type AwaitVerdictInput, type MemberResult, type OverlayShape, type PanelPlan, type PanelPolicy, type PanelVerdict, type ReviewTarget, type ReviewerAgent, type WorkflowCiProof } from "@titan-design/review-panel";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
-import type { FixProofUnverified } from "./fix-proof.js";
+import { noReproOfLine, type FixProofReadSchema, type FixProofUnverified } from "./fix-proof.js";
 import type { PanelMerge, ShepherdDeps, Verdict } from "./phases.js";
+import type { AttestVerdicts } from "./attest-evidence.js";
 import { classRulesFor, intentPlan, panelFacts, panelPolicyFor, withoutPlan, type HoldMember, type IntentPlan, type PanelMode } from "./review-panel-plan.js";
 import { isAdversaryHold } from "./hold-slots.js";
 import { CORRECT_VERDICT_STEP, correctOnce } from "./correct-verdict.js";
@@ -15,6 +16,7 @@ import { freshReviewerBase } from "./cleanup.js";
 import { REVIEW_STEP } from "./review-steps.js";
 import type { ReviewerRoles } from "./reviewer-roles.js";
 import { takeAwaited, verdictOf, type AwaitedResult, type ProofStanding } from "./take-verdict.js";
+import type { ScopeRound } from "./scope-check-round.js";
 
 /** Records the aggregate once, so a replay reads the verdict the panel gave rather than one recomputed over source that has since moved. */
 const PANEL_VERDICT_STEP = "sh-review-panel";
@@ -68,7 +70,12 @@ export function panelReviewerNames({ repo, pr, reviewer, mode }: MemberNaming, p
 /** Under `on` the intent also names each member but correctness, so a repeat spawns the same names. */
 export type PanelOnPlan = IntentPlan & { panel: "on"; panelReviewers: Record<string, string> };
 
-interface PanelWiring {
+export interface ProfileCheck {
+  /** Whether an agent-chat profile is installed headless; absent means a member lowered to a missing profile is refused only at dispatch. */
+  profileInstalled?: (profile: string) => boolean;
+}
+
+interface PanelWiring extends ProfileCheck {
   panel?: PanelMode;
   panelPolicy?: PanelPolicy;
   roles?: ReviewerRoles;
@@ -91,14 +98,28 @@ function holdMemberOf(deps: Pick<ShepherdDeps, "store">, runId: string, holdMemb
  * Under `shadow` or `on` the intent records the head's class, touches and panel plan; an external review starts nobody, so it gets none.
  * Under `on`, or for a g10-adversary hold whatever the panel says, it also names the members, so the review phase knows to run them.
  */
-export async function plannedPanel(deps: Pick<ShepherdDeps, "store" | "port">, { panel, panelPolicy, roles, holdMember }: PanelWiring, input: ReviewTarget & { runId: string; reviewer: string; mode: string }, roster: readonly ReviewerAgent[]): Promise<IntentPlan | PanelOnPlan | undefined> {
+export async function plannedPanel(deps: Pick<ShepherdDeps, "store" | "port">, { panel, panelPolicy, roles, holdMember, profileInstalled }: PanelWiring, input: ReviewTarget & { runId: string; reviewer: string; mode: string; testOnlyProof?: boolean; badFixProof?: boolean }, roster: readonly ReviewerAgent[]): Promise<IntentPlan | PanelOnPlan | undefined> {
   const held = holdMemberOf(deps, input.runId, holdMember);
   if ((panel === undefined || panel === "off") && held === undefined) return undefined;
   const rules = classRulesFor(roles);
   const target = { repo: input.repo, pr: input.pr, head: input.head };
-  const options = held === undefined ? {} : { holdMember: held, fullPanel: panel === "on" };
-  const planned = intentPlan(await panelFacts(deps, target, input.runId, rules), panelPolicy ?? panelPolicyFor(roles), undefined, rules, options);
+  const options = { ...(held !== undefined && { holdMember: held, fullPanel: panel === "on" }), ...((input.testOnlyProof === true || input.badFixProof === true) && { testsMember: true }) };
+  const policy = { ...(panelPolicy ?? panelPolicyFor(roles)), ...(profileInstalled && { installed: profileInstalled }) };
+  const planned = intentPlan(await panelFacts(deps, target, input.runId, rules), policy, undefined, rules, options);
   return panel === "on" || held !== undefined ? { ...planned, panel: "on", panelReviewers: panelReviewerNames(input, planned.plan, roster) } : planned;
+}
+
+/**
+ * `testOnlyProof` marks a head proceeding on its NO_REPRO, test-only or non-source (TP-4275), and `badFixProof` any other fix-proof
+ * line that makes the tests seat blocking, such as `unproven` or `error` (TP-4195); either way the panel plans a tests member to answer it.
+ */
+export const PROOF_PLAN_FIELDS = { testOnlyProof: z.literal(true).optional(), badFixProof: z.literal(true).optional() };
+
+/** The intent's proof fields from the predicate aggregate blocks the tests seat on, so the seat it blocks is always planned. */
+export function proofPlanFields(proof: z.infer<typeof FixProofReadSchema>, head: string, standing: ProofStanding): { testOnlyProof?: true; badFixProof?: true } {
+  if (noReproProceedOf(standing.unverified) !== undefined) return { testOnlyProof: true };
+  const fixProof = proof.kind === "result" ? proof.line : undefined;
+  return fixProofNeedsTests({ head, fixProof, fixProofWaivedAt: standing.waivedAt }) ? { badFixProof: true } : {};
 }
 
 /** What every member's dispatch shares with the correctness reviewer's; members never write the owner brief. */
@@ -138,7 +159,7 @@ async function dispatchMembers(ctx: WorkflowContext, intent: PanelIntent, base: 
 function memberResultOf(awaited: AwaitedResult): MemberResult["result"] {
   if (awaited.kind !== "verdict") return { kind: "none", ...(typeof awaited.reason === "string" && { reason: awaited.reason }) };
   const verdict = { kind: "verdict" as const, head: awaited.head, locator: awaited.locator, reviewer: awaited.reviewer };
-  if (awaited.verdict === "MERGE") return { ...verdict, verdict: "MERGE" };
+  if (awaited.verdict === "MERGE") return { ...verdict, verdict: "MERGE", ...(awaited.attests && { attests: awaited.attests }) };
   const closer = awaited.closer === "yes" || awaited.closer === "no" ? awaited.closer : undefined;
   return { ...verdict, verdict: "FIX_FIRST", text: awaited.text ?? "", ...(closer !== undefined && { closer }) };
 }
@@ -197,6 +218,7 @@ const PanelVerdictRead = z.looseObject({
   dissent: z.array(SHAPE),
   degraded: z.array(SHAPE),
   satisfiesG10: z.boolean(),
+  fixProofShortfall: z.literal(true).optional(),
 });
 type PanelVerdictRecord = z.infer<typeof PanelVerdictRead>;
 
@@ -240,12 +262,30 @@ function panelFixFirst(head: string, verdict: PanelVerdict): Verdict {
   return { kind: "FIX_FIRST", headSha: head, text: panelFindingsText(verdict), ...(verdict.closer !== undefined && { closer: verdict.closer }) };
 }
 
+/**
+ * No fresh reviewer fills the unplanned tests seat. An intent plans a tests member whenever the fix-proof makes that seat blocking
+ * (TP-4058, TP-4195), so this is reached by an intent recorded before that. A vacuous or test-less line goes back as Shepherd's own NO_REPRO, which the owner can waive and
+ * the fixer's brief explains (tp#2145); any other bad line keeps its unverified review, so this is undefined.
+ */
+function proofShortfall(verdict: PanelVerdictRecord, head: string, line: string | undefined): Verdict | undefined {
+  return verdict.fixProofShortfall === true && line !== undefined ? noReproOfLine(line, head) : undefined;
+}
+
+/** Names the seat that withheld the verdict, so a round where every dispatched member answered never reads as a silent reviewer. */
+function panelNone(verdict: PanelVerdictRecord): Verdict {
+  if (verdict.outcome === "timeout") return { kind: "none", cause: "timeout", reason: "a blocking panel member gave no verdict" };
+  const shortfall = "every dispatched panel member answered, but the fix-proof needs a tests member the panel never planned";
+  const reason = verdict.fixProofShortfall === true ? shortfall : "a blocking panel member gave no verdict";
+  return { kind: "none", cause: "no-verdict", reason };
+}
+
 const MemberVerdict = z.looseObject({
   kind: z.literal("verdict"),
   reviewer: z.object({ agentId: z.string(), sessionId: z.string() }),
   locator: z.unknown(),
   verdict: z.enum(["MERGE", "FIX_FIRST"]).optional(),
   head: z.string().optional(),
+  attests: z.array(z.string()).optional(),
 });
 
 /**
@@ -256,9 +296,9 @@ export function panelMerge(verdict: PanelVerdict, results: readonly { shape: Mem
   const members = results.flatMap(({ shape, result }) => {
     const read = MemberVerdict.safeParse(result);
     if (!read.success) return [];
-    const { reviewer, locator, verdict: said, head } = read.data;
+    const { reviewer, locator, verdict: said, head, attests } = read.data;
     const profile = profiles[shape];
-    return [{ shape, ...reviewer, locator, ...(said !== undefined && { verdict: said }), ...(head !== undefined && { head }), ...(profile !== undefined && { profile }) }];
+    return [{ shape, ...reviewer, locator, ...(said !== undefined && { verdict: said }), ...(head !== undefined && { head }), ...(profile !== undefined && { profile }), ...(attests && { attests }) }];
   });
   return { satisfiesG10: verdict.satisfiesG10, degraded: verdict.degraded, members };
 }
@@ -271,15 +311,26 @@ const memberProfiles = (members: readonly DispatchedMember[]): Record<string, st
  * Every member but correctness is started before any verdict is awaited, so they review side by side; correctness keeps its
  * late read, correction turn and usage-limit hold. The recorded aggregate decides, and a panel that is not unanimous never merges.
  */
-export async function panelReview(ctx: WorkflowContext, intent: PanelIntent, base: MemberBase, awaiting: AwaitVerdictInput, dispatchedReviewer: AgentIdentity, account: string, standing: ProofStanding): Promise<Verdict> {
+export async function panelReview(ctx: WorkflowContext, intent: PanelIntent, base: MemberBase, awaiting: AwaitVerdictInput, dispatchedReviewer: AgentIdentity, account: string, standing: ProofStanding, scope?: ScopeRound): Promise<Verdict> {
   const target: ReviewTarget = { repo: base.repo, pr: base.pr, head: base.head };
   const members = await dispatchMembers(ctx, intent, base);
-  const taken = await takeAwaited(ctx, target, awaiting, dispatchedReviewer, account);
+  const taken = await takeAwaited(ctx, target, awaiting, dispatchedReviewer, account, scope);
   if ("held" in taken) return taken.held;
   const results = [{ shape: "correctness" as const, result: memberResultOf(taken.awaited) }, ...(await awaitMembers(ctx, target, members))];
   const verdict = await panelVerdict(ctx, target, intent.plan, results, base);
   if (verdict.outcome === "FIX_FIRST") return panelFixFirst(target.head, verdict);
-  if (verdict.outcome !== "MERGE" && taken.awaited.kind === "verdict") return { kind: "none", cause: verdict.outcome === "timeout" ? "timeout" : "no-verdict", reason: "a blocking panel member gave no verdict" };
-  const decided = await verdictOf(ctx, target, awaiting, dispatchedReviewer, taken.awaited, standing);
-  return decided.kind === "MERGE" && verdict.outcome === "MERGE" ? { ...decided, panel: panelMerge(verdict, results, memberProfiles(members)) } : decided;
+  const shortfall = proofShortfall(verdict, target.head, base.fixProof);
+  if (shortfall) return shortfall;
+  if (verdict.outcome !== "MERGE" && taken.awaited.kind === "verdict") return panelNone(verdict);
+  const merged = panelMerge(verdict, results, memberProfiles(members));
+  const decided = await verdictOf(ctx, target, awaiting, dispatchedReviewer, taken.awaited, standing, adversaryAttest(intent, merged));
+  return decided.kind === "MERGE" && verdict.outcome === "MERGE" ? { ...decided, panel: merged } : decided;
+}
+
+/** The adversary member's MERGE as the evidence step judges its `Attests:` line, and whether the plan had an adversary at all. */
+function adversaryAttest(intent: PanelIntent, merged: PanelMerge): Omit<AttestVerdicts, "attests"> {
+  const member = merged.members.find((m) => m.shape === "adversary" && m.verdict === "MERGE" && m.head !== undefined);
+  const planned = intent.plan.members.some((m) => m.shape === "adversary");
+  const adversary = member?.head === undefined ? undefined : { reviewer: { agentId: member.agentId, sessionId: member.sessionId }, head: member.head, attests: [...(member.attests ?? [])] };
+  return { ...(adversary && { adversary }), ...(planned && { adversaryPlanned: true as const }) };
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Compiles the owner-presence helper into products/factory/native/build with /usr/bin/swiftc.
 // Outside dist, because tsup clean wipes dist on every build. Skipped off macOS (CI runs Linux and nothing there needs the helper); a missing helper
-// makes confirmOwner return undefined, so the owner class stays unreachable.
+// makes signStatement return undefined, so the owner class stays unreachable.
 import { mkdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";

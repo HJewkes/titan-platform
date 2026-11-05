@@ -1,4 +1,5 @@
 import { applyAudit, namedBinder } from "./audit-apply.js";
+import { ECHO_STATE_TABLE } from "./echo-state-schema.js";
 import { REVIEW_TABLE } from "./review-schema.js";
 import { isUntypedPrompt, stripInjected } from "./injected-text.js";
 import { backfillClaudeAliases } from "./normalized-schema.js";
@@ -16,16 +17,70 @@ import type { SessionGraph } from "./graph.js";
  */
 export function applyDelta(graph: SessionGraph, transcriptId: number, delta: TranscriptDelta, source: DeltaSource = {}): void {
   graph.db.transaction(() => {
-    applyFacts(graph.db, transcriptId, delta);
-    applySessions(graph.db, transcriptId, delta, source.account ?? null);
-    backfillClaudeAliases(graph.db, delta.sessions.map(s => s.sessionId));
-    applyAssets(graph.db, delta);
-    applyPhases(graph.db, transcriptId, delta);
-    applyLinkedRows(graph, transcriptId, delta);
-    applySpans(graph, transcriptId, delta, source.indexSdkPrompts ?? false);
-    applyReviewVerdicts(graph.db, transcriptId, delta);
-    applyAudit(graph.db, transcriptId, delta);
+    for (const step of deltaSteps(graph, transcriptId, delta, source)) step();
   })();
+}
+
+/**
+ * `applyDelta` with `yieldPoint` awaited between bounded steps, all inside one
+ * transaction held open across the yields, so the delta still commits or rolls
+ * back whole. One transcript's delta held the loop 95 to 148 ms locally and
+ * about 2.6 s on a loaded CI runner (TP-4175). Rows written so far are visible
+ * on this connection during a yield; the refresh lock keeps other writers out.
+ * Inside a caller's transaction it runs in one go, as a savepoint cannot span a yield safely.
+ */
+export async function applyDeltaYielding(graph: SessionGraph, transcriptId: number, delta: TranscriptDelta, source: DeltaSource, yieldPoint: () => Promise<void>): Promise<void> {
+  if (graph.db.inTransaction) return applyDelta(graph, transcriptId, delta, source);
+  graph.db.exec("BEGIN");
+  try {
+    for (const step of deltaSteps(graph, transcriptId, delta, source)) {
+      step();
+      await yieldPoint();
+    }
+    graph.db.exec("COMMIT");
+  } catch (err) {
+    rollbackIfOpen(graph.db);
+    throw err;
+  }
+}
+
+/** A failed COMMIT may already have rolled back on its own. */
+function rollbackIfOpen(db: Db): void {
+  if (db.inTransaction) db.exec("ROLLBACK");
+}
+
+/** Rows per step. Each list is applied in order, so slicing it changes no row: every statement reads what the slices before it wrote. */
+const STEP_ROWS = 500;
+
+function slices<T>(rows: readonly T[]): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < rows.length; i += STEP_ROWS) out.push(rows.slice(i, i + STEP_ROWS));
+  return out;
+}
+
+const LINKED_KEYS = ["turns", "humanEdits", "fileCheckpoints", "subagents", "subagentTranscripts", "edges"] as const;
+type LinkedRows = Pick<TranscriptDelta, (typeof LINKED_KEYS)[number]>;
+const NO_LINKED_ROWS: LinkedRows = { turns: [], humanEdits: [], fileCheckpoints: [], subagents: [], subagentTranscripts: [], edges: [] };
+
+/** Facts first, since every later step resolves its `fact_id` from them. */
+function* deltaSteps(graph: SessionGraph, transcriptId: number, delta: TranscriptDelta, source: DeltaSource): Generator<() => void> {
+  const { db } = graph;
+  for (const facts of slices(delta.facts)) yield () => applyFacts(db, transcriptId, facts);
+  yield () => {
+    applySessions(db, transcriptId, delta, source.account ?? null);
+    backfillClaudeAliases(db, delta.sessions.map(s => s.sessionId));
+    applyAssets(db, delta);
+    applyPhases(db, transcriptId, delta);
+  };
+  for (const key of LINKED_KEYS) {
+    for (const rows of slices<unknown>(delta[key])) yield () => applyLinkedRows(graph, transcriptId, { ...NO_LINKED_ROWS, [key]: rows });
+  }
+  const injectedLines = new Set(delta.inbound.filter(i => isUntypedPrompt(i, source.indexSdkPrompts ?? false)).map(i => i.byteOffset));
+  for (const spans of slices(delta.spans)) yield () => applySpans(graph, transcriptId, spans, injectedLines);
+  yield () => {
+    applyReviewVerdicts(db, transcriptId, delta);
+    applyAudit(db, transcriptId, delta);
+  };
 }
 
 /** What discovery knows about the file that the lines themselves do not carry. */
@@ -41,12 +96,28 @@ const INSERT_FACT = `
   VALUES (@transcriptId, @byteOffset, @byteLength, @eventType, @ts, @seq, @sessionId, @promptId, @toolUseId)
   ON CONFLICT (transcript_id, byte_offset) DO NOTHING`;
 
-/** Facts carry a per-transcript `seq` continuing from whatever is stored. */
-function applyFacts(db: Db, transcriptId: number, delta: TranscriptDelta): void {
-  const next = db.prepare("SELECT COALESCE(MAX(seq), -1) + 1 AS next FROM fact WHERE transcript_id = ?").get(transcriptId) as { next: number };
+const READ_ECHO = `SELECT value FROM ${ECHO_STATE_TABLE} WHERE transcript_id = ? AND session_id = ? AND key = ?`;
+const UPSERT_ECHO = `
+  INSERT INTO ${ECHO_STATE_TABLE} (transcript_id, session_id, key, value) VALUES (?, ?, ?, ?)
+  ON CONFLICT (transcript_id, session_id, key) DO UPDATE SET value = excluded.value`;
+
+/**
+ * Facts carry a per-transcript `seq` continuing from whatever is stored. An echo fact whose value
+ * equals the stored state is skipped without taking a `seq`; the state lives in a table rather
+ * than in memory, so a chunked read keeps exactly the facts a whole-file read keeps.
+ */
+function applyFacts(db: Db, transcriptId: number, facts: TranscriptDelta["facts"]): void {
+  const next = db.prepare<[number], { next: number }>("SELECT COALESCE(MAX(seq), -1) + 1 AS next FROM fact WHERE transcript_id = ?").get(transcriptId);
   const insert = db.prepare(INSERT_FACT);
-  let seq = next.next;
-  for (const f of delta.facts) {
+  const readEcho = db.prepare<[number, string, string], { value: string }>(READ_ECHO);
+  const upsertEcho = db.prepare(UPSERT_ECHO);
+  let seq = next?.next ?? 0;
+  for (const f of facts) {
+    if (f.state) {
+      const stored = readEcho.get(transcriptId, f.sessionId, f.state.key);
+      if (stored?.value === f.state.value) continue;
+      upsertEcho.run(transcriptId, f.sessionId, f.state.key, f.state.value);
+    }
     insert.run({ transcriptId, byteOffset: f.byteOffset, byteLength: f.byteLength, eventType: f.eventType, ts: f.ts, seq: seq++, sessionId: f.sessionId, promptId: f.promptId, toolUseId: f.toolUseId });
   }
 }
@@ -94,11 +165,14 @@ const ASSET_UPSERTS = {
           repo = COALESCE(repo, excluded.repo), url = COALESCE(url, excluded.url)`,
 } as const;
 
+const ASSET_KINDS = ["prs", "branches", "files", "tasks", "prMerges", "prCreates"] as const satisfies readonly (keyof typeof ASSET_UPSERTS)[];
+
 function applyAssets(db: Db, delta: TranscriptDelta): void {
-  for (const [kind, sql] of Object.entries(ASSET_UPSERTS) as [keyof typeof ASSET_UPSERTS, string][]) {
+  for (const kind of ASSET_KINDS) {
+    const sql = ASSET_UPSERTS[kind];
     const statement = db.prepare(sql);
     const bind = namedBinder(sql);
-    for (const row of delta[kind] as unknown as Record<string, unknown>[]) statement.run(bind(row));
+    for (const row of delta[kind]) statement.run(bind({ ...row }));
   }
 }
 
@@ -151,18 +225,18 @@ function chatVerdictKeys(verdicts: readonly ChatVerdict[]): string[] {
  * row is inserted. Done here so a chunk boundary mid-run cannot add a phase.
  */
 function applyPhases(db: Db, transcriptId: number, delta: TranscriptDelta): void {
-  const current = db.prepare("SELECT phase_id, to_mode FROM permission_phase WHERE session_id = ? AND trigger = ? AND t_invalid IS NULL ORDER BY phase_id DESC LIMIT 1");
+  const current = db.prepare<[string, string], { phase_id: number; to_mode: string }>("SELECT phase_id, to_mode FROM permission_phase WHERE session_id = ? AND trigger = ? AND t_invalid IS NULL ORDER BY phase_id DESC LIMIT 1");
   const close = db.prepare("UPDATE permission_phase SET t_invalid = ? WHERE phase_id = ?");
   const insert = db.prepare("INSERT INTO permission_phase (session_id, from_mode, to_mode, trigger, t_valid, fact_id) VALUES (?, ?, ?, ?, ?, ?)");
   for (const phase of delta.phases) {
-    const open = current.get(phase.sessionId, phase.trigger) as { phase_id: number; to_mode: string } | undefined;
+    const open = current.get(phase.sessionId, phase.trigger);
     if (open?.to_mode === phase.toMode) continue;
     if (open) close.run(phase.ts, open.phase_id);
     insert.run(phase.sessionId, open?.to_mode ?? null, phase.toMode, phase.trigger, phase.ts, factIdFor(db, transcriptId, phase.byteOffset));
   }
 }
 
-function applyLinkedRows(graph: SessionGraph, transcriptId: number, delta: TranscriptDelta): void {
+function applyLinkedRows(graph: SessionGraph, transcriptId: number, delta: LinkedRows): void {
   const { db } = graph;
   const factId = (byteOffset: number) => factIdFor(db, transcriptId, byteOffset);
 
@@ -194,9 +268,8 @@ function applyLinkedRows(graph: SessionGraph, transcriptId: number, delta: Trans
 }
 
 /** Prompt spans index only what the human typed; a line nobody typed indexes no prompt at all. */
-function applySpans(graph: SessionGraph, transcriptId: number, delta: TranscriptDelta, indexSdkPrompts: boolean): void {
-  const injectedLines = new Set(delta.inbound.filter(i => isUntypedPrompt(i, indexSdkPrompts)).map(i => i.byteOffset));
-  for (const span of delta.spans) {
+function applySpans(graph: SessionGraph, transcriptId: number, spans: TranscriptDelta["spans"], injectedLines: ReadonlySet<number>): void {
+  for (const span of spans) {
     const isPrompt = span.field === "prompt";
     const text = !isPrompt ? span.text : injectedLines.has(span.byteOffset) ? "" : stripInjected(span.text);
     if (isPrompt && !text) continue;
@@ -215,6 +288,6 @@ function assertTranscriptEdge(graph: SessionGraph, edge: EdgeInput): void {
 }
 
 function factIdFor(db: Db, transcriptId: number, byteOffset: number): number | null {
-  const row = db.prepare("SELECT fact_id FROM fact WHERE transcript_id = ? AND byte_offset = ?").get(transcriptId, byteOffset) as { fact_id: number } | undefined;
+  const row = db.prepare<[number, number], { fact_id: number }>("SELECT fact_id FROM fact WHERE transcript_id = ? AND byte_offset = ?").get(transcriptId, byteOffset);
   return row?.fact_id ?? null;
 }

@@ -1,7 +1,13 @@
+export { readAccounts } from "./accounts.js";
+export type { ReadAccountsOptions } from "./accounts.js";
+export { accountIdentity } from "./identity.js";
+export type { ReadText } from "./identity.js";
 export { CONFIG_DIRS_ENV, PROFILE_ROOT_ENV, discoverProfiles } from "./profiles.js";
 export type { DiscoverOptions } from "./profiles.js";
 export { CREDENTIALS_FILE, MAX_CREDENTIALS_BYTES, readLoginState } from "./login.js";
 export type { ReadLoginOptions } from "./login.js";
+export { KEYCHAIN_SERVICE, keychainService } from "./keychain.js";
+export type { KeychainExec, KeychainExecResult, KeychainOptions } from "./keychain.js";
 export {
   DEFAULT_TIMEOUT_MS,
   EXPIRY_MARGIN_MS,
@@ -33,5 +39,5 @@ export {
 export type { RefreshOptions, RefreshResult } from "./refresh.js";
 export { DEPOSIT_ASKER, refreshFailureDeposit } from "./refresh-deposit.js";
 export type { RefreshFailureDeposit, RefreshFailureKind } from "./refresh-deposit.js";
-export { MAX_READING_BYTES, USAGE_FILE, readUsage, sessionsDir, usageFilePath, writeReading } from "./usage-file.js";
+export { MAX_READING_BYTES, USAGE_FILE, readReadings, readUsage, sessionsDir, usageFilePath, writeReading } from "./usage-file.js";
 export type { ReadUsageOptions, UsageFileRead } from "./usage-file.js";

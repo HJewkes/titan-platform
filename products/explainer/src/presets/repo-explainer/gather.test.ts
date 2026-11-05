@@ -60,15 +60,17 @@ describe("gatherReview over the whiteboard fixture", () => {
     expect(Object.keys(result.bundle.files_sha256)).toEqual([
       "digests/WB-W1-001.json",
       "digests/WB-W3-001.json",
+      "explainer-skim.json",
       "ledger.tsv",
       "licenses.tsv",
       "README.md",
+      "structural/graph-report.json",
       "SUMMARY.md",
       "synthesis/current-label",
       "synthesis/final/claims-audit.tsv",
       "synthesis/final/topics-judged.tsv",
     ]);
-    expect(result.bundle.counts).toMatchObject({ topic: 3, row: 3, claim: 3, digest: 2, readme: 3 });
+    expect(result.bundle.counts).toMatchObject({ topic: 3, row: 3, claim: 3, digest: 2, readme: 3, skim: 12, history: 13 });
   });
 
   it("refuses a non-final label with E-LABEL and no bundle", async () => {
@@ -190,10 +192,20 @@ describe("gatherReview over the whiteboard fixture", () => {
   });
 
   it("warns W-NO-PAIN for a repo-argument gather with no pain fact and still returns the bundle", async () => {
-    const result = await gather({ profile: "repo-argument" });
+    const dir = await fixtureCopy();
+    await rm(join(dir, "explainer-skim.json"));
+
+    const result = await gather({ reviewDir: dir, profile: "repo-argument" });
 
     expect(result.ok).toBe(true);
     expect(codes(result)).toContain("W-NO-PAIN");
+  });
+
+  it("takes a skim pain fact as the repo-argument pain precondition", async () => {
+    const result = await gather({ profile: "repo-argument" });
+
+    expect(result.ok).toBe(true);
+    expect(codes(result)).not.toContain("W-NO-PAIN");
   });
 
   it("does not ask a repo-tour gather for a pain fact", async () => {
@@ -212,6 +224,59 @@ describe("gatherReview over the whiteboard fixture", () => {
     expect(codes(tour)).toContain("E-SECTION");
     expect(argument.ok).toBe(true);
     expect(codes(argument)).toContain("W-SECTION");
+  });
+});
+
+describe("gatherReview skim and history facts", () => {
+  it("reads the docs skim into purpose, pain, actor, job and entry-point facts", async () => {
+    const result = await gather();
+
+    if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
+    const skimKinds = new Set(result.facts.filter((fact) => fact.source === "skim").map((fact) => fact.kind));
+    expect([...skimKinds]).toEqual(expect.arrayContaining(["what-it-is", "pain", "actor", "job", "entry-point", "should-not"]));
+  });
+
+  it("reads the lifetime history report at the pin into hotspot and silo facts", async () => {
+    const result = await gather();
+
+    if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
+    const history = result.facts.filter((fact) => fact.source === "history");
+    expect(history.filter((fact) => fact.kind === "hotspot")).toHaveLength(8);
+    expect(history.filter((fact) => fact.kind === "silo")).toHaveLength(5);
+  });
+
+  it("still gathers an older review with neither file, warning W-NO-SKIM and W-NO-HISTORY", async () => {
+    const dir = await fixtureCopy();
+    await rm(join(dir, "explainer-skim.json"));
+    await rm(join(dir, "structural"), { recursive: true });
+
+    const result = await gather({ reviewDir: dir });
+
+    expect(result.ok).toBe(true);
+    expect(codes(result)).toEqual(expect.arrayContaining(["W-NO-SKIM", "W-NO-HISTORY"]));
+  });
+
+  it("drops history facts with W-HISTORY-PIN when the report is not at the review pin", async () => {
+    const dir = await fixtureCopy();
+    await editFile(dir, "structural/graph-report.json", (text) => text.replace(PIN, OFF_PIN));
+
+    const result = await gather({ reviewDir: dir });
+
+    if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
+    expect(codes(result)).toContain("W-HISTORY-PIN");
+    expect(result.bundle.counts.history).toBeUndefined();
+  });
+
+  it("keeps the public fixture free of real identities", async () => {
+    const text = await readFile(join(FIXTURE, "structural/graph-report.json"), "utf8");
+    const authors: string[] = [];
+    JSON.parse(text, (key, value) => {
+      if (/author|email|owner/i.test(key) && typeof value === "string") authors.push(value);
+      return value;
+    });
+
+    expect(text).not.toContain("@");
+    expect(authors.filter((author) => !/^author-\d+$/.test(author))).toEqual([]);
   });
 });
 

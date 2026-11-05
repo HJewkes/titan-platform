@@ -1,0 +1,26 @@
+schema: narrative-structure/v1
+id: review-saga
+version: 0.1.0
+source: "video-profiles plan §B.1 (review rounds as the spine)"
+summary: "A change told through its review rounds: what each round caught, and the change that survived."
+fit:
+  ask: "Did review take three or more rounds?"
+  all: [many-review-rounds]
+blocks:
+  - { id: summary, goal: "The change in one line and the verdict.", share: 0.15 }
+  - { id: rounds, goal: "Each round and what it caught.", share: 0.4 }
+  - { id: changes, goal: "The change that survived, grouped by purpose.", share: 0.25 }
+  - { id: proof, goal: "What shows it holds, then the ask.", share: 0.2 }
+hook: "Open on the finding that changed the change most."
+ending: "button"
+spine:
+  - title: Summary
+    body: |-
+      <The change in one imperative line, and the verdict.>
+  - title: Rounds
+    body: |-
+      | Round | What it caught | What changed | Fact id |
+      |---|---|---|---|
+  - title: What survived
+    body: |-
+      <The change as merged, grouped by purpose.>

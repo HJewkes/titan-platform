@@ -6,16 +6,23 @@ export interface FixFirstEntry {
   headSha: string;
   text: string;
   defectClass?: string;
+  /** A fix-proof NO_REPRO that a record from before TP-3900 counted here; no reviewer said FIX_FIRST at it. */
+  noRepro?: true;
 }
+
+/** True when some reviewer, not the fix-proof, said FIX_FIRST somewhere in the trail. */
+export const hasReviewerFixFirst = (trail: readonly FixFirstEntry[]): boolean => trail.some((entry) => entry.noRepro !== true);
 
 /** A run's FIX_FIRSTs, oldest first; `countRound` builds it as verdicts replay, so a restart rebuilds it without a step of its own. */
 export interface FixFirstTrail {
   fixFirstTrail: FixFirstEntry[];
   /** The head D8's one convergence review went to (TP-3734); a moved head re-arms it. */
   convergedAt?: string;
+  /** The trail's length at the run's last MERGE; the FIX_FIRSTs before it were answered, so a fix round's open findings start here. */
+  openFrom?: number;
 }
 
-export const FixFirstEntrySchema = z.looseObject({ headSha: z.string(), text: z.string(), defectClass: z.string().optional() });
+export const FixFirstEntrySchema = z.looseObject({ headSha: z.string(), text: z.string(), defectClass: z.string().optional(), noRepro: z.literal(true).optional() });
 
 const isDefectHeading = (line: string): boolean => line.replace(/^[\s#*]+/, "").toLowerCase().startsWith(DEFECT_CLASS_HEADING.toLowerCase());
 
@@ -69,6 +76,31 @@ export function trailSummary(trail: readonly FixFirstEntry[]): string[] {
   });
 }
 
+/** A fix round's re-review: the newest open finding's head, the base the head merges against when it was read, and every open finding. */
+export interface FixRound {
+  sinceHead: string;
+  baseRef?: string;
+  openFindings: readonly FixFirstEntry[];
+}
+
+/** The reviewer FIX_FIRSTs since the run's last MERGE, oldest first: what a fix round must answer (TP-3735). */
+const openFindingsOf = (run: FixFirstTrail): FixFirstEntry[] => run.fixFirstTrail.slice(run.openFrom ?? 0).filter((entry) => entry.noRepro !== true);
+
+export const earlierFindingOf = (entry: FixFirstEntry): EarlierFinding => ({ head: entry.headSha, text: entry.text, ...(entry.defectClass !== undefined && { defectClass: entry.defectClass }) });
+
+/**
+ * Only a fix round after a reviewer's FIX_FIRST is scoped. D8's convergence head reads the whole trail and the whole PR, and
+ * every other cause, a retry included, reviews in full.
+ */
+export function fixRoundOf(run: FixFirstTrail, headSha: string, cause: { cause: string }, lastCi: { headSha: string; baseRef?: string } | undefined): { fixRound?: FixRound } {
+  if (cause.cause !== "fix-round" || run.convergedAt === headSha) return {};
+  const openFindings = openFindingsOf(run);
+  const sinceHead = openFindings.at(-1)?.headSha;
+  if (sinceHead === undefined || sinceHead === headSha) return {};
+  const baseRef = lastCi?.headSha === headSha ? lastCi.baseRef : undefined;
+  return { fixRound: { sinceHead, openFindings, ...(baseRef !== undefined && { baseRef }) } };
+}
+
 /** D8's convergence review at `headSha` carries the run's whole trail; any other review carries none. */
 export function convergenceOf(run: FixFirstTrail, headSha: string): { convergence?: FixFirstEntry[] } {
   return run.convergedAt === headSha ? { convergence: [...run.fixFirstTrail] } : {};
@@ -77,5 +109,11 @@ export function convergenceOf(run: FixFirstTrail, headSha: string): { convergenc
 /** The reviewer brief's convergence fields for a trail; only the correctness reviewer gets them, and panel members review as usual. */
 export function convergenceFields(trail: readonly FixFirstEntry[] | undefined): { convergence?: true; earlierFindings?: EarlierFinding[] } {
   if (trail === undefined) return {};
-  return { convergence: true, earlierFindings: trail.map((entry) => ({ head: entry.headSha, text: entry.text, ...(entry.defectClass !== undefined && { defectClass: entry.defectClass }) })) };
+  return { convergence: true, earlierFindings: trail.map(earlierFindingOf) };
+}
+
+/** How a brief counts a FIX_FIRST: 2nd, 3rd, 11th. */
+export function ordinal(n: number): string {
+  const suffix = n % 100 >= 11 && n % 100 <= 13 ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th");
+  return `${n}${suffix}`;
 }

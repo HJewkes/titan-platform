@@ -21,7 +21,7 @@ const JourneyRow = z
 const ArchitectureRow = z.object({ part: Text, carries: List, mechanism: Optional, constraint: Optional }).strict();
 const ConstraintRow = z.object({ constraint: Text, forces: Text }).strict();
 const LedgerRow = z.object({ item: Text, kind: z.enum(SPINE_ITEM_KINDS), definedIn: Text, reusedIn: List }).strict();
-const ChapterRow = z.object({ chapter: Text, question: Text, rows: List }).strict();
+const ChapterRow = z.object({ chapter: Text, question: Text, rows: List, beat: Text.optional() }).strict();
 const ShapeRow = z.object({ beat: Text, shape: z.enum(SPINE_LIST_SHAPES) }).strict();
 
 /** `spine/v1`: the story spine's tables, parsed from the planner's spine.md before any beat is written. */
@@ -29,6 +29,7 @@ export const SpineSchema = z
   .object({
     schema: z.literal("spine/v1"),
     id: Text,
+    structure: Text.optional(),
     journey: z.array(JourneyRow).min(1),
     architecture: z.array(ArchitectureRow).min(1),
     constraints: z.array(ConstraintRow),
@@ -106,17 +107,19 @@ const ROW_READERS: Record<TableName, (c: string[]) => Record<string, unknown>> =
   architecture: ([part = "", carries = "", mechanism = "", constraint = ""]) => ({ part, carries: list(carries), mechanism: cell(mechanism), constraint: cell(constraint) }),
   constraints: ([constraint = "", forces = ""]) => ({ constraint, forces }),
   ledger: ([item = "", kind = "", definedIn = "", reusedIn = ""]) => ({ item, kind: word(kind), definedIn, reusedIn: list(reusedIn) }),
-  chapters: ([chapter = "", question = "", rows = ""]) => ({ chapter, question, rows: list(rows) }),
+  chapters: ([chapter = "", question = "", rows = "", beat = ""]) => ({ chapter, question, rows: list(rows), ...(cell(beat) === null ? {} : { beat }) }),
   shapes: ([beat = "", shape = ""]) => ({ beat, shape: word(shape) }),
 };
 
-const WIDTHS: Record<TableName, number> = { journey: 6, architecture: 4, constraints: 2, ledger: 4, chapters: 3, shapes: 2 };
+// §8 may carry a fourth column, the chapter's lead beat, which an audition pick names.
+const WIDTHS: Record<TableName, readonly number[]> = { journey: [6], architecture: [4], constraints: [2], ledger: [4], chapters: [3, 4], shapes: [2] };
 
 function readTable(name: TableName, found: Map<number, string[]>): Record<string, unknown>[] | undefined {
   const lines = found.get(TABLE_SECTIONS[name]);
   if (!lines) return undefined;
   return tableRows(lines).map((cells, i) => {
-    if (cells.length !== WIDTHS[name]) throw new Error(`spine §${TABLE_SECTIONS[name]} (${name}) row ${i + 1} has ${cells.length} cells, expected ${WIDTHS[name]}`);
+    const widths = WIDTHS[name];
+    if (!widths.includes(cells.length)) throw new Error(`spine §${TABLE_SECTIONS[name]} (${name}) row ${i + 1} has ${cells.length} cells, expected ${widths.join(" or ")}`);
     return ROW_READERS[name](cells);
   });
 }
@@ -124,9 +127,11 @@ function readTable(name: TableName, found: Map<number, string[]>): Record<string
 /**
  * Parses a story-spine markdown file (the script-method §3a template) into `spine/v1`. Sections are found by
  * their number, so a planner may retitle them; §8 (chapter order) and §9 (list shapes) are optional, §3-§6 are required.
+ * A `Structure: <id>` line names the narrative structure the spine was planned in; a planner's spine may omit it.
  */
 export function parseSpine(markdown: string): SpineV1 {
   const id = /^#\s+Story spine:\s*(.+?)\s*$/m.exec(markdown)?.[1];
+  const structure = /^Structure:\s*(\S+)\s*$/m.exec(markdown)?.[1];
   const found = sections(markdown);
   const tables = Object.fromEntries(
     TABLE_NAMES.flatMap((name) => {
@@ -134,5 +139,5 @@ export function parseSpine(markdown: string): SpineV1 {
       return rows === undefined ? [] : [[name, rows]];
     }),
   );
-  return SpineSchema.parse({ schema: "spine/v1", id, ...tables });
+  return SpineSchema.parse({ schema: "spine/v1", id, ...(structure === undefined ? {} : { structure }), ...tables });
 }

@@ -1,0 +1,29 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a frame verdict never shows as pressed",
+      "file": "apps/console/src/pages/FrameFeedback.tsx",
+      "find": "aria-pressed={draft.verdict === verdict}",
+      "replace": "aria-pressed={false}",
+      "kills": [
+        "a design round's frame verdicts and comments (TP-3773) restores an unsent verdict and frame comment after the page is remounted (TP-3778)",
+        "a design round's frame verdicts and comments (TP-3773) judges the active frame with letter keys, and leaves digits to the questions",
+        "a design round's frame verdicts and comments (TP-3773) judges a frame a question draws above itself, which stays the active one after the press",
+        "a design round's check before sending (TP-3775) takes no frame letter keys while it is open",
+        "a design round's picks and frame verdicts, kept in step (TP-3773 S7) marks the frame an option picks Chosen, and un-chooses the frame of the pick it replaced",
+        "a design round's picks and frame verdicts, kept in step (TP-3773 S7) adds a chosen frame's option to a pick-many's picks without replacing them",
+        "a design round's picks and frame verdicts, kept in step (TP-3773 S7) gives each A/B side's frame a verdict that its pick sets"
+      ]
+    },
+    {
+      "name": "a pin's Remove button keeps the pin",
+      "file": "apps/console/src/pages/FramePins.tsx",
+      "find": "onPress={() => onRemove(pin.id)}",
+      "replace": "onPress={() => undefined}",
+      "kills": [
+        "a design round's frame pins (TP-3773 S4) numbers a pin placed after a removal past every number handed out"
+      ]
+    }
+  ]
+}

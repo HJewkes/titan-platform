@@ -252,8 +252,14 @@ declare class CacheBlobTable {
 interface SpanFtsOptions {
     /** Base name; tables are `<name>_span` and `<name>_fts`. */
     name?: string;
+    /**
+     * Create the FTS table with `contentless_delete=1` (SQLite 3.43+), so purges
+     * delete FTS rows instead of stranding them. Default false: the table and its
+     * orphan behaviour stay as they were.
+     */
+    contentlessDelete?: boolean;
 }
-declare function spanFtsTablesDdl({ name }?: SpanFtsOptions): string;
+declare function spanFtsTablesDdl({ name, contentlessDelete }?: SpanFtsOptions): string;
 interface SpanInput {
     /** The entity this text belongs to, e.g. `session:abc`. */
     ownerRef: string;
@@ -302,10 +308,13 @@ declare class SpanFtsTables {
     private readonly scopedSearchStmts;
     private readonly deleteAllFts;
     private readonly deleteSpansStmt;
+    private readonly deleteSourceSpansStmt;
+    private readonly purgeOwnerTxn;
+    private readonly purgeSourceTxn;
     private readonly countSpans;
     private readonly countFts;
     private readonly indexTxn;
-    constructor(db: Db, { name }?: SpanFtsOptions);
+    constructor(db: Db, { name, contentlessDelete }?: SpanFtsOptions);
     /**
      * Index `text` for a span, storing only the locator. Returns the span id.
      *
@@ -331,8 +340,13 @@ declare class SpanFtsTables {
      * is everything that changes the SQL.
      */
     private scopedStatement;
-    /** Drop an owner's spans. Their FTS rows become orphans, hidden by the join, until `clearIndex` and a re-stream. */
+    /**
+     * Drop an owner's spans. Without `contentlessDelete` their FTS rows become
+     * orphans, hidden by the join, until `clearIndex` and a re-stream.
+     */
     purgeOwner(ownerRef: string): number;
+    /** Drop every span of one source (transcript or file), with the same FTS behaviour as `purgeOwner`. */
+    purgeSource(sourceId: number): number;
     /** Fraction of FTS rows with no span behind them; a high value means it is time to `clearIndex` and re-stream. */
     orphanRatio(): number;
     /**

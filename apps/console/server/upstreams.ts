@@ -3,19 +3,25 @@ import os from "node:os";
 import path from "node:path";
 import { consoleLogger, probeHealth, type Logger } from "@titan-design/daemon";
 import { activeWorkClient, type ActiveWork } from "./active-work.js";
+import { cachedActiveWork } from "./active-work-cache.js";
 import { autoresearchReader } from "./autoresearch.js";
 import { brokerReader } from "./broker.js";
 import { brokerAnswerer } from "./broker-answer.js";
+import { brokerVerdicter } from "./broker-verdict.js";
 import type { ConsoleSources } from "./commands.js";
-import type { ConsoleConfig } from "./config.js";
+import { DEFAULT_CAP_EXEMPT_ASKERS, type ConsoleConfig } from "./config.js";
+import { dayStartFrom } from "./coord-day.js";
 import { createDecisionLog, type HumanOnly } from "./decision-log.js";
 import { factoryNeeds } from "./factory.js";
+import type { UpstreamObserver } from "./perf/timed-fetch.js";
 import { factoryGateAnswer } from "./gate-answer.js";
 import { createRoundListeners } from "./listeners.js";
+import { createInvalidation } from "./invalidation.js";
 import { factoryOwnerAction } from "./owner-action.js";
+import { storybookLiveReader } from "./round-live.js";
 import { seatNotifier } from "./round-notice-transport.js";
 import { subscriptionsDirOf } from "./round-subscriptions.js";
-import { shepherdReader } from "./shepherd.js";
+import { shepherdReader, type ShepherdSource } from "./shepherd.js";
 import { shipLineageReader } from "./ship-lineage.js";
 import { videoCatalog } from "./videos.js";
 
@@ -124,6 +130,7 @@ function inboxActionsOf(config: ConsoleConfig): NonNullable<ConsoleSources["inbo
     actionsDir: path.join(config.stateDir, OWNER_ACTIONS_DIR),
     client: factoryOwnerAction(config.factoryPort),
     answerer: brokerAnswerer({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath }),
+    verdicter: brokerVerdicter({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath }),
   };
 }
 
@@ -138,39 +145,59 @@ function agentsOf(config: ConsoleConfig): ConsoleSources["agents"] {
 /** The sources that read dirs on this machine, which other processes write. */
 function localDirSourcesOf(config: ConsoleConfig): Pick<ConsoleSources, "inbox" | "rounds" | "hostReports" | "videos" | "reviews"> {
   return {
-    inbox: { dir: config.inboxDir },
-    rounds: { dir: config.roundsDir, lineage: shipLineageReader() },
+    inbox: { dir: config.inboxDir, capExemptAskers: config.capExemptAskers ?? DEFAULT_CAP_EXEMPT_ASKERS },
+    rounds: {
+      dir: config.roundsDir,
+      lineage: shipLineageReader(),
+      ...(config.storybooksDir !== undefined && { live: storybookLiveReader(config.storybooksDir) }),
+    },
     hostReports: { dir: path.join(config.stateDir, "config", "host-reports") },
     videos: videoCatalog({ roots: config.videoRoots ?? [] }),
     ...(config.reviewsDir !== undefined && { reviews: { dir: config.reviewsDir } }),
   };
 }
 
-export function createSources(config: ConsoleConfig, logger: Logger = consoleLogger): ConsoleSources {
-  const activeWork = activeWorkClient(config.activeWorkPort);
-  const shepherd = shepherdReader(config.factoryPort);
+function listenersOf(config: ConsoleConfig, shepherd: ShepherdSource, logger: Logger): ConsoleSources["listeners"] {
+  return createRoundListeners({
+    enabled: config.gateAnswers,
+    roundsDir: config.roundsDir,
+    shepherd,
+    answer: factoryGateAnswer(config.factoryPort),
+    ...(config.inboxActions === true && { planApproval: { actionsDir: path.join(config.stateDir, OWNER_ACTIONS_DIR), client: factoryOwnerAction(config.factoryPort) } }),
+    ...(config.agentChatBin !== undefined && { notify: seatNotifier(config.agentChatBin) }),
+    subscriptionsDir: subscriptionsDirOf(config.stateDir),
+    logger,
+  });
+}
+
+function coordinatorOf(config: ConsoleConfig, shepherd: ShepherdSource, activeWork: ActiveWork): ConsoleSources["coordinator"] {
+  return { roots: config.coordinatorRoots, dayStart: dayStartFrom(config.dayStart), cards: { shepherd, activeWork, eventsDbPath: config.agentChatEventsDbPath } };
+}
+
+export function createSources(config: ConsoleConfig, logger: Logger = consoleLogger, recorder?: UpstreamObserver): ConsoleSources {
+  const invalidation = createInvalidation();
+  const activeWork = cachedActiveWork(activeWorkClient(config.activeWorkPort, undefined, recorder), invalidation);
+  const shepherd = shepherdReader(config.factoryPort, undefined, recorder);
   return {
     upstreams: createUpstreams(config),
+    invalidation,
     activeWork,
     agents: agentsOf(config),
     sessions: { graphPath: config.sessionGraphPath, codewatchUrl: config.codewatchUrl },
     ...localDirSourcesOf(config),
     shepherd,
-    autoresearch: autoresearchReader(config.factoryPort),
+    autoresearch: autoresearchReader(config.factoryPort, undefined, recorder),
     coordinatorRoots: config.coordinatorRoots,
-    factory: factoryNeeds(config.factoryPort),
+    coordinator: coordinatorOf(config, shepherd, activeWork),
+    factory: factoryNeeds(config.factoryPort, undefined, recorder),
     hostSurfaces: config.hostSurfaces,
     decisionLog: createDecisionLog({ stateDir: config.stateDir, decisionsFile: config.decisionsFile, humanOnly: humanOnlyFrom(activeWork), logger }),
-    listeners: createRoundListeners({
-      enabled: config.gateAnswers,
-      roundsDir: config.roundsDir,
-      shepherd,
-      answer: factoryGateAnswer(config.factoryPort),
-      ...(config.agentChatBin !== undefined && { notify: seatNotifier(config.agentChatBin) }),
-      subscriptionsDir: subscriptionsDirOf(config.stateDir),
-      logger,
-    }),
+    listeners: listenersOf(config, shepherd, logger),
+    ...(config.agentChatBin !== undefined && { videoNotify: seatNotifier(config.agentChatBin) }),
+    ...(config.explainerBin !== undefined && { explainerBin: config.explainerBin }),
     ...(config.configStore ? { configStore: { stateDir: config.stateDir, ...config.configStore } } : {}),
     inboxActions: inboxActionsOf(config),
+    shipped: { dir: config.shippedDir ?? path.join(config.stateDir, "shipped"), dayStart: dayStartFrom(config.dayStart) },
+    ...(config.blockerHours !== undefined && { blockerHours: config.blockerHours }),
   };
 }

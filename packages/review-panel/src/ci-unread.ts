@@ -25,7 +25,7 @@ const FOLLOW_UPS_OPEN = new RegExp(`^${FOLLOW_UPS_HEADING}$`);
 const ITEM_TEXT = "[^|\\p{Cc}\\u0085\\u2028\\u2029]+";
 const FOLLOW_UP_ITEM = new RegExp(`^- ${ITEM_TEXT} \\| ${ITEM_TEXT} \\| (?:${FOLLOW_UP_SEVERITIES.join("|")})$`, "u");
 /** An earlier finding's resolution is never a follow-up, whatever shape it is written in. */
-const RESOLUTION_TITLE = /^- *(?:not +)?fixed:/i;
+const RESOLUTION_TITLE = /^- *(?:(?:not|partly) +)?fixed:/i;
 
 const isFollowUpItem = (line: string): boolean => FOLLOW_UP_ITEM.test(line) && !RESOLUTION_TITLE.test(line);
 const lineFits = (line: string): boolean => TEMPLATE.some((shape) => shape.test(line));

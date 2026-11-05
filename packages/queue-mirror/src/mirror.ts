@@ -171,7 +171,8 @@ class QueueMirror implements Mirror {
   }
 
   private async applyResolution(event: MatrixEvent, { itemEventId, verdict, text }: Resolution): Promise<void> {
-    const item = this.state.byEventId(itemEventId) as PostedItem;
+    const item = this.state.byEventId(itemEventId);
+    if (!item) throw new Error(`queue-mirror: no posted item for event ${itemEventId}`);
     const applied = [event.event_id];
     const result = await this.resolveAtSource(item.sourceId, { verdict, text, resolutionEventId: event.event_id, sender: event.sender });
     if (result.ok) return this.close(item, `resolved: ${verdict}`, { applied });

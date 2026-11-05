@@ -55,7 +55,7 @@ const UPSERT_TASK = `
     estimate   = COALESCE(excluded.estimate, estimate)`;
 
 export function allTaskIds(graph: SessionGraph): string[] {
-  return (graph.db.prepare("SELECT task_id FROM task").all() as { task_id: string }[]).map((r) => r.task_id);
+  return graph.db.prepare<[], { task_id: string }>("SELECT task_id FROM task").all().map((r) => r.task_id);
 }
 
 /**

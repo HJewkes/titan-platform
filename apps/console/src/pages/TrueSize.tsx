@@ -4,7 +4,8 @@
  * console draws the PNG captured for each candidate, keyed as `scaleCandidateKey` names it.
  */
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
-import { Button, ButtonText, HStack, Spinner, Typography, VStack } from "@titan-design/react-ui";
+import { Button, ButtonText, HStack, Typography, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import { frameSizeMismatch } from "../../server/review-schema-0.3/media.js";
 import type { Manifest } from "../../server/round-schema.js";
 import { useQuery } from "../data/rpc.js";
@@ -58,7 +59,7 @@ const share = (px: number, of: number): string => `${(px / of) * 100}%`;
 export const pinnableFrame = (loadable: boolean, media: FrameMedia | undefined): boolean => !playsMedia(media) && (loadable || media?.scale !== undefined);
 
 /** The share of its declared width a fitted frame is drawn at, never above 1; undefined until its box has been measured. */
-function useFitScale(ref: RefObject<HTMLElement | null>, width: number): number | undefined {
+export function useFitScale(ref: RefObject<HTMLElement | null>, width: number): number | undefined {
   const [scale, setScale] = useState<number>();
   useEffect(() => {
     const element = ref.current;

@@ -1,12 +1,13 @@
 # The owner's six script rules (FB1-FB6) as craft doctrine. Planner text states structure only: the
 # thresholds behind FB3 and FB5 reach the writer through L0 rows, never a prompt (the leak rule).
+# FB1's journey is one structure, design-journey, not every video's shape (profiles plan §D row 1).
 schema: doctrine-craft/v1
 rules:
   - id: owner-FB1
     source: { doc: owner-feedback, ref: FB1 }
     text: "Open on the problem, then follow one task's journey with each step's why, then show the architecture that carries it."
     evidence: []
-    scope: { layer: U }
+    scope: { layer: T, structures: [design-journey] }
     enforcement: [planner]
     stages: [plan, script]
   - id: owner-FB1.2

@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "map loses its title slot",
+      "file": "products/explainer/src/beat-slots.ts",
+      "find": "map: z.object({ title: Label.optional(), ...graph",
+      "replace": "map: z.object({ ...graph",
+      "kills": [
+        "template fill: arch-map beats lays four labels out as a one-way path under the chapter title"
+      ]
+    }
+  ]
+}

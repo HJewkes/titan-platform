@@ -1,10 +1,10 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { gitOrNull } from "./git.js";
+import { DEFAULT_GH_TIMEOUT_MS } from "./options.js";
 import type { ReleaseCheck } from "./release-safety.js";
 
 const execFileAsync = promisify(execFile);
-const GH_TIMEOUT_MS = 3_000;
 interface GhPr { state: string; headRefOid: string; commits: readonly string[] }
 
 function commitOids(value: unknown): string[] | null {
@@ -23,10 +23,10 @@ function parsePr(value: unknown): GhPr | null {
   return typeof value.state === "string" && typeof value.headRefOid === "string" && commits !== null
     ? { state: value.state, headRefOid: value.headRefOid, commits } : null;
 }
-async function readPr(gitRoot: string, branch: string): Promise<GhPr | null> {
+async function readPr(gitRoot: string, branch: string, timeoutMs: number): Promise<GhPr | null> {
   try {
     const { stdout } = await execFileAsync("gh", ["pr", "view", branch, "--json", "state,headRefOid,commits"], {
-      cwd: gitRoot, encoding: "utf8", timeout: GH_TIMEOUT_MS,
+      cwd: gitRoot, encoding: "utf8", timeout: timeoutMs,
     });
     const value: unknown = JSON.parse(stdout);
     return parsePr(value);
@@ -41,7 +41,9 @@ function proofFromPr(pr: GhPr, tip: string | null): { merged: boolean; check: Re
   return { merged: false, check: { name: "gh", ok: true, detail: `gh reports the PR as ${pr.state}` } };
 }
 /** CC-792/CC-624: only a merged head or merged commit containing this local tip supplies landing evidence. */
-export async function readMergedTipProof(gitRoot: string, branch: string): Promise<{ merged: boolean; check: ReleaseCheck } | null> {
-  const pr = await readPr(gitRoot, branch);
+export async function readMergedTipProof(
+  gitRoot: string, branch: string, timeoutMs = DEFAULT_GH_TIMEOUT_MS
+): Promise<{ merged: boolean; check: ReleaseCheck } | null> {
+  const pr = await readPr(gitRoot, branch, timeoutMs);
   return pr === null ? null : proofFromPr(pr, await gitOrNull(["rev-parse", branch], gitRoot));
 }

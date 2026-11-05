@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "words-per-frame cap moves from 20 to 21",
+      "file": "products/explainer/src/qa/timing-gates.ts",
+      "find": "const FRAME_WORDS = 20;",
+      "replace": "const FRAME_WORDS = 21;",
+      "kills": [
+        "words-per-frame fails 21 prose words on screen together across texts"
+      ]
+    },
+    {
+      "name": "words-per-frame counts code-walk beats as prose",
+      "file": "products/explainer/src/qa/timing-gates.ts",
+      "find": "probed.filter((moment) => !code.has(moment.beat)).map(",
+      "replace": "probed.map(",
+      "kills": [
+        "words-per-frame leaves a code-walk beat's highlighted lines out of the count"
+      ]
+    },
+    {
+      "name": "words-per-frame counts frame chrome",
+      "file": "products/explainer/src/qa/timing-gates.ts",
+      "find": "texts.filter((t) => !isChrome(t.cls)).reduce",
+      "replace": "texts.reduce",
+      "kills": [
+        "words-per-frame frame chrome does not count toward words per frame"
+      ]
+    },
+    {
+      "name": "static-window reading hold starts at the first sample showing a text",
+      "file": "products/explainer/src/qa/timing-gates.ts",
+      "find": "const fromS = revealS(input, span);",
+      "replace": "const fromS = span.fromS;",
+      "kills": [
+        "static-window gate a text revealed between two probe samples starts the hold at the cue that revealed it, not at the sample that first showed it",
+        "static-window gate a text revealed between two probe samples starts the hold where the picture starts to move when no cue falls between the samples"
+      ]
+    },
+    {
+      "name": "reveal ignores motion onset when no cue falls between the samples",
+      "file": "products/explainer/src/qa/timing-gates.ts",
+      "find": "if (diffs[i]! > STATIC_LEVEL && diffs[i - 1]! <= STATIC_LEVEL) return i / fps;",
+      "replace": "if (diffs[i]! > STATIC_LEVEL && diffs[i - 1]! <= STATIC_LEVEL) return span.fromS;",
+      "kills": [
+        "static-window gate a text revealed between two probe samples starts the hold where the picture starts to move when no cue falls between the samples"
+      ]
+    }
+  ]
+}

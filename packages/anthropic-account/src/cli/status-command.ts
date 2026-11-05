@@ -1,9 +1,11 @@
 import type { LoginState } from "../login.js";
+import type { AccountUsage } from "../merge.js";
 import type { AccountProfile } from "../profile.js";
 import { redactSecrets } from "../redact.js";
+import { readAccounts, type ReadAccountsOptions } from "../node/accounts.js";
 import { readLoginState } from "../node/login.js";
 import { readUsage, type UsageFileRead } from "../node/usage-file.js";
-import { profilesOf, type CliContext } from "./context.js";
+import { keychainOf, profilesOf, type CliContext } from "./context.js";
 import {
   EXIT_FAILED,
   EXIT_LOGIN,
@@ -35,8 +37,8 @@ function orNull<T>(read: () => T): T | null {
   }
 }
 
-function statusOf(profile: AccountProfile, now: number, uid: number | undefined): ProfileStatus {
-  const login = orNull(() => readLoginState(profile.configDir, { now, uid }));
+function statusOf(profile: AccountProfile, now: number, context: CliContext): ProfileStatus {
+  const login = orNull(() => readLoginState(profile.configDir, { ...keychainOf(context), now, uid: context.uid }));
   return { profile, login, usage: orNull(() => readUsage(profile.configDir, { now })) };
 }
 
@@ -50,21 +52,16 @@ function textLine(status: ProfileStatus): string {
   return `${printableLabel(status.profile.label)}: login ${login}; ${usageText(status.usage)}`;
 }
 
-function usageJson(usage: UsageFileRead | null): unknown {
-  if (usage === null) return null;
-  const rateLimits = usage.reading.rate_limits;
-  const windows = Object.fromEntries(windowNames(rateLimits).map((name) => [name, rateLimits[name]]));
-  return { written_at: usage.reading.written_at, age_seconds: usage.ageSeconds, rate_limits: windows };
-}
+const STATUS_SCHEMA = 2;
 
-// LoginState has no token field, so it is printed whole.
-function jsonOf(status: ProfileStatus): unknown {
-  return {
-    label: printableLabel(status.profile.label),
-    configDir: redactSecrets(status.profile.configDir),
-    login: status.login ?? { status: "unreadable" },
-    usage: usageJson(status.usage),
-  };
+// Every string here may come from another writer's file or a directory name, so each is
+// narrowed or redacted; the identity is two account ids, never a token.
+function accountJson(row: AccountUsage): AccountUsage {
+  const names = new Set(windowNames(row.windows));
+  const windows = Object.fromEntries(Object.entries(row.windows).filter(([name]) => names.has(name)));
+  const identity = row.identity === undefined ? {} : { identity: redactSecrets(row.identity) };
+  const dirs = row.config_dirs.map((dir) => redactSecrets(dir));
+  return { ...row, ...identity, account: printableLabel(row.account), config_dirs: dirs, windows };
 }
 
 function reportLogin(status: ProfileStatus, context: CliContext): number {
@@ -78,17 +75,22 @@ function reportLogin(status: ProfileStatus, context: CliContext): number {
   return EXIT_LOGIN;
 }
 
+function accountsOptions(context: CliContext, now: number): ReadAccountsOptions {
+  return { ...keychainOf(context), env: context.env, now, uid: context.uid };
+}
+
 // The status line renders "unknown" itself, so that format never fails and writes no stderr.
 export function runStatus(format: StatusFormat, context: CliContext): number {
   const now = context.now();
+  const options = accountsOptions(context, now);
   if (format === "statusline") {
-    const others = orNull(() => profilesOf(context)) ?? [];
-    statuslineLines(others, now, context).forEach((line) => context.out(line));
+    const rows = orNull(() => readAccounts(options)) ?? [];
+    statuslineLines(rows, options, context).forEach((line) => context.out(line));
     return EXIT_OK;
   }
   const profiles = profilesOf(context);
-  const statuses = profiles.map((profile) => statusOf(profile, now, context.uid));
-  if (format === "json") context.out(JSON.stringify({ profiles: statuses.map(jsonOf) }));
+  const statuses = profiles.map((profile) => statusOf(profile, now, context));
+  if (format === "json") context.out(JSON.stringify({ schema: STATUS_SCHEMA, accounts: readAccounts(options).map(accountJson) }));
   else statuses.forEach((status) => context.out(textLine(status)));
   return exitFor(statuses.map((status) => reportLogin(status, context)));
 }

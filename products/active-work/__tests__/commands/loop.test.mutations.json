@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "loop open records the owning seat",
+      "file": "products/active-work/src/commands/loop-open.ts",
+      "find": "    ...(args.seat !== undefined ? { seat: args.seat } : {}),\n",
+      "replace": "",
+      "kills": ["loop.open files a handoff loop the board lists with its source and owning seat"]
+    }
+  ]
+}

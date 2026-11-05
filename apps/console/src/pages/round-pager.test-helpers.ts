@@ -1,4 +1,5 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { getButton } from "./get-button.test-helpers.js";
 
 /** jsdom lays nothing out, so it has no scrollIntoView; the pager calls it on every page change. */
 export function stubScroll(): void {
@@ -24,7 +25,7 @@ export async function toSection(id: string): Promise<void> {
 }
 
 /** The send card's button, which opens the check screen. */
-export const checkButton = (): HTMLElement => screen.getByRole("button", { name: "Check and send" });
+export const checkButton = (): HTMLElement => getButton("Check and send");
 
 /** Opens the check screen from the send card and sends from it, as the owner does. */
 export function checkAndSend(): void {

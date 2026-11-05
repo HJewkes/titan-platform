@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the resolver ignores the beat's function",
+      "file": "products/explainer/src/resolve-tables.ts",
+      "find": "allows(when.function, key.function) && ",
+      "replace": "",
+      "kills": [
+        "resolver tables picks by beat function: a numbers hook is a hook beat, a numbers stake a stakes beat"
+      ]
+    },
+    {
+      "name": "the resolver ignores the router type",
+      "file": "products/explainer/src/resolve-tables.ts",
+      "find": "allows(when.route, key.route));",
+      "replace": "true);",
+      "kills": [
+        "resolver tables routes by the visual-router type the beat's kind names"
+      ]
+    },
+    {
+      "name": "an unmatched beat falls back to a list",
+      "file": "products/explainer/src/resolve-tables.ts",
+      "find": "return rows.find(({ when })",
+      "replace": "return [...rows, { id: \"list\", when: {}, then: { beat: \"list\", framing: \"full\", layer: \"template\" } } as ResolveRow].find(({ when })",
+      "kills": [
+        "resolver tables refuses a beat that matches no row with a coded error, and never falls back to a list"
+      ]
+    },
+    {
+      "name": "a code proof with no excerpt resolves to a concept-band claim card",
+      "file": "products/explainer/src/resolve-tables.ts",
+      "find": "then: template(\"proof\", \"focus\")",
+      "replace": "then: template(\"claim-card\", \"focus\")",
+      "kills": [
+        "resolver tables voices a HOW beat's code proof with no excerpt as a proof beat at the code band"
+      ]
+    }
+  ]
+}

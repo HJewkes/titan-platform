@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the gate result is ignored when errors are held",
+      "file": "products/explainer/src/render/render-video.ts",
+      "find": "  if (held > 0) throw new QaRefused(input.stem, qaJson, held);\n",
+      "replace": "",
+      "kills": [
+        "renderVideo's QA gate refuses the seeded overlap page before it mixes or encodes anything"
+      ]
+    },
+    {
+      "name": "skip mode runs the gate anyway",
+      "file": "products/explainer/src/render/render-video.ts",
+      "find": "  if (input.qa.mode === \"skip\") return { qaGate: \"skipped\" };\n",
+      "replace": "",
+      "kills": [
+        "renderVideo's QA gate renders the seeded overlap page unchecked in skip mode and records the skip"
+      ]
+    },
+    {
+      "name": "a passing gate is recorded as absent",
+      "file": "products/explainer/src/render/render-video.ts",
+      "find": "return { qaGate: \"passed\", qa: { heldErrors: 0, gateProfile: input.qa.gate.sha } };",
+      "replace": "return { qaGate: \"absent\" };",
+      "kills": [
+        "renderVideo's QA gate records a clean page's gate as passed with no held errors"
+      ]
+    },
+    {
+      "name": "a stale qa.json survives the next render",
+      "file": "products/explainer/src/render/render-video.ts",
+      "find": ", rm(paths.qa, { force: true })",
+      "replace": "",
+      "kills": [
+        "renderVideo's QA gate removes a qa.json left by an earlier refused render when the next one skips the gate"
+      ]
+    },
+    {
+      "name": "the gate runs after the mix is written",
+      "file": "products/explainer/src/render/render-video.ts",
+      "find": "  const qa = await gateQa(input, paths.qa, deps);\n  const started = deps.now();\n  const frames = await encodeChecked(input, paths, deps);\n",
+      "replace": "  const started = deps.now();\n  await writeMix(input, paths.mix, deps);\n  const qa = await gateQa(input, paths.qa, deps);\n  const frames = await encodeChecked(input, paths, deps);\n",
+      "kills": [
+        "renderVideo's QA gate refuses the seeded overlap page before it mixes or encodes anything"
+      ]
+    }
+  ]
+}

@@ -199,8 +199,8 @@ path under a root chosen per request with `mountStaticApp`'s traversal rules, fo
 
 Exported on their own because they are the reusable pieces:
 
-- `watchTree(root, onChange, { debounceMs, onError })` — recursive watcher that debounces
-  bursts into one callback. On macOS and Windows it holds one native recursive `fs.watch`
+- `watchTree(root, onChange, { debounceMs, onError, ignore })` — recursive watcher that debounces
+  bursts into one callback. Directories listed in `ignore` are neither watched nor reported. On macOS and Windows it holds one native recursive `fs.watch`
   handle on `root`; elsewhere (Linux), where `recursive` is version-dependent, it walks
   the tree and holds one handle per directory. `isWatching(dir)` is true for any existing
   path under a recursive root even though it has no handle of its own. `whenWatching(dir)`

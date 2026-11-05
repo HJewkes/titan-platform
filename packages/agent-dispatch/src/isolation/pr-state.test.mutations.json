@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "reader ignores the budget refusal",
+      "file": "packages/agent-dispatch/src/isolation/pr-state.ts",
+      "find": "if (refused !== undefined) throw new Error(refused);",
+      "replace": "",
+      "kills": ["prStateReader does not reach gh when the budget refuses"]
+    },
+    {
+      "name": "reader skips the after hook",
+      "file": "packages/agent-dispatch/src/isolation/pr-state.ts",
+      "find": "await deps.after(args, outcome);",
+      "replace": "",
+      "kills": ["prStateReader reports a failed call before it rejects"]
+    },
+    {
+      "name": "reader trusts a failed call",
+      "file": "packages/agent-dispatch/src/isolation/pr-state.ts",
+      "find": "if (outcome.exitCode !== 0)",
+      "replace": "if (false)",
+      "kills": ["prStateReader reports a failed call before it rejects"]
+    },
+    {
+      "name": "parse accepts any state",
+      "file": "packages/agent-dispatch/src/isolation/pr-state.ts",
+      "find": "(state !== \"OPEN\" && state !== \"MERGED\" && state !== \"CLOSED\") ||",
+      "replace": "typeof state !== \"string\" ||",
+      "kills": ["parsePrState rejects an unknown state or a missing head"]
+    },
+    {
+      "name": "target accepts a bare repo",
+      "file": "packages/agent-dispatch/src/isolation/pr-state.ts",
+      "find": "/^([\\w.-]+\\/[\\w.-]+)#(\\d+)$/.exec(pr)",
+      "replace": "/^([\\w.-]+)#(\\d+)$/.exec(pr)",
+      "kills": ["prTarget and reportPr reads owner/repo#n and a pull URL, and nothing else"]
+    }
+  ]
+}

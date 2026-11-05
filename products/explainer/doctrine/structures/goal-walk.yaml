@@ -1,0 +1,39 @@
+schema: narrative-structure/v1
+id: goal-walk
+version: 0.1.0
+source: "TP-4125 plan §3 S5 (the daily as a report against goals, lane by lane)"
+summary: "The bottom line, the goals, each parallel lane and what it moved toward its goal, the ships that mattered most, the side quests, the stats, then a reflection and the ask."
+fit:
+  ask: "Is the period a report of work that parallel lanes moved toward their goals?"
+  any: [status-report, board-moved]
+blocks:
+  - { id: bottom-line, goal: "The verdict of the day, how much merged and how much was decided.", share: 0.07 }
+  - { id: goals, goal: "The goals each lane works toward.", share: 0.09 }
+  - { id: lanes, goal: "Each lane in turn: its named threads and the count of the rest, against its goal.", share: 0.4 }
+  - { id: ships, goal: "The two or three most consequential ships, each described with a diagram or chart.", share: 0.17 }
+  - { id: side-quests, goal: "The side quests, named as side quests.", share: 0.05 }
+  - { id: stats, goal: "Spend, its split, merges, cost per merge and the trend against the prior days.", share: 0.08 }
+  - { id: reflection, goal: "What slows us down, the top priorities, and proposed changes to how we work.", share: 0.1 }
+  - { id: ask, goal: "What the owner does next.", share: 0.04 }
+hook: "State the verdict and how much merged and was decided in the first beat."
+ending: "button"
+stakeFunctions: [VERDICT]
+spine:
+  - title: Bottom line
+    body: |-
+      <The verdict of the day in one line, with the merged and decided counts and their fact ids.>
+  - title: Goals
+    body: |-
+      | Lane | Goal | Fact id |
+      |---|---|---|
+  - title: Lanes
+    body: |-
+      | Lane | Named thread | Counted rest | Rollup fact id |
+      |---|---|---|---|
+  - title: Ships, by consequence
+    body: |-
+      | # | Ship | What it changed | Diagram or chart | Fact id |
+      |---|---|---|---|---|
+  - title: Reflection
+    body: |-
+      <What slowed the day, the top priorities, and each proposed change with the fact it answers.>

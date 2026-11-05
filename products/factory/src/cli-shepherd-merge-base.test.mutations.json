@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "revoke-merge-base leaves the exception in place",
+      "file": "products/factory/src/shepherd/merge-base-exception.ts",
+      "find": "\"DELETE FROM shepherd_merge_base_exception WHERE run_id = ?\"",
+      "replace": "\"DELETE FROM shepherd_merge_base_exception WHERE run_id = ? AND 0\"",
+      "kills": [
+        "shepherd allow-merge-base keeps the exception across a reopen until revoke-merge-base drops it"
+      ]
+    }
+  ]
+}

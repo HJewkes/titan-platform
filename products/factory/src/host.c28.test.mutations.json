@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the skip is dropped, so strict replay parks an in-flight run",
+      "file": "products/factory/src/runner/not-after.ts",
+      "find": "if (next !== undefined && !stepIdMatches(stepId, next)) {",
+      "replace": "if (false) {",
+      "kills": ["C28: a step inserted before a live call site A17: an in-flight run past an inserted step finishes"]
+    },
+    {
+      "name": "a live run skips the step",
+      "file": "products/factory/src/runner/not-after.ts",
+      "find": "if (next !== undefined && !stepIdMatches(stepId, next)) {",
+      "replace": "if (next === undefined || !stepIdMatches(stepId, next)) {",
+      "kills": ["C28: a step inserted before a live call site a run started after the insertion runs the inserted step"]
+    },
+    {
+      "name": "the stepIdMatches check is dropped, so a recorded step is skipped",
+      "file": "products/factory/src/runner/not-after.ts",
+      "find": "if (next !== undefined && !stepIdMatches(stepId, next)) {",
+      "replace": "if (next !== undefined) {",
+      "kills": ["C28: a step inserted before a live call site a run that recorded the inserted step replays it from the record"]
+    }
+  ]
+}

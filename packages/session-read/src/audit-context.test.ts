@@ -66,6 +66,20 @@ describe("context_block emitter", () => {
     ]);
   });
 
+  it("emits no context_block from a user, assistant or attachment line when the policy is off", () => {
+    const large = attachmentLine({ type: "note", text: "a".repeat(MIN_ATTACHMENT_CHARS) });
+    const lines = [...AUDIT_FIXTURE_LINES, large];
+    const sources = (contextBlocks: boolean) =>
+      new Set(
+        eventsForLines(lines, { toolSpans: true, contextBlocks })
+          .filter((e): e is EventOf<"context_block"> => e.kind === "context_block")
+          .map((b) => b.source),
+      );
+
+    expect(sources(false).size).toBe(0);
+    expect(sources(true)).toEqual(new Set(["human", "tool_result", "assistant_text", "assistant_tool_input", "assistant_thinking", "skill_listing", "attachment", "channel", "image"]));
+  });
+
   it("labels user text by what delivered it", () => {
     expect(fixtureBlocksAt("2026-07-01T00:00:20Z")).toEqual([expect.objectContaining({ source: "channel", chars: CHANNEL_PROMPT.length })]);
     expect(fixtureBlocksAt("2026-07-01T00:00:19Z")).toEqual([expect.objectContaining({ source: "human" })]);

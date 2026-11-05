@@ -1,13 +1,13 @@
 import { dataFence } from "@titan-design/agent-dispatch";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
-import { MAX_NOTE_CHARS } from "../gate-answer-check.js";
+import { MAX_NOTE_CHARS } from "../note-limits.js";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
 
 /** Records, per approve-merge gate, whether it offers the owner `send-back`. */
 const SEND_BACK_OFFER_STEP = "sh-send-back-offer";
-export const OWNER_SEND_BACK_STEPS: readonly StepDeclaration[] = [{ id: SEND_BACK_OFFER_STEP, kind: "dispatch", orphanSafe: true }];
+export const OWNER_SEND_BACK_STEPS: readonly StepDeclaration[] = [{ id: SEND_BACK_OFFER_STEP, kind: "dispatch" }];
 /** What an unhandled owner send-back is called on the seat's sent-back gate. */
 export const OWNER_SEND_BACK_KIND = "SEND_BACK from the owner";
 

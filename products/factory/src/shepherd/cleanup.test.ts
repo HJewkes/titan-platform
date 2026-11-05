@@ -1,15 +1,17 @@
 import { fakeGitHub, fakeSha, githubPort, type FakeGitHub, type GitHubPort, type HeadRef } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it, vi } from "vitest";
-import { holdSlotsMigration } from "./store-migrations.js";
+import { holdSlotsMigration, lastSliceMigration } from "./store-migrations.js";
 import { shepherdEventMigration } from "./events.js";
-import { freshReviewerBase, runCleanup, SH_CLEANUP_GIVE_UP_MS, SH_CLEANUP_RETRY_MS, type CleanupAgent, type CleanupAgents, type CleanupPorts, type CleanupTasks, type MergedPr, type TaskSlicing, type TaskState } from "./cleanup.js";
+import { freshReviewerBase, runCleanup, SH_CLEANUP_GIVE_UP_MS, SH_CLEANUP_RETRY_MS, type MergedPr } from "./cleanup.js";
 import { DispatchError, type AgentRow } from "@titan-design/agent-dispatch";
 import { createRosterReader } from "./roster.js";
 import { agentChatCleanupAgents, activeWorkTasks, type AgentChatCalls } from "./cleanup-ports.js";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, ShepherdStore, sliceMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
+import type { CleanupAgent, CleanupAgents, CleanupPorts, CleanupTasks, TaskSlicing, TaskState } from "./ports.js";
 
 const REPO = "octo/demo";
 const RUN = "run-1";
@@ -19,9 +21,9 @@ const base: RegistrationInput = { repo: REPO, pr: 1, runId: RUN, task: "demo/TP-
 
 function storeRef(registration: RegistrationInput | undefined = base): { ref: ShepherdStoreRef; store: ShepherdStore } {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19), lastSliceMigration(43)]);
   const store = new ShepherdStore(db, () => 0);
-  if (registration) store.register(registration);
+  store.register(registration);
   return { store, ref: { get: () => store, bind: () => () => undefined } };
 }
 
@@ -53,19 +55,20 @@ const NO_SLICING: TaskSlicing = { tags: [], notes: "", plan: undefined };
 function fakeTasks(state: TaskState, slicing: TaskSlicing = NO_SLICING): CleanupTasks & { closed: string[]; notes: string[] } {
   const closed: string[] = [];
   const notes: string[] = [];
-  return { closed, notes, state: async () => state, slicing: async () => slicing, done: async (initiative, id) => void closed.push(`${initiative}/${id}`), appendNote: async (initiative, id, line) => void notes.push(`${initiative}/${id}: ${line}`) };
+  const appended: string[] = [];
+  return { closed, notes, state: async () => state, slicing: async () => ({ ...slicing, notes: [slicing.notes, ...appended].join("\n") }), done: async (initiative, id) => void closed.push(`${initiative}/${id}`), reopen: async () => undefined, appendNote: async (initiative, id, line) => void (notes.push(`${initiative}/${id}: ${line}`), appended.push(line)) };
 }
 
 const planOf = (...names: string[]): string => `# Plan\n\n\`\`\`burndown-slices\n${JSON.stringify(names.map((n) => ({ n, title: `slice ${n}`, points: 1, doneWhen: "a test passes", owns: [`src/${n}.ts`] })))}\n\`\`\`\n`;
 
-function world(options: { fake?: FakeGitHub; port?: GitHubPort; agents?: FakeAgent[]; task?: TaskState; slicing?: TaskSlicing; registration?: RegistrationInput; advisory?: (repo: string) => boolean; merged?: MergedPr } = {}) {
+function world(options: { fake?: FakeGitHub; port?: GitHubPort; agents?: FakeAgent[]; task?: TaskState; taskClose?: "keep" | "last-slice-only"; slicing?: TaskSlicing; registration?: RegistrationInput; advisory?: (repo: string) => boolean; merged?: MergedPr } = {}) {
   const fake = options.fake ?? mergedPr(fakeGitHub({ repo: REPO }), { headRef: "feat/x", headRepo: REPO });
   const clock = { now: 0 };
   const agents = fakeAgents(clock, options.agents ?? []);
   const tasks = fakeTasks(options.task ?? "open", options.slicing);
   const { ref, store } = storeRef(options.registration);
   const cleanup: CleanupPorts = { agents, tasks };
-  const deps = { port: options.port ?? githubPort(fake.wire), store: ref, now: () => clock.now, sleep: async (ms: number) => void (clock.now += ms), pollMs: 30_000, cleanup, ...(options.advisory && { advisory: options.advisory }) };
+  const deps = { port: options.port ?? githubPort(fake.wire), store: ref, now: () => clock.now, sleep: async (ms: number) => void (clock.now += ms), pollMs: 30_000, cleanup, ...(options.taskClose && { taskClose: options.taskClose }), ...(options.advisory && { advisory: options.advisory }) };
   const run = () => runCleanup(deps, { repo: REPO, pr: 1, runId: RUN, ...(options.merged && { merged: options.merged }) }, new AbortController().signal);
   return { fake, clock, agents, tasks, store, run };
 }
@@ -104,6 +107,81 @@ describe("sh-cleanup task", () => {
 
     expect(result.task).toBe("left-open");
     expect(w.tasks.notes).toEqual([`demo/TP-1: PR ${REPO}#1 at ${fakeSha("merge")} merged; task left open: it is tagged epic`]);
+  });
+
+  it.each(["slices", "multi-slice"])("leaves a parent tagged %s open when one slice PR merges with no plan", async (tag) => {
+    const w = world({ slicing: { ...NO_SLICING, tags: [tag] } });
+
+    const result = await w.run();
+
+    expect(result.task).toBe("left-open");
+    expect(w.tasks.closed).toEqual([]);
+    expect(w.tasks.notes).toEqual([`demo/TP-1: PR ${REPO}#1 at ${fakeSha("merge")} merged; task left open: it is tagged ${tag}`]);
+  });
+
+  describe("register --last-slice", () => {
+    const last = { ...base, lastSlice: true };
+
+    it.each(["slices", "multi-slice"])("closes a task tagged %s, noting the last slice", async (tag) => {
+      const w = world({ registration: last, slicing: { ...NO_SLICING, tags: [tag] } });
+
+      const result = await w.run();
+
+      expect(result.task).toBe("done");
+      expect(w.tasks.closed).toEqual(["demo/TP-1"]);
+      expect(w.tasks.notes).toEqual([`demo/TP-1: closed by Shepherd: last slice ${REPO}#1 at ${fakeSha("merge")} merged`]);
+    });
+
+    it.each(["slices", "multi-slice"])("keeps a task tagged %s open without the flag", async (tag) => {
+      const w = world({ slicing: { ...NO_SLICING, tags: [tag] } });
+
+      const result = await w.run();
+
+      expect(result.task).toBe("left-open");
+      expect(w.tasks.closed).toEqual([]);
+    });
+
+    it("closes a tagged task in last-slice-only mode too", async () => {
+      const w = world({ registration: last, slicing: { ...NO_SLICING, tags: ["slices"] }, taskClose: "last-slice-only" });
+
+      const result = await w.run();
+
+      expect(result.task).toBe("done");
+      expect(w.tasks.notes).toEqual([`demo/TP-1: closed by Shepherd: last slice ${REPO}#1 at ${fakeSha("merge")} merged`]);
+    });
+
+    it("still holds an epic and an unlanded plan slice", async () => {
+      const epic = world({ registration: last, slicing: { ...NO_SLICING, tags: ["epic", "slices"] } });
+      const planned = world({ registration: last, slicing: { tags: ["slices"], notes: "", plan: planOf("a", "b") } });
+
+      expect([(await epic.run()).task, (await planned.run()).task]).toEqual(["left-open", "left-open"]);
+      expect([...epic.tasks.closed, ...planned.tasks.closed]).toEqual([]);
+    });
+
+    it("does nothing to a task that is already done", async () => {
+      const w = world({ registration: last, task: "done", slicing: { ...NO_SLICING, tags: ["slices"] } });
+
+      const result = await w.run();
+
+      expect(result.task).toBe("already-done");
+      expect(w.tasks.closed).toEqual([]);
+      expect(w.tasks.notes).toEqual([]);
+    });
+  });
+
+  it("closes a single-slice task that carries only unrelated tags", async () => {
+    const w = world({ slicing: { ...NO_SLICING, tags: ["factory", "lite"] } });
+
+    expect((await w.run()).task).toBe("done");
+    expect(w.tasks.closed).toEqual(["demo/TP-1"]);
+  });
+
+  it("closes nothing when the registered initiative does not hold the task id, whatever another initiative holds", async () => {
+    const w = world({ task: "missing" });
+
+    expect((await w.run()).task).toBe("missing");
+    expect(w.tasks.closed).toEqual([]);
+    expect(w.tasks.notes).toEqual([]);
   });
 
   it("leaves a task open when its plan's slices block does not read", async () => {
@@ -146,6 +224,156 @@ describe("sh-cleanup task", () => {
     expect(result.task).toBe("noted");
     expect(w.tasks.closed).toEqual([]);
     expect(w.tasks.notes).toEqual([`demo/TP-1: S4 landed in ${REPO}#1 at ${fakeSha("merge")}`]);
+  });
+
+  describe("keep mode with a plan's slices", () => {
+    const sliced = (notes: string) => ({ tags: [], notes, plan: planOf("S1", "S2", "S3") });
+    const landed = (n: string) => `${n} landed in demo/x#9 at ${fakeSha("old")}`;
+
+    it("closes the task when the slice that merges is the last unlanded one", async () => {
+      const w = world({ registration: { ...base, slice: "S3" }, slicing: sliced(`${landed("S1")}\n${landed("S2")}`) });
+
+      const result = await w.run();
+
+      expect(result.task).toBe("done");
+      expect(w.tasks.closed).toEqual(["demo/TP-1"]);
+      expect(w.tasks.notes).toEqual([`demo/TP-1: S3 landed in ${REPO}#1 at ${fakeSha("merge")}`, `demo/TP-1: closed by Shepherd: ${REPO}#1 at ${fakeSha("merge")} merged`]);
+    });
+
+    it("leaves an epic-tagged task open when its last slice merges", async () => {
+      const w = world({ registration: { ...base, slice: "S3" }, slicing: { ...sliced(`${landed("S1")}\n${landed("S2")}`), tags: ["epic"] } });
+
+      const result = await w.run();
+
+      expect(result.task).toBe("noted");
+      expect(w.tasks.closed).toEqual([]);
+    });
+
+    it("only notes a middle slice while others are unlanded", async () => {
+      const w = world({ registration: { ...base, slice: "S2" }, slicing: sliced(landed("S1")) });
+
+      const result = await w.run();
+
+      expect(result.task).toBe("noted");
+      expect(w.tasks.closed).toEqual([]);
+      expect(w.tasks.notes).toEqual([`demo/TP-1: S2 landed in ${REPO}#1 at ${fakeSha("merge")}`, "demo/TP-1: S2 merged; task left open: it has slices S3"]);
+    });
+
+    it("leaves the task open when the plan's slices block does not read", async () => {
+      const w = world({ registration: { ...base, slice: "S3" }, slicing: { tags: [], notes: "", plan: "```burndown-slices\n[{ \"n\": \n```\n" } });
+
+      const result = await w.run();
+
+      expect(result.task).toBe("noted");
+      expect(w.tasks.closed).toEqual([]);
+    });
+
+    it("keeps a slice-less registration of a sliced task open, since its own slice is never noted", async () => {
+      const w = world({ slicing: sliced(`${landed("S2")}\n${landed("S3")}`) });
+
+      const result = await w.run();
+
+      expect(result.task).toBe("left-open");
+      expect(w.tasks.closed).toEqual([]);
+      expect(w.tasks.notes).toEqual([`demo/TP-1: PR ${REPO}#1 at ${fakeSha("merge")} merged; task left open: it has slices S1`]);
+    });
+  });
+
+  describe("keep mode with a slices tag and no slices block", () => {
+    const landed = (n: string) => `${n} landed in demo/x#9 at ${fakeSha("old")}`;
+    const slicesTagged = (notes: string, plan?: string): TaskSlicing => ({ tags: ["slices"], notes, plan });
+    const headedPlan = "# Plan\n\n## 4. Slices\n\n### S1: schema (est 1)\n\n### S2: store (est 1)\n\n### S3: GC (est 0.5)\n\n### S4: replay (est 0.5)\n";
+    const planned = "planner: Slices S1 schema+migration (1, lite no), S2 store (1, lite yes), S3 GC (0.5, lite no), S4 replay (0.5, lite yes). Open O1-O5.";
+
+    it.each([
+      ["its plan's headings", slicesTagged(`${landed("S1")}\n${landed("S2")}\n${landed("S3")}`, headedPlan)],
+      ["its notes, with no plan", slicesTagged(`${planned}\n${landed("S1")}\n${landed("S2")}\n${landed("S3")}`)],
+    ])("closes after S4 lands when %s list S1-S4", async (_, slicing) => {
+      const w = world({ registration: { ...base, slice: "S4" }, slicing });
+
+      const result = await w.run();
+
+      expect(result.task).toBe("done");
+      expect(w.tasks.closed).toEqual(["demo/TP-1"]);
+      expect(w.tasks.notes).toEqual([`demo/TP-1: S4 landed in ${REPO}#1 at ${fakeSha("merge")}`, `demo/TP-1: closed by Shepherd: ${REPO}#1 at ${fakeSha("merge")} merged`]);
+    });
+
+    it("stays open after S3 lands out of order, naming S2", async () => {
+      const w = world({ registration: { ...base, slice: "S3" }, slicing: slicesTagged(`${landed("S1")}\n${landed("S4")}`, headedPlan) });
+
+      const result = await w.run();
+
+      expect(result.task).toBe("noted");
+      expect(w.tasks.closed).toEqual([]);
+      expect(w.tasks.notes.at(-1)).toBe("demo/TP-1: S3 merged; task left open: it has slices S2");
+    });
+
+    const chain = "re-plan: order j,g -> f1 -> k -> e (e = TP-9002 cut 1).";
+
+    it("closes when the last slice lands and the notes hand the remaining slice to another task", async () => {
+      const notes = [chain, landed("j"), landed("g"), landed("f1"), "operator: chain j,g,f1,k = #1,#2,#3,#4. Slice e left to TP-9002 (margin only)."].join("\n");
+      const w = world({ registration: { ...base, slice: "k" }, slicing: slicesTagged(notes) });
+
+      const result = await w.run();
+
+      expect(result.task).toBe("done");
+      expect(w.tasks.closed).toEqual(["demo/TP-1"]);
+    });
+
+    it("names the slice still holding the task when no note moves it", async () => {
+      const notes = [chain, landed("j"), landed("g"), landed("f1")].join("\n");
+      const w = world({ registration: { ...base, slice: "k" }, slicing: slicesTagged(notes) });
+
+      const result = await w.run();
+
+      expect(result.task).toBe("noted");
+      expect(w.tasks.closed).toEqual([]);
+      expect(w.tasks.notes.at(-1)).toBe("demo/TP-1: k merged; task left open: it has slices e");
+    });
+
+    it("does not let a moved slice hold a plan's burndown-slices block open", async () => {
+      const notes = [landed("S1"), "Plan slice S2 moved to TP-9002."].join("\n");
+      const w = world({ registration: { ...base, slice: "S3" }, slicing: { tags: [], notes, plan: planOf("S1", "S2", "S3") } });
+
+      expect((await w.run()).task).toBe("done");
+    });
+
+    it("closes on a --last-slice slice PR though the headings list an unlanded slice", async () => {
+      const w = world({ registration: { ...base, slice: "S4", lastSlice: true }, slicing: slicesTagged(landed("S1"), headedPlan) });
+
+      expect((await w.run()).task).toBe("done");
+      expect(w.tasks.closed).toEqual(["demo/TP-1"]);
+    });
+
+    it("closes on a --last-slice PR that names no slice though the notes list none landed", async () => {
+      const w = world({ registration: { ...base, lastSlice: true }, slicing: slicesTagged(planned) });
+
+      expect((await w.run()).task).toBe("done");
+    });
+
+    it("still holds on the bare tag when neither plan nor notes list slices, and says so on each slice", async () => {
+      const w = world({ registration: { ...base, slice: "S1" }, slicing: slicesTagged("Filed from a review.", "# Plan\nOne PR does it.\n") });
+
+      expect((await w.run()).task).toBe("noted");
+      expect(w.tasks.notes.at(-1)).toBe("demo/TP-1: S1 merged; task left open: it is tagged slices");
+    });
+
+    it("holds on the tag when a slice landed outside the list, since the list is then partial", async () => {
+      const notes = ["re-plan: order a -> b.", landed("a"), landed("z")].join("\n");
+      const w = world({ registration: { ...base, slice: "b" }, slicing: slicesTagged(notes) });
+
+      expect((await w.run()).task).toBe("noted");
+      expect(w.tasks.closed).toEqual([]);
+      expect(w.tasks.notes.at(-1)).toBe("demo/TP-1: b merged; task left open: it is tagged slices");
+    });
+
+    it("leaves an epic with a listed plan open once every slice has landed", async () => {
+      const notes = [landed("S1"), landed("S2"), landed("S3")].join("\n");
+      const w = world({ registration: { ...base, slice: "S4" }, slicing: { tags: ["slices", "epic"], notes, plan: headedPlan } });
+
+      expect((await w.run()).task).toBe("noted");
+      expect(w.tasks.closed).toEqual([]);
+    });
   });
 
   it("writes no landing note while the merge sha cannot be read, so a retry cannot leave two lines", async () => {
@@ -354,8 +582,7 @@ describe("sh-cleanup task", () => {
 
   it("neither closes nor notes a second time when the run replays after a restart", async () => {
     const w = world({ task: "open" });
-    const stateful = w.tasks as unknown as { state: () => Promise<TaskState> };
-    stateful.state = async () => (w.tasks.closed.length > 0 ? "done" : "open");
+    Object.assign(w.tasks, { state: async (): Promise<TaskState> => (w.tasks.closed.length > 0 ? "done" : "open") });
 
     await w.run();
     const replay = await w.run();

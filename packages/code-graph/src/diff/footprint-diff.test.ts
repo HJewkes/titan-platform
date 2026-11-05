@@ -15,7 +15,7 @@ function fileNode(id: string): GraphNode {
 }
 
 function symbol(id: string, attrs: Record<string, unknown> = {}): GraphNode {
-  const [parentId, name] = id.split("#") as [string, string];
+  const [parentId = "", name = ""] = id.split("#");
   return { id, kind: "symbol", name, parentId, attrs: { exported: true, signature: `function ${name}(): void`, ...attrs } };
 }
 

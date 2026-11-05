@@ -1,7 +1,7 @@
 /**
  * How a round notice reaches a seat: the one seam between who is told (`round-asker.ts`, `round-subscriptions.ts`) and
- * how. Today it is `agent-chat debug send`, which delivers from the human seat, so a notice carries human provenance.
- * CC-1507 (an agent-chat console wake source) replaces `seatNotifier` here and nothing upstream of it changes.
+ * how. It is `agent-chat debug send` with `--source console` (CC-1507): the notice arrives from the human seat but
+ * labelled `wake_source=console`, with no human provenance marker, so a seat never reads it as the owner typing.
  */
 import { messageAgent } from "@titan-design/agent-dispatch";
 
@@ -17,4 +17,4 @@ const SEND_TIMEOUT_MS = 10_000;
 export const seatNotifier =
   (agentChatBin: string): SeatNotifier =>
   (seat, text) =>
-    messageAgent(agentChatBin, seat, text, SEND_TIMEOUT_MS);
+    messageAgent(agentChatBin, seat, text, SEND_TIMEOUT_MS, { source: "console" });

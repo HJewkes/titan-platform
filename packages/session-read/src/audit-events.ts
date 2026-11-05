@@ -8,7 +8,7 @@ export type { ToolFamily, WakeCause };
  * Bumped whenever a classification rule below changes, so a consumer can tell
  * rows extracted under an older rule set apart and re-index them.
  */
-export const EXTRACT_VERSION = 8;
+export const EXTRACT_VERSION = 9;
 
 /** Where the characters in one context block came from. */
 export type ContextSource =

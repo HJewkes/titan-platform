@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "needs-update exits 0",
+      "file": "products/factory/src/review/format.ts",
+      "find": "outcome.kind === \"MERGE\" || outcome.kind === \"carried\" ? EXIT.OK",
+      "replace": "outcome.kind === \"MERGE\" || outcome.kind === \"carried\" || outcome.kind === \"needs-update\" ? EXIT.OK",
+      "kills": ["titan-factory review exits non-zero on 'needs-update'"]
+    },
+    {
+      "name": "--json leaves out the fingerprint",
+      "file": "products/factory/src/review/format.ts",
+      "find": "fingerprint: fingerprintOf(outcome), members",
+      "replace": "members",
+      "kills": ["titan-factory review prints one JSON object with the outcome, members and fingerprint under --json"]
+    },
+    {
+      "name": "--wait-ci never follows a moved head",
+      "file": "products/factory/src/review/command.ts",
+      "find": "const moved = outcome.kind === \"head-moved\" && !pinned && !retargeted;",
+      "replace": "const moved = false;",
+      "kills": ["titan-factory review follows a moved head once under --wait-ci and waits out pending CI there"]
+    },
+    {
+      "name": "a resolve with an errored run exits 0",
+      "file": "products/factory/src/review/format.ts",
+      "find": "resumed.every((entry) => \"outcome\" in entry && exitCodeOf(entry.outcome) === EXIT.OK)",
+      "replace": "resumed.every((entry) => !(\"outcome\" in entry) || exitCodeOf(entry.outcome) === EXIT.OK)",
+      "kills": ["titan-factory review resolve exits 0 only when every resumed run merges"]
+    }
+  ]
+}

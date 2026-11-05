@@ -9,9 +9,13 @@ import { getFrame } from "../server/round-frames.js";
 import { getRound, type RoundDetail } from "../server/rounds.js";
 import { App } from "./App.js";
 import { AnswerSourceProvider } from "./data/submit.js";
+import { getButton, getByRoleFast } from "./pages/get-button.test-helpers.js";
 import { draftKey } from "./pages/round-draft.js";
 
 const ROUND = "tiles-and-panels-r1";
+// Each test renders the whole App and presses through it, and a loaded full-suite CI run stretched one past vitest's
+// 5 s default (TP-3937, as TP-3866 saw for the one-PR Ship tests). The assertions, not the clock, catch a wrong answer.
+const RENDER_TIMEOUT_MS = 30_000;
 const FRAMES = [
   { key: "tile-light", theme: "light", views: ["head", "base", "diff"] },
   { key: "tile-dark", theme: "dark", views: ["head", "base", "diff"] },
@@ -82,11 +86,11 @@ async function withRequiredSide(): Promise<Partial<RoundDetail>> {
 }
 
 const pr = (key: string) => within(screen.getByTestId(`pr-${key}`));
-const button = (label: string): HTMLElement => screen.getByRole("button", { name: label });
+const button = (label: string): HTMLElement => getButton(label);
 const disabled = (label: string): boolean => button(label).getAttribute("aria-disabled") === "true";
 const submits = (calls: { name: string; args: unknown }[]) => calls.filter((call) => call.name === "rounds.submit").map((call) => call.args);
 
-describe("a Ship round with two PRs (TP-3329)", () => {
+describe("a Ship round with two PRs (TP-3329)", { timeout: RENDER_TIMEOUT_MS }, () => {
   it("shows each PR's proposal, changes and only its own frames", async () => {
     await renderPrs();
 
@@ -197,17 +201,17 @@ describe("a Ship round with two PRs (TP-3329)", () => {
     expect(pr("example/panels#2").getByTestId("ship-prior-feedback").textContent).toContain("The stripe is two pixels low.");
     const prior = pr("example/tiles#1").getByTestId("ship-prior-feedback");
     expect(prior.textContent).toContain("The stripe is two pixels low.");
-    const addressed = within(prior).getByRole("checkbox", { name: "Round 1 feedback addressed" });
+    const addressed = getByRoleFast("checkbox", "Round 1 feedback addressed", prior);
     expect(addressed.getAttribute("aria-checked")).toBe("true");
     fireEvent.click(addressed);
     expect(addressed.getAttribute("aria-checked")).toBe("true");
   });
 });
 
-describe("frame feedback on a Ship round with two PRs (TP-3773 S6b)", () => {
+describe("frame feedback on a Ship round with two PRs (TP-3773 S6b)", { timeout: RENDER_TIMEOUT_MS }, () => {
   const verdict = (key: string, frame: string, label: string): HTMLElement => {
-    fireEvent.click(pr(key).getByRole("tab", { name: "Diff" }));
-    return within(pr(key).getByTestId(`montage-${frame}`)).getByRole("button", { name: label });
+    fireEvent.click(getByRoleFast("tab", "Diff", screen.getByTestId(`pr-${key}`)));
+    return getButton(label, pr(key).getByTestId(`montage-${frame}`));
   };
 
   it("turns Ship off only for the PR whose own frame is Rejected, and sends the verdict", async () => {
@@ -234,7 +238,7 @@ describe("frame feedback on a Ship round with two PRs (TP-3773 S6b)", () => {
   });
 });
 
-describe("an unsent two-PR Ship round's draft (TP-3870)", () => {
+describe("an unsent two-PR Ship round's draft (TP-3870)", { timeout: RENDER_TIMEOUT_MS }, () => {
   const noteOn = (key: string): string => screen.getByLabelText<HTMLTextAreaElement>(`Note for Send back on ${key}`).value;
 
   it("restores each PR's own Ship or Send back and note after a remount, and sends them as held", async () => {

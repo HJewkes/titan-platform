@@ -16,8 +16,15 @@ export const FROZEN_HOST_WRITE_VERBS: ReadonlySet<string> = new Set([
   "shepherd owner-release",
   "shepherd review",
   "shepherd resync",
+  "shepherd readdress-dead-ends",
   "shepherd freeze",
   "shepherd unfreeze",
+  "shepherd thaw",
+  "shepherd fix-pr",
+  "shepherd allow-merge-base",
+  "shepherd revoke-merge-base",
+  "shepherd watch",
+  "shepherd unwatch",
 ]);
 
 export class FrozenHostError extends Error {}

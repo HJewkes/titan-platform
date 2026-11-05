@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "transcript queries lose the cap",
+      "file": "products/active-work/src/search/document-frequency.ts",
+      "find": "  return classes.includes('transcripts') || hasLegacyWorkspaceSpans(graph);",
+      "replace": "  return hasLegacyWorkspaceSpans(graph);",
+      "kills": [
+        "graphTermStatistics caps a transcript query at the floor on a small graph",
+        "graphTermStatistics caps a query that mixes transcripts with a workspace class"
+      ]
+    },
+    {
+      "name": "workspace queries lose the cap before the flip",
+      "file": "products/active-work/src/search/document-frequency.ts",
+      "find": "  return classes.includes('transcripts') || hasLegacyWorkspaceSpans(graph);",
+      "replace": "  return classes.includes('transcripts');",
+      "kills": [
+        "graphTermStatistics keeps capping a workspace query while legacy workspace spans remain"
+      ]
+    },
+    {
+      "name": "workspace queries stay capped after the flip",
+      "file": "products/active-work/src/search/document-frequency.ts",
+      "find": "  return classes.includes('transcripts') || hasLegacyWorkspaceSpans(graph);",
+      "replace": "  return true;",
+      "kills": [
+        "graphTermStatistics leaves a workspace query uncapped once the graph is cut over"
+      ]
+    }
+  ]
+}

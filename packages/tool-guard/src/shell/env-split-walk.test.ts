@@ -1,12 +1,12 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
-import { cpuBudgetIt, cpuStopwatch, expectWithinCpuBudget } from "../test-support/cpu-budget.js";
+import { shellOracle } from "../test-support/shell-rows.js";
+import { expectLinearWork } from "../test-support/work-count.js";
 import type { ClassifyContext } from "../types.js";
 
 const REPO = "/home/you/projects/app";
@@ -109,51 +109,30 @@ describe("env -S is split by env's rules and read as env's argv (TP-3210)", () =
 });
 
 describe("env's leading words are read in one pass", () => {
-  // Linear growth costs SCALE x the small case, quadratic SCALE^2 x; the bound sits between with headroom for load.
-  const SCALE = 8;
-  const MAX_RATIO = 24;
-  const ROUNDS = 5;
   const largeBytes = 64 * 1024 - 32;
-  // The slowest row took 1.3 s of wall time on a green CI run, an upper bound on its CPU there.
-  const GROWTH_CPU_MS = 5_000;
 
-  // This thread's CPU time, not wall time: under a parallel run the scheduler preempts the long case more often than
-  // the short one, which inflated a wall-clock ratio past the bound (TP-3612).
-  async function cpuMs(script: string): Promise<number> {
-    const readScript = (p: string) => (p === `${REPO}/p.sh` ? script : null);
-    const elapsed = cpuStopwatch();
-    await verdict("bash ./p.sh", { ...context, readScript });
-    return elapsed();
-  }
-
-  // Interleaved so a burst of load lands on both sizes rather than only the one measured during it.
-  async function growth(small: string, large: string): Promise<{ small: number; large: number }> {
-    const best = { small: Infinity, large: Infinity };
-    for (let round = 0; round < ROUNDS; round++) {
-      best.small = Math.min(best.small, await cpuMs(small));
-      best.large = Math.min(best.large, await cpuMs(large));
-      expectWithinCpuBudget();
-    }
-    return best;
-  }
+  // A count of the characters read, not time: under a parallel run the scheduler preempts the long case more often than
+  // the short one, which skewed a wall-clock ratio (TP-3612), and thread CPU still moves with the load (TP-4047).
+  const linearIn = (line: (bytes: number) => string) =>
+    expectLinearWork((bytes) => {
+      const script = line(bytes);
+      const readScript = (p: string) => (p === `${REPO}/p.sh` ? script : null);
+      return () => verdict("bash ./p.sh", { ...context, readScript });
+    }, largeBytes);
 
   const envLine = (unit: string, bytes: number) => `env ${unit.repeat(Math.floor(bytes / unit.length))}true\n`;
 
-  cpuBudgetIt.each([["A=1 - "], ["-- "], ["-S "], ["A=1 -i "], ["A=1 -S '' "]])("reads a script of env %j words in linear time", GROWTH_CPU_MS, async (unit) => {
-    const { small, large } = await growth(envLine(unit, largeBytes / SCALE), envLine(unit, largeBytes));
-
-    expect(large).toBeLessThan(Math.max(small, 5) * MAX_RATIO);
+  it.each([["A=1 - "], ["-- "], ["-S "], ["A=1 -i "], ["A=1 -S '' "]])("reads a script of env %j words in linear time", async (unit) => {
+    await linearIn((bytes) => envLine(unit, bytes));
   });
 
   const splitLine = (unit: string, bytes: number) => `env -S '${unit.repeat(Math.floor(bytes / unit.length))}true'\n`;
 
-  cpuBudgetIt.each([
+  it.each([
     ["env -S 'env env …'", splitLine, "env "],
     ["env -S env -S env -S …", envLine, "-S env "],
-  ] as const)("reads a chain of envs a -S string supplies, %s, in linear time (TP-3291)", GROWTH_CPU_MS, async (_form, line, unit) => {
-    const { small, large } = await growth(line(unit, largeBytes / SCALE), line(unit, largeBytes));
-
-    expect(large).toBeLessThan(Math.max(small, 5) * MAX_RATIO);
+  ] as const)("reads a chain of envs a -S string supplies, %s, in linear time (TP-3291)", async (_form, line, unit) => {
+    await linearIn((bytes) => line(unit, bytes));
   });
 });
 
@@ -162,15 +141,16 @@ const envArgv0 = spawnSync("env", ["-S", "-a x true"]).status === 0;
 const zsh = spawnSync("zsh", ["-f", "-c", "true"]).status === 0;
 
 describe.skipIf(!envSplits)("env runs the command after its own -S options (TP-3210)", () => {
-  function runs(split: string): boolean {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "env-split-"));
-    try {
-      spawnSync("env", ["-S", split], { cwd: dir, stdio: ["ignore", "ignore", "ignore"] });
-      return fs.existsSync(path.join(dir, "mk"));
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  }
+  // Every row runs through one driver (TP-4453).
+  const oracle = shellOracle("env-split-", (dir, split: string) => ({
+    run: { program: "env", args: ["-S", split] },
+    read: () => fs.existsSync(path.join(dir, "mk")),
+  }));
+  const runs = (split: string): boolean => oracle.get(split);
+  const ARGV0S = [`-a "sh"`, `-a 'sh'`, `-a s"h"`, "-a sh"];
+  const asSh = (argv0: string) => `${argv0} zsh -f -c "[[ -o shwordsplit ]] && touch mk"`;
+  for (const split of ["-u X touch mk", "-i /usr/bin/env touch mk", ...(envArgv0 && zsh ? ARGV0S.map(asSh) : [])]) oracle.add(split);
+  oracle.beforeAll();
 
   it("runs the command after -u X", () => {
     expect(runs("-u X touch mk")).toBe(true);
@@ -180,7 +160,7 @@ describe.skipIf(!envSplits)("env runs the command after its own -S options (TP-3
     expect(runs("-i /usr/bin/env touch mk")).toBe(true);
   });
 
-  it.skipIf(!envArgv0 || !zsh).each([`-a "sh"`, `-a 'sh'`, `-a s"h"`, "-a sh"])("runs zsh as sh behind %s (GNU, uutils)", (argv0) => {
-    expect(runs(`${argv0} zsh -f -c "[[ -o shwordsplit ]] && touch mk"`)).toBe(true);
+  it.skipIf(!envArgv0 || !zsh).each(ARGV0S)("runs zsh as sh behind %s (GNU, uutils)", (argv0) => {
+    expect(runs(asSh(argv0))).toBe(true);
   });
 });

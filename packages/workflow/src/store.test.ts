@@ -7,6 +7,7 @@ import {
   newRun,
   workflowDefinitionVersionMigration,
   workflowMigration,
+  workflowNameIndexMigration,
   workflowOwnershipMigration,
 } from "./store.js";
 
@@ -142,6 +143,52 @@ describe("WorkflowRunStore countByStatus", () => {
 
     expect(Object.fromEntries(counts)).toEqual({ running: 1, completed: 2, failed: 0 });
     expect(counts.get("running")).toBe(store.listByStatus(["running"]).length);
+  });
+});
+
+describe("WorkflowRunStore listByWorkflow", () => {
+  function storeWithRuns(): { store: WorkflowRunStore; db: ReturnType<typeof openDatabase> } {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [workflowMigration(1)]);
+    const store = new WorkflowRunStore(db);
+    for (const [index, [id, name]] of ([["a", "alpha"], ["b", "alpha"], ["c", "beta"], ["d", "alpha"]] as const).entries()) {
+      store.create({ ...newRun(id, name, {}), startedAt: iso(index * 1000) });
+    }
+    db.prepare("UPDATE workflow_run SET status = 'completed' WHERE id = 'd'").run();
+    return { store, db };
+  }
+
+  it("returns only that workflow's runs in the asked statuses, in start order", () => {
+    const { store } = storeWithRuns();
+
+    expect(store.listByWorkflow("alpha", ["running", "completed"]).map((run) => run.id)).toEqual(["a", "b", "d"]);
+    expect(store.listByWorkflow("alpha", ["running"]).map((run) => run.id)).toEqual(["a", "b"]);
+  });
+
+  it("never parses another workflow's step results", () => {
+    const { store, db } = storeWithRuns();
+    db.prepare("UPDATE workflow_run SET step_results = 'not json' WHERE workflow_name = 'beta'").run();
+
+    expect(store.listByWorkflow("alpha", ["running"]).map((run) => run.id)).toEqual(["a", "b"]);
+  });
+
+  it("is answered through the workflow-and-status index", () => {
+    const { db } = storeWithRuns();
+
+    const plan = db.prepare("EXPLAIN QUERY PLAN SELECT id FROM workflow_run WHERE workflow_name = ? AND status IN (SELECT value FROM json_each(?))").all("alpha", '["running"]');
+
+    expect(JSON.stringify(plan)).toContain("workflow_run_workflow_status");
+  });
+
+  it("adds the index to an existing table, and a second run is a no-op", () => {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [workflowMigration(1)]);
+    db.exec("DROP INDEX workflow_run_workflow_status");
+
+    workflowNameIndexMigration(2).up(db);
+    workflowNameIndexMigration(2).up(db);
+
+    expect(db.prepare("SELECT name FROM sqlite_master WHERE name = 'workflow_run_workflow_status'").all()).toHaveLength(1);
   });
 });
 

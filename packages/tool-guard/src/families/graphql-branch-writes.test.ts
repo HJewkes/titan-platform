@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { tokenize } from "../shell/lexer.js";
+import { cpuBudgetIt } from "../test-support/cpu-budget.js";
+import { expectLinearTime, LINEARITY_CPU_MS } from "../test-support/linear-time.js";
+import { expectLinearWork } from "../test-support/work-count.js";
 import type { WordToken } from "../shell/lexer.js";
 import { GH_PLACEHOLDER_RE } from "./field-words.js";
 import { decodeGraphqlEscapes, graphqlBranchWrites } from "./graphql-branch-writes.js";
 
 const BS = "\\";
+/** Large enough that the small side of each ratio spans several 1 ms thread-CPU ticks (TP-3980). */
+const GQL_TOP_BYTES = 1024 * 1024;
 const PROTECTED_RE = /^(?:main|master|release\/.+)$/;
 /** Two escape layers past what GitHub decodes. */
 const DEEP = `${BS}u{5c}u{5c}u0041`;
@@ -210,16 +215,32 @@ describe("decodeGraphqlEscapes", () => {
 });
 
 describe("graphqlBranchWrites cost on crafted texts", () => {
-  /** Past this a hook timeout would let the command through; a linear reading of 64 KB takes milliseconds. */
-  const BUDGET_MS = 500;
   const KB = 1024;
+  const escapes = (bytes: number) => merge(`"${BS}u{5c}${"u{5c}".repeat(bytes / 2 / 5)}u006dain${`${BS}u{110000}`.repeat(bytes / 2 / 10)}"`);
+  const commentedIds = (bytes: number) => `${commitOn("$b")}\n${"#id\n".repeat(bytes / 4)}`;
 
   it.each([
-    ["a chain of escapes, each pass peeling one", merge(`"${BS}u{5c}${"u{5c}".repeat((32 * KB) / 5)}u006dain${`${BS}u{110000}`.repeat((32 * KB) / 10)}"`)],
-    ["commented id keys", `${commitOn("$b")}\n${"#id\n".repeat(16 * KB)}`],
-  ])("reads 64 KB of %s as unknown within budget", (_what, text) => {
-    const start = performance.now();
-    expect(graphqlBranchWrites([text], []).unknown).toBe(true);
-    expect(performance.now() - start).toBeLessThan(BUDGET_MS);
+    ["a chain of escapes, each pass peeling one", escapes],
+    ["commented id keys", commentedIds],
+  ])("reads 64 KB of %s as unknown", (_what, text) => {
+    expect(graphqlBranchWrites([text(64 * KB)], []).unknown).toBe(true);
+  });
+
+  // Each pass is a regex replace, whose backtracking a count of calls cannot see, so this compares thread CPU across two
+  // sizes, interleaved, in one process, rather than one time against a budget a loaded runner can pass (TP-4047).
+  cpuBudgetIt("reads a chain of escapes, each pass peeling one, in linear time", LINEARITY_CPU_MS, () => {
+    expectLinearTime((bytes) => {
+      const source = escapes(bytes);
+      return () => void graphqlBranchWrites([source], []);
+    }, GQL_TOP_BYTES);
+  });
+
+  // The run-time branch decides before the comments are read, in well under a CPU tick at any size, so a count of work
+  // measures this one; time would be noise.
+  it("reads commented id keys with work linear in their length", async () => {
+    await expectLinearWork((bytes) => {
+      const source = commentedIds(bytes);
+      return () => void graphqlBranchWrites([source], []);
+    }, 64 * KB);
   });
 });

@@ -43,7 +43,7 @@ describe('document frequency across workspace passes', () => {
   it('keeps the cached count when a pass neither writes nor removes spans', async () => {
     const frequency = graphDocumentFrequency(graph);
     const before = frequency('indexer');
-    graph.db.prepare('DELETE FROM search_span').run();
+    graph.db.prepare('DELETE FROM workspace_span').run();
 
     await refreshWorkspace(graph, { activeRoot: root });
 

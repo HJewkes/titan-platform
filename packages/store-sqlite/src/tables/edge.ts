@@ -1,4 +1,4 @@
-import { SQL_NOW, nowIso, quoteIdent, type Db } from "../open.js";
+import { SQL_NOW, nowIso, parseJsonObject, quoteIdent, type Db } from "../open.js";
 
 /**
  * Interval bi-temporal edge table: `t_valid`/`t_invalid` is when the relation
@@ -84,7 +84,7 @@ function toEdgeRow(raw: RawEdgeRow): EdgeRow {
     tExpired: raw.t_expired,
     factId: raw.fact_id,
     confidence: raw.confidence,
-    attrs: raw.attrs === null ? null : (JSON.parse(raw.attrs) as Record<string, unknown>),
+    attrs: raw.attrs === null ? null : parseJsonObject(raw.attrs),
   };
 }
 
@@ -107,11 +107,11 @@ export class EdgeTable {
     this.expireStmt = db.prepare(
       `UPDATE ${t} SET t_expired = ? WHERE source_ref = ? AND relation = ? AND target_ref = ? AND t_expired IS NULL`,
     );
-    this.currentStmt = db.prepare(
+    this.currentStmt = db.prepare<[string, string, string], RawEdgeRow>(
       `SELECT * FROM ${t} WHERE source_ref = ? AND relation = ? AND target_ref = ? AND t_expired IS NULL`,
     );
-    this.fromStmt = db.prepare(`SELECT * FROM ${t} WHERE source_ref = ? AND t_expired IS NULL ORDER BY edge_id`);
-    this.toStmt = db.prepare(`SELECT * FROM ${t} WHERE target_ref = ? AND t_expired IS NULL ORDER BY edge_id`);
+    this.fromStmt = db.prepare<[string], RawEdgeRow>(`SELECT * FROM ${t} WHERE source_ref = ? AND t_expired IS NULL ORDER BY edge_id`);
+    this.toStmt = db.prepare<[string], RawEdgeRow>(`SELECT * FROM ${t} WHERE target_ref = ? AND t_expired IS NULL ORDER BY edge_id`);
     this.supersedeTxn = db.transaction((edge: EdgeInput, at: string) => {
       this.expire(edge.sourceRef, edge.relation, edge.targetRef, at);
       this.assert(edge);
@@ -144,15 +144,15 @@ export class EdgeTable {
   }
 
   current(sourceRef: string, relation: string, targetRef: string): EdgeRow | undefined {
-    const raw = this.currentStmt.get(sourceRef, relation, targetRef) as RawEdgeRow | undefined;
+    const raw = this.currentStmt.get(sourceRef, relation, targetRef);
     return raw === undefined ? undefined : toEdgeRow(raw);
   }
 
   from(sourceRef: string): EdgeRow[] {
-    return (this.fromStmt.all(sourceRef) as RawEdgeRow[]).map(toEdgeRow);
+    return this.fromStmt.all(sourceRef).map(toEdgeRow);
   }
 
   to(targetRef: string): EdgeRow[] {
-    return (this.toStmt.all(targetRef) as RawEdgeRow[]).map(toEdgeRow);
+    return this.toStmt.all(targetRef).map(toEdgeRow);
   }
 }

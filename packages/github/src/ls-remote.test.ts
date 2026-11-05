@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { execGit, type GhExecOptions, type GhResult, type GitExec } from "./exec.js";
 import { fakeGitHub } from "./fake.js";
-import { LsRemoteError, lsRemotePullHead } from "./ls-remote.js";
+import { LsRemoteError, lsRemoteBranchHead, lsRemotePullHead } from "./ls-remote.js";
 import { GitHubInputError } from "./validate.js";
 
 const REMOTE = "https://example.test/o/r.git";
@@ -105,6 +105,49 @@ describe("lsRemotePullHead", () => {
   });
 });
 
+describe("lsRemoteBranchHead", () => {
+  it("answers the sha of refs/heads/<branch>", async () => {
+    const git = scripted({ code: 0, stdout: `${A}\trefs/heads/main\n`, stderr: "" });
+
+    const tip = await lsRemoteBranchHead(git.exec, REMOTE, "main");
+
+    expect(tip).toBe(A);
+    expect(git.calls[0]!.args).toEqual(["ls-remote", "--", REMOTE, "refs/heads/main"]);
+  });
+
+  it("ignores a ref that only ends with the branch, such as refs/heads/release/main", async () => {
+    const git = scripted({ code: 0, stdout: `${A}\trefs/heads/release/main\n`, stderr: "" });
+
+    await expect(lsRemoteBranchHead(git.exec, REMOTE, "main")).resolves.toBeNull();
+  });
+
+  it("passes the credential in the child env only and cuts it from errors", async () => {
+    const git = scripted({ code: 128, stdout: "", stderr: `fatal: auth failed for ${TOKEN}\n` });
+    const env = { GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "http.extraHeader", GIT_CONFIG_VALUE_0: `Authorization: Bearer ${TOKEN}` };
+
+    const failure = await failureOf(lsRemoteBranchHead(git.exec, REMOTE, "main", { env }));
+
+    expect(failure).toBeInstanceOf(LsRemoteError);
+    expect(git.calls[0]!.options?.env).toMatchObject({ ...env, GIT_TERMINAL_PROMPT: "0" });
+    expect(failure.message).not.toContain(TOKEN);
+  });
+
+  it.each(["", "-main", "refs/*", "a..b", "a//b", "main/", "main.lock", "ma in", "main.", "/main"])("refuses the branch name %j before git runs", async (branch) => {
+    const git = scripted({ code: 0, stdout: "", stderr: "" });
+
+    const failure = await failureOf(lsRemoteBranchHead(git.exec, REMOTE, branch));
+
+    expect(failure).toBeInstanceOf(GitHubInputError);
+    expect(git.calls).toEqual([]);
+  });
+
+  it("accepts a nested branch name", async () => {
+    const git = scripted({ code: 0, stdout: `${A}\trefs/heads/release/v1.2\n`, stderr: "" });
+
+    await expect(lsRemoteBranchHead(git.exec, REMOTE, "release/v1.2")).resolves.toBe(A);
+  });
+});
+
 describe("lsRemotePullHead on the fake", () => {
   it("answers a PR's current head and null for a PR the fake lacks", async () => {
     const fake = fakeGitHub();
@@ -146,5 +189,14 @@ describe("lsRemotePullHead against real git", () => {
     const [present, absent] = [await lsRemotePullHead(execGit, pathToFileURL(dir).href, 3), await lsRemotePullHead(execGit, pathToFileURL(dir).href, 4)];
 
     expect([present, absent]).toEqual([head, null]);
+  });
+
+  it("reads a branch tip from a local remote", async () => {
+    const tip = execFileSync("git", ["-C", dir, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+    const branch = execFileSync("git", ["-C", dir, "symbolic-ref", "--short", "HEAD"], { encoding: "utf8" }).trim();
+
+    const [present, absent] = [await lsRemoteBranchHead(execGit, pathToFileURL(dir).href, branch), await lsRemoteBranchHead(execGit, pathToFileURL(dir).href, "no-such-branch")];
+
+    expect([present, absent]).toEqual([tip, null]);
   });
 });

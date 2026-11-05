@@ -47,7 +47,7 @@ describe("MergeEvidenceSchema", () => {
 
   it("rejects evidence whose resolver names no session", () => {
     const bad = evidence();
-    bad.merge.resolver = { agentId: "agent-rv" } as typeof reviewer;
+    Object.assign(bad.merge, { resolver: { agentId: "agent-rv" } });
 
     expect(MergeEvidenceSchema.safeParse(bad).success).toBe(false);
   });
@@ -56,5 +56,15 @@ describe("MergeEvidenceSchema", () => {
     const bad = { ...evidence(), record: { ...evidence().record, verdictLocator: "transcript-1" } };
 
     expect(MergeEvidenceSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it("reads stored D21 lines of the pre-redesign per-key shape as none and keeps the current shape", () => {
+    const old = [{ path: ".github/ci.yml", key: "permissions", removed: [], added: ["L4:  contents: write"], omitted: 0 }];
+    const current = [{ path: ".github/ci.yml", lines: [{ side: "+", n: 4, text: "  contents: write" }], omitted: 0 }];
+
+    const [before, after] = [old, current].map((ciPolicyChanges) => MergeEvidenceSchema.parse({ ...evidence(), record: { ...evidence().record, ciPolicyChanges } }).record);
+
+    expect(before?.ciPolicyChanges).toBeUndefined();
+    expect(after?.ciPolicyChanges).toEqual(current);
   });
 });

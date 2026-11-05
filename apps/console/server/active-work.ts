@@ -2,6 +2,8 @@ import { z } from "zod";
 import { DELIVERABLE_STATUSES } from "@titan-design/pm";
 import { EXIT } from "@titan-design/registry";
 import { liveSource } from "@titan-design/rpc-client";
+import { loopBoard, loopTierWire } from "./loop-board.js";
+import { timedFetch, type UpstreamObserver } from "./perf/timed-fetch.js";
 
 const stat = z.object({ files: z.number(), bytes: z.number(), newest_mtime: z.string().nullable() });
 
@@ -35,8 +37,6 @@ const task = z.object({
 const artifactBranch = z.object({ repo: z.string(), name: z.string(), note: z.string().optional() });
 
 const artifactWorktree = z.object({ path: z.string(), repo: z.string(), branch: z.string().optional(), holding: z.string().optional(), note: z.string().optional() });
-
-const prInfo = z.object({ number: z.number(), state: z.string(), title: z.string(), url: z.string(), checks: z.string().optional() });
 
 const reference = z.object({ slug: z.string(), source: z.enum(["task", "session", "artifacts"]), file: z.string(), field: z.string(), text: z.string() });
 
@@ -92,6 +92,8 @@ const READS = {
     parse_errors: z.array(z.object({ slug: z.string(), error: z.string() })),
   }),
   "task.list": z.object({ tasks: z.array(task) }),
+  /** One task file read by id; a daemon older than active-work's task.show answers EXIT.USAGE. */
+  "task.show": task.omit({ slug: true }),
   inventory: z.object({ initiatives: z.array(inventoryInitiative), human_only_known: z.boolean() }),
   "session.list": z.object({ sessions: z.array(session) }),
   loops: z.object({ open: z.array(loop) }),
@@ -103,17 +105,22 @@ const READS = {
   search: z.object({ query: z.string(), hits: z.array(searchHit), degraded: z.array(z.object({ retriever: z.string(), message: z.string() })) }),
   "artifact.list": z.object({ items: z.array(z.object({ slug: z.string(), artifacts: z.object({ branches: z.array(artifactBranch), worktrees: z.array(artifactWorktree) }) })) }),
   /** Runs `gh` once per registered branch, so only a one-task read may call it. */
-  "artifact.status": z.object({
-    branches: z.array(artifactBranch.extend({ present: z.boolean(), pr: prInfo.nullable() })),
-    worktrees: z.array(artifactWorktree.extend({ branch: z.string().nullable(), present: z.boolean(), pr: z.number().optional() })),
-  }),
   "context.graph": z.object({ references: z.array(reference) }),
   /** The platform-wide deliverables registry; a daemon older than active-work 0.23 has no such command. */
   "deliverable.list": z.array(deliverable),
+  /** The platform-wide open-loops board; a daemon older than active-work 0.25 has no such command. */
+  "loop.board": loopBoard,
+};
+
+/** The active-work writes the console may call, kept apart so `READS` stays write-free. Only owner-write commands call them. */
+const WRITES = {
+  "loop.tier": loopTierWire,
 };
 
 export type ReadName = keyof typeof READS;
 export type ReadResult<K extends ReadName> = z.infer<(typeof READS)[K]>;
+type WriteName = keyof typeof WRITES;
+type WriteResult<K extends WriteName> = z.infer<(typeof WRITES)[K]>;
 export type WireInitiative = z.infer<typeof initiativeItem>;
 export type WireTask = z.infer<typeof task>;
 export type WireDeliverable = z.infer<typeof deliverable>;
@@ -122,6 +129,8 @@ export type WireInventoryInitiative = z.infer<typeof inventoryInitiative>;
 export interface ActiveWork {
   /** Rejects with an error that carries a sysexits `code` when the daemon is down, refuses, or answers another shape. */
   read<K extends ReadName>(command: K, args?: Record<string, unknown>): Promise<ReadResult<K>>;
+  /** Rejects as `read` does. Absent on a read-only source, such as a test's; a write through it is then unavailable. */
+  write?<K extends WriteName>(command: K, args: Record<string, unknown>): Promise<WriteResult<K>>;
 }
 
 const READ_TIMEOUT_MS = 10_000;
@@ -136,18 +145,26 @@ export function unexpectedShape(upstream: string): Error {
 }
 
 /** Calls the active-work daemon's `/rpc` on loopback. It never starts the daemon. */
-export function activeWorkClient(port: number, timeoutMs: number = READ_TIMEOUT_MS): ActiveWork {
+export function activeWorkClient(port: number, timeoutMs: number = READ_TIMEOUT_MS, recorder?: UpstreamObserver): ActiveWork {
   const source = liveSource({
     origin: `http://127.0.0.1:${port}`,
-    fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(timeoutMs) }),
+    fetch: timedFetch("active-work", recorder, (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(timeoutMs) })),
   });
+  const dataOf = async (command: string, args: Record<string, unknown>): Promise<unknown> => {
+    const envelope = await source.call(command, args);
+    if (!envelope.ok) throw failure(`active-work ${command}: ${envelope.error}`, envelope.code);
+    return envelope.data;
+  };
   return {
     async read(command, args = {}) {
-      const envelope = await source.call(command, args);
-      if (!envelope.ok) throw failure(`active-work ${command}: ${envelope.error}`, envelope.code);
-      const parsed = READS[command].safeParse(envelope.data);
+      const parsed = READS[command].safeParse(await dataOf(command, args));
       if (!parsed.success) throw unexpectedShape(`active-work ${command}`);
       return parsed.data as ReadResult<typeof command>;
+    },
+    async write(command, args) {
+      const parsed = WRITES[command].safeParse(await dataOf(command, args));
+      if (!parsed.success) throw unexpectedShape(`active-work ${command}`);
+      return parsed.data;
     },
   };
 }

@@ -80,7 +80,7 @@ describe("listPrFiles", () => {
   });
 
   it("uses only gh api REST calls, never graphql or pr view", async () => {
-    const gh = scripted({ "pulls/7/files": [included({}, [])], "repos/octo/demo/pulls/7": [included({}, { changed_files: 0 })], "compare/": [included({}, { merge_base_commit: { sha: fakeSha("mb") }, files: [] })], "issues/7/comments": [included({}, [])], "-X GET user": [included({}, { login: "octo" })] });
+    const gh = scripted({ "pulls/7/files": [included({}, [])], "repos/octo/demo/pulls/7": [included({}, { changed_files: 0 })], "compare/": [included({}, { merge_base_commit: { sha: fakeSha("mb") }, files: [] })], "issues/7/comments": [included({}, [])], "api -i user": [included({}, { login: "octo" })] });
     const port = wireOver(gh.exec);
 
     await port.listPrFiles(REPO, 7);
@@ -128,7 +128,7 @@ describe("listDefaultBranchCommits", () => {
 
     expect(commits).toHaveLength(105);
     expect(commits[0]).toEqual({ sha: fakeSha("m0"), message: "subject 0\n\nbody" });
-    expect(gh.calls[0]!.args).toContain("since=2026-10-01T00:00:00.000Z");
+    expect(gh.calls[0]!.args[2]).toContain("since=2026-10-01T00%3A00%3A00.000Z");
   });
 
   it("refuses a since that is not a timestamp before any call", async () => {
@@ -283,7 +283,7 @@ describe("upsertComment", () => {
   });
 
   it("lists then posts over the REST wire with the body as JSON input", async () => {
-    const gh = scripted({ "-X GET user": [included({}, { login: "octo" })], "issues/7/comments": [included({}, [{ id: 3, body: "other", user: { login: "octo" } }]), included({}, { id: 99 })] });
+    const gh = scripted({ "api -i user": [included({}, { login: "octo" })], "issues/7/comments": [included({}, [{ id: 3, body: "other", user: { login: "octo" } }]), included({}, { id: 99 })] });
 
     const result = await wireOver(gh.exec).upsertComment(REPO, 7, MARKER, `${MARKER}\nev`);
 
@@ -296,7 +296,7 @@ describe("upsertComment", () => {
   it("counts only the authenticated user's comment as the existing one, over the REST wire", async () => {
     const forged = { id: 1, body: MARKER, user: { login: "mallory" } };
     const own = { id: 2, body: `${MARKER}\nevidence`, user: { login: "octo" } };
-    const gh = scripted({ "-X GET user": [included({}, { login: "octo" })], "issues/7/comments": [included({}, [forged, own])] });
+    const gh = scripted({ "api -i user": [included({}, { login: "octo" })], "issues/7/comments": [included({}, [forged, own])] });
 
     expect(await wireOver(gh.exec).upsertComment(REPO, 7, MARKER, MARKER)).toEqual({ id: 2, done: false, skipped: "exists" });
   });

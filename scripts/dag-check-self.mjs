@@ -10,7 +10,7 @@ import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { collectReport, writeReport } from "./codewatch-report.mjs";
-import { MACHINE_SEED, refreshSeed, runWithColdRetry, seedArgs, usesMachineSeed } from "./dag-check-seed.mjs";
+import { MACHINE_SEED, refreshSeed, runWithColdRetry, seedArgs, seedKeep, usesMachineSeed } from "./dag-check-seed.mjs";
 import { BUSY_EXIT_CODE, DEFAULT_LOCK_DIR, LockTimeoutError, acquire, lockSlots, lockWaitMs, cleanupOnSignal, release, runCappedWorker, runCleanups } from "./dag-check-lock.mjs";
 
 const SCRIPT = fileURLToPath(import.meta.url);
@@ -37,7 +37,7 @@ async function indexTree(graph, store, dir, ref) {
   // apps/ is absent from baselines taken before the first app landed.
   const paths = ["packages", "products", "apps"].map((sub) => path.join(dir, sub)).filter((p) => existsSync(p));
   const r = await graph.indexPaths(store, { paths, ref, computeChurn: false });
-  console.error(`indexed ${ref}: ${r.files} files, ${r.nodes} nodes, ${r.edges} edges -> snapshot ${r.snapshotId}`);
+  console.error(`indexed ${ref}: ${r.files} files, ${r.nodes} nodes, ${r.edges} edges (${r.reparsed} re-parsed, ${r.reused} reused) -> snapshot ${r.snapshotId}`);
 }
 
 function git(...args) {
@@ -134,8 +134,9 @@ async function check() {
     console.log(process.argv.includes("--json") ? JSON.stringify(json, null, 2) : formatText(run));
     const reportAt = process.argv.indexOf("--report");
     if (reportAt >= 0) writeReport(process.argv[reportAt + 1], () => collectReport(graph, store, run, rules));
-    // A cached graph keeps only what the next run can reuse: the head and baseline just indexed.
-    if (seedDbPath(process.argv.slice(2))) graph.runPrune(store, { keep: 2 });
+    // A cached graph keeps only what the next run can reuse.
+    const seed = seedDbPath(process.argv.slice(2));
+    if (seed) graph.runPrune(store, { keep: seedKeep(seed) });
     return run.result.passed ? 0 : 1;
   } finally {
     store.close();

@@ -67,6 +67,7 @@ describe("ctx.assisted brief", () => {
 
     expect(events.find((e) => e.type === "gate_opened")).toEqual({
       type: "gate_opened",
+      at: expect.any(String),
       runId,
       stepId: "approve",
       gateId: `${runId}/approve`,

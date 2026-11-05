@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a session loop whose task a ledger row links is not listed twice",
+      "file": "products/active-work/src/sessions/loop-board.ts",
+      "find": "      .filter((loop) => loop.targetRef === undefined || !claimed.has(loop.targetRef))\n",
+      "replace": "      .filter(() => true)\n",
+      "kills": ["buildBoard lists a session loop once when a ledger row links its task"]
+    },
+    {
+      "name": "owning_seat none reads as no seat",
+      "file": "products/active-work/src/sessions/loop-board.ts",
+      "find": "seat === '' || seat === 'none' ? null : seat",
+      "replace": "seat === '' ? null : seat",
+      "kills": ["buildBoard reads owning seat none as no owner seat"]
+    },
+    {
+      "name": "a malformed ledger row is a warning, not a throw",
+      "file": "products/active-work/src/sessions/loop-board.ts",
+      "find": "    warnings.push(`Skipped ${rowLabel(row, index)}: ${issueText(parsed.error)}`);\n    return [];\n",
+      "replace": "    throw new Error(`Skipped ${rowLabel(row, index)}`);\n",
+      "kills": ["buildBoard skips a ledger row with no id and names it in warnings"]
+    }
+  ]
+}

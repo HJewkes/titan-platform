@@ -4,7 +4,8 @@ import type { Inline } from "./inline-script.js";
 import type { Token, WordToken } from "./lexer.js";
 import { pipedShellTexts } from "./piped-nul.js";
 import { resolvePath } from "./path.js";
-import { shellOperands } from "./shell-options.js";
+import { BASH_LONG_VALUES, scriptPositionals, shellOperands } from "./shell-options.js";
+import { SOURCERS } from "./sourced.js";
 import type { SimpleCommand } from "./commands.js";
 import type { ScriptTarget } from "../scripts.js";
 import type { Unwrapped } from "./unwrap.js";
@@ -12,7 +13,6 @@ import { ReadingLimitError, UnreadableScriptError } from "./unsure-readings.js";
 
 /** The descriptor path a real shell passes for a `<( )` operand. Only its being a descriptor the line did not open matters. */
 const PROCSUB_PATH = "/dev/fd/63";
-const SOURCERS = new Set(["source", "."]);
 /** Texts a body may print; the same cap `group-stdin.ts` puts on a group. */
 const MAX_TEXTS = 16;
 
@@ -22,7 +22,7 @@ const MAX_TEXTS = 16;
  * arguments change. A substitution a redirect awaits (`bash < <(...)`, `cmd > >(...)`) belongs to that redirect.
  */
 export function withProcsub(words: WordToken[], token: Token): WordToken[] {
-  if (token.type !== "subs" || token.awaited || words.length === 0) return words;
+  if (token.type !== "subs" || token.awaited) return words;
   const operand: WordToken = { type: "word", value: PROCSUB_PATH, dynamic: false, quoted: false, spliced: false, computed: false, refs: [], subs: [], procsub: token.subs };
   return [...words, operand];
 }
@@ -31,38 +31,45 @@ function keepsProcsub(name: string | null): boolean {
   return name !== null && (SHELLS.has(name) || SOURCERS.has(name));
 }
 
+type Operands = Pick<Unwrapped, "name" | "args" | "program">;
+
 /** The command as recorded: a substitution operand stays only where the command may run it as a script. */
-export function withoutProcsub<T extends Pick<Unwrapped, "name" | "args">>(cmd: T): T {
+export function withoutProcsub<T extends Operands>(cmd: T): T {
   if (keepsProcsub(cmd.name) || !cmd.args.some((word) => word.procsub !== undefined)) return cmd;
   return { ...cmd, args: cmd.args.filter((word) => word.procsub === undefined) };
 }
 
-/** The substitution a shell or `source` runs as its script, not as a positional parameter (`bash -s <(...)`, `bash -c STR <(...)`). */
-function scriptOperand(cmd: Pick<Unwrapped, "name" | "args">): Token[] | null {
-  if (cmd.name === null) return null;
-  if (SOURCERS.has(cmd.name)) return cmd.args[0]?.procsub?.[0] ?? null;
-  if (!SHELLS.has(cmd.name)) return null;
-  const { hasC, positional } = shellOperands(cmd.args, cmd.name);
-  return hasC ? null : (positional?.procsub?.[0] ?? null);
-}
-
-/** The command as main saw it: no substitution operand, so a trailing operand is the script and `<` still feeds stdin. */
-export function withoutProcsubOperands<T extends Pick<Unwrapped, "name" | "args">>(cmd: T): T {
-  return { ...cmd, args: cmd.args.filter((word) => word.procsub === undefined) };
-}
-
-/** Whether the command runs a `<( )` as its script, which `scriptTargets` then settles. */
-export function hasProcsubOperand(cmd: Pick<Unwrapped, "name" | "args">): boolean {
-  return scriptOperand(cmd) !== null;
-}
-
 /**
- * Every substitution the shell or sourcer may run once it runs one as its script: that one, and each later one, which
- * the script may run by its positional (`bash <(echo 'bash "$1"') <(...)`), as main reads a trailing file operand.
+ * The words a command may run as a script. A program that is a substitution (`exec <(...)`, a bare `<(...)`) is refused
+ * by the kernel, as a pipe is no regular file, but is read as `exec ./x.sh` reads its file, so the verdict never rests
+ * on that refusal. A sourcer passes every word it does not read as the file on as a positional. A shell's script, a
+ * `-c` string, a file or under `-s` a fed stdin, may run any positional (`bash ./run.sh <(...)`, `bash -c 'bash "$1"'
+ * _ <(...)`), which the guard cannot rule out, so each is read; so is bash's rcfile.
  */
-function procsubBodies(cmd: Pick<Unwrapped, "name" | "args">): Token[][] {
-  if (scriptOperand(cmd) === null) return [];
-  return cmd.args.flatMap((word) => word.procsub?.slice(0, 1) ?? []);
+function runnable(cmd: Operands, stdinFed: boolean): (WordToken | null | undefined)[] {
+  if (cmd.name === null) return [cmd.program];
+  // Each word is a file `sourcedFiles` may name or a positional the file gets.
+  if (SOURCERS.has(cmd.name)) return [cmd.program, ...cmd.args];
+  if (!SHELLS.has(cmd.name)) return [cmd.program];
+  const operands = shellOperands(cmd.args, cmd.name);
+  return [cmd.program, operands.rcfile, operands.positional, ...scriptPositionals(operands, stdinFed)];
+}
+
+/** The command as main saw it: no substitution operand, so a trailing operand is the script and `<` still feeds stdin. A substitution program leaves no command, and an rcfile one takes its option along. */
+export function withoutProcsubOperands<T extends Operands>(cmd: T): T {
+  const shell = cmd.name !== null && SHELLS.has(cmd.name);
+  const args = cmd.args.filter((word, i) => word.procsub === undefined && !(shell && BASH_LONG_VALUES.has(word.value) && cmd.args[i + 1]?.procsub !== undefined));
+  return cmd.program === undefined ? { ...cmd, args } : { ...cmd, args, name: null, path: null, program: undefined };
+}
+
+/** Whether the command runs a `<( )` as a script, which `scriptTargets` then settles. */
+export function hasProcsubOperand(cmd: Operands, stdinFed: boolean): boolean {
+  return procsubBodies(cmd, stdinFed).length > 0;
+}
+
+/** Every substitution the command may run: each `runnable` word that is one, as main reads a trailing file operand. */
+function procsubBodies(cmd: Operands, stdinFed: boolean): Token[][] {
+  return runnable(cmd, stdinFed).flatMap((word) => word?.procsub?.slice(0, 1) ?? []);
 }
 
 /**
@@ -72,8 +79,8 @@ function procsubBodies(cmd: Pick<Unwrapped, "name" | "args">): Token[][] {
  * body piped into the shell adds none; a body that prints under one shell's reading of its `{name}` words and runs
  * another program under another keeps the printed text.
  */
-export function procsubScript<T extends Pick<Unwrapped, "name" | "args">>(cmd: T, rest: (plain: T) => Inline | null): Inline | null {
-  const bodies = procsubBodies(cmd);
+export function procsubScript<T extends Operands>(cmd: T, stdinFed: boolean, rest: (plain: T) => Inline | null): Inline | null {
+  const bodies = procsubBodies(cmd, stdinFed);
   if (bodies.length === 0) return null;
   const all = [...new Set(bodies.flatMap((body) => listText(body, true).flatMap((texts) => texts ?? [])))];
   if (all.length > MAX_TEXTS) throw new ReadingLimitError();
@@ -86,8 +93,8 @@ export function procsubScript<T extends Pick<Unwrapped, "name" | "args">>(cmd: T
  * printf text is walked from `procsubScript`, and any other body is left as the same body piped into the shell is, so
  * neither adds a target. A file the line names but cannot be resolved is refused, as the guard cannot read it.
  */
-export function procsubTargets(cmd: SimpleCommand, home: string): ScriptTarget[] {
-  const files = procsubBodies(cmd).flatMap((body) => {
+export function procsubTargets(cmd: SimpleCommand, stdinFed: boolean, home: string): ScriptTarget[] {
+  const files = procsubBodies(cmd, stdinFed).flatMap((body) => {
     const cat = procsubFile(body);
     return cat === null ? redirectedFiles(body) : [cat];
   });
@@ -126,7 +133,8 @@ function procsubFile(body: Token[]): WordToken | null {
   const words = body.every((token) => token.type === "word") ? body : [];
   const [name, ...rest] = words;
   if (name?.value !== "cat" || name.quoted || name.dynamic) return null;
-  const operands = rest[0]?.value === "--" && !rest[0].quoted ? rest.slice(1) : rest;
+  // cat sees the word after quote removal, so a quoted `--` still ends its options.
+  const operands = rest[0]?.value === "--" ? rest.slice(1) : rest;
   const [file] = operands;
   if (operands.length !== 1 || file === undefined) return null;
   const literal = !file.dynamic && !file.computed && file.subs.length === 0;

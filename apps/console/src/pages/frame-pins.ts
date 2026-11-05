@@ -9,7 +9,7 @@ export type Pin = NonNullable<PostedVariant["annotations"]>[number];
 type PinTarget = Pin["target"];
 
 /** What a pin is measured against; a live story iframe (TP-3793) supplies its own behind the same interface. */
-interface PinSurface {
+export interface PinSurface {
   /** CSS px the pin's x/y are measured in; written as the pin's `width`. */
   width: number;
   height: number;
@@ -42,11 +42,17 @@ export function hitBox(boxes: readonly TargetBox[], x: number, y: number): PinTa
  * natural width, which on a 2x shot is device pixels; xPct and yPct hold either way. Undefined before the image has size.
  * Boxes are in viewport CSS px, so only a frame that declares its viewport width hit-tests them.
  */
-export function pngSurface({ viewportWidth, referenceWidth }: PngWidths, natural: { width: number; height: number }, boxes?: readonly TargetBox[]): PinSurface | undefined {
+export function pngSurface(widths: PngWidths, natural: { width: number; height: number }, boxes?: readonly TargetBox[]): PinSurface | undefined {
   if (natural.width <= 0 || natural.height <= 0) return undefined;
-  const width = viewportWidth ?? referenceWidth ?? natural.width;
-  const hitTest = boxes && viewportWidth !== undefined ? (x: number, y: number) => hitBox(boxes, x, y) : () => undefined;
+  const width = pngWidth(widths, natural) ?? natural.width;
+  const hitTest = boxes && widths.viewportWidth !== undefined ? (x: number, y: number) => hitBox(boxes, x, y) : () => undefined;
   return { width, height: (natural.height * width) / natural.width, hitTest };
+}
+
+/** The width a PNG frame's pins are measured in, as `pngSurface` takes it; undefined while it declares none and has no pixels. */
+export function pngWidth({ viewportWidth, referenceWidth }: PngWidths, natural: { width: number } | undefined): number | undefined {
+  const own = natural !== undefined && natural.width > 0 ? natural.width : undefined;
+  return viewportWidth ?? referenceWidth ?? own;
 }
 
 const round = (value: number, places: number): number => Number(value.toFixed(places));
@@ -59,6 +65,15 @@ export function pointerPin(point: { clientX: number; clientY: number }, rect: { 
   const y = round((point.clientY - rect.top) / scale, 0);
   const target = surface.hitTest(x, y);
   return { width: surface.width, x, y, xPct: fraction(x / surface.width), yPct: fraction(y / surface.height), ...(target ? { target } : {}) };
+}
+
+/**
+ * The pins a render `width` px wide draws: those placed at that width, since a pin's share of a 390 px layout is another
+ * spot at 1440 px. A pin with no width, or a render whose width is not known yet, draws everywhere, so no pin is hidden.
+ */
+export function pinsDrawnAt<T extends { width?: number }>(pins: readonly T[], width: number | undefined): readonly T[] {
+  if (width === undefined) return pins;
+  return pins.filter((pin) => pin.width === undefined || pin.width === width);
 }
 
 /** A pin's id is its frame's key and its number. */

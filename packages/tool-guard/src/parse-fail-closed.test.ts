@@ -1,14 +1,16 @@
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
+import { SETTINGS_ENTRY } from "./cli.js";
 import { nodeContext } from "./context.js";
 import type { ReadFs } from "./context.js";
 import { decide } from "./decide.js";
 import { handle } from "./hook.js";
 import type { HookPort } from "./hook.js";
+import { runBuiltHook, spawnBuiltHook } from "./test-support/built-hook.js";
+import { BENCH, withinWallBudget } from "./test-support/cpu-budget.js";
+import { countWork } from "./test-support/work-count.js";
 
 const HOME = "/home/you";
 const ts = new Date("2026-01-02T03:04:05.000Z");
@@ -52,10 +54,18 @@ function decisionOf(stdout: string): string | null {
   return stdout.includes('"permissionDecision":"deny"') ? "deny" : stdout;
 }
 
-async function timedDecision(command: string): Promise<{ decision: string | null; ms: number }> {
-  const start = performance.now();
-  const result = await handle(bash(command), {}, port);
-  return { decision: decisionOf(result.stdout), ms: performance.now() - start };
+/**
+ * Work the hook may do on one of the lines below, in characters read: parsing the event and classifying a short command
+ * read up to 8 400, and the costliest line, a quoted subscript 100 deep, 579 a character. A walk that went exponential in
+ * the nesting would pass this many times over.
+ */
+const EVENT_WORK = 10_000;
+const WORK_PER_CHAR = 800;
+
+async function countedDecision(command: string): Promise<string | null> {
+  let stdout = "";
+  await countWork(async () => ({ stdout } = await handle(bash(command), {}, port)), EVENT_WORK + command.length * WORK_PER_CHAR);
+  return decisionOf(stdout);
 }
 
 const pushShapes: [string, string][] = [
@@ -69,11 +79,8 @@ const pushShapes: [string, string][] = [
 ];
 
 describe("handle: a command that fails to parse", () => {
-  it.each(pushShapes)("denies %s within a second", async (_, command) => {
-    const { decision, ms } = await timedDecision(command);
-
-    expect(decision).toBe("deny");
-    expect(ms).toBeLessThan(1000);
+  it.each(pushShapes)("denies %s within its work budget", async (_, command) => {
+    expect(await countedDecision(command)).toBe("deny");
   });
 
   it.each(["'", "$(", "`"])("denies git push and gh pr merge followed by an unclosed %s tail", async (tail) => {
@@ -112,21 +119,23 @@ describe("handle: a command that fails to parse", () => {
   });
 });
 
-// CI builds before it tests; locally run `pnpm build` first.
-const dist = fileURLToPath(new URL("../dist/", import.meta.url));
 const home = mkdtempSync(join(tmpdir(), "tool-guard-fail-closed-"));
 afterAll(() => rmSync(home, { recursive: true, force: true }));
 
 describe("the built hook on a command that fails to parse", () => {
-  it.each(pushShapes)("denies %s within a second", (_, command) => {
+  // Node's start-up runs in the child, where thread CPU cannot see it, so only the bench holds the run to a second
+  // (TP-4047), spawning every row. Claude Code kills the hook at its settings timeout and then runs the call unchecked:
+  // past it the deny below would never reach Claude Code. Under `pnpm test` one row spawns and the rest run the built
+  // bundle in process (TP-4453); the counted work above bounds their cost.
+  const killAtMs = SETTINGS_ENTRY.hooks[0].timeout * 1000;
+
+  it.each(pushShapes)("denies %s before Claude Code would kill the hook", async (_, command) => {
     const input = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: home, tool_input: { command } });
 
-    const start = performance.now();
-    const run = spawnSync(process.execPath, [join(dist, "bin.js"), "hook"], { input, env: { ...process.env, HOME: home }, encoding: "utf-8", timeout: 5000 });
-    const ms = performance.now() - start;
+    const run = await withinWallBudget(1000, () => (BENCH ? spawnBuiltHook(input, { home, timeoutMs: killAtMs }) : runBuiltHook(input, { home })));
 
+    expect(run.signal).toBeNull();
     expect(run.status).toBe(0);
     expect(decisionOf(run.stdout)).toBe("deny");
-    expect(ms).toBeLessThan(1000);
   });
 });

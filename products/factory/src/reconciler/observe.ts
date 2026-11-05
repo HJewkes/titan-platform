@@ -16,7 +16,7 @@ const declared = { main: declaredFor("main"), open: declaredFor("open"), done: d
 /** TP-3097's answer for one read: only `confirmed` may become a row; `non-ancestor` is a tip off the cursor's line. */
 export type GuardVerdict = { kind: "confirmed"; by?: "non-ancestor" } | { kind: "stale" | "pending" | "unknown" };
 
-/** TP-3097's head and tip guard, injected with its verdicts already read, so observe stays pure. */
+/** TP-3097's head and tip guard, handed to each call with its verdicts already read (guard-verdicts.ts), so observe stays pure. */
 export interface HeadTipGuard {
   confirmHead(repo: string, pr: number, sha: string): GuardVerdict;
   /** `cursor` is the last scanned tip; `by: "non-ancestor"` says main no longer descends from it. */
@@ -24,7 +24,6 @@ export interface HeadTipGuard {
 }
 
 interface ObserveDeps {
-  guard: HeadTipGuard;
   now: () => number;
 }
 
@@ -38,10 +37,10 @@ interface Part {
 
 /** Plan §1.3: every ingress kind plus RulesChanged, keyed by the same functions the ingress uses so the two dedupe. */
 export function createObserve(deps: ObserveDeps): Observe {
-  return (repo, snapshot, cursor, rulesets) => {
+  return (repo, snapshot, cursor, rulesets, guard) => {
     const transport: Transport = { source: "backstop", observedAt: new Date(deps.now()).toISOString() };
-    const main = observeMain(repo, snapshot.main, cursor.main?.value ?? null, deps.guard, transport);
-    const open = snapshot.open.map((pr) => observeOpen(repo, pr, deps.guard, transport));
+    const main = observeMain(repo, snapshot.main, cursor.main?.value ?? null, guard, transport);
+    const open = snapshot.open.map((pr) => observeOpen(repo, pr, guard, transport));
     const done = snapshot.done.flatMap((pr) => fromBackstopDonePr(repo, doneNode(pr)).map((o) => backstopRow(repoEvent(o, transport)))).filter(declared.done);
     const ruleset = observeRulesets(repo, rulesets, cursor, transport);
     const parts = [main, ...open, { events: [...done, ...ruleset.events], disagreements: [] }];

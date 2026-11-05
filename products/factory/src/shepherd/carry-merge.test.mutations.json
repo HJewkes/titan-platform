@@ -1,0 +1,52 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an equal PR diff never carries across an off-line merge-up",
+      "file": "products/factory/src/shepherd/merge-up-carry.ts",
+      "find": " || (patchCarries && result.patchEqual === true);",
+      "replace": ";",
+      "kills": [
+        "carrying a MERGE across a merge-up whose PR diff is unchanged (TP-3725) a clean merge-up with an identical PR diff carries MERGE and dispatches no reviewer",
+        "carrying a MERGE across a merge-up whose PR diff is unchanged (TP-3725) records no merge-up and marks no mergeUpFrom, so no G10 hold follows the carry"
+      ]
+    },
+    {
+      "name": "the off-line rule carries without reading the patch ids",
+      "file": "products/factory/src/shepherd/merge-up-carry.ts",
+      "find": " || (patchCarries && result.patchEqual === true);",
+      "replace": " || patchCarries;",
+      "kills": [
+        "carrying a MERGE across a merge-up whose PR diff is unchanged (TP-3725) a merge-up that changes the PR diff re-reviews"
+      ]
+    },
+    {
+      "name": "a G10-held run gets the equal-diff rule",
+      "file": "products/factory/src/shepherd/carry-merge.ts",
+      "find": "patchCarries: scope.g10Held === false };",
+      "replace": "patchCarries: true };",
+      "kills": [
+        "carrying a MERGE across a merge-up whose PR diff is unchanged (TP-3725) a run that holds or held a G10 hold with an identical diff still re-reviews, as today",
+        "carrying a MERGE across a merge-up whose PR diff is unchanged (TP-3725) a scope recorded before the G10 read with an identical diff still re-reviews, as today"
+      ]
+    },
+    {
+      "name": "a scope recorded before the G10 read opens the equal-diff rule",
+      "file": "products/factory/src/shepherd/carry-merge.ts",
+      "find": "patchCarries: scope.g10Held === false };",
+      "replace": "patchCarries: scope.g10Held !== true };",
+      "kills": [
+        "carrying a MERGE across a merge-up whose PR diff is unchanged (TP-3725) a scope recorded before the G10 read with an identical diff still re-reviews, as today"
+      ]
+    },
+    {
+      "name": "the scope step records every run as never G10-held",
+      "file": "products/factory/src/shepherd/carry-merge.ts",
+      "find": "    g10Held: everG10Held(deps.store.get(), input.runId),\n",
+      "replace": "    g10Held: false,\n",
+      "kills": [
+        "the carry scope step records whether the run was ever G10-held (true)"
+      ]
+    }
+  ]
+}

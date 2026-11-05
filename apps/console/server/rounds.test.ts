@@ -186,7 +186,7 @@ describe("rounds.get", () => {
     expect(notes?.addressed).toEqual([1, 2]);
   });
 
-  it("carries only the sent frames that hold a verdict, a comment or a pin (TP-3773)", async () => {
+  it("carries only the sent frames that hold a verdict, a comment or a pin, each pin with the width it was placed at (TP-3773, TP-3964)", async () => {
     const feedback = z.looseObject({}).parse(JSON.parse(await readFile(path.join(dir, "kiln-schedule-r1", "feedback.json"), "utf8")));
     const echo = { verdict: null, comment: "", annotations: [] };
     const pin = { id: "beacon-error-1", width: 375, x: 30, y: 60, xPct: 0.08, yPct: 0.1, target: { testId: "beacon-dot" }, note: "Too red." };
@@ -202,7 +202,7 @@ describe("rounds.get", () => {
 
     expect(notes?.frames).toEqual({
       "beacon-busy": { verdict: "rejected", comment: "Busy reads as idle.", annotations: [] },
-      "beacon-error": { verdict: null, comment: "", annotations: [{ id: "beacon-error-1", xPct: 0.08, yPct: 0.1, target: { testId: "beacon-dot" }, note: "Too red." }] },
+      "beacon-error": { verdict: null, comment: "", annotations: [{ id: "beacon-error-1", width: 375, xPct: 0.08, yPct: 0.1, target: { testId: "beacon-dot" }, note: "Too red." }] },
     });
   });
 
@@ -394,6 +394,22 @@ describe("readQueueRounds", () => {
     expect(gaps).toContain("fifo-r1: round.json is not a regular file");
   });
 
+  it("reports no gap for a withdrawn round whose round.json does not parse", async () => {
+    const withdrawal = { schema: "titan-console/withdrawn@1", reason: "superseded", at: "2026-01-01T00:00:00.000Z" };
+    await writeFile(path.join(dir, "unreadable-r1", "withdrawn.json"), JSON.stringify(withdrawal));
+
+    const { rounds, gaps } = await readQueueRounds({ dir });
+
+    expect(queueRound(rounds, "unreadable-r1")).toBeUndefined();
+    expect(gaps.filter((gap) => gap.startsWith("unreadable-r1"))).toEqual([]);
+  });
+
+  it("still reports a gap for an open round whose round.json does not parse", async () => {
+    const { gaps } = await readQueueRounds({ dir });
+
+    expect(gaps).toContain("unreadable-r1: round.json is not JSON");
+  });
+
   it("answers no rounds and no gaps when the rounds dir does not exist yet", async () => {
     expect(await readQueueRounds({ dir: path.join(root, "missing") })).toEqual({ rounds: [], gaps: [] });
   });
@@ -409,7 +425,7 @@ describe("rounds.get over the daemon's RPC", () => {
 
   it("returns an unsent after-answer round with no recommendation in the reply body", async () => {
     const closed = String(await closedPort());
-    const env = { TITAN_CONSOLE_STATE: path.join(root, "state"), TITAN_CONSOLE_PORT: "0", TITAN_CONSOLE_ROUNDS_DIR: dir, TITAN_CONSOLE_ACTIVE_WORK_PORT: closed, TITAN_CONSOLE_AGENT_CHAT_PORT: closed };
+    const env = { TITAN_CONSOLE_STATE: path.join(root, "state"), TITAN_CONSOLE_PORT: "0", TITAN_CONSOLE_STORY_PORT: "0", TITAN_CONSOLE_ROUNDS_DIR: dir, TITAN_CONSOLE_ACTIVE_WORK_PORT: closed, TITAN_CONSOLE_AGENT_CHAT_PORT: closed };
     handle = await startConsoleDaemon({ config: resolveConfig(env, root), logger: silentLogger });
     const host = `127.0.0.1:${handle.port}`;
 

@@ -721,6 +721,25 @@ The domain tables declare no foreign key, so `CodeGraphStore.deleteSnapshots` cl
 `SNAPSHOT_SCOPED_TABLES` itself rather than relying on a cascade. `blob_cache` is
 content-addressed and not snapshot-scoped, so a prune never drops a cached embedding.
 
+## Protocol edges
+
+`extractProtocolEdges(files)` reads source text (no index, no type checker) and returns the
+runtime edges between files: `endpoints` (each HTTP route, SSE stream and MCP tool a server
+declares), `edges` (one per caller file, serving file and endpoint, labelled `HTTP GET
+/a/:id`, `SSE /events` or `MCP search`, with the caller's line) and `diagnostics`.
+
+- HTTP: `x.get|post|put|patch|delete|all("/path", handler)` declares a route; `fetch(url,
+  { method })` calls one. A template's run-time parts match any segment and a leading one (a
+  base URL) is dropped. A route with a literal segment also matches under a mounted prefix;
+  a route of parameters only must match the whole path.
+- SSE: a route whose handler calls `streamSSE` or names `text/event-stream`; `new
+  EventSource(url)` calls one.
+- MCP: `server.tool("name", ...)` or `registerTool("name", ...)` declares a tool;
+  `callTool({ name })` or `callTool("name")` calls one.
+
+With no endpoint declared anywhere, `diagnostics` holds `NO_PROTOCOL_SOURCE`, and a map drawn
+from the result (graph-layout's `emitRepoMap` with `protocolEdges`) reads "imports only".
+
 ## Conventions
 
 "How does this repo do X, and where does code like this belong?" Ported from codewatch's

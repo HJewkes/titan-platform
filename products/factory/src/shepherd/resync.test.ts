@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { silentLogger } from "@titan-design/daemon";
 import { FakeHttpError, fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import type { StepRoute, WorkflowRun } from "@titan-design/workflow";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { runCli } from "../cli.js";
 import { defineWorkflow, type WorkflowDefinition } from "../definition.js";
@@ -17,11 +17,13 @@ import { sleep, step } from "../workflows/land.js";
 import { MergeResultResult } from "../workflows/land-steps.js";
 import { SHEPHERD_WORKFLOW } from "./services.js";
 import { CLOSED_ELSEWHERE, DELETED_ELSEWHERE, LANDED_ELSEWHERE, endRunsGoneElsewhere, mergedByShepherd } from "./gone-elsewhere.js";
+import { WAIT_DEMOTIONS } from "./freeze-wait.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { authorityGate } from "./head-moved.js";
 import { GATE_DEMOTIONS } from "./auto-pass.js";
 import type { ShepherdPhases } from "./phases.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { REREVIEW } from "./stale-gates.js";
 import { ORPHANED, resyncShepherd, supersedeTransientGates, transientOnlyConditions } from "./resync.js";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
@@ -279,7 +281,7 @@ describe("resyncShepherd when superseding moved gates throws", () => {
     const host = openFactoryHost({ dbPath: w.dbPath, workflows: w.workflows, routes, now: () => AFTER_LEASE, gatePollMs: 10 });
     cleanups.push(() => host.close());
     const services = routes.shepherd!;
-    const broken: FactoryHost = Object.assign(Object.create(host) as FactoryHost, {
+    const broken: FactoryHost = Object.assign(Object.create(host), {
       pendingGates: () => {
         throw new Error(LEAKY_MESSAGE);
       },
@@ -352,8 +354,8 @@ describe("endRunsGoneElsewhere while the run moves on", () => {
   });
 
   it("counts a recorded sh-landed step as Shepherd's own merge", () => {
-    const landed = { stepResults: { "sh-landed": {} }, activeSteps: {} } as unknown as WorkflowRun;
-    const reviewing = { stepResults: { "merge-policy:0": {} }, activeSteps: { "sh-await-verdict:0": {} } } as unknown as WorkflowRun;
+    const landed = Object.assign(partialFake<WorkflowRun>(), { stepResults: { "sh-landed": {} }, activeSteps: {} });
+    const reviewing = Object.assign(partialFake<WorkflowRun>(), { stepResults: { "merge-policy:0": {} }, activeSteps: { "sh-await-verdict:0": {} } });
 
     expect([mergedByShepherd(landed), mergedByShepherd(reviewing)]).toEqual([true, false]);
   });
@@ -721,6 +723,10 @@ describe("serve's head-moved sweep", () => {
 });
 
 describe("resyncShepherd on a pending authority/MRG-AU approve-merge gate", () => {
+  // These gates are the ones a run opened before a freeze alone waited at its head (TP-3734 r3b), which replayed records still hold.
+  beforeEach(() => void (WAIT_DEMOTIONS.frozenOnly = false));
+  afterEach(() => void (WAIT_DEMOTIONS.frozenOnly = true));
+
   it("cancels a gate whose head is no longer the PR head, and the run reviews and merges the new head", async () => {
     const { host, fake, services, runId, reviewed } = await authorityGated({ mergeTreeClean: false, repoFrozen: true });
     expect(host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain("Policy authority/MRG-AU:");
@@ -1154,7 +1160,7 @@ describe("which recorded gate decisions are authority/MRG-AU gates", () => {
 
   function runDeciding(result: object): WorkflowRun {
     const output = JSON.stringify({ result: { outcome: "gate", headSha: REVIEWED, reason: MERGE_TREE_ONLY, ...result } });
-    return { stepResults: { "merge-policy:r0:0:0": { stepId: "merge-policy:r0:0", iteration: 0, output } } } as unknown as WorkflowRun;
+    return Object.assign(partialFake<WorkflowRun>(), { stepResults: { "merge-policy:r0:0:0": { stepId: "merge-policy:r0:0", iteration: 0, output } } });
   }
 
   it("reads an authority/MRG-AU gate at the head the prompt names", () => {

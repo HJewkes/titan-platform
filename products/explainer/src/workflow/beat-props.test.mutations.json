@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the derived fill wins over the owner's override",
+      "file": "products/explainer/src/slot-overrides.ts",
+      "find": "return { ...base, ...visual.slots };",
+      "replace": "return { ...visual.slots, ...base };",
+      "kills": ["explainer props: each template beat shows an owner override over the derived fill and lists the field as overridden"]
+    },
+    {
+      "name": "the fill lists no overridden field",
+      "file": "products/explainer/src/template-fill/fill.ts",
+      "find": "overridden: Object.keys(beat.visual.slots ?? {}),",
+      "replace": "overridden: [],",
+      "kills": ["explainer props: each template beat shows an owner override over the derived fill and lists the field as overridden"]
+    },
+    {
+      "name": "a beat resolve cut is kept",
+      "file": "products/explainer/src/resolve-stage.ts",
+      "find": "return beats.filter((beat) => !cut.has(beat.id));",
+      "replace": "return [...beats];",
+      "kills": ["explainer props: each template beat leaves out a beat resolve cut and a custom-layer beat"]
+    }
+  ]
+}

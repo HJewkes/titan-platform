@@ -10,7 +10,8 @@ import { sources10_05 } from "../test-support/needs-10-05.js";
 import { decisionTask } from "../test-support/owner-queue-10-05.js";
 import { decisionTaskItem } from "./active-work-source.js";
 import { runNeeds } from "./command.js";
-import type { NeedsSources } from "./rpc.js";
+import type { NeedsSources } from "../context.js";
+import { z } from "zod";
 
 const dirs: string[] = [];
 const servers: FactoryServer[] = [];
@@ -48,10 +49,10 @@ async function rpc<T>(server: FactoryServer, name: string, args: object = {}): P
   return envelope.data;
 }
 
-async function cliJson(sources?: readonly QueueSource[]): Promise<OwnerItem[]> {
+async function cliJson(sources?: readonly QueueSource[]) {
   const out: string[] = [];
   await runNeeds({ stdout: (text) => void out.push(text), stderr: () => undefined }, sources ?? (await sources10_05()), { json: true });
-  return JSON.parse(out.join("")) as OwnerItem[];
+  return z.array(z.looseObject({ kind: z.string(), lens: z.string().optional() })).parse(JSON.parse(out.join("")));
 }
 
 const fixed10_05: NeedsSources = () => sources10_05();
@@ -78,6 +79,20 @@ describe("needs.list over the daemon", () => {
     for (const item of approvals.items) expect(item).toMatchObject({ kind: "approve", lens: "blocking-agent" });
     expect(scoped.items.length).toBeGreaterThan(0);
     for (const item of scoped.items) expect(item.initiative).toBe(initiative);
+  });
+
+  it("with fyi count, sends every ask whole and only the number of fyi items", async () => {
+    const sources = await sources10_05();
+    const server = await serve(() => sources);
+
+    const full = await rpc<{ items: OwnerItem[] }>(server, "needs.list");
+    const slim = await rpc<{ items: OwnerItem[]; gaps: string[]; fyiCount: number }>(server, "needs.list", { fyi: "count" });
+
+    const fyi = full.items.filter((item) => item.lens === "fyi" && item.status === "open");
+    expect(fyi.length).toBeGreaterThan(0);
+    expect(slim.items).toEqual(full.items.filter((item) => !fyi.includes(item)));
+    expect(slim.fyiCount).toBe(fyi.length);
+    expect(slim.gaps).toEqual([]);
   });
 
   it("leaves personal items out unless they are asked for", async () => {

@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the paged sweep returns stale sessions in page order",
+      "file": "packages/session-analytics/src/stale-sweep.ts",
+      "find": "  return stale.sort(newestRequestFirst).map((row) => row.sessionId);",
+      "replace": "  return stale.map((row) => row.sessionId);",
+      "kills": [
+        "staleEpisodeSessions a paged sweep yields after each page and lists what one whole-graph call lists, in its order"
+      ]
+    },
+    {
+      "name": "the paged sweep never yields",
+      "file": "packages/session-analytics/src/stale-sweep.ts",
+      "find": "    await yieldPoint();\n",
+      "replace": "",
+      "kills": [
+        "staleEpisodeSessions a paged sweep yields after each page and lists what one whole-graph call lists, in its order"
+      ]
+    }
+  ]
+}

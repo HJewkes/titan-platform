@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "raise drops the link from its line",
+      "file": "products/factory/src/blocker/command.ts",
+      "find": "${link === undefined ? \"\" : ` ${link}`}",
+      "replace": "",
+      "kills": [
+        "blocker inbox link raise prints the console inbox link after the id, and the id alone when the console gives none"
+      ]
+    },
+    {
+      "name": "a failed console exit still yields a link",
+      "file": "products/factory/src/blocker/link.ts",
+      "find": "status === 0 && URL_LINE.test(line)",
+      "replace": "URL_LINE.test(line)",
+      "kills": [
+        "blocker inbox link the link comes from the configured titan-console argv, and a console that fails or prints no URL gives none"
+      ]
+    },
+    {
+      "name": "the link ignores the configured console argv",
+      "file": "products/factory/src/blocker/link.ts",
+      "find": "exec([...prefix, \"inbox\", \"link\", id])",
+      "replace": "exec([\"titan-console\", \"inbox\", \"link\", id])",
+      "kills": [
+        "blocker inbox link the link comes from the configured titan-console argv, and a console that fails or prints no URL gives none"
+      ]
+    }
+  ]
+}

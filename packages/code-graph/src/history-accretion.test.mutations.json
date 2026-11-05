@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "edits made before a rename stay on the old path",
+      "file": "packages/code-graph/src/history/accretion.ts",
+      "find": "if (f.renamed && f.oldPath !== null) headPathOf.set(f.oldPath, headPath);",
+      "replace": "",
+      "kills": ["function-level accretion follows a rename so edits made under the old path reach the HEAD symbol"]
+    },
+    {
+      "name": "older edits are not shifted by later hunks above them",
+      "file": "packages/code-graph/src/history/accretion.ts",
+      "find": "return line + shift;",
+      "replace": "return line;",
+      "kills": [
+        "function-level accretion counts distinct task ids per function, not commits, through line drift",
+        "function-level accretion slices each requested window out of one log and leaves older edits out"
+      ]
+    },
+    {
+      "name": "a caller's task id pattern is ignored",
+      "file": "packages/code-graph/src/history/accretion.ts",
+      "find": "const pattern = options.taskIdPattern ?? DEFAULT_TASK_ID_PATTERN;",
+      "replace": "const pattern = DEFAULT_TASK_ID_PATTERN;",
+      "kills": ["function-level accretion reads task ids with a caller's pattern"]
+    },
+    {
+      "name": "every window gets the widest window's edits",
+      "file": "packages/code-graph/src/history-metrics.ts",
+      "find": "return edits.filter((e) => e.epoch >= cutoff);",
+      "replace": "return [...edits];",
+      "kills": ["function-level accretion slices each requested window out of one log and leaves older edits out"]
+    },
+    {
+      "name": "an empty window list falls back to the default windows",
+      "file": "packages/code-graph/src/history-metrics.ts",
+      "find": "at.options.accretionWindows ?? DEFAULT_ACCRETION_WINDOWS",
+      "replace": "at.options.accretionWindows?.length ? at.options.accretionWindows : DEFAULT_ACCRETION_WINDOWS",
+      "kills": ["function-level accretion writes nothing when accretion windows are turned off"]
+    }
+  ]
+}

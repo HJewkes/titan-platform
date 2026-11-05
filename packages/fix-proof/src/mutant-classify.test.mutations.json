@@ -1,0 +1,29 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a kill naming no test reads as a baseline outcome again",
+      "file": "packages/fix-proof/src/mutant-classify.ts",
+      "find": "  if (unmatched.length > 0) return mutantsError(unmatched.join(\"; \"));\n",
+      "replace": "",
+      "kills": [
+        "classifyMutants a kills name the loaded baseline has no test for is an error naming the spec, mutation and kill",
+        "classifyMutants a kill given by its bare title under a describe is an error that names the full title"
+      ]
+    },
+    {
+      "name": "a baseline that failed to load names every kill unmatched",
+      "file": "packages/fix-proof/src/mutant-classify.ts",
+      "find": "if (baseline === undefined || baseline.loadError) return [];",
+      "replace": "if (baseline === undefined) return [];",
+      "kills": ["classifyMutants a baseline that failed to load leaves an unknown kill a baseline outcome, since no test names were read"]
+    },
+    {
+      "name": "an unmatched kill never suggests the full title",
+      "file": "packages/fix-proof/src/mutant-classify.ts",
+      "find": "guess !== undefined && others.length === 0 ?",
+      "replace": "false ?",
+      "kills": ["classifyMutants a kill given by its bare title under a describe is an error that names the full title"]
+    }
+  ]
+}

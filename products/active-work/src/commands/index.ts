@@ -43,8 +43,11 @@ import taskReorder from './task-reorder.js';
 import taskShow from './task-show.js';
 
 // Sessions
+import loopBoard from './loop-board.js';
+import loopImport from './loop-import.js';
 import loopOpen from './loop-open.js';
 import loopResolve from './loop-resolve.js';
+import loopTier from './loop-tier.js';
 import loops from './loops.js';
 import facetAdd from './facet-add.js';
 import facetList from './facet-list.js';
@@ -106,6 +109,7 @@ import mcpLogs from './mcp-logs.js';
 // Session-signal index / Drain miner
 import minerDrainIngest from './miner-drain-ingest.js';
 import minerRefresh from './miner-refresh.js';
+import minerRebuild from './miner-rebuild.js';
 import minerLiveness from './miner-liveness.js';
 import minerStatus from './miner-status.js';
 import minerCost from './miner-cost.js';
@@ -162,6 +166,9 @@ const ALL_COMMANDS: AnyCommand[] = [
   loops,
   loopOpen,
   loopResolve,
+  loopBoard,
+  loopImport,
+  loopTier,
   preflight,
   resume,
   wrap,
@@ -209,6 +216,7 @@ const ALL_COMMANDS: AnyCommand[] = [
   // session-signal index / drain miner
   minerDrainIngest,
   minerRefresh,
+  minerRebuild,
   minerLiveness,
   minerStatus,
   minerCost,

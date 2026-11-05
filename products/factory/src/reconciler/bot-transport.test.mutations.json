@@ -1,0 +1,37 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a free-plan repo's refused rulesets count as a change",
+      "file": "products/factory/src/reconciler/bot-transport.ts",
+      "find": "(!rulesets.notModified && !rulesets.unreadable)",
+      "replace": "!rulesets.notModified",
+      "kills": [
+        "bot transport gates (TP-3431) reads a free-plan repo's refused rulesets as unchanged, with no ETag to send next time"
+      ]
+    },
+    {
+      "name": "GraphQL's primary limit throws instead of answering 403",
+      "file": "products/factory/src/reconciler/bot-transport.ts",
+      "find": "if (RATE_LIMIT_PHRASES.some((phrase) => phrase.test(message))) return { status: 403, headers: seen.headers, message };",
+      "replace": "",
+      "kills": [
+        "bot transport failures, for the pool to classify (TP-3431) answers GraphQL's primary limit, a 200 naming it, as the 403 it stands for, with the response's headers"
+      ]
+    },
+    {
+      "name": "a network failure throws instead of answering networkError",
+      "file": "products/factory/src/reconciler/bot-transport.ts",
+      "find": "if (seen.networkError) return { headers: {}, message, networkError: true };",
+      "replace": "",
+      "kills": ["bot transport failures, for the pool to classify (TP-3431) answers a network failure as one, with no status"]
+    },
+    {
+      "name": "every GraphQL error answers as a limit",
+      "file": "products/factory/src/reconciler/bot-transport.ts",
+      "find": "  throw error;\n}\n\n/** `client` with",
+      "replace": "  return { status: 403, headers: seen.headers, message };\n}\n\n/** `client` with",
+      "kills": ["bot transport snapshot (TP-3431) throws on a GraphQL error that names no limit, so the unit fails rather than the pool tripping"]
+    }
+  ]
+}

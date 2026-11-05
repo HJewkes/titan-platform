@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "Octokit's throttle, not the pool, owns the bot's rate-limit waits",
+      "file": "products/factory/src/bot-identity.ts",
+      "find": "now: options.now, poolOwnsWaits: true });",
+      "replace": "now: options.now });",
+      "kills": [
+        "bot identity: the reconciler's pool owns rate-limit waits (TP-3431) answers a secondary-limited read at once, unretried, so Octokit's throttle never sleeps under the pool"
+      ]
+    },
+    {
+      "name": "the bot's ls-remote sends no token",
+      "file": "products/factory/src/bot-identity.ts",
+      "find": "lsRemote: botLsRemote(read.token, options.git)",
+      "replace": "lsRemote: botLsRemote(\"\", options.git)",
+      "kills": [
+        "bot identity: ls-remote as the bot (TP-3431) hands the reconciler the bot's login and an ls-remote that sends the bot's own token, off argv"
+      ]
+    }
+  ]
+}

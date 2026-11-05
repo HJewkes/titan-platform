@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a phone keeps the key hint beside a digit label",
+      "file": "apps/console/src/pages/RoundQuestion.tsx",
+      "find": "const repeatsLabel = phone && choice === String(index + 1);",
+      "replace": "const repeatsLabel = false;",
+      "kills": ["a 1-to-5 scale question shows each digit once on a phone"]
+    },
+    {
+      "name": "a desktop drops the key hint beside a digit label",
+      "file": "apps/console/src/pages/RoundQuestion.tsx",
+      "find": "const repeatsLabel = phone && choice === String(index + 1);",
+      "replace": "const repeatsLabel = choice === String(index + 1);",
+      "kills": ["a 1-to-5 scale question keeps the key hint beside each digit on a desktop"]
+    }
+  ]
+}

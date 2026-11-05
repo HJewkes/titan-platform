@@ -13,7 +13,6 @@ import {
   RECLAIM_GRACE_MS,
   slug,
   type WorktreeOptions,
-  type ReleaseProof,
 } from "./options.js";
 import { readoptWorktree, setupTarget, type WorktreeAllocation, type WorktreeRecord } from "./reattach.js";
 import { describeRefusal, inspectForRelease, inspectReleaseDetails } from "./release-safety.js";
@@ -104,11 +103,11 @@ async function attachWorktree(
 async function refuseRelease(
   exitedAt: number | undefined,
   ref: { gitRoot: string; worktree: string; branch: string; base: string },
-  releaseProof: ReleaseProof = "git"
+  proof: Pick<WorktreeOptions, "releaseProof" | "ghTimeoutMs">
 ): Promise<{ refusal: string; refusalCode?: "unsaved-changes" } | null> {
   if (exitedAt !== undefined && Date.now() - exitedAt < RECLAIM_GRACE_MS)
     return { refusal: `agent exited less than ${RECLAIM_GRACE_MS / 1000}s ago; inside the reclaim grace window` };
-  const { safety, refusalCode } = await inspectReleaseDetails(ref.gitRoot, ref.worktree, ref.branch, ref.base, releaseProof);
+  const { safety, refusalCode } = await inspectReleaseDetails(ref.gitRoot, ref.worktree, ref.branch, ref.base, proof.releaseProof, proof.ghTimeoutMs);
   return safety.dirty || safety.unmerged
     ? { refusal: describeRefusal(safety), ...(refusalCode === undefined ? {} : { refusalCode }) }
     : null;
@@ -121,12 +120,16 @@ function unrecoverableAssigned(assigned: string, record: WorktreeRecord | undefi
 }
 
 async function adoptAssigned(
-  req: WorktreeRequest,
+  assignedWorktree: string,
+  record: WorktreeRecord | undefined,
   gitRoot: string,
   opts: WorktreeOptions
 ): Promise<WorktreeAllocation> {
-  const assigned = path.resolve(req.assignedWorktree as string);
-  if (!existsSync(assigned)) return readoptWorktree(req.assignedRecord as WorktreeRecord, opts);
+  const assigned = path.resolve(assignedWorktree);
+  if (!existsSync(assigned)) {
+    if (record === undefined) throw new MissingAssignedWorktreeRecordError(assigned);
+    return readoptWorktree(record, opts);
+  }
   const branch = (await gitOrNull(["rev-parse", "--abbrev-ref", "HEAD"], assigned)) ?? "HEAD";
   return {
     cwd: assigned,
@@ -179,7 +182,7 @@ async function allocate(req: WorktreeRequest, opts: WorktreeOptions): Promise<Wo
   if (gitRoot === null) throw new Error(`${req.baseCwd} is not a git repository`);
   const [refusal] = (await preflight(req, gitRoot, opts)).refusals;
   if (refusal !== undefined) throw refusal;
-  if (req.assignedWorktree !== undefined) return adoptAssigned(req, gitRoot, opts);
+  if (req.assignedWorktree !== undefined) return adoptAssigned(req.assignedWorktree, req.assignedRecord, gitRoot, opts);
 
   const branch = branchFor(req.agentName, opts);
   const worktreePath = path.resolve(gitRoot, basePathOf(opts), slug(req.agentName));
@@ -231,7 +234,7 @@ async function release(
   req: Pick<WorktreeRequest, "exitedAt">,
   alloc: { ref?: Record<string, string> },
   opts: { force?: boolean; keepBranch?: boolean } = {},
-  releaseProof: ReleaseProof = "git"
+  proof: Pick<WorktreeOptions, "releaseProof" | "ghTimeoutMs"> = {}
 ): Promise<WorktreeReleaseOutcome> {
   const ref = alloc.ref;
   if (!ref?.branch || !ref.worktree || !ref.gitRoot)
@@ -248,7 +251,7 @@ async function release(
   }
 
   if (!opts.force) {
-    const refusal = await refuseRelease(req.exitedAt, { gitRoot, worktree, branch, base: ref.base ?? "HEAD" }, releaseProof);
+    const refusal = await refuseRelease(req.exitedAt, { gitRoot, worktree, branch, base: ref.base ?? "HEAD" }, proof);
     if (refusal !== null) return { released: false, ...refusal };
   }
   const refused = await removeWorktree(gitRoot, worktree, branch, opts);
@@ -260,6 +263,6 @@ export function createWorktreeAllocator(opts: WorktreeOptions = {}): WorktreeAll
   return {
     check: (req) => check(req, opts),
     allocate: (req) => allocate(req, opts),
-    release: (req, alloc, releaseOpts) => release(req, alloc, releaseOpts, opts.releaseProof),
+    release: (req, alloc, releaseOpts) => release(req, alloc, releaseOpts, opts),
   };
 }

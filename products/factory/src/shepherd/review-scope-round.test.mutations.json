@@ -1,0 +1,34 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a cause other than fix-round is scoped",
+      "file": "products/factory/src/shepherd/fix-first-trail.ts",
+      "find": "if (cause.cause !== \"fix-round\" || run.convergedAt === headSha) return {};",
+      "replace": "if (run.convergedAt === headSha) return {};",
+      "kills": [
+        "fixRoundOf does not scope a retry, D8's convergence head, a head with no open finding, or the finding's own head"
+      ]
+    },
+    {
+      "name": "D8's convergence head is scoped",
+      "file": "products/factory/src/shepherd/fix-first-trail.ts",
+      "find": "if (cause.cause !== \"fix-round\" || run.convergedAt === headSha) return {};",
+      "replace": "if (cause.cause !== \"fix-round\") return {};",
+      "kills": [
+        "fixRoundOf does not scope a retry, D8's convergence head, a head with no open finding, or the finding's own head"
+      ]
+    },
+    {
+      "name": "the open findings are only the last entry",
+      "file": "products/factory/src/shepherd/fix-first-trail.ts",
+      "find": "run.fixFirstTrail.slice(run.openFrom ?? 0)",
+      "replace": "run.fixFirstTrail.slice(-1)",
+      "kills": [
+        "fixRoundOf scopes a fix round against the newest finding's head, with every open finding and the base read at this head",
+        "fixRoundOf leaves out the findings a MERGE answered and the fix-proof's NO_REPRO records",
+        "fixRoundOf does not scope a retry, D8's convergence head, a head with no open finding, or the finding's own head"
+      ]
+    }
+  ]
+}

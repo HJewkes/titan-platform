@@ -76,3 +76,26 @@ describe("normal work classifies nothing", () => {
     expect(bash(command)).toEqual([]);
   });
 });
+
+describe("a gh command whose group or verb is only known at run time", () => {
+  const releases = (command: string) => bash(command).filter((a) => a.action === "release");
+
+  it("reads gh $X as a gh release", () => {
+    expect(releases("gh $X").map((a) => [a.spelling, a.subject])).toEqual([["bash.release.gh-release", { tool: "gh" }]]);
+  });
+
+  it.each([["gh release $X v1"], ["gh workflow $X release.yml"], ["gh -R o/r $X"]])("reads %s as a gh release", (command) => {
+    expect(releases(command).map((a) => [a.spelling, a.subject])).toEqual([["bash.release.gh-release", { tool: "gh" }]]);
+  });
+
+  it("keeps a literal release as one gh release", () => {
+    expect(releases("gh release create v1.0.0").map((a) => a.spelling)).toEqual(["bash.release.gh-release"]);
+  });
+
+  it.each([
+    ["gh release view $V", []],
+    ['gh workflow run "$W"', ["bash.release.gh-workflow-run"]],
+  ])("leaves %s to its literal path", (command, expected) => {
+    expect(releases(command).map((a) => a.spelling)).toEqual(expected);
+  });
+});

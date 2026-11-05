@@ -1,0 +1,43 @@
+{
+  "schema": "titan.suite/v1",
+  "unit": {
+    "id": "explainer-sheets",
+    "version": "1.0.0"
+  },
+  "id": "explainer-sheets-checks",
+  "version": "1.0.0",
+  "cases": [
+    "0a0fc19cfc008d1fadc2e07ed4aabcdceed49bc8019cc716719d198b15f70259",
+    "10bdc2244d99ec2830f950c3b210731410463fe32f837b2bde78b2bc279dccfb",
+    "162601fa33112da4b6667fc632fdbe18d366170082bd54d59b73e6440a32421f",
+    "b4795c41a86587623d1436196473285f665c944ee170a151123be1a9076148eb",
+    "d4e1b67b9081a2251d59726a5918fc37052ab287e530cb643e448743b5fb94b0",
+    "d6762155d21017968168bdcb2207333eb88797ee13ff51b3fe094c3746b4e7b1",
+    "e05cdf436faff83eaaa52e9b7dc1c28a499106382c3171f7b2f62b8dd92f031c",
+    "fbe9d0ebdadc0875a7c91138257fc1832b555feefb32ac8117a5699376640e18"
+  ],
+  "checks": [
+    {
+      "id": "cost-usd",
+      "family": "metric",
+      "role": "reported",
+      "scope": "sheets/",
+      "metric": "cost_usd"
+    },
+    {
+      "id": "wall-ms",
+      "family": "metric",
+      "role": "reported",
+      "scope": "sheets/",
+      "metric": "wall_ms"
+    },
+    {
+      "id": "retries",
+      "family": "metric",
+      "role": "reported",
+      "scope": "sheets/",
+      "metric": "retries"
+    }
+  ],
+  "trials": 1
+}

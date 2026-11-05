@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "shadow-gate exits 0 when blocked",
+      "file": "products/factory/src/markers/command.ts",
+      "find": "result.pass ? EXIT.OK : EXIT.FAILURE",
+      "replace": "EXIT.OK",
+      "kills": [
+        "markers shadow-diff and shadow-gate markers shadow-gate exits 1 on an unclassified row and 0 on a clean 48 h log"
+      ]
+    },
+    {
+      "name": "the database opens read-write",
+      "file": "products/factory/src/markers/command.ts",
+      "find": "const db = openDatabase(path, { readonly: true });\n  try {\n    return run(db);",
+      "replace": "const db = openDatabase(path);\n  try {\n    return run(db);",
+      "kills": [
+        "markers shadow-diff and shadow-gate running shadow-gate leaves the database byte-equal"
+      ]
+    },
+    {
+      "name": "the JSON drops causes",
+      "file": "products/factory/src/markers/command.ts",
+      "find": "JSON.stringify(report)",
+      "replace": "JSON.stringify({ ...report, counts: Object.fromEntries(Object.entries(report.counts).map(([family, { causes, ...rest }]) => [family, rest])) })",
+      "kills": [
+        "markers shadow-diff and shadow-gate markers shadow-diff --json prints per-family counts with causes"
+      ]
+    }
+  ]
+}

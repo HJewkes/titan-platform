@@ -1,0 +1,64 @@
+{
+  "schema": "titan.suite/v1",
+  "unit": {
+    "id": "explainer-tts",
+    "version": "1.0.0"
+  },
+  "id": "explainer-tts-checks",
+  "version": "1.0.0",
+  "cases": [
+    "02918c9171cac0820c415f65393f6a75b31c68cea231896918093d71772a9908",
+    "08e045cce0ce051b77e420194f3d11be5db650428d698921dbb8fe1c810081b5",
+    "118b178c2d24b0766ea6a4533c557cb16dd6ac1205499a3f1ce05d58940e3c1c",
+    "339d02c7115091987aa4e1af88e29504a0941920dbfe9bef3b9269de0c915adf",
+    "3bed04b4af5aff51923f1d902957c2f60a5a660c7f6e90dce5ed4b271ad42e45",
+    "435c27131a5795df8cefd7b1086f30a19771634d5c95e15c78eed477c16e33b9",
+    "8d057ade42cbf9092e1b4f0485168864a4cedc1f8996d7c46f1d9fe52150bc3e",
+    "b3e1f03c4fc523c480ac49b65d06a29c8f4e063804fb5462eec6fd263170b778",
+    "c35404b7eb702cf9266fc4cd03a0b5c2b677b02afc3e6518d618af7ef17e7fe6",
+    "d908cea7e6fdbdf54a5451df9612df59e2c1880b2a4fbeec4d79edde57b02ef9"
+  ],
+  "checks": [
+    {
+      "id": "cue-resolution",
+      "family": "deterministic",
+      "role": "required",
+      "scope": "tts/",
+      "critical": true,
+      "type": "command",
+      "params": {
+        "argv": [
+          "explainer",
+          "stage",
+          "tts",
+          "--json"
+        ],
+        "in": "input.inputs",
+        "verdict": "checks[name=cue-resolution]",
+        "gate": true
+      }
+    },
+    {
+      "id": "cost-usd",
+      "family": "metric",
+      "role": "reported",
+      "scope": "tts/",
+      "metric": "cost_usd"
+    },
+    {
+      "id": "wall-ms",
+      "family": "metric",
+      "role": "reported",
+      "scope": "tts/",
+      "metric": "wall_ms"
+    },
+    {
+      "id": "retries",
+      "family": "metric",
+      "role": "reported",
+      "scope": "tts/",
+      "metric": "retries"
+    }
+  ],
+  "trials": 1
+}

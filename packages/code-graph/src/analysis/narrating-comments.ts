@@ -57,7 +57,7 @@ function nextStatement(comment: Node): Node | null {
   let next = comment.nextNamedSibling;
   while (next?.type === "comment") next = next.nextNamedSibling;
   if (next?.type !== "block") return next;
-  return next.namedChildren.find((c) => c !== null && c.type !== "comment") ?? null;
+  return next.namedChildren.find((c) => c.type !== "comment") ?? null;
 }
 
 function narrates(commentText: string, statement: Node): boolean {
@@ -73,7 +73,7 @@ function statementIdentifiers(statement: Node): string[] {
   const out: string[] = [];
   const visit = (node: Node): void => {
     if (IDENTIFIER_TYPES.has(node.type)) out.push(node.text);
-    for (const child of node.namedChildren) if (child) visit(child);
+    for (const child of node.namedChildren) visit(child);
   };
   visit(statement);
   return out;

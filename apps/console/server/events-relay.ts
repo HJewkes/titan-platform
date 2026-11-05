@@ -4,10 +4,12 @@ import { TOKEN_HEADER, readToken } from "./broker.js";
 import type { ConsoleConfig } from "./config.js";
 
 /** The SSE event names the browser sees; each relayed frame is named for the upstream it came from. */
-export type RelaySource = "active-work" | "agent-chat";
+export type RelaySource = "active-work" | "agent-chat" | "factory";
 
 /** A kind the browser gets after an upstream stream reopens, since frames sent while it was down are lost. */
 const RECONNECTED_KIND = "reconnected";
+/** A kind the console sends itself, once a cache that served a moved value has read the new one. */
+const REFRESHED_KIND = "refreshed";
 
 /**
  * The data of one relayed frame. Only the kind and the ids a page needs to decide what to refetch:
@@ -20,6 +22,10 @@ interface RelayedEvent {
   /** Agent names, which `agents.roster` already shows. */
   actor?: string;
   target?: string;
+  /** The factory workflow run a frame moved, which the run pages already show. */
+  runId?: string;
+  /** Which workflow's run a factory frame moved; absent from an older factory's frames. */
+  workflow?: "autoresearch" | "shepherd";
 }
 
 type RelayedIds = Omit<RelayedEvent, "kind">;
@@ -38,7 +44,7 @@ export interface RelayTiming {
   maxDelayMs: number;
   /** A dial with no response headers by then is abandoned. */
   dialTimeoutMs: number;
-  /** Both upstreams send a heartbeat every 25 s, so a stream silent this long is dead. */
+  /** Every upstream sends a heartbeat every 25 s, so a stream silent this long is dead. */
   idleTimeoutMs: number;
   /** A stream must stay up this long before the backoff resets, so a flapping upstream keeps backing off. */
   stableMs: number;
@@ -53,6 +59,7 @@ export const MAX_FRAME_CHARS = 1 << 20;
 const KEEPALIVES = new Set(["ready", "ping"]);
 const KIND = /^[A-Za-z][\w.-]{0,63}$/;
 const AGENT_NAME = /^[\w.:@-]{1,128}$/;
+const RUN_ID = /^[\w.-]{1,128}$/;
 
 interface RelayOptions {
   hub: Pick<EventHub, "broadcast">;
@@ -60,6 +67,8 @@ interface RelayOptions {
   logger: Logger;
   fetch?: typeof fetch;
   timing?: Partial<RelayTiming>;
+  /** Called for each relayed frame, so a cache of what the upstream holds can drop its copy. A throw is logged, never fatal. */
+  onFrame?: (source: RelaySource) => void;
   /** The clock that measures how long a stream stayed up. */
   now?: () => number;
 }
@@ -75,6 +84,7 @@ interface RelayContext {
   fetch: typeof fetch;
   timing: RelayTiming;
   now: () => number;
+  onFrame: (source: RelaySource) => void;
 }
 
 /** One connection per upstream, redialled with capped backoff until closed; never throws. */
@@ -86,6 +96,7 @@ export function startEventsRelay(options: RelayOptions): EventsRelay {
     fetch: options.fetch ?? ((input, init) => globalThis.fetch(input, init)),
     timing: { ...DEFAULT_RELAY_TIMING, ...options.timing },
     now: options.now ?? Date.now,
+    onFrame: options.onFrame ?? (() => undefined),
   };
   const runs = options.upstreams.map((upstream) => keepRelaying(upstream, context, controller.signal));
   return {
@@ -96,7 +107,7 @@ export function startEventsRelay(options: RelayOptions): EventsRelay {
   };
 }
 
-/** The console's two upstreams, on loopback, with the broker token sent as a header and never relayed. */
+/** The console's three upstreams, on loopback, with the broker token sent as a header and never relayed. */
 export function relayUpstreams(config: ConsoleConfig): RelayUpstream[] {
   const accept = { accept: "text/event-stream" };
   return [
@@ -107,6 +118,7 @@ export function relayUpstreams(config: ConsoleConfig): RelayUpstream[] {
       headers: async () => ({ ...accept, [TOKEN_HEADER]: await readToken(config.agentChatTokenPath) }),
       pick: brokerIds,
     },
+    { source: "factory", url: `http://127.0.0.1:${config.factoryPort}/events`, headers: async () => accept, pick: factoryIds },
   ];
 }
 
@@ -119,6 +131,21 @@ export function brokerIds(data: string): RelayedIds {
   if (typeof row.actor === "string" && AGENT_NAME.test(row.actor)) ids.actor = row.actor;
   if (typeof row.target === "string" && AGENT_NAME.test(row.target)) ids.target = row.target;
   return ids;
+}
+
+/** A factory frame names the run it moved and its workflow; only those are kept, never its repo, PR or step. */
+export function factoryIds(data: string): RelayedIds {
+  return { ...factoryRunId(data), ...factoryWorkflow(data) };
+}
+
+function factoryRunId(data: string): RelayedIds {
+  const runId = parseObject(data)?.runId;
+  return typeof runId === "string" && RUN_ID.test(runId) ? { runId } : {};
+}
+
+function factoryWorkflow(data: string): RelayedIds {
+  const workflow = parseObject(data)?.workflow;
+  return workflow === "autoresearch" || workflow === "shepherd" ? { workflow } : {};
 }
 
 function parseObject(data: string): Record<string, unknown> | null {
@@ -174,7 +201,7 @@ async function relayOnce(upstream: RelayUpstream, context: RelayContext, signal:
       return outcome(`HTTP ${response.status}`);
     }
     openedAt = context.now();
-    if (reopening) broadcast(context.hub, upstream.source, { kind: RECONNECTED_KIND });
+    if (reopening) announceReopen(upstream.source, context);
     await pump(response.body, upstream, context, watchdog);
     return outcome("stream ended");
   } catch (err) {
@@ -198,7 +225,7 @@ async function pump(body: ReadableStream<Uint8Array>, upstream: RelayUpstream, c
       const frames = parse(text);
       unterminated = frames.length > 0 || text.includes("\n\n") ? 0 : unterminated + text.length;
       if (unterminated > MAX_FRAME_CHARS) throw new Error(`a frame passed ${MAX_FRAME_CHARS} characters`);
-      for (const frame of frames) relayFrame(frame, upstream, context.hub);
+      for (const frame of frames) relayFrame(frame, upstream, context);
     }
   } finally {
     await reader.cancel().catch(() => undefined);
@@ -206,9 +233,28 @@ async function pump(body: ReadableStream<Uint8Array>, upstream: RelayUpstream, c
 }
 
 /** Exactly one relayed frame per upstream frame, keep-alives aside. */
-function relayFrame(frame: SseMessage, upstream: RelayUpstream, hub: Pick<EventHub, "broadcast">): void {
+function relayFrame(frame: SseMessage, upstream: RelayUpstream, context: RelayContext): void {
   if (KEEPALIVES.has(frame.event)) return;
-  broadcast(hub, upstream.source, { kind: KIND.test(frame.event) ? frame.event : "unknown", ...upstream.pick(frame.data) });
+  notifyFrame(upstream.source, context);
+  broadcast(context.hub, upstream.source, { kind: KIND.test(frame.event) ? frame.event : "unknown", ...upstream.pick(frame.data) });
+}
+
+function announceReopen(source: RelaySource, context: RelayContext): void {
+  notifyFrame(source, context);
+  broadcast(context.hub, source, { kind: RECONNECTED_KIND });
+}
+
+function notifyFrame(source: RelaySource, { onFrame, logger }: RelayContext): void {
+  try {
+    onFrame(source);
+  } catch (err) {
+    logger.warn({ source, err: err instanceof Error ? err.message : String(err) }, "events relay: onFrame threw");
+  }
+}
+
+/** Tells the browser a cache has caught up with a source, so the reads it served before that can be read again. */
+export function announceRefreshed(hub: Pick<EventHub, "broadcast">, source: RelaySource): void {
+  broadcast(hub, source, { kind: REFRESHED_KIND });
 }
 
 function broadcast(hub: Pick<EventHub, "broadcast">, source: RelaySource, event: RelayedEvent): void {

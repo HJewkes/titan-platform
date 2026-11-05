@@ -6,6 +6,7 @@ export { AUDIT_DDL, AUDIT_MIGRATION_NAME, AUDIT_TABLES, FACET_TABLE, SIGNAL_COPY
 export { EPISODE_TABLE, ORIGIN_DDL, ORIGIN_MIGRATION_NAME, ORIGIN_TABLES, ORIGIN_VIEWS } from "./origin-schema.js";
 export { ORIGIN_TASK_LINK_MIGRATION_NAME } from "./origin-task-link-schema.js";
 export { ORIGIN_EXPERIMENT_MIGRATION_NAME } from "./origin-experiment-schema.js";
+export { ORIGIN_ROUTE_MIGRATION_NAME } from "./origin-route-schema.js";
 export { INBOUND_BROADCAST_MIGRATION_NAME } from "./inbound-broadcast-schema.js";
 export { PRICE_LONG_PROMPT_MIGRATION_NAME } from "./price-long-prompt-schema.js";
 export { REVIEW_DDL, REVIEW_TABLE, REVIEW_VERDICT_MIGRATION_NAME } from "./review-schema.js";
@@ -14,7 +15,7 @@ export { AUDIT_FACET, backfillFacets, DEFAULT_FACET_LIMIT, type BackfillOptions,
 export { applyDelta, type DeltaSource } from "./apply.js";
 export { purgeTranscript } from "./purge.js";
 export type { ReconcileCounts } from "./rollup.js";
-export { reconcile, rollupSessions } from "./rollup.js";
+export { reconcile, rollupSessions, rollupYielding } from "./rollup.js";
 export type { IndexOptions, RefreshOptions, RefreshSummary, TranscriptOutcome } from "./refresh.js";
 export { indexTranscript, refreshCorpus } from "./refresh.js";
 export type { ResolvedTask, TaskEnrichment, TaskResolution, TaskResolver } from "./tasks.js";
@@ -33,6 +34,6 @@ export { isInjectedCause, isUntypedPrompt, stripInjected } from "./injected-text
 export {
   countNormalizedEvents, countNormalizedSessions, hasNormalizedTables, normalizedConversationDetail, normalizedErrorFacts, normalizedSessions,
   normalizedSourcePath, normalizedUsage, readIndexedText,
-  type ConversationSummary, type IndexedSpan, type ReadIndexedTextOptions, type NormalizedConversationDetail, type NormalizedErrorFact, type NormalizedTurn, type NormalizedUsageSummary,
+  type ConversationSummary, type IndexedSpan, type ReadIndexedTextOptions, type NormalizedConversationDetail, type NormalizedErrorFact, type NormalizedTurn, type NormalizedUsageOptions, type NormalizedUsageSummary,
 } from "./normalized-query.js";
 export { ensureNormalizedSchema, resolveConversationAlias } from "./normalized-schema.js";

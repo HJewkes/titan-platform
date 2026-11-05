@@ -125,6 +125,22 @@ describe("explainer eval l0", () => {
       expect(code).toBe(2);
     });
 
+    // Mutation: dropping the structure from the ghost skip set warns that Q-E15 is a ghost here.
+    it("skips Q-E15, and does not call it a ghost, for a script under another structure", async () => {
+      write("rules.yaml", "schema: rules/v1\nrules:\n  - { id: Q-E15, rule: synthetic, fields: [beats.spoken], owner_support: none, l0: { severity: error, status: implemented, checks: [Q-E15] } }\n");
+      const script = write("script.json", { ...scriptWith(), structure: "bluf" });
+
+      const code = await runEvalCli(["eval", "l0", script, "--config", "c", "--rules", join(dir, "rules.yaml"), "--bench", join(dir, "bench"), "--spine", PILOT_SPINE], { now: clock(), checks: [spineCheck] });
+
+      expect(code).toBe(0);
+      expect(structureLines().join("\n")).not.toContain("Q-E15");
+      expect(vi.mocked(console.error).mock.calls.map(([line]) => String(line))).toEqual([]);
+    });
+
+    it("exits 2 on a script whose structure the registry lacks", async () => {
+      expect(await runEvalCli(["eval", "l0", write("script.json", { ...scriptWith(), structure: "hero-quest" }), "--config", "c", "--bench", join(dir, "bench")], { now: clock(), checks: [] })).toBe(2);
+    });
+
     it("does not call Q-E15 or Q-E18 ghosts in a spine-free run", async () => {
       write("rules.yaml", "schema: rules/v1\nrules:\n  - { id: Q-E15, rule: synthetic, fields: [beats.spoken], owner_support: none, l0: { severity: error, status: implemented, checks: [Q-E15] } }\n");
 

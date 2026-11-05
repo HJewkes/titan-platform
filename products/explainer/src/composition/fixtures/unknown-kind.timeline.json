@@ -1,0 +1,4 @@
+{
+  "durationS": 1,
+  "beats": [{ "id": "only", "kind": "hologram", "startS": 0, "durationS": 1, "slots": {} }]
+}

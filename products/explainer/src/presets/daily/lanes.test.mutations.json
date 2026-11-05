@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "paths decide before the branch seat",
+      "file": "products/explainer/src/presets/daily/lanes.ts",
+      "find": "return bySeat?.id ?? byRepo?.id ?? laneByPaths(item.packages ?? [], file.lanes) ?? file.fallback;",
+      "replace": "return laneByPaths(item.packages ?? [], file.lanes) ?? bySeat?.id ?? byRepo?.id ?? file.fallback;",
+      "kills": [
+        "daily lanes places a PR by its branch seat before its paths, then by paths, then the fallback"
+      ]
+    },
+    {
+      "name": "side-quest tags not applied",
+      "file": "products/explainer/src/presets/daily/lanes.ts",
+      "find": "if (file.sideQuestTags.some((tag) => tags.has(tag)))",
+      "replace": "if (file.sideQuestTags.every((tag) => tags.has(tag)))",
+      "kills": [
+        "daily lanes makes an upkeep-tagged task a side quest even when its tags also meet a goal"
+      ]
+    },
+    {
+      "name": "named count not clamped to max",
+      "file": "products/explainer/src/presets/daily/lanes.ts",
+      "find": "Math.min(named.max, ",
+      "replace": "Math.min(Infinity, ",
+      "kills": [
+        "daily lanes names one thread in a small lane and at most four in a lane holding the whole day"
+      ]
+    }
+  ]
+}

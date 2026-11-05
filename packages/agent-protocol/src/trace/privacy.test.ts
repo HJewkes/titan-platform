@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
 import {
@@ -24,7 +25,7 @@ const digestOf = (value: string, key = KEY) => `hmac-sha256:${createHmac("sha256
 const opts = (publicRepos: string[] = [], key = KEY) => ({ publicRepos, key });
 
 type Def = { type: string; shape?: Record<string, z.ZodType>; innerType?: z.ZodType; element?: z.ZodType; options?: z.ZodType[] };
-const defOf = (schema: z.ZodType) => (schema as unknown as { def: Def }).def;
+const defOf = (schema: z.ZodType) => partialFake<Def>(schema.def);
 
 function leafPaths(schema: z.ZodType, prefix = ""): string[] {
   const def = defOf(schema);
@@ -36,15 +37,24 @@ function leafPaths(schema: z.ZodType, prefix = ""): string[] {
   return Object.entries(def.shape!).flatMap(([key, child]) => leafPaths(child, prefix ? `${prefix}.${key}` : key));
 }
 
-function schemasByScope(): Record<TracePrivacyScope, z.ZodType> {
+function schemasByScope(): Array<[TracePrivacyScope, z.ZodType]> {
   const [commit, pr, file] = defOf(TraceArtifactSchema).options!;
-  return { run: TraceRunSchema, attempt: TraceAttemptSchema, call: TraceCallSchema, gate: TraceGateSchema, cost: TraceCostSchema, "artifact.commit": commit!, "artifact.pr": pr!, "artifact.file": file! };
+  return [
+    ["run", TraceRunSchema],
+    ["attempt", TraceAttemptSchema],
+    ["call", TraceCallSchema],
+    ["gate", TraceGateSchema],
+    ["cost", TraceCostSchema],
+    ["artifact.commit", commit!],
+    ["artifact.pr", pr!],
+    ["artifact.file", file!],
+  ];
 }
 
 describe("trace field privacy", () => {
   it("classifies every schema leaf and names no field the schema lacks", () => {
-    for (const [scope, schema] of Object.entries(schemasByScope())) {
-      expect(Object.keys(TRACE_FIELD_PRIVACY[scope as TracePrivacyScope]).sort(), scope).toEqual(leafPaths(schema).sort());
+    for (const [scope, schema] of schemasByScope()) {
+      expect(Object.keys(TRACE_FIELD_PRIVACY[scope]).sort(), scope).toEqual(leafPaths(schema).sort());
     }
   });
 
@@ -73,16 +83,16 @@ describe("trace field privacy", () => {
 
   it("drops MCP tool names and digests agent actors", async () => {
     const call = find("call:claude-code:host-a:conv-1:toolu_07");
-    const mcp = await redactTraceRecord({ ...call, name: "mcp__acme__lookup" } as unknown as typeof call, opts());
+    const mcp = await redactTraceRecord(Object.assign({}, call, { name: "mcp__acme__lookup" }), opts());
     expect(mcp).not.toHaveProperty("name");
     const gate = find("3f1c2a9e-0000-4000-8000-000000000001/owner-review");
-    const byAgent = await redactTraceRecord({ ...gate, decidedBy: "agent:agent-a" } as unknown as typeof gate, opts());
+    const byAgent = await redactTraceRecord(Object.assign({}, gate, { decidedBy: "agent:agent-a" }), opts());
     expect(byAgent.decidedBy).toBe(digestOf("agent:agent-a"));
   });
 
   it("drops keys that carry no privacy class", async () => {
     const attempt = find("workflow:3f1c2a9e-0000-4000-8000-000000000001:draft:0:1");
-    const redacted = await redactTraceRecord({ ...attempt, note: "private" } as unknown as typeof attempt, opts());
+    const redacted = await redactTraceRecord(Object.assign({}, attempt, { note: "private" }), opts());
     expect(redacted).not.toHaveProperty("note");
   });
 
@@ -99,6 +109,6 @@ describe("trace field privacy", () => {
   it("rejects a missing or empty key", async () => {
     const attempt = find("workflow:3f1c2a9e-0000-4000-8000-000000000001:draft:0:0");
     await expect(redactTraceRecord(attempt, opts([], ""))).rejects.toThrow(/options\.key/);
-    await expect(redactTraceRecord(attempt, { publicRepos: [] } as unknown as ReturnType<typeof opts>)).rejects.toThrow(/options\.key/);
+    await expect(redactTraceRecord(attempt, partialFake<ReturnType<typeof opts>>({ publicRepos: [] }))).rejects.toThrow(/options\.key/);
   });
 });

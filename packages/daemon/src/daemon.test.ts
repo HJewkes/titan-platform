@@ -3,13 +3,14 @@ import { once } from "node:events";
 import { chmod, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { createServer, request, type ClientRequest, type IncomingMessage, type RequestOptions } from "node:http";
 import { request as httpsRequest } from "node:https";
-import type { AddressInfo } from "node:net";
+import type { Server } from "node:net";
 import { connect } from "node:net";
 import { networkInterfaces, tmpdir } from "node:os";
 import path from "node:path";
 import { connect as tlsConnect } from "node:tls";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { partialFake } from "@titan-design/test-kit";
 import type { Hono } from "hono";
 import { SESSION_COOKIE, TokenFileError, ensureTokenFile, mintLoginCode, signSession } from "./auth.js";
 import { DaemonAlreadyRunningError, DaemonPortInUseError, startDaemon, type DaemonHandle, type RemoteListenerOptions, type StartDaemonOptions } from "./daemon.js";
@@ -26,6 +27,12 @@ vi.mock("./bind-guard.js", async (importOriginal) => {
   const actual = await importOriginal<typeof BindGuardModule>();
   return { ...actual, assertRemoteHost: vi.fn(actual.assertRemoteHost) };
 });
+
+function portOf(server: Server): number {
+  const address = server.address();
+  if (address === null || typeof address === "string") throw new Error("server is not listening on a port");
+  return address.port;
+}
 
 let stateDir: string;
 let handle: DaemonHandle | null = null;
@@ -71,8 +78,8 @@ describe("startDaemon bind guard", () => {
   });
 
   it("treats a truthy but non-true opt-in as not set", async () => {
-    const truthy = "false" as unknown as boolean;
-    await expect(startDaemon(options({ host: "0.0.0.0", allowUnauthenticatedNonLoopback: truthy }))).rejects.toBeInstanceOf(NonLoopbackBindError);
+    const truthy = Object.assign(options({ host: "0.0.0.0" }), { allowUnauthenticatedNonLoopback: "false" });
+    await expect(startDaemon(truthy)).rejects.toBeInstanceOf(NonLoopbackBindError);
   });
 
   const lanAddress = Object.values(networkInterfaces()).flat().find((i) => i?.family === "IPv4" && !i.internal)?.address;
@@ -146,11 +153,12 @@ describe("startDaemon", () => {
     });
 
     // Retried: macOS drops the first fs.watch event a few percent of the time.
+    const noEvents = (): boolean => events.length === 0;
     const deadline = Date.now() + 10_000;
     for (let attempt = 0; events.length === 0 && Date.now() < deadline; attempt++) {
       await writeFile(path.join(stateDir, `touched-${attempt}.md`), "hello");
       const window = Date.now() + 400;
-      while (events.length === 0 && Date.now() < window) await new Promise((r) => setTimeout(r, 5));
+      while (noEvents() && Date.now() < window) await new Promise((r) => setTimeout(r, 5));
     }
 
     expect(events).toEqual(["change"]);
@@ -292,7 +300,7 @@ describe("stale pid file", () => {
       server.listen(0, "127.0.0.1");
       await once(server, "listening");
       try {
-        await run((server.address() as AddressInfo).port);
+        await run(portOf(server));
       } finally {
         server.close();
       }
@@ -323,9 +331,9 @@ describe("startDaemon port conflicts", () => {
     const otherStateDir = await mkdtemp(path.join(tmpdir(), "titan-daemon-other-"));
     try {
       const failure = await startDaemon(options({ port, stateDir: otherStateDir })).catch((err: unknown) => err);
-      expect(failure).toBeInstanceOf(DaemonPortInUseError);
-      expect((failure as DaemonPortInUseError).port).toBe(port);
-      expect((failure as Error).message).toContain(String(port));
+      if (!(failure instanceof DaemonPortInUseError)) throw new Error("expected DaemonPortInUseError", { cause: failure });
+      expect(failure.port).toBe(port);
+      expect(failure.message).toContain(String(port));
       const health = await fetch(`http://127.0.0.1:${port}/health`);
       expect(health.status).toBe(200);
     } finally {
@@ -391,7 +399,7 @@ async function holdPort(address: string, port = 0): Promise<{ port: number; rele
   const server = createServer();
   server.listen(port, address);
   await once(server, "listening");
-  return { port: (server.address() as AddressInfo).port, release: () => new Promise((resolve) => server.close(() => resolve())) };
+  return { port: portOf(server), release: () => new Promise((resolve) => server.close(() => resolve())) };
 }
 
 async function bindOnce(address: string, port: number): Promise<boolean> {
@@ -497,7 +505,7 @@ describe("startDaemon remote host refusal", () => {
   ])("refuses a remote listener with %s, which would serve plain HTTP, before binding", async (_label, noTls) => {
     const held = await holdPort("127.0.0.1");
     try {
-      const remote = { host: "192.0.2.1", tokenFile, tls: noTls } as unknown as RemoteListenerOptions;
+      const remote = partialFake<RemoteListenerOptions>({ host: "192.0.2.1", tokenFile, tls: noTls });
       const attempt = startDaemon(options({ port: held.port, remote }));
 
       await expect(attempt).rejects.toThrow(/it has no TLS/);

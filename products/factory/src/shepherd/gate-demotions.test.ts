@@ -5,17 +5,17 @@ import type { DispatchOptions, StepResult, WorkflowContext } from "@titan-design
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import { withDemotionOff } from "../test-support/gate-demotions.js";
+import { demotionOffForTest, withDemotionOff } from "../test-support/gate-demotions.js";
 import { gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { GATE_DEMOTIONS, autoPassComment, autoPassesOf } from "./auto-pass.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import { demoteFailedRounds, noteReviewerAccount, onEscalated, type FailedRoundsRun } from "./failed-rounds-demotion.js";
 import { LeaveLand } from "./leave-land.js";
 import { freshNoVerdictState, noteReviewerStep } from "./no-verdict-round.js";
 import { mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
-import { shepherdGatePolicy, type EffectivePolicy } from "./policy.js";
+import { shepherdGatePolicy } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { shepherdMainCi } from "./post-merge.js";
 import { SEAT_HELD_ROUNDS_WORDS, fixFirstEscalation, type Escalated } from "./route-table.js";
 import type { ObservedPr } from "./observe.js";
@@ -23,6 +23,7 @@ import { countRound, type Routed } from "./routed.js";
 import type { ShepherdPhases, Verdict } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { shepherdStoreRef } from "./store.js";
+import type { ExitNoticePorts } from "./ports.js";
 
 const REPO = "octo/demo";
 const HEAD = fakeSha("demotion-head");
@@ -220,6 +221,23 @@ describe("D7 residual: a failed fallback reviewer goes to ops (TP-3734)", () => 
     expect(run).toMatchObject({ failedRounds: 0, failedOutcomes: [], fallbackReviewed: false });
   });
 
+  it("names a round whose correction did not parse malformed, not timeout, in the failed-round list and the ops notice", async () => {
+    const run = { ...d7Run({ fallbackReviewed: true, failedRounds: 0, failedOutcomes: [] }), ...noticeCtx(true) };
+    const counts = { ...run, throttledRounds: 1, closer: { streak: 0 }, seatHeldRounds: new Map(), fixFirstTrail: [] };
+    const unparsed: Routed = { ...silentRound, verdict: { kind: "none", cause: "timeout", reason: "the reviewer's verdict did not parse after one correction (ci_policy_malformed)" } };
+    const heardRound = (routed: Routed) => (noteReviewerStep(counts, `sh-await-verdict:${HEAD}:adversary`, { kind: "verdict" }), countRound(counts, routed));
+    await heardRound(unparsed);
+    await heardRound(silentRound);
+    const escalated = await heardRound(unparsed);
+
+    await onEscalated({ ...run, failedRounds: counts.failedRounds, failedOutcomes: counts.failedOutcomes }, HEAD, escalated!).catch(() => undefined);
+
+    expect(counts.failedOutcomes).toEqual(["malformed", "timeout", "malformed"]);
+    expect(escalated).toMatchObject({ escalation: "failed-rounds", infraOnly: true });
+    expect(run.steps.map((recorded) => recorded.stepId)).toContain("sh-seat-notice");
+    expect(run.steps.find((recorded) => recorded.stepId === "sh-seat-notice")?.input["why"]).toContain("failed rounds: malformed, timeout, malformed");
+  });
+
   it("tells the seat of a seat-held run-out instead of the owner, under D7/seat-notice", async () => {
     const run = { ...d7Run(), ...noticeCtx(true) };
 
@@ -230,6 +248,8 @@ describe("D7 residual: a failed fallback reviewer goes to ops (TP-3734)", () => 
   });
 
   it("asks the owner only when the notice could not go out, naming why", async () => {
+    // TP-4759's seat gate is pinned off: this is the owner fallback it replaces where a seat resolves.
+    demotionOffForTest("deadEndSeat");
     const run = { ...d7Run({ fallbackReviewed: true }), ...noticeCtx(false) };
 
     expect(await onEscalated(run, HEAD, INFRA)).toBe(true);
@@ -377,8 +397,8 @@ describe("D13: a red main with no freeze store", () => {
 });
 
 describe("the demotion config", () => {
-  it("demotes D7, its residual, D8, D9 and D13, asks the owner only over a reviewer MERGE, and diagnoses never-verdict rounds", () => {
-    expect(GATE_DEMOTIONS).toEqual({ failedRounds: true, mainRed: true, failedFallback: true, conflict: true, fixFirstRunaway: true, noMergeNoAsk: true, neverVerdictDiagnosis: true });
+  it("demotes D7, its residual, D8, D9 and D13, asks the owner only over a reviewer MERGE, diagnoses never-verdict rounds, and sends dead ends to the registering seat", () => {
+    expect(GATE_DEMOTIONS).toEqual({ failedRounds: true, mainRed: true, failedFallback: true, conflict: true, fixFirstRunaway: true, noMergeNoAsk: true, neverVerdictDiagnosis: true, deadEndSeat: true });
   });
 });
 

@@ -1,16 +1,16 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { errorEnvelope, successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
 import { FIXTURE_ROUNDS as source, sentRound } from "../server/round-fixtures.js";
 import { getFrame, listFrames } from "../server/round-frames.js";
 import type { Question } from "../server/round-schema.js";
 import { getRound, type RoundDetail, type RoundsSource } from "../server/rounds.js";
-import { App } from "./App.js";
-import { AnswerSourceProvider } from "./data/submit.js";
+import { getButton } from "./pages/get-button.test-helpers.js";
 import { checkAndSend, checkButton, toSection } from "./pages/round-pager.test-helpers.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 const DESIGN = "beacon-states-r1";
 const STATES = [
@@ -73,7 +73,7 @@ interface Rendered {
 }
 
 /** Renders the design round over a recorded snapshot; rounds.submit answers "submitted". */
-async function renderDesign(options: { detail?: Partial<RoundDetail>; listing?: Listing; rounds?: RoundsSource; extra?: Snapshot["calls"] } = {}): Promise<Rendered> {
+async function renderDesign(options: { detail?: Partial<RoundDetail>; listing?: Listing; rounds?: RoundsSource; extra?: Snapshot["calls"]; inApp?: boolean } = {}): Promise<Rendered> {
   const snapshot = await recorded(options.detail ?? {}, options.listing, options.rounds, options.extra);
   const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot), "text/html");
   const inner = pageDataSource({ doc: page });
@@ -83,14 +83,7 @@ async function renderDesign(options: { detail?: Partial<RoundDetail>; listing?: 
     subscribe: inner.subscribe.bind(inner),
     call: (name, args, callOptions) => (calls.push({ name, args }), name === "rounds.submit" ? Promise.resolve(submitted) : inner.call(name, args, callOptions)),
   };
-  window.location.hash = `#/rounds/${DESIGN}`;
-  render(
-    <RpcProvider source={counting}>
-      <AnswerSourceProvider value={counting}>
-        <App />
-      </AnswerSourceProvider>
-    </RpcProvider>,
-  );
+  renderPage(counting, { view: "rounds", id: DESIGN }, { answers: counting, inApp: options.inApp });
   await screen.findByText("Beacon states");
   return { calls };
 }
@@ -106,7 +99,7 @@ async function designRound(): Promise<Extract<RoundDetail, { valid: true }>> {
 
 describe("a design round", () => {
   it("renders every STATES variant as a labelled frame that opens full size", async () => {
-    await renderDesign();
+    await renderDesign({ inApp: true });
     scrollAll();
 
     for (const [key, label] of STATES) {
@@ -114,7 +107,7 @@ describe("a design round", () => {
       expect(within(figure).getByText(label)).toBeTruthy();
       expect(await within(figure).findByRole("img", { name: label })).toBeTruthy();
     }
-    fireEvent.click(screen.getByRole("button", { name: "Enlarge Busy" }));
+    fireEvent.click(getButton("Enlarge Busy"));
     expect(screen.getByRole("dialog", { name: "Busy" })).toBeTruthy();
     expect(screen.queryByText("design round: open in the harness")).toBeNull();
   });
@@ -221,7 +214,7 @@ describe("a design round", () => {
   });
 });
 
-const verdictButton = (key: string, verdict: string): HTMLElement => within(screen.getByTestId(`frame-feedback-${key}`)).getByRole("button", { name: verdict });
+const verdictButton = (key: string, verdict: string): HTMLElement => getButton(verdict, screen.getByTestId(`frame-feedback-${key}`));
 const pressed = (key: string, verdict: string): string | null => verdictButton(key, verdict).closest("[aria-pressed]")?.getAttribute("aria-pressed") ?? null;
 const pressedVerdicts = (key: string): string[] => ["Chosen", "Rejected", "Maybe"].filter((verdict) => pressed(key, verdict) === "true");
 const pickOf = (option: string): string | null | undefined => within(screen.getByTestId("round-question-beacon-fill-pick")).getByText(new RegExp(option)).closest('[role="radio"]')?.getAttribute("aria-checked");
@@ -410,12 +403,7 @@ describe("a design round the console cannot show", () => {
     ["has an invalid frames.json", errorEnvelope("frame refused: the round's frames index is not a frames@1 index", 66)],
   ])("falls back to the harness notice when it %s", async (_label, listing) => {
     const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", await recorded({}, listing)), "text/html");
-    window.location.hash = `#/rounds/${DESIGN}`;
-    render(
-      <RpcProvider source={pageDataSource({ doc: page })}>
-        <App />
-      </RpcProvider>,
-    );
+    renderPage(pageDataSource({ doc: page }), { view: "rounds", id: DESIGN });
 
     await waitFor(() => expect(screen.getByText("design round: open in the harness")).toBeTruthy());
     expect(screen.queryByTestId("round-question-beacon-fill-pick")).toBeNull();
@@ -471,7 +459,7 @@ function onPhone(): void {
   vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(pointer: coarse)", media: query, addEventListener: () => undefined, removeEventListener: () => undefined }));
 }
 
-const pinButton = (key: string): HTMLElement => within(screen.getByTestId(`frame-feedback-${key}`)).getByRole("button", { name: /^Pin / });
+const pinButton = (key: string): HTMLElement => getButton(/^Pin /, screen.getByTestId(`frame-feedback-${key}`));
 
 /** A press on a frame's pin layer that lifts `moved` px from where it went down. */
 function tap(layer: HTMLElement, clientX: number, clientY: number, moved = 0): void {
@@ -525,7 +513,7 @@ describe("a design round's frame pins (TP-3773 S4)", () => {
     expect(screen.getByTestId("pin-layer-beacon-idle")).toBeTruthy();
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByTestId("pin-layer-beacon-idle")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Enlarge Idle" }));
+    fireEvent.click(getButton("Enlarge Idle"));
     expect(screen.getByRole("dialog", { name: "Idle" })).toBeTruthy();
   });
 
@@ -535,7 +523,7 @@ describe("a design round's frame pins (TP-3773 S4)", () => {
     tap(layer, 10, 10);
     tap(layer, 20, 20);
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove pin 2" }));
+    fireEvent.click(getButton("Remove pin 2"));
     tap(layer, 30, 30);
 
     expect(screen.queryByLabelText("Note for pin 2")).toBeNull();
@@ -558,7 +546,7 @@ describe("a design round's frame pins (TP-3773 S4)", () => {
 
     expect(screen.getAllByTestId("pin-layer-beacon-busy")).toHaveLength(1);
     expect(document.activeElement).toBe(dialog.getByLabelText("Note for pin 1"));
-    fireEvent.click(dialog.getByRole("button", { name: "Done" }));
+    fireEvent.click(getButton("Done", screen.getByRole("dialog")));
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByTestId("pin-marker-beacon-busy-1")).toBeTruthy();
   });
@@ -603,7 +591,8 @@ describe("a design round's frame pins (TP-3773 S4)", () => {
 
   it("draws a sent round's pins on the frame, with no way to place another", async () => {
     const echo = { verdict: null, comment: "", annotations: [] };
-    const pin = { id: "beacon-error-1", width: 375, x: 90, y: 30, xPct: 0.25, yPct: 0.5, note: "Too red." };
+    // Placed at the frame's declared 320 px viewport, the only width its render draws pins of (TP-3964).
+    const pin = { id: "beacon-error-1", width: 320, x: 80, y: 90, xPct: 0.25, yPct: 0.5, note: "Too red." };
     const variants = [{ key: "beacon-error", ...echo, annotations: [pin] }];
     const feedback = { schema: "titan-review/feedback@1", unit: "beacon-states", round: 1, manifestSha256: "0".repeat(64), submittedAt: "2031-03-02T10:00:00.000Z", answers: [], variants, general: "" };
     const staged = await sentRound(DESIGN, feedback);
@@ -739,7 +728,7 @@ describe("a design round's picks and frame verdicts, kept in step (TP-3773 S7)",
     fireEvent.click(verdictButton("beacon-busy", "Chosen"));
 
     expect(pressedVerdicts("beacon-idle")).toEqual([]);
-    expect(within(screen.getByTestId("question-ab-side-beacon-fill-pick-B")).getByRole("button", { name: "Picked B" })).toBeTruthy();
+    expect(getButton("Picked B", screen.getByTestId("question-ab-side-beacon-fill-pick-B"))).toBeTruthy();
   });
 });
 

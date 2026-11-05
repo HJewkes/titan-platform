@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a short voice keeps the beat's whole plan",
+      "file": "products/explainer/src/workflow/tts-truing.ts",
+      "find": "const need = voiced >= plannedS ? voiced : short;",
+      "replace": "const need = Math.max(plannedS, voiced);",
+      "kills": [
+        "truing a beat to its voice a beat whose speech runs short ends a settle after its last word",
+        "truing a beat to its voice a short beat still lasts the beat floor"
+      ]
+    },
+    {
+      "name": "a held beat is trimmed like any other",
+      "file": "products/explainer/src/workflow/tts-truing.ts",
+      "find": "const short = held ? plannedS : ",
+      "replace": "const short = ",
+      "kills": [
+        "truing a beat to its voice a held beat keeps its planned length however short its speech"
+      ]
+    }
+  ]
+}

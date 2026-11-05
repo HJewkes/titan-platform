@@ -1,0 +1,28 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "env reads a leading ! as the shell negation keyword wherever it stands",
+      "file": "packages/tool-guard/src/shell/env-walk.ts",
+      "find": "    if (syntax.keyword(w)) walk.negated ||= w.value === \"!\";",
+      "replace": "    if (syntax.keyword(w) || w.value === \"!\") walk.negated ||= w.value === \"!\";",
+      "kills": [
+        "env -S is split by env's rules and read as env's argv (TP-3210) allows a -S string that starts with '!'"
+      ]
+    },
+    {
+      "name": "each env word rescans the words read before it",
+      "file": "packages/tool-guard/src/shell/env-walk.ts",
+      "find": "    const assignment = parseAssignment(w);",
+      "replace": "    walk.read.map((r) => r.value).join(\" \").indexOf(\"\\u0000\");\n    const assignment = parseAssignment(w);",
+      "kills": [
+        "env's leading words are read in one pass reads a script of env \"A=1 - \" words in linear time",
+        "env's leading words are read in one pass reads a script of env \"-- \" words in linear time",
+        "env's leading words are read in one pass reads a script of env \"A=1 -i \" words in linear time",
+        "env's leading words are read in one pass reads a script of env \"A=1 -S '' \" words in linear time",
+        "env's leading words are read in one pass reads a chain of envs a -S string supplies, env -S 'env env …', in linear time (TP-3291)",
+        "env's leading words are read in one pass reads a chain of envs a -S string supplies, env -S env -S env -S …, in linear time (TP-3291)"
+      ]
+    }
+  ]
+}

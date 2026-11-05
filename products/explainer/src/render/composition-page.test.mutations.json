@@ -1,0 +1,29 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "any package.json taken as the explainer package root",
+      "file": "products/explainer/src/render/composition-page.ts",
+      "find": ".name === PACKAGE_NAME",
+      "replace": ".name !== undefined",
+      "kills": ["pageSourceFrom refuses when only another package's package.json sits above the module"]
+    },
+    {
+      "name": "search starts two levels up, as the old src-only path did",
+      "file": "products/explainer/src/render/composition-page.ts",
+      "find": "let dir = path.resolve(fromDir);",
+      "replace": "let dir = path.resolve(fromDir, \"../..\");",
+      "kills": ["pageSourceFrom finds the same sources when the module runs from a dist/ chunk one level under the package"]
+    },
+    {
+      "name": "page root taken from the package root instead of src/",
+      "file": "products/explainer/src/render/composition-page.ts",
+      "find": "root: path.join(src, \"composition\"),",
+      "replace": "root: path.join(dir, \"composition\"),",
+      "kills": [
+        "pageSourceFrom finds the sources in src/ when the module runs from src/render/",
+        "pageSourceFrom finds the same sources when the module runs from a dist/ chunk one level under the package"
+      ]
+    }
+  ]
+}
