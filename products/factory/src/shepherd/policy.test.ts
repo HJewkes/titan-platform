@@ -4,8 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mechanicalAuthorityReason } from "../coordinator-evidence.js";
 import type { MergeEvidence } from "./merge-facts.js";
 import type { Verdict } from "./phases.js";
-import { resolveEffectivePolicy, shepherdGatePolicy, shepherdLandOptions } from "./policy.js";
-import { EffectivePolicySchema, RegistrationRefused, stricterPolicy, type EffectivePolicy } from "./policy-schema.js";
+import { resolveEffectivePolicy, runPolicyCeiling, shepherdGatePolicy, shepherdLandOptions } from "./policy.js";
+import { EffectivePolicySchema, parseStoredPolicy, PolicyNewerThanBuild, RegistrationRefused, stricterPolicy, type EffectivePolicy } from "./policy-schema.js";
 import { escalationReason } from "./route-table.js";
 import { lookupSeat, type Seat, type SeatBook } from "./seats.js";
 import { partialFake } from "@titan-design/test-kit";
@@ -517,5 +517,37 @@ describe("a seat with visual baselines (TP-2662)", () => {
 
     expect(cleared).toMatchObject({ outcome: "allow", rule: { rowId: "MRG-AU-RV" }, reason: expect.stringContaining(`visual files ${component} changed no baseline and visual passed`) });
     expect(changed).toMatchObject({ outcome: "gate", rule: { rowId: "visual-path" }, reason: expect.stringContaining(baseline) });
+  });
+});
+
+describe("a stored policy carrying a key this build lacks", () => {
+  const stored = (extra: object) => JSON.stringify({ ...effective("acme/gizmos"), ...extra });
+
+  it("fails a stored policy read as PolicyNewerThanBuild naming the key and the deploy fix", () => {
+    const read = () => parseStoredPolicy(stored({ futureGrant: "yes" }));
+
+    expect(read).toThrow(PolicyNewerThanBuild);
+    expect(read).toThrow(/"futureGrant".*deploy current main/);
+  });
+
+  it("fails a run param ceiling the same way", () => {
+    expect(() => runPolicyCeiling(stored({ futureGrant: "yes" }))).toThrow(PolicyNewerThanBuild);
+  });
+
+  it("names an unknown key nested in the visual baselines by its path", () => {
+    const read = () => parseStoredPolicy(stored({ visualBaselines: { check: "shots", paths: [], threshold: 1 } }));
+
+    expect(read).toThrow(/"visualBaselines\.threshold"/);
+  });
+
+  it("keeps refusing a stored approved key as an ordinary parse error", () => {
+    const read = () => parseStoredPolicy(stored({ approved: [] }));
+
+    expect(read).toThrow();
+    expect(read).not.toThrow(PolicyNewerThanBuild);
+  });
+
+  it("reads a policy whose keys this build knows", () => {
+    expect(parseStoredPolicy(stored({}))).toEqual(effective("acme/gizmos"));
   });
 });

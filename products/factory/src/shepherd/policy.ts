@@ -11,7 +11,7 @@ import { headWaits } from "./freeze-wait.js";
 import { budgetAt, decideAutoMerge, MERGE_BY_REVIEWER_RULE, type MergeEvidence } from "./merge-facts.js";
 import { shownPaths } from "./visual-gate.js";
 import { refreshMergeEvidence } from "./merge-settle.js";
-import { EffectivePolicySchema, MERGE_ORDER, narrower, OWNER_GATE_REASONS, RegistrationRefused, type EffectivePolicy, type MergeMode } from "./policy-schema.js";
+import { MERGE_ORDER, narrower, parseStoredPolicy, OWNER_GATE_REASONS, RegistrationRefused, type EffectivePolicy, type MergeMode } from "./policy-schema.js";
 import { proofOnBase, type ProofOnBase } from "./proof-base.js";
 import { CiPolicySchema } from "./review-schemas.js";
 import type { Verdict } from "./phases.js";
@@ -45,7 +45,7 @@ export const OWNER_GATE_POLICY: EffectivePolicy = { merge: "owner-gate", mergeMe
 
 /** The ceiling a run carries in its `policy` param; a run with none gets the owner gate. */
 export function runPolicyCeiling(rawPolicy: string | undefined): EffectivePolicy {
-  return rawPolicy === undefined ? OWNER_GATE_POLICY : EffectivePolicySchema.parse(JSON.parse(rawPolicy));
+  return rawPolicy === undefined ? OWNER_GATE_POLICY : parseStoredPolicy(rawPolicy);
 }
 
 export { FEATURE_BASE_GRANT, MERGE_ON_GREEN_GRANT, RELEASE_MERGE_GRANT };
