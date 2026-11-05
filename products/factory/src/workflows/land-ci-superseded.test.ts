@@ -34,11 +34,11 @@ describe("ci-wait on a head whose older run was cancelled by a newer one", () =>
     expect(ci.waitingOn).toEqual(NAMES);
   });
 
-  it("waits on, and never reads red, a cancelled run that no newer run replaced", async () => {
+  it("stays red for a cancelled run that no newer run replaced", async () => {
     const ci = await read([cancelled("validate", 10), successRun("dag-check", 11), successRun("hub-compose", 12)]);
 
-    expect(ci.verdict).toBe("pending");
-    expect(ci.waitingOn).toEqual(["validate"]);
+    expect(ci.verdict).toBe("red");
+    expect(ci.failing?.map((check) => check.name)).toEqual(["validate"]);
   });
 
   it("stays red when the newer run failed", async () => {

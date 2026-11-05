@@ -31,7 +31,7 @@ async function read(runs: CheckRun[]) {
   return { ci, passes: await requiredChecksPass({ repo: REPO, contexts: REQUIRED }, HEAD, portReads(port)) };
 }
 
-describe("ci-wait never reads a cancelled, skipped or replaced run as red", () => {
+describe("ci-wait never reads a skipped run, or a failure a newer run left unjudged, as red", () => {
   it("tp#2576: the required runs still in progress beside a skipped duplicate run read pending, not red", async () => {
     const live = [job("dag-check", 11, 2001, T0, null), job("validate", 12, 2001, T0, null), job("hub-compose", 13, 2001, T0, "success")];
 
@@ -58,11 +58,11 @@ describe("ci-wait never reads a cancelled, skipped or replaced run as red", () =
     expect(ci.waitingOn).toEqual(["validate"]);
   });
 
-  it("a cancelled check that no newer run replaced is waited on, not red", async () => {
-    const { ci } = await read([job("dag-check", 11, 2001, T0, "success"), job("hub-compose", 12, 2001, T0, "success"), job("validate", 13, 2001, T0, "cancelled")]);
+  it("a failed check whose rerun is still running is waited on, not red", async () => {
+    const { ci } = await read([job("dag-check", 11, 2001, T0, "success"), job("hub-compose", 12, 2001, T0, "success"), job("validate", 13, 2001, T0, "failure"), job("validate", 23, 2001, T1, null)]);
 
     expect(ci.verdict).toBe("pending");
-    expect(ci.waitingOn).toEqual(["validate"]);
+    expect(ci.failing).toBeUndefined();
   });
 
   it("a failure that is the newest run of its check stays red, beside a skipped duplicate run", async () => {

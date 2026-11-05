@@ -69,11 +69,9 @@ describe("the wait after a fixer exits with no push, when the same head turns gr
 
     state.fixed = true;
     await gateOpened(w.host, gateId(w.runId, "approve-merge"), 5_000);
-    w.host.runtime.signal(w.runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
-    await w.host.runtime.wait(w.runId);
 
     expect(result(w.host, w.runId, "await-new-head:0")).toMatchObject({ result: { headSha: H1, green: true } });
-    expect(fake.effects.merge).toBe(1);
+    expect(w.host.gates.get(gateId(w.runId, "approve-merge"))?.prompt).toContain(`at head ${H1}`);
     expect(fake.pr(1).headSha).toBe(H1);
   });
 

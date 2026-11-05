@@ -58,6 +58,16 @@ export function ciRedFailing(kind: string, payload: unknown): readonly { name: s
   return red?.success ? red.data.failing : [];
 }
 
+/** A ci-red wake's failing checks, possibly none named; undefined for any other kind, whose wait needs a new head. */
+export function exitRed(kind: string, payload: unknown): readonly { name: string }[] | undefined {
+  return kind === "ci-red" ? ciRedFailing(kind, payload) : undefined;
+}
+
+/** The wait after a fixer's no-push exit: after a ci-red wake (`red` set) the same head turning green also ends it. */
+export function awaitAfterExit(run: GateRun, headSha: string, red: readonly { name: string }[] | undefined): Promise<undefined> {
+  return awaitNewHead(run, headSha, red !== undefined, red);
+}
+
 /** A run that wakes agents. */
 export interface WakeRun extends GateRun {
   /** Heads a wake's await-new-head saw replaced; replaying the run's wakes rebuilds it. */
@@ -107,15 +117,16 @@ type SeatGate = () => Promise<LandOutcome | undefined>;
 /**
  * A human chooses between waiting for a fix and abandoning; a pushed head answers for them. On a `waivable` (NO_REPRO, or a fixer's exit from a fix-proof wake) send-back
  * the owner may instead waive this head's fix-proof, and the next round reviews it. Undefined lands the next round.
- * A gate `readdress-dead-ends` cancelled goes to `readdress`, the seat's dead-end gate at the same head (TP-4759).
+ * A gate `readdress-dead-ends` cancelled goes to `readdress`, the seat's dead-end gate at the same head (TP-4759). With
+ * `red`, a ci-red exit's failing checks, the await-new-head answer also ends when that same head turns green.
  */
-export async function sentBackGate(run: GateRun, headSha: string, prompt: string, abandoned: string, situation = prompt, waivable = false, readdress?: SeatGate): Promise<LandOutcome | undefined> {
+export async function sentBackGate(run: GateRun, headSha: string, prompt: string, abandoned: string, situation = prompt, waivable = false, readdress?: SeatGate, red?: readonly { name: string }[]): Promise<LandOutcome | undefined> {
   const { schema, brief } = sentBackDecision({ ...run.target, headSha, situation, waivable });
   const answered = await askReaddressable(run.ctx, "sh-sent-back", prompt, { schema, brief });
   if (answered === "readdressed" && readdress) return readdress();
   const answer = answered && answered !== "readdressed" ? schema.parse(answered.data) : { decision: "await-new-head" };
   if (answer.decision === "abandon") return { kind: "stopped", reason: "abandoned", headSha, detail: abandoned };
-  if (answer.decision !== WAIVE_PROOF) return awaitNewHead(run, headSha);
+  if (answer.decision !== WAIVE_PROOF) return awaitAfterExit(run, headSha, red);
   await waiveProof(run.ctx, headSha);
   run.reviews?.delete(headSha);
   return undefined;
