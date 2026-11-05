@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a head missing from the cache is never fetched",
+      "file": "products/factory/src/shepherd/head-lines.ts",
+      "find": "if (present.code !== 0) await must(",
+      "replace": "if (present.code === -1) await must(",
+      "kills": [
+        "cacheHeadLines fetches a head the cache lacks and reads its file lines",
+        "cacheHeadLines drops a question past the end of a real head file and keeps one inside it"
+      ]
+    },
+    {
+      "name": "the head is fetched even when the cache already holds it",
+      "file": "products/factory/src/shepherd/head-lines.ts",
+      "find": "if (present.code !== 0) await must(",
+      "replace": "if (present.code >= 0) await must(",
+      "kills": [
+        "cacheHeadLines runs no fetch for a head already in the cache"
+      ]
+    }
+  ]
+}
