@@ -3,38 +3,48 @@
   "mutations": [
     {
       "name": "the table stops holding await-pr.ts, an importer of the sign-off rule",
-      "file": "products/factory/src/shepherd/registration-hold.ts",
+      "file": "products/factory/src/shepherd/g10-class-rules.ts",
       "find": "\"await-pr.ts\", ",
       "replace": "",
-      "kills": ["the G10 hold table holds every Shepherd module that imports the hold, the sign-off rule or the release"]
+      "kills": [
+        "the G10 hold table holds every Shepherd module that imports the hold, the sign-off rule or the release"
+      ]
     },
     {
-      "name": "the table stops holding tree-carry.ts, which the file-list reader imports",
-      "file": "products/factory/src/shepherd/registration-hold.ts",
-      "find": "\"tree-carry.ts\", ",
+      "name": "the closure list stops holding tree-carry.ts, which the file-list reader imports",
+      "file": "products/factory/src/shepherd/g10-hold-closure.json",
+      "find": "  \"tree-carry.ts\",\n",
       "replace": "",
-      "kills": ["the G10 hold table holds every file the hold, the sign-off rule and the release import, transitively"]
+      "kills": [
+        "the G10 hold table holds every file the hold, the sign-off rule and the release import, transitively"
+      ]
     },
     {
       "name": "the table stops holding store.ts, the hold writer",
-      "file": "products/factory/src/shepherd/registration-hold.ts",
+      "file": "products/factory/src/shepherd/g10-class-rules.ts",
       "find": "\"store.ts\", ",
       "replace": "",
-      "kills": ["the G10 hold table holds store.ts, which writes or feeds the hold without a value import from a root"]
+      "kills": [
+        "the G10 hold table holds store.ts, which writes or feeds the hold without a value import from a root"
+      ]
     },
     {
       "name": "the table stops holding take-verdict.ts, the caller of grant-withheld.ts",
-      "file": "products/factory/src/shepherd/registration-hold.ts",
+      "file": "products/factory/src/shepherd/g10-class-rules.ts",
       "find": "\"take-verdict.ts\", ",
       "replace": "",
-      "kills": ["the G10 hold table holds take-verdict.ts, which writes or feeds the hold without a value import from a root"]
+      "kills": [
+        "the G10 hold table holds take-verdict.ts, which writes or feeds the hold without a value import from a root"
+      ]
     },
     {
       "name": "the panel stops being held whole",
-      "file": "products/factory/src/shepherd/registration-hold.ts",
-      "find": "\"packages/review-panel/src/**\", ",
+      "file": "products/factory/src/shepherd/g10-class-rules.ts",
+      "find": "  \"packages/review-panel/src/**\",\n",
       "replace": "",
-      "kills": ["the G10 hold table holds the panel module index.ts the hold and the sign-off run through"]
+      "kills": [
+        "the G10 hold table holds the panel module index.ts the hold and the sign-off run through"
+      ]
     }
   ]
 }

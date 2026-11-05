@@ -86,7 +86,7 @@ describe("the G10 hold table", () => {
   it("holds every Shepherd module that imports the hold, the sign-off rule or the release", async () => {
     const importers = importersOf(ROOTS);
 
-    expect(importers).toEqual(expect.arrayContaining(["products/factory/src/shepherd/review.ts", "products/factory/src/shepherd/spawn-facts.ts"]));
+    expect(importers).toEqual(expect.arrayContaining(["products/factory/src/shepherd/pr.ts", "products/factory/src/shepherd/spawn-facts.ts"]));
     expect(await unheldOf(importers)).toEqual([]);
   });
 

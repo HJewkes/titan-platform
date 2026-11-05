@@ -82,11 +82,13 @@ export const GATE_RESOLVE_CHECK_FILES = ["gate-resolve-sites.test.ts", "gate-res
 
 /**
  * Code that decides sign-offs, fix-proof verdicts, proof waivers and merge standing, or writes the hold rows they read
- * (TP-3764, TP-4746). Emptying any of these lifts a G10 hold as surely as editing this table. These seed the closure.
+ * (TP-3764, TP-4746), and the modules that import the hold, the sign-off rule or the release. Emptying any of these
+ * lifts a G10 hold as surely as editing this table. These seed the closure.
  */
 const SIGNOFF_POLICY_FILES = [
   ...["signoffs.ts", "merge-standing.ts", "reviewer-lineage.ts", "auto-pass.ts", "fix-proof.ts", "take-verdict.ts", "store.ts", "events.ts"].map(inShepherd),
   ...["registration-of.ts", "proof-waiver.ts", "proof-waiver-table.ts", "seat-recheck.ts", "carry-merge.ts", "merge-up-carry.ts", "approved-set-carry.ts", "no-reviewer-hold.ts"].map(inShepherd),
+  ...["await-pr.ts", "coverage.ts", "pr.ts", "shepherd-steps.ts"].map(inShepherd),
   "packages/fix-proof/src/**",
   "packages/review-panel/src/**",
 ];
