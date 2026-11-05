@@ -17,7 +17,7 @@ export interface PrVisualGh {
   bytes(args: readonly string[], timeoutMs: number, maxBytes: number): Promise<Uint8Array>;
 }
 
-export interface PrVisualTarget {
+interface PrVisualTarget {
   repo: string;
   head: string;
   /** The workflow file the artifact's run must come from, e.g. `.github/workflows/pr-visual.yml`. */
@@ -26,7 +26,7 @@ export interface PrVisualTarget {
 }
 
 /** A raw pixel proof for `visualTier` to parse, or why there is none. */
-export type PixelRead = { unmeasured: string } | { head: string; baseSha: string; rendered: boolean; shots: unknown[] };
+type PixelRead = { unmeasured: string } | { head: string; baseSha: string; rendered: boolean; shots: unknown[] };
 
 export type ReadPrVisual = (target: PrVisualTarget) => Promise<PixelRead>;
 
@@ -49,7 +49,7 @@ type Artifact = z.infer<typeof ArtifactSchema>;
 
 const unmeasured = (why: string): PixelRead => ({ unmeasured: why });
 
-export function execPrVisualGh(gh = "gh"): PrVisualGh {
+function execPrVisualGh(gh = "gh"): PrVisualGh {
   return {
     text: async (args, timeoutMs) => (await run(gh, [...args], { encoding: "utf8", timeout: timeoutMs, maxBuffer: 16 * MI })).stdout,
     bytes: async (args, timeoutMs, maxBytes) => (await run(gh, [...args], { encoding: "buffer", timeout: timeoutMs, maxBuffer: maxBytes })).stdout,

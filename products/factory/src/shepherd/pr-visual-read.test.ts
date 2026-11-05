@@ -1,6 +1,6 @@
 import zlib from "node:zlib";
 import type { MergeFacts } from "@titan-design/authority";
-import type { GitHubPort } from "@titan-design/github";
+import type { CompareResult, GitHubPort } from "@titan-design/github";
 import { encodePng } from "@titan-design/png-delta";
 import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
@@ -81,7 +81,7 @@ interface Artifact {
 function artifactZip({ pairs, manifest }: Artifact): Buffer {
   const shots = pairs.map((_, index) => shot(`button--s${index}`, "1280"));
   const files: Record<string, Buffer> = {};
-  pairs.forEach(([before, after], index) => Object.assign(files, { [shots[index].before]: before, [shots[index].after]: after }));
+  pairs.forEach(([before, after], index) => Object.assign(files, { [`before/button--s${index}@1280.png`]: before, [`after/button--s${index}@1280.png`]: after }));
   const body = { v: 1, repo: REPO, pr: 7, baseSha: BASE, headSha: HEAD, rendered: true, shots, ...manifest };
   return zipOf({ "manifest.json": Buffer.from(JSON.stringify(body)), ...files });
 }
@@ -96,7 +96,7 @@ function fakeGh(artifact: Artifact): PrVisualGh {
 }
 
 async function tierOf(artifact: Artifact, limits: { zipBytes?: number } = {}) {
-  const port = partialFake<Pick<GitHubPort, "compareFiles">>({ compareFiles: async () => partialFake({ mergeBaseSha: BASE }) });
+  const port = partialFake<Pick<GitHubPort, "compareFiles">>({ compareFiles: async () => partialFake<CompareResult>({ mergeBaseSha: BASE }) });
   const merge = partialFake<MergeFacts>({ head: HEAD, changedPaths: [RENDERED], checkRuns: [] });
   const target = { repo: REPO, baseRef: "main", visualPaths: ["src/**"], config, readPixel: ghPrVisual(fakeGh(artifact), limits) };
   return (await readVisualTier(port, merge, target))?.visualTier.verdict;

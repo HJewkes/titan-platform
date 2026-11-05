@@ -3,7 +3,7 @@
 // the whole archive shares, so the archive can make the read refuse but never make it do more work.
 import zlib from "node:zlib";
 
-export interface ZipLimits {
+interface ZipLimits {
   maxEntries: number;
   /** Every inflated byte the archive may yield, summed over the entries read. */
   maxInflatedBytes: number;
