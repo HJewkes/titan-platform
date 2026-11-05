@@ -27,7 +27,7 @@ export function waitHoursOf(gate: GateRecord): number {
 }
 
 function incidentsText(incidents: OutcomeFacts["incidents"]): string {
-  if (incidents === "unknown") return "incidents unknown (none linked to merges yet)";
+  if (incidents === "unknown") return "incidents unknown (no incident log or ancestry unreadable)";
   return incidents.length === 0 ? "no linked incident" : `${incidents.length} incident(s): ${incidents.map((incident) => incident.at).join(", ")}`;
 }
 

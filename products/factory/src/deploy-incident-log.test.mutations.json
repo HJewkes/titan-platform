@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an absent log reads as zero incidents",
+      "file": "products/factory/src/deploy-incident-log.ts",
+      "find": "text === undefined ? undefined : parseDeployIncidents(text)",
+      "replace": "parseDeployIncidents(text ?? \"\")",
+      "kills": ["deploy incident log reads an absent log as undefined"]
+    },
+    {
+      "name": "ensure truncates an existing log",
+      "file": "products/factory/src/deploy-incident-log.ts",
+      "find": "if (!ports.exists(path)) ports.writeFile(path, \"\");",
+      "replace": "ports.writeFile(path, \"\");",
+      "kills": ["deploy incident log creates an empty log when absent and never truncates one that exists"]
+    },
+    {
+      "name": "a record overwrites the log",
+      "file": "products/factory/src/deploy-incident-log.ts",
+      "find": "`${lead}${JSON.stringify(incident)}\\n`",
+      "replace": "`${JSON.stringify(incident)}\\n`",
+      "kills": ["deploy incident log records two incidents and reads both back in order"]
+    },
+    {
+      "name": "a record joins a torn last line",
+      "file": "products/factory/src/deploy-incident-log.ts",
+      "find": "const lead = text === \"\" || text.endsWith(\"\\n\") ? text : `${text}\\n`;",
+      "replace": "const lead = text;",
+      "kills": ["deploy incident log starts a new incident on its own line after a torn last line"]
+    },
+    {
+      "name": "lines are not checked against the incident shape",
+      "file": "products/factory/src/deploy-incident-log.ts",
+      "find": "const parsed = DeployIncidentSchema.safeParse(JSON.parse(line));\n    return parsed.success ? parsed.data : undefined;",
+      "replace": "return JSON.parse(line) as DeployIncident;",
+      "kills": ["deploy incident log skips a malformed line between two good ones"]
+    }
+  ]
+}

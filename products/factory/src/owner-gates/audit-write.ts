@@ -5,7 +5,9 @@ import type { GateRecord } from "@titan-design/hitl";
 import type { WorkflowRun } from "@titan-design/workflow";
 import { decisionClassOf, policyRowOf } from "../decision-class.js";
 import { gateStepOf } from "../needs/gate-card.js";
-import { outcomeFacts, runIdOf, type AuditIncident } from "./audit-facts.js";
+import type { AncestryProbe } from "../build-ancestry.js";
+import { gateMergeSha, outcomeFacts, runIdOf, type AuditIncident, type IncidentLinks } from "./audit-facts.js";
+import { linkIncidents } from "./audit-incidents.js";
 import { judgeOrUnavailable, type AuditJudge } from "./audit-judge.js";
 import { renderAudit, waitHoursOf, type AuditItem } from "./audit-render.js";
 import { sampleOwnerGates, weekPopulation, weekSeed } from "./audit-sample.js";
@@ -43,6 +45,8 @@ interface AuditInputs {
   runs: readonly WorkflowRun[];
   /** Undefined when no incident record was read; the report then says incidents are unknown. */
   incidents: readonly AuditIncident[] | undefined;
+  /** Ancestry in a checkout that holds every merge and deploy target, to tell which rollout first brought a merge in. */
+  isAncestor: AncestryProbe;
   now: number;
   /** Undefined runs the audit with no judge, as `--no-judge` does. */
   judge: AuditJudge | undefined;
@@ -58,8 +62,8 @@ function classOf(gate: GateRecord): string | undefined {
   return decisionClassOf({ ...row, step: gateStepOf(gate.id), prompt: gate.prompt });
 }
 
-async function auditItem(gate: GateRecord, inputs: AuditInputs): Promise<AuditItem> {
-  const facts = outcomeFacts(gate, inputs.runs, inputs.incidents, inputs.now);
+async function auditItem(gate: GateRecord, inputs: AuditInputs, links: IncidentLinks | undefined): Promise<AuditItem> {
+  const facts = outcomeFacts(gate, inputs.runs, links, inputs.now);
   const question = gate.questions?.[0]?.question ?? gate.summary ?? gate.prompt.split("\n", 1)[0]!;
   const cls = classOf(gate);
   const input = { gateId: gate.id, class: cls, question, answer: facts.decision, waitHours: waitHoursOf(gate), evidence: gate.resolvedEvidence, facts };
@@ -67,10 +71,18 @@ async function auditItem(gate: GateRecord, inputs: AuditInputs): Promise<AuditIt
   return { gate, class: cls, prUrl, question, facts, judge: await judgeOrUnavailable(inputs.judge, input) };
 }
 
+async function sampledLinks(sampled: readonly GateRecord[], inputs: AuditInputs): Promise<IncidentLinks | undefined> {
+  if (inputs.incidents === undefined) return undefined;
+  const merges = sampled.flatMap((gate) => gateMergeSha(gate, inputs.runs) ?? []);
+  return linkIncidents(inputs.incidents, merges, inputs.isAncestor);
+}
+
 /** Samples the week, reads each decision's outcome and judge note, and renders the file; writes nothing. */
 export async function buildAudit(inputs: AuditInputs): Promise<{ items: AuditItem[]; markdown: string }> {
+  const sampled = sampleOwnerGates(inputs.gates, inputs.week);
+  const links = await sampledLinks(sampled, inputs);
   const items: AuditItem[] = [];
-  for (const gate of sampleOwnerGates(inputs.gates, inputs.week)) items.push(await auditItem(gate, inputs));
+  for (const gate of sampled) items.push(await auditItem(gate, inputs, links));
   const header = { week: inputs.week, seed: weekSeed(inputs.week), population: weekPopulation(inputs.gates, inputs.week).length };
   return { items, markdown: renderAudit(header, items) };
 }
