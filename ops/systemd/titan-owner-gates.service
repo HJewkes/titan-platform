@@ -1,0 +1,18 @@
+# Weekly owner-gates pass: audit last ISO week's owner-resolved gates, then run the approve-rate
+# report and file its demotion cards with that audit consulted (TP-2404).
+# Install steps: products/factory/README.md, "Owner gates: weekly report and audit".
+[Unit]
+Description=Titan factory: weekly owner-gate audit and approve-rate report
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment="PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
+# Sets CLAUDE_CONFIG_DIR (a pool account, never the owner's own profile), ACTIVE_ROOT and
+# TITAN_FACTORY_DB; required, so a host without it fails rather than judging under the wrong login.
+EnvironmentFile=%h/.config/titan-factory/owner-gates.env
+# The serve unit's own build: the dedicated deploy checkout `service deploy` keeps current.
+ExecStart=/usr/bin/node %h/.local/share/titan-factory/deploy/titan-platform/products/factory/dist/bin.js owner-gates weekly
+TimeoutStartSec=30min
+Nice=10
+IOSchedulingClass=idle
