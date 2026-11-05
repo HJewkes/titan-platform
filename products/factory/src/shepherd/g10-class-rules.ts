@@ -93,8 +93,15 @@ const SIGNOFF_POLICY_FILES = [
   "packages/review-panel/src/**",
 ];
 
-/** The hold-closure check as one unit: the test, its sidecar, its walk and the list it keeps. Test file or not, it is policy. */
-const HOLD_CLOSURE_CHECK_FILES = ["g10-hold-closure.test.ts", "g10-hold-closure.test.mutations.json", "g10-hold-closure.test-helpers.ts", "g10-hold-closure.json"].map(inShepherd);
+/**
+ * The hold table's completeness checks as one unit: the hold-closure test, its sidecar, its walk and the list it keeps,
+ * and the importer check (TP-3764) with its sidecar. Test file or not, each is policy: deleting one lets an unheld module
+ * through in the same pull request.
+ */
+const HOLD_CLOSURE_CHECK_FILES = [
+  ...["g10-hold-closure.test.ts", "g10-hold-closure.test.mutations.json", "g10-hold-closure.test-helpers.ts", "g10-hold-closure.json"],
+  ...["hold-table-coverage.test.ts", "hold-table-coverage.test.mutations.json"],
+].map(inShepherd);
 
 const matchesHeldCheck = compileGlobs([...GATE_RESOLVE_CHECK_FILES, ...HOLD_CLOSURE_CHECK_FILES]);
 /** Case-folded (TP-4158): a case-insensitive checkout still imports `Gate-Resolve-x.test-helpers.ts` as the helper. */
