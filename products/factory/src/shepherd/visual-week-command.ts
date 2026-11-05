@@ -1,4 +1,5 @@
-// The read-only batch read behind `titan-factory shepherd visual-week` (TP-4761 S3): it prints the round spec and resolves nothing.
+// The batch read behind `titan-factory shepherd visual-week` (TP-4761 S3): it prints the round spec and resolves nothing; with images it also writes the round's pr-visual pairs.
+import { isAbsolute } from "node:path";
 import { EXIT, defineCommand } from "@titan-design/registry";
 import { z } from "zod";
 import type { FactoryContext } from "../context.js";
@@ -6,7 +7,8 @@ import { RepoArg, coded } from "./register-args.js";
 import { visualWeekBatch, type VisualWeekBatch } from "./visual-week.js";
 import { visualWeekWithVisuals } from "./visual-week-visuals.js";
 
-const VisualWeekArgs = z.object({ repo: RepoArg, images: z.string().min(1).optional() });
+// Absolute only: an MCP caller's relative path would otherwise land wherever the hub happens to run.
+const VisualWeekArgs = z.object({ repo: RepoArg, images: z.string().refine(isAbsolute, "images must be an absolute directory path").optional() });
 
 export const visualWeekCommand = defineCommand<z.infer<typeof VisualWeekArgs>, VisualWeekBatch, FactoryContext>({
   name: "shepherd.visual-week",
