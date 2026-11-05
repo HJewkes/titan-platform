@@ -10,6 +10,7 @@ import type { GateNotifyOptions } from "./gate-notify-sweep.js";
 import type { ConsoleAnswersOptions } from "./gate-answer-rpc.js";
 import type { SourcesReader } from "./github-sources/mode.js";
 import type { FactoryHost, FactoryHostOptions, FactoryRoutes } from "./host.js";
+import type { OwnerGatesAuditDeps } from "./owner-gates/audit-command.js";
 import type { PlannerDeps } from "./planner/command.js";
 import type { ServeReconciler } from "./reconciler/bot-ports.js";
 import type { CheckPorts } from "./service-check.js";
@@ -76,6 +77,8 @@ export interface CliDeps {
   bot?: () => BotIdentity;
   /** The deprecation lines the serve verb logs at start for the config file; absent means it logs none. */
   configDeprecations?: (env: NodeJS.ProcessEnv) => string[];
+  /** What `owner-gates audit` and `weekly` judge, probe ancestry and read the clock through; defaults to sonnet via `claude -p`, the deploy checkout and the system clock. */
+  ownerGatesAudit?: OwnerGatesAuditDeps;
   /** What `planner wake` runs agent-chat and its input commands through; defaults to the real machine. */
   planner?: PlannerDeps;
   /** What `blocker raise` asks for the inbox link; defaults to the configured titan-console argv. */

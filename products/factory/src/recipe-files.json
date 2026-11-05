@@ -17,6 +17,7 @@
   "shepherd/fix-carry.ts",
   "shepherd/fix-proof-cap.ts",
   "shepherd/fix-proof.ts",
+  "shepherd/follow-ups-step.ts",
   "shepherd/freeze-hold.ts",
   "shepherd/main-rerun.ts",
   "shepherd/merge-evidence-gate.ts",

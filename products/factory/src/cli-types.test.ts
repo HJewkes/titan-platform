@@ -15,6 +15,7 @@ describe("cli-types leaf", () => {
       "./gate-notify-sweep.js",
       "./github-sources/mode.js",
       "./host.js",
+      "./owner-gates/audit-command.js",
       "./planner/command.js",
       "./reconciler/bot-ports.js",
       "./serve-ingress.js",

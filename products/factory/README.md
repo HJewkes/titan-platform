@@ -481,6 +481,49 @@ unset, that reader uses `<active root>/claude-channels/sources/autonomy/queues`.
 absolute. `consoleOrigin` (for example `https://console.example.ts.net`) is the origin of the digest's
 stale-gate alarm links; it must be https and not loopback, and without it the alarm prints with no links.
 
+## Owner gates: weekly report and audit
+
+`titan-factory owner-gates report` prints, per decision class over the trailing 14 days, the
+owner-answered gates, the approve rate, cancelled-unanswered and the median wait. It flags a class
+at 95% or more approve over 20 or more answered gates. `--deposit` files one two-way demotion card
+per flagged class.
+
+`titan-factory owner-gates audit [--week <YYYY-Www>] [--dry-run] [--force] [--no-judge]` checks
+whether those approvals held up:
+
+- It samples 5 owner-resolved gates from the ISO week (default: the previous week), or all of
+  them when there are fewer. The shuffle is seeded by sha256 of the week, so a re-run draws the
+  same sample.
+- For each gate it reads the 72 h outcome: a revert, a red `sh-main-ci` or a deploy incident.
+  Incidents come from `deploy-incidents.jsonl` in the factory state dir, linked to the merge through
+  ancestry in the deploy checkout. If that log is missing, or ancestry cannot answer, the item
+  reads `incidents unknown`, never "no incident". If the window is still open, the item says so
+  instead of reading clean.
+- It adds one sonnet note per gate (`claude -p`, one turn, no tools, $1 cap). If the judge fails,
+  the file is still written and that gate reads `judge unavailable: <kind>`.
+- It writes `<active root>/titan-platform/sources/owner-gate-audit-<YYYY-Www>.md`. The active
+  root comes from `ACTIVE_ROOT`. The verb refuses to replace an existing week without
+  `--force`, and `--dry-run` prints the markdown instead of writing it.
+
+`titan-factory owner-gates weekly` audits the previous ISO week, keeping a file that is already
+written. It then runs `report --deposit` with that audit consulted, so a class where the sample
+found a bad outcome is held rather than proposed for demotion.
+
+The Monday 06:00 timer is `ops/systemd/titan-owner-gates.{service,timer}`. It runs `weekly` from
+the deploy checkout. Install it once per host:
+
+```sh
+install -m 0600 /dev/null ~/.config/titan-factory/owner-gates.env   # then set the keys below
+cp ops/systemd/titan-owner-gates.{service,timer} ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now titan-owner-gates.timer
+```
+
+The env file sets `CLAUDE_CONFIG_DIR` (a pool account's profile, never the owner's own),
+`ACTIVE_ROOT` and `TITAN_FACTORY_DB`. Smoke check under that config dir:
+`claude -p --model sonnet --max-turns 1 "reply ok"`, then
+`titan-factory owner-gates audit --dry-run`.
+
 ## Owner-queue sources
 
 `src/needs/` holds the factory's `QueueSource` adapters for `@titan-design/owner-queue`. Each

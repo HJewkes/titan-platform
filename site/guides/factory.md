@@ -925,6 +925,25 @@ The digest covers every seat in the seat book in under 400 words: Needs you, Dec
 (the decider's answers, each with its overrule command), Merged, Stuck, Seats and Spend. A source that cannot be read becomes a Gaps line instead of a failure. The
 `digest` config block and the sources are in the package README, under "Owner digest".
 
+## `owner-gates`
+
+```sh
+titan-factory owner-gates report [--since 14d] [--json] [--deposit]
+titan-factory owner-gates audit --week 2026-W41 --dry-run   # print last week's sample, write nothing
+titan-factory owner-gates audit                             # write the previous week's audit file
+titan-factory owner-gates weekly                            # audit the previous week, then report --deposit
+```
+
+`report` gives the owner's approve rate per decision class and flags rubber-stamp candidates.
+`audit` samples 5 owner-resolved gates from one ISO week. The sample is seeded by the week, so
+a re-run draws the same gates. For each gate it reads the 72 h outcome (a revert, a red main, or
+a deploy incident linked to the merge) and adds a sonnet judge note. It writes
+`<active root>/titan-platform/sources/owner-gate-audit-<YYYY-Www>.md`. If the incident log or
+ancestry cannot be read, the item reads `incidents unknown`. If the judge fails, that item reads
+`judge unavailable`, and the file is still written. `weekly` is what the Monday timer
+`ops/systemd/titan-owner-gates.timer` runs. The env file and install steps are in the package
+README, under "Owner gates: weekly report and audit".
+
 ## Install as a service
 
 On macOS, one verb installs `titan-factory serve` as the LaunchAgent
