@@ -57,6 +57,7 @@
   "fixer-limit.ts",
   "flake-check.ts",
   "follow-ups-file.ts",
+  "follow-ups-step.ts",
   "gate-evidence.ts",
   "gate-route.ts",
   "gates.ts",

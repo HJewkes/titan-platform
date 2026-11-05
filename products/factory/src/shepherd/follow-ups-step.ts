@@ -12,12 +12,18 @@ export const FOLLOW_UPS_STEP = "sh-follow-ups";
 export const FOLLOW_UPS_STEPS: readonly StepDeclaration[] = [{ id: FOLLOW_UPS_STEP, kind: "dispatch" }];
 
 /** Each active-work call gets this long; the loopback daemon answers in milliseconds, and `liveSource` itself has no timeout. */
-export const FOLLOW_UPS_RPC_TIMEOUT_MS = 10_000;
+const FOLLOW_UPS_RPC_TIMEOUT_MS = 10_000;
+
+export interface FollowUpsWiring {
+  /** Where a verdict's follow-ups are filed; absent records each block as `skipped: "unwired"`. */
+  followUps?: FollowUpTasks;
+}
 
 const Warning = z.enum(FOLLOW_UPS_WARNINGS);
-const FollowUpsInput = z.looseObject({ runId: z.string(), task: z.string().optional(), repo: z.string(), pr: z.number(), head: z.string(), reviewer: z.string(), followUps: z.array(FollowUpSchema).optional(), followUpsWarning: Warning.optional() });
+const Where = { runId: z.string(), task: z.string().optional(), repo: z.string(), pr: z.number(), head: z.string(), reviewer: z.string() };
+const FollowUpsInput = z.looseObject({ ...Where, followUps: z.array(FollowUpSchema).optional(), followUpsWarning: Warning.optional() });
 type FollowUpsInput = z.infer<typeof FollowUpsInput>;
-const FiledSchema = z.looseObject({ title: z.string(), id: z.string(), deduped: z.boolean() });
+const FiledSchema = z.object({ title: z.string(), id: z.string(), deduped: z.boolean() });
 const FollowUpsResult = z.looseObject({ filed: z.array(FiledSchema), warning: z.string().optional(), skipped: z.string().optional(), error: z.string().optional() });
 type FollowUpsResult = z.infer<typeof FollowUpsResult>;
 
@@ -53,7 +59,7 @@ function taskRef(task: string | undefined): { initiative: string; parent: string
 
 /** Never throws: the step sits between a verdict and its next step, so a filing that fails is recorded and the verdict goes on. */
 export async function followUpsBody(tasks: FollowUpTasks | undefined, input: FollowUpsInput, signal: AbortSignal, timeoutMs = FOLLOW_UPS_RPC_TIMEOUT_MS): Promise<FollowUpsResult> {
-  const warning = input.followUpsWarning && { warning: input.followUpsWarning };
+  const warning: { warning?: FollowUpsWarning } = input.followUpsWarning === undefined ? {} : { warning: input.followUpsWarning };
   const items = input.followUps ?? [];
   if (items.length === 0) return { filed: [], ...warning };
   if (!tasks) return { filed: [], ...warning, skipped: "unwired" };
@@ -93,6 +99,7 @@ export async function fileFollowUpsAt(ctx: WorkflowContext, target: ReviewTarget
   if (next !== undefined && !stepIdMatches(FOLLOW_UPS_STEP, next)) return;
   const reviewer = z.object({ agentId: z.string() }).safeParse(awaited.reviewer);
   const task = ctx.param("task");
-  const input = { runId: ctx.runId, ...(task !== undefined && { task }), repo: target.repo, pr: target.pr, head: target.head, reviewer: reviewer.success ? reviewer.data.agentId : "unknown", ...found };
+  const where = { runId: ctx.runId, ...(task !== undefined && { task }), repo: target.repo, pr: target.pr, head: target.head };
+  const input = { ...where, reviewer: reviewer.success ? reviewer.data.agentId : "unknown", ...found };
   await step(ctx, `${FOLLOW_UPS_STEP}:${target.head}${suffix}`, input, FollowUpsResult);
 }

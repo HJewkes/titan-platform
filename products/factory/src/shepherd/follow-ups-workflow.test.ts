@@ -169,26 +169,27 @@ describe("the sh-follow-ups step at a verdict", () => {
 });
 
 describe("fileFollowUpsAt on replay", () => {
-  const verdict = { kind: "verdict" as const, verdict: "MERGE" as const, head: H1, locator: {}, reviewer: { agentId: "agent-r", sessionId: "s" }, followUps: [{ title: "Cache it", doneWhen: "Cached", severity: "low" as const }] };
+  const verdict = { kind: "verdict" as const, verdict: "MERGE" as const, head: H1, locator: locatorIn("s"), reviewer: { agentId: "agent-r", sessionId: "s" }, followUps: [{ title: "Cache it", doneWhen: "Cached", severity: "low" as const }] };
   const ctxWith = (recordedNext: string | undefined) => {
-    const dispatch = vi.fn(async () => ({ data: { result: { filed: [] } } }));
-    return { dispatch, ctx: partialFake<WorkflowContext>({ runId: "run-1", dispatch, historyNext: () => recordedNext, param: () => "demo/DM-1" }) };
+    const dispatched: string[] = [];
+    const dispatch = async (stepId: string) => (dispatched.push(stepId), { data: { result: { filed: [] } } });
+    return { dispatched, ctx: Object.assign(partialFake<WorkflowContext>(), { runId: "run-1", dispatch, historyNext: () => recordedNext, param: () => "demo/DM-1" }) };
   };
 
   it("a run replaying a ledger recorded before sh-follow-ups existed skips the step", async () => {
-    const { ctx, dispatch } = ctxWith(`merge-evidence:${H1}`);
+    const { ctx, dispatched } = ctxWith(`sh-merge-evidence:${H1}`);
 
     await fileFollowUpsAt(ctx, { repo: REPO, pr: 1, head: H1 }, verdict);
 
-    expect(dispatch).not.toHaveBeenCalled();
+    expect(dispatched).toEqual([]);
   });
 
   it("a run whose ledger already holds the step replays it", async () => {
-    const { ctx, dispatch } = ctxWith(`${FOLLOW_UPS_STEP}:${H1}`);
+    const { ctx, dispatched } = ctxWith(`${FOLLOW_UPS_STEP}:${H1}`);
 
     await fileFollowUpsAt(ctx, { repo: REPO, pr: 1, head: H1 }, verdict);
 
-    expect(dispatch).toHaveBeenCalledOnce();
+    expect(dispatched).toEqual([`${FOLLOW_UPS_STEP}:${H1}`]);
   });
 });
 
