@@ -7,7 +7,7 @@ import { visualTier } from "./visual-tier.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DECISION_ROOTS = ["visual-tier.ts", "visual-tier-guard.ts", "merge-facts.ts"].map((file) => resolve(HERE, file));
-const EVIDENCE = new Set(["pr-visual-evidence.ts", "pr-visual-zip.ts"].map((file) => resolve(HERE, file)));
+const EVIDENCE = new Set(["pr-visual-evidence.ts", "pr-visual-zip.ts", "pr-visual-round.ts"].map((file) => resolve(HERE, file)));
 const RELATIVE_IMPORT = /(?:from|import)\s*\(?\s*["'](\.{1,2}\/[^"']+)\.js["']/g;
 
 /** Every local source file the roots reach through static, re-export or dynamic imports. */

@@ -101,9 +101,11 @@ function registerRunVerbs(verb: VerbOf, verbs: Verbs): void {
 
 /** TP-4761 S3: the weekly Ship batch for a repo's pending visual-path gates, printed. Reads gates and holds; resolves nothing. */
 function registerVisualWeekVerb(verb: VerbOf, verbs: Verbs): void {
-  verb("visual-week", "print as JSON the weekly Ship batch round spec for --repo: one merge-bound question per pending visual-path approve-merge gate at a current, unheld head; read-only, resolves no gate")
+  verb("visual-week", "print as JSON the weekly Ship batch round spec for --repo: one merge-bound question per pending visual-path approve-merge gate at a current, unheld head; resolves no gate. With --images, writes each PR's pr-visual before and after pairs under that directory and adds a section per PR")
     .requiredOption("--repo <owner/repo>", "the repo whose pending visual-path gates to batch")
-    .action((opts: ShepherdOpts & { repo: string }) => runShepherd(verbs, "shepherd.visual-week", () => ({ repo: opts.repo }), opts));
+    .option("--images <dir>", "a round directory to write each PR's pr-<n>/ pairs and manifest.json into")
+    .action((opts: ShepherdOpts & { repo: string; images?: string }) =>
+      runShepherd(verbs, "shepherd.visual-week", () => ({ repo: opts.repo, ...(opts.images !== undefined && { images: resolve(opts.images) }) }), opts));
 }
 
 /** TP-1696: the owner PR section for one PR, printed. Reads GitHub, Shepherd and active-work; writes nothing. */
