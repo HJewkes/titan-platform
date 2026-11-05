@@ -9,6 +9,7 @@ import {
   checkAgentsMatchesClaude,
   checkBotTokenReaders,
   checkLayersMatchTiers,
+  checkNoCarryImports,
   checkNoFileDependencies,
   checkNoNpmToken,
   checkNoPython,
@@ -70,6 +71,20 @@ function uncoveredWorkspaceRoot() {
     writeFileSync(join(root, dir, "package.json"), "{}");
   }
   return root;
+}
+
+function carryImportRoot(files) {
+  const root = tempRoot("structure-carry-");
+  mkdirSync(join(root, ".github"), { recursive: true });
+  writeFileSync(join(root, ".github/fix-proof.json"), JSON.stringify({ tests: ["**/*.test.ts"], carry: ["**/fixtures/**"] }));
+  mkdirSync(join(root, "packages/a/src/fixtures"), { recursive: true });
+  for (const [path, text] of Object.entries(files)) writeFileSync(join(root, "packages/a", path), text);
+  return root;
+}
+
+const CARRY_IMPORT = 'import data from "./fixtures/data.js";\nexport { data };\n';
+function carryImportViolationRoot() {
+  return carryImportRoot({ "src/fixtures/data.ts": "export default 1;\n", "src/use.ts": CARRY_IMPORT });
 }
 
 function undeclaredImportRoot() {
@@ -234,6 +249,12 @@ const cases = [
     message: "`packages/a/src/x.test.ts` imports `@titan-design/c`, which `@titan-design/a` does not declare.",
   },
   {
+    rule: "R60 no source file imports a fix-proof test or carry path",
+    check: checkNoCarryImports,
+    root: carryImportViolationRoot,
+    message: "`packages/a/src/use.ts` imports `packages/a/src/fixtures/data.ts`, which `.github/fix-proof.json` lists as a test or carry path.",
+  },
+  {
     rule: "R59 no Python file in a package or product",
     check: checkNoPython,
     root: () => pythonRoot("structure-py-file-", { files: { "tools/x.py": "print(1)\n" } }),
@@ -258,6 +279,23 @@ const cases = [
     message: "Rule `no-debugger` is set to warn in `eslint.config.js`. Set it to error or remove it. Warnings are not allowed.",
   },
 ];
+
+describe("R60 who may import a carried path", () => {
+  it("lets a test file import a carried helper", async () => {
+    const root = carryImportRoot({ "src/fixtures/data.ts": "export default 1;\n", "src/use.test.ts": CARRY_IMPORT });
+    expect(await checkNoCarryImports(root)).toEqual([]);
+  });
+
+  it("lets a carried file import another carried file", async () => {
+    const root = carryImportRoot({ "src/fixtures/data.ts": "export default 1;\n", "src/fixtures/more.ts": 'import "./data.js";\n' });
+    expect(await checkNoCarryImports(root)).toEqual([]);
+  });
+
+  it("ignores a source import of another source file and of a package", async () => {
+    const root = carryImportRoot({ "src/other.ts": "export {};\n", "src/use.ts": 'import "./other.js";\nimport { x } from "zod";\n' });
+    expect(await checkNoCarryImports(root)).toEqual([]);
+  });
+});
 
 describe("R47 a package that ships a bin", () => {
   it("may list zod under dependencies, because npx runs the bin with no host to supply the peer", () => {
