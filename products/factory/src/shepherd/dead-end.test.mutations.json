@@ -18,6 +18,16 @@
       "kills": [
         "a dead-end seat gate respawn waits for a new head and opens no second gate at that head; a third respawn is not offered"
       ]
+    },
+    {
+      "name": "the repo seat is named whether or not it holds a live session",
+      "file": "products/factory/src/shepherd/dead-end.ts",
+      "find": "seat !== undefined && holdsLiveSession(seat, roster)",
+      "replace": "seat !== undefined",
+      "kills": [
+        "a dead-end gate's repo-seat fallback a retired single seat leaves the gate the owner's",
+        "a dead-end gate's repo-seat fallback a live hubSeat stands in for a retired single seat"
+      ]
     }
   ]
 }

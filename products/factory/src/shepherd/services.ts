@@ -44,6 +44,8 @@ export interface ShepherdServices extends SnapshotServices {
   thawAlert?: ThawAlertPorts;
   /** agent-chat's roster, which a retire-agent op's read-back reads; absent means that read-back answers unavailable. */
   roster?: { rows(): Promise<readonly AgentRow[]> };
+  /** The config's shepherd.hubSeat, which stands in for a retired repo seat in `readdress-dead-ends`; absent means none does. */
+  hubSeat?: () => string | undefined;
   /** Merge-order reservations and the waits the merge guard read last; absent means `shepherd order` refuses and status shows neither. */
   mergeOrder?: MergeOrderServices;
   /** `shepherd.visualThreshold` for a repo, which `shepherd visual-delta` measures under; absent means that command refuses. */

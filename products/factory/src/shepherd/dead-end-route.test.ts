@@ -7,6 +7,7 @@ import { openFactoryHost, type FactoryHost } from "../host.js";
 import { deadEndRoutes } from "../test-support/dead-end.js";
 import { REGISTRANT, deadEndSeatOn, exitWorld, routeWorkflow, startExit } from "../test-support/dead-end-route.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
+import { liveRow } from "../test-support/registrant-routing.js";
 import { OWNER } from "../test-support/resolver.js";
 
 const H2 = fakeSha("dead-end-route-2");
@@ -33,7 +34,7 @@ describe("a fixer's exit with no push, with the dead-end seat route on (TP-4759)
 
   it("with no resolvable seat the owner's sent-back gate opens as before, never the hub seat's", async () => {
     deadEndSeatOn();
-    const world = exitWorld({ kind: "fix-proof", roster: [], hubSeat: "tc-hub" });
+    const world = exitWorld({ kind: "fix-proof", roster: [liveRow("tc-hub")], hubSeat: "tc-hub" });
     const runId = startExit(world);
 
     await gateOpened(world.host, gateId(runId, "sh-sent-back"));
