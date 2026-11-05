@@ -22,15 +22,8 @@ function importClosure(roots: readonly string[]): Set<string> {
   return seen;
 }
 
-const config = {
-  mode: "on",
-  storyPaths: ["src/**/*.stories.tsx"],
-  logicPaths: ["src/**"],
-  testArtifactPaths: ["src/contrast-baseline.json"],
-  renderingPaths: ["src/tokens/**"],
-  harnessPaths: ["scripts/capture/**"],
-  storyDiff: { check: "visual", paths: ["**/__snapshots__/**"], allowedApps: [15368] },
-};
+const paths = { storyPaths: ["**/*.stories.tsx"], logicPaths: ["src/**"], testArtifactPaths: ["**/*.json"], renderingPaths: ["src/tokens/**"], harnessPaths: ["scripts/**"] };
+const tierConfig = { mode: "on", ...paths, storyDiff: { check: "visual", paths: ["**/__snapshots__/**"], allowedApps: [1] } };
 
 describe("pr-visual evidence never reaches the visual tier (TP-4761 C1)", () => {
   it("the merge guard cannot import pr-visual evidence", () => {
@@ -44,7 +37,7 @@ describe("pr-visual evidence never reaches the visual tier (TP-4761 C1)", () => 
     const evidence = await evidenceOf({ pairs: [[png(), png()]] });
     const merge = { head: HEAD, changedPaths: ["src/button/button.tsx"], checkRuns: [] };
 
-    const verdict = visualTier({ merge, visualPaths: ["src/**"], mergeBase: BASE, config, ...{ evidence } });
+    const verdict = visualTier({ merge, visualPaths: ["src/**"], mergeBase: BASE, config: tierConfig, ...{ evidence } });
 
     expect(evidence).toMatchObject({ measured: true, missing: [] });
     expect(verdict).toEqual({ tier: 2, reason: "renders: src/button/button.tsx" });

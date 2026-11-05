@@ -1,4 +1,3 @@
-import zlib from "node:zlib";
 import { encodePng } from "@titan-design/png-delta";
 import { ghPrVisualEvidence, type PrVisualEvidence, type PrVisualGh } from "./pr-visual-evidence.js";
 
@@ -15,46 +14,27 @@ export function png(nudge = 0): Buffer {
   return encodePng({ width: 2, height: 2, rgba });
 }
 
-function headers(name: string, data: Buffer, packed: Buffer, offset: number): [Buffer, Buffer] {
-  const fields = Buffer.alloc(12);
-  fields.writeUInt32LE(zlib.crc32(data), 0);
-  fields.writeUInt32LE(packed.length, 4);
-  fields.writeUInt32LE(data.length, 8);
-  const local = Buffer.alloc(30);
-  local.writeUInt32LE(0x04034b50, 0);
-  local.writeUInt16LE(8, 8);
-  fields.copy(local, 14);
-  local.writeUInt16LE(name.length, 26);
-  const central = Buffer.alloc(46);
-  central.writeUInt32LE(0x02014b50, 0);
-  central.writeUInt16LE(8, 10);
-  fields.copy(central, 16);
-  central.writeUInt16LE(name.length, 28);
-  central.writeUInt32LE(offset, 42);
-  return [local, central];
+/** A little-endian record of `size` bytes, with each `[offset, value, width]` written in. */
+function record(size: number, fields: readonly (readonly [number, number, 2 | 4])[]): Buffer {
+  const out = Buffer.alloc(size);
+  for (const [at, value, width] of fields) out.writeUIntLE(value, at, width);
+  return out;
 }
 
-/** A deflate zip of `files`; `zip64` marks the first entry's size as a zip64 placeholder. */
+/** A stored zip of `files`; `zip64` marks the first entry's size as a zip64 placeholder. */
 function zipOf(files: Record<string, Buffer>, zip64 = false): Buffer {
   const locals: Buffer[] = [];
   const centrals: Buffer[] = [];
   let offset = 0;
   for (const [name, data] of Object.entries(files)) {
-    const packed = zlib.deflateRawSync(data);
-    const [local, central] = headers(name, data, packed, offset);
-    if (zip64 && centrals.length === 0) central.writeUInt32LE(0xffffffff, 24);
-    locals.push(local, Buffer.from(name), packed);
-    centrals.push(central, Buffer.from(name));
-    offset += local.length + name.length + packed.length;
+    const size = zip64 && centrals.length === 0 ? 0xffffffff : data.length;
+    locals.push(record(30, [[0, 0x04034b50, 4], [18, data.length, 4], [22, data.length, 4], [26, name.length, 2]]), Buffer.from(name), data);
+    centrals.push(record(46, [[0, 0x02014b50, 4], [20, data.length, 4], [24, size, 4], [28, name.length, 2], [42, offset, 4]]), Buffer.from(name));
+    offset += 30 + name.length + data.length;
   }
   const directory = Buffer.concat(centrals);
-  const eocd = Buffer.alloc(22);
-  eocd.writeUInt32LE(0x06054b50, 0);
-  eocd.writeUInt16LE(centrals.length / 2, 8);
-  eocd.writeUInt16LE(centrals.length / 2, 10);
-  eocd.writeUInt32LE(directory.length, 12);
-  eocd.writeUInt32LE(offset, 16);
-  return Buffer.concat([...locals, directory, eocd]);
+  const count = centrals.length / 2;
+  return Buffer.concat([...locals, directory, record(22, [[0, 0x06054b50, 4], [8, count, 2], [10, count, 2], [12, directory.length, 4], [16, offset, 4]])]);
 }
 
 export const shotOf = (story: string, width: string) => ({ story, width, before: `before/${story}@${width}.png`, after: `after/${story}@${width}.png` });

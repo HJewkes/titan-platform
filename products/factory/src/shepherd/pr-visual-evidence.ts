@@ -37,10 +37,7 @@ const CAPS = { inflatedBytes: 128 * MI, entries: 256, shots: 100, selected: 500,
 const STORY_ID = /^[a-z0-9][a-z0-9-]{0,199}$/;
 const WIDTH = /^[0-9]{1,5}$/;
 
-interface ReadLimits {
-  timeoutMs: number;
-  zipBytes: number;
-}
+type ReadLimits = { timeoutMs: number; zipBytes: number };
 
 const DEFAULT_LIMITS: ReadLimits = { timeoutMs: 60_000, zipBytes: 64 * MI };
 const run = promisify(execFile);
