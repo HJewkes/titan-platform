@@ -1586,6 +1586,9 @@ importers:
       '@titan-design/dispatch-ledger':
         specifier: workspace:^
         version: link:../../packages/dispatch-ledger
+      '@titan-design/evidence':
+        specifier: workspace:^
+        version: link:../../packages/evidence
       '@titan-design/fix-proof':
         specifier: workspace:^
         version: link:../../packages/fix-proof
