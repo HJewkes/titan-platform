@@ -116,53 +116,87 @@ export function computeDeltaAffected(
 
 /**
  * A file's export surface as importers resolve against it: the ids of its
- * exported symbols and of their members, then its re-export edges. A re-export
+ * exported symbols and of their members, and its re-export edges. A re-export
  * edge carries a count, not the names, so when the file's own text changed and
  * it re-exports anything, the surface is unknown (null) and counts as changed.
  */
-function exportSurface(symbols: readonly GraphNode[], edges: readonly GraphEdge[], textChanged: boolean): string[] | null {
+interface ExportSurface {
+  symbols: string[];
+  reExports: string[];
+}
+
+function exportSurface(symbols: readonly GraphNode[], edges: readonly GraphEdge[], textChanged: boolean): ExportSurface | null {
   const reExports = edges.filter((e) => e.kind === "re-exports");
   if (textChanged && reExports.length > 0) return null;
   const exported = new Set(symbols.filter((n) => isExported(n)).map((n) => ownerName(n.id)));
-  const members = symbols.filter((n) => exported.has(ownerName(n.id))).map((n) => n.id);
-  return [...members, ...reExports.map((e) => `${e.dstId} ${JSON.stringify(e.attrs ?? {})}`)].sort();
+  return {
+    symbols: symbols.filter((n) => exported.has(ownerName(n.id))).map((n) => n.id).sort(),
+    reExports: reExports.map((e) => `${e.dstId} ${JSON.stringify(e.attrs ?? {})}`).sort(),
+  };
 }
 
 /** The top-level declaration a symbol id belongs to: `f#Class.method` → `Class`. */
 const ownerName = (id: string): string => id.slice(id.indexOf("#") + 1).split(".")[0] ?? "";
 
+/** The name a symbol id ends in: `f#Class.method` → `method`. */
+const leafName = (id: string): string => id.slice(id.indexOf("#") + 1).split(".").pop() ?? "";
+
 const isExported = (n: GraphNode): boolean => (n.attrs as { exported?: boolean } | undefined)?.exported === true;
 
-function sameSurface(a: string[] | null, b: string[] | null): boolean {
-  return a !== null && b !== null && a.length === b.length && a.every((id, i) => id === b[i]);
+function sameList(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((id, i) => id === b[i]);
 }
 
 /**
- * Parsed or removed files whose export surface differs from the basis. A body
- * edit leaves the surface as it was, so importers of that file stay reused.
- * `textChanged` names the parsed files whose bytes differ from the basis.
+ * The symbol ids a surface change added or removed, or null when an importer's
+ * text cannot show whether it depends on them: the file was removed, its re-exports
+ * changed or are unknown, or a changed name is `default` or no identifier, which an
+ * importer binds without writing the name (TP-3676).
  */
-export function surfaceChangedIds(
+type SurfaceDelta =ReadonlySet<string> | null;
+
+const IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
+
+function surfaceDelta(before: ExportSurface | null, after: ExportSurface | null): SurfaceDelta {
+  if (!before || !after || !sameList(before.reExports, after.reExports)) return null;
+  const was = new Set(before.symbols);
+  const is = new Set(after.symbols);
+  const delta = new Set([...before.symbols.filter((id) => !is.has(id)), ...after.symbols.filter((id) => !was.has(id))]);
+  const nameable = [...delta].every((id) => leafName(id) !== "default" && IDENTIFIER.test(leafName(id)));
+  return nameable ? delta : null;
+}
+
+function unchangedSurface(before: ExportSurface | null, after: ExportSurface | null): boolean {
+  return !!before && !!after && sameList(before.symbols, after.symbols) && sameList(before.reExports, after.reExports);
+}
+
+/**
+ * Parsed or removed files whose export surface differs from the basis, each with
+ * its delta. A body edit leaves the surface as it was, so importers of that file
+ * stay reused. `textChanged` names the parsed files whose bytes differ from the basis.
+ */
+export function surfaceChanges(
   basis: ReuseBasis,
   fragments: readonly GraphFragment[],
   textChanged: ReadonlySet<string>,
   parsedIds: ReadonlySet<string>,
   currentFileIds: ReadonlySet<string>,
-): Set<string> {
+): Map<string, SurfaceDelta> {
   const symbols = new Map<string, GraphNode[]>();
   const edges = new Map<string, GraphEdge[]>();
   for (const fragment of fragments) {
     for (const n of fragment.nodes) if (n.kind === "symbol" && n.parentId && parsedIds.has(n.parentId)) push(symbols, n.parentId, n);
     for (const e of fragment.edges) if (parsedIds.has(e.srcId)) push(edges, e.srcId, e);
   }
-  const changed = new Set([...basis.fingerprints.keys()].filter((id) => !currentFileIds.has(id)));
+  const changes = new Map<string, SurfaceDelta>();
+  for (const id of basis.fingerprints.keys()) if (!currentFileIds.has(id)) changes.set(id, null);
   for (const id of parsedIds) {
     const text = textChanged.has(id);
     const before = exportSurface(basis.symbolsByFile.get(id) ?? [], basis.edgesBySrc.get(id) ?? [], text);
     const after = exportSurface(symbols.get(id) ?? [], edges.get(id) ?? [], text);
-    if (!sameSurface(before, after)) changed.add(id);
+    if (!unchangedSurface(before, after)) changes.set(id, surfaceDelta(before, after));
   }
-  return changed;
+  return changes;
 }
 
 function push<V>(map: Map<string, V[]>, key: string, value: V): void {
@@ -175,24 +209,45 @@ function push<V>(map: Map<string, V[]>, key: string, value: V): void {
  * export surface to the declaring file, and a reference that resolved to no
  * symbol node is pruned and leaves no trace. So a byte-identical file whose edge
  * lands on a surface-changed file, or on a file that re-exports (transitively) from one,
- * must re-extract; reusing it carried edges a full index no longer produces, and
+ * may need to re-extract; reusing it carried edges a full index no longer produces, and
  * dropped ones it now does, which made a seeded index differ from a cold one.
+ * A name-level delta narrows that to importers that could bind a changed name (TP-3676).
  */
 export function computeContentAffected(
   basis: ReuseBasis,
-  changed: ReadonlySet<string>,
+  changes: ReadonlyMap<string, SurfaceDelta>,
+  textOf: (fileId: string) => string | undefined,
 ): Set<string> {
-  const surface = reExportClosure(basis, changed);
+  const roots = reExportRoots(basis, [...changes.keys()]);
   const affected = new Set<string>();
   for (const [srcId, edges] of basis.edgesBySrc) {
-    if (changed.has(srcId)) continue;
-    if (edges.some((edge) => surface.has(targetFileId(edge)))) affected.add(srcId);
+    if (changes.has(srcId)) continue;
+    const reached = new Set(edges.flatMap((edge) => roots.get(targetFileId(edge)) ?? []));
+    if (reached.size === 0) continue;
+    const deltas = [...reached].map((root) => changes.get(root) ?? null);
+    if (mayBindChange(edges, deltas, textOf(srcId))) affected.add(srcId);
   }
   return affected;
 }
 
-/** `changed` plus every file whose basis `re-exports` edges reach a changed file. */
-function reExportClosure(basis: ReuseBasis, changed: ReadonlySet<string>): Set<string> {
+// A namespace or wildcard import binds every export without naming one, so no text check can clear it.
+const WHOLE_MODULE_IMPORT = /\*\s*as\b|\bimport\s*\*/;
+
+/**
+ * Whether an importer's edges can differ under these deltas. Every edge to a symbol
+ * comes from a name the importer writes, except a whole-module import and a
+ * default import, which the deltas already rule out (`SurfaceDelta`). So an importer
+ * that holds no edge to a changed id and never writes a changed name keeps its edges.
+ */
+function mayBindChange(edges: readonly GraphEdge[], deltas: readonly SurfaceDelta[], text: string | undefined): boolean {
+  if (text === undefined || WHOLE_MODULE_IMPORT.test(text)) return true;
+  return deltas.some(
+    (delta) => delta === null || edges.some((e) => delta.has(e.dstId)) || [...delta].some((id) => text.includes(leafName(id))),
+  );
+}
+
+/** Each changed file and every file whose basis `re-exports` edges reach it, mapped to the changed files it reaches. */
+function reExportRoots(basis: ReuseBasis, changed: readonly string[]): Map<string, string[]> {
   const reExporters = new Map<string, string[]>();
   for (const [srcId, edges] of basis.edgesBySrc) {
     for (const edge of edges) {
@@ -200,16 +255,20 @@ function reExportClosure(basis: ReuseBasis, changed: ReadonlySet<string>): Set<s
       push(reExporters, targetFileId(edge), srcId);
     }
   }
-  const seen = new Set(changed);
-  const stack = [...changed];
-  for (let id = stack.pop(); id !== undefined; id = stack.pop()) {
-    for (const src of reExporters.get(id) ?? []) {
-      if (seen.has(src)) continue;
-      seen.add(src);
-      stack.push(src);
+  const roots = new Map<string, string[]>();
+  for (const root of changed) {
+    const seen = new Set([root]);
+    const stack = [root];
+    for (let id = stack.pop(); id !== undefined; id = stack.pop()) {
+      push(roots, id, root);
+      for (const src of reExporters.get(id) ?? []) {
+        if (seen.has(src)) continue;
+        seen.add(src);
+        stack.push(src);
+      }
     }
   }
-  return seen;
+  return roots;
 }
 
 interface Membership {
