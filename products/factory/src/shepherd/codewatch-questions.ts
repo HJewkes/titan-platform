@@ -163,7 +163,7 @@ class GhTimedOut extends Error {
 }
 
 /** A hung `gh` must not hang sh-review, so the wait ends at the deadline whether or not the process does. */
-function bounded<T>(work: Promise<T>, ms: number): Promise<T> {
+export function bounded<T>(work: Promise<T>, ms: number): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   const expiry = new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new GhTimedOut(`gh timed out after ${ms}ms`)), ms)));
   return Promise.race([work, expiry]).finally(() => clearTimeout(timer));

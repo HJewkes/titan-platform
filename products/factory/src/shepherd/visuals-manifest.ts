@@ -8,7 +8,10 @@ import { z } from "zod";
 
 const Shot = z.object({ story: z.string().min(1), width: z.string().min(1), before: z.string().min(1).optional(), after: z.string().min(1).optional() });
 
-const PrVisualManifestSchema = z.object({
+/** A story the producer chose to shoot, with the changed paths that chose it (TP-4774); absent from older manifests. */
+const Selected = z.object({ story: z.string().min(1), paths: z.array(z.string()) });
+
+export const PrVisualManifestSchema = z.object({
   v: z.literal(1),
   repo: z.string(),
   pr: z.number().int(),
@@ -18,6 +21,7 @@ const PrVisualManifestSchema = z.object({
   reason: z.string().optional(),
   /** `before` and `after` are paths relative to the manifest's own directory. */
   shots: z.array(Shot),
+  selected: z.array(Selected).optional(),
 });
 
 type PrVisualManifest = z.infer<typeof PrVisualManifestSchema>;
