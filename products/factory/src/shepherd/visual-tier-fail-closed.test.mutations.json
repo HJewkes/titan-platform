@@ -2,18 +2,11 @@
   "v": 1,
   "mutations": [
     {
-      "name": "the pixel proof takes any number of changed pixels",
-      "file": "products/factory/src/shepherd/visual-tier.ts",
-      "find": "changedPixels: z.literal(0),",
-      "replace": "changedPixels: z.number(),",
-      "kills": ["visual tier fails closed (TP-4761 S1) a pixel proof holding anything but exact zero, true flags and the merge shas is tier 2"]
-    },
-    {
-      "name": "a shot keeps unknown keys out of the proof",
-      "file": "products/factory/src/shepherd/visual-tier.ts",
-      "find": "shots: z.array(z.strictObject({",
-      "replace": "shots: z.array(z.object({",
-      "kills": ["visual tier fails closed (TP-4761 S1) a shot with an unknown key such as sizesDiffer is tier 2"]
+      "name": "the record schema accepts basis no-pixel-diff again",
+      "file": "products/factory/src/shepherd/visual-tier-guard.ts",
+      "find": "basis: z.literal(\"non-rendering\")",
+      "replace": "basis: z.enum([\"non-rendering\", \"no-pixel-diff\"])",
+      "kills": ["visual tier fails closed (TP-4761 S1) a stored tier record with basis no-pixel-diff gates as tier 2"]
     },
     {
       "name": "an uncompilable list matches nothing",
@@ -34,7 +27,7 @@
       "file": "products/factory/src/shepherd/visual-tier.ts",
       "find": "?.[0] ?? \"rendered\";",
       "replace": "?.[0] ?? \"logic\";",
-      "kills": ["visual tier fails closed (TP-4761 S1) every path no clearing row recognises is rendered, so tier 1 needs a pixel proof"]
+      "kills": ["visual tier fails closed (TP-4761 S1) every path no clearing row recognises is rendered, so it is tier 2"]
     }
   ]
 }
