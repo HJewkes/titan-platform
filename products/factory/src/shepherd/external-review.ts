@@ -4,7 +4,7 @@ import { parseVerdictBlock } from "@titan-design/session-read";
 import { z } from "zod";
 import { deadline } from "../workflows/deadline.js";
 import { bounded, type AwaitVerdictTiming } from "./await-verdict.js";
-import { redactCredentials } from "../redact.js";
+import { redactCredentials, redactHomePaths } from "../redact.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
 import { holdClassOf } from "./g10-release.js";
 import { clearReviewWait, noteReviewWait, transient } from "./review-wait.js";
@@ -150,13 +150,12 @@ const seatStem = (stem: string): string => stem.replace(SEAT_REVIEWER, "");
 
 const DETAIL_CHARS = 200;
 const URL_TEXT = /\bhttps?:\/\/\S+/g;
-const HOME_DIR = /\/(?:Users|home)\/[^/\s]+/g;
 
 /** agent-dispatch's errors carry the agent-chat CLI's own words, which say why it failed; any other error's text may hold anything, so it stays its class. */
 function failureText(error: unknown): string {
   const kind = failureOf(error);
   if (!(error instanceof DispatchError)) return kind;
-  const text = redactCredentials(consoleTextOf(error)).replace(URL_TEXT, "[url]").replace(HOME_DIR, "~").replace(/\s+/g, " ").trim();
+  const text = redactHomePaths(redactCredentials(consoleTextOf(error)).replace(URL_TEXT, "[url]")).replace(/\s+/g, " ").trim();
   if (text === "") return kind;
   return `${kind}: ${text.length <= DETAIL_CHARS ? text : `${text.slice(0, DETAIL_CHARS)}…`}`;
 }
