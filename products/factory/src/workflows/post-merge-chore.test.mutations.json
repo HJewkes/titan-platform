@@ -4,8 +4,8 @@
     {
       "name": "the prune ignores whether the step settled",
       "file": "products/factory/src/workflows/post-merge-chore.ts",
-      "find": "if (!marker.success || !settled(marker.data.step)) continue;",
-      "replace": "if (!marker.success) continue;",
+      "find": "if (!settled(marker.step)) continue;",
+      "replace": "",
       "kills": [
         "pruneChores removes every attempt's files of a settled step and leaves other steps and unreadable markers",
         "chorePruning prunes a recorded step's leftover files at bind and keeps an unrecorded step's, which a restart still reconciles"
@@ -14,8 +14,8 @@
     {
       "name": "the prune removes an unreadable marker",
       "file": "products/factory/src/workflows/post-merge-chore.ts",
-      "find": "if (!marker.success || !settled(marker.data.step)) continue;",
-      "replace": "if (marker.success && !settled(marker.data.step)) continue;",
+      "find": "if (!marker.success) continue;",
+      "replace": "if (!marker.success) { removeChore(dir, name.slice(0, -\".json\".length)); continue; }",
       "kills": [
         "pruneChores removes every attempt's files of a settled step and leaves other steps and unreadable markers"
       ]
