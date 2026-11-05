@@ -58,8 +58,8 @@ describe("ci-wait never reads a skipped run, or a failure a newer run left unjud
     expect(ci.waitingOn).toEqual(["validate"]);
   });
 
-  it("a failed check whose rerun is still running is waited on, not red", async () => {
-    const { ci } = await read([job("dag-check", 11, 2001, T0, "success"), job("hub-compose", 12, 2001, T0, "success"), job("validate", 13, 2001, T0, "failure"), job("validate", 23, 2001, T1, null)]);
+  it("a failed check whose newer workflow run is still running is waited on, not red", async () => {
+    const { ci } = await read([job("dag-check", 11, 2001, T0, "success"), job("hub-compose", 12, 2001, T0, "success"), job("validate", 13, 2001, T0, "failure"), job("validate", 23, 2002, T1, null)]);
 
     expect(ci.verdict).toBe("pending");
     expect(ci.failing).toBeUndefined();
