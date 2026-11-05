@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the visual tier imports pr-visual evidence",
+      "file": "products/factory/src/shepherd/visual-tier.ts",
+      "find": "import { baselineCheckGreen, cannotRender, shownPaths } from \"./visual-gate.js\";",
+      "replace": "import { baselineCheckGreen, cannotRender, shownPaths } from \"./visual-gate.js\";\nimport \"./pr-visual-evidence.js\";",
+      "kills": ["pr-visual evidence never reaches the visual tier (TP-4761 C1) the merge guard cannot import pr-visual evidence"]
+    },
+    {
+      "name": "evidence in hand lowers a rendered path to tier 1",
+      "file": "products/factory/src/shepherd/visual-tier.ts",
+      "find": "  return proveTierOne(classes, input.merge, policy);",
+      "replace": "  return \"evidence\" in input ? { tier: 1, basis: \"non-rendering\" } : proveTierOne(classes, input.merge, policy);",
+      "kills": ["pr-visual evidence never reaches the visual tier (TP-4761 C1) a zero-diff artifact on a rendered path still gives tier 2"]
+    }
+  ]
+}

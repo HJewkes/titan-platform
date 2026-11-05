@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "only the first shot is measured",
+      "file": "products/factory/src/shepherd/pr-visual-evidence.ts",
+      "find": "of manifest.shots.entries())",
+      "replace": "of manifest.shots.slice(0, 1).entries())",
+      "kills": ["the pr-visual artifact read as evidence (TP-4761 C1) a zero-diff artifact reports zero changed pixels per shot"]
+    },
+    {
+      "name": "the selected stories are ignored",
+      "file": "products/factory/src/shepherd/pr-visual-evidence.ts",
+      "find": "const stories = new Set((manifest.selected ?? []).map((item) => item.story));",
+      "replace": "const stories = new Set<string>();",
+      "kills": ["the pr-visual artifact read as evidence (TP-4761 C1) a selected story without a pair is listed missing"]
+    },
+    {
+      "name": "the run head check is dropped",
+      "file": "products/factory/src/shepherd/pr-visual-evidence.ts",
+      "find": "(a) => !a.expired && a.workflow_run?.head_sha === head",
+      "replace": "(a) => !a.expired",
+      "kills": ["the pr-visual artifact read as evidence (TP-4761 C1) an artifact at another head is unmeasured"]
+    },
+    {
+      "name": "the byte cap is dropped",
+      "file": "products/factory/src/shepherd/pr-visual-evidence.ts",
+      "find": "const overCap = (size: number) => size > zipBytes;",
+      "replace": "const overCap = (size: number) => size < 0;",
+      "kills": ["the pr-visual artifact read as evidence (TP-4761 C1) an over-cap or zip64 artifact is unmeasured: over the byte cap"]
+    }
+  ]
+}
