@@ -111,13 +111,12 @@ async function review() {
 }
 
 describe("a panel's members and their follow-ups", () => {
-  it("each panel member's follow-ups are filed under its own sh-follow-ups step and a title two members share is filed once", async () => {
+  it("each panel member's follow-ups, correctness included, are filed under its own sh-follow-ups step and a title two members share is filed once", async () => {
     const { aw, followUpSteps } = await review();
 
-    const memberSteps = followUpSteps.filter((recorded) => recorded.stepId.endsWith(":tests") || recorded.stepId.endsWith(":adversary"));
     const filed = [...aw.tasks.values()].filter((task) => task.title === "Cache the head lookup");
-    expect(memberSteps.map((recorded) => recorded.stepId).sort()).toEqual([`sh-follow-ups:${H}:adversary`, `sh-follow-ups:${H}:tests`]);
+    expect(followUpSteps.map((recorded) => recorded.stepId).sort()).toEqual([`sh-follow-ups:${H}`, `sh-follow-ups:${H}:adversary`, `sh-follow-ups:${H}:tests`]);
     expect(filed).toHaveLength(1);
-    expect(memberSteps.flatMap((recorded) => z.looseObject({ filed: z.array(z.looseObject({ deduped: z.boolean() })) }).parse(recorded.result).filed.map((entry) => entry.deduped)).filter(Boolean).length).toBeGreaterThan(0);
+    expect(followUpSteps.flatMap((recorded) => z.looseObject({ filed: z.array(z.looseObject({ deduped: z.boolean() })) }).parse(recorded.result).filed.map((entry) => entry.deduped)).filter(Boolean).length).toBeGreaterThan(0);
   });
 });
