@@ -3,7 +3,7 @@ import { compileGlobs } from "@titan-design/fix-proof";
 import { z } from "zod";
 import { baselineCheckGreen, cannotRender, shownPaths } from "./visual-gate.js";
 
-type VisualTierVerdict = { tier: 1; basis: "non-rendering" | "no-pixel-diff" } | { tier: 2; reason: string };
+type VisualTierVerdict = { tier: 1; basis: "non-rendering" } | { tier: 2; reason: string };
 
 interface VisualTierInput {
   /** changedPaths is every touched path, both sides of a rename, never pre-filtered: the classifier sees all of it. */
@@ -13,12 +13,9 @@ interface VisualTierInput {
   mergeBase: string;
   /** Raw shepherd.visualTier[repo]; parsed here. Its mode is applied by the caller, not here. */
   config: unknown;
-  /** Raw pr-visual read, or undefined when absent; parsed here. */
-  pixel: unknown;
 }
 
 const MAX_GLOBS = 200;
-const MAX_SHOTS = 500;
 const FULL_SHA = /^[0-9a-f]{40}$/;
 const CODE_FILE = /\.(ts|js|mts|cts|mjs|cjs)$/;
 
@@ -40,20 +37,6 @@ const InputSchema = z.object({
   mergeBase: z.string().regex(FULL_SHA),
   changedPaths: z.array(z.string().trim().min(1)).min(1),
 });
-
-/** The schema is the allow-list: only the passing value of each field parses, and an unknown key fails. */
-function pixelProofSchema(head: string, baseSha: string) {
-  return z.strictObject({
-    head: z.literal(head),
-    baseSha: z.literal(baseSha),
-    rendered: z.literal(true),
-    shots: z.array(z.strictObject({
-      id: nonBlank,
-      paired: z.literal(true),
-      changedPixels: z.literal(0),
-    })).min(1).max(MAX_SHOTS),
-  });
-}
 
 type PathClass = "harness" | "rendering" | "snapshot" | "outside" | "inert" | "test-artifact" | "story" | "logic" | "rendered";
 type Row = readonly [PathClass, (path: string) => boolean];
@@ -110,17 +93,17 @@ function classOf(path: string, policy: TierPolicy): PathClass {
 
 const tier2 = (reason: string): VisualTierVerdict => ({ tier: 2, reason });
 
-/** The only place tier 1 is built: every changed path must sit in a class this proof clears. */
-function proveTierOne(classes: readonly (readonly [string, PathClass])[], merge: VisualTierInput["merge"], mergeBase: string, pixel: unknown, policy: TierPolicy): VisualTierVerdict {
+/**
+ * The only place tier 1 is built: every changed path must sit in a class this proof clears. A rendered path is always
+ * tier 2, since any pr-visual producer on pull_request runs head-controlled code (TP-4761 C2).
+ */
+function proveTierOne(classes: readonly (readonly [string, PathClass])[], merge: VisualTierInput["merge"], policy: TierPolicy): VisualTierVerdict {
   const pathsOf = (wanted: PathClass) => classes.filter(([, cls]) => cls === wanted).map(([path]) => path);
-  const offending = classes.find(([, cls]) => cls !== "rendered" && !CLEARING.has(cls));
-  if (offending !== undefined) return tier2(`${offending[1]}: ${shownPaths(pathsOf(offending[1]))}`);
+  const offending = classes.find(([, cls]) => !CLEARING.has(cls));
+  if (offending !== undefined) return tier2(`${offending[1] === "rendered" ? "renders" : offending[1]}: ${shownPaths(pathsOf(offending[1]))}`);
   const { check, allowedApps } = policy.storyDiff;
   if (pathsOf("logic").length > 0 && !baselineCheckGreen(merge, check, allowedApps)) return tier2(`logic with ${check} not green at the head`);
-  if (pathsOf("rendered").length === 0) return { tier: 1, basis: "non-rendering" };
-  const proof = pixelProofSchema(merge.head, mergeBase).safeParse(pixel);
-  if (!proof.success) return tier2(`no pixel proof: ${pixel === undefined ? "no pr-visual artifact read" : firstIssue(proof.error)}`);
-  return { tier: 1, basis: "no-pixel-diff" };
+  return { tier: 1, basis: "non-rendering" };
 }
 
 export function visualTier(input: VisualTierInput): VisualTierVerdict {
@@ -129,5 +112,5 @@ export function visualTier(input: VisualTierInput): VisualTierVerdict {
   const facts = InputSchema.safeParse({ head: input.merge.head, mergeBase: input.mergeBase, changedPaths: input.merge.changedPaths });
   if (!facts.success) return tier2(`visual tier input unreadable: ${firstIssue(facts.error)}`);
   const classes = input.merge.changedPaths.map((path) => [path, classOf(path, policy)] as const);
-  return proveTierOne(classes, input.merge, input.mergeBase, input.pixel, policy);
+  return proveTierOne(classes, input.merge, policy);
 }
