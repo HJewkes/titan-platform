@@ -17,10 +17,11 @@ const config = {
 
 const proof = { head: HEAD, baseSha: BASE, rendered: true, shots: [{ id: "button-default", paired: true, changedPixels: 0 }] };
 
-function verdict(changedPaths: string[], opts: { check?: string | null; pixel?: unknown } = {}) {
+function verdict(changedPaths: string[], opts: { check?: string | null; extra?: Record<string, unknown> } = {}) {
   const conclusion = opts.check === undefined ? "success" : opts.check;
   const merge = { head: HEAD, changedPaths, checkRuns: [{ name: "visual", appId: APP, headSha: HEAD, conclusion }] };
-  return visualTier({ merge, visualPaths: ["src/**"], mergeBase: BASE, config, pixel: opts.pixel });
+  const input = { merge, visualPaths: ["src/**"], mergeBase: BASE, config, ...opts.extra };
+  return visualTier(input);
 }
 
 describe("visual tier verdict (TP-4761 S1)", () => {
@@ -43,14 +44,10 @@ describe("visual tier verdict (TP-4761 S1)", () => {
   });
 
   it("a changed capture script is tier 2 whatever the artifact says", () => {
-    expect(verdict(["scripts/capture/shoot.mjs"], { pixel: proof })).toMatchObject({ tier: 2, reason: expect.stringMatching(/^harness: /) });
+    expect(verdict(["scripts/capture/shoot.mjs"], { extra: { pixel: proof } })).toMatchObject({ tier: 2, reason: expect.stringMatching(/^harness: /) });
   });
 
-  it("a rendered path with no pixel read is tier 2 (missing artifact)", () => {
-    expect(verdict(["src/button/button.tsx"])).toMatchObject({ tier: 2, reason: expect.stringContaining("no pr-visual artifact") });
-  });
-
-  it("a rendered path with zero changed pixels on every paired shot is tier 1 no-pixel-diff", () => {
-    expect(verdict(["src/button/button.tsx", "src/hooks/use-id.ts"], { pixel: proof })).toEqual({ tier: 1, basis: "no-pixel-diff" });
+  it("a rendered path is tier 2 even with a zero-diff pixel read in hand", () => {
+    expect(verdict(["src/button/button.tsx", "src/hooks/use-id.ts"], { extra: { pixel: proof } })).toEqual({ tier: 2, reason: "renders: src/button/button.tsx" });
   });
 });
