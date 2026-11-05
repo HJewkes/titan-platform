@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the CI read never re-reads an unread-files hold",
+      "file": "products/factory/src/shepherd/pr.ts",
+      "find": "  await reclassAtCiRead(run, ci.data.headSha);\n",
+      "replace": "",
+      "kills": [
+        "a run held because its changed files were unread at registration, whose files read whole at a CI read ends unheld and merges a PR with no adversary touch, its hold lifted as a re-class"
+      ]
+    }
+  ]
+}
