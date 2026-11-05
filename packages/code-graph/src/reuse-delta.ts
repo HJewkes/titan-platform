@@ -153,7 +153,7 @@ function sameList(a: readonly string[], b: readonly string[]): boolean {
  * changed or are unknown, or a changed name is `default` or no identifier, which an
  * importer binds without writing the name (TP-3676).
  */
-export type SurfaceDelta = ReadonlySet<string> | null;
+type SurfaceDelta =ReadonlySet<string> | null;
 
 const IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
 
