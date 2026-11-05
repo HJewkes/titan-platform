@@ -5,7 +5,6 @@ import type { PendingGate } from "../host.js";
 import { visualPathHead } from "./head-moved.js";
 import { repoKey } from "./round-merge.js";
 import type { HeldAt } from "./round-ship-sweep.js";
-import type { RoundVisuals } from "./pr-visual-round.js";
 import { gateHead } from "./stale-gates.js";
 
 const GATE_TARGET = /^Merge PR #(\d+) in (\S+) at head /;
@@ -16,6 +15,14 @@ interface WeekQuestion {
   prompt: string;
   options: string[];
   merge: { repo: string; pr: number; headSha: string; ship: string[] };
+}
+
+/** One PR's pr-visual read for the packet. Defined here so the batch imports no artifact reader: the evidence informs only. */
+export interface RoundVisuals {
+  /** The single packet line for this PR: counts, or why no pairs are shown. */
+  line: string;
+  /** Round-directory paths of the written before and after images, empty when none are shown. */
+  variantKeys: string[];
 }
 
 /** The owner's context for one PR: the pr-visual packet line, with the pair images it counts. */

@@ -12,7 +12,8 @@ export function parked(pr: number, rowId = "visual-path", decidedHead = headOf(p
   const runId = `run-${pr}`;
   const prompt = `Merge PR #${pr} in ${REPO} at head ${headOf(pr)}? CI is green. Policy shepherd-merge-guard/${rowId}: the owner decides visual changes`;
   const output = JSON.stringify({ result: { outcome: "gate", headSha: decidedHead, rule: { table: "shepherd-merge-guard", rowId } } });
-  const gate: PendingGate = JSON.parse(JSON.stringify({ runId, stepId: "approve-merge", gate: { id: `${runId}/approve-merge`, prompt, status: "pending", payload: null, createdAt: "2026-11-02T10:00:00.000Z" } }));
+  const pending = { id: `${runId}/approve-merge`, prompt, status: "pending", payload: null, createdAt: "2026-11-02T10:00:00.000Z" };
+  const gate: PendingGate = JSON.parse(JSON.stringify({ runId, stepId: "approve-merge", gate: pending }));
   const run: WorkflowRun = JSON.parse(JSON.stringify({
     id: runId,
     workflowName: "shepherd-pr",

@@ -5,17 +5,11 @@ import { join } from "node:path";
 import { errorClass } from "./error-class.js";
 import { DEFAULT_LIMITS, execPrVisualGh, manifestOf, measureArchive, openHeadArtifact, type Manifest, type PrVisualEvidence, type PrVisualGh } from "./pr-visual-evidence.js";
 import type { ZipReader } from "./pr-visual-zip.js";
+import type { RoundVisuals } from "./visual-week.js";
 
 const WORKFLOW = ".github/workflows/pr-visual.yml";
 const PIXEL_TOLERANCE = 0.1;
 const CAVEAT = "unattested producer output; not used for the tier";
-
-export interface RoundVisuals {
-  /** The single packet line for this PR: counts, or why no pairs are shown. */
-  line: string;
-  /** Round-directory paths of the written before and after images, empty when none are shown. */
-  variantKeys: string[];
-}
 
 const nothing = (reason: string): RoundVisuals => ({ line: `pr-visual: no before and after shown, ${reason} (${CAVEAT})`, variantKeys: [] });
 

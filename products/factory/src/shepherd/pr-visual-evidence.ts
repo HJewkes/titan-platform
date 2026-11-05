@@ -17,7 +17,7 @@ export interface PrVisualGh {
   bytes(args: readonly string[], timeoutMs: number, maxBytes: number): Promise<Uint8Array>;
 }
 
-export interface PrVisualTarget {
+interface PrVisualTarget {
   repo: string;
   head: string;
   /** The workflow file the artifact's run must come from, e.g. `.github/workflows/pr-visual.yml`. */
@@ -37,7 +37,7 @@ const CAPS = { inflatedBytes: 128 * MI, entries: 256, shots: 100, selected: 500,
 const STORY_ID = /^[a-z0-9][a-z0-9-]{0,199}$/;
 const WIDTH = /^[0-9]{1,5}$/;
 
-export type ReadLimits = { timeoutMs: number; zipBytes: number };
+type ReadLimits = { timeoutMs: number; zipBytes: number };
 
 export const DEFAULT_LIMITS: ReadLimits = { timeoutMs: 60_000, zipBytes: 64 * MI };
 const run = promisify(execFile);
@@ -133,12 +133,13 @@ export function measureArchive(zip: ZipReader, pixelTolerance: number): PrVisual
 
 /** The head's artifact opened as a zip, or the reason it could not be: no artifact, over a cap, or an unreadable zip. */
 export async function openHeadArtifact(gh: PrVisualGh, target: PrVisualTarget, { timeoutMs: ms, zipBytes }: ReadLimits): Promise<ZipReader | string> {
+  const overCap = (size: number) => size > zipBytes;
   const capped = `artifact over the ${zipBytes}-byte cap`;
   const artifact = await headArtifact(gh, target, ms);
   if (artifact === undefined) return "no pr-visual artifact from the configured workflow at the head";
-  if (artifact.size_in_bytes > zipBytes) return capped;
+  if (overCap(artifact.size_in_bytes)) return capped;
   const bytes = await bounded(gh.bytes(["api", `repos/${target.repo}/actions/artifacts/${artifact.id}/zip`], ms, zipBytes), ms);
-  if (bytes.length > zipBytes) return capped;
+  if (overCap(bytes.length)) return capped;
   const zip = openZip(bytes, { maxEntries: CAPS.entries, maxInflatedBytes: CAPS.inflatedBytes });
   return "refused" in zip ? `artifact zip: ${zip.refused}` : zip;
 }
