@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a thaw-waiting reserver still orders its peers",
+      "file": "products/factory/src/shepherd/merge-order.ts",
+      "find": "order.isDriving(runId) && !order.inThawWait(runId) && ",
+      "replace": "order.isDriving(runId) && ",
+      "kills": [
+        "a run waiting at its head on a deploy or a thaw (TP-4778) replays the deadlock: R waits on deploy skew, so it neither orders S nor holds the deploy that would release it",
+        "a run waiting at its head on a deploy or a thaw (TP-4778) stops ordering peers under a freeze-only wait, but stays busy since no deploy ends a freeze"
+      ]
+    },
+    {
+      "name": "a deploy-skew wait still counts as busy",
+      "file": "products/factory/src/restart-drain.ts",
+      "find": "  if (inDeploySkewWait(run)) return undefined;\n",
+      "replace": "",
+      "kills": [
+        "a run waiting at its head on a deploy or a thaw (TP-4778) replays the deadlock: R waits on deploy skew, so it neither orders S nor holds the deploy that would release it"
+      ]
+    },
+    {
+      "name": "a skew gate at an older head still counts as the wait",
+      "file": "products/factory/src/shepherd/thaw-wait.ts",
+      "find": "decision?.outcome !== \"gate\" || decision.headSha !== lastCiHead(run)",
+      "replace": "decision?.outcome !== \"gate\"",
+      "kills": [
+        "a run waiting at its head on a deploy or a thaw (TP-4778) orders again and is busy when its CI read has moved past the head the skew gate was at"
+      ]
+    },
+    {
+      "name": "an active write beside the settle step is ignored",
+      "file": "products/factory/src/shepherd/thaw-wait.ts",
+      "find": "  return Object.keys(run.activeSteps).every((key) => stepIdMatches(SETTLE_STEP, key));\n",
+      "replace": "  return true;\n",
+      "kills": [
+        "a run waiting at its head on a deploy or a thaw (TP-4778) fails closed while any write step is active beside the settle wait"
+      ]
+    },
+    {
+      "name": "any thaw wait leaves the busy count",
+      "file": "products/factory/src/shepherd/thaw-wait.ts",
+      "find": "return decision !== undefined && isDeploySkewGate(decision);",
+      "replace": "return decision !== undefined;",
+      "kills": [
+        "a run waiting at its head on a deploy or a thaw (TP-4778) stops ordering peers under a freeze-only wait, but stays busy since no deploy ends a freeze"
+      ]
+    }
+  ]
+}
