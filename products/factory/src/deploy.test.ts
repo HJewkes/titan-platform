@@ -9,6 +9,7 @@ import { deployBuildLogPath, deployWindowPath } from "./deploy-output.js";
 import { UNAVAILABLE } from "./deploy-watch-window.js";
 import { deployRecordPath, deployService, parseDeployRecord, type DeployOptions, type DeployPorts } from "./deploy.js";
 import type { DeployIncident } from "./deploy-incident.js";
+import { deployIncidentLogPath, parseDeployIncidents } from "./deploy-incident-log.js";
 import { clearDeployPause, deployHoldPath, deployPausePath, readDeployHolds, readDeployPause } from "./deploy-pause.js";
 import { plistPath, SERVICE_LABEL } from "./service.js";
 import type { CommandResult } from "./run-command.js";
@@ -847,6 +848,24 @@ describe("service deploy rollback pause", () => {
     expect(machine.record()).toMatchObject({ outcome: "rolled-back", target: TIP, why: expect.stringContaining("1 more run(s) failed or need recovery during the 120 s watch") });
     expect(machine.pause()).toMatchObject({ paused: true, pause: { rollback: "verified" } });
     expect(machine.incidents.map((incident) => incident.kind)).toEqual(["rolled-back"]);
+  });
+
+  it("a restart rollback writes the incident with its target to deploy-incidents.jsonl", async () => {
+    const machine = fakeMachine({ misreports: STRAY });
+
+    await deploy(machine);
+
+    const logged = parseDeployIncidents(machine.files.get(deployIncidentLogPath(STATE)) ?? "");
+    expect(logged).toEqual([expect.objectContaining({ kind: "rolled-back", target: TIP, from: BASE, at: expect.any(String) })]);
+  });
+
+  it("a clean deploy leaves an empty incident log", async () => {
+    const machine = fakeMachine();
+
+    const { code } = await deploy(machine);
+
+    expect(code).toBe(0);
+    expect(machine.files.get(deployIncidentLogPath(STATE))).toBe("");
   });
 
   describe("after a drain that timed out on runs parked behind a stalled train head", () => {

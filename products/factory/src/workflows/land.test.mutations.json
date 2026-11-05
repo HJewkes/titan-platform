@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a required context that concluded skipped or neutral reads red",
+      "file": "products/factory/src/workflows/land-ci.ts",
+      "find": "finding.kind === \"failed\" && red(finding.run) ?",
+      "replace": "finding.kind === \"failed\" ?",
+      "kills": [
+        "readCi judges every run at the head waits on, and never reads red, a required context that concluded neutral",
+        "readCi judges every run at the head waits on, and never reads red, a required context that concluded skipped"
+      ]
+    }
+  ]
+}

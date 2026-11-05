@@ -5,7 +5,7 @@ import type { StepRoute } from "@titan-design/workflow";
 import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
 import { rerun } from "../workflows/land-pr.js";
 import type { WakeEvidence, WakeRequest } from "./phases.js";
-import { awaitNewHead, ciRedFailing, sentBackGate } from "./gates.js";
+import { awaitAfterExit, exitRed, sentBackGate } from "./gates.js";
 import type { GateRun } from "./run-state.js";
 import { EXIT_NOTICE_STEPS, exitNoticeRoute, noticeSeat, type HeldNotice } from "./exit-notice.js";
 import { HELD_VERDICT_STEPS, commentHeldVerdict, heldFindings, heldVerdictRoute } from "./held-verdict.js";
@@ -130,18 +130,27 @@ async function noticeOrGate(run: ExitRun, { kind, headSha, payload }: { kind: Wa
     return notice && { sent: notice.sent, detail: `${notice.cause}: ${notice.detail}` };
   };
   const situation = (unsent: string) => `The ${kind} wake of PR #${run.target.pr} in ${run.target.repo} at head ${headSha} ended: ${exit.reason}${unsent}.`;
-  const gate = async (unsent: string) => leave(await exitGate(run, { kind, headSha, situation: situation(unsent) }, abandoned));
-  return seatOrGate(tell, async () => leave(await awaitNewHead(run, headSha, kind === "ci-red", ciRedFailing(kind, payload))), gate);
+  const red = exitRed(kind, payload);
+  const gate = async (unsent: string) => leave(await exitGate(run, { kind, headSha, situation: situation(unsent), red }, abandoned));
+  return seatOrGate(tell, async () => leave(await awaitAfterExit(run, headSha, red)), gate);
+}
+
+interface ExitEnd {
+  kind: WakeRequest["kind"];
+  headSha: string;
+  situation: string;
+  red: readonly { name: string }[] | undefined;
 }
 
 /**
  * The seat's dead-end gate (TP-4759), else the owner's sent-back gate; a fix-proof exit offers the owner's waive-proof on
- * either. An owner gate `readdress-dead-ends` cancelled asks the seat at the same head.
+ * either, and after a ci-red exit either gate's wait also ends when the same head turns green. An owner gate
+ * `readdress-dead-ends` cancelled asks the seat at the same head.
  */
-function exitGate(run: ExitRun, { kind, headSha, situation }: { kind: WakeRequest["kind"]; headSha: string; situation: string }, abandoned: string): Promise<LandOutcome | undefined> {
+function exitGate(run: ExitRun, { kind, headSha, situation, red }: ExitEnd, abandoned: string): Promise<LandOutcome | undefined> {
   const waivable = kind === "fix-proof";
   const prompt = `${situation} Await a new head or abandon?`;
-  const seat = (): Promise<LandOutcome | undefined> => deadEndGate(run, { kind: "exited-without-push", headSha, situation, waivable }, owner);
-  const owner = (): Promise<LandOutcome | undefined> => sentBackGate(run, headSha, prompt, abandoned, prompt, waivable, seat);
+  const seat = (): Promise<LandOutcome | undefined> => deadEndGate(run, { kind: "exited-without-push", headSha, situation, waivable, ...(red && { red }) }, owner);
+  const owner = (): Promise<LandOutcome | undefined> => sentBackGate(run, headSha, prompt, abandoned, prompt, waivable, seat, red);
   return asksSeat(run.ctx, "sh-sent-back") ? seat() : owner();
 }
