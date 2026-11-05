@@ -42,18 +42,16 @@ export async function sweepFinalRuns(ports: ChorePorts, runs: { get(id: string):
 /** One sweep at a time; a trigger that arrives meanwhile earns one more pass, since the run it names may have been missed. */
 function serialised(sweep: () => Promise<unknown>): () => void {
   let running = false;
-  let again = false;
+  let requests = 0;
   const run = async (): Promise<void> => {
-    if (running) {
-      again = true;
-      return;
-    }
+    requests += 1;
+    if (running) return;
     running = true;
     try {
-      do {
-        again = false;
+      for (let served = 0; served < requests; ) {
+        served = requests;
         await sweep();
-      } while (again);
+      }
     } catch (error) {
       // A sweep that fails leaves files behind; it must never fail a run.
       console.warn(`[chores] sweeping final runs failed: ${error instanceof Error ? error.message : String(error)}`);
