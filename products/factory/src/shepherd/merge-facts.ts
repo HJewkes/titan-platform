@@ -29,6 +29,7 @@ import { readVisualDelta, type VisualDelta, type VisualThreshold } from "./visua
 import { thresholdClearance, unclearedBaselines, visualDeltaGate } from "./visual-threshold-gate.js";
 import { oldPathGate, oldPathOf, type OldPathField, type OldPathWiring } from "../old-path/freeze-gate.js";
 import { readVisualTier, tierClearance, tierOutcome } from "./visual-tier-guard.js";
+import type { ReadPrVisual } from "./pr-visual-read.js";
 
 export { isGithubPath };
 export { budgetAt } from "./ci-policy-guard.js";
@@ -351,6 +352,8 @@ interface EvidenceReads extends OldPathWiring {
   threshold?: VisualThreshold;
   /** Raw `shepherd.visualTier` for the repo; absent records no tier. */
   tier?: unknown;
+  /** Measures the head's pr-visual artifact for the tier; absent reads none. */
+  pixel?: ReadPrVisual;
   /** Judges the head's attestation claims at the PR's base; absent judges none. */
   attest?: (input: MergeEvidenceInput, baseRef: string) => Promise<AttestJudgment | undefined>;
 }
@@ -368,7 +371,7 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
   const mergeableState = pr.mergeableState;
   const unknown = { ...(requiredChecksUnknown !== undefined && { requiredChecksUnknown }), ...(unreadFacts && { unreadFacts }), ...(changedFilesUnread !== undefined && { changedFilesUnread }) };
   const ciPolicy = input.ciPolicy && { ciPolicy: input.ciPolicy, ...(observed.ciPolicyClass && { ciPolicyClass: observed.ciPolicyClass }) };
-  const tier = await readVisualTier(port, merge, { repo: input.repo, baseRef: pr.baseRef, visualPaths: input.visualPaths, config: reads.tier });
+  const tier = await readVisualTier(port, merge, { repo: input.repo, baseRef: pr.baseRef, visualPaths: input.visualPaths, config: reads.tier, readPixel: reads.pixel });
   const visual = { ...(await visualDeltaOf(port, input, observed, reads.threshold)), ...tier };
   const judged = await reads.attest?.(input, pr.baseRef);
   const attest = { ...(judged && { attest: judged }), ...(input.attest && { attestVerdicts: input.attest }) };

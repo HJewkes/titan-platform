@@ -8,7 +8,7 @@ import { z } from "zod";
 
 const Shot = z.object({ story: z.string().min(1), width: z.string().min(1), before: z.string().min(1).optional(), after: z.string().min(1).optional() });
 
-const PrVisualManifestSchema = z.object({
+export const PrVisualManifestSchema = z.object({
   v: z.literal(1),
   repo: z.string(),
   pr: z.number().int(),

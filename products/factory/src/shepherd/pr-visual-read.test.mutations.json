@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the measure ignores the configured pixel tolerance",
+      "file": "products/factory/src/shepherd/pr-visual-read.ts",
+      "find": "pixelDelta(before, after, { pixelTolerance: ctx.pixelTolerance })",
+      "replace": "pixelDelta(before, after, { pixelTolerance: 0 })",
+      "kills": ["the pr-visual pixel path (TP-4761 S4) artifact with zero changed pixels on every shot is tier 1 no-diff"]
+    },
+    {
+      "name": "only the first shot is measured",
+      "file": "products/factory/src/shepherd/pr-visual-read.ts",
+      "find": "for (const [index, shot] of manifest.shots.entries())",
+      "replace": "for (const [index, shot] of manifest.shots.slice(0, 1).entries())",
+      "kills": ["the pr-visual pixel path (TP-4761 S4) one shot with changed pixels is tier 2"]
+    },
+    {
+      "name": "the run head check is dropped",
+      "file": "products/factory/src/shepherd/pr-visual-read.ts",
+      "find": "(a) => !a.expired && a.workflow_run?.head_sha === head",
+      "replace": "(a) => !a.expired",
+      "kills": ["the pr-visual pixel path (TP-4761 S4) artifact at another head is tier 2"]
+    },
+    {
+      "name": "rendered false is trusted",
+      "file": "products/factory/src/shepherd/pr-visual-read.ts",
+      "find": "  if (!manifest.rendered) return unmeasured(\"the pr-visual run rendered nothing, but the head changes a rendered path\");\n",
+      "replace": "",
+      "kills": ["the pr-visual pixel path (TP-4761 S4) rendered false while Shepherd sees a rendered path is tier 2"]
+    },
+    {
+      "name": "the byte cap is dropped",
+      "file": "products/factory/src/shepherd/pr-visual-read.ts",
+      "find": "const overCap = (size: number) => size > zipBytes;",
+      "replace": "const overCap = (size: number) => size < 0;",
+      "kills": ["the pr-visual pixel path (TP-4761 S4) artifact over the byte cap is tier 2 unmeasured"]
+    }
+  ]
+}

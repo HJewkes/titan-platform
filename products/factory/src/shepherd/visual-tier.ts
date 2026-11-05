@@ -1,5 +1,6 @@
 import type { MergeFacts } from "@titan-design/authority";
 import { compileGlobs } from "@titan-design/fix-proof";
+import { DEFAULT_PIXEL_TOLERANCE } from "@titan-design/png-delta";
 import { z } from "zod";
 import { baselineCheckGreen, cannotRender, shownPaths } from "./visual-gate.js";
 
@@ -13,7 +14,7 @@ interface VisualTierInput {
   mergeBase: string;
   /** Raw shepherd.visualTier[repo]; parsed here. Its mode is applied by the caller, not here. */
   config: unknown;
-  /** Raw pr-visual read, or undefined when absent; parsed here. */
+  /** Raw pr-visual read (pr-visual-read.ts), `{ unmeasured }` when it could not measure, or undefined when unread; parsed here. */
   pixel: unknown;
 }
 
@@ -33,7 +34,21 @@ const VisualTierConfigSchema = z.strictObject({
   logicPaths: globList,
   testArtifactPaths: globList,
   storyDiff: z.strictObject({ check: nonBlank, paths: globList, allowedApps: z.array(z.number().int().positive()).min(1) }),
+  /** The workflow whose `pr-visual-<head>` artifact is measured (TP-4761 S4); absent, no artifact is read. */
+  prVisual: z.strictObject({ workflow: nonBlank, pixelTolerance: z.number().min(0).max(1).optional() }).optional(),
 });
+
+/** Where and how to measure the pr-visual artifact, or undefined when the entry does not parse or names none. */
+export function prVisualOf(config: unknown): { workflow: string; pixelTolerance: number } | undefined {
+  const parsed = VisualTierConfigSchema.safeParse(config);
+  const prVisual = parsed.success ? parsed.data.prVisual : undefined;
+  return prVisual && { workflow: prVisual.workflow, pixelTolerance: prVisual.pixelTolerance ?? DEFAULT_PIXEL_TOLERANCE };
+}
+
+/** The prefix of every tier-2 reason that a pr-visual read could answer, so the guard reads the artifact only for those. */
+export const NO_PIXEL_PROOF = "no pixel proof:";
+
+const UnmeasuredSchema = z.strictObject({ unmeasured: z.string() });
 
 const InputSchema = z.object({
   head: z.string().regex(FULL_SHA),
@@ -118,8 +133,10 @@ function proveTierOne(classes: readonly (readonly [string, PathClass])[], merge:
   const { check, allowedApps } = policy.storyDiff;
   if (pathsOf("logic").length > 0 && !baselineCheckGreen(merge, check, allowedApps)) return tier2(`logic with ${check} not green at the head`);
   if (pathsOf("rendered").length === 0) return { tier: 1, basis: "non-rendering" };
+  const unmeasured = UnmeasuredSchema.safeParse(pixel);
+  if (unmeasured.success) return tier2(`${NO_PIXEL_PROOF} ${unmeasured.data.unmeasured}`);
   const proof = pixelProofSchema(merge.head, mergeBase).safeParse(pixel);
-  if (!proof.success) return tier2(`no pixel proof: ${pixel === undefined ? "no pr-visual artifact read" : firstIssue(proof.error)}`);
+  if (!proof.success) return tier2(`${NO_PIXEL_PROOF} ${pixel === undefined ? "no pr-visual artifact read" : firstIssue(proof.error)}`);
   return { tier: 1, basis: "no-pixel-diff" };
 }
 

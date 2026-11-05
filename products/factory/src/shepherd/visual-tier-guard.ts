@@ -6,7 +6,8 @@ import { z } from "zod";
 import { oneLine } from "../gate-brief.js";
 import type { VisualThreshold } from "./visual-threshold.js";
 import { shownPaths, visualMatches } from "./visual-gate.js";
-import { visualTier } from "./visual-tier.js";
+import type { ReadPrVisual } from "./pr-visual-read.js";
+import { NO_PIXEL_PROOF, prVisualOf, visualTier } from "./visual-tier.js";
 
 /** The per-repo visual config the evidence step reads afresh at each head. */
 export interface VisualReadsWiring {
@@ -14,6 +15,8 @@ export interface VisualReadsWiring {
   visualThreshold?: (repo: string) => VisualThreshold | undefined;
   /** Raw `shepherd.visualTier` for a repo, parsed only by visual-tier.ts; absent, or undefined for a repo, records no tier. */
   visualTier?: (repo: string) => unknown;
+  /** Measures a head's pr-visual artifact; absent, no artifact is read and a rendered path stays tier 2. */
+  prVisual?: ReadPrVisual;
 }
 
 const MAX_REASON = 500;
@@ -52,19 +55,24 @@ interface TierTarget {
   baseRef: string;
   visualPaths: readonly string[] | undefined;
   config: unknown;
+  readPixel?: ReadPrVisual | undefined;
 }
 
 /**
- * The tier of a head the visual-path row would gate, judged on every changed path. No pr-visual artifact is read until
- * TP-4761 S4, so `pixel` is undefined and only the non-rendering tier 1 is reachable.
+ * The tier of a head the visual-path row would gate, judged on every changed path. The pr-visual artifact is read only
+ * when the tier without it would ask for one, so a non-rendering or already tier-2 head costs no download.
  */
 export async function readVisualTier(port: Pick<GitHubPort, "compareFiles">, merge: MergeFacts, target: TierTarget): Promise<{ visualTier: VisualTierRecord } | undefined> {
-  const { repo, baseRef, visualPaths, config } = target;
+  const { repo, baseRef, visualPaths, config, readPixel } = target;
   const mode = tierMode(config);
   const judged = visualPaths === undefined ? [] : visualMatches(merge.changedPaths, visualPaths);
   if (mode === undefined || visualPaths === undefined || judged.length === 0) return undefined;
   const mergeBase = await mergeBaseOf(port, repo, baseRef, merge.head);
-  return { visualTier: { mode, judged, verdict: visualTier({ merge, visualPaths, mergeBase, config, pixel: undefined }) } };
+  const unread = visualTier({ merge, visualPaths, mergeBase, config, pixel: undefined });
+  const prVisual = prVisualOf(config);
+  if (unread.tier === 1 || !unread.reason.startsWith(NO_PIXEL_PROOF) || readPixel === undefined || prVisual === undefined) return { visualTier: { mode, judged, verdict: unread } };
+  const pixel = await readPixel({ repo, head: merge.head, ...prVisual });
+  return { visualTier: { mode, judged, verdict: visualTier({ merge, visualPaths, mergeBase, config, pixel }) } };
 }
 
 /** A stored record is read back unvalidated, so one that fails the schema is tier 2 whatever mode it claims. */
