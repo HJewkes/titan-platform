@@ -25,6 +25,8 @@ import {
   checkZodIsPeer,
 } from "./structure-rules.mjs";
 
+import { compileGlobs as realCompileGlobs } from "../packages/fix-proof/dist/index.js";
+
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
 const fixture = (name) => join(REPO, "scripts", "fixtures", "structure", name);
 
@@ -289,6 +291,20 @@ describe("R60 who may import a carried path", () => {
   it("lets a carried file import another carried file", async () => {
     const root = carryImportRoot({ "src/fixtures/data.ts": "export default 1;\n", "src/fixtures/more.ts": 'import "./data.js";\n' });
     expect(await checkNoCarryImports(root)).toEqual([]);
+  });
+
+  it("compiles the globs once and matches only paths that have a relative import to judge", async () => {
+    const root = carryImportRoot({ "src/a.ts": "export {};\n", "src/b.ts": "export {};\n", "src/c.ts": 'import "zod";\n', "src/use.ts": CARRY_IMPORT, "src/fixtures/data.ts": "export default 1;\n" });
+    let compiles = 0;
+    const matched = [];
+    const compileGlobs = (globs) => {
+      compiles += 1;
+      const matches = realCompileGlobs(globs);
+      return (path) => (matched.push(path), matches(path));
+    };
+    await checkNoCarryImports(root, { compileGlobs });
+    expect(compiles).toBe(1);
+    expect(matched).toEqual(["packages/a/src/fixtures/data.ts", "packages/a/src/use.ts"]);
   });
 
   it("ignores a source import of another source file and of a package", async () => {

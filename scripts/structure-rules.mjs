@@ -355,19 +355,26 @@ function staticRelativeImports(text) {
  * R60 (TP-2737): no non-test source file statically imports a path the fix-proof config lists under tests or carry.
  * A test-only PR may change those paths unproved, so source that imports one could change behavior under a test-only verdict.
  */
-export async function checkNoCarryImports(root) {
+export async function checkNoCarryImports(root, { compileGlobs: compile } = {}) {
   const { compileGlobs, parseFixProofConfig, CONFIG_PATH } = await import("../packages/fix-proof/dist/index.js");
   const parsed = parseFixProofConfig(existsSync(join(root, CONFIG_PATH)) ? readFileSync(join(root, CONFIG_PATH), "utf8") : null);
   if (!parsed.ok) return [parsed.error];
-  const isTestOnly = compileGlobs([...parsed.config.tests, ...parsed.config.carry]);
+  // Glob matching dominated the run (TP-4779): compile once, memoise per path, and match a file only once it has an import to judge.
+  const matcher = (compile ?? compileGlobs)([...parsed.config.tests, ...parsed.config.carry]);
+  const verdicts = new Map();
+  const isTestOnly = (path) => {
+    if (!verdicts.has(path)) verdicts.set(path, matcher(path));
+    return verdicts.get(path);
+  };
   const files = WORKSPACE_GROUPS.flatMap((group) => subdirs(join(root, group))).flatMap((dir) => sourceFiles(dir));
   return files
     .map((file) => relative(root, file).split(sep).join("/"))
-    .filter((path) => !isTestOnly(path))
-    .flatMap((path) =>
-      staticRelativeImports(readFileSync(join(root, path), "utf8"))
+    .flatMap((path) => {
+      const targets = staticRelativeImports(readFileSync(join(root, path), "utf8"))
         .map((specifier) => resolvedTarget(path, specifier))
-        .filter(isTestOnly)
-        .map((target) => `\`${path}\` imports \`${target}\`, which \`${CONFIG_PATH}\` lists as a test or carry path. A test-only change could alter it unproved; move the imported file off that path (R60, TP-2737).`),
-    );
+        .filter(isTestOnly);
+      return targets.length === 0 || isTestOnly(path)
+        ? []
+        : targets.map((target) => `\`${path}\` imports \`${target}\`, which \`${CONFIG_PATH}\` lists as a test or carry path. A test-only change could alter it unproved; move the imported file off that path (R60, TP-2737).`);
+    });
 }

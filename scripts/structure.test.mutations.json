@@ -4,10 +4,19 @@
     {
       "name": "a test file importing a carried helper is flagged too",
       "file": "scripts/structure-rules.mjs",
-      "find": "    .filter((path) => !isTestOnly(path))\n    .flatMap((path) =>\n      staticRelativeImports",
-      "replace": "    .flatMap((path) =>\n      staticRelativeImports",
+      "find": "targets.length === 0 || isTestOnly(path)",
+      "replace": "targets.length === 0",
       "kills": [
         "R60 who may import a carried path lets a test file import a carried helper"
+      ]
+    },
+    {
+      "name": "every path is glob-matched before its imports are judged",
+      "file": "scripts/structure-rules.mjs",
+      "find": "targets.length === 0 || isTestOnly(path)",
+      "replace": "isTestOnly(path) || targets.length === 0",
+      "kills": [
+        "R60 who may import a carried path compiles the globs once and matches only paths that have a relative import to judge"
       ]
     }
   ]
