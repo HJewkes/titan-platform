@@ -376,7 +376,7 @@ nothing that names the mode, so a case cannot skip one by branching.
 2. an A17 title carries `.skip`, `.todo`, `.only`, `.skipIf` or `.runIf`.
 
 A case with no GitHub input, such as the M0 deploy probe cases, stays single-mode and is listed in `NOT_EVENT`
-(`test-support/a17/not-event.ts`) with the file, the title as written and a reason. The guard also fails on an entry whose
+(`a17/not-event.ts`) with the file, the title as written and a reason. The guard also fails on an entry whose
 file no longer carries its title. CI reruns the whole factory package when anything in it changes, so the guard runs on
 every factory change.
 

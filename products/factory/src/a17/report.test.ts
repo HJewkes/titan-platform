@@ -99,12 +99,12 @@ describe("checkA17Report", () => {
 describe("a17.mjs", () => {
   it("exits 1 over a fixture holding one one-mode case, and writes the report", () => {
     // Outside the factory tree, whose structure guard would otherwise see the deliberately one-mode fixture.
-    const dir = mkdtempSync(join(fileURLToPath(new URL("../../../../../scripts/", import.meta.url)), "a17-smoke-"));
+    const dir = mkdtempSync(join(fileURLToPath(new URL("../../../../scripts/", import.meta.url)), "a17-smoke-"));
     try {
       writeFileSync(join(dir, "one-mode.test.mjs"), `import { it } from "vitest";\nit("A17: lonely [webhook]", () => undefined);\n`);
       mkdirSync(join(dir, "out"));
       const out = join(dir, "out", "report.json");
-      const script = fileURLToPath(new URL("../../../scripts/a17.mjs", import.meta.url));
+      const script = fileURLToPath(new URL("../../scripts/a17.mjs", import.meta.url));
 
       const result = spawnSync(process.execPath, [script, "--out", out, dir], { encoding: "utf8" });
 

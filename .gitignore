@@ -18,5 +18,5 @@ site/guides/capabilities.md
 /refs.txt
 /spec.json
 
-# Temporary fixture written by products/factory/src/test-support/a17/report.test.ts; a run killed before cleanup leaves it.
+# Temporary fixture written by products/factory/src/a17/report.test.ts; a run killed before cleanup leaves it.
 scripts/a17-smoke-*/
