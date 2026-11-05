@@ -126,6 +126,8 @@
   "post-merge.ts",
   "pr-changed-paths.ts",
   "pr-params.ts",
+  "pr-visual-read.ts",
+  "pr-visual-zip.ts",
   "presence.ts",
   "proof-base.ts",
   "prs-command.ts",
