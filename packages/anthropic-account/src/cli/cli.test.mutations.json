@@ -6,21 +6,63 @@
       "file": "packages/anthropic-account/src/cli/poll-command.ts",
       "find": "  const refresh = flags.refresh && (context.platform ?? process.platform) !== \"darwin\";",
       "replace": "  const refresh = flags.refresh;",
-      "kills": ["darwin reads logins from the Keychain darwin never refreshes, even an expired token with a credentials file beside it"]
+      "kills": [
+        "darwin reads logins from the Keychain darwin never refreshes, even an expired token with a credentials file beside it"
+      ]
     },
     {
       "name": "status reads the credentials file on darwin",
       "file": "packages/anthropic-account/src/cli/status-command.ts",
       "find": "readLoginState(profile.configDir, { ...keychainOf(context), now, uid: context.uid })",
       "replace": "readLoginState(profile.configDir, { now, uid: context.uid })",
-      "kills": ["darwin reads logins from the Keychain status --json and a written poll carry no Keychain token"]
+      "kills": [
+        "darwin reads logins from the Keychain status --json and a written poll carry no Keychain token"
+      ]
     },
     {
       "name": "readAccounts reads the credentials file on darwin",
       "file": "packages/anthropic-account/src/node/accounts.ts",
       "find": "readLoginState(configDir, { ...keychainOptions(options), now, uid: options.uid })",
       "replace": "readLoginState(configDir, { now, uid: options.uid })",
-      "kills": ["darwin reads logins from the Keychain status --json fails auth for an expired, unrefreshable Keychain login"]
+      "kills": [
+        "darwin reads logins from the Keychain status --json fails auth for an expired, unrefreshable Keychain login"
+      ]
+    },
+    {
+      "name": "poll ignores every profile's login failure when labels are set",
+      "file": "packages/anthropic-account/src/cli/poll-command.ts",
+      "find": "accounts !== null && !accounts.has(label) && isIgnorableLoginFailure",
+      "replace": "accounts !== null && isIgnorableLoginFailure",
+      "kills": [
+        "poll with ANTHROPIC_ACCOUNT_LABELS still fails for a listed account with a malformed login"
+      ]
+    },
+    {
+      "name": "poll ignores any failure on an unlisted profile",
+      "file": "packages/anthropic-account/src/cli/poll-command.ts",
+      "find": "return !result.ok && (result.failure === \"missing\" || result.failure === \"refused\");",
+      "replace": "return !result.ok;",
+      "kills": [
+        "poll with ANTHROPIC_ACCOUNT_LABELS still fails for an HTTP failure on an unlisted profile"
+      ]
+    },
+    {
+      "name": "poll ignores nothing when labels are set",
+      "file": "packages/anthropic-account/src/cli/poll-command.ts",
+      "find": "accounts !== null && !accounts.has(label)",
+      "replace": "false && accounts !== null",
+      "kills": [
+        "poll with ANTHROPIC_ACCOUNT_LABELS warns and exits 0 for an unlisted profile with a malformed login"
+      ]
+    },
+    {
+      "name": "poll treats an empty label list as a set",
+      "file": "packages/anthropic-account/src/cli/poll-command.ts",
+      "find": "return labels.length === 0 ? null : new Set(labels);",
+      "replace": "return new Set(labels);",
+      "kills": [
+        "poll with ANTHROPIC_ACCOUNT_LABELS counts every profile as an account when the variable is unset or empty"
+      ]
     }
   ]
 }
