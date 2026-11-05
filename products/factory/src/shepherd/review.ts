@@ -3,7 +3,7 @@ import type { OwnerOverride } from "./override-stats.js";
 import type { StepDeclaration } from "../definition.js";
 import type { StepRoute } from "@titan-design/workflow";
 import { z } from "zod";
-import { codeRoute, step } from "../workflows/land.js";
+import { codeRoute, repeatAwareRoute, step } from "../workflows/land.js";
 import type { StepClock } from "../workflows/deadline.js";
 import { CORRECT_VERDICT_STEP, CorrectVerdictInputSchema, correctVerdict, type CorrectVerdictInput, type CorrectedResult } from "./correct-verdict.js";
 import { reviewBrief, type CodewatchEvidence, type CodewatchReader } from "./codewatch-questions.js";
@@ -38,6 +38,7 @@ import { PROOF_WAIVER_STEPS, fixProofRoutes, proofStandingAt } from "./proof-wai
 import type { MachineStopWatch } from "./machine-stop.js";
 import type { VisualReadsWiring } from "./visual-tier-guard.js";
 import { REVIEW_STEP } from "./review-steps.js";
+import { FOLLOW_UPS_STEPS, followUpsRoute, type FollowUpsWiring } from "./follow-ups-step.js";
 import { REVIEW_STOP_STEPS, reviewStopRoute } from "./review-stop.js";
 import type { HoldMember, PanelMode } from "./review-panel-plan.js";
 import { PANEL_STEPS, PROOF_PLAN_FIELDS, panelVerdictRoute, plannedPanel, proofPlanFields, type PanelOnPlan, type ProfileCheck } from "./review-panel-step.js";
@@ -73,6 +74,7 @@ export const REVIEW_STEPS: readonly StepDeclaration[] = [
   ...NO_REVIEWER_STEPS,
   ...SCOPE_CHECK_STEPS,
   { id: REVIEW_SHADOW_STEP, kind: "dispatch" },
+  ...FOLLOW_UPS_STEPS,
 ];
 
 export const DEFAULT_VERDICT_TIMEOUT_MS = 30 * 60_000;
@@ -169,7 +171,7 @@ function notStartedInTime(intent: ReviewIntent, rosterError: string | undefined)
   return { kind: "none", reason: `reviewer ${intent.reviewer} did not start one session in time${cause}` };
 }
 
-export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeCheckWiring, AttestSkewWiring, OldPathWiring, VisualReadsWiring {
+export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeCheckWiring, AttestSkewWiring, OldPathWiring, VisualReadsWiring, FollowUpsWiring {
   reader: ReviewerReader;
   /** Absent means no reviewer is dispatched and the owner gate decides. */
   dispatch?: ReviewerDispatch;
@@ -308,12 +310,6 @@ const correctReviewer: BrokerStepBody<CorrectVerdictInput, CorrectedResult> = (d
   return correctVerdict(memberDispatch(wired, input.shape) ?? dispatch, input, timing, signal, repeat);
 };
 
-/** `codeRoute` for a body that must know it ran before: a first run is attempt 0 with no restarts, and only the recovery of an interrupted step raises either. */
-function repeatAwareRoute<I>(match: string, now: () => number, fn: (input: I, signal: AbortSignal, clock: StepClock, repeat: boolean) => Promise<object>): StepRoute {
-  const routeFor = (repeat: boolean) => codeRoute(match, now, (input: I, signal, clock) => fn(input, signal, clock, repeat));
-  return { ...routeFor(false), runner: { run: (step) => routeFor(step.attempt > 0 || (step.restarts ?? 0) > 0).runner.run(step) } };
-}
-
 /** With no reader wired the verdict step answers `none` at once, so the owner gate decides. */
 export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonly StepRoute[] => {
   const timing = { ...brokerTiming(deps), timeoutMs: wiring?.timeoutMs ?? DEFAULT_VERDICT_TIMEOUT_MS, exitGraceMs: wiring?.exitGraceMs, detachGraceMs: wiring?.detachGraceMs };
@@ -337,6 +333,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     ...noReviewerRoutes(deps, wiring?.accounts?.alert),
     scopeCheckRoute(deps.now),
     reviewShadowRoute(deps.now, wiring),
+    followUpsRoute(deps.now, wiring?.followUps),
   ];
 };
 

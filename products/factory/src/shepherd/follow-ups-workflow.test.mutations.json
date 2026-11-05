@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a filing error escapes the step body",
+      "file": "products/factory/src/shepherd/follow-ups-step.ts",
+      "find": "  } catch (error) {\n    return { filed: [], ...warning, error: errorOf(error) };\n  }\n",
+      "replace": "  } finally {\n    void errorOf;\n  }\n",
+      "kills": [
+        "the sh-follow-ups step at a verdict an active-work outage while filing records the error and the MERGE still merges",
+        "the sh-follow-ups step at a verdict a throwing active-work port leaves the verdict and the step after it as a run with no follow-ups has them"
+      ]
+    },
+    {
+      "name": "a replay records the step a pre-step ledger never held",
+      "file": "products/factory/src/shepherd/follow-ups-step.ts",
+      "find": "  if (next !== undefined && !stepIdMatches(FOLLOW_UPS_STEP, next)) return;\n",
+      "replace": "",
+      "kills": [
+        "fileFollowUpsAt on replay a run replaying a ledger recorded before sh-follow-ups existed skips the step"
+      ]
+    },
+    {
+      "name": "a verdict with no Follow-ups block still records the step",
+      "file": "products/factory/src/shepherd/follow-ups-step.ts",
+      "find": "  if (found.followUps === undefined && found.followUpsWarning === undefined) return;\n",
+      "replace": "",
+      "kills": [
+        "the sh-follow-ups step at a verdict a verdict with no Follow-ups block records no sh-follow-ups step"
+      ]
+    },
+    {
+      "name": "only a MERGE files its follow-ups",
+      "file": "products/factory/src/shepherd/follow-ups-step.ts",
+      "find": "  if (awaited.kind !== \"verdict\") return;\n",
+      "replace": "  if (awaited.verdict !== \"MERGE\") return;\n",
+      "kills": [
+        "the sh-follow-ups step at a verdict a FIX_FIRST carrying follow-ups files them and the FIX_FIRST still goes to the fixer"
+      ]
+    },
+    {
+      "name": "an active-work call is not bounded",
+      "file": "products/factory/src/shepherd/follow-ups-step.ts",
+      "find": "    return { ...(await fileFollowUps(boundedTasks(tasks, signal, timeoutMs), where, items)), ...warning };\n",
+      "replace": "    return { ...(await fileFollowUps(tasks, where, items)), ...warning };\n",
+      "kills": [
+        "followUpsBody's bound an active-work call that never answers records an error once the bound passes"
+      ]
+    }
+  ]
+}
