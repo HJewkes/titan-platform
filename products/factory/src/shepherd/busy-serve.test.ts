@@ -6,6 +6,11 @@ import { runCli } from "../cli.js";
 import { shepherdFixture } from "../test-support/shepherd.js";
 import { REPO } from "../test-support/land.js";
 import { portOf } from "../test-support/fakes.js";
+import { callCommand } from "../test-support/shepherd.js";
+import { openFactoryHost } from "../host.js";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const servers: Server[] = [];
 afterEach(async () => {
@@ -89,5 +94,33 @@ describe("shepherd register against a serve that is busy rather than down", () =
 
     expect(result.code).toBe(69);
     expect(result.err).toMatch(/connection refused/);
+  });
+});
+
+describe("shepherd status --json against a serve too slow to answer", () => {
+  it("falls back to the database and reads a release:grant registration with exit 0", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "factory-busy-status-"));
+    try {
+      const dbPath = join(dir, "state", "factory.sqlite3");
+      const seats = { seats: [{ name: "release-seat", remotes: [REPO], paths: {}, grants: ["release-merge"] }], denied: [] };
+      const fixture = shepherdFixture({ frozen: true, seats });
+      const host = openFactoryHost({ dbPath, workflows: fixture.workflows, routes: fixture.routes, gatePollMs: 5 });
+      const run = await callCommand<{ runId: string }>(host, fixture.routes, "shepherd.register", { repo: REPO, branch: "agent-chat/rel", task: "demo/T-1", implementer: "impl-a" });
+      host.close();
+      expect(run.ok).toBe(true);
+      const port = await slowServe(60_000);
+      let out = "";
+      let err = "";
+      const io = { stdout: (t: string) => void (out += t), stderr: (t: string) => void (err += t), env: {} };
+      const argv = ["--db", dbPath, "shepherd", "status", "--json", "--port", String(port)];
+
+      const code = await runCli(argv, io, { workflows: fixture.workflows, routes: fixture.routes, host: { gatePollMs: 5 }, logger: silentLogger, serveWaitMs: 300 });
+
+      expect(err).toBe("");
+      expect(code).toBe(0);
+      expect(JSON.parse(out)).toEqual([expect.objectContaining({ runId: run.ok ? run.data.runId : "" })]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
