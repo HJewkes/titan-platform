@@ -34,8 +34,12 @@ const VisualTierConfigSchema = z.strictObject({
   logicPaths: globList,
   testArtifactPaths: globList,
   storyDiff: z.strictObject({ check: nonBlank, paths: globList, allowedApps: z.array(z.number().int().positive()).min(1) }),
-  /** The workflow whose `pr-visual-<head>` artifact is measured (TP-4761 S4); absent, no artifact is read. */
-  prVisual: z.strictObject({ workflow: nonBlank, pixelTolerance: z.number().min(0).max(1).optional() }).optional(),
+  /**
+   * The workflow whose `pr-visual-<head>` artifact is measured (TP-4761 S4); absent, no artifact is read. That workflow
+   * runs the head's own install, build and capture, so `browserPaths` lists the only paths a pixel proof may cover:
+   * source that runs in the browser alone, never a config, manifest, lockfile, build hook or Storybook setup file.
+   */
+  prVisual: z.strictObject({ workflow: nonBlank, browserPaths: globList, pixelTolerance: z.number().min(0).max(1).optional() }).optional(),
 });
 
 /** Where and how to measure the pr-visual artifact, or undefined when the entry does not parse or names none. */
@@ -76,7 +80,12 @@ type Row = readonly [PathClass, (path: string) => boolean];
 interface TierPolicy {
   rows: readonly Row[];
   storyDiff: { check: string; allowedApps: readonly number[] };
+  /** Which changed paths the pr-visual job cannot run, so a pixel proof may cover them; absent, no proof counts. */
+  pixelSafe?: (path: string) => boolean;
 }
+
+/** A head that changes any path the producer job could run made the images itself, so no read is asked for. */
+const PRODUCER_RUNNABLE = "producer-runnable:";
 
 const CLEARING: ReadonlySet<PathClass> = new Set(["outside", "inert", "test-artifact", "story", "logic"]);
 
@@ -108,10 +117,20 @@ function compileTierPolicy(config: unknown, visualPaths: readonly string[]): Tie
   const visual = globList.safeParse(visualPaths);
   if (!visual.success) return `visualPaths ${firstIssue(visual.error)}`;
   try {
-    return { rows: tierRows(parsed.data, visual.data), storyDiff: parsed.data.storyDiff };
+    const { prVisual } = parsed.data;
+    return { rows: tierRows(parsed.data, visual.data), storyDiff: parsed.data.storyDiff, ...(prVisual && { pixelSafe: pixelSafe(prVisual.browserPaths) }) };
   } catch (error) {
     return error instanceof Error ? error.message : "a glob did not compile";
   }
+}
+
+/** `.github/**`, which holds the producer workflow, is refused even when an allow-list glob would match it. */
+function pixelSafe(browserPaths: readonly string[]): (path: string) => boolean {
+  const browser = caseFolded(browserPaths);
+  return (path) => {
+    const folded = path.toLowerCase();
+    return !folded.startsWith(".github/") && !folded.includes("/.github/") && browser(path);
+  };
 }
 
 function firstIssue(error: z.ZodError): string {
@@ -133,11 +152,21 @@ function proveTierOne(classes: readonly (readonly [string, PathClass])[], merge:
   const { check, allowedApps } = policy.storyDiff;
   if (pathsOf("logic").length > 0 && !baselineCheckGreen(merge, check, allowedApps)) return tier2(`logic with ${check} not green at the head`);
   if (pathsOf("rendered").length === 0) return { tier: 1, basis: "non-rendering" };
+  const refused = pixelRefusal(classes, pixel, policy);
+  if (refused !== undefined) return refused;
   const unmeasured = UnmeasuredSchema.safeParse(pixel);
   if (unmeasured.success) return tier2(`${NO_PIXEL_PROOF} ${unmeasured.data.unmeasured}`);
   const proof = pixelProofSchema(merge.head, mergeBase).safeParse(pixel);
   if (!proof.success) return tier2(`${NO_PIXEL_PROOF} ${pixel === undefined ? "no pr-visual artifact read" : firstIssue(proof.error)}`);
   return { tier: 1, basis: "no-pixel-diff" };
+}
+
+/** The pixel path covers a head only when the producer job runs none of its changes: every path is on the allow-list. */
+function pixelRefusal(classes: readonly (readonly [string, PathClass])[], pixel: unknown, policy: TierPolicy): VisualTierVerdict | undefined {
+  const { pixelSafe: safe } = policy;
+  if (safe === undefined) return tier2(`${NO_PIXEL_PROOF} ${pixel === undefined ? "no pr-visual artifact read" : "no prVisual policy to measure under"}`);
+  const runnable = classes.map(([path]) => path).filter((path) => !safe(path));
+  return runnable.length > 0 ? tier2(`${PRODUCER_RUNNABLE} ${shownPaths(runnable)}`) : undefined;
 }
 
 export function visualTier(input: VisualTierInput): VisualTierVerdict {

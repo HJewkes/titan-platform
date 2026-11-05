@@ -1321,7 +1321,11 @@ into two tiers. A tier-1 head merges on Shepherd's own MRG-AU-RV. A tier-2 head 
     "storyPaths": ["packages/ui/src/**/*.stories.tsx"],
     "logicPaths": ["packages/ui/src/**"],
     "testArtifactPaths": ["packages/ui/contrast-baseline.json"],
-    "storyDiff": { "check": "visual", "paths": ["**/*-snapshots/**"], "allowedApps": [15368] }
+    "storyDiff": { "check": "visual", "paths": ["**/*-snapshots/**"], "allowedApps": [15368] },
+    "prVisual": {
+      "workflow": ".github/workflows/pr-visual.yml",
+      "browserPaths": ["packages/ui/src/components/**"]
+    }
   }
 }
 ```
@@ -1338,8 +1342,24 @@ logic (`.ts`/`.js` under `logicPaths`). If any path is logic, the head also need
 `storyDiff.check` to conclude `success` at the head from an `allowedApps` app; `skipped`
 does not count. Any harness, rendering or snapshot path makes the head tier 2, wherever
 that path sits and whatever it is named. Any other path counts as rendered. A rendered path
-needs a pixel proof from the pr-visual artifact, and Shepherd does not read that artifact
-yet, so a rendered path is always tier 2 for now.
+needs a pixel proof from the pr-visual artifact, which Shepherd reads only when the entry
+has `prVisual`; without it a rendered path is always tier 2.
+
+The pr-visual workflow checks out the head and runs its install, build and capture, so the
+head's own code writes the images. A pixel proof therefore covers a head only when every
+changed path matches `prVisual.browserPaths`: source that runs only in the browser. Do not
+list package manifests, lockfiles, install hooks, build or Storybook config, or capture
+scripts there. A path under `.github/` never counts, even when a glob matches it. Any other
+changed path, including one outside the visual globs, makes the head tier 2
+(`producer-runnable`) and Shepherd skips the download. Otherwise Shepherd downloads the
+newest `pr-visual-<head>` artifact from `prVisual.workflow` at the head. It reads the
+artifact under byte, entry, shot and pixel caps and counts changed pixels on each before
+and after pair itself, within `prVisual.pixelTolerance`. Zero on every shot is tier 1
+(`no-pixel-diff`). Anything else is tier 2: a changed or one-sided shot, a shot naming one
+file for both sides, `rendered: false`, or an artifact it cannot read.
+
+Browser code can still detect the capture and render its old look. Weigh that risk before
+you set a `prVisual` repo to `on`.
 
 Modes:
 

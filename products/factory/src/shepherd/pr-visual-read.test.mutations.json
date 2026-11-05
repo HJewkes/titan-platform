@@ -35,6 +35,34 @@
       "find": "const overCap = (size: number) => size > zipBytes;",
       "replace": "const overCap = (size: number) => size < 0;",
       "kills": ["the pr-visual pixel path (TP-4761 S4) artifact over the byte cap is tier 2 unmeasured"]
+    },
+    {
+      "name": "a shot may name one file for before and after",
+      "file": "products/factory/src/shepherd/pr-visual-read.ts",
+      "find": "  if (shot.before === shot.after) return `shot ${index} names one file for before and after`;\n",
+      "replace": "",
+      "kills": ["the pr-visual pixel path (TP-4761 S4) a shot naming one file for before and after is tier 2"]
+    },
+    {
+      "name": "the producer-runnable refusal never fires",
+      "file": "products/factory/src/shepherd/visual-tier.ts",
+      "find": "return runnable.length > 0 ? tier2(",
+      "replace": "return false ? tier2(",
+      "kills": ["the pixel path refuses a head whose code could make its own images (TP-4761 S4) a Storybook config the build runs in Node is tier 2 with no artifact read", "the pixel path refuses a head whose code could make its own images (TP-4761 S4) an install hook outside the visual globs is tier 2 with no artifact read"]
+    },
+    {
+      "name": "a top-level .github path may be allow-listed",
+      "file": "products/factory/src/shepherd/visual-tier.ts",
+      "find": "!folded.startsWith(\".github/\") && ",
+      "replace": "",
+      "kills": ["the pixel path refuses a head whose code could make its own images (TP-4761 S4) the producer workflow, though an allow-list glob matches it is tier 2 with no artifact read"]
+    },
+    {
+      "name": "a nested .github path may be allow-listed",
+      "file": "products/factory/src/shepherd/visual-tier.ts",
+      "find": "!folded.includes(\"/.github/\") && ",
+      "replace": "",
+      "kills": ["the pixel path refuses a head whose code could make its own images (TP-4761 S4) a nested .github path, though an allow-list glob matches it is tier 2 with no artifact read"]
     }
   ]
 }

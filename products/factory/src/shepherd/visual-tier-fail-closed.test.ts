@@ -16,6 +16,7 @@ const config = {
   renderingPaths: ["src/tokens/**"],
   harnessPaths: ["scripts/capture/**", "playwright.config.ts"],
   storyDiff: { check: "visual", paths: ["**/__snapshots__/**", "**/__snapshots__.spec/**"], allowedApps: [APP] },
+  prVisual: { workflow: ".github/workflows/pr-visual.yml", browserPaths: ["src/**"] },
 };
 
 const shot = { id: "button-default", paired: true, changedPixels: 0 };

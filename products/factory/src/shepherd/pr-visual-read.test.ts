@@ -22,7 +22,7 @@ const config = {
   renderingPaths: ["src/tokens/**"],
   harnessPaths: ["scripts/capture/**"],
   storyDiff: { check: "visual", paths: ["**/__snapshots__/**"], allowedApps: [15368] },
-  prVisual: { workflow: WORKFLOW, pixelTolerance: 0.1 },
+  prVisual: { workflow: WORKFLOW, browserPaths: ["src/button/**", "**/.github/**", ".github/workflows/*"], pixelTolerance: 0.1 },
 };
 
 /** A synthetic 2x2 image: grey, with one pixel's red channel nudged by `nudge`. */
@@ -86,19 +86,28 @@ function artifactZip({ pairs, manifest }: Artifact): Buffer {
   return zipOf({ "manifest.json": Buffer.from(JSON.stringify(body)), ...files });
 }
 
-function fakeGh(artifact: Artifact): PrVisualGh {
+function fakeGh(artifact: Artifact, calls: string[][] = []): PrVisualGh {
   const zip = artifactZip(artifact);
   const listed = { id: 41, expired: false, size_in_bytes: artifact.size ?? zip.length, workflow_run: { id: 9, head_sha: artifact.runHead ?? HEAD } };
   return {
-    text: async (args) => (args.includes("--paginate") ? `${JSON.stringify(listed)}\n` : JSON.stringify({ path: WORKFLOW })),
-    bytes: async () => zip,
+    text: async (args) => {
+      calls.push([...args]);
+      return args.includes("--paginate") ? `${JSON.stringify(listed)}\n` : JSON.stringify({ path: WORKFLOW });
+    },
+    bytes: async (args) => {
+      calls.push([...args]);
+      return zip;
+    },
   };
 }
 
-async function tierOf(artifact: Artifact, limits: { zipBytes?: number } = {}) {
+interface TierOptions { zipBytes?: number; changedPaths?: string[]; calls?: string[][] }
+
+async function tierOf(artifact: Artifact, { changedPaths = [RENDERED], calls, ...limits }: TierOptions = {}) {
   const port = partialFake<Pick<GitHubPort, "compareFiles">>({ compareFiles: async () => partialFake<CompareResult>({ mergeBaseSha: BASE }) });
-  const merge = partialFake<MergeFacts>({ head: HEAD, changedPaths: [RENDERED], checkRuns: [] });
-  const target = { repo: REPO, baseRef: "main", visualPaths: ["src/**"], config, readPixel: ghPrVisual(fakeGh(artifact), limits) };
+  const merge = partialFake<MergeFacts>({ head: HEAD, changedPaths, checkRuns: [] });
+  const visualPaths = ["src/**", "**/.github/**", ".storybook/**"];
+  const target = { repo: REPO, baseRef: "main", visualPaths, config, readPixel: ghPrVisual(fakeGh(artifact, calls), limits) };
   return (await readVisualTier(port, merge, target))?.visualTier.verdict;
 }
 
@@ -131,5 +140,38 @@ describe("the pr-visual pixel path (TP-4761 S4)", () => {
     const verdict = await tierOf({ pairs: [[png(), png()]] }, { zipBytes: 64 });
 
     expect(verdict).toEqual({ tier: 2, reason: "no pixel proof: artifact over the 64-byte cap" });
+  });
+
+  it("a shot naming one file for before and after is tier 2", async () => {
+    const same = { story: "button--s0", width: "1280", before: "before/button--s0@1280.png", after: "before/button--s0@1280.png" };
+    const verdict = await tierOf({ pairs: [[png(), png()]], manifest: { shots: [same] } });
+
+    expect(verdict).toEqual({ tier: 2, reason: "no pixel proof: shot 0 names one file for before and after" });
+  });
+});
+
+describe("the pixel path refuses a head whose code could make its own images (TP-4761 S4)", () => {
+  const forged = { pairs: [[png(), png()]] as [Buffer, Buffer][] };
+  const cases: [string, string[]][] = [
+    ["a Storybook config the build runs in Node", [".storybook/main.ts"]],
+    ["an install hook outside the visual globs", [".pnpmfile.cjs", RENDERED]],
+    ["a package manifest that can add a postinstall", ["src/package.json", RENDERED]],
+    ["the producer workflow, though an allow-list glob matches it", [WORKFLOW, RENDERED]],
+    ["a nested .github path, though an allow-list glob matches it", ["src/.github/actions/x.yml", RENDERED]],
+  ];
+
+  it.each(cases)("%s is tier 2 with no artifact read", async (_, changedPaths) => {
+    const calls: string[][] = [];
+    const verdict = await tierOf(forged, { changedPaths, calls });
+
+    expect(verdict).toMatchObject({ tier: 2, reason: expect.stringMatching(/^producer-runnable: /) });
+    expect(calls).toEqual([]);
+  });
+
+  it("an allow-listed rendered path alone is still measured", async () => {
+    const calls: string[][] = [];
+
+    expect(await tierOf(forged, { calls })).toEqual({ tier: 1, basis: "no-pixel-diff" });
+    expect(calls.length).toBeGreaterThan(0);
   });
 });

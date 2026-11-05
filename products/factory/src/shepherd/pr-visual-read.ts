@@ -88,6 +88,7 @@ type Shot = { story: string; width: string; before?: string | undefined; after?:
 /** One shot's proof entry: changed pixels counted here, or png-delta's `sizesDiffer`, which the proof schema refuses. */
 function measureShot(zip: ZipReader, shot: Shot, index: number, ctx: { budget: { pixels: number }; pixelTolerance: number }): unknown {
   if (shot.before === undefined || shot.after === undefined) return `shot ${index} is not paired`;
+  if (shot.before === shot.after) return `shot ${index} names one file for before and after`;
   const before = decodeShot(zip, shot.before, ctx.budget);
   if (typeof before === "string") return `shot ${index} before: ${before}`;
   const after = decodeShot(zip, shot.after, ctx.budget);
