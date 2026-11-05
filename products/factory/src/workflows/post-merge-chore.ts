@@ -21,7 +21,7 @@ export function choreFiles(dir: string, requestKey: string): ChoreFiles {
 }
 
 /** The layout for a marker id read off disk, where the request key is no longer known. */
-export function choreFilesOf(dir: string, id: string): ChoreFiles {
+function choreFilesOf(dir: string, id: string): ChoreFiles {
   return { marker: join(dir, `${id}.json`), spec: join(dir, `${id}.spec.json`), result: join(dir, `${id}.result.json`), unit: `titan-factory-chore-${id}` };
 }
 
@@ -43,7 +43,7 @@ export type StepTrace = z.infer<typeof StepTrace>;
 
 /** Written before the launch, then again with its handle: a marker with no handle means the launch may or may not have happened. */
 const ChoreMarker = z.object({ started: z.string(), step: StepTrace, handle: ChoreHandle.optional() });
-export type ChoreMarker = z.infer<typeof ChoreMarker>;
+type ChoreMarker = z.infer<typeof ChoreMarker>;
 
 export interface ChorePorts {
   /** `<stateDir>/chores`, which outlives serve. */
