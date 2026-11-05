@@ -222,6 +222,9 @@ export class WorkflowRuntime {
     else this.baseDeps.emit({ type: "workflow_cancelled", runId: run.id, reason: error ?? "cancelled" });
   }
 
+  /** Whether this runtime still drives the run: false once the run ended, parked, was shut down here or lost its lease. */
+  isLive(runId: string): boolean { return this.live.has(runId); }
+
   status(runId: string): WorkflowRun | undefined {
     return this.live.get(runId)?.ctx.run ?? this.store.get(runId);
   }
