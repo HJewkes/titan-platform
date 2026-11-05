@@ -6,8 +6,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkA17Report } from "../src/test-support/a17/report.ts";
-import { NOT_EVENT } from "../src/test-support/a17/not-event.ts";
+import { checkA17Report } from "../src/a17/report.ts";
+import { NOT_EVENT } from "../src/a17/not-event.ts";
 
 
 const repoRoot = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../..");

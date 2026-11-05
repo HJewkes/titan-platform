@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a test file importing a carried helper is flagged too",
+      "file": "scripts/structure-rules.mjs",
+      "find": "    .filter((path) => !isTestOnly(path))\n    .flatMap((path) =>\n      staticRelativeImports",
+      "replace": "    .flatMap((path) =>\n      staticRelativeImports",
+      "kills": [
+        "R60 who may import a carried path lets a test file import a carried helper"
+      ]
+    }
+  ]
+}

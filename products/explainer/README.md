@@ -1084,7 +1084,7 @@ timeline.json>`. The page fetches the timeline, then mounts react-ui's `MotionPr
 beats in one commit, so `window.__titanMotion` appears only once frame 0 can draw; any `__titanMotion` renderer, such
 as `@titan-design/frame-capture`, can capture it. Each beat's `kind` resolves through the registry in `registry.tsx`,
 which parses its slots; an unknown kind or bad slots throw in the page, and a page error fails the capture. A timeline
-with `provisional: true` carries a DRAFT badge. `baked.html` renders `fixtures/fixture.timeline.json` imported at
+with `provisional: true` carries a DRAFT badge. `baked.html` renders `data/baked.timeline.json` (a copy of `fixtures/fixture.timeline.json`, which the page tests serve) imported at
 build time: the reference the runtime page must match byte for byte.
 
 The registry holds `hook`, whose slots are `BEAT_SLOTS.hook`, and `catalogue` (react-ui's `FileCard`, `SchemaCard` and
