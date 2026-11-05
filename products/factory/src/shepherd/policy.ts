@@ -1,3 +1,4 @@
+import type { EvidenceRecord } from "./evidence-record.js";
 import type { MergeMethod } from "@titan-design/github";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
@@ -111,7 +112,7 @@ export function shepherdLandOptions(
   verdictFor: (headSha: string) => Verdict | undefined = () => undefined,
   escalationAt: (headSha: string) => Escalated | undefined = () => undefined,
   decidedBase: () => string | undefined = () => undefined,
-): LandOptions {
+): LandOptions & { evidenceAt: (headSha: string) => EvidenceRecord | undefined } {
   const reread = new WeakMap<Verdict, unknown>();
   const current = (headSha: string): Verdict | undefined => {
     const verdict = verdictFor(headSha);
@@ -133,7 +134,7 @@ export function shepherdLandOptions(
     return { ...decision, reason: escalationReason("policy-denial", decision.reason) };
   };
   const allowEvidence = (merge: { headSha: string }) => ({ ...mergeEvidenceAt(merge.headSha, current)?.record });
-  return { policy: { decide }, allowEvidence, unsettled: headWaits(refresh), featureBase: () => effective().featureBase === true, evidenceBase: (headSha) => mergeEvidenceAt(headSha, current)?.record.baseRef, readOn: proof.readIfUnread, skillPathsAt: (headSha) => skillPathsAt(headSha, current), ownerAtHeadAt: (headSha) => ownerAtHeadAt(headSha, current) };
+  return { policy: { decide }, allowEvidence, evidenceAt: (headSha) => mergeEvidenceAt(headSha, current)?.record, unsettled: headWaits(refresh), featureBase: () => effective().featureBase === true, evidenceBase: (headSha) => mergeEvidenceAt(headSha, current)?.record.baseRef, readOn: proof.readIfUnread, skillPathsAt: (headSha) => skillPathsAt(headSha, current), ownerAtHeadAt: (headSha) => ownerAtHeadAt(headSha, current) };
 }
 
 interface Reviews {

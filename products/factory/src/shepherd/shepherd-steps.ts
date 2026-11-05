@@ -8,6 +8,7 @@ import { CARRY_SCOPE_STEPS } from "./carry-merge.js";
 import { RELEASE_STEPS } from "./release.js";
 import { POST_MERGE_STEPS } from "./post-merge.js";
 import { OBSERVE_STEPS } from "./observe.js";
+import { EVIDENCE_MERGED_STEPS } from "./evidence-merged.js";
 import { OUTCOME_STEPS } from "./outcome.js";
 import { CONFLICT_CHECK_STEPS } from "./conflict-check.js";
 import { CONFLICT_BASE_STEPS } from "./conflict-base.js";
@@ -48,6 +49,7 @@ export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
   ...POST_MERGE_STEPS,
   ...OBSERVE_STEPS,
   ...OUTCOME_STEPS,
+  ...EVIDENCE_MERGED_STEPS,
   ...CONFLICT_CHECK_STEPS,
   ...CONFLICT_BASE_STEPS,
   ...STALE_BASE_STEPS,

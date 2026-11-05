@@ -58,6 +58,7 @@ export const shepherdSteps = [
   step("sh-thaw", "dispatch", "software", effect("item", `${WRITE}: releases the freeze for the owner`)),
   step("sh-cleanup", "dispatch", "software", irreversible("item", `${WRITE}: deletes the head ref and closes the task`)),
   step("sh-observe", "dispatch", "software", READ_EFFECT),
+  step("sh-evidence-merged", "dispatch", "software", effect("pr", `${WRITE}: edits the merged head's evidence comment once GitHub confirms the merge`)),
   step("sh-landed", "dispatch", "software", effect("item", `${RECORD}: the run's landed outcome`)),
   step("sh-stopped", "dispatch", "software", effect("item", `${RECORD}: the run's stopped outcome`)),
   step("sh-override", "dispatch", "software", effect("item", `${RECORD}: the owner's override and when it was taken`)),
