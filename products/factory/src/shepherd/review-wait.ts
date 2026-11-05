@@ -160,6 +160,12 @@ export function timedOutUnseen(waitedMs: number, waits: string[]): NotStarted {
   return { kind: "none", reason, notStarted: true, ...busyWaits(waits) };
 }
 
+/** An ask that went through, followed by roster reads that all timed out, left the session unseen; built from the class and the wait alone, since it becomes a stored step reason. */
+export function rosterUnreadAfterAsk(waitedMs: number, waits: string[]): NotStarted {
+  const reason = `the reviewer dispatch was refused: ReviewerAskTimedOut (roster unread after ${minutes(waitedMs)})`;
+  return { kind: "none", reason, notStarted: true, ...busyWaits(waits) };
+}
+
 /** The first wait after a busy refusal; each later wait doubles, up to the longest. */
 export const BUSY_FIRST_WAIT_MS = 60_000;
 export const BUSY_LONGEST_WAIT_MS = 8 * 60_000;
@@ -222,13 +228,14 @@ export function reviewWait(repo: string, pr: number | null): string | undefined 
   return pr === null ? undefined : waits.get(keyOf(repo, pr));
 }
 
-type Started<A> = { agent?: A; rosterError?: string };
+/** `onlyTimedOut` means every read failed with a timeout and none answered, so the roster was never seen at all. */
+type Started<A> = { agent?: A; rosterError?: string; onlyTimedOut?: true };
 
-async function readRoster<A>(roster: () => Promise<readonly A[]>): Promise<{ agents: readonly A[]; error?: string }> {
+async function readRoster<A>(roster: () => Promise<readonly A[]>): Promise<{ agents: readonly A[]; error?: string; timedOut?: true }> {
   try {
     return { agents: await roster() };
   } catch (error) {
-    return { agents: [], error: failureOf(error) };
+    return { agents: [], error: failureOf(error), ...(error instanceof ReviewerAskTimedOut && { timedOut: true as const }) };
   }
 }
 
@@ -239,13 +246,17 @@ async function readRoster<A>(roster: () => Promise<readonly A[]>): Promise<{ age
 export async function startedSession<A extends { sessionId: string }>(roster: () => Promise<readonly A[]>, holds: (agent: A) => boolean, timing: DeadlineTiming & { pollMs: number }, signal: AbortSignal): Promise<Started<A>> {
   const clock = deadline(timing);
   let rosterError: string | undefined;
+  let answered = false;
+  let failedOtherwise = false;
   for (;;) {
     const read = await readRoster(roster);
     rosterError = read.error ?? rosterError;
+    answered ||= read.error === undefined;
+    failedOtherwise ||= read.error !== undefined && !read.timedOut;
     const found = read.agents.filter(holds);
     if (found.length > 1) return {};
     if (found[0] && found[0].sessionId !== "") return { agent: found[0] };
-    if (clock.expired()) return rosterError === undefined ? {} : { rosterError };
+    if (clock.expired()) return rosterError === undefined ? {} : { rosterError, ...(!answered && !failedOtherwise && { onlyTimedOut: true as const }) };
     await clock.sleep(timing.pollMs, signal);
   }
 }

@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the final-run sweep removes a chore that is still running",
+      "file": "products/factory/src/workflows/chore-prune.ts",
+      "find": "if (state.kind === \"running\" || state.kind === \"never-started\") continue;",
+      "replace": "if (state.kind === \"never-started\") continue;",
+      "kills": [
+        "sweepFinalRuns keeps a failed run's still-running chore, and sweeps it on the next pass once the chore exits"
+      ]
+    },
+    {
+      "name": "the final-run sweep ignores whether the run is final",
+      "file": "products/factory/src/workflows/chore-prune.ts",
+      "find": "if (status === undefined || !FINAL_STATUSES.includes(status)) continue;",
+      "replace": "if (status === undefined) continue;",
+      "kills": [
+        "sweepFinalRuns keeps the files of a recovery_required run whose chore is gone",
+        "chorePruning final-run sweep sweeps at host bind, and again on a later final event once a running chore has exited"
+      ]
+    }
+  ]
+}

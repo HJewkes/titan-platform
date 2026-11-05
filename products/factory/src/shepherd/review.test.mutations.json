@@ -35,6 +35,15 @@
         "reviewPhase spawns one reviewer under one name and takes its verdict when the host dies after the spawn and before its step output is stored",
         "reviewPhase resumes the standing reviewer once and takes its verdict when the host dies after the resume and before its step output is stored"
       ]
+    },
+    {
+      "name": "a roster read timing out after the ask reads as not started in time",
+      "file": "products/factory/src/shepherd/review.ts",
+      "find": "return onlyTimedOut ? rosterUnreadAfterAsk(timing.timeoutMs, waits) : notStartedInTime(intent, rosterError);",
+      "replace": "return notStartedInTime(intent, rosterError);",
+      "kills": [
+        "sh-review answers not-started, naming the timeout and the wait, when every roster read after a successful ask timed out"
+      ]
     }
   ]
 }
