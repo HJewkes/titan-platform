@@ -2,6 +2,7 @@ import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
+import type { AncestryProbe } from "../build-ancestry.js";
 import { auditGate, auditRun, HOUR, step } from "../test-support/owner-gate-audit.js";
 import { JudgeUnavailable, type AuditJudge } from "./audit-judge.js";
 import { badByClass } from "./audit-render.js";
@@ -20,10 +21,22 @@ const runs = [
 ];
 
 const fakeJudge: AuditJudge = async ({ gateId }) => ({ stamp: "did-work", note: `looked at ${gateId}` });
+const noAncestry: AncestryProbe = async () => false;
 
 describe("buildAudit", () => {
+  it("links an incident at a descendant of the merge and marks the item BAD: incident", async () => {
+    const landedOnly = [auditRun("run-3", { "sh-landed": step("sh-landed", W41 + 11 * HOUR, { mergeSha: "abc123" }) })];
+    const descendant = { at: new Date(W41 + 12 * HOUR).toISOString(), target: "def456", from: "000aaa" };
+    const isAncestor: AncestryProbe = async (ancestor, descendantSha) => ancestor === "abc123" && descendantSha === "def456";
+
+    const { markdown } = await buildAudit({ week: "2026-W41", gates: [auditGate({ id: "run-3/approve-merge:0", resolvedAt: W41 + 10 * HOUR })], runs: landedOnly, incidents: [descendant], isAncestor, now: NOW, judge: undefined });
+
+    expect(markdown).toContain("BAD: incident");
+    expect(markdown).toContain(`1 incident(s): ${descendant.at}`);
+  });
+
   it("renders one block per sampled gate with its judge note, and the bad outcome under its class", async () => {
-    const { items, markdown } = await buildAudit({ week: "2026-W41", gates, runs, incidents: [], now: NOW, judge: fakeJudge });
+    const { items, markdown } = await buildAudit({ week: "2026-W41", gates, runs, incidents: [], isAncestor: noAncestry, now: NOW, judge: fakeJudge });
 
     expect(items).toHaveLength(2);
     expect(markdown).toContain("# Owner gate audit 2026-W41");
@@ -38,15 +51,15 @@ describe("buildAudit", () => {
   it("still renders every item's facts when the judge throws, naming the failure kind", async () => {
     const failing: AuditJudge = () => Promise.reject(new JudgeUnavailable("rate_limited", "out of quota"));
 
-    const { markdown } = await buildAudit({ week: "2026-W41", gates, runs, incidents: [], now: NOW, judge: failing });
+    const { markdown } = await buildAudit({ week: "2026-W41", gates, runs, incidents: [], isAncestor: noAncestry, now: NOW, judge: failing });
 
     expect(markdown.match(/judge unavailable: rate_limited/g)).toHaveLength(2);
     expect(markdown).toContain("BAD: revert");
   });
 
   it("never calls a decision clean while its 72 h window is open, or when incidents were not read", async () => {
-    const open = await buildAudit({ week: "2026-W41", gates, runs, incidents: [], now: W41 + 24 * HOUR, judge: undefined });
-    const unread = await buildAudit({ week: "2026-W41", gates: [gates[1]!], runs, incidents: undefined, now: NOW, judge: undefined });
+    const open = await buildAudit({ week: "2026-W41", gates, runs, incidents: [], isAncestor: noAncestry, now: W41 + 24 * HOUR, judge: undefined });
+    const unread = await buildAudit({ week: "2026-W41", gates: [gates[1]!], runs, incidents: undefined, isAncestor: noAncestry, now: NOW, judge: undefined });
 
     expect(open.markdown).not.toContain("clean");
     expect(open.markdown).toContain("window open until");

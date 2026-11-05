@@ -42,7 +42,7 @@ describe("the active-work flake port", () => {
   it("names a refusal as final, so a caller does not wait it out as an outage", async () => {
     const tasks = activeWorkFixTasks({ origin: ORIGIN, fetch: fakeActiveWork([]).fetch });
 
-    await expect(tasks.add("demo", { title: "t", severity: "high", done_when: "d", tags: [], notes: "n" })).rejects.toBeInstanceOf(FixTaskRefused);
+    await expect(tasks.markFlake!("demo", "FX-9", { done_when: "d", notes: "n", tag: "flake" })).rejects.toBeInstanceOf(FixTaskRefused);
   });
 
   it("leaves an unreachable daemon an outage, which a caller waits out", async () => {

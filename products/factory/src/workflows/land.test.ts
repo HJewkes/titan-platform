@@ -570,10 +570,10 @@ describe("readCi judges every run at the head", () => {
     expect(snapshot).toMatchObject({ verdict: "red", failing: [{ name: "validate", conclusion: "failure", workflowRunId: 1001 }] });
   });
 
-  it.each(["neutral", "skipped"])("is red when a required context concluded %s", async (conclusion) => {
+  it.each(["neutral", "skipped"])("waits on, and never reads red, a required context that concluded %s", async (conclusion) => {
     const snapshot = await verdictFor([successRun("validate", 1, EARLY, conclusion), successRun("dag-check", 2)]);
 
-    expect(snapshot).toMatchObject({ verdict: "red", failing: [{ name: "validate", conclusion }] });
+    expect(snapshot).toMatchObject({ verdict: "pending", waitingOn: ["validate"] });
   });
 
   it("is green when every required context concluded success", async () => {

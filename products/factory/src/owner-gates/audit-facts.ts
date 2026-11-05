@@ -6,11 +6,15 @@ import { payloadOf, stepName } from "../shepherd/stats.js";
 /** How long after the owner's resolve a revert, a red main or an incident still counts against that decision. */
 export const OUTCOME_WINDOW_MS = 72 * 3_600_000;
 
-/** A deploy incident as the audit reads it: `target` is the sha the failed deploy tried to serve. */
+/** A deploy incident as the audit reads it: `target` is the sha the failed deploy tried to serve, `from` the build it replaced. */
 export interface AuditIncident {
   at: string;
   target: string;
+  from: string;
 }
+
+/** Per merge sha, the incidents of the rollouts that first brought it in, or `unknown` when ancestry could not tell for one. */
+export type IncidentLinks = ReadonlyMap<string, AuditIncident[] | "unknown">;
 
 export interface OutcomeFacts {
   /** The answer the owner gave, from the gate's `decision` payload. */
@@ -19,7 +23,7 @@ export interface OutcomeFacts {
   mergeSha?: string;
   reverted: boolean;
   mainRed: boolean;
-  /** `unknown` when no incident record was read: nothing links incidents to merges yet, and unread is never zero. */
+  /** `unknown` when no incident log was read or ancestry could not link one to the merge: unread is never zero. */
   incidents: AuditIncident[] | "unknown";
   /** False while the 72 h window is still open at `now`: its facts are partial, never a clean bill. */
   windowClosed: boolean;
@@ -46,18 +50,23 @@ function mergeShaOf(run: WorkflowRun | undefined): string | undefined {
   return typeof sha === "string" && sha !== "" ? sha : undefined;
 }
 
-/** Linked only by the merge sha itself: a later deploy that carries the merge inside a newer head is not seen. */
-function linkedIncidents(incidents: readonly AuditIncident[] | undefined, mergeSha: string | undefined, within: (at: string) => boolean): OutcomeFacts["incidents"] {
-  if (incidents === undefined) return "unknown";
-  return mergeSha === undefined ? [] : incidents.filter((incident) => incident.target === mergeSha && within(incident.at));
+/** The sha `gate`'s run merged, read from its `sh-landed` step. */
+export const gateMergeSha = (gate: GateRecord, runs: readonly WorkflowRun[]): string | undefined => mergeShaOf(runs.find((run) => run.id === runIdOf(gate.id)));
+
+/** A merge the links never asked about has no answer, so it reads unknown rather than zero. */
+function linkedIncidents(links: IncidentLinks | undefined, mergeSha: string | undefined, within: (at: string) => boolean): OutcomeFacts["incidents"] {
+  if (links === undefined) return "unknown";
+  if (mergeSha === undefined) return [];
+  const linked = links.get(mergeSha);
+  return linked === undefined || linked === "unknown" ? "unknown" : linked.filter((incident) => within(incident.at));
 }
 
-/** What followed the owner's resolve of `gate` within 72 h, read from its run's ledger and any incident records. */
-export function outcomeFacts(gate: GateRecord, runs: readonly WorkflowRun[], incidents: readonly AuditIncident[] | undefined, now: number): OutcomeFacts {
+/** What followed the owner's resolve of `gate` within 72 h, read from its run's ledger and the incidents linked to its merge. */
+export function outcomeFacts(gate: GateRecord, runs: readonly WorkflowRun[], links: IncidentLinks | undefined, now: number): OutcomeFacts {
   const resolvedAt = Date.parse(gate.resolvedAt ?? gate.createdAt);
   const within = (at: string): boolean => Date.parse(at) >= resolvedAt && Date.parse(at) <= resolvedAt + OUTCOME_WINDOW_MS;
   const run = runs.find((candidate) => candidate.id === runIdOf(gate.id));
-  const mergeSha = mergeShaOf(run);
+  const mergeSha = gateMergeSha(gate, runs);
   const mainCi = resultsOf(run, "sh-main-ci").filter((result) => within(result.completedAt)).at(-1);
   return {
     decision: decisionOf(gate.payload),
@@ -65,7 +74,7 @@ export function outcomeFacts(gate: GateRecord, runs: readonly WorkflowRun[], inc
     ...(mergeSha && { mergeSha }),
     reverted: resultsOf(run, REVERTED_STEP).some((result) => within(result.completedAt)),
     mainRed: mainCi !== undefined && payloadOf(mainCi).verdict === "red",
-    incidents: linkedIncidents(incidents, mergeSha, within),
+    incidents: linkedIncidents(links, mergeSha, within),
     windowClosed: now >= resolvedAt + OUTCOME_WINDOW_MS,
   };
 }

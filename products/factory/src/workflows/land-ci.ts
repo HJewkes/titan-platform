@@ -100,11 +100,41 @@ async function judgedInput(input: CiInput, baseRef: string, options: CiReadOptio
   return { ...input, contexts: await liveOrRecorded(input.contexts, () => liveContexts(baseRef)) };
 }
 
-/** The runs a verdict is judged on. The snapshot settles a head on this same set: once every finding left is a failure, nothing is still running. */
-function findingsAt(input: Pick<CiInput, "contexts">, headSha: string, allRuns: readonly CheckRun[]): CheckFinding[] {
+interface Judged {
+  findings: CheckFinding[];
+  /** The failed findings red stands on; every other finding is waited on. */
+  red: CheckRun[];
+}
+
+/** The runs a verdict is judged on. The snapshot settles a head on this same set: once every finding left is red, nothing is still running. */
+function findingsAt(input: Pick<CiInput, "contexts">, headSha: string, allRuns: readonly CheckRun[]): Judged {
   const runs = withoutSupersededCancels(withoutCancelledWorkflowRuns(allRuns));
-  if (input.contexts.length === 0) return openRepoFindings(headSha, runs);
-  return headCheckFindings({ headSha, contexts: input.contexts, runs, requiredApps: [GITHUB_ACTIONS_APP_ID] });
+  const findings = input.contexts.length === 0 ? openRepoFindings(headSha, runs) : headCheckFindings({ headSha, contexts: input.contexts, runs, requiredApps: [GITHUB_ACTIONS_APP_ID] });
+  return { findings, red: redRuns(findings, runs.filter((run) => run.headSha === headSha && run.appId === GITHUB_ACTIONS_APP_ID)) };
+}
+
+/** A skip ran nothing that could fail, so it is never red; it is not a pass of a required check either. */
+const SKIPS: ReadonlySet<string> = new Set(["skipped", "neutral"]);
+
+/** A run that has not concluded, or concluded without running its job. A lone cancel is still red, so land reruns it. */
+const ranNothing = (run: CheckRun): boolean => !isConcluded(run) || SKIPS.has(run.conclusion ?? "") || run.conclusion === "cancelled";
+
+/**
+ * Red needs a concluded failure the fixer can find: its check's newest run at the head, or an older run beside a newer
+ * one that ran and passed, as TP-497 judges. A failure whose newer run is still going or ran nothing (tp#2576, tp#2622,
+ * a rerun in flight) is waited on, since it is not green either.
+ */
+function redRuns(findings: readonly CheckFinding[], counted: readonly CheckRun[]): CheckRun[] {
+  const newest = new Map(latestPerName(counted).map((run) => [run.name, run]));
+  const replacedBy = (run: CheckRun) => {
+    const latest = newest.get(run.name);
+    return latest !== undefined && latest.id !== run.id ? latest : undefined;
+  };
+  const red = (run: CheckRun) => {
+    const latest = replacedBy(run);
+    return !SKIPS.has(run.conclusion ?? "") && (latest === undefined || !ranNothing(latest));
+  };
+  return findings.flatMap((finding) => (finding.kind === "failed" && red(finding.run) ? [finding.run] : []));
 }
 
 /**
@@ -124,7 +154,7 @@ function withoutCancelledWorkflowRuns(runs: readonly CheckRun[]): CheckRun[] {
 /** True when every required check at `headSha` has passed, as ci-wait judges them when the base names required contexts; mergeability is not read. */
 export async function requiredChecksPass(input: Pick<CiInput, "repo" | "contexts">, headSha: string, reads: PrReads): Promise<boolean> {
   const runs = await reads.checkRuns(input.repo, headSha, () => true);
-  return findingsAt(input, headSha, runs).length === 0;
+  return findingsAt(input, headSha, runs).findings.length === 0;
 }
 
 async function readCiFrom(port: GitHubPort, recorded: CiInput, snapshotReads: PrReads, options: CiReadOptions): Promise<CiSnapshot> {
@@ -138,12 +168,14 @@ async function readCiFrom(port: GitHubPort, recorded: CiInput, snapshotReads: Pr
 
 async function judgeOpenPr(port: GitHubPort, input: CiInput, pr: PullRequest, reads: PrReads, options: CiReadOptions): Promise<CiSnapshot> {
   const base = { headSha: pr.headSha, mergeableState: pr.mergeableState, baseRef: pr.baseRef };
-  const runs = await reads.checkRuns(input.repo, pr.headSha, (all) => findingsAt(input, pr.headSha, all).every((finding) => finding.kind === "failed"));
-  const findings = findingsAt(input, pr.headSha, runs);
+  const runs = await reads.checkRuns(input.repo, pr.headSha, (all) => {
+    const judged = findingsAt(input, pr.headSha, all);
+    return judged.red.length === judged.findings.length;
+  });
+  const { findings, red } = findingsAt(input, pr.headSha, runs);
   if (findings.length === 0 && awaitsSecondRead(input, options, pr.headSha, runs)) return { ...base, verdict: "pending", waitingOn: [SECOND_READ] };
   if ((input.strict && pr.behind) || pr.mergeableState === "behind") return behindVerdict(base, findings, pr.draft, options.missingSettled?.(pr.headSha) ?? false);
-  const failing = findings.flatMap((finding) => (finding.kind === "failed" ? [failingCheck(finding.run)] : []));
-  if (failing.length > 0) return { ...base, verdict: "red", failing };
+  if (red.length > 0) return { ...base, verdict: "red", failing: red.map(failingCheck) };
   if (findings.length > 0) return { ...base, verdict: "pending", waitingOn: findings.map(findingName), ...backlogFlag(findings) };
   const verdict = await settledVerdict(port, input, pr);
   if (verdict === "green" && pr.behind && (await baseMovedSinceGreen(port, input, pr, runs))) return { ...base, verdict: "behind", checksGreen: true, baseMoved: true };

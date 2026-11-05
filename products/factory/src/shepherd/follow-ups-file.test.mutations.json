@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "normalTitle ignores whitespace and case",
+      "file": "products/factory/src/shepherd/follow-ups-file.ts",
+      "find": "  return title.trim().replace(/\\s+/g, \" \").toLowerCase();",
+      "replace": "  return title;",
+      "kills": [
+        "fileFollowUps dedupes a follow-up whose title matches an open task after trimming, whitespace folding and case folding"
+      ]
+    },
+    {
+      "name": "the filer never links the parent",
+      "file": "products/factory/src/shepherd/follow-ups-file.ts",
+      "find": "    await tasks.appendNote(where.initiative, where.parent, linkLine(where, id, item.title));\n",
+      "replace": "",
+      "kills": [
+        "fileFollowUps links each filed follow-up from the parent task's notes once"
+      ]
+    },
+    {
+      "name": "the filer forgets titles already seen in the block",
+      "file": "products/factory/src/shepherd/follow-ups-file.ts",
+      "find": "    if (seen.has(key)) continue;\n",
+      "replace": "",
+      "kills": [
+        "fileFollowUps files two same-titled items in one block once"
+      ]
+    }
+  ]
+}
