@@ -9,6 +9,7 @@ import { attestUnmetSteps } from "./attest-read.js";
 import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
 import { ciUnreadAsNone } from "./ci-unread.js";
 import { correctOnce } from "./correct-verdict.js";
+import { fileFollowUpsAt } from "./follow-ups-step.js";
 import { evidenceOrGate } from "./merge-evidence-gate.js";
 import type { MergeEvidenceInput } from "./merge-facts.js";
 import { grantWithheldOf, proofUnverifiedOf, type GrantStanding } from "./grant-withheld.js";
@@ -119,6 +120,7 @@ export async function takeAwaited(ctx: WorkflowContext, target: ReviewTarget, aw
 export async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined, account: string, standing: ProofStanding, scope?: ScopeRound): Promise<Verdict> {
   const taken = await takeAwaited(ctx, target, awaiting, dispatchedReviewer, account, scope);
   if ("held" in taken) return taken.held;
+  await fileFollowUpsAt(ctx, target, taken.awaited);
   const verdict = await verdictOf(ctx, target, awaiting, dispatchedReviewer, taken.awaited, standing);
   return dispatchedReviewer && !("external" in awaiting) ? ciUnreadAsNone(ctx, target.head, verdict) : verdict;
 }
