@@ -67,6 +67,12 @@ export function codeRoute<I>(match: string, now: () => number, fn: (input: I, si
   return workflowCodeRoute(match, (input: I, step) => fn(input, step.signal, stepClock(step)), landEvidence(match, now));
 }
 
+/** `codeRoute` for a body that must know it ran before: a first run is attempt 0 with no restarts, and only the recovery of an interrupted step raises either. */
+export function repeatAwareRoute<I>(match: string, now: () => number, fn: (input: I, signal: AbortSignal, clock: StepClock, repeat: boolean) => Promise<object>): StepRoute {
+  const routeFor = (repeat: boolean) => codeRoute(match, now, (input: I, signal, clock) => fn(input, signal, clock, repeat));
+  return { ...routeFor(false), runner: { run: (step) => routeFor(step.attempt > 0 || (step.restarts ?? 0) > 0).runner.run(step) } };
+}
+
 /** Like `codeRoute`, for a step whose record carries trace keys beside `result`. */
 function recordRoute<I>(match: string, now: () => number, fn: (input: I, step: RoutedStepInput) => Promise<object>): StepRoute {
   return codeRecordRoute(match, fn, landEvidence(match, now));
