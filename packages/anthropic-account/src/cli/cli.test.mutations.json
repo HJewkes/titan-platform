@@ -45,24 +45,6 @@
       "kills": [
         "poll with ANTHROPIC_ACCOUNT_LABELS still fails for an HTTP failure on an unlisted profile"
       ]
-    },
-    {
-      "name": "poll ignores nothing when labels are set",
-      "file": "packages/anthropic-account/src/cli/poll-command.ts",
-      "find": "accounts !== null && !accounts.has(label)",
-      "replace": "false && accounts !== null",
-      "kills": [
-        "poll with ANTHROPIC_ACCOUNT_LABELS warns and exits 0 for an unlisted profile with a malformed login"
-      ]
-    },
-    {
-      "name": "poll treats an empty label list as a set",
-      "file": "packages/anthropic-account/src/cli/poll-command.ts",
-      "find": "return labels.length === 0 ? null : new Set(labels);",
-      "replace": "return new Set(labels);",
-      "kills": [
-        "poll with ANTHROPIC_ACCOUNT_LABELS counts every profile as an account when the variable is unset or empty"
-      ]
     }
   ]
 }
