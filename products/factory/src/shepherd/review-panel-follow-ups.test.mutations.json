@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "awaitMembers never files a member's follow-ups",
+      "file": "products/factory/src/shepherd/review-panel-step.ts",
+      "find": "    await fileFollowUpsAt(ctx, target, awaited, `:${shape}`);\n",
+      "replace": "",
+      "kills": [
+        "a panel's members and their follow-ups each panel member's follow-ups, correctness included, are filed under its own sh-follow-ups step and a title two members share is filed once"
+      ]
+    },
+    {
+      "name": "takeAwaited never files the settled verdict's follow-ups",
+      "file": "products/factory/src/shepherd/take-verdict.ts",
+      "find": "  if (!(\"held\" in taken)) await fileFollowUpsAt(ctx, target, taken.awaited);\n",
+      "replace": "",
+      "kills": [
+        "a panel's members and their follow-ups each panel member's follow-ups, correctness included, are filed under its own sh-follow-ups step and a title two members share is filed once"
+      ]
+    }
+  ]
+}
