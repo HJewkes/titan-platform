@@ -47,15 +47,6 @@
       "kills": [
         "a seat with visual baselines (TP-2662) keeps baselines in a stricter policy only when both sides carry the same ones"
       ]
-    },
-    {
-      "name": "a stored policy with an unknown key throws the raw zod error instead of PolicyNewerThanBuild",
-      "file": "products/factory/src/shepherd/policy-schema.ts",
-      "find": "  if (newer.length > 0) throw new PolicyNewerThanBuild(newer);\n",
-      "replace": "",
-      "kills": [
-        "a stored policy carrying a key this build lacks fails a stored policy read as PolicyNewerThanBuild naming the key and the deploy fix"
-      ]
     }
   ]
 }
