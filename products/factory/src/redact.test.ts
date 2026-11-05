@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_STORED_ERROR_CHARS, REDACTED, redactCredentials, redactForEvidence } from "./redact.js";
+import { MAX_STORED_ERROR_CHARS, REDACTED, redactCredentials, redactForEvidence, redactHomePaths } from "./redact.js";
 
 const JWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.sig_-x";
 
@@ -95,5 +95,34 @@ describe("error text stored as evidence", () => {
 
     expect(stored.length).toBeLessThan(MAX_STORED_ERROR_CHARS + 20);
     expect(stored).toMatch(/\[truncated\]$/);
+  });
+});
+
+describe("home paths in stored text", () => {
+  it.each([
+    ["a macOS home", "open /Users/alice/work/a.ts failed", "open ~/work/a.ts failed"],
+    ["a Linux home", "cwd /home/alice", "cwd ~"],
+    ["the root home", "cwd /root/.cache/x", "cwd ~/.cache/x"],
+    ["a bare root home", "cwd /root", "cwd ~"],
+    ["a quoted root home", 'path "/root"', 'path "~"'],
+    ["a file URL", "file:///Users/alice/x", "file://~/x"],
+  ])("maps %s to ~", (_name, text, expected) => {
+    expect(redactHomePaths(text)).toBe(expected);
+  });
+
+  it.each([
+    "npm_config_cache",
+    "task-sk-123",
+    "pkg.json.lock",
+    "ssh://git@host",
+    "/rootfs",
+    "/rootfs/bin",
+    "/root.d",
+    "/Users",
+    "/Users/",
+    "see /opt/Users/alice",
+    "a/home/alice",
+  ])("leaves the near miss %s unchanged", (text) => {
+    expect(redactHomePaths(text)).toBe(text);
   });
 });

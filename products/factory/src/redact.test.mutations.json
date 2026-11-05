@@ -20,6 +20,27 @@
         "error text stored as evidence leaves risk-assessment-for-the-quarterly-review unchanged",
         "error text stored as evidence scans 100 kB of sk- runs in linear time"
       ]
+    },
+    {
+      "name": "a root home matches as a prefix of a longer name",
+      "file": "products/factory/src/redact.ts",
+      "find": "\\/root(?=$|[\\s/:\"'`),;\\]}])",
+      "replace": "\\/root",
+      "kills": [
+        "home paths in stored text leaves the near miss /rootfs unchanged",
+        "home paths in stored text leaves the near miss /rootfs/bin unchanged",
+        "home paths in stored text leaves the near miss /root.d unchanged"
+      ]
+    },
+    {
+      "name": "a home path matches inside a longer path",
+      "file": "products/factory/src/redact.ts",
+      "find": "(?:(?<![\\w.~/-])|(?<=:\\/\\/))",
+      "replace": "",
+      "kills": [
+        "home paths in stored text leaves the near miss see /opt/Users/alice unchanged",
+        "home paths in stored text leaves the near miss a/home/alice unchanged"
+      ]
     }
   ]
 }

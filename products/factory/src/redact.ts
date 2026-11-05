@@ -42,3 +42,12 @@ export function redactForEvidence(text: string): string {
   const redacted = redactCredentials(text);
   return redacted.length <= MAX_STORED_ERROR_CHARS ? redacted : `${redacted.slice(0, MAX_STORED_ERROR_CHARS)}… [truncated]`;
 }
+
+// One anchored matcher: a home path starts at a path boundary (not inside rfs/Users, a dotted name or
+// a longer path, but after `://`), and `/root` must end at one, so /rootfs and a bare /Users stay put.
+const HOME_PATH = /(?:(?<![\w.~/-])|(?<=:\/\/))(?:\/(?:Users|home)\/[^/\s"'`]+|\/root(?=$|[\s/:"'`),;\]}]))/g;
+
+/** Maps a home directory to `~` so stored text names no account. */
+export function redactHomePaths(text: string): string {
+  return text.replace(HOME_PATH, "~");
+}
