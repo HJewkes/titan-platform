@@ -1,5 +1,6 @@
 import { listAgents, retire } from "@titan-design/agent-dispatch";
 import { createRpcClient, liveSource, RpcError, type RpcClient } from "@titan-design/rpc-client";
+import type { FollowUpFields, FollowUpTasks } from "./follow-ups-file.js";
 import { FixTaskRefused, type FixTaskFields, type FixTasks, type FlakeFields } from "./main-red.js";
 import { toPresence } from "./presence.js";
 import { createRosterReader, mutating } from "./roster.js";
@@ -27,11 +28,13 @@ export function agentChatCleanupAgents(
   };
 }
 
+type ListedTask = { id: string; title?: string; status: string; done_when?: string; notes?: string; tags?: string[] };
+
 type ActiveWorkCommands = {
-  "task.list": { args: { slug: string; status: "all"; tag?: string }; result: { tasks: { id: string; status: string; done_when?: string; notes?: string; tags?: string[] }[] } };
+  "task.list": { args: { slug: string; status: "all" | "open"; tag?: string }; result: { tasks: ListedTask[] } };
   "source.list": { args: { slug: string }; result: { sources: { filename: string }[] } };
   "source.read": { args: { slug: string; path: string }; result: { content: string } };
-  "task.add": { args: { slug: string } & FixTaskFields; result: { id: string } };
+  "task.add": { args: { slug: string } & (FixTaskFields | FollowUpFields); result: { id: string } };
   "task.edit": { args: { slug: string; id: string; field: "notes" | "done_when" | "status"; value: string; force?: boolean } | { slug: string; id: string; add_tag: string }; result: unknown };
   "task.done": { args: { slug: string; id: string }; result: unknown };
 };
@@ -86,6 +89,24 @@ export function activeWorkFixTasks(options: { origin: string; fetch?: typeof fet
     add: (slug, fields) => refusalsFinal(async () => (await client.call("task.add", { slug, ...fields })).id),
     markFlake: (slug, id, flake) => refusalsFinal(() => markFlake(client, slug, id, flake)),
   };
+}
+
+/** Reviewer follow-ups over the same loopback rpc; `task.add` always writes `open`, and the open list is what titles dedupe against. */
+export function activeWorkFollowUpTasks(options: { origin: string; fetch?: typeof fetch }): FollowUpTasks {
+  const client = createRpcClient<ActiveWorkCommands>(liveSource(options));
+  return {
+    openTasks: (slug) =>
+      refusalsFinal(async () => (await client.call("task.list", { slug, status: "open" })).tasks.map((task) => ({ id: task.id, title: task.title ?? "" }))),
+    add: (slug, fields) => refusalsFinal(async () => (await client.call("task.add", { slug, ...fields })).id),
+    appendNote: (slug, id, line) => refusalsFinal(() => appendTaskNote(client, slug, id, line)),
+  };
+}
+
+async function appendTaskNote(client: RpcClient<ActiveWorkCommands>, slug: string, id: string, line: string): Promise<void> {
+  const { tasks } = await client.call("task.list", { slug, status: "all" });
+  const notes = tasks.find((task) => task.id === id)?.notes ?? "";
+  if (notes.includes(line)) return;
+  await client.call("task.edit", { slug, id, field: "notes", value: notes === "" ? line : `${notes}\n${line}` });
 }
 
 /** sysexits USAGE, DATAERR and NOINPUT: active-work's own refusals (a guarded edit, a bad value, a missing task), never an outage. */

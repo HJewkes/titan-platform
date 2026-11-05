@@ -23,7 +23,7 @@ const VisualTierRecordSchema = z.strictObject({
   /** The changed paths the evidence step's globs matched as visual; decide-time globs may be wider (TP-4761 S2 review). */
   judged: z.array(z.string()),
   verdict: z.union([
-    z.strictObject({ tier: z.literal(1), basis: z.enum(["non-rendering", "no-pixel-diff"]) }),
+    z.strictObject({ tier: z.literal(1), basis: z.literal("non-rendering") }),
     z.strictObject({ tier: z.literal(2), reason: z.string() }),
   ]),
 });
@@ -54,17 +54,14 @@ interface TierTarget {
   config: unknown;
 }
 
-/**
- * The tier of a head the visual-path row would gate, judged on every changed path. No pr-visual artifact is read until
- * TP-4761 S4, so `pixel` is undefined and only the non-rendering tier 1 is reachable.
- */
+/** The tier of a head the visual-path row would gate, judged on every changed path; pixels never lower it (TP-4761 C2). */
 export async function readVisualTier(port: Pick<GitHubPort, "compareFiles">, merge: MergeFacts, target: TierTarget): Promise<{ visualTier: VisualTierRecord } | undefined> {
   const { repo, baseRef, visualPaths, config } = target;
   const mode = tierMode(config);
   const judged = visualPaths === undefined ? [] : visualMatches(merge.changedPaths, visualPaths);
   if (mode === undefined || visualPaths === undefined || judged.length === 0) return undefined;
   const mergeBase = await mergeBaseOf(port, repo, baseRef, merge.head);
-  return { visualTier: { mode, judged, verdict: visualTier({ merge, visualPaths, mergeBase, config, pixel: undefined }) } };
+  return { visualTier: { mode, judged, verdict: visualTier({ merge, visualPaths, mergeBase, config }) } };
 }
 
 /** A stored record is read back unvalidated, so one that fails the schema is tier 2 whatever mode it claims. */

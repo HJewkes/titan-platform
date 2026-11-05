@@ -76,7 +76,7 @@ describe("the visual tier at the merge guard (TP-4761 S2)", () => {
     const decision = decide(await evidenceFor([COMPONENT], tierConfig("on")));
 
     expect(decision).toMatchObject(VISUAL_ROW);
-    expect(decision.reason).toMatch(/^the owner decides visual changes: packages\/ui\/src\/button\/button\.tsx; tier 2: no pixel proof: no pr-visual artifact read$/);
+    expect(decision.reason).toMatch(/^the owner decides visual changes: packages\/ui\/src\/button\/button\.tsx; tier 2: renders: packages\/ui\/src\/button\/button\.tsx$/);
   });
 
   it("a tier 1 judged under narrower globs gates a visual path only the decide-time globs match", async () => {

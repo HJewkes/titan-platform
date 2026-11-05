@@ -30,11 +30,11 @@
       "kills": ["visual tier verdict (TP-4761 S1) a changed capture script is tier 2 whatever the artifact says"]
     },
     {
-      "name": "the pixel proof wants one changed pixel",
+      "name": "the proof branch is restored, so a rendered path skips the clearing check",
       "file": "products/factory/src/shepherd/visual-tier.ts",
-      "find": "changedPixels: z.literal(0),",
-      "replace": "changedPixels: z.literal(1),",
-      "kills": ["visual tier verdict (TP-4761 S1) a rendered path with zero changed pixels on every paired shot is tier 1 no-pixel-diff"]
+      "find": "  const offending = classes.find(([, cls]) => !CLEARING.has(cls));",
+      "replace": "  const offending = classes.find(([, cls]) => cls !== \"rendered\" && !CLEARING.has(cls));",
+      "kills": ["visual tier verdict (TP-4761 S1) a rendered path is tier 2 even with a zero-diff pixel read in hand"]
     }
   ]
 }
