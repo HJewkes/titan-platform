@@ -1,0 +1,17 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "every failed finding reads red, skips and unjudged failures included",
+      "file": "products/factory/src/workflows/land-ci.ts",
+      "find": "finding.kind === \"failed\" && red(finding.run) ?",
+      "replace": "finding.kind === \"failed\" ?",
+      "kills": [
+        "ci-wait never reads a skipped run, or a failure a newer run left unjudged, as red tp#2576: the required runs still in progress beside a skipped duplicate run read pending, not red",
+        "ci-wait never reads a skipped run, or a failure a newer run left unjudged, as red tp#2622: every required check passed and the failed mutants job was replaced by a skipped run, so no fixer is woken; the head waits, not merges",
+        "ci-wait never reads a skipped run, or a failure a newer run left unjudged, as red a required check whose only run was skipped is waited on, not red",
+        "ci-wait never reads a skipped run, or a failure a newer run left unjudged, as red a failed check whose newer workflow run is still running is waited on, not red"
+      ]
+    }
+  ]
+}

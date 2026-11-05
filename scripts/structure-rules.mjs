@@ -1,7 +1,7 @@
 // Structure checks for the rules in CLAUDE.md that no linter enforces (TP-897 plan S5).
 // Each check takes a repo root and returns one remediation message per violation.
 import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
-import { basename, dirname, extname, join, relative, sep } from "node:path";
+import { basename, dirname, extname, join, posix, relative, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { findTiersRule, layersFromTiers, productIsolationRules } from "./new-package.mjs";
 
@@ -336,4 +336,38 @@ export function checkBotTokenReaders(root) {
     .filter((path) => !BOT_TOKEN_READERS.has(path))
     .filter((path) => readFileSync(join(root, path), "utf8").split("\n").some((line) => !isCommentLine(line) && BOT_TOKEN_READER.test(line)))
     .map((path) => `\`${path}\` reads the bot token file or imports its reader. Only \`products/factory/src/bot-identity.ts\` may; take a \`BotAccess\` from it instead (TP-3412).`);
+}
+
+const STATIC_IMPORT_SPECIFIER = /(?:^|[\n;])\s*(?:import|export)\b[^"'`;]*?\bfrom\s*["']([^"']+)["']|(?:^|[\n;])\s*import\s*["']([^"']+)["']/g;
+const JS_TO_TS = new Map([[".js", ".ts"], [".jsx", ".tsx"], [".mjs", ".mts"], [".cjs", ".cts"]]);
+
+function resolvedTarget(fromPath, specifier) {
+  const target = posix.join(posix.dirname(fromPath), specifier);
+  const extension = posix.extname(target);
+  return JS_TO_TS.has(extension) ? target.slice(0, -extension.length) + JS_TO_TS.get(extension) : target;
+}
+
+function staticRelativeImports(text) {
+  return [...text.matchAll(STATIC_IMPORT_SPECIFIER)].map((match) => match[1] ?? match[2]).filter((specifier) => specifier.startsWith("."));
+}
+
+/**
+ * R60 (TP-2737): no non-test source file statically imports a path the fix-proof config lists under tests or carry.
+ * A test-only PR may change those paths unproved, so source that imports one could change behavior under a test-only verdict.
+ */
+export async function checkNoCarryImports(root) {
+  const { compileGlobs, parseFixProofConfig, CONFIG_PATH } = await import("../packages/fix-proof/dist/index.js");
+  const parsed = parseFixProofConfig(existsSync(join(root, CONFIG_PATH)) ? readFileSync(join(root, CONFIG_PATH), "utf8") : null);
+  if (!parsed.ok) return [parsed.error];
+  const isTestOnly = compileGlobs([...parsed.config.tests, ...parsed.config.carry]);
+  const files = WORKSPACE_GROUPS.flatMap((group) => subdirs(join(root, group))).flatMap((dir) => sourceFiles(dir));
+  return files
+    .map((file) => relative(root, file).split(sep).join("/"))
+    .filter((path) => !isTestOnly(path))
+    .flatMap((path) =>
+      staticRelativeImports(readFileSync(join(root, path), "utf8"))
+        .map((specifier) => resolvedTarget(path, specifier))
+        .filter(isTestOnly)
+        .map((target) => `\`${path}\` imports \`${target}\`, which \`${CONFIG_PATH}\` lists as a test or carry path. A test-only change could alter it unproved; move the imported file off that path (R60, TP-2737).`),
+    );
 }
