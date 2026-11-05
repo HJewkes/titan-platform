@@ -30,7 +30,7 @@ type ShotEvidence = { story: string; width: string } & ({ changedPixels: number 
 /** `missing`: selected stories with no before and after pair at some width the artifact shot (TP-4774 b). */
 export type PrVisualEvidence = { measured: true; shots: ShotEvidence[]; missing: string[] } | { measured: false; reason: string };
 
-export type ReadPrVisualEvidence = (target: PrVisualTarget) => Promise<PrVisualEvidence>;
+type ReadPrVisualEvidence = (target: PrVisualTarget) => Promise<PrVisualEvidence>;
 
 const MI = 1024 * 1024;
 const CAPS = { inflatedBytes: 128 * MI, entries: 256, shots: 100, selected: 500, imagePixels: 16 * MI, totalPixels: 256 * MI, candidates: 5 };

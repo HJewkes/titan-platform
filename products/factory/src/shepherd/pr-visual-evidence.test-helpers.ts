@@ -59,7 +59,7 @@ function zipOf(files: Record<string, Buffer>, zip64 = false): Buffer {
 
 export const shotOf = (story: string, width: string) => ({ story, width, before: `before/${story}@${width}.png`, after: `after/${story}@${width}.png` });
 
-export interface Artifact {
+interface Artifact {
   /** One `[before, after]` pair per shot, story `button--s<index>` at width 1280, in manifest order. */
   pairs: [Buffer, Buffer][];
   manifest?: Record<string, unknown>;
