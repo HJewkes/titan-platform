@@ -81,7 +81,22 @@ function structuralChange(file: CiPolicyFile): { why: string } | { changed: bool
 
 const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+const LINK_OPENERS =/[\s(<[]/;
+const LINK_CLOSERS = ")>],.;:";
+
+/** GitHub owner and repo names are case-insensitive, so the link is compared by its parsed path, not matched as text. */
+function runLinkOf(token: string, repo: string): string | undefined {
+  let end = token.length;
+  while (end > 0 && LINK_CLOSERS.includes(token[end - 1]!)) end -= 1;
+  const url = URL.parse(token.slice(0, end));
+  if (url === null || url.origin !== "https://github.com" || url.search !== "" || url.hash !== "") return undefined;
+  const [owner, name, actions, runs, id, ...rest] = url.pathname.slice(1).split("/");
+  const sameRepo = `${owner}/${name}`.toLowerCase() === repo.toLowerCase();
+  const exactRunId = id !== undefined && id !== "" && [...id].every((char) => char >= "0" && char <= "9");
+  return sameRepo && actions === "actions" && runs === "runs" && exactRunId && rest.length === 0 ? `${url.origin}${url.pathname}` : undefined;
+}
+
 /** A GitHub Actions run of this same repo, linked from the PR body as a whole URL, not inside another one. */
 function measurementLink(repo: string, body: string | undefined): string | undefined {
-  return new RegExp(`(?:^|[\\s(<\\[])(https://github\\.com/${escapeRegExp(repo)}/actions/runs/\\d+)(?=$|[\\s)>\\],.;:])`).exec(body ?? "")?.[1];
+  return (body ?? "").split(LINK_OPENERS).map((token) => runLinkOf(token, repo)).find((link) => link !== undefined);
 }
