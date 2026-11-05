@@ -144,6 +144,12 @@ describe("the G10 hold Shepherd places at registration", () => {
     expect(await holdOf(r)).toBeUndefined();
   });
 
+  it.each(["hold-table-coverage.test.ts", "hold-table-coverage.test.mutations.json"])("holds the hold table's importer check %s g10-adversary, test file or not", async (name) => {
+    const r = rig([file(`products/factory/src/shepherd/${name}`, 2)]);
+
+    expect(await holdOf(r)).toBe("g10-adversary: policy touch");
+  });
+
   it.each(["g10-hold-closure.test.ts", "g10-hold-closure.test.mutations.json", "g10-hold-closure.test-helpers.ts", "g10-hold-closure.json"])("holds the hold-closure check's %s g10-adversary, test file or not", async (name) => {
     const r = rig([file(`products/factory/src/shepherd/${name}`, 2)]);
 
