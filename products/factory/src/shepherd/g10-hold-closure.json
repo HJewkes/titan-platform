@@ -56,6 +56,7 @@
   "fix-proof-harness.ts",
   "fixer-limit.ts",
   "flake-check.ts",
+  "follow-ups-file.ts",
   "gate-evidence.ts",
   "gate-route.ts",
   "gates.ts",

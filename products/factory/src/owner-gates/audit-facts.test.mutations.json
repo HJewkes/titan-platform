@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an empty link list reads as unknown",
+      "file": "products/factory/src/owner-gates/audit-facts.ts",
+      "find": "linked === undefined || linked === \"unknown\" ? \"unknown\"",
+      "replace": "linked === undefined || linked === \"unknown\" || linked.length === 0 ? \"unknown\"",
+      "kills": ["outcomeFacts says zero, not unknown, when incident records exist and none match"]
+    },
+    {
+      "name": "unreadable ancestry reads as zero",
+      "file": "products/factory/src/owner-gates/audit-facts.ts",
+      "find": "linked === undefined || linked === \"unknown\" ? \"unknown\" :",
+      "replace": "linked === undefined || linked === \"unknown\" ? [] :",
+      "kills": ["outcomeFacts says unknown when the merge's ancestry could not be read"]
+    },
+    {
+      "name": "linked incidents ignore the window",
+      "file": "products/factory/src/owner-gates/audit-facts.ts",
+      "find": "linked.filter((incident) => within(incident.at))",
+      "replace": "linked",
+      "kills": ["outcomeFacts links an incident to the merge only inside the window"]
+    }
+  ]
+}
