@@ -59,9 +59,9 @@ export function acceptExternalVerdict(input: ExternalVerdictInput, row: Reviewer
   return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE", ...(block.ciPolicy && { ciPolicy: block.ciPolicy }) } : { ...accepted, verdict: "FIX_FIRST", text: fixFirstFindings(input, own, message.text), ...(block.closer && { closer: block.closer }) };
 }
 
-/** A name can span sessions; the last row the roster lists with a session holds it. */
+/** A name can span sessions; agent-chat's roster is newest-first, so the first row listed with a session holds it. ReviewerAgent carries no generation to rank by. */
 export function latestSession(name: string, roster: readonly ReviewerAgent[]): ReviewerAgent | undefined {
-  return roster.filter((agent) => agent.name === name && agent.sessionId !== "").at(-1);
+  return roster.find((agent) => agent.name === name && agent.sessionId !== "");
 }
 
 /**
