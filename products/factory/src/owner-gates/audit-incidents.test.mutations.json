@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a later rollout whose from holds the merge still links",
+      "file": "products/factory/src/owner-gates/audit-incidents.ts",
+      "find": "  return typeof held === \"object\" ? \"unknown\" : !held;",
+      "replace": "  return typeof held === \"object\" ? \"unknown\" : true;",
+      "kills": ["linkIncidents does not link a later rollout whose from already contains the merge"]
+    },
+    {
+      "name": "an unreadable target reads as not linked",
+      "file": "products/factory/src/owner-gates/audit-incidents.ts",
+      "find": "  if (typeof holds === \"object\") return \"unknown\";",
+      "replace": "  if (typeof holds === \"object\") return false;",
+      "kills": ["linkIncidents maps the merge to unknown when the probe cannot answer"]
+    },
+    {
+      "name": "a target that lacks the merge still links",
+      "file": "products/factory/src/owner-gates/audit-incidents.ts",
+      "find": "  if (!holds) return false;\n",
+      "replace": "",
+      "kills": ["linkIncidents links an incident whose from build is unknown to every merge its target contains"]
+    }
+  ]
+}
