@@ -10,15 +10,18 @@ import { autoresearchWorkflow } from "./workflow.js";
 /** Ignores SIGTERM, so only the SIGKILL after its grace stops it; records its pid in `$0/children`. */
 export const IGNORES_TERM = `trap "" TERM; echo $$ >> "$0/children"; while :; do sleep 0.1; done`;
 
-/** Two baseline evals at once, as the recipe runs them: `b1` ignores TERM and sits out its grace, `b2` dies at TERM. */
-function baselinePorts(dir: string): ArPorts {
+/** By default `b1` ignores TERM and sits out its grace, and `b2` dies at TERM. */
+const IGNORE_TERM_ON_B1 = (key: string): string => (key.endsWith("-b1") ? IGNORES_TERM : FORKS_SLEEPER);
+
+/** Two baseline evals at once, as the recipe runs them, each running the shell script `scriptFor` picks by its key. */
+function baselinePorts(dir: string, scriptFor: (key: string) => string): ArPorts {
   const unused = () => Promise.reject(new Error("not reached"));
   const metric = { primary: { name: "score", direction: "min" }, noise: {} };
   const phase = { id: "p1", train: ["t-1"], baselineRuns: 2, stop: { ideasEvaluated: 1, roundsWithoutGain: 1 } };
   const target = TargetSchema.parse({ schema: "ar-target/v1", ratchetPrefix: "autoresearch/fixture", metric, phases: [phase] });
   const bounds = BoundsSchema.parse({ schema: "ar-bounds/v1", classes: {} });
   const evalCase: ArPorts["evalCase"] = async (input, signal) => {
-    const argv = ["sh", "-c", input.key.endsWith("-b1") ? IGNORES_TERM : FORKS_SLEEPER, dir];
+    const argv = ["sh", "-c", scriptFor(input.key), dir];
     return ArResultSchema.parse(lastLine(await runCommand(argv, { cwd: dir, signal, graceMs: 1_000 }), argv));
   };
   return {
@@ -30,8 +33,8 @@ function baselinePorts(dir: string): ArPorts {
 }
 
 /** A factory host driving one autoresearch run whose two baseline evals record their pids in `dir`; closed when the test ends. */
-export function baselineRun(dir: string): { host: FactoryHost; runId: string } {
-  const host = openFactoryHost({ dbPath: ":memory:", workflows: [autoresearchWorkflow()], routes: arRoutes(() => baselinePorts(dir)), gatePollMs: 5 });
+export function baselineRun(dir: string, scriptFor = IGNORE_TERM_ON_B1): { host: FactoryHost; runId: string } {
+  const host = openFactoryHost({ dbPath: ":memory:", workflows: [autoresearchWorkflow()], routes: arRoutes(() => baselinePorts(dir, scriptFor)), gatePollMs: 5 });
   onTestFinished(() => host.close());
   return { host, runId: host.runtime.start("autoresearch", { pin: "a".repeat(40) }) };
 }

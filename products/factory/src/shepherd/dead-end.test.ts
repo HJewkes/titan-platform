@@ -1,9 +1,12 @@
 import { fakeSha } from "@titan-design/github";
+import type { AgentRow } from "@titan-design/agent-dispatch";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { deadEndAddress, type DeadEndPorts } from "./dead-end.js";
 import { coordinatorEvidencePolicy, type CoordinatorEvidence } from "../coordinator-evidence.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { DEAD_END_SEAT, deadEndParam, deadEndRoutes, deadEndWorkflow } from "../test-support/dead-end.js";
 import { gateId, gateOpened } from "../test-support/land.js";
+import { liveRow } from "../test-support/registrant-routing.js";
 import { OWNER } from "../test-support/resolver.js";
 
 const REPO = "o/r";
@@ -61,5 +64,33 @@ describe("a dead-end seat gate", () => {
 
     await vi.waitFor(() => expect(host.runtime.status(runId)?.status).toBe("completed"));
     expect(host.gates.get(gateId(runId, "sh-dead-end"))).toBeUndefined();
+  });
+});
+
+const agent = (name: string, live: boolean): AgentRow => ({ ...liveRow(name), ...(live ? {} : { presence: "exited", status: "finished" }) });
+
+function addressPorts(roster: AgentRow[], repoSeat: string | undefined, hubSeat?: string): DeadEndPorts {
+  return { lineage: () => undefined, roster: async () => roster, repoSeat: () => repoSeat, hubSeat: () => hubSeat };
+}
+
+describe("a dead-end gate's repo-seat fallback", () => {
+  const target = { repo: REPO, pr: 1 };
+
+  it("a retired single seat leaves the gate the owner's", async () => {
+    const ports = addressPorts([agent("coord", false)], "coord");
+
+    expect(await deadEndAddress(ports, target)).toBeUndefined();
+  });
+
+  it("a live hubSeat stands in for a retired single seat", async () => {
+    const ports = addressPorts([agent("coord", false), agent("hub", true)], "coord", "hub");
+
+    expect(await deadEndAddress(ports, target)).toBe("hub");
+  });
+
+  it("a live single seat is unchanged", async () => {
+    const ports = addressPorts([agent("coord", true), agent("hub", true)], "coord", "hub");
+
+    expect(await deadEndAddress(ports, target)).toBe("coord");
   });
 });
