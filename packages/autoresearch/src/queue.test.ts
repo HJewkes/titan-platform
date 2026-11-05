@@ -37,6 +37,12 @@ describe("micro args a rung template needs", () => {
     expect(microArgViolations(ranking({ cluster: "x" }), FIXTURE_TARGET)).toEqual([]);
   });
 
+  it("asks no maxUsd of a cluster idea when the rung sets its own spend cap", () => {
+    const capped = { ...FIXTURE_TARGET, rungs: { ...FIXTURE_TARGET.rungs, "L1-cluster": { cmd: ["cluster", "{cluster}", "{maxUsd}"], maxUsd: 0.25 } } };
+
+    expect(microArgViolations(ranking({ cluster: "x" }), capped)).toEqual([]);
+  });
+
   it("asks nothing of a class whose template uses only host-filled names", () => {
     expect(microArgViolations(ops({ add: [proposal("gate")] }), FIXTURE_TARGET)).toEqual([]);
   });

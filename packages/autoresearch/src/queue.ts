@@ -92,6 +92,11 @@ export function applyOps(queue: readonly Idea[], ops: QueueOps, context: QueueCo
 /** Template names the evaluator fills itself, so a planner never has to supply them. */
 const HOST_MICRO_VARS: ReadonlySet<string> = new Set(["runnerRoot", "baselineDir", "microSignal", "caseSet", "case", "key"]);
 
+type Rung = Target["rungs"][string];
+
+/** The evaluator also fills a rung's own settings into its template (`maxUsd`, at the factory's runRung), overriding microArgs. */
+const rungFilled = (rung: Rung | undefined): string[] => (rung?.maxUsd === undefined ? [] : ["maxUsd"]);
+
 /**
  * An add whose class's micro-rung command names a `{var}` that neither the host nor its microArgs fills would
  * fail at L1 after its implementer was paid; naming it here lets the planner's retry fix it first.
@@ -99,9 +104,10 @@ const HOST_MICRO_VARS: ReadonlySet<string> = new Set(["runnerRoot", "baselineDir
 export function microArgViolations(ops: QueueOps, target: Pick<Target, "microRung" | "rungs">): string[] {
   return ops.add.flatMap((proposal) => {
     const rung = target.microRung[proposal.class];
-    const cmd = (rung && target.rungs[rung]?.cmd) || [];
-    const wanted = new Set(cmd.flatMap((arg) => [...arg.matchAll(/\{(\w+)\}/g)].map((match) => match[1]!)));
-    const missing = [...wanted].filter((name) => !HOST_MICRO_VARS.has(name) && proposal.microArgs[name] === undefined);
+    const spec = rung ? target.rungs[rung] : undefined;
+    const filled = new Set([...HOST_MICRO_VARS, ...rungFilled(spec)]);
+    const wanted = new Set((spec?.cmd ?? []).flatMap((arg) => [...arg.matchAll(/\{(\w+)\}/g)].map((match) => match[1]!)));
+    const missing = [...wanted].filter((name) => !filled.has(name) && proposal.microArgs[name] === undefined);
     return missing.length === 0 ? [] : [`${proposal.class} idea (${ideaId(proposal)}) needs microArgs ${missing.map((name) => `"${name}"`).join(", ")} for its ${rung} rung`];
   });
 }
