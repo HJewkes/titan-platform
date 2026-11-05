@@ -37,7 +37,7 @@
       ]
     },
     {
-      "name": "a roster that only timed out after the ask reads as a session that did not start in time",
+      "name": "a roster read timing out after the ask reads as not started in time",
       "file": "products/factory/src/shepherd/review.ts",
       "find": "return onlyTimedOut ? rosterUnreadAfterAsk(timing.timeoutMs, waits) : notStartedInTime(intent, rosterError);",
       "replace": "return notStartedInTime(intent, rosterError);",
