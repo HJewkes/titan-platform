@@ -8,6 +8,8 @@ import { parseSinceOption } from "../digest/command.js";
 import { readAllGates } from "../shepherd/owner-friction-read.js";
 import { loadSeatBook } from "../shepherd/seats.js";
 import { isoWeek } from "../shepherd/stats.js";
+import { auditClock, previousWeek, runAudit, type AuditOpts } from "./audit-command.js";
+import { badByClass } from "./audit-render.js";
 import { demotionDeposit } from "./cards.js";
 import { formatOwnerGatesReport, ownerGatesReport, type OwnerGatesReport } from "./report.js";
 
@@ -18,6 +20,8 @@ interface ReportOpts {
   since?: number;
   json?: boolean;
   deposit?: boolean;
+  /** Per class, the bad outcomes an audit found; absent means no audit was consulted. */
+  auditBad?: ReadonlyMap<string, readonly string[]>;
 }
 
 /** Reads the gates through a read-only connection, so a running serve is never disturbed. */
@@ -25,7 +29,7 @@ function readReport(verbs: Verbs, opts: ReportOpts, now: number): OwnerGatesRepo
   const seats = loadSeatBook(loadConfig(configPath(verbs.io.env)).shepherd ?? {});
   const db = openDatabase(verbs.dbPath(), { readonly: true });
   try {
-    return ownerGatesReport(readAllGates(db), { now, seats, windowDays: (opts.since ?? FOURTEEN_DAYS_MINUTES) / 1440 });
+    return ownerGatesReport(readAllGates(db), { now, seats, windowDays: (opts.since ?? FOURTEEN_DAYS_MINUTES) / 1440, auditBad: opts.auditBad });
   } finally {
     db.close();
   }
@@ -54,6 +58,29 @@ async function reportAction(verbs: Verbs, opts: ReportOpts, now: number): Promis
   verbs.io.stdout(`${formatOwnerGatesReport(report)}${deposits.map((line) => `${line}\n`).join("")}`);
 }
 
+/** The Monday timer's verb: last week's audit, then the report whose cards hold a demotion for any class that audit found bad. */
+async function weeklyAction(verbs: Verbs, opts: Pick<AuditOpts, "judge">): Promise<void> {
+  const now = auditClock(verbs);
+  const items = await runAudit(verbs, { week: previousWeek(now), judge: opts.judge, keepExisting: true }, now);
+  if (items) await reportAction(verbs, { deposit: true, auditBad: badByClass(items) }, now);
+}
+
+function registerAuditVerbs(ownerGates: Command, verbs: Verbs): void {
+  ownerGates
+    .command("audit")
+    .description("a seeded sample of 5 owner-resolved gates from one ISO week, each with its 72 h outcome and a sonnet judge note; writes <active root>/titan-platform/sources/owner-gate-audit-<YYYY-Www>.md")
+    .option("--week <YYYY-Www>", "the ISO week to audit (default: the previous week)")
+    .option("--dry-run", "print the markdown and write nothing")
+    .option("--force", "replace the week's file if it exists")
+    .option("--no-judge", "skip the model call; each item reads judge unavailable: disabled")
+    .action(async (opts: AuditOpts) => void (await runAudit(verbs, opts, auditClock(verbs))));
+  ownerGates
+    .command("weekly")
+    .description("audit the previous ISO week (keeping a file already written), then run report --deposit with that audit's bad outcomes holding their classes")
+    .option("--no-judge", "skip the model call in the audit")
+    .action((opts: Pick<AuditOpts, "judge">) => weeklyAction(verbs, opts));
+}
+
 /** `titan-factory owner-gates`: the weekly meter of what the owner rubber-stamps, and the cards that propose a demotion. */
 export function registerOwnerGates(program: Command, verbs: Verbs): void {
   const ownerGates = program.command("owner-gates").description("the owner's approve rate per decision class and the standing grants");
@@ -64,4 +91,5 @@ export function registerOwnerGates(program: Command, verbs: Verbs): void {
     .option("--json", "print the report as JSON")
     .option("--deposit", "file one two-way owner card per class proposed for demotion; a re-run in the same ISO week files none again")
     .action((opts: ReportOpts) => reportAction(verbs, opts, Date.now()));
+  registerAuditVerbs(ownerGates, verbs);
 }
