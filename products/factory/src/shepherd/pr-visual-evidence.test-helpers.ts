@@ -55,7 +55,7 @@ function artifactZip({ pairs, manifest, zip64 }: Artifact): Buffer {
   return zipOf({ "manifest.json": Buffer.from(JSON.stringify(body)), ...files }, zip64);
 }
 
-function fakeGh(artifact: Artifact): PrVisualGh {
+export function fakeGh(artifact: Artifact): PrVisualGh {
   const zip = artifactZip(artifact);
   const listed = { id: 41, expired: false, size_in_bytes: zip.length, workflow_run: { id: 9, head_sha: artifact.runHead ?? HEAD } };
   return {

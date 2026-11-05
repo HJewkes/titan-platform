@@ -39,7 +39,7 @@ const WIDTH = /^[0-9]{1,5}$/;
 
 type ReadLimits = { timeoutMs: number; zipBytes: number };
 
-const DEFAULT_LIMITS: ReadLimits = { timeoutMs: 60_000, zipBytes: 64 * MI };
+export const DEFAULT_LIMITS: ReadLimits = { timeoutMs: 60_000, zipBytes: 64 * MI };
 const run = promisify(execFile);
 
 const ArtifactSchema = z.object({ id: z.number().int(), expired: z.boolean(), size_in_bytes: z.number(), workflow_run: z.object({ id: z.number().int(), head_sha: z.string() }).nullable() });
@@ -47,7 +47,7 @@ type Artifact = z.infer<typeof ArtifactSchema>;
 
 const unmeasured = (reason: string): PrVisualEvidence => ({ measured: false, reason });
 
-function execPrVisualGh(gh = "gh"): PrVisualGh {
+export function execPrVisualGh(gh = "gh"): PrVisualGh {
   return {
     text: async (args, timeoutMs) => (await run(gh, [...args], { encoding: "utf8", timeout: timeoutMs, maxBuffer: 16 * MI })).stdout,
     bytes: async (args, timeoutMs, maxBytes) => (await run(gh, [...args], { encoding: "buffer", timeout: timeoutMs, maxBuffer: maxBytes })).stdout,
@@ -88,7 +88,7 @@ function measurePair(zip: ZipReader, pair: Pair, index: number, ctx: { budget: {
   return delta.sizesDiffer ? { ...id, sizesDiffer: true } : { ...id, changedPixels: delta.changedPixels };
 }
 
-type Manifest = z.infer<typeof PrVisualManifestSchema>;
+export type Manifest = z.infer<typeof PrVisualManifestSchema>;
 
 /** A selected story is missing unless it has a pair at every width the artifact shot any story at. */
 function missingStories(manifest: Manifest, shots: readonly ShotEvidence[]): string[] {
@@ -98,7 +98,7 @@ function missingStories(manifest: Manifest, shots: readonly ShotEvidence[]): str
   return [...stories].filter((story) => widths.size === 0 || [...widths].some((width) => !paired.has(`${story}@${width}`)));
 }
 
-function manifestOf(zip: ZipReader): Manifest | string {
+export function manifestOf(zip: ZipReader): Manifest | string {
   const bytes = zip.read("manifest.json");
   if ("refused" in bytes) return `manifest: ${bytes.refused}`;
   let json: unknown;
@@ -116,7 +116,7 @@ function manifestOf(zip: ZipReader): Manifest | string {
   return parsed.data;
 }
 
-function measureArchive(zip: ZipReader, pixelTolerance: number): PrVisualEvidence {
+export function measureArchive(zip: ZipReader, pixelTolerance: number): PrVisualEvidence {
   const manifest = manifestOf(zip);
   if (typeof manifest === "string") return unmeasured(manifest);
   if (!manifest.rendered) return unmeasured("the pr-visual run rendered nothing");
@@ -131,16 +131,22 @@ function measureArchive(zip: ZipReader, pixelTolerance: number): PrVisualEvidenc
   return { measured: true, shots, missing: missingStories(manifest, shots) };
 }
 
-async function readOnce(gh: PrVisualGh, target: PrVisualTarget, { timeoutMs: ms, zipBytes }: ReadLimits): Promise<PrVisualEvidence> {
+/** The head's artifact opened as a zip, or the reason it could not be: no artifact, over a cap, or an unreadable zip. */
+export async function openHeadArtifact(gh: PrVisualGh, target: PrVisualTarget, { timeoutMs: ms, zipBytes }: ReadLimits): Promise<ZipReader | string> {
   const overCap = (size: number) => size > zipBytes;
-  const capped = unmeasured(`artifact over the ${zipBytes}-byte cap`);
+  const capped = `artifact over the ${zipBytes}-byte cap`;
   const artifact = await headArtifact(gh, target, ms);
-  if (artifact === undefined) return unmeasured("no pr-visual artifact from the configured workflow at the head");
+  if (artifact === undefined) return "no pr-visual artifact from the configured workflow at the head";
   if (overCap(artifact.size_in_bytes)) return capped;
   const bytes = await bounded(gh.bytes(["api", `repos/${target.repo}/actions/artifacts/${artifact.id}/zip`], ms, zipBytes), ms);
   if (overCap(bytes.length)) return capped;
   const zip = openZip(bytes, { maxEntries: CAPS.entries, maxInflatedBytes: CAPS.inflatedBytes });
-  return "refused" in zip ? unmeasured(`artifact zip: ${zip.refused}`) : measureArchive(zip, target.pixelTolerance);
+  return "refused" in zip ? `artifact zip: ${zip.refused}` : zip;
+}
+
+async function readOnce(gh: PrVisualGh, target: PrVisualTarget, limits: ReadLimits): Promise<PrVisualEvidence> {
+  const zip = await openHeadArtifact(gh, target, limits);
+  return typeof zip === "string" ? unmeasured(zip) : measureArchive(zip, target.pixelTolerance);
 }
 
 /** Reads the head's pr-visual artifact as evidence; a failed read is unmeasured, never a throw. */

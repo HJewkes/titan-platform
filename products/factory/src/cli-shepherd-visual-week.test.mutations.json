@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the visual-week verb drops --images instead of passing it on",
+      "file": "products/factory/src/cli-shepherd.ts",
+      "find": "() => ({ repo: opts.repo, ...(opts.images !== undefined && { images: resolve(opts.images) }) })",
+      "replace": "() => ({ repo: opts.repo })",
+      "kills": ["titan-factory shepherd visual-week with no serve answering, in an agent env accepts --images with a relative directory and builds the batch with a section list"]
+    },
+    {
+      "name": "the visual-week verb passes a relative --images unresolved",
+      "file": "products/factory/src/cli-shepherd.ts",
+      "find": "{ repo: opts.repo, ...(opts.images !== undefined && { images: resolve(opts.images) }) }",
+      "replace": "{ repo: opts.repo, ...(opts.images !== undefined && { images: opts.images }) }",
+      "kills": ["titan-factory shepherd visual-week with no serve answering, in an agent env accepts --images with a relative directory and builds the batch with a section list"]
+    }
+  ]
+}
