@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { HoldSatisfiedBySchema } from "./hold-satisfaction.js";
 import { ownerHoldOf } from "./owner-hold-rows.js";
-import { EffectivePolicySchema } from "./policy-schema.js";
+import { parseStoredPolicy } from "./policy-schema.js";
 import { registrationFactsOf } from "./registration-facts.js";
 import type { RegistrationRow } from "./registration-row.js";
 import type { Registration } from "./store.js";
@@ -20,7 +20,7 @@ export function registrationOf(row: RegistrationRow): Registration {
     task: row.task,
     implementer: row.implementer,
     reviewer: row.reviewer,
-    policy: EffectivePolicySchema.parse(JSON.parse(row.policy)),
+    policy: parseStoredPolicy(row.policy),
     kind: KindSchema.parse(row.kind),
     slice: row.slice,
     held: row.held === 1 || ownerHold !== null,

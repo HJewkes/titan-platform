@@ -21,6 +21,7 @@ import { checkedBaseTap, shepherdLandOptions } from "./policy.js";
 import { shepherdPrParams, type ShepherdPrParams } from "./pr-params.js";
 import { g10ReleaseRoutes, releaseBeforeLeaving, releaseG10Hold } from "./g10-release.js";
 import { g10ReholdRoutes, reholdMovedHead } from "./g10-rehold.js";
+import { g10ReclassRoutes, reclassAtCiRead } from "./g10-reclass.js";
 import { narrowToRegistration, registrationPolicy } from "./registration-policy.js";
 import { type AfterStage, postMergeRoutes, shepherdMainCi } from "./post-merge.js";
 import { npmRegistry, releaseFollowStep, releaseLandOptions, releasePreflightAt, releaseRoutes, releaseVerdict, type PackageRegistry } from "./release.js";
@@ -233,6 +234,7 @@ async function onCiRead(run: ShepherdRun, result: unknown): Promise<void> {
   run.lastCi = noteRetarget(run, ci.data);
   expireStaleGates(run.ctx, ci.data.headSha);
   await expireOrder(run, ci.data.headSha);
+  await reclassAtCiRead(run, ci.data.headSha);
   await reholdMovedHead(run, ci.data.headSha);
   if (!reviewable(ci.data)) return;
   if (ci.data.verdict === "green") run.conflictWakes = 0;
@@ -351,7 +353,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     seatNoticeRoute(deps.now, deps.exitNotice, deps.sleep),
     ...freezeHoldRoutes(deps, wiring.mainRed?.freezes),
     ...g10ReleaseRoutes(deps, () => wiring.review?.twoMergeRelease),
-    ...g10ReholdRoutes(deps, wiring.review?.carry),
+    ...g10ReholdRoutes(deps, wiring.review?.carry), ...g10ReclassRoutes(deps),
     ...heldRepairRoutes(deps),
     ...visualPacketRoutes(deps),
     sendBackOfferRoute(deps), visualAcceptOfferRoute(deps),
