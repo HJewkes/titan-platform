@@ -63,7 +63,9 @@ describe("a knowledge record on a phone", () => {
   it("lets its long ref break inside the breadcrumb instead of widening the page", async () => {
     renderPage(snapshot, `#/knowledge/${encodeURIComponent(NOTE)}`);
 
-    const crumb = (await screen.findAllByText(NOTE))[0]!;
+    // The record read is still loading once the breadcrumb shows; ending the test there leaves its resolution and re-render queued (TP-4784).
+    await screen.findByTestId("knowledge-body");
+    const crumb = screen.getAllByText(NOTE)[0]!;
     const wrapper = crumb.closest(".break-all");
     expect(wrapper?.classList.contains("[&_*]:shrink")).toBe(true);
   });
