@@ -371,7 +371,7 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
   const mergeableState = pr.mergeableState;
   const unknown = { ...(requiredChecksUnknown !== undefined && { requiredChecksUnknown }), ...(unreadFacts && { unreadFacts }), ...(changedFilesUnread !== undefined && { changedFilesUnread }) };
   const ciPolicy = input.ciPolicy && { ciPolicy: input.ciPolicy, ...(observed.ciPolicyClass && { ciPolicyClass: observed.ciPolicyClass }) };
-  const tier = await readVisualTier(port, merge, { repo: input.repo, baseRef: pr.baseRef, visualPaths: input.visualPaths, config: reads.tier, readPixel: reads.pixel });
+  const tier = await readVisualTier(port, merge, { repo: input.repo, pr: input.pr, baseRef: pr.baseRef, visualPaths: input.visualPaths, config: reads.tier, readPixel: reads.pixel });
   const visual = { ...(await visualDeltaOf(port, input, observed, reads.threshold)), ...tier };
   const judged = await reads.attest?.(input, pr.baseRef);
   const attest = { ...(judged && { attest: judged }), ...(input.attest && { attestVerdicts: input.attest }) };

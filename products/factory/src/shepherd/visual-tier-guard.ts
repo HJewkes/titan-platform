@@ -52,6 +52,7 @@ async function mergeBaseOf(port: Pick<GitHubPort, "compareFiles">, repo: RepoSlu
 
 interface TierTarget {
   repo: RepoSlug;
+  pr: number;
   baseRef: string;
   visualPaths: readonly string[] | undefined;
   config: unknown;
@@ -63,7 +64,7 @@ interface TierTarget {
  * when the tier without it would ask for one, so a non-rendering or already tier-2 head costs no download.
  */
 export async function readVisualTier(port: Pick<GitHubPort, "compareFiles">, merge: MergeFacts, target: TierTarget): Promise<{ visualTier: VisualTierRecord } | undefined> {
-  const { repo, baseRef, visualPaths, config, readPixel } = target;
+  const { repo, pr, baseRef, visualPaths, config, readPixel } = target;
   const mode = tierMode(config);
   const judged = visualPaths === undefined ? [] : visualMatches(merge.changedPaths, visualPaths);
   if (mode === undefined || visualPaths === undefined || judged.length === 0) return undefined;
@@ -71,7 +72,7 @@ export async function readVisualTier(port: Pick<GitHubPort, "compareFiles">, mer
   const unread = visualTier({ merge, visualPaths, mergeBase, config, pixel: undefined });
   const prVisual = prVisualOf(config);
   if (unread.tier === 1 || !unread.reason.startsWith(NO_PIXEL_PROOF) || readPixel === undefined || prVisual === undefined) return { visualTier: { mode, judged, verdict: unread } };
-  const pixel = await readPixel({ repo, head: merge.head, ...prVisual });
+  const pixel = await readPixel({ repo, pr, baseRef, head: merge.head, ...prVisual });
   return { visualTier: { mode, judged, verdict: visualTier({ merge, visualPaths, mergeBase, config, pixel }) } };
 }
 

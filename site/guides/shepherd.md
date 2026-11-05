@@ -1352,7 +1352,11 @@ list package manifests, lockfiles, install hooks, build or Storybook config, or 
 scripts there. A path under `.github/` never counts, even when a glob matches it. Any other
 changed path, including one outside the visual globs, makes the head tier 2
 (`producer-runnable`) and Shepherd skips the download. Otherwise Shepherd downloads the
-newest `pr-visual-<head>` artifact from `prVisual.workflow` at the head. It reads the
+newest `pr-visual-<head>` artifact whose run passes a provenance check. The run must be a
+`pull_request` run of `prVisual.workflow` at the head, and it must list only this pull
+request against its own base. A `pull_request` run takes its workflow from the merge with
+its own pull request's base. So a run for another pull request that shares the head, or one
+against another base, may have run a workflow someone else wrote, and it never counts. It reads the
 artifact under byte, entry, shot and pixel caps and counts changed pixels on each before
 and after pair itself, within `prVisual.pixelTolerance`. Zero on every shot is tier 1
 (`no-pixel-diff`). Anything else is tier 2: a changed or one-sided shot, a shot naming one

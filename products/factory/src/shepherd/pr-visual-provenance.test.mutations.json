@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the run's workflow path is not checked",
+      "file": "products/factory/src/shepherd/pr-visual-read.ts",
+      "find": "run.path === target.workflow && ownPr",
+      "replace": "ownPr",
+      "kills": ["the pixel proof is read only from this pull request's own run (TP-4761 S4) a run of another workflow path is tier 2"]
+    },
+    {
+      "name": "the run's event is not checked",
+      "file": "products/factory/src/shepherd/pr-visual-read.ts",
+      "find": "return run.event === \"pull_request\" && ",
+      "replace": "return ",
+      "kills": ["the pixel proof is read only from this pull request's own run (TP-4761 S4) a run of another event is tier 2"]
+    },
+    {
+      "name": "the run's pull request number is not checked",
+      "file": "products/factory/src/shepherd/pr-visual-read.ts",
+      "find": "only.number === target.pr && ",
+      "replace": "",
+      "kills": ["the pixel proof is read only from this pull request's own run (TP-4761 S4) a run for another pull request at the same head is tier 2"]
+    },
+    {
+      "name": "the run's base ref is not checked",
+      "file": "products/factory/src/shepherd/pr-visual-read.ts",
+      "find": " && only.base.ref === target.baseRef;",
+      "replace": ";",
+      "kills": ["the pixel proof is read only from this pull request's own run (TP-4761 S4) a run against another base, whose workflow that base wrote is tier 2"]
+    },
+    {
+      "name": "a run listing several pull requests is taken by its first",
+      "file": "products/factory/src/shepherd/pr-visual-read.ts",
+      "find": "others.length === 0 && ",
+      "replace": "",
+      "kills": ["the pixel proof is read only from this pull request's own run (TP-4761 S4) a run listing another pull request beside this one is tier 2"]
+    }
+  ]
+}

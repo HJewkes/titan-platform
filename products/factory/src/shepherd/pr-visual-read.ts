@@ -19,6 +19,9 @@ export interface PrVisualGh {
 
 interface PrVisualTarget {
   repo: string;
+  /** The pull request the proof is for, and the base it targets: a run for any other pull request or base is refused. */
+  pr: number;
+  baseRef: string;
   head: string;
   /** The workflow file the artifact's run must come from, e.g. `.github/workflows/pr-visual.yml`. */
   workflow: string;
@@ -43,7 +46,25 @@ const DEFAULT_LIMITS: ReadLimits = { timeoutMs: 60_000, zipBytes: 64 * MI };
 const run = promisify(execFile);
 
 const ArtifactSchema = z.object({ id: z.number().int(), expired: z.boolean(), size_in_bytes: z.number(), workflow_run: z.object({ id: z.number().int(), head_sha: z.string() }).nullable() });
-const RunSchema = z.object({ path: z.string() });
+const RunSchema = z.object({
+  path: z.string(),
+  event: z.string(),
+  pull_requests: z.array(z.object({ number: z.number().int(), base: z.object({ ref: z.string() }) })),
+});
+const RUN_FIELDS = "{path: .path, event: .event, pull_requests: [.pull_requests[] | {number: .number, base: {ref: .base.ref}}]}";
+
+type Run = z.infer<typeof RunSchema>;
+
+/**
+ * The one test a run must pass before its artifact is read. A `pull_request` run takes its workflow from the merge
+ * with its own pull request's base, so a run of the configured path for another pull request, or one listing more than
+ * this pull request, may have run a workflow someone else wrote; only this pull request's own run at its base counts.
+ */
+function artifactProvenance(run: Run, target: PrVisualTarget): boolean {
+  const [only, ...others] = run.pull_requests;
+  const ownPr = only !== undefined && others.length === 0 && only.number === target.pr && only.base.ref === target.baseRef;
+  return run.event === "pull_request" && run.path === target.workflow && ownPr;
+}
 
 type Artifact = z.infer<typeof ArtifactSchema>;
 
@@ -63,12 +84,12 @@ async function headArtifacts(gh: PrVisualGh, { repo, head }: PrVisualTarget, ms:
   return artifacts.filter((a) => !a.expired && a.workflow_run?.head_sha === head).slice(0, PR_VISUAL_CAPS.candidates);
 }
 
-/** The newest head artifact whose run is the configured workflow, so another workflow in the PR cannot supply it. */
+/** The newest head artifact whose run passes `artifactProvenance`, so no other workflow or pull request can supply it. */
 async function configuredArtifact(gh: PrVisualGh, target: PrVisualTarget, ms: number): Promise<Artifact | undefined> {
   for (const artifact of await headArtifacts(gh, target, ms)) {
     const runId = artifact.workflow_run?.id;
-    const read = RunSchema.parse(JSON.parse(await bounded(gh.text(["api", "--jq", "{path: .path}", `repos/${target.repo}/actions/runs/${runId}`], ms), ms)));
-    if (read.path === target.workflow) return artifact;
+    const run = RunSchema.parse(JSON.parse(await bounded(gh.text(["api", "--jq", RUN_FIELDS, `repos/${target.repo}/actions/runs/${runId}`], ms), ms)));
+    if (artifactProvenance(run, target)) return artifact;
   }
   return undefined;
 }
@@ -128,7 +149,7 @@ async function readOnce(gh: PrVisualGh, target: PrVisualTarget, { timeoutMs: ms,
   const overCap = (size: number) => size > zipBytes;
   const capped = unmeasured(`artifact over the ${zipBytes}-byte cap`);
   const artifact = await configuredArtifact(gh, target, ms);
-  if (artifact === undefined) return unmeasured("no pr-visual artifact from the configured workflow at the head");
+  if (artifact === undefined) return unmeasured("no pr-visual artifact from this pull request's own run of the configured workflow at the head");
   if (overCap(artifact.size_in_bytes)) return capped;
   const bytes = await bounded(gh.bytes(["api", `repos/${target.repo}/actions/artifacts/${artifact.id}/zip`], ms, zipBytes), ms);
   if (overCap(bytes.length)) return capped;
