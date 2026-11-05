@@ -106,7 +106,14 @@ export async function takeAwaited(ctx: WorkflowContext, target: ReviewTarget, aw
   return taken;
 }
 
-async function settleAwaited(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined, account: string, scope?: ScopeRound): Promise<{ held: Verdict } | { awaited: AwaitedResult }> {
+async function settleAwaited(
+  ctx: WorkflowContext,
+  target: ReviewTarget,
+  awaiting: AwaitVerdictInput | ExternalAwaiting,
+  dispatchedReviewer: AgentIdentity | undefined,
+  account: string,
+  scope?: ScopeRound,
+): Promise<{ held: Verdict } | { awaited: AwaitedResult }> {
   const onTime = await step(ctx, `${AWAIT_VERDICT_STEP}:${target.head}`, awaiting, Awaited);
   const heldOnTime = limitHeld(ctx, target, onTime, dispatchedReviewer, account);
   if (heldOnTime) return { held: await heldOnTime };
