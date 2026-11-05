@@ -744,6 +744,8 @@ declare class WorkflowRuntime {
     quiesce(): void;
     quiesced(): boolean;
     private finish;
+    /** Whether this runtime still drives the run: false once the run ended, parked, was shut down here or lost its lease. */
+    isLive(runId: string): boolean;
     status(runId: string): WorkflowRun | undefined;
     list(statuses?: readonly WorkflowRun["status"][]): WorkflowRun[];
     /** One workflow's runs, read by name so no other workflow's step results are loaded. */

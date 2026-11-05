@@ -101,6 +101,8 @@ export interface ResumeReport {
   resumed: WorkflowRun[];
   held: HeldRun[];
   gates: PendingGate[];
+  /** Resumed runs this process stopped driving unfinished, because it lost their lease; each can be resumed again. */
+  lost?: string[];
 }
 
 export interface FactoryHost {
@@ -213,18 +215,24 @@ function shadowDriver(db: Db, options: FactoryHostOptions, runtime: WorkflowRunt
 
 async function resume(runtime: WorkflowRuntime, pendingGates: () => PendingGate[], pollMs: number, now: () => number): Promise<ResumeReport> {
   const resumedIds = await runtime.hydrate();
-  await Promise.all(resumedIds.map((id) => untilSettledOrGated(runtime, pendingGates, id, pollMs)));
+  const outcomes = await Promise.all(resumedIds.map((id) => untilSettledOrGated(runtime, pendingGates, id, pollMs)));
   const resumed = resumedIds.map((id) => runtime.status(id)).filter((run): run is WorkflowRun => run !== undefined);
-  const report: ResumeReport = { resumed, held: heldRuns(runtime, new Set(resumedIds), now()), gates: pendingGates() };
+  const lost = resumedIds.filter((_, index) => outcomes[index] === "ownership-lost");
+  const report: ResumeReport = { resumed, held: heldRuns(runtime, new Set(resumedIds), now()), gates: pendingGates(), ...(lost.length > 0 ? { lost } : {}) };
   runtime.shutdown();
   return report;
 }
 
-export async function untilSettledOrGated(runtime: WorkflowRuntime, pendingGates: () => PendingGate[], runId: string, pollMs: number): Promise<void> {
+/** How a wait on one run ended: the run settled, it waits on a human, or this process no longer drives it and it is still unfinished. */
+export type DriveOutcome = "settled" | "gated" | "ownership-lost";
+
+/** A run this runtime dropped unfinished, after its lease lapsed or another owner took it, would never move again here, so the wait ends. */
+export async function untilSettledOrGated(runtime: WorkflowRuntime, pendingGates: () => PendingGate[], runId: string, pollMs: number): Promise<DriveOutcome> {
   for (;;) {
     const run = runtime.status(runId);
-    if (!run || SETTLED.has(run.status)) return;
-    if (run.status === "paused" && pendingGates().some((pending) => pending.runId === runId)) return;
+    if (!run || SETTLED.has(run.status)) return "settled";
+    if (run.status === "paused" && pendingGates().some((pending) => pending.runId === runId)) return "gated";
+    if (!runtime.isLive(runId)) return "ownership-lost";
     await new Promise((resolve) => setTimeout(resolve, pollMs));
   }
 }
