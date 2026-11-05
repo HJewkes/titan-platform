@@ -6,12 +6,12 @@ import { partialFake } from "@titan-design/test-kit";
 import { ghPrVisual, type PrVisualGh } from "./pr-visual-read.js";
 import { readVisualTier } from "./visual-tier-guard.js";
 
-export const HEAD = "a".repeat(40);
-export const BASE = "b".repeat(40);
+const HEAD = "a".repeat(40);
+const BASE = "b".repeat(40);
 export const OTHER = "c".repeat(40);
 const REPO = "octo/design";
 export const PR = 7;
-export const WORKFLOW = ".github/workflows/pr-visual.yml";
+const WORKFLOW = ".github/workflows/pr-visual.yml";
 export const RENDERED = "src/button/button.tsx";
 
 const config = {
@@ -74,7 +74,7 @@ function endOfDirectory(entries: number, directoryBytes: number, offset: number)
 
 const shot = (story: string, width: string) => ({ story, width, before: `before/${story}@${width}.png`, after: `after/${story}@${width}.png` });
 
-export interface Artifact {
+interface Artifact {
   /** One `[before, after]` pair per shot, in manifest order. */
   pairs: [Buffer, Buffer][];
   manifest?: Record<string, unknown>;
