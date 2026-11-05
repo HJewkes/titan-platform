@@ -120,7 +120,16 @@ type SeatGate = () => Promise<LandOutcome | undefined>;
  * A gate `readdress-dead-ends` cancelled goes to `readdress`, the seat's dead-end gate at the same head (TP-4759). With
  * `red`, a ci-red exit's failing checks, the await-new-head answer also ends when that same head turns green.
  */
-export async function sentBackGate(run: GateRun, headSha: string, prompt: string, abandoned: string, situation = prompt, waivable = false, readdress?: SeatGate, red?: readonly { name: string }[]): Promise<LandOutcome | undefined> {
+export async function sentBackGate(
+  run: GateRun,
+  headSha: string,
+  prompt: string,
+  abandoned: string,
+  situation = prompt,
+  waivable = false,
+  readdress?: SeatGate,
+  red?: readonly { name: string }[],
+): Promise<LandOutcome | undefined> {
   const { schema, brief } = sentBackDecision({ ...run.target, headSha, situation, waivable });
   const answered = await askReaddressable(run.ctx, "sh-sent-back", prompt, { schema, brief });
   if (answered === "readdressed" && readdress) return readdress();
