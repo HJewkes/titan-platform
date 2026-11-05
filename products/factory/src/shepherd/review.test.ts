@@ -901,6 +901,29 @@ describe("sh-review", () => {
     expect(result).toEqual({ kind: "none", reason: `reviewer rv-octo-demo-7 did not start one session in time; the last roster read failed: Error` });
   });
 
+  it("answers not-started, naming the timeout and the wait, when every roster read after a successful ask timed out", async () => {
+    const dispatch = fakeDispatch();
+    const roster = dispatch.roster;
+    let reads = 0;
+    dispatch.roster = async () => (reads++ === 0 ? roster() : Promise.reject(new ReviewerAskTimedOut("agent-chat timed out")));
+
+    const { result } = await reviewSteps(dispatch).review(spawnIntent);
+
+    expect(result).toEqual({ kind: "none", notStarted: true, reason: "the reviewer dispatch was refused: ReviewerAskTimedOut (roster unread after 0 min)" });
+  });
+
+  it("keeps the did-not-start reason when a roster read answered between timed-out reads", async () => {
+    const dispatch = fakeDispatch([], { onSpawn: () => undefined });
+    const roster = dispatch.roster;
+    let reads = 0;
+    dispatch.roster = async () => (reads++ % 2 === 1 ? Promise.reject(new ReviewerAskTimedOut("agent-chat timed out")) : roster());
+
+    const { result } = await reviewSteps(dispatch).review(spawnIntent);
+
+    expect(result).toMatchObject({ kind: "none", reason: expect.stringContaining("did not start one session in time") });
+    expect(result).not.toHaveProperty("notStarted");
+  });
+
   it("says only that the reviewer did not start in time when every roster read succeeded", async () => {
     const dispatch = fakeDispatch([], { onSpawn: () => undefined });
 
