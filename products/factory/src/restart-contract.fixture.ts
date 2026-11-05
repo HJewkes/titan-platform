@@ -81,6 +81,7 @@ export const PARKING_STEPS: Readonly<Record<string, string>> = {
   "sh-fix-pr-stall": `${RECORD}: whether a thaw wait holds an unmarked fix-task PR`,
   "sh-g10-release": `${WRITE}: releases the G10 adversary hold`,
   "sh-g10-rehold": `${WRITE}: re-places the G10 adversary hold`,
+  "sh-g10-reclass": `${WRITE}: swaps an unread-files G10 hold for the class a whole re-read finds`,
   "sh-seat-notice": `${WRITE}: sends the seat notice`,
   "sh-held-check": `${RECORD}: whether the run was held at this point`,
   "sh-head-origin": `${RECORD}: who pushed the head`,
