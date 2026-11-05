@@ -1,0 +1,34 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an adversary touch found on re-read lifts the hold",
+      "file": "products/factory/src/shepherd/g10-reclass.ts",
+      "find": "  if (wanted !== undefined) return { reclassed: false, kept: wanted };\n",
+      "replace": "",
+      "kills": [
+        "a run held because its changed files were unread at registration, read again at a CI read keeps its hold when the whole read finds an authority touch",
+        "a run held because its changed files were unread at registration, read again at a CI read keeps its hold when the read fails again on both tries",
+        "a run held because its changed files were unread at registration, read again at a CI read keeps its hold when the list comes back cut short at GitHub's cap"
+      ]
+    },
+    {
+      "name": "a run held for any reason is re-read",
+      "file": "products/factory/src/shepherd/g10-reclass.ts",
+      "find": " || !isUnreadRegistrationHold(from)) return { reclassed: false };",
+      "replace": ") return { reclassed: false };",
+      "kills": [
+        "a run held because its changed files were unread at registration, read again at a CI read reads nothing for a run held for another reason"
+      ]
+    },
+    {
+      "name": "the swap is a plain release without the re-class mark",
+      "file": "products/factory/src/shepherd/g10-reclass.ts",
+      "find": "  const placed = deps.store.get().reclassIfHeld(input.runId, from, () => undefined, { actor: SHEPHERD_ACTOR, headSha: input.head });\n  return { reclassed: placed !== false };",
+      "replace": "  deps.store.get().release(input.runId, { actor: SHEPHERD_ACTOR, headSha: input.head });\n  return { reclassed: true };",
+      "kills": [
+        "a run held because its changed files were unread at registration, read again at a CI read is unheld when the whole read finds a 900-line PR with no adversary touch, as its registration would have left it"
+      ]
+    }
+  ]
+}
