@@ -9,7 +9,7 @@ import { WAIVE_PROOF, deadEndDecision, type DeadEndAnswer } from "../gate-brief.
 import { readPath } from "../narrow.js";
 import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
 import { ABANDON_STEPS, abandonAtHead, abandonRoute } from "./abandon-close.js";
-import { awaitNewHead } from "./gates.js";
+import { awaitAfterExit } from "./gates.js";
 import { waiveProof } from "./proof-waiver.js";
 import type { ShepherdDeps } from "./phases.js";
 import { REPLAN_STEPS, replanRoute, requestReplan, type FailedSession } from "./replan.js";
@@ -111,6 +111,8 @@ interface DeadEnd {
   situation: string;
   /** A fix-proof exit, where the owner may still waive the proof. */
   waivable?: boolean;
+  /** A ci-red exit's failing checks: a respawn's or replan's wait then also ends when the same head turns green. */
+  red?: readonly { name: string }[];
   /** What a replan brief names: the run's task, the worker sessions that ended here, and the FIX_FIRST trail. */
   task?: string;
   sessions?: readonly FailedSession[];
@@ -174,12 +176,12 @@ export async function deadEndGate(run: DeadEndRun, end: DeadEnd, ownerGate: () =
   await noticeHeldSeat(run, JSON.stringify([DEAD_END_GATE, headSha]), { headSha, why: addressed.situation, seat, gate: "dead-end" });
   for (let attempt = 0; ; attempt += 1) {
     const decision = await askSeat(run, end, addressed, attempt > 0);
-    if (decision !== "replan") return decision && onAnswer(run, headSha, decision);
-    if (await replanned(run, end, addressed, attempt)) return awaitNewHead(run, headSha);
+    if (decision !== "replan") return decision && onAnswer(run, end, decision);
+    if (await replanned(run, end, addressed, attempt)) return awaitAfterExit(run, headSha, end.red);
   }
 }
 
-async function onAnswer(run: DeadEndRun, headSha: string, decision: DeadEndAnswer): Promise<LandOutcome | undefined> {
+async function onAnswer(run: DeadEndRun, { headSha, red }: DeadEnd, decision: DeadEndAnswer): Promise<LandOutcome | undefined> {
   if (decision === "abandon") return abandonAtHead(run, headSha);
   if (decision === WAIVE_PROOF) {
     await waiveProof(run.ctx, headSha);
@@ -192,7 +194,7 @@ async function onAnswer(run: DeadEndRun, headSha: string, decision: DeadEndAnswe
     return undefined;
   }
   respawns.set(run.ctx, (respawns.get(run.ctx) ?? 0) + 1);
-  return awaitNewHead(run, headSha);
+  return awaitAfterExit(run, headSha, red);
 }
 
 /** The route escalations that are dead ends; any other escalation keeps land's owner gate. */

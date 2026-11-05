@@ -31,8 +31,8 @@
     {
       "name": "the tier sees only the paths the visual globs matched",
       "file": "products/factory/src/shepherd/visual-tier-guard.ts",
-      "find": "visualTier({ merge, visualPaths, mergeBase, config, pixel: undefined })",
-      "replace": "visualTier({ merge: { ...merge, changedPaths: visualMatches(merge.changedPaths, visualPaths) }, visualPaths, mergeBase, config, pixel: undefined })",
+      "find": "visualTier({ merge, visualPaths, mergeBase, config })",
+      "replace": "visualTier({ merge: { ...merge, changedPaths: visualMatches(merge.changedPaths, visualPaths) }, visualPaths, mergeBase, config })",
       "kills": [
         "the visual tier at the merge guard (TP-4761 S2) a harness path outside the visual globs makes a story-only head tier 2, as the tier sees every changed path"
       ]
