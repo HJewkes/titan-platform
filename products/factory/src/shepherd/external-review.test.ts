@@ -91,6 +91,24 @@ describe("acceptExternalVerdict", () => {
     expect(plain).not.toHaveProperty("ciPolicy");
   });
 
+  it("an adopted seat reviewer's MERGE carries its Follow-ups items", () => {
+    const block = "Follow-ups:\n- Cache the head lookup | A second lookup at one head reads the cache | medium";
+    const text = `Findings.\n\n${block}\n\nVerdict: MERGE\nPR: ${REPO}#4\nHead: ${HEAD}\n`;
+
+    const accepted = acceptExternalVerdict({ ...target, external: SEAT.name }, SEAT, [said(SEAT, text, 2)]);
+
+    expect(accepted).toMatchObject({ verdict: "MERGE", followUps: [{ title: "Cache the head lookup", doneWhen: "A second lookup at one head reads the cache", severity: "medium" }] });
+  });
+
+  it("an adopted seat reviewer's malformed Follow-ups block carries its warning and the MERGE stands", () => {
+    const text = `Findings.\n\nFollow-ups:\n- Cache the head lookup | medium\n\nVerdict: MERGE\nPR: ${REPO}#4\nHead: ${HEAD}\n`;
+
+    const accepted = acceptExternalVerdict({ ...target, external: SEAT.name }, SEAT, [said(SEAT, text, 2)]);
+
+    expect(accepted).toMatchObject({ kind: "verdict", verdict: "MERGE", followUpsWarning: "bad_item" });
+    expect(accepted).not.toHaveProperty("followUps");
+  });
+
   it("is no verdict when a WAIT strictly follows a MERGE at the same head", () => {
     const messages = [said(SEAT, verdictAt("MERGE"), 2), said(SEAT, verdictAt("WAIT"), 3)];
 
