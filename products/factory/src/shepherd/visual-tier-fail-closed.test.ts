@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { tierOutcome } from "./visual-tier-guard.js";
 import { visualTier } from "./visual-tier.js";
 
 const HEAD = "a".repeat(40);
@@ -18,41 +19,22 @@ const config = {
   storyDiff: { check: "visual", paths: ["**/__snapshots__/**", "**/__snapshots__.spec/**"], allowedApps: [APP] },
 };
 
-const shot = { id: "button-default", paired: true, changedPixels: 0 };
-const proof = { head: HEAD, baseSha: BASE, rendered: true, shots: [shot] };
+interface Case { paths: string[]; config?: unknown }
 
-interface Case { paths: string[]; pixel?: unknown; config?: unknown; mergeBase?: string }
-
-function verdict({ paths, pixel, config: tierConfig = config, mergeBase = BASE }: Case) {
+function verdict({ paths, config: tierConfig = config }: Case) {
   const merge = { head: HEAD, changedPaths: paths, checkRuns: [{ name: "visual", appId: APP, headSha: HEAD, conclusion: "success" }] };
-  return visualTier({ merge, visualPaths: ["src/**"], mergeBase, config: tierConfig, pixel });
+  return visualTier({ merge, visualPaths: ["src/**"], mergeBase: BASE, config: tierConfig });
 }
 
 /** 2^9 alternatives: within the schema's length cap, past compileGlobs' 256-expansion cap. */
 const UNCOMPILABLE = "src/{a,b}{a,b}{a,b}{a,b}{a,b}{a,b}{a,b}{a,b}{a,b}/**";
 
 describe("visual tier fails closed (TP-4761 S1)", () => {
-  it("a pixel proof holding anything but exact zero, true flags and the merge shas is tier 2", () => {
-    const withShot = (over: Record<string, unknown>) => ({ ...proof, shots: [{ ...shot, ...over }] });
-    const noCount = { id: shot.id, paired: shot.paired };
-    const bad = [
-      ...[-1, 0.5, null, "0", 1, Number.NaN].map((changedPixels) => withShot({ changedPixels })),
-      { ...proof, shots: [noCount] },
-      withShot({ paired: 1 }),
-      { ...proof, rendered: "true" },
-      { ...proof, head: "c".repeat(40) },
-      { ...proof, shots: [] },
-    ];
+  it("a stored tier record with basis no-pixel-diff gates as tier 2", () => {
+    const record = (basis: string) => ({ mode: "on", judged: [RENDERED], verdict: { tier: 1, basis } });
 
-    expect(verdict({ paths: [RENDERED], pixel: proof })).toEqual({ tier: 1, basis: "no-pixel-diff" });
-    expect(bad.map((pixel) => verdict({ paths: [RENDERED], pixel }).tier)).toEqual(bad.map(() => 2));
-    expect(verdict({ paths: [RENDERED], pixel: { ...proof, baseSha: "" }, mergeBase: "" }).tier).toBe(2);
-  });
-
-  it("a shot with an unknown key such as sizesDiffer is tier 2", () => {
-    const pixel = { ...proof, shots: [{ ...shot, sizesDiffer: true }] };
-
-    expect(verdict({ paths: [RENDERED], pixel })).toMatchObject({ tier: 2, reason: expect.stringContaining("no pixel proof") });
+    expect(tierOutcome(record("non-rendering"), [RENDERED])).toMatchObject({ clears: true });
+    expect(tierOutcome(record("no-pixel-diff"), [RENDERED])).toEqual({ clears: false, note: "; tier 2: the recorded visual tier is malformed" });
   });
 
   it("a tier policy with an uncompilable, empty or blank list is tier 2 for every head", () => {
@@ -76,13 +58,10 @@ describe("visual tier fails closed (TP-4761 S1)", () => {
     for (const path of gating) expect(verdict({ paths: [STORY, path] })).toMatchObject({ tier: 2, reason: expect.stringMatching(/^(harness|snapshot): /) });
   });
 
-  it("every path no clearing row recognises is rendered, so tier 1 needs a pixel proof", () => {
+  it("every path no clearing row recognises is rendered, so it is tier 2", () => {
     const odd = ["src/x.stories.d/button.tsx", "SRC/Button.TSX", "src/a.ts.orig", "src/ü.vue", `src/${"a".repeat(4096)}`];
 
-    for (const path of odd) {
-      expect(verdict({ paths: [path] })).toMatchObject({ tier: 2, reason: expect.stringContaining("no pixel proof") });
-      expect(verdict({ paths: [path], pixel: proof })).toEqual({ tier: 1, basis: "no-pixel-diff" });
-    }
+    for (const path of odd) expect(verdict({ paths: [path] })).toMatchObject({ tier: 2, reason: expect.stringMatching(/^renders: /) });
     expect(verdict({ paths: [""] })).toMatchObject({ tier: 2, reason: expect.stringContaining("input unreadable") });
     expect(verdict({ paths: [] })).toMatchObject({ tier: 2, reason: expect.stringContaining("input unreadable") });
   });
