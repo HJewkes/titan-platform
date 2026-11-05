@@ -33,13 +33,31 @@
       ]
     },
     {
-      "name": "a home path matches inside a longer path",
+      "name": "a home path needs a path boundary before it",
       "file": "products/factory/src/redact.ts",
-      "find": "(?:(?<![\\w.~/-])|(?<=:\\/\\/))",
-      "replace": "",
+      "find": "const HOME_PATH = /\\/(?:Users|home)",
+      "replace": "const HOME_PATH = /(?<![\\w.~/-])\\/(?:Users|home)",
       "kills": [
-        "home paths in stored text leaves the near miss see /opt/Users/alice unchanged",
-        "home paths in stored text leaves the near miss a/home/alice unchanged"
+        "home paths in stored text maps a macOS firmlink to ~",
+        "home paths in stored text maps a Fedora atomic home to ~",
+        "home paths in stored text maps a WSL mount to ~",
+        "home paths in stored text maps a path glued to a flag to ~",
+        "home paths in stored text maps a path glued to a word to ~",
+        "home paths in stored text maps a path after a dash to ~",
+        "home paths in stored text maps a doubled slash to ~",
+        "home paths in stored text maps a path inside another path to ~",
+        "home paths in stored text maps a relative path to ~",
+        "home paths in stored text maps a file URL to ~"
+      ]
+    },
+    {
+      "name": "the account name swallows closing punctuation",
+      "file": "products/factory/src/redact.ts",
+      "find": "[^/\\s\"'`)\\]},;]+",
+      "replace": "[^/\\s\"'`]+",
+      "kills": [
+        "home paths in stored text maps a bracketed home to ~",
+        "home paths in stored text maps a parenthesised home to ~"
       ]
     }
   ]
