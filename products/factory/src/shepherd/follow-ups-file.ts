@@ -24,17 +24,17 @@ export interface FollowUpWhere {
   reviewer: string;
 }
 
-export interface FiledFollowUp {
+interface FiledFollowUp {
   title: string;
   id: string;
   deduped: boolean;
 }
 
-export interface FiledFollowUps {
+interface FiledFollowUps {
   filed: FiledFollowUp[];
 }
 
-export function normalTitle(title: string): string {
+function normalTitle(title: string): string {
   return title.trim().replace(/\s+/g, " ").toLowerCase();
 }
 

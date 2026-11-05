@@ -28,8 +28,10 @@ export function agentChatCleanupAgents(
   };
 }
 
+type ListedTask = { id: string; title?: string; status: string; done_when?: string; notes?: string; tags?: string[] };
+
 type ActiveWorkCommands = {
-  "task.list": { args: { slug: string; status: "all" | "open"; tag?: string }; result: { tasks: { id: string; title?: string; status: string; done_when?: string; notes?: string; tags?: string[] }[] } };
+  "task.list": { args: { slug: string; status: "all" | "open"; tag?: string }; result: { tasks: ListedTask[] } };
   "source.list": { args: { slug: string }; result: { sources: { filename: string }[] } };
   "source.read": { args: { slug: string; path: string }; result: { content: string } };
   "task.add": { args: { slug: string } & (FixTaskFields | FollowUpFields); result: { id: string } };
