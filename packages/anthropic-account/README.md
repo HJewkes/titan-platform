@@ -40,6 +40,11 @@ anthropic-account install|uninstall [--dry-run]
 Profiles are `~/.claude` and each dir under `~/.claude-profiles`, or under
 `CLAUDE_PROFILE_ROOT` when it is set; a non-empty `CLAUDE_CONFIG_DIRS` replaces the scan.
 
+`ANTHROPIC_ACCOUNT_LABELS` (comma-separated labels, e.g. `agents,personal`) names the
+profiles `poll` treats as accounts. When set, a profile outside the list whose login is
+missing or refused (such as malformed) prints a stderr warning and does not affect the exit
+code; any other failure still fails. Unset or empty, every profile is an account.
+
 Exit codes: 0 ok, 1 a poll, refresh or read failed, 2 a login is expired or refused (or,
 for `status`, missing), 64 a usage error. Each account whose login is not present gets one stderr line,
 `anthropic-account: <label>: login <state>`. Output never holds a token or file contents.

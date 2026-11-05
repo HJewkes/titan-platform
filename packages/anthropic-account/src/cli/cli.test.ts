@@ -259,6 +259,50 @@ describe("poll", () => {
   });
 });
 
+describe("poll with ANTHROPIC_ACCOUNT_LABELS", () => {
+  const labels = { ANTHROPIC_ACCOUNT_LABELS: "agents,personal" };
+  const malformed = { claudeAiOauth: {} };
+
+  it("warns and exits 0 for an unlisted profile with a malformed login", async () => {
+    login("agents");
+    login("personal");
+    login("default", malformed);
+
+    expect(await run(["poll", "--write", "--refresh"], fakeFetch(usageOk), labels)).toBe(0);
+
+    expect(stderr).toEqual(["anthropic-account: default: login refused (malformed), not a listed account, ignored"]);
+  });
+
+  it("still fails for a listed account with a malformed login", async () => {
+    login("agents", malformed);
+    login("personal");
+
+    expect(await run(["poll", "--write"], fakeFetch(usageOk), labels)).toBe(2);
+
+    expect(stderr).toEqual(["anthropic-account: agents: login refused (malformed)"]);
+  });
+
+  it("still fails for an HTTP failure on a listed account", async () => {
+    login("agents");
+    login("personal");
+
+    expect(await run(["poll", "--write"], fakeFetch(() => json({}, 401)), labels)).toBe(1);
+  });
+
+  it("still fails for an HTTP failure on an unlisted profile", async () => {
+    login("default");
+
+    expect(await run(["poll", "--write"], fakeFetch(() => json({}, 401)), labels)).toBe(1);
+  });
+
+  it("counts every profile as an account when the variable is unset or empty", async () => {
+    login("default", malformed);
+
+    expect(await run(["poll", "--write"])).toBe(2);
+    expect(await run(["poll", "--write"], fakeFetch(usageOk), { ANTHROPIC_ACCOUNT_LABELS: "" })).toBe(2);
+  });
+});
+
 describe("poll --write --refresh", () => {
   const dueSoon = (): Record<string, unknown> => fakeCredentials({ expiresAt: NOW + 5 * 60_000 });
   const granted = (): Response => json({ access_token: NEW_ACCESS_TOKEN, expires_in: 28_800 });
