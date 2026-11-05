@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a reused reviewer name reads its oldest session again",
+      "file": "products/factory/src/shepherd/external-review.ts",
+      "find": "return roster.find((agent) => agent.name === name && agent.sessionId !== \"\");",
+      "replace": "return roster.filter((agent) => agent.name === name && agent.sessionId !== \"\").at(-1);",
+      "kills": [
+        "latestSession picks the first listed session of a name reused across sessions, as the roster lists newest first"
+      ]
+    }
+  ]
+}
