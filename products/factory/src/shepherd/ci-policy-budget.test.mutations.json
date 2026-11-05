@@ -40,12 +40,12 @@
       ]
     },
     {
-      "name": "a measurement link is compared case-sensitively",
-      "file": "products/factory/src/shepherd/ci-policy-class.ts",
-      "find": "`${owner}/${name}`.toLowerCase() === repo.toLowerCase()",
-      "replace": "`${owner}/${name}` === repo",
+      "name": "the budget row hides a later guard or authority gate",
+      "file": "products/factory/src/shepherd/merge-facts.ts",
+      "find": "  return policyGate && decision.outcome === \"allow\" ? policyGate : decision;",
+      "replace": "  return policyGate ?? decision;",
       "kills": [
-        "sorting a weakened CI-policy diff into budget or weakening reads a measurement link whose owner and repo differ only in case as budget"
+        "the merge guard on a weakened CI-policy line lets another gate the rest of the guard opens win over the budget row"
       ]
     }
   ]

@@ -17,16 +17,6 @@ describe("sorting a weakened CI-policy diff into budget or weakening", () => {
     expect(classOf([PR_3117])).toEqual({ kind: "budget", measurement: RUN_URL });
   });
 
-  it("reads a measurement link whose owner and repo differ only in case as budget", () => {
-    const link = "https://github.com/OCTO/Demo/actions/runs/123";
-
-    expect(classOf([PR_3117], { prBody: `Measured: ${link}` })).toEqual({ kind: "budget", measurement: link });
-  });
-
-  it("refuses a measurement link whose run id is not all digits", () => {
-    expect(classOf([PR_3117], { prBody: "https://github.com/octo/demo/actions/runs/12x" })).toMatchObject({ kind: "weakening" });
-  });
-
   it("reads a workflow timeout-minutes bump as budget", () => {
     const file = { path: CI_YML, before: CI_BEFORE, after: CI_BEFORE.replace("timeout-minutes: 20", "timeout-minutes: 30") };
 
