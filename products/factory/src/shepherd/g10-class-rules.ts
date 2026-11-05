@@ -83,17 +83,26 @@ export const GATE_RESOLVE_CHECK_FILES = ["gate-resolve-sites.test.ts", "gate-res
 
 /**
  * Code that decides sign-offs, fix-proof verdicts, proof waivers and merge standing, or writes the hold rows they read
- * (TP-3764, TP-4746). Emptying any of these lifts a G10 hold as surely as editing this table. These seed the closure.
+ * (TP-3764, TP-4746), and the modules that import the hold, the sign-off rule or the release. Emptying any of these
+ * lifts a G10 hold as surely as editing this table. These seed the closure.
  */
 const SIGNOFF_POLICY_FILES = [
   ...["signoffs.ts", "merge-standing.ts", "reviewer-lineage.ts", "auto-pass.ts", "fix-proof.ts", "take-verdict.ts", "store.ts", "events.ts"].map(inShepherd),
   ...["registration-of.ts", "proof-waiver.ts", "proof-waiver-table.ts", "seat-recheck.ts", "carry-merge.ts", "merge-up-carry.ts", "approved-set-carry.ts", "no-reviewer-hold.ts"].map(inShepherd),
+  ...["await-pr.ts", "coverage.ts", "pr.ts", "shepherd-steps.ts"].map(inShepherd),
   "packages/fix-proof/src/**",
   "packages/review-panel/src/**",
 ];
 
-/** The hold-closure check as one unit: the test, its sidecar, its walk and the list it keeps. Test file or not, it is policy. */
-const HOLD_CLOSURE_CHECK_FILES = ["g10-hold-closure.test.ts", "g10-hold-closure.test.mutations.json", "g10-hold-closure.test-helpers.ts", "g10-hold-closure.json"].map(inShepherd);
+/**
+ * The hold table's completeness checks as one unit: the hold-closure test, its sidecar, its walk and the list it keeps,
+ * and the importer check (TP-3764) with its sidecar. Test file or not, each is policy: deleting one lets an unheld module
+ * through in the same pull request.
+ */
+const HOLD_CLOSURE_CHECK_FILES = [
+  ...["g10-hold-closure.test.ts", "g10-hold-closure.test.mutations.json", "g10-hold-closure.test-helpers.ts", "g10-hold-closure.json"],
+  ...["hold-table-coverage.test.ts", "hold-table-coverage.test.mutations.json"],
+].map(inShepherd);
 
 const matchesHeldCheck = compileGlobs([...GATE_RESOLVE_CHECK_FILES, ...HOLD_CLOSURE_CHECK_FILES]);
 /** Case-folded (TP-4158): a case-insensitive checkout still imports `Gate-Resolve-x.test-helpers.ts` as the helper. */

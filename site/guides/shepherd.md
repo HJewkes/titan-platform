@@ -1597,7 +1597,10 @@ Policy paths also cover Shepherd's sign-off, fix-proof, proof-waiver and merge-s
 `merge-standing.ts`, `reviewer-lineage.ts`, `auto-pass.ts`, `fix-proof.ts`, `take-verdict.ts`, the
 hold store (`store.ts`, `events.ts`), `registration-of.ts`, the proof waivers, `seat-recheck.ts`,
 the merge-up carries and `no-reviewer-hold.ts`, plus `packages/fix-proof/src/**` and
-`packages/review-panel/src/**`. A held module reads its imports, so an edit to one of them can
+`packages/review-panel/src/**`. It also lists the four Shepherd modules that import the hold, the
+sign-off rule or the release (`await-pr.ts`, `coverage.ts`, `pr.ts`, `shepherd-steps.ts`), which
+the import walk does not reach; `hold-table-coverage.test.ts` fails when a new such importer is
+not held (TP-3764); that test and its sidecar are policy like the closure check. A held module reads its imports, so an edit to one of them can
 change what the hold decides. The rest of the held set is therefore the import closure of the
 listed table, not a hand list. `g10-hold-closure.test.ts` seeds a walk from every Shepherd module the
 listed table holds and follows each relative import the compiler's scanner reports (value,
