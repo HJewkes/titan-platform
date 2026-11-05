@@ -17,7 +17,11 @@ export interface ChoreFiles {
 
 /** Hashed because a request key holds characters a unit name may not; the attempt in the key keeps each try apart. */
 export function choreFiles(dir: string, requestKey: string): ChoreFiles {
-  const id = createHash("sha256").update(requestKey).digest("hex").slice(0, 16);
+  return choreFilesOf(dir, createHash("sha256").update(requestKey).digest("hex").slice(0, 16));
+}
+
+/** The layout for a marker id read off disk, where the request key is no longer known. */
+export function choreFilesOf(dir: string, id: string): ChoreFiles {
   return { marker: join(dir, `${id}.json`), spec: join(dir, `${id}.spec.json`), result: join(dir, `${id}.result.json`), unit: `titan-factory-chore-${id}` };
 }
 
@@ -39,7 +43,7 @@ export type StepTrace = z.infer<typeof StepTrace>;
 
 /** Written before the launch, then again with its handle: a marker with no handle means the launch may or may not have happened. */
 const ChoreMarker = z.object({ started: z.string(), step: StepTrace, handle: ChoreHandle.optional() });
-type ChoreMarker = z.infer<typeof ChoreMarker>;
+export type ChoreMarker = z.infer<typeof ChoreMarker>;
 
 export interface ChorePorts {
   /** `<stateDir>/chores`, which outlives serve. */
@@ -102,23 +106,35 @@ export async function choreState(ports: ChorePorts, files: ChoreFiles): Promise<
   return { kind: "lost", why: `the chore (${handleName(handle)}) is gone and wrote no result` };
 }
 
-/**
- * Removes every file of each chore whose step `settled` says has a recorded result, and returns those chores' ids. A marker
- * that does not parse is the evidence a human reads, so it stays, as does a chore in a dir that is not there.
- */
-export function pruneChores(dir: string, settled: (step: StepTrace) => boolean): string[] {
+/** Every chore with a readable marker; an unreadable marker is the evidence a human reads, so it is not listed. */
+export function listChores(dir: string): { id: string; files: ChoreFiles; marker: ChoreMarker }[] {
   let names: string[];
   try {
     names = readdirSync(dir);
   } catch {
     return [];
   }
-  const pruned: string[] = [];
+  const chores: { id: string; files: ChoreFiles; marker: ChoreMarker }[] = [];
   for (const name of names.filter((entry) => /^[0-9a-f]{16}\.json$/.test(entry))) {
     const marker = ChoreMarker.safeParse(readJson(join(dir, name)));
-    if (!marker.success || !settled(marker.data.step)) continue;
+    if (!marker.success) continue;
     const id = name.slice(0, -".json".length);
-    for (const entry of names.filter((candidate) => candidate.startsWith(`${id}.`))) rmSync(join(dir, entry), { force: true });
+    chores.push({ id, files: choreFilesOf(dir, id), marker: marker.data });
+  }
+  return chores;
+}
+
+/** Removes every file of one chore, its partial writes included. */
+export function removeChore(dir: string, id: string): void {
+  for (const entry of readdirSync(dir).filter((candidate) => candidate.startsWith(`${id}.`))) rmSync(join(dir, entry), { force: true });
+}
+
+/** Removes every file of each chore whose step `settled` says has a recorded result, and returns those chores' ids. */
+export function pruneChores(dir: string, settled: (step: StepTrace) => boolean): string[] {
+  const pruned: string[] = [];
+  for (const { id, marker } of listChores(dir)) {
+    if (!settled(marker.step)) continue;
+    removeChore(dir, id);
     pruned.push(id);
   }
   return pruned;
