@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "optionFlagSpec always appends <value>",
+      "file": "packages/registry/src/cli-options.ts",
+      "find": "return DECLARED_PLACEHOLDER.test(opt.long) ?",
+      "replace": "return false ?",
+      "kills": ["CLI consumer metadata keeps a placeholder the long option already declares"]
+    }
+  ]
+}

@@ -105,12 +105,15 @@ function isTrueSwitch(schema: ZodType | undefined): boolean {
     && unwrapped.def.values.length === 1 && unwrapped.def.values[0] === true;
 }
 
-/** Boolean fields and exact true switches are bare; other fields take a value. */
+const DECLARED_PLACEHOLDER = /\s[<[]/;
+
+/** Boolean fields and exact true switches are bare; a long that declares its own placeholder is kept; other fields take a value. */
 export function optionFlagSpec(cmd: AnyCommand<never>, key: string, opt: CliOption): string {
   const short = opt.short ? `${opt.short}, ` : "";
   const schema = fieldSchema(cmd.args, key);
   const kind = schemaKind(schema);
-  return kind === "boolean" || isTrueSwitch(schema) ? `${short}${opt.long}` : `${short}${opt.long} <${opt.valueName ?? "value"}>`;
+  if (kind === "boolean" || isTrueSwitch(schema)) return `${short}${opt.long}`;
+  return DECLARED_PLACEHOLDER.test(opt.long) ? `${short}${opt.long}` : `${short}${opt.long} <${opt.valueName ?? "value"}>`;
 }
 
 /** commander argument display: `[name]` when the schema allows omission, else `<name>`. */
