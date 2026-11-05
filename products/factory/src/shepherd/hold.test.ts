@@ -363,7 +363,7 @@ describe("a satisfied hold across an update of the reviewed head", () => {
   it("reads every session under the reviewer's name for a FIX_FIRST", async () => {
     const { r, satisfy } = await updated("correctness", EQUAL);
     const older = agent(REVIEWER, { agentId: "agent-older", sessionId: "session-older" });
-    r.roster.splice(r.roster.findIndex((a) => a.name === REVIEWER), 1, older, agent(REVIEWER));
+    r.roster.splice(r.roster.findIndex((a) => a.name === REVIEWER), 1, agent(REVIEWER), older);
     r.messages.length = 0;
     say(r, verdictAt(H1));
     r.messages.push({ ...r.messages[0]!, agentId: older.agentId, sessionId: older.sessionId, writtenAt: 9, text: verdictAt(H2, "FIX_FIRST") });

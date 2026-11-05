@@ -11,7 +11,7 @@ import { BrokerUnavailableError, DispatchError, DispatchTimeoutError } from "@ti
 import { ReviewerAskTimedOut, ReviewerBrokerBusy, ReviewerBrokerDown, reviewWait } from "./review-wait.js";
 import { transcriptReviewerReader } from "./reviewer-reader.js";
 import { DamagedTranscriptError } from "./seat-evidence.js";
-import { acceptExternalVerdict, awaitExternalVerdict, SEAT_REVIEWER, newestAtHead, seatFixFirst, seatVetoed, unlessSeatFixFirst } from "./external-review.js";
+import { acceptExternalVerdict, awaitExternalVerdict, latestSession, SEAT_REVIEWER, newestAtHead, seatFixFirst, seatVetoed, unlessSeatFixFirst } from "./external-review.js";
 import { readPath } from "../narrow.js";
 import { fakeLocator } from "../test-support/fakes.js";
 
@@ -940,6 +940,34 @@ describe("awaitExternalVerdict over a real transcript", () => {
     const reader = transcriptReviewerReader({ roster: async () => [seat.row], namespace: "host-a" });
 
     expect(await seatFixFirst(rosterOf(seat.row), reader, target)).toMatchObject({ verdict: "FIX_FIRST" });
+  });
+});
+
+describe("latestSession", () => {
+  it("picks the first listed session of a name reused across sessions, as the roster lists newest first", () => {
+    const newest = agent("alpha-reviewer", "session-new");
+    const older = agent("alpha-reviewer", "session-old");
+
+    const row = latestSession("alpha-reviewer", [newest, older]);
+
+    expect(row).toBe(newest);
+  });
+
+  it("skips a row whose session has not started", () => {
+    const started = agent("alpha-reviewer", "session-started");
+    const pending = agent("alpha-reviewer", "");
+
+    const row = latestSession("alpha-reviewer", [pending, started]);
+
+    expect(row).toBe(started);
+  });
+
+  it("ignores rows under another name", () => {
+    const other = agent("beta-reviewer", "session-other");
+
+    const row = latestSession("alpha-reviewer", [other]);
+
+    expect(row).toBeUndefined();
   });
 });
 
