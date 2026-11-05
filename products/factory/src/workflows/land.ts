@@ -18,7 +18,7 @@ import { CiSnapshotResult, LandRulesResult, BackoffResult, MergePolicyResult, Me
 export { readCi, type CiSnapshot, type FailingCheck } from "./land-ci.js";
 export { afterWrite } from "./land-ci-wait.js";
 export { sleep } from "./deadline.js";
-export { codeRoute, landRoutes, type LandDeps, type Timing } from "./land-routes.js";
+export { codeRoute, landRoutes, repeatAwareRoute, type LandDeps, type Timing } from "./land-routes.js";
 export { DEVICE_CHECK, SET_ANSWER_ORIGIN, type ApprovalAnswer, type ApprovalQuestion, type AskApproval } from "./land-approval.js";
 export { CI_BACKLOG_CEILING_FACTOR, CI_WAIT_ATTEMPTS, MAX_UPDATE_CYCLES, MAX_UPDATE_RETRIES, MISSING_CHECK_GRACE_MS, UPDATE_BUDGET_MS, newUpdateBound, type UpdateBound } from "./land-budget.js";
 
