@@ -73,9 +73,9 @@ describe("ci timing budget", () => {
     expect(markdown).toContain("| PR | validate / (queue) | 3 | 4 | 25 | 30 |");
   });
 
-  it("caps only PR, release PR and main events in the checked-in budget", () => {
+  it("caps only PR and main events in the checked-in budget", () => {
     expect(BUDGET.budgets.length).toBeGreaterThan(0);
-    for (const entry of BUDGET.budgets) expect(["pull_request", "release_pr", "push"]).toContain(entry.event);
+    for (const entry of BUDGET.budgets) expect(["pull_request", "push"]).toContain(entry.event);
   });
 });
 
@@ -93,7 +93,7 @@ describe("ci timing run selection", () => {
       if (args[1] === "list") return JSON.stringify(RUNS.filter((run) => run.event === args[args.indexOf("--event") + 1]).map(({ jobs: _jobs, ...run }) => run));
       return JSON.stringify({ jobs: RUNS.find((run) => String(run.databaseId) === args[2]).jobs });
     };
-    const options = parseArgs(["--repo", "example/repo", "--pr-runs", "1", "--release-runs", "0", "--main-runs", "1", "--created", "2026-01-05..2026-01-06"], BUDGET);
+    const options = parseArgs(["--repo", "example/repo", "--pr-runs", "1", "--main-runs", "1", "--created", "2026-01-05..2026-01-06"], BUDGET);
 
     const runs = fetchRuns(gh, options);
 
