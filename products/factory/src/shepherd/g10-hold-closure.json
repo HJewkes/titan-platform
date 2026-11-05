@@ -220,6 +220,7 @@
   "task-close.ts",
   "test-only-diff.ts",
   "thaw-command.ts",
+  "thaw-wait.ts",
   "thawed-main-gates.ts",
   "timeouts.ts",
   "train-shadow-disjoint.ts",

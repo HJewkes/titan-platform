@@ -25,13 +25,13 @@ export function isNoFactsGate(decision: GateDecision): boolean {
 }
 
 /** The attest read waits for a deploy (TP-4752); land waits at the head and re-reads it each round instead of asking the owner. */
-function isDeploySkewGate(decision: GateDecision): boolean {
+export function isDeploySkewGate(decision: GateDecision): boolean {
   const row: MergeGuardRow = "attest-deploy-skew";
   return decision.outcome === "gate" && decision.rule.table === "shepherd-merge-guard" && decision.rule.rowId === row;
 }
 
 /** A wait for a deploy has no bound and tells no one, as a freeze does: only the deploy ends it, and the deploy pacer owns that. */
-function settleKind(decision: GateDecision): SettleKind {
+export function settleKind(decision: GateDecision): SettleKind {
   if (isDeploySkewGate(decision)) return "thaw";
   if (WAIT_DEMOTIONS.frozenOnly && isFrozenOnlyGate(decision)) return "thaw";
   if (WAIT_DEMOTIONS.noFacts && isNoFactsGate(decision)) return "once";
