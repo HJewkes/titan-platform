@@ -76,6 +76,7 @@ export const shepherdSteps = [
   step("sh-fix-pr-stall", "dispatch", "software", effect("item", `${RECORD}: whether a thaw wait holds an unmarked fix-task PR`)),
   step("sh-g10-release", "dispatch", "software", effect("item", `${WRITE}: releases the G10 adversary hold`)),
   step("sh-g10-rehold", "dispatch", "software", effect("item", `${WRITE}: re-places the G10 adversary hold`)),
+  step("sh-g10-reclass", "dispatch", "software", effect("item", `${WRITE}: swaps an unread-files G10 hold for the class a whole re-read finds`)),
   step("sh-seat-notice", "dispatch", "software", effect("external", `${WRITE}: sends the seat notice`)),
   step("sh-held-check", "dispatch", "software", effect("item", `${RECORD}: whether the run was held at this point`)),
   step("sh-held-wait", "dispatch", "software", READ_EFFECT),
