@@ -1577,6 +1577,9 @@ importers:
       '@titan-design/cluster':
         specifier: workspace:^
         version: link:../../packages/cluster
+      '@titan-design/code-graph':
+        specifier: workspace:^
+        version: link:../../packages/code-graph
       '@titan-design/coordinator':
         specifier: workspace:^
         version: link:../../packages/coordinator

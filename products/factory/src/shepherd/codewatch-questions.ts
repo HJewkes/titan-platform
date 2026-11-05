@@ -97,10 +97,9 @@ function reportOf(raw: unknown): { schema: string; questions: string[] } | Codew
 /** The questions are untrusted, so a head whose lines cannot be read keeps none of them. */
 const unreadHead = (schema: string, warning: string): CodewatchQuestions => ({ questions: [], evidence: { found: true, schema, questions: 0, dropped: 0, warning } });
 
-async function fromReport(raw: unknown, target: CodewatchTarget, headLines?: HeadLines): Promise<CodewatchQuestions> {
+async function fromReport(raw: unknown, target: CodewatchTarget, headLines: HeadLines): Promise<CodewatchQuestions> {
   const report = reportOf(raw);
   if ("evidence" in report) return report;
-  if (!headLines) return unreadHead(report.schema, "codewatch head check not wired");
   let lines: LineSource;
   try {
     lines = await headLines(target);
@@ -118,7 +117,7 @@ async function fromReport(raw: unknown, target: CodewatchTarget, headLines?: Hea
  * The report is advisory: a missing artifact, a wrong schema or a failed fetch gives no questions, and the review proceeds.
  * A question is kept only when the lines it cites exist at the PR head, read through `headLines`.
  */
-export function codewatchReader(fetchReport: FetchCodewatchReport, repos: readonly string[], headLines?: HeadLines): CodewatchReader {
+export function codewatchReader(fetchReport: FetchCodewatchReport, repos: readonly string[], headLines: HeadLines): CodewatchReader {
   const covered = new Set(repos.map((repo) => repo.toLowerCase()));
   return async (target) => {
     if (!covered.has(target.repo.toLowerCase())) return undefined;

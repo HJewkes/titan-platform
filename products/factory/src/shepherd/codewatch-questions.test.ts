@@ -37,13 +37,13 @@ describe("codewatchReader", () => {
   });
 
   it("records found=false and no warning when the head has no artifact", async () => {
-    const read = codewatchReader(serving(undefined), [REPO]);
+    const read = codewatchReader(serving(undefined), [REPO], head);
 
     expect(await read(target)).toEqual({ questions: [], evidence: { found: false, schema: null, questions: 0, dropped: 0 } });
   });
 
   it("records found=false with the HTTP status when the fetch answers 404", async () => {
-    const read = codewatchReader(async () => Promise.reject(Object.assign(new Error("HTTP 404: Not Found"), { status: 404 })), [REPO]);
+    const read = codewatchReader(async () => Promise.reject(Object.assign(new Error("HTTP 404: Not Found"), { status: 404 })), [REPO], head);
 
     const result = await read(target);
 
@@ -52,7 +52,7 @@ describe("codewatchReader", () => {
   });
 
   it("keeps neither a URL nor a token from a failed fetch in the evidence warning", async () => {
-    const read = codewatchReader(async () => Promise.reject(new Error("GET https://db.example.invalid/x?auth=tok_FAKE0000SECRET failed")), [REPO]);
+    const read = codewatchReader(async () => Promise.reject(new Error("GET https://db.example.invalid/x?auth=tok_FAKE0000SECRET failed")), [REPO], head);
 
     const evidence = JSON.stringify((await read(target))?.evidence);
 
@@ -113,7 +113,7 @@ describe("codewatchReader", () => {
 
   it("records found=false with a warning when gh never answers", async () => {
     const hung = ghCodewatchReport(() => new Promise<string>(() => undefined), 20);
-    const read = codewatchReader(hung, [REPO]);
+    const read = codewatchReader(hung, [REPO], head);
 
     const result = await read(target);
 
@@ -144,7 +144,7 @@ describe("codewatchReader", () => {
     const read = codewatchReader(async () => {
       fetched = true;
       return fixture("pr-report-worsened.json");
-    }, [REPO]);
+    }, [REPO], head);
 
     expect(await read({ ...target, repo: "octo/other" })).toBeUndefined();
     expect(fetched).toBe(false);
@@ -189,12 +189,6 @@ describe("codewatchReader anchor check at the head", () => {
 
     expect(result?.questions).toEqual([]);
     expect(result?.evidence).toMatchObject({ found: true, questions: 0, warning: expect.stringMatching(/^codewatch head aaaaaaaaaaaa unreadable/) });
-  });
-
-  it("keeps no questions and warns when no head reader is wired", async () => {
-    const read = codewatchReader(serving({ schema: "codewatch-pr-report@1", questions: ["a.ts:3 is this right?"] }), [REPO]);
-
-    expect((await read(target))?.evidence).toMatchObject({ found: true, questions: 0, warning: "codewatch head check not wired" });
   });
 
   it("stops checking anchors after the check budget however many questions the report holds", async () => {

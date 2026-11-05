@@ -40,6 +40,7 @@
     "@titan-design/authority": "workspace:^",
     "@titan-design/autoresearch": "workspace:^",
     "@titan-design/cluster": "workspace:^",
+    "@titan-design/code-graph": "workspace:^",
     "@titan-design/coordinator": "workspace:^",
     "@titan-design/daemon": "workspace:^",
     "@titan-design/dispatch-ledger": "workspace:^",
