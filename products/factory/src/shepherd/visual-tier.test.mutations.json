@@ -35,20 +35,6 @@
       "find": "changedPixels: z.literal(0),",
       "replace": "changedPixels: z.literal(1),",
       "kills": ["visual tier verdict (TP-4761 S1) a rendered path with zero changed pixels on every paired shot is tier 1 no-pixel-diff"]
-    },
-    {
-      "name": "a pixel proof counts with no prVisual allow-list",
-      "file": "products/factory/src/shepherd/visual-tier.ts",
-      "find": "if (safe === undefined) return tier2(",
-      "replace": "if (false) return tier2(",
-      "kills": ["visual tier verdict (TP-4761 S1) a pixel proof counts for nothing when the policy names no prVisual allow-list"]
-    },
-    {
-      "name": "proveTierOne skips the producer-runnable refusal",
-      "file": "products/factory/src/shepherd/visual-tier.ts",
-      "find": "  const refused = pixelRefusal(classes, pixel, policy);\n  if (refused !== undefined) return refused;\n",
-      "replace": "",
-      "kills": ["visual tier verdict (TP-4761 S1) a head that changes a path off the allow-list gets no pixel proof, as the producer job runs the head"]
     }
   ]
 }

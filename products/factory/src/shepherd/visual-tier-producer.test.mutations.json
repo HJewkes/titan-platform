@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "proveTierOne skips the producer-runnable refusal",
+      "file": "products/factory/src/shepherd/visual-tier.ts",
+      "find": "  const refused = pixelRefusal(classes, pixel, policy);\n  if (refused !== undefined) return refused;\n",
+      "replace": "",
+      "kills": ["the pixel proof refuses a head whose code could make its own images (TP-4761 S4) an install hook outside the visual globs is tier 2 producer-runnable"]
+    },
+    {
+      "name": "a path off the allow-list is never runnable",
+      "file": "products/factory/src/shepherd/visual-tier.ts",
+      "find": "return runnable.length > 0 ? tier2(",
+      "replace": "return false ? tier2(",
+      "kills": ["the pixel proof refuses a head whose code could make its own images (TP-4761 S4) a Storybook config the build runs in Node is tier 2 producer-runnable", "the pixel proof refuses a head whose code could make its own images (TP-4761 S4) a package manifest that can add a postinstall is tier 2 producer-runnable"]
+    },
+    {
+      "name": "a top-level .github path may be allow-listed",
+      "file": "products/factory/src/shepherd/visual-tier.ts",
+      "find": "!folded.startsWith(\".github/\") && ",
+      "replace": "",
+      "kills": ["the pixel proof refuses a head whose code could make its own images (TP-4761 S4) the producer workflow, though an allow-list glob matches it is tier 2 producer-runnable"]
+    },
+    {
+      "name": "a nested .github path may be allow-listed",
+      "file": "products/factory/src/shepherd/visual-tier.ts",
+      "find": "!folded.includes(\"/.github/\") && ",
+      "replace": "",
+      "kills": ["the pixel proof refuses a head whose code could make its own images (TP-4761 S4) a nested .github path, though an allow-list glob matches it is tier 2 producer-runnable"]
+    },
+    {
+      "name": "a pixel proof counts with no prVisual allow-list",
+      "file": "products/factory/src/shepherd/visual-tier.ts",
+      "find": "if (safe === undefined) return tier2(",
+      "replace": "if (false) return tier2(",
+      "kills": ["the pixel proof refuses a head whose code could make its own images (TP-4761 S4) a pixel proof counts for nothing when the policy names no prVisual allow-list"]
+    }
+  ]
+}

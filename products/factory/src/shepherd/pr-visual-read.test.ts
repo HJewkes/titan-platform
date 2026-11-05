@@ -22,7 +22,7 @@ const config = {
   renderingPaths: ["src/tokens/**"],
   harnessPaths: ["scripts/capture/**"],
   storyDiff: { check: "visual", paths: ["**/__snapshots__/**"], allowedApps: [15368] },
-  prVisual: { workflow: WORKFLOW, browserPaths: ["src/button/**", "**/.github/**", ".github/workflows/*"], pixelTolerance: 0.1 },
+  prVisual: { workflow: WORKFLOW, browserPaths: ["src/button/**"], pixelTolerance: 0.1 },
 };
 
 /** A synthetic 2x2 image: grey, with one pixel's red channel nudged by `nudge`. */
@@ -106,8 +106,7 @@ interface TierOptions { zipBytes?: number; changedPaths?: string[]; calls?: stri
 async function tierOf(artifact: Artifact, { changedPaths = [RENDERED], calls, ...limits }: TierOptions = {}) {
   const port = partialFake<Pick<GitHubPort, "compareFiles">>({ compareFiles: async () => partialFake<CompareResult>({ mergeBaseSha: BASE }) });
   const merge = partialFake<MergeFacts>({ head: HEAD, changedPaths, checkRuns: [] });
-  const visualPaths = ["src/**", "**/.github/**", ".storybook/**"];
-  const target = { repo: REPO, baseRef: "main", visualPaths, config, readPixel: ghPrVisual(fakeGh(artifact, calls), limits) };
+    const target = { repo: REPO, baseRef: "main", visualPaths: ["src/**"], config, readPixel: ghPrVisual(fakeGh(artifact, calls), limits) };
   return (await readVisualTier(port, merge, target))?.visualTier.verdict;
 }
 
@@ -150,28 +149,14 @@ describe("the pr-visual pixel path (TP-4761 S4)", () => {
   });
 });
 
-describe("the pixel path refuses a head whose code could make its own images (TP-4761 S4)", () => {
+describe("the guard never downloads for a head whose code could make its own images (TP-4761 S4)", () => {
   const forged = { pairs: [[png(), png()]] as [Buffer, Buffer][] };
-  const cases: [string, string[]][] = [
-    ["a Storybook config the build runs in Node", [".storybook/main.ts"]],
-    ["an install hook outside the visual globs", [".pnpmfile.cjs", RENDERED]],
-    ["a package manifest that can add a postinstall", ["src/package.json", RENDERED]],
-    ["the producer workflow, though an allow-list glob matches it", [WORKFLOW, RENDERED]],
-    ["a nested .github path, though an allow-list glob matches it", ["src/.github/actions/x.yml", RENDERED]],
-  ];
 
-  it.each(cases)("%s is tier 2 with no artifact read", async (_, changedPaths) => {
+  it("a head with an install hook beside a rendered path is tier 2 with no artifact read", async () => {
     const calls: string[][] = [];
-    const verdict = await tierOf(forged, { changedPaths, calls });
+    const verdict = await tierOf(forged, { changedPaths: [".pnpmfile.cjs", RENDERED], calls });
 
     expect(verdict).toMatchObject({ tier: 2, reason: expect.stringMatching(/^producer-runnable: /) });
     expect(calls).toEqual([]);
-  });
-
-  it("an allow-listed rendered path alone is still measured", async () => {
-    const calls: string[][] = [];
-
-    expect(await tierOf(forged, { calls })).toEqual({ tier: 1, basis: "no-pixel-diff" });
-    expect(calls.length).toBeGreaterThan(0);
   });
 });

@@ -55,15 +55,4 @@ describe("visual tier verdict (TP-4761 S1)", () => {
     expect(verdict(["src/button/button.tsx", "src/hooks/use-id.ts"], { pixel: proof })).toEqual({ tier: 1, basis: "no-pixel-diff" });
   });
 
-  it("a pixel proof counts for nothing when the policy names no prVisual allow-list", () => {
-    const bare: Record<string, unknown> = { ...config };
-    delete bare["prVisual"];
-    const merge = { head: HEAD, changedPaths: ["src/button/button.tsx"], checkRuns: [] };
-
-    expect(visualTier({ merge, visualPaths: ["src/**"], mergeBase: BASE, config: bare, pixel: proof })).toMatchObject({ tier: 2, reason: expect.stringContaining("no prVisual policy") });
-  });
-
-  it("a head that changes a path off the allow-list gets no pixel proof, as the producer job runs the head", () => {
-    expect(verdict(["src/button/button.tsx", "tools/build.mjs"], { pixel: proof })).toMatchObject({ tier: 2, reason: expect.stringMatching(/^producer-runnable: tools\/build\.mjs$/) });
-  });
 });
