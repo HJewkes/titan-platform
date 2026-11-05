@@ -1,5 +1,5 @@
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
-import { WorkflowRunStore, type StepResult, type WorkflowRun } from "@titan-design/workflow";
+import { WorkflowRunStore, type ActiveStep, type StepResult, type WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { factoryMigrations } from "../host.js";
 import { busyRuns } from "../restart-drain.js";
@@ -40,11 +40,13 @@ interface Shape {
 function world(shape: Shape) {
   const db = openDatabase(":memory:");
   runMigrations(db, [...factoryMigrations(), ...SHEPHERD_MIGRATIONS]);
-  const activeSteps = Object.fromEntries((shape.active ?? [shape.currentStep]).map((key) => [key, { stepId: key, iterKey: `${key}:0` }]));
+  const startedAt = new Date(T0).toISOString();
+  const active = (key: string): [string, ActiveStep] => [key, { kind: "legacy", stepId: key, iterKey: `${key}:0`, attempt: 1, startedAt }];
+  const activeSteps = Object.fromEntries((shape.active ?? [shape.currentStep]).map(active));
   const r: WorkflowRun = {
     id: "run-r", workflowName: "shepherd-pr", params: { repo: REPO, pr: "1" }, status: "running", currentStep: shape.currentStep,
-    stepResults: Object.fromEntries(shape.steps), activeSteps: activeSteps as WorkflowRun["activeSteps"],
-    revision: 0, ownerGeneration: 0, startedAt: new Date(T0).toISOString(), completedAt: null, error: null,
+    stepResults: Object.fromEntries(shape.steps), activeSteps,
+    revision: 0, ownerGeneration: 0, startedAt, completedAt: null, error: null,
   };
   new WorkflowRunStore(db).create(r);
   const order = new MergeOrder(db);
