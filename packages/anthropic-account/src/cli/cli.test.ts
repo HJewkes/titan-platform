@@ -290,7 +290,6 @@ describe("poll with ANTHROPIC_ACCOUNT_LABELS", () => {
   });
 
   it("still fails for an HTTP failure on an unlisted profile", async () => {
-    login("agents");
     login("default");
 
     expect(await run(["poll", "--write"], fakeFetch(() => json({}, 401)), labels)).toBe(1);
