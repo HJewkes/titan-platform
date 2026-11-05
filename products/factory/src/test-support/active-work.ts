@@ -4,6 +4,8 @@ import { z } from "zod";
 interface FakeTask {
   id: string;
   status: string;
+  title?: string;
+  severity?: string;
   done_when: string;
   notes: string;
   tags: string[];
@@ -44,8 +46,22 @@ function edit(task: FakeTask, body: Record<string, unknown>): FakeTask {
   return { ...task, [field]: body.value, ...(field === "status" && body.value === "done" ? { done_at: "2026-10-22" } : {}) };
 }
 
+function matchesList(task: FakeTask, body: Record<string, unknown>): boolean {
+  if (body.tag !== undefined && !task.tags.includes(String(body.tag))) return false;
+  return body.status === undefined || body.status === "all" || task.status === body.status;
+}
+
+/** Like the real `task.add`: the next id in the initiative, always `open`. */
+function add(fake: FakeActiveWork, body: Record<string, unknown>): { id: string } {
+  const id = `FU-${fake.tasks.size + 1}`;
+  const tags = Array.isArray(body.tags) ? body.tags.map(String) : [];
+  fake.tasks.set(id, { id, status: "open", title: String(body.title), severity: String(body.severity), done_when: String(body.done_when ?? ""), notes: String(body.notes ?? ""), tags });
+  return { id };
+}
+
 function answer(fake: FakeActiveWork, command: string, body: Record<string, unknown>): unknown {
-  if (command === "task.list") return { tasks: [...fake.tasks.values()].filter((task) => body.tag === undefined || task.tags.includes(String(body.tag))) };
+  if (command === "task.list") return { tasks: [...fake.tasks.values()].filter((task) => matchesList(task, body)) };
+  if (command === "task.add") return add(fake, body);
   if (command !== "task.edit") throw new Refused(`the fake has no ${command}`);
   const task = fake.tasks.get(String(body.id));
   if (task === undefined) throw new Refused(`Task not found: ${String(body.id)}`, 66);

@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the sent-back gate's wait after a ci-red exit needs a new head",
+      "file": "products/factory/src/shepherd/gates.ts",
+      "find": "  if (answer.decision !== WAIVE_PROOF) return awaitAfterExit(run, headSha, red);",
+      "replace": "  if (answer.decision !== WAIVE_PROOF) return awaitNewHead(run, headSha);",
+      "kills": [
+        "the wait after a fixer exits with no push, when the same head turns green replays tp#1188 c94ab3dc: after a ci-red exit's sent-back gate, a rerun turning H1 green re-enters the round at H1 with no new commit"
+      ]
+    },
+    {
+      "name": "a dead-end respawn's wait after a ci-red exit needs a new head",
+      "file": "products/factory/src/shepherd/dead-end.ts",
+      "find": "  return awaitAfterExit(run, headSha, red);",
+      "replace": "  return awaitAfterExit(run, headSha, undefined);",
+      "kills": [
+        "the seat's dead-end gate after a ci-red exit a respawn's wait also ends on the same head turning green, and carries the red checks"
+      ]
+    }
+  ]
+}
