@@ -15,7 +15,7 @@ import { addSpend, AUTORESEARCH_WORKFLOW } from "./workflow.js";
 const CC = "cc_total_delta_pct";
 const POLICY: Policy = { ...FIXTURE_POLICY, mechanisms: { a: { metrics: { [CC]: -4 } }, b: { metrics: { [CC]: -3 } }, c: { metrics: { [CC]: -3 } } } };
 /** `b` edits the planner files, so it merges cleanly beside `a` in one round. */
-const PROPOSALS: Record<string, Partial<Proposal>> = { b: { class: "planner-ranking", targets: ["src/planner/rank.py"] } };
+const PROPOSALS: Record<string, Partial<Proposal>> = { b: { class: "planner-ranking", microArgs: { cluster: "c" }, targets: ["src/planner/rank.py"] } };
 const proposed = (mechanism: string) => proposal(mechanism, { bold: true, ...PROPOSALS[mechanism] });
 const id = (mechanism: string) => ideaId(proposed(mechanism));
 const EXEMPT = { bold: "script ends", followup: "script ends" };

@@ -218,7 +218,7 @@ const WINNERS: Policy = {
   mechanisms: { a: { metrics: { [CC]: -4 } }, b: { metrics: { [CC]: -3 } }, "b-cancelled": { metrics: { [CC]: -3 } } },
   interactions: { "a+b-cancelled": { metrics: { [CC]: 3.5 } } },
 };
-const PLANNER_FILES: Partial<Proposal> = { class: "planner-ranking", targets: ["src/planner/rank.py"] };
+const PLANNER_FILES: Partial<Proposal> = { class: "planner-ranking", microArgs: { cluster: "c" }, targets: ["src/planner/rank.py"] };
 const winner = (mechanism: string) => proposal(mechanism, { bold: true, ...(mechanism.startsWith("b") ? PLANNER_FILES : {}) });
 const winnerId = (mechanism: string) => ideaId(winner(mechanism));
 /** Round r proposes `byRound[r - 1]`; later rounds propose nothing. */

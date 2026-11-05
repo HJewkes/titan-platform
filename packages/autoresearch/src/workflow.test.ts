@@ -171,6 +171,23 @@ describe("autoresearch on a fixture target at $0", () => {
     expect([...outcomes.values()].filter((outcome) => outcome.reason === "error:ar-implement:1/" + ports.calls.implement[0])).toHaveLength(1);
   });
 
+  it("records a failed step's message in the outcome", async () => {
+    const beforeImplement = async () => {
+      throw new Error("boom");
+    };
+    const { outcomes } = await loop(["better"], { beforeImplement });
+
+    expect(outcomes.get(id("better"))).toMatchObject({ verdict: "stopped", error: expect.stringContaining("boom") });
+  });
+
+  it("asks the planner again, naming the missing cluster, when a planner-ranking add has no microArgs", async () => {
+    const planner = ({ violations }: { violations: string[] }) => ({ add: [proposal("rank", { class: "planner-ranking", bold: true, microArgs: violations.length > 0 ? { cluster: "x" } : {} })] });
+    const { ports, run } = await loop([], { planner });
+
+    expect(run.status).toBe("completed");
+    expect(ports.calls.plans.map((call) => call.violations)).toEqual([[], [expect.stringContaining('microArgs "cluster"')]]);
+  });
+
   it("records the diff size L0 measured and rejects a frozen-file edit at L0", async () => {
     const policy: Policy = { ...POLICY, mechanisms: { ...POLICY.mechanisms, "edit-measure": { files: { "src/gate/measure.py": "# fixed\n", "tests/test_gate.py": "# fixed\n" } } } };
     const { outcomes } = await loop(["better", "edit-measure"], {}, CONFIG, policy);

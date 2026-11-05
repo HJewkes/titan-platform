@@ -150,7 +150,7 @@ async function climb(rc: RoundContext, idea: Idea, at: Lane): Promise<Outcome> {
 }
 
 const failedStop = (idea: Idea, error: StepFailedError): Outcome => ({
-  ideaId: idea.id, lineage: idea.lineage, cell: idea.cell, verdict: "stopped", reason: `error:${error.stepId}`, rungReached: "none", runs: [],
+  ideaId: idea.id, lineage: idea.lineage, cell: idea.cell, verdict: "stopped", reason: `error:${error.stepId}`, rungReached: "none", runs: [], error: error.reason.slice(0, 500),
 });
 
 async function allocated(rc: RoundContext, idea: Idea, scope: string, lane: number): Promise<Outcome> {
