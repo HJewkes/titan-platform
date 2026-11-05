@@ -38,6 +38,8 @@ import { PROOF_WAIVER_STEPS, fixProofRoutes, proofStandingAt } from "./proof-wai
 import type { MachineStopWatch } from "./machine-stop.js";
 import type { VisualReadsWiring } from "./visual-tier-guard.js";
 import { REVIEW_STEP } from "./review-steps.js";
+import type { FollowUpTasks } from "./follow-ups-file.js";
+import { FOLLOW_UPS_STEPS, followUpsRoute } from "./follow-ups-step.js";
 import { REVIEW_STOP_STEPS, reviewStopRoute } from "./review-stop.js";
 import type { HoldMember, PanelMode } from "./review-panel-plan.js";
 import { PANEL_STEPS, PROOF_PLAN_FIELDS, panelVerdictRoute, plannedPanel, proofPlanFields, type PanelOnPlan, type ProfileCheck } from "./review-panel-step.js";
@@ -73,6 +75,7 @@ export const REVIEW_STEPS: readonly StepDeclaration[] = [
   ...NO_REVIEWER_STEPS,
   ...SCOPE_CHECK_STEPS,
   { id: REVIEW_SHADOW_STEP, kind: "dispatch" },
+  ...FOLLOW_UPS_STEPS,
 ];
 
 export const DEFAULT_VERDICT_TIMEOUT_MS = 30 * 60_000;
@@ -213,6 +216,8 @@ export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeC
   twoMergeRelease?: TwoMergeMode;
   /** `review.workflow`, recorded on the intent: `shadow` records each round's would-action, `on:preflight` refuses a head preflight fails. Absent means `off`. */
   workflow?: ReviewWorkflowWiring;
+  /** Where a verdict's follow-ups are filed; absent records each block as `skipped: "unwired"`. */
+  followUps?: FollowUpTasks;
 }
 
 type Wired = ReviewWiring & { dispatch: ReviewerDispatch };
@@ -337,6 +342,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     ...noReviewerRoutes(deps, wiring?.accounts?.alert),
     scopeCheckRoute(deps.now),
     reviewShadowRoute(deps.now, wiring),
+    followUpsRoute(deps.now, wiring?.followUps),
   ];
 };
 
