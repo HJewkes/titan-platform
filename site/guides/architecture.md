@@ -274,9 +274,11 @@ graph TD
   factory --> authority
   factory --> autoresearch
   factory --> clusterPkg
+  factory --> codeGraph
   factory --> coordinator
   factory --> daemon
   factory --> dispatchLedger
+  factory --> evidence
   factory --> fixProof
   factory --> github
   factory --> health
