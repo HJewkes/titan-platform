@@ -13,7 +13,6 @@ import { taskIdOf } from "./land-merge-message.js";
 import { LAND_STEPS, afterWrite, codeRoute, land, landRoutes, sleep, step, type FailingCheck, type LandDeps, type LandOptions, type LandOutcome, type Timing } from "./land.js";
 import { POST_MERGE_STEPS, postMerge, postMergeRoute, type PostMergeDeps } from "./post-merge.js";
 import type { PushWatch } from "../shepherd/push-signal.js";
-import { wallClock } from "../time-iso.js";
 
 /** Conclusions a runner outage or a superseded run produces, which a rerun of the same head can clear. */
 const TRANSIENT_CONCLUSIONS = new Set(["cancelled", "timed_out"]);
@@ -124,7 +123,7 @@ export interface LandPrDeps extends LandDeps, PostMergeDeps {
 
 /** Every route `land-pr` dispatches to; each reads before it writes, so each repeats safely after a crash. */
 export function landPrRoutes(deps: LandPrDeps): StepRoute[] {
-  const now = deps.now ?? wallClock;
+  const now = deps.now ?? Date.now;
   const timing = { now, sleep: deps.sleep ?? sleep, pollMs: deps.pollMs ?? 30_000, timeoutMs: deps.rerunSettleMs ?? 5 * 60_000, queueMs: deps.rerunQueueMs ?? 20 * 60_000 };
   return [
     ...landRoutes({ mergeTree: (input, signal) => localMergeTree(input, { signal }), ...deps }),

@@ -54,9 +54,12 @@ const CLOCK_BUDGET_BASELINE = [
 const RECIPE_CAPABILITY_BASELINE = [
   "products/factory/src/shepherd/publish-review.ts",
   "products/factory/src/shepherd/redeploy.ts",
+  "products/factory/src/shepherd/release.ts",
+  "products/factory/src/shepherd/train.ts",
   "products/factory/src/shepherd/tree-carry.ts",
   "products/factory/src/shepherd/visual-accept.ts",
   "products/factory/src/shepherd/visual-packet-trigger.ts",
+  "products/factory/src/workflows/land-pr.ts",
   "products/factory/src/workflows/post-merge.ts",
 ];
 const RECIPE_LOOP_BASELINE = [
