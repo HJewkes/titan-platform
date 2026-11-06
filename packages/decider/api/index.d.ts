@@ -928,6 +928,8 @@ interface CategoryScore {
     /** Agreement of always taking the asker's recommendation, the bar the decider must clear by a margin. */
     baseline: number | null;
     overrules: number;
+    /** In-window bulk owner rows: asked in a form nobody can learn from, so they carry no sample. */
+    bulk: number;
     recommendAuto: boolean;
     demote: boolean;
 }
