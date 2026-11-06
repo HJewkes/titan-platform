@@ -31,8 +31,8 @@
     {
       "name": "the message listener refs the worker after unref",
       "file": "products/active-work/src/session-index/checkpoint.ts",
-      "find": "  if (onCheckpoint) worker.on('message', (phase: 'start' | 'end') => onCheckpoint(phase));\n  worker.unref();\n",
-      "replace": "  worker.unref();\n  worker.on('message', () => {});\n",
+      "find": "  if (onCheckpoint) worker.on('message', (phase: 'start' | 'end') => onCheckpoint(phase));\n  worker.unref();\n}",
+      "replace": "  worker.unref();\n  worker.on('message', () => {});\n}",
       "kills": [
         "index checkpoints run off the event loop an unstopped checkpointer does not keep the process alive"
       ]
