@@ -35,7 +35,8 @@ export async function resolveGate(host: FactoryHost, io: ResolveIo, runId: strin
     return EXIT.OK;
   }
   const gateId = pendingGateId(host, runId, stepId);
-  const evidenceFor = (resolver: GateResolver) => (sources && gateId ? readCoordinatorEvidence(host, sources, gateId, payload, resolver) : Promise.resolve(undefined));
+  const refusal = (reason: string) => io.stderr(`${reason}\n`);
+  const evidenceFor = (resolver: GateResolver) => (sources && gateId ? readCoordinatorEvidence(host, sources, gateId, payload, resolver, refusal) : Promise.resolve(undefined));
   const resolution = await cliResolver(io.env, host.batches, gateId, payload, evidenceFor);
   if (typeof resolution === "string") {
     io.stderr(`error: ${resolution}\n`);

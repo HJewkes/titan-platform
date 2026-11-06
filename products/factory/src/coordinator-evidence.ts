@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import { isPassingConclusion } from "@titan-design/github";
 import { checkAgainstJsonSchema, type GateEvidencePolicy, type GateRecord } from "@titan-design/hitl";
 import { z } from "zod";
+import { MERGE_UP_APPROVAL, MergeUpCommit, isMergeUpChain } from "./merge-up-approval.js";
 import { isOwnerAtHeadRow, ownerAtHeadRowsIn } from "./owner-at-head.js";
 import { escalationReason } from "./shepherd/route-table.js";
 import { headGateAsks } from "./shepherd/stale-gates.js";
@@ -18,7 +19,9 @@ import { readPath } from "./narrow.js";
  * acknowledgement on the main-red evidence, read only against the base branch's required contexts. Owner decision 552 (2,
  * TP-4760) adds an approve-merge under the CI-policy budget row, on the same merge evidence. Owner decision 552 (3, TP-4759)
  * adds a respawn, replan or abandon of an `sh-dead-end` gate, by the one seat it was addressed to, while the PR is open at
- * the gate's head. Every other gate, a visual or seat owner-gate merge, and a round pick stay the owner's.
+ * the gate's head. Owner decision 556 (3, TP-4791) adds an approve-merge whose head moved only by verified clean merge-ups
+ * since the owner's own merge answer on that run (merge-up-approval.ts). Every other gate, a visual or seat owner-gate
+ * merge, and a round pick stay the owner's.
  */
 
 const SHA = z.string().regex(/^[0-9a-f]{40}$/);
@@ -102,7 +105,17 @@ const SeatDeadEndEvidence = z.strictObject({
   readAt: z.string(),
 });
 
-export const CoordinatorEvidence = z.discriminatedUnion("kind", [MergeEvidence, MainGreenEvidence, PrGoneEvidence, PrAtHeadEvidence, SeatDeadEndEvidence]);
+/** The owner's merge answer on an earlier land gate of the run, and the merge-ups from that head to this gate's, as read now. */
+const MergeUpApprovalEvidence = z.strictObject({
+  ...{ kind: z.literal("merge-up-approval"), gateId: z.string(), repo: REPO, pr: PR, headSha: SHA, base: z.string() },
+  approval: z.strictObject({ gateId: z.string(), head: SHA, resolverClass: z.string() }),
+  mergeUps: z.array(MergeUpCommit),
+  checks: MergeEvidence.shape.checks,
+  pull: z.strictObject({ state: z.string(), headSha: SHA, baseRef: z.string() }),
+  readAt: z.string(),
+});
+
+export const CoordinatorEvidence = z.discriminatedUnion("kind", [MergeEvidence, MainGreenEvidence, PrGoneEvidence, PrAtHeadEvidence, SeatDeadEndEvidence, MergeUpApprovalEvidence]);
 export type CoordinatorEvidence = z.infer<typeof CoordinatorEvidence>;
 export type RunFacts = z.infer<typeof RunFacts>;
 export type CheckRunFact = z.infer<typeof CheckRunFact>;
@@ -248,6 +261,7 @@ export const coordinatorEvidencePolicy: GateEvidencePolicy = (gate, resolver, pa
   if (evidence.kind === "main-green") return mainGreenAdmits(gate, payload, evidence);
   if (evidence.kind === "pr-at-head") return prAtHeadAdmits(gate, payload, evidence);
   if (evidence.kind === "seat-dead-end") return seatDeadEndAdmits(gate, resolver.id, payload, evidence);
+  if (evidence.kind === "merge-up-approval") return mergeUpAdmits(gate, payload, evidence);
   return prGoneAdmits(gate, payload, evidence);
 };
 
@@ -272,6 +286,22 @@ function mergeAdmits(gate: GateRecord, payload: unknown, evidence: Of<"approve-m
 function requiredGreen(checks: Of<"approve-merge">["checks"], head: string): boolean {
   if (checks.required.length === 0 || checks.runs.length !== checks.required.length) return false;
   return checks.required.every((name) => checks.runs.some((run) => run.name === name && run.headSha === head && run.conclusion === "success"));
+}
+
+/** An earlier land gate of the same run: the approval belongs to this PR's run, not to another the coordinator names. */
+const earlierGateOfRun = (approvalGateId: string, gateId: string): boolean =>
+  approvalGateId !== gateId && stepOf(approvalGateId) === MERGE_GATE && approvalGateId.slice(0, approvalGateId.indexOf("/")) === gateId.slice(0, gateId.indexOf("/"));
+
+/** Rule 461 under decision 556(3): the owner's approval stands across clean merge-ups, and CI re-runs at the new head. */
+function mergeUpAdmits(gate: GateRecord, payload: unknown, evidence: Of<"merge-up-approval">): boolean {
+  const land = landGate(gate);
+  if (!land || !isDeepStrictEqual(payload, { decision: "merge", headSha: land.head })) return false;
+  const named = gate.prompt.split("\n", 1)[0]!.includes(` at head ${land.head} into ${evidence.base}? `);
+  if (evidence.repo !== land.repo || evidence.pr !== land.pr || evidence.headSha !== land.head || !named) return false;
+  const { approval, pull } = evidence;
+  const approved = MERGE_UP_APPROVAL.approvedBy.includes(approval.resolverClass) && earlierGateOfRun(approval.gateId, gate.id);
+  const open = pull.state === "open" && pull.headSha === land.head && pull.baseRef === evidence.base;
+  return approved && open && requiredGreen(evidence.checks, land.head) && isMergeUpChain(evidence.mergeUps, approval.head, land.head);
 }
 
 const mainDecisions: Readonly<Record<string, string | undefined>> = MAIN_GATES;
