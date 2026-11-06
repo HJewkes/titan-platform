@@ -2,8 +2,8 @@ import type { Logger } from "@titan-design/daemon";
 import { runCommand, type CommandResult } from "./run-command.js";
 import { startSweep, type Sweep } from "./sweep.js";
 
-/** GitHub's schedule can start the run hours late; a late run was seen at 14:13Z, so the fallback waits this far past 14:00Z before calling a missing run dropped. */
-const CI_TIMING_DEADLINE_MINUTE_UTC = 14 * 60 + 30;
+/** The cron is 06:17Z, but GitHub has started the schedule run about 8 h late daily (observed 2026-11-02 15:46Z, 11-03 14:09Z, 11-04 14:28Z, 11-05 14:36Z, 11-06 14:13Z), so a missing run is only called dropped from 17:00Z. */
+const CI_TIMING_DEADLINE_MINUTE_UTC = 17 * 60;
 const CI_TIMING_FALLBACK_MS = 10 * 60_000;
 const WORKFLOW_FILE = "ci-timing.yml";
 
