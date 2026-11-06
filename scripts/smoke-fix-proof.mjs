@@ -86,11 +86,10 @@ function shepherd(args) {
   return run("titan-factory", ["shepherd", ...args]);
 }
 
-/** Registers the fixture as a correctness fix that may never merge, then holds it as a second guard on the merge. */
-function register(opts, fixture) {
+/** The merge policy is the only guard: `shepherd hold` also gates merge only, and its reason must be a listed hold class. */
+export function register(opts, fixture, exec = shepherd) {
   const ref = `${opts.repo}#${fixture.pr}`;
-  shepherd(["register", ref, "--kind", "correctness", "--implementer", opts.implementer, "--task", opts.task, "--slice", "fixture", "--policy", '{"merge":"never"}']);
-  shepherd(["hold", ref, "--reason", "TP-538 fixture: never merge"]);
+  exec(["register", ref, "--kind", "correctness", "--implementer", opts.implementer, "--task", opts.task, "--slice", "fixture", "--policy", '{"merge":"never"}']);
 }
 
 function timeline(ref) {
@@ -110,7 +109,7 @@ async function poll(ref, head, timeoutMs) {
 
 function dryRun(opts) {
   const steps = opts.open
-    ? ["fetch origin main", ...(opts.branch ? [`reuse the pushed branch ${opts.branch} without pushing`] : [`push a fix/tp-538-fixture-<rand> commit adding ${Object.keys(FIXTURE_FILES).join(" and ")}`]), `open a draft PR "${FIXTURE_TITLE}"`, `shepherd register --kind correctness --implementer ${opts.implementer} --policy {"merge":"never"}`, "shepherd hold"]
+    ? ["fetch origin main", ...(opts.branch ? [`reuse the pushed branch ${opts.branch} without pushing`] : [`push a fix/tp-538-fixture-<rand> commit adding ${Object.keys(FIXTURE_FILES).join(" and ")}`]), `open a draft PR "${FIXTURE_TITLE}"`, `shepherd register --kind correctness --implementer ${opts.implementer} --policy {"merge":"never"}`]
     : [];
   return { dryRun: true, note: "pass --run to act", steps: [...steps, `poll shepherd timeline every ${POLL_MS / 1000} s for up to ${opts.timeoutMs / 60_000} min`, "print PASS or FAIL"] };
 }
