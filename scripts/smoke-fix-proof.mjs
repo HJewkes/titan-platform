@@ -20,12 +20,12 @@ const FIXTURE_FILES = {
   [FIXTURE_TEST]: 'import { expect, it } from "vitest";\n\nit("tp538 fixture passes with or without the fix", () => {\n  expect([1, 2].length).toBe(2);\n});\n',
 };
 
-export const USAGE = "usage: node scripts/smoke-fix-proof.mjs (--repo <owner/name> --pr <n> --head <40-hex sha> | --open --repo <owner/name> --implementer <agent>) [--task <slug/id>] [--timeout-min 40] [--run]";
+export const USAGE = "usage: node scripts/smoke-fix-proof.mjs (--repo <owner/name> --pr <n> --head <40-hex sha> | --open --repo <owner/name> --implementer <agent> [--branch <pushed fixture branch>]) [--task <slug/id>] [--timeout-min 40] [--run]";
 
 export function options(argv) {
   const { values } = parseArgs({ args: argv, options: {
     repo: { type: "string" }, pr: { type: "string" }, head: { type: "string" }, open: { type: "boolean", default: false },
-    implementer: { type: "string" }, task: { type: "string", default: "titan-platform/TP-538" },
+    implementer: { type: "string" }, branch: { type: "string" }, task: { type: "string", default: "titan-platform/TP-538" },
     "timeout-min": { type: "string", default: DEFAULT_TIMEOUT_MIN }, run: { type: "boolean", default: false },
   } });
   const pr = Number(values.pr);
@@ -33,8 +33,9 @@ export function options(argv) {
   const repo = /^[\w.-]+\/[\w.-]+$/.test(values.repo ?? "");
   const existing = !values.open && Number.isSafeInteger(pr) && pr > 0 && /^[0-9a-f]{40}$/.test(values.head ?? "");
   const opening = values.open && values.pr === undefined && values.head === undefined && /^[\w.-]+$/.test(values.implementer ?? "");
-  if (!repo || !(existing || opening) || !(timeoutMin > 0)) throw new Error(USAGE);
-  return { repo: values.repo, pr: existing ? pr : null, head: values.head ?? null, open: values.open, implementer: values.implementer ?? null, task: values.task, timeoutMs: timeoutMin * 60_000, run: values.run };
+  const branchOk = values.branch === undefined || (values.open && /^[\w./-]+$/.test(values.branch));
+  if (!repo || !(existing || opening) || !branchOk || !(timeoutMin > 0)) throw new Error(USAGE);
+  return { repo: values.repo, pr: existing ? pr : null, head: values.head ?? null, open: values.open, implementer: values.implementer ?? null, branch: values.branch ?? null, task: values.task, timeoutMs: timeoutMin * 60_000, run: values.run };
 }
 
 const run = (command, args, input) => execFileSync(command, args, { encoding: "utf8", input, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"] }).trim();
@@ -58,12 +59,26 @@ function fixtureCommit() {
   }
 }
 
-function openFixture(opts) {
+/** The machine's gh-shim refuses direct gh writes, so every write goes through agent-chat. */
+export const ghWrite = (args, exec = run) => exec("agent-chat", ["gh-write", "--", ...args]);
+
+const FIXTURE_BODY = "Fixture for the TP-538 fix-proof send-back smoke. Its test passes with and without the change. **Never merge.**";
+
+/** Pushes a new fixture branch, or reuses an already pushed one so a rerun leaves no orphan branch. */
+function fixtureBranch(opts, io) {
+  if (opts.branch) {
+    io.git(["fetch", "origin", opts.branch]);
+    return { branch: opts.branch, head: io.git(["rev-parse", "FETCH_HEAD"]) };
+  }
   const branch = `fix/tp-538-fixture-${randomBytes(3).toString("hex")}`;
-  const head = fixtureCommit();
-  git(["push", "origin", `${head}:refs/heads/${branch}`]);
-  const body = "Fixture for the TP-538 fix-proof send-back smoke. Its test passes with and without the change. **Never merge.**";
-  const created = JSON.parse(run("gh", ["api", "-X", "POST", `repos/${opts.repo}/pulls`, "-f", `title=${FIXTURE_TITLE}`, "-f", `head=${branch}`, "-f", "base=main", "-F", "draft=true", "-f", `body=${body}`]));
+  const head = io.commit();
+  io.git(["push", "origin", `${head}:refs/heads/${branch}`]);
+  return { branch, head };
+}
+
+export function openFixture(opts, io = { git, run, commit: fixtureCommit }) {
+  const { branch, head } = fixtureBranch(opts, io);
+  const created = JSON.parse(ghWrite(["api", "-X", "POST", `repos/${opts.repo}/pulls`, "-f", `title=${FIXTURE_TITLE}`, "-f", `head=${branch}`, "-f", "base=main", "-F", "draft=true", "-f", `body=${FIXTURE_BODY}`], io.run));
   return { pr: created.number, head, branch, url: created.html_url };
 }
 
@@ -95,7 +110,7 @@ async function poll(ref, head, timeoutMs) {
 
 function dryRun(opts) {
   const steps = opts.open
-    ? ["fetch origin main", `push a fix/tp-538-fixture-<rand> commit adding ${Object.keys(FIXTURE_FILES).join(" and ")}`, `open a draft PR "${FIXTURE_TITLE}"`, `shepherd register --kind correctness --implementer ${opts.implementer} --policy {"merge":"never"}`, "shepherd hold"]
+    ? ["fetch origin main", ...(opts.branch ? [`reuse the pushed branch ${opts.branch} without pushing`] : [`push a fix/tp-538-fixture-<rand> commit adding ${Object.keys(FIXTURE_FILES).join(" and ")}`]), `open a draft PR "${FIXTURE_TITLE}"`, `shepherd register --kind correctness --implementer ${opts.implementer} --policy {"merge":"never"}`, "shepherd hold"]
     : [];
   return { dryRun: true, note: "pass --run to act", steps: [...steps, `poll shepherd timeline every ${POLL_MS / 1000} s for up to ${opts.timeoutMs / 60_000} min`, "print PASS or FAIL"] };
 }
@@ -110,7 +125,7 @@ async function main() {
   const report = await poll(ref, fixture.head, opts.timeoutMs);
   console.log(JSON.stringify(report, null, 2));
   console.log(report.ok ? `PASS ${ref} ${fixture.head}` : `FAIL ${ref} ${fixture.head}: ${report.failures.join("; ")}`);
-  console.log(`close it: gh api -X PATCH repos/${opts.repo}/pulls/${fixture.pr} -f state=closed && titan-factory shepherd resync`);
+  console.log(`close it: agent-chat gh-write -- pr close ${fixture.pr} --repo ${opts.repo} && titan-factory shepherd resync`);
   if (!report.ok) process.exitCode = 1;
 }
 
