@@ -1,5 +1,3 @@
-import { spawn, type ChildProcess } from "node:child_process";
-import { readFileSync } from "node:fs";
 import type { RepoSlug } from "@titan-design/github";
 import type { DurableStepOutcome, RecoverableActiveStep, RoutedStepInput, StepReconcileOutcome, StepRoute, StepRunOutcome, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
@@ -8,15 +6,14 @@ import type { StepDeclaration } from "../definition.js";
 import { evidenceRecord, type StepAttempt } from "../evidence.js";
 import { redactCredentials, redactForEvidence } from "../redact.js";
 import { step } from "./land.js";
+import { POST_MERGE_PIPE_GRACE_MS, execChore, hostEnv, isoTime, readSpecText, wallNow } from "./post-merge-adapter.js";
 import { ChoreSpec, awaitChoreResult, choreFiles, choreState, handleName, launchChore, writeJson, type ChorePorts } from "./post-merge-chore.js";
 
 export const POST_MERGE_STEPS: readonly StepDeclaration[] = [{ id: "post-merge", kind: "dispatch" }];
 export const POST_MERGE_TIMEOUT_MS = 10 * 60_000;
-export const POST_MERGE_PIPE_GRACE_MS = 2_000;
+export { POST_MERGE_PIPE_GRACE_MS, execChore };
 export const TAIL_CHARS = 2_000;
 export const NO_COMMAND = "no post-merge command";
-/** Output kept per stream before the tail is cut; wide enough that redaction sees any token near the kept tail whole. */
-const KEPT_CHARS = 64 * 1024;
 
 export interface PostMergeInput {
   repo: RepoSlug;
@@ -45,66 +42,6 @@ export interface ChoreResult {
 
 export type ChoreExec = (argv: readonly [string, ...string[]], options: ChoreOptions) => Promise<ChoreResult>;
 
-/** Runs argv with no shell and always resolves: a failed chore is evidence, since the merge already happened. */
-export function execChore(argv: readonly [string, ...string[]], options: ChoreOptions): Promise<ChoreResult> {
-  const [file, ...args] = argv;
-  return new Promise((resolve) => {
-    try {
-      const child = spawn(file, args, { cwd: options.cwd, env: options.env, shell: false, detached: true, stdio: ["ignore", "pipe", "pipe"] });
-      watchChore(child, options, resolve);
-    } catch (error) {
-      resolve({ exitCode: null, signal: null, timedOut: false, stdout: "", stderr: "", error: error instanceof Error ? error.message : String(error) });
-    }
-  });
-}
-
-function watchChore(child: ChildProcess, options: ChoreOptions, resolve: (result: ChoreResult) => void): void {
-  const stdout = keptTail(child.stdout!);
-  const stderr = keptTail(child.stderr!);
-  let timedOut = false;
-  let graceTimer: NodeJS.Timeout | undefined;
-  const timer = setTimeout(() => {
-    if (child.exitCode !== null || child.signalCode !== null) return;
-    timedOut = true;
-    killGroup(child);
-  }, options.timeoutMs);
-  const settle = (outcome: Pick<ChoreResult, "exitCode" | "signal" | "error">) => {
-    clearTimeout(timer);
-    clearTimeout(graceTimer);
-    child.stdout?.destroy();
-    child.stderr?.destroy();
-    resolve({ ...outcome, timedOut, stdout: stdout(), stderr: stderr() });
-  };
-  child.on("error", (error) => settle({ exitCode: null, signal: null, error: error.message }));
-  child.on("exit", (exitCode, signal) => {
-    clearTimeout(timer);
-    graceTimer = setTimeout(() => settle({ exitCode, signal }), options.pipeGraceMs ?? POST_MERGE_PIPE_GRACE_MS);
-  });
-  child.on("close", (exitCode, signal) => settle({ exitCode, signal }));
-}
-
-/** Only the latest output is kept, so a chatty chore neither grows memory without bound nor gets killed for its output. */
-function keptTail(stream: NodeJS.ReadableStream): () => string {
-  let text = "";
-  stream.setEncoding("utf8");
-  stream.on("data", (chunk: string) => {
-    text += chunk;
-    if (text.length > 2 * KEPT_CHARS) text = text.slice(-KEPT_CHARS);
-  });
-  return () => text;
-}
-
-/** SIGKILL cannot be trapped; the group kill and closed pipes stop a grandchild from holding the step open. */
-function killGroup(child: ChildProcess): void {
-  try {
-    if (child.pid !== undefined) process.kill(-child.pid, "SIGKILL");
-  } catch {
-    child.kill("SIGKILL");
-  }
-  child.stdout?.destroy();
-  child.stderr?.destroy();
-}
-
 export const PostMergeResult = z.union([
   z.looseObject({ skipped: z.literal(NO_COMMAND) }),
   z.looseObject({ exitCode: z.number().nullable(), signal: z.string().nullable(), timedOut: z.boolean(), stdoutTail: z.string(), stderrTail: z.string() }),
@@ -130,7 +67,7 @@ export interface PostMergeDeps {
  * the chore's marker and result after a restart, and `park` is left for a chore run inside serve.
  */
 export function postMergeRoute(deps: PostMergeDeps): StepRoute {
-  const now = deps.now ?? Date.now;
+  const now = deps.now ?? wallNow;
   const run = async (step: RoutedStepInput): Promise<StepRunOutcome> => {
     try {
       const result = await runPostMerge(deps, PostMergeInputSchema.parse(JSON.parse(step.prompt)), step);
@@ -142,13 +79,13 @@ export function postMergeRoute(deps: PostMergeDeps): StepRoute {
   return { match: "post-merge", onRestart: "park", runner: { run }, reconcile: (step, signal) => reconcilePostMerge(deps, step, signal) };
 }
 
-const postMergeOutput = (step: StepAttempt, at: number, result: object): string => JSON.stringify(evidenceRecord("land.post-merge", step, new Date(at).toISOString(), { result }));
+const postMergeOutput = (step: StepAttempt, at: number, result: object): string => JSON.stringify(evidenceRecord("land.post-merge", step, isoTime(at), { result }));
 
 async function runPostMerge(deps: PostMergeDeps, input: PostMergeInput, step: RoutedStepInput): Promise<object> {
   const config = deps.postMerge;
   if (!config) return { skipped: NO_COMMAND };
-  if (deps.chores) return runDurably(deps.chores, config, input, step, deps.now ?? Date.now);
-  const options = { ...(config.cwd ? { cwd: config.cwd } : {}), timeoutMs: config.timeoutMs ?? POST_MERGE_TIMEOUT_MS, env: withVars(process.env, choreVars(input)) };
+  if (deps.chores) return runDurably(deps.chores, config, input, step, deps.now ?? wallNow);
+  const options = { ...(config.cwd ? { cwd: config.cwd } : {}), timeoutMs: config.timeoutMs ?? POST_MERGE_TIMEOUT_MS, env: withVars(hostEnv(), choreVars(input)) };
   return choreRecord(await (deps.runChore ?? execChore)(config.argv, options));
 }
 
@@ -156,7 +93,7 @@ async function runDurably(chores: ChorePorts, config: PostMergeConfig, input: Po
   const files = choreFiles(chores.dir, step.requestKey);
   const spec: ChoreSpec = { argv: config.argv, ...(config.cwd ? { cwd: config.cwd } : {}), timeoutMs: config.timeoutMs ?? POST_MERGE_TIMEOUT_MS, vars: choreVars(input), result: files.result };
   const trace = { runId: step.runId, stepId: step.stepId, iteration: step.iteration, attempt: step.attempt };
-  const handle = await launchChore(chores, files, spec, trace, new Date(now()).toISOString());
+  const handle = await launchChore(chores, files, spec, trace, isoTime(now()));
   return recordedResult(await awaitChoreResult(chores, files, handle, step.signal), handleName(handle));
 }
 
@@ -172,7 +109,7 @@ async function reconcilePostMerge(deps: PostMergeDeps, step: RecoverableActiveSt
   if (!deps.postMerge) return { kind: "not_found", retrySafe: true, evidence: "no post-merge command is configured, so the step ran nothing" };
   if (!deps.chores) return { kind: "unknown", evidence: "the chore ran inside serve, so whether it finished is unknown; a human decides" };
   const { chores } = deps;
-  const now = deps.now ?? Date.now;
+  const now = deps.now ?? wallNow;
   const files = choreFiles(chores.dir, step.requestKey);
   const state = await choreState(chores, files);
   if (state.kind === "never-started") return { kind: "not_found", retrySafe: true, evidence: "no chore marker, so the chore never started" };
@@ -186,8 +123,8 @@ async function reconcilePostMerge(deps: PostMergeDeps, step: RecoverableActiveSt
 
 /** The transient unit's entry point: runs the spec's chore and leaves its record where the step, or a successor, reads it. */
 export async function runChoreSpec(specFile: string): Promise<void> {
-  const spec = ChoreSpec.parse(JSON.parse(readFileSync(specFile, "utf8")));
-  const options = { ...(spec.cwd ? { cwd: spec.cwd } : {}), timeoutMs: spec.timeoutMs, env: withVars(process.env, spec.vars) };
+  const spec = ChoreSpec.parse(JSON.parse(readSpecText(specFile)));
+  const options = { ...(spec.cwd ? { cwd: spec.cwd } : {}), timeoutMs: spec.timeoutMs, env: withVars(hostEnv(), spec.vars) };
   writeJson(spec.result, choreRecord(await execChore(spec.argv, options)));
 }
 

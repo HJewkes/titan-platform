@@ -1,18 +1,17 @@
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
-import { resolveDbPath } from "../config.js";
 import { CLOSURE_LOCK_DRIVER, type GitConfigEntry } from "../merge-drivers.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { HEAD } from "./await-verdict.js";
 import { errorClass } from "./error-class.js";
 import { isRepoKey } from "./seats.js";
+import { cacheInitialized, configuredStateDir, makeCacheParent, systemGit } from "./tree-carry-adapter.js";
+
+export { systemGit };
 
 export const CARRY_STEP = "sh-carry";
-const GIT_TIMEOUT_MS = 10 * 60_000;
 
 export interface GitResult {
   code: number;
@@ -55,25 +54,6 @@ export class CarryRefusal extends Error {
   }
 }
 
-/** Never prompts and never reads a user credential helper; GitHub auth comes from `gh`. */
-const GIT_ENV: Readonly<Record<string, string>> = {
-  GIT_TERMINAL_PROMPT: "0",
-  GIT_CONFIG_COUNT: "2",
-  GIT_CONFIG_KEY_0: "credential.helper",
-  GIT_CONFIG_VALUE_0: "",
-  GIT_CONFIG_KEY_1: "credential.helper",
-  GIT_CONFIG_VALUE_1: "!gh auth git-credential",
-};
-
-export const systemGit: Git = (gitDir, args, signal) =>
-  new Promise((resolve) => {
-    const options = { encoding: "utf8" as const, timeout: GIT_TIMEOUT_MS, signal, env: { ...process.env, ...GIT_ENV } };
-    execFile("git", ["--git-dir", gitDir, ...args], options, (error, stdout, stderr) => {
-      const code = error ? (typeof error.code === "number" ? error.code : 128) : 0;
-      resolve({ code, stdout, stderr: stderr || error?.message || "" });
-    });
-  });
-
 let boundStateDir: string | undefined;
 
 /** The server binds its state dir so the cache sits beside its database; the returned function unbinds it. */
@@ -86,7 +66,7 @@ export function bindCarryStateDir(stateDir: string): () => void {
 
 /** Where the git cache lives: the given dir, else the bound state dir, else the configured database's directory. */
 export function carryStateDir(stateDir?: string): string {
-  return stateDir ?? boundStateDir ?? dirname(resolveDbPath({ env: process.env }));
+  return stateDir ?? boundStateDir ?? configuredStateDir();
 }
 
 export function carryCacheDir(stateDir: string, repo: string): string {
@@ -129,8 +109,8 @@ async function registerMergeDrivers(git: Git, dir: string, signal?: AbortSignal)
 }
 
 export async function ensureCache(git: Git, dir: string, signal?: AbortSignal): Promise<void> {
-  if (!existsSync(join(dir, "HEAD"))) {
-    mkdirSync(dirname(dir), { recursive: true });
+  if (!cacheInitialized(dir)) {
+    makeCacheParent(dir);
     await must(git, dir, ["init", "--bare", "--quiet"], signal);
   }
   await registerMergeDrivers(git, dir, signal);
@@ -212,7 +192,7 @@ const issuesOf = (error: z.ZodError): string => error.issues.map((issue) => `${i
 /** Runs `task` on the repo's cache, one at a time; a failure answers through `refused`, never a throw. */
 async function inCache<T>(repo: string, options: CarryOptions, task: (git: Git, dir: string, url: string) => Promise<T>, refused: (reason: string) => T): Promise<T> {
   try {
-    const stateDir = options.stateDir ?? boundStateDir ?? dirname(resolveDbPath({ env: process.env }));
+    const stateDir = carryStateDir(options.stateDir);
     const dir = carryCacheDir(stateDir, repo);
     const url = (options.remote ?? githubRemote)(repo);
     return await serialized(dir, () => task(options.git ?? systemGit, dir, url));

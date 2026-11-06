@@ -226,6 +226,7 @@
   "train-shadow-disjoint.ts",
   "train-shadow-peers.ts",
   "train.ts",
+  "tree-carry-adapter.ts",
   "tree-carry.ts",
   "turn-check.ts",
   "view-schema.ts",

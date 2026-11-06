@@ -1,5 +1,4 @@
-import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
-import { appendFileSync, closeSync, mkdirSync, openSync } from "node:fs";
+import type { ChildProcess, SpawnOptions } from "node:child_process";
 import { join } from "node:path";
 import type { RepoSlug } from "@titan-design/github";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
@@ -9,6 +8,9 @@ import { buildSha, FACTORY_REPO } from "../build-info.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { DEPLOY_MAX_WAIT_MS, DEPLOY_QUIET_MS, nodeWantedStore, noteWanted, readWanted, writeWanted, type DeployPacerOptions, type WantedStore } from "./deploy-pacer.js";
 import { failureOf } from "./error-class.js";
+import { hostExecPath, hostPlatform, nodeDeployerPorts, wallClock } from "./redeploy-adapter.js";
+
+export { nodeDeployerPorts };
 
 export const REDEPLOY_STEP = "sh-redeploy";
 export const REDEPLOY_LOG = "redeploy.log";
@@ -83,14 +85,6 @@ export interface DeployerPorts {
   openAppend: (path: string) => number;
   close: (fd: number) => void;
 }
-
-export const nodeDeployerPorts: DeployerPorts = {
-  spawn: (file, args, options) => spawn(file, args, options),
-  mkdir: (dir) => void mkdirSync(dir, { recursive: true }),
-  append: (path, text) => appendFileSync(path, text),
-  openAppend: (path) => openSync(path, "a"),
-  close: (fd) => closeSync(fd),
-};
 
 /** An async spawn error lands outside any step, so a throw here would crash the service. */
 function appendQuietly(ports: DeployerPorts, path: string, text: string): void {
@@ -188,7 +182,7 @@ async function queuedHolding(options: DeployerOptions, store: WantedStore, merge
 
 /** Serve's deploy pacer spawns later, through `deployPacerPorts`. The record is read again after the probe, so a sha queued meanwhile is not kept by a stale answer. */
 async function queueDeploy(options: DeployerOptions, ports: DeployerPorts, store: WantedStore, mergeSha: string): Promise<Redeploy> {
-  const now = (options.now?.() ?? new Date()).getTime();
+  const now = (options.now ?? wallClock)().getTime();
   ports.mkdir(options.stateDir);
   const heldBy = await queuedHolding(options, store, mergeSha);
   writeWanted(options.stateDir, store, noteWanted(readWanted(options.stateDir, store), mergeSha, now, heldBy));
@@ -214,11 +208,11 @@ export function systemDeployer(options: DeployerOptions, ports: DeployerPorts = 
     request: mainDeployQueue(options, ports, store),
     spawn: (mergeSha) => {
       const log = join(options.stateDir, REDEPLOY_LOG);
-      const at = options.now?.() ?? new Date();
-      const command = { file: options.node ?? process.execPath, args: [options.bin, "service", "deploy", "--expect", mergeSha] };
+      const at = (options.now ?? wallClock)();
+      const command = { file: options.node ?? hostExecPath(), args: [options.bin, "service", "deploy", "--expect", mergeSha] };
       ports.mkdir(options.stateDir);
       ports.append(log, `${at.toISOString()} ${command.args.slice(1).join(" ")}\n`);
-      const onSystemd = (options.platform ?? process.platform) === "linux";
+      const onSystemd = (options.platform ?? hostPlatform()) === "linux";
       const child = onSystemd ? startUnderSystemd(ports, log, options.stateDir, deployUnitName(mergeSha, at), command) : startDeployer(ports, log, options.stateDir, command);
       return { pid: child.pid, log };
     },
