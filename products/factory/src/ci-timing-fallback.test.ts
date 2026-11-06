@@ -17,8 +17,8 @@ describe("CI timing fallback", () => {
     expect(dispatch).not.toHaveBeenCalled();
   });
 
-  it("dispatches exactly once when no run exists and the time is past 14:00Z", async () => {
-    const { fake, dispatch } = ports(false, { t: at("2026-11-02T14:00:00Z") });
+  it("dispatches exactly once when no run exists and the time is past 14:30Z", async () => {
+    const { fake, dispatch } = ports(false, { t: at("2026-11-02T14:30:00Z") });
     await ciTimingFallbackTick(fake, log)();
     expect(dispatch).toHaveBeenCalledTimes(1);
   });
@@ -43,10 +43,30 @@ describe("CI timing fallback", () => {
     expect(dispatch).toHaveBeenCalledTimes(2);
   });
 
-  it("does not dispatch before 14:00Z", async () => {
-    const { fake, dispatch } = ports(false, { t: at("2026-11-02T13:59:59Z") });
+  it("does not dispatch before 14:30Z", async () => {
+    const { fake, dispatch } = ports(false, { t: at("2026-11-02T14:29:59Z") });
     await ciTimingFallbackTick(fake, log)();
     expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("leaves a late schedule run alone: no dispatch at 14:08Z when GitHub starts one at 14:13Z", async () => {
+    const clock = { t: at("2026-11-06T14:08:42Z") };
+    const { fake, dispatch } = ports(false, clock);
+    const tick = ciTimingFallbackTick(fake, log);
+    await tick();
+    clock.t = at("2026-11-06T14:13:52Z");
+    await tick();
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("dispatches once the grace window has passed with no run", async () => {
+    const clock = { t: at("2026-11-06T14:08:42Z") };
+    const { fake, dispatch } = ports(false, clock);
+    const tick = ciTimingFallbackTick(fake, log);
+    await tick();
+    clock.t = at("2026-11-06T14:31:00Z");
+    await tick();
+    expect(dispatch).toHaveBeenCalledTimes(1);
   });
 
   it("decides on the three facts alone", () => {

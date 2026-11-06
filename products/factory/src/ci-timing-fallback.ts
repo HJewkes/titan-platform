@@ -2,8 +2,8 @@ import type { Logger } from "@titan-design/daemon";
 import { runCommand, type CommandResult } from "./run-command.js";
 import { startSweep, type Sweep } from "./sweep.js";
 
-/** GitHub's own schedule for the workflow starts it at 06:17Z when it runs at all; by this hour a missing run is a dropped one. */
-const CI_TIMING_DEADLINE_HOUR_UTC = 14;
+/** GitHub's schedule can start the run hours late; a late run was seen at 14:13Z, so the fallback waits this far past 14:00Z before calling a missing run dropped. */
+const CI_TIMING_DEADLINE_MINUTE_UTC = 14 * 60 + 30;
 const CI_TIMING_FALLBACK_MS = 10 * 60_000;
 const WORKFLOW_FILE = "ci-timing.yml";
 
@@ -18,10 +18,12 @@ export interface CiTimingFallbackPorts {
 
 /** Pure: dispatch only once the deadline has passed, no run exists for the day, and none was dispatched for it already. */
 export function shouldDispatchCiTiming(input: { now: Date; runExists: boolean; dispatchedDay: string | undefined }): boolean {
-  if (input.now.getUTCHours() < CI_TIMING_DEADLINE_HOUR_UTC) return false;
+  if (beforeDeadline(input.now)) return false;
   if (input.runExists) return false;
   return input.dispatchedDay !== utcDay(input.now);
 }
+
+const beforeDeadline = (at: Date): boolean => at.getUTCHours() * 60 + at.getUTCMinutes() < CI_TIMING_DEADLINE_MINUTE_UTC;
 
 const utcDay = (at: Date): string => at.toISOString().slice(0, 10);
 
@@ -31,7 +33,7 @@ export function ciTimingFallbackTick(ports: CiTimingFallbackPorts, log: Logger):
   return async () => {
     const now = new Date((ports.now ?? Date.now)());
     const day = utcDay(now);
-    if (now.getUTCHours() < CI_TIMING_DEADLINE_HOUR_UTC || dispatchedDay === day) return;
+    if (beforeDeadline(now) || dispatchedDay === day) return;
     const runExists = await ports.hasRunOn(day);
     if (!shouldDispatchCiTiming({ now, runExists, dispatchedDay })) return;
     await ports.dispatch();
