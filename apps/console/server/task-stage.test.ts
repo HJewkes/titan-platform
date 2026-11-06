@@ -29,6 +29,11 @@ describe("task ids in a name", () => {
 });
 
 describe("a derived stage", () => {
+  it("is done for a wont-do task and still live for an icebox task", () => {
+    expect(deriveStage({ ...open(), status: "wont-do" }, NONE)).toMatchObject({ stage: "done", rule: "status-done" });
+    expect(deriveStage({ ...open(), status: "icebox" }, NONE).stage).not.toBe("done");
+  });
+
   it("is done when the task status is done, whatever else is found", () => {
     expect(deriveStage({ ...open(), status: "done" }, NONE)).toMatchObject({ stage: "done", rule: "status-done", guessed: false });
   });

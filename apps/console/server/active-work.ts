@@ -5,6 +5,10 @@ import { liveSource } from "@titan-design/rpc-client";
 import { loopBoard, loopTierWire } from "./loop-board.js";
 import { timedFetch, type UpstreamObserver } from "./perf/timed-fetch.js";
 
+/** The statuses the category registry must list (`@titan-design/pm` requires all four); `wont-do` is closed, the rest are live. */
+const TASK_STATUSES = ["open", "done", "wont-do", "icebox"] as const;
+export const CLOSED_TASK_STATUSES: ReadonlySet<string> = new Set(["done", "wont-do"]);
+
 const stat = z.object({ files: z.number(), bytes: z.number(), newest_mtime: z.string().nullable() });
 
 const initiativeItem = z.object({
@@ -28,7 +32,7 @@ const task = z.object({
   parent: z.string().optional(),
   dep: z.array(z.string()).optional(),
   deliverables: z.array(z.string()).optional(),
-  status: z.enum(["open", "done"]),
+  status: z.enum(TASK_STATUSES),
   notes: z.string().optional(),
   done_when: z.string().optional(),
   updated: z.string(),
