@@ -1,8 +1,6 @@
-import { readFile } from "node:fs/promises";
-import { appInstallationTokenOverHttp, githubPort, octokitWire, type GitHubPort, type RepoSlug } from "@titan-design/github";
+import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
-import type { ReviewCheckConfig } from "../config.js";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
@@ -93,14 +91,4 @@ async function autoMergeArmed(reads: ArmedReader, input: PublishInput): Promise<
     console.warn(`shepherd: reading auto-merge of ${input.repo}#${input.pr} failed: ${consoleTextOf(error)}`);
     return true;
   }
-}
-
-/** The App-token port the publish step posts through; the key is read per post, so a missing file fails that post only. */
-export function reviewCheckPort(config: ReviewCheckConfig | undefined): GitHubPort | undefined {
-  if (!config) return undefined;
-  const appToken = async (): Promise<string> => {
-    const privateKeyPem = await readFile(config.privateKeyPath, "utf8");
-    return (await appInstallationTokenOverHttp({ appId: config.appId, installationId: config.installationId, privateKeyPem, now: Date.now })).token;
-  };
-  return githubPort(octokitWire({ appToken }));
 }

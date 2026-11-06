@@ -17,6 +17,7 @@ import type { EffectivePolicy } from "./policy-schema.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { shepherdStoreRef, type ShepherdStoreRef } from "./store.js";
 import { isVisualGate, packetDirFor, visualPacket, type PacketInput } from "./visual-packet-trigger.js";
+import { defaultTitanReviewBin, makePacketDir } from "./visual-packet-trigger-adapter.js";
 import type { VisualPacketMode, VisualPacketPorts } from "./spawn-ports.js";
 
 const H2 = fakeSha("visual-next-head");
@@ -57,7 +58,7 @@ function rosterRow(name: string): AgentRow {
 const CLONE = scratch();
 
 function ports(mode: VisualPacketMode, agents: VisualPacketPorts["agents"], stateDir = scratch()): VisualPacketPorts {
-  return { mode, profile: "review-packager", stateDir, cwdFor: () => CLONE, ...(agents && { agents }) };
+  return { mode, profile: "review-packager", stateDir, cwdFor: () => CLONE, titanReviewBin: "/opt/synthetic/bin/titan-review", makeDir: makePacketDir, ...(agents && { agents }) };
 }
 
 /** CI is green at every head, with a visual job whose run id the packet names. */
@@ -299,7 +300,7 @@ describe("the packager's brief", () => {
   it("names titan-review by $HOME/.local/bin when none is configured, read when the brief is written, never by a bare name", async () => {
     vi.stubEnv("HOME", "/srv/synthetic-owner");
 
-    const { brief } = await briefFor();
+    const { brief } = await briefFor({ titanReviewBin: defaultTitanReviewBin() });
 
     expect(brief).toContain("titan-review: /srv/synthetic-owner/.local/bin/titan-review");
     for (const step of steps(brief).filter((line) => line.includes("titan-review"))) expect(step).toContain("`/srv/synthetic-owner/.local/bin/titan-review packet ");

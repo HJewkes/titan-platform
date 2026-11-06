@@ -1,5 +1,3 @@
-import { mkdirSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
@@ -87,8 +85,6 @@ async function triggerPacket(run: PacketRun, gateStep: string, headSha: string):
   await step(ctx, stepId, { runId: ctx.runId, ...run.target, headSha, gateId } satisfies PacketInput, PacketResult);
 }
 
-export const defaultTitanReviewBin = (): string => join(process.env.HOME || homedir(), ".local", "bin", "titan-review");
-
 export function packetDirFor(stateDir: string, runId: string, headSha: string): string {
   return join(stateDir, "packets", runId, headSha);
 }
@@ -126,7 +122,7 @@ function packagerPaths(ports: VisualPacketPorts, input: PacketInput, facts: Pack
   if (facts.ciRunId === undefined) throw new Error(`no visual CI run at ${input.headSha}; a packager could only stop BLOCKED`);
   const checkout = resolveCheckout(input.repo, ports.cwdFor?.(input.repo));
   if ("problem" in checkout) throw new Error(checkout.problem);
-  const bin = ports.titanReviewBin ?? defaultTitanReviewBin();
+  const bin = ports.titanReviewBin;
   return { packetDir, clone: checkout.dir, bin, ciRunId: facts.ciRunId };
 }
 
@@ -159,7 +155,7 @@ function packagerBrief(input: PacketInput, facts: PacketFacts, paths: PackagerPa
 async function spawnPackager(ports: VisualPacketPorts, brief: string, paths: PackagerPaths, agent: string): Promise<void> {
   if (!ports.agents) throw new Error("no agent-chat is configured");
   if ((await ports.agents.roster()).some((row) => row.name === agent)) return;
-  mkdirSync(paths.packetDir, { recursive: true });
+  ports.makeDir(paths.packetDir);
   await ports.agents.spawn({ name: agent, profile: ports.profile, brief, cwd: paths.clone });
 }
 
