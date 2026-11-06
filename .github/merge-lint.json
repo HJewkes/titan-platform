@@ -26,7 +26,14 @@
       "kind": "wrapper",
       "mergePath": "autoresearch-ratchet",
       "logs": true,
-      "reason": "the only writer of refs/heads/<ratchetPrefix>/*: ff-only, leased, never main or the default branch; each move is an autoresearch.ratchet evidence record (fac/routes.ts)"
+      "reason": "the only writer of refs/heads/<ratchetPrefix>/*: ff-only onto a winner, a merge of a later winner, or a merge of main; leased, never main or the default branch; each move is an autoresearch.ratchet evidence record (fac/routes.ts)"
+    },
+    {
+      "path": "products/factory/src/autoresearch/snapshot.ts",
+      "kind": "wrapper",
+      "mergePath": "autoresearch-snapshot",
+      "logs": true,
+      "reason": "creates a run's snapshot tag and PR head branch at a tagged ratchet sha; create-only leases; never main, the default branch or the ratchet namespace; each cut is an autoresearch.snapshot evidence record"
     },
     {
       "path": "products/factory/src/shepherd/stack-land.ts",
