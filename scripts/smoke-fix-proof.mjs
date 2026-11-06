@@ -62,7 +62,7 @@ function fixtureCommit() {
 /** The machine's gh-shim refuses direct gh writes, so every write goes through agent-chat. */
 export const ghWrite = (args, exec = run) => exec("agent-chat", ["gh-write", "--", ...args]);
 
-const FIXTURE_BODY = "Fixture for the TP-538 fix-proof send-back smoke. Its test passes with and without the change. **Never merge.**";
+const FIXTURE_BODY = "never merge: TP-538 fix-proof smoke fixture\n\nFixture for the TP-538 fix-proof send-back smoke. Its test passes with and without the change. **Never merge.**";
 
 /** Pushes a new fixture branch, or reuses an already pushed one so a rerun leaves no orphan branch. */
 function fixtureBranch(opts, io) {
@@ -76,9 +76,20 @@ function fixtureBranch(opts, io) {
   return { branch, head };
 }
 
-export function openFixture(opts, io = { git, run, commit: fixtureCommit }) {
+function existingPr(repo, branch) {
+  const found = JSON.parse(run("gh", ["pr", "list", "--repo", repo, "--head", branch, "--state", "open", "--json", "number,isDraft,url"]));
+  return found[0] ?? null;
+}
+
+/** Opens the fixture ready, never draft: Shepherd stops a draft as not-mergeable. The merge:never policy is what blocks the merge. */
+export function openFixture(opts, io = { git, run, commit: fixtureCommit, existing: existingPr }) {
   const { branch, head } = fixtureBranch(opts, io);
-  const created = JSON.parse(ghWrite(["api", "-X", "POST", `repos/${opts.repo}/pulls`, "-f", `title=${FIXTURE_TITLE}`, "-f", `head=${branch}`, "-f", "base=main", "-F", "draft=true", "-f", `body=${FIXTURE_BODY}`], io.run));
+  const open = opts.branch ? io.existing(opts.repo, branch) : null;
+  if (open) {
+    if (open.isDraft) ghWrite(["pr", "ready", String(open.number), "--repo", opts.repo], io.run);
+    return { pr: open.number, head, branch, url: open.url };
+  }
+  const created = JSON.parse(ghWrite(["api", "-X", "POST", `repos/${opts.repo}/pulls`, "-f", `title=${FIXTURE_TITLE}`, "-f", `head=${branch}`, "-f", "base=main", "-f", `body=${FIXTURE_BODY}`], io.run));
   return { pr: created.number, head, branch, url: created.html_url };
 }
 
@@ -109,7 +120,7 @@ async function poll(ref, head, timeoutMs) {
 
 function dryRun(opts) {
   const steps = opts.open
-    ? ["fetch origin main", ...(opts.branch ? [`reuse the pushed branch ${opts.branch} without pushing`] : [`push a fix/tp-538-fixture-<rand> commit adding ${Object.keys(FIXTURE_FILES).join(" and ")}`]), `open a draft PR "${FIXTURE_TITLE}"`, `shepherd register --kind correctness --implementer ${opts.implementer} --policy {"merge":"never"}`]
+    ? ["fetch origin main", ...(opts.branch ? [`reuse the pushed branch ${opts.branch} without pushing`] : [`push a fix/tp-538-fixture-<rand> commit adding ${Object.keys(FIXTURE_FILES).join(" and ")}`]), `open a PR "${FIXTURE_TITLE}" (or mark the branch's existing PR ready)`, `shepherd register --kind correctness --implementer ${opts.implementer} --policy {"merge":"never"}`]
     : [];
   return { dryRun: true, note: "pass --run to act", steps: [...steps, `poll shepherd timeline every ${POLL_MS / 1000} s for up to ${opts.timeoutMs / 60_000} min`, "print PASS or FAIL"] };
 }

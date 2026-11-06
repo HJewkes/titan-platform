@@ -32,14 +32,15 @@ describe("smoke-fix-proof dry run", () => {
     const out = JSON.parse(execFileSync("node", [SCRIPT, "--open", "--repo", "HJewkes/titan-platform", "--implementer", "tc-tp-538-a"], { encoding: "utf8" }));
 
     expect(out.dryRun).toBe(true);
-    expect(out.steps.join("\n")).toMatch(/draft PR[\s\S]*--kind correctness/);
+    expect(out.steps.join("\n")).toMatch(/open a PR[\s\S]*--kind correctness/);
+    expect(out.steps.join("\n")).not.toMatch(/draft/i);
     expect(out.steps.join("\n")).not.toMatch(/shepherd hold/);
   });
 });
 
 describe("smoke-fix-proof gh writes", () => {
   const created = JSON.stringify({ number: 7, html_url: "https://example.test/pr/7" });
-  const fakeIo = () => ({ git: vi.fn(() => "d".repeat(40)), run: vi.fn(() => created), commit: vi.fn(() => "e".repeat(40)) });
+  const fakeIo = () => ({ git: vi.fn(() => "d".repeat(40)), run: vi.fn(() => created), commit: vi.fn(() => "e".repeat(40)), existing: vi.fn(() => null) });
   const base = { repo: "owner/repo", branch: null };
 
   it("sends gh writes through agent-chat gh-write", () => {
@@ -58,6 +59,35 @@ describe("smoke-fix-proof gh writes", () => {
     expect(io.run).toHaveBeenCalledTimes(1);
     expect(io.run.mock.calls[0][0]).toBe("agent-chat");
     expect(io.run.mock.calls[0][1].slice(0, 5)).toEqual(["gh-write", "--", "api", "-X", "POST"]);
+  });
+
+  it("opens a non-draft PR whose body leads with the never-merge notice", () => {
+    const io = fakeIo();
+
+    openFixture(base, io);
+
+    const args = io.run.mock.calls[0][1];
+    expect(args).not.toContain("draft=true");
+    expect(args.find((arg) => arg.startsWith("body="))).toMatch(/^body=never merge: TP-538 fix-proof smoke fixture/);
+  });
+
+  it("marks an existing draft PR on the branch ready instead of opening another", () => {
+    const io = { ...fakeIo(), existing: vi.fn(() => ({ number: 9, isDraft: true, url: "https://example.test/pr/9" })) };
+
+    const fixture = openFixture({ ...base, branch: "fix/tp-538-fixture-abc123" }, io);
+
+    expect(io.run).toHaveBeenCalledTimes(1);
+    expect(io.run.mock.calls[0][1]).toEqual(["gh-write", "--", "pr", "ready", "9", "--repo", "owner/repo"]);
+    expect(fixture.pr).toBe(9);
+  });
+
+  it("reuses an existing non-draft PR on the branch without any write", () => {
+    const io = { ...fakeIo(), existing: vi.fn(() => ({ number: 9, isDraft: false, url: "https://example.test/pr/9" })) };
+
+    const fixture = openFixture({ ...base, branch: "fix/tp-538-fixture-abc123" }, io);
+
+    expect(io.run).not.toHaveBeenCalled();
+    expect(fixture.pr).toBe(9);
   });
 
   it("opens the PR from an existing branch without pushing", () => {
