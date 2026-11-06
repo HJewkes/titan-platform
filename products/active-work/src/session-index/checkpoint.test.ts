@@ -1,6 +1,8 @@
+import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { discoverTranscripts, type DiscoveredTranscript } from '@titan-design/session-read';
@@ -115,6 +117,27 @@ describe('index checkpoints run off the event loop', () => {
     expect(result.indexed).toBe(TRANSCRIPTS);
     expect(state.turnsInFlight).toBeGreaterThan(0);
     expect(databaseFileBytes()).toBeGreaterThan(bytesBefore);
+  });
+
+  it('an unstopped checkpointer does not keep the process alive', () => {
+    const script = `
+      const Database = require('better-sqlite3');
+      import(process.env.CP_MODULE).then(({ startCheckpointer }) => {
+        startCheckpointer(new Database(process.env.CP_DB), { onError: (err) => { throw err; } });
+      });
+    `;
+    const child = spawnSync(process.execPath, ['-e', script], {
+      cwd: path.dirname(fileURLToPath(import.meta.url)),
+      env: {
+        ...process.env,
+        CP_MODULE: pathToFileURL(path.join(path.dirname(fileURLToPath(import.meta.url)), 'checkpoint.ts')).href,
+        CP_DB: path.join(dir, 'child.sqlite3'),
+      },
+      timeout: 15_000,
+    });
+
+    expect(child.error).toBeUndefined();
+    expect(child.status).toBe(0);
   });
 
   it('a worker that fails hands checkpointing back to the connection', async () => {
