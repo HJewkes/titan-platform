@@ -61,3 +61,22 @@ describe("active-work upstream timing", () => {
     await expect(activeWorkClient(daemon.port, 5000, recorder).read("loops", {})).resolves.toEqual({ open: [] });
   });
 });
+
+describe("task.list wire status", () => {
+  const row = (id: string, status: string) => ({ slug: "synthetic-initiative", id, title: id, priority: 1, status, updated: "2031-01-05" });
+
+  it("parses a wont-do task and an icebox task beside open and done ones", async () => {
+    const tasks = [row("XY-1", "open"), row("XY-2", "done"), row("XY-3", "wont-do"), row("XY-4", "icebox")];
+    daemon = await startFakeDaemon({ ok: true }, () => ({ tasks }));
+
+    const answer = await activeWorkClient(daemon.port).read("task.list", { slug: "synthetic-initiative", status: "all" });
+
+    expect(answer.tasks.map((entry) => entry.status)).toEqual(["open", "done", "wont-do", "icebox"]);
+  });
+
+  it("still rejects a status the registry does not list", async () => {
+    daemon = await startFakeDaemon({ ok: true }, () => ({ tasks: [row("XY-5", "parked")] }));
+
+    await expect(activeWorkClient(daemon.port).read("task.list", { slug: "synthetic-initiative" })).rejects.toThrow();
+  });
+});
