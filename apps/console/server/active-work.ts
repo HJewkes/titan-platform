@@ -6,7 +6,7 @@ import { loopBoard, loopTierWire } from "./loop-board.js";
 import { timedFetch, type UpstreamObserver } from "./perf/timed-fetch.js";
 
 /** The statuses the category registry must list (`@titan-design/pm` requires all four); `wont-do` is closed, the rest are live. */
-export const TASK_STATUSES = ["open", "done", "wont-do", "icebox"] as const;
+const TASK_STATUSES = ["open", "done", "wont-do", "icebox"] as const;
 export const CLOSED_TASK_STATUSES: ReadonlySet<string> = new Set(["done", "wont-do"]);
 
 const stat = z.object({ files: z.number(), bytes: z.number(), newest_mtime: z.string().nullable() });
