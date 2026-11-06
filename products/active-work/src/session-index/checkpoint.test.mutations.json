@@ -22,8 +22,8 @@
     {
       "name": "the worker never checkpoints",
       "file": "products/active-work/src/session-index/checkpoint.ts",
-      "find": "  db.pragma('wal_checkpoint(PASSIVE)');\n}",
-      "replace": "}",
+      "find": "  db.pragma('wal_checkpoint(PASSIVE)');\n  parentPort.postMessage('end');\n}",
+      "replace": "  parentPort.postMessage('end');\n}",
       "kills": [
         "index checkpoints run off the event loop the loop keeps turning while a checkpoint is in flight in the worker"
       ]

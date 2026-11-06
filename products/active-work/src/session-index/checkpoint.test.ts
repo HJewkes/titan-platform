@@ -84,23 +84,21 @@ describe('index checkpoints run off the event loop', () => {
     // Counting loop turns inside the worker's slow checkpoint, rather than timing the
     // pass, makes the check independent of runner speed: a checkpoint that blocked the
     // loop would leave no turn between its start and end reports.
-    let inFlight = false;
-    let turnsInFlight = 0;
-    let running = true;
+    const state = { inFlight: false, turnsInFlight: 0, running: true };
     const waiters: Array<(phase: 'start' | 'end') => void> = [];
     const nextPhase = (): Promise<'start' | 'end'> => new Promise((resolve) => waiters.push(resolve));
     const checkpointer = startCheckpointer(graph.db, {
       intervalMs: 50,
       simulatedFsyncMs: SLOW_FSYNC_MS,
       onCheckpoint: (phase) => {
-        inFlight = phase === 'start';
+        state.inFlight = phase === 'start';
         for (const waiter of waiters.splice(0)) waiter(phase);
       },
     });
     const pump = (async () => {
-      while (running) {
+      while (state.running) {
         await new Promise<void>((resolve) => setImmediate(resolve));
-        if (inFlight) turnsInFlight += 1;
+        if (state.inFlight) state.turnsInFlight += 1;
       }
     })();
     const transcripts = await writeCorpus();
@@ -108,14 +106,14 @@ describe('index checkpoints run off the event loop', () => {
 
     const result = await runRefresh({ graph, mode: 'delta', transcripts, taskRoot: dir, skipWorkspace: true });
     while ((await nextPhase()) !== 'start');
-    turnsInFlight = 0;
+    state.turnsInFlight = 0;
     while ((await nextPhase()) !== 'end');
-    running = false;
+    state.running = false;
     await pump;
     await checkpointer.stop();
 
     expect(result.indexed).toBe(TRANSCRIPTS);
-    expect(turnsInFlight).toBeGreaterThan(0);
+    expect(state.turnsInFlight).toBeGreaterThan(0);
     expect(databaseFileBytes()).toBeGreaterThan(bytesBefore);
   });
 
