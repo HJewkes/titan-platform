@@ -3,6 +3,7 @@ import type { StepResult, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
 import { SEND_BACK } from "../gate-brief.js";
+import { ESCALATION_TABLE } from "../merge-up-approval.js";
 import { ownerAtHeadRowsIn, type OwnerAtHeadRow } from "../owner-at-head.js";
 import { SET_ANSWER_ORIGIN, step } from "../workflows/land.js";
 import { approvedSetFollow, spendOnOwnerAnswer, type SetCarry } from "./approved-set-carry.js";
@@ -15,8 +16,6 @@ import { visualMatches } from "./visual-gate.js";
 
 /** Land's own merge question; a conflict, release or other gate that shares the step id asks something else. */
 const LAND_GATE = /^Merge PR #\d+ in \S+ at head ([0-9a-f]{40})(?: into (\S+))?\? CI is green\. Policy ([\w-]+)\/([\w-]*)/;
-/** An escalation (failed rounds, a runaway fixer) is a decision about the run, so it never follows a head. */
-const ESCALATION_TABLE = "shepherd-route";
 
 const MergeAnswer = z.looseObject({ decision: z.literal("merge"), headSha: z.string() });
 /** The owner's later word on the PR: an earlier approval no longer follows to the fixer's next head. */

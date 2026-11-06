@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, githubPort, successRun } from "@titan-design/github";
@@ -16,18 +16,20 @@ import { readPath } from "./narrow.js";
 import { fakeOwnerHelper } from "./test-support/owner-edges.js";
 
 const REPO = "acme/widgets";
-const REASON = "the authority policy did not allow an automated merge: CI-policy weakened: other";
+const REASON = "the authority policy did not allow an automated merge: MRG-AU gates merge by automation; MRG-AU-RV unmet: seat-grant";
+const OWNER_GATE = "authority/MRG-AU";
 const AGENT_SHELL = { AGENT_CHAT_AGENT_ID: "agent-1", AGENT_CHAT_NAME: "tc-synthetic" };
 const NOW = Date.parse("2026-11-06T21:00:00Z");
 const Heads = z.array(z.string());
 
-/** A stand-in for land: asks to merge at the first head, and once that gate is answered or cancelled, at the second. */
+/** A stand-in for land: asks to merge at the first head, and once that gate is answered or cancelled, at the second, under `rules`. */
 const landTwice = defineWorkflow({
   name: "shepherd-pr",
   steps: [{ id: "approve-merge", kind: "assisted" }],
   run: async (ctx) => {
-    for (const head of Heads.parse(JSON.parse(ctx.param("heads")!))) {
-      const prompt = `Merge PR #1 in ${REPO} at head ${head} into main? CI is green. Policy shepherd-merge-guard/ci-policy-weakened: ${REASON}`;
+    const rules = Heads.parse(JSON.parse(ctx.param("rules")!));
+    for (const [index, head] of Heads.parse(JSON.parse(ctx.param("heads")!)).entries()) {
+      const prompt = `Merge PR #1 in ${REPO} at head ${head} into main? CI is green. Policy ${rules[index]}: ${REASON}`;
       await ctx.assisted("approve-merge", prompt, { ...approveMergeDecision({ repo: REPO, pr: 1, headSha: head, reason: REASON, reviewedMerge: true }), recordCancel: true });
     }
   },
@@ -61,10 +63,10 @@ function repoWithMergeUps(root: string, ups: number): { origin: string; approved
   return { origin, approved, head: git("rev-parse", "feature") };
 }
 
-async function pausedAt(heads: readonly string[], origin: string, root: string): Promise<World> {
+async function pausedAt(heads: readonly string[], origin: string, root: string, rules = [OWNER_GATE, OWNER_GATE]): Promise<World> {
   const host = openFactoryHost({ dbPath: join(root, "factory.sqlite3"), workflows: [landTwice], routes: [], gatePollMs: 10 });
   cleanups.push(() => host.close());
-  const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", heads: JSON.stringify(heads) });
+  const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", heads: JSON.stringify(heads), rules: JSON.stringify(rules) });
   await vi.waitFor(() => expect(host.runtime.status(runId)?.status).toBe("paused"));
   const gh = fakeGitHub({ repo: REPO });
   gh.addPr({ headSha: heads.at(-1)! });
@@ -114,7 +116,7 @@ describe("coordinator resolve of a land gate whose head moved only by clean merg
     expect(result).toMatchObject({ code: 0, out: expect.stringContaining("as coordinator tc-synthetic on merge-up-approval evidence") });
     const gate = w.host.gates.get(gateId);
     expect(gate).toMatchObject({ status: "resolved", resolvedBy: { class: "coordinator", id: "tc-synthetic" } });
-    expect(gate?.resolvedEvidence).toMatchObject({ kind: "merge-up-approval", approval: { gateId: `${w.runId}/approve-merge`, head: approved, resolverClass: "owner-terminal" } });
+    expect(gate?.resolvedEvidence).toMatchObject({ kind: "merge-up-approval", approval: { gateId: `${w.runId}/approve-merge`, head: approved, resolverClass: "owner-terminal", rule: OWNER_GATE, ownerAtHead: null } });
     expect(readPath(gate?.resolvedEvidence, "mergeUps")).toHaveLength(ups);
   });
 
@@ -131,6 +133,44 @@ describe("coordinator resolve of a land gate whose head moved only by clean merg
 
     expect(result.code).toBe(1);
     expect(result.err).toContain(`no merge-up approval: ${head} has 1 parent(s), not the two of a merge-up`);
+    expect(w.host.gates.get(gateId)?.status).toBe("pending");
+  });
+
+  it("refuses with the reason when a merge-up brings a carry-fenced path from main", async () => {
+    const { root, origin, approved, head } = world(1, (git) => {
+      const top = git("rev-parse", "--show-toplevel");
+      git("checkout", "-q", "main");
+      mkdirSync(join(top, ".github"));
+      writeFileSync(join(top, ".github", "ci.yml"), "on: push\n");
+      git("add", ".github");
+      git("commit", "-q", "-m", "ci");
+      git("checkout", "-q", "feature");
+      git("merge", "-q", "--no-ff", "--no-edit", "main");
+    });
+    const w = await pausedAt([approved, head], origin, root);
+    const gateId = await ownerApproves(w, approved);
+    fakeOwnerHelper(undefined);
+
+    const result = await resolve(w, { decision: "merge", headSha: head }, AGENT_SHELL);
+
+    expect(result.err).toContain(`no merge-up approval: ${head} brings 1 fenced path(s) from main: .github/ci.yml`);
+    expect(w.host.gates.get(gateId)?.status).toBe("pending");
+  });
+
+  it.each([
+    ["a ci-policy-weakened gate", [OWNER_GATE, "shepherd-merge-guard/ci-policy-weakened"], "the gate is ci-policy-weakened"],
+    ["an escalation", [OWNER_GATE, "shepherd-route/fix-first-runaway"], "the gate is shepherd-route/fix-first-runaway"],
+    ["a gate after an owner answer on a ci-policy-weakened gate", ["shepherd-merge-guard/ci-policy-weakened", OWNER_GATE], "no owner merge answer"],
+    ["a gate after an owner answer on an escalation", ["shepherd-route/failed-rounds", OWNER_GATE], "no owner merge answer"],
+  ])("refuses %s, whose answer never follows a head", async (_case, rules, reason) => {
+    const { root, origin, approved, head } = world(1);
+    const w = await pausedAt([approved, head], origin, root, rules);
+    const gateId = await ownerApproves(w, approved);
+    fakeOwnerHelper(undefined);
+
+    const result = await resolve(w, { decision: "merge", headSha: head }, AGENT_SHELL);
+
+    expect(result.err).toContain(`no merge-up approval: ${reason}`);
     expect(w.host.gates.get(gateId)?.status).toBe("pending");
   });
 

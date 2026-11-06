@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gitIn, seedRepo, withHistory } from "@titan-design/test-kit/git";
@@ -91,6 +91,17 @@ describe("readMergeUpChain", { timeout: 60_000 }, () => {
     const head = git("rev-parse", "HEAD");
 
     expect(await read(approved, head)).toEqual({ ok: false, reason: `${head} changes more than the merge of ${git("rev-parse", "main")} brought` });
+  });
+
+  it("refuses a clean merge-up that brings a repo skill from main", async () => {
+    const approved = approvedHead();
+    mkdirSync(join(origin, ".claude", "skills", "land"), { recursive: true });
+    commitOn("main", ".claude/skills/land/SKILL.md", "skill\n");
+    git("checkout", "-q", "feature");
+    git("merge", "-q", "--no-ff", "--no-edit", "main");
+    const head = git("rev-parse", "HEAD");
+
+    expect(await read(approved, head)).toEqual({ ok: false, reason: `${head} brings 1 fenced path(s) from main: .claude/skills/land/SKILL.md` });
   });
 
   it("refuses a merge whose second parent is not on main", async () => {

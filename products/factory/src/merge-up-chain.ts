@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { MERGE_UP_APPROVAL, type MergeUpCommit } from "./merge-up-approval.js";
+import { MERGE_UP_APPROVAL, isMergeUpFencedPath, type MergeUpCommit } from "./merge-up-approval.js";
+import { changedPathsBetween } from "./shepherd/changed-paths.js";
 import { isRepoKey } from "./shepherd/seats.js";
 import {
   BranchName,
@@ -30,7 +31,8 @@ const refused = (reason: string): MergeUpChain => ({ ok: false, reason });
 /**
  * Reads, from a fresh fetch, whether `head` is `fromHead` plus only clean merge-ups of `baseRef`. Each commit on the
  * first-parent line must have two parents, the first the previous commit, the second on the base branch, and a tree equal
- * to `git merge-tree` of the two. Any other shape is refused with its reason, and any git failure is refused too.
+ * to `git merge-tree` of the two, bringing no carry-fenced or skill path. Any other shape is refused with its reason, and any
+ * git failure is refused too.
  */
 export async function readMergeUpChain(raw: MergeUpChainInput, options: CarryOptions = {}): Promise<MergeUpChain> {
   const parsed = MergeUpChainInput.safeParse(raw);
@@ -76,5 +78,8 @@ async function mergeUp(git: Git, dir: string, baseRef: string, sha: string, prev
   const mergeTree = merged.stdout.trim().split("\n")[0] ?? "";
   const tree = await must(git, dir, ["rev-parse", `${sha}^{tree}`], signal);
   if (tree !== mergeTree) return `${sha} changes more than the merge of ${secondParent} brought`;
-  return { sha, firstParent, secondParent, secondParentOnBase: true, tree, mergeTree };
+  const paths = await changedPathsBetween(git, dir, firstParent, sha, signal);
+  const fenced = paths.filter(isMergeUpFencedPath);
+  if (fenced.length > 0) return `${sha} brings ${fenced.length} fenced path(s) from ${baseRef}: ${fenced.join(", ")}`;
+  return { sha, firstParent, secondParent, secondParentOnBase: true, tree, mergeTree, paths };
 }

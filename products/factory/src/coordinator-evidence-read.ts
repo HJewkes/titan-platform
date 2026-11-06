@@ -2,7 +2,7 @@ import { GITHUB_ACTIONS_APP_ID, headCheckFindings, withoutSupersededCancels, typ
 import type { GateRecord, GateResolver } from "@titan-design/hitl";
 import type { WorkflowRun } from "@titan-design/workflow";
 import { verdictAt } from "./verdict-at.js";
-import { MERGE_UP_APPROVAL } from "./merge-up-approval.js";
+import { MERGE_UP_APPROVAL, gateMayFollowHead } from "./merge-up-approval.js";
 import { readMergeUpChain, type MergeUpChain, type MergeUpChainInput } from "./merge-up-chain.js";
 import { readPath } from "./narrow.js";
 import {
@@ -20,6 +20,7 @@ import {
   mainGate,
   mergeableOf,
   offersAbandon,
+  ownerAtHeadRow,
   stepOf,
   type CheckRunFact,
   type CoordinatorEvidence,
@@ -84,16 +85,17 @@ type Approval = Extract<CoordinatorEvidence, { kind: "merge-up-approval" }>["app
 /**
  * The owner's merge answer the gate's head may follow from: the newest answered land gate of the run before this one, when
  * an owner class answered `merge` at the head it asked, on the same PR and base. A coordinator's merge that itself followed
- * merge-ups leads back to that answer; any other answer ends the search with none.
+ * merge-ups leads back to that answer; any other answer, an escalation or a D21 gate ends the search with none.
  */
 function ownerApproval(host: FactoryHost, gate: GateRecord, land: LandGate, base: string): Approval | undefined {
   for (const prior of earlierLandGates(host, gate.id)) {
     if (prior.status !== "resolved") continue;
     const asked = landGate(prior);
+    const ownerAtHead = ownerAtHeadRow(prior);
     const merged = readPath(prior.payload, "decision") === "merge" && readPath(prior.payload, "headSha") === asked?.head;
-    if (!asked || !merged || asked.repo !== land.repo || asked.pr !== land.pr || landGateBase(prior.prompt) !== base) return undefined;
+    if (!asked || !merged || !gateMayFollowHead(asked.rule, ownerAtHead) || asked.repo !== land.repo || asked.pr !== land.pr || landGateBase(prior.prompt) !== base) return undefined;
     const by = prior.resolvedBy?.class ?? "";
-    if (MERGE_UP_APPROVAL.approvedBy.includes(by)) return { gateId: prior.id, head: asked.head, resolverClass: by };
+    if (MERGE_UP_APPROVAL.approvedBy.includes(by)) return { gateId: prior.id, head: asked.head, resolverClass: by, rule: asked.rule, ownerAtHead: null };
     if (by !== "coordinator" || readPath(prior.resolvedEvidence, "kind") !== "merge-up-approval") return undefined;
   }
   return undefined;
@@ -117,6 +119,8 @@ async function readMergeUpApproval(host: FactoryHost, sources: EvidenceSources, 
   const land = landGate(gate);
   const base = landGateBase(gate.prompt);
   if (!land || base === undefined || !sources.mergeUpChain) return refuse("the gate names no land head and base, or no git reader is bound");
+  const ownerAtHead = ownerAtHeadRow(gate);
+  if (!gateMayFollowHead(land.rule, ownerAtHead)) return refuse(`the gate is ${ownerAtHead ?? land.rule}, which the owner answers at its own head`);
   const approval = ownerApproval(host, gate, land, base);
   if (!approval) return refuse("no owner merge answer on an earlier land gate of this run");
   const pull = await sources.port.getPr(land.repo, land.pr);

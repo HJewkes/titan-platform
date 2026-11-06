@@ -2,7 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import { isPassingConclusion } from "@titan-design/github";
 import { checkAgainstJsonSchema, type GateEvidencePolicy, type GateRecord } from "@titan-design/hitl";
 import { z } from "zod";
-import { MERGE_UP_APPROVAL, MergeUpCommit, isMergeUpChain } from "./merge-up-approval.js";
+import { MERGE_UP_APPROVAL, MergeUpCommit, gateMayFollowHead, isMergeUpChain } from "./merge-up-approval.js";
 import { isOwnerAtHeadRow, ownerAtHeadRowsIn } from "./owner-at-head.js";
 import { escalationReason } from "./shepherd/route-table.js";
 import { headGateAsks } from "./shepherd/stale-gates.js";
@@ -20,8 +20,9 @@ import { readPath } from "./narrow.js";
  * TP-4760) adds an approve-merge under the CI-policy budget row, on the same merge evidence. Owner decision 552 (3, TP-4759)
  * adds a respawn, replan or abandon of an `sh-dead-end` gate, by the one seat it was addressed to, while the PR is open at
  * the gate's head. Owner decision 556 (3, TP-4791) adds an approve-merge whose head moved only by verified clean merge-ups
- * since the owner's own merge answer on that run (merge-up-approval.ts). Every other gate, a visual or seat owner-gate
- * merge, and a round pick stay the owner's.
+ * since the owner's own merge answer on that run (merge-up-approval.ts), so a visual or seat owner-gate merge the owner
+ * already answered may follow those merge-ups; neither gate may be an escalation or hold a D21 row, and no merge-up may
+ * bring a fenced path. Every other gate, any other visual or seat owner-gate merge, and a round pick stay the owner's.
  */
 
 const SHA = z.string().regex(/^[0-9a-f]{40}$/);
@@ -108,7 +109,8 @@ const SeatDeadEndEvidence = z.strictObject({
 /** The owner's merge answer on an earlier land gate of the run, and the merge-ups from that head to this gate's, as read now. */
 const MergeUpApprovalEvidence = z.strictObject({
   ...{ kind: z.literal("merge-up-approval"), gateId: z.string(), repo: REPO, pr: PR, headSha: SHA, base: z.string() },
-  approval: z.strictObject({ gateId: z.string(), head: SHA, resolverClass: z.string() }),
+  /** The approving gate's policy rule and D21 row as read off it, so the store's audit refuses an approval that may not follow. */
+  approval: z.strictObject({ gateId: z.string(), head: SHA, resolverClass: z.string(), rule: z.string(), ownerAtHead: z.string().nullable() }),
   mergeUps: z.array(MergeUpCommit),
   checks: MergeEvidence.shape.checks,
   pull: z.strictObject({ state: z.string(), headSha: SHA, baseRef: z.string() }),
@@ -292,10 +294,14 @@ function requiredGreen(checks: Of<"approve-merge">["checks"], head: string): boo
 const earlierGateOfRun = (approvalGateId: string, gateId: string): boolean =>
   approvalGateId !== gateId && stepOf(approvalGateId) === MERGE_GATE && approvalGateId.slice(0, approvalGateId.indexOf("/")) === gateId.slice(0, gateId.indexOf("/"));
 
-/** Rule 461 under decision 556(3): the owner's approval stands across clean merge-ups, and CI re-runs at the new head. */
+/**
+ * Rule 461 under decision 556(3): the owner's approval stands across clean merge-ups, and CI re-runs at the new head. Neither
+ * the gated nor the approving gate may be one whose answer never follows a head (`gateMayFollowHead`).
+ */
 function mergeUpAdmits(gate: GateRecord, payload: unknown, evidence: Of<"merge-up-approval">): boolean {
   const land = landGate(gate);
   if (!land || !isDeepStrictEqual(payload, { decision: "merge", headSha: land.head })) return false;
+  if (!gateMayFollowHead(land.rule, ownerAtHeadRow(gate)) || !gateMayFollowHead(evidence.approval.rule, evidence.approval.ownerAtHead ?? undefined)) return false;
   const named = gate.prompt.split("\n", 1)[0]!.includes(` at head ${land.head} into ${evidence.base}? `);
   if (evidence.repo !== land.repo || evidence.pr !== land.pr || evidence.headSha !== land.head || !named) return false;
   const { approval, pull } = evidence;
