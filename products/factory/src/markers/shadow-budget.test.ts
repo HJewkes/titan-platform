@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { StepRoute, WorkflowRun } from "@titan-design/workflow";
 import { defineWorkflow, type WorkflowDefinition } from "../definition.js";
 import { advanceEpoch } from "../head-guard/epoch-store.js";
+import { unlessPast } from "../runner/not-after.js";
 import { openFactoryHost, type FactoryHostOptions } from "../host.js";
 import { markerHistory } from "./marker-store.js";
 import type { ShadowEvent } from "./shadow.js";
@@ -36,6 +37,20 @@ const threeCalls = (gate: boolean): WorkflowDefinition => defineWorkflow({
     await ctx.dispatch("sh-await-verdict", "await", { schema });
     if (!gate) return void (await ctx.dispatch("sh-await-verdict", "await", { schema }));
     await ctx.assisted("fixture-approve", "Land it?", { brief: { summary: "Land the fixture PR? Nothing else waits on it.", evidenceRef: "$ git log -1" } });
+  },
+});
+
+/** Two live advisory points after a first step that meets no fact, then two inserted steps each declaring notAfter on the fact `settle` meets. */
+const advisory = defineWorkflow({
+  name: "advisory",
+  steps: [
+    { id: "prepare", kind: "seed" },
+    { id: "late-one", kind: "seed", notAfter: "landed" },
+    { id: "late-two", kind: "seed", notAfter: "landed" },
+  ],
+  run: async (ctx) => {
+    await unlessPast(ctx, "late-one", () => ctx.seed("late-one", async () => ({ data: {} })));
+    await unlessPast(ctx, "late-two", () => ctx.seed("late-two", async () => ({ data: {} })));
   },
 });
 
@@ -110,5 +125,31 @@ describe("the per-entry replay budget", () => {
     expect(ofKind(events, "budget-exceeded").map((event) => [event.stepId, event.counters.shadowMs])).toEqual([["ci-wait", 3_000]]);
     expect(ofKind(events, "entry-end")[0]?.counters.shadowMs).toBe(3_000);
     host.close();
+  });
+
+  describe("the notAfter advisory evaluation", () => {
+    async function advisoryEvents(entryBudget?: { evaluations: number; shadowMs: number }): Promise<ShadowEvent[]> {
+      const events: ShadowEvent[] = [];
+      const host = openFactoryHost({ dbPath: dbFile(), workflows: [advisory], registry: { entries: [{ name: "prepare", op: "seed" }, { name: "late-one", op: "seed" }, { name: "late-two", op: "seed" }, { name: "settle", op: "seed", fact: "landed" }] }, routes, now: () => T0, markerShadow: { sink: (event) => void events.push(event), ...(entryBudget ? { entryBudget } : {}) } });
+      const id = host.runtime.start("advisory", PARAMS);
+      await vi.waitFor(() => expect(host.runtime.status(id)?.status).toBe("completed"));
+      await vi.waitFor(() => expect(ofKind(events, "entry-end")).toHaveLength(1));
+      host.close();
+      return events;
+    }
+
+    it("an advisory evaluation is counted in the entry-end counters", async () => {
+      const events = await advisoryEvents();
+
+      expect(ofKind(events, "entry-end")[0]?.counters.evaluations).toBe(2);
+      expect(ofKind(events, "budget-exceeded")).toEqual([]);
+    });
+
+    it("a spent meter skips the advisory evaluation and writes one budget-exceeded", async () => {
+      const events = await advisoryEvents({ evaluations: 1, shadowMs: 60_000 });
+
+      expect(ofKind(events, "budget-exceeded")).toEqual([expect.objectContaining({ stepId: "late-one" })]);
+      expect(ofKind(events, "entry-end")[0]?.counters.evaluations).toBe(1);
+    });
   });
 });
