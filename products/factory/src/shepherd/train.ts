@@ -5,6 +5,7 @@ import { z } from "zod";
 import { redactForEvidence } from "../redact.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { HOLD_POLL_MS, type HeldCheck, type HoldTiming } from "./hold-timing.js";
+import { isoAt, wallClock } from "../time-iso.js";
 
 /** Only shepherd-pr runs ride the train; they are the runs that leave it again after every land round. */
 export const TRAIN_WORKFLOW = "shepherd-pr";
@@ -47,7 +48,7 @@ export class MergeTrain {
 
   constructor(
     private readonly db: Db,
-    private readonly now: () => number = Date.now,
+    private readonly now: () => number = wallClock,
   ) {
     this.runs = new WorkflowRunStore(db);
   }
@@ -59,7 +60,7 @@ export class MergeTrain {
 
   /** Takes the train from `from`, the holder read before, or from nobody when `from` is null; false when another run got there first. */
   take(repo: RepoSlug, runId: string, pr: number, from: string | null): boolean {
-    const at = new Date(this.now()).toISOString();
+    const at = isoAt(this.now());
     if (from === null) return this.db.prepare("INSERT INTO shepherd_train (repo, run_id, pr, since) VALUES (?, ?, ?, ?) ON CONFLICT (repo) DO NOTHING").run(repoKey(repo), runId, pr, at).changes === 1;
     return this.db.prepare("UPDATE shepherd_train SET run_id = ?, pr = ?, since = ? WHERE repo = ? AND run_id = ?").run(runId, pr, at, repoKey(repo), from).changes === 1;
   }
@@ -81,7 +82,7 @@ export interface MergeTrainRef {
   bind(db: Db): () => void;
 }
 
-export function mergeTrainRef(now: () => number = Date.now): MergeTrainRef {
+export function mergeTrainRef(now: () => number = wallClock): MergeTrainRef {
   let train: MergeTrain | undefined;
   return {
     get() {
@@ -119,7 +120,7 @@ type Boarding = { kind: "riding" } | { kind: "boarded"; waitedBehind: string | n
  * merges at once only when its head is still the one named and not behind; otherwise land reads CI and updates first.
  */
 export function rideTrain(route: StepRoute, deps: TrainDeps): StepRoute {
-  const now = deps.timing.now ?? Date.now;
+  const now = deps.timing.now ?? wallClock;
   return {
     ...route,
     runner: {

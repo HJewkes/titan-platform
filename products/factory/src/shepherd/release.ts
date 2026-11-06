@@ -15,6 +15,8 @@ import type { EffectivePolicy, MergeMode } from "./policy-schema.js";
 import { RELEASE_FOLLOW_STEP, followRelease, npmVersionRegistry, type VersionRegistry } from "./release-follow.js";
 import type { ShepherdStore } from "./store.js";
 import { readPath } from "../narrow.js";
+import { ambientFetch } from "../ambient-fetch.js";
+import { parseIsoMs, wallClock } from "../time-iso.js";
 
 /** The branch the changesets action opens its "Version Packages" pull request from. */
 export const VERSION_PACKAGES_BRANCH = "changeset-release/main";
@@ -45,7 +47,7 @@ const REGISTRY_TIMEOUT_MS = 10_000;
 const LatestVersion = z.looseObject({ _npmUser: z.looseObject({ trustedPublisher: z.unknown().optional() }).optional() });
 const TrustedPublisher = z.looseObject({ id: z.string().min(1) });
 
-export function npmRegistry(fetchImpl: typeof fetch = fetch): PackageRegistry {
+export function npmRegistry(fetchImpl: typeof fetch = ambientFetch): PackageRegistry {
   return async (name) => {
     const response = await fetchImpl(`https://registry.npmjs.org/${name.replace("/", "%2f")}/latest`, { signal: AbortSignal.timeout(REGISTRY_TIMEOUT_MS) });
     if (response.status === 404) return "missing";
@@ -314,13 +316,13 @@ export function releaseLandOptions(effective: () => EffectivePolicy, verdictFor:
 }
 
 /** Each main push regenerates the Version Packages PR, so while one is ready the repo's other Shepherd merges wait for it to land. */
-export function releaseGuard(registrations: () => ShepherdStore, now: () => number = Date.now): FreezeGuard {
+export function releaseGuard(registrations: () => ShepherdStore, now: () => number = wallClock): FreezeGuard {
   return {
     async reason(port, repo, pr) {
       const release = registrations().byBranch(repo, VERSION_PACKAGES_BRANCH);
       const ready = release?.releaseReady;
       if (!release || release.pr === null || release.pr === pr || !ready) return undefined;
-      if (now() - Date.parse(ready.at) > RELEASE_FREEZE_MS) return undefined;
+      if (now() - parseIsoMs(ready.at) > RELEASE_FREEZE_MS) return undefined;
       const live = await port.getPr(repo, release.pr);
       if (live.state !== "open" || live.headSha !== ready.head) return undefined;
       return `the Version Packages PR #${release.pr} is ready at ${ready.head} and lands first`;
