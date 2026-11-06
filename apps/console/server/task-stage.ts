@@ -1,3 +1,5 @@
+import { CLOSED_TASK_STATUSES, type WireTask } from "./active-work.js";
+
 // A copy of titan-design's `TaskStage` (packages/ui/src/components/custom/ActiveWork/task-stage.ts), which no released
 // @titan-design/react-ui exports yet. Swap this for `import type { TaskStage } from "@titan-design/react-ui"` once the
 // console's pinned react-ui carries it; task-stage.test.ts fails while the two lists differ.
@@ -16,7 +18,7 @@ interface StageVerdict {
 
 export interface StagedTask {
   id: string;
-  status: "open" | "done";
+  status: WireTask["status"];
   tags?: readonly string[];
   notes?: string;
   /** The task's dep edges as `@titan-design/pm`'s `readEdges` gives them, from the field or the edge tags. */
@@ -60,7 +62,7 @@ const verdict = (stage: TaskStage, rule: StageRule, reason: string): StageVerdic
 
 /** Rules in precedence order: done, review, in-progress, blocked, then ready with or without evidence. */
 export function deriveStage(task: StagedTask, evidence: StageEvidence): StageVerdict {
-  if (task.status === "done") return verdict("done", "status-done", "The task status is done");
+  if (CLOSED_TASK_STATUSES.has(task.status)) return verdict("done", "status-done", `The task status is ${task.status}`);
   const pr = evidence.openPrs.get(task.id)?.[0];
   if (pr) return verdict("review", "open-pr", `PR ${pr.repo}#${pr.number} is open (head ${pr.headRef})`);
   const ref = liveRef(task.id, evidence);
