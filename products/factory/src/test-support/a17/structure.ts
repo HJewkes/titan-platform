@@ -1,4 +1,4 @@
-import type { NotEvent } from "./not-event.js";
+import type { NotEvent } from "../../a17/not-event.js";
 
 interface A17Violation {
   readonly file: string;

@@ -4,7 +4,7 @@ import { parseVerdictBlock } from "@titan-design/session-read";
 import { z } from "zod";
 import { deadline } from "../workflows/deadline.js";
 import { bounded, type AwaitVerdictTiming } from "./await-verdict.js";
-import { redactCredentials } from "../redact.js";
+import { redactCredentials, redactHomePaths } from "../redact.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
 import { holdClassOf } from "./g10-release.js";
 import { clearReviewWait, noteReviewWait, transient } from "./review-wait.js";
@@ -14,7 +14,7 @@ import type { Registration } from "./store.js";
 import { awaitingTranscript, rosterTie, type SeatRow, type SeatTarget } from "./seat-tie.js";
 import { DamagedTranscriptError, ownRecordsNameOtherPr, reviewsThisPr, type NameRead } from "./seat-evidence.js";
 import type { SeatReader } from "./seat-reader.js";
-import { fixFirstFindings, namesTarget, type AwaitVerdictInput, type ReviewerAgent, type ReviewerMessage, type ReviewerReader, type ReviewTarget } from "@titan-design/review-panel";
+import { fixFirstFindings, followUpsFields, namesTarget, type AwaitVerdictInput, type ReviewerAgent, type ReviewerMessage, type ReviewerReader, type ReviewTarget } from "@titan-design/review-panel";
 
 /** The reviewer a hold waits on, from `hold --reviewer` alone; a name in the hold's reason text is never read as one. */
 export function externalReviewer(registration: Registration | undefined): string | undefined {
@@ -55,13 +55,13 @@ export function acceptExternalVerdict(input: ExternalVerdictInput, row: Reviewer
   if (!newest) return { kind: "none" };
   const { message, block } = newest;
   if (!block.ok) return { kind: "none", reason: "wait" };
-  const accepted = { kind: "verdict" as const, head: block.head, locator: message.locator, reviewer: { agentId: row.agentId, sessionId: row.sessionId } };
+  const accepted = { kind: "verdict" as const, head: block.head, locator: message.locator, reviewer: { agentId: row.agentId, sessionId: row.sessionId }, ...followUpsFields(message.text) };
   return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE", ...(block.ciPolicy && { ciPolicy: block.ciPolicy }) } : { ...accepted, verdict: "FIX_FIRST", text: fixFirstFindings(input, own, message.text), ...(block.closer && { closer: block.closer }) };
 }
 
-/** A name can span sessions; the last row the roster lists with a session holds it. */
+/** A name can span sessions; agent-chat's roster is newest-first, so the first row listed with a session holds it. ReviewerAgent carries no generation to rank by. */
 export function latestSession(name: string, roster: readonly ReviewerAgent[]): ReviewerAgent | undefined {
-  return roster.filter((agent) => agent.name === name && agent.sessionId !== "").at(-1);
+  return roster.find((agent) => agent.name === name && agent.sessionId !== "");
 }
 
 /**
@@ -150,13 +150,12 @@ const seatStem = (stem: string): string => stem.replace(SEAT_REVIEWER, "");
 
 const DETAIL_CHARS = 200;
 const URL_TEXT = /\bhttps?:\/\/\S+/g;
-const HOME_DIR = /\/(?:Users|home)\/[^/\s]+/g;
 
 /** agent-dispatch's errors carry the agent-chat CLI's own words, which say why it failed; any other error's text may hold anything, so it stays its class. */
 function failureText(error: unknown): string {
   const kind = failureOf(error);
   if (!(error instanceof DispatchError)) return kind;
-  const text = redactCredentials(consoleTextOf(error)).replace(URL_TEXT, "[url]").replace(HOME_DIR, "~").replace(/\s+/g, " ").trim();
+  const text = redactHomePaths(redactCredentials(consoleTextOf(error)).replace(URL_TEXT, "[url]")).replace(/\s+/g, " ").trim();
   if (text === "") return kind;
   return `${kind}: ${text.length <= DETAIL_CHARS ? text : `${text.slice(0, DETAIL_CHARS)}…`}`;
 }

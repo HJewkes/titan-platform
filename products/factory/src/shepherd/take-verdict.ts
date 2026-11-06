@@ -9,6 +9,7 @@ import { attestUnmetSteps } from "./attest-read.js";
 import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
 import { ciUnreadAsNone } from "./ci-unread.js";
 import { correctOnce } from "./correct-verdict.js";
+import { fileFollowUpsAt } from "./follow-ups-step.js";
 import { evidenceOrGate } from "./merge-evidence-gate.js";
 import type { MergeEvidenceInput } from "./merge-facts.js";
 import { grantWithheldOf, proofUnverifiedOf, type GrantStanding } from "./grant-withheld.js";
@@ -97,8 +98,22 @@ function limitHeld(ctx: WorkflowContext, target: ReviewTarget, result: AwaitedRe
  * final message gets one correction turn. A reviewer stopped by its account's usage limit, read on time, late or as the
  * correction's reply, is held on `account` until the reset, never handed to a fresh reviewer. An own MERGE a seat WAIT held
  * has its verdict already, so it is neither read late nor corrected. A scoped fix round's FIX_FIRST is checked against its scope.
+ * A settled verdict's Follow-ups block is filed here, so every caller, the panel's correctness member included, files it.
  */
 export async function takeAwaited(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined, account: string, scope?: ScopeRound): Promise<{ held: Verdict } | { awaited: AwaitedResult }> {
+  const taken = await settleAwaited(ctx, target, awaiting, dispatchedReviewer, account, scope);
+  if (!("held" in taken)) await fileFollowUpsAt(ctx, target, taken.awaited);
+  return taken;
+}
+
+async function settleAwaited(
+  ctx: WorkflowContext,
+  target: ReviewTarget,
+  awaiting: AwaitVerdictInput | ExternalAwaiting,
+  dispatchedReviewer: AgentIdentity | undefined,
+  account: string,
+  scope?: ScopeRound,
+): Promise<{ held: Verdict } | { awaited: AwaitedResult }> {
   const onTime = await step(ctx, `${AWAIT_VERDICT_STEP}:${target.head}`, awaiting, Awaited);
   const heldOnTime = limitHeld(ctx, target, onTime, dispatchedReviewer, account);
   if (heldOnTime) return { held: await heldOnTime };

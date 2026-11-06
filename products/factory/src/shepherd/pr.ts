@@ -21,6 +21,7 @@ import { checkedBaseTap, shepherdLandOptions } from "./policy.js";
 import { shepherdPrParams, type ShepherdPrParams } from "./pr-params.js";
 import { g10ReleaseRoutes, releaseBeforeLeaving, releaseG10Hold } from "./g10-release.js";
 import { g10ReholdRoutes, reholdMovedHead } from "./g10-rehold.js";
+import { g10ReclassRoutes, reclassAtCiRead } from "./g10-reclass.js";
 import { narrowToRegistration, registrationPolicy } from "./registration-policy.js";
 import { type AfterStage, postMergeRoutes, shepherdMainCi } from "./post-merge.js";
 import { npmRegistry, releaseFollowStep, releaseLandOptions, releasePreflightAt, releaseRoutes, releaseVerdict, type PackageRegistry } from "./release.js";
@@ -34,7 +35,8 @@ import { LeaveLand, untilLeft } from "./leave-land.js";
 import { observePr, observeRoute } from "./observe.js";
 import { recordedRoute } from "./recorded-route.js";
 import { newCauseTrail, noteCarryStep, takeCause, tapped, type CarryProbe, type CauseTrail } from "./review-cause.js";
-import { clearSuperseded, expireStaleGates, supersedingGates } from "./stale-gates.js";
+import { expireStaleGates } from "./stale-gates.js";
+import { shepherdSuperseding } from "./superseding.js";
 import { recordingOverrides } from "./override-gate.js";
 import { outcomeRoutes, recordLanded, recordOverride, recordStopped } from "./outcome.js";
 import { leaveTrain } from "./train.js";
@@ -197,9 +199,6 @@ const packetRunOf = (run: ShepherdRun): PacketRun => ({ ctx: run.ctx, target: ru
 function reviewingContext(run: ShepherdRun): WorkflowContext {
   const { ctx } = run;
   const reviewedMerge = (headSha: string): boolean => !run.release && verdictIsMergeAt(run.reviews.get(headSha), headSha);
-  const supersede = (rereview: string | undefined, gated: string | undefined, stepId: string): LeaveLand => (
-    clearSuperseded(run, rereview, gated, stepId), rereview && run.trail.ownerAsked.add(rereview), new LeaveLand()
-  );
   const conflictCheck = (headSha: string) => conflictsAt(ctx, `sh-conflict-check:${run.conflictChecks++}`, { ...run.target, headSha });
   return {
     runId: ctx.runId,
@@ -214,7 +213,7 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     expireGates: (reason, isStale) => ctx.expireGates(reason, isStale),
     seed: (stepId, fn) => ctx.seed(stepId, fn),
     assisted: routingStuckBehind(run, () => run.lastCi?.headSha, askingOnlyOverMerge(run, recordingOverrides(followingApprovals(ctx, conflictCheckedGates(
-      packetTriggering(packetRunOf(run), supersedingGates(ctx, supersede, () => (run.carried = undefined))), conflictCheck, leaveOnConflict), { ...setCarryOf(run, isVisualGate), reviewedMerge }),
+      packetTriggering(packetRunOf(run), shepherdSuperseding(run)), conflictCheck, leaveOnConflict), { ...setCarryOf(run, isVisualGate), reviewedMerge }),
       reviewedMerge, (override) => recordOverride(ctx, run.target, override)))),
     authorize: (stepId, request, options) => ctx.authorize(stepId, request, options),
     dispatch: async (stepId, template, options) => readDispatch(run, stepId, await ctx.dispatch(stepId, template, options)),
@@ -235,6 +234,7 @@ async function onCiRead(run: ShepherdRun, result: unknown): Promise<void> {
   run.lastCi = noteRetarget(run, ci.data);
   expireStaleGates(run.ctx, ci.data.headSha);
   await expireOrder(run, ci.data.headSha);
+  await reclassAtCiRead(run, ci.data.headSha);
   await reholdMovedHead(run, ci.data.headSha);
   if (!reviewable(ci.data)) return;
   if (ci.data.verdict === "green") run.conflictWakes = 0;
@@ -353,7 +353,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     seatNoticeRoute(deps.now, deps.exitNotice, deps.sleep),
     ...freezeHoldRoutes(deps, wiring.mainRed?.freezes),
     ...g10ReleaseRoutes(deps, () => wiring.review?.twoMergeRelease),
-    ...g10ReholdRoutes(deps, wiring.review?.carry),
+    ...g10ReholdRoutes(deps, wiring.review?.carry), ...g10ReclassRoutes(deps),
     ...heldRepairRoutes(deps),
     ...visualPacketRoutes(deps),
     sendBackOfferRoute(deps), visualAcceptOfferRoute(deps),

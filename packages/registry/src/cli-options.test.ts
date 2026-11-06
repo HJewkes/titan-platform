@@ -219,6 +219,13 @@ describe("CLI consumer metadata", () => {
     expect(optionFlagSpec(wrap, "dry_run", { long: "--dry-run", description: "", valueName: "unused" })).toBe("--dry-run");
     expect(optionFlagSpec(wrap, "ship_target", { long: "--ship-target", description: "" })).toBe("--ship-target <value>");
   });
+  it("keeps a placeholder the long option already declares", () => {
+    expect(optionFlagSpec(wrap, "spawner", { long: "--spawner <name>", description: "" })).toBe("--spawner <name>");
+    expect(optionFlagSpec(wrap, "spawner", { long: "--spawner <name>", short: "-s", description: "" })).toBe("-s, --spawner <name>");
+    expect(optionFlagSpec(wrap, "ship_target", { long: "--ship-target [name]", description: "" })).toBe("--ship-target [name]");
+    expect(optionFlagSpec(wrap, "dry_run", { long: "--dry-run", description: "" })).toBe("--dry-run");
+    expect(optionFlagSpec(wrap, "limit", { long: "--limit", description: "" })).toBe("--limit <value>");
+  });
   it("renders required and optional array positionals as variadic arguments", () => {
     expect(positionalSpec(send, "to")).toBe("<to>");
     expect(positionalSpec(send, "text")).toBe("<text...>");

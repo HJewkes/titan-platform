@@ -43,8 +43,28 @@ function skippedText(entry: PollAllEntry): string | null {
   return `rate limited, skipped until ${new Date(entry.backoffUntil * 1000).toISOString()}`;
 }
 
-function reportEntry(entry: PollAllEntry, context: CliContext): number {
+const ACCOUNT_LABELS_ENV = "ANTHROPIC_ACCOUNT_LABELS";
+
+// Unset or empty means every profile is an account. A listed set marks the rest, such as a
+// stray config dir, as not worth failing the timer over.
+function accountLabelsOf(context: CliContext): ReadonlySet<string> | null {
+  const labels = (context.env[ACCOUNT_LABELS_ENV] ?? "")
+    .split(",")
+    .map((label) => label.trim())
+    .filter((label) => label.length > 0);
+  return labels.length === 0 ? null : new Set(labels);
+}
+
+function isIgnorableLoginFailure(result: PollAllEntry["result"]): boolean {
+  return !result.ok && (result.failure === "missing" || result.failure === "refused");
+}
+
+function reportEntry(entry: PollAllEntry, context: CliContext, accounts: ReadonlySet<string> | null): number {
   const { label, result } = entry;
+  if (accounts !== null && !accounts.has(label) && isIgnorableLoginFailure(result) && !result.ok) {
+    context.err(failureLine(label, `${failureText(result)}, not a listed account, ignored`));
+    return EXIT_OK;
+  }
   const skipped = skippedText(entry);
   if (skipped !== null) {
     context.out(`${printableLabel(label)}: ${skipped}`);
@@ -78,5 +98,5 @@ export async function runPoll(flags: PollFlags, context: CliContext): Promise<nu
   const refreshCodes = refresh ? await refreshAll(profiles, now, context) : [];
   const options: PollOptions = { ...keychainOf(context), fetch: fetchOf(context), now, uid: context.uid };
   const entries = await pollEntries(profiles, flags.write, options);
-  return exitFor([...refreshCodes, ...entries.map((entry) => reportEntry(entry, context))]);
+  return exitFor([...refreshCodes, ...entries.map((entry) => reportEntry(entry, context, accountLabelsOf(context)))]);
 }

@@ -4,6 +4,7 @@ import type { StepResult, WorkflowContext } from "@titan-design/workflow";
 import { defineWorkflow, type RegisteredSteps, type StepDeclaration } from "../definition.js";
 import { openFactoryHost } from "../host.js";
 import type { EntryLog } from "../markers/orphan-trap.js";
+import { newMeter } from "../markers/budget.js";
 import { notAfterShadow, type ShadowDeps, type ShadowEvent } from "../markers/shadow.js";
 import { runnerContext, unlessPast } from "./not-after.js";
 
@@ -52,7 +53,7 @@ describe("unlessPast", () => {
     const events: ShadowEvent[] = [];
     const log: EntryLog = { runId: "run-1", recorded: [], visited: new Set(), reached: 0, failClosed: false };
     const inner = recordedContext("plain");
-    const shadow = notAfterShadow(inner, partialFake<ShadowDeps>({ sink: (event) => void events.push(event) }), { definition, log });
+    const shadow = notAfterShadow(inner, partialFake<ShadowDeps>({ sink: (event) => void events.push(event) }), { definition, log, meter: newMeter() });
     let calls = 0;
 
     const outcome = await unlessPast(runnerContext(inner, definition, shadow), "settle", async () => (calls += 1));

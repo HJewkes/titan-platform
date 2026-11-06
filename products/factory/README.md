@@ -481,6 +481,49 @@ unset, that reader uses `<active root>/claude-channels/sources/autonomy/queues`.
 absolute. `consoleOrigin` (for example `https://console.example.ts.net`) is the origin of the digest's
 stale-gate alarm links; it must be https and not loopback, and without it the alarm prints with no links.
 
+## Owner gates: weekly report and audit
+
+`titan-factory owner-gates report` prints, per decision class over the trailing 14 days, the
+owner-answered gates, the approve rate, cancelled-unanswered and the median wait. It flags a class
+at 95% or more approve over 20 or more answered gates. `--deposit` files one two-way demotion card
+per flagged class.
+
+`titan-factory owner-gates audit [--week <YYYY-Www>] [--dry-run] [--force] [--no-judge]` checks
+whether those approvals held up:
+
+- It samples 5 owner-resolved gates from the ISO week (default: the previous week), or all of
+  them when there are fewer. The shuffle is seeded by sha256 of the week, so a re-run draws the
+  same sample.
+- For each gate it reads the 72 h outcome: a revert, a red `sh-main-ci` or a deploy incident.
+  Incidents come from `deploy-incidents.jsonl` in the factory state dir, linked to the merge through
+  ancestry in the deploy checkout. If that log is missing, or ancestry cannot answer, the item
+  reads `incidents unknown`, never "no incident". If the window is still open, the item says so
+  instead of reading clean.
+- It adds one sonnet note per gate (`claude -p`, one turn, no tools, $1 cap). If the judge fails,
+  the file is still written and that gate reads `judge unavailable: <kind>`.
+- It writes `<active root>/titan-platform/sources/owner-gate-audit-<YYYY-Www>.md`. The active
+  root comes from `ACTIVE_ROOT`. The verb refuses to replace an existing week without
+  `--force`, and `--dry-run` prints the markdown instead of writing it.
+
+`titan-factory owner-gates weekly` audits the previous ISO week, keeping a file that is already
+written. It then runs `report --deposit` with that audit consulted, so a class where the sample
+found a bad outcome is held rather than proposed for demotion.
+
+The Monday 06:00 timer is `ops/systemd/titan-owner-gates.{service,timer}`. It runs `weekly` from
+the deploy checkout. Install it once per host:
+
+```sh
+install -m 0600 /dev/null ~/.config/titan-factory/owner-gates.env   # then set the keys below
+cp ops/systemd/titan-owner-gates.{service,timer} ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now titan-owner-gates.timer
+```
+
+The env file sets `CLAUDE_CONFIG_DIR` (a pool account's profile, never the owner's own),
+`ACTIVE_ROOT` and `TITAN_FACTORY_DB`. Smoke check under that config dir:
+`claude -p --model sonnet --max-turns 1 "reply ok"`, then
+`titan-factory owner-gates audit --dry-run`.
+
 ## Owner-queue sources
 
 `src/needs/` holds the factory's `QueueSource` adapters for `@titan-design/owner-queue`. Each
@@ -872,6 +915,7 @@ a minute, with a 10 s timeout, so a health request never waits on gh.
 | `src/shepherd/commands.ts`, `src/shepherd/view.ts` | The `shepherd.*` registry commands, and the watch-row and timeline read model they return |
 | `src/shepherd/review-stats-store.ts`, `src/shepherd/review-stats.ts`, `src/shepherd/review-stats-report.ts` | The review stats store, its incremental refresh, and the `stats --reviews` report (see Review stats) |
 | `src/workflows/land.ts` | The land core (see below) |
+| `src/a17/` | `report.ts` (the A17 report check run by `scripts/a17.mjs`) and `not-event.ts` (the single-mode case list); source the script imports, so they sit outside the carried `test-support/` path |
 | `src/test-support/a17/` | The A17 dual-mode harness: `a17Event` registers a case under `sources=webhook` and `sources=polling`, `structure.test.ts` fails the suite on an event case that bypasses it or is skipped, and `not-event.ts` lists the single-mode cases (see the factory guide, "A17 invariant tests") |
 | `src/ingress/` | The webhook ingress: a second loopback listener on 7411 that verifies GitHub's HMAC, projects a delivery and appends one event, behind the `github.ingress` kill switch (see [Webhook ingress](/guides/factory#webhook-ingress)); `doc-pins.test.ts` fails when the guide drifts from its constants |
 | `src/bot-token-fingerprint.ts`, `src/bot-token-scan.ts`, `src/cli-bot-token.ts` | serve's published bot-token fingerprint, the A17 leak scan over its injectable places, and the `bot-token scan` verb (see The bot token's A17 leak scan) |
@@ -924,7 +968,7 @@ Two keys under `shepherd` in the config file turn the review phase on. Both are 
 | `shepherd.review.fallbackConfigDirs` | Optional list. Claude config directories a review moves to, tried in order, while `review.configDir` is out of usage; an account marked exhausted is skipped. A reviewer or fixer spawn the broker refuses with `reviewer_account_limit` is retried on each later account in turn (TP-4507). Same rules as `review.configDir`. Absent means a review whose account is exhausted holds and alerts only |
 | `shepherd.review.verdictTimeoutMs` | Optional, default 30 minutes. How long `sh-await-verdict` waits for the reviewer's verdict before it answers `none` |
 | `shepherd.review.sessionStartTimeoutMs` | Optional, default 5 minutes. How long `sh-review` waits for the spawned reviewer's session to show on the roster before it answers `none` |
-| `shepherd.review.codewatchRepos` | Optional `owner/name` list. For these repos `sh-review` reads the head's `codewatch-report` CI artifact through `gh` and puts up to 3 of its questions ahead of the others in the brief, and the step records `codewatch: { found, schema, questions }`. A missing artifact, a wrong schema or a failed fetch adds no questions and never blocks the review |
+| `shepherd.review.codewatchRepos` | Optional `owner/name` list. For these repos `sh-review` reads the head's `codewatch-report` CI artifact through `gh` and puts up to 3 of its questions ahead of the others in the brief, and the step records `codewatch: { found, schema, questions }`. A question is kept only when the `path:N[-M]` it cites exists at the PR head; the first refusals go in `anchorDrops`, and a head that cannot be read keeps no questions. A missing artifact, a wrong schema or a failed fetch adds no questions and never blocks the review |
 | `shepherd.review.minFreeBytes` | Optional, default 5 GiB. The spawn gate defers a reviewer while the filesystem that holds review checkouts (the app data dir's `checkouts/reviews`) has fewer free bytes |
 | `shepherd.review.minFreeInodesPct` | Optional, default 15. The spawn gate defers a reviewer while that filesystem's free inodes are under this percent of its total, or under twice the inodes the last measured checkout took, whichever is more. A filesystem with no fixed inode table has no inode floor |
 | `shepherd.review.maxConcurrent` | Optional, default 3. The spawn gate defers a reviewer while this many reviewers run |

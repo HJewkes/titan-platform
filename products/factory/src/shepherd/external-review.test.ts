@@ -11,7 +11,7 @@ import { BrokerUnavailableError, DispatchError, DispatchTimeoutError } from "@ti
 import { ReviewerAskTimedOut, ReviewerBrokerBusy, ReviewerBrokerDown, reviewWait } from "./review-wait.js";
 import { transcriptReviewerReader } from "./reviewer-reader.js";
 import { DamagedTranscriptError } from "./seat-evidence.js";
-import { acceptExternalVerdict, awaitExternalVerdict, SEAT_REVIEWER, newestAtHead, seatFixFirst, seatVetoed, unlessSeatFixFirst } from "./external-review.js";
+import { acceptExternalVerdict, awaitExternalVerdict, latestSession, SEAT_REVIEWER, newestAtHead, seatFixFirst, seatVetoed, unlessSeatFixFirst } from "./external-review.js";
 import { readPath } from "../narrow.js";
 import { fakeLocator } from "../test-support/fakes.js";
 
@@ -89,6 +89,24 @@ describe("acceptExternalVerdict", () => {
 
     expect(weakened).toMatchObject({ verdict: "MERGE", ciPolicy: { kind: "weakened", keys: ["permissions", "secrets"] } });
     expect(plain).not.toHaveProperty("ciPolicy");
+  });
+
+  it("an adopted seat reviewer's MERGE carries its Follow-ups items", () => {
+    const block = "Follow-ups:\n- Cache the head lookup | A second lookup at one head reads the cache | medium";
+    const text = `Findings.\n\n${block}\n\nVerdict: MERGE\nPR: ${REPO}#4\nHead: ${HEAD}\n`;
+
+    const accepted = acceptExternalVerdict({ ...target, external: SEAT.name }, SEAT, [said(SEAT, text, 2)]);
+
+    expect(accepted).toMatchObject({ verdict: "MERGE", followUps: [{ title: "Cache the head lookup", doneWhen: "A second lookup at one head reads the cache", severity: "medium" }] });
+  });
+
+  it("an adopted seat reviewer's malformed Follow-ups block carries its warning and the MERGE stands", () => {
+    const text = `Findings.\n\nFollow-ups:\n- Cache the head lookup | medium\n\nVerdict: MERGE\nPR: ${REPO}#4\nHead: ${HEAD}\n`;
+
+    const accepted = acceptExternalVerdict({ ...target, external: SEAT.name }, SEAT, [said(SEAT, text, 2)]);
+
+    expect(accepted).toMatchObject({ kind: "verdict", verdict: "MERGE", followUpsWarning: "bad_item" });
+    expect(accepted).not.toHaveProperty("followUps");
   });
 
   it("is no verdict when a WAIT strictly follows a MERGE at the same head", () => {
@@ -940,6 +958,34 @@ describe("awaitExternalVerdict over a real transcript", () => {
     const reader = transcriptReviewerReader({ roster: async () => [seat.row], namespace: "host-a" });
 
     expect(await seatFixFirst(rosterOf(seat.row), reader, target)).toMatchObject({ verdict: "FIX_FIRST" });
+  });
+});
+
+describe("latestSession", () => {
+  it("picks the first listed session of a name reused across sessions, as the roster lists newest first", () => {
+    const newest = agent("alpha-reviewer", "session-new");
+    const older = agent("alpha-reviewer", "session-old");
+
+    const row = latestSession("alpha-reviewer", [newest, older]);
+
+    expect(row).toBe(newest);
+  });
+
+  it("skips a row whose session has not started", () => {
+    const started = agent("alpha-reviewer", "session-started");
+    const pending = agent("alpha-reviewer", "");
+
+    const row = latestSession("alpha-reviewer", [pending, started]);
+
+    expect(row).toBe(started);
+  });
+
+  it("ignores rows under another name", () => {
+    const other = agent("beta-reviewer", "session-other");
+
+    const row = latestSession("alpha-reviewer", [other]);
+
+    expect(row).toBeUndefined();
   });
 });
 

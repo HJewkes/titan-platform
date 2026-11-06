@@ -42,3 +42,13 @@ export function redactForEvidence(text: string): string {
   const redacted = redactCredentials(text);
   return redacted.length <= MAX_STORED_ERROR_CHARS ? redacted : `${redacted.slice(0, MAX_STORED_ERROR_CHARS)}… [truncated]`;
 }
+
+// A home path matches anywhere, even glued to a word or inside a longer path such as a macOS firmlink,
+// /var/home or a WSL mount: a stray `~` is cosmetic, a missed match publishes an account name. Only `/root`
+// must end at a boundary, so /rootfs stays put; the account name stops before closing punctuation.
+const HOME_PATH = /\/(?:Users|home)\/[^/\s"'`)\]},;]+|\/root(?=$|[\s/:"'`),;\]}])/g;
+
+/** Maps a home directory to `~` so stored text names no account. */
+export function redactHomePaths(text: string): string {
+  return text.replace(HOME_PATH, "~");
+}

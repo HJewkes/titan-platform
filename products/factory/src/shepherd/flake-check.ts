@@ -5,11 +5,13 @@ import type { StepRoute } from "@titan-design/workflow";
 import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
 import { rerun } from "../workflows/land-pr.js";
 import type { WakeEvidence, WakeRequest } from "./phases.js";
-import { awaitNewHead, ciRedFailing, sentBackGate } from "./gates.js";
+import { awaitAfterExit, exitRed, sentBackGate } from "./gates.js";
 import type { GateRun } from "./run-state.js";
 import { EXIT_NOTICE_STEPS, exitNoticeRoute, noticeSeat, type HeldNotice } from "./exit-notice.js";
 import { HELD_VERDICT_STEPS, commentHeldVerdict, heldFindings, heldVerdictRoute } from "./held-verdict.js";
 import { seatOrGate } from "./gate-route.js";
+import { deadEndGate } from "./dead-end.js";
+import { asksSeat } from "./dead-end-route.js";
 import type { ExitNoticePorts } from "./ports.js";
 
 const FLAKE_CHECK_STEP = "sh-flake-check";
@@ -90,8 +92,8 @@ const rerunHeads = new WeakMap<object, Set<string>>();
 /**
  * A fixer that exited with no push gets no second wait. A red whose failing tests the PR did not touch is rerun once
  * at the same head, and the round goes on. Otherwise the repo's seat is told once per head and the run waits for a new
- * head; with no seat told, the sent-back gate names the exit. Either way the round leaves through `leave`, which builds
- * the error that ends it.
+ * head; with no seat told, the seat's dead-end gate or the owner's sent-back gate names the exit. Either way the round
+ * leaves through `leave`, which builds the error that ends it.
  */
 export async function afterFixerExit(run: ExitRun, kind: WakeRequest["kind"], headSha: string, payload: unknown, exit: { reason: string; wake?: WakeEvidence }, leave: (outcome?: LandOutcome) => Error): Promise<true> {
   const reran = headsRerun(run);
@@ -127,7 +129,28 @@ async function noticeOrGate(run: ExitRun, { kind, headSha, payload }: { kind: Wa
     const notice = await noticeSeat(run, kind, headSha, exit.wake, exit.held);
     return notice && { sent: notice.sent, detail: `${notice.cause}: ${notice.detail}` };
   };
-  const prompt = (unsent: string) => `The ${kind} wake of PR #${run.target.pr} in ${run.target.repo} at head ${headSha} ended: ${exit.reason}${unsent}. Await a new head or abandon?`;
-  const gate = async (unsent: string) => leave(await sentBackGate(run, headSha, prompt(unsent), abandoned, prompt(unsent), kind === "fix-proof"));
-  return seatOrGate(tell, async () => leave(await awaitNewHead(run, headSha, kind === "ci-red", ciRedFailing(kind, payload))), gate);
+  const situation = (unsent: string) => `The ${kind} wake of PR #${run.target.pr} in ${run.target.repo} at head ${headSha} ended: ${exit.reason}${unsent}.`;
+  const red = exitRed(kind, payload);
+  const gate = async (unsent: string) => leave(await exitGate(run, { kind, headSha, situation: situation(unsent), red }, abandoned));
+  return seatOrGate(tell, async () => leave(await awaitAfterExit(run, headSha, red)), gate);
+}
+
+interface ExitEnd {
+  kind: WakeRequest["kind"];
+  headSha: string;
+  situation: string;
+  red: readonly { name: string }[] | undefined;
+}
+
+/**
+ * The seat's dead-end gate (TP-4759), else the owner's sent-back gate; a fix-proof exit offers the owner's waive-proof on
+ * either, and after a ci-red exit either gate's wait also ends when the same head turns green. An owner gate
+ * `readdress-dead-ends` cancelled asks the seat at the same head.
+ */
+function exitGate(run: ExitRun, { kind, headSha, situation, red }: ExitEnd, abandoned: string): Promise<LandOutcome | undefined> {
+  const waivable = kind === "fix-proof";
+  const prompt = `${situation} Await a new head or abandon?`;
+  const seat = (): Promise<LandOutcome | undefined> => deadEndGate(run, { kind: "exited-without-push", headSha, situation, waivable, ...(red && { red }) }, owner);
+  const owner = (): Promise<LandOutcome | undefined> => sentBackGate(run, headSha, prompt, abandoned, prompt, waivable, seat, red);
+  return asksSeat(run.ctx, "sh-sent-back") ? seat() : owner();
 }

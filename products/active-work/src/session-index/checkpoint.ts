@@ -35,6 +35,8 @@ interface CheckpointerOptions {
   /** The better-sqlite3 entry the worker loads; injectable so a test can break the worker. */
   driver?: string;
   onError?: (err: unknown) => void;
+  /** Reports the worker entering and leaving each checkpoint, so a test can observe the loop while one is in flight. */
+  onCheckpoint?: (phase: 'start' | 'end') => void;
 }
 
 interface Checkpointer {
@@ -49,8 +51,10 @@ const Database = require(workerData.driver);
 const db = new Database(workerData.dbPath);
 const sleeper = new Int32Array(new SharedArrayBuffer(4));
 function checkpoint() {
+  if (workerData.report) parentPort.postMessage('start');
   if (workerData.simulatedFsyncMs > 0) Atomics.wait(sleeper, 0, 0, workerData.simulatedFsyncMs);
   db.pragma('wal_checkpoint(PASSIVE)');
+  if (workerData.report) parentPort.postMessage('end');
 }
 const timer = setInterval(checkpoint, workerData.intervalMs);
 parentPort.once('message', () => {
@@ -60,6 +64,12 @@ parentPort.once('message', () => {
   parentPort.close();
 });
 `;
+
+/** A 'message' listener refs the worker, so unref must come after it or the daemon cannot exit. */
+function unrefAfterListening(worker: Worker, onCheckpoint?: (phase: 'start' | 'end') => void): void {
+  if (onCheckpoint) worker.on('message', (phase: 'start' | 'end') => onCheckpoint(phase));
+  worker.unref();
+}
 
 /**
  * Hand `db`'s checkpoints to a worker. If the worker fails, the connection gets
@@ -78,9 +88,10 @@ export function startCheckpointer(
       driver: options.driver ?? createRequire(import.meta.url).resolve('better-sqlite3'),
       intervalMs: options.intervalMs ?? CHECKPOINT_INTERVAL_MS,
       simulatedFsyncMs: options.simulatedFsyncMs ?? 0,
+      report: options.onCheckpoint !== undefined,
     },
   });
-  worker.unref();
+  unrefAfterListening(worker, options.onCheckpoint);
   worker.once('error', (err) => {
     if (db.open) db.pragma(`wal_autocheckpoint = ${SQLITE_AUTOCHECKPOINT_PAGES}`);
     options.onError?.(err);

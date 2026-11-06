@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { appendFileSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const EVENTS = { pull_request: "PR", push: "main" };
+const EVENTS = { pull_request: "PR", release_pr: "release PR", push: "main" };
 const STATS = ["p50", "p90", "max"];
 
 const seconds = (from, to) => (Date.parse(to) - Date.parse(from)) / 1000;
@@ -112,29 +112,47 @@ function flag(argv, name) {
   return at >= 0 ? argv[at + 1] : undefined;
 }
 
+/** A budget that names no release branch keeps release PR runs in the pull request sample, as before it had one. */
+const releaseCount = (argv, budget) =>
+  budget.releaseBranch ? { release_pr: Number(flag(argv, "--release-runs") ?? budget.runs.release_pr ?? 0) } : {};
+
 export function parseArgs(argv, budget) {
   const repo = flag(argv, "--repo");
   if (!repo) throw new Error("--repo <owner/name> is required");
   return {
     repo,
     workflow: flag(argv, "--workflow") ?? budget.workflow,
-    counts: { pull_request: Number(flag(argv, "--pr-runs") ?? budget.runs.pull_request), push: Number(flag(argv, "--main-runs") ?? budget.runs.push) },
+    counts: {
+      pull_request: Number(flag(argv, "--pr-runs") ?? budget.runs.pull_request),
+      ...releaseCount(argv, budget),
+      push: Number(flag(argv, "--main-runs") ?? budget.runs.push),
+    },
+    releaseBranch: budget.releaseBranch,
     created: flag(argv, "--created"),
     finishedBefore: flag(argv, "--finished-before"),
     summary: flag(argv, "--summary"),
   };
 }
 
-const LIST_FIELDS = "databaseId,createdAt,updatedAt,event";
+const LIST_FIELDS = "databaseId,createdAt,updatedAt,event,headBranch";
 
-/** Successful runs per event through `gh`; main means pushes to main. */
+const isReleaseRun = (run, options) => options.releaseBranch !== undefined && run.headBranch === options.releaseBranch;
+
+/**
+ * Successful runs per event through `gh`; main means pushes to main. The release PR is its own event: its version bumps
+ * touch every package.json, so turbo rebuilds everything and test-scope runs the full suite, on every refresh. It is
+ * often more than a tenth of the pull request runs, so left in that sample it alone would set the p90.
+ */
 export function fetchRuns(gh, options) {
   return Object.entries(options.counts).flatMap(([event, count]) => {
-    const args = ["run", "list", "--repo", options.repo, "--workflow", options.workflow, "--status", "success", "--event", event, "--limit", "200", "--json", LIST_FIELDS];
+    const ghEvent = event === "release_pr" ? "pull_request" : event;
+    const args = ["run", "list", "--repo", options.repo, "--workflow", options.workflow, "--status", "success", "--event", ghEvent, "--limit", "200", "--json", LIST_FIELDS];
     if (event === "push") args.push("--branch", "main");
+    if (event === "release_pr") args.push("--branch", options.releaseBranch);
     if (options.created) args.push("--created", options.created);
-    const chosen = selectRuns(JSON.parse(gh(args)), count, options.finishedBefore);
-    return chosen.map((run) => ({ ...run, ...JSON.parse(gh(["run", "view", String(run.databaseId), "--repo", options.repo, "--json", "jobs"])) }));
+    const listed = JSON.parse(gh(args)).filter((run) => event !== "pull_request" || !isReleaseRun(run, options));
+    const chosen = selectRuns(listed, count, options.finishedBefore);
+    return chosen.map((run) => ({ ...run, event, ...JSON.parse(gh(["run", "view", String(run.databaseId), "--repo", options.repo, "--json", "jobs"])) }));
   });
 }
 

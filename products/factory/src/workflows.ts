@@ -12,11 +12,11 @@ import { deployCheckoutFor, ownCheckout } from "./cli-service.js";
 import { configPath, factoryStateDir, loadConfig, readConfig, type FactoryConfig, type ShepherdRepoConfig } from "./config.js";
 import { configRef, current, liveField, type ConfigRef, type Live } from "./config-ref.js";
 import { configuredMainWatch } from "./main-watch-ports.js";
-import { holdAdversary, liveSpawnLimits, reviewAccounts, successorAccounts, visualThresholdOf, withHoldAdversary } from "./workflows-live.js";
+import { holdAdversary, liveSpawnLimits, reviewAccounts, successorAccounts, visualThresholdOf, visualTierOf, withHoldAdversary } from "./workflows-live.js";
 import type { WorkflowDefinition } from "./definition.js";
 import type { DatabaseTenant, FactoryRoutes } from "./host.js";
 import { reviewCheckPort } from "./shepherd/publish-review.js";
-import { activeWorkFixTasks, activeWorkOrigin, activeWorkTasks, agentChatCleanupAgents } from "./shepherd/cleanup-ports.js";
+import { activeWorkFixTasks, activeWorkFollowUpTasks, activeWorkOrigin, activeWorkTasks, agentChatCleanupAgents } from "./shepherd/cleanup-ports.js";
 import { ghGateway, type GhCallLine, type GhGateway } from "./shepherd/gh-gateway.js";
 import type { PrFilesRead } from "./shepherd/git-pr-files.js";
 import { inheritedRedCheck } from "./shepherd/inherited-red.js";
@@ -50,6 +50,7 @@ import { mergeBaseExceptionMigration } from "./shepherd/merge-base-exception.js"
 import { shepherdPrWorkflow, shepherdRoutes } from "./shepherd/pr.js";
 import { redeployRoute, systemDeployer, type Deployer } from "./shepherd/redeploy.js";
 import { codewatchReader, ghCodewatchReport } from "./shepherd/codewatch-questions.js";
+import { cacheHeadLines } from "./shepherd/head-lines.js";
 import type { ReviewWiring } from "./shepherd/review.js";
 import { deploySkew } from "./shepherd/attest-skew.js";
 import { activeWorkTaskTags, judgeOldPath } from "./old-path/task-tags.js";
@@ -87,8 +88,8 @@ import { localBasementSuite, suiteRules } from "./shepherd/suite-host.js";
 import type { ShepherdServices, ThawAlertPorts, VisualDeliveryWatch } from "./shepherd/services.js";
 import type { VisualThreshold } from "./shepherd/visual-delta-read.js";
 import { configuredVisualDelivery } from "./shepherd/visual-delivery-sweep.js";
-import type { DiagnosisPorts, VisualPacketPorts } from "./shepherd/spawn-ports.js";
-import { configuredDiagnosis, configuredVisualPacket } from "./workflows-spawned.js";
+import type { DiagnosisPorts, ReplanPorts, VisualPacketPorts } from "./shepherd/spawn-ports.js";
+import { configuredDiagnosis, configuredReplan, configuredVisualPacket } from "./workflows-spawned.js";
 import type { CleanupPorts, ExitNoticePorts, RosterReader, SpawnGate, SuiteRules, TaskClose } from "./shepherd/ports.js";
 
 /** Every workflow the CLI hosts. Pilots register here as their slices land (doc-change in S3). */
@@ -160,6 +161,8 @@ export interface FactoryRouteDeps extends LandPrDeps {
   visualPacket?: VisualPacketPorts;
   /** The planner failed rounds with no adversary verdict spawn; absent means ops hears instead. */
   diagnosis?: DiagnosisPorts;
+  /** The planner a dead-end gate's replan answer spawns; absent records a refused spawn, so the seat is asked again. */
+  replan?: ReplanPorts;
   /** `shepherd.visualDelivery`'s sweep, carried to serve on the services; absent means none runs. */
   visualDelivery?: VisualDeliveryWatch;
   /** True when `shepherd.consoleAnswers` is configured: approve-merge gates then offer `send-back`. */
@@ -202,7 +205,7 @@ export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
   const accountLimits = deps.accountLimits ?? accountLimitStoreRef(deps.now);
   const timing = { sleep: pause, pollMs: deps.holdPollMs, now: deps.now };
   const shadow = { shadow: trainShadowRef(), port: deps.port, reads: deps.snapshot ?? portReads(deps.port), held: shadowHeldCheck({ port: deps.port, holds, freezes: () => freeze.get(), advisory: isAdvisory, now: deps.now, snapshot: deps.snapshot }), advisory: isAdvisory, now: deps.now ?? Date.now };
-  const shepherdDeps = { port: deps.port, advisory: isAdvisory, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", agentChatConfigDir: deps.agentChatConfigDir, successorAccounts: successorAccounts(deps.agentChatConfigDir, deps.review?.accounts), roster: deps.roster, spawnGate: deps.spawnGate, cleanup: deps.cleanup, snapshot: deps.snapshot, pushes: deps.pushes, reviewCheck: deps.reviewCheck, exitNotice: deps.exitNotice, suiteRules: deps.suiteRules, accountLimits, prFiles: deps.prFiles, stackRestack: deps.stackRestack, get heldRepair() { return current(deps.heldRepair); }, get noReproProceed() { return current(deps.noReproProceed); }, get nonSourceNoRepro() { return current(deps.nonSourceNoRepro); }, get taskClose() { return current(deps.taskClose); }, visualPacket: deps.visualPacket, diagnosis: deps.diagnosis, consoleAnswers: deps.consoleAnswers, visualBaselineCheck: (repo: string) => seatBaselineCheck(deps.seats?.() ?? NO_SEATS, repo) };
+  const shepherdDeps = { port: deps.port, advisory: isAdvisory, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", agentChatConfigDir: deps.agentChatConfigDir, successorAccounts: successorAccounts(deps.agentChatConfigDir, deps.review?.accounts), roster: deps.roster, spawnGate: deps.spawnGate, cleanup: deps.cleanup, snapshot: deps.snapshot, pushes: deps.pushes, reviewCheck: deps.reviewCheck, exitNotice: deps.exitNotice, suiteRules: deps.suiteRules, accountLimits, prFiles: deps.prFiles, stackRestack: deps.stackRestack, get heldRepair() { return current(deps.heldRepair); }, get noReproProceed() { return current(deps.noReproProceed); }, get nonSourceNoRepro() { return current(deps.nonSourceNoRepro); }, get taskClose() { return current(deps.taskClose); }, visualPacket: deps.visualPacket, diagnosis: deps.diagnosis, replan: deps.replan, consoleAnswers: deps.consoleAnswers, visualBaselineCheck: (repo: string) => seatBaselineCheck(deps.seats?.() ?? NO_SEATS, repo) };
   const land = landPrRoutes({ ...deps, port: holdingPort(deps.port, holds, guard, satisfy), inheritedRed: inheritedRedCheck(shepherdDeps, () => freeze.get()) }).map((route) => {
     if (route.match === "base-wait") return leaveTrainToWait(route, train);
     if (route.match === "update-branch") return shadowRefresh(advisoryUpdates(route, isAdvisory, timing), shadow);
@@ -211,7 +214,7 @@ export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
   const review = deps.review && withHoldAdversary({ ...deps.review, isFrozen: deps.isFrozen ?? recheckedFrozen(deps.port, () => freeze.get(), holds, deps.now) }, deps.review);
   const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, versions: deps.versions, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
   const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train, accountLimits, shadow.shadow, order) };
-  const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train, freeze, snapshot: deps.snapshot, pacing: deps.pacing, now: shepherdDeps.now, prFiles: deps.prFiles, gateway: deps.gateway, ...(deps.spawnGate && { reviewSlots: deps.spawnGate.reviewSlots }), ...(deps.visualDelivery && { visualDelivery: deps.visualDelivery }), ...(deps.thawAlert && { thawAlert: deps.thawAlert }), mergeOrder: { order: () => order.get(), holds, rules: orderRules, waits: orderWaits, now: shepherdDeps.now }, ...(deps.roster && { roster: deps.roster }), visualThreshold: deps.visualThreshold ?? deps.review?.visualThreshold };
+  const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train, freeze, snapshot: deps.snapshot, pacing: deps.pacing, now: shepherdDeps.now, prFiles: deps.prFiles, gateway: deps.gateway, ...(deps.spawnGate && { reviewSlots: deps.spawnGate.reviewSlots }), ...(deps.visualDelivery && { visualDelivery: deps.visualDelivery }), ...(deps.thawAlert && { thawAlert: deps.thawAlert }), mergeOrder: { order: () => order.get(), holds, rules: orderRules, waits: orderWaits, now: shepherdDeps.now }, ...(deps.roster && { roster: deps.roster }), ...(deps.exitNotice?.hubSeat && { hubSeat: deps.exitNotice.hubSeat }), visualThreshold: deps.visualThreshold ?? deps.review?.visualThreshold };
   return Object.assign([...retryingGhServerErrors([...land, ...shepherd], { sleep: pause, now: shepherdDeps.now }), trainLeaveRoute(train, shepherdDeps.now), ...mergeOrderRoutes({ order: () => order.get(), holds, rules: orderRules, port: deps.port, train, timing, now: shepherdDeps.now }), orderExpiryRoute({ order: () => order.get(), rules: orderRules, now: shepherdDeps.now }), redeployRoute(shepherdDeps.now, deps.redeploy), ...auditRoutes(deps.audit ?? systemAuditPorts(ownCheckout())), ...buildSurfaceRoutes(factoryBuildPorts({ ...deps, agentChatBin: shepherdDeps.agentChatBin }))], { database, shepherd: services });
 }
 
@@ -266,8 +269,8 @@ function configuredReview(shepherd: FactoryConfig["shepherd"], config: ConfigRef
   if (!review || !agentChatBin) return undefined;
   const under = (configDir: string | undefined, fallbackConfigDirs?: () => readonly string[]) => agentChatReviewerDispatch({ agentChatBin, roles: configuredRoles(review), configDir, fallbackConfigDirs, cwdFor: (repo) => boundCheckout(seats(), repo, repos()), roster, gate, isFixer, onMachineHold: machineStop.note });
   const { primary: dispatch, accounts } = reviewAccounts(review, liveField(config, "shepherd.review.fallbackConfigDirs"), under, seatAlert(agentChatBin, seats, roster));
-  const codewatch = review.codewatchRepos && codewatchReader(ghCodewatchReport(), review.codewatchRepos);
-  const wiring = { dispatch, lineage: dispatch.lineage, accounts, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, reviewAppId: shepherd?.reviewCheck?.appId, roles: configuredRoles(review), machineStop, profileInstalled: (profile: string) => installedHeadless(profile), visualThreshold: visualThresholdOf(config), deploySkew: deploySkew(), oldPath: judgeOldPath({ tags: activeWorkTaskTags({ origin: activeWorkOrigin(env) }) }), ...(codewatch && { codewatch }), ...(review.panel && { panel: review.panel }), ...(review.scopedRereview && { scopedRereview: review.scopedRereview }), ...(review.scopeCheck && { scopeCheck: review.scopeCheck }), ...workflowModeOf(review.workflow) };
+  const codewatch = review.codewatchRepos && codewatchReader(ghCodewatchReport(), review.codewatchRepos, cacheHeadLines());
+  const wiring = { dispatch, lineage: dispatch.lineage, accounts, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, reviewAppId: shepherd?.reviewCheck?.appId, roles: configuredRoles(review), machineStop, profileInstalled: (profile: string) => installedHeadless(profile), visualThreshold: visualThresholdOf(config), visualTier: visualTierOf(config), deploySkew: deploySkew(), oldPath: judgeOldPath({ tags: activeWorkTaskTags({ origin: activeWorkOrigin(env) }) }), followUps: activeWorkFollowUpTasks({ origin: activeWorkOrigin(env) }), ...(codewatch && { codewatch }), ...(review.panel && { panel: review.panel }), ...(review.scopedRereview && { scopedRereview: review.scopedRereview }), ...(review.scopeCheck && { scopeCheck: review.scopeCheck }), ...workflowModeOf(review.workflow) };
   return withHoldAdversary(wiring, holdAdversary(review, config, under, wiring.profileInstalled));
 }
 
@@ -336,7 +339,7 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const pushes = pushSignal((repo) => boundCheckout(seats(), repo, repos()));
   const cwdFor = (repo: string) => boundCheckout(seats(), repo, repos());
   const chores = systemChorePorts({ dir: join(factoryStateDir(env), "chores"), wrapper: [process.execPath, ownChoreMain()] });
-  const routes = factoryRoutesFor({ port, snapshot, pushes, pacing, gateway, store, freeze, postMerge, chores, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, exitNotice, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), suiteRules: suiteRules(localBasementSuite(env)), advisory: stickyAdvisory(configuredAdvisory(env), advisoryFile(factoryStateDir(env))), stackRestack: configuredStackRestack(() => readConfig(configPath(env))?.shepherd?.repos), heldRepair: liveField(config, "shepherd.gateReset.heldRepair"), noReproProceed: liveField(config, "shepherd.gateReset.noReproProceed"), nonSourceNoRepro: liveField(config, "shepherd.gateReset.nonSourceNoRepro"), taskClose: liveField(config, "shepherd.taskClose"), visualPacket: configuredVisualPacket(shepherd, env, roster, gate, cwdFor), diagnosis: configuredDiagnosis(shepherd, env, roster, gate, cwdFor), visualDelivery: configuredVisualDelivery(shepherd, env, roster, cwdFor, digest?.push), consoleAnswers: shepherd?.consoleAnswers !== undefined, thawAlert: configuredMainWatch(env), visualThreshold: visualThresholdOf(config), ...overrides, seats });
+  const routes = factoryRoutesFor({ port, snapshot, pushes, pacing, gateway, store, freeze, postMerge, chores, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, exitNotice, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), suiteRules: suiteRules(localBasementSuite(env)), advisory: stickyAdvisory(configuredAdvisory(env), advisoryFile(factoryStateDir(env))), stackRestack: configuredStackRestack(() => readConfig(configPath(env))?.shepherd?.repos), heldRepair: liveField(config, "shepherd.gateReset.heldRepair"), noReproProceed: liveField(config, "shepherd.gateReset.noReproProceed"), nonSourceNoRepro: liveField(config, "shepherd.gateReset.nonSourceNoRepro"), taskClose: liveField(config, "shepherd.taskClose"), visualPacket: configuredVisualPacket(shepherd, env, roster, gate, cwdFor), diagnosis: configuredDiagnosis(shepherd, env, roster, gate, cwdFor), replan: configuredReplan(shepherd, roster, gate, cwdFor), visualDelivery: configuredVisualDelivery(shepherd, env, roster, cwdFor, digest?.push), consoleAnswers: shepherd?.consoleAnswers !== undefined, thawAlert: configuredMainWatch(env), visualThreshold: visualThresholdOf(config), ...overrides, seats });
   return withAutoresearch(Object.assign(routes, { config, ...chorePruning(chores) }), config.get().autoresearch);
 }
 

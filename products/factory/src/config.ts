@@ -270,6 +270,11 @@ export const FactoryConfigSchema = z.object({
       /** Per repo, the visual-diff threshold the merge evidence measures against; read at each evidence step. */
       visualThreshold: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), VisualThresholdSchema).optional(),
       /**
+       * Per repo, the visual merge tier policy (TP-4761): `mode` off|shadow|on and the path classes. Kept raw here, as
+       * visual-tier.ts parses it whole at each evidence step and reads any malformed entry as tier 2.
+       */
+      visualTier: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), z.unknown()).optional(),
+      /**
        * Off when absent. `shadow` or `on` asks the owner, at a head whose only red check is its seat's `visualBaselines.check`,
        * whether CI's regenerated set is the one to commit, before any fixer is woken. Only `on` lets that set carry a later head.
        */
@@ -278,6 +283,8 @@ export const FactoryConfigSchema = z.object({
       visualPacketProfile: profileName.optional(),
       /** The profile of the planner failed review rounds with no adversary verdict spawn (TP-3796); absent means `bd-planner`. */
       diagnosisProfile: profileName.optional(),
+      /** The profile of the planner a dead-end gate's replan answer spawns (TP-4759); absent means `bd-planner`. */
+      replanProfile: profileName.optional(),
       /** The `titan-review` binary that packager's brief names; absent means `$HOME/.local/bin/titan-review`. */
       titanReviewBin: absolutePath.optional(),
       /**

@@ -2,6 +2,7 @@ import type { StepRoute, WorkflowRun } from "@titan-design/workflow";
 import { stepIdMatches } from "./definition.js";
 import { stepPhase } from "./shepherd/step-phase.js";
 import { SHEPHERD_WORKFLOW } from "./shepherd/services.js";
+import { inDeploySkewWait } from "./shepherd/thaw-wait.js";
 
 /** `park` names a step whose route parks the run on restart; it outranks the step's Shepherd phase. */
 export type BusyPhase = "review" | "merging" | "park";
@@ -42,6 +43,7 @@ const isDrainPhase = (phase: string): phase is BusyPhase => DRAIN_PHASES.has(pha
 /**
  * Waits that only poll a store a restart reads again, so a restart costs them nothing; an exhausted account or an unbound checkout can hold one for days,
  * a seat reviewer runs outside serve, so its verdict waits for the repeated read, and a merging run in sh-order-wait only polls for the PRs ahead of it, replaying that wait (TP-4567).
+ * A run settling on attest-deploy-skew waits for the very deploy a busy count would hold (TP-4778), so it is not counted either.
  */
 const IDLE_WAITS: readonly string[] = ["sh-account-wait", "sh-no-reviewer-wait", "sh-await-verdict", "sh-late-verdict", "sh-seat-recheck", "sh-order-wait"];
 const MERGE_STEP = "merge";
@@ -68,6 +70,7 @@ function classify(run: WorkflowRun, routeFor: RouteFor): BusyRun | undefined {
   if (run.status !== "running" || step === null) return undefined;
   if (routeFor(step)?.onRestart === "park") return { runId: run.id, step, phase: "park" };
   if (IDLE_WAITS.some((id) => stepIdMatches(id, step))) return undefined;
+  if (inDeploySkewWait(run)) return undefined;
   const phase = stepPhase(step);
   return isDrainPhase(phase) ? { runId: run.id, step, phase } : undefined;
 }

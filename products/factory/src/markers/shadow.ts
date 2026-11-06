@@ -140,7 +140,7 @@ export interface NotAfterShadow {
  * A skip is a visit, so its call site is never an orphan, and one digest line. A live run of a step whose `notAfter` fact
  * already holds a valid marker is what a marker runner would only advise on, never block.
  */
-export function notAfterShadow(ctx: WorkflowContext, deps: ShadowDeps, scope: Pick<ShadowScope, "definition" | "log">): NotAfterShadow {
+export function notAfterShadow(ctx: WorkflowContext, deps: ShadowDeps, scope: ShadowScope): NotAfterShadow {
   const siteOf = (stepId: string, fact: string): ShadowSite => ({ runId: ctx.runId, stepId, fact, memoKey: "" });
   return {
     skipped: (stepId, notAfter) => {
@@ -149,11 +149,16 @@ export function notAfterShadow(ctx: WorkflowContext, deps: ShadowDeps, scope: Pi
     },
     live: async (stepId, notAfter) => {
       const item = itemOf(ctx);
-      if (!item) return;
+      if (!item || isSpent(scope.meter)) return;
+      const site = siteOf(stepId, notAfter);
+      const exceeded = () => deps.sink({ ...site, kind: "budget-exceeded", counters: { ...scope.meter.counters } });
       const validity: ValidityContext = { registry: deps.registry, sources: deps, now: deps.now() };
-      await swallow(deps, siteOf(stepId, notAfter), async () => {
-        if ((await evaluateFact(validity, { item, fact: notAfter })).status === "valid") deps.sink({ ...siteOf(stepId, notAfter), kind: "advisory" });
-      });
+      await swallow(deps, site, () =>
+        metered(scope.meter, deps.clock, exceeded, async () => {
+          scope.meter.counters.evaluations += 1;
+          if ((await evaluateFact(validity, { item, fact: notAfter })).status === "valid") deps.sink({ ...site, kind: "advisory" });
+        }),
+      );
     },
   };
 }

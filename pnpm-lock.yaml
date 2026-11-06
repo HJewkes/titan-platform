@@ -1577,6 +1577,9 @@ importers:
       '@titan-design/cluster':
         specifier: workspace:^
         version: link:../../packages/cluster
+      '@titan-design/code-graph':
+        specifier: workspace:^
+        version: link:../../packages/code-graph
       '@titan-design/coordinator':
         specifier: workspace:^
         version: link:../../packages/coordinator
@@ -1586,6 +1589,9 @@ importers:
       '@titan-design/dispatch-ledger':
         specifier: workspace:^
         version: link:../../packages/dispatch-ledger
+      '@titan-design/evidence':
+        specifier: workspace:^
+        version: link:../../packages/evidence
       '@titan-design/fix-proof':
         specifier: workspace:^
         version: link:../../packages/fix-proof
