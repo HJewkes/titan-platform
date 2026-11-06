@@ -2,7 +2,15 @@ import { execFile } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { resolveDbPath } from "../config.js";
-import type { Git } from "./tree-carry.js";
+
+export interface GitResult {
+  code: number;
+  stdout: string;
+  stderr: string;
+}
+
+/** Runs git against one bare repository; resolves with the exit code instead of rejecting. */
+export type Git = (gitDir: string, args: readonly string[], signal?: AbortSignal) => Promise<GitResult>;
 
 // Host effects behind the carry recipe: kept out of tree-carry.ts, which holds no I/O or clock use (D-M1b-07).
 const GIT_TIMEOUT_MS = 10 * 60_000;

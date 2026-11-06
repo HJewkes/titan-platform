@@ -7,20 +7,11 @@ import { codeRoute, step } from "../workflows/land.js";
 import { HEAD } from "./await-verdict.js";
 import { errorClass } from "./error-class.js";
 import { isRepoKey } from "./seats.js";
-import { cacheInitialized, configuredStateDir, makeCacheParent, systemGit } from "./tree-carry-adapter.js";
+import { cacheInitialized, configuredStateDir, makeCacheParent, systemGit, type Git, type GitResult } from "./tree-carry-adapter.js";
 
-export { systemGit };
+export { systemGit, type Git, type GitResult };
 
 export const CARRY_STEP = "sh-carry";
-
-export interface GitResult {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
-
-/** Runs git against one bare repository; resolves with the exit code instead of rejecting. */
-export type Git = (gitDir: string, args: readonly string[], signal?: AbortSignal) => Promise<GitResult>;
 
 /** `fromHead` is the head whose MERGE would be carried, `head` the new green head. */
 export type CarryInput = z.infer<typeof CarryInputSchema>;

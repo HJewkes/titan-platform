@@ -6,12 +6,12 @@ import type { StepDeclaration } from "../definition.js";
 import { evidenceRecord, type StepAttempt } from "../evidence.js";
 import { redactCredentials, redactForEvidence } from "../redact.js";
 import { step } from "./land.js";
-import { POST_MERGE_PIPE_GRACE_MS, execChore, hostEnv, isoTime, readSpecText, wallNow } from "./post-merge-adapter.js";
+import { POST_MERGE_PIPE_GRACE_MS, execChore, hostEnv, isoTime, readSpecText, wallNow, type ChoreExec, type ChoreOptions, type ChoreResult } from "./post-merge-adapter.js";
 import { ChoreSpec, awaitChoreResult, choreFiles, choreState, handleName, launchChore, writeJson, type ChorePorts } from "./post-merge-chore.js";
 
 export const POST_MERGE_STEPS: readonly StepDeclaration[] = [{ id: "post-merge", kind: "dispatch" }];
 export const POST_MERGE_TIMEOUT_MS = 10 * 60_000;
-export { POST_MERGE_PIPE_GRACE_MS, execChore };
+export { POST_MERGE_PIPE_GRACE_MS, execChore, type ChoreExec, type ChoreOptions, type ChoreResult };
 export const TAIL_CHARS = 2_000;
 export const NO_COMMAND = "no post-merge command";
 
@@ -20,27 +20,6 @@ export interface PostMergeInput {
   pr: number;
   mergeSha: string | null;
 }
-
-export interface ChoreOptions {
-  cwd?: string;
-  timeoutMs: number;
-  /** How long after the chore exits its output may stay open, held by a daemon it left behind, before the result is taken. */
-  pipeGraceMs?: number;
-  env: NodeJS.ProcessEnv;
-}
-
-export interface ChoreResult {
-  exitCode: number | null;
-  signal: string | null;
-  /** True when the chore outlived its timeout and its process group was killed. */
-  timedOut: boolean;
-  stdout: string;
-  stderr: string;
-  /** Why the chore did not run to an exit, such as a missing program; absent for any exit code. */
-  error?: string;
-}
-
-export type ChoreExec = (argv: readonly [string, ...string[]], options: ChoreOptions) => Promise<ChoreResult>;
 
 export const PostMergeResult = z.union([
   z.looseObject({ skipped: z.literal(NO_COMMAND) }),

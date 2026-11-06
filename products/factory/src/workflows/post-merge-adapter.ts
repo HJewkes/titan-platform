@@ -1,6 +1,26 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { readFileSync } from "node:fs";
-import type { ChoreOptions, ChoreResult } from "./post-merge.js";
+
+export interface ChoreOptions {
+  cwd?: string;
+  timeoutMs: number;
+  /** How long after the chore exits its output may stay open, held by a daemon it left behind, before the result is taken. */
+  pipeGraceMs?: number;
+  env: NodeJS.ProcessEnv;
+}
+
+export interface ChoreResult {
+  exitCode: number | null;
+  signal: string | null;
+  /** True when the chore outlived its timeout and its process group was killed. */
+  timedOut: boolean;
+  stdout: string;
+  stderr: string;
+  /** Why the chore did not run to an exit, such as a missing program; absent for any exit code. */
+  error?: string;
+}
+
+export type ChoreExec = (argv: readonly [string, ...string[]], options: ChoreOptions) => Promise<ChoreResult>;
 
 // Host effects behind the post-merge recipe: kept out of post-merge.ts, which holds no I/O or clock use (D-M1b-07).
 export const POST_MERGE_PIPE_GRACE_MS = 2_000;

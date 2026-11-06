@@ -1,4 +1,3 @@
-import type { ChildProcess, SpawnOptions } from "node:child_process";
 import { join } from "node:path";
 import type { RepoSlug } from "@titan-design/github";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
@@ -8,9 +7,9 @@ import { buildSha, FACTORY_REPO } from "../build-info.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { DEPLOY_MAX_WAIT_MS, DEPLOY_QUIET_MS, nodeWantedStore, noteWanted, readWanted, writeWanted, type DeployPacerOptions, type WantedStore } from "./deploy-pacer.js";
 import { failureOf } from "./error-class.js";
-import { hostExecPath, hostPlatform, nodeDeployerPorts, wallClock } from "./redeploy-adapter.js";
+import { hostExecPath, hostPlatform, nodeDeployerPorts, wallClock, type DeployerPorts } from "./redeploy-adapter.js";
 
-export { nodeDeployerPorts };
+export { nodeDeployerPorts, type DeployerPorts };
 
 export const REDEPLOY_STEP = "sh-redeploy";
 export const REDEPLOY_LOG = "redeploy.log";
@@ -75,15 +74,6 @@ async function requestDeploy(request: NonNullable<Deployer["request"]>, mergeSha
 
 export function redeployRoute(now: () => number, deployer?: Deployer): StepRoute {
   return codeRoute(REDEPLOY_STEP, now, (input: RedeployInput) => redeploy(deployer, input));
-}
-
-/** The effects `systemDeployer` has; tests pass fakes, so none of them starts a process. */
-export interface DeployerPorts {
-  spawn: (file: string, args: readonly string[], options: SpawnOptions) => Pick<ChildProcess, "pid" | "unref" | "on">;
-  mkdir: (dir: string) => void;
-  append: (path: string, text: string) => void;
-  openAppend: (path: string) => number;
-  close: (fd: number) => void;
 }
 
 /** An async spawn error lands outside any step, so a throw here would crash the service. */
