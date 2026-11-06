@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
-import { USAGE, ghWrite, openFixture, options } from "./smoke-fix-proof.mjs";
+import { USAGE, ghWrite, openFixture, options, register } from "./smoke-fix-proof.mjs";
 
 const SCRIPT = fileURLToPath(new URL("./smoke-fix-proof.mjs", import.meta.url));
 const HEAD = "c".repeat(40);
@@ -32,7 +32,8 @@ describe("smoke-fix-proof dry run", () => {
     const out = JSON.parse(execFileSync("node", [SCRIPT, "--open", "--repo", "HJewkes/titan-platform", "--implementer", "tc-tp-538-a"], { encoding: "utf8" }));
 
     expect(out.dryRun).toBe(true);
-    expect(out.steps.join("\n")).toMatch(/draft PR[\s\S]*--kind correctness[\s\S]*shepherd hold/);
+    expect(out.steps.join("\n")).toMatch(/draft PR[\s\S]*--kind correctness/);
+    expect(out.steps.join("\n")).not.toMatch(/shepherd hold/);
   });
 });
 
@@ -73,5 +74,19 @@ describe("smoke-fix-proof gh writes", () => {
   it("accepts --branch only together with --open", () => {
     expect(options(["--open", "--repo", "o/r", "--implementer", "x", "--branch", "fix/a"]).branch).toBe("fix/a");
     expect(() => options(["--repo", "o/r", "--pr", "1", "--head", HEAD, "--branch", "fix/a"])).toThrow(USAGE);
+  });
+});
+
+describe("smoke-fix-proof shepherd registration", () => {
+  it("registers the fixture with a never-merge policy and issues no hold", () => {
+    const exec = vi.fn(() => "");
+
+    register({ repo: "HJewkes/titan-platform", implementer: "agent-x", task: "titan-platform/TP-538" }, { pr: 7 }, exec);
+
+    expect(exec).toHaveBeenCalledTimes(1);
+    const [args] = exec.mock.calls[0];
+    expect(args.slice(0, 3)).toEqual(["register", "HJewkes/titan-platform#7", "--kind"]);
+    expect(args).toContain('{"merge":"never"}');
+    expect(args).not.toContain("hold");
   });
 });
