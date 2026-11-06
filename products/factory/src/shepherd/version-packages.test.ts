@@ -149,6 +149,26 @@ describe("sweepVersionPackages and the release preflight", () => {
     expect(w.preflightOf(w.runOf())).toMatchObject({ blockers: [], unpublished: [] });
   });
 
+  it("restarts a release run that stopped not-mergeable once the changesets action pushes a new head, and only once per head", async () => {
+    const w = await releaseRepo(async () => "trusted");
+    w.fake.pr(w.vp).mergeableState = "dirty";
+    await w.sweepNow();
+    const stopped = w.runOf();
+    await w.host.runtime.wait(stopped);
+
+    const sameHead = await w.sweepNow();
+    const next = fakeSha("version-packages-next");
+    w.fake.pushHead(w.vp, next);
+    const afterPush = await w.sweepNow();
+    const afterPushAgain = await w.sweepNow();
+
+    expect(w.host.runtime.status(stopped)).toMatchObject({ status: "completed" });
+    expect(sameHead).toEqual([]);
+    expect(afterPush).toEqual([{ repo: REPO, pr: w.vp, registered: w.runOf() }]);
+    expect(w.runOf()).not.toBe(stopped);
+    expect(afterPushAgain).toEqual([]);
+  });
+
   it("gates a malformed manifest once, and the next sweep leaves that run waiting on the owner", async () => {
     const w = await releaseRepo(async () => "trusted", "{ not json");
     await w.sweepNow();

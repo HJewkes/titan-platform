@@ -108,6 +108,14 @@ describe("releasePreflight", () => {
     await expect(preflight(versionPackagesPr(), async () => Promise.reject(new Error("HTTP 503")))).rejects.toThrow("HTTP 503");
   });
 
+  it("throws when the PR's file list cannot be read, so an unread diff never passes as a release", async () => {
+    const fake = versionPackagesPr();
+    const port = githubPort(fake.wire);
+    const unreadable = { ...port, listPrFiles: async () => Promise.reject(new Error("HTTP 502")) };
+
+    await expect(releasePreflight(unreadable, onNpm("@demo/widget"), { repo: REPO, pr: 1, head: HEAD })).rejects.toThrow("HTTP 502");
+  });
+
   it("blocks a file changesets does not write", async () => {
     const result = await preflight(versionPackagesPr([{ path: "packages/widget/src/index.ts", status: "modified" }]));
 
