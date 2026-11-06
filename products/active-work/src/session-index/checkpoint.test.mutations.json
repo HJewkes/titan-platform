@@ -25,7 +25,7 @@
       "find": "  db.pragma('wal_checkpoint(PASSIVE)');\n}",
       "replace": "}",
       "kills": [
-        "index checkpoints run off the event loop a pass never stalls the loop for a second while each checkpoint takes 1.5 s"
+        "index checkpoints run off the event loop the loop keeps turning while a checkpoint is in flight in the worker"
       ]
     },
     {
