@@ -166,8 +166,7 @@ async function routeLanded(run: ShepherdRun, outcome: LandOutcome): Promise<Land
     if (held !== false) return held === true ? undefined : held;
     const staleBase = await staleBaseOf(run, outcome.headSha);
     if (staleBase !== undefined) return (await woken(run, "conflict", outcome.headSha, { staleBase })) ? undefined : ciFailedRoute(run, outcome);
-    const wake = (payload: unknown) => woken(run, "review", outcome.headSha, payload);
-    const accepted = await visualAcceptRoute(run, outcome, run.phases.visualSetCarry, wake, (stepId, prompt) => packetBeforeGate(packetRunOf(run), stepId, prompt));
+    const accepted = await visualAcceptRoute(run, outcome, run.phases.visualSetCarry, (p) => woken(run, "review", outcome.headSha, p), (id, text) => packetBeforeGate(packetRunOf(run), id, text));
     if (accepted !== NOT_OFFERED) return accepted;
     if (await woken(run, "ci-red", outcome.headSha, { failing: outcome.failing })) return undefined;
     return ciFailedRoute(run, outcome);
