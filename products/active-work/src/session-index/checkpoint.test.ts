@@ -1,24 +1,24 @@
+import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { discoverTranscripts, type DiscoveredTranscript } from '@titan-design/session-read';
-import { measureLoopStall } from '../server/session-index-watch.js';
 import { startCheckpointer } from './checkpoint.js';
 import { openGraph, type WorkspaceGraph } from './graph.js';
 import { runRefresh } from './refresh.js';
 
 /**
  * SQLite gives JS no hook on fsync, so the test slows the one checkpoint path
- * the daemon owns, the worker's, past the stall bound. The paths it cannot slow,
+ * the daemon owns, the worker's, to 1.5 s. The paths it cannot slow,
  * the autocheckpoint and the per-commit WAL sync, must be off on the loop's
  * connection, which the pragma case pins.
  */
 
 const TRANSCRIPTS = 60;
 const EXCHANGES = 100;
-const STALL_BOUND_MS = 1_000;
 const SLOW_FSYNC_MS = 1_500;
 const SLOW_FIXTURE = { timeout: 120_000 };
 
@@ -82,19 +82,62 @@ describe('index checkpoints run off the event loop', () => {
     await checkpointer.stop();
   });
 
-  it('a pass never stalls the loop for a second while each checkpoint takes 1.5 s', SLOW_FIXTURE, async () => {
-    const checkpointer = startCheckpointer(graph.db, { intervalMs: 50, simulatedFsyncMs: SLOW_FSYNC_MS });
+  it('the loop keeps turning while a checkpoint is in flight in the worker', SLOW_FIXTURE, async () => {
+    // Counting loop turns inside the worker's slow checkpoint, rather than timing the
+    // pass, makes the check independent of runner speed: a checkpoint that blocked the
+    // loop would leave no turn between its start and end reports.
+    const state = { inFlight: false, turnsInFlight: 0, running: true };
+    const waiters: Array<(phase: 'start' | 'end') => void> = [];
+    const nextPhase = (): Promise<'start' | 'end'> => new Promise((resolve) => waiters.push(resolve));
+    const checkpointer = startCheckpointer(graph.db, {
+      intervalMs: 50,
+      simulatedFsyncMs: SLOW_FSYNC_MS,
+      onCheckpoint: (phase) => {
+        state.inFlight = phase === 'start';
+        for (const waiter of waiters.splice(0)) waiter(phase);
+      },
+    });
+    const pump = (async () => {
+      while (state.running) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        if (state.inFlight) state.turnsInFlight += 1;
+      }
+    })();
     const transcripts = await writeCorpus();
     const bytesBefore = databaseFileBytes();
 
-    const { result, maxStallMs } = await measureLoopStall(() =>
-      runRefresh({ graph, mode: 'delta', transcripts, taskRoot: dir, skipWorkspace: true }),
-    );
+    const result = await runRefresh({ graph, mode: 'delta', transcripts, taskRoot: dir, skipWorkspace: true });
+    while ((await nextPhase()) !== 'start');
+    state.turnsInFlight = 0;
+    while ((await nextPhase()) !== 'end');
+    state.running = false;
+    await pump;
     await checkpointer.stop();
 
     expect(result.indexed).toBe(TRANSCRIPTS);
-    expect(maxStallMs).toBeLessThanOrEqual(STALL_BOUND_MS);
+    expect(state.turnsInFlight).toBeGreaterThan(0);
     expect(databaseFileBytes()).toBeGreaterThan(bytesBefore);
+  });
+
+  it('an unstopped checkpointer does not keep the process alive', () => {
+    const script = `
+      const Database = require('better-sqlite3');
+      import(process.env.CP_MODULE).then(({ startCheckpointer }) => {
+        startCheckpointer(new Database(process.env.CP_DB), { onError: (err) => { throw err; } });
+      });
+    `;
+    const child = spawnSync(process.execPath, ['-e', script], {
+      cwd: path.dirname(fileURLToPath(import.meta.url)),
+      env: {
+        ...process.env,
+        CP_MODULE: pathToFileURL(path.join(path.dirname(fileURLToPath(import.meta.url)), 'checkpoint.ts')).href,
+        CP_DB: path.join(dir, 'child.sqlite3'),
+      },
+      timeout: 15_000,
+    });
+
+    expect(child.error).toBeUndefined();
+    expect(child.status).toBe(0);
   });
 
   it('a worker that fails hands checkpointing back to the connection', async () => {

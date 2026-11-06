@@ -1,4 +1,6 @@
 import { GITHUB_ACTIONS_APP_ID, type GitHubPort, type PullRequest, type RepoSlug } from "@titan-design/github";
+import type { WorkflowRun } from "@titan-design/workflow";
+import { z } from "zod";
 import type { FactoryHost } from "../host.js";
 import { registerVersionPackages } from "./commands.js";
 import type { ShepherdServices } from "./services.js";
@@ -54,7 +56,7 @@ interface SweepTarget {
 /** One repo's turn; a failure is that repo's note, so it never stops the sweep of the others. */
 async function sweepOne(host: FactoryHost, services: ShepherdServices, { repo, pr, now, registry }: SweepTarget): Promise<ReleaseSweepNote> {
   const unblocked = await unblockPublished(host, services, registry, repo, pr.number);
-  const registered = await registerOnce(host, services, repo, pr.number);
+  const registered = await registerOnce(host, services, repo, pr);
   const startedCi = await startCiIfIdle(services.port, repo, pr, now);
   return { repo, pr: pr.number, ...(unblocked && { unblocked }), ...(registered && { registered }), ...(startedCi && { startedCi }) };
 }
@@ -71,11 +73,26 @@ async function unblockPublished(host: FactoryHost, services: ShepherdServices, r
   return pending.gate.id;
 }
 
-/** A live registration is left alone, so the sweep never refreshes it; a failed run is restarted by `register` itself. */
-async function registerOnce(host: FactoryHost, services: ShepherdServices, repo: RepoSlug, pr: number): Promise<string | undefined> {
-  const known = services.store.get().byPr(repo, pr);
-  if (known && host.runtime.status(known.runId)?.status !== "failed") return undefined;
-  return (await registerVersionPackages({ warnings: [], format: "json", host, shepherd: services }, repo, pr)).runId;
+/**
+ * A live registration is left alone, so the sweep never refreshes it; `register` itself restarts a failed run, and a run
+ * that stopped where a new head may merge once the changesets action has pushed past the head it stopped at.
+ */
+async function registerOnce(host: FactoryHost, services: ShepherdServices, repo: RepoSlug, pr: PullRequest): Promise<string | undefined> {
+  const known = services.store.get().byPr(repo, pr.number);
+  const run = known && host.runtime.status(known.runId);
+  if (known && run?.status !== "failed" && !(run && stoppedBehind(run, pr.headSha))) return undefined;
+  return (await registerVersionPackages({ warnings: [], format: "json", host, shepherd: services }, repo, pr.number)).runId;
+}
+
+/** Stops a pushed head can clear; an owner abandon is not one, so a new release head never overrides it. */
+const HEAD_STOPS: ReadonlySet<string> = new Set(["not-mergeable", "conflict"]);
+const StoppedAt = z.object({ result: z.object({ reason: z.string(), headSha: z.string() }) });
+
+/** One restart per pushed head: a run that stopped at the live head stays stopped, so a dirty or draft PR is never re-run each sweep. */
+function stoppedBehind(run: WorkflowRun, liveHead: string): boolean {
+  if (run.status !== "completed") return false;
+  const stopped = StoppedAt.safeParse(Object.values(run.stepResults).find((result) => result.stepId.startsWith("sh-stopped"))?.data);
+  return stopped.success && HEAD_STOPS.has(stopped.data.result.reason) && stopped.data.result.headSha !== liveHead;
 }
 
 /**

@@ -36,6 +36,15 @@
       "kills": [
         "the per-entry replay budget the shadow's time is read from the injected clock, so the budget test counts work, not wall time"
       ]
+    },
+    {
+      "name": "the notAfter advisory evaluation drops the meter",
+      "file": "products/factory/src/markers/shadow.ts",
+      "find": "metered(scope.meter, deps.clock, exceeded, async () => {",
+      "replace": "((_meter: unknown, _clock: unknown, _exceeded: unknown, work: () => Promise<void>) => work())(scope.meter, deps.clock, exceeded, async () => {",
+      "kills": [
+        "the per-entry replay budget the notAfter advisory evaluation a spent meter skips the advisory evaluation and writes one budget-exceeded"
+      ]
     }
   ]
 }
