@@ -1,7 +1,8 @@
+import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
 import { parseDiff } from "./diff.js";
 import { formatReport } from "./report.js";
-import { scan } from "./scan.js";
+import { scan, zeroCounts, type RuleCounts } from "./scan.js";
 import { parseTerms } from "./terms.js";
 
 const user = "planted" + "-name";
@@ -48,5 +49,24 @@ describe("formatReport", () => {
     const lines = formatReport([], { ...result, termsLoaded: false });
     expect(lines).toContain("egress-scan: 0 findings (home-path 0, aw-data-path 0, private-term 0, credential-token 0)");
     expect(lines).toContain("private term list: not loaded, generic rules only");
+  });
+});
+
+describe("formatReport counts", () => {
+  const summaryOf = (allowed: RuleCounts) => ({ allowed, binaryFilesSkipped: 0, termsLoaded: true });
+
+  it("prints only the allowable rules on the allowed line, in fixed order", () => {
+    const allowed = { ...zeroCounts(), "aw-data-path": 2, "home-path": 1, "private-term": 8, "credential-token": 9 };
+    expect(formatReport([], summaryOf(allowed))).toContain("allowed: home-path 1, aw-data-path 2");
+  });
+
+  it("drops a key that names no rule", () => {
+    const extra = { ...zeroCounts(), "not-a-rule": 7 };
+    expect(formatReport([], summaryOf(extra)).join("\n")).not.toContain("not-a-rule");
+  });
+
+  it("prints a count missing from a malformed summary as undefined", () => {
+    const missing = partialFake<RuleCounts>({ "aw-data-path": 2 });
+    expect(formatReport([], summaryOf(missing))).toContain("allowed: home-path undefined, aw-data-path 2");
   });
 });

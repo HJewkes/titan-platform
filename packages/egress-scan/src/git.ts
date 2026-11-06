@@ -222,8 +222,8 @@ export function commitsForRange(cwd: string, base: string, head: string): string
   return lines(git(cwd, ["rev-list", "--reverse", END_OF_OPTIONS, `${base}..${head}`]));
 }
 
-function isOverBuffer(error: Error | undefined): boolean {
-  return (error as NodeJS.ErrnoException | undefined)?.code === "ENOBUFS";
+function isOverBuffer(error: NodeJS.ErrnoException | undefined): boolean {
+  return error?.code === "ENOBUFS";
 }
 
 /** Refuses a source in which git still skipped a file as binary, since its lines went unscanned. */

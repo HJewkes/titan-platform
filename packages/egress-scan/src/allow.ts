@@ -27,7 +27,7 @@ export class AllowFileError extends Error {
   }
 }
 
-const ALLOWABLE: readonly string[] = ["home-path", "aw-data-path"];
+const ALLOWABLE: readonly AllowableRule[] = ["home-path", "aw-data-path"];
 // A credential in a pushed file is a leak wherever it sits; fixtures build theirs at runtime.
 const NEVER_ALLOWABLE: readonly string[] = ["private-term", "credential-token"];
 const TASK_ID = /\b[A-Z]+-\d+\b/;
@@ -56,9 +56,10 @@ function parseEntry(entry: string, line: number): AllowEntry {
   if (!fields) throw new AllowFileError(line, "expected <glob> <rule-id> <reason>");
   const [, glob = "", rule = "", reason = ""] = fields;
   if (NEVER_ALLOWABLE.includes(rule)) throw new AllowFileError(line, `${rule} is never allowable`);
-  if (!ALLOWABLE.includes(rule)) throw new AllowFileError(line, "unknown rule id");
+  const allowable = ALLOWABLE.find((candidate) => candidate === rule);
+  if (allowable === undefined) throw new AllowFileError(line, "unknown rule id");
   if (!TASK_ID.test(reason)) throw new AllowFileError(line, "reason must name a task id");
-  return { glob, rule: rule as AllowableRule, line, matches: compileEntry(glob, line) };
+  return { glob, rule: allowable, line, matches: compileEntry(glob, line) };
 }
 
 export function parseAllow(text: string): AllowList {

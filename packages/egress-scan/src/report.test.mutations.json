@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the allowed line lists the never-allowable rules too",
+      "file": "packages/egress-scan/src/report.ts",
+      "find": "formatCounts(summary.allowed, [\"home-path\", \"aw-data-path\"])",
+      "replace": "formatCounts(summary.allowed, RULE_IDS)",
+      "kills": [
+        "formatReport counts prints only the allowable rules on the allowed line, in fixed order"
+      ]
+    },
+    {
+      "name": "the allowed line swaps its fixed order",
+      "file": "packages/egress-scan/src/report.ts",
+      "find": "formatCounts(summary.allowed, [\"home-path\", \"aw-data-path\"])",
+      "replace": "formatCounts(summary.allowed, [\"aw-data-path\", \"home-path\"])",
+      "kills": [
+        "formatReport counts prints only the allowable rules on the allowed line, in fixed order"
+      ]
+    },
+    {
+      "name": "the allowed line prints every key the summary holds",
+      "file": "packages/egress-scan/src/report.ts",
+      "find": "formatCounts(summary.allowed, [\"home-path\", \"aw-data-path\"])",
+      "replace": "formatCounts(summary.allowed, Object.keys(summary.allowed) as never)",
+      "kills": [
+        "formatReport counts drops a key that names no rule"
+      ]
+    },
+    {
+      "name": "a missing count prints as a number",
+      "file": "packages/egress-scan/src/report.ts",
+      "find": "${counts[rule",
+      "replace": "${0 + counts[rule",
+      "kills": [
+        "formatReport counts prints a count missing from a malformed summary as undefined"
+      ]
+    }
+  ]
+}

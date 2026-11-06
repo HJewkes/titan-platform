@@ -1,0 +1,54 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a not-a-directory read error reads as a missing file",
+      "file": "packages/egress-scan/src/config.ts",
+      "find": "=== \"ENOENT\") return undefined;",
+      "replace": "!== \"EISDIR\") return undefined;",
+      "kills": [
+        "loadAllow reading the file fails a root that is a file, whose not-a-directory error is not a missing file",
+        "loadTerms reading the file fails a path under a file, whose not-a-directory error is not a missing list"
+      ]
+    },
+    {
+      "name": "a missing file fails the scan instead of reading as absent",
+      "file": "packages/egress-scan/src/config.ts",
+      "find": "=== \"ENOENT\") return undefined;",
+      "replace": "=== \"ENOTDIR\") return undefined;",
+      "kills": [
+        "loadAllow reading the file reads a missing file as the empty allow list",
+        "loadTerms reading the file gives a notice for a missing list"
+      ]
+    },
+    {
+      "name": "an unknown rule id is kept as a home-path entry",
+      "file": "packages/egress-scan/src/allow.ts",
+      "find": "throw new AllowFileError(line, \"unknown rule id\");",
+      "replace": "return { glob, rule: \"home-path\", line, matches: compileEntry(glob, line) };",
+      "kills": [
+        "loadAllow parsing the file fails a rule in the wrong case with its line and reason",
+        "loadAllow parsing the file fails a rule with a trailing character with its line and reason",
+        "loadAllow parsing the file fails a rule naming two ids with its line and reason"
+      ]
+    },
+    {
+      "name": "a prototype key is accepted as an allowable rule id",
+      "file": "packages/egress-scan/src/allow.ts",
+      "find": "[\"home-path\", \"aw-data-path\"];",
+      "replace": "[\"home-path\", \"aw-data-path\", \"constructor\"];",
+      "kills": [
+        "loadAllow parsing the file fails a rule that is an Object.prototype key with its line and reason"
+      ]
+    },
+    {
+      "name": "a never-allowable rule loses its own refusal",
+      "file": "packages/egress-scan/src/allow.ts",
+      "find": "if (NEVER_ALLOWABLE.includes(rule)) throw new AllowFileError(line, `${rule} is never allowable`);",
+      "replace": "",
+      "kills": [
+        "loadAllow parsing the file fails a never-allowable rule ahead of a missing task id with its line and reason"
+      ]
+    }
+  ]
+}
