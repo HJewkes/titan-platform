@@ -1,6 +1,8 @@
 import { RESOLVER_CLASSES } from "@titan-design/authority";
 import { z } from "zod";
 
+const OWNER_CLASSES: readonly string[] = RESOLVER_CLASSES;
+
 /**
  * Owner decision 556(3) (2026-11-06, TP-4791), on rule 461 ("merge-ups re-run CI only"): a coordinator may answer `merge` on
  * a land approve-merge gate when the owner answered `merge` on an earlier land gate of the same run, and every commit from
@@ -9,7 +11,7 @@ import { z } from "zod";
  */
 export const MERGE_UP_APPROVAL = Object.freeze({
   /** The classes whose `merge` answer is the approval the merge-ups follow from. */
-  approvedBy: RESOLVER_CLASSES as readonly string[],
+  approvedBy: OWNER_CLASSES,
   /** A longer chain asks the owner again rather than walking an unbounded history. */
   maxMergeUps: 20,
 });

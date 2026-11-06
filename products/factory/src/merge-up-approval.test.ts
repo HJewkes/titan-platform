@@ -1,3 +1,4 @@
+import type { ActorClass } from "@titan-design/authority";
 import { fakeSha } from "@titan-design/github";
 import type { GateRecord, GateResolver } from "@titan-design/hitl";
 import { describe, expect, it } from "vitest";
@@ -45,9 +46,8 @@ describe("a coordinator merge on an owner approval carried by clean merge-ups (d
     expect(admits(MERGE, evidence())).toBe(true);
   });
 
-  it.each(["owner-remote", "automation", "delegate", "decider"])("admits only a coordinator, never a %s resolver", (cls) => {
-    const resolver = { ...COORDINATOR, class: cls } as GateResolver;
-    expect(admits(MERGE, evidence(), resolver)).toBe(false);
+  it.each<ActorClass>(["owner-terminal", "owner-remote", "worker", "headless", "automation", "decider"])("admits only a coordinator, never a %s resolver", (cls) => {
+    expect(admits(MERGE, evidence(), { ...COORDINATOR, class: cls })).toBe(false);
   });
 
   it.each([

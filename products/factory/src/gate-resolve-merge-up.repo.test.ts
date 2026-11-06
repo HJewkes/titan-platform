@@ -12,6 +12,7 @@ import { approveMergeDecision } from "./gate-brief.js";
 import { resolveGate } from "./gate-resolve.js";
 import { openFactoryHost, type FactoryHost } from "./host.js";
 import { readMergeUpChain } from "./merge-up-chain.js";
+import { readPath } from "./narrow.js";
 import { fakeOwnerHelper } from "./test-support/owner-edges.js";
 
 const REPO = "acme/widgets";
@@ -114,7 +115,7 @@ describe("coordinator resolve of a land gate whose head moved only by clean merg
     const gate = w.host.gates.get(gateId);
     expect(gate).toMatchObject({ status: "resolved", resolvedBy: { class: "coordinator", id: "tc-synthetic" } });
     expect(gate?.resolvedEvidence).toMatchObject({ kind: "merge-up-approval", approval: { gateId: `${w.runId}/approve-merge`, head: approved, resolverClass: "owner-terminal" } });
-    expect((gate?.resolvedEvidence as { mergeUps: unknown[] }).mergeUps).toHaveLength(ups);
+    expect(readPath(gate?.resolvedEvidence, "mergeUps")).toHaveLength(ups);
   });
 
   it("refuses with the reason when a plain commit follows the merge-ups", async () => {
