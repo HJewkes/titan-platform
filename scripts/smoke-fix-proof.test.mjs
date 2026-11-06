@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
-import { USAGE, options } from "./smoke-fix-proof.mjs";
+import { describe, expect, it, vi } from "vitest";
+import { USAGE, ghWrite, openFixture, options } from "./smoke-fix-proof.mjs";
 
 const SCRIPT = fileURLToPath(new URL("./smoke-fix-proof.mjs", import.meta.url));
 const HEAD = "c".repeat(40);
@@ -33,5 +33,45 @@ describe("smoke-fix-proof dry run", () => {
 
     expect(out.dryRun).toBe(true);
     expect(out.steps.join("\n")).toMatch(/draft PR[\s\S]*--kind correctness[\s\S]*shepherd hold/);
+  });
+});
+
+describe("smoke-fix-proof gh writes", () => {
+  const created = JSON.stringify({ number: 7, html_url: "https://example.test/pr/7" });
+  const fakeIo = () => ({ git: vi.fn(() => "d".repeat(40)), run: vi.fn(() => created), commit: vi.fn(() => "e".repeat(40)) });
+  const base = { repo: "owner/repo", branch: null };
+
+  it("sends gh writes through agent-chat gh-write", () => {
+    const exec = vi.fn(() => "");
+
+    ghWrite(["pr", "close", "7"], exec);
+
+    expect(exec).toHaveBeenCalledWith("agent-chat", ["gh-write", "--", "pr", "close", "7"]);
+  });
+
+  it("creates the fixture PR via gh-write and never calls gh directly", () => {
+    const io = fakeIo();
+
+    openFixture(base, io);
+
+    expect(io.run).toHaveBeenCalledTimes(1);
+    expect(io.run.mock.calls[0][0]).toBe("agent-chat");
+    expect(io.run.mock.calls[0][1].slice(0, 5)).toEqual(["gh-write", "--", "api", "-X", "POST"]);
+  });
+
+  it("opens the PR from an existing branch without pushing", () => {
+    const io = fakeIo();
+
+    const fixture = openFixture({ ...base, branch: "fix/tp-538-fixture-abc123" }, io);
+
+    expect(io.git.mock.calls.map(([args]) => args[0])).not.toContain("push");
+    expect(io.commit).not.toHaveBeenCalled();
+    expect(io.run.mock.calls[0][1]).toContain("head=fix/tp-538-fixture-abc123");
+    expect(fixture).toMatchObject({ pr: 7, head: "d".repeat(40), branch: "fix/tp-538-fixture-abc123" });
+  });
+
+  it("accepts --branch only together with --open", () => {
+    expect(options(["--open", "--repo", "o/r", "--implementer", "x", "--branch", "fix/a"]).branch).toBe("fix/a");
+    expect(() => options(["--repo", "o/r", "--pr", "1", "--head", HEAD, "--branch", "fix/a"])).toThrow(USAGE);
   });
 });
