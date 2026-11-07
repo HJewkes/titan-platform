@@ -2,7 +2,7 @@ import { z } from "zod";
 import { readEdges, taskTree, type Task } from "@titan-design/pm";
 import { EXIT } from "@titan-design/registry";
 import { branchStateReader, type BranchStateReader, type BranchStates } from "./branch-prs.js";
-import { failure, type ActiveWork, type ReadResult, type WireDeliverable, type WireTask } from "./active-work.js";
+import { CLOSED_TASK_STATUSES, failure, type ActiveWork, type ReadResult, type WireDeliverable, type WireTask } from "./active-work.js";
 import { readCommand } from "./owner-guard.js";
 import { gitEvidenceReader, indexByTaskId, type EvidenceReader, type RepoEvidence } from "./repo-evidence.js";
 import { sessionsForTask, type SessionsSource, type TaskSessions } from "./sessions.js";
@@ -21,7 +21,7 @@ export interface TasksSource {
 }
 
 type TaskRow = ReturnType<typeof taskRowOf> & {
-  status: "open" | "done";
+  status: WireTask["status"];
   stage: TaskStage;
   stageRule: StageRule;
   stageReason: string;
@@ -162,7 +162,7 @@ function summary(repos: readonly RepoEvidence[], more: readonly string[] = []): 
 }
 
 function stageEvidence(tasks: readonly WireTask[], repos: readonly RepoEvidence[]): StageEvidence {
-  const open = tasks.filter((task) => task.status === "open");
+  const open = tasks.filter((task) => !CLOSED_TASK_STATUSES.has(task.status));
   const openChildren = new Map<string, number>();
   for (const task of open) {
     const { parent } = readEdges(asPmTask(task));

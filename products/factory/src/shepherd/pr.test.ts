@@ -1094,9 +1094,9 @@ describe("the Version Packages PR", () => {
   }
 
   /** The changesets PR as PR 1, registered the way the release sweep registers it. */
-  function releaseWorld(registry: PackageRegistry, policy = RELEASE_POLICY): { w: World; runId: string; reviews: ReviewRequest[] } {
+  function releaseWorld(registry: PackageRegistry, policy = RELEASE_POLICY, validate?: (headSha: string) => string): { w: World; runId: string; reviews: ReviewRequest[] } {
     const { phases, reviews } = fakePhases({});
-    const w = world(phases, undefined, undefined, undefined, registry);
+    const w = world(phases, validate, undefined, undefined, registry);
     w.fake.addPr({ headSha: H1, headRef: VERSION_PACKAGES_BRANCH, headRepo: REPO, mergeSha: fakeSha("test-merge") });
     w.fake.prFiles.set(1, RELEASE_FILES);
     setWidgetManifest(w.fake, H1);
@@ -1117,6 +1117,15 @@ describe("the Version Packages PR", () => {
     expect(stepIds(w.host, runId).filter((id) => id.startsWith("sh-park"))).toEqual([]);
     expect(stepResult(w.host, runId, "merge-policy:0")).toMatchObject({ result: { outcome: "allow", rule: { table: "shepherd-release", rowId: "version-packages" } } });
     expect(w.store.byRun(runId)?.releaseReady).toMatchObject({ head: H1 });
+  });
+
+  it("never merges a release whose required CI is red at its head, though its preflight passed", async () => {
+    const { w, runId } = releaseWorld(async () => "trusted", RELEASE_POLICY, () => "failure");
+
+    await gateOpened(w.host, gateId(runId, "ci-failed"));
+
+    expect(w.fake.effects.merge).toBe(0);
+    expect(stepIds(w.host, runId).filter((id) => id.startsWith("sh-release-preflight") || id.startsWith("merge-policy"))).toEqual([]);
   });
 
   it("gates with the package's name when npm has never seen it", async () => {
