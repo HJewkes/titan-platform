@@ -1,7 +1,10 @@
-import type { RepoSlug } from "@titan-design/github";
-import { bumpBranch, consumerDepNames, planConsumerBump, readConsumerTree, type ConsumerBumpPlan, type ConsumerTree, type LatestRegistry } from "./consumer-bump.js";
+import type { GitHubPort, PullRequest, RepoFile, RepoSlug } from "@titan-design/github";
+import type { FactoryHost } from "../host.js";
+import { BUMP_BRANCH_PREFIX, bumpBranch, consumerDepNames, planConsumerBump, readConsumerTree, type ConsumerBumpPlan, type ConsumerTree, type LatestRegistry } from "./consumer-bump.js";
 import { failureOf } from "./error-class.js";
+import type { LockfileRegen, LockfileTree } from "./lockfile-regen.js";
 import { lookupSeat, type SeatBook } from "./seats.js";
+import { headInRepo, registerConsumerBump } from "./self-register.js";
 import type { ShepherdServices } from "./services.js";
 
 /** One behind consumer: the tree read at its default branch, the edits that raise it, and the branch they go on. */
@@ -21,10 +24,10 @@ interface ConsumerBumpPlans {
 }
 
 /** Reads only: each seat-book consumer at its default branch, planned against npm latest; one repo's failure is its note and never stops the others. */
-export async function planConsumerBumps(services: Pick<ShepherdServices, "port" | "seats">, registry: LatestRegistry): Promise<ConsumerBumpPlans> {
+export async function planConsumerBumps(services: Pick<ShepherdServices, "port" | "seats">, registry: LatestRegistry, repos = consumerRepos(services.seats())): Promise<ConsumerBumpPlans> {
   const latest = memoized(registry);
   const result: ConsumerBumpPlans = { bumps: [], notes: [] };
-  for (const repo of consumerRepos(services.seats())) {
+  for (const repo of repos) {
     try {
       const planned = await planOne(services, repo, latest);
       if (planned.plan.edits.length === 0) result.notes.push({ repo, current: true });
@@ -59,4 +62,109 @@ function memoized(registry: LatestRegistry): LatestRegistry {
     if (!answer) seen.set(name, (answer = registry(name)));
     return answer;
   };
+}
+
+/** What one consumer came to: a PR opened or found, or why none was. */
+interface ConsumerBumpSweepNote {
+  repo: RepoSlug;
+  pr?: number;
+  /** An open bump PR is registered if it is not yet and nothing new opens; a closed one on the same branch is a rejected set, never reopened. */
+  skipped?: "open" | "closed";
+  registered?: string;
+  current?: true;
+  error?: string;
+}
+
+interface ConsumerBumpPorts {
+  registry: LatestRegistry;
+  regen: LockfileRegen;
+}
+
+const BUMP_TITLE = "Bump @titan-design dependencies to npm latest";
+
+/** Opens at most one bump PR per behind consumer and hands it to Shepherd; a failure is that repo's note and never stops the others. */
+export async function bumpConsumers(host: FactoryHost, services: ShepherdServices, ports: ConsumerBumpPorts): Promise<ConsumerBumpSweepNote[]> {
+  const { unbumped, notes: openNotes } = await registerOpenBumps(host, services);
+  const { bumps, notes } = await planConsumerBumps(services, ports.registry, unbumped);
+  const result: ConsumerBumpSweepNote[] = [...openNotes, ...notes];
+  for (const bump of bumps) {
+    result.push(await bumpOne(host, services, ports.regen, bump).catch((error: unknown) => ({ repo: bump.repo, error: failureOf(error) })));
+  }
+  return result.sort((a, b) => a.repo.localeCompare(b.repo));
+}
+
+/** Runs before any tree read, so an open bump PR is registered even when its repo now plans as current or cannot be read; such a repo is not planned. */
+async function registerOpenBumps(host: FactoryHost, services: ShepherdServices): Promise<{ unbumped: RepoSlug[]; notes: ConsumerBumpSweepNote[] }> {
+  const unbumped: RepoSlug[] = [];
+  const notes: ConsumerBumpSweepNote[] = [];
+  for (const repo of consumerRepos(services.seats())) {
+    try {
+      const [open] = (await services.port.listOpenPrs(repo, BUMP_BRANCH_PREFIX)).filter((pr) => headInRepo(pr, repo));
+      if (open) notes.push({ repo, pr: open.number, skipped: "open", ...(await registerOnce(host, services, repo, open.number)) });
+      else unbumped.push(repo);
+    } catch (error) {
+      notes.push({ repo, error: failureOf(error) });
+    }
+  }
+  return { unbumped, notes };
+}
+
+async function bumpOne(host: FactoryHost, services: ShepherdServices, regen: LockfileRegen, bump: PlannedBump): Promise<ConsumerBumpSweepNote> {
+  const { repo } = bump;
+  const closed = await services.port.findPr(repo, bump.branch);
+  if (closed && !headInRepo(closed, repo)) throw new Error(`${repo} PR #${closed.number} from a fork holds ${bump.branch}`);
+  if (closed) return { repo, pr: closed.number, skipped: "closed" };
+  const changed = await regenerate(regen, bump);
+  const pr = await openBump(services.port, bump, changed);
+  return { repo, pr: pr.number, ...(await registerOnce(host, services, repo, pr.number)) };
+}
+
+/** The edited manifests plus the lockfile pnpm or npm rewrote, each with the blob it replaces. */
+async function regenerate(regen: LockfileRegen, bump: PlannedBump): Promise<FileWrite[]> {
+  const lockfile = bump.tree.lockfile;
+  if (!lockfile) throw new Error(`${bump.repo} has no lockfile to regenerate`);
+  const edited = new Map(bump.plan.files.map((file) => [file.path, file]));
+  const readFiles = [...bump.tree.manifests, lockfile.file, bump.tree.workspaceYaml, bump.tree.npmrc].filter((file): file is RepoFile => file !== null);
+  const tree: LockfileTree = { kind: lockfile.kind, files: Object.fromEntries(readFiles.map((file) => [file.path, edited.get(file.path)?.content ?? file.content])) };
+  const regenerated = await regen(tree);
+  const blobs = new Map(readFiles.map((file) => [file.path, file.blobSha]));
+  const writes = new Map<string, FileWrite>(bump.plan.files.map((file) => [file.path, file]));
+  for (const [path, content] of Object.entries(regenerated)) writes.set(path, { path, content, expectedBlobSha: blobs.get(path) ?? null });
+  return [...writes.values()];
+}
+
+interface FileWrite {
+  path: string;
+  content: string;
+  expectedBlobSha: string | null;
+}
+
+/**
+ * Builds a new branch through the contents API, as the toolchain sweep does; each write's expected blob makes a moved file fail instead of being overwritten.
+ * A branch that already exists with no PR is refused, not reused: its other commits would ride into the PR the sweep registers.
+ */
+async function openBump(port: GitHubPort, bump: PlannedBump, files: FileWrite[]): Promise<PullRequest> {
+  const { repo, branch, tree } = bump;
+  const baseSha = await port.getHeadSha(repo, tree.ref);
+  if (baseSha === null) throw new Error(`${repo} has no ${tree.ref} branch`);
+  const created = await port.ensureBranch(repo, branch, baseSha);
+  if (!created.done) throw new Error(`${repo} already has a ${branch} branch with no PR`);
+  for (const file of files) await port.putFile(repo, { path: file.path, branch, content: file.content, message: `${BUMP_TITLE}: ${file.path}`, expectedBlobSha: file.expectedBlobSha });
+  const opened = await port.openPr(repo, { head: branch, base: tree.ref, title: BUMP_TITLE, body: bumpBody(bump.plan) });
+  if (!opened.done || !headInRepo(opened.pr, repo)) throw new Error(`${repo} PR #${opened.pr.number} on ${branch} was not opened by this sweep`);
+  return opened.pr;
+}
+
+function bumpBody(plan: ConsumerBumpPlan): string {
+  const raised = plan.edits.map((edit) => `- \`${edit.name}\`: ${edit.from} → ${edit.to} (\`${edit.path}\`)`);
+  const left = plan.leftAlone.map((found) => `- \`${found.name}\`: ${found.spec} (\`${found.path}\`, ${found.reason})`);
+  const leftSection = left.length > 0 ? ["", "Left alone:", ...left] : [];
+  return ["Factory's consumer bump sweep opened this PR: it raises these specifiers to npm latest and regenerates the lockfile.", "", ...raised, ...leftSection].join("\n");
+}
+
+/** A live registration is left alone; a missing or failed one is (re)registered by `register` itself. */
+async function registerOnce(host: FactoryHost, services: ShepherdServices, repo: RepoSlug, pr: number): Promise<{ registered?: string }> {
+  const known = services.store.get().byPr(repo, pr);
+  if (known && host.runtime.status(known.runId)?.status !== "failed") return {};
+  return { registered: (await registerConsumerBump({ warnings: [], format: "json", host, shepherd: services }, repo, pr)).runId };
 }
