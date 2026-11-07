@@ -1,4 +1,4 @@
-import { fakeGitHub, fakeSha, githubPort, type FakeGitHub, type GitHubPort, type GitHubWire, type RepoSlug } from "@titan-design/github";
+import { fakeGitHub, fakeSha, githubPort, type FakeGitHub, type GitHubPort, type GitHubWire, type PrFile, type RepoSlug } from "@titan-design/github";
 import type { LatestRegistry } from "../shepherd/consumer-bump.js";
 import type { LockfileRegen, LockfileTree } from "../shepherd/lockfile-regen.js";
 import { MERGE_ON_GREEN_GRANT, type SeatBook } from "../shepherd/seats.js";
@@ -67,7 +67,7 @@ const LOCKFILE_PATH = { pnpm: "pnpm-lock.yaml", npm: "package-lock.json" } as co
 
 /** One fake per consumer routed by each call's repo argument, and an npm registry that answers `NPM_LATEST`. */
 export function consumerBumpWorld(options: ConsumerBumpWorldOptions = {}): ConsumerBumpWorld {
-  const fakes = new Map(Object.entries(TREES).map(([repo, files]) => [repo, seeded(files)]));
+  const fakes = new Map(Object.entries(TREES).map(([repo, files]) => [repo, seeded(repo, files)]));
   const ports = new Map([...fakes].map(([repo, fake]) => [repo, githubPort(branchingWire(fake))]));
   const portFor = (repo: RepoSlug): GitHubPort => {
     const port = ports.get(repo);
@@ -94,14 +94,17 @@ export function consumerBumpWorld(options: ConsumerBumpWorldOptions = {}): Consu
   return { fakes, port, registry, regen, regenCalls, openedBodies };
 }
 
-function seeded(files: Record<string, string>): FakeGitHub {
-  const fake = fakeGitHub();
+function seeded(repo: RepoSlug, files: Record<string, string>): FakeGitHub {
+  const fake = fakeGitHub({ repo });
   fake.refs.set("main", fakeSha("main"));
   for (const [path, content] of Object.entries(files)) fake.files.set(`main:${path}`, { content, blobSha: fakeSha(path) });
   return fake;
 }
 
-/** Real GitHub starts a new branch with its base's files; the fake does not, so a created branch gets a copy of main's. */
+/**
+ * Real GitHub starts a new branch with its base's files and lists a PR's changed files; the fake does neither, so a created
+ * branch gets a copy of main's and a created PR lists the files its head changed from main.
+ */
 function branchingWire(fake: FakeGitHub): GitHubWire {
   return {
     ...fake.wire,
@@ -109,5 +112,19 @@ function branchingWire(fake: FakeGitHub): GitHubWire {
       await fake.wire.createRef(repo, branch, sha);
       for (const [key, file] of [...fake.files]) if (key.startsWith("main:")) fake.files.set(`${branch}:${key.slice("main:".length)}`, { ...file });
     },
+    createPr: async (repo, request) => {
+      const pr = await fake.wire.createPr(repo, request);
+      fake.prFiles.set(pr.number, changedFiles(fake, request.head));
+      return pr;
+    },
   };
+}
+
+function changedFiles(fake: FakeGitHub, branch: string): PrFile[] {
+  const head = [...fake.files].filter(([key]) => key.startsWith(`${branch}:`)).map(([key, file]) => [key.slice(branch.length + 1), file] as const);
+  return head.flatMap(([path, file]) => {
+    const base = fake.files.get(`main:${path}`);
+    if (base?.content === file.content) return [];
+    return [{ path, status: base ? "modified" : "added" }];
+  });
 }
