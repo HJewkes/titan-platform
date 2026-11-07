@@ -149,7 +149,7 @@
       ],
       "externalImporters": [],
       "ported": false,
-      "portedFrom": "67005f389acbb182c0f8807d95bf973e826d2638"
+      "portedFrom": "7b87af6e65c9c057e51a9a33ccf10d6e08f21ab1"
     },
     {
       "file": "classify-task.ts",
@@ -517,7 +517,7 @@
         "src/digest/collect.ts"
       ],
       "ported": false,
-      "portedFrom": "67005f389acbb182c0f8807d95bf973e826d2638"
+      "portedFrom": "7b87af6e65c9c057e51a9a33ccf10d6e08f21ab1"
     },
     {
       "file": "LICENSE.openrig",
@@ -1490,7 +1490,7 @@
       ],
       "externalImporters": [],
       "ported": false,
-      "portedFrom": "67005f389acbb182c0f8807d95bf973e826d2638"
+      "portedFrom": "7b87af6e65c9c057e51a9a33ccf10d6e08f21ab1"
     },
     {
       "file": "stall.ts",
