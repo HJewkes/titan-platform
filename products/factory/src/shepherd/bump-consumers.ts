@@ -4,7 +4,7 @@ import { BUMP_BRANCH_PREFIX, bumpBranch, consumerDepNames, planConsumerBump, rea
 import { failureOf } from "./error-class.js";
 import type { LockfileRegen, LockfileTree } from "./lockfile-regen.js";
 import { lookupSeat, type SeatBook } from "./seats.js";
-import { registerConsumerBump } from "./self-register.js";
+import { headInRepo, registerConsumerBump } from "./self-register.js";
 import type { ShepherdServices } from "./services.js";
 
 /** One behind consumer: the tree read at its default branch, the edits that raise it, and the branch they go on. */
@@ -107,11 +107,6 @@ async function registerOpenBumps(host: FactoryHost, services: ShepherdServices):
     }
   }
   return { unbumped, notes };
-}
-
-/** Anyone can open a PR from a fork under a bump branch's name; only a head in the consumer repo itself, which takes push rights, is the sweep's. */
-function headInRepo(pr: PullRequest, repo: RepoSlug): boolean {
-  return pr.headRepo?.toLowerCase() === repo.toLowerCase();
 }
 
 async function bumpOne(host: FactoryHost, services: ShepherdServices, regen: LockfileRegen, bump: PlannedBump): Promise<ConsumerBumpSweepNote> {

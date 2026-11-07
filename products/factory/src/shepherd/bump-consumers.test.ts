@@ -19,10 +19,18 @@ interface World extends ConsumerBumpWorld {
 
 function world(options: Parameters<typeof consumerBumpWorld>[0] = {}): World {
   const github = consumerBumpWorld(options);
-  const fixture = shepherdFixture({ frozen: true, port: github.port, seats: CONSUMER_SEATS });
+  const fixture = shepherdFixture({ frozen: true, port: github.port, seats: CONSUMER_SEATS, prFiles: async ({ repo, pr }) => github.port.listPrFiles(repo, pr) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: fixture.workflows, routes: fixture.routes, gatePollMs: 5 });
   hosts.push(host);
   return { ...github, host, services: fixture.routes.shepherd! };
+}
+
+/** A same-repo PR on `headRef` that edits `paths` in place, the shape a bump PR has. */
+function bumpShapedPr(w: World, repo: RepoSlug, headRef: string, paths = ["package.json", "pnpm-lock.yaml"]) {
+  const fake = w.fakes.get(repo)!;
+  const pr = fake.addPr({ headSha: fakeSha(`${repo}:${headRef}`), headRef });
+  fake.prFiles.set(pr.number, paths.map((path) => ({ path, status: "modified" })));
+  return pr;
 }
 
 const writes = (w: World) => [...w.fakes.values()].map(({ effects }) => effects.createRef + effects.putContent + effects.createPr);
@@ -76,7 +84,7 @@ describe("registerConsumerBump", () => {
 
     const policies = new Map<RepoSlug, unknown>();
     for (const { repo, branch } of bumps) {
-      const pr = w.fakes.get(repo)!.addPr({ headSha: fakeSha(repo), headRef: branch }).number;
+      const pr = bumpShapedPr(w, repo, branch).number;
       const { runId } = await registerConsumerBump(ctx, repo, pr);
       const registration = w.services.store.get().byPr(repo, pr);
       const seatPolicy = policyFor(w.services.seats, RegisterArgs.parse({ repo, pr, task: "t", implementer: "i", policy: { fixer: false } }));
@@ -87,6 +95,18 @@ describe("registerConsumerBump", () => {
     expect(policies.get(CONSUMER_A)).toMatchObject({ seat: "seat-a", merge: "auto", fixer: false });
     expect(policies.get(CONSUMER_B)).toMatchObject({ seat: "seat-bc", merge: "owner-gate", fixer: false });
     for (const policy of policies.values()) expect(policy).not.toHaveProperty("ownerGateReason");
+  });
+  it("refuses a fork head or a branch outside the bump prefix, whatever files it changes", async () => {
+    const w = world();
+    const ctx = { warnings: [], format: "json" as const, host: w.host, shepherd: w.services };
+    const fork = w.fakes.get(CONSUMER_A)!.addPr({ headSha: fakeSha("fork"), headRef: `${BUMP_BRANCH_PREFIX}0badc0de`, headRepo: "stranger/consumer-a" });
+    w.fakes.get(CONSUMER_A)!.prFiles.set(fork.number, [{ path: "package.json", status: "modified" }]);
+    const topic = bumpShapedPr(w, CONSUMER_A, "topic/package-bump");
+
+    for (const pr of [fork, topic]) await expect(registerConsumerBump(ctx, CONSUMER_A, pr.number)).rejects.toThrow(/is not on a shepherd\/bump-consumers-\* branch/);
+
+    expect(w.services.store.get().byPr(CONSUMER_A, fork.number)).toBeUndefined();
+    expect(w.services.store.get().byPr(CONSUMER_A, topic.number)).toBeUndefined();
   });
 });
 
@@ -148,7 +168,7 @@ describe("bumpConsumers", () => {
 
   it("registers a stale open bump PR when the repo plans as current", async () => {
     const w = world();
-    const stale = w.fakes.get(CONSUMER_C)!.addPr({ headSha: fakeSha("stale"), headRef: `${BUMP_BRANCH_PREFIX}0badc0de` });
+    const stale = bumpShapedPr(w, CONSUMER_C, `${BUMP_BRANCH_PREFIX}0badc0de`);
 
     const notes = await bumpConsumers(w.host, w.services, ports(w));
 
@@ -159,13 +179,37 @@ describe("bumpConsumers", () => {
 
   it("registers an open bump PR on a repo whose tree read fails", async () => {
     const w = world({ getFileThrows: CONSUMER_A });
-    const open = w.fakes.get(CONSUMER_A)!.addPr({ headSha: fakeSha("open"), headRef: `${BUMP_BRANCH_PREFIX}0badc0de` });
+    const open = bumpShapedPr(w, CONSUMER_A, `${BUMP_BRANCH_PREFIX}0badc0de`);
 
     const notes = await bumpConsumers(w.host, w.services, ports(w));
 
     expect(notes[0]).toEqual({ repo: CONSUMER_A, pr: open.number, skipped: "open", registered: expect.any(String) });
     expect(w.services.store.get().byPr(CONSUMER_A, open.number)?.runId).toBe(notes[0]!.registered);
     expect(notes[1]).toMatchObject({ repo: CONSUMER_B, registered: expect.any(String) });
+  });
+
+  it("never registers a same-repo PR on a bump branch that changes more than manifests and lockfiles", async () => {
+    const w = world();
+    const imposter = bumpShapedPr(w, CONSUMER_C, `${BUMP_BRANCH_PREFIX}0badc0de`, ["package.json", ".github/workflows/release.yml"]);
+    const renamed = bumpShapedPr(w, CONSUMER_A, `${BUMP_BRANCH_PREFIX}0badc0de`, []);
+    w.fakes.get(CONSUMER_A)!.prFiles.set(renamed.number, [{ path: "package.json", previousPath: "scripts/postinstall.json", status: "renamed" }]);
+
+    const notes = await bumpConsumers(w.host, w.services, ports(w));
+
+    expect(notes.find(({ repo }) => repo === CONSUMER_C)).toEqual({ repo: CONSUMER_C, error: "Error" });
+    expect(notes.find(({ repo }) => repo === CONSUMER_A)).toEqual({ repo: CONSUMER_A, error: "Error" });
+    expect(w.services.store.get().byPr(CONSUMER_C, imposter.number)).toBeUndefined();
+    expect(w.services.store.get().byPr(CONSUMER_A, renamed.number)).toBeUndefined();
+  });
+
+  it("classes a bump registration through G10, so a manifest on a guarded path is held", async () => {
+    const w = world();
+    const guarded = bumpShapedPr(w, CONSUMER_C, `${BUMP_BRANCH_PREFIX}0badc0de`, ["packages/authority/package.json"]);
+
+    const notes = await bumpConsumers(w.host, w.services, ports(w));
+
+    expect(notes.find(({ repo }) => repo === CONSUMER_C)).toMatchObject({ pr: guarded.number, skipped: "open", registered: expect.any(String) });
+    expect(w.services.store.get().byPr(CONSUMER_C, guarded.number)?.holdReason).toMatch(/^g10-adversary: authority/);
   });
 
   it("never registers a fork PR under a bump branch name and bumps the repo as usual", async () => {
