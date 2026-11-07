@@ -1,5 +1,16 @@
 # @titan-design/style-analyzer
 
+## 0.1.7
+
+### Patch Changes
+
+- 215623a: Narrow observation categories with a runtime guard instead of casts, and drop two redundant conditions.
+- Updated dependencies [c89daa1]
+- Updated dependencies [00099bd]
+- Updated dependencies [565913d]
+  - @titan-design/code-parser@0.2.1
+  - @titan-design/style-profile@0.4.2
+
 ## 0.1.6
 
 ### Patch Changes

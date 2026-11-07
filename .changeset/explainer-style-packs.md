@@ -1,5 +1,0 @@
----
-"@titan-design/explainer": minor
----
-
-Add style packs and a voice band per profile (TP-4022). `doctrine/style-packs/` holds four `style-pack/v1` files (`paper-margin`, `night-drafting`, `mono-console`, `ember-desk`), each a selection of existing titan-design tokens by slot, checked against `doctrine/style-tokens.json`, the token names of react-ui's `tokens.css` pinned by `scripts/pin-style-tokens.mjs`. `loadStylePacks` rejects a pack that names an unknown token, puts the wrong kind of token in a slot, or names a channel whose look it would copy. Each type profile now carries `styles` (the packs it allows, and an optional house pack) and `voice` (a Kokoro voice id and rate); `checkProfiles` reports an unknown pack, a single pack where the series must vary it, and two profiles that share a voice band. A render variant's `stylePack` param puts the pack's content hash in the render stage key and hands the bridge `{var.stylePack}`, `{var.styleTheme}` and `{var.styleCss}`, so a new pack reruns render and never TTS.

@@ -1,5 +1,15 @@
 # @titan-design/agent-surface
 
+## 0.3.2
+
+### Patch Changes
+
+- 9b42150: Use the shared `isRecord`, `isObjectLike` and `errorCode` from `@titan-design/rpc-protocol/narrow` in place of local copies. Behaviour is unchanged.
+- 29a4da7: Burn down the typed-lint baseline for agent-surface. `readLaunchPlan` now checks the plan's optional fields (`env`, `title`, `surface`, `unsetEnv`, `stdin`) instead of casting the parsed JSON, and subprocess errors are narrowed rather than cast.
+- 0100482: Add `@titan-design/agent-protocol/wire`: zod schemas and types for agent-chat's spawn, resume, retire, agents and surface frames, and the profile, launch and roster records they carry. agent-surface gains a test that pins its `SURFACE_NAMES` to the wire copy.
+- Updated dependencies [5edd38d]
+  - @titan-design/rpc-protocol@0.4.0
+
 ## 0.3.1
 
 ### Patch Changes

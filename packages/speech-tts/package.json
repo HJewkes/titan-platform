@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/speech-tts",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Swappable text-to-speech provider contract, registry and command/HTTP adapters",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,5 +1,21 @@
 # @titan-design/worktree
 
+## 0.4.0
+
+### Minor Changes
+
+- 247171d: The git env pins no longer export the full protocol list, which outranked a caller's own `protocol.*.allow` denies (CC-1336). `pinGitProtocols` now returns `undefined` (leave GIT_ALLOW_PROTOCOL unset) for an unset value or the legacy `file:git:http:https:ssh`, and still intersects any other caller list with the safe list. `withPinnedGitProtocols`, `gitChildEnv` and `setupEnv` append `protocol.ext.allow=never` as the last `GIT_CONFIG_COUNT` pair, after `gitChildEnv`'s prefix stripping, keep caller pairs, and throw on a count git would die on.
+- 9ad447f: Add a `ghTimeoutMs` allocator option (and a matching trailing `inspectForRelease` argument) that bounds each `gh pr view` a release makes. It defaults to the old fixed 3 seconds, exported as `DEFAULT_GH_TIMEOUT_MS`.
+- d5e44a5: `inspectForRelease` and `sweepWorktrees` accept an `ignoredFiles` policy (`{ disposable: string[] }`) naming extra ignored paths that do not block release or make a tree hold work. Patterns support `*` and `**` and cover everything beneath a match. With no policy the behaviour is unchanged.
+
+### Patch Changes
+
+- ca8e8b7: Install the park default-proof test's git shim through a staged copy so a concurrent fork cannot hold it open for writing (ETXTBSY), which park read as a detached HEAD.
+- 8b92ba0: - **Git fixtures in test-kit (TP-4446).** A new `@titan-design/test-kit/git` subpath holds the template repositories worktree's tests used: `seedRepo` and `seedRepoWithOrigin` build each seed once per test file and copy it per test, with auto-maintenance, gc and fsync off and an empty hooks directory. `withHistory` writes many commits with one `git fast-import` at pinned dates, `fixtureEnv` drops injected `GIT_CONFIG_*` entries and host config, and `gitIn` runs git in a directory under it. The subpath takes `vitest` as an optional peer dependency.
+  - worktree's tests use the subpath; its private `git-fixture` and `test-env` copies are deleted. No runtime change.
+- f3d3107: Narrow error and record values instead of asserting them, with no change in behaviour.
+- 8031169: Install the typed-presentation test's git and gh shims through a staged copy so a concurrent fork cannot hold them open for writing (ETXTBSY), which release read as no merged-PR proof and so skipped its post-proof status check.
+
 ## 0.3.0
 
 ### Minor Changes

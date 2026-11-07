@@ -1,5 +1,37 @@
 # @titan-design/agent
 
+## 0.7.0
+
+### Minor Changes
+
+- ff061ba: Codex app-server client: `CodexAppServer` now exposes `pid`, the spawned process id (also its process group id). The client, its types and its error classes (`startCodexAppServer`, `CodexSteerPreconditionError`, `CodexAppServerRpcError`, `CodexAppServerExitedError`) are exported from the package entry point.
+- e8159b1: Add launch identity, per-agent TMPDIR and the orphan reap it depends on, ported from agent-chat: `withoutLaunchIdentity`, `ensureAgentTmpDir`, `removeOwnTmpDir`, `sweepAgentTmpDirs`, `reapOwnLaunch` and their process-table and filesystem seams.
+- 211db45: A Claude adapter run that reaches its native `maxTurns` now fails as `limit_exceeded` (unit `agent_iterations`), and a Codex CLI refused by the version or capability check before spawn fails as `harness_mismatch`. Both used to be `runtime_error`, which the durable dispatcher parks in `recovery_required`; they now persist as terminal `failed`. `runtime_error` stays reserved for ambiguous transport loss, and `HarnessRunFailure` documents which kinds the dispatcher treats as ambiguous.
+- 5e34e3d: Add `startCodexAppServer`, a typed client for `codex app-server` over stdio JSON-RPC: the initialize handshake, `threadStart`/`threadResume`, `turnStart` and `turnSteer`, turn and thread-status events, and exit handling that rejects pending calls. A steer that finds no matching active turn rejects with `CodexSteerPreconditionError`, so callers can fall back to `turnStart`.
+- 869014a: `AgentUsage` gains an optional `cacheCreation` with the 5m and 1h cache write token split, read from the result's raw `usage.cache_creation`. It is absent when the harness gave no split.
+
+### Patch Changes
+
+- 9386796: Pass `CLAUDE_CODE_REMOTE` through `prepareEnv`, so a child `claude -p` run can skip the CLI's subagent warmup.
+- cca108a: Clear the typed-lint baseline for most of the package: capability records are built key by key instead of cast, redundant casts and optional calls are gone, and test doubles use `partialFake`. No runtime behaviour change.
+- 4ea511b: The claude-print harness now passes `--disable-slash-commands`, so a one-turn call loads no skills or commands and a prompt that opens with `/` is read as text.
+- 2917ad8: A Codex version or help probe that throws before spawn (for example ENOENT when the CLI is not installed) now fails as `harness_mismatch` instead of `runtime_error`, so the durable dispatcher settles it as terminal `failed` rather than parking it in `recovery_required`. Probe timeouts and aborts keep their existing kinds.
+- 9b42150: Use the shared `isRecord`, `isObjectLike` and `errorCode` from `@titan-design/rpc-protocol/narrow` in place of local copies. Behaviour is unchanged.
+- Updated dependencies [211db45]
+- Updated dependencies [5edd38d]
+- Updated dependencies [646f4d7]
+- Updated dependencies [fa4dd19]
+- Updated dependencies [d46cbce]
+- Updated dependencies [ae64085]
+- Updated dependencies [ae64085]
+- Updated dependencies [1bc6431]
+- Updated dependencies [342c6ba]
+- Updated dependencies [342c6ba]
+- Updated dependencies [0100482]
+  - @titan-design/agent-protocol@0.10.0
+  - @titan-design/rpc-protocol@0.4.0
+  - @titan-design/agent-lifecycle@0.1.10
+
 ## 0.6.2
 
 ### Patch Changes

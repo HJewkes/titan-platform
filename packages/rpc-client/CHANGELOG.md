@@ -1,5 +1,14 @@
 # @titan-design/rpc-client
 
+## 0.4.2
+
+### Patch Changes
+
+- 9b42150: Use the shared `isRecord`, `isObjectLike` and `errorCode` from `@titan-design/rpc-protocol/narrow` in place of local copies. Behaviour is unchanged.
+- 661cf66: Clear the typed-lint baseline for rpc-client: narrow parsed snapshots and envelopes instead of casting them. `parseSnapshot` now returns a validated copy rather than the parsed object itself.
+- Updated dependencies [5edd38d]
+  - @titan-design/rpc-protocol@0.4.0
+
 ## 0.4.1
 
 ### Patch Changes

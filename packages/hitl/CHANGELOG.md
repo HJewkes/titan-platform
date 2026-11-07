@@ -1,5 +1,27 @@
 # @titan-design/hitl
 
+## 0.10.0
+
+### Minor Changes
+
+- 84d962e: `checkAgainstJsonSchema` parses a stored schema once and refuses whatever it cannot read, unknown keywords included, with one `schema is unreadable` issue. It now takes `unknown`. Boolean schemas follow JSON Schema, and only an `undefined` schema means a gate has none.
+
+### Patch Changes
+
+- b3f677b: The gate payload check now enforces `allOf`, `not`, local `$ref` (to the root, `$defs` or `definitions`) and `prefixItems` elements. A remote or unresolvable reference, or a reference cycle that steps into no property or element, makes the schema unreadable, so the gate refuses every payload.
+- 6c2df6a: Narrow stored and caller-supplied gate data with type guards instead of casts; no change to gate decisions.
+- 1b0c46a: The SQLite gate store types its two row reads with better-sqlite3 generics instead of casts. Type-only; no runtime change.
+- Updated dependencies [9411e94]
+- Updated dependencies [91e3e3d]
+- Updated dependencies [eaa03c2]
+- Updated dependencies [c58d555]
+- Updated dependencies [c026f23]
+- Updated dependencies [67aa361]
+- Updated dependencies [c1f9297]
+  - @titan-design/authority@0.6.0
+  - @titan-design/evidence@0.5.0
+  - @titan-design/store-sqlite@0.5.0
+
 ## 0.9.1
 
 ### Patch Changes

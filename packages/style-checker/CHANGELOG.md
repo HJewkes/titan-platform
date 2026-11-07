@@ -1,5 +1,15 @@
 # @titan-design/style-checker
 
+## 0.4.5
+
+### Patch Changes
+
+- 785dcb7: Parse ESLint, ruff and pyright JSON output with zod and narrow caught errors instead of casting, so a malformed tool report fails at the boundary. Internal typed-lint cleanup; the public API is unchanged.
+- Updated dependencies [215623a]
+- Updated dependencies [00099bd]
+  - @titan-design/style-analyzer@0.1.7
+  - @titan-design/style-profile@0.4.2
+
 ## 0.4.4
 
 ### Patch Changes
