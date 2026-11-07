@@ -6,28 +6,37 @@
       "file": "products/factory/src/shepherd/g10-class-rules.ts",
       "find": "\"registration-of.ts\", ",
       "replace": "",
-      "kills": ["the G10 hold closure of Shepherd's listed policy modules holds g10-adversary every module the walk reaches"]
+      "kills": ["the G10 hold closure of the factory's listed policy modules holds g10-adversary every module the walk reaches"]
     },
     {
       "name": "proof-waiver.ts, which skips the NO_REPRO gate, leaves the listed table",
       "file": "products/factory/src/shepherd/g10-class-rules.ts",
       "find": "\"proof-waiver.ts\", ",
       "replace": "",
-      "kills": ["the G10 hold closure of Shepherd's listed policy modules holds g10-adversary every module the walk reaches"]
+      "kills": ["the G10 hold closure of the factory's listed policy modules holds g10-adversary every module the walk reaches"]
     },
     {
       "name": "a module the walk reaches leaves the held closure list",
       "file": "products/factory/src/shepherd/g10-hold-closure.json",
-      "find": "  \"tree-carry.ts\",\n",
+      "find": "  \"shepherd/tree-carry.ts\",\n",
       "replace": "",
-      "kills": ["the G10 hold closure of Shepherd's listed policy modules holds g10-adversary every module the walk reaches"]
+      "kills": ["the G10 hold closure of the factory's listed policy modules holds g10-adversary every module the walk reaches"]
     },
     {
       "name": "the closure list stops being added to the class rules",
       "file": "products/factory/src/shepherd/g10-class-rules.ts",
       "find": "withHoldClosure(HOLD_CLOSURE);",
       "replace": "withHoldClosure([]);",
-      "kills": ["the G10 hold closure of Shepherd's listed policy modules holds g10-adversary every module the walk reaches"]
+      "kills": ["the G10 hold closure of the factory's listed policy modules holds g10-adversary every module the walk reaches"]
+    },
+    {
+      "name": "the hold-closure walk narrows back to shepherd/",
+      "file": "products/factory/src/shepherd/g10-class-rules.ts",
+      "find": "export const HOLD_CLOSURE_ROOT = \"products/factory/src\";",
+      "replace": "export const HOLD_CLOSURE_ROOT = \"products/factory/src/shepherd\";",
+      "kills": [
+        "the G10 hold closure of the factory's listed policy modules holds owner-at-head.ts, which approval-carry.ts imports from outside shepherd/"
+      ]
     }
   ]
 }
