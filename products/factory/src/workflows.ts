@@ -17,6 +17,7 @@ import { holdAdversary, liveSpawnLimits, reviewAccounts, successorAccounts, visu
 import type { WorkflowDefinition } from "./definition.js";
 import type { DatabaseTenant, FactoryRoutes } from "./host.js";
 import { hostCarryPorts } from "./shepherd/carry-cache-adapter.js";
+import type { GitCachePorts } from "./shepherd/carry-cache-ports.js";
 import { reviewCheckPort } from "./shepherd/publish-review-adapter.js";
 import { activeWorkFixTasks, activeWorkFollowUpTasks, activeWorkOrigin, activeWorkTasks, agentChatCleanupAgents } from "./shepherd/cleanup-ports.js";
 import { ghGateway, type GhCallLine, type GhGateway } from "./shepherd/gh-gateway.js";
@@ -100,6 +101,8 @@ import type { CleanupPorts, ExitNoticePorts, RosterReader, SpawnGate, SuiteRules
 export const factoryWorkflows: readonly WorkflowDefinition[] = [landPrWorkflow(), shepherdPrWorkflow(), measurementAuditWorkflow(), devicePrWorkflow(), buildSurfaceWorkflow()];
 
 export interface FactoryRouteDeps extends Omit<LandPrDeps, "gitCache"> {
+  /** The host effects every carry probe runs on; absent means the host's own ports. */
+  gitCache?: GitCachePorts;
   port: GitHubPort;
   store: ShepherdStoreRef;
   freeze?: FreezeStoreRef;
@@ -195,7 +198,7 @@ export const SHEPHERD_MIGRATIONS: readonly Migration[] = [shepherdMigration(4), 
  */
 export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
   const isAdvisory = given.advisory ?? (() => false);
-  const deps = { ...given, port: advisoryPort(given.port, isAdvisory), gitCache: hostCarryPorts };
+  const deps = { ...given, port: advisoryPort(given.port, isAdvisory), gitCache: given.gitCache ?? hostCarryPorts };
   const holds = () => deps.store.get();
   const pause = deps.sleep ?? sleep;
   const freeze = deps.freeze ?? freezeStoreRef(deps.now);
@@ -211,7 +214,7 @@ export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
   const accountLimits = deps.accountLimits ?? accountLimitStoreRef(deps.now);
   const timing = { sleep: pause, pollMs: deps.holdPollMs, now: deps.now };
   const shadow = { shadow: trainShadowRef(), port: deps.port, reads: deps.snapshot ?? portReads(deps.port), held: shadowHeldCheck({ port: deps.port, holds, freezes: () => freeze.get(), advisory: isAdvisory, now: deps.now, snapshot: deps.snapshot }), advisory: isAdvisory, now: deps.now ?? Date.now };
-  const shepherdDeps = { port: deps.port, gitCache: hostCarryPorts, advisory: isAdvisory, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", agentChatConfigDir: deps.agentChatConfigDir, successorAccounts: successorAccounts(deps.agentChatConfigDir, deps.review?.accounts), roster: deps.roster, spawnGate: deps.spawnGate, cleanup: deps.cleanup, snapshot: deps.snapshot, pushes: deps.pushes, reviewCheck: deps.reviewCheck, exitNotice: deps.exitNotice, suiteRules: deps.suiteRules, accountLimits, prFiles: deps.prFiles, stackRestack: deps.stackRestack, get heldRepair() { return current(deps.heldRepair); }, get noReproProceed() { return current(deps.noReproProceed); }, get nonSourceNoRepro() { return current(deps.nonSourceNoRepro); }, get taskClose() { return current(deps.taskClose); }, visualPacket: deps.visualPacket, diagnosis: deps.diagnosis, replan: deps.replan, consoleAnswers: deps.consoleAnswers, visualBaselineCheck: (repo: string) => seatBaselineCheck(deps.seats?.() ?? NO_SEATS, repo) };
+  const shepherdDeps = { port: deps.port, gitCache: deps.gitCache, advisory: isAdvisory, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", agentChatConfigDir: deps.agentChatConfigDir, successorAccounts: successorAccounts(deps.agentChatConfigDir, deps.review?.accounts), roster: deps.roster, spawnGate: deps.spawnGate, cleanup: deps.cleanup, snapshot: deps.snapshot, pushes: deps.pushes, reviewCheck: deps.reviewCheck, exitNotice: deps.exitNotice, suiteRules: deps.suiteRules, accountLimits, prFiles: deps.prFiles, stackRestack: deps.stackRestack, get heldRepair() { return current(deps.heldRepair); }, get noReproProceed() { return current(deps.noReproProceed); }, get nonSourceNoRepro() { return current(deps.nonSourceNoRepro); }, get taskClose() { return current(deps.taskClose); }, visualPacket: deps.visualPacket, diagnosis: deps.diagnosis, replan: deps.replan, consoleAnswers: deps.consoleAnswers, visualBaselineCheck: (repo: string) => seatBaselineCheck(deps.seats?.() ?? NO_SEATS, repo) };
   const land = landPrRoutes({ ...deps, port: holdingPort(deps.port, holds, guard, satisfy), inheritedRed: inheritedRedCheck(shepherdDeps, () => freeze.get()) }).map((route) => {
     if (route.match === "base-wait") return leaveTrainToWait(route, train);
     if (route.match === "update-branch") return shadowRefresh(advisoryUpdates(route, isAdvisory, timing), shadow);
