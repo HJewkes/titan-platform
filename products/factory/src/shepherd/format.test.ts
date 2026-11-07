@@ -102,6 +102,24 @@ describe("the shepherd text view of each verb", () => {
     );
   });
 
+  it("prints each verdict entry's outcome, its reviewer and why a none gave no verdict", () => {
+    const verdict = { kind: "verdict", headSha: HEAD, locator: null };
+    const entries = [
+      { ...verdict, stepId: `sh-await-verdict:${HEAD}`, verdict: "none", reviewer: "agent-rv-own", note: "seat WAIT from rv-seat, Shepherd MERGE held" },
+      { ...verdict, stepId: `sh-seat-recheck:${HEAD}`, verdict: "MERGE", reviewer: "agent-rv-own", note: null },
+      { ...verdict, stepId: `sh-await-verdict:${HEAD}`, verdict: "none", reviewer: null, note: "no verdict before the wait ran out" },
+    ];
+    expect(formatShepherd("shepherd.timeline", { row: { ...row(null), headSha: null }, entries })).toBe(
+      [
+        "acme/widgets#1 merging - merging task demo/T-1",
+        `  verdict sh-await-verdict:${HEAD} none by agent-rv-own (seat WAIT from rv-seat, Shepherd MERGE held)`,
+        `  verdict sh-seat-recheck:${HEAD} MERGE by agent-rv-own`,
+        `  verdict sh-await-verdict:${HEAD} none (no verdict before the wait ran out)`,
+        "",
+      ].join("\n"),
+    );
+  });
+
   it("with --last keeps the row line and the last entries, noting how many earlier ones it cut", () => {
     const entries = ["a", "b", "c"].map((stepId) => ({ kind: "signal", stepId }));
 
