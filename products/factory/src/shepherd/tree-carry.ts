@@ -6,19 +6,13 @@ import { CLOSURE_LOCK_DRIVER, type GitConfigEntry } from "../merge-drivers.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { HEAD } from "./await-verdict.js";
 import { hostCarryPorts } from "./carry-cache-adapter.js";
+import type { CacheFs, Git, GitCachePorts, GitResult } from "./git-cache-ports.js";
 import { errorClass } from "./error-class.js";
 import { isRepoKey } from "./seats.js";
 
+export type { CacheFs, Git, GitCachePorts, GitResult };
+
 export const CARRY_STEP = "sh-carry";
-
-export interface GitResult {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
-
-/** Runs git against one bare repository; resolves with the exit code instead of rejecting. */
-export type Git = (gitDir: string, args: readonly string[], signal?: AbortSignal) => Promise<GitResult>;
 
 /** `fromHead` is the head whose MERGE would be carried, `head` the new green head. */
 export type CarryInput = z.infer<typeof CarryInputSchema>;
@@ -28,18 +22,6 @@ export type CarryInput = z.infer<typeof CarryInputSchema>;
  * `patchEqual`, read only for equal trees whose first parent is not `fromHead`, says the PR's own diff is the reviewed one.
  */
 export type CarryResult = z.infer<typeof CarryResultSchema>;
-
-export interface CacheFs {
-  exists(path: string): boolean;
-  mkdirp(dir: string): void;
-}
-
-/** The host effects a cache read needs; `stateDir` is a thunk read on every probe, never once when the ports are built. */
-export interface GitCachePorts {
-  git: Git;
-  fs: CacheFs;
-  stateDir: () => string;
-}
 
 export interface CarryOptions {
   /** Absent means the host's ports: system git, the node fs and the bound state dir. */

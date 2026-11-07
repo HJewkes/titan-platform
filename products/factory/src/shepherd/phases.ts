@@ -6,6 +6,7 @@ import type { FixFirstEntry, FixRound } from "./fix-first-trail.js";
 import type { ReviewCause } from "./review-schemas.js";
 import type { AccountLimitStoreRef } from "./account-store.js";
 import type { ShepherdStoreRef } from "./store.js";
+import type { GitCachePorts } from "./git-cache-ports.js";
 import type { PrFilesRead } from "./git-pr-files.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import type { PushWatch } from "./push-signal.js";
@@ -110,6 +111,8 @@ export interface ShepherdPhases {
 /** What a phase's routes may need; a phase takes only what it reads. */
 export interface ShepherdDeps {
   port: GitHubPort;
+  /** How the carry probes and the restack reach git, its cache fs and the cache dir. */
+  gitCache: GitCachePorts;
   store: ShepherdStoreRef;
   now: () => number;
   sleep: (ms: number, signal: AbortSignal) => Promise<void>;

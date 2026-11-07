@@ -64,6 +64,7 @@
   "gates.ts",
   "generated-paths.json",
   "gh-gateway-port.ts",
+  "git-cache-ports.ts",
   "git-pr-files.ts",
   "gone-elsewhere.ts",
   "grant-withheld.ts",

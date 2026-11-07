@@ -10,7 +10,7 @@ import { agentChatAgents } from "./agents.js";
 import { errorClass } from "./error-class.js";
 import type { ShepherdDeps } from "./phases.js";
 import { restackOnto } from "./stack-restack.js";
-import { BranchName, cacheFor, ensureCache, must, reasonOf, serialized, type CacheHandle, type Git } from "./tree-carry.js";
+import { BranchName, cacheFor, ensureCache, must, reasonOf, serialized, type CacheHandle, type Git, type GitCachePorts } from "./tree-carry.js";
 
 const STACK_CHILDREN_STEP = "sh-stack-children";
 const RESTACK_STEP = "sh-restack";
@@ -75,6 +75,7 @@ export interface StackLandDeps {
   /** The fetch and push URL for `repo`; absent means GitHub over https. */
   remote?: (repo: string) => string;
   git?: Git;
+  ports?: GitCachePorts;
 }
 
 const restackReason = (parentPr: number, detail: string): string => `parent #${parentPr} landed; restack ${detail}`;
@@ -277,7 +278,7 @@ async function listChildren(land: StackLandDeps, input: LandedParent & { parentH
 }
 
 export function stackLandRoutes(deps: ShepherdDeps): StepRoute[] {
-  const land: StackLandDeps = { port: deps.port, wakeChild: wakeOver(deps), held: restackHeld(deps), ...(deps.snapshot && { snapshot: deps.snapshot }) };
+  const land: StackLandDeps = { port: deps.port, wakeChild: wakeOver(deps), held: restackHeld(deps), ports: deps.gitCache, ...(deps.snapshot && { snapshot: deps.snapshot }) };
   return [
     codeRoute(STACK_CHILDREN_STEP, deps.now, (input: LandedParent & { parentHeadRepo: string | null }) => listChildren(land, input)),
     codeRoute(RESTACK_STEP, deps.now, (input: RestackInput) => restackChild(land, input)),

@@ -1,4 +1,5 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type CheckRun, type FakeGitHub } from "@titan-design/github";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
 import { fakeActiveWork, filedFixTask } from "../test-support/active-work.js";
@@ -51,7 +52,7 @@ function rig(rerun: "success" | "failure" | "none" = "success"): Rig {
     return { done: true as const };
   };
   let clock = Date.parse("2026-10-22T12:00:00Z");
-  const deps: ShepherdDeps = { port: { ...base, rerunFailed }, store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 60_000, agentChatBin: "agent-chat" };
+  const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: { ...base, rerunFailed }, store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 60_000, agentChatBin: "agent-chat" };
   const freezes = new FreezeStore(db, () => clock);
   const flakes: Rig["flakes"] = [];
   const tasks: FixTasks = { findByTag: async () => undefined, add: async () => "FX-1", markFlake: async (initiative, id, flake) => void flakes.push({ initiative, id, flake }) };

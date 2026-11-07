@@ -1,4 +1,5 @@
 import { CONFIG_PATH, formatResultLine } from "@titan-design/fix-proof";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type PrFile } from "@titan-design/github";
 import type { ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader } from "@titan-design/review-panel";
 import type { SourceTextLocator } from "@titan-design/session-read";
@@ -94,7 +95,7 @@ async function review() {
   const aw = fakeActiveWork([{ id: "DM-1", status: "open", done_when: "Parent done.", notes: "", tags: [] }]);
   let clock = 10_000;
   const store = shepherdStoreRef();
-  const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async () => undefined }, noReproProceed: "on" };
+  const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async () => undefined }, noReproProceed: "on" };
   const { dispatch, reader } = reviewers(() => clock);
   const followUps = activeWorkFollowUpTasks({ origin: ORIGIN, fetch: aw.fetch });
   const routes = reviewRoutes(deps, { reader, dispatch, timeoutMs: 5_000, holdMember: { profile: DEFAULT_ADVERSARY_PROFILE }, followUps });
