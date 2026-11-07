@@ -1081,6 +1081,17 @@ moved) or `answered-elsewhere`, and records `withdrawn {reason, outcome}` (`with
 for `closed` and `new-head` when the outcome is `withdrawn`. A withdraw that fails records `failed` (`withdraw`) with
 the stderr line and pushes nothing. ntfy cannot retract a message, so the withdrawn line is a second message.
 
+### Waking the burndown tick on a merge: `shepherd.mergeWake`
+
+With `"mergeWake": {"argv": ["systemctl", "--user", "start", "--no-block", "agent-chat-burndown.service"]}` set,
+each shepherd-pr run's recorded `sh-landed` step arms a settle window (`src/merge-wake.ts`). Later merges inside it
+are absorbed, and when it ends serve runs the argv once, with no shell, and logs `shepherd: merge-wake ran` or
+`failed`. `settleMs` defaults to 20000 and may not exceed 30000; `cwd` and `timeoutMs` (default 10 minutes) are as for
+`postMerge`. A wake failure never fails the step. Absent, no merge wakes the tick. The 10-minute timer stays as the
+backstop: a serve restart inside the window drops the pending wake, and a merge during a running oneshot joins that
+run. On macOS the argv is `launchctl kickstart gui/<uid>/<label>`, without `-k`. TP-1558 moves this onto the host
+scheduler's event trigger and deletes the module.
+
 ### A reviewer account out of usage
 
 Only Claude Code's own usage-limit record counts: a final message whose transcript record has the
