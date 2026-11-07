@@ -231,6 +231,18 @@ async function winnersRun(byRound: string[][], config: object, options: Partial<
   return { repo, ports, host, run, view: arRunView(run)! };
 }
 
+/** A winners run that loses a winner in silence reads as a missing re-eval; this names the run status and each stop instead. */
+function expectBothWinnersKept(run: WorkflowRun): void {
+  const stops = stopOutcomes(run);
+  const seen = ["a", "b"].map((mechanism) => {
+    const stop = stops.get(winnerId(mechanism));
+    return `${mechanism}: ${stop ? `${stop.verdict} (${stop.reason}, rung ${stop.rungReached})` : "no stop recorded"}`;
+  });
+  const message = `run ${run.status}${run.error ? ` (${run.error})` : ""}; ${seen.join("; ")}`;
+  expect(run.status, message).toBe("completed");
+  expect(["a", "b"].map((mechanism) => stops.get(winnerId(mechanism))?.verdict), message).toEqual(["kept", "kept"]);
+}
+
 const ladderIn = (view: ArRunView, mechanism: string) => view.rounds[0]!.ladders.filter((ladder) => ladder.idea.id === winnerId(mechanism));
 
 describe("G13a: later winners re-evaluated against the round's new head", () => {
@@ -254,12 +266,14 @@ describe("G13a: later winners re-evaluated against the round's new head", () => 
     const run = await host.runtime.wait(host.runtime.start(AUTORESEARCH_WORKFLOW, { pin: repo.pin, config: JSON.stringify({ lanes: 2, rounds: 1, minPool: 0 }) }));
     const view = arRunView(run)!;
 
+    expectBothWinnersKept(run);
     expect(view.rounds[0]!.reevals.map((reeval) => [reeval.ideaId, reeval.decision])).toEqual([[winnerId("b"), "requeued"]]);
     expect(ladderIn(view, "b")[0]!.outcome).toMatchObject({ verdict: "stopped", reason: "superseded", reeval: { decision: "requeued" } });
   });
 
   it("lists every move of a round that kept two winners, beside the net move", async () => {
-    const { repo, view } = await winnersRun([["a", "b"]], { rounds: 1 });
+    const { repo, run, view } = await winnersRun([["a", "b"]], { rounds: 1 });
+    expectBothWinnersKept(run);
     const { moves, ratchet, reevals } = view.rounds[0]!;
 
     expect(moves.map((move) => [move.kind, move.ideaId])).toEqual([["ff", winnerId("a")], ["merge", winnerId("b")]]);
@@ -413,6 +427,7 @@ describe("the console's G13 and G13a shapes", () => {
   it("parse the read model of a run that re-evaluated a winner and cut a snapshot", async () => {
     const { run, view } = await winnersRun([["a", "b"]], { rounds: 1, snapshot: { keptIdeas: 1 } });
 
+    expectBothWinnersKept(run);
     const parsed = ArRunViewSchema.parse(view);
 
     expect(parsed.rounds[0]!.reevals).toHaveLength(1);
