@@ -52,15 +52,9 @@ const CLOCK_BUDGET_BASELINE = [
 
 // Recipe files hold no I/O or clock use outside a step body (TP-3108 D-M1b-07). These files still do; TP-4715 burns the list down, so only remove entries.
 const RECIPE_CAPABILITY_BASELINE = [
-  "products/factory/src/shepherd/freeze-hold.ts",
-  "products/factory/src/shepherd/main-rerun.ts",
-  "products/factory/src/shepherd/merge-order-steps.ts",
-  "products/factory/src/shepherd/publish-review.ts",
   "products/factory/src/shepherd/release.ts",
-  "products/factory/src/shepherd/review-cause.ts",
   "products/factory/src/shepherd/train.ts",
-  "products/factory/src/shepherd/visual-accept.ts",
-  "products/factory/src/shepherd/visual-packet-trigger.ts",
+  "products/factory/src/shepherd/tree-carry.ts",
   "products/factory/src/workflows/land-pr.ts",
 ];
 const RECIPE_LOOP_BASELINE = [
@@ -133,6 +127,8 @@ export default tseslint.config(
             ...RECIPE_BANNED_MODULES.map((name) => ({ name, message: RECIPE_GLOBAL_MESSAGE, allowTypeImports: true })),
             { name: "@titan-design/github", importNames: GITHUB_CLIENT_EXPORTS, message: RECIPE_GLOBAL_MESSAGE, allowTypeImports: true },
           ],
+          // An adapter module wraps a host effect, so a recipe that imported one would reach the clock, environment or a process through a name the lint does not list.
+          patterns: [{ group: ["**/*-adapter.js"], message: "Take the adapter as an input from the code that builds the route (D-M1b-07).", allowTypeImports: true }],
         },
       ],
       "no-restricted-globals": ["error", ...RECIPE_BANNED_GLOBALS.map((name) => ({ name, message: RECIPE_GLOBAL_MESSAGE }))],

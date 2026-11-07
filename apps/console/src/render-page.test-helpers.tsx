@@ -38,6 +38,8 @@ function RoutedPage({ route }: { route: Route }): ReactNode {
   return <Page route={route} />;
 }
 
+const DRAIN_HOPS = 5;
+
 /**
  * Unmounts what `renderPage` mounted, then lets the macrotask a late snapshot resolution or React's scheduler queued
  * run inside `act`, the setImmediate one included. Left pending, it fires after the file's jsdom is torn down and fails the run with
@@ -47,7 +49,11 @@ export async function unmountPages(): Promise<void> {
   cleanup();
   await act(async () => {
     // Which of the two runs first depends on load: the scheduler's setImmediate can land after a lone setTimeout (TP-4713).
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    // A render that one pass flushes can queue the next (a snapshot resolves, then its state update renders), so each hop
+    // needs its own pass or the last one fires after teardown (TP-4804).
+    for (let hop = 0; hop < DRAIN_HOPS; hop++) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
   });
 }

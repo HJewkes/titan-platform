@@ -8,6 +8,7 @@ import type { ReviewOutcome } from "./route-table.js";
 import { ReviewCauseSchema, type ReviewCause, type ReviewCauseKind } from "./review-schemas.js";
 import { inRange, isoWeek } from "./stats.js";
 import { DEPTH_FLOOR_REASON } from "@titan-design/review-panel";
+import { parseIsoMs } from "../time-iso.js";
 
 export type { ReviewCause } from "./review-schemas.js";
 
@@ -183,7 +184,7 @@ export function reviewCauseStats(runs: readonly WorkflowRun[], range: { from?: s
     if (!repo) continue;
     for (const result of Object.values(run.stepResults)) {
       const cause = stepIdMatches("sh-review-intent", result.stepId) ? recordedCause(result) : undefined;
-      const at = Date.parse(result.completedAt);
+      const at = parseIsoMs(result.completedAt);
       if (!cause || !inRange(at, range)) continue;
       const week = isoWeek(at);
       const row = rows.get(`${repo} ${week}`) ?? { repo, week, reviews: 0, causes: {} };

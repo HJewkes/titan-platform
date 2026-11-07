@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { factoryStateDir, type FactoryConfig } from "./config.js";
 import { agentChatAgents } from "./shepherd/agents.js";
+import { defaultTitanReviewBin, makePacketDir } from "./shepherd/visual-packet-trigger-adapter.js";
 import { DEFAULT_PACKAGER_PROFILE } from "./shepherd/visual-packet-trigger.js";
 import { DEFAULT_DIAGNOSIS_PROFILE, readLogTail } from "./shepherd/no-verdict-diagnosis.js";
 import { DEFAULT_REPLAN_PROFILE } from "./shepherd/replan.js";
@@ -17,8 +18,8 @@ export function configuredVisualPacket(shepherd: FactoryConfig["shepherd"], env:
   if (mode === "off") return undefined;
   const agentChatBin = shepherd?.agentChatBin;
   const agents = agentChatBin && { agents: agentChatAgents(agentChatBin, { roster, gate }) };
-  const bin = shepherd?.titanReviewBin && { titanReviewBin: shepherd.titanReviewBin };
-  return { mode, profile: shepherd?.visualPacketProfile ?? DEFAULT_PACKAGER_PROFILE, stateDir: factoryStateDir(env), cwdFor, ...agents, ...bin };
+  const titanReviewBin = shepherd?.titanReviewBin || defaultTitanReviewBin();
+  return { mode, profile: shepherd?.visualPacketProfile ?? DEFAULT_PACKAGER_PROFILE, stateDir: factoryStateDir(env), cwdFor, titanReviewBin, makeDir: makePacketDir, ...agents };
 }
 
 /** The planner spawns at the configured profile as given, and reports to the hub seat. */
