@@ -75,7 +75,7 @@ interface ConsumerBumpSweepNote {
   error?: string;
 }
 
-interface ConsumerBumpPorts {
+export interface ConsumerBumpPorts {
   registry: LatestRegistry;
   regen: LockfileRegen;
 }

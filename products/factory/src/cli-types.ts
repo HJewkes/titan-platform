@@ -17,6 +17,7 @@ import type { ServeReconciler } from "./reconciler/bot-ports.js";
 import type { CheckPorts } from "./service-check.js";
 import type { ServicePorts } from "./service-control.js";
 import type { ServeIngressOptions } from "./serve-ingress.js";
+import type { ConsumerBumpPorts } from "./shepherd/bump-consumers.js";
 import type { DeployPacerOptions } from "./shepherd/deploy-pacer.js";
 import type { FixerRetirePorts } from "./shepherd/fixer-retire.js";
 import type { MainWatchPorts } from "./shepherd/main-watch.js";
@@ -84,6 +85,8 @@ export interface CliDeps {
   ownerGatesAudit?: OwnerGatesAuditDeps;
   /** What `planner wake` runs agent-chat and its input commands through; defaults to the real machine. */
   planner?: PlannerDeps;
+  /** What `release bump-consumers` asks npm latest and regenerates lockfiles through; defaults to registry.npmjs.org and a scratch-dir install. */
+  consumerBump?: ConsumerBumpPorts;
   /** What `blocker raise` asks for the inbox link; defaults to the configured titan-console argv. */
   inboxLink?: InboxLink;
   /** Ends the process once serve has closed, so a child an abandoned tick still holds cannot keep it alive; absent means serve returns instead. */

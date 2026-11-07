@@ -22,6 +22,7 @@ describe("cli-types leaf", () => {
       "./serve-ingress.js",
       "./service-check.js",
       "./service-control.js",
+      "./shepherd/bump-consumers.js",
       "./shepherd/deploy-pacer.js",
       "./shepherd/fixer-retire.js",
       "./shepherd/main-watch.js",
