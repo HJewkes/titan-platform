@@ -6,7 +6,7 @@ import type { FixFirstEntry, FixRound } from "./fix-first-trail.js";
 import type { ReviewCause } from "./review-schemas.js";
 import type { AccountLimitStoreRef } from "./account-store.js";
 import type { ShepherdStoreRef } from "./store.js";
-import type { GitCachePorts } from "./git-cache-ports.js";
+import type { GitCachePorts } from "./carry-cache-ports.js";
 import type { PrFilesRead } from "./git-pr-files.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import type { PushWatch } from "./push-signal.js";

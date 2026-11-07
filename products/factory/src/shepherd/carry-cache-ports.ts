@@ -1,4 +1,4 @@
-// Types only, so a deps type can name the ports without joining tree-carry's import cycle.
+// A leaf module, so the host adapter can name these types without joining tree-carry's import cycle.
 
 export interface GitResult {
   code: number;
