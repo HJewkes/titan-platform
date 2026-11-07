@@ -67,7 +67,7 @@ const LOCKFILE_PATH = { pnpm: "pnpm-lock.yaml", npm: "package-lock.json" } as co
 
 /** One fake per consumer routed by each call's repo argument, and an npm registry that answers `NPM_LATEST`. */
 export function consumerBumpWorld(options: ConsumerBumpWorldOptions = {}): ConsumerBumpWorld {
-  const fakes = new Map(Object.entries(TREES).map(([repo, files]) => [repo, seeded(files)]));
+  const fakes = new Map(Object.entries(TREES).map(([repo, files]) => [repo, seeded(repo, files)]));
   const ports = new Map([...fakes].map(([repo, fake]) => [repo, githubPort(branchingWire(fake))]));
   const portFor = (repo: RepoSlug): GitHubPort => {
     const port = ports.get(repo);
@@ -94,8 +94,8 @@ export function consumerBumpWorld(options: ConsumerBumpWorldOptions = {}): Consu
   return { fakes, port, registry, regen, regenCalls, openedBodies };
 }
 
-function seeded(files: Record<string, string>): FakeGitHub {
-  const fake = fakeGitHub();
+function seeded(repo: RepoSlug, files: Record<string, string>): FakeGitHub {
+  const fake = fakeGitHub({ repo });
   fake.refs.set("main", fakeSha("main"));
   for (const [path, content] of Object.entries(files)) fake.files.set(`main:${path}`, { content, blobSha: fakeSha(path) });
   return fake;

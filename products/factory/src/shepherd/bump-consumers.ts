@@ -99,7 +99,7 @@ async function registerOpenBumps(host: FactoryHost, services: ShepherdServices):
   const notes: ConsumerBumpSweepNote[] = [];
   for (const repo of consumerRepos(services.seats())) {
     try {
-      const [open] = await services.port.listOpenPrs(repo, BUMP_BRANCH_PREFIX);
+      const [open] = (await services.port.listOpenPrs(repo, BUMP_BRANCH_PREFIX)).filter((pr) => headInRepo(pr, repo));
       if (open) notes.push({ repo, pr: open.number, skipped: "open", ...(await registerOnce(host, services, repo, open.number)) });
       else unbumped.push(repo);
     } catch (error) {
@@ -109,9 +109,15 @@ async function registerOpenBumps(host: FactoryHost, services: ShepherdServices):
   return { unbumped, notes };
 }
 
+/** Anyone can open a PR from a fork under a bump branch's name; only a head in the consumer repo itself, which takes push rights, is the sweep's. */
+function headInRepo(pr: PullRequest, repo: RepoSlug): boolean {
+  return pr.headRepo?.toLowerCase() === repo.toLowerCase();
+}
+
 async function bumpOne(host: FactoryHost, services: ShepherdServices, regen: LockfileRegen, bump: PlannedBump): Promise<ConsumerBumpSweepNote> {
   const { repo } = bump;
   const closed = await services.port.findPr(repo, bump.branch);
+  if (closed && !headInRepo(closed, repo)) throw new Error(`${repo} PR #${closed.number} from a fork holds ${bump.branch}`);
   if (closed) return { repo, pr: closed.number, skipped: "closed" };
   const changed = await regenerate(regen, bump);
   const pr = await openBump(services.port, bump, changed);
@@ -138,14 +144,20 @@ interface FileWrite {
   expectedBlobSha: string | null;
 }
 
-/** Builds the branch through the contents API, as the toolchain sweep does; each write's expected blob makes a moved file fail instead of being overwritten. */
+/**
+ * Builds a new branch through the contents API, as the toolchain sweep does; each write's expected blob makes a moved file fail instead of being overwritten.
+ * A branch that already exists with no PR is refused, not reused: its other commits would ride into the PR the sweep registers.
+ */
 async function openBump(port: GitHubPort, bump: PlannedBump, files: FileWrite[]): Promise<PullRequest> {
   const { repo, branch, tree } = bump;
   const baseSha = await port.getHeadSha(repo, tree.ref);
   if (baseSha === null) throw new Error(`${repo} has no ${tree.ref} branch`);
-  await port.ensureBranch(repo, branch, baseSha);
+  const created = await port.ensureBranch(repo, branch, baseSha);
+  if (!created.done) throw new Error(`${repo} already has a ${branch} branch with no PR`);
   for (const file of files) await port.putFile(repo, { path: file.path, branch, content: file.content, message: `${BUMP_TITLE}: ${file.path}`, expectedBlobSha: file.expectedBlobSha });
-  return (await port.openPr(repo, { head: branch, base: tree.ref, title: BUMP_TITLE, body: bumpBody(bump.plan) })).pr;
+  const opened = await port.openPr(repo, { head: branch, base: tree.ref, title: BUMP_TITLE, body: bumpBody(bump.plan) });
+  if (!opened.done || !headInRepo(opened.pr, repo)) throw new Error(`${repo} PR #${opened.pr.number} on ${branch} was not opened by this sweep`);
+  return opened.pr;
 }
 
 function bumpBody(plan: ConsumerBumpPlan): string {

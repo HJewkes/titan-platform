@@ -168,6 +168,42 @@ describe("bumpConsumers", () => {
     expect(notes[1]).toMatchObject({ repo: CONSUMER_B, registered: expect.any(String) });
   });
 
+  it("never registers a fork PR under a bump branch name and bumps the repo as usual", async () => {
+    const w = world();
+    const fork = w.fakes.get(CONSUMER_A)!.addPr({ headSha: fakeSha("fork"), headRef: `${BUMP_BRANCH_PREFIX}0badc0de`, headRepo: "stranger/consumer-a" });
+
+    const notes = await bumpConsumers(w.host, w.services, ports(w));
+
+    expect(w.services.store.get().byPr(CONSUMER_A, fork.number)).toBeUndefined();
+    expect(notes[0]).toEqual({ repo: CONSUMER_A, pr: expect.any(Number), registered: expect.any(String) });
+    expect(notes[0]!.pr).not.toBe(fork.number);
+    expect(w.fakes.get(CONSUMER_A)!.effects.createPr).toBe(1);
+  });
+
+  it("refuses a fork PR that holds the planned bump branch", async () => {
+    const w = world();
+    const { bumps } = await planConsumerBumps(w.services, w.registry);
+    const fork = w.fakes.get(CONSUMER_A)!.addPr({ headSha: fakeSha("fork"), headRef: bumps[0]!.branch, headRepo: "stranger/consumer-a" });
+
+    const notes = await bumpConsumers(w.host, w.services, ports(w));
+
+    expect(notes[0]).toEqual({ repo: CONSUMER_A, error: "Error" });
+    expect(w.services.store.get().byPr(CONSUMER_A, fork.number)).toBeUndefined();
+    expect(w.fakes.get(CONSUMER_A)!.effects).toMatchObject({ createRef: 0, putContent: 0, createPr: 0 });
+  });
+
+  it("refuses to reuse a bump branch that already exists with no PR", async () => {
+    const w = world();
+    const { bumps } = await planConsumerBumps(w.services, w.registry);
+    w.fakes.get(CONSUMER_A)!.refs.set(bumps[0]!.branch, fakeSha("leftover"));
+
+    const notes = await bumpConsumers(w.host, w.services, ports(w));
+
+    expect(notes[0]).toEqual({ repo: CONSUMER_A, error: "Error" });
+    expect(w.fakes.get(CONSUMER_A)!.effects).toMatchObject({ putContent: 0, createPr: 0 });
+    expect(notes[1]).toMatchObject({ repo: CONSUMER_B, registered: expect.any(String) });
+  });
+
   it("does not reopen a closed bump PR", async () => {
     const w = world();
     const { bumps } = await planConsumerBumps(w.services, w.registry);
