@@ -3,6 +3,7 @@ import { hostCarryPorts } from "./carry-cache-adapter.js";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import type { StepRoute } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { shepherdEventMigration } from "./events.js";
@@ -57,6 +58,7 @@ interface Scene {
   ciGreenAt?: number;
 }
 
+const ReviewerRecord = z.looseObject({ reviewer: z.looseObject({ agentId: z.string() }) });
 const pendingRun = (name: string, id: number) => ({ ...successRun(name, id), status: "in_progress", conclusion: null });
 
 /** One review of H under the real review routes; the clock moves only in sleeps. */
@@ -100,7 +102,7 @@ async function review(scene: Scene) {
   await host.runtime.wait(runId);
   const results = Object.values(host.runtime.status(runId)!.stepResults);
   const resultOf = (stepId: string) => (results.find((result) => result.stepId === stepId)?.data as { result?: unknown } | undefined)?.result;
-  const reviewersOf = (name: string) => results.filter((result) => result.stepId.startsWith(`${name}:`)).map((result) => (result.data as { result?: { reviewer?: { agentId?: string } } }).result?.reviewer?.agentId);
+  const reviewersOf = (name: string) => results.filter((result) => result.stepId.startsWith(`${name}:`)).map((result) => ReviewerRecord.safeParse((result.data as { result?: unknown } | undefined)?.result).data?.reviewer.agentId);
   return { verdicts, spawns, stepIds: results.map((result) => result.stepId), resultOf, reviewersOf };
 }
 
