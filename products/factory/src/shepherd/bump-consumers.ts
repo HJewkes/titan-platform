@@ -114,7 +114,7 @@ async function openBumpOf(services: Pick<ShepherdServices, "port">, repo: RepoSl
 }
 
 /** A consumer the sweep would leave alone because its bump PR already exists. */
-export interface SkippedBump {
+interface SkippedBump {
   repo: RepoSlug;
   pr: number;
   skipped: "open" | "closed";
