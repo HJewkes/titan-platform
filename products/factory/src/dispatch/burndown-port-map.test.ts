@@ -81,6 +81,15 @@ describe("burndown port map", () => {
     expect(sha.startsWith(named)).toBe(true);
   });
 
+  it("pins L1 to agent-chat 7b87af6 and says the CC-1181 lock wait is not ported", () => {
+    const shas = files.filter((f) => f.dest === "L1").map((f) => f.portedFrom);
+    const readme = readFileSync(join(ROOT, "packages", "dispatch-ledger", "README.md"), "utf8");
+
+    expect(shas.length).toBeGreaterThanOrEqual(3);
+    expect(shas.every((s) => s === "7b87af6e65c9c057e51a9a33ccf10d6e08f21ab1")).toBe(true);
+    expect(readme).toMatch(/CC-1181 ledger-lock wait[^.]*is not ported/);
+  });
+
   it("resolves every internal import to another entry", () => {
     const names = new Set(files.map((f) => f.file));
     const dangling = files.flatMap((f) => f.imports.filter((i) => !names.has(i)).map((i) => `${f.file} -> ${i}`));
