@@ -49,7 +49,8 @@ import { fileRules, mergeOrderMigration, mergeOrderRef, type MergeOrderRules, ty
 import { watchListMigration } from "./shepherd/watch-list.js";
 import { gateEvidenceMigration } from "./shepherd/lan-gates.js";
 import { mergeBaseExceptionMigration } from "./shepherd/merge-base-exception.js";
-import { shepherdPrWorkflow, shepherdRoutes } from "./shepherd/pr.js";
+import { shepherdRoutes } from "./shepherd/pr.js";
+import { factoryShepherdWorkflow } from "./shepherd-phases.js";
 import { nodeWantedStore } from "./shepherd/deploy-pacer.js";
 import { redeployRoute, systemDeployer, type Deployer } from "./shepherd/redeploy.js";
 import { hostDeployerOptions, nodeDeployerPorts } from "./shepherd/redeploy-adapter.js";
@@ -97,7 +98,7 @@ import { configuredDiagnosis, configuredReplan, configuredVisualPacket } from ".
 import type { CleanupPorts, ExitNoticePorts, RosterReader, SpawnGate, SuiteRules, TaskClose } from "./shepherd/ports.js";
 
 /** Every workflow the CLI hosts. Pilots register here as their slices land (doc-change in S3). */
-export const factoryWorkflows: readonly WorkflowDefinition[] = [landPrWorkflow(), shepherdPrWorkflow(), measurementAuditWorkflow(), devicePrWorkflow(), buildSurfaceWorkflow()];
+export const factoryWorkflows: readonly WorkflowDefinition[] = [landPrWorkflow(), factoryShepherdWorkflow(), measurementAuditWorkflow(), devicePrWorkflow(), buildSurfaceWorkflow()];
 
 export interface FactoryRouteDeps extends LandPrDeps {
   port: GitHubPort;
