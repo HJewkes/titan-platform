@@ -17,19 +17,34 @@ export const SLICE_TAGS = ["slices", "multi-slice"];
  * A last-slice PR (`register --last-slice`) skips that tag check and its derived list: an epic tag, a hold tag or an unlanded
  * slice of a plan's block still holds (TP-4703).
  */
-export function heldOpenBy({ tags, notes, plan }: TaskSlicing, lastSlice = false): string | undefined {
+export function heldOpenBy(slicing: TaskSlicing, lastSlice = false, carried: readonly string[] = []): string | undefined {
+  const hold = holdOf(slicing, lastSlice);
+  if (hold === undefined || "reason" in hold) return hold?.reason;
+  return heldBySlices(hold.slices, slicing.tags, slicing.notes, carried);
+}
+
+/** The slices a list-holding task still waits on, or none when something other than its slice list holds it. */
+export function unlandedSlices(slicing: TaskSlicing, lastSlice = false): string[] {
+  const hold = holdOf(slicing, lastSlice);
+  if (hold === undefined || "reason" in hold) return [];
+  return unlandedOf(hold.slices, slicing.notes, []);
+}
+
+type Hold = { reason: string } | { slices: string[] } | undefined;
+
+function holdOf({ tags, notes, plan }: TaskSlicing, lastSlice: boolean): Hold {
   const hold = tags.find((tag) => tag.startsWith(HOLD_TAG_PREFIX));
-  if (hold !== undefined) return `it is tagged ${hold}`;
+  if (hold !== undefined) return { reason: `it is tagged ${hold}` };
   if (plan !== undefined && hasSlicesBlock(plan)) {
     const slices = readSlices(plan).slices;
-    if (slices === undefined) return "its plan has a burndown-slices block that does not read";
-    return heldBySlices(slices.map((slice) => slice.n), tags, notes);
+    if (slices === undefined) return { reason: "its plan has a burndown-slices block that does not read" };
+    return { slices: slices.map((slice) => slice.n) };
   }
   const sliceTag = lastSlice ? undefined : SLICE_TAGS.find((tag) => tags.includes(tag));
-  if (sliceTag === undefined) return tags.includes(EPIC_TAG) ? `it is tagged ${EPIC_TAG}` : undefined;
+  if (sliceTag === undefined) return tags.includes(EPIC_TAG) ? { reason: `it is tagged ${EPIC_TAG}` } : undefined;
   const listed = listedSlices(plan, notes);
   const covers = listed.length > 0 && [...landedSlices(notes)].every((n) => listed.includes(n));
-  return covers ? heldBySlices(listed, tags, notes) : `it is tagged ${sliceTag}`;
+  return covers ? { slices: listed } : { reason: `it is tagged ${sliceTag}` };
 }
 
 /**
@@ -44,10 +59,14 @@ export function completedBefore(slicing: TaskSlicing, landingLine: string): bool
 
 const landedSlices = (notes: string): Set<string> => new Set(notes.split("\n").flatMap((line) => /^(\S+) landed in /.exec(line)?.[1] ?? []));
 
-function heldBySlices(slices: string[], tags: readonly string[], notes: string): string {
+const unlandedOf = (slices: string[], notes: string, carried: readonly string[]): string[] => {
   const landed = landedSlices(notes);
   const moved = movedSlices(notes);
-  const unlanded = slices.filter((n) => !landed.has(n) && !moved.has(n));
+  return slices.filter((n) => !landed.has(n) && !moved.has(n) && !carried.includes(n));
+};
+
+function heldBySlices(slices: string[], tags: readonly string[], notes: string, carried: readonly string[]): string {
+  const unlanded = unlandedOf(slices, notes, carried);
   if (unlanded.length > 0) return `it has slices ${unlanded.join(", ")}`;
   return tags.includes(EPIC_TAG) ? `it is tagged ${EPIC_TAG}` : ALL_SLICES_LANDED;
 }
