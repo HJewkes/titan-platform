@@ -8,6 +8,7 @@ import { parseDuration, parseNodePath, parsePort, parseSha } from "./cli-options
 import type { CliIo, Verbs } from "./cli-types.js";
 import { configPath, factoryStateDir, loadConfig, type FactoryConfig } from "./config.js";
 import { deployCheckoutPath, deployedBinPath } from "./deploy-checkout.js";
+import { relinkAfterDeploy, systemCliLinkPorts } from "./deploy-cli-link.js";
 import { deployService, type DeployPorts } from "./deploy.js";
 import { clearDeployPause, describeHolds, describeManualHold, readDeployHolds, runningDeployer, writeManualHold } from "./deploy-pause.js";
 import { originOf, systemDeployPorts } from "./deploy-ports.js";
@@ -155,7 +156,9 @@ function registerServiceDeploy(service: Command, verbs: Verbs): void {
     const stateDir = factoryStateDir(io.env);
     const watch = windowMs !== undefined && { watch: { windowMs } };
     const options = { checkout, remote, stateDir, logDir: stateDir, port: opts.port, expect: opts.expect, drain: drainOf(opts), morningQueuesDir: morningQueuesDir(io.env), ...watch };
-    setExit(await runServiceVerb("deploy", ports, io, () => deployService(ports, io, options), MANAGED_PLATFORMS));
+    const code = await runServiceVerb("deploy", ports, io, () => deployService(ports, io, options), MANAGED_PLATFORMS);
+    relinkAfterDeploy({ code, ports, checkout, link: deps.cliLink ?? systemCliLinkPorts(), io });
+    setExit(code);
   });
 }
 
