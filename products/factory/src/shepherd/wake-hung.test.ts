@@ -1,4 +1,5 @@
 import { tmpdir } from "node:os";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { dataFence, DispatchError, type AgentRow } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, successRun } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
@@ -59,7 +60,7 @@ function hungWake(scene: { advisory?: boolean; rows?: AgentRow[]; successors?: s
   for (const name of scene.successors ?? []) store.get().recordAuthor("run-1", { agentId: `id-${name}`, name, role: "successor", predecessor: "impl-a" });
   const hung = hungAgents(scene.rows ?? [row("impl-a", "live")]);
   let now = T0;
-  const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => now, sleep: async (ms) => void (now += ms), pollMs: 1_000, agentChatBin: "/opt/bin/agent-chat", exitNotice, ...(scene.advisory && { advisory: () => true }) };
+  const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(fake.wire), store, now: () => now, sleep: async (ms) => void (now += ms), pollMs: 1_000, agentChatBin: "/opt/bin/agent-chat", exitNotice, ...(scene.advisory && { advisory: () => true }) };
   const turnSince = async () => hung.asked.some(([verb]) => verb === "spawn");
   const route = wakeRoutes(deps, { turnSince, readWarmth: async () => ({ lastEventAt: T0 - 60_000, fill: 50_000 }), checkoutFor: () => CHECKOUT, agents: hung.agents }).find((candidate) => candidate.match === "sh-wake-implementer")!;
   const run = async (): Promise<WakeStepResult> => {

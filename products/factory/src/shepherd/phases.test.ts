@@ -1,4 +1,5 @@
 import { routedRunner } from "@titan-design/workflow";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { describe, expect, it } from "vitest";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { fakeGitHub, githubPort } from "@titan-design/github";
@@ -10,7 +11,7 @@ import { WAKE_STEPS, wakeRoutes } from "./wake.js";
 const WAKE_FAMILIES = ["sh-wake", "sh-await-new-head", "sh-repair", "sh-flake-check", "sh-held-verdict", "sh-exit-notice"];
 const REVIEW_FAMILIES = ["sh-fix-proof", "sh-review", "sh-await-verdict", "sh-late-verdict", "sh-correct-verdict", "sh-seat-recheck", "sh-merge-evidence", "sh-carry", "sh-publish-review", "sh-ci-unread", "sh-account", "sh-no-reviewer", "sh-scope-check", "sh-follow-ups"];
 const target = { repo: "octo/demo", pr: 1, round: 0, headSha: "abc123" };
-const deps: ShepherdDeps = { port: githubPort(fakeGitHub().wire), store: shepherdStoreRef(), now: () => 0, sleep: async () => {}, agentChatBin: "agent-chat" };
+const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(fakeGitHub().wire), store: shepherdStoreRef(), now: () => 0, sleep: async () => {}, agentChatBin: "agent-chat" };
 
 /** The declared ids that belong to none of `families`, where a family is its prefix, `prefix:n` or `prefix-name`. */
 function outside(families: readonly string[], steps: readonly StepDeclaration[]): string[] {

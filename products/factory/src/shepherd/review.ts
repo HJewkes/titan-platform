@@ -198,7 +198,7 @@ export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeC
   /** The profile each class of PR is spawned with; a spawned reviewer's profile travels with its verdict. */
   roles?: ReviewerRoles;
   /** How the `sh-carry` probe reaches git; absent means the system git against the factory's cache. */
-  carry?: Omit<CarryOptions, "signal">;
+  carry?: Omit<CarryOptions, "signal" | "ports">;
   /** The reviewer accounts in failover order; absent means no account is checked before a spawn, and a limit holds the one default account. */
   accounts?: ReviewAccounts;
   /** The stops the spawn gate and the broker saw; absent means a silent reviewer is a timeout whatever the machine did. */
@@ -323,7 +323,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     repeatAwareRoute(CORRECT_VERDICT_STEP, deps.now, brokerStep(deps, wiring, CorrectVerdictInputSchema, correctReviewer)),
     codeRoute(SEAT_RECHECK_STEP, deps.now, seatVetoed(wiring, async (raw: unknown) => heldMerge(raw), deps.now, seatWait, ownerIn(deps.store))),
     codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput, signal: AbortSignal) => mergeEvidence(deps.port, input, wiring?.isFrozen ?? noFreezeStoreUntilTp523, registeredKind(deps.store, input.runId), { sleep: (ms) => deps.sleep(ms, signal) }, { reviewAppId: wiring?.reviewAppId, threshold: wiring?.visualThreshold?.(input.repo), tier: wiring?.visualTier?.(input.repo), oldPath: wiring?.oldPath, attest: attestJudge(deps.port, deps.store, wiring ?? {}, { timing: { ...brokerTiming(deps), brokerDownWaitMs: wiring?.brokerDownWaitMs ?? DEFAULT_BROKER_DOWN_WAIT_MS }, budgetMs: wiring?.sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, signal }) })),
-    carryRoute(deps.now, wiring?.carry),
+    carryRoute(deps.now, { ports: deps.gitCache, ...wiring?.carry }),
     publishReviewRoute(deps),
     ...accountRoutes(deps, wiring?.accounts),
     reviewRequestRoute(deps),
