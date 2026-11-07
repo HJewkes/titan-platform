@@ -497,13 +497,41 @@ describe("shepherd timeline verdict and wake entries", () => {
       ["FIX_FIRST", H1],
       ["MERGE", H2],
     ]);
-    expect(entries[2]).toEqual({ kind: "verdict", stepId: `sh-await-verdict:${H2}`, verdict: "MERGE", headSha: H2, locator: { path: "sessions/rev.jsonl", start: 100, end: 120 }, reviewer: "rev-1" });
+    expect(entries[2]).toEqual({ kind: "verdict", stepId: `sh-await-verdict:${H2}`, verdict: "MERGE", headSha: H2, locator: { path: "sessions/rev.jsonl", start: 100, end: 120 }, reviewer: "rev-1", note: null });
   });
 
-  it("maps a wait that ended without a verdict to verdict none with no head", () => {
+  it("maps a wait that ended without a verdict to verdict none at the step's head, with its reason and no reviewer", () => {
     const run = withResults([{ stepId: `sh-await-verdict:${H1}`, at: "2026-01-01T00:01:00.000Z", result: { kind: "none", reason: "wait" } }]);
 
-    expect(timelineEntries(run, [])).toEqual([{ kind: "verdict", stepId: `sh-await-verdict:${H1}`, verdict: "none", headSha: null, locator: null, reviewer: null }]);
+    expect(timelineEntries(run, [])).toEqual([{ kind: "verdict", stepId: `sh-await-verdict:${H1}`, verdict: "none", headSha: H1, locator: null, reviewer: null, note: "reviewer said WAIT" }]);
+  });
+
+  it("keeps no reviewer on a none that timed out, even when the record names one", () => {
+    const run = withResults([{ stepId: `sh-await-verdict:${H1}`, at: "2026-01-01T00:01:00.000Z", result: { kind: "none", ended: "deadline", reviewer } }]);
+
+    expect(timelineEntries(run, [])).toEqual([expect.objectContaining({ verdict: "none", reviewer: null, note: "no verdict before the wait ran out" })]);
+  });
+
+  it("names Shepherd's own reviewer, never the seat, on a none whose MERGE a seat WAIT held", () => {
+    const seatHeld = { kind: "verdict", verdict: "MERGE", head: H1, locator, reviewer: { agentId: "agent-rv-own", sessionId: "s-own" } };
+    const result = { kind: "none", reason: `seat check: rv-seat said WAIT at ${H1}, so its required checks had not finished`, seat: "rv-seat", seatHeld };
+    const run = withResults([{ stepId: `sh-await-verdict:${H1}`, at: "2026-01-01T00:01:00.000Z", result }]);
+
+    expect(timelineEntries(run, [])).toEqual([
+      { kind: "verdict", stepId: `sh-await-verdict:${H1}`, verdict: "none", headSha: H1, locator: null, reviewer: "agent-rv-own", note: "seat WAIT from rv-seat, Shepherd MERGE held" },
+    ]);
+  });
+
+  it("gives a seat recheck that let the held MERGE stand its own verdict entry", () => {
+    const run = withResults([{ stepId: `sh-seat-recheck:${H1}`, at: "2026-01-01T00:01:00.000Z", result: { kind: "verdict", verdict: "MERGE", head: H1, locator, reviewer: { agentId: "agent-rv-own", sessionId: "s-own" } } }]);
+
+    expect(timelineEntries(run, [])).toEqual([expect.objectContaining({ kind: "verdict", stepId: `sh-seat-recheck:${H1}`, verdict: "MERGE", headSha: H1, reviewer: "agent-rv-own", note: null })]);
+  });
+
+  it("leaves a panel member's none without a head-level note", () => {
+    const run = withResults([{ stepId: `sh-await-verdict:${H1}:arch`, at: "2026-01-01T00:01:00.000Z", result: { kind: "none", reason: "wait" } }]);
+
+    expect(timelineEntries(run, [])).toEqual([expect.objectContaining({ kind: "verdict", verdict: "none", note: null })]);
   });
 
   it("leaves the locator null when the verdict's locator lacks a transcript span", () => {
