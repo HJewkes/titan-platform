@@ -89,6 +89,8 @@ const SIGNOFF_POLICY_FILES = [
   ...["signoffs.ts", "merge-standing.ts", "reviewer-lineage.ts", "auto-pass.ts", "fix-proof.ts", "take-verdict.ts", "store.ts", "events.ts"].map(inShepherd),
   ...["registration-of.ts", "proof-waiver.ts", "proof-waiver-table.ts", "seat-recheck.ts", "carry-merge.ts", "merge-up-carry.ts", "approved-set-carry.ts", "no-reviewer-hold.ts"].map(inShepherd),
   ...["await-pr.ts", "coverage.ts", "pr.ts", "shepherd-steps.ts"].map(inShepherd),
+  // The production ShepherdPhases read the owner's visualSetCarry flag; the recipe lint keeps that adapter out of pr.ts.
+  "products/factory/src/shepherd-phases.ts",
   "packages/fix-proof/src/**",
   "packages/review-panel/src/**",
 ];
