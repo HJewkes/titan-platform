@@ -5,12 +5,12 @@ import { parsePort } from "./cli-options.js";
 import { EXIT } from "./exit-codes.js";
 import { FACTORY_PORT } from "./serve.js";
 import type { FactoryRoutes } from "./host.js";
-import { bumpConsumers, planConsumerBumps, type ConsumerBumpPorts } from "./shepherd/bump-consumers.js";
+import { bumpConsumers, previewConsumerBumps, type ConsumerBumpPorts } from "./shepherd/bump-consumers.js";
 import { npmLatest } from "./shepherd/consumer-bump.js";
 import { scratchLockfileRegen } from "./shepherd/lockfile-regen.js";
 import type { ShepherdServices } from "./shepherd/services.js";
 
-type Plans = Awaited<ReturnType<typeof planConsumerBumps>>;
+type Plans = Awaited<ReturnType<typeof previewConsumerBumps>>;
 type SweepNote = Awaited<ReturnType<typeof bumpConsumers>>[number];
 
 const ALL_CURRENT = "every consumer is on npm latest";
@@ -38,7 +38,7 @@ export function registerRelease(program: Command, verbs: Verbs): void {
 /** Never opens the database or runs an install, so a frozen host can still preview a sweep. */
 async function dryRun(verbs: Verbs): Promise<number> {
   const routes: FactoryRoutes = typeof verbs.deps.routes === "function" ? verbs.deps.routes() : verbs.deps.routes;
-  const plans = await planConsumerBumps(shepherdOf(routes), portsOf(verbs).registry);
+  const plans = await previewConsumerBumps(shepherdOf(routes), portsOf(verbs).registry);
   verbs.io.stdout(formatPlans(plans));
   return plans.notes.some((note) => "error" in note) ? EXIT.UNAVAILABLE : EXIT.OK;
 }
@@ -53,10 +53,11 @@ function shepherdOf(routes: FactoryRoutes): ShepherdServices {
   return shepherd;
 }
 
-function formatPlans({ bumps, notes }: Plans): string {
+function formatPlans({ bumps, notes, skips }: Plans): string {
   const planned = bumps.map(({ repo, branch, tree, plan }) => `${repo}: open ${branch} into ${tree.ref} [${plan.edits.map((edit) => `${edit.name} ${edit.from} -> ${edit.to}`).join(", ")}]`);
   const failed = notes.flatMap((note) => ("error" in note ? [`${note.repo}: not read (${note.error})`] : []));
-  return lines([...planned, ...failed]);
+  const skipped = skips.map(({ repo, pr, skipped }) => `skip ${repo}: ${skipped} bump PR #${pr}`);
+  return lines([...planned, ...skipped, ...failed]);
 }
 
 function formatNotes(notes: readonly SweepNote[]): string {

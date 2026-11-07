@@ -13,6 +13,7 @@ import { H1, REPO, answerPendingGate, approveUntilSettled } from "../test-suppor
 import { chorePruning } from "./chore-prune.js";
 import { landPrRoutes, landPrWorkflow } from "./land-pr.js";
 import { postMergeRoute } from "./post-merge.js";
+import { hostPostMerge } from "./post-merge-adapter.js";
 import { choreFiles, pruneChores, writeJson, type ChoreFiles, type ChorePorts } from "./post-merge-chore.js";
 
 const dirs: string[] = [];
@@ -62,13 +63,13 @@ function recordedResult(output: string): unknown {
 
 describe("post-merge reconcile after a restart", () => {
   it("is retry-safe with no post-merge command, since the step ran nothing", async () => {
-    const outcome = await reconcile(postMergeRoute({}));
+    const outcome = await reconcile(postMergeRoute(hostPostMerge()));
 
     expect(outcome).toMatchObject({ kind: "not_found", retrySafe: true });
   });
 
   it("is retry-safe when no chore marker exists, because the chore never started", async () => {
-    const outcome = await reconcile(postMergeRoute({ postMerge: CONFIG, chores: fakeChores().ports }));
+    const outcome = await reconcile(postMergeRoute({ ...hostPostMerge(), postMerge: CONFIG, chores: fakeChores().ports }));
 
     expect(outcome).toMatchObject({ kind: "not_found", retrySafe: true });
   });
@@ -77,7 +78,7 @@ describe("post-merge reconcile after a restart", () => {
     const chores = fakeChores();
     const files = startedMarker(chores, { unit: "titan-factory-chore-test" });
 
-    const outcome = await reconcile(postMergeRoute({ postMerge: CONFIG, chores: chores.ports }));
+    const outcome = await reconcile(postMergeRoute({ ...hostPostMerge(), postMerge: CONFIG, chores: chores.ports }));
     if (outcome.kind !== "running") throw new Error(`expected running, got ${outcome.kind}`);
     writeJson(files.result, EXITED_3);
     const completed = await outcome.completion;
@@ -93,7 +94,7 @@ describe("post-merge reconcile after a restart", () => {
     const files = startedMarker(chores, { pid: 4242 });
     writeJson(files.result, EXITED_3);
 
-    const outcome = await reconcile(postMergeRoute({ postMerge: CONFIG, chores: chores.ports }));
+    const outcome = await reconcile(postMergeRoute({ ...hostPostMerge(), postMerge: CONFIG, chores: chores.ports }));
 
     if (outcome.kind !== "terminal" || outcome.outcome.kind !== "succeeded") throw new Error(`expected a succeeded terminal, got ${outcome.kind}`);
     expect(recordedResult(outcome.outcome.output)).toEqual(EXITED_3);
@@ -104,7 +105,7 @@ describe("post-merge reconcile after a restart", () => {
     chores.setAlive(false);
     startedMarker(chores, { unit: "titan-factory-chore-test" });
 
-    const outcome = await reconcile(postMergeRoute({ postMerge: CONFIG, chores: chores.ports }));
+    const outcome = await reconcile(postMergeRoute({ ...hostPostMerge(), postMerge: CONFIG, chores: chores.ports }));
 
     expect(outcome).toMatchObject({ kind: "unknown", evidence: expect.stringContaining("wrote no result") });
   });
@@ -113,13 +114,13 @@ describe("post-merge reconcile after a restart", () => {
     const chores = fakeChores();
     startedMarker(chores);
 
-    const outcome = await reconcile(postMergeRoute({ postMerge: CONFIG, chores: chores.ports }));
+    const outcome = await reconcile(postMergeRoute({ ...hostPostMerge(), postMerge: CONFIG, chores: chores.ports }));
 
     expect(outcome).toMatchObject({ kind: "unknown" });
   });
 
   it("still parks a chore run inside serve, which has no marker to read", async () => {
-    const outcome = await reconcile(postMergeRoute({ postMerge: CONFIG }));
+    const outcome = await reconcile(postMergeRoute({ ...hostPostMerge(), postMerge: CONFIG }));
 
     expect(outcome).toMatchObject({ kind: "unknown" });
   });
@@ -260,7 +261,7 @@ describe("chorePruning", () => {
     seeding.close();
 
     const host = openFactoryHost({ dbPath, workflows: [], routes: Object.assign([], chorePruning(chores.ports)) });
-    const outcome = await postMergeRoute({ postMerge: CONFIG, chores: chores.ports }).reconcile!(interrupted(keyB), new AbortController().signal);
+    const outcome = await postMergeRoute({ ...hostPostMerge(), postMerge: CONFIG, chores: chores.ports }).reconcile!(interrupted(keyB), new AbortController().signal);
     host.close();
 
     expect(present(recorded)).toEqual([]);

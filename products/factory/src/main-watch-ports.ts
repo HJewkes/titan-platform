@@ -8,7 +8,9 @@ import { AGENT_CALL_TIMEOUT_MS, agentChatAgents } from "./shepherd/agents.js";
 import { agentChatCleanupAgents } from "./shepherd/cleanup-ports.js";
 import type { FixerRetirePorts } from "./shepherd/fixer-retire.js";
 import type { MainDeploy, MainWatchPorts } from "./shepherd/main-watch.js";
+import { nodeWantedStore } from "./shepherd/deploy-pacer.js";
 import { mainDeployQueue } from "./shepherd/redeploy.js";
+import { hostDeployerOptions, nodeDeployerPorts } from "./shepherd/redeploy-adapter.js";
 
 type RedSeatConfig = NonNullable<FactoryConfig["shepherd"]>["redSeat"];
 
@@ -26,7 +28,8 @@ export function configuredMainWatch(env: NodeJS.ProcessEnv): MainWatchPorts | un
 /** The same bin, state dir and ancestry probe Shepherd's redeploy step queues with, so both write one deploy-wanted.json. */
 function factoryDeploy(env: NodeJS.ProcessEnv): MainDeploy | undefined {
   if (FACTORY_REPO === undefined) return undefined;
-  const queue = mainDeployQueue({ bin: fileURLToPath(new URL("./bin.js", import.meta.url)), stateDir: factoryStateDir(env), isAncestor: deployCheckoutAncestry(deployCheckoutFor(env)) });
+  const options = { ...hostDeployerOptions(), bin: fileURLToPath(new URL("./bin.js", import.meta.url)), stateDir: factoryStateDir(env), isAncestor: deployCheckoutAncestry(deployCheckoutFor(env)) };
+  const queue = mainDeployQueue(options, nodeDeployerPorts, nodeWantedStore);
   return { repo: FACTORY_REPO, queue };
 }
 

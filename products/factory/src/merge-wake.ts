@@ -1,6 +1,7 @@
 import type { StepRoute } from "@titan-design/workflow";
 import type { MergeWakeConfig } from "./config.js";
-import { execChore, POST_MERGE_TIMEOUT_MS, type ChoreExec } from "./workflows/post-merge.js";
+import { POST_MERGE_TIMEOUT_MS, type ChoreExec } from "./workflows/post-merge.js";
+import { execChore } from "./workflows/post-merge-adapter.js";
 
 /*
  * Interim product-side adapter: TP-1558 moves the merge wake onto the host scheduler's settle-window trigger (TP-1555),
