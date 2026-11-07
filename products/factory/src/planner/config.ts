@@ -31,6 +31,16 @@ const InputSchema = z
     message: "each input names exactly one of file, dir or command",
   });
 
+/** A command printing one line per event since the `{since}` argument, which the wake fills with the last spawn's ISO time. */
+const WindowProbeSchema = z.array(z.string()).min(1);
+
+/** Owner decision 556(2): a window with no merges on main, no owner contact and no new red CI has nothing for a review to read. */
+const PriorWindowSchema = z.object({
+  merges: WindowProbeSchema,
+  ownerContact: WindowProbeSchema,
+  newRed: WindowProbeSchema,
+});
+
 /** The owner's own account: a planner wake on it shares the owner's weekly cap, and every wake died on it once the cap was hit. */
 const PERSONAL_CONFIG_DIR = /(^|\/)\.claude-profiles\/personal(\/|$)/;
 
@@ -51,6 +61,7 @@ const PlannerConfigSchema = z.object({
   agentChat: z.string().default("agent-chat"),
   digestMaxTokens: z.number().int().positive().default(DEFAULT_DIGEST_MAX_TOKENS),
   inputs: z.array(InputSchema).min(1),
+  priorWindow: PriorWindowSchema.optional(),
 });
 
 export type PlannerConfig = z.infer<typeof PlannerConfigSchema>;
