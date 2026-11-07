@@ -15,7 +15,7 @@ import { configuredMainWatch } from "./main-watch-ports.js";
 import { holdAdversary, liveSpawnLimits, reviewAccounts, successorAccounts, visualThresholdOf, visualTierOf, withHoldAdversary } from "./workflows-live.js";
 import type { WorkflowDefinition } from "./definition.js";
 import type { DatabaseTenant, FactoryRoutes } from "./host.js";
-import { reviewCheckPort } from "./shepherd/publish-review.js";
+import { reviewCheckPort } from "./shepherd/publish-review-adapter.js";
 import { activeWorkFixTasks, activeWorkFollowUpTasks, activeWorkOrigin, activeWorkTasks, agentChatCleanupAgents } from "./shepherd/cleanup-ports.js";
 import { ghGateway, type GhCallLine, type GhGateway } from "./shepherd/gh-gateway.js";
 import type { PrFilesRead } from "./shepherd/git-pr-files.js";

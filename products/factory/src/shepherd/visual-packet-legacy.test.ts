@@ -5,6 +5,7 @@ import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@t
 import { openDatabase } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { makePacketDir } from "./visual-packet-trigger-adapter.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
@@ -31,7 +32,7 @@ afterEach(() => {
 function openHost(fake: FakeGitHub, ref: ShepherdStoreRef, phases: ShepherdPhases, dbPath: string, stuck?: string): FactoryHost {
   let clock = 0;
   const tick = async (ms: number, signal: AbortSignal) => ((clock += ms), sleep(1, signal));
-  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, now: () => clock, sleep: tick, visualPacket: { mode: "shadow", profile: "review-packager", stateDir: tmpdir() }, seats: () => ({ seats: [SEAT], denied: [] }) });
+  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, now: () => clock, sleep: tick, visualPacket: { mode: "shadow", profile: "review-packager", stateDir: tmpdir(), titanReviewBin: "/opt/synthetic/bin/titan-review", makeDir: makePacketDir }, seats: () => ({ seats: [SEAT], denied: [] }) });
   const hang = (route: (typeof routes)[number]) => (route.match === stuck ? { ...route, runner: { run: () => new Promise<never>(() => undefined) } } : route);
   const wired = stuck ? Object.assign(routes.map(hang), { database: routes.database, shepherd: routes.shepherd }) : routes;
   const host = openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow(phases), landPrWorkflow()], routes: wired, gatePollMs: 5 });
