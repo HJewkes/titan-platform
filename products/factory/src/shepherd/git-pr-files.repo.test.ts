@@ -5,6 +5,7 @@ import { fakeGitHub, fakeSha, githubPort, type PrFile } from "@titan-design/gith
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { gitIn, seedRepo } from "@titan-design/test-kit/git";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { shepherdEventMigration } from "./events.js";
 import { CopyDetectionSkipped, cachedByHead, gitPrFiles, prFilesOf, type PrFilesRead } from "./git-pr-files.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
@@ -124,6 +125,22 @@ beforeEach(() => {
 });
 
 afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+describe("gitPrFiles ports", { timeout: 30_000 }, () => {
+  it("gitPrFiles diffs through the ports it is given", async () => {
+    const head = feature(growPolicy);
+    openPr(1, head);
+    const seen: string[] = [];
+    const git: Git = (gitDir, args, signal) => (seen.push(args[0] ?? ""), systemGit(gitDir, args, signal));
+    const ports = { ...hostCarryPorts, git, stateDir: () => stateDir };
+
+    const files = await gitPrFiles({ repo: REPO, pr: 1, base: "main", head }, { ports, remote: () => origin });
+
+    expect(files.map((file) => file.path)).toContain("products/factory/src/shepherd/g10-big.ts");
+    expect(seen).toContain("fetch");
+    expect(seen).toContain("diff");
+  });
+});
 
 describe("the G10 class from local git", { timeout: 30_000 }, () => {
   it.each(CASES)("equals the class of the recorded GitHub file list for $name", async ({ change, recorded, reason }) => {

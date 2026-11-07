@@ -5,6 +5,7 @@ import { gitIn, seedRepo, withHistory } from "@titan-design/test-kit/git";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { codewatchReader } from "./codewatch-questions.js";
 import { cacheHeadLines } from "./head-lines.js";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { systemGit, type Git } from "./tree-carry.js";
 
 const REPO = "acme/widgets";
@@ -42,6 +43,16 @@ describe("cacheHeadLines", { timeout: 30_000 }, () => {
     const lines = await cacheHeadLines({ stateDir, remote: () => origin, git: counting.git })({ repo: REPO, head });
 
     expect(lines.lines("x.ts")).toEqual(["one", "two", "three", "four", "five"]);
+    expect(counting.fetches()).toBe(1);
+  });
+
+  it("cacheHeadLines reads a head through the ports it is given", async () => {
+    const counting = countingGit();
+    const ports = { ...hostCarryPorts, git: counting.git, stateDir: () => stateDir };
+
+    const lines = await cacheHeadLines({ ports, remote: () => origin })({ repo: REPO, head });
+
+    expect(lines.lines("x.ts")).toHaveLength(5);
     expect(counting.fetches()).toBe(1);
   });
 

@@ -1,5 +1,6 @@
 import type { GitHubPort, PrFile, RepoSlug } from "@titan-design/github";
 import type { ShepherdStoreRef } from "./store.js";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { CarryRefusal, cacheFor, ensureCache, isAncestor, must, remoteBase, serialized, type CarryOptions, type Git } from "./tree-carry.js";
 
 /** A PR's diff as GitHub's file list sees it: the head against its merge base with the base branch. */
@@ -159,7 +160,7 @@ export function cachedByHead(read: PrFilesRead, entries = CACHE_ENTRIES): PrFile
 }
 
 /** The serve process's one cached reader over its git cache. */
-export const localPrFiles: PrFilesRead = cachedByHead((target) => gitPrFiles(target));
+export const localPrFiles: PrFilesRead = cachedByHead((target) => gitPrFiles(target, { ports: hostCarryPorts }));
 
 /** The base branch the run's registration named; undefined when it named none, there is no run, or the store cannot be read. */
 export function registeredBase(store: ShepherdStoreRef, runId: string | undefined): string | undefined {

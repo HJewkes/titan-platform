@@ -196,7 +196,7 @@ export const SHEPHERD_MIGRATIONS: readonly Migration[] = [shepherdMigration(4), 
  */
 export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
   const isAdvisory = given.advisory ?? (() => false);
-  const deps = { ...given, port: advisoryPort(given.port, isAdvisory) };
+  const deps = { ...given, port: advisoryPort(given.port, isAdvisory), gitCache: hostCarryPorts };
   const holds = () => deps.store.get();
   const pause = deps.sleep ?? sleep;
   const freeze = deps.freeze ?? freezeStoreRef(deps.now);
@@ -204,7 +204,7 @@ export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
   const orderRules = deps.mergeOrderRules ?? fileRules;
   const orderWaits: OrderWaits = new Map();
   const ordered = mergeOrderGuard({ order: () => order.get(), registrations: holds, rules: orderRules, now: deps.now, waits: orderWaits });
-  const adversary = adversaryGuard({ store: holds, carry: (input) => carry(input, deps.review?.carry) });
+  const adversary = adversaryGuard({ store: holds, carry: (input) => carry(input, { ports: hostCarryPorts, ...deps.review?.carry }) });
   const guard = firstReason(advisoryGuard(isAdvisory), freezeGuard({ freezes: () => freeze.get(), registrations: holds, now: deps.now }), releaseGuard(holds, deps.now), adversary, ordered);
   const satisfy = holdSatisfierFor(deps);
   const held = heldCheck(deps.port, holds, guard, satisfy, deps.snapshot);
@@ -230,7 +230,7 @@ function holdSatisfierFor(deps: FactoryRouteDeps): HoldSatisfier | undefined {
   const dispatch = deps.review?.dispatch;
   if (!deps.review || !dispatch) return undefined;
   const { lineage, reader } = deps.review;
-  return holdSatisfier({ store: () => deps.store.get(), roster: () => dispatch.roster(), lineage, reader, carry: (input) => carry(input, deps.review?.carry) });
+  return holdSatisfier({ store: () => deps.store.get(), roster: () => dispatch.roster(), lineage, reader, carry: (input) => carry(input, { ports: hostCarryPorts, ...deps.review?.carry }) });
 }
 
 /** All or none: a bind that throws unbinds the refs bound before it, so no store stays bound to a database the host never opened. */
@@ -276,7 +276,7 @@ function configuredReview(shepherd: FactoryConfig["shepherd"], config: ConfigRef
   if (!review || !agentChatBin) return undefined;
   const under = (configDir: string | undefined, fallbackConfigDirs?: () => readonly string[]) => agentChatReviewerDispatch({ agentChatBin, roles: configuredRoles(review), configDir, fallbackConfigDirs, cwdFor: (repo) => boundCheckout(seats(), repo, repos()), roster, gate, isFixer, onMachineHold: machineStop.note });
   const { primary: dispatch, accounts } = reviewAccounts(review, liveField(config, "shepherd.review.fallbackConfigDirs"), under, seatAlert(agentChatBin, seats, roster));
-  const codewatch = review.codewatchRepos && codewatchReader(ghCodewatchReport(), review.codewatchRepos, cacheHeadLines());
+  const codewatch = review.codewatchRepos && codewatchReader(ghCodewatchReport(), review.codewatchRepos, cacheHeadLines({ ports: hostCarryPorts }));
   const wiring = { dispatch, lineage: dispatch.lineage, accounts, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, reviewAppId: shepherd?.reviewCheck?.appId, roles: configuredRoles(review), machineStop, profileInstalled: (profile: string) => installedHeadless(profile), visualThreshold: visualThresholdOf(config), visualTier: visualTierOf(config), deploySkew: deploySkew(), oldPath: judgeOldPath({ tags: activeWorkTaskTags({ origin: activeWorkOrigin(env) }) }), followUps: activeWorkFollowUpTasks({ origin: activeWorkOrigin(env) }), ...(codewatch && { codewatch }), ...(review.panel && { panel: review.panel }), ...(review.scopedRereview && { scopedRereview: review.scopedRereview }), ...(review.scopeCheck && { scopeCheck: review.scopeCheck }), ...workflowModeOf(review.workflow) };
   return withHoldAdversary(wiring, holdAdversary(review, config, under, wiring.profileInstalled));
 }
