@@ -99,8 +99,7 @@ import type { CleanupPorts, ExitNoticePorts, RosterReader, SpawnGate, SuiteRules
 /** Every workflow the CLI hosts. Pilots register here as their slices land (doc-change in S3). */
 export const factoryWorkflows: readonly WorkflowDefinition[] = [landPrWorkflow(), shepherdPrWorkflow(), measurementAuditWorkflow(), devicePrWorkflow(), buildSurfaceWorkflow()];
 
-export interface FactoryRouteDeps extends Omit<LandPrDeps, "gitCache"> {
-  /** Absent means the host's own ports. */ gitCache?: LandPrDeps["gitCache"];
+export interface FactoryRouteDeps extends Omit<LandPrDeps, "gitCache">, Partial<Pick<LandPrDeps, "gitCache">> {
   port: GitHubPort;
   store: ShepherdStoreRef;
   freeze?: FreezeStoreRef;
