@@ -61,7 +61,6 @@ import { SHEPHERD_STEPS } from "./shepherd-steps.js";
 import { convergenceOf, fixRoundOf, type FixFirstTrail } from "./fix-first-trail.js";
 import { isVisualGate, packetBeforeGate, packetTriggering, visualPacketRoutes, type PacketRun } from "./visual-packet-trigger.js";
 import { OWNER_SEND_BACK_KIND, isSentBack, ownerSendBack, sendBackOffer, sendBackOfferRoute } from "./owner-send-back.js";
-import { configuredVisualSetCarry } from "./visual-accept-adapter.js";
 import { NOT_OFFERED, visualAcceptOfferRoute, visualAcceptRoute, type VisualAcceptRun } from "./visual-accept.js";
 import { autoPassRoute } from "./auto-pass.js";
 import { countConflictRound, freshFailedRounds, tappedReview, type FailedRoundsState } from "./failed-rounds-demotion.js";
@@ -363,7 +362,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
   ];
 }
 
-export const DEFAULT_PHASES: ShepherdPhases = { wake: wakePhase, review: reviewPhase, visualSetCarry: () => configuredVisualSetCarry() };
+export const DEFAULT_PHASES: ShepherdPhases = { wake: wakePhase, review: reviewPhase };
 
 /** The registered workflow; params `repo`, `pr` or `branch`, and `policy` as an `EffectivePolicy` JSON string. */
 export function shepherdPrWorkflow(phases: ShepherdPhases = DEFAULT_PHASES): WorkflowDefinition {

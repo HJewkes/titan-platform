@@ -30,9 +30,10 @@ const send = (message: ChildMessage): void => void process.send?.(message);
 const { serveChildPathsSchema } = await import("./serve-child.js");
 const paths = serveChildPathsSchema.parse(JSON.parse(process.argv[2] ?? "{}"));
 const { runChoreSpec, postMergeRoute } = await import("../workflows/post-merge.js");
+const { hostChoreSpec, hostPostMerge } = await import("../workflows/post-merge-adapter.js");
 /** Started again as a post-merge chore's wrapper, the fixture runs the chore instead of a serve. */
 if (process.argv[3] === CHORE_FLAG) {
-  await runChoreSpec(process.argv[4] ?? "");
+  await runChoreSpec(process.argv[4] ?? "", hostChoreSpec());
   process.exit(0);
 }
 const { silentLogger } = await import("@titan-design/daemon");
@@ -73,6 +74,7 @@ const choreProcess = { ...systemChorePorts({ dir: `${paths.stateDir}/chores`, wr
 const stepRoutes: StepRoute[] = [
   { match: "block", onRestart: "repeat", runner: { run: (input) => blockUntilReleased(input) } },
   postMergeRoute({
+    ...hostPostMerge(),
     postMerge: { argv: [process.execPath, "-e", CHORE_SCRIPT, paths.dispatchLog, paths.releaseFile] },
     chores: choreProcess,
   }),

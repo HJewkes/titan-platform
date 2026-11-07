@@ -12,6 +12,7 @@ import { deadline } from "./deadline.js";
 import { taskIdOf } from "./land-merge-message.js";
 import { LAND_STEPS, afterWrite, codeRoute, land, landRoutes, sleep, step, type FailingCheck, type LandDeps, type LandOptions, type LandOutcome, type Timing } from "./land.js";
 import { POST_MERGE_STEPS, postMerge, postMergeRoute, type PostMergeDeps } from "./post-merge.js";
+import { hostPostMerge } from "./post-merge-adapter.js";
 import type { PushWatch } from "../shepherd/push-signal.js";
 
 /** Conclusions a runner outage or a superseded run produces, which a rerun of the same head can clear. */
@@ -110,7 +111,7 @@ async function askCiFailed(ctx: WorkflowContext, params: LandPrParams, red: RedH
 const SnapshotResult = z.looseObject({ pr: z.looseObject({ headSha: z.string() }), required: z.array(z.string()) });
 const RerunResult = z.looseObject({ reruns: z.array(z.looseObject({ runId: z.number(), done: z.boolean() })) });
 
-export interface LandPrDeps extends LandDeps, PostMergeDeps {
+export interface LandPrDeps extends LandDeps, Partial<PostMergeDeps> {
   /** How long a rerun step waits for GitHub to replace the failed checks before land polls CI again. */
   rerunSettleMs?: number;
   /** How long a rerun step waits for a still-running Actions run to finish so GitHub accepts its rerun. */
@@ -130,8 +131,15 @@ export function landPrRoutes(deps: LandPrDeps): StepRoute[] {
     awaitNewHeadRoute({ port: deps.port, now, sleep: deps.sleep, pushes: deps.pushes, snapshot: deps.snapshot, inheritedRed: deps.inheritedRed }),
     codeRoute("snapshot", now, (input: LandPrParams) => snapshot(deps.port, input)),
     codeRoute("rerun", now, (input: RerunInput, signal) => afterWrite(deps, input, rerunFailed(deps.port, input, timing, signal))),
-    postMergeRoute(deps),
+    postMergeRoute(postMergeDeps(deps)),
   ];
+}
+
+/** Live clock, environment and chore runner stand in for whatever the caller leaves out. */
+function postMergeDeps(deps: LandPrDeps): PostMergeDeps {
+  const host = hostPostMerge();
+  const configured = { ...(deps.postMerge && { postMerge: deps.postMerge }), ...(deps.chores && { chores: deps.chores }) };
+  return { ...configured, now: deps.now ?? host.now, env: deps.env ?? host.env, runChore: deps.runChore ?? host.runChore };
 }
 
 async function snapshot(port: GitHubPort, input: LandPrParams): Promise<object> {
