@@ -26,7 +26,7 @@ const APPROVE_MERGE_STEP = /^approve-merge(?::(\d+))?$/;
 /** A gate id is `<runId>/<step>`. */
 const stepOfGate = (gate: Pick<GateRecord, "id">): string => gate.id.slice(gate.id.indexOf("/") + 1);
 
-export interface RefollowedGate {
+interface RefollowedGate {
   runId: string;
   gateId: string;
   repo: RepoSlug;

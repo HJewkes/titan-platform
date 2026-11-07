@@ -5,7 +5,7 @@ import { readdressCommand } from "./readdress-command.js";
 import { refollowGates, type RefollowReport } from "./refollow.js";
 import { coded } from "./register-args.js";
 
-export const refollowCommand = defineCommand<{ repo?: string; dryRun?: boolean }, RefollowReport, FactoryContext>({
+const refollowCommand = defineCommand<{ repo?: string; dryRun?: boolean }, RefollowReport, FactoryContext>({
   name: "shepherd.refollow",
   description: "cancel each pending land gate at the PR's open head whose run holds an owner merge on an earlier land gate, so the run asks again and its approval carry decides; a head is refollowed once, an owner-held run never (TP-4812)",
   args: z.object({ repo: z.string().optional(), dryRun: z.boolean().optional() }),
