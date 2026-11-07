@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentRow } from "@titan-design/agent-dispatch";
@@ -80,7 +81,7 @@ describe("a PR's second FIX_FIRST", () => {
     let pushed = 0;
     let clock = T0;
     const store = shepherdStoreRef();
-    const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "/opt/bin/agent-chat" };
+    const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "/opt/bin/agent-chat" };
     const reviewers = fakeReviewers(() => clock, findingsFor);
     const implementer = fakeImplementer(() => fake.pushHead(1, HEADS[++pushed]!));
     const wiring = { agents: implementer.agents, readWarmth: async () => ({ lastEventAt: clock - 60_000, fill: 50_000 }), turnSince: async () => true, checkoutFor: () => CHECKOUT };

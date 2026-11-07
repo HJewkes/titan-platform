@@ -1,4 +1,5 @@
 import { fakeGitHub, fakeSha, githubPort, successRun } from "@titan-design/github";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import type { ReviewerAgent, ReviewerDispatch } from "@titan-design/review-panel";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import type { RoutedStepInput, StepRoute } from "@titan-design/workflow";
@@ -42,7 +43,7 @@ function scene() {
   store.get().register({ repo: REPO, pr: 1, runId: "run-1", task: "demo: tidy", implementer: "impl-a", policy: OWNER_GATE_POLICY, kind: "correctness" });
   const clock = { now: T0 };
   const sleep = async (ms: number) => void (clock.now += ms);
-  const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock.now, sleep, pollMs: POLL_MS, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async () => undefined } };
+  const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(fake.wire), store, now: () => clock.now, sleep, pollMs: POLL_MS, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async () => undefined } };
   const agents: ReviewerAgent[] = [];
   const asks: string[] = [];
   const dispatch: ReviewerDispatch = { roster: async () => [...agents], spawn: async (name) => void asks.push(`spawn ${name}`), resume: async (name) => void asks.push(`resume ${name}`) };

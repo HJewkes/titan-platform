@@ -300,16 +300,17 @@ export async function carriedVerdict(ctx: WorkflowContext, target: CarryTarget, 
 }
 
 /** The routes the carry steps dispatch to; the remerge probe reaches git as the tree probe does. */
-export function carryRoutes(deps: Pick<ShepherdDeps, "port" | "store" | "now">, wiring: ReviewWiring | undefined): StepRoute[] {
+export function carryRoutes(deps: Pick<ShepherdDeps, "port" | "store" | "now" | "gitCache">, wiring: ReviewWiring | undefined): StepRoute[] {
+  const carry = { ports: deps.gitCache, ...wiring?.carry };
   return [
     carryScopeRoute(deps),
     carrySeatRoute(deps, wiring),
     carryClaimsRoute(deps),
-    remergeRoute(deps.now, wiring?.carry),
-    fixCarryRoute(deps.now, wiring?.carry),
-    reviewScopeRoute(deps.now, wiring?.carry),
-    ownMergeUpRoute(deps.now, wiring?.carry),
-    setCarryRoute(deps.now, wiring?.carry),
+    remergeRoute(deps.now, carry),
+    fixCarryRoute(deps.now, carry),
+    reviewScopeRoute(deps.now, carry),
+    ownMergeUpRoute(deps.now, carry),
+    setCarryRoute(deps.now, carry),
     codeRoute(APPROVAL_CARRY_STEP, deps.now, async (input: object) => input),
     mergeUpRoute(deps.now),
   ];

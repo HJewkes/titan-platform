@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { evaluate } from "@titan-design/authority";
 import type * as Authority from "@titan-design/authority";
 import { FakeHttpError, fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort, type PrFile } from "@titan-design/github";
@@ -487,7 +488,7 @@ interface HostSetup {
 function shepherdHost(fake: FakeGitHub, beforeLand: () => void = () => undefined, setup: HostSetup = {}): FactoryHost {
   const port = githubPort(fake.wire, { sleep: async () => undefined });
   let clock = 0;
-  const deps: ShepherdDeps = { port, store: setup.store ?? shepherdStoreRef(), now: () => clock, sleep: async (ms) => void (clock += ms), agentChatBin: "agent-chat" };
+  const deps: ShepherdDeps = { gitCache: hostCarryPorts, port, store: setup.store ?? shepherdStoreRef(), now: () => clock, sleep: async (ms) => void (clock += ms), agentChatBin: "agent-chat" };
   const run = async (ctx: Parameters<typeof mergeVerdict>[0]) => {
     const reviews = new Map<string, Verdict>([[HEAD, await mergeVerdict(ctx, setup.request ?? input)]]);
     beforeLand();
@@ -594,7 +595,7 @@ async function carriedThroughRoute(kind: TaskKind | undefined, bind = true) {
   runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
   if (bind) store.bind(db);
   if (kind !== undefined) new ShepherdStore(db).register({ repo: REPO, pr: 1, runId: EVIDENCE_RUN, task: "demo/1", implementer: "impl-a", policy: AUTO, kind });
-  const deps: ShepherdDeps = { port: githubPort(world().wire), store, now: () => 0, sleep: async () => undefined, agentChatBin: "agent-chat" };
+  const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(world().wire), store, now: () => 0, sleep: async () => undefined, agentChatBin: "agent-chat" };
   const route = reviewRoutes(deps).find((candidate) => candidate.match === MERGE_EVIDENCE_STEP)!;
   const prompt = JSON.stringify({ ...input, runId: EVIDENCE_RUN, ...carried() });
   const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" }));
@@ -999,7 +1000,7 @@ describe("the attestation guard", () => {
     runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
     store.bind(db);
     new ShepherdStore(db).register({ repo: REPO, pr: 1, runId: "run-1", task: "demo/1", implementer: "rev-1", policy: AUTO, kind: "correctness" });
-    const deps: ShepherdDeps = { port: githubPort(claiming().wire), store, now: () => 0, sleep: async () => undefined, agentChatBin: "agent-chat" };
+    const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(claiming().wire), store, now: () => 0, sleep: async () => undefined, agentChatBin: "agent-chat" };
     const route = reviewRoutes(deps, partialFake<ReviewWiring>({ dispatch: partialFake<ReviewerDispatch>({ roster: async () => roster }) })).find((candidate) => candidate.match === MERGE_EVIDENCE_STEP)!;
 
     const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt: JSON.stringify({ ...input, ...byReviewer("rev-1") }), signal: new AbortController().signal, attempt: 0, requestKey: "k" }));

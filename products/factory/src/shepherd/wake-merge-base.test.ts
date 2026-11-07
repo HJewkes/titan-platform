@@ -1,4 +1,5 @@
 import { dataFence, type AgentRow } from "@titan-design/agent-dispatch";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { fakeGitHub, fakeSha, githubPort } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import type { RoutedStepInput } from "@titan-design/workflow";
@@ -35,7 +36,7 @@ function ciRedWake() {
     spawn: async () => undefined,
     message: async () => undefined,
   };
-  const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => T0, sleep: async () => undefined, pollMs: 1_000, agentChatBin: "/opt/bin/agent-chat" };
+  const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(fake.wire), store, now: () => T0, sleep: async () => undefined, pollMs: 1_000, agentChatBin: "/opt/bin/agent-chat" };
   const warmth = { lastEventAt: T0 - 60_000, fill: 50_000 };
   const route = wakeRoutes(deps, { turnSince: async () => true, readWarmth: async (path) => (path === TRANSCRIPT ? warmth : undefined), checkoutFor: () => "/repos/demo", agents }).find((candidate) => candidate.match === "sh-wake-implementer")!;
   const run = async () => {

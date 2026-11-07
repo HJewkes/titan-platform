@@ -1,4 +1,5 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { hostCarryPorts } from "../shepherd/carry-cache-adapter.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type PrFile } from "@titan-design/github";
@@ -124,7 +125,7 @@ describe("the old-path merge guard", () => {
     const policy = { merge: "auto", mergeMethod: "squash", fixer: true, seat: "trusted-seat" } as const;
     new ShepherdStore(db).register({ repo: REPO, pr: 1, runId: input.runId, task: `titan-platform/${TASK}`, implementer: "impl-a", policy, kind: "security" });
     const judge = vi.fn(judgeOldPath({ tags: tagsPort([]), exitedDir: milestonesDir(true) }));
-    const deps: ShepherdDeps = { port: githubPort(world([OLD_PATH_FILE]).wire), store, now: () => 0, sleep: async () => undefined, agentChatBin: "agent-chat" };
+    const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(world([OLD_PATH_FILE]).wire), store, now: () => 0, sleep: async () => undefined, agentChatBin: "agent-chat" };
     const route = reviewRoutes(deps, partialFake<ReviewWiring>({ oldPath: judge })).find((candidate) => candidate.match === MERGE_EVIDENCE_STEP)!;
 
     const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 0, requestKey: "k" }));

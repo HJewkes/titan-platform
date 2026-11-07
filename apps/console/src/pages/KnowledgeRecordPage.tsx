@@ -1,12 +1,11 @@
 import type { ReactNode } from "react";
-import { Alert, BreadcrumbItem, Breadcrumbs, Card, CardContent, DateTime, FilePathLabel, HStack, Link, MarkdownProse, Pill, Tab, TabList, Tabs, VStack } from "@titan-design/react-ui";
+import { Alert, BreadcrumbItem, Breadcrumbs, Card, CardContent, DateTime, FilePathLabel, HStack, Link, MarkdownProse, PageHeader, Pill, Tab, TabList, Tabs, VStack } from "@titan-design/react-ui";
 import { Spinner } from "../shell/Loading.js";
 import { EXIT } from "@titan-design/registry";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
 import { KnowledgeGraph } from "./KnowledgeGraph.js";
-import { PageHeader } from "./PageShell.js";
 import { PHONE_TAP } from "./phone.js";
 
 type KnowledgeRecord = ConsoleCommands["work.record"]["result"];

@@ -1,4 +1,5 @@
 import { FakeHttpError, fakeGitHub, fakeSha, githubPort, type FakeGitHub, type ForcePush } from "@titan-design/github";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { partialFake } from "@titan-design/test-kit";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
@@ -12,7 +13,7 @@ import type { RoutedStepInput } from "@titan-design/workflow";
 import type { Verdict } from "./phases.js";
 import { attestationsFileOf } from "./attest-read.js";
 import type { RemergeResult } from "./remerge-carry.js";
-import type { CarryResult } from "./tree-carry.js";
+import type { CarryResult, Git, GitCachePorts } from "./tree-carry.js";
 import { fakeLocator } from "../test-support/fakes.js";
 
 const REPO = "acme/widgets";
@@ -564,7 +565,7 @@ describe("carrying a MERGE across a clean merge-up to a head that claims attesta
 
   /** Answers the claims step from the real route, reading the world's attestation files at the base and the head. */
   function claimsFrom(github: FakeGitHub): ClaimsAnswer {
-    const route = carryRoutes({ now: () => 0, port: githubPort(github.wire), store: partialFake<ShepherdStoreRef>() }, undefined).find((r) => r.match === "sh-carry-claims")!;
+    const route = carryRoutes({ gitCache: hostCarryPorts, now: () => 0, port: githubPort(github.wire), store: partialFake<ShepherdStoreRef>() }, undefined).find((r) => r.match === "sh-carry-claims")!;
     return async (input) => {
       const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 0, requestKey: "k" }));
       if (!outcome.ok) throw new Error(outcome.error);
@@ -610,7 +611,7 @@ describe("the carry scope step", () => {
     github.addPr({ headSha: NEW_HEAD });
     const run = partialFake<Registration>({ holdReason: held ? "g10-review: authority touch" : null });
     const store = partialFake<ShepherdStoreRef>({ get: () => partialFake<ShepherdStore>({ byRun: () => run, eventsOf: () => [] }) });
-    const route = carryRoutes({ now: () => 0, port: githubPort(github.wire), store }, undefined)[0]!;
+    const route = carryRoutes({ gitCache: hostCarryPorts, now: () => 0, port: githubPort(github.wire), store }, undefined)[0]!;
     const prompt = JSON.stringify({ ...TARGET, runId: "run-1" });
     const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" }));
     if (!outcome.ok) throw new Error(outcome.error);
@@ -641,5 +642,51 @@ describe("replaying a run recorded before the clean merge-up rule", () => {
     expect(verdict).toMatchObject({ kind: "MERGE", headSha: NEW_HEAD });
     expect(verdict).not.toHaveProperty("mergeUpFrom");
     expect(r.asked.some((step) => step.stepId.startsWith("sh-merge-up:"))).toBe(false);
+  });
+});
+
+describe("the carry routes' git cache", () => {
+  const SET = { packetSha: "a".repeat(64), packetId: "p-1", ciRunId: "7", fromHead: REVIEWED, files: [], removed: [], sidePaths: [] };
+  const probeInput = { repo: REPO, baseRef: "main", fromHead: REVIEWED, head: NEW_HEAD };
+  const ROUTE_INPUTS: Record<string, object> = {
+    "sh-remerge": { ...probeInput, generated: [] },
+    "sh-approval-carry:fix": probeInput,
+    "sh-approval-carry:own": probeInput,
+    "sh-approval-carry:set": { repo: REPO, fromHead: REVIEWED, head: NEW_HEAD, mode: "shadow", set: SET },
+    "sh-review-scope": { repo: REPO, baseRef: "main", sinceHead: REVIEWED, head: NEW_HEAD },
+  };
+
+  function recorded(stateDir = "/synthetic/state") {
+    const calls: { gitDir: string; args: readonly string[] }[] = [];
+    const git: Git = async (gitDir, args) => (calls.push({ gitDir, args }), { code: 1, stdout: "", stderr: "synthetic refusal" });
+    const ports: GitCachePorts = { git, fs: { exists: () => true, mkdirp: () => undefined }, stateDir: () => stateDir };
+    return { calls, ports };
+  }
+
+  async function runRoute(step: string, ports: GitCachePorts, wiring?: ReviewWiring): Promise<void> {
+    const deps = { now: () => 0, port: githubPort(fakeGitHub().wire), store: partialFake<ShepherdStoreRef>(), gitCache: ports };
+    const route = carryRoutes(deps, wiring).find((candidate) => candidate.match === step)!;
+    const prompt = JSON.stringify(ROUTE_INPUTS[step]);
+    const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" }));
+    if (!outcome.ok) throw new Error(outcome.error);
+  }
+
+  it("every carry route reaches git through deps.gitCache", async () => {
+    for (const step of Object.keys(ROUTE_INPUTS)) {
+      const { calls, ports } = recorded();
+
+      await runRoute(step, ports);
+
+      expect(calls.length, step).toBeGreaterThan(0);
+    }
+  });
+
+  it("a wiring.carry stateDir override still wins over the ports' state dir", async () => {
+    const { calls, ports } = recorded("/synthetic/ports-state");
+
+    await runRoute("sh-approval-carry:fix", ports, partialFake<ReviewWiring>({ carry: { stateDir: "/synthetic/override-state" } }));
+
+    expect(calls[0]!.gitDir).toContain("/synthetic/override-state/");
+    expect(calls[0]!.gitDir).not.toContain("ports-state");
   });
 });

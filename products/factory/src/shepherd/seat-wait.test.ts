@@ -1,4 +1,5 @@
 import { fakeGitHub, fakeSha, githubPort, successRun } from "@titan-design/github";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import type { StepRoute } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
@@ -75,7 +76,7 @@ async function review(scene: Scene) {
     },
   };
   const store = shepherdStoreRef();
-  const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async () => undefined } };
+  const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async () => undefined } };
   const verdicts: Verdict[] = [];
   const run = async (ctx: Parameters<typeof reviewPhase>[0]) => {
     let seatHeld: SeatHeld | undefined;

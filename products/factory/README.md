@@ -809,6 +809,8 @@ A failed install or build also writes `deploy-build.log` beside `deploy.json`: t
 target, time, exit code and the redacted last 200 lines of stderr and stdout. The record's `why`
 keeps a 20-line tail and names the log; the file holds only the newest failure.
 
+After an exit-0 deploy whose service runs the deploy checkout, `service deploy` also repoints a factory-build symlink at `~/.local/bin/titan-factory` to that checkout's `dist/bin.js` (atomic rename). A regular file, a foreign symlink or an absent path is left alone, and a failed relink only warns.
+
 A seat's Morning queue can hold deploys too. A numbered item under `## Morning queue (owner
 only)` in a `<seat>.md` queue file whose text starts with `DEPLOY HOLD:` (case-sensitive, bold
 allowed) sets the manual hold with the item's reason and `source: morning:<seat>:<n>`, for example

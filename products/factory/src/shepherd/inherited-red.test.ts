@@ -1,4 +1,5 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort, type PullRequest } from "@titan-design/github";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
 import { INHERITED_IDLE_MS, inheritedRedCheck } from "./inherited-red.js";
@@ -55,7 +56,7 @@ function rig(headFailing: readonly string[], port: (base: GitHubPort) => GitHubP
   [1, 201].forEach((firstId) => jobsFail(fake, firstId));
   const pr = fake.addPr({ headSha: HEAD });
   let clock = CI_STARTED;
-  const deps: ShepherdDeps = { port: port(githubPort(fake.wire)), store, now: () => clock, sleep: async (ms) => void (clock += ms), agentChatBin: "agent-chat" };
+  const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: port(githubPort(fake.wire)), store, now: () => clock, sleep: async (ms) => void (clock += ms), agentChatBin: "agent-chat" };
   const check = inheritedRedCheck(deps, undefined)({ repo: REPO, pr: pr.number, headSha: HEAD, failing: [...headFailing] });
   return { fake, pr, check, advance: (ms) => void (clock += ms) };
 }
