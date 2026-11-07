@@ -65,7 +65,7 @@ function memoized(registry: LatestRegistry): LatestRegistry {
 }
 
 /** What one consumer came to: a PR opened or found, or why none was. */
-export interface ConsumerBumpSweepNote {
+interface ConsumerBumpSweepNote {
   repo: RepoSlug;
   pr?: number;
   /** An open bump PR is registered if it is not yet and nothing new opens; a closed one on the same branch is a rejected set, never reopened. */
@@ -75,7 +75,7 @@ export interface ConsumerBumpSweepNote {
   error?: string;
 }
 
-export interface ConsumerBumpPorts {
+interface ConsumerBumpPorts {
   registry: LatestRegistry;
   regen: LockfileRegen;
 }
