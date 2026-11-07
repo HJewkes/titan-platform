@@ -13,7 +13,7 @@
     {
       "name": "the closure list stops holding tree-carry.ts, which the file-list reader imports",
       "file": "products/factory/src/shepherd/g10-hold-closure.json",
-      "find": "  \"tree-carry.ts\",\n",
+      "find": "  \"shepherd/tree-carry.ts\",\n",
       "replace": "",
       "kills": [
         "the G10 hold table holds every file the hold, the sign-off rule and the release import, transitively"
