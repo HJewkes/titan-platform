@@ -12,7 +12,7 @@ const BUMPABLE = /^([\^~]?)(\d+\.\d+\.\d+)$/;
 const REGISTRY_TIMEOUT_MS = 10_000;
 
 /** npm's `latest` version for a name, null when npm answers 404; any other answer throws. */
-type LatestRegistry = (name: string) => Promise<string | null>;
+export type LatestRegistry = (name: string) => Promise<string | null>;
 
 const LatestManifest = z.looseObject({ version: z.string() });
 
@@ -106,7 +106,7 @@ interface FileEdit {
   expectedBlobSha: string;
 }
 
-interface ConsumerBumpPlan {
+export interface ConsumerBumpPlan {
   edits: SpecifierEdit[];
   files: FileEdit[];
   leftAlone: LeftAlone[];
