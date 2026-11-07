@@ -1,7 +1,7 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { EXIT, runCli } from "./cli.js";
 import { releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
@@ -1351,6 +1351,23 @@ describe("titan-factory service deploy verb", () => {
     expect(code).toBe(1);
     expect(machine.holds().manual).toMatchObject({ set: true, hold: { source: "morning:seat-a:7" } });
     expect(machine.mutations()).toEqual([]);
+  });
+
+  it("confines the CLI relink to the injected deploy home, leaving the host HOME's factory symlink alone", async () => {
+    const host = mkdtempSync(join(tmpdir(), "factory-deploy-host-"));
+    scratch.push(host);
+    const hostBuild = join(host, "tree", "products", "factory", "dist", "bin.js");
+    mkdirSync(join(hostBuild, ".."), { recursive: true });
+    writeFileSync(hostBuild, "host build");
+    const hostLink = join(host, ".local", "bin", "titan-factory");
+    mkdirSync(join(hostLink, ".."), { recursive: true });
+    symlinkSync(hostBuild, hostLink);
+    vi.stubEnv("HOME", host);
+
+    const code = await cliIn(configured({ deployCheckout: CHECKOUT }), fakeMachine()).finally(() => vi.unstubAllEnvs());
+
+    expect(code).toBe(0);
+    expect(readlinkSync(hostLink)).toBe(hostBuild);
   });
 
   it("deploys from service.deployCheckout when it is configured", async () => {

@@ -46,7 +46,7 @@ export interface CliDeps {
   check?: CheckPorts;
   /** What `service deploy` runs git, pnpm and launchctl or systemctl through; defaults to the real machine in this bin's own checkout. */
   deploy?: DeployPorts;
-  /** The CLI symlink `service deploy` repoints after a successful rollout; defaults to ~/.local/bin/titan-factory. */
+  /** The CLI symlink `service deploy` repoints after a successful rollout; defaults to .local/bin/titan-factory under the deploy ports' home, so a faked `deploy` confines it too. */
   cliLink?: CliLinkPorts;
   /** What `shepherd register` resolves a bare task ID through; defaults to the global fetch. */
   fetch?: typeof fetch;
