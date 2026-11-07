@@ -555,6 +555,16 @@ next `titan-factory shepherd resync` or server start. Shepherd does not sweep ev
 transient-only gate on each tick, because a `merge-tree-clean` gate would then be superseded
 again on every tick while the merge tree stays dirty.
 
+`titan-factory shepherd refollow [--repo owner/repo] [--dry-run]` asks a pending land gate
+again so the run's own approval carry decides it. It cancels a land `approve-merge` gate with a
+reason that starts `superseded: refollow: `, and only when all of these hold: the gate is still
+at the pull request's open head, the run is registered with no owner hold, an earlier land gate
+of the run was answered `merge` by the owner (`owner-terminal` or `owner-remote`), and no
+refollow has cancelled a gate at that head before. The cancel is a plain supersede, so the head
+keeps its review. The run asks again at the same head, and the carry either records the
+follow or opens the owner's gate again. The coordinator who runs the verb never answers the
+gate.
+
 A reviewer that misses the 30-minute wait is read again before Shepherd gives up on it. The
 `sh-late-verdict` step reads that reviewer's final message until it holds a verdict at the
 head, the reviewer has exited, or 10 minutes pass. A reviewer held up by a permission prompt
@@ -1602,17 +1612,18 @@ sign-off rule or the release (`await-pr.ts`, `coverage.ts`, `pr.ts`, `shepherd-s
 the import walk does not reach; `hold-table-coverage.test.ts` fails when a new such importer is
 not held (TP-3764); that test and its sidecar are policy like the closure check. A held module reads its imports, so an edit to one of them can
 change what the hold decides. The rest of the held set is therefore the import closure of the
-listed table, not a hand list. `g10-hold-closure.test.ts` seeds a walk from every Shepherd module the
-listed table holds and follows each relative import the compiler's scanner reports (value,
-type-only, re-export and dynamic) to a fixpoint. It fails when a module it reaches is not held,
+listed table, not a hand list. `g10-hold-closure.test.ts` seeds a walk from every file under
+`products/factory/src` the listed table holds and follows each relative import the compiler's
+scanner reports (value, type-only, re-export and dynamic) across that whole tree to a fixpoint
+(TP-4813: `owner-at-head.ts`, outside Shepherd's directory, was held by nothing before). It fails when a module it reaches is not held,
 when a relative import does not resolve, or when `g10-hold-closure.json` differs from the walk.
 The class rules load that JSON, so a module newly imported by a held one becomes held when the
 list is regenerated (`vitest -u` on the test), with no edit to the listed table. The check itself,
 its sidecar, its walk and the JSON are policy, test files or not. Today the closure holds most of
-the Shepherd directory, because the command, release and carry modules import much of it. Store
+the factory, because the command, release and carry modules and `host.ts` import much of it. Store
 migrations in `store.ts` and its neighbours therefore take `g10-adversary`, not `g10-review`.
 
-**Accepted residual.** The hold-closure walk stays in the Shepherd directory: relative imports
+**Accepted residual.** The hold-closure walk stays in `products/factory/src`: relative imports
 that leave it, package imports and the data flow through store rows are not followed. TP-3901
 covers the out-of-directory modules and TP-4747 the write sites.
 
