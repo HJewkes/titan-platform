@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CommandResult } from "../run-command.js";
-import { scratchLockfileRegen, type LockfileTree } from "./lockfile-regen.js";
+import { scratchLockfileRegen, type LockfileRegen, type LockfileTree } from "./lockfile-regen.js";
 
 interface RunCall {
   file: string;
@@ -46,7 +46,9 @@ describe("scratchLockfileRegen", () => {
     const { run, calls } = fakeRun({ path: "pnpm-lock.yaml", text: regenerated });
     const tree = pnpmTree();
 
-    const changed = await scratchLockfileRegen(run)(tree);
+    const regen: LockfileRegen = scratchLockfileRegen(run);
+
+    const changed = await regen(tree);
 
     expect(calls).toHaveLength(1);
     expect(calls[0]?.file).toBe("corepack");
@@ -78,11 +80,13 @@ describe("scratchLockfileRegen", () => {
     const stderr = `ERR_PNPM_FETCH_401 GET https://registry.npmjs.org/@titan-design%2fexample-a: Unauthorized ${FAKE_GH}`;
     const { run, calls } = fakeRun(null, { code: 1, stdout: "", stderr });
 
-    const error = await scratchLockfileRegen(run)(pnpmTree()).catch((err: unknown) => err);
+    const message = await scratchLockfileRegen(run)(pnpmTree()).then(
+      () => "resolved",
+      (err: unknown) => (err instanceof Error ? err.message : String(err)),
+    );
 
-    expect(error).toBeInstanceOf(Error);
-    expect((error as Error).message).toMatch(/exited 1: ERR_PNPM_FETCH_401 .*Unauthorized \[redacted\]$/);
-    expect((error as Error).message).not.toContain(FAKE_GH);
+    expect(message).toMatch(/exited 1: ERR_PNPM_FETCH_401 .*Unauthorized \[redacted\]$/);
+    expect(message).not.toContain(FAKE_GH);
     expect(existsSync(calls[0]?.cwd ?? "")).toBe(false);
   });
 
