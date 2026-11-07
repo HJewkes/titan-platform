@@ -946,7 +946,7 @@ Reads the store read-only, so it is safe beside a running `serve`. Two reports, 
   the median and maximum hours they waited on the owner. A gate resolved by the owner waited from
   its opening to its resolve and counts on the resolve day. A gate still pending is waiting on the
   owner, so it counts to now, on today's row. A gate any other actor resolved is not the owner's
-  and is left out. Releases do not appear: `shepherd release` records no actor.
+  and is left out. Releases do not appear: a release is a `shepherd_event` row that carries an actor but is not a gate, so owner touches leave it out.
 
 - Per repo and ISO week, the time per stage: for each of `queued`, `ci`, `review`, `re-review`,
   `hold` and `land`, how many runs spent time in it and the median, p90 (nearest rank) and
