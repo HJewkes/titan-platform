@@ -10,7 +10,7 @@ import { agentChatAgents } from "./agents.js";
 import { errorClass } from "./error-class.js";
 import type { ShepherdDeps } from "./phases.js";
 import { restackOnto } from "./stack-restack.js";
-import { BranchName, carryCacheDir, carryStateDir, ensureCache, githubRemote, must, reasonOf, serialized, systemGit, type Git } from "./tree-carry.js";
+import { BranchName, cacheFor, ensureCache, must, reasonOf, serialized, type CacheHandle, type Git, type GitCachePorts } from "./tree-carry.js";
 
 const STACK_CHILDREN_STEP = "sh-stack-children";
 const RESTACK_STEP = "sh-restack";
@@ -75,6 +75,7 @@ export interface StackLandDeps {
   /** The fetch and push URL for `repo`; absent means GitHub over https. */
   remote?: (repo: string) => string;
   git?: Git;
+  ports?: GitCachePorts;
 }
 
 const restackReason = (parentPr: number, detail: string): string => `parent #${parentPr} landed; restack ${detail}`;
@@ -102,10 +103,7 @@ function prMiss(input: RestackInput, child: PullRequest, parent: PullRequest, de
 }
 
 /** One cache, one remote, one child: what every git call below runs against. */
-interface Remote {
-  git: Git;
-  dir: string;
-  url: string;
+interface Remote extends CacheHandle {
   input: RestackInput;
   defaultBranch: string;
 }
@@ -146,7 +144,7 @@ async function priorRestack(remote: Remote, moved: string, main: string): Promis
  */
 async function buildAndPush(remote: Remote): Promise<Pushed | Refusal> {
   const { git, dir, url, input } = remote;
-  await ensureCache(git, dir);
+  await ensureCache(remote);
   const tips = await remoteTips(remote);
   if (tips.parent !== input.parentFinal) return { outcome: "guard", reason: `guard: refs/pull/${input.parentPr}/head is not the merged head ${input.parentFinal}` };
   if (tips.main === undefined) return { outcome: "guard", reason: `guard: ${remote.defaultBranch} was not found` };
@@ -182,9 +180,8 @@ async function attempt(deps: StackLandDeps, input: RestackInput): Promise<Restac
   const [child, parent, defaultBranch] = await Promise.all([deps.port.getPr(input.repo, input.child.pr), deps.port.getPr(input.repo, input.parentPr), deps.port.defaultBranch(input.repo)]);
   const miss = prMiss(input, child, parent, defaultBranch);
   if (miss !== undefined) return miss;
-  const dir = carryCacheDir(carryStateDir(deps.stateDir), input.repo);
-  const remote: Remote = { git: deps.git ?? systemGit, dir, url: (deps.remote ?? githubRemote)(input.repo), input, defaultBranch };
-  const pushed = await serialized(dir, () => buildAndPush(remote));
+  const remote: Remote = { ...cacheFor(input.repo, deps), input, defaultBranch };
+  const pushed = await serialized(remote.dir, () => buildAndPush(remote));
   deps.snapshot?.invalidate(input.repo);
   return "newHead" in pushed ? retarget(deps, input, child, defaultBranch, pushed) : pushed;
 }
@@ -281,7 +278,7 @@ async function listChildren(land: StackLandDeps, input: LandedParent & { parentH
 }
 
 export function stackLandRoutes(deps: ShepherdDeps): StepRoute[] {
-  const land: StackLandDeps = { port: deps.port, wakeChild: wakeOver(deps), held: restackHeld(deps), ...(deps.snapshot && { snapshot: deps.snapshot }) };
+  const land: StackLandDeps = { port: deps.port, wakeChild: wakeOver(deps), held: restackHeld(deps), ports: deps.gitCache, ...(deps.snapshot && { snapshot: deps.snapshot }) };
   return [
     codeRoute(STACK_CHILDREN_STEP, deps.now, (input: LandedParent & { parentHeadRepo: string | null }) => listChildren(land, input)),
     codeRoute(RESTACK_STEP, deps.now, (input: RestackInput) => restackChild(land, input)),

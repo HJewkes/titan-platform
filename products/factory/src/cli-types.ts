@@ -3,6 +3,7 @@ import type { StepRoute } from "@titan-design/workflow";
 import type { BotIdentity } from "./bot-identity.js";
 import type { InboxLink } from "./blocker/link.js";
 import type { WorkflowDefinition } from "./definition.js";
+import type { CliLinkPorts } from "./deploy-cli-link.js";
 import type { DeployPorts } from "./deploy.js";
 import type { GitBehindProbe } from "./deploy-behind.js";
 import type { DeployWatch } from "./deploy-watch.js";
@@ -16,6 +17,7 @@ import type { ServeReconciler } from "./reconciler/bot-ports.js";
 import type { CheckPorts } from "./service-check.js";
 import type { ServicePorts } from "./service-control.js";
 import type { ServeIngressOptions } from "./serve-ingress.js";
+import type { ConsumerBumpPorts } from "./shepherd/bump-consumers.js";
 import type { DeployPacerOptions } from "./shepherd/deploy-pacer.js";
 import type { FixerRetirePorts } from "./shepherd/fixer-retire.js";
 import type { MainWatchPorts } from "./shepherd/main-watch.js";
@@ -45,6 +47,8 @@ export interface CliDeps {
   check?: CheckPorts;
   /** What `service deploy` runs git, pnpm and launchctl or systemctl through; defaults to the real machine in this bin's own checkout. */
   deploy?: DeployPorts;
+  /** The CLI symlink `service deploy` repoints after a successful rollout; defaults to .local/bin/titan-factory under the deploy ports' home, so a faked `deploy` confines it too. */
+  cliLink?: CliLinkPorts;
   /** What `shepherd register` resolves a bare task ID through; defaults to the global fetch. */
   fetch?: typeof fetch;
   /** How `shepherd register` reads a PR's head branch to infer a missing --task or --implementer; defaults to gh. */
@@ -81,6 +85,8 @@ export interface CliDeps {
   ownerGatesAudit?: OwnerGatesAuditDeps;
   /** What `planner wake` runs agent-chat and its input commands through; defaults to the real machine. */
   planner?: PlannerDeps;
+  /** What `release bump-consumers` asks npm latest and regenerates lockfiles through; defaults to registry.npmjs.org and a scratch-dir install. */
+  consumerBump?: ConsumerBumpPorts;
   /** What `blocker raise` asks for the inbox link; defaults to the configured titan-console argv. */
   inboxLink?: InboxLink;
   /** Ends the process once serve has closed, so a child an abandoned tick still holds cannot keep it alive; absent means serve returns instead. */

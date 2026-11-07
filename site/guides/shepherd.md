@@ -53,15 +53,15 @@ run ab0f9228-… shepherd-pr owner/repo (feat/example): already registered, meta
 ```
 
 A repeat starts a new run instead when the registration's run is dead: it failed, it
-completed stopped `not-mergeable`, on a `conflict` or `abandoned`, or it was cancelled, while
+completed stopped `not-mergeable`, on a `conflict`, `abandoned` or `closed`, or it was cancelled, while
 the pull request is still open. Shepherd cancels a run only when its pull request read
 merged, closed or gone, so a cancelled run whose pull request is open again was ended on a
 read that no longer holds. The new run starts at the pull request's current head, or
 `--head`. The registration moves to it with its holds (an `owner-asked` hold included), kind
 and recorded authors, and the old run still reads. The verb prints
-`restarted after failed run <id>`, `restarted after run <id> stopped not-mergeable` or
-`restarted after run <id> stopped cancelled`. A run that merged, or stopped for any other
-reason (`closed`, `stuck-behind`, `merge-denied`), and a cancelled run whose pull request is
+`restarted after failed run <id>`, `restarted after run <id> stopped not-mergeable`,
+`restarted after run <id> stopped closed` or `restarted after run <id> stopped cancelled`. A `closed` stop restarts only once the pull request is open again. A run that merged, or stopped for any other
+reason (`stuck-behind`, `merge-denied`), and a cancelled run whose pull request is
 closed, come back unchanged.
 
 A deploy can park a run as `recovery_required` with `replay diverged`. Serve's sweep restarts such a run unless an owner gate is still pending on it (`products/factory/src/shepherd/diverged-sweep.ts`). If the owner answers that run's approve-merge gate with `merge` while it is parked, the next sweep merges the PR at the approved head instead of restarting it. The run never read that answer. The merge waits for the same reads land makes first: the head is unchanged, the required checks are green, the head is not behind on a strict repo, it does not conflict, and the base is the default branch the gate named. The run then ends `cancelled` with a `sh-carried-merge` step naming the gate. If any of those reads fails, the head moved, or the answer was `abandon` or `send-back`, the sweep restarts the run as before (`diverged-merge.ts`, TP-3918).
@@ -555,6 +555,16 @@ next `titan-factory shepherd resync` or server start. Shepherd does not sweep ev
 transient-only gate on each tick, because a `merge-tree-clean` gate would then be superseded
 again on every tick while the merge tree stays dirty.
 
+`titan-factory shepherd refollow [--repo owner/repo] [--dry-run]` asks a pending land gate
+again so the run's own approval carry decides it. It cancels a land `approve-merge` gate with a
+reason that starts `superseded: refollow: `, and only when all of these hold: the gate is still
+at the pull request's open head, the run is registered with no owner hold, an earlier land gate
+of the run was answered `merge` by the owner (`owner-terminal` or `owner-remote`), and no
+refollow has cancelled a gate at that head before. The cancel is a plain supersede, so the head
+keeps its review. The run asks again at the same head, and the carry either records the
+follow or opens the owner's gate again. The coordinator who runs the verb never answers the
+gate.
+
 A reviewer that misses the 30-minute wait is read again before Shepherd gives up on it. The
 `sh-late-verdict` step reads that reviewer's final message until it holds a verdict at the
 head, the reviewer has exited, or 10 minutes pass. A reviewer held up by a permission prompt
@@ -936,7 +946,7 @@ Reads the store read-only, so it is safe beside a running `serve`. Two reports, 
   the median and maximum hours they waited on the owner. A gate resolved by the owner waited from
   its opening to its resolve and counts on the resolve day. A gate still pending is waiting on the
   owner, so it counts to now, on today's row. A gate any other actor resolved is not the owner's
-  and is left out. Releases do not appear: `shepherd release` records no actor.
+  and is left out. Releases do not appear: a release is a `shepherd_event` row that carries an actor but is not a gate, so owner touches leave it out.
 
 - Per repo and ISO week, the time per stage: for each of `queued`, `ci`, `review`, `re-review`,
   `hold` and `land`, how many runs spent time in it and the median, p90 (nearest rank) and
@@ -1602,17 +1612,18 @@ sign-off rule or the release (`await-pr.ts`, `coverage.ts`, `pr.ts`, `shepherd-s
 the import walk does not reach; `hold-table-coverage.test.ts` fails when a new such importer is
 not held (TP-3764); that test and its sidecar are policy like the closure check. A held module reads its imports, so an edit to one of them can
 change what the hold decides. The rest of the held set is therefore the import closure of the
-listed table, not a hand list. `g10-hold-closure.test.ts` seeds a walk from every Shepherd module the
-listed table holds and follows each relative import the compiler's scanner reports (value,
-type-only, re-export and dynamic) to a fixpoint. It fails when a module it reaches is not held,
+listed table, not a hand list. `g10-hold-closure.test.ts` seeds a walk from every file under
+`products/factory/src` the listed table holds and follows each relative import the compiler's
+scanner reports (value, type-only, re-export and dynamic) across that whole tree to a fixpoint
+(TP-4813: `owner-at-head.ts`, outside Shepherd's directory, was held by nothing before). It fails when a module it reaches is not held,
 when a relative import does not resolve, or when `g10-hold-closure.json` differs from the walk.
 The class rules load that JSON, so a module newly imported by a held one becomes held when the
 list is regenerated (`vitest -u` on the test), with no edit to the listed table. The check itself,
 its sidecar, its walk and the JSON are policy, test files or not. Today the closure holds most of
-the Shepherd directory, because the command, release and carry modules import much of it. Store
+the factory, because the command, release and carry modules and `host.ts` import much of it. Store
 migrations in `store.ts` and its neighbours therefore take `g10-adversary`, not `g10-review`.
 
-**Accepted residual.** The hold-closure walk stays in the Shepherd directory: relative imports
+**Accepted residual.** The hold-closure walk stays in `products/factory/src`: relative imports
 that leave it, package imports and the data flow through store rows are not followed. TP-3901
 covers the out-of-directory modules and TP-4747 the write sites.
 

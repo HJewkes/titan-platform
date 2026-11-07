@@ -1,4 +1,5 @@
 import { mkdtempSync, rmSync } from "node:fs";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DispatchError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
@@ -1477,7 +1478,7 @@ describe("reviewPhase", () => {
     fake.prFiles.set(1, scene.files ?? [{ path: "src/a.ts", status: "modified" }]);
     let clock = 10_000;
     const store = shepherdStoreRef();
-    const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async (path) => void scene.removals?.push(path) } };
+    const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async (path) => void scene.removals?.push(path) } };
     const own = (input: AwaitVerdictInput) => scene.dispatch.agents.filter((candidate) => candidate.agentId === input.reviewerAgentId).map((who) => said(who, verdictBy(who, input.head), clock + 1));
     const reader: ReviewerReader = { read: async (input) => (scene.read ? scene.read(input, scene.dispatch, clock) : own(input)) };
     const verdicts: Verdict[] = [];
@@ -2644,5 +2645,22 @@ describe("reviewPhase", () => {
 
     expect(verdicts).toEqual([{ kind: "none", cause: "not-started", reason: `no-reviewer: Error at ${H1}; TP-2446` }]);
     expect(stepIds.filter((id) => id.startsWith("sh-await-verdict"))).toEqual([]);
+  });
+});
+
+describe("the sh-carry route's git cache", () => {
+  it("sh-carry probes through deps.gitCache", async () => {
+    const gitDirs: string[] = [];
+    const git = async (gitDir: string) => (gitDirs.push(gitDir), { code: 1, stdout: "", stderr: "synthetic refusal" });
+    const gitCache = { git, fs: { exists: () => true, mkdirp: () => undefined }, stateDir: () => "/synthetic/state" };
+    const deps: ShepherdDeps = { gitCache, port: githubPort(fakeGitHub().wire), store: shepherdStoreRef(), now: () => 0, sleep: async () => undefined, agentChatBin: "agent-chat" };
+    const route = reviewRoutes(deps, partialFake<ReviewWiring>()).find((candidate) => candidate.match === "sh-carry")!;
+    const prompt = JSON.stringify({ repo: "octo/demo", baseRef: "main", fromHead: fakeSha("review-head-1"), head: fakeSha("moved") });
+
+    const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" }));
+
+    expect(outcome.ok).toBe(true);
+    expect(gitDirs.length).toBeGreaterThan(0);
+    expect(gitDirs[0]).toContain("/synthetic/state/");
   });
 });

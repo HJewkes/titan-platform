@@ -1,10 +1,10 @@
 import { readdirSync } from "node:fs";
-import { dirname, join, relative, sep } from "node:path";
+import { join, relative, sep } from "node:path";
 import ts from "typescript";
 import { COMPILER_OPTIONS } from "./gate-resolve-closure.test-helpers.js";
 
-/** A Shepherd directory to walk: the real one through `ts.sys`, or an in-memory fixture. */
-export interface ShepherdTree {
+/** A factory source tree to walk: the real `products/factory/src` through `ts.sys`, or an in-memory fixture. */
+export interface SourceTree {
   dir: string;
   names: readonly string[];
   host: ts.ModuleResolutionHost;
@@ -12,12 +12,20 @@ export interface ShepherdTree {
 
 const isTestName = (name: string): boolean => name.includes(".test.") || name.includes(".test-helpers.");
 
-/** The real Shepherd directory: every non-test file in it, as names relative to it. */
-export function shepherdTree(dir: string): ShepherdTree {
-  const names = readdirSync(dir, { withFileTypes: true })
+const toPosix = (path: string): string => path.split(sep).join("/");
+
+/** The real factory source tree: every non-test file under it, at any depth, as paths relative to it. */
+export function factoryTree(dir: string): SourceTree {
+  const names = readdirSync(dir, { withFileTypes: true, recursive: true })
     .filter((entry) => entry.isFile() && !isTestName(entry.name))
-    .map((entry) => entry.name);
-  return { dir, names, host: ts.sys };
+    .map((entry) => toPosix(relative(dir, join(entry.parentPath, entry.name))));
+  return { dir, names: names.sort(), host: ts.sys };
+}
+
+/** A resolved file's path relative to the tree, or undefined when it lies outside it. */
+function inTreeName(tree: SourceTree, resolved: string): string | undefined {
+  const name = toPosix(relative(tree.dir, resolved));
+  return name.startsWith("../") ? undefined : name;
 }
 
 /** What one module imports inside the tree, and the specifiers the compiler could not resolve, which fail the walk closed. */
@@ -28,9 +36,9 @@ interface ModuleImports {
 
 /**
  * The compiler's own import scanner, so value, type-only, re-export and dynamic imports all count. A relative import
- * that leaves the Shepherd directory is out of this walk (TP-3901 owns those).
+ * that leaves the factory source tree is out of this walk (TP-3901 owns those).
  */
-function importsOf(tree: ShepherdTree, name: string): ModuleImports {
+function importsOf(tree: SourceTree, name: string): ModuleImports {
   const file = join(tree.dir, name);
   const text = tree.host.readFile(file);
   if (text === undefined) return { inTree: [], unresolved: [name] };
@@ -38,8 +46,9 @@ function importsOf(tree: ShepherdTree, name: string): ModuleImports {
   const result: ModuleImports = { inTree: [], unresolved: [] };
   for (const spec of specifiers) {
     const resolved = ts.resolveModuleName(spec, file, COMPILER_OPTIONS, tree.host).resolvedModule?.resolvedFileName;
+    const imported = resolved === undefined ? undefined : inTreeName(tree, resolved);
     if (resolved === undefined) result.unresolved.push(`${name} -> ${spec}`);
-    else if (dirname(resolved) === tree.dir) result.inTree.push(relative(tree.dir, resolved).split(sep).join("/"));
+    else if (imported !== undefined) result.inTree.push(imported);
   }
   return result;
 }
@@ -50,7 +59,7 @@ interface HoldClosure {
 }
 
 /** Every module the seeds import, transitively, to a fixpoint; test modules are never followed or reported. */
-export function holdClosure(tree: ShepherdTree, seeds: readonly string[]): HoldClosure {
+export function holdClosure(tree: SourceTree, seeds: readonly string[]): HoldClosure {
   const seen = new Set(seeds);
   const queue = [...seeds];
   const unresolved: string[] = [];
@@ -65,8 +74,8 @@ export function holdClosure(tree: ShepherdTree, seeds: readonly string[]): HoldC
   return { reached: [...seen].sort(), unresolved };
 }
 
-/** An in-memory Shepherd directory for fixtures, resolving imports among its own files only. */
-export function fixtureTree(dir: string, files: Record<string, string>): ShepherdTree {
+/** An in-memory factory source tree for fixtures, resolving imports among its own files only. */
+export function fixtureTree(dir: string, files: Record<string, string>): SourceTree {
   const byPath = new Map(Object.entries(files).map(([name, text]) => [join(dir, name), text]));
   const host: ts.ModuleResolutionHost = { fileExists: (path) => byPath.has(path), readFile: (path) => byPath.get(path) };
   return { dir, names: Object.keys(files), host };

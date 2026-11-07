@@ -1,4 +1,5 @@
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentRow } from "@titan-design/agent-dispatch";
@@ -46,7 +47,7 @@ function boundDeps(extra: Partial<ShepherdDeps>): { deps: ShepherdDeps; freezes:
   fake.addPr({ headSha: H1 });
   fake.setRuns(RED, [successRun("validate", 7, undefined, "failure")]);
   fake.jobLogs.set(7, "assertion failed in widget.test");
-  const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => T0, sleep: async () => undefined, pollMs: 1_000, agentChatBin: "agent-chat", ...extra };
+  const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => T0, sleep: async () => undefined, pollMs: 1_000, agentChatBin: "agent-chat", gitCache: hostCarryPorts, ...extra };
   return { deps, freezes: new FreezeStore(db, () => T0) };
 }
 

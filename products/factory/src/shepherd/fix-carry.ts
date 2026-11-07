@@ -6,18 +6,15 @@ import { isRepoKey } from "./seats.js";
 import {
   BranchName,
   CarryRefusal,
-  carryCacheDir,
-  carryStateDir,
+  cacheFor,
   ensureCache,
   fetchArgs,
-  githubRemote,
   must,
   reasonOf,
   remoteBase,
   serialized,
-  systemGit,
+  type CacheHandle,
   type CarryOptions,
-  type Git,
 } from "./tree-carry.js";
 
 /** Under the approval-carry family so the step reads as awaiting approval; its own route is the longer match, so the approval record's passthrough never takes it. */
@@ -51,8 +48,9 @@ function judge(merged: { base: string; mergeTree: string; headTree: string }): F
   return refuse(`tree of the head differs from the approved head merged onto ${merged.base}`, facts);
 }
 
-async function probe(git: Git, dir: string, url: string, input: FixCarryInput, signal?: AbortSignal): Promise<FixCarryResult> {
-  await ensureCache(git, dir, signal);
+async function probe(cache: CacheHandle, input: FixCarryInput, signal?: AbortSignal): Promise<FixCarryResult> {
+  const { git, dir, url } = cache;
+  await ensureCache(cache, signal);
   await must(git, dir, fetchArgs(url, input), signal);
   const ancestry = await git(dir, ["merge-base", "--is-ancestor", input.fromHead, input.head], signal);
   if (ancestry.code === 1) return refuse(`${input.head} does not contain ${input.fromHead}, so it is a rebase, not a fix on top`);
@@ -75,9 +73,8 @@ export async function fixCarry(raw: unknown, options: CarryOptions = {}): Promis
   if (!parsed.success) return refuse(`invalid fix-carry input: ${parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ")}`);
   const input = parsed.data;
   try {
-    const dir = carryCacheDir(carryStateDir(options.stateDir), input.repo);
-    const url = (options.remote ?? githubRemote)(input.repo);
-    return await serialized(dir, () => probe(options.git ?? systemGit, dir, url, input, options.signal));
+    const cache = cacheFor(input.repo, options);
+    return await serialized(cache.dir, () => probe(cache, input, options.signal));
   } catch (error) {
     options.signal?.throwIfAborted();
     return refuse(reasonOf(error));

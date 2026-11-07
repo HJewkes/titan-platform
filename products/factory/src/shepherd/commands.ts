@@ -11,7 +11,6 @@ import { RegistrationRefused, stricterPolicy, type EffectivePolicy } from "./pol
 import { HoldReasonSchema, OWNER_HOLD_CLASS, ReleasableClassSchema, type HoldResult } from "./hold-reason.js";
 import { isOwnerHold } from "./owner-hold-rows.js";
 import { refuseUnknownGates } from "./lan-gates.js";
-import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
 import { ownUpdatedHeads } from "./merge-up-release.js";
 import { ReleaseHeadArg, releaseAtHead, updateBranchRunning } from "./release-head.js";
 import { cachedByHead, localPrFiles } from "./git-pr-files.js";
@@ -25,7 +24,7 @@ import { endSuperseded, isDivergedEnd, isReplayDiverged, restartFor } from "./re
 import { lastReadHead } from "./last-read-head.js";
 import { sizeFlagFor, type SliceFlag } from "./size-flag.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
-import { readdressCommand } from "./readdress-command.js";
+import { REASK_COMMANDS } from "./refollow-command.js";
 import { orderCommand, type StatusOrder } from "./merge-order-command.js";
 import { repairStopCommand } from "./repair-stop-command.js";
 import { mergeBaseCommand } from "./merge-base-command.js";
@@ -146,7 +145,7 @@ async function startRegistered(ctx: FactoryContext, store: ShepherdStore, args: 
   }
 }
 
-async function register(args: RegisterArgs, ctx: FactoryContext): Promise<Registered> {
+export async function register(args: RegisterArgs, ctx: FactoryContext): Promise<Registered> {
   const services = servicesOf(ctx);
   const policy = policyFor(services.seats, args);
   const known = findRegistration(ctx, services.store.get(), args.repo, args.pr, args.branch);
@@ -179,23 +178,6 @@ export async function classifyRegistered(ctx: FactoryContext, registered: Regist
   const held = g10Hold === undefined ? registered : { ...registered, g10Hold, registration: services.store.get().byRun(registered.runId)! };
   const sizeFlag = await sizeFlagFor(services.port, head === undefined ? held.registration : { ...held.registration, headSha: head }, { local });
   return sizeFlag === undefined ? held : { ...held, sizeFlag };
-}
-
-/** Registers the changesets PR the way `shepherd register` would, with no fixer: no agent wrote it, so none can fix it. */
-export async function registerVersionPackages(ctx: FactoryContext, repo: RepoSlug, pr: number): Promise<Registered> {
-  return register({ repo, pr, task: releaseTask(repo), implementer: RELEASE_IMPLEMENTER, kind: "unknown", policy: { fixer: false } }, ctx);
-}
-
-/** The registration's implementer: the factory toolchain sweep wrote this PR, so a wake for it is never handled. */
-export const TOOLCHAIN_IMPLEMENTER = "toolchain-fanout";
-
-function toolchainTask(repo: RepoSlug): string {
-  return `${repo.split("/")[1] ?? repo}/toolchain`;
-}
-
-/** Registers a toolchain adoption PR with no fixer, since no agent can fix a plan the sweep wrote, and owner-gated, since it edits other repos' release workflows. */
-export async function registerToolchainAdoption(ctx: FactoryContext, repo: RepoSlug, pr: number): Promise<Registered> {
-  return register({ repo, pr, task: toolchainTask(repo), implementer: TOOLCHAIN_IMPLEMENTER, kind: "unknown", policy: { fixer: false, merge: "owner-gate", ownerGateReason: "owner-asked" } }, ctx);
 }
 
 /** `repo#pr` directly, or through its head branch when a branch registration has not seen the PR yet. */
@@ -247,7 +229,7 @@ type PrRefArgs = z.infer<typeof PrRefArgs>;
 
 const registerCommand = defineCommand<RegisterArgs, Registered, FactoryContext>({
   name: "shepherd.register",
-  description: "Shepherd owner/repo#pr, or a branch whose PR is not open yet; a repeat registration returns the existing run, or starts a new one when that run failed, was cancelled, or stopped not-mergeable, on a conflict or abandoned, with its PR still open",
+  description: "Shepherd owner/repo#pr, or a branch whose PR is not open yet; a repeat registration returns the existing run, or starts a new one when that run failed, was cancelled, or stopped not-mergeable, on a conflict, abandoned, or closed, with its PR still open",
   args: RegisterArgs,
   result: z.custom<Registered>(),
   run: registerWithHold,
@@ -376,7 +358,7 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.merge": mergeCommand,
   "shepherd.review": reviewCommand,
   "shepherd.resync": resyncCommand,
-  "shepherd.readdress-dead-ends": readdressCommand,
+  ...REASK_COMMANDS,
   "shepherd.prs": prsCommand,
   "shepherd.watch": watchCommand,
   "shepherd.visual-delta": visualDeltaCommand,

@@ -1,7 +1,7 @@
 import type { GitHubPort, PullRequest, RepoSlug } from "@titan-design/github";
 import type { FactoryHost } from "../host.js";
 import { TOOLCHAIN_CONSUMERS, adoptionPlan, readCanonical, readConsumer } from "../workflows/toolchain-fanout.js";
-import { registerToolchainAdoption } from "./commands.js";
+import { registerToolchainAdoption } from "./self-register.js";
 import type { ShepherdServices } from "./services.js";
 import { failureOf } from "./error-class.js";
 

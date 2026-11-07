@@ -34,8 +34,8 @@ export function registerPlanner(program: Command, verbs: Verbs): void {
     .command("planner")
     .description("the scheduled factory-planner review")
     .command("wake")
-    .description("spawn a fresh factory-planner and wait for its review, or exit 0 with one line when nothing it reads has changed since the last run")
-    .requiredOption("--config <path>", "planner wake config (JSON: brief, cwd, inputs, profile, reviewDir)")
+    .description("spawn a fresh factory-planner and wait for its review, or exit 0 with one line when nothing it reads has changed or the prior window had no merges, owner contact or new red")
+    .requiredOption("--config <path>", "planner wake config (JSON: brief, cwd, inputs, profile, reviewDir, priorWindow)")
     .option("--profile <name>", "agent-chat profile to spawn the planner on (overrides the config)")
     .action(async (opts: { config: string; profile?: string }) => {
       const config = loadPlannerConfig(opts.config);

@@ -1,4 +1,5 @@
 import { fakeGitHub, fakeSha, githubPort } from "@titan-design/github";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
 import { holdSlotsMigration, parkSettledMigration } from "./store-migrations.js";
@@ -33,7 +34,7 @@ function scene(options: { alert?: (text: string) => Promise<void>; dirs?: string
   const fake = fakeGitHub({ repo: REPO });
   fake.addPr({ headSha: HEAD });
   const limits: AccountLimitStoreRef = { get: () => new AccountLimitStore(db, () => clock.now), bind: () => () => undefined };
-  const deps: ShepherdDeps = { port: githubPort(fake.wire), store: ref, accountLimits: limits, now: () => clock.now, sleep: async (ms: number) => void (clock.now += ms), pollMs: 60_000, agentChatBin: "agent-chat" };
+  const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(fake.wire), store: ref, accountLimits: limits, now: () => clock.now, sleep: async (ms: number) => void (clock.now += ms), pollMs: 60_000, agentChatBin: "agent-chat" };
   const alerts: string[] = [];
   const accounts: AccountsView = { dirs: options.dirs ?? [ACCOUNT], alert: options.alert ?? (async (_repo, text) => void alerts.push(text)) };
   const routes = accountRoutes(deps, accounts);
