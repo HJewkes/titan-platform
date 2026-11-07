@@ -13,7 +13,7 @@ import type { ShepherdPhases } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdStoreRef } from "./store.js";
-import { configuredVisualSetCarry } from "./visual-accept.js";
+import { configuredVisualSetCarry } from "./visual-accept-adapter.js";
 
 const H2 = fakeSha("head2");
 const dirs: string[] = [];

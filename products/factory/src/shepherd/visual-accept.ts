@@ -1,6 +1,5 @@
 import type { StepRoute } from "@titan-design/workflow";
 import { z } from "zod";
-import { configPath, loadConfig } from "../config.js";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { visualAcceptDecision } from "../gate-brief.js";
 import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
@@ -48,15 +47,6 @@ type BeforeAsk = (stepId: string, prompt: string) => Promise<void>;
 
 /** `wake` goes to the fixer through the review wake; `left` ends the ci-failed route with that outcome. */
 type VisualAccept = { kind: "not-offered" } | { kind: "wake"; payload: OwnerSendBackPayload } | { kind: "left"; outcome: LandOutcome | undefined };
-
-/** `shepherd.visualSetCarry` as the config file reads now; a config that does not parse offers nothing. */
-export function configuredVisualSetCarry(env: NodeJS.ProcessEnv = process.env): VisualSetCarry {
-  try {
-    return loadConfig(configPath(env)).shepherd?.visualSetCarry ?? "off";
-  } catch {
-    return "off";
-  }
-}
 
 /**
  * The flag is read only where the run is live and recorded with the seat's check, so a replay rebuilds the gate it
