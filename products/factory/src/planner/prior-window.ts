@@ -12,7 +12,7 @@ const PROBES = [
 ] as const satisfies readonly (readonly [keyof PriorWindow, string])[];
 
 /** The review dir's skip log: `.log`, so the post-spawn watch never reads a skip as the planner's review. */
-export const SKIP_LOG = "skipped.log";
+const SKIP_LOG = "skipped.log";
 
 type WindowVerdict = { kind: "quiet"; summary: string } | { kind: "active" } | { kind: "unknown"; error: string };
 
