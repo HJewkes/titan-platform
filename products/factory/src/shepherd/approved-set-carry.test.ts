@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import type { ApprovedSet } from "../approved-set.js";
 import { followingApprovals } from "./approval-carry.js";
 import { setCarry } from "./approved-set-carry.js";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import type { OwnMergeUpResult } from "./own-merge-up.js";
 import type { VisualSetCarry } from "./phases.js";
 import type { Git } from "./tree-carry.js";
@@ -78,7 +79,7 @@ function rig({ heads = { [H2]: EXACT }, mode = "on", noSet = false, visual = tru
     if (stepId.startsWith("sh-approval-carry:own:")) return own;
     if (stepId.startsWith("sh-remerge:")) return { carries: true, rule: "remerge-empty", headTree: "t", remergeTree: "t", paths: [], generatedPaths: [] };
     if (!stepId.startsWith("sh-approval-carry:set:")) return input;
-    results.set(stepId, await setCarry(input, { stateDir, git: fakeGit(heads, calls), remote: () => "file:///none" }));
+    results.set(stepId, await setCarry(input, { ports: { ...hostCarryPorts, git: fakeGit(heads, calls) }, stateDir, remote: () => "file:///none" }));
     return results.get(stepId);
   };
   async function dispatch<T extends Record<string, unknown>>(stepId: string, _template: string, options: DispatchOptions<T> = {}): Promise<StepResult<T>> {

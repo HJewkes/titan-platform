@@ -157,7 +157,7 @@ async function probe(cache: CacheHandle, input: ReviewScopeInput, signal?: Abort
 }
 
 /** Any failure, from bad input to a refused fetch, answers a full review with a fixed-vocabulary reason. */
-export async function reviewScope(raw: unknown, options: CarryOptions = {}): Promise<ReviewScopeResult> {
+export async function reviewScope(raw: unknown, options: CarryOptions): Promise<ReviewScopeResult> {
   const parsed = ScopeInputSchema.safeParse(raw);
   if (!parsed.success) return full(`invalid review-scope input: ${parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ")}`);
   const input = parsed.data;
@@ -170,7 +170,7 @@ export async function reviewScope(raw: unknown, options: CarryOptions = {}): Pro
   }
 }
 
-export function reviewScopeRoute(now: () => number, options: Omit<CarryOptions, "signal"> = {}): StepRoute {
+export function reviewScopeRoute(now: () => number, options: Omit<CarryOptions, "signal">): StepRoute {
   return codeRoute(REVIEW_SCOPE_STEP, now, (input: unknown, signal) => reviewScope(input, { ...options, signal }));
 }
 

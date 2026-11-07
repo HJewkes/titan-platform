@@ -112,8 +112,8 @@ const SnapshotResult = z.looseObject({ pr: z.looseObject({ headSha: z.string() }
 const RerunResult = z.looseObject({ reruns: z.array(z.looseObject({ runId: z.number(), done: z.boolean() })) });
 
 export interface LandPrDeps extends LandDeps, PostMergeDeps {
-  /** The host effects the merge-tree read runs on; absent means the host's own ports. */
-  gitCache?: GitCachePorts;
+  /** The host effects the merge-tree read runs on. */
+  gitCache: GitCachePorts;
   /** How long a rerun step waits for GitHub to replace the failed checks before land polls CI again. */
   rerunSettleMs?: number;
   /** How long a rerun step waits for a still-running Actions run to finish so GitHub accepts its rerun. */

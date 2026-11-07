@@ -5,8 +5,8 @@ import { gitIn, seedRepo, withHistory } from "@titan-design/test-kit/git";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { codewatchReader } from "./codewatch-questions.js";
 import { cacheHeadLines } from "./head-lines.js";
-import { hostCarryPorts } from "./carry-cache-adapter.js";
-import { systemGit, type Git } from "./tree-carry.js";
+import { hostCarryPorts, systemGit } from "./carry-cache-adapter.js";
+import type { Git } from "./tree-carry.js";
 
 const REPO = "acme/widgets";
 const FIVE_LINES = "one\ntwo\nthree\nfour\nfive\n";
@@ -40,7 +40,7 @@ afterEach(() => rmSync(root, { recursive: true, force: true }));
 describe("cacheHeadLines", { timeout: 30_000 }, () => {
   it("fetches a head the cache lacks and reads its file lines", async () => {
     const counting = countingGit();
-    const lines = await cacheHeadLines({ stateDir, remote: () => origin, git: counting.git })({ repo: REPO, head });
+    const lines = await cacheHeadLines({ ports: { ...hostCarryPorts, git: counting.git }, stateDir, remote: () => origin })({ repo: REPO, head });
 
     expect(lines.lines("x.ts")).toEqual(["one", "two", "three", "four", "five"]);
     expect(counting.fetches()).toBe(1);
@@ -57,17 +57,17 @@ describe("cacheHeadLines", { timeout: 30_000 }, () => {
   });
 
   it("runs no fetch for a head already in the cache", async () => {
-    await cacheHeadLines({ stateDir, remote: () => origin })({ repo: REPO, head });
+    await cacheHeadLines({ ports: hostCarryPorts, stateDir, remote: () => origin })({ repo: REPO, head });
     const counting = countingGit();
 
-    const lines = await cacheHeadLines({ stateDir, remote: () => origin, git: counting.git })({ repo: REPO, head });
+    const lines = await cacheHeadLines({ ports: { ...hostCarryPorts, git: counting.git }, stateDir, remote: () => origin })({ repo: REPO, head });
 
     expect(lines.lines("x.ts")).toHaveLength(5);
     expect(counting.fetches()).toBe(0);
   });
 
   it("rejects a head the origin does not hold, and the reader then keeps no questions", async () => {
-    const headLines = cacheHeadLines({ stateDir, remote: () => origin });
+    const headLines = cacheHeadLines({ ports: hostCarryPorts, stateDir, remote: () => origin });
     const unknown = { repo: REPO, head: "e".repeat(40) };
     const read = codewatchReader(async () => ({ schema: "codewatch-pr-report@1", questions: ["x.ts:1 is this right?"] }), [REPO], headLines);
 
@@ -77,7 +77,7 @@ describe("cacheHeadLines", { timeout: 30_000 }, () => {
 
   it("drops a question past the end of a real head file and keeps one inside it", async () => {
     const questions = ["x.ts:3-40 whole file?", "x.ts:2-5 the rest?"];
-    const read = codewatchReader(async () => ({ schema: "codewatch-pr-report@1", questions }), [REPO], cacheHeadLines({ stateDir, remote: () => origin }));
+    const read = codewatchReader(async () => ({ schema: "codewatch-pr-report@1", questions }), [REPO], cacheHeadLines({ ports: hostCarryPorts, stateDir, remote: () => origin }));
 
     const result = await read({ repo: REPO, head });
 

@@ -101,7 +101,7 @@ async function probe(cache: CacheHandle, input: RemergeInput, signal?: AbortSign
  * Does `head` carry what was decided at `fromHead`: is it `fromHead` plus one merge of the base whose remerge-diff is empty or
  * touches only declared generated files? Every failure, from bad input to a refused fetch, answers no with a reason.
  */
-export async function remerge(raw: unknown, options: CarryOptions = {}): Promise<RemergeResult> {
+export async function remerge(raw: unknown, options: CarryOptions): Promise<RemergeResult> {
   const parsed = RemergeInputSchema.safeParse(raw);
   if (!parsed.success) return { carries: false, reason: `invalid remerge input: ${parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ")}` };
   const input = parsed.data;
@@ -114,7 +114,7 @@ export async function remerge(raw: unknown, options: CarryOptions = {}): Promise
   }
 }
 
-export function remergeRoute(now: () => number, options: Omit<CarryOptions, "signal"> = {}): StepRoute {
+export function remergeRoute(now: () => number, options: Omit<CarryOptions, "signal">): StepRoute {
   return codeRoute(REMERGE_STEP, now, (input: unknown, signal) => remerge(input, { ...options, signal }));
 }
 

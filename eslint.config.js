@@ -55,7 +55,6 @@ const RECIPE_CAPABILITY_BASELINE = [
   "products/factory/src/shepherd/redeploy.ts",
   "products/factory/src/shepherd/release.ts",
   "products/factory/src/shepherd/train.ts",
-  "products/factory/src/shepherd/tree-carry.ts",
   "products/factory/src/workflows/land-pr.ts",
   "products/factory/src/workflows/post-merge.ts",
 ];

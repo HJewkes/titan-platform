@@ -68,7 +68,7 @@ interface World {
 }
 
 /** A PR the seat released a g10-adversary hold on at H1, now at MOVED. */
-function releasedThenMoved(shape: "clean-merge-up" | "fix-push", reach: "override" | "ports" = "override"): World {
+function releasedThenMoved(shape: "clean-merge-up" | "fix-push"): World {
   const fake = fakeGitHub();
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   const wake: ShepherdPhases["wake"] = async () => ({ kind: "unhandled", reason: "no fixer in this test" });
@@ -76,9 +76,9 @@ function releasedThenMoved(shape: "clean-merge-up" | "fix-push", reach: "overrid
   const roles = { g10: "bd-reviewer", standard: "reviewer" };
   const sleeping = async (_ms: number, signal: AbortSignal) => sleep(1, signal);
   const gitCache = { git: scriptedGit(shape), fs: { exists: () => true, mkdirp: () => undefined }, stateDir: () => "/synthetic/state" };
-  const base = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, now: () => 0, sleep: sleeping, review: { ...mergingReviewers(), roles, carry: { git: scriptedGit(shape) } } });
+  const base = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, now: () => 0, sleep: sleeping, review: { ...mergingReviewers(), roles } });
   const rehold = shepherdRoutes({ gitCache, port: githubPort(fake.wire), store: ref, now: () => 0, sleep: sleeping, agentChatBin: "agent-chat" }, { review: { ...mergingReviewers(), roles } }).find((route) => route.match === G10_REHOLD_STEP)!;
-  const routes = reach === "ports" ? Object.assign(base.map((route) => (route.match === G10_REHOLD_STEP ? rehold : route)), { database: base.database, shepherd: base.shepherd }) : base;
+  const routes = Object.assign(base.map((route) => (route.match === G10_REHOLD_STEP ? rehold : route)), { database: base.database, shepherd: base.shepherd });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow({ review: reviewPhase, wake })], routes, gatePollMs: 5 });
   hosts.push(host);
   fake.addPr({ headSha: MOVED, mergeSha: fakeSha("test-merge") });
@@ -125,14 +125,5 @@ describe("a g10-adversary hold the seat released at one head, with the PR now at
 
     expect(w.store.byRun(w.runId)?.held).toBe(false);
     expect(w.store.eventsOf(w.runId).map((event) => event.kind)).toEqual(["hold", "release"]);
-  });
-
-  it("a rehold probe reaches git through deps.gitCache", async () => {
-    const w = releasedThenMoved("clean-merge-up", "ports");
-
-    await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true), { timeout: 5_000 });
-
-    expect(w.store.byRun(w.runId)?.held).toBe(false);
-    expect(stepIds(w)).toContain(G10_REHOLD_STEP);
   });
 });

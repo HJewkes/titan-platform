@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { fakeGitHub, githubPort, type FakeGitHub } from "@titan-design/github";
 import { fixtureEnv, gitIn, seedRepoWithOrigin } from "@titan-design/test-kit/git";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { configuredStackRestack, restackChild, stackChildren, stackLandRoutes, type ChildWake, type RestackInput, type StackLandDeps } from "./stack-land.js";
 import { nodeCacheFs } from "./carry-cache-adapter.js";
 import { shepherdStoreRef } from "./store.js";
@@ -100,7 +101,7 @@ function buildStack(options: StackOptions = {}): Stack {
 
   const wakes: ChildWake[] = [];
   const seen: string[][] = [];
-  const deps: StackLandDeps = { port: githubPort(fake.wire), wakeChild: async (wake) => (wakes.push(wake), true), held: () => undefined, stateDir: join(root, "state"), remote: () => origin, git: recordingGit(seen, options.beforePush) };
+  const deps: StackLandDeps = { port: githubPort(fake.wire), wakeChild: async (wake) => (wakes.push(wake), true), held: () => undefined, stateDir: join(root, "state"), remote: () => origin, ports: { ...hostCarryPorts, git: recordingGit(seen, options.beforePush) } };
   const input: RestackInput = { repo: REPO, parentPr, parentHeadRef: PARENT, parentFinal, squash, child: { pr: childPr, headRef: childBranch, headSha: childHead } };
   return { fake, parentPr, childPr, grandchildPr, parentFinal, childHead, grandchildHead, squash, wakes, seen, deps, input };
 }

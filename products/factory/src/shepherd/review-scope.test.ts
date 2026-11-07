@@ -5,6 +5,7 @@ import { partialFake } from "@titan-design/test-kit";
 import { gitIn, seedRepo, withHistory } from "@titan-design/test-kit/git";
 import type { DispatchOptions, StepResult, WorkflowContext } from "@titan-design/workflow";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { reviewScope, reviewScopeStep, scopeFromDiff, type ReviewScopeResult } from "./review-scope.js";
 
 const REPO = "acme/widgets";
@@ -45,7 +46,7 @@ function mergeMain(file: string, text: string): void {
 }
 
 const scope = (sinceHead: string, head: string): Promise<ReviewScopeResult> =>
-  reviewScope({ repo: REPO, baseRef: "main", sinceHead, head }, { stateDir, remote: () => origin });
+  reviewScope({ repo: REPO, baseRef: "main", sinceHead, head }, { ports: hostCarryPorts, stateDir, remote: () => origin });
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "review-scope-"));
@@ -142,13 +143,13 @@ describe("reviewScope", { timeout: 30_000 }, () => {
   });
 
   it("reads an unreadable repository as a full review with a fixed-vocabulary reason", async () => {
-    const result = await reviewScope({ repo: REPO, baseRef: "main", sinceHead: "a".repeat(40), head: "b".repeat(40) }, { stateDir, remote: () => join(root, "missing") });
+    const result = await reviewScope({ repo: REPO, baseRef: "main", sinceHead: "a".repeat(40), head: "b".repeat(40) }, { ports: hostCarryPorts, stateDir, remote: () => join(root, "missing") });
 
     expect(result).toEqual({ scoped: false, reason: expect.stringMatching(/^git fetch exited \d+$/) });
   });
 
   it("reads the reviewed head itself as invalid input, never a scope", async () => {
-    const result = await reviewScope({ repo: REPO, baseRef: "main", sinceHead: "a".repeat(40), head: "a".repeat(40) }, { stateDir });
+    const result = await reviewScope({ repo: REPO, baseRef: "main", sinceHead: "a".repeat(40), head: "a".repeat(40) }, { ports: hostCarryPorts, stateDir });
 
     expect(result).toEqual({ scoped: false, reason: expect.stringContaining("sinceHead must differ from head") });
   });

@@ -68,7 +68,7 @@ async function probe(cache: CacheHandle, input: FixCarryInput, signal?: AbortSig
  * Does `head` differ from the approved `fromHead` merged with the base commit `head` already contains by nothing (a clean
  * merge-up)? A fix of any size asks the owner again (TP-3070). Any failure, from bad input to a refused fetch or an unreadable file, answers no with a reason.
  */
-export async function fixCarry(raw: unknown, options: CarryOptions = {}): Promise<FixCarryResult> {
+export async function fixCarry(raw: unknown, options: CarryOptions): Promise<FixCarryResult> {
   const parsed = FixInputSchema.safeParse(raw);
   if (!parsed.success) return refuse(`invalid fix-carry input: ${parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ")}`);
   const input = parsed.data;
@@ -81,7 +81,7 @@ export async function fixCarry(raw: unknown, options: CarryOptions = {}): Promis
   }
 }
 
-export function fixCarryRoute(now: () => number, options: Omit<CarryOptions, "signal"> = {}): StepRoute {
+export function fixCarryRoute(now: () => number, options: Omit<CarryOptions, "signal">): StepRoute {
   return codeRoute(FIX_CARRY_STEP, now, (input: unknown, signal) => fixCarry(input, { ...options, signal }));
 }
 

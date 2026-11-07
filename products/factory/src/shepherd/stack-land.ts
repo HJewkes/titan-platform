@@ -10,7 +10,7 @@ import { agentChatAgents } from "./agents.js";
 import { errorClass } from "./error-class.js";
 import type { ShepherdDeps } from "./phases.js";
 import { restackOnto } from "./stack-restack.js";
-import { BranchName, cacheFor, ensureCache, must, reasonOf, serialized, type CacheHandle, type Git, type GitCachePorts } from "./tree-carry.js";
+import { BranchName, cacheFor, ensureCache, must, reasonOf, serialized, type CacheHandle, type GitCachePorts } from "./tree-carry.js";
 
 const STACK_CHILDREN_STEP = "sh-stack-children";
 const RESTACK_STEP = "sh-restack";
@@ -70,12 +70,11 @@ export interface StackLandDeps {
   wakeChild: (wake: ChildWake) => Promise<boolean>;
   /** Why Shepherd may not restack in `repo` right now, or undefined when it may; read again on every child. */
   held: (repo: RepoSlug) => string | undefined;
-  /** Holds Shepherd's bare git cache; absent means the bound state dir. */
+  /** Holds Shepherd's bare git cache; absent means the ports' state dir. */
   stateDir?: string;
   /** The fetch and push URL for `repo`; absent means GitHub over https. */
   remote?: (repo: string) => string;
-  git?: Git;
-  ports?: GitCachePorts;
+  ports: GitCachePorts;
 }
 
 const restackReason = (parentPr: number, detail: string): string => `parent #${parentPr} landed; restack ${detail}`;

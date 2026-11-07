@@ -125,7 +125,7 @@ async function diffNameStatus(git: Git, dir: string, range: string, signal?: Abo
  * protocol, so no REST read is spent. A refused git command, a fact that is not the PR's, an empty diff, or a diff
  * whose copy detection git skipped throws.
  */
-export async function gitPrFiles(target: DiffTarget, options: CarryOptions = {}): Promise<PrFile[]> {
+export async function gitPrFiles(target: DiffTarget, options: CarryOptions): Promise<PrFile[]> {
   const cache = cacheFor(target.repo, options);
   const { git, dir, url } = cache;
   return serialized(dir, async () => {

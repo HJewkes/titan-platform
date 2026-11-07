@@ -2,6 +2,7 @@ import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@t
 import type { GateResolver } from "@titan-design/hitl";
 import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
+import { hostCarryPorts } from "../shepherd/carry-cache-adapter.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { factoryWorkflows } from "../workflows.js";
@@ -23,7 +24,7 @@ function devicePrWorld(params: Record<string, string> = { deviceStep: STEP }): {
   fake.addPr({ headSha: H1 });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   let clock = 0;
-  const routes = landPrRoutes({ port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms) });
+  const routes = landPrRoutes({ gitCache: hostCarryPorts, port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [devicePrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   return { host, fake, runId: host.runtime.start("device-pr", { repo: REPO, pr: "1", ...params }) };

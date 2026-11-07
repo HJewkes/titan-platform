@@ -5,7 +5,6 @@ import { z } from "zod";
 import { CLOSURE_LOCK_DRIVER, type GitConfigEntry } from "../merge-drivers.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { HEAD } from "./await-verdict.js";
-import { hostCarryPorts } from "./carry-cache-adapter.js";
 import type { CacheFs, Git, GitCachePorts } from "./carry-cache-ports.js";
 import { errorClass } from "./error-class.js";
 import { isRepoKey } from "./seats.js";
@@ -22,14 +21,12 @@ export type CarryInput = z.infer<typeof CarryInputSchema>;
 export type CarryResult = z.infer<typeof CarryResultSchema>;
 
 export interface CarryOptions {
-  /** Absent means the host's ports: system git, the node fs and the bound state dir. */
-  ports?: GitCachePorts;
+  /** The host effects the cache is reached through: git, the fs and the state dir. */
+  ports: GitCachePorts;
   /** Holds `git-cache/<owner>/<name>.git`; absent means the ports' state dir. */
   stateDir?: string;
   /** The fetch URL for `repo`; absent means GitHub over https. */
   remote?: (repo: string) => string;
-  /** Overrides the ports' git. */
-  git?: Git;
   signal?: AbortSignal;
 }
 
@@ -55,7 +52,6 @@ export class CarryRefusal extends Error {
   }
 }
 
-export { systemGit } from "./carry-cache-adapter.js";
 export type { CacheFs, Git, GitCachePorts, GitResult } from "./carry-cache-ports.js";
 
 export function carryCacheDir(stateDir: string, repo: string): string {
@@ -67,9 +63,9 @@ const githubRemote = (repo: string): string => `https://github.com/${repo}.git`;
 
 /** Resolves the repo's cache through the ports; the state dir is read here, at call time. */
 export function cacheFor(repo: string, options: CarryOptions): CacheHandle {
-  const ports = options.ports ?? hostCarryPorts;
+  const { ports } = options;
   const dir = carryCacheDir(options.stateDir ?? ports.stateDir(), repo);
-  return { git: options.git ?? ports.git, fs: ports.fs, dir, url: (options.remote ?? githubRemote)(repo) };
+  return { git: ports.git, fs: ports.fs, dir, url: (options.remote ?? githubRemote)(repo) };
 }
 const firstLine = (text: string): string => text.trim().split("\n")[0] ?? "";
 
@@ -199,7 +195,7 @@ async function inCache<T>(repo: string, options: CarryOptions, task: (cache: Cac
 }
 
 /** Does `head` carry the review of `fromHead`? Every failure, from bad input to a refused fetch, answers not equal with a reason. */
-export async function carry(raw: unknown, options: CarryOptions = {}): Promise<CarryResult> {
+export async function carry(raw: unknown, options: CarryOptions): Promise<CarryResult> {
   const parsed = CarryInputSchema.safeParse(raw);
   if (!parsed.success) return { equal: false, reason: `invalid carry input: ${issuesOf(parsed.error)}` };
   const input = parsed.data;
@@ -212,7 +208,7 @@ const MergeTreeInputSchema = z.object({ repo: z.string().refine(isRepoKey, "must
  * `git merge-tree` of the head onto the base tip as fetched now: the merge GitHub's own mergeability read computes. It
  * answers `clean`, `conflict`, or `unread: <why>` from a fixed vocabulary, since the answer can reach a public PR.
  */
-export async function localMergeTree(raw: unknown, options: CarryOptions = {}): Promise<string> {
+export async function localMergeTree(raw: unknown, options: CarryOptions): Promise<string> {
   const parsed = MergeTreeInputSchema.safeParse(raw);
   if (!parsed.success) return `unread: invalid input: ${issuesOf(parsed.error)}`;
   const { repo, baseRef, headSha } = parsed.data;
@@ -227,7 +223,7 @@ export async function localMergeTree(raw: unknown, options: CarryOptions = {}): 
   return inCache(repo, options, merge, (reason) => `unread: ${reason}`);
 }
 
-export function carryRoute(now: () => number, options: Omit<CarryOptions, "signal"> = {}): StepRoute {
+export function carryRoute(now: () => number, options: Omit<CarryOptions, "signal">): StepRoute {
   return codeRoute(CARRY_STEP, now, (input: unknown, signal) => carry(input, { ...options, signal }));
 }
 

@@ -6,6 +6,7 @@ import { openFactoryHost, type FactoryHost, type FactoryRoutes } from "./host.js
 import type { FactoryContext } from "./context.js";
 import { createFactoryRegistry, parsePrRef } from "./registry.js";
 import { TOOL_PREFIX } from "./serve.js";
+import { hostCarryPorts } from "./shepherd/carry-cache-adapter.js";
 import { H1, REPO, gateId, gateOpened } from "./test-support/land.js";
 import { callCommand } from "./test-support/shepherd.js";
 import { landPrRoutes, landPrWorkflow } from "./workflows/land-pr.js";
@@ -22,7 +23,7 @@ function world(): { host: FactoryHost; fake: FakeGitHub; routes: FactoryRoutes }
   fake.addPr({ headSha: H1 });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   let clock = 0;
-  const routes = landPrRoutes({ port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms) });
+  const routes = landPrRoutes({ gitCache: hostCarryPorts, port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   return { host, fake, routes };
