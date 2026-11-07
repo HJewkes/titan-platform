@@ -125,14 +125,17 @@ export const SHEPHERD_LISTED_RULES: ClassRules = {
 };
 
 /**
- * Every Shepherd module a listed one imports, value or type-only, to a fixpoint, less those already listed. A held
- * module reads its imports, so editing one can change what the hold decides. `g10-hold-closure.test.ts` recomputes the
+ * Every factory module a listed one imports, value or type-only, to a fixpoint, less those already listed, as paths
+ * under `products/factory/src` (TP-4813: the walk crosses the whole tree, not just Shepherd's directory). A held module
+ * reads its imports, so editing one can change what the hold decides. `g10-hold-closure.test.ts` recomputes the
  * closure and fails until this list matches it (`vitest -u` rewrites it).
  */
 const HOLD_CLOSURE = z.array(z.string()).parse(holdClosureJson);
 
-/** The listed table with a closure of Shepherd module names held as policy too. */
-export const withHoldClosure = (names: readonly string[]): ClassRules => ({ ...SHEPHERD_LISTED_RULES, policy: [...SHEPHERD_LISTED_RULES.policy, ...names.map(inShepherd)] });
+const inFactorySrc = (name: string): string => `products/factory/src/${name}`;
+
+/** The listed table with a closure of factory module paths, relative to `products/factory/src`, held as policy too. */
+export const withHoldClosure = (names: readonly string[]): ClassRules => ({ ...SHEPHERD_LISTED_RULES, policy: [...SHEPHERD_LISTED_RULES.policy, ...names.map(inFactorySrc)] });
 
 /** Shepherd's merge policy and the owner's levers live in plain source files, which the panel's default globs miss. */
 export const SHEPHERD_CLASS_RULES: ClassRules = withHoldClosure(HOLD_CLOSURE);
