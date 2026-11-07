@@ -140,6 +140,7 @@
   "readdress-command.ts",
   "readdress.ts",
   "recorded-route.ts",
+  "redeploy-adapter.ts",
   "redeploy.ts",
   "register-args.ts",
   "register-kind.ts",
