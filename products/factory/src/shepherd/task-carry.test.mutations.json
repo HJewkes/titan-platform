@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an unsliced PR never carries the last open slice",
+      "file": "products/factory/src/shepherd/task-close.ts",
+      "find": "unlanded.every((label) => named.has(label)) || (unlanded.length === 1 && otherOpen.length === 0)",
+      "replace": "false",
+      "kills": [
+        "carriesUnlanded carries every slice a body names, as #3257 named slices a and b",
+        "carriesUnlanded carries the only slice left when no other PR is open, though the body names none"
+      ]
+    },
+    {
+      "name": "a PR body naming some unlanded slices carries them all",
+      "file": "products/factory/src/shepherd/task-close.ts",
+      "find": "unlanded.every((label) => named.has(label))",
+      "replace": "unlanded.some((label) => named.has(label))",
+      "kills": [
+        "carriesUnlanded does not carry when the body names only some of the unlanded slices"
+      ]
+    }
+  ]
+}

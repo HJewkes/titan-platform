@@ -45,25 +45,6 @@
       "kills": [
         "sh-cleanup task keep mode with a slices tag and no slices block closes on a --last-slice slice PR though the headings list an unlanded slice"
       ]
-    },
-    {
-      "name": "an unsliced PR never carries the last open slice",
-      "file": "products/factory/src/shepherd/task-close.ts",
-      "find": "unlanded.every((label) => named.has(label)) || (unlanded.length === 1 && otherOpen.length === 0)",
-      "replace": "false",
-      "kills": [
-        "sh-cleanup task keep mode with a plan's slices closes when the PR body names every unlanded slice, as #3257 did for slices a and b",
-        "sh-cleanup task keep mode with a plan's slices closes when a bridge PR carries the plan's only slice and its body names none, as #3250 did"
-      ]
-    },
-    {
-      "name": "a PR body naming some unlanded slices carries them all",
-      "file": "products/factory/src/shepherd/task-close.ts",
-      "find": "unlanded.every((label) => named.has(label))",
-      "replace": "unlanded.some((label) => named.has(label))",
-      "kills": [
-        "sh-cleanup task keep mode with a plan's slices keeps the task open when the PR body names only some of the unlanded slices"
-      ]
     }
   ]
 }
