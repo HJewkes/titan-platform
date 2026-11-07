@@ -19,6 +19,7 @@
   "brief-command.ts",
   "brief-inputs.ts",
   "brief-render.ts",
+  "carry-cache-adapter.ts",
   "carry-kinds.ts",
   "changed-paths.ts",
   "ci-budget-json.ts",
