@@ -99,7 +99,7 @@ async function registerOpenBumps(host: FactoryHost, services: ShepherdServices):
   const notes: ConsumerBumpSweepNote[] = [];
   for (const repo of consumerRepos(services.seats())) {
     try {
-      const [open] = (await services.port.listOpenPrs(repo, BUMP_BRANCH_PREFIX)).filter((pr) => headInRepo(pr, repo));
+      const open = await openBumpOf(services, repo);
       if (open) notes.push({ repo, pr: open.number, skipped: "open", ...(await registerOnce(host, services, repo, open.number)) });
       else unbumped.push(repo);
     } catch (error) {
@@ -107,6 +107,47 @@ async function registerOpenBumps(host: FactoryHost, services: ShepherdServices):
     }
   }
   return { unbumped, notes };
+}
+
+async function openBumpOf(services: Pick<ShepherdServices, "port">, repo: RepoSlug): Promise<PullRequest | undefined> {
+  return (await services.port.listOpenPrs(repo, BUMP_BRANCH_PREFIX)).find((pr) => headInRepo(pr, repo));
+}
+
+/** A consumer the sweep would leave alone because its bump PR already exists. */
+interface SkippedBump {
+  repo: RepoSlug;
+  pr: number;
+  skipped: "open" | "closed";
+}
+
+/** Reads only: what `bumpConsumers` would open, with the open and closed bump PR checks it makes before it writes. */
+export async function previewConsumerBumps(services: Pick<ShepherdServices, "port" | "seats">, registry: LatestRegistry): Promise<ConsumerBumpPlans & { skips: SkippedBump[] }> {
+  const skips: SkippedBump[] = [];
+  const unbumped: RepoSlug[] = [];
+  const errors: ConsumerBumpNote[] = [];
+  for (const repo of consumerRepos(services.seats())) {
+    try {
+      const open = await openBumpOf(services, repo);
+      if (open) skips.push({ repo, pr: open.number, skipped: "open" });
+      else unbumped.push(repo);
+    } catch (error) {
+      errors.push({ repo, error: failureOf(error) });
+    }
+  }
+  const planned = await planConsumerBumps(services, registry, unbumped);
+  const bumps: PlannedBump[] = [];
+  const notes = [...errors, ...planned.notes];
+  for (const bump of planned.bumps) {
+    try {
+      const closed = await services.port.findPr(bump.repo, bump.branch);
+      if (closed && !headInRepo(closed, bump.repo)) throw new Error(`${bump.repo} PR #${closed.number} from a fork holds ${bump.branch}`);
+      if (closed) skips.push({ repo: bump.repo, pr: closed.number, skipped: "closed" });
+      else bumps.push(bump);
+    } catch (error) {
+      notes.push({ repo: bump.repo, error: failureOf(error) });
+    }
+  }
+  return { bumps, notes, skips };
 }
 
 async function bumpOne(host: FactoryHost, services: ShepherdServices, regen: LockfileRegen, bump: PlannedBump): Promise<ConsumerBumpSweepNote> {
