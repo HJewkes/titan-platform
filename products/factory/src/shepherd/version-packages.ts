@@ -2,7 +2,7 @@ import { GITHUB_ACTIONS_APP_ID, type GitHubPort, type PullRequest, type RepoSlug
 import type { WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
 import type { FactoryHost } from "../host.js";
-import { registerVersionPackages } from "./commands.js";
+import { registerVersionPackages } from "./self-register.js";
 import type { ShepherdServices } from "./services.js";
 import { failureOf } from "./error-class.js";
 import { openOnBranch } from "./snapshot-reads.js";
