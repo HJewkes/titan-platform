@@ -36,10 +36,11 @@ export async function otherOpenOnTask(port: GitHubPort, registrations: readonly 
 
 const SLICE_NAMES = /\b[Ss]lices?\s+([A-Za-z0-9]+(?:(?:\s*,\s*|\s+and\s+|\s*&\s*)[A-Za-z0-9]+)*)/g;
 
-/** Whether an unsliced PR merged the slices still open on its task: its body says it is the last slice or names each of them, or it is the one slice left and no other registered PR is open on the task. A `Last slice: no` line never carries. */
+/** Whether an unsliced PR merged the slices still open on its task: its body says it is the last slice or names each of them, or, with no other registered PR open on the task, it names each unlanded slice or is the one slice left. Only `Last slice: yes` overrides an open sibling. A `Last slice: no` line never carries. */
 export function carriesUnlanded(unlanded: readonly string[], body: string | undefined, otherOpen: readonly string[]): boolean {
   const marker = lastSliceMarker(body);
   if (unlanded.length === 0 || marker === "no") return false;
   const named = new Set([...(body ?? "").matchAll(SLICE_NAMES)].flatMap((match) => match[1]!.split(/\s*,\s*|\s+and\s+|\s*&\s*/)));
-  return marker === "yes" || unlanded.every((label) => named.has(label)) || (unlanded.length === 1 && otherOpen.length === 0);
+  if (marker === "yes") return true;
+  return otherOpen.length === 0 && (unlanded.every((label) => named.has(label)) || unlanded.length === 1);
 }

@@ -4,7 +4,7 @@
     {
       "name": "an unsliced PR never carries the last open slice",
       "file": "products/factory/src/shepherd/task-close.ts",
-      "find": "unlanded.every((label) => named.has(label)) || (unlanded.length === 1 && otherOpen.length === 0)",
+      "find": "otherOpen.length === 0 && (unlanded.every((label) => named.has(label)) || unlanded.length === 1)",
       "replace": "false",
       "kills": [
         "carriesUnlanded carries every slice a body names, as #3257 named slices a and b",
@@ -18,6 +18,15 @@
       "replace": "unlanded.some((label) => named.has(label))",
       "kills": [
         "carriesUnlanded does not carry when the body names only some of the unlanded slices"
+      ]
+    },
+    {
+      "name": "slices a body names carry past an open sibling PR",
+      "file": "products/factory/src/shepherd/task-close.ts",
+      "find": "otherOpen.length === 0 && (unlanded.every((label) => named.has(label)) || unlanded.length === 1)",
+      "replace": "unlanded.every((label) => named.has(label)) || (unlanded.length === 1 && otherOpen.length === 0)",
+      "kills": [
+        "carriesUnlanded does not carry slices a body names while another registered PR is open, since the body may only mention them"
       ]
     }
   ]

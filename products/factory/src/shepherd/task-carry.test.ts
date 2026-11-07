@@ -22,4 +22,8 @@ describe("carriesUnlanded", () => {
     expect(carriesUnlanded(["a"], "Last slice: no", [])).toBe(false);
     expect(carriesUnlanded(["a", "b"], "Last slice: yes", ["octo/demo#2"])).toBe(true);
   });
+
+  it("does not carry slices a body names while another registered PR is open, since the body may only mention them", () => {
+    expect(carriesUnlanded(["b", "c"], "Slices b and c follow in later PRs.", ["octo/demo#9"])).toBe(false);
+  });
 });
