@@ -141,6 +141,7 @@
   "planner/digest.ts",
   "planner/fingerprint.ts",
   "planner/inputs.ts",
+  "planner/prior-window.ts",
   "planner/wake.ts",
   "planner/watch-ports.ts",
   "planner/watch.ts",
