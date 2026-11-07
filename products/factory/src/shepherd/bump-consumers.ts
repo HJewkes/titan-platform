@@ -24,10 +24,10 @@ interface ConsumerBumpPlans {
 }
 
 /** Reads only: each seat-book consumer at its default branch, planned against npm latest; one repo's failure is its note and never stops the others. */
-export async function planConsumerBumps(services: Pick<ShepherdServices, "port" | "seats">, registry: LatestRegistry): Promise<ConsumerBumpPlans> {
+export async function planConsumerBumps(services: Pick<ShepherdServices, "port" | "seats">, registry: LatestRegistry, repos = consumerRepos(services.seats())): Promise<ConsumerBumpPlans> {
   const latest = memoized(registry);
   const result: ConsumerBumpPlans = { bumps: [], notes: [] };
-  for (const repo of consumerRepos(services.seats())) {
+  for (const repo of repos) {
     try {
       const planned = await planOne(services, repo, latest);
       if (planned.plan.edits.length === 0) result.notes.push({ repo, current: true });
@@ -84,18 +84,33 @@ const BUMP_TITLE = "Bump @titan-design dependencies to npm latest";
 
 /** Opens at most one bump PR per behind consumer and hands it to Shepherd; a failure is that repo's note and never stops the others. */
 export async function bumpConsumers(host: FactoryHost, services: ShepherdServices, ports: ConsumerBumpPorts): Promise<ConsumerBumpSweepNote[]> {
-  const { bumps, notes } = await planConsumerBumps(services, ports.registry);
-  const result: ConsumerBumpSweepNote[] = [...notes];
+  const { unbumped, notes: openNotes } = await registerOpenBumps(host, services);
+  const { bumps, notes } = await planConsumerBumps(services, ports.registry, unbumped);
+  const result: ConsumerBumpSweepNote[] = [...openNotes, ...notes];
   for (const bump of bumps) {
     result.push(await bumpOne(host, services, ports.regen, bump).catch((error: unknown) => ({ repo: bump.repo, error: failureOf(error) })));
   }
   return result.sort((a, b) => a.repo.localeCompare(b.repo));
 }
 
+/** Runs before any tree read, so an open bump PR is registered even when its repo now plans as current or cannot be read; such a repo is not planned. */
+async function registerOpenBumps(host: FactoryHost, services: ShepherdServices): Promise<{ unbumped: RepoSlug[]; notes: ConsumerBumpSweepNote[] }> {
+  const unbumped: RepoSlug[] = [];
+  const notes: ConsumerBumpSweepNote[] = [];
+  for (const repo of consumerRepos(services.seats())) {
+    try {
+      const [open] = await services.port.listOpenPrs(repo, BUMP_BRANCH_PREFIX);
+      if (open) notes.push({ repo, pr: open.number, skipped: "open", ...(await registerOnce(host, services, repo, open.number)) });
+      else unbumped.push(repo);
+    } catch (error) {
+      notes.push({ repo, error: failureOf(error) });
+    }
+  }
+  return { unbumped, notes };
+}
+
 async function bumpOne(host: FactoryHost, services: ShepherdServices, regen: LockfileRegen, bump: PlannedBump): Promise<ConsumerBumpSweepNote> {
   const { repo } = bump;
-  const [open] = await services.port.listOpenPrs(repo, BUMP_BRANCH_PREFIX);
-  if (open) return { repo, pr: open.number, skipped: "open", ...(await registerOnce(host, services, repo, open.number)) };
   const closed = await services.port.findPr(repo, bump.branch);
   if (closed) return { repo, pr: closed.number, skipped: "closed" };
   const changed = await regenerate(regen, bump);

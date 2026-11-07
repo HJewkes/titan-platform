@@ -146,6 +146,28 @@ describe("bumpConsumers", () => {
     expect(w.regenCalls).toHaveLength(2);
   });
 
+  it("registers a stale open bump PR when the repo plans as current", async () => {
+    const w = world();
+    const stale = w.fakes.get(CONSUMER_C)!.addPr({ headSha: fakeSha("stale"), headRef: `${BUMP_BRANCH_PREFIX}0badc0de` });
+
+    const notes = await bumpConsumers(w.host, w.services, ports(w));
+
+    expect(notes[2]).toEqual({ repo: CONSUMER_C, pr: stale.number, skipped: "open", registered: expect.any(String) });
+    expect(w.services.store.get().byPr(CONSUMER_C, stale.number)).toMatchObject({ runId: notes[2]!.registered, implementer: CONSUMER_BUMP_IMPLEMENTER });
+    expect(w.fakes.get(CONSUMER_C)!.effects).toMatchObject({ createRef: 0, putContent: 0, createPr: 0 });
+  });
+
+  it("registers an open bump PR on a repo whose tree read fails", async () => {
+    const w = world({ getFileThrows: CONSUMER_A });
+    const open = w.fakes.get(CONSUMER_A)!.addPr({ headSha: fakeSha("open"), headRef: `${BUMP_BRANCH_PREFIX}0badc0de` });
+
+    const notes = await bumpConsumers(w.host, w.services, ports(w));
+
+    expect(notes[0]).toEqual({ repo: CONSUMER_A, pr: open.number, skipped: "open", registered: expect.any(String) });
+    expect(w.services.store.get().byPr(CONSUMER_A, open.number)?.runId).toBe(notes[0]!.registered);
+    expect(notes[1]).toMatchObject({ repo: CONSUMER_B, registered: expect.any(String) });
+  });
+
   it("does not reopen a closed bump PR", async () => {
     const w = world();
     const { bumps } = await planConsumerBumps(w.services, w.registry);
