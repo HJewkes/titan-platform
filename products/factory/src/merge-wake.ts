@@ -7,15 +7,15 @@ import { execChore, POST_MERGE_TIMEOUT_MS, type ChoreExec } from "./workflows/po
  * and this module is deleted then. A serve restart inside the window drops the pending wake; the 10-minute timer covers it.
  */
 
-export const MERGE_WAKE_STEP = "sh-landed";
-export const DEFAULT_SETTLE_MS = 20_000;
+const MERGE_WAKE_STEP = "sh-landed";
+const DEFAULT_SETTLE_MS = 20_000;
 
 /** Absorbs events into one fire per window. */
 export interface MergeWake {
   event(): void;
 }
 
-export interface SettleTriggerDeps {
+interface SettleTriggerDeps {
   settleMs: number;
   fire: () => Promise<void>;
   /** Tests pass a fake clock's timer; absent means an unref'd setTimeout, so a pending wake never holds serve open. */
@@ -41,7 +41,7 @@ export function settleTrigger(deps: SettleTriggerDeps): MergeWake {
 }
 
 /** Only a recorded `sh-landed` is a merge; a wake never changes the step's outcome. */
-export function mergeWakeRoute(route: StepRoute, wake: MergeWake): StepRoute {
+function mergeWakeRoute(route: StepRoute, wake: MergeWake): StepRoute {
   return {
     ...route,
     runner: {
@@ -60,7 +60,7 @@ export function withMergeWake(routes: readonly StepRoute[], wake: MergeWake | un
   return routes.map((route) => (route.match === MERGE_WAKE_STEP ? mergeWakeRoute(route, wake) : route));
 }
 
-export interface MergeWakePorts {
+interface MergeWakePorts {
   exec?: ChoreExec;
   log?: (line: string) => void;
   setTimer?: SettleTriggerDeps["setTimer"];
