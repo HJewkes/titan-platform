@@ -7,7 +7,7 @@ import { gateEverything } from "../gate-policy.js";
 import { requireBaseRequiredChecks } from "../required-checks.js";
 import { askAtHead } from "../shepherd/stale-gates.js";
 import { localMergeTree } from "../shepherd/tree-carry.js";
-import type { GitCachePorts } from "../shepherd/git-cache-ports.js";
+import type { GitCachePorts } from "../shepherd/carry-cache-ports.js";
 import { AWAIT_HEAD_STEPS, AwaitHeadResult, awaitNewHeadRoute, type AwaitHeadTiming } from "./await-head.js";
 import { deadline } from "./deadline.js";
 import { taskIdOf } from "./land-merge-message.js";

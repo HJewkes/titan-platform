@@ -1,6 +1,6 @@
 import { fakeGitHub, githubPort } from "@titan-design/github";
 import { describe, expect, it } from "vitest";
-import type { GitCachePorts } from "../shepherd/git-cache-ports.js";
+import type { GitCachePorts } from "../shepherd/carry-cache-ports.js";
 import { landPrRoutes } from "./land-pr.js";
 
 const SETTLE_INPUT = { repo: "acme/widgets", baseRef: "main", headSha: "a".repeat(40), waitMs: 0, boundMs: 0 };
