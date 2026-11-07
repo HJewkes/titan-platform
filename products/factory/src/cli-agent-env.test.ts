@@ -80,6 +80,7 @@ describe("write verbs in an agent env with no serve answering", () => {
     ["shepherd repair-stop", (port) => ["shepherd", "repair-stop", `${REPO}#1`, "--reason", "demo", "--port", port]],
     ["resume", (port) => ["resume", "--port", port]],
     ["toolchain fanout", (port) => ["toolchain", "fanout", "--port", port]],
+    ["release bump-consumers", (port) => ["release", "bump-consumers", "--port", port]],
   ];
 
   it.each(writes)("%s exits UNAVAILABLE and makes no GitHub call", async (verb, argvOf) => {

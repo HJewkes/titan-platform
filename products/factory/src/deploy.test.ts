@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -1351,6 +1351,25 @@ describe("titan-factory service deploy verb", () => {
     expect(code).toBe(1);
     expect(machine.holds().manual).toMatchObject({ set: true, hold: { source: "morning:seat-a:7" } });
     expect(machine.mutations()).toEqual([]);
+  });
+
+  it("repoints the CLI link under the injected deploy home, not the host's", async () => {
+    const home = mkdtempSync(join(tmpdir(), "factory-deploy-home-"));
+    scratch.push(home);
+    const staleBuild = join(home, "tree", "products", "factory", "dist", "bin.js");
+    mkdirSync(join(staleBuild, ".."), { recursive: true });
+    writeFileSync(staleBuild, "stale build");
+    const link = join(home, ".local", "bin", "titan-factory");
+    mkdirSync(join(link, ".."), { recursive: true });
+    symlinkSync(staleBuild, link);
+    const deployedBin = `${CHECKOUT}/products/factory/dist/bin.js`;
+    const machine = fakeMachine({ files: { [plistPath(home)]: `<string>${deployedBin}</string>` } });
+    machine.ports.home = home;
+
+    const code = await cliIn(configured({ deployCheckout: CHECKOUT }), machine);
+
+    expect(code).toBe(0);
+    expect(readlinkSync(link)).toBe(deployedBin);
   });
 
   it("deploys from service.deployCheckout when it is configured", async () => {

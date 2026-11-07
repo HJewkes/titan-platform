@@ -809,6 +809,8 @@ A failed install or build also writes `deploy-build.log` beside `deploy.json`: t
 target, time, exit code and the redacted last 200 lines of stderr and stdout. The record's `why`
 keeps a 20-line tail and names the log; the file holds only the newest failure.
 
+After an exit-0 deploy whose service runs the deploy checkout, `service deploy` also repoints a factory-build symlink at `~/.local/bin/titan-factory` to that checkout's `dist/bin.js` (atomic rename). A regular file, a foreign symlink or an absent path is left alone, and a failed relink only warns.
+
 A seat's Morning queue can hold deploys too. A numbered item under `## Morning queue (owner
 only)` in a `<seat>.md` queue file whose text starts with `DEPLOY HOLD:` (case-sensitive, bold
 allowed) sets the manual hold with the item's reason and `source: morning:<seat>:<n>`, for example
@@ -1078,6 +1080,17 @@ moved) or `answered-elsewhere`, and records `withdrawn {reason, outcome}` (`with
 `kept-answered`). It pushes one `Visual review withdrawn: <repo>#<pr>` line (`new head <sha8>` or `PR closed`) only
 for `closed` and `new-head` when the outcome is `withdrawn`. A withdraw that fails records `failed` (`withdraw`) with
 the stderr line and pushes nothing. ntfy cannot retract a message, so the withdrawn line is a second message.
+
+### Waking the burndown tick on a merge: `shepherd.mergeWake`
+
+With `"mergeWake": {"argv": ["systemctl", "--user", "start", "--no-block", "agent-chat-burndown.service"]}` set,
+each shepherd-pr run's recorded `sh-landed` step arms a settle window (`src/merge-wake.ts`). Later merges inside it
+are absorbed, and when it ends serve runs the argv once, with no shell, and logs `shepherd: merge-wake ran` or
+`failed`. `settleMs` defaults to 20000 and may not exceed 30000; `cwd` and `timeoutMs` (default 10 minutes) are as for
+`postMerge`. A wake failure never fails the step. Absent, no merge wakes the tick. The 10-minute timer stays as the
+backstop: a serve restart inside the window drops the pending wake, and a merge during a running oneshot joins that
+run. On macOS the argv is `launchctl kickstart gui/<uid>/<label>`, without `-k`. TP-1558 moves this onto the host
+scheduler's event trigger and deletes the module.
 
 ### A reviewer account out of usage
 
