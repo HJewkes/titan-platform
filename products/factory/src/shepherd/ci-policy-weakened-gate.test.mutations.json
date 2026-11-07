@@ -4,8 +4,8 @@
     {
       "name": "a ci-policy-weakened gate reads as an ordinary land gate",
       "file": "products/factory/src/shepherd/approval-carry.ts",
-      "find": "holdsOwnerAtHeadRow(prompt, \"ci-policy-weakened\");",
-      "replace": "holdsOwnerAtHeadRow(prompt, \"skill-path\");",
+      "find": "OWNER_AT_HEAD_ROWS.find((row) => holdsOwnerAtHeadRow(prompt, row))",
+      "replace": "OWNER_AT_HEAD_ROWS.find((row) => row !== \"ci-policy-weakened\" && holdsOwnerAtHeadRow(prompt, row))",
       "kills": [
         "an owner merge approval meeting a CI-policy-weakened gate asks the owner again at a ci-policy-weakened gate, even when the head is an empty-remerge merge-up",
         "an owner merge approval meeting a CI-policy-weakened gate does not follow an approval given at a ci-policy-weakened gate to a later head's gate"
@@ -14,8 +14,8 @@
     {
       "name": "an earlier approval stands at a ci-policy-weakened gate",
       "file": "products/factory/src/shepherd/approval-carry.ts",
-      "find": "const standing = !isSkillPathGate(prompt) && !ciPolicyWeakened && carry.reviewedMerge(asked);",
-      "replace": "const standing = !isSkillPathGate(prompt) && carry.reviewedMerge(asked);",
+      "find": "const standing = followable && carry.reviewedMerge(asked);",
+      "replace": "const standing = carry.reviewedMerge(asked);",
       "kills": [
         "an owner merge approval meeting a CI-policy-weakened gate asks the owner again at a ci-policy-weakened gate, even when the head is an empty-remerge merge-up"
       ]
@@ -23,7 +23,7 @@
     {
       "name": "an approval given at a ci-policy-weakened gate is kept to follow",
       "file": "products/factory/src/shepherd/approval-carry.ts",
-      "find": "if (ciPolicyWeakened) approved = undefined;\n    else if",
+      "find": "if (!followable) approved = undefined;\n    else if",
       "replace": "if",
       "kills": [
         "an owner merge approval meeting a CI-policy-weakened gate does not follow an approval given at a ci-policy-weakened gate to a later head's gate"

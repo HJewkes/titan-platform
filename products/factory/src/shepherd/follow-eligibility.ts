@@ -19,7 +19,7 @@ export const ESCALATION_TABLE = "shepherd-route";
 const OWN_MERGE_UP_KINDS: ReadonlySet<string> = new Set(["security"]);
 
 /** `carrying` may follow the remerge, fix-probe and merge-up rules; `own-merge-up` only a disjoint clean merge-up. */
-export type FollowRule = "carrying" | "own-merge-up";
+type FollowRule = "carrying" | "own-merge-up";
 
 /** The rule a registered kind follows by; every other kind, and no registration, follows nothing. */
 export function followRuleOf(kind: string | null | undefined): FollowRule | undefined {
