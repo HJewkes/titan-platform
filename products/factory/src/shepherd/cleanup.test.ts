@@ -268,13 +268,20 @@ describe("sh-cleanup task", () => {
       expect(w.tasks.closed).toEqual([]);
     });
 
-    it("closes on a slice-less registration when its PR carries the only slice left", async () => {
+    it("keeps a slice-less registration open when the one slice left is only a guess, since the plan lists more", async () => {
       const w = world({ slicing: sliced(`${landed("S2")}\n${landed("S3")}`) });
 
       const result = await w.run();
 
-      expect(result.task).toBe("done");
-      expect(w.tasks.closed).toEqual(["demo/TP-1"]);
+      expect(result.task).toBe("left-open");
+      expect(w.tasks.closed).toEqual([]);
+    });
+
+    it("keeps the task open when the body only mentions the unlanded slices", async () => {
+      const fake = mergedPr(fakeGitHub({ repo: REPO }), { headRef: "feat/x", headRepo: REPO, body: "Slices b and c follow in later PRs." });
+      const w = world({ fake, slicing: { tags: [], notes: "", plan: planOf("a", "b", "c") } });
+
+      expect((await w.run()).task).toBe("left-open");
     });
 
     it("keeps a slice-less registration open while other slices are unlanded and its body names none", async () => {
@@ -287,15 +294,15 @@ describe("sh-cleanup task", () => {
       expect(w.tasks.notes).toEqual([`demo/TP-1: PR ${REPO}#1 at ${fakeSha("merge")} merged; task left open: it has slices S1, S2`]);
     });
 
-    it("closes when the PR body names every unlanded slice, as #3257 did for slices a and b", async () => {
-      const fake = mergedPr(fakeGitHub({ repo: REPO }), { headRef: "feat/x", headRepo: REPO, body: "Slices a and b ship together, because slice a alone drops every question." });
+    it("closes when the PR body declares every unlanded slice, as #3257 did for slices a and b", async () => {
+      const fake = mergedPr(fakeGitHub({ repo: REPO }), { headRef: "feat/x", headRepo: REPO, body: "Slices a and b ship together.\n\nCarries slices: a, b" });
       const w = world({ fake, slicing: { tags: [], notes: "", plan: planOf("a", "b") } });
 
       expect((await w.run()).task).toBe("done");
     });
 
-    it("keeps the task open when the PR body names only some of the unlanded slices", async () => {
-      const fake = mergedPr(fakeGitHub({ repo: REPO }), { headRef: "feat/x", headRepo: REPO, body: "Slices a and b ship together." });
+    it("keeps the task open when the PR body declares only some of the unlanded slices", async () => {
+      const fake = mergedPr(fakeGitHub({ repo: REPO }), { headRef: "feat/x", headRepo: REPO, body: "Carries slices: a, b" });
       const w = world({ fake, slicing: { tags: [], notes: "", plan: planOf("a", "b", "c") } });
 
       expect((await w.run()).task).toBe("left-open");

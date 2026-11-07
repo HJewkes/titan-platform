@@ -4,7 +4,7 @@ import { z } from "zod";
 import { redactCredentials } from "../redact.js";
 import { deadline, type Deadline } from "../workflows/deadline.js";
 import { consoleTextOf, errorClass, failureOf } from "./error-class.js";
-import { ALL_SLICES_LANDED, completedBefore, heldOpenBy, LANDED_BEFORE_THIS_PR, SLICE_TAGS, unlandedSlices } from "./held-open.js";
+import { ALL_SLICES_LANDED, completedBefore, heldOpenBy, LANDED_BEFORE_THIS_PR, SLICE_TAGS, sliceProgress } from "./held-open.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
 import { carriesUnlanded, closesTask, otherOpenOnTask } from "./task-close.js";
 import type { CleanupAgent, CleanupAgents, CleanupPorts, CleanupTasks, TaskClose } from "./ports.js";
@@ -213,21 +213,21 @@ async function settleLastSliceOnly(deps: CleanupDeps, registration: Registration
   return onOpenTask(registration.task, wait, (initiative, id) => tasks.appendNote(initiative, id, `slice merged: ${landing}`).then(() => "slice-noted"), tasks);
 }
 
-type CarriedBy = (unlanded: string[]) => Promise<string[]>;
+type CarriedBy = (progress: { planned: number; unlanded: string[] }) => Promise<string[]>;
 
-/** A PR registered with no slice may still be the one that lands every slice left on its task (TP-4776); an unreadable body carries nothing, so the task stays open. */
-const carriedBy = (deps: CleanupDeps, registration: Registration, input: CleanupInput): CarriedBy => async (unlanded) => {
-  if (registration.slice !== null || unlanded.length === 0) return [];
+/** A PR registered with no slice may still be the one that lands every slice left on its task (TP-4776); only a positive declaration in the body carries (see `carriesUnlanded`), and a body or PR list that cannot be read keeps the task open. */
+const carriedBy = (deps: CleanupDeps, registration: Registration, input: CleanupInput): CarriedBy => async (progress) => {
+  if (registration.slice !== null || progress.unlanded.length === 0) return [];
   const body = (await deps.port.getPr(input.repo, input.pr)).body;
   const otherOpen = await otherOpenOnTask(deps.port, deps.store.get().all(), registration);
-  return carriesUnlanded(unlanded, body, otherOpen) ? unlanded : [];
+  return carriesUnlanded(progress, body, otherOpen) ? progress.unlanded : [];
 };
 
 /** The note goes first: a crash between the two leaves an open task with its citation, and the replay finds the line already there. */
 function closeUnlessSliced(tasks: CleanupTasks, landing: string, shaRead: boolean, lastSlice: boolean | undefined, carriedBy: CarriedBy): (initiative: string, id: string) => Promise<string> {
   return async (initiative, id) => {
     const slicing = await tasks.slicing(initiative, id);
-    const carried = await carriedBy(unlandedSlices(slicing, lastSlice));
+    const carried = await carriedBy(sliceProgress(slicing, lastSlice));
     const heldBy = heldOpenBy(slicing, lastSlice, carried);
     if (heldBy === undefined || ((lastSlice || carried.length > 0) && heldBy === ALL_SLICES_LANDED)) {
       const overrodeTag = lastSlice && SLICE_TAGS.some((tag) => slicing.tags.includes(tag));

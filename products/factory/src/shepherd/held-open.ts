@@ -23,11 +23,11 @@ export function heldOpenBy(slicing: TaskSlicing, lastSlice = false, carried: rea
   return heldBySlices(hold.slices, slicing.tags, slicing.notes, carried);
 }
 
-/** The slices a list-holding task still waits on, or none when something other than its slice list holds it. */
-export function unlandedSlices(slicing: TaskSlicing, lastSlice = false): string[] {
+/** The slices a list-holding task lists and the ones still unlanded; both are empty when something other than its slice list holds it. */
+export function sliceProgress(slicing: TaskSlicing, lastSlice = false): { planned: number; unlanded: string[] } {
   const hold = holdOf(slicing, lastSlice);
-  if (hold === undefined || "reason" in hold) return [];
-  return unlandedOf(hold.slices, slicing.notes, []);
+  if (hold === undefined || "reason" in hold) return { planned: 0, unlanded: [] };
+  return { planned: hold.slices.length, unlanded: unlandedOf(hold.slices, slicing.notes, []) };
 }
 
 type Hold = { reason: string } | { slices: string[] } | undefined;

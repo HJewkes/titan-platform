@@ -34,13 +34,23 @@ export async function otherOpenOnTask(port: GitHubPort, registrations: readonly 
   return open;
 }
 
-const SLICE_NAMES = /\b[Ss]lices?\s+([A-Za-z0-9]+(?:(?:\s*,\s*|\s+and\s+|\s*&\s*)[A-Za-z0-9]+)*)/g;
+/** One line of the PR body, in any case: `Carries slices: a, b`. Free-text mentions of a slice are no evidence, since a prep or follow-up PR mentions slices it does not carry. */
+const CARRIES_LINE = /^[ \t]*carries slices?:[ \t]*(.+?)[ \t]*$/im;
 
-/** Whether an unsliced PR merged the slices still open on its task: its body says it is the last slice or names each of them, or, with no other registered PR open on the task, it names each unlanded slice or is the one slice left. Only `Last slice: yes` overrides an open sibling. A `Last slice: no` line never carries. */
-export function carriesUnlanded(unlanded: readonly string[], body: string | undefined, otherOpen: readonly string[]): boolean {
+const carriedLabels = (body: string | undefined): Set<string> => new Set((CARRIES_LINE.exec(body ?? "")?.[1] ?? "").split(/\s*,\s*|\s+and\s+|\s*&\s*/).filter((label) => label !== ""));
+
+/**
+ * Whether an unsliced PR merged the slices still open on its task, decided from a positive declaration only. `Last slice: yes`
+ * carries them all, even past an open sibling. A `Carries slices:` line naming every unlanded slice carries them when no other
+ * registered PR is open on the task. `Last slice: no` never carries. One deliberate exception: a task whose plan lists a single
+ * slice, still unlanded, has nothing else a PR could be, so a PR with no sibling open carries it without a declaration (#3250).
+ */
+export function carriesUnlanded(slices: { planned: number; unlanded: readonly string[] }, body: string | undefined, otherOpen: readonly string[]): boolean {
   const marker = lastSliceMarker(body);
+  const { planned, unlanded } = slices;
   if (unlanded.length === 0 || marker === "no") return false;
-  const named = new Set([...(body ?? "").matchAll(SLICE_NAMES)].flatMap((match) => match[1]!.split(/\s*,\s*|\s+and\s+|\s*&\s*/)));
   if (marker === "yes") return true;
-  return otherOpen.length === 0 && (unlanded.every((label) => named.has(label)) || unlanded.length === 1);
+  if (otherOpen.length > 0) return false;
+  const declared = carriedLabels(body);
+  return unlanded.every((label) => declared.has(label)) || (planned === 1 && unlanded.length === 1);
 }
