@@ -26,6 +26,7 @@ import {
 } from "./shepherd/deploy-pacer.js";
 import { failureOf } from "./shepherd/error-class.js";
 import { deployPacerPorts } from "./shepherd/redeploy.js";
+import { hostDeployerOptions, nodeDeployerPorts } from "./shepherd/redeploy-adapter.js";
 import { startSweep, type Sweep } from "./sweep.js";
 
 /** What the sweep reads from the running service. */
@@ -212,7 +213,7 @@ export function deployPendingHealth(options: DeployPacerOptions | undefined): { 
 
 /** The same bin and state dir `workflows.ts` gives Shepherd's redeploy step, so the queue and the sweep share one record. */
 export const configuredDeployPacer = (env: NodeJS.ProcessEnv, checkout: string): DeployPacerOptions => ({
-  ...deployPacerPorts({ bin: fileURLToPath(new URL("./bin.js", import.meta.url)), stateDir: factoryStateDir(env) }),
+  ...deployPacerPorts({ ...hostDeployerOptions(), bin: fileURLToPath(new URL("./bin.js", import.meta.url)), stateDir: factoryStateDir(env) }, nodeDeployerPorts, nodeWantedStore),
   isAncestor: cachedAncestry(gitAncestry(checkout)),
   morningQueuesDir: morningQueuesDir(env),
   green: FACTORY_REPO === undefined ? NO_REPO : ghMainGreen(FACTORY_REPO),

@@ -90,6 +90,10 @@ describe("the G10 hold table", () => {
     expect(await unheldOf(importers)).toEqual([]);
   });
 
+  it("holds the module that builds the production phases, which reads the owner's visualSetCarry flag", async () => {
+    expect(await holdFor("products/factory/src/shepherd-phases.ts")).toBe("g10-adversary: policy touch");
+  });
+
   it.each(["index.ts", "glob.ts", "classify.ts", "aggregate.ts", "accept-verdict.ts", "plan.ts", "verdict-schemas.ts"])("holds the panel module %s the hold and the sign-off run through", async (name) => {
     expect(await holdFor(`packages/review-panel/src/${name}`)).toBe("g10-adversary: policy touch");
   });

@@ -52,7 +52,7 @@ function world(store: WantedStore, running: string) {
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   const base = githubPort(fake.wire);
   const port = { ...base, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && cancelledUnderGreenTip(fake), base.checkRuns(repo, sha)) };
-  const deployer = { ...systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", now: () => new Date(AT) }, queueOnlyPorts, store), runningSha: () => running };
+  const deployer = { ...systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", node: "/bin/node", platform: "linux", now: () => new Date(AT) }, queueOnlyPorts, store), runningSha: () => running };
   let clock = 0;
   const routes = factoryRoutesFor({ port, store: shepherdStoreRef(), now: () => clock, sleep: async (ms, signal) => ((clock += ms), sleep(1, signal)), redeploy: deployer });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow()], routes, gatePollMs: 5 });
@@ -143,7 +143,7 @@ describe("an older merge whose own main run goes green after a newer sha is queu
   const isAncestor = async (ancestor: string, descendant: string) => ancestor === OLDER && descendant === NEWER;
 
   async function queue(store: WantedStore, sha: string, probe: AncestryProbe = isAncestor): Promise<Redeploy> {
-    const deployer = { ...systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", now: () => new Date(AT), isAncestor: probe }, queueOnlyPorts, store), runningSha: () => RUNNING };
+    const deployer = { ...systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", node: "/bin/node", platform: "linux", now: () => new Date(AT), isAncestor: probe }, queueOnlyPorts, store), runningSha: () => RUNNING };
     return redeploy(deployer, { repo: OWN_REPO, pr: 1, mergeSha: sha });
   }
 

@@ -73,6 +73,20 @@ interface ConsumerBumpSweepNote {
   registered?: string;
   current?: true;
   error?: string;
+  /** The leftover branch that blocked this repo: the sweep cannot tell whose commits it holds, so a human deletes it or opens its PR. */
+  branch?: string;
+}
+
+/** A bump branch with no open PR; its commits are not provably the sweep's own, so it is never built on. */
+class LeftoverBumpBranchError extends Error {
+  constructor(readonly branch: string) {
+    super(`leftover bump branch ${branch} has no open PR`);
+    this.name = "LeftoverBumpBranchError";
+  }
+}
+
+function noteOfFailure(repo: RepoSlug, error: unknown): ConsumerBumpSweepNote {
+  return error instanceof LeftoverBumpBranchError ? { repo, error: failureOf(error), branch: error.branch } : { repo, error: failureOf(error) };
 }
 
 export interface ConsumerBumpPorts {
@@ -88,7 +102,7 @@ export async function bumpConsumers(host: FactoryHost, services: ShepherdService
   const { bumps, notes } = await planConsumerBumps(services, ports.registry, unbumped);
   const result: ConsumerBumpSweepNote[] = [...openNotes, ...notes];
   for (const bump of bumps) {
-    result.push(await bumpOne(host, services, ports.regen, bump).catch((error: unknown) => ({ repo: bump.repo, error: failureOf(error) })));
+    result.push(await bumpOne(host, services, ports.regen, bump).catch((error: unknown) => noteOfFailure(bump.repo, error)));
   }
   return result.sort((a, b) => a.repo.localeCompare(b.repo));
 }
@@ -99,7 +113,7 @@ async function registerOpenBumps(host: FactoryHost, services: ShepherdServices):
   const notes: ConsumerBumpSweepNote[] = [];
   for (const repo of consumerRepos(services.seats())) {
     try {
-      const [open] = (await services.port.listOpenPrs(repo, BUMP_BRANCH_PREFIX)).filter((pr) => headInRepo(pr, repo));
+      const open = await openBumpOf(services, repo);
       if (open) notes.push({ repo, pr: open.number, skipped: "open", ...(await registerOnce(host, services, repo, open.number)) });
       else unbumped.push(repo);
     } catch (error) {
@@ -107,6 +121,47 @@ async function registerOpenBumps(host: FactoryHost, services: ShepherdServices):
     }
   }
   return { unbumped, notes };
+}
+
+async function openBumpOf(services: Pick<ShepherdServices, "port">, repo: RepoSlug): Promise<PullRequest | undefined> {
+  return (await services.port.listOpenPrs(repo, BUMP_BRANCH_PREFIX)).find((pr) => headInRepo(pr, repo));
+}
+
+/** A consumer the sweep would leave alone because its bump PR already exists. */
+interface SkippedBump {
+  repo: RepoSlug;
+  pr: number;
+  skipped: "open" | "closed";
+}
+
+/** Reads only: what `bumpConsumers` would open, with the open and closed bump PR checks it makes before it writes. */
+export async function previewConsumerBumps(services: Pick<ShepherdServices, "port" | "seats">, registry: LatestRegistry): Promise<ConsumerBumpPlans & { skips: SkippedBump[] }> {
+  const skips: SkippedBump[] = [];
+  const unbumped: RepoSlug[] = [];
+  const errors: ConsumerBumpNote[] = [];
+  for (const repo of consumerRepos(services.seats())) {
+    try {
+      const open = await openBumpOf(services, repo);
+      if (open) skips.push({ repo, pr: open.number, skipped: "open" });
+      else unbumped.push(repo);
+    } catch (error) {
+      errors.push({ repo, error: failureOf(error) });
+    }
+  }
+  const planned = await planConsumerBumps(services, registry, unbumped);
+  const bumps: PlannedBump[] = [];
+  const notes = [...errors, ...planned.notes];
+  for (const bump of planned.bumps) {
+    try {
+      const closed = await services.port.findPr(bump.repo, bump.branch);
+      if (closed && !headInRepo(closed, bump.repo)) throw new Error(`${bump.repo} PR #${closed.number} from a fork holds ${bump.branch}`);
+      if (closed) skips.push({ repo: bump.repo, pr: closed.number, skipped: "closed" });
+      else bumps.push(bump);
+    } catch (error) {
+      notes.push({ repo: bump.repo, error: failureOf(error) });
+    }
+  }
+  return { bumps, notes, skips };
 }
 
 async function bumpOne(host: FactoryHost, services: ShepherdServices, regen: LockfileRegen, bump: PlannedBump): Promise<ConsumerBumpSweepNote> {
@@ -148,7 +203,7 @@ async function openBump(port: GitHubPort, bump: PlannedBump, files: FileWrite[])
   const baseSha = await port.getHeadSha(repo, tree.ref);
   if (baseSha === null) throw new Error(`${repo} has no ${tree.ref} branch`);
   const created = await port.ensureBranch(repo, branch, baseSha);
-  if (!created.done) throw new Error(`${repo} already has a ${branch} branch with no PR`);
+  if (!created.done) throw new LeftoverBumpBranchError(branch);
   for (const file of files) await port.putFile(repo, { path: file.path, branch, content: file.content, message: `${BUMP_TITLE}: ${file.path}`, expectedBlobSha: file.expectedBlobSha });
   const opened = await port.openPr(repo, { head: branch, base: tree.ref, title: BUMP_TITLE, body: bumpBody(bump.plan) });
   if (!opened.done || !headInRepo(opened.pr, repo)) throw new Error(`${repo} PR #${opened.pr.number} on ${branch} was not opened by this sweep`);
