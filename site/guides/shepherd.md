@@ -555,6 +555,16 @@ next `titan-factory shepherd resync` or server start. Shepherd does not sweep ev
 transient-only gate on each tick, because a `merge-tree-clean` gate would then be superseded
 again on every tick while the merge tree stays dirty.
 
+`titan-factory shepherd refollow [--repo owner/repo] [--dry-run]` asks a pending land gate
+again so the run's own approval carry decides it. It cancels a land `approve-merge` gate with a
+reason that starts `superseded: refollow: `, and only when all of these hold: the gate is still
+at the pull request's open head, the run is registered with no owner hold, an earlier land gate
+of the run was answered `merge` by the owner (`owner-terminal` or `owner-remote`), and no
+refollow has cancelled a gate at that head before. The cancel is a plain supersede, so the head
+keeps its review. The run asks again at the same head, and the carry either records the
+follow or opens the owner's gate again. The coordinator who runs the verb never answers the
+gate.
+
 A reviewer that misses the 30-minute wait is read again before Shepherd gives up on it. The
 `sh-late-verdict` step reads that reviewer's final message until it holds a verdict at the
 head, the reviewer has exited, or 10 minutes pass. A reviewer held up by a permission prompt

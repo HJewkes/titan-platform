@@ -141,6 +141,8 @@
   "readdress.ts",
   "recorded-route.ts",
   "redeploy.ts",
+  "refollow-command.ts",
+  "refollow.ts",
   "register-args.ts",
   "register-kind.ts",
   "registrant.ts",

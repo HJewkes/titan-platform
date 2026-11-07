@@ -25,7 +25,7 @@ import { endSuperseded, isDivergedEnd, isReplayDiverged, restartFor } from "./re
 import { lastReadHead } from "./last-read-head.js";
 import { sizeFlagFor, type SliceFlag } from "./size-flag.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
-import { readdressCommand } from "./readdress-command.js";
+import { REASK_COMMANDS } from "./refollow-command.js";
 import { orderCommand, type StatusOrder } from "./merge-order-command.js";
 import { repairStopCommand } from "./repair-stop-command.js";
 import { mergeBaseCommand } from "./merge-base-command.js";
@@ -376,7 +376,7 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.merge": mergeCommand,
   "shepherd.review": reviewCommand,
   "shepherd.resync": resyncCommand,
-  "shepherd.readdress-dead-ends": readdressCommand,
+  ...REASK_COMMANDS,
   "shepherd.prs": prsCommand,
   "shepherd.watch": watchCommand,
   "shepherd.visual-delta": visualDeltaCommand,
