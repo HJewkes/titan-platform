@@ -8,6 +8,7 @@ import type { PlannerConfig } from "./config.js";
 import { buildDigest, digestPreamble, type DigestPiece } from "./digest.js";
 import { combineParts, hashText, normalizeVolatile } from "./fingerprint.js";
 import { readInput, type PlannerRun } from "./inputs.js";
+import { appendSkipRecord, readPriorWindow } from "./prior-window.js";
 import { watchForReview } from "./watch.js";
 import { watchPorts } from "./watch-ports.js";
 
@@ -37,7 +38,7 @@ interface WakePorts {
 
 const BUSY = new Set(["live", "starting", "working"]);
 
-/** One timer wake: skip while a planner runs or nothing it reads has changed, else retire the old one and spawn. */
+/** One timer wake: skip while a planner runs, nothing it reads has changed or the prior window was quiet, else retire the old one and spawn. */
 export async function plannerWake(config: PlannerConfig, ports: WakePorts): Promise<number> {
   const at = ports.now().toISOString();
   const state = await agentState(config, ports.run);
@@ -53,6 +54,7 @@ export async function plannerWake(config: PlannerConfig, ports: WakePorts): Prom
     writeRecord(recordPath, { at: last!.at, outcome: "skipped", fingerprint: read.fingerprint, parts: read.parts });
     return EXIT.OK;
   }
+  if (await quietWindow(config, ports, last, at)) return EXIT.OK;
   if (read.error) ports.log(`${at} fingerprint unavailable (${read.error}); running`);
   if (state !== "") await ports.run(config.agentChat, ["agent", "retire", config.name]);
   const spawned = await spawn(config, ports, briefFor(config, ports.stateDir, read.pieces));
@@ -63,6 +65,18 @@ export async function plannerWake(config: PlannerConfig, ports: WakePorts): Prom
   writeRecord(recordPath, { at, outcome: "spawned", fingerprint: read.fingerprint, parts: read.parts });
   ports.log(`${at} spawned ${config.name} on ${config.profile}${read.fingerprint ? ` (${read.fingerprint.slice(0, 12)})` : ""}`);
   return awaitReview(config, ports, at);
+}
+
+/** Since the last spawn, so windows a skip left unreviewed stay in the next one; with no spawn yet there is no window to judge. */
+async function quietWindow(config: PlannerConfig, ports: WakePorts, last: WakeRecord | undefined, at: string): Promise<boolean> {
+  if (!config.priorWindow || last === undefined) return false;
+  const verdict = await readPriorWindow(config.priorWindow, last.at, ports.run);
+  if (verdict.kind === "unknown") ports.log(`${at} prior window unavailable (${verdict.error}); running`);
+  if (verdict.kind !== "quiet") return false;
+  const line = `${at} skip: prior window since ${last.at} had ${verdict.summary}`;
+  appendSkipRecord(config.reviewDir, line);
+  ports.log(line);
+  return true;
 }
 
 /** Spawn returns 0 even when the planner dies on its first API call, so only a new review file proves the wake worked. */
