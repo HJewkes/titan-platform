@@ -4,8 +4,11 @@ import { join } from "node:path";
 import { gitIn, seedRepo, withHistory } from "@titan-design/test-kit/git";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CLOSURE_LOCK_DRIVER, type GitConfigEntry } from "../merge-drivers.js";
+import { hostCarryPorts, nodeCacheFs, systemGit } from "./carry-cache-adapter.js";
+import { fixCarry } from "./fix-carry.js";
 import { REVIEW_STEPS } from "./review.js";
-import { CARRY_STEP, carry, carryCacheDir, localMergeTree, type CarryResult } from "./tree-carry.js";
+import { reviewScope } from "./review-scope.js";
+import { CARRY_STEP, carry, carryCacheDir, ensureCache, localMergeTree, type CacheFs, type CarryResult, type Git } from "./tree-carry.js";
 
 const REPO = "acme/widgets";
 
@@ -271,5 +274,72 @@ describe("the git cache's closure-lock merge driver (TP-4752)", { timeout: 30_00
     const result = await probe(h1, h2);
 
     expect(result).toMatchObject({ equal: true, mergeTree: git("rev-parse", `${h2}^{tree}`) });
+  });
+});
+
+describe("the cache behind the ports", { timeout: 30_000 }, () => {
+  /** Records every fs call, then does it on the real disk. */
+  function recordingFs(): { fs: CacheFs; calls: string[] } {
+    const calls: string[] = [];
+    const fs: CacheFs = {
+      exists: (path) => (calls.push(`exists ${path}`), nodeCacheFs.exists(path)),
+      mkdirp: (dir) => (calls.push(`mkdirp ${dir}`), nodeCacheFs.mkdirp(dir)),
+    };
+    return { fs, calls };
+  }
+
+  function recordingGit(): { git: Git; commands: string[] } {
+    const commands: string[] = [];
+    const git: Git = (dir, args, signal) => (commands.push(args.join(" ")), systemGit(dir, args, signal));
+    return { git, commands };
+  }
+
+  it("ensureCache initialises a missing cache through the ports' fs and git", async () => {
+    const { fs, calls } = recordingFs();
+    const { git, commands } = recordingGit();
+    const dir = carryCacheDir(stateDir, REPO);
+
+    await ensureCache({ git, fs, dir });
+
+    expect(calls).toEqual([`exists ${join(dir, "HEAD")}`, `mkdirp ${join(stateDir, "git-cache", "acme")}`]);
+    expect(commands[0]).toBe("init --bare --quiet");
+    expect(existsSync(join(dir, "HEAD"))).toBe(true);
+  });
+
+  it("ensureCache never re-initialises an existing cache", async () => {
+    const dir = carryCacheDir(stateDir, REPO);
+    await ensureCache({ git: systemGit, fs: nodeCacheFs, dir });
+    const { fs, calls } = recordingFs();
+    const { git, commands } = recordingGit();
+
+    await ensureCache({ git, fs, dir });
+
+    expect(calls).toEqual([`exists ${join(dir, "HEAD")}`]);
+    expect(commands.filter((command) => command.startsWith("init"))).toEqual([]);
+  });
+
+  it("probes from two different carry callers on one repo run one at a time", async () => {
+    const { h1 } = reviewedHead();
+    const h2 = mergeMain();
+    let running = 0;
+    let most = 0;
+    const git: Git = async (dir, args, signal) => {
+      most = Math.max(most, ++running);
+      try {
+        return await systemGit(dir, args, signal);
+      } finally {
+        running -= 1;
+      }
+    };
+    const options = { ports: { ...hostCarryPorts, git }, stateDir, remote: () => origin };
+
+    const [fixed, scoped] = await Promise.all([
+      fixCarry({ repo: REPO, baseRef: "main", fromHead: h1, head: h2 }, options),
+      reviewScope({ repo: REPO, baseRef: "main", sinceHead: h1, head: h2 }, options),
+    ]);
+
+    expect(fixed.carries).toBe(true);
+    expect(scoped).toEqual({ scoped: false, reason: "no change since the reviewed head" });
+    expect(most).toBe(1);
   });
 });

@@ -10,7 +10,7 @@ import type { ShepherdPhases, VisualSetCarry } from "./phases.js";
 import type { OwnerGateReason } from "./policy-schema.js";
 import { isRepoKey } from "./seats.js";
 import type { VisualAcceptRun } from "./visual-accept.js";
-import { CarryRefusal, carryCacheDir, carryStateDir, ensureCache, githubRemote, isAncestor, must, reasonOf, serialized, systemGit, type CarryOptions, type Git } from "./tree-carry.js";
+import { CarryRefusal, cacheFor, ensureCache, isAncestor, must, reasonOf, serialized, type CacheHandle, type CarryOptions, type Git } from "./tree-carry.js";
 
 /** Under the approval-carry family so the step reads as awaiting approval; like the own-merge-up probe, its route is the longer match. */
 export const SET_CARRY_STEP = "sh-approval-carry:set";
@@ -41,8 +41,9 @@ async function objectsAt(git: Git, dir: string, head: string, paths: readonly st
   return new Map(entries.map(([, mode = "", type, id = "", path = ""]) => [path, type === "blob" && mode === "100644" ? id : `${type} ${mode}`]));
 }
 
-async function probe(git: Git, dir: string, url: string, { fromHead, head, mode, set }: SetCarryInput, signal?: AbortSignal): Promise<SetCarryResult> {
-  await ensureCache(git, dir, signal);
+async function probe(cache: CacheHandle, { fromHead, head, mode, set }: SetCarryInput, signal?: AbortSignal): Promise<SetCarryResult> {
+  const { git, dir, url } = cache;
+  await ensureCache(cache, signal);
   await must(git, dir, ["fetch", "--no-tags", "--no-write-fetch-head", "--quiet", url, fromHead, head], signal);
   if (!(await isAncestor(git, dir, fromHead, head, signal))) return refuse(mode, `${fromHead} is not an ancestor of ${head}`);
   const changed = await changedPathsBetween(git, dir, fromHead, head, signal);
@@ -62,9 +63,8 @@ export async function setCarry(raw: unknown, options: CarryOptions = {}): Promis
   if (!parsed.success) return refuse("shadow", "invalid set carry input");
   const input = parsed.data;
   try {
-    const dir = carryCacheDir(carryStateDir(options.stateDir), input.repo);
-    const url = (options.remote ?? githubRemote)(input.repo);
-    return await serialized(dir, () => probe(options.git ?? systemGit, dir, url, input, options.signal));
+    const cache = cacheFor(input.repo, options);
+    return await serialized(cache.dir, () => probe(cache, input, options.signal));
   } catch (error) {
     options.signal?.throwIfAborted();
     return refuse(input.mode, reasonOf(error));

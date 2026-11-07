@@ -213,6 +213,8 @@
   "shepherd/brief-command.ts",
   "shepherd/brief-inputs.ts",
   "shepherd/brief-render.ts",
+  "shepherd/carry-cache-adapter.ts",
+  "shepherd/carry-cache-ports.ts",
   "shepherd/carry-kinds.ts",
   "shepherd/changed-paths.ts",
   "shepherd/ci-budget-json.ts",

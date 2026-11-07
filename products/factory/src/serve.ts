@@ -59,7 +59,7 @@ import { MAIN_WATCH_MS, openMainWatch, type MainWatchPorts } from "./shepherd/ma
 import { SEAT_DIGEST_MS, fileSeatDigestMemory, sweepSeatDigests, type SeatDigestPorts } from "./shepherd/seat-digest.js";
 import { digestPacer } from "./shepherd/seat-digest-pace.js";
 import { startCiTimingFallback, type CiTimingFallbackPorts } from "./ci-timing-fallback.js";
-import { bindCarryStateDir } from "./shepherd/tree-carry.js";
+import { bindCarryStateDir } from "./shepherd/carry-cache-adapter.js";
 import { sweepReviewCheckouts, type ReviewCheckoutSweepDeps } from "./shepherd/review-checkout-sweep.js";
 import { RELEASE_SWEEP_MS, TOOLCHAIN_SWEEP_MS, sweepReleases, sweepToolchains } from "./shepherd/package-sweeps.js";
 import { readPath } from "./narrow.js";

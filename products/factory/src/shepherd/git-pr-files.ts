@@ -1,6 +1,6 @@
 import type { GitHubPort, PrFile, RepoSlug } from "@titan-design/github";
 import type { ShepherdStoreRef } from "./store.js";
-import { CarryRefusal, carryCacheDir, carryStateDir, ensureCache, githubRemote, isAncestor, must, remoteBase, serialized, systemGit, type CarryOptions, type Git } from "./tree-carry.js";
+import { CarryRefusal, cacheFor, ensureCache, isAncestor, must, remoteBase, serialized, type CarryOptions, type Git } from "./tree-carry.js";
 
 /** A PR's diff as GitHub's file list sees it: the head against its merge base with the base branch. */
 export interface DiffTarget {
@@ -125,11 +125,10 @@ async function diffNameStatus(git: Git, dir: string, range: string, signal?: Abo
  * whose copy detection git skipped throws.
  */
 export async function gitPrFiles(target: DiffTarget, options: CarryOptions = {}): Promise<PrFile[]> {
-  const git = options.git ?? systemGit;
-  const dir = carryCacheDir(carryStateDir(options.stateDir), target.repo);
-  const url = (options.remote ?? githubRemote)(target.repo);
+  const cache = cacheFor(target.repo, options);
+  const { git, dir, url } = cache;
   return serialized(dir, async () => {
-    await ensureCache(git, dir, options.signal);
+    await ensureCache(cache, options.signal);
     await must(git, dir, fetchArgs(url, target), options.signal);
     const range = `${await verifiedBase(git, dir, target, options.signal)}...${target.head}`;
     const nameStatus = await diffNameStatus(git, dir, range, options.signal);
