@@ -21,6 +21,7 @@ import { REMERGE_STEP, remergeRoute, remergeStep, type CarryRule, type RemergeRe
 import { carryStep, type CarryInput, type CarryResult } from "./tree-carry.js";
 import { SET_CARRY_STEP, setCarryRoute } from "./approved-set-carry.js";
 import { CARRYING_KINDS } from "./carry-kinds.js";
+import { followRuleOf } from "./follow-eligibility.js";
 import { readClaims } from "./attest-read.js";
 
 const CARRY_SCOPE_STEP = "sh-carry-scope";
@@ -40,14 +41,6 @@ export const CARRY_SCOPE_STEPS: readonly StepDeclaration[] = [
   { id: APPROVAL_CARRY_STEP, kind: "dispatch" },
   { id: MERGE_UP_STEP, kind: "dispatch" },
 ];
-
-/**
- * Kinds whose owner approve-merge answer may follow Shepherd's own disjoint clean merge-up and nothing else (G10): the
- * remerge and fix-probe rules stay closed to them, and a reviewed MERGE never carries (`CARRYING_KINDS`). It never follows
- * across a merge-up whose main side touches a carry-fenced path (TP-2495).
- * Why: the 2026-10-11 owner decision (TP-2252) lets an owner's approval carry across Shepherd's own merge-up for security PRs.
- */
-const OWN_MERGE_UP_KINDS: ReadonlySet<string> = new Set(["security"]);
 
 export interface CarryTarget {
   repo: RepoSlug;
@@ -79,15 +72,16 @@ async function carryingScope(ctx: WorkflowContext, target: CarryTarget, read: st
 }
 
 /**
- * The base an owner's approve-merge answer follows a head move on, read once per head: `carrying` for a kind that may carry
- * (`CARRYING_KINDS`), `ownMergeUp` for one that may follow only Shepherd's own merge-up (`OWN_MERGE_UP_KINDS`). Both are
+ * The base an owner's approve-merge answer follows a head move on, read once per head, by the kind's rule (`followRuleOf`):
+ * `carrying` for a kind that may carry, `ownMergeUp` for one that may follow only Shepherd's own merge-up. Both are
  * undefined for every other kind, an unknown base, or a seat's own-review ask.
  */
 export async function followBases(ctx: WorkflowContext, target: CarryTarget, read: string): Promise<{ carrying?: string; ownMergeUp?: string }> {
   const scope = await readScope(ctx, target, read, []);
-  if (!scope || scope.kind === null || scope.baseRef === null) return {};
-  if (CARRYING_KINDS.has(scope.kind)) return { carrying: scope.baseRef };
-  return OWN_MERGE_UP_KINDS.has(scope.kind) ? { ownMergeUp: scope.baseRef } : {};
+  if (!scope || scope.baseRef === null) return {};
+  const rule = followRuleOf(scope.kind);
+  if (rule === "carrying") return { carrying: scope.baseRef };
+  return rule === "own-merge-up" ? { ownMergeUp: scope.baseRef } : {};
 }
 
 /** The registration's kind and the PR's base branch, both read by code; the reviewer's text and the PR's labels, title and body never reach this step. */

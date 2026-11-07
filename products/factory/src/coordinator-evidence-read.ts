@@ -1,8 +1,9 @@
 import { GITHUB_ACTIONS_APP_ID, headCheckFindings, withoutSupersededCancels, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import type { GateRecord, GateResolver } from "@titan-design/hitl";
 import type { WorkflowRun } from "@titan-design/workflow";
-import { verdictAt } from "./verdict-at.js";
-import { MERGE_UP_APPROVAL, gateMayFollowHead } from "./merge-up-approval.js";
+import { fixFirstAt, verdictAt } from "./verdict-at.js";
+import { MERGE_UP_APPROVAL } from "./merge-up-approval.js";
+import { mergeUpFollowRefusal } from "./shepherd/follow-eligibility.js";
 import { readMergeUpChain, type MergeUpChain, type MergeUpChainInput } from "./merge-up-chain.js";
 import { readPath } from "./narrow.js";
 import {
@@ -18,6 +19,7 @@ import {
   gatePr,
   landGate,
   mainGate,
+  mergeUpFollowOf,
   mergeableOf,
   offersAbandon,
   ownerAtHeadRow,
@@ -43,7 +45,7 @@ import { stricterPolicy, type EffectivePolicy } from "./shepherd/policy-schema.j
 /** Where the fresh reads come from: GitHub through the port, and the factory's own registration and freeze rows. */
 export interface EvidenceSources {
   port: GitHubPort;
-  registration(runId: string): { repo: RepoSlug; pr: number | null; policy: EffectivePolicy; held: boolean } | undefined;
+  registration(runId: string): { repo: RepoSlug; pr: number | null; policy: EffectivePolicy; held: boolean; kind?: string } | undefined;
   frozen(repo: RepoSlug): boolean;
   now(): number;
   /** Walks the merge-ups between two heads from a fresh fetch; without it no merge-up approval is read. */
@@ -72,7 +74,7 @@ export async function readCoordinatorEvidence(
     if (gate?.status !== "pending" || !run) return undefined;
     const evidence = await readFor(sources, gate, run, payload);
     if (evidence && coordinatorEvidencePolicy(gate, resolver, payload, evidence)) return evidence;
-    const mergeUp = stepOf(gate.id) === MERGE_GATE && payload.decision === "merge" ? await readMergeUpApproval(host, sources, gate, onRefusal) : undefined;
+    const mergeUp = stepOf(gate.id) === MERGE_GATE && payload.decision === "merge" ? await readMergeUpApproval(host, sources, gate, run, onRefusal) : undefined;
     return mergeUp && coordinatorEvidencePolicy(gate, resolver, payload, mergeUp) ? mergeUp : undefined;
   } catch {
     onRefusal?.("no coordinator evidence: a read failed");
@@ -80,22 +82,23 @@ export async function readCoordinatorEvidence(
   }
 }
 
-type Approval = Extract<CoordinatorEvidence, { kind: "merge-up-approval" }>["approval"];
+type MergeUpEvidence = Extract<CoordinatorEvidence, { kind: "merge-up-approval" }>;
+type Approval = MergeUpEvidence["approval"];
 
 /**
  * The owner's merge answer the gate's head may follow from: the newest answered land gate of the run before this one, when
  * an owner class answered `merge` at the head it asked, on the same PR and base. A coordinator's merge that itself followed
- * merge-ups leads back to that answer; any other answer, an escalation or a D21 gate ends the search with none.
+ * merge-ups leads back to that answer; any other answer ends the search with none. Whether the answer found may follow a
+ * head at all is the follow fences' call (`mergeUpFollowRefusal`), so its gate's rule and D21 row go with it.
  */
 function ownerApproval(host: FactoryHost, gate: GateRecord, land: LandGate, base: string): Approval | undefined {
   for (const prior of earlierLandGates(host, gate.id)) {
     if (prior.status !== "resolved") continue;
     const asked = landGate(prior);
-    const ownerAtHead = ownerAtHeadRow(prior);
     const merged = readPath(prior.payload, "decision") === "merge" && readPath(prior.payload, "headSha") === asked?.head;
-    if (!asked || !merged || !gateMayFollowHead(asked.rule, ownerAtHead) || asked.repo !== land.repo || asked.pr !== land.pr || landGateBase(prior.prompt) !== base) return undefined;
+    if (!asked || !merged || asked.repo !== land.repo || asked.pr !== land.pr || landGateBase(prior.prompt) !== base) return undefined;
     const by = prior.resolvedBy?.class ?? "";
-    if (MERGE_UP_APPROVAL.approvedBy.includes(by)) return { gateId: prior.id, head: asked.head, resolverClass: by, rule: asked.rule, ownerAtHead: null };
+    if (MERGE_UP_APPROVAL.approvedBy.includes(by)) return { gateId: prior.id, head: asked.head, resolverClass: by, rule: asked.rule, ownerAtHead: ownerAtHeadRow(prior) ?? null };
     if (by !== "coordinator" || readPath(prior.resolvedEvidence, "kind") !== "merge-up-approval") return undefined;
   }
   return undefined;
@@ -113,14 +116,15 @@ function earlierLandGates(host: FactoryHost, gateId: string): GateRecord[] {
   return gates;
 }
 
-/** Rule 461 under decision 556(3): the PR open at the gated head, only clean merge-ups since the owner's approved head, and CI green. */
-async function readMergeUpApproval(host: FactoryHost, sources: EvidenceSources, gate: GateRecord, onRefusal?: (reason: string) => void): Promise<CoordinatorEvidence | undefined> {
+/**
+ * Rule 461 under decision 556(3): the PR open at the gated head, only clean merge-ups since the owner's approved head, CI
+ * green, and every fence the workflow carry applies (`mergeUpFollowRefusal`) passed on the facts read here.
+ */
+async function readMergeUpApproval(host: FactoryHost, sources: EvidenceSources, gate: GateRecord, run: WorkflowRun, onRefusal?: (reason: string) => void): Promise<CoordinatorEvidence | undefined> {
   const refuse = (reason: string): undefined => void onRefusal?.(`no merge-up approval: ${reason}`);
   const land = landGate(gate);
   const base = landGateBase(gate.prompt);
   if (!land || base === undefined || !sources.mergeUpChain) return refuse("the gate names no land head and base, or no git reader is bound");
-  const ownerAtHead = ownerAtHeadRow(gate);
-  if (!gateMayFollowHead(land.rule, ownerAtHead)) return refuse(`the gate is ${ownerAtHead ?? land.rule}, which the owner answers at its own head`);
   const approval = ownerApproval(host, gate, land, base);
   if (!approval) return refuse("no owner merge answer on an earlier land gate of this run");
   const pull = await sources.port.getPr(land.repo, land.pr);
@@ -129,10 +133,13 @@ async function readMergeUpApproval(host: FactoryHost, sources: EvidenceSources, 
   if (!chain.ok) return refuse(chain.reason);
   const checks = await requiredGreenAt(sources.port, land.repo, base, land.head);
   if (!checks) return refuse(`the required checks are not green at ${land.head}`);
-  return {
+  const evidence: MergeUpEvidence = {
     ...{ kind: "merge-up-approval", gateId: gate.id, repo: land.repo, pr: land.pr, headSha: land.head, base, approval, mergeUps: chain.commits, checks },
+    ...{ runKind: sources.registration(run.id)?.kind ?? null, fixFirstAtHead: fixFirstAt(run, land.head), prPaths: chain.prPaths },
     ...{ pull: { state: pull.state, headSha: pull.headSha, baseRef: pull.baseRef }, readAt: readAt(sources) },
   };
+  const fenced = mergeUpFollowRefusal(mergeUpFollowOf(gate, land, evidence));
+  return fenced === undefined ? evidence : refuse(fenced);
 }
 
 function readFor(sources: EvidenceSources, gate: GateRecord, run: WorkflowRun, payload: Payload): Promise<CoordinatorEvidence | undefined> | undefined {

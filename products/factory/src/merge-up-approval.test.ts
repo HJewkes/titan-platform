@@ -38,6 +38,7 @@ function evidence(overrides: object = {}): Record<string, unknown> {
     ...{ kind: "merge-up-approval", gateId: "run-1/approve-merge:1", repo: "o/r", pr: 1, headSha: HEAD, base: "main" },
     approval: APPROVAL,
     mergeUps: [mergeUp(UP1, APPROVED, MAIN1), mergeUp(HEAD, UP1, MAIN2)],
+    ...{ runKind: "correctness", fixFirstAtHead: false, prPaths: ["src/a.ts"] },
     checks: { base: "main", required: ["validate"], runs: [{ id: 1, name: "validate", conclusion: "success", headSha: HEAD }] },
     pull: { state: "open", headSha: HEAD, baseRef: "main" },
     readAt: "2026-11-06T21:00:00.000Z",
@@ -71,6 +72,11 @@ describe("a coordinator merge on an owner approval carried by clean merge-ups (d
     ["an approval given on a D21 gate", { approval: { ...APPROVAL, rule: "shepherd-merge-guard/ci-policy-weakened", ownerAtHead: "ci-policy-weakened" } }],
     ["a merge-up that brings a carry-fenced path from main", { mergeUps: [mergeUp(UP1, APPROVED, MAIN1), mergeUp(HEAD, UP1, MAIN2, undefined, [".github/workflows/ci.yml"])] }],
     ["a merge-up that brings a repo skill from main", { mergeUps: [mergeUp(UP1, APPROVED, MAIN1, undefined, [".claude/skills/land/SKILL.md"]), mergeUp(HEAD, UP1, MAIN2)] }],
+    ["an unregistered run", { runKind: null }],
+    ["a run whose kind follows nothing", { runKind: "test-only" }],
+    ["a security run whose merge-up touches the PR's own file", { runKind: "security", prPaths: [`${HEAD}.txt`] }],
+    ["a reviewer's FIX_FIRST at the gated head", { fixFirstAtHead: true }],
+    ["a PR that changes a repo skill", { prPaths: [".claude/skills/land/SKILL.md"] }],
     ["a red required check at the head", { checks: { base: "main", required: ["validate"], runs: [{ id: 1, name: "validate", conclusion: "failure", headSha: HEAD }] } }],
     ["a PR that moved again", { pull: { state: "open", headSha: fakeSha("moved"), baseRef: "main" } }],
     ["a base the gate does not name", { base: "release", pull: { state: "open", headSha: HEAD, baseRef: "release" } }],
@@ -87,6 +93,10 @@ describe("a coordinator merge on an owner approval carried by clean merge-ups (d
     ["a conflict escalation", landGateAt(HEAD, "shepherd-route/conflict")],
   ])("refuses to answer %s, whose answer never follows a head", (_case, gate) => {
     expect(admits(MERGE, evidence(), COORDINATOR, gate)).toBe(false);
+  });
+
+  it.each(["feature", "refactor", "security"])("admits a %s run whose merge-ups touch none of the PR's files", (runKind) => {
+    expect(admits(MERGE, evidence({ runKind }))).toBe(true);
   });
 
   it("admits an owner gate whose marker names no D21 row", () => {

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MERGE_UP_APPROVAL, isMergeUpFencedPath, type MergeUpCommit } from "./merge-up-approval.js";
+import { MERGE_UP_APPROVAL, type MergeUpCommit } from "./merge-up-approval.js";
 import { changedPathsBetween } from "./shepherd/changed-paths.js";
 import { isRepoKey } from "./shepherd/seats.js";
 import {
@@ -24,15 +24,16 @@ const Sha = z.string().regex(/^[0-9a-f]{40}$/);
 const MergeUpChainInput = z.strictObject({ repo: z.string().refine(isRepoKey), baseRef: BranchName, fromHead: Sha, head: Sha });
 export type MergeUpChainInput = z.infer<typeof MergeUpChainInput>;
 
-export type MergeUpChain = { ok: true; commits: MergeUpCommit[] } | { ok: false; reason: string };
+/** `prPaths` is what the PR changed at the approved head since it left the base, for the follow fences to judge. */
+export type MergeUpChain = { ok: true; commits: MergeUpCommit[]; prPaths: string[] } | { ok: false; reason: string };
 
 const refused = (reason: string): MergeUpChain => ({ ok: false, reason });
 
 /**
  * Reads, from a fresh fetch, whether `head` is `fromHead` plus only clean merge-ups of `baseRef`. Each commit on the
  * first-parent line must have two parents, the first the previous commit, the second on the base branch, and a tree equal
- * to `git merge-tree` of the two, bringing no carry-fenced or skill path. Any other shape is refused with its reason, and any
- * git failure is refused too.
+ * to `git merge-tree` of the two. Any other shape is refused with its reason, and any git failure is refused too. What
+ * each merge-up brought, and the PR's own paths, are returned for the follow fences (follow-eligibility.ts).
  */
 export async function readMergeUpChain(raw: MergeUpChainInput, options: CarryOptions = {}): Promise<MergeUpChain> {
   const parsed = MergeUpChainInput.safeParse(raw);
@@ -62,7 +63,8 @@ async function walk(git: Git, dir: string, url: string, input: MergeUpChainInput
     if (typeof checked === "string") return refused(checked);
     commits.push(checked);
   }
-  return { ok: true, commits };
+  const fork = await must(git, dir, ["merge-base", input.fromHead, remoteBase(input.baseRef)], signal);
+  return { ok: true, commits, prPaths: (await changedPathsBetween(git, dir, fork, input.fromHead, signal)).sort() };
 }
 
 /** The merge-up `sha` is, or why it is not one: its first parent must be `previous`, the last commit on the PR's line. */
@@ -79,7 +81,5 @@ async function mergeUp(git: Git, dir: string, baseRef: string, sha: string, prev
   const tree = await must(git, dir, ["rev-parse", `${sha}^{tree}`], signal);
   if (tree !== mergeTree) return `${sha} changes more than the merge of ${secondParent} brought`;
   const paths = await changedPathsBetween(git, dir, firstParent, sha, signal);
-  const fenced = paths.filter(isMergeUpFencedPath);
-  if (fenced.length > 0) return `${sha} brings ${fenced.length} fenced path(s) from ${baseRef}: ${fenced.join(", ")}`;
   return { sha, firstParent, secondParent, secondParentOnBase: true, tree, mergeTree, paths };
 }

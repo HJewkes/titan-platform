@@ -1,17 +1,15 @@
-import { isCarryFencedPath } from "@titan-design/authority";
 import type { StepResult, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
 import { SEND_BACK } from "../gate-brief.js";
-import { ESCALATION_TABLE } from "../merge-up-approval.js";
-import { ownerAtHeadRowsIn, type OwnerAtHeadRow } from "../owner-at-head.js";
+import { OWNER_AT_HEAD_ROWS, ownerAtHeadRowsIn, type OwnerAtHeadRow } from "../owner-at-head.js";
 import { SET_ANSWER_ORIGIN, step } from "../workflows/land.js";
 import { approvedSetFollow, spendOnOwnerAnswer, type SetCarry } from "./approved-set-carry.js";
 import { APPROVAL_CARRY_STEP, followBases, type CarryTarget } from "./carry-merge.js";
 import { fixCarryStep } from "./fix-carry.js";
+import { ESCALATION_TABLE, baseSideFollowable, gateFollowable, vouchedFollowable, type FollowGate } from "./follow-eligibility.js";
 import { ownMergeUpStep } from "./own-merge-up.js";
 import { remergeStep } from "./remerge-carry.js";
-import { skillPathsIn } from "./skill-paths.js";
 import { visualMatches } from "./visual-gate.js";
 
 /** Land's own merge question; a conflict, release or other gate that shares the step id asks something else. */
@@ -41,11 +39,11 @@ function holdsOwnerAtHeadRow(prompt: string, row: OwnerAtHeadRow): boolean {
   return (match?.[3] === "shepherd-merge-guard" && match[4] === row) || (ownerAtHeadRowsIn(prompt)?.includes(row) ?? false);
 }
 
-/** The owner reviews a skill diff at its own head, so a skill-path gate is never answered by an earlier approval. */
-const isSkillPathGate = (prompt: string): boolean => holdsOwnerAtHeadRow(prompt, "skill-path");
-
-/** Only the owner accepts a weaker CI policy, and only at the head they read it at, so a D21 approval follows to no head. */
-const isCiPolicyWeakenedGate = (prompt: string): boolean => holdsOwnerAtHeadRow(prompt, "ci-policy-weakened");
+/** The gate's rule and first D21 row, for the shared fences (follow-eligibility.ts); a D21 approval follows to no head. */
+function followGateOf(prompt: string): FollowGate {
+  const match = LAND_GATE.exec(prompt);
+  return { rule: `${match?.[3] ?? ""}/${match?.[4] ?? ""}`, ownerAtHead: OWNER_AT_HEAD_ROWS.find((row) => holdsOwnerAtHeadRow(prompt, row)) };
+}
 
 interface Followed {
   rule: string;
@@ -62,8 +60,6 @@ interface Approved {
   origin: "answer" | typeof SET_ANSWER_ORIGIN;
 }
 
-/** A proof whose paths hold a repo skill, or that names no paths at all, would carry an approval onto a diff the owner has not seen. */
-const touchesSkill = (followed: Followed): boolean => followed.paths === undefined || skillPathsIn(followed.paths).length > 0;
 
 /** The merge-up probe first; a head it refuses may still be the approved head merged with the base plus a small fix. */
 async function followProof(ctx: WorkflowContext, target: CarryTarget, baseRef: string, fromHead: string, head: string): Promise<Followed | undefined> {
@@ -80,7 +76,7 @@ async function ownMergeUpProof(ctx: WorkflowContext, target: CarryTarget, baseRe
   const own = await ownMergeUpStep(ctx, { repo: target.repo, baseRef, fromHead, head });
   if (!own.carries || !own.rule) return undefined;
   // A result recorded before TP-2495 replays as carries: true across a fenced base side, so the consumer re-checks.
-  if (own.mainPaths === undefined || own.mainPaths.some(isCarryFencedPath)) return undefined;
+  if (own.mainPaths === undefined || own.prPaths === undefined || !baseSideFollowable("own-merge-up", own.mainPaths, own.prPaths)) return undefined;
   return { rule: own.rule, proof: { base: own.base, headTree: own.headTree, mergeTree: own.mergeTree, prPaths: own.prPaths, mainPaths: own.mainPaths }, paths: own.prPaths, mainPaths: own.mainPaths };
 }
 
@@ -109,7 +105,7 @@ async function followedProof(ctx: WorkflowContext, carry: ApprovalCarry, from: A
  */
 async function followedAnswer(ctx: WorkflowContext, carry: ApprovalCarry, from: Approved, head: string): Promise<StepResult | undefined> {
   const carried = await followedProof(ctx, carry, from, head);
-  if (!carried || touchesSkill(carried)) return undefined;
+  if (!carried || !vouchedFollowable(carried.paths)) return undefined;
   const stepId = `${APPROVAL_CARRY_STEP}:${head}`;
   const origin = from.origin === SET_ANSWER_ORIGIN ? { origin: SET_ANSWER_ORIGIN } : {};
   const followed = await step(ctx, stepId, { decision: "merge", headSha: head, fromHead: from.head, rule: carried.rule, proof: carried.proof, ...origin }, MergeAnswer);
@@ -132,15 +128,15 @@ export function followingApprovals(ctx: WorkflowContext, assisted: WorkflowConte
     const asked = landGateHead(stepId, prompt);
     if (asked === undefined) return assisted(stepId, prompt, options);
     const base = landGateBase(prompt);
-    const ciPolicyWeakened = isCiPolicyWeakenedGate(prompt);
-    const standing = !isSkillPathGate(prompt) && !ciPolicyWeakened && carry.reviewedMerge(asked);
+    const followable = gateFollowable(followGateOf(prompt));
+    const standing = followable && carry.reviewedMerge(asked);
     const from = standing && approved !== undefined && approved.head !== asked && approved.base === base ? approved : undefined;
     const followed = from === undefined ? undefined : await followedAnswer(ctx, carry, from, asked);
     const bySet = followed || !standing ? undefined : await approvedSetFollow(ctx, carry.target, carry, { stepId, prompt, head: asked, base });
     const answer = followed ?? bySet ?? (await assisted(stepId, prompt, options));
     if (!followed && !bySet) spendOnOwnerAnswer(carry, stepId, prompt);
     const merged = MergeAnswer.safeParse(answer.data).data;
-    if (ciPolicyWeakened) approved = undefined;
+    if (!followable) approved = undefined;
     else if (merged?.headSha === asked) approved = { head: asked, base, origin: merged.origin === SET_ANSWER_ORIGIN ? SET_ANSWER_ORIGIN : "answer" };
     else if (SendBackAnswer.safeParse(answer.data).success) approved = undefined;
     return answer;

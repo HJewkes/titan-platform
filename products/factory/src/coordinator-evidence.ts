@@ -2,7 +2,8 @@ import { isDeepStrictEqual } from "node:util";
 import { isPassingConclusion } from "@titan-design/github";
 import { checkAgainstJsonSchema, type GateEvidencePolicy, type GateRecord } from "@titan-design/hitl";
 import { z } from "zod";
-import { MERGE_UP_APPROVAL, MergeUpCommit, gateMayFollowHead, isMergeUpChain } from "./merge-up-approval.js";
+import { MERGE_UP_APPROVAL, MergeUpCommit, isMergeUpChain, mergeUpMainPaths } from "./merge-up-approval.js";
+import { mergeUpFollows, type MergeUpFollow } from "./shepherd/follow-eligibility.js";
 import { isOwnerAtHeadRow, ownerAtHeadRowsIn } from "./owner-at-head.js";
 import { escalationReason } from "./shepherd/route-table.js";
 import { headGateAsks } from "./shepherd/stale-gates.js";
@@ -112,6 +113,8 @@ const MergeUpApprovalEvidence = z.strictObject({
   /** The approving gate's policy rule and D21 row as read off it, so the store's audit refuses an approval that may not follow. */
   approval: z.strictObject({ gateId: z.string(), head: SHA, resolverClass: z.string(), rule: z.string(), ownerAtHead: z.string().nullable() }),
   mergeUps: z.array(MergeUpCommit),
+  /** The run's registered kind, a FIX_FIRST at the gated head, and the PR's own paths: the rest of the follow fences' facts. */
+  ...{ runKind: z.string().nullable(), fixFirstAtHead: z.boolean(), prPaths: z.array(z.string()) },
   checks: MergeEvidence.shape.checks,
   pull: z.strictObject({ state: z.string(), headSha: SHA, baseRef: z.string() }),
   readAt: z.string(),
@@ -294,14 +297,22 @@ function requiredGreen(checks: Of<"approve-merge">["checks"], head: string): boo
 const earlierGateOfRun = (approvalGateId: string, gateId: string): boolean =>
   approvalGateId !== gateId && stepOf(approvalGateId) === MERGE_GATE && approvalGateId.slice(0, approvalGateId.indexOf("/")) === gateId.slice(0, gateId.indexOf("/"));
 
+/** The follow fences' facts (follow-eligibility.ts): this gate read off its own record, the rest off the stored evidence. */
+export function mergeUpFollowOf(gate: GateRecord, land: LandGate, evidence: Of<"merge-up-approval">): MergeUpFollow {
+  const { approval } = evidence;
+  return {
+    ...{ kind: evidence.runKind, target: { rule: land.rule, ownerAtHead: ownerAtHeadRow(gate) }, source: { rule: approval.rule, ownerAtHead: approval.ownerAtHead ?? undefined } },
+    ...{ fixFirstAtHead: evidence.fixFirstAtHead, mainPaths: mergeUpMainPaths(evidence.mergeUps), prPaths: evidence.prPaths },
+  };
+}
+
 /**
- * Rule 461 under decision 556(3): the owner's approval stands across clean merge-ups, and CI re-runs at the new head. Neither
- * the gated nor the approving gate may be one whose answer never follows a head (`gateMayFollowHead`).
+ * Rule 461 under decision 556(3): the owner's approval stands across clean merge-ups, and CI re-runs at the new head. Which
+ * answers may follow a head is the workflow carry's own predicate (`mergeUpFollows`), never a copy of it.
  */
 function mergeUpAdmits(gate: GateRecord, payload: unknown, evidence: Of<"merge-up-approval">): boolean {
   const land = landGate(gate);
-  if (!land || !isDeepStrictEqual(payload, { decision: "merge", headSha: land.head })) return false;
-  if (!gateMayFollowHead(land.rule, ownerAtHeadRow(gate)) || !gateMayFollowHead(evidence.approval.rule, evidence.approval.ownerAtHead ?? undefined)) return false;
+  if (!land || !isDeepStrictEqual(payload, { decision: "merge", headSha: land.head }) || !mergeUpFollows(mergeUpFollowOf(gate, land, evidence))) return false;
   const named = gate.prompt.split("\n", 1)[0]!.includes(` at head ${land.head} into ${evidence.base}? `);
   if (evidence.repo !== land.repo || evidence.pr !== land.pr || evidence.headSha !== land.head || !named) return false;
   const { approval, pull } = evidence;

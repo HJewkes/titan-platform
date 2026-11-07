@@ -14,6 +14,7 @@ import { openFactoryHost, type FactoryHost } from "./host.js";
 import { readMergeUpChain } from "./merge-up-chain.js";
 import { readPath } from "./narrow.js";
 import { fakeOwnerHelper } from "./test-support/owner-edges.js";
+import type { EffectivePolicy } from "./shepherd/policy-schema.js";
 
 const REPO = "acme/widgets";
 const REASON = "the authority policy did not allow an automated merge: MRG-AU gates merge by automation; MRG-AU-RV unmet: seat-grant";
@@ -21,6 +22,7 @@ const OWNER_GATE = "authority/MRG-AU";
 const AGENT_SHELL = { AGENT_CHAT_AGENT_ID: "agent-1", AGENT_CHAT_NAME: "tc-synthetic" };
 const NOW = Date.parse("2026-11-06T21:00:00Z");
 const Heads = z.array(z.string());
+const AUTO: EffectivePolicy = { merge: "auto", mergeMethod: "squash", fixer: true, seat: "synthetic" };
 
 /** A stand-in for land: asks to merge at the first head, and once that gate is answered or cancelled, at the second, under `rules`. */
 const landTwice = defineWorkflow({
@@ -52,8 +54,8 @@ function repoWithMergeUps(root: string, ups: number): { origin: string; approved
   seedRepo(origin, {});
   git("config", "uploadpack.allowAnySHA1InWant", "true");
   const approved = withHistory(origin, [
-    { files: { "a.txt": "a0\n" }, message: "seed" },
-    { branch: "feature", from: ":1", files: { "a.txt": "a1\n" }, message: "pr change" },
+    { files: { "a.txt": "a0\nx\ny\nz\n" }, message: "seed" },
+    { branch: "feature", from: ":1", files: { "a.txt": "a1\nx\ny\nz\n" }, message: "pr change" },
   ])[1]!;
   for (let n = 1; n <= ups; n += 1) {
     withHistory(origin, [{ files: { [`main-${n}.txt`]: `m${n}\n` }, message: `main ${n}` }]);
@@ -63,7 +65,7 @@ function repoWithMergeUps(root: string, ups: number): { origin: string; approved
   return { origin, approved, head: git("rev-parse", "feature") };
 }
 
-async function pausedAt(heads: readonly string[], origin: string, root: string, rules = [OWNER_GATE, OWNER_GATE]): Promise<World> {
+async function pausedAt(heads: readonly string[], origin: string, root: string, rules = [OWNER_GATE, OWNER_GATE], kind: string | null = "correctness"): Promise<World> {
   const host = openFactoryHost({ dbPath: join(root, "factory.sqlite3"), workflows: [landTwice], routes: [], gatePollMs: 10 });
   cleanups.push(() => host.close());
   const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", heads: JSON.stringify(heads), rules: JSON.stringify(rules) });
@@ -73,7 +75,7 @@ async function pausedAt(heads: readonly string[], origin: string, root: string, 
   gh.setRuns(heads.at(-1)!, [successRun("validate", 11), successRun("dag-check", 12)]);
   const sources: EvidenceSources = {
     port: githubPort(gh.wire),
-    registration: () => undefined,
+    registration: () => ({ repo: REPO, pr: 1, policy: AUTO, held: false, ...(kind !== null && { kind }) }),
     frozen: () => false,
     now: () => NOW,
     mergeUpChain: (input) => readMergeUpChain(input, { stateDir: join(root, "state"), remote: () => origin }),
@@ -153,18 +155,20 @@ describe("coordinator resolve of a land gate whose head moved only by clean merg
 
     const result = await resolve(w, { decision: "merge", headSha: head }, AGENT_SHELL);
 
-    expect(result.err).toContain(`no merge-up approval: ${head} brings 1 fenced path(s) from main: .github/ci.yml`);
+    expect(result.err).toContain("no merge-up approval: the merge-ups bring a fenced path");
     expect(w.host.gates.get(gateId)?.status).toBe("pending");
   });
 
   it.each([
-    ["a ci-policy-weakened gate", [OWNER_GATE, "shepherd-merge-guard/ci-policy-weakened"], "the gate is ci-policy-weakened"],
-    ["an escalation", [OWNER_GATE, "shepherd-route/fix-first-runaway"], "the gate is shepherd-route/fix-first-runaway"],
-    ["a gate after an owner answer on a ci-policy-weakened gate", ["shepherd-merge-guard/ci-policy-weakened", OWNER_GATE], "no owner merge answer"],
-    ["a gate after an owner answer on an escalation", ["shepherd-route/failed-rounds", OWNER_GATE], "no owner merge answer"],
-  ])("refuses %s, whose answer never follows a head", async (_case, rules, reason) => {
+    ["a ci-policy-weakened gate", [OWNER_GATE, "shepherd-merge-guard/ci-policy-weakened"], "correctness", "the gate is ci-policy-weakened"],
+    ["an escalation", [OWNER_GATE, "shepherd-route/fix-first-runaway"], "correctness", "the gate is shepherd-route/fix-first-runaway"],
+    ["a gate after an owner answer on a ci-policy-weakened gate", ["shepherd-merge-guard/ci-policy-weakened", OWNER_GATE], "correctness", "the owner answered on ci-policy-weakened"],
+    ["a gate after an owner answer on an escalation", ["shepherd-route/failed-rounds", OWNER_GATE], "correctness", "the owner answered on shepherd-route/failed-rounds"],
+    ["an unregistered run", [OWNER_GATE, OWNER_GATE], null, "a run of kind unregistered carries no owner answer"],
+    ["a run whose kind follows nothing", [OWNER_GATE, OWNER_GATE], "test-only", "a run of kind test-only carries no owner answer"],
+  ])("refuses %s", async (_case, rules, kind, reason) => {
     const { root, origin, approved, head } = world(1);
-    const w = await pausedAt([approved, head], origin, root, rules);
+    const w = await pausedAt([approved, head], origin, root, rules, kind);
     const gateId = await ownerApproves(w, approved);
     fakeOwnerHelper(undefined);
 
@@ -172,6 +176,29 @@ describe("coordinator resolve of a land gate whose head moved only by clean merg
 
     expect(result.err).toContain(`no merge-up approval: ${reason}`);
     expect(w.host.gates.get(gateId)?.status).toBe("pending");
+  });
+
+  it("refuses a security run whose merge-up touches the PR's own file, and admits a disjoint one", async () => {
+    const touching = world(1, (git) => {
+      const top = git("rev-parse", "--show-toplevel");
+      git("checkout", "-q", "main");
+      writeFileSync(join(top, "a.txt"), "a0\nx\ny\nmain\n");
+      git("commit", "-q", "-am", "main touches a.txt");
+      git("checkout", "-q", "feature");
+      git("merge", "-q", "--no-ff", "--no-edit", "main");
+    });
+    const disjoint = world(1);
+    const refused = await pausedAt([touching.approved, touching.head], touching.origin, touching.root, undefined, "security");
+    const admitted = await pausedAt([disjoint.approved, disjoint.head], disjoint.origin, disjoint.root, undefined, "security");
+    await ownerApproves(refused, touching.approved);
+    await ownerApproves(admitted, disjoint.approved);
+    fakeOwnerHelper(undefined);
+
+    const refusal = await resolve(refused, { decision: "merge", headSha: touching.head }, AGENT_SHELL);
+    const accepted = await resolve(admitted, { decision: "merge", headSha: disjoint.head }, AGENT_SHELL);
+
+    expect(refusal.err).toContain("no merge-up approval: the merge-ups bring a fenced path or one of the PR's own files");
+    expect(accepted.code).toBe(0);
   });
 
   it("refuses when the earlier gate was cancelled rather than answered by the owner", async () => {
