@@ -17,7 +17,6 @@ import { holdAdversary, liveSpawnLimits, reviewAccounts, successorAccounts, visu
 import type { WorkflowDefinition } from "./definition.js";
 import type { DatabaseTenant, FactoryRoutes } from "./host.js";
 import { hostCarryPorts } from "./shepherd/carry-cache-adapter.js";
-import type { GitCachePorts } from "./shepherd/carry-cache-ports.js";
 import { reviewCheckPort } from "./shepherd/publish-review-adapter.js";
 import { activeWorkFixTasks, activeWorkFollowUpTasks, activeWorkOrigin, activeWorkTasks, agentChatCleanupAgents } from "./shepherd/cleanup-ports.js";
 import { ghGateway, type GhCallLine, type GhGateway } from "./shepherd/gh-gateway.js";
@@ -101,8 +100,7 @@ import type { CleanupPorts, ExitNoticePorts, RosterReader, SpawnGate, SuiteRules
 export const factoryWorkflows: readonly WorkflowDefinition[] = [landPrWorkflow(), shepherdPrWorkflow(), measurementAuditWorkflow(), devicePrWorkflow(), buildSurfaceWorkflow()];
 
 export interface FactoryRouteDeps extends Omit<LandPrDeps, "gitCache"> {
-  /** The host effects every carry probe runs on; absent means the host's own ports. */
-  gitCache?: GitCachePorts;
+  /** Absent means the host's own ports. */ gitCache?: LandPrDeps["gitCache"];
   port: GitHubPort;
   store: ShepherdStoreRef;
   freeze?: FreezeStoreRef;
