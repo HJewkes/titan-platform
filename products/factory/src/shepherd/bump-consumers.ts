@@ -73,6 +73,20 @@ interface ConsumerBumpSweepNote {
   registered?: string;
   current?: true;
   error?: string;
+  /** The leftover branch that blocked this repo: the sweep cannot tell whose commits it holds, so a human deletes it or opens its PR. */
+  branch?: string;
+}
+
+/** A bump branch with no open PR; its commits are not provably the sweep's own, so it is never built on. */
+class LeftoverBumpBranchError extends Error {
+  constructor(readonly branch: string) {
+    super(`leftover bump branch ${branch} has no open PR`);
+    this.name = "LeftoverBumpBranchError";
+  }
+}
+
+function noteOfFailure(repo: RepoSlug, error: unknown): ConsumerBumpSweepNote {
+  return error instanceof LeftoverBumpBranchError ? { repo, error: failureOf(error), branch: error.branch } : { repo, error: failureOf(error) };
 }
 
 export interface ConsumerBumpPorts {
@@ -88,7 +102,7 @@ export async function bumpConsumers(host: FactoryHost, services: ShepherdService
   const { bumps, notes } = await planConsumerBumps(services, ports.registry, unbumped);
   const result: ConsumerBumpSweepNote[] = [...openNotes, ...notes];
   for (const bump of bumps) {
-    result.push(await bumpOne(host, services, ports.regen, bump).catch((error: unknown) => ({ repo: bump.repo, error: failureOf(error) })));
+    result.push(await bumpOne(host, services, ports.regen, bump).catch((error: unknown) => noteOfFailure(bump.repo, error)));
   }
   return result.sort((a, b) => a.repo.localeCompare(b.repo));
 }
@@ -189,7 +203,7 @@ async function openBump(port: GitHubPort, bump: PlannedBump, files: FileWrite[])
   const baseSha = await port.getHeadSha(repo, tree.ref);
   if (baseSha === null) throw new Error(`${repo} has no ${tree.ref} branch`);
   const created = await port.ensureBranch(repo, branch, baseSha);
-  if (!created.done) throw new Error(`${repo} already has a ${branch} branch with no PR`);
+  if (!created.done) throw new LeftoverBumpBranchError(branch);
   for (const file of files) await port.putFile(repo, { path: file.path, branch, content: file.content, message: `${BUMP_TITLE}: ${file.path}`, expectedBlobSha: file.expectedBlobSha });
   const opened = await port.openPr(repo, { head: branch, base: tree.ref, title: BUMP_TITLE, body: bumpBody(bump.plan) });
   if (!opened.done || !headInRepo(opened.pr, repo)) throw new Error(`${repo} PR #${opened.pr.number} on ${branch} was not opened by this sweep`);
