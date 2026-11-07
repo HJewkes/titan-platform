@@ -231,7 +231,6 @@
   "turn-check.ts",
   "view-schema.ts",
   "view.ts",
-  "visual-accept-adapter.ts",
   "visual-accept.ts",
   "visual-delta-command.ts",
   "visual-delta-measure.ts",
