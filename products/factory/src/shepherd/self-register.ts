@@ -19,3 +19,11 @@ function toolchainTask(repo: RepoSlug): string {
 export async function registerToolchainAdoption(ctx: FactoryContext, repo: RepoSlug, pr: number): Promise<Registered> {
   return register({ repo, pr, task: toolchainTask(repo), implementer: TOOLCHAIN_IMPLEMENTER, kind: "unknown", policy: { fixer: false, merge: "owner-gate", ownerGateReason: "owner-asked" } }, ctx);
 }
+
+/** The registration's implementer: the consumer bump sweep wrote this PR, so a wake for it is never handled. */
+export const CONSUMER_BUMP_IMPLEMENTER = "bump-consumers";
+
+/** Registers a consumer bump PR with no fixer and nothing wider, so the consumer seat's own policy decides its merge. */
+export async function registerConsumerBump(ctx: FactoryContext, repo: RepoSlug, pr: number): Promise<Registered> {
+  return register({ repo, pr, task: `${repo.split("/")[1] ?? repo}/bump-consumers`, implementer: CONSUMER_BUMP_IMPLEMENTER, kind: "unknown", policy: { fixer: false } }, ctx);
+}
