@@ -2,12 +2,13 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { pathTouches, type ClassRules } from "@titan-design/review-panel";
 import { describe, expect, it } from "vitest";
-import { SHEPHERD_CLASS_RULES, SHEPHERD_LISTED_RULES, withHoldClosure } from "./g10-class-rules.js";
+import { HOLD_CLOSURE_ROOT, SHEPHERD_CLASS_RULES, SHEPHERD_LISTED_RULES, withHoldClosure } from "./g10-class-rules.js";
 import { factoryTree, fixtureTree, holdClosure, type SourceTree } from "./g10-hold-closure.test-helpers.js";
 import { adversaryTouches } from "./signoffs.js";
 
-const FACTORY_SRC = join(dirname(fileURLToPath(import.meta.url)), "..");
-const inFactorySrc = (name: string): string => `products/factory/src/${name}`;
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../../..");
+const FACTORY_SRC = join(REPO_ROOT, HOLD_CLOSURE_ROOT);
+const inFactorySrc = (name: string): string => `${HOLD_CLOSURE_ROOT}/${name}`;
 
 const heldBy = (rules: ClassRules, name: string): boolean => adversaryTouches(pathTouches([{ path: inFactorySrc(name) }], rules)).length > 0;
 

@@ -31,13 +31,11 @@
     },
     {
       "name": "the hold-closure walk narrows back to shepherd/",
-      "file": "products/factory/src/shepherd/g10-hold-closure.test-helpers.ts",
-      "find": "return name.startsWith(\"../\") ? undefined : name;",
-      "replace": "return name.startsWith(\"shepherd/\") ? name : undefined;",
+      "file": "products/factory/src/shepherd/g10-class-rules.ts",
+      "find": "export const HOLD_CLOSURE_ROOT = \"products/factory/src\";",
+      "replace": "export const HOLD_CLOSURE_ROOT = \"products/factory/src/shepherd\";",
       "kills": [
-        "the G10 hold closure of the factory's listed policy modules holds owner-at-head.ts, which approval-carry.ts imports from outside shepherd/",
-        "the G10 hold closure on a synthetic factory source tree holds a helper that a held coordinator-evidence file imports",
-        "the G10 hold closure on a synthetic factory source tree fails when a held file imports a factory module the closure does not list"
+        "the G10 hold closure of the factory's listed policy modules holds owner-at-head.ts, which approval-carry.ts imports from outside shepherd/"
       ]
     }
   ]

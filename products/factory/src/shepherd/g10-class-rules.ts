@@ -132,10 +132,13 @@ export const SHEPHERD_LISTED_RULES: ClassRules = {
  */
 const HOLD_CLOSURE = z.array(z.string()).parse(holdClosureJson);
 
-const inFactorySrc = (name: string): string => `products/factory/src/${name}`;
+/** The tree the hold-closure walk covers, and the root its listed paths are relative to: all factory source, not just Shepherd's directory (TP-4813). */
+export const HOLD_CLOSURE_ROOT = "products/factory/src";
 
-/** The listed table with a closure of factory module paths, relative to `products/factory/src`, held as policy too. */
-export const withHoldClosure = (names: readonly string[]): ClassRules => ({ ...SHEPHERD_LISTED_RULES, policy: [...SHEPHERD_LISTED_RULES.policy, ...names.map(inFactorySrc)] });
+const inClosureRoot = (name: string): string => `${HOLD_CLOSURE_ROOT}/${name}`;
+
+/** The listed table with a closure of module paths, relative to `HOLD_CLOSURE_ROOT`, held as policy too. */
+export const withHoldClosure = (names: readonly string[]): ClassRules => ({ ...SHEPHERD_LISTED_RULES, policy: [...SHEPHERD_LISTED_RULES.policy, ...names.map(inClosureRoot)] });
 
 /** Shepherd's merge policy and the owner's levers live in plain source files, which the panel's default globs miss. */
 export const SHEPHERD_CLASS_RULES: ClassRules = withHoldClosure(HOLD_CLOSURE);
