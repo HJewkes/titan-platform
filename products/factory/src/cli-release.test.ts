@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { runCli } from "./cli.js";
 import type { CliDeps } from "./cli-types.js";
 import { EXIT } from "./exit-codes.js";
+import { fakeSha } from "@titan-design/github";
 import { bumpBranch } from "./shepherd/consumer-bump.js";
 import { CONSUMER_A, CONSUMER_B, CONSUMER_SEATS, consumerBumpWorld, type ConsumerBumpWorld } from "./test-support/consumer-bump.js";
 import { shepherdFixture } from "./test-support/shepherd.js";
@@ -53,6 +54,30 @@ describe("release bump-consumers verb", () => {
     );
     expect(world.regenCalls).toEqual([]);
     for (const fake of world.fakes.values()) expect(fake.effects).toMatchObject({ createRef: 0, putContent: 0, createPr: 0 });
+  });
+
+  it("dry-run skips a repo with an open bump PR and prints why", async () => {
+    const world = consumerBumpWorld();
+    const open = world.fakes.get(CONSUMER_A)!.addPr({ headSha: fakeSha("open"), headRef: branchA });
+    const { out, io, db } = capture();
+
+    const code = await runCli(["--db", db, "release", "bump-consumers", "--dry-run"], io, depsOver(world));
+
+    expect(code).toBe(EXIT.OK);
+    expect(out.join("")).toBe([`${CONSUMER_B}: open ${branchB} into main [@titan-design/example-b 0.9.1 -> 0.10.0]`, `skip ${CONSUMER_A}: open bump PR #${open.number}`, ""].join("\n"));
+    for (const fake of world.fakes.values()) expect(fake.effects).toMatchObject({ createRef: 0, putContent: 0, createPr: 0 });
+  });
+
+  it("dry-run skips a repo whose bump PR was closed", async () => {
+    const world = consumerBumpWorld();
+    const closed = world.fakes.get(CONSUMER_B)!.addPr({ headSha: fakeSha("rejected"), headRef: branchB, state: "closed" });
+    const { out, io, db } = capture();
+
+    const code = await runCli(["--db", db, "release", "bump-consumers", "--dry-run"], io, depsOver(world));
+
+    expect(code).toBe(EXIT.OK);
+    expect(out.join("")).toContain(`skip ${CONSUMER_B}: closed bump PR #${closed.number}\n`);
+    expect(out.join("")).not.toContain(`${CONSUMER_B}: open`);
   });
 
   it("exits EXIT.UNAVAILABLE when any repo notes an error and EXIT.OK otherwise", async () => {
