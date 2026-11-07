@@ -110,6 +110,13 @@ function outputOf(step: StepResult): unknown {
   return data !== undefined && "result" in data ? data.result : data;
 }
 
+/** Why one recorded head-level review step ended in `none`; a seat recheck re-holds the MERGE in the await's own words. */
+export function noneReasonOf(stepId: string, output: unknown): NoneReason | undefined {
+  const [name, , suffix] = stepId.split(":");
+  if (name === "sh-seat-recheck" && suffix === undefined) return awaitNoneReason(output);
+  return readerFor(stepId)?.(output);
+}
+
 /** Why the newest head-level review step ended in `none`, given steps oldest first; undefined when it gave a verdict or is still waiting. */
 export function lastNoneReason(steps: readonly StepResult[]): NoneReason | undefined {
   const newest = steps.filter((step) => readerFor(step.stepId) !== undefined).at(-1);

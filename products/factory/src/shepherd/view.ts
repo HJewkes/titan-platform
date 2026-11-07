@@ -4,6 +4,7 @@ import { z } from "zod";
 import { stepOf } from "../coordinator-evidence.js";
 import { stepIdMatches } from "../definition.js";
 import { attestedField } from "./attest-field.js";
+import { HEAD } from "./await-verdict.js";
 import { autoPassField } from "./auto-pass.js";
 import { heldView, holdWait, waitsOnHold } from "./hold-view.js";
 import type { ShepherdEvent } from "./events.js";
@@ -11,7 +12,7 @@ import { ciTimeoutEntry, numberedTimeouts } from "./ci-timeout-entry.js";
 import { g10UnreviewedStall, type HoldWait } from "./g10-unreviewed-stall.js";
 import { ciWaitHead } from "../workflows/ci-wait-head.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
-import { liveLastNone } from "./none-reason.js";
+import { liveLastNone, noneReasonOf } from "./none-reason.js";
 import { MAX_NOT_STARTED_REVIEWS, notStartedStreak, reviewerName } from "./review-steps.js";
 import { reviewWait } from "./review-wait.js";
 import { MERGE_EVIDENCE_STEP } from "./merge-facts.js";
@@ -251,7 +252,7 @@ const LocatorRecord = z.looseObject({
 });
 const VerdictRecord = z.discriminatedUnion("kind", [
   z.looseObject({ kind: z.literal("verdict"), verdict: z.enum(["MERGE", "FIX_FIRST"]), head: z.string(), locator: z.unknown(), reviewer: z.looseObject({ agentId: z.string() }) }),
-  z.looseObject({ kind: z.literal("none") }),
+  z.looseObject({ kind: z.literal("none"), seatHeld: z.looseObject({ reviewer: z.looseObject({ agentId: z.string() }) }).optional().catch(undefined) }),
 ]);
 const WakeRecord = z.discriminatedUnion("kind", [
   z.looseObject({ kind: z.literal("woken"), agent: z.string(), mode: z.enum(WAKE_MODES).optional(), sessionId: z.string().optional() }),
@@ -261,7 +262,7 @@ const FixFirstRecord = z.looseObject({ fixFirst: z.number().int().positive() });
 
 /** A verdict or wake step whose record parses gets its own entry; anything else stays a plain step. */
 function recordedEntry(stepId: string, payload: unknown): TimelineEntry | undefined {
-  if (stepIdMatches("sh-await-verdict", stepId)) return verdictEntry(stepId, payload);
+  if (stepIdMatches("sh-await-verdict", stepId) || stepIdMatches("sh-seat-recheck", stepId)) return verdictEntry(stepId, payload);
   if (stepIdMatches("sh-wake-implementer", stepId)) return wakeEntry(stepId, payload);
   if (stepIdMatches("sh-wake-fix-first", stepId) && FixFirstRecord.safeParse(payload).success) {
     return { kind: "wake", stepId, request: "review", outcome: null, agent: null, mode: null, sessionId: null };
@@ -272,10 +273,19 @@ function recordedEntry(stepId: string, payload: unknown): TimelineEntry | undefi
 function verdictEntry(stepId: string, payload: unknown): TimelineEntry | undefined {
   const parsed = VerdictRecord.safeParse(payload);
   if (!parsed.success) return undefined;
-  const none = { kind: "verdict", stepId, verdict: "none", headSha: null, locator: null, reviewer: null } as const;
-  if (parsed.data.kind === "none") return none;
+  const none = { kind: "verdict", stepId, verdict: "none", headSha: null, locator: null, reviewer: null, note: null } as const;
+  if (parsed.data.kind === "none") {
+    const reviewer = parsed.data.seatHeld?.reviewer.agentId ?? null;
+    return { ...none, headSha: stepHead(stepId), reviewer, note: noneReasonOf(stepId, payload)?.text ?? null };
+  }
   const { verdict, head, reviewer } = parsed.data;
   return { ...none, verdict, headSha: head, locator: locatorView(parsed.data.locator), reviewer: reviewer.agentId };
+}
+
+/** The head a verdict step id names; an older id shape with no full sha gives none. */
+function stepHead(stepId: string): string | null {
+  const head = stepId.split(":")[1];
+  return head !== undefined && HEAD.test(head) ? head : null;
 }
 
 /** The transcript path and the byte span of the verdict's line; an external review's locator has neither. */
