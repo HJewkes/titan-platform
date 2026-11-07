@@ -740,8 +740,6 @@ file, and `service status` prints `<unit>: unreadable: ...` in place of `not loa
 
 A serve whose event loop is blocked never runs its SIGTERM handler, so a blocking restart used to
 outlast the deployer's 30 s command cap and send a good deploy to rollback. `service restart`,
-After an exit-0 deploy whose service runs the deploy checkout, `service deploy` also repoints a factory-build symlink at `~/.local/bin/titan-factory` to that checkout's `dist/bin.js` (atomic rename). A regular file, a foreign symlink or an absent path is left alone, and a failed relink only warns.
-
 `service deploy` and a deploy's rollback therefore restart in two bounded steps:
 
 1. **A foreign serve on the port.** Before the restart, a listener on the service port that is not
@@ -810,6 +808,8 @@ then held until a newer one arrives.
 A failed install or build also writes `deploy-build.log` beside `deploy.json`: the command,
 target, time, exit code and the redacted last 200 lines of stderr and stdout. The record's `why`
 keeps a 20-line tail and names the log; the file holds only the newest failure.
+
+After an exit-0 deploy whose service runs the deploy checkout, `service deploy` also repoints a factory-build symlink at `~/.local/bin/titan-factory` to that checkout's `dist/bin.js` (atomic rename). A regular file, a foreign symlink or an absent path is left alone, and a failed relink only warns.
 
 A seat's Morning queue can hold deploys too. A numbered item under `## Morning queue (owner
 only)` in a `<seat>.md` queue file whose text starts with `DEPLOY HOLD:` (case-sensitive, bold
