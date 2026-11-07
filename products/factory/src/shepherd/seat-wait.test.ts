@@ -53,14 +53,18 @@ interface Scene {
   ownMerges: boolean;
   /** Review rounds at H; each round after a held MERGE carries it, as the run's round loop does. Default 1. */
   rounds?: number;
+  /** H's validate run reads as in progress until the clock reaches this time; absent means green from the start. */
+  ciGreenAt?: number;
 }
+
+const pendingRun = (name: string, id: number) => ({ ...successRun(name, id), status: "in_progress", conclusion: null });
 
 /** One review of H under the real review routes; the clock moves only in sleeps. */
 async function review(scene: Scene) {
   const fake = fakeGitHub();
   fake.addPr({ headSha: H });
-  fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1)]);
   let clock = 10_000;
+  fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [clock < (scene.ciGreenAt ?? 0) ? pendingRun("validate", 1) : successRun("validate", 1)]);
   const agents: ReviewerAgent[] = [row("coord", "live"), ...(scene.seat ? [SEAT] : [])];
   const spawns: string[] = [];
   const dispatch: ReviewerDispatch = {
@@ -96,7 +100,8 @@ async function review(scene: Scene) {
   await host.runtime.wait(runId);
   const results = Object.values(host.runtime.status(runId)!.stepResults);
   const resultOf = (stepId: string) => (results.find((result) => result.stepId === stepId)?.data as { result?: unknown } | undefined)?.result;
-  return { verdicts, spawns, stepIds: results.map((result) => result.stepId), resultOf };
+  const reviewersOf = (name: string) => results.filter((result) => result.stepId.startsWith(`${name}:`)).map((result) => (result.data as { result?: { reviewer?: { agentId?: string } } }).result?.reviewer?.agentId);
+  return { verdicts, spawns, stepIds: results.map((result) => result.stepId), resultOf, reviewersOf };
 }
 
 describe("Shepherd's own MERGE meeting a seat reviewer's WAIT at the same head", () => {
@@ -151,7 +156,7 @@ describe("the next round at a head whose own MERGE a seat held", () => {
   it("re-checks only the seat through three WAITs and lets the one reviewer's MERGE stand once the seat clears", async () => {
     const clears = 10_000 + 3 * SEAT_WAIT_MS + 2_000;
 
-    const { verdicts, spawns, stepIds } = await review({ seat: (now) => (now < clears ? "WAIT" : "MERGE"), ownMerges: true, rounds: 6 });
+    const { verdicts, spawns, stepIds, resultOf } = await review({ seat: (now) => (now < clears ? "WAIT" : "MERGE"), ownMerges: true, rounds: 6 });
 
     expect(verdicts.slice(0, 3).every(held)).toBe(true);
     expect(verdicts.at(-1)).toMatchObject({ kind: "MERGE", headSha: H });
@@ -160,6 +165,20 @@ describe("the next round at a head whose own MERGE a seat held", () => {
     expect(count(stepIds, "sh-review-intent")).toBe(1);
     expect(count(stepIds, "sh-seat-recheck")).toBe(verdicts.length - 1);
     expect(count(stepIds, "sh-merge-evidence")).toBe(1);
+    expect(resultOf(`sh-merge-evidence:${H}`)).toMatchObject({ merge: { resolver: { agentId: `agent-${spawns[0]}` }, dispatchedReviewer: { agentId: `agent-${spawns[0]}` } } });
+  });
+
+  it("ends a seat WAIT on pending CI, then the seat's MERGE on green, in Shepherd's own reviewer's MERGE", async () => {
+    const ciGreenAt = 10_000 + SEAT_WAIT_MS + 2_000;
+    const own = (spawns: string[]) => ({ agentId: `agent-${spawns[0]}` });
+
+    const { verdicts, spawns, stepIds, resultOf, reviewersOf } = await review({ seat: (now) => (now < ciGreenAt ? "WAIT" : "MERGE"), ownMerges: true, rounds: 4, ciGreenAt });
+
+    expect(verdicts[0]).toMatchObject({ kind: "none", seatHeld: { reviewer: own(spawns) } });
+    expect(verdicts.at(-1)).toMatchObject({ kind: "MERGE", headSha: H });
+    expect(resultOf(`sh-merge-evidence:${H}`)).toMatchObject({ merge: { resolver: own(spawns), dispatchedReviewer: own(spawns) } });
+    expect([...reviewersOf("sh-await-verdict"), ...reviewersOf("sh-seat-recheck")]).not.toContain(SEAT.agentId);
+    expect(count(stepIds, "sh-review")).toBe(1);
   });
 
   it("sends the head back when the seat says FIX_FIRST after holding the own MERGE", async () => {

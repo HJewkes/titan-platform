@@ -81,7 +81,10 @@ export const TimelineEntrySchema = z.discriminatedUnion("kind", [
     verdict: z.enum(["MERGE", "FIX_FIRST", "none"]),
     headSha: z.string().nullable(),
     locator: z.object({ path: z.string(), start: z.number(), end: z.number() }).nullable(),
+    /** For a `none` from Shepherd's own review, the reviewer whose MERGE a seat held; never the seat agent. */
     reviewer: z.string().nullable(),
+    /** Why a `none` gave no verdict, in the status line's words; null for a MERGE or FIX_FIRST. */
+    note: z.string().nullable(),
   }),
   z.object({
     kind: z.literal("gate"),
