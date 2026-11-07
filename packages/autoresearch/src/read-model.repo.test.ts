@@ -236,7 +236,7 @@ function expectBothWinnersKept(run: WorkflowRun): void {
   const stops = stopOutcomes(run);
   const seen = ["a", "b"].map((mechanism) => {
     const stop = stops.get(winnerId(mechanism));
-    return `${mechanism}: ${stop ? `${stop.verdict} (${stop.reason ?? "no reason"}, rung ${stop.rungReached})` : "no stop recorded"}`;
+    return `${mechanism}: ${stop ? `${stop.verdict} (${stop.reason}, rung ${stop.rungReached})` : "no stop recorded"}`;
   });
   const message = `run ${run.status}${run.error ? ` (${run.error})` : ""}; ${seen.join("; ")}`;
   expect(run.status, message).toBe("completed");
