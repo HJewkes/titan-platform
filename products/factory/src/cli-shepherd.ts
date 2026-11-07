@@ -143,6 +143,10 @@ function registerHoldVerbs(verb: VerbOf, verbs: Verbs): void {
   verb("readdress-dead-ends", "list each pending dead-end owner gate (exit with no push, fix-first-runaway, failed-rounds) and the seat it would go to (TP-4759); writes nothing without --apply")
     .option("--apply", "cancel each listed gate that has a seat, so its run asks that seat at the same head")
     .action((opts: ShepherdOpts & { apply?: boolean }) => runShepherd(verbs, "shepherd.readdress-dead-ends", () => ({ apply: opts.apply === true }), opts));
+  verb("refollow", "cancel each pending land gate at the PR's open head whose run holds an owner merge on an earlier land gate, so the run asks again and its approval carry decides (TP-4812)")
+    .option("--repo <owner/repo>", "only gates of runs on this repo")
+    .option("--dry-run", "list the gates it would cancel, and cancel none")
+    .action((opts: ShepherdOpts & { repo?: string; dryRun?: boolean }) => runShepherd(verbs, "shepherd.refollow", () => ({ repo: opts.repo, dryRun: opts.dryRun === true }), opts));
 }
 
 /** A repair stop is the seat's stop on fixers short of an owner hold; it is not a hold, so these verbs never touch the release path. */

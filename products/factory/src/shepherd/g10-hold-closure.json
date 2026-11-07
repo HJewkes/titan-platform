@@ -344,6 +344,8 @@
   "shepherd/readdress.ts",
   "shepherd/recorded-route.ts",
   "shepherd/redeploy.ts",
+  "shepherd/refollow-command.ts",
+  "shepherd/refollow.ts",
   "shepherd/register-args.ts",
   "shepherd/register-identity.ts",
   "shepherd/register-infer.ts",
