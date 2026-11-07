@@ -15,6 +15,7 @@ import { OWNER_GATE_POLICY } from "./policy.js";
 import { PrTimelineSchema, type PrTimeline } from "./view.js";
 import { WatchRowSchema, type WatchRow } from "./view-schema.js";
 import type { Waiting } from "./waiting-schema.js";
+import { runOutcome } from "./run-end.js";
 
 function readOnlySeatDir(): string {
   const dir = mkdtempSync(join(tmpdir(), "seats-"));
@@ -724,7 +725,6 @@ describe("shepherd.register after a stopped run", () => {
 
   it.each([
     ["merged", LANDED],
-    ["closed", stoppedStep("closed")],
     ["stuck-behind", stoppedStep("stuck-behind")],
     ["merge-denied", stoppedStep("merge-denied")],
   ])("a run that ended %s starts nothing and only updates the metadata", async (_ended, result) => {
@@ -735,6 +735,34 @@ describe("shepherd.register after a stopped run", () => {
 
     expect(again).toMatchObject({ runId, created: false, registration: { implementer: "impl-b" } });
     expect(again.previousRunId).toBeUndefined();
+    expect(shepherdRuns(w.host)).toEqual([runId]);
+  });
+
+  it("a run stopped closed gets a new run at the head pushed after the pull request reopened", async () => {
+    const w = world();
+    w.fake.addPr({ headSha: H1, headRef: BRANCH, state: "closed" });
+    const closedRunId = (await registered(w, pr1)).runId;
+    await w.host.runtime.wait(closedRunId);
+    expect(runOutcome(Object.values(w.host.runtime.status(closedRunId)!.stepResults))).toMatchObject({ reason: "closed" });
+    Object.assign(w.fake.pr(1), { state: "open", mergeableState: "clean" });
+    w.fake.pushHead(1, FIXED);
+
+    const again = await registered(w, pr1);
+
+    expect(again).toMatchObject({ created: true, previousRunId: closedRunId, previousStop: "closed", registration: { runId: again.runId } });
+    expect(w.routes.shepherd!.store.get().byPr(REPO, 1)?.runId).toBe(again.runId);
+    await gateOpened(w.host, gateId(again.runId, "approve-merge"));
+    expect(w.host.gates.get(gateId(again.runId, "approve-merge"))?.prompt).toContain(`at head ${FIXED}`);
+  });
+
+  it("a run stopped closed on a pull request that is still closed starts nothing", async () => {
+    const w = world({ frozen: true });
+    const runId = await endedAs(w, stoppedStep("closed"));
+    Object.assign(w.fake.pr(1), { state: "closed" });
+
+    const again = await registered(w, pr1);
+
+    expect(again).toMatchObject({ runId, created: false });
     expect(shepherdRuns(w.host)).toEqual([runId]);
   });
 
