@@ -82,7 +82,7 @@ export function carryCacheDir(stateDir: string, repo: string): string {
   return join(stateDir, "git-cache", owner, `${name}.git`);
 }
 
-export const githubRemote = (repo: string): string => `https://github.com/${repo}.git`;
+const githubRemote = (repo: string): string => `https://github.com/${repo}.git`;
 
 /** Resolves the repo's cache through the ports; the state dir is read here, at call time. */
 export function cacheFor(repo: string, options: CarryOptions): CacheHandle {
