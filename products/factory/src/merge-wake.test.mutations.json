@@ -1,0 +1,29 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "every event re-arms the window, so two merges start two ticks",
+      "file": "products/factory/src/merge-wake.ts",
+      "find": "      if (armed) return;\n",
+      "replace": "",
+      "kills": [
+        "absorbs a second event inside the window into the first fire",
+        "starts one tick within 30 s for two merges inside the settle window"
+      ]
+    },
+    {
+      "name": "the wake wraps land's merge route, which the shepherd route set does not carry",
+      "file": "products/factory/src/merge-wake.ts",
+      "find": "export const MERGE_WAKE_STEP = \"sh-landed\";",
+      "replace": "export const MERGE_WAKE_STEP = \"merge\";",
+      "kills": ["starts one tick within 30 s for two merges inside the settle window"]
+    },
+    {
+      "name": "the latch never resets after a fire",
+      "file": "products/factory/src/merge-wake.ts",
+      "find": "    armed = false;\n",
+      "replace": "",
+      "kills": ["arms a fresh window for an event after the last fire", "still fires the next window after a fire that rejects"]
+    }
+  ]
+}

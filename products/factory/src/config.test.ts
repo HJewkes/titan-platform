@@ -226,6 +226,20 @@ describe("loadConfig", () => {
     expect(() => loadConfig(configPath(xdg({ postMerge })))).toThrow(key);
   });
 
+  it("reads the merge wake as an argv with its settle window", () => {
+    const mergeWake = { argv: ["systemctl", "--user", "start", "--no-block", "burndown.service"], timeoutMs: 10_000, settleMs: 20_000 };
+
+    expect(loadConfig(configPath(xdg({ shepherd: { mergeWake } }))).shepherd?.mergeWake).toEqual(mergeWake);
+  });
+
+  it.each([
+    ["a settle window over the 30 s wake deadline", { argv: ["wake"], settleMs: 30_001 }, /mergeWake\.settleMs/],
+    ["a shell flag", { argv: ["wake"], shell: true }, /mergeWake.*shell/],
+    ["a shell string argv", { argv: "wake now" }, /mergeWake\.argv/],
+  ])("rejects a merge wake with %s", (_label, mergeWake, key) => {
+    expect(() => loadConfig(configPath(xdg({ shepherd: { mergeWake } })))).toThrow(key);
+  });
+
   it("reads the gate notifier with the owner-remote class and the titan-factory label by default", () => {
     const env = xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", gateNotify: {} } });
 
