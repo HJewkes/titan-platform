@@ -1,4 +1,5 @@
 import { mkdtempSync } from "node:fs";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BrokerUnavailableError } from "@titan-design/agent-dispatch";
@@ -57,7 +58,7 @@ function rig(): Rig {
   fake.setRuns(RED, [successRun("validate", 7, undefined, "failure")]);
   fake.jobLogs.set(7, "step one\nassertion failed in widget.test");
   let clock = 0;
-  const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat" };
+  const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat" };
   const freezes = new FreezeStore(db, () => clock);
   const added: Rig["added"] = [];
   const spawned: Rig["spawned"] = [];

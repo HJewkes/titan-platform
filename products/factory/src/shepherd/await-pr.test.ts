@@ -1,4 +1,5 @@
 import { fakeGitHub, fakeSha, githubPort, type GitHubPort, type PrFile } from "@titan-design/github";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
 import { awaitPrRoute } from "./await-pr.js";
@@ -24,7 +25,7 @@ function rig(files: PrFile[]): { port: GitHubPort; store: ShepherdStoreRef } {
 }
 
 async function awaitPr(port: GitHubPort, store: ShepherdStoreRef): Promise<boolean> {
-  const deps: ShepherdDeps = { port, store, now: () => 0, sleep: async () => undefined, pollMs: 1, agentChatBin: "agent-chat" };
+  const deps: ShepherdDeps = { gitCache: hostCarryPorts, port, store, now: () => 0, sleep: async () => undefined, pollMs: 1, agentChatBin: "agent-chat" };
   const prompt = JSON.stringify({ repo: REPO, branch: BRANCH, runId: "run-1" });
   const outcome = await awaitPrRoute(deps).runner.run({ runId: "run-1", workflowName: "shepherd-pr", stepId: "sh-await-pr:0", iteration: 0, prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" });
   return outcome.ok;

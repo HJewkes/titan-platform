@@ -1,4 +1,5 @@
 import { CONFIG_PATH, formatResultLine } from "@titan-design/fix-proof";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type PrFile } from "@titan-design/github";
 import type { ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader } from "@titan-design/review-panel";
 import type { SourceTextLocator } from "@titan-design/session-read";
@@ -116,7 +117,7 @@ async function review({ tests = "MERGE", files = TESTS_ONLY, line = vacuousLine,
   seedDiffReads(fake, files);
   let clock = 10_000;
   const store = shepherdStoreRef();
-  const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async () => undefined }, noReproProceed: "on" };
+  const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async () => undefined }, noReproProceed: "on" };
   const { dispatch, reader, spawns } = reviewers(tests, () => clock);
   const results: Record<string, unknown> = {};
   const record = (stepId: string, outcome: Awaited<ReturnType<StepRoute["runner"]["run"]>>) => {
