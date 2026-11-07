@@ -9,7 +9,8 @@ import type { StepRoute } from "@titan-design/workflow";
 import { crashAt } from "../test-support/crash.js";
 import { H1, REPO, answerPendingGate, gateId, gateOpened } from "../test-support/land.js";
 import { landPrRoutes, landPrWorkflow } from "./land-pr.js";
-import { NO_COMMAND, TAIL_CHARS, execChore, type ChoreExec, type ChoreOptions } from "./post-merge.js";
+import { NO_COMMAND, TAIL_CHARS, type ChoreExec, type ChoreOptions } from "./post-merge.js";
+import { execChore } from "./post-merge-adapter.js";
 import { OWNER } from "../test-support/resolver.js";
 import { z } from "zod";
 

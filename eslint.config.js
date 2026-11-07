@@ -128,7 +128,7 @@ export default tseslint.config(
             { name: "@titan-design/github", importNames: GITHUB_CLIENT_EXPORTS, message: RECIPE_GLOBAL_MESSAGE, allowTypeImports: true },
           ],
           // An adapter module wraps a host effect, so a recipe that imported one would reach the clock, environment or a process through a name the lint does not list.
-          patterns: [{ group: ["**/*-adapter.js"], message: "Take the adapter as an input from the code that builds the route (D-M1b-07).", allowTypeImports: true }],
+          patterns: [{ group: ["**/redeploy-adapter.js", "**/post-merge-adapter.js"], message: "Take the adapter as an input from the code that builds the route (D-M1b-07).", allowTypeImports: true }],
         },
       ],
       "no-restricted-globals": ["error", ...RECIPE_BANNED_GLOBALS.map((name) => ({ name, message: RECIPE_GLOBAL_MESSAGE }))],

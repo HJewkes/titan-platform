@@ -19,6 +19,5 @@ export const nodeDeployerPorts: DeployerPorts = {
   close: (fd) => closeSync(fd),
 };
 
-export const wallClock = (): Date => new Date();
-export const hostExecPath = (): string => process.execPath;
-export const hostPlatform = (): NodeJS.Platform => process.platform;
+/** The clock, program and platform a `systemDeployer` runs on; callers add `bin`, `stateDir` and `isAncestor`. */
+export const hostDeployerOptions = (): { now: () => Date; node: string; platform: NodeJS.Platform } => ({ now: () => new Date(), node: process.execPath, platform: process.platform });

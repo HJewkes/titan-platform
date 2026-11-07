@@ -23,7 +23,7 @@ export interface ChoreResult {
 export type ChoreExec = (argv: readonly [string, ...string[]], options: ChoreOptions) => Promise<ChoreResult>;
 
 // Host effects behind the post-merge recipe: kept out of post-merge.ts, which holds no I/O or clock use (D-M1b-07).
-export const POST_MERGE_PIPE_GRACE_MS = 2_000;
+const POST_MERGE_PIPE_GRACE_MS = 2_000;
 /** Output kept per stream before the tail is cut; wide enough that redaction sees any token near the kept tail whole. */
 const KEPT_CHARS = 64 * 1024;
 
@@ -87,7 +87,20 @@ function killGroup(child: ChildProcess): void {
   child.stderr?.destroy();
 }
 
-export const hostEnv = (): NodeJS.ProcessEnv => process.env;
-export const wallNow = (): number => Date.now();
-export const isoTime = (at: number): string => new Date(at).toISOString();
-export const readSpecText = (file: string): string => readFileSync(file, "utf8");
+/** What a post-merge step reads from the host; the code that builds the route passes it in, so the recipe never reaches the clock, environment or a process itself. */
+export interface PostMergeHost {
+  now: () => number;
+  env: () => NodeJS.ProcessEnv;
+  runChore: ChoreExec;
+}
+
+export const hostPostMerge = (): PostMergeHost => ({ now: () => Date.now(), env: () => process.env, runChore: execChore });
+
+/** The transient unit's host: it reads its spec from disk and runs the chore itself. */
+export interface ChoreSpecHost {
+  env: () => NodeJS.ProcessEnv;
+  readText: (file: string) => string;
+  exec: ChoreExec;
+}
+
+export const hostChoreSpec = (): ChoreSpecHost => ({ env: () => process.env, readText: (file) => readFileSync(file, "utf8"), exec: execChore });

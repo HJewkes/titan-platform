@@ -5,11 +5,11 @@ import { z } from "zod";
 import type { AncestryProbe } from "../build-ancestry.js";
 import { buildSha, FACTORY_REPO } from "../build-info.js";
 import { codeRoute, step } from "../workflows/land.js";
-import { DEPLOY_MAX_WAIT_MS, DEPLOY_QUIET_MS, nodeWantedStore, noteWanted, readWanted, writeWanted, type DeployPacerOptions, type WantedStore } from "./deploy-pacer.js";
+import { DEPLOY_MAX_WAIT_MS, DEPLOY_QUIET_MS, noteWanted, readWanted, writeWanted, type DeployPacerOptions, type WantedStore } from "./deploy-pacer.js";
 import { failureOf } from "./error-class.js";
-import { hostExecPath, hostPlatform, nodeDeployerPorts, wallClock, type DeployerPorts } from "./redeploy-adapter.js";
+import type { DeployerPorts } from "./redeploy-adapter.js";
 
-export { nodeDeployerPorts, type DeployerPorts };
+export type { DeployerPorts };
 
 export const REDEPLOY_STEP = "sh-redeploy";
 export const REDEPLOY_LOG = "redeploy.log";
@@ -90,12 +90,16 @@ export interface DeployerOptions {
   bin: string;
   /** Holds the deployer's log. */
   stateDir: string;
-  node?: string;
-  now?: () => Date;
-  platform?: NodeJS.Platform;
+  /** The program that runs `bin`; the host wiring passes the running node. */
+  node: string;
+  now: () => Date;
+  platform: NodeJS.Platform;
   /** Lets the queue keep a newer queued sha over an older merge it contains; absent means the last merge queued wins. */
   isAncestor?: AncestryProbe;
 }
+
+/** What queueing a sha needs; it spawns nothing, so the program, bin and platform are optional. */
+type QueueOptions = Pick<DeployerOptions, "stateDir" | "now" | "isAncestor"> & Partial<DeployerOptions>;
 
 export const SYSTEMD_RUN = "systemd-run";
 
@@ -164,15 +168,15 @@ const minutes = (ms: number): number => ms / 60_000;
 const QUEUED_DETAIL = `deploys after ${minutes(DEPLOY_QUIET_MS)} min with no newer merge, at most ${minutes(DEPLOY_MAX_WAIT_MS)} min after the first`;
 
 /** The queued sha when git shows it contains `mergeSha`; no answer leaves it to be replaced, as before. */
-async function queuedHolding(options: DeployerOptions, store: WantedStore, mergeSha: string): Promise<string | undefined> {
+async function queuedHolding(options: QueueOptions, store: WantedStore, mergeSha: string): Promise<string | undefined> {
   const queued = readWanted(options.stateDir, store)?.sha;
   if (queued === undefined || options.isAncestor === undefined) return undefined;
   return (await options.isAncestor(mergeSha, queued)) === true ? queued : undefined;
 }
 
 /** Serve's deploy pacer spawns later, through `deployPacerPorts`. The record is read again after the probe, so a sha queued meanwhile is not kept by a stale answer. */
-async function queueDeploy(options: DeployerOptions, ports: DeployerPorts, store: WantedStore, mergeSha: string): Promise<Redeploy> {
-  const now = (options.now ?? wallClock)().getTime();
+async function queueDeploy(options: QueueOptions, ports: DeployerPorts, store: WantedStore, mergeSha: string): Promise<Redeploy> {
+  const now = options.now().getTime();
   ports.mkdir(options.stateDir);
   const heldBy = await queuedHolding(options, store, mergeSha);
   writeWanted(options.stateDir, store, noteWanted(readWanted(options.stateDir, store), mergeSha, now, heldBy));
@@ -181,28 +185,28 @@ async function queueDeploy(options: DeployerOptions, ports: DeployerPorts, store
 }
 
 /** A green main sha no Shepherd run merged (seat-merge, bin/merge, the owner) queues through the record Shepherd's redeploy step writes (TP-3474). */
-export function mainDeployQueue(options: DeployerOptions, ports: DeployerPorts = nodeDeployerPorts, store: WantedStore = nodeWantedStore): (sha: string) => Promise<Redeploy> {
+export function mainDeployQueue(options: QueueOptions, ports: DeployerPorts, store: WantedStore): (sha: string) => Promise<Redeploy> {
   return (sha) => queueDeploy(options, ports, store, sha);
 }
 
 /** The pacer spawns through the same deployer, so both paths share A0's unit naming and log. */
-export function deployPacerPorts(options: DeployerOptions, ports: DeployerPorts = nodeDeployerPorts): Pick<DeployPacerOptions, "stateDir" | "spawn"> {
-  const deployer = systemDeployer(options, ports);
+export function deployPacerPorts(options: DeployerOptions, ports: DeployerPorts, store: WantedStore): Pick<DeployPacerOptions, "stateDir" | "spawn"> {
+  const deployer = systemDeployer(options, ports, store);
   return { stateDir: options.stateDir, spawn: (sha) => deployer.spawn(sha) };
 }
 
 /** On systemd the returned pid is systemd-run's, which exits once the transient unit has started. */
-export function systemDeployer(options: DeployerOptions, ports: DeployerPorts = nodeDeployerPorts, store: WantedStore = nodeWantedStore): Deployer {
+export function systemDeployer(options: DeployerOptions, ports: DeployerPorts, store: WantedStore): Deployer {
   return {
     runningSha: buildSha,
     request: mainDeployQueue(options, ports, store),
     spawn: (mergeSha) => {
       const log = join(options.stateDir, REDEPLOY_LOG);
-      const at = (options.now ?? wallClock)();
-      const command = { file: options.node ?? hostExecPath(), args: [options.bin, "service", "deploy", "--expect", mergeSha] };
+      const at = options.now();
+      const command = { file: options.node, args: [options.bin, "service", "deploy", "--expect", mergeSha] };
       ports.mkdir(options.stateDir);
       ports.append(log, `${at.toISOString()} ${command.args.slice(1).join(" ")}\n`);
-      const onSystemd = (options.platform ?? hostPlatform()) === "linux";
+      const onSystemd = options.platform === "linux";
       const child = onSystemd ? startUnderSystemd(ports, log, options.stateDir, deployUnitName(mergeSha, at), command) : startDeployer(ports, log, options.stateDir, command);
       return { pid: child.pid, log };
     },

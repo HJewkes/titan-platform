@@ -5,13 +5,14 @@ import type { PostMergeConfig } from "../config.js";
 import type { StepDeclaration } from "../definition.js";
 import { evidenceRecord, type StepAttempt } from "../evidence.js";
 import { redactCredentials, redactForEvidence } from "../redact.js";
+import { isoAt } from "../time-iso.js";
 import { step } from "./land.js";
-import { POST_MERGE_PIPE_GRACE_MS, execChore, hostEnv, isoTime, readSpecText, wallNow, type ChoreExec, type ChoreOptions, type ChoreResult } from "./post-merge-adapter.js";
+import type { ChoreExec, ChoreOptions, ChoreResult, ChoreSpecHost, PostMergeHost } from "./post-merge-adapter.js";
 import { ChoreSpec, awaitChoreResult, choreFiles, choreState, handleName, launchChore, writeJson, type ChorePorts } from "./post-merge-chore.js";
 
 export const POST_MERGE_STEPS: readonly StepDeclaration[] = [{ id: "post-merge", kind: "dispatch" }];
 export const POST_MERGE_TIMEOUT_MS = 10 * 60_000;
-export { POST_MERGE_PIPE_GRACE_MS, execChore, type ChoreExec, type ChoreOptions, type ChoreResult };
+export type { ChoreExec, ChoreOptions, ChoreResult };
 export const TAIL_CHARS = 2_000;
 export const NO_COMMAND = "no post-merge command";
 
@@ -33,12 +34,10 @@ export async function postMerge(ctx: WorkflowContext, input: PostMergeInput): Pr
   return step(ctx, "post-merge", input, PostMergeResult);
 }
 
-export interface PostMergeDeps {
+export interface PostMergeDeps extends PostMergeHost {
   postMerge?: PostMergeConfig;
-  runChore?: ChoreExec;
   /** Runs the chore in its own unit with a durable result, so a restart of serve neither kills it nor parks the run; absent runs it inside serve. */
   chores?: ChorePorts;
-  now?: () => number;
 }
 
 /**
@@ -46,7 +45,7 @@ export interface PostMergeDeps {
  * the chore's marker and result after a restart, and `park` is left for a chore run inside serve.
  */
 export function postMergeRoute(deps: PostMergeDeps): StepRoute {
-  const now = deps.now ?? wallNow;
+  const now = deps.now;
   const run = async (step: RoutedStepInput): Promise<StepRunOutcome> => {
     try {
       const result = await runPostMerge(deps, PostMergeInputSchema.parse(JSON.parse(step.prompt)), step);
@@ -58,21 +57,21 @@ export function postMergeRoute(deps: PostMergeDeps): StepRoute {
   return { match: "post-merge", onRestart: "park", runner: { run }, reconcile: (step, signal) => reconcilePostMerge(deps, step, signal) };
 }
 
-const postMergeOutput = (step: StepAttempt, at: number, result: object): string => JSON.stringify(evidenceRecord("land.post-merge", step, isoTime(at), { result }));
+const postMergeOutput = (step: StepAttempt, at: number, result: object): string => JSON.stringify(evidenceRecord("land.post-merge", step, isoAt(at), { result }));
 
 async function runPostMerge(deps: PostMergeDeps, input: PostMergeInput, step: RoutedStepInput): Promise<object> {
   const config = deps.postMerge;
   if (!config) return { skipped: NO_COMMAND };
-  if (deps.chores) return runDurably(deps.chores, config, input, step, deps.now ?? wallNow);
-  const options = { ...(config.cwd ? { cwd: config.cwd } : {}), timeoutMs: config.timeoutMs ?? POST_MERGE_TIMEOUT_MS, env: withVars(hostEnv(), choreVars(input)) };
-  return choreRecord(await (deps.runChore ?? execChore)(config.argv, options));
+  if (deps.chores) return runDurably(deps.chores, config, input, step, deps.now);
+  const options = { ...(config.cwd ? { cwd: config.cwd } : {}), timeoutMs: config.timeoutMs ?? POST_MERGE_TIMEOUT_MS, env: withVars(deps.env(), choreVars(input)) };
+  return choreRecord(await deps.runChore(config.argv, options));
 }
 
 async function runDurably(chores: ChorePorts, config: PostMergeConfig, input: PostMergeInput, step: RoutedStepInput, now: () => number): Promise<object> {
   const files = choreFiles(chores.dir, step.requestKey);
   const spec: ChoreSpec = { argv: config.argv, ...(config.cwd ? { cwd: config.cwd } : {}), timeoutMs: config.timeoutMs ?? POST_MERGE_TIMEOUT_MS, vars: choreVars(input), result: files.result };
   const trace = { runId: step.runId, stepId: step.stepId, iteration: step.iteration, attempt: step.attempt };
-  const handle = await launchChore(chores, files, spec, trace, isoTime(now()));
+  const handle = await launchChore(chores, files, spec, trace, isoAt(now()));
   return recordedResult(await awaitChoreResult(chores, files, handle, step.signal), handleName(handle));
 }
 
@@ -88,7 +87,7 @@ async function reconcilePostMerge(deps: PostMergeDeps, step: RecoverableActiveSt
   if (!deps.postMerge) return { kind: "not_found", retrySafe: true, evidence: "no post-merge command is configured, so the step ran nothing" };
   if (!deps.chores) return { kind: "unknown", evidence: "the chore ran inside serve, so whether it finished is unknown; a human decides" };
   const { chores } = deps;
-  const now = deps.now ?? wallNow;
+  const now = deps.now;
   const files = choreFiles(chores.dir, step.requestKey);
   const state = await choreState(chores, files);
   if (state.kind === "never-started") return { kind: "not_found", retrySafe: true, evidence: "no chore marker, so the chore never started" };
@@ -101,10 +100,10 @@ async function reconcilePostMerge(deps: PostMergeDeps, step: RecoverableActiveSt
 }
 
 /** The transient unit's entry point: runs the spec's chore and leaves its record where the step, or a successor, reads it. */
-export async function runChoreSpec(specFile: string): Promise<void> {
-  const spec = ChoreSpec.parse(JSON.parse(readSpecText(specFile)));
-  const options = { ...(spec.cwd ? { cwd: spec.cwd } : {}), timeoutMs: spec.timeoutMs, env: withVars(hostEnv(), spec.vars) };
-  writeJson(spec.result, choreRecord(await execChore(spec.argv, options)));
+export async function runChoreSpec(specFile: string, host: ChoreSpecHost): Promise<void> {
+  const spec = ChoreSpec.parse(JSON.parse(host.readText(specFile)));
+  const options = { ...(spec.cwd ? { cwd: spec.cwd } : {}), timeoutMs: spec.timeoutMs, env: withVars(host.env(), spec.vars) };
+  writeJson(spec.result, choreRecord(await host.exec(spec.argv, options)));
 }
 
 function choreRecord(result: ChoreResult): object {
