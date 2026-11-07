@@ -13,6 +13,7 @@ import { pathUnit } from "./train-shadow-disjoint.js";
 import { stageOf } from "./train-shadow-peers.js";
 import { TRAIN_WORKFLOW, type MergeTrainRef } from "./train.js";
 import { MERGING_STALL_LIMIT_MS } from "./phase-limits.js";
+import { isoAt, parseIsoMs } from "../time-iso.js";
 
 export const RESERVE_STEP = "sh-order-reserve";
 const WAIT_STEP = ORDER_WAIT_STEP;
@@ -107,7 +108,7 @@ async function reserve(deps: MergeOrderStepDeps, input: OrderInput): Promise<Res
   if (own !== undefined && input.movedBase) return widened(deps, own, input.headSha, read.paths);
   const paths = input.movedBase ? [...read.paths, ...unitsOf(read.paths)] : read.paths;
   const ahead = await mergingAhead(deps, input, paths, rule);
-  const since = new Date(deps.now()).toISOString();
+  const since = isoAt(deps.now());
   deps.order().reserve({ ...input, baseSha, paths, ahead, since, reason: reserveReason(input) });
   return { reserved: true, ahead };
 }
@@ -151,7 +152,7 @@ async function mergingStill(deps: MergeOrderStepDeps, repo: RepoSlug, ahead: rea
  */
 function waitedOut(deps: MergeOrderStepDeps, input: OrderInput): boolean {
   const own = deps.order().list(input.repo).find((reservation) => reservation.runId === input.runId);
-  return own !== undefined && deps.now() - Date.parse(own.since) >= MERGING_STALL_LIMIT_MS;
+  return own !== undefined && deps.now() - parseIsoMs(own.since) >= MERGING_STALL_LIMIT_MS;
 }
 
 /** The open PRs the reserving run still waits on: earlier live overlapping reservations, then the runs it let merge first. */
@@ -194,7 +195,7 @@ export function mergeOrderRoutes(deps: MergeOrderStepDeps): StepRoute[] {
   return [
     codeRoute(RESERVE_STEP, deps.now, (input: OrderInput) => reserve(deps, input)),
     codeRoute(WAIT_STEP, deps.now, (input: OrderInput, signal) => waitTurn(deps, input, signal)),
-    codeRoute(UNRESERVE_STEP, deps.now, async (input: { repo: RepoSlug; runId: string }) => ({ released: deps.order().release(input.repo, input.runId, { at: new Date(deps.now()).toISOString() }) })),
+    codeRoute(UNRESERVE_STEP, deps.now, async (input: { repo: RepoSlug; runId: string }) => ({ released: deps.order().release(input.repo, input.runId, { at: isoAt(deps.now()) }) })),
   ];
 }
 
