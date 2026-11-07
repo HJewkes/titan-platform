@@ -8,6 +8,7 @@ import type { RepoFreezeResult } from "./repo-freeze-command.js";
 import type { ReviewAsk } from "./review-request.js";
 import type { ResyncReport } from "./resync.js";
 import type { ReaddressReport, ReaddressedGate } from "./readdress.js";
+import type { RefollowReport } from "./refollow.js";
 import type { ThawResult } from "./thaw-command.js";
 import type { WatchResult } from "./watch-command.js";
 import type { FixPrResult } from "./fix-pr-command.js";
@@ -48,6 +49,7 @@ const FORMATTERS: Formatters = {
   "shepherd.review": formatReviewAsk,
   "shepherd.resync": formatResync,
   "shepherd.readdress-dead-ends": formatReaddress,
+  "shepherd.refollow": formatRefollow,
   "shepherd.prs": formatPrs,
   "shepherd.watch": formatWatches,
   // A calibration read feeds a threshold recommendation, so it prints JSON with or without --json.
@@ -240,6 +242,11 @@ function formatReaddress({ applied, gates }: ReaddressReport): string {
   const moved = gates.filter((gate) => (applied ? gate.cancelled : gate.seat !== null)).length;
   const summary = `${applied ? "readdressed" : "dry run: would readdress"} ${moved} of ${gates.length} dead-end owner gate(s)${applied ? "" : "; --apply cancels them"}`;
   return `${[...gates.map((gate) => readdressLine(applied, gate)), summary].join("\n")}\n`;
+}
+
+function formatRefollow({ dryRun, gates }: RefollowReport): string {
+  const lines = gates.map((gate) => `${gate.gateId}  ${gate.repo}#${gate.pr} ${gate.headSha.slice(0, 7)}  ${dryRun ? "would ask again" : "asked again"}`);
+  return `${[...lines, `${dryRun ? "dry run: would refollow" : "refollowed"} ${gates.length} land gate(s)`].join("\n")}\n`;
 }
 
 function formatResync({ dryRun, ended, orphanGates, superseded, supersededReviews = [], supersededMerges = [], reverted = [] }: ResyncReport): string {
