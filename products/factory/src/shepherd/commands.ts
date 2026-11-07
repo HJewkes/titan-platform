@@ -11,7 +11,6 @@ import { RegistrationRefused, stricterPolicy, type EffectivePolicy } from "./pol
 import { HoldReasonSchema, OWNER_HOLD_CLASS, ReleasableClassSchema, type HoldResult } from "./hold-reason.js";
 import { isOwnerHold } from "./owner-hold-rows.js";
 import { refuseUnknownGates } from "./lan-gates.js";
-import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
 import { ownUpdatedHeads } from "./merge-up-release.js";
 import { ReleaseHeadArg, releaseAtHead, updateBranchRunning } from "./release-head.js";
 import { cachedByHead, localPrFiles } from "./git-pr-files.js";
@@ -146,7 +145,7 @@ async function startRegistered(ctx: FactoryContext, store: ShepherdStore, args: 
   }
 }
 
-async function register(args: RegisterArgs, ctx: FactoryContext): Promise<Registered> {
+export async function register(args: RegisterArgs, ctx: FactoryContext): Promise<Registered> {
   const services = servicesOf(ctx);
   const policy = policyFor(services.seats, args);
   const known = findRegistration(ctx, services.store.get(), args.repo, args.pr, args.branch);
@@ -179,23 +178,6 @@ export async function classifyRegistered(ctx: FactoryContext, registered: Regist
   const held = g10Hold === undefined ? registered : { ...registered, g10Hold, registration: services.store.get().byRun(registered.runId)! };
   const sizeFlag = await sizeFlagFor(services.port, head === undefined ? held.registration : { ...held.registration, headSha: head }, { local });
   return sizeFlag === undefined ? held : { ...held, sizeFlag };
-}
-
-/** Registers the changesets PR the way `shepherd register` would, with no fixer: no agent wrote it, so none can fix it. */
-export async function registerVersionPackages(ctx: FactoryContext, repo: RepoSlug, pr: number): Promise<Registered> {
-  return register({ repo, pr, task: releaseTask(repo), implementer: RELEASE_IMPLEMENTER, kind: "unknown", policy: { fixer: false } }, ctx);
-}
-
-/** The registration's implementer: the factory toolchain sweep wrote this PR, so a wake for it is never handled. */
-export const TOOLCHAIN_IMPLEMENTER = "toolchain-fanout";
-
-function toolchainTask(repo: RepoSlug): string {
-  return `${repo.split("/")[1] ?? repo}/toolchain`;
-}
-
-/** Registers a toolchain adoption PR with no fixer, since no agent can fix a plan the sweep wrote, and owner-gated, since it edits other repos' release workflows. */
-export async function registerToolchainAdoption(ctx: FactoryContext, repo: RepoSlug, pr: number): Promise<Registered> {
-  return register({ repo, pr, task: toolchainTask(repo), implementer: TOOLCHAIN_IMPLEMENTER, kind: "unknown", policy: { fixer: false, merge: "owner-gate", ownerGateReason: "owner-asked" } }, ctx);
 }
 
 /** `repo#pr` directly, or through its head branch when a branch registration has not seen the PR yet. */
