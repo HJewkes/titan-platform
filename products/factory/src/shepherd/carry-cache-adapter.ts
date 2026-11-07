@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { resolveDbPath } from "../config.js";
-import type { CacheFs, Git, GitCachePorts } from "./tree-carry.js";
+import type { CacheFs, Git, GitCachePorts } from "./carry-cache-ports.js";
 
 const GIT_TIMEOUT_MS = 10 * 60_000;
 
