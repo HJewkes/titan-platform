@@ -30,7 +30,7 @@
       "kills": ["the G10 hold closure of the factory's listed policy modules holds g10-adversary every module the walk reaches"]
     },
     {
-      "name": "the walk narrows back to shepherd/ and stops following imports elsewhere in the factory",
+      "name": "the hold-closure walk narrows back to shepherd/",
       "file": "products/factory/src/shepherd/g10-hold-closure.test-helpers.ts",
       "find": "return name.startsWith(\"../\") ? undefined : name;",
       "replace": "return name.startsWith(\"shepherd/\") ? name : undefined;",
