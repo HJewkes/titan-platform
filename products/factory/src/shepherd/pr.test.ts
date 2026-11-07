@@ -24,7 +24,7 @@ import type { Git } from "./tree-carry.js";
 import type { ReviewRequest, ShepherdPhases, Verdict, WakeOutcome, WakeRequest } from "./phases.js";
 import { CI_UNREAD_REASON, ciUnreadAsNone } from "./ci-unread.js";
 import { supersedeMovedGates } from "./head-moved.js";
-import { shepherdPrWorkflow } from "./pr.js";
+import { DEFAULT_PHASES, shepherdPrWorkflow } from "./pr.js";
 import { MAX_REPAIRS, MAX_THROTTLED_ROUNDS } from "./route-table.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import type { EffectivePolicy } from "./policy-schema.js";
@@ -138,6 +138,12 @@ async function approveAndFinish(host: FactoryHost, runId: string, headSha: strin
 function pushes(fake: FakeGitHub, headSha: string): (request: WakeRequest) => WakeOutcome {
   return () => (fake.pushHead(1, headSha), { kind: "woken", agent: "impl-a" });
 }
+
+describe("the default shepherd-pr phases", () => {
+  it("the default workflow without a visualSetCarry phase treats set-carry as off", () => {
+    expect(DEFAULT_PHASES.visualSetCarry).toBeUndefined();
+  });
+});
 
 describe("shepherd-pr", () => {
   it("records why a run on a PR closed without merging ended, so the watch row reads it as stopped", async () => {

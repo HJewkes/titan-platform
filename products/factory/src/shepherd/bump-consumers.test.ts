@@ -236,14 +236,14 @@ describe("bumpConsumers", () => {
     expect(w.fakes.get(CONSUMER_A)!.effects).toMatchObject({ createRef: 0, putContent: 0, createPr: 0 });
   });
 
-  it("refuses to reuse a bump branch that already exists with no PR", async () => {
+  it("fails closed naming the branch when a leftover bump branch has no PR", async () => {
     const w = world();
     const { bumps } = await planConsumerBumps(w.services, w.registry);
     w.fakes.get(CONSUMER_A)!.refs.set(bumps[0]!.branch, fakeSha("leftover"));
 
     const notes = await bumpConsumers(w.host, w.services, ports(w));
 
-    expect(notes[0]).toEqual({ repo: CONSUMER_A, error: "Error" });
+    expect(notes[0]).toEqual({ repo: CONSUMER_A, error: "LeftoverBumpBranchError", branch: bumps[0]!.branch });
     expect(w.fakes.get(CONSUMER_A)!.effects).toMatchObject({ putContent: 0, createPr: 0 });
     expect(notes[1]).toMatchObject({ repo: CONSUMER_B, registered: expect.any(String) });
   });

@@ -16,6 +16,7 @@ import { wakePhase } from "./shepherd/wake-phase.js";
 import { isolateAgentChatHome } from "./test-support/agent-chat-home.js";
 import { H1, REPO, gateId, gateOpened } from "./test-support/land.js";
 import { configuredRoutes, configuredSpawnLimits, type FactoryRouteDeps } from "./workflows.js";
+import { factoryShepherdPhases } from "./shepherd-phases.js";
 import { bindCarryStateDir } from "./shepherd/carry-cache-adapter.js";
 import { partialFake } from "@titan-design/test-kit";
 import type { RoutedStepInput } from "@titan-design/workflow";
@@ -65,6 +66,15 @@ async function landWith(env: NodeJS.ProcessEnv): Promise<{ argvs: (readonly stri
   const record = Object.values(host.runtime.status(runId)!.stepResults).find((result) => result.stepId === "post-merge")?.data;
   return { argvs, record };
 }
+
+describe("factoryWorkflows shepherd phases", () => {
+  it("reads shepherd.visualSetCarry from the config file", () => {
+    const env = configHome({ shepherd: { visualSetCarry: "on" } });
+    vi.stubEnv("XDG_CONFIG_HOME", env.XDG_CONFIG_HOME);
+
+    expect(factoryShepherdPhases.visualSetCarry?.()).toBe("on");
+  });
+});
 
 describe("configuredRoutes", () => {
   it("runs the postMerge argv from the config file after a merge through the real route set", async () => {

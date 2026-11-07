@@ -2,7 +2,8 @@
 // `pnpm registry:closure`: a factory fact step whose import closure changed against the base must change its schema
 // hash or bump, or carry an attestation for the new closure (TP-3106 S6). `--write` refreshes the committed lock.
 // The closure walk is TypeScript, so this runs the factory's built products/factory/dist/registry/closure-main.js: build first.
-// On a pull request, an attestation row the base lacks must name that PR, so one PR cannot attest for another (TP-3110 S5).
+// On a pull request, an attestation row the base lacks must name that PR, so one PR cannot attest for another (TP-3110 S5),
+// or a parent PR the branch is stacked on, so a child never deletes or copies its parent's file (TP-4840).
 // Rows live one file per PR, attestations/<pr>.json, so two PRs adding rows never conflict (TP-4745); a row's pr names its file.
 // Usage: node scripts/step-closure-check.mjs [--write] [base]   (base: argv, CLOSURE_BASE, origin/$GITHUB_BASE_REF on a PR, then origin/main)
 import { execFileSync } from "node:child_process";
@@ -70,21 +71,40 @@ export function readPrNumber(env, readFile) {
 
 const sameRow = (a, b) => a.step === b.step && a.closure === b.closure && a.pr === b.pr;
 
-/** Rows the working tree adds over the base: each must name this PR. Skipped when there is no PR. */
-export function judgeAddedRows(baseRows, rows, prNumber) {
+/**
+ * Whether PR `pr` is a parent this branch is stacked on: every commit in base..HEAD that touched `<pr>.json` is in
+ * that PR's own head, fetched from GitHub's refs/pull/<pr>/head. Resolved from git, not the PR body, so it is the
+ * same on every run; a commit of this branch's own that writes the file, or a fetch that fails, judges it foreign.
+ */
+export function isStackedParent(git, base, pr) {
+  const parentHead = `refs/closure-parent/${pr}`;
+  try {
+    git(["fetch", "--quiet", "--no-tags", "origin", `+refs/pull/${pr}/head:${parentHead}`]);
+    const commits = git(["log", "--format=%H", `${base}..HEAD`, "--", `${ATTESTATIONS_DIR}/${pr}.json`]).split("\n").filter(Boolean);
+    for (const commit of commits) git(["merge-base", "--is-ancestor", commit, parentHead]);
+    return commits.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Rows the working tree adds over the base: each must name this PR or a stacked parent's. Skipped when there is no PR. */
+export function judgeAddedRows(baseRows, rows, prNumber, isParent = () => false) {
   const added = rows.filter((row) => !baseRows.some((old) => sameRow(old, row)));
   const label = (row) => `${row.step}@${String(row.closure).slice(0, 12)}`;
   const notices = added.map((row) => `attest required: ${label(row)}`);
   if (prNumber === undefined) return { failures: [], notices };
-  const failures = added.filter((row) => row.pr !== prNumber).map((row) => `${label(row)}: an added attestation row names PR ${row.pr}, not this PR #${prNumber}`);
-  return { failures, notices };
+  const foreign = added.filter((row) => row.pr !== prNumber);
+  const parents = new Set([...new Set(foreign.map((row) => row.pr))].filter((pr) => isParent(pr)));
+  const failures = foreign.filter((row) => !parents.has(row.pr)).map((row) => `${label(row)}: an added attestation row names PR ${row.pr}, not this PR #${prNumber}`);
+  return { failures, notices: [...notices, ...[...parents].map((pr) => `rows of #${pr} accepted: this branch is stacked on it`)] };
 }
 
 /** Base from git, the committed lock and attestation files from the working tree; `check` computes and judges. */
 export function runCheck({ git, readFile, listDir, check, base, prNumber }) {
   const tree = readTreeAttestations(listDir, readFile);
   const result = check({ base: readBaseLock(git, base), committed: JSON.parse(readFile(LOCK_PATH)), attestations: tree.rows });
-  const added = judgeAddedRows(readBaseAttestations(git, base), tree.rows, prNumber);
+  const added = judgeAddedRows(readBaseAttestations(git, base), tree.rows, prNumber, (pr) => isStackedParent(git, base, pr));
   return { ...result, failures: [...result.failures, ...tree.failures, ...added.failures], notices: [...result.notices, ...added.notices] };
 }
 
