@@ -9,6 +9,7 @@ describe("cli-types leaf", () => {
       "./ci-timing-fallback.js",
       "./definition.js",
       "./deploy-behind.js",
+      "./deploy-cli-link.js",
       "./deploy-watch.js",
       "./deploy.js",
       "./gate-answer-rpc.js",

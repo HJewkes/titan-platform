@@ -36,6 +36,7 @@
   "deploy-behind.ts",
   "deploy-bootstrap.ts",
   "deploy-checkout.ts",
+  "deploy-cli-link.ts",
   "deploy-closure.ts",
   "deploy-health.ts",
   "deploy-hold-gate.ts",
