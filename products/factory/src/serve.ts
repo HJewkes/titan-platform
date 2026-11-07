@@ -59,9 +59,9 @@ import { MAIN_WATCH_MS, openMainWatch, type MainWatchPorts } from "./shepherd/ma
 import { SEAT_DIGEST_MS, fileSeatDigestMemory, sweepSeatDigests, type SeatDigestPorts } from "./shepherd/seat-digest.js";
 import { digestPacer } from "./shepherd/seat-digest-pace.js";
 import { startCiTimingFallback, type CiTimingFallbackPorts } from "./ci-timing-fallback.js";
-import { bindCarryStateDir } from "./shepherd/tree-carry.js";
+import { bindCarryStateDir } from "./shepherd/carry-cache-adapter.js";
 import { sweepReviewCheckouts, type ReviewCheckoutSweepDeps } from "./shepherd/review-checkout-sweep.js";
-import { RELEASE_SWEEP_MS, TOOLCHAIN_SWEEP_MS, sweepReleases, sweepToolchains } from "./shepherd/package-sweeps.js";
+import { startPackageSweeps, type PackageSweepOptions } from "./shepherd/package-sweeps.js";
 import { readPath } from "./narrow.js";
 
 export type { FactoryContext } from "./context.js";
@@ -77,7 +77,7 @@ const CHECKOUT_SWEEP_MS = 3_600_000;
 const DEFAULT_SOURCES: SourcesReader = () => resolveSources({});
 const FACTORY_VERSION = String(readPath(createRequire(import.meta.url)("../package.json"), "version"));
 
-export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweepOptions, FramedHostOptions, ConsoleAnswersServeOptions {
+export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweepOptions, PackageSweepOptions, FramedHostOptions, ConsoleAnswersServeOptions {
   /** Holds the daemon pid file, the one-server-per-directory lock; defaults to the database's directory. */
   stateDir?: string;
   /** Defaults to 7410; 0 binds an ephemeral port. */
@@ -87,10 +87,6 @@ export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweep
   logger?: Logger;
   /** How often runs waiting on a gate have their PR checked for a merge or close elsewhere; defaults to 5 minutes. */
   goneSweepMs?: number;
-  /** How often the Version Packages sweep runs; defaults to `RELEASE_SWEEP_MS`. */
-  releaseSweepMs?: number;
-  /** How often the toolchain adoption sweep runs; defaults to `TOOLCHAIN_SWEEP_MS`. */
-  toolchainSweepMs?: number;
   /** Replaces the `gh api rate_limit` probe behind health's `github` field; tests stub it. */
   github?: GithubHealth;
   /** Behind health's `sources` field, the ingress kill switch and the reconciler's cadence; absent means no field and the polling defaults. */
@@ -179,8 +175,7 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   thaws.onThaw(() => [goneSweep, fixerSweep].forEach((swept) => void swept?.tick()));
   await goneSweep?.tick();
   const headMovedSweep = services && (await startHeadMovedSweep(host, services, options, log));
-  const releaseSweep = services && startSweep(() => sweepReleases(host, services, log), options.releaseSweepMs ?? RELEASE_SWEEP_MS, "version packages sweep", log);
-  const toolchainSweep = services && startSweep(() => sweepToolchains(host, services, log), options.toolchainSweepMs ?? TOOLCHAIN_SWEEP_MS, "toolchain adoption sweep", log);
+  const packageSweeps = startPackageSweeps(host, services, options, log);
   const checkoutSweep = services && startSweep(() => sweepCheckouts(log), CHECKOUT_SWEEP_MS, "review checkout sweep", log);
   await checkoutSweep?.tick();
   const deploySweep = startDeployWatch(options.deployWatch, log);
@@ -197,7 +192,7 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const standingSweep = startStandingAnswerSweep(host, services, { actionsDir: options.consoleAnswers?.actionsDir, stateDir, now: options.now, tell: options.consoleAnswers?.tellOwner }, log);
   const reconciler = startServeReconciler(options.reconciler, bot.access(), { sources: options.sources ?? DEFAULT_SOURCES, db: host.db, log, now: options.now, stamp: passStamp });
   reconcilerRef.health = reconciler.health;
-  const sweeps = [sweep, goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep];
+  const sweeps = [sweep, goneSweep, headMovedSweep, fixerSweep, ...packageSweeps, checkoutSweep, deploySweep, mainSweep];
   sweeps.push(digestSweep, ciTimingSweep, pacerSweep, notifySweep, deliverySweep, shipSweep, standingSweep, reconciler.sweep);
   sweeps.push(markerGcSweep(options.routes.config?.get().markers, host.db, options.dbPath, log, options.now));
   if (bot.usage) sweeps.push(...startUsageLog(bot.usage, "bot", log));

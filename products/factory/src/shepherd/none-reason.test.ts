@@ -1,7 +1,7 @@
 import { DEPTH_FLOOR_REASON, USAGE_LIMIT_REASON } from "@titan-design/review-panel";
 import type { StepResult } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
-import { lastAwaitClause, lastNoneReason } from "./none-reason.js";
+import { lastAwaitClause, lastNoneReason, noneReasonOf } from "./none-reason.js";
 
 const H1 = "1".repeat(40);
 const H2 = "2".repeat(40);
@@ -72,6 +72,22 @@ describe("the last await", () => {
     const legacy: StepResult[] = [{ stepId: `sh-review:${H1}`, iteration: 0, agentId: null, signal: null, completedAt: "2026-01-01T00:00:00.000Z", data: { notStarted: true } }];
 
     expect(lastNoneReason(legacy)?.kind).toBe("not-started");
+  });
+});
+
+describe("why one recorded review step gave none", () => {
+  const heldNone = { kind: "none", reason: `seat check: s-review said WAIT at ${H1}`, seat: "s-review", seatHeld: merge(H1) };
+
+  it("reads a seat-held await in the status line's words", () => {
+    expect(noneReasonOf(`sh-await-verdict:${H1}`, heldNone)?.text).toBe("seat WAIT from s-review, Shepherd MERGE held");
+  });
+
+  it("reads a seat recheck that held the MERGE again", () => {
+    expect(noneReasonOf(`sh-seat-recheck:${H1}`, heldNone)?.text).toBe("seat WAIT from s-review, Shepherd MERGE held");
+  });
+
+  it("reads nothing for a panel member's await", () => {
+    expect(noneReasonOf(`sh-await-verdict:${H1}:arch`, heldNone)).toBeUndefined();
   });
 });
 

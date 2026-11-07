@@ -352,7 +352,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     seatNoticeRoute(deps.now, deps.exitNotice, deps.sleep),
     ...freezeHoldRoutes(deps, wiring.mainRed?.freezes),
     ...g10ReleaseRoutes(deps, () => wiring.review?.twoMergeRelease),
-    ...g10ReholdRoutes(deps, wiring.review?.carry), ...g10ReclassRoutes(deps),
+    ...g10ReholdRoutes(deps, { ports: deps.gitCache, ...wiring.review?.carry }), ...g10ReclassRoutes(deps),
     ...heldRepairRoutes(deps),
     ...visualPacketRoutes(deps),
     sendBackOfferRoute(deps), visualAcceptOfferRoute(deps),

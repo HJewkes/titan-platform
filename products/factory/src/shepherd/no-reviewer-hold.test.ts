@@ -1,4 +1,5 @@
 import { fakeGitHub, fakeSha, githubPort } from "@titan-design/github";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import type { DispatchOptions, StepResult, WorkflowContext } from "@titan-design/workflow";
 import { partialFake } from "@titan-design/test-kit";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
@@ -29,7 +30,7 @@ function scene(options: { alert?: (repo: string, text: string) => Promise<void> 
   const ref: ShepherdStoreRef = { get: () => store, bind: () => () => undefined };
   const fake = fakeGitHub({ repo: REPO });
   fake.addPr({ headSha: HEAD });
-  const deps: ShepherdDeps = { port: githubPort(fake.wire), store: ref, now: () => clock.now, sleep: async (ms: number) => void (clock.now += ms), pollMs: 60_000, agentChatBin: "agent-chat" };
+  const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(fake.wire), store: ref, now: () => clock.now, sleep: async (ms: number) => void (clock.now += ms), pollMs: 60_000, agentChatBin: "agent-chat" };
   const alerts: { repo: string; text: string }[] = [];
   const routes = noReviewerRoutes(deps, options.alert ?? (async (repo, text) => void alerts.push({ repo, text })));
   /** Each wait poll is a chance for the world to move, as the owner or a push would between polls. */
