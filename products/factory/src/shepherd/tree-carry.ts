@@ -6,11 +6,9 @@ import { CLOSURE_LOCK_DRIVER, type GitConfigEntry } from "../merge-drivers.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { HEAD } from "./await-verdict.js";
 import { hostCarryPorts } from "./carry-cache-adapter.js";
-import type { CacheFs, Git, GitCachePorts, GitResult } from "./git-cache-ports.js";
+import type { CacheFs, Git, GitCachePorts } from "./carry-cache-ports.js";
 import { errorClass } from "./error-class.js";
 import { isRepoKey } from "./seats.js";
-
-export type { CacheFs, Git, GitCachePorts, GitResult };
 
 export const CARRY_STEP = "sh-carry";
 
@@ -58,6 +56,7 @@ export class CarryRefusal extends Error {
 }
 
 export { systemGit } from "./carry-cache-adapter.js";
+export type { CacheFs, Git, GitCachePorts, GitResult } from "./carry-cache-ports.js";
 
 export function carryCacheDir(stateDir: string, repo: string): string {
   const [owner = "", name = ""] = repo.toLowerCase().split("/");
