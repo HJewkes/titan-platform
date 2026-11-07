@@ -38,6 +38,7 @@ import type { Registration, ShepherdStore } from "./store.js";
 import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./services.js";
 import type { Phase } from "./step-phase.js";
 import { carry, type CarryInput } from "./tree-carry.js";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { waitingCommand } from "./waiting.js";
 import { visualDeltaCommand } from "./visual-delta-command.js";
 import { visualWeekCommand } from "./visual-week-command.js";
@@ -334,11 +335,10 @@ const releaseCommand = defineCommand<z.infer<typeof ReleaseArgs>, HoldResult, Fa
   async run({ repo, pr, head, actor, holdClass }, ctx) {
     const services = servicesOf(ctx);
     const registration = await locate(services, repo, pr);
-    const { runId } = registration;
     const run = () => runOf(ctx.host, registration);
-    const reads = { ownUpdates: () => ownUpdatedHeads(run()), updating: () => updateBranchRunning(run()), carry: (input: CarryInput) => carry(input) };
-    const after = await releaseAtHead(services.store.get(), services.port, { runId, repo, pr, head, actor, ...(holdClass && { holdClass }) }, reads);
-    return { runId, held: after.held ? { reason: after.holdReason ?? "held", ...(after.holdReviewer !== null && { reviewer: after.holdReviewer }) } : null };
+    const reads = { ownUpdates: () => ownUpdatedHeads(run()), updating: () => updateBranchRunning(run()), carry: (input: CarryInput) => carry(input, { ports: hostCarryPorts }) };
+    const after = await releaseAtHead(services.store.get(), services.port, { runId: registration.runId, repo, pr, head, actor, ...(holdClass && { holdClass }) }, reads);
+    return { runId: registration.runId, held: after.held ? { reason: after.holdReason ?? "held", ...(after.holdReviewer !== null && { reviewer: after.holdReviewer }) } : null };
   },
 });
 
