@@ -1,6 +1,5 @@
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gitIn, seedRepo, withHistory } from "@titan-design/test-kit/git";
@@ -37,7 +36,9 @@ function seededOrigin(): { origin: string; head: string } {
 async function authWall(): Promise<{ url: string; server: Server }> {
   const server = createServer((_request, response) => response.writeHead(401, { "WWW-Authenticate": 'Basic realm="synthetic"' }).end());
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  return { url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/acme/widgets.git`, server };
+  const address = server.address();
+  if (address === null || typeof address === "string") throw new Error("the auth wall has no port");
+  return { url: `http://127.0.0.1:${address.port}/acme/widgets.git`, server };
 }
 
 const mergeTreeOf = (origin: string, headSha: string): Promise<string> => localMergeTree({ repo: REPO, baseRef: "main", headSha }, { remote: () => origin });
