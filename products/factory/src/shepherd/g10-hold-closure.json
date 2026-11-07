@@ -411,6 +411,7 @@
   "shepherd/seat-evidence.ts",
   "shepherd/seat-reader.ts",
   "shepherd/seat-tie.ts",
+  "shepherd/self-register.ts",
   "shepherd/send-back.ts",
   "shepherd/services.ts",
   "shepherd/size-flag.ts",
