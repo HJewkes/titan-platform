@@ -1,5 +1,25 @@
 # @titan-design/queue-mirror
 
+## 0.4.7
+
+### Patch Changes
+
+- 70688c5: Clears the package's typed-lint baseline: SQLite rows and events are now narrowed at runtime instead of cast. A malformed stored row or an item missing at resolution time now throws a descriptive error.
+- 9b42150: Use the shared `isRecord`, `isObjectLike` and `errorCode` from `@titan-design/rpc-protocol/narrow` in place of local copies. Behaviour is unchanged.
+- Updated dependencies [b3f677b]
+- Updated dependencies [84d962e]
+- Updated dependencies [6c2df6a]
+- Updated dependencies [c58d555]
+- Updated dependencies [5edd38d]
+- Updated dependencies [9b42150]
+- Updated dependencies [c1f9297]
+- Updated dependencies [1a1dd79]
+- Updated dependencies [1b0c46a]
+  - @titan-design/hitl@0.10.0
+  - @titan-design/store-sqlite@0.5.0
+  - @titan-design/rpc-protocol@0.4.0
+  - @titan-design/matrix-bus@0.2.2
+
 ## 0.4.6
 
 ### Patch Changes

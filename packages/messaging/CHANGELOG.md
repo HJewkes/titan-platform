@@ -1,5 +1,15 @@
 # @titan-design/messaging
 
+## 0.4.3
+
+### Patch Changes
+
+- a038837: The README capability table now shows `false` for the Mock default of `buttonStates`, matching `DEFAULT_CAPABILITIES` in `mock.ts`.
+- 1e7df28: Narrow parsed JSON with a record guard instead of type assertions in the BlueBubbles and Telegram readers. No behaviour change.
+- 9b42150: Use the shared `isRecord`, `isObjectLike` and `errorCode` from `@titan-design/rpc-protocol/narrow` in place of local copies. Behaviour is unchanged.
+- Updated dependencies [5edd38d]
+  - @titan-design/rpc-protocol@0.4.0
+
 ## 0.4.2
 
 ### Patch Changes

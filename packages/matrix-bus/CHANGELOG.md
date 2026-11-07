@@ -1,5 +1,14 @@
 # @titan-design/matrix-bus
 
+## 0.2.2
+
+### Patch Changes
+
+- 9b42150: Use the shared `isRecord`, `isObjectLike` and `errorCode` from `@titan-design/rpc-protocol/narrow` in place of local copies. Behaviour is unchanged.
+- 1a1dd79: Replace unsafe type assertions in the item codec and owner fold with type guards.
+- Updated dependencies [5edd38d]
+  - @titan-design/rpc-protocol@0.4.0
+
 ## 0.2.1
 
 ### Patch Changes

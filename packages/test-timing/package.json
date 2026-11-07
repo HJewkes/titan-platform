@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/test-timing",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "titan.test-timing/v1 per-file vitest timing record and its SQLite corpus store",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,5 +1,16 @@
 # @titan-design/code-parser
 
+## 0.2.1
+
+### Patch Changes
+
+- c89daa1: Index `.mjs` and `.cjs` files as typescript-family sources (TP-4161). `shouldIncludeFile` and
+  `getLanguageFromPath` now treat both as `typescript`, so code-graph's walk picks up ES module and
+  CommonJS scripts and their symbols, imports and calls enter the graph.
+- 565913d: Skip Python virtualenvs and tool caches in the source walk (TP-3688). `.venv`, `venv`, `__pycache__`,
+  `.pytest_cache` and `.tox` are now excluded directories, and `walkSourceFiles` also skips any
+  directory holding a `pyvenv.cfg`, so a virtualenv under any name no longer floods the graph.
+
 ## 0.2.0
 
 ### Minor Changes

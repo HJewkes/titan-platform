@@ -1,5 +1,14 @@
 # @titan-design/dispatch-ledger
 
+## 0.1.1
+
+### Patch Changes
+
+- 5b386d2: Record agent-chat `7b87af6` as the commit the ledger port matches. The commit only adds the CC-1181 wait to the pid lock, which this package does not carry (the lease replaces it), so no source changes.
+- Updated dependencies [c58d555]
+- Updated dependencies [c1f9297]
+  - @titan-design/store-sqlite@0.5.0
+
 ## 0.1.0
 
 ### Minor Changes

@@ -1,5 +1,20 @@
 # @titan-design/memory
 
+## 0.3.1
+
+### Patch Changes
+
+- 02ed42b: Narrow stored bullet attrs with a zod schema and type the feedback queries instead of casting.
+- Updated dependencies [42551ba]
+- Updated dependencies [42b6a21]
+- Updated dependencies [c58d555]
+- Updated dependencies [d279098]
+- Updated dependencies [f996bb9]
+- Updated dependencies [c1f9297]
+  - @titan-design/retrieval@0.4.0
+  - @titan-design/store-sqlite@0.5.0
+  - @titan-design/embed@0.2.1
+
 ## 0.3.0
 
 ### Minor Changes
