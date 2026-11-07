@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // Checks the burndown port map against agent-chat's src/agents/burndown/ at a ref, and refreshes the map's per-file facts.
+// check exits 1 for unmapped, removed or unpinned entries, 2 for drift alone, 0 when clean.
 // Usage: node scripts/burndown-port-map.mjs check [--agent-chat <dir>] [--ref <sha>] [--map <file>]
 //        node scripts/burndown-port-map.mjs facts --ref <sha> [--agent-chat <dir>] [--map <file>]
 import { execFileSync } from "node:child_process";
@@ -94,6 +95,26 @@ function listBurndown(agentChat, ref) {
   return parseLsTree(git(agentChat, ["ls-tree", ref, `${BURNDOWN}/`]));
 }
 
+const FULL_SHA = /^[0-9a-f]{40}$/;
+
+/** Entries that claim a port: every ported file and leaf port must pin a commit; an L1 file pins one without `ported`. */
+export function portClaims(map) {
+  const claims = [
+    ...map.files.filter((f) => f.ported || f.portedFrom).map((f) => ({ kind: "ported", file: f.file, portedFrom: f.portedFrom })),
+    ...(map.leafPorts ?? []).map((l) => ({ kind: "leaf", file: l.file, portedFrom: l.portedFrom })),
+  ];
+  return { pinned: claims.filter((c) => FULL_SHA.test(c.portedFrom ?? "")), unpinned: claims.filter((c) => !FULL_SHA.test(c.portedFrom ?? "")) };
+}
+
+/** Ported entries whose agent-chat source gained commits after the commit they were ported from. */
+function driftedEntries(agentChat, ref, pinned) {
+  return pinned.flatMap((c) => {
+    const log = git(agentChat, ["log", "--format=%h", `${c.portedFrom}..${ref}`, "--", `${BURNDOWN}/${c.file}`]);
+    const commits = log.split("\n").filter(Boolean);
+    return commits.length > 0 ? [{ ...c, commits }] : [];
+  });
+}
+
 function check({ agentChat, ref, map: mapPath }) {
   const map = JSON.parse(readFileSync(mapPath, "utf8"));
   const at = ref ?? map.source.sha;
@@ -103,7 +124,12 @@ function check({ agentChat, ref, map: mapPath }) {
   for (const f of unmapped) console.log(`unmapped: ${f}`);
   for (const f of removed) console.log(`removed: ${f}`);
   for (const d of subdirs) console.log(`subdirectory: ${d} (the map holds files only)`);
-  return unmapped.length + removed.length + subdirs.length === 0 ? 0 : 1;
+  const { pinned, unpinned } = portClaims(map);
+  for (const c of unpinned) console.log(`unpinned: ${c.file} (${c.kind}) has no 40-hex portedFrom`);
+  const drifted = driftedEntries(agentChat, at, pinned);
+  for (const d of drifted) console.log(`drifted: ${d.file} (${d.kind}) ${d.commits.join(" ")}`);
+  if (unmapped.length + removed.length + subdirs.length + unpinned.length > 0) return 1;
+  return drifted.length > 0 ? 2 : 0;
 }
 
 function externalImporters(agentChat, ref) {
