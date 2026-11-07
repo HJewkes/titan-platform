@@ -24,6 +24,14 @@ export const PostMergeConfigSchema = z.strictObject({
 
 export type PostMergeConfig = z.infer<typeof PostMergeConfigSchema>;
 
+/** The tick a Shepherd merge wakes after its settle window; capped at 30 s, the wake's own deadline (TP-1433). */
+export const MergeWakeConfigSchema = z.strictObject({
+  ...PostMergeConfigSchema.shape,
+  settleMs: z.number().int().positive().max(30_000).optional(),
+});
+
+export type MergeWakeConfig = z.infer<typeof MergeWakeConfigSchema>;
+
 /** Reaches the agent-chat argv as one literal argument, so a value that reads as a flag or holds whitespace is refused. */
 const argvWord = noNul.regex(/^[^-\s]\S*$/, "must be one argument: not empty, no leading dash, no whitespace");
 
@@ -223,6 +231,8 @@ export const FactoryConfigSchema = z.object({
       flakyChecks: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), FlakyChecksSchema).optional(),
       repos: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), ShepherdRepoConfigSchema).optional(),
       reviewCheck: ReviewCheckConfigSchema.optional(),
+      /** Run after each Shepherd merge, once per settle window, to wake the burndown tick; absent means no wake. */
+      mergeWake: MergeWakeConfigSchema.optional(),
       /** The agent-chat seat told when the deploy alarm goes up and while it stands; absent is warned about at serve start and fails `service check`. */
       hubSeat: z.string().min(1).optional(),
       /**
