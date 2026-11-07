@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { EXIT, runCli } from "./cli.js";
 import { releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
@@ -1353,21 +1353,23 @@ describe("titan-factory service deploy verb", () => {
     expect(machine.mutations()).toEqual([]);
   });
 
-  it("confines the CLI relink to the injected deploy home, leaving the host HOME's factory symlink alone", async () => {
-    const host = mkdtempSync(join(tmpdir(), "factory-deploy-host-"));
-    scratch.push(host);
-    const hostBuild = join(host, "tree", "products", "factory", "dist", "bin.js");
-    mkdirSync(join(hostBuild, ".."), { recursive: true });
-    writeFileSync(hostBuild, "host build");
-    const hostLink = join(host, ".local", "bin", "titan-factory");
-    mkdirSync(join(hostLink, ".."), { recursive: true });
-    symlinkSync(hostBuild, hostLink);
-    vi.stubEnv("HOME", host);
+  it("repoints the CLI link under the injected deploy home, not the host's", async () => {
+    const home = mkdtempSync(join(tmpdir(), "factory-deploy-home-"));
+    scratch.push(home);
+    const staleBuild = join(home, "tree", "products", "factory", "dist", "bin.js");
+    mkdirSync(join(staleBuild, ".."), { recursive: true });
+    writeFileSync(staleBuild, "stale build");
+    const link = join(home, ".local", "bin", "titan-factory");
+    mkdirSync(join(link, ".."), { recursive: true });
+    symlinkSync(staleBuild, link);
+    const deployedBin = `${CHECKOUT}/products/factory/dist/bin.js`;
+    const machine = fakeMachine({ files: { [plistPath(home)]: `<string>${deployedBin}</string>` } });
+    machine.ports.home = home;
 
-    const code = await cliIn(configured({ deployCheckout: CHECKOUT }), fakeMachine()).finally(() => vi.unstubAllEnvs());
+    const code = await cliIn(configured({ deployCheckout: CHECKOUT }), machine);
 
     expect(code).toBe(0);
-    expect(readlinkSync(hostLink)).toBe(hostBuild);
+    expect(readlinkSync(link)).toBe(deployedBin);
   });
 
   it("deploys from service.deployCheckout when it is configured", async () => {
