@@ -46,7 +46,10 @@ function radialGradient(h: Inspector, head: string, r: Rect): GradientShape | st
   const at = words.indexOf('at')
   const size = at < 0 ? words : words.slice(0, at)
   const pos = at < 0 ? [] : words.slice(at + 1)
-  if (pos[0] === 'top' || pos[0] === 'bottom') pos.reverse()
+  if (pos[0] === 'top' || pos[0] === 'bottom') {
+    if (pos.length === 1) pos.unshift('center')
+    else pos.reverse()
+  }
   const place = (t: string | undefined, ref: number) => (t === undefined || t === 'center' ? ref / 2 : t === 'left' || t === 'top' ? 0 : t === 'right' || t === 'bottom' ? ref : h.lengthOf(t, ref))
   const centre: Point = [place(pos[0], r.width), place(pos[1], r.height)]
   if (pos.length > 2 || centre.some(Number.isNaN)) return 'radial gradient position'
