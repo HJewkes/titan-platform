@@ -21,14 +21,22 @@ async function ghJson<T>(run: PlannerRun, args: readonly string[], schema: z.Zod
   return schema.parse(JSON.parse(result.stdout));
 }
 
-function ghWindow(run: PlannerRun): WindowGitHub {
+/** Cancelled is left out: concurrency cancels on main are routine. `gh run list` takes one --status, so each conclusion is its own query. */
+const RED_CONCLUSIONS = ["failure", "timed_out", "startup_failure"] as const;
+
+async function redRunsConcluded(run: PlannerRun, repo: string, since: string, conclusion: string) {
+  const args = ["run", "list", "--repo", repo, "--branch", "main", "--status", conclusion, "--created", `>=${since}`, "--json", "databaseId,workflowName,createdAt", "--limit", PAGE];
+  const runs = await ghJson(run, args, RedRuns);
+  return runs.map((r) => ({ id: r.databaseId, workflow: r.workflowName, createdAt: r.createdAt }));
+}
+
+export function ghWindow(run: PlannerRun): WindowGitHub {
   return {
     mergedPrs: (repo, since) =>
       ghJson(run, ["pr", "list", "--repo", repo, "--state", "merged", "--search", `merged:>=${since}`, "--json", "number,mergedAt", "--limit", PAGE], MergedPrs),
     redMainRuns: async (repo, since) => {
-      const args = ["run", "list", "--repo", repo, "--branch", "main", "--status", "failure", "--created", `>=${since}`, "--json", "databaseId,workflowName,createdAt", "--limit", PAGE];
-      const runs = await ghJson(run, args, RedRuns);
-      return runs.map((r) => ({ id: r.databaseId, workflow: r.workflowName, createdAt: r.createdAt }));
+      const perConclusion = await Promise.all(RED_CONCLUSIONS.map((conclusion) => redRunsConcluded(run, repo, since, conclusion)));
+      return perConclusion.flat();
     },
   };
 }
