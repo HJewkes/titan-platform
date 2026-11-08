@@ -66,13 +66,15 @@ describe("gh wire reviews", () => {
     expect(gh.calls).toEqual([]);
   });
 
-  it("a failed review post keeps its HTTP status and drops the App token from the error", async () => {
+  it("a failed review post keeps its HTTP status and drops an App token of no known shape from the error", async () => {
+    const shapeless = "synthetic-app-secret-of-no-token-shape";
     const gh = scripted(({ options }) => ({ code: 1, stdout: "", stderr: `gh: denied for ${options!.env!.GH_TOKEN} (HTTP 422)` }));
+    const port = githubPort(ghCliWire(gh.exec, { budget: rateBudget(), appToken: async () => shapeless }));
 
-    const error = await rejectionOf(appPort(gh).createReview(REPO, 7, approval), GhError);
+    const error = await rejectionOf(port.createReview(REPO, 7, approval), GhError);
 
     expect(error.status).toBe(422);
-    expect(`${error.message}\n${error.result.stderr}`).not.toContain(TOKEN);
+    expect(`${error.message}\n${error.result.stderr}`).not.toContain(shapeless);
   });
 
   it("listReviews reads every page as the user and maps login, user type and commit", async () => {
