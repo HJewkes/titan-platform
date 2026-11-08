@@ -103,6 +103,18 @@ describe("package manifest entries as dead-module roots", () => {
     expect([...packageEntryFileIds(REPO, ["source/api.ts", "source/other.ts"], source)]).toEqual(["source/api.ts"]);
   });
 
+  it("an unreadable tsconfig keeps the dist-to-src fallback", () => {
+    const base = libSource({ main: "./dist/cli.js" });
+    const source = {
+      fileExists: () => true,
+      readFile: (abs: string) => {
+        if (abs.endsWith("tsconfig.json") || abs.endsWith("tsconfig.build.json")) throw new Error(`EACCES ${abs}`);
+        return base.readFile(abs);
+      },
+    };
+    expect([...packageEntryFileIds(REPO, LIB_FILES, source)]).toEqual(["packages/lib/src/cli.ts"]);
+  });
+
   it("a malformed manifest contributes no entries", () => {
     const source = memorySource({ "packages/lib/package.json": "{ not json" });
     expect(packageEntryFileIds(REPO, LIB_FILES, source).size).toBe(0);
