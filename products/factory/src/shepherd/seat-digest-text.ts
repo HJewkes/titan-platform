@@ -77,24 +77,37 @@ function splitMoves(added: readonly DigestItem[], cleared: readonly string[], re
   return { changed, added: added.filter((item) => !changedPrs.has(item.pr)), cleared: cleared.filter((key) => refs?.[key] === undefined || !changedPrs.has(refs[key])) };
 }
 
+/** Runs that failed since the seat was last told, and how many failed runs it was told of before that still wait on it. */
+interface DigestFailures {
+  fresh: readonly DigestItem[];
+  carried: number;
+}
+
+const NO_FAILURES: DigestFailures = { fresh: [], carried: 0 };
+
+const carriedLine = (carried: number): string[] =>
+  carried === 0 ? [] : [`Still open: ${carried} failed run${carried === 1 ? "" : "s"}; \`titan-factory shepherd status\` lists ${carried === 1 ? "it" : "them"}.`];
+
 /**
  * The digest text, or undefined when nothing changed. A seat with no memory hears every open item; after that it hears
- * only what changed: new open items, items that moved on their PR, the PRs whose items cleared, newly finished runs, and
- * the unchanged rest per `unchangedLines`.
+ * only what changed: new open items, items that moved on their PR, the PRs whose items cleared, newly failed and newly
+ * finished runs, and the unchanged rest per `unchangedLines`. A failed run counts as open until a later run supersedes it.
  */
-export function digestText(seat: string, open: readonly DigestItem[], fresh: readonly DigestItem[], last: ToldState | undefined): string | undefined {
+export function digestText(seat: string, open: readonly DigestItem[], fresh: readonly DigestItem[], last: ToldState | undefined, failures = NO_FAILURES): string | undefined {
   const delta = digestDelta(open, fresh, last);
   const { open: sorted } = delta;
-  if (delta.added.length === 0 && delta.cleared.length === 0 && fresh.length === 0) return undefined;
+  if (delta.added.length === 0 && delta.cleared.length === 0 && fresh.length === 0 && failures.fresh.length === 0) return undefined;
   const told = new Set(last?.open ?? []);
   const { changed, added, cleared } = last === undefined ? { changed: [], ...delta } : splitMoves(delta.added, delta.cleared, last.refs);
-  const lines = [`Shepherd digest for ${seat}: ${sorted.length} open, ${fresh.length} newly finished.`];
-  if (sorted.length === 0) lines.push("Open: none.");
+  const total = sorted.length + failures.fresh.length + failures.carried;
+  const lines = [`Shepherd digest for ${seat}: ${total} open, ${fresh.length} newly finished.`];
+  if (total === 0) lines.push("Open: none.");
   if (last === undefined && sorted.length > 0) lines.push("Open:", ...sorted.map((item) => item.line));
   if (last !== undefined && added.length > 0) lines.push("New:", ...newLines(added));
   if (changed.length > 0) lines.push("Changed:", ...changed.map((item) => item.line));
   if (cleared.length > 0) lines.push(clearedLine(cleared, last?.refs));
-  if (last !== undefined) lines.push(...unchangedLines(sorted.filter((item) => told.has(item.key))));
+  if (last !== undefined) lines.push(...unchangedLines(sorted.filter((item) => told.has(item.key))), ...carriedLine(failures.carried));
+  if (failures.fresh.length > 0) lines.push("Failed:", ...failures.fresh.map((item) => item.line));
   if (fresh.length > 0) lines.push("Finished:", ...fresh.map((item) => item.line));
   return lines.join("\n");
 }
