@@ -4,7 +4,7 @@ import { COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, PR_COMMITS_CAP, PR_FILES_CAP } fr
 import type { CreateCheckRunRequest } from "./check-run-create.js";
 import { FORCE_PUSHES_CAP, type ForcePush } from "./force-pushes.js";
 import type { OpenPrRequest } from "./pr-list.js";
-import type { CheckRun, GitHubWire, LoggedCommit, MergeMethod, PrFile, PullRequest, PutFileRequest } from "./port.js";
+import type { BranchCommits, CheckRun, GitHubWire, LoggedCommit, MergeMethod, PrFile, PullRequest, PutFileRequest } from "./port.js";
 import type { FakeEffects, FakeFaultyRead, FakeGitHub } from "./fake-types.js";
 import { fakeMergeIntoBranch } from "./fake-merge-into-branch.js";
 import { fakeContentBytes } from "./fake-bytes.js";
@@ -182,6 +182,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     listCommits: async (_repo, since) => record("listCommits", listCommits(fake, since)),
     compareAncestry: async (_repo, base, head) => read("compareAncestry", () => fakeAncestry({ commits: fake.commits, refs: fake.refs, prs }, base, head)),
     compareFiles: async (_repo, base, head) => record("compareFiles", compareFiles(fake, base, head)),
+    compareCommits: async (_repo, base, head) => record("compareCommits", compareCommits(fake, base, head)),
     getAuthenticatedLogin: async () => record("getAuthenticatedLogin", fake.actor),
     listIssueComments: async (_repo, number) => record("listIssueComments", (fake.comments.get(number) ?? []).map((comment) => ({ ...comment }))),
     createComment: async (_repo, number, body) => {
@@ -256,6 +257,13 @@ function compareFiles(fake: FakeGitHub, base: string, head: string): { mergeBase
   const input = fake.compares.get(`${base}...${head}`) ?? { mergeBaseSha: fake.refs.get(base) ?? base, files: [] };
   const truncated = input.files.length >= COMPARE_FILE_CAP || (input.totalCommits ?? 0) > COMPARE_COMMIT_CAP;
   return { mergeBaseSha: input.mergeBaseSha, files: input.files.slice(0, COMPARE_FILE_CAP), truncated };
+}
+
+function compareCommits(fake: FakeGitHub, base: string, head: string): BranchCommits {
+  const input = fake.compares.get(`${base}...${head}`) ?? { mergeBaseSha: fake.refs.get(base) ?? base, files: [] };
+  const commits = input.commits ?? [];
+  const truncated = input.files.length >= COMPARE_FILE_CAP || (input.totalCommits ?? commits.length) > COMPARE_COMMIT_CAP;
+  return { mergeBaseSha: input.mergeBaseSha, commits: commits.slice(0, COMPARE_COMMIT_CAP).map((commit) => ({ ...commit })), files: input.files.slice(0, COMPARE_FILE_CAP), truncated };
 }
 
 function createComment(fake: FakeGitHub, number: number, body: string, id: number): { id: number } {

@@ -1,4 +1,5 @@
 import { COMPARE_FILE_CAP, type CompareResult } from "./port.js";
+import type { BranchCommit, BranchCommits } from "./port-types.js";
 import type { Rest } from "./rest.js";
 
 /**
@@ -39,4 +40,27 @@ export async function compareFiles(api: Rest, repo: string, base: string, head: 
     return (page.files ?? []).map((file) => file.filename);
   });
   return { mergeBaseSha, files, truncated: files.length >= COMPARE_FILE_CAP || totalCommits > commitsSeen };
+}
+
+interface GhCompareCommit {
+  sha: string;
+  author: { login: string } | null;
+  committer: { login: string } | null;
+  commit: { message: string };
+}
+
+const toBranchCommit = (commit: GhCompareCommit): BranchCommit => ({ sha: commit.sha, authorLogin: commit.author?.login ?? null, committerLogin: commit.committer?.login ?? null, message: commit.commit.message });
+
+/** `compareFiles` with the commits kept: each with the accounts GitHub matched its author and committer to. */
+export async function compareCommits(api: Rest, repo: string, base: string, head: string): Promise<BranchCommits> {
+  let mergeBaseSha = "";
+  let totalCommits = 0;
+  const commits: BranchCommit[] = [];
+  const files = await api.pages(`repos/${repo}/compare/${base}...${head}`, { per_page: "100" }, (page: Omit<GhComparePage, "commits"> & { commits?: GhCompareCommit[] }) => {
+    mergeBaseSha = page.merge_base_commit.sha;
+    totalCommits = page.total_commits ?? 0;
+    commits.push(...(page.commits ?? []).map(toBranchCommit));
+    return (page.files ?? []).map((file) => file.filename);
+  });
+  return { mergeBaseSha, commits, files, truncated: files.length >= COMPARE_FILE_CAP || totalCommits > commits.length };
 }

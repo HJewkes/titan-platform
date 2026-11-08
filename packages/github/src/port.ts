@@ -16,12 +16,12 @@ import type { RefRead, RulesetList } from "./conditional-reads.js";
 import type { ReviewComment } from "./review-comment.js";
 import type { Ancestry } from "./compare.js";
 import { checkConclusion, checkMarker, checkMaxBytes, checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha, checkShaPrefix, checkTimestamp } from "./validate.js";
-import type { CheckRun, Commit, CommitStatus, JobStep, LoggedCommit, MergeMessage, PutFileRequest, RepoEntry, RepoFile, SquashSource } from "./port-types.js";
+import type { BranchCommits, CheckRun, Commit, CommitStatus, JobStep, LoggedCommit, MergeMessage, PutFileRequest, RepoEntry, RepoFile, SquashSource } from "./port-types.js";
 import type { MergeIntoBranchRequest, MergeIntoBranchResult } from "./merge-into-branch.js";
 import { checkPutFile, putFile } from "./put-file.js";
 export { GitHubConflictError } from "./put-file.js";
 export type { MergeIntoBranchRequest, MergeIntoBranchResult } from "./merge-into-branch.js";
-export type { CheckRun, CheckRunPr, Commit, CommitStatus, JobStep, LoggedCommit, MergeMessage, PutFileRequest, RepoEntry, RepoFile, SquashSource } from "./port-types.js";
+export type { BranchCommit, BranchCommits, CheckRun, CheckRunPr, Commit, CommitStatus, JobStep, LoggedCommit, MergeMessage, PutFileRequest, RepoEntry, RepoFile, SquashSource } from "./port-types.js";
 
 /** `owner/name`. */
 export type RepoSlug = string;
@@ -166,6 +166,8 @@ export interface GitHubWire {
   /** Commits on the default branch committed at or after `since`, newest first, every page. */
   listCommits(repo: RepoSlug, since: string): Promise<LoggedCommit[]>;
   compareFiles(repo: RepoSlug, base: string, head: string): Promise<CompareResult>;
+  /** The compare API's commits and files for `base...head`, every page. */
+  compareCommits(repo: RepoSlug, base: string, head: string): Promise<BranchCommits>;
   /** The compare API's `status` for `base...head`; a 404 answers `missing`. */
   compareAncestry(repo: RepoSlug, base: string, head: string): Promise<Ancestry>;
   getAuthenticatedLogin(): Promise<string>;
@@ -257,6 +259,10 @@ export interface GitHubPort {
   listDefaultBranchCommits(repo: RepoSlug, since: string): Promise<LoggedCommit[]>;
   /** The merge base of `base` and `head`, and the paths changed since it; check `truncated` before trusting the list. */
   compareFiles(repo: RepoSlug, base: string, head: string): Promise<CompareResult>;
+  /** The commits on `head` past its merge base with `base`, oldest first, with author and committer logins, and the paths they change; needs no PR. */
+  listBranchCommits(repo: RepoSlug, base: string, head: string): Promise<BranchCommits>;
+  /** The login this port writes as: `GitHubPortOptions.login` when set, else the authenticated user, read once. */
+  actorLogin(): Promise<string>;
   /** Whether `head` is ahead of, behind, identical to or diverged from `base`; `missing` when GitHub has not got one of them (HTTP 404). Any other failure throws. */
   compareAncestry(repo: RepoSlug, base: string, head: string): Promise<Ancestry>;
   /**
@@ -329,6 +335,8 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     listPrCommits: async (repo, number) => wire.listPrCommits(repoOf(repo), pr(number)),
     listDefaultBranchCommits: async (repo, since) => wire.listCommits(repoOf(repo), checkTimestamp("since", since)),
     compareFiles: async (repo, base, head) => wire.compareFiles(repoOf(repo), checkRef("base", base), checkRef("head", head)),
+    listBranchCommits: async (repo, base, head) => wire.compareCommits(repoOf(repo), checkRef("base", base), checkRef("head", head)),
+    actorLogin: async () => login(),
     compareAncestry: async (repo, base, head) => wire.compareAncestry(repoOf(repo), checkRef("base", base), checkRef("head", head)),
     upsertComment: async (repo, number, marker, body) => upsertComment(wire, login, repoOf(repo), pr(number), checkMarker(marker), body, sleep),
     listReviewComments: async (repo, number) => wire.listReviewComments(repoOf(repo), pr(number)),

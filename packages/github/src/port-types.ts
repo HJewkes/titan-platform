@@ -33,10 +33,21 @@ export interface LoggedCommit {
   message: string;
 }
 
-/** A file in a directory listing: its repo path and blob sha, with no content read. */
-export interface RepoEntry {
-  path: string;
-  blobSha: string;
+/** One commit a branch holds past its merge base; a login is null when GitHub ties that git identity to no account. */
+export interface BranchCommit {
+  sha: string;
+  authorLogin: string | null;
+  committerLogin: string | null;
+  message: string;
+}
+
+/** A branch's own commits, oldest first, and the paths they change together; check `truncated` before trusting either. */
+export interface BranchCommits {
+  mergeBaseSha: string;
+  commits: BranchCommit[];
+  files: string[];
+  /** GitHub caps compare at 300 files and 250 commits without saying so. */
+  truncated: boolean;
 }
 
 /** A file in a directory listing: its repo path and blob sha, with no content read. */
