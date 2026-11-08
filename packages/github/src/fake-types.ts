@@ -107,8 +107,8 @@ export interface FakeGitHub {
   baseChanges: { number: number; base: string }[];
   /** The default branch's history for `listCommits`, in any order; it answers those at or after `since`, newest first. */
   history: (LoggedCommit & { committedAt: string })[];
-  /** `base...head` to the compare inputs; an unset pair compares as no change. Caps of 300 files and 250 commits apply; `totalCommits` defaults to the length of `commits`. */
-  compares: Map<string, { mergeBaseSha: string; files: string[]; totalCommits?: number; commits?: BranchCommit[] }>;
+  /** `base...head` to the compare inputs; an unset pair compares as no change. `renames` maps a new path to its previous one, which is listed too. Caps of 300 files and 250 commits apply; `totalCommits` defaults to the length of `commits`. */
+  compares: Map<string, { mergeBaseSha: string; files: string[]; renames?: Record<string, string>; totalCommits?: number; commits?: BranchCommit[] }>;
   /** PR number to its issue comments, in posting order. */
   comments: Map<number, IssueComment[]>;
   /** PR number to its inline review comments, resolved or not. */
