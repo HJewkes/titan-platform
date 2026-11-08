@@ -177,19 +177,28 @@ describe("spawnGate tells the machine-stop ledger", () => {
 });
 
 describe("spawnGate's review queue under a burst", () => {
-  beforeEach(() => void vi.useFakeTimers({ now: 0 }));
+  beforeEach(() => void vi.useFakeTimers({ now: 0, toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"] }));
   afterEach(() => void vi.useRealTimers());
 
-  /** Queues one review per arrival on the faked clock; each resolves "started" or "gave up". */
+  /**
+   * Queues one review per arrival on the faked clock and returns each one's outcome once the clock has run past the hold. A review the
+   * queue has neither started nor given up on reads "still queued", so a stuck queue fails the assertion instead of hanging the test.
+   */
   async function drain(startTimes: readonly number[], readings: MachineReadings): Promise<string[]> {
-    const gate = spawnGate({ limits: { ...paced, maxConcurrentReviews: 64, reviewLoad: 0 }, read: () => readings, log: () => undefined });
+    const gate = spawnGate({ limits: { ...paced, maxConcurrentReviews: 64, reviewLoad: 0 }, read: () => readings, now: () => Date.now(), log: () => undefined });
     const start = { running: async () => [], launch: async () => undefined };
-    const outcomes = startTimes.map(async (at, index) => {
-      await new Promise((arrived) => setTimeout(arrived, at));
-      return gate.queueReview(`rv-${index}`, { fixer: false }, start).then(() => "started", () => "gave up");
+    const outcomes = startTimes.map(() => "still queued");
+    startTimes.forEach((at, index) => {
+      setTimeout(() => {
+        gate.queueReview(`rv-${index}`, { fixer: false }, start).then(
+          () => void (outcomes[index] = "started"),
+          () => void (outcomes[index] = "gave up"),
+        );
+      }, at);
     });
     await vi.advanceTimersByTimeAsync(Math.max(...startTimes) + DEFAULT_HOLD_WAIT_MS);
-    return Promise.all(outcomes);
+    await vi.advanceTimersByTimeAsync(0);
+    return outcomes;
   }
 
   /** Arrival times from a fixed-seed Lehmer generator, so a burst clumps the way real ready reviews do and every run is the same. */
