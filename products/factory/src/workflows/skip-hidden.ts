@@ -32,10 +32,12 @@ function failuresBehindSkips(runs: readonly CheckRun[]): CheckRun[] {
   return newestRanPerCheck(runs).filter((run) => skippedNewest.has(checkKey(run)) && failed(run));
 }
 
-/** A ci-red wake's failing jobs: each check's newest failed run, and any failure a newer skip hides from that read. */
+/** A ci-red wake's failing jobs: each check's newest failed run, and any failure a newer skip hides from that read, minus a failure its check's newest ran run has since passed. */
 export async function failingRunsAt(port: Pick<GitHubPort, "latestCheckRuns" | "checkRuns">, repo: RepoSlug, headSha: string): Promise<CheckRun[]> {
   const latest = await port.latestCheckRuns(repo, headSha);
+  const all = await port.checkRuns(repo, headSha);
   const failing = latest.filter((run) => run.status === "completed" && !isPassing(run));
-  if (!latest.some(isSkip)) return failing;
-  return [...failing, ...failuresBehindSkips(await port.checkRuns(repo, headSha))];
+  const candidates = latest.some(isSkip) ? [...failing, ...failuresBehindSkips(all)] : failing;
+  const passed = new Set(newestRanPerCheck(all).filter(isPassing).map(checkKey));
+  return candidates.filter((run) => !passed.has(checkKey(run)));
 }
