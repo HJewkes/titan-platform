@@ -28,9 +28,8 @@ type ReclassDeps = Pick<ShepherdDeps, "port" | "store" | "now" | "sleep" | "prFi
 export async function reclassUnread(deps: ReclassDeps, input: ReclassInput, signal: AbortSignal): Promise<ReclassResult> {
   const registration = deps.store.get().byRun(input.runId);
   const from = registration?.held ? registration.holdReason : null;
-  const unread = from !== null && from !== undefined && isUnreadRegistrationHold(from);
-  if (registration && !unread && isConsumerBumpRun(registration)) return classBumpHead(deps, input, signal);
-  if (!registration || registration.pr === null || !from || !unread) return { reclassed: false };
+  if (registration && !(from && isUnreadRegistrationHold(from)) && isConsumerBumpRun(registration)) return classBumpHead(deps, input, signal);
+  if (!registration || registration.pr === null || !from || !isUnreadRegistrationHold(from)) return { reclassed: false };
   const { repo, pr, base } = registration;
   const target = { repo, pr, head: input.head, pause: (ms: number) => deps.sleep(ms, signal), ...(base !== null && { base }) };
   const wanted = await g10HoldAt(deps.port, target, deps.prFiles);

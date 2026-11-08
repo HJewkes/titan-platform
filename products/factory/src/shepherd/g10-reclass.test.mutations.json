@@ -29,6 +29,15 @@
       "kills": [
         "a run held because its changed files were unread at registration, read again at a CI read is unheld when the whole read finds a 900-line PR with no adversary touch, as its registration would have left it"
       ]
+    },
+    {
+      "name": "a bump run's head is never classed again after registration",
+      "file": "products/factory/src/shepherd/g10-reclass.ts",
+      "find": "  if (registration && !(from && isUnreadRegistrationHold(from)) && isConsumerBumpRun(registration)) return classBumpHead(deps, input, signal);\n",
+      "replace": "",
+      "kills": [
+        "a consumer bump run, classed manifest-only at registration, read again at a CI read is held g10-adversary once its fixer pushes a file in the adversary class"
+      ]
     }
   ]
 }
