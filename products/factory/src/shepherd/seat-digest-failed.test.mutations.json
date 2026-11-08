@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a later run on the PR never supersedes a told failure",
+      "file": "products/factory/src/shepherd/seat-digest.ts",
+      "find": "read.pr === pr && read.key !== key",
+      "replace": "false",
+      "kills": [
+        "seat digest failed runs a re-registered run that later fails again is announced again"
+      ]
+    },
+    {
+      "name": "a failed run is never announced",
+      "file": "products/factory/src/shepherd/seat-digest-items.ts",
+      "find": "  if (run.status !== \"failed\") return undefined;",
+      "replace": "  if (run.status !== \"failed\" || true) return undefined;",
+      "kills": [
+        "seat digest failed runs a run that fails between digests appears once under Failed with step and error"
+      ]
+    }
+  ]
+}
