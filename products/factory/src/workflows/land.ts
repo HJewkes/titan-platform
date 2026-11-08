@@ -96,7 +96,7 @@ export type LandOutcome =
   | { kind: "merged"; headSha: string; mergeSha: string | null; landed?: LandedPr; /** Set only when this run's own merge write landed, never for a PR GitHub reports merged elsewhere. */ own?: true }
   | { kind: "ci-failed"; headSha: string; failing: FailingCheck[] }
   /** On `sent-back`, `detail` is the owner's note for the implementer. */
-  | { kind: "stopped"; reason: "closed" | "not-mergeable" | "conflict" | "abandoned" | "sent-back" | "stuck-behind" | "merge-denied" | "update-branch-unmoved" | "behind"; headSha: string; detail: string };
+  | { kind: "stopped"; reason: "closed" | "not-mergeable" | "draft" | "conflict" | "abandoned" | "sent-back" | "stuck-behind" | "merge-denied" | "update-branch-unmoved" | "behind"; headSha: string; detail: string };
 
 interface LandState {
   round: number;
@@ -239,6 +239,7 @@ async function onSettled(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot,
   if (ci.verdict === "red") return { kind: "ci-failed", headSha: ci.headSha, failing: ci.failing ?? [] };
   if (ci.verdict === "merged") return { kind: "merged", headSha: ci.headSha, mergeSha: ci.mergeSha ?? null };
   if (ci.verdict === "closed") return stopped("closed", ci.headSha, "the pull request was closed without merging");
+  if (ci.verdict !== "green" && ci.mergeableState === "draft") return stopped("draft", ci.headSha, "the pull request is a draft; mark it ready for review and register it again");
   if (ci.verdict !== "green") return stopped("not-mergeable", ci.headSha, `mergeable_state is ${ci.mergeableState}`);
   if (!state.trusted.has(ci.headSha)) return approve(ctx, input, ci, state, options);
   const check = await allowedBase(ctx, input, ci, state, options);

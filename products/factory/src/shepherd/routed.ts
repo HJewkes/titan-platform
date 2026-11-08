@@ -114,5 +114,5 @@ function seatHoldRunOut(held: Map<string, number>, headSha: string, reason: stri
 export function endedOutcome({ observed, headSha }: Routed): LandOutcome {
   if (observed.runState === "merged-elsewhere") return { kind: "merged", headSha: observed.headSha, mergeSha: observed.mergeSha };
   if (observed.runState === "closed-elsewhere") return { kind: "stopped", reason: "closed", headSha, detail: "the pull request was closed outside Shepherd" };
-  return { kind: "stopped", reason: "not-mergeable", headSha, detail: "the pull request is a draft" };
+  return { kind: "stopped", reason: "draft", headSha, detail: "the pull request is a draft; mark it ready for review and register it again" };
 }

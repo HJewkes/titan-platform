@@ -111,6 +111,10 @@ describe("noRunVerdict past the grace", () => {
     expect(await probe("dirty")).toMatchObject({ verdict: "not-mergeable", mergeableState: "dirty" });
   });
 
+  it("keeps waiting on a draft head, which is no conflict and carries no skip token", async () => {
+    expect(await probe("draft", (port, fake) => (fake.commits.set(H1, { sha: H1, parents: [], message: "Add a feature" }), port))).toBeUndefined();
+  });
+
   it("reads a skip token as red, naming it", async () => {
     expect(await probe("blocked")).toMatchObject({ verdict: "red", failing: [{ name: "no CI run: head commit message carries [skip ci]", workflowRunId: null }] });
   });

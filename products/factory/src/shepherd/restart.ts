@@ -9,7 +9,7 @@ import { runOutcome } from "./run-end.js";
  * ends the run, not the pull request, so registering it again is the owner asking for a new run.
  * A closed stop restarts only while the PR reads open, so it covers a reopened pull request and never a still-closed one.
  */
-const RESTARTABLE_STOPS: ReadonlySet<string> = new Set(["not-mergeable", "conflict", "abandoned", "closed"]);
+const RESTARTABLE_STOPS: ReadonlySet<string> = new Set(["not-mergeable", "draft", "conflict", "abandoned", "closed"]);
 
 const REPLAY_DIVERGED = "replay-diverged";
 const CANCELLED = "cancelled";
