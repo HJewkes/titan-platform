@@ -101,7 +101,8 @@ function failed(what: string, target: ApprovalTarget, check: PublishedCheck, err
 
 /** An approval by the App's own bot login carrying Shepherd's marker for the very commit it was given at. */
 function isShepherdApproval(review: PullReview, appLogin: string): boolean {
-  return review.userType === "Bot" && sameLogin(review.login, appLogin) && review.state === "APPROVED" && review.commitId !== null && review.body.includes(MARKER_PREFIX) && review.body.includes(` head=${review.commitId} -->`);
+  const byApp = review.userType === "Bot" && sameLogin(review.login, appLogin);
+  return byApp && review.state === "APPROVED" && review.commitId !== null && review.body.includes(MARKER_PREFIX) && review.body.includes(` head=${review.commitId} -->`);
 }
 
 /** GitHub logins are case-insensitive, and an empty one is a deleted account, never the App. */

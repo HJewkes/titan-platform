@@ -68,7 +68,10 @@ function reviewOutcome(verdict: Verdict, observed: ObservedPr, headSha: string):
 }
 
 export const publishReviewRoute = (deps: ShepherdDeps): StepRoute =>
-  codeRoute(PUBLISH_REVIEW_STEP, deps.now, async (raw: unknown, signal) => publish(deps.reviewCheck, deps.port, PublishInputSchema.parse(raw), { now: deps.now, sleep: (ms) => deps.sleep(ms, signal) }));
+  codeRoute(PUBLISH_REVIEW_STEP, deps.now, async (raw: unknown, signal) => {
+    const timing = { now: deps.now, sleep: (ms: number) => deps.sleep(ms, signal) };
+    return publish(deps.reviewCheck, deps.port, PublishInputSchema.parse(raw), timing);
+  });
 
 /** The check run, then Shepherd's approvals brought into line with it; neither failing fails the step. */
 async function publish(port: GitHubPort | undefined, reads: ArmedReader, input: PublishInput, timing: ReviewRetryTiming): Promise<PublishResult> {

@@ -20,12 +20,12 @@
       ]
     },
     {
-      "name": "a person's review carrying the marker counts as Shepherd's",
+      "name": "a success with no App configured records nothing",
       "file": "products/factory/src/shepherd/review-approval.ts",
-      "find": "review.userType === \"Bot\" && ",
-      "replace": "",
+      "find": "  if (!client) return success ? { reviewError: NO_APP } : undefined;",
+      "replace": "  if (!client) return undefined;",
       "kills": [
-        "syncApproval a FIX_FIRST leaves a person's approval and another bot's unmarked approval standing"
+        "syncApproval with no App configured a success records the missing App instead of approving"
       ]
     },
     {
