@@ -8,16 +8,20 @@ import type { ContrastThresholds } from "./gate-profile.js";
 /**
  * Text and chart-mark contrast against the gate profile's WCAG thresholds (CH-19; WCAG 1.4.3, 1.4.11). Chart marks are
  * computed from the slots' scale and the page's dark theme tokens, no pixels sampled. Text is the ratio render-qa's
- * in-page `low-contrast` rule computed from each run's styles; it records a run only under its own thresholds, which
- * are at least as strict as these, so every text run under these thresholds is among them.
+ * in-page `low-contrast` rule computed from each run's styles against its composited ground, the worst sample where a
+ * gradient sits under it; it records a run only under its own thresholds, which are at least as strict as these, so
+ * every text run under these thresholds is among them. A run over paint render-qa cannot model (an image, a filter)
+ * has no ratio: it is listed as unmeasured, neither a pass nor a fail.
  */
 
 const MarkSchema = z.object({ beat: z.string(), mark: z.string(), colour: z.string(), ground: z.string(), ratio: z.number() });
 const TextSchema = z.object({ beat: z.string(), text: z.string(), px: z.number(), ratio: z.number(), need: z.number() });
+const UnmeasuredSchema = z.object({ beat: z.string(), text: z.string(), px: z.number(), reason: z.string() });
 
 export const ContrastReportSchema = z.object({
   thresholds: z.object({ text: z.number(), largeText: z.number(), largeTextPx: z.number(), nonText: z.number() }),
-  text: z.object({ below: z.array(TextSchema) }),
+  /** `unmeasured`: runs over paint render-qa cannot model, so no ratio was judged; absent before TP-4912. */
+  text: z.object({ below: z.array(TextSchema), unmeasured: z.array(UnmeasuredSchema).default([]) }),
   marks: z.object({ checked: z.number().int().nonnegative(), below: z.array(MarkSchema) }),
   /** What could not be computed from colours and how it was judged instead. */
   fallbacks: z.array(z.string()),
@@ -96,6 +100,12 @@ function textBelow(held: readonly HeldFinding[], thresholds: ContrastThresholds)
   });
 }
 
+/** render-qa's text runs whose ground it could not model, each with its reason, once per beat and text. */
+function textUnmeasured(held: readonly HeldFinding[]): ContrastReport["text"]["unmeasured"] {
+  return held.flatMap(({ kind, beat, finding }) =>
+    kind === "contrast-unmeasured" ? [{ beat, text: finding.text ?? "", px: finding.px ?? 0, reason: String(finding.reason ?? "unknown paint") }] : []);
+}
+
 const BOLD_FALLBACK = "text: render-qa reads no font weight, so bold text from 18.66 to 24 px is held to the normal-text ratio";
 
 /** render-qa's in-page thresholds, which decide which text runs it records at all. */
@@ -113,7 +123,7 @@ export function contrastReport(beats: readonly TimelineBeat[], held: readonly He
   const marks = chartMarks(beats, fallbacks);
   return {
     thresholds: { ...thresholds },
-    text: { below: textBelow(held, thresholds) },
+    text: { below: textBelow(held, thresholds), unmeasured: textUnmeasured(held) },
     marks: { checked: marks.length, below: marks.filter((mark) => mark.ratio < thresholds.nonText) },
     fallbacks,
   };

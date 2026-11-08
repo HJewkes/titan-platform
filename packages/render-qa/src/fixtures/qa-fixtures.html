@@ -79,6 +79,15 @@
       const stats = (drop) => div({ ...at(300, 300), display: 'flex', alignItems: 'flex-start', gap: 200 },
         div({}, div({}, '97', { class: 'qa-value' })) + div({}, div({ marginTop: drop }, '16', { class: 'qa-value' })), { 'data-qa-level': '.qa-value' })
 
+      /** Light text on `layers` nested panels, each white at 40 % over the one below: two stack to a light grey. */
+      const veils = (layers) => Array.from({ length: layers }).reduce((inner) => div({ position: 'absolute', inset: 0, background: 'rgba(255, 255, 255, 0.4)' }, inner), div(at(300, 300), 'held for review'))
+      /** Light text across a panel shaded left to right from the page's dark to `end`. */
+      const shaded = (end) => div({ position: 'absolute', left: 200, top: 260, width: 600, height: 140, background: `linear-gradient(to right, #0d1117, ${end})` }, div(at(40, 40), 'held for review on the desk'))
+      /** Light text on a dark panel over a background image; `onImage` puts the text straight on the image instead. */
+      const IMAGE = 'url(data:image/gif;base64,R0lGODlhAQABAAAAACw=)'
+      const pictured = (onImage) => div({ position: 'absolute', inset: 0, backgroundImage: IMAGE },
+        onImage ? div(at(300, 300), 'held for review') : div({ position: 'absolute', left: 200, top: 260, width: 900, height: 140, background: '#161b22' }, div(at(40, 40), 'held for review')))
+
       const FIXTURES = [
         { id: 'text-overlap-bad', kinds: ['text-overlap'], view: stacked(-30) },
         { id: 'text-overlap-clean', kinds: [], view: stacked(30) },
@@ -110,6 +119,12 @@
         { id: 'small-text-clean', kinds: [], view: div(abs(300, 300), 'chip text') },
         { id: 'low-contrast-bad', kinds: ['low-contrast'], view: div(abs(300, 300, { color: '#4a5058' }), 'held for review') },
         { id: 'low-contrast-clean', kinds: [], view: div(abs(300, 300), 'held for review') },
+        { id: 'low-contrast-veils-bad', kinds: ['low-contrast'], view: veils(2) },
+        { id: 'low-contrast-veils-clean', kinds: [], view: veils(1) },
+        { id: 'low-contrast-gradient-bad', kinds: ['low-contrast'], view: shaded('#e6edf3') },
+        { id: 'low-contrast-gradient-clean', kinds: [], view: shaded('#30363d') },
+        { id: 'contrast-unmeasured-bad', kinds: ['contrast-unmeasured'], view: pictured(true) },
+        { id: 'contrast-unmeasured-clean', kinds: [], view: pictured(false) },
         { id: 'context-dim-clean', kinds: [], view: div(abs(300, 300, { color: '#4a5058' }), 'held for review', { 'data-qa-context': '' }) },
         { id: 'ellipsis-bad', kinds: ['ellipsis'], view: div(abs(300, 300), 'run state and the sou…') },
         { id: 'ellipsis-clean', kinds: [], view: div(abs(300, 300), 'run state and the source') },

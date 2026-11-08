@@ -9,6 +9,8 @@
  */
 import { FRAME_RULE_STEPS } from './inspect-frame-rules.js'
 import { GEOMETRY_STEPS } from './inspect-geometry.js'
+import { GRADIENT_STEPS } from './inspect-gradient.js'
+import { GROUND_STEPS } from './inspect-ground.js'
 import { LAYOUT_STEPS } from './inspect-layout.js'
 import { OVERLAP_STEPS } from './inspect-overlap.js'
 import type { FrameInspection, InspectOptions, Inspector, Steps } from './inspect-types.js'
@@ -48,7 +50,7 @@ function inspect(h: Inspector): FrameInspection {
   return { findings: h.findings, textRuns: runs.length, contentRuns: content }
 }
 
-const STEPS: Steps = { ...GEOMETRY_STEPS, ...OVERLAP_STEPS, ...LAYOUT_STEPS, ...FRAME_RULE_STEPS, inspect }
+const STEPS: Steps = { ...GEOMETRY_STEPS, ...OVERLAP_STEPS, ...LAYOUT_STEPS, ...FRAME_RULE_STEPS, ...GROUND_STEPS, ...GRADIENT_STEPS, inspect }
 
 /** Runs in the page: binds each step to one inspector object, so steps reach each other by name whatever a bundler renames. */
 function runInspector(steps: Record<string, (h: unknown, ...args: unknown[]) => unknown>, opts: InspectOptions): unknown {

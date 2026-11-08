@@ -86,11 +86,18 @@ const { black, silence, freeze } = await mediaScan('out/video.mp4') // each a li
 `ERROR_KINDS` lists every kind that may gate: `text-overlap`, `text-box`, `box-overlap`, `occluded`, `edge-crossing`,
 `off-frame`, `content-overflow`, `small-text`, `low-contrast`, `wrap`, `flex-wrap`, `anchor-offset`, `label-dropped`,
 `edge-label-far`, `late-fill`, `double-chrome`, `under-chrome`, `fill-order`, `tone-mismatch`, `title-repeat`,
-`unlabelled-number`, `label-adjacent` and `misaligned`. The inspector also reports `ellipsis`, `escapes-box` and
-`crowding`, which never gate. Which of the gating kinds a product gates on is its own policy, passed to `classify`.
+`unlabelled-number`, `label-adjacent` and `misaligned`. The inspector also reports `ellipsis`, `escapes-box`,
+`crowding` and `contrast-unmeasured`, which never gate. Which of the gating kinds a product gates on is its own policy, passed to `classify`.
 
 A `low-contrast` finding carries the run's `ratio`, the `need` its size called for, and its text and ground colours
 as drawn (`fg`, `bg`, `#rrggbb`), so a caller can name the fix without measuring again.
+
+The ground is the ancestor walk from the run up to the first opaque paint, every translucent background colour on the
+way composited over the page background. A `linear-gradient` or `radial-gradient` under the text is sampled on a 5 by
+3 grid over the run's box and the worst sample is scored, so `bg` is the ground at that sample. Paint the walk cannot
+model gets no ratio: a background image, a layered or repeating background, `filter` or `mix-blend-mode` anywhere up
+the tree, `backdrop-filter` or `background-clip: text` under the text. That run is a `contrast-unmeasured` finding
+whose `reason` names the paint, never a ratio against the page background.
 
 The box rules (`off-frame`, `box-overlap`, `text-box`, `edge-crossing`, `crowding`, `content-overflow`) and a text
 run's `off-frame` judge what is painted: the layout box less what a `clip-path: inset(...)` on the element or an
