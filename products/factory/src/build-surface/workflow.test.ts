@@ -146,6 +146,38 @@ describe("build-surface on a toy two-slice spec with every agent step stubbed", 
     expect(fake.agentCalls).toEqual(["bs-implement:shell", "bs-fix:shell:0r"]);
   });
 
+  it.each(["write /tmp/report.json: ENOSPC: no space left on device", "EMFILE: too many open files, open 'report.json'", "spawn node ENOENT"])("retries a report validator that fails with %s once, without asking the agent for a fix", async (stderr) => {
+    const fake = fakeBuild({ reportCheck: (_head, call) => (call === 0 ? 1 : 0), reportCheckStderr: () => stderr });
+    const { host, runId } = start(fake);
+
+    const run = await drive(host, runId);
+
+    expect(run.status).toBe("completed");
+    expect(fake.agentCalls.filter((call) => call.startsWith("bs-fix"))).toEqual([]);
+  });
+
+  it("stops a slice whose report validator fails for the environment twice, as an infra failure and not a rejection", async () => {
+    const fake = fakeBuild({ reportCheck: () => 1, reportCheckStderr: () => "ENOSPC: no space left on device" });
+    const { host, runId } = start(fake);
+
+    const run = await host.runtime.wait(runId);
+
+    expect(run.status).toBe("failed");
+    expect(run.error).toMatch(/infra failure.*ENOSPC/);
+    expect(run.error).not.toMatch(/rejected twice/);
+    expect(fake.agentCalls).toEqual(["bs-implement:shell"]);
+  });
+
+  it("does not spend the rejection allowance on an infra failure: a real rejection after one still gets its fix, and a second stops", async () => {
+    const fake = fakeBuild({ reportCheck: () => 1, reportCheckStderr: (call) => (call === 0 ? "ENOSPC: no space left on device" : undefined) });
+    const { host, runId } = start(fake);
+
+    const run = await host.runtime.wait(runId);
+
+    expect(run.error).toMatch(/the report was rejected twice/);
+    expect(fake.agentCalls).toEqual(["bs-implement:shell", "bs-fix:shell:0r"]);
+  });
+
   it("stops a slice that asks for new components with their names, and does not retry it", async () => {
     const fake = fakeBuild({ newPrimitives: ["DataGrid", "Stepper"] });
     const { host, runId } = start(fake);
