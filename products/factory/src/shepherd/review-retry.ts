@@ -31,7 +31,7 @@ export async function withReviewRetry<T>(call: () => Promise<T>, timing: ReviewR
 }
 
 /** How long to wait before retrying, or undefined for a refusal: a 403 or 422 counts as transient only when it names a limit. */
-export function transientWaitMs(error: unknown, backoff: number, now: number): number | undefined {
+function transientWaitMs(error: unknown, backoff: number, now: number): number | undefined {
   const status = errorStatus(error);
   if (typeof status === "number" && status >= 500 && status <= 599) return backoff;
   const text = consoleTextOf(error);
