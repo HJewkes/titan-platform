@@ -1,9 +1,11 @@
-// The halving test is adapted from anatomy, kit/turn-audit.mjs L969-L986 at e9488296
-// (https://github.com/wheresryan22/anatomy/blob/e9488296/kit/turn-audit.mjs#L969-L986).
-// MIT License, Copyright (c) 2026 Ryan. The full licence text is in the repository NOTICE.
-//
-// Changes from the source: the frame is any value a caller-supplied `delta` can compare, so
-// one measure replaces the source's scale-4 then scale-16 pair, and the grid walk is new.
+/*!
+ * The halving test is adapted from anatomy, https://github.com/wheresryan22/anatomy,
+ * kit/turn-audit.mjs L969-L986 at e9488296. Copyright (c) 2026 Ryan, licensed under the
+ * MIT License; the full text is in this package's NOTICE.
+ * Changed here: the frame is any value a caller-supplied `delta` can compare, so one measure
+ * replaces the source's scale-4 then scale-16 pair, and the grid walk is new.
+ * @license MIT
+ */
 
 /** A frame source that is a pure function of `t`: seeking the same `t` twice gives the same frame. */
 export type SeekFrame<F> = (t: number) => F | Promise<F>
@@ -102,19 +104,23 @@ async function seekEighths<F>(seek: SeekFrame<F>, t: number, step: number, from:
   return frames
 }
 
+// A trailing partial step still ends at `end`, so the last stretch of the timeline is checked too.
 function gridTimes(start: number, end: number, step: number): number[] {
   if (!(step > 0)) throw new RangeError(`step must be positive, got ${step}`)
   const count = Math.floor((end - start) / step + 1e-9)
-  return Array.from({ length: count + 1 }, (_, i) => start + i * step)
+  const times = Array.from({ length: count + 1 }, (_, i) => start + i * step)
+  if (end - times[count]! > step * 1e-9) times.push(end)
+  return times
 }
 
 /**
- * Walks a grid of `t` from `start` to `end`. Where a step's change reaches `threshold`, it
- * re-measures the step at h/2, h/4 and h/8 and reports a pop only when the change does not halve.
+ * Walks a grid of `t` from `start` to `end`; a last step shorter than `step` ends at `end`. Where a
+ * step's change reaches `threshold`, it re-measures the step at h/2, h/4 and h/8 and reports a pop
+ * only when the change does not halve.
  */
 export async function checkPops<F>(options: PopCheckOptions<F>): Promise<PopReport> {
-  const { seek, delta, step, threshold } = options
-  const times = gridTimes(options.start, options.end, step)
+  const { seek, delta, threshold } = options
+  const times = gridTimes(options.start, options.end, options.step)
   const findings: PopFinding[] = []
   let checked = 0
   let previous = await seek(times[0]!)
@@ -123,7 +129,8 @@ export async function checkPops<F>(options: PopCheckOptions<F>): Promise<PopRepo
     const t = times[i - 1]!
     if (delta(previous, current) >= threshold) {
       checked++
-      const measure = measureHalving(await seekEighths(seek, t, step, previous, current), delta)
+      const frames = await seekEighths(seek, t, times[i]! - t, previous, current)
+      const measure = measureHalving(frames, delta)
       if (isPop(measure)) findings.push({ index: i - 1, t, measure })
     }
     previous = current

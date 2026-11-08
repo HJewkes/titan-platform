@@ -26,6 +26,14 @@ describe('checkPops on synthetic scenes', () => {
     assert.deepEqual(report.findings, [])
   })
 
+  test('a pop in a trailing partial step is still flagged', async () => {
+    const report = await checkPops({ ...GRID, end: 0.7, seek: plantedPop, delta: (a, b) => changedPixels(a, b) })
+
+    assert.equal(report.findings.length, 1)
+    assert.equal(report.findings[0]!.index, 2)
+    assert.equal(report.findings[0]!.t, 0.5)
+  })
+
   test('an async seek is awaited for every grid and sub-step frame', async () => {
     const seen: number[] = []
     const report = await scan(async (t) => {

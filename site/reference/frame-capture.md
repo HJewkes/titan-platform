@@ -66,7 +66,7 @@ reaches `threshold`, it re-measures that step at h/2, h/4 and h/8 and reports a 
 the change does not halve: each finer measure keeps more than 0.6 of the coarser one and the
 eighth still changes by at least 2. Fast smooth motion halves its change as the step halves; a
 mount, a colour cut or a camera jump does not. `changedPixels` is a `delta` for raw RGBA frames.
-The halving test is adapted from anatomy (MIT); see the repository NOTICE.
+The halving test is adapted from anatomy (MIT); see the package NOTICE.
 
 ```ts
 import { changedPixels, checkPops } from "@titan-design/frame-capture";

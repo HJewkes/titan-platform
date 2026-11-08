@@ -160,6 +160,14 @@ interface Encoder {
 /** One ffmpeg reading PNGs on stdin, muxing mix.wav, writing H.264 + AAC with no run-specific metadata. */
 declare function startEncoder(out: string, fps: number, audio: string): Encoder;
 
+/*!
+ * The halving test is adapted from anatomy, https://github.com/wheresryan22/anatomy,
+ * kit/turn-audit.mjs L969-L986 at e9488296. Copyright (c) 2026 Ryan, licensed under the
+ * MIT License; the full text is in this package's NOTICE.
+ * Changed here: the frame is any value a caller-supplied `delta` can compare, so one measure
+ * replaces the source's scale-4 then scale-16 pair, and the grid walk is new.
+ * @license MIT
+ */
 /** A frame source that is a pure function of `t`: seeking the same `t` twice gives the same frame. */
 type SeekFrame<F> = (t: number) => F | Promise<F>;
 /** How visibly two frames differ, as a non-negative number (for example, changed pixels). */
@@ -211,8 +219,9 @@ declare function isPop(m: HalvingMeasure): boolean;
 /** Measures nine frames spanning one step at eighths: frames[0] is t, frames[8] is t + step. */
 declare function measureHalving<F>(frames: readonly F[], delta: FrameDelta<F>): HalvingMeasure;
 /**
- * Walks a grid of `t` from `start` to `end`. Where a step's change reaches `threshold`, it
- * re-measures the step at h/2, h/4 and h/8 and reports a pop only when the change does not halve.
+ * Walks a grid of `t` from `start` to `end`; a last step shorter than `step` ends at `end`. Where a
+ * step's change reaches `threshold`, it re-measures the step at h/2, h/4 and h/8 and reports a pop
+ * only when the change does not halve.
  */
 declare function checkPops<F>(options: PopCheckOptions<F>): Promise<PopReport>;
 
