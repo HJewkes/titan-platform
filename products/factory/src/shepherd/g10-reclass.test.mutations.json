@@ -36,6 +36,7 @@
       "find": "return classHead(deps, input, pause);",
       "replace": "return { reclassed: false };",
       "kills": [
+        "a consumer bump run, classed manifest-only at registration, read again at a CI read is held g10-adversary once its fixer pushes a file in the adversary class",
         "a run with no G10 hold, classed again at a CI read is held g10-adversary when a bump fixer's push adds an authority file to a manifest-only head",
         "a run with no G10 hold, classed again at a CI read stacks the adversary hold over a stall, which waits under it"
       ]

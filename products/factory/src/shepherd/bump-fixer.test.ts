@@ -138,6 +138,9 @@ describe("consumerBumpImplementer", () => {
 
     expect(consumerBumpImplementer(REPO, 1)).not.toBe(consumerBumpImplementer(REPO, 2));
     expect(consumerBumpImplementer("acme/a", 1)).not.toBe(consumerBumpImplementer("acme/b", 1));
+    expect(consumerBumpImplementer("acme/a", 1)).not.toBe(consumerBumpImplementer("other/a", 1));
+    expect(consumerBumpImplementer(`acme/${"x".repeat(60)}-one`, 1)).not.toBe(consumerBumpImplementer(`acme/${"x".repeat(60)}-two`, 1));
+    expect(consumerBumpImplementer("acme/a.b", 1)).not.toBe(consumerBumpImplementer("acme/a-b", 1));
     expect(`${long}-s99`).toMatch(PEER_NAME_PATTERN);
     expect(long.endsWith("-123456")).toBe(true);
   });

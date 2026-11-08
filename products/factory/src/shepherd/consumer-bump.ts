@@ -2,19 +2,33 @@ import { createHash } from "node:crypto";
 import type { GitHubPort, RepoFile, RepoSlug } from "@titan-design/github";
 import { parseAllDocuments } from "yaml";
 import { z } from "zod";
+import type { Registration } from "./store.js";
 
 export const BUMP_BRANCH_PREFIX = "shepherd/bump-consumers-";
 /** Room left in agent-chat's 64-character peer name for a fixer's `-s<k>` suffix. */
 const BUMP_IMPLEMENTER_MAX = 56;
 
+const peerSlug = (text: string): string => text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+
 /**
  * The registered implementer of one bump run. Each run needs its own: a fixer is named `<implementer>-s<k>`, and a
  * lineage takes in every roster row of that shape, so a shared name would hand one PR's wake to another PR's fixer.
+ * The owner is in the name, and a name the slug cut or changed carries a hash of the whole `owner/name#pr`, so no two
+ * runs share one.
  */
 export function consumerBumpImplementer(repo: RepoSlug, pr: number): string {
-  const name = (repo.split("/")[1] ?? repo).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const slug = peerSlug(repo);
   const suffix = `-${pr}`;
-  return `bump-${name.slice(0, BUMP_IMPLEMENTER_MAX - "bump-".length - suffix.length).replace(/-+$/, "")}${suffix}`;
+  const plain = `bump-${slug}${suffix}`;
+  if (slug === repo.toLowerCase().replace("/", "-") && plain.length <= BUMP_IMPLEMENTER_MAX) return plain;
+  const hash = `-${createHash("sha256").update(`${repo.toLowerCase()}#${pr}`).digest("hex").slice(0, 8)}`;
+  return `bump-${slug.slice(0, BUMP_IMPLEMENTER_MAX - "bump-".length - hash.length - suffix.length).replace(/-+$/, "")}${hash}${suffix}`;
+}
+
+/** A run the consumer bump sweep registered: its bump branch, and the implementer name only the sweep gives it. */
+export function isConsumerBumpRun(registration: Pick<Registration, "repo" | "pr" | "branch" | "implementer">): boolean {
+  const { repo, pr, branch, implementer } = registration;
+  return pr !== null && branch?.startsWith(BUMP_BRANCH_PREFIX) === true && implementer === consumerBumpImplementer(repo, pr);
 }
 const DEP_FIELDS = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"] as const;
 /** A name outside this shape never reaches the registry URL or a regex. */

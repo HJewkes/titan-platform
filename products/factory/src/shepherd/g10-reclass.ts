@@ -13,7 +13,7 @@ export const G10_RECLASS_STEPS: readonly StepDeclaration[] = [{ id: G10_RECLASS_
 
 const ReclassInput = z.looseObject({ runId: z.string(), head: z.string() });
 type ReclassInput = z.infer<typeof ReclassInput>;
-const ReclassResult = z.looseObject({ reclassed: z.boolean(), kept: z.string().optional(), placed: z.string().optional() });
+const ReclassResult = z.looseObject({ reclassed: z.boolean(), kept: z.string().optional(), held: z.string().optional() });
 type ReclassResult = z.infer<typeof ReclassResult>;
 
 type ReclassDeps = Pick<ShepherdDeps, "port" | "store" | "now" | "sleep" | "prFiles">;
@@ -43,8 +43,8 @@ export async function reclassUnread(deps: ReclassDeps, input: ReclassInput, sign
 /** A G10 hold as strong as the head's class, placed or released before, decided it already, so this reads nothing then. */
 async function classHead(deps: ReclassDeps, input: ReclassInput, pause: (ms: number) => Promise<void>): Promise<ReclassResult> {
   const files = { head: input.head, pause, ...(deps.prFiles && { local: deps.prFiles }) };
-  const placed = await applyRegistrationHold(deps.port, deps.store.get(), input.runId, files);
-  return placed === undefined ? { reclassed: false } : { reclassed: false, placed };
+  const held = await applyRegistrationHold(deps.port, deps.store.get(), input.runId, files);
+  return { reclassed: false, ...(held !== undefined && { held }) };
 }
 
 export function g10ReclassRoutes(deps: ReclassDeps): StepRoute[] {

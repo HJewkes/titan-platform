@@ -1,10 +1,12 @@
 import { dataFence } from "@titan-design/agent-dispatch";
 import type { GitHubPort, PullRequest, RepoSlug } from "@titan-design/github";
-import { BUMP_BRANCH_PREFIX, consumerBumpImplementer, titanDeps } from "./consumer-bump.js";
+import { titanDeps } from "./consumer-bump.js";
 import { failureOf } from "./error-class.js";
 import { ciRedFailing } from "./gates.js";
 import type { Registration } from "./store.js";
 import { HEAD_LINE, isSeat, successorBrief } from "./wake-brief.js";
+
+export { isConsumerBumpRun } from "./consumer-bump.js";
 
 /** Fixers Shepherd starts for one bump run; past them a red bump PR goes to its seat, as a run with no fixer does. */
 export const BUMP_FIXER_ROUNDS = 3;
@@ -19,12 +21,6 @@ interface BumpFacts {
 /** A wake's task, with the facts only a consumer bump run carries; its fixers take the bump brief and a tighter cap. */
 export interface BumpRun {
   bump?: BumpFacts;
-}
-
-/** A run the consumer bump sweep registered: its bump branch, and the implementer name only the sweep gives it. */
-export function isConsumerBumpRun(registration: Registration): boolean {
-  const { repo, pr, branch, implementer } = registration;
-  return pr !== null && branch?.startsWith(BUMP_BRANCH_PREFIX) === true && implementer === consumerBumpImplementer(repo, pr);
 }
 
 /** A read that fails says so in the brief, so the wake still goes out. */

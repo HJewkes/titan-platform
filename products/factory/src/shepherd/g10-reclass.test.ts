@@ -1,12 +1,13 @@
 import { fakeGitHub, fakeSha, githubPort, type FakeGitHub, type GitHubPort, type PrFile } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
+import { BUMP_BRANCH_PREFIX, consumerBumpImplementer } from "./consumer-bump.js";
 import { reclassMarkMigration, shepherdEventMigration } from "./events.js";
 import { reclassUnread } from "./g10-reclass.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { applyRegistrationHold } from "./registration-hold.js";
 import { holdSlotsMigration } from "./store-migrations.js";
-import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration } from "./store.js";
+import { ShepherdStore, type RegistrationInput, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration } from "./store.js";
 
 const REPO = "octo/demo";
 const HEAD = fakeSha("head-2");
@@ -23,14 +24,14 @@ interface Rig {
   reads: () => number;
 }
 
-function rig(files: PrFile[]): Rig {
+function rig(files: PrFile[], over: (pr: number) => Partial<RegistrationInput> = () => ({})): Rig {
   const db = openDatabase(":memory:");
   runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19), reclassMarkMigration(25)]);
   const store = new ShepherdStore(db);
   const fake = fakeGitHub({ repo: REPO });
   const { number: pr } = fake.addPr({ headSha: fakeSha("head-1") });
   fake.prFiles.set(pr, files);
-  store.register({ repo: REPO, pr, runId: "run-1", task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY, kind: "correctness" });
+  store.register({ repo: REPO, pr, runId: "run-1", task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY, kind: "correctness", ...over(pr) });
   const real = githubPort(fake.wire);
   const failing = { reads: 0 };
   let reads = 0;
@@ -116,13 +117,37 @@ describe("a run held because its changed files were unread at registration, read
   });
 });
 
+describe("a consumer bump run, classed manifest-only at registration, read again at a CI read", () => {
+  const AUTO_FIXER = { ...OWNER_GATE_POLICY, merge: "auto" as const, fixer: true, seat: "seat-a" };
+  const bumpRun = (pr: number): Partial<RegistrationInput> => ({ branch: `${BUMP_BRANCH_PREFIX}0badc0de`, implementer: consumerBumpImplementer(REPO, pr), policy: AUTO_FIXER });
+  const manifests = [file("package.json", 2, 2), file("pnpm-lock.yaml", 40, 40)];
+
+  it("is held g10-adversary once its fixer pushes a file in the adversary class", async () => {
+    const r = rig(manifests, bumpRun);
+    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBeUndefined();
+    r.fake.prFiles.set(1, [...manifests, file("packages/tool-guard/src/a.ts", 30)]);
+
+    expect(await reclass(r)).toEqual({ reclassed: false, held: "g10-adversary: security touch" });
+
+    expect(r.store.byRun("run-1")).toMatchObject({ held: true, holdReason: "g10-adversary: security touch" });
+  });
+
+  it("stays unheld while its head still changes only manifests and the lockfile", async () => {
+    const r = rig(manifests, bumpRun);
+
+    expect(await reclass(r)).toEqual({ reclassed: false });
+
+    expect(r.store.byRun("run-1")).toMatchObject({ held: false });
+  });
+});
+
 describe("a run with no G10 hold, classed again at a CI read", () => {
   it("is held g10-adversary when a bump fixer's push adds an authority file to a manifest-only head", async () => {
     const r = rig([file("package.json", 1, 1), file("pnpm-lock.yaml", 4, 4)]);
     expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBeUndefined();
     r.fake.prFiles.set(1, [file("package.json", 1, 1), file("pnpm-lock.yaml", 4, 4), file("packages/authority/src/x.ts", 20)]);
 
-    expect(await reclass(r)).toEqual({ reclassed: false, placed: "g10-adversary: authority touch" });
+    expect(await reclass(r)).toEqual({ reclassed: false, held: "g10-adversary: authority touch" });
 
     expect(r.store.byRun("run-1")).toMatchObject({ held: true, holdReason: "g10-adversary: authority touch" });
   });
@@ -139,7 +164,7 @@ describe("a run with no G10 hold, classed again at a CI read", () => {
     const r = rig([file("packages/authority/src/x.ts", 20)]);
     r.store.hold("run-1", "stalled: no progress; TP-2", undefined, { actor: "seat" });
 
-    expect(await reclass(r)).toEqual({ reclassed: false, placed: "g10-adversary: authority touch" });
+    expect(await reclass(r)).toEqual({ reclassed: false, held: "g10-adversary: authority touch" });
 
     expect(r.store.byRun("run-1")).toMatchObject({ held: true, holdReason: "g10-adversary: authority touch" });
   });
