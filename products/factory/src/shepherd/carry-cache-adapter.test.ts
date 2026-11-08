@@ -41,7 +41,7 @@ async function authWall(): Promise<{ url: string; server: Server }> {
   return { url: `http://127.0.0.1:${address.port}/acme/widgets.git`, server };
 }
 
-const mergeTreeOf = (origin: string, headSha: string): Promise<string> => localMergeTree({ repo: REPO, baseRef: "main", headSha }, { remote: () => origin });
+const mergeTreeOf = (origin: string, headSha: string): Promise<string> => localMergeTree({ repo: REPO, baseRef: "main", headSha }, { ports: hostCarryPorts, remote: () => origin });
 
 describe("systemGit", { timeout: 30_000 }, () => {
   it("systemGit never prompts and reads only gh as a credential helper", async () => {

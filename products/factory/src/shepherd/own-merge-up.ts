@@ -82,7 +82,7 @@ async function probe(cache: CacheHandle, input: OwnMergeUpInput, signal?: AbortS
  * approved head, the second on the base branch, its tree git's own clean merge-tree of the two, and none of the files the
  * base side changed among the PR's own or under a carry-fenced path (authority, tool-guard, workflows)? Every failure, from bad input to a refused fetch, answers no with a reason.
  */
-export async function ownMergeUp(raw: unknown, options: CarryOptions = {}): Promise<OwnMergeUpResult> {
+export async function ownMergeUp(raw: unknown, options: CarryOptions): Promise<OwnMergeUpResult> {
   const parsed = InputSchema.safeParse(raw);
   if (!parsed.success) return refuse(`invalid own-merge-up input: ${parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ")}`);
   const input = parsed.data;
@@ -95,7 +95,7 @@ export async function ownMergeUp(raw: unknown, options: CarryOptions = {}): Prom
   }
 }
 
-export function ownMergeUpRoute(now: () => number, options: Omit<CarryOptions, "signal"> = {}): StepRoute {
+export function ownMergeUpRoute(now: () => number, options: Omit<CarryOptions, "signal">): StepRoute {
   return codeRoute(OWN_MERGE_UP_STEP, now, (input: unknown, signal) => ownMergeUp(input, { ...options, signal }));
 }
 

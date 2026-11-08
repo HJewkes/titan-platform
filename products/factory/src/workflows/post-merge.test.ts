@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PostMergeConfig } from "../config.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import type { StepRoute } from "@titan-design/workflow";
+import { hostCarryPorts } from "../shepherd/carry-cache-adapter.js";
 import { crashAt } from "../test-support/crash.js";
 import { H1, REPO, answerPendingGate, gateId, gateOpened } from "../test-support/land.js";
 import { landPrRoutes, landPrWorkflow } from "./land-pr.js";
@@ -51,7 +52,7 @@ function world(postMerge: PostMergeConfig | undefined, chore: Chore): { fake: Fa
   fake.addPr({ headSha: H1 });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   let clock = 0;
-  const routes = landPrRoutes({ port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms), postMerge, runChore: chore.exec });
+  const routes = landPrRoutes({ gitCache: hostCarryPorts, port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms), postMerge, runChore: chore.exec });
   return { fake, routes };
 }
 

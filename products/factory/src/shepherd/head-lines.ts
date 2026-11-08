@@ -7,7 +7,7 @@ import { cacheFor, ensureCache, must, serialized, type CarryOptions } from "./tr
  * File lines at the PR head, read from Shepherd's bare git cache and never a working tree. Registration usually fetched the
  * head already; when it did not (its file read fell back to REST), the head is fetched by sha. An unreadable head rejects.
  */
-export function cacheHeadLines(options: CarryOptions = {}): HeadLines {
+export function cacheHeadLines(options: CarryOptions): HeadLines {
   return async ({ repo, head }) => {
     if (!isFullSha(head)) throw new Error("the head is not a 40-hex commit id");
     const cache = cacheFor(repo, options);

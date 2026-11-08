@@ -13,6 +13,7 @@ import { openFactoryHost } from "./host.js";
 import { DEPRECATED_INTERVAL } from "./reconciler/config.js";
 import type { StepRoute } from "@titan-design/workflow";
 import { startFactoryServer, type FactoryServer } from "./serve.js";
+import { hostCarryPorts } from "./shepherd/carry-cache-adapter.js";
 import { H1, REPO, gateId, gateOpened } from "./test-support/land.js";
 import { BRANCH, callCommand, shepherdFixture } from "./test-support/shepherd.js";
 import { landPrRoutes, landPrWorkflow } from "./workflows/land-pr.js";
@@ -38,7 +39,7 @@ function landDeps(hangAt?: string): CliDeps & { routes: readonly StepRoute[] } {
   fake.addPr({ headSha: H1 });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   let clock = 0;
-  const routes = landPrRoutes({ port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms) });
+  const routes = landPrRoutes({ gitCache: hostCarryPorts, port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms) });
   return { workflows: [landPrWorkflow()], routes: hangAt ? hanging(routes, hangAt) : routes, host: { gatePollMs: 5 }, logger: silentLogger };
 }
 

@@ -5,6 +5,7 @@ import { fakeGitHub, githubPort, successRun, type FakeGitHub } from "@titan-desi
 import type { GateResolver } from "@titan-design/hitl";
 import type { StepRoute } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
+import { hostCarryPorts } from "../shepherd/carry-cache-adapter.js";
 import { crashAt } from "../test-support/crash.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { landPrRoutes } from "./land-pr.js";
@@ -25,7 +26,7 @@ function greenWorld(): { fake: FakeGitHub; routes: StepRoute[] } {
   fake.addPr({ headSha: H1 });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   let clock = 0;
-  return { fake, routes: landPrRoutes({ port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms) }) };
+  return { fake, routes: landPrRoutes({ gitCache: hostCarryPorts, port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms) }) };
 }
 
 describe("device-pr killed while device-confirm is pending", () => {

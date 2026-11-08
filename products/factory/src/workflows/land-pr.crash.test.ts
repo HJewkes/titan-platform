@@ -5,6 +5,7 @@ import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@t
 import type { StepRoute } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FactoryHost } from "../host.js";
+import { hostCarryPorts } from "../shepherd/carry-cache-adapter.js";
 import { crashAt } from "../test-support/crash.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
@@ -43,7 +44,7 @@ function landPrWorld(): World {
     fake.setRuns(pr.headSha, [validate, successRun("dag-check", 2)]);
   };
   let clock = 0;
-  world.routes = landPrRoutes({ port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms) });
+  world.routes = landPrRoutes({ gitCache: hostCarryPorts, port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms) });
   return world;
 }
 

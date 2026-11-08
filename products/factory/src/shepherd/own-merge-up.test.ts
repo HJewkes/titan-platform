@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { gitIn, seedRepo, withHistory } from "@titan-design/test-kit/git";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { ownMergeUp, type OwnMergeUpResult } from "./own-merge-up.js";
 
 const REPO = "acme/widgets";
@@ -52,7 +53,7 @@ const mergeMain = (): string => {
   return head();
 };
 
-const probe = (fromHead: string, to: string): Promise<OwnMergeUpResult> => ownMergeUp({ repo: REPO, baseRef: "main", fromHead, head: to }, { stateDir, remote: () => origin });
+const probe = (fromHead: string, to: string): Promise<OwnMergeUpResult> => ownMergeUp({ repo: REPO, baseRef: "main", fromHead, head: to }, { ports: hostCarryPorts, stateDir, remote: () => origin });
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "own-merge-up-"));
@@ -218,6 +219,6 @@ describe("ownMergeUp", { timeout: 30_000 }, () => {
   });
 
   it("refuses input that is not a repo, a branch and two full shas", async () => {
-    expect(await ownMergeUp({ repo: "nope", baseRef: "main", fromHead: "a", head: "b" })).toMatchObject({ carries: false, reason: expect.stringContaining("invalid own-merge-up input") });
+    expect(await ownMergeUp({ repo: "nope", baseRef: "main", fromHead: "a", head: "b" }, { ports: hostCarryPorts })).toMatchObject({ carries: false, reason: expect.stringContaining("invalid own-merge-up input") });
   });
 });

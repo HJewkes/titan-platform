@@ -13,6 +13,7 @@ import { openFactoryHost, type FactoryHost } from "../host.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { codeRoute, sleep, step } from "../workflows/land.js";
 import { followingApprovals } from "./approval-carry.js";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { APPROVAL_CARRY_STEP, CARRY_SCOPE_STEPS } from "./carry-merge.js";
 import { FIX_CARRY_STEP, fixCarryRoute } from "./fix-carry.js";
 import { LeaveLand } from "./leave-land.js";
@@ -118,7 +119,7 @@ async function world(fix = false): Promise<World> {
   const port = githubPort(gh.wire);
   const ref = shepherdStoreRef();
   const factory = factoryRoutesFor({ port, store: ref, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal) });
-  const carry = { stateDir: join(root, "state"), remote: () => origin };
+  const carry = { ports: hostCarryPorts, stateDir: join(root, "state"), remote: () => origin };
   const routes = Object.assign(
     [
       codeRoute("sh-carry-scope", () => 0, async () => ({ kind: "correctness", baseRef: "main", askedHead: null, g10Held: false })),

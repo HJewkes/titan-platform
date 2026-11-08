@@ -54,7 +54,6 @@ const CLOCK_BUDGET_BASELINE = [
 const RECIPE_CAPABILITY_BASELINE = [
   "products/factory/src/shepherd/release.ts",
   "products/factory/src/shepherd/train.ts",
-  "products/factory/src/shepherd/tree-carry.ts",
   "products/factory/src/workflows/land-pr.ts",
 ];
 const RECIPE_LOOP_BASELINE = [

@@ -58,7 +58,7 @@ async function probe(cache: CacheHandle, { fromHead, head, mode, set }: SetCarry
  * Does `head` commit exactly the set the owner accepted at `fromHead`: a descendant of it whose diff names only set paths,
  * each file at its accepted blob and each removed path gone? Every failure, from bad input to a refused fetch, answers no.
  */
-export async function setCarry(raw: unknown, options: CarryOptions = {}): Promise<SetCarryResult> {
+export async function setCarry(raw: unknown, options: CarryOptions): Promise<SetCarryResult> {
   const parsed = InputSchema.safeParse(raw);
   if (!parsed.success) return refuse("shadow", "invalid set carry input");
   const input = parsed.data;
@@ -71,7 +71,7 @@ export async function setCarry(raw: unknown, options: CarryOptions = {}): Promis
   }
 }
 
-export function setCarryRoute(now: () => number, options: Omit<CarryOptions, "signal"> = {}): StepRoute {
+export function setCarryRoute(now: () => number, options: Omit<CarryOptions, "signal">): StepRoute {
   return codeRoute(SET_CARRY_STEP, now, (input: unknown, signal) => setCarry(input, { ...options, signal }));
 }
 

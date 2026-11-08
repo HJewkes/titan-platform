@@ -48,7 +48,7 @@ function reviewedHead(): { m0: string; h1: string } {
 }
 
 const probe = (fromHead: string, head: string, remote = origin): Promise<CarryResult> =>
-  carry({ repo: REPO, baseRef: "main", fromHead, head }, { stateDir, remote: () => remote });
+  carry({ repo: REPO, baseRef: "main", fromHead, head }, { ports: hostCarryPorts, stateDir, remote: () => remote });
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "tree-carry-"));
@@ -182,15 +182,15 @@ describe("carry", { timeout: 30_000 }, () => {
     const failing = async () => ({ code: 128, stdout: "", stderr: `fatal: ${leaky}` });
     const throwing = async () => Promise.reject(new Error(leaky));
 
-    const refused = await carry(input, { stateDir, git: failing });
-    const thrown = await carry(input, { stateDir, git: throwing });
+    const refused = await carry(input, { ports: { ...hostCarryPorts, git: failing }, stateDir });
+    const thrown = await carry(input, { ports: { ...hostCarryPorts, git: throwing }, stateDir });
 
     expect(refused).toEqual({ equal: false, reason: "git init exited 128" });
     expect(thrown).toEqual({ equal: false, reason: "carry probe failed: Error" });
   });
 
   it("answers not equal for malformed input without touching git", async () => {
-    const result = await carry({ repo: "../escape", baseRef: "--upload-pack=x", fromHead: "abc", head: "def" }, { stateDir });
+    const result = await carry({ repo: "../escape", baseRef: "--upload-pack=x", fromHead: "abc", head: "def" }, { ports: hostCarryPorts, stateDir });
 
     expect(result.equal).toBe(false);
     expect(existsSync(join(stateDir, "git-cache"))).toBe(false);
@@ -212,7 +212,7 @@ describe("carry", { timeout: 30_000 }, () => {
 });
 
 describe("localMergeTree", { timeout: 30_000 }, () => {
-  const mergeTree = (headSha: string, remote = origin): Promise<string> => localMergeTree({ repo: REPO, baseRef: "main", headSha }, { stateDir, remote: () => remote });
+  const mergeTree = (headSha: string, remote = origin): Promise<string> => localMergeTree({ repo: REPO, baseRef: "main", headSha }, { ports: hostCarryPorts, stateDir, remote: () => remote });
 
   it("answers clean when the head merges onto the base tip with no conflict", async () => {
     const { h1 } = reviewedHead();
