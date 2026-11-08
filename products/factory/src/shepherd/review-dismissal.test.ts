@@ -40,13 +40,22 @@ describe("dismissStale", () => {
     expect(result).toEqual({ dismissed: [11] });
   });
 
-  it("an approval at the published head itself is not an older head's and stays", async () => {
+  it("a FIX_FIRST at the head Shepherd already approved dismisses that approval", async () => {
     const { fake, pr } = scene([shepherdApproval(11, B)]);
 
     const result = await dismissStale(githubPort(fake.wire), { repo: REPO, pr }, published({}));
 
-    expect(states(fake, pr)).toEqual([{ id: 11, state: "APPROVED" }]);
-    expect(result).toEqual({ dismissed: [] });
+    expect(states(fake, pr)).toEqual([{ id: 11, state: "DISMISSED" }]);
+    expect(result).toEqual({ dismissed: [11] });
+  });
+
+  it("an unmet attestation republished at the head of an earlier MERGE approval dismisses that approval", async () => {
+    const { fake, pr } = scene([shepherdApproval(11, B)]);
+
+    const result = await dismissStale(githubPort(fake.wire), { repo: REPO, pr }, published({ outcome: "MERGE", attestUnmet: ["MRG-AU-1"] }));
+
+    expect(states(fake, pr)).toEqual([{ id: 11, state: "DISMISSED" }]);
+    expect(result).toEqual({ dismissed: [11] });
   });
 
   it("a person's approval carrying the marker and another bot's unmarked approval are left alone", async () => {

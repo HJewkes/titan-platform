@@ -786,14 +786,16 @@ author cannot approve it. Without the App, nothing is posted: the step records
   carried approval, `failure` for a FIX_FIRST, and `action_required` for everything that holds the
   merge (auto-merge armed, a moved head, release blockers, an unmet attestation, no verdict).
 - **An APPROVE pull request review** is posted at the same head exactly when the check is
-  `success`, so every guard that holds the check also holds the approval. Its body ends in the
-  marker `<!-- shepherd-review run=<runId> head=<sha> -->`. A replay finds Shepherd's marked
-  approval already at that head and posts no second one. The step records `review.approved`.
-- **Stale approvals are dismissed** when a later publish is anything but `success`. GitHub keeps
-  an approval after a push, so Shepherd dismisses each review that is a bot's, still `APPROVED`,
-  carries the marker, and sits at a head other than the one just published. Human reviews and
-  other bots' reviews are never touched. The step records `review.dismissed` with the ids, and a
-  replay finds nothing left to dismiss.
+  `success`. Its body ends in the marker `<!-- shepherd-review run=<runId> head=<sha> -->`. A
+  replay finds Shepherd's marked approval already at that head and posts no second one. The step
+  records `review.approved`.
+- **Standing approvals are dismissed** when a later publish is anything but `success`, at any
+  head, the published one included. A MERGE publish can approve a head that the same run then
+  republishes as `action_required` (an unmet attestation), and GitHub keeps an approval after a
+  push, so Shepherd dismisses each review that is a bot's, still `APPROVED`, and carries the
+  marker. Human reviews and other bots' reviews are never touched. The step records
+  `review.dismissed` with the ids, and a replay finds nothing left to dismiss. Once the
+  dismissals succeed, every guard that holds the check also holds the approval.
 
 A failed post, list or dismissal is recorded in `review.reviewError` by HTTP status only, with the
 full message on the local console, and never fails the step. Shepherd's merge path is unchanged:

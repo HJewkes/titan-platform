@@ -19,27 +19,29 @@ interface PublishedCheck {
 type DismissPort = Pick<GitHubPort, "listReviews" | "dismissReview">;
 
 /**
- * GitHub keeps an approval after a push, so a non-success at a new head dismisses Shepherd's own approvals at every other
- * head; human reviews and other bots' reviews are never touched. A replay finds them already dismissed and does nothing.
+ * Shepherd's latest check is its word on the PR, so a non-success dismisses every standing Shepherd approval, at the
+ * published head too: a MERGE approval at a head later republished as unmet attestation or FIX_FIRST must not stand.
+ * GitHub also keeps an approval after a push, which is why older heads go as well. Human reviews and other bots'
+ * reviews are never touched. A replay finds them already dismissed and does nothing.
  * Never throws: each failure is recorded, and the rest are still tried.
  */
 export async function dismissStale(port: DismissPort | undefined, target: DismissTarget, check: PublishedCheck): Promise<ReviewDismissal | undefined> {
   if (check.conclusion === "success") return undefined;
   if (!port) return { reviewError: "no shepherd.reviewCheck App is configured" };
-  let stale: PullReview[];
+  let standing: PullReview[];
   try {
-    stale = (await port.listReviews(target.repo, target.pr)).filter((review) => isShepherdApproval(review) && review.commitId !== check.headSha);
+    standing = (await port.listReviews(target.repo, target.pr)).filter(isShepherdApproval);
   } catch (error) {
     console.warn(`shepherd: listing reviews of ${target.repo}#${target.pr} failed: ${consoleTextOf(error)}`);
     return { reviewError: `the review list failed: ${failureOf(error)}` };
   }
-  return dismissEach(port, target, stale, dismissalMessage(check));
+  return dismissEach(port, target, standing, dismissalMessage(check));
 }
 
-async function dismissEach(port: DismissPort, target: DismissTarget, stale: PullReview[], message: string): Promise<ReviewDismissal> {
+async function dismissEach(port: DismissPort, target: DismissTarget, approvals: PullReview[], message: string): Promise<ReviewDismissal> {
   const dismissed: number[] = [];
   let reviewError: string | undefined;
-  for (const review of stale) {
+  for (const review of approvals) {
     try {
       await port.dismissReview(target.repo, target.pr, review.id, message);
       dismissed.push(review.id);
@@ -53,4 +55,4 @@ async function dismissEach(port: DismissPort, target: DismissTarget, stale: Pull
 }
 
 const dismissalMessage = (check: PublishedCheck): string =>
-  `Shepherd's review at ${check.headSha.slice(0, 12)} is ${check.conclusion}; this approval covered an older head only.`;
+  `Shepherd's review at ${check.headSha.slice(0, 12)} is ${check.conclusion}; this approval no longer stands.`;
