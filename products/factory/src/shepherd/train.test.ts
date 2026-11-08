@@ -90,7 +90,7 @@ function world(repo: Repo, review: ShepherdPhases["review"] = merges, dbPath = "
   let clock = 0;
   const tick = async (ms: number, signal: AbortSignal) => ((clock += ms), sleep(1, signal));
   const store = shepherdStoreRef();
-  const train = mergeTrainRef();
+  const train = mergeTrainRef(() => clock);
   const freeze = freezeStoreRef(() => clock);
   const routes = factoryRoutesFor({ port: landingPort(repo), store, train, freeze, now: () => clock, sleep: tick, registry: async () => "trusted" as const });
   const phases: ShepherdPhases = { review, wake: async () => ({ kind: "unhandled", reason: "no agent in this test" }) };
@@ -291,7 +291,7 @@ describe("MergeTrain.take", () => {
   function openTrain(): MergeTrain {
     const db = openDatabase(":memory:");
     runMigrations(db, [trainMigration(1)]);
-    return new MergeTrain(db);
+    return new MergeTrain(db, () => 0);
   }
 
   it("refuses a take from a holder that is no longer the holder, and keeps the real one", () => {
