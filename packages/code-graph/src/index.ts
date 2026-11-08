@@ -189,6 +189,7 @@ export { publicApiFiles, topUnusedExports } from "./analysis/unused-exports.js";
 export * from "./analysis/complexity-distribution.js";
 export * from "./analysis/dependency-graph-metrics.js";
 export { topDeadModules } from "./analysis/dead-modules.js";
+export { packageEntryFileIds } from "./package-entries.js";
 export { topGrowthRisks } from "./analysis/growth-risks.js";
 export { topUntestedRisks } from "./analysis/untested-risks.js";
 export { computeReportDrift, type ComputeDriftInput } from "./analysis/graph-report-drift.js";
