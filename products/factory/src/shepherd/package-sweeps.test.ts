@@ -13,6 +13,7 @@ afterEach(() => {
   started.forEach((sweep) => sweep.halt());
   started = [];
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 /** Each sweep's first read of `services` tells them apart: the release sweep reads the store, the toolchain sweep the port, the consumer bump sweep the seat book. */
@@ -48,31 +49,14 @@ describe("startPackageSweeps", () => {
     expect({ ...runs }).toEqual({ release: 5, toolchain: 1, consumer: 2 });
   });
 
-  it("starts the consumer bump sweep hourly by default", async () => {
-    const { runs, services } = countingServices();
-    start({}, services);
+  it("falls back to the default intervals when none are configured", () => {
+    const { services } = countingServices();
+    vi.useFakeTimers();
+    const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
+    started = startPackageSweeps(partialFake<FactoryHost>(), services, {}, log);
 
-    await vi.advanceTimersByTimeAsync(3_600_000 - 1);
-    expect(runs.consumer).toBe(0);
-    await vi.advanceTimersByTimeAsync(1);
-
+    expect(setIntervalSpy.mock.calls.map(([, delay]) => delay)).toEqual([RELEASE_SWEEP_MS, TOOLCHAIN_SWEEP_MS, CONSUMER_BUMP_SWEEP_MS]);
     expect(CONSUMER_BUMP_SWEEP_MS).toBe(3_600_000);
-    expect(runs.consumer).toBe(1);
-  });
-
-  it("falls back to the default intervals when none are configured", async () => {
-    const { runs, services } = countingServices();
-    start({}, services);
-
-    await vi.advanceTimersByTimeAsync(RELEASE_SWEEP_MS - 1);
-    expect(runs.release).toBe(0);
-    await vi.advanceTimersByTimeAsync(1);
-    expect(runs.release).toBe(1);
-
-    await vi.advanceTimersByTimeAsync(TOOLCHAIN_SWEEP_MS - RELEASE_SWEEP_MS - 1);
-    expect(runs.toolchain).toBe(0);
-    await vi.advanceTimersByTimeAsync(1);
-    expect(runs.toolchain).toBe(1);
   });
 
   it("starts no sweeps without Shepherd services", () => {
