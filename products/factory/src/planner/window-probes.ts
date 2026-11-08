@@ -11,10 +11,10 @@ export interface RedRun {
   createdAt: string;
 }
 
-/** A console round the owner answered; `submittedAt` is the feedback's own time, not the file's. */
+/** A console round the owner answered; `submittedAt` is the feedback's own time, not the file's, and is absent when the feedback does not parse. */
 export interface RoundAnswer {
   id: string;
-  submittedAt: string;
+  submittedAt: string | undefined;
 }
 
 export interface WindowGitHub {
@@ -50,8 +50,14 @@ async function mergesSince(sources: WindowSources, since: string): Promise<strin
 
 async function ownerContactSince(sources: WindowSources, since: string): Promise<string[]> {
   const resolves = sources.gates().filter((gate) => gate.status === "resolved" && inWindow(gate.resolvedAt, since));
-  const answers = (await sources.rounds()).filter((round) => inWindow(round.submittedAt, since));
-  return [...resolves.map((gate) => `gate ${gate.id} resolved ${gate.resolvedAt}`), ...answers.map((round) => `round ${round.id} answered ${round.submittedAt}`)];
+  const rounds = await sources.rounds();
+  const answers = rounds.filter((round) => inWindow(round.submittedAt, since));
+  const undatable = rounds.filter((round) => round.submittedAt === undefined);
+  return [
+    ...resolves.map((gate) => `gate ${gate.id} resolved ${gate.resolvedAt}`),
+    ...answers.map((round) => `round ${round.id} answered ${round.submittedAt}`),
+    ...undatable.map((round) => `round ${round.id} answered at an unknown time: feedback.json does not parse`),
+  ];
 }
 
 async function newRedSince(sources: WindowSources, since: string): Promise<string[]> {
