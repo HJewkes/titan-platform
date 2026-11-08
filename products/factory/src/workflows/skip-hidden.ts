@@ -1,4 +1,4 @@
-import { isConcluded, isPassingConclusion, latestPerName, type CheckRun } from "@titan-design/github";
+import { isConcluded, isPassing, isPassingConclusion, latestPerName, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
 
 const SKIPS: ReadonlySet<string> = new Set(["skipped", "neutral"]);
 
@@ -20,4 +20,12 @@ export function failuresBehindSkips(runs: readonly CheckRun[]): CheckRun[] {
     if (latest === undefined || !isSkip(latest)) return [];
     return own.filter((run) => isConcluded(run) && !isPassingConclusion(run.conclusion) && run.conclusion !== "cancelled");
   });
+}
+
+/** A ci-red wake's failing jobs: each check's newest failed run, and any failure a newer skip hides from that read. */
+export async function failingRunsAt(port: Pick<GitHubPort, "latestCheckRuns" | "checkRuns">, repo: RepoSlug, headSha: string): Promise<CheckRun[]> {
+  const latest = await port.latestCheckRuns(repo, headSha);
+  const failing = latest.filter((run) => run.status === "completed" && !isPassing(run));
+  if (!latest.some(isSkip)) return failing;
+  return [...failing, ...failuresBehindSkips(await port.checkRuns(repo, headSha))];
 }

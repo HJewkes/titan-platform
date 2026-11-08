@@ -3,7 +3,7 @@
   "mutations": [
     {
       "name": "the wake brief reads only each check's newest run",
-      "file": "products/factory/src/shepherd/wake-brief.ts",
+      "file": "products/factory/src/workflows/skip-hidden.ts",
       "find": "  if (!latest.some(isSkip)) return failing;",
       "replace": "  return failing;",
       "kills": [
