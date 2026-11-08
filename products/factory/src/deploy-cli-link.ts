@@ -40,7 +40,12 @@ export function relinkCli(ports: CliLinkPorts, bin: string): string {
   try {
     renameSync(staged, linkPath);
   } catch (err) {
-    unlinkSync(staged);
+    try {
+      unlinkSync(staged);
+    } catch (cleanupErr) {
+      // The rename error is the one the caller needs; the cleanup failure rides along as its cause.
+      if (err instanceof Error && err.cause === undefined) err.cause = cleanupErr;
+    }
     throw err;
   }
   return `CLI link repointed: ${linkPath} -> ${bin} (was ${current})`;
