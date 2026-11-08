@@ -3,7 +3,7 @@ import { isConcluded, isPassing, isPassingConclusion, latestPerName, type CheckR
 const SKIPS: ReadonlySet<string> = new Set(["skipped", "neutral"]);
 
 /** A run that concluded without running its job: a skip or neutral is no verdict on what an older run of its check found. */
-export const isSkip = (run: CheckRun): boolean => isConcluded(run) && SKIPS.has(run.conclusion ?? "");
+const isSkip = (run: CheckRun): boolean => isConcluded(run) && SKIPS.has(run.conclusion ?? "");
 
 const checkKey = (run: CheckRun): string => `${run.headSha}\u0000${String(run.appId)}\u0000${run.name}`;
 
