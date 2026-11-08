@@ -160,4 +160,69 @@ interface Encoder {
 /** One ffmpeg reading PNGs on stdin, muxing mix.wav, writing H.264 + AAC with no run-specific metadata. */
 declare function startEncoder(out: string, fps: number, audio: string): Encoder;
 
-export { type CapturePage, type Encoder, FontLoadError, type FontState, type FramesOptions, type FramesResult, type MixSegment, type PageOptions, TITAN_MOTION_GLOBAL, type TitanMotionApi, VIRTUAL_TIME_SCRIPT, type Viewport, type VirtualTimeApi, captureFrame, captureFrames, launch, mixAudio, openCapturePage, screenshotFrame, settleFonts, startEncoder, withBrowser, withCapturePage };
+/*!
+ * The halving test is adapted from anatomy, https://github.com/wheresryan22/anatomy,
+ * kit/turn-audit.mjs L969-L986 at e9488296. Copyright (c) 2026 Ryan, licensed under the
+ * MIT License; the full text is in this package's NOTICE.
+ * Changed here: the frame is any value a caller-supplied `delta` can compare, so one measure
+ * replaces the source's scale-4 then scale-16 pair, and the grid walk is new.
+ * @license MIT
+ */
+/** A frame source that is a pure function of `t`: seeking the same `t` twice gives the same frame. */
+type SeekFrame<F> = (t: number) => F | Promise<F>;
+/** How visibly two frames differ, as a non-negative number (for example, changed pixels). */
+type FrameDelta<F> = (a: F, b: F) => number;
+/** The largest change over the whole step and over its halves, quarters and eighths. */
+interface HalvingMeasure {
+    full: number;
+    half: number;
+    quarter: number;
+    eighth: number;
+}
+interface PopFinding {
+    /** Index of the grid step `[t, t + step]` that holds the pop. */
+    index: number;
+    t: number;
+    measure: HalvingMeasure;
+}
+interface PopReport {
+    findings: PopFinding[];
+    /** Grid steps whose change passed `threshold` and were re-measured. */
+    checked: number;
+}
+interface PopCheckOptions<F> {
+    seek: SeekFrame<F>;
+    delta: FrameDelta<F>;
+    start: number;
+    end: number;
+    step: number;
+    /** A grid step whose change is at least this is re-measured; smaller steps are never pops. */
+    threshold: number;
+}
+/** Raw RGBA pixels, four bytes per pixel, row by row. */
+interface RgbaFrame {
+    width: number;
+    height: number;
+    data: Uint8Array;
+}
+/** Counts pixels where any channel differs by more than `tolerance`: a `FrameDelta` for RGBA frames. */
+declare function changedPixels(a: RgbaFrame, b: RgbaFrame, tolerance?: number): number;
+/** Each finer measure must keep more than this share of the coarser one for the change to be a pop. */
+declare const HALVING_RATIO = 0.6;
+/** A pop must still change at least this much over an eighth of the step. */
+declare const MIN_POP_CHANGE = 2;
+/**
+ * Smooth motion halves its per-step change as the step halves; a pop keeps its whole change
+ * inside one ever-smaller sub-step.
+ */
+declare function isPop(m: HalvingMeasure): boolean;
+/** Measures nine frames spanning one step at eighths: frames[0] is t, frames[8] is t + step. */
+declare function measureHalving<F>(frames: readonly F[], delta: FrameDelta<F>): HalvingMeasure;
+/**
+ * Walks a grid of `t` from `start` to `end`; a last step shorter than `step` ends at `end`. Where a
+ * step's change reaches `threshold`, it re-measures the step at h/2, h/4 and h/8 and reports a pop
+ * only when the change does not halve.
+ */
+declare function checkPops<F>(options: PopCheckOptions<F>): Promise<PopReport>;
+
+export { type CapturePage, type Encoder, FontLoadError, type FontState, type FrameDelta, type FramesOptions, type FramesResult, HALVING_RATIO, type HalvingMeasure, MIN_POP_CHANGE, type MixSegment, type PageOptions, type PopCheckOptions, type PopFinding, type PopReport, type RgbaFrame, type SeekFrame, TITAN_MOTION_GLOBAL, type TitanMotionApi, VIRTUAL_TIME_SCRIPT, type Viewport, type VirtualTimeApi, captureFrame, captureFrames, changedPixels, checkPops, isPop, launch, measureHalving, mixAudio, openCapturePage, screenshotFrame, settleFonts, startEncoder, withBrowser, withCapturePage };
