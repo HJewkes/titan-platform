@@ -54,6 +54,23 @@ describe("package manifest entries as dead-module roots", () => {
     expect(deadIds(LIB_FILES, entries)).not.toContain("packages/lib/src/browser.ts");
   });
 
+  it.each([
+    ["a ./-prefixed extensionless main", { main: "./dist/index" }],
+    ["a directory main", { main: "./dist" }],
+    ["an extensionless bin", { bin: { tool: "./dist/index" } }],
+    ["a directory bin", { bin: "./dist" }],
+  ])("%s resolves to the indexed source entry", (_name, manifest) => {
+    const source = libSource(manifest);
+    const entries = packageEntryFileIds(REPO, ["packages/lib/src/index.ts", "packages/lib/src/orphan.ts"], source);
+    expect([...entries]).toEqual(["packages/lib/src/index.ts"]);
+  });
+
+  it("an extensionless main resolves at the package root, as Node does", () => {
+    const source = libSource({ main: "index" });
+    const entries = packageEntryFileIds(REPO, ["packages/lib/index.ts", "packages/lib/src/index.ts"], source);
+    expect([...entries]).toEqual(["packages/lib/index.ts"]);
+  });
+
   it("an imports #alias target is not dead", () => {
     const source = libSource({ imports: { "#target": { node: "./src/alias-target.js" }, "#dep": "some-package" } });
     const entries = packageEntryFileIds(REPO, LIB_FILES, source);
