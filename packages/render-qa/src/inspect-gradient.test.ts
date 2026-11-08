@@ -1,9 +1,11 @@
+import { partialFake } from '@titan-design/test-kit'
 import { describe, expect, it } from 'vitest'
 import { GRADIENT_STEPS } from './inspect-gradient.js'
 import type { Gradient, GradientShape, Inspector, Rect, Rgba } from './inspect-types.js'
 
 /** The gradient steps bound to one inspector, as the page binds them; the steps here need no DOM. */
-const h = Object.fromEntries(Object.entries(GRADIENT_STEPS).map(([name, step]) => [name, (...args: unknown[]) => (step as (...a: unknown[]) => unknown)(h, ...args)])) as unknown as Inspector
+const h = partialFake<Inspector>()
+Object.assign(h, Object.fromEntries(Object.entries(GRADIENT_STEPS).map(([name, step]) => [name, (...args: unknown[]) => (step as (...a: unknown[]) => unknown)(h, ...args)])))
 
 const box = (left: number, top: number, width: number, height: number): Rect => ({ left, top, width, height, right: left + width, bottom: top + height })
 const BLACK: Rgba = [0, 0, 0, 1]
