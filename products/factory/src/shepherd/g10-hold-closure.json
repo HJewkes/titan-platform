@@ -409,6 +409,7 @@
   "shepherd/scope-check-round.ts",
   "shepherd/scope-check.ts",
   "shepherd/seat-checkout.ts",
+  "shepherd/seat-digest-items.ts",
   "shepherd/seat-digest-pace.ts",
   "shepherd/seat-digest-text.ts",
   "shepherd/seat-digest.ts",
