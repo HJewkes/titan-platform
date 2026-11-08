@@ -115,3 +115,43 @@ describe("a run held because its changed files were unread at registration, read
     expect(r.store.byRun("run-1")).toMatchObject({ held: true, holdReason: "g10-adversary: authority touch" });
   });
 });
+
+describe("a run with no G10 hold, classed again at a CI read", () => {
+  it("is held g10-adversary when a bump fixer's push adds an authority file to a manifest-only head", async () => {
+    const r = rig([file("package.json", 1, 1), file("pnpm-lock.yaml", 4, 4)]);
+    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBeUndefined();
+    r.fake.prFiles.set(1, [file("package.json", 1, 1), file("pnpm-lock.yaml", 4, 4), file("packages/authority/src/x.ts", 20)]);
+
+    expect(await reclass(r)).toEqual({ reclassed: false, placed: "g10-adversary: authority touch" });
+
+    expect(r.store.byRun("run-1")).toMatchObject({ held: true, holdReason: "g10-adversary: authority touch" });
+  });
+
+  it("stays unheld when the pushed head still has no adversary touch", async () => {
+    const r = rig([file("packages/x/src/a.ts", 10)]);
+
+    expect(await reclass(r)).toEqual({ reclassed: false });
+
+    expect(r.store.byRun("run-1")?.held).toBe(false);
+  });
+
+  it("stacks the adversary hold over a stall, which waits under it", async () => {
+    const r = rig([file("packages/authority/src/x.ts", 20)]);
+    r.store.hold("run-1", "stalled: no progress; TP-2", undefined, { actor: "seat" });
+
+    expect(await reclass(r)).toEqual({ reclassed: false, placed: "g10-adversary: authority touch" });
+
+    expect(r.store.byRun("run-1")).toMatchObject({ held: true, holdReason: "g10-adversary: authority touch" });
+  });
+
+  it("reads nothing once a seat released its adversary hold, leaving the re-hold to its own rule", async () => {
+    const r = rig([file("packages/authority/src/x.ts", 20)]);
+    r.store.hold("run-1", "g10-adversary: authority touch", undefined, { actor: "shepherd" });
+    r.store.release("run-1", { actor: "seat" });
+
+    expect(await reclass(r)).toEqual({ reclassed: false });
+
+    expect(r.reads()).toBe(0);
+    expect(r.store.byRun("run-1")?.held).toBe(false);
+  });
+});
