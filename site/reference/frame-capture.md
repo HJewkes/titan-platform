@@ -59,6 +59,25 @@ await encoder.finish();
 console.log(result.frames, result.pageDurationS);
 ```
 
+## Checking a capture for pops
+
+`checkPops` seeks a grid of `t` with step `h`. Where a step's change, measured by your `delta`,
+reaches `threshold`, it re-measures that step at h/2, h/4 and h/8 and reports a pop only when
+the change does not halve: each finer measure keeps more than 0.6 of the coarser one and the
+eighth still changes by at least 2. Fast smooth motion halves its change as the step halves; a
+mount, a colour cut or a camera jump does not. `changedPixels` is a `delta` for raw RGBA frames.
+The halving test is adapted from anatomy (MIT); see the repository NOTICE.
+
+```ts
+import { changedPixels, checkPops } from "@titan-design/frame-capture";
+
+const { findings } = await checkPops({
+  seek: (t) => renderRgbaAt(t),
+  delta: (a, b) => changedPixels(a, b, 8),
+  start: 0, end: 4, step: 1 / 30, threshold: 64,
+});
+```
+
 ## What it deliberately does not do
 
 - It imports no React and nothing from titan-design.
