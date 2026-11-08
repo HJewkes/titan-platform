@@ -80,8 +80,8 @@ export { assembleIndexerMetrics, buildIndexerMetrics } from "./index-metrics.js"
 export type { AssembledIndexerMetrics } from "./index-metrics.js";
 export { computeDeadCodeMetrics, DEAD_CODE_METRIC_NAMES } from "./analysis/dead-code.js";
 export { computeGrowthRiskMetrics, GROWTH_RISK_METRIC_NAMES } from "./analysis/growth-risk.js";
-export type { LinkMethod, LinkTestsOptions, TestSourceLink } from "./analysis/test-linker.js";
-export { groupTestsBySource, linkTestsToSources, testCoverageCountMetrics } from "./analysis/test-linker.js";
+export { groupTestsBySource, linkTestsToSources, testCoverageCountMetrics, type LinkMethod, type LinkTestsOptions, type TestSourceLink } from "./analysis/test-linker.js";
+export { fileTestReach, MOCK_MASK_CAP, testsReachingMasked, type MaskedReach, type MockProfiles, type UnmaskedTest } from "./analysis/test-reach.js";
 export { attributeCoverage, COVERAGE_METRIC_NAME, coveredFunctionStarts, type IstanbulCoverage, type SymbolSpan } from "./analysis/coverage.js";
 export { MAX_BODY_DELETES, planBodyDeletes, type BodyDeletePlan, type BodyDeleteSkip, type BodyDeleteTarget, type PlanBodyDeletesInput } from "./analysis/body-delete.js";
 export { DELETION_CANDIDATE_SIGNAL, extremeFindings, PSEUDO_TESTED_SIGNAL, type ExtremeFindingsInput, type ExtremeSummary } from "./analysis/pseudo-tested.js";

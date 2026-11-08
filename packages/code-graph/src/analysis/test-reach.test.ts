@@ -1,8 +1,8 @@
 import { countCalls } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
-import type { GraphEdge, GraphMetric } from "../types.js";
+import type { GraphEdge, GraphMetric, GraphNode } from "../types.js";
 import { computeTestKindMetrics } from "./test-kinds.js";
-import { countShared, testsReaching } from "./test-reach.js";
+import { countShared, fileTestReach, testsReaching, testsReachingMasked } from "./test-reach.js";
 
 const ones = (n: number): Uint32Array => {
   const mask = new Uint32Array(Math.ceil(n / 32));
@@ -36,6 +36,61 @@ describe("testsReaching", () => {
     const reaching = testsReaching(callees, ["t1", "t2"]);
 
     for (const id of ["a", "b", "c"]) expect(countShared(reaching.get(id)!, ones(2)), id).toBe(2);
+  });
+});
+
+const testFile = (id: string): GraphNode => ({ id, kind: "file", name: id, role: "test" });
+const hop = (srcId: string, dstId: string, kind: GraphEdge["kind"] = "imports"): GraphEdge => ({ srcId, dstId, kind });
+const reachCount = (reach: { reaching: Map<string, Uint32Array>; tests: string[] }, id: string): number =>
+  reach.reaching.has(id) ? countShared(reach.reaching.get(id)!, ones(reach.tests.length)) : 0;
+
+describe("fileTestReach", () => {
+  it("leaves a module only imported through a vi.mock'd specifier unreached", () => {
+    const edges = [hop("feed.test.ts", "feed.ts"), hop("feed.ts", "store.ts"), hop("store.ts", "disk.ts"), hop("feed.test.ts", "store.ts", "mocks")];
+
+    const reach = fileTestReach([testFile("feed.test.ts")], edges);
+
+    expect(reachCount(reach, "feed.ts")).toBe(1);
+    expect(reachCount(reach, "store.ts")).toBe(0);
+    expect(reachCount(reach, "disk.ts")).toBe(0);
+    expect(reach.unmasked).toEqual([]);
+  });
+
+  it("still reaches a mocked module through another test's real import", () => {
+    const edges = [hop("feed.test.ts", "feed.ts"), hop("feed.ts", "store.ts"), hop("feed.test.ts", "store.ts", "mocks"), hop("store.test.ts", "store.ts")];
+
+    const reach = fileTestReach([testFile("feed.test.ts"), testFile("store.test.ts")], edges);
+
+    expect(reachCount(reach, "store.ts")).toBe(1);
+    expect(reachCount(reach, "feed.ts")).toBe(1);
+  });
+
+  it("falls back to unmasked reach for a file over the mock cap, saying why", () => {
+    const edges = [hop("feed.test.ts", "feed.ts"), hop("feed.ts", "store.ts"), hop("feed.test.ts", "store.ts", "mocks"), hop("feed.test.ts", "clock.ts", "mocks")];
+
+    const reach = fileTestReach([testFile("feed.test.ts")], edges, 1);
+
+    expect(reachCount(reach, "store.ts")).toBe(1);
+    expect(reach.unmasked).toEqual([{ testId: "feed.test.ts", mocks: 2, reason: "2 mocks exceed the cap of 1; masking is off" }]);
+  });
+});
+
+describe("testsReachingMasked", () => {
+  it("keeps a require() of a mocked path reached", () => {
+    const callees = new Map([["t1", ["legacy", "feed"]], ["legacy", ["store"]], ["feed", ["store"]]]);
+
+    const { reaching } = testsReachingMasked(callees, ["t1"], { mocked: new Map([["t1", ["store"]]]), requires: new Map([["legacy", new Set(["store"])]]) });
+
+    expect(countShared(reaching.get("store")!, ones(1))).toBe(1);
+  });
+
+  it("masks one test's bit without touching the bits other tests flow into the same cycle", () => {
+    const callees = new Map([["t1", ["a"]], ["t2", ["a"]], ["a", ["b"]], ["b", ["a", "m"]]]);
+
+    const { reaching } = testsReachingMasked(callees, ["t1", "t2"], { mocked: new Map([["t2", ["m"]]]) });
+
+    expect(countShared(reaching.get("m")!, ones(2))).toBe(1);
+    for (const id of ["a", "b"]) expect(countShared(reaching.get(id)!, ones(2)), id).toBe(2);
   });
 });
 
