@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "alive ignores the injected exists check",
+      "file": "products/factory/src/autoresearch/eval-driver.test-helpers.ts",
+      "find": "if (!exists(stat)) return true;",
+      "replace": "if (!existsSync(stat)) return true;",
+      "kills": [
+        "reports a live process alive when the host has no /proc"
+      ]
+    },
+    {
+      "name": "alive treats a missing stat file as dead",
+      "file": "products/factory/src/autoresearch/eval-driver.test-helpers.ts",
+      "find": "if (!exists(stat)) return true;",
+      "replace": "if (!exists(stat)) return false;",
+      "kills": [
+        "reports a live process alive when the host has no /proc"
+      ]
+    }
+  ]
+}
