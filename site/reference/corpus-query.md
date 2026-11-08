@@ -66,9 +66,6 @@ db.close();
   `--layout plain` reports every file as skipped.
 - Switching layout on an existing database does not re-describe unchanged files: they keep
   the ids the earlier layout gave them. Use a fresh `--db` when changing layout.
-- Archive chapter ids drop zero-padding, so `book_1/chapter_1.txt` and
-  `book_01/chapter_01.txt` in the same corpus get the same id, and the run fails on the
-  chapter table's UNIQUE constraint.
 - Every file under the root is read in full before the layout decides whether to skip it.
 
 ## Where it came from

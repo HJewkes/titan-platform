@@ -20,7 +20,7 @@ import { addWeightedEdge } from "./reference-weight.js";
  * (`import(variable)`) is genuinely unresolvable statically and is left out (a
  * documented blind spot, same class as DI/registry-string wiring).
  */
-export function dynamicImportSpecifiers(sourceFile: SourceFile): string[] {
+function dynamicImportSpecifiers(sourceFile: SourceFile): string[] {
   const out: string[] = [];
   for (const call of sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression)) {
     if (call.getExpression().getKind() !== SyntaxKind.ImportKeyword) continue;
@@ -30,6 +30,19 @@ export function dynamicImportSpecifiers(sourceFile: SourceFile): string[] {
     }
   }
   return out;
+}
+
+/** An `imports` edge from the file to each module a static dynamic `import()` loads (C-65). */
+export function recordDynamicImportEdges(
+  sourceFile: SourceFile,
+  srcFileId: string,
+  agg: Map<string, GraphEdge>,
+  resolve: (specifier: string) => string | null,
+): void {
+  for (const specifier of dynamicImportSpecifiers(sourceFile)) {
+    const dstId = resolve(specifier);
+    if (dstId) addWeightedEdge(agg, srcFileId, dstId, "imports", specifier, 1);
+  }
 }
 
 /** One export pulled out of a destructured dynamic import. */
