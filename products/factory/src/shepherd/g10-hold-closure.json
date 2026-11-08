@@ -417,6 +417,7 @@
   "shepherd/seat-checkout.ts",
   "shepherd/seat-digest-items.ts",
   "shepherd/seat-digest-pace.ts",
+  "shepherd/seat-digest-superseded.ts",
   "shepherd/seat-digest-text.ts",
   "shepherd/seat-digest.ts",
   "shepherd/seat-evidence.ts",
