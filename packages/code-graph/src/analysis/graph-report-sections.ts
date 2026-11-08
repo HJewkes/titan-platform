@@ -97,9 +97,12 @@ export function topHotspots(
     const churn = lookupMetric(ctx, churnName, node.id) ?? 0;
     const complexity = lookupMetric(ctx, complexityName, node.id) ?? 0;
     if (churn === 0 || complexity === 0) continue;
-    const recency = lookupMetric(ctx, `recency_${ctx.windowSuffix}`, node.id) ?? 1;
     const loc = lookupMetric(ctx, "loc", node.id) ?? 0;
-    rows.push({ nodeId: node.id, churn, complexity, loc, recency, score: Math.round(churn * complexity * recency) });
+    rows.push({
+      nodeId: node.id, churn, complexity, loc,
+      recency: recencyOf(ctx, node.id),
+      score: hotspotScore(ctx, node.id, churn, complexity),
+    });
   }
   rows.sort((a, b) => b.score - a.score);
   return rows.slice(0, limit);
@@ -125,8 +128,11 @@ export function hotspotComplexityOf(ctx: ReportContext, nodeId: string): number 
  * supply an age. Rounded to keep scores integer-friendly for display/thresholds.
  */
 function hotspotScore(ctx: ReportContext, nodeId: string, churn: number, complexity: number): number {
-  const recency = lookupMetric(ctx, `recency_${ctx.windowSuffix}`, nodeId) ?? 1;
-  return Math.round(churn * complexity * recency);
+  return Math.round(churn * complexity * recencyOf(ctx, nodeId));
+}
+
+function recencyOf(ctx: ReportContext, nodeId: string): number {
+  return lookupMetric(ctx, `recency_${ctx.windowSuffix}`, nodeId) ?? 1;
 }
 
 export function busFactorOf(
