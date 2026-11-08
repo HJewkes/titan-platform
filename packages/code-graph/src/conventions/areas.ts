@@ -48,8 +48,9 @@ function resolvedFileGraph(
     .map((n) => n.id)
     .sort();
   const fileSet = new Set(files);
+  // A test that mocks a module says nothing about which capability the module belongs to.
   const edges = resolveBarrelEdges(nodes, store.listEdges(snapshotId)).filter(
-    (e) => e.srcId !== e.dstId && fileSet.has(e.srcId) && fileSet.has(e.dstId),
+    (e) => e.kind !== "mocks" && e.srcId !== e.dstId && fileSet.has(e.srcId) && fileSet.has(e.dstId),
   );
   return { files, edges };
 }
