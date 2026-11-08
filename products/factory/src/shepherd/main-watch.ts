@@ -202,9 +202,9 @@ async function watchRepo(deps: MainWatchDeps, repo: string): Promise<MainWatchNo
     const { rules } = await readMainRules(deps.port, repo, await deps.port.defaultBranch(repo));
     for (const row of watching) notes.push(...(await judgeSha(deps, repo, row, rules, now)));
   }
-  for (const state of ["red", "unacked"] as const) {
-    for (const row of deps.ledger.inState(repo, state)) notes.push(await deliver(deps, repo, row, now, state === "unacked"));
-  }
+  // Both lists are read before any send, so a red row a timeout turns unacked waits for the next sweep's retry.
+  const owed = [...deps.ledger.inState(repo, "red").map((row) => ({ row, retried: false })), ...deps.ledger.inState(repo, "unacked").map((row) => ({ row, retried: true }))];
+  for (const { row, retried } of owed) notes.push(await deliver(deps, repo, row, now, retried));
   return notes;
 }
 

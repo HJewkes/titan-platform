@@ -193,18 +193,22 @@ describe("main CI watch", () => {
     expect(w.sent).toHaveLength(1);
   });
 
-  it("takes a red event whose send timed out as told after one retry, and sends nothing on later sweeps", async () => {
+  it("retries a timed-out red event once on the next sweep, then takes it as told and sends nothing more", async () => {
     const w = world();
     const ledger = memoryLedger();
     await sweep(w, ledger);
     merged(w, 8, T0 + MINUTE, { validate: "failure", "dag-check": "success" });
     w.timeouts.on = true;
 
-    for (const minutes of [5, 10, 15, 20]) {
+    w.clock.now = T0 + 5 * MINUTE;
+    await sweep(w, ledger);
+    const afterFirstSweep = w.sent.length;
+    for (const minutes of [10, 15, 20]) {
       w.clock.now = T0 + minutes * MINUTE;
       await sweep(w, ledger);
     }
 
+    expect(afterFirstSweep).toBe(1);
     expect(w.sent).toHaveLength(2);
   });
 
