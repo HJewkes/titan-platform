@@ -28,33 +28,15 @@ export { gitTreeSource } from "./git-tree-source.js";
 export type { Extractor, ParsedFile } from "@titan-design/code-parser";
 export { getLanguageFromPath, getSupportedLanguages, parseFile, shouldIncludeFile } from "@titan-design/code-parser";
 
-export type { LanguageExtractorOptions } from "./extractors/dispatch.js";
-export { LanguageExtractor } from "./extractors/dispatch.js";
-export { PythonGraphExtractor } from "./extractors/python-extractor.js";
-export type { TsMorphGraphExtractorOptions } from "./extractors/ts-morph-extractor.js";
-export { TsMorphGraphExtractor } from "./extractors/ts-morph-extractor.js";
-export { buildFileModuleNodes } from "./extractors/file-nodes.js";
-export type { DeepAst, DeepAstInput, MemberInfo, ParamInfo } from "./extractors/deep-ast.js";
-export { computeDeepAst } from "./extractors/deep-ast.js";
-export {
-  externalId,
-  fileId,
-  moduleId,
-  packageId,
-  parentModuleId,
-  parseSymbolId,
-  symbolId,
-  SYMBOL_ID_SEP,
-} from "./extractors/ids.js";
+export * from "./extractors/barrel.js";
 
 export type { ReadFile, ReuseBasis, SourceLanguage } from "./incremental.js";
 export { hashContent, readSourceFiles, structuralSignature } from "./incremental.js";
 export { walkSourceFiles } from "./file-walk.js";
 export { collectDeclaredNames, collectDeclaredSpans, type LineSpan } from "./declared-names.js";
 export { edgeWeight, pruneDanglingReferences, resolveBarrelEdges } from "./barrel-resolve.js";
-export { ALL_ROLES, annotateRoles, classifyRole, computeRoleHints, loadRoleGlobs } from "./roles.js";
+export { ALL_ROLES, annotateRoles, classifyRole, computeRoleHints, loadRoleGlobs, type AnnotateRolesOptions, type RoleHints } from "./roles.js";
 export { UNIMPORTED_ROLES } from "./unimported-roles.js";
-export type { AnnotateRolesOptions, RoleHints } from "./roles.js";
 export type { RoleGlobs } from "./role-globs.js";
 export { isGeneratedByHeuristic, isGeneratedFile, loadGeneratedPatterns } from "./generated.js";
 export { canonicalEdgeKind, canonicalMetricName, canonicalRole } from "./aliases.js";
@@ -189,6 +171,7 @@ export { publicApiFiles, topUnusedExports } from "./analysis/unused-exports.js";
 export * from "./analysis/complexity-distribution.js";
 export * from "./analysis/dependency-graph-metrics.js";
 export { topDeadModules } from "./analysis/dead-modules.js";
+export { packageEntryFileIds } from "./package-entries.js";
 export { topGrowthRisks } from "./analysis/growth-risks.js";
 export { topUntestedRisks } from "./analysis/untested-risks.js";
 export { computeReportDrift, type ComputeDriftInput } from "./analysis/graph-report-drift.js";
