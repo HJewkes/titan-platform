@@ -64,6 +64,21 @@ export interface Run { node: Node; el: Element; text: string; op: number; px: nu
 export interface Item { el: Element; r: Rect }
 export type Rgba = [number, number, number, number]
 export type Rgb = [number, number, number]
+export type Point = [number, number]
+
+/** One colour stop, `at` along the gradient line from 0 to 1. */
+export interface Stop { c: Rgba; at: number }
+/**
+ * A gradient as a map from a point to its line position: linear, `t = (p - centre) · axis + 0.5` (axis is the unit
+ * direction over the line's length); radial, `t = |(p - centre) * axis|` (axis is one over each radius).
+ */
+export interface Gradient { stops: Stop[]; centre: Point; axis: Point; radial: boolean }
+/** A gradient's geometry before its stops, with `reach`, the length in px a stop's px position is read against. */
+export type GradientShape = Omit<Gradient, 'stops'> & { reach: number }
+/** One paint layer behind text, a solid colour or a gradient, and the opacity it is drawn at. */
+export type Layer = { c: Rgba; op: number } | { g: Gradient; op: number }
+/** What a run's text sits on: the composited colour at each sampled point, or why no colour can be modelled. */
+export type Ground = { samples: Rgb[] } | { unmeasured: string }
 
 /**
  * The inspector as the page sees it: every step bound to this object, so a step calls another as `h.name(...)`.
@@ -121,9 +136,25 @@ export interface Inspector {
   checkDroppedLabels(): void
   pageBg(): Rgb
   blend(c: Rgba, op: number, under: Rgb): Rgb
-  bgBehind(el: Element): Rgb
+  bgBehind(el: Element, box: Rect): Ground
+  splitTop(s: string, sep: string): string[]
+  unmodelled(e: Element, behind: boolean): string | undefined
+  paintsOf(e: Element): Layer[] | string
+  groundLayers(el: Element): Layer[] | string
+  opaque(layer: Layer): boolean
+  composite(layers: Layer[], base: Rgb, at: Point): Rgb
+  samplePoints(box: Rect): Point[]
+  gradient(css: string, r: Rect): Gradient | string
+  linearGradient(head: string | undefined, r: Rect): GradientShape | string
+  radialGradient(head: string, r: Rect): GradientShape | string
+  radii(size: string[], circle: boolean, centre: Point, r: Rect): Point | string
+  lengthOf(token: string, ref: number): number
+  stops(args: string[], len: number): Stop[] | string
+  spreadStops(raw: { c: Rgba; at?: number }[]): Stop[]
+  gradientAt(g: Gradient, at: Point): Rgba
   lum(c: Rgb): number
   hex(c: Rgb): string
+  ratio(a: Rgb, b: Rgb): number
   checkContrast(run: Run): void
   turned(el: Element): boolean
   insetOf(e: Element): Rect | undefined
