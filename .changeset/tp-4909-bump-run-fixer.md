@@ -1,0 +1,5 @@
+---
+"@titan-design/factory": patch
+---
+
+Factory's consumer bump sweep now registers each bump PR under its own implementer name (`bump-<repo>-<pr>`) and the consumer seat's fixer grant, instead of a shared `bump-consumers` implementer with no fixer. A ci-red wake on a bump run starts a fixer through the wake step's successor path, with a bump brief: the PR's head branch, the bumped `@titan-design` specifiers read base to head, the failing checks and CI logs, and the rule to adapt the consumer to the package's API change, report a package regression rather than pin back, and push new commits without force-pushing. A live fixer is messaged rather than joined by a second one, and once three fixers have started the wake is left unhandled, so the run's ci-failed route tells the seat as before. A bump run registered before this change keeps its stored no-fixer policy.
