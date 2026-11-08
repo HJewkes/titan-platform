@@ -49,6 +49,17 @@ describe('gradient sampling under a text box', () => {
     expect([greyAt(g, 100, 50), greyAt(g, 200, 100)]).toEqual([0, 255])
   })
 
+  it('reads a single vertical keyword in a radial position as centre-x', () => {
+    // Arrange
+    const r = box(0, 0, 200, 100)
+
+    // Act
+    const [top, bottom] = [h.radialGradient('at top', r), h.radialGradient('at bottom', r)]
+
+    // Assert
+    expect([top, bottom].map((s) => (typeof s === 'string' ? s : s.centre))).toEqual([[100, 0], [100, 100]])
+  })
+
   it('names a radial position it does not model instead of guessing', () => {
     // Act / Assert
     expect(h.radialGradient('circle at right 10px top 5px', box(0, 0, 100, 100))).toBe('radial gradient position')

@@ -12,6 +12,7 @@ export async function cloneIfAbsent(ports: DeployPorts, checkout: string, remote
   return ports.clone(remote, checkout);
 }
 
+const PATH_CHAR = /[\w.\-/~]/;
 const xmlEscaped = (value: string): string => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 /**
@@ -22,5 +23,13 @@ const xmlEscaped = (value: string): string => value.replace(/&/g, "&amp;").repla
 export function serviceRunsFromCheckout(ports: DeployPorts, checkout: string): boolean {
   const text = ports.readFile(installedServiceFile(ports));
   const bin = deployedBinPath(checkout);
-  return text !== undefined && (text.includes(bin) || text.includes(xmlEscaped(bin)));
+  return text !== undefined && (namesWholePath(text, bin) || namesWholePath(text, xmlEscaped(bin)));
+}
+
+/** A path match must start at a token boundary, so `/x/<checkout>/...` does not count as `<checkout>/...`. */
+function namesWholePath(text: string, path: string): boolean {
+  for (let at = text.indexOf(path); at !== -1; at = text.indexOf(path, at + 1)) {
+    if (at === 0 || !PATH_CHAR.test(text.charAt(at - 1))) return true;
+  }
+  return false;
 }
