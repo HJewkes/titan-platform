@@ -40,6 +40,7 @@ const DEFAULT_EDGE_WEIGHTS: EdgeWeights = {
   implements: 1.0,
   references: 1.0,
   "depends-on": 1.0,
+  mocks: 0,
 };
 
 /** Edge weight used by PageRank for a given edge kind, honoring user overrides. */

@@ -6,7 +6,9 @@ import { a as ChurnWindow, c as CoEditPair } from './change-coupling.js';
 
 declare const NODE_KINDS: readonly ["package", "module", "file", "symbol", "external"];
 type NodeKind = (typeof NODE_KINDS)[number];
-type EdgeKind = "imports" | "re-exports" | "calls" | "extends" | "implements" | "references" | "depends-on";
+type EdgeKind = "imports" | "re-exports" | "calls" | "extends" | "implements" | "references" | "depends-on"
+/** A test file to a module its `vi.mock` / `jest.mock` replaces: no dependency, so no walk follows it. */
+ | "mocks";
 /** `requalify` maps a bare-name symbol id from before index version 0.14.0 to its scope-qualified successor. */
 type IdAliasReason = "rename" | "move" | "merge" | "requalify";
 declare const NODE_ROLES: readonly ["test", "fixture", "story", "lab", "barrel", "types", "config", "script", "entry", "generated", "source"];
