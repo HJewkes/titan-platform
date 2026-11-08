@@ -1178,6 +1178,8 @@ interface FakeEffects {
     updateRef: number;
     merge: number;
     rerunFailedJobs: number;
+    createReview: number;
+    dismissReview: number;
 }
 /** Reads a test can make fail, for a caller that must treat a failed read as transient. */
 type FakeFaultyRead = "getDefaultBranch" | "getBranchRules" | "getClassicRequiredChecks" | "listCheckRuns" | "listCommitStatuses" | "resolveCommit" | "compareAncestry" | "lsRemote";
