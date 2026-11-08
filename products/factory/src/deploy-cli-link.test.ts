@@ -1,4 +1,4 @@
-import { lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -90,6 +90,29 @@ describe("relinkCli", () => {
     expect(readlinkSync(linkPath)).toBe(fresh);
     expect(readFileSync(stale, "utf8")).toBe("build:stale");
   });
+
+  it("succeeds and keeps a leftover temp file from a crashed earlier run", () => {
+    const fresh = factoryBin("fresh");
+    symlinkSync(factoryBin("stale"), linkPath);
+    const leftover = `${linkPath}.${process.pid}.tmp`;
+    writeFileSync(leftover, "crashed run");
+
+    const outcome = relinkCli({ linkPath }, fresh);
+
+    expect(readlinkSync(linkPath)).toBe(fresh);
+    expect(readFileSync(leftover, "utf8")).toBe("crashed run");
+    expect(outcome).toContain("repointed");
+  });
+
+  it("leaves the link alone when the bin is not absolute", () => {
+    const stale = factoryBin("stale");
+    symlinkSync(stale, linkPath);
+
+    const outcome = relinkCli({ linkPath }, "products/factory/dist/bin.js");
+
+    expect(readlinkSync(linkPath)).toBe(stale);
+    expect(outcome).toContain("not absolute");
+  });
 });
 
 describe("relinkAfterDeploy", () => {
@@ -131,12 +154,14 @@ describe("relinkAfterDeploy", () => {
     expect(readlinkSync(linkPath)).toBe(stale);
   });
 
-  it("warns instead of throwing when the relink fails", () => {
-    mkdirSync(`${linkPath}.${process.pid}.tmp`);
+  it.skipIf(process.getuid?.() === 0)("warns instead of throwing when the relink fails and leaves no temp link behind", () => {
     symlinkSync(factoryBin("stale"), linkPath);
+    chmodSync(join(dir, "bin"), 0o500);
 
     const { err } = run(0, `<string>${bin}</string>`);
 
+    chmodSync(join(dir, "bin"), 0o700);
     expect(err).toContain("could not repoint");
+    expect(readdirSync(join(dir, "bin"))).toEqual(["titan-factory"]);
   });
 });
