@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the wake brief reads only each check's newest run",
+      "file": "products/factory/src/shepherd/wake-brief.ts",
+      "find": "  if (!latest.some(isSkip)) return failing;",
+      "replace": "  return failing;",
+      "kills": [
+        "a ci-red wake over a failure that a newer skip hides (tp#3329) hands the fixer the push run's failed mutants job, though the PR-edit run's skip is the newest run"
+      ]
+    }
+  ]
+}

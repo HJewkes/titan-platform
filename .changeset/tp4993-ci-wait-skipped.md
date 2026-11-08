@@ -2,4 +2,4 @@
 "@titan-design/factory": patch
 ---
 
-ci-wait settles a check whose newest run at the head concluded skipped or neutral, so an older concluded run of that check (a PR-edit fix-proof run skipping a failed mutants job) no longer holds the wait to its timeout. A run still in progress is still waited on, and a required context still needs a success (TP-4993).
+ci-wait reads a failure that a newer skipped or neutral run of the same check at the same head hides (a PR-edit fix-proof run skipping every job) as red, instead of waiting on it to the timeout, and the ci-red wake brief hands that failure to the fixer. A skip with no earlier failure still settles; a run still in progress is still waited on; required-context rules are unchanged (TP-4993).

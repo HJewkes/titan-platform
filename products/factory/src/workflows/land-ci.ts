@@ -5,6 +5,7 @@ import { openRepoFindings, openRunsSettled, type OpenSeen } from "./land-open-ch
 import type { HeadObserver } from "../head-guard/head-regression.js";
 import type { OrphanedCheck } from "./land-orphan.js";
 import { portReads, type PrReads } from "./pr-snapshot.js";
+import { failuresBehindSkips } from "./skip-hidden.js";
 
 /** mergeable_state values that let a merge through; `unknown` means GitHub has not settled, and `blocked` is judged apart. */
 const MERGEABLE = new Set(["clean", "unstable", "has_hooks"]);
@@ -108,7 +109,7 @@ interface Judged {
 
 /** The runs a verdict is judged on. The snapshot settles a head on this same set: once every finding left is red, nothing is still running. */
 function findingsAt(input: Pick<CiInput, "contexts">, headSha: string, allRuns: readonly CheckRun[]): Judged {
-  const runs = withoutSkipShadowedRuns(withoutSupersededCancels(withoutCancelledWorkflowRuns(allRuns)));
+  const runs = withoutSupersededCancels(withoutCancelledWorkflowRuns(allRuns));
   const findings = input.contexts.length === 0 ? openRepoFindings(headSha, runs) : headCheckFindings({ headSha, contexts: input.contexts, runs, requiredApps: [GITHUB_ACTIONS_APP_ID] });
   return { findings, red: redRuns(findings, runs.filter((run) => run.headSha === headSha && run.appId === GITHUB_ACTIONS_APP_ID)) };
 }
@@ -119,28 +120,13 @@ const SKIPS: ReadonlySet<string> = new Set(["skipped", "neutral"]);
 /** A run that has not concluded, or concluded without running its job. A lone cancel is still red, so land reruns it. */
 const ranNothing = (run: CheckRun): boolean => !isConcluded(run) || SKIPS.has(run.conclusion ?? "") || run.conclusion === "cancelled";
 
-const checkKey = (run: CheckRun): string => `${run.headSha}\u0000${String(run.appId)}\u0000${run.name}`;
-
 /**
- * GitHub reads a check by its newest run, and a PR-edit run of fix-proof skips every job at the same head (tp#3329). Nothing
- * runs that check at this head again, so waiting on its older concluded runs never ends: the skip settles them. A run still
- * going is kept, so a skip never settles a check that is running; and a skip alone is no success of a required context.
- */
-function withoutSkipShadowedRuns(runs: readonly CheckRun[]): CheckRun[] {
-  const byCheck = new Map<string, CheckRun[]>();
-  for (const run of runs) byCheck.set(checkKey(run), [...(byCheck.get(checkKey(run)) ?? []), run]);
-  const skippedNewest = new Set(
-    [...byCheck.values()].flatMap((own) => latestPerName(own)).filter((run) => isConcluded(run) && SKIPS.has(run.conclusion ?? "")).map(checkKey),
-  );
-  return runs.filter((run) => !skippedNewest.has(checkKey(run)) || SKIPS.has(run.conclusion ?? "") || !isConcluded(run));
-}
-
-/**
- * Red needs a concluded failure the fixer can find: its check's newest run at the head, or an older run beside a newer
- * one that ran and passed, as TP-497 judges. A failure whose newer run is still going or ran nothing (tp#2576, tp#2622,
- * a rerun in flight) is waited on, since it is not green either.
+ * Red needs a concluded failure the fixer can find: its check's newest run at the head, an older run beside a newer one
+ * that ran and passed, as TP-497 judges, or one a newer skip hides (tp#3329), which the wake brief hands over too. A
+ * failure whose newer run is still going or was cancelled (tp#2576, a rerun in flight) is waited on, not green either.
  */
 function redRuns(findings: readonly CheckFinding[], counted: readonly CheckRun[]): CheckRun[] {
+  const behindSkips = new Set(failuresBehindSkips(counted).map((run) => run.id));
   const newest = new Map(latestPerName(counted).map((run) => [run.name, run]));
   const replacedBy = (run: CheckRun) => {
     const latest = newest.get(run.name);
@@ -148,7 +134,7 @@ function redRuns(findings: readonly CheckFinding[], counted: readonly CheckRun[]
   };
   const red = (run: CheckRun) => {
     const latest = replacedBy(run);
-    return !SKIPS.has(run.conclusion ?? "") && (latest === undefined || !ranNothing(latest));
+    return !SKIPS.has(run.conclusion ?? "") && (latest === undefined || !ranNothing(latest) || behindSkips.has(run.id));
   };
   return findings.flatMap((finding) => (finding.kind === "failed" && red(finding.run) ? [finding.run] : []));
 }

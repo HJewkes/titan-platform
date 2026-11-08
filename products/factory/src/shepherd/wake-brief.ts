@@ -13,6 +13,7 @@ import type { MergeBaseException } from "./merge-base-exception.js";
 export { withMergeBaseException } from "./merge-base-exception.js";
 import { staleBaseWake } from "./stale-base.js";
 import { MAC_SUITE_RULES } from "./suite-host.js";
+import { failuresBehindSkips, isSkip } from "../workflows/skip-hidden.js";
 import { ownerSendBackWake } from "./owner-send-back.js";
 import { CARRY_UNREADABLE, FLAKE_FIX_ASK, MUTANTS_ASK, MUTANTS_REASON, NO_REPRO_REASON, REPRO_ASK, UNCOVERED_LABEL } from "./no-repro-brief.js";
 
@@ -66,9 +67,12 @@ export interface WakeFacts {
   mergeBase?: Pick<MergeBaseException, "reason" | "actor">;
 }
 
-/** The failing jobs' log tails, split evenly so one noisy job cannot crowd out the rest. */
+/** The failing jobs, with any failure a newer skip hides from the newest-run read (tp#3329), which ci-wait read red. */
 async function failingRuns(port: GitHubPort, input: WakeFacts): Promise<CheckRun[]> {
-  return (await port.latestCheckRuns(input.repo, input.headSha)).filter((run) => run.status === "completed" && !isPassing(run));
+  const latest = await port.latestCheckRuns(input.repo, input.headSha);
+  const failing = latest.filter((run) => run.status === "completed" && !isPassing(run));
+  if (!latest.some(isSkip)) return failing;
+  return [...failing, ...failuresBehindSkips(await port.checkRuns(input.repo, input.headSha))];
 }
 
 /**
