@@ -108,7 +108,7 @@ interface Judged {
 
 /** The runs a verdict is judged on. The snapshot settles a head on this same set: once every finding left is red, nothing is still running. */
 function findingsAt(input: Pick<CiInput, "contexts">, headSha: string, allRuns: readonly CheckRun[]): Judged {
-  const runs = withoutSupersededCancels(withoutCancelledWorkflowRuns(allRuns));
+  const runs = withoutSkipShadowedRuns(withoutSupersededCancels(withoutCancelledWorkflowRuns(allRuns)));
   const findings = input.contexts.length === 0 ? openRepoFindings(headSha, runs) : headCheckFindings({ headSha, contexts: input.contexts, runs, requiredApps: [GITHUB_ACTIONS_APP_ID] });
   return { findings, red: redRuns(findings, runs.filter((run) => run.headSha === headSha && run.appId === GITHUB_ACTIONS_APP_ID)) };
 }
@@ -118,6 +118,22 @@ const SKIPS: ReadonlySet<string> = new Set(["skipped", "neutral"]);
 
 /** A run that has not concluded, or concluded without running its job. A lone cancel is still red, so land reruns it. */
 const ranNothing = (run: CheckRun): boolean => !isConcluded(run) || SKIPS.has(run.conclusion ?? "") || run.conclusion === "cancelled";
+
+const checkKey = (run: CheckRun): string => `${run.headSha}\u0000${String(run.appId)}\u0000${run.name}`;
+
+/**
+ * GitHub reads a check by its newest run, and a PR-edit run of fix-proof skips every job at the same head (tp#3329). Nothing
+ * runs that check at this head again, so waiting on its older concluded runs never ends: the skip settles them. A run still
+ * going is kept, so a skip never settles a check that is running; and a skip alone is no success of a required context.
+ */
+function withoutSkipShadowedRuns(runs: readonly CheckRun[]): CheckRun[] {
+  const byCheck = new Map<string, CheckRun[]>();
+  for (const run of runs) byCheck.set(checkKey(run), [...(byCheck.get(checkKey(run)) ?? []), run]);
+  const skippedNewest = new Set(
+    [...byCheck.values()].flatMap((own) => latestPerName(own)).filter((run) => isConcluded(run) && SKIPS.has(run.conclusion ?? "")).map(checkKey),
+  );
+  return runs.filter((run) => !skippedNewest.has(checkKey(run)) || SKIPS.has(run.conclusion ?? "") || !isConcluded(run));
+}
 
 /**
  * Red needs a concluded failure the fixer can find: its check's newest run at the head, or an older run beside a newer

@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a newer skip settles nothing, so a failure it shadows is waited on to the timeout",
+      "file": "products/factory/src/workflows/land-ci.ts",
+      "find": "const runs = withoutSkipShadowedRuns(withoutSupersededCancels(withoutCancelledWorkflowRuns(allRuns)));",
+      "replace": "const runs = withoutSupersededCancels(withoutCancelledWorkflowRuns(allRuns));",
+      "kills": [
+        "ci-wait settles on a check whose newest run at the head was skipped tp#3329: a skipped mutants job from a PR-edit run settles the push run's failed one, so ci-wait reads green within a poll"
+      ]
+    },
+    {
+      "name": "a newer skip also settles a run of its check that is still going",
+      "file": "products/factory/src/workflows/land-ci.ts",
+      "find": "|| SKIPS.has(run.conclusion ?? \"\") || !isConcluded(run));",
+      "replace": "|| SKIPS.has(run.conclusion ?? \"\"));",
+      "kills": [
+        "ci-wait settles on a check whose newest run at the head was skipped keeps waiting while the push run's mutants job is still running beside the newer skip"
+      ]
+    }
+  ]
+}

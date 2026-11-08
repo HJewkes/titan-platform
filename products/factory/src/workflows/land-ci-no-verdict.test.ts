@@ -41,14 +41,14 @@ describe("ci-wait never reads a skipped run, or a failure a newer run left unjud
     expect(ci.failing).toBeUndefined();
   });
 
-  it("tp#2622: every required check passed and the failed mutants job was replaced by a skipped run, so no fixer is woken; the head waits, not merges", async () => {
+  it("tp#2622: every required check passed and the failed mutants job was replaced by a skipped run, so no fixer is woken; the skip settles it (TP-4993)", async () => {
     const required = REQUIRED.map((name, i) => job(name, 11 + i, 2001, T0, "success"));
 
     const { ci, passes } = await read([...required, ...duplicateFixProof]);
 
-    expect(ci.verdict).toBe("pending");
-    expect(ci.waitingOn).toEqual(["fix-proof-mutants"]);
-    expect(passes).toBe(false);
+    expect(ci.verdict).toBe("green");
+    expect(ci.failing).toBeUndefined();
+    expect(passes).toBe(true);
   });
 
   it("a required check whose only run was skipped is waited on, not red", async () => {
