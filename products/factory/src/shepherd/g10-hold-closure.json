@@ -379,6 +379,7 @@
   "shepherd/resync.ts",
   "shepherd/retarget-conflict.ts",
   "shepherd/reverts.ts",
+  "shepherd/review-approval.ts",
   "shepherd/review-bypass.ts",
   "shepherd/review-cause.ts",
   "shepherd/review-check.ts",
