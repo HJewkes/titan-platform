@@ -46,9 +46,7 @@ async function manifestBumps(port: GitHubPort, repo: RepoSlug, path: string, pr:
 }
 
 /** Why no further fixer starts, once the run's fixers reach the cap. */
-export function bumpRoundsSpent(started: number): string | undefined {
-  return started < BUMP_FIXER_ROUNDS ? undefined : `the consumer bump run has had its ${BUMP_FIXER_ROUNDS} fixers (${started} started), so its seat takes the red PR`;
-}
+export const bumpRoundsSpent = (started: number): string => `the consumer bump run has had its ${BUMP_FIXER_ROUNDS} fixers (${started} started), so its seat takes the red PR`;
 
 /** The fix bump PRs need: the consumer follows the package's API, and a package regression is reported, never pinned around. */
 const BUMP_RULE = [

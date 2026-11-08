@@ -13,7 +13,7 @@ import { noteFixerLimit } from "./fixer-limit.js";
 import { agentChatAgents, type AgentChatAgents, type SpawnAccounts } from "./agents.js";
 import type { ShepherdDeps } from "./phases.js";
 import { failureOf } from "./error-class.js";
-import { bumpFacts, bumpFixerBrief, bumpRoundsSpent, isConsumerBumpRun, type BumpFacts } from "./bump-fixer.js";
+import { BUMP_FIXER_ROUNDS, bumpFacts, bumpFixerBrief, bumpRoundsSpent, isConsumerBumpRun, type BumpFacts } from "./bump-fixer.js";
 import { headMoved, unreadableHead, type HeadRead } from "./head-read.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { seatCheckout } from "./seat-checkout.js";
@@ -139,11 +139,9 @@ function successorChoice(deps: ShepherdDeps, wiring: WakeWiring, task: WakeTask,
   if (deps.advisory?.(task.input.repo)) return `${task.input.repo} is advisory, so Shepherd starts no successor to push to it`;
   const checkout = resolveCheckout(task.input.repo, (wiring.checkoutFor ?? seatCheckout())(task.input.repo), wiring.home);
   if ("problem" in checkout) return `${checkout.problem}, so a successor has no checkout to start in`;
-  const spent = task.bump && bumpRoundsSpent(task.successors.length);
-  if (spent) return spent;
+  if (task.bump && task.successors.length >= BUMP_FIXER_ROUNDS) return bumpRoundsSpent(task.successors.length);
   const agent = successorName(task, roster);
-  const message = task.bump ? bumpFixerBrief(task, task.bump, agent) : successorBrief(task, predecessor, agent, lineageSeat(task, roster));
-  return { mode: "successor", agent, predecessor, message, cwd: checkout.dir };
+  return { mode: "successor", agent, predecessor, message: task.bump ? bumpFixerBrief(task, task.bump, agent) : successorBrief(task, predecessor, agent, lineageSeat(task, roster)), cwd: checkout.dir };
 }
 
 /** After a timeout the ask may have landed: a successor's name is on the roster, or the resumed agent is live again. A message leaves no mark. */
@@ -340,8 +338,7 @@ async function wakeTask(deps: ShepherdDeps, input: WakeInput, registration: Regi
   if (!isRefName(pr.headRef)) return `the head branch name of ${input.repo}#${input.pr} is not one a brief can carry`;
   if (!isRefName(pr.baseRef)) return `the base branch name of ${input.repo}#${input.pr} is not a valid ref name`;
   const successors = deps.store.get().authorsOf(input.runId).filter((author) => author.role === "successor").map((author) => author.name);
-  const bump = isConsumerBumpRun(registration) ? { bump: await bumpFacts(deps.port, registration, pr, input.pr) } : {};
-  return { input, pr, ...(await describeWake(deps.port, withMergeBaseException(input, deps.store), pr, deps.suiteRules?.fixer)), implementer: registration.implementer, successors, ...bump };
+  return { input, pr, ...(await describeWake(deps.port, withMergeBaseException(input, deps.store), pr, deps.suiteRules?.fixer)), implementer: registration.implementer, successors, ...(isConsumerBumpRun(registration) && { bump: await bumpFacts(deps.port, registration, pr, input.pr) }) };
 }
 
 function agentsFor(deps: ShepherdDeps, wiring: WakeWiring): ImplementerAgents | undefined {
