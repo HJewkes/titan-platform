@@ -3,7 +3,7 @@
   "mutations": [
     {
       "name": "the host never applies the registrant migration",
-      "file": "products/factory/src/workflows.ts",
+      "file": "products/factory/src/workflows-routes.ts",
       "find": "registrantMigration(38), ",
       "replace": "",
       "kills": [
@@ -12,7 +12,7 @@
     },
     {
       "name": "the host never applies the order-wait event kind migration",
-      "file": "products/factory/src/workflows.ts",
+      "file": "products/factory/src/workflows-routes.ts",
       "find": "orderWaitKindMigration(45), ",
       "replace": "",
       "kills": [
@@ -21,7 +21,7 @@
     },
     {
       "name": "the host never applies the plan-approval migration",
-      "file": "products/factory/src/workflows.ts",
+      "file": "products/factory/src/workflows-routes.ts",
       "find": "planApprovalMigration(46), ",
       "replace": "",
       "kills": [
