@@ -1306,10 +1306,11 @@ interface FakeGitHub {
     history: (LoggedCommit & {
         committedAt: string;
     })[];
-    /** `base...head` to the compare inputs; an unset pair compares as no change. Caps of 300 files and 250 commits apply; `totalCommits` defaults to the length of `commits`. */
+    /** `base...head` to the compare inputs; an unset pair compares as no change. `renames` maps a new path to its previous one, which is listed too. Caps of 300 files and 250 commits apply; `totalCommits` defaults to the length of `commits`. */
     compares: Map<string, {
         mergeBaseSha: string;
         files: string[];
+        renames?: Record<string, string>;
         totalCommits?: number;
         commits?: BranchCommit[];
     }>;

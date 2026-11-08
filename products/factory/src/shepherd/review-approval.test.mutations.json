@@ -11,7 +11,7 @@
       ]
     },
     {
-      "name": "a FIX_FIRST at the approved head keeps that approval",
+      "name": "approvals at other heads only are dismissed, so the approved head keeps its own",
       "file": "products/factory/src/shepherd/review-approval.ts",
       "find": "own.filter((review) => review !== kept)",
       "replace": "own.filter((review) => review.commitId !== check.headSha)",
