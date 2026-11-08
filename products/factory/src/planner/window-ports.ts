@@ -41,19 +41,17 @@ export function ghWindow(run: PlannerRun): WindowGitHub {
   };
 }
 
-/** A round whose feedback does not parse is no owner answer this probe can date, so it is left out. */
-async function roundAnswers(roundsDir: string | undefined): Promise<RoundAnswer[]> {
+/** A round whose feedback does not parse is kept with no date, so the probe reports it rather than losing the owner's answer. */
+export async function roundAnswers(roundsDir: string | undefined): Promise<RoundAnswer[]> {
   if (roundsDir === undefined) return [];
   const rounds = await readRounds(roundsDir);
-  return rounds.flatMap((round) => {
-    const submittedAt = round.feedback === undefined ? undefined : submittedAtOf(round.feedback);
-    return submittedAt === undefined ? [] : [{ id: round.id, submittedAt }];
-  });
+  return rounds.flatMap((round) => (round.feedback === undefined ? [] : [{ id: round.id, submittedAt: submittedAtOf(round.feedback) }]));
 }
 
 function submittedAtOf(feedback: Uint8Array): string | undefined {
   try {
-    return RoundFeedbackSchema.safeParse(JSON.parse(Buffer.from(feedback).toString("utf8"))).data?.submittedAt;
+    const submittedAt = RoundFeedbackSchema.safeParse(JSON.parse(Buffer.from(feedback).toString("utf8"))).data?.submittedAt;
+    return submittedAt === undefined || Number.isNaN(Date.parse(submittedAt)) ? undefined : submittedAt;
   } catch {
     return undefined;
   }

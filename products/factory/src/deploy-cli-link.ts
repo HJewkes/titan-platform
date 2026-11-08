@@ -1,6 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { lstatSync, readlinkSync, renameSync, symlinkSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { deployedBinPath } from "./deploy-checkout.js";
 import { serviceRunsFromCheckout } from "./deploy-bootstrap.js";
 import type { DeployPorts } from "./deploy.js";
@@ -21,6 +22,7 @@ const FACTORY_BIN_SUFFIX = "/products/factory/dist/bin.js";
  */
 export function relinkCli(ports: CliLinkPorts, bin: string): string {
   const { linkPath } = ports;
+  if (!isAbsolute(bin)) return `CLI link left alone: ${bin} is not absolute`;
   let target: string;
   try {
     if (!lstatSync(linkPath).isSymbolicLink()) return `CLI link left alone: ${linkPath} is not a symlink`;
@@ -32,16 +34,13 @@ export function relinkCli(ports: CliLinkPorts, bin: string): string {
   const current = resolve(dirname(linkPath), target);
   if (current === bin) return `CLI link already current: ${linkPath} -> ${bin}`;
   if (!current.endsWith(FACTORY_BIN_SUFFIX)) return `CLI link left alone: ${linkPath} points at ${current}, which is not a factory build`;
-  const staged = `${linkPath}.${process.pid}.tmp`;
+  // A unique name means a leftover from a crashed run can never collide, and we only ever delete what we created.
+  const staged = `${linkPath}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`;
+  symlinkSync(bin, staged);
   try {
-    symlinkSync(bin, staged);
     renameSync(staged, linkPath);
   } catch (err) {
-    try {
-      unlinkSync(staged);
-    } catch {
-      // nothing staged
-    }
+    unlinkSync(staged);
     throw err;
   }
   return `CLI link repointed: ${linkPath} -> ${bin} (was ${current})`;

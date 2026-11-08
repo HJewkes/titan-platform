@@ -35,19 +35,19 @@ describe("ci-wait never reads a skipped run, or a failure a newer run left unjud
   it("tp#2576: the required runs still in progress beside a skipped duplicate run read pending, not red", async () => {
     const live = [job("dag-check", 11, 2001, T0, null), job("validate", 12, 2001, T0, null), job("hub-compose", 13, 2001, T0, "success")];
 
-    const { ci } = await read([...live, ...duplicateFixProof]);
+    const { ci } = await read([...live, ...duplicateFixProof.slice(2)]);
 
     expect(ci.verdict).toBe("pending");
     expect(ci.failing).toBeUndefined();
   });
 
-  it("tp#2622: every required check passed and the failed mutants job was replaced by a skipped run, so no fixer is woken; the head waits, not merges", async () => {
+  it("tp#2622: every required check passed and the failed mutants job was replaced by a skipped run; the head goes red, never merges (TP-4993)", async () => {
     const required = REQUIRED.map((name, i) => job(name, 11 + i, 2001, T0, "success"));
 
     const { ci, passes } = await read([...required, ...duplicateFixProof]);
 
-    expect(ci.verdict).toBe("pending");
-    expect(ci.waitingOn).toEqual(["fix-proof-mutants"]);
+    expect(ci.verdict).toBe("red");
+    expect(ci.failing?.map((check) => [check.name, check.workflowRunId])).toEqual([["fix-proof-mutants", 3001]]);
     expect(passes).toBe(false);
   });
 
