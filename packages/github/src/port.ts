@@ -1,5 +1,6 @@
 import { latestPerName } from "./checks.js";
-import { sendUpdateBranch } from "./update-branch-retry.js";
+import { updateBranch } from "./update-branch-retry.js";
+import { tail } from "./log-tail.js";
 import { pushEmptyCommit } from "./push-empty-commit.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
 import { wholeForcePushes, type ForcePush, type ForcePushPage } from "./force-pushes.js";
@@ -7,7 +8,7 @@ import { memoizedLogin, upsertComment } from "./upsert-comment.js";
 import { pause } from "./write-read-back.js";
 import { merge, rerunFailed, rerunJob } from "./merge-writes.js";
 import { deleteRef, ensureBranch } from "./ref-writes.js";
-import { closePr, closedSkip, setPrBase } from "./close-pr.js";
+import { closePr, setPrBase } from "./close-pr.js";
 import { listPrFiles } from "./pr-files.js";
 import { findPr, openPr } from "./pr-open.js";
 export { FileListTruncatedError } from "./pr-files.js";
@@ -176,7 +177,6 @@ export interface GitHubWire {
   listIssueComments(repo: RepoSlug, number: number): Promise<IssueComment[]>;
   createComment(repo: RepoSlug, number: number, body: string): Promise<{ id: number }>;
   listReviewComments(repo: RepoSlug, number: number): Promise<ReviewComment[]>;
-  /** Every review on the PR, all pages, oldest first. */
   listReviews(repo: RepoSlug, number: number): Promise<PullReview[]>;
   /** `POST pulls/{n}/reviews` with `event: APPROVE` at `commit_id`, as the GitHub App; the wire refuses when it has no App token. */
   createReview(repo: RepoSlug, number: number, request: CreateReviewRequest): Promise<{ id: number }>;
@@ -362,18 +362,5 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     dismissReview: async (repo, number, reviewId, message) => wire.dismissReview(repoOf(repo), pr(number), checkPositiveInt("reviewId", reviewId), checkNonEmpty("message", message)),
     listForcePushes: async (repo, number) => wholeForcePushes(await wire.listForcePushes(repoOf(repo), pr(number))),
   };
-}
-
-function tail(log: string, lines: number): string {
-  const all = log.split(/\r?\n/);
-  if (all.at(-1) === "") all.pop();
-  return all.slice(-lines).join("\n");
-}
-
-async function updateBranch(wire: GitHubWire, repo: RepoSlug, number: number, expectedHeadSha: string): Promise<WriteResult> {
-  const pr = await wire.getPr(repo, number);
-  const skipped = closedSkip(pr) ?? (pr.headSha !== expectedHeadSha ? "head-moved" : !pr.behind ? "up-to-date" : undefined);
-  if (skipped) return { done: false, skipped };
-  return sendUpdateBranch(wire, repo, number, expectedHeadSha);
 }
 

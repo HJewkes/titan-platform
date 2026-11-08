@@ -12,18 +12,12 @@ import { fakeListDirectory } from "./fake-directory.js";
 import { fakeAncestry, fakeLsRemote } from "./fake-ancestry.js";
 import { revalidateOpenPrs, revalidateRef, revalidateRulesets } from "./fake-conditional-reads.js";
 import { compareCommits, compareFiles } from "./fake-compare.js";
-import { fakeCreateReview, fakeDismissReview } from "./fake-reviews.js";
+import { fakeReviewWire } from "./fake-reviews.js";
+import { FakeHttpError } from "./fake-http-error.js";
 
 export type { FakeEffects, FakeFaultyRead, FakeGitHub } from "./fake-types.js";
 
-export class FakeHttpError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(`HTTP ${status}: ${message}`);
-  }
-}
+export { FakeHttpError };
 
 const attemptKey = (run: CheckRun): string => `${run.name}\u0000${run.appId}\u0000${run.workflowRunId}`;
 
@@ -195,12 +189,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     },
     listReviewComments: async (_repo, number) => record("listReviewComments", (fake.reviewComments.get(number) ?? []).map((comment) => ({ ...comment }))),
     listForcePushes: async (_repo, number) => record("listForcePushes", listForcePushes(fake, number)),
-    listReviews: async (_repo, number) => record("listReviews", (fake.reviews.get(mustPr(prs, number).number) ?? []).map((review) => ({ ...review }))),
-    createReview: async (_repo, number, request) => (record("createReview", undefined), fakeCreateReview(fake, mustPr(prs, number).number, request, 7000 + ++counter)),
-    dismissReview: async (_repo, number, reviewId) => {
-      record("dismissReview", undefined);
-      fakeDismissReview(fake, mustPr(prs, number).number, reviewId, (status, message) => new FakeHttpError(status, message));
-    },
+    ...fakeReviewWire(() => fake, (number) => mustPr(prs, number).number, record, () => 7000 + ++counter),
   };
   const fake: FakeGitHub = Object.assign(state, { wire, gitExec: fakeLsRemote(prs, () => read("lsRemote", () => undefined)) });
   return fake;

@@ -1,5 +1,13 @@
 import { isTransient } from "./rest.js";
 import type { GitHubWire, RepoSlug, WriteResult } from "./port.js";
+import { closedSkip } from "./close-pr.js";
+
+export async function updateBranch(wire: GitHubWire, repo: RepoSlug, number: number, expectedHeadSha: string): Promise<WriteResult> {
+  const pr = await wire.getPr(repo, number);
+  const skipped = closedSkip(pr) ?? (pr.headSha !== expectedHeadSha ? "head-moved" : !pr.behind ? "up-to-date" : undefined);
+  if (skipped) return { done: false, skipped };
+  return sendUpdateBranch(wire, repo, number, expectedHeadSha);
+}
 
 /** An unreadable answer or a 5xx may hide a PUT that landed, so it is sent once more with the same expected head: GitHub refuses a landed one as a head mismatch, which reads as done. */
 export async function sendUpdateBranch(wire: GitHubWire, repo: RepoSlug, number: number, expectedHeadSha: string): Promise<WriteResult> {
