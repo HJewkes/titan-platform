@@ -43,7 +43,7 @@
       "find": "  login: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9-]*\\[bot\\]$/, \"a GitHub App's bot login, for example my-app[bot]\").optional(),",
       "replace": "  login: z.string().min(1).optional(),",
       "kills": [
-        "config rejects \"my-app\" as the review-check App's login, which must be a bot login"
+        "loadConfig rejects \"my-app\" as the review-check App's login, which must be a bot login"
       ]
     }
   ]

@@ -4,8 +4,8 @@
     {
       "name": "the review list is not retried",
       "file": "products/factory/src/shepherd/review-approval.ts",
-      "find": "(await withReviewRetry(() => port.listReviews(target.repo, target.pr), timing))",
-      "replace": "(await port.listReviews(target.repo, target.pr))",
+      "find": "    reviews = await withReviewRetry(() => port.listReviews(target.repo, target.pr), timing);",
+      "replace": "    reviews = await port.listReviews(target.repo, target.pr);",
       "kills": [
         "syncApproval retries a review list that answers 502 once is read again after a short wait, and the approval is posted"
       ]

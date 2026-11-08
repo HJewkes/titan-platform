@@ -4,8 +4,8 @@
     {
       "name": "every publish approves, not only a success",
       "file": "products/factory/src/shepherd/review-approval.ts",
-      "find": "  if (success) await approve(port, target, check, kept, result);",
-      "replace": "  await approve(port, target, check, kept, result);",
+      "find": "  if (success) await approve(client.port, target, check, kept, result);",
+      "replace": "  await approve(client.port, target, check, kept, result);",
       "kills": [
         "syncApproval a FIX_FIRST at the head Shepherd approved dismisses that approval, so no Shepherd approval is left standing"
       ]
