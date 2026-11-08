@@ -131,8 +131,12 @@ function extendedConfig(extendsValue: unknown, here: string): string | null {
 
 function readTsconfig(source: ManifestSource, abs: string): Record<string, unknown> | null {
   if (!source.fileExists(abs)) return null;
-  const { config, error } = ts.parseConfigFileTextToJson(abs, source.readFile(abs)) as { config?: unknown; error?: unknown };
-  return error === undefined && isObject(config) ? config : null;
+  try {
+    const { config, error } = ts.parseConfigFileTextToJson(abs, source.readFile(abs)) as { config?: unknown; error?: unknown };
+    return error === undefined && isObject(config) ? config : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The indexed files one manifest target names, through every output mapping and the target itself. */
