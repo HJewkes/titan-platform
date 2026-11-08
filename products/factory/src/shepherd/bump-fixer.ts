@@ -4,16 +4,21 @@ import { BUMP_BRANCH_PREFIX, consumerBumpImplementer, titanDeps } from "./consum
 import { failureOf } from "./error-class.js";
 import { ciRedFailing } from "./gates.js";
 import type { Registration } from "./store.js";
-import { HEAD_LINE, isSeat } from "./wake-brief.js";
+import { HEAD_LINE, isSeat, successorBrief } from "./wake-brief.js";
 
 /** Fixers Shepherd starts for one bump run; past them a red bump PR goes to its seat, as a run with no fixer does. */
 export const BUMP_FIXER_ROUNDS = 3;
 const MAX_BUMP_MANIFESTS = 20;
 
 /** What a bump fixer's brief carries beyond a successor's: the bumped specifiers, and the seat its report goes to. */
-export interface BumpFacts {
+interface BumpFacts {
   bumped: string;
   seat: string | undefined;
+}
+
+/** A wake's task, with the facts only a consumer bump run carries; its fixers take the bump brief and a tighter cap. */
+export interface BumpRun {
+  bump?: BumpFacts;
 }
 
 /** A run the consumer bump sweep registered: its bump branch, and the implementer name only the sweep gives it. */
@@ -69,18 +74,26 @@ function bumpReportLine(seat: string | undefined): string {
   return `send your report with chat_send to ${seat}, the seat that owns this repo, and to no other session. In it,`;
 }
 
+const checkoutLine = (head: string): string =>
+  `Your worktree is cut from the repo's main checkout, not from the PR. Before editing, fetch the PR's head branch, named in the fenced data below, and check it out at the PR head ${head}. Commit on top of it and push to it. Do not open a new PR.`;
+
 /** Check and package names are outside text, so each list stays in its own fence. */
-export function bumpFixerBrief(task: BumpTask, facts: BumpFacts, name: string): string {
+function bumpFixerBrief(task: BumpTask, facts: BumpFacts, name: string): string {
   const { input, pr } = task;
   const failing = ciRedFailing(input.kind, input.payload).map((check) => check.name);
   const checks = failing.length > 0 ? [dataFence("failing checks", failing.join("\n"))] : [];
   return [
     `You are ${name}, Shepherd's fixer for ${input.repo}#${input.pr}, a PR the factory's consumer bump sweep opened to raise this repo's @titan-design dependencies to npm latest. ${task.reason}`,
-    `Your worktree is cut from the repo's main checkout, not from the PR. Before editing, fetch the PR's head branch, named in the fenced data below, and check it out at the PR head ${pr.headSha}. Commit on top of it and push to it. Do not open a new PR.\n\n${dataFence("head branch", pr.headRef)}`,
+    `${checkoutLine(pr.headSha)}\n\n${dataFence("head branch", pr.headRef)}`,
     `The bumped specifiers, base to head, follow.\n\n${dataFence("bumped packages", facts.bumped)}`,
     ...checks,
     task.payload,
     BUMP_RULE,
     `When pushed, ${bumpReportLine(facts.seat)} ${HEAD_LINE}`,
   ].join("\n\n");
+}
+
+/** A bump run's fixer takes the bump brief; any other run's successor takes over its lineage. */
+export function fixerBrief(task: BumpTask & BumpRun, predecessor: string, name: string, seat: string | undefined): string {
+  return task.bump === undefined ? successorBrief(task, predecessor, name, seat) : bumpFixerBrief(task, task.bump, name);
 }

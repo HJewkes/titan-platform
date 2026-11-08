@@ -23,12 +23,14 @@ const BRANCH = `${BUMP_BRANCH_PREFIX}0badc0de`;
 const IMPLEMENTER = consumerBumpImplementer(REPO, PR);
 const CHECKOUT = mkdtempSync(join(tmpdir(), "tp4909-bump-fixer-"));
 afterAll(() => rmSync(CHECKOUT, { recursive: true, force: true }));
-const BUMP_RUN: RegistrationInput = { repo: REPO, pr: PR, branch: BRANCH, runId: "run-bump", task: "consumer-a/bump-consumers", implementer: IMPLEMENTER, policy: { ...OWNER_GATE_POLICY, fixer: true, seat: "seat-a" } };
+const SEAT_POLICY = { ...OWNER_GATE_POLICY, fixer: true, seat: "seat-a" };
+const BUMP_RUN: RegistrationInput = { repo: REPO, pr: PR, branch: BRANCH, runId: "run-bump", task: "consumer-a/bump-consumers", implementer: IMPLEMENTER, policy: SEAT_POLICY };
 const manifest = (spec: string): string => JSON.stringify({ dependencies: { "@titan-design/example-a": spec, "left-pad": "1.0.0" } }, null, 2);
 
 function row(name: string, overrides: Partial<AgentRow> = {}): AgentRow {
   const base = { name, agentId: `id-${name}`, state: "exited", presence: "exited", status: "finished", profile: "implementer", surface: "headless", model: null };
-  return { ...base, cwd: `/work/${name}`, sessionId: `s-${name}`, transcriptPath: `/transcripts/${name}.jsonl`, transcriptExists: true, spawnedBy: null, account: null, generation: 1, teleportFrom: null, ...overrides };
+  const session = { cwd: `/work/${name}`, sessionId: `s-${name}`, transcriptPath: `/transcripts/${name}.jsonl`, transcriptExists: true };
+  return { ...base, ...session, spawnedBy: null, account: null, generation: 1, teleportFrom: null, ...overrides };
 }
 
 interface Asked {
@@ -70,10 +72,12 @@ function bumpWake(rows: AgentRow[], successors: readonly string[] = [], registra
   for (const name of successors) store.get().recordAuthor(BUMP_RUN.runId, { agentId: `id-${name}`, name, role: "successor", predecessor: IMPLEMENTER });
   const agents = fakeAgents(rows);
   const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(fake.wire), store, now: () => 0, sleep: async () => undefined, pollMs: 1_000, agentChatBin: "/opt/bin/agent-chat" };
-  const route = wakeRoutes(deps, { agents, turnSince: async () => true, readWarmth: async () => undefined, checkoutFor: () => CHECKOUT }).find((candidate) => candidate.match === "sh-wake-implementer")!;
+  const wiring = { agents, turnSince: async () => true, readWarmth: async () => undefined, checkoutFor: () => CHECKOUT };
+  const route = wakeRoutes(deps, wiring).find((candidate) => candidate.match === "sh-wake-implementer")!;
   const run = async () => {
     const input = { kind: "ci-red", repo: REPO, pr: PR, round: 0, headSha: H1, payload: { failing: [{ name: "validate" }] }, runId: BUMP_RUN.runId };
-    const step: RoutedStepInput = { runId: BUMP_RUN.runId, workflowName: "bump-fixer-test", iteration: 0, prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 0, requestKey: "k", stepId: "sh-wake-implementer:0" };
+    const signal = new AbortController().signal;
+    const step: RoutedStepInput = { runId: BUMP_RUN.runId, workflowName: "bump-fixer-test", iteration: 0, prompt: JSON.stringify(input), signal, attempt: 0, requestKey: "k", stepId: "sh-wake-implementer:0" };
     const outcome = await route.runner.run(step);
     return outcome.ok ? WakeRecord.parse(JSON.parse(outcome.output)).result : undefined;
   };

@@ -13,12 +13,12 @@ import { noteFixerLimit } from "./fixer-limit.js";
 import { agentChatAgents, type AgentChatAgents, type SpawnAccounts } from "./agents.js";
 import type { ShepherdDeps } from "./phases.js";
 import { failureOf } from "./error-class.js";
-import { BUMP_FIXER_ROUNDS, bumpFacts, bumpFixerBrief, bumpRoundsSpent, isConsumerBumpRun, type BumpFacts } from "./bump-fixer.js";
+import { BUMP_FIXER_ROUNDS, bumpFacts, bumpRoundsSpent, fixerBrief, isConsumerBumpRun, type BumpRun } from "./bump-fixer.js";
 import { headMoved, unreadableHead, type HeadRead } from "./head-read.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { seatCheckout } from "./seat-checkout.js";
 import type { Registration } from "./store.js";
-import { FIX_FIRST_STEP, HEAD_LINE, REPAIR_STEP, describeWake, isRefName, successorBrief, wantsFreshFixer, withMergeBaseException } from "./wake-brief.js";
+import { FIX_FIRST_STEP, HEAD_LINE, REPAIR_STEP, describeWake, isRefName, wantsFreshFixer, withMergeBaseException } from "./wake-brief.js";
 import { exitedOn, latestRow, lineageSeat, newestAgent, successorName } from "./wake-roster.js";
 import { HOLDING_KINDS } from "./held-wake.js";
 import { messagePredecessor, noticeSpawner, type PredecessorMessage, type SpawnerNotice } from "./wake-notice.js";
@@ -100,7 +100,7 @@ const unhandled = (reason: string): WakeStepResult => ({ kind: "unhandled", reas
 const held = (agent: string, error: unknown): WakeStepResult => ({ kind: "unhandled", reason: `agent-chat refused to start the successor ${agent}: ${failureOf(error)}`, held: { agent } });
 
 
-interface WakeTask {
+interface WakeTask extends BumpRun {
   input: WakeInput;
   pr: PullRequest;
   reason: string;
@@ -108,8 +108,6 @@ interface WakeTask {
   implementer: string;
   /** Successors the store's lineage records, earliest first. */
   successors: readonly string[];
-  /** Set for a consumer bump run, whose fixers take a bump brief and a tighter cap. */
-  bump?: BumpFacts;
 }
 
 function resumeMessage(task: WakeTask): string {
@@ -141,7 +139,7 @@ function successorChoice(deps: ShepherdDeps, wiring: WakeWiring, task: WakeTask,
   if ("problem" in checkout) return `${checkout.problem}, so a successor has no checkout to start in`;
   if (task.bump && task.successors.length >= BUMP_FIXER_ROUNDS) return bumpRoundsSpent(task.successors.length);
   const agent = successorName(task, roster);
-  return { mode: "successor", agent, predecessor, message: task.bump ? bumpFixerBrief(task, task.bump, agent) : successorBrief(task, predecessor, agent, lineageSeat(task, roster)), cwd: checkout.dir };
+  return { mode: "successor", agent, predecessor, message: fixerBrief(task, predecessor, agent, lineageSeat(task, roster)), cwd: checkout.dir };
 }
 
 /** After a timeout the ask may have landed: a successor's name is on the roster, or the resumed agent is live again. A message leaves no mark. */
@@ -338,7 +336,8 @@ async function wakeTask(deps: ShepherdDeps, input: WakeInput, registration: Regi
   if (!isRefName(pr.headRef)) return `the head branch name of ${input.repo}#${input.pr} is not one a brief can carry`;
   if (!isRefName(pr.baseRef)) return `the base branch name of ${input.repo}#${input.pr} is not a valid ref name`;
   const successors = deps.store.get().authorsOf(input.runId).filter((author) => author.role === "successor").map((author) => author.name);
-  return { input, pr, ...(await describeWake(deps.port, withMergeBaseException(input, deps.store), pr, deps.suiteRules?.fixer)), implementer: registration.implementer, successors, ...(isConsumerBumpRun(registration) && { bump: await bumpFacts(deps.port, registration, pr, input.pr) }) };
+  const bump = isConsumerBumpRun(registration) ? { bump: await bumpFacts(deps.port, registration, pr, input.pr) } : {};
+  return { input, pr, ...(await describeWake(deps.port, withMergeBaseException(input, deps.store), pr, deps.suiteRules?.fixer)), implementer: registration.implementer, successors, ...bump };
 }
 
 function agentsFor(deps: ShepherdDeps, wiring: WakeWiring): ImplementerAgents | undefined {
