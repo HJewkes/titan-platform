@@ -1,3 +1,4 @@
+import type * as Fs from "node:fs";
 import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,8 +11,8 @@ import type { DeployPorts } from "./deploy.js";
 import { plistPath } from "./service.js";
 
 vi.mock("node:fs", async (importOriginal) => {
-  const actual = await importOriginal<Record<string, unknown>>();
-  return { ...actual, renameSync: vi.fn(actual.renameSync as typeof renameSync), unlinkSync: vi.fn(actual.unlinkSync as typeof unlinkSync) };
+  const actual = await importOriginal<typeof Fs>();
+  return { ...actual, renameSync: vi.fn(actual.renameSync), unlinkSync: vi.fn(actual.unlinkSync) };
 });
 
 const HOME = "/srv/tester";
@@ -70,8 +71,7 @@ describe("relinkCli", () => {
       }
 
       expect(thrown).toBeInstanceOf(Error);
-      expect((thrown as Error).message).toBe("rename refused");
-      expect((thrown as Error).cause).toBe(unlinkFailure);
+      expect(thrown).toMatchObject({ message: "rename refused", cause: unlinkFailure });
     });
   });
 
