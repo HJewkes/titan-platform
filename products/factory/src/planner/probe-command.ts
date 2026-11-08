@@ -2,6 +2,7 @@ import type { Command } from "commander";
 import type { Verbs } from "../cli-types.js";
 import { EXIT } from "../exit-codes.js";
 import { runProcess } from "./inputs.js";
+import { ISO_TIME } from "./iso-time.js";
 import { machineWindowSources } from "./window-ports.js";
 import { probeWindow, WINDOW_PROBES, type WindowProbe, type WindowSources } from "./window-probes.js";
 
@@ -9,8 +10,6 @@ interface ProbeOpts {
   since: string;
   repo: string[];
 }
-
-const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 
 const isProbe = (kind: string): kind is WindowProbe => (WINDOW_PROBES as readonly string[]).includes(kind);
 
