@@ -4,6 +4,7 @@ import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { landPrRoutes, landPrWorkflow } from "../workflows/land-pr.js";
+import { hostPostMerge } from "../workflows/post-merge-adapter.js";
 import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { failureClassOf } from "./failure-class.js";
 import { retryingGhServerErrors } from "./gh-retry.js";
@@ -29,7 +30,7 @@ function world(failures: number, error: string) {
   };
   const waits: number[] = [];
   const sleep = async (ms: number) => void waits.push(ms);
-  const routes = retryingGhServerErrors(landPrRoutes({ gitCache: hostCarryPorts, port, now: () => 0, sleep }), { sleep });
+  const routes = retryingGhServerErrors(landPrRoutes({ ...hostPostMerge(), gitCache: hostCarryPorts, port, now: () => 0, sleep }), { sleep });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   const runId = host.runtime.start("land-pr", { repo: REPO, pr: "1", task: "TASK-1" });

@@ -132,7 +132,7 @@ function world(chores: ChorePorts): { fake: FakeGitHub; routes: StepRoute[] } {
   fake.addPr({ headSha: H1 });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   let clock = 0;
-  return { fake, routes: landPrRoutes({ gitCache: hostCarryPorts, port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms), postMerge: CONFIG, chores }) };
+  return { fake, routes: landPrRoutes({ ...hostPostMerge(), gitCache: hostCarryPorts, port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms), postMerge: CONFIG, chores }) };
 }
 
 /** A serve killed once the post-merge step is active; the test plays the chore's wrapper on disk. */
