@@ -214,32 +214,33 @@ class Dispatcher<H extends Harness> implements DurableHarnessDispatcher<H> {
   }
 
   private progress(executionId: string, live: LiveExecution<H>, progress: HarnessRunProgress, forward?: (progress: HarnessRunProgress) => void): void {
-    if (progress.kind === "execution_started") {
-      if (live.adapterExecutionId && live.adapterExecutionId !== progress.execution.executionId) {
-        this.failLive(live, "recovery_required", "adapter execution identity changed during one dispatch");
-      } else {
-        live.adapterExecutionId = progress.execution.executionId;
-        const read = readLedgerRecord(this.options.ledger, executionId);
-        if (!read.ok || !read.record) this.failLive(live, "ownership_lost", read.ok ? "execution record disappeared" : read.evidence);
-        const current = read.ok ? read.record : undefined;
-        if (current && (current.phase === "dispatching" || current.phase === "recovery_required")) {
-          try {
-            const result = this.tryApply(current, {
-              kind: "observe_running",
-              fence: live.fence,
-              runnerRef: executionId,
-              adapterExecution: progress.execution,
-              evidence: "adapter emitted execution_started",
-            });
-            if (!result.ok) this.failLive(live, failureKind(result.kind), result.reason);
-          } catch (error) {
-            this.failLive(live, "recovery_required", `could not persist running observation: ${message(error)}`);
-          }
-        }
-      }
-    }
+    if (progress.kind === "execution_started") this.observeExecutionStarted(executionId, live, progress);
     if (progress.kind === "conversation_identified") this.observeConversation(executionId, live, progress);
     forward?.(progress);
+  }
+
+  private observeExecutionStarted(executionId: string, live: LiveExecution<H>, progress: Extract<HarnessRunProgress, { kind: "execution_started" }>): void {
+    if (live.adapterExecutionId && live.adapterExecutionId !== progress.execution.executionId) {
+      this.failLive(live, "recovery_required", "adapter execution identity changed during one dispatch");
+      return;
+    }
+    live.adapterExecutionId = progress.execution.executionId;
+    const read = readLedgerRecord(this.options.ledger, executionId);
+    if (!read.ok || !read.record) this.failLive(live, "ownership_lost", read.ok ? "execution record disappeared" : read.evidence);
+    const current = read.ok ? read.record : undefined;
+    if (!current || (current.phase !== "dispatching" && current.phase !== "recovery_required")) return;
+    try {
+      const result = this.tryApply(current, {
+        kind: "observe_running",
+        fence: live.fence,
+        runnerRef: executionId,
+        adapterExecution: progress.execution,
+        evidence: "adapter emitted execution_started",
+      });
+      if (!result.ok) this.failLive(live, failureKind(result.kind), result.reason);
+    } catch (error) {
+      this.failLive(live, "recovery_required", `could not persist running observation: ${message(error)}`);
+    }
   }
 
   private observeConversation(executionId: string, live: LiveExecution<H>, progress: Extract<HarnessRunProgress, { kind: "conversation_identified" }>): void {
