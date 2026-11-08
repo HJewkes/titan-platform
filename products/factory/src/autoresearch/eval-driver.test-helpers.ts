@@ -13,15 +13,23 @@ registerHooks({ resolve: (s, c, next) => next(c.parentURL?.endsWith(".ts") && s.
 
 export const scratch = (): string => mkdtempSync(join(tmpdir(), "run-command-"));
 
-/** A killed process whose parent has not reaped it yet is a zombie: dead, though signal 0 still finds it. */
-export const alive = (pid: number): boolean => {
+/** A killed process whose parent has not reaped it yet is a zombie: dead, though signal 0 still finds it. `read` is injectable so the exit-between-check-and-read race can be simulated. */
+export const alive = (pid: number, read: (path: string) => string = (path) => readFileSync(path, "utf8")): boolean => {
   try {
     process.kill(pid, 0);
   } catch {
     return false;
   }
   const stat = `/proc/${pid}/stat`;
-  return !existsSync(stat) || readFileSync(stat, "utf8").split(") ").at(-1)?.[0] !== "Z";
+  if (!existsSync(stat)) return true;
+  try {
+    return read(stat).split(") ").at(-1)?.[0] !== "Z";
+  } catch (error) {
+    // The process can exit between the existence check and the read.
+    const code = error instanceof Error && "code" in error ? error.code : undefined;
+    if (code === "ESRCH" || code === "ENOENT") return false;
+    throw error;
+  }
 };
 
 /** A driver process running `body` as an ES module, with `dir` in scope and `imports` bound from source files. */
@@ -39,7 +47,7 @@ export function forkDriver(imports: Record<string, string>, body: string, dir: s
 
 /** Process death lands just after the pipes close; a pid that never dies leaves this pending until the test's timeout fails it. */
 export async function dead(pids: readonly number[]): Promise<boolean> {
-  while (pids.some(alive)) await new Promise((done) => setTimeout(done, 10));
+  while (pids.some((pid) => alive(pid))) await new Promise((done) => setTimeout(done, 10));
   return true;
 }
 
