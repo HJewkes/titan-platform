@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { openDatabase, type Db } from "@titan-design/store-sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { chapterOwnerRef, indexCorpus, openSpans, readSpanText, SPAN_FIELD } from "./index-corpus.js";
-import { archiveLayout } from "./layout.js";
+import { chapterOwnerRef, indexCorpus, listChapters, openSpans, readSpanText, SPAN_FIELD } from "./index-corpus.js";
+import { archiveLayout, plainLayout } from "./layout.js";
 import { writeCorpus, writeFile, type SyntheticFile } from "./synthetic-corpus.test-helpers.js";
 
 const MULTIBYTE = "Café “Zürich” 🏆 naïve résumé — 東京タワー";
@@ -107,5 +107,16 @@ describe("indexCorpus", () => {
 
     expect(stats.removed).toBe(3 - 2);
     expect(openSpans(db).search("teapots", 10)).toHaveLength(0);
+  });
+
+  it("re-describes unchanged files when the layout changes", () => {
+    indexCorpus(db, root, archiveLayout);
+
+    const stats = indexCorpus(db, root, plainLayout);
+
+    expect(stats).toMatchObject({ indexed: 3, unchanged: 0 });
+    expect(listChapters(db).map((c) => c.id).sort()).toEqual(["northwind/book_01/chapter_01.txt", "northwind/book_01/chapter_02.txt", "other/2026-02-01_Notice.txt"]);
+    expect(paragraphsOf("northwind/book_01/chapter_02.txt")).toHaveLength(1);
+    expect(paragraphsOf("northwind/1/2")).toHaveLength(0);
   });
 });
