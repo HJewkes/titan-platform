@@ -3,6 +3,7 @@ import type { FactoryHost } from "../host.js";
 import { BUMP_BRANCH_PREFIX, bumpBranch, consumerDepNames, planConsumerBump, readConsumerTree, type ConsumerBumpPlan, type ConsumerTree, type LatestRegistry } from "./consumer-bump.js";
 import { failureOf } from "./error-class.js";
 import type { LockfileRegen, LockfileTree } from "./lockfile-regen.js";
+import { BUMP_TITLE, bumpCommitMessage, isSweepOnlyBranch } from "./leftover-bump.js";
 import { lookupSeat, type SeatBook } from "./seats.js";
 import { headInRepo, registerConsumerBump } from "./self-register.js";
 import type { ShepherdServices } from "./services.js";
@@ -73,11 +74,11 @@ interface ConsumerBumpSweepNote {
   registered?: string;
   current?: true;
   error?: string;
-  /** The leftover branch that blocked this repo: the sweep cannot tell whose commits it holds, so a human deletes it or opens its PR. */
+  /** The leftover branch that blocked this repo: it holds a commit the sweep did not write, so a human deletes it or opens its PR. */
   branch?: string;
 }
 
-/** A bump branch with no open PR; its commits are not provably the sweep's own, so it is never built on. */
+/** A bump branch with no open PR whose commits are not provably the sweep's own, so it is never built on. */
 class LeftoverBumpBranchError extends Error {
   constructor(readonly branch: string) {
     super(`leftover bump branch ${branch} has no open PR`);
@@ -93,8 +94,6 @@ export interface ConsumerBumpPorts {
   registry: LatestRegistry;
   regen: LockfileRegen;
 }
-
-const BUMP_TITLE = "Bump @titan-design dependencies to npm latest";
 
 /** Opens at most one bump PR per behind consumer and hands it to Shepherd; a failure is that repo's note and never stops the others. */
 export async function bumpConsumers(host: FactoryHost, services: ShepherdServices, ports: ConsumerBumpPorts): Promise<ConsumerBumpSweepNote[]> {
@@ -195,16 +194,25 @@ interface FileWrite {
 }
 
 /**
- * Builds a new branch through the contents API, as the toolchain sweep does; each write's expected blob makes a moved file fail instead of being overwritten.
- * A branch that already exists with no PR is refused, not reused: its other commits would ride into the PR the sweep registers.
+ * Builds the branch through the contents API, as the toolchain sweep does; each write's expected blob makes a moved file fail instead of being overwritten.
+ * A branch that already exists with no PR is built on only while every commit on it is the sweep's own write of one of these files, checked before
+ * and after the writes, since any other commit would ride into the PR the sweep registers. It is never force-pushed or deleted.
  */
 async function openBump(port: GitHubPort, bump: PlannedBump, files: FileWrite[]): Promise<PullRequest> {
   const { repo, branch, tree } = bump;
   const baseSha = await port.getHeadSha(repo, tree.ref);
   if (baseSha === null) throw new Error(`${repo} has no ${tree.ref} branch`);
   const created = await port.ensureBranch(repo, branch, baseSha);
-  if (!created.done) throw new LeftoverBumpBranchError(branch);
-  for (const file of files) await port.putFile(repo, { path: file.path, branch, content: file.content, message: `${BUMP_TITLE}: ${file.path}`, expectedBlobSha: file.expectedBlobSha });
+  const paths = new Set(files.map((file) => file.path));
+  const sweepOnly = async (): Promise<void> => {
+    if (!created.done && !(await isSweepOnlyBranch(port, repo, tree.ref, branch, paths))) throw new LeftoverBumpBranchError(branch);
+  };
+  await sweepOnly();
+  for (const file of files) {
+    const expectedBlobSha = created.done ? file.expectedBlobSha : ((await port.getFile(repo, file.path, branch))?.blobSha ?? null);
+    await port.putFile(repo, { path: file.path, branch, content: file.content, message: bumpCommitMessage(file.path), expectedBlobSha });
+  }
+  await sweepOnly();
   const opened = await port.openPr(repo, { head: branch, base: tree.ref, title: BUMP_TITLE, body: bumpBody(bump.plan) });
   if (!opened.done || !headInRepo(opened.pr, repo)) throw new Error(`${repo} PR #${opened.pr.number} on ${branch} was not opened by this sweep`);
   return opened.pr;
