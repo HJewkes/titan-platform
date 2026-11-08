@@ -9,6 +9,8 @@ import type { WatchRow } from "./view-schema.js";
 export interface DigestInput {
   row: WatchRow;
   run: WorkflowRun;
+  /** A failed run a re-register replaced: it is told once as failed, and its PR's current row stands for it otherwise. */
+  superseded?: true;
 }
 
 const SEAT_FIX_GATES: ReadonlySet<string> = new Set(["ci-failed", "sh-sent-back", "dead-end"]);
