@@ -38,7 +38,7 @@ import { shadowRefresh, trainShadowMigration, trainShadowRef } from "./shepherd/
 import { shadowHeldCheck } from "./shepherd/train-shadow-held.js";
 import { sleep } from "./workflows/land.js";
 import { landPrRoutes } from "./workflows/land-pr.js";
-import { hostPostMerge } from "./workflows/post-merge-adapter.js";
+import { hostPostMerge, type PostMergeHost } from "./workflows/post-merge-adapter.js";
 import { buildSurfaceRoutes, factoryBuildPorts } from "./build-surface/index.js";
 import { portReads } from "./workflows/pr-snapshot.js";
 import type { ShepherdServices } from "./shepherd/services.js";
@@ -58,8 +58,7 @@ export const SHEPHERD_MIGRATIONS: readonly Migration[] = [shepherdMigration(4), 
  */
 export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
   const isAdvisory = given.advisory ?? (() => false);
-  const host = hostPostMerge();
-  const deps = { ...given, port: advisoryPort(given.port, isAdvisory), gitCache: given.gitCache ?? hostCarryPorts, now: given.now ?? host.now, env: given.env ?? host.env, runChore: given.runChore ?? host.runChore };
+  const deps = { ...given, port: advisoryPort(given.port, isAdvisory), gitCache: given.gitCache ?? hostCarryPorts, ...withHost(given) };
   const holds = () => deps.store.get();
   const pause = deps.sleep ?? sleep;
   const freeze = deps.freeze ?? freezeStoreRef(deps.now);
@@ -86,6 +85,12 @@ export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
   const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train, accountLimits, shadow.shadow, order) };
   const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train, freeze, snapshot: deps.snapshot, pacing: deps.pacing, now: shepherdDeps.now, prFiles: deps.prFiles, gateway: deps.gateway, ...(deps.spawnGate && { reviewSlots: deps.spawnGate.reviewSlots }), ...(deps.visualDelivery && { visualDelivery: deps.visualDelivery }), ...(deps.thawAlert && { thawAlert: deps.thawAlert }), mergeOrder: { order: () => order.get(), holds, rules: orderRules, waits: orderWaits, now: shepherdDeps.now }, ...(deps.roster && { roster: deps.roster }), ...(deps.exitNotice?.hubSeat && { hubSeat: deps.exitNotice.hubSeat }), visualThreshold: deps.visualThreshold ?? deps.review?.visualThreshold };
   return Object.assign([...retryingGhServerErrors([...land, ...withMergeWake(shepherd, deps.mergeWake)], { sleep: pause, now: shepherdDeps.now }), trainLeaveRoute(train, shepherdDeps.now), ...mergeOrderRoutes({ order: () => order.get(), holds, rules: orderRules, port: deps.port, train, timing, now: shepherdDeps.now }), orderExpiryRoute({ order: () => order.get(), rules: orderRules, now: shepherdDeps.now }), redeployRoute(shepherdDeps.now, deps.redeploy), ...auditRoutes(deps.audit ?? systemAuditPorts(ownCheckout())), ...buildSurfaceRoutes(factoryBuildPorts({ ...deps, agentChatBin: shepherdDeps.agentChatBin }))], { database, shepherd: services });
+}
+
+/** The caller's clock, environment and chore runner, or the live host's for any it leaves out. */
+function withHost(given: FactoryRouteDeps): PostMergeHost {
+  const host = hostPostMerge();
+  return { now: given.now ?? host.now, env: given.env ?? host.env, runChore: given.runChore ?? host.runChore };
 }
 
 /** A hold's named reviewer is read through the review wiring's roster and reader; with no dispatch wired no hold is ever satisfied. */
