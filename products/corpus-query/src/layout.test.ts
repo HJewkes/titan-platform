@@ -36,6 +36,14 @@ describe("archive layout", () => {
     expect(new Set([a.id, b.id]).size).toBe(2);
   });
 
+  it("gives paths that differ only by zero-padding distinct ids", () => {
+    const padded = describeArchive("northwind/book_01/chapter_01.txt");
+    const bare = describeArchive("northwind/book_1/chapter_1.txt");
+
+    expect(padded.id).not.toBe(bare.id);
+    expect([padded.book, padded.chapter]).toEqual([bare.book, bare.chapter]);
+  });
+
   it("files other/ posts under series other, dated from the header", () => {
     const meta = describeArchive("other/2026-03-09_A-Short-Break.txt", "A Short Break");
 
