@@ -284,6 +284,7 @@
   "shepherd/lan-gates.ts",
   "shepherd/last-read-head.ts",
   "shepherd/leave-land.ts",
+  "shepherd/leftover-bump.ts",
   "shepherd/lineage.ts",
   "shepherd/lockfile-regen.ts",
   "shepherd/machine-linux.ts",

@@ -1,4 +1,4 @@
-import { fakeGitHub, fakeSha, githubPort, type FakeGitHub, type GitHubPort, type GitHubWire, type PrFile, type RepoSlug } from "@titan-design/github";
+import { fakeGitHub, fakeSha, githubPort, type BranchCommit, type FakeGitHub, type GitHubPort, type GitHubWire, type PrFile, type RepoSlug } from "@titan-design/github";
 import type { LatestRegistry } from "../shepherd/consumer-bump.js";
 import type { LockfileRegen, LockfileTree } from "../shepherd/lockfile-regen.js";
 import { MERGE_ON_GREEN_GRANT, type SeatBook } from "../shepherd/seats.js";
@@ -77,6 +77,8 @@ export function consumerBumpWorld(options: ConsumerBumpWorldOptions = {}): Consu
   const openedBodies: string[] = [];
   const port = new Proxy(portFor(CONSUMER_A), {
     get: (_target, method) => (repo: RepoSlug, ...rest: unknown[]) => {
+      // One sweep writes to every consumer as one login, so a repo-less read may ask any fake.
+      if (method === "actorLogin") return portFor(CONSUMER_A).actorLogin();
       if (method === "getFile" && repo === options.getFileThrows) return Promise.reject(new Error(`${repo} getFile failed`));
       const body: unknown = method === "openPr" ? Reflect.get(Object(rest[0]), "body") : undefined;
       if (typeof body === "string") openedBodies.push(body);
@@ -101,16 +103,47 @@ function seeded(repo: RepoSlug, files: Record<string, string>): FakeGitHub {
   return fake;
 }
 
+/** A branch made from main and left with no PR, as a sweep that crashed or a person would leave it. */
+export function seedLeftoverBranch(fake: FakeGitHub, branch: string): void {
+  fake.refs.set(branch, fakeSha(`leftover:${branch}`));
+  copyMain(fake, branch);
+}
+
+function copyMain(fake: FakeGitHub, branch: string): void {
+  for (const [key, file] of [...fake.files]) if (key.startsWith("main:")) fake.files.set(`${branch}:${key.slice("main:".length)}`, { ...file });
+}
+
+/** Puts a commit on `branch` as a push would: its files land on the branch, and `main...branch` lists it last. */
+export function pushBranchCommit(fake: FakeGitHub, branch: string, commit: Omit<BranchCommit, "sha">, files: Record<string, string>): void {
+  for (const [path, content] of Object.entries(files)) fake.files.set(`${branch}:${path}`, { content, blobSha: fakeSha(`${branch}:${path}:${content}`) });
+  appendBranchCommit(fake, branch, { sha: fakeSha(`${branch}:${commit.message}`), ...commit });
+}
+
+function appendBranchCommit(fake: FakeGitHub, branch: string, commit: BranchCommit): void {
+  const key = `main...${branch}`;
+  const compared = fake.compares.get(key) ?? { mergeBaseSha: fakeSha("main"), files: [] };
+  fake.compares.set(key, { ...compared, commits: [...(compared.commits ?? []), commit] });
+}
+
 /**
- * Real GitHub starts a new branch with its base's files and lists a PR's changed files; the fake does neither, so a created
- * branch gets a copy of main's and a created PR lists the files its head changed from main.
+ * Real GitHub starts a new branch with its base's files, records each contents write as a commit by the writer, and lists a
+ * PR's changed files; the fake does none of these, so this wire does, and `main...branch` compares the files changed from main.
  */
 function branchingWire(fake: FakeGitHub): GitHubWire {
   return {
     ...fake.wire,
+    putContent: async (repo, request) => {
+      const written = await fake.wire.putContent(repo, request);
+      appendBranchCommit(fake, request.branch, { sha: fakeSha(`${request.branch}:${written.blobSha}`), authorLogin: fake.actor, committerLogin: fake.actor, message: request.message });
+      return written;
+    },
+    compareCommits: async (repo, base, head) => {
+      const compared = await fake.wire.compareCommits(repo, base, head);
+      return { ...compared, files: changedFiles(fake, head).map((file) => file.path) };
+    },
     createRef: async (repo, branch, sha) => {
       await fake.wire.createRef(repo, branch, sha);
-      for (const [key, file] of [...fake.files]) if (key.startsWith("main:")) fake.files.set(`${branch}:${key.slice("main:".length)}`, { ...file });
+      copyMain(fake, branch);
     },
     createPr: async (repo, request) => {
       const pr = await fake.wire.createPr(repo, request);

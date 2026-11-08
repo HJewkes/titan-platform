@@ -14,7 +14,7 @@ import { readContentBytes } from "./file-bytes.js";
 import { listDirectory } from "./directory.js";
 import { listCommitStatuses } from "./commit-status-read.js";
 import { sendMergeIntoBranch } from "./merge-into-branch.js";
-import { compareFiles, readAncestry } from "./compare.js";
+import { compareCommits, compareFiles, readAncestry } from "./compare.js";
 import { branchRules, classicRequiredChecks, type GhRule } from "./rules-read.js";
 
 export interface GhCliOptions {
@@ -101,6 +101,7 @@ export function wireOver(api: Rest, postCheckRun: CheckRunPoster): GitHubWire {
     listPrCommits: (repo, number) => api.pages(`repos/${repo}/pulls/${number}/commits`, { per_page: "100" }, (page: { sha: string }[]) => page.map((commit) => commit.sha)),
     listCommits: (repo, since) => api.pages(`repos/${repo}/commits`, { since, per_page: "100" }, (page: { sha: string; commit: { message: string } }[]) => page.map((commit) => ({ sha: commit.sha, message: commit.commit.message }))),
     compareFiles: (repo, base, head) => compareFiles(api, repo, base, head),
+    compareCommits: (repo, base, head) => compareCommits(api, repo, base, head),
     compareAncestry: (repo, base, head) => readAncestry(api, repo, base, head),
     getAuthenticatedLogin: async () => (await api.get<{ login: string }>("user")).login,
     listIssueComments: (repo, number) => listIssueComments(api, repo, number),

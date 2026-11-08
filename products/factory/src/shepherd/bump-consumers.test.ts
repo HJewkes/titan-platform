@@ -1,10 +1,11 @@
 import { fakeSha, type RepoSlug } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import { CONSUMER_A, CONSUMER_B, CONSUMER_C, CONSUMER_DENIED, CONSUMER_SEATS, REGENERATED_MARK, consumerBumpWorld, type ConsumerBumpWorld } from "../test-support/consumer-bump.js";
+import { CONSUMER_A, CONSUMER_B, CONSUMER_C, CONSUMER_DENIED, CONSUMER_SEATS, REGENERATED_MARK, consumerBumpWorld, pushBranchCommit, seedLeftoverBranch, type ConsumerBumpWorld } from "../test-support/consumer-bump.js";
 import { shepherdFixture } from "../test-support/shepherd.js";
 import { bumpConsumers, planConsumerBumps } from "./bump-consumers.js";
 import { BUMP_BRANCH_PREFIX, bumpBranch } from "./consumer-bump.js";
+import { bumpCommitMessage } from "./leftover-bump.js";
 import { RegisterArgs, policyFor } from "./register-args.js";
 import { CONSUMER_BUMP_IMPLEMENTER, registerConsumerBump } from "./self-register.js";
 import type { ShepherdServices } from "./services.js";
@@ -236,16 +237,75 @@ describe("bumpConsumers", () => {
     expect(w.fakes.get(CONSUMER_A)!.effects).toMatchObject({ createRef: 0, putContent: 0, createPr: 0 });
   });
 
-  it("fails closed naming the branch when a leftover bump branch has no PR", async () => {
-    const w = world();
+  /** CONSUMER_A's planned branch, made from main with no PR and one commit on it. */
+  async function leftoverWith(w: World, commit: { authorLogin: string; message: string }, files: Record<string, string>): Promise<string> {
     const { bumps } = await planConsumerBumps(w.services, w.registry);
-    w.fakes.get(CONSUMER_A)!.refs.set(bumps[0]!.branch, fakeSha("leftover"));
+    const fake = w.fakes.get(CONSUMER_A)!;
+    seedLeftoverBranch(fake, bumps[0]!.branch);
+    pushBranchCommit(fake, bumps[0]!.branch, { ...commit, committerLogin: commit.authorLogin }, files);
+    return bumps[0]!.branch;
+  }
+
+  it("sweep-only leftover branch is reused: the fresh bump goes on top and its PR opens", async () => {
+    const w = world();
+    const fake = w.fakes.get(CONSUMER_A)!;
+    const branch = await leftoverWith(w, { authorLogin: fake.actor, message: bumpCommitMessage("package.json") }, { "package.json": "{}\n" });
 
     const notes = await bumpConsumers(w.host, w.services, ports(w));
 
-    expect(notes[0]).toEqual({ repo: CONSUMER_A, error: "LeftoverBumpBranchError", branch: bumps[0]!.branch });
-    expect(w.fakes.get(CONSUMER_A)!.effects).toMatchObject({ putContent: 0, createPr: 0 });
+    expect(notes[0]).toMatchObject({ repo: CONSUMER_A, pr: expect.any(Number), registered: expect.any(String) });
+    expect(fake.effects).toMatchObject({ createRef: 0, deleteRef: 0, createPr: 1 });
+    expect(fake.pr(notes[0]!.pr!).headRef).toBe(branch);
+    expect(fake.files.get(`${branch}:package.json`)!.content).toContain('"@titan-design/example-a": "^1.4.0"');
+    expect(fake.files.get(`${branch}:pnpm-lock.yaml`)!.content).toContain(REGENERATED_MARK);
+  });
+
+  it("sweep-only leftover branch is reused after a sweep crashed before its PR opened", async () => {
+    const w = world();
+    const fake = w.fakes.get(CONSUMER_A)!;
+    const createPr = fake.wire.createPr;
+    fake.wire.createPr = async () => Promise.reject(new Error("socket hang up"));
+    expect((await bumpConsumers(w.host, w.services, ports(w)))[0]).toEqual({ repo: CONSUMER_A, error: "Error" });
+    fake.wire.createPr = createPr;
+    const written = fake.effects.putContent;
+
+    const notes = await bumpConsumers(w.host, w.services, ports(w));
+
+    expect(notes[0]).toMatchObject({ repo: CONSUMER_A, pr: expect.any(Number), registered: expect.any(String) });
+    expect(fake.effects).toMatchObject({ createRef: 1, putContent: written, createPr: 1 });
+  });
+
+  it("branch with a foreign commit stays fail-closed, naming the branch", async () => {
+    const w = world();
+    const branch = await leftoverWith(w, { authorLogin: "stranger", message: bumpCommitMessage("package.json") }, { "package.json": "{}\n" });
+
+    const notes = await bumpConsumers(w.host, w.services, ports(w));
+
+    expect(notes[0]).toEqual({ repo: CONSUMER_A, error: "LeftoverBumpBranchError", branch });
+    expect(w.fakes.get(CONSUMER_A)!.effects).toMatchObject({ putContent: 0, createPr: 0, deleteRef: 0 });
     expect(notes[1]).toMatchObject({ repo: CONSUMER_B, registered: expect.any(String) });
+  });
+
+  it("branch with a sweep commit touching a non-manifest file stays fail-closed", async () => {
+    const w = world();
+    const fake = w.fakes.get(CONSUMER_A)!;
+    const branch = await leftoverWith(w, { authorLogin: fake.actor, message: bumpCommitMessage("package.json") }, { "src/index.ts": "export {};\n" });
+
+    const notes = await bumpConsumers(w.host, w.services, ports(w));
+
+    expect(notes[0]).toEqual({ repo: CONSUMER_A, error: "LeftoverBumpBranchError", branch });
+    expect(fake.effects).toMatchObject({ putContent: 0, createPr: 0, deleteRef: 0 });
+  });
+
+  it("branch with a sweep-authored commit whose message is not the sweep's stays fail-closed", async () => {
+    const w = world();
+    const fake = w.fakes.get(CONSUMER_A)!;
+    const branch = await leftoverWith(w, { authorLogin: fake.actor, message: "hand edit" }, { "package.json": "{}\n" });
+
+    const notes = await bumpConsumers(w.host, w.services, ports(w));
+
+    expect(notes[0]).toEqual({ repo: CONSUMER_A, error: "LeftoverBumpBranchError", branch });
+    expect(fake.effects).toMatchObject({ putContent: 0, createPr: 0 });
   });
 
   it("does not reopen a closed bump PR", async () => {

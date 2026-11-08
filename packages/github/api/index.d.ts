@@ -173,13 +173,6 @@ interface ReviewComment {
     resolved: boolean;
 }
 
-/**
- * Where `head` stands relative to `base`, as GitHub's compare `status` says: `ahead` means `base` is an ancestor of
- * `head`, `behind` the reverse. `missing` is a 404: GitHub does not have one of the commits, which right after a push
- * can mean it has not caught up yet, so it is not proof the commit never existed.
- */
-type Ancestry = "ahead" | "behind" | "identical" | "diverged" | "missing";
-
 interface Commit {
     sha: string;
     parents: string[];
@@ -211,10 +204,20 @@ interface LoggedCommit {
     sha: string;
     message: string;
 }
-/** A file in a directory listing: its repo path and blob sha, with no content read. */
-interface RepoEntry {
-    path: string;
-    blobSha: string;
+/** One commit a branch holds past its merge base; a login is null when GitHub ties that git identity to no account. */
+interface BranchCommit {
+    sha: string;
+    authorLogin: string | null;
+    committerLogin: string | null;
+    message: string;
+}
+/** A branch's own commits, oldest first, and the paths they change together; check `truncated` before trusting either. */
+interface BranchCommits {
+    mergeBaseSha: string;
+    commits: BranchCommit[];
+    files: string[];
+    /** GitHub caps compare at 300 files and 250 commits without saying so. */
+    truncated: boolean;
 }
 /** A file in a directory listing: its repo path and blob sha, with no content read. */
 interface RepoEntry {
@@ -272,6 +275,13 @@ interface CheckRunPr {
     number: number;
     baseRef: string;
 }
+
+/**
+ * Where `head` stands relative to `base`, as GitHub's compare `status` says: `ahead` means `base` is an ancestor of
+ * `head`, `behind` the reverse. `missing` is a 404: GitHub does not have one of the commits, which right after a push
+ * can mean it has not caught up yet, so it is not proof the commit never existed.
+ */
+type Ancestry = "ahead" | "behind" | "identical" | "diverged" | "missing";
 
 /**
  * What GitHub's Merges API did with `head`: 201 made a merge commit, 204 found `head` already in the branch, and 409
@@ -449,6 +459,8 @@ interface GitHubWire {
     /** Commits on the default branch committed at or after `since`, newest first, every page. */
     listCommits(repo: RepoSlug, since: string): Promise<LoggedCommit[]>;
     compareFiles(repo: RepoSlug, base: string, head: string): Promise<CompareResult>;
+    /** The compare API's commits and files for `base...head`, every page. */
+    compareCommits(repo: RepoSlug, base: string, head: string): Promise<BranchCommits>;
     /** The compare API's `status` for `base...head`; a 404 answers `missing`. */
     compareAncestry(repo: RepoSlug, base: string, head: string): Promise<Ancestry>;
     getAuthenticatedLogin(): Promise<string>;
@@ -558,6 +570,10 @@ interface GitHubPort {
     listDefaultBranchCommits(repo: RepoSlug, since: string): Promise<LoggedCommit[]>;
     /** The merge base of `base` and `head`, and the paths changed since it; check `truncated` before trusting the list. */
     compareFiles(repo: RepoSlug, base: string, head: string): Promise<CompareResult>;
+    /** The commits on `head` past its merge base with `base`, oldest first, with author and committer logins, and the paths they change; needs no PR. */
+    listBranchCommits(repo: RepoSlug, base: string, head: string): Promise<BranchCommits>;
+    /** The login this port writes as: `GitHubPortOptions.login` when set, else the authenticated user, read once. */
+    actorLogin(): Promise<string>;
     /** Whether `head` is ahead of, behind, identical to or diverged from `base`; `missing` when GitHub has not got one of them (HTTP 404). Any other failure throws. */
     compareAncestry(repo: RepoSlug, base: string, head: string): Promise<Ancestry>;
     /**
@@ -1243,11 +1259,12 @@ interface FakeGitHub {
     history: (LoggedCommit & {
         committedAt: string;
     })[];
-    /** `base...head` to the compare inputs; an unset pair compares as no change. Caps of 300 files and 250 commits apply. */
+    /** `base...head` to the compare inputs; an unset pair compares as no change. Caps of 300 files and 250 commits apply; `totalCommits` defaults to the length of `commits`. */
     compares: Map<string, {
         mergeBaseSha: string;
         files: string[];
         totalCommits?: number;
+        commits?: BranchCommit[];
     }>;
     /** PR number to its issue comments, in posting order. */
     comments: Map<number, IssueComment[]>;
@@ -1444,4 +1461,4 @@ declare function memoryPoolStateStore(): PoolStateStore;
 declare function isPoolUnavailable(value: unknown): value is PoolUnavailable;
 declare function githubApiPool<C, A extends PoolAnswer>(options: GithubApiPoolOptions<C, A>): GithubApiPool<C, A>;
 
-export { type AmbiguousDiffPin, type Ancestry, type AppCredentials, type ApprovedHeadWalk, type ApprovedHeadWalkInput, BACKSTOP_CAPS, type BackstopCommit, type BackstopDonePr, type BackstopOpenPr, type BackstopRange, type BackstopRequest, type BackstopReview, type BackstopSnapshot, type BackstopTrain, BackstopTruncated, BlobTooLargeError, CHECK_CONCLUSIONS, COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, type CallClass, type CheckConclusion, type CheckFinding, type CheckRun, type CheckRunPr, type CiVerdict, type CiVerdictInput, type CiWaitOptions, type CiWaitOutcome, type CiWaitResult, type CleanMergeTree, type Commit, type CommitStatus, type CompareResult, type Cooldown, type CreateCheckRunRequest, DIFF_HASH_ARGS, DONE_OVERLAP_MS, type DiffCarry, DiffHashError, type DiffPin, type DiffPinOptions, type DiffSerialisation, type ExactDiffPin, FAKE_APP_ID, FORCE_PUSHES_CAP, type FakeEffects, type FakeFaultyRead, type FakeGitHub, FakeHttpError, type Fields, FileListTruncatedError, type ForcePush, type ForcePushPage, ForcePushesTruncated, GITHUB_ACTIONS_APP_ID, type GatewayBudget, type GhCliOptions, GhError, type GhExec, type GhExecOptions, type GhResult, type GitExec, type GitHubClient, GitHubConflictError, type GitHubFailure, type GitHubFailureInput, GitHubInputError, type GitHubPort, type GitHubPortOptions, GitHubRequestError, type GitHubWire, type GithubApiPool, type GithubApiPoolOptions, HARDENED_GIT_ENV, type HeadChecksInput, type HeadRef, type InstallationToken, type IssueComment, type JobStep, type LoggedCommit, LsRemoteError, type LsRemoteOptions, MAX_BASE_MERGES, MUTATION_SPACING_MS, type MergeBlockReason, type MergeBlocker, type MergeIntoBranchRequest, type MergeIntoBranchResult, type MergeMessage, type MergeMethod, type MergeReadiness, type MergeReadinessInput, type MergeUpCheck, type MergeUpProof, type OctokitClientOptions, type OctokitWireOptions, type OpenPrList, type OpenPrRequest, POOL_PRIORITY, PROBE_REARM_MS, PR_COMMITS_CAP, PR_FILES_CAP, type PoolAnswer, type PoolClock, type PoolPairState, type PoolPriority, type PoolStateStore, type PoolUnavailable, type PrFile, type ProbeVerdict, type PullRequest, type PutFileRequest, RATE_FLOOR, RATE_LIMIT_PHRASES, type RateBudget, type RateBudgetOptions, type RateLane, type RateLimit, type RateLimitFacts, type RateLimitProbeAnswer, type RateWindow, type RefRead, type RepoEntry, type RepoFile, type RepoSlug, type RequiredChecks, type ResetSource, type Rest, type ReviewComment, type RollupContext, type RulesetList, type SkipReason, type SquashCommit, type SquashInput, type SquashMessage, type SquashSource, TRAIN_PREFIX, type WriteResult, WriteRetriesExhaustedError, appInstallationToken, appInstallationTokenOverHttp, approvedHeadWalk, backoffMs, ciVerdict, ciWait, classifyGitHubFailure, defangCiSkip, diffCarry, diffHashes, execGh, execGit, fakeGitHub, fakeSha, formatSquashMessage, ghCliWire, gitDiffPin, gitMergeUpCheck, githubApiPool, githubPort, graphqlPoints, headCheckFindings, isConcluded, isPassing, isPassingConclusion, isPoolUnavailable, isRepo, isSucceeded, latestPerName, loadRequiredContexts, lsRemoteBranchHead, lsRemotePullHead, memoryPoolStateStore, mergeReadiness, nextResetAt, octokitClient, octokitRest, octokitWire, parseGitHubToken, parseRateLimitMarker, probeVerdict, probedBucket, rateBudget, rateLimitMarker, readBackstopSnapshot, serialiseDiff, sharedOctokit, sharedRateBudget, signAppJwt, snapshotRequests, statusCheckRuns, successRun, withoutSupersededCancels };
+export { type AmbiguousDiffPin, type Ancestry, type AppCredentials, type ApprovedHeadWalk, type ApprovedHeadWalkInput, BACKSTOP_CAPS, type BackstopCommit, type BackstopDonePr, type BackstopOpenPr, type BackstopRange, type BackstopRequest, type BackstopReview, type BackstopSnapshot, type BackstopTrain, BackstopTruncated, BlobTooLargeError, type BranchCommit, type BranchCommits, CHECK_CONCLUSIONS, COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, type CallClass, type CheckConclusion, type CheckFinding, type CheckRun, type CheckRunPr, type CiVerdict, type CiVerdictInput, type CiWaitOptions, type CiWaitOutcome, type CiWaitResult, type CleanMergeTree, type Commit, type CommitStatus, type CompareResult, type Cooldown, type CreateCheckRunRequest, DIFF_HASH_ARGS, DONE_OVERLAP_MS, type DiffCarry, DiffHashError, type DiffPin, type DiffPinOptions, type DiffSerialisation, type ExactDiffPin, FAKE_APP_ID, FORCE_PUSHES_CAP, type FakeEffects, type FakeFaultyRead, type FakeGitHub, FakeHttpError, type Fields, FileListTruncatedError, type ForcePush, type ForcePushPage, ForcePushesTruncated, GITHUB_ACTIONS_APP_ID, type GatewayBudget, type GhCliOptions, GhError, type GhExec, type GhExecOptions, type GhResult, type GitExec, type GitHubClient, GitHubConflictError, type GitHubFailure, type GitHubFailureInput, GitHubInputError, type GitHubPort, type GitHubPortOptions, GitHubRequestError, type GitHubWire, type GithubApiPool, type GithubApiPoolOptions, HARDENED_GIT_ENV, type HeadChecksInput, type HeadRef, type InstallationToken, type IssueComment, type JobStep, type LoggedCommit, LsRemoteError, type LsRemoteOptions, MAX_BASE_MERGES, MUTATION_SPACING_MS, type MergeBlockReason, type MergeBlocker, type MergeIntoBranchRequest, type MergeIntoBranchResult, type MergeMessage, type MergeMethod, type MergeReadiness, type MergeReadinessInput, type MergeUpCheck, type MergeUpProof, type OctokitClientOptions, type OctokitWireOptions, type OpenPrList, type OpenPrRequest, POOL_PRIORITY, PROBE_REARM_MS, PR_COMMITS_CAP, PR_FILES_CAP, type PoolAnswer, type PoolClock, type PoolPairState, type PoolPriority, type PoolStateStore, type PoolUnavailable, type PrFile, type ProbeVerdict, type PullRequest, type PutFileRequest, RATE_FLOOR, RATE_LIMIT_PHRASES, type RateBudget, type RateBudgetOptions, type RateLane, type RateLimit, type RateLimitFacts, type RateLimitProbeAnswer, type RateWindow, type RefRead, type RepoEntry, type RepoFile, type RepoSlug, type RequiredChecks, type ResetSource, type Rest, type ReviewComment, type RollupContext, type RulesetList, type SkipReason, type SquashCommit, type SquashInput, type SquashMessage, type SquashSource, TRAIN_PREFIX, type WriteResult, WriteRetriesExhaustedError, appInstallationToken, appInstallationTokenOverHttp, approvedHeadWalk, backoffMs, ciVerdict, ciWait, classifyGitHubFailure, defangCiSkip, diffCarry, diffHashes, execGh, execGit, fakeGitHub, fakeSha, formatSquashMessage, ghCliWire, gitDiffPin, gitMergeUpCheck, githubApiPool, githubPort, graphqlPoints, headCheckFindings, isConcluded, isPassing, isPassingConclusion, isPoolUnavailable, isRepo, isSucceeded, latestPerName, loadRequiredContexts, lsRemoteBranchHead, lsRemotePullHead, memoryPoolStateStore, mergeReadiness, nextResetAt, octokitClient, octokitRest, octokitWire, parseGitHubToken, parseRateLimitMarker, probeVerdict, probedBucket, rateBudget, rateLimitMarker, readBackstopSnapshot, serialiseDiff, sharedOctokit, sharedRateBudget, signAppJwt, snapshotRequests, statusCheckRuns, successRun, withoutSupersededCancels };

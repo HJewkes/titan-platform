@@ -3,7 +3,7 @@ import type { GitExec } from "./exec.js";
 import type { ForcePush } from "./force-pushes.js";
 import type { MergeIntoBranchResult } from "./merge-into-branch.js";
 import type { ReviewComment } from "./review-comment.js";
-import type { CheckRun, Commit, CommitStatus, GitHubWire, IssueComment, JobStep, LoggedCommit, MergeMessage, PrFile, PullRequest, RequiredChecks, SquashSource } from "./port.js";
+import type { BranchCommit, CheckRun, Commit, CommitStatus, GitHubWire, IssueComment, JobStep, LoggedCommit, MergeMessage, PrFile, PullRequest, RequiredChecks, SquashSource } from "./port.js";
 
 /** Counts of calls that change GitHub; a crash test asserts each is at most one. */
 export interface FakeEffects {
@@ -102,8 +102,8 @@ export interface FakeGitHub {
   baseChanges: { number: number; base: string }[];
   /** The default branch's history for `listCommits`, in any order; it answers those at or after `since`, newest first. */
   history: (LoggedCommit & { committedAt: string })[];
-  /** `base...head` to the compare inputs; an unset pair compares as no change. Caps of 300 files and 250 commits apply. */
-  compares: Map<string, { mergeBaseSha: string; files: string[]; totalCommits?: number }>;
+  /** `base...head` to the compare inputs; an unset pair compares as no change. Caps of 300 files and 250 commits apply; `totalCommits` defaults to the length of `commits`. */
+  compares: Map<string, { mergeBaseSha: string; files: string[]; totalCommits?: number; commits?: BranchCommit[] }>;
   /** PR number to its issue comments, in posting order. */
   comments: Map<number, IssueComment[]>;
   /** PR number to its inline review comments, resolved or not. */
