@@ -139,7 +139,7 @@ describe("sh-publish-review", () => {
     const { host, runId } = await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE") });
 
     expect(fake.createdCheckRuns).toEqual([]);
-    expect(publishResults(host, runId)).toEqual([{ headSha: A, conclusion: "success", published: false, reason: "no shepherd.reviewCheck App is configured" }]);
+    expect(publishResults(host, runId)).toEqual([{ headSha: A, conclusion: "success", published: false, reason: "no shepherd.reviewCheck App is configured", review: { reviewError: "no shepherd.reviewCheck App is configured" } }]);
   });
 
   it("records a failed post without failing the run, and carries checkRunUrl only when published", async () => {
@@ -149,7 +149,8 @@ describe("sh-publish-review", () => {
 
     const { host, runId } = await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE"), reviewCheck: failing });
 
-    expect(publishResults(host, runId)).toEqual([{ headSha: A, conclusion: "success", published: false, reason: "the check run post failed: HTTP 401" }]);
+    const [approval] = fake.reviews.get(1) ?? [];
+    expect(publishResults(host, runId)).toEqual([{ headSha: A, conclusion: "success", published: false, reason: "the check run post failed: HTTP 401", review: { approved: approval!.id } }]);
   });
 
   it("carries the check run URL in the step output when published", async () => {
@@ -158,6 +159,24 @@ describe("sh-publish-review", () => {
     const { host, runId } = await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE"), reviewCheck: githubPort(fake.wire) });
 
     const [id] = fake.createdCheckRuns.map((run) => run.id);
-    expect(publishResults(host, runId)).toEqual([{ headSha: A, conclusion: "success", published: true, checkRunId: id, checkRunUrl: `https://github.com/${REPO}/runs/${id}` }]);
+    const [approval] = fake.reviews.get(1) ?? [];
+    expect(publishResults(host, runId)).toEqual([{ headSha: A, conclusion: "success", published: true, checkRunId: id, checkRunUrl: `https://github.com/${REPO}/runs/${id}`, review: { approved: approval!.id } }]);
+  });
+
+  it("a MERGE at the head approves the PR at that head under the App, beside the success check", async () => {
+    const fake = fakeGitHub();
+
+    await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE"), reviewCheck: githubPort(fake.wire) });
+
+    expect(fake.reviews.get(1)?.map(({ state, commitId, login }) => ({ state, commitId, login }))).toEqual([{ state: "APPROVED", commitId: A, login: fake.appLogin }]);
+  });
+
+  it("a FIX_FIRST posts no approval and records no review in the step result", async () => {
+    const fake = fakeGitHub();
+
+    const { host, runId } = await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "FIX_FIRST"), reviewCheck: githubPort(fake.wire), gate: "sh-sent-back" });
+
+    expect(fake.reviews.get(1) ?? []).toEqual([]);
+    expect(publishResults(host, runId).map((result) => "review" in result)).toEqual([false]);
   });
 });

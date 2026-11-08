@@ -1,0 +1,61 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the approval gates on not-failure instead of success",
+      "file": "products/factory/src/shepherd/review-approval.ts",
+      "find": "if (check.conclusion !== \"success\") return undefined;",
+      "replace": "if (check.conclusion === \"failure\") return undefined;",
+      "kills": ["approveOnSuccess a MERGE held because auto-merge is armed posts no approval and records nothing"]
+    },
+    {
+      "name": "a replay posts again instead of reusing its approval",
+      "file": "products/factory/src/shepherd/review-approval.ts",
+      "find": "    if (existing) return { approved: existing.id };\n",
+      "replace": "",
+      "kills": ["approveOnSuccess a replay after a crash finds its approval at the head and posts no second one"]
+    },
+    {
+      "name": "a person's review carrying the marker counts as Shepherd's",
+      "file": "products/factory/src/shepherd/review-approval.ts",
+      "find": "review.userType === \"Bot\" && ",
+      "replace": "",
+      "kills": ["approveOnSuccess a person's approval at the head without the marker does not stop Shepherd's own approval"]
+    },
+    {
+      "name": "a missing App records nothing",
+      "file": "products/factory/src/shepherd/review-approval.ts",
+      "find": "if (!port) return { reviewError: \"no shepherd.reviewCheck App is configured\" };",
+      "replace": "if (!port) return undefined;",
+      "kills": ["approveOnSuccess with no App configured a success records the missing App instead of approving"]
+    },
+    {
+      "name": "a failed review post fails the step",
+      "file": "products/factory/src/shepherd/review-approval.ts",
+      "find": "    return { reviewError: `the review post failed: ${failureOf(error)}` };",
+      "replace": "    throw error;",
+      "kills": ["approveOnSuccess a rejected review post is recorded by HTTP status only and never throws"]
+    },
+    {
+      "name": "the approval body drops the check title naming the carry rule",
+      "file": "products/factory/src/shepherd/review-approval.ts",
+      "find": "return `${check.title}\\n\\n${check.summary}",
+      "replace": "return `${check.summary}",
+      "kills": ["approveOnSuccess a MERGE carried from an older reviewed head is approved at the PR's head, not the head the verdict named"]
+    },
+    {
+      "name": "the step result drops the review",
+      "file": "products/factory/src/shepherd/publish-review.ts",
+      "find": "return { ...posted, ...(review && { review }) };",
+      "replace": "return posted;",
+      "kills": ["sh-publish-review carries the check run URL in the step output when published"]
+    },
+    {
+      "name": "the step never approves",
+      "file": "products/factory/src/shepherd/publish-review.ts",
+      "find": "  const review = await approveOnSuccess(port, input, check);",
+      "replace": "  const review = undefined;",
+      "kills": ["sh-publish-review a MERGE at the head approves the PR at that head under the App, beside the success check"]
+    }
+  ]
+}
