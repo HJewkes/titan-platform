@@ -9,6 +9,15 @@
       "kills": [
         "runExtremeMutation refuses coverage measured at another commit before running anything"
       ]
+    },
+    {
+      "name": "extreme mutation counts a vi.mocked module as reached by the test that mocks it",
+      "file": "packages/code-graph/src/analysis/extreme-mutation.ts",
+      "find": "fileTestReach(nodes, edges)",
+      "replace": "fileTestReach(nodes, edges.filter((e) => e.kind !== \"mocks\"))",
+      "kills": [
+        "runExtremeMutation reads a survivor as pseudo-tested when the only outside test that imports it also vi.mocks it"
+      ]
     }
   ]
 }

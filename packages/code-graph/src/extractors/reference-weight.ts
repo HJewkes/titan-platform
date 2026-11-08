@@ -25,7 +25,7 @@ import type { EdgeKind, GraphEdge } from "../types.js";
  * `typeOnly` only while every folded specifier is type-only. Callers pass only
  * declaration-level `import type` / `export type … from`: under
  * verbatimModuleSyntax an all-inline `{ type T }` still emits an import that
- * loads the module at runtime.
+ * loads the module at runtime. Returns the merged edge's attrs, for a caller that marks how it loads.
  */
 export function addWeightedEdge(
   agg: Map<string, GraphEdge>,
@@ -35,15 +35,17 @@ export function addWeightedEdge(
   specifier: string,
   weight: number,
   typeOnly = false,
-): void {
+): Record<string, unknown> {
   const key = JSON.stringify([kind, dstId]);
   const attrs = agg.get(key)?.attrs;
   if (attrs) {
     attrs.weight = (typeof attrs.weight === "number" ? attrs.weight : 0) + weight;
     if (!typeOnly) delete attrs.typeOnly;
-    return;
+    return attrs;
   }
-  agg.set(key, { srcId, dstId, kind, attrs: typeOnly ? { specifier, weight, typeOnly } : { specifier, weight } });
+  const fresh = typeOnly ? { specifier, weight, typeOnly } : { specifier, weight };
+  agg.set(key, { srcId, dstId, kind, attrs: fresh });
+  return fresh;
 }
 
 /**

@@ -84,6 +84,16 @@ describe("runExtremeMutation", { timeout: 120_000 }, () => {
     expect(gitIn(dir)("worktree", "list").split("\n")).toHaveLength(1);
   });
 
+  it("reads a survivor as pseudo-tested when the only outside test that imports it also vi.mocks it", async () => {
+    const { dir, head } = fixtureRepo();
+    const edges = [...EDGES, { srcId: SHARED_TEST, dstId: SHARED, kind: "mocks" } satisfies GraphEdge];
+
+    const { findings, summary } = await runExtremeMutation({ ...options(dir, head), store: { listEdges: () => edges } });
+
+    expect(findings.map((f) => f.id)).toContain(`code-graph:pseudo-tested:${SHARED}#shared`);
+    expect(summary).toMatchObject({ survived: 2, caught: 1, unverified: 0 });
+  });
+
   it("refuses coverage measured at another commit before running anything", async () => {
     const { dir, head } = fixtureRepo();
     fs.writeFileSync(path.join(dir, LOG), fn("logged") + "\n");

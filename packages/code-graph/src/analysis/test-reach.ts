@@ -236,22 +236,31 @@ function pushTo(map: Map<string, string[]>, key: string, value: string): void {
   else map.set(key, [value]);
 }
 
-/** The runtime module hops (type-only ones load nothing) and each file's `mocks` targets. */
+function addTo(map: Map<string, Set<string>>, key: string, value: string): void {
+  const set = map.get(key);
+  if (set) set.add(value);
+  else map.set(key, new Set([value]));
+}
+
+/** The runtime module hops (type-only ones load nothing), the `require()` ones among them, and each file's `mocks` targets. */
 function moduleHops(edges: readonly GraphEdge[]) {
   const callees = new Map<string, string[]>();
   const mocked = new Map<string, string[]>();
+  const requires = new Map<string, Set<string>>();
   for (const e of edges) {
     if (e.kind === "mocks") pushTo(mocked, e.srcId, e.dstId);
     else if ((e.kind === "imports" || e.kind === "re-exports") && e.srcId !== e.dstId && !e.attrs?.typeOnly) {
       pushTo(callees, e.srcId, e.dstId);
+      if (e.attrs?.require === true) addTo(requires, e.srcId, e.dstId);
     }
   }
-  return { callees, mocked };
+  return { callees, mocked, requires };
 }
 
 /**
  * Which test files reach each file through runtime `imports` and `re-exports`, each test's `mocks`
- * masked as {@link testsReachingMasked} does (TP-4910). `tests` lists the test file ids in bit order.
+ * masked as {@link testsReachingMasked} does (TP-4910). An `imports` edge marked `require` stays live
+ * under a mock (TP-4950). `tests` lists the test file ids in bit order.
  */
 export function fileTestReach(
   nodes: readonly GraphNode[],
@@ -259,6 +268,6 @@ export function fileTestReach(
   cap = MOCK_MASK_CAP,
 ): MaskedReach & { tests: string[] } {
   const tests = nodes.filter((n) => n.kind === "file" && n.role === "test").map((n) => n.id);
-  const { callees, mocked } = moduleHops(edges);
-  return { tests, ...testsReachingMasked(callees, tests, { mocked, cap }) };
+  const { callees, mocked, requires } = moduleHops(edges);
+  return { tests, ...testsReachingMasked(callees, tests, { mocked, requires, cap }) };
 }
