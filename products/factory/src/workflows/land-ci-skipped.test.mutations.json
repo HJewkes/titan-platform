@@ -9,15 +9,6 @@
       "kills": [
         "ci-wait reads a failure that a newer skip hides as red, not green and not pending tp#3329: run 42478488621's failed mutants job, then run 42478515177's skip, reads red naming the failure"
       ]
-    },
-    {
-      "name": "a run still going behind a newer skip counts as a hidden failure",
-      "file": "products/factory/src/workflows/skip-hidden.ts",
-      "find": "own.filter((run) => isConcluded(run) && !isPassingConclusion",
-      "replace": "own.filter((run) => !isPassingConclusion",
-      "kills": [
-        "ci-wait reads a failure that a newer skip hides as red, not green and not pending keeps waiting while the push run's mutants job is still running beside the newer skip"
-      ]
     }
   ]
 }

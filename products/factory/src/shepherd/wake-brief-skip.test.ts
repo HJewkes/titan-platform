@@ -5,7 +5,12 @@ import { describeWake } from "./wake-brief.js";
 const REPO = "octo/demo";
 const H1 = fakeSha("head-1");
 
-const run = (name: string, id: number, workflowRunId: number, startedAt: string, conclusion: string): CheckRun => ({ ...successRun(name, id, startedAt, conclusion), headSha: H1, workflowRunId });
+const run = (name: string, id: number, workflowRunId: number, startedAt: string, conclusion: string | null): CheckRun => ({
+  ...successRun(name, id, startedAt, conclusion ?? "success"),
+  headSha: H1,
+  workflowRunId,
+  ...(conclusion === null && { status: "in_progress", conclusion: null, completedAt: null }),
+});
 
 async function ciRedWake(runs: CheckRun[]) {
   const fake = fakeGitHub({ repo: REPO });
@@ -24,6 +29,13 @@ describe("a ci-red wake over a failure that a newer skip hides (tp#3329)", () =>
     expect(wake.reason).toContain("1 failing check run(s)");
     expect(wake.payload).toContain("mutation spec refused");
     expect(logged).toEqual([32]);
+  });
+
+  it("hands over no run still going behind a newer skip, since it has not failed", async () => {
+    const { wake, logged } = await ciRedWake([run("fix-proof-mutants", 32, 3001, "2026-01-01T12:03:58Z", null), run("fix-proof-mutants", 44, 4001, "2026-01-01T12:04:24Z", "skipped")]);
+
+    expect(wake.payload).toContain("No failing check run was found at this head.");
+    expect(logged).toEqual([]);
   });
 
   it("finds no failing run when the skip follows a run that passed", async () => {

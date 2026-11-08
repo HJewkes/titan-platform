@@ -9,6 +9,15 @@
       "kills": [
         "a ci-red wake over a failure that a newer skip hides (tp#3329) hands the fixer the push run's failed mutants job, though the PR-edit run's skip is the newest run"
       ]
+    },
+    {
+      "name": "a run still going behind a newer skip counts as a hidden failure",
+      "file": "products/factory/src/workflows/skip-hidden.ts",
+      "find": "own.filter((run) => isConcluded(run) && !isPassingConclusion",
+      "replace": "own.filter((run) => !isPassingConclusion",
+      "kills": [
+        "a ci-red wake over a failure that a newer skip hides (tp#3329) hands over no run still going behind a newer skip, since it has not failed"
+      ]
     }
   ]
 }
