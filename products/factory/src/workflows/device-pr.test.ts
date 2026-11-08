@@ -8,6 +8,7 @@ import { OWNER } from "../test-support/resolver.js";
 import { factoryWorkflows } from "../workflows.js";
 import { DEVICE_CHECK } from "./land.js";
 import { landPrRoutes } from "./land-pr.js";
+import { hostPostMerge } from "./post-merge-adapter.js";
 import { devicePrWorkflow } from "./device-pr.js";
 
 const H2 = fakeSha("head2");
@@ -24,7 +25,7 @@ function devicePrWorld(params: Record<string, string> = { deviceStep: STEP }): {
   fake.addPr({ headSha: H1 });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   let clock = 0;
-  const routes = landPrRoutes({ gitCache: hostCarryPorts, port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms) });
+  const routes = landPrRoutes({ ...hostPostMerge(), gitCache: hostCarryPorts, port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [devicePrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   return { host, fake, runId: host.runtime.start("device-pr", { repo: REPO, pr: "1", ...params }) };
