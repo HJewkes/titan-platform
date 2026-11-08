@@ -101,9 +101,17 @@ export function flashVerdict(input: QaCheckInput): Verdict {
 export function textContrastVerdict(input: QaCheckInput): Verdict {
   const { contrast } = report(input);
   if (contrast === undefined) return { pass: false, detail: "qa.json has no contrast report" };
-  const { below } = contrast.text;
+  const { below, unmeasured } = contrast.text;
   const shown = below.slice(0, DETAIL_FINDINGS).map(({ beat, text, px, ratio, need }) => `[${beat}] "${text}" ${px} px ${ratio}:1 (needs ${need}:1)`).join("; ");
-  return { pass: below.length === 0, detail: below.length === 0 ? "no text under the contrast thresholds" : `${below.length} text runs under contrast: ${shown}` };
+  const verdict = below.length === 0 ? "no text under the contrast thresholds" : `${below.length} text runs under contrast: ${shown}`;
+  return { pass: below.length === 0, detail: `${verdict}${unmeasuredDetail(unmeasured)}` };
+}
+
+/** Text runs with no ratio, named apart from the verdict: an unmodelled ground neither passes nor fails a run. */
+function unmeasuredDetail(unmeasured: readonly { beat: string; text: string; reason: string }[]): string {
+  if (unmeasured.length === 0) return "";
+  const shown = unmeasured.slice(0, DETAIL_FINDINGS).map(({ beat, text, reason }) => `[${beat}] "${text}" unmeasured: ${reason}`).join("; ");
+  return `; ${unmeasured.length} text runs unmeasured: ${shown}`;
 }
 
 /** Chart marks under the non-text ratio against their ground: none passes; a qa.json from before the check fails. */

@@ -1,5 +1,5 @@
 /**
- * Contrast and the frame rules of the in-page inspector: two chromes at once (a beat-boundary overprint), stage
+ * Contrast (against the ground inspect-ground.ts resolves) and the frame rules of the in-page inspector: two chromes at once (a beat-boundary overprint), stage
  * content under a chrome band, a later compare card filled before an earlier one, a problem drawn in the success
  * tone, a card row that repeats its title or shows a bare number, two unrelated labels side by side close enough to
  * read as one phrase, and sibling stat values that do not sit level. Steps run in the page; see inspect-geometry.ts.
@@ -17,15 +17,6 @@ function blend(_h: Inspector, c: Rgba, op: number, under: Rgb): Rgb {
   return [c[0] * k + under[0] * (1 - k), c[1] * k + under[1] * (1 - k), c[2] * k + under[2] * (1 - k)]
 }
 
-function bgBehind(h: Inspector, el: Element): Rgb {
-  for (let e: Element | null = el; e && e.nodeType === 1; e = e.parentElement) {
-    if (e instanceof SVGElement) continue
-    const c = h.rgba(getComputedStyle(e).backgroundColor)
-    if (c[3] > 0.05) return h.blend(c, h.opacity(e), h.pageBg())
-  }
-  return h.pageBg()
-}
-
 function lum(_h: Inspector, c: Rgb): number {
   const linear = (v: number) => { const u = v / 255; return u <= 0.03928 ? u / 12.92 : ((u + 0.055) / 1.055) ** 2.4 }
   return 0.2126 * linear(c[0]) + 0.7152 * linear(c[1]) + 0.0722 * linear(c[2])
@@ -35,17 +26,29 @@ function hex(_h: Inspector, c: Rgb): string {
   return `#${c.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`
 }
 
+/** WCAG's contrast ratio of two colours, 1 to 21. */
+function ratio(h: Inspector, a: Rgb, b: Rgb): number {
+  const [la, lb] = [h.lum(a), h.lum(b)]
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
+}
+
+/**
+ * A run's text against its worst sampled ground (bgBehind). A ground that cannot be modelled is reported as
+ * `contrast-unmeasured` with its reason, never scored against the page background.
+ */
 function checkContrast(h: Inspector, run: Run): void {
   if (run.el.closest('[data-qa-context]')) return
+  const ground = h.bgBehind(run.el, run.box)
+  const at = { text: run.text.slice(0, 40), px: run.px, rect: h.r4(run.box) }
+  if ('unmeasured' in ground) return h.add('contrast-unmeasured', run.el, { ...at, reason: ground.unmeasured })
   const s = getComputedStyle(run.el)
-  const bg = h.bgBehind(run.el)
-  const fg = h.blend(h.rgba(run.el instanceof SVGElement ? s.fill : s.color), run.op, bg)
-  const [text, ground] = [h.lum(fg), h.lum(bg)]
-  const ratio = (Math.max(text, ground) + 0.05) / (Math.min(text, ground) + 0.05)
+  const ink = h.rgba(run.el instanceof SVGElement ? s.fill : s.color)
+  const scored = ground.samples.map((bg) => { const fg = h.blend(ink, run.op, bg); return { fg, bg, ratio: h.ratio(fg, bg) } })
+  const worst = scored.reduce((a, b) => (b.ratio < a.ratio ? b : a))
   const need = run.px >= h.opts.largePx ? h.opts.largeContrast : h.opts.minContrast
-  if (ratio >= need) return
-  const colours = { need, fg: h.hex(fg), bg: h.hex(bg) }
-  h.add('low-contrast', run.el, { text: run.text.slice(0, 40), ratio: Math.round(ratio * 100) / 100, ...colours, op: Math.round(run.op * 100) / 100, px: run.px, rect: h.r4(run.box) })
+  if (worst.ratio >= need) return
+  const colours = { need, fg: h.hex(worst.fg), bg: h.hex(worst.bg) }
+  h.add('low-contrast', run.el, { ...at, ratio: Math.round(worst.ratio * 100) / 100, ...colours, op: Math.round(run.op * 100) / 100 })
 }
 
 /** Two chromes at once: the outgoing beat's headline and chapter line over the incoming one's. */
@@ -132,7 +135,7 @@ function checkLevel(h: Inspector): void {
   }
 }
 
-export const FRAME_RULE_STEPS: PartialSteps<'pageBg' | 'blend' | 'bgBehind' | 'lum' | 'hex' | 'checkContrast' | 'checkDoubleChrome' | 'checkUnderChrome'
+export const FRAME_RULE_STEPS: PartialSteps<'pageBg' | 'blend' | 'lum' | 'hex' | 'ratio' | 'checkContrast' | 'checkDoubleChrome' | 'checkUnderChrome'
   | 'checkFillOrder' | 'checkTone' | 'checkCardText' | 'checkAdjacent' | 'checkLevel'> = {
-  pageBg, blend, bgBehind, lum, hex, checkContrast, checkDoubleChrome, checkUnderChrome, checkFillOrder, checkTone, checkCardText, checkAdjacent, checkLevel,
+  pageBg, blend, lum, hex, ratio, checkContrast, checkDoubleChrome, checkUnderChrome, checkFillOrder, checkTone, checkCardText, checkAdjacent, checkLevel,
 }

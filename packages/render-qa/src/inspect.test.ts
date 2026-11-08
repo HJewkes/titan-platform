@@ -48,7 +48,7 @@ after(async () => {
 describe('qa-fixtures: each fixture yields exactly its finding kinds', { timeout: BROWSER_TIMEOUT_MS }, () => {
   test('every check has a bad fixture and a clean twin', () => {
     const checks = ['text-overlap', 'text-box', 'occluded', 'box-overlap', 'edge-through-pill', 'off-frame', 'content-overflow',
-      'small-text', 'low-contrast', 'ellipsis', 'wrap', 'flex-wrap', 'flex-wrap-contents', 'crowding', 'anchor-offset', 'labels-dropped', 'edge-label-far', 'container', 'decor', 'camera',
+      'small-text', 'low-contrast', 'contrast-unmeasured', 'ellipsis', 'wrap', 'flex-wrap', 'flex-wrap-contents', 'crowding', 'anchor-offset', 'labels-dropped', 'edge-label-far', 'container', 'decor', 'camera',
       'double-chrome', 'under-chrome', 'fill-order', 'tone-mismatch', 'title-repeat', 'unlabelled-number', 'label-adjacent', 'misaligned']
     for (const check of checks) {
       assert.ok(fixtures.some((f) => f.id === `${check}-bad`), `${check}-bad`)
@@ -63,7 +63,9 @@ describe('qa-fixtures: each fixture yields exactly its finding kinds', { timeout
   for (const id of ['text-overlap-bad', 'text-overlap-clean', 'text-overlap-ink-clean', 'text-box-bad', 'text-box-clean', 'occluded-bad',
     'occluded-clean', 'box-overlap-bad', 'box-overlap-clean', 'container-bad', 'container-clean', 'decor-bad', 'decor-clean',
     'edge-through-pill-bad', 'edge-through-pill-clean', 'off-frame-bad', 'off-frame-clean', 'content-overflow-bad', 'content-overflow-clean', 'content-overflow-ink-clean',
-    'small-text-bad', 'small-text-clean', 'low-contrast-bad', 'low-contrast-clean', 'context-dim-clean', 'ellipsis-bad', 'ellipsis-clean',
+    'small-text-bad', 'small-text-clean', 'low-contrast-bad', 'low-contrast-clean',
+    'low-contrast-veils-bad', 'low-contrast-veils-clean', 'low-contrast-gradient-bad', 'low-contrast-gradient-clean',
+    'contrast-unmeasured-bad', 'contrast-unmeasured-clean', 'context-dim-clean', 'ellipsis-bad', 'ellipsis-clean',
     'wrap-bad', 'wrap-clean', 'flex-wrap-bad', 'flex-wrap-clean', 'flex-wrap-contents-bad', 'flex-wrap-contents-clean', 'crowding-bad',
     'crowding-clean', 'anchor-offset-bad', 'anchor-offset-clean', 'labels-dropped-bad', 'labels-dropped-clean', 'edge-label-far-bad', 'edge-label-far-clean', 'camera-bad', 'camera-clean', 'arrow-twins',
     ...['double-chrome', 'under-chrome', 'fill-order', 'tone-mismatch', 'title-repeat', 'unlabelled-number', 'label-adjacent', 'misaligned'].flatMap((k) => [`${k}-bad`, `${k}-clean`])]) {
@@ -115,6 +117,47 @@ describe('the cases the first probe got wrong', { timeout: BROWSER_TIMEOUT_MS },
     assert.equal(finding.fg, '#4a5058')
     assert.match(String(finding.bg), /^#[0-9a-f]{6}$/)
     assert.ok(finding.ratio! < finding.need!)
+  })
+
+  // catches: a ground read from the nearest painted ancestor alone, which scored text on two stacked veils as on one
+  test('text on a semi-transparent panel over a dark page uses the composited colour', async () => {
+    // Act
+    const [finding] = (await kindsAt('low-contrast-veils-bad')).findings.filter((f) => f.kind === 'low-contrast')
+
+    // Assert: two 40 % white veils over #0d1117 composite to 64 % white
+    assert.equal(finding?.bg, '#a8a9ab')
+  })
+
+  // catches: a gradient ignored for the page background behind it, which passed light text on its light end
+  test('text over a linear gradient fails when its worst sample fails', async () => {
+    // Act
+    const [finding] = (await kindsAt('low-contrast-gradient-bad')).findings.filter((f) => f.kind === 'low-contrast')
+
+    // Assert: the worst sample sits at the light end, far from the page's #0d1117
+    assert.ok(finding)
+    assert.ok(finding.ratio! < finding.need!)
+    assert.ok(parseInt(String(finding.bg).slice(1, 3), 16) > 0x90, String(finding.bg))
+  })
+
+  // catches: an image under the text scored as the page background, a ratio nobody measured
+  test('text over a background image yields unmeasured, with no ratio', async () => {
+    // Act
+    const { findings } = await kindsAt('contrast-unmeasured-bad')
+
+    // Assert
+    const [finding] = findings.filter((f) => f.kind === 'contrast-unmeasured')
+    assert.equal(finding?.reason, 'background image')
+    assert.equal(finding?.ratio, undefined)
+    assert.equal(findings.filter((f) => f.kind === 'low-contrast').length, 0)
+  })
+
+  test('plain solid backgrounds are unchanged', async () => {
+    // Act
+    const [finding] = (await kindsAt('low-contrast-bad')).findings.filter((f) => f.kind === 'low-contrast')
+
+    // Assert: #4a5058 on the fixture page's opaque #0d1117
+    assert.equal(finding?.bg, '#0d1117')
+    assert.equal(finding?.ratio, 2.32)
   })
 
   // catches: off-frame measuring the layout box, which held a card waiting for its cue fully clipped 80 px right
