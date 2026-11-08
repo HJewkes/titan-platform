@@ -11,7 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { collectReport, writeReport } from "./codewatch-report.mjs";
 import { MACHINE_SEED, refreshSeed, runWithColdRetry, seedArgs, seedKeep, usesMachineSeed } from "./dag-check-seed.mjs";
-import { BUSY_EXIT_CODE, DEFAULT_LOCK_DIR, LockTimeoutError, acquire, lockSlots, lockWaitMs, cleanupOnSignal, release, runCappedWorker, runCleanups } from "./dag-check-lock.mjs";
+import { BUSY_EXIT_CODE, DEFAULT_LOCK_DIR, INDEXER_HEAP_CAP_MB, LockTimeoutError, acquire, lockSlots, lockWaitMs, cleanupOnSignal, release, runCappedWorker, runCleanups } from "./dag-check-lock.mjs";
 
 const SCRIPT = fileURLToPath(import.meta.url);
 const ROOT = path.resolve(path.dirname(SCRIPT), "..");
@@ -19,7 +19,7 @@ const CONFIG = path.join(ROOT, ".codewatch/check.json");
 const ENTRY = path.join(ROOT, "packages/code-graph/dist/index.js");
 // Live heap peaks near 460 MB cold and 930 MB seeded (the reuse basis sits beside the new index); uncapped,
 // V8 lets garbage grow the process to about 4 GB. At 1024 MB every seeded run aborted and fell back to a 10-minute cold index.
-const HEAP_CAP_MB = 2048;
+export const HEAP_CAP_MB = INDEXER_HEAP_CAP_MB;
 const WORKER_FLAG = "--locked-worker";
 const WORK_DIR_FLAG = "--work-dir";
 
