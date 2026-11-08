@@ -2,21 +2,21 @@
   "v": 1,
   "mutations": [
     {
-      "name": "the approval gates on not-failure instead of success",
+      "name": "every publish approves, not only a success",
       "file": "products/factory/src/shepherd/review-approval.ts",
-      "find": "if (check.conclusion !== \"success\") return undefined;",
-      "replace": "if (check.conclusion === \"failure\") return undefined;",
+      "find": "  if (success) await approve(port, target, check, kept, result);",
+      "replace": "  await approve(port, target, check, kept, result);",
       "kills": [
-        "approveOnSuccess a MERGE held because auto-merge is armed posts no approval and records nothing"
+        "syncApproval a FIX_FIRST at the head Shepherd approved dismisses that approval, so no Shepherd approval is left standing"
       ]
     },
     {
-      "name": "a replay posts again instead of reusing its approval",
+      "name": "only approvals at other heads are dismissed, so a FIX_FIRST at the approved head keeps it",
       "file": "products/factory/src/shepherd/review-approval.ts",
-      "find": "    if (existing) return { approved: existing.id };\n",
-      "replace": "",
+      "find": "own.filter((review) => review !== kept)",
+      "replace": "own.filter((review) => review.commitId !== check.headSha)",
       "kills": [
-        "approveOnSuccess a replay after a crash finds its approval at the head and posts no second one"
+        "syncApproval a FIX_FIRST at the head Shepherd approved dismisses that approval, so no Shepherd approval is left standing"
       ]
     },
     {
@@ -25,25 +25,25 @@
       "find": "review.userType === \"Bot\" && ",
       "replace": "",
       "kills": [
-        "approveOnSuccess a person's approval at the head without the marker does not stop Shepherd's own approval"
+        "syncApproval a FIX_FIRST leaves a person's approval and another bot's unmarked approval standing"
       ]
     },
     {
-      "name": "a missing App records nothing",
+      "name": "a replay posts again instead of reusing its approval",
       "file": "products/factory/src/shepherd/review-approval.ts",
-      "find": "if (!port) return { reviewError: \"no shepherd.reviewCheck App is configured\" };",
-      "replace": "if (!port) return undefined;",
+      "find": "result.approved = kept?.id ?? (await",
+      "replace": "result.approved = (await",
       "kills": [
-        "approveOnSuccess with no App configured a success records the missing App instead of approving"
+        "syncApproval a replay after a crash finds its approval at the head and posts no second one"
       ]
     },
     {
-      "name": "a failed review post fails the step",
+      "name": "a refused dismissal stops the rest and fails the step",
       "file": "products/factory/src/shepherd/review-approval.ts",
-      "find": "    return { reviewError: `the review post failed: ${failureOf(error)}` };",
-      "replace": "    throw error;",
+      "find": "      result.reviewError ??= failed(`dismissing review ${review.id} failed`, target, check, error);",
+      "replace": "      throw error;",
       "kills": [
-        "approveOnSuccess a rejected review post is recorded by HTTP status only and never throws"
+        "syncApproval a dismissal GitHub refuses is recorded by status, and the other stale approvals are still dismissed"
       ]
     }
   ]

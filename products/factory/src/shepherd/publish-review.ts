@@ -6,7 +6,7 @@ import { codeRoute, step } from "../workflows/land.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
 import type { ObservedPr } from "./observe.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
-import { approveOnSuccess, type ReviewApproval } from "./review-approval.js";
+import { syncApproval, type ReviewApproval } from "./review-approval.js";
 import { reviewCheck, type ReviewCheckInput, type ReviewConclusion } from "./review-check.js";
 import { REVIEW_OUTCOMES, type ReviewOutcome } from "./route-table.js";
 
@@ -69,11 +69,11 @@ function reviewOutcome(verdict: Verdict, observed: ObservedPr, headSha: string):
 export const publishReviewRoute = (deps: ShepherdDeps): StepRoute =>
   codeRoute(PUBLISH_REVIEW_STEP, deps.now, async (raw: unknown) => publish(deps.reviewCheck, deps.port, PublishInputSchema.parse(raw)));
 
-/** The check run and, on a success, the APPROVE review at the same head; neither failing fails the step. */
+/** The check run, then Shepherd's approvals brought into line with it; neither failing fails the step. */
 async function publish(port: GitHubPort | undefined, reads: ArmedReader, input: PublishInput): Promise<PublishResult> {
   const check = reviewCheck({ ...input, autoMergeArmed: await autoMergeArmed(reads, input) });
   const posted = await postCheck(port, input, check);
-  const review = await approveOnSuccess(port, input, check);
+  const review = await syncApproval(port, input, check);
   return { ...posted, ...(review && { review }) };
 }
 
