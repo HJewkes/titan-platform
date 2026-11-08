@@ -13,7 +13,7 @@ function scriptedRest(files: Entry[]): Rest {
   return {
     get: unused,
     getOrNull: unused,
-    pages: async (_path, _fields, pick) => pick(page as never),
+    pages: async (_path, _fields, pick) => pick(JSON.parse(JSON.stringify(page))),
     revalidatePages: unused,
     text: unused,
     send: unused,
