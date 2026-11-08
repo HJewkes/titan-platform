@@ -790,8 +790,9 @@ author cannot approve it. Without the App, nothing is posted: the step records
   marker `<!-- shepherd-review run=<runId> head=<sha> -->`. A replay finds Shepherd's marked
   approval already at that head and posts no second one. The step records `review.approved`.
 - **Stale approvals are dismissed** when a later publish is anything but `success`. GitHub keeps
-  an approval after a push, so Shepherd dismisses each review that is a bot's, still `APPROVED`,
-  carries the marker, and sits at a head other than the one just published. Human reviews and
+  an approval after a push, and a non-success at the same head (an unmet attestation after a
+  merge verdict) leaves it too, so Shepherd dismisses each review that is a bot's, still `APPROVED`,
+  and carries the marker, at any head. Human reviews and
   other bots' reviews are never touched. The step records `review.dismissed` with the ids, and a
   replay finds nothing left to dismiss.
 

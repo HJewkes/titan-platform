@@ -19,8 +19,9 @@ interface PublishedCheck {
 type DismissPort = Pick<GitHubPort, "listReviews" | "dismissReview">;
 
 /**
- * GitHub keeps an approval after a push, so a non-success at a new head dismisses Shepherd's own approvals at every other
- * head; human reviews and other bots' reviews are never touched. A replay finds them already dismissed and does nothing.
+ * GitHub keeps an approval after a push, and a non-success at the same head (an unmet attestation after a MERGE) leaves it too, so a
+ * non-success dismisses all of Shepherd's own approvals, whatever head they sit at, and the decision follows the check. Human reviews
+ * and other bots' reviews are never touched. A replay finds them already dismissed and does nothing.
  * Never throws: each failure is recorded, and the rest are still tried.
  */
 export async function dismissStale(port: DismissPort | undefined, target: DismissTarget, check: PublishedCheck): Promise<ReviewDismissal | undefined> {
@@ -28,7 +29,7 @@ export async function dismissStale(port: DismissPort | undefined, target: Dismis
   if (!port) return { reviewError: "no shepherd.reviewCheck App is configured" };
   let stale: PullReview[];
   try {
-    stale = (await port.listReviews(target.repo, target.pr)).filter((review) => isShepherdApproval(review) && review.commitId !== check.headSha);
+    stale = (await port.listReviews(target.repo, target.pr)).filter((review) => isShepherdApproval(review));
   } catch (error) {
     console.warn(`shepherd: listing reviews of ${target.repo}#${target.pr} failed: ${consoleTextOf(error)}`);
     return { reviewError: `the review list failed: ${failureOf(error)}` };
@@ -53,4 +54,4 @@ async function dismissEach(port: DismissPort, target: DismissTarget, stale: Pull
 }
 
 const dismissalMessage = (check: PublishedCheck): string =>
-  `Shepherd's review at ${check.headSha.slice(0, 12)} is ${check.conclusion}; this approval covered an older head only.`;
+  `Shepherd's review at ${check.headSha.slice(0, 12)} is ${check.conclusion}; this approval no longer applies.`;

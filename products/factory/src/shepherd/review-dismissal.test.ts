@@ -40,13 +40,22 @@ describe("dismissStale", () => {
     expect(result).toEqual({ dismissed: [11] });
   });
 
-  it("an approval at the published head itself is not an older head's and stays", async () => {
+  it("a non-success at the same head dismisses Shepherd's approval there, so the decision follows the check", async () => {
     const { fake, pr } = scene([shepherdApproval(11, B)]);
 
     const result = await dismissStale(githubPort(fake.wire), { repo: REPO, pr }, published({}));
 
-    expect(states(fake, pr)).toEqual([{ id: 11, state: "APPROVED" }]);
-    expect(result).toEqual({ dismissed: [] });
+    expect(states(fake, pr)).toEqual([{ id: 11, state: "DISMISSED" }]);
+    expect(result).toEqual({ dismissed: [11] });
+  });
+
+  it("a person's approval at the published head stays when Shepherd's own is dismissed there", async () => {
+    const person: PullReview = { ...shepherdApproval(12, B), login: "someone", userType: "User" };
+    const { fake, pr } = scene([shepherdApproval(11, B), person]);
+
+    await dismissStale(githubPort(fake.wire), { repo: REPO, pr }, published({}));
+
+    expect(states(fake, pr)).toEqual([{ id: 11, state: "DISMISSED" }, { id: 12, state: "APPROVED" }]);
   });
 
   it("a person's approval carrying the marker and another bot's unmarked approval are left alone", async () => {
