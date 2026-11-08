@@ -2,12 +2,21 @@
   "v": 1,
   "mutations": [
     {
-      "name": "a failure a newer skip hides is waited on, not read red",
+      "name": "ci-wait judges a check by its newest run, skips included",
       "file": "products/factory/src/workflows/land-ci.ts",
-      "find": " || behindSkips.has(run.id));",
-      "replace": ");",
+      "find": "const newest = new Map(newestRanPerCheck(counted).map(",
+      "replace": "const newest = new Map(latestPerName(counted).map(",
       "kills": [
         "ci-wait reads a failure that a newer skip hides as red, not green and not pending tp#3329: run 42478488621's failed mutants job, then run 42478515177's skip, reads red naming the failure"
+      ]
+    },
+    {
+      "name": "a newer skip jumps past a rerun still going to the failure before it",
+      "file": "products/factory/src/workflows/skip-hidden.ts",
+      "find": "const ran = own.filter((run) => !isSkip(run));",
+      "replace": "const ran = own.filter((run) => !isSkip(run) && isConcluded(run));",
+      "kills": [
+        "ci-wait reads a failure that a newer skip hides as red, not green and not pending keeps waiting on a rerun still going between the failure and the newer skip"
       ]
     }
   ]

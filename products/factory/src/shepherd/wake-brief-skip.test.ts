@@ -38,6 +38,15 @@ describe("a ci-red wake over a failure that a newer skip hides (tp#3329)", () =>
     expect(logged).toEqual([]);
   });
 
+  it("hands over nothing while a rerun is still going between the failure and the newer skip", async () => {
+    const runs = [run("fix-proof-mutants", 32, 3001, "2026-01-01T12:03:58Z", "failure"), run("fix-proof-mutants", 52, 5001, "2026-01-01T12:04:10Z", null), run("fix-proof-mutants", 44, 4001, "2026-01-01T12:04:24Z", "skipped")];
+
+    const { wake, logged } = await ciRedWake(runs);
+
+    expect(wake.payload).toContain("No failing check run was found at this head.");
+    expect(logged).toEqual([]);
+  });
+
   it("finds no failing run when the skip follows a run that passed", async () => {
     const { wake, logged } = await ciRedWake([run("fix-proof-mutants", 32, 3001, "2026-01-01T12:03:58Z", "success"), run("fix-proof-mutants", 44, 4001, "2026-01-01T12:04:24Z", "skipped")]);
 

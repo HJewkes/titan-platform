@@ -13,6 +13,7 @@ const REQUIRED = ["dag-check", "hub-compose", "validate"];
 /** tp#3329's two fix-proof workflow runs at one head: the push's run, then the PR-edit run that skipped every job. */
 const PUSH_RUN = 42478488621;
 const EDIT_RUN = 42478515177;
+const RERUN = 5001;
 
 const Outcome = z.object({ ok: z.boolean(), error: z.string().optional(), output: z.string().optional() });
 const Failing = z.array(z.object({ name: z.string(), workflowRunId: z.number().nullable() }));
@@ -80,6 +81,33 @@ describe("ci-wait reads a failure that a newer skip hides as red, not green and 
 
     expect(out.ok).toBe(false);
     expect(out.error).toContain("waiting on fix-proof-mutants");
+  });
+
+  it("keeps waiting on a rerun still going between the failure and the newer skip", async () => {
+    const rerun = job("fix-proof-mutants", 52, RERUN, at("12:04:10", null), null);
+
+    const out = await ciWait([...requiredGreen(), ...pushRun("failure"), rerun, ...editRun()]);
+
+    expect(out.ok).toBe(false);
+    expect(out.error).toContain("waiting on fix-proof-mutants");
+  });
+
+  it("reads red, not green, when the push run's base job and gate failed and the edit run skipped them", async () => {
+    const failedGate = pushRun("success").map((run) => (run.name === "fix-proof-base" || run.name === "fix-proof" ? { ...run, conclusion: "failure" } : run));
+
+    const out = await ciWait([...requiredGreen(), ...failedGate, ...editRun()]);
+
+    expect(out.verdict).toBe("red");
+    expect(out.failing?.map((check) => check.name).sort()).toEqual(["fix-proof", "fix-proof-base"]);
+  });
+
+  it("reads an older failure red beside a newer passing rerun, though a skip is newer than both (TP-497)", async () => {
+    const rerun = job("fix-proof-mutants", 52, RERUN, at("12:04:10", "12:04:20"), "success");
+
+    const out = await ciWait([...requiredGreen(), ...pushRun("failure"), rerun, ...editRun()]);
+
+    expect(out.verdict).toBe("red");
+    expect(out.failing).toEqual([{ name: "fix-proof-mutants", workflowRunId: PUSH_RUN }]);
   });
 
   it("still waits on a required context with no run, beside settled skips", async () => {
