@@ -1313,7 +1313,7 @@ Key exports:
 
 ### [`style-checker`](https://hjewkes.github.io/titan-platform/reference/style-checker)
 
-Tier 2, `@titan-design/style-checker@0.4.4`. Run external lint tools (ruff, ESLint) against configs generated from a style profile, normalize their output into one diagnostic shape, and diff observations against a profile
+Tier 2, `@titan-design/style-checker@0.4.4`. Run external lint tools (ruff, ESLint, pyright, vulture, pydoclint, import-linter) against configs generated from a style profile, normalize their output into one diagnostic shape, and diff observations against a profile
 
 **Use this when:**
 
