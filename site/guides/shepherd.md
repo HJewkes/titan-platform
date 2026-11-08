@@ -773,6 +773,37 @@ non-merge commit, another first parent, a second parent off the base, a hand-res
 tree, or one overlapping file asks the owner again. The `sh-approval-carry:<head>` step records the
 rule `own-merge-up`, both trees, the base commit, and the pull request's and the base side's paths.
 
+## The review Shepherd posts {#posted-review}
+
+The `sh-publish-review:<head>` step publishes what a review came to on GitHub, at the head it
+covers, under the GitHub App in `shepherd.reviewCheck` (`appId`, `installationId`,
+`privateKeyPath`). The App needs **Checks: write** and **Pull requests: write**, and it must be
+installed on each shepherded repository. An App identity is required because a pull request's
+author cannot approve it. Without the App, nothing is posted: the step records
+`published: false`, plus `review.reviewError` on a success that was owed an approval, and the run
+goes on.
+
+- **The `shepherd/review` check run** is posted on every publish: `success` for a MERGE or a
+  carried approval, `failure` for a FIX_FIRST, and `action_required` for everything that holds the
+  merge (auto-merge armed, a moved head, release blockers, an unmet attestation, no verdict).
+- **An APPROVE pull request review** is posted at the same head exactly when the check is
+  `success`. Its body ends in the marker `<!-- shepherd-review run=<runId> head=<sha> -->`. A
+  replay finds Shepherd's marked approval already at that head and posts no second one. The step
+  records `review.approved`.
+- **Standing approvals are dismissed** when a later publish is anything but `success`, at any
+  head, the published one included. A MERGE publish can approve a head that the same run then
+  republishes as `action_required` (an unmet attestation), and GitHub keeps an approval after a
+  push, so Shepherd dismisses each review that is a bot's, still `APPROVED`, and carries the
+  marker naming the commit it was given at. Human reviews and other bots' reviews are never touched. The step records
+  `review.dismissed` with the ids, and a replay finds nothing left to dismiss. A success keeps
+  only its own approval at the published head and dismisses the rest. Once the dismissals
+  succeed, every guard that holds the check also holds the approval.
+
+A failed post, list or dismissal is recorded in `review.reviewError` by HTTP status only, with the
+full message on the local console, and never fails the step. Shepherd's merge path is unchanged:
+it still merges through the `MRG-AU-*` rows, and the approval makes that a reviewed merge on
+GitHub's own record.
+
 ## Steps
 
 The steps of `shepherd-pr` that an agent or the owner answers. Every other step is software. A doc lint matches each row to the step registry.
