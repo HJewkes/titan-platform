@@ -179,4 +179,16 @@ describe("sh-publish-review", () => {
     expect(fake.reviews.get(1) ?? []).toEqual([]);
     expect(publishResults(host, runId).map((result) => "review" in result)).toEqual([false]);
   });
+
+  it("a head moved after the MERGE dismisses the approval at the reviewed head when the new head publishes action_required", async () => {
+    const fake = fakeGitHub();
+    let moved = false;
+    const moveOnce = (head: string) => void (head === A && !moved && ((moved = true), fake.pushHead(1, B)));
+
+    const { host, runId } = await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE", moveOnce), reviewCheck: githubPort(fake.wire) });
+
+    const [approval] = fake.reviews.get(1) ?? [];
+    expect(approval).toMatchObject({ commitId: A, state: "DISMISSED" });
+    expect(publishResults(host, runId).slice(0, 2).map((result) => result.review)).toEqual([{ approved: approval!.id }, { dismissed: [approval!.id] }]);
+  });
 });

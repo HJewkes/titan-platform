@@ -22,6 +22,8 @@ const BUILD_TSCONFIGS = ["tsconfig.build.json", "tsconfig.json"] as const;
 /** The convention `remapDistToSrc` already applies to cross-package imports, for a package whose tsconfig names no dirs. */
 const DIST_TO_SRC: OutputMapping = { outDir: "dist", rootDir: "src" };
 
+const EXTENSIONLESS_SOURCES = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx"] as const;
+
 const MAX_EXTENDS_DEPTH = 8;
 
 /** The source extensions TypeScript resolves an emitted extension back to; longest suffix first. */
@@ -143,11 +145,19 @@ function readTsconfig(source: ManifestSource, abs: string): Record<string, unkno
 function matchTarget(target: string, mappings: readonly OutputMapping[], ids: ReadonlySet<string>): string[] {
   const spellings = [target, ...mappings.flatMap((m) => remapOutput(target, m))];
   if (target.includes("*")) return spellings.flatMap((s) => matchPattern(s, ids));
-  return spellings.flatMap(sourceCandidates).filter((id) => ids.has(id));
+  return spellings.flatMap(targetCandidates).filter((id) => ids.has(id));
+}
+
+/** A target with no extension names a module (`index`) or a directory (`./dist`); resolve both the way Node does. */
+function targetCandidates(spelling: string): string[] {
+  if (path.posix.extname(spelling) !== "") return sourceCandidates(spelling);
+  const bases = [spelling, `${spelling}/index`];
+  return [spelling, ...bases.flatMap((base) => EXTENSIONLESS_SOURCES.map((ext) => base + ext))];
 }
 
 function remapOutput(target: string, mapping: OutputMapping): string[] {
   if (mapping.outDir === mapping.rootDir) return [];
+  if (target === mapping.outDir) return [mapping.rootDir];
   const rest = mapping.outDir === "." ? target : target.startsWith(`${mapping.outDir}/`) ? target.slice(mapping.outDir.length + 1) : null;
   return rest === null ? [] : [joinId(mapping.rootDir, rest)];
 }
