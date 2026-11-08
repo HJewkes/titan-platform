@@ -24,6 +24,21 @@ describe("serviceRunsFromCheckout", () => {
     expect(serviceRunsFromCheckout(portsReading(`<string>${nested}</string>`), CHECKOUT)).toBe(false);
   });
 
+  it.each([
+    ["a suffixed file", `${BIN}.bak`],
+    ["a longer name", `${BIN}x`],
+    ["a plus-prefixed path", `/a+${BIN}`],
+    ["a non-ASCII-prefixed path", `/é${BIN}`],
+    ["a non-ASCII-suffixed path", `${BIN}é`],
+  ])("rejects %s", (_label, path) => {
+    expect(serviceRunsFromCheckout(portsReading(`<string>${path}</string>`), CHECKOUT)).toBe(false);
+  });
+
+  it("accepts the bin as a quoted or XML-escaped argument", () => {
+    expect(serviceRunsFromCheckout(portsReading(`ExecStart="${BIN}"`), CHECKOUT)).toBe(true);
+    expect(serviceRunsFromCheckout(portsReading(`<string>${BIN.replace(/&/g, "&amp;")}</string>`), CHECKOUT)).toBe(true);
+  });
+
   it("rejects a missing service file", () => {
     expect(serviceRunsFromCheckout(portsReading(undefined), CHECKOUT)).toBe(false);
   });
