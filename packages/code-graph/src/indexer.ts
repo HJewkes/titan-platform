@@ -26,7 +26,7 @@ import type { GraphMetric, IdAlias } from "./types.js";
  * index version is never reused, so a change to node/edge shape or to a metric's
  * value for the same bytes can never be carried forward from an incompatible graph.
  */
-export const INDEX_VERSION = "0.32.0";
+export const INDEX_VERSION = "0.33.0";
 
 /** The languages walked and extracted. `typescript` covers `.ts`, `.tsx`, `.mjs` and `.cjs`. */
 const LANGUAGES = ["typescript", "python"] as const;
