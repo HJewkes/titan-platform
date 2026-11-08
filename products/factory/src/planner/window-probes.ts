@@ -11,11 +11,8 @@ export interface RedRun {
   createdAt: string;
 }
 
-/** A console round the owner answered; `submittedAt` is the feedback's own time, not the file's, and is absent when the feedback does not parse. */
-export interface RoundAnswer {
-  id: string;
-  submittedAt: string | undefined;
-}
+/** A console round the owner answered; `submittedAt` is the feedback's own time, not the file's, and is absent, with `why`, when the round cannot be dated. */
+export type RoundAnswer = { id: string; submittedAt: string } | { id: string; submittedAt: undefined; why: string };
 
 export interface WindowGitHub {
   mergedPrs: (repo: string, since: string) => Promise<readonly MergedPr[]>;
@@ -52,11 +49,11 @@ async function ownerContactSince(sources: WindowSources, since: string): Promise
   const resolves = sources.gates().filter((gate) => gate.status === "resolved" && inWindow(gate.resolvedAt, since));
   const rounds = await sources.rounds();
   const answers = rounds.filter((round) => inWindow(round.submittedAt, since));
-  const undatable = rounds.filter((round) => round.submittedAt === undefined);
+  const undatable = rounds.flatMap((round) => (round.submittedAt === undefined ? [round] : []));
   return [
     ...resolves.map((gate) => `gate ${gate.id} resolved ${gate.resolvedAt}`),
     ...answers.map((round) => `round ${round.id} answered ${round.submittedAt}`),
-    ...undatable.map((round) => `round ${round.id} answered at an unknown time: feedback.json does not parse`),
+    ...undatable.map((round) => `round ${round.id} answered at an unknown time: ${round.why}`),
   ];
 }
 
