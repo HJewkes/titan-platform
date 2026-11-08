@@ -69,7 +69,7 @@ export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
   const guard = firstReason(advisoryGuard(isAdvisory), freezeGuard({ freezes: () => freeze.get(), registrations: holds, now: deps.now }), releaseGuard(holds, deps.now), adversary, ordered);
   const satisfy = holdSatisfierFor(deps);
   const held = heldCheck(deps.port, holds, guard, satisfy, deps.snapshot);
-  const train = deps.train ?? mergeTrainRef(deps.now);
+  const train = deps.train ?? mergeTrainRef(deps.now ?? Date.now);
   const accountLimits = deps.accountLimits ?? accountLimitStoreRef(deps.now);
   const timing = { sleep: pause, pollMs: deps.holdPollMs, now: deps.now };
   const shadow = { shadow: trainShadowRef(), port: deps.port, reads: deps.snapshot ?? portReads(deps.port), held: shadowHeldCheck({ port: deps.port, holds, freezes: () => freeze.get(), advisory: isAdvisory, now: deps.now, snapshot: deps.snapshot }), advisory: isAdvisory, now: deps.now ?? Date.now };
@@ -77,7 +77,7 @@ export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
   const land = landPrRoutes({ ...deps, port: holdingPort(deps.port, holds, guard, satisfy), inheritedRed: inheritedRedCheck(shepherdDeps, () => freeze.get()) }).map((route) => {
     if (route.match === "base-wait") return leaveTrainToWait(route, train);
     if (route.match === "update-branch") return shadowRefresh(advisoryUpdates(route, isAdvisory, timing), shadow);
-    return route.match === "merge" ? waitWhileHeld(rideTrain(route, { train, port: deps.port, held, timing }), held, timing, openHeadRead(deps.port, deps.snapshot), (repo, pr, sha) => reviewPendingAt(holds().byPr(repo, pr), sha), adversary.takeRehold, g10Recheck(holds)) : route;
+    return route.match === "merge" ? waitWhileHeld(rideTrain(route, { train, port: deps.port, held, timing, now: deps.now ?? Date.now }), held, timing, openHeadRead(deps.port, deps.snapshot), (repo, pr, sha) => reviewPendingAt(holds().byPr(repo, pr), sha), adversary.takeRehold, g10Recheck(holds)) : route;
   });
   const review = deps.review && withHoldAdversary({ ...deps.review, isFrozen: deps.isFrozen ?? recheckedFrozen(deps.port, () => freeze.get(), holds, deps.now) }, deps.review);
   const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, versions: deps.versions, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
