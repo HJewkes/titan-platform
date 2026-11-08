@@ -33,7 +33,11 @@ type PublishInput = z.infer<typeof PublishInputSchema>;
 /** Where the armed flag is read, so the mapper guard sees what GitHub says at publish time. */
 type ArmedReader = Pick<GitHubPort, "getPr">;
 
-type PublishResult = { headSha: string; conclusion: ReviewConclusion; review?: ReviewApproval | ReviewDismissal } & ({ published: true; checkRunId: number; checkRunUrl: string } | { published: false; reason: string });
+type PublishedReview = ReviewApproval | ReviewDismissal;
+
+type PublishResult = { headSha: string; conclusion: ReviewConclusion; review?: PublishedReview } & PostedCheck;
+
+type PostedCheck = ({ published: true; checkRunId: number; checkRunUrl: string } | { published: false; reason: string });
 
 const PublishedResult = z.looseObject({ published: z.boolean() });
 
