@@ -166,6 +166,8 @@ export const ReviewCheckConfigSchema = z.strictObject({
   appId: z.number().int().positive(),
   installationId: z.number().int().positive(),
   privateKeyPath: absolutePath,
+  /** The App's bot login, for example `my-app[bot]`: Shepherd dismisses or reuses only approvals by this login. */
+  login: z.string().min(1).optional(),
 });
 
 export type ReviewCheckConfig = z.infer<typeof ReviewCheckConfigSchema>;

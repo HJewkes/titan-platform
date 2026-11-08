@@ -11,7 +11,7 @@ import type { ShepherdStore } from "./store.js";
 import { holdsLiveSession } from "./wake-roster.js";
 import { rowsWithRuns, runFinished } from "./watch-rows.js";
 import { digestDelta, digestText, type DigestItem } from "./seat-digest-text.js";
-import { failedItem, finishedItem, gateItem, prRef, seatFixItem, type DigestInput } from "./seat-digest-items.js";
+import { failedItem, finishedItem, gateItem, prRef, reviewErrorItem, seatFixItem, type DigestInput } from "./seat-digest-items.js";
 export type { DigestInput } from "./seat-digest-items.js";
 import type { DigestPacer, DigestPacing, PendingItems } from "./seat-digest-pace.js";
 import { digestWatches, watchedKeys, type DigestWatches } from "./watch-list.js";
@@ -108,6 +108,8 @@ function addRun(view: SeatView, input: DigestInput, quiet: (input: DigestInput) 
   }
   const open = gateItem(input.row) ?? seatFixItem(input);
   if (open) view.open.push(open);
+  const reviewError = reviewErrorItem(input);
+  if (reviewError) view.open.push(reviewError);
   const failed = failedItem(input);
   if (failed) view.failed.push(failed);
   view.reads.push({ key: `failed:${input.row.runId}`, pr: prRef(input.row) });
