@@ -197,7 +197,7 @@ declare function workingTreeSource(): IndexSource;
  * index version is never reused, so a change to node/edge shape or to a metric's
  * value for the same bytes can never be carried forward from an incompatible graph.
  */
-declare const INDEX_VERSION = "0.33.0";
+declare const INDEX_VERSION = "0.34.0";
 interface IndexOptions {
     /** Roots to walk. Node ids are still rooted at the git toplevel, so importers across roots share an id space. */
     paths: string[];
@@ -911,7 +911,8 @@ interface MaskedReach {
 declare function testsReachingMasked(callees: ReadonlyMap<string, readonly string[]>, tests: readonly string[], profiles: MockProfiles): MaskedReach;
 /**
  * Which test files reach each file through runtime `imports` and `re-exports`, each test's `mocks`
- * masked as {@link testsReachingMasked} does (TP-4910). `tests` lists the test file ids in bit order.
+ * masked as {@link testsReachingMasked} does (TP-4910). An `imports` edge marked `require` stays live
+ * under a mock (TP-4950). `tests` lists the test file ids in bit order.
  */
 declare function fileTestReach(nodes: readonly GraphNode[], edges: readonly GraphEdge[], cap?: number): MaskedReach & {
     tests: string[];
@@ -1049,7 +1050,7 @@ interface ExtremeSummary {
 interface ExtremeFindingsInput {
     plan: BodyDeletePlan;
     report: HeadMutantsReport;
-    /** Source files a test file imports, transitively. */
+    /** Source files a test file imports, transitively, less what its own mocks replace. */
     reachedFiles: (testFile: string) => ReadonlySet<string>;
     /** Every test file at head, so a target tested only from a suite that never ran is not read as survived. */
     testFiles: readonly string[];
@@ -1075,7 +1076,7 @@ interface ExtremeMutationOptions {
         head: string;
         data: IstanbulCoverage;
     };
-    /** A snapshot at head, read only for its import edges. */
+    /** A snapshot at head, read only for its import and mocks edges. */
     store: Pick<CodeGraphStore, "listEdges">;
     snapshotId: number;
     max?: number;
