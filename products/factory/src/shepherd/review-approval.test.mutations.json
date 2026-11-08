@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "every publish approves, not only a success",
+      "file": "products/factory/src/shepherd/review-approval.ts",
+      "find": "  if (success) await approve(port, target, check, kept, result);",
+      "replace": "  await approve(port, target, check, kept, result);",
+      "kills": [
+        "syncApproval a FIX_FIRST at the head Shepherd approved dismisses that approval, so no Shepherd approval is left standing"
+      ]
+    },
+    {
+      "name": "a FIX_FIRST at the approved head keeps that approval",
+      "file": "products/factory/src/shepherd/review-approval.ts",
+      "find": "own.filter((review) => review !== kept)",
+      "replace": "own.filter((review) => review.commitId !== check.headSha)",
+      "kills": [
+        "syncApproval a FIX_FIRST at the head Shepherd approved dismisses that approval, so no Shepherd approval is left standing"
+      ]
+    },
+    {
+      "name": "a person's review carrying the marker counts as Shepherd's",
+      "file": "products/factory/src/shepherd/review-approval.ts",
+      "find": "review.userType === \"Bot\" && ",
+      "replace": "",
+      "kills": [
+        "syncApproval a FIX_FIRST leaves a person's approval and another bot's unmarked approval standing"
+      ]
+    },
+    {
+      "name": "a replay posts again instead of reusing its approval",
+      "file": "products/factory/src/shepherd/review-approval.ts",
+      "find": "result.approved = kept?.id ?? (await",
+      "replace": "result.approved = (await",
+      "kills": [
+        "syncApproval a replay after a crash finds its approval at the head and posts no second one"
+      ]
+    },
+    {
+      "name": "a refused dismissal stops the rest and fails the step",
+      "file": "products/factory/src/shepherd/review-approval.ts",
+      "find": "      result.reviewError ??= failed(`dismissing review ${review.id} failed`, target, check, error);",
+      "replace": "      throw error;",
+      "kills": [
+        "syncApproval a dismissal GitHub refuses is recorded by status, and the other stale approvals are still dismissed"
+      ]
+    }
+  ]
+}
