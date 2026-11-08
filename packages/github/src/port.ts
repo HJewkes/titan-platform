@@ -14,13 +14,15 @@ export { FileListTruncatedError } from "./pr-files.js";
 import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 import type { RefRead, RulesetList } from "./conditional-reads.js";
 import type { ReviewComment } from "./review-comment.js";
+import type { CreateReviewRequest, PullReview } from "./pull-reviews.js";
 import type { Ancestry } from "./compare.js";
-import { checkConclusion, checkMarker, checkMaxBytes, checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha, checkShaPrefix, checkTimestamp } from "./validate.js";
+import { checkConclusion, checkMarker, checkMaxBytes, checkMergeMethod, checkNonEmpty, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha, checkShaPrefix, checkTimestamp } from "./validate.js";
 import type { BranchCommits, CheckRun, Commit, CommitStatus, JobStep, LoggedCommit, MergeMessage, PutFileRequest, RepoEntry, RepoFile, SquashSource } from "./port-types.js";
 import type { MergeIntoBranchRequest, MergeIntoBranchResult } from "./merge-into-branch.js";
 import { checkPutFile, putFile } from "./put-file.js";
 export { GitHubConflictError } from "./put-file.js";
 export type { MergeIntoBranchRequest, MergeIntoBranchResult } from "./merge-into-branch.js";
+export type { CreateReviewRequest, PullReview } from "./pull-reviews.js";
 export type { BranchCommit, BranchCommits, CheckRun, CheckRunPr, Commit, CommitStatus, JobStep, LoggedCommit, MergeMessage, PutFileRequest, RepoEntry, RepoFile, SquashSource } from "./port-types.js";
 
 /** `owner/name`. */
@@ -174,6 +176,12 @@ export interface GitHubWire {
   listIssueComments(repo: RepoSlug, number: number): Promise<IssueComment[]>;
   createComment(repo: RepoSlug, number: number, body: string): Promise<{ id: number }>;
   listReviewComments(repo: RepoSlug, number: number): Promise<ReviewComment[]>;
+  /** Every review on the PR, all pages, oldest first. */
+  listReviews(repo: RepoSlug, number: number): Promise<PullReview[]>;
+  /** `POST pulls/{n}/reviews` with `event: APPROVE` at `commit_id`, as the GitHub App; the wire refuses when it has no App token. */
+  createReview(repo: RepoSlug, number: number, request: CreateReviewRequest): Promise<{ id: number }>;
+  /** `PUT pulls/{n}/reviews/{id}/dismissals`, as the GitHub App; the wire refuses when it has no App token. */
+  dismissReview(repo: RepoSlug, number: number, reviewId: number, message: string): Promise<void>;
   /** The PR's first `FORCE_PUSHES_CAP` head force-pushes, oldest first, and whether more exist. */
   listForcePushes(repo: RepoSlug, number: number): Promise<ForcePushPage>;
 }
@@ -272,6 +280,15 @@ export interface GitHubPort {
   upsertComment(repo: RepoSlug, number: number, marker: string, body: string): Promise<WriteResult<{ id: number }>>;
   /** Every inline review comment on the PR, resolved ones included; filter on `resolved`. */
   listReviewComments(repo: RepoSlug, number: number): Promise<ReviewComment[]>;
+  /** Every review on the PR, any author and state; a caller that acts on its own reviews filters on `login` or `userType` and its own marker in `body`. */
+  listReviews(repo: RepoSlug, number: number): Promise<PullReview[]>;
+  /**
+   * Approves the PR at `commitId` under the App identity the wire was configured with, so the approval names the head it
+   * covers. It posts unconditionally: a caller that may replay lists reviews first. A `commitId` that is not a full sha throws `GitHubInputError` before any call.
+   */
+  createReview(repo: RepoSlug, number: number, request: CreateReviewRequest): Promise<{ id: number }>;
+  /** Dismisses review `reviewId` under the App identity; GitHub answers 422 for a review that is not an approval or a change request. An empty message throws `GitHubInputError` before any call. */
+  dismissReview(repo: RepoSlug, number: number, reviewId: number, message: string): Promise<void>;
   /** The PR's head force-pushes, oldest first, each with the head it replaced and the new one. Throws `ForcePushesTruncated` rather than return a short list. */
   listForcePushes(repo: RepoSlug, number: number): Promise<ForcePush[]>;
 }
@@ -340,6 +357,9 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     compareAncestry: async (repo, base, head) => wire.compareAncestry(repoOf(repo), checkRef("base", base), checkRef("head", head)),
     upsertComment: async (repo, number, marker, body) => upsertComment(wire, login, repoOf(repo), pr(number), checkMarker(marker), body, sleep),
     listReviewComments: async (repo, number) => wire.listReviewComments(repoOf(repo), pr(number)),
+    listReviews: async (repo, number) => wire.listReviews(repoOf(repo), pr(number)),
+    createReview: async (repo, number, request) => wire.createReview(repoOf(repo), pr(number), { ...request, commitId: checkSha("commitId", request.commitId) }),
+    dismissReview: async (repo, number, reviewId, message) => wire.dismissReview(repoOf(repo), pr(number), checkPositiveInt("reviewId", reviewId), checkNonEmpty("message", message)),
     listForcePushes: async (repo, number) => wholeForcePushes(await wire.listForcePushes(repoOf(repo), pr(number))),
   };
 }

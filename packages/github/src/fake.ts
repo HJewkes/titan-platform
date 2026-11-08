@@ -12,6 +12,7 @@ import { fakeListDirectory } from "./fake-directory.js";
 import { fakeAncestry, fakeLsRemote } from "./fake-ancestry.js";
 import { revalidateOpenPrs, revalidateRef, revalidateRulesets } from "./fake-conditional-reads.js";
 import { compareCommits, compareFiles } from "./fake-compare.js";
+import { fakeCreateReview, fakeDismissReview } from "./fake-reviews.js";
 
 export type { FakeEffects, FakeFaultyRead, FakeGitHub } from "./fake-types.js";
 
@@ -91,6 +92,8 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     compares: new Map(),
     comments: new Map(),
     reviewComments: new Map(),
+    reviews: new Map(),
+    appLogin: "fake-app[bot]",
     forcePushes: new Map(),
     addPr(fields) {
       const number = prs.size + 1;
@@ -192,6 +195,9 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     },
     listReviewComments: async (_repo, number) => record("listReviewComments", (fake.reviewComments.get(number) ?? []).map((comment) => ({ ...comment }))),
     listForcePushes: async (_repo, number) => record("listForcePushes", listForcePushes(fake, number)),
+    listReviews: async (_repo, number) => record("listReviews", (fake.reviews.get(mustPr(prs, number).number) ?? []).map((review) => ({ ...review }))),
+    createReview: async (_repo, number, request) => (record("createReview", undefined), fakeCreateReview(fake, mustPr(prs, number).number, request, 7000 + ++counter)),
+    dismissReview: async (_repo, number, reviewId) => (record("dismissReview", undefined), fakeDismissReview(fake, mustPr(prs, number).number, reviewId, (status, message) => new FakeHttpError(status, message))),
   };
   const fake: FakeGitHub = Object.assign(state, { wire, gitExec: fakeLsRemote(prs, () => read("lsRemote", () => undefined)) });
   return fake;
