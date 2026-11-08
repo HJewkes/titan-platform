@@ -13,7 +13,7 @@ export async function cloneIfAbsent(ports: DeployPorts, checkout: string, remote
 }
 
 const START_BOUNDARY = /["'\s>=]/;
-const PATH_CHAR = /[\w.\-/~\u0080-\uffff]/;
+const END_BOUNDARY = /["'\s<]/;
 const xmlEscaped = (value: string): string => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 /**
@@ -27,12 +27,18 @@ export function serviceRunsFromCheckout(ports: DeployPorts, checkout: string): b
   return text !== undefined && (namesWholePath(text, bin) || namesWholePath(text, xmlEscaped(bin)));
 }
 
-/** A path match must sit between token boundaries: `/x/<bin>` and `<bin>.old` are other files. */
+/**
+ * A path match must sit between token boundaries, both chosen from short accept lists:
+ * `/x/<bin>`, `<bin>.old` and `<bin>+old` are other files. A quote that opens the match must also close it.
+ */
 function namesWholePath(text: string, path: string): boolean {
   for (let at = text.indexOf(path); at !== -1; at = text.indexOf(path, at + 1)) {
-    const startsClean = at === 0 || START_BOUNDARY.test(text.charAt(at - 1));
-    const end = at + path.length;
-    if (startsClean && (end === text.length || !PATH_CHAR.test(text.charAt(end)))) return true;
+    const before = at === 0 ? "" : text.charAt(at - 1);
+    const after = text.charAt(at + path.length);
+    const startsClean = before === "" || START_BOUNDARY.test(before);
+    const endsClean = after === "" || END_BOUNDARY.test(after);
+    const quoteClosed = !/["']/.test(before) || after === before;
+    if (startsClean && endsClean && quoteClosed) return true;
   }
   return false;
 }

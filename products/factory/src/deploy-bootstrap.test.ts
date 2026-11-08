@@ -30,8 +30,16 @@ describe("serviceRunsFromCheckout", () => {
     ["a plus-prefixed path", `/a+${BIN}`],
     ["a non-ASCII-prefixed path", `/é${BIN}`],
     ["a non-ASCII-suffixed path", `${BIN}é`],
+    ["a plus-suffixed path", `${BIN}+old`],
+    ["a version-suffixed path", `${BIN}@1`],
+    ["a comma-suffixed path", `${BIN},v`],
+    ["an XML-escaped ampersand suffix", `${BIN}&amp;x`],
   ])("rejects %s", (_label, path) => {
     expect(serviceRunsFromCheckout(portsReading(`<string>${path}</string>`), CHECKOUT)).toBe(false);
+  });
+
+  it("rejects a quoted argument that continues past the bin after a space", () => {
+    expect(serviceRunsFromCheckout(portsReading(`ExecStart=node "${BIN} old"`), CHECKOUT)).toBe(false);
   });
 
   it("accepts the bin as a quoted or XML-escaped argument", () => {
