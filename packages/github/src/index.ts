@@ -6,6 +6,7 @@ export type { Ancestry } from "./compare.js";
 export type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 export type { RefRead, RulesetList } from "./conditional-reads.js";
 export type { ReviewComment } from "./review-comment.js";
+export type { CreateReviewRequest, PullReview } from "./pull-reviews.js";
 export type { ForcePush, ForcePushPage } from "./force-pushes.js";
 export { FORCE_PUSHES_CAP, ForcePushesTruncated } from "./force-pushes.js";
 export type { BackstopCommit, BackstopDonePr, BackstopOpenPr, BackstopRange, BackstopRequest, BackstopReview, BackstopSnapshot, BackstopTrain, RateLimit, RollupContext } from "./backstop-read.js";
