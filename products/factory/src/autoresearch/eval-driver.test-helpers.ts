@@ -26,7 +26,7 @@ export const alive = (pid: number, read: (path: string) => string = (path) => re
     return read(stat).split(") ").at(-1)?.[0] !== "Z";
   } catch (error) {
     // The process can exit between the existence check and the read.
-    const code = (error as NodeJS.ErrnoException).code;
+    const code = error instanceof Error && "code" in error ? error.code : undefined;
     if (code === "ESRCH" || code === "ENOENT") return false;
     throw error;
   }
