@@ -385,7 +385,6 @@
   "shepherd/review-check.ts",
   "shepherd/review-checkout-sweep.ts",
   "shepherd/review-checkout.ts",
-  "shepherd/review-dismissal.ts",
   "shepherd/review-dispatcher.ts",
   "shepherd/review-member.ts",
   "shepherd/review-panel-plan.ts",

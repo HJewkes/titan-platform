@@ -780,7 +780,8 @@ covers, under the GitHub App in `shepherd.reviewCheck` (`appId`, `installationId
 `privateKeyPath`). The App needs **Checks: write** and **Pull requests: write**, and it must be
 installed on each shepherded repository. An App identity is required because a pull request's
 author cannot approve it. Without the App, nothing is posted: the step records
-`published: false` and `review.reviewError`, and the run goes on.
+`published: false`, plus `review.reviewError` on a success that was owed an approval, and the run
+goes on.
 
 - **The `shepherd/review` check run** is posted on every publish: `success` for a MERGE or a
   carried approval, `failure` for a FIX_FIRST, and `action_required` for everything that holds the
@@ -793,9 +794,10 @@ author cannot approve it. Without the App, nothing is posted: the step records
   head, the published one included. A MERGE publish can approve a head that the same run then
   republishes as `action_required` (an unmet attestation), and GitHub keeps an approval after a
   push, so Shepherd dismisses each review that is a bot's, still `APPROVED`, and carries the
-  marker. Human reviews and other bots' reviews are never touched. The step records
-  `review.dismissed` with the ids, and a replay finds nothing left to dismiss. Once the
-  dismissals succeed, every guard that holds the check also holds the approval.
+  marker naming the commit it was given at. Human reviews and other bots' reviews are never touched. The step records
+  `review.dismissed` with the ids, and a replay finds nothing left to dismiss. A success keeps
+  only its own approval at the published head and dismisses the rest. Once the dismissals
+  succeed, every guard that holds the check also holds the approval.
 
 A failed post, list or dismissal is recorded in `review.reviewError` by HTTP status only, with the
 full message on the local console, and never fails the step. Shepherd's merge path is unchanged:

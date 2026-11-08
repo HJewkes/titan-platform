@@ -6,7 +6,27 @@
       "file": "products/factory/src/shepherd/take-verdict.ts",
       "find": "if (attestUnmet.length > 0) await publishReview(",
       "replace": "if (attestUnmet.length < 0) await publishReview(",
-      "kills": ["sh-publish-review posts the MERGE again as action_required once its evidence finds an attestation unmet"]
+      "kills": [
+        "sh-publish-review posts the MERGE again as action_required once its evidence finds an attestation unmet"
+      ]
+    },
+    {
+      "name": "the step result drops the review",
+      "file": "products/factory/src/shepherd/publish-review.ts",
+      "find": "return { ...posted, ...(review && { review }) };",
+      "replace": "return posted;",
+      "kills": [
+        "sh-publish-review carries the check run URL in the step output when published"
+      ]
+    },
+    {
+      "name": "the step never approves",
+      "file": "products/factory/src/shepherd/publish-review.ts",
+      "find": "  const review = await syncApproval(port, input, check);",
+      "replace": "  const review = undefined;",
+      "kills": [
+        "sh-publish-review a MERGE at the head approves the PR at that head under the App, beside the success check"
+      ]
     }
   ]
 }

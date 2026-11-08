@@ -171,13 +171,13 @@ describe("sh-publish-review", () => {
     expect(fake.reviews.get(1)?.map(({ state, commitId, login }) => ({ state, commitId, login }))).toEqual([{ state: "APPROVED", commitId: A, login: fake.appLogin }]);
   });
 
-  it("a FIX_FIRST posts no approval and records an empty dismissal in the step result", async () => {
+  it("a FIX_FIRST posts no approval and records no review in the step result", async () => {
     const fake = fakeGitHub();
 
     const { host, runId } = await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "FIX_FIRST"), reviewCheck: githubPort(fake.wire), gate: "sh-sent-back" });
 
     expect(fake.reviews.get(1) ?? []).toEqual([]);
-    expect(publishResults(host, runId).map((result) => result.review)).toEqual([{ dismissed: [] }]);
+    expect(publishResults(host, runId).map((result) => "review" in result)).toEqual([false]);
   });
 
   it("a head moved after the MERGE dismisses the approval at the reviewed head when the new head publishes action_required", async () => {
