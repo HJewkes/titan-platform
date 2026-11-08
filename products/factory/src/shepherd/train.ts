@@ -1,3 +1,4 @@
+import { isoAt } from "../time-iso.js";
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { Db, Migration } from "@titan-design/store-sqlite";
 import { WorkflowRunStore, type StepRoute, type WorkflowContext, type WorkflowStatus } from "@titan-design/workflow";
@@ -47,7 +48,7 @@ export class MergeTrain {
 
   constructor(
     private readonly db: Db,
-    private readonly now: () => number = Date.now,
+    private readonly now: () => number,
   ) {
     this.runs = new WorkflowRunStore(db);
   }
@@ -59,7 +60,7 @@ export class MergeTrain {
 
   /** Takes the train from `from`, the holder read before, or from nobody when `from` is null; false when another run got there first. */
   take(repo: RepoSlug, runId: string, pr: number, from: string | null): boolean {
-    const at = new Date(this.now()).toISOString();
+    const at = isoAt(this.now());
     if (from === null) return this.db.prepare("INSERT INTO shepherd_train (repo, run_id, pr, since) VALUES (?, ?, ?, ?) ON CONFLICT (repo) DO NOTHING").run(repoKey(repo), runId, pr, at).changes === 1;
     return this.db.prepare("UPDATE shepherd_train SET run_id = ?, pr = ?, since = ? WHERE repo = ? AND run_id = ?").run(runId, pr, at, repoKey(repo), from).changes === 1;
   }
@@ -81,7 +82,7 @@ export interface MergeTrainRef {
   bind(db: Db): () => void;
 }
 
-export function mergeTrainRef(now: () => number = Date.now): MergeTrainRef {
+export function mergeTrainRef(now: () => number): MergeTrainRef {
   let train: MergeTrain | undefined;
   return {
     get() {
@@ -103,6 +104,7 @@ export interface TrainDeps {
   /** Why a PR's merge must wait; a holder whose merge waits gives the train up, so a hold or a freeze never wedges the repo. */
   held: HeldCheck;
   timing: HoldTiming;
+  now: () => number;
 }
 
 interface MergeInput {
@@ -119,7 +121,6 @@ type Boarding = { kind: "riding" } | { kind: "boarded"; waitedBehind: string | n
  * merges at once only when its head is still the one named and not behind; otherwise land reads CI and updates first.
  */
 export function rideTrain(route: StepRoute, deps: TrainDeps): StepRoute {
-  const now = deps.timing.now ?? Date.now;
   return {
     ...route,
     runner: {
@@ -133,7 +134,7 @@ export function rideTrain(route: StepRoute, deps: TrainDeps): StepRoute {
           return { ok: false, error: redactForEvidence(error instanceof Error ? error.message : String(error)), retryable: false };
         }
         if (wait === undefined) return route.runner.run(input);
-        return codeRoute(route.match, now, async () => ({ done: false, skipped: "train", mergeSha: "", train: wait })).runner.run(input);
+        return codeRoute(route.match, deps.now, async () => ({ done: false, skipped: "train", mergeSha: "", train: wait })).runner.run(input);
       },
     },
   };

@@ -618,6 +618,15 @@ are leads, not verdicts, and both drop files that `keepNode` rejects:
 These differ from `pnpm dead:check`, which reads edges rather than `utilization` and follows
 re-exports transitively from package-manifest entries.
 
+### Class cohesion and cognitive complexity
+
+`computeLcomMetrics(file, fileId)` takes a `ParsedFile` and returns the `class_count` and
+`lcom4_max` metrics for it (LCOM4 over instance methods; 1 is cohesive, above 1 means the class
+could split). A file with no classes yields no rows. `cognitiveComplexityOf(body, language)`
+scores one function body node by the Sonarsource cognitive-complexity rules, and
+`cognitiveSplitOf(body, language)` returns `{ total, markup }`, where `markup` is the share
+charged inside JSX.
+
 ### SCBench complexity rollup
 
 TP-2474 h ports the complexity half of SlopCodeBench's code-quality metrics to TypeScript.

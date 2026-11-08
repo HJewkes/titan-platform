@@ -191,7 +191,7 @@
   },
   "products/active-work/src/discover/claude.ts": {
     "titan/max-function-lines": {
-      "count": 2
+      "count": 1
     }
   },
   "products/active-work/src/discover/git.ts": {

@@ -24,11 +24,9 @@ import {
   WHOLE_NAMESPACE,
 } from "./reference-weight.js";
 import { buildSymbolNodes } from "./symbol-nodes.js";
-import {
-  dynamicImportSpecifiers,
-  recordDynamicSymbolRefEdges,
-} from "./dynamic-imports.js";
+import { recordDynamicImportEdges, recordDynamicSymbolRefEdges } from "./dynamic-imports.js";
 import { recordMockEdges } from "./mock-edges.js";
+import { recordRequireEdges } from "./require-edges.js";
 import { resolveReExportOrigin } from "./reexport-resolve.js";
 import {
   inRepoFileId,
@@ -161,10 +159,8 @@ export class TsMorphGraphExtractor implements Extractor<GraphFragment> {
       this.recordReExportEdge(c, decl);
     }
     const resolve = (specifier: string) => this.resolveRelativeInternal(c.srcAbs, specifier);
-    for (const specifier of dynamicImportSpecifiers(sourceFile)) {
-      const dstId = resolve(specifier);
-      if (dstId) addWeightedEdge(c.agg, c.srcFileId, dstId, "imports", specifier, 1);
-    }
+    recordDynamicImportEdges(sourceFile, c.srcFileId, c.agg, resolve);
+    recordRequireEdges(sourceFile, c.srcFileId, c.agg, resolve);
     // C-68: destructured dynamic imports (`const { x } = await import(...)`) also
     // credit the target symbol; resolution is delegated so this stays out of the
     // (churn-hot, LOC-bound) extractor body.

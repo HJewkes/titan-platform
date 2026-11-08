@@ -3,7 +3,7 @@ import { evidenceRecord } from "../evidence.js";
 import { redactForEvidence } from "../redact.js";
 import { stepClock } from "../workflows/deadline.js";
 import { DISPATCH_STEPS } from "./manifest.js";
-import type { BuildSurfacePorts } from "./ports.js";
+import type { BuildSurfacePorts, CommandRun } from "./ports.js";
 import { GateEvidenceSchema, ImplementerReportSchema, ReviewReportSchema, type GateRun, type LandState, type Validation } from "./schemas.js";
 import { parseBuildSpec } from "./spec.js";
 import type * as I from "./step-inputs.js";
@@ -43,12 +43,21 @@ async function command(ports: BuildSurfacePorts, input: I.CommandInput, signal: 
   return { pass: done.status === 0, status: done.status, detail: done.status === 0 ? tail(done.stdout) : `exited ${done.status}: ${tail(done.stderr || done.stdout)}` };
 }
 
+const INFRA_ERROR = /\b(ENOSPC|EMFILE|ENFILE|ENOMEM|EAGAIN)\b|\bspawn\b.*\b(ENOENT|EACCES)\b/;
+
+/** A validator that exits non-zero with no rejection lines and an environment error on stderr did not look at the work. */
+function infraFailure(done: CommandRun, lines: string[]): string | undefined {
+  return done.status !== 0 && lines.length === 0 && INFRA_ERROR.test(done.stderr) ? `validator exited ${done.status}: ${tail(done.stderr)}` : undefined;
+}
+
 /** A validator accepts on exit 0; otherwise each non-empty stdout line is one rejection the agent gets back. */
 async function validate(ports: BuildSurfacePorts, input: I.ValidateInput, signal: AbortSignal): Promise<Validation> {
   const rejections = [...input.builtIn];
   if (input.argv) {
     const done = await ports.run(input.argv, { cwd: input.cwd, env: input.env, input: JSON.stringify(input.payload), signal });
     const lines = done.stdout.split("\n").map((line) => line.trim()).filter(Boolean);
+    const infra = infraFailure(done, lines);
+    if (infra && rejections.length === 0) return { accepted: false, rejections: [infra], infra: true };
     if (done.status !== 0) rejections.push(...(lines.length > 0 ? lines : [`validator exited ${done.status}: ${tail(done.stderr)}`]));
   }
   return { accepted: rejections.length === 0, rejections };
