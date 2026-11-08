@@ -1,12 +1,19 @@
+import type * as Fs from "node:fs";
 import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { partialFake } from "@titan-design/test-kit";
+import { renameSync, unlinkSync } from "node:fs";
 import { relinkAfterDeploy, relinkCli } from "./deploy-cli-link.js";
 import { deployedBinPath } from "./deploy-checkout.js";
 import type { DeployPorts } from "./deploy.js";
 import { plistPath } from "./service.js";
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof Fs>();
+  return { ...actual, renameSync: vi.fn(actual.renameSync), unlinkSync: vi.fn(actual.unlinkSync) };
+});
 
 const HOME = "/srv/tester";
 let dir: string;
@@ -27,6 +34,47 @@ const factoryBin = (tree: string): string => {
 };
 
 describe("relinkCli", () => {
+  describe("when the rename fails after the temp link is staged", () => {
+    // The link must pass relinkCli's lstat check, so the rename itself is made to fail.
+    const failRenameOnce = (): void => {
+      vi.mocked(renameSync).mockImplementationOnce(() => {
+        throw Object.assign(new Error("rename refused"), { code: "EXDEV" });
+      });
+    };
+    const stage = (): string => {
+      const fresh = factoryBin("fresh");
+      symlinkSync(factoryBin("stale"), linkPath);
+      return fresh;
+    };
+    const tmpEntries = (): string[] => readdirSync(join(dir, "bin")).filter((name) => name.endsWith(".tmp"));
+
+    it("rethrows the rename error and leaves no tmp entry", () => {
+      const fresh = stage();
+      failRenameOnce();
+      expect(() => relinkCli({ linkPath }, fresh)).toThrow("rename refused");
+      expect(tmpEntries()).toEqual([]);
+    });
+
+    it("keeps the rename error and attaches the unlink failure as cause", () => {
+      const fresh = stage();
+      failRenameOnce();
+      const unlinkFailure = new Error("unlink denied");
+      vi.mocked(unlinkSync).mockImplementationOnce(() => {
+        throw unlinkFailure;
+      });
+
+      let thrown: unknown;
+      try {
+        relinkCli({ linkPath }, fresh);
+      } catch (e) {
+        thrown = e;
+      }
+
+      expect(thrown).toBeInstanceOf(Error);
+      expect(thrown).toMatchObject({ message: "rename refused", cause: unlinkFailure });
+    });
+  });
+
   it("repoints a symlink into a stale factory build at the deployed bin and leaves the old build intact", () => {
     const stale = factoryBin("stale");
     const fresh = factoryBin("fresh");
@@ -158,9 +206,12 @@ describe("relinkAfterDeploy", () => {
     symlinkSync(factoryBin("stale"), linkPath);
     chmodSync(join(dir, "bin"), 0o500);
 
-    const { err } = run(0, `<string>${bin}</string>`);
-
-    chmodSync(join(dir, "bin"), 0o700);
+    let err: string;
+    try {
+      ({ err } = run(0, `<string>${bin}</string>`));
+    } finally {
+      chmodSync(join(dir, "bin"), 0o700);
+    }
     expect(err).toContain("could not repoint");
     expect(readdirSync(join(dir, "bin"))).toEqual(["titan-factory"]);
   });

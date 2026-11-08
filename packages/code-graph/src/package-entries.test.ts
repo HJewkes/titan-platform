@@ -137,3 +137,17 @@ describe("package manifest entries as dead-module roots", () => {
     expect(packageEntryFileIds(REPO, LIB_FILES, source).size).toBe(0);
   });
 });
+
+describe("directory-form main and bin targets", () => {
+  it.each([
+    ["a trailing-slash main", { main: "./dist/" }],
+    ["a trailing-slash bin", { bin: { tool: "./dist/" } }],
+    ["a dot main", { main: "." }],
+    ["a ./ main", { main: "./" }],
+    ["a dot bin", { bin: "." }],
+  ])("%s resolves to the indexed source entry", (_name, manifest) => {
+    const source = libSource(manifest);
+    const entries = packageEntryFileIds(REPO, ["packages/lib/src/index.ts", "packages/lib/src/orphan.ts"], source);
+    expect([...entries]).toEqual(["packages/lib/src/index.ts"]);
+  });
+});
