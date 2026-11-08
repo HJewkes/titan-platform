@@ -10,7 +10,7 @@ export async function updateBranch(wire: GitHubWire, repo: RepoSlug, number: num
 }
 
 /** An unreadable answer or a 5xx may hide a PUT that landed, so it is sent once more with the same expected head: GitHub refuses a landed one as a head mismatch, which reads as done. */
-export async function sendUpdateBranch(wire: GitHubWire, repo: RepoSlug, number: number, expectedHeadSha: string): Promise<WriteResult> {
+async function sendUpdateBranch(wire: GitHubWire, repo: RepoSlug, number: number, expectedHeadSha: string): Promise<WriteResult> {
   try {
     await wire.updateBranch(repo, number, expectedHeadSha);
     return { done: true };
