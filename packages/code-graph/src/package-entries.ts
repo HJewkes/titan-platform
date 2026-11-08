@@ -72,7 +72,15 @@ function entriesOf(repoRoot: string, dir: string, ids: ReadonlySet<string>, sour
   const manifest = readJsonObject(source, path.join(repoRoot, dir, "package.json"));
   if (!manifest) return [];
   const mappings = outputMappings(repoRoot, dir, source);
-  return manifestTargets(manifest).flatMap((target) => matchTarget(joinId(dir, target), mappings, ids));
+  return manifestTargets(manifest).flatMap((target) => {
+    if (target === ".") return packageRootTargets(dir, mappings).flatMap((t) => matchTarget(t, mappings, ids));
+    return matchTarget(joinId(dir, target), mappings, ids);
+  });
+}
+
+/** A `.` target names the package directory; a build that emits elsewhere makes its output dir the entry directory too. */
+function packageRootTargets(dir: string, mappings: readonly OutputMapping[]): string[] {
+  return [dir, ...mappings.map((m) => m.outDir)];
 }
 
 function readJsonObject(source: ManifestSource, abs: string): Record<string, unknown> | null {
