@@ -10,6 +10,7 @@ import { crashAt } from "../test-support/crash.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { landPrRoutes, landPrWorkflow } from "./land-pr.js";
+import { hostPostMerge } from "./post-merge-adapter.js";
 
 const H2 = fakeSha("head2");
 const dirs: string[] = [];
@@ -44,7 +45,7 @@ function landPrWorld(): World {
     fake.setRuns(pr.headSha, [validate, successRun("dag-check", 2)]);
   };
   let clock = 0;
-  world.routes = landPrRoutes({ gitCache: hostCarryPorts, port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms) });
+  world.routes = landPrRoutes({ ...hostPostMerge(), gitCache: hostCarryPorts, port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms) });
   return world;
 }
 

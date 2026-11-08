@@ -24,10 +24,11 @@ import { type LandPrDeps } from "./workflows/land-pr.js";
 import { type TickPacing } from "./tick-pacing.js";
 import type { ThawAlertPorts, VisualDeliveryWatch } from "./shepherd/services.js";
 import type { VisualThreshold } from "./shepherd/visual-delta-read.js";
+import type { PostMergeHost } from "./workflows/post-merge-adapter.js";
 import type { DiagnosisPorts, ReplanPorts, VisualPacketPorts } from "./shepherd/spawn-ports.js";
 import type { CleanupPorts, ExitNoticePorts, RosterReader, SpawnGate, SuiteRules, TaskClose } from "./shepherd/ports.js";
 
-export interface FactoryRouteDeps extends Omit<LandPrDeps, "gitCache">, Partial<Pick<LandPrDeps, "gitCache">> {
+export interface FactoryRouteDeps extends Omit<LandPrDeps, "gitCache" | keyof PostMergeHost>, Partial<Pick<LandPrDeps, "gitCache" | keyof PostMergeHost>> {
   port: GitHubPort;
   store: ShepherdStoreRef;
   freeze?: FreezeStoreRef;

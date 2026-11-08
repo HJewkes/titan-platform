@@ -9,6 +9,7 @@ import { hostCarryPorts } from "../shepherd/carry-cache-adapter.js";
 import { crashAt } from "../test-support/crash.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { landPrRoutes } from "./land-pr.js";
+import { hostPostMerge } from "./post-merge-adapter.js";
 import { devicePrWorkflow } from "./device-pr.js";
 
 const AT_DEVICE: GateResolver = Object.freeze({ class: "owner-terminal", id: "owner", channel: "factory-cli" });
@@ -26,7 +27,7 @@ function greenWorld(): { fake: FakeGitHub; routes: StepRoute[] } {
   fake.addPr({ headSha: H1 });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   let clock = 0;
-  return { fake, routes: landPrRoutes({ gitCache: hostCarryPorts, port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms) }) };
+  return { fake, routes: landPrRoutes({ ...hostPostMerge(), gitCache: hostCarryPorts, port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms) }) };
 }
 
 describe("device-pr killed while device-confirm is pending", () => {
