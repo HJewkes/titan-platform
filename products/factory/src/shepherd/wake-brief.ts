@@ -1,6 +1,6 @@
 import { PEER_NAME_PATTERN, dataFence } from "@titan-design/agent-dispatch";
 import { CONFIG_PATH, DEFAULT_CARRY_GLOBS, parseFixProofConfig } from "@titan-design/fix-proof";
-import { isPassing, type CheckRun, type GitHubPort, type PullRequest, type RepoSlug, type ReviewComment } from "@titan-design/github";
+import { type CheckRun, type GitHubPort, type PullRequest, type RepoSlug, type ReviewComment } from "@titan-design/github";
 import { PROMPT_LINE_BREAK, promptLine } from "@titan-design/owner-queue";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
@@ -13,6 +13,7 @@ import type { MergeBaseException } from "./merge-base-exception.js";
 export { withMergeBaseException } from "./merge-base-exception.js";
 import { staleBaseWake } from "./stale-base.js";
 import { MAC_SUITE_RULES } from "./suite-host.js";
+import { failingRunsAt } from "../workflows/skip-hidden.js";
 import { ownerSendBackWake } from "./owner-send-back.js";
 import { CARRY_UNREADABLE, FLAKE_FIX_ASK, MUTANTS_ASK, MUTANTS_REASON, NO_REPRO_REASON, REPRO_ASK, UNCOVERED_LABEL } from "./no-repro-brief.js";
 
@@ -64,11 +65,6 @@ export interface WakeFacts {
   runId?: string;
   /** A planner's leave for this run's fix rounds to merge the base; absent means a ci-red fixer is told not to. */
   mergeBase?: Pick<MergeBaseException, "reason" | "actor">;
-}
-
-/** The failing jobs' log tails, split evenly so one noisy job cannot crowd out the rest. */
-async function failingRuns(port: GitHubPort, input: WakeFacts): Promise<CheckRun[]> {
-  return (await port.latestCheckRuns(input.repo, input.headSha)).filter((run) => run.status === "completed" && !isPassing(run));
 }
 
 /**
@@ -304,7 +300,7 @@ async function wakeBody(port: GitHubPort, input: WakeFacts, pr: PullRequest): Pr
     case "ci-red": {
       const noRun = noRunWake(head, input.payload);
       if (noRun) return noRun;
-      const failing = await failingRuns(port, input);
+      const failing = await failingRunsAt(port, input.repo, input.headSha);
       const baseRule = input.mergeBase === undefined ? ` ${BASE_IS_SHEPHERDS}` : "";
       return { reason: `CI failed at head ${head}.${failingJobsLine(failing)} The failing jobs' log tails follow.${baseRule}`, payload: dataFence("CI log", await ciLogs(port, input, failing)) };
     }

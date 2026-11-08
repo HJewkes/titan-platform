@@ -532,5 +532,6 @@
   "workflows/post-merge-chore.ts",
   "workflows/post-merge.ts",
   "workflows/pr-snapshot.ts",
+  "workflows/skip-hidden.ts",
   "workflows/toolchain-fanout.ts"
 ]

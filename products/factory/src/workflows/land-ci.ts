@@ -5,6 +5,7 @@ import { openRepoFindings, openRunsSettled, type OpenSeen } from "./land-open-ch
 import type { HeadObserver } from "../head-guard/head-regression.js";
 import type { OrphanedCheck } from "./land-orphan.js";
 import { portReads, type PrReads } from "./pr-snapshot.js";
+import { newestRanPerCheck, SKIPS } from "./skip-hidden.js";
 
 /** mergeable_state values that let a merge through; `unknown` means GitHub has not settled, and `blocked` is judged apart. */
 const MERGEABLE = new Set(["clean", "unstable", "has_hooks"]);
@@ -113,19 +114,17 @@ function findingsAt(input: Pick<CiInput, "contexts">, headSha: string, allRuns: 
   return { findings, red: redRuns(findings, runs.filter((run) => run.headSha === headSha && run.appId === GITHUB_ACTIONS_APP_ID)) };
 }
 
-/** A skip ran nothing that could fail, so it is never red; it is not a pass of a required check either. */
-const SKIPS: ReadonlySet<string> = new Set(["skipped", "neutral"]);
-
 /** A run that has not concluded, or concluded without running its job. A lone cancel is still red, so land reruns it. */
 const ranNothing = (run: CheckRun): boolean => !isConcluded(run) || SKIPS.has(run.conclusion ?? "") || run.conclusion === "cancelled";
 
 /**
- * Red needs a concluded failure the fixer can find: its check's newest run at the head, or an older run beside a newer
- * one that ran and passed, as TP-497 judges. A failure whose newer run is still going or ran nothing (tp#2576, tp#2622,
- * a rerun in flight) is waited on, since it is not green either.
+ * Red needs a concluded failure the fixer can find, judged against its check's newest run that ran, past any newer skip
+ * (tp#3329): the failure is that run, or an older run beside a newer one that ran and passed, as TP-497 judges. A skip is
+ * never red, nor a pass of a required check. A failure whose newer run is still going or was cancelled (tp#2576, a rerun
+ * in flight) is waited on, not green either.
  */
 function redRuns(findings: readonly CheckFinding[], counted: readonly CheckRun[]): CheckRun[] {
-  const newest = new Map(latestPerName(counted).map((run) => [run.name, run]));
+  const newest = new Map(newestRanPerCheck(counted).map((run) => [run.name, run]));
   const replacedBy = (run: CheckRun) => {
     const latest = newest.get(run.name);
     return latest !== undefined && latest.id !== run.id ? latest : undefined;
