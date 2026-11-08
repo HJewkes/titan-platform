@@ -4,6 +4,18 @@ import { parseAllDocuments } from "yaml";
 import { z } from "zod";
 
 export const BUMP_BRANCH_PREFIX = "shepherd/bump-consumers-";
+/** Room left in agent-chat's 64-character peer name for a fixer's `-s<k>` suffix. */
+const BUMP_IMPLEMENTER_MAX = 56;
+
+/**
+ * The registered implementer of one bump run. Each run needs its own: a fixer is named `<implementer>-s<k>`, and a
+ * lineage takes in every roster row of that shape, so a shared name would hand one PR's wake to another PR's fixer.
+ */
+export function consumerBumpImplementer(repo: RepoSlug, pr: number): string {
+  const name = (repo.split("/")[1] ?? repo).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const suffix = `-${pr}`;
+  return `bump-${name.slice(0, BUMP_IMPLEMENTER_MAX - "bump-".length - suffix.length).replace(/-+$/, "")}${suffix}`;
+}
 const DEP_FIELDS = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"] as const;
 /** A name outside this shape never reaches the registry URL or a regex. */
 const TITAN_NAME = /^@titan-design\/[a-z0-9][a-z0-9._-]*$/;
@@ -145,7 +157,7 @@ function decideFile(file: RepoFile, latest: ReadonlyMap<string, string | null>):
   return { edits: [...edits.values()], leftAlone: [...leftAlone.values()] };
 }
 
-function titanDeps(file: RepoFile): [string, string][] {
+export function titanDeps(file: RepoFile): [string, string][] {
   let manifest: unknown;
   try {
     manifest = JSON.parse(file.content);

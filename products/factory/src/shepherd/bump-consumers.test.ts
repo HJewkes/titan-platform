@@ -4,10 +4,10 @@ import { openFactoryHost, type FactoryHost } from "../host.js";
 import { CONSUMER_A, CONSUMER_B, CONSUMER_C, CONSUMER_DENIED, CONSUMER_SEATS, REGENERATED_MARK, consumerBumpWorld, pushBranchCommit, seedLeftoverBranch, type ConsumerBumpWorld } from "../test-support/consumer-bump.js";
 import { shepherdFixture } from "../test-support/shepherd.js";
 import { bumpConsumers, planConsumerBumps } from "./bump-consumers.js";
-import { BUMP_BRANCH_PREFIX, bumpBranch } from "./consumer-bump.js";
+import { BUMP_BRANCH_PREFIX, bumpBranch, consumerBumpImplementer } from "./consumer-bump.js";
 import { bumpCommitMessage } from "./leftover-bump.js";
 import { RegisterArgs, policyFor } from "./register-args.js";
-import { CONSUMER_BUMP_IMPLEMENTER, registerConsumerBump } from "./self-register.js";
+import { registerConsumerBump } from "./self-register.js";
 import type { ShepherdServices } from "./services.js";
 
 const hosts: FactoryHost[] = [];
@@ -78,7 +78,7 @@ describe("planConsumerBumps", () => {
 });
 
 describe("registerConsumerBump", () => {
-  it("registers each bump under policyFor of its own consumer seat, fixer false and no forced owner-gate", async () => {
+  it("registers each bump under its own implementer and policyFor of its own consumer seat, which grants the fixer, and no forced owner-gate", async () => {
     const w = world();
     const ctx = { warnings: [], format: "json" as const, host: w.host, shepherd: w.services };
     const { bumps } = await planConsumerBumps(w.services, w.registry);
@@ -88,13 +88,13 @@ describe("registerConsumerBump", () => {
       const pr = bumpShapedPr(w, repo, branch).number;
       const { runId } = await registerConsumerBump(ctx, repo, pr);
       const registration = w.services.store.get().byPr(repo, pr);
-      const seatPolicy = policyFor(w.services.seats, RegisterArgs.parse({ repo, pr, task: "t", implementer: "i", policy: { fixer: false } }));
-      expect(registration).toMatchObject({ runId, implementer: CONSUMER_BUMP_IMPLEMENTER, branch, policy: seatPolicy });
+      const seatPolicy = policyFor(w.services.seats, RegisterArgs.parse({ repo, pr, task: "t", implementer: "i" }));
+      expect(registration).toMatchObject({ runId, implementer: consumerBumpImplementer(repo, pr), branch, policy: seatPolicy });
       policies.set(repo, registration?.policy);
     }
 
-    expect(policies.get(CONSUMER_A)).toMatchObject({ seat: "seat-a", merge: "auto", fixer: false });
-    expect(policies.get(CONSUMER_B)).toMatchObject({ seat: "seat-bc", merge: "owner-gate", fixer: false });
+    expect(policies.get(CONSUMER_A)).toMatchObject({ seat: "seat-a", merge: "auto", fixer: true });
+    expect(policies.get(CONSUMER_B)).toMatchObject({ seat: "seat-bc", merge: "owner-gate", fixer: true });
     for (const policy of policies.values()) expect(policy).not.toHaveProperty("ownerGateReason");
   });
   it("refuses a fork head or a branch outside the bump prefix, whatever files it changes", async () => {
@@ -136,7 +136,7 @@ describe("bumpConsumers", () => {
     expect([...w.fakes].map(([repo, fake]) => [repo, fake.effects.createPr])).toEqual([[CONSUMER_A, 1], [CONSUMER_B, 1], [CONSUMER_C, 0], [CONSUMER_DENIED, 0]]);
     const prA = await w.services.port.getPr(CONSUMER_A, notes[0]!.pr!);
     expect(prA).toMatchObject({ headRef: branchA, baseRef: "main" });
-    for (const note of notes.slice(0, 2)) expect(w.services.store.get().byPr(note.repo, note.pr!)).toMatchObject({ runId: note.registered, implementer: CONSUMER_BUMP_IMPLEMENTER });
+    for (const note of notes.slice(0, 2)) expect(w.services.store.get().byPr(note.repo, note.pr!)).toMatchObject({ runId: note.registered, implementer: consumerBumpImplementer(note.repo, note.pr!) });
   });
 
   it("lists each raised name and each left-alone pair in the PR body", async () => {
@@ -174,7 +174,7 @@ describe("bumpConsumers", () => {
     const notes = await bumpConsumers(w.host, w.services, ports(w));
 
     expect(notes[2]).toEqual({ repo: CONSUMER_C, pr: stale.number, skipped: "open", registered: expect.any(String) });
-    expect(w.services.store.get().byPr(CONSUMER_C, stale.number)).toMatchObject({ runId: notes[2]!.registered, implementer: CONSUMER_BUMP_IMPLEMENTER });
+    expect(w.services.store.get().byPr(CONSUMER_C, stale.number)).toMatchObject({ runId: notes[2]!.registered, implementer: consumerBumpImplementer(CONSUMER_C, stale.number) });
     expect(w.fakes.get(CONSUMER_C)!.effects).toMatchObject({ createRef: 0, putContent: 0, createPr: 0 });
   });
 
