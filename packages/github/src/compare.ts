@@ -49,7 +49,12 @@ interface GhCompareCommit {
   commit: { message: string };
 }
 
-const toBranchCommit = (commit: GhCompareCommit): BranchCommit => ({ sha: commit.sha, authorLogin: commit.author?.login ?? null, committerLogin: commit.committer?.login ?? null, message: commit.commit.message });
+const toBranchCommit = (commit: GhCompareCommit): BranchCommit => ({
+  sha: commit.sha,
+  authorLogin: commit.author?.login ?? null,
+  committerLogin: commit.committer?.login ?? null,
+  message: commit.commit.message,
+});
 
 /** `compareFiles` with the commits kept: each with the accounts GitHub matched its author and committer to. */
 export async function compareCommits(api: Rest, repo: string, base: string, head: string): Promise<BranchCommits> {
