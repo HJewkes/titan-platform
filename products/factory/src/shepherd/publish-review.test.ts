@@ -171,12 +171,24 @@ describe("sh-publish-review", () => {
     expect(fake.reviews.get(1)?.map(({ state, commitId, login }) => ({ state, commitId, login }))).toEqual([{ state: "APPROVED", commitId: A, login: fake.appLogin }]);
   });
 
-  it("a FIX_FIRST posts no approval and records no review in the step result", async () => {
+  it("a FIX_FIRST posts no approval and records an empty dismissal in the step result", async () => {
     const fake = fakeGitHub();
 
     const { host, runId } = await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "FIX_FIRST"), reviewCheck: githubPort(fake.wire), gate: "sh-sent-back" });
 
     expect(fake.reviews.get(1) ?? []).toEqual([]);
-    expect(publishResults(host, runId).map((result) => "review" in result)).toEqual([false]);
+    expect(publishResults(host, runId).map((result) => result.review)).toEqual([{ dismissed: [] }]);
+  });
+
+  it("a head moved after the MERGE dismisses the approval at the reviewed head when the new head publishes action_required", async () => {
+    const fake = fakeGitHub();
+    let moved = false;
+    const moveOnce = (head: string) => void (head === A && !moved && ((moved = true), fake.pushHead(1, B)));
+
+    const { host, runId } = await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE", moveOnce), reviewCheck: githubPort(fake.wire) });
+
+    const [approval] = fake.reviews.get(1) ?? [];
+    expect(approval).toMatchObject({ commitId: A, state: "DISMISSED" });
+    expect(publishResults(host, runId).slice(0, 2).map((result) => result.review)).toEqual([{ approved: approval!.id }, { dismissed: [approval!.id] }]);
   });
 });

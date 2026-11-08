@@ -2,7 +2,7 @@ import type { GitHubPort, PullReview, RepoSlug } from "@titan-design/github";
 import { consoleTextOf, failureOf } from "./error-class.js";
 import type { ReviewConclusion } from "./review-check.js";
 
-/** What the publish step did about the pull request review; absent when the check was not a success. */
+/** What a success publish did about the pull request review; a non-success one dismisses instead (`review-dismissal.ts`). */
 export type ReviewApproval = { approved: number } | { reviewError: string };
 
 interface ApprovalTarget {
@@ -45,8 +45,13 @@ export async function approveOnSuccess(port: ReviewPort | undefined, target: App
   }
 }
 
+/** A standing approval Shepherd posted: a bot's, still APPROVED, carrying the marker. */
+export function isShepherdApproval(review: PullReview): boolean {
+  return review.userType === "Bot" && review.state === "APPROVED" && review.body.includes(MARKER_PREFIX);
+}
+
 function isShepherdApprovalAt(review: PullReview, head: string): boolean {
-  return review.userType === "Bot" && review.state === "APPROVED" && review.commitId === head && review.body.includes(MARKER_PREFIX) && review.body.includes(` head=${head} -->`);
+  return isShepherdApproval(review) && review.commitId === head && review.body.includes(` head=${head} -->`);
 }
 
 function approvalBody(runId: string, check: PublishedCheck): string {
