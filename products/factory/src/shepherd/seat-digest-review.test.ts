@@ -38,6 +38,14 @@ describe("seat digest of a review that could not be synced", () => {
     expect(sent[0]).toContain("- acme/widgets#4 Shepherd's approval at aaaaaaa is out of line with its check: dismissing review 1 failed: HTTP 503");
   });
 
+  it("names a configured App login that clashes with a Shepherd-marked approval", async () => {
+    const reviewError = "shepherd.reviewCheck.login is not the login every Shepherd-marked approval was posted as";
+
+    const sent = await digest([{ row: row(), run: run({ head: HEAD, review: { reviewError } }) }]);
+
+    expect(sent[0]).toContain(`- acme/widgets#4 Shepherd's approval at aaaaaaa is out of line with its check: ${reviewError}`);
+  });
+
   it("tells nothing once a later publish at the head synced the review", async () => {
     const sent = await digest([{ row: row(), run: run({ head: HEAD, review: { reviewError: "the review read failed: HTTP 502" } }, { head: HEAD, review: { dismissed: [1] } }) }]);
 

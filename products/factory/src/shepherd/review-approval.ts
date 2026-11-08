@@ -40,7 +40,7 @@ const MARKER_PREFIX = "<!-- shepherd-review ";
 export const approvalMarker = (runId: string, head: string): string => `${MARKER_PREFIX}run=${runId} head=${head} -->`;
 
 export const NO_APP = "no shepherd.reviewCheck App is configured";
-const LOGIN_MISMATCH = "shepherd.reviewCheck.login is not the login this run's approvals were posted as";
+const LOGIN_MISMATCH = "shepherd.reviewCheck.login is not the login every Shepherd-marked approval was posted as";
 
 /**
  * Brings Shepherd's own marked approvals into line with the check: on a success one approval stands at the check's head, and
@@ -63,9 +63,10 @@ export async function syncApproval(client: ReviewClient | undefined, target: App
 }
 
 /**
- * Shepherd's approvals on the PR, or the reason they could not be told apart. An approval carrying this run's marker under
- * another bot login means the configured login is not the one the App writes as, so matching on it would leave the App's
- * approvals standing; that is recorded instead, and nothing is posted or dismissed.
+ * Shepherd's approvals on the PR, or the reason they could not be told apart. Every marked bot approval, from any run, must
+ * be by the configured login: one under another login means either the login is not the one the App writes as, so matching
+ * on it would leave the App's approvals standing, or another bot copied the marker. Either way that is recorded instead,
+ * and nothing is posted or dismissed.
  */
 async function ownApprovals({ port, timing }: ReviewClient, target: ApprovalTarget, check: PublishedCheck): Promise<PullReview[] | { reviewError: string }> {
   let login: string;
@@ -81,9 +82,10 @@ async function ownApprovals({ port, timing }: ReviewClient, target: ApprovalTarg
   } catch (error) {
     return { reviewError: failed("the review read failed", target, check, error) };
   }
-  const strayed = reviews.find((review) => isMarkedApproval(review, target.runId) && !sameLogin(review.login, login));
-  if (!strayed) return reviews.filter((review) => isShepherdApproval(review, login));
-  console.warn(`shepherd: review ${strayed.id} on ${target.repo}#${target.pr} carries run ${target.runId}'s marker as ${strayed.login}, not the configured ${login}`);
+  const marked = reviews.filter(isMarkedApproval);
+  const strayed = marked.find((review) => !sameLogin(review.login, login));
+  if (!strayed) return marked;
+  console.warn(`shepherd: review ${strayed.id} on ${target.repo}#${target.pr} carries Shepherd's marker as ${strayed.login}, not the configured ${login}`);
   return { reviewError: LOGIN_MISMATCH };
 }
 
@@ -113,15 +115,9 @@ function failed(what: string, target: ApprovalTarget, check: PublishedCheck, err
   return `${what}: ${failureOf(error)}`;
 }
 
-/** An approval by the App's own bot login carrying Shepherd's marker for the very commit it was given at. */
-function isShepherdApproval(review: PullReview, appLogin: string): boolean {
-  const byApp = review.userType === "Bot" && sameLogin(review.login, appLogin);
-  return byApp && review.state === "APPROVED" && review.commitId !== null && review.body.includes(MARKER_PREFIX) && review.body.includes(` head=${review.commitId} -->`);
-}
-
-/** A bot's standing approval carrying this run's own marker for its commit, whoever posted it. */
-function isMarkedApproval(review: PullReview, runId: string): boolean {
-  return review.userType === "Bot" && review.state === "APPROVED" && review.commitId !== null && review.body.includes(approvalMarker(runId, review.commitId));
+/** A bot's standing approval carrying Shepherd's marker, from any run, for the very commit it was given at. */
+function isMarkedApproval(review: PullReview): boolean {
+  return review.userType === "Bot" && review.state === "APPROVED" && review.commitId !== null && review.body.includes(MARKER_PREFIX) && review.body.includes(` head=${review.commitId} -->`);
 }
 
 /** GitHub logins are case-insensitive, and an empty one is a deleted account, never the App. */

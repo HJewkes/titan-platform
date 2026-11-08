@@ -794,12 +794,13 @@ goes on.
   head, the published one included. A MERGE publish can approve a head that the same run then
   republishes as `action_required` (an unmet attestation), and GitHub keeps an approval after a
   push, so Shepherd dismisses each review that is by the App's own `login`, still `APPROVED`, and
-  carries the marker naming the commit it was given at. Human reviews and other bots' reviews are
-  never touched, even when they carry the marker. Without `login` an installation token cannot
-  read its own identity, so the step records `review.reviewError` and touches no review. The
-  config refuses a `login` that is not a bot login, and an approval carrying the run's own
-  marker under any other login also records `review.reviewError` and touches no review, so a
-  wrong `login` cannot quietly stop the dismissals. The step records
+  carries the marker naming the commit it was given at. Human reviews are never touched, even
+  when they carry the marker. Without `login` an installation token cannot read its own
+  identity, so the step records `review.reviewError` and touches no review. The config refuses a
+  `login` that is not a bot login. A bot approval carrying Shepherd's marker, from any run, under
+  a login other than `login` also records `review.reviewError` and touches no review: either
+  `login` is not the one the App writes as, or another bot copied the marker. So a wrong `login`
+  cannot quietly stop the dismissals. The step records
   `review.dismissed` with the ids, and a replay finds nothing left to dismiss. A success keeps
   only its own approval at the published head and dismisses the rest. Once the dismissals
   succeed, every guard that holds the check also holds the approval.

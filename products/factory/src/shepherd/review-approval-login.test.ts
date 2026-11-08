@@ -7,6 +7,7 @@ import type { ReviewOutcome } from "./route-table.js";
 const REPO = "acme/widgets";
 const B = fakeSha("review-login-b");
 const RUN = "run-1";
+const MISMATCH = "shepherd.reviewCheck.login is not the login every Shepherd-marked approval was posted as";
 const TIMING = { now: () => 0, sleep: async () => undefined };
 
 function scene(): { fake: FakeGitHub; pr: number } {
@@ -19,24 +20,26 @@ const sync = (port: GitHubPort, pr: number, outcome: ReviewOutcome) => syncAppro
 const appPort = (fake: FakeGitHub) => githubPort(fake.wire, { login: fake.appLogin });
 
 describe("syncApproval by the App's login", () => {
-  it("a FIX_FIRST leaves another App's approval standing even when it carries Shepherd's marker for its head", async () => {
+  it("a FIX_FIRST leaves another App's approval carrying Shepherd's marker standing, and records the clash", async () => {
     const { fake, pr } = scene();
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
     fake.reviews.set(pr, [marked(1, "other-app[bot]", "run-other")]);
 
     const result = await sync(appPort(fake), pr, "FIX_FIRST");
 
     expect(fake.reviews.get(pr)?.map((review) => review.state)).toEqual(["APPROVED"]);
-    expect(result).toBeUndefined();
+    expect(result).toEqual({ reviewError: MISMATCH });
   });
 
-  it("a MERGE does not reuse another App's marked approval at the head, and posts Shepherd's own", async () => {
+  it("a MERGE neither reuses another App's marked approval at the head nor posts beside it", async () => {
     const { fake, pr } = scene();
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
     fake.reviews.set(pr, [marked(1, "other-app[bot]", "run-other")]);
 
     const result = await sync(appPort(fake), pr, "MERGE");
 
-    expect(fake.reviews.get(pr)?.map((review) => review.login)).toEqual(["other-app[bot]", fake.appLogin]);
-    expect(result?.approved).not.toBe(1);
+    expect(fake.reviews.get(pr)?.map((review) => review.login)).toEqual(["other-app[bot]"]);
+    expect(result).toEqual({ reviewError: MISMATCH });
   });
 
   it("an approval by the App's login in other letter case is still Shepherd's and is dismissed", async () => {
@@ -57,19 +60,19 @@ describe("syncApproval by the App's login", () => {
     const sentBack = await sync(misconfigured, pr, "FIX_FIRST");
     const again = await sync(misconfigured, pr, "MERGE");
 
-    expect(sentBack).toEqual({ reviewError: "shepherd.reviewCheck.login is not the login this run's approvals were posted as" });
+    expect(sentBack).toEqual({ reviewError: MISMATCH });
     expect(again).toEqual(sentBack);
     expect(fake.reviews.get(pr)?.map((review) => review.login)).toEqual([fake.appLogin]);
   });
 
-  it("another bot's approval carrying this run's own marker stops the sync rather than being left as not Shepherd's", async () => {
+  it("a wrong login on a restarted run records the clash with an earlier run's standing approval instead of leaving it", async () => {
     const { fake, pr } = scene();
-    fake.reviews.set(pr, [marked(1, "other-app[bot]")]);
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    fake.reviews.set(pr, [marked(1, fake.appLogin, "run-earlier")]);
 
-    const result = await sync(appPort(fake), pr, "MERGE");
+    const result = await sync(githubPort(fake.wire, { login: "fake-ap[bot]" }), pr, "FIX_FIRST");
 
-    expect(result).toEqual({ reviewError: "shepherd.reviewCheck.login is not the login this run's approvals were posted as" });
+    expect(result).toEqual({ reviewError: MISMATCH });
     expect(fake.reviews.get(pr)?.map((review) => review.state)).toEqual(["APPROVED"]);
   });
 

@@ -4,10 +4,11 @@
     {
       "name": "any bot's marked approval counts as Shepherd's, whatever its login",
       "file": "products/factory/src/shepherd/review-approval.ts",
-      "find": "review.userType === \"Bot\" && sameLogin(review.login, appLogin);",
-      "replace": "review.userType === \"Bot\";",
+      "find": "  if (!strayed) return marked;",
+      "replace": "  return marked;",
       "kills": [
-        "syncApproval by the App's login a FIX_FIRST leaves another App's approval standing even when it carries Shepherd's marker for its head"
+        "syncApproval by the App's login a wrong login on a restarted run records the clash with an earlier run's standing approval instead of leaving it",
+        "syncApproval by the App's login a FIX_FIRST leaves another App's approval carrying Shepherd's marker standing, and records the clash"
       ]
     },
     {
@@ -20,12 +21,12 @@
       ]
     },
     {
-      "name": "a configured login the App does not write as is never checked",
+      "name": "only the current run's marked approvals are checked against the login",
       "file": "products/factory/src/shepherd/review-approval.ts",
-      "find": "  const strayed = reviews.find((review) => isMarkedApproval(review, target.runId) && !sameLogin(review.login, login));",
-      "replace": "  const strayed: PullReview | undefined = undefined;",
+      "find": "  const strayed = marked.find((review) => !sameLogin(review.login, login));",
+      "replace": "  const strayed = marked.find((review) => review.body.includes(`run=${target.runId} `) && !sameLogin(review.login, login));",
       "kills": [
-        "syncApproval by the App's login a configured login the App does not write as is recorded once its approval is listed, and that approval is not re-posted"
+        "syncApproval by the App's login a wrong login on a restarted run records the clash with an earlier run's standing approval instead of leaving it"
       ]
     }
   ]
