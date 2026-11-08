@@ -7,6 +7,7 @@ import { readRounds } from "../shepherd/round-ship-sweep.js";
 import { readAllGates } from "../shepherd/owner-friction-read.js";
 import { loadSeatBook } from "../shepherd/seats.js";
 import type { PlannerRun } from "./inputs.js";
+import { ISO_TIME } from "./iso-time.js";
 import type { RoundAnswer, WindowGitHub, WindowSources } from "./window-probes.js";
 
 /** One page: a planner window is hours long, and a probe only needs to know whether anything happened. */
@@ -41,20 +42,25 @@ export function ghWindow(run: PlannerRun): WindowGitHub {
   };
 }
 
-/** A round whose feedback does not parse is kept with no date, so the probe reports it rather than losing the owner's answer. */
+/** A round that cannot be dated is kept with the reason, so the probe reports it rather than losing the owner's answer. */
 export async function roundAnswers(roundsDir: string | undefined): Promise<RoundAnswer[]> {
   if (roundsDir === undefined) return [];
   const rounds = await readRounds(roundsDir);
-  return rounds.flatMap((round) => (round.feedback === undefined ? [] : [{ id: round.id, submittedAt: submittedAtOf(round.feedback) }]));
+  return rounds.flatMap((round) => (round.feedback === undefined ? [] : [answerOf(round.id, round.feedback)]));
 }
 
-function submittedAtOf(feedback: Uint8Array): string | undefined {
+function answerOf(id: string, feedback: Uint8Array): RoundAnswer {
+  let json: unknown;
   try {
-    const submittedAt = RoundFeedbackSchema.safeParse(JSON.parse(Buffer.from(feedback).toString("utf8"))).data?.submittedAt;
-    return submittedAt === undefined || Number.isNaN(Date.parse(submittedAt)) ? undefined : submittedAt;
+    json = JSON.parse(Buffer.from(feedback).toString("utf8"));
   } catch {
-    return undefined;
+    return { id, submittedAt: undefined, why: "feedback.json is not valid JSON" };
   }
+  const parsed = RoundFeedbackSchema.safeParse(json);
+  if (!parsed.success) return { id, submittedAt: undefined, why: "feedback.json has no valid submittedAt field" };
+  const { submittedAt } = parsed.data;
+  if (!ISO_TIME.test(submittedAt) || Number.isNaN(Date.parse(submittedAt))) return { id, submittedAt: undefined, why: "submittedAt is not an ISO time" };
+  return { id, submittedAt };
 }
 
 /** Read-only, so a running serve is never disturbed; a missing store throws, which the wake reads as "run the review". */
