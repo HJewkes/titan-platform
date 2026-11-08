@@ -88,7 +88,7 @@ describe("a weakened PR whose approval pins a deleted workflow as absent", () =>
   });
 
   it("merges when every head read succeeds", async () => {
-    await merged(plannedRun(ciRow(byConsole(approval), files)));
+    await merged(plannedRun({ ...ciRow(byConsole(approval), files), seatReleased: "g10-adversary: workflow touch" }));
   });
 
   it("gates when the deleted file's head read fails, rather than reading it as absent", async () => {

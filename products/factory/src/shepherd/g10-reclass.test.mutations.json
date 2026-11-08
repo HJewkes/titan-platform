@@ -15,8 +15,8 @@
     {
       "name": "a run held for any reason is re-read",
       "file": "products/factory/src/shepherd/g10-reclass.ts",
-      "find": " || !isUnreadRegistrationHold(from)) return { reclassed: false };",
-      "replace": ") return { reclassed: false };",
+      "find": "  if (!from || !isUnreadRegistrationHold(from)) return classHead(deps, input, pause);",
+      "replace": "  if (!from) return classHead(deps, input, pause);",
       "kills": [
         "a run held because its changed files were unread at registration, read again at a CI read reads nothing for a run held for another reason"
       ]

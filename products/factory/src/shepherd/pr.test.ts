@@ -1507,7 +1507,7 @@ describe("a fixer that exits without pushing a new head", () => {
   }
 
   it("reruns the failed jobs once at the same head before any wake, so a failure that heals wakes no one", async () => {
-    const { w, wakes } = redOnFlake(["products/factory/src/shepherd/wake.ts"], true);
+    const { w, wakes } = redOnFlake(["packages/x/src/a.ts"], true);
     const runId = shepherdPr1(w);
 
     await approve(w.host, runId, H1);
@@ -1528,7 +1528,7 @@ describe("a fixer that exits without pushing a new head", () => {
   });
 
   it("reruns once per head: a head still red after the rerun and a second exit opens the gate", async () => {
-    const { w, wakes } = redOnFlake(["products/factory/src/shepherd/wake.ts"], false);
+    const { w, wakes } = redOnFlake(["packages/x/src/a.ts"], false);
     const runId = shepherdPr1(w);
 
     await gateOpened(w.host, gateId(runId, "sh-sent-back"));
