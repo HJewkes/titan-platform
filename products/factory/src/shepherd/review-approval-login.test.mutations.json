@@ -18,6 +18,15 @@
       "kills": [
         "syncApproval by the App's login an approval by the App's login in other letter case is still Shepherd's and is dismissed"
       ]
+    },
+    {
+      "name": "a configured login the App does not write as is never checked",
+      "file": "products/factory/src/shepherd/review-approval.ts",
+      "find": "  const strayed = reviews.find((review) => isMarkedApproval(review, target.runId) && !sameLogin(review.login, login));",
+      "replace": "  const strayed: PullReview | undefined = undefined;",
+      "kills": [
+        "syncApproval by the App's login a configured login the App does not write as is recorded once its approval is listed, and that approval is not re-posted"
+      ]
     }
   ]
 }

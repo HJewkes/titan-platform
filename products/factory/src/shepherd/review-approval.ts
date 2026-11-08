@@ -40,6 +40,7 @@ const MARKER_PREFIX = "<!-- shepherd-review ";
 export const approvalMarker = (runId: string, head: string): string => `${MARKER_PREFIX}run=${runId} head=${head} -->`;
 
 export const NO_APP = "no shepherd.reviewCheck App is configured";
+const LOGIN_MISMATCH = "shepherd.reviewCheck.login is not the login this run's approvals were posted as";
 
 /**
  * Brings Shepherd's own marked approvals into line with the check: on a success one approval stands at the check's head, and
@@ -52,9 +53,23 @@ export async function syncApproval(client: ReviewClient | undefined, target: App
   const success = check.conclusion === "success";
   // Without the App no Shepherd approval can exist, so only a success that was owed one is recorded.
   if (!client) return success ? { reviewError: NO_APP } : undefined;
-  const { port, timing } = client;
+  const own = await ownApprovals(client, target, check);
+  if (!Array.isArray(own)) return own;
+  const result: ReviewApproval = {};
+  const kept = success ? own.find((review) => review.commitId === check.headSha) : undefined;
+  if (success) await approve(client.port, target, check, kept, result);
+  await dismissAll(client, target, check, own.filter((review) => review !== kept), result);
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+/**
+ * Shepherd's approvals on the PR, or the reason they could not be told apart. An approval carrying this run's marker under
+ * another bot login means the configured login is not the one the App writes as, so matching on it would leave the App's
+ * approvals standing; that is recorded instead, and nothing is posted or dismissed.
+ */
+async function ownApprovals({ port, timing }: ReviewClient, target: ApprovalTarget, check: PublishedCheck): Promise<PullReview[] | { reviewError: string }> {
   let login: string;
-  let own: PullReview[];
+  let reviews: PullReview[];
   try {
     // An installation token cannot read its own login, so this is `shepherd.reviewCheck.login`; unset, it fails with a 403.
     login = await port.actorLogin();
@@ -62,15 +77,14 @@ export async function syncApproval(client: ReviewClient | undefined, target: App
     return { reviewError: failed("reading the App's login failed", target, check, error) };
   }
   try {
-    own = (await withReviewRetry(() => port.listReviews(target.repo, target.pr), timing)).filter((review) => isShepherdApproval(review, login));
+    reviews = await withReviewRetry(() => port.listReviews(target.repo, target.pr), timing);
   } catch (error) {
     return { reviewError: failed("the review read failed", target, check, error) };
   }
-  const result: ReviewApproval = {};
-  const kept = success ? own.find((review) => review.commitId === check.headSha) : undefined;
-  if (success) await approve(port, target, check, kept, result);
-  await dismissAll(client, target, check, own.filter((review) => review !== kept), result);
-  return Object.keys(result).length > 0 ? result : undefined;
+  const strayed = reviews.find((review) => isMarkedApproval(review, target.runId) && !sameLogin(review.login, login));
+  if (!strayed) return reviews.filter((review) => isShepherdApproval(review, login));
+  console.warn(`shepherd: review ${strayed.id} on ${target.repo}#${target.pr} carries run ${target.runId}'s marker as ${strayed.login}, not the configured ${login}`);
+  return { reviewError: LOGIN_MISMATCH };
 }
 
 async function approve(port: ReviewPort, target: ApprovalTarget, check: PublishedCheck, kept: PullReview | undefined, result: ReviewApproval): Promise<void> {
@@ -103,6 +117,11 @@ function failed(what: string, target: ApprovalTarget, check: PublishedCheck, err
 function isShepherdApproval(review: PullReview, appLogin: string): boolean {
   const byApp = review.userType === "Bot" && sameLogin(review.login, appLogin);
   return byApp && review.state === "APPROVED" && review.commitId !== null && review.body.includes(MARKER_PREFIX) && review.body.includes(` head=${review.commitId} -->`);
+}
+
+/** A bot's standing approval carrying this run's own marker for its commit, whoever posted it. */
+function isMarkedApproval(review: PullReview, runId: string): boolean {
+  return review.userType === "Bot" && review.state === "APPROVED" && review.commitId !== null && review.body.includes(approvalMarker(runId, review.commitId));
 }
 
 /** GitHub logins are case-insensitive, and an empty one is a deleted account, never the App. */
