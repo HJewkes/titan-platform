@@ -121,16 +121,34 @@ beforeEach(() => {
 afterEach(() => rmSync(scratch, { recursive: true, force: true }));
 
 describe("titan-factory scorecard", () => {
-  it("counts a run whose approve-merge gate a Ship round resolved as a human step", async () => {
-    const { env, db, spec } = writeFixtures();
-    const factory = openDatabase(db);
-    factory.exec(`insert into workflow_run values ('r10','shepherd-pr','{"repo":"o/proj","pr":"10","task":"proj/T-2"}','completed','{"merge:0:0":{"completedAt":"2026-10-03T12:00:00.000Z","data":{"result":{"done":true,"mergeSha":"d"}}}}','2026-10-03T09:30:00.000Z','2026-10-03T12:01:00.000Z');
-      insert into hitl_gate values ('r10/approve-merge','resolved','2026-10-03T10:00:00.000Z','{"class":"owner-remote","id":"titan-console","channel":"console:round-ship","confirmEvent":"round:x@t"}');`);
-    factory.close();
+  describe("merge-run attribution", () => {
+    const MERGE = (sha: string) => `"merge:0:0":{"completedAt":"2026-10-03T12:00:00.000Z","data":{"result":{"done":true,"mergeSha":"${sha}"}}}`;
+    const AUTO_LINE = "Merges per day by Shepherd with no human step";
 
-    const { out } = await scorecard(env, ["--db", db, "--spec", spec]);
+    async function withRun(steps: string, resolvedBy: string | null): Promise<string> {
+      const { env, db, spec } = writeFixtures();
+      const factory = openDatabase(db);
+      factory.exec(`insert into workflow_run values ('r10','shepherd-pr','{"repo":"o/proj","pr":"10","task":"proj/T-2"}','completed','{${steps}}','2026-10-03T09:30:00.000Z','2026-10-03T12:01:00.000Z')`);
+      if (resolvedBy !== null) factory.prepare("insert into hitl_gate values ('r10/approve-merge','resolved','2026-10-03T10:00:00.000Z',?)").run(resolvedBy);
+      factory.close();
+      return lineOf((await scorecard(env, ["--db", db, "--spec", spec])).out, AUTO_LINE);
+    }
 
-    expect(lineOf(out, "Merges per day by Shepherd with no human step")).toContain("(1 with no human step of 3 merges");
+    it("counts a run whose approve-merge gate a Ship round resolved as a human step", async () => {
+      const ship = '{"class":"owner-remote","id":"titan-console","channel":"console:round-ship","confirmEvent":"round:x@t"}';
+
+      expect(await withRun(MERGE("d"), ship)).toContain("(1 with no human step of 3 merges");
+    });
+
+    it("counts a presence-free bot merge as auto", async () => {
+      expect(await withRun(MERGE("d"), null)).toContain("(2 with no human step of 3 merges");
+    });
+
+    it("counts a plain owner gate resolve on a non-Ship channel as human", async () => {
+      const owner = '{"class":"owner-terminal","id":"owner","channel":"terminal"}';
+
+      expect(await withRun(`"approve-merge":{"data":{"decision":"merge"}},${MERGE("d")}`, owner)).toContain("(1 with no human step of 3 merges");
+    });
   });
 
   it("prints every row as scripts/seat/scorecard does over the same fixtures", async () => {
