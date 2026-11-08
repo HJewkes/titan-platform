@@ -130,7 +130,7 @@ const runParamsSchema = z.object({ repo: z.string().catch(""), pr: z.unknown(), 
 
 const mergeDone = (data: unknown): boolean => z.object({ result: z.object({ done: z.literal(true) }) }).safeParse(data).success;
 
-function shepherdMerge(id: string, params: string, steps: string, win: Window): ShepherdMerge | null {
+function shepherdMerge(id: string, params: string, steps: string, win: Window, shipped: ReadonlySet<string>): ShepherdMerge | null {
   let p: z.infer<typeof runParamsSchema>, s: z.infer<typeof stepResultSchema>;
   try {
     p = runParamsSchema.parse(JSON.parse(params));
@@ -142,13 +142,34 @@ function shepherdMerge(id: string, params: string, steps: string, win: Window): 
   if (!merged.length) return null;
   const at = parseTs(merged.sort().at(-1)!);
   if (at < win.since || at > win.now) return null;
-  return { run: id, at, pr: normPr(p.repo, p.pr), task: p.task, human: Object.keys(s).some((key) => stepIdMatches("approve-merge", key)) };
+  return { run: id, at, pr: normPr(p.repo, p.pr), task: p.task, human: shipped.has(id) || Object.keys(s).some((key) => stepIdMatches("approve-merge", key)) };
 }
 
-/** Completed Shepherd runs whose merge step finished in the window, and whether a human approve-merge step was on the path. */
+const SHIP_CHANNELS = ["console:round-ship", "console:ship"];
+
+/** Runs whose approve-merge gate the owner answered through a console Ship; the gate's resolver is the only record of it. */
+function shipResolvedRuns(db: Db | null): Set<string> {
+  const gates = query(db, "SELECT id, resolved_by FROM hitl_gate WHERE status = 'resolved' AND resolved_by IS NOT NULL", z.object({ id: z.string(), resolved_by: z.string() }));
+  const shipped = gates.filter((g) => {
+    const channel = z.object({ channel: z.string() }).safeParse(safeJson(g.resolved_by));
+    return channel.success && SHIP_CHANNELS.includes(channel.data.channel);
+  });
+  return new Set(shipped.map((g) => g.id.slice(0, g.id.indexOf("/"))));
+}
+
+function safeJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+/** Completed Shepherd runs whose merge step finished in the window, and whether a human approve-merge step or a Ship answer was on the path. */
 function shepherdMerges(db: Db | null, win: Window): ShepherdMerge[] {
   const runs = query(db, "SELECT id, params, step_results FROM workflow_run WHERE status = 'completed'", z.object({ id: z.string(), params: z.string(), step_results: z.string() }));
-  return runs.flatMap((r) => shepherdMerge(r.id, r.params, r.step_results, win) ?? []);
+  const shipped = shipResolvedRuns(db);
+  return runs.flatMap((r) => shepherdMerge(r.id, r.params, r.step_results, win, shipped) ?? []);
 }
 
 function mergedDispatches(records: readonly DispatchRecord[]): DispatchRecord[] {

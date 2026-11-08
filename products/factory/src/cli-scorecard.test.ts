@@ -13,7 +13,7 @@ const FACTORY_SQL = `
 create table workflow_run (id text primary key, workflow_name text, params text, status text, step_results text, started_at text, completed_at text);
 create table shepherd_registration (run_id text, repo text, pr integer, task text, created_at text);
 create table shepherd_freeze (repo text primary key, red_sha text, frozen_at text, episode integer, thawed_at text);
-create table hitl_gate (id text primary key, status text, created_at text);
+create table hitl_gate (id text primary key, status text, created_at text, resolved_by text);
 insert into workflow_run values
  ('r1','shepherd-pr','{"repo":"o/proj","pr":"1","task":"proj/T-1"}','completed','{"merge:0:0":{"completedAt":"2026-10-03T10:00:00.000Z","data":{"result":{"done":true,"mergeSha":"a"}}}}','2026-10-03T09:00:00.000Z','2026-10-03T10:01:00.000Z'),
  ('r2','shepherd-pr','{"repo":"o/proj","pr":"2","task":"proj/T-2"}','completed','{"approve-merge":{"data":{"decision":"merge"}},"merge:0:0":{"completedAt":"2026-10-03T11:00:00.000Z","data":{"result":{"done":true,"mergeSha":"b"}}}}','2026-10-03T09:30:00.000Z','2026-10-03T11:01:00.000Z'),
@@ -26,9 +26,9 @@ insert into shepherd_freeze values
  ('o/proj','x','2026-10-03T12:00:00.000Z',1,'2026-10-03T12:40:00.000Z'),
  ('o/other','y','2026-10-04T06:00:00.000Z',1,null);
 insert into hitl_gate values
- ('r8/approve-merge','pending','2026-10-03T08:00:00.000Z'),
- ('r9/approve-merge','pending','2026-10-04T11:30:00.000Z'),
- ('r7/approve-merge','resolved','2026-10-03T07:00:00.000Z');`;
+ ('r8/approve-merge','pending','2026-10-03T08:00:00.000Z',null),
+ ('r9/approve-merge','pending','2026-10-04T11:30:00.000Z',null),
+ ('r7/approve-merge','resolved','2026-10-03T07:00:00.000Z','{"class":"coordinator","id":"c"}');`;
 
 const EVENTS: readonly [number, string][] = [
   [1790000000000, "Verdict: FIX_FIRST\nPR: o/old#9\nHead: 0"],
@@ -121,6 +121,18 @@ beforeEach(() => {
 afterEach(() => rmSync(scratch, { recursive: true, force: true }));
 
 describe("titan-factory scorecard", () => {
+  it("counts a run whose approve-merge gate a Ship round resolved as a human step", async () => {
+    const { env, db, spec } = writeFixtures();
+    const factory = openDatabase(db);
+    factory.exec(`insert into workflow_run values ('r10','shepherd-pr','{"repo":"o/proj","pr":"10","task":"proj/T-2"}','completed','{"merge:0:0":{"completedAt":"2026-10-03T12:00:00.000Z","data":{"result":{"done":true,"mergeSha":"d"}}}}','2026-10-03T09:30:00.000Z','2026-10-03T12:01:00.000Z');
+      insert into hitl_gate values ('r10/approve-merge','resolved','2026-10-03T10:00:00.000Z','{"class":"owner-remote","id":"titan-console","channel":"console:round-ship","confirmEvent":"round:x@t"}');`);
+    factory.close();
+
+    const { out } = await scorecard(env, ["--db", db, "--spec", spec]);
+
+    expect(lineOf(out, "Merges per day by Shepherd with no human step")).toContain("(1 with no human step of 3 merges");
+  });
+
   it("prints every row as scripts/seat/scorecard does over the same fixtures", async () => {
     const { env, db, spec } = writeFixtures();
 
