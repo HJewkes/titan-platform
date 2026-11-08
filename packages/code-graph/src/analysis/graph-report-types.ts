@@ -87,6 +87,12 @@ export type DeadModuleView = "all-consumers" | "public";
 export interface DeadModulesOptions {
   /** Defaults to `"all-consumers"`. */
   view?: DeadModuleView;
+  /**
+   * File ids that seed reachability whatever their role, in either view: the
+   * entries a package manifest declares (`packageEntryFileIds`), which a
+   * non-barrel subpath export or an `imports` alias would otherwise leave unseeded.
+   */
+  entryIds?: ReadonlySet<string>;
 }
 
 export interface GrowthRiskRow {

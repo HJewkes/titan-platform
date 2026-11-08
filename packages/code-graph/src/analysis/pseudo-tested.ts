@@ -30,7 +30,7 @@ export interface ExtremeSummary {
 export interface ExtremeFindingsInput {
   plan: BodyDeletePlan;
   report: HeadMutantsReport;
-  /** Source files a test file imports, transitively. */
+  /** Source files a test file imports, transitively, less what its own mocks replace. */
   reachedFiles: (testFile: string) => ReadonlySet<string>;
   /** Every test file at head, so a target tested only from a suite that never ran is not read as survived. */
   testFiles: readonly string[];

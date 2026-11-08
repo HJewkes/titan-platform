@@ -307,6 +307,12 @@ type DeadModuleView = "all-consumers" | "public";
 interface DeadModulesOptions {
     /** Defaults to `"all-consumers"`. */
     view?: DeadModuleView;
+    /**
+     * File ids that seed reachability whatever their role, in either view: the
+     * entries a package manifest declares (`packageEntryFileIds`), which a
+     * non-barrel subpath export or an `imports` alias would otherwise leave unseeded.
+     */
+    entryIds?: ReadonlySet<string>;
 }
 interface GrowthRiskRow {
     nodeId: string;
@@ -417,9 +423,10 @@ declare function topUnusedExports(symbolNodes: readonly GraphNode[], publicApi: 
  * Files unreachable from the entry roots by a forward BFS over `imports` /
  * `re-exports` edges — "no importer found given configured entry points" (C-65),
  * NOT proven dead. Catches transitively-dead chains, not just fan-in-0 files.
- * Blind spots (disclosed): a computed dynamic `import(variable)`, DI/registry
- * strings, and any package entry that isn't an index barrel escape the roots and
- * could make a live file look dead — so treat it as a lead, not a verdict.
+ * Package manifest entries seed it too when the caller passes `entryIds` (see
+ * `packageEntryFileIds`). Blind spots (disclosed): a computed dynamic
+ * `import(variable)` and DI/registry strings escape the roots and could make a
+ * live file look dead — so treat it as a lead, not a verdict.
  * Ranked by LOC (a large unreferenced file is the most worth removing).
  *
  * The `"public"` view (C-155) drops test, story and lab from the seeds and tags a

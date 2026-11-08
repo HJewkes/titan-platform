@@ -380,6 +380,58 @@ describe("durable harness dispatch", () => {
   });
 });
 
+describe("durable execution_started progress", () => {
+  const started = (executionId: string) => ({ harness: "codex" as const, atMs: 1, kind: "execution_started" as const, execution: { executionId } });
+
+  it("settles recovery required when the adapter execution identity changes mid-dispatch", async () => {
+    const hold = deferred<HarnessRunResult<unknown, "codex">>();
+    const adapter = controlledAdapter(async (runRequest) => {
+      runRequest.onProgress?.(started("adapter-one"));
+      runRequest.onProgress?.(started("adapter-two"));
+      return hold.promise;
+    });
+    const { dispatcher } = setup(adapter);
+    const ack = await dispatcher.dispatch({ executionId: "identity-changed", requestKey: "request-identity", request: request() });
+    await expect(ack.completion).resolves.toMatchObject({
+      kind: "recovery_required",
+      evidence: expect.stringContaining("adapter execution identity changed during one dispatch"),
+    });
+  });
+
+  it("settles ownership lost when the execution record is missing at execution_started", async () => {
+    const hold = deferred<HarnessRunResult<unknown, "codex">>();
+    const ledger = new MemoryLedger();
+    const adapter = controlledAdapter(async (runRequest) => {
+      ledger.records.delete("record-missing");
+      runRequest.onProgress?.(started("adapter-execution"));
+      return hold.promise;
+    });
+    const { dispatcher } = setup(adapter, ledger);
+    const ack = await dispatcher.dispatch({ executionId: "record-missing", requestKey: "request-missing", request: request() });
+    await expect(ack.completion).resolves.toMatchObject({ kind: "ownership_lost", evidence: "execution record disappeared" });
+  });
+
+  it("settles recovery required when persisting the running observation throws", async () => {
+    const hold = deferred<HarnessRunResult<unknown, "codex">>();
+    const ledger = new MemoryLedger();
+    const originalApply = ledger.apply.bind(ledger);
+    ledger.apply = (transition: ExecutionTransition<Stored>) => {
+      if (transition.kind === "observe_running") throw new Error("disk full");
+      return originalApply(transition);
+    };
+    const adapter = controlledAdapter(async (runRequest) => {
+      runRequest.onProgress?.(started("adapter-execution"));
+      return hold.promise;
+    });
+    const { dispatcher } = setup(adapter, ledger);
+    const ack = await dispatcher.dispatch({ executionId: "persist-throws", requestKey: "request-throws", request: request() });
+    await expect(ack.completion).resolves.toMatchObject({
+      kind: "recovery_required",
+      evidence: expect.stringContaining("could not persist running observation: disk full"),
+    });
+  });
+});
+
 describe("durable reconciliation", () => {
   it("never treats a missing execution as retry-safe", async () => {
     const run = vi.fn(async () => success("unused"));
