@@ -1,4 +1,3 @@
-/* eslint-disable titan/no-wall-clock-motion -- these models break the purity contract on purpose, to prove the pure-run traps catch them */
 import type { SimModel } from "./model.js";
 import type { SimModelSpec } from "./sim-load.js";
 import type { SimRun } from "./trace-schema.js";
