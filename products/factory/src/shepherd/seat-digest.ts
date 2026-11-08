@@ -10,6 +10,7 @@ import type { ShepherdServices } from "./services.js";
 import type { ShepherdStore } from "./store.js";
 import { holdsLiveSession } from "./wake-roster.js";
 import { rowsWithRuns, runFinished } from "./watch-rows.js";
+import { supersededFailures } from "./seat-digest-superseded.js";
 import { digestDelta, digestText, type DigestItem } from "./seat-digest-text.js";
 import { failedItem, finishedItem, gateItem, prRef, seatFixItem, type DigestInput } from "./seat-digest-items.js";
 export type { DigestInput } from "./seat-digest-items.js";
@@ -102,13 +103,14 @@ function seatViews(inputs: readonly DigestInput[], routes: Pick<DigestRoutes, "s
 
 /** `watches` is passed only for the seat watching the run: the copy seat when the watch names one, else the run's own. */
 function addRun(view: SeatView, input: DigestInput, quiet: (input: DigestInput) => boolean, watches: DigestWatches | undefined): void {
+  const failed = failedItem(input);
+  if (input.superseded) return void (failed && view.failed.push(failed));
   if (quiet(input)) {
     if (input.row.outcome !== null || FINISHED_PHASES.has(input.row.phase)) view.settled.push(input.row.runId);
     return;
   }
   const open = gateItem(input.row) ?? seatFixItem(input);
   if (open) view.open.push(open);
-  const failed = failedItem(input);
   if (failed) view.failed.push(failed);
   view.reads.push({ key: `failed:${input.row.runId}`, pr: prRef(input.row) });
   const finished = finishedItem(input.row);
@@ -343,7 +345,7 @@ export async function sweepSeatDigests(host: FactoryHost, services: ShepherdServ
   const reads = digestReads(memory, routes.seatOf);
   const watched = (runId: string): boolean => watches.of(runId) !== undefined;
   const inputs = await rowsWithRuns(host, services, (registration, status) => watched(registration.runId) || reads(registration, runFinished(status)));
-  return sendSeatDigests(inputs, ports, memory, routes, now, pacer);
+  return sendSeatDigests([...inputs, ...(await supersededFailures(host, services, now))], ports, memory, routes, now, pacer);
 }
 
 const MemoryFile = z.record(z.string(), SeatStateSchema);
