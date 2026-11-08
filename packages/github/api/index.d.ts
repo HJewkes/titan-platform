@@ -488,7 +488,6 @@ interface GitHubWire {
         id: number;
     }>;
     listReviewComments(repo: RepoSlug, number: number): Promise<ReviewComment[]>;
-    /** Every review on the PR, all pages, oldest first. */
     listReviews(repo: RepoSlug, number: number): Promise<PullReview[]>;
     /** `POST pulls/{n}/reviews` with `event: APPROVE` at `commit_id`, as the GitHub App; the wire refuses when it has no App token. */
     createReview(repo: RepoSlug, number: number, request: CreateReviewRequest): Promise<{
@@ -1326,10 +1325,12 @@ interface FakeGitHub {
     forcePushes: Map<number, ForcePush[]>;
 }
 
+/** What the fake throws where GitHub answers an HTTP error; callers branch on `status`. */
 declare class FakeHttpError extends Error {
     readonly status: number;
     constructor(status: number, message: string);
 }
+
 /** A real-shaped commit sha, stable per tag, so tests can name heads. */
 declare function fakeSha(tag: string): string;
 declare function successRun(name: string, id: number, startedAt?: string, conclusion?: string, appId?: number, headSha?: string): CheckRun;
