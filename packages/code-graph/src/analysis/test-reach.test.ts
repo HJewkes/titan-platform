@@ -65,6 +65,15 @@ describe("fileTestReach", () => {
     expect(reachCount(reach, "feed.ts")).toBe(1);
   });
 
+  it("keeps a module a test both mocks and loads through require() reached", () => {
+    const required: GraphEdge = { srcId: "legacy.ts", dstId: "store.ts", kind: "imports", attrs: { require: true } };
+    const edges = [hop("feed.test.ts", "legacy.ts"), required, hop("feed.test.ts", "store.ts", "mocks")];
+
+    const reach = fileTestReach([testFile("feed.test.ts")], edges);
+
+    expect(reachCount(reach, "store.ts")).toBe(1);
+  });
+
   it("falls back to unmasked reach for a file over the mock cap, saying why", () => {
     const edges = [hop("feed.test.ts", "feed.ts"), hop("feed.ts", "store.ts"), hop("feed.test.ts", "store.ts", "mocks"), hop("feed.test.ts", "clock.ts", "mocks")];
 

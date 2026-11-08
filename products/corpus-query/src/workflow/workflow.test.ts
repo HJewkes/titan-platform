@@ -135,7 +135,7 @@ describe("ask", () => {
     expect(result.status).toBe("completed");
     const { screen } = result.answer!.coverage;
     expect(screen).toMatchObject({ retrieved: 5, judged: 4, skipped: [] });
-    expect(screen.unjudged).toEqual([expect.stringMatching(/^gull-rovers\/1\/2#/)]);
+    expect(screen.unjudged).toEqual([expect.stringMatching(/^gull-rovers\/01\/02#/)]);
     expect(result.answer!.rows.map((r) => r.period)).toEqual(["GR 1.1", "GR 1.3", "GR 2.1", "GR 2.2"]);
   });
 
@@ -328,7 +328,7 @@ describe("resume", () => {
     expect(screenCalls(second.calls).flatMap((c) => c.refs)).toEqual(["GR 2.1", "GR 2.2"]);
     const round = path.dirname(runPaths(fx.dataDir, first.runId).batch("screen", "k", 0));
     const artifacts = readdirSync(round).map((f) => readJson(path.join(round, f), batchArtifactSchema(z.unknown()))!);
-    expect(artifacts.filter((a) => a.via === "unjudged").map((a) => a.passageIds)).toEqual([[expect.stringMatching(/^gull-rovers\/1\/2#/)]]);
+    expect(artifacts.filter((a) => a.via === "unjudged").map((a) => a.passageIds)).toEqual([[expect.stringMatching(/^gull-rovers\/01\/02#/)]]);
     expect(resumed.answer!.coverage.screen).toMatchObject({ judged: 4, skipped: [] });
   });
 

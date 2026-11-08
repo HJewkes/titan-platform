@@ -48,12 +48,20 @@ describe("indexCorpus", () => {
   it("re-reads each span from its byte range as the exact paragraph, multibyte text included", () => {
     indexCorpus(db, root, archiveLayout);
 
-    const spans = paragraphsOf("northwind/1/1");
+    const spans = paragraphsOf("northwind/01/01");
     const texts = spans.map((s) => readSpanText(root, s.relPath, s.byteOffset, s.byteLength));
 
     expect(texts).toEqual([`${MULTIBYTE} opens the harbour.`, "Second paragraph about lanterns.", `Third, indented, ${MULTIBYTE}.`]);
     const file = readFileSync(path.join(root, "northwind/book_01/chapter_01.txt"));
     expect(spans[2]!.byteOffset).toBeGreaterThan(file.toString("utf8").indexOf("Third"));
+  });
+
+  it("indexes zero-padded and unpadded siblings as separate chapters", () => {
+    writeFile(root, { relPath: "northwind/book_1/chapter_1.txt", title: "NW 1.1 - Twin", published: "2026-01-03", body: "A twin about anchors.\n" });
+
+    const stats = indexCorpus(db, root, archiveLayout);
+
+    expect(stats.indexed).toBe(4);
   });
 
   it("finds a paragraph through the contentless index and stores none of its text", () => {
@@ -62,7 +70,7 @@ describe("indexCorpus", () => {
     const hits = openSpans(db).search("lanterns", 10);
 
     expect(hits).toHaveLength(1);
-    expect(hits[0]).toMatchObject({ ownerRef: chapterOwnerRef("northwind/1/1"), field: SPAN_FIELD });
+    expect(hits[0]).toMatchObject({ ownerRef: chapterOwnerRef("northwind/01/01"), field: SPAN_FIELD });
     const stored = JSON.stringify(db.prepare("SELECT * FROM search_span").all()) + JSON.stringify(db.prepare("SELECT * FROM chapter").all());
     expect(stored).not.toContain("lanterns");
   });
@@ -87,7 +95,7 @@ describe("indexCorpus", () => {
     const spans = openSpans(db);
     expect(spans.search("kettles", 10)).toHaveLength(0);
     expect(spans.search("sundials", 10)).toHaveLength(1);
-    expect(paragraphsOf("northwind/1/2")).toHaveLength(2);
+    expect(paragraphsOf("northwind/01/02")).toHaveLength(2);
   });
 
   it("drops a file that vanished from the corpus", () => {

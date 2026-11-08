@@ -52,7 +52,9 @@ interface FakeOptions {
   spec?: string;
   gate?: GateScript;
   /** Exit status of the report validator for a head; 0 accepts. */
-  reportCheck?: (head: string) => number;
+  reportCheck?: (head: string, call: number) => number;
+  /** Stderr of a failing report validator call; when given, the call prints no rejection lines, so stderr alone says why it failed. */
+  reportCheckStderr?: (call: number) => string | undefined;
   /** What the implementer's report asks for as new design-system components. */
   newPrimitives?: string[];
   /** Exit status of the spec's preflight command; 0 when absent. */
@@ -86,7 +88,10 @@ function commandRunner(fake: FakeBuild, evidence: Map<string, unknown[]>, option
       return { status: result.status, stdout: "", stderr: result.status === 0 ? "" : "a gate failed" };
     }
     if (argv[1] === "tools/check-report.mjs") {
-      const status = options.reportCheck?.(request.env.BS_HEAD ?? "") ?? 0;
+      const call = fake.commands.filter((command) => command.argv[1] === "tools/check-report.mjs").length - 1;
+      const status = options.reportCheck?.(request.env.BS_HEAD ?? "", call) ?? 0;
+      const stderr = status === 0 ? undefined : options.reportCheckStderr?.(call);
+      if (stderr !== undefined) return { status, stdout: "", stderr };
       return { status, stdout: status === 0 ? "" : "diff leaves the partition: src/other.ts\n", stderr: "" };
     }
     if (argv[1] === "health") return { status: options.health ?? 0, stdout: "", stderr: "disk full" };

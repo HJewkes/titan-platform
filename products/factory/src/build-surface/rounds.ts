@@ -8,15 +8,24 @@ import { reviewerNameOf, runsStep } from "./spec.js";
 const ReportStep = S.AgentStepSchema(S.ImplementerReportSchema);
 const ReviewStep = S.AgentStepSchema(S.ReviewReportSchema);
 
-/** A rejected report goes back to the same agent once with the rejection list; a second rejection stops the slice. */
+/**
+ * A rejected report goes back to the same agent once with the rejection list; a second rejection stops the slice. A validator
+ * that failed for its environment is run again once, never counts as a rejection, and stops the slice on its second failure.
+ */
 async function checkedReport(run: SliceRun, round: number, report: S.ImplementerReport): Promise<S.ImplementerReport> {
+  let rejected = 0;
+  let infraFailed = 0;
   for (let attempt = 0; ; attempt++) {
     if (report.newPrimitivesRequested.length > 0) needComponents(run, report.newPrimitivesRequested);
     const payload = { report, partition: run.slice.partition };
     const input = { ...commandIn(run, run.spec.validate.report, { BS_HEAD: report.head }), payload, builtIn: [], repo: run.spec.repo, branch: run.branch, head: report.head };
     const verdict = await sliceStep(run, "bs-report-check", `${round}:${attempt}`, input, S.ValidationSchema);
     if (verdict.accepted) return report;
-    if (attempt >= 1) stopSlice(run, `the report was rejected twice: ${verdict.rejections.join("; ")}`);
+    if (verdict.infra) {
+      if (infraFailed++ >= 1) stopSlice(run, `the report validator hit an infra failure twice: ${verdict.rejections.join("; ")}`);
+      continue;
+    }
+    if (rejected++ >= 1) stopSlice(run, `the report was rejected twice: ${verdict.rejections.join("; ")}`);
     report = await fix(run, `${round}r`, report.head, { rejections: verdict.rejections });
   }
 }
