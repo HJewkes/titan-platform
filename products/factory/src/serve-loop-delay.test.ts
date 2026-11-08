@@ -87,4 +87,17 @@ describe("startLoopDelayWatch", () => {
 
     watch.stop();
   });
+
+  it("warns when a block spans a window boundary and the reset drops the histogram's sample", () => {
+    vi.useFakeTimers();
+    const log = fakeLog();
+    const watch = startLoopDelayWatch({ log, histogram: fakeHistogram(0) });
+    vi.advanceTimersByTime(WINDOW_MS - 1_000);
+
+    vi.setSystemTime(Date.now() + 6_000);
+    vi.advanceTimersByTime(1_000);
+
+    expect(log.warn).toHaveBeenCalledWith(expect.objectContaining({ maxMs: 6_000 }), "event loop stalled");
+    watch.stop();
+  });
 });
