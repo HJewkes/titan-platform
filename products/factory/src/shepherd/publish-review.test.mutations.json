@@ -22,7 +22,7 @@
     {
       "name": "the step never approves",
       "file": "products/factory/src/shepherd/publish-review.ts",
-      "find": "  const review = await syncApproval(port, input, check);",
+      "find": "  const review = await syncApproval(port && { port, timing }, input, check);",
       "replace": "  const review = undefined;",
       "kills": [
         "sh-publish-review a MERGE at the head approves the PR at that head under the App, beside the success check"

@@ -97,26 +97,6 @@ describe("syncApproval", () => {
     expect(result).toBeUndefined();
   });
 
-  it("a FIX_FIRST leaves another App's approval standing even when it carries Shepherd's marker for its head", async () => {
-    const { fake, pr } = scene();
-    fake.reviews.set(pr, [{ ...other(1, "Bot", approvalMarker(RUN, B)), login: "other-app[bot]" }]);
-
-    const result = await syncApproval(client(fake), { repo: REPO, pr, runId: RUN }, reviewCheck({ outcome: "FIX_FIRST", verdictHead: B, head: B, autoMergeArmed: false }));
-
-    expect(states(fake, pr)).toEqual([{ commitId: B, state: "APPROVED" }]);
-    expect(result).toBeUndefined();
-  });
-
-  it("a MERGE does not reuse another App's marked approval at the head, and posts Shepherd's own", async () => {
-    const { fake, pr } = scene();
-    fake.reviews.set(pr, [{ ...other(1, "Bot", approvalMarker(RUN, B)), login: "other-app[bot]" }]);
-
-    const result = await syncApproval(client(fake), { repo: REPO, pr, runId: RUN }, merged());
-
-    expect(fake.reviews.get(pr)?.map((review) => review.login)).toEqual(["other-app[bot]", fake.appLogin]);
-    expect(result?.approved).not.toBe(1);
-  });
-
   it("a dismissal GitHub refuses is recorded by status, and the other stale approvals are still dismissed", async () => {
     const { fake, pr } = scene();
     const own = (id: number, head: string): PullReview => ({ id, state: "APPROVED", commitId: head, login: fake.appLogin, userType: "Bot", body: approvalMarker(RUN, head) });

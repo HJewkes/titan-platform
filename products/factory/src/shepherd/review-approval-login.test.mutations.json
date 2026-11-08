@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "any bot's marked approval counts as Shepherd's, whatever its login",
+      "file": "products/factory/src/shepherd/review-approval.ts",
+      "find": "review.userType === \"Bot\" && sameLogin(review.login, appLogin) && ",
+      "replace": "review.userType === \"Bot\" && ",
+      "kills": [
+        "syncApproval by the App's login a FIX_FIRST leaves another App's approval standing even when it carries Shepherd's marker for its head"
+      ]
+    },
+    {
+      "name": "the App login is compared case-sensitively",
+      "file": "products/factory/src/shepherd/review-approval.ts",
+      "find": "login.toLowerCase() === appLogin.toLowerCase()",
+      "replace": "login === appLogin",
+      "kills": [
+        "syncApproval by the App's login an approval by the App's login in other letter case is still Shepherd's and is dismissed"
+      ]
+    }
+  ]
+}
