@@ -2,7 +2,7 @@
   "v": 1,
   "mutations": [
     {
-      "name": "a newer skip settles nothing, so a failure it shadows is waited on to the timeout",
+      "name": "a newer skip settles nothing, so its shadowed failure waits to the timeout",
       "file": "products/factory/src/workflows/land-ci.ts",
       "find": "const runs = withoutSkipShadowedRuns(withoutSupersededCancels(withoutCancelledWorkflowRuns(allRuns)));",
       "replace": "const runs = withoutSupersededCancels(withoutCancelledWorkflowRuns(allRuns));",
