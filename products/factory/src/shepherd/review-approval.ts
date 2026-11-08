@@ -5,14 +5,14 @@ import type { ReviewConclusion } from "./review-check.js";
 /** What the publish step did about the pull request review; absent when the check was not a success. */
 export type ReviewApproval = { approved: number } | { reviewError: string };
 
-export interface ApprovalTarget {
+interface ApprovalTarget {
   repo: RepoSlug;
   pr: number;
   runId: string;
 }
 
 /** The `shepherd/review` check the approval mirrors; the approval is posted at its `headSha`, never at the verdict's head. */
-export interface PublishedCheck {
+interface PublishedCheck {
   headSha: string;
   conclusion: ReviewConclusion;
   title: string;
