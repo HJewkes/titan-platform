@@ -58,12 +58,14 @@ export interface Row {
   approve: (store: ShepherdStoreRef, host: FactoryHost) => void;
   /** Wraps the fake's wire, so a scene can fail one read. */
   wire?: (wire: GitHubWire) => GitHubWire;
+  /** The G10 hold its registration placed, which a seat reviewed and released at the head before the first CI read. */
+  seatReleased?: string;
 }
 
 export type FakeGitHub = ReturnType<typeof fakeGitHub>;
 
 /** One shepherd-pr run of the PR under an auto policy, reviewed MERGE with green checks, after `seed` sets the files and the row's approval is written. */
-export function plannedRun({ files, policy, reviewerLines, approve, wire = (each) => each }: Row, seed: (fake: FakeGitHub) => void) {
+export function plannedRun({ files, policy, reviewerLines, approve, wire = (each) => each, seatReleased }: Row, seed: (fake: FakeGitHub) => void) {
   const fake = fakeGitHub();
   fake.addPr({ number: PR, headSha: HEAD, mergeSha: fakeSha("planned-merge") });
   fake.setRuns(HEAD, [successRun("validate", 1), successRun("dag-check", 2)]);
@@ -85,6 +87,10 @@ export function plannedRun({ files, policy, reviewerLines, approve, wire = (each
   approve(store, host);
   const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: String(PR), policy: JSON.stringify(policy) });
   store.get().register({ repo: REPO, pr: PR, runId, task: TASK, implementer: "fc-synthetic", kind: "feature", policy });
+  if (seatReleased !== undefined) {
+    store.get().hold(runId, seatReleased, undefined, { actor: "shepherd" });
+    store.get().release(runId, { actor: "seat", headSha: HEAD });
+  }
   return { fake, approveMerge: () => host.gates.get(gateId(runId, "approve-merge")) };
 }
 

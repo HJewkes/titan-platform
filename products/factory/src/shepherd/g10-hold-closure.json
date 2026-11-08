@@ -219,6 +219,7 @@
   "shepherd/brief-inputs.ts",
   "shepherd/brief-render.ts",
   "shepherd/bump-consumers.ts",
+  "shepherd/bump-fixer.ts",
   "shepherd/carry-cache-adapter.ts",
   "shepherd/carry-cache-ports.ts",
   "shepherd/carry-kinds.ts",
