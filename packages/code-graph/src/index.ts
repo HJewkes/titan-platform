@@ -28,24 +28,7 @@ export { gitTreeSource } from "./git-tree-source.js";
 export type { Extractor, ParsedFile } from "@titan-design/code-parser";
 export { getLanguageFromPath, getSupportedLanguages, parseFile, shouldIncludeFile } from "@titan-design/code-parser";
 
-export type { LanguageExtractorOptions } from "./extractors/dispatch.js";
-export { LanguageExtractor } from "./extractors/dispatch.js";
-export { PythonGraphExtractor } from "./extractors/python-extractor.js";
-export type { TsMorphGraphExtractorOptions } from "./extractors/ts-morph-extractor.js";
-export { TsMorphGraphExtractor } from "./extractors/ts-morph-extractor.js";
-export { buildFileModuleNodes } from "./extractors/file-nodes.js";
-export type { DeepAst, DeepAstInput, MemberInfo, ParamInfo } from "./extractors/deep-ast.js";
-export { computeDeepAst } from "./extractors/deep-ast.js";
-export {
-  externalId,
-  fileId,
-  moduleId,
-  packageId,
-  parentModuleId,
-  parseSymbolId,
-  symbolId,
-  SYMBOL_ID_SEP,
-} from "./extractors/ids.js";
+export * from "./extractors/barrel.js";
 
 export type { ReadFile, ReuseBasis, SourceLanguage } from "./incremental.js";
 export { hashContent, readSourceFiles, structuralSignature } from "./incremental.js";
@@ -79,8 +62,8 @@ export { assembleIndexerMetrics, buildIndexerMetrics } from "./index-metrics.js"
 export type { AssembledIndexerMetrics } from "./index-metrics.js";
 export { computeDeadCodeMetrics, DEAD_CODE_METRIC_NAMES } from "./analysis/dead-code.js";
 export { computeGrowthRiskMetrics, GROWTH_RISK_METRIC_NAMES } from "./analysis/growth-risk.js";
-export type { LinkMethod, LinkTestsOptions, TestSourceLink } from "./analysis/test-linker.js";
-export { groupTestsBySource, linkTestsToSources, testCoverageCountMetrics } from "./analysis/test-linker.js";
+export { groupTestsBySource, linkTestsToSources, testCoverageCountMetrics, type LinkMethod, type LinkTestsOptions, type TestSourceLink } from "./analysis/test-linker.js";
+export { fileTestReach, MOCK_MASK_CAP, testsReachingMasked, type MaskedReach, type MockProfiles, type UnmaskedTest } from "./analysis/test-reach.js";
 export { attributeCoverage, COVERAGE_METRIC_NAME, coveredFunctionStarts, type IstanbulCoverage, type SymbolSpan } from "./analysis/coverage.js";
 export { MAX_BODY_DELETES, planBodyDeletes, type BodyDeletePlan, type BodyDeleteSkip, type BodyDeleteTarget, type PlanBodyDeletesInput } from "./analysis/body-delete.js";
 export { DELETION_CANDIDATE_SIGNAL, extremeFindings, PSEUDO_TESTED_SIGNAL, type ExtremeFindingsInput, type ExtremeSummary } from "./analysis/pseudo-tested.js";

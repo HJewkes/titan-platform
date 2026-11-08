@@ -1,3 +1,5 @@
+import type { GraphEdge, GraphNode } from "../types.js";
+
 /**
  * Which tests reach each node of a call graph, in one pass (TP-2170). The graph is
  * condensed into strongly connected components (Tarjan, iterative so a deep call
@@ -87,11 +89,21 @@ export function testsReaching(
   callees: ReadonlyMap<string, readonly string[]>,
   tests: readonly string[],
 ): Map<string, Uint32Array> {
+  return flowTests(callees, tests, () => true);
+}
+
+/** Flow the bits of the tests `seeded` accepts; the rest stay unset everywhere. */
+function flowTests(
+  callees: ReadonlyMap<string, readonly string[]>,
+  tests: readonly string[],
+  seeded: (test: number) => boolean,
+): Map<string, Uint32Array> {
   const { ids, adj } = indexGraph(callees, tests);
   const { comp, components } = new Condensation(adj);
   const words = Math.ceil(tests.length / 32);
   const bits: (Uint32Array | undefined)[] = new Array(components.length);
   tests.forEach((_, i) => {
+    if (!seeded(i)) return;
     const c = comp[i]!;
     (bits[c] ??= new Uint32Array(words))[i >>> 5]! |= 1 << (i & 31);
   });
@@ -121,4 +133,132 @@ export function countShared(a: Uint32Array, b: Uint32Array): number {
     }
   }
   return count;
+}
+
+/**
+ * Mocks one test file may declare before its masking is turned off (TP-4910). A file that replaces this
+ * many modules is a harness standing in for its environment, and its walk runs on its own rather than in
+ * the shared one-pass flow, so the cap also bounds how much a single file can cost.
+ */
+export const MOCK_MASK_CAP = 32;
+
+export interface MockProfiles {
+  /** Per test id, the node ids its `vi.mock` / `jest.mock` calls replace. */
+  mocked: ReadonlyMap<string, readonly string[]>;
+  /** Per node id, the callees it loads through `require()`, which a mock never masks. */
+  requires?: ReadonlyMap<string, ReadonlySet<string>>;
+  /** Defaults to {@link MOCK_MASK_CAP}. */
+  cap?: number;
+}
+
+/** A test whose mocks were not masked, and why. */
+export interface UnmaskedTest {
+  testId: string;
+  mocks: number;
+  reason: string;
+}
+
+export interface MaskedReach {
+  /** As {@link testsReaching} returns, with each test's mocked hops left out. */
+  reaching: Map<string, Uint32Array>;
+  unmasked: UnmaskedTest[];
+}
+
+/** Per test index, the mocked node ids to mask: only tests with at least one mock, within the cap. */
+function maskPlan(tests: readonly string[], profiles: MockProfiles) {
+  const cap = profiles.cap ?? MOCK_MASK_CAP;
+  const masks = new Map<number, Set<string>>();
+  const unmasked: UnmaskedTest[] = [];
+  tests.forEach((testId, i) => {
+    const mocked = new Set(profiles.mocked.get(testId) ?? []);
+    if (mocked.size === 0) return;
+    if (mocked.size <= cap) masks.set(i, mocked);
+    else unmasked.push({ testId, mocks: mocked.size, reason: `${mocked.size} mocks exceed the cap of ${cap}; masking is off` });
+  });
+  return { masks, unmasked };
+}
+
+/** Every node `start` reaches without entering a `mocked` node through anything but a `require()`. */
+function maskedClosure(
+  callees: ReadonlyMap<string, readonly string[]>,
+  start: string,
+  mocked: ReadonlySet<string>,
+  requires: MockProfiles["requires"],
+): Set<string> {
+  const seen = new Set([start]);
+  const queue = [start];
+  while (queue.length > 0) {
+    const from = queue.pop()!;
+    for (const to of callees.get(from) ?? []) {
+      if (seen.has(to) || (mocked.has(to) && !requires?.get(from)?.has(to))) continue;
+      seen.add(to);
+      queue.push(to);
+    }
+  }
+  return seen;
+}
+
+/** Set test `i`'s bit on `id`, copying first a bitset the flow shares across a component. */
+function setOwnBit(out: Map<string, Uint32Array>, owned: Set<string>, id: string, i: number, words: number): void {
+  let b = out.get(id);
+  if (!b || !owned.has(id)) {
+    b = b ? b.slice() : new Uint32Array(words);
+    out.set(id, b);
+    owned.add(id);
+  }
+  b[i >>> 5]! |= 1 << (i & 31);
+}
+
+/**
+ * {@link testsReaching} for tests that mock modules (TP-4910): a test does not reach a module through
+ * a hop its own mock replaces, though another test's real import of it still counts, and a `require()`
+ * hop stays live. Each masked test is walked on its own; a test over the cap flows unmasked and is
+ * listed in `unmasked` with the reason.
+ */
+export function testsReachingMasked(
+  callees: ReadonlyMap<string, readonly string[]>,
+  tests: readonly string[],
+  profiles: MockProfiles,
+): MaskedReach {
+  const { masks, unmasked } = maskPlan(tests, profiles);
+  const reaching = flowTests(callees, tests, (i) => !masks.has(i));
+  const words = Math.ceil(tests.length / 32);
+  const owned = new Set<string>();
+  for (const [i, mocked] of masks) {
+    for (const id of maskedClosure(callees, tests[i]!, mocked, profiles.requires)) setOwnBit(reaching, owned, id, i, words);
+  }
+  return { reaching, unmasked };
+}
+
+function pushTo(map: Map<string, string[]>, key: string, value: string): void {
+  const list = map.get(key);
+  if (list) list.push(value);
+  else map.set(key, [value]);
+}
+
+/** The runtime module hops (type-only ones load nothing) and each file's `mocks` targets. */
+function moduleHops(edges: readonly GraphEdge[]) {
+  const callees = new Map<string, string[]>();
+  const mocked = new Map<string, string[]>();
+  for (const e of edges) {
+    if (e.kind === "mocks") pushTo(mocked, e.srcId, e.dstId);
+    else if ((e.kind === "imports" || e.kind === "re-exports") && e.srcId !== e.dstId && !e.attrs?.typeOnly) {
+      pushTo(callees, e.srcId, e.dstId);
+    }
+  }
+  return { callees, mocked };
+}
+
+/**
+ * Which test files reach each file through runtime `imports` and `re-exports`, each test's `mocks`
+ * masked as {@link testsReachingMasked} does (TP-4910). `tests` lists the test file ids in bit order.
+ */
+export function fileTestReach(
+  nodes: readonly GraphNode[],
+  edges: readonly GraphEdge[],
+  cap = MOCK_MASK_CAP,
+): MaskedReach & { tests: string[] } {
+  const tests = nodes.filter((n) => n.kind === "file" && n.role === "test").map((n) => n.id);
+  const { callees, mocked } = moduleHops(edges);
+  return { tests, ...testsReachingMasked(callees, tests, { mocked, cap }) };
 }
