@@ -112,6 +112,18 @@ describe("the root lint config with the wall-clock motion ban", () => {
     expect(result.messages).toEqual([expect.objectContaining({ ruleId: "titan/no-wall-clock-motion", severity: 2, message: expect.stringContaining("`Date.now`") })]);
   });
 
+  it("fails a Math.random() in an explainer sim model", async () => {
+    const result = await lintClockFixture("products/explainer/src/sim/models/jitter.ts");
+
+    expect(result.messages).toEqual([expect.objectContaining({ ruleId: "titan/no-wall-clock-motion", severity: 2, message: expect.stringContaining("`Math.random`") })]);
+  });
+
+  it("passes a Math.random() in an explainer sim test file", async () => {
+    const result = await lintClockFixture("products/explainer/src/sim/models/jitter.test.ts");
+
+    expect(result.errorCount).toBe(0);
+  });
+
   it("passes a Date.now() in explainer code outside the beat and motion paths", async () => {
     const result = await lintClockFixture("products/explainer/src/report-clock.ts");
 

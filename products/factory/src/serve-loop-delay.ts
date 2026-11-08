@@ -27,13 +27,19 @@ const NS_PER_MS = 1e6;
  * Warns once per window whose worst event-loop delay passed the threshold.
  * It triggers on max, not p99, because one 15-40 s sync child is a single sample that p99 averages away,
  * and such a block starves workflow lease renewal.
+ * A block that spans a window boundary delays this timer past the histogram's next sample, and the
+ * reset then drops that sample, so the timer's own lateness stands in for it.
  */
 export function startLoopDelayWatch(options: LoopDelayWatchOptions): LoopDelayWatch {
   const { log, thresholdMs = 5_000, windowMs = 60_000 } = options;
   const histogram = options.histogram ?? monitorEventLoopDelay({ resolution: 20 });
   histogram.enable();
+  let lastTick = Date.now();
   const timer = setInterval(() => {
-    const maxMs = histogram.max / NS_PER_MS;
+    const now = Date.now();
+    const latenessMs = now - lastTick - windowMs;
+    lastTick = now;
+    const maxMs = Math.max(histogram.max / NS_PER_MS, latenessMs);
     if (maxMs > thresholdMs) log.warn({ p99Ms: histogram.percentile(99) / NS_PER_MS, maxMs, windowMs }, "event loop stalled");
     histogram.reset();
   }, windowMs);
