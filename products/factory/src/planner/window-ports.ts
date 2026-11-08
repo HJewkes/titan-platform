@@ -50,7 +50,8 @@ export async function roundAnswers(roundsDir: string | undefined): Promise<Round
 
 function submittedAtOf(feedback: Uint8Array): string | undefined {
   try {
-    return RoundFeedbackSchema.safeParse(JSON.parse(Buffer.from(feedback).toString("utf8"))).data?.submittedAt;
+    const submittedAt = RoundFeedbackSchema.safeParse(JSON.parse(Buffer.from(feedback).toString("utf8"))).data?.submittedAt;
+    return submittedAt === undefined || Number.isNaN(Date.parse(submittedAt)) ? undefined : submittedAt;
   } catch {
     return undefined;
   }

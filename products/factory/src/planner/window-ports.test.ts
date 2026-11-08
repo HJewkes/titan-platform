@@ -43,6 +43,8 @@ it("rejects when the gh query for one conclusion exits non-zero", async () => {
   await expect(ghWindow(gh).redMainRuns("org/repo", SINCE)).rejects.toThrow("exit 1: boom");
 });
 
+const feedbackAt = (submittedAt: string): string => JSON.stringify({ unit: "u", round: 1, manifestSha256: "abc", submittedAt, answers: [] });
+
 describe("roundAnswers", () => {
   const dirs: string[] = [];
   afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
@@ -62,5 +64,17 @@ describe("roundAnswers", () => {
     const root = roundsDir({ broken: "{not json", unanswered: undefined });
 
     expect(await roundAnswers(root)).toEqual([{ id: "broken", submittedAt: undefined }]);
+  });
+
+  it("keeps a round whose submittedAt is not a valid time, so the probe cannot read it as quiet", async () => {
+    const root = roundsDir({
+      words: feedbackAt("yesterday"),
+      empty: feedbackAt(""),
+      impossible: feedbackAt("2026-13-45T00:00:00Z"),
+    });
+
+    const answers = await roundAnswers(root);
+
+    expect(answers.map((a) => a.submittedAt)).toEqual([undefined, undefined, undefined]);
   });
 });
