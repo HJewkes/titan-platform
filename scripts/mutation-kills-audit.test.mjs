@@ -97,6 +97,32 @@ describe("the --finds run", () => {
   });
 });
 
+describe("the --finds run and the mutation cap", () => {
+  const runFinds = (count) => {
+    const dir = mkdtempSync(join(tmpdir(), "mutation-kills-audit-test-"));
+    try {
+      const path = join(dir, "a.test.mutations.json");
+      writeFileSync(path, specText(...Array.from({ length: count }, (_, index) => `m${index}`)));
+      const run = spawnSync(process.execPath, [fileURLToPath(new URL("./mutation-kills-audit.mjs", import.meta.url)), "--finds", path], { encoding: "utf8" });
+      return { path, lines: run.stdout.split("\n") };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  it("fails a sidecar over the cap, naming the file and the cap", () => {
+    const { path, lines } = runFinds(MAX_MUTATIONS + 1);
+
+    expect(lines).toContain(`${path}: mutation spec: spec.mutations must hold 1 to ${MAX_MUTATIONS} mutations`);
+  });
+
+  it("raises no cap problem for a sidecar at the cap", () => {
+    const { lines } = runFinds(MAX_MUTATIONS);
+
+    expect(lines.filter((line) => line.includes("must hold"))).toEqual([]);
+  });
+});
+
 describe("unmatchedKills", () => {
   it("names a kill given by its bare title when the test sits under a describe", () => {
     const names = testNamesOf(report("adder adds", "adder subtracts"));
