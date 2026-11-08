@@ -13,8 +13,9 @@ function stringLeaves(value: unknown, out: string[]): void {
 /** A package-relative posix path, or null for a target outside the package. */
 function packageRelative(target: string): string | null {
   const trimmed = target.startsWith("./") ? target.slice(2) : target;
-  if (trimmed === "" || path.posix.isAbsolute(trimmed)) return null;
-  const normalized = path.posix.normalize(trimmed);
+  if (trimmed === "") return target === "./" || target === "." ? "." : null;
+  if (path.posix.isAbsolute(trimmed)) return null;
+  const normalized = path.posix.normalize(trimmed).replace(/(.)\/$/, "$1");
   return normalized.startsWith("../") || normalized === ".." ? null : normalized;
 }
 
