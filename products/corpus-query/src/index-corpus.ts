@@ -54,6 +54,7 @@ interface ChapterRow {
   id: string;
   rel_path: string;
   sha256: string;
+  meta_json: string;
 }
 
 function listFiles(root: string): string[] {
@@ -68,7 +69,7 @@ export function indexCorpus(db: Db, root: string, layout: CorpusLayout): IndexSt
   migrateIndex(db);
   const spans = openSpans(db);
   const stats: IndexStats = { documents: 0, indexed: 0, unchanged: 0, removed: 0, skipped: 0, headerless: 0, paragraphs: 0 };
-  const known = new Map(db.prepare<[], ChapterRow>("SELECT source_id, id, rel_path, sha256 FROM chapter").all().map((r) => [r.rel_path, r]));
+  const known = new Map(db.prepare<[], ChapterRow>("SELECT source_id, id, rel_path, sha256, meta_json FROM chapter").all().map((r) => [r.rel_path, r]));
   const seen = new Set<string>();
 
   for (const relPath of listFiles(root)) {
@@ -84,7 +85,8 @@ export function indexCorpus(db: Db, root: string, layout: CorpusLayout): IndexSt
     if (meta.title === "") stats.headerless++;
     const sha256 = createHash("sha256").update(bytes).digest("hex");
     const prior = known.get(relPath);
-    if (prior?.sha256 === sha256) {
+    // Meta is compared too: a layout switch changes ids and metadata without touching the bytes.
+    if (prior?.sha256 === sha256 && prior.meta_json === JSON.stringify(meta)) {
       stats.unchanged++;
       continue;
     }

@@ -4,6 +4,7 @@ import { Db, Migration } from '@titan-design/store-sqlite';
 import { FileSystemHost, Project } from 'ts-morph';
 import { Extractor, ParsedFile } from '@titan-design/code-parser';
 export { Extractor, ParsedFile, getLanguageFromPath, getSupportedLanguages, parseFile, shouldIncludeFile } from '@titan-design/code-parser';
+import { Node } from 'web-tree-sitter';
 import { C as ChurnEntry, a as ChurnWindow } from './change-coupling.js';
 export { k as detectGitToplevel } from './change-coupling.js';
 import { HeadMutation, HeadMutantsReport, Exec } from '@titan-design/fix-proof';
@@ -197,7 +198,7 @@ declare function workingTreeSource(): IndexSource;
  * index version is never reused, so a change to node/edge shape or to a metric's
  * value for the same bytes can never be carried forward from an incompatible graph.
  */
-declare const INDEX_VERSION = "0.33.0";
+declare const INDEX_VERSION = "0.34.0";
 interface IndexOptions {
     /** Roots to walk. Node ids are still rooted at the git toplevel, so importers across roots share an id space. */
     paths: string[];
@@ -725,6 +726,41 @@ declare function priorSnapshotForRef(store: CodeGraphStore, ref: string, options
 declare function computeMetrics(nodes: readonly GraphNode[], edges: readonly GraphEdge[]): GraphMetric[];
 
 /**
+ * Lack of Cohesion of Methods, LCOM4 variant: count connected components
+ * in the graph where each method is a node and two methods are linked when
+ * they share at least one `this.<x>` (or `self.<x>`) reference or one calls
+ * the other. LCOM4=1 → cohesive class; LCOM4>1 → the class could be split.
+ *
+ * Static methods and constructors are excluded (they don't bind to `this`).
+ * Files with no classes emit no metrics. Files with classes emit
+ * `lcom4_max` (max LCOM4 across classes in the file) and `class_count`.
+ */
+declare function computeLcomMetrics(file: ParsedFile, fileId: string): GraphMetric[];
+
+/**
+ * Cognitive complexity per Sonarsource ("Cognitive Complexity: A new way of
+ * measuring understandability"). Compared to cyclomatic, this:
+ *
+ * - Doesn't grow per `case` in a switch — the switch counts once.
+ * - Adds a nesting bonus: nested control structures cost more than flat ones.
+ * - Treats `else if` chains as one increment each, not as nested ifs.
+ *
+ * Returns the score for a function body. Caller drives the per-function loop.
+ */
+declare function cognitiveComplexityOf(body: Node, language: string): number;
+/**
+ * Splits the cognitive score into the share charged inside JSX (C-97 S2): an
+ * increment, nesting bonus included, counts as markup once the walk has entered
+ * a `jsx_expression` (`{a && <X/>}`, `onClick={() => ...}`). Hook callbacks
+ * outside JSX stay logic. `total` equals `cognitiveComplexityOf`; Python has
+ * no JSX, so its markup is always 0.
+ */
+declare function cognitiveSplitOf(body: Node, language: string): {
+    total: number;
+    markup: number;
+};
+
+/**
  * Names of every metric `computeSourceMetrics` can emit. These are pure
  * functions of a file's content, so the incremental indexer can carry them
  * forward unchanged for a byte-identical file instead of re-parsing it. If a
@@ -911,7 +947,8 @@ interface MaskedReach {
 declare function testsReachingMasked(callees: ReadonlyMap<string, readonly string[]>, tests: readonly string[], profiles: MockProfiles): MaskedReach;
 /**
  * Which test files reach each file through runtime `imports` and `re-exports`, each test's `mocks`
- * masked as {@link testsReachingMasked} does (TP-4910). `tests` lists the test file ids in bit order.
+ * masked as {@link testsReachingMasked} does (TP-4910). An `imports` edge marked `require` stays live
+ * under a mock (TP-4950). `tests` lists the test file ids in bit order.
  */
 declare function fileTestReach(nodes: readonly GraphNode[], edges: readonly GraphEdge[], cap?: number): MaskedReach & {
     tests: string[];
@@ -1049,7 +1086,7 @@ interface ExtremeSummary {
 interface ExtremeFindingsInput {
     plan: BodyDeletePlan;
     report: HeadMutantsReport;
-    /** Source files a test file imports, transitively. */
+    /** Source files a test file imports, transitively, less what its own mocks replace. */
     reachedFiles: (testFile: string) => ReadonlySet<string>;
     /** Every test file at head, so a target tested only from a suite that never ran is not read as survived. */
     testFiles: readonly string[];
@@ -1075,7 +1112,7 @@ interface ExtremeMutationOptions {
         head: string;
         data: IstanbulCoverage;
     };
-    /** A snapshot at head, read only for its import edges. */
+    /** A snapshot at head, read only for its import and mocks edges. */
     store: Pick<CodeGraphStore, "listEdges">;
     snapshotId: number;
     max?: number;
@@ -2077,7 +2114,7 @@ declare function getConventionMap(store: CodeGraphStore, snapshotId: number, mod
  */
 declare function findConventions(store: CodeGraphStore, snapshotId: number, query: string, embedder: Embedder, model: string, opts?: FindConventionsOptions): Promise<ConventionQueryResult>;
 
-export { ALIAS_BASE_ATTR, ALL_ROLES, type AliasChain, type AliasChainInput, type AliasChainOptions, type AliasLoader, type AliasResolution, type AnnotateRolesOptions, type AssembledIndexerMetrics, BUNDLE_SCHEMA_VERSION, BlastRadiusEntry, type BodyDeletePlan, type BodyDeleteSkip, type BodyDeleteTarget, type BundleBuildInput, type BundleEdge, type BundleEdges, COMMUNITY_SUMMARY_NAMESPACE, SCHEMA_VERSION as CONTEXT_SCHEMA_VERSION, COVERAGE_METRIC_NAME, type CachedEmbedResult, type CallPathOptions, type CheckDiff, CheckResult, CheckRule, type CheckSnapshotOptions, type CheckSnapshotResult, CheckViolation, CodeGraphStore, type Consumers, type ContextBuildInput, type ContextBundle, type ContextDossier, type ConventionArea, type ConventionCorpus, type ConventionCoverage, type ConventionMap, type ConventionMatch, type ConventionOptions, type ConventionQueryResult, type ConventionSymbol, type Coverage, DEAD_CODE_METRIC_NAMES, DEFAULT_ACCRETION_WINDOWS, DEFAULT_CHURN_WINDOWS, DEFAULT_MAX_LINE_CHARS, DEFAULT_OUTLIER_MIN_SAMPLE, DELETION_CANDIDATE_SIGNAL, DOMAIN_DDL, type DeepAst, type DeepAstInput, type DiffCheckResultsOptions, type DiffFootprintsOptions, type DiffSnapshotsOptions, ELISION_MARKER, EXCEPTION_METRIC_NAMES, EdgeKind, type EmbedAttempt, type EmbedCoverage, type EmbedSnapshotResult, type EmbeddableSymbol, type ExternalDiagnostic, type ExtremeFindingsInput, type ExtremeMutationOptions, type ExtremeMutationResult, type ExtremeSummary, FINDING_DDL, type FileDossier, FileFingerprint, type FileOwnership, type FindConventionsOptions, type FindSimilarOptions, type Finding, type FindingKeyInput, type FootprintChange, type FootprintChangeReason, type FootprintDiff, type FootprintGraph, type FootprintOptions, type FootprintParts, type FootprintUnit, GROWTH_RISK_METRIC_NAMES, type GateResult, type GateUnitsInput, type GraphDiff, type GraphDiffSummary, GraphEdge, GraphFragment, GraphMetric, GraphNode, type HistoryMetricsOptions, INDEX_VERSION, IdAlias, IdAliasReason, type IndexOptions, type IndexResult, type IndexSource, type IstanbulCoverage, KIT, LanguageExtractor, type LanguageExtractorOptions, type LevelEdge, type LineSpan, type Lineage, type LineageSnapshot, type LineageStep, type LoadedHistory, MAX_BODY_DELETES, METRIC_CATALOGUE, MIGRATIONS, MOCK_MASK_CAP, type MaskedReach, type MemberInfo, type MetricAbsence, type MetricAggregate, type MetricDelta, type MetricDescriptor, type MetricDirection, type MetricRollup, type MetricSource, type MetricUnit, type MinifiedSource, type MinifyLanguage, type MockProfiles, NO_PROTOCOL_SOURCE, NodeKind, NodeMetrics, type NodeRename, NodeRole, PSEUDO_TESTED_SIGNAL, type PageRankOptions, type PageRankResult, type PageRankRow, type ParamInfo, type PlanBodyDeletesInput, type PriorSnapshotOptions, type ProjectedHop, type ProtocolDiagnostic, type ProtocolEdge, type ProtocolEdgeResult, type ProtocolEndpoint, type ProtocolKind, type ProtocolSourceFile, type Provenance, type PruneOptions, type PrunePlan, type PruneResult, PythonGraphExtractor, type ReadFile, ReferenceEdgeLite, type RegenerateReason, type RelevanceOptions, type ResolveAliasOptions, type ReuseBasis, type RoleGlobs, type RoleHints, type RuleStore, type RunChecksOptions, SCHEMA_VERSION$1 as SCHEMA_VERSION, SNAPSHOT_SCOPED_TABLES, SOURCE_METRIC_NAMES, SYMBOL_EMBEDDING_NAMESPACE, SYMBOL_ID_SEP, SYMBOL_METRIC_NAMES, Severity, type SignatureTreeOptions, type SimilarCandidate, type SimilarResult, type SnapshotInsert, SnapshotRow, type SnapshotSpec, type SourceChunk, type SourceLanguage, type StoredFinding, type StoredVerdict, type SummarizeConventionsResult, type Summarizer, SymbolConsumers, SymbolCouplingOptions, SymbolCouplingPair, type SymbolDossier, type SymbolFootprint, type SymbolLine, type SymbolSpan, TRUNCATION_SUFFIX, type TestCoverageOwnershipOptions, TestSourceLink, type TopMetricRow, TsMorphGraphExtractor, type TsMorphGraphExtractorOptions, UNIMPORTED_ROLES, type UnitProvenance, type UnitProvenanceInput, type UnitRegeneration, type UnmaskedTest, type ValidateRulesOptions, type VerdictCitation, type VerdictLabel, ViolationBuckets, aggregateMetrics, aliasChain, annotateRoles, assembleIndexerMetrics, attributeCoverage, buildAliases, buildContextBundle, buildContextDossier, buildConventionAreas, buildEmbedText, buildFileModuleNodes, buildIndexerMetrics, buildLineage, canonicalEdgeKind, canonicalMetricName, canonicalRole, carryForwardVerdicts, checkSnapshot, classifyRole, collectDeclaredNames, collectDeclaredSpans, compilePatterns, computeDeadCodeMetrics, computeDeepAst, computeFootprints, computeGrowthRiskMetrics, computeMetrics, computePageRank, computeRecencyWindows, computeRelevance, computeRoleHints, computeSourceMetrics, computeTestCoverageOwnership, coveredFunctionStarts, createAliasChain, defaultTargetCount, describeMetric, describeMetrics, detectCommunities, detectGitHead, detectRenames, diffCheckResults, diffFootprints, diffSnapshots, edgeWeight, embedSnapshot, embedTextsCached, externalId, externalToFinding, extractProtocolEdges, extremeFindings, fileId, fileTestReach, findCallPath, findConventions, findSimilarCapability, findingKey, gateUnits, getConventionMap, getEdgeWeight, gitTreeSource, hashContent, hashEmbedText, hashText, importMarker, indexPaths, isGeneratedByHeuristic, isGeneratedFile, isInsideGitRepo, isMinifyLanguage, keyFindings, lineagePath, listEdges, listEdgesTouching, listEmbeddableSymbols, listFindings, listMetrics, listMetricsForNode, listNodes, listVerdicts, loadCheckRules, loadGeneratedPatterns, loadHistoryMetrics, loadLineage, loadRoleGlobs, matchesAny, minifySource, moduleId, normalizeFlaggedText, openCodeGraph, originalLine, packageEntryFileIds, packageId, parentModuleId, parseSymbolId, patternToRegex, percentileOf, planBodyDeletes, planPrune, priorSnapshotForRef, projectCallPath, pruneDanglingReferences, readSourceFiles, renderBundleText, renderContextMarkdown, renderSignatureTree, resolveAlias, resolveBarrelEdges, resolveChurnWindows, resolveGitRef, resolveSnapshot, runChecks, runExtremeMutation, runPrune, saveFindings, saveVerdicts, snapshotCallPath, snapshotPageRank, snapshotReferenceEdges, snapshotRelevance, snapshotSymbolConsumers, snapshotSymbolCoupling, snapshotViolations, structuralSignature, summarizeConventions, symbolId, symbolSetHash, testsReachingMasked, toFindings, tryEmbedSnapshot, unitProvenance, validateRules, walkSourceFiles, windowSuffix, workingTreeSource };
+export { ALIAS_BASE_ATTR, ALL_ROLES, type AliasChain, type AliasChainInput, type AliasChainOptions, type AliasLoader, type AliasResolution, type AnnotateRolesOptions, type AssembledIndexerMetrics, BUNDLE_SCHEMA_VERSION, BlastRadiusEntry, type BodyDeletePlan, type BodyDeleteSkip, type BodyDeleteTarget, type BundleBuildInput, type BundleEdge, type BundleEdges, COMMUNITY_SUMMARY_NAMESPACE, SCHEMA_VERSION as CONTEXT_SCHEMA_VERSION, COVERAGE_METRIC_NAME, type CachedEmbedResult, type CallPathOptions, type CheckDiff, CheckResult, CheckRule, type CheckSnapshotOptions, type CheckSnapshotResult, CheckViolation, CodeGraphStore, type Consumers, type ContextBuildInput, type ContextBundle, type ContextDossier, type ConventionArea, type ConventionCorpus, type ConventionCoverage, type ConventionMap, type ConventionMatch, type ConventionOptions, type ConventionQueryResult, type ConventionSymbol, type Coverage, DEAD_CODE_METRIC_NAMES, DEFAULT_ACCRETION_WINDOWS, DEFAULT_CHURN_WINDOWS, DEFAULT_MAX_LINE_CHARS, DEFAULT_OUTLIER_MIN_SAMPLE, DELETION_CANDIDATE_SIGNAL, DOMAIN_DDL, type DeepAst, type DeepAstInput, type DiffCheckResultsOptions, type DiffFootprintsOptions, type DiffSnapshotsOptions, ELISION_MARKER, EXCEPTION_METRIC_NAMES, EdgeKind, type EmbedAttempt, type EmbedCoverage, type EmbedSnapshotResult, type EmbeddableSymbol, type ExternalDiagnostic, type ExtremeFindingsInput, type ExtremeMutationOptions, type ExtremeMutationResult, type ExtremeSummary, FINDING_DDL, type FileDossier, FileFingerprint, type FileOwnership, type FindConventionsOptions, type FindSimilarOptions, type Finding, type FindingKeyInput, type FootprintChange, type FootprintChangeReason, type FootprintDiff, type FootprintGraph, type FootprintOptions, type FootprintParts, type FootprintUnit, GROWTH_RISK_METRIC_NAMES, type GateResult, type GateUnitsInput, type GraphDiff, type GraphDiffSummary, GraphEdge, GraphFragment, GraphMetric, GraphNode, type HistoryMetricsOptions, INDEX_VERSION, IdAlias, IdAliasReason, type IndexOptions, type IndexResult, type IndexSource, type IstanbulCoverage, KIT, LanguageExtractor, type LanguageExtractorOptions, type LevelEdge, type LineSpan, type Lineage, type LineageSnapshot, type LineageStep, type LoadedHistory, MAX_BODY_DELETES, METRIC_CATALOGUE, MIGRATIONS, MOCK_MASK_CAP, type MaskedReach, type MemberInfo, type MetricAbsence, type MetricAggregate, type MetricDelta, type MetricDescriptor, type MetricDirection, type MetricRollup, type MetricSource, type MetricUnit, type MinifiedSource, type MinifyLanguage, type MockProfiles, NO_PROTOCOL_SOURCE, NodeKind, NodeMetrics, type NodeRename, NodeRole, PSEUDO_TESTED_SIGNAL, type PageRankOptions, type PageRankResult, type PageRankRow, type ParamInfo, type PlanBodyDeletesInput, type PriorSnapshotOptions, type ProjectedHop, type ProtocolDiagnostic, type ProtocolEdge, type ProtocolEdgeResult, type ProtocolEndpoint, type ProtocolKind, type ProtocolSourceFile, type Provenance, type PruneOptions, type PrunePlan, type PruneResult, PythonGraphExtractor, type ReadFile, ReferenceEdgeLite, type RegenerateReason, type RelevanceOptions, type ResolveAliasOptions, type ReuseBasis, type RoleGlobs, type RoleHints, type RuleStore, type RunChecksOptions, SCHEMA_VERSION$1 as SCHEMA_VERSION, SNAPSHOT_SCOPED_TABLES, SOURCE_METRIC_NAMES, SYMBOL_EMBEDDING_NAMESPACE, SYMBOL_ID_SEP, SYMBOL_METRIC_NAMES, Severity, type SignatureTreeOptions, type SimilarCandidate, type SimilarResult, type SnapshotInsert, SnapshotRow, type SnapshotSpec, type SourceChunk, type SourceLanguage, type StoredFinding, type StoredVerdict, type SummarizeConventionsResult, type Summarizer, SymbolConsumers, SymbolCouplingOptions, SymbolCouplingPair, type SymbolDossier, type SymbolFootprint, type SymbolLine, type SymbolSpan, TRUNCATION_SUFFIX, type TestCoverageOwnershipOptions, TestSourceLink, type TopMetricRow, TsMorphGraphExtractor, type TsMorphGraphExtractorOptions, UNIMPORTED_ROLES, type UnitProvenance, type UnitProvenanceInput, type UnitRegeneration, type UnmaskedTest, type ValidateRulesOptions, type VerdictCitation, type VerdictLabel, ViolationBuckets, aggregateMetrics, aliasChain, annotateRoles, assembleIndexerMetrics, attributeCoverage, buildAliases, buildContextBundle, buildContextDossier, buildConventionAreas, buildEmbedText, buildFileModuleNodes, buildIndexerMetrics, buildLineage, canonicalEdgeKind, canonicalMetricName, canonicalRole, carryForwardVerdicts, checkSnapshot, classifyRole, cognitiveComplexityOf, cognitiveSplitOf, collectDeclaredNames, collectDeclaredSpans, compilePatterns, computeDeadCodeMetrics, computeDeepAst, computeFootprints, computeGrowthRiskMetrics, computeLcomMetrics, computeMetrics, computePageRank, computeRecencyWindows, computeRelevance, computeRoleHints, computeSourceMetrics, computeTestCoverageOwnership, coveredFunctionStarts, createAliasChain, defaultTargetCount, describeMetric, describeMetrics, detectCommunities, detectGitHead, detectRenames, diffCheckResults, diffFootprints, diffSnapshots, edgeWeight, embedSnapshot, embedTextsCached, externalId, externalToFinding, extractProtocolEdges, extremeFindings, fileId, fileTestReach, findCallPath, findConventions, findSimilarCapability, findingKey, gateUnits, getConventionMap, getEdgeWeight, gitTreeSource, hashContent, hashEmbedText, hashText, importMarker, indexPaths, isGeneratedByHeuristic, isGeneratedFile, isInsideGitRepo, isMinifyLanguage, keyFindings, lineagePath, listEdges, listEdgesTouching, listEmbeddableSymbols, listFindings, listMetrics, listMetricsForNode, listNodes, listVerdicts, loadCheckRules, loadGeneratedPatterns, loadHistoryMetrics, loadLineage, loadRoleGlobs, matchesAny, minifySource, moduleId, normalizeFlaggedText, openCodeGraph, originalLine, packageEntryFileIds, packageId, parentModuleId, parseSymbolId, patternToRegex, percentileOf, planBodyDeletes, planPrune, priorSnapshotForRef, projectCallPath, pruneDanglingReferences, readSourceFiles, renderBundleText, renderContextMarkdown, renderSignatureTree, resolveAlias, resolveBarrelEdges, resolveChurnWindows, resolveGitRef, resolveSnapshot, runChecks, runExtremeMutation, runPrune, saveFindings, saveVerdicts, snapshotCallPath, snapshotPageRank, snapshotReferenceEdges, snapshotRelevance, snapshotSymbolConsumers, snapshotSymbolCoupling, snapshotViolations, structuralSignature, summarizeConventions, symbolId, symbolSetHash, testsReachingMasked, toFindings, tryEmbedSnapshot, unitProvenance, validateRules, walkSourceFiles, windowSuffix, workingTreeSource };
 
 // ./dist/browser.d.ts
 import { a as ChurnWindow, c as CoEditPair } from './change-coupling.js';
