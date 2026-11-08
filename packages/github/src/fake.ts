@@ -197,7 +197,10 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     listForcePushes: async (_repo, number) => record("listForcePushes", listForcePushes(fake, number)),
     listReviews: async (_repo, number) => record("listReviews", (fake.reviews.get(mustPr(prs, number).number) ?? []).map((review) => ({ ...review }))),
     createReview: async (_repo, number, request) => (record("createReview", undefined), fakeCreateReview(fake, mustPr(prs, number).number, request, 7000 + ++counter)),
-    dismissReview: async (_repo, number, reviewId) => (record("dismissReview", undefined), fakeDismissReview(fake, mustPr(prs, number).number, reviewId, (status, message) => new FakeHttpError(status, message))),
+    dismissReview: async (_repo, number, reviewId) => {
+      record("dismissReview", undefined);
+      fakeDismissReview(fake, mustPr(prs, number).number, reviewId, (status, message) => new FakeHttpError(status, message));
+    },
   };
   const fake: FakeGitHub = Object.assign(state, { wire, gitExec: fakeLsRemote(prs, () => read("lsRemote", () => undefined)) });
   return fake;
