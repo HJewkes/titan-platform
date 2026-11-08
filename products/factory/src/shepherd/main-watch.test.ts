@@ -1,3 +1,4 @@
+import { DispatchTimeoutError } from "@titan-design/agent-dispatch";
 import { FakeHttpError, fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import { openDatabase } from "@titan-design/store-sqlite";
 import { mkdtempSync } from "node:fs";
@@ -36,10 +37,12 @@ interface World {
   clock: { now: number };
   /** Fails this many sends before one goes through. */
   failSends: { count: number };
+  /** Every send times out after landing, as the broker does under load. */
+  timeouts: { on: boolean };
 }
 
 function world(): World {
-  return { fake: fakeGitHub({ repo: REPO }), sent: [], registrations: new Map(), clock: { now: T0 }, failSends: { count: 0 } };
+  return { fake: fakeGitHub({ repo: REPO }), sent: [], registrations: new Map(), clock: { now: T0 }, failSends: { count: 0 }, timeouts: { on: false } };
 }
 
 function depsOver(w: World, ledger: MainWatchLedger, hubSeat: string | undefined = "hub-coord", redSeat?: (repo: string) => string | undefined): MainWatchDeps {
@@ -54,6 +57,7 @@ function depsOver(w: World, ledger: MainWatchLedger, hubSeat: string | undefined
       send: async (seat, text) => {
         if (w.failSends.count-- > 0) throw new Error("broker down");
         w.sent.push({ seat, text });
+        if (w.timeouts.on) throw new DispatchTimeoutError("agent-chat message timed out");
       },
     },
     now: () => w.clock.now,
@@ -187,6 +191,21 @@ describe("main CI watch", () => {
 
     expect(failed).toMatchObject([{ outcome: "unsent", detail: expect.stringContaining("the next sweep retries") }]);
     expect(w.sent).toHaveLength(1);
+  });
+
+  it("takes a red event whose send timed out as told after one retry, and sends nothing on later sweeps", async () => {
+    const w = world();
+    const ledger = memoryLedger();
+    await sweep(w, ledger);
+    merged(w, 8, T0 + MINUTE, { validate: "failure", "dag-check": "success" });
+    w.timeouts.on = true;
+
+    for (const minutes of [5, 10, 15, 20]) {
+      w.clock.now = T0 + minutes * MINUTE;
+      await sweep(w, ledger);
+    }
+
+    expect(w.sent).toHaveLength(2);
   });
 
   it("raises nothing for a red commit that landed before the watch began", async () => {

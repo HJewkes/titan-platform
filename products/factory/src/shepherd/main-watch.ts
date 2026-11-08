@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { DispatchTimeoutError } from "@titan-design/agent-dispatch";
 import type { Logger } from "@titan-design/daemon";
 import type { CheckRun, GitHubPort } from "@titan-design/github";
 import type { ShepherdServices } from "./services.js";
@@ -201,7 +202,9 @@ async function watchRepo(deps: MainWatchDeps, repo: string): Promise<MainWatchNo
     const { rules } = await readMainRules(deps.port, repo, await deps.port.defaultBranch(repo));
     for (const row of watching) notes.push(...(await judgeSha(deps, repo, row, rules, now)));
   }
-  for (const row of deps.ledger.inState(repo, "red")) notes.push(await deliver(deps, repo, row, now));
+  for (const state of ["red", "unacked"] as const) {
+    for (const row of deps.ledger.inState(repo, state)) notes.push(await deliver(deps, repo, row, now, state === "unacked"));
+  }
   return notes;
 }
 
@@ -241,7 +244,7 @@ async function queueDeploy(deploy: MainDeploy | undefined, repo: string, sha: st
 }
 
 /** A red sha past the window that still has no seat or no send goes quiet, so a dead broker cannot make the sweep send forever. */
-async function deliver(deps: MainWatchDeps, repo: string, row: WatchedSha, now: number): Promise<MainWatchNote> {
+async function deliver(deps: MainWatchDeps, repo: string, row: WatchedSha, now: number, retried: boolean): Promise<MainWatchNote> {
   const pr = prNumberOf(row.subject);
   const seat = await ownerSeat(deps, repo, pr);
   const stale = now - row.firstSeen > MAIN_WATCH_WINDOW_MS;
@@ -254,9 +257,17 @@ async function deliver(deps: MainWatchDeps, repo: string, row: WatchedSha, now: 
     deps.ledger.settle(repo, row.sha, "sent", seat);
     return { repo, sha: row.sha, outcome: "sent", seat, detail: `told ${seat}` };
   } catch (error) {
+    if (error instanceof DispatchTimeoutError) return timedOut(deps, repo, row, seat, retried);
     if (stale) deps.ledger.settle(repo, row.sha, "unsent", seat);
     return { repo, sha: row.sha, outcome: "unsent", seat, detail: `the red event failed${stale ? ", and the sha left the window" : "; the next sweep retries"}: ${failureOf(error)}` };
   }
+}
+
+/** A timed-out send usually arrived, so it is retried on the next sweep (one `MAIN_WATCH_MS` on, as seat-digest waits its `UNACKED_RETRY_MS`) and then taken as told. */
+function timedOut(deps: MainWatchDeps, repo: string, row: WatchedSha, seat: string, retried: boolean): MainWatchNote {
+  deps.ledger.settle(repo, row.sha, retried ? "sent" : "unacked", seat);
+  if (retried) return { repo, sha: row.sha, outcome: "sent", seat, detail: `the red event to ${seat} timed out twice, so it counts as told` };
+  return { repo, sha: row.sha, outcome: "unsent", seat, detail: "the red event timed out and may have arrived; the next sweep retries once" };
 }
 
 function redEventText(repo: string, sha: string, pr: number | undefined, failing: readonly string[]): string {
