@@ -101,6 +101,11 @@ describe("titan-factory planner probe", () => {
     expect(out.stdout).toBe(`gate run-2/approve-merge resolved ${AFTER}\nround r9 answered ${AFTER}\n`);
   });
 
+  it("reports a round whose feedback cannot be dated instead of dropping it", async () => {
+    const out = await probe(["owner-contact", "--since", SINCE], { rounds: [{ id: "r8", submittedAt: undefined }] });
+    expect(out.stdout).toBe("round r8 answered at an unknown time: feedback.json does not parse\n");
+  });
+
   it("counts a red main run and a ci-failed gate opened in the window as new red", async () => {
     const red = [{ id: 41, workflow: "CI", createdAt: AFTER }];
     const gates = [gate({ id: "run-4/ci-failed:2", createdAt: AFTER }), gate({ id: "run-5/approve-merge", createdAt: AFTER })];
