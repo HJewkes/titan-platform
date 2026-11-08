@@ -125,7 +125,8 @@ describe('the cases the first probe got wrong', { timeout: BROWSER_TIMEOUT_MS },
     const [finding] = (await kindsAt('low-contrast-veils-bad')).findings.filter((f) => f.kind === 'low-contrast')
 
     // Assert: two 40 % white veils over #0d1117 composite to 64 % white
-    assert.equal(finding?.bg, '#a8a9ab')
+    assert.ok(finding)
+    assert.equal(finding.bg, '#a8a9ab')
   })
 
   // catches: a gradient ignored for the page background behind it, which passed light text on its light end
@@ -146,8 +147,9 @@ describe('the cases the first probe got wrong', { timeout: BROWSER_TIMEOUT_MS },
 
     // Assert
     const [finding] = findings.filter((f) => f.kind === 'contrast-unmeasured')
-    assert.equal(finding?.reason, 'background image')
-    assert.equal(finding?.ratio, undefined)
+    assert.ok(finding)
+    assert.equal(finding.reason, 'background image')
+    assert.equal(finding.ratio, undefined)
     assert.equal(findings.filter((f) => f.kind === 'low-contrast').length, 0)
   })
 
@@ -156,8 +158,9 @@ describe('the cases the first probe got wrong', { timeout: BROWSER_TIMEOUT_MS },
     const [finding] = (await kindsAt('low-contrast-bad')).findings.filter((f) => f.kind === 'low-contrast')
 
     // Assert: #4a5058 on the fixture page's opaque #0d1117
-    assert.equal(finding?.bg, '#0d1117')
-    assert.equal(finding?.ratio, 2.32)
+    assert.ok(finding)
+    assert.equal(finding.bg, '#0d1117')
+    assert.equal(finding.ratio, 2.32)
   })
 
   // catches: off-frame measuring the layout box, which held a card waiting for its cue fully clipped 80 px right

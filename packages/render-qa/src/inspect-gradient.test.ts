@@ -5,7 +5,7 @@ import type { Gradient, GradientShape, Inspector, Rect, Rgba } from './inspect-t
 
 /** The gradient steps bound to one inspector, as the page binds them; the steps here need no DOM. */
 const h = partialFake<Inspector>()
-Object.assign(h, Object.fromEntries(Object.entries(GRADIENT_STEPS).map(([name, step]) => [name, (...args: unknown[]) => (step as (...a: unknown[]) => unknown)(h, ...args)])))
+Object.assign(h, Object.fromEntries(Object.entries(GRADIENT_STEPS).map(([name, step]) => [name, (...args: unknown[]): unknown => Reflect.apply(step, undefined, [h, ...args])])))
 
 const box = (left: number, top: number, width: number, height: number): Rect => ({ left, top, width, height, right: left + width, bottom: top + height })
 const BLACK: Rgba = [0, 0, 0, 1]
