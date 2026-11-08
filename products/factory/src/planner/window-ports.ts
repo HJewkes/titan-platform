@@ -21,7 +21,7 @@ async function ghJson<T>(run: PlannerRun, args: readonly string[], schema: z.Zod
   return schema.parse(JSON.parse(result.stdout));
 }
 
-export function ghWindow(run: PlannerRun): WindowGitHub {
+function ghWindow(run: PlannerRun): WindowGitHub {
   return {
     mergedPrs: (repo, since) =>
       ghJson(run, ["pr", "list", "--repo", repo, "--state", "merged", "--search", `merged:>=${since}`, "--json", "number,mergedAt", "--limit", PAGE], MergedPrs),

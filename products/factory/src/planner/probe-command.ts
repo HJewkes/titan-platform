@@ -12,19 +12,21 @@ interface ProbeOpts {
 
 const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 
+const isProbe = (kind: string): kind is WindowProbe => (WINDOW_PROBES as readonly string[]).includes(kind);
+
 const collect = (value: string, previous: string[]): string[] => [...previous, value];
 
 /** Exits non-zero on any read it cannot finish, so the wake runs the review instead of skipping on a blind probe. */
-export async function runWindowProbe(probe: string, opts: ProbeOpts, sources: () => WindowSources, verbs: Verbs): Promise<number> {
+async function runWindowProbe(probe: string, opts: ProbeOpts, sources: () => WindowSources, verbs: Verbs): Promise<number> {
   const { io } = verbs;
-  if (!(WINDOW_PROBES as readonly string[]).includes(probe) || !ISO_TIME.test(opts.since)) {
+  if (!isProbe(probe) || !ISO_TIME.test(opts.since)) {
     io.stderr(`planner probe: want one of ${WINDOW_PROBES.join(", ")} and an ISO --since, got ${probe} ${opts.since}\n`);
     return EXIT.USAGE;
   }
   try {
     const read = sources();
     if (probe !== "owner-contact" && read.repos.length === 0) throw new Error("no repos: pass --repo or configure seats");
-    const lines = await probeWindow(probe as WindowProbe, read, opts.since);
+    const lines = await probeWindow(probe, read, opts.since);
     io.stdout(lines.map((line) => `${line}\n`).join(""));
     return EXIT.OK;
   } catch (error) {

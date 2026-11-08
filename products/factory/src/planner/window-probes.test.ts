@@ -12,11 +12,25 @@ const BEFORE = "2026-01-02T02:59:59.000Z";
 const AFTER = "2026-01-02T03:30:00.000Z";
 const REPO = "example-org/example-repo";
 
-function gate(fields: Partial<GateRecord> & Pick<GateRecord, "id">): GateRecord {
-  const blank = { prompt: "", schema: undefined, status: "pending", payload: undefined, reason: undefined, createdAt: BEFORE, resolvedAt: undefined, expiresAt: undefined };
-  const unset = { resolvedBy: undefined, resolvedEvidence: undefined, rule: undefined, summary: undefined, evidenceRef: undefined, questions: undefined };
-  return { ...blank, ...unset, ...fields } as GateRecord;
-}
+const BLANK_GATE: GateRecord = {
+  id: "",
+  prompt: "",
+  schema: undefined,
+  status: "pending",
+  payload: undefined,
+  reason: undefined,
+  createdAt: BEFORE,
+  resolvedAt: undefined,
+  expiresAt: undefined,
+  resolvedBy: undefined,
+  resolvedEvidence: undefined,
+  rule: undefined,
+  summary: undefined,
+  evidenceRef: undefined,
+  questions: undefined,
+};
+
+const gate = (fields: Partial<GateRecord> & Pick<GateRecord, "id">): GateRecord => ({ ...BLANK_GATE, ...fields });
 
 interface Window {
   merged?: MergedPr[];
@@ -92,6 +106,20 @@ describe("titan-factory planner probe", () => {
     const gates = [gate({ id: "run-4/ci-failed:2", createdAt: AFTER }), gate({ id: "run-5/approve-merge", createdAt: AFTER })];
     const out = await probe(["new-red", "--since", SINCE], { red, gates });
     expect(out.stdout).toBe(`${REPO} main run 41 (CI) failed ${AFTER}\ngate run-4/ci-failed:2 opened ${AFTER}\n`);
+  });
+
+  it("asks gh for each --repo's merges since the window start and fails when gh does", async () => {
+    const asked: string[][] = [];
+    const gh: PlannerRun = async (_file, args) => {
+      asked.push([...args]);
+      return args.includes("other-org/other-repo") ? { code: 4, stdout: "", stderr: "gh: auth required" } : { code: 0, stdout: JSON.stringify([{ number: 3, mergedAt: AFTER }]), stderr: "" };
+    };
+    let stderr = "";
+    const io: CliIo = { stdout: () => {}, stderr: (text) => void (stderr += text), env: {} };
+    const code = await runCli(["planner", "probe", "merges", "--since", SINCE, "--repo", REPO, "--repo", "other-org/other-repo"], io, { workflows: factoryWorkflows, routes: [], planner: { run: gh } });
+    expect(asked[0]).toEqual(["pr", "list", "--repo", REPO, "--state", "merged", "--search", `merged:>=${SINCE}`, "--json", "number,mergedAt", "--limit", "100"]);
+    expect(code).toBe(1);
+    expect(stderr).toBe("planner probe merges: gh pr list: exit 4: gh: auth required\n");
   });
 
   it("refuses an unknown probe or a since that is not an ISO time", async () => {
