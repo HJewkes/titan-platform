@@ -13,7 +13,7 @@ import { getStateRoot } from '../utils/paths.js';
 
 export const HIT_TRIGGERS = ['bootstrap-loop', 'bootstrap-foreign', 'spawn'] as const;
 
-export type HitTrigger = (typeof HIT_TRIGGERS)[number];
+type HitTrigger = (typeof HIT_TRIGGERS)[number];
 
 export interface HitLogEntry {
   ts: string;
@@ -32,7 +32,7 @@ export interface HitLogEntry {
 /** Resolves to an error message when the append failed, null when it did not. */
 export type HitLogWriter = (entries: HitLogEntry[]) => Promise<string | null>;
 
-export function hitLogPath(): string {
+function hitLogPath(): string {
   return path.join(getStateRoot(), 'retrieval-hits.jsonl');
 }
 
@@ -50,13 +50,13 @@ export function fileHitLog(file: string = hitLogPath()): HitLogWriter {
   };
 }
 
-export interface ServedHit {
+interface ServedHit {
   ref: string;
   byteOffset: number | null;
   byteLength: number | null;
 }
 
-export interface ServedContext {
+interface ServedContext {
   ts: string;
   slug: string;
   trigger: HitTrigger;

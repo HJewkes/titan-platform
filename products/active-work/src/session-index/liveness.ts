@@ -25,21 +25,21 @@ import { RELATIONS, toAbsolutePath } from '@titan-design/session-read';
 
 type Db = Database.Database;
 
-export interface ColumnLiveness {
+interface ColumnLiveness {
   table: string;
   column: string;
   rows: number;
   nonNull: number;
 }
 
-export interface RelationLiveness {
+interface RelationLiveness {
   relation: string;
   count: number;
   /** False for a relation observed in the data but absent from `RELATIONS`. */
   declared: boolean;
 }
 
-export interface RefNamespaceLiveness {
+interface RefNamespaceLiveness {
   /** The `<prefix>:` of an edge endpoint, e.g. `session`. */
   namespace: string;
   edges: number;
@@ -47,7 +47,7 @@ export interface RefNamespaceLiveness {
   dangling: number | null;
 }
 
-export interface LivenessReport {
+interface LivenessReport {
   /** Columns nothing writes and nothing explains — the headline finding. */
   emptyColumns: ColumnLiveness[];
   /** Empty, but declared so in `EXPECTED_EMPTY`; reported, not flagged. */
@@ -72,7 +72,7 @@ const SKIP_TABLES = /^(sqlite_|_migration$|search_fts|workspace_fts)/;
  * here is a claim that emptiness is correct — so it carries its justification,
  * and `miner liveness` still prints it, just under a heading that says so.
  */
-export const EXPECTED_EMPTY: Record<string, string> = {
+const EXPECTED_EMPTY: Record<string, string> = {
   'edge.t_invalid':
     'NULL means current; the index is rebuilt from scratch, so no edge is ever superseded in place',
   'edge.t_expired':

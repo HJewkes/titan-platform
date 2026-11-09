@@ -25,11 +25,11 @@ import { listInitiativeSlugs } from '../commands/_open-helpers.js';
  * the human-only cwd check still sees it.
  */
 
-export const QUEUE_SOURCE = 'queue';
+const QUEUE_SOURCE = 'queue';
 const CURSOR = 'events';
 const TASK_ID = /^[A-Z][A-Z0-9]*-\d+$/;
 
-export interface QueueSourceOptions {
+interface QueueSourceOptions {
   activeRoot: string;
   resolveInitiative: InitiativeResolver;
 }

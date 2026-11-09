@@ -11,7 +11,7 @@
  * ends up ranking on document length. Dropping them is what makes a title
  * usable as a query at all.
  */
-export const STOP_WORDS = new Set(
+const STOP_WORDS = new Set(
   (
     'a an and are as at be but by for from in into is it of on or the to with via than then that ' +
     'this these those over under new old add fix use using not no all any each per'

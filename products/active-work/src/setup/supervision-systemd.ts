@@ -52,7 +52,7 @@ export function getUnitPath(homeDir: string): string {
   return nodePath.join(getUnitDir(homeDir), UNIT_NAME);
 }
 
-export interface UnitOptions {
+interface UnitOptions {
   cliEntry: string;
   homeDir: string;
   port?: number;
@@ -158,7 +158,7 @@ export async function isUnitActive(deps: SetupDeps = {}): Promise<boolean> {
   return result.code === 0;
 }
 
-export interface InstallSupervisionOptions {
+interface InstallSupervisionOptions {
   /** Override the port baked into the unit's ExecStart. */
   port?: number;
 }

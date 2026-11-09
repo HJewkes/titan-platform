@@ -61,5 +61,4 @@ export const NoteFrontmatterSchema = z.object({
   read_if: NoteReadIfSchema.optional(),
 });
 
-export type NoteKind = z.infer<typeof NoteKindSchema>;
 export type NoteFrontmatter = z.infer<typeof NoteFrontmatterSchema>;

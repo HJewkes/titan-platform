@@ -29,20 +29,20 @@ import {
  * rather than aborting the sweep.
  */
 
-export interface UnrecordedState {
+interface UnrecordedState {
   worktrees: WorktreeEntry[];
   branches: BranchEntry[];
   stashes: StashEntry[];
 }
 
-export interface DirtyTree {
+interface DirtyTree {
   path: string;
   repo: string;
   /** Null when git could not say — the tree is unknown, not clean. */
   files_changed: number | null;
 }
 
-export interface UnpushedBranch {
+interface UnpushedBranch {
   path: string;
   repo: string;
   branch: string;

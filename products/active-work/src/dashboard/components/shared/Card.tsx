@@ -6,7 +6,7 @@ import React from 'react';
 import { View } from 'react-native';
 import { palette, radii } from '../../tokens.js';
 
-export interface CardProps {
+interface CardProps {
   children: React.ReactNode;
   variant?: 'plain' | 'accent' | 'subtle';
   accentColor?: string;

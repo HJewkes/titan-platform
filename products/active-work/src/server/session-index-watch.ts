@@ -51,7 +51,7 @@ interface WatchLogger {
   warn(obj: object, msg: string): void;
 }
 
-export interface SessionIndexWatchOptions {
+interface SessionIndexWatchOptions {
   /** Starts the backstop poll and returns its stop; injectable so a test can fire it by hand. */
   startPoll?: (tick: () => void, intervalMs: number) => () => void;
 }
@@ -73,7 +73,7 @@ function startIntervalPoll(tick: () => void, intervalMs: number): () => void {
 }
 
 /** The longest a pass waits on in-flight related requests before it resumes anyway. */
-export const IDLE_CAP_MS = 5_000;
+const IDLE_CAP_MS = 5_000;
 
 /** Settles with `work`, or rejects with the abort reason as soon as `signal` fires. */
 function untilAborted<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
@@ -205,7 +205,7 @@ function watchRoot(
   }
 }
 
-export interface PassRunner {
+interface PassRunner {
   run(
     kind: PassKind,
     onIndexed?: () => void,

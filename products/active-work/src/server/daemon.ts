@@ -29,7 +29,7 @@ import {
   type WatcherStatus,
 } from './session-index-watch.js';
 
-export interface RunDaemonOptions {
+interface RunDaemonOptions {
   port?: number;
 }
 
@@ -51,7 +51,7 @@ export function toHealthIndexState(status: WatcherStatus | undefined): HealthInd
   };
 }
 
-export interface ActiveWorkDaemonSetup {
+interface ActiveWorkDaemonSetup {
   port: number;
   stateDir: string;
   logger: Logger;
@@ -85,7 +85,7 @@ export async function startActiveWorkDaemon(setup: ActiveWorkDaemonSetup): Promi
 }
 
 /** How long shutdown waits on the session index watcher; `AW_SHUTDOWN_INDEX_MS` overrides. */
-export const DEFAULT_SHUTDOWN_INDEX_MS = 10_000;
+const DEFAULT_SHUTDOWN_INDEX_MS = 10_000;
 
 function shutdownIndexMs(): number {
   const value = Number(process.env.AW_SHUTDOWN_INDEX_MS);

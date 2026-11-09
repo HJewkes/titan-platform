@@ -6,7 +6,7 @@ import { listInitiativeSlugs, resolveLaunchCwd } from '../commands/_open-helpers
 import { parseFrontmatter } from '../utils/gray-matter-io.js';
 import { localTranscriptRoots } from './transcript-roots.js';
 
-export interface ResolvedSessionLocation {
+interface ResolvedSessionLocation {
   cwd: string;
   source: 'active-work' | 'claude-projects';
   /** Set only when `source` is `active-work`. */

@@ -24,7 +24,7 @@ import { loadKnownTaskIds } from './tasks.js';
  * one implementation and none of the mapping.
  */
 
-export const ORIGIN_SYSTEM = 'agent-chat';
+const ORIGIN_SYSTEM = 'agent-chat';
 export const BRIEF_EXCERPT_CHARS = 400;
 
 const LIFECYCLE_KINDS = [
@@ -46,13 +46,13 @@ export interface LifecycleEvent {
   meta: Record<string, unknown>;
 }
 
-export interface LaunchPlan {
+interface LaunchPlan {
   path: string;
   brief: string;
 }
 
 /** A message that handed its recipient more work, by the sender's stated reason (CC-168). */
-export interface FollowUp {
+interface FollowUp {
   ts: number;
   target: string;
   kind: string;

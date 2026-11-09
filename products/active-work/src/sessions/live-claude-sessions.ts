@@ -14,7 +14,7 @@ import { getProcessCommand, isProcessAlive } from '../server/lifecycle.js';
  */
 export type LiveSessionIds = () => Promise<Set<string>>;
 
-export interface ProcessProbes {
+interface ProcessProbes {
   isAlive: (pid: number) => boolean;
   getComm: (pid: number) => string | null;
 }

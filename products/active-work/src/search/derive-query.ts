@@ -11,7 +11,7 @@ import { isTaskId, meaningfulTerms, orExpression } from './terms.js';
  */
 
 /** How many terms rarity picks. TP-84's measured value. */
-export const QUERY_TERMS = 12;
+const QUERY_TERMS = 12;
 
 /**
  * How common a term is in the corpus. Only its order matters, so a capped count

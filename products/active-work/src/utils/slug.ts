@@ -5,7 +5,7 @@ const MIN_LEN = 2;
 const MAX_LEN = 60;
 const MAX_PREFIX_LEN = 8;
 
-export type SlugValidation = { ok: true } | { ok: false; error: string };
+type SlugValidation = { ok: true } | { ok: false; error: string };
 
 /**
  * Validate a kebab-case slug.

@@ -50,7 +50,7 @@ export interface OpenLoop {
   ageDays: number;
 }
 
-export interface DeriveOptions {
+interface DeriveOptions {
   /** Injected for determinism; this module never calls `new Date()`. */
   now: Date;
   /** Auto-closes `kind: 'task'` loops whose `ref` names a done task. */
@@ -85,7 +85,7 @@ export interface MalformedSession {
   reason: string;
 }
 
-export interface SessionIssues {
+interface SessionIssues {
   dangling: DanglingResolve[];
   malformed: MalformedSession[];
 }

@@ -23,7 +23,7 @@ export const RELATED_FRESH_BUDGET_MS = 800;
 /** Bootstrap and liveness are interactive reads that can afford a little more. */
 export const READ_FRESH_BUDGET_MS = 1_500;
 
-export interface IndexFreshness {
+interface IndexFreshness {
   /** Make `refresh` the hook; returns a function that uninstalls it. */
   install(refresh: EnsureFresh): () => void;
   /** Refresh within `budgetMs`; never rejects, a failed hook reads as `'stale'`. */
@@ -32,7 +32,7 @@ export interface IndexFreshness {
 
 const alreadyFresh: EnsureFresh = () => Promise.resolve('fresh');
 
-export function createIndexFreshness(): IndexFreshness {
+function createIndexFreshness(): IndexFreshness {
   let refresh = alreadyFresh;
   return {
     install(next) {

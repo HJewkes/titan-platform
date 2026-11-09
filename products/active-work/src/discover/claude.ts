@@ -13,7 +13,7 @@ import type { DiscoveryHit, DiscoverySourceError } from "./types.js";
  * cross-reference step.
  */
 
-export interface DiscoverClaudeResult {
+interface DiscoverClaudeResult {
   hits: DiscoveryHit[];
   errors: DiscoverySourceError[];
 }

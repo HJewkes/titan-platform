@@ -28,7 +28,7 @@ const ResultSchema = z.object({
 type Args = z.infer<typeof ArgsSchema>;
 type Result = z.infer<typeof ResultSchema>;
 
-export interface EditorCommand {
+interface EditorCommand {
   command: string;
   args: string[];
 }
@@ -73,7 +73,7 @@ async function commandExists(name: string): Promise<boolean> {
  * Default child-process spawner. Inherits stdio so the editor takes
  * over the operator's TTY, and resolves with the exit code on close.
  */
-export const defaultSpawner: EditorSpawner = (command, args, options) => {
+const defaultSpawner: EditorSpawner = (command, args, options) => {
   return new Promise((resolve, reject) => {
     let child: ChildProcess;
     try {
@@ -87,7 +87,7 @@ export const defaultSpawner: EditorSpawner = (command, args, options) => {
   });
 };
 
-export interface RunEditDeps {
+interface RunEditDeps {
   resolveEditor: EditorResolver;
   spawner: EditorSpawner;
 }

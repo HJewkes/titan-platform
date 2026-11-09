@@ -15,7 +15,7 @@ import { exclusionPolicy, loadHumanOnlyInitiatives } from './human-only.js';
 import { ledgerPath, openLedger, v1PrecedentSource } from './ledger.js';
 import { queueSource } from './queue-source.js';
 
-export interface ExtractOptions {
+interface ExtractOptions {
   activeRoot: string;
   graphPath?: string;
   eventsDbPath?: string;

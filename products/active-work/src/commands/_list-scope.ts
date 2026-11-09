@@ -9,7 +9,7 @@ interface ListScope {
   all_initiatives?: boolean;
 }
 
-export interface HumanOnlyPredicate {
+interface HumanOnlyPredicate {
   known: boolean;
   isHumanOnly: (slug: string) => boolean;
 }
