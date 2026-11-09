@@ -855,6 +855,26 @@ describe("readFixProof", () => {
     expect(await read()).toMatchObject({ kind: "untrusted", verdict: "reproduced", reason: expect.stringContaining("2 fix-proof runs") });
   });
 
+  it("reads the newest of several bound runs at the head when every one is NO_REPRO, as a reopened PR has (TP-4788)", async () => {
+    const noTests = resultLine(H, "no-tests");
+    const { read } = registered("correctness", [77, 79, 78].map((id) => fixProofRun({ id })), { logs: { 78: actionsLog(resultLine(H, "vacuous")), 79: actionsLog(noTests) } });
+
+    expect(await read()).toEqual({ kind: "result", line: noTests, verdict: "no-tests" });
+  });
+
+  it("still distrusts several bound runs at the head whose vacuous lines their mutants prove", async () => {
+    const proved = actionsLog(mutantsLine("killed"));
+    const { read } = registered("correctness", [77, 78].map((id) => fixProofRun({ id })), { logs: { 77: proved, 78: proved } });
+
+    expect(await read()).toMatchObject({ kind: "untrusted", reason: expect.stringContaining("2 fix-proof runs") });
+  });
+
+  it("still distrusts the newest of several NO_REPRO runs when it did not conclude success", async () => {
+    const { read } = registered("correctness", [fixProofRun({ id: 77 }), fixProofRun({ id: 78, conclusion: "failure" })], { logs: { 78: actionsLog(resultLine(H, "vacuous")) } });
+
+    expect(await read()).toMatchObject({ kind: "untrusted", reason: expect.stringContaining("failure") });
+  });
+
   it("distrusts the line when no fix-proof run at the head is bound to this PR", async () => {
     const { read } = registered("correctness", [fixProofRun({ pullRequests: [] })]);
 

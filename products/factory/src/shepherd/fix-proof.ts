@@ -152,10 +152,15 @@ const newestSeen = (candidates: readonly Seen[]): Seen | undefined => candidates
 
 type Chosen = Seen & { distrust?: string };
 
+/** A completed run whose line leaves the head NO_REPRO: its test did not reproduce the bug, so it can prove nothing. */
+const readsNoRepro = (head: string) => (candidate: Seen): boolean =>
+  candidate.line !== undefined && proofStanding({ kind: "result", line: candidate.line }, head).kind === "no-repro";
+
 /**
  * Another PR opened from the same head sha onto a base of its own runs its own workflow file, whose run shares the name, app and head
  * sha. Exactly one run bound to this PR and judged on its base is trusted; none or several are not, and the newest is still read so
- * the reason is reported. A bound log that cannot be read is chosen as it is, so the poll reads it again.
+ * the reason is reported. A bound log that cannot be read is chosen as it is, so the poll reads it again. TP-4788: several runs
+ * that all read NO_REPRO, as a PR reopened at one head has, cannot hide a proof, so the newest is chosen and the review ends there.
  */
 async function chooseRun(port: GitHubPort, repo: RepoSlug, head: string, candidates: readonly CheckRun[], binding: Binding): Promise<Chosen | undefined> {
   const bound = await Promise.all(candidates.filter(isBoundTo(binding)).map((run) => seen(port, repo, head, run)));
@@ -163,6 +168,7 @@ async function chooseRun(port: GitHubPort, repo: RepoSlug, head: string, candida
   if (unreadable !== undefined) return unreadable;
   const judged = bound.filter(judgedOn(binding));
   if (judged.length === 1) return judged[0];
+  if (judged.length > 1 && judged.every(readsNoRepro(head))) return newestSeen(judged);
   const why = "unbound" in binding ? binding.unbound : `${judged.length} ${FIX_PROOF_CHECK} runs at this head belong to PR #${binding.pr} and judged ${binding.baseRef}, not exactly one`;
   const elsewhere = candidates.filter((run) => !bound.some((candidate) => candidate.run === run));
   const newest = newestSeen(judged) ?? (await seenNewest(port, repo, head, elsewhere));
