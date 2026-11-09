@@ -255,7 +255,7 @@ describe('cli integration', () => {
     const echo = async (args: string[]): Promise<unknown> => {
       const res = await runCliInProcess(['--json', 'fixture-echo', ...args], { ACTIVE_ROOT: activeRoot });
       expect(res.status).toBe(0);
-      return (JSON.parse(res.stdout) as { data: unknown }).data;
+      return z.object({ data: z.unknown() }).parse(JSON.parse(res.stdout)).data;
     };
 
     it('collects a repeated array flag into one value per occurrence', async () => {
