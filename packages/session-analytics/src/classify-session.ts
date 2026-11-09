@@ -13,7 +13,7 @@ export interface SessionOrigin {
 }
 
 export interface SessionFacts {
-  /** The harness entrypoint. Agent-chat workers and `-p` miners both report "sdk-cli". */
+  /** The harness entrypoint. Agent-chat workers and `-p` miners both report "sdk-cli"; the other SDK entrypoints ("sdk-ts", "sdk-py", any "sdk-*") are other_headless. */
   startType?: string | null;
   origin?: SessionOrigin | null;
   firstUserText?: string | null;
@@ -47,7 +47,7 @@ function classOf(facts: SessionFacts): [SessionClass, string] {
     return ["agent_spawned", "origin depth >= 1"];
   }
   if (facts.startType === "sdk-cli") return ["headless_sdk", "start_type sdk-cli with no origin row"];
-  if (facts.startType === "sdk-ts") return ["other_headless", "start_type sdk-ts with no origin row"];
+  if (facts.startType?.startsWith("sdk-")) return ["other_headless", `start_type ${facts.startType} with no origin row`];
   if (isProgrammaticPrompt(facts)) return ["other_headless", "content-block prompt with <= 2 human turns"];
   return ["human_interactive", "no origin row, no headless marker"];
 }
