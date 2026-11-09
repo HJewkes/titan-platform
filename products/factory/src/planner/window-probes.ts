@@ -36,33 +36,46 @@ const CI_FAILED_GATE = /\/ci-failed(:\d+)?$/;
 /** GitHub's search qualifiers round to the second, so the window edge is re-checked here. */
 const inWindow = (at: string | undefined, since: string): boolean => at !== undefined && isIsoTime(at) && isIsoTime(since) && Date.parse(at) >= Date.parse(since);
 
-async function perRepo<T>(repos: readonly string[], read: (repo: string) => Promise<readonly T[]>, line: (repo: string, item: T) => string): Promise<string[]> {
-  const lines = await Promise.all(repos.map(async (repo) => (await read(repo)).map((item) => line(repo, item))));
-  return lines.flat();
+/** An event whose time cannot be read is not dropped: the wake must see it, so it gets its own "at an unknown time" line. */
+function splitByTime<T>(items: readonly T[], timeOf: (item: T) => string | undefined, since: string): { inside: T[]; undatable: T[] } {
+  const inside = items.filter((item) => inWindow(timeOf(item), since));
+  const undatable = items.filter((item) => !isIsoTime(timeOf(item) ?? ""));
+  return { inside, undatable };
 }
 
 async function mergesSince(sources: WindowSources, since: string): Promise<string[]> {
-  const merged = (repo: string) => sources.github.mergedPrs(repo, since).then((prs) => prs.filter((pr) => inWindow(pr.mergedAt, since)));
-  return perRepo(sources.repos, merged, (repo, pr) => `${repo}#${pr.number} merged ${pr.mergedAt}`);
+  const merged = async (repo: string) => {
+    const { inside, undatable } = splitByTime(await sources.github.mergedPrs(repo, since), (pr) => pr.mergedAt, since);
+    return [...inside.map((pr) => `${repo}#${pr.number} merged ${pr.mergedAt}`), ...undatable.map((pr) => `${repo}#${pr.number} merged at an unknown time`)];
+  };
+  return (await Promise.all(sources.repos.map(merged))).flat();
 }
 
 async function ownerContactSince(sources: WindowSources, since: string): Promise<string[]> {
-  const resolves = sources.gates().filter((gate) => gate.status === "resolved" && inWindow(gate.resolvedAt, since));
+  const resolved = sources.gates().filter((gate) => gate.status === "resolved");
+  const gates = splitByTime(resolved, (gate) => gate.resolvedAt, since);
   const rounds = await sources.rounds();
   const answers = rounds.filter((round) => inWindow(round.submittedAt, since));
   const undatable = rounds.flatMap((round) => (round.submittedAt === undefined ? [round] : []));
   return [
-    ...resolves.map((gate) => `gate ${gate.id} resolved ${gate.resolvedAt}`),
+    ...gates.inside.map((gate) => `gate ${gate.id} resolved ${gate.resolvedAt}`),
+    ...gates.undatable.map((gate) => `gate ${gate.id} resolved at an unknown time`),
     ...answers.map((round) => `round ${round.id} answered ${round.submittedAt}`),
     ...undatable.map((round) => `round ${round.id} answered at an unknown time: ${round.why}`),
   ];
 }
 
 async function newRedSince(sources: WindowSources, since: string): Promise<string[]> {
-  const red = (repo: string) => sources.github.redMainRuns(repo, since).then((runs) => runs.filter((run) => inWindow(run.createdAt, since)));
-  const runs = await perRepo(sources.repos, red, (repo, run) => `${repo} main run ${run.id} (${run.workflow}) failed ${run.createdAt}`);
-  const gates = sources.gates().filter((gate) => CI_FAILED_GATE.test(gate.id) && inWindow(gate.createdAt, since));
-  return [...runs, ...gates.map((gate) => `gate ${gate.id} opened ${gate.createdAt}`)];
+  const red = async (repo: string) => {
+    const { inside, undatable } = splitByTime(await sources.github.redMainRuns(repo, since), (run) => run.createdAt, since);
+    return [
+      ...inside.map((run) => `${repo} main run ${run.id} (${run.workflow}) failed ${run.createdAt}`),
+      ...undatable.map((run) => `${repo} main run ${run.id} (${run.workflow}) failed at an unknown time`),
+    ];
+  };
+  const runs = (await Promise.all(sources.repos.map(red))).flat();
+  const gates = splitByTime(sources.gates().filter((gate) => CI_FAILED_GATE.test(gate.id)), (gate) => gate.createdAt, since);
+  return [...runs, ...gates.inside.map((gate) => `gate ${gate.id} opened ${gate.createdAt}`), ...gates.undatable.map((gate) => `gate ${gate.id} opened at an unknown time`)];
 }
 
 const PROBE_READS: Record<WindowProbe, (sources: WindowSources, since: string) => Promise<string[]>> = {
