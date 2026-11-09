@@ -182,7 +182,7 @@ interface BootstrapQueueOptions {
 }
 /**
  * Creates the owner's #queue at the server's default room version (v12), so the owner is creator.
- * An alias that already resolves returns its room id unchanged.
+ * An alias that already resolves returns its room id, after inviting any mirror that is neither joined nor invited.
  */
 declare function bootstrapQueueRoom(owner: AppserviceClient, options: BootstrapQueueOptions): Promise<string>;
 
