@@ -153,4 +153,26 @@ type ToolSchemaOptions = Pick<core.ToJSONSchemaParams, "io" | "override">;
 /** Build an MCP tool descriptor from a command's zod args via zod 4's native JSON Schema export. */
 declare function commandToTool(cmd: AnyCommand<never>, naming: ToolNaming, options?: ToolSchemaOptions): McpToolDescriptor;
 
-export { type AnyCommand, type BaseContext, type CliMeta, type CliOption, type Command, type CommandMapOf, type CommandRegistry, type ErrorDescription, type InProcessCall, type Invocation, type InvokeOptions, type McpToolDescriptor, type SchemaKind, type ToolNaming, type ToolSchemaOptions, arrayElementKind, camelizeFlagKey, coerceCliValue, collectCliArgs, collectOptionParser, commandNameToToolName, commandPath, commandToTool, createRegistry, defineCommand, describeError, fieldSchema, flagToKey, inProcessCaller, invokeCommand, isOptionalField, optionDefault, optionFlagSpec, positionalSpec, readCommanderOption, schemaKind, toolNameToCommandName, unwrapSchema };
+interface TruncateOptions {
+    /** Hard ceiling on the UTF-8 byte length of the returned text. */
+    maxBytes: number;
+    /** Share of the kept lines taken from the start of the input. Defaults to 0.6. */
+    headRatio?: number;
+    /** Replaces the default omission marker, in both line and character mode. */
+    separator?: string;
+}
+interface TruncateResult {
+    text: string;
+    truncated: boolean;
+    originalLines: number;
+    /** Lines none of whose characters, terminating newline included, reach the output. */
+    omittedLines: number;
+}
+/**
+ * Cuts tool output to a byte budget, keeping the head and tail of the input.
+ * Prefers whole lines with a `--- N lines omitted ---` marker; when not even the
+ * first and last line fit, it cuts at code point boundaries instead.
+ */
+declare function truncateOutput(input: string, options: TruncateOptions): TruncateResult;
+
+export { type AnyCommand, type BaseContext, type CliMeta, type CliOption, type Command, type CommandMapOf, type CommandRegistry, type ErrorDescription, type InProcessCall, type Invocation, type InvokeOptions, type McpToolDescriptor, type SchemaKind, type ToolNaming, type ToolSchemaOptions, type TruncateOptions, type TruncateResult, arrayElementKind, camelizeFlagKey, coerceCliValue, collectCliArgs, collectOptionParser, commandNameToToolName, commandPath, commandToTool, createRegistry, defineCommand, describeError, fieldSchema, flagToKey, inProcessCaller, invokeCommand, isOptionalField, optionDefault, optionFlagSpec, positionalSpec, readCommanderOption, schemaKind, toolNameToCommandName, truncateOutput, unwrapSchema };
