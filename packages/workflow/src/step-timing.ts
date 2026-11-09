@@ -1,6 +1,7 @@
 import { nowIso } from "@titan-design/store-sqlite";
 import type { ContextDeps, RecoveredStep } from "./context-deps.js";
 import { isRecoverable } from "./recovery.js";
+import { addUsage } from "./usage.js";
 import { workflowStepRequestKey, type ActiveStep, type StepUsage } from "./types.js";
 
 interface TryTiming {
@@ -14,6 +15,19 @@ interface TryTiming {
 export function resumeCounts(recovered: RecoveredStep | undefined): { attempt: number; restarts: number } {
   const restarted = recovered?.kind === "retry_safe" ? 1 : 0;
   return { attempt: (recovered?.step.attempt ?? 0) + restarted, restarts: (recovered?.step.restarts ?? 0) + restarted };
+}
+
+/**
+ * The spend a resumed step carries in from its earlier tries. A try reconcile settles reports its own full spend, so
+ * its unsettled report is left out; a retry-safe restart replaces the try, so that report is charged here, once.
+ */
+export function resumedUsage(recovered: RecoveredStep | undefined): StepUsage | undefined {
+  return recovered?.kind === "retry_safe" ? everyTryUsage(recovered.step) : recovered?.step.priorUsage;
+}
+
+/** What every try of an active step spent, its unsettled one included, for a step that ends without another report. */
+export function everyTryUsage(step: ActiveStep): StepUsage | undefined {
+  return addUsage(step.priorUsage, step.unsettledUsage);
 }
 
 /** A new try keeps the first start of `previous`, the try it replaces; a step's first try stamps it. */

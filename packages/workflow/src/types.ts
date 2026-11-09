@@ -70,6 +70,11 @@ export interface ActiveStepBase {
   runnerRef?: string;
   /** Summed cost of this step's earlier failed attempts, so a resumed run still reports every attempt once. */
   priorUsage?: StepUsage;
+  /**
+   * What this try reported when it ended with cancellation unknown. Reconcile answers the parked try with that terminal
+   * again, so a report replaces it; it joins `priorUsage` only when the step moves past the try.
+   */
+  unsettledUsage?: StepUsage;
   recovery?: { kind: "legacy_unrecoverable" | "not_found" | "ownership_lost" | "unknown"; evidence: string; observedAt: string };
 }
 
@@ -209,7 +214,7 @@ export type DurableStepOutcome =
   | { kind: "succeeded"; output: string; usage?: StepUsage }
   | { kind: "failed"; error: string; retryable: boolean; code?: "schema_invalid"; usage?: StepUsage }
   | { kind: "cancelled"; reason: string }
-  | { kind: "cancellation_unknown"; reason: string };
+  | { kind: "cancellation_unknown"; reason: string; usage?: StepUsage };
 
 export interface RecoverableStepDispatchInput extends StepRunInput {
   executionId: string;
