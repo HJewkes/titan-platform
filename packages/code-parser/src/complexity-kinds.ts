@@ -6,7 +6,7 @@ import type { Node } from "web-tree-sitter";
  */
 
 /** TypeScript statements that open a nesting level. */
-export const TS_NESTING_TYPES: ReadonlySet<string> = new Set([
+export const TS_NESTING_TYPES = new Set<string>([
   "if_statement",
   "for_statement",
   "for_in_statement",
@@ -14,18 +14,18 @@ export const TS_NESTING_TYPES: ReadonlySet<string> = new Set([
   "do_statement",
   "switch_statement",
   "try_statement",
-]);
+]) as ReadonlySet<string>;
 
 /** Python statements that open a nesting level. */
-export const PY_NESTING_TYPES: ReadonlySet<string> = new Set([
+export const PY_NESTING_TYPES = new Set<string>([
   "if_statement",
   "for_statement",
   "while_statement",
   "try_statement",
-]);
+]) as ReadonlySet<string>;
 
 /** TypeScript nodes that each add one decision path. */
-export const TS_BRANCH_TYPES: ReadonlySet<string> = new Set([
+export const TS_BRANCH_TYPES = new Set<string>([
   "if_statement",
   "for_statement",
   "for_in_statement",
@@ -34,17 +34,17 @@ export const TS_BRANCH_TYPES: ReadonlySet<string> = new Set([
   "switch_case",
   "catch_clause",
   "ternary_expression",
-]);
+]) as ReadonlySet<string>;
 
 /** Python nodes that each add one decision path. */
-export const PY_BRANCH_TYPES: ReadonlySet<string> = new Set([
+export const PY_BRANCH_TYPES = new Set<string>([
   "if_statement",
   "elif_clause",
   "for_statement",
   "while_statement",
   "except_clause",
   "conditional_expression",
-]);
+]) as ReadonlySet<string>;
 
 export interface NestingOptions {
   /** Keep an `else if` chain at its `if`'s depth, as ESLint max-depth and Sonar do. */
