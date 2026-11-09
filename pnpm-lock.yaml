@@ -1692,6 +1692,9 @@ importers:
       '@titan-design/rpc-protocol':
         specifier: workspace:^
         version: link:../../packages/rpc-protocol
+      '@titan-design/session-read':
+        specifier: workspace:^
+        version: link:../../packages/session-read
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../../packages/store-sqlite

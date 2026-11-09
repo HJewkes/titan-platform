@@ -2,6 +2,7 @@ import { quoteIdent, runMigrations, type Db, type Migration } from "@titan-desig
 import { DELEGATE_RESOLVER_CLASSES } from "@titan-design/authority";
 import { BaseGateStore } from "./base-store.js";
 import {
+  GATE_STATUSES,
   GateStoreSchemaOutdated,
   type GateAnswerAllowance,
   type GateAuthorize,
@@ -85,7 +86,7 @@ function hasColumn(db: Db, table: string, column: string): boolean {
   return db.prepare("SELECT 1 FROM pragma_table_info(?) WHERE name = ?").get(table, column) !== undefined;
 }
 
-const CANONICAL_STATUSES = "'pending', 'resolved', 'cancelled', 'expired'";
+const CANONICAL_STATUSES = GATE_STATUSES.map((status) => `'${status}'`).join(", ");
 
 /**
  * The triggers that refuse a resolve by a class outside the row's rule, and any

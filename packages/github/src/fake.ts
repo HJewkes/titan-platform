@@ -48,7 +48,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
   const repo = options.repo ?? "o/r";
   let counter = 0;
   const nextSha = (tag: string): string => fakeSha(`${tag}${++counter}`);
-  const effects: FakeEffects = { createRef: 0, deleteRef: 0, putContent: 0, createPr: 0, updateBranch: 0, updateRef: 0, merge: 0, rerunFailedJobs: 0 };
+  const effects: FakeEffects = { createRef: 0, deleteRef: 0, putContent: 0, createPr: 0, updateBranch: 0, updateRef: 0, merge: 0, rerunFailedJobs: 0, createReview: 0, dismissReview: 0 };
   const prs = new Map<number, PullRequest>();
   const runs = new Map<string, CheckRun[]>();
   const runStatus = new Map<number, string>();

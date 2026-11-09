@@ -67,7 +67,7 @@ interface ErrorDescription {
 declare function describeError(err: unknown): ErrorDescription;
 
 /** The zod 4 `def.type` discriminator of a schema, e.g. "string", "array", "enum". */
-type SchemaKind = string;
+type SchemaKind = ZodType["def"]["type"];
 /** Peel optional / nullable / default wrappers down to the schema that carries the kind. */
 declare function unwrapSchema(schema: ZodType): ZodType;
 /** Kind of the innermost schema, using zod 4's public `def` rather than `_zod` internals. */

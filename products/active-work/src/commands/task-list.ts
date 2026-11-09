@@ -7,9 +7,13 @@ import { getActiveRoot, getInitiativeDir } from '../utils/paths.js';
 import { mapConcurrent } from '../utils/map-concurrent.js';
 import { readYaml } from '../utils/yaml-io.js';
 import { UsageError } from '../errors.js';
+import { closedStatusIds, loadCategoryRegistry } from './_categories.js';
 
-// No schema default: buildFilter picks it, because the default depends on --id.
-const StatusFilter = z.enum(['open', 'done', 'all']);
+// No schema default: buildFilter picks it, because the default depends on --id. The values a root
+// accepts depend on its category registry, so run() checks them, not the schema.
+const StatusFilter = z.string().min(1);
+
+const BUILT_IN_STATUS_IDS = ['open', 'done'];
 
 const ArgsSchema = z.object({
   slug: z.string().min(1).optional(),
@@ -134,13 +138,33 @@ function parseIds(raw: string | undefined): Set<string> | undefined {
   );
 }
 
-function buildFilter(args: Args): (t: Task) => boolean {
+async function assertKnownStatus(activeRoot: string, status: string): Promise<void> {
+  if (status === 'all' || status === 'closed' || BUILT_IN_STATUS_IDS.includes(status)) return;
+  const registry = await loadCategoryRegistry(activeRoot);
+  const allowed = registry ? registry.status.map((s) => s.id) : BUILT_IN_STATUS_IDS;
+  if (allowed.includes(status)) return;
+  throw new UsageError(
+    `Unknown status: ${status} (allowed: ${[...allowed, 'closed', 'all'].join(', ')})`,
+  );
+}
+
+function statusMatcher(status: string, closed: ReadonlySet<string>): (t: Task) => boolean {
+  if (status === 'all') return () => true;
+  if (status === 'closed') return (t) => closed.has(t.status);
+  return (t) => t.status === status;
+}
+
+async function buildFilter(args: Args): Promise<(t: Task) => boolean> {
   const ids = parseIds(args.id);
   // Asking for ids by name should not hide them because they are already done.
   const status = args.status ?? (ids ? 'all' : 'open');
+  const activeRoot = getActiveRoot();
+  await assertKnownStatus(activeRoot, status);
+  const closed = status === 'closed' ? await closedStatusIds(activeRoot) : new Set<string>();
+  const matchesStatus = statusMatcher(status, closed);
   const needle = args.search?.toLowerCase();
   return (t) => {
-    if (status !== 'all' && t.status !== status) return false;
+    if (!matchesStatus(t)) return false;
     if (args.tag && !(t.tags ?? []).includes(args.tag)) return false;
     if (args.severity && t.severity !== args.severity) return false;
     if (ids && !ids.has(t.id)) return false;
@@ -168,7 +192,8 @@ export default defineCommand<Args, Result>({
       },
       status: {
         long: '--status',
-        description: 'open (default; all with --id), done, or all',
+        description:
+          'open (default; all with --id), any status in the category registry, closed (every closed status), or all',
       },
       id: { long: '--id', description: 'Keep only these comma-separated ids, e.g. TP-1,TP-2' },
       search: {
@@ -178,7 +203,7 @@ export default defineCommand<Args, Result>({
     },
   },
   async run(args) {
-    const keep = buildFilter(args);
+    const keep = await buildFilter(args);
     const slugs: string[] = args.all_initiatives
       ? await listSlugs()
       : (() => {

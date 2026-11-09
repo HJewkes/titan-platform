@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseFile, type ParsedFile } from "@titan-design/code-parser";
+import { parseFile, type GrammarLanguage, type ParsedFile } from "@titan-design/code-parser";
 import { cognitiveComplexityOf, cognitiveSplitOf } from "./cognitive-complexity.js";
 import { collectDeclaredNames } from "./declared-names.js";
 import { computeSourceMetrics } from "./source-metrics.js";
@@ -200,7 +200,7 @@ const INLINE_HANDLER = `export function Go({ x }) {
 }`;
 
 /** The shapes scored above, in both languages, plus the JSX components: [code, language, path]. */
-const SPLIT_FIXTURES: readonly [string, string, string][] = [
+const SPLIT_FIXTURES: readonly [string, GrammarLanguage, string][] = [
   ["function f(x: number, y: number) { if (x > 0) { if (y > 0) return 1; } }", "typescript", "f.ts"],
   ["function f(x: number) { if (x === 1) return 1; else if (x === 2) return 2; else return 0; }", "typescript", "f.ts"],
   ["function f(a: boolean, b: boolean, c: boolean) { if (a && b || c) return 1; }", "typescript", "f.ts"],

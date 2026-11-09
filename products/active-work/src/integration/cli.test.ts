@@ -2,9 +2,13 @@ import { promises as fs, mkdtempSync, rmSync } from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import os from 'node:os';
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, beforeAll, beforeEach, afterEach } from 'vitest';
 import envPaths from 'env-paths';
 import Database from 'better-sqlite3';
+import { z } from 'zod';
+import { fieldSchema, schemaKind } from '@titan-design/registry';
+import { buildProgram } from '../program.js';
+import { defineCommand, registry } from '../registry/index.js';
 import { SCHEMA_VERSION } from '../session-index/graph.js';
 import { REPO_ROOT, runCli, runCliInProcess, type RunResult } from '../test-support/cli-runner.js';
 
@@ -217,10 +221,11 @@ describe('cli integration', () => {
   it('ANDs a repeated --tag on deliverable list, keeping every value', async () => {
     const env = { ACTIVE_ROOT: activeRoot };
     const required = ['--title', 'T', '--done-when', 'Ships', '--owner-seat', 'seat-a'];
-    await runCliInProcess(['deliverable', 'add', 'A', ...required, '--tags', 'ui,web'], env);
-    await runCliInProcess(['deliverable', 'add', 'B', ...required, '--tags', 'ui'], env);
-    await runCliInProcess(['deliverable', 'add', 'C', ...required, '--tags', 'ui,web,x'], env);
-    await runCliInProcess(['deliverable', 'add', 'D', ...required, '--tags', 'x'], env);
+    const tags = (...values: string[]): string[] => values.flatMap((value) => ['--tags', value]);
+    await runCliInProcess(['deliverable', 'add', 'A', ...required, ...tags('ui', 'web')], env);
+    await runCliInProcess(['deliverable', 'add', 'B', ...required, ...tags('ui')], env);
+    await runCliInProcess(['deliverable', 'add', 'C', ...required, ...tags('ui', 'web', 'x')], env);
+    await runCliInProcess(['deliverable', 'add', 'D', ...required, ...tags('x')], env);
     const listIds = async (tagArgs: string[]): Promise<string[]> => {
       const res = await runCliInProcess(['--json', 'deliverable', 'list', ...tagArgs], env);
       expect(res.status).toBe(0);
@@ -228,10 +233,98 @@ describe('cli integration', () => {
     };
 
     const repeated = await listIds(['--tag', 'web', '--tag', 'ui']);
-    const mixed = await listIds(['--tag', 'ui,web', '--tag', 'x']);
+    const three = await listIds(['--tag', 'ui', '--tag', 'web', '--tag', 'x']);
 
     expect(repeated).toEqual(['A', 'C']);
-    expect(mixed).toEqual(['C']);
+    expect(three).toEqual(['C']);
+  });
+
+  describe('registry projection of a command schema', () => {
+    const fixture = defineCommand<{ name: string; tag?: string[] }, unknown>({
+      name: 'fixture-echo',
+      description: 'Echo parsed args back',
+      args: z.object({ name: z.string().default('anon'), tag: z.array(z.string()).optional() }),
+      result: z.unknown(),
+      cli: { positional: ['name'], options: { tag: { long: '--tag', description: 'Repeatable' } } },
+      run: (args) => Promise.resolve(args),
+    });
+
+    beforeAll(() => {
+      if (!registry.has(fixture.name)) registry.register(fixture);
+    });
+
+    const echo = async (args: string[]): Promise<unknown> => {
+      const res = await runCliInProcess(['--json', 'fixture-echo', ...args], { ACTIVE_ROOT: activeRoot });
+      expect(res.status).toBe(0);
+      return z.object({ data: z.unknown() }).parse(JSON.parse(res.stdout)).data;
+    };
+
+    it('collects a repeated array flag into one value per occurrence', async () => {
+      expect(await echo(['--tag', 'a', '--tag', 'b'])).toEqual({ name: 'anon', tag: ['a', 'b'] });
+    });
+
+    it('refuses a comma list in an array flag and shows the repeated form', async () => {
+      const res = await runCliInProcess(['fixture-echo', 'x', '--tag', 'a,b'], { ACTIVE_ROOT: activeRoot });
+      expect(res.status).toBe(64);
+      expect(res.stderr).toContain('--tag a,b: pass --tag a --tag b');
+    });
+
+    it('renders a .default() positional as optional', () => {
+      const sub = buildProgram().commands.find((c) => c.name() === 'fixture-echo');
+      expect(sub?.usage()).toBe('[options] [name]');
+    });
+  });
+
+  // Seats wrote `--tags a,b,c` for years; after comma-splitting went away that would have
+  // filed one tag named "a,b,c" without a word, so it must fail before anything is written.
+  describe('comma lists in array flags', () => {
+    const env = (): Record<string, string> => ({ ACTIVE_ROOT: activeRoot });
+    const SLUG = 'comma-demo';
+
+    beforeEach(async () => {
+      await runCliInProcess(['new', SLUG, '--title', 'Comma demo', '--ship-target', '2026-Q3'], env());
+    });
+
+    it('refuses task add --tags a,b,c and files no task', async () => {
+      const res = await runCliInProcess(
+        ['task', 'add', SLUG, '--title', 'T', '--done-when', 'Ships', '--tags', 'a,b,c'],
+        env(),
+      );
+
+      expect(res.status).toBe(64);
+      expect(res.stderr).toContain('--tags a,b,c: pass --tags a --tags b --tags c');
+      await expect(fs.readdir(path.join(activeRoot, SLUG, 'tasks'))).resolves.toEqual([]);
+    });
+
+    it('refuses a comma list in a required array flag', async () => {
+      const res = await runCliInProcess(['facet', 'add', SLUG, 'demo', '--tags', 'a,b'], env());
+
+      expect(res.status).toBe(64);
+      expect(res.stderr).toContain('--tags a,b: pass --tags a --tags b');
+    });
+
+    it('documents every array flag as repeatable, never as a comma list', () => {
+      const arrayFlags = registry.list().flatMap((cmd) =>
+        Object.entries(cmd.cli?.options ?? {})
+          .filter(([key]) => schemaKind(fieldSchema(cmd.args, key)) === 'array')
+          .map(([, opt]) => ({ flag: `${cmd.name} ${opt.long}`, text: `${opt.description} ${cmd.cli?.usage ?? ''}` })),
+      );
+
+      expect(arrayFlags.length).toBeGreaterThanOrEqual(14);
+      const misdocumented = arrayFlags.filter(({ text }) => !/repeat/i.test(text) || /comma/i.test(text));
+      expect(misdocumented.map(({ flag }) => flag)).toEqual([]);
+    });
+
+    it('collects every occurrence of a required array flag', async () => {
+      const res = await runCliInProcess(
+        ['--json', 'facet', 'add', SLUG, 'demo', '--tags', 'a', '--tags', 'b'],
+        env(),
+      );
+
+      expect(res.status).toBe(0);
+      const parsed = z.object({ data: z.object({ tags: z.array(z.string()) }) }).parse(JSON.parse(res.stdout));
+      expect(parsed.data.tags).toEqual(['a', 'b']);
+    });
   });
 
   describe('task edit flags', () => {
@@ -258,7 +351,9 @@ describe('cli integration', () => {
           '--done-when',
           'the edit flags leave the other fields untouched',
           '--tags',
-          'alpha,beta',
+          'alpha',
+          '--tags',
+          'beta',
           '--notes',
           'One',
         ],

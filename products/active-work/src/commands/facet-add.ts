@@ -54,10 +54,10 @@ export default defineCommand<Args, Result>({
   cli: {
     positional: ['slug', 'alias'],
     options: {
-      tags: { long: '--tags', description: 'Comma-separated task tags', required: true },
+      tags: { long: '--tags', description: 'Task tag. Repeat the flag for each value', required: true },
       about: { long: '--about', description: 'What the facet is about (ranks notes and loops)' },
     },
-    usage: 'active-work facet add <slug> <alias> --tags a,b [--about <text>]',
+    usage: 'active-work facet add <slug> <alias> --tags a --tags b [--about <text>]',
   },
   async run(args, ctx) {
     const facetPath = getFacetPath(ctx.activeRoot, args.slug, args.alias);

@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { identifierMentions, maskSource, wholeImportSpecifiers } from "./dead-code-check-source.mjs";
+import { analyzeSource, identifierMentions } from "./dead-code-check-source.mjs";
 import { BUSY_EXIT_CODE, INDEXER_HEAP_CAP_MB, DEFAULT_LOCK_DIR, LockTimeoutError, acquire, lockSlots, lockWaitMs, cleanupOnSignal, release, runCappedWorker, runCleanups } from "./dag-check-lock.mjs";
 
 const SCRIPT = fileURLToPath(import.meta.url);
@@ -116,9 +116,7 @@ function readRepoFile(id) {
 
 function sourceReader(readSource) {
   return memoize((id) => {
-    const text = readSource(id);
-    const masked = maskSource(text);
-    return { masked, ...wholeImportSpecifiers(text, masked) };
+    return analyzeSource(readSource(id), id);
   });
 }
 

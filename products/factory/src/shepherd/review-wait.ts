@@ -93,6 +93,10 @@ export async function whileRosterSlow<T>(timing: PollTiming, signal: AbortSignal
   }
 }
 
+/** Every step's roster read waits out a booting broker and then a slow one, so no step turns a busy broker into a refusal (TP-3020). */
+export const patientRoster = <T>(timing: BrokerDownTiming, signal: AbortSignal, budgetMs: number, read: () => Promise<T>): Promise<T> =>
+  whileRosterSlow(timing, signal, budgetMs, () => whileBrokerBooting(timing, signal, read));
+
 /** An unread roster started nobody, so the step says so rather than reading as a refusal; any other throw stays one. */
 export function rosterUnread(error: unknown): NotStarted {
   if (!(error instanceof ReviewerRosterUnread)) throw error;
@@ -173,6 +177,21 @@ export const BUSY_LONGEST_WAIT_MS = 8 * 60_000;
 export const DEFAULT_BUSY_WAIT_MS = 30 * 60_000;
 /** A machine stop lifts on its own once load settles, so its wait is spent apart from the busy budget, up to this ceiling. */
 export const DEFAULT_HOLD_WAIT_MS = 3 * 60 * 60_000;
+
+/**
+ * A roster still unread after a whole budget is read again after a doubling pause, with no cap on rounds. A step that already
+ * holds its verdict waits out a slow broker; failing would throw that verdict away and cost a re-register (TP-5086).
+ */
+export async function untilRosterRead<T>(timing: BrokerDownTiming, signal: AbortSignal, budgetMs: number, read: () => Promise<T>): Promise<T> {
+  for (let pause = BUSY_FIRST_WAIT_MS; ; pause = Math.min(pause * 2, BUSY_LONGEST_WAIT_MS)) {
+    try {
+      return await patientRoster(timing, signal, budgetMs, read);
+    } catch (error) {
+      if (!(error instanceof ReviewerRosterUnread)) throw error;
+    }
+    await timing.sleep(pause, signal);
+  }
+}
 
 export interface BusyTiming {
   now: () => number;

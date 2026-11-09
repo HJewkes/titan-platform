@@ -7,7 +7,7 @@ import type { Candidate } from "./candidates/candidate.js";
 import { dateOrderNotes } from "./candidates/date-order.js";
 import { hybridVector } from "./candidates/hybrid-vector.js";
 import { notesFts } from "./candidates/notes-fts.js";
-import { defaultTranscriptRoots, discoverTranscripts, readHead } from "./corpus/transcripts.js";
+import { readHead, transcriptFiles } from "./corpus/transcripts.js";
 import { mineBootstrapArm } from "./mine/bootstrap-arm.js";
 import { mineSpawnArm } from "./mine/spawn-arm.js";
 import { formatPairs, parsePairs } from "./pairs.js";
@@ -51,7 +51,7 @@ function mineCommand(paths: PathOptions): Command {
     .option("--graph <file>", "session graph, read-only", activeWorkGraphPath(paths))
     .action(async (options) => {
       const arm = parseChoice("--arm", options.arm, ARMS);
-      const files = discoverTranscripts(defaultTranscriptRoots());
+      const files = await transcriptFiles();
       const heads = await Promise.all(files.map((file) => readHead(file)));
       const report = await mine(arm, files, heads, options.activeRoot);
       const jsonl = formatPairs(report.pairs);
@@ -135,7 +135,7 @@ function uptakeCommand(): Command {
     .description("Count recall-tool calls against filesystem-search calls")
     .option("--since <iso-date>", "ignore tool calls before this date")
     .action(async (options) => {
-      const files = discoverTranscripts(defaultTranscriptRoots());
+      const files = await transcriptFiles();
       console.log(JSON.stringify(await countUptake(files, { since: options.since }), null, 2));
     });
 }
@@ -149,7 +149,7 @@ function servedCommand(paths: PathOptions): Command {
     .option("--json", "emit the full report as JSON")
     .option("--active-root <dir>", "active-work root, read-only", activeWorkRoot(paths))
     .action(async (options) => {
-      const files = discoverTranscripts(defaultTranscriptRoots());
+      const files = await transcriptFiles();
       const window = { ...(options.since ? { since: options.since } : {}), ...(options.until ? { until: options.until } : {}) };
       const report = buildReport(await collectServed(files, options.activeRoot, window), window, files.length);
       console.log(options.json ? JSON.stringify(report, null, 2) : formatServed(report, Number(options.files)));
