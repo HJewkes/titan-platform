@@ -1083,16 +1083,19 @@ describe("the attestation guard", () => {
       expect(evidence?.data).toMatchObject({ result: { record: { decision: { outcome: "allow", rule: { rowId: "MRG-AU-RV" } }, attested: [{ step: "ci-wait" }] } } });
     });
 
-    it("a read still timed out past the budget fails the run as infrastructure and opens no owner gate", async () => {
+    it("TP-5086: a roster still timed out past the budget is read again with the MERGE in hand, and the run merges rather than fails", async () => {
       const fake = claiming();
-      const host = slowBroker(fake, Number.POSITIVE_INFINITY);
+      const readsPerBudget = 3;
+      const host = slowBroker(fake, 4 * readsPerBudget);
 
       const run = await host.runtime.wait(host.runtime.start("shepherd-merge"));
 
-      expect(run.status).toBe("failed");
-      expect(fake.effects.merge).toBe(0);
-      expect(run.error).toMatch(new RegExp(`step ${MERGE_EVIDENCE_STEP}:\\w+ \\(iteration 0\\) failed: ReviewerAskTimedOut \\(roster unread after 1 min\\)`));
+      expect(run.status).toBe("completed");
+      expect(run.error).toBeNull();
+      expect(fake.effects.merge).toBe(1);
       expect(host.gates.listPending()).toEqual([]);
+      const evidence = Object.values(run.stepResults).find((result) => result.stepId === `${MERGE_EVIDENCE_STEP}:${HEAD}`);
+      expect(evidence?.data).toMatchObject({ result: { record: { decision: { outcome: "allow", rule: { rowId: "MRG-AU-RV" } }, attested: [{ step: "ci-wait" }] } } });
     });
   });
 

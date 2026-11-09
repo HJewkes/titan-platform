@@ -8,7 +8,7 @@ import { errorClass } from "./error-class.js";
 import { G10_ADVERSARY_CLASS, holdClassOf } from "./g10-release.js";
 import { independentOfRun, type Lineage } from "./lineage.js";
 import { separateLineages } from "./reviewer-lineage.js";
-import { patientRoster, transient, type BrokerDownTiming } from "./review-wait.js";
+import { transient, untilRosterRead, type BrokerDownTiming } from "./review-wait.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
 
 /** The `Attests:` tokens of the accepted MERGE and, on a panel, the adversary member's own MERGE and whether the plan had one. */
@@ -69,14 +69,15 @@ async function runFacts(readers: AttestReaders, runId: string): Promise<RunFacts
   }
 }
 
-/** How long a roster or lineage read is asked again; the same waits the reviewer dispatch spends on its own roster read. */
+/** Each round of a roster or lineage read spends the waits the reviewer dispatch spends on its own roster read. */
 interface RosterPatience {
   timing: BrokerDownTiming;
   budgetMs: number;
   signal: AbortSignal;
 }
 
-const patiently = <T>(read: () => Promise<T>, { timing, budgetMs, signal }: RosterPatience) => () => patientRoster(timing, signal, budgetMs, read);
+/** The step already holds a MERGE, so a roster unread for a whole round is read again rather than failing the run (TP-5086). */
+const patiently = <T>(read: () => Promise<T>, { timing, budgetMs, signal }: RosterPatience) => () => untilRosterRead(timing, signal, budgetMs, read);
 
 export interface AttestSkewWiring {
   /** Main's registry commits the running build lacks; absent reads no skew, so the attest step judges at once (TP-4752). */
