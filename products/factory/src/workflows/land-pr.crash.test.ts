@@ -100,7 +100,7 @@ function expectLandedOnce(survivor: FactoryHost, runId: string, world: World): v
   expect(run?.status).toBe("completed");
   // Only a merged outcome reaches post-merge; a replayed merge that reads the merged PR as closed stops short of it.
   expect(Object.values(run!.stepResults).map((result) => result.stepId)).toContain("post-merge");
-  expect(world.fake.effects).toEqual({ createRef: 0, deleteRef: 0, putContent: 0, createPr: 0, updateBranch: 0, updateRef: 0, merge: 1, rerunFailedJobs: 1 });
+  expect(world.fake.effects).toEqual({ createRef: 0, deleteRef: 0, putContent: 0, createPr: 0, updateBranch: 0, updateRef: 0, merge: 1, rerunFailedJobs: 1, createReview: 0, dismissReview: 0 });
   expect(world.fake.pr(1)).toMatchObject({ merged: true, headSha: H2 });
   expect(survivor.gates.get(gateId(runId, "ci-failed"))?.status).toBe("resolved");
   expect(survivor.gates.get(gateId(runId, "approve-merge"))?.status).toBe("resolved");
