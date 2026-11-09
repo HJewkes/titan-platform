@@ -121,11 +121,27 @@ No method throws. Each answers `{ ok: true, changed }` or `{ ok: false, error }`
 `error` is a `SendError` plus `unsupported` (naming the capability the channel lacks) and
 `message-gone`. `capabilities` is a static descriptor: `channel`, `maxTextLength`,
 `canInitiate`, `deliveryCeiling`, `buttons`, `buttonStates`, `edits`, `reactions`,
-`chatActions`, `drafts`, `draftStreaming` and `threads`. A flag is true only where the shipped
+`chatActions`, `drafts`, `draftStreaming`, `threads` and `media`. A flag is true only where the shipped
 adapter implements the thing today, so it is safe to branch on before a call.
 
 An `edit` with neither `text` nor `buttons` names nothing to change, so it fails
 `bad-buttons` before any call; the Mock adapter answers the same way.
+
+## Sending media
+
+```ts
+if (transport.capabilities.media) {
+  await transport.sendVoice({ handle: "lifter", audio: { bytes: oggOpus } });
+  await transport.sendPhoto({ handle: "lifter", image: { bytes: jpeg }, caption: "This week" });
+}
+```
+
+Both take bytes, so they run in a Worker, and answer `{ ok: true, ref? }` or
+`{ ok: false, error }` with an `InteractionError`. Telegram uploads multipart form data with
+the chat id; the file name and type default to `voice.ogg` / `audio/ogg` and `photo.jpg` /
+`image/jpeg`. A caption over 1024 characters fails `too-long` before any call, and a 429
+carries `retryAfterSeconds`. BlueBubbles answers `unsupported` with capability `media` and
+makes no request. The Mock adapter logs `sendVoice` and `sendPhoto` events.
 
 ## Inbound
 
