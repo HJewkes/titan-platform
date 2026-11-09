@@ -3,16 +3,16 @@
   "mutations": [
     {
       "name": "load phase reads the wrong clock span",
-      "file": "products/active-work/src/bootstrap/prompt.ts",
-      "find": "const loadMs = clock() - loadStart;",
-      "replace": "const loadMs = 0;",
+      "file": "products/active-work/src/bootstrap/gather.ts",
+      "find": "timings.load = input.clock() - loadStart;",
+      "replace": "timings.load = 0;",
       "kills": ["bootstrap timings_ms reads durations off the injected clock"]
     },
     {
       "name": "loop query count dropped",
-      "file": "products/active-work/src/bootstrap/prompt.ts",
-      "find": "loop_queries: shownLoops.length,",
-      "replace": "loop_queries: -1,",
+      "file": "products/active-work/src/bootstrap/gather.ts",
+      "find": "timings.loop_queries = selection.loops.length;",
+      "replace": "timings.loop_queries = -1;",
       "kills": ["bootstrap timings_ms carries every phase key as a non-negative number and a loop query count"]
     },
     {
