@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the digest never reads the publish record",
+      "file": "products/factory/src/shepherd/seat-digest.ts",
+      "find": "  const reviewError = reviewErrorItem(input);",
+      "replace": "  const reviewError = undefined;",
+      "kills": [
+        "seat digest of a review that could not be synced names a dismissal that failed after its retries at the PR's head, with the recorded reason"
+      ]
+    },
+    {
+      "name": "a failure at a moved-past head is still told",
+      "file": "products/factory/src/shepherd/seat-digest-items.ts",
+      "find": "record.data.result.headSha !== row.headSha || ",
+      "replace": "",
+      "kills": [
+        "seat digest of a review that could not be synced tells nothing for a failure at a head the PR has moved past"
+      ]
+    },
+    {
+      "name": "a missing App is told as a review failure",
+      "file": "products/factory/src/shepherd/seat-digest-items.ts",
+      "find": " || record.data.result.review.reviewError === NO_APP) return undefined;",
+      "replace": ") return undefined;",
+      "kills": [
+        "seat digest of a review that could not be synced tells nothing when the only error is that no review App is configured"
+      ]
+    },
+    {
+      "name": "the oldest publish decides, not the newest",
+      "file": "products/factory/src/shepherd/seat-digest-items.ts",
+      "find": "a.completedAt.localeCompare(b.completedAt)).at(-1);",
+      "replace": "a.completedAt.localeCompare(b.completedAt)).at(0);",
+      "kills": [
+        "seat digest of a review that could not be synced tells nothing once a later publish at the head synced the review"
+      ]
+    }
+  ]
+}

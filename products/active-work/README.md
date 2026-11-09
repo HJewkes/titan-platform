@@ -211,7 +211,7 @@ src/
 skill/                  # SKILL.md + reference docs (copied to ~/.claude/)
 scripts/                # postinstall, preuninstall, gen-cli-reference
 docs/                   # architecture overview + auto-generated CLI reference
-__tests__/              # vitest unit + integration tests
+# vitest tests sit next to their source as *.test.ts; shared helpers in src/test-support/
 ```
 
 ## Troubleshooting
