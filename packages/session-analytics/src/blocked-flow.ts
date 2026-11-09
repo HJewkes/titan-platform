@@ -4,6 +4,7 @@ import { dedupeDenials, type DenialRecord } from "./blocked-flow-denials.js";
 import { TICK_HOLD_MAX_MIN, idleSlotMinutes, type SeatJournal } from "./blocked-flow-idle.js";
 import { VERDICTS_SQL, eventsDbCommand } from "./events-db.js";
 import { LIST_PRICE_CAVEAT, table } from "./render-text.js";
+import { renderSources, scopeHeader, scopeTest } from "./report-helpers.js";
 
 /** Where each section's numbers come from: the command that re-reads them and the field it reads. */
 export const BLOCKED_FLOW_SOURCES = {
@@ -91,11 +92,11 @@ export const ALL_REPOS = "all";
 export function blockedFlowReport(input: BlockedFlowInput): BlockedFlowReport {
   const window = input.window ?? {};
   const inScope = scopeTest(input.seats, window);
-  const scoped = input.verdicts.filter((v) => inScope(v.seat, v.at));
+  const scoped = input.verdicts.filter((v) => inScope([v.seat], v.at));
   const refused = scoped.filter(hasRefusedHead).length + (input.unparsedVerdicts ?? 0);
   const outcomes = mergeOutcomes(scoped.filter((v) => !hasRefusedHead(v)), input.pulls, input.asOf);
   const open = openRows(outcomes);
-  const journals = input.journals.map((j) => ({ ...j, ticks: j.ticks.filter((t) => inScope(t.seat)) }));
+  const journals = input.journals.map((j) => ({ ...j, ticks: j.ticks.filter((t) => inScope([t.seat])) }));
   const idle = idleSlotMinutes(journals, window);
   return {
     asOf: input.asOf,
@@ -105,15 +106,9 @@ export function blockedFlowReport(input: BlockedFlowInput): BlockedFlowReport {
     verdictToMerge: { cites: ["verdicts", "pulls"], rows: latencyRows(outcomes, input.splitAt) },
     refusedVerdicts: { cites: ["verdicts"], count: refused },
     openHoldingMerge: { cites: ["verdicts", "pulls"], prMinutes: round(open.reduce((sum, r) => sum + r.ageMin, 0)), rows: open },
-    denials: denialSection(dedupeDenials(input.denials).filter((d) => inScope(d.seat, d.at))),
+    denials: denialSection(dedupeDenials(input.denials).filter((d) => inScope([d.seat], d.at))),
     idleSlots: { cites: ["journals"], holdMaxMin: TICK_HOLD_MAX_MIN, total: idle.reduce((sum, r) => sum + r.slotMinutes, 0), rows: idle },
   };
-}
-
-function scopeTest(seats: readonly string[] | undefined, window: { since?: string; until?: string }) {
-  const named = seats ? new Set(seats) : null;
-  return (seat: string, at?: string): boolean =>
-    (!named || named.has(seat)) && (at === undefined || ((!window.since || at >= window.since) && (!window.until || at < window.until)));
 }
 
 function latencyRows(outcomes: readonly MergeOutcome[], splitAt: string | undefined): LatencyRow[] {
@@ -150,10 +145,10 @@ function denialSection(denials: readonly DenialRecord[]): BlockedFlowReport["den
 
 /** Each table's title names the JSON field its numbers come from; the sources close the report. */
 export function renderBlockedFlowText(report: BlockedFlowReport): string {
-  const scope = `Blocked flow as of ${report.asOf}${report.window.since ? `, since ${report.window.since}` : ""}${report.window.until ? `, until ${report.window.until}` : ""}`;
+  const scope = scopeHeader("Blocked flow", report.asOf, report.window);
   const latency = [latencyTable("Verdict to merge, minutes from the first MERGE at the final head [verdictToMerge.rows[].all]", report.verdictToMerge.rows, "all")];
   if (report.splitAt) latency.push(...(["before", "after"] as const).map((part) => latencyTable(`Verdict to merge, verdicts ${part} ${report.splitAt} [verdictToMerge.rows[].${part}]`, report.verdictToMerge.rows, part)));
-  return [scope, ...latency, openTable(report), refusedLine(report), denialTable(report), idleTable(report), sourceLines(report), LIST_PRICE_CAVEAT].join("\n\n") + "\n";
+  return [scope, ...latency, openTable(report), refusedLine(report), denialTable(report), idleTable(report), renderSources(report.sources), LIST_PRICE_CAVEAT].join("\n\n") + "\n";
 }
 
 function latencyTable(title: string, rows: readonly LatencyRow[], part: "all" | "before" | "after"): string {
@@ -185,8 +180,4 @@ function idleTable(report: BlockedFlowReport): string {
   const rows = report.idleSlots.rows.map((r) => [r.seat, r.reason, r.slotMinutes, r.ticks, r.lines.join(",")]);
   const title = `Idle implementer slot-minutes by stated reason, ${report.idleSlots.total} in all, each tick held at most ${report.idleSlots.holdMaxMin} min [idleSlots.rows[].slotMinutes]`;
   return table(title, ["seat", "reason", "slot-min", "ticks", "journal lines"], rows);
-}
-
-function sourceLines(report: BlockedFlowReport): string {
-  return ["Sources", ...Object.entries(report.sources).map(([name, s]) => `${name}: ${s.command} (${s.field})`)].join("\n");
 }
