@@ -1,9 +1,10 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
   dataVersion,
   growDictionary,
   loadLexiconData,
+  type LexiconData,
   parseLexiconDict,
   sha256Hex,
 } from "./lexicon-data.js";
@@ -22,7 +23,16 @@ const WHEEL_FILES: [name: string, sha256: string, bytes: number][] = [
   ],
 ];
 
+// The lexicon load measures ~0.65 s alone; the hook limit leaves room for a loaded machine.
+const LOAD_TIMEOUT_MS = 15_000;
+
 describe("vendored lexicon", () => {
+  let data: LexiconData;
+
+  beforeAll(() => {
+    data = loadLexiconData();
+  }, LOAD_TIMEOUT_MS);
+
   it.each(WHEEL_FILES)(
     "%s matches the misaki 0.9.4 wheel hash and size",
     (name, sha256, size) => {
@@ -34,7 +44,7 @@ describe("vendored lexicon", () => {
   );
 
   it("loads gold with tag dicts that always carry DEFAULT", () => {
-    const { golds } = loadLexiconData();
+    const { golds } = data;
     const live = golds["live"];
 
     expect(typeof live).toBe("object");
