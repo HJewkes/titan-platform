@@ -1,7 +1,10 @@
 import type { ActorClass, DelegateResolverClass, ResolverClass } from "@titan-design/authority";
 
 /** A gate is a row, never a promise: pending work survives the process that opened it. */
-export type GateStatus = "pending" | "resolved" | "cancelled" | "expired";
+export type GateStatus = (typeof GATE_STATUSES)[number];
+
+/** The one status list: the type above and the store's status trigger both derive from it, so they cannot drift. */
+export const GATE_STATUSES = ["pending", "resolved", "cancelled", "expired"] as const;
 
 /** A JSON Schema document, stored so any process can validate a payload without the original zod schema. */
 export type JsonSchema = Record<string, unknown>;
