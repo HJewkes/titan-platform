@@ -43,7 +43,7 @@ Before adding code:
 | [`agent-surface`](#cap-agent-surface) | 1 | A host must present a long-lived agent somewhere: detached and headless, or in an iTerm2 pane, tab or window it can later close and confirm closed. |
 | [`daemon`](#cap-daemon) | 1 | You want a registry reachable over loopback HTTP and MCP with health, SSE, file watching and a pid file, or just one of those utilities. |
 | [`egress-scan`](#cap-egress-scan) | 1 | Text is about to leave the machine for a public repo and you must refuse absolute home paths, active-work data directory paths, terms from a private list or credential tokens (GitHub, Anthropic, AWS, Slack, PEM private keys), reporting only `file:line`, the rule id and the token kind. |
-| [`frame-capture`](#cap-frame-capture) | 1 | You need deterministic PNG frames, or an MP4, of a web page that animates on a timeline: the page publishes `window.__titanMotion` (`seek(t)`, `ready()`, `duration`) and `captureFrames` drives it under a virtual clock (`VIRTUAL_TIME_SCRIPT`) across parallel Playwright browsers, failing on any page error or unloaded font face; `startEncoder` and `mixAudio` wrap ffmpeg. |
+| [`frame-capture`](#cap-frame-capture) | 1 | You need deterministic PNG frames, or an MP4, of a web page that animates on a timeline: the page publishes `window.__titanMotion` (`seek(t)`, `ready()`, `duration`) and `captureFrames` drives it under a virtual clock (`VIRTUAL_TIME_SCRIPT`) across parallel Playwright browsers, failing on any page error or unloaded font face; `startEncoder` and `mixAudio` wrap ffmpeg; `checkPops` walks a grid of `t` and flags sudden visual pops (a mount, a cut, a jump) that fast smooth motion would not cause. |
 | [`github`](#cap-github) | 1 | Code must read or change GitHub (refs, files, pull requests, required checks, check runs, App-posted pull request approvals and their dismissal, job logs, merges, reruns, branch deletes) over REST through the caller's `gh` login, with every write safe to repeat after a crash and polling paced by ETags and a shared rate budget. |
 | [`health`](#cap-health) | 1 | You emit or read a health route's payload and want one open contract: `healthReportSchema` for health/v1 (pass, warn or fail with named checks, after draft-inadarei-api-health-check) and `parseHealthReport` to read any payload, legacy `ok`-only ones included, without ever reading better than its worst check. |
 | [`hitl`](#cap-hitl) | 1 | A step must pause for a human decision and resume, possibly in another process, after a restart. |
@@ -664,14 +664,14 @@ Tier 1, `@titan-design/frame-capture@0.1.0`. Deterministic frame capture of any 
 
 **Use this when:**
 
-You need deterministic PNG frames, or an MP4, of a web page that animates on a timeline: the page publishes `window.__titanMotion` (`seek(t)`, `ready()`, `duration`) and `captureFrames` drives it under a virtual clock (`VIRTUAL_TIME_SCRIPT`) across parallel Playwright browsers, failing on any page error or unloaded font face; `startEncoder` and `mixAudio` wrap ffmpeg. It does not know what a beat or a timeline is: the motion runtime that publishes the protocol is titan-design's react-ui `/motion`, and composing a video is a product's job.
+You need deterministic PNG frames, or an MP4, of a web page that animates on a timeline: the page publishes `window.__titanMotion` (`seek(t)`, `ready()`, `duration`) and `captureFrames` drives it under a virtual clock (`VIRTUAL_TIME_SCRIPT`) across parallel Playwright browsers, failing on any page error or unloaded font face; `startEncoder` and `mixAudio` wrap ffmpeg; `checkPops` walks a grid of `t` and flags sudden visual pops (a mount, a cut, a jump) that fast smooth motion would not cause. It does not know what a beat or a timeline is: the motion runtime that publishes the protocol is titan-design's react-ui `/motion`, and composing a video is a product's job.
 
 Key exports:
 
-- `protocol`: `TITAN_MOTION_GLOBAL`
 - `capture`: `captureFrame`, `FontLoadError`, `launch`, `openCapturePage`, `screenshotFrame`, `settleFonts`, `withBrowser`, `withCapturePage`
 - `frames`: `captureFrames`
 - `encode`: `mixAudio`, `startEncoder`
+- `pops`: `changedPixels`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/frame-capture)
 
 <a id="cap-github"></a>
@@ -1313,7 +1313,7 @@ Key exports:
 
 ### [`style-checker`](https://hjewkes.github.io/titan-platform/reference/style-checker)
 
-Tier 2, `@titan-design/style-checker@0.4.4`. Run external lint tools (ruff, ESLint) against configs generated from a style profile, normalize their output into one diagnostic shape, and diff observations against a profile
+Tier 2, `@titan-design/style-checker@0.4.4`. Run external lint tools (ruff, ESLint, pyright, vulture, pydoclint, import-linter) against configs generated from a style profile, normalize their output into one diagnostic shape, and diff observations against a profile
 
 **Use this when:**
 
