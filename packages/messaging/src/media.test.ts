@@ -36,9 +36,14 @@ function accepted(messageId: number): Response {
   return new Response(JSON.stringify({ ok: true, result: { message_id: messageId } }));
 }
 
-async function bytesOf(part: FormDataEntryValue | null): Promise<number[]> {
-  if (!(part instanceof Blob)) throw new Error("expected a file part");
-  return [...new Uint8Array(await part.arrayBuffer())];
+function fileOf(form: FormData | undefined, name: string): File {
+  const part = form?.get(name);
+  if (!(part instanceof File)) throw new Error(`expected a file part named ${name}`);
+  return part;
+}
+
+async function bytesOf(file: File): Promise<number[]> {
+  return [...new Uint8Array(await file.arrayBuffer())];
 }
 
 describe("Telegram media sends", () => {
@@ -53,11 +58,10 @@ describe("Telegram media sends", () => {
     expect(upload?.method).toBe("sendVoice");
     expect(upload?.contentType).toBeNull();
     expect(upload?.form.get("chat_id")).toBe("4242");
-    const voice = upload?.form.get("voice");
-    expect(voice).toBeInstanceOf(File);
-    expect((voice as File).name).toBe("voice.ogg");
-    expect((voice as File).type).toBe("audio/ogg");
-    expect(await bytesOf(voice ?? null)).toEqual([0x4f, 0x67, 0x67, 0x53]);
+    const voice = fileOf(upload?.form, "voice");
+    expect(voice.name).toBe("voice.ogg");
+    expect(voice.type).toBe("audio/ogg");
+    expect(await bytesOf(voice)).toEqual([0x4f, 0x67, 0x67, 0x53]);
   });
 
   it("a photo send posts sendPhoto with the caller's file name and the caption", async () => {
@@ -69,8 +73,9 @@ describe("Telegram media sends", () => {
     expect(uploads[0]?.method).toBe("sendPhoto");
     expect(form?.get("chat_id")).toBe("4242");
     expect(form?.get("caption")).toBe("lunch");
-    expect((form?.get("photo") as File).name).toBe("plate.jpg");
-    expect(await bytesOf(form?.get("photo") ?? null)).toEqual([0xff, 0xd8, 0xff]);
+    const photo = fileOf(form, "photo");
+    expect(photo.name).toBe("plate.jpg");
+    expect(await bytesOf(photo)).toEqual([0xff, 0xd8, 0xff]);
   });
 
   it("a caption over the limit is too-long and makes no request", async () => {
