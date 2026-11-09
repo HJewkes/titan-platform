@@ -193,9 +193,6 @@ declare class ComplexityExtractor implements StyleExtractor {
     private isStatement;
     private isTypeScriptStatement;
     private isPythonStatement;
-    private measureNestingDepth;
-    private measureCyclomaticComplexity;
-    private branchIncrement;
 }
 
 interface SourceFile {

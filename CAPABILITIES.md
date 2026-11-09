@@ -283,9 +283,11 @@ You want tree-sitter syntax trees for TypeScript, TSX or Python and nothing else
 
 Key exports:
 
-- `types`: `Extractor`, `ParsedFile`
-- `parser`: `getSupportedLanguages`, `parseFile`, `GrammarLanguage`
-- `file-filter`: `getLanguageFromPath`, `isExcludedDir`, `shouldIncludeFile`, `FilterLanguage`
+- `types`: `Extractor`
+- `parser`: `getSupportedLanguages`, `parseFile`
+- `file-filter`: `getLanguageFromPath`, `isExcludedDir`, `shouldIncludeFile`
+- `complexity-kinds`: `cyclomaticOf`, `nestingDepthOf`, `PY_BRANCH_TYPES`, `PY_NESTING_TYPES`, `TS_BRANCH_TYPES`, `TS_NESTING_TYPES`
+- More in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-parser)
 
 <a id="cap-embed"></a>
 
