@@ -355,7 +355,7 @@ async function nonSourceProceeds(deps: Pick<ShepherdDeps, "port" | "nonSourceNoR
 }
 
 export const fixProofRoute = (deps: ShepherdDeps): StepRoute =>
-  codeRoute(FIX_PROOF_STEP, deps.now, (input, signal, clock) => readFixProof(deps, input, { now: deps.now, sleep: deps.sleep, pollMs: deps.pollMs, startedAt: clock.firstStartedAtMs }, signal));
+  codeRoute(FIX_PROOF_STEP, deps.now, (input: unknown, signal, clock) => readFixProof(deps, input, { now: deps.now, sleep: deps.sleep, pollMs: deps.pollMs, startedAt: clock.firstStartedAtMs }, signal));
 
 export const fixProofStepId = (head: string, base?: string): string => `${FIX_PROOF_STEP}:${head}${base === undefined ? "" : `@${base}`}`;
 
