@@ -6,7 +6,7 @@
  * `active__` prefix (`task.add` -> `active__task__add`). Those names are public
  * contract — they appear in consumers' configs and in `~/.claude.json` — so the
  * prefix and the handshake identity are pinned here and asserted by
- * `__tests__/server/mcp-tool-names.test.ts`.
+ * `src/server/mcp-tool-names.test.ts`.
  */
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
