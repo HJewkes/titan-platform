@@ -777,7 +777,7 @@ rule `own-merge-up`, both trees, the base commit, and the pull request's and the
 
 The `sh-publish-review:<head>` step publishes what a review came to on GitHub, at the head it
 covers, under the GitHub App in `shepherd.reviewCheck` (`appId`, `installationId`,
-`privateKeyPath`). The App needs **Checks: write** and **Pull requests: write**, and it must be
+`privateKeyPath`, and `login`, the App's bot login such as `my-app[bot]`). The App needs **Checks: write** and **Pull requests: write**, and it must be
 installed on each shepherded repository. An App identity is required because a pull request's
 author cannot approve it. Without the App, nothing is posted: the step records
 `published: false`, plus `review.reviewError` on a success that was owed an approval, and the run
@@ -793,14 +793,24 @@ goes on.
 - **Standing approvals are dismissed** when a later publish is anything but `success`, at any
   head, the published one included. A MERGE publish can approve a head that the same run then
   republishes as `action_required` (an unmet attestation), and GitHub keeps an approval after a
-  push, so Shepherd dismisses each review that is a bot's, still `APPROVED`, and carries the
-  marker naming the commit it was given at. Human reviews and other bots' reviews are never touched. The step records
+  push, so Shepherd dismisses each review that is by the App's own `login`, still `APPROVED`, and
+  carries the marker naming the commit it was given at. Human reviews are never touched, even
+  when they carry the marker. Without `login` an installation token cannot read its own
+  identity, so the step records `review.reviewError` and touches no review. The config refuses a
+  `login` that is not a bot login. A bot approval carrying Shepherd's marker, from any run, under
+  a login other than `login` also records `review.reviewError` and touches no review: either
+  `login` is not the one the App writes as, or another bot copied the marker. So a wrong `login`
+  cannot quietly stop the dismissals. The step records
   `review.dismissed` with the ids, and a replay finds nothing left to dismiss. A success keeps
   only its own approval at the published head and dismisses the rest. Once the dismissals
   succeed, every guard that holds the check also holds the approval.
 
-A failed post, list or dismissal is recorded in `review.reviewError` by HTTP status only, with the
-full message on the local console, and never fails the step. Shepherd's merge path is unchanged:
+A list or dismissal that fails on a GitHub server error, or on a rate limit that resets within 15
+seconds, is retried twice after a short wait. A post is not retried, since a lost answer may hide
+a posted review; the next publish finds it. A failure that outlasts its retries is recorded in
+`review.reviewError` by HTTP status only, with the full message on the local console, and never
+fails the step. While the newest publish at a pull request's head carries one, the seat digest
+lists it as an open item. Shepherd's merge path is unchanged:
 it still merges through the `MRG-AU-*` rows, and the approval makes that a reviewed merge on
 GitHub's own record.
 
