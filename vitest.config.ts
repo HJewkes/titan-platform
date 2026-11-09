@@ -59,6 +59,7 @@ const sharedGraphNeedsIsolation = [
   "products/factory/src/deploy-cli-link.test.ts",
   "products/factory/src/host.ownership-lost.test.ts",
   "products/factory/src/remote-factory.test.ts",
+  "products/factory/src/serve-loop-delay.test.ts",
   "products/factory/src/shepherd/merge-facts.test.ts",
   "products/factory/src/shepherd/policy.test.ts",
   "products/factory/src/shepherd/reviewer-reader.test.ts",
