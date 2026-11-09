@@ -46,8 +46,11 @@ describe("PythonGraphExtractor imports in a requests-like package (TP-307)", () 
 
     const targets = fragment.edges.filter((e) => e.kind === "imports").map((e) => e.dstId);
 
-    expect(targets).toContain("requests/compat.py");
-    expect(targets.filter((id) => !id.startsWith("python:") && !id.startsWith("pypi:"))).toEqual([
+    expect(targets.sort()).toEqual([
+      "pypi:charset_normalizer",
+      "pypi:urllib3",
+      "python:collections",
+      "python:os",
       "requests/compat.py",
     ]);
   });
