@@ -6,6 +6,7 @@ import { describe, expect, it, beforeAll, beforeEach, afterEach } from 'vitest';
 import envPaths from 'env-paths';
 import Database from 'better-sqlite3';
 import { z } from 'zod';
+import { fieldSchema, schemaKind } from '@titan-design/registry';
 import { buildProgram } from '../program.js';
 import { defineCommand, registry } from '../registry/index.js';
 import { SCHEMA_VERSION } from '../session-index/graph.js';
@@ -300,6 +301,18 @@ describe('cli integration', () => {
 
       expect(res.status).toBe(64);
       expect(res.stderr).toContain('--tags a,b: pass --tags a --tags b');
+    });
+
+    it('documents every array flag as repeatable, never as a comma list', () => {
+      const arrayFlags = registry.list().flatMap((cmd) =>
+        Object.entries(cmd.cli?.options ?? {})
+          .filter(([key]) => schemaKind(fieldSchema(cmd.args, key)) === 'array')
+          .map(([, opt]) => ({ flag: `${cmd.name} ${opt.long}`, text: `${opt.description} ${cmd.cli?.usage ?? ''}` })),
+      );
+
+      expect(arrayFlags.length).toBeGreaterThanOrEqual(14);
+      const misdocumented = arrayFlags.filter(({ text }) => !/repeat/i.test(text) || /comma/i.test(text));
+      expect(misdocumented.map(({ flag }) => flag)).toEqual([]);
     });
 
     it('collects every occurrence of a required array flag', async () => {
