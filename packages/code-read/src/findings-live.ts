@@ -7,9 +7,12 @@ import type { SourceReader } from "./source-reader.js";
 const IMPORT_KINDS = new Set(["imports", "re-exports"]);
 const QUOTES = ['"', "'", "`"];
 
+/** A rule that names no severity fails the check, so it reads as an error. */
+export const ruleSeverity = (r: CheckRule): string => r.severity ?? "error";
+
 export function toModelRules(rules: readonly CheckRule[]): ModelRule[] {
   return rules.map((r) => {
-    const rule: ModelRule = { id: r.id, type: r.type, severity: r.severity ?? "error", text: describeRule(r) };
+    const rule: ModelRule = { id: r.id, type: r.type, severity: ruleSeverity(r), text: describeRule(r) };
     if (r.type === "layered-deps") rule.layers = r.layers;
     return rule;
   });
