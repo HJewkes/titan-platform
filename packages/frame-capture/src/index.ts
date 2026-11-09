@@ -16,3 +16,18 @@ export {
 } from './capture.js'
 export { captureFrames, type FramesOptions, type FramesResult } from './frames.js'
 export { mixAudio, startEncoder, type Encoder, type MixSegment } from './encode.js'
+export {
+  changedPixels,
+  checkPops,
+  HALVING_RATIO,
+  isPop,
+  measureHalving,
+  MIN_POP_CHANGE,
+  type FrameDelta,
+  type HalvingMeasure,
+  type PopCheckOptions,
+  type PopFinding,
+  type PopReport,
+  type RgbaFrame,
+  type SeekFrame,
+} from './pops.js'
