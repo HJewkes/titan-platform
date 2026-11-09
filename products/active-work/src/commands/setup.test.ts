@@ -5,6 +5,8 @@ import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import setupCmd from './setup.js';
 import uninstallCmd from './uninstall.js';
 import * as setupSteps from '../setup/steps.js';
+import { stepInstallCommand } from '../setup/steps-install.js';
+import { uninstallCommand } from '../setup/uninstall.js';
 
 function ctxFor(activeRoot: string) {
   return {
@@ -127,12 +129,12 @@ describe('active-work setup', () => {
   it('installs and removes the /aw-prompt command', async () => {
     const target = path.join(tempBase, 'home', '.claude', 'commands', 'aw-prompt.md');
 
-    const install = await setupSteps.stepInstallCommand({});
+    const install = await stepInstallCommand({});
     expect(install.ok).toBe(true);
     expect(install.done).toBe(true);
     expect(existsSync(target)).toBe(true);
 
-    const remove = await setupSteps.uninstallCommand({});
+    const remove = await uninstallCommand({});
     expect(remove.ok).toBe(true);
     expect(remove.done).toBe(true);
     expect(existsSync(target)).toBe(false);

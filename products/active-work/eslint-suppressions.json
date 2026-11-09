@@ -435,6 +435,31 @@
       "count": 1
     }
   },
+  "products/active-work/src/setup/steps-daemon.ts": {
+    "titan/max-function-lines": {
+      "count": 3
+    }
+  },
+  "products/active-work/src/setup/steps-deps.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/setup/steps-install.ts": {
+    "titan/max-function-lines": {
+      "count": 2
+    }
+  },
+  "products/active-work/src/setup/steps-local.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/setup/steps-register.ts": {
+    "titan/max-function-lines": {
+      "count": 2
+    }
+  },
   "products/active-work/src/setup/steps.test.ts": {
     "titan/no-chained-type-assertions": {
       "count": 13
@@ -442,7 +467,7 @@
   },
   "products/active-work/src/setup/steps.ts": {
     "titan/max-function-lines": {
-      "count": 12
+      "count": 1
     }
   },
   "products/active-work/src/setup/supervision-launchd.test.ts": {
@@ -463,6 +488,11 @@
   "products/active-work/src/setup/supervision-systemd.ts": {
     "titan/max-function-lines": {
       "count": 3
+    }
+  },
+  "products/active-work/src/setup/uninstall.ts": {
+    "titan/max-function-lines": {
+      "count": 2
     }
   },
   "products/active-work/src/test-support/fixtures/unwrapped-transcript.ts": {
