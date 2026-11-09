@@ -69,17 +69,23 @@ describe("checkSendBack", () => {
   });
 
   it("passes when the running implementer wake step later ends with a woken wake row", () => {
-    const entries = [proof(), step("sh-wake-fix-proof"), step("sh-wake-implementer:0"), wake("sh-wake-implementer:0")];
+    const entries = [proof(), step("sh-wake-fix-proof"), wake("sh-wake-implementer:0")];
 
     expect(checkSendBack(entries, H)).toEqual({ ok: true, pending: false, failures: [] });
   });
 
-  it("fails when the running implementer wake step ends without a woken wake row", () => {
-    const entries = [proof(), step("sh-wake-fix-proof"), step("sh-wake-implementer:0", "failed")];
-    const result = checkSendBack(entries, H);
+  it("fails at once when the implementer wake ends as an unhandled wake entry", () => {
+    const unhandled = { ...wake("sh-wake-implementer:0"), outcome: "unhandled", agent: null, held: "successor refused" };
+    const result = checkSendBack([proof(), step("sh-wake-fix-proof"), unhandled], H);
 
     expect(result).toMatchObject({ ok: false, pending: false });
-    expect(result.failures).toEqual(["implementer wake step sh-wake-implementer:0 ended (failed) without a woken wake row"]);
+    expect(result.failures).toEqual(["implementer wake step sh-wake-implementer:0 ended (unhandled) without a woken wake row: successor refused"]);
+  });
+
+  it("fails when the implementer wake step is done but its record did not parse into a wake entry", () => {
+    const result = checkSendBack([proof(), step("sh-wake-fix-proof"), step("sh-wake-implementer:0")], H);
+
+    expect(result.failures).toEqual(["implementer wake step sh-wake-implementer:0 ended (done) without a woken wake row"]);
   });
 
   it("stays pending when the implementer wake step never started after the fix-proof wake step", () => {
