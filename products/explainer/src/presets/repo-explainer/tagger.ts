@@ -67,6 +67,8 @@ export interface TagFactsResult {
   tags: FactTag[];
   /** Batches that failed their control twice, or whose call failed; their facts carry no tags. */
   dropped: DroppedBatch[];
+  /** Fact ids a finished batch's reply left untagged; the reply was schema-valid and passed its control. */
+  missing: string[];
   /** Batches never launched because the budget ran out or a failure stopped the run. */
   skipped: string[];
   spentUsd: number;
@@ -94,23 +96,30 @@ function taskLines(viewer: string): string[] {
 
 const TEMPLATE_SHA = createHash("sha256").update(taskLines("{{viewer}}").join("\n")).digest("hex");
 
-// The prompt template and inputs join the key, so an edited template, one-pager or viewer re-tags instead of replaying a stale answer.
-function batchKey(facts: readonly ExplainerFact[], options: TagFactsOptions): string {
+// Seeds the control draw and its position only; the memo key is `promptKey`, which also sees the excerpts.
+function batchSeed(facts: readonly ExplainerFact[], options: TagFactsOptions): string {
   const hash = createHash("sha256").update(TEMPLATE_SHA).update("\0").update(options.onePager).update("\0").update(options.viewer);
   for (const fact of facts) hash.update(`\0${fact.id}\0${fact.text}\0${JSON.stringify(fact.evidence)}`);
   return hash.digest("hex").slice(0, 16);
+}
+
+// The key hashes the rendered prompt and the control, so anything that reaches the model re-tags instead of replaying a stale answer.
+function promptKey(batch: Omit<TagBatch, "key">, options: TagFactsOptions): string {
+  const prompt = tagPrompt({ ...batch, key: "" }, options);
+  return createHash("sha256").update(prompt).update("\0").update(batch.control.fact.id).digest("hex").slice(0, 16);
 }
 
 /** Splits facts into batches, each with one seeded control drawn from the pool and placed at a seeded position. */
 export function buildTagBatches(facts: readonly ExplainerFact[], options: TagFactsOptions): TagBatch[] {
   if (options.controls.length === 0) throw new Error("tagger: the control pool is empty, so no batch can be checked");
   return chunk(facts, options.batchSize ?? DEFAULT_BATCH_SIZE).map((group) => {
-    const key = batchKey(group, options);
+    const seed = batchSeed(group, options);
     const ids = new Set(group.map((fact) => fact.id));
     const pool = options.controls.filter((control) => !ids.has(control.fact.id));
-    const [control] = pickControls(pool, key, 1);
-    if (!control) throw new Error(`tagger: every control shares an id with batch ${key}`);
-    return { key, facts: group, control, sequence: placeControls(group, [control], key).sequence };
+    const [control] = pickControls(pool, seed, 1);
+    if (!control) throw new Error(`tagger: every control shares an id with batch ${seed}`);
+    const unkeyed = { facts: group, control, sequence: placeControls(group, [control], seed).sequence };
+    return { key: promptKey(unkeyed, options), ...unkeyed };
   });
 }
 
@@ -180,6 +189,11 @@ async function tagBatch(ctx: WorkflowContext, stepId: string, batch: TagBatch, o
   return { ...final.result, data: { tags }, ...(usage ? { usage } : {}) };
 }
 
+function missingIds(batch: TagBatch, tags: readonly FactTag[]): string[] {
+  const tagged = new Set(tags.map((tag) => tag.id));
+  return batch.facts.filter((fact) => !tagged.has(fact.id)).map((fact) => fact.id);
+}
+
 /**
  * S2 tag (workflow plan §1.2): one memoized `mapItems` item per batch, under step `tag:<arm>`, so a replay reuses
  * every batch whose facts and prompt inputs are unchanged. A dropped batch never stops the others.
@@ -193,6 +207,7 @@ export async function tagFacts(ctx: WorkflowContext, facts: readonly ExplainerFa
     ...(options.budgetUsd === undefined ? {} : { budgetUsd: options.budgetUsd }),
   });
   return {
+    missing: mapped.results.flatMap(({ item, result }) => missingIds(item, TagReplySchema.parse(result.data).tags)),
     tags: mapped.results.flatMap(({ result }) => TagReplySchema.parse(result.data).tags),
     dropped: mapped.failed.map(({ key, item, error }) => ({ key, factIds: item.facts.map((fact) => fact.id), error })),
     skipped: mapped.skipped.map(({ key }) => key),
