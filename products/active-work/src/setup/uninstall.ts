@@ -17,7 +17,7 @@ import {
 } from './steps-deps.js';
 import { runOnce } from './steps-register.js';
 
-export interface UninstallReport {
+interface UninstallReport {
   steps: Array<{ name: string; done: boolean; message?: string; error?: string }>;
   activeRootPreservedAt: string;
 }
@@ -34,7 +34,7 @@ async function confirmStep(
   return answer === true;
 }
 
-export async function uninstallSkill(deps: SetupDeps = {}): Promise<StepResult> {
+async function uninstallSkill(deps: SetupDeps = {}): Promise<StepResult> {
   const { fs, paths } = resolveDeps(deps);
   const target = nodePath.join(paths.homeDir, '.claude', 'skills', 'active-work');
   try {
@@ -82,7 +82,7 @@ export async function uninstallCommand(deps: SetupDeps = {}): Promise<StepResult
   }
 }
 
-export async function uninstallStopDaemon(deps: SetupDeps = {}): Promise<StepResult> {
+async function uninstallStopDaemon(deps: SetupDeps = {}): Promise<StepResult> {
   const { spawn, cliEntry } = resolveDeps(deps);
   const result = await runOnce(spawn, process.execPath, [cliEntry, 'mcp', 'stop']);
   if (result.spawnError) {
@@ -101,7 +101,7 @@ export async function uninstallStopDaemon(deps: SetupDeps = {}): Promise<StepRes
   };
 }
 
-export async function uninstallMcp(deps: SetupDeps = {}): Promise<StepResult> {
+async function uninstallMcp(deps: SetupDeps = {}): Promise<StepResult> {
   const { spawn } = resolveDeps(deps);
   const result = await runOnce(spawn, 'claude', [
     'mcp',
