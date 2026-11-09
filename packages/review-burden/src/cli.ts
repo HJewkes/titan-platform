@@ -22,7 +22,7 @@ interface Options {
   enforce: boolean;
 }
 
-export function parseArgs(argv: readonly string[]): Options {
+function parseArgs(argv: readonly string[]): Options {
   const options: Options = { base: "origin/main", enforce: false };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -50,7 +50,7 @@ function renamePaths(raw: string): { path: string; previousPath?: string } {
   return { path: raw };
 }
 
-export function parseNumstat(text: string): ChangedFile[] {
+function parseNumstat(text: string): ChangedFile[] {
   return text
     .split("\n")
     .filter((line) => line.trim() !== "")
@@ -78,7 +78,10 @@ function changesetBumps(files: readonly ChangedFile[], readText: CliDeps["readTe
     } catch {
       continue;
     }
-    for (const match of text.matchAll(/^["']?[^:\n]+["']?\s*:\s*(major|minor|patch)\s*$/gm)) bumps.push(match[1] as ChangesetBump);
+    for (const match of text.matchAll(/^["']?[^:\n]+["']?\s*:\s*(major|minor|patch)\s*$/gm)) {
+      const bump = match[1];
+      if (bump === "major" || bump === "minor" || bump === "patch") bumps.push(bump);
+    }
   }
   return bumps;
 }
@@ -88,12 +91,12 @@ function readBody(options: Options, deps: CliDeps): string {
   return deps.env[BODY_ENV] ?? "";
 }
 
-export function burdenTable(score: BurdenScore): string {
+function burdenTable(score: BurdenScore): string {
   const rows = Object.entries(score.parts).map(([part, points]) => `${part.padEnd(10)} ${String(points).padStart(3)}`);
   return [...rows, `${"total".padEnd(10)} ${String(score.total).padStart(3)}`].join("\n");
 }
 
-export function remediation(footer: Footer, door: DoorFacts): string[] {
+function remediation(footer: Footer, door: DoorFacts): string[] {
   const problems: string[] = [];
   if (!footer.present) {
     problems.push(
@@ -113,7 +116,7 @@ export function run(argv: readonly string[], deps: CliDeps): number {
   try {
     options = parseArgs(argv);
   } catch (error) {
-    deps.err(`review-burden: ${(error as Error).message}\n`);
+    deps.err(`review-burden: ${error instanceof Error ? error.message : String(error)}\n`);
     return 2;
   }
   const files = parseNumstat(deps.diff(options.base));
