@@ -179,14 +179,21 @@ describe("masking comments and literals in source", () => {
     expect(maskSource("const r = /'/;\nuse(orphan);\n")).toContain("use(orphan);");
   });
 
-  it.each(["return", "typeof", "case", "in", "of", "delete", "void", "throw", "new", "yield"])(
-    "reads a slash after the keyword %s as a regex start",
-    (keyword) => {
-      const masked = maskSource(`function f() { ${keyword} /'/.source;\n}\nuse(orphan);\n`);
-      expect(masked).toContain("use(orphan);");
-      expect(masked).not.toContain("'/");
-    },
-  );
+  // The quote in each regex opens a string on the old masker, which then ran to the end of the line and ate `use(orphan);`.
+  it.each([
+    ["return", "function f() { return /'/.source; use(orphan); }"],
+    ["typeof", "const t = typeof /'/; use(orphan);"],
+    ["case", "switch (x) { case /'/.source: use(orphan); }"],
+    ["in", "const h = 'a' in /'/; use(orphan);"],
+    ["of", "for (const r of /'/g.source) use(orphan);"],
+    ["delete", "delete /'/.x; use(orphan);"],
+    ["void", "void /'/; use(orphan);"],
+    ["throw", "function f() { throw /'/; use(orphan); }"],
+    ["new", "const n = new /'/.constructor(); use(orphan);"],
+    ["yield", "function* g() { yield /'/; use(orphan); }"],
+  ])("reads a slash after the keyword %s as a regex start", (_keyword, source) => {
+    expect(maskSource(source)).toContain("use(orphan);");
+  });
 
   it("does not let an apostrophe in JSX text blank the rest of the line", () => {
     expect(maskSource("const a = <p>don't</p>; use(orphan);\n")).toContain("use(orphan);");
@@ -194,6 +201,10 @@ describe("masking comments and literals in source", () => {
 
   it("does not let the slash of a closing JSX tag blank the rest of the line", () => {
     expect(maskSource("const a = <p>text</p>; use(orphan);\n")).toContain("use(orphan);");
+  });
+
+  it("treats a leading // in JSX text as text, not a comment running past the closing tag", () => {
+    expect(maskSource("const a = <p>// note</p>; use(orphan);\n")).toContain("use(orphan);");
   });
 
   it("blanks JSX text so a word in it is not a use", () => {

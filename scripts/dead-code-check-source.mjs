@@ -29,12 +29,20 @@ const TEMPLATE_INNER = {
 };
 const MEMBER_KINDS = new Set([K.PropertyAssignment, K.PropertySignature, K.MethodSignature]);
 
+/**
+ * Comments sit in a token's leading trivia. Only tokens are asked: a parent node starts where its first token does,
+ * and the children of a JSX element start where its JSX text does, where a `//` is text rather than a comment.
+ */
+function commentRanges(node, text) {
+  if (node.kind >= K.FirstNode || node.kind === K.JsxText) return [];
+  return [...(ts.getLeadingCommentRanges(text, node.pos) ?? []), ...(ts.getTrailingCommentRanges(text, node.pos) ?? [])];
+}
+
 /** The [from, to) spans of text that is not code, for one node. */
 function blankedSpans(node, sf, text) {
   const start = node.getStart(sf);
   const inner = TEMPLATE_INNER[node.kind];
-  const comments = [...(ts.getLeadingCommentRanges(text, node.pos) ?? []), ...(ts.getTrailingCommentRanges(text, node.pos) ?? [])];
-  const spans = comments.map((c) => [c.pos, c.end]);
+  const spans = commentRanges(node, text).map((c) => [c.pos, c.end]);
   if (inner) spans.push([start + inner[0], node.end - inner[1]]);
   else if (node.kind === K.RegularExpressionLiteral) spans.push([start + 1, text.lastIndexOf("/", node.end - 1)]);
   else if (node.kind === K.JsxText) spans.push([node.pos, node.end]);
