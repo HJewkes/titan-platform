@@ -262,13 +262,55 @@ describe('cli integration', () => {
       expect(await echo(['--tag', 'a', '--tag', 'b'])).toEqual({ name: 'anon', tag: ['a', 'b'] });
     });
 
-    it('keeps a comma inside an array flag value instead of splitting it', async () => {
-      expect(await echo(['x', '--tag', 'a,b'])).toEqual({ name: 'x', tag: ['a,b'] });
+    it('refuses a comma list in an array flag and shows the repeated form', async () => {
+      const res = await runCliInProcess(['fixture-echo', 'x', '--tag', 'a,b'], { ACTIVE_ROOT: activeRoot });
+      expect(res.status).toBe(64);
+      expect(res.stderr).toContain('--tag a,b: pass --tag a --tag b');
     });
 
     it('renders a .default() positional as optional', () => {
       const sub = buildProgram().commands.find((c) => c.name() === 'fixture-echo');
       expect(sub?.usage()).toBe('[options] [name]');
+    });
+  });
+
+  // Seats wrote `--tags a,b,c` for years; after comma-splitting went away that would have
+  // filed one tag named "a,b,c" without a word, so it must fail before anything is written.
+  describe('comma lists in array flags', () => {
+    const env = (): Record<string, string> => ({ ACTIVE_ROOT: activeRoot });
+    const SLUG = 'comma-demo';
+
+    beforeEach(async () => {
+      await runCliInProcess(['new', SLUG, '--title', 'Comma demo', '--ship-target', '2026-Q3'], env());
+    });
+
+    it('refuses task add --tags a,b,c and files no task', async () => {
+      const res = await runCliInProcess(
+        ['task', 'add', SLUG, '--title', 'T', '--done-when', 'Ships', '--tags', 'a,b,c'],
+        env(),
+      );
+
+      expect(res.status).toBe(64);
+      expect(res.stderr).toContain('--tags a,b,c: pass --tags a --tags b --tags c');
+      await expect(fs.readdir(path.join(activeRoot, SLUG, 'tasks'))).resolves.toEqual([]);
+    });
+
+    it('refuses a comma list in a required array flag', async () => {
+      const res = await runCliInProcess(['facet', 'add', SLUG, 'demo', '--tags', 'a,b'], env());
+
+      expect(res.status).toBe(64);
+      expect(res.stderr).toContain('--tags a,b: pass --tags a --tags b');
+    });
+
+    it('collects every occurrence of a required array flag', async () => {
+      const res = await runCliInProcess(
+        ['--json', 'facet', 'add', SLUG, 'demo', '--tags', 'a', '--tags', 'b'],
+        env(),
+      );
+
+      expect(res.status).toBe(0);
+      const parsed = z.object({ data: z.object({ tags: z.array(z.string()) }) }).parse(JSON.parse(res.stdout));
+      expect(parsed.data.tags).toEqual(['a', 'b']);
     });
   });
 

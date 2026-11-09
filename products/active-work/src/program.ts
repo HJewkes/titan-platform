@@ -167,13 +167,34 @@ function refuseRepeat(flag: string): (value: string, previous: string | undefine
   };
 }
 
+type Accumulator = (value: string, previous: string[] | undefined) => string[];
+
+/**
+ * Array flags take one value per occurrence. A comma is refused rather than kept, because
+ * `--tags a,b` from a caller used to the old comma lists would otherwise store one wrong value.
+ */
+function refuseCommaList(long: string, accumulate: Accumulator): Accumulator {
+  const flag = long.split(/\s/)[0]!;
+  return (value, previous) => {
+    if (value.includes(',')) {
+      const parts = value.split(',').map((part) => part.trim()).filter((part) => part.length > 0);
+      const repeated = parts.map((part) => `${flag} ${part}`).join(' ');
+      throw new InvalidArgumentError(`${flag} ${value}: pass ${repeated}`);
+    }
+    return accumulate(value, previous);
+  };
+}
+
 function attachOption(sub: Command, cmd: AnyCommand, key: string, opt: CliOption): void {
   const flags = optionFlagSpec(cmd, key, opt);
   const accumulate = collectOptionParser(cmd, key);
-  if (opt.required) {
+  const collect = accumulate && refuseCommaList(opt.long, accumulate);
+  if (opt.required && collect) {
+    sub.requiredOption(flags, opt.description, collect);
+  } else if (opt.required) {
     sub.requiredOption(flags, opt.description);
-  } else if (accumulate) {
-    sub.option(flags, opt.description, accumulate);
+  } else if (collect) {
+    sub.option(flags, opt.description, collect);
   } else if (SINGLE_USE_OPTIONS.has(`${cmd.name}:${key}`)) {
     sub.option(flags, opt.description, refuseRepeat(opt.long));
   } else {
