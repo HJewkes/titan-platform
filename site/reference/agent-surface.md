@@ -31,7 +31,7 @@ returns a result and exits, use `runAgent` from `@titan-design/agent` with `harn
 
 ## Example
 
-Verified against 0.0.0 (unreleased).
+Verified against 0.3.1.
 
 ```ts
 import { surfaceFor, type Launcher, type LaunchPlan } from "@titan-design/agent-surface";
