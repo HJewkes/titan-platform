@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import * as clackPrompts from '@clack/prompts';
 import { errorCode, isObjectLike } from '@titan-design/rpc-protocol/narrow';
 import { errorText, toError } from './errors.js';
-import { ensureSchemaVersion } from '../schemas/state.js';
+import { ensureSchemaVersion } from '../migrations/ensure-schema.js';
 import { getActiveRoot, getStateRoot, getConfigRoot } from '../utils/paths.js';
 import { STEP_SUPERVISION } from './supervision-systemd.js';
 import { getSupervisor } from './supervision.js';

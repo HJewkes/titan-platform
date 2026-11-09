@@ -1119,6 +1119,46 @@
       ]
     },
     {
+      "id": "active-work-layers",
+      "type": "layered-deps",
+      "$comment": "products/active-work in four layers, lowest first: L0 base (errors, version, utils, schemas, registry), L1 store, L2 indexes and services, L3 surfaces (the rest of src). A layer imports only its own or a lower one, so the store layer can later move into a package as a directory (TP-3542 plan, D1). Colocated tests may reach across layers.",
+      "excludeRoles": [
+        "test",
+        "fixture"
+      ],
+      "layers": [
+        [
+          "products/active-work/src/errors.ts",
+          "products/active-work/src/version.ts",
+          "products/active-work/src/utils",
+          "products/active-work/src/schemas",
+          "products/active-work/src/registry"
+        ],
+        [
+          "products/active-work/src/notes",
+          "products/active-work/src/facets",
+          "products/active-work/src/sessions",
+          "products/active-work/src/tasks",
+          "products/active-work/src/sources",
+          "products/active-work/src/lint",
+          "products/active-work/src/migrations"
+        ],
+        [
+          "products/active-work/src/session-index",
+          "products/active-work/src/workspace-index",
+          "products/active-work/src/search",
+          "products/active-work/src/drain",
+          "products/active-work/src/discover",
+          "products/active-work/src/decider",
+          "products/active-work/src/wrap",
+          "products/active-work/src/bootstrap"
+        ],
+        [
+          "products/active-work/src"
+        ]
+      ]
+    },
+    {
       "id": "code-graph-catalogue-pure",
       "type": "layered-deps",
       "$comment": "The metric catalogue imports only its own directory and types.ts, so a browser-safe subpath can re-export it without pulling in ts-morph, tree-sitter, or SQLite.",

@@ -3,7 +3,8 @@ import { getActiveRoot } from '../utils/paths.js';
 import { NotFoundError } from '../errors.js';
 import { defineCommand } from '../registry/index.js';
 import { assembleBootstrap } from '../bootstrap/prompt.js';
-import { resolveSlug, resolveSlugFromCwd } from './_open-helpers.js';
+import { resolveSlug } from './_open-helpers.js';
+import { resolveSlugFromCwd } from '../sessions/initiatives.js';
 
 const ArgsSchema = z.object({
   slug: z.string().min(1).optional(),

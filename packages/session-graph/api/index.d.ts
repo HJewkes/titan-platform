@@ -311,7 +311,7 @@ interface ResolvedOrigin {
 }
 /** Stored when a task-aware resolver found no id, so the row is not offered again. */
 declare const NO_TASK_LINK = "none";
-type TaskLinkSource = "name" | "name-over-brief" | "brief-anchor" | "brief-paragraph" | typeof NO_TASK_LINK;
+type TaskLinkSource = "name" | "name-over-brief" | "brief-anchor" | "brief-paragraph" | "spawn-meta" | typeof NO_TASK_LINK;
 /** A lifecycle event the launcher saw outside the transcript: `teleport`, `handoff`, `retired`, `exited`. */
 interface ExternalEvent {
     sessionId: string;
