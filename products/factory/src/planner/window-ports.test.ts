@@ -68,13 +68,20 @@ describe("roundAnswers", () => {
     expect(answers.map((a) => [a.id, a.submittedAt, "why" in a ? a.why : undefined])).toEqual([
       ["broken", undefined, "feedback.json is not valid JSON"],
       ["iso", "2026-11-08T00:00:00Z", undefined],
-      ["schema", undefined, "feedback.json has no valid submittedAt field"],
+      ["schema", undefined, "feedback.json has invalid fields round, manifestSha256, submittedAt, answers"],
     ]);
   });
 
-  it.each(["1", "Nov 8", "0", "yesterday", "", "2026-13-45T00:00:00Z"])("treats submittedAt %j as undatable", async (value) => {
+  it.each(["1", "Nov 8", "0", "yesterday", "", "2026-13-45T00:00:00Z", "2026-02-30T00:00:00Z", "2026-11-08T24:00:00Z"])("treats submittedAt %j as undatable", async (value) => {
     const root = roundsDir({ odd: feedbackAt(value) });
 
     expect(await roundAnswers(root)).toEqual([{ id: "odd", submittedAt: undefined, why: "submittedAt is not an ISO time" }]);
+  });
+
+  it("names the failing field when submittedAt is valid but another field is not", async () => {
+    const bad = JSON.stringify({ unit: "u", round: "one", manifestSha256: "abc", submittedAt: "2026-11-08T00:00:00Z", answers: [] });
+    const root = roundsDir({ other: bad });
+
+    expect(await roundAnswers(root)).toEqual([{ id: "other", submittedAt: undefined, why: "feedback.json has invalid field round" }]);
   });
 });

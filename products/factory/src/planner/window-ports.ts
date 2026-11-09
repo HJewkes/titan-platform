@@ -7,7 +7,7 @@ import { readRounds } from "../shepherd/round-ship-sweep.js";
 import { readAllGates } from "../shepherd/owner-friction-read.js";
 import { loadSeatBook } from "../shepherd/seats.js";
 import type { PlannerRun } from "./inputs.js";
-import { ISO_TIME } from "./iso-time.js";
+import { isIsoTime } from "./iso-time.js";
 import type { RoundAnswer, WindowGitHub, WindowSources } from "./window-probes.js";
 
 /** One page: a planner window is hours long, and a probe only needs to know whether anything happened. */
@@ -49,6 +49,11 @@ export async function roundAnswers(roundsDir: string | undefined): Promise<Round
   return rounds.flatMap((round) => (round.feedback === undefined ? [] : [answerOf(round.id, round.feedback)]));
 }
 
+function failingFields(error: z.ZodError): string {
+  const fields = [...new Set(error.issues.map((issue) => issue.path.join(".") || "(root)"))];
+  return `${fields.length === 1 ? "field" : "fields"} ${fields.join(", ")}`;
+}
+
 function answerOf(id: string, feedback: Uint8Array): RoundAnswer {
   let json: unknown;
   try {
@@ -57,9 +62,9 @@ function answerOf(id: string, feedback: Uint8Array): RoundAnswer {
     return { id, submittedAt: undefined, why: "feedback.json is not valid JSON" };
   }
   const parsed = RoundFeedbackSchema.safeParse(json);
-  if (!parsed.success) return { id, submittedAt: undefined, why: "feedback.json has no valid submittedAt field" };
+  if (!parsed.success) return { id, submittedAt: undefined, why: `feedback.json has invalid ${failingFields(parsed.error)}` };
   const { submittedAt } = parsed.data;
-  if (!ISO_TIME.test(submittedAt) || Number.isNaN(Date.parse(submittedAt))) return { id, submittedAt: undefined, why: "submittedAt is not an ISO time" };
+  if (!isIsoTime(submittedAt)) return { id, submittedAt: undefined, why: "submittedAt is not an ISO time" };
   return { id, submittedAt };
 }
 
