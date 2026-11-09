@@ -1,11 +1,11 @@
 {
   "ci-wait": {
-    "closure": "69984bb5996a93bcb36a55742a07033c572082db7dc5edbbbd7fab78e207c565",
+    "closure": "c917532ebb2ca29289b83e5fa1569ae749da2918de11cf3d1f2eca0f8d0dfc23",
     "schemaHash": "26cea498a3de6ee618690121d1b57f68d71faffbfb84d4a16a4f669aee9e1756",
     "bump": 2
   },
   "merge": {
-    "closure": "d43f74a95c683b2b4224820556a3eddd6a5c4e6f76a09ad25295f99cbd1f747c",
+    "closure": "d3f6c70d56f69f3cf4b46d4ef3636708851dc7032d290dc819f4399c0a2b11a4",
     "schemaHash": "653b05d2233a372f6a61ca09ffcb45d5e8716ff2d1a8b61b06f131a1fd2bfbcf",
     "bump": 0
   },
