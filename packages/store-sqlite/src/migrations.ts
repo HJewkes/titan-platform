@@ -30,20 +30,18 @@ export class MigrationIdentityError extends Error {
 }
 
 export function appliedVersions(db: Db): number[] {
-  db.exec(MIGRATION_TABLE);
-  const rows = db.prepare<[], { version: number }>("SELECT version FROM _migration ORDER BY version").all();
-  return rows.map((r) => r.version);
+  return [...appliedNames(db).keys()].sort((a, b) => a - b);
 }
 
 /**
- * Apply every migration not yet recorded in `_migration`, each in its own
+ * Apply every migration not yet recorded in the migration table, each in its own
  * transaction so a failure leaves the database at the last good version.
  * Returns the versions applied this call.
  */
 export function runMigrations(db: Db, migrations: readonly Migration[]): number[] {
   assertWellFormed(migrations);
   const applied = appliedNames(db);
-  const record = db.prepare("INSERT INTO _migration (version, name, applied_at) VALUES (?, ?, ?)");
+  const record = db.prepare(`INSERT INTO ${MIGRATION_TABLE_NAME} (version, name, applied_at) VALUES (?, ?, ?)`);
   const applyOne = db.transaction((m: Migration) => {
     m.up(db);
     record.run(m.version, m.name ?? null, nowIso());
@@ -72,7 +70,7 @@ function assertSameIdentity(m: Migration, recordedName: string | null): void {
 
 function appliedNames(db: Db): Map<number, string | null> {
   db.exec(MIGRATION_TABLE);
-  const rows = db.prepare<[], { version: number; name: string | null }>("SELECT version, name FROM _migration").all();
+  const rows = db.prepare<[], { version: number; name: string | null }>(`SELECT version, name FROM ${MIGRATION_TABLE_NAME}`).all();
   return new Map(rows.map((r) => [r.version, r.name]));
 }
 
