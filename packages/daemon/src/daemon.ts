@@ -258,8 +258,9 @@ async function assertNotAlreadyRunning(paths: DaemonPaths, startTimeOf: (pid: nu
 /**
  * A live pid is this daemon if it predates its pid file. Only a start time proven later
  * than the file marks the pid as reused; when the start time is unknown we cannot tell,
- * so we refuse rather than risk a second daemon. A reused pid that answers health on the
- * recorded port is still this daemon.
+ * so we refuse rather than risk a second daemon. A reused pid is still this daemon only
+ * when the health answer on the recorded port reports that same pid; any other answer
+ * comes from a different daemon.
  */
 async function isThisDaemon(paths: DaemonPaths, existing: PidFileContents, startTimeOf: (pid: number) => Date | null): Promise<boolean> {
   if (!isProcessAlive(existing.pid)) return false;
@@ -267,7 +268,9 @@ async function isThisDaemon(paths: DaemonPaths, existing: PidFileContents, start
   const written = await pidFileModifiedAt(paths);
   if (!started || !written) return true;
   if (started.getTime() <= written.getTime()) return true;
-  return existing.meta.port > 0 && (await probeHealth(existing.meta.port)) !== null;
+  if (existing.meta.port <= 0) return false;
+  const health = await probeHealth(existing.meta.port);
+  return health?.pid === existing.pid;
 }
 
 function startWatcher<Ctx extends BaseContext>(options: StartDaemonOptions<Ctx>, hub: EventHub, log: Logger): TreeWatcher | null {
