@@ -1,6 +1,10 @@
+import { partialFake } from "@titan-design/test-kit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Logger } from "@titan-design/daemon";
+import { monitorEventLoopDelay } from "node:perf_hooks";
 import { startLoopDelayWatch, type LoopDelayHistogram } from "./serve-loop-delay.js";
+
+vi.mock("node:perf_hooks", () => ({ monitorEventLoopDelay: vi.fn() }));
 
 const WINDOW_MS = 60_000;
 
@@ -102,5 +106,19 @@ describe("startLoopDelayWatch", () => {
 
     expect(log.warn).toHaveBeenCalledWith(expect.objectContaining({ maxMs: 6_000 }), "event loop stalled");
     watch.stop();
+  });
+
+  it("builds the default histogram at 20 ms resolution, enabling it on start and disabling it on stop", () => {
+    vi.useFakeTimers();
+    const histogram = fakeHistogram(0);
+    vi.mocked(monitorEventLoopDelay).mockReturnValue(partialFake<ReturnType<typeof monitorEventLoopDelay>>(histogram));
+
+    const watch = startLoopDelayWatch({ log: fakeLog() });
+
+    expect(monitorEventLoopDelay).toHaveBeenCalledWith({ resolution: 20 });
+    expect(histogram.enable).toHaveBeenCalledTimes(1);
+    expect(histogram.disable).not.toHaveBeenCalled();
+    watch.stop();
+    expect(histogram.disable).toHaveBeenCalledTimes(1);
   });
 });

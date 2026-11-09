@@ -16,8 +16,8 @@ describe("classifySession", () => {
     expect(classifySession({ startType: "sdk-cli" }).sessionClass).toBe("headless_sdk");
   });
 
-  it("an sdk-ts cron session is not human_interactive", () => {
-    const result = classifySession({ startType: "sdk-ts", firstUserText: "run the nightly digest", humanTurnCount: 1 });
+  it.each(["sdk-ts", "sdk-py"])("a %s session with no origin is other_headless", (startType) => {
+    const result = classifySession({ startType, firstUserText: "run the nightly digest", humanTurnCount: 1 });
 
     expect(result.sessionClass).toBe("other_headless");
     expect(result.humanRole).toBeNull();
