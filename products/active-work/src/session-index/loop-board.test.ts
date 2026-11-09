@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import YAML from 'yaml';
 
 import { buildBoard, LoopBoardSchema, type BoardInput } from './loop-board.js';
-import type { OpenLoop } from './open-loops.js';
+import type { OpenLoop } from '../sessions/open-loops.js';
 import { SNAPSHOT, TREE } from '../test-support/fixtures/loop-ledger.js';
 
 const NOW = new Date('2026-07-20T00:00:00Z');

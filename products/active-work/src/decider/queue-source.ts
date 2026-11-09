@@ -10,7 +10,7 @@ import {
   type SourceRead,
   type SourceWatermarks,
 } from '@titan-design/decider';
-import { listInitiativeSlugs } from '../commands/_open-helpers.js';
+import { listInitiativeSlugs } from '../sessions/initiatives.js';
 
 /**
  * Precedents from agent-chat's human queue: each `answer` event paired with

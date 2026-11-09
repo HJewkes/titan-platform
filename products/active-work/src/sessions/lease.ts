@@ -29,7 +29,7 @@ import { promises as fs, unlinkSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { LeaseSchema, type Lease, type LeaseMode } from '../schemas/lease.js';
-import { getProcessCommand, isProcessAlive } from '../server/lifecycle.js';
+import { getProcessCommand, isProcessAlive } from '@titan-design/daemon';
 
 /**
  * How long a `oneshot` lease is assumed to represent a live session.

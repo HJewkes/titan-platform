@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import { EXIT, NotFoundError } from './errors.js';
-import { PROFILE_ROOT_ENV } from './launcher-profile.js';
+import { PROFILE_ROOT_ENV } from './utils/profile-dir.js';
 
 const runMock = vi.fn();
 

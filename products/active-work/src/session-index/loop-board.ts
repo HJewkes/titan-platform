@@ -9,7 +9,7 @@
 import path from 'node:path';
 import YAML from 'yaml';
 import { z } from 'zod';
-import { listInitiativeSlugs } from '../commands/_open-helpers.js';
+import { listInitiativeSlugs } from '../sessions/initiatives.js';
 import { loadTasks } from '../lint/load-tasks.js';
 import {
   LOOP_STATUSES,
@@ -20,9 +20,9 @@ import {
   type LedgerLoop,
   type LedgerTreeNode,
 } from '../schemas/loop-ledger.js';
-import { deriveOpenLoopsFrom, loadSessionsFromDir, type OpenLoop } from './open-loops.js';
-import { readOptionalFile, type LedgerPaths } from './ledger-file.js';
-import { readSeatEvents, type SeatEvent } from '../session-index/seat-events.js';
+import { deriveOpenLoopsFrom, loadSessionsFromDir, type OpenLoop } from '../sessions/open-loops.js';
+import { readOptionalFile, type LedgerPaths } from '../sessions/ledger-file.js';
+import { readSeatEvents, type SeatEvent } from './seat-events.js';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 

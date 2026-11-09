@@ -168,6 +168,14 @@ describe("tagFacts", () => {
     expect(keys("// original")).toEqual(keys("// original"));
   });
 
+  it("changes the batch key when only the control's expected role changes", () => {
+    const keys = (expectRole: TagRole) =>
+      buildTagBatches(FACTS, { ...baseOptions(), controls: [{ fact: CONTROLS[0]!.fact, expect: expectRole }] }).map((batch) => batch.key);
+
+    expect(keys("algorithm")).not.toEqual(keys("entry"));
+    expect(keys("entry")).toEqual(keys("entry"));
+  });
+
   it("reports fact ids a schema-valid reply leaves untagged", async () => {
     const model = fakeModel();
     const out = await runTagger(inlineRunner((input) => {
