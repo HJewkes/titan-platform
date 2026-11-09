@@ -61,7 +61,7 @@ declare class MigrationIdentityError extends Error {
 }
 declare function appliedVersions(db: Db): number[];
 /**
- * Apply every migration not yet recorded in `_migration`, each in its own
+ * Apply every migration not yet recorded in the migration table, each in its own
  * transaction so a failure leaves the database at the last good version.
  * Returns the versions applied this call.
  */

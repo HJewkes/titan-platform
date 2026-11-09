@@ -291,3 +291,36 @@ describe("conditional ref and rulesets reads over the fake", () => {
     expect(fake.notModified).toBe(1);
   });
 });
+
+describe("review write effects over the fake", () => {
+  const approval = { commitId: H1, body: "ok" };
+
+  it("counts one createReview and one dismissal", async () => {
+    const fake = fakeGitHub();
+    fake.addPr({ headSha: H1 });
+    const port = githubPort(fake.wire);
+
+    const { id } = await port.createReview(REPO, 1, approval);
+    expect(fake.effects.createReview).toBe(1);
+    expect(fake.effects.dismissReview).toBe(0);
+    await port.dismissReview(REPO, 1, id, "stale");
+
+    expect(fake.effects.createReview).toBe(1);
+    expect(fake.effects.dismissReview).toBe(1);
+  });
+
+  it("does not count a createReview or dismissal that a fault rejected before it landed", async () => {
+    const fake = fakeGitHub();
+    fake.addPr({ headSha: H1 });
+    const port = githubPort(fake.wire);
+    fake.createReviewFaults = [{ error: new FakeHttpError(502, "lost") }];
+
+    await expect(port.createReview(REPO, 1, approval)).rejects.toThrow(/lost/);
+    expect(fake.effects.createReview).toBe(0);
+
+    const { id } = await port.createReview(REPO, 1, approval);
+    fake.dismissReviewFaults = [{ error: new FakeHttpError(502, "lost") }];
+    await expect(port.dismissReview(REPO, 1, id, "stale")).rejects.toThrow(/lost/);
+    expect(fake.effects.dismissReview).toBe(0);
+  });
+});
