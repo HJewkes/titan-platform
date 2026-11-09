@@ -347,24 +347,6 @@ function editedLine(task: Task, edit: Edit): string {
 
 // Removing an edge cannot name an unknown id or close a cycle, so only an added edge needs
 // the whole-root edge check (and a malformed file elsewhere must not block a removal).
-/** Every check an edit must pass before the task file is rewritten. */
-async function assertEditAllowed(
-  ctx: CommandContext,
-  slug: string,
-  task: Task,
-  edit: Edit,
-  changes: Partial<Task>,
-): Promise<void> {
-  const next = { ...task, ...changes };
-  assertPromotable(ctx, task, next);
-  await assertCategories(getActiveRoot(), next, changedCategoryFields(changes));
-  const added = edit.kind === 'patch' ? newDeliverables(task, edit) : [];
-  if (added.length > 0) await assertKnownDeliverables(getActiveRoot(), added);
-  if (addsEdge(task, changes)) {
-    await assertEdgeWrite({ slug, id: task.id, parent: changes.parent, dep: changes.dep });
-  }
-}
-
 function addsEdge(task: Task, changes: Partial<Task>): boolean {
   if (changes.parent !== undefined) return true;
   const current = readEdges(task).dep;
@@ -417,7 +399,18 @@ export default defineCommand<Args, TaskOrLine>({
       const line = (): string => editedLine(task, edit);
       if (Object.keys(changes).length === 0) return quietOr(args.quiet, ctx, task, line);
       const next = { ...task, ...changes };
-      await assertEditAllowed(ctx, args.slug, task, edit, changes);
+      assertPromotable(ctx, task, next);
+      await assertCategories(getActiveRoot(), next, changedCategoryFields(changes));
+      const added = edit.kind === 'patch' ? newDeliverables(task, edit) : [];
+      if (added.length > 0) await assertKnownDeliverables(getActiveRoot(), added);
+      if (addsEdge(task, changes)) {
+        await assertEdgeWrite({
+          slug: args.slug,
+          id: task.id,
+          parent: changes.parent,
+          dep: changes.dep,
+        });
+      }
       const parsed = TaskSchema.safeParse({ ...next, updated: date });
       if (!parsed.success) {
         const target = args.field ?? Object.keys(changes).join(', ');
