@@ -11,7 +11,7 @@ import { announceRecovery, isRecoverable, parkForRecovery, runLegacyStep } from 
 import { ReplayGuard } from "./replay-frontier.js";
 import { messageOf } from "./runtime-values.js";
 import { reportingStepFailure } from "./step-failure.js";
-import { completedTiming, dispatchTiming, newActiveStep, resumeCounts, tryTiming } from "./step-timing.js";
+import { completedTiming, dispatchTiming, newActiveStep, resumeCounts, resumedUsage, tryTiming } from "./step-timing.js";
 import { parseStepOutput } from "./step-output.js";
 import { addUsage } from "./usage.js";
 import { GATE_CANCELLED_SIGNAL, StepFailedError, StepOutputInvalidError, WorkflowCancelledError, WorkflowNonDeterminismError, WorkflowRecoveryRequiredError, WorkflowSchemaDriftError } from "./types.js";
@@ -255,7 +255,7 @@ export class RunContext implements WorkflowContext {
     let attempt = resumedAttempt;
     let pending = recovered?.kind === "completion" ? recovered.completion : undefined;
     let active: ActiveStep | undefined = recovered?.step;
-    let failedUsage = recovered?.step.priorUsage;
+    let failedUsage = resumedUsage(recovered);
     for (;;) {
       if (!pending) {
         active = newActiveStep(this.deps, this.runId, stepId, iterKey, tryTiming(attempt, restarts, active), failedUsage);
@@ -269,7 +269,7 @@ export class RunContext implements WorkflowContext {
         this.consumeActive(active!);
         throw new WorkflowCancelledError(this.runId, outcome.reason);
       }
-      if (outcome.kind === "cancellation_unknown") this.requireRecovery(active!, "unknown", outcome.reason);
+      if (outcome.kind === "cancellation_unknown") this.holdUnsettled(active!, outcome);
       this.throwIfCancelled();
       const retry = attempt + 1;
       failedUsage = addUsage(failedUsage, outcome.usage);
@@ -316,6 +316,12 @@ export class RunContext implements WorkflowContext {
     } catch (error) {
       return this.requireRecovery(step, "unknown", `durable completion rejected: ${messageOf(error)}`);
     }
+  }
+
+  private holdUnsettled(step: ActiveStep, outcome: Extract<DurableStepOutcome, { kind: "cancellation_unknown" }>): never {
+    if (outcome.usage) step.unsettledUsage = outcome.usage;
+    else delete step.unsettledUsage;
+    return this.requireRecovery(step, "unknown", outcome.reason);
   }
 
   private requireRecovery(step: ActiveStep, kind: NonNullable<ActiveStep["recovery"]>["kind"], evidence: string): never {
