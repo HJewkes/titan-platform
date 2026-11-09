@@ -13,6 +13,21 @@ describe("buildStepVars", () => {
     expect(vars.PREVIOUS_STEP_OUTPUTS).toContain("### plan");
   });
 
+  const result = (stepId: string, output: string) => ({ stepId, iteration: 0, agentId: null, signal: null, completedAt: "", output });
+  const runWith = (stepResults: Record<string, ReturnType<typeof result>>) => ({ id: "0123456789abcdef", workflowName: "review", params: {}, stepResults });
+
+  it("renders fan-out and suffixed step outputs through placeholders", () => {
+    const vars = buildStepVars(runWith({ "review/src/a.ts:0": result("review/src/a.ts", "item out"), "ci-wait:final:0": result("ci-wait:final", "ci out") }));
+    expect(mustacheRenderer("{{STEP_OUTPUT_REVIEW_SRC_A_TS}} / {{STEP_OUTPUT_CI_WAIT_FINAL}}", vars)).toBe("item out / ci out");
+  });
+
+  it("lets the later result win when two step ids map to the same name", () => {
+    const vars = buildStepVars(runWith({ "a-b:0": result("a-b", "first"), "a/b:0": result("a/b", "second") }));
+    expect(vars.STEP_OUTPUT_A_B).toBe("second");
+    expect(vars.PREVIOUS_STEP_OUTPUTS).toContain("### a-b");
+    expect(vars.PREVIOUS_STEP_OUTPUTS).toContain("### a/b");
+  });
+
   it("renders mustache placeholders and leaves unknown ones visible", () => {
     expect(mustacheRenderer("Hi {{ NAME }}, {{missing}}", { NAME: "x" })).toBe("Hi x, {{missing}}");
   });

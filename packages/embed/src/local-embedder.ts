@@ -25,21 +25,41 @@ export type PipelineFactory = (
 
 const MISSING = "@huggingface/transformers is not installed; add it as a dependency or use the ollama/hash embedders";
 
-function isPipelineFactory(value: unknown): value is PipelineFactory {
+/** The `pipeline` factory of `@huggingface/transformers`, typed loosely so each caller narrows its own task's result. */
+export type TransformersPipeline = (task: string, model: string, options: { dtype: string }) => Promise<unknown>;
+
+function isTransformersPipeline(value: unknown): value is TransformersPipeline {
   return typeof value === "function";
 }
 
-async function defaultLoadPipeline(): Promise<PipelineFactory> {
+function isFeatureExtractor(value: unknown): value is FeatureExtractor {
+  return typeof value === "function";
+}
+
+/**
+ * Import the optional `@huggingface/transformers` peer and return its `pipeline` factory.
+ * `missingMessage` is the caller's error text for an absent or malformed runtime.
+ */
+export async function loadTransformersPipeline(missingMessage: string): Promise<TransformersPipeline> {
   const name = "@huggingface/transformers";
   let mod: unknown;
   try {
     mod = await import(name);
   } catch (err) {
-    throw new Error(MISSING, { cause: err });
+    throw new Error(missingMessage, { cause: err });
   }
   const pipeline = typeof mod === "object" && mod !== null && "pipeline" in mod ? mod.pipeline : undefined;
-  if (!isPipelineFactory(pipeline)) throw new Error(MISSING);
+  if (!isTransformersPipeline(pipeline)) throw new Error(missingMessage);
   return pipeline;
+}
+
+async function defaultLoadPipeline(): Promise<PipelineFactory> {
+  const pipeline = await loadTransformersPipeline(MISSING);
+  return async (task, model, options) => {
+    const extractor = await pipeline(task, model, options);
+    if (!isFeatureExtractor(extractor)) throw new Error("@huggingface/transformers pipeline did not return a feature extractor");
+    return extractor;
+  };
 }
 
 /** In-process ONNX embeddings. Downloads the model on first use; weights are cached by the runtime. */

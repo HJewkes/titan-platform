@@ -1,3 +1,5 @@
+import { loadTransformersPipeline } from "@titan-design/embed";
+
 /** Scores query/candidate pairs; higher is more relevant. Cross-encoders live here. */
 export interface Reranker {
   readonly model: string;
@@ -37,15 +39,8 @@ function isClassifier(value: unknown): value is Classifier {
 }
 
 async function defaultLoadClassifier(model: string): Promise<Classifier> {
-  const name = "@huggingface/transformers";
-  let mod: unknown;
-  try {
-    mod = await import(name);
-  } catch (err) {
-    throw new Error(MISSING, { cause: err });
-  }
-  if (typeof mod !== "object" || mod === null || !("pipeline" in mod) || typeof mod.pipeline !== "function") throw new Error(MISSING);
-  const classifier: unknown = await Reflect.apply(mod.pipeline, undefined, ["text-classification", model, { dtype: "q8" }]);
+  const pipeline = await loadTransformersPipeline(MISSING);
+  const classifier: unknown = await pipeline("text-classification", model, { dtype: "q8" });
   if (!isClassifier(classifier)) throw new Error("@huggingface/transformers pipeline did not return a classifier function");
   return classifier;
 }
