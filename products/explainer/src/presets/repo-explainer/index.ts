@@ -71,3 +71,16 @@ export {
   type CompanionSection,
   type FactLink,
 } from "./companion.js";
+export {
+  FactTagSchema,
+  TAG_ROLES,
+  TAGGER_ARMS,
+  tagFacts,
+  type DroppedBatch,
+  type FactTag,
+  type TagControl,
+  type TagFactsOptions,
+  type TagFactsResult,
+  type TaggerArm,
+  type TagRole,
+} from "./tagger.js";
