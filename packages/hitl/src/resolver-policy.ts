@@ -203,6 +203,7 @@ export function readDecision(gateId: string, decision: unknown): GateAuthorizati
   if (!isObjectLike(decision)) throw new GateAuthorizeInvalid(gateId);
   const { then, allowed, reason } = decision;
   if (typeof then === "function") {
+    // The no-op rejection handler is deliberate: it keeps a refused async `authorize` from raising an unhandled rejection.
     Reflect.apply(then, decision, [undefined, () => {}]);
     throw new GateAuthorizeInvalid(gateId);
   }
