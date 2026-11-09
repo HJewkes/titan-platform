@@ -21,16 +21,16 @@ const needsProcess = [
   "products/session-miner/src/memory/discover.test.ts",
 ];
 
-// active-work kept its tests in a __tests__ tree when it was folded in (TP-3535). Its sandbox-home setup redirects
-// os.homedir() to a temp dir per file, so a test that forgets to stub home cannot touch the operator's files.
-const activeWorkTests = ["products/active-work/__tests__/**/*.test.ts"];
-const activeWorkSetup = ["products/active-work/__tests__/setup/sandbox-home.ts"];
+// active-work's sandbox-home setup redirects os.homedir() to a temp dir per file, so a test that forgets to stub home
+// cannot touch the operator's files. Its own projects keep that setup off every other product's tests.
+const activeWorkTests = ["products/active-work/{src,scripts}/**/*.test.ts"];
+const activeWorkSetup = ["products/active-work/src/test-support/sandbox-home.ts"];
 // These assign process.env.HOME or spy on os.homedir() in-process.
 const activeWorkNeedsProcess = [
-  "products/active-work/__tests__/commands/setup.test.ts",
-  "products/active-work/__tests__/integration/end-to-end.test.ts",
-  "products/active-work/__tests__/server/session-index-watch.test.ts",
-  "products/active-work/__tests__/setup/test-helpers-guard.test.ts",
+  "products/active-work/src/commands/setup.test.ts",
+  "products/active-work/src/integration/end-to-end.test.ts",
+  "products/active-work/src/server/session-index-watch.test.ts",
+  "products/active-work/src/test-support/test-helpers-guard.test.ts",
 ];
 
 // With isolate:false a worker keeps one module graph across files, so these files pay their shared imports once per
@@ -143,7 +143,16 @@ export default defineConfig({
             "scripts/**/*.test.mjs",
             ...heapProbe,
           ],
-          exclude: ["**/node_modules/**", ...REPO_TIER_INCLUDE, ...needsProcess, ...perfTests, ...factoryTests, ...explainerTests, ...consoleTests],
+          exclude: [
+            "**/node_modules/**",
+            ...REPO_TIER_INCLUDE,
+            ...needsProcess,
+            ...perfTests,
+            ...factoryTests,
+            ...explainerTests,
+            ...consoleTests,
+            ...activeWorkTests,
+          ],
         },
       },
       {

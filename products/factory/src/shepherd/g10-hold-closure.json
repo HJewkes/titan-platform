@@ -393,6 +393,7 @@
   "shepherd/review-preflight.ts",
   "shepherd/review-queue.ts",
   "shepherd/review-request.ts",
+  "shepherd/review-retry.ts",
   "shepherd/review-round.ts",
   "shepherd/review-schemas.ts",
   "shepherd/review-scope-round.ts",

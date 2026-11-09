@@ -14,7 +14,11 @@ export interface PullReview {
   body: string;
 }
 
-/** An APPROVE review pinned to `commitId`, so it never vouches for a head pushed after it. */
+/**
+ * An APPROVE review given at `commitId`. The pin only records the head it was given at: GitHub still counts the approval
+ * after a later push unless branch protection dismisses stale approvals, so a caller that must not vouch for a newer
+ * head dismisses the review itself.
+ */
 export interface CreateReviewRequest {
   commitId: string;
   body: string;

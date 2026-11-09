@@ -47,6 +47,7 @@ function classOf(facts: SessionFacts): [SessionClass, string] {
     return ["agent_spawned", "origin depth >= 1"];
   }
   if (facts.startType === "sdk-cli") return ["headless_sdk", "start_type sdk-cli with no origin row"];
+  if (facts.startType === "sdk-ts") return ["other_headless", "start_type sdk-ts with no origin row"];
   if (isProgrammaticPrompt(facts)) return ["other_headless", "content-block prompt with <= 2 human turns"];
   return ["human_interactive", "no origin row, no headless marker"];
 }
