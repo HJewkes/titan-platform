@@ -94,11 +94,7 @@ async function acquireRefreshLock(
   options.signal?.throwIfAborted();
   for (let attempt = 0; ; attempt += 1) {
     try {
-      return await lockfile.lock(target, {
-        realpath: false,
-        stale: LOCK_STALE_MS,
-        retries: 0,
-      });
+      return await lockfile.lock(target, { realpath: false, stale: LOCK_STALE_MS, retries: 0 });
     } catch (err) {
       if (!isLockContention(err)) throw err;
       if (attempt >= retries) {
@@ -107,12 +103,12 @@ async function acquireRefreshLock(
         throw isObjectLike(err) ? Object.assign(err, { holder }) : err;
       }
       if (attempt === 0) options.onWait?.(await readRefreshLockHolder());
-      await sleep(retryDelayMs(attempt), undefined, {
-        signal: options.signal,
-      }).catch((sleepErr: unknown) => {
-        options.signal?.throwIfAborted();
-        throw sleepErr;
-      });
+      await sleep(retryDelayMs(attempt), undefined, { signal: options.signal }).catch(
+        (sleepErr: unknown) => {
+          options.signal?.throwIfAborted();
+          throw sleepErr;
+        },
+      );
     }
   }
 }
