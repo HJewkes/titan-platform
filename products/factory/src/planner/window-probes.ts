@@ -1,4 +1,5 @@
 import type { GateRecord } from "@titan-design/hitl";
+import { isIsoTime } from "./iso-time.js";
 
 export interface MergedPr {
   number: number;
@@ -33,7 +34,7 @@ export type WindowProbe = (typeof WINDOW_PROBES)[number];
 const CI_FAILED_GATE = /\/ci-failed(:\d+)?$/;
 
 /** GitHub's search qualifiers round to the second, so the window edge is re-checked here. */
-const inWindow = (at: string | undefined, since: string): boolean => at !== undefined && Date.parse(at) >= Date.parse(since);
+const inWindow = (at: string | undefined, since: string): boolean => at !== undefined && isIsoTime(at) && isIsoTime(since) && Date.parse(at) >= Date.parse(since);
 
 async function perRepo<T>(repos: readonly string[], read: (repo: string) => Promise<readonly T[]>, line: (repo: string, item: T) => string): Promise<string[]> {
   const lines = await Promise.all(repos.map(async (repo) => (await read(repo)).map((item) => line(repo, item))));
