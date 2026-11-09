@@ -8,6 +8,8 @@ import { youtubeLayout } from "./youtube-layout.js";
  */
 export interface CorpusLayout {
   readonly name: string;
+  /** Decided from the path alone, so the indexer never reads a file this rejects. */
+  accepts(relPath: string): boolean;
   /** Undefined means the file is not a document of this corpus, and is skipped. */
   describe(relPath: string, text: string): ChapterMeta | undefined;
 }
@@ -53,6 +55,7 @@ function describeOther(match: RegExpExecArray, relPath: string, text: string): C
 /** `<series>/book_NN/chapter_KK[_preseason_N].txt` plus `other/<date>_<slug>.txt`, each with a TITLE/PUBLISHED/POST_ID header. */
 export const archiveLayout: CorpusLayout = {
   name: "archive",
+  accepts: (relPath) => OTHER_PATH.test(relPath) || CHAPTER_PATH.test(relPath),
   describe(relPath, text) {
     const other = OTHER_PATH.exec(relPath);
     if (other) return describeOther(other, relPath, text);
@@ -64,6 +67,7 @@ export const archiveLayout: CorpusLayout = {
 /** One `.txt` file is one document, ordered by path; header lines are used when present. */
 export const plainLayout: CorpusLayout = {
   name: "plain",
+  accepts: (relPath) => relPath.endsWith(".txt"),
   describe(relPath, text) {
     if (!relPath.endsWith(".txt")) return undefined;
     const header = headerMeta(text);
