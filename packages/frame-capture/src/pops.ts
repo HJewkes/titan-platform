@@ -107,6 +107,7 @@ async function seekEighths<F>(seek: SeekFrame<F>, t: number, step: number, from:
 // A trailing partial step still ends at `end`, so the last stretch of the timeline is checked too.
 function gridTimes(start: number, end: number, step: number): number[] {
   if (!(step > 0)) throw new RangeError(`step must be positive, got ${step}`)
+  if (!(start <= end)) throw new RangeError(`start must not exceed end, got start ${start} and end ${end}`)
   const count = Math.floor((end - start) / step + 1e-9)
   const times = Array.from({ length: count + 1 }, (_, i) => start + i * step)
   if (end - times[count]! > step * 1e-9) times.push(end)

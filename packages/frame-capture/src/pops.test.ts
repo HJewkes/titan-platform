@@ -75,3 +75,18 @@ describe('the halving decision', () => {
     assert.throws(() => measureHalving([0, 1], (a, b) => b - a), RangeError)
   })
 })
+
+describe('checkPops grid bounds', () => {
+  test('rejects a start after end instead of seeking undefined', async () => {
+    let seeks = 0
+    const seek: SeekFrame<number> = async () => {
+      seeks++
+      return 0
+    }
+    await assert.rejects(
+      checkPops({ seek, delta: (a, b) => b - a, threshold: 1, start: 2, end: 1, step: 0.5 }),
+      (error: unknown) => error instanceof RangeError && /start 2/.test(error.message) && /end 1/.test(error.message),
+    )
+    assert.equal(seeks, 0)
+  })
+})
