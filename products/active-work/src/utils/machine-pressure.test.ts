@@ -5,7 +5,7 @@ import {
   readMachinePressure,
   shouldHold,
 } from './machine-pressure.js';
-import type { RunCommand } from '../discover/run-command.js';
+import type { RunCommand } from './run-command.js';
 
 // Captured shape of `sysctl -n vm.swapusage kern.memorystatus_vm_pressure_level`, synthetic numbers.
 const sample = (used: string, level: number): string =>

@@ -1,8 +1,8 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { ValidationError } from '../errors.js';
-import { resolveProfileDir } from '../launcher-profile.js';
-import { listInitiativeSlugs, resolveLaunchCwd } from '../commands/_open-helpers.js';
+import { resolveProfileDir } from '../utils/profile-dir.js';
+import { listInitiativeSlugs, resolveLaunchCwd } from './initiatives.js';
 import { parseFrontmatter } from '../utils/gray-matter-io.js';
 import { localTranscriptRoots } from './transcript-roots.js';
 

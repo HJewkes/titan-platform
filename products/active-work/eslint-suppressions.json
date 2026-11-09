@@ -37,11 +37,6 @@
       "count": 1
     }
   },
-  "products/active-work/src/commands/_open-helpers.ts": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
   "products/active-work/src/commands/archive.ts": {
     "titan/max-function-lines": {
       "count": 1
@@ -265,11 +260,6 @@
   "products/active-work/src/discover/projects.ts": {
     "titan/max-function-lines": {
       "count": 1
-    }
-  },
-  "products/active-work/src/discover/run-command.ts": {
-    "titan/max-function-lines": {
-      "count": 2
     }
   },
   "products/active-work/src/doctor.ts": {
@@ -497,6 +487,11 @@
   },
   "products/active-work/src/utils/read-stdin-json.test.ts": {
     "titan/no-chained-type-assertions": {
+      "count": 2
+    }
+  },
+  "products/active-work/src/utils/run-command.ts": {
+    "titan/max-function-lines": {
       "count": 2
     }
   },
