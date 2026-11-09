@@ -27,8 +27,7 @@ const MAX_EXCEPTIONS_PER_SPAWNER = 3;
 const CONCERNS_STATUS = /^Status:\s*(?:DONE_WITH_CONCERNS|BLOCKED|NEEDS_CONTEXT)\b/m;
 const MERGED_WORD = /\bmerged\b/i;
 
-const WorkerOutcomeSchema = z.enum(['merged', 'open_pr', 'no_report', 'concerns']);
-type WorkerOutcome = z.infer<typeof WorkerOutcomeSchema>;
+type WorkerOutcome = 'merged' | 'open_pr' | 'no_report' | 'concerns';
 
 const WorkerExceptionSchema = z.object({
   session_id: z.string(),

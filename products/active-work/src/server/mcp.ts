@@ -10,7 +10,6 @@
  */
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
-  attachHandlers as pkgAttachHandlers,
   createMcpServer as pkgCreateMcpServer,
   invokeTool as pkgInvokeTool,
   listTools as pkgListTools,
@@ -73,11 +72,6 @@ export function listTools(): McpTool[] {
 
 export async function invokeTool(toolName: string, rawArgs: unknown): Promise<ToolCallOutcome> {
   return pkgInvokeTool(mcpOptions(), toolName, rawArgs);
-}
-
-/** Wire MCP request handlers onto a server instance. Exposed for testing. */
-function attachHandlers(server: Server): void {
-  pkgAttachHandlers(server, mcpOptions());
 }
 
 export function createMcpServer(): Server {
