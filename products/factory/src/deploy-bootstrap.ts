@@ -12,7 +12,8 @@ export async function cloneIfAbsent(ports: DeployPorts, checkout: string, remote
   return ports.clone(remote, checkout);
 }
 
-const PATH_CHAR = /[\w.\-/~]/;
+const START_BOUNDARY = /["'\s>=]/;
+const END_BOUNDARY = /["'\s<]/;
 const xmlEscaped = (value: string): string => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 /**
@@ -26,10 +27,18 @@ export function serviceRunsFromCheckout(ports: DeployPorts, checkout: string): b
   return text !== undefined && (namesWholePath(text, bin) || namesWholePath(text, xmlEscaped(bin)));
 }
 
-/** A path match must start at a token boundary, so `/x/<checkout>/...` does not count as `<checkout>/...`. */
+/**
+ * A path match must sit between token boundaries, both chosen from short accept lists:
+ * `/x/<bin>`, `<bin>.old` and `<bin>+old` are other files. A quote that opens the match must also close it.
+ */
 function namesWholePath(text: string, path: string): boolean {
   for (let at = text.indexOf(path); at !== -1; at = text.indexOf(path, at + 1)) {
-    if (at === 0 || !PATH_CHAR.test(text.charAt(at - 1))) return true;
+    const before = at === 0 ? "" : text.charAt(at - 1);
+    const after = text.charAt(at + path.length);
+    const startsClean = before === "" || START_BOUNDARY.test(before);
+    const endsClean = after === "" || END_BOUNDARY.test(after);
+    const quoteClosed = !/["']/.test(before) || after === before;
+    if (startsClean && endsClean && quoteClosed) return true;
   }
   return false;
 }

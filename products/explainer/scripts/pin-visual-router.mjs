@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Rewrites doctrine/visual-router.json from titan-design's visual router (TP-3597 S1c).
 //   node scripts/pin-visual-router.mjs <router module> <titan-design commit>
-// The module is anything exporting PATTERNS, CATALOGUE and routeVisual: react-ui's built
-// dist/visual-router.mjs, or `@titan-design/react-ui/visual-router` once a release ships it.
+// The module is anything exporting PATTERNS, CATALOGUE and routeVisual; pass
+// `@titan-design/react-ui/visual-router` to pin the installed package, or a path to a built bundle.
 // Each type carries routeVisual's own answer, so the explainer reads the routing rather than
 // re-deriving it; src/visual-router.test.ts fails if the pinned answers stop agreeing.
 import { writeFile } from "node:fs/promises";
@@ -23,11 +23,15 @@ export function pinRouter({ PATTERNS, CATALOGUE, routeVisual }, commit) {
   };
 }
 
-const [modulePath, commit] = process.argv.slice(2);
-if (!modulePath || !/^[0-9a-f]{40}$/.test(commit ?? "")) {
-  console.error("usage: pin-visual-router.mjs <router module> <40-hex titan-design commit>");
-  process.exit(2);
+async function main() {
+  const [modulePath, commit] = process.argv.slice(2);
+  if (!modulePath || !/^[0-9a-f]{40}$/.test(commit ?? "")) {
+    console.error("usage: pin-visual-router.mjs <router module> <40-hex titan-design commit>");
+    process.exit(2);
+  }
+  const router = await import(modulePath.startsWith("@") ? modulePath : pathToFileURL(modulePath).href);
+  await writeFile(OUT, `${JSON.stringify(pinRouter(router, commit), null, 2)}\n`, "utf8");
+  console.log(`Wrote doctrine/visual-router.json from ${commit.slice(0, 12)}`);
 }
-const router = await import(modulePath.startsWith("@") ? modulePath : pathToFileURL(modulePath).href);
-await writeFile(OUT, `${JSON.stringify(pinRouter(router, commit), null, 2)}\n`, "utf8");
-console.log(`Wrote doctrine/visual-router.json from ${commit.slice(0, 12)}`);
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main();
