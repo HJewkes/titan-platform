@@ -178,6 +178,61 @@ describe("masking comments and literals in source", () => {
   it("does not let a quote inside a regex literal swallow the code after it", () => {
     expect(maskSource("const r = /'/;\nuse(orphan);\n")).toContain("use(orphan);");
   });
+
+  it.each(["return", "typeof", "case", "in", "of", "delete", "void", "throw", "new", "yield"])(
+    "reads a slash after the keyword %s as a regex start",
+    (keyword) => {
+      const masked = maskSource(`function f() { ${keyword} /'/.source;\n}\nuse(orphan);\n`);
+      expect(masked).toContain("use(orphan);");
+      expect(masked).not.toContain("'/");
+    },
+  );
+
+  it("does not let an apostrophe in JSX text blank the rest of the line", () => {
+    expect(maskSource("const a = <p>don't</p>; use(orphan);\n")).toContain("use(orphan);");
+  });
+
+  it("does not let the slash of a closing JSX tag blank the rest of the line", () => {
+    expect(maskSource("const a = <p>text</p>; use(orphan);\n")).toContain("use(orphan);");
+  });
+
+  it("blanks JSX text so a word in it is not a use", () => {
+    expect(maskSource("const a = <p>orphan</p>;\n")).not.toContain("orphan");
+  });
+});
+
+describe("whole-module imports read by the parser", () => {
+  const CONSUMER = `${PKG}/src/consumer.ts`;
+  const dynamicImportOf = (source) => {
+    const { nodes, edges } = demoGraph();
+    nodes.push(file(CONSUMER));
+    edges.push({ ...edge(CONSUMER, INTERNAL, "imports"), attrs: { specifier: "./internal.js" } });
+    return deadIn({ nodes, edges }, { sources: { [CONSUMER]: source } });
+  };
+
+  it("matches import() with a template-literal specifier", () => {
+    expect(dynamicImportOf("const internal = await import(`./internal.js`);")).toEqual([]);
+  });
+
+  it("does not match import() with a substitution, which has no fixed specifier", () => {
+    expect(dynamicImportOf("const internal = await import(`./${name}.js`);")).toEqual([`${INTERNAL}#orphan`]);
+  });
+});
+
+describe("object keys and interface members", () => {
+  const localOnlyIn = (source) => findingsIn(demoGraph(), { sources: { [INTERNAL]: source } })[0].localOnly;
+
+  it("does not count an object key as a use of an export", () => {
+    expect(localOnlyIn("export const orphan = 1;\nconst o = { orphan: 2 };\n")).toBe(false);
+  });
+
+  it("does not count an interface member as a use of an export", () => {
+    expect(localOnlyIn("export const orphan = 1;\ninterface Shape { orphan: number; orphan2(): void }\n")).toBe(false);
+  });
+
+  it("still counts a shorthand property as a use", () => {
+    expect(localOnlyIn("export const orphan = 1;\nconst o = { orphan };\n")).toBe(true);
+  });
 });
 
 describe("the shrink-only baseline", () => {
