@@ -6,7 +6,7 @@ import { validateSlug } from '../utils/slug.js';
 import { withFileLock } from '../utils/fs-atomic.js';
 import { NotFoundError, ValidationError } from '../errors.js';
 import { defineCommand } from '../registry/index.js';
-import { listInitiativeSlugs } from './_open-helpers.js';
+import { listInitiativeSlugs } from '../sessions/initiatives.js';
 
 const ArgsSchema = z.object({
   slug: z.string().min(1),

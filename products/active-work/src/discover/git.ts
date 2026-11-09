@@ -1,6 +1,6 @@
 import path from 'node:path';
 import type { DiscoveryHit, DiscoverySourceError } from './types.js';
-import { runCommand, type RunCommand } from './run-command.js';
+import { runCommand, type RunCommand } from '../utils/run-command.js';
 
 /**
  * Discover local git activity (recent branches, worktrees, stashes) across

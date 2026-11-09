@@ -11,7 +11,7 @@ import { defaultGraphPath, openGraph, type WorkspaceGraph } from './graph.js';
 import { taskResolver } from './tasks.js';
 import { ghPrResolver } from './pr-outcomes.js';
 import { agentChatOriginResolver } from './origin-agent-chat.js';
-import type { RunCommand } from '../discover/run-command.js';
+import type { RunCommand } from '../utils/run-command.js';
 import { clearDocumentFrequency } from '../search/document-frequency.js';
 import { refreshWorkspace, type WorkspaceRefreshSummary } from '../workspace-index/refresh.js';
 import { resetWorkspaceIndex, resetWorkspaceSpans } from '../workspace-index/write.js';

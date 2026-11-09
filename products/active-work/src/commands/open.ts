@@ -3,22 +3,15 @@ import { z } from 'zod';
 import { BriefFrontmatterSchema, type BriefFrontmatter } from '../schemas/brief.js';
 import { getActiveRoot } from '../utils/paths.js';
 import { defineCommand } from '../registry/index.js';
-import {
-  assembleBootstrap,
-  readMarkdownWithSchema,
-  type BootstrapMetadata,
-} from '../bootstrap/prompt.js';
+import { assembleBootstrap, type BootstrapMetadata } from '../bootstrap/prompt.js';
+import { readMarkdownWithSchema } from '../utils/markdown-schema.js';
 import { archiveStaleTasks } from '../bootstrap/archive-tasks.js';
 import { mergeChannels } from '../launcher-args.js';
 import { resolveDefaultChannels } from '../utils/global-config.js';
 import { acquireLease } from '../sessions/lease.js';
 import type { LoadedFacet } from '../facets/facet-file.js';
-import {
-  listInitiativeSlugs,
-  resolveSlugOrFacet,
-  resolveSlugFromCwd,
-  resolveCwdHint,
-} from './_open-helpers.js';
+import { listInitiativeSlugs, resolveSlugFromCwd } from '../sessions/initiatives.js';
+import { resolveSlugOrFacet, resolveCwdHint } from './_open-helpers.js';
 
 /** Done tasks older than this are auto-archived on bootstrap (AW-8). */
 const ARCHIVE_DONE_AFTER_DAYS = 30;

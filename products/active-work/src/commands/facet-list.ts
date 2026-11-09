@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { listFacets } from '../facets/facet-file.js';
 import { defineCommand } from '../registry/index.js';
-import { listInitiativeSlugs } from './_open-helpers.js';
+import { listInitiativeSlugs } from '../sessions/initiatives.js';
 
 const ArgsSchema = z.object({
   slug: z.string().min(1).optional(),

@@ -5,14 +5,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { UsageError } from './errors.js';
 import {
   CONFIG_DIR_ENV,
-  PROFILE_ROOT_ENV,
   applyProfileEnv,
   launchProfileEnv,
   listProfiles,
-  profileRoot,
   requireProfileDir,
-  resolveProfileDir,
 } from './launcher-profile.js';
+import { PROFILE_ROOT_ENV, profileRoot, resolveProfileDir } from './utils/profile-dir.js';
 
 const exists = () => true;
 const missing = () => false;
