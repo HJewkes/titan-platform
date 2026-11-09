@@ -82,7 +82,9 @@ priceRequest(
   task edges, falling back to the `cf_analyze.py` cwd rule.
 - `buildSessionTimeline(observations, options?)`, `SessionTimelineAccumulator`,
   `countAtOrBefore(sortedMs, targetMs)` and the `SessionTimeline` types — the read model behind
-  a session view; see "Session timeline" below.
+  a session view; see "Session timeline" below. A browser bundle imports `countAtOrBefore` and the
+  timeline types from the `@titan-design/session-analytics/timeline` subpath, whose import graph
+  holds no Node module.
 
 ```ts
 import { openDatabase } from "@titan-design/store-sqlite";

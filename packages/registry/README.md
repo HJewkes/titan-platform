@@ -145,3 +145,23 @@ swallow trailing positionals.
 to pass into Commander. Missing/non-default fields return undefined; zero and
 false remain valid defaults. It does not parse args or run schema transforms, but a
 function default (`.default(() => ...)`) is evaluated on each call.
+
+## Truncating tool output to a byte budget
+
+```ts
+import { truncateOutput } from "@titan-design/registry";
+
+const { text, truncated, omittedLines } = truncateOutput(stdout, { maxBytes: 16_384 });
+```
+
+`truncateOutput` returns the input unchanged when its UTF-8 size fits `maxBytes`. Otherwise
+it keeps whole lines from both ends, about 60 percent of the kept lines from the head and 40
+from the tail (`headRatio` changes the split), joined by `\n--- N lines omitted ---\n`, and
+keeps as many lines as fit. When not even the first and last line fit, as with one long line,
+it cuts at code point boundaries around `\n--- truncated ---\n` instead, and below the
+marker's own size it returns a bare prefix. `separator` replaces either marker.
+
+The output never exceeds `maxBytes`. `omittedLines` counts lines none of whose characters
+reach the output, so it is never negative and a partly kept line is not omitted.
+`originalLines` counts `\n`-separated lines, so an empty string is one line.
+A negative or fractional `maxBytes`, or a `headRatio` outside 0 to 1, throws a `RangeError`.

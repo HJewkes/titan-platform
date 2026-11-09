@@ -3,13 +3,12 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   assembleBootstrap,
-  formatElapsedShort,
-  formatTimeSince,
-  recentlyDoneTasks,
   type LiveStatusFetcher,
   type SiblingProbe,
   type SiblingSession,
 } from './prompt.js';
+import { formatTimeSince, recentlyDoneTasks } from './render-tasks.js';
+import { formatElapsedShort } from './render-sessions.js';
 import newCommand from '../commands/new.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
 
