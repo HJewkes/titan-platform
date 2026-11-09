@@ -31,13 +31,15 @@ import type {
 //     positions accumulate down the tree.
 //   - ELK reports an edge's route in the frame of the edge's LCA (lowest common
 //     ancestor group of its endpoints), even though the edge stays declared at
-//     the root, so each route needs its LCA's offset added back.
+//     the root, so each route needs its LCA's offset added back. When one end is a
+//     group enclosing the other, that group is the LCA.
 
 const ROOT_ID = "root";
 
 interface CompoundTree {
   root: ElkNode;
-  // Ancestor group ids, outermost first, for every leaf and every group.
+  // Outermost first, the group ids enclosing each leaf, and for each group its ancestors and
+  // then itself: ELK reports a group-to-descendant edge in the group's own frame.
   chains: Map<string, string[]>;
 }
 
@@ -86,7 +88,7 @@ function buildCompoundTree(
       if (!group) {
         group = groupNode(gid, groupHeaders?.get(gid), vertical);
         groups.set(gid, group);
-        chains.set(gid, chain.slice(0, depth));
+        chains.set(gid, chain.slice(0, depth + 1));
         parent.children!.push(group);
       }
       parent = group;
@@ -142,7 +144,7 @@ function collectElkEdges(root: ElkNode): ElkExtendedEdge[] {
   return [...(root.edges ?? []), ...(root.children ?? []).flatMap(collectElkEdges)];
 }
 
-// The deepest shared ancestor group of two nodes, or null when they only meet at the root.
+// The deepest group shared by two chains, or null when they only meet at the root.
 function lcaGroupId(a: string[], b: string[]): string | null {
   let i = 0;
   while (i < a.length && i < b.length && a[i] === b[i]) i++;
