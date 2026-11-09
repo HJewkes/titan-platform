@@ -889,14 +889,6 @@
       "count": 13
     }
   },
-  "products/active-work/src/setup/steps.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 4
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
   "products/active-work/src/setup/supervision-launchd.test.ts": {
     "@typescript-eslint/no-unnecessary-condition": {
       "count": 2
