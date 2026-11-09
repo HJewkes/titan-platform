@@ -1,4 +1,4 @@
-import { runCommand, type RunCommand } from '../discover/run-command.js';
+import { runCommand, type RunCommand } from './run-command.js';
 
 export interface MachinePressure {
   swapUsedPct: number;

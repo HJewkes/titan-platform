@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { DiscoveryHit, DiscoverySourceError } from './types.js';
-import { runCommand, type RunCommand } from './run-command.js';
+import { runCommand, type RunCommand } from '../utils/run-command.js';
 
 /**
  * Discover open PRs authored by the current user, per repo.

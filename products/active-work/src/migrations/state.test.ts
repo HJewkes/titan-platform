@@ -5,7 +5,8 @@ import { describe, expect, it } from 'vitest';
 
 import { ConfigError } from '../errors.js';
 import { CURRENT_VERSION } from './index.js';
-import { ensureSchemaVersion, readSchemaVersion } from '../schemas/state.js';
+import { readSchemaVersion } from '../schemas/state.js';
+import { ensureSchemaVersion } from './ensure-schema.js';
 import { withEmptyActiveRoot } from '../test-support/test-helpers.js';
 
 const schemaVersionFile = (root: string): string => join(root, '.schema-version');

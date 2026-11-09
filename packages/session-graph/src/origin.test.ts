@@ -273,6 +273,12 @@ describe("origin task link", () => {
     expect(ranEdges()).toEqual([{ target: "task:DEMO-7", via: "origin", confidence: 0.9 }]);
   });
 
+  it("projects a spawn-meta task link at full confidence", async () => {
+    await refreshCorpus(graph, corpus(), { resolveOrigins: answer(linked({ taskIds: ["DEMO-7"], taskSource: "spawn-meta" })) });
+
+    expect(ranEdges()).toEqual([{ target: "task:DEMO-7", via: "origin", confidence: 1 }]);
+  });
+
   it("a filled row is cleared to none by a resolver that supplies empty taskIds", async () => {
     await refreshCorpus(graph, corpus(), { resolveOrigins: answer(linked({ taskIds: ["DEMO-7"], taskSource: "brief-anchor" })) });
 

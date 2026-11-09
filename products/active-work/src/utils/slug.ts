@@ -64,3 +64,17 @@ export function derivePrefix(slug: string): string {
     .join('');
   return letters.slice(0, MAX_PREFIX_LEN);
 }
+
+/**
+ * Slugify a label or topic for use in a filename.
+ *
+ * Lowercases, replaces non-alphanumeric runs with `-`, trims leading/trailing
+ * dashes. Falls back to `untitled` when the result is empty.
+ */
+export function slugifyLabel(input: string): string {
+  const cleaned = input
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return cleaned.length > 0 ? cleaned : 'untitled';
+}
