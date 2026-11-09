@@ -10,7 +10,7 @@ import type { WorkflowRuntimeOptions, WorkflowStartOptions } from "./runtime-opt
 import { failureText, fenceOf, messageOf, vaultOf, positiveDuration, RuntimeShutdown, sameFence, timestampAt, WorkflowPersistenceError } from "./runtime-values.js";
 import { parseSignal as defaultParseSignal } from "./signals.js";
 import { DEFAULT_MAX_STEP_DATA_BYTES } from "./step-output.js";
-import { completedTiming, everyTryUsage } from "./step-timing.js";
+import { completedTiming, everyTrySpend } from "./step-timing.js";
 import { ACTIVE_STATUSES, WorkflowOwnershipLostError, WorkflowRunStore, newRun } from "./store.js";
 import { WorkflowCancelledError, WorkflowNotOwnedError, WorkflowRecoveryRequiredError, type ActiveStep, type WorkflowFn, type WorkflowRun } from "./types.js";
 
@@ -284,11 +284,7 @@ export class WorkflowRuntime {
       const step = run.activeSteps[stepId];
       if (!step) return false;
       const iteration = Number(step.iterKey.slice(step.iterKey.lastIndexOf(":") + 1));
-      const usage = everyTryUsage(step);
-      run.stepResults[step.iterKey] = {
-        stepId, iteration, operation: "dispatch", agentId: null, signal: null, completedAt: this.isoNow(), ...completedTiming(step), output,
-        ...(usage ? { usage } : {}),
-      };
+      run.stepResults[step.iterKey] = { stepId, iteration, operation: "dispatch", agentId: null, signal: null, completedAt: this.isoNow(), ...completedTiming(step), output, ...everyTrySpend(step) };
       delete run.activeSteps[stepId];
       this.save(run);
       return true;

@@ -22,12 +22,13 @@ export function resumeCounts(recovered: RecoveredStep | undefined): { attempt: n
  * its unsettled report is left out; a retry-safe restart replaces the try, so that report is charged here, once.
  */
 export function resumedUsage(recovered: RecoveredStep | undefined): StepUsage | undefined {
-  return recovered?.kind === "retry_safe" ? everyTryUsage(recovered.step) : recovered?.step.priorUsage;
+  return recovered?.kind === "retry_safe" ? everyTrySpend(recovered.step).usage : recovered?.step.priorUsage;
 }
 
 /** What every try of an active step spent, its unsettled one included, for a step that ends without another report. */
-export function everyTryUsage(step: ActiveStep): StepUsage | undefined {
-  return addUsage(step.priorUsage, step.unsettledUsage);
+export function everyTrySpend(step: ActiveStep): { usage?: StepUsage } {
+  const usage = addUsage(step.priorUsage, step.unsettledUsage);
+  return usage ? { usage } : {};
 }
 
 /** A new try keeps the first start of `previous`, the try it replaces; a step's first try stamps it. */

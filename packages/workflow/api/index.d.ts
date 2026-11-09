@@ -68,6 +68,8 @@ interface ActiveStepBase {
     runnerRef?: string;
     /** Summed cost of this step's earlier failed attempts, so a resumed run still reports every attempt once. */
     priorUsage?: StepUsage;
+    /** This try's spend at a cancellation_unknown end; reconcile repeats that terminal, so a report replaces it, never adds. */
+    unsettledUsage?: StepUsage;
     recovery?: {
         kind: "legacy_unrecoverable" | "not_found" | "ownership_lost" | "unknown";
         evidence: string;
@@ -118,10 +120,7 @@ interface AssistedOptions {
     /** Validates the resolution payload; stored as JSON Schema on the gate. */
     schema?: ZodType;
     expiresAt?: Date | string;
-    /**
-     * Record a cancel of the gate as the step's answer instead of throwing `GateCancelled`: the result's signal is
-     * `GATE_CANCELLED_SIGNAL` and its data carries the cancel `reason`, so the next call opens a fresh gate.
-     */
+    /** Records a gate cancel as the answer, not a `GateCancelled` throw: signal `GATE_CANCELLED_SIGNAL`, data its `reason`; the next call opens a fresh gate. */
     recordCancel?: boolean;
     /** What the owner reads instead of the prompt; a store with `requireBrief` refuses the gate without one. */
     brief?: GateBrief;
@@ -210,6 +209,7 @@ type DurableStepOutcome = {
 } | {
     kind: "cancellation_unknown";
     reason: string;
+    usage?: StepUsage;
 };
 interface RecoverableStepDispatchInput extends StepRunInput {
     executionId: string;
