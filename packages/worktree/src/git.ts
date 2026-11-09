@@ -114,7 +114,28 @@ export async function gitOrNull(args: readonly string[], cwd: string, timeout?: 
   }
 }
 
-export const runGit: GitRunner = (args, cwd) => gitOrNull(args, cwd);
+/** A git that has not answered by now is hung (a stalled lock or remote); a miss is the honest answer. */
+export const DEFAULT_GIT_TIMEOUT_MS = 60_000;
+
+/** A runner that SIGKILLs each call after `timeoutMs`, since a hung git may ignore SIGTERM; injectable so a test need not wait a minute. */
+export const gitRunnerWithDeadline =
+  (timeoutMs: number): GitRunner =>
+  async (args, cwd) => {
+    try {
+      const { stdout } = await execFileAsync("git", [...args], {
+        cwd,
+        encoding: "utf8",
+        env: gitChildEnv(),
+        timeout: timeoutMs,
+        killSignal: "SIGKILL",
+      });
+      return stdout.trim();
+    } catch {
+      return null;
+    }
+  };
+
+export const runGit: GitRunner = gitRunnerWithDeadline(DEFAULT_GIT_TIMEOUT_MS);
 
 /**
  * The true repository root, resolved through worktrees.

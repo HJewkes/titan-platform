@@ -220,7 +220,7 @@ describe("indexPaths", () => {
     const nodes = store.listNodes(result.snapshotId, { includeSymbols: true });
     expect(nodes.find((n) => n.id === "src/loader.py")).toMatchObject({ kind: "file", language: "python" });
     expect(nodes.map((n) => n.id)).toContain("src/loader.py#load");
-    expect(nodes.find((n) => n.id === "npm:json")).toMatchObject({ kind: "external" });
+    expect(nodes.find((n) => n.id === "python:json")).toMatchObject({ kind: "external" });
 
     const edges = store.listEdges(result.snapshotId);
     expect(edges).toContainEqual(
