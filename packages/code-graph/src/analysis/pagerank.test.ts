@@ -129,13 +129,30 @@ describe("computePageRank", () => {
     // (sanity) with equal weights, scores of b and c are equal.
     expect(scoreOf(equal.rows, "b")).toBeCloseTo(scoreOf(equal.rows, "c"), 6);
 
-    const skewedEdges: GraphEdge[] = [
-      { srcId: "a", dstId: "b", kind: "imports" },
-      { srcId: "a", dstId: "c", kind: "calls" },
-    ];
-    const calls = computePageRank(nodes, skewedEdges);
-    expect(scoreOf(calls.rows, "c")).toBeGreaterThan(scoreOf(calls.rows, "b"));
     expect(skewed.iterations).toBeGreaterThan(0);
+  });
+
+  it("ignores calls edges by default, matching the store's default edge read", () => {
+    const nodes = ["a", "b", "c"].map(file);
+    const withCall: GraphEdge[] = [imports("a", "b"), { srcId: "a", dstId: "c", kind: "calls" }];
+
+    const direct = computePageRank(nodes, withCall);
+    const structural = computePageRank(nodes, [imports("a", "b")]);
+
+    expect(scoreOf(direct.rows, "c")).toBeCloseTo(scoreOf(structural.rows, "c"), 9);
+    expect(scoreOf(direct.rows, "b")).toBeCloseTo(scoreOf(structural.rows, "b"), 9);
+  });
+
+  it("lets calls edges move PageRank only when a caller assigns them a weight", () => {
+    const nodes = ["a", "b", "c"].map(file);
+    const withCall: GraphEdge[] = [imports("a", "b"), { srcId: "a", dstId: "c", kind: "calls" }];
+
+    const opted = computePageRank(nodes, withCall, { edgeWeights: { calls: 1 } });
+
+    expect(scoreOf(opted.rows, "c")).toBeCloseTo(scoreOf(opted.rows, "b"), 9);
+    expect(scoreOf(opted.rows, "c")).toBeGreaterThan(
+      scoreOf(computePageRank(nodes, withCall).rows, "c"),
+    );
   });
 
   it("weighs a stored edge kind outside EdgeKind like an import", () => {
