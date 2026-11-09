@@ -157,7 +157,7 @@ describe("titan-factory planner probe", () => {
 
   it("reports an event stamped with a day that does not exist as at an unknown time", async () => {
     const out = await probe(["merges", "--since", SINCE], { merged: [{ number: 7, mergedAt: "2026-02-30T00:00:00Z" }, { number: 8, mergedAt: AFTER }] });
-    expect(out.stdout).toBe(`${REPO}#7 merged at an unknown time\n${REPO}#8 merged ${AFTER}\n`);
+    expect(out.stdout).toBe(`${REPO}#8 merged ${AFTER}\n${REPO}#7 merged at an unknown time\n`);
   });
 
   it("fails rather than printing nothing when no repo is configured", async () => {
