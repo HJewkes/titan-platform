@@ -302,9 +302,9 @@ Key exports:
 - `prefixes`: `defaultPrefixesFor`, `vectorSpaceId`
 - `hash-embedder`: `HashEmbedder`
 - `ollama-embedder`: `OllamaEmbedder`
-- `local-embedder`: `LocalEmbedder`
+- `local-embedder`: `LocalEmbedder`, `loadTransformersPipeline`
 - `create`: `createEmbedder`, `instantiateEmbedder`
-- `vector`: `cosineSimilarity`, `dot`, `fromFloat32Buffer`, `norm`, `normalize`
+- `vector`: `cosineSimilarity`, `dot`, `fromFloat32Buffer`, `norm`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/embed)
 
 <a id="cap-eslint-plugin"></a>

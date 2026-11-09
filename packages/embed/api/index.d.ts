@@ -100,6 +100,15 @@ interface FeatureExtractor {
 type PipelineFactory = (task: "feature-extraction", model: string, options: {
     dtype: string;
 }) => Promise<FeatureExtractor>;
+/** The `pipeline` factory of `@huggingface/transformers`, typed loosely so each caller narrows its own task's result. */
+type TransformersPipeline = (task: string, model: string, options: {
+    dtype: string;
+}) => Promise<unknown>;
+/**
+ * Import the optional `@huggingface/transformers` peer and return its `pipeline` factory.
+ * `missingMessage` is the caller's error text for an absent or malformed runtime.
+ */
+declare function loadTransformersPipeline(missingMessage: string): Promise<TransformersPipeline>;
 /** In-process ONNX embeddings. Downloads the model on first use; weights are cached by the runtime. */
 declare class LocalEmbedder implements Embedder {
     readonly model: string;
@@ -142,4 +151,4 @@ declare function cosineSimilarity(a: readonly number[], b: readonly number[]): n
 declare function toFloat32Buffer(v: readonly number[]): Buffer;
 declare function fromFloat32Buffer(buffer: Buffer): number[];
 
-export { type CreateEmbedderOptions, type EmbedOptions, type EmbedRole, type Embedder, type EmbedderConfig, type FeatureExtractor, HashEmbedder, type HashEmbedderOptions, LocalEmbedder, type LocalEmbedderOptions, NOMIC_PREFIXES, NO_PREFIXES, OllamaEmbedder, type OllamaEmbedderOptions, type PipelineFactory, type RolePrefixes, cosineSimilarity, createEmbedder, defaultPrefixesFor, dot, fromFloat32Buffer, instantiateEmbedder, norm, normalize, toFloat32Buffer, vectorSpaceId };
+export { type CreateEmbedderOptions, type EmbedOptions, type EmbedRole, type Embedder, type EmbedderConfig, type FeatureExtractor, HashEmbedder, type HashEmbedderOptions, LocalEmbedder, type LocalEmbedderOptions, NOMIC_PREFIXES, NO_PREFIXES, OllamaEmbedder, type OllamaEmbedderOptions, type PipelineFactory, type RolePrefixes, type TransformersPipeline, cosineSimilarity, createEmbedder, defaultPrefixesFor, dot, fromFloat32Buffer, instantiateEmbedder, loadTransformersPipeline, norm, normalize, toFloat32Buffer, vectorSpaceId };
