@@ -8,7 +8,7 @@ products/     products composed from the tiers (private)
 apps/         workspace apps: codewatch and console (private)
 deploy/       deployable stacks: deploy/hub, the Matrix hub
 templates/    the uniform per-package scaffold that scripts/new-package.mjs stamps
-scripts/      new-package.mjs, dag-check.sh, gen-docs-reference.mjs
+scripts/      new-package.mjs, dag-check-self.mjs, gen-docs-reference.mjs
 site/         this documentation site (VitePress)
 .codewatch/   check.json: the DAG and fitness rules codewatch enforces
 ```
@@ -146,9 +146,7 @@ fails wherever CI's `dag-check` job would. `pnpm dag:check:graph` is the DAG che
 and the one to call with `--json` or `--report <file>`, since the dead-export report
 follows on stdout. Set `BASE_REF=origin/main` to report only violations that are new
 relative to main, which is what CI does; with `BASE_REF` unset, `dag:check` still passes
-`origin/main`, when it exists, to the dead-export step for its baseline-growth check. `scripts/dag-check.sh` remains for one release as a fallback that needs
-`CODEWATCH_CLI` pointed at a built codewatch checkout.
-
+`origin/main`, when it exists, to the dead-export step for its baseline-growth check.
 ## Checking for dead exports
 
 `pnpm dead:check` lists exports that no other module imports, and CI fails the pull
