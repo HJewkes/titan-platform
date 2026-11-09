@@ -581,7 +581,7 @@
       "count": 2
     },
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 6
+      "count": 1
     }
   },
   "products/active-work/src/search/class-scoped-latency.test.ts": {

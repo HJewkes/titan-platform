@@ -174,11 +174,11 @@ export default defineCommand<Args, Result>({
       },
       classes: {
         long: '--classes',
-        description: `Comma-separated classes (default ${RELATED_DEFAULT_CLASSES.join(',')})`,
+        description: `Class to search (default ${RELATED_DEFAULT_CLASSES.join(', ')}). Repeat the flag for each value`,
       },
       exclude: {
         long: '--exclude',
-        description: 'Comma-separated refs the caller already shows',
+        description: 'Ref the caller already shows. Repeat the flag for each value',
       },
       trigger: {
         long: '--trigger',
@@ -186,7 +186,7 @@ export default defineCommand<Args, Result>({
       },
     },
     usage:
-      'context related --for <text> [--initiative <slug>] [--limit 6] [--budget 1500] [--classes notes,sources,tasks,sessions] [--exclude <ref>,<ref>] [--trigger spawn]',
+      'context related --for <text> [--initiative <slug>] [--limit 6] [--budget 1500] [--classes notes --classes tasks] [--exclude <ref> --exclude <ref>] [--trigger spawn]',
   },
   async run(args, ctx) {
     return runRelated(args, { activeRoot: ctx.activeRoot });

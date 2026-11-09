@@ -125,16 +125,16 @@ export default defineCommand<Args, TaskOrLine>({
         long: '--done-when',
         description: 'Definition of done',
       },
-      tags: { long: '--tags', description: 'Comma-separated tag list' },
+      tags: { long: '--tags', description: 'Tag for the task. Repeat the flag for each value' },
       notes: { long: '--notes', description: 'Free-form notes' },
       parent: { long: '--parent', description: 'Parent task id, in this initiative' },
       dep: {
         long: '--dep',
-        description: 'Comma-separated ids this task depends on (any initiative)',
+        description: 'Id this task depends on (any initiative). Repeat the flag for each value',
       },
       deliverable: {
         long: '--deliverable',
-        description: 'Comma-separated deliverable ids this task counts toward',
+        description: 'Deliverable id this task counts toward. Repeat the flag for each value',
       },
       draft: {
         long: '--draft',
