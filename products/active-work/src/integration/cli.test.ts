@@ -2,9 +2,12 @@ import { promises as fs, mkdtempSync, rmSync } from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import os from 'node:os';
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, beforeAll, beforeEach, afterEach } from 'vitest';
 import envPaths from 'env-paths';
 import Database from 'better-sqlite3';
+import { z } from 'zod';
+import { buildProgram } from '../program.js';
+import { defineCommand, registry } from '../registry/index.js';
 import { SCHEMA_VERSION } from '../session-index/graph.js';
 import { REPO_ROOT, runCli, runCliInProcess, type RunResult } from '../test-support/cli-runner.js';
 
@@ -217,10 +220,11 @@ describe('cli integration', () => {
   it('ANDs a repeated --tag on deliverable list, keeping every value', async () => {
     const env = { ACTIVE_ROOT: activeRoot };
     const required = ['--title', 'T', '--done-when', 'Ships', '--owner-seat', 'seat-a'];
-    await runCliInProcess(['deliverable', 'add', 'A', ...required, '--tags', 'ui,web'], env);
-    await runCliInProcess(['deliverable', 'add', 'B', ...required, '--tags', 'ui'], env);
-    await runCliInProcess(['deliverable', 'add', 'C', ...required, '--tags', 'ui,web,x'], env);
-    await runCliInProcess(['deliverable', 'add', 'D', ...required, '--tags', 'x'], env);
+    const tags = (...values: string[]): string[] => values.flatMap((value) => ['--tags', value]);
+    await runCliInProcess(['deliverable', 'add', 'A', ...required, ...tags('ui', 'web')], env);
+    await runCliInProcess(['deliverable', 'add', 'B', ...required, ...tags('ui')], env);
+    await runCliInProcess(['deliverable', 'add', 'C', ...required, ...tags('ui', 'web', 'x')], env);
+    await runCliInProcess(['deliverable', 'add', 'D', ...required, ...tags('x')], env);
     const listIds = async (tagArgs: string[]): Promise<string[]> => {
       const res = await runCliInProcess(['--json', 'deliverable', 'list', ...tagArgs], env);
       expect(res.status).toBe(0);
@@ -228,10 +232,44 @@ describe('cli integration', () => {
     };
 
     const repeated = await listIds(['--tag', 'web', '--tag', 'ui']);
-    const mixed = await listIds(['--tag', 'ui,web', '--tag', 'x']);
+    const three = await listIds(['--tag', 'ui', '--tag', 'web', '--tag', 'x']);
 
     expect(repeated).toEqual(['A', 'C']);
-    expect(mixed).toEqual(['C']);
+    expect(three).toEqual(['C']);
+  });
+
+  describe('registry projection of a command schema', () => {
+    const fixture = defineCommand<{ name: string; tag?: string[] }, unknown>({
+      name: 'fixture-echo',
+      description: 'Echo parsed args back',
+      args: z.object({ name: z.string().default('anon'), tag: z.array(z.string()).optional() }),
+      result: z.unknown(),
+      cli: { positional: ['name'], options: { tag: { long: '--tag', description: 'Repeatable' } } },
+      run: (args) => Promise.resolve(args),
+    });
+
+    beforeAll(() => {
+      if (!registry.has(fixture.name)) registry.register(fixture);
+    });
+
+    const echo = async (args: string[]): Promise<unknown> => {
+      const res = await runCliInProcess(['--json', 'fixture-echo', ...args], { ACTIVE_ROOT: activeRoot });
+      expect(res.status).toBe(0);
+      return (JSON.parse(res.stdout) as { data: unknown }).data;
+    };
+
+    it('collects a repeated array flag into one value per occurrence', async () => {
+      expect(await echo(['--tag', 'a', '--tag', 'b'])).toEqual({ name: 'anon', tag: ['a', 'b'] });
+    });
+
+    it('keeps a comma inside an array flag value instead of splitting it', async () => {
+      expect(await echo(['x', '--tag', 'a,b'])).toEqual({ name: 'x', tag: ['a,b'] });
+    });
+
+    it('renders a .default() positional as optional', () => {
+      const sub = buildProgram().commands.find((c) => c.name() === 'fixture-echo');
+      expect(sub?.usage()).toBe('[options] [name]');
+    });
   });
 
   describe('task edit flags', () => {
@@ -258,7 +296,9 @@ describe('cli integration', () => {
           '--done-when',
           'the edit flags leave the other fields untouched',
           '--tags',
-          'alpha,beta',
+          'alpha',
+          '--tags',
+          'beta',
           '--notes',
           'One',
         ],
