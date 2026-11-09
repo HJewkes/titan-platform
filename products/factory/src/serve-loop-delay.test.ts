@@ -76,15 +76,18 @@ describe("startLoopDelayWatch", () => {
     expect(log.warn).not.toHaveBeenCalled();
   });
 
-  it("warns on a real busy-wait that blocks the loop past the threshold", async () => {
+  it("honours custom thresholdMs and windowMs when the histogram records a stall mid-window", () => {
+    vi.useFakeTimers();
     const log = fakeLog();
-    const watch = startLoopDelayWatch({ log, thresholdMs: 100, windowMs: 400 });
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    const blockedUntil = Date.now() + 300;
-    while (Date.now() < blockedUntil);
+    const histogram = fakeHistogram(0);
+    const watch = startLoopDelayWatch({ log, histogram, thresholdMs: 100, windowMs: 400 });
 
-    await vi.waitFor(() => expect(log.warn).toHaveBeenCalled(), { timeout: 2_000, interval: 50 });
+    vi.advanceTimersByTime(399);
+    histogram.max = 300e6;
+    vi.advanceTimersByTime(1);
 
+    expect(log.warn).toHaveBeenCalledTimes(1);
+    expect(log.warn).toHaveBeenCalledWith({ p99Ms: 10, maxMs: 300, windowMs: 400 }, "event loop stalled");
     watch.stop();
   });
 
