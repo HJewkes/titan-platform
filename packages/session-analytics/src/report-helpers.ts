@@ -1,5 +1,5 @@
 /** Optional half-open bounds: `since` is inclusive, `until` exclusive. */
-export interface TimeWindow {
+interface TimeWindow {
   since?: string;
   until?: string;
 }
