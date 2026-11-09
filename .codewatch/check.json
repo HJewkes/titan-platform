@@ -1,5 +1,5 @@
 {
-  "$comment": "Architectural fitness rules for titan-platform, run by codewatch's `graph check` (scripts/dag-check.sh). The package-layers rule IS the platform DAG: a package may import only packages in the same tier or a lower one. `$tiers` is the source of truth (edited by scripts/new-package.mjs); `layers` is derived from it by dropping empty tiers, because codewatch rejects empty layers.",
+  "$comment": "Architectural fitness rules for titan-platform, run by codewatch's `graph check` (scripts/dag-check-self.mjs). The package-layers rule IS the platform DAG: a package may import only packages in the same tier or a lower one. `$tiers` is the source of truth (edited by scripts/new-package.mjs); `layers` is derived from it by dropping empty tiers, because codewatch rejects empty layers.",
   "rules": [
     {
       "id": "package-layers",

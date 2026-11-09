@@ -14,6 +14,12 @@ export function isStoredKind(kind: string): boolean {
 /** Open string: "error" | "warning" | "info" today. */
 export const Severity = z.string();
 
+/** Present only with a baseline: the baseline's id, and false when its index version differs, so deltas may compare unlike measures. */
+export const BaselineFields = {
+  baselineSnapshotId: z.number().int().optional(),
+  comparable: z.boolean().optional(),
+};
+
 export const ProvenanceKind = z.enum(["measured", "derived", "model"]);
 
 export const Provenance = z.object({

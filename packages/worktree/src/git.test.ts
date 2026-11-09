@@ -1,5 +1,15 @@
-import { describe, expect, it } from "vitest";
-import { findGitRoot, gitChildEnv, observedPresence, type GitRunner } from "./git.js";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  DEFAULT_GIT_TIMEOUT_MS,
+  findGitRoot,
+  gitChildEnv,
+  gitRunnerWithDeadline,
+  observedPresence,
+  type GitRunner,
+} from "./git.js";
 
 /** A git that answers from a table, so a worktree layout is a fixture not a setup script. */
 const fakeGit =
@@ -100,5 +110,34 @@ describe("gitChildEnv", () => {
       GIT_CONFIG_VALUE_1: "never",
       GIT_CONFIG_COUNT: "2",
     });
+  });
+});
+
+describe("gitRunnerWithDeadline", () => {
+  const originalPath = process.env.PATH;
+  let stubDir: string;
+
+  beforeEach(() => {
+    stubDir = mkdtempSync(path.join(tmpdir(), "git-stub-"));
+    const stub = path.join(stubDir, "git");
+    writeFileSync(stub, "#!/bin/sh\nexec sleep 30\n");
+    chmodSync(stub, 0o755);
+    process.env.PATH = `${stubDir}${path.delimiter}${originalPath ?? ""}`;
+  });
+
+  afterEach(() => {
+    process.env.PATH = originalPath;
+    rmSync(stubDir, { recursive: true, force: true });
+  });
+
+  it("returns null for a git that sleeps past the deadline", async () => {
+    const answer = await gitRunnerWithDeadline(200)(["status"], stubDir);
+
+    expect(answer).toBeNull();
+  });
+
+  it("gives runGit a finite default deadline", () => {
+    expect(DEFAULT_GIT_TIMEOUT_MS).toBeGreaterThan(0);
+    expect(Number.isFinite(DEFAULT_GIT_TIMEOUT_MS)).toBe(true);
   });
 });

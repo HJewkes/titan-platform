@@ -35,7 +35,6 @@ declare class MemoryQueueSource implements QueueSource {
     private stream;
     private nextCursor;
     private append;
-    private nextAppend;
 }
 
 interface MirrorSnapshot {
