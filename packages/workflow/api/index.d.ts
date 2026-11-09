@@ -420,17 +420,21 @@ declare const parseSignals: SignalSetParser;
 declare const parseSignal: SignalParser;
 
 type TemplateRenderer = (template: string, vars: Record<string, string>) => Promise<string> | string;
-/**
- * The variables every step prompt can use: the run's params (as given and as
- * SNAKE_CASE), the workflow identity, and every completed step's output as
- * `STEP_OUTPUT_<STEP>` plus a combined `PREVIOUS_STEP_OUTPUTS` digest.
- */
-declare function buildStepVars(run: {
+type StepVarsRun = {
     id: string;
     workflowName: string;
     params: Record<string, string>;
     stepResults: Record<string, StepResult>;
-}, extra?: Record<string, string>): Record<string, string>;
+};
+/**
+ * The variables every step prompt can use: the run's params (as given and as
+ * SNAKE_CASE), the workflow identity, and every completed step's output as
+ * `STEP_OUTPUT_<STEP>` plus a combined `PREVIOUS_STEP_OUTPUTS` digest. `<STEP>` is the
+ * step id upper-cased with every character outside `[A-Z0-9_]` mapped to `_`, so
+ * `review/src/a.ts` is `STEP_OUTPUT_REVIEW_SRC_A_TS`. Ids that collide after the
+ * mapping share one variable and the later result wins; the digest keeps every id.
+ */
+declare function buildStepVars(run: StepVarsRun, extra?: Record<string, string>): Record<string, string>;
 /** `{{NAME}}` substitution; unknown names are left in place so a missing variable is visible in the prompt. */
 declare const mustacheRenderer: TemplateRenderer;
 /** Read from the template, not the rendered prompt, so a `{{NAME}}` inside a substituted value never counts as unfilled. */
