@@ -112,6 +112,24 @@ describe("tagFacts", () => {
     expect(out.stoppedBy).toBeNull();
   });
 
+  it("retries a batch whose reply is off the schema, drops it after a second one, and still tags the other batches", async () => {
+    const stepIds: string[] = [];
+    const model = fakeModel();
+    const offEnum = JSON.stringify({ tags: [{ id: "F-1", role: ["vibes"], novelty: 1, visual: 1, visual_kind: "code", idea_line: "off enum" }] });
+    const run = vi.fn(async (input: StepRunInput) => {
+      stepIds.push(input.stepId);
+      return { ok: true as const, output: stepIds.length <= 2 ? offEnum : model(input), usage: { costUsd: 0.1 } };
+    });
+
+    const out = await runTagger({ run });
+
+    expect(stepIds.filter((id) => id.endsWith(":retry"))).toEqual([`${stepIds[0]}:retry`]);
+    expect(out.dropped).toEqual([{ key: expect.any(String), factIds: ["F-1", "F-2"], error: expect.stringMatching(/^output schema: .* on both attempts$/) }]);
+    expect(out.tags.map((tag) => tag.id)).toEqual(["F-3", "F-4", "F-5"]);
+    expect(out.stoppedBy).toBeNull();
+    expect(out.spentUsd).toBeCloseTo(0.4);
+  });
+
   it("drops a batch whose reply leaves the control untagged", async () => {
     const reply = JSON.stringify({ tags: [{ id: "F-1", role: ["value"], novelty: 0, visual: 0, visual_kind: "card", idea_line: "one" }] });
 

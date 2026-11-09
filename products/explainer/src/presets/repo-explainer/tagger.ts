@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { pickControls, placeControls, type Planted } from "@titan-design/evidence";
-import { mapItems, StepFailedError, type StepResult, type StepUsage, type WorkflowContext } from "@titan-design/workflow";
+import { mapItems, StepFailedError, StepOutputInvalidError, type StepResult, type StepUsage, type WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { EvidenceSpan, ExplainerFact } from "./schemas.js";
 
@@ -83,9 +83,20 @@ function chunk<T>(items: readonly T[], size: number): T[][] {
   return groups;
 }
 
-// The prompt inputs join the key, so an edited one-pager or viewer re-tags instead of replaying a stale answer.
+function taskLines(viewer: string): string[] {
+  return [
+    "## Task",
+    `Tag every fact below for an explainer video. The viewer: ${viewer}.`,
+    `Reply with one JSON object {"tags": [...]}, one entry per fact id, each with role (one or more of ${TAG_ROLES.join(", ")}),`,
+    `novelty 0-3, visual 0-3, visual_kind (a beat type) and idea_line (at most ${IDEA_LINE_WORDS} words).`,
+  ];
+}
+
+const TEMPLATE_SHA = createHash("sha256").update(taskLines("{{viewer}}").join("\n")).digest("hex");
+
+// The prompt template and inputs join the key, so an edited template, one-pager or viewer re-tags instead of replaying a stale answer.
 function batchKey(facts: readonly ExplainerFact[], options: TagFactsOptions): string {
-  const hash = createHash("sha256").update(options.onePager).update("\0").update(options.viewer);
+  const hash = createHash("sha256").update(TEMPLATE_SHA).update("\0").update(options.onePager).update("\0").update(options.viewer);
   for (const fact of facts) hash.update(`\0${fact.id}\0${fact.text}\0${JSON.stringify(fact.evidence)}`);
   return hash.digest("hex").slice(0, 16);
 }
@@ -115,10 +126,7 @@ function showFact(fact: ExplainerFact, excerpt: TagFactsOptions["excerpt"]): str
 export function tagPrompt(batch: TagBatch, options: TagFactsOptions): string {
   const facts = batch.sequence.map((entry) => showFact(entry.kind === "item" ? entry.value : entry.value.fact, options.excerpt));
   return [
-    "## Task",
-    `Tag every fact below for an explainer video. The viewer: ${options.viewer}.`,
-    `Reply with one JSON object {"tags": [...]}, one entry per fact id, each with role (one or more of ${TAG_ROLES.join(", ")}),`,
-    `novelty 0-3, visual 0-3, visual_kind (a beat type) and idea_line (at most ${IDEA_LINE_WORDS} words).`,
+    ...taskLines(options.viewer),
     "## Repo one-pager",
     options.onePager,
     "## Facts",
@@ -140,23 +148,32 @@ function sumUsage(a: StepUsage | undefined, b: StepUsage | undefined): StepUsage
   return { costUsd: a.costUsd + b.costUsd, ...(unknown ? { costUnknown: true as const } : {}) };
 }
 
-interface Attempt {
-  result: StepResult<z.infer<typeof TagReplySchema>>;
-  failure: string | null;
-}
+type Attempt =
+  | { result: StepResult<z.infer<typeof TagReplySchema>>; failure: null; usage: StepUsage | undefined }
+  | { failure: string; usage: StepUsage | undefined; iteration: number };
 
+// A reply off the schema is the same kind of noise as a missed control, so it takes the batch's retry instead of halting the fan-out.
 async function attempt(ctx: WorkflowContext, stepId: string, batch: TagBatch, options: TagFactsOptions): Promise<Attempt> {
-  const result = await ctx.dispatch(stepId, tagPrompt(batch, options), { model: TAGGER_ARMS[options.arm], schema: TagReplySchema });
-  return { result, failure: controlFailure(batch, result.data?.tags ?? []) };
+  try {
+    const result = await ctx.dispatch(stepId, tagPrompt(batch, options), { model: TAGGER_ARMS[options.arm], schema: TagReplySchema });
+    const failure = controlFailure(batch, result.data?.tags ?? []);
+    return failure === null ? { result, failure, usage: result.usage } : { failure, usage: result.usage, iteration: result.iteration };
+  } catch (error) {
+    if (!(error instanceof StepOutputInvalidError)) throw error;
+    return { failure: error.reason, usage: error.usage, iteration: error.iteration };
+  }
 }
 
-/** One batch: a failed control re-runs it once under its own step id, and a second failure drops it. */
+const bothFailures = (first: string, retry: string): string => (first === retry ? `${first} on both attempts` : `${first}, then on retry ${retry}`);
+
+/** One batch: a failed control or an off-schema reply re-runs it once under its own step id, and a second failure drops it. */
 async function tagBatch(ctx: WorkflowContext, stepId: string, batch: TagBatch, options: TagFactsOptions): Promise<StepResult> {
   const first = await attempt(ctx, stepId, batch, options);
   const final = first.failure === null ? first : await attempt(ctx, `${stepId}${RETRY_SUFFIX}`, batch, options);
-  const usage = final === first ? first.result.usage : sumUsage(first.result.usage, final.result.usage);
+  const usage = final === first ? first.usage : sumUsage(first.usage, final.usage);
   if (final.failure !== null) {
-    throw new StepFailedError(stepId, final.result.iteration, `${final.failure} on both attempts`, { retryable: true, ...(usage ? { usage } : {}) });
+    const reason = bothFailures(first.failure ?? final.failure, final.failure);
+    throw new StepFailedError(stepId, final.iteration, reason, { retryable: true, ...(usage ? { usage } : {}) });
   }
   const ids = new Set(batch.facts.map((fact) => fact.id));
   const tags = (final.result.data?.tags ?? []).filter((tag) => ids.has(tag.id));
