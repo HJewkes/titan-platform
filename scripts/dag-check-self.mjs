@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// scripts/dag-check.sh on the ported code-graph engine; BASE_REF marks existing violations carryover, --json prints the result, exit 0/1/2 as codewatch.
+// Runs codewatch's graph check rules on the ported code-graph engine; BASE_REF marks existing violations carryover, --json prints the result, exit 0/1/2 as codewatch.
 // --report <file> also writes codewatch-pr-report@1 (scripts/codewatch-report.mjs); a failed write never changes the exit code.
 // The lock holder indexes in a child process, so a signal or an OOM in the indexer still releases the lock and cleans up at once;
 // an OOM exits 2 and says so, except a seeded run, which retries once cold. --db <path> keeps the finished graph there for `dead:check --db`, which would otherwise re-index.
