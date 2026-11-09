@@ -32,7 +32,7 @@ export async function resolveSlug(activeRoot: string, input: string): Promise<st
   return matchSlugPrefix(activeRoot, slugs, input, []);
 }
 
-export interface SlugResolution {
+interface SlugResolution {
   slug: string;
   facet?: LoadedFacet;
 }
@@ -128,7 +128,7 @@ async function canonicalize(p: string): Promise<string> {
   }
 }
 
-export interface CwdMatch {
+interface CwdMatch {
   slug: string;
   worktreePath: string;
 }

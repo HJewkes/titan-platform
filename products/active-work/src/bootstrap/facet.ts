@@ -9,7 +9,7 @@ export interface BootstrapFacet {
   body: string;
 }
 
-export interface FacetTaskSelection {
+interface FacetTaskSelection {
   tasks: Task[];
   hidden: number;
   /** True when no open task carries a facet tag, so the list is unfiltered. */

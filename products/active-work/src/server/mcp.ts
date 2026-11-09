@@ -10,7 +10,6 @@
  */
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
-  attachHandlers as pkgAttachHandlers,
   createMcpServer as pkgCreateMcpServer,
   invokeTool as pkgInvokeTool,
   listTools as pkgListTools,
@@ -33,7 +32,7 @@ import { BUILD_VERSION } from '../version.js';
 const TOOL_NAME_PREFIX = 'active__';
 const NAMING = { prefix: TOOL_NAME_PREFIX } as const;
 
-export type McpTool = McpToolDescriptor;
+type McpTool = McpToolDescriptor;
 export type { ToolCallOutcome };
 
 /** The MCP identity and registry binding every entry point below shares. */
@@ -73,11 +72,6 @@ export function listTools(): McpTool[] {
 
 export async function invokeTool(toolName: string, rawArgs: unknown): Promise<ToolCallOutcome> {
   return pkgInvokeTool(mcpOptions(), toolName, rawArgs);
-}
-
-/** Wire MCP request handlers onto a server instance. Exposed for testing. */
-export function attachHandlers(server: Server): void {
-  pkgAttachHandlers(server, mcpOptions());
 }
 
 export function createMcpServer(): Server {

@@ -20,7 +20,7 @@ import type { CommandContext } from '../registry/index.js';
 import { patchChange, type PatchEdit } from './task-edit.js';
 import { isEdgeOp, type ApplyOp, type EdgeOp, type PlanEntry } from './_task-apply-plan.js';
 
-export type ApplyOutcome = 'applied' | 'unchanged' | 'missing' | 'failed';
+type ApplyOutcome = 'applied' | 'unchanged' | 'missing' | 'failed';
 
 export interface LineResult {
   index: number;
@@ -156,7 +156,7 @@ async function loadTask(file: string): Promise<Task | undefined> {
 }
 
 /** What every line of one `task apply` run shares; `edges` is loaded only when a line needs it. */
-export interface ApplyContext {
+interface ApplyContext {
   date: string;
   dryRun: boolean;
   edges?: EdgeIndex;

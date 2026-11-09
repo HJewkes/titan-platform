@@ -17,7 +17,7 @@ import type { LoadedTasks, MalformedTask } from './prompt.js';
 
 const MS_PER_DAY = 86_400_000;
 
-export interface ArchiveStaleTasksOptions {
+interface ArchiveStaleTasksOptions {
   /** Done tasks whose `done_at` is older than this many days are archived. */
   retentionDays: number;
   /** Reference time (injectable for tests). */

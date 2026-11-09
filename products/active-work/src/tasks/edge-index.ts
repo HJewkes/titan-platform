@@ -15,7 +15,7 @@ export interface EdgeIndex {
 }
 
 /** A proposed edge write on one task. An omitted field keeps the task's current edges. */
-export interface EdgeWrite {
+interface EdgeWrite {
   slug: string;
   id: string;
   parent?: string;

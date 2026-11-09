@@ -7,7 +7,7 @@ export const CONFIG_DIR_ENV = 'CLAUDE_CONFIG_DIR';
 export const PROFILE_ROOT_ENV = 'CLAUDE_PROFILE_ROOT';
 
 /** Matches the default used by the `claude-profile` shell function. */
-export const DEFAULT_PROFILE_ROOT = '.claude-profiles';
+const DEFAULT_PROFILE_ROOT = '.claude-profiles';
 
 export function profileRoot(env: NodeJS.ProcessEnv = process.env): string {
   const configured = env[PROFILE_ROOT_ENV];
@@ -19,7 +19,7 @@ export function resolveProfileDir(profile: string, env: NodeJS.ProcessEnv = proc
   return join(profileRoot(env), profile);
 }
 
-export interface ProfileEnvResult {
+interface ProfileEnvResult {
   env: NodeJS.ProcessEnv;
   /** Set when the profile could not be applied; the caller should surface it. */
   warning?: string;

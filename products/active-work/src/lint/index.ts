@@ -9,7 +9,7 @@ import { lintTasks } from './task.js';
 import { lintZeroLoops } from './zero-loops.js';
 import { DEFAULT_LIMITS, type LintFinding, type LintLimits } from './types.js';
 
-export type { LintFinding, LintLevel, LintLimits } from './types.js';
+export type { LintFinding, LintLimits } from './types.js';
 export { DEFAULT_LIMITS } from './types.js';
 export { lintBrief } from './brief.js';
 export { lintTasks } from './task.js';

@@ -10,7 +10,7 @@ import { getInitiativeDir } from '../utils/paths.js';
 import { writeFrontmatter } from '../utils/gray-matter-io.js';
 import { ValidationError } from '../errors.js';
 
-export interface SessionWriteInput {
+interface SessionWriteInput {
   slug: string;
   session_id: string;
   started: string;

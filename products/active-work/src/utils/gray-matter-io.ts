@@ -5,7 +5,7 @@ import { classifyStructuredArtifact, recordArtifactHash } from './artifact-hash.
 import { atomicWrite } from './fs-atomic.js';
 import { coerceDates } from './coerce-dates.js';
 
-export interface FrontmatterFile<T> {
+interface FrontmatterFile<T> {
   frontmatter: T;
   body: string;
 }

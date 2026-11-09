@@ -40,12 +40,12 @@ export interface DoctorCheck {
   detail: string;
 }
 
-export interface DoctorReport {
+interface DoctorReport {
   ok: boolean;
   checks: DoctorCheck[];
 }
 
-export interface DaemonProbe {
+interface DaemonProbe {
   running: boolean;
   healthy: boolean;
   port?: number;

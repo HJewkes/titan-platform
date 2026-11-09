@@ -13,7 +13,7 @@ export interface CommandResult {
   stderr: string;
 }
 
-export interface CommandOptions {
+interface CommandOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   /** Max ms before the child is killed; defaults to 15s. */

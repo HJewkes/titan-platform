@@ -20,7 +20,7 @@ export interface SchedulerStatus {
   lockSkips: number;
 }
 
-export interface SchedulerOptions {
+interface SchedulerOptions {
   onError?: (err: unknown) => void;
   /** Called instead of `onError` when the refresh lock stayed held; the round retries with backoff. */
   onLockSkip?: (skips: number) => void;
@@ -50,7 +50,7 @@ export type PassKind = 'full' | 'delta';
 /** Whether an on-demand refresh finished inside the caller's budget. */
 export type Freshness = 'fresh' | 'stale';
 
-export interface GateDecision {
+interface GateDecision {
   hold: boolean;
   reason?: string;
 }
@@ -99,7 +99,7 @@ export async function withinBudget(
 }
 
 /** Lets a pass tell the scheduler its index writes are committed before it finishes. */
-export type PassRun = (
+type PassRun = (
   kind: PassKind,
   onIndexed: () => void,
   onLockWait: (waiting: boolean) => void,

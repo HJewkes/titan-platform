@@ -20,7 +20,7 @@ const GhPullRequestSchema = z.looseObject({
 
 type GhPullRequest = z.infer<typeof GhPullRequestSchema>;
 
-export interface DiscoverGitHubResult {
+interface DiscoverGitHubResult {
   hits: DiscoveryHit[];
   errors: DiscoverySourceError[];
 }

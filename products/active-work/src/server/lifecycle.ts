@@ -26,7 +26,7 @@ export { DEFAULT_DAEMON_PORT, getProcessCommand, isProcessAlive } from '@titan-d
 export type { DaemonMeta, PidFileContents } from '@titan-design/daemon';
 
 /** Resolved per call rather than once, because tests move the state root between cases. */
-export function paths(): DaemonPaths {
+function paths(): DaemonPaths {
   return daemonPaths(getStateRoot());
 }
 
@@ -61,7 +61,7 @@ export function resolveDaemonPort(): number {
   return 7400;
 }
 
-export interface DaemonHealth {
+interface DaemonHealth {
   version: string;
   pid: number;
   uptime_ms: number;

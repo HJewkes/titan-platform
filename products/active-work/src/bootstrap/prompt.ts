@@ -205,7 +205,7 @@ interface BootstrapTimings {
   loop_queries: number;
 }
 
-export interface BootstrapOutput {
+interface BootstrapOutput {
   prompt: string;
   metadata: BootstrapMetadata;
 }
@@ -312,7 +312,7 @@ async function loadTasks(initiativeDir: string): Promise<LoadedTasks> {
   return { tasks, malformed };
 }
 
-export interface LoadedArtifacts {
+interface LoadedArtifacts {
   artifacts: Artifacts;
   /** Set only when `artifacts.yml` exists but could not be read or parsed. */
   error?: string;
@@ -1209,7 +1209,7 @@ const SIBLING_HEADING = '# Another session may already be live on this initiativ
  * are no siblings — with an empty list the prompt must be byte-identical to one
  * assembled without this feature at all.
  */
-export function renderSiblingSessions(
+function renderSiblingSessions(
   siblings: SiblingSession[],
   brief: BriefFrontmatter,
   topTaskTitle: string | undefined,

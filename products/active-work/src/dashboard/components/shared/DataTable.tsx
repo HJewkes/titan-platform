@@ -17,7 +17,7 @@ export interface DataTableColumn {
   flex?: number;
 }
 
-export interface DataTableProps<T> {
+interface DataTableProps<T> {
   columns: DataTableColumn[];
   data: T[];
   renderCell: (item: T, columnKey: string) => React.ReactNode;

@@ -9,7 +9,7 @@ import type { Assignment } from '@titan-design/session-analytics';
  * claude-channels' retro tool `daily.py` so the two agree on what a merge is.
  */
 
-export interface DispatchWindow {
+interface DispatchWindow {
   /** Inclusive lower bound, any `Date.parse` form; null is unbounded. */
   since: string | null;
   /** Exclusive upper bound; null is unbounded. */
@@ -22,13 +22,13 @@ export interface DispatchSkipped {
   noAgent: number;
 }
 
-export interface DispatchRecords {
+interface DispatchRecords {
   assignments: Assignment[];
   skipped: DispatchSkipped;
 }
 
 /** The outcome a `+fixN` agent gets: its spend counts toward the group, never a second merge. */
-export const FIX_ROUND_OUTCOME = 'fix-round';
+const FIX_ROUND_OUTCOME = 'fix-round';
 
 const TERMINAL = new Set(['merged', 'done', 'parked', 'abandoned', 'stalled']);
 const TERMINAL_WORDS = ['merged', 'parked', 'abandoned', 'stalled'] as const;

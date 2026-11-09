@@ -85,7 +85,7 @@ async function logServed(args: Args, result: RelatedResult, hitLog: HitLogWriter
     result.degraded.push({ source: 'hit-log', reason: 'error', message: failure });
 }
 
-export interface RelatedDeps {
+interface RelatedDeps {
   activeRoot: string;
   hitLog?: HitLogWriter;
   dbPath?: string;
