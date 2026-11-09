@@ -15,6 +15,7 @@ import {
 import { stepInstallSkill } from './steps-install.js';
 import { stepRegisterMcp, stepRegisterAgentChatHooks } from './steps-register.js';
 import { stepStartDaemon, stepIngestion, stepSupervision } from './steps-daemon.js';
+import { runSetup } from './steps.js';
 
 function makeTempPaths(): {
   paths: StepPaths;
@@ -614,5 +615,51 @@ describe('stepIngestion', () => {
       expect(result.done).toBe(false);
       expect(result.message).toMatch(/discover/);
     }
+  });
+});
+
+describe('runSetup', () => {
+  const ORIGINAL_PLATFORM = process.platform;
+  let paths: StepPaths;
+  let cleanup: () => void;
+
+  beforeEach(() => {
+    // A platform with no supervisor integration keeps the run off the host's systemd/launchd.
+    Object.defineProperty(process, 'platform', { value: 'aix', configurable: true });
+    const t = makeTempPaths();
+    paths = t.paths;
+    cleanup = t.cleanup;
+  });
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: ORIGINAL_PLATFORM, configurable: true });
+    cleanup();
+  });
+
+  it('runs every step once, in setup order, when none fails', async () => {
+    const noSpawn = (): never => {
+      throw new Error('spawn is not available in this test');
+    };
+
+    const report = await runSetup({
+      paths,
+      yes: true,
+      repoRoot: paths.homeDir,
+      spawn: noSpawn,
+      supervisorActive: () => Promise.resolve(null),
+    });
+
+    expect(report.steps.map((step) => [step.name, step.ok])).toEqual([
+      ['check-node', true],
+      ['create-active-root', true],
+      ['write-schema-version', true],
+      ['write-config-stub', true],
+      ['install-skill', true],
+      ['install-command', true],
+      ['register-mcp', true],
+      ['register-agent-chat-hooks', true],
+      ['install-supervision', true],
+      ['start-daemon', true],
+      ['ingestion', true],
+    ]);
   });
 });
