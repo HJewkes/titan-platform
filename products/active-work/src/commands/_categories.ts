@@ -13,9 +13,9 @@ import { ValidationError } from '../errors.js';
 import type { CommandContext } from '../registry/index.js';
 import type { Task } from '../schemas/task.js';
 
-export const CATEGORY_FIELDS = ['status', 'kind', 'cos', 'area', 'due'] as const;
+const CATEGORY_FIELDS = ['status', 'kind', 'cos', 'area', 'due'] as const;
 
-export type CategoryField = (typeof CATEGORY_FIELDS)[number];
+type CategoryField = (typeof CATEGORY_FIELDS)[number];
 
 export const DueArg = z
   .string()

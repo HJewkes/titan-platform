@@ -196,6 +196,14 @@ describe("loadConfig", () => {
     expect(() => load({ ...reviewCheck, token: "x" })).toThrow(/reviewCheck/);
   });
 
+  it.each(["my-app", " ", "my-app[bot] ", "other app[bot]"])("rejects %j as the review-check App's login, which must be a bot login", (login) => {
+    const reviewCheck = { appId: 101, installationId: 202, privateKeyPath: "/keys/app.pem" };
+    const load = (block: object) => loadConfig(configPath(xdg({ shepherd: { reviewCheck: block } })));
+
+    expect(load({ ...reviewCheck, login: "my-app[bot]" }).shepherd?.reviewCheck?.login).toBe("my-app[bot]");
+    expect(() => load({ ...reviewCheck, login })).toThrow(/reviewCheck/);
+  });
+
   it.each(["https://github.com/acme/dotfiles", "acme/dotfiles.git"])("rejects %s as a hard-stop repo", (repo) => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { charterPath: "/charter.md", hardStopRepos: { "dotfiles-merge": [repo] } } })))).toThrow(/hardStopRepos/);
   });

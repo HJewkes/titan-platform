@@ -62,6 +62,22 @@ describe("checkSendBack", () => {
     expect(checkSendBack([proof(H, "running")], H)).toEqual({ ok: false, pending: true, failures: [] });
   });
 
+  it("passes while the implementer wake step is still running after the fix-proof wake step", () => {
+    const entries = [proof(), step("sh-wake-fix-proof"), step("sh-wake-implementer:0", "running")];
+
+    expect(checkSendBack(entries, H)).toEqual({ ok: true, pending: false, failures: [] });
+  });
+
+  it("stays pending when a running implementer wake has no fix-proof wake step before it", () => {
+    expect(checkSendBack([proof(), step("sh-wake-implementer:0", "running")], H)).toEqual({ ok: false, pending: true, failures: [] });
+  });
+
+  it("fails when a review step follows the proof even with the implementer wake running", () => {
+    const entries = [proof(), step("sh-wake-fix-proof"), step("sh-wake-implementer:0", "running"), step(`sh-review:${H}`)];
+
+    expect(checkSendBack(entries, H)).toMatchObject({ ok: false, pending: false, failures: [`reviewer spawned after the proof: step sh-review:${H}`] });
+  });
+
   it("stays pending while the proof is done but its wake is not yet recorded", () => {
     expect(checkSendBack([proof()], H)).toEqual({ ok: false, pending: true, failures: [] });
   });

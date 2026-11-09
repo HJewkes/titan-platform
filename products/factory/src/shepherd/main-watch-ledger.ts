@@ -24,9 +24,10 @@ const MIGRATIONS: readonly Migration[] = [{ version: 1, name: "factory:main_watc
 
 /**
  * `watching` until main CI there settles. `red` owes the seat its one event and is retried each sweep until it is
- * `sent`; the rest are silent ends.
+ * `sent`; `unacked` is a red event whose send timed out once, which usually arrived, so it gets one retry. The rest are
+ * silent ends.
  */
-type ShaState = "watching" | "green" | "cancelled" | "expired" | "red" | "sent" | "unsent";
+type ShaState = "watching" | "green" | "cancelled" | "expired" | "red" | "unacked" | "sent" | "unsent";
 
 export interface WatchedSha {
   sha: string;

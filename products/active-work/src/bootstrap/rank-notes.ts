@@ -29,7 +29,7 @@ export interface NoteRanking {
   ranked: boolean;
 }
 
-export interface ForeignNote {
+interface ForeignNote {
   initiative: string;
   title: string;
   ref: string;
@@ -146,7 +146,7 @@ function noteHits(graph: WorkspaceGraph, spans: SpanHit[], terms: string[]): Not
   return hits;
 }
 
-export interface RankNotesInput {
+interface RankNotesInput {
   notes: LoadedNote[];
   slug: string;
   subject: string;

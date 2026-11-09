@@ -14,12 +14,12 @@ export interface LoadedFacet {
   path: string;
 }
 
-export interface MalformedFacet {
+interface MalformedFacet {
   path: string;
   error: string;
 }
 
-export interface LoadedFacets {
+interface LoadedFacets {
   facets: LoadedFacet[];
   malformed: MalformedFacet[];
 }

@@ -25,7 +25,7 @@ export interface LoadedNote {
 }
 
 /** A file under `sources/notes/` that could not be read as a note. */
-export interface MalformedNote {
+interface MalformedNote {
   file: string;
   reason: string;
 }
@@ -36,7 +36,7 @@ export interface LoadedNotes {
 }
 
 /** Resolve the notes directory for an initiative directory. */
-export function getNotesDir(initiativeDir: string): string {
+function getNotesDir(initiativeDir: string): string {
   return path.join(initiativeDir, 'sources', 'notes');
 }
 
@@ -82,7 +82,7 @@ export async function loadNotesFromDir(initiativeDir: string): Promise<LoadedNot
   return { notes: notes.sort(compareNewestFirst), malformed };
 }
 
-export interface NoteWriteResult {
+interface NoteWriteResult {
   path: string;
   filename: string;
 }

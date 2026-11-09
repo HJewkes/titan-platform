@@ -75,11 +75,11 @@ const HANDOFF_FILE = 'handoff.md';
 const HANDOFF_ARCHIVE = path.join('sources', 'handoff-archive.md');
 
 /** Distinguishes the back-dated opening session from the later closing one. */
-export type SessionKind = 'open' | 'abandon';
+type SessionKind = 'open' | 'abandon';
 
-export type HandoffDisposition = 'archive-and-remove' | 'archive-exists' | 'absent';
+type HandoffDisposition = 'archive-and-remove' | 'archive-exists' | 'absent';
 
-export interface SessionPlan {
+interface SessionPlan {
   kind: SessionKind;
   stem: string;
   path: string;
@@ -89,7 +89,7 @@ export interface SessionPlan {
 }
 
 /** A single validated brief write carrying both repairs and the backfill. */
-export interface BriefWrite {
+interface BriefWrite {
   frontmatter: BriefFrontmatter;
   body: string;
   /** Value written, or `null` when only field repairs applied. */
@@ -97,7 +97,7 @@ export interface BriefWrite {
   repairs: string[];
 }
 
-export interface InitiativePlan {
+interface InitiativePlan {
   slug: string;
   /** Empty when uncovered; one session normally; two when loops are abandoned. */
   sessions: SessionPlan[];
@@ -109,7 +109,7 @@ export interface InitiativePlan {
   handoff: HandoffDisposition;
 }
 
-export interface MigrationPlan {
+interface MigrationPlan {
   proposalOrigin: string;
   initiatives: InitiativePlan[];
   repairs: RepairPlan[];
@@ -454,4 +454,3 @@ export const v2ToV3OpenLoops: Migration = {
 };
 
 export { KNOWN_REPAIRS };
-export default v2ToV3OpenLoops;

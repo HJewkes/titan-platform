@@ -93,7 +93,7 @@ describe("sh-publish-review", () => {
     let moved = false;
     const moveOnce = (head: string) => void (head === A && !moved && ((moved = true), fake.pushHead(1, B)));
 
-    await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE", moveOnce), reviewCheck: githubPort(fake.wire) });
+    await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE", moveOnce), reviewCheck: githubPort(fake.wire, { login: fake.appLogin }) });
 
     expect(posted(fake).slice(0, 2)).toEqual([
       { name: REVIEW_CHECK_NAME, headSha: A, conclusion: "success" },
@@ -106,7 +106,7 @@ describe("sh-publish-review", () => {
     const fake = fakeGitHub();
     fake.addPr = ((orig) => (fields) => orig({ ...fields, autoMerge: true }))(fake.addPr);
 
-    await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE"), reviewCheck: githubPort(fake.wire) });
+    await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE"), reviewCheck: githubPort(fake.wire, { login: fake.appLogin }) });
 
     expect(posted(fake)[0]).toEqual({ name: REVIEW_CHECK_NAME, headSha: A, conclusion: "action_required" });
   });
@@ -116,7 +116,7 @@ describe("sh-publish-review", () => {
     const row = { step: "ci-wait", closure: fakeSha("publish-review-closure"), pr: 1 };
     fake.files.set(`${A}:${attestationsFileOf(1)}`, { content: JSON.stringify([row]), blobSha: "attest-a" });
 
-    await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE"), reviewCheck: githubPort(fake.wire) });
+    await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE"), reviewCheck: githubPort(fake.wire, { login: fake.appLogin }) });
 
     expect(posted(fake).slice(0, 2)).toEqual([
       { name: REVIEW_CHECK_NAME, headSha: A, conclusion: "success" },
@@ -128,7 +128,7 @@ describe("sh-publish-review", () => {
   it("posts a FIX_FIRST as failure at the reviewed head", async () => {
     const fake = fakeGitHub();
 
-    await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "FIX_FIRST"), reviewCheck: githubPort(fake.wire), gate: "sh-sent-back" });
+    await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "FIX_FIRST"), reviewCheck: githubPort(fake.wire, { login: fake.appLogin }), gate: "sh-sent-back" });
 
     expect(posted(fake)).toEqual([{ name: REVIEW_CHECK_NAME, headSha: A, conclusion: "failure" }]);
   });
@@ -156,7 +156,7 @@ describe("sh-publish-review", () => {
   it("carries the check run URL in the step output when published", async () => {
     const fake = fakeGitHub();
 
-    const { host, runId } = await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE"), reviewCheck: githubPort(fake.wire) });
+    const { host, runId } = await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE"), reviewCheck: githubPort(fake.wire, { login: fake.appLogin }) });
 
     const [id] = fake.createdCheckRuns.map((run) => run.id);
     const [approval] = fake.reviews.get(1) ?? [];
@@ -166,7 +166,7 @@ describe("sh-publish-review", () => {
   it("a MERGE at the head approves the PR at that head under the App, beside the success check", async () => {
     const fake = fakeGitHub();
 
-    await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE"), reviewCheck: githubPort(fake.wire) });
+    await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE"), reviewCheck: githubPort(fake.wire, { login: fake.appLogin }) });
 
     expect(fake.reviews.get(1)?.map(({ state, commitId, login }) => ({ state, commitId, login }))).toEqual([{ state: "APPROVED", commitId: A, login: fake.appLogin }]);
   });
@@ -174,7 +174,7 @@ describe("sh-publish-review", () => {
   it("a FIX_FIRST posts no approval and records no review in the step result", async () => {
     const fake = fakeGitHub();
 
-    const { host, runId } = await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "FIX_FIRST"), reviewCheck: githubPort(fake.wire), gate: "sh-sent-back" });
+    const { host, runId } = await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "FIX_FIRST"), reviewCheck: githubPort(fake.wire, { login: fake.appLogin }), gate: "sh-sent-back" });
 
     expect(fake.reviews.get(1) ?? []).toEqual([]);
     expect(publishResults(host, runId).map((result) => "review" in result)).toEqual([false]);
@@ -185,7 +185,7 @@ describe("sh-publish-review", () => {
     let moved = false;
     const moveOnce = (head: string) => void (head === A && !moved && ((moved = true), fake.pushHead(1, B)));
 
-    const { host, runId } = await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE", moveOnce), reviewCheck: githubPort(fake.wire) });
+    const { host, runId } = await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE", moveOnce), reviewCheck: githubPort(fake.wire, { login: fake.appLogin }) });
 
     const [approval] = fake.reviews.get(1) ?? [];
     expect(approval).toMatchObject({ commitId: A, state: "DISMISSED" });

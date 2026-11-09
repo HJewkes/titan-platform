@@ -8,6 +8,7 @@ import type { ObservedPr } from "./observe.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { syncApproval, type ReviewApproval } from "./review-approval.js";
 import { reviewCheck, type ReviewCheckInput, type ReviewConclusion } from "./review-check.js";
+import type { ReviewRetryTiming } from "./review-retry.js";
 import { REVIEW_OUTCOMES, type ReviewOutcome } from "./route-table.js";
 
 const PUBLISH_REVIEW_STEP = "sh-publish-review";
@@ -67,13 +68,16 @@ function reviewOutcome(verdict: Verdict, observed: ObservedPr, headSha: string):
 }
 
 export const publishReviewRoute = (deps: ShepherdDeps): StepRoute =>
-  codeRoute(PUBLISH_REVIEW_STEP, deps.now, async (raw: unknown) => publish(deps.reviewCheck, deps.port, PublishInputSchema.parse(raw)));
+  codeRoute(PUBLISH_REVIEW_STEP, deps.now, async (raw: unknown, signal) => {
+    const timing = { now: deps.now, sleep: (ms: number) => deps.sleep(ms, signal) };
+    return publish(deps.reviewCheck, deps.port, PublishInputSchema.parse(raw), timing);
+  });
 
 /** The check run, then Shepherd's approvals brought into line with it; neither failing fails the step. */
-async function publish(port: GitHubPort | undefined, reads: ArmedReader, input: PublishInput): Promise<PublishResult> {
+async function publish(port: GitHubPort | undefined, reads: ArmedReader, input: PublishInput, timing: ReviewRetryTiming): Promise<PublishResult> {
   const check = reviewCheck({ ...input, autoMergeArmed: await autoMergeArmed(reads, input) });
   const posted = await postCheck(port, input, check);
-  const review = await syncApproval(port, input, check);
+  const review = await syncApproval(port && { port, timing }, input, check);
   return { ...posted, ...(review && { review }) };
 }
 

@@ -17,7 +17,7 @@ import { initiativeRef } from './refs.js';
  * write nothing here.
  */
 
-export const RELATIONS = {
+const RELATIONS = {
   HOLDS: 'holds',
   MENTIONS: 'mentions',
   SHARES_TAG: 'shares_tag',
@@ -35,7 +35,7 @@ export const RELATIONS = {
  * live corpus — about 70% of the edge table, the same share brain's cosine
  * edges held. Both filters bring it to 369.
  */
-export const SHARES_TAG_MAX_NOTES = 10;
+const SHARES_TAG_MAX_NOTES = 10;
 
 export interface NoteFacts {
   ref: string;

@@ -101,9 +101,28 @@ describe("titan-factory planner probe", () => {
     expect(out.stdout).toBe(`gate run-2/approve-merge resolved ${AFTER}\nround r9 answered ${AFTER}\n`);
   });
 
-  it("reports a round whose feedback cannot be dated instead of dropping it", async () => {
-    const out = await probe(["owner-contact", "--since", SINCE], { rounds: [{ id: "r8", submittedAt: undefined }] });
-    expect(out.stdout).toBe("round r8 answered at an unknown time: feedback.json does not parse\n");
+  it.each([
+    ["invalid JSON", "feedback.json is not valid JSON"],
+    ["schema mismatch", "feedback.json has no valid submittedAt field"],
+    ["non-ISO submittedAt", "submittedAt is not an ISO time"],
+  ])("reports a round undatable by %s with its own cause", async (_name, why) => {
+    const out = await probe(["owner-contact", "--since", SINCE], { rounds: [{ id: "r8", submittedAt: undefined, why }] });
+    expect(out.stdout).toBe(`round r8 answered at an unknown time: ${why}\n`);
+  });
+
+  it("reports a merge with an unparseable mergedAt as merged at an unknown time", async () => {
+    const out = await probe(["merges", "--since", SINCE], { merged: [{ number: 5, mergedAt: "not-a-time" }] });
+    expect(out.stdout).toBe(`${REPO}#5 merged at an unknown time\n`);
+  });
+
+  it("reports a resolved gate with no resolvedAt as resolved at an unknown time", async () => {
+    const out = await probe(["owner-contact", "--since", SINCE], { gates: [gate({ id: "run-6/approve-merge", status: "resolved", resolvedAt: undefined })] });
+    expect(out.stdout).toBe("gate run-6/approve-merge resolved at an unknown time\n");
+  });
+
+  it("reports a red run with an unparseable createdAt as failed at an unknown time", async () => {
+    const out = await probe(["new-red", "--since", SINCE], { red: [{ id: 42, workflow: "CI", createdAt: "yesterday" }] });
+    expect(out.stdout).toBe(`${REPO} main run 42 (CI) failed at an unknown time\n`);
   });
 
   it("counts a red main run and a ci-failed gate opened in the window as new red", async () => {
@@ -130,6 +149,15 @@ describe("titan-factory planner probe", () => {
   it("refuses an unknown probe or a since that is not an ISO time", async () => {
     expect((await probe(["merged", "--since", SINCE])).code).toBe(2);
     expect((await probe(["merges", "--since", "yesterday"])).code).toBe(2);
+  });
+
+  it("refuses a since that has the ISO shape but names a day that does not exist", async () => {
+    expect((await probe(["merges", "--since", "2026-02-30T00:00:00Z"])).code).toBe(2);
+  });
+
+  it("reports an event stamped with a day that does not exist as at an unknown time", async () => {
+    const out = await probe(["merges", "--since", SINCE], { merged: [{ number: 7, mergedAt: "2026-02-30T00:00:00Z" }, { number: 8, mergedAt: AFTER }] });
+    expect(out.stdout).toBe(`${REPO}#8 merged ${AFTER}\n${REPO}#7 merged at an unknown time\n`);
   });
 
   it("fails rather than printing nothing when no repo is configured", async () => {

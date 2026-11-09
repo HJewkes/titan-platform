@@ -132,7 +132,7 @@ async function excerptFor(
   }
 }
 
-export interface FusedInput {
+interface FusedInput {
   id: string;
   score: number;
   sources: string[];

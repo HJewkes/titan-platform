@@ -23,9 +23,9 @@ import type { RefreshSummary } from './refresh.js';
 type IndexStatus = 'indexed' | 'unchanged' | 'rewound' | 'missing' | 'quarantined';
 
 /** An unknown root only re-checks rows modified this recently; older ones are settled. */
-export const UNKNOWN_ROOT_WINDOW_MS = 24 * 60 * 60 * 1000;
+const UNKNOWN_ROOT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-export interface DeltaPassOptions {
+interface DeltaPassOptions {
   graph: WorkspaceGraph;
   transcripts: readonly DiscoveredTranscript[];
   yieldPoint: () => Promise<void>;

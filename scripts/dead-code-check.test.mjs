@@ -17,10 +17,12 @@ import {
   parseCliArgs,
   readBaseAdoptedPaths,
   readBaseBaseline,
+  HEAP_CAP_MB,
   ROOT_ROLES,
   updatedBaseline,
 } from "./dead-code-check.mjs";
 import { maskSource } from "./dead-code-check-source.mjs";
+import { HEAP_CAP_MB as DAG_CHECK_HEAP_CAP_MB } from "./dag-check-self.mjs";
 import { release, tryAcquire } from "./dag-check-lock.mjs";
 
 const file = (id, role = "source") => ({ id, kind: "file", name: id.split("/").pop(), role });
@@ -410,5 +412,11 @@ describe("the report", () => {
   it("says a report-only run does not fail", () => {
     const fresh = [{ id: "a.ts#x", name: "x", file: "a.ts" }];
     expect(formatReport({ fresh, carried: [], fixed: [] }, { reportOnly: true })).toContain("report-only, not failing");
+  });
+});
+
+describe("dead:check worker heap cap", () => {
+  it("is at least dag-check-self's cap so --update on main does not OOM", () => {
+    expect(HEAP_CAP_MB).toBeGreaterThanOrEqual(DAG_CHECK_HEAP_CAP_MB);
   });
 });

@@ -17,7 +17,7 @@ import { STEP_SUPERVISION } from './supervision-systemd.js';
 import type { SetupDeps, StepPaths, StepResult } from './steps.js';
 
 export const PLIST_LABEL = 'dev.hjewkes.active-work';
-export const PLIST_NAME = `${PLIST_LABEL}.plist`;
+const PLIST_NAME = `${PLIST_LABEL}.plist`;
 
 function isDarwin(platform: NodeJS.Platform = process.platform): boolean {
   return platform === 'darwin';
@@ -47,7 +47,7 @@ function resolveLocalDeps(deps: SetupDeps): {
   return { fs, spawn, paths, cliEntry, uid, platform: process.platform };
 }
 
-export function getAgentDir(homeDir: string): string {
+function getAgentDir(homeDir: string): string {
   return nodePath.join(homeDir, 'Library', 'LaunchAgents');
 }
 
@@ -68,7 +68,7 @@ function escapeXml(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-export interface PlistOptions {
+interface PlistOptions {
   cliEntry: string;
   homeDir: string;
   port?: number;
@@ -161,7 +161,7 @@ export async function isAgentLoaded(deps: SetupDeps = {}): Promise<boolean> {
   return result.code === 0;
 }
 
-export interface InstallLaunchAgentOptions {
+interface InstallLaunchAgentOptions {
   /** Override the port baked into the plist's ProgramArguments. */
   port?: number;
 }

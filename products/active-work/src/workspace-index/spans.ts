@@ -36,7 +36,7 @@ export function bodyByteOffset(raw: string): number {
 }
 
 /** A locator covering the whole file, for a value YAML reflowed beyond recognition. */
-export function wholeFile(raw: string): { byteOffset: number; byteLength: number } {
+function wholeFile(raw: string): { byteOffset: number; byteLength: number } {
   return { byteOffset: 0, byteLength: Buffer.byteLength(raw, 'utf8') };
 }
 

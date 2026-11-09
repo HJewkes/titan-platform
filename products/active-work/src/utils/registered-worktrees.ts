@@ -19,7 +19,7 @@ import { readYaml, writeYaml } from './yaml-io.js';
 /** A worktree an operator registered: identical to an entry, but named. */
 export type RegisteredWorktree = WorktreeEntry & { name: string };
 
-export function artifactsPathFor(initiativeDir: string): string {
+function artifactsPathFor(initiativeDir: string): string {
   return path.join(initiativeDir, 'artifacts.yml');
 }
 

@@ -2,6 +2,7 @@ import type { Command } from "commander";
 import type { Verbs } from "../cli-types.js";
 import { EXIT } from "../exit-codes.js";
 import { runProcess } from "./inputs.js";
+import { isIsoTime } from "./iso-time.js";
 import { machineWindowSources } from "./window-ports.js";
 import { probeWindow, WINDOW_PROBES, type WindowProbe, type WindowSources } from "./window-probes.js";
 
@@ -10,8 +11,6 @@ interface ProbeOpts {
   repo: string[];
 }
 
-const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
-
 const isProbe = (kind: string): kind is WindowProbe => (WINDOW_PROBES as readonly string[]).includes(kind);
 
 const collect = (value: string, previous: string[]): string[] => [...previous, value];
@@ -19,7 +18,7 @@ const collect = (value: string, previous: string[]): string[] => [...previous, v
 /** Exits non-zero on any read it cannot finish, so the wake runs the review instead of skipping on a blind probe. */
 async function runWindowProbe(probe: string, opts: ProbeOpts, sources: () => WindowSources, verbs: Verbs): Promise<number> {
   const { io } = verbs;
-  if (!isProbe(probe) || !ISO_TIME.test(opts.since)) {
+  if (!isProbe(probe) || !isIsoTime(opts.since)) {
     io.stderr(`planner probe: want one of ${WINDOW_PROBES.join(", ")} and an ISO --since, got ${probe} ${opts.since}\n`);
     return EXIT.USAGE;
   }

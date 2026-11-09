@@ -31,6 +31,7 @@ const MOTION_PATHS = [
   "/products/explainer/src/storyboard",
   "/products/explainer/src/resolve-beat",
   "/products/explainer/src/composition/",
+  "/products/explainer/src/sim/",
 ];
 
 // Tests that still compare a clock with a limit. TP-4264 empties this list and TP-4076 owns the two tool-guard files; only remove entries.

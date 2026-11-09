@@ -36,7 +36,7 @@ export class ValidationError extends ActiveWorkError {
 }
 
 /** Why a lookup failed; `no_match` means nothing matched, as opposed to several things. */
-export type NotFoundReason = 'no_match';
+type NotFoundReason = 'no_match';
 
 export class NotFoundError extends ActiveWorkError {
   override readonly code: number = EXIT.NOINPUT;

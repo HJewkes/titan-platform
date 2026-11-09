@@ -61,7 +61,7 @@ function leasePath(activeRoot: string, slug: string, leaseId: string): string {
   return path.join(leaseDir(activeRoot, slug), `${leaseId}.json`);
 }
 
-export interface AcquireLeaseInput {
+interface AcquireLeaseInput {
   activeRoot: string;
   slug: string;
   cwd: string;
@@ -75,7 +75,7 @@ export interface AcquireLeaseInput {
   getComm?: (pid: number) => string | null;
 }
 
-export interface AcquiredLease {
+interface AcquiredLease {
   leaseId: string;
   release: () => Promise<void>;
 }
@@ -158,7 +158,7 @@ export interface LiveSibling {
   label?: string;
 }
 
-export interface ReadLiveLeasesInput {
+interface ReadLiveLeasesInput {
   activeRoot: string;
   slug: string;
   now?: Date;
