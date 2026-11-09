@@ -2,7 +2,8 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import sourceAddCmd, { slugifyLabel } from './source-add.js';
+import sourceAddCmd from './source-add.js';
+import { slugifyLabel } from '../utils/slug.js';
 import artifactAddBranchCmd from './artifact-add-branch.js';
 import artifactAddStashCmd from './artifact-add-stash.js';
 import artifactListCmd from './artifact-list.js';

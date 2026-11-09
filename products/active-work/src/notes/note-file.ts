@@ -13,7 +13,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { NoteFrontmatterSchema, type NoteFrontmatter } from '../schemas/note.js';
 import { readFrontmatter, writeFrontmatter } from '../utils/gray-matter-io.js';
-import { slugifyLabel } from '../commands/source-add.js';
+import { slugifyLabel } from '../utils/slug.js';
 
 /** A note file that parsed and validated. */
 export interface LoadedNote {

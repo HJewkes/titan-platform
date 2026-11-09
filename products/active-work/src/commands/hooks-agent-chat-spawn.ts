@@ -4,7 +4,7 @@ import { getActiveRoot } from '../utils/paths.js';
 import { readStdinJson } from '../utils/read-stdin-json.js';
 import { peekSpawnContext, stashSpawnContext } from '../utils/agent-chat-hook-state.js';
 import { nowIso } from '../utils/today.js';
-import { resolveSlugFromCwd } from './_open-helpers.js';
+import { resolveSlugFromCwd } from '../sessions/initiatives.js';
 
 /**
  * `active-work hooks agent-chat-spawn` (AW-99) — the `on_spawn` consumer

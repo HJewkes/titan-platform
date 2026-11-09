@@ -125,6 +125,11 @@ describe("titan-factory planner probe", () => {
     expect(out.stdout).toBe(`${REPO} main run 42 (CI) failed at an unknown time\n`);
   });
 
+  it("reports a ci-failed gate with an unparseable createdAt as opened at an unknown time", async () => {
+    const out = await probe(["new-red", "--since", SINCE], { gates: [gate({ id: "run-7/ci-failed:1", createdAt: "not-a-time" })] });
+    expect(out.stdout).toBe("gate run-7/ci-failed:1 opened at an unknown time\n");
+  });
+
   it("counts a red main run and a ci-failed gate opened in the window as new red", async () => {
     const red = [{ id: 41, workflow: "CI", createdAt: AFTER }];
     const gates = [gate({ id: "run-4/ci-failed:2", createdAt: AFTER }), gate({ id: "run-5/approve-merge", createdAt: AFTER })];

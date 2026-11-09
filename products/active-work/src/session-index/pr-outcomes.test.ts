@@ -10,7 +10,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { enrichPrs } from '@titan-design/session-graph';
-import type { CommandResult, RunCommand } from '../discover/run-command.js';
+import type { CommandResult, RunCommand } from '../utils/run-command.js';
 import { openGraph, type WorkspaceGraph } from './graph.js';
 import { clearPrFailureBackoff, ghPrResolver } from './pr-outcomes.js';
 import { runRefresh } from './refresh.js';

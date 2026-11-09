@@ -186,10 +186,40 @@ the thing today:
 | `buttonStates` | false, pending a spike | false | false |
 | `edits`, `reactions`, `chatActions` | true | false | true |
 | `drafts`, `draftStreaming`, `threads` | false | false | false |
+| `media` | true | false | true |
 
 BlueBubbles answers `unsupported` for all four methods and makes no request:
 tapbacks, typing and edits there all need the Private API, which this package
 rules out of scope.
+
+### Sending media
+
+`sendVoice` and `sendPhoto` take bytes, not a URL or a path, so they run in a
+Worker with no filesystem:
+
+```ts
+if (transport.capabilities.media) {
+  await transport.sendVoice({ handle: "lifter", audio: { bytes: oggOpus } });
+  await transport.sendPhoto({
+    handle: "lifter",
+    image: { bytes: jpeg, fileName: "plan.jpg" },
+    caption: "This week",
+  });
+}
+```
+
+Each answers `{ ok: true, ref? }` or `{ ok: false, error }` with an
+`InteractionError`, so a channel without media can say `unsupported` the same
+way it does for reactions. Telegram uploads each file as multipart form data
+with the chat id, so no public URL is needed. A voice note plays inline only as
+OGG with Opus, so `fileName` and `mimeType` default to `voice.ogg` and
+`audio/ogg`; a photo defaults to `photo.jpg` and `image/jpeg`. A caption over
+`TELEGRAM_MAX_CAPTION_LENGTH` (1024) fails `too-long` before any call, and a 429
+carries `retryAfterSeconds` exactly as a text send does. BlueBubbles answers
+`unsupported` with capability `media` and makes no request: this adapter
+implements the text endpoint only. `MockTransport` records each media send in
+`log` as a `sendVoice` or `sendPhoto` event, and `capabilities: { media: false }`
+makes it refuse them.
 
 `state: "disabled"` and `style` on a `Button` are rendered only by a channel
 whose `buttonStates` is true, the same way BlueBubbles ignores `buttons`
