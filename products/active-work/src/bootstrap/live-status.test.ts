@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { defaultLiveStatusFetcher } from './prompt.js';
+import { defaultLiveStatusFetcher } from './live-status.js';
 import type { BranchEntry } from '../schemas/artifacts.js';
 import {
   resetRunners,
