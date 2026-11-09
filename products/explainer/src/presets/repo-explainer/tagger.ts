@@ -103,10 +103,10 @@ function batchSeed(facts: readonly ExplainerFact[], options: TagFactsOptions): s
   return hash.digest("hex").slice(0, 16);
 }
 
-// The key hashes the rendered prompt and the control, so anything that reaches the model re-tags instead of replaying a stale answer.
+// The key hashes the rendered prompt and the control (its id and expected role, which the prompt never shows), so anything that reaches the model re-tags instead of replaying a stale answer.
 function promptKey(batch: Omit<TagBatch, "key">, options: TagFactsOptions): string {
   const prompt = tagPrompt({ ...batch, key: "" }, options);
-  return createHash("sha256").update(prompt).update("\0").update(batch.control.fact.id).digest("hex").slice(0, 16);
+  return createHash("sha256").update(prompt).update("\0").update(batch.control.fact.id).update("\0").update(batch.control.expect).digest("hex").slice(0, 16);
 }
 
 /** Splits facts into batches, each with one seeded control drawn from the pool and placed at a seeded position. */
