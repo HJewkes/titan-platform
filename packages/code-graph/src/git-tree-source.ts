@@ -1,6 +1,6 @@
 import { readlinkSync, realpathSync, statSync } from "node:fs";
 import * as path from "node:path";
-import { isExcludedDir, shouldIncludeFile } from "@titan-design/code-parser";
+import { isExcludedDir, shouldIncludeFile, type FilterLanguage } from "@titan-design/code-parser";
 import { Project, type FileSystemHost, type RuntimeDirEntry } from "ts-morph";
 import { detectGitToplevel } from "./history/git.js";
 import { listTreeBlobs, readBlobs, resolveCommit } from "./history/git-tree.js";
@@ -223,7 +223,7 @@ class CommitTree {
 }
 
 /** The tree's files under `rootDir` that `walkSourceFiles` would ingest from a checkout. */
-function* ingestedUnder(tree: CommitTree, rootDir: string, languages: readonly string[]): Generator<string> {
+function* ingestedUnder(tree: CommitTree, rootDir: string, languages: readonly FilterLanguage[]): Generator<string> {
   for (const abs of tree.files()) {
     const rel = relativeInside(rootDir, abs);
     if (rel === null) continue;
@@ -232,7 +232,7 @@ function* ingestedUnder(tree: CommitTree, rootDir: string, languages: readonly s
   }
 }
 
-function listTreeFiles(tree: CommitTree, rootDirs: readonly string[], languages: readonly string[]): string[] {
+function listTreeFiles(tree: CommitTree, rootDirs: readonly string[], languages: readonly FilterLanguage[]): string[] {
   const seen = new Set<string>();
   for (const rootDir of rootDirs) {
     for (const abs of ingestedUnder(tree, rootDir, languages)) seen.add(abs);

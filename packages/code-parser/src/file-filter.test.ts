@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { shouldIncludeFile, getLanguageFromPath, isExcludedDir } from "./file-filter.js";
+import { shouldIncludeFile, type FilterLanguage, getLanguageFromPath, isExcludedDir } from "./file-filter.js";
 
 describe("shouldIncludeFile", () => {
-  const languages = ["typescript", "python"];
+  const languages: FilterLanguage[] = ["typescript", "python"];
 
   it("includes .ts files when typescript is requested", () => {
     expect(shouldIncludeFile("src/utils.ts", languages)).toBe(true);
@@ -116,5 +116,15 @@ describe("getLanguageFromPath", () => {
 
   it("returns null for unknown extensions", () => {
     expect(getLanguageFromPath("styles.css")).toBeNull();
+  });
+});
+
+describe("language parameter types", () => {
+  it("rejects grammar names the filter does not know", () => {
+    // @ts-expect-error "tsx" is a grammar, not a FilterLanguage
+    shouldIncludeFile("a.tsx", ["tsx"]);
+    // @ts-expect-error "javascript" has no grammar
+    shouldIncludeFile("a.js", ["javascript"]);
+    expect(shouldIncludeFile("a.tsx", ["typescript"])).toBe(true);
   });
 });
