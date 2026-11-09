@@ -84,6 +84,13 @@ active steps. Legacy agent runs without confirmed attachment remain
   once (`maxRetries`); anything else fails the run. `StepResult.usage` sums every attempt,
   retries included, and the active step persists earlier attempts' cost as `priorUsage` so
   a resumed run counts each attempt once.
+
+  `<STEP>` in `STEP_OUTPUT_<STEP>` is the step id upper-cased, with every character outside
+  `[A-Z0-9_]` replaced by `_`: `review/src/a.ts` becomes `STEP_OUTPUT_REVIEW_SRC_A_TS`. Only
+  steps with non-empty output get a variable. Ids that collide after the mapping share one
+  variable and the later result wins: `fetch-data` and `fetch_data` both map to
+  `STEP_OUTPUT_FETCH_DATA`, so the variable holds whichever completed later.
+  `PREVIOUS_STEP_OUTPUTS` is unaffected and lists every step under its original id.
 - **`dispatch(stepId, template, { schema })`** takes a zod schema for a typed step. The runner
   receives it as `StepRunInput.outputSchema` and may pass it to the model; the workflow's own
   parse is authoritative either way. After the runner succeeds, the output is parsed as JSON,
