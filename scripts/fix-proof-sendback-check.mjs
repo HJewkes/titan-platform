@@ -29,9 +29,18 @@ function isFixProofWake(entry) {
   return entry.kind === "wake" && matches(IMPLEMENTER_WAKE_STEP, entry.stepId) && entry.outcome === "woken" && (entry.request === null || entry.request === "fix-proof");
 }
 
-/** The wake row appears only when the step completes, so a wake step still running is a delivered wake in flight. */
-function isRunningImplementerWake(entry) {
-  return entry.kind === "step" && entry.status === "running" && matches(IMPLEMENTER_WAKE_STEP, entry.stepId);
+/** A finished wake step shows as a `wake` entry (outcome woken or unhandled), or as a plain done step when its record did not parse. */
+function isImplementerWakeEntry(entry) {
+  return (entry.kind === "step" || entry.kind === "wake") && matches(IMPLEMENTER_WAKE_STEP, entry.stepId);
+}
+
+function endedWithoutWake(entry) {
+  return entry.kind === "wake" ? entry.outcome !== "woken" : entry.status !== "running";
+}
+
+function endedReason(entry) {
+  const how = entry.kind === "wake" ? entry.outcome : entry.status;
+  return `implementer wake step ${entry.stepId} ended (${how}) without a woken wake row${entry.held ? `: ${entry.held}` : ""}`;
 }
 
 function violations(after) {
@@ -43,8 +52,11 @@ function violations(after) {
 
 function missingWake(entries, proofAt, after) {
   const marker = after.findIndex((entry) => isDoneStep(entry, FIX_PROOF_WAKE_STEP));
-  const woken = marker !== -1 && after.slice(marker + 1).some((entry) => isFixProofWake(entry) || isRunningImplementerWake(entry));
-  if (woken) return { pending: false, failures: [] };
+  const sent = marker === -1 ? [] : after.slice(marker + 1);
+  if (sent.some(isFixProofWake)) return { pending: false, failures: [] };
+  // The wake row appears only when the step completes: a running step is still settling, one that ended without a row never woke.
+  const ended = sent.filter(isImplementerWakeEntry).find(endedWithoutWake);
+  if (ended) return { pending: false, failures: [endedReason(ended)] };
   // A wake after an older head's proof answers that proof; only one with no proof of its own is out of order.
   const olderProof = entries.slice(0, proofAt).findLastIndex((entry) => entry.kind === "step" && matches(PROOF_STEP, entry.stepId));
   const early = entries.slice(olderProof + 1, proofAt).some((entry) => isDoneStep(entry, FIX_PROOF_WAKE_STEP) || isFixProofWake(entry));

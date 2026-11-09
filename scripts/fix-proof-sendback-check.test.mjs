@@ -62,10 +62,34 @@ describe("checkSendBack", () => {
     expect(checkSendBack([proof(H, "running")], H)).toEqual({ ok: false, pending: true, failures: [] });
   });
 
-  it("passes while the implementer wake step is still running after the fix-proof wake step", () => {
+  it("stays pending while the implementer wake step is still running after the fix-proof wake step", () => {
     const entries = [proof(), step("sh-wake-fix-proof"), step("sh-wake-implementer:0", "running")];
 
+    expect(checkSendBack(entries, H)).toEqual({ ok: false, pending: true, failures: [] });
+  });
+
+  it("passes when the running implementer wake step later ends with a woken wake row", () => {
+    const entries = [proof(), step("sh-wake-fix-proof"), wake("sh-wake-implementer:0")];
+
     expect(checkSendBack(entries, H)).toEqual({ ok: true, pending: false, failures: [] });
+  });
+
+  it("fails at once when the implementer wake ends as an unhandled wake entry", () => {
+    const unhandled = { ...wake("sh-wake-implementer:0"), outcome: "unhandled", agent: null, held: "successor refused" };
+    const result = checkSendBack([proof(), step("sh-wake-fix-proof"), unhandled], H);
+
+    expect(result).toMatchObject({ ok: false, pending: false });
+    expect(result.failures).toEqual(["implementer wake step sh-wake-implementer:0 ended (unhandled) without a woken wake row: successor refused"]);
+  });
+
+  it("fails when the implementer wake step is done but its record did not parse into a wake entry", () => {
+    const result = checkSendBack([proof(), step("sh-wake-fix-proof"), step("sh-wake-implementer:0")], H);
+
+    expect(result.failures).toEqual(["implementer wake step sh-wake-implementer:0 ended (done) without a woken wake row"]);
+  });
+
+  it("stays pending when the implementer wake step never started after the fix-proof wake step", () => {
+    expect(checkSendBack([proof(), step("sh-wake-fix-proof")], H)).toEqual({ ok: false, pending: true, failures: [] });
   });
 
   it("stays pending when a running implementer wake has no fix-proof wake step before it", () => {
