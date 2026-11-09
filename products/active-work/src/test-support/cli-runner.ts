@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { vi } from 'vitest';
 
 export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-export const DIST_BIN = path.join(REPO_ROOT, 'dist', 'cli.js');
+const DIST_BIN = path.join(REPO_ROOT, 'dist', 'cli.js');
 
 export interface RunResult {
   status: number;
