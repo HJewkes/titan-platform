@@ -18,4 +18,17 @@ effectiveDoor(declared, computed.door);
 underDeclared(declared, computed.door);
 ```
 
+## The bin
+
+```sh
+pnpm review:burden --base origin/main --body-file body.md
+REVIEW_BURDEN_BODY="$body" pnpm review:burden --enforce
+```
+
+It reads `git diff -M --numstat <base>...HEAD` (default base `origin/main`) and the PR body
+from `--body-file` or the `REVIEW_BURDEN_BODY` variable, prints the burden table, then one JSON
+line with the score, door facts and parsed footer. It exits 0 by default. With `--enforce` it
+exits 1 and prints a remediation message when the footer is missing or the declared door is
+`two-way` while the diff is one-way. An unknown argument exits 2.
+
 See `site/reference/review-burden.md` for the formula and the footer format.
