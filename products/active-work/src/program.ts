@@ -174,7 +174,7 @@ type Accumulator = (value: string, previous: string[] | undefined) => string[];
  * `--tags a,b` from a caller used to the old comma lists would otherwise store one wrong value.
  */
 function refuseCommaList(long: string, accumulate: Accumulator): Accumulator {
-  const flag = long.split(/\s/)[0]!;
+  const flag = long.split(/\s/)[0];
   return (value, previous) => {
     if (value.includes(',')) {
       const parts = value.split(',').map((part) => part.trim()).filter((part) => part.length > 0);
