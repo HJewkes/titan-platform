@@ -1,3 +1,4 @@
+import type * as ChildProcess from "node:child_process";
 import { describe, expect, it, vi } from "vitest";
 
 type Callback = (err: Error | null, stdout: string, stderr: string) => void;
@@ -5,7 +6,7 @@ type Callback = (err: Error | null, stdout: string, stderr: string) => void;
 const calls = vi.hoisted(() => [] as Array<{ file: string; args: string[] }>);
 
 vi.mock("node:child_process", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:child_process")>();
+  const actual = await importOriginal<typeof ChildProcess>();
   return {
     ...actual,
     execFile: (file: string, args: string[], callback: Callback) => {
