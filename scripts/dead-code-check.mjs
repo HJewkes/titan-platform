@@ -17,7 +17,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { identifierMentions, maskSource, wholeImportSpecifiers } from "./dead-code-check-source.mjs";
-import { BUSY_EXIT_CODE, DEFAULT_LOCK_DIR, LockTimeoutError, acquire, lockSlots, lockWaitMs, cleanupOnSignal, release, runCappedWorker, runCleanups } from "./dag-check-lock.mjs";
+import { BUSY_EXIT_CODE, INDEXER_HEAP_CAP_MB, DEFAULT_LOCK_DIR, LockTimeoutError, acquire, lockSlots, lockWaitMs, cleanupOnSignal, release, runCappedWorker, runCleanups } from "./dag-check-lock.mjs";
 
 const SCRIPT = fileURLToPath(import.meta.url);
 const ROOT = path.resolve(path.dirname(SCRIPT), "..");
@@ -26,7 +26,7 @@ const BASELINE_PATH = ".codewatch/dead-exports.json";
 const BASELINE = path.join(ROOT, BASELINE_PATH);
 const ADOPTED_PATH = ".codewatch/dead-exports-adopted.json";
 const TIERS = ["packages", "products", "apps"];
-const HEAP_CAP_MB = 1024;
+export const HEAP_CAP_MB = INDEXER_HEAP_CAP_MB;
 const WORKER_FLAG = "--locked-worker";
 const IMPORTER_EDGES = new Set(["imports", "references", "calls"]);
 // Tests, fixtures, stories, labs, configs, scripts and app entries are roots: nothing imports them by design.

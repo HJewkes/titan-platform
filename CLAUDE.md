@@ -59,6 +59,21 @@ release as a fallback that needs `CODEWATCH_CLI` pointed at a built codewatch ch
 
 Before each push, implementers run `pnpm verify:changed`: max-file-loc, changeset status, tsc for touched packages and related vitest tests, on files changed against origin/main.
 
+## Pre-push checks
+
+Run these before each push, after `pnpm build`. Full detail: `site/guides/contributing.md`.
+
+```
+pnpm verify:changed
+pnpm lint:types --only=<package dir>
+pnpm dead:check
+```
+
+- `pnpm lint:types` applies the type-aware rules in `eslint.typed.config.js`; `pnpm lint` does
+  not, so passing it is no proof. Pass `--only=<package dir>` for each package you touched.
+- `pnpm dead:check` fails on a new unused export. Exit 75 means the dag-check lock stayed busy:
+  retry once.
+
 ## Rules that CI enforces
 
 - **Tier order.** A package imports only its own tier or lower. The `package-layers` rule in

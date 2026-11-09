@@ -55,6 +55,7 @@ const sharedGraphNeedsIsolation = [
   "products/explainer/src/yaml-dir.test.ts",
   "products/factory/src/bot-identity.test.ts",
   "products/factory/src/bot-token-path.test.ts",
+  "products/factory/src/deploy-cli-link.test.ts",
   "products/factory/src/remote-factory.test.ts",
   "products/factory/src/shepherd/merge-facts.test.ts",
   "products/factory/src/shepherd/policy.test.ts",
