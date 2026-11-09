@@ -351,7 +351,7 @@ requested session it examined, with `taskIds` empty when nothing links; a sessio
 out keeps a null `task_source` and is offered again on every pass. The
 upsert updates only the columns it names, so a later column keeps its value. Each linked id
 projects a `task` row and a `session ran task` edge with `attrs = { via: "origin", source }`
-and a confidence of 1.0 for `name` or `name-over-brief`, 0.9 for `brief-anchor` and 0.6 for
+and a confidence of 1.0 for `name`, `name-over-brief` or `spawn-meta`, 0.9 for `brief-anchor` and 0.6 for
 `brief-paragraph`. Only rows resolved in the current pass are projected. When a
 re-resolution drops an id, only that origin-made edge expires. A transcript's `ran` edge
 carries no `via`, and when a transcript claims an edge the origin made first, the edge is

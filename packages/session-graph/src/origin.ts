@@ -61,7 +61,7 @@ export interface ResolvedOrigin {
 /** Stored when a task-aware resolver found no id, so the row is not offered again. */
 export const NO_TASK_LINK = "none";
 
-export type TaskLinkSource = "name" | "name-over-brief" | "brief-anchor" | "brief-paragraph" | typeof NO_TASK_LINK;
+export type TaskLinkSource = "name" | "name-over-brief" | "brief-anchor" | "brief-paragraph" | "spawn-meta" | typeof NO_TASK_LINK;
 
 /** A lifecycle event the launcher saw outside the transcript: `teleport`, `handoff`, `retired`, `exited`. */
 export interface ExternalEvent {
@@ -236,7 +236,7 @@ function projectOrigins(graph: SessionGraph, resolved: readonly string[]): void 
 }
 
 /** A launcher's name is the coordinator's own choice, so it outranks anything read from a brief. */
-const LINK_CONFIDENCE: Record<Exclude<TaskLinkSource, typeof NO_TASK_LINK>, number> = { name: 1, "name-over-brief": 1, "brief-anchor": 0.9, "brief-paragraph": 0.6 };
+const LINK_CONFIDENCE: Record<Exclude<TaskLinkSource, typeof NO_TASK_LINK>, number> = { name: 1, "name-over-brief": 1, "brief-anchor": 0.9, "brief-paragraph": 0.6, "spawn-meta": 1 };
 const LOWEST_CONFIDENCE = 0.6;
 const CONFIDENCE_BY_SOURCE: ReadonlyMap<string, number> = new Map(Object.entries(LINK_CONFIDENCE));
 
