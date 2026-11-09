@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { Project, type FileSystemHost } from "ts-morph";
+import type { FilterLanguage } from "@titan-design/code-parser";
 import { walkSourceFiles } from "./file-walk.js";
 
 /**
@@ -12,7 +13,7 @@ export interface IndexSource {
    * Source files under `rootDirs` that pass the ingest filter for `languages`,
    * deduped and sorted, so float metrics summed in file order match across sources.
    */
-  listFiles(rootDirs: readonly string[], languages: readonly string[]): Promise<string[]>;
+  listFiles(rootDirs: readonly string[], languages: readonly FilterLanguage[]): Promise<string[]>;
   /** UTF-8 content of a file; throws when it does not exist. */
   readFile(abs: string): string;
   fileExists(abs: string): boolean;

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { ErrorHandlingExtractor } from "./error-handling.js";
-import { parseFile } from "@titan-design/code-parser";
+import { parseFile, type GrammarLanguage } from "@titan-design/code-parser";
 import type { ParsedFile } from "./types.js";
 import type { Observation } from "./types.js";
 import * as fs from "node:fs";
@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-async function loadFixture(filename: string, language: string): Promise<ParsedFile> {
+async function loadFixture(filename: string, language: GrammarLanguage): Promise<ParsedFile> {
   const fixturePath = path.join(__dirname, "../../fixtures", filename);
   const content = fs.readFileSync(fixturePath, "utf-8");
   return parseFile(content, fixturePath, language);
@@ -126,7 +126,7 @@ describe("ErrorHandlingExtractor", () => {
   });
 
   describe("identifier matching", () => {
-    async function observe(source: string, language = "typescript"): Promise<Observation[]> {
+    async function observe(source: string, language: GrammarLanguage = "typescript"): Promise<Observation[]> {
       const ext = language === "python" ? "py" : "ts";
       return extractor.extract(await parseFile(source, `inline.${ext}`, language));
     }

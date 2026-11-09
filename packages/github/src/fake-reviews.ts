@@ -20,6 +20,7 @@ function fakeCreateReview(fake: FakeGitHub, number: number, request: CreateRevie
   if (fault && !fault.lands) throw fault.error;
   const review: PullReview = { id, state: "APPROVED", commitId: request.commitId, login: fake.appLogin, userType: "Bot", body: request.body };
   fake.reviews.set(number, [...(fake.reviews.get(number) ?? []), review]);
+  fake.effects.createReview += 1;
   if (fault) throw fault.error;
   return { id };
 }
@@ -32,5 +33,6 @@ function fakeDismissReview(fake: FakeGitHub, number: number, reviewId: number): 
   if (!review) throw new FakeHttpError(404, `no review ${reviewId} on pull ${number}`);
   if (review.state !== "APPROVED" && review.state !== "CHANGES_REQUESTED") throw new FakeHttpError(422, `Can not dismiss a ${review.state.toLowerCase()} pull request review`);
   review.state = "DISMISSED";
+  fake.effects.dismissReview += 1;
   if (fault) throw fault.error;
 }

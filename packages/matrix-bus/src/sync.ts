@@ -27,6 +27,8 @@ export function timelineEvents(res: SyncResponse): MatrixEvent[] {
 }
 
 // A batch spans every joined room, so limited is true if any room's timeline is limited.
+// prev_batch is the first limited room's token with no room id, so it is only meaningful
+// under a single-room filter.
 function timelineGap(res: SyncResponse): { limited: boolean; prev_batch?: string } {
   const timelines = Object.values(res.rooms?.join ?? {}).map((room) => room.timeline ?? {});
   const limited = timelines.some((timeline) => timeline.limited === true);
@@ -43,6 +45,7 @@ function syncQuery(since: string | undefined, options: SyncOptions): Record<stri
   };
 }
 
+// Pass a filter that admits a single room: each batch's prev_batch has no room id.
 // Ends quietly on abort and rethrows anything else, so the caller owns retry and backoff.
 export async function* syncBatches(request: SyncRequest, options: SyncOptions = {}): AsyncGenerator<SyncBatch> {
   const { signal } = options;

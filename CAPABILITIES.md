@@ -284,8 +284,8 @@ You want tree-sitter syntax trees for TypeScript, TSX or Python and nothing else
 Key exports:
 
 - `types`: `Extractor`, `ParsedFile`
-- `parser`: `getSupportedLanguages`, `parseFile`
-- `file-filter`: `getLanguageFromPath`, `isExcludedDir`, `shouldIncludeFile`
+- `parser`: `getSupportedLanguages`, `parseFile`, `GrammarLanguage`
+- `file-filter`: `getLanguageFromPath`, `isExcludedDir`, `shouldIncludeFile`, `FilterLanguage`
 
 <a id="cap-embed"></a>
 
@@ -1706,8 +1706,9 @@ You change retrieval behaviour and need recall measured before and after, agains
 Key exports:
 
 - `pairs`: `formatPairs`, `labelKeys`, `parsePairs`, `scopePair`
-- `corpus/transcripts`: `defaultTranscriptRoots`, `discoverTranscripts`, `readHead`, `streamToolUses`, `textOf`, `transcriptId`
-- `mine/labels`: `dedupeLabels`, `labelledPathOf`
+- `corpus/transcripts`: `readHead`, `streamToolUses`, `textOf`, `transcriptId`
+- `mine/labels`: `dedupeLabels`, `labelledPathOf`, `normaliseLabel`
+- `mine/frontmatter`: `listOfMaps`
 - More in `products/retrieval-eval/src/index.ts`
 
 <a id="cap-session-miner"></a>

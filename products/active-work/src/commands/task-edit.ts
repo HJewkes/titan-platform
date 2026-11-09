@@ -190,7 +190,7 @@ function parseEdit(args: Args): Edit {
   if (flagForm) return patchEdit(args);
   throw new UsageError(
     'Nothing to edit: pass <field> <value>, --append <text>, --add-tag <tag>, --remove-tag <tag>, ' +
-      '--parent <id>, --dep <ids>, --remove-dep <ids>, --deliverable <ids>, --kind, --cos, --area ' +
+      '--parent <id>, --dep <id>, --remove-dep <id>, --deliverable <id>, --kind, --cos, --area ' +
       'or --due',
   );
 }
@@ -373,11 +373,11 @@ export default defineCommand<Args, TaskOrLine>({
       add_tag: { long: '--add-tag', description: 'Add one tag, keeping the others' },
       remove_tag: { long: '--remove-tag', description: 'Remove one tag, keeping the others' },
       parent: { long: '--parent', description: 'Set the parent task id, in this initiative' },
-      dep: { long: '--dep', description: 'Comma-separated ids to add as deps (any initiative)' },
-      remove_dep: { long: '--remove-dep', description: 'Comma-separated ids to drop from deps' },
+      dep: { long: '--dep', description: 'Id to add as a dep (any initiative). Repeat the flag for each value' },
+      remove_dep: { long: '--remove-dep', description: 'Id to drop from deps. Repeat the flag for each value' },
       deliverable: {
         long: '--deliverable',
-        description: 'Comma-separated deliverable ids to add, keeping the others',
+        description: 'Deliverable id to add, keeping the others. Repeat the flag for each value',
       },
       ...CATEGORY_OPTIONS,
       force: {

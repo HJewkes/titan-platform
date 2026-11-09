@@ -1,4 +1,5 @@
 import type { Node } from "web-tree-sitter";
+import { TS_FUNCTION_DECLARATION } from "@titan-design/code-parser/node-kinds";
 import type { StyleExtractor, ParsedFile, Observation } from "./types.js";
 
 const ARRAY_METHODS = new Set([
@@ -163,7 +164,7 @@ export class ControlFlowExtractor implements StyleExtractor {
   private isFunctionBody(parent: Node): boolean {
     const isFunctionBody =
       parent.type === "statement_block" &&
-      (parent.parent?.type === "function_declaration" ||
+      (parent.parent?.type === TS_FUNCTION_DECLARATION ||
         parent.parent?.type === "method_definition" ||
         parent.parent?.type === "arrow_function");
 

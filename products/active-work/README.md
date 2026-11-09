@@ -120,7 +120,7 @@ The most-used surface, grouped by purpose. Run `active-work <command> --help` fo
 | Tasks | `active-work task add <slug> --title ... --priority N` | Add a task |
 | Tasks | `active-work task done <slug> <id>` | Mark a task done |
 | Tasks | `active-work task edit <slug> <id> --append "<line>"` | Append a note line (also `<field> <value>`, `--add-tag`, `--remove-tag`) |
-| Tasks | `active-work task add\|edit ... --parent <id> --dep <ids>` | Set the parent (same initiative) and deps (any initiative); `edit` also takes `--remove-dep <ids>`. Refuses an unknown id, an id filed in two initiatives, a parent in another initiative and a parent or dep cycle |
+| Tasks | `active-work task add\|edit ... --parent <id> --dep <id> [--dep <id>]` | Set the parent (same initiative) and deps (any initiative), one `--dep` per id; `edit` also takes `--remove-dep <id>`. Refuses an unknown id, an id filed in two initiatives, a parent in another initiative and a parent or dep cycle |
 | Tasks | `active-work task add\|edit\|done ... --quiet` | Print one line instead of the task: `MF-3 created`, `MF-3 edited: notes`, `MF-3 done 2026-10-04` |
 | Tasks | `active-work task list [slug]` | List tasks for an initiative or across all |
 | Deliverables | `active-work deliverable add <id> --title ... --done-when ... --owner-seat ...` | Add a deliverable to the platform-wide registry (`titan-platform/deliverables/<id>.yml`, status `planned`); refuses an existing id |
@@ -135,7 +135,7 @@ The most-used surface, grouped by purpose. Run `active-work <command> --help` fo
 | Sessions | `aw <slug>` | Launch Claude with the bootstrap prompt |
 | Sessions | `active-work spawn <name> <profile> (--brief-file <path>\|--brief-stdin) [--host h] [--account <name\|least-used>] [--cwd d] [--briefing slug] [--surface s] [--remote-control]` | Spawn an agent through `agent-chat agent spawn` as yourself (an agent's `AGENT_CHAT_NAME` is forwarded). With no `--account`, the broker picks the least-used logged-in account and prints the readings; a refusal prints them and exits 1. CLI only, never an MCP tool. Finds `agent-chat` on `PATH`, or `AGENT_CHAT_BIN` |
 | Sessions | `active-work open <slug>` | Print the bootstrap prompt to stdout (no claude spawn) |
-| Sessions | `active-work facet add <slug> <alias> --tags a,b [--about ...]` | Add a facet alias that `aw <alias>` opens |
+| Sessions | `active-work facet add <slug> <alias> --tags a --tags b [--about ...]` | Add a facet alias that `aw <alias>` opens |
 | Sessions | `active-work facet list [slug]` | List facet aliases, flagging shadowed ones |
 | Daemon | `active-work mcp serve [--detach]` | Start the HTTP + MCP daemon |
 | Daemon | `active-work mcp status` | Health-check the running daemon |

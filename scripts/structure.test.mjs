@@ -89,7 +89,7 @@ function carryImportViolationRoot() {
   return carryImportRoot({ "src/fixtures/data.ts": "export default 1;\n", "src/use.ts": CARRY_IMPORT });
 }
 
-function undeclaredImportRoot() {
+function undeclaredImportRoot(source = 'import { c } from "@titan-design/c";\n') {
   const root = tempRoot("structure-imports-");
   writeFileSync(join(root, "pnpm-workspace.yaml"), 'packages:\n  - "packages/*"\n');
   const members = {
@@ -101,7 +101,7 @@ function undeclaredImportRoot() {
     mkdirSync(join(root, "packages", dir, "src"), { recursive: true });
     writeFileSync(join(root, "packages", dir, "package.json"), JSON.stringify(pkg));
   }
-  writeFileSync(join(root, "packages/a/src/x.test.ts"), 'import { b } from "@titan-design/b";\nimport { c } from "@titan-design/c";\n');
+  writeFileSync(join(root, "packages/a/src/x.test.ts"), `import { b } from "@titan-design/b";\n${source}`);
   return root;
 }
 
@@ -248,6 +248,18 @@ const cases = [
     rule: "R58 a member declares every workspace package it imports",
     check: checkWorkspaceImportsDeclared,
     root: undeclaredImportRoot,
+    message: "`packages/a/src/x.test.ts` imports `@titan-design/c`, which `@titan-design/a` does not declare.",
+  },
+  {
+    rule: "R58 a vi.mock of an undeclared workspace package is an import",
+    check: checkWorkspaceImportsDeclared,
+    root: () => undeclaredImportRoot('vi.mock("@titan-design/c", () => ({}));\n'),
+    message: "`packages/a/src/x.test.ts` imports `@titan-design/c`, which `@titan-design/a` does not declare.",
+  },
+  {
+    rule: "R58 a template-literal import() of an undeclared workspace package is an import",
+    check: checkWorkspaceImportsDeclared,
+    root: () => undeclaredImportRoot("const c = await import(`@titan-design/c`);\n"),
     message: "`packages/a/src/x.test.ts` imports `@titan-design/c`, which `@titan-design/a` does not declare.",
   },
   {

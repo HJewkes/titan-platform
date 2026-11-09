@@ -54,8 +54,7 @@ pnpm build && pnpm typecheck && pnpm lint && pnpm test && pnpm dag:check && pnpm
 ```
 
 All six must be green. `dag:check` is self-hosted: it runs against this repo's own
-`@titan-design/code-graph`, built by `pnpm build`. `scripts/dag-check.sh` remains for one
-release as a fallback that needs `CODEWATCH_CLI` pointed at a built codewatch checkout.
+`@titan-design/code-graph`, built by `pnpm build`.
 
 Before each push, implementers run `pnpm verify:changed`: max-file-loc, changeset status, tsc for touched packages and related vitest tests, on files changed against origin/main.
 

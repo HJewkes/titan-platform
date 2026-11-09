@@ -44,7 +44,7 @@ products/     runnable compositions of the tiers (private)
 apps/         front ends composed from the tiers (private)
 deploy/       deployable stacks (private): hub, the shared Matrix homeserver
 templates/    the uniform per-package scaffold that scripts/new-package.mjs stamps
-scripts/      new-package.mjs, dag-check-self.mjs, gen-docs-reference.mjs, gen-capabilities.mjs
+scripts/      entry points include new-package.mjs, dag-check-self.mjs, gen-docs-reference.mjs, gen-capabilities.mjs (see package.json scripts for the rest)
 site/         the documentation site (VitePress)
 metrics/      the metrics registry: one titan.metrics/v1 entry per area, checked by pnpm metrics:check
 .codewatch/   check.json: the DAG and fitness rules codewatch enforces

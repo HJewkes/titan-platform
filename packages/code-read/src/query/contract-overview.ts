@@ -1,8 +1,7 @@
 import { DEFAULT_HEALTH_WEIGHTS, type PenaltyWeight } from "@titan-design/code-graph/analysis";
 import { z } from "zod";
-import { BaselineFields } from "./contract-findings.js";
 import { ChurnWindow } from "./contract-hotspots.js";
-import { NodeRef, SnapshotRef } from "./schemas.js";
+import { BaselineFields, NodeRef, SnapshotRef } from "./schemas.js";
 
 /** Most rows the reading order or the look-first list returns. */
 export const OVERVIEW_ROWS_MAX = 50;

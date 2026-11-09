@@ -154,6 +154,30 @@ describe("computeCompoundLayout", () => {
     }
   });
 
+  it("routes an edge from a group to its own descendants in absolute coordinates", async () => {
+    // ELK reports such a route in the source group's frame, not in a shared ancestor's.
+    const input: GraphInput = {
+      ...withAggregates,
+      edges: [
+        { srcId: "pkg:a", dstId: "a/x/one.ts", kind: "imports" },
+        { srcId: "pkg:a", dstId: "pkg:a/x", kind: "imports" },
+      ],
+    };
+    const layout = await computeCompoundLayout(input, null, bySubdir);
+    const groups = new Map(layout.groups.map((g) => [g.id, g]));
+    const boxes = new Map<string, LaidOutNode | LaidOutGroup>([...layout.nodes.map((n) => [n.id, n] as const), ...groups]);
+
+    for (const e of layout.edges) {
+      const route = routeOf(e) ?? [];
+      const label = `edge ${e.srcId}->${e.dstId}`;
+      expect(route.length, `${label} routed`).toBeGreaterThanOrEqual(2);
+      expect(pointOnBorder(route[0]!, groups.get(e.srcId)!), `${label} starts on its source`).toBe(true);
+      expect(pointInBox(route.at(-1)!, boxes.get(e.dstId)!), `${label} ends on its target`).toBe(true);
+    }
+    const toSubgroup = layout.edges.find((e) => e.dstId === "pkg:a/x");
+    expect(pointOnBorder(routeOf(toSubgroup!)!.at(-1)!, groups.get("pkg:a/x")!)).toBe(true);
+  });
+
   it("still routes every file edge to its node borders alongside the group edges", async () => {
     const layout = await computeCompoundLayout(withAggregates, null, bySubdir);
     const groupIds = new Set(layout.groups.map((g) => g.id));
