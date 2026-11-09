@@ -42,7 +42,7 @@
   },
   "products/active-work/src/bootstrap/prompt.ts": {
     "@typescript-eslint/no-unnecessary-condition": {
-      "count": 8
+      "count": 6
     },
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 3
@@ -442,11 +442,6 @@
       "count": 1
     }
   },
-  "products/active-work/src/discover/run-command.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 2
-    }
-  },
   "products/active-work/src/discover/triaged-log.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
@@ -703,6 +698,19 @@
       "count": 1
     }
   },
+  "products/active-work/src/session-index/loop-board-handoff.test.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/session-index/loop-board.test.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 4
+    }
+  },
   "products/active-work/src/session-index/migration-repair.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
@@ -811,19 +819,6 @@
     }
   },
   "products/active-work/src/sessions/live-claude-sessions.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
-    }
-  },
-  "products/active-work/src/sessions/loop-board-handoff.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/sessions/loop-board.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 4
     }
@@ -1036,6 +1031,11 @@
   "products/active-work/src/utils/registered-worktrees.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
+    }
+  },
+  "products/active-work/src/utils/run-command.ts": {
+    "@typescript-eslint/no-unnecessary-condition": {
+      "count": 2
     }
   },
   "products/active-work/src/utils/slug.ts": {

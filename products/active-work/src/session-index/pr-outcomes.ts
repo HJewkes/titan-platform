@@ -1,7 +1,7 @@
 import type { PrKey, PrResolution, PrResolver, ResolvedPr } from '@titan-design/session-graph';
 import { z } from 'zod';
 
-import { runCommand, type RunCommand } from '../discover/run-command.js';
+import { runCommand, type RunCommand } from '../utils/run-command.js';
 import type { WorkspaceGraph } from './graph.js';
 
 /**

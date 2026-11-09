@@ -8,7 +8,7 @@ import {
   type TranscriptFile,
 } from '@titan-design/decider';
 import { toAbsolutePath } from '@titan-design/session-read';
-import { resolveSlugFromCwd } from '../commands/_open-helpers.js';
+import { resolveSlugFromCwd } from '../sessions/initiatives.js';
 import { agentChatHome } from '../session-index/origin-agent-chat.js';
 import { defaultGraphPath, openGraphReadOnly } from '../session-index/graph.js';
 import { exclusionPolicy, loadHumanOnlyInitiatives } from './human-only.js';

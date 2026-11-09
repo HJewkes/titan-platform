@@ -19,7 +19,7 @@ import * as clackPrompts from '@clack/prompts';
 import newCommand from './commands/new.js';
 import openCommand from './commands/open.js';
 import resumeCommand from './commands/resume.js';
-import { resolveLaunchCwd } from './commands/_open-helpers.js';
+import { resolveLaunchCwd } from './sessions/initiatives.js';
 import { agentCaller } from './commands/_done-when-gate.js';
 import {
   buildClaudeArgs,

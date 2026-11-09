@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import YAML from 'yaml';
 
 import { buildBoard, type BoardInput } from './loop-board.js';
-import type { SeatEvent } from '../session-index/seat-events.js';
+import type { SeatEvent } from './seat-events.js';
 import { SNAPSHOT } from '../test-support/fixtures/loop-ledger.js';
 
 const NOW = new Date('2026-07-20T00:00:00Z');
