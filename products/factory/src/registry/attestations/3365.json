@@ -1,4 +1,4 @@
 [
-  { "step": "ci-wait", "closure": "cecc20446e48fd0fb533a2b0750000a01b7e44357255f7a8547bf2752f06f479", "pr": 3365 },
-  { "step": "merge", "closure": "7557e802f5d113a6405a5a217bdf6e6233c873ca0e24681ff3b296d1b0c840a8", "pr": 3365 }
+  { "step": "ci-wait", "closure": "2f179132529b5e985c516b5fb5b754fa207441fd232a4d37f4e4aadff88a8927", "pr": 3365 },
+  { "step": "merge", "closure": "13eaab77ac635667a6d133b0596eab4e3971002099d5744513c92c8735de4c6a", "pr": 3365 }
 ]
