@@ -12,6 +12,8 @@ export interface PrioritiesQuery {
   offset: number;
 }
 
+export const DEFAULT_PRIORITIES_QUERY: PrioritiesQuery = { filters: {}, sort: "severity", offset: 0 };
+
 export type Route =
   | { page: "overview" }
   | { page: "priorities"; query: PrioritiesQuery }
