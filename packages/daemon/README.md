@@ -214,7 +214,7 @@ Exported on their own because they are the reusable pieces:
   catches a recycled pid.
 - `probeHealth(port, { host, timeoutMs })` — `GET /health`, null on any failure.
 - `buildHttpApp(options)` — the hono app alone, testable through `app.request()`.
-- `createMcpServer`, `attachHandlers`, `listTools`, `invokeTool`, `runMcpStdio` — the MCP
+- `createMcpServer`, `listTools`, `invokeTool`, `runMcpStdio` — the MCP
   projection, usable over stdio without running a daemon.
 
 ## Service units (`./service`)

@@ -24,7 +24,7 @@ export {
 export type { Logger } from "./logger.js";
 export { consoleLogger, silentLogger } from "./logger.js";
 export type { McpServerOptions, ToolCallOutcome } from "./mcp.js";
-export { attachHandlers, createMcpServer, invokeTool, listTools, runMcpStdio } from "./mcp.js";
+export { createMcpServer, invokeTool, listTools, runMcpStdio } from "./mcp.js";
 export { NonLoopbackBindError, RemoteBindError, isLoopbackHost } from "./bind-guard.js";
 export type { DaemonAuth, DaemonAuthOptions, LoginCodeLedger, RequestAuth, TokenFileProblem } from "./auth.js";
 export {

@@ -55,7 +55,7 @@ export async function invokeTool<Ctx extends BaseContext>(
 }
 
 /** Wire the tool handlers onto a server instance. Exposed so tests can use a linked transport pair. */
-export function attachHandlers<Ctx extends BaseContext>(server: Server, options: McpServerOptions<Ctx>): void {
+function attachHandlers<Ctx extends BaseContext>(server: Server, options: McpServerOptions<Ctx>): void {
   server.setRequestHandler(ListToolsRequestSchema, () => ({ tools: listTools(options) }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
