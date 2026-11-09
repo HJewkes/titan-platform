@@ -38,6 +38,20 @@ const OWNED_CALLS = `
   ORDER BY o.transcript_id, o.byte_offset, o.block_index
 `;
 
+/** The same ownership rule for a single tool use, looked up by its id. */
+const TOOL_USE_OWNER = `
+  SELECT r.model, r.context_tokens AS tokens FROM tool_call c
+  JOIN request r ON r.transcript_id = c.transcript_id AND r.byte_offset <= c.byte_offset
+  WHERE c.tool_use_id = @toolUseId AND c.transcript_id = @transcriptId
+  ORDER BY r.byte_offset DESC LIMIT 1
+`;
+
+export interface ToolUseOwner {
+  model: string;
+  /** The owning request's context size, `request.context_tokens`. */
+  tokens: number;
+}
+
 interface OwnedRow {
   requestId: string;
   callKey: string;
@@ -56,6 +70,11 @@ export function readRequestToolCalls(db: Db, window: ReportWindow): Map<string, 
     calls.set(row.callKey, row.signal ? withSignal(call, row.signal, row.detail ?? "") : call);
   }
   return new Map([...byRequest].map(([requestId, calls]) => [requestId, [...calls.values()]]));
+}
+
+/** The request that issued one tool use in a transcript, or null when either is not in the graph. */
+export function readToolUseOwner(db: Db, transcriptId: number, toolUseId: string): ToolUseOwner | null {
+  return db.prepare<[object], ToolUseOwner>(TOOL_USE_OWNER).get({ toolUseId, transcriptId }) ?? null;
 }
 
 /** `command_heads` is one `;`-joined string per Bash call; file signals carry one path each. */

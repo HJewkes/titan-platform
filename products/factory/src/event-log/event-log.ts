@@ -187,12 +187,17 @@ const fromRow = (row: StoredRow): EventRow => ({
   payload: JSON.parse(row.payload) as unknown,
 });
 
+const DEFAULT_READ_LIMIT = 500;
+
 /** Rows above `sinceSeq` for one subject or one repo, in ascending seq, at most `limit`. */
 export function readEvents(db: Db, query: ReadEventsQuery): EventRow[] {
+  const limit = query.limit ?? DEFAULT_READ_LIMIT;
+  // SQLite treats a negative LIMIT as unbounded and 0 as empty, so neither is a usable page size.
+  if (!Number.isInteger(limit) || limit <= 0) throw new Error(`readEvents limit must be a positive integer, got ${String(limit)}`);
   const [column, value] = query.subject !== undefined ? ["subject", query.subject] : ["repo", query.repo];
   const kindClause = query.kind === undefined ? "" : " AND kind = @kind";
   const rows = db
     .prepare<Record<string, unknown>, StoredRow>(`SELECT * FROM factory_event WHERE ${column} = @value AND seq > @since${kindClause} ORDER BY seq LIMIT @limit`)
-    .all({ value, since: query.sinceSeq, limit: query.limit ?? 500, ...(query.kind !== undefined && { kind: query.kind }) });
+    .all({ value, since: query.sinceSeq, limit, ...(query.kind !== undefined && { kind: query.kind }) });
   return rows.map(fromRow);
 }
