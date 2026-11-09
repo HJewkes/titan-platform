@@ -301,6 +301,7 @@ graph TD
   retrievalEval --> embed
   retrievalEval --> retrieval
   retrievalEval --> rpcProtocol
+  retrievalEval --> sessionRead
   retrievalEval --> storeSqlite
   sessionMiner --> appPaths
   sessionMiner --> clusterPkg

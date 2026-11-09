@@ -1706,8 +1706,9 @@ You change retrieval behaviour and need recall measured before and after, agains
 Key exports:
 
 - `pairs`: `formatPairs`, `labelKeys`, `parsePairs`, `scopePair`
-- `corpus/transcripts`: `defaultTranscriptRoots`, `discoverTranscripts`, `readHead`, `streamToolUses`, `textOf`, `transcriptId`
-- `mine/labels`: `dedupeLabels`, `labelledPathOf`
+- `corpus/transcripts`: `readHead`, `streamToolUses`, `textOf`, `transcriptId`
+- `mine/labels`: `dedupeLabels`, `labelledPathOf`, `normaliseLabel`
+- `mine/frontmatter`: `listOfMaps`
 - More in `products/retrieval-eval/src/index.ts`
 
 <a id="cap-session-miner"></a>
