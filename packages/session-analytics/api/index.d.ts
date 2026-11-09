@@ -19,7 +19,7 @@ interface SessionOrigin {
     profile?: string | null;
 }
 interface SessionFacts {
-    /** The harness entrypoint. Agent-chat workers and `-p` miners both report "sdk-cli". */
+    /** The harness entrypoint. Agent-chat workers and `-p` miners both report "sdk-cli"; the other SDK entrypoints ("sdk-ts", "sdk-py", any "sdk-*") are other_headless. */
     startType?: string | null;
     origin?: SessionOrigin | null;
     firstUserText?: string | null;
