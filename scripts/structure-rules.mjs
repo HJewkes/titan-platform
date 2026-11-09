@@ -226,7 +226,7 @@ export function checkRootLintCoversWorkspaces(root) {
     );
 }
 
-const WORKSPACE_IMPORT = /(?:\bfrom\s+|\bimport\s*\(\s*|\brequire\s*\(\s*|^import\s+)["'](@titan-design\/[a-z0-9-]+)/gm;
+const WORKSPACE_IMPORT = /(?:\bfrom\s+|\bimport\s*\(\s*|\brequire\s*\(\s*|\bvi\.(?:mock|doMock)\s*\(\s*|^import\s+)["'`](@titan-design\/[a-z0-9-]+)/gm;
 const SOURCE_FILE = /\.[cm]?[jt]sx?$/;
 const SKIPPED_DIRS = new Set(["node_modules", "dist", "coverage"]);
 
