@@ -1,4 +1,4 @@
-import { EdgeTable, EntityTable, quoteIdent, refKind, type Db, type EntityRow } from "@titan-design/store-sqlite";
+import { EdgeTable, EntityTable, parseRef, quoteIdent, refKind, type Db, type EntityRow } from "@titan-design/store-sqlite";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { BLOCKED_KIND, BULLET_KIND, DEFAULT_MEMORY_TABLES, SUPERSEDES, type MemoryTables } from "./schema.js";
@@ -130,7 +130,7 @@ export class PlaybookStore {
 
   /** Ids of the bullets this one replaced, following live `supersedes` edges. */
   supersededBy(id: string): string[] {
-    return this.edges.from(bulletRef(id)).filter((e) => e.relation === SUPERSEDES).map((e) => e.targetRef.slice("memory:".length));
+    return this.edges.from(bulletRef(id)).filter((e) => e.relation === SUPERSEDES).map((e) => parseRef(e.targetRef).id);
   }
 
   recordFeedback(id: string, type: FeedbackType, input: FeedbackInput = {}): FeedbackEvent {
@@ -211,9 +211,9 @@ function toBullet(row: EntityRow): Bullet | undefined {
   const parsed = bulletAttrs.safeParse(row.attrs ?? {});
   if (!parsed.success) return undefined;
   const { content, ...rest } = parsed.data;
-  return { id: row.ref.slice("memory:".length), content, category: row.name ?? "general", ...rest };
+  return { id: parseRef(row.ref).id, content, category: row.name ?? "general", ...rest };
 }
 
 function toEvent(raw: RawFeedbackRow): FeedbackEvent {
-  return { id: raw.id, bulletId: raw.bullet_ref.slice("memory:".length), type: raw.type, at: raw.at, sessionRef: raw.session_ref, reason: raw.reason };
+  return { id: raw.id, bulletId: parseRef(raw.bullet_ref).id, type: raw.type, at: raw.at, sessionRef: raw.session_ref, reason: raw.reason };
 }

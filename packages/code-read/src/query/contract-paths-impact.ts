@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { BaselineFields, Finding } from "./contract-findings.js";
+import { Finding } from "./contract-findings.js";
 import { ChurnWindow } from "./contract-hotspots.js";
-import { NodeRef, SnapshotRef } from "./schemas.js";
+import { BaselineFields, NodeRef, SnapshotRef } from "./schemas.js";
 
 /** Most paths one `paths.impact` call takes. */
 export const PATHS_IMPACT_MAX = 500;
