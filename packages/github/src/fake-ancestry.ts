@@ -1,6 +1,6 @@
 import type { Ancestry } from "./compare.js";
 import type { GhResult, GitExec } from "./exec.js";
-import type { Commit, PullRequest } from "./port.js";
+import type { Commit, PullRequest } from "./port-types.js";
 
 /** What the fake's history is made of: created commits with their parents, ref tips and PR heads. */
 interface FakeHistory {

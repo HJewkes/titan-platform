@@ -1,5 +1,5 @@
-import { isTransient } from "./rest.js";
-import type { GitHubWire, RepoSlug, WriteResult } from "./port.js";
+import { httpStatusOf, isRetryableWrite } from "./rest.js";
+import type { GitHubWire, RepoSlug, WriteResult } from "./port-types.js";
 import { closedSkip } from "./close-pr.js";
 
 export async function updateBranch(wire: GitHubWire, repo: RepoSlug, number: number, expectedHeadSha: string): Promise<WriteResult> {
@@ -30,15 +30,6 @@ async function retryUpdateBranch(wire: GitHubWire, repo: RepoSlug, number: numbe
   return { done: true };
 }
 
-export function isRetryableWrite(error: unknown): boolean {
-  return isTransient(error) || (httpStatusOf(error) ?? 0) >= 500;
-}
-
 function isHeadMismatch(error: unknown): boolean {
   return httpStatusOf(error) === 422 && /expected head sha|head (branch )?(was )?(modified|moved)/i.test(error instanceof Error ? error.message : "");
-}
-
-export function httpStatusOf(error: unknown): number | undefined {
-  if (typeof error !== "object" || error === null || !("status" in error)) return undefined;
-  return typeof error.status === "number" ? error.status : undefined;
 }

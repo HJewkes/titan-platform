@@ -1,4 +1,4 @@
-import { COMPARE_FILE_CAP, type CompareResult } from "./port.js";
+import { COMPARE_FILE_CAP, type CompareResult } from "./port-types.js";
 import type { BranchCommit, BranchCommits } from "./port-types.js";
 import type { Rest } from "./rest.js";
 
