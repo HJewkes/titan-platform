@@ -11,9 +11,7 @@ interface Extractor<T> {
     extract(file: ParsedFile): T[];
 }
 
-declare function parseFile(content: string, filePath: string, language: string): Promise<ParsedFile>;
-declare function getSupportedLanguages(): string[];
-
+type FilterLanguage = "typescript" | "python";
 /**
  * True when a directory NAME should be pruned from a recursive source walk
  * (node_modules, dist, .git, …). File discovery already rejects files under
@@ -23,7 +21,11 @@ declare function getSupportedLanguages(): string[];
  * changes no output. Kept in sync with `EXCLUDED_DIRS`.
  */
 declare function isExcludedDir(dirName: string): boolean;
-declare function shouldIncludeFile(filePath: string, languages: string[]): boolean;
-declare function getLanguageFromPath(filePath: string): string | null;
+declare function shouldIncludeFile(filePath: string, languages: FilterLanguage[]): boolean;
+declare function getLanguageFromPath(filePath: string): FilterLanguage | null;
 
-export { type Extractor, type ParsedFile, getLanguageFromPath, getSupportedLanguages, isExcludedDir, parseFile, shouldIncludeFile };
+type GrammarLanguage = FilterLanguage | "tsx";
+declare function parseFile(content: string, filePath: string, language: GrammarLanguage): Promise<ParsedFile>;
+declare function getSupportedLanguages(): GrammarLanguage[];
+
+export { type Extractor, type FilterLanguage, type GrammarLanguage, type ParsedFile, getLanguageFromPath, getSupportedLanguages, isExcludedDir, parseFile, shouldIncludeFile };

@@ -284,8 +284,8 @@ You want tree-sitter syntax trees for TypeScript, TSX or Python and nothing else
 Key exports:
 
 - `types`: `Extractor`, `ParsedFile`
-- `parser`: `getSupportedLanguages`, `parseFile`
-- `file-filter`: `getLanguageFromPath`, `isExcludedDir`, `shouldIncludeFile`
+- `parser`: `getSupportedLanguages`, `parseFile`, `GrammarLanguage`
+- `file-filter`: `getLanguageFromPath`, `isExcludedDir`, `shouldIncludeFile`, `FilterLanguage`
 
 <a id="cap-embed"></a>
 

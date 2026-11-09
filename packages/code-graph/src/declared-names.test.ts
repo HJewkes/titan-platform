@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseFile } from "@titan-design/code-parser";
+import { parseFile, type GrammarLanguage } from "@titan-design/code-parser";
 import { collectDeclaredNames, collectDeclaredSpans } from "./declared-names.js";
 
 const TS = `// a comment
@@ -55,7 +55,7 @@ describe("declared names", () => {
   });
 });
 
-const names = async (source: string, filePath = "/repo/src/a.ts", language = "typescript") =>
+const names = async (source: string, filePath = "/repo/src/a.ts", language: GrammarLanguage = "typescript") =>
   [...collectDeclaredNames(await parseFile(source, filePath, language))].sort();
 
 describe("scope-qualified declared names (TP-182)", () => {

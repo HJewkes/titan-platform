@@ -2,7 +2,7 @@ import { N as NodeKind, G as GraphNode, a as GraphEdge, b as GraphMetric, I as I
 export { A as ArchEdge, m as ArchPackage, n as ArchResult, o as ArchSubNode, p as BucketableViolation, q as BusFactorChange, r as BusFactorRow, s as CallGraphMetrics, t as CallableComplexity, u as CentralRow, v as CheckRulesFile, w as ComplexityDistribution, x as ComplexityRollup, y as ComputeArchInput, z as ComputeDriftInput, D as CouplingClass, H as CouplingDelta, J as CouplingRow, K as CycleKind, L as DEFAULT_HEALTH_WEIGHTS, M as DEFAULT_MAX_PACKAGE_SIZE, O as DeadModuleConsumer, P as DeadModuleRow, Q as DeadModuleView, U as DeadModulesOptions, W as EXTERNAL_BUCKET, X as EXTREME_CC, Y as ExcessChange, Z as ForbidImportRule, _ as GraphReportResult, $ as GrowthRiskRow, a0 as HIGH_CC, a1 as HealthComponent, a2 as HealthComponentKey, a3 as HealthInput, a4 as HealthWeights, a5 as HotExport, a6 as HotspotDelta, a7 as HotspotRow, a8 as ImportCyclicMass, a9 as LayeredDepsRule, aa as LinkMethod, ab as LinkTestsOptions, ac as MetricMaxRule, ad as MetricMinRule, ae as MetricOutlierRule, af as MetricProductMaxRule, ag as NODE_KINDS, ah as NODE_ROLES, ai as NewHotspot, aj as NoImportCyclesRule, ak as NoInternalOnlyBarrelsRule, al as PackageComplexityRow, am as PackageDependencyRow, an as PackageFlag, ao as PackageLayer, ap as PackageRoot, aq as PackageStats, ar as PairCoupling, as as PairFlag, at as PartitionQualityInput, au as PartitionQualityResult, av as PenaltyWeight, aw as QualitySection, ax as ReportContext, ay as ReportContextInput, az as ReportDrift, aA as SnapshotContext, aB as SymbolConsumerGroup, aC as SymbolConsumerRow, aD as SymbolCouplingPayload, aE as SymbolCouplingRow, aF as SymbolUtil, aG as TestCoverageRow, aH as UnchangedViolation, aI as UntestedRiskRow, aJ as UnusedExportRow, aK as ViolationIdentity, aL as WeightedLink, aM as aggregateEdges, aN as bucketFilesByPackage, aO as bucketViolations, aP as buildBlastRadius, aQ as buildCentralFiles, aR as buildHotExports, aS as buildNodeMetrics, aT as buildReportContext, aU as buildSymbolCouplingPayload, aV as busFactorOf, aW as callGraphMetrics, aX as classifyCoupling, aY as collectNodeMetrics, aZ as collectSymbolUtil, a_ as compareExcess, a$ as complexityDistribution, b0 as computeArch, b1 as computeHealth, b2 as computePartitionQuality, b3 as computeReportDrift, b4 as computeSymbolConsumers, b5 as computeSymbolCoupling, b6 as dependencyGraphMetrics, b7 as filteredFileIds, b8 as groupTestsBySource, b9 as hotspotScoreOf, ba as importCyclicMass, bb as invertBuckets, bc as keepNode, bd as linkTestsToSources, be as lookupMetric, bf as packagesReferencedByEdges, bg as pairKey, bh as publicApiFiles, bi as qualitySection, bj as rebasedViolationKey, bk as referencedNodes, bl as summarizeComplexity, bm as testCoverageCountMetrics, bn as toSortedEdges, bo as topBusFactorRisks, bp as topCentralFiles, bq as topDeadModules, br as topGrowthRisks, bs as topHotspots, bt as topTestCoverageRisks, bu as topUntestedRisks, bv as topUnusedExports, bw as violationExcess, bx as violationKey } from './browser.js';
 import { Db, Migration } from '@titan-design/store-sqlite';
 import { FileSystemHost, Project } from 'ts-morph';
-import { Extractor, ParsedFile } from '@titan-design/code-parser';
+import { FilterLanguage, Extractor, ParsedFile } from '@titan-design/code-parser';
 export { Extractor, ParsedFile, getLanguageFromPath, getSupportedLanguages, parseFile, shouldIncludeFile } from '@titan-design/code-parser';
 import { Node } from 'web-tree-sitter';
 import { C as ChurnEntry, a as ChurnWindow } from './change-coupling.js';
@@ -175,7 +175,7 @@ interface IndexSource {
      * Source files under `rootDirs` that pass the ingest filter for `languages`,
      * deduped and sorted, so float metrics summed in file order match across sources.
      */
-    listFiles(rootDirs: readonly string[], languages: readonly string[]): Promise<string[]>;
+    listFiles(rootDirs: readonly string[], languages: readonly FilterLanguage[]): Promise<string[]>;
     /** UTF-8 content of a file; throws when it does not exist. */
     readFile(abs: string): string;
     fileExists(abs: string): boolean;
@@ -515,7 +515,7 @@ interface ReuseBasis {
  * directory branch — drops it well under budget and makes the walker unit-
  * testable in isolation.
  */
-declare function walkSourceFiles(rootDirs: readonly string[], languages: readonly string[]): Promise<string[]>;
+declare function walkSourceFiles(rootDirs: readonly string[], languages: readonly FilterLanguage[]): Promise<string[]>;
 
 /** 1-based inclusive line span of a declaration, for coverage range-attribution (C-63). */
 interface LineSpan {
