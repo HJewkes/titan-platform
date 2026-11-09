@@ -1,18 +1,12 @@
 import { z } from "zod";
 import { ChurnWindow } from "./contract-hotspots.js";
 import { NodeLens, NodeLenses } from "./contract-node-lenses.js";
-import { MetricDescriptor, MissingReason, NodeRef, SnapshotRef } from "./schemas.js";
+import { BaselineFields, MetricDescriptor, MissingReason, NodeRef, SnapshotRef } from "./schemas.js";
 
 /** The row cap on `hierarchy.get`; past it the result says `truncated` and the shallowest rows are kept. */
 export const HIERARCHY_ROW_CAP = 5_000;
 
 const MetricNames = z.array(z.string().min(1)).max(40);
-
-/** Present only with a baseline: the baseline's id, and false when its index version differs, so deltas may compare unlike measures. */
-const BaselineFields = {
-  baselineSnapshotId: z.number().int().optional(),
-  comparable: z.boolean().optional(),
-};
 
 const hierarchyArgs = z.object({
   snapshot: SnapshotRef.optional(),

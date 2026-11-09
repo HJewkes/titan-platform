@@ -47,3 +47,17 @@ export function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
     signal.addEventListener("abort", done);
   });
 }
+
+/** Resolves when something calls a waiter in `waiters`, or when `signal` aborts; either way the waiter is removed. */
+export function waitFor(waiters: Set<() => void>, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+    const done = () => {
+      waiters.delete(done);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    };
+    waiters.add(done);
+    signal?.addEventListener("abort", done);
+  });
+}
