@@ -93,6 +93,10 @@ export async function whileRosterSlow<T>(timing: PollTiming, signal: AbortSignal
   }
 }
 
+/** Every step's roster read waits out a booting broker and then a slow one, so no step turns a busy broker into a refusal (TP-3020). */
+export const patientRoster = <T>(timing: BrokerDownTiming, signal: AbortSignal, budgetMs: number, read: () => Promise<T>): Promise<T> =>
+  whileRosterSlow(timing, signal, budgetMs, () => whileBrokerBooting(timing, signal, read));
+
 /** An unread roster started nobody, so the step says so rather than reading as a refusal; any other throw stays one. */
 export function rosterUnread(error: unknown): NotStarted {
   if (!(error instanceof ReviewerRosterUnread)) throw error;

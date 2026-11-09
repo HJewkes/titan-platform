@@ -8,7 +8,7 @@ import { errorClass } from "./error-class.js";
 import { G10_ADVERSARY_CLASS, holdClassOf } from "./g10-release.js";
 import { independentOfRun, type Lineage } from "./lineage.js";
 import { separateLineages } from "./reviewer-lineage.js";
-import { transient, whileBrokerBooting, whileRosterSlow, type BrokerDownTiming } from "./review-wait.js";
+import { patientRoster, transient, type BrokerDownTiming } from "./review-wait.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
 
 /** The `Attests:` tokens of the accepted MERGE and, on a panel, the adversary member's own MERGE and whether the plan had one. */
@@ -76,8 +76,7 @@ interface RosterPatience {
   signal: AbortSignal;
 }
 
-const patiently = <T>(read: () => Promise<T>, { timing, budgetMs, signal }: RosterPatience) => () =>
-  whileRosterSlow(timing, signal, budgetMs, () => whileBrokerBooting(timing, signal, read));
+const patiently = <T>(read: () => Promise<T>, { timing, budgetMs, signal }: RosterPatience) => () => patientRoster(timing, signal, budgetMs, read);
 
 export interface AttestSkewWiring {
   /** Main's registry commits the running build lacks; absent reads no skew, so the attest step judges at once (TP-4752). */

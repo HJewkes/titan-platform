@@ -889,6 +889,31 @@ describe("sh-review", () => {
     expect(steps.clock.sleeps).toBe(2);
   });
 
+  it("sh-review waits out a timed-out first roster read and spawns the reviewer once it answers, not a refusal (TP-3020)", async () => {
+    const dispatch = fakeDispatch();
+    const roster = dispatch.roster;
+    let reads = 0;
+    dispatch.roster = async () => (reads++ < 3 ? Promise.reject(new ReviewerAskTimedOut("agent-chat timed out")) : roster());
+    const steps = reviewSteps(dispatch);
+
+    const { result } = await steps.review(spawnIntent);
+
+    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-octo-demo-7", at: START });
+    expect(result).not.toHaveProperty("refused");
+    expect(dispatch.spawns).toHaveLength(1);
+    expect(steps.clock.sleeps).toBeGreaterThanOrEqual(3);
+  });
+
+  it("sh-review answers a first roster read timed out past the session-start window as not started, never refused (TP-3020)", async () => {
+    const dispatch = fakeDispatch();
+    dispatch.roster = async () => Promise.reject(new ReviewerAskTimedOut("agent-chat timed out"));
+
+    const { result } = await reviewSteps(dispatch).review(spawnIntent);
+
+    expect(result).toEqual({ kind: "none", notStarted: true, reason: "the reviewer dispatch was refused: ReviewerAskTimedOut (roster unread after 0 min)" });
+    expect(dispatch.spawns).toEqual([]);
+  });
+
   it("names the last roster error when the started reviewer is never seen because every later roster read failed", async () => {
     const dispatch = fakeDispatch();
     const roster = dispatch.roster;
