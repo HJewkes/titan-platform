@@ -1,8 +1,8 @@
-import { createReadStream, existsSync, readdirSync } from "node:fs";
-import { homedir } from "node:os";
+import { createReadStream } from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
+import { claudeTranscriptRoots, discoverAllTranscripts } from "@titan-design/session-read";
 
 /**
  * Raw Claude Code transcripts, read as lines rather than through the session
@@ -19,33 +19,13 @@ export interface ToolUse {
   cwd?: string;
 }
 
-/** `~/.claude/projects` plus every profile's, since spawned agents run under profiles. */
-export function defaultTranscriptRoots(home = homedir()): string[] {
-  const roots = [path.join(home, ".claude", "projects")];
-  const profiles = path.join(home, ".claude-profiles");
-  if (!existsSync(profiles)) return roots;
-  for (const entry of readdirSync(profiles, { withFileTypes: true })) {
-    if (entry.isDirectory()) roots.push(path.join(profiles, entry.name, "projects"));
-  }
-  return roots;
-}
-
-export function discoverTranscripts(roots: string[]): string[] {
-  const files: string[] = [];
-  for (const root of roots) {
-    if (!existsSync(root)) continue;
-    for (const project of readdirSync(root)) {
-      const dir = path.join(root, project);
-      let entries: string[];
-      try {
-        entries = readdirSync(dir);
-      } catch {
-        continue;
-      }
-      for (const file of entries) if (file.endsWith(".jsonl")) files.push(path.join(dir, file));
-    }
-  }
-  return files.sort();
+/**
+ * Every transcript session-read discovers (each config root, `CLAUDE_CONFIG_DIRS`,
+ * subagent sidechains), as sorted absolute paths so a mine is reproducible.
+ */
+export async function transcriptFiles(env: NodeJS.ProcessEnv = process.env): Promise<string[]> {
+  const found = await discoverAllTranscripts(claudeTranscriptRoots(env));
+  return found.map((transcript) => transcript.absolutePath).sort();
 }
 
 /** The uuid a transcript is named for, which is also the session id a record can cite. */
