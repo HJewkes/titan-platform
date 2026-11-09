@@ -44,7 +44,8 @@ const explainerTests = ["products/explainer/src/**/*.test.{ts,tsx}"];
 const consoleTests = ["apps/console/{src,scripts,server}/**/*.test.{ts,tsx}"];
 // vi.mock replaces only a module the worker has not loaded yet, so in a shared graph these files' mocks miss; a HOME
 // stub would outlive its file. bot-identity asserts on @titan-design/github's process-wide rate budget, which another
-// file's client has already moved. They run isolated.
+// file's client has already moved. host.ownership-lost's lease-loss wait hangs to its timeout only in a shared factory
+// fork of a full run, never alone or under CPU load (TP-4788). They run isolated.
 const sharedGraphNeedsIsolation = [
   "apps/console/server/config-writers.test.ts",
   "apps/console/server/daemon.test.ts",
@@ -56,6 +57,7 @@ const sharedGraphNeedsIsolation = [
   "products/factory/src/bot-identity.test.ts",
   "products/factory/src/bot-token-path.test.ts",
   "products/factory/src/deploy-cli-link.test.ts",
+  "products/factory/src/host.ownership-lost.test.ts",
   "products/factory/src/remote-factory.test.ts",
   "products/factory/src/shepherd/merge-facts.test.ts",
   "products/factory/src/shepherd/policy.test.ts",
