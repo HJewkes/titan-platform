@@ -3,7 +3,8 @@ import type { CallExpression, Node } from "estree";
 
 export const DEFAULT_MOTION_PATHS: readonly string[] = ["/ui/beats/", "/motion/"];
 
-const TEST_FILE = /(\.(test|spec)\.[cm]?[jt]sx?$)|(\/__tests__\/)/;
+// Test helpers hold models that break the purity contract on purpose, to prove the pure-run traps catch them.
+const TEST_FILE = /(\.(test|spec|test-helpers)\.[cm]?[jt]sx?$)|(\/__tests__\/)/;
 const GLOBAL_OBJECTS = new Set(["globalThis", "window", "self"]);
 const TIMERS = new Set(["setTimeout", "setInterval", "setImmediate", "requestAnimationFrame"]);
 const BANNED_MEMBERS: Readonly<Record<string, ReadonlySet<string>>> = {

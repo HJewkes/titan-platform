@@ -136,8 +136,6 @@ export default tseslint.config(
   // Beat and motion code must derive frames from the beat's t, so a seek or a second render matches (TP-4138). The explainer holds no ui/beats or motion dir yet, so its beat, camera, timing and composition page sources are named.
   {
     files: ["**/products/explainer/src/**", "**/ui/beats/**", "**/motion/**"],
-    // Test helpers hold models that break the purity contract on purpose, to prove the pure-run traps catch them.
-    ignores: ["**/*.test-helpers.ts"],
     rules: { "titan/no-wall-clock-motion": ["error", { paths: MOTION_PATHS }] },
   },
   // A test that compares elapsed time, or a ratio of times, with a limit fails on a loaded hosted runner: count the work, or time it only under a bench flag (TP-4262).
