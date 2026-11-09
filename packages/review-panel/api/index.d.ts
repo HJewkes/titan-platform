@@ -400,9 +400,9 @@ interface ReviewerBriefInput extends WorkflowCiInput {
     fixFirsts?: number;
     /** True when this run's verdict will reach the owner; the brief then also asks for an OWNER-BRIEF block. */
     ownerBrief?: boolean;
-    /** The reviewer test rule for the host serve runs on; absent means `CI_REVIEWER_TEST_RULE`, and `ciChecks` replaces it. */
+    /** The reviewer test rule for the host serve runs on; absent means `CI_REVIEWER_TEST_RULE`. `ciChecks` replaces it unless it hides a required row, when the rule still applies (TP-3478). */
     testRule?: string;
-    /** The check-runs Shepherd read at this head; when set they replace `testRule`, so the reviewer judges CI from them and reads none itself. */
+    /** The check-runs Shepherd read at this head; when set they replace `testRule`, so the reviewer judges CI from them and reads none itself. When they hide a required row, `testRule` still applies and the reviewer reads CI itself (TP-3478). */
     ciChecks?: readonly CiCheckRow[];
     /** The raw `fix-proof/v1` result line; it is parsed and checked against the head, and only counts and the verdict reach the prompt. */
     fixProof?: string;
