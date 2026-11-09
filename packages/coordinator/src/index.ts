@@ -89,3 +89,20 @@ export {
 export type { ChainError, ChainResult, ConfigEditResult, ConfigRevision, DocumentChange } from "./config-revision.js";
 export { EDITABLE_FIELDS, checkEditableValue, editableField } from "./editable-fields.js";
 export type { ConfigSurface, EditableField, EditableValue, EditableValueResult, ReloadClass } from "./editable-fields.js";
+export {
+  approvalState,
+  ownerApprovalSchema,
+  readRiskContract,
+  resolveProgramme,
+  riskContractRefSchema,
+  riskContractSchema,
+  ruleDigest,
+} from "./risk-contract.js";
+export type {
+  ApprovalState,
+  OwnerApproval,
+  ResolvedRiskContract,
+  RiskContract,
+  RiskContractRead,
+  RiskContractRef,
+} from "./risk-contract.js";
