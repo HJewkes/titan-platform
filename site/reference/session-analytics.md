@@ -121,6 +121,10 @@ prompt size, output, cost and running totals, plus the compaction marks. `tools`
 `errors` and `agents` are the breakdowns, each with ascending time arrays that
 `countAtOrBefore` searches for a scrubbed time.
 
+A browser bundle imports `countAtOrBefore` and the `SessionTimeline` types from the
+`@titan-design/session-analytics/timeline` subpath. Its import graph holds no session-graph,
+store-sqlite, session-read or `node:*` module, which `src/browser-safe.test.ts` checks.
+
 Every `*Ms` field is epoch milliseconds and the model holds no time zone. A session that
 crosses midnight is one unbroken run of buckets, and the renderer picks the zone.
 
