@@ -136,6 +136,15 @@ describe("titan-factory planner probe", () => {
     expect((await probe(["merges", "--since", "yesterday"])).code).toBe(2);
   });
 
+  it("refuses a since that has the ISO shape but names a day that does not exist", async () => {
+    expect((await probe(["merges", "--since", "2026-02-30T00:00:00Z"])).code).toBe(2);
+  });
+
+  it("drops an event stamped with a day that does not exist", async () => {
+    const out = await probe(["merges", "--since", SINCE], { merged: [{ number: 7, mergedAt: "2026-02-30T00:00:00Z" }, { number: 8, mergedAt: AFTER }] });
+    expect(out.stdout).toBe(`${REPO}#8 merged ${AFTER}\n`);
+  });
+
   it("fails rather than printing nothing when no repo is configured", async () => {
     let stderr = "";
     const io: CliIo = { stdout: () => {}, stderr: (text) => void (stderr += text), env: {} };

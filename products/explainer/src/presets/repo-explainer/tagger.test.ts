@@ -9,9 +9,10 @@ import {
   type StepRunInput,
   type StepRunner,
 } from "@titan-design/workflow";
+import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
 import type { ExplainerFact } from "./schemas.js";
-import { tagFacts, type TagControl, type TaggerArm, type TagFactsOptions, type TagFactsResult, type TagRole } from "./tagger.js";
+import { buildTagBatches, tagFacts, type TagControl, type TaggerArm, type TagFactsOptions, type TagFactsResult, type TagRole } from "./tagger.js";
 
 const fact = (id: string, text = `The ${id} module stores runs in sqlite.`): ExplainerFact => ({
   id, source: "topic", kind: "feature", text, evidence: [{ path: `src/${id}.ts`, lineStart: 1, lineEnd: 3 }],
@@ -158,6 +159,25 @@ describe("tagFacts", () => {
 
     expect(resumed).toHaveLength(2);
     expect(sink[0]!.tags.map((tag) => tag.id)).toEqual(FACTS.map((f) => f.id));
+  });
+
+  it("changes the batch key when only an excerpt changes", () => {
+    const keys = (prefix: string) => buildTagBatches(FACTS, { ...baseOptions(), excerpt: (span) => `${prefix} ${span.path}` }).map((batch) => batch.key);
+
+    expect(keys("// edited")).not.toEqual(keys("// original"));
+    expect(keys("// original")).toEqual(keys("// original"));
+  });
+
+  it("reports fact ids a schema-valid reply leaves untagged", async () => {
+    const model = fakeModel();
+    const out = await runTagger(inlineRunner((input) => {
+      const reply = z.object({ tags: z.array(z.object({ id: z.string() }).passthrough()) }).parse(JSON.parse(model(input)));
+      return JSON.stringify({ tags: reply.tags.filter((tag) => tag.id !== "F-2") });
+    }));
+
+    expect(out.missing).toEqual(["F-2"]);
+    expect(out.dropped).toEqual([]);
+    expect(out.tags.map((tag) => tag.id)).not.toContain("F-2");
   });
 
   it("refuses to tag with an empty control pool", async () => {
