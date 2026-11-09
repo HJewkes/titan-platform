@@ -124,14 +124,20 @@ export type BotApiCall =
   | { ok: true; result: unknown }
   | { ok: false; error: SendError };
 
-/** Parsing the URL here, not inside fetch, is what lets a malformed base URL count as never sent. */
+/**
+ * Parsing the URL here, not inside fetch, is what lets a malformed base URL
+ * count as never sent. A `FormData` body sets no content type, so fetch writes
+ * the multipart boundary itself.
+ */
 function methodRequest(
   config: TelegramConfig,
   method: string,
-  body: Record<string, unknown>,
+  body: Record<string, unknown> | FormData,
 ): Parameters<typeof fetch> {
+  const url = new URL(methodUrl(config, method));
+  if (body instanceof FormData) return [url, { method: "POST", body }];
   return [
-    new URL(methodUrl(config, method)),
+    url,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -149,7 +155,7 @@ function methodRequest(
 export async function callBotApi(
   config: TelegramConfig,
   method: string,
-  body: Record<string, unknown>,
+  body: Record<string, unknown> | FormData,
   handle = "",
 ): Promise<BotApiCall> {
   const redact = (value: string): string => redactToken(value, config.token);

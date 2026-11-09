@@ -3,6 +3,7 @@ import type {
   ChannelCapabilities,
   InteractionResult,
   InteractiveTransport,
+  MediaSendResult,
   SendError,
   SendInput,
   SendResult,
@@ -85,6 +86,7 @@ const BLUEBUBBLES_CAPABILITIES: ChannelCapabilities = {
   drafts: false,
   draftStreaming: false,
   threads: false,
+  media: false,
 };
 
 function unsupported(
@@ -97,6 +99,17 @@ function unsupported(
       kind: "unsupported",
       capability,
       message: `iMessage over BlueBubbles cannot ${what} without the Private API`,
+    },
+  };
+}
+
+function mediaUnsupported(what: string): MediaSendResult {
+  return {
+    ok: false,
+    error: {
+      kind: "unsupported",
+      capability: "media",
+      message: `This BlueBubbles adapter cannot ${what}; it sends text only`,
     },
   };
 }
@@ -128,6 +141,15 @@ export class BlueBubblesTransport implements InteractiveTransport {
 
   async answerAction(): Promise<InteractionResult> {
     return unsupported("buttons", "answer a button tap");
+  }
+
+  /** Attachments go through a different endpoint this adapter does not implement yet, so no request is made. */
+  async sendVoice(): Promise<MediaSendResult> {
+    return mediaUnsupported("send a voice note");
+  }
+
+  async sendPhoto(): Promise<MediaSendResult> {
+    return mediaUnsupported("send a photo");
   }
 
   /** `buttons` is ignored: iMessage has no inline keyboards, so only the text goes. */
