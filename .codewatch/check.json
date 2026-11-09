@@ -1303,7 +1303,6 @@
       "exclude": [
         "apps/console/server/review-schema-0.3/schema.ts",
         "products/active-work/src/aw.ts",
-        "products/active-work/src/bootstrap/prompt.ts",
         "products/active-work/src/commands/task-edit.ts",
         "products/active-work/src/commands/wrap.ts",
         "products/active-work/src/doctor.ts",
@@ -1324,10 +1323,6 @@
       "metric": "cyclomatic_max",
       "kind": "file",
       "max": 30,
-      "$comment": "The products/active-work entries: owner decision 443 (2026-10-18), adopted verbatim from HJewkes/active-work eead047; TP-3541 removes this exclude.",
-      "exclude": [
-        "products/active-work/src/bootstrap/prompt.ts"
-      ],
       "excludeRoles": [
         "test",
         "fixture"
