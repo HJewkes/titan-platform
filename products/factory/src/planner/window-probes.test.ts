@@ -101,9 +101,13 @@ describe("titan-factory planner probe", () => {
     expect(out.stdout).toBe(`gate run-2/approve-merge resolved ${AFTER}\nround r9 answered ${AFTER}\n`);
   });
 
-  it("reports a round whose feedback cannot be dated instead of dropping it", async () => {
-    const out = await probe(["owner-contact", "--since", SINCE], { rounds: [{ id: "r8", submittedAt: undefined }] });
-    expect(out.stdout).toBe("round r8 answered at an unknown time: feedback.json does not parse\n");
+  it.each([
+    ["invalid JSON", "feedback.json is not valid JSON"],
+    ["schema mismatch", "feedback.json has no valid submittedAt field"],
+    ["non-ISO submittedAt", "submittedAt is not an ISO time"],
+  ])("reports a round undatable by %s with its own cause", async (_name, why) => {
+    const out = await probe(["owner-contact", "--since", SINCE], { rounds: [{ id: "r8", submittedAt: undefined, why }] });
+    expect(out.stdout).toBe(`round r8 answered at an unknown time: ${why}\n`);
   });
 
   it("counts a red main run and a ci-failed gate opened in the window as new red", async () => {
