@@ -389,6 +389,9 @@ const { candidates, coverage } = await findSimilarCapability(store, snapshotId, 
   co-location filter.
 - **Python symbols are not in the corpus yet.** The Python extractor records no signature or
   docstring, so no Python symbol passes the corpus filter.
+- **Width mismatch fails loudly.** If the query embedding's width differs from the stored
+  vectors' (the model changed dimensions without changing its name), `findSimilarCapability`
+  rejects with `vector length mismatch` instead of returning wrong rankings.
 - **Prefixes are part of the cache key.** `embedder.model` includes a hash of the embedder's
   prefix table, so two prefix configurations never share a vector. codewatch used no prefix;
   `new OllamaEmbedder({ prefixes: { document: "", query: "" } })` reproduces its rankings.

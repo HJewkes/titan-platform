@@ -159,4 +159,14 @@ describe("embeddings", () => {
     const embedder = fakeEmbedder(VECTORS, "never-embedded-model");
     await expect(findSimilarCapability(db, snap, "anything", embedder)).rejects.toThrow(/embedSnapshot/);
   });
+
+  it("fails loudly when the query embedding width differs from the stored vectors", async () => {
+    const snap = insertFixture(db);
+    await embedSnapshot(db, snap, fakeEmbedder(VECTORS));
+    const narrowQuery = fakeEmbedder({ ...VECTORS, "add a number helper": [1, 0, 0] });
+
+    await expect(findSimilarCapability(db, snap, "add a number helper", narrowQuery)).rejects.toThrow(
+      /vector length mismatch/,
+    );
+  });
 });
