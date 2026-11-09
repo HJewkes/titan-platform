@@ -5,19 +5,16 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type * as clackPrompts from '@clack/prompts';
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
+import type { StepPaths } from './steps-deps.js';
 import {
   stepCheckNode,
   stepCreateActiveRoot,
   stepWriteSchemaVersion,
   stepWriteConfigStub,
-  stepInstallSkill,
-  stepRegisterMcp,
-  stepRegisterAgentChatHooks,
-  stepStartDaemon,
-  stepIngestion,
-  stepSupervision,
-  type StepPaths,
-} from './steps.js';
+} from './steps-local.js';
+import { stepInstallSkill } from './steps-install.js';
+import { stepRegisterMcp, stepRegisterAgentChatHooks } from './steps-register.js';
+import { stepStartDaemon, stepIngestion, stepSupervision } from './steps-daemon.js';
 
 function makeTempPaths(): {
   paths: StepPaths;

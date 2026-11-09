@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { defineCommand } from '../registry/index.js';
-import { runUninstall } from '../setup/steps.js';
+import { runUninstall } from '../setup/uninstall.js';
 import { color } from '../utils/color.js';
 
 /**
