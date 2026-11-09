@@ -29,6 +29,11 @@ function isFixProofWake(entry) {
   return entry.kind === "wake" && matches(IMPLEMENTER_WAKE_STEP, entry.stepId) && entry.outcome === "woken" && (entry.request === null || entry.request === "fix-proof");
 }
 
+/** The wake row appears only when the step completes, so a wake step still running is a delivered wake in flight. */
+function isRunningImplementerWake(entry) {
+  return entry.kind === "step" && entry.status === "running" && matches(IMPLEMENTER_WAKE_STEP, entry.stepId);
+}
+
 function violations(after) {
   const failures = [];
   for (const entry of after.filter(isReview)) failures.push(`reviewer spawned after the proof: ${entry.kind} ${entry.stepId}`);
@@ -38,7 +43,7 @@ function violations(after) {
 
 function missingWake(entries, proofAt, after) {
   const marker = after.findIndex((entry) => isDoneStep(entry, FIX_PROOF_WAKE_STEP));
-  const woken = marker !== -1 && after.slice(marker + 1).some(isFixProofWake);
+  const woken = marker !== -1 && after.slice(marker + 1).some((entry) => isFixProofWake(entry) || isRunningImplementerWake(entry));
   if (woken) return { pending: false, failures: [] };
   // A wake after an older head's proof answers that proof; only one with no proof of its own is out of order.
   const olderProof = entries.slice(0, proofAt).findLastIndex((entry) => entry.kind === "step" && matches(PROOF_STEP, entry.stepId));
