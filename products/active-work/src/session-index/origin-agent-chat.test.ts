@@ -10,11 +10,10 @@ import { openGraph } from './graph.js';
 import {
   agentChatOriginResolver,
   BRIEF_EXCERPT_CHARS,
-  eventsDbSource,
   resolveFromSource,
   type IsKnownTask,
-  type OpenDatabase,
 } from './origin-agent-chat.js';
+import { eventsDbSource, type OpenDatabase } from './origin-agent-chat-read.js';
 
 // Copied from `sqlite3 ~/.agent-chat/events.db .schema` on 2026-09-23.
 const EVENTS_DDL = `

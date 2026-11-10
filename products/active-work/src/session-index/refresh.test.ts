@@ -7,13 +7,8 @@ import { PRICE_TABLE, PRICE_TABLE_VERSION } from '@titan-design/session-analytic
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { openGraph, type SessionGraph } from './graph.js';
-import {
-  readRefreshLockHolder,
-  refreshLockHolderPath,
-  runRefresh,
-  withRefreshLock,
-  type RefreshSummary,
-} from './refresh.js';
+import { readRefreshLockHolder, refreshLockHolderPath, withRefreshLock } from './refresh-lock.js';
+import { runRefresh, type RefreshSummary } from './refresh.js';
 import { RefreshScheduler } from './scheduler.js';
 import type * as Preserve from './preserve.js';
 import type * as WorkspaceRefresh from '../workspace-index/refresh.js';
