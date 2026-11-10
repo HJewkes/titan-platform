@@ -109,6 +109,20 @@ function toResolved(pr: GhPr): ResolvedPr {
   };
 }
 
+/** Bands match session-graph's PRS_NEEDING_OUTCOME, so a cap cannot starve open PRs behind backfill. */
+function byPollingOrder(byRef: ReadonlyMap<string, CheckedRow>): (a: PrKey, b: PrKey) => number {
+  const band = (pr: PrKey): number => {
+    const row = byRef.get(pr.prRef);
+    if (!row?.outcome_checked_at) return 0;
+    return row.state?.toLowerCase() === 'merged' ? 2 : 1;
+  };
+  const checkedAt = (pr: PrKey): string => byRef.get(pr.prRef)?.outcome_checked_at ?? '';
+  return (a, b) =>
+    band(a) - band(b) ||
+    checkedAt(a).localeCompare(checkedAt(b)) ||
+    a.prRef.localeCompare(b.prRef);
+}
+
 /**
  * The package re-asks a checked PR until it is merged, which would re-query
  * every PR each pass. A never-checked PR is always asked, since a transcript-seen
@@ -131,7 +145,6 @@ function selectPrs(
     .prepare<[], CheckedRow>('SELECT pr_ref, state, outcome_checked_at, commit_times FROM pr')
     .all();
   const byRef = new Map(rows.map((row) => [row.pr_ref, row]));
-  const checkedAt = (pr: PrKey): string => byRef.get(pr.prRef)?.outcome_checked_at ?? '';
   return prs
     .filter((pr) => {
       const failed = failedAt.get(pr.prRef);
@@ -141,7 +154,7 @@ function selectPrs(
       if (row.state?.toLowerCase() === 'merged') return row.commit_times === null;
       return isDue(row, now, every);
     })
-    .sort((a, b) => checkedAt(a).localeCompare(checkedAt(b)))
+    .sort(byPollingOrder(byRef))
     .slice(0, limit);
 }
 

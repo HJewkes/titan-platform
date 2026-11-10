@@ -100,6 +100,9 @@ disk even with `force`. Assigned allocations remain exempt before branch-keeping
   the same conditions as `refusals` and `warnings` without changing anything.
 - An existing branch for the agent's name is adopted when it holds unmerged commits and reset
   when it does not. Pass `forceReset` to discard it.
+- `allocate` appends `/<basePath>/` (default `/.worktrees/`) to `<git-common-dir>/info/exclude`
+  so the primary's `git status` stays clean. The append is idempotent and keeps existing lines;
+  an absolute or `..` base path is skipped.
 - The repository setup step is read from `.agent-chat/worktree.json` at origin's fetched
   default branch only, never from the agent's branch or a local HEAD.
 - The default branch prefix is `agent-chat/`; the sweep treats only branches with the prefix
