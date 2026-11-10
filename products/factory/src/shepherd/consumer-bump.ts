@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { GitHubPort, RepoFile, RepoSlug } from "@titan-design/github";
-import { parseAllDocuments } from "yaml";
+import { parse as parseYaml, parseAllDocuments } from "yaml";
 import { z } from "zod";
 import type { Registration } from "./store.js";
 
@@ -62,6 +62,8 @@ export interface ConsumerTree {
   lockfile: { kind: LockfileKind; file: RepoFile } | null;
   workspaceYaml: RepoFile | null;
   npmrc: RepoFile | null;
+  /** The patch files the root `pnpm.patchedDependencies` and pnpm-workspace.yaml `patchedDependencies` name; one that is not in the repo is absent. */
+  patches: RepoFile[];
 }
 
 export async function readConsumerTree(port: GitHubPort, repo: RepoSlug, ref: string): Promise<ConsumerTree> {
@@ -71,7 +73,23 @@ export async function readConsumerTree(port: GitHubPort, repo: RepoSlug, ref: st
   for (const dir of lockfile ? workspaceDirs(lockfile) : []) manifests.push(await requiredFile(port, repo, `${dir}/package.json`, ref));
   const workspaceYaml = await port.getFile(repo, "pnpm-workspace.yaml", ref);
   const npmrc = await port.getFile(repo, ".npmrc", ref);
-  return { repo, ref, manifests, lockfile, workspaceYaml, npmrc };
+  const patches = await readPatches(port, repo, ref, root, workspaceYaml);
+  return { repo, ref, manifests, lockfile, workspaceYaml, npmrc, patches };
+}
+
+const PatchedDependencies = z.record(z.string(), z.string()).optional();
+
+async function readPatches(port: GitHubPort, repo: RepoSlug, ref: string, root: RepoFile, workspaceYaml: RepoFile | null): Promise<RepoFile[]> {
+  const fromRoot = z.looseObject({ pnpm: z.looseObject({ patchedDependencies: PatchedDependencies }).optional() }).parse(JSON.parse(root.content)).pnpm?.patchedDependencies;
+  const fromWorkspace = workspaceYaml ? z.looseObject({ patchedDependencies: PatchedDependencies }).nullable().parse(parseYaml(workspaceYaml.content))?.patchedDependencies : undefined;
+  const paths = [...new Set([...Object.values(fromRoot ?? {}), ...Object.values(fromWorkspace ?? {})])].sort();
+  const patches: RepoFile[] = [];
+  for (const path of paths) {
+    if (path.startsWith("/") || path.split("/").some((part) => part === ".." || part === "" || part === ".")) throw new Error(`patchedDependencies names ${JSON.stringify(path)} outside the repo`);
+    const patch = await port.getFile(repo, path, ref);
+    if (patch !== null) patches.push(patch);
+  }
+  return patches;
 }
 
 async function requiredFile(port: GitHubPort, repo: RepoSlug, path: string, ref: string): Promise<RepoFile> {
