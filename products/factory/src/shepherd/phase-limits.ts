@@ -8,6 +8,7 @@ export const MERGING_STALL_LIMIT_MS = 15 * MINUTE;
 export const PHASE_STALL_LIMIT_MS: Readonly<Partial<Record<Phase, number>>> = {
   ci: 60 * MINUTE,
   fixing: 240 * MINUTE,
+  diagnosis: 240 * MINUTE,
   review: 120 * MINUTE,
   merging: MERGING_STALL_LIMIT_MS,
 };

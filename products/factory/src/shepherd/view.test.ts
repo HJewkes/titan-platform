@@ -265,7 +265,17 @@ describe("a run held at registration waiting in its merge step", () => {
   });
 
   it("emits only the phases agent-chat's burndown parses, which rejects the whole status array on any other (CC-791)", () => {
-    expect(PhaseSchema.options).toEqual(["awaiting-pr", "ci", "fixing", "review", "awaiting-approval", "merging", "post-merge", "done", "failed", "cancelled"]);
+    expect(PhaseSchema.options).toEqual(["awaiting-pr", "ci", "fixing", "diagnosis", "review", "awaiting-approval", "merging", "post-merge", "done", "failed", "cancelled"]);
+  });
+
+  it("reads a run waiting for a new head after a no-verdict diagnosis as diagnosis, and after a fix wake as fixing", () => {
+    const after = (previous: string) => ({ ...pausedAt("await-new-head:0"), stepResults: { [previous]: { stepId: previous, iteration: 0, completedAt: "2026-01-01T00:30:00.000Z", signal: null, data: {} } } }) as WorkflowRun;
+
+    const diagnosing = watchRow({ registration, run: after("sh-no-verdict-diagnosis:" + "1".repeat(40)) });
+    const fixing = watchRow({ registration, run: after("sh-wake-fix-first:" + "1".repeat(40)) });
+
+    expect(diagnosing).toMatchObject({ phase: "diagnosis", phaseSince: "2026-01-01T00:30:00.000Z", nextAction: "waiting for the diagnosis planner's findings and a new head" });
+    expect(fixing).toMatchObject({ phase: "fixing", nextAction: "waiting for the implementer's new head" });
   });
 
   it("names a hold with no reviewer by its reason alone", () => {

@@ -55,7 +55,8 @@ function completedSteps(run: WorkflowRun): StepResult[] {
 function runPhase(run: WorkflowRun, steps: readonly StepResult[]): Phase {
   const terminal = TERMINAL_PHASE[run.status] ?? (endedAt(run, steps) === undefined ? undefined : "done");
   const current = run.currentStep ?? steps.at(-1)?.stepId;
-  return terminal ?? (current === undefined ? (run.params.pr === undefined ? "awaiting-pr" : "ci") : stepPhase(current));
+  const previous = run.currentStep === null ? steps.at(-2)?.stepId : steps.at(-1)?.stepId;
+  return terminal ?? (current === undefined ? (run.params.pr === undefined ? "awaiting-pr" : "ci") : stepPhase(current, previous));
 }
 
 function headOf(result: StepResult): string | undefined {
@@ -75,6 +76,7 @@ const WAITING: Readonly<Record<Phase, string>> = {
   "awaiting-pr": "waiting for a PR on the registered branch",
   ci: "waiting for CI",
   fixing: "waiting for the implementer's new head",
+  diagnosis: "waiting for the diagnosis planner's findings and a new head",
   review: "waiting for the review",
   "awaiting-approval": "waiting on the merge decision",
   merging: "merging",
