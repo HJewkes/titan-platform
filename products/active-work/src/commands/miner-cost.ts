@@ -3,6 +3,7 @@ import {
   costReportSchema,
   renderCostReportText,
 } from '@titan-design/session-analytics';
+import { EXTRACT_VERSION } from '@titan-design/session-read';
 import { z } from 'zod';
 import { defineCommand } from '../registry/index.js';
 import { defaultGraphPath, openGraphReadOnly } from '../session-index/graph.js';
@@ -54,6 +55,7 @@ export default defineCommand<Args, Result>({
         since: args.since,
         until: args.until,
         top: args.top,
+        facetVersion: EXTRACT_VERSION,
       });
       if (ctx.format !== 'json') process.stderr.write(renderCostReportText(report));
       return report;

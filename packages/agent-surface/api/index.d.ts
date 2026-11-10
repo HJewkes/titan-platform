@@ -387,7 +387,10 @@ interface RunAgentOptions {
     paneSources?: PaneSources;
     /** Prefix for the launcher's own messages on stderr. */
     label?: string;
-    /** Called once with the spawned child, right after spawn and before the brief is written, so a host can attach its own handlers. */
+    /**
+     * Called once with the spawned child, right after spawn and before the brief is written, so a host can attach its own handlers.
+     * A throw aborts the launch: the child is killed and the error propagates out of `runAgent`.
+     */
     onSpawn?: (child: ChildProcess) => void;
 }
 /** Reads a plan the host wrote; the host owns its shape, so only the fields the launcher execs are checked. */

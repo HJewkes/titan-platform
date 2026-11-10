@@ -6,7 +6,7 @@ import {
   EXTRACT_VERSION,
   type TranscriptRoot,
 } from '@titan-design/session-read';
-import { AUDIT_FACET, FACET_TABLE } from '@titan-design/session-graph';
+import { readCoverage } from '@titan-design/session-analytics';
 import { z } from 'zod';
 import { defineCommand } from '../registry/index.js';
 import { defaultGraphPath, openGraphReadOnly, SCHEMA_VERSION } from '../session-index/graph.js';
@@ -149,15 +149,6 @@ function transcriptsByAccount(db: Database.Database): Record<string, number> {
   return counts;
 }
 
-function facetBacklog(db: Database.Database): number {
-  return scalar(
-    db,
-    `SELECT COUNT(*) AS n FROM transcript t
-       LEFT JOIN ${FACET_TABLE} f ON f.transcript_id = t.source_id AND f.facet = '${AUDIT_FACET}'
-      WHERE t.status = 'ok' AND COALESCE(f.version, -1) < ${EXTRACT_VERSION}`,
-  );
-}
-
 async function daemonState(): Promise<Result['daemon']> {
   const health = await probeHealth(resolveDaemonPort());
   return health?.index ?? null;
@@ -230,7 +221,7 @@ export default defineCommand<Args, Result>({
           missing: statusCount('missing'),
           byAccount: transcriptsByAccount(db),
         },
-        facetBacklog: facetBacklog(db),
+        facetBacklog: readCoverage(db, EXTRACT_VERSION).facetBacklog,
         episodeBacklog: staleEpisodeSessions(db).length,
         watermark: {
           lastIndexedAt:

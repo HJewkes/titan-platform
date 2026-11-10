@@ -1244,6 +1244,9 @@ importers:
       '@titan-design/agent-protocol':
         specifier: workspace:^
         version: link:../../packages/agent-protocol
+      '@titan-design/app-paths':
+        specifier: workspace:^
+        version: link:../../packages/app-paths
       '@titan-design/cluster':
         specifier: workspace:^
         version: link:../../packages/cluster

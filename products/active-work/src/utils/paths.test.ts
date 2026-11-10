@@ -1,5 +1,6 @@
 import os from 'node:os';
 import path from 'node:path';
+import { activeWorkRoot, appDirs } from '@titan-design/app-paths';
 import envPaths from 'env-paths';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -73,5 +74,40 @@ describe('initiative paths', () => {
   it('builds the miner root outside any initiative directory', () => {
     vi.stubEnv('ACTIVE_ROOT', '/tmp/aw-paths-test');
     expect(getMinerRoot()).toBe('/tmp/aw-paths-test/.miner');
+  });
+});
+
+describe('parity with @titan-design/app-paths', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  const activeRootCases: Array<[string, string | undefined]> = [
+    ['unset', undefined],
+    ['empty', ''],
+    ['absolute', '/home/user/aw-root'],
+    ['tilde-prefixed', '~/aw-root'],
+    ['bare tilde', '~'],
+    ['relative', 'aw-root/nested'],
+  ];
+
+  it.each(activeRootCases)('getActiveRoot matches activeWorkRoot when ACTIVE_ROOT is %s', (_label, value) => {
+    if (value === undefined) vi.stubEnv('ACTIVE_ROOT', undefined);
+    else vi.stubEnv('ACTIVE_ROOT', value);
+    expect(getActiveRoot()).toBe(activeWorkRoot());
+  });
+
+  it('getStateRoot and getConfigRoot match appDirs under XDG overrides', () => {
+    vi.stubEnv('XDG_STATE_HOME', '/home/user/xdg-state');
+    vi.stubEnv('XDG_CONFIG_HOME', '/home/user/xdg-config');
+    expect(getStateRoot()).toBe(appDirs('active-work').log);
+    expect(getConfigRoot()).toBe(appDirs('active-work').config);
+  });
+
+  it('getStateRoot and getConfigRoot match appDirs when XDG variables are unset', () => {
+    vi.stubEnv('XDG_STATE_HOME', undefined);
+    vi.stubEnv('XDG_CONFIG_HOME', undefined);
+    expect(getStateRoot()).toBe(appDirs('active-work').log);
+    expect(getConfigRoot()).toBe(appDirs('active-work').config);
   });
 });
