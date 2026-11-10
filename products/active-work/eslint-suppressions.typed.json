@@ -492,11 +492,6 @@
       "count": 1
     }
   },
-  "products/active-work/src/lint/index.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/active-work/src/lint/task.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 2
