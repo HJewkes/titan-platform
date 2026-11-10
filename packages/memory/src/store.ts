@@ -131,7 +131,7 @@ export class PlaybookStore {
 
   /** Ids of the bullets this one replaced, following live `supersedes` edges. */
   supersededBy(id: string): string[] {
-    return this.edges.from(bulletRef(id)).filter((e) => e.relation === SUPERSEDES).map((e) => parseRef(e.targetRef).id);
+    return this.edges.from(bulletRef(id)).filter((e) => e.relation === SUPERSEDES).flatMap((e) => memoryIdOf(e.targetRef) ?? []);
   }
 
   recordFeedback(id: string, type: FeedbackType, input: FeedbackInput = {}): FeedbackEvent {
