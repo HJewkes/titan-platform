@@ -16,11 +16,11 @@ afterEach(() => {
 });
 
 /** A port with no methods makes every read throw, which each sweep turns into an error note. */
-async function runSweeps(seats: unknown[]) {
+async function runSweeps(remotes: string[]) {
   const log = partialFake<Logger>({ info: vi.fn(), warn: vi.fn(), error: vi.fn() });
   const services = partialFake<ShepherdServices>({
     port: partialFake<ShepherdServices["port"]>({}),
-    seats: () => ({ seats, denied: [] }) as ReturnType<ShepherdServices["seats"]>,
+    seats: () => partialFake<ReturnType<ShepherdServices["seats"]>>({ seats: remotes.length > 0 ? [partialFake<ReturnType<ShepherdServices["seats"]>["seats"][number]>({ remotes })] : [], denied: [] }),
     store: partialFake<ShepherdServices["store"]>({ get: () => partialFake<ReturnType<ShepherdServices["store"]["get"]>>({ all: () => [] }) }),
   });
   vi.useFakeTimers();
@@ -38,7 +38,7 @@ describe("package sweep note logging", () => {
   });
 
   it("logs a consumer bump error note at warn", async () => {
-    const log = await runSweeps([{ remotes: ["acme/widgets"] }]);
+    const log = await runSweeps(["acme/widgets"]);
 
     expect(log.warn).toHaveBeenCalledWith(expect.objectContaining({ repo: "acme/widgets", error: expect.any(String) }), "swept a consumer bump");
     expect(log.info).not.toHaveBeenCalledWith(expect.anything(), "swept a consumer bump");
