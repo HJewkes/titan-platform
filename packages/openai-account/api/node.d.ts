@@ -54,16 +54,16 @@ interface LoginStatusOutput {
 declare function loginStateFromStatus(output: LoginStatusOutput): LoginState;
 
 interface UsageWindow {
-    used_percentage: number;
-    resets_at: number;
+    readonly used_percentage: number;
+    readonly resets_at: number;
 }
 interface UsageReading {
-    account: string;
+    readonly account: string;
     /** Quota observation time, in epoch seconds; never an emission or read time. */
-    written_at: number;
-    rate_limits: {
-        five_hour: UsageWindow;
-        seven_day: UsageWindow;
+    readonly written_at: number;
+    readonly rate_limits: {
+        readonly five_hour: UsageWindow;
+        readonly seven_day: UsageWindow;
     };
 }
 declare const KNOWN_OBSERVATION: unique symbol;
