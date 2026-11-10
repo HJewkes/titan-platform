@@ -2,7 +2,7 @@ import nodePath from 'node:path';
 import { ConfigError } from '../errors.js';
 import { getActiveRoot } from '../utils/paths.js';
 import { lintHashes } from '../lint/index.js';
-import { listInitiativeSlugs } from '../sessions/initiatives.js';
+import { listInitiativeSlugsOrEmpty } from '../sessions/initiatives.js';
 import { loadTasks } from '../lint/load-tasks.js';
 import { loadNotesFromDir } from '../notes/note-file.js';
 import { NOTE_TITLE_MAX_LENGTH } from '../schemas/note.js';
@@ -91,7 +91,7 @@ function sessionFilesCheck(malformed: string[]): DoctorCheck {
  */
 export async function checkSessions(deps: DoctorDeps): Promise<DoctorCheck[]> {
   const activeRoot = deps.activeRoot ?? getActiveRoot();
-  const slugs = await listInitiativeSlugs(activeRoot);
+  const slugs = await listInitiativeSlugsOrEmpty(activeRoot);
   const byKind = new Map<DanglingKind, string[]>();
   const malformed: string[] = [];
   const badTaskRefs: string[] = [];
@@ -144,7 +144,7 @@ function noteTitlesCheck(entries: string[]): DoctorCheck {
 /** Notes whose stored title exceeds the write-time bound. */
 export async function checkNoteTitles(deps: DoctorDeps): Promise<DoctorCheck> {
   const activeRoot = deps.activeRoot ?? getActiveRoot();
-  const slugs = await listInitiativeSlugs(activeRoot);
+  const slugs = await listInitiativeSlugsOrEmpty(activeRoot);
   const overlong: string[] = [];
   for (const slug of slugs) {
     const { notes } = await loadNotesFromDir(nodePath.join(activeRoot, slug));
@@ -240,7 +240,7 @@ export async function checkWorkspaceIndexRefs(deps: DoctorDeps): Promise<DoctorC
 /** Structured artifacts (tasks/*.yml, artifacts.yml, brief.md) whose content no longer matches the last CLI write (AW-66). */
 export async function checkArtifactHashes(deps: DoctorDeps): Promise<DoctorCheck> {
   const activeRoot = deps.activeRoot ?? getActiveRoot();
-  const slugs = await listInitiativeSlugs(activeRoot);
+  const slugs = await listInitiativeSlugsOrEmpty(activeRoot);
   const drifted: string[] = [];
   for (const slug of slugs) {
     const findings = await lintHashes(slug, nodePath.join(activeRoot, slug));
