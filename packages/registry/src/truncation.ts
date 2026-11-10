@@ -22,7 +22,7 @@ const DEFAULT_HEAD_RATIO = 0.6;
 
 /**
  * Cuts tool output to a byte budget, keeping the head and tail of the input.
- * Prefers whole lines with a `--- N lines omitted ---` marker (`1 line` when one is cut); when not even the
+ * Prefers whole lines with a `--- N lines omitted ---` marker; when not even the
  * first and last line fit, it cuts at code point boundaries instead.
  */
 export function truncateOutput(input: string, options: TruncateOptions): TruncateResult {
