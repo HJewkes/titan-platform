@@ -327,13 +327,13 @@ describe('stepRegisterMcp', () => {
         stderr: { on: () => undefined },
         on: (event: string, cb: (arg?: unknown) => void) => {
           handlers[event] ??= [];
-          handlers[event]!.push(cb);
+          handlers[event].push(cb);
         },
       };
       queueMicrotask(() => {
         const err = new Error('not found') as NodeJS.ErrnoException;
         err.code = 'ENOENT';
-        handlers.error?.forEach((cb) => cb(err));
+        handlers.error.forEach((cb) => cb(err));
       });
       return child as unknown as ReturnType<typeof nodeSpawn>;
     });
@@ -355,11 +355,11 @@ describe('stepRegisterMcp', () => {
         stderr: { on: () => undefined },
         on: (event: string, cb: (arg?: unknown) => void) => {
           handlers[event] ??= [];
-          handlers[event]!.push(cb);
+          handlers[event].push(cb);
         },
       };
       queueMicrotask(() => {
-        handlers.close?.forEach((cb) => cb(0));
+        handlers.close.forEach((cb) => cb(0));
       });
       return child as unknown as ReturnType<typeof nodeSpawn>;
     });
@@ -461,12 +461,12 @@ describe('stepSupervision', () => {
         stderr: { on: () => undefined },
         on: (event: string, cb: (arg?: unknown) => void) => {
           handlers[event] ??= [];
-          handlers[event]!.push(cb);
+          handlers[event].push(cb);
         },
       };
       queueMicrotask(() => {
         const code = args.includes('bootout') ? 3 : 0;
-        handlers.close?.forEach((cb) => cb(code));
+        handlers.close.forEach((cb) => cb(code));
       });
       return child as unknown as ReturnType<typeof nodeSpawn>;
     });
@@ -525,13 +525,13 @@ describe('stepSupervision', () => {
         },
         on: (event: string, cb: (arg?: unknown) => void) => {
           handlers[event] ??= [];
-          handlers[event]!.push(cb);
+          handlers[event].push(cb);
         },
       };
       queueMicrotask(() => {
         // daemon-reload succeeds; enable fails as it would with no user bus.
         const code = args.includes('enable') ? 1 : 0;
-        handlers.close?.forEach((cb) => cb(code));
+        handlers.close.forEach((cb) => cb(code));
       });
       return child as unknown as ReturnType<typeof nodeSpawn>;
     });
@@ -579,15 +579,15 @@ describe('stepStartDaemon (linux supervision detection)', () => {
         stderr: { on: () => undefined },
         on: (event: string, cb: (arg?: unknown) => void) => {
           handlers[event] ??= [];
-          handlers[event]!.push(cb);
+          handlers[event].push(cb);
         },
       };
       queueMicrotask(() => {
         // Only the is-active probe is expected; reply 0 to signal active.
         if (args.includes('is-active')) {
-          handlers.close?.forEach((cb) => cb(0));
+          handlers.close.forEach((cb) => cb(0));
         } else {
-          handlers.close?.forEach((cb) => cb(0));
+          handlers.close.forEach((cb) => cb(0));
         }
       });
       return child as unknown as ReturnType<typeof nodeSpawn>;

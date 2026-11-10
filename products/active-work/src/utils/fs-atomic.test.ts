@@ -71,8 +71,8 @@ describe('withFileLock', () => {
 
     // Each caller's enter and exit must be adjacent in the log.
     for (let i = 0; i < events.length; i += 2) {
-      const enter = events[i]!.split(':');
-      const exit = events[i + 1]!.split(':');
+      const enter = events[i].split(':');
+      const exit = events[i + 1].split(':');
       expect(enter[0]).toBe('enter');
       expect(exit[0]).toBe('exit');
       expect(enter[1]).toBe(exit[1]);

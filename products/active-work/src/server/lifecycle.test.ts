@@ -46,14 +46,14 @@ describe('writePidFile / readPidFile', () => {
     const meta = { port: 7400, version: '0.1.0', started: 'x' };
     await writePidFile(1000, meta);
 
-    let stop = false;
+    const reading = { stop: false };
     const observed: (number | null)[] = [];
     const reader = (async () => {
-      while (!stop) observed.push((await readPidFile())?.pid ?? null);
+      while (!reading.stop) observed.push((await readPidFile())?.pid ?? null);
     })();
 
     for (let i = 0; i < 200; i += 1) await writePidFile(i % 2 === 0 ? 1000 : 2000, meta);
-    stop = true;
+    reading.stop = true;
     await reader;
 
     // A truncate-then-write would leave the file momentarily empty, which

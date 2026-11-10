@@ -135,7 +135,7 @@ describe('integration: live daemon roundtrip on a random port', () => {
       const callParsed = parseMcpResponse(await callRes.text());
       const content = callParsed.result?.content;
       expect(Array.isArray(content)).toBe(true);
-      const inner = JSON.parse(content![0]!.text) as {
+      const inner = JSON.parse(content![0].text) as {
         ok: boolean;
         data: { sections: unknown };
       };

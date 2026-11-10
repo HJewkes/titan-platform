@@ -6,6 +6,7 @@ import {
 } from '@titan-design/session-analytics';
 import { EXTRACT_VERSION } from '@titan-design/session-read';
 import { z } from 'zod';
+import { UsageError } from '../errors.js';
 import { defineCommand } from '../registry/index.js';
 import { defaultGraphPath, openGraphReadOnly } from '../session-index/graph.js';
 
@@ -35,7 +36,14 @@ async function expandSessionIds(values: readonly string[]): Promise<string[]> {
       continue;
     }
     const text = await readFile(value.slice(1), 'utf8');
-    ids.push(...text.split('\n').map((line) => line.trim()).filter((line) => line.length > 0));
+    const fileIds = text
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    if (fileIds.length === 0) {
+      throw new UsageError(`--session-ids file ${value.slice(1)} has no session ids`);
+    }
+    ids.push(...fileIds);
   }
   return ids;
 }
@@ -64,7 +72,7 @@ export default defineCommand<Args, Result>({
       session_ids: {
         long: '--session-ids',
         description:
-          'Limit the report to a session id. Repeat the flag for each value, or pass @<file> with one id per line.',
+          'Limit the report to a session id. Repeat the flag for each value, or pass @<file> with one id per line. A file with no ids is a usage error.',
       },
     },
   },

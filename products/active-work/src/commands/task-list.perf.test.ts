@@ -62,7 +62,7 @@ describe('task.list on 9,000 synthetic tasks', () => {
     vi.spyOn(fs, 'stat').mockImplementation(((file: Parameters<typeof fs.stat>[0], options?: Parameters<typeof fs.stat>[1]) => {
       if (String(file).endsWith('.yml')) statCount.value += 1;
       return stat(file, options as never);
-    }) as typeof fs.stat);
+    }));
   });
 
   afterEach(() => {

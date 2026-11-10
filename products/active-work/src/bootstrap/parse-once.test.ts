@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import type * as YamlIo from "../utils/yaml-io.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { archiveStaleTasks } from "./archive-tasks.js";
 import { assembleBootstrap } from "./prompt.js";
@@ -8,9 +9,7 @@ import { withTempActiveRoot } from "../test-support/test-helpers.js";
 const readYamlSpy = vi.hoisted(() => vi.fn());
 
 vi.mock("../utils/yaml-io.js", async (importOriginal) => {
-  const actual = await importOriginal<
-    typeof import("../utils/yaml-io.js")
-  >();
+  const actual = await importOriginal<typeof YamlIo>();
   readYamlSpy.mockImplementation(actual.readYaml);
   return { ...actual, readYaml: readYamlSpy };
 });

@@ -36,18 +36,18 @@ function makeFakeSpawn(
       stderr: { on: () => undefined },
       on: (event: string, cb: (arg?: unknown) => void) => {
         handlers[event] ??= [];
-        handlers[event]!.push(cb);
+        handlers[event].push(cb);
       },
     };
     queueMicrotask(() => {
       if (opts.enoent?.(call)) {
         const err = new Error('not found') as NodeJS.ErrnoException;
         err.code = 'ENOENT';
-        handlers.error?.forEach((cb) => cb(err));
+        handlers.error.forEach((cb) => cb(err));
         return;
       }
       const code = opts.exitCodes?.(call) ?? 0;
-      handlers.close?.forEach((cb) => cb(code));
+      handlers.close.forEach((cb) => cb(code));
     });
     return child;
   }) as unknown as typeof nodeSpawn;

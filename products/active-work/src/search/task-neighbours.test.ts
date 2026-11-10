@@ -15,7 +15,7 @@ function task(id: string, title: string, done_when?: string): Task {
     created: '2026-10-01',
     updated: '2026-10-01',
     done_at: null,
-  } as Task;
+  };
 }
 
 function refs(text: string, tasks: Task[], exclude: string[] = []): string[] {

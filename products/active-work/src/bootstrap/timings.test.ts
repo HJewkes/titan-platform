@@ -104,7 +104,7 @@ describe('open timings_ms', () => {
       vi.stubEnv('AW_TIMING', '1');
       await run();
       expect(write).toHaveBeenCalledTimes(1);
-      expect(String(write.mock.calls[0]![0])).toMatch(/^aw timing sample-initiative: load=\d+ms .* total=\d+ms\n$/);
+      expect(String(write.mock.calls[0][0])).toMatch(/^aw timing sample-initiative: load=\d+ms .* total=\d+ms\n$/);
     });
   });
 

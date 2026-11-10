@@ -12,7 +12,7 @@ function file(path: string, content: string): RepoFile {
 }
 
 function tree(...manifests: RepoFile[]): ConsumerTree {
-  return { repo: REPO, ref: "main", manifests, lockfile: null, workspaceYaml: null, npmrc: null };
+  return { repo: REPO, ref: "main", manifests, lockfile: null, workspaceYaml: null, npmrc: null, patches: [] };
 }
 
 const latest = (entries: Record<string, string | null>) => new Map(Object.entries(entries));
@@ -125,6 +125,29 @@ describe("readConsumerTree", () => {
     expect(npm.manifests.map(({ path }) => path)).toEqual(["package.json", "apps/web/package.json"]);
     expect(npm).toMatchObject({ lockfile: { kind: "npm" }, workspaceYaml: null, npmrc: { content: "engine-strict=true\n" } });
     expect(consumerDepNames(npm)).toEqual([B]);
+  });
+
+  it("readConsumerTree reads the patch files a pnpm consumer names", async () => {
+    const port = seededPort({
+      "package.json": JSON.stringify({ name: "root", pnpm: { patchedDependencies: { "example-a@1.0.0": "patches/example-a.patch" } } }),
+      "pnpm-lock.yaml": "lockfileVersion: '9.0'\n\nimporters:\n\n  .:\n    dependencies: {}\n",
+      "pnpm-workspace.yaml": "patchedDependencies:\n  example-b@2.0.0: patches/example-b.patch\n  example-c@3.0.0: patches/example-c.patch\n",
+      "patches/example-a.patch": "diff a\n",
+      "patches/example-b.patch": "diff b\n",
+    });
+
+    const read = await readConsumerTree(port, REPO, "main");
+
+    expect(read.patches.map(({ path, content }) => [path, content])).toEqual([
+      ["patches/example-a.patch", "diff a\n"],
+      ["patches/example-b.patch", "diff b\n"],
+    ]);
+  });
+
+  it.each([["../outside.patch"], ["/etc/outside.patch"]])("refuses a patch path outside the repo: %s", async (path) => {
+    const port = seededPort({ "package.json": JSON.stringify({ pnpm: { patchedDependencies: { "example-a@1.0.0": path } } }) });
+
+    await expect(readConsumerTree(port, REPO, "main")).rejects.toThrow(/outside the repo/);
   });
 
   it("refuses a lockfile workspace key that climbs out of the repo", async () => {

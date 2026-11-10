@@ -241,7 +241,7 @@ describe('episode refresh', () => {
     writeSession('sess-a', '2026-07-01T00:00:00Z');
     await refresh();
     const [prompt] = exchange('sess-a', '2026-07-01T02:00:00Z');
-    appendFileSync(transcriptPath('sess-a'), renderTranscript([prompt!]));
+    appendFileSync(transcriptPath('sess-a'), renderTranscript([prompt]));
 
     const summary = await refresh({ episodeSweep: false });
 
