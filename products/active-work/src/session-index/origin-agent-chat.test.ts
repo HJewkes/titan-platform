@@ -58,7 +58,7 @@ interface Row {
   actor: string;
   target?: string;
   ref?: string;
-  meta?: Record<string, string>;
+  meta?: Record<string, unknown>;
 }
 
 let home: string;
@@ -641,7 +641,7 @@ describe('route decision on the spawn row (CC-1666)', () => {
     const [spawn, attach] = spawnedWorker('coord', 'aaaa1111');
     return [
       ...adoptedCoordinator('coord', 'aaaa1111'),
-      { ...spawn, meta: { ...spawn.meta, ...extra } as Record<string, string> },
+      { ...spawn, meta: { ...spawn.meta, ...extra } },
       attach,
     ];
   }
