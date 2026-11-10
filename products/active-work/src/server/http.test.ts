@@ -8,11 +8,11 @@ import { withEmptyActiveRoot, withTempActiveRoot } from '../test-support/test-he
 
 const TEST_PORT = 17400;
 
-function get(app: ReturnType<typeof buildHttpApp>, p: string): Promise<Response> {
+async function get(app: ReturnType<typeof buildHttpApp>, p: string): Promise<Response> {
   return app.fetch(new Request(`http://127.0.0.1:${TEST_PORT}${p}`));
 }
 
-function post(app: ReturnType<typeof buildHttpApp>, p: string, body: unknown): Promise<Response> {
+async function post(app: ReturnType<typeof buildHttpApp>, p: string, body: unknown): Promise<Response> {
   return app.fetch(
     new Request(`http://127.0.0.1:${TEST_PORT}${p}`, {
       method: 'POST',

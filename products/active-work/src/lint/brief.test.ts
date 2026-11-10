@@ -33,9 +33,9 @@ describe('lintBrief', () => {
         'utf8',
       );
       const findings = await lintBrief('sample-initiative', dir, {
-        handoffMaxBodyLines: 100,
         briefMaxBodyLines: 10,
         taskNotesMaxLines: 30,
+        openLoopMaxAgeDays: 30,
       });
       expect(findings).toHaveLength(1);
       expect(findings[0]).toMatchObject({
@@ -54,9 +54,9 @@ describe('lintBrief', () => {
       const content = `---\nbogus: true\n---\n${body}\n`;
       await fs.writeFile(path.join(dir, 'brief.md'), content, 'utf8');
       const findings = await lintBrief('sample-initiative', dir, {
-        handoffMaxBodyLines: 100,
         briefMaxBodyLines: 5,
         taskNotesMaxLines: 30,
+        openLoopMaxAgeDays: 30,
       });
       expect(findings).toHaveLength(1);
       expect(findings[0].message).toContain('body is 8 lines (> 5)');

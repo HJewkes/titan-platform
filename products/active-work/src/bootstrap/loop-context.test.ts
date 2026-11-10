@@ -30,7 +30,7 @@ function loop(ref: string, fields: Partial<OpenLoop> = {}): OpenLoop {
 }
 
 function hit(ref: string, initiative = 'alpha', title = `Title ${ref}`): RelatedHit {
-  return { ref, class: 'notes', initiative, title, path: null, excerpt: null };
+  return { ref, class: 'notes', initiative, title, path: null, excerpt: null, byteOffset: null, byteLength: null };
 }
 
 const retrieverOf = (pool: RelatedHit[], calls: RelatedInput[] = []): LoopRetriever => {

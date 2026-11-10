@@ -15,7 +15,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { openGraph, type SessionGraph } from './graph.js';
+import { openGraph, type WorkspaceGraph } from './graph.js';
 import { runRefresh } from './refresh.js';
 import { FIXTURE_CWD } from '../test-support/session-index/fixture.js';
 
@@ -26,7 +26,7 @@ const NESTED_TOOL_USE_ID = 'toolu_01NestedDispatch0000000';
 
 let dir: string;
 let root: string;
-let graph: SessionGraph;
+let graph: WorkspaceGraph;
 
 beforeEach(() => {
   dir = mkdtempSync(path.join(os.tmpdir(), 'aw-subagent-'));

@@ -15,7 +15,7 @@ import { discoverTranscripts } from '@titan-design/session-read';
 import { graphDocumentFrequency } from '../search/document-frequency.js';
 import { createDirtySet } from './dirty-set.js';
 import { transcriptsFromDirty, unknownRootCandidates } from './delta-pass.js';
-import { openGraph, type SessionGraph } from './graph.js';
+import { openGraph, type WorkspaceGraph } from './graph.js';
 import { runRefresh } from './refresh.js';
 import { RefreshScheduler } from './scheduler.js';
 import type * as Episodes from './episodes.js';
@@ -37,7 +37,7 @@ const UNCHANGED = 1_000;
 
 let dir: string;
 let root: string;
-let graph: SessionGraph;
+let graph: WorkspaceGraph;
 
 beforeEach(() => {
   dir = mkdtempSync(path.join(os.tmpdir(), 'aw-delta-'));
