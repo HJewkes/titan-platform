@@ -8,7 +8,7 @@ import { burdenScore, type BurdenScore } from "./score.js";
 export const BODY_ENV = "REVIEW_BURDEN_BODY";
 
 export interface CliDeps {
-  /** The `git diff -M --numstat <base>...HEAD` output. */
+  /** The `git diff -M --numstat -z <base>...HEAD` output. */
   diff(base: string): string;
   readText(path: string): string;
   env: Readonly<Record<string, string | undefined>>;
@@ -37,35 +37,27 @@ function parseArgs(argv: readonly string[]): Options {
   return options;
 }
 
-/** Expands numstat's `a/{b => c}/d` and `a => b` rename paths to the base and head paths. */
-function renamePaths(raw: string): { path: string; previousPath?: string } {
-  const brace = /^(.*)\{(.*) => (.*)\}(.*)$/.exec(raw);
-  if (brace) {
-    const [, pre = "", from = "", to = "", post = ""] = brace;
-    const clean = (middle: string) => `${pre}${middle}${post}`.replace(/\/{2,}/g, "/");
-    return { path: clean(to), previousPath: clean(from) };
-  }
-  const plain = / => /.exec(raw);
-  if (plain) return { path: raw.slice(plain.index + 4), previousPath: raw.slice(0, plain.index) };
-  return { path: raw };
-}
-
+/**
+ * Parses `git diff --numstat -z`: `add<TAB>del<TAB>path<NUL>`, and for a rename `add<TAB>del<TAB><NUL>old<NUL>new<NUL>`.
+ */
 function parseNumstat(text: string): ChangedFile[] {
-  return text
-    .split("\n")
-    .filter((line) => line.trim() !== "")
-    .map((line) => {
-      const [add = "0", del = "0", ...rest] = line.split("\t");
-      const { path, previousPath } = renamePaths(rest.join("\t"));
-      const file: ChangedFile = {
-        path,
-        status: previousPath ? "renamed" : "modified",
-        additions: Number(add) || 0,
-        deletions: Number(del) || 0,
-      };
-      if (previousPath) file.previousPath = previousPath;
-      return file;
-    });
+  const fields = text.split("\0");
+  const files: ChangedFile[] = [];
+  for (let i = 0; i < fields.length; i++) {
+    const [add = "0", del = "0", ...rest] = (fields[i] ?? "").split("\t");
+    if (rest.length === 0) continue;
+    const named = rest.join("\t");
+    const paths = named === "" ? { previousPath: fields[++i] ?? "", path: fields[++i] ?? "" } : { path: named, previousPath: undefined };
+    const file: ChangedFile = {
+      path: paths.path,
+      status: paths.previousPath ? "renamed" : "modified",
+      additions: Number(add) || 0,
+      deletions: Number(del) || 0,
+    };
+    if (paths.previousPath) file.previousPath = paths.previousPath;
+    files.push(file);
+  }
+  return files;
 }
 
 function changesetBumps(files: readonly ChangedFile[], readText: CliDeps["readText"]): ChangesetBump[] {
@@ -135,7 +127,7 @@ export function run(argv: readonly string[], deps: CliDeps): number {
 
 export function realDeps(): CliDeps {
   return {
-    diff: (base) => execFileSync("git", ["diff", "-M", "--numstat", `${base}...HEAD`], { encoding: "utf8" }),
+    diff: (base) => execFileSync("git", ["diff", "-M", "--numstat", "-z", `${base}...HEAD`], { encoding: "utf8" }),
     readText: (path) => readFileSync(path, "utf8"),
     env: process.env,
     out: (text) => process.stdout.write(text),

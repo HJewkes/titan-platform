@@ -145,6 +145,18 @@ describe("TsMorphGraphExtractor", () => {
       expect(importEdges[0]!.dstId).toBe("src/c.ts");
     });
 
+    it("emits an imports edge for a no-substitution template-literal dynamic import (TP-5155)", () => {
+      const [fragment] = fixture.extract("/repo/src/dyn-template.ts");
+      const importTargets = fragment!.edges.filter((e) => e.kind === "imports").map((e) => e.dstId);
+      expect(importTargets).toEqual(["src/multi.ts"]);
+    });
+
+    it("credits a destructured export of a template-literal dynamic import (TP-5155)", () => {
+      const [fragment] = fixture.extract("/repo/src/dyn-template.ts");
+      const targets = fragment!.edges.filter((e) => e.kind === "references").map((e) => e.dstId);
+      expect(targets).toContain("src/multi.ts#P");
+    });
+
     it("emits a references edge for a destructured dynamic import (C-68)", () => {
       const [fragment] = fixture.extract("/repo/src/dyn-destructure.ts");
       const refs = fragment!.edges.filter((e) => e.kind === "references");
