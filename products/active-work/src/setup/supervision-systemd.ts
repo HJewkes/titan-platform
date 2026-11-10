@@ -10,7 +10,7 @@ import { promises as fsp } from 'node:fs';
 import nodePath from 'node:path';
 import { spawn as nodeSpawn } from 'node:child_process';
 import os from 'node:os';
-import { execArg } from '@titan-design/daemon/service';
+import { execArg, noSpecifiers } from '@titan-design/daemon/service';
 import { errorCode } from '@titan-design/rpc-protocol/narrow';
 import { errorText, toError } from './errors.js';
 import { linuxDaemonPath } from './supervision-shared.js';
@@ -90,8 +90,8 @@ export function renderUnit(opts: UnitOptions): string {
     'Environment=NODE_ENV=production',
     quoteEnv('PATH', linuxDaemonPath(node, opts.homeDir)),
     ...(opts.activeRoot ? [quoteEnv('ACTIVE_ROOT', opts.activeRoot)] : []),
-    `StandardOutput=append:${nodePath.join(logDir, 'daemon.out.log')}`,
-    `StandardError=append:${nodePath.join(logDir, 'daemon.err.log')}`,
+    `StandardOutput=append:${noSpecifiers(nodePath.join(logDir, 'daemon.out.log'))}`,
+    `StandardError=append:${noSpecifiers(nodePath.join(logDir, 'daemon.err.log'))}`,
     '',
     '[Install]',
     'WantedBy=default.target',
