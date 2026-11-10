@@ -2,9 +2,9 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { compareBaseline, entryFiles, findDeadExports, parseCliArgs, scopeToPaths } from "./dead-code-check.mjs";
-import { planCommands } from "./verify-changed.mjs";
+import { describeOutcome, planCommands } from "./verify-changed.mjs";
 
 const ENTRY = new URL("../packages/code-graph/dist/index.js", import.meta.url);
 
@@ -23,7 +23,34 @@ describe("verify:changed dead:check step", () => {
     const step = deadCheckStep(["packages/a/src/x.ts", "products/c/README.md", "deploy/hub/src/y.ts", "site/z.md"]);
 
     expect(step.args).toEqual(["scripts/dead-code-check.mjs", "--paths=packages/a,products/c"]);
-    expect(step.env).toEqual({ BASE_REF: "origin/base" });
+    expect(step.env.BASE_REF).toBe("origin/base");
+  });
+
+  it("dead:check carries a short lock wait in its env", () => {
+    vi.stubEnv("DAG_CHECK_LOCK_WAIT_MS", "");
+    delete process.env.DAG_CHECK_LOCK_WAIT_MS;
+
+    expect(deadCheckStep(["packages/a/src/x.ts"]).env.DAG_CHECK_LOCK_WAIT_MS).toBe("30000");
+  });
+
+  it("lets the caller's own lock wait override the local budget", () => {
+    vi.stubEnv("DAG_CHECK_LOCK_WAIT_MS", "5000");
+
+    expect(deadCheckStep(["packages/a/src/x.ts"]).env.DAG_CHECK_LOCK_WAIT_MS).toBe("5000");
+  });
+
+  it("a busy-lock exit defers dead:check to CI instead of failing", () => {
+    const step = deadCheckStep(["packages/a/src/x.ts"]);
+
+    expect(describeOutcome(step, 75)).toEqual({ ok: true, note: "dead:check deferred to CI: dag-check lock busy" });
+  });
+
+  it("any other dead:check exit still fails", () => {
+    const step = deadCheckStep(["packages/a/src/x.ts"]);
+
+    expect(describeOutcome(step, 1).ok).toBe(false);
+    expect(describeOutcome(step, 2).ok).toBe(false);
+    expect(describeOutcome({ label: "lint", cmd: "pnpm" }, 75).ok).toBe(false);
   });
 
   it("defers to CI when the touched packages hold more files than the local budget", () => {
@@ -56,7 +83,10 @@ describe("a --paths dead:check run", () => {
 });
 
 const tmpDirs = [];
-afterEach(() => tmpDirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
+afterEach(() => {
+  vi.unstubAllEnvs();
+  tmpDirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }));
+});
 
 const PKG = "packages/demo";
 const MANIFEST = { name: "demo", exports: { ".": "./dist/index.js" } };
