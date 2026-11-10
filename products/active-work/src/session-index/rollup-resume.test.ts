@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type * as SessionGraphPackage from '@titan-design/session-graph';
-import { openGraph, type SessionGraph } from './graph.js';
+import { openGraph, type WorkspaceGraph } from './graph.js';
 import { runRefresh } from './refresh.js';
 import { FIXTURE_LINES, renderTranscript } from '../test-support/session-index/fixture.js';
 
@@ -27,7 +27,7 @@ vi.mock('@titan-design/session-graph', async (importOriginal) => {
 
 let dir: string;
 let root: string;
-let graph: SessionGraph;
+let graph: WorkspaceGraph;
 
 beforeEach(() => {
   dir = mkdtempSync(path.join(os.tmpdir(), 'aw-rollup-resume-'));

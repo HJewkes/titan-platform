@@ -8,6 +8,7 @@ import { withEmptyActiveRoot, withTempActiveRoot } from '../test-support/test-he
 const TIGHT_LIMITS = {
   briefMaxBodyLines: 4,
   taskNotesMaxLines: 2,
+  openLoopMaxAgeDays: 30,
 };
 
 async function scaffoldInitiative(

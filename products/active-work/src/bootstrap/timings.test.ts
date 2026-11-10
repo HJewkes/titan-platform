@@ -22,7 +22,7 @@ const assemble = (root: string, clock?: () => number) =>
     now: NOW,
     detectSiblings: false,
     includeLiveStatus: false,
-    noteRelevance: async () => new Map(),
+    noteRelevance: () => [],
     loopRetriever: async () => ({ hits: [], degraded: [], query: { terms: [], expression: '' } }),
     hitLog: async () => null,
     ...(clock ? { clock } : {}),
