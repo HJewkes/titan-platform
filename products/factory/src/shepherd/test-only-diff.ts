@@ -1,6 +1,7 @@
 import { CONFIG_PATH, planFixProof, SPEC_SUFFIX, testOnlyReading, type TestOnlyReading } from "@titan-design/fix-proof";
 import { PR_FILES_CAP, type GitHubPort, type PrFile, type RepoSlug } from "@titan-design/github";
 import { failureOf } from "./error-class.js";
+import { isTsconfigPath, onlyTestEntriesChanged } from "./tsconfig-test-support.js";
 
 /**
  * Whether a PR's diff touches only tests, carried files, mutation specs and changesets. A diff that deletes a test or changes
@@ -39,9 +40,10 @@ function nameStatusLine(file: PrFile): string | undefined {
 }
 
 /** The PR's file list as `git diff --name-status`, so Shepherd and the CI plan share one definition of test-only. */
-function nameStatusOf(files: readonly PrFile[]): { text: string } | { unread: string } {
+function nameStatusOf(files: readonly PrFile[], support: ReadonlySet<string>): { text: string } | { unread: string } {
   const lines: string[] = [];
   for (const file of files) {
+    if (support.has(file.path)) continue;
     const line = nameStatusLine(file);
     if (line === undefined) return { unread: `the PR's changed file ${JSON.stringify(file.path)} (${file.status}) cannot be classified` };
     lines.push(line);
@@ -176,6 +178,20 @@ async function unreadBlob(port: GitHubPort, repo: RepoSlug, files: readonly PrFi
   return undefined;
 }
 
+/**
+ * TP-5200: the files whose only change is `*.test.ts` entries in a tsconfig's include or exclude. They are test support, so the plan
+ * never sees them; every other tsconfig change, and any read that fails, leaves the file in the plan as source.
+ */
+async function tsconfigTestSupport(port: GitHubPort, repo: RepoSlug, files: readonly PrFile[], refs: TrustedRefs): Promise<Set<string>> {
+  const support = new Set<string>();
+  for (const file of files.filter((candidate) => candidate.status === "modified" && isTsconfigPath(candidate.path))) {
+    const texts = await Promise.all([refs.mergeBase, refs.headSha].map((ref) => port.getFile(repo, file.path, ref).then((read) => read?.content, () => undefined)));
+    const [before, after] = texts;
+    if (before !== undefined && after !== undefined && onlyTestEntriesChanged(before, after)) support.add(file.path);
+  }
+  return support;
+}
+
 type Unread = Extract<TestOnlyDiff, { kind: "unread" }>;
 type PlannedDiff = { kind: "planned"; diff: TestOnlyDiff; files: readonly PrFile[]; refs: TrustedRefs };
 
@@ -185,10 +201,11 @@ async function planDiff(port: GitHubPort, repo: RepoSlug, pr: number | null, exp
   const files = await readFiles(port, repo, pr);
   if ("unread" in files) return { kind: "unread", reason: files.unread };
   if (files.length === 0) return { kind: "unread", reason: "the PR lists no changed files" };
-  const nameStatus = nameStatusOf(files);
-  if ("unread" in nameStatus) return { kind: "unread", reason: nameStatus.unread };
   const configs = await readTrustedConfigs(port, repo, pr, expectedHead);
   if ("unread" in configs) return { kind: "unread", reason: configs.unread };
+  const support = await tsconfigTestSupport(port, repo, files, configs.refs);
+  const nameStatus = nameStatusOf(files, support);
+  if ("unread" in nameStatus) return { kind: "unread", reason: nameStatus.unread };
   const siblings = await specSiblingsAtHead(port, repo, files, configs.refs.headSha);
   if ("unread" in siblings) return { kind: "unread", reason: siblings.unread };
   return { kind: "planned", diff: classify(nameStatus.text, configs.texts, siblings), files, refs: configs.refs };
