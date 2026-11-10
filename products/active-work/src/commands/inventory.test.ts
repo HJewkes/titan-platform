@@ -73,6 +73,38 @@ describe('inventory', () => {
     });
   });
 
+  it('totals include other, and total equals every visible file under the initiative', async () => {
+    await withEmptyActiveRoot(async (root) => {
+      await seedGarden(root);
+      await put(root, 'garden/handoff/2026-01-01.md', 'handoff\n');
+      await put(root, 'garden/snapshots/snap.json', '{}');
+      await put(root, 'garden/artifacts.yml', 'artifacts: []\n');
+      await put(root, 'garden/.hidden', 'x');
+      await put(root, 'garden/handoff/.dot', 'x');
+      await writeCharter(root, []);
+
+      const res = await inventoryCmd.run({}, ctx());
+      const garden = res.initiatives.find((row) => row.slug === 'garden')!;
+
+      const entries = await fs.readdir(path.join(root, 'garden'), {
+        recursive: true,
+        withFileTypes: true,
+      });
+      const visible = entries.filter(
+        (e) =>
+          e.isFile() &&
+          !path
+            .relative(path.join(root, 'garden'), path.join(e.parentPath, e.name))
+            .split(path.sep)
+            .some((part) => part.startsWith('.')),
+      );
+      expect(garden.classes.other.files).toBe(3);
+      expect(garden.total.files).toBe(visible.length);
+      const summed = res.initiatives.reduce((n, row) => n + row.classes.other.files, 0);
+      expect(res.totals.classes.other.files).toBe(summed);
+    });
+  });
+
   it('flags initiatives the charter marks human-only', async () => {
     await withEmptyActiveRoot(async (root) => {
       await seedGarden(root);
