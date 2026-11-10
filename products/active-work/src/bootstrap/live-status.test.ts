@@ -46,7 +46,7 @@ function stubGit(): string[][] {
   const calls: string[][] = [];
   const runner: CommandRunner = (_bin, args) => {
     calls.push(args);
-    const repoPath = args[1]!;
+    const repoPath = args[1];
     const verb = args.slice(2).join(' ');
     let stdout = '';
     if (verb === 'remote get-url origin') stdout = `${ORIGINS[repoPath]}\n`;
@@ -103,7 +103,7 @@ describe('defaultLiveStatusFetcher', () => {
     expect(git.filter((args) => args.includes('get-url'))).toHaveLength(2);
     expect(statuses.map((s) => s.pr?.number ?? null)).toEqual([11, 12, null, 13]);
     expect(statuses[0]).toMatchObject({ present: true, ahead: 2, behind: 7 });
-    expect(statuses[0]!.pr?.checks).toBe('pass (1/1)');
+    expect(statuses[0].pr?.checks).toBe('pass (1/1)');
   });
 
   it('falls back to a per-branch query for heads a truncated bulk list missed', async () => {
@@ -154,8 +154,8 @@ describe('defaultLiveStatusFetcher', () => {
 
     const [fromFallback] = await defaultLiveStatusFetcher([branch(REPO_A, 'feat/a')]);
 
-    expect(fromBulk!.pr).toEqual(fromFallback!.pr);
-    expect(fromBulk!.pr?.checks).toBe('fail (1/3)');
+    expect(fromBulk.pr).toEqual(fromFallback.pr);
+    expect(fromBulk.pr?.checks).toBe('fail (1/3)');
   });
 });
 

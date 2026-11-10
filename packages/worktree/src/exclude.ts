@@ -14,16 +14,23 @@ function excludeLineFor(basePath: string): string | undefined {
  * `<git-common-dir>/info/exclude`, which is local to the clone and never committed.
  *
  * `--git-common-dir` so an allocation run from inside a worktree writes the primary's
- * file, not that worktree's private gitdir. Idempotent; existing lines are kept.
+ * file, not that worktree's private gitdir. Idempotent; existing lines are kept. Returns a
+ * warning instead of throwing when the file cannot be written.
  */
-export async function ensureBaseExcluded(cwd: string, basePath: string): Promise<void> {
+export async function ensureBaseExcluded(cwd: string, basePath: string): Promise<string | undefined> {
   const line = excludeLineFor(basePath);
-  if (line === undefined) return;
+  if (line === undefined) return undefined;
   const commonDir = await gitOrNull(["rev-parse", "--path-format=absolute", "--git-common-dir"], cwd);
-  if (commonDir === null) return;
+  if (commonDir === null) return undefined;
   const file = path.join(commonDir, "info", "exclude");
-  const current = existsSync(file) ? readFileSync(file, "utf8") : "";
-  if (current.split("\n").includes(line)) return;
-  mkdirSync(path.dirname(file), { recursive: true });
-  appendFileSync(file, `${current === "" || current.endsWith("\n") ? "" : "\n"}${line}\n`);
+  try {
+    const current = existsSync(file) ? readFileSync(file, "utf8") : "";
+    if (current.split("\n").includes(line)) return undefined;
+    mkdirSync(path.dirname(file), { recursive: true });
+    appendFileSync(file, `${current === "" || current.endsWith("\n") ? "" : "\n"}${line}\n`);
+    return undefined;
+  } catch (error) {
+    // The exclude file only keeps git status tidy, so a write failure must not fail the allocation.
+    return `could not write ${file}: ${error instanceof Error ? error.message : String(error)}`;
+  }
 }

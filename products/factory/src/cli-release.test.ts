@@ -67,6 +67,17 @@ describe("release bump-consumers verb", () => {
     expect(out.join("")).toContain(`${CONSUMER_C}: left alone @titan-design/example-c workspace:* (package.json, `);
   });
 
+  it("a real run prints the reasons for a repo whose only titan deps were left alone", async () => {
+    const world = consumerBumpWorld();
+    const manifest = JSON.stringify({ name: "consumer-c", overrides: { "@titan-design/example-c": "1.0.0" } });
+    world.fakes.get(CONSUMER_C)!.files.set("main:package.json", { content: manifest, blobSha: fakeSha("left-alone") });
+    const { out, io, db } = capture();
+
+    await runCli(["--db", db, "release", "bump-consumers"], io, depsOver(world));
+
+    expect(out.join("")).toContain(`${CONSUMER_C}: left alone @titan-design/example-c 1.0.0 (package.json, pinned by overrides)`);
+  });
+
   it("dry-run skips a repo with an open bump PR and prints why", async () => {
     const world = consumerBumpWorld();
     const open = world.fakes.get(CONSUMER_A)!.addPr({ headSha: fakeSha("open"), headRef: branchA });

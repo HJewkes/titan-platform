@@ -117,7 +117,7 @@ describe('readDispatchRecords', () => {
   it('records done-no-pr as done', () => {
     writeSeat('seat-a', [row({ outcome: 'done-no-pr' })]);
 
-    expect(readDispatchRecords(logsDir, OPEN).assignments[0]!.outcome).toBe('done');
+    expect(readDispatchRecords(logsDir, OPEN).assignments[0].outcome).toBe('done');
   });
 
   it('gives a +fix agent fix-round so the group counts one merge', () => {

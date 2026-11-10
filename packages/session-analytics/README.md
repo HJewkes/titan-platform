@@ -234,6 +234,12 @@ text form.
   (`noCacheCheaper`), typically a one-shot profile that writes a cache and never reads it. The text
   table adds a `no-cache net` column and flags those buckets. `TtlRequestRow` gains
   `cacheWrite5mTokens`; the 5m-against-1h numbers do not change.
+- **Gap cause.** `byGapCause` splits the rebuilds by the last action before the gap: `ci-wait` (a
+  Bash call whose command head is `gh pr checks`, `gh run` or `ci-wait`), `other-bash`, or
+  `end-of-turn` (no tool call, or a non-Bash last call). `readTtlRows` sets `previousAction` from
+  the previous request on the same thread (same `is_sidechain`), so a subagent's calls never
+  stand in for the main thread's; the graph has no per-agent id, so nested subagents share one
+  chain. A row without `previousAction` reads as `end-of-turn`. The text render adds a by-cause table.
 
 The gap is the request's `gap_ms` when the miner stored one. Otherwise it is the time since the
 session's previous request on the same thread, which may fall before the window.

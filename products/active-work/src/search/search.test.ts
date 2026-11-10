@@ -74,23 +74,23 @@ describe('search', () => {
     const notes = hits.filter((hit) => hit.class === 'notes');
 
     expect(hits.length).toBeGreaterThan(notes.length);
-    expect(notes.length).toBeLessThanOrEqual(capFor(SEARCH_CLASSES[0]!, 10));
+    expect(notes.length).toBeLessThanOrEqual(capFor(SEARCH_CLASSES[0], 10));
   });
 
   it('biases towards an initiative without excluding the others', async () => {
     const { hits } = await search('lesson', { initiative: 'beta' });
 
-    expect(hits[0]!.initiative).toBe('beta');
+    expect(hits[0].initiative).toBe('beta');
     // A boost, never a filter: alpha still ranks.
     expect(hits.map((hit) => hit.initiative)).toContain('alpha');
   });
 
   it('scales a class cap with the requested limit', async () => {
-    const notes = SEARCH_CLASSES[0]!;
+    const notes = SEARCH_CLASSES[0];
     expect(capFor(notes, 10)).toBe(5);
     expect(capFor(notes, 50)).toBe(25);
     // Never zero, or a class silently stops participating in a small search.
-    expect(capFor(SEARCH_CLASSES[1]!, 1)).toBe(1);
+    expect(capFor(SEARCH_CLASSES[1], 1)).toBe(1);
   });
 
   it('tells a session record from a transcript, which their shared prefix cannot', async () => {
