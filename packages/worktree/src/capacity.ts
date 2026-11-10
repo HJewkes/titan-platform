@@ -8,8 +8,9 @@ export async function capacityError(gitRoot: string, agentName: string, opts: Wo
   const name = slug(agentName);
   const paths = await allocatedPaths(gitRoot, basePathOf(opts));
   const group = opts.allocationGroup;
-  const allocated = group === undefined ? paths.length : paths.filter((dir) => group(slug(path.basename(dir))) === group(name)).length;
+  const trees = group === undefined ? paths : paths.filter((dir) => group(slug(path.basename(dir))) === group(name));
+  const allocated = trees.length;
   const budget = budgetOf(opts, name);
   if (!(allocated >= budget)) return undefined;
-  return opts.budgetError?.(allocated, budget, name) ?? new WorktreeBudgetExhaustedError(allocated, budget);
+  return opts.budgetError?.(allocated, budget, name, trees) ??new WorktreeBudgetExhaustedError(allocated, budget);
 }

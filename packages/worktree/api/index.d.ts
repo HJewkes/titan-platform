@@ -86,8 +86,8 @@ interface WorktreeOptions {
     budget?: number | ((name: string) => number);
     /** Partition capacity by sanitized agent/directory name; the host owns group names and policy. */
     allocationGroup?: (name: string) => string;
-    /** Preserve the host error class and wording when its capacity is exhausted. */
-    budgetError?: (allocated: number, budget: number, name: string) => Error;
+    /** Preserve the host error class and wording when its capacity is exhausted; `trees` are the paths counted in `allocated`. */
+    budgetError?: (allocated: number, budget: number, name: string, trees: readonly string[]) => Error;
     /** Leave setup orchestration to the caller. Default behavior still runs the trusted declaration. */
     skipSetup?: boolean;
     branchPrefix?: string;

@@ -11,7 +11,10 @@ Optional allocation groups and name-aware budgets let the caller keep separate c
 policies without sharing slots. A requested `origin/<branch>` checkout never falls back to
 the default branch; setup declarations still come only from the fetched default branch.
 `release(..., { keepBranch: true })` completes a parked allocation without deleting its
-branch and refuses a tree still on disk. Callers owning setup policy can use `skipSetup`.
+branch and refuses a tree still on disk. The `budgetError` hook receives the counted tree
+paths as a fourth argument, `trees: readonly string[]`, limited to the agent's allocation
+group; hooks that take three arguments keep working.
+ Callers owning setup policy can use `skipSetup`.
 
 Git and setup child environments retain the dispatcher's existing transport pin: caller
 lists are narrowed to `file:git:http:https:ssh`, and an unset list uses that same policy.
