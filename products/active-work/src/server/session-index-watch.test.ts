@@ -219,21 +219,18 @@ describe('startSessionIndexWatch', () => {
   it('a persistently failing delta logs one warning per backoff, not one per reader', async () => {
     const { createScheduler } = await import('./session-index-watch.js');
     let failing = true;
-    const runner = {
-      run: vi.fn(async () => {
-        if (failing) throw new Error('delta broke');
-        const summary: Partial<RefreshSummary> = { kind: 'delta', errors: [], phases: {} };
-        return summary as RefreshSummary;
-      }),
-      lastMaxLoopStallMs: () => null,
-    };
+    const run = vi.fn().mockImplementation(async () => {
+      if (failing) throw new Error('delta broke');
+      return { kind: 'delta', errors: [], phases: {} };
+    });
+    const runner = { run, lastMaxLoopStallMs: () => null };
     const scheduler = createScheduler(runner, createDirtySet(), log, new AbortController().signal);
 
     await scheduler.runNow(1_000);
     const readers = await Promise.all([1, 2, 3, 4].map(() => scheduler.runNow(1_000)));
 
     expect(readers).toEqual(['stale', 'stale', 'stale', 'stale']);
-    expect(runner.run).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledTimes(1);
     expect(log.warn).toHaveBeenCalledTimes(1);
     expect(log.warn).toHaveBeenCalledWith(
       expect.objectContaining({ err: expect.any(Error), backoffMs: 1_000 }),

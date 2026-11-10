@@ -20,6 +20,7 @@ import type { WorkspaceGraph } from '../session-index/graph.js';
 import { openLiveGraph, type LiveGraph } from '../session-index/live-graph.js';
 import { readMachinePressure, shouldHold } from '../utils/machine-pressure.js';
 import { readerGate } from '../session-index/reader-gate.js';
+import { BACKOFF_OPTIONS, deltaBackoffLog } from './delta-backoff-log.js';
 import { startWorkspaceFreshness, type WorkspaceFreshness } from './workspace-freshness.js';
 import {
   readRefreshLockHolder,
@@ -272,60 +273,18 @@ export function passRunner(
   return { run, lastMaxLoopStallMs: () => lastMaxLoopStallMs };
 }
 
-const BASE_BACKOFF_MS = 1_000;
-const MAX_BACKOFF_MS = 60_000;
-
-/**
- * Logs a failing delta once when its backoff starts and once when a pass next
- * succeeds. The scheduler answers readers stale while the backoff runs, so a
- * reader adds nothing worth a line of its own (TP-1014).
- */
-function deltaBackoffLog(log: WatchLogger): {
-  failed(err: unknown): void;
-  succeeded(): void;
-} {
-  let failures = 0;
-  return {
-    failed: (err) => {
-      failures += 1;
-      const backoffMs = Math.min(BASE_BACKOFF_MS * 2 ** (failures - 1), MAX_BACKOFF_MS);
-      log.warn({ err, backoffMs }, 'session index delta failed; backing off');
-    },
-    succeeded: () => {
-      if (failures === 0) return;
-      failures = 0;
-      log.info({}, 'session index delta recovered');
-    },
-  };
-}
-
 export function createScheduler(
   runner: PassRunner,
   dirty: DirtySet,
   log: WatchLogger,
   signal: AbortSignal,
 ): RefreshScheduler {
-  const backoffLog = deltaBackoffLog(log);
-  let failedKind: PassKind | null = null;
+  const delta = deltaBackoffLog(log, signal);
   return new RefreshScheduler(
-    async (kind, onIndexed, onLockWait) => {
-      try {
-        const summary = await runner.run(kind, onIndexed, onLockWait);
-        backoffLog.succeeded();
-        return summary;
-      } catch (err) {
-        failedKind = kind;
-        throw err;
-      }
-    },
+    delta.wrap(runner.run),
     {
-      onError: (err) => {
-        if (signal.aborted) return;
-        if (failedKind === 'delta') backoffLog.failed(err);
-        else log.warn({ err }, 'session index refresh failed');
-      },
-      baseBackoffMs: BASE_BACKOFF_MS,
-      maxBackoffMs: MAX_BACKOFF_MS,
+      onError: delta.onError,
+      ...BACKOFF_OPTIONS,
       minIntervalMs: envInt('AW_INDEX_MIN_INTERVAL_MS', DEFAULT_MIN_INTERVAL_MS),
       gate: async () => shouldHold(await readMachinePressure()),
       gateRecheckMs: envInt('AW_INDEX_GATE_RECHECK_MS', DEFAULT_GATE_RECHECK_MS),
