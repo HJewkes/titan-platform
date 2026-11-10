@@ -1,4 +1,4 @@
-import type { GitHubWire, HeadRef, RepoSlug, WriteResult } from "./port.js";
+import type { GitHubWire, HeadRef, RepoSlug, WriteResult } from "./port-types.js";
 
 export async function ensureBranch(wire: GitHubWire, repo: RepoSlug, branch: string, baseSha: string): Promise<WriteResult<{ sha: string }>> {
   const existing = await wire.getRef(repo, branch);

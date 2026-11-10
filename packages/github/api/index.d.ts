@@ -13,6 +13,24 @@ interface CreateCheckRunRequest {
     externalId: string;
 }
 
+/**
+ * The open PRs, or `notModified` when they are unchanged since the read that answered `etag`. Rows carry no `behind`
+ * and an `unknown` mergeable state, like every list row, and a change to either does not change the ETag.
+ */
+type OpenPrList = {
+    notModified: true;
+} | {
+    notModified: false;
+    prs: PullRequest[];
+    etag: string | null;
+};
+interface OpenPrRequest {
+    head: string;
+    base: string;
+    title: string;
+    body: string;
+}
+
 /** Below this many remaining calls of a resource, every call waits its share of the time left until reset. */
 declare const RATE_FLOOR = 500;
 /** One budget per GitHub login: every wire that shares it paces against the same remaining count. */
@@ -93,48 +111,6 @@ interface Rest {
     send<T>(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, fields?: Fields, input?: string): Promise<T>;
 }
 
-/** One force-push of a PR's head branch: the head it replaced, null once GitHub no longer has that commit, and the new head. */
-interface ForcePush {
-    before: string | null;
-    after: string | null;
-}
-/** What the wire read: the first `FORCE_PUSHES_CAP` pushes, oldest first, and whether more exist past them. */
-interface ForcePushPage {
-    pushes: ForcePush[];
-    more: boolean;
-}
-/** One GraphQL page; the port reads no further. */
-declare const FORCE_PUSHES_CAP = 100;
-/** Named so a caller that reports only an error's class still says the list was cut short. */
-declare class ForcePushesTruncated extends Error {
-    constructor();
-}
-
-/** The list came back shorter than the PR's own count, so a path may be missing. */
-declare class FileListTruncatedError extends Error {
-    readonly expected: number;
-    readonly received: number;
-    constructor(expected: number, received: number);
-}
-
-/**
- * The open PRs, or `notModified` when they are unchanged since the read that answered `etag`. Rows carry no `behind`
- * and an `unknown` mergeable state, like every list row, and a change to either does not change the ETag.
- */
-type OpenPrList = {
-    notModified: true;
-} | {
-    notModified: false;
-    prs: PullRequest[];
-    etag: string | null;
-};
-interface OpenPrRequest {
-    head: string;
-    base: string;
-    title: string;
-    body: string;
-}
-
 /** A branch tip, or `notModified` when it is unchanged since the read that answered `etag`; a missing branch reads as a null `sha`. */
 type RefRead = {
     notModified: true;
@@ -194,6 +170,52 @@ interface PullReview {
 interface CreateReviewRequest {
     commitId: string;
     body: string;
+}
+
+/**
+ * Where `head` stands relative to `base`, as GitHub's compare `status` says: `ahead` means `base` is an ancestor of
+ * `head`, `behind` the reverse. `missing` is a 404: GitHub does not have one of the commits, which right after a push
+ * can mean it has not caught up yet, so it is not proof the commit never existed.
+ */
+type Ancestry = "ahead" | "behind" | "identical" | "diverged" | "missing";
+
+/**
+ * What GitHub's Merges API did with `head`: 201 made a merge commit, 204 found `head` already in the branch, and 409
+ * found a conflict. A conflict is an answer, not an error, because a caller building a batch ejects one member and
+ * goes on; a contained head is no conflict, so it must never eject.
+ */
+type MergeIntoBranchResult = {
+    outcome: "merged";
+    sha: string;
+} | {
+    outcome: "already-contained";
+} | {
+    outcome: "conflict";
+};
+interface MergeIntoBranchRequest {
+    /** The branch the merge commit lands on. */
+    branch: string;
+    /** The commit merged in. */
+    head: string;
+    /** The merge commit's message; absent, GitHub writes its default. */
+    message?: string;
+}
+
+/** One force-push of a PR's head branch: the head it replaced, null once GitHub no longer has that commit, and the new head. */
+interface ForcePush {
+    before: string | null;
+    after: string | null;
+}
+/** What the wire read: the first `FORCE_PUSHES_CAP` pushes, oldest first, and whether more exist past them. */
+interface ForcePushPage {
+    pushes: ForcePush[];
+    more: boolean;
+}
+/** One GraphQL page; the port reads no further. */
+declare const FORCE_PUSHES_CAP = 100;
+/** Named so a caller that reports only an error's class still says the list was cut short. */
+declare class ForcePushesTruncated extends Error {
+    constructor();
 }
 
 interface Commit {
@@ -297,40 +319,6 @@ interface CheckRun {
 interface CheckRunPr {
     number: number;
     baseRef: string;
-}
-
-/**
- * Where `head` stands relative to `base`, as GitHub's compare `status` says: `ahead` means `base` is an ancestor of
- * `head`, `behind` the reverse. `missing` is a 404: GitHub does not have one of the commits, which right after a push
- * can mean it has not caught up yet, so it is not proof the commit never existed.
- */
-type Ancestry = "ahead" | "behind" | "identical" | "diverged" | "missing";
-
-/**
- * What GitHub's Merges API did with `head`: 201 made a merge commit, 204 found `head` already in the branch, and 409
- * found a conflict. A conflict is an answer, not an error, because a caller building a batch ejects one member and
- * goes on; a contained head is no conflict, so it must never eject.
- */
-type MergeIntoBranchResult = {
-    outcome: "merged";
-    sha: string;
-} | {
-    outcome: "already-contained";
-} | {
-    outcome: "conflict";
-};
-interface MergeIntoBranchRequest {
-    /** The branch the merge commit lands on. */
-    branch: string;
-    /** The commit merged in. */
-    head: string;
-    /** The merge commit's message; absent, GitHub writes its default. */
-    message?: string;
-}
-
-/** A write whose precondition no longer holds, such as a blob that changed under an edit. */
-declare class GitHubConflictError extends Error {
-    constructor(message: string);
 }
 
 /** `owner/name`. */
@@ -638,8 +626,21 @@ interface GitHubPortOptions {
     /** Waits between retries of a comment post, a merge or a rerun; tests inject one that does not wait. */
     sleep?: (ms: number) => Promise<void>;
 }
+
 /** Every argument is validated before any wire call, because each one becomes part of a `gh api` path. */
 declare function githubPort(wire: GitHubWire, options?: GitHubPortOptions): GitHubPort;
+
+/** The list came back shorter than the PR's own count, so a path may be missing. */
+declare class FileListTruncatedError extends Error {
+    readonly expected: number;
+    readonly received: number;
+    constructor(expected: number, received: number);
+}
+
+/** A write whose precondition no longer holds, such as a blob that changed under an edit. */
+declare class GitHubConflictError extends Error {
+    constructor(message: string);
+}
 
 /** A write that kept answering a 5xx or an unreadable answer; `status` is the last answer's, so callers still classify it. */
 declare class WriteRetriesExhaustedError extends Error {

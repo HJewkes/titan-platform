@@ -1304,7 +1304,6 @@
         "apps/console/server/review-schema-0.3/schema.ts",
         "products/active-work/src/aw.ts",
         "products/active-work/src/bootstrap/prompt.ts",
-        "products/active-work/src/doctor.ts",
         "products/active-work/src/migrations/v2-to-v3-open-loops.ts",
         "products/active-work/src/session-index/origin-agent-chat.ts",
         "products/active-work/src/session-index/refresh.ts",
