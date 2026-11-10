@@ -101,8 +101,8 @@ describe('set', () => {
       await setCmd.run({ slug: 'sf', field: 'owner', value: 'henry' }, ctxFor(root));
 
       const parsed = parseFrontmatter(await fs.readFile(briefPath, 'utf8'));
-      expect((parsed.data as Record<string, unknown>).owner).toBe('henry');
-      expect((parsed.data as Record<string, unknown>).updated).toBe(today());
+      expect((parsed.data).owner).toBe('henry');
+      expect((parsed.data).updated).toBe(today());
     });
   });
 
@@ -163,7 +163,7 @@ describe('touch', () => {
       expect(out.updated).toBe(today());
 
       const parsed = parseFrontmatter(await fs.readFile(briefPath, 'utf8'));
-      expect((parsed.data as Record<string, unknown>).updated).toBe(today());
+      expect((parsed.data).updated).toBe(today());
     });
   });
 

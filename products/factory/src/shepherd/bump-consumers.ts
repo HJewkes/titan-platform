@@ -188,7 +188,7 @@ async function regenerate(regen: LockfileRegen, bump: PlannedBump): Promise<File
   const lockfile = bump.tree.lockfile;
   if (!lockfile) throw new Error(`${bump.repo} has no lockfile to regenerate`);
   const edited = new Map(bump.plan.files.map((file) => [file.path, file]));
-  const readFiles = [...bump.tree.manifests, lockfile.file, bump.tree.workspaceYaml, bump.tree.npmrc].filter((file): file is RepoFile => file !== null);
+  const readFiles = [...bump.tree.manifests, lockfile.file, bump.tree.workspaceYaml, bump.tree.npmrc, ...bump.tree.patches].filter((file): file is RepoFile => file !== null);
   const tree: LockfileTree = { kind: lockfile.kind, files: Object.fromEntries(readFiles.map((file) => [file.path, edited.get(file.path)?.content ?? file.content])) };
   const regenerated = await regen(tree);
   const blobs = new Map(readFiles.map((file) => [file.path, file.blobSha]));

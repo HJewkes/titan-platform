@@ -191,13 +191,14 @@ async function allocate(req: WorktreeRequest, opts: WorktreeOptions): Promise<Wo
   const base = req.baseRef === undefined
     ? await resolveBranchBase(gitRoot, timeout)
     : await resolveRequestedBase(gitRoot, req.baseRef, timeout);
-  await ensureBaseExcluded(gitRoot, basePathOf(opts));
+  const excludeWarning = await ensureBaseExcluded(gitRoot, basePathOf(opts));
   const reused = await attachWorktree(gitRoot, branch, worktreePath, {
     base: base.sha,
     force: req.forceReset === true,
     run: boundedAdd(opts.runWorktreeAdd, opts.addTimeoutMs ?? WORKTREE_ADD_TIMEOUT_MS),
   });
   const warnings = [
+    ...(excludeWarning === undefined ? [] : [excludeWarning]),
     ...copyClaudeDir(gitRoot, worktreePath),
     ...(base.warning === undefined ? [] : [base.warning]),
   ];

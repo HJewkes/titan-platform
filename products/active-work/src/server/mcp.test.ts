@@ -14,6 +14,11 @@ import {
 import { registry } from '../registry/index.js';
 import '../commands/index.js'; // populate the registry
 
+function registered<T>(command: T | undefined): T {
+  if (command === undefined) throw new Error('command is not registered');
+  return command;
+}
+
 describe('commandNameToToolName / toolNameToCommandName', () => {
   it('maps nested command names through double underscores', () => {
     expect(commandNameToToolName('task.add')).toBe('active__task__add');
@@ -36,7 +41,7 @@ describe('commandToTool', () => {
   it('produces an object inputSchema with type=object', () => {
     const taskAdd = registry.get('task.add');
     expect(taskAdd).toBeDefined();
-    const tool = commandToTool(taskAdd!);
+    const tool = commandToTool(registered(taskAdd));
     expect(tool.name).toBe('active__task__add');
     expect(tool.description).toBeTruthy();
     expect(tool.inputSchema).toBeTypeOf('object');
@@ -50,7 +55,7 @@ describe('commandToTool', () => {
 
   it('strips top-level $schema and definitions', () => {
     const list = registry.get('list');
-    const tool = commandToTool(list!);
+    const tool = commandToTool(registered(list));
     expect(tool.inputSchema['$schema']).toBeUndefined();
     expect(tool.inputSchema['definitions']).toBeUndefined();
   });
@@ -143,7 +148,7 @@ describe('createMcpServer (in-memory client round-trip)', () => {
       }>;
       expect(Array.isArray(content)).toBe(true);
       expect(content[0]?.type).toBe('text');
-      const parsed = JSON.parse(content[0]!.text!) as z.infer<ReturnType<typeof z.object>> & {
+      const parsed = JSON.parse(content[0].text!) as z.infer<ReturnType<typeof z.object>> & {
         ok: boolean;
       };
       expect(parsed.ok).toBe(true);
@@ -154,7 +159,7 @@ describe('createMcpServer (in-memory client round-trip)', () => {
       });
       expect(badCall.isError).toBe(true);
       const badContent = badCall.content as Array<{ text: string }>;
-      const badEnv = JSON.parse(badContent[0]!.text) as {
+      const badEnv = JSON.parse(badContent[0].text) as {
         ok: false;
         error: string;
       };

@@ -148,7 +148,7 @@ describe('prompt command — sibling session leases (CC-9)', () => {
     await withTempActiveRoot(async (activeRoot) => {
       await withoutBranches(activeRoot);
       await writeOneshotLease(activeRoot, 'abc123');
-      const out = (await promptCommand.run({ slug: SLUG }, makeCtx(activeRoot))) as string;
+      const out = (await promptCommand.run({ slug: SLUG }, makeCtx(activeRoot)));
       expect(out).toContain('# Another session may already be live');
       expect(out).toContain('/tmp/other-checkout');
     });
@@ -160,7 +160,7 @@ describe('prompt command — sibling session leases (CC-9)', () => {
       await writeOneshotLease(activeRoot, 'abc123');
       process.env.AW_LEASE_ID = 'abc123';
       try {
-        const out = (await promptCommand.run({ slug: SLUG }, makeCtx(activeRoot))) as string;
+        const out = (await promptCommand.run({ slug: SLUG }, makeCtx(activeRoot)));
         expect(out).not.toContain('# Another session may already be live');
       } finally {
         delete process.env.AW_LEASE_ID;
@@ -175,7 +175,7 @@ describe('prompt command — sibling session leases (CC-9)', () => {
       const out = (await promptCommand.run(
         { slug: SLUG, no_sibling_check: true },
         makeCtx(activeRoot),
-      )) as string;
+      ));
       expect(out).not.toContain('# Another session may already be live');
     });
   });

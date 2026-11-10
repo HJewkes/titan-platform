@@ -41,7 +41,7 @@ import { recordingOverrides } from "./override-gate.js";
 import { outcomeRoutes, recordLanded, recordOverride, recordStopped } from "./outcome.js";
 import { leaveTrain } from "./train.js";
 import { routeFor, type CloserStreak, type Escalated } from "./route-table.js";
-import { countRound, endedOutcome, routeEscalation, type Routed } from "./routed.js";
+import { countRound, endedOutcome, routeEscalation, unknownObserveRunOut, type Routed } from "./routed.js";
 import { wakeRoutes } from "./wake.js";
 import { wakePhase } from "./wake-phase.js";
 import { awaitedPast, liveEscalation, type WakeRun } from "./gates.js";
@@ -100,6 +100,7 @@ interface ShepherdRun extends WakeRun, FixFirstTrail, VisualAcceptRun, FailedRou
   /** Shepherd's own MERGE a seat held at each head; that head's next review re-checks the seat only. */
   seatHeld: Map<string, SeatHeld>;
   seatHeldRounds: Map<string, number>;
+  unknownObserveRounds: Map<string, number>;
   /** Update-branch calls since the last human gate across every round; replaying the run's recorded steps rebuilds it, so a restart keeps the count. */
   updateBound: UpdateBound;
   /** The unsettled-merge wait at a head across every round; replay rebuilds it like the update bound. */
@@ -121,7 +122,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
     ...{ policy: params.policy, policyReads: 0, carryScopeReads: 0, release: params.release, task: params.task },
     ...{ ...freshFailedRounds(), throttledRounds: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, conflictBaseReads: 0, orderSteps: 0, freezeChecks: 0, fresh: new Set() },
     ...{ staleBases: new Set(), staleBaseReads: 0, seatHeld: new Map(), seatHeldRounds: new Map(), updateBound: newUpdateBound(), settleHold: {}, escalations: new Map() },
-    ...{ wokenPast: new Set(), trail: newCauseTrail(), fixFirstTrail: [], visualAcceptOffers: 0, unreviewedAsks: new Set() },
+    ...{ unknownObserveRounds: new Map(), wokenPast: new Set(), trail: newCauseTrail(), fixFirstTrail: [], visualAcceptOffers: 0, unreviewedAsks: new Set() },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
   const checked = checkedBaseTap();
@@ -258,7 +259,7 @@ async function routeGreenHead(run: ShepherdRun, headSha: string): Promise<void> 
 /** True goes on to the merge decision, false reviews the same head again; every other route leaves this land round. */
 async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
   const { route, headSha } = routed;
-  const escalated = await countRound(run, routed);
+  const escalated = (await countRound(run, routed)) ?? unknownObserveRunOut(run.unknownObserveRounds, routed);
   if (escalated) return routeEscalation(run, headSha, escalated);
   switch (route) {
     case "merge":

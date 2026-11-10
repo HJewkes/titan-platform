@@ -421,7 +421,7 @@ describe('open command — sibling session leases (CC-9)', () => {
       await withoutBranches(activeRoot);
       await openCommand.run({ slug: SLUG }, makeCtx(activeRoot));
       const [file] = await leaseFiles(activeRoot);
-      const ownLeaseId = (file as string).replace(/\.json$/, '');
+      const ownLeaseId = (file).replace(/\.json$/, '');
 
       process.env.AW_LEASE_ID = ownLeaseId;
       try {

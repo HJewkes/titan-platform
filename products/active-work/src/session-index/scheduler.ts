@@ -1,4 +1,8 @@
 import type { RefreshSummary } from './refresh.js';
+import { cancellableSleep, withinBudget, type Freshness } from './scheduler-timing.js';
+
+export { withinBudget };
+export type { Freshness };
 
 /**
  * Collapses a burst of refresh requests into a bounded number of runs, without
@@ -60,9 +64,6 @@ interface SchedulerOptions {
 /** A full pass walks the corpus; a delta pass indexes only what the watcher reported. */
 export type PassKind = 'full' | 'delta';
 
-/** Whether an on-demand refresh finished inside the caller's budget. */
-export type Freshness = 'fresh' | 'stale';
-
 interface GateDecision {
   hold: boolean;
   reason?: string;
@@ -77,39 +78,6 @@ const DEFAULT_MAX_HOLD_MS = 30 * 60_000;
 /** proper-lockfile gives up with ELOCKED once its retries run out: someone else is mid-pass. */
 export function isLockContention(err: unknown): boolean {
   return (err as { code?: unknown } | null)?.code === 'ELOCKED';
-}
-
-/** A timer that `cancel` ends early, so `close()` never waits out a backoff. */
-function cancellableSleep(ms: number): { done: Promise<void>; cancel: () => void } {
-  let cancel = (): void => {};
-  const done = new Promise<void>((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    timer.unref?.();
-    cancel = () => {
-      clearTimeout(timer);
-      resolve();
-    };
-  });
-  return { done, cancel };
-}
-
-/** Resolves `'fresh'` if `pass` succeeds within `budgetMs`, else `'stale'` at the budget. */
-export async function withinBudget(
-  pass: (expired: () => boolean) => Promise<boolean>,
-  budgetMs: number,
-): Promise<Freshness> {
-  let timer: NodeJS.Timeout | undefined;
-  let over = false;
-  const expired = new Promise<false>((resolve) => {
-    timer = setTimeout(() => {
-      over = true;
-      resolve(false);
-    }, budgetMs);
-    timer.unref?.();
-  });
-  const ok = await Promise.race([pass(() => over), expired]);
-  clearTimeout(timer);
-  return ok ? 'fresh' : 'stale';
 }
 
 /** Lets a pass tell the scheduler its index writes are committed before it finishes. */

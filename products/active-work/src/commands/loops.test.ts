@@ -15,7 +15,7 @@ import {
 } from '../utils/git-gh.js';
 import type { CommandContext } from '../registry/index.js';
 import { SNAPSHOT } from '../test-support/fixtures/loop-ledger.js';
-import { withTempActiveRoot } from '../test-support/test-helpers.js';
+import { lookup, withTempActiveRoot } from '../test-support/test-helpers.js';
 
 const SLUG = 'sample-initiative';
 const OPENED = '2026-07-20T10:00:00Z';
@@ -42,7 +42,7 @@ async function openLoops(root: string, steps: Array<Omit<NextStep, 'text'>>): Pr
 async function list(root: string, overrides: Record<string, unknown> = {}) {
   const ctx = makeCtx(root);
   const result = await loopsCmd.run(loopsCmd.args.parse({ slug: SLUG, ...overrides }), ctx);
-  const byId = new Map(result.open.map((loop) => [loop.ref.split('#')[1]!, loop]));
+  const byId = new Map(result.open.map((loop) => [loop.ref.split('#')[1], loop]));
   return { result, byId, warnings: ctx.warnings };
 }
 
@@ -52,7 +52,7 @@ function ghWithStates(states: Record<string, string>): { runner: CommandRunner; 
   const runner: CommandRunner = (_bin, args) => {
     const key = `${args[4]}#${args[2]}`;
     calls.push(key);
-    const state = states[key];
+    const state = lookup(states, key);
     return Promise.resolve(
       state === undefined
         ? { code: 1, stdout: '', stderr: 'no pull requests found' }

@@ -146,12 +146,6 @@ export function writeManualHold(ports: HoldWritePorts, stateDir: string, hold: M
   }
 }
 
-/** Read without taking the lock, since a manual hold must be settable while a deployer runs. */
-export function runningDeployer(ports: Pick<LockPorts, "readFile" | "isAlive">, stateDir: string): number | undefined {
-  const pid = Number(ports.readFile(deployLockPath(stateDir))?.trim());
-  return Number.isInteger(pid) && pid > 0 && ports.isAlive(pid) ? pid : undefined;
-}
-
 /** Undefined once the pause is on disk, else why not; a lost write must not stop the rollback that follows it. */
 export function writeDeployPause(ports: { writeFile: (path: string, text: string) => void }, stateDir: string, pause: DeployPause): string | undefined {
   try {

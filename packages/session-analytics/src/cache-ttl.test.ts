@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cacheTtlReport, cacheTtlWhatIf, readTtlRows, cacheTtlWhatIfSchema, renderCacheTtlText, type TtlRequestRow } from "./cache-ttl.js";
 import { findPrice } from "./prices.js";
-import { createFixtureGraph, insertOrigin, insertPrices, insertRequest, insertSession, type FixtureGraph } from "./fixture.js";
+import { createFixtureGraph, insertActionCall, insertOrigin, insertPrices, insertRequest, insertSession, type FixtureGraph } from "./fixture.js";
 
 const TS = "2026-09-29T12:00:00Z";
 const MINUTE = 60_000;
@@ -229,5 +229,36 @@ describe("cacheTtlReport", () => {
     expect(writes).toEqual({ legacy: 40_000, explicit: 25_000 });
     const price = findPrice(OPUS, "2026-09-29T10:00:00Z")!;
     expect(whatIf.totals.noCacheNetUsd).toBeCloseTo((65_000 * (price.cacheWrite5m - price.input)) / 1e6, 10);
+  });
+
+  it("splits rebuild cost by the last action before the gap: ci-wait, other Bash, end of turn", () => {
+    fixture = createFixtureGraph();
+    const db = fixture.graph.db;
+    insertPrices(fixture.graph);
+    insertSession(db, { sessionId: "impl" });
+    const at = (minute: number) => `2026-09-29T10:${String(minute).padStart(2, "0")}:00Z`;
+    const step = (minute: number, tool: string, heads: string | null, extra: { isSidechain?: boolean } = {}) => {
+      insertRequest(db, { sessionId: "impl", ts: at(minute), model: OPUS, cacheReadTokens: 100_000, ...extra });
+      if (tool) insertActionCall(db, { sessionId: "impl", ts: at(minute), name: tool, ...(heads ? { signal: "command_heads", detail: heads } : {}) });
+    };
+    step(0, "Bash", "gh pr checks");
+    step(10, "Bash", "ls");
+    step(20, "", null);
+    step(30, "Bash", "git status;gh run watch");
+    // A subagent request between two main-thread requests must not become the main thread's previous action.
+    step(32, "Bash", "ls", { isSidechain: true });
+    step(45, "", null);
+
+    const whatIf = cacheTtlReport(fixture.openReadOnly(), { since: "2026-09-29", until: "2026-09-30" });
+    const by = Object.fromEntries(whatIf.byGapCause.map((c) => [c.cause, c]));
+
+    expect(whatIf.byGapCause.map((c) => c.cause)).toEqual(["ci-wait", "other-bash", "end-of-turn"]);
+    expect(by["ci-wait"]).toMatchObject({ rebuilds: 2, rebuildTokens: 200_000 });
+    expect(by["other-bash"]).toMatchObject({ rebuilds: 1, rebuildTokens: 100_000 });
+    expect(by["end-of-turn"]).toMatchObject({ rebuilds: 1, rebuildTokens: 100_000 });
+    expect(by["ci-wait"]!.rebuildCostUsd).toBeCloseTo(200_000 * REBUILD_COST, 10);
+    const total = whatIf.byGapCause.reduce((sum, c) => sum + c.rebuildCostUsd, 0);
+    expect(total).toBeCloseTo(whatIf.totals.rebuildCostUsd, 10);
+    expect(renderCacheTtlText(whatIf)).toMatch(/By gap cause[\s\S]*ci-wait +2 /);
   });
 });
