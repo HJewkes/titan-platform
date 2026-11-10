@@ -13,7 +13,7 @@ import {
   resolveFromSource,
   type IsKnownTask,
 } from './origin-agent-chat.js';
-import { eventsDbSource, type OpenDatabase } from './origin-agent-chat-read.js';
+import { eventsDbSource, openBriefly, type OpenDatabase } from './origin-agent-chat-read.js';
 
 // Copied from `sqlite3 ~/.agent-chat/events.db .schema` on 2026-09-23.
 const EVENTS_DDL = `
@@ -671,7 +671,18 @@ describe('route decision on the spawn row (CC-1666)', () => {
 });
 
 describe('a locked events.db (TP-4479)', () => {
-  it('fails the origin pass within the short busy timeout instead of waiting 5 s', async () => {
+  it('opens events.db with a 100 ms busy timeout, not better-sqlite3\'s 5 s default', () => {
+    writeEvents([]);
+    const db = openBriefly(path.join(home, 'events.db'), { readonly: true, fileMustExist: true });
+
+    try {
+      expect(db.pragma('busy_timeout', { simple: true })).toBe(100);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('fails the origin pass instead of waiting when events.db is locked', async () => {
     writeEvents([]);
     const graph = openGraph(path.join(home, 'graph.sqlite3'));
     graph.db
@@ -680,12 +691,10 @@ describe('a locked events.db (TP-4479)', () => {
     const holder = new Database(path.join(home, 'events.db'));
     holder.exec('BEGIN EXCLUSIVE');
     vi.stubEnv('AGENT_CHAT_HOME', home);
-    const startedAt = Date.now();
 
     try {
       const outcome = await resolveOrigins(graph, agentChatOriginResolver(undefined, home));
 
-      if (process.env.TITAN_BENCH === '1') expect(Date.now() - startedAt).toBeLessThan(1_000);
       expect(outcome).toMatchObject({ failed: true, applied: 0 });
     } finally {
       vi.unstubAllEnvs();
