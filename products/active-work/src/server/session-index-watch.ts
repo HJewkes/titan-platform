@@ -20,6 +20,7 @@ import type { WorkspaceGraph } from '../session-index/graph.js';
 import { openLiveGraph, type LiveGraph } from '../session-index/live-graph.js';
 import { readMachinePressure, shouldHold } from '../utils/machine-pressure.js';
 import { readerGate } from '../session-index/reader-gate.js';
+import { BACKOFF_OPTIONS, deltaBackoffLog } from './delta-backoff-log.js';
 import { startWorkspaceFreshness, type WorkspaceFreshness } from './workspace-freshness.js';
 import { readRefreshLockHolder, withRefreshLock } from '../session-index/refresh-lock.js';
 import { runRefresh, type RefreshOptions, type RefreshSummary } from '../session-index/refresh.js';
@@ -267,18 +268,18 @@ export function passRunner(
   return { run, lastMaxLoopStallMs: () => lastMaxLoopStallMs };
 }
 
-function createScheduler(
+export function createScheduler(
   runner: PassRunner,
   dirty: DirtySet,
   log: WatchLogger,
   signal: AbortSignal,
 ): RefreshScheduler {
+  const delta = deltaBackoffLog(log, signal);
   return new RefreshScheduler(
-    (kind, onIndexed, onLockWait) => runner.run(kind, onIndexed, onLockWait),
+    delta.wrap(runner.run),
     {
-      onError: (err) => {
-        if (!signal.aborted) log.warn({ err }, 'session index refresh failed');
-      },
+      onError: delta.onError,
+      ...BACKOFF_OPTIONS,
       minIntervalMs: envInt('AW_INDEX_MIN_INTERVAL_MS', DEFAULT_MIN_INTERVAL_MS),
       gate: async () => shouldHold(await readMachinePressure()),
       gateRecheckMs: envInt('AW_INDEX_GATE_RECHECK_MS', DEFAULT_GATE_RECHECK_MS),
