@@ -104,6 +104,52 @@ describe("the launcher's signal forwarding", () => {
   });
 });
 
+/** A child that counts the SIGHUPs it gets and reports them when SIGTERM ends it. */
+function writeHupCountingChild(record: string): void {
+  fs.writeFileSync(
+    fakeClaude,
+    `let hups = 0;
+     process.on("SIGHUP", () => { hups += 1; });
+     process.on("SIGTERM", () => { require("node:fs").writeFileSync(${JSON.stringify(record)}, String(hups)); process.exit(0); });
+     setInterval(() => {}, 1000); process.stdout.write("ready\\n");`,
+  );
+}
+
+/** Starts the launcher, sends it a lone SIGHUP, then SIGTERM; resolves with how many SIGHUPs the child saw. */
+async function hupsSeenByChild(surface: LaunchPlan["surface"], stdin?: string): Promise<number> {
+  const record = path.join(stateDir, "hups.txt");
+  writeHupCountingChild(record);
+  writePlan({}, stdin, { surface });
+  const launcher = spawn(process.execPath, [BIN, planFile()], { env: { PATH: MINIMAL_PATH }, stdio: ["ignore", "pipe", "ignore"] });
+  const closed = new Promise<void>(resolve => launcher.on("close", () => resolve()));
+  await new Promise<void>(resolve => {
+    let out = "";
+    launcher.stdout.on("data", (chunk: Buffer) => {
+      out += chunk.toString("utf8");
+      if (out.includes("ready")) resolve();
+    });
+  });
+  launcher.kill("SIGHUP");
+  await new Promise(resolve => setTimeout(resolve, 300));
+  launcher.kill("SIGTERM");
+  await closed;
+  return Number(fs.readFileSync(record, "utf8"));
+}
+
+describe("the launcher's SIGHUP handling", () => {
+  it("does not forward SIGHUP on an iTerm surface, where the zsh in front passes it to the child's group", async () => {
+    expect(await hupsSeenByChild("iterm-pane")).toBe(0);
+  });
+
+  it("forwards SIGHUP on a tmux surface, where the launcher is the session leader and nothing else signals the child", async () => {
+    expect(await hupsSeenByChild("tmux-window")).toBe(1);
+  });
+
+  it("forwards SIGHUP to a headless child, which has no terminal group to deliver it", async () => {
+    expect(await hupsSeenByChild("headless", "the brief")).toBe(1);
+  });
+});
+
 describe("the onSpawn hook", () => {
   it("hands the spawned child to onSpawn before writing the brief", () => {
     writePlan({}, "synthetic brief");
@@ -125,6 +171,50 @@ describe("the onSpawn hook", () => {
     expect(result.stdout).toBe("onSpawn:number:ended=false;fake-claude-ran");
   });
 });
+
+describe("the onSpawn hook failing", () => {
+  it("kills the spawned child and surfaces the error when onSpawn throws", async () => {
+    const pidFile = path.join(stateDir, "child.pid");
+    fs.writeFileSync(fakeClaude, "setInterval(() => {}, 1000);");
+    writePlan({}, "synthetic brief");
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        `import fs from "node:fs";
+         import { runAgent, readLaunchPlan } from ${JSON.stringify(path.join(DIST, "index.js"))};
+         runAgent(readLaunchPlan(${JSON.stringify(planFile())}), { agentDir: ${JSON.stringify(agentDir())}, onSpawn: child => { fs.writeFileSync(${JSON.stringify(pidFile)}, String(child.pid)); throw new Error("synthetic onSpawn failure"); } });`,
+      ],
+      // The timeout turns an orphaned child holding the pipe open into a failure, not a hang.
+      { encoding: "utf8", env: { PATH: MINIMAL_PATH }, timeout: 5000 },
+    );
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("synthetic onSpawn failure");
+    const pid = await childPidGone(pidFile);
+    expect(pid).toBeNull();
+  });
+});
+
+/** Polls until the recorded child is gone; returns its pid if it is still alive after the wait. */
+async function childPidGone(pidFile: string): Promise<number | null> {
+  for (let i = 0; i < 50; i += 1) {
+    const pid = fs.existsSync(pidFile) ? Number(fs.readFileSync(pidFile, "utf8")) : 0;
+    if (pid > 0) {
+      try {
+        process.kill(pid, 0);
+      } catch {
+        return null;
+      }
+    }
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  const pid = Number(fs.readFileSync(pidFile, "utf8"));
+  process.kill(pid, "SIGKILL");
+  return pid;
+}
 
 describe("the environment the launcher hands the launched process", () => {
   it("stamps its own pid over a launcher pid the plan tries to set", () => {
