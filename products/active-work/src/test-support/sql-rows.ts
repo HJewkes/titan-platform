@@ -10,7 +10,7 @@ export function sqlRows(rows: unknown[]): SqlRow[] {
 }
 
 /** Narrow the `unknown` a better-sqlite3 `.get()` returns to one row, without a cast. */
-export function sqlRow(row: unknown): SqlRow {
+function sqlRow(row: unknown): SqlRow {
   if (!isSqlRow(row)) throw new Error('expected the query to return a row');
   return row;
 }
