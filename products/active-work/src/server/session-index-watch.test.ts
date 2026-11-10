@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { startSessionIndexWatch } from './session-index-watch.js';
-import { withRefreshLock } from '../session-index/refresh.js';
+import { withRefreshLock } from '../session-index/refresh-lock.js';
 import type * as MachinePressureModule from '../utils/machine-pressure.js';
 import { FIXTURE_LINES, SESSION, renderTranscript } from '../test-support/session-index/fixture.js';
 import type * as PrOutcomesModule from '../session-index/pr-outcomes.js';
@@ -142,7 +142,6 @@ describe('startSessionIndexWatch', () => {
     vi.resetModules();
     vi.doMock('../session-index/refresh.js', async (importOriginal) => ({
       ...(await importOriginal<typeof RefreshModule>()),
-      withRefreshLock: <T>(fn: () => Promise<T>) => fn(),
       runRefresh: (options: RefreshOptions) => {
         sweeps.push(options.episodeSweep);
         const outcome = outcomes[sweeps.length - 1] ?? null;
@@ -181,17 +180,9 @@ describe('startSessionIndexWatch', () => {
     const root = path.join(home, '.claude', 'projects');
     vi.stubEnv('CLAUDE_CONFIG_DIRS', path.dirname(root));
     const visited: string[][] = [];
-    let held = true;
     vi.resetModules();
     vi.doMock('../session-index/refresh.js', async (importOriginal) => ({
       ...(await importOriginal<typeof RefreshModule>()),
-      withRefreshLock: <T>(fn: () => Promise<T>, options?: { retries?: number }) => {
-        if (options?.retries === 0 && held) {
-          held = false;
-          return Promise.reject(Object.assign(new Error('held'), { code: 'ELOCKED' }));
-        }
-        return fn();
-      },
       runRefresh: (options: RefreshOptions) => {
         visited.push((options.transcripts ?? []).map((t) => t.absolutePath));
         return Promise.resolve({
@@ -206,8 +197,19 @@ describe('startSessionIndexWatch', () => {
     dirty.add(root, path.join('demo', 't1.jsonl'));
     const runner = passRunner(async () => ({}) as WorkspaceGraph, dirty, log, new AbortController().signal);
 
+    let letGo = (): void => {};
+    let entered = (): void => {};
+    const inside = new Promise<void>((resolve) => (entered = resolve));
+    const held = withRefreshLock(async () => {
+      entered();
+      await new Promise<void>((resolve) => (letGo = resolve));
+    });
+    await inside;
+
     await expect(runner.run('delta')).rejects.toMatchObject({ code: 'ELOCKED' });
     const sizeAfterSkip = dirty.size;
+    letGo();
+    await held;
     await runner.run('delta');
     vi.doUnmock('../session-index/refresh.js');
 
@@ -220,7 +222,6 @@ describe('startSessionIndexWatch', () => {
     vi.resetModules();
     vi.doMock('../session-index/refresh.js', async (importOriginal) => ({
       ...(await importOriginal<typeof RefreshModule>()),
-      withRefreshLock: <T>(fn: () => Promise<T>) => fn(),
       runRefresh: (options: RefreshOptions) => {
         options.onIndexed?.();
         return Promise.resolve({
@@ -334,7 +335,6 @@ describe('startSessionIndexWatch', () => {
       vi.resetModules();
       vi.doMock('../session-index/refresh.js', async (importOriginal) => ({
         ...(await importOriginal<typeof RefreshModule>()),
-        withRefreshLock: <T>(fn: () => Promise<T>) => fn(),
         runRefresh: () =>
           Promise.resolve({
             kind: 'delta',
