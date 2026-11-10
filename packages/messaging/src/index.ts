@@ -50,6 +50,8 @@ export type { Liveness, ProbeOptions } from "./liveness.js";
 export { probeLiveness } from "./liveness.js";
 
 export type { TelegramConfig, TelegramEnvelope } from "./telegram.js";
+
+export { TELEGRAM_MAX_PHOTO_BYTES, TELEGRAM_MAX_VOICE_BYTES } from "./telegram-media.js";
 export {
   createTelegramTransport,
   redactToken,
