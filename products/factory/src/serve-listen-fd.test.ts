@@ -1,13 +1,14 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
-import { createConnection, createServer, type AddressInfo } from "node:net";
+import { createConnection, createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { silentLogger, type Logger } from "@titan-design/daemon";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { serveFactoryUntilSignal, startFactoryServer, type FactoryServerOptions } from "./serve.js";
+import { readPath } from "./narrow.js";
 import { landScenario } from "./test-support/land.js";
 
 const FACTORY_DIST = fileURLToPath(new URL("../dist/index.js", import.meta.url));
@@ -56,10 +57,16 @@ function options(overrides: Partial<FactoryServerOptions> = {}): FactoryServerOp
   };
 }
 
+function portOf(server: Server): number {
+  const port = readPath(server.address(), "port");
+  if (typeof port !== "number") throw new Error("the server is not listening on a port");
+  return port;
+}
+
 async function freePort(): Promise<number> {
   const probe = createServer();
   await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
-  const { port } = probe.address() as AddressInfo;
+  const port = portOf(probe);
   await new Promise<void>((resolve) => probe.close(() => resolve()));
   return port;
 }
@@ -75,11 +82,11 @@ const refuses = (port: number): Promise<boolean> =>
 async function serveOnPassedSocket(requestedPort: number): Promise<{ socketPort: number; started: Record<string, unknown>; child: ChildProcess }> {
   const socket = createServer();
   await new Promise<void>((resolve) => socket.listen(0, "127.0.0.1", resolve));
-  const socketPort = (socket.address() as AddressInfo).port;
+  const socketPort = portOf(socket);
   const script = `LISTEN_FDS=1 LISTEN_PID=$$; export LISTEN_FDS LISTEN_PID; exec "$0" "$@"`;
   const args = ["-c", script, process.execPath, "--input-type=module", "-e", FIXTURE, scratchDir(), String(requestedPort)];
   // node does not type the handle's fd; a spawn takes the number, not the server.
-  const fd = Reflect.get(Reflect.get(socket, "_handle") as object, "fd");
+  const fd = readPath(socket, "_handle", "fd");
   if (typeof fd !== "number" || fd < 0) throw new Error("the listening socket has no fd on this platform");
   const child = spawn("sh", args, { env: { ...process.env, FACTORY_DIST }, stdio: ["ignore", "pipe", "inherit", fd] });
   await new Promise<void>((resolve) => socket.close(() => resolve()));
