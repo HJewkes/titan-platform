@@ -262,11 +262,6 @@
       "count": 1
     }
   },
-  "products/active-work/src/doctor.ts": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
   "products/active-work/src/drain/ingestor.ts": {
     "titan/max-function-lines": {
       "count": 1

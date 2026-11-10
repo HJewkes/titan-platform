@@ -5,6 +5,7 @@ import * as graph from "../packages/code-graph/dist/index.js";
 import {
   countLoc,
   describeOutcome,
+  failedTurboTasks,
   failureSummary,
   runVerdict,
   locRuleFrom,
@@ -223,5 +224,33 @@ describe("planCommands", () => {
 
   it("plans nothing when nothing changed", () => {
     expect(planCommands({ base: "b", changed: [], workspace })).toEqual([]);
+  });
+});
+
+describe("build step output", () => {
+  const workspace = [{ dir: "packages/a/", name: "a", deps: [] }];
+  const transcript = [
+    "@scope/lib#build: cache hit, replaying logs",
+    "@scope/lib#build:  ERROR  command (/repo/packages/lib) /bin/pnpm run build exited (2)",
+    "@scope/other#build: command (/repo/packages/other) /bin/pnpm run build exited (2)",
+    " Tasks:    1 successful, 2 total",
+    "Failed:    @scope/lib#build",
+    " ERROR  run failed: command  exited (2)",
+  ].join("\n");
+
+  it("the build step asks turbo for errors-only logs", () => {
+    const build = planCommands({ base: "b", changed: ["packages/a/src/x.ts"], workspace }).find((s) => s.label === "build");
+    expect(build.args).toContain("--output-logs=errors-only");
+  });
+
+  it("a failed build names the failing package and task in the summary", () => {
+    const build = planCommands({ base: "b", changed: ["packages/a/src/x.ts"], workspace }).find((s) => s.label === "build");
+    expect(failedTurboTasks(transcript)).toEqual(["@scope/lib#build", "@scope/other#build"]);
+    expect(describeOutcome(build, 1, null, transcript).message).toBe("build failed (exit status 1): @scope/lib#build, @scope/other#build");
+  });
+
+  it("a failed build with no parsable task falls back to the exit status", () => {
+    const build = planCommands({ base: "b", changed: ["packages/a/src/x.ts"], workspace }).find((s) => s.label === "build");
+    expect(describeOutcome(build, 1, null, "boom").message).toBe("build failed (exit status 1)");
   });
 });

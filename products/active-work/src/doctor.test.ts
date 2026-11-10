@@ -2,7 +2,7 @@ import { promises as fs, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
-import { runDoctor, type DoctorDeps, type DoctorCheck } from './doctor.js';
+import { runDoctor, type DoctorDeps, type DoctorCheck } from './doctor/index.js';
 import * as paths from './utils/paths.js';
 import { NOTE_TITLE_MAX_LENGTH } from './schemas/note.js';
 import { recordArtifactHash } from './utils/artifact-hash.js';
@@ -88,6 +88,25 @@ describe('runDoctor', () => {
     for (const check of report.checks) {
       expect(check.status).toBe('ok');
     }
+  });
+
+  it('runs every health check, in report order', async () => {
+    const report = await runDoctor(healthyDeps());
+    expect(report.checks.map((c) => c.name)).toEqual([
+      'node',
+      'active-root',
+      'daemon',
+      'mcp-registration',
+      'skill',
+      'supervision',
+      'open-loops',
+      'session-files',
+      'task-refs',
+      'note-titles',
+      'artifact-hashes',
+      'session-leases',
+      'workspace-index',
+    ]);
   });
 
   it('reports live and pruned session leases (CC-9)', async () => {
