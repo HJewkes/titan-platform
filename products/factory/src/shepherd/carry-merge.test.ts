@@ -9,6 +9,7 @@ import { reviewCheck } from "./review-check.js";
 import { CARRY_SEAT_HEAD_CAP, carriedSource, carriedVerdict, carryRoutes, carrySeatRoute, pushedAwaySince } from "./carry-merge.js";
 import type { ReviewerAgent, ReviewerMessage } from "@titan-design/review-panel";
 import type { ReviewWiring } from "./review.js";
+import { ReviewerAskTimedOut } from "./review-wait.js";
 import type { RoutedStepInput } from "@titan-design/workflow";
 import type { Verdict } from "./phases.js";
 import { attestationsFileOf } from "./attest-read.js";
@@ -281,18 +282,23 @@ describe("the seat check of a carry", () => {
     pushes?: ForcePush[];
     pushesFail?: Error;
     withDispatch?: boolean;
+    /** The first roster reads that time out, one each; the fake clock moves 10 ms per sleep. */
+    slowRosterReads?: number;
   }
 
   async function seatOutcome(messages: (reviewer: ReviewerAgent) => ReviewerMessage[], run: SeatRun = {}): Promise<{ clear: boolean; reason?: string }> {
     const reviewer = seat("tc-x-review");
-    const wiring = Object.assign(partialFake<ReviewWiring>(), { reader: { read: async () => messages(reviewer) }, ...(run.withDispatch !== false && { dispatch: { roster: async () => [reviewer] } }) });
+    const clock = { at: 0, now: () => clock.at, sleep: async (ms: number) => void (clock.at += ms) };
+    let slowReads = run.slowRosterReads ?? 0;
+    const roster = async () => (slowReads-- > 0 ? Promise.reject(new ReviewerAskTimedOut("roster")) : [reviewer]);
+    const wiring = Object.assign(partialFake<ReviewWiring>(), { sessionStartTimeoutMs: 100, reader: { read: async () => messages(reviewer) }, ...(run.withDispatch !== false && { dispatch: { roster } }) });
     const github = fakeGitHub();
     github.addPr({ headSha: NEW_HEAD });
     if (run.commits) github.prCommits.set(TARGET.pr, run.commits);
     if (run.listFails) github.wire.listPrCommits = async () => Promise.reject(run.listFails);
     if (run.pushes) github.forcePushes.set(TARGET.pr, run.pushes);
     if (run.pushesFail) github.wire.listForcePushes = async () => Promise.reject(run.pushesFail);
-    const route = carrySeatRoute({ now: () => 0, port: githubPort(github.wire) }, wiring);
+    const route = carrySeatRoute({ now: clock.now, sleep: clock.sleep, pollMs: 10, port: githubPort(github.wire) }, wiring);
     const prompt = JSON.stringify({ ...TARGET, fromHead: REVIEWED, head: NEW_HEAD, heads: [REVIEWED, NEW_HEAD] });
     const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" }));
     if (!outcome.ok) throw new Error(outcome.error);
@@ -315,6 +321,18 @@ describe("the seat check of a carry", () => {
 
   it("refuses when a seat reviewer said WAIT at a head between", async () => {
     await expect(checked((reviewer) => [verdict(REVIEWED, "WAIT", reviewer)])).resolves.toBe(false);
+  });
+
+  it("waits out a roster read that timed out and then reads the seat", async () => {
+    const outcome = await seatOutcome((reviewer) => [verdict(NEW_HEAD, "FIX_FIRST", reviewer)], { slowRosterReads: 3 });
+
+    expect(outcome).toEqual({ clear: false, reason: `a seat reviewer said FIX_FIRST at ${NEW_HEAD}` });
+  });
+
+  it("refuses the carry, never clears it, when the roster stays unread past the budget", async () => {
+    const outcome = await seatOutcome(() => [], { slowRosterReads: Infinity });
+
+    expect(outcome).toEqual({ clear: false, reason: "seat check: the roster could not be read: ReviewerRosterUnread" });
   });
 
   it("clears when no seat reviewer objected", async () => {
@@ -565,7 +583,7 @@ describe("carrying a MERGE across a clean merge-up to a head that claims attesta
 
   /** Answers the claims step from the real route, reading the world's attestation files at the base and the head. */
   function claimsFrom(github: FakeGitHub): ClaimsAnswer {
-    const route = carryRoutes({ gitCache: hostCarryPorts, now: () => 0, port: githubPort(github.wire), store: partialFake<ShepherdStoreRef>() }, undefined).find((r) => r.match === "sh-carry-claims")!;
+    const route = carryRoutes({ gitCache: hostCarryPorts, now: () => 0, sleep: async () => undefined, port: githubPort(github.wire), store: partialFake<ShepherdStoreRef>() }, undefined).find((r) => r.match === "sh-carry-claims")!;
     return async (input) => {
       const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 0, requestKey: "k" }));
       if (!outcome.ok) throw new Error(outcome.error);
@@ -611,7 +629,7 @@ describe("the carry scope step", () => {
     github.addPr({ headSha: NEW_HEAD });
     const run = partialFake<Registration>({ holdReason: held ? "g10-review: authority touch" : null });
     const store = partialFake<ShepherdStoreRef>({ get: () => partialFake<ShepherdStore>({ byRun: () => run, eventsOf: () => [] }) });
-    const route = carryRoutes({ gitCache: hostCarryPorts, now: () => 0, port: githubPort(github.wire), store }, undefined)[0]!;
+    const route = carryRoutes({ gitCache: hostCarryPorts, now: () => 0, sleep: async () => undefined, port: githubPort(github.wire), store }, undefined)[0]!;
     const prompt = JSON.stringify({ ...TARGET, runId: "run-1" });
     const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" }));
     if (!outcome.ok) throw new Error(outcome.error);
@@ -664,7 +682,7 @@ describe("the carry routes' git cache", () => {
   }
 
   async function runRoute(step: string, ports: GitCachePorts, wiring?: ReviewWiring): Promise<void> {
-    const deps = { now: () => 0, port: githubPort(fakeGitHub().wire), store: partialFake<ShepherdStoreRef>(), gitCache: ports };
+    const deps = { now: () => 0, sleep: async () => undefined, port: githubPort(fakeGitHub().wire), store: partialFake<ShepherdStoreRef>(), gitCache: ports };
     const route = carryRoutes(deps, wiring).find((candidate) => candidate.match === step)!;
     const prompt = JSON.stringify(ROUTE_INPUTS[step]);
     const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" }));
