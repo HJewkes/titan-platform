@@ -1,4 +1,4 @@
-import { COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, type BranchCommits, type CompareResult } from "./port.js";
+import { COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, type BranchCommits, type CompareResult } from "./port-types.js";
 import type { FakeGitHub } from "./fake-types.js";
 
 type CompareInput = NonNullable<ReturnType<FakeGitHub["compares"]["get"]>>;

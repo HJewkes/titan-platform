@@ -4,7 +4,7 @@ import { listForcePushes } from "./force-pushes.js";
 import { graphql } from "./graphql.js";
 import { checkRunBody } from "./check-run-create.js";
 import { GhError, execGh, type GhExec } from "./exec.js";
-import type { CheckRun, Commit, GitHubWire, IssueComment, JobStep, PrFile, PullRequest, RepoFile, SquashSource } from "./port.js";
+import type { CheckRun, Commit, GitHubWire, IssueComment, JobStep, PrFile, PullRequest, RepoFile, SquashSource } from "./port-types.js";
 import type { OpenPrList } from "./pr-list.js";
 import { revalidateRef, revalidateRulesets } from "./conditional-reads.js";
 import type { ReviewComment } from "./review-comment.js";

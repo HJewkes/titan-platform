@@ -1,4 +1,4 @@
-import type { GitHubWire, RepoSlug, WriteResult } from "./port.js";
+import type { GitHubWire, RepoSlug, WriteResult } from "./port-types.js";
 
 export async function pushEmptyCommit(wire: GitHubWire, repo: RepoSlug, branch: string, expectedHeadSha: string, message: string): Promise<WriteResult<{ sha: string }>> {
   const head = await wire.getRef(repo, branch);
