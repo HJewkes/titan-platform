@@ -70,6 +70,28 @@ const launchWithResolver = (resolver: string) =>
     { encoding: "utf8", env: { PATH: MINIMAL_PATH } },
   );
 
+describe("the onSpawn hook", () => {
+  it("hands the spawned child to onSpawn before writing the brief", () => {
+    writePlan({}, "synthetic brief");
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        `import { runAgent, readLaunchPlan } from ${JSON.stringify(path.join(DIST, "index.js"))};
+         const plan = readLaunchPlan(${JSON.stringify(planFile())});
+         runAgent(plan, { agentDir: ${JSON.stringify(agentDir())}, onSpawn: child => {
+           process.stdout.write("onSpawn:" + (typeof child.pid) + ":ended=" + child.stdin.writableEnded + ";");
+         } });`,
+      ],
+      { encoding: "utf8", env: { PATH: MINIMAL_PATH } },
+    );
+
+    expect(result.stdout).toBe("onSpawn:number:ended=false;fake-claude-ran");
+  });
+});
+
 describe("the environment the launcher hands the launched process", () => {
   it("stamps its own pid over a launcher pid the plan tries to set", () => {
     const merged = launchEnv({ TITAN_AGENT_LAUNCHER_PID: "1", AGENT_NAME: "scout" }, { HOME: "/h" }, 4242);
