@@ -283,11 +283,7 @@ export class RefreshScheduler {
   ): Promise<boolean> {
     try {
       this.last = await this.run(kind, onIndexed, onLockWait);
-      this.lastError = null;
-      this.consecutiveErrors = 0;
-      this.lockSkips = 0;
-      this.deltaFailures = 0;
-      this.deltaBackoffUntil = 0;
+      this.clearFailures();
       return true;
     } catch (err) {
       if (isLockContention(err)) {
@@ -306,6 +302,14 @@ export class RefreshScheduler {
       else this.startDeltaBackoff();
       return false;
     }
+  }
+
+  private clearFailures(): void {
+    this.lastError = null;
+    this.consecutiveErrors = 0;
+    this.lockSkips = 0;
+    this.deltaFailures = 0;
+    this.deltaBackoffUntil = 0;
   }
 
   private startDeltaBackoff(): void {
