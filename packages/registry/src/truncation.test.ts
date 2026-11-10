@@ -101,6 +101,12 @@ describe("truncateOutput by whole lines", () => {
     expect(result.omittedLines).toBe(8);
   });
 
+  it("writes the singular marker when exactly one line is omitted", () => {
+    const result = truncateOutput(`head\n${"x".repeat(100)}\ntail`, { maxBytes: 40 });
+    expect(result.text).toBe("head\n--- 1 line omitted ---\ntail");
+    expect(result.omittedLines).toBe(1);
+  });
+
   it("never exceeds the budget on wide rows", () => {
     const input = numbered(200, (i) => `data row ${i}: ${"x".repeat(50)}`);
     const result = truncateOutput(input, { maxBytes: 2000 });
