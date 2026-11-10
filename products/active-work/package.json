@@ -38,7 +38,7 @@
     "gen:cli-reference": "pnpm build:cli && node scripts/gen-cli-reference.mjs",
     "postinstall": "node scripts/postinstall.js",
     "preuninstall": "node scripts/preuninstall.js",
-    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "prepack": "node scripts/gen-cli-reference.mjs && test -s docs/cli-reference.md"
   },
   "devDependencies": {
