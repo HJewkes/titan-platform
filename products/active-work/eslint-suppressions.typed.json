@@ -32,11 +32,6 @@
       "count": 3
     }
   },
-  "products/active-work/src/bootstrap/prompt.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 6
-    }
-  },
   "products/active-work/src/bootstrap/rank-notes.test.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1

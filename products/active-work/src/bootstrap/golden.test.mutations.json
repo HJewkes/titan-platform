@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "durable and foreign notes sections swapped",
+      "file": "products/active-work/src/bootstrap/sections.ts",
+      "find": "  (v) => renderDurableNotes(v.notes, v.noteRanking, v.input.slug),\n  (v) => renderForeignNotes(v.noteRanking),",
+      "replace": "  (v) => renderForeignNotes(v.noteRanking),\n  (v) => renderDurableNotes(v.notes, v.noteRanking, v.input.slug),",
+      "kills": [
+        "bootstrap golden output renders every optional section in order for a fully loaded initiative"
+      ]
+    },
+    {
+      "name": "parallel sessions moved above the last session",
+      "file": "products/active-work/src/bootstrap/sections.ts",
+      "find": "  lastSession,\n  (v) => renderParallelSessions(selectParallelSessions(v.sessions, v.narrativeSession)),",
+      "replace": "  (v) => renderParallelSessions(selectParallelSessions(v.sessions, v.narrativeSession)),\n  lastSession,",
+      "kills": [
+        "bootstrap golden output renders every optional section in order for a fully loaded initiative"
+      ]
+    }
+  ]
+}

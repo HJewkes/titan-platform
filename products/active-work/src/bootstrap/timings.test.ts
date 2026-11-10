@@ -41,6 +41,7 @@ describe('bootstrap timings_ms', () => {
       const timings = metadata.timings_ms!;
       for (const phase of PHASES) expect(timings[phase]).toBeGreaterThanOrEqual(0);
       expect(Number.isInteger(timings.loop_queries)).toBe(true);
+      expect(timings.loop_queries).toBeGreaterThanOrEqual(0);
     });
   });
 
