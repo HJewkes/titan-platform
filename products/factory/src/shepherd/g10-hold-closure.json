@@ -463,6 +463,7 @@
   "shepherd/train-shadow-peers.ts",
   "shepherd/train.ts",
   "shepherd/tree-carry.ts",
+  "shepherd/tsconfig-test-support.ts",
   "shepherd/turn-check.ts",
   "shepherd/version-packages.ts",
   "shepherd/view-schema.ts",
