@@ -1299,7 +1299,7 @@
       "metric": "loc",
       "kind": "file",
       "max": 350,
-      "$comment": "Vendored verbatim from titan-design review-schema-v0.3.0 (4fcb3827); exempt by owner answer 2026-10-16 ('Yes, scoped'). TP-3232 deletes the vendored copy and this exclude. The products/active-work entries: owner decision 443 (2026-10-18), adopted verbatim from HJewkes/active-work eead047; TP-3541 removes this exclude.",
+      "$comment": "Vendored verbatim from titan-design review-schema-v0.3.0 (4fcb3827); exempt by owner answer 2026-10-16 ('Yes, scoped'). TP-3232 deletes the vendored copy and this exclude.",
       "exclude": [
         "apps/console/server/review-schema-0.3/schema.ts"
       ],

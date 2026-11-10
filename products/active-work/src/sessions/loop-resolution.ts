@@ -76,9 +76,10 @@ function refStem(ref: string): string {
  * its own loop (defeating the empty-ledger gate) and let two sessions sharing
  * an `ended` close each other's loops in a cycle, both silently.
  *
- * Same-`session_id` targets are rejected too: `pickAvailableFilename` parks a
- * colliding record at `<stem>-1.md`, so a self-directed resolve lands on the
- * *earlier* file and would silently close a different record's live loop.
+ * Sharing a `session_id` is not self-resolution: Claude Code reuses ids across
+ * days and checkpoint wraps reuse one within a day, each landing in its own
+ * file. Identity is the file (`sessionFile`); the `endedMs` ordering already
+ * rules out a same-id pair closing each other.
  */
 function classifyResolve(
   ref: string,
@@ -88,7 +89,6 @@ function classifyResolve(
   if (refStem(ref) === session.sessionFile) return 'self';
   const target = loops.get(ref);
   if (!target) return 'missing';
-  if (target.session.sessionId === session.sessionId) return 'self';
   if (target.session.endedMs >= session.endedMs) return 'not-prior';
   return null;
 }

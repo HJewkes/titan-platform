@@ -3,16 +3,17 @@ import { BODY_ENV, run, type CliDeps } from "./cli.js";
 
 const FOOTER = (door: string) =>
   `Summary\n<!-- merge-danger:v1 -->\nDoor: ${door}\nBlast radius: one command\nRollback: revert\nContract: none\n`;
-const TWO_WAY_DIFF = "10\t2\tsrc/cli/status.ts\n20\t1\tsrc/cli/status.test.ts\n";
-const MIGRATION_DIFF = "10\t0\tsrc/db/migrations/001-init.sql\n";
+const TWO_WAY_DIFF = "10\t2\tsrc/cli/status.ts\0" + "20\t1\tsrc/cli/status.test.ts\0";
+const MIGRATION_DIFF = "10\t0\tsrc/db/migrations/001-init.sql\0";
 
-function harness(diff: string, body: string, extraEnv: Record<string, string> = {}) {
+function harness(diff: string, body: string, extraEnv: Record<string, string> = {}, files: Record<string, string> = {}) {
   const out: string[] = [];
   const err: string[] = [];
   const deps: CliDeps = {
     diff: () => diff,
     readText: (path) => {
       if (path === "body.md") return body;
+      if (path in files) return files[path] ?? "";
       throw new Error(`unexpected read ${path}`);
     },
     env: extraEnv,
@@ -20,6 +21,10 @@ function harness(diff: string, body: string, extraEnv: Record<string, string> = 
     err: (text) => err.push(text),
   };
   return { deps, out, err };
+}
+
+function doorOf(out: readonly string[]): { facts: { kind: string; path?: string }[] } {
+  return JSON.parse(out.join("").trim().split("\n").at(-1) ?? "").door;
 }
 
 describe("review-burden bin", () => {
@@ -60,5 +65,36 @@ describe("review-burden bin", () => {
     const { deps, err } = harness("", "");
     expect(run(["--nope"], deps)).toBe(2);
     expect(err.join("")).toContain("unknown argument");
+  });
+
+  it("keeps the path class of a path with a space and a non-ASCII character", () => {
+    const { deps, out } = harness("10\t0\tsrc/db/migrations/été 1.sql\0", "");
+    run(["--body-file", "body.md"], deps);
+    expect(doorOf(out).facts).toEqual([{ kind: "migration", path: "src/db/migrations/été 1.sql" }]);
+  });
+
+  it("reads the NUL-separated rename form, where the old and new paths are separate fields", () => {
+    const { deps, out } = harness("5\t1\t\0src/db/migrations/été old.sql\0src/été new.ts\0", "");
+    run(["--body-file", "body.md"], deps);
+    expect(doorOf(out).facts).toEqual([{ kind: "migration", path: "src/db/migrations/été old.sql" }]);
+  });
+
+  it("reads a rename into a directory whose path has a space", () => {
+    const { deps, out } = harness("2\t0\t\0src/old.ts\0src/db/migrations/new dir/é.sql\0", "");
+    run(["--body-file", "body.md"], deps);
+    expect(doorOf(out).facts).toEqual([{ kind: "migration", path: "src/db/migrations/new dir/é.sql" }]);
+  });
+
+  it("keeps a non-rename path that literally contains ' => ' as one path", () => {
+    const { deps, out } = harness("1\t0\tsrc/db/migrations/a => b.sql\0", "");
+    run(["--body-file", "body.md"], deps);
+    expect(doorOf(out).facts).toEqual([{ kind: "migration", path: "src/db/migrations/a => b.sql" }]);
+  });
+
+  it("reports a major-changeset fact for a changeset whose package name is quoted", () => {
+    const changeset = `---\n"@scope/pkg": major\n---\n\nBreak it.\n`;
+    const { deps, out } = harness("3\t0\t.changeset/brave-owl.md\0", "", {}, { ".changeset/brave-owl.md": changeset });
+    run(["--body-file", "body.md"], deps);
+    expect(doorOf(out).facts).toEqual([{ kind: "major-changeset" }]);
   });
 });

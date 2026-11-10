@@ -17,7 +17,14 @@ import type {
 import { emptyEditError, sendFailed } from "./contract.js";
 import type { TelegramConfig } from "./telegram-api.js";
 import { describeCause } from "./send-failure.js";
-import { captionError, photoForm, voiceForm } from "./telegram-media.js";
+import {
+  captionError,
+  mediaSizeError,
+  photoForm,
+  TELEGRAM_MAX_PHOTO_BYTES,
+  TELEGRAM_MAX_VOICE_BYTES,
+  voiceForm,
+} from "./telegram-media.js";
 import {
   callBotApi,
   redactToken,
@@ -215,11 +222,13 @@ export class TelegramTransport implements InteractiveTransport {
 
   /** Uploaded as multipart, so the bytes go with the request and no public URL is needed. */
   async sendVoice({ handle, audio }: VoiceInput): Promise<MediaSendResult> {
+    const oversized = mediaSizeError(audio, TELEGRAM_MAX_VOICE_BYTES, "Voice note");
+    if (oversized) return { ok: false, error: oversized };
     return await this.upload(handle, "sendVoice", (chatId) => voiceForm(chatId, audio));
   }
 
   async sendPhoto({ handle, image, caption }: PhotoInput): Promise<MediaSendResult> {
-    const invalid = captionError(caption);
+    const invalid = captionError(caption) ?? mediaSizeError(image, TELEGRAM_MAX_PHOTO_BYTES, "Photo");
     if (invalid) return { ok: false, error: invalid };
     return await this.upload(handle, "sendPhoto", (chatId) => photoForm(chatId, image, caption));
   }

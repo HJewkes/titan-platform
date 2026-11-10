@@ -43,7 +43,7 @@ export async function assertInitiativeExists({ slug, activeRoot }: LedgerTarget)
   }
 }
 
-/** One id per record: derivation rejects a resolve that shares the opener's session id. */
+/** One id per ledger record, so each entry is its own session file. */
 function ledgerSessionId(): string {
   return `loop-${randomBytes(4).toString('hex')}`;
 }
