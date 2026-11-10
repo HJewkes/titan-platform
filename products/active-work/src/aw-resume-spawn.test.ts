@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import type { spawn } from 'node:child_process';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { spawnClaudeResume } from './aw.js';
+import { spawnClaudeResume } from './launcher-resume.js';
 
 type SpawnCall = { cmd: string; args: readonly string[]; env: NodeJS.ProcessEnv | undefined };
 
