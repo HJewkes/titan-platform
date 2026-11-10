@@ -1,10 +1,11 @@
-import { promises as fs, type Dirent } from 'node:fs';
+import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { ArtifactsSchema, type Artifacts } from '../schemas/artifacts.js';
 import { getActiveRoot, getInitiativeDir, getLockPath } from '../utils/paths.js';
 import { withFileLock } from '../utils/fs-atomic.js';
 import { readYaml } from '../utils/yaml-io.js';
+import { listInitiativeSlugs } from '../sessions/initiatives.js';
 import { UsageError } from '../errors.js';
 import { defineCommand } from '../registry/index.js';
 
@@ -30,28 +31,18 @@ async function readForSlug(slug: string): Promise<Artifacts> {
   return withFileLock(getLockPath(slug), () => readYaml(artifactsPath, ArtifactsSchema));
 }
 
-async function listInitiativeSlugs(): Promise<string[]> {
+async function listSlugsWithArtifacts(): Promise<string[]> {
   const root = getActiveRoot();
-  let entries: Dirent[];
-  try {
-    entries = await fs.readdir(root, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-  const slugs: string[] = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    if (entry.name.startsWith('.')) continue;
-    const artifactsPath = path.join(root, entry.name, 'artifacts.yml');
-    try {
-      await fs.access(artifactsPath);
-      slugs.push(entry.name);
-    } catch {
-      // skip dirs without artifacts.yml
-    }
-  }
-  slugs.sort();
-  return slugs;
+  const slugs = await listInitiativeSlugs(root);
+  const present = await Promise.all(
+    slugs.map((slug) =>
+      fs.access(path.join(root, slug, 'artifacts.yml')).then(
+        () => true,
+        () => false,
+      ),
+    ),
+  );
+  return slugs.filter((_, i) => present[i]);
 }
 
 export default defineCommand<Args, Result>({
@@ -70,7 +61,7 @@ export default defineCommand<Args, Result>({
   },
   async run(args) {
     if (args.all_initiatives) {
-      const slugs = await listInitiativeSlugs();
+      const slugs = await listSlugsWithArtifacts();
       const items: Array<{ slug: string; artifacts: Artifacts }> = [];
       for (const slug of slugs) {
         items.push({ slug, artifacts: await readForSlug(slug) });
