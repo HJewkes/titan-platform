@@ -132,9 +132,9 @@ describe('runDrainIngest', () => {
     expect(second.scanned).toBe(1);
     expect(second.blobs).toBe(1);
 
-    let total = 0;
-    for await (const _ of readOccurrences(root)) total++;
-    expect(total).toBe(2);
+    const occurrences: unknown[] = [];
+    for await (const occurrence of readOccurrences(root)) occurrences.push(occurrence);
+    expect(occurrences).toHaveLength(2);
   });
 
   it('carries a pending tool name across a chunk boundary', async () => {

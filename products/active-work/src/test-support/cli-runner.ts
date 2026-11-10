@@ -40,7 +40,7 @@ export function runCli(args: string[], env: Env = {}): RunResult {
     encoding: 'utf8',
     env: processEnv(env),
   });
-  return { status: result.status ?? -1, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
+  return { status: result.status ?? -1, stdout: result.stdout, stderr: result.stderr };
 }
 
 export function runCliAsync(args: string[], env: Env = {}): Promise<RunResult> {
@@ -68,7 +68,7 @@ function keepErrorListeners(): () => void {
   return () =>
     streams.forEach((stream, i) => {
       for (const l of stream.listeners('error')) {
-        if (!before[i]!.includes(l)) stream.off('error', l as never);
+        if (!before[i].includes(l)) stream.off('error', l as never);
       }
     });
 }
@@ -108,7 +108,7 @@ async function loadMain(): Promise<Main> {
   process.env.NO_COLOR = '1';
   const run = capture();
   try {
-    const mod = (await import('../cli.js')) as { main: Main };
+    const mod = (await import('../cli.js'));
     await run.exited;
     return mod.main;
   } finally {

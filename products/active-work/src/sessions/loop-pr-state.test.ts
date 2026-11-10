@@ -62,7 +62,7 @@ describe('findMergedPrLoops cache', () => {
 
     expect(calls.sort()).toEqual(['acme/widgets#1', 'acme/widgets#2']);
     expect([...second.merged]).toEqual([...first.merged]);
-    expect([...second.merged]).toEqual([loops[0]!.ref]);
+    expect([...second.merged]).toEqual([loops[0].ref]);
   });
 
   it('caches a failure, so an offline process does not retry on every call', async () => {

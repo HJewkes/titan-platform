@@ -45,9 +45,9 @@ describe('appendUsage', () => {
     const raw = await fs.readFile(path.join(tempDir, 'usage.jsonl'), 'utf8');
     const lines = raw.trim().split('\n');
     expect(lines).toHaveLength(3);
-    expect(JSON.parse(lines[0]!).command).toBe('a');
-    expect(JSON.parse(lines[1]!).command).toBe('b');
-    expect(JSON.parse(lines[2]!).command).toBe('c');
+    expect(JSON.parse(lines[0]).command).toBe('a');
+    expect(JSON.parse(lines[1]).command).toBe('b');
+    expect(JSON.parse(lines[2]).command).toBe('c');
   });
 
   it('silently swallows errors when the state dir is unwriteable', async () => {

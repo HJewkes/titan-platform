@@ -120,6 +120,10 @@ export function scaffold(root: string): void {
     session(SHARED_SESSION_ID, '2026-07-13T23:16:00Z'),
   );
 
+  scaffoldNotes(root);
+}
+
+function scaffoldNotes(root: string): void {
   writeFile(
     root,
     'alpha/sources/notes/2026-09-02-alpha-lesson.md',

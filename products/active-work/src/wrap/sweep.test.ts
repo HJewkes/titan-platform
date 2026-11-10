@@ -60,6 +60,10 @@ function porcelain(repo: FakeRepo): string {
     .join('\n');
 }
 
+function lookup<T>(table: Record<string, T>, key: string): T | undefined {
+  return table[key];
+}
+
 /**
  * A git runner over an in-memory repo table. Any directory not in the table
  * fails every call, which is how a moved or deleted repo behaves.
@@ -72,7 +76,7 @@ function makeGitRunner(repos: Record<string, FakeRepo>): CommandRunner {
   return async (_bin, args) => {
     const dir = args[1] ?? '';
     const rest = args.slice(2);
-    const repo = repos[dir];
+    const repo = lookup(repos, dir);
     if (rest[0] === 'worktree') return repo ? ok(porcelain(repo)) : fail();
     if (rest[0] === 'stash') {
       if (!repo) return fail();
@@ -393,7 +397,7 @@ describe('sweepInitiative upstream semantics', () => {
     await withTempActiveRoot(async (root) => {
       const res = await sweepOne(root, { path: SAMPLE_REPO, branch: 'feat/unknown' });
       expect(res.unpushed).toHaveLength(1);
-      expect(res.unpushed[0]!.no_upstream).toBe(true);
+      expect(res.unpushed[0].no_upstream).toBe(true);
     });
   });
 

@@ -50,9 +50,10 @@ async function note(root: string, text: string, id = ID): Promise<Task> {
   return asTask(await taskNote.run({ slug: SLUG, id, text }, ctx(root)));
 }
 
-function withoutNotesAndStamp(task: Task): Partial<Task> {
-  const { notes: _notes, updated: _updated, ...rest } = task;
-  return rest;
+function withoutNotesAndStamp(task: Task): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(task).filter(([key]) => key !== 'notes' && key !== 'updated'),
+  );
 }
 
 describe('task.note', () => {

@@ -42,17 +42,21 @@ async function openLoops(root: string, steps: Array<Omit<NextStep, 'text'>>): Pr
 async function list(root: string, overrides: Record<string, unknown> = {}) {
   const ctx = makeCtx(root);
   const result = await loopsCmd.run(loopsCmd.args.parse({ slug: SLUG, ...overrides }), ctx);
-  const byId = new Map(result.open.map((loop) => [loop.ref.split('#')[1]!, loop]));
+  const byId = new Map(result.open.map((loop) => [loop.ref.split('#')[1], loop]));
   return { result, byId, warnings: ctx.warnings };
 }
 
 /** Answers `gh pr view <n> --repo <repo> --json state` from a table; anything else fails. */
+function lookup<T>(table: Record<string, T>, key: string): T | undefined {
+  return table[key];
+}
+
 function ghWithStates(states: Record<string, string>): { runner: CommandRunner; calls: string[] } {
   const calls: string[] = [];
   const runner: CommandRunner = (_bin, args) => {
     const key = `${args[4]}#${args[2]}`;
     calls.push(key);
-    const state = states[key];
+    const state = lookup(states, key);
     return Promise.resolve(
       state === undefined
         ? { code: 1, stdout: '', stderr: 'no pull requests found' }

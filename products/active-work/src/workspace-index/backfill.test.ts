@@ -14,7 +14,7 @@ import {
 import { refreshWorkspace } from './refresh.js';
 import { WORKSPACE_SPAN_SOURCE_BASE } from './schema.js';
 import { WorkspaceWriter } from './write.js';
-import { legacyGraphInto, removeFile, scaffold, writeFile } from '../test-support/workspace-index/fixture.js';
+import { legacyGraphInto, scaffold, writeFile } from '../test-support/workspace-index/fixture.js';
 
 /**
  * The cutover from `search_span` to `workspace_span` (TP-4680). Each graph here

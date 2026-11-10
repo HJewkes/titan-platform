@@ -33,13 +33,17 @@ afterEach(() => {
 
 type GhAnswer = Record<string, unknown> | Error | CommandResult;
 
+function lookup<T>(table: Record<string, T>, key: string): T | undefined {
+  return table[key];
+}
+
 /** A `gh` stand-in keyed by `<repo>#<number>`; records every PR it was asked about. */
 function fakeGh(answers: Record<string, GhAnswer>): RunCommand & { asked: string[] } {
   const asked: string[] = [];
   const run = (_bin: string, args: string[]): Promise<CommandResult> => {
     const key = `${args[args.indexOf('--repo') + 1] ?? ''}#${args[2] ?? ''}`;
     asked.push(key);
-    const answer = answers[key];
+    const answer = lookup(answers, key);
     if (answer instanceof Error) return Promise.reject(answer);
     if (answer && 'code' in answer) return Promise.resolve(answer as CommandResult);
     return Promise.resolve({ code: 0, stdout: JSON.stringify(answer ?? {}), stderr: '' });

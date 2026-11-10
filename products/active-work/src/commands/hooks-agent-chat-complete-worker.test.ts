@@ -138,7 +138,9 @@ describe('hooks agent-chat-complete with worker facts', () => {
 
   it('records a worker that sent no report as exited-no-report with its last action', async () => {
     const payload = await loadPayload();
-    const { report: _report, pr: _pr, ...facts } = payload.facts;
+    const facts = { ...payload.facts };
+    delete facts.report;
+    delete facts.pr;
     const { front, body } = await recordFor({
       ...payload,
       code: 1,
@@ -154,7 +156,8 @@ describe('hooks agent-chat-complete with worker facts', () => {
   });
 
   it('keeps recording a payload without facts the way an older broker expects', async () => {
-    const { facts: _facts, ...legacy } = await loadPayload();
+    const legacy = await loadPayload();
+    delete legacy.facts;
     const { front, body } = await recordFor(legacy);
 
     expect(front.kind).toBeUndefined();
