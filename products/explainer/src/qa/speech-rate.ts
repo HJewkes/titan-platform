@@ -12,10 +12,10 @@ export const SpeechRateReportSchema = z.object({
   beats: z.array(z.object({ beat: z.string(), words: z.number().int().nonnegative(), durationS: z.number(), wpm: z.number().nullable(), fast: z.boolean() })),
   fastBeats: z.array(z.string()),
 });
-export type SpeechRateReport = z.infer<typeof SpeechRateReportSchema>;
+type SpeechRateReport = z.infer<typeof SpeechRateReportSchema>;
 
 /** A beat's narration as the pipeline already has it: its word count and its heard length. */
-export interface SpokenBeat {
+interface SpokenBeat {
   id: string;
   words: number;
   durationS: number;
