@@ -309,9 +309,9 @@ describe('task.apply', () => {
           'failed',
           'applied',
         ]);
-        expect(results[1]!.error).toContain('dep cycle');
-        expect(results[2]!.error).toContain('SI-404 is not a known task id');
-        expect(results[3]!.error).toContain(`parent OI-1 is in ${OTHER}`);
+        expect(results[1].error).toContain('dep cycle');
+        expect(results[2].error).toContain('SI-404 is not a known task id');
+        expect(results[3].error).toContain(`parent OI-1 is in ${OTHER}`);
         expect((await readTask(root, 'SI-2')).dep).toBeUndefined();
         expect(await readTask(root, 'SI-3')).toMatchObject({ parent: 'SI-1' });
         expect((await readTask(root, 'SI-3')).dep).toBeUndefined();

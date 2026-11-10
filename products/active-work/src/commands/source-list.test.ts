@@ -107,7 +107,7 @@ describe('source.list', () => {
       const res = await sourceListCmd.run({ slug: SLUG }, ctx);
       expect(res.drift).toHaveLength(1);
       expect(res.drift[0]).toMatchObject({ slug: SLUG });
-      expect(res.drift[0]!.path).toContain('sources/deepdive-forgotten.md');
+      expect(res.drift[0].path).toContain('sources/deepdive-forgotten.md');
     });
   });
 
@@ -219,7 +219,7 @@ describe('source.list', () => {
         ['alpha', false],
         ['beta', true],
       ]);
-      expect(res.drift[0]!.path).toContain('sources/pr-2-alpha.md');
+      expect(res.drift[0].path).toContain('sources/pr-2-alpha.md');
     });
   });
 

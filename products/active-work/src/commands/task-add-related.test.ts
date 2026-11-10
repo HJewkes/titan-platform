@@ -21,7 +21,7 @@ const DONE_WHEN = 'the exporter writes every row and a test proves it';
 const SLOW_SCORE_MS = 50;
 
 function task(id: string, status: 'open' | 'done' = 'open'): Task {
-  return { id, title: `Title of ${id}`, priority: 1, status, created: '2026-10-01', updated: '2026-10-01', done_at: null } as Task;
+  return { id, title: `Title of ${id}`, priority: 1, status, created: '2026-10-01', updated: '2026-10-01', done_at: null };
 }
 
 function hit(id: string, initiative: string = SLUG): RelatedHit {
