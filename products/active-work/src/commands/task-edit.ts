@@ -1,7 +1,6 @@
 import path from 'node:path';
 import { assertPromotable } from './_draft-promotion.js';
 import { readEdges } from '@titan-design/pm';
-import { z } from 'zod';
 import { defineCommand, type CommandContext } from '../registry/index.js';
 import { TaskSchema, type Task } from '../schemas/task.js';
 import { getActiveRoot, getInitiativeDir, getLockPath } from '../utils/paths.js';
@@ -11,188 +10,23 @@ import { nowIso, today } from '../utils/today.js';
 import { NotFoundError, UsageError, ValidationError } from '../errors.js';
 import { assertEdgeWrite } from '../tasks/edge-index.js';
 import { assertKnownDeliverables } from './_deliverables.js';
+import { assertCategories, CATEGORY_OPTIONS, changedCategoryFields } from './_categories.js';
 import {
-  assertCategories,
-  CATEGORY_OPTIONS,
-  changedCategoryFields,
-  DueArg,
-} from './_categories.js';
-import {
-  quietOption,
-  QuietArg,
-  TaskOrLineSchema,
-  quietOr,
-  type TaskOrLine,
-} from './_task-quiet.js';
-
-const EDITABLE_FIELDS = [
-  'title',
-  'priority',
-  'severity',
-  'estimate',
-  'done_when',
-  'tags',
-  'notes',
-  'status',
-] as const;
-
-type EditableField = (typeof EDITABLE_FIELDS)[number];
-
-const ArgsSchema = z.object({
-  slug: z.string().min(1),
-  id: z.string().min(1),
-  field: z.string().min(1).optional(),
-  value: z.unknown().optional(),
-  append: z.string().optional(),
-  add_tag: z.string().optional(),
-  remove_tag: z.string().optional(),
-  parent: z.string().min(1).optional(),
-  dep: z.array(z.string().min(1)).optional(),
-  remove_dep: z.array(z.string().min(1)).optional(),
-  deliverable: z.array(z.string().min(1)).optional(),
-  kind: z.string().min(1).optional(),
-  cos: z.string().min(1).optional(),
-  area: z.string().min(1).optional(),
-  due: DueArg,
-  force: z.boolean().optional(),
-  quiet: QuietArg,
-});
-
-type Args = z.infer<typeof ArgsSchema>;
+  ArgsSchema,
+  PATCH_FIELDS,
+  coerceValue,
+  parseEdit,
+  type Args,
+  type Edit,
+  type EditableField,
+  type PatchEdit,
+  type PatchField,
+} from './_task-edit-parse.js';
+import { quietOption, TaskOrLineSchema, quietOr, type TaskOrLine } from './_task-quiet.js';
 
 interface TaskChange {
   changes: Partial<Task>;
   notices: string[];
-}
-
-function isEditable(field: string): field is EditableField {
-  return (EDITABLE_FIELDS as readonly string[]).includes(field);
-}
-
-/**
- * The CLI/MCP dispatcher can't coerce `value` generically because its type
- * depends on `field` at runtime (unlike other commands, where each arg has
- * a fixed zod type). Coerce here, against the field it's actually landing on.
- */
-function coerceValue(field: EditableField, value: unknown): unknown {
-  if (typeof value !== 'string') return value;
-  if (field === 'priority' || field === 'estimate') {
-    const n = Number(value);
-    return Number.isNaN(n) ? value : n;
-  }
-  if (field === 'tags') {
-    return value
-      .split(',')
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
-  }
-  return value;
-}
-
-const PATCH_FIELDS = ['kind', 'cos', 'area', 'due'] as const;
-
-type PatchField = (typeof PATCH_FIELDS)[number];
-
-export interface PatchEdit {
-  kind: 'patch';
-  fields?: Partial<Pick<Task, PatchField>>;
-  append?: string;
-  addTag?: string;
-  removeTag?: string;
-  parent?: string;
-  addDeps?: string[];
-  removeDeps?: string[];
-  addDeliverables?: string[];
-}
-
-type Edit = { kind: 'field'; field: EditableField; value: unknown } | PatchEdit;
-
-function fieldEdit(args: Args): Edit {
-  const { field, value } = args;
-  if (field === undefined || value === undefined) {
-    throw new UsageError('The field form needs both <field> and <value>');
-  }
-  if (!isEditable(field)) {
-    throw new UsageError(
-      `Field is not editable: ${field} (allowed: ${EDITABLE_FIELDS.join(', ')})`,
-    );
-  }
-  return { kind: 'field', field, value };
-}
-
-function noteLine(text: string | undefined): string | undefined {
-  if (text === undefined) return undefined;
-  if (text.trim() === '') throw new UsageError('--append needs non-empty text');
-  if (/[\r\n]/.test(text)) {
-    throw new UsageError('--append takes one line; call it once per line');
-  }
-  return text;
-}
-
-function singleTag(flag: string, raw: string | undefined): string | undefined {
-  if (raw === undefined) return undefined;
-  const tag = raw.trim();
-  if (tag === '') throw new UsageError(`${flag} needs a non-empty tag`);
-  if (tag.includes(',')) throw new UsageError(`${flag} takes one tag per call: ${tag}`);
-  return tag;
-}
-
-function patchEdit(args: Args): Edit {
-  const append = noteLine(args.append);
-  const addTag = singleTag('--add-tag', args.add_tag);
-  const removeTag = singleTag('--remove-tag', args.remove_tag);
-  if (addTag !== undefined && addTag === removeTag) {
-    throw new UsageError(`--add-tag and --remove-tag name the same tag: ${addTag}`);
-  }
-  const overlap = (args.dep ?? []).filter((id) => args.remove_dep?.includes(id));
-  if (overlap.length > 0) {
-    throw new UsageError(`--dep and --remove-dep name the same id: ${overlap.join(', ')}`);
-  }
-  return {
-    kind: 'patch',
-    append,
-    addTag,
-    removeTag,
-    parent: args.parent,
-    addDeps: args.dep,
-    removeDeps: args.remove_dep,
-    addDeliverables: args.deliverable,
-    fields: patchFields(args),
-  };
-}
-
-function patchFields(args: Args): PatchEdit['fields'] {
-  const set = PATCH_FIELDS.filter((key) => args[key] !== undefined);
-  return set.length === 0 ? undefined : Object.fromEntries(set.map((key) => [key, args[key]]));
-}
-
-const PATCH_KEYS = [
-  'append',
-  'add_tag',
-  'remove_tag',
-  'parent',
-  'dep',
-  'remove_dep',
-  'deliverable',
-  ...PATCH_FIELDS,
-] as const;
-
-function parseEdit(args: Args): Edit {
-  const fieldForm = args.field !== undefined || args.value !== undefined;
-  const flagForm = PATCH_KEYS.some((key) => args[key] !== undefined);
-  if (fieldForm && flagForm) {
-    throw new UsageError(
-      'Pass either <field> <value> or --append/--add-tag/--remove-tag/--parent/--dep/--remove-dep/' +
-        '--deliverable/--kind/--cos/--area/--due, not both',
-    );
-  }
-  if (fieldForm) return fieldEdit(args);
-  if (flagForm) return patchEdit(args);
-  throw new UsageError(
-    'Nothing to edit: pass <field> <value>, --append <text>, --add-tag <tag>, --remove-tag <tag>, ' +
-      '--parent <id>, --dep <id>, --remove-dep <id>, --deliverable <id>, --kind, --cos, --area ' +
-      'or --due',
-  );
 }
 
 function appendLine(notes: string | undefined, line: string): string {
@@ -235,6 +69,23 @@ function newFields(task: Task, edit: PatchEdit): [PatchField, string][] {
   });
 }
 
+function tagChange(
+  current: readonly string[],
+  { addTag, removeTag }: PatchEdit,
+): { tags?: string[]; notices: string[] } {
+  const notices: string[] = [];
+  let tags: string[] | undefined;
+  if (addTag !== undefined) {
+    if (current.includes(addTag)) notices.push(`Tag already present, nothing added: ${addTag}`);
+    else tags = [...current, addTag];
+  }
+  if (removeTag !== undefined) {
+    if (current.includes(removeTag)) tags = (tags ?? [...current]).filter((t) => t !== removeTag);
+    else notices.push(`Tag not present, nothing removed: ${removeTag}`);
+  }
+  return { tags, notices };
+}
+
 export function patchChange(task: Task, edit: PatchEdit): TaskChange {
   const current = task.tags ?? [];
   const { changes, notices } = edgeChange(task, edit);
@@ -249,19 +100,10 @@ export function patchChange(task: Task, edit: PatchEdit): TaskChange {
     notices.push(`Deliverable already present, nothing added: ${id}`);
   }
   if (added.length > 0) changes.deliverables = [...(task.deliverables ?? []), ...added];
-  const { append, addTag, removeTag } = edit;
-  if (append !== undefined) changes.notes = appendLine(task.notes, append);
-  if (addTag !== undefined) {
-    if (current.includes(addTag)) notices.push(`Tag already present, nothing added: ${addTag}`);
-    else changes.tags = [...current, addTag];
-  }
-  if (removeTag !== undefined) {
-    if (current.includes(removeTag)) {
-      changes.tags = (changes.tags ?? current).filter((tag) => tag !== removeTag);
-    } else {
-      notices.push(`Tag not present, nothing removed: ${removeTag}`);
-    }
-  }
+  if (edit.append !== undefined) changes.notes = appendLine(task.notes, edit.append);
+  const tags = tagChange(current, edit);
+  if (tags.tags !== undefined) changes.tags = tags.tags;
+  notices.push(...tags.notices);
   return { changes, notices };
 }
 
@@ -359,6 +201,42 @@ function announce(ctx: CommandContext, notices: string[]): void {
   for (const notice of notices) process.stderr.write(`${notice}\n`);
 }
 
+async function assertWritable(
+  task: Task,
+  next: Task,
+  changes: Partial<Task>,
+  edit: Edit,
+  ctx: CommandContext,
+  slug: string,
+): Promise<void> {
+  assertPromotable(ctx, task, next);
+  await assertCategories(getActiveRoot(), next, changedCategoryFields(changes));
+  const added = edit.kind === 'patch' ? newDeliverables(task, edit) : [];
+  if (added.length > 0) await assertKnownDeliverables(getActiveRoot(), added);
+  if (addsEdge(task, changes)) {
+    await assertEdgeWrite({ slug, id: task.id, parent: changes.parent, dep: changes.dep });
+  }
+}
+
+async function editLocked(args: Args, ctx: CommandContext, edit: Edit): Promise<TaskOrLine> {
+  const file = path.join(getInitiativeDir(args.slug), 'tasks', `${args.id}.yml`);
+  const task = await loadTask(file, args.id);
+  const date = today();
+  const { changes, notices } = changeFor(task, edit, args.force === true);
+  announce(ctx, notices);
+  const line = (): string => editedLine(task, edit);
+  if (Object.keys(changes).length === 0) return quietOr(args.quiet, ctx, task, line);
+  const next = { ...task, ...changes };
+  await assertWritable(task, next, changes, edit, ctx, args.slug);
+  const parsed = TaskSchema.safeParse({ ...next, updated: date });
+  if (!parsed.success) {
+    const target = args.field ?? Object.keys(changes).join(', ');
+    throw new ValidationError(`Invalid value for ${target}: ${parsed.error.message}`);
+  }
+  await writeYaml(file, parsed.data, TaskSchema);
+  return quietOr(args.quiet, ctx, parsed.data, line);
+}
+
 export default defineCommand<Args, TaskOrLine>({
   name: 'task.edit',
   description:
@@ -369,12 +247,30 @@ export default defineCommand<Args, TaskOrLine>({
   cli: {
     positional: ['slug', 'id', 'field', 'value'],
     options: {
-      append: { long: '--append', description: 'Append one line to notes, keeping the rest' },
-      add_tag: { long: '--add-tag', description: 'Add one tag, keeping the others' },
-      remove_tag: { long: '--remove-tag', description: 'Remove one tag, keeping the others' },
-      parent: { long: '--parent', description: 'Set the parent task id, in this initiative' },
-      dep: { long: '--dep', description: 'Id to add as a dep (any initiative). Repeat the flag for each value' },
-      remove_dep: { long: '--remove-dep', description: 'Id to drop from deps. Repeat the flag for each value' },
+      append: {
+        long: '--append',
+        description: 'Append one line to notes, keeping the rest',
+      },
+      add_tag: {
+        long: '--add-tag',
+        description: 'Add one tag, keeping the others',
+      },
+      remove_tag: {
+        long: '--remove-tag',
+        description: 'Remove one tag, keeping the others',
+      },
+      parent: {
+        long: '--parent',
+        description: 'Set the parent task id, in this initiative',
+      },
+      dep: {
+        long: '--dep',
+        description: 'Id to add as a dep (any initiative). Repeat the flag for each value',
+      },
+      remove_dep: {
+        long: '--remove-dep',
+        description: 'Id to drop from deps. Repeat the flag for each value',
+      },
       deliverable: {
         long: '--deliverable',
         description: 'Deliverable id to add, keeping the others. Repeat the flag for each value',
@@ -390,34 +286,6 @@ export default defineCommand<Args, TaskOrLine>({
   async run(args, ctx) {
     const edit = parseEdit(args);
     getActiveRoot();
-    return withFileLock(getLockPath(args.slug), async () => {
-      const file = path.join(getInitiativeDir(args.slug), 'tasks', `${args.id}.yml`);
-      const task = await loadTask(file, args.id);
-      const date = today();
-      const { changes, notices } = changeFor(task, edit, args.force === true);
-      announce(ctx, notices);
-      const line = (): string => editedLine(task, edit);
-      if (Object.keys(changes).length === 0) return quietOr(args.quiet, ctx, task, line);
-      const next = { ...task, ...changes };
-      assertPromotable(ctx, task, next);
-      await assertCategories(getActiveRoot(), next, changedCategoryFields(changes));
-      const added = edit.kind === 'patch' ? newDeliverables(task, edit) : [];
-      if (added.length > 0) await assertKnownDeliverables(getActiveRoot(), added);
-      if (addsEdge(task, changes)) {
-        await assertEdgeWrite({
-          slug: args.slug,
-          id: task.id,
-          parent: changes.parent,
-          dep: changes.dep,
-        });
-      }
-      const parsed = TaskSchema.safeParse({ ...next, updated: date });
-      if (!parsed.success) {
-        const target = args.field ?? Object.keys(changes).join(', ');
-        throw new ValidationError(`Invalid value for ${target}: ${parsed.error.message}`);
-      }
-      await writeYaml(file, parsed.data, TaskSchema);
-      return quietOr(args.quiet, ctx, parsed.data, line);
-    });
+    return withFileLock(getLockPath(args.slug), () => editLocked(args, ctx, edit));
   },
 });
