@@ -52,7 +52,7 @@ async function startOnSocketBoundTo(host: string): Promise<{ outcome: string; st
   const args = ["-c", script, process.execPath, "--input-type=module", "-e", FIXTURE, stateDir];
   const child = spawn("sh", args, { env: { ...process.env, DAEMON_DIST, REGISTRY_DIST }, stdio: ["ignore", "pipe", "inherit", fdOf(socket)] });
   let out = "";
-  child.stdout.on("data", (chunk) => void (out += String(chunk)));
+  child.stdout?.on("data", (chunk) => void (out += String(chunk)));
   await once(child, "exit");
   socket.close();
   return { outcome: out.trim(), stateDir };
