@@ -63,7 +63,8 @@ const { code } = await handle.exited!;
 - It does not build launch plans, choose a Claude account, or scrub secrets. The host does,
   and passes `baseEnv` and `resolveBin` to `runAgent` when it runs the launcher in-process.
   `runAgent` also takes `onSpawn(child)`, called once right after spawn and before the brief is
-  written, so a host can attach its own handlers to the child.
+  written, so a host can attach its own handlers to the child; a throw aborts the launch. It also forwards
+  SIGTERM, SIGINT and SIGHUP to the agent, logging one line per signal and one for the agent's exit.
 - It does not track which agents are live. `columnAfter` is the host's answer to "which
   pane did the last agent in this column get".
 - It does not decide placement. The host passes `split`, `maxInTab` and `tabWindow`; the
