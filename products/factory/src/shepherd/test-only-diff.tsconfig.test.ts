@@ -84,3 +84,27 @@ describe("onlyTestEntriesChanged", () => {
     expect(onlyTestEntriesChanged("{}", "{}")).toBe(false);
   });
 });
+
+describe("onlyTestEntriesChanged string handling", () => {
+  it("reads a comma-bracket inside a compilerOptions string as text, so its change stays source", () => {
+    const before = '{ "compilerOptions": { "outDir": "dist,}" }, "exclude": [] }';
+    const after = '{ "compilerOptions": { "outDir": "dist}" }, "exclude": ["a.test.ts"] }';
+
+    expect(onlyTestEntriesChanged(before, after)).toBe(false);
+  });
+
+  it("reads a changed path string holding a comma-bracket as source", () => {
+    const before = '{ "compilerOptions": { "paths": { "x": ["a ]"] } }, "exclude": [] }';
+    const after = '{ "compilerOptions": { "paths": { "x": ["a, ]"] } }, "exclude": ["a.test.ts"] }';
+
+    expect(onlyTestEntriesChanged(before, after)).toBe(false);
+  });
+
+  it("removes a trailing comma that a comment separates from its bracket", () => {
+    expect(onlyTestEntriesChanged('{ "exclude": ["a.test.ts", // c\n] }', '{ "exclude": [] }')).toBe(true);
+  });
+
+  it("refuses an unterminated block comment", () => {
+    expect(onlyTestEntriesChanged('{ "exclude": [] }', '{ "exclude": ["a.test.ts"] } /* open')).toBe(false);
+  });
+});

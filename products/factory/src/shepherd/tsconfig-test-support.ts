@@ -5,30 +5,60 @@ const LIST_KEYS: ReadonlySet<string> = new Set(["include", "exclude"]);
 /** Whether `path` names a tsconfig*.json, wherever it sits. */
 export const isTsconfigPath = (path: string): boolean => TSCONFIG_NAME.test(path.slice(path.lastIndexOf("/") + 1));
 
-/** Removes comments and trailing commas outside strings, as tsc reads a tsconfig. */
-function stripJsonc(text: string): string {
+/** Copies a string literal whole from `start`, so no rewrite below ever touches its text. */
+function stringEnd(text: string, start: number): number {
+  let end = start + 1;
+  while (end < text.length && text[end] !== '"') end += text[end] === "\\" ? 2 : 1;
+  return end + 1;
+}
+
+/** Removes comments outside strings; an unterminated block comment throws, since tsc rejects the file. */
+function stripComments(text: string): string {
   let out = "";
   let index = 0;
   while (index < text.length) {
     const char = text[index] ?? "";
     const next = text[index + 1];
     if (char === '"') {
-      let end = index + 1;
-      while (end < text.length && text[end] !== '"') end += text[end] === "\\" ? 2 : 1;
-      out += text.slice(index, end + 1);
-      index = end + 1;
+      const end = stringEnd(text, index);
+      out += text.slice(index, end);
+      index = end;
     } else if (char === "/" && next === "/") {
       while (index < text.length && text[index] !== "\n") index += 1;
     } else if (char === "/" && next === "*") {
       const end = text.indexOf("*/", index + 2);
-      index = end === -1 ? text.length : end + 2;
+      if (end === -1) throw new Error("unterminated block comment");
+      index = end + 2;
     } else {
       out += char;
       index += 1;
     }
   }
-  return out.replace(/,(\s*[}\]])/g, "$1");
+  return out;
 }
+
+const nextNonSpace = (text: string, from: number): string => text.slice(from).trimStart().charAt(0);
+
+/** Removes a comma only when, outside a string, the next non-space character closes an object or array. */
+function stripTrailingCommas(text: string): string {
+  let out = "";
+  let index = 0;
+  while (index < text.length) {
+    const char = text[index] ?? "";
+    if (char === '"') {
+      const end = stringEnd(text, index);
+      out += text.slice(index, end);
+      index = end;
+    } else {
+      const closes = char === "," && /[}\]]/.test(nextNonSpace(text, index + 1));
+      if (!closes) out += char;
+      index += 1;
+    }
+  }
+  return out;
+}
+
+const stripJsonc = (text: string): string => stripTrailingCommas(stripComments(text));
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
