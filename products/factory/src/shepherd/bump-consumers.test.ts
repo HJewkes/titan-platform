@@ -321,6 +321,19 @@ describe("bumpConsumers", () => {
     expect(notes[1]).toMatchObject({ repo: CONSUMER_B, registered: expect.any(String) });
   });
 
+  it("a bump PR opened between the open-PR list and the branch check is registered as open, not reported closed", async () => {
+    const w = world();
+    const { bumps } = await planConsumerBumps(w.services, w.registry);
+    const open = bumpShapedPr(w, CONSUMER_A, bumps[0]!.branch);
+    const port = { ...w.services.port, listOpenPrs: async () => [] };
+
+    const notes = await bumpConsumers(w.host, { ...w.services, port }, ports(w));
+
+    expect(notes[0]).toMatchObject({ repo: CONSUMER_A, pr: open.number, skipped: "open", registered: expect.any(String) });
+    expect(w.fakes.get(CONSUMER_A)!.effects).toMatchObject({ createRef: 0, putContent: 0, createPr: 0 });
+    expect(w.services.store.get().byPr(CONSUMER_A, open.number)).toBeDefined();
+  });
+
   it("creates no branch when the lockfile regen fails", async () => {
     const w = world({ regenFails: true });
 
