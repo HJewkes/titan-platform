@@ -41,8 +41,27 @@ describe('event-loop stall gauge', () => {
       lastError: null,
       consecutiveErrors: 0,
       lastMaxLoopStallMs: 412,
+      held: false,
+      holdReason: null,
+      heldSince: null,
     });
 
     expect(index).toMatchObject({ indexing: false, lastMaxLoopStallMs: 412 });
+  });
+
+  it('health index state reports a held index and its reason', () => {
+    const index = toHealthIndexState({
+      running: false,
+      pending: true,
+      last: null,
+      lastError: null,
+      consecutiveErrors: 0,
+      lastMaxLoopStallMs: null,
+      held: true,
+      holdReason: 'battery',
+      heldSince: '2026-01-01T00:00:00.000Z',
+    });
+
+    expect(index).toMatchObject({ held: true, holdReason: 'battery', heldSince: '2026-01-01T00:00:00.000Z' });
   });
 });

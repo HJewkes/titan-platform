@@ -76,6 +76,10 @@ const ResultSchema = z.object({
       consecutiveErrors: z.number(),
       // Optional: a daemon from before TP-343 does not publish it.
       lastMaxLoopStallMs: z.number().nullable().optional(),
+      // Optional: a daemon from before TP-1012 does not publish them.
+      held: z.boolean().optional(),
+      holdReason: z.string().nullable().optional(),
+      heldSince: z.string().nullable().optional(),
     })
     .nullable(),
 });
