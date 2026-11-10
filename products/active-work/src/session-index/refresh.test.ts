@@ -6,7 +6,7 @@ import Database from 'better-sqlite3';
 import { PRICE_TABLE, PRICE_TABLE_VERSION } from '@titan-design/session-analytics';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { openGraph, type SessionGraph } from './graph.js';
+import { openGraph, type WorkspaceGraph } from './graph.js';
 import { readRefreshLockHolder, refreshLockHolderPath, withRefreshLock } from './refresh-lock.js';
 import { runRefresh, type RefreshSummary } from './refresh.js';
 import { RefreshScheduler } from './scheduler.js';
@@ -40,7 +40,7 @@ vi.mock('./preserve.js', async (importOriginal) => {
 
 let dir: string;
 let root: string;
-let graph: SessionGraph;
+let graph: WorkspaceGraph;
 
 beforeEach(() => {
   dir = mkdtempSync(path.join(os.tmpdir(), 'aw-refresh-'));
@@ -268,20 +268,33 @@ function counts(): Record<string, number> {
 
 describe('RefreshScheduler', () => {
   const summary = (): RefreshSummary => ({
+    kind: 'full',
     startedAt: new Date().toISOString(),
     durationMs: 0,
     transcripts: 0,
     scanned: 0,
+    filesOpened: 0,
+    bytesRead: 0,
+    rowsWritten: 0,
+    dbBytes: 0,
+    phases: {},
     indexed: 0,
     rewound: 0,
     unchanged: 0,
     quarantined: 0,
     missing: 0,
     reconciledMissing: 0,
+    facetsBackfilled: 0,
+    facetBacklog: 0,
+    episodesWritten: 0,
+    episodeBacklog: null,
     factsAdded: 0,
     turnsRolledUp: 0,
     tasksRequested: 0,
     tasksApplied: 0,
+    prsPolled: 0,
+    workspace: null,
+    preserved: { restored: 0, merged: 0, skipped: 0 },
     errors: [],
   });
 

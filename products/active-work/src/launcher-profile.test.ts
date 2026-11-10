@@ -69,7 +69,7 @@ describe('applyProfileEnv', () => {
   });
 
   it('does not mutate the caller’s environment object', () => {
-    const base = { [PROFILE_ROOT_ENV]: '/tmp/profiles' };
+    const base: Record<string, string> = { [PROFILE_ROOT_ENV]: '/tmp/profiles' };
     applyProfileEnv(base, 'agents', exists);
     expect(base[CONFIG_DIR_ENV]).toBeUndefined();
   });
