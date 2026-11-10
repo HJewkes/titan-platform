@@ -100,7 +100,6 @@ interface ShepherdRun extends WakeRun, FixFirstTrail, VisualAcceptRun, FailedRou
   /** Shepherd's own MERGE a seat held at each head; that head's next review re-checks the seat only. */
   seatHeld: Map<string, SeatHeld>;
   seatHeldRounds: Map<string, number>;
-  /** Consecutive land rounds at each head whose observe read was mergeable_state unknown. */
   unknownObserveRounds: Map<string, number>;
   /** Update-branch calls since the last human gate across every round; replaying the run's recorded steps rebuilds it, so a restart keeps the count. */
   updateBound: UpdateBound;
@@ -123,8 +122,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
     ...{ policy: params.policy, policyReads: 0, carryScopeReads: 0, release: params.release, task: params.task },
     ...{ ...freshFailedRounds(), throttledRounds: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, conflictBaseReads: 0, orderSteps: 0, freezeChecks: 0, fresh: new Set() },
     ...{ staleBases: new Set(), staleBaseReads: 0, seatHeld: new Map(), seatHeldRounds: new Map(), updateBound: newUpdateBound(), settleHold: {}, escalations: new Map() },
-    unknownObserveRounds: new Map(),
-    ...{ wokenPast: new Set(), trail: newCauseTrail(), fixFirstTrail: [], visualAcceptOffers: 0, unreviewedAsks: new Set() },
+    ...{ unknownObserveRounds: new Map(), wokenPast: new Set(), trail: newCauseTrail(), fixFirstTrail: [], visualAcceptOffers: 0, unreviewedAsks: new Set() },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
   const checked = checkedBaseTap();
