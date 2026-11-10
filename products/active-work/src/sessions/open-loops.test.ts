@@ -701,8 +701,8 @@ describe('deriveResolvedLoops', () => {
     });
 
     const [loop] = await deriveResolvedLoops(initiativeDir, { now: NOW });
-    expect(loop?.outcome).toBe('done');
-    expect(loop?.note).toBeUndefined();
+    expect(loop.outcome).toBe('done');
+    expect(loop.note).toBeUndefined();
   });
 
   it('lets the later of two resolutions win', async () => {
@@ -723,8 +723,8 @@ describe('deriveResolvedLoops', () => {
     });
 
     const [loop] = await deriveResolvedLoops(initiativeDir, { now: NOW });
-    expect(loop?.outcome).toBe('abandoned');
-    expect(loop?.note).toBe('reverted, not worth it');
+    expect(loop.outcome).toBe('abandoned');
+    expect(loop.note).toBe('reverted, not worth it');
   });
 
   // `iso8601` accepts any timezone offset, so "later" cannot be decided by
@@ -751,9 +751,9 @@ describe('deriveResolvedLoops', () => {
     });
 
     const [loop] = await deriveResolvedLoops(initiativeDir, { now: NOW });
-    expect(loop?.outcome).toBe('abandoned');
-    expect(loop?.note).toBe('reverted an hour later');
-    expect(loop?.closedBy).toBe('2026-07-22-c');
+    expect(loop.outcome).toBe('abandoned');
+    expect(loop.note).toBe('reverted an hour later');
+    expect(loop.closedBy).toBe('2026-07-22-c');
   });
 
   // Auto-resolution states no outcome and gives no reason; reporting it as
@@ -788,7 +788,7 @@ describe('triggersMet', () => {
       next_steps: [{ id: 'n1', text: 'a promise', ...step }],
     });
     const [loop] = await deriveOpenLoops(initiativeDir, { now: NOW });
-    return loop!;
+    return loop;
   }
 
   it('reports nothing for a loop whose condition has not fired', async () => {

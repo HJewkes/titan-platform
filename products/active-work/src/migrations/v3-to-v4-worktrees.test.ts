@@ -48,10 +48,7 @@ async function readArtifacts(dir: string) {
 }
 
 async function readBriefData(dir: string): Promise<Record<string, unknown>> {
-  return parseFrontmatter(await readFile(path.join(dir, 'brief.md'), 'utf8')).data as Record<
-    string,
-    unknown
-  >;
+  return parseFrontmatter(await readFile(path.join(dir, 'brief.md'), 'utf8')).data;
 }
 
 describe('v3 -> v4 worktrees', () => {

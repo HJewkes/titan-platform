@@ -54,7 +54,9 @@ describe('TemplateSchema', () => {
   });
 
   it('rejects a missing templateId', () => {
-    const { templateId: _templateId, ...rest } = validTemplate;
+    const rest = Object.fromEntries(
+      Object.entries(validTemplate).filter(([key]) => key !== 'templateId'),
+    );
     expect(TemplateSchema.safeParse(rest).success).toBe(false);
   });
 });

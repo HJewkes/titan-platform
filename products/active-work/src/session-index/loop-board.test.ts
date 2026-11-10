@@ -76,7 +76,7 @@ describe('buildBoard', () => {
       tier_set: { at: '2026-07-19T00:00:00Z', by: 'owner' },
     });
 
-    const loop = buildBoard(input({ ledger: { path: 'l', mtime: null, rows } })).loops[0]!;
+    const loop = buildBoard(input({ ledger: { path: 'l', mtime: null, rows } })).loops[0];
 
     expect(loop).toMatchObject({ tier: 'A', tierRank: 2, tierSetBy: 'owner' });
   });

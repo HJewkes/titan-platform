@@ -25,7 +25,7 @@ function stubFetch(envelope: unknown): {
       status: 200,
       headers: { 'content-type': 'application/json' },
     });
-  }) as typeof fetch;
+  });
   return {
     captured,
     restore: () => {

@@ -67,6 +67,15 @@ function body(header: Header): Record<string, unknown>[] {
       'assistant',
       toolUse('t2', 'Write', { file_path: path.join(cwd, 'handoff-notes.md'), content: 'x' }),
     ),
+    ...followUps(at),
+    at('assistant', [{ type: 'text', text: LAST_ASSISTANT_TEXT }]),
+  ];
+}
+
+function followUps(
+  at: (type: 'user' | 'assistant', content: unknown) => ReturnType<typeof line>,
+): ReturnType<typeof line>[] {
+  return [
     at('user', OWNER_MESSAGES[1]),
     at('assistant', bash('t3', 'active-work task add demo --title "First follow-up"')),
     at('assistant', bash('t4', 'active-work task add demo --title "Second follow-up"')),
@@ -86,7 +95,6 @@ function body(header: Header): Record<string, unknown>[] {
         brief: 'Pick up the first follow-up.',
       }),
     ),
-    at('assistant', [{ type: 'text', text: LAST_ASSISTANT_TEXT }]),
   ];
 }
 
