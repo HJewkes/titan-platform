@@ -134,6 +134,8 @@ export class RefreshScheduler {
   /** Until this instant a failing delta pass is not retried by readers. */
   private deltaBackoffUntil = 0;
   private held = false;
+  /** True from a hold-cap release until the next gate check, which re-reports the hold. */
+  private capReleased = false;
   private lastStartedAt: number | null = null;
   private lastEndedAt: number | null = null;
   private cancelSleep: () => void = () => {};
@@ -248,11 +250,15 @@ export class RefreshScheduler {
         this.held = decision.hold;
         holdStart = this.now();
         onHoldChange?.(decision.hold, decision.reason);
+      } else if (decision.hold && this.capReleased) {
+        onHoldChange?.(true, decision.reason);
       }
+      this.capReleased = false;
       if (!decision.hold) return true;
       // A gate that never opens must not starve the index forever: let one pass through.
+      // `held` stays true, since the gate is still closed and readers must keep reading stale.
       if (this.now() - holdStart > maxHoldMs) {
-        this.held = false;
+        this.capReleased = true;
         onHoldChange?.(false, `hold cap ${maxHoldMs} ms reached`);
         return true;
       }
