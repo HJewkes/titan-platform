@@ -127,6 +127,9 @@ export class RefreshScheduler {
   private lastError: string | null = null;
   private consecutiveErrors = 0;
   private lockSkips = 0;
+  private deltaFailures = 0;
+  /** Until this instant a failing delta pass is not retried by readers. */
+  private deltaBackoffUntil = 0;
   private held = false;
   private lastStartedAt: number | null = null;
   private lastEndedAt: number | null = null;
@@ -163,6 +166,7 @@ export class RefreshScheduler {
    */
   runNow(budgetMs: number): Promise<Freshness> {
     if (this.closed || this.held) return Promise.resolve('stale');
+    if (!this.executing && this.now() < this.deltaBackoffUntil) return Promise.resolve('stale');
     return withinBudget((expired) => this.indexedSinceNow(expired), budgetMs);
   }
 
@@ -282,6 +286,8 @@ export class RefreshScheduler {
       this.lastError = null;
       this.consecutiveErrors = 0;
       this.lockSkips = 0;
+      this.deltaFailures = 0;
+      this.deltaBackoffUntil = 0;
       return true;
     } catch (err) {
       if (isLockContention(err)) {
@@ -297,8 +303,14 @@ export class RefreshScheduler {
       this.options.onError?.(err);
       // Back off so a permanently broken corpus cannot spin the daemon.
       if (kind === 'full') this.backoff = this.pause(this.backoffMs(this.consecutiveErrors));
+      else this.startDeltaBackoff();
       return false;
     }
+  }
+
+  private startDeltaBackoff(): void {
+    this.deltaFailures += 1;
+    this.deltaBackoffUntil = this.now() + this.backoffMs(this.deltaFailures);
   }
 
   private minIdle(): number {
