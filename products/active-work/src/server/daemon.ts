@@ -48,6 +48,9 @@ export function toHealthIndexState(status: WatcherStatus | undefined): HealthInd
     lastDurationMs: status.last?.durationMs ?? null,
     consecutiveErrors: status.consecutiveErrors,
     lastMaxLoopStallMs: status.lastMaxLoopStallMs,
+    held: status.held,
+    holdReason: status.holdReason,
+    heldSince: status.heldSince,
   };
 }
 
