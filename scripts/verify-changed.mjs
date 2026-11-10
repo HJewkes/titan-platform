@@ -8,6 +8,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { BUSY_EXIT_CODE } from "./dag-check-lock.mjs";
 import { LINT_TYPES_INPUTS } from "./lint-types.mjs";
 import { TYPED_BASELINE } from "./lint-units.mjs";
 import { flakeTargets, loadFlakeClasses, repeatGuard } from "./flake-repeat.mjs";
@@ -152,6 +153,9 @@ function deadCheckDirs(changed, workspace) {
 
 // products/active-work's 525 indexed files take about 55 s; the largest products take minutes, so CI owns them.
 const DEAD_CHECK_MAX_FILES = 600;
+// A local push should not sit behind other worktrees' dag-check runs for the lock's 8-minute default; CI runs it.
+const DEAD_CHECK_LOCK_WAIT_MS = "30000";
+const DEAD_CHECK_LABEL = "dead:check";
 const INDEXED_EXT = /\.(?:[cm]?[jt]sx?|py)$/;
 
 function deadCheckCommand(changed, workspace, base, indexedFiles) {
@@ -161,7 +165,7 @@ function deadCheckCommand(changed, workspace, base, indexedFiles) {
   if (files > DEAD_CHECK_MAX_FILES) {
     return { label: `dead:check: ${files} files in ${dirs.join(", ")} exceed the ${DEAD_CHECK_MAX_FILES}-file local budget, deferred to CI`, deferred: true };
   }
-  return { label: "dead:check", cmd: "node", args: ["scripts/dead-code-check.mjs", `--paths=${dirs.join(",")}`], env: { BASE_REF: base } };
+  return { label: DEAD_CHECK_LABEL, cmd: "node", args: ["scripts/dead-code-check.mjs", `--paths=${dirs.join(",")}`], env: { BASE_REF: base, DAG_CHECK_LOCK_WAIT_MS: process.env.DAG_CHECK_LOCK_WAIT_MS || DEAD_CHECK_LOCK_WAIT_MS } };
 }
 
 const pnpmRun = (script) => ({ label: script, cmd: "pnpm", args: ["run", script] });
@@ -292,6 +296,7 @@ async function locPasses(changed) {
 /** How a finished step is reported: a kill by the vitest cap is a timeout, never a test failure. */
 export function describeOutcome(step, status, signal = null, output = "") {
   if (status === 0) return { ok: true };
+  if (status === BUSY_EXIT_CODE && step.label === DEAD_CHECK_LABEL) return { ok: true, note: `${DEAD_CHECK_LABEL} deferred to CI: dag-check lock busy` };
   if (status === TIMEOUT_EXIT_STATUS && step.cmd === "timeout") {
     return { ok: false, message: `${step.label} timed out after ${VITEST_TIMEOUT_SECONDS} s (no test failed; CI is the authority)` };
   }
@@ -360,6 +365,7 @@ async function main() {
   for (const step of plan) {
     console.log(`verify:changed: ${step.label}`);
     const outcome = await runStep(step, changed);
+    if (outcome.note) console.log(`verify:changed: ${outcome.note}`);
     if (outcome.ok) continue;
     console.error(`verify:changed: ${outcome.message}`);
     failures.push(outcome.message);
