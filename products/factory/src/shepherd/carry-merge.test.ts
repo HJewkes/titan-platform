@@ -286,7 +286,7 @@ describe("the seat check of a carry", () => {
     slowRosterReads?: number;
   }
 
-  async function seatOutcome(messages: (reviewer: ReviewerAgent) => ReviewerMessage[], run: SeatRun = {}): Promise<{ clear: boolean; reason?: string }> {
+  async function seatOutcome(messages: (reviewer: ReviewerAgent) => ReviewerMessage[], run: SeatRun = {}): Promise<{ clear: boolean; reason?: string; retry?: boolean }> {
     const reviewer = seat("tc-x-review");
     const clock = { at: 0, now: () => clock.at, sleep: async (ms: number) => void (clock.at += ms) };
     let slowReads = run.slowRosterReads ?? 0;
@@ -302,7 +302,7 @@ describe("the seat check of a carry", () => {
     const prompt = JSON.stringify({ ...TARGET, fromHead: REVIEWED, head: NEW_HEAD, heads: [REVIEWED, NEW_HEAD] });
     const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" }));
     if (!outcome.ok) throw new Error(outcome.error);
-    return z.object({ clear: z.boolean(), reason: z.string().optional() }).parse(JSON.parse(outcome.output).result);
+    return z.object({ clear: z.boolean(), reason: z.string().optional(), retry: z.boolean().optional() }).parse(JSON.parse(outcome.output).result);
   }
 
   const checked = async (messages: (reviewer: ReviewerAgent) => ReviewerMessage[], run?: SeatRun) => (await seatOutcome(messages, run)).clear;
@@ -329,10 +329,10 @@ describe("the seat check of a carry", () => {
     expect(outcome).toEqual({ clear: false, reason: `a seat reviewer said FIX_FIRST at ${NEW_HEAD}` });
   });
 
-  it("refuses the carry, never clears it, when the roster stays unread past the budget", async () => {
+  it("ends the carry retryable, never clear, when the roster stays unread past the budget", async () => {
     const outcome = await seatOutcome(() => [], { slowRosterReads: Infinity });
 
-    expect(outcome).toEqual({ clear: false, reason: "seat check: the roster could not be read: ReviewerRosterUnread" });
+    expect(outcome).toEqual({ clear: false, reason: "seat check: the roster could not be read: ReviewerRosterUnread", retry: true });
   });
 
   it("clears when no seat reviewer objected", async () => {

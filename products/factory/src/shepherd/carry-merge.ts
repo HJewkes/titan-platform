@@ -211,7 +211,8 @@ export function carrySeatRoute(deps: Pick<ShepherdDeps, "now" | "sleep" | "pollM
       const target = { repo: input.repo, pr: input.pr, head };
       const owners = deps.store && registeredOwners(deps.store, target);
       const check = await seatFixFirst(() => patientRoster(timing, signal, budgetMs, () => dispatch.roster()), wiring.reader, { ...target, ...owners });
-      if (check.kind !== "clear") return { clear: false, reason: check.kind === "none" ? check.reason : `a seat reviewer said FIX_FIRST at ${head}` };
+      if (check.kind === "none") return { clear: false, reason: check.reason, ...(check.retry && { retry: true }) };
+      if (check.kind !== "clear") return { clear: false, reason: `a seat reviewer said FIX_FIRST at ${head}` };
     }
     return { clear: true };
   });
