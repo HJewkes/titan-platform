@@ -4,7 +4,7 @@
  *
  * A lease is a small JSON file under `<activeRoot>/.sessions/<slug>/`. The
  * directory is dot-prefixed on purpose: `listInitiativeSlugs` (both copies —
- * `src/commands/_open-helpers.ts` and `src/lint/index.ts`) skips dot entries,
+ * `src/sessions/initiatives.ts` and `src/lint/index.ts`) skips dot entries,
  * so leases are invisible to the picker, the linter, doctor's initiative walk,
  * and the artifact hashing. They sit under the active root rather than the XDG
  * state root because `ACTIVE_ROOT` is the one path tests can redirect, which
