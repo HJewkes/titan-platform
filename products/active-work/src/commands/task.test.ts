@@ -13,16 +13,10 @@ import type { CommandContext } from '../registry/index.js';
 import { readRawFrontmatter } from '../utils/gray-matter-io.js';
 import { withFileLock } from '../utils/fs-atomic.js';
 import { getLockPath } from '../utils/paths.js';
-import type { Task } from '../schemas/task.js';
-import type { TaskOrLine } from './_task-quiet.js';
+import { asTask } from '../test-support/as-task.js';
 
 function ctx(activeRoot: string): CommandContext {
   return { activeRoot, warnings: [], format: 'json' };
-}
-
-function asTask(result: TaskOrLine): Task {
-  if (typeof result === 'string') throw new Error(`expected a task, got line: ${result}`);
-  return result;
 }
 
 const SLUG = 'sample-initiative';

@@ -29,7 +29,7 @@ describe("daily stats over injected CLI runners with synthetic output", () => {
     expect(items.get("stat/spend/desk")?.title).toBe("$30 spent on account desk");
     expect(items.get("stat/spend/night")?.title).toBe("$10 spent on account night");
     expect(items.has("stat/spend/idle")).toBe(false);
-    expect(items.get("stat/cost-per-pr")).toMatchObject({ title: "$20.00 spent per merged PR", summary: "$40 over 2 merged PRs" });
+    expect(items.get("stat/cost-per-pr")).toMatchObject({ title: "$20.00 spent per merged PR", summary: `$40 over 2 merged PRs, priced at price table v${PRICE_TABLE_VERSION}` });
   });
 
   it("says when an older price table priced the spend, in the fact and in a note", async () => {
@@ -39,6 +39,7 @@ describe("daily stats over injected CLI runners with synthetic output", () => {
     const { digest, notes } = await gatherDaily(options({ cli }));
 
     expect(byId(digest.items).get("stat/spend")?.summary).toBe(`priced at price table v${PRICE_TABLE_VERSION - 1}, not the current v${PRICE_TABLE_VERSION}`);
+    expect(byId(digest.items).get("stat/cost-per-pr")?.summary).toBe(`$40 over 2 merged PRs, priced at price table v${PRICE_TABLE_VERSION - 1}, not the current v${PRICE_TABLE_VERSION}`);
     expect(notes).toContain(`stats: spend is priced at price table v${PRICE_TABLE_VERSION - 1}, not the current v${PRICE_TABLE_VERSION}`);
   });
 
