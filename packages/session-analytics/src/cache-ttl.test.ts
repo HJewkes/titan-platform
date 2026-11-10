@@ -119,6 +119,65 @@ describe("cacheTtlWhatIf no-cache alternative", () => {
   });
 });
 
+/** A planner already on 5m: a boot write, then a turn after `gapMs` that rebuilds the prefix. */
+const fiveMinuteSession = (sessionId: string, gapMs: number, rebuilt = 100_000): TtlRequestRow[] => [
+  request({ sessionId, profile: "planner", role: "worker:planner", cacheWrite5mTokens: 100_000 }),
+  request({ sessionId, profile: "planner", role: "worker:planner", ts: "2026-09-29T12:00:30Z", cacheReadTokens: 100_000 - rebuilt, cacheWrite5mTokens: rebuilt, gapMs }),
+];
+
+describe("cacheTtlWhatIf reverse replay", () => {
+  const REVERT_SAVING = 4.8 / 1e6;
+
+  it("a 5m profile replayed at 1h turns a 5-60 min gap rebuild into a read", () => {
+    const whatIf = cacheTtlWhatIf(fiveMinuteSession("p1", 20 * MINUTE));
+    const planner = whatIf.byProfile.find((bucket) => bucket.key === "planner")!;
+
+    expect(planner).toMatchObject({ reverseReverts: 1, reverseTokens: 100_000 });
+    expect(planner.reverseSavingUsd).toBeCloseTo(100_000 * REVERT_SAVING, 10);
+    expect(whatIf.byRole[0]!.reverseSavingUsd).toBeCloseTo(100_000 * REVERT_SAVING, 10);
+    expect(whatIf.totals.reverseSavingUsd).toBeCloseTo(100_000 * REVERT_SAVING, 10);
+    expect(renderCacheTtlText(whatIf)).toContain("1h replay saving");
+  });
+
+  it("reverts no more than the previous prompt held", () => {
+    const rows = [request({ sessionId: "s", cacheWrite5mTokens: 30_000 }), request({ sessionId: "s", cacheWrite5mTokens: 80_000, gapMs: 10 * MINUTE })];
+
+    expect(cacheTtlWhatIf(rows).totals.reverseTokens).toBe(30_000);
+  });
+
+  it("claims nothing for a first request, a gap under 5 or over 60 minutes, or a session with 1h writes", () => {
+    const rows = [
+      ...fiveMinuteSession("short", 4 * MINUTE),
+      ...fiveMinuteSession("long", 61 * MINUTE),
+      request({ sessionId: "first", cacheWrite5mTokens: 50_000 }),
+      ...fiveMinuteSession("mixed", 20 * MINUTE),
+      request({ sessionId: "mixed", cacheWrite1hTokens: 1_000, ts: "2026-09-29T12:01:00Z", gapMs: MINUTE }),
+    ];
+
+    expect(cacheTtlWhatIf(rows).totals).toMatchObject({ reverseReverts: 0, reverseTokens: 0, reverseSavingUsd: 0 });
+  });
+
+  it("TP-1549 validation: 1h reads 100% of the prior prefix after a 5-60 min gap, 5m reads 8%", () => {
+    const oneHour = [request({ sessionId: "h", cacheWrite1hTokens: 100_000 }), request({ sessionId: "h", cacheReadTokens: 100_000, gapMs: 20 * MINUTE })];
+    const fiveMinute = fiveMinuteSession("m", 20 * MINUTE, 92_000);
+    const readShare = (rows: TtlRequestRow[]) => rows[1]!.cacheReadTokens / (rows[0]!.cacheWrite1hTokens + rows[0]!.cacheWrite5mTokens);
+
+    expect(readShare(oneHour)).toBe(1);
+    expect(readShare(fiveMinute)).toBe(0.08);
+    expect(cacheTtlWhatIf(oneHour).totals).toMatchObject({ rebuilds: 1, rebuildTokens: 100_000, reverseTokens: 0 });
+    expect(cacheTtlWhatIf(fiveMinute).totals).toMatchObject({ reverseReverts: 1, reverseTokens: 92_000 });
+  });
+
+  it("leaves the 5m-against-1h and no-cache numbers as they were", () => {
+    const base = cacheTtlWhatIf([...reviewerSession("r1"), ...ciWaitSession]).totals;
+    const withPlanner = cacheTtlWhatIf([...reviewerSession("r1"), ...ciWaitSession, ...fiveMinuteSession("p1", 20 * MINUTE)]).totals;
+
+    expect(withPlanner.netSavingUsd).toBeCloseTo(base.netSavingUsd, 10);
+    expect(withPlanner).toMatchObject({ repriceSavingUsd: base.repriceSavingUsd, rebuilds: base.rebuilds, rebuildCostUsd: base.rebuildCostUsd });
+    expect(withPlanner.noCacheNetUsd).toBeGreaterThan(base.noCacheNetUsd);
+  });
+});
+
 describe("cacheTtlReport", () => {
   let fixture: FixtureGraph;
   afterEach(() => fixture.close());
