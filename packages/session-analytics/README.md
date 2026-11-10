@@ -222,6 +222,11 @@ text form.
   up) finds a 5m cache gone. Its cache read is charged again at the 5m write rate, less the read
   it no longer pays. Past an hour the 1h cache had expired too, so the read is already near zero
   and only the reprice applies.
+- **Reverse replay.** A session observed purely on 5m is replayed toward 1h: a request after a
+  5-60 minute gap reverts `min(5m write, previous prompt)` to a read, saving the 5m write rate
+  less the read rate (`reverseReverts`, `reverseTokens`, `reverseSavingUsd`, per role and per
+  profile, beside the 1h-to-5m direction). It claims nothing for a first request, a gap over an
+  hour, or a session with any 1h write.
 - **Net.** Per role and per profile: reprice saving less rebuild cost, and the same per session.
   `lossRoles` lists the roles whose net is negative, typically seats that wait on CI.
 - **No cache.** Per role and per profile, `noCacheNetUsd` prices every prompt token at the input rate
