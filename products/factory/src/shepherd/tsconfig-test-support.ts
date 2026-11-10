@@ -1,71 +1,51 @@
-const TSCONFIG_NAME = /^tsconfig(\.[^/]*)?\.json$/;
+const TSCONFIG_NAME = /^tsconfig\.(typecheck|test|tests)\.json$/;
 const TEST_ENTRY = /\.test\.ts$/;
 const LIST_KEYS: ReadonlySet<string> = new Set(["include", "exclude"]);
 
-/** Whether `path` names a tsconfig*.json, wherever it sits. */
+/** Whether `path` names a test-support tsconfig (typecheck or test); a build tsconfig.json is source. */
 export const isTsconfigPath = (path: string): boolean => TSCONFIG_NAME.test(path.slice(path.lastIndexOf("/") + 1));
 
-/** Copies a string literal whole from `start`, so no rewrite below ever touches its text. */
-function stringEnd(text: string, start: number): number {
-  let end = start + 1;
-  while (end < text.length && text[end] !== '"') end += text[end] === "\\" ? 2 : 1;
-  return end + 1;
-}
-
-/** Removes comments outside strings; an unterminated block comment throws, since tsc rejects the file. */
-function stripComments(text: string): string {
-  let out = "";
-  let index = 0;
-  while (index < text.length) {
-    const char = text[index] ?? "";
-    const next = text[index + 1];
-    if (char === '"') {
-      const end = stringEnd(text, index);
-      out += text.slice(index, end);
-      index = end;
-    } else if (char === "/" && next === "/") {
-      while (index < text.length && text[index] !== "\n") index += 1;
-    } else if (char === "/" && next === "*") {
-      const end = text.indexOf("*/", index + 2);
-      if (end === -1) throw new Error("unterminated block comment");
-      index = end + 2;
-    } else {
-      out += char;
-      index += 1;
-    }
-  }
-  return out;
-}
-
-const nextNonSpace = (text: string, from: number): string => text.slice(from).trimStart().charAt(0);
-
-/** Removes a comma only when, outside a string, the next non-space character closes an object or array. */
-function stripTrailingCommas(text: string): string {
-  let out = "";
-  let index = 0;
-  while (index < text.length) {
-    const char = text[index] ?? "";
-    if (char === '"') {
-      const end = stringEnd(text, index);
-      out += text.slice(index, end);
-      index = end;
-    } else {
-      const closes = char === "," && /[}\]]/.test(nextNonSpace(text, index + 1));
-      if (!closes) out += char;
-      index += 1;
-    }
-  }
-  return out;
-}
-
-const stripJsonc = (text: string): string => stripTrailingCommas(stripComments(text));
+/** Characters tsc treats as line ends but JSON does not, so a text holding one is never read here. */
+const LINE_BREAKS = /[\r\u2028\u2029]/;
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
+/** Keys of every object in source order, read from the raw text; JSON.parse alone would hide a repeat. */
+function repeatsKey(text: string): boolean {
+  const scopes: Array<Set<string> | null> = [];
+  let index = 0;
+  while (index < text.length) {
+    const char = text[index] ?? "";
+    if (char === '"') {
+      let end = index + 1;
+      while (text[end] !== '"') end += text[end] === "\\" ? 2 : 1;
+      const isKey = text.slice(end + 1).trimStart().startsWith(":");
+      const scope = scopes[scopes.length - 1];
+      if (isKey && scope) {
+        const key = text.slice(index, end + 1);
+        if (scope.has(key)) return true;
+        scope.add(key);
+      }
+      index = end + 1;
+      continue;
+    }
+    if (char === "{") scopes.push(new Set());
+    else if (char === "[") scopes.push(null);
+    else if (char === "}" || char === "]") scopes.pop();
+    index += 1;
+  }
+  return false;
+}
+
+/**
+ * Fails closed instead of imitating tsc's JSONC reader: comments, trailing commas, odd line breaks and repeated keys all read
+ * as unparseable, so the file stays source. Only text that strict JSON and tsc cannot disagree about is compared.
+ */
 function parseTsconfig(text: string): Record<string, unknown> | undefined {
+  if (LINE_BREAKS.test(text)) return undefined;
   try {
-    const value: unknown = JSON.parse(stripJsonc(text));
-    return isRecord(value) ? value : undefined;
+    const value: unknown = JSON.parse(text);
+    return isRecord(value) && !repeatsKey(text) ? value : undefined;
   } catch {
     return undefined;
   }

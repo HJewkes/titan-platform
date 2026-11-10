@@ -63,13 +63,6 @@ describe("a tsconfig change beside a test", () => {
 });
 
 describe("onlyTestEntriesChanged", () => {
-  it("tolerates comments and trailing commas", () => {
-    const before = '{\n // base\n "include": ["src"], /* x */ "exclude": ["a.test.ts",],\n}';
-    const after = '{ "include": ["src"], "exclude": [] }';
-
-    expect(onlyTestEntriesChanged(before, after)).toBe(true);
-  });
-
   it("reads a comment marker inside a string as text", () => {
     const text = '{ "compilerOptions": { "paths": { "@/*": ["//x"] } }, "exclude": [] }';
 
@@ -100,11 +93,44 @@ describe("onlyTestEntriesChanged string handling", () => {
     expect(onlyTestEntriesChanged(before, after)).toBe(false);
   });
 
-  it("removes a trailing comma that a comment separates from its bracket", () => {
-    expect(onlyTestEntriesChanged('{ "exclude": ["a.test.ts", // c\n] }', '{ "exclude": [] }')).toBe(true);
+  it("refuses any comment, since tsc and JSON.parse could disagree on where it ends", () => {
+    expect(onlyTestEntriesChanged('{ "exclude": ["a.test.ts"] // c\n}', '{ "exclude": [] }')).toBe(false);
+  });
+
+  it("refuses a trailing comma", () => {
+    expect(onlyTestEntriesChanged('{ "exclude": ["a.test.ts",] }', '{ "exclude": [] }')).toBe(false);
   });
 
   it("refuses an unterminated block comment", () => {
     expect(onlyTestEntriesChanged('{ "exclude": [] }', '{ "exclude": ["a.test.ts"] } /* open')).toBe(false);
+  });
+
+  it.each(["\r", "\u2028", "\u2029"])("refuses a text with the line break %j that tsc ends a comment at", (lineBreak) => {
+    const before = '{ "compilerOptions": {"strict": true}, "exclude": [] }';
+    const after = `{ "compilerOptions": {"strict": true}, "exclude": ["a.test.ts"] // c${lineBreak}, "compilerOptions": {"strict": false}\n }`;
+
+    expect(onlyTestEntriesChanged(before, after)).toBe(false);
+  });
+
+  it("refuses a repeated compilerOptions key whose last value differs", () => {
+    const before = '{ "compilerOptions": {"strict": true}, "exclude": [] }';
+    const after = '{ "compilerOptions": {"strict": true}, "exclude": ["a.test.ts"], "compilerOptions": {"strict": false} }';
+
+    expect(onlyTestEntriesChanged(before, after)).toBe(false);
+  });
+
+  it("reads the same key in sibling objects as no repeat", () => {
+    const text = '{ "a": { "x": 1 }, "b": { "x": 1 }, "exclude": [] }';
+
+    expect(onlyTestEntriesChanged(text, text.replace("[]", '["a.test.ts"]'))).toBe(true);
+  });
+});
+
+describe("a build tsconfig.json", () => {
+  it("stays source even when only a test path changes", async () => {
+    const build = "packages/x/tsconfig.json";
+    const port = sceneWith([modified("packages/x/src/a.test.ts"), modified(build)], tsconfig(["src"]), tsconfig(["src"], {}, ["src/a.test.ts"]));
+
+    expect(await testOnlyDiff(port, REPO, 1, HEAD)).toEqual({ kind: "source", paths: [build] });
   });
 });
