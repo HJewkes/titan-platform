@@ -185,6 +185,19 @@ describe("computeCompoundLayout", () => {
     expectRoutesOnNodeBorders({ ...layout, edges: layout.edges.filter((e) => !groupIds.has(e.srcId)) });
   });
 
+  it("leaves a group's edge to itself unrouted while routing the other edges", async () => {
+    const input: GraphInput = {
+      ...twoPackages,
+      edges: [...twoPackages.edges, { srcId: "pkg:a", dstId: "pkg:a", kind: "imports" }],
+    };
+
+    const layout = await computeCompoundLayout(input, null, byPackage);
+
+    const selfLoop = layout.edges.find((e) => e.srcId === "pkg:a" && e.dstId === "pkg:a");
+    expect(selfLoop && routeOf(selfLoop)).toBeFalsy();
+    expectRoutesOnNodeBorders({ ...layout, edges: layout.edges.filter((e) => e !== selfLoop) });
+  });
+
   it("returns an empty layout for an empty graph", async () => {
     const layout = await computeCompoundLayout(
       { snapshotId: 1, nodes: [], edges: [] },
