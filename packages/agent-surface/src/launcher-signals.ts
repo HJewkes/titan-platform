@@ -2,11 +2,13 @@ import { spawnSync, type ChildProcess } from "node:child_process";
 
 const FORWARDED_SIGNALS = ["SIGTERM", "SIGINT", "SIGHUP"] as const;
 
+const GROUP_DELIVERED_SIGNALS: ReadonlySet<string> = new Set(["SIGINT", "SIGHUP"]);
+
 interface LauncherSignalOptions {
   label: string;
   /** The plan's agent name, written on every line so a log of many launchers stays readable. */
   agent: string;
-  /** An inherited terminal already delivers Ctrl-C to the child's whole process group, so forwarding SIGINT would deliver it twice. */
+  /** An inherited terminal already delivers Ctrl-C and its hangup to the child's whole process group, so forwarding SIGINT or SIGHUP would deliver each twice. */
   interactive: boolean;
 }
 
@@ -27,7 +29,7 @@ export function installLauncherSignals(child: ChildProcess, options: LauncherSig
       const time = new Date().toISOString();
       const ids = `ppid=${process.ppid} pgid=${processGroupId(process.pid)}`;
       process.stderr.write(`${options.label}: ${time} agent=${options.agent} signal=${signal} ${ids}\n`);
-      if (options.interactive && signal === "SIGINT") return;
+      if (options.interactive && GROUP_DELIVERED_SIGNALS.has(signal)) return;
       child.kill(signal);
     };
     process.on(signal, handler);
