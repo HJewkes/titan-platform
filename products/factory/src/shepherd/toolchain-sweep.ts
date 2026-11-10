@@ -66,7 +66,7 @@ async function adoptOne(host: FactoryHost, services: ShepherdServices, plan: Ado
 }
 
 /** The branch holds a commit that is not this sweep's own write of a plan file, so a person deletes it or opens its PR. */
-export class LeftoverAdoptionBranchError extends Error {
+class LeftoverAdoptionBranchError extends Error {
   constructor(repo: RepoSlug, branch: string) {
     super(`${repo}: leftover branch ${branch} already exists; refusing to adopt over it`);
     this.name = "LeftoverAdoptionBranchError";
