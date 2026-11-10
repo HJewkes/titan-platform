@@ -33,7 +33,7 @@ function tier(root: string, args: Record<string, unknown>) {
 /** Each row's text, keyed by id: the slice from its `- id:` line to the next. */
 function rowBlocks(text: string): Map<string, string> {
   const blocks = text.split(/^(?= {2}- id: )/m).slice(1);
-  return new Map(blocks.map((block) => [/- id: (\S+)/.exec(block)![1]!, block]));
+  return new Map(blocks.map((block) => [/- id: (\S+)/.exec(block)![1], block]));
 }
 
 describe('loop tier', () => {

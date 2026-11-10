@@ -39,7 +39,7 @@ function stubHealth(payload: unknown | null): void {
 }
 
 function run(): ReturnType<typeof mcpRestart.run> {
-  return mcpRestart.run({}, {} as never);
+  return mcpRestart.run({}, { activeRoot: tmp, warnings: [], format: 'json' });
 }
 
 beforeEach(() => {

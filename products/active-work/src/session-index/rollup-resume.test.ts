@@ -18,7 +18,7 @@ vi.mock('@titan-design/session-graph', async (importOriginal) => {
     refreshCorpus: async (...args: Parameters<typeof actual.refreshCorpus>) => {
       if (!cut.armed) return actual.refreshCorpus(...args);
       const [graph, transcripts] = args;
-      const first = transcripts[0];
+      const first = transcripts.at(0);
       if (first) await actual.indexTranscript(graph, first);
       throw new Error('pass killed between index and rollup');
     },

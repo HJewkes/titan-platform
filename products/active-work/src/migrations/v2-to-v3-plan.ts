@@ -3,7 +3,7 @@ import path from 'node:path';
 import { ValidationError } from '../errors.js';
 import { BriefFrontmatterSchema, type BriefFrontmatter } from '../schemas/brief.js';
 import { SessionFrontmatterSchema, type SessionFrontmatter } from '../schemas/session.js';
-import { listInitiativeSlugs } from '../sessions/initiatives.js';
+import { listInitiativeSlugsOrEmpty } from '../sessions/initiatives.js';
 import { buildSessionStem, sessionFilePathForStem } from '../sessions/session-file.js';
 import { readRawFrontmatter } from '../utils/gray-matter-io.js';
 import { loadProposal, type Proposal, type ProposalInitiative } from './v3-proposal.js';
@@ -68,7 +68,7 @@ async function pathExists(p: string): Promise<boolean> {
 }
 
 async function listSlugsWithBrief(activeRoot: string): Promise<string[]> {
-  const slugs = await listInitiativeSlugs(activeRoot);
+  const slugs = await listInitiativeSlugsOrEmpty(activeRoot);
   const present = await Promise.all(
     slugs.map((slug) => pathExists(path.join(activeRoot, slug, 'brief.md'))),
   );

@@ -51,17 +51,17 @@ describe('relatedContext', () => {
       title: 'The alpha lesson',
       path: 'alpha/sources/notes/2026-09-02-alpha-lesson.md',
     });
-    expect(result.hits[0]!.excerpt).toBeTruthy();
+    expect(result.hits[0].excerpt).toBeTruthy();
   });
 
   it('never returns an excluded ref, and fills its place from further down', async () => {
     const top = await related({ text: 'indexer converges', limit: 6 });
     const [first, second] = top.hits.map((hit) => hit.ref);
 
-    const result = await related({ text: 'indexer converges', limit: 3, exclude: [first!] });
+    const result = await related({ text: 'indexer converges', limit: 3, exclude: [first] });
 
     expect(result.hits.map((hit) => hit.ref)).not.toContain(first);
-    expect(result.hits[0]!.ref).toBe(second);
+    expect(result.hits[0].ref).toBe(second);
   });
 
   it('searches only the classes asked for', async () => {
@@ -125,11 +125,11 @@ describe('relatedContext', () => {
   it('carries the winning span as a byte range into the file', async () => {
     const result = await related({ text: 'the alpha lesson', initiative: 'alpha' });
     const [top] = result.hits;
-    const file = readFileSync(path.join(root, top!.path!));
+    const file = readFileSync(path.join(root, top.path!));
 
-    expect(top!.byteOffset).toBeGreaterThanOrEqual(0);
-    expect(top!.byteLength).toBeGreaterThan(0);
-    expect(top!.byteOffset! + top!.byteLength!).toBeLessThanOrEqual(file.length);
+    expect(top.byteOffset).toBeGreaterThanOrEqual(0);
+    expect(top.byteLength).toBeGreaterThan(0);
+    expect(top.byteOffset! + top.byteLength!).toBeLessThanOrEqual(file.length);
   });
 
   it('degrades to no hits when the index is missing, without creating it', async () => {

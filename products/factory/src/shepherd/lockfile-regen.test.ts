@@ -10,6 +10,7 @@ interface RunCall {
   cwd: string;
   env: NodeJS.ProcessEnv;
   treeOnDisk: string | null;
+  patchOnDisk: string | null;
 }
 
 const FAKE_GH = `ghp_${"a1B2".repeat(9)}`;
@@ -29,7 +30,8 @@ function fakeRun(lockfile: { path: string; text: string } | null, result: Comman
   const calls: RunCall[] = [];
   const run = vi.fn((file: string, args: readonly string[], cwd: string, _timeout: number, env: NodeJS.ProcessEnv) => {
     const manifest = join(cwd, "package.json");
-    calls.push({ file, args, cwd, env, treeOnDisk: existsSync(manifest) ? readFileSync(manifest, "utf8") : null });
+    const patch = join(cwd, "patches/example-a.patch");
+    calls.push({ file, args, cwd, env, treeOnDisk: existsSync(manifest) ? readFileSync(manifest, "utf8") : null, patchOnDisk: existsSync(patch) ? readFileSync(patch, "utf8") : null });
     if (lockfile) writeFileSync(join(cwd, lockfile.path), lockfile.text);
     return Promise.resolve(result);
   });
@@ -111,7 +113,7 @@ describe("scratchLockfileRegen", () => {
     expect(run).not.toHaveBeenCalled();
   });
 
-  it("runs a tree whose patch files were read, writing them into the scratch dir", async () => {
+  it("regen installs a patched consumer whose patch files were read", async () => {
     const patch = "diff --git a/index.js b/index.js\n";
     const tree = pnpmTree({ "patches/example-a.patch": patch }, { pnpm: { patchedDependencies: { "example-a@1.0.0": "patches/example-a.patch" } } });
     const { run, calls } = fakeRun({ path: "pnpm-lock.yaml", text: pnpmLock("9.0") });
@@ -119,6 +121,7 @@ describe("scratchLockfileRegen", () => {
     const changed = await scratchLockfileRegen(run)(tree);
 
     expect(calls[0]?.file).toBe("pnpm");
+    expect(calls[0]?.patchOnDisk).toBe(patch);
     expect(changed).toEqual({});
   });
 

@@ -35,6 +35,14 @@ describe("smoke-fix-proof dry run", () => {
     expect(out.steps.join("\n")).toMatch(/open a PR[\s\S]*--kind correctness/);
     expect(out.steps.join("\n")).not.toMatch(/draft/i);
     expect(out.steps.join("\n")).not.toMatch(/shepherd hold/);
+    expect(out.steps).toContain("fetch origin main");
+  });
+
+  it("a --branch dry run lists only the branch fetch", () => {
+    const out = JSON.parse(execFileSync("node", [SCRIPT, "--open", "--repo", "HJewkes/titan-platform", "--implementer", "tc-tp-538-a", "--branch", "fix/a"], { encoding: "utf8" }));
+
+    expect(out.steps).toContain("fetch origin fix/a");
+    expect(out.steps).not.toContain("fetch origin main");
   });
 });
 

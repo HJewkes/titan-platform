@@ -87,7 +87,24 @@ describe("the linearity check", () => {
     expectLinearTime((n) => () => void work(n * 500), 40_000);
   });
 
+  // The fixture counts its own steps, so the ratio is exactly the growth and no runner load can blur it (TP-4721).
+  const counted = () => {
+    let steps = 0;
+    const measure = (run: () => void): number => {
+      const before = steps;
+      run();
+      return steps - before;
+    };
+    return { measure, add: (n: number) => void (steps += n) };
+  };
+
   cpuBudgetIt("fails quadratic work on its ratio", 2000, () => {
-    expect(() => expectLinearTime((n) => () => void work(n * n), 4_000)).toThrow(/expected .* to be less than 5/);
+    const { measure, add } = counted();
+    expect(() => expectLinearTime((n) => () => add(n * n), 4_000, measure)).toThrow(/expected .* to be less than 5/);
+  });
+
+  cpuBudgetIt("passes linear counted work with a ratio of one", 2000, () => {
+    const { measure, add } = counted();
+    expect(expectLinearTime((n) => () => add(n), 4_000, measure)).toBe(1);
   });
 });

@@ -72,7 +72,7 @@ describe('bootstrap live status overlap', () => {
       const fetcher: LiveStatusFetcher = async () => {
         await wait(FETCH_MS);
         fetchSettled = true;
-        return [status as never];
+        return [status];
       };
       const retriever: LoopRetriever = async () => {
         retrieverSawFetchPending ??= !fetchSettled;
@@ -82,7 +82,7 @@ describe('bootstrap live status overlap', () => {
 
       const overlapped = await run(root, { liveStatusFetcher: fetcher, loopRetriever: retriever });
       const sequential = await run(root, {
-        liveStatusFetcher: async () => [status as never],
+        liveStatusFetcher: async () => [status],
         loopRetriever: retriever,
       });
 

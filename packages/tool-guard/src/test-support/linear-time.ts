@@ -23,9 +23,10 @@ const timed = (run: () => void): number => {
  * size: the same total work when linear, GROWTH times less when quadratic. Best-of-N thread CPU, not wall time, since
  * the scheduler preempts a long run more often than a short one on a loaded runner (TP-3612). Each round times both
  * sizes, so contention that lasts a while, a busy SMT sibling or a cold cache, slows both sides of the ratio alike and
- * cannot land on one of them only (TP-4047).
+ * cannot land on one of them only (TP-4047). `measure` reads the cost of one run, thread CPU by default; a self-test passes
+ * an operation counter so that no load can hide the growth it checks (TP-4721).
  */
-export function expectLinearTime(prepare: (size: number) => () => void, topSize: number): number {
+export function expectLinearTime(prepare: (size: number) => () => void, topSize: number, measure: (run: () => void) => number = timed): number {
   const small = prepare(topSize / GROWTH);
   const large = prepare(topSize);
   const smallBatch = () => {
@@ -35,8 +36,8 @@ export function expectLinearTime(prepare: (size: number) => () => void, topSize:
   large();
   const best = { small: Infinity, large: Infinity };
   for (let i = 0; i < RUNS; i++) {
-    best.small = Math.min(best.small, timed(smallBatch));
-    best.large = Math.min(best.large, timed(large));
+    best.small = Math.min(best.small, measure(smallBatch));
+    best.large = Math.min(best.large, measure(large));
     expectWithinCpuBudget();
   }
   const ratio = best.large / Math.max(best.small, 0.05);

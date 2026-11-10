@@ -10,7 +10,7 @@ import { mergeChannels } from '../launcher-args.js';
 import { resolveDefaultChannels } from '../utils/global-config.js';
 import { acquireLease } from '../sessions/lease.js';
 import type { LoadedFacet } from '../facets/facet-file.js';
-import { listInitiativeSlugs, resolveSlugFromCwd } from '../sessions/initiatives.js';
+import { listInitiativeSlugsOrEmpty, resolveSlugFromCwd } from '../sessions/initiatives.js';
 import { resolveSlugOrFacet, resolveCwdHint } from './_open-helpers.js';
 
 /** Done tasks older than this are auto-archived on bootstrap (AW-8). */
@@ -145,7 +145,7 @@ function compareInitiatives(a: InitiativeSummary, b: InitiativeSummary): number 
 }
 
 async function collectInitiatives(activeRoot: string): Promise<InitiativeSummary[]> {
-  const slugs = await listInitiativeSlugs(activeRoot);
+  const slugs = await listInitiativeSlugsOrEmpty(activeRoot);
   const summaries: InitiativeSummary[] = [];
   for (const slug of slugs) {
     const summary = await loadInitiativeSummary(activeRoot, slug);

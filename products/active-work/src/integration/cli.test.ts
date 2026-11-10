@@ -123,7 +123,7 @@ describe('cli integration', () => {
     const raw = await fs.readFile(logPath, 'utf8');
     const lines = raw.trim().split('\n');
     expect(lines.length).toBeGreaterThanOrEqual(1);
-    const last = JSON.parse(lines[lines.length - 1]!) as {
+    const last = JSON.parse(lines[lines.length - 1]) as {
       command: string;
       success: boolean;
       exit_code: number;

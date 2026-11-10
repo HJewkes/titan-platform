@@ -101,3 +101,8 @@ export async function withTempActiveRoot<T>(fn: (activeRoot: string) => Promise<
 export async function withEmptyActiveRoot<T>(fn: (activeRoot: string) => Promise<T>): Promise<T> {
   return withRoot(() => {}, fn);
 }
+
+/** Reads a record by key typed as possibly missing, which `noUncheckedIndexedAccess` would do but this package leaves off. */
+export function lookup<T>(table: Record<string, T>, key: string): T | undefined {
+  return table[key];
+}

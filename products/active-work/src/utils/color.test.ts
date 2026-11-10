@@ -8,7 +8,7 @@ import type * as ColorModule from './color.js';
  */
 async function loadColor(): Promise<typeof ColorModule.color> {
   vi.resetModules();
-  const mod = (await import('./color.js')) as typeof ColorModule;
+  const mod = (await import('./color.js'));
   return mod.color;
 }
 

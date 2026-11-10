@@ -1,7 +1,8 @@
 import nodePath from 'node:path';
 import { ConfigError } from '../errors.js';
 import { getActiveRoot } from '../utils/paths.js';
-import { lintHashes, listInitiativeSlugs } from '../lint/index.js';
+import { lintHashes } from '../lint/index.js';
+import { listInitiativeSlugs } from '../sessions/initiatives.js';
 import { loadTasks } from '../lint/load-tasks.js';
 import { loadNotesFromDir } from '../notes/note-file.js';
 import { NOTE_TITLE_MAX_LENGTH } from '../schemas/note.js';
