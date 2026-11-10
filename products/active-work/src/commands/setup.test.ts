@@ -105,8 +105,8 @@ describe('active-work setup', () => {
       const result = await setupCmd.run({ printSupervision: true }, ctx);
 
       expect(writeSpy).not.toHaveBeenCalled();
-      expect(typeof result).toBe('string');
-      const unit = result as string;
+      if (typeof result !== 'string') throw new Error('expected the bare unit text');
+      const unit = result;
       expect(unit.startsWith('[Unit]\n')).toBe(true);
       expect(unit.endsWith('WantedBy=default.target\n')).toBe(true);
       const pathLine = unit.split('\n').find((l) => l.startsWith('Environment="PATH='));
