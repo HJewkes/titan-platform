@@ -1,9 +1,4 @@
 {
-  "products/active-work/src/aw-resume-spawn.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
   "products/active-work/src/aw.test.ts": {
     "titan/no-internal-module-mock": {
       "count": 2
@@ -16,11 +11,6 @@
   },
   "products/active-work/src/bootstrap/parse-once.test.ts": {
     "titan/no-internal-module-mock": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/bootstrap/rank-notes.test.ts": {
-    "titan/no-chained-type-assertions": {
       "count": 1
     }
   },
@@ -417,19 +407,9 @@
       "count": 1
     }
   },
-  "products/active-work/src/setup/supervision-launchd.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
   "products/active-work/src/setup/supervision-launchd.ts": {
     "titan/max-function-lines": {
       "count": 3
-    }
-  },
-  "products/active-work/src/setup/supervision-systemd.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 2
     }
   },
   "products/active-work/src/setup/supervision-systemd.ts": {
