@@ -26,6 +26,10 @@ See [the reference page](../../site/reference/worktree.md) for the API and its g
 Tests that create real repositories are named `*.repo.test.ts`. `pnpm test` runs them;
 `pnpm test:watch` leaves them out.
 
+## Worktree base exclusion
+
+`allocate` appends `/<basePath>/` (default `/.worktrees/`) to `<git-common-dir>/info/exclude`, so the primary's `git status` does not report the base as untracked. The file is local to the clone and never committed. The append is idempotent: a repeated allocation adds no duplicate line, a missing file or `info/` directory is created, and existing lines are kept. The directory comes from `git rev-parse --git-common-dir`, so allocating from inside a worktree writes the primary's file. A `basePath` that is absolute or climbs out with `..` cannot be rooted in the repository and is skipped. Adopting an assigned worktree writes nothing.
+
 ## Explicit merged PR tip evidence
 
 Release remains git-only by default. `createWorktreeAllocator({ releaseProof: "git-or-merged-pr-tip" })` opts into the existing dispatcher CC792/CC624 proof: when local content checks cannot prove landing, bounded `gh pr view --json state,headRefOid,commits` may establish that the exact local tip is the merged PR head or belongs to that merged PR's commits after its head moved. OPEN/CLOSED, mismatched or later local tips, malformed/missing output and command failure cannot establish landing. The GitHub CLI probe uses the caller's configured account and repository; tests use owned fake binaries only. No login or credentials are provisioned here.
