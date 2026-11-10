@@ -255,6 +255,34 @@ describe('startSessionIndexWatch', () => {
     await scheduler.close();
   });
 
+  it('a hold-cap release logs the cap, not a resume', async () => {
+    const { createScheduler } = await import('./session-index-watch.js');
+    vi.stubEnv('AW_INDEX_GATE_RECHECK_MS', '60000');
+    probe.reads.push(...Array.from({ length: 40 }, () => ({ swapUsedPct: 80, pressureLevel: 1 })));
+    const run = vi.fn().mockResolvedValue({ kind: 'full', errors: [], phases: {} });
+    let clock = 0;
+    const scheduler = createScheduler(
+      { run, lastMaxLoopStallMs: () => null },
+      createDirtySet(),
+      log,
+      new AbortController().signal,
+      {
+        now: () => clock,
+        sleep: async (ms) => {
+          clock += ms;
+        },
+      },
+    );
+
+    scheduler.trigger();
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    await scheduler.close();
+
+    const messages = log.info.mock.calls.map(([, msg]) => String(msg));
+    expect(messages).toContain('session index released: hold cap 1800000 ms reached');
+    expect(messages).not.toContain('session index resumed');
+  });
+
   it('a delta pass forwards onIndexed to the refresh', async () => {
     vi.resetModules();
     vi.doMock('../session-index/refresh.js', async (importOriginal) => ({

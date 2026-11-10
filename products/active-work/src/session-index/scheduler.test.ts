@@ -109,6 +109,60 @@ describe('RefreshScheduler', () => {
     await scheduler.close();
   });
 
+  it('status reports held, holdReason and heldSince through a hold, a reason change and the gate opening', async () => {
+    const clock = fakeClock();
+    const decisions = [
+      { hold: true, reason: 'swap 70% used' },
+      { hold: true, reason: 'swap 70% used' },
+      { hold: true, reason: 'pressure level 2' },
+      { hold: false },
+    ];
+    const seen: ReturnType<RefreshScheduler['status']>[] = [];
+    const gate = vi.fn(async () => {
+      seen.push(scheduler.status());
+      return decisions.shift() ?? { hold: false };
+    });
+    const run = vi.fn(async () => {
+      seen.push(scheduler.status());
+      return summary;
+    });
+    const scheduler = new RefreshScheduler(run, { ...clock, gate, gateRecheckMs: 60_000 });
+
+    scheduler.trigger();
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+
+    const since = new Date(0).toISOString();
+    const view = seen.map(({ held, holdReason, heldSince }) => ({ held, holdReason, heldSince }));
+    expect(view).toEqual([
+      { held: false, holdReason: null, heldSince: null },
+      { held: true, holdReason: 'swap 70% used', heldSince: since },
+      { held: true, holdReason: 'swap 70% used', heldSince: since },
+      { held: true, holdReason: 'pressure level 2', heldSince: since },
+      { held: false, holdReason: null, heldSince: null },
+    ]);
+  });
+
+  it('status stays held after a hold-cap pass because the gate is still closed', async () => {
+    const clock = fakeClock();
+    let atRun: ReturnType<RefreshScheduler['status']> | null = null;
+    const run = vi.fn(async () => {
+      atRun = scheduler.status();
+      return summary;
+    });
+    const scheduler = new RefreshScheduler(run, {
+      ...clock,
+      gate: async () => ({ hold: true, reason: 'swap 70% used' }),
+      gateRecheckMs: 60_000,
+      maxHoldMs: 300_000,
+    });
+
+    scheduler.trigger();
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+
+    expect(atRun).toMatchObject({ held: true, holdReason: 'swap 70% used' });
+    expect(scheduler.status().held).toBe(true);
+  });
+
   it('collapses triggers that arrive mid-hold into one pass after the resume', async () => {
     const clock = fakeClock();
     const run = vi.fn(async () => summary);
