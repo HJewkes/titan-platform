@@ -5,7 +5,7 @@ import { cancelOwnPending } from "./gate-ids.js";
 import { RunContext, gateIdFor, gateIsPending, pendingGateId, type ContextDeps, type RecoveredStep } from "./context.js";
 import { settleUnfinished, type AbandonsOrphan, type WorkflowRegistration } from "./orphans.js";
 import { mustacheRenderer } from "./prompt.js";
-import { announceRecovery, HeldRuns, markStepRecovery, parkForRecovery, reconcileActiveSteps } from "./recovery.js";
+import { announceRecovery, HeldRuns, markStepRecovery, parkForRecovery, reconcileActiveSteps, resumeAnswered } from "./recovery.js";
 import type { WorkflowRuntimeOptions, WorkflowStartOptions } from "./runtime-options.js";
 import { failureText, fenceOf, messageOf, vaultOf, positiveDuration, RuntimeShutdown, sameFence, timestampAt, WorkflowPersistenceError } from "./runtime-values.js";
 import { parseSignal as defaultParseSignal } from "./signals.js";
@@ -286,6 +286,7 @@ export class WorkflowRuntime {
       const iteration = Number(step.iterKey.slice(step.iterKey.lastIndexOf(":") + 1));
       run.stepResults[step.iterKey] = { stepId, iteration, operation: "dispatch", agentId: null, signal: null, completedAt: this.isoNow(), ...completedTiming(step), output, ...everyTrySpend(step) };
       delete run.activeSteps[stepId];
+      if (run.status === "recovery_required" && Object.keys(run.activeSteps).length === 0) resumeAnswered(run);
       this.save(run);
       return true;
     } finally {

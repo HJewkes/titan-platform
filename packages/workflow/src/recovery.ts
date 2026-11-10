@@ -149,6 +149,12 @@ export function parkForRecovery(run: WorkflowRun, evidence: string): void {
   run.error = evidence;
 }
 
+/** Answering the last parked step leaves nothing for a human to look at, so the run may replay past it. */
+export function resumeAnswered(run: WorkflowRun): void {
+  run.status = "running";
+  run.error = null;
+}
+
 export function announceRecovery(emit: (event: WorkflowEvent) => void, runId: string, stepId: string, evidence: string, gateId?: string): void {
   emit({ type: "workflow_recovery_required", runId, stepId, evidence, ...(gateId ? { gateId } : {}) });
 }

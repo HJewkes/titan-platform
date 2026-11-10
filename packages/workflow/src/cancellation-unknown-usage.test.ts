@@ -109,4 +109,18 @@ describe("a durable step whose cancellation is unknown after spending", () => {
     expect(run.stepResults["work:0"]?.usage?.costUsd).toBeCloseTo(0.12);
     expect(run.stepResults["work:0"]?.usage).toMatchObject({ inputTokens: 1300, outputTokens: 90 });
   });
+
+  it("resumes a parked run to completion once an operator answers its only step, counting the spend once", async () => {
+    const db = makeDb();
+    const first = drive(db, ledgerRunner(db, "first"));
+    const runId = first.start("work");
+    expect((await first.wait(runId)).status).toBe("recovery_required");
+    const { runtime: second } = await resumed(db, ledgerRunner(db, "second"), runId);
+
+    expect(second.completeStep(runId, "work", "done by hand")).toBe(true);
+    const { run } = await resumed(db, ledgerRunner(db, "third"), runId);
+
+    expect(run.status).toBe("completed");
+    expect(run.stepResults["work:0"]?.usage).toEqual(unsettledSpend);
+  });
 });
