@@ -2,7 +2,36 @@ import { describe, expect, it, vi } from 'vitest';
 import { RefreshScheduler } from './scheduler.js';
 import type { RefreshSummary } from './refresh.js';
 
-const summary = {} as RefreshSummary;
+const summary: RefreshSummary = {
+  kind: 'full',
+  startedAt: '2026-07-01T00:00:00Z',
+  durationMs: 0,
+  transcripts: 0,
+  scanned: 0,
+  filesOpened: 0,
+  bytesRead: 0,
+  rowsWritten: 0,
+  dbBytes: 0,
+  phases: {},
+  indexed: 0,
+  rewound: 0,
+  unchanged: 0,
+  quarantined: 0,
+  missing: 0,
+  reconciledMissing: 0,
+  facetsBackfilled: 0,
+  facetBacklog: 0,
+  episodesWritten: 0,
+  episodeBacklog: null,
+  factsAdded: 0,
+  turnsRolledUp: 0,
+  tasksRequested: 0,
+  tasksApplied: 0,
+  prsPolled: 0,
+  workspace: null,
+  preserved: { restored: 0, merged: 0, skipped: 0 },
+  errors: [],
+};
 
 /** A fake clock whose sleep advances time and records each wait. */
 function fakeClock() {
