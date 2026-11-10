@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { openGraph, type SessionGraph } from './graph.js';
+import { selectAll, selectOne } from '../test-support/session-index/query.js';
 import { runRefresh } from './refresh.js';
 
 /**
@@ -101,19 +102,16 @@ function writeCorpus(): void {
 
 function query(graph: SessionGraph) {
   return {
-    turns: graph.db.prepare('SELECT prompt_id, turn_index FROM turn ORDER BY turn_index').all() as {
-      prompt_id: string;
-      turn_index: number;
-    }[],
-    branch: graph.db.prepare('SELECT created_at FROM branch').get() as { created_at: string },
-    session: graph.db.prepare('SELECT started_at, start_type FROM session').get() as {
-      started_at: string;
-      start_type: string | null;
-    },
-    pr: graph.db.prepare('SELECT state, merged_at FROM pr').get() as {
-      state: string | null;
-      merged_at: string | null;
-    },
+    turns: selectAll<{ prompt_id: string; turn_index: number }>(
+      graph.db,
+      'SELECT prompt_id, turn_index FROM turn ORDER BY turn_index',
+    ),
+    branch: selectOne<{ created_at: string }>(graph.db, 'SELECT created_at FROM branch'),
+    session: selectOne<{ started_at: string; start_type: string | null }>(
+      graph.db,
+      'SELECT started_at, start_type FROM session',
+    ),
+    pr: selectOne<{ state: string | null; merged_at: string | null }>(graph.db, 'SELECT state, merged_at FROM pr'),
   };
 }
 

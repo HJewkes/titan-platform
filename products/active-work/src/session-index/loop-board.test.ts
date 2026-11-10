@@ -1,15 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import YAML from 'yaml';
 
 import { buildBoard, LoopBoardSchema, type BoardInput } from './loop-board.js';
 import type { OpenLoop } from '../sessions/open-loops.js';
-import { SNAPSHOT, TREE } from '../test-support/fixtures/loop-ledger.js';
+import { snapshotRows, treeInput } from '../test-support/fixtures/loop-ledger.js';
 
 const NOW = new Date('2026-07-20T00:00:00Z');
-
-function ledgerRows(): unknown[] {
-  return (YAML.parse(SNAPSHOT) as { loops: unknown[] }).loops;
-}
 
 function sessionLoop(id: string, overrides: Partial<OpenLoop> = {}): OpenLoop {
   return {
@@ -26,7 +21,7 @@ function sessionLoop(id: string, overrides: Partial<OpenLoop> = {}): OpenLoop {
 
 function input(overrides: Partial<BoardInput> = {}): BoardInput {
   return {
-    ledger: { path: '/ledger/open-loops.yml', mtime: '2026-07-19T00:00:00.000Z', rows: ledgerRows() },
+    ledger: { path: '/ledger/open-loops.yml', mtime: '2026-07-19T00:00:00.000Z', rows: snapshotRows() },
     tree: null,
     sessions: [],
     now: NOW,
@@ -69,8 +64,8 @@ describe('buildBoard', () => {
   });
 
   it('carries a tier and who set it', () => {
-    const rows = ledgerRows();
-    Object.assign(rows[0] as object, {
+    const rows = snapshotRows();
+    Object.assign(rows[0] ?? {}, {
       tier: 'A',
       tier_rank: 2,
       tier_set: { at: '2026-07-19T00:00:00Z', by: 'owner' },
@@ -114,8 +109,8 @@ describe('buildBoard', () => {
   });
 
   it('skips a ledger row with no id and names it in warnings', () => {
-    const rows = ledgerRows();
-    delete (rows[1] as { id?: string }).id;
+    const rows = snapshotRows();
+    delete rows[1]?.id;
 
     const board = buildBoard(input({ ledger: { path: 'l', mtime: null, rows } }));
 
@@ -130,7 +125,7 @@ describe('buildBoard', () => {
   });
 
   it('maps the tree and joins each node to the loops that name it', () => {
-    const tree = YAML.parse(TREE) as { goals: unknown; nodes: unknown[] };
+    const tree = treeInput();
 
     const board = buildBoard(input({ tree }));
 

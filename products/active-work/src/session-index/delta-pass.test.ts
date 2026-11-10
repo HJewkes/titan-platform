@@ -16,6 +16,7 @@ import { graphDocumentFrequency } from '../search/document-frequency.js';
 import { createDirtySet } from './dirty-set.js';
 import { transcriptsFromDirty, unknownRootCandidates } from './delta-pass.js';
 import { openGraph, type WorkspaceGraph } from './graph.js';
+import { selectAll, selectOne } from '../test-support/session-index/query.js';
 import { runRefresh } from './refresh.js';
 import { RefreshScheduler } from './scheduler.js';
 import type * as Episodes from './episodes.js';
@@ -160,14 +161,12 @@ describe('delta pass', () => {
       .join('');
 
   const storedFields = (): string[] =>
-    (
-      graph.db.prepare('SELECT DISTINCT field FROM search_span ORDER BY field').all() as {
-        field: string;
-      }[]
-    ).map((row) => row.field);
+    selectAll<{ field: string }>(graph.db, 'SELECT DISTINCT field FROM search_span ORDER BY field').map(
+      (row) => row.field,
+    );
 
   const contextBlocks = (): number =>
-    (graph.db.prepare('SELECT COUNT(*) AS n FROM context_block').get() as { n: number }).n;
+    selectOne<{ n: number }>(graph.db, 'SELECT COUNT(*) AS n FROM context_block').n;
 
   it('stores no tool span or context block for bytes a delta pass indexes', async () => {
     writeTranscript(1);
@@ -201,7 +200,7 @@ describe('delta pass', () => {
       skipWorkspace: true,
       taskRoot: dir,
     });
-    const spans = (graph.db.prepare('SELECT COUNT(*) AS n FROM search_span').get() as { n: number })
+    const spans = selectOne<{ n: number }>(graph.db, 'SELECT COUNT(*) AS n FROM search_span')
       .n;
     appendFileSync(path.join(root, 'demo', 's1.jsonl'), userLine(1, 'a later prompt'), 'utf8');
     const transcripts = await discoverTranscripts(root);
@@ -250,11 +249,7 @@ describe('delta pass aborted mid-scan', () => {
     })}\n`;
 
   const unrolledTurns = (): number =>
-    (
-      graph.db.prepare('SELECT COUNT(*) AS n FROM turn WHERE ended_at IS NULL').get() as {
-        n: number;
-      }
-    ).n;
+    selectOne<{ n: number }>(graph.db, 'SELECT COUNT(*) AS n FROM turn WHERE ended_at IS NULL').n;
 
   it('rolls up the sessions it committed before the abort', async () => {
     for (const n of [1, 2]) appendFileSync(writeTranscript(n), assistantLine(n), 'utf8');
@@ -267,7 +262,7 @@ describe('delta pass aborted mid-scan', () => {
     const pass = runRefresh({ graph, mode: 'delta', transcripts, yieldPoint, taskRoot: dir });
 
     await expect(pass).rejects.toBe(aborted);
-    const turns = graph.db.prepare('SELECT COUNT(*) AS n FROM turn').get() as { n: number };
+    const turns = selectOne<{ n: number }>(graph.db, 'SELECT COUNT(*) AS n FROM turn');
     expect(turns.n).toBe(1);
     expect(unrolledTurns()).toBe(0);
   });

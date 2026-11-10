@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type * as SessionGraphPackage from '@titan-design/session-graph';
 import { openGraph, type WorkspaceGraph } from './graph.js';
+import { selectOne } from '../test-support/session-index/query.js';
 import { runRefresh } from './refresh.js';
 import { FIXTURE_LINES, renderTranscript } from '../test-support/session-index/fixture.js';
 
@@ -46,8 +47,7 @@ afterEach(() => {
 });
 
 const unfinishedTurns = (): number =>
-  (graph.db.prepare('SELECT COUNT(*) AS n FROM turn WHERE ended_at IS NULL').get() as { n: number })
-    .n;
+  selectOne<{ n: number }>(graph.db, 'SELECT COUNT(*) AS n FROM turn WHERE ended_at IS NULL').n;
 
 const pass = (): ReturnType<typeof runRefresh> =>
   runRefresh({ graph, root, skipPrOutcomes: true, skipWorkspace: true, taskRoot: dir });

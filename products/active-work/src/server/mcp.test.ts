@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import type { z } from 'zod';
+import { z } from 'zod';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
 import {
   commandNameToToolName,
@@ -13,6 +13,14 @@ import {
 } from './mcp.js';
 import { registry } from '../registry/index.js';
 import '../commands/index.js'; // populate the registry
+
+const textContent = z.array(z.object({ type: z.string(), text: z.string().optional() }));
+
+function firstText(content: unknown): string {
+  const text = textContent.parse(content)[0]?.text;
+  if (text === undefined) throw new Error('tool result has no text content');
+  return text;
+}
 
 function registered<T>(command: T | undefined): T {
   if (command === undefined) throw new Error('command is not registered');
@@ -47,7 +55,7 @@ describe('commandToTool', () => {
     expect(tool.inputSchema).toBeTypeOf('object');
     expect(tool.inputSchema['type']).toBe('object');
     // The slug + title fields should appear in properties.
-    const props = tool.inputSchema['properties'] as Record<string, unknown>;
+    const props = z.record(z.string(), z.unknown()).parse(tool.inputSchema['properties']);
     expect(props).toBeDefined();
     expect(props['slug']).toBeDefined();
     expect(props['title']).toBeDefined();
@@ -142,15 +150,9 @@ describe('createMcpServer (in-memory client round-trip)', () => {
         arguments: {},
       });
       expect(callResult.isError).toBe(false);
-      const content = callResult.content as Array<{
-        type: string;
-        text?: string;
-      }>;
-      expect(Array.isArray(content)).toBe(true);
+      const content = textContent.parse(callResult.content);
       expect(content[0]?.type).toBe('text');
-      const parsed = JSON.parse(content[0].text!) as z.infer<ReturnType<typeof z.object>> & {
-        ok: boolean;
-      };
+      const parsed = z.object({ ok: z.boolean() }).parse(JSON.parse(firstText(content)));
       expect(parsed.ok).toBe(true);
 
       const badCall = await client.callTool({
@@ -158,11 +160,9 @@ describe('createMcpServer (in-memory client round-trip)', () => {
         arguments: {},
       });
       expect(badCall.isError).toBe(true);
-      const badContent = badCall.content as Array<{ text: string }>;
-      const badEnv = JSON.parse(badContent[0].text) as {
-        ok: false;
-        error: string;
-      };
+      const badEnv = z
+        .object({ ok: z.boolean(), error: z.string() })
+        .parse(JSON.parse(firstText(badCall.content)));
       expect(badEnv.ok).toBe(false);
       expect(badEnv.error).toMatch(/Invalid arguments/i);
 

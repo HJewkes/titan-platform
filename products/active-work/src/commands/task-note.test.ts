@@ -8,7 +8,7 @@ import './index.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
 import type { CommandContext } from '../registry/index.js';
 import type { Task } from '../schemas/task.js';
-import type { TaskOrLine } from './_task-quiet.js';
+import { asTask } from '../test-support/as-task.js';
 
 const SLUG = 'sample-initiative';
 const ID = 'SI-7';
@@ -35,11 +35,6 @@ async function seedTask(root: string): Promise<void> {
     done_at: null,
   };
   await fs.writeFile(taskFile(root), YAML.stringify(task));
-}
-
-function asTask(result: TaskOrLine): Task {
-  if (typeof result === 'string') throw new Error(`expected a task, got line: ${result}`);
-  return result;
 }
 
 async function readTask(root: string): Promise<Task> {

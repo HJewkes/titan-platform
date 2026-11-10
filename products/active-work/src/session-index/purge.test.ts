@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { indexTranscript } from '@titan-design/session-graph';
 import type { DiscoveredTranscript } from '@titan-design/session-read';
 import { openGraph, type SessionGraph } from './graph.js';
+import { selectOne } from '../test-support/session-index/query.js';
 import { FIXTURE_LINES, renderTranscript } from '../test-support/session-index/fixture.js';
 
 /**
@@ -52,7 +53,7 @@ function counts(): Record<string, number> {
     >('SELECT turn_count, commit_count, push_count FROM session')
     .get()!;
   const scalar = (sql: string): number =>
-    (graph.db.prepare<[], { n: number }>(sql).get() as { n: number }).n;
+    selectOne<{ n: number }>(graph.db, sql).n;
   return {
     ...session,
     facts: scalar('SELECT COUNT(*) AS n FROM fact'),
