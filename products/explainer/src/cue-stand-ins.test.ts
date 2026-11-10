@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { cueStandIns } from "./cue-stand-ins.js";
 import { checkedObject, type ScriptPlan } from "./workflow/script-draft.js";
+import { parseScript } from "./script-load.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
 
-const beatWith = (targets: string[]) => scriptWith({ visual: { assertion: "A beat", job: "map", cues: targets.map((target) => ({ action: "V11", target, atCue: "server" })) } }).beats[0]!;
+const beatWith = (targets: string[]) =>
+  parseScript(scriptWith({ visual: { assertion: "A beat", job: "map", cues: targets.map((target) => ({ action: "V11", target, atCue: "server" })) } })).beats[0]!;
 
 describe("run, detail and note standing in for terminal or timeline beats", () => {
   // Mutation: dropping a generic kind from GENERIC_KINDS leaves that kind's stand-in unflagged.
