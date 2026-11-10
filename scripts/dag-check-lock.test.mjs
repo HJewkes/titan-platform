@@ -28,24 +28,18 @@ import {
 const MODULE = new URL("./dag-check-lock.mjs", import.meta.url).href;
 const roots = [];
 const children = [];
-const isAlive = (pid) => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-};
+// exitCode and signalCode stay null until the OS reaps this very child, so no pid the OS may have reused is ever probed.
+const isRunning = (child) => child.exitCode === null && child.signalCode === null;
 afterEach(async () => {
   vi.restoreAllMocks();
   roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true }));
   // Removing the gate dir tells a gated child to exit; a child still alive after the grace period is an orphan.
   const spawned = children.splice(0);
   const deadline = Date.now() + 5000;
-  while (spawned.some(isAlive) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
-  const orphans = spawned.filter(isAlive);
-  orphans.forEach((pid) => process.kill(pid, "SIGKILL"));
-  expect(orphans).toEqual([]);
+  while (spawned.some(isRunning) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
+  const orphans = spawned.filter(isRunning);
+  orphans.forEach((child) => child.kill("SIGKILL"));
+  expect(orphans.map((child) => child.pid)).toEqual([]);
 });
 
 function lockPath() {
@@ -477,6 +471,9 @@ describe("parked tickets", () => {
 
 const GATE_DEADLINE_MS = 60 * 1000;
 
+/** A gated child must outlast its own acquire budget, or a slow run loses its gate after it won the slot. */
+const gateDeadlineMs = (timeoutMs) => Math.max(GATE_DEADLINE_MS, timeoutMs);
+
 describe("lock slots", () => {
   const quiet = { pollMs: 5, log: () => {} };
   const GIB = 1024 ** 3;
@@ -494,7 +491,7 @@ describe("lock slots", () => {
         // The hold lasts until the test opens the gate, so no wall-clock hold length can end it early under load.
         writeFileSync(join(gateDir, "held-" + process.pid), String(hold.slot));
         // A failing test never opens the gate, so the wait ends when the gate dir is removed or after a bounded deadline.
-        const giveUpAt = Date.now() + ${GATE_DEADLINE_MS};
+        const giveUpAt = Date.now() + ${gateDeadlineMs(timeoutMs)};
         while (!existsSync(join(gateDir, "go"))) {
           if (!existsSync(gateDir) || Date.now() > giveUpAt) process.exit(3);
           await new Promise((resolve) => setTimeout(resolve, 10));
@@ -507,9 +504,14 @@ describe("lock slots", () => {
     `;
     const env = { ...process.env, DAG_CHECK_SLOTS: String(slots) };
     const child = spawn(process.execPath, ["--input-type=module", "-e", script], { env, stdio: "ignore" });
-    children.push(child.pid);
+    children.push(child);
     return once(child, "exit").then(([code]) => code);
   }
+
+  it("keeps a gated child waiting at least as long as the acquire budget it was given", () => {
+    expect(gateDeadlineMs(5000)).toBe(GATE_DEADLINE_MS);
+    expect(gateDeadlineMs(120 * 1000)).toBe(120 * 1000);
+  });
 
   it("reads DAG_CHECK_SLOTS, else allows one slot per 8 GiB of RAM, from 1 up to 6", () => {
     expect(lockSlots({ DAG_CHECK_SLOTS: "3" }, 128 * GIB)).toBe(3);
@@ -530,7 +532,7 @@ describe("lock slots", () => {
     rmSync(gateDir, { recursive: true, force: true });
 
     expect(await exit).toBe(3);
-    expect(children.filter(isAlive)).toEqual([]);
+    expect(children.filter(isRunning)).toEqual([]);
   }, 40000);
 
   it("lets as many checks hold at once as there are slots, each in its own slot, and queues the next", async () => {

@@ -168,7 +168,7 @@ export default defineCommand<Args, Result>({
       resolves: {
         long: '--resolves',
         description:
-          'JSON array of loops this session closes: [{"ref":"<session-file-stem>#<id>","outcome":"done|abandoned","note"?}]',
+          'JSON array of loops this session closes: [{"ref":"<session-file-stem>#<id>","outcome":"done|abandoned","note"?}]. A later wrap under the same --session-id may resolve loops its earlier wraps opened; only the same file, or a loop from a session that ended at or after this one, is rejected.',
       },
       no_loops: {
         long: '--no-loops',
