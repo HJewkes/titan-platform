@@ -407,6 +407,24 @@ describe("sh-wake-implementer: who is woken", () => {
     expect(agents.asked).toEqual([]);
   });
 
+  it("asks nobody when the implementer exited and a new head was pushed since the wake was requested (TP-5171)", async () => {
+    const { agents, run } = wakeStep({ rows: [row("impl-a")], pr: { headSha: H2 } });
+
+    const { result } = await run("ci-red");
+
+    expect(result).toMatchObject({ kind: "woken", agent: "impl-a" });
+    expect(agents.asked).toEqual([]);
+  });
+
+  it("advances with the registered implementer when its lineage is gone from the roster and a new head was pushed (TP-5171)", async () => {
+    const { agents, run } = wakeStep({ rows: [], pr: { headSha: H2 } });
+
+    const { result } = await run("ci-red");
+
+    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "live" });
+    expect(agents.asked).toEqual([]);
+  });
+
   /** Read 1 is the wake's own PR read; read 2 is the first head check, which fails. */
   function unreadableOnce(scene: ReturnType<typeof wakeStep>) {
     scene.fake.onGetPr = (_pr, reads) => {
@@ -1195,13 +1213,13 @@ describe("a held wake and the repair budget", () => {
     let refusals = 0;
     agents.spawn = async () => Promise.reject(new DispatchError(`refusal ${++refusals}`));
     let pushed = 0;
-    fake.onGetPr = (pr) => void (refusals > pushed && (pr.headSha = fakeSha(`by-hand-${++pushed}`)));
     const store = shepherdStoreRef();
     let clock = T0;
     const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "/opt/bin/agent-chat" };
     const outcomes: WakeOutcome[] = [];
     const run = async (ctx: Parameters<typeof wakePhase>[0]) => {
       for (let round = 0; ; round++) {
+        if (refusals > pushed) fake.pushHead(1, fakeSha(`by-hand-${++pushed}`));
         const headSha = fake.pr(1).headSha;
         if (!(await spendRepair(ctx, { repo: REPO, pr: 1 }, "review", headSha))) return;
         outcomes.push(await wakePhase(ctx, { kind: "review", repo: REPO, pr: 1, round, headSha, payload: { kind: "FIX_FIRST", headSha, text: "fix it" } }));
