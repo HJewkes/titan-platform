@@ -269,7 +269,7 @@ describe("a run held at registration waiting in its merge step", () => {
   });
 
   it("reads a run waiting for a new head after a no-verdict diagnosis as diagnosis, and after a fix wake as fixing", () => {
-    const after = (previous: string) => ({ ...pausedAt("await-new-head:0"), stepResults: { [previous]: { stepId: previous, iteration: 0, completedAt: "2026-01-01T00:30:00.000Z", signal: null, data: {} } } }) as WorkflowRun;
+    const after = (previous: string): WorkflowRun => ({ ...pausedAt("await-new-head:0"), stepResults: { [previous]: { stepId: previous, iteration: 0, agentId: "shepherd", completedAt: "2026-01-01T00:30:00.000Z", signal: null, data: {} } } });
 
     const diagnosing = watchRow({ registration, run: after("sh-no-verdict-diagnosis:" + "1".repeat(40)) });
     const fixing = watchRow({ registration, run: after("sh-wake-fix-first:" + "1".repeat(40)) });
