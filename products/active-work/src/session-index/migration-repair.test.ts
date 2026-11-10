@@ -10,6 +10,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { openGraph, openGraphReadOnly } from './graph.js';
+import { selectAll } from '../test-support/session-index/query.js';
 import { runRefresh } from './refresh.js';
 import { MIGRATIONS } from '../workspace-index/schema.js';
 import { FIXTURE_LINES, renderTranscript } from '../test-support/session-index/fixture.js';
@@ -59,10 +60,7 @@ function seedCollidedGraph(): void {
 function migrationRows(): { version: number; name: string }[] {
   const db = new Database(dbPath, { readonly: true });
   try {
-    return db.prepare('SELECT version, name FROM _migration ORDER BY version').all() as {
-      version: number;
-      name: string;
-    }[];
+    return selectAll<{ version: number; name: string }>(db, 'SELECT version, name FROM _migration ORDER BY version');
   } finally {
     db.close();
   }

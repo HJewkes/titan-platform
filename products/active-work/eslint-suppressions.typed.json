@@ -467,25 +467,10 @@
       "count": 10
     }
   },
-  "products/active-work/src/session-index/convergence.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
-    }
-  },
-  "products/active-work/src/session-index/delta-pass.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
-    }
-  },
   "products/active-work/src/session-index/dispatch-records.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 2
     },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/session-index/fts.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }
@@ -498,62 +483,7 @@
       "count": 1
     }
   },
-  "products/active-work/src/session-index/loop-board-handoff.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/session-index/loop-board.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
-    }
-  },
-  "products/active-work/src/session-index/migration-repair.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/session-index/origin-agent-chat.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/active-work/src/session-index/origin-agent-chat.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/session-index/pr-create.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/session-index/pr-outcomes.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "products/active-work/src/session-index/preserve.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
-    }
-  },
-  "products/active-work/src/session-index/purge.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/session-index/rebuild.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "products/active-work/src/session-index/refresh.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
-    }
-  },
-  "products/active-work/src/session-index/rollup-resume.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }
@@ -561,11 +491,6 @@
   "products/active-work/src/session-index/scheduler-timing.ts": {
     "@typescript-eslint/no-unnecessary-condition": {
       "count": 2
-    }
-  },
-  "products/active-work/src/session-index/scheduler.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
     }
   },
   "products/active-work/src/session-index/scheduler.ts": {
@@ -576,29 +501,9 @@
       "count": 1
     }
   },
-  "products/active-work/src/session-index/schema-guard.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "products/active-work/src/session-index/subagent-tree.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "products/active-work/src/session-index/tasks.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/active-work/src/session-index/tasks.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 4
-    }
-  },
-  "products/active-work/src/sessions/lease.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
     }
   },
   "products/active-work/src/sessions/lease.ts": {
