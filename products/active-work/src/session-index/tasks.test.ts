@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { allTaskIds, enrichTasks } from '@titan-design/session-graph';
 import { openGraph, type SessionGraph } from './graph.js';
+import { selectMaybe } from '../test-support/session-index/query.js';
 import { readYaml } from '../utils/yaml-io.js';
 import { loadKnownTaskIds, loadTaskStore, taskResolver } from './tasks.js';
 
@@ -72,9 +73,7 @@ const addRef = (id: string, status: string | null = null): void => {
 };
 
 const rowFor = (id: string): Record<string, unknown> | undefined =>
-  graph.db.prepare('SELECT * FROM task WHERE task_ref = ?').get(`task:${id}`) as
-    | Record<string, unknown>
-    | undefined;
+  selectMaybe<Record<string, unknown>>(graph.db, 'SELECT * FROM task WHERE task_ref = ?', `task:${id}`);
 
 async function enrich(): Promise<number> {
   const result = await enrichTasks(graph, taskResolver(storeRoot), allTaskIds(graph));

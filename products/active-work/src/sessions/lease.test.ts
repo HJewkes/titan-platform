@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import {
   acquireLease,
   leaseDir,
@@ -23,6 +24,10 @@ const comm = (name: string | null) => (): string | null => name;
 
 function minutesBefore(now: Date, minutes: number): Date {
   return new Date(now.getTime() - minutes * 60_000);
+}
+
+async function readLease(file: string): Promise<Record<string, unknown>> {
+  return z.record(z.string(), z.unknown()).parse(JSON.parse(await fs.readFile(file, 'utf8')));
 }
 
 async function writeRawLease(
@@ -59,7 +64,7 @@ describe('acquireLease / releaseLease', () => {
       });
 
       const file = path.join(leaseDir(activeRoot, SLUG), `${leaseId}.json`);
-      const parsed = JSON.parse(await fs.readFile(file, 'utf8')) as Record<string, unknown>;
+      const parsed = await readLease(file);
       expect(parsed).toEqual({
         lease_id: leaseId,
         slug: SLUG,
@@ -89,7 +94,7 @@ describe('acquireLease / releaseLease', () => {
         getComm: comm(null),
       });
       const file = path.join(leaseDir(activeRoot, SLUG), `${leaseId}.json`);
-      const parsed = JSON.parse(await fs.readFile(file, 'utf8')) as Record<string, unknown>;
+      const parsed = await readLease(file);
       expect(parsed.pid_comm).toBeUndefined();
     });
   });
@@ -113,7 +118,7 @@ describe('acquireLease / releaseLease', () => {
         pid: 999,
       });
       const file = path.join(leaseDir(activeRoot, SLUG), `${leaseId}.json`);
-      const parsed = JSON.parse(await fs.readFile(file, 'utf8')) as Record<string, unknown>;
+      const parsed = await readLease(file);
       expect(parsed.pid).toBeUndefined();
     });
   });

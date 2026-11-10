@@ -8,6 +8,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { runDoctor } from '../doctor/index.js';
 import { ConfigError } from '../errors.js';
+import { selectOne } from '../test-support/session-index/query.js';
 import {
   defaultGraphPath,
   openGraph,
@@ -33,7 +34,7 @@ function stampFutureGraph(dbPath: string): void {
 function storedVersion(dbPath: string): number {
   const db = new Database(dbPath, { readonly: true });
   try {
-    return (db.prepare('SELECT MAX(version) AS v FROM _migration').get() as { v: number }).v;
+    return selectOne<{ v: number }>(db, 'SELECT MAX(version) AS v FROM _migration').v;
   } finally {
     db.close();
   }
@@ -41,7 +42,7 @@ function storedVersion(dbPath: string): number {
 
 function expectUpgradeMessage(err: unknown, dbPath: string): void {
   expect(err).toBeInstanceOf(ConfigError);
-  const message = (err as Error).message;
+  const message = err instanceof Error ? err.message : '';
   expect(message).toContain(dbPath);
   expect(message).toContain(`records schema version ${FUTURE_VERSION}`);
   expect(message).toContain(`knows only up to ${SCHEMA_VERSION}`);
