@@ -48,6 +48,7 @@ describe("browser safety of the ./timeline entry", () => {
 
     expect(result.errors).toEqual([]);
     expect(result.warnings).toEqual([]);
+    expect(inputs.some((i) => i.endsWith("/count-at-or-before.ts"))).toBe(true);
     expect(inputs.filter((i) => /node:|better-sqlite3|store-sqlite|session-graph|session-read/.test(i))).toEqual([]);
   });
 });
