@@ -79,11 +79,23 @@ interface RosterPatience {
 /** The step already holds a MERGE, so a roster unread for a whole round is read again rather than failing the run (TP-5086). */
 const patiently = <T>(read: () => Promise<T>, { timing, budgetMs, signal }: RosterPatience, note?: RosterNote) => () => untilRosterRead(timing, signal, budgetMs, read, note);
 
+/** The run's pull request, or undefined when the store is unbound or the run has none; a note is best effort and must not fail the step. */
+function prOf(store: ShepherdStoreRef, runId: string): number | undefined {
+  try {
+    return store.get().byRun(runId)?.pr ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** A run held at the evidence step shows its roster wait in status, next to the other review waits. */
-function rosterNote(store: ShepherdStoreRef, subject: AttestSubject): RosterNote | undefined {
-  const pr = store.get().byRun(subject.runId)?.pr;
-  if (typeof pr !== "number") return undefined;
-  return (text) => (text === undefined ? clearReviewWait(subject.repo, pr) : noteReviewWait(subject.repo, pr, `waiting for the reviewer roster at the merge evidence step: ${text}`));
+function rosterNote(store: ShepherdStoreRef, subject: AttestSubject): RosterNote {
+  return (text) => {
+    const pr = prOf(store, subject.runId);
+    if (pr === undefined) return;
+    if (text === undefined) clearReviewWait(subject.repo, pr);
+    else noteReviewWait(subject.repo, pr, `waiting for the reviewer roster at the merge evidence step: ${text}`);
+  };
 }
 
 export interface AttestSkewWiring {
