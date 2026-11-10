@@ -178,7 +178,8 @@ describe('RefreshScheduler', () => {
     });
 
     scheduler.trigger();
-    await vi.waitFor(() => expect(scheduler.status().held).toBe(false));
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(scheduler.status().running).toBe(false));
     const read = await scheduler.runNow(1_000);
 
     expect(read).toBe('fresh');
