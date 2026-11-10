@@ -93,14 +93,14 @@ export function readPriceTableVersion(db: Db): number | null {
   return db.prepare<[], { version: number | null }>("SELECT MAX(table_version) AS version FROM price").get()?.version ?? null;
 }
 
-/** Indexed transcripts, and those whose audit facet is missing or older than `facetVersion`. */
+/** Indexed transcripts, and the readable (status `ok`) ones whose audit facet is missing or older than `facetVersion`; a quarantined or missing file cannot be extracted, so it is no backlog. */
 export function readCoverage(db: Db, facetVersion: number | null): { transcriptsIndexed: number; facetBacklog: number } {
   const indexed = db.prepare<[], { n: number }>(`SELECT COUNT(*) AS n FROM "${KIT.watermark}"`).get();
   const backlog = db
     .prepare<[object], { n: number }>(
       `SELECT COUNT(*) AS n FROM "${KIT.watermark}" t LEFT JOIN "${FACET_TABLE}" f
          ON f.transcript_id = t.source_id AND f.facet = @facet AND (@version IS NULL OR f.version >= @version)
-       WHERE f.transcript_id IS NULL`,
+       WHERE t.status = 'ok' AND f.transcript_id IS NULL`,
     )
     .get({ facet: AUDIT_FACET, version: facetVersion });
   return { transcriptsIndexed: indexed?.n ?? 0, facetBacklog: backlog?.n ?? 0 };
