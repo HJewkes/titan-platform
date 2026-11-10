@@ -4,7 +4,7 @@ import type { Logger } from "./logger.js";
 import type { RemoteListener } from "./remote-listener.js";
 import { closeServer } from "./server-close.js";
 
-export interface InheritedAddressPolicy {
+interface InheritedAddressPolicy {
   allowNonLoopback: boolean;
   remote: RemoteListener | null;
 }
