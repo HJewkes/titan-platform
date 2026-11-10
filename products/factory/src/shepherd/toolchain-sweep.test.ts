@@ -7,7 +7,7 @@ import { ADOPTION_BRANCH, DRIFTED, toolchainWorld, type ToolchainWorld } from ".
 import { TOOLCHAIN_CONSUMERS } from "../workflows/toolchain-fanout.js";
 import { TOOLCHAIN_IMPLEMENTER } from "./self-register.js";
 import type { ShepherdServices } from "./services.js";
-import { LeftoverAdoptionBranchError, openAdoption, planAdoptions, sweepToolchain } from "./toolchain-sweep.js";
+import { openAdoption, planAdoptions, sweepToolchain } from "./toolchain-sweep.js";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));

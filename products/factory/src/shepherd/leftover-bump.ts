@@ -19,7 +19,14 @@ function isSweepCommit(commit: BranchCommit, actor: string, paths: ReadonlySet<s
  * port's own login, with the sweep's message (`messageOf`, the bump's by default) for one of `paths`, and the branch changing
  * nothing outside `paths`. A truncated compare is never trusted.
  */
-export async function isSweepOnlyBranch(port: Pick<GitHubPort, "actorLogin" | "listBranchCommits">, repo: RepoSlug, base: string, branch: string, paths: ReadonlySet<string>, messageOf: CommitMessage = bumpCommitMessage): Promise<boolean> {
+export async function isSweepOnlyBranch(
+  port: Pick<GitHubPort, "actorLogin" | "listBranchCommits">,
+  repo: RepoSlug,
+  base: string,
+  branch: string,
+  paths: ReadonlySet<string>,
+  messageOf: CommitMessage = bumpCommitMessage,
+): Promise<boolean> {
   const [actor, compared] = await Promise.all([port.actorLogin(), port.listBranchCommits(repo, base, branch)]);
   if (compared.truncated) return false;
   return compared.files.every((path) => paths.has(path)) && compared.commits.every((commit) => isSweepCommit(commit, actor, paths, messageOf));
