@@ -3,14 +3,14 @@ import { expandTilde } from '../utils/paths.js';
 import { readRegisteredWorktrees, defaultWorktreePath } from '../utils/registered-worktrees.js';
 import { NotFoundError } from '../errors.js';
 import { listFacets, type LoadedFacet } from '../facets/facet-file.js';
-import { listInitiativeSlugs } from '../sessions/initiatives.js';
+import { listInitiativeSlugsOrEmpty } from '../sessions/initiatives.js';
 
 /**
  * Resolve a user-supplied slug (exact or unique prefix) to a full slug.
  * Throws NotFoundError on no match, and on an ambiguous prefix.
  */
 export async function resolveSlug(activeRoot: string, input: string): Promise<string> {
-  const slugs = await listInitiativeSlugs(activeRoot);
+  const slugs = await listInitiativeSlugsOrEmpty(activeRoot);
   if (slugs.includes(input)) return input;
   return matchSlugPrefix(activeRoot, slugs, input, []);
 }
@@ -29,7 +29,7 @@ export async function resolveSlugOrFacet(
   activeRoot: string,
   input: string,
 ): Promise<SlugResolution> {
-  const slugs = await listInitiativeSlugs(activeRoot);
+  const slugs = await listInitiativeSlugsOrEmpty(activeRoot);
   if (slugs.includes(input)) return { slug: input };
   const { facets } = await listFacets(activeRoot, slugs);
   const facet = facets.find((f) => f.name === input);
