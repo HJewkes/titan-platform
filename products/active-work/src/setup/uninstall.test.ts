@@ -1,267 +1,206 @@
-import { EventEmitter } from "node:events";
-import type { spawn as nodeSpawn } from "node:child_process";
-import { promises as fsp } from "node:fs";
-import type * as clackPrompts from "@clack/prompts";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { StepPaths } from "./steps-deps.js";
-import { getSupervisor } from "./supervision.js";
-import { runUninstall } from "./uninstall.js";
+import { spawn as nodeSpawn } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import * as clackPrompts from '@clack/prompts';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { StepPaths } from './steps-deps.js';
+import { getSupervisor } from './supervision.js';
+import { runUninstall } from './uninstall.js';
 
-vi.mock("./supervision.js", () => ({ getSupervisor: vi.fn() }));
+const SKILL_PROMPT = 'Remove the active-work skill from ~/.claude/skills/?';
+const COMMAND_PROMPT = 'Remove the /aw-prompt command from ~/.claude/commands/?';
+const DAEMON_PROMPT = 'Stop the daemon?';
+const MCP_PROMPT = 'Unregister MCP from Claude Code?';
 
-const SKILL_PROMPT = "Remove the active-work skill from ~/.claude/skills/?";
-const COMMAND_PROMPT =
-  "Remove the /aw-prompt command from ~/.claude/commands/?";
-const SUPERVISION_PROMPT = "Remove the synthetic supervisor unit?";
-const DAEMON_PROMPT = "Stop the daemon?";
-const MCP_PROMPT = "Unregister MCP from Claude Code?";
+// The host's own supervisor (systemd, launchd or none) decides this prompt and step.
+const supervisor = getSupervisor();
+const SUPERVISION_PROMPT = supervisor?.uninstallPrompt ?? '';
+const SUPERVISION_PROMPTS = supervisor ? [SUPERVISION_PROMPT] : [];
+const SUPERVISION_STEPS = supervisor ? ['install-supervision'] : [];
+const STEP_NAMES = [
+  'install-skill',
+  'install-command',
+  ...SUPERVISION_STEPS,
+  'start-daemon',
+  'register-mcp',
+];
+const PROMPTS = [SKILL_PROMPT, COMMAND_PROMPT, ...SUPERVISION_PROMPTS, DAEMON_PROMPT, MCP_PROMPT];
 
-const PATHS: StepPaths = {
-  activeRoot: "/synthetic/active",
-  stateRoot: "/synthetic/state",
-  configRoot: "/synthetic/config",
-  homeDir: "/synthetic/home",
-};
+const temps: string[] = [];
 
-function enoent(): Error {
-  return Object.assign(new Error("missing"), { code: "ENOENT" });
-}
-
-function fakeFs(present: boolean): typeof fsp {
+/** A synthetic home, with the skill dir and command file present when asked. */
+function makeHome(installed: boolean): StepPaths {
+  const base = mkdtempSync(path.join(tmpdir(), 'aw-uninstall-test-'));
+  temps.push(base);
+  const homeDir = path.join(base, 'home');
+  if (installed) {
+    mkdirSync(path.join(homeDir, '.claude', 'skills', 'active-work'), { recursive: true });
+    mkdirSync(path.join(homeDir, '.claude', 'commands'), { recursive: true });
+    writeFileSync(path.join(homeDir, '.claude', 'commands', 'aw-prompt.md'), 'synthetic');
+  }
   return {
-    stat: vi.fn(async () => {
-      if (!present) throw enoent();
-      return {};
-    }),
-    rm: vi.fn(async () => undefined),
-  } as unknown as typeof fsp;
+    activeRoot: path.join(base, 'active'),
+    stateRoot: path.join(base, 'state'),
+    configRoot: path.join(base, 'config'),
+    homeDir,
+  };
 }
 
-function fakeSpawn(code: number): typeof nodeSpawn {
-  return (() => {
-    const child = new EventEmitter() as EventEmitter & { stderr: EventEmitter };
-    child.stderr = new EventEmitter();
-    setImmediate(() => child.emit("close", code));
-    return child;
-  }) as unknown as typeof nodeSpawn;
+/** A spawn whose child is a real process that exits with `code`. */
+function exitingSpawn(code: number) {
+  return vi.fn<typeof nodeSpawn>(() =>
+    nodeSpawn(process.execPath, ['-e', `process.exit(${code})`]),
+  );
 }
 
 /** Answers each confirm prompt by its message; anything unlisted is a yes. */
-function scriptedPrompts(answers: Record<string, boolean | symbol>) {
-  const asked: Array<{ message: string; initialValue: boolean | undefined }> =
-    [];
-  const cancelled = Symbol("cancel");
-  const prompts = {
-    confirm: vi.fn(
-      async (opts: { message: string; initialValue?: boolean }) => {
-        asked.push({ message: opts.message, initialValue: opts.initialValue });
-        const answer = answers[opts.message];
-        return answer === "cancel" ? cancelled : answer ?? true;
-      }
-    ),
-    isCancel: (value: unknown) => value === cancelled,
-  } as unknown as typeof clackPrompts;
-  return { prompts, asked };
+function scriptedPrompts(answers: Partial<Record<string, boolean | 'cancel'>>) {
+  const asked: Array<{ message: string; initialValue: boolean | undefined }> = [];
+  const cancelled = Symbol('cancel');
+  const confirm = vi.fn<typeof clackPrompts.confirm>(async (opts) => {
+    asked.push({ message: opts.message, initialValue: opts.initialValue });
+    const answer = answers[opts.message];
+    return answer === 'cancel' ? cancelled : answer !== false;
+  });
+  const isCancel = (value: unknown): value is symbol => value === cancelled;
+  return { prompts: { ...clackPrompts, confirm, isCancel }, asked };
 }
 
-const supervisorUninstall = vi.fn();
-
-beforeEach(() => {
-  supervisorUninstall.mockReset();
-  supervisorUninstall.mockResolvedValue({
-    ok: true,
-    name: "install-supervision",
-    done: true,
-    message: "Removed synthetic unit",
-  });
-  vi.mocked(getSupervisor).mockReturnValue({
-    uninstallPrompt: SUPERVISION_PROMPT,
-    uninstall: supervisorUninstall,
-  } as unknown as ReturnType<typeof getSupervisor>);
+afterEach(() => {
+  for (const dir of temps.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-describe("runUninstall", () => {
-  it("runs every step without prompting when yes is set", async () => {
-    const { prompts, asked } = scriptedPrompts({});
+function stepNamed(report: Awaited<ReturnType<typeof runUninstall>>, name: string) {
+  return report.steps.find((step) => step.name === name);
+}
 
-    const report = await runUninstall({
-      prompts,
-      yes: true,
-      paths: PATHS,
-      fs: fakeFs(true),
-      spawn: fakeSpawn(0),
-    });
+describe('runUninstall', () => {
+  it('runs every step without prompting when yes is set', async () => {
+    const { prompts, asked } = scriptedPrompts({});
+    const paths = makeHome(true);
+
+    const report = await runUninstall({ prompts, yes: true, paths, spawn: exitingSpawn(0) });
 
     expect(asked).toEqual([]);
-    expect(report.activeRootPreservedAt).toBe(PATHS.activeRoot);
-    expect(report.steps).toEqual([
-      {
-        name: "install-skill",
-        done: true,
-        message: expect.stringContaining("Removed skill"),
-      },
-      {
-        name: "install-command",
-        done: true,
-        message: expect.stringContaining("Removed /aw-prompt"),
-      },
-      {
-        name: "install-supervision",
-        done: true,
-        message: "Removed synthetic unit",
-      },
-      { name: "start-daemon", done: true, message: "Daemon stopped" },
-      {
-        name: "register-mcp",
-        done: true,
-        message: "Unregistered MCP server from Claude Code",
-      },
-    ]);
+    expect(report.activeRootPreservedAt).toBe(paths.activeRoot);
+    expect(report.steps.map((s) => s.name)).toEqual(STEP_NAMES);
+    expect(stepNamed(report, 'install-skill')).toEqual({
+      name: 'install-skill',
+      done: true,
+      message: expect.stringContaining('Removed skill'),
+    });
+    expect(stepNamed(report, 'install-command')).toEqual({
+      name: 'install-command',
+      done: true,
+      message: expect.stringContaining('Removed /aw-prompt'),
+    });
+    expect(stepNamed(report, 'start-daemon')).toEqual({
+      name: 'start-daemon',
+      done: true,
+      message: 'Daemon stopped',
+    });
+    expect(stepNamed(report, 'register-mcp')).toEqual({
+      name: 'register-mcp',
+      done: true,
+      message: 'Unregistered MCP server from Claude Code',
+    });
   });
 
-  it("asks the prompts in order, each defaulting to yes", async () => {
+  it('asks the prompts in order, each defaulting to yes', async () => {
     const { prompts, asked } = scriptedPrompts({});
 
-    await runUninstall({
-      prompts,
-      paths: PATHS,
-      fs: fakeFs(true),
-      spawn: fakeSpawn(0),
-    });
+    await runUninstall({ prompts, paths: makeHome(true), spawn: exitingSpawn(0) });
 
-    expect(asked).toEqual(
-      [
+    expect(asked).toEqual(PROMPTS.map((message) => ({ message, initialValue: true })));
+  });
+
+  it.each(PROMPTS)('skips only the step behind the declined prompt: %s', async (prompt) => {
+    const { prompts } = scriptedPrompts({ [prompt]: false });
+
+    const report = await runUninstall({ prompts, paths: makeHome(true), spawn: exitingSpawn(0) });
+
+    const skipped = report.steps.filter((s) => s.message === 'Skipped');
+    expect(report.steps.map((s) => s.name)).toEqual(STEP_NAMES);
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0]).toEqual({
+      name: STEP_NAMES[PROMPTS.indexOf(prompt)],
+      done: false,
+      message: 'Skipped',
+    });
+  });
+
+  it('treats a cancelled prompt as a skip', async () => {
+    const { prompts } = scriptedPrompts({ [DAEMON_PROMPT]: 'cancel' });
+
+    const report = await runUninstall({ prompts, paths: makeHome(true), spawn: exitingSpawn(0) });
+
+    expect(stepNamed(report, 'start-daemon')).toEqual({
+      name: 'start-daemon',
+      done: false,
+      message: 'Skipped',
+    });
+  });
+
+  it('omits the supervision step and prompt on a platform with no supervisor', async () => {
+    const original = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    const { prompts, asked } = scriptedPrompts({});
+    try {
+      const report = await runUninstall({ prompts, paths: makeHome(true), spawn: exitingSpawn(0) });
+
+      expect(asked.map((a) => a.message)).toEqual([
         SKILL_PROMPT,
         COMMAND_PROMPT,
-        SUPERVISION_PROMPT,
         DAEMON_PROMPT,
         MCP_PROMPT,
-      ].map((message) => ({ message, initialValue: true }))
-    );
-  });
-
-  it.each([
-    ["install-skill", SKILL_PROMPT],
-    ["install-command", COMMAND_PROMPT],
-    ["install-supervision", SUPERVISION_PROMPT],
-    ["start-daemon", DAEMON_PROMPT],
-    ["register-mcp", MCP_PROMPT],
-  ])(
-    "skips only the %s step when that prompt is declined",
-    async (name, prompt) => {
-      const { prompts } = scriptedPrompts({ [prompt]: false });
-      const fs = fakeFs(true);
-
-      const report = await runUninstall({
-        prompts,
-        paths: PATHS,
-        fs,
-        spawn: fakeSpawn(0),
-      });
-
-      expect(report.steps.map((s) => s.name)).toEqual([
-        "install-skill",
-        "install-command",
-        "install-supervision",
-        "start-daemon",
-        "register-mcp",
       ]);
-      for (const step of report.steps) {
-        if (step.name === name)
-          expect(step).toEqual({ name, done: false, message: "Skipped" });
-        else expect(step.done).toBe(true);
-      }
-      if (name === "install-supervision")
-        expect(supervisorUninstall).not.toHaveBeenCalled();
+      expect(report.steps.map((s) => s.name)).toEqual([
+        'install-skill',
+        'install-command',
+        'start-daemon',
+        'register-mcp',
+      ]);
+    } finally {
+      if (original) Object.defineProperty(process, 'platform', original);
     }
-  );
-
-  it("treats a cancelled prompt as a skip", async () => {
-    const { prompts } = scriptedPrompts({
-      [DAEMON_PROMPT]: "cancel" as unknown as symbol,
-    });
-
-    const report = await runUninstall({
-      prompts,
-      paths: PATHS,
-      fs: fakeFs(true),
-      spawn: fakeSpawn(0),
-    });
-
-    expect(report.steps.find((s) => s.name === "start-daemon")).toEqual({
-      name: "start-daemon",
-      done: false,
-      message: "Skipped",
-    });
   });
 
-  it("omits the supervision step and prompt when the platform has no supervisor", async () => {
-    vi.mocked(getSupervisor).mockReturnValue(null);
-    const { prompts, asked } = scriptedPrompts({});
-
-    const report = await runUninstall({
-      prompts,
-      paths: PATHS,
-      fs: fakeFs(true),
-      spawn: fakeSpawn(0),
-    });
-
-    expect(asked.map((a) => a.message)).toEqual([
-      SKILL_PROMPT,
-      COMMAND_PROMPT,
-      DAEMON_PROMPT,
-      MCP_PROMPT,
-    ]);
-    expect(report.steps.map((s) => s.name)).toEqual([
-      "install-skill",
-      "install-command",
-      "start-daemon",
-      "register-mcp",
-    ]);
-  });
-
-  it("reports a not-present skill and a failing daemon stop without error fields", async () => {
+  it('reports a missing skill and a failing daemon stop without error fields', async () => {
     const { prompts } = scriptedPrompts({});
+    const paths = makeHome(false);
 
-    const report = await runUninstall({
-      prompts,
-      paths: PATHS,
-      fs: fakeFs(false),
-      spawn: fakeSpawn(3),
-    });
+    const report = await runUninstall({ prompts, paths, spawn: exitingSpawn(3) });
 
-    expect(report.steps[0]).toEqual({
-      name: "install-skill",
+    expect(stepNamed(report, 'install-skill')).toEqual({
+      name: 'install-skill',
       done: false,
-      message:
-        "Skill not present at /synthetic/home/.claude/skills/active-work",
+      message: `Skill not present at ${path.join(
+        paths.homeDir,
+        '.claude',
+        'skills',
+        'active-work',
+      )}`,
     });
-    expect(report.steps[3]).toEqual({
-      name: "start-daemon",
+    expect(stepNamed(report, 'start-daemon')).toEqual({
+      name: 'start-daemon',
       done: false,
-      message: "Daemon stop exited 3",
+      message: 'Daemon stop exited 3',
     });
   });
 
-  it("carries a failed step as an error and no message", async () => {
-    supervisorUninstall.mockResolvedValue({
-      ok: false,
-      name: "install-supervision",
-      error: "boom",
-    });
+  it('carries a failed step as an error and no message', async () => {
     const { prompts } = scriptedPrompts({});
+    const paths = makeHome(false);
+    mkdirSync(paths.homeDir, { recursive: true });
+    writeFileSync(path.join(paths.homeDir, '.claude'), 'not a directory');
 
-    const report = await runUninstall({
-      prompts,
-      paths: PATHS,
-      fs: fakeFs(true),
-      spawn: fakeSpawn(0),
-    });
+    const report = await runUninstall({ prompts, paths, spawn: exitingSpawn(0) });
 
-    expect(report.steps[2]).toEqual({
-      name: "install-supervision",
+    expect(stepNamed(report, 'install-skill')).toEqual({
+      name: 'install-skill',
       done: false,
-      error: "boom",
+      error: expect.stringContaining('ENOTDIR'),
     });
   });
 });
