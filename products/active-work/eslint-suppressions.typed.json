@@ -433,11 +433,6 @@
       "count": 1
     }
   },
-  "products/active-work/src/doctor.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/active-work/src/drain/blob-extract.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
