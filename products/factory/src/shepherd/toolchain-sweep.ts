@@ -64,11 +64,19 @@ async function adoptOne(host: FactoryHost, services: ShepherdServices, plan: Ado
   return { repo: plan.repo, pr: pr.number, ...(await registerOnce(host, services, plan.repo, pr.number)) };
 }
 
+/** The branch holds commits this sweep did not just write, so a person deletes it or opens its PR. */
+export class LeftoverAdoptionBranchError extends Error {
+  constructor(repo: RepoSlug, branch: string) {
+    super(`${repo}: leftover branch ${branch} already exists; refusing to adopt over it`);
+    this.name = "LeftoverAdoptionBranchError";
+  }
+}
+
 /** Builds the branch through the contents API, so no checkout or push is involved; each write is a no-op on a retry. */
-async function openAdoption(port: GitHubPort, plan: AdoptionPlan): Promise<PullRequest> {
+export async function openAdoption(port: GitHubPort, plan: AdoptionPlan): Promise<PullRequest> {
   const baseSha = await port.getHeadSha(plan.repo, plan.baseBranch);
   if (baseSha === null) throw new Error(`${plan.repo} has no ${plan.baseBranch} branch`);
-  await port.ensureBranch(plan.repo, plan.branch, baseSha);
+  if (!(await port.ensureBranch(plan.repo, plan.branch, baseSha)).done) throw new LeftoverAdoptionBranchError(plan.repo, plan.branch);
   for (const file of plan.files) {
     await port.putFile(plan.repo, { path: file.path, branch: plan.branch, content: file.content, message: `${plan.title}: ${file.path}`, expectedBlobSha: file.expectedBlobSha });
   }
