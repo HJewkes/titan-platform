@@ -120,7 +120,7 @@ async function poll(ref, head, timeoutMs) {
 
 function dryRun(opts) {
   const steps = opts.open
-    ? ["fetch origin main", ...(opts.branch ? [`reuse the pushed branch ${opts.branch} without pushing`] : [`push a fix/tp-538-fixture-<rand> commit adding ${Object.keys(FIXTURE_FILES).join(" and ")}`]), `open a PR "${FIXTURE_TITLE}" (or mark the branch's existing PR ready)`, `shepherd register --kind correctness --implementer ${opts.implementer} --policy {"merge":"never"}`]
+    ? [...(opts.branch ? [`fetch origin ${opts.branch}`, `reuse the pushed branch ${opts.branch} without pushing`] : ["fetch origin main", `push a fix/tp-538-fixture-<rand> commit adding ${Object.keys(FIXTURE_FILES).join(" and ")}`]), `open a PR "${FIXTURE_TITLE}" (or mark the branch's existing PR ready)`, `shepherd register --kind correctness --implementer ${opts.implementer} --policy {"merge":"never"}`]
     : [];
   return { dryRun: true, note: "pass --run to act", steps: [...steps, `poll shepherd timeline every ${POLL_MS / 1000} s for up to ${opts.timeoutMs / 60_000} min`, "print PASS or FAIL"] };
 }
