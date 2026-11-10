@@ -149,8 +149,10 @@ export function parkForRecovery(run: WorkflowRun, evidence: string): void {
   run.error = evidence;
 }
 
-/** Answering the last parked step leaves nothing for a human to look at, so the run may replay past it. */
-export function resumeAnswered(run: WorkflowRun): void {
+/** Drops an answered step; answering the last parked one leaves nothing for a human to look at, so the run may replay past it. */
+export function removeAnswered(run: WorkflowRun, stepId: string): void {
+  delete run.activeSteps[stepId];
+  if (run.status !== "recovery_required" || Object.keys(run.activeSteps).length > 0) return;
   run.status = "running";
   run.error = null;
 }
