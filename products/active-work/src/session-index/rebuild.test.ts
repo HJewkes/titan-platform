@@ -2,10 +2,12 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, wri
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { ConfigError } from '../errors.js';
 import { defaultGraphPath, openGraph } from './graph.js';
 import { rebuildGraph } from './rebuild.js';
 import { runRefresh } from './refresh.js';
+import { selectAll } from '../test-support/session-index/query.js';
 import { withEmptyActiveRoot } from '../test-support/test-helpers.js';
 
 const PRUNED = 'aaaaaaaa-0000-0000-0000-000000000882';
@@ -39,10 +41,12 @@ function seedLive(sql: string): void {
   graph.db.close();
 }
 
-function rows(sql: string): unknown[] {
+const SwapMarker = z.object({ inode: z.string(), backup: z.string() });
+
+function rows<Row = unknown>(sql: string): Row[] {
   const graph = openGraph(defaultGraphPath());
   try {
-    return graph.db.prepare(sql).all();
+    return selectAll<Row>(graph.db, sql);
   } finally {
     graph.db.close();
   }
@@ -101,10 +105,7 @@ describe('rebuildGraph', () => {
         },
       ]);
       expect(rows('SELECT surface FROM pr_review')).toEqual([{ surface: 'gh' }]);
-      const marker = JSON.parse(readFileSync(`${defaultGraphPath()}.swapped`, 'utf8')) as {
-        inode: string;
-        backup: string;
-      };
+      const marker = SwapMarker.parse(JSON.parse(readFileSync(`${defaultGraphPath()}.swapped`, 'utf8')));
       expect(marker.inode).toBe(String(statSync(defaultGraphPath(), { bigint: true }).ino));
       expect(marker.backup).toBe(rebuilt.backupPath);
       expect(existsSync(rebuilt.backupPath!)).toBe(true);
@@ -121,10 +122,10 @@ describe('rebuildGraph', () => {
       writeFileSync(path.join(projects, `${LIVE}.jsonl`), transcriptLine(LIVE), 'utf8');
       await runRefresh({ dbPath: defaultGraphPath(), skipPrOutcomes: true });
       const factsOf = (sessionId: string) =>
-        rows(
+        rows<{ byte_offset: number; source_key: string }>(
           `SELECT f.byte_offset, t.source_key FROM fact f JOIN transcript t ON t.source_id = f.transcript_id
             WHERE f.session_id = '${sessionId}'`,
-        ) as { byte_offset: number; source_key: string }[];
+        );
       const before = factsOf(PRUNED);
 
       const rebuilt = await rebuildGraph();

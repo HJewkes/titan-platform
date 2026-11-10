@@ -18,6 +18,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { applyDelta, indexTranscript, reconcile } from '@titan-design/session-graph';
 import { extractTranscript, parseGitIntent, parsePrCreateTitle } from '@titan-design/session-read';
 import { openGraph, type SessionGraph } from './graph.js';
+import { selectAll } from '../test-support/session-index/query.js';
 import { FIXTURE_CWD, renderTranscript } from '../test-support/session-index/fixture.js';
 
 let dir: string;
@@ -230,9 +231,7 @@ describe('human_edit', () => {
   // AW-104 dropped these: the `edited_text_file` attachment carries no
   // before-state and a truncated after-state, so no line states a delta.
   it('has no line-count columns to leave empty', () => {
-    const columns = (
-      graph.db.prepare('PRAGMA table_info("human_edit")').all() as { name: string }[]
-    ).map((c) => c.name);
+    const columns = selectAll<{ name: string }>(graph.db, 'PRAGMA table_info("human_edit")').map((c) => c.name);
 
     expect(columns).not.toContain('lines_added');
     expect(columns).not.toContain('lines_removed');

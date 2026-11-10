@@ -11,13 +11,7 @@ import taskEdit from './task-edit.js';
 import { NotFoundError, UsageError, ValidationError } from '../errors.js';
 import type { CommandContext } from '../registry/index.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
-import type { Task } from '../schemas/task.js';
-import type { TaskOrLine } from './_task-quiet.js';
-
-function asTask(result: TaskOrLine): Task {
-  if (typeof result === 'string') throw new Error(`expected a task, got line: ${result}`);
-  return result;
-}
+import { asTask } from '../test-support/as-task.js';
 
 const SLUG = 'sample-initiative';
 

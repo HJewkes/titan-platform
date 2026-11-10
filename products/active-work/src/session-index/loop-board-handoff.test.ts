@@ -1,14 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import YAML from 'yaml';
 
 import { buildBoard, type BoardInput } from './loop-board.js';
 import type { SeatEvent } from './seat-events.js';
-import { SNAPSHOT } from '../test-support/fixtures/loop-ledger.js';
+import { snapshotRows } from '../test-support/fixtures/loop-ledger.js';
 
 const NOW = new Date('2026-07-20T00:00:00Z');
 
 function input(overrides: Partial<BoardInput> = {}): BoardInput {
-  const rows = (YAML.parse(SNAPSHOT) as { loops: unknown[] }).loops;
+  const rows = snapshotRows();
   return { ledger: { path: 'l', mtime: null, rows }, tree: null, sessions: [], now: NOW, ...overrides };
 }
 
