@@ -725,8 +725,11 @@ interface CostReportOptions {
 /** Reads the graph and never writes it, so a read-only connection is enough. */
 declare function costReport(db: Db, options?: CostReportOptions): CostReport;
 
-/** The tool calls each request in the window issued, keyed by `request_id`; a request with none is absent. */
-declare function readRequestToolCalls(db: Db, window: ReportWindow): Map<string, ActionCall[]>;
+/**
+ * The tool calls each request in the window issued, keyed by `request_id`; a request with none is absent.
+ * `sessionIds` limits the read to those sessions, so a caller that needs only some sessions' calls does not scan the rest.
+ */
+declare function readRequestToolCalls(db: Db, window: ReportWindow, sessionIds?: readonly string[]): Map<string, ActionCall[]>;
 
 declare const WAKE_FROM_KINDS: readonly ["seat", "agent", "broadcast", "broker", "none"];
 type WakeFromKind = (typeof WAKE_FROM_KINDS)[number];

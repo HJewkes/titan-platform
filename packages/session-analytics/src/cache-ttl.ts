@@ -197,9 +197,10 @@ type QueriedRow = Omit<TtlRequestRow, "role" | "profile" | "previousAction"> & {
 
 export function readTtlRows(db: Db, window: ReportWindow): TtlRequestRow[] {
   const rows = db.prepare<[object], QueriedRow>(TTL_ROWS).all(window);
-  // The previous request may predate the window, so its calls are read from the start.
-  const calls = readRequestToolCalls(db, { since: null, until: window.until });
-  const contexts = readSessionContexts(db, [...new Set(rows.map((row) => row.sessionId))]);
+  const sessionIds = [...new Set(rows.map((row) => row.sessionId))];
+  // The previous request may predate the window, so calls are read from the start, for these sessions only.
+  const calls = readRequestToolCalls(db, { since: null, until: window.until }, sessionIds);
+  const contexts = readSessionContexts(db, sessionIds);
   const tags = tagSessions(contexts);
   return rows.map(({ previousRequestId, ...row }) => ({
     ...row,
