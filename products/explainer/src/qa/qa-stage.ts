@@ -7,6 +7,7 @@ import type { StageOutcome } from "../workflow/records.js";
 import { qaCoreReport, type QaConfig } from "./qa-core.js";
 import type { QaEngine } from "./qa-engine.js";
 import { leadLineBeats } from "./qa-lead-lines.js";
+import { speechRateSummary } from "./speech-rate.js";
 import { qaSummary, type QaReport } from "./qa-report.js";
 import { serveTree } from "./serve-tree.js";
 
@@ -68,7 +69,7 @@ export async function runQaStage(input: QaInput, config: QaConfig, engine: QaEng
     const report = await servedReport(input, engine, config, scratch, outputs);
     outputs.qa = input.store.putText(`${JSON.stringify(report, null, 1)}\n`, "qa", input.from);
     if (report.errors.length > 0) outputs["qa-crops"] = input.store.putTree(path.join(scratch, "crops"), "qa-crops", input.from);
-    return { outputs, notes: [qaSummary(report), `${report.notes[0]}; mp4 ${report.mp4.durationS.toFixed(2)} s`] };
+    return { outputs, notes: [...(report.speechRate === undefined ? [] : [speechRateSummary(report.speechRate)]), qaSummary(report), `${report.notes[0]}; mp4 ${report.mp4.durationS.toFixed(2)} s`] };
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
