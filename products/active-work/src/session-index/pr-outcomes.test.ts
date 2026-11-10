@@ -50,14 +50,27 @@ function fakeGh(answers: Record<string, GhAnswer>): RunCommand & { asked: string
 
 function addPr(
   number: number,
-  fields: { state?: string | null; checkedAt?: string | null; repo?: string } = {},
+  fields: {
+    state?: string | null;
+    checkedAt?: string | null;
+    repo?: string;
+    commitTimes?: string | null;
+  } = {},
 ): void {
   const repo = fields.repo ?? 'acme/demo';
   graph.db
     .prepare(
-      'INSERT INTO pr (pr_ref, repo, number, state, outcome_checked_at) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO pr (pr_ref, repo, number, state, outcome_checked_at, commit_times) VALUES (?, ?, ?, ?, ?, ?)',
     )
-    .run(`pr:${repo}#${number}`, repo, number, fields.state ?? null, fields.checkedAt ?? null);
+    .run(
+      `pr:${repo}#${number}`,
+      repo,
+      number,
+      fields.state ?? null,
+      fields.checkedAt ?? null,
+      // A checked PR normally has its commit times stored; tests of the gap pass null.
+      fields.commitTimes === undefined ? (fields.checkedAt ? '[]' : null) : fields.commitTimes,
+    );
 }
 
 const rowFor = (number: number): Record<string, unknown> | undefined =>
@@ -301,6 +314,17 @@ describe('the gh PR resolver', () => {
       await resolver([...keyFor(4), ...keyFor(5)]);
 
       expect(gh.asked).toEqual(['acme/demo#4']);
+    });
+
+    it('a checked merged PR with no commit times is asked once, then final', async () => {
+      addPr(6, { state: 'merged', checkedAt, commitTimes: null });
+      const gh = fakeGh({ 'acme/demo#6': pr({ state: 'MERGED', mergedAt: checkedAt }) });
+      const resolver = ghPrResolver(graph, { run: gh, now: () => checkedMs + closedMs * 10 });
+
+      await enrichPrs(graph, resolver);
+      await enrichPrs(graph, resolver);
+
+      expect(gh.asked).toEqual(['acme/demo#6']);
     });
 
     it('honours configured intervals over the defaults', async () => {

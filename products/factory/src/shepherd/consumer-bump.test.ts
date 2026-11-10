@@ -29,6 +29,16 @@ describe("planConsumerBump", () => {
     expect(plan.leftAlone).toEqual([]);
   });
 
+  it("overrides and resolutions entries are not bumped", () => {
+    const pinned = { [A]: "^1.0.0", [B]: "1.0.0" };
+    const manifest = file("package.json", JSON.stringify({ pnpm: { overrides: pinned }, overrides: pinned, resolutions: { [C]: "1.0.0" } }, null, 2));
+
+    const plan = planConsumerBump(tree(manifest), latest({ [A]: "2.0.0", [B]: "2.0.0", [C]: "2.0.0" }));
+
+    expect(plan).toEqual({ edits: [], files: [], leftAlone: [] });
+    expect(consumerDepNames(tree(manifest))).toEqual([]);
+  });
+
   it("leaves a dep already on latest unedited", () => {
     const manifest = file("package.json", JSON.stringify({ dependencies: { [A]: "^1.2.3", [B]: "1.0.0" } }, null, 2));
 

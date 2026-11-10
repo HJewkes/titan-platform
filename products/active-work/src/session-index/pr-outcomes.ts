@@ -92,6 +92,7 @@ interface CheckedRow {
   pr_ref: string;
   state: string | null;
   outcome_checked_at: string | null;
+  commit_times: string | null;
 }
 
 /** The round rule lives in session-graph; this side only hands over what the forge said. */
@@ -108,11 +109,26 @@ function toResolved(pr: GhPr): ResolvedPr {
   };
 }
 
+/** Bands match session-graph's PRS_NEEDING_OUTCOME, so a cap cannot starve open PRs behind backfill. */
+function byPollingOrder(byRef: ReadonlyMap<string, CheckedRow>): (a: PrKey, b: PrKey) => number {
+  const band = (pr: PrKey): number => {
+    const row = byRef.get(pr.prRef);
+    if (!row?.outcome_checked_at) return 0;
+    return row.state?.toLowerCase() === 'merged' ? 2 : 1;
+  };
+  const checkedAt = (pr: PrKey): string => byRef.get(pr.prRef)?.outcome_checked_at ?? '';
+  return (a, b) =>
+    band(a) - band(b) ||
+    checkedAt(a).localeCompare(checkedAt(b)) ||
+    a.prRef.localeCompare(b.prRef);
+}
+
 /**
  * The package re-asks a checked PR until it is merged, which would re-query
  * every PR each pass. A never-checked PR is always asked, since a transcript-seen
- * merge is unchecked until the forge confirms it. A checked merged PR is final;
- * any other PR is asked again only
+ * merge is unchecked until the forge confirms it. A checked merged PR is final
+ * once its commit times are stored; with them missing the package offers it, and
+ * one answer fills them (an empty list counts), so it is asked once. Any other PR is asked again only
  * after its recheck interval (short for open, long for closed so a reopen is
  * seen), and the least recently checked go first so a long tail is not
  * starved by the same fifty.
@@ -126,19 +142,19 @@ function selectPrs(
 ): PrKey[] {
   const backoff = failBackoffMs();
   const rows = graph.db
-    .prepare<[], CheckedRow>('SELECT pr_ref, state, outcome_checked_at FROM pr')
+    .prepare<[], CheckedRow>('SELECT pr_ref, state, outcome_checked_at, commit_times FROM pr')
     .all();
   const byRef = new Map(rows.map((row) => [row.pr_ref, row]));
-  const checkedAt = (pr: PrKey): string => byRef.get(pr.prRef)?.outcome_checked_at ?? '';
   return prs
     .filter((pr) => {
       const failed = failedAt.get(pr.prRef);
       if (failed !== undefined && now - failed <= backoff) return false;
       const row = byRef.get(pr.prRef);
       if (!row?.outcome_checked_at) return true;
-      return row.state?.toLowerCase() !== 'merged' && isDue(row, now, every);
+      if (row.state?.toLowerCase() === 'merged') return row.commit_times === null;
+      return isDue(row, now, every);
     })
-    .sort((a, b) => checkedAt(a).localeCompare(checkedAt(b)))
+    .sort(byPollingOrder(byRef))
     .slice(0, limit);
 }
 

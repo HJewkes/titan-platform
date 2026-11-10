@@ -1005,6 +1005,9 @@ declare const bucketSchema: z.ZodObject<{
     netSavingUsd: z.ZodNumber;
     netPerSessionUsd: z.ZodNumber;
     noCacheNetUsd: z.ZodNumber;
+    reverseReverts: z.ZodNumber;
+    reverseTokens: z.ZodNumber;
+    reverseSavingUsd: z.ZodNumber;
     key: z.ZodString;
 }, z.core.$strip>;
 declare const cacheTtlWhatIfSchema: z.ZodObject<{
@@ -1025,6 +1028,9 @@ declare const cacheTtlWhatIfSchema: z.ZodObject<{
         netSavingUsd: z.ZodNumber;
         netPerSessionUsd: z.ZodNumber;
         noCacheNetUsd: z.ZodNumber;
+        reverseReverts: z.ZodNumber;
+        reverseTokens: z.ZodNumber;
+        reverseSavingUsd: z.ZodNumber;
     }, z.core.$strip>;
     unpricedRequests: z.ZodNumber;
     byRole: z.ZodArray<z.ZodObject<{
@@ -1040,6 +1046,9 @@ declare const cacheTtlWhatIfSchema: z.ZodObject<{
         netSavingUsd: z.ZodNumber;
         netPerSessionUsd: z.ZodNumber;
         noCacheNetUsd: z.ZodNumber;
+        reverseReverts: z.ZodNumber;
+        reverseTokens: z.ZodNumber;
+        reverseSavingUsd: z.ZodNumber;
         key: z.ZodString;
     }, z.core.$strip>>;
     byProfile: z.ZodArray<z.ZodObject<{
@@ -1055,6 +1064,9 @@ declare const cacheTtlWhatIfSchema: z.ZodObject<{
         netSavingUsd: z.ZodNumber;
         netPerSessionUsd: z.ZodNumber;
         noCacheNetUsd: z.ZodNumber;
+        reverseReverts: z.ZodNumber;
+        reverseTokens: z.ZodNumber;
+        reverseSavingUsd: z.ZodNumber;
         key: z.ZodString;
     }, z.core.$strip>>;
     lossRoles: z.ZodArray<z.ZodString>;

@@ -396,6 +396,14 @@ declare const TELEGRAM_MAX_RETRY_AFTER_SECONDS = 86400;
 
 /** `sendPhoto` documents `caption` as 0-1024 characters after entities parsing. */
 declare const TELEGRAM_MAX_CAPTION_LENGTH = 1024;
+/**
+ * The Bot API caps an uploaded photo at 10 MB and any other uploaded file, a voice
+ * note included, at 50 MB (https://core.telegram.org/bots/api#sending-files). Past
+ * that Telegram rejects the request, so refusing first spares the upload. Read as
+ * MiB, so a file Telegram would take is never refused here.
+ */
+declare const TELEGRAM_MAX_PHOTO_BYTES: number;
+declare const TELEGRAM_MAX_VOICE_BYTES: number;
 
 /**
  * Sends over the Telegram Bot API with `fetch` only, so the same code runs in a
@@ -665,4 +673,4 @@ interface SplitOptions {
 /** Splits text into parts of at most `maxLength` UTF-16 units, preferring natural boundaries. */
 declare function splitText(text: string, options: SplitOptions): string[];
 
-export { type AnswerCallbackResult, type BlueBubblesConfig, BlueBubblesTransport, type Button, type ButtonRow, type ChannelCapabilities, type ChannelId, type DeliveryCeiling, type EditInput, type InboundRejection, type InboundResult, type InteractionError, type InteractionResult, type InteractiveTransport, type Liveness, MOCK_TYPING_VISIBLE_MS, ManualClock, type MediaFile, type MediaSendResult, MemorySeenStore, type MessageRef, type MessageTransport, type MockEvent, type MockMessage, type MockOptions, MockTransport, type PhotoInput, type PollUpdatesOptions, type ProbeOptions, type RecordedSend, type Scheduler, type SeenStore, type SendError, type SendInput, type SendResult, type SplitBoundary, type SplitOptions, TELEGRAM_MAX_CALLBACK_DATA_BYTES, TELEGRAM_MAX_CAPTION_LENGTH, TELEGRAM_MAX_RETRY_AFTER_SECONDS, TELEGRAM_MAX_TEXT_LENGTH, type TelegramCallback, type TelegramConfig, type TelegramEnvelope, type TelegramInbound, type TelegramInboundResult, type TelegramLiveness, type TelegramRejection, type TelegramTextUpdate, TelegramTransport, type ValidateInboundInput, type ValidateTelegramWebhookInput, type VoiceInput, answerCallbackQuery, constantTimeEqual, createBlueBubblesTransport, createTelegramTransport, fakeCallbackUpdate, fakeTextUpdate, newMessageEvent, pollUpdates, probeLiveness, probeTelegramLiveness, readChatIds, redactPassword, redactToken, refOfInbound, sendFailed, splitText, telegramUpdateEvent, validateInbound, validateTelegramWebhook };
+export { type AnswerCallbackResult, type BlueBubblesConfig, BlueBubblesTransport, type Button, type ButtonRow, type ChannelCapabilities, type ChannelId, type DeliveryCeiling, type EditInput, type InboundRejection, type InboundResult, type InteractionError, type InteractionResult, type InteractiveTransport, type Liveness, MOCK_TYPING_VISIBLE_MS, ManualClock, type MediaFile, type MediaSendResult, MemorySeenStore, type MessageRef, type MessageTransport, type MockEvent, type MockMessage, type MockOptions, MockTransport, type PhotoInput, type PollUpdatesOptions, type ProbeOptions, type RecordedSend, type Scheduler, type SeenStore, type SendError, type SendInput, type SendResult, type SplitBoundary, type SplitOptions, TELEGRAM_MAX_CALLBACK_DATA_BYTES, TELEGRAM_MAX_CAPTION_LENGTH, TELEGRAM_MAX_PHOTO_BYTES, TELEGRAM_MAX_RETRY_AFTER_SECONDS, TELEGRAM_MAX_TEXT_LENGTH, TELEGRAM_MAX_VOICE_BYTES, type TelegramCallback, type TelegramConfig, type TelegramEnvelope, type TelegramInbound, type TelegramInboundResult, type TelegramLiveness, type TelegramRejection, type TelegramTextUpdate, TelegramTransport, type ValidateInboundInput, type ValidateTelegramWebhookInput, type VoiceInput, answerCallbackQuery, constantTimeEqual, createBlueBubblesTransport, createTelegramTransport, fakeCallbackUpdate, fakeTextUpdate, newMessageEvent, pollUpdates, probeLiveness, probeTelegramLiveness, readChatIds, redactPassword, redactToken, refOfInbound, sendFailed, splitText, telegramUpdateEvent, validateInbound, validateTelegramWebhook };

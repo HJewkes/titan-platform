@@ -118,7 +118,7 @@ interface SpecifierEdit {
   version: string;
 }
 
-interface LeftAlone {
+export interface LeftAlone {
   path: string;
   name: string;
   spec: string;
@@ -144,7 +144,11 @@ export function consumerDepNames(tree: ConsumerTree): string[] {
   return [...new Set(names)].sort();
 }
 
-/** `latest` maps a name to npm's latest version, null for a 404; a name it lacks is left alone. */
+/**
+ * `latest` maps a name to npm's latest version, null for a 404; a name it lacks is left alone.
+ * Only `dependencies`, `devDependencies`, `optionalDependencies` and `peerDependencies` are read: a pair under
+ * `pnpm.overrides`, `overrides` or `resolutions` is neither bumped nor listed in `leftAlone`.
+ */
 export function planConsumerBump(tree: ConsumerTree, latest: ReadonlyMap<string, string | null>): ConsumerBumpPlan {
   const plan: ConsumerBumpPlan = { edits: [], files: [], leftAlone: [] };
   for (const file of tree.manifests) {
