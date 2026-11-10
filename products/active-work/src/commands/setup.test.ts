@@ -131,12 +131,12 @@ describe('active-work setup', () => {
 
     const install = await stepInstallCommand({});
     expect(install.ok).toBe(true);
-    expect(install.done).toBe(true);
+    expect(install.ok && install.done).toBe(true);
     expect(existsSync(target)).toBe(true);
 
     const remove = await uninstallCommand({});
     expect(remove.ok).toBe(true);
-    expect(remove.done).toBe(true);
+    expect(remove.ok && remove.done).toBe(true);
     expect(existsSync(target)).toBe(false);
   });
 

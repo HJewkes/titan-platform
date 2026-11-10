@@ -5,8 +5,8 @@ import {
   refreshCorpus,
   rollupSessions,
   syncPrices,
-  type DiscoveredTranscript,
 } from '@titan-design/session-graph';
+import type { DiscoveredTranscript } from '@titan-design/session-read';
 import {
   costPerOutcomeSchema,
   LIST_PRICE_CAVEAT,

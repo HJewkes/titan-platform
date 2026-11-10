@@ -16,7 +16,7 @@ import {
   setGhRunner,
   type CommandRunner,
 } from '../utils/git-gh.js';
-import { ArtifactsSchema } from '../schemas/artifacts.js';
+import { ArtifactsSchema, type Artifacts } from '../schemas/artifacts.js';
 import { readYaml } from '../utils/yaml-io.js';
 import { UsageError } from '../errors.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
@@ -31,7 +31,7 @@ function initiativeDir(root: string): string {
 
 async function readArtifacts(
   root: string,
-): Promise<ReturnType<typeof readYaml<typeof ArtifactsSchema._type>>> {
+): Promise<Artifacts> {
   return readYaml(path.join(initiativeDir(root), 'artifacts.yml'), ArtifactsSchema);
 }
 
@@ -224,7 +224,7 @@ describe('artifact.add-branch', () => {
       );
       const data = await readArtifacts(root);
       expect(data.branches).toHaveLength(1);
-      expect(data.branches[0]!.note).toBe('rewritten note');
+      expect(data.branches[0].note).toBe('rewritten note');
 
       await artifactAddBranchCmd.run(
         { slug: SLUG, repo: '~/code/sample', name: 'feat/another' },
@@ -242,7 +242,7 @@ describe('artifact.add-branch', () => {
         ctx,
       );
       const data = await readArtifacts(root);
-      expect(data.branches[0]!.note).toBe('scaffolding for sample initiative');
+      expect(data.branches[0].note).toBe('scaffolding for sample initiative');
     });
   });
 });
@@ -258,7 +258,7 @@ describe('artifact.add-stash', () => {
       const data = await readArtifacts(root);
       expect(data.stashes).toHaveLength(2);
       expect(data.stashes.every((s) => s.label === 'WIP')).toBe(true);
-      expect(data.stashes[1]!.sha).toBe('abc123');
+      expect(data.stashes[1].sha).toBe('abc123');
     });
   });
 });
@@ -310,7 +310,7 @@ describe('artifact.note', () => {
       );
       expect(res.branch.note).toBe('updated context');
       const data = await readArtifacts(root);
-      expect(data.branches[0]!.note).toBe('updated context');
+      expect(data.branches[0].note).toBe('updated context');
     });
   });
 
