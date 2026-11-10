@@ -32,11 +32,6 @@
       "count": 3
     }
   },
-  "products/active-work/src/bootstrap/prompt.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 6
-    }
-  },
   "products/active-work/src/bootstrap/rank-notes.test.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
@@ -707,7 +702,7 @@
   },
   "products/active-work/src/session-index/origin-agent-chat.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
+      "count": 1
     }
   },
   "products/active-work/src/session-index/pr-create.test.ts": {
@@ -741,11 +736,6 @@
   "products/active-work/src/session-index/refresh.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 4
-    }
-  },
-  "products/active-work/src/session-index/refresh.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
     }
   },
   "products/active-work/src/session-index/rollup-resume.test.ts": {

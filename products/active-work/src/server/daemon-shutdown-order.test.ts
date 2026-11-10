@@ -10,7 +10,7 @@ import { daemonPaths, silentLogger } from '@titan-design/daemon';
 import { runDaemon, startActiveWorkDaemon } from './daemon.js';
 import type * as RefreshModule from '../session-index/refresh.js';
 import type * as MachinePressureModule from '../utils/machine-pressure.js';
-import { refreshLockHolderPath } from '../session-index/refresh.js';
+import { refreshLockHolderPath } from '../session-index/refresh-lock.js';
 import { assertSafeToRemove, withEmptyActiveRoot } from '../test-support/test-helpers.js';
 
 const pass = vi.hoisted(() => {
