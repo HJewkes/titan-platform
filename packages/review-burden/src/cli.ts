@@ -37,22 +37,8 @@ function parseArgs(argv: readonly string[]): Options {
   return options;
 }
 
-/** Expands numstat's `a/{b => c}/d` and `a => b` rename paths to the base and head paths. */
-function renamePaths(raw: string): { path: string; previousPath?: string } {
-  const brace = /^(.*)\{(.*) => (.*)\}(.*)$/.exec(raw);
-  if (brace) {
-    const [, pre = "", from = "", to = "", post = ""] = brace;
-    const clean = (middle: string) => `${pre}${middle}${post}`.replace(/\/{2,}/g, "/");
-    return { path: clean(to), previousPath: clean(from) };
-  }
-  const plain = / => /.exec(raw);
-  if (plain) return { path: raw.slice(plain.index + 4), previousPath: raw.slice(0, plain.index) };
-  return { path: raw };
-}
-
 /**
  * Parses `git diff --numstat -z`: `add<TAB>del<TAB>path<NUL>`, and for a rename `add<TAB>del<TAB><NUL>old<NUL>new<NUL>`.
- * The brace form is still expanded for a single path field, so older or hand-made output keeps working.
  */
 function parseNumstat(text: string): ChangedFile[] {
   const fields = text.split("\0");
@@ -61,7 +47,7 @@ function parseNumstat(text: string): ChangedFile[] {
     const [add = "0", del = "0", ...rest] = (fields[i] ?? "").split("\t");
     if (rest.length === 0) continue;
     const named = rest.join("\t");
-    const paths = named === "" ? { previousPath: fields[++i] ?? "", path: fields[++i] ?? "" } : renamePaths(named);
+    const paths = named === "" ? { previousPath: fields[++i] ?? "", path: fields[++i] ?? "" } : { path: named, previousPath: undefined };
     const file: ChangedFile = {
       path: paths.path,
       status: paths.previousPath ? "renamed" : "modified",

@@ -79,25 +79,16 @@ describe("review-burden bin", () => {
     expect(doorOf(out).facts).toEqual([{ kind: "migration", path: "src/db/migrations/été old.sql" }]);
   });
 
-  it("expands the a/{x => y}/b rename form to both sides", () => {
-    const { deps, out } = harness("1\t1\tsrc/db/migrations/{x => y}/f.sql\0", "");
+  it("reads a rename into a directory whose path has a space", () => {
+    const { deps, out } = harness("2\t0\t\0src/old.ts\0src/db/migrations/new dir/é.sql\0", "");
     run(["--body-file", "body.md"], deps);
-    expect(doorOf(out).facts.map((fact) => fact.path)).toEqual([
-      "src/db/migrations/y/f.sql",
-      "src/db/migrations/x/f.sql",
-    ]);
+    expect(doorOf(out).facts).toEqual([{ kind: "migration", path: "src/db/migrations/new dir/é.sql" }]);
   });
 
-  it("expands the whole-path {old => new} rename form", () => {
-    const { deps, out } = harness("1\t1\t{src/db/migrations/a.sql => src/b.ts}\0", "");
+  it("keeps a non-rename path that literally contains ' => ' as one path", () => {
+    const { deps, out } = harness("1\t0\tsrc/db/migrations/a => b.sql\0", "");
     run(["--body-file", "body.md"], deps);
-    expect(doorOf(out).facts).toEqual([{ kind: "migration", path: "src/db/migrations/a.sql" }]);
-  });
-
-  it("collapses the doubled slash left by an empty brace side", () => {
-    const { deps, out } = harness("1\t1\tsrc/db/{ => migrations}/f.sql\0", "");
-    run(["--body-file", "body.md"], deps);
-    expect(doorOf(out).facts).toEqual([{ kind: "migration", path: "src/db/migrations/f.sql" }]);
+    expect(doorOf(out).facts).toEqual([{ kind: "migration", path: "src/db/migrations/a => b.sql" }]);
   });
 
   it("reports a major-changeset fact for a changeset whose package name is quoted", () => {
