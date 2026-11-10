@@ -63,6 +63,9 @@ const idleStatus = () => ({
   lastError: null,
   consecutiveErrors: 0,
   lockSkips: 0,
+  held: false,
+  holdReason: null,
+  heldSince: null,
 });
 
 /**
