@@ -817,11 +817,6 @@
       "count": 1
     }
   },
-  "products/active-work/src/sessions/open-loops.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 2
-    }
-  },
   "products/active-work/src/sessions/recover-session.ts": {
     "@typescript-eslint/no-unnecessary-condition": {
       "count": 1
