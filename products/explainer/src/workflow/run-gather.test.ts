@@ -33,7 +33,7 @@ describe("explainer run --facts-from gatherDaily", () => {
 
     expect(code).toBe(0);
     expect(err.join("")).toBe("");
-    expect(out.join("")).toContain(`gathered 20 facts for daily-overview ${DAY}: ${facts}`);
+    expect(out.join("")).toContain(`gathered 27 facts for daily-overview ${DAY}: ${facts}`);
     expect(out.join("")).toContain(`dry run: would run script to export with facts ${facts}`);
     expect(readFileSync(facts, "utf8")).toContain("| task/DM-3/owner-gated | task owner-gated · demo · Pick a courier for overnight runs");
     expect(readFileSync(facts, "utf8")).toContain("| lane/factory/rollup | factory lane · rollup · Factory: 2 merged");
