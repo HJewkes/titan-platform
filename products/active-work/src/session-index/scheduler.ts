@@ -237,6 +237,7 @@ export class RefreshScheduler {
       if (this.closed) return;
       this.lastStartedAt = this.now();
       await this.execute('full').done;
+      await this.recheckAfterCap();
       await this.backoff;
       this.backoff = null;
       this.lastEndedAt = this.now();
@@ -260,7 +261,7 @@ export class RefreshScheduler {
       this.hold = decision.hold ? { reason: decision.reason ?? null, since: this.hold?.since ?? new Date(this.now()).toISOString() } : null;
       if (!decision.hold) return true;
       // A gate that never opens must not starve the index forever: let one pass through.
-      // `held` stays true, since the gate is still closed and readers must keep reading stale.
+      // `held` stays true through the pass, since the gate is still closed; `recheckAfterCap` clears it once the gate opens.
       if (this.now() - holdStart > maxHoldMs) {
         this.capReleased = true;
         onHoldChange?.(false, `hold cap ${maxHoldMs} ms reached`);
@@ -269,6 +270,16 @@ export class RefreshScheduler {
       await this.pause(this.options.gateRecheckMs ?? DEFAULT_GATE_RECHECK_MS);
       if (this.closed) return false;
     }
+  }
+
+  /** A cap pass leaves `hold` set; ask the gate once more so readers stop reading stale as soon as it has opened. */
+  private async recheckAfterCap(): Promise<void> {
+    const { gate } = this.options;
+    if (!gate || !this.capReleased || this.closed) return;
+    const decision = await gate().catch((): GateDecision => ({ hold: true }));
+    if (decision.hold) return;
+    this.hold = null;
+    this.capReleased = false;
   }
 
   /** Sleep that `close()` cuts short; an injected `sleep` is raced against the close instead. */
