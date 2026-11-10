@@ -38,6 +38,8 @@ interface SchedulerOptions {
   gate?: () => Promise<GateDecision>;
   /** How long to wait between gate checks while held; defaults to 60 s. */
   gateRecheckMs?: number;
+  /** Longest the gate may hold continuously before one pass is let through; defaults to 30 min. */
+  maxHoldMs?: number;
   /** Called only when the gate flips between held and open, never on a recheck. */
   onHoldChange?: (held: boolean, reason?: string) => void;
   /** Whether changes wait that no pass has drained yet; a reader joining an indexed delta checks it (TP-893). */
@@ -59,6 +61,7 @@ const DEFAULT_BASE_BACKOFF_MS = 1_000;
 const DEFAULT_MAX_BACKOFF_MS = 60_000;
 export const DEFAULT_MIN_INTERVAL_MS = 15_000;
 export const DEFAULT_GATE_RECHECK_MS = 60_000;
+const DEFAULT_MAX_HOLD_MS = 30 * 60_000;
 
 /** proper-lockfile gives up with ELOCKED once its retries run out: someone else is mid-pass. */
 export function isLockContention(err: unknown): boolean {
@@ -131,6 +134,8 @@ export class RefreshScheduler {
   /** Until this instant a failing delta pass is not retried by readers. */
   private deltaBackoffUntil = 0;
   private held = false;
+  /** True from a hold-cap release until the next gate check, which re-reports the hold. */
+  private capReleased = false;
   private lastStartedAt: number | null = null;
   private lastEndedAt: number | null = null;
   private cancelSleep: () => void = () => {};
@@ -237,13 +242,26 @@ export class RefreshScheduler {
   /** Resolves true once the gate is open, false if `close()` came first. `pending` stays set meanwhile. */
   private async waitForGate(gate: () => Promise<GateDecision>): Promise<boolean> {
     const { onHoldChange } = this.options;
+    const maxHoldMs = this.options.maxHoldMs ?? DEFAULT_MAX_HOLD_MS;
+    let holdStart = this.now();
     for (;;) {
       const decision = await gate().catch((): GateDecision => ({ hold: false }));
       if (this.held !== decision.hold) {
         this.held = decision.hold;
+        holdStart = this.now();
         onHoldChange?.(decision.hold, decision.reason);
+      } else if (decision.hold && this.capReleased) {
+        onHoldChange?.(true, decision.reason);
       }
+      this.capReleased = false;
       if (!decision.hold) return true;
+      // A gate that never opens must not starve the index forever: let one pass through.
+      // `held` stays true, since the gate is still closed and readers must keep reading stale.
+      if (this.now() - holdStart > maxHoldMs) {
+        this.capReleased = true;
+        onHoldChange?.(false, `hold cap ${maxHoldMs} ms reached`);
+        return true;
+      }
       await this.pause(this.options.gateRecheckMs ?? DEFAULT_GATE_RECHECK_MS);
       if (this.closed) return false;
     }

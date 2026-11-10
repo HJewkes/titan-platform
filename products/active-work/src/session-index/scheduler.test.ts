@@ -59,6 +59,56 @@ describe('RefreshScheduler', () => {
     ]);
   });
 
+  it('a gate that never opens still lets a pass run after the hold cap, and none before it', async () => {
+    const clock = fakeClock();
+    const run = vi.fn(async () => summary);
+    const onHoldChange = vi.fn();
+    const scheduler = new RefreshScheduler(run, {
+      ...clock,
+      gate: async () => ({ hold: true, reason: 'swap 70% used' }),
+      gateRecheckMs: 60_000,
+      maxHoldMs: 300_000,
+      onHoldChange,
+    });
+
+    scheduler.trigger();
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+
+    expect(clock.now()).toBe(360_000);
+    expect(clock.sleeps).toEqual(Array(6).fill(60_000));
+    expect(onHoldChange.mock.calls).toEqual([
+      [true, 'swap 70% used'],
+      [false, 'hold cap 300000 ms reached'],
+    ]);
+  });
+
+  it('after a hold-cap release, a reader during the cap pass still reads stale and starts no delta', async () => {
+    const clock = fakeClock();
+    let finish = (): void => {};
+    const run = vi.fn(
+      (_kind: string, onIndexed: () => void) =>
+        new Promise<RefreshSummary>((resolve) => {
+          onIndexed();
+          finish = () => resolve(summary);
+        }),
+    );
+    const scheduler = new RefreshScheduler(run, {
+      ...clock,
+      gate: async () => ({ hold: true, reason: 'swap 70% used' }),
+      gateRecheckMs: 60_000,
+      maxHoldMs: 300_000,
+    });
+
+    scheduler.trigger();
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    const read = await scheduler.runNow(1_000);
+
+    expect(read).toBe('stale');
+    expect(run).toHaveBeenCalledTimes(1);
+    finish();
+    await scheduler.close();
+  });
+
   it('collapses triggers that arrive mid-hold into one pass after the resume', async () => {
     const clock = fakeClock();
     const run = vi.fn(async () => summary);
