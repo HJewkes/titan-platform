@@ -10,6 +10,7 @@ import { promises as fsp } from 'node:fs';
 import nodePath from 'node:path';
 import { spawn as nodeSpawn } from 'node:child_process';
 import os from 'node:os';
+import { execArg } from '@titan-design/daemon/service';
 import { errorCode } from '@titan-design/rpc-protocol/narrow';
 import { errorText, toError } from './errors.js';
 import { linuxDaemonPath } from './supervision-shared.js';
@@ -74,10 +75,8 @@ export function renderUnit(opts: UnitOptions): string {
   if (opts.port !== undefined) {
     args.push('--port', String(opts.port));
   }
-  // ExecStart must use absolute paths. Quote the node binary and entrypoint
-  // in case they contain spaces (common on macOS dev paths, less so on Linux,
-  // but cheap insurance).
-  const execStart = [quoteIfNeeded(node), quoteIfNeeded(opts.cliEntry), ...args].join(' ');
+  // ExecStart must use absolute paths; systemd also expands % and $ inside it.
+  const execStart = [node, opts.cliEntry, ...args].map(execArg).join(' ');
   return [
     '[Unit]',
     'Description=active-work HTTP daemon (MCP + REST + dashboard)',
@@ -104,14 +103,6 @@ export function renderUnit(opts: UnitOptions): string {
 function quoteEnv(key: string, value: string): string {
   const escaped = value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/%/g, '%%');
   return `Environment="${key}=${escaped}"`;
-}
-
-function quoteIfNeeded(value: string): string {
-  if (!/\s/.test(value)) return value;
-  // systemd unit files support double-quoted argv elements; escape any embedded
-  // double quotes and backslashes.
-  const escaped = value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-  return `"${escaped}"`;
 }
 
 /** Spawn a process and capture its exit code + stderr. */

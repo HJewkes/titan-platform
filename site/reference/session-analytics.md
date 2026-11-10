@@ -86,8 +86,11 @@ against the 1h TTL that Claude Code writes today. The pure core, `cacheTtlWhatIf
 each 1h cache write at the 5m rate. After every request gap of 5 minutes or more (the
 `REBUILD_GAP_BANDS` of `gapBand`), it charges a rebuild: the tokens the 1h cache still served
 as a read, written again at the 5m rate. It reports the net saving per role and per spawn
-profile, and `lossRoles` names the roles whose rebuilds make 5m a loss. `renderCacheTtlText`
-prints both tables.
+profile, and `lossRoles` names the roles whose rebuilds make 5m a loss. It also prices a
+no-cache alternative, every prompt token at the input rate: `noCacheNetUsd` is the cost today less
+that, and `noCacheCheaper` flags a role or profile where dropping the cache would pay.
+`TtlRequestRow` gains `cacheWrite5mTokens`. `renderCacheTtlText` prints both tables with a
+`no-cache net` column.
 
 Both reports take an optional `scope` of `sessionIds`, an agent-chat `agentPrefix` and
 `roles`, which narrows every request-keyed field; compactions and coverage stay window-wide.
