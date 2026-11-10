@@ -567,6 +567,38 @@ describe('wrap', () => {
       });
     });
 
+    it('lets a later wrap under the same session id close a loop its earlier wrap opened', async () => {
+      await withTempActiveRoot(async (activeRoot) => {
+        const first = await wrap.run(
+          baseArgs({
+            session_id: 'sess-reused',
+            started: '2026-05-11T09:00:00Z',
+            ended: '2026-05-11T10:00:00Z',
+            next_steps: [{ id: 'p1', text: 'checkpoint loop', kind: 'prose' }],
+          }),
+          makeCtx(activeRoot),
+        );
+        const firstRef = `${first.filename.replace(/\.md$/, '')}#p1`;
+
+        const second = await wrap.run(
+          baseArgs({
+            session_id: 'sess-reused',
+            started: '2026-05-11T10:30:00Z',
+            ended: '2026-05-11T11:00:00Z',
+            resolves: [{ ref: firstRef, outcome: 'done' }],
+          }),
+          makeCtx(activeRoot),
+        );
+
+        expect(second.filename).not.toBe(first.filename);
+        expect(second.resolves_rejected).toEqual([]);
+        const loops = await deriveOpenLoops(path.join(activeRoot, SLUG), {
+          now: new Date('2026-05-14T10:30:00Z'),
+        });
+        expect(loops.map((l) => l.ref)).not.toContain(firstRef);
+      });
+    });
+
     it('counts only the refs that closed a loop when some are bad', async () => {
       await withTempActiveRoot(async (activeRoot) => {
         const priorRef = await seedPriorLoop(activeRoot);
