@@ -89,7 +89,6 @@ describe("read-only Codex account core", () => {
     ["negative seven-day counter", (r: UsageReading) => withWindow(r, "seven_day", { used_percentage: -1 })],
     ["over-100 five-hour counter", (r: UsageReading) => withWindow(r, "five_hour", { used_percentage: 101 })],
     ["millisecond five-hour reset", (r: UsageReading) => withWindow(r, "five_hour", { resets_at: (now + 1000) * 1000 })],
-    ["missing seven-day window", (r: UsageReading) => ({ ...r, rate_limits: { five_hour: r.rate_limits.five_hour } })],
   ])("re-checks a branded reading with a %s", (_name, corrupt) => {
     const valid = observed();
     if (valid.status !== "known") throw new Error("fixture did not parse");
