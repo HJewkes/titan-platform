@@ -268,6 +268,12 @@ export function passRunner(
   return { run, lastMaxLoopStallMs: () => lastMaxLoopStallMs };
 }
 
+/** A release that carries a reason is the hold cap letting a pass through, not the gate opening. */
+function holdChangeMessage(held: boolean, reason?: string): string {
+  if (held) return `session index paused: ${reason}`;
+  return reason ? `session index released: ${reason}` : 'session index resumed';
+}
+
 export function createScheduler(
   runner: PassRunner,
   dirty: DirtySet,
@@ -285,8 +291,7 @@ export function createScheduler(
       minIntervalMs: envInt('AW_INDEX_MIN_INTERVAL_MS', DEFAULT_MIN_INTERVAL_MS),
       gate: async () => shouldHold(await readMachinePressure()),
       gateRecheckMs: envInt('AW_INDEX_GATE_RECHECK_MS', DEFAULT_GATE_RECHECK_MS),
-      onHoldChange: (held, reason) =>
-        log.info({ reason }, held ? `session index paused: ${reason}` : 'session index resumed'),
+      onHoldChange: (held, reason) => log.info({ reason }, holdChangeMessage(held, reason)),
       hasUndrained: () => dirty.size > 0,
       onLockSkip: (skips) => {
         if (skips % LOCK_SKIP_LOG_EVERY === 1) {
