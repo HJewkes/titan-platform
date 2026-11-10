@@ -18,10 +18,9 @@ export interface SchedulerStatus {
   consecutiveErrors: number;
   /** Rounds skipped because another process held the refresh lock. */
   lockSkips: number;
-  /** Whether the gate is closed; stays true through a hold-cap pass. */
+  /** The gate is closed; stays true through a hold-cap pass. */
   held: boolean;
   holdReason: string | null;
-  /** ISO time the current hold began; null while open. */
   heldSince: string | null;
 }
 
@@ -138,9 +137,7 @@ export class RefreshScheduler {
   private deltaFailures = 0;
   /** Until this instant a failing delta pass is not retried by readers. */
   private deltaBackoffUntil = 0;
-  private held = false;
-  private holdReason: string | null = null;
-  private heldSince: number | null = null;
+  private hold: { reason: string | null; since: string } | null = null;
   /** True from a hold-cap release until the next gate check, which re-reports the hold. */
   private capReleased = false;
   private lastStartedAt: number | null = null;
@@ -177,7 +174,7 @@ export class RefreshScheduler {
    * (TP-873). Never rejects: a pass that fails, or outlasts the budget, reads as `'stale'`.
    */
   runNow(budgetMs: number): Promise<Freshness> {
-    if (this.closed || this.held) return Promise.resolve('stale');
+    if (this.closed || this.hold) return Promise.resolve('stale');
     if (!this.executing && this.now() < this.deltaBackoffUntil) return Promise.resolve('stale');
     return withinBudget((expired) => this.indexedSinceNow(expired), budgetMs);
   }
@@ -253,16 +250,14 @@ export class RefreshScheduler {
     let holdStart = this.now();
     for (;;) {
       const decision = await gate().catch((): GateDecision => ({ hold: false }));
-      if (this.held !== decision.hold) {
-        this.held = decision.hold;
-        this.heldSince = decision.hold ? this.now() : null;
+      if ((this.hold !== null) !== decision.hold) {
         holdStart = this.now();
         onHoldChange?.(decision.hold, decision.reason);
       } else if (decision.hold && this.capReleased) {
         onHoldChange?.(true, decision.reason);
       }
       this.capReleased = false;
-      this.holdReason = decision.hold ? (decision.reason ?? null) : null;
+      this.hold = decision.hold ? { reason: decision.reason ?? null, since: this.hold?.since ?? new Date(this.now()).toISOString() } : null;
       if (!decision.hold) return true;
       // A gate that never opens must not starve the index forever: let one pass through.
       // `held` stays true, since the gate is still closed and readers must keep reading stale.
@@ -370,9 +365,9 @@ export class RefreshScheduler {
       lastError: this.lastError,
       consecutiveErrors: this.consecutiveErrors,
       lockSkips: this.lockSkips,
-      held: this.held,
-      holdReason: this.holdReason,
-      heldSince: this.heldSince === null ? null : new Date(this.heldSince).toISOString(),
+      held: this.hold !== null,
+      holdReason: this.hold?.reason ?? null,
+      heldSince: this.hold?.since ?? null,
     };
   }
 
