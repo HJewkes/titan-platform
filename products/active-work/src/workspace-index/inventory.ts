@@ -10,10 +10,11 @@ import { scanWorkspaceSlug, type WorkspaceClass } from './scan.js';
  *
  * Nested sources are counted and listed by path only. The workspace index
  * still skips them, so this walk is also what a coverage report compares
- * the index against: `indexed` is false exactly for the nested ones.
+ * the index against: `indexed` is false exactly for the nested ones and for
+ * `other`, which holds every remaining visible file under the initiative.
  */
 
-export type InventoryClass = WorkspaceClass | 'nested_source';
+export type InventoryClass = WorkspaceClass | 'nested_source' | 'other';
 
 export interface InventoryFile {
   class: InventoryClass;
@@ -89,7 +90,27 @@ export async function scanNestedSources(
     .sort((a, b) => a.path.localeCompare(b.path));
 }
 
-/** One initiative's files, indexed classes and nested sources alike, unsorted. */
+async function describeOther(
+  activeRoot: string,
+  slug: string,
+  absolutePath: string,
+): Promise<InventoryFile | null> {
+  const file = await describeNested(activeRoot, slug, absolutePath);
+  return file && { ...file, class: 'other' };
+}
+
+/** Visible files under the initiative that no other class claims. */
+async function scanOther(
+  activeRoot: string,
+  slug: string,
+  claimed: ReadonlySet<string>,
+): Promise<InventoryFile[]> {
+  const paths = (await walkFiles(path.join(activeRoot, slug))).filter((p) => !claimed.has(p));
+  const described = await Promise.all(paths.map((p) => describeOther(activeRoot, slug, p)));
+  return described.filter((file): file is InventoryFile => file !== null);
+}
+
+/** One initiative's files, indexed classes, nested sources and the rest, unsorted. */
 export async function scanInventorySlug(
   activeRoot: string,
   slug: string,
@@ -98,7 +119,9 @@ export async function scanInventorySlug(
     scanWorkspaceSlug(activeRoot, slug),
     scanNestedSources(activeRoot, slug),
   ]);
-  return [...indexed.map((file) => ({ ...file, indexed: true })), ...nested];
+  const claimed = new Set([...indexed, ...nested].map((file) => file.absolutePath));
+  const other = await scanOther(activeRoot, slug, claimed);
+  return [...indexed.map((file) => ({ ...file, indexed: true })), ...nested, ...other];
 }
 
 /** Every file the active root holds per initiative, sorted by relative path. */
