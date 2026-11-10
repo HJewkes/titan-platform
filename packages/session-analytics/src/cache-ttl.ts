@@ -2,6 +2,8 @@ import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import { reverseReplayTokens, reverseSavingUsd } from "./cache-ttl-replay.js";
 import { noCacheSavingUsd } from "./cache-ttl-nocache.js";
+import { GAP_CAUSES, gapCauseOf, type GapCause } from "./cache-ttl-gap-cause.js";
+import { readRequestToolCalls } from "./request-owner.js";
 import { GAP_BANDS, gapBand } from "./bands.js";
 import { readSessionContexts, type ReportWindow } from "./cost-report-queries.js";
 import { resolveWindow, tagSessions, type CostReportOptions } from "./cost-report.js";
@@ -28,6 +30,8 @@ export interface TtlRequestRow {
   cacheWrite5mTokens: number;
   /** Milliseconds since the session's previous request; null for its first. */
   gapMs: number | null;
+  /** The previous request's last action in the same chain; absent reads as `end-of-turn`. */
+  previousAction?: GapCause;
 }
 
 const count = z.number().int().nonnegative();
@@ -63,6 +67,8 @@ export const cacheTtlWhatIfSchema = z.object({
   byProfile: z.array(bucketSchema),
   /** Roles whose rebuilds after long gaps outweigh the cheaper writes. */
   lossRoles: z.array(z.string()),
+  /** Rebuilds split by the last action before the gap, one entry per cause in a fixed order. */
+  byGapCause: z.array(z.object({ cause: z.enum(GAP_CAUSES), rebuilds: count, rebuildTokens: count, rebuildCostUsd: z.number() })),
 });
 
 export type CacheTtlWhatIf = z.infer<typeof cacheTtlWhatIfSchema>;
@@ -70,6 +76,7 @@ export type CacheTtlBucket = z.infer<typeof bucketSchema>;
 
 interface RequestEffect {
   sessionId: string;
+  gapCause: GapCause;
   write1hTokens: number;
   repriceSavingUsd: number;
   rebuildTokens: number;
@@ -94,6 +101,7 @@ export function cacheTtlWhatIf(rows: readonly TtlRequestRow[], prices: readonly 
     byRole,
     byProfile: buckets(priced, effects, (row) => row.profile),
     lossRoles: byRole.filter((bucket) => bucket.fiveMinuteLoses).map((bucket) => bucket.key),
+    byGapCause: byGapCause([...effects.values()]),
   };
 }
 
@@ -102,6 +110,7 @@ function requestEffect(row: TtlRequestRow, price: PriceRow, reverseTokens: numbe
   const rebuildTokens = band !== null && REBUILD_GAP_BANDS.includes(band) ? row.cacheReadTokens : 0;
   return {
     sessionId: row.sessionId,
+    gapCause: row.previousAction ?? "end-of-turn",
     write1hTokens: row.cacheWrite1hTokens,
     repriceSavingUsd: (row.cacheWrite1hTokens * (price.cacheWrite1h - price.cacheWrite5m)) / MTOK,
     rebuildTokens,
@@ -110,6 +119,18 @@ function requestEffect(row: TtlRequestRow, price: PriceRow, reverseTokens: numbe
     reverseTokens,
     reverseSavingUsd: reverseSavingUsd(reverseTokens, price),
   };
+}
+
+function byGapCause(effects: readonly RequestEffect[]): CacheTtlWhatIf["byGapCause"] {
+  return GAP_CAUSES.map((cause) => {
+    const rebuilt = effects.filter((effect) => effect.gapCause === cause && effect.rebuildTokens > 0);
+    return {
+      cause,
+      rebuilds: rebuilt.length,
+      rebuildTokens: rebuilt.reduce((total, effect) => total + effect.rebuildTokens, 0),
+      rebuildCostUsd: rebuilt.reduce((total, effect) => total + effect.rebuildCostUsd, 0),
+    };
+  });
 }
 
 function sumEffects(effects: readonly RequestEffect[]): CacheTtlWhatIf["totals"] {
@@ -156,11 +177,12 @@ const IN_WINDOW = "(@since IS NULL OR ts >= @since) AND (@until IS NULL OR ts < 
 const TTL_ROWS = `
   WITH member AS (SELECT DISTINCT session_id FROM request_dedup WHERE ${IN_WINDOW}),
   timed AS (
-    SELECT session_id, model, ts, cache_read_tokens, cache_creation_1h, cache_creation_5m, cache_creation_tokens, gap_ms,
-      LAG(ts) OVER (PARTITION BY session_id, is_sidechain ORDER BY ts, request_id) AS previous_ts
+    SELECT session_id, request_id, model, ts, cache_read_tokens, cache_creation_1h, cache_creation_5m, cache_creation_tokens, gap_ms,
+      LAG(ts) OVER (PARTITION BY session_id, is_sidechain ORDER BY ts, request_id) AS previous_ts,
+      LAG(request_id) OVER (PARTITION BY session_id, is_sidechain ORDER BY ts, request_id) AS previous_request_id
     FROM request_dedup WHERE session_id IN member
   )
-  SELECT session_id AS sessionId, model, ts, cache_read_tokens AS cacheReadTokens, cache_creation_1h AS cacheWrite1hTokens,
+  SELECT session_id AS sessionId, previous_request_id AS previousRequestId, model, ts, cache_read_tokens AS cacheReadTokens, cache_creation_1h AS cacheWrite1hTokens,
     CASE WHEN cache_creation_5m + cache_creation_1h = 0 THEN cache_creation_tokens ELSE cache_creation_5m END AS cacheWrite5mTokens,
     COALESCE(gap_ms, CAST(ROUND((julianday(ts) - julianday(previous_ts)) * 86400000) AS INTEGER)) AS gapMs
   FROM timed WHERE ${IN_WINDOW}`;
@@ -171,12 +193,17 @@ export function cacheTtlReport(db: Db, options: CostReportOptions = {}, prices: 
   return { window, ...cacheTtlWhatIf(readTtlRows(db, window).filter(scopeFilter(db, options.scope)), prices) };
 }
 
+type QueriedRow = Omit<TtlRequestRow, "role" | "profile" | "previousAction"> & { previousRequestId: string | null };
+
 export function readTtlRows(db: Db, window: ReportWindow): TtlRequestRow[] {
-  const rows = db.prepare<[object], Omit<TtlRequestRow, "role" | "profile">>(TTL_ROWS).all(window);
+  const rows = db.prepare<[object], QueriedRow>(TTL_ROWS).all(window);
+  // The previous request may predate the window, so its calls are read from the start.
+  const calls = readRequestToolCalls(db, { since: null, until: window.until });
   const contexts = readSessionContexts(db, [...new Set(rows.map((row) => row.sessionId))]);
   const tags = tagSessions(contexts);
-  return rows.map((row) => ({
+  return rows.map(({ previousRequestId, ...row }) => ({
     ...row,
+    previousAction: gapCauseOf(previousRequestId ? calls.get(previousRequestId) : undefined),
     role: tags.get(row.sessionId)!.role,
     profile: contexts.get(row.sessionId)!.facts.origin?.profile ?? NO_PROFILE,
   }));
@@ -192,14 +219,19 @@ export function renderCacheTtlText(whatIf: CacheTtlWhatIf): string {
       `${totals.rebuilds} rebuilds after gaps in ${whatIf.rebuildGapBands.join(", ")} cost ${usd(totals.rebuildCostUsd)}`,
     `Roles where 5m loses: ${whatIf.lossRoles.join(", ") || "none"}`,
     `No cache (every prompt token at the input rate) nets ${usd(totals.noCacheNetUsd)}; flagged where it is cheaper`,
+    `Rebuilds by last action before the gap: ${whatIf.byGapCause.map((c) => `${c.cause} ${c.rebuilds} (${usd(c.rebuildCostUsd)})`).join(", ")}`,
     `Replaying 5m sessions at 1h turns ${totals.reverseReverts} rebuilds into reads, saving ${usd(totals.reverseSavingUsd)} before the 1h write premium`,
   ].join("\n");
   const footer = `Price table v${whatIf.priceTableVersion}; ${whatIf.unpricedRequests} unpriced requests left out.`;
-  return [header, ttlTable("By role", whatIf.byRole), ttlTable("By profile", whatIf.byProfile), [LIST_PRICE_CAVEAT, footer].join("\n")].join("\n\n") + "\n";
+  return [header, ttlTable("By role", whatIf.byRole), ttlTable("By profile", whatIf.byProfile), causeTable(whatIf.byGapCause), [LIST_PRICE_CAVEAT, footer].join("\n")].join("\n\n") + "\n";
 }
 
 function ttlTable(title: string, rows: readonly CacheTtlBucket[]): string {
   const head = ["key", "sessions", "requests", "reprice saving", "rebuilds", "rebuild cost", "net", "net per session", "1h replay saving", "5m", "no-cache net", "no-cache"];
   const cells = rows.map((b) => [b.key, b.sessions, b.requests, usd(b.repriceSavingUsd), b.rebuilds, usd(b.rebuildCostUsd), usd(b.netSavingUsd), usd(b.netPerSessionUsd), usd(b.reverseSavingUsd), b.fiveMinuteLoses ? "loss" : "saves", usd(b.noCacheNetUsd), b.noCacheCheaper ? "no-cache" : "cache"]);
   return table(title, head, cells);
+}
+
+function causeTable(rows: CacheTtlWhatIf["byGapCause"]): string {
+  return table("By gap cause", ["cause", "rebuilds", "rebuild tokens", "rebuild cost"], rows.map((c) => [c.cause, c.rebuilds, c.rebuildTokens, usd(c.rebuildCostUsd)]));
 }

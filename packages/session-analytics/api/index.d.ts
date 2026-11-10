@@ -977,6 +977,10 @@ type CostReportSection = keyof typeof COST_REPORT_SECTIONS;
 /** Some sections of the report under its header, with the caveat and footer last as in the full text. */
 declare function renderCostReportSections(report: CostReport, sections: readonly CostReportSection[]): string;
 
+/** What the previous request in the same chain did last, before the gap that forced a rebuild. */
+declare const GAP_CAUSES: readonly ["ci-wait", "other-bash", "end-of-turn"];
+type GapCause = (typeof GAP_CAUSES)[number];
+
 /** Gap bands past a 5-minute TTL: the next request finds the cache gone. */
 declare const REBUILD_GAP_BANDS: readonly string[];
 /** One request as the TTL what-if needs it. */
@@ -991,6 +995,8 @@ interface TtlRequestRow {
     cacheWrite5mTokens: number;
     /** Milliseconds since the session's previous request; null for its first. */
     gapMs: number | null;
+    /** The previous request's last action in the same chain; absent reads as `end-of-turn`. */
+    previousAction?: GapCause;
 }
 declare const bucketSchema: z.ZodObject<{
     fiveMinuteLoses: z.ZodBoolean;
@@ -1070,6 +1076,16 @@ declare const cacheTtlWhatIfSchema: z.ZodObject<{
         key: z.ZodString;
     }, z.core.$strip>>;
     lossRoles: z.ZodArray<z.ZodString>;
+    byGapCause: z.ZodArray<z.ZodObject<{
+        cause: z.ZodEnum<{
+            "ci-wait": "ci-wait";
+            "other-bash": "other-bash";
+            "end-of-turn": "end-of-turn";
+        }>;
+        rebuilds: z.ZodNumber;
+        rebuildTokens: z.ZodNumber;
+        rebuildCostUsd: z.ZodNumber;
+    }, z.core.$strip>>;
 }, z.core.$strip>;
 type CacheTtlWhatIf = z.infer<typeof cacheTtlWhatIfSchema>;
 type CacheTtlBucket = z.infer<typeof bucketSchema>;
