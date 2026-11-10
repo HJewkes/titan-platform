@@ -12,7 +12,7 @@ import {
 
 /**
  * `active-work mcp restart` — stop the running daemon (if any) then spawn a new
- * detached daemon. Honors the previously-bound port when not overridden.
+ * detached daemon (spawned first, see `spawnSuccessor`). Honors the previously-bound port when not overridden.
  *
  * Both waits below are load-bearing (TP-36). A predecessor that has not exited
  * still owns the port, so a successor spawned too early fails to bind and dies
@@ -59,14 +59,10 @@ function signal(pid: number, sig: NodeJS.Signals): void {
   }
 }
 
-async function stopExisting(): Promise<number | undefined> {
-  const entry = await readPidFile();
-  if (!entry) return undefined;
-  const { pid, meta } = entry;
+async function stopExisting(pid: number): Promise<void> {
   if (isProcessAlive(pid)) await terminate(pid);
   // Scoped to the pid we killed: a supervisor may have already replaced it.
   await removePidFile(pid);
-  return meta.port;
 }
 
 async function terminate(pid: number): Promise<void> {
@@ -79,12 +75,29 @@ async function terminate(pid: number): Promise<void> {
   );
 }
 
-function detachedSpawn(port: number): { pid: number; port: number } {
+/**
+ * Run through MCP, this command lives inside the daemon it stops, so the
+ * successor must already exist when the stop lands (TP-83). It waits for the
+ * predecessor to release the port, then serves in the foreground of its own
+ * detached process; it gives up rather than race a predecessor that never exits.
+ */
+const SUCCESSOR_SCRIPT = `
+const { spawnSync } = require('node:child_process');
+const [oldPid, entry, port] = process.argv.slice(1);
+const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
+const deadline = Date.now() + ${SHUTDOWN_TIMEOUT_MS + KILL_TIMEOUT_MS + 5_000};
+while (oldPid && alive(Number(oldPid)) && Date.now() < deadline) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ${POLL_INTERVAL_MS});
+if (oldPid && alive(Number(oldPid))) process.exit(1);
+process.exit(spawnSync(process.execPath, [entry, 'mcp', 'serve', '--port', port], { stdio: 'ignore' }).status ?? 1);
+`;
+
+function spawnSuccessor(oldPid: number | undefined, port: number): { pid: number; port: number } {
   const entry = process.argv[1];
   if (!entry) {
     throw new Error('Cannot determine CLI entrypoint for restart');
   }
-  const child = spawn(process.execPath, [entry, 'mcp', 'serve', '--port', String(port)], {
+  const args = ['-e', SUCCESSOR_SCRIPT, String(oldPid ?? ''), entry, String(port)];
+  const child = spawn(process.execPath, args, {
     detached: true,
     stdio: 'ignore',
     env: process.env,
@@ -92,6 +105,8 @@ function detachedSpawn(port: number): { pid: number; port: number } {
   child.unref();
   return { pid: child.pid ?? -1, port };
 }
+
+const MANUAL_START_HINT = 'Start the daemon manually with `active-work mcp serve --detach`.';
 
 /**
  * A daemon that cannot bind exits within milliseconds and logs nothing, so the
@@ -102,14 +117,14 @@ async function confirmStarted(pid: number, port: number): Promise<void> {
   const up = await waitFor(async () => {
     if (!isProcessAlive(pid)) {
       throw new DaemonError(
-        `Spawned pid ${pid} exited immediately — port ${port} is likely still held. See \`active-work mcp logs\``,
+        `Spawned pid ${pid} exited immediately — port ${port} is likely still held. See \`active-work mcp logs\`. ${MANUAL_START_HINT}`,
       );
     }
     return (await probeHealth(port)) !== null;
   }, STARTUP_TIMEOUT_MS);
   if (up) return;
   throw new DaemonError(
-    `Spawned pid ${pid} is running but nothing answered http://127.0.0.1:${port}/health within ${STARTUP_TIMEOUT_MS}ms`,
+    `Spawned pid ${pid} is running but nothing answered http://127.0.0.1:${port}/health within ${STARTUP_TIMEOUT_MS}ms. ${MANUAL_START_HINT}`,
   );
 }
 
@@ -127,9 +142,10 @@ export default defineCommand<Args, Result>({
     },
   },
   async run(args) {
-    const prevPort = await stopExisting();
-    const port = args.port ?? prevPort ?? DEFAULT_DAEMON_PORT;
-    const spawned = detachedSpawn(port);
+    const previous = await readPidFile();
+    const port = args.port ?? previous?.meta.port ?? DEFAULT_DAEMON_PORT;
+    const spawned = spawnSuccessor(previous?.pid, port);
+    if (previous) await stopExisting(previous.pid);
     await confirmStarted(spawned.pid, port);
     return spawned;
   },
