@@ -1,6 +1,6 @@
 import { isConcluded, isPassing, isSucceeded, latestPerName } from "./checks.js";
 import { GITHUB_ACTIONS_APP_ID } from "./readiness.js";
-import type { CheckRun, CommitStatus, GitHubPort, RepoSlug, RequiredChecks } from "./port.js";
+import type { CheckRun, CommitStatus, GitHubPort, RepoSlug, RequiredChecks } from "./port-types.js";
 
 export interface CiVerdictInput {
   /** The base branch's required contexts; an empty list judges every run and status instead. */

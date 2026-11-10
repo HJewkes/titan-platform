@@ -6,7 +6,7 @@
 import Database from 'better-sqlite3';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { runDoctor } from '../doctor.js';
+import { runDoctor } from '../doctor/index.js';
 import { ConfigError } from '../errors.js';
 import {
   defaultGraphPath,
