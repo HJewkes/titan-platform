@@ -12,7 +12,12 @@ export interface PrioritiesQuery {
   offset: number;
 }
 
-export const DEFAULT_PRIORITIES_QUERY: PrioritiesQuery = { filters: {}, sort: "severity", offset: 0 };
+/** Shared by every caller, so frozen (filters included): a write would leak into every link. */
+export const DEFAULT_PRIORITIES_QUERY: Readonly<PrioritiesQuery> = Object.freeze({
+  filters: Object.freeze({}),
+  sort: "severity",
+  offset: 0,
+});
 
 export type Route =
   | { page: "overview" }
