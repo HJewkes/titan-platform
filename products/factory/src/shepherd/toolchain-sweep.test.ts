@@ -7,7 +7,7 @@ import { ADOPTION_BRANCH, DRIFTED, toolchainWorld, type ToolchainWorld } from ".
 import { TOOLCHAIN_CONSUMERS } from "../workflows/toolchain-fanout.js";
 import { TOOLCHAIN_IMPLEMENTER } from "./self-register.js";
 import type { ShepherdServices } from "./services.js";
-import { sweepToolchain } from "./toolchain-sweep.js";
+import { LeftoverAdoptionBranchError, openAdoption, planAdoptions, sweepToolchain } from "./toolchain-sweep.js";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
@@ -78,15 +78,14 @@ describe("sweepToolchain", () => {
     expect(shepherdRuns(w.host)).toHaveLength(0);
   });
 
-  it("leaves an existing toolchain branch with no PR where it is, then opens the PR on it", async () => {
+  it("notes a leftover toolchain branch with no PR as that repo's error and writes nothing to it", async () => {
     const w = world();
     drifted(w).refs.set(ADOPTION_BRANCH, fakeSha("existing-branch"));
 
     const notes = await sweepToolchain(w.host, w.services);
 
-    expect(drifted(w).effects).toMatchObject({ createRef: 0, createPr: 1 });
-    expect(notes).toEqual([{ repo: DRIFTED, pr: 1, registered: expect.any(String) }]);
-    expect(drifted(w).pr(1)).toMatchObject({ headRef: ADOPTION_BRANCH });
+    expect(notes).toEqual([{ repo: DRIFTED, error: "LeftoverAdoptionBranchError" }]);
+    expect(drifted(w).effects).toMatchObject({ createRef: 0, putContent: 0, createPr: 0 });
   });
 
   it("creates the toolchain branch when it does not exist", async () => {
@@ -119,5 +118,22 @@ describe("sweepToolchain", () => {
 
     expect(notes).toEqual([{ repo: first, error: expect.any(String) }, { repo: DRIFTED, pr: 1, registered: expect.any(String) }]);
     expect(w.fakes.get(first)!.effects.createPr).toBe(0);
+  });
+
+  it("openAdoption refuses a leftover adoption branch and writes no file to it", async () => {
+    const w = world();
+    const plan = (await planAdoptions(w.port)).plans[0]!;
+    const calls: string[] = [];
+    const port = new Proxy(w.port, {
+      get: (target, method: string) => {
+        if (method === "ensureBranch") return async () => ({ done: false, sha: fakeSha("leftover") });
+        if (method === "putFile" || method === "openPr") return async () => { calls.push(method); throw new Error("unexpected write"); };
+        return Reflect.get(target, method);
+      },
+    });
+
+    await expect(openAdoption(port, plan)).rejects.toThrow(new LeftoverAdoptionBranchError(plan.repo, plan.branch));
+    await expect(openAdoption(port, plan)).rejects.toThrow(`${plan.repo}: leftover branch ${plan.branch} already exists; refusing to adopt over it`);
+    expect(calls).toEqual([]);
   });
 });
