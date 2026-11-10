@@ -156,8 +156,9 @@ describe('hooks agent-chat-complete with worker facts', () => {
   });
 
   it('keeps recording a payload without facts the way an older broker expects', async () => {
-    const legacy = await loadPayload();
-    delete legacy.facts;
+    const legacy = Object.fromEntries(
+      Object.entries(await loadPayload()).filter(([key]) => key !== 'facts'),
+    );
     const { front, body } = await recordFor(legacy);
 
     expect(front.kind).toBeUndefined();
