@@ -185,11 +185,6 @@
       "count": 1
     }
   },
-  "products/active-work/src/commands/miner-status.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/active-work/src/commands/miner-status.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
@@ -815,11 +810,6 @@
     },
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
-    }
-  },
-  "products/active-work/src/sessions/open-loops.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 2
     }
   },
   "products/active-work/src/sessions/recover-session.ts": {
