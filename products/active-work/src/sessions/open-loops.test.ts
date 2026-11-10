@@ -154,6 +154,53 @@ describe('deriveOpenLoops', () => {
     expect(loops.map((l) => l.ref)).toEqual([`${opener}#n2`]);
   });
 
+  it('closes a loop opened by an earlier file that shares the resolver session_id', async () => {
+    const opener = await writeSession({
+      session_id: 'reused',
+      ended: '2026-07-01T00:00:00Z',
+      next_steps: [{ id: 'n1', text: 'opened days ago', kind: 'prose' }],
+    });
+    await writeSession({
+      session_id: 'reused',
+      ended: '2026-07-05T00:00:00Z',
+      resolves: [{ ref: `${opener}#n1`, outcome: 'done' }],
+    });
+
+    expect(await deriveOpenLoops(initiativeDir, { now: NOW })).toEqual([]);
+  });
+
+  it('still rejects a file resolving its own loop', async () => {
+    const own = await writeSession({
+      session_id: 'solo',
+      ended: '2026-07-03T00:00:00Z',
+      next_steps: [{ id: 'n1', text: 'mine', kind: 'prose' }],
+      resolves: [{ ref: '2026-07-03-solo#n1', outcome: 'done' }],
+    });
+
+    const loops = await deriveOpenLoops(initiativeDir, { now: NOW });
+    expect(loops.map((l) => l.ref)).toEqual([`${own}#n1`]);
+  });
+
+  it('still blocks two same-id files closing each other', async () => {
+    await writeSession({
+      session_id: 'twin',
+      ended: '2026-07-01T00:00:00Z',
+      file: 'twin-a',
+      next_steps: [{ id: 'a1', text: 'a', kind: 'prose' }],
+      resolves: [{ ref: 'twin-b#b1', outcome: 'done' }],
+    });
+    await writeSession({
+      session_id: 'twin',
+      ended: '2026-07-01T00:00:00Z',
+      file: 'twin-b',
+      next_steps: [{ id: 'b1', text: 'b', kind: 'prose' }],
+      resolves: [{ ref: 'twin-a#a1', outcome: 'done' }],
+    });
+
+    const loops = await deriveOpenLoops(initiativeDir, { now: NOW });
+    expect(loops.map((l) => l.ref).sort()).toEqual(['twin-a#a1', 'twin-b#b1']);
+  });
+
   it('closes a loop abandoned by a later session', async () => {
     const opener = await writeSession({
       session_id: 'aaa',
