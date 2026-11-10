@@ -36,6 +36,14 @@ describe("aw-reinstall.sh --dry-run", () => {
     expect(timed[1]).toBeGreaterThan(restart);
   });
 
+  it("runs install and build through the corepack-pinned pnpm, not whichever pnpm is on PATH", () => {
+    const out = run("aw-reinstall.sh", "--dry-run");
+    expect(out).toMatch(/^pnpm: corepack pnpm@/m);
+    expect(out).toMatch(/\[dry-run\] corepack pnpm@.+ --dir \/stage\/.+ install --frozen-lockfile/);
+    expect(out).toMatch(/\[dry-run\] corepack pnpm@.+ --dir \/stage\/.+ --filter .* build/);
+    expect(out).not.toMatch(/\[dry-run\] pnpm /);
+  });
+
   it("rejects an unknown argument", () => {
     expect(() => run("aw-reinstall.sh", "--bogus")).toThrow();
   });
