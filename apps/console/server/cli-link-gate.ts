@@ -12,7 +12,7 @@ const PROBE_TIMEOUT_MS = 5_000;
 const REACHABLE = new Set([200, 401]);
 
 /** Resolves to the HTTP status of a GET on the url, and rejects on an empty reply or a connection error. */
-export type HttpsProbe = (url: string) => Promise<number>;
+type HttpsProbe = (url: string) => Promise<number>;
 
 export function linkGateArgs(argv: readonly string[]): { gate: string } | null {
   const [noun, verb, gate, ...rest] = argv;
@@ -20,7 +20,7 @@ export function linkGateArgs(argv: readonly string[]): { gate: string } | null {
   return { gate };
 }
 
-export const httpsProbe: HttpsProbe = (url) =>
+const httpsProbe: HttpsProbe = (url) =>
   new Promise((resolve, reject) => {
     const req = request(url, { method: "GET", timeout: PROBE_TIMEOUT_MS }, (res) => {
       res.resume();
@@ -31,7 +31,7 @@ export const httpsProbe: HttpsProbe = (url) =>
     req.end();
   });
 
-export type LinkGateResult = { ok: true; link: string } | { ok: false; reason: string };
+type LinkGateResult = { ok: true; link: string } | { ok: false; reason: string };
 
 export async function linkGate(config: ConsoleConfig, gate: string, probe: HttpsProbe): Promise<LinkGateResult> {
   const link = inboxLink(config, `gate:${gate}`);
