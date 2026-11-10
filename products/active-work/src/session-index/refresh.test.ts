@@ -7,6 +7,7 @@ import { PRICE_TABLE, PRICE_TABLE_VERSION } from '@titan-design/session-analytic
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { openGraph, type WorkspaceGraph } from './graph.js';
+import { selectAll, selectOne } from '../test-support/session-index/query.js';
 import { readRefreshLockHolder, refreshLockHolderPath, withRefreshLock } from './refresh-lock.js';
 import { runRefresh, type RefreshSummary } from './refresh.js';
 import { RefreshScheduler } from './scheduler.js';
@@ -66,11 +67,12 @@ describe('runRefresh', () => {
 
     await runRefresh({ skipPrOutcomes: true, graph, root });
 
-    const fields = graph.db
-      .prepare("SELECT DISTINCT field FROM search_span WHERE owner_ref LIKE 'session:%' ORDER BY field")
-      .all() as { field: string }[];
+    const fields = selectAll<{ field: string }>(
+      graph.db,
+      "SELECT DISTINCT field FROM search_span WHERE owner_ref LIKE 'session:%' ORDER BY field",
+    );
     expect(fields.map((row) => row.field)).toEqual(['assistant_response', 'prompt']);
-    const blocks = graph.db.prepare('SELECT COUNT(*) AS n FROM context_block').get() as { n: number };
+    const blocks = selectOne<{ n: number }>(graph.db, 'SELECT COUNT(*) AS n FROM context_block');
     expect(blocks.n).toBe(0);
   });
 
@@ -243,19 +245,17 @@ function writeSpawnRow(sessionId: string): void {
 }
 
 function statusOf(name: string): string {
-  const row = graph.db
-    .prepare<[string], { status: string }>('SELECT status FROM transcript WHERE source_key LIKE ?')
-    .get(`%${name}`) as { status: string };
+  const row = selectOne<{ status: string }>(
+    graph.db,
+    'SELECT status FROM transcript WHERE source_key LIKE ?',
+    `%${name}`,
+  );
   return row.status;
 }
 
 function counts(): Record<string, number> {
   const scalar = (table: string): number =>
-    (
-      graph.db.prepare<[], { n: number }>(`SELECT COUNT(*) AS n FROM ${table}`).get() as {
-        n: number;
-      }
-    ).n;
+    selectOne<{ n: number }>(graph.db, `SELECT COUNT(*) AS n FROM ${table}`).n;
   return {
     facts: scalar('fact'),
     sessions: scalar('session'),
