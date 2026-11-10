@@ -397,17 +397,6 @@ declare function createMcpServer<Ctx extends BaseContext>(options: McpServerOpti
 /** Serve MCP over stdio. Resolves when the transport closes (the client disconnected). */
 declare function runMcpStdio<Ctx extends BaseContext>(options: McpServerOptions<Ctx>): Promise<void>;
 
-declare class NonLoopbackBindError extends Error {
-    readonly host: string;
-    constructor(host: string);
-}
-declare class RemoteBindError extends Error {
-    readonly host: string;
-    constructor(host: string, reason: string);
-}
-/** Pure syntax check: names other than `localhost` are never resolved. */
-declare function isLoopbackHost(host: string): boolean;
-
 interface RemoteTlsOptions {
     /** PEM certificate chain. Every name the listener answers to must be on it. */
     certFile: string;
@@ -418,23 +407,6 @@ interface RemoteTlsOptions {
 declare class TlsFileError extends Error {
     readonly file: string;
     constructor(file: string, detail: string, options?: ErrorOptions);
-}
-
-/**
- * A content origin: a second port that serves only product routes, read-only, so untrusted
- * content (a PR's built Storybook, say) runs in an origin that is not the daemon's. Browsers
- * isolate origins by port, so script there cannot read the main origin's pages, and the main
- * listeners' guards refuse its `Origin` on every state-changing request.
- *
- * Cookies ignore port, so the main listener's session cookie reaches this origin too, and the
- * same gate accepts it: there is no second sign-in, and no sign-in route here at all.
- */
-
-interface ContentOriginOptions {
-    /** Its own port on the loopback host and, with `remote`, the remote address. Pass 0 for an ephemeral port. */
-    port: number;
-    /** Product routes, mounted once per listener. Only GET and HEAD ever reach them. */
-    mountRoutes: (app: Hono) => void;
 }
 
 /**
@@ -461,6 +433,40 @@ interface RemoteListenerOptions {
     tlsReloadMs?: number;
     /** How a signed-out browser gets a sign-in link, shown on the sign-in pages; see `DaemonAuthOptions.signInHint`. */
     signInHint?: string;
+}
+
+/**
+ * The main listener has no auth, so a bind beyond loopback is refused unless the caller opts in.
+ * The authenticated remote listener is the opposite: it must name one concrete non-loopback
+ * address, never a wildcard, which would also expose every bridge and VPN interface.
+ */
+
+declare class NonLoopbackBindError extends Error {
+    readonly host: string;
+    constructor(host: string);
+}
+declare class RemoteBindError extends Error {
+    readonly host: string;
+    constructor(host: string, reason: string);
+}
+/** Pure syntax check: names other than `localhost` are never resolved. */
+declare function isLoopbackHost(host: string): boolean;
+
+/**
+ * A content origin: a second port that serves only product routes, read-only, so untrusted
+ * content (a PR's built Storybook, say) runs in an origin that is not the daemon's. Browsers
+ * isolate origins by port, so script there cannot read the main origin's pages, and the main
+ * listeners' guards refuse its `Origin` on every state-changing request.
+ *
+ * Cookies ignore port, so the main listener's session cookie reaches this origin too, and the
+ * same gate accepts it: there is no second sign-in, and no sign-in route here at all.
+ */
+
+interface ContentOriginOptions {
+    /** Its own port on the loopback host and, with `remote`, the remote address. Pass 0 for an ephemeral port. */
+    port: number;
+    /** Product routes, mounted once per listener. Only GET and HEAD ever reach them. */
+    mountRoutes: (app: Hono) => void;
 }
 
 interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> extends SurfaceOptions<Ctx> {
