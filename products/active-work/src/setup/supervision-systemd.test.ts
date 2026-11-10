@@ -171,6 +171,12 @@ describe('renderUnit environment and logs', () => {
     expect(unit).toContain('StandardError=append:/home/u/.local/state/active-work/daemon.err.log');
   });
 
+  it('doubles % in the append: log paths so systemd does not read a specifier', () => {
+    const unit = renderUnit({ ...base, homeDir: '/home/50%u' });
+    expect(unit).toContain('StandardOutput=append:/home/50%%u/.local/state/active-work/daemon.out.log');
+    expect(unit).toContain('StandardError=append:/home/50%%u/.local/state/active-work/daemon.err.log');
+  });
+
   it('adds no --port by default, matching the plist', () => {
     expect(renderUnit(base)).toContain('mcp serve\n');
   });

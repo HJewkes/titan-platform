@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { openGraph, type SessionGraph } from './graph.js';
+import { openGraph, type WorkspaceGraph } from './graph.js';
 import { runRefresh, type RefreshSummary } from './refresh.js';
 import { retiredSessions, SEAL_GRACE_MS } from './retired.js';
 
@@ -28,7 +28,7 @@ const OTHER = 'bbbbbbbb-0000-0000-0000-000000000002';
 let dir: string;
 let root: string;
 let home: string;
-let graph: SessionGraph;
+let graph: WorkspaceGraph;
 
 beforeEach(() => {
   dir = mkdtempSync(path.join(os.tmpdir(), 'aw-retired-'));

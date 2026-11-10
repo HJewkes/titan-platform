@@ -34,7 +34,7 @@ describe('openSlugOrInit (TP-356 reviewer nit)', () => {
   });
 
   afterEach(() => {
-    process.stdin.isTTY = isTTY;
+    Object.defineProperty(process.stdin, 'isTTY', { value: isTTY, configurable: true, writable: true });
   });
 
   it('rethrows a NotFoundError with the kebab-case hint appended for an invalid-slug miss on a TTY', async () => {

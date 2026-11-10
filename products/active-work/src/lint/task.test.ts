@@ -5,9 +5,9 @@ import { lintTasks } from './task.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
 
 const LIMITS = {
-  handoffMaxBodyLines: 100,
   briefMaxBodyLines: 150,
   taskNotesMaxLines: 5,
+  openLoopMaxAgeDays: 30,
 };
 
 describe('lintTasks', () => {

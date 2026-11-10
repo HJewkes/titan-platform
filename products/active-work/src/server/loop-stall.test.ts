@@ -40,6 +40,7 @@ describe('event-loop stall gauge', () => {
       last: null,
       lastError: null,
       consecutiveErrors: 0,
+      lockSkips: 0,
       lastMaxLoopStallMs: 412,
       held: false,
       holdReason: null,

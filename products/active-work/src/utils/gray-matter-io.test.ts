@@ -42,7 +42,7 @@ describe('gray-matter round-trip', () => {
 
   it('writes a body that opens with its own --- block verbatim, not as frontmatter', async () => {
     const target = path.join(dir, 'brief.md');
-    const frontmatter = { title: 'Demo', state: 'focused' as const };
+    const frontmatter: z.infer<typeof Schema> = { title: 'Demo', state: 'focused' };
     const body = '---\ntitle: hijacked\nrank: 99\n---\nrest of the body\n';
     await writeFrontmatter(target, frontmatter, body, Schema);
 
