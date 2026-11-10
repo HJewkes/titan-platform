@@ -93,7 +93,7 @@ export function spendItems(cost: Cost, merged: number, window: DayWindow, curren
   const priced = pricedAt(cost.priceTableVersion, current);
   const accounts = cost.byAccount.filter((row) => row.costUsd > 0).map((row) => stat(`stat/spend/${row.key}`, `${dollars(row.costUsd)} spent on account ${row.key}`, priced, window));
   const perPrTitle = `$${(cost.totals.costUsd / merged).toFixed(2)} spent per merged PR`;
-  const perPr = merged > 0 ? [stat("stat/cost-per-pr", perPrTitle, `${dollars(cost.totals.costUsd)} over ${merged} merged PRs`, window, "P1")] : [];
+  const perPr = merged > 0 ? [stat("stat/cost-per-pr", perPrTitle, `${dollars(cost.totals.costUsd)} over ${merged} merged PRs, ${priced}`, window, "P1")] : [];
   return [stat("stat/spend", `${dollars(cost.totals.costUsd)} spent across ${cost.totals.sessions} sessions`, priced, window, "P1"), ...accounts, ...perPr];
 }
 
