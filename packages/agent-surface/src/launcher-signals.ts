@@ -2,7 +2,7 @@ import { spawnSync, type ChildProcess } from "node:child_process";
 
 const FORWARDED_SIGNALS = ["SIGTERM", "SIGINT", "SIGHUP"] as const;
 
-export interface LauncherSignalOptions {
+interface LauncherSignalOptions {
   label: string;
   /** The plan's agent name, written on every line so a log of many launchers stays readable. */
   agent: string;
