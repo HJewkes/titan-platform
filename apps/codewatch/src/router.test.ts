@@ -1,6 +1,6 @@
 import { CONTRACT } from "@titan-design/code-read/query";
 import { describe, expect, it } from "vitest";
-import { SORT_KEYS, href, parseRoute, type Route } from "./router.js";
+import { DEFAULT_PRIORITIES_QUERY, SORT_KEYS, href, parseRoute, type Route } from "./router.js";
 
 describe("hash routes", () => {
   it.each<Route>([
@@ -27,5 +27,19 @@ describe("hash routes", () => {
   it("keeps the raw tail when a node or finding id has a malformed escape", () => {
     expect(parseRoute("#/node/%")).toEqual({ page: "node", id: "%" });
     expect(parseRoute("#/finding/50%")).toEqual({ page: "finding", id: "50%" });
+  });
+});
+
+describe("DEFAULT_PRIORITIES_QUERY", () => {
+  it("rejects writes to the query and its filters so the shared default stays intact", () => {
+    expect(Object.isFrozen(DEFAULT_PRIORITIES_QUERY)).toBe(true);
+    expect(Object.isFrozen(DEFAULT_PRIORITIES_QUERY.filters)).toBe(true);
+    expect(() => {
+      (DEFAULT_PRIORITIES_QUERY as { offset: number }).offset = 50;
+    }).toThrow(TypeError);
+    expect(() => {
+      (DEFAULT_PRIORITIES_QUERY.filters as { severity?: string[] }).severity = ["error"];
+    }).toThrow(TypeError);
+    expect(DEFAULT_PRIORITIES_QUERY).toEqual({ filters: {}, sort: "severity", offset: 0 });
   });
 });
