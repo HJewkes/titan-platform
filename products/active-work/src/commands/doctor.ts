@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { defineCommand } from '../registry/index.js';
-import { runDoctor, type CheckStatus } from '../doctor.js';
+import { runDoctor, type CheckStatus } from '../doctor/index.js';
 import { color } from '../utils/color.js';
 
 /**

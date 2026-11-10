@@ -1,4 +1,5 @@
-import { FileListTruncatedError, PR_FILES_CAP, type GitHubPort, type PrFile, type RepoSlug } from "./port.js";
+import { FileListTruncatedError } from "./pr-files.js";
+import { PR_FILES_CAP, type GitHubPort, type PrFile, type RepoSlug } from "./port-types.js";
 
 interface PrContext {
   repo: RepoSlug;

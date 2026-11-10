@@ -1,6 +1,6 @@
 import { FakeHttpError } from "./fake-http-error.js";
 import type { FakeGitHub } from "./fake-types.js";
-import type { GitHubWire } from "./port.js";
+import type { GitHubWire } from "./port-types.js";
 import type { CreateReviewRequest, PullReview } from "./pull-reviews.js";
 
 type ReviewWire = Pick<GitHubWire, "listReviews" | "createReview" | "dismissReview">;

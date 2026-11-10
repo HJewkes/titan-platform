@@ -1,4 +1,4 @@
-import { httpStatusOf, isRetryableWrite } from "./update-branch-retry.js";
+import { httpStatusOf, isRetryableWrite } from "./rest.js";
 
 export type Sleep = (ms: number) => Promise<void>;
 export const pause: Sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

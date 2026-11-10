@@ -1,5 +1,5 @@
 import { ciVerdict, loadRequiredContexts, type CiVerdict } from "./ci-verdict.js";
-import type { GitHubPort, RepoSlug, RequiredChecks } from "./port.js";
+import type { GitHubPort, RepoSlug, RequiredChecks } from "./port-types.js";
 
 export interface CiWaitOptions {
   repo: RepoSlug;

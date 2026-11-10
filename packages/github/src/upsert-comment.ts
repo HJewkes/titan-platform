@@ -1,6 +1,6 @@
-import { isRetryableWrite } from "./update-branch-retry.js";
+import { isRetryableWrite } from "./rest.js";
 import { pause, type Sleep } from "./write-read-back.js";
-import type { GitHubWire, RepoSlug, WriteResult } from "./port.js";
+import type { GitHubWire, RepoSlug, WriteResult } from "./port-types.js";
 
 /** Resolved once per port; a failed lookup is not remembered. */
 export function memoizedLogin(wire: GitHubWire): () => Promise<string> {
