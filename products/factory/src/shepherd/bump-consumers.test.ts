@@ -37,6 +37,16 @@ function bumpShapedPr(w: World, repo: RepoSlug, headRef: string, paths = ["packa
 const writes = (w: World) => [...w.fakes.values()].map(({ effects }) => effects.createRef + effects.putContent + effects.createPr);
 
 describe("planConsumerBumps", () => {
+  it("a repo whose only titan deps were left alone is noted with the reasons, not as current", async () => {
+    const w = world();
+    const manifest = JSON.stringify({ name: "consumer-c", dependencies: { "@titan-design/example-c": "workspace:*" } });
+    w.fakes.get(CONSUMER_C)!.files.set("main:package.json", { content: manifest, blobSha: fakeSha("left-alone") });
+
+    const { notes } = await planConsumerBumps(w.services, w.registry, [CONSUMER_C]);
+
+    expect(notes).toEqual([{ repo: CONSUMER_C, leftAlone: [{ path: "package.json", name: "@titan-design/example-c", spec: "workspace:*", reason: expect.any(String) }] }]);
+  });
+
   it("plans a bump for each behind consumer and notes the current one current", async () => {
     const w = world();
 
