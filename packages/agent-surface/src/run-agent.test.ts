@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -69,6 +69,40 @@ const launchWithResolver = (resolver: string) =>
     ],
     { encoding: "utf8", env: { PATH: MINIMAL_PATH } },
   );
+
+describe("the launcher's signal forwarding", () => {
+  it("forwards SIGTERM to the child and logs the signal line, then the child's exit", async () => {
+    const record = path.join(stateDir, "signal.txt");
+    fs.writeFileSync(
+      fakeClaude,
+      `process.on("SIGTERM", () => { require("node:fs").writeFileSync(${JSON.stringify(record)}, "SIGTERM"); process.exit(7); });
+       setInterval(() => {}, 1000); process.stdout.write("ready\\n");`,
+    );
+    writePlan({}, "the brief");
+    const launcher = spawn(process.execPath, [BIN, planFile()], { env: { PATH: MINIMAL_PATH } });
+    let stderr = "";
+    launcher.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString("utf8")));
+    const closed = new Promise<number | null>(resolve => launcher.on("close", code => resolve(code)));
+    await new Promise<void>(resolve => {
+      let out = "";
+      launcher.stdout.on("data", (chunk: Buffer) => {
+        out += chunk.toString("utf8");
+        if (out.includes("ready")) resolve();
+      });
+    });
+
+    launcher.kill("SIGTERM");
+    const code = await closed;
+
+    expect(fs.readFileSync(record, "utf8")).toBe("SIGTERM");
+    const lines = stderr.split("\n").filter(line => line.startsWith("titan-agent-launch:"));
+    expect(lines[0]).toMatch(
+      new RegExp(`^titan-agent-launch: \\d{4}-\\d\\d-\\d\\dT[\\d:.]+Z agent=agt-test signal=SIGTERM ppid=\\d+ pgid=\\d+$`),
+    );
+    expect(lines[1]).toBe("titan-agent-launch: agent=agt-test exited code=7 signal=none");
+    expect(code).toBe(7);
+  });
+});
 
 describe("the onSpawn hook", () => {
   it("hands the spawned child to onSpawn before writing the brief", () => {
