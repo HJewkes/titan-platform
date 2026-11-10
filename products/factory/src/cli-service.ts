@@ -10,7 +10,8 @@ import { configPath, factoryStateDir, loadConfig, type FactoryConfig } from "./c
 import { deployCheckoutPath, deployedBinPath } from "./deploy-checkout.js";
 import { relinkAfterDeploy, systemCliLinkPorts } from "./deploy-cli-link.js";
 import { deployService, type DeployPorts } from "./deploy.js";
-import { clearDeployPause, describeHolds, describeManualHold, readDeployHolds, runningDeployer, writeManualHold } from "./deploy-pause.js";
+import { clearDeployPause, describeHolds, describeManualHold, readDeployHolds, writeManualHold } from "./deploy-pause.js";
+import { runningDeployer } from "./deploy-lock.js";
 import { originOf, systemDeployPorts } from "./deploy-ports.js";
 import { configuredDeployIncident, configuredDeployResolve } from "./deploy-watch-ports.js";
 import { morningQueuesDir } from "./needs/morning-source.js";
@@ -110,7 +111,7 @@ function registerServiceControl(service: Command, { io, deps, setExit }: Verbs):
     .description("loaded or not, the pid, and a /health summary; exits 0 only when /health answers and its GitHub check is ok")
     .option("--port <n>", "port titan-factory serve listens on", parsePort, FACTORY_PORT)
     .action((opts: { port: number }) => run("status", (ports) => serviceStatus(ports, io, opts.port)));
-  registerServiceCheck(service, io, () => deps.check ?? systemCheckPorts(deployCheckoutFor(io.env)), setExit);
+  registerServiceCheck(service, io, () => deps.check ?? systemCheckPorts(deployCheckoutFor(io.env), factoryStateDir(io.env)), setExit);
   withRestartFlags(service.command("restart").description("wait until /health lists no busy run, kill and restart the loaded job, then wait for /health")).action(
     (opts: RestartFlags) => run("restart", (ports) => restartService(ports, io, opts.port, logDir, drainOf(opts))),
   );

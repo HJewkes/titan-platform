@@ -43,3 +43,9 @@ function stealStale(ports: LockPorts, lock: string, stale: number | undefined): 
 export function releaseLock(ports: LockPorts, lock: string): void {
   if (lockPid(ports, lock) === ports.pid) ports.remove(lock);
 }
+
+/** Read without taking the lock, since a manual hold must be settable while a deployer runs. */
+export function runningDeployer(ports: Pick<LockPorts, "readFile" | "isAlive">, stateDir: string): number | undefined {
+  const pid = Number(ports.readFile(deployLockPath(stateDir))?.trim());
+  return Number.isInteger(pid) && pid > 0 && ports.isAlive(pid) ? pid : undefined;
+}
