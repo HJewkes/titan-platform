@@ -5,7 +5,8 @@ import { BLOCKED_KIND, BULLET_KIND, DEFAULT_MEMORY_TABLES, SUPERSEDES, type Memo
 import { DEFAULT_HALF_LIFE_DAYS } from "./scoring.js";
 import { BULLET_KINDS, BULLET_SCOPES, BULLET_SOURCES, BULLET_STATES, BULLET_TYPES, MATURITIES, type Bullet, type FeedbackEvent, type FeedbackType, type NewBullet } from "./types.js";
 
-export const bulletRef = refKind("memory");
+const MEMORY_REF_KIND = "memory";
+export const bulletRef = refKind(MEMORY_REF_KIND);
 const blockedRef = refKind("memory-blocked");
 
 export interface PlaybookStoreOptions {
@@ -141,13 +142,13 @@ export class PlaybookStore {
   }
 
   feedbackFor(id: string): FeedbackEvent[] {
-    return this.feedbackByBullet.all(bulletRef(id)).map(toEvent);
+    return this.feedbackByBullet.all(bulletRef(id)).flatMap((raw) => toEvent(raw) ?? []);
   }
 
   /** Every event grouped by bullet id, one query, for scoring the whole playbook. */
   feedbackByBulletId(): Map<string, FeedbackEvent[]> {
     const grouped = new Map<string, FeedbackEvent[]>();
-    for (const event of this.allFeedback.all().map(toEvent)) {
+    for (const event of this.allFeedback.all().flatMap((raw) => toEvent(raw) ?? [])) {
       const list = grouped.get(event.bulletId) ?? [];
       list.push(event);
       grouped.set(event.bulletId, list);
@@ -206,14 +207,23 @@ function materialize(input: NewBullet, at: string): Bullet {
   };
 }
 
-/** A row whose attrs fail the schema reads as absent, so one bad row cannot take down a whole list. */
+function memoryIdOf(ref: string): string | undefined {
+  const parsed = parseRef(ref);
+  return parsed.kind === MEMORY_REF_KIND ? parsed.id : undefined;
+}
+
+/** A row whose attrs fail the schema or whose ref is not a memory ref reads as absent, so one bad row cannot take down a whole list. */
 function toBullet(row: EntityRow): Bullet | undefined {
+  const id = memoryIdOf(row.ref);
+  if (id === undefined) return undefined;
   const parsed = bulletAttrs.safeParse(row.attrs ?? {});
   if (!parsed.success) return undefined;
   const { content, ...rest } = parsed.data;
-  return { id: parseRef(row.ref).id, content, category: row.name ?? "general", ...rest };
+  return { id, content, category: row.name ?? "general", ...rest };
 }
 
-function toEvent(raw: RawFeedbackRow): FeedbackEvent {
-  return { id: raw.id, bulletId: parseRef(raw.bullet_ref).id, type: raw.type, at: raw.at, sessionRef: raw.session_ref, reason: raw.reason };
+function toEvent(raw: RawFeedbackRow): FeedbackEvent | undefined {
+  const bulletId = memoryIdOf(raw.bullet_ref);
+  if (bulletId === undefined) return undefined;
+  return { id: raw.id, bulletId, type: raw.type, at: raw.at, sessionRef: raw.session_ref, reason: raw.reason };
 }
