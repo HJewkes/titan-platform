@@ -70,6 +70,8 @@ async function recordFor(payload: Record<string, unknown>, warnings: string[] = 
       name: String(payload.agentId),
       started: '2026-10-05T09:00:00.000Z',
       profile: 'implementer',
+      parentSessionId: null,
+      briefing: null,
     });
     const written: string[] = [];
     inProcessWrap(activeRoot, written);

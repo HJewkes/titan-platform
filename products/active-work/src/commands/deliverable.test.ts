@@ -11,6 +11,13 @@ import taskEdit from './task-edit.js';
 import { NotFoundError, UsageError, ValidationError } from '../errors.js';
 import type { CommandContext } from '../registry/index.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
+import type { Task } from '../schemas/task.js';
+import type { TaskOrLine } from './_task-quiet.js';
+
+function asTask(result: TaskOrLine): Task {
+  if (typeof result === 'string') throw new Error(`expected a task, got line: ${result}`);
+  return result;
+}
 
 const SLUG = 'sample-initiative';
 
@@ -203,10 +210,10 @@ describe('task --deliverable', () => {
     await withTempActiveRoot(async (root) => {
       await add(root, 'M1');
 
-      const created = await taskAdd.run(
+      const created = asTask(await taskAdd.run(
         { slug: SLUG, title: 'Joined', deliverable: ['M1'] },
         ctx(root),
-      );
+      ));
       const refused = taskAdd.run(
         { slug: SLUG, title: 'Orphan', deliverable: ['M1', 'M9', 'M9'] },
         ctx(root),
@@ -224,7 +231,7 @@ describe('task --deliverable', () => {
       await add(root, 'M2');
       await joinTask(root, 'SI-1', 'M1');
 
-      const edited = await taskEdit.run({ slug: SLUG, id: 'SI-1', deliverable: ['M2'] }, ctx(root));
+      const edited = asTask(await taskEdit.run({ slug: SLUG, id: 'SI-1', deliverable: ['M2'] }, ctx(root)));
       const refused = taskEdit.run({ slug: SLUG, id: 'SI-1', deliverable: ['M9'] }, ctx(root));
 
       expect(edited.deliverables).toEqual(['M1', 'M2']);
