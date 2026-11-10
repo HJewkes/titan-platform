@@ -19,6 +19,8 @@ import type { WorkspaceGraph } from './graph.js';
 export const PR_OUTCOME_BATCH = 50;
 const CONCURRENCY = 5;
 const DEFAULT_FAIL_BACKOFF_MS = 30 * 60 * 1000;
+const DEFAULT_OPEN_RECHECK_MS = 10 * 60 * 1000;
+const DEFAULT_CLOSED_RECHECK_MS = 24 * 60 * 60 * 1000;
 const GH_FIELDS = 'state,mergedAt,closedAt,reviews,commits';
 
 export interface PrOutcomeOptions {
@@ -28,7 +30,11 @@ export interface PrOutcomeOptions {
   limit?: number;
   /** Receives one line per PR `gh` could not answer. */
   errors?: string[];
-  /** Clock for the failure backoff; tests replace it. */
+  /** Least time between two checks of one open PR; `AW_PR_OPEN_RECHECK_MS` sets the default. */
+  openRecheckMs?: number;
+  /** Least time before a closed PR is checked again, so a reopen is seen; `AW_PR_CLOSED_RECHECK_MS`. */
+  closedRecheckMs?: number;
+  /** Clock for the failure backoff and the recheck intervals; tests replace it. */
   now?: () => number;
   /** Told how many PRs each call asks `gh` about, so the pass log can carry it. */
   onPolled?: (count: number) => void;
@@ -41,11 +47,33 @@ export function clearPrFailureBackoff(): void {
   failedAt.clear();
 }
 
-function failBackoffMs(): number {
-  const parsed = Number(process.env.AW_PR_FAIL_BACKOFF_MS);
-  return process.env.AW_PR_FAIL_BACKOFF_MS && Number.isFinite(parsed) && parsed >= 0
-    ? parsed
-    : DEFAULT_FAIL_BACKOFF_MS;
+function envMs(name: string, fallback: number): number {
+  const raw = process.env[name];
+  const parsed = Number(raw);
+  return raw && Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+const failBackoffMs = (): number => envMs('AW_PR_FAIL_BACKOFF_MS', DEFAULT_FAIL_BACKOFF_MS);
+
+interface RecheckIntervals {
+  open: number;
+  closed: number;
+}
+
+function recheckIntervals(options: PrOutcomeOptions): RecheckIntervals {
+  return {
+    open: options.openRecheckMs ?? envMs('AW_PR_OPEN_RECHECK_MS', DEFAULT_OPEN_RECHECK_MS),
+    closed: options.closedRecheckMs ?? envMs('AW_PR_CLOSED_RECHECK_MS', DEFAULT_CLOSED_RECHECK_MS),
+  };
+}
+
+/** Never checked is due; a checked PR is due once its state's interval has passed. */
+function isDue(row: CheckedRow | undefined, now: number, every: RecheckIntervals): boolean {
+  if (!row?.outcome_checked_at) return true;
+  const checked = Date.parse(row.outcome_checked_at);
+  if (Number.isNaN(checked)) return true;
+  const interval = row.state?.toLowerCase() === 'open' ? every.open : every.closed;
+  return now - checked >= interval;
 }
 
 /** A wrong-typed field fails the parse, which the caller reports like any other `gh` failure. */
@@ -83,8 +111,9 @@ function toResolved(pr: GhPr): ResolvedPr {
 
 /**
  * The package re-asks a checked PR until it is merged, which would re-query
- * every closed PR forever. Only open PRs and never-checked PRs can still
- * change, and the least recently checked go first so a long open tail is not
+ * every PR each pass. A merged PR is final; any other PR is asked again only
+ * after its recheck interval (short for open, long for closed so a reopen is
+ * seen), and the least recently checked go first so a long tail is not
  * starved by the same fifty.
  */
 function selectPrs(
@@ -92,6 +121,7 @@ function selectPrs(
   prs: readonly PrKey[],
   limit: number,
   now: number,
+  every: RecheckIntervals,
 ): PrKey[] {
   const backoff = failBackoffMs();
   const rows = graph.db
@@ -104,7 +134,7 @@ function selectPrs(
       const failed = failedAt.get(pr.prRef);
       if (failed !== undefined && now - failed <= backoff) return false;
       const row = byRef.get(pr.prRef);
-      return !row?.outcome_checked_at || row.state?.toLowerCase() === 'open';
+      return row?.state?.toLowerCase() !== 'merged' && isDue(row, now, every);
     })
     .sort((a, b) => checkedAt(a).localeCompare(checkedAt(b)))
     .slice(0, limit);
@@ -128,8 +158,9 @@ async function viewPr(run: RunCommand, pr: PrKey): Promise<ResolvedPr> {
 export function ghPrResolver(graph: WorkspaceGraph, options: PrOutcomeOptions = {}): PrResolver {
   const run = options.run ?? runCommand;
   const now = options.now ?? Date.now;
+  const every = recheckIntervals(options);
   return async (prs: readonly PrKey[]): Promise<PrResolution> => {
-    const queue = selectPrs(graph, prs, options.limit ?? PR_OUTCOME_BATCH, now());
+    const queue = selectPrs(graph, prs, options.limit ?? PR_OUTCOME_BATCH, now(), every);
     options.onPolled?.(queue.length);
     const resolved = new Map<string, ResolvedPr>();
     const worker = async (): Promise<void> => {
