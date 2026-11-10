@@ -61,7 +61,7 @@ const DEFAULT_BASE_BACKOFF_MS = 1_000;
 const DEFAULT_MAX_BACKOFF_MS = 60_000;
 export const DEFAULT_MIN_INTERVAL_MS = 15_000;
 export const DEFAULT_GATE_RECHECK_MS = 60_000;
-export const DEFAULT_MAX_HOLD_MS = 30 * 60_000;
+const DEFAULT_MAX_HOLD_MS = 30 * 60_000;
 
 /** proper-lockfile gives up with ELOCKED once its retries run out: someone else is mid-pass. */
 export function isLockContention(err: unknown): boolean {
