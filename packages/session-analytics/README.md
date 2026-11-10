@@ -224,6 +224,11 @@ text form.
   and only the reprice applies.
 - **Net.** Per role and per profile: reprice saving less rebuild cost, and the same per session.
   `lossRoles` lists the roles whose net is negative, typically seats that wait on CI.
+- **No cache.** Per role and per profile, `noCacheNetUsd` prices every prompt token at the input rate
+  with no cache writes or reads, as cost today less that cost. Positive means no cache is cheaper
+  (`noCacheCheaper`), typically a one-shot profile that writes a cache and never reads it. The text
+  table adds a `no-cache net` column and flags those buckets. `TtlRequestRow` gains
+  `cacheWrite5mTokens`; the 5m-against-1h numbers do not change.
 
 The gap is the request's `gap_ms` when the miner stored one. Otherwise it is the time since the
 session's previous request on the same thread, which may fall before the window.

@@ -121,6 +121,17 @@ describe('renderUnit', () => {
     });
     expect(unit).toContain('ExecStart=/usr/bin/node "/path with spaces/cli.js" mcp serve');
   });
+
+  it('doubles % and escapes $ in a quoted ExecStart argument', () => {
+    const unit = renderUnit({
+      cliEntry: '/srv/my x/50%/$HOME/cli.js',
+      homeDir: '/home/u',
+      nodeBin: '/usr/bin/node',
+    });
+    expect(unit).toContain(
+      'ExecStart=/usr/bin/node "/srv/my x/50%%/$$HOME/cli.js" mcp serve',
+    );
+  });
 });
 
 describe('renderUnit environment and logs', () => {
