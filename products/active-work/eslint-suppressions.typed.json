@@ -468,9 +468,14 @@
       "count": 1
     }
   },
+  "products/active-work/src/session-index/scheduler-timing.ts": {
+    "@typescript-eslint/no-unnecessary-condition": {
+      "count": 2
+    }
+  },
   "products/active-work/src/session-index/scheduler.ts": {
     "@typescript-eslint/no-unnecessary-condition": {
-      "count": 5
+      "count": 3
     },
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
