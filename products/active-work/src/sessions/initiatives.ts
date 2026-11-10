@@ -15,7 +15,7 @@ export async function listInitiativeSlugs(activeRoot: string): Promise<string[]>
   try {
     entries = await fs.readdir(activeRoot, { withFileTypes: true });
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    if (err instanceof Error && 'code' in err && err.code === 'ENOENT') return [];
     throw err;
   }
   return entries
