@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
 import { GITHUB_ACTIONS_APP_ID } from "./readiness.js";
-import { PR_COMMITS_CAP, PR_FILES_CAP } from "./port.js";
+import { PR_COMMITS_CAP, PR_FILES_CAP } from "./port-types.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
 import { FORCE_PUSHES_CAP, type ForcePush } from "./force-pushes.js";
 import type { OpenPrRequest } from "./pr-list.js";
-import type { CheckRun, GitHubWire, LoggedCommit, MergeMethod, PrFile, PullRequest, PutFileRequest } from "./port.js";
+import type { CheckRun, GitHubWire, LoggedCommit, MergeMethod, PrFile, PullRequest, PutFileRequest } from "./port-types.js";
 import type { FakeEffects, FakeFaultyRead, FakeGitHub } from "./fake-types.js";
 import { fakeMergeIntoBranch } from "./fake-merge-into-branch.js";
 import { fakeContentBytes } from "./fake-bytes.js";

@@ -1,111 +1,287 @@
-export interface Commit {
-  sha: string;
-  parents: string[];
-  /** The tree the commit records; absent when the wire does not report it. */
-  tree?: string;
-  /** The committer date; for a commit GitHub made on merge, when it landed. Absent when the wire does not report it. */
-  committedAt?: string;
-  /** The full commit message; absent when the wire does not report it. */
-  message?: string;
+import type { CreateCheckRunRequest } from "./check-run-create.js";
+import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
+import type { RefRead, RulesetList } from "./conditional-reads.js";
+import type { ReviewComment } from "./review-comment.js";
+import type { CreateReviewRequest, PullReview } from "./pull-reviews.js";
+import type { Ancestry } from "./compare.js";
+import type { MergeIntoBranchRequest, MergeIntoBranchResult } from "./merge-into-branch.js";
+import type { ForcePush, ForcePushPage } from "./force-pushes.js";
+import type { BranchCommits, CheckRun, Commit, CommitStatus, JobStep, LoggedCommit, MergeMessage, PutFileRequest, RepoEntry, RepoFile, SquashSource } from "./port-records.js";
+export type { BranchCommit, BranchCommits, CheckRun, CheckRunPr, Commit, CommitStatus, JobStep, LoggedCommit, MergeMessage, PutFileRequest, RepoEntry, RepoFile, SquashSource } from "./port-records.js";
+
+/** `owner/name`. */
+export type RepoSlug = string;
+
+export type MergeMethod = "merge" | "squash" | "rebase";
+
+export interface PullRequest {
+  number: number;
+  state: "open" | "closed";
+  merged: boolean;
+  /** Meaningful once `merged`; GitHub also fills it with a test merge while the PR is open. */
+  mergeSha: string | null;
+  /** ISO timestamp GitHub recorded when the PR merged; null while it has not. */
+  mergedAt: string | null;
+  headRef: string;
+  headSha: string;
+  /** `owner/name` of the repo the head lives in; null when that fork was deleted. */
+  headRepo: RepoSlug | null;
+  baseRef: string;
+  draft: boolean;
+  /** GitHub computes this lazily, so `unknown` is common and never means clean. */
+  mergeableState: string;
+  /** The head lacks commits the base has. */
+  behind: boolean;
+  /** How many base commits the head lacks; `getPr` reports it for an open PR, list rows never do. */
+  behindBy?: number;
+  /** Auto-merge is armed on the PR, read from the REST `auto_merge` field. */
+  autoMerge: boolean;
+  /** Absent where the wire does not read them; GitHub's REST answer carries both, an empty body as null. */
+  title?: string;
+  body?: string;
 }
 
-/** One step of an Actions job, in run order; `conclusion` is null until the step completes. */
-export interface JobStep {
-  name: string;
-  conclusion: string | null;
+export interface RequiredChecks {
+  contexts: string[];
+  /** The ruleset requires the branch to be up to date before merging. */
+  strict: boolean;
+  /** Apps a context is pinned to; a context absent here accepts a check from any app. */
+  pins?: Record<string, number[]>;
 }
 
-/** The newest commit status per context on a sha, as the combined status endpoint reports it. */
-export interface CommitStatus {
-  context: string;
-  /** `success`, `pending`, `failure` or `error`. */
-  state: string;
-  /** The link `gh pr checks` prints; absent when the wire does not report it, null when the poster set none. */
-  targetUrl?: string | null;
-  description?: string | null;
-  createdAt?: string | null;
-  updatedAt?: string | null;
+/** A PR's head as GitHub reports it, so a delete can tell a same-named branch in a fork from its own. */
+export interface HeadRef {
+  branch: string;
+  repo: RepoSlug | null;
 }
 
-/** A commit on the default branch with its full message, subject line first. */
-export interface LoggedCommit {
-  sha: string;
-  message: string;
+/** One changed file of a PR; a rename carries the path it came from. */
+export interface PrFile {
+  path: string;
+  previousPath?: string;
+  status: string;
+  /** Lines added; absent when the wire does not report it. */
+  additions?: number;
+  /** Lines deleted; absent when the wire does not report it. */
+  deletions?: number;
 }
 
-/** One commit a branch holds past its merge base; a login is null when GitHub ties that git identity to no account. */
-export interface BranchCommit {
-  sha: string;
-  authorLogin: string | null;
-  committerLogin: string | null;
-  message: string;
-}
-
-/** A branch's own commits, oldest first, and the paths they change together; check `truncated` before trusting either. */
-export interface BranchCommits {
+export interface CompareResult {
   mergeBaseSha: string;
-  commits: BranchCommit[];
+  /** Paths changed between the merge base and `head`. */
   files: string[];
-  /** GitHub caps compare at 300 files and 250 commits without saying so. */
+  /** GitHub caps compare at 300 files and 250 commits without saying so; when true, `files` may be missing paths. */
   truncated: boolean;
 }
 
-/** A file in a directory listing: its repo path and blob sha, with no content read. */
-export interface RepoEntry {
-  path: string;
-  blobSha: string;
-}
+/** GitHub's limits for the compare API. */
+export const COMPARE_FILE_CAP = 300;
+export const COMPARE_COMMIT_CAP = 250;
+/** GitHub's limit for `pulls/{n}/files`. */
+export const PR_FILES_CAP = 3000;
+/** GitHub's limit for `pulls/{n}/commits`. */
+export const PR_COMMITS_CAP = 250;
 
-export interface RepoFile {
-  path: string;
-  blobSha: string;
-  content: string;
-}
-
-export interface PutFileRequest {
-  path: string;
-  branch: string;
-  content: string;
-  message: string;
-  /** The blob this write replaces; null when the file must not exist yet. */
-  expectedBlobSha: string | null;
-}
-
-/** The title and body a squash merge records, in place of GitHub's default. */
-export interface MergeMessage {
-  subject: string;
-  body: string;
-}
-
-/** What `formatSquashMessage` reads from a PR: its text and its commits, oldest first. */
-export interface SquashSource {
-  title: string;
-  body: string;
-  commits: { subject: string; body: string }[];
-}
-
-export interface CheckRun {
+export interface IssueComment {
   id: number;
-  name: string;
-  status: string;
-  conclusion: string | null;
-  startedAt: string | null;
-  /** Null until the run completes. */
-  completedAt: string | null;
-  /** The run's `output.title`, which `gh pr checks` prints as a check's description; null when the run set none. */
-  title: string | null;
-  /** The commit the run checked; a run at any other sha says nothing about this head. */
-  headSha: string;
-  /** The GitHub App that posted the run; a required context counts only from an allowed app. */
-  appId: number | null;
-  /** The Actions run that owns this job, for `rerunFailed`; null for non-Actions checks. */
-  workflowRunId: number | null;
-  /** The pull requests GitHub ties the run to, so a run can be bound to one PR and base branch; empty for a fork's PR. */
-  pullRequests: CheckRunPr[];
-  url: string;
+  body: string;
+  /** Login of the commenter. */
+  author: string;
 }
 
-export interface CheckRunPr {
-  number: number;
-  baseRef: string;
+/**
+ * One GitHub call per method, unconditional, as GitHub itself behaves. `gh-cli.ts` and the test
+ * fake implement it; `githubPort` puts the check-then-act rules on top of either.
+ */
+export interface GitHubWire {
+  getRef(repo: RepoSlug, branch: string): Promise<string | null>;
+  createRef(repo: RepoSlug, branch: string, sha: string): Promise<void>;
+  createCommit(repo: RepoSlug, request: { message: string; tree: string; parents: string[] }): Promise<{ sha: string }>;
+  /** Moves `branch` to `sha`; GitHub refuses a move that is not a fast-forward. */
+  updateRef(repo: RepoSlug, branch: string, sha: string): Promise<void>;
+  deleteRef(repo: RepoSlug, branch: string): Promise<void>;
+  getDefaultBranch(repo: RepoSlug): Promise<string>;
+  getContent(repo: RepoSlug, path: string, ref: string): Promise<RepoFile | null>;
+  getContentBytes(repo: RepoSlug, path: string, ref: string, maxBytes?: number): Promise<Uint8Array | null>;
+  listDirectory(repo: RepoSlug, path: string, ref: string): Promise<RepoEntry[] | null>;
+  putContent(repo: RepoSlug, request: PutFileRequest): Promise<{ blobSha: string }>;
+  listPrs(repo: RepoSlug, headBranch: string): Promise<PullRequest[]>;
+  listOpenPrs(repo: RepoSlug): Promise<PullRequest[]>;
+  /** Sent with `If-None-Match: etag` when `etag` is set; GitHub charges a 304 no rate-limit point. */
+  revalidateOpenPrs(repo: RepoSlug, etag: string | null): Promise<OpenPrList>;
+  /** `GET git/ref/heads/{branch}`, sent with `If-None-Match: etag` when `etag` is set; a 404 answers a null `sha`. */
+  revalidateRef(repo: RepoSlug, branch: string, etag: string | null): Promise<RefRead>;
+  /** `GET rulesets`, sent with `If-None-Match: etag` when `etag` is set; a free-plan 403 answers `unreadable`. */
+  revalidateRulesets(repo: RepoSlug, etag: string | null): Promise<RulesetList>;
+  createPr(repo: RepoSlug, request: OpenPrRequest): Promise<PullRequest>;
+  getPr(repo: RepoSlug, number: number): Promise<PullRequest>;
+  getBranchRules(repo: RepoSlug, branch: string): Promise<RequiredChecks>;
+  /** Classic branch protection's required status checks; a branch with none (HTTP 404) reads as an empty list. */
+  getClassicRequiredChecks(repo: RepoSlug, branch: string): Promise<RequiredChecks>;
+  reviewRulesBypassable(repo: RepoSlug, branch: string): Promise<boolean>;
+  /** The branch endpoint's own `protected` flag; a missing or non-boolean answer throws, so it is never inferred. */
+  getBranchProtected(repo: RepoSlug, branch: string): Promise<boolean>;
+  /** `all` keeps a rerun's earlier attempts, which GitHub's default filter hides. */
+  listCheckRuns(repo: RepoSlug, sha: string, filter?: "all"): Promise<CheckRun[]>;
+  /** Posts a completed check run as the GitHub App the wire was given a token for; the wire refuses when it has none. */
+  createCheckRun(repo: RepoSlug, request: CreateCheckRunRequest): Promise<{ id: number }>;
+  getCommit(repo: RepoSlug, sha: string): Promise<Commit>;
+  /** Null when GitHub has no such commit (HTTP 422 or 404). */
+  resolveCommit(repo: RepoSlug, sha: string): Promise<string | null>;
+  listCommitStatuses(repo: RepoSlug, sha: string): Promise<CommitStatus[]>;
+  getWorkflowRunStatus(repo: RepoSlug, runId: number): Promise<string>;
+  getJobLog(repo: RepoSlug, jobId: number): Promise<string>;
+  getJobSteps(repo: RepoSlug, jobId: number): Promise<JobStep[]>;
+  updateBranch(repo: RepoSlug, number: number, expectedHeadSha: string): Promise<void>;
+  /** Retargets the PR onto `base`; the request carries no field but `base`. */
+  setPrBase(repo: RepoSlug, number: number, base: string): Promise<void>;
+  /** Sets the PR's state to closed; the branch is left alone. */
+  closePr(repo: RepoSlug, number: number): Promise<void>;
+  /** `message` becomes the squash commit's `commit_title` and `commit_message`; absent, GitHub writes its default. */
+  merge(repo: RepoSlug, number: number, sha: string, method: MergeMethod, message?: MergeMessage): Promise<{ sha: string }>;
+  /** GitHub's Merges API: merges `head` into `branch` server-side; 201, 204 and 409 answer, any other status throws. */
+  mergeIntoBranch(repo: RepoSlug, request: MergeIntoBranchRequest): Promise<MergeIntoBranchResult>;
+  getSquashSource(repo: RepoSlug, number: number): Promise<SquashSource>;
+  rerunFailedJobs(repo: RepoSlug, runId: number): Promise<void>;
+  /** `POST actions/jobs/{jobId}/rerun`, what `gh run rerun <run> --job <job>` sends. */
+  rerunJob(repo: RepoSlug, jobId: number): Promise<void>;
+  /** `changedFiles` is the PR's own count, so the port can tell a capped list from a complete one. */
+  listPrFiles(repo: RepoSlug, number: number): Promise<{ files: PrFile[]; changedFiles: number }>;
+  /** The PR's commit shas, oldest first; GitHub returns at most the first 250. */
+  listPrCommits(repo: RepoSlug, number: number): Promise<string[]>;
+  /** Commits on the default branch committed at or after `since`, newest first, every page. */
+  listCommits(repo: RepoSlug, since: string): Promise<LoggedCommit[]>;
+  compareFiles(repo: RepoSlug, base: string, head: string): Promise<CompareResult>;
+  /** The compare API's commits and files for `base...head`, every page. */
+  compareCommits(repo: RepoSlug, base: string, head: string): Promise<BranchCommits>;
+  /** The compare API's `status` for `base...head`; a 404 answers `missing`. */
+  compareAncestry(repo: RepoSlug, base: string, head: string): Promise<Ancestry>;
+  getAuthenticatedLogin(): Promise<string>;
+  listIssueComments(repo: RepoSlug, number: number): Promise<IssueComment[]>;
+  createComment(repo: RepoSlug, number: number, body: string): Promise<{ id: number }>;
+  listReviewComments(repo: RepoSlug, number: number): Promise<ReviewComment[]>;
+  listReviews(repo: RepoSlug, number: number): Promise<PullReview[]>;
+  /** `POST pulls/{n}/reviews` with `event: APPROVE` at `commit_id`, as the GitHub App; the wire refuses when it has no App token. */
+  createReview(repo: RepoSlug, number: number, request: CreateReviewRequest): Promise<{ id: number }>;
+  /** `PUT pulls/{n}/reviews/{id}/dismissals`, as the GitHub App; the wire refuses when it has no App token. */
+  dismissReview(repo: RepoSlug, number: number, reviewId: number, message: string): Promise<void>;
+  /** The PR's first `FORCE_PUSHES_CAP` head force-pushes, oldest first, and whether more exist. */
+  listForcePushes(repo: RepoSlug, number: number): Promise<ForcePushPage>;
+}
+
+export type SkipReason = "exists" | "unchanged" | "merged" | "closed" | "head-moved" | "base-changed" | "up-to-date" | "in-progress" | "absent" | "default-branch" | "fork-head";
+
+/** A write either happened now or was skipped because its effect is already in place (or can no longer apply). */
+export type WriteResult<T = object> = T & ({ done: true } | { done: false; skipped: SkipReason });
+
+/** Every write reads first, so repeating one after a crash is a no-op. */
+export interface GitHubPort {
+  getHeadSha(repo: RepoSlug, branch: string): Promise<string | null>;
+  ensureBranch(repo: RepoSlug, branch: string, baseSha: string): Promise<WriteResult<{ sha: string }>>;
+  /** Refuses (skips) the default branch and a head that lives in another repo. */
+  deleteRef(repo: RepoSlug, head: HeadRef): Promise<WriteResult>;
+  getFile(repo: RepoSlug, path: string, ref: string): Promise<RepoFile | null>;
+  /** `getFile` for binary content such as a PNG, through `git/blobs` past 1 MB; over `maxBytes` by reported size throws `BlobTooLargeError` before that read. */
+  fileBytes(repo: RepoSlug, path: string, ref: string, opts?: { maxBytes?: number }): Promise<Uint8Array | null>;
+  /** The files directly under directory `path` at `ref`, null when nothing is there; a file at `path`, or a listing at GitHub's 1,000-entry cap, throws. */
+  listFiles(repo: RepoSlug, path: string, ref: string): Promise<RepoEntry[] | null>;
+  putFile(repo: RepoSlug, request: PutFileRequest): Promise<WriteResult<{ blobSha: string }>>;
+  findPr(repo: RepoSlug, headBranch: string): Promise<PullRequest | null>;
+  /** List rows carry no `behind` or `mergeableState`; read one with `getPr` for those. */
+  listOpenPrs(repo: RepoSlug, headPrefix?: string): Promise<PullRequest[]>;
+  /** A conditional `listOpenPrs`: pass the `etag` of the last read, null for none. A poller that answers 304 costs no rate-limit point. */
+  revalidateOpenPrs(repo: RepoSlug, etag: string | null): Promise<OpenPrList>;
+  /** A conditional `getHeadSha`: pass the `etag` of the last read, null for none. A 304 costs no rate-limit point. */
+  revalidateRef(repo: RepoSlug, branch: string, etag: string | null): Promise<RefRead>;
+  /** Each ruleset's `updated_at` by id, conditional like `revalidateOpenPrs`; `unreadable` means unknown, never none. */
+  revalidateRulesets(repo: RepoSlug, etag: string | null): Promise<RulesetList>;
+  openPr(repo: RepoSlug, request: OpenPrRequest): Promise<WriteResult<{ pr: PullRequest }>>;
+  getPr(repo: RepoSlug, number: number): Promise<PullRequest>;
+  /** The repo's default branch as GitHub reports it now; a failed read throws. */
+  defaultBranch(repo: RepoSlug): Promise<string>;
+  /** Read from the branch's active rulesets, never hardcoded. */
+  requiredChecks(repo: RepoSlug, branch: string): Promise<RequiredChecks>;
+  /** The classic-protection counterpart of `requiredChecks`, for a branch whose rulesets require nothing. */
+  classicRequiredChecks(repo: RepoSlug, branch: string): Promise<RequiredChecks>;
+  /** True when the caller can bypass every pull_request rule on the branch that requires review, or none does; a read that fails throws. A rule that requires no review cannot be the block, so it is skipped. */
+  reviewRulesBypassable(repo: RepoSlug, branch: string): Promise<boolean>;
+  /** The branch's `protected` flag as GitHub reports it; a failed read throws. */
+  branchProtected(repo: RepoSlug, branch: string): Promise<boolean>;
+  /** Every run on `sha` from every app under GitHub's default `filter=latest`: separate workflow runs stay, which `mergeReadiness` needs, but a rerun hides its job's earlier attempts, which `checkRunAttempts` keeps (`filter=all`) for a reader of attempt order. */
+  checkRuns(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
+  checkRunAttempts(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
+  /** The latest run for each check name on `sha`. */
+  latestCheckRuns(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
+  /** Posts a completed check run under the App identity the wire was configured with; `conclusion` outside success, failure and action_required throws `GitHubInputError` before any call. */
+  createCheckRun(repo: RepoSlug, request: CreateCheckRunRequest): Promise<{ id: number }>;
+  getCommit(repo: RepoSlug, sha: string): Promise<Commit>;
+  /** Expands an abbreviated sha to the full one GitHub has; null when GitHub has no such commit, so a caller never polls a sha that cannot report. */
+  resolveCommit(repo: RepoSlug, sha: string): Promise<string | null>;
+  commitStatuses(repo: RepoSlug, sha: string): Promise<CommitStatus[]>;
+  /** The last `lines` lines of an Actions job's log. */
+  jobLogTail(repo: RepoSlug, jobId: number, lines: number): Promise<string>;
+  /** An Actions job's steps in run order: the job id is the id of its check run. */
+  jobSteps(repo: RepoSlug, jobId: number): Promise<JobStep[]>;
+  updateBranch(repo: RepoSlug, number: number, expectedHeadSha: string): Promise<WriteResult>;
+  /** Retargets an open PR onto `base`, so a stacked child can follow its landed parent; a PR already on `base` skips as `unchanged`. */
+  setPrBase(repo: RepoSlug, number: number, base: string): Promise<WriteResult>;
+  /** Closes an open PR without merging it and leaves its branch; a PR already closed or merged skips as `closed` or `merged`. */
+  closePr(repo: RepoSlug, number: number): Promise<WriteResult>;
+  /** Pushes a commit with the head's own tree onto `branch`, so CI runs again; skips as `head-moved` when the branch is not at `expectedHeadSha`. */
+  pushEmptyCommit(repo: RepoSlug, branch: string, expectedHeadSha: string, message: string): Promise<WriteResult<{ sha: string }>>;
+  /**
+   * `message` is sent as the squash commit's title and body in place of GitHub's concatenation of the PR's commits.
+   * With `expectedBase`, a PR whose base is another branch skips as `base-changed`, read before the write and before each retry.
+   */
+  merge(repo: RepoSlug, number: number, sha: string, method: MergeMethod, message?: MergeMessage, expectedBase?: string): Promise<WriteResult<{ mergeSha: string }>>;
+  /** Merges commit `head` into `branch` with no PR; repeating it after it landed answers `already-contained`, so it needs no read first. */
+  mergeIntoBranch(repo: RepoSlug, request: MergeIntoBranchRequest): Promise<MergeIntoBranchResult>;
+  getSquashSource(repo: RepoSlug, number: number): Promise<SquashSource>;
+  rerunFailed(repo: RepoSlug, runId: number): Promise<WriteResult>;
+  /** An Actions workflow run's `status`: `queued`, `in_progress`, `completed` and the like. */
+  workflowRunStatus(repo: RepoSlug, runId: number): Promise<string>;
+  /** Reruns one job (its check run id) of workflow run `runId`; a run that is not completed skips as `in-progress`, since a rerun is already under way or none is allowed yet. */
+  rerunJob(repo: RepoSlug, runId: number, jobId: number): Promise<WriteResult>;
+  /** Every changed file of the PR, all pages; `previousPath` is set on a rename. Throws `FileListTruncatedError` rather than return a short list. */
+  listPrFiles(repo: RepoSlug, number: number): Promise<PrFile[]>;
+  /** The PR's commit shas, oldest first. GitHub stops at the first 250, so a list whose last sha is not the head is short. */
+  listPrCommits(repo: RepoSlug, number: number): Promise<string[]>;
+  /** Commits on the default branch committed at or after `since`, newest first; one paged read covers every PR merged since. */
+  listDefaultBranchCommits(repo: RepoSlug, since: string): Promise<LoggedCommit[]>;
+  /** The merge base of `base` and `head`, and the paths changed since it; check `truncated` before trusting the list. */
+  compareFiles(repo: RepoSlug, base: string, head: string): Promise<CompareResult>;
+  /** The commits on `head` past its merge base with `base`, oldest first, with author and committer logins, and the paths they change; needs no PR. */
+  listBranchCommits(repo: RepoSlug, base: string, head: string): Promise<BranchCommits>;
+  /** The login this port writes as: `GitHubPortOptions.login` when set, else the authenticated user, read once. */
+  actorLogin(): Promise<string>;
+  /** Whether `head` is ahead of, behind, identical to or diverged from `base`; `missing` when GitHub has not got one of them (HTTP 404). Any other failure throws. */
+  compareAncestry(repo: RepoSlug, base: string, head: string): Promise<Ancestry>;
+  /**
+   * Lists the PR's comments first; a comment by the authenticated user with `marker` on a line of its own skips as
+   * `exists`. The body should carry the marker. Two concurrent callers can both post; there is no lock.
+   */
+  upsertComment(repo: RepoSlug, number: number, marker: string, body: string): Promise<WriteResult<{ id: number }>>;
+  /** Every inline review comment on the PR, resolved ones included; filter on `resolved`. */
+  listReviewComments(repo: RepoSlug, number: number): Promise<ReviewComment[]>;
+  /** Every review on the PR, any author and state; a caller that acts on its own reviews filters on `login` or `userType` and its own marker in `body`. */
+  listReviews(repo: RepoSlug, number: number): Promise<PullReview[]>;
+  /**
+   * Approves the PR at `commitId` under the App identity the wire was configured with, so the approval names the head it
+   * covers. It posts unconditionally: a caller that may replay lists reviews first. A `commitId` that is not a full sha throws `GitHubInputError` before any call.
+   */
+  createReview(repo: RepoSlug, number: number, request: CreateReviewRequest): Promise<{ id: number }>;
+  /** Dismisses review `reviewId` under the App identity; GitHub answers 422 for a review that is not an approval or a change request. An empty message throws `GitHubInputError` before any call. */
+  dismissReview(repo: RepoSlug, number: number, reviewId: number, message: string): Promise<void>;
+  /** The PR's head force-pushes, oldest first, each with the head it replaced and the new one. Throws `ForcePushesTruncated` rather than return a short list. */
+  listForcePushes(repo: RepoSlug, number: number): Promise<ForcePush[]>;
+}
+
+export interface GitHubPortOptions {
+  /**
+   * The login `upsertComment` owns comments as, for example `my-app[bot]`. Set it under a GitHub App installation
+   * token: `GET /user` answers 403 there, and `GET /app` needs an App JWT the installation token is not.
+   */
+  login?: string;
+  /** Waits between retries of a comment post, a merge or a rerun; tests inject one that does not wait. */
+  sleep?: (ms: number) => Promise<void>;
 }

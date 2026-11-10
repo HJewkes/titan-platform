@@ -1,5 +1,5 @@
 import { CHECK_CONCLUSIONS, type CheckConclusion } from "./check-run-create.js";
-import type { MergeMethod } from "./port.js";
+import type { MergeMethod } from "./port-types.js";
 
 /** A value that would change which GitHub resource a `gh api` path names; thrown before any call. */
 export class GitHubInputError extends Error {

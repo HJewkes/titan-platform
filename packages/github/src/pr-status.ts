@@ -1,6 +1,6 @@
 import { latestPerName } from "./checks.js";
 import { loadRequiredContexts } from "./ci-verdict.js";
-import type { CheckRun, GitHubPort, PullRequest, RepoSlug, RequiredChecks } from "./port.js";
+import type { CheckRun, GitHubPort, PullRequest, RepoSlug, RequiredChecks } from "./port-types.js";
 import { GITHUB_ACTIONS_APP_ID, mergeReadiness, type MergeBlocker } from "./readiness.js";
 
 interface RequiredCheckState {

@@ -1,6 +1,6 @@
 import { writeWithReadBack, type Sleep } from "./write-read-back.js";
 import type { MergeMessage } from "./port-types.js";
-import type { GitHubWire, MergeMethod, RepoSlug, WriteResult } from "./port.js";
+import type { GitHubWire, MergeMethod, RepoSlug, WriteResult } from "./port-types.js";
 
 type MergeResult = WriteResult<{ mergeSha: string }>;
 

@@ -1,4 +1,4 @@
-import type { CheckRun } from "./port.js";
+import type { CheckRun } from "./port-types.js";
 
 /**
  * Conclusions that are not red: `isPassing`. Skipped and neutral did not fail but did not run what they cover, so only
