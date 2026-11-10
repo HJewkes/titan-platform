@@ -81,6 +81,64 @@ describe('mcp restart', () => {
     await run();
 
     const args = vi.mocked(spawn).mock.calls[0][1] as string[];
-    expect(args).toEqual(expect.arrayContaining(['mcp', 'serve', '--port', '8123']));
+    expect(args).toEqual(expect.arrayContaining(['8123']));
+  });
+
+  describe('when stopping the current daemon would kill the caller (TP-83)', () => {
+    const OLD_PID = 424_242;
+
+    /** The old daemon is "alive" until SIGTERM, which ends this very call as it does through MCP. */
+    function stubCallerKilledByStop(): void {
+      let alive = true;
+      vi.spyOn(process, 'kill').mockImplementation((pid: number, sig?: string | number) => {
+        if (pid !== OLD_PID) return true;
+        if (sig === 0) {
+          if (!alive) throw Object.assign(new Error('gone'), { code: 'ESRCH' });
+          return true;
+        }
+        alive = false;
+        throw new Error('caller terminated with the daemon');
+      });
+    }
+
+    it('spawns the successor before it stops the old daemon', async () => {
+      await writePidFile(OLD_PID, { port: 8123, version: '0.1.0', started: 'x' });
+      stubCallerKilledByStop();
+      stubHealth(null);
+
+      await run().catch(() => undefined);
+
+      expect(vi.mocked(spawn)).toHaveBeenCalledOnce();
+    });
+
+    it('hands the successor the old pid to wait for and the port to bind', async () => {
+      await writePidFile(OLD_PID, { port: 8123, version: '0.1.0', started: 'x' });
+      stubCallerKilledByStop();
+      stubHealth(null);
+
+      await run().catch(() => undefined);
+
+      expect(vi.mocked(spawn).mock.calls[0]?.[1]).toEqual(
+        expect.arrayContaining([String(OLD_PID), '8123']),
+      );
+    });
+  });
+
+  it('tells the caller to start the daemon manually when the successor never listens', async () => {
+    vi.useFakeTimers();
+    await writePidFile(DEAD_PID, { port: 8123, version: '0.1.0', started: 'x' });
+    stubHealth(null);
+
+    const state = { settled: false };
+    const outcome = run().then(
+      () => undefined,
+      (err: Error) => err,
+    ).finally(() => {
+      state.settled = true;
+    });
+    // File reads inside run() are real I/O, so the clock must keep advancing until it settles.
+    while (!state.settled) await vi.advanceTimersByTimeAsync(1_000);
+
+    expect((await outcome)?.message).toMatch(/mcp serve --detach/);
   });
 });
