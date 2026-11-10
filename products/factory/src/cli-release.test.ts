@@ -80,6 +80,19 @@ describe("release bump-consumers verb", () => {
     expect(out.join("")).not.toContain(`${CONSUMER_B}: open`);
   });
 
+  it("dry-run labels a bump PR found open on the planned branch as open", async () => {
+    const world = consumerBumpWorld();
+    const open = world.fakes.get(CONSUMER_B)!.addPr({ headSha: fakeSha("raced"), headRef: branchB });
+    const raced: GitHubPort = { ...world.port, listOpenPrs: async () => [] };
+    const { out, io, db } = capture();
+
+    const code = await runCli(["--db", db, "release", "bump-consumers", "--dry-run"], io, depsOver(world, raced));
+
+    expect(code).toBe(EXIT.OK);
+    expect(out.join("")).toContain(`skip ${CONSUMER_B}: open bump PR #${open.number}\n`);
+    expect(out.join("")).not.toContain(`${CONSUMER_B}: open ${branchB}`);
+  });
+
   it("exits EXIT.UNAVAILABLE when any repo notes an error and EXIT.OK otherwise", async () => {
     const opened = consumerBumpWorld();
 
