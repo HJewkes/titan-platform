@@ -2,6 +2,7 @@ import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'n
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
 import { startSessionIndexWatch } from './session-index-watch.js';
 import { withRefreshLock } from '../session-index/refresh-lock.js';
@@ -12,12 +13,12 @@ import type * as RefreshModule from '../session-index/refresh.js';
 import type { RefreshOptions, RefreshSummary } from '../session-index/refresh.js';
 import { RefreshScheduler } from '../session-index/scheduler.js';
 import { createDirtySet } from '../session-index/dirty-set.js';
-import { defaultGraphPath, type WorkspaceGraph } from '../session-index/graph.js';
+import { defaultGraphPath, openGraph, type WorkspaceGraph } from '../session-index/graph.js';
 import { rebuildGraph } from '../session-index/rebuild.js';
 import { graphTotals } from '../session-index/rebuild-carry.js';
 
 const probe = vi.hoisted(() => ({
-  reads: [] as { swapUsedPct: number; pressureLevel: number }[],
+  reads: new Array<{ swapUsedPct: number; pressureLevel: number }>(),
 }));
 
 // The real probe would run sysctl; each read pops a scripted sample, then the machine is calm.
@@ -32,9 +33,58 @@ vi.mock('../session-index/pr-outcomes.js', async (importOriginal) => ({
   ghPrResolver: () => async () => new Map(),
 }));
 
+const watchedRoot = z.object({ root: z.string() });
+const passLine = z.object({
+  bytesRead: z.number(),
+  rowsWritten: z.number(),
+  dbBytes: z.number(),
+});
+
 const log = { info: vi.fn(), warn: vi.fn() };
 
 let home: string;
+const opened: WorkspaceGraph[] = [];
+
+function refreshSummary(overrides: Partial<RefreshSummary>): RefreshSummary {
+  return {
+    kind: 'full',
+    startedAt: '2026-01-01T00:00:00.000Z',
+    durationMs: 0,
+    transcripts: 0,
+    scanned: 0,
+    filesOpened: 0,
+    bytesRead: 0,
+    rowsWritten: 0,
+    dbBytes: 0,
+    phases: {},
+    indexed: 0,
+    rewound: 0,
+    unchanged: 0,
+    quarantined: 0,
+    missing: 0,
+    reconciledMissing: 0,
+    facetsBackfilled: 0,
+    facetBacklog: 0,
+    episodesWritten: 0,
+    episodeBacklog: null,
+    factsAdded: 0,
+    turnsRolledUp: 0,
+    tasksRequested: 0,
+    tasksApplied: 0,
+    prsPolled: 0,
+    workspace: null,
+    preserved: { restored: 0, merged: 0, skipped: 0 },
+    errors: [],
+    ...overrides,
+  };
+}
+
+// The runner hands the graph to the mocked refresh untouched, so any real graph will do.
+async function openUnusedGraph(): Promise<WorkspaceGraph> {
+  const graph = openGraph(path.join(home, 'unused-graph.sqlite3'));
+  opened.push(graph);
+  return graph;
+}
 
 beforeEach(() => {
   vi.restoreAllMocks();
@@ -46,6 +96,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  for (const graph of opened.splice(0)) graph.db.close();
   vi.unstubAllEnvs();
   delete process.env.AW_INDEX_WATCH;
   rmSync(home, { recursive: true, force: true });
@@ -123,7 +174,7 @@ describe('startSessionIndexWatch', () => {
 
     const watched = log.info.mock.calls
       .filter(([, msg]) => msg === 'watching transcripts for session indexing')
-      .map(([obj]) => (obj as { root: string }).root);
+      .map(([obj]) => watchedRoot.parse(obj).root);
     expect(watched).toEqual(roots);
   });
 
@@ -146,11 +197,13 @@ describe('startSessionIndexWatch', () => {
         sweeps.push(options.episodeSweep);
         const outcome = outcomes[sweeps.length - 1] ?? null;
         if (outcome instanceof Error) return Promise.reject(outcome);
-        return Promise.resolve({
-          episodeBacklog: outcome,
-          errors: [],
-          phases: {},
-        } as unknown as RefreshSummary);
+        return Promise.resolve(
+          refreshSummary({
+            episodeBacklog: outcome,
+            errors: [],
+            phases: {},
+          }),
+        );
       },
     }));
     vi.stubEnv('AW_INDEX_POLL_MS', '1');
@@ -185,17 +238,19 @@ describe('startSessionIndexWatch', () => {
       ...(await importOriginal<typeof RefreshModule>()),
       runRefresh: (options: RefreshOptions) => {
         visited.push((options.transcripts ?? []).map((t) => t.absolutePath));
-        return Promise.resolve({
-          kind: 'delta',
-          errors: [],
-          phases: {},
-        } as unknown as RefreshSummary);
+        return Promise.resolve(
+          refreshSummary({
+            kind: 'delta',
+            errors: [],
+            phases: {},
+          }),
+        );
       },
     }));
     const { passRunner } = await import('./session-index-watch.js');
     const dirty = createDirtySet();
     dirty.add(root, path.join('demo', 't1.jsonl'));
-    const runner = passRunner(async () => ({}) as WorkspaceGraph, dirty, log, new AbortController().signal);
+    const runner = passRunner(openUnusedGraph, dirty, log, new AbortController().signal);
 
     let letGo = (): void => {};
     let entered = (): void => {};
@@ -289,16 +344,18 @@ describe('startSessionIndexWatch', () => {
       ...(await importOriginal<typeof RefreshModule>()),
       runRefresh: (options: RefreshOptions) => {
         options.onIndexed?.();
-        return Promise.resolve({
-          kind: 'delta',
-          errors: [],
-          phases: {},
-        } as unknown as RefreshSummary);
+        return Promise.resolve(
+          refreshSummary({
+            kind: 'delta',
+            errors: [],
+            phases: {},
+          }),
+        );
       },
     }));
     const { passRunner } = await import('./session-index-watch.js');
     const dirty = createDirtySet();
-    const runner = passRunner(async () => ({}) as WorkspaceGraph, dirty, log, new AbortController().signal);
+    const runner = passRunner(openUnusedGraph, dirty, log, new AbortController().signal);
     const onIndexed = vi.fn();
 
     await runner.run('delta', onIndexed);
@@ -319,7 +376,7 @@ describe('startSessionIndexWatch', () => {
     });
     await inside;
     const abort = new AbortController();
-    const runner = passRunner(async () => ({}) as WorkspaceGraph, createDirtySet(), log, abort.signal);
+    const runner = passRunner(openUnusedGraph, createDirtySet(), log, abort.signal);
     const waiting = vi.fn();
     const scheduler = new RefreshScheduler(
       (kind, onIndexed, onLockWait) =>
@@ -390,7 +447,7 @@ describe('startSessionIndexWatch', () => {
         errors: [],
         errorCount: 0,
       });
-      const line = passLines()[0] as { bytesRead: number; rowsWritten: number; dbBytes: number };
+      const line = passLine.parse(passLines()[0]);
       expect(line.bytesRead).toBeGreaterThan(0);
       expect(line.rowsWritten).toBeGreaterThan(0);
       expect(line.dbBytes).toBeGreaterThan(0);
@@ -401,12 +458,14 @@ describe('startSessionIndexWatch', () => {
       vi.doMock('../session-index/refresh.js', async (importOriginal) => ({
         ...(await importOriginal<typeof RefreshModule>()),
         runRefresh: () =>
-          Promise.resolve({
-            kind: 'delta',
-            episodeBacklog: null,
-            errors: [],
-            phases: {},
-          } as unknown as RefreshSummary),
+          Promise.resolve(
+            refreshSummary({
+              kind: 'delta',
+              episodeBacklog: null,
+              errors: [],
+              phases: {},
+            }),
+          ),
       }));
       const { startSessionIndexWatch: start } =
         await import('./session-index-watch.js');
@@ -431,7 +490,7 @@ describe('startSessionIndexWatch', () => {
       await vi.waitFor(() => expect(passLines()).toHaveLength(1));
       await watcher!.close();
 
-      const messages = log.info.mock.calls.map(([, msg]) => msg as string);
+      const messages = log.info.mock.calls.map(([, msg]) => String(msg));
       expect(messages.filter((msg) => msg.startsWith('session index paused: '))).toEqual([
         'session index paused: swap 80% used (limit 60%)',
       ]);
