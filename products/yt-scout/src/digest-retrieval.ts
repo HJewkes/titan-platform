@@ -52,12 +52,12 @@ async function priorDigests(config: CliRetrieverConfig, card: ScoreCard): Promis
 }
 
 const SearchOutputSchema = z.object({
-  hits: z.array(z.object({ ref: z.string().nullish(), class: z.string().nullish(), title: z.string().nullish() })).default([]),
+  data: z.object({ hits: z.array(z.object({ ref: z.string().nullish(), class: z.string().nullish(), title: z.string().nullish() })).default([]) }),
 });
 
 function parseTasks(stdout: string): TaskRef[] {
   try {
-    const { hits } = SearchOutputSchema.parse(JSON.parse(stdout));
+    const { hits } = SearchOutputSchema.parse(JSON.parse(stdout)).data;
     return hits
       .filter((h) => h.class === "tasks" && h.ref && h.title)
       .map((h) => ({ id: h.ref!.replace(/^task:/, ""), title: h.title! }));
@@ -69,7 +69,7 @@ function parseTasks(stdout: string): TaskRef[] {
 async function existingTasks(config: CliRetrieverConfig, card: ScoreCard): Promise<TaskRef[]> {
   const words = [...new Set(card.techniques.map((t) => keyword(t.what)).filter((w): w is string => w !== undefined))];
   if (words.length === 0) return [];
-  const out = await quietly(() => config.exec(config.activeWorkBin ?? "active-work", ["search", words.join(" "), "--limit", "20"]));
+  const out = await quietly(() => config.exec(config.activeWorkBin ?? "active-work", ["search", words.join(" "), "--limit", "20", "--json"]));
   return parseTasks(out).slice(0, TOP);
 }
 

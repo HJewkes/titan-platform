@@ -52,8 +52,18 @@ function digestsWrittenOn(rowsDir: string, day: string): number {
   return readFileSync(file, "utf8")
     .split("\n")
     .filter(Boolean)
-    .map((line) => DigestRowSchema.parse(JSON.parse(line)))
-    .filter((r) => r.step === "digest" && r.outcome === "ok" && r.started_at.slice(0, 10) === day).length;
+    .map(parseRow)
+    .filter((r) => r?.step === "digest" && r.outcome === "ok" && r.started_at.slice(0, 10) === day).length;
+}
+
+/** A torn or foreign line must not take the cap check down with it: it is simply not a digest row. */
+function parseRow(line: string): z.infer<typeof DigestRowSchema> | undefined {
+  try {
+    const parsed = DigestRowSchema.safeParse(JSON.parse(line));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function rowFor(deps: DigestDeps, input: DigestInput, prompt: DigestPrompt | undefined, startedAt: Date, p: Partial<StepRow>): StepRow {
