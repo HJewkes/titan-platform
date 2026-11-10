@@ -50,6 +50,18 @@ describe("the portfolio", () => {
     });
   });
 
+  it("dates newest activity from the whole workspace, so a file outside every record class still counts", async () => {
+    const strayMtime = "2031-04-01T00:00:00.000Z";
+    daemon = await startFakeDaemon({ ok: true }, (command, args) => {
+      const answer = fixtureAnswer(command, args) as { initiatives?: Array<{ slug: string; total: { newest_mtime: string | null } }> };
+      if (command !== "inventory") return answer;
+      const initiatives = answer.initiatives!.map((entry) => (entry.slug === "orbit-relay" ? { ...entry, total: { ...entry.total, newest_mtime: strayMtime } } : entry));
+      return { ...answer, initiatives };
+    });
+    const { initiatives } = await readPortfolio(activeWorkClient(daemon.port));
+    expect(initiatives.find((row) => row.slug === "orbit-relay")?.newestActivity).toBe(strayMtime);
+  });
+
   it("carries each brief's task prefix, and none for a brief that names none", async () => {
     const { initiatives } = await readPortfolio(await fakeActiveWork());
     expect(Object.fromEntries(initiatives.map((row) => [row.slug, row.taskPrefix]))).toEqual({
