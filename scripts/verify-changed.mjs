@@ -169,7 +169,7 @@ const pnpmRun = (script) => ({ label: script, cmd: "pnpm", args: ["run", script]
 // errors-only keeps other worktrees' cache replays out of the output, so a real failure is not truncated away.
 const buildStep = () => ({ label: "build", cmd: "pnpm", args: ["run", "build", "--output-logs=errors-only"], captureOutput: true });
 
-const TURBO_FAILED_TASK = /^(?:\s*(\S+#\S+?):\s+command .* exited \(\d+\)|\s*Failed:\s+(\S+#\S+))\s*$/;
+const TURBO_FAILED_TASK = /^(?:\s*(\S+#\S+?):\s+(?:ERROR\s+)?command .* exited \(\d+\)|\s*Failed:\s+(\S+#\S+))\s*$/;
 
 /** The `<package>#<task>` names turbo reports as failed, in first-seen order and without repeats. */
 export function failedTurboTasks(output) {

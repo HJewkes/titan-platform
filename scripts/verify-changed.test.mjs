@@ -231,8 +231,8 @@ describe("build step output", () => {
   const workspace = [{ dir: "packages/a/", name: "a", deps: [] }];
   const transcript = [
     "@scope/lib#build: cache hit, replaying logs",
-    "@scope/lib#build: command (/repo/packages/lib) /bin/pnpm run build exited (2)",
-    "@scope/lib#build: command (/repo/packages/lib) /bin/pnpm run build exited (2)",
+    "@scope/lib#build:  ERROR  command (/repo/packages/lib) /bin/pnpm run build exited (2)",
+    "@scope/other#build: command (/repo/packages/other) /bin/pnpm run build exited (2)",
     " Tasks:    1 successful, 2 total",
     "Failed:    @scope/lib#build",
     " ERROR  run failed: command  exited (2)",
@@ -245,8 +245,8 @@ describe("build step output", () => {
 
   it("a failed build names the failing package and task in the summary", () => {
     const build = planCommands({ base: "b", changed: ["packages/a/src/x.ts"], workspace }).find((s) => s.label === "build");
-    expect(failedTurboTasks(transcript)).toEqual(["@scope/lib#build"]);
-    expect(describeOutcome(build, 1, null, transcript).message).toBe("build failed (exit status 1): @scope/lib#build");
+    expect(failedTurboTasks(transcript)).toEqual(["@scope/lib#build", "@scope/other#build"]);
+    expect(describeOutcome(build, 1, null, transcript).message).toBe("build failed (exit status 1): @scope/lib#build, @scope/other#build");
   });
 
   it("a failed build with no parsable task falls back to the exit status", () => {
