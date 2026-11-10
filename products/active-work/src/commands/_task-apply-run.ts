@@ -17,7 +17,8 @@ import { nowIso } from '../utils/today.js';
 import { readYaml, writeYaml } from '../utils/yaml-io.js';
 import { promotionProblem } from './_draft-promotion.js';
 import type { CommandContext } from '../registry/index.js';
-import { patchChange, type PatchEdit } from './task-edit.js';
+import { patchChange } from './task-edit.js';
+import type { PatchEdit } from './_task-edit-parse.js';
 import { isEdgeOp, type ApplyOp, type EdgeOp, type PlanEntry } from './_task-apply-plan.js';
 
 type ApplyOutcome = 'applied' | 'unchanged' | 'missing' | 'failed';
