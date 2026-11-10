@@ -12,7 +12,7 @@ const SHAPES: ReadonlyArray<{ replacement: string; pattern: RegExp }> = [
   { replacement: "event", pattern: new RegExp(`^(?:\\d{4}-\\d{2}-\\d{2}\\b|${MONTH}\\.? \\d{1,2}\\b)`) },
 ];
 
-export interface StandIn {
+interface StandIn {
   target: string;
   replacement: string;
 }
