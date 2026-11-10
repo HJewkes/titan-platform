@@ -983,11 +983,13 @@ interface TtlRequestRow {
     ts: string;
     cacheReadTokens: number;
     cacheWrite1hTokens: number;
+    cacheWrite5mTokens: number;
     /** Milliseconds since the session's previous request; null for its first. */
     gapMs: number | null;
 }
 declare const bucketSchema: z.ZodObject<{
     fiveMinuteLoses: z.ZodBoolean;
+    noCacheCheaper: z.ZodBoolean;
     sessions: z.ZodNumber;
     requests: z.ZodNumber;
     write1hTokens: z.ZodNumber;
@@ -997,6 +999,7 @@ declare const bucketSchema: z.ZodObject<{
     rebuildCostUsd: z.ZodNumber;
     netSavingUsd: z.ZodNumber;
     netPerSessionUsd: z.ZodNumber;
+    noCacheNetUsd: z.ZodNumber;
     key: z.ZodString;
 }, z.core.$strip>;
 declare const cacheTtlWhatIfSchema: z.ZodObject<{
@@ -1016,10 +1019,12 @@ declare const cacheTtlWhatIfSchema: z.ZodObject<{
         rebuildCostUsd: z.ZodNumber;
         netSavingUsd: z.ZodNumber;
         netPerSessionUsd: z.ZodNumber;
+        noCacheNetUsd: z.ZodNumber;
     }, z.core.$strip>;
     unpricedRequests: z.ZodNumber;
     byRole: z.ZodArray<z.ZodObject<{
         fiveMinuteLoses: z.ZodBoolean;
+        noCacheCheaper: z.ZodBoolean;
         sessions: z.ZodNumber;
         requests: z.ZodNumber;
         write1hTokens: z.ZodNumber;
@@ -1029,10 +1034,12 @@ declare const cacheTtlWhatIfSchema: z.ZodObject<{
         rebuildCostUsd: z.ZodNumber;
         netSavingUsd: z.ZodNumber;
         netPerSessionUsd: z.ZodNumber;
+        noCacheNetUsd: z.ZodNumber;
         key: z.ZodString;
     }, z.core.$strip>>;
     byProfile: z.ZodArray<z.ZodObject<{
         fiveMinuteLoses: z.ZodBoolean;
+        noCacheCheaper: z.ZodBoolean;
         sessions: z.ZodNumber;
         requests: z.ZodNumber;
         write1hTokens: z.ZodNumber;
@@ -1042,6 +1049,7 @@ declare const cacheTtlWhatIfSchema: z.ZodObject<{
         rebuildCostUsd: z.ZodNumber;
         netSavingUsd: z.ZodNumber;
         netPerSessionUsd: z.ZodNumber;
+        noCacheNetUsd: z.ZodNumber;
         key: z.ZodString;
     }, z.core.$strip>>;
     lossRoles: z.ZodArray<z.ZodString>;
