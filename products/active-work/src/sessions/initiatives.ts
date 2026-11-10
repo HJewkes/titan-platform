@@ -5,19 +5,32 @@ import { BriefFrontmatterSchema } from '../schemas/brief.js';
 import { expandTilde } from '../utils/paths.js';
 import { readRegisteredWorktrees } from '../utils/registered-worktrees.js';
 import { readMarkdownWithSchema } from '../utils/markdown-schema.js';
-
-/** List initiative slugs (immediate, non-dotfile subdirectories of the root). */
+/**
+ * List initiative slugs (immediate, non-dotfile subdirectories of the root).
+ * A missing root is empty; any other read error (EACCES, ENOTDIR) propagates so
+ * a lint or scan over an unreadable root cannot pass clean.
+ */
 export async function listInitiativeSlugs(activeRoot: string): Promise<string[]> {
   let entries: Dirent[];
   try {
     entries = await fs.readdir(activeRoot, { withFileTypes: true });
-  } catch {
-    return [];
+  } catch (err) {
+    if (err instanceof Error && 'code' in err && err.code === 'ENOENT') return [];
+    throw err;
   }
   return entries
     .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
     .map((e) => e.name)
     .sort();
+}
+
+/** For callers that must degrade to "no initiatives" rather than fail (launch, lookups, doctor, boards). */
+export async function listInitiativeSlugsOrEmpty(activeRoot: string): Promise<string[]> {
+  try {
+    return await listInitiativeSlugs(activeRoot);
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -92,7 +105,7 @@ export async function resolveSlugFromCwd(
   cwd: string,
 ): Promise<CwdMatch | null> {
   const resolvedCwd = await canonicalize(cwd);
-  const slugs = await listInitiativeSlugs(activeRoot);
+  const slugs = await listInitiativeSlugsOrEmpty(activeRoot);
   let best: { slug: string; worktreePath: string; depth: number } | null = null;
   let tiedAtBest = false;
 

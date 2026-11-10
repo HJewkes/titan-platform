@@ -10,7 +10,7 @@ import {
   type SourceRead,
   type SourceWatermarks,
 } from '@titan-design/decider';
-import { listInitiativeSlugs } from '../sessions/initiatives.js';
+import { listInitiativeSlugsOrEmpty } from '../sessions/initiatives.js';
 
 /**
  * Precedents from agent-chat's human queue: each `answer` event paired with
@@ -133,7 +133,7 @@ async function queueCandidates(
   options: QueueSourceOptions,
   answers: AnswerRow[],
 ): Promise<SourceCandidate[]> {
-  const slugs = await listInitiativeSlugs(options.activeRoot);
+  const slugs = await listInitiativeSlugsOrEmpty(options.activeRoot);
   const candidates: SourceCandidate[] = [];
   for (const row of answers) {
     const initiative = await resolveAsk(options, slugs, row);

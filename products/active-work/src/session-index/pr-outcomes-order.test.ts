@@ -58,13 +58,13 @@ describe('PR outcome batch order', () => {
   });
 
   it('orders within a band by checked-at, then pr_ref', async () => {
-    addPr(11, 'open', '2021-01-01T00:00:00Z', '[]');
-    addPr(10, 'open', '2021-01-01T00:00:00Z', '[]');
     addPr(12, 'open', '2020-01-01T00:00:00Z', '[]');
+    addPr(10, 'open', '2021-01-01T00:00:00Z', '[]');
+    addPr(11, 'open', '2021-01-01T00:00:00Z', '[]');
     const gh = recordingGh();
     const now = () => Date.parse('2026-01-01T00:00:00Z');
 
-    await ghPrResolver(graph, { run: gh, now })([10, 11, 12].map(key));
+    await ghPrResolver(graph, { run: gh, now })([11, 10, 12].map(key));
 
     expect(gh.asked).toEqual([12, 10, 11]);
   });
