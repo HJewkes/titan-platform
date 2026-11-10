@@ -126,6 +126,14 @@ async function openBumpOf(services: Pick<ShepherdServices, "port">, repo: RepoSl
   return (await services.port.listOpenPrs(repo, BUMP_BRANCH_PREFIX)).find((pr) => headInRepo(pr, repo));
 }
 
+/** Classifies the PR on the planned branch: a PR opened after the open-PR list was read is still open, not closed. */
+async function existingBumpOf(port: Pick<GitHubPort, "findPr">, bump: PlannedBump): Promise<{ pr: number; skipped: "open" | "closed" } | undefined> {
+  const found = await port.findPr(bump.repo, bump.branch);
+  if (!found) return undefined;
+  if (!headInRepo(found, bump.repo)) throw new Error(`${bump.repo} PR #${found.number} from a fork holds ${bump.branch}`);
+  return { pr: found.number, skipped: found.state === "open" ? "open" : "closed" };
+}
+
 /** A consumer the sweep would leave alone because its bump PR already exists. */
 interface SkippedBump {
   repo: RepoSlug;
@@ -152,9 +160,8 @@ export async function previewConsumerBumps(services: Pick<ShepherdServices, "por
   const notes = [...errors, ...planned.notes];
   for (const bump of planned.bumps) {
     try {
-      const closed = await services.port.findPr(bump.repo, bump.branch);
-      if (closed && !headInRepo(closed, bump.repo)) throw new Error(`${bump.repo} PR #${closed.number} from a fork holds ${bump.branch}`);
-      if (closed) skips.push({ repo: bump.repo, pr: closed.number, skipped: "closed" });
+      const existing = await existingBumpOf(services.port, bump);
+      if (existing) skips.push({ repo: bump.repo, ...existing });
       else bumps.push(bump);
     } catch (error) {
       notes.push({ repo: bump.repo, error: failureOf(error) });
@@ -165,9 +172,9 @@ export async function previewConsumerBumps(services: Pick<ShepherdServices, "por
 
 async function bumpOne(host: FactoryHost, services: ShepherdServices, regen: LockfileRegen, bump: PlannedBump): Promise<ConsumerBumpSweepNote> {
   const { repo } = bump;
-  const closed = await services.port.findPr(repo, bump.branch);
-  if (closed && !headInRepo(closed, repo)) throw new Error(`${repo} PR #${closed.number} from a fork holds ${bump.branch}`);
-  if (closed) return { repo, pr: closed.number, skipped: "closed" };
+  const existing = await existingBumpOf(services.port, bump);
+  if (existing?.skipped === "open") return { repo, ...existing, ...(await registerOnce(host, services, repo, existing.pr)) };
+  if (existing) return { repo, ...existing };
   const changed = await regenerate(regen, bump);
   const pr = await openBump(services.port, bump, changed);
   return { repo, pr: pr.number, ...(await registerOnce(host, services, repo, pr.number)) };
