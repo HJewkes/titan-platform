@@ -137,6 +137,7 @@ function exec(plan: LaunchPlan, options: RunAgentOptions): void {
     label,
     agent: plan.agentId,
     interactive: plan.stdin === undefined,
+    shellPassesHangup: plan.stdin === undefined && plan.surface.startsWith("iterm"),
   });
   try {
     options.onSpawn?.(child);

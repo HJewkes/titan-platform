@@ -116,10 +116,10 @@ function writeHupCountingChild(record: string): void {
 }
 
 /** Starts the launcher, sends it a lone SIGHUP, then SIGTERM; resolves with how many SIGHUPs the child saw. */
-async function hupsSeenByChild(stdin?: string): Promise<number> {
+async function hupsSeenByChild(surface: LaunchPlan["surface"], stdin?: string): Promise<number> {
   const record = path.join(stateDir, "hups.txt");
   writeHupCountingChild(record);
-  writePlan({}, stdin, stdin === undefined ? { surface: "tmux-window" } : {});
+  writePlan({}, stdin, { surface });
   const launcher = spawn(process.execPath, [BIN, planFile()], { env: { PATH: MINIMAL_PATH }, stdio: ["ignore", "pipe", "ignore"] });
   const closed = new Promise<void>(resolve => launcher.on("close", () => resolve()));
   await new Promise<void>(resolve => {
@@ -137,12 +137,16 @@ async function hupsSeenByChild(stdin?: string): Promise<number> {
 }
 
 describe("the launcher's SIGHUP handling", () => {
-  it("does not forward SIGHUP to an interactive child that already gets it from its process group", async () => {
-    expect(await hupsSeenByChild()).toBe(0);
+  it("does not forward SIGHUP on an iTerm surface, where the zsh in front passes it to the child's group", async () => {
+    expect(await hupsSeenByChild("iterm-pane")).toBe(0);
+  });
+
+  it("forwards SIGHUP on a tmux surface, where the launcher is the session leader and nothing else signals the child", async () => {
+    expect(await hupsSeenByChild("tmux-window")).toBe(1);
   });
 
   it("forwards SIGHUP to a headless child, which has no terminal group to deliver it", async () => {
-    expect(await hupsSeenByChild("the brief")).toBe(1);
+    expect(await hupsSeenByChild("headless", "the brief")).toBe(1);
   });
 });
 
