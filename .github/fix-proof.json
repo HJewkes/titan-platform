@@ -12,7 +12,8 @@
     "**/testdata/**",
     "**/*.test-helpers.ts",
     "**/*.fixture.ts",
-    "**/eslint-suppressions*.json"
+    "**/eslint-suppressions*.json",
+    "**/tsconfig.typecheck.json"
   ],
   "runtime": [
     "packages/agent-protocol/fixtures/**",

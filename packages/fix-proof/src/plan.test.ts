@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { planFixProof, testOnlyOf, testOnlyReading, type FixProofPlan, type PlanInput } from "./plan.js";
 
@@ -262,5 +263,36 @@ describe("source and mutation buckets", () => {
     const result = planned("M\tREADME.md", "M\tvitest.config.ts", "A\t.changeset/deep/x.md", "A\t.changeset/config.json");
 
     expect(result.source).toEqual([".changeset/config.json", ".changeset/deep/x.md", "README.md", "vitest.config.ts"]);
+  });
+});
+
+describe("the repo's own fix-proof config and a typecheck tsconfig", () => {
+  const realConfig = readFileSync(new URL("../../../.github/fix-proof.json", import.meta.url), "utf8");
+  const planned = (...lines: string[]) => plan({ nameStatus: diff(...lines), baseConfig: realConfig });
+
+  it("a diff of a test and a tsconfig.typecheck.json edit plans test-only under the repo config", () => {
+    const result = planned("M\tpackages/a/src/x.test.ts", "M\tpackages/a/tsconfig.typecheck.json");
+
+    expect(result.carried).toEqual(["packages/a/tsconfig.typecheck.json"]);
+    expect(testOnlyReading(result)).toEqual({ testOnly: true });
+  });
+
+  it("a diff of only a tsconfig.typecheck.json edit plans no-tests under the repo config", () => {
+    const result = planned("M\tpackages/a/tsconfig.typecheck.json");
+
+    expect(result.source).toEqual([]);
+    expect(testOnlyReading(result)).toEqual({ testOnly: false, reason: "no-tests" });
+  });
+
+  it("a tsconfig.json edit beside a test stays source under the repo config", () => {
+    const result = planned("M\tpackages/a/src/x.test.ts", "M\tpackages/a/tsconfig.json");
+
+    expect(result.source).toEqual(["packages/a/tsconfig.json"]);
+  });
+
+  it("a tsconfig.typecheck.json under a runtime glob stays source", () => {
+    const result = planned("M\tpackages/a/src/x.test.ts", "M\tapps/console/fixtures/tsconfig.typecheck.json");
+
+    expect(result.source).toEqual(["apps/console/fixtures/tsconfig.typecheck.json"]);
   });
 });

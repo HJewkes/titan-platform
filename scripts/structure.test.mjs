@@ -24,6 +24,7 @@ import {
   checkWorkspaceImportsDeclared,
   checkZodIsPeer,
 } from "./structure-rules.mjs";
+import { checkCarriedTsconfigReferences } from "./structure-rules-fix-proof.mjs";
 
 import { compileGlobs as realCompileGlobs } from "../packages/fix-proof/dist/index.js";
 
@@ -87,6 +88,18 @@ function carryImportRoot(files) {
 const CARRY_IMPORT = 'import data from "./fixtures/data.js";\nexport { data };\n';
 function carryImportViolationRoot() {
   return carryImportRoot({ "src/fixtures/data.ts": "export default 1;\n", "src/use.ts": CARRY_IMPORT });
+}
+
+const CARRIED_TSCONFIG = "tsconfig.typecheck.json";
+function carriedTsconfigRoot({ scripts = { typecheck: `tsc -p ${CARRIED_TSCONFIG}` }, files = {} } = {}) {
+  const root = tempRoot("structure-tsconfig-");
+  mkdirSync(join(root, ".github"), { recursive: true });
+  writeFileSync(join(root, ".github/fix-proof.json"), JSON.stringify({ tests: ["**/*.test.ts"], carry: [`**/${CARRIED_TSCONFIG}`] }));
+  mkdirSync(join(root, "packages/a"), { recursive: true });
+  writeFileSync(join(root, "packages/a/package.json"), JSON.stringify({ name: "@titan-design/a", scripts }));
+  writeFileSync(join(root, "packages/a", CARRIED_TSCONFIG), "{}");
+  for (const [path, text] of Object.entries(files)) writeFileSync(join(root, "packages/a", path), text);
+  return root;
 }
 
 function undeclaredImportRoot(source = 'import { c } from "@titan-design/c";\n') {
@@ -269,6 +282,12 @@ const cases = [
     message: "`packages/a/src/use.ts` imports `packages/a/src/fixtures/data.ts`, which `.github/fix-proof.json` lists as a test or carry path.",
   },
   {
+    rule: "R61 a carried tsconfig is named only by a typecheck script",
+    check: checkCarriedTsconfigReferences,
+    root: () => carriedTsconfigRoot({ scripts: { build: `tsc -p ${CARRIED_TSCONFIG}` } }),
+    message: "`packages/a/package.json` names `packages/a/tsconfig.typecheck.json`, which `.github/fix-proof.json` carries as test support.",
+  },
+  {
     rule: "R59 no Python file in a package or product",
     check: checkNoPython,
     root: () => pythonRoot("structure-py-file-", { files: { "tools/x.py": "print(1)\n" } }),
@@ -322,6 +341,32 @@ describe("R60 who may import a carried path", () => {
   it("ignores a source import of another source file and of a package", async () => {
     const root = carryImportRoot({ "src/other.ts": "export {};\n", "src/use.ts": 'import "./other.js";\nimport { x } from "zod";\n' });
     expect(await checkNoCarryImports(root)).toEqual([]);
+  });
+});
+
+describe("R61 who may name a carried tsconfig", () => {
+  it("a package typecheck script that names its carried tsconfig passes", async () => {
+    expect(await checkCarriedTsconfigReferences(carriedTsconfigRoot())).toEqual([]);
+  });
+
+  it("a build script that names a carried tsconfig fails with the R61 message", async () => {
+    const root = carriedTsconfigRoot({ scripts: { typecheck: "tsc", build: `tsc -p ${CARRIED_TSCONFIG}` } });
+    expect(await checkCarriedTsconfigReferences(root)).toEqual([expect.stringContaining("(R61, TP-5200)")]);
+  });
+
+  it("a tsconfig that extends a carried tsconfig fails", async () => {
+    const root = carriedTsconfigRoot({ files: { "tsconfig.json": `{ "extends": "./${CARRIED_TSCONFIG}" }` } });
+    expect(await checkCarriedTsconfigReferences(root)).toEqual([expect.stringContaining("`packages/a/tsconfig.json` names")]);
+  });
+
+  it("a tsup config that names a carried tsconfig fails", async () => {
+    const root = carriedTsconfigRoot({ files: { "tsup.config.ts": `export default { tsconfig: "${CARRIED_TSCONFIG}" };\n` } });
+    expect(await checkCarriedTsconfigReferences(root)).toEqual([expect.stringContaining("`packages/a/tsup.config.ts` names")]);
+  });
+
+  it("a tsconfig.json edit is not carried, so it is not checked by R61", async () => {
+    const root = carriedTsconfigRoot({ files: { "tsconfig.json": '{ "include": ["src"] }' } });
+    expect(await checkCarriedTsconfigReferences(root)).toEqual([]);
   });
 });
 

@@ -18,6 +18,15 @@
       "kills": [
         "R60 who may import a carried path compiles the globs once and matches only paths that have a relative import to judge"
       ]
+    },
+    {
+      "name": "a build script naming a carried tsconfig is allowed",
+      "file": "scripts/structure-rules-fix-proof.mjs",
+      "find": "!(key === \"typecheck\" && ownTypecheck)",
+      "replace": "false",
+      "kills": [
+        "R61 who may name a carried tsconfig a build script that names a carried tsconfig fails with the R61 message"
+      ]
     }
   ]
 }
