@@ -13,6 +13,7 @@ import { enrichPrs } from '@titan-design/session-graph';
 import { lookup } from '../test-support/test-helpers.js';
 import type { CommandResult, RunCommand } from '../utils/run-command.js';
 import { openGraph, type WorkspaceGraph } from './graph.js';
+import { selectMaybe } from '../test-support/session-index/query.js';
 import { clearPrFailureBackoff, ghPrResolver } from './pr-outcomes.js';
 import { runRefresh } from './refresh.js';
 
@@ -34,6 +35,9 @@ afterEach(() => {
 
 type GhAnswer = Record<string, unknown> | Error | CommandResult;
 
+const isCommandResult = (answer: GhAnswer | undefined): answer is CommandResult =>
+  answer !== undefined && !(answer instanceof Error) && 'code' in answer;
+
 /** A `gh` stand-in keyed by `<repo>#<number>`; records every PR it was asked about. */
 function fakeGh(answers: Record<string, GhAnswer>): RunCommand & { asked: string[] } {
   const asked: string[] = [];
@@ -42,7 +46,7 @@ function fakeGh(answers: Record<string, GhAnswer>): RunCommand & { asked: string
     asked.push(key);
     const answer = lookup(answers, key);
     if (answer instanceof Error) return Promise.reject(answer);
-    if (answer && 'code' in answer) return Promise.resolve(answer as CommandResult);
+    if (isCommandResult(answer)) return Promise.resolve(answer);
     return Promise.resolve({ code: 0, stdout: JSON.stringify(answer ?? {}), stderr: '' });
   };
   return Object.assign(run, { asked });
@@ -74,11 +78,11 @@ function addPr(
 }
 
 const rowFor = (number: number): Record<string, unknown> | undefined =>
-  graph.db
-    .prepare(
-      'SELECT state, merged_at, closed_at, review_rounds, outcome_checked_at FROM pr WHERE number = ?',
-    )
-    .get(number) as Record<string, unknown> | undefined;
+  selectMaybe<Record<string, unknown>>(
+    graph.db,
+    'SELECT state, merged_at, closed_at, review_rounds, outcome_checked_at FROM pr WHERE number = ?',
+    number,
+  );
 
 const pr = (fields: Record<string, unknown>): Record<string, unknown> => ({
   state: 'OPEN',
