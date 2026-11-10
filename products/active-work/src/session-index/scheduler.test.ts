@@ -280,6 +280,48 @@ describe('RefreshScheduler', () => {
       expect(scheduler.status()).toMatchObject({ pending: false, lockSkips: 0 });
     });
 
+    it('after two failed delta passes, a reader inside the backoff starts no pass and reads stale', async () => {
+      const clock = fakeClock();
+      const run = vi.fn(async (_kind: string) => {
+        throw new Error('corrupt');
+      });
+      const scheduler = new RefreshScheduler(run, { ...clock, onError: () => {} });
+
+      expect(await scheduler.runNow(500)).toBe('stale');
+      clock.advance(1_000);
+      expect(await scheduler.runNow(500)).toBe('stale');
+      expect(run).toHaveBeenCalledTimes(2);
+
+      clock.advance(1_999);
+      expect(await scheduler.runNow(500)).toBe('stale');
+      expect(run).toHaveBeenCalledTimes(2);
+
+      clock.advance(1);
+      await scheduler.runNow(500);
+      expect(run).toHaveBeenCalledTimes(3);
+    });
+
+    it('a delta success clears the delta backoff', async () => {
+      const clock = fakeClock();
+      const run = vi
+        .fn<(kind: string) => Promise<RefreshSummary>>()
+        .mockRejectedValueOnce(new Error('corrupt'))
+        .mockResolvedValueOnce(summary)
+        .mockRejectedValueOnce(new Error('corrupt'))
+        .mockResolvedValue(summary);
+      const scheduler = new RefreshScheduler(run, { ...clock, onError: () => {} });
+
+      await scheduler.runNow(500);
+      clock.advance(1_000);
+      expect(await scheduler.runNow(500)).toBe('fresh');
+      expect(await scheduler.runNow(500)).toBe('stale');
+      expect(run).toHaveBeenCalledTimes(3);
+
+      clock.advance(1_000);
+      expect(await scheduler.runNow(500)).toBe('fresh');
+      expect(run).toHaveBeenCalledTimes(4);
+    });
+
     /** A run whose first pass marks itself indexed, then holds until `finish`. */
     function indexedThenHeld() {
       let finish: () => void = () => {};
