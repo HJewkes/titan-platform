@@ -1,5 +1,8 @@
 /** Synthetic open-loops sweep and tech tree in the sweep's own layout (TP-4316). */
 
+import YAML from 'yaml';
+import { z } from 'zod';
+
 export const SNAPSHOT = `# Open loops sweep (synthetic). Schema: see the sweep notes.
 loops:
   - id: loop-a
@@ -63,3 +66,16 @@ nodes:
 `;
 
 export const TIER_SEED = { S: ['loop-b'], A: ['loop-a'], Parked: ['loop-c'] };
+
+const LoopRows = z.object({ loops: z.array(z.record(z.string(), z.unknown())) });
+const TreeFile = z.object({ goals: z.unknown(), nodes: z.array(z.unknown()) });
+
+/** Fresh, mutable ledger rows parsed from `SNAPSHOT`; each call returns its own copies. */
+export function snapshotRows(): Record<string, unknown>[] {
+  return LoopRows.parse(YAML.parse(SNAPSHOT)).loops;
+}
+
+/** The `TREE` fixture shaped as the board's tree input. */
+export function treeInput(): { goals: unknown; nodes: unknown[] } {
+  return TreeFile.parse(YAML.parse(TREE));
+}
