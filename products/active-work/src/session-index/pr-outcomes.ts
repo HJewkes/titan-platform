@@ -132,6 +132,12 @@ function selectPrs(
     .all();
   const byRef = new Map(rows.map((row) => [row.pr_ref, row]));
   const checkedAt = (pr: PrKey): string => byRef.get(pr.prRef)?.outcome_checked_at ?? '';
+  // Same bands as session-graph's PRS_NEEDING_OUTCOME, so a cap cannot starve open PRs behind backfill.
+  const band = (pr: PrKey): number => {
+    const row = byRef.get(pr.prRef);
+    if (!row?.outcome_checked_at) return 0;
+    return row.state?.toLowerCase() === 'merged' ? 2 : 1;
+  };
   return prs
     .filter((pr) => {
       const failed = failedAt.get(pr.prRef);
@@ -141,7 +147,12 @@ function selectPrs(
       if (row.state?.toLowerCase() === 'merged') return row.commit_times === null;
       return isDue(row, now, every);
     })
-    .sort((a, b) => checkedAt(a).localeCompare(checkedAt(b)))
+    .sort(
+      (a, b) =>
+        band(a) - band(b) ||
+        checkedAt(a).localeCompare(checkedAt(b)) ||
+        a.prRef.localeCompare(b.prRef),
+    )
     .slice(0, limit);
 }
 
