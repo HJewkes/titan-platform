@@ -65,6 +65,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@titan-design/agent-dispatch": "workspace:^",
     "@titan-design/agent-protocol": "workspace:^",
+    "@titan-design/app-paths": "workspace:^",
     "@titan-design/cluster": "workspace:^",
     "@titan-design/daemon": "workspace:^",
     "@titan-design/decider": "workspace:^",

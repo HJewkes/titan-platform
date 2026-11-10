@@ -53,4 +53,6 @@ a usage error and 66 an unreadable plan.
 
 The bin execs `plan.bin` as written and inherits its environment unscrubbed. A host that
 resolves `claude` or scrubs secrets calls `runAgent(plan, { resolveBin, baseEnv })` instead. `onSpawn(child)` is called once, right after
-spawn and before the brief is written, for a host that attaches its own handlers to the child.
+spawn and before the brief is written, for a host that attaches its own handlers to the child; a throw aborts the launch (the child is killed).
+The launcher forwards SIGTERM, SIGINT and SIGHUP to the agent, logging one stderr line per signal and one for the agent's exit.
+On an interactive surface SIGINT is logged but not forwarded, because the terminal already delivers it to the agent.
