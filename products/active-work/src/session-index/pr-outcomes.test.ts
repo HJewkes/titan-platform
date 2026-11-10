@@ -10,6 +10,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { enrichPrs } from '@titan-design/session-graph';
+import { lookup } from '../test-support/test-helpers.js';
 import type { CommandResult, RunCommand } from '../utils/run-command.js';
 import { openGraph, type WorkspaceGraph } from './graph.js';
 import { clearPrFailureBackoff, ghPrResolver } from './pr-outcomes.js';
@@ -32,10 +33,6 @@ afterEach(() => {
 });
 
 type GhAnswer = Record<string, unknown> | Error | CommandResult;
-
-function lookup<T>(table: Record<string, T>, key: string): T | undefined {
-  return table[key];
-}
 
 /** A `gh` stand-in keyed by `<repo>#<number>`; records every PR it was asked about. */
 function fakeGh(answers: Record<string, GhAnswer>): RunCommand & { asked: string[] } {

@@ -4,6 +4,20 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+const opened = vi.hoisted(() => [] as { file: string; timeout: number | undefined }[]);
+
+// Wraps the real driver so the test can read the options each open used, without changing what it does.
+vi.mock('better-sqlite3', async (importOriginal) => {
+  const actual = await importOriginal<{ default: typeof Database }>();
+  class Recording extends actual.default {
+    constructor(file?: string | Buffer, options?: Database.Options) {
+      super(file, options);
+      opened.push({ file: String(file), timeout: options?.timeout });
+    }
+  }
+  return { default: Recording };
+});
+
 import { resolveOrigins, sessionsNeedingOrigin } from '@titan-design/session-graph';
 
 import { openGraph } from './graph.js';
@@ -13,7 +27,7 @@ import {
   resolveFromSource,
   type IsKnownTask,
 } from './origin-agent-chat.js';
-import { eventsDbSource, openBriefly, type OpenDatabase } from './origin-agent-chat-read.js';
+import { eventsDbSource, type OpenDatabase } from './origin-agent-chat-read.js';
 
 // Copied from `sqlite3 ~/.agent-chat/events.db .schema` on 2026-09-23.
 const EVENTS_DDL = `
@@ -671,31 +685,25 @@ describe('route decision on the spawn row (CC-1666)', () => {
 });
 
 describe('a locked events.db (TP-4479)', () => {
-  it('opens events.db with a 100 ms busy timeout, not better-sqlite3\'s 5 s default', () => {
-    writeEvents([]);
-    const db = openBriefly(path.join(home, 'events.db'), { readonly: true, fileMustExist: true });
-
-    try {
-      expect(db.pragma('busy_timeout', { simple: true })).toBe(100);
-    } finally {
-      db.close();
-    }
-  });
-
-  it('fails the origin pass instead of waiting when events.db is locked', async () => {
+  it('opens the locked events.db with the short busy timeout and fails the origin pass', async () => {
     writeEvents([]);
     const graph = openGraph(path.join(home, 'graph.sqlite3'));
     graph.db
       .prepare('INSERT INTO session (session_id, turn_count) VALUES (?, 0)')
       .run(WORKER_SESSION);
-    const holder = new Database(path.join(home, 'events.db'));
+    const eventsFile = path.join(home, 'events.db');
+    const holder = new Database(eventsFile);
     holder.exec('BEGIN EXCLUSIVE');
+    opened.length = 0;
     vi.stubEnv('AGENT_CHAT_HOME', home);
 
     try {
       const outcome = await resolveOrigins(graph, agentChatOriginResolver(undefined, home));
 
       expect(outcome).toMatchObject({ failed: true, applied: 0 });
+      const eventsOpens = opened.filter((open) => open.file === eventsFile);
+      expect(eventsOpens).not.toHaveLength(0);
+      expect(eventsOpens.every((open) => open.timeout === 100)).toBe(true);
     } finally {
       vi.unstubAllEnvs();
       holder.exec('ROLLBACK');

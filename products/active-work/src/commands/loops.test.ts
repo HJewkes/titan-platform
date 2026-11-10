@@ -15,7 +15,7 @@ import {
 } from '../utils/git-gh.js';
 import type { CommandContext } from '../registry/index.js';
 import { SNAPSHOT } from '../test-support/fixtures/loop-ledger.js';
-import { withTempActiveRoot } from '../test-support/test-helpers.js';
+import { lookup, withTempActiveRoot } from '../test-support/test-helpers.js';
 
 const SLUG = 'sample-initiative';
 const OPENED = '2026-07-20T10:00:00Z';
@@ -47,10 +47,6 @@ async function list(root: string, overrides: Record<string, unknown> = {}) {
 }
 
 /** Answers `gh pr view <n> --repo <repo> --json state` from a table; anything else fails. */
-function lookup<T>(table: Record<string, T>, key: string): T | undefined {
-  return table[key];
-}
-
 function ghWithStates(states: Record<string, string>): { runner: CommandRunner; calls: string[] } {
   const calls: string[] = [];
   const runner: CommandRunner = (_bin, args) => {

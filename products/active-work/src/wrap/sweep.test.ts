@@ -7,7 +7,7 @@ import { recordUnrecorded, sweepInitiative } from './sweep.js';
 import { resetRunners, setGitRunner, type CommandRunner } from '../utils/git-gh.js';
 import { ArtifactsSchema } from '../schemas/artifacts.js';
 import { readYaml } from '../utils/yaml-io.js';
-import { withTempActiveRoot } from '../test-support/test-helpers.js';
+import { lookup, withTempActiveRoot } from '../test-support/test-helpers.js';
 
 const SLUG = 'sample-initiative';
 
@@ -58,10 +58,6 @@ function porcelain(repo: FakeRepo): string {
       return `${lines.join('\n')}\n`;
     })
     .join('\n');
-}
-
-function lookup<T>(table: Record<string, T>, key: string): T | undefined {
-  return table[key];
 }
 
 /**
