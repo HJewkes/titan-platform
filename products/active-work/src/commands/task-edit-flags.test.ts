@@ -9,6 +9,7 @@ import { withTempActiveRoot } from '../test-support/test-helpers.js';
 import { UsageError } from '../errors.js';
 import type { CommandContext } from '../registry/index.js';
 import type { Task } from '../schemas/task.js';
+import type { TaskOrLine } from './_task-quiet.js';
 
 const SLUG = 'sample-initiative';
 const ID = 'SI-7';
@@ -47,12 +48,21 @@ async function seedTask(root: string, overrides: Partial<Task> = {}): Promise<st
   return fs.readFile(taskFile(root), 'utf8');
 }
 
+function asTask(result: TaskOrLine): Task {
+  if (typeof result === 'string') throw new Error(`expected a task, got line: ${result}`);
+  return result;
+}
+
 async function readTask(root: string): Promise<Task> {
   return YAML.parse(await fs.readFile(taskFile(root), 'utf8')) as Task;
 }
 
-function edit(root: string, flags: Record<string, unknown>, context = ctx(root)): Promise<Task> {
-  return taskEdit.run({ slug: SLUG, id: ID, ...flags }, context);
+async function edit(
+  root: string,
+  flags: Record<string, unknown>,
+  context = ctx(root),
+): Promise<Task> {
+  return asTask(await taskEdit.run({ slug: SLUG, id: ID, ...flags }, context));
 }
 
 function untouchedFields(task: Task): Partial<Task> {

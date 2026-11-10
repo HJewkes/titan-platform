@@ -13,9 +13,16 @@ import type { CommandContext } from '../registry/index.js';
 import { readRawFrontmatter } from '../utils/gray-matter-io.js';
 import { withFileLock } from '../utils/fs-atomic.js';
 import { getLockPath } from '../utils/paths.js';
+import type { Task } from '../schemas/task.js';
+import type { TaskOrLine } from './_task-quiet.js';
 
 function ctx(activeRoot: string): CommandContext {
   return { activeRoot, warnings: [], format: 'json' };
+}
+
+function asTask(result: TaskOrLine): Task {
+  if (typeof result === 'string') throw new Error(`expected a task, got line: ${result}`);
+  return result;
 }
 
 const SLUG = 'sample-initiative';
@@ -23,7 +30,7 @@ const SLUG = 'sample-initiative';
 describe('task.add', () => {
   it('assigns next sequential ID and auto priority', async () => {
     await withTempActiveRoot(async (root) => {
-      const created = await taskAdd.run({ slug: SLUG, title: 'Third sample task' }, ctx(root));
+      const created = asTask(await taskAdd.run({ slug: SLUG, title: 'Third sample task' }, ctx(root)));
       expect(created.id).toBe('SI-3');
       // Existing priorities are 1 and 2, so next is 3.
       expect(created.priority).toBe(3);
@@ -37,7 +44,7 @@ describe('task.add', () => {
 
   it('respects an explicit priority and stores tags/notes', async () => {
     await withTempActiveRoot(async (root) => {
-      const created = await taskAdd.run(
+      const created = asTask(await taskAdd.run(
         {
           slug: SLUG,
           title: 'Specific priority',
@@ -47,7 +54,7 @@ describe('task.add', () => {
           notes: 'remember to test',
         },
         ctx(root),
-      );
+      ));
       expect(created.priority).toBe(7);
       expect(created.severity).toBe('low');
       expect(created.tags).toEqual(['alpha', 'beta']);
@@ -66,13 +73,13 @@ describe('task.add', () => {
   it('never reissues an id after the task that held it is deleted', async () => {
     await withTempActiveRoot(async (root) => {
       // Fixture starts at SI-1/SI-2. Add SI-3, the current highest.
-      const third = await taskAdd.run({ slug: SLUG, title: 'Third sample task' }, ctx(root));
+      const third = asTask(await taskAdd.run({ slug: SLUG, title: 'Third sample task' }, ctx(root)));
       expect(third.id).toBe('SI-3');
 
       await taskDelete.run({ slug: SLUG, id: 'SI-3' }, ctx(root));
 
       // Naively recomputing max(on-disk) + 1 would reissue SI-3 here.
-      const fourth = await taskAdd.run({ slug: SLUG, title: 'Fourth sample task' }, ctx(root));
+      const fourth = asTask(await taskAdd.run({ slug: SLUG, title: 'Fourth sample task' }, ctx(root)));
       expect(fourth.id).toBe('SI-4');
 
       // task.delete (not task.add) is what persisted the high-water mark
@@ -89,7 +96,7 @@ describe('task.add', () => {
       const before = await readRawFrontmatter(path.join(root, SLUG, 'brief.md'));
       expect(before.frontmatter.task_seq).toBeUndefined();
 
-      const created = await taskAdd.run({ slug: SLUG, title: 'Back-compat task' }, ctx(root));
+      const created = asTask(await taskAdd.run({ slug: SLUG, title: 'Back-compat task' }, ctx(root)));
       expect(created.id).toBe('SI-3');
     });
   });
@@ -148,7 +155,7 @@ describe('task.add', () => {
     it('still allocates from a valid persisted mark', async () => {
       await withTempActiveRoot(async (root) => {
         await injectTaskSeq(root, '12');
-        const created = await taskAdd.run({ slug: SLUG, title: 'fine' }, ctx(root));
+        const created = asTask(await taskAdd.run({ slug: SLUG, title: 'fine' }, ctx(root)));
         expect(created.id).toBe('SI-13');
       });
     });
@@ -161,7 +168,7 @@ describe('task.add', () => {
           taskAdd.run({ slug: SLUG, title: `Concurrent ${i}` }, ctx(root)),
         ),
       );
-      const ids = results.map((t) => t.id).sort();
+      const ids = results.map((t) => asTask(t).id).sort();
       expect(ids).toEqual(['SI-3', 'SI-4', 'SI-5', 'SI-6', 'SI-7']);
 
       // task.add never writes task_seq (AW-94); no delete happened, so the
@@ -188,7 +195,7 @@ describe('task.add', () => {
       release();
       await holder;
 
-      expect((await pending).id).toBe('SI-3');
+      expect(asTask(await pending).id).toBe('SI-3');
     });
   });
 
@@ -222,7 +229,7 @@ describe('task.add', () => {
         await writeSibling(root, 'SI-5', '2026-10-24T19:30:00');
         const context = ctx(root);
 
-        const created = await taskAdd.run({ slug: SLUG, title: 'After bad sibling' }, context);
+        const created = asTask(await taskAdd.run({ slug: SLUG, title: 'After bad sibling' }, context));
 
         expect(created.id).toBe('SI-6');
         expect(context.warnings).toHaveLength(1);
@@ -236,7 +243,7 @@ describe('task.add', () => {
         await writeSibling(root, 'SI-5', '2026-10-24T19:30:00Z');
         const context = ctx(root);
 
-        const created = await taskAdd.run({ slug: SLUG, title: 'After good sibling' }, context);
+        const created = asTask(await taskAdd.run({ slug: SLUG, title: 'After good sibling' }, context));
 
         expect(created.id).toBe('SI-6');
         expect(context.warnings).toEqual([]);
@@ -248,7 +255,7 @@ describe('task.add', () => {
 describe('task.done', () => {
   it('flips status and sets done_at to the current instant', async () => {
     await withTempActiveRoot(async (root) => {
-      const updated = await taskDone.run({ slug: SLUG, id: 'SI-1' }, ctx(root));
+      const updated = asTask(await taskDone.run({ slug: SLUG, id: 'SI-1' }, ctx(root)));
       expect(updated.status).toBe('done');
       expect(updated.done_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
       expect(updated.updated).toMatch(/^\d{4}-\d{2}-\d{2}$/);
@@ -383,53 +390,53 @@ describe('task.list', () => {
 describe('task.edit', () => {
   it('edits each editable field and stamps updated', async () => {
     await withTempActiveRoot(async (root) => {
-      const t1 = await taskEdit.run(
+      const t1 = asTask(await taskEdit.run(
         { slug: SLUG, id: 'SI-1', field: 'title', value: 'New title' },
         ctx(root),
-      );
+      ));
       expect(t1.title).toBe('New title');
       expect(t1.updated).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 
-      const t2 = await taskEdit.run(
+      const t2 = asTask(await taskEdit.run(
         { slug: SLUG, id: 'SI-1', field: 'priority', value: 9 },
         ctx(root),
-      );
+      ));
       expect(t2.priority).toBe(9);
 
-      const t3 = await taskEdit.run(
+      const t3 = asTask(await taskEdit.run(
         { slug: SLUG, id: 'SI-1', field: 'severity', value: 'critical' },
         ctx(root),
-      );
+      ));
       expect(t3.severity).toBe('critical');
 
-      const t4 = await taskEdit.run(
+      const t4 = asTask(await taskEdit.run(
         { slug: SLUG, id: 'SI-1', field: 'estimate', value: 4 },
         ctx(root),
-      );
+      ));
       expect(t4.estimate).toBe(4);
 
-      const t5 = await taskEdit.run(
+      const t5 = asTask(await taskEdit.run(
         { slug: SLUG, id: 'SI-1', field: 'done_when', value: 'ship it', force: true },
         ctx(root),
-      );
+      ));
       expect(t5.done_when).toBe('ship it');
 
-      const t6 = await taskEdit.run(
+      const t6 = asTask(await taskEdit.run(
         { slug: SLUG, id: 'SI-1', field: 'tags', value: ['x', 'y'], force: true },
         ctx(root),
-      );
+      ));
       expect(t6.tags).toEqual(['x', 'y']);
 
-      const t7 = await taskEdit.run(
+      const t7 = asTask(await taskEdit.run(
         { slug: SLUG, id: 'SI-1', field: 'notes', value: 'updated note', force: true },
         ctx(root),
-      );
+      ));
       expect(t7.notes).toBe('updated note');
 
-      const t8 = await taskEdit.run(
+      const t8 = asTask(await taskEdit.run(
         { slug: SLUG, id: 'SI-1', field: 'status', value: 'done' },
         ctx(root),
-      );
+      ));
       expect(t8.status).toBe('done');
       expect(t8.done_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
     });
@@ -440,22 +447,22 @@ describe('task.edit', () => {
       // The dispatcher can't statically type `value` (it depends on `field` at
       // runtime), so commander/MCP callers may pass numbers/arrays as raw
       // strings. The command must coerce them itself before validation.
-      const t1 = await taskEdit.run(
+      const t1 = asTask(await taskEdit.run(
         { slug: SLUG, id: 'SI-1', field: 'priority', value: '9' },
         ctx(root),
-      );
+      ));
       expect(t1.priority).toBe(9);
 
-      const t2 = await taskEdit.run(
+      const t2 = asTask(await taskEdit.run(
         { slug: SLUG, id: 'SI-1', field: 'estimate', value: '4' },
         ctx(root),
-      );
+      ));
       expect(t2.estimate).toBe(4);
 
-      const t3 = await taskEdit.run(
+      const t3 = asTask(await taskEdit.run(
         { slug: SLUG, id: 'SI-1', field: 'tags', value: 'x, y', force: true },
         ctx(root),
-      );
+      ));
       expect(t3.tags).toEqual(['x', 'y']);
     });
   });
@@ -554,7 +561,7 @@ describe('task.delete', () => {
       const { frontmatter } = await readRawFrontmatter(path.join(root, SLUG, 'brief.md'));
       expect(frontmatter.task_seq).toBe(2);
 
-      const next = await taskAdd.run({ slug: SLUG, title: 'After max delete' }, ctx(root));
+      const next = asTask(await taskAdd.run({ slug: SLUG, title: 'After max delete' }, ctx(root)));
       expect(next.id).toBe('SI-3');
     });
   });

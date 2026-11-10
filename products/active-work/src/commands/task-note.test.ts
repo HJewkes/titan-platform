@@ -8,6 +8,7 @@ import './index.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
 import type { CommandContext } from '../registry/index.js';
 import type { Task } from '../schemas/task.js';
+import type { TaskOrLine } from './_task-quiet.js';
 
 const SLUG = 'sample-initiative';
 const ID = 'SI-7';
@@ -36,12 +37,17 @@ async function seedTask(root: string): Promise<void> {
   await fs.writeFile(taskFile(root), YAML.stringify(task));
 }
 
+function asTask(result: TaskOrLine): Task {
+  if (typeof result === 'string') throw new Error(`expected a task, got line: ${result}`);
+  return result;
+}
+
 async function readTask(root: string): Promise<Task> {
   return YAML.parse(await fs.readFile(taskFile(root), 'utf8')) as Task;
 }
 
-function note(root: string, text: string, id = ID): Promise<Task> {
-  return taskNote.run({ slug: SLUG, id, text }, ctx(root));
+async function note(root: string, text: string, id = ID): Promise<Task> {
+  return asTask(await taskNote.run({ slug: SLUG, id, text }, ctx(root)));
 }
 
 function withoutNotesAndStamp(task: Task): Partial<Task> {

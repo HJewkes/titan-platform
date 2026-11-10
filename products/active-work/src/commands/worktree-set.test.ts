@@ -68,7 +68,7 @@ async function run(
   wtPath: string,
   activeRoot: string,
   extra: { label?: string; default?: boolean } = {},
-): Promise<{ slug: string; label: string; path: string; default: boolean }> {
+): ReturnType<typeof worktreeSet.run> {
   const parsed = worktreeSet.args.parse({ slug, path: wtPath, ...extra });
   return worktreeSet.run(parsed, makeCtx(activeRoot));
 }

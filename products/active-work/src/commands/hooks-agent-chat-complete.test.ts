@@ -51,6 +51,9 @@ describe('handleOnComplete', () => {
       sessionId: 'sess-abc',
       name: 'scout',
       started: '2026-08-01T00:00:00.000Z',
+      parentSessionId: null,
+      profile: null,
+      briefing: null,
     });
     const { calls } = capturingWrapRunner();
 
@@ -84,6 +87,9 @@ describe('handleOnComplete', () => {
       sessionId: 'sess-xyz',
       name: 'scout',
       started: '2026-08-01T00:00:00.000Z',
+      parentSessionId: null,
+      profile: null,
+      briefing: null,
     });
     const { calls } = capturingWrapRunner();
 
@@ -100,6 +106,9 @@ describe('handleOnComplete', () => {
       sessionId: 'sess-once',
       name: 'scout',
       started: '2026-08-01T00:00:00.000Z',
+      parentSessionId: null,
+      profile: null,
+      briefing: null,
     });
     const { calls } = capturingWrapRunner();
 
@@ -121,6 +130,9 @@ describe('handleOnComplete', () => {
       sessionId: 'sess-fail',
       name: 'scout',
       started: '2026-08-01T00:00:00.000Z',
+      parentSessionId: null,
+      profile: null,
+      briefing: null,
     });
     setWrapRunner(() => Promise.resolve({ code: 1, stderr: 'boom' }));
 

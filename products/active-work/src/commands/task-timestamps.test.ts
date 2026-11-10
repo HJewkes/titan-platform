@@ -10,6 +10,13 @@ import taskDone from './task-done.js';
 import taskEdit from './task-edit.js';
 import type { CommandContext } from '../registry/index.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
+import type { Task } from '../schemas/task.js';
+import type { TaskOrLine } from './_task-quiet.js';
+
+function asTask(result: TaskOrLine): Task {
+  if (typeof result === 'string') throw new Error(`expected a task, got line: ${result}`);
+  return result;
+}
 
 const SLUG = 'sample-initiative';
 const NOW = new Date('2026-07-01T15:42:07.123Z');
@@ -46,8 +53,8 @@ async function writeRegistry(root: string): Promise<void> {
   await fs.writeFile(file, YAML.stringify(REGISTRY));
 }
 
-function setStatus(root: string, value: string) {
-  return taskEdit.run({ slug: SLUG, id: 'SI-1', field: 'status', value }, ctx(root));
+async function setStatus(root: string, value: string): Promise<Task> {
+  return asTask(await taskEdit.run({ slug: SLUG, id: 'SI-1', field: 'status', value }, ctx(root)));
 }
 
 beforeEach(() => {
@@ -62,7 +69,7 @@ afterEach(() => {
 describe('task timestamps', () => {
   it('task add writes created as a full UTC timestamp', async () => {
     await withTempActiveRoot(async (root) => {
-      const created = await taskAdd.run({ slug: SLUG, title: 'Timed task' }, ctx(root));
+      const created = asTask(await taskAdd.run({ slug: SLUG, title: 'Timed task' }, ctx(root)));
 
       expect(created.created).toBe(NOW.toISOString());
       expect((await readTask(root, created.id)).created).toBe(NOW.toISOString());
@@ -71,7 +78,7 @@ describe('task timestamps', () => {
 
   it('task done writes done_at as a full UTC timestamp', async () => {
     await withTempActiveRoot(async (root) => {
-      const done = await taskDone.run({ slug: SLUG, id: 'SI-1' }, ctx(root));
+      const done = asTask(await taskDone.run({ slug: SLUG, id: 'SI-1' }, ctx(root)));
 
       expect(done.done_at).toBe(NOW.toISOString());
       expect((await readTask(root, 'SI-1')).done_at).toBe(NOW.toISOString());
@@ -124,10 +131,10 @@ describe('task timestamps', () => {
     await withTempActiveRoot(async (root) => {
       const before = await readTask(root, 'SI-2');
 
-      const edited = await taskEdit.run(
+      const edited = asTask(await taskEdit.run(
         { slug: SLUG, id: 'SI-2', field: 'title', value: 'Renamed' },
         ctx(root),
-      );
+      ));
 
       expect(edited.created).toBe(before.created);
       expect(edited.done_at).toBe(before.done_at);
