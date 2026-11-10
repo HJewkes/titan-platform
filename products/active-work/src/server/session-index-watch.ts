@@ -273,11 +273,13 @@ export function createScheduler(
   dirty: DirtySet,
   log: WatchLogger,
   signal: AbortSignal,
+  clock: Pick<NonNullable<ConstructorParameters<typeof RefreshScheduler>[1]>, 'now' | 'sleep'> = {},
 ): RefreshScheduler {
   const delta = deltaBackoffLog(log, signal);
   return new RefreshScheduler(
     delta.wrap(runner.run),
     {
+      ...clock,
       onError: delta.onError,
       ...BACKOFF_OPTIONS,
       minIntervalMs: envInt('AW_INDEX_MIN_INTERVAL_MS', DEFAULT_MIN_INTERVAL_MS),

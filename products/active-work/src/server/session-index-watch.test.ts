@@ -226,7 +226,10 @@ describe('startSessionIndexWatch', () => {
       return { kind: 'delta', errors: [], phases: {} };
     });
     const runner = { run, lastMaxLoopStallMs: () => null };
-    const scheduler = createScheduler(runner, createDirtySet(), log, new AbortController().signal);
+    let clock = 0;
+    const scheduler = createScheduler(runner, createDirtySet(), log, new AbortController().signal, {
+      now: () => clock,
+    });
 
     await scheduler.runNow(1_000);
     const readers = await Promise.all([1, 2, 3, 4].map(() => scheduler.runNow(1_000)));
@@ -240,7 +243,10 @@ describe('startSessionIndexWatch', () => {
     );
 
     failing = false;
-    await new Promise((resolve) => setTimeout(resolve, 1_050));
+    clock += 999;
+    expect(await scheduler.runNow(1_000)).toBe('stale');
+    expect(run).toHaveBeenCalledTimes(1);
+    clock += 1;
     await scheduler.runNow(1_000);
     await scheduler.runNow(1_000);
     const recovered = log.info.mock.calls.filter(([, msg]) => /recovered/.test(String(msg)));
