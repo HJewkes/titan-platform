@@ -12,5 +12,5 @@ export async function capacityError(gitRoot: string, agentName: string, opts: Wo
   const allocated = trees.length;
   const budget = budgetOf(opts, name);
   if (!(allocated >= budget)) return undefined;
-  return opts.budgetError?.(allocated, budget, name, trees) ??new WorktreeBudgetExhaustedError(allocated, budget);
+  return opts.budgetError?.(allocated, budget, name, trees) ?? new WorktreeBudgetExhaustedError(allocated, budget);
 }
