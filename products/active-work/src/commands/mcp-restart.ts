@@ -39,6 +39,8 @@ const KILL_TIMEOUT_MS = 3_000;
 const STARTUP_TIMEOUT_MS = 15_000;
 const POLL_INTERVAL_MS = 100;
 
+type DaemonHealth = NonNullable<Awaited<ReturnType<typeof probeHealth>>>;
+
 async function waitFor(
   ready: () => boolean | Promise<boolean>,
   timeoutMs: number,
@@ -81,7 +83,7 @@ async function terminate(pid: number): Promise<void> {
  * predecessor to release the port, then serves in the foreground of its own
  * detached process; it gives up rather than race a predecessor that never exits.
  */
-const SUCCESSOR_SCRIPT = `
+export const SUCCESSOR_SCRIPT = `
 const { spawnSync } = require('node:child_process');
 const [oldPid, entry, port] = process.argv.slice(1);
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
@@ -113,16 +115,18 @@ const MANUAL_START_HINT = 'Start the daemon manually with `active-work mcp serve
  * death of the child is the fast signal; the timeout only covers a child that
  * lives but never becomes answerable.
  */
-async function confirmStarted(pid: number, port: number): Promise<void> {
+async function confirmStarted(pid: number, port: number): Promise<DaemonHealth> {
+  const seen: { health: DaemonHealth | null } = { health: null };
   const up = await waitFor(async () => {
     if (!isProcessAlive(pid)) {
       throw new DaemonError(
         `Spawned pid ${pid} exited immediately — port ${port} is likely still held. See \`active-work mcp logs\`. ${MANUAL_START_HINT}`,
       );
     }
-    return (await probeHealth(port)) !== null;
+    seen.health = await probeHealth(port);
+    return seen.health !== null;
   }, STARTUP_TIMEOUT_MS);
-  if (up) return;
+  if (up && seen.health) return seen.health;
   throw new DaemonError(
     `Spawned pid ${pid} is running but nothing answered http://127.0.0.1:${port}/health within ${STARTUP_TIMEOUT_MS}ms. ${MANUAL_START_HINT}`,
   );
@@ -146,7 +150,8 @@ export default defineCommand<Args, Result>({
     const port = args.port ?? previous?.meta.port ?? DEFAULT_DAEMON_PORT;
     const spawned = spawnSuccessor(previous?.pid, port);
     if (previous) await stopExisting(previous.pid);
-    await confirmStarted(spawned.pid, port);
-    return spawned;
+    // The spawned pid is the wrapper; `/health` names the daemon that status and the pid file show.
+    const served = await confirmStarted(spawned.pid, port);
+    return { pid: served.pid, port };
   },
 });
