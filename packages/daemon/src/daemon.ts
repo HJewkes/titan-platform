@@ -12,7 +12,7 @@ import { createServer as createHttpsServer, Server as HttpsServer } from "node:h
 import type { ServerType } from "@hono/node-server";
 import type { Hono } from "hono";
 import type { BaseContext } from "@titan-design/registry";
-import { isLoopbackHost, NonLoopbackBindError } from "./bind-guard.js";
+import { isLoopbackHost, NonLoopbackBindError, RemoteBindError } from "./bind-guard.js";
 import { EventHub } from "./events.js";
 import { watchTree, type TreeWatcher } from "./file-watch.js";
 import { DEFAULT_ALLOWED_HOSTS, createRequestGuard, type RequestGuardOptions } from "./guards.js";
@@ -123,6 +123,7 @@ export async function startDaemon<Ctx extends BaseContext>(options: StartDaemonO
   const target = listenTarget(options, boundPort);
   const { fetch } = buildHttpApp(shared);
   const server = await listenLoopback("fd" in target ? holdUntil(fetch, ready.opened) : fetch, target, mcpHandler(options, () => boundPort));
+  if ("fd" in target) await assertInheritedAddress(server, options, remote, graceMs, log);
   boundPort = boundPortOf(server, boundPort);
   const servers = [server, ...(await listenRemoteOrClose({ remote, shared, port: boundPort, loopback: server, graceMs, log }))];
   const content = await listenContentOrClose({ origin: options.contentOrigin, remote, host: options.host ?? DEFAULT_HOST, hosts: guardOptions(options).allowedHosts, bound: servers, graceMs, log });
@@ -179,6 +180,24 @@ function guardOptions<Ctx extends BaseContext>(options: StartDaemonOptions<Ctx>)
 function assertBindAllowed<Ctx extends BaseContext>(options: StartDaemonOptions<Ctx>): void {
   const host = options.host ?? DEFAULT_HOST;
   if (options.allowUnauthenticatedNonLoopback !== true && !isLoopbackHost(host)) throw new NonLoopbackBindError(host);
+}
+
+/**
+ * An inherited socket listens wherever its owner bound it, so the host string says nothing about it.
+ * The address it really has is checked after the bind and before the pid file is written.
+ */
+async function assertInheritedAddress<Ctx extends BaseContext>(server: ServerType, options: StartDaemonOptions<Ctx>, remote: RemoteListener | null, graceMs: number, log: Logger): Promise<void> {
+  const address = server.address();
+  if (!address || typeof address !== "object" || isLoopbackHost(address.address)) return;
+  const refusal = inheritedRefusal(address.address, options, remote);
+  if (!refusal) return;
+  await closeServer(server, graceMs).catch((err: unknown) => log.error({ err }, "error closing an inherited socket that was refused"));
+  throw refusal;
+}
+
+function inheritedRefusal<Ctx extends BaseContext>(address: string, options: StartDaemonOptions<Ctx>, remote: RemoteListener | null): Error | null {
+  if (options.allowUnauthenticatedNonLoopback !== true) return new NonLoopbackBindError(address);
+  return remote ? new RemoteBindError(remote.options.host, "the inherited socket is already unauthenticated beyond loopback") : null;
 }
 
 interface RemoteBind<Ctx extends BaseContext> {
