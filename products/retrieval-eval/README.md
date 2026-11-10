@@ -58,6 +58,9 @@ labels:
 - **opened-section**: reported as `n/a`. Rendered refs carry no span anchor until design B4
   ships, so there is no served line range to match a `Read` offset against.
 
+The corpus includes subagent sidechains. A sidechain carries its parent's harness url, so
+`cited` checks its blocks against the parent's wrap record.
+
 The control is the unserved base rate: every same-class file in each served initiative that
 the block did not serve, run through the same filename test. It is computed for sources and
 notes; a task id is a substring of too much to be a fair control. Rows are sliced by trigger
