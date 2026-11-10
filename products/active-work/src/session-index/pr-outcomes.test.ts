@@ -291,6 +291,17 @@ describe('the gh PR resolver', () => {
       expect(gh.asked).toEqual(['acme/demo#2']);
     });
 
+    it('a merged PR the forge never checked is asked about, a checked one is not', async () => {
+      addPr(4, { state: 'merged' });
+      addPr(5, { state: 'merged', checkedAt });
+      const gh = fakeGh({});
+      const resolver = ghPrResolver(graph, { run: gh, now: () => checkedMs + closedMs * 10 });
+
+      await resolver([...keyFor(4), ...keyFor(5)]);
+
+      expect(gh.asked).toEqual(['acme/demo#4']);
+    });
+
     it('honours configured intervals over the defaults', async () => {
       addPr(3, { state: 'open', checkedAt });
       const gh = fakeGh({});

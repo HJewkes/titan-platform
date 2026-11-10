@@ -67,10 +67,9 @@ function recheckIntervals(options: PrOutcomeOptions): RecheckIntervals {
   };
 }
 
-/** Never checked is due; a checked PR is due once its state's interval has passed. */
-function isDue(row: CheckedRow | undefined, now: number, every: RecheckIntervals): boolean {
-  if (!row?.outcome_checked_at) return true;
-  const checked = Date.parse(row.outcome_checked_at);
+/** A checked PR is due once its state's interval has passed. */
+function isDue(row: CheckedRow, now: number, every: RecheckIntervals): boolean {
+  const checked = Date.parse(row.outcome_checked_at ?? '');
   if (Number.isNaN(checked)) return true;
   const interval = row.state?.toLowerCase() === 'open' ? every.open : every.closed;
   return now - checked >= interval;
@@ -111,7 +110,9 @@ function toResolved(pr: GhPr): ResolvedPr {
 
 /**
  * The package re-asks a checked PR until it is merged, which would re-query
- * every PR each pass. A merged PR is final; any other PR is asked again only
+ * every PR each pass. A never-checked PR is always asked, since a transcript-seen
+ * merge is unchecked until the forge confirms it. A checked merged PR is final;
+ * any other PR is asked again only
  * after its recheck interval (short for open, long for closed so a reopen is
  * seen), and the least recently checked go first so a long tail is not
  * starved by the same fifty.
@@ -134,7 +135,8 @@ function selectPrs(
       const failed = failedAt.get(pr.prRef);
       if (failed !== undefined && now - failed <= backoff) return false;
       const row = byRef.get(pr.prRef);
-      return row?.state?.toLowerCase() !== 'merged' && isDue(row, now, every);
+      if (!row?.outcome_checked_at) return true;
+      return row.state?.toLowerCase() !== 'merged' && isDue(row, now, every);
     })
     .sort((a, b) => checkedAt(a).localeCompare(checkedAt(b)))
     .slice(0, limit);
