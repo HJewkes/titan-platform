@@ -268,16 +268,24 @@ export function passRunner(
   return { run, lastMaxLoopStallMs: () => lastMaxLoopStallMs };
 }
 
+/** Timing seams for tests; the scheduler falls back to `Date.now` and real timers. */
+export interface SchedulerClock {
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
+}
+
 export function createScheduler(
   runner: PassRunner,
   dirty: DirtySet,
   log: WatchLogger,
   signal: AbortSignal,
+  clock: SchedulerClock = {},
 ): RefreshScheduler {
   const delta = deltaBackoffLog(log, signal);
   return new RefreshScheduler(
     delta.wrap(runner.run),
     {
+      ...clock,
       onError: delta.onError,
       ...BACKOFF_OPTIONS,
       minIntervalMs: envInt('AW_INDEX_MIN_INTERVAL_MS', DEFAULT_MIN_INTERVAL_MS),
