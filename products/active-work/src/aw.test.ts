@@ -22,7 +22,8 @@ const spawnMock = vi.fn();
 
 vi.mock('node:child_process', () => ({ spawn: spawnMock }));
 
-const { helpText, main, openSlugOrInit } = await import('./aw.js');
+const { helpText, main } = await import('./aw.js');
+const { openSlugOrInit } = await import('./launcher-open.js');
 
 describe('openSlugOrInit (TP-356 reviewer nit)', () => {
   let isTTY: boolean | undefined;
