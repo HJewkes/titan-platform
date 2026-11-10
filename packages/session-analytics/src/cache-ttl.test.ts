@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { cacheTtlReport, cacheTtlWhatIf, cacheTtlWhatIfSchema, renderCacheTtlText, type TtlRequestRow } from "./cache-ttl.js";
+import { cacheTtlReport, cacheTtlWhatIf, readTtlRows, cacheTtlWhatIfSchema, renderCacheTtlText, type TtlRequestRow } from "./cache-ttl.js";
+import { findPrice } from "./prices.js";
 import { createFixtureGraph, insertOrigin, insertPrices, insertRequest, insertSession, type FixtureGraph } from "./fixture.js";
 
 const TS = "2026-09-29T12:00:00Z";
@@ -152,5 +153,22 @@ describe("cacheTtlReport", () => {
     const whatIf = cacheTtlReport(fixture.openReadOnly(), { since: "2026-09-29", until: "2026-09-30" });
 
     expect(whatIf.totals).toMatchObject({ requests: 2, rebuilds: 1, rebuildTokens: 100_000 });
+  });
+  it("takes a legacy row's total cache_creation_tokens as its 5m write and prefers the explicit 5m column otherwise", () => {
+    fixture = createFixtureGraph();
+    const db = fixture.graph.db;
+    insertPrices(fixture.graph);
+    insertSession(db, { sessionId: "legacy" });
+    insertSession(db, { sessionId: "explicit" });
+    insertRequest(db, { sessionId: "legacy", ts: "2026-09-29T10:00:00Z", model: OPUS, cacheCreationTokens: 40_000 });
+    insertRequest(db, { sessionId: "explicit", ts: "2026-09-29T10:00:00Z", model: OPUS, cacheCreation5m: 25_000, cacheCreationTokens: 999_999 });
+
+    const rows = readTtlRows(fixture.openReadOnly(), { since: "2026-09-29", until: "2026-09-30" });
+    const writes = Object.fromEntries(rows.map((row) => [row.sessionId, row.cacheWrite5mTokens]));
+    const whatIf = cacheTtlReport(fixture.openReadOnly(), { since: "2026-09-29", until: "2026-09-30" });
+
+    expect(writes).toEqual({ legacy: 40_000, explicit: 25_000 });
+    const price = findPrice(OPUS, "2026-09-29T10:00:00Z")!;
+    expect(whatIf.totals.noCacheNetUsd).toBeCloseTo((65_000 * (price.cacheWrite5m - price.input)) / 1e6, 10);
   });
 });
