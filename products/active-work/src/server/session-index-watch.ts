@@ -22,13 +22,8 @@ import { readMachinePressure, shouldHold } from '../utils/machine-pressure.js';
 import { readerGate } from '../session-index/reader-gate.js';
 import { BACKOFF_OPTIONS, deltaBackoffLog } from './delta-backoff-log.js';
 import { startWorkspaceFreshness, type WorkspaceFreshness } from './workspace-freshness.js';
-import {
-  readRefreshLockHolder,
-  runRefresh,
-  withRefreshLock,
-  type RefreshOptions,
-  type RefreshSummary,
-} from '../session-index/refresh.js';
+import { readRefreshLockHolder, withRefreshLock } from '../session-index/refresh-lock.js';
+import { runRefresh, type RefreshOptions, type RefreshSummary } from '../session-index/refresh.js';
 import {
   DEFAULT_GATE_RECHECK_MS,
   DEFAULT_MIN_INTERVAL_MS,
