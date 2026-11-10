@@ -10,7 +10,7 @@ import {
   type LifecycleEvent,
   openBriefly,
   type SpawnSource,
-} from './origin-agent-chat.js';
+} from './origin-agent-chat-read.js';
 
 /**
  * Retired agents stop writing, so once the index has read a retired session's

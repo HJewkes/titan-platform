@@ -6,7 +6,8 @@ import { atomicWrite } from '../utils/fs-atomic.js';
 import { defaultGraphPath, openGraph } from './graph.js';
 import { preserveUnreachable } from './preserve.js';
 import { carryNonDerivable, graphTotals, sameTotals, type GraphTotals } from './rebuild-carry.js';
-import { LOCK_STALE_MS, runRefresh, withRefreshLock, type RefreshLockOptions } from './refresh.js';
+import { LOCK_STALE_MS, withRefreshLock, type RefreshLockOptions } from './refresh-lock.js';
+import { runRefresh } from './refresh.js';
 import { isLockContention } from './scheduler.js';
 
 /**

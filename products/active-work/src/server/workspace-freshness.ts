@@ -11,7 +11,7 @@ import { existsSync } from 'node:fs';
 import { watchTree, type TreeWatcher } from '@titan-design/daemon';
 import type { Freshness } from '../session-index/freshness.js';
 import type { WorkspaceGraph } from '../session-index/graph.js';
-import { withRefreshLock } from '../session-index/refresh.js';
+import { withRefreshLock } from '../session-index/refresh-lock.js';
 import { withinBudget } from '../session-index/scheduler.js';
 import { getActiveRoot, getMinerRoot } from '../utils/paths.js';
 import { refreshWorkspace } from '../workspace-index/refresh.js';

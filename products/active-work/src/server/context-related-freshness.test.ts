@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runRelated } from '../commands/context-related.js';
 import { indexFreshness } from '../session-index/freshness.js';
 import { openGraph } from '../session-index/graph.js';
-import { withRefreshLock } from '../session-index/refresh.js';
+import { withRefreshLock } from '../session-index/refresh-lock.js';
 import { refreshWorkspace } from '../workspace-index/refresh.js';
 import { startSessionIndexWatch } from './session-index-watch.js';
 
