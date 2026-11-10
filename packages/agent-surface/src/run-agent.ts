@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { clearOutputTail, tailKeeper, writeOutputTail } from "./launch-output.js";
@@ -44,6 +44,8 @@ export interface RunAgentOptions {
   paneSources?: PaneSources;
   /** Prefix for the launcher's own messages on stderr. */
   label?: string;
+  /** Called once with the spawned child, right after spawn and before the brief is written, so a host can attach its own handlers. */
+  onSpawn?: (child: ChildProcess) => void;
 }
 
 const definedEnv = (env: NodeJS.ProcessEnv): Record<string, string> =>
@@ -127,6 +129,7 @@ function exec(plan: LaunchPlan, options: RunAgentOptions): void {
     // The brief goes in on stdin for headless; an interactive surface hands the terminal straight through.
     stdio: plan.stdin === undefined ? "inherit" : ["pipe", "inherit", "pipe"],
   });
+  options.onSpawn?.(child);
   const stderrTail = tailKeeper();
   // Headless only. Drained and passed on so the pipe never fills; the tail is what the host reads.
   child.stderr?.on("data", (chunk: Buffer) => {

@@ -64,6 +64,8 @@ function summarizeInitiative(
   const total = emptyStat();
   const classes = emptyClasses();
   for (const file of files) {
+    // `other` has no wire class until the wire schema learns it (TP-1017 b).
+    if (file.class === 'other') continue;
     addFile(total, file);
     addFile(classes[wireClass(file.class)], file);
   }

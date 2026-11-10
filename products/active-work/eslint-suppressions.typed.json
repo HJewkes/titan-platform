@@ -9,14 +9,6 @@
       "count": 3
     }
   },
-  "products/active-work/src/aw.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 4
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
-    }
-  },
   "products/active-work/src/bootstrap/live-status-overlap.test.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 2

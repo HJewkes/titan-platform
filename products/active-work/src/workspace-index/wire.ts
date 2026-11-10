@@ -17,7 +17,7 @@ export const WIRE_CLASSES = [
 
 export type WireClass = (typeof WIRE_CLASSES)[number];
 
-const TO_WIRE: Record<InventoryClass, WireClass> = {
+const TO_WIRE: Record<Exclude<InventoryClass, 'other'>, WireClass> = {
   initiative: 'initiatives',
   task: 'tasks',
   session: 'sessions',
@@ -26,7 +26,7 @@ const TO_WIRE: Record<InventoryClass, WireClass> = {
   nested_source: 'nested_sources',
 };
 
-export function wireClass(cls: InventoryClass): WireClass {
+export function wireClass(cls: Exclude<InventoryClass, 'other'>): WireClass {
   return TO_WIRE[cls];
 }
 
