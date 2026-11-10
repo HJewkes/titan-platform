@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cueStandIns } from "./cue-stand-ins.js";
-import { checkedObject } from "./workflow/script-draft.js";
+import { checkedObject, type ScriptPlan } from "./workflow/script-draft.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
 
 const beatWith = (targets: string[]) => scriptWith({ visual: { assertion: "A beat", job: "map", cues: targets.map((target) => ({ action: "V11", target, atCue: "server" })) } }).beats[0]!;
@@ -29,7 +29,7 @@ describe("run, detail and note standing in for terminal or timeline beats", () =
   // Mutation: dropping cueStandIns from cueKindFault accepts the draft.
   it("fails a draft script's check, naming the cue, the beat and the kind to use", () => {
     const script = scriptWith({ visual: { assertion: "A beat", job: "map", cues: [{ action: "V11", target: "run:$ pnpm test", atCue: "server" }] } });
-    const plan = { leads: [], specs: [] } as unknown as Parameters<typeof checkedObject>[1];
+    const plan: ScriptPlan = { structure: "goal-walk", leads: [], specs: new Map() };
 
     const result = checkedObject(script, plan);
 
