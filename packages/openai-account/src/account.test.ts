@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { accountLabel, loginStateFromStatus, quotaAdmission, knownObservation, redactSecrets, usageFromRolloutEvents, type UsageResult } from "./index.js";
+import { accountLabel, loginStateFromStatus, quotaAdmission, knownObservation, redactSecrets, usageFromRolloutEvents, type UsageReading, type UsageWindow, type UsageResult } from "./index.js";
 
 import { validateRolloutWindows } from "./usage.js";
 
@@ -19,6 +19,10 @@ function observed(used = 70, at = now): UsageResult {
   return knownObservation({ source: "synthetic-independent-observation", observedAt: at, reading: { account: "reporter",
     rate_limits: { five_hour: { used_percentage: 20, resets_at: now + 1000 },
       seven_day: { used_percentage: used, resets_at: now + 2000 } } } });
+}
+
+function withWindow(r: UsageReading, key: "five_hour" | "seven_day", change: Partial<UsageWindow>): UsageReading {
+  return { ...r, rate_limits: { ...r.rate_limits, [key]: { ...r.rate_limits[key], ...change } } };
 }
 
 describe("read-only Codex account core", () => {
@@ -79,17 +83,35 @@ describe("read-only Codex account core", () => {
     const bad = { ...event(20, now + 1), payload: { type: "token_count", rate_limits: null } };
     expect(usageFromRolloutEvents([event(), bad], "default")).toEqual({ status: "unknown", reason: "inconsistent" });
   });
-  it("validates a supplied known reading rather than trusting its type annotation", () => {
+  it.each([
+    ["non-finite observation time", (r: UsageReading) => ({ ...r, written_at: Number.NaN })],
+    ["non-finite five-hour counter", (r: UsageReading) => withWindow(r, "five_hour", { used_percentage: Number.NaN })],
+    ["negative seven-day counter", (r: UsageReading) => withWindow(r, "seven_day", { used_percentage: -1 })],
+    ["over-100 five-hour counter", (r: UsageReading) => withWindow(r, "five_hour", { used_percentage: 101 })],
+    ["millisecond five-hour reset", (r: UsageReading) => withWindow(r, "five_hour", { resets_at: (now + 1000) * 1000 })],
+    ["missing seven-day window", (r: UsageReading) => ({ ...r, rate_limits: { five_hour: r.rate_limits.five_hour } })],
+  ])("re-checks a branded reading with a %s", (_name, corrupt) => {
     const valid = observed();
     if (valid.status !== "known") throw new Error("fixture did not parse");
-    const badTime = { status: "known", reading: { ...valid.reading, written_at: NaN } };
-    // @ts-expect-error a hand-built reading has no local observation provenance
-    expect(quotaAdmission(badTime, now)).toMatchObject({ allowed: false, reason: "inconsistent" });
-    const { rate_limits: limits } = valid.reading;
-    const badCounter = { status: "known", reading: { ...valid.reading,
-      rate_limits: { ...limits, five_hour: { ...limits.five_hour, used_percentage: NaN } } } };
-    // @ts-expect-error a hand-built reading has no local observation provenance
-    expect(quotaAdmission(badCounter, now)).toMatchObject({ allowed: false, reason: "inconsistent" });
+    const brand = Object.getOwnPropertySymbols(valid.reading)[0];
+    if (!brand) throw new Error("fixture has no provenance brand");
+    const reading = Object.defineProperty(corrupt(valid.reading), brand, { value: Reflect.get(valid.reading, brand) });
+    const result = { status: "known", reading };
+    // @ts-expect-error the corrupted reading is deliberately outside the declared type
+    expect(quotaAdmission(result, now)).toEqual({ allowed: false, reason: "inconsistent" });
+  });
+  it("rejects writes to a known reading at compile time", () => {
+    const valid = observed();
+    if (valid.status !== "known") throw new Error("fixture did not parse");
+    const reading: UsageReading = valid.reading;
+    expect(() => {
+      // @ts-expect-error readings are readonly
+      reading.written_at = 0;
+      // @ts-expect-error nested windows are readonly
+      reading.rate_limits.five_hour.used_percentage = 0;
+      // @ts-expect-error the rate_limits object is readonly
+      reading.rate_limits.seven_day = reading.rate_limits.five_hour;
+    }).toThrow(TypeError);
   });
   it("refuses future and reset-expired supplied observations", () => {
     expect(quotaAdmission(observed(20, now + 1), now)).toEqual({ allowed: false, reason: "inconsistent" });

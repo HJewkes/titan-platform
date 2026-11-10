@@ -42,6 +42,7 @@ describe("explicit known observation factory", () => {
   it("binds written_at to the attested time rather than allowing a later refresh by mutation", () => {
     const result = observed();
     if (result.status !== "known") throw new Error("fixture not known");
+    // @ts-expect-error written_at is readonly; the runtime freeze must hold regardless
     expect(() => { result.reading.written_at = now + 10; }).toThrow(TypeError);
     expect(quotaAdmission(result, now + 10)).toEqual({ allowed: true, ageSeconds: 10 });
   });
@@ -52,7 +53,9 @@ describe("explicit known observation factory", () => {
     const { reading } = result;
     expect([reading, reading.rate_limits, reading.rate_limits.five_hour, reading.rate_limits.seven_day].map(Object.isFrozen))
       .toEqual([true, true, true, true]);
+    // @ts-expect-error windows are readonly; the runtime freeze must hold regardless
     expect(() => { reading.rate_limits.five_hour.used_percentage = 0; }).toThrow(TypeError);
+    // @ts-expect-error rate_limits is readonly; the runtime freeze must hold regardless
     expect(() => { reading.rate_limits.five_hour = { used_percentage: 0, resets_at: now + 1000 }; }).toThrow(TypeError);
     expect(quotaAdmission(result, now)).toMatchObject({ allowed: false, reason: "five-hour-ceiling" });
   });
