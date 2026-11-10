@@ -152,11 +152,6 @@
       "count": 2
     }
   },
-  "products/active-work/src/commands/task-edit.ts": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
   "products/active-work/src/commands/task-note.test.ts": {
     "@typescript-eslint/no-unused-vars": {
       "count": 2
@@ -178,11 +173,6 @@
     }
   },
   "products/active-work/src/commands/worktree-set.ts": {
-    "titan/max-function-lines": {
-      "count": 2
-    }
-  },
-  "products/active-work/src/commands/wrap.ts": {
     "titan/max-function-lines": {
       "count": 2
     }
