@@ -1,6 +1,6 @@
 import type { GitHubPort, PullRequest, RepoFile, RepoSlug } from "@titan-design/github";
 import type { FactoryHost } from "../host.js";
-import { BUMP_BRANCH_PREFIX, bumpBranch, consumerDepNames, planConsumerBump, readConsumerTree, type ConsumerBumpPlan, type ConsumerTree, type LatestRegistry } from "./consumer-bump.js";
+import { BUMP_BRANCH_PREFIX, bumpBranch, consumerDepNames, planConsumerBump, readConsumerTree, type ConsumerBumpPlan, type ConsumerTree, type LatestRegistry, type LeftAlone } from "./consumer-bump.js";
 import { failureOf } from "./error-class.js";
 import type { LockfileRegen, LockfileTree } from "./lockfile-regen.js";
 import { BUMP_TITLE, bumpCommitMessage, isSweepOnlyBranch } from "./leftover-bump.js";
@@ -16,8 +16,8 @@ interface PlannedBump {
   branch: string;
 }
 
-/** A consumer with nothing to open: already on npm latest, or a read or lookup that failed. */
-type ConsumerBumpNote = { repo: RepoSlug; current: true } | { repo: RepoSlug; error: string };
+/** A consumer with nothing to open: already on npm latest, only deps a bump leaves alone, or a read or lookup that failed. */
+type ConsumerBumpNote = { repo: RepoSlug; current: true } | { repo: RepoSlug; leftAlone: LeftAlone[] } | { repo: RepoSlug; error: string };
 
 interface ConsumerBumpPlans {
   bumps: PlannedBump[];
@@ -31,8 +31,9 @@ export async function planConsumerBumps(services: Pick<ShepherdServices, "port" 
   for (const repo of repos) {
     try {
       const planned = await planOne(services, repo, latest);
-      if (planned.plan.edits.length === 0) result.notes.push({ repo, current: true });
-      else result.bumps.push(planned);
+      if (planned.plan.edits.length > 0) result.bumps.push(planned);
+      else if (planned.plan.leftAlone.length > 0) result.notes.push({ repo, leftAlone: planned.plan.leftAlone });
+      else result.notes.push({ repo, current: true });
     } catch (error) {
       result.notes.push({ repo, error: failureOf(error) });
     }
@@ -73,6 +74,8 @@ interface ConsumerBumpSweepNote {
   skipped?: "open" | "closed";
   registered?: string;
   current?: true;
+  /** A repo with titan deps but none a bump can raise: each is listed with why it was left. */
+  leftAlone?: LeftAlone[];
   error?: string;
   /** The leftover branch that blocked this repo: it holds a commit the sweep did not write, so a human deletes it or opens its PR. */
   branch?: string;

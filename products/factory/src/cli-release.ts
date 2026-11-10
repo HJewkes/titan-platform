@@ -6,7 +6,7 @@ import { EXIT } from "./exit-codes.js";
 import { FACTORY_PORT } from "./serve.js";
 import type { FactoryRoutes } from "./host.js";
 import { bumpConsumers, previewConsumerBumps, type ConsumerBumpPorts } from "./shepherd/bump-consumers.js";
-import { npmLatest } from "./shepherd/consumer-bump.js";
+import { npmLatest, type LeftAlone } from "./shepherd/consumer-bump.js";
 import { scratchLockfileRegen } from "./shepherd/lockfile-regen.js";
 import type { ShepherdServices } from "./shepherd/services.js";
 
@@ -56,19 +56,25 @@ function shepherdOf(routes: FactoryRoutes): ShepherdServices {
 function formatPlans({ bumps, notes, skips }: Plans): string {
   const planned = bumps.map(({ repo, branch, tree, plan }) => `${repo}: open ${branch} into ${tree.ref} [${plan.edits.map((edit) => `${edit.name} ${edit.from} -> ${edit.to}`).join(", ")}]`);
   const failed = notes.flatMap((note) => ("error" in note ? [`${note.repo}: not read (${note.error})`] : []));
+  const left = notes.flatMap((note) => ("leftAlone" in note ? [leftAloneLine(note.repo, note.leftAlone)] : []));
   const skipped = skips.map(({ repo, pr, skipped }) => `skip ${repo}: ${skipped} bump PR #${pr}`);
-  return lines([...planned, ...skipped, ...failed]);
+  return lines([...planned, ...skipped, ...left, ...failed]);
 }
 
 function formatNotes(notes: readonly SweepNote[]): string {
   return lines(
     notes.flatMap((note) => {
       if (note.error !== undefined) return [`${note.repo}: failed (${note.error})`];
+      if (note.leftAlone !== undefined) return [leftAloneLine(note.repo, note.leftAlone)];
       if (note.pr === undefined) return [];
       const what = note.skipped ? `PR #${note.pr} already ${note.skipped}` : `opened PR #${note.pr}`;
       return [`${note.repo}: ${what}${note.registered ? `, shepherd run ${note.registered}` : ""}`];
     }),
   );
+}
+
+function leftAloneLine(repo: string, leftAlone: readonly LeftAlone[]): string {
+  return `${repo}: left alone ${leftAlone.map(({ name, spec, path, reason }) => `${name} ${spec} (${path}, ${reason})`).join("; ")}`;
 }
 
 function lines(found: readonly string[]): string {

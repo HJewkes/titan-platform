@@ -8,7 +8,7 @@ import type { CliDeps } from "./cli-types.js";
 import { EXIT } from "./exit-codes.js";
 import { fakeSha } from "@titan-design/github";
 import { bumpBranch } from "./shepherd/consumer-bump.js";
-import { CONSUMER_A, CONSUMER_B, CONSUMER_SEATS, consumerBumpWorld, type ConsumerBumpWorld } from "./test-support/consumer-bump.js";
+import { CONSUMER_A, CONSUMER_B, CONSUMER_C, CONSUMER_SEATS, consumerBumpWorld, type ConsumerBumpWorld } from "./test-support/consumer-bump.js";
 import { shepherdFixture } from "./test-support/shepherd.js";
 
 function capture() {
@@ -54,6 +54,17 @@ describe("release bump-consumers verb", () => {
     );
     expect(world.regenCalls).toEqual([]);
     for (const fake of world.fakes.values()) expect(fake.effects).toMatchObject({ createRef: 0, putContent: 0, createPr: 0 });
+  });
+
+  it("dry-run prints the reasons for a repo whose only titan deps were left alone", async () => {
+    const world = consumerBumpWorld();
+    const manifest = JSON.stringify({ name: "consumer-c", dependencies: { "@titan-design/example-c": "workspace:*" } });
+    world.fakes.get(CONSUMER_C)!.files.set("main:package.json", { content: manifest, blobSha: fakeSha("left-alone") });
+    const { out, io, db } = capture();
+
+    await runCli(["--db", db, "release", "bump-consumers", "--dry-run"], io, depsOver(world));
+
+    expect(out.join("")).toContain(`${CONSUMER_C}: left alone @titan-design/example-c workspace:* (package.json, `);
   });
 
   it("dry-run skips a repo with an open bump PR and prints why", async () => {
