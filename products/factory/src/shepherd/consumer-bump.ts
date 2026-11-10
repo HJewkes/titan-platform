@@ -146,8 +146,8 @@ export function consumerDepNames(tree: ConsumerTree): string[] {
 
 /**
  * `latest` maps a name to npm's latest version, null for a 404; a name it lacks is left alone.
- * Only `dependencies`, `devDependencies`, `optionalDependencies` and `peerDependencies` are read: a pair under
- * `pnpm.overrides`, `overrides` or `resolutions` is neither bumped nor listed in `leftAlone`.
+ * Only `dependencies`, `devDependencies`, `optionalDependencies` and `peerDependencies` are bumped: a pair under
+ * `pnpm.overrides`, `overrides` or `resolutions` is never bumped, and is listed in `leftAlone` as pinned by that field.
  */
 export function planConsumerBump(tree: ConsumerTree, latest: ReadonlyMap<string, string | null>): ConsumerBumpPlan {
   const plan: ConsumerBumpPlan = { edits: [], files: [], leftAlone: [] };
@@ -172,20 +172,36 @@ function decideFile(file: RepoFile, latest: ReadonlyMap<string, string | null>):
     if ("reason" in decision) leftAlone.set(key, { path: file.path, name, spec, reason: decision.reason });
     else edits.set(key, { path: file.path, name, from: spec, ...decision });
   }
+  for (const [name, spec, field] of pinnedTitanDeps(file)) leftAlone.set(`${name}\0${spec}\0${field}`, { path: file.path, name, spec, reason: `pinned by ${field}` });
   return { edits: [...edits.values()], leftAlone: [...leftAlone.values()] };
 }
 
-export function titanDeps(file: RepoFile): [string, string][] {
-  let manifest: unknown;
+const record = (value: unknown): [string, unknown][] => (value !== null && typeof value === "object" && !Array.isArray(value) ? Object.entries(value) : []);
+
+function parseManifest(file: RepoFile): Map<string, unknown> {
   try {
-    manifest = JSON.parse(file.content);
+    return new Map(record(JSON.parse(file.content)));
   } catch {
     throw new Error(`${file.path} is not valid JSON`);
   }
-  const record = (value: unknown): [string, unknown][] => (value !== null && typeof value === "object" && !Array.isArray(value) ? Object.entries(value) : []);
-  const fields = new Map(record(manifest));
-  const deps = DEP_FIELDS.flatMap((field) => record(fields.get(field)));
-  return deps.filter((dep): dep is [string, string] => TITAN_NAME.test(dep[0]) && typeof dep[1] === "string");
+}
+
+const titanPairs = (entries: [string, unknown][]): [string, string][] => entries.filter((dep): dep is [string, string] => TITAN_NAME.test(dep[0]) && typeof dep[1] === "string");
+
+export function titanDeps(file: RepoFile): [string, string][] {
+  const fields = parseManifest(file);
+  return titanPairs(DEP_FIELDS.flatMap((field) => record(fields.get(field))));
+}
+
+/** Titan pairs under an override field, as `[name, spec, field]`; they are never bumped. */
+function pinnedTitanDeps(file: RepoFile): [string, string, string][] {
+  const fields = parseManifest(file);
+  const sources: [string, unknown][] = [
+    ["pnpm.overrides", record(fields.get("pnpm")).find(([key]) => key === "overrides")?.[1]],
+    ["overrides", fields.get("overrides")],
+    ["resolutions", fields.get("resolutions")],
+  ];
+  return sources.flatMap(([field, value]) => titanPairs(record(value)).map(([name, spec]): [string, string, string] => [name, spec, field]));
 }
 
 type Decision = { to: string; version: string } | { reason: string } | null;

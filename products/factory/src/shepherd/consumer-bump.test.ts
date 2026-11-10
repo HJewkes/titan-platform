@@ -29,13 +29,18 @@ describe("planConsumerBump", () => {
     expect(plan.leftAlone).toEqual([]);
   });
 
-  it("overrides and resolutions entries are not bumped", () => {
-    const pinned = { [A]: "^1.0.0", [B]: "1.0.0" };
-    const manifest = file("package.json", JSON.stringify({ pnpm: { overrides: pinned }, overrides: pinned, resolutions: { [C]: "1.0.0" } }, null, 2));
+  it("a titan pair under pnpm.overrides, overrides or resolutions is left alone with the field as its reason", () => {
+    const manifest = file("package.json", JSON.stringify({ pnpm: { overrides: { [A]: "^1.0.0" } }, overrides: { [B]: "1.0.0" }, resolutions: { [C]: "1.0.0", zod: "3.0.0" } }, null, 2));
 
     const plan = planConsumerBump(tree(manifest), latest({ [A]: "2.0.0", [B]: "2.0.0", [C]: "2.0.0" }));
 
-    expect(plan).toEqual({ edits: [], files: [], leftAlone: [] });
+    expect(plan.edits).toEqual([]);
+    expect(plan.files).toEqual([]);
+    expect(plan.leftAlone).toEqual([
+      { path: "package.json", name: A, spec: "^1.0.0", reason: "pinned by pnpm.overrides" },
+      { path: "package.json", name: B, spec: "1.0.0", reason: "pinned by overrides" },
+      { path: "package.json", name: C, spec: "1.0.0", reason: "pinned by resolutions" },
+    ]);
     expect(consumerDepNames(tree(manifest))).toEqual([]);
   });
 
