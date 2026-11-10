@@ -92,6 +92,9 @@ that, and `noCacheCheaper` flags a role or profile where dropping the cache woul
 It also replays sessions already on 5m toward 1h: after a 5-60 minute gap, the rebuild write
 reverts to a read of `min(write, previous prompt)`, reported as `reverseSavingUsd` per role and
 profile. Sessions with any 1h write, first requests and gaps over an hour claim nothing.
+`byGapCause` splits the rebuilds by the last action before the gap (`ci-wait`, `other-bash` or
+`end-of-turn`), read from the previous request's tool calls on the same sidechain, and the text
+render adds a by-gap-cause table.
 `TtlRequestRow` gains `cacheWrite5mTokens`. `renderCacheTtlText` prints both tables with a
 `1h replay saving` and a `no-cache net` column.
 

@@ -10,6 +10,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { enrichPrs } from '@titan-design/session-graph';
+import { lookup } from '../test-support/test-helpers.js';
 import type { CommandResult, RunCommand } from '../utils/run-command.js';
 import { openGraph, type WorkspaceGraph } from './graph.js';
 import { clearPrFailureBackoff, ghPrResolver } from './pr-outcomes.js';
@@ -39,7 +40,7 @@ function fakeGh(answers: Record<string, GhAnswer>): RunCommand & { asked: string
   const run = (_bin: string, args: string[]): Promise<CommandResult> => {
     const key = `${args[args.indexOf('--repo') + 1] ?? ''}#${args[2] ?? ''}`;
     asked.push(key);
-    const answer = answers[key];
+    const answer = lookup(answers, key);
     if (answer instanceof Error) return Promise.reject(answer);
     if (answer && 'code' in answer) return Promise.resolve(answer as CommandResult);
     return Promise.resolve({ code: 0, stdout: JSON.stringify(answer ?? {}), stderr: '' });

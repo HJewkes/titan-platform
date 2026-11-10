@@ -52,7 +52,7 @@ describe('integration: stdio MCP server', () => {
       });
       expect(result.isError).toBe(false);
       const content = result.content as Array<{ type: string; text: string }>;
-      const envelope = JSON.parse(content[0]!.text) as { ok: boolean };
+      const envelope = JSON.parse(content[0].text) as { ok: boolean };
       expect(envelope.ok).toBe(true);
 
       await client.close();

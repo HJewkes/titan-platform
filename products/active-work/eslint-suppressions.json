@@ -15,9 +15,6 @@
     }
   },
   "products/active-work/src/bootstrap/parse-once.test.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
     "titan/no-internal-module-mock": {
       "count": 1
     }
@@ -55,11 +52,6 @@
   "products/active-work/src/commands/fold.ts": {
     "titan/max-function-lines": {
       "count": 1
-    }
-  },
-  "products/active-work/src/commands/hooks-agent-chat-complete-worker.test.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 3
     }
   },
   "products/active-work/src/commands/hooks-agent-chat-complete.ts": {
@@ -144,11 +136,6 @@
   },
   "products/active-work/src/commands/task-delete.ts": {
     "titan/max-function-lines": {
-      "count": 2
-    }
-  },
-  "products/active-work/src/commands/task-note.test.ts": {
-    "@typescript-eslint/no-unused-vars": {
       "count": 2
     }
   },
@@ -247,11 +234,6 @@
       "count": 1
     }
   },
-  "products/active-work/src/drain/transcript-reader.test.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
   "products/active-work/src/drain/transcript-reader.ts": {
     "titan/max-function-lines": {
       "count": 2
@@ -284,16 +266,6 @@
   },
   "products/active-work/src/schemas/artifacts.ts": {
     "titan/max-function-lines": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/schemas/brief.test.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/schemas/template.test.ts": {
-    "@typescript-eslint/no-unused-vars": {
       "count": 1
     }
   },
@@ -362,11 +334,6 @@
   },
   "products/active-work/src/session-index/delta-pass.ts": {
     "titan/max-function-lines": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/session-index/origin-agent-chat.test.ts": {
-    "titan/no-test-clock-budget": {
       "count": 1
     }
   },
@@ -475,34 +442,14 @@
       "count": 2
     }
   },
-  "products/active-work/src/test-support/fixtures/unwrapped-transcript.ts": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/test-support/workspace-index/fixture.ts": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
   "products/active-work/src/utils/git-gh.ts": {
     "titan/max-function-lines": {
-      "count": 2
-    }
-  },
-  "products/active-work/src/utils/read-stdin-json.test.ts": {
-    "titan/no-chained-type-assertions": {
       "count": 2
     }
   },
   "products/active-work/src/utils/run-command.ts": {
     "titan/max-function-lines": {
       "count": 2
-    }
-  },
-  "products/active-work/src/workspace-index/backfill.test.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
     }
   },
   "products/active-work/src/workspace-index/refresh.ts": {

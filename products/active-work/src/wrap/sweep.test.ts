@@ -7,7 +7,7 @@ import { recordUnrecorded, sweepInitiative } from './sweep.js';
 import { resetRunners, setGitRunner, type CommandRunner } from '../utils/git-gh.js';
 import { ArtifactsSchema } from '../schemas/artifacts.js';
 import { readYaml } from '../utils/yaml-io.js';
-import { withTempActiveRoot } from '../test-support/test-helpers.js';
+import { lookup, withTempActiveRoot } from '../test-support/test-helpers.js';
 
 const SLUG = 'sample-initiative';
 
@@ -72,7 +72,7 @@ function makeGitRunner(repos: Record<string, FakeRepo>): CommandRunner {
   return async (_bin, args) => {
     const dir = args[1] ?? '';
     const rest = args.slice(2);
-    const repo = repos[dir];
+    const repo = lookup(repos, dir);
     if (rest[0] === 'worktree') return repo ? ok(porcelain(repo)) : fail();
     if (rest[0] === 'stash') {
       if (!repo) return fail();
@@ -393,7 +393,7 @@ describe('sweepInitiative upstream semantics', () => {
     await withTempActiveRoot(async (root) => {
       const res = await sweepOne(root, { path: SAMPLE_REPO, branch: 'feat/unknown' });
       expect(res.unpushed).toHaveLength(1);
-      expect(res.unpushed[0]!.no_upstream).toBe(true);
+      expect(res.unpushed[0].no_upstream).toBe(true);
     });
   });
 

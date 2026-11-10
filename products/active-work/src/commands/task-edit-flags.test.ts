@@ -282,7 +282,7 @@ describe('task.edit --remove-tag', () => {
       await seedTask(root);
       const written: string[] = [];
       const original = process.stderr.write.bind(process.stderr);
-      process.stderr.write = ((chunk: string) => written.push(chunk) > 0) as typeof original;
+      process.stderr.write = ((chunk: string) => written.push(chunk) > 0);
 
       try {
         await edit(root, { remove_tag: 'delta' }, { ...ctx(root), format });

@@ -63,4 +63,22 @@ describe("allocation keeps the worktree base out of git status", () => {
 
     expect(linesOf(excludeFile(repo)).filter((line) => line === "/.trees/")).toHaveLength(1);
   });
+
+  it.skipIf(process.getuid?.() === 0)(
+    "allocation succeeds with a warning when the info dir is read-only",
+    async () => {
+      const repo = makeRepo();
+      const info = path.join(repo, ".git", "info");
+      fs.rmSync(excludeFile(repo), { force: true });
+      fs.chmodSync(info, 0o555);
+      try {
+        const allocation = await createWorktreeAllocator().allocate({ baseCwd: repo, agentName: "alice" });
+
+        expect(fs.existsSync(allocation.cwd)).toBe(true);
+        expect(allocation.warnings?.some((w) => w.includes(excludeFile(repo)))).toBe(true);
+      } finally {
+        fs.chmodSync(info, 0o755);
+      }
+    }
+  );
 });

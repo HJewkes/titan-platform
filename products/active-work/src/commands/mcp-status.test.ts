@@ -31,7 +31,7 @@ function stubHealth(payload: unknown | null): void {
 
 /** `run` is invoked directly; the command takes no args and ignores ctx. */
 function run(): ReturnType<typeof mcpStatus.run> {
-  return mcpStatus.run({}, {} as never);
+  return mcpStatus.run({}, { activeRoot: tmp, warnings: [], format: 'json' });
 }
 
 beforeEach(() => {

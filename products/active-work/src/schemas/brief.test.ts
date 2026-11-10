@@ -73,7 +73,9 @@ describe('BriefFrontmatterSchema', () => {
   );
 
   it('fails when state is "focused" but rank is missing', () => {
-    const { rank: _rank, ...withoutRank } = validBase;
+    const withoutRank = Object.fromEntries(
+      Object.entries(validBase).filter(([key]) => key !== 'rank'),
+    );
     const result = BriefFrontmatterSchema.safeParse(withoutRank);
     expect(result.success).toBe(false);
     if (!result.success) {
