@@ -183,7 +183,8 @@ describe("the onSpawn hook failing", () => {
          import { runAgent, readLaunchPlan } from ${JSON.stringify(path.join(DIST, "index.js"))};
          runAgent(readLaunchPlan(${JSON.stringify(planFile())}), { agentDir: ${JSON.stringify(agentDir())}, onSpawn: child => { fs.writeFileSync(${JSON.stringify(pidFile)}, String(child.pid)); throw new Error("synthetic onSpawn failure"); } });`,
       ],
-      { encoding: "utf8", env: { PATH: MINIMAL_PATH } },
+      // The timeout turns an orphaned child holding the pipe open into a failure, not a hang.
+      { encoding: "utf8", env: { PATH: MINIMAL_PATH }, timeout: 5000 },
     );
 
     expect(result.status).not.toBe(0);
