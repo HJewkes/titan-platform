@@ -166,6 +166,22 @@ function deadCheckCommand(changed, workspace, base, indexedFiles) {
 
 const pnpmRun = (script) => ({ label: script, cmd: "pnpm", args: ["run", script] });
 
+// errors-only keeps other worktrees' cache replays out of the output, so a real failure is not truncated away.
+const buildStep = () => ({ label: "build", cmd: "pnpm", args: ["run", "build", "--output-logs=errors-only"], captureOutput: true });
+
+const TURBO_FAILED_TASK = /^(?:\s*(\S+#\S+?):\s+(?:ERROR\s+)?command .* exited \(\d+\)|\s*Failed:\s+(\S+#\S+))\s*$/;
+
+/** The `<package>#<task>` names turbo reports as failed, in first-seen order and without repeats. */
+export function failedTurboTasks(output) {
+  const names = [];
+  for (const line of output.split("\n")) {
+    const match = TURBO_FAILED_TASK.exec(line);
+    const name = match && (match[1] ?? match[2]);
+    if (name && !names.includes(name)) names.push(name);
+  }
+  return names;
+}
+
 /**
  * Every ci.yml `run:` step, matched by job and by its command (a string matches the whole command or its leading
  * words). A `label` names the planCommands step that mirrors it; any other disposition says why there is none.
@@ -207,7 +223,7 @@ export function planCommands({ base, changed, workspace, hasTimeout, spool, flak
   if (changed.length === 0) return [];
   return [
     pnpmRun("env:doctor"),
-    pnpmRun("build"),
+    buildStep(),
     { label: LOC_LABEL, inProcess: true },
     pnpmRun("merge:lint"),
     pnpmRun("sidecar:finds"),
@@ -274,7 +290,7 @@ async function locPasses(changed) {
 }
 
 /** How a finished step is reported: a kill by the vitest cap is a timeout, never a test failure. */
-export function describeOutcome(step, status, signal = null) {
+export function describeOutcome(step, status, signal = null, output = "") {
   if (status === 0) return { ok: true };
   if (status === TIMEOUT_EXIT_STATUS && step.cmd === "timeout") {
     return { ok: false, message: `${step.label} timed out after ${VITEST_TIMEOUT_SECONDS} s (no test failed; CI is the authority)` };
@@ -282,6 +298,8 @@ export function describeOutcome(step, status, signal = null) {
   // A signal-killed child has a null status, so the signal is the only thing that says why it stopped.
   const how = signal ? `killed by ${signal}` : `exit status ${status}`;
   const scope = step.scope ? `, scope ${step.scope}` : "";
+  const failedTasks = step.captureOutput ? failedTurboTasks(output) : [];
+  if (failedTasks.length > 0) return { ok: false, message: `${step.label} failed (${how}): ${failedTasks.join(", ")}`, failedTasks };
   return { ok: false, message: `${step.label} failed (${how}${scope})` };
 }
 
@@ -308,11 +326,27 @@ function runFlakeStep(step) {
   return { ok: verdict.ok, message: `${FLAKE_LABEL} failed on ${verdict.message}` };
 }
 
+// Output is echoed as it arrives in one piece, then on failure the failing tasks are printed last.
+function runCapturedStep(step) {
+  const result = spawnSync(step.cmd, step.args, {
+    cwd: ROOT,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+    env: { ...process.env, ...step.env },
+  });
+  process.stdout.write(result.stdout ?? "");
+  process.stderr.write(result.stderr ?? "");
+  const outcome = describeOutcome(step, result.status, result.signal, `${result.stdout ?? ""}${result.stderr ?? ""}`);
+  for (const task of outcome.failedTasks ?? []) console.error(`verify:changed: failed task ${task}`);
+  return outcome;
+}
+
 async function runStep(step, changed) {
   if (step.deferred) return { ok: true };
   if (step.flake) return runFlakeStep(step);
   if (step.inProcess) return { ok: await locPasses(changed), message: `${step.label} failed` };
   const { cmd, args, env } = step;
+  if (step.captureOutput) return runCapturedStep(step);
   const { status, signal } = spawnSync(cmd, args, { cwd: ROOT, stdio: "inherit", env: { ...process.env, ...env } });
   return describeOutcome(step, status, signal);
 }
