@@ -1,6 +1,6 @@
 import { promises as fs, type Dirent } from 'node:fs';
 import path from 'node:path';
-import { listInitiativeSlugs } from '../lint/index.js';
+import { listInitiativeSlugs } from '../sessions/initiatives.js';
 import { toRelative } from './refs.js';
 import { scanWorkspaceSlug, type WorkspaceClass } from './scan.js';
 
