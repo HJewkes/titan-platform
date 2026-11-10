@@ -52,4 +52,5 @@ stderr tail goes to `stderr-tail.txt` beside the plan. It exits the way the agen
 a usage error and 66 an unreadable plan.
 
 The bin execs `plan.bin` as written and inherits its environment unscrubbed. A host that
-resolves `claude` or scrubs secrets calls `runAgent(plan, { resolveBin, baseEnv })` instead.
+resolves `claude` or scrubs secrets calls `runAgent(plan, { resolveBin, baseEnv })` instead. `onSpawn(child)` is called once, right after
+spawn and before the brief is written, for a host that attaches its own handlers to the child.
