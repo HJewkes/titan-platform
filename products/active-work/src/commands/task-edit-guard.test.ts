@@ -6,7 +6,7 @@ import taskEdit from './task-edit.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
 import { UsageError } from '../errors.js';
 import type { Task } from '../schemas/task.js';
-import type { TaskOrLine } from './_task-quiet.js';
+import { asTask } from '../test-support/as-task.js';
 
 const SLUG = 'sample-initiative';
 const ID = 'SI-7';
@@ -31,11 +31,6 @@ async function seedTask(root: string, overrides: Partial<Task> = {}): Promise<vo
     ...overrides,
   };
   await fs.writeFile(taskFile(root), YAML.stringify(task));
-}
-
-function asTask(result: TaskOrLine): Task {
-  if (typeof result === 'string') throw new Error(`expected a task, got line: ${result}`);
-  return result;
 }
 
 async function readTask(root: string): Promise<Task> {
