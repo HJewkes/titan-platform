@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import * as clackPrompts from '@clack/prompts';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StepPaths } from './steps-deps.js';
 import { getSupervisor } from './supervision.js';
 import { runUninstall } from './uninstall.js';
@@ -47,27 +47,38 @@ function makeHome(installed: boolean): StepPaths {
   };
 }
 
-/** A spawn whose child is a real process that exits with `code`. */
-function exitingSpawn(code: number) {
-  return vi.fn<typeof nodeSpawn>(() =>
-    nodeSpawn(process.execPath, ['-e', `process.exit(${code})`]),
-  );
+/**
+ * Real spawn, with the CLI entry a script that exits with `code`. PATH is emptied for the run
+ * (see beforeEach), so the `claude` call fails with ENOENT instead of touching the host.
+ */
+function daemonExiting(code: number) {
+  const cliEntry = path.join(mkdtempSync(path.join(tmpdir(), 'aw-uninstall-cli-')), 'cli.mjs');
+  temps.push(path.dirname(cliEntry));
+  writeFileSync(cliEntry, `process.exit(${code});\n`);
+  return { spawn: nodeSpawn, cliEntry };
 }
 
 /** Answers each confirm prompt by its message; anything unlisted is a yes. */
 function scriptedPrompts(answers: Partial<Record<string, boolean | 'cancel'>>) {
   const asked: Array<{ message: string; initialValue: boolean | undefined }> = [];
-  const cancelled = Symbol('cancel');
   const confirm = vi.fn<typeof clackPrompts.confirm>(async (opts) => {
     asked.push({ message: opts.message, initialValue: opts.initialValue });
     const answer = answers[opts.message];
-    return answer === 'cancel' ? cancelled : answer !== false;
+    return answer === 'cancel' ? clackPrompts.CANCEL_SYMBOL : answer !== false;
   });
-  const isCancel = (value: unknown): value is symbol => value === cancelled;
-  return { prompts: { ...clackPrompts, confirm, isCancel }, asked };
+  return { prompts: { ...clackPrompts, confirm }, asked };
 }
 
+const originalPath = process.env.PATH;
+
+beforeEach(() => {
+  const emptyBin = mkdtempSync(path.join(tmpdir(), 'aw-uninstall-bin-'));
+  temps.push(emptyBin);
+  process.env.PATH = emptyBin;
+});
+
 afterEach(() => {
+  process.env.PATH = originalPath;
   for (const dir of temps.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -80,7 +91,7 @@ describe('runUninstall', () => {
     const { prompts, asked } = scriptedPrompts({});
     const paths = makeHome(true);
 
-    const report = await runUninstall({ prompts, yes: true, paths, spawn: exitingSpawn(0) });
+    const report = await runUninstall({ prompts, yes: true, paths, ...daemonExiting(0) });
 
     expect(asked).toEqual([]);
     expect(report.activeRootPreservedAt).toBe(paths.activeRoot);
@@ -102,15 +113,15 @@ describe('runUninstall', () => {
     });
     expect(stepNamed(report, 'register-mcp')).toEqual({
       name: 'register-mcp',
-      done: true,
-      message: 'Unregistered MCP server from Claude Code',
+      done: false,
+      message: expect.stringContaining('`claude` CLI not found'),
     });
   });
 
   it('asks the prompts in order, each defaulting to yes', async () => {
     const { prompts, asked } = scriptedPrompts({});
 
-    await runUninstall({ prompts, paths: makeHome(true), spawn: exitingSpawn(0) });
+    await runUninstall({ prompts, paths: makeHome(true), ...daemonExiting(0) });
 
     expect(asked).toEqual(PROMPTS.map((message) => ({ message, initialValue: true })));
   });
@@ -118,7 +129,7 @@ describe('runUninstall', () => {
   it.each(PROMPTS)('skips only the step behind the declined prompt: %s', async (prompt) => {
     const { prompts } = scriptedPrompts({ [prompt]: false });
 
-    const report = await runUninstall({ prompts, paths: makeHome(true), spawn: exitingSpawn(0) });
+    const report = await runUninstall({ prompts, paths: makeHome(true), ...daemonExiting(0) });
 
     const skipped = report.steps.filter((s) => s.message === 'Skipped');
     expect(report.steps.map((s) => s.name)).toEqual(STEP_NAMES);
@@ -133,7 +144,7 @@ describe('runUninstall', () => {
   it('treats a cancelled prompt as a skip', async () => {
     const { prompts } = scriptedPrompts({ [DAEMON_PROMPT]: 'cancel' });
 
-    const report = await runUninstall({ prompts, paths: makeHome(true), spawn: exitingSpawn(0) });
+    const report = await runUninstall({ prompts, paths: makeHome(true), ...daemonExiting(0) });
 
     expect(stepNamed(report, 'start-daemon')).toEqual({
       name: 'start-daemon',
@@ -147,7 +158,7 @@ describe('runUninstall', () => {
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
     const { prompts, asked } = scriptedPrompts({});
     try {
-      const report = await runUninstall({ prompts, paths: makeHome(true), spawn: exitingSpawn(0) });
+      const report = await runUninstall({ prompts, paths: makeHome(true), ...daemonExiting(0) });
 
       expect(asked.map((a) => a.message)).toEqual([
         SKILL_PROMPT,
@@ -170,7 +181,7 @@ describe('runUninstall', () => {
     const { prompts } = scriptedPrompts({});
     const paths = makeHome(false);
 
-    const report = await runUninstall({ prompts, paths, spawn: exitingSpawn(3) });
+    const report = await runUninstall({ prompts, paths, ...daemonExiting(3) });
 
     expect(stepNamed(report, 'install-skill')).toEqual({
       name: 'install-skill',
@@ -195,7 +206,7 @@ describe('runUninstall', () => {
     mkdirSync(paths.homeDir, { recursive: true });
     writeFileSync(path.join(paths.homeDir, '.claude'), 'not a directory');
 
-    const report = await runUninstall({ prompts, paths, spawn: exitingSpawn(0) });
+    const report = await runUninstall({ prompts, paths, ...daemonExiting(0) });
 
     expect(stepNamed(report, 'install-skill')).toEqual({
       name: 'install-skill',
