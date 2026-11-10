@@ -17,6 +17,7 @@ const request = (overrides: Partial<TtlRequestRow>): TtlRequestRow => ({
   ts: TS,
   cacheReadTokens: 0,
   cacheWrite1hTokens: 0,
+  cacheWrite5mTokens: 0,
   gapMs: null,
   ...overrides,
 });
@@ -81,8 +82,39 @@ describe("cacheTtlWhatIf", () => {
     const text = renderCacheTtlText(cacheTtlWhatIf([...reviewerSession("r1"), ...ciWaitSession]));
 
     expect(text).toContain("Roles where 5m loses: worker:implementer");
-    expect(text).toMatch(/worker:implementer .* loss\n/);
-    expect(text).toMatch(/worker:reviewer .* saves\n/);
+    expect(text).toMatch(/worker:implementer .* loss .*\n/);
+    expect(text).toMatch(/worker:reviewer .* saves .*\n/);
+  });
+});
+
+describe("cacheTtlWhatIf no-cache alternative", () => {
+  // Opus 5.5 input is 4.0 per million, so a 1h write pays 4.0 and a 5m write 1.0 over no-cache.
+  const INPUT_RATE = 4.0 / 1e6;
+  const oneShot = [request({ sessionId: "one", profile: "oneshot", role: "worker:oneshot", cacheWrite1hTokens: 100_000, cacheWrite5mTokens: 20_000 })];
+
+  it("prices a one-shot profile as cheaper with no cache", () => {
+    const whatIf = cacheTtlWhatIf([...oneShot, ...reviewerSession("r1")]);
+    const shot = whatIf.byProfile.find((bucket) => bucket.key === "oneshot")!;
+    const reviewer = whatIf.byProfile.find((bucket) => bucket.key === "reviewer")!;
+
+    // 100k 1h writes at 8.0 and 20k 5m writes at 5.0, against 4.0 input.
+    expect(shot.noCacheNetUsd).toBeCloseTo(100_000 * (8.0 / 1e6 - INPUT_RATE) + 20_000 * (5.0 / 1e6 - INPUT_RATE), 10);
+    expect(shot.noCacheCheaper).toBe(true);
+    expect(reviewer.noCacheNetUsd).toBeLessThan(0);
+    expect(reviewer.noCacheCheaper).toBe(false);
+    expect(whatIf.byRole.find((bucket) => bucket.key === "worker:oneshot")!.noCacheCheaper).toBe(true);
+    expect(renderCacheTtlText(whatIf)).toMatch(/oneshot .* no-cache\n/);
+    expect(renderCacheTtlText(whatIf)).toContain("no-cache net");
+  });
+
+  it("existing 5m-against-1h buckets are unchanged", () => {
+    const whatIf = cacheTtlWhatIf([...reviewerSession("r1"), ...ciWaitSession, ...oneShot]);
+    const implementer = whatIf.byRole.find((bucket) => bucket.key === "worker:implementer")!;
+
+    expect(implementer).toMatchObject({ rebuilds: 2, rebuildTokens: 400_000, fiveMinuteLoses: true });
+    expect(implementer.netSavingUsd).toBeCloseTo(52_000 * WRITE_SAVING - 400_000 * REBUILD_COST, 10);
+    expect(whatIf.totals.repriceSavingUsd).toBeCloseTo((115_000 + 52_000 + 100_000) * WRITE_SAVING, 10);
+    expect(whatIf.lossRoles).toEqual(["worker:implementer"]);
   });
 });
 
