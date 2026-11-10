@@ -24,8 +24,15 @@ export interface SchedulerStatus {
   heldSince: string | null;
 }
 
+/** What the scheduler decided about a failed pass: which kind failed and how long until a retry. */
+export interface PassFailure {
+  kind: PassKind;
+  backoffMs: number;
+}
+
 interface SchedulerOptions {
-  onError?: (err: unknown) => void;
+  /** Called when a pass fails other than by lock contention, with the backoff already chosen for it. */
+  onError?: (err: unknown, failure: PassFailure) => void;
   /** Called instead of `onError` when the refresh lock stayed held; the round retries with backoff. */
   onLockSkip?: (skips: number) => void;
   /** Least time between the starts of two runs; a burst inside it collapses to one trailing run. */
@@ -329,10 +336,10 @@ export class RefreshScheduler {
       }
       this.consecutiveErrors += 1;
       this.lastError = err instanceof Error ? err.message : String(err);
-      this.options.onError?.(err);
       // Back off so a permanently broken corpus cannot spin the daemon.
-      if (kind === 'full') this.backoff = this.pause(this.backoffMs(this.consecutiveErrors));
-      else this.startDeltaBackoff();
+      const backoffMs = kind === 'full' ? this.backoffMs(this.consecutiveErrors) : this.startDeltaBackoff();
+      if (kind === 'full') this.backoff = this.pause(backoffMs);
+      this.options.onError?.(err, { kind, backoffMs });
       return false;
     }
   }
@@ -345,9 +352,11 @@ export class RefreshScheduler {
     this.deltaBackoffUntil = 0;
   }
 
-  private startDeltaBackoff(): void {
+  private startDeltaBackoff(): number {
     this.deltaFailures += 1;
-    this.deltaBackoffUntil = this.now() + this.backoffMs(this.deltaFailures);
+    const backoffMs = this.backoffMs(this.deltaFailures);
+    this.deltaBackoffUntil = this.now() + backoffMs;
+    return backoffMs;
   }
 
   private minIdle(): number {
