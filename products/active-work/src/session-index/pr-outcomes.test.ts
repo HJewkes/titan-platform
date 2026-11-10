@@ -151,7 +151,7 @@ describe('the gh PR resolver', () => {
   it('asks only for open PRs and PRs never checked, at most 50 per pass', async () => {
     const checked = '2026-09-22T00:00:00Z';
     addPr(1, { state: 'merged', checkedAt: checked });
-    addPr(2, { state: 'closed', checkedAt: checked });
+    addPr(2, { state: 'closed', checkedAt: new Date().toISOString() });
     addPr(3, { state: 'open', checkedAt: checked });
     for (let n = 100; n < 160; n++) addPr(n);
     const gh = fakeGh({});
@@ -252,5 +252,68 @@ describe('the gh PR resolver', () => {
     clock += 1;
     await resolver(keys);
     expect(gh.asked).toEqual(['acme/demo#1', 'acme/demo#1']);
+  });
+
+  describe('recheck intervals', () => {
+    const openMs = 10 * 60 * 1000;
+    const closedMs = 24 * 60 * 60 * 1000;
+    const checkedAt = '2026-11-01T00:00:00.000Z';
+    const checkedMs = Date.parse(checkedAt);
+    const keyFor = (n: number): { prRef: string; repo: string; number: number }[] => [
+      { prRef: `pr:acme/demo#${n}`, repo: 'acme/demo', number: n },
+    ];
+
+    it('an open PR checked within the interval is not asked again', async () => {
+      addPr(1, { state: 'open', checkedAt });
+      const gh = fakeGh({});
+      let clock = checkedMs + openMs - 1;
+      const resolver = ghPrResolver(graph, { run: gh, now: () => clock });
+
+      await resolver(keyFor(1));
+      expect(gh.asked).toEqual([]);
+
+      clock = checkedMs + openMs;
+      await resolver(keyFor(1));
+      expect(gh.asked).toEqual(['acme/demo#1']);
+    });
+
+    it('a closed PR is re-checked after the interval', async () => {
+      addPr(2, { state: 'closed', checkedAt });
+      const gh = fakeGh({});
+      let clock = checkedMs + closedMs - 1;
+      const resolver = ghPrResolver(graph, { run: gh, now: () => clock });
+
+      await resolver(keyFor(2));
+      expect(gh.asked).toEqual([]);
+
+      clock = checkedMs + closedMs;
+      await resolver(keyFor(2));
+      expect(gh.asked).toEqual(['acme/demo#2']);
+    });
+
+    it('a merged PR the forge never checked is asked about, a checked one is not', async () => {
+      addPr(4, { state: 'merged' });
+      addPr(5, { state: 'merged', checkedAt });
+      const gh = fakeGh({});
+      const resolver = ghPrResolver(graph, { run: gh, now: () => checkedMs + closedMs * 10 });
+
+      await resolver([...keyFor(4), ...keyFor(5)]);
+
+      expect(gh.asked).toEqual(['acme/demo#4']);
+    });
+
+    it('honours configured intervals over the defaults', async () => {
+      addPr(3, { state: 'open', checkedAt });
+      const gh = fakeGh({});
+      const resolver = ghPrResolver(graph, {
+        run: gh,
+        now: () => checkedMs + 1000,
+        openRecheckMs: 1000,
+      });
+
+      await resolver(keyFor(3));
+
+      expect(gh.asked).toEqual(['acme/demo#3']);
+    });
   });
 });
