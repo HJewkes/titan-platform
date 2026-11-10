@@ -17,7 +17,7 @@ function loop(ref: string): OpenLoop {
 }
 
 function hit(ref: string): RelatedHit {
-  return { ref, class: 'notes', initiative: 'alpha', title: ref, path: null, excerpt: null };
+  return { ref, class: 'notes', initiative: 'alpha', title: ref, path: null, excerpt: null, byteOffset: null, byteLength: null };
 }
 
 /** A retriever that advances the fake clock by `costMs` per query, standing in for a slow index. */
@@ -25,7 +25,7 @@ function slowStub(clock: { t: number }, costMs: number, calls: string[]): LoopRe
   return async (input) => {
     calls.push(input.text);
     clock.t += costMs;
-    return { hits: [hit(`note:${input.text}`)], degraded: [] };
+    return { hits: [hit(`note:${input.text}`)], degraded: [], query: { terms: [], expression: '' } };
   };
 }
 

@@ -71,6 +71,12 @@ function isVertical(layoutOptions: Record<string, string>): boolean {
   return direction === "DOWN" || direction === "UP";
 }
 
+// A group-to-itself edge is dropped: ELK cannot route it from the border of a compound
+// node, and a group box has no meaningful self-arrow.
+function withoutGroupSelfLoops(edges: GraphEdge[], groups: Map<string, ElkNode>): GraphEdge[] {
+  return edges.filter((e) => e.srcId !== e.dstId || !groups.has(e.srcId));
+}
+
 function buildCompoundTree(
   nodes: GraphNode[],
   edges: GraphEdge[],
@@ -98,7 +104,8 @@ function buildCompoundTree(
   }
   // Group ids are valid edge ends, so aggregate edges between group boxes route in this same pass.
   const root = groups.get(ROOT_ID)!;
-  return { root: { ...root, edges: toElkEdges(edges, new Set(chains.keys())) }, chains };
+  const routable = withoutGroupSelfLoops(edges, groups);
+  return { root: { ...root, edges: toElkEdges(routable, new Set(chains.keys())) }, chains };
 }
 
 // Absolute top-left of every node, accumulated down the parent chain.
