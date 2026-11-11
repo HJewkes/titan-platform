@@ -29,11 +29,24 @@ export function serviceRunsFromCheckout(ports: DeployPorts, checkout: string): b
   return namesWholePath(text, bin) || namesWholePath(text, xmlEscaped(bin));
 }
 
-/** systemd ignores `#`/`;` comment lines, and an `Environment=` value is data, not a started program. */
+const SYSTEMD_ASSIGNMENT = /^\s*([A-Za-z][A-Za-z0-9-]*)\s*=(.*)$/;
+const EXEC_PREFIX = /^\s*[-@:+!]*/;
+
+/**
+ * Keeps what can start the service: in a systemd unit only `ExecStart` values (after joining `\`
+ * continuations, as systemd does), since comments, `Environment=` and every other key are data.
+ * Lines that are not `Key=value` (plist XML) pass through unchanged.
+ */
 function withoutInertLines(text: string): string {
   return text
+    .replace(/\\\r?\n/g, " ")
     .split("\n")
-    .filter((line) => !/^\s*([#;]|Environment=)/.test(line))
+    .filter((line) => !/^\s*[#;]/.test(line))
+    .flatMap((line) => {
+      const assignment = SYSTEMD_ASSIGNMENT.exec(line);
+      if (assignment === null) return [line];
+      return assignment[1] === "ExecStart" ? [(assignment[2] ?? "").replace(EXEC_PREFIX, "")] : [];
+    })
     .join("\n");
 }
 

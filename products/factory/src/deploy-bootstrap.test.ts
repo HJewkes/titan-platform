@@ -68,6 +68,21 @@ describe("serviceRunsFromCheckout", () => {
     expect(serviceRunsFromCheckout(portsReading(unit), CHECKOUT)).toBe(false);
   });
 
+  it.each([
+    ["an Environment key with spaces around the equals sign", `Environment = X=${BIN}`],
+    ["a continued Environment line", `Environment=A=b \\\n  X=${BIN}`],
+    ["a Description", `Description=${BIN}`],
+    ["an ExecStartPre", `ExecStartPre=/bin/ls ${BIN}`],
+  ])("rejects an ExecStart from another tree when %s names the bin", (_label, line) => {
+    const unit = `[Service]\n${line}\nExecStart=/usr/bin/node /srv/other/bin.js serve\n`;
+    expect(serviceRunsFromCheckout(portsReading(unit), CHECKOUT)).toBe(false);
+  });
+
+  it("accepts a continued ExecStart and one with a systemd prefix", () => {
+    expect(serviceRunsFromCheckout(portsReading(`ExecStart=/usr/bin/node \\\n  ${BIN} serve`), CHECKOUT)).toBe(true);
+    expect(serviceRunsFromCheckout(portsReading(`ExecStart = -${BIN} serve`), CHECKOUT)).toBe(true);
+  });
+
   it("accepts an ExecStart that names the bin among comment and Environment lines", () => {
     const unit = `# note\nEnvironment=A=b\nExecStart=/usr/bin/node ${BIN} serve\n`;
     expect(serviceRunsFromCheckout(portsReading(unit), CHECKOUT)).toBe(true);

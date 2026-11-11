@@ -2,4 +2,4 @@
 "@titan-design/factory": patch
 ---
 
-`serviceRunsFromCheckout` now ignores comment lines and `Environment=` lines when deciding whether the installed service starts the deploy checkout's bin, so a unit that names the bin only there no longer passes the deploy guard. The XML-escaped acceptance test now uses a checkout path containing `&`.
+`serviceRunsFromCheckout` now matches the deploy checkout's bin only in a systemd unit's `ExecStart` values (continuations joined, spacing around `=` ignored), so a comment, `Environment=` line or any other key that names the bin no longer passes the deploy guard. The XML-escaped acceptance test now uses a checkout path containing `&`.
