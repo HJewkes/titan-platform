@@ -9,6 +9,24 @@
       "kills": [
         "retrying a seeded index that ran out of memory defers instead of retrying cold when the caller forbids a cold index"
       ]
+    },
+    {
+      "name": "a corrupt seed falls back cold despite the defer flag",
+      "file": "scripts/dag-check-seed.mjs",
+      "find": "    if (deferCold) throw new ColdFallbackDeferred(",
+      "replace": "    if (false) throw new ColdFallbackDeferred(",
+      "kills": [
+        "opening a seeded work graph refuses the cold fallback when a verify:changed run over the budget forbids it"
+      ]
+    },
+    {
+      "name": "a half-opened seed store is left open when its files are removed",
+      "file": "scripts/dag-check-seed.mjs",
+      "find": "    store?.close();\n",
+      "replace": "",
+      "kills": [
+        "opening a seeded work graph closes a store that opens but fails to list snapshots before removing the db files"
+      ]
     }
   ]
 }

@@ -8,6 +8,7 @@ import { PROFILE_ROOT_ENV } from './utils/profile-dir.js';
 
 import { helpText, main, type AwDeps } from './aw.js';
 import { openSlugOrInit } from './launcher-open.js';
+import resumeCommand from './commands/resume.js';
 
 const spawnSpy = vi.hoisted(() => vi.fn());
 vi.mock('node:child_process', async (importOriginal) => ({
@@ -88,10 +89,18 @@ describe('aw --profile', () => {
   );
 
   it('rejects an unknown profile for resume before looking the session up', async () => {
+    const lookup = vi.spyOn(resumeCommand, 'run').mockResolvedValue({
+      session_id: 'abc123',
+      cwd: profilesRoot,
+      source: 'active-work',
+    });
+
     await main(['node', 'aw', 'resume', 'abc123', '--profile', 'ghost'], deps);
 
     expect(deps.exit).toHaveBeenCalledWith(EXIT.USAGE);
+    expect(lookup).not.toHaveBeenCalled();
     expect(spawnSpy).not.toHaveBeenCalled();
+    lookup.mockRestore();
   });
 
   it('documents --profile in the help text', () => {
