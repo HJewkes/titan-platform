@@ -244,11 +244,6 @@
       "count": 1
     }
   },
-  "products/active-work/src/server/daemon-shutdown-order.test.ts": {
-    "titan/no-internal-module-mock": {
-      "count": 4
-    }
-  },
   "products/active-work/src/server/daemon.ts": {
     "titan/max-function-lines": {
       "count": 1
@@ -257,11 +252,6 @@
   "products/active-work/src/server/dashboard-routes.ts": {
     "titan/max-function-lines": {
       "count": 1
-    }
-  },
-  "products/active-work/src/server/host-lease.test.ts": {
-    "titan/no-internal-module-mock": {
-      "count": 2
     }
   },
   "products/active-work/src/server/logger.ts": {
