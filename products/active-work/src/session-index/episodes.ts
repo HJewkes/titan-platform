@@ -20,9 +20,9 @@ import type { WorkspaceGraph } from './graph.js';
 
 export { staleEpisodeSessions };
 
-export const DEFAULT_EPISODE_LIMIT = 200;
+const DEFAULT_EPISODE_LIMIT = 200;
 
-export interface EpisodePass {
+interface EpisodePass {
   /** Sessions whose episodes this pass rewrote. */
   episodesWritten: number;
   /** Stale sessions left for a later pass; null when the pass did not sweep the backlog. */

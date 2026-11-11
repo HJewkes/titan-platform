@@ -49,7 +49,7 @@ export interface WorkspaceRefreshSummary {
   legacySpansRetired: number;
 }
 
-export interface WorkspaceRefreshOptions {
+interface WorkspaceRefreshOptions {
   activeRoot?: string;
   /** Re-read every file, ignoring the watermarks. Callers reset the tables first. */
   full?: boolean;
