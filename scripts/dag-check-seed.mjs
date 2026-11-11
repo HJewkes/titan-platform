@@ -48,17 +48,56 @@ export function refreshSeed({ workDb, seedPath = MACHINE_SEED, code }) {
 /**
  * Runs the indexer; when it hits the heap cap on a seeded graph, clears the work dir and runs it once more cold.
  * A seed carries every snapshot it ever held, so it can need more heap than the cold index it speeds up.
+ * `seeded` names a seed the caller copied itself, so no --seed-db marker has to ride in argv.
  */
-export async function runWithColdRetry({ argv, runWorker, clearWork, log, deferCold = false }) {
+export async function runWithColdRetry({ argv, runWorker, clearWork, log, deferCold = false, seeded = argv.includes("--seed-db") }) {
   const first = await runWorker(argv);
-  if (!first.heapAbort || !argv.includes("--seed-db")) return first.code;
+  if (!first.heapAbort || !seeded) return first.code;
   if (deferCold) {
-    log("seeded index ran out of memory; not retrying cold, deferred to CI");
+    log("seeded index ran out of memory; not retrying cold, deferred to CI (run pnpm dag:check to rebuild the seed)");
     return COLD_DEFERRED_EXIT_CODE;
   }
   log("seeded index ran out of memory; retrying once without the seed");
   clearWork();
   const at = argv.indexOf("--seed-db");
-  const cold = [...argv.slice(0, at), ...argv.slice(at + 2)];
+  const cold = at === -1 ? argv : [...argv.slice(0, at), ...argv.slice(at + 2)];
   return (await runWorker(cold)).code;
+}
+
+/** Thrown by the seeded opener when DEFER_COLD_ENV forbade the cold index it would have fallen back to. */
+export class ColdFallbackDeferred extends Error {}
+
+/** Removes a graph database with its WAL and shared-memory sidecars. */
+export function removeDb(dbPath) {
+  for (const suffix of ["", "-wal", "-shm"]) rmSync(`${dbPath}${suffix}`, { force: true });
+}
+
+/**
+ * A seeded snapshot may feed the reuse basis but never snapshot identity: with a commit it becomes the alias base
+ * of the head index, so rename aliases (and the baseline's carry-over) would differ from a cold run's.
+ */
+export function forgetSeedCommits(store) {
+  store.db.prepare("UPDATE snapshot SET commit_hash = NULL").run();
+}
+
+/**
+ * Opens the work graph a seed was copied to. A seed written by another schema or truncated mid-save costs a cold index,
+ * never a failed check: the half-opened store is closed, its files removed, and an empty graph opened (or, with
+ * deferCold, ColdFallbackDeferred thrown). A usable seed has its snapshot commits cleared.
+ */
+export function openSeededWorkGraph(graph, dbPath, { deferCold = false } = {}) {
+  let store;
+  try {
+    store = graph.openCodeGraph(dbPath);
+    store.listSnapshots({ limit: 1 });
+    forgetSeedCommits(store);
+    return store;
+  } catch (err) {
+    console.error(`seed graph unusable, indexing cold: ${err instanceof Error ? err.message : String(err)}`);
+    // A db that opens but fails to read is still held open; its files must not be removed under it.
+    store?.close();
+    removeDb(dbPath);
+    if (deferCold) throw new ColdFallbackDeferred("seed graph unusable; cold index deferred to CI (run pnpm dag:check to rebuild the seed)");
+    return graph.openCodeGraph(dbPath);
+  }
 }
