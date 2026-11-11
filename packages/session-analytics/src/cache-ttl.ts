@@ -21,6 +21,8 @@ export const REBUILD_GAP_BANDS: readonly string[] = GAP_BANDS.filter((band) => b
 /** One request as the TTL what-if needs it. */
 export interface TtlRequestRow {
   sessionId: string;
+  /** Sidechain requests run in their own cache chain, apart from the main one. */
+  isSidechain: boolean;
   role: string;
   profile: string;
   model: string;
@@ -189,12 +191,12 @@ const IN_WINDOW = "(@since IS NULL OR ts >= @since) AND (@until IS NULL OR ts < 
 const TTL_ROWS = `
   WITH member AS (SELECT DISTINCT session_id FROM request_dedup WHERE ${IN_WINDOW}),
   timed AS (
-    SELECT session_id, request_id, model, ts, cache_read_tokens, cache_creation_1h, cache_creation_5m, cache_creation_tokens, gap_ms,
+    SELECT session_id, is_sidechain, request_id, model, ts, cache_read_tokens, cache_creation_1h, cache_creation_5m, cache_creation_tokens, gap_ms,
       LAG(ts) OVER (PARTITION BY session_id, is_sidechain ORDER BY ts, request_id) AS previous_ts,
       LAG(request_id) OVER (PARTITION BY session_id, is_sidechain ORDER BY ts, request_id) AS previous_request_id
     FROM request_dedup WHERE session_id IN member
   )
-  SELECT session_id AS sessionId, previous_request_id AS previousRequestId, model, ts, cache_read_tokens AS cacheReadTokens, cache_creation_1h AS cacheWrite1hTokens,
+  SELECT session_id AS sessionId, is_sidechain AS isSidechain, previous_request_id AS previousRequestId, model, ts, cache_read_tokens AS cacheReadTokens, cache_creation_1h AS cacheWrite1hTokens,
     CASE WHEN cache_creation_5m + cache_creation_1h = 0 THEN cache_creation_tokens ELSE cache_creation_5m END AS cacheWrite5mTokens,
     COALESCE(gap_ms, CAST(ROUND((julianday(ts) - julianday(previous_ts)) * 86400000) AS INTEGER)) AS gapMs
   FROM timed WHERE ${IN_WINDOW}`;
@@ -205,7 +207,7 @@ export function cacheTtlReport(db: Db, options: CostReportOptions = {}, prices: 
   return { window, ...cacheTtlWhatIf(readTtlRows(db, window).filter(scopeFilter(db, options.scope)), prices) };
 }
 
-type QueriedRow = Omit<TtlRequestRow, "role" | "profile" | "previousAction"> & { previousRequestId: string | null };
+type QueriedRow = Omit<TtlRequestRow, "role" | "profile" | "previousAction" | "isSidechain"> & { isSidechain: number; previousRequestId: string | null };
 
 export function readTtlRows(db: Db, window: ReportWindow): TtlRequestRow[] {
   const rows = db.prepare<[object], QueriedRow>(TTL_ROWS).all(window);
@@ -216,6 +218,7 @@ export function readTtlRows(db: Db, window: ReportWindow): TtlRequestRow[] {
   const tags = tagSessions(contexts);
   return rows.map(({ previousRequestId, ...row }) => ({
     ...row,
+    isSidechain: row.isSidechain !== 0,
     previousAction: gapCauseOf(previousRequestId ? calls.get(previousRequestId) : undefined),
     role: tags.get(row.sessionId)!.role,
     profile: contexts.get(row.sessionId)!.facts.origin?.profile ?? NO_PROFILE,

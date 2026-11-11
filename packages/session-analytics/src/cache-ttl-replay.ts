@@ -53,12 +53,14 @@ function isFiveMinuteSession(rows: readonly TtlRequestRow[]): boolean {
   return rows.some((row) => row.cacheWrite5mTokens > 0) && rows.every((row) => row.cacheWrite1hTokens === 0);
 }
 
+/** Rows grouped by (session, chain): a sidechain has its own cache, so it is never a main request's previous prompt. */
 function bySession(rows: readonly TtlRequestRow[]): Map<string, TtlRequestRow[]> {
   const sessions = new Map<string, TtlRequestRow[]>();
   for (const row of rows) {
-    const members = sessions.get(row.sessionId);
+    const key = `${row.sessionId}\u0000${row.isSidechain}`;
+    const members = sessions.get(key);
     if (members) members.push(row);
-    else sessions.set(row.sessionId, [row]);
+    else sessions.set(key, [row]);
   }
   return sessions;
 }
