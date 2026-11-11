@@ -18,22 +18,26 @@ import { stepStartDaemon, stepIngestion, stepSupervision } from './steps-daemon.
 import { runSetup } from './steps.js';
 import { asSpawn } from '../test-support/spawn-fake.js';
 
+function hasFunction(value: unknown, member: string): boolean {
+  return typeof value === 'object' && value !== null && typeof Reflect.get(value, member) === 'function';
+}
+
 function isChild(value: unknown): value is ChildProcess {
-  return typeof value === 'object' && value !== null;
+  return hasFunction(value, 'on');
 }
 
 function isPrompts(value: unknown): value is typeof clackPrompts {
-  return typeof value === 'object' && value !== null;
+  return hasFunction(value, 'confirm') && hasFunction(value, 'isCancel');
 }
 
 /** Hand a structural child fake to code that wants a ChildProcess, without a cast. */
 function asChild(fake: unknown): ChildProcess {
-  if (!isChild(fake)) throw new Error('a child fake must be an object');
+  if (!isChild(fake)) throw new Error('a child fake must have an `on` method');
   return fake;
 }
 
 function asPrompts(fake: unknown): typeof clackPrompts {
-  if (!isPrompts(fake)) throw new Error('a prompts fake must be an object');
+  if (!isPrompts(fake)) throw new Error('a prompts fake must have `confirm` and `isCancel` functions');
   return fake;
 }
 
