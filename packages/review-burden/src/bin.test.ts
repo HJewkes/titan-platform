@@ -6,11 +6,24 @@ const FOOTER = (door: string) =>
 const TWO_WAY_DIFF = "10\t2\tsrc/cli/status.ts\0" + "20\t1\tsrc/cli/status.test.ts\0";
 const MIGRATION_DIFF = "10\t0\tsrc/db/migrations/001-init.sql\0";
 
-function harness(diff: string, body: string, extraEnv: Record<string, string> = {}, files: Record<string, string> = {}) {
+function harness(
+  diff: string,
+  body: string,
+  extraEnv: Record<string, string> = {},
+  files: Record<string, string> = {},
+  git: { nameStatus?: string; revs?: Record<string, string> } = {},
+) {
   const out: string[] = [];
   const err: string[] = [];
   const deps: CliDeps = {
     diff: () => diff,
+    nameStatus: () => git.nameStatus ?? "",
+    mergeBase: () => "BASE",
+    show: (rev, path) => {
+      const text = git.revs?.[`${rev}:${path}`];
+      if (text === undefined) throw new Error(`no ${rev}:${path}`);
+      return text;
+    },
     readText: (path) => {
       if (path === "body.md") return body;
       if (path in files) return files[path] ?? "";
@@ -96,5 +109,59 @@ describe("review-burden bin", () => {
     const { deps, out } = harness("3\t0\t.changeset/brave-owl.md\0", "", {}, { ".changeset/brave-owl.md": changeset });
     run(["--body-file", "body.md"], deps);
     expect(doorOf(out).facts).toEqual([{ kind: "major-changeset" }]);
+  });
+
+  it("reads protectedPaths from --config and reports an authority-path fact", () => {
+    const files = { "rb.json": '{"protectedPaths":[".github/workflows/**"]}' };
+    const { deps, out } = harness("1\t0\t.github/workflows/ci.yml\0", "", {}, files);
+    run(["--body-file", "body.md", "--config", "rb.json"], deps);
+    expect(doorOf(out).facts).toEqual([{ kind: "authority-path", path: ".github/workflows/ci.yml" }]);
+  });
+
+  it("applies generatedGlobs from --config to the score", () => {
+    const files = { "rb.json": '{"generatedGlobs":["**/*.gen.ts"]}' };
+    const { deps, out } = harness("100\t0\tsrc/api.gen.ts\0", "", {}, files);
+    run(["--body-file", "body.md", "--config", "rb.json"], deps);
+    const json = JSON.parse(out.join("").trim().split("\n").at(-1) ?? "");
+    expect(json.score.facts.productionLines).toBe(0);
+  });
+
+  it("exits 2 on a config file with an unknown key", () => {
+    const { deps, err } = harness("", "", {}, { "rb.json": '{"protectedPath":["x"]}' });
+    expect(run(["--body-file", "body.md", "--config", "rb.json"], deps)).toBe(2);
+    expect(err.join("")).toContain("unknown key protectedPath");
+  });
+
+  it("a deleted stored-data path yields a stored-data-deleted fact", () => {
+    const files = { "rb.json": '{"storedDataGlobs":["data/**"]}' };
+    const { deps, out } = harness("0\t12\tdata/schema.json\0", "", {}, files, { nameStatus: "D\0data/schema.json\0" });
+    run(["--body-file", "body.md", "--config", "rb.json"], deps);
+    expect(doorOf(out).facts).toEqual([{ kind: "stored-data-deleted", path: "data/schema.json" }]);
+  });
+
+  it("a bin name removed on the head package.json yields package-key-removed", () => {
+    const revs = {
+      "BASE:packages/x/package.json": '{"name":"@s/x","bin":{"x":"a.js","y":"b.js"}}',
+      "HEAD:packages/x/package.json": '{"name":"@s/x","bin":{"x":"a.js"}}',
+    };
+    const { deps, out } = harness("1\t1\tpackages/x/package.json\0", "", {}, {}, { nameStatus: "M\0packages/x/package.json\0", revs });
+    run(["--body-file", "body.md"], deps);
+    expect(doorOf(out).facts).toEqual([{ kind: "package-key-removed", path: "packages/x/package.json", detail: "bin y" }]);
+  });
+
+  it("a new package.json reads only the head side", () => {
+    const revs = { "HEAD:packages/y/package.json": '{"name":"@s/y"}' };
+    const { deps, out, err } = harness("5\t0\tpackages/y/package.json\0", "", {}, {}, { nameStatus: "A\0packages/y/package.json\0", revs });
+    run(["--body-file", "body.md"], deps);
+    expect(doorOf(out).facts).toEqual([]);
+    expect(err).toEqual([]);
+  });
+
+  it("an unparsable package.json side is skipped with a warning and the bin exits 0", () => {
+    const revs = { "BASE:packages/x/package.json": '{"name":"@s/x"}', "HEAD:packages/x/package.json": "{" };
+    const { deps, out, err } = harness("1\t1\tpackages/x/package.json\0", "", {}, {}, { nameStatus: "M\0packages/x/package.json\0", revs });
+    expect(run(["--body-file", "body.md"], deps)).toBe(0);
+    expect(doorOf(out).facts).toEqual([]);
+    expect(err.join("")).toContain("skipped packages/x/package.json");
   });
 });
