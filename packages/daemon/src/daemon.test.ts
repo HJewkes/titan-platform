@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { once } from "node:events";
+import { promises as fsPromises } from "node:fs";
 import { chmod, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { createServer, request, type ClientRequest, type IncomingMessage, type RequestOptions } from "node:http";
 import { request as httpsRequest } from "node:https";
@@ -16,7 +17,6 @@ import type { Hono } from "hono";
 import { SESSION_COOKIE, TokenFileError, ensureTokenFile, mintLoginCode, signSession } from "./auth.js";
 import { DaemonAlreadyRunningError, DaemonPortInUseError, startDaemon, type DaemonHandle, type RemoteListenerOptions, type StartDaemonOptions } from "./daemon.js";
 import type * as BindGuardModule from "./bind-guard.js";
-import type * as LifecycleModule from "./lifecycle.js";
 import { NonLoopbackBindError, RemoteBindError, assertRemoteHost } from "./bind-guard.js";
 import { daemonPaths, readPidFile, writePidFile } from "./lifecycle.js";
 import { silentLogger } from "./logger.js";
@@ -28,20 +28,6 @@ import { TlsFileError } from "./tls-files.js";
 vi.mock("./bind-guard.js", async (importOriginal) => {
   const actual = await importOriginal<typeof BindGuardModule>();
   return { ...actual, assertRemoteHost: vi.fn(actual.assertRemoteHost) };
-});
-
-// Lets one test hold the pid-file write open; every other test gets the real function.
-const pidWriteGate = vi.hoisted(() => ({ hold: null as Promise<void> | null, entered: null as (() => void) | null }));
-vi.mock("./lifecycle.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof LifecycleModule>();
-  return {
-    ...actual,
-    writePidFile: vi.fn(async (...args: Parameters<typeof actual.writePidFile>) => {
-      pidWriteGate.entered?.();
-      await pidWriteGate.hold;
-      return actual.writePidFile(...args);
-    }),
-  };
 });
 
 function portOf(server: Server): number {
@@ -203,16 +189,9 @@ describe("startDaemon", () => {
 });
 
 describe("startDaemon on an inherited socket", () => {
-  afterEach(() => {
-    pidWriteGate.hold = null;
-    pidWriteGate.entered = null;
-  });
-
   it("holds an mcp request until the pid file is written", async () => {
     const socket = await bindInheritableSocket();
-    let release!: () => void;
-    pidWriteGate.hold = new Promise<void>((resolve) => (release = resolve));
-    const writing = new Promise<void>((resolve) => (pidWriteGate.entered = resolve));
+    const { release, writing } = holdPidFileWrite();
     const starting = startDaemon(options({ listenFd: socket.fd, toolPrefix: "test__", mcpName: "test-mcp" }));
     await writing;
 
@@ -230,6 +209,24 @@ describe("startDaemon on an inherited socket", () => {
   });
 });
 
+// writePidFile makes its directory first; holding that call holds the pid file back. Restored by
+// vitest's restoreMocks between tests.
+function holdPidFileWrite(): { release: () => void; writing: Promise<void> } {
+  const original = fsPromises.mkdir.bind(fsPromises);
+  let release!: () => void;
+  const hold = new Promise<void>((resolve) => (release = resolve));
+  let entered!: () => void;
+  const writing = new Promise<void>((resolve) => (entered = resolve));
+  vi.spyOn(fsPromises, "mkdir").mockImplementation(async (target, opts) => {
+    if (String(target).startsWith(stateDir)) {
+      entered();
+      await hold;
+    }
+    return original(target, opts);
+  });
+  return { release, writing };
+}
+
 // A listening socket's fd can only be adopted by a loop that is not already polling it. A worker
 // binds it and then parks, so it never accepts and the daemon under test owns every connection.
 async function bindInheritableSocket(): Promise<{ fd: number; port: number; release: () => void }> {
@@ -237,12 +234,13 @@ async function bindInheritableSocket(): Promise<{ fd: number; port: number; rele
   const code = `
     const { workerData, parentPort } = require("node:worker_threads");
     const server = require("node:net").createServer().listen(0, "127.0.0.1", () => {
-      parentPort.postMessage({ fd: server._handle.fd, port: server.address().port });
+      parentPort.postMessage(server._handle.fd + ":" + server.address().port);
       Atomics.wait(workerData.park, 0, 0);
       server.close();
     });`;
   const worker = new Worker(code, { eval: true, workerData: { park } });
-  const [{ fd, port }] = (await once(worker, "message")) as [{ fd: number; port: number }];
+  const [message] = await once(worker, "message");
+  const [fd = 0, port = 0] = String(message).split(":").map(Number);
   return { fd, port, release: () => { Atomics.store(park, 0, 1); Atomics.notify(park, 0); } };
 }
 
