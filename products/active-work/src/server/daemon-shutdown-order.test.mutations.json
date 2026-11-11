@@ -3,7 +3,7 @@
   "mutations": [
     {
       "name": "the daemon's yield point waits on readers through an abort",
-      "file": "products/active-work/src/server/session-index-watch.ts",
+      "file": "products/active-work/src/server/watch-deps.ts",
       "find": "  await (signal ? untilAborted(idle, signal) : idle);\n",
       "replace": "  await idle;\n",
       "kills": [

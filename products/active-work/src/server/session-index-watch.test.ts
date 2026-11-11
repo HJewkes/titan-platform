@@ -4,12 +4,8 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
-import {
-  createScheduler,
-  passRunner,
-  startSessionIndexWatch,
-  type WatchDeps,
-} from './session-index-watch.js';
+import { createScheduler, passRunner, startSessionIndexWatch } from './session-index-watch.js';
+import type { WatchDeps } from './watch-deps.js';
 import { withRefreshLock } from '../session-index/refresh-lock.js';
 import type { MachinePressure } from '../utils/machine-pressure.js';
 import { FIXTURE_LINES, SESSION, renderTranscript } from '../test-support/session-index/fixture.js';

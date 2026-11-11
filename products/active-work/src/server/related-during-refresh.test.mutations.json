@@ -3,7 +3,7 @@
   "mutations": [
     {
       "name": "the daemon's yield point never waits on in-flight related requests",
-      "file": "products/active-work/src/server/session-index-watch.ts",
+      "file": "products/active-work/src/server/watch-deps.ts",
       "find": "  const idle = gate.idle(IDLE_CAP_MS);\n",
       "replace": "  const idle = Promise.resolve();\n",
       "kills": [

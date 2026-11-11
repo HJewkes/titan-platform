@@ -9,7 +9,6 @@
  */
 import { existsSync } from 'node:fs';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
-import { setImmediate as nextMacrotask } from 'node:timers/promises';
 import { claudeTranscriptRoots } from '@titan-design/session-read';
 import { watchTree, type TreeWatcher } from '@titan-design/daemon';
 import { watchChangedPaths } from '../session-index/watch-paths.js';
@@ -18,16 +17,12 @@ import { transcriptsFromDirty } from '../session-index/delta-pass.js';
 import { indexFreshness } from '../session-index/freshness.js';
 import type { WorkspaceGraph } from '../session-index/graph.js';
 import { openLiveGraph, type LiveGraph } from '../session-index/live-graph.js';
-import {
-  readMachinePressure,
-  shouldHold,
-  type MachinePressure,
-} from '../utils/machine-pressure.js';
-import { readerGate, type ReaderGate } from '../session-index/reader-gate.js';
+import { shouldHold } from '../utils/machine-pressure.js';
 import { BACKOFF_OPTIONS, deltaBackoffLog } from './delta-backoff-log.js';
 import { startWorkspaceFreshness, type WorkspaceFreshness } from './workspace-freshness.js';
 import { readRefreshLockHolder, withRefreshLock } from '../session-index/refresh-lock.js';
-import { runRefresh, type RefreshOptions, type RefreshSummary } from '../session-index/refresh.js';
+import type { RefreshOptions, RefreshSummary } from '../session-index/refresh.js';
+import { WATCH_DEPS, yieldToReaders, type WatchDeps } from './watch-deps.js';
 import {
   DEFAULT_GATE_RECHECK_MS,
   DEFAULT_MIN_INTERVAL_MS,
@@ -46,25 +41,14 @@ export interface SessionIndexWatcher {
   close(): Promise<void>;
 }
 
+export { yieldToReaders } from './watch-deps.js';
+
 interface WatchLogger {
   info(obj: object, msg: string): void;
   warn(obj: object, msg: string): void;
 }
 
-/** The watcher's outside work: the refresh pass, the machine-pressure probe and the reader gate. */
-export interface WatchDeps {
-  refresh: (options: RefreshOptions) => Promise<RefreshSummary>;
-  readPressure: () => Promise<MachinePressure | null>;
-  gate: Pick<ReaderGate, 'idle'>;
-}
-
-const WATCH_DEPS: WatchDeps = {
-  refresh: runRefresh,
-  readPressure: () => readMachinePressure(),
-  gate: readerGate,
-};
-
-export interface SessionIndexWatchOptions {
+interface SessionIndexWatchOptions {
   /** Starts the backstop poll and returns its stop; injectable so a test can fire it by hand. */
   startPoll?: (tick: () => void, intervalMs: number) => () => void;
   deps?: Partial<WatchDeps>;
@@ -84,32 +68,6 @@ function startIntervalPoll(tick: () => void, intervalMs: number): () => void {
   const timer = setInterval(tick, intervalMs);
   timer.unref();
   return () => clearInterval(timer);
-}
-
-/** The longest a pass waits on in-flight related requests before it resumes anyway. */
-const IDLE_CAP_MS = 5_000;
-
-/** Settles with `work`, or rejects with the abort reason as soon as `signal` fires. */
-function untilAborted<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
-  signal.throwIfAborted();
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = (): void => reject(signal.reason);
-    signal.addEventListener('abort', onAbort, { once: true });
-    work.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
-  });
-}
-
-/**
- * The daemon pass's yield point: let I/O in, then hold while a related request runs (TP-343).
- * An aborted `signal` ends the pass here, between chunks, so shutdown loses nothing committed (TP-791).
- */
-export async function yieldToReaders(
-  signal?: AbortSignal,
-  gate: Pick<ReaderGate, 'idle'> = WATCH_DEPS.gate,
-): Promise<void> {
-  await nextMacrotask();
-  const idle = gate.idle(IDLE_CAP_MS);
-  await (signal ? untilAborted(idle, signal) : idle);
 }
 
 /** A held lock is routine on a busy machine; log the first skip and then one in this many. */
