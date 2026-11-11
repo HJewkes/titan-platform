@@ -1,6 +1,6 @@
 import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
-import { reverseReplayTokens, reverseSavingUsd } from "./cache-ttl-replay.js";
+import { reversePremiumUsd, reverseReplayTokens, reverseSavingUsd, reverseWriteTokens } from "./cache-ttl-replay.js";
 import { noCacheSavingUsd } from "./cache-ttl-nocache.js";
 import { GAP_CAUSES, gapCauseOf, type GapCause } from "./cache-ttl-gap-cause.js";
 import { readRequestToolCalls } from "./request-owner.js";
@@ -54,6 +54,10 @@ const effectFields = {
   reverseTokens: count,
   /** Saving from replaying those 5m sessions at 1h, before any 1h write premium. */
   reverseSavingUsd: z.number(),
+  /** Writes those sessions keep at 1h cost the 1h-over-5m premium. */
+  reversePremiumUsd: z.number(),
+  /** `reverseSavingUsd` less `reversePremiumUsd`; negative means 1h would cost more. */
+  reverseNetUsd: z.number(),
 };
 const bucketSchema = z.object({ key: z.string(), ...effectFields, fiveMinuteLoses: z.boolean(), noCacheCheaper: z.boolean() });
 
@@ -84,14 +88,17 @@ interface RequestEffect {
   noCacheSavingUsd: number;
   reverseTokens: number;
   reverseSavingUsd: number;
+  reversePremiumUsd: number;
 }
 
 /** Q3: what each role and profile would have paid with `CLAUDE_CODE_PROMPT_CACHE_TTL=5m` instead of 1h. */
 export function cacheTtlWhatIf(rows: readonly TtlRequestRow[], prices: readonly PriceRow[] = PRICE_TABLE): CacheTtlWhatIf {
   const priced = rows.filter((row) => findPrice(row.model, row.ts, prices));
-  const reverted = reverseReplayTokens(priced);
+  // Replay sees unpriced rows too: they still hold the cache and fix whether a session is on 5m.
+  const reverted = reverseReplayTokens(rows);
+  const written = reverseWriteTokens(rows);
   const effects = new Map<TtlRequestRow, RequestEffect>();
-  for (const row of priced) effects.set(row, requestEffect(row, findPrice(row.model, row.ts, prices)!, reverted.get(row) ?? 0));
+  for (const row of priced) effects.set(row, requestEffect(row, findPrice(row.model, row.ts, prices)!, reverted.get(row) ?? 0, written.get(row) ?? 0));
   const byRole = buckets(priced, effects, (row) => row.role);
   return {
     priceTableVersion: PRICE_TABLE_VERSION,
@@ -105,7 +112,7 @@ export function cacheTtlWhatIf(rows: readonly TtlRequestRow[], prices: readonly 
   };
 }
 
-function requestEffect(row: TtlRequestRow, price: PriceRow, reverseTokens: number): RequestEffect {
+function requestEffect(row: TtlRequestRow, price: PriceRow, reverseTokens: number, replayWrites: number): RequestEffect {
   const band = row.gapMs === null ? null : gapBand(row.gapMs);
   const rebuildTokens = band !== null && REBUILD_GAP_BANDS.includes(band) ? row.cacheReadTokens : 0;
   return {
@@ -118,6 +125,7 @@ function requestEffect(row: TtlRequestRow, price: PriceRow, reverseTokens: numbe
     noCacheSavingUsd: noCacheSavingUsd(row, price),
     reverseTokens,
     reverseSavingUsd: reverseSavingUsd(reverseTokens, price),
+    reversePremiumUsd: reversePremiumUsd(replayWrites - reverseTokens, price),
   };
 }
 
@@ -136,6 +144,8 @@ function byGapCause(effects: readonly RequestEffect[]): CacheTtlWhatIf["byGapCau
 function sumEffects(effects: readonly RequestEffect[]): CacheTtlWhatIf["totals"] {
   const sum = (pick: (effect: RequestEffect) => number) => effects.reduce((total, effect) => total + pick(effect), 0);
   const sessions = new Set(effects.map((effect) => effect.sessionId)).size;
+  const reverseSavingUsd = sum((effect) => effect.reverseSavingUsd);
+  const reversePremiumUsd = sum((effect) => effect.reversePremiumUsd);
   const netSavingUsd = sum((effect) => effect.repriceSavingUsd - effect.rebuildCostUsd);
   return {
     sessions,
@@ -150,7 +160,9 @@ function sumEffects(effects: readonly RequestEffect[]): CacheTtlWhatIf["totals"]
     noCacheNetUsd: sum((effect) => effect.noCacheSavingUsd),
     reverseReverts: effects.filter((effect) => effect.reverseTokens > 0).length,
     reverseTokens: sum((effect) => effect.reverseTokens),
-    reverseSavingUsd: sum((effect) => effect.reverseSavingUsd),
+    reverseSavingUsd,
+    reversePremiumUsd,
+    reverseNetUsd: reverseSavingUsd - reversePremiumUsd,
   };
 }
 
@@ -221,15 +233,15 @@ export function renderCacheTtlText(whatIf: CacheTtlWhatIf): string {
     `Roles where 5m loses: ${whatIf.lossRoles.join(", ") || "none"}`,
     `No cache (every prompt token at the input rate) nets ${usd(totals.noCacheNetUsd)}; flagged where it is cheaper`,
     `Rebuilds by last action before the gap: ${whatIf.byGapCause.map((c) => `${c.cause} ${c.rebuilds} (${usd(c.rebuildCostUsd)})`).join(", ")}`,
-    `Replaying 5m sessions at 1h turns ${totals.reverseReverts} rebuilds into reads, saving ${usd(totals.reverseSavingUsd)} before the 1h write premium`,
+    `Replaying 5m sessions at 1h turns ${totals.reverseReverts} rebuilds into reads, saving ${usd(totals.reverseSavingUsd)}, less the 1h write premium ${usd(totals.reversePremiumUsd)}, nets ${usd(totals.reverseNetUsd)}`,
   ].join("\n");
   const footer = `Price table v${whatIf.priceTableVersion}; ${whatIf.unpricedRequests} unpriced requests left out.`;
   return [header, ttlTable("By role", whatIf.byRole), ttlTable("By profile", whatIf.byProfile), causeTable(whatIf.byGapCause), [LIST_PRICE_CAVEAT, footer].join("\n")].join("\n\n") + "\n";
 }
 
 function ttlTable(title: string, rows: readonly CacheTtlBucket[]): string {
-  const head = ["key", "sessions", "requests", "reprice saving", "rebuilds", "rebuild cost", "net", "net per session", "1h replay saving", "5m", "no-cache net", "no-cache"];
-  const cells = rows.map((b) => [b.key, b.sessions, b.requests, usd(b.repriceSavingUsd), b.rebuilds, usd(b.rebuildCostUsd), usd(b.netSavingUsd), usd(b.netPerSessionUsd), usd(b.reverseSavingUsd), b.fiveMinuteLoses ? "loss" : "saves", usd(b.noCacheNetUsd), b.noCacheCheaper ? "no-cache" : "cache"]);
+  const head = ["key", "sessions", "requests", "reprice saving", "rebuilds", "rebuild cost", "net", "net per session", "1h replay saving", "1h replay net", "5m", "no-cache net", "no-cache"];
+  const cells = rows.map((b) => [b.key, b.sessions, b.requests, usd(b.repriceSavingUsd), b.rebuilds, usd(b.rebuildCostUsd), usd(b.netSavingUsd), usd(b.netPerSessionUsd), usd(b.reverseSavingUsd), usd(b.reverseNetUsd), b.fiveMinuteLoses ? "loss" : "saves", usd(b.noCacheNetUsd), b.noCacheCheaper ? "no-cache" : "cache"]);
   return table(title, head, cells);
 }
 

@@ -1,5 +1,6 @@
 /** Where the loopback server listens, and the readiness gate an inherited socket needs. */
 import { createAdaptorServer, serve, type ServerType } from "@hono/node-server";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Hono } from "hono";
 
 /** An inherited socket, or the address to bind. */
@@ -40,5 +41,16 @@ export function holdUntil(fetch: Hono["fetch"], opened: Promise<void>): Hono["fe
   return async (...args) => {
     await opened;
     return fetch(...args);
+  };
+}
+
+type McpHandler = (req: IncomingMessage, res: ServerResponse) => Promise<void>;
+
+/** `/mcp` is spliced ahead of hono, so `holdUntil` on the fetch handler never reaches it. */
+export function holdMcpUntil(handler: McpHandler | null, opened: Promise<void>): McpHandler | null {
+  if (!handler) return null;
+  return async (req, res) => {
+    await opened;
+    return handler(req, res);
   };
 }
