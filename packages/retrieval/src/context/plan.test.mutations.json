@@ -25,7 +25,8 @@
       "find": "if (cost > cap ||",
       "replace": "if (cost >= cap ||",
       "kills": [
-        "planContext deepening stops deepening at exactly twice the mean share"
+        "planContext deepening stops deepening at exactly twice the mean share",
+        "planContext deepening keeps the cap computed from the breadth count after an over-cap drop"
       ]
     },
     {
