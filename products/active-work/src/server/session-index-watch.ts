@@ -9,7 +9,6 @@
  */
 import { existsSync } from 'node:fs';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
-import { setImmediate as nextMacrotask } from 'node:timers/promises';
 import { claudeTranscriptRoots } from '@titan-design/session-read';
 import { watchTree, type TreeWatcher } from '@titan-design/daemon';
 import { watchChangedPaths } from '../session-index/watch-paths.js';
@@ -18,12 +17,12 @@ import { transcriptsFromDirty } from '../session-index/delta-pass.js';
 import { indexFreshness } from '../session-index/freshness.js';
 import type { WorkspaceGraph } from '../session-index/graph.js';
 import { openLiveGraph, type LiveGraph } from '../session-index/live-graph.js';
-import { readMachinePressure, shouldHold } from '../utils/machine-pressure.js';
-import { readerGate } from '../session-index/reader-gate.js';
+import { shouldHold } from '../utils/machine-pressure.js';
 import { BACKOFF_OPTIONS, deltaBackoffLog } from './delta-backoff-log.js';
 import { startWorkspaceFreshness, type WorkspaceFreshness } from './workspace-freshness.js';
 import { readRefreshLockHolder, withRefreshLock } from '../session-index/refresh-lock.js';
-import { runRefresh, type RefreshOptions, type RefreshSummary } from '../session-index/refresh.js';
+import type { RefreshOptions, RefreshSummary } from '../session-index/refresh.js';
+import { WATCH_DEPS, yieldToReaders, type WatchDeps } from './watch-deps.js';
 import {
   DEFAULT_GATE_RECHECK_MS,
   DEFAULT_MIN_INTERVAL_MS,
@@ -42,6 +41,8 @@ export interface SessionIndexWatcher {
   close(): Promise<void>;
 }
 
+export { yieldToReaders } from './watch-deps.js';
+
 interface WatchLogger {
   info(obj: object, msg: string): void;
   warn(obj: object, msg: string): void;
@@ -50,6 +51,7 @@ interface WatchLogger {
 interface SessionIndexWatchOptions {
   /** Starts the backstop poll and returns its stop; injectable so a test can fire it by hand. */
   startPoll?: (tick: () => void, intervalMs: number) => () => void;
+  deps?: Partial<WatchDeps>;
 }
 
 /** Coalesces a burst of watcher events into one dirty-set update. */
@@ -66,29 +68,6 @@ function startIntervalPoll(tick: () => void, intervalMs: number): () => void {
   const timer = setInterval(tick, intervalMs);
   timer.unref();
   return () => clearInterval(timer);
-}
-
-/** The longest a pass waits on in-flight related requests before it resumes anyway. */
-const IDLE_CAP_MS = 5_000;
-
-/** Settles with `work`, or rejects with the abort reason as soon as `signal` fires. */
-function untilAborted<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
-  signal.throwIfAborted();
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = (): void => reject(signal.reason);
-    signal.addEventListener('abort', onAbort, { once: true });
-    work.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
-  });
-}
-
-/**
- * The daemon pass's yield point: let I/O in, then hold while a related request runs (TP-343).
- * An aborted `signal` ends the pass here, between chunks, so shutdown loses nothing committed (TP-791).
- */
-export async function yieldToReaders(signal?: AbortSignal): Promise<void> {
-  await nextMacrotask();
-  const idle = readerGate.idle(IDLE_CAP_MS);
-  await (signal ? untilAborted(idle, signal) : idle);
 }
 
 /** A held lock is routine on a busy machine; log the first skip and then one in this many. */
@@ -222,12 +201,13 @@ export function passRunner(
   dirty: DirtySet,
   log: WatchLogger,
   signal: AbortSignal,
+  deps: Pick<WatchDeps, 'refresh' | 'gate'> = WATCH_DEPS,
 ): PassRunner {
   let lastMaxLoopStallMs: number | null = null;
   const sweep = episodeSweepPolicy();
   const measured = async (options: RefreshOptions): Promise<RefreshSummary> => {
     const { result, maxStallMs } = await measureLoopStall(() =>
-      runRefresh({ yieldPoint: () => yieldToReaders(signal), ...options }),
+      deps.refresh({ yieldPoint: () => yieldToReaders(signal, deps.gate), ...options }),
     );
     lastMaxLoopStallMs = maxStallMs;
     log.info(passLogLine(result, maxStallMs), 'session index pass');
@@ -272,13 +252,19 @@ export function passRunner(
 const releaseMessage = (reason?: string): string =>
   reason ? `session index released: ${reason}` : 'session index resumed';
 
+type SchedulerSeams = Pick<
+  NonNullable<ConstructorParameters<typeof RefreshScheduler>[1]>,
+  'now' | 'sleep'
+> & { readPressure?: WatchDeps['readPressure'] };
+
 export function createScheduler(
   runner: PassRunner,
   dirty: DirtySet,
   log: WatchLogger,
   signal: AbortSignal,
-  clock: Pick<NonNullable<ConstructorParameters<typeof RefreshScheduler>[1]>, 'now' | 'sleep'> = {},
+  seams: SchedulerSeams = {},
 ): RefreshScheduler {
+  const { readPressure = WATCH_DEPS.readPressure, ...clock } = seams;
   const delta = deltaBackoffLog(log, signal);
   return new RefreshScheduler(
     delta.wrap(runner.run),
@@ -287,7 +273,7 @@ export function createScheduler(
       onError: delta.onError,
       ...BACKOFF_OPTIONS,
       minIntervalMs: envInt('AW_INDEX_MIN_INTERVAL_MS', DEFAULT_MIN_INTERVAL_MS),
-      gate: async () => shouldHold(await readMachinePressure()),
+      gate: async () => shouldHold(await readPressure()),
       gateRecheckMs: envInt('AW_INDEX_GATE_RECHECK_MS', DEFAULT_GATE_RECHECK_MS),
       onHoldChange: (held, reason) => log.info({ reason }, held ? `session index paused: ${reason}` : releaseMessage(reason)),
       hasUndrained: () => dirty.size > 0,
@@ -341,8 +327,11 @@ export function startSessionIndexWatch(
 
   const dirty = createDirtySet();
   const abort = new AbortController();
-  const runner = passRunner(live.current, dirty, log, abort.signal);
-  const scheduler = createScheduler(runner, dirty, log, abort.signal);
+  const deps: WatchDeps = { ...WATCH_DEPS, ...options.deps };
+  const runner = passRunner(live.current, dirty, log, abort.signal, deps);
+  const scheduler = createScheduler(runner, dirty, log, abort.signal, {
+    readPressure: deps.readPressure,
+  });
   const { workspace, watcher: workspaceWatcher } = startWorkspaceFreshness(
     live.current,
     abort.signal,

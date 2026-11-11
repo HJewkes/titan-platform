@@ -6,7 +6,7 @@
  * is in flight, and a request waits for at most the chunk already running. In
  * the CLI nothing ever enters, so `idle` resolves at once.
  */
-interface ReaderGate {
+export interface ReaderGate {
   /** Marks a reader in flight; call the returned function once it is done. */
   enter(): () => void;
   /** Resolves once no reader is in flight, or after `maxWaitMs` so readers cannot starve the pass. */

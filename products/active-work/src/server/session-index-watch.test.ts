@@ -4,34 +4,31 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
-import { startSessionIndexWatch } from './session-index-watch.js';
+import { createScheduler, passRunner, startSessionIndexWatch } from './session-index-watch.js';
+import type { WatchDeps } from './watch-deps.js';
 import { withRefreshLock } from '../session-index/refresh-lock.js';
-import type * as MachinePressureModule from '../utils/machine-pressure.js';
+import type { MachinePressure } from '../utils/machine-pressure.js';
 import { FIXTURE_LINES, SESSION, renderTranscript } from '../test-support/session-index/fixture.js';
-import type * as PrOutcomesModule from '../session-index/pr-outcomes.js';
-import type * as RefreshModule from '../session-index/refresh.js';
-import type { RefreshOptions, RefreshSummary } from '../session-index/refresh.js';
+import { runRefresh, type RefreshOptions, type RefreshSummary } from '../session-index/refresh.js';
 import { RefreshScheduler } from '../session-index/scheduler.js';
 import { createDirtySet } from '../session-index/dirty-set.js';
 import { defaultGraphPath, openGraph, type WorkspaceGraph } from '../session-index/graph.js';
 import { rebuildGraph } from '../session-index/rebuild.js';
 import { graphTotals } from '../session-index/rebuild-carry.js';
 
-const probe = vi.hoisted(() => ({
-  reads: new Array<{ swapUsedPct: number; pressureLevel: number }>(),
-}));
+const probe = { reads: new Array<MachinePressure>() };
 
 // The real probe would run sysctl; each read pops a scripted sample, then the machine is calm.
-vi.mock('../utils/machine-pressure.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof MachinePressureModule>()),
-  readMachinePressure: async () => probe.reads.shift() ?? { swapUsedPct: 0, pressureLevel: 1 },
-}));
+const readPressure = async (): Promise<MachinePressure> =>
+  probe.reads.shift() ?? { swapUsedPct: 0, pressureLevel: 1 };
 
 // A fixture transcript carries a PR url; keep the pass off the real `gh`.
-vi.mock('../session-index/pr-outcomes.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof PrOutcomesModule>()),
-  ghPrResolver: () => async () => new Map(),
-}));
+const offlineRefresh: WatchDeps['refresh'] = (options) =>
+  runRefresh({ ...options, skipPrOutcomes: true });
+
+function deps(over: Partial<WatchDeps> = {}): WatchDeps {
+  return { readPressure, refresh: offlineRefresh, gate: { idle: async () => {} }, ...over };
+}
 
 const watchedRoot = z.object({ root: z.string() });
 const passLine = z.object({
@@ -109,7 +106,7 @@ describe('startSessionIndexWatch', () => {
       throw new Error('better-sqlite3 ABI mismatch');
     });
 
-    expect(startSessionIndexWatch(log)).toBeNull();
+    expect(startSessionIndexWatch(log, { deps: deps() })).toBeNull();
     expect(log.warn).toHaveBeenCalledWith(
       expect.objectContaining({ err: expect.any(Error) }),
       expect.stringContaining('transcript indexing disabled'),
@@ -119,14 +116,14 @@ describe('startSessionIndexWatch', () => {
   it('can be switched off entirely with AW_INDEX_WATCH=0', () => {
     process.env.AW_INDEX_WATCH = '0';
 
-    expect(startSessionIndexWatch(log)).toBeNull();
+    expect(startSessionIndexWatch(log, { deps: deps() })).toBeNull();
     expect(log.warn).not.toHaveBeenCalled();
   });
 
   it('starts a non-blocking initial refresh and close aborts it without a failure', async () => {
     writeFileSync(path.join(home, 'ignored.txt'), 'x', 'utf8');
 
-    const watcher = startSessionIndexWatch(log);
+    const watcher = startSessionIndexWatch(log, { deps: deps() });
 
     expect(watcher).not.toBeNull();
     // Construction returns immediately; the refresh is un-awaited so the
@@ -151,7 +148,7 @@ describe('startSessionIndexWatch', () => {
       releasedByTimer = true;
       letGo();
     }, 3_000);
-    const watcher = startSessionIndexWatch(log);
+    const watcher = startSessionIndexWatch(log, { deps: deps() });
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     await watcher!.close();
@@ -169,7 +166,7 @@ describe('startSessionIndexWatch', () => {
     for (const root of roots) mkdirSync(root, { recursive: true });
     vi.stubEnv('CLAUDE_CONFIG_DIRS', roots.map((root) => path.dirname(root)).join(path.delimiter));
 
-    const watcher = startSessionIndexWatch(log);
+    const watcher = startSessionIndexWatch(log, { deps: deps() });
     await watcher!.close();
 
     const watched = log.info.mock.calls
@@ -190,33 +187,20 @@ describe('startSessionIndexWatch', () => {
       null,
     ];
     const sweeps: (boolean | undefined)[] = [];
-    vi.resetModules();
-    vi.doMock('../session-index/refresh.js', async (importOriginal) => ({
-      ...(await importOriginal<typeof RefreshModule>()),
-      runRefresh: (options: RefreshOptions) => {
-        sweeps.push(options.episodeSweep);
-        const outcome = outcomes[sweeps.length - 1] ?? null;
-        if (outcome instanceof Error) return Promise.reject(outcome);
-        return Promise.resolve(
-          refreshSummary({
-            episodeBacklog: outcome,
-            errors: [],
-            phases: {},
-          }),
-        );
-      },
-    }));
+    const refresh = (options: RefreshOptions): Promise<RefreshSummary> => {
+      sweeps.push(options.episodeSweep);
+      const outcome = outcomes[sweeps.length - 1] ?? null;
+      if (outcome instanceof Error) return Promise.reject(outcome);
+      return Promise.resolve(refreshSummary({ episodeBacklog: outcome }));
+    };
     vi.stubEnv('AW_INDEX_POLL_MS', '1');
     vi.stubEnv('AW_INDEX_MIN_INTERVAL_MS', '1');
-    const { startSessionIndexWatch: start } =
-      await import('./session-index-watch.js');
 
-    const watcher = start(log);
+    const watcher = startSessionIndexWatch(log, { deps: deps({ refresh }) });
     await vi.waitFor(() => expect(sweeps.length).toBeGreaterThanOrEqual(outcomes.length), {
       timeout: 5_000,
     });
     await watcher!.close();
-    vi.doUnmock('../session-index/refresh.js');
 
     expect(sweeps.slice(0, outcomes.length)).toEqual([
       true,
@@ -233,24 +217,14 @@ describe('startSessionIndexWatch', () => {
     const root = path.join(home, '.claude', 'projects');
     vi.stubEnv('CLAUDE_CONFIG_DIRS', path.dirname(root));
     const visited: string[][] = [];
-    vi.resetModules();
-    vi.doMock('../session-index/refresh.js', async (importOriginal) => ({
-      ...(await importOriginal<typeof RefreshModule>()),
-      runRefresh: (options: RefreshOptions) => {
-        visited.push((options.transcripts ?? []).map((t) => t.absolutePath));
-        return Promise.resolve(
-          refreshSummary({
-            kind: 'delta',
-            errors: [],
-            phases: {},
-          }),
-        );
-      },
-    }));
-    const { passRunner } = await import('./session-index-watch.js');
+    const refresh = (options: RefreshOptions): Promise<RefreshSummary> => {
+      visited.push((options.transcripts ?? []).map((t) => t.absolutePath));
+      return Promise.resolve(refreshSummary({ kind: 'delta' }));
+    };
     const dirty = createDirtySet();
     dirty.add(root, path.join('demo', 't1.jsonl'));
-    const runner = passRunner(openUnusedGraph, dirty, log, new AbortController().signal);
+    const signal = new AbortController().signal;
+    const runner = passRunner(openUnusedGraph, dirty, log, signal, deps({ refresh }));
 
     let letGo = (): void => {};
     let entered = (): void => {};
@@ -266,7 +240,6 @@ describe('startSessionIndexWatch', () => {
     letGo();
     await held;
     await runner.run('delta');
-    vi.doUnmock('../session-index/refresh.js');
 
     expect(sizeAfterSkip).toBe(1);
     expect(visited).toEqual([[path.join(root, 'demo', 't1.jsonl')]]);
@@ -274,7 +247,6 @@ describe('startSessionIndexWatch', () => {
   });
 
   it('a persistently failing delta logs one warning per backoff, not one per reader', async () => {
-    const { createScheduler } = await import('./session-index-watch.js');
     let failing = true;
     const run = vi.fn().mockImplementation(async () => {
       if (failing) throw new Error('delta broke');
@@ -311,7 +283,6 @@ describe('startSessionIndexWatch', () => {
   });
 
   it('a hold-cap release logs the cap, not a resume', async () => {
-    const { createScheduler } = await import('./session-index-watch.js');
     vi.stubEnv('AW_INDEX_GATE_RECHECK_MS', '60000');
     probe.reads.push(...Array.from({ length: 40 }, () => ({ swapUsedPct: 80, pressureLevel: 1 })));
     const run = vi.fn().mockResolvedValue({ kind: 'full', errors: [], phases: {} });
@@ -326,6 +297,7 @@ describe('startSessionIndexWatch', () => {
         sleep: async (ms) => {
           clock += ms;
         },
+        readPressure,
       },
     );
 
@@ -339,34 +311,20 @@ describe('startSessionIndexWatch', () => {
   });
 
   it('a delta pass forwards onIndexed to the refresh', async () => {
-    vi.resetModules();
-    vi.doMock('../session-index/refresh.js', async (importOriginal) => ({
-      ...(await importOriginal<typeof RefreshModule>()),
-      runRefresh: (options: RefreshOptions) => {
-        options.onIndexed?.();
-        return Promise.resolve(
-          refreshSummary({
-            kind: 'delta',
-            errors: [],
-            phases: {},
-          }),
-        );
-      },
-    }));
-    const { passRunner } = await import('./session-index-watch.js');
-    const dirty = createDirtySet();
-    const runner = passRunner(openUnusedGraph, dirty, log, new AbortController().signal);
+    const refresh = (options: RefreshOptions): Promise<RefreshSummary> => {
+      options.onIndexed?.();
+      return Promise.resolve(refreshSummary({ kind: 'delta' }));
+    };
+    const signal = new AbortController().signal;
+    const runner = passRunner(openUnusedGraph, createDirtySet(), log, signal, deps({ refresh }));
     const onIndexed = vi.fn();
 
     await runner.run('delta', onIndexed);
-    vi.doUnmock('../session-index/refresh.js');
 
     expect(onIndexed).toHaveBeenCalledTimes(1);
   });
 
   it('runNow reads stale at once while a full pass waits on a lock another process holds', async () => {
-    vi.resetModules();
-    const { passRunner } = await import('./session-index-watch.js');
     let entered = (): void => {};
     let letGo = (): void => {};
     const inside = new Promise<void>((resolve) => (entered = resolve));
@@ -376,7 +334,7 @@ describe('startSessionIndexWatch', () => {
     });
     await inside;
     const abort = new AbortController();
-    const runner = passRunner(openUnusedGraph, createDirtySet(), log, abort.signal);
+    const runner = passRunner(openUnusedGraph, createDirtySet(), log, abort.signal, deps());
     const waiting = vi.fn();
     const scheduler = new RefreshScheduler(
       (kind, onIndexed, onLockWait) =>
@@ -425,7 +383,7 @@ describe('startSessionIndexWatch', () => {
       log.info.mock.calls.filter(([, msg]) => msg === 'session index pass').map(([obj]) => obj);
 
     it('logs one session index pass line with what the pass opened and read', async () => {
-      const watcher = startSessionIndexWatch(log);
+      const watcher = startSessionIndexWatch(log, { deps: deps() });
       await vi.waitFor(() => expect(passLines()).toHaveLength(1));
       await watcher!.close();
 
@@ -454,26 +412,12 @@ describe('startSessionIndexWatch', () => {
     });
 
     it('logs the pass kind the refresh reports', async () => {
-      vi.resetModules();
-      vi.doMock('../session-index/refresh.js', async (importOriginal) => ({
-        ...(await importOriginal<typeof RefreshModule>()),
-        runRefresh: () =>
-          Promise.resolve(
-            refreshSummary({
-              kind: 'delta',
-              episodeBacklog: null,
-              errors: [],
-              phases: {},
-            }),
-          ),
-      }));
-      const { startSessionIndexWatch: start } =
-        await import('./session-index-watch.js');
+      const refresh = (): Promise<RefreshSummary> =>
+        Promise.resolve(refreshSummary({ kind: 'delta' }));
 
-      const watcher = start(log);
+      const watcher = startSessionIndexWatch(log, { deps: deps({ refresh }) });
       await vi.waitFor(() => expect(passLines()).toHaveLength(1));
       await watcher!.close();
-      vi.doUnmock('../session-index/refresh.js');
 
       expect(passLines()[0]).toMatchObject({ kind: 'delta' });
     });
@@ -486,7 +430,7 @@ describe('startSessionIndexWatch', () => {
         { swapUsedPct: 10, pressureLevel: 1 },
       );
 
-      const watcher = startSessionIndexWatch(log);
+      const watcher = startSessionIndexWatch(log, { deps: deps() });
       await vi.waitFor(() => expect(passLines()).toHaveLength(1));
       await watcher!.close();
 
@@ -506,6 +450,7 @@ describe('startSessionIndexWatch', () => {
       vi.stubEnv('AW_INDEX_MIN_INTERVAL_MS', '1');
       let pollTick: () => void = () => {};
       const watcher = startSessionIndexWatch(log, {
+        deps: deps(),
         startPoll: (tick) => {
           pollTick = tick;
           return () => {};
@@ -529,6 +474,7 @@ describe('startSessionIndexWatch', () => {
       vi.stubEnv('AW_INDEX_MIN_INTERVAL_MS', '1');
       let pollTick: () => void = () => {};
       const watcher = startSessionIndexWatch(log, {
+        deps: deps(),
         startPoll: (tick) => {
           pollTick = tick;
           return () => {};
