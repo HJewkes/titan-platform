@@ -192,6 +192,30 @@ describe('RefreshScheduler', () => {
     expect(scheduler.status().held).toBe(true);
   });
 
+  it('a gate that opens during the hold-cap pass lets runNow serve fresh reads once the pass ends', async () => {
+    const clock = fakeClock();
+    let gateOpen = false;
+    const run = vi.fn(async () => {
+      gateOpen = true;
+      return summary;
+    });
+    const scheduler = new RefreshScheduler(run, {
+      ...clock,
+      gate: async () => (gateOpen ? { hold: false } : { hold: true, reason: 'swap 70% used' }),
+      gateRecheckMs: 60_000,
+      maxHoldMs: 300_000,
+    });
+
+    scheduler.trigger();
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(scheduler.status().running).toBe(false));
+    const read = await scheduler.runNow(1_000);
+
+    expect(read).toBe('fresh');
+    expect(run).toHaveBeenCalledTimes(2);
+    await scheduler.close();
+  });
+
   it('collapses triggers that arrive mid-hold into one pass after the resume', async () => {
     const clock = fakeClock();
     const run = vi.fn(async () => summary);

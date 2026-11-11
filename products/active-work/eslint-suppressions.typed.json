@@ -437,11 +437,6 @@
       "count": 1
     }
   },
-  "products/active-work/src/server/http.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 7
-    }
-  },
   "products/active-work/src/server/lifecycle.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
@@ -450,21 +445,6 @@
   "products/active-work/src/server/logger.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
-    }
-  },
-  "products/active-work/src/server/mcp-tool-names.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/server/mcp.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
-    }
-  },
-  "products/active-work/src/server/session-index-watch.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 10
     }
   },
   "products/active-work/src/session-index/dispatch-records.ts": {
@@ -488,9 +468,14 @@
       "count": 1
     }
   },
+  "products/active-work/src/session-index/scheduler-timing.ts": {
+    "@typescript-eslint/no-unnecessary-condition": {
+      "count": 2
+    }
+  },
   "products/active-work/src/session-index/scheduler.ts": {
     "@typescript-eslint/no-unnecessary-condition": {
-      "count": 5
+      "count": 3
     },
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
