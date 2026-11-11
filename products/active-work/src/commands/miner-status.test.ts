@@ -14,11 +14,7 @@ import { runRefresh } from '../session-index/refresh.js';
 import { WORKSPACE_SPAN_SOURCE_BASE } from '../workspace-index/schema.js';
 import { FIXTURE_LINES, SESSION, renderTranscript } from '../test-support/session-index/fixture.js';
 import { withEmptyActiveRoot } from '../test-support/test-helpers.js';
-import { mirrorRoot, mirrorRoots } from '../test-support/fixtures/mirror-roots.js';
-
-vi.mock('@titan-design/session-read', async (importOriginal) =>
-  (await import('../test-support/fixtures/mirror-roots.js')).withMirrors(importOriginal),
-);
+import { mirrorRoot, useMirror } from '../test-support/fixtures/mirror-roots.js';
 
 let configRoot: string;
 
@@ -34,7 +30,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
-  mirrorRoots.length = 0;
   rmSync(configRoot, { recursive: true, force: true });
 });
 
@@ -64,11 +59,11 @@ function writeCorpus(accounts: Record<string, number>): void {
 
 /** Each account's transcripts in a mirror of host `mac`. */
 function writeMirror(accounts: Record<string, number>): void {
+  const mirrorDir = path.join(configRoot, 'mirror');
   for (const [account, count] of Object.entries(accounts)) {
-    const mirror = mirrorRoot(path.join(configRoot, 'mirror'), account);
-    writeTranscripts(mirror.root, `mac-${account}`, count);
-    mirrorRoots.push(mirror);
+    writeTranscripts(mirrorRoot(mirrorDir, account).root, `mac-${account}`, count);
   }
+  useMirror(mirrorDir);
 }
 
 function ctx(): CommandContext {

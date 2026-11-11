@@ -20,11 +20,7 @@ import {
   OWNER_MESSAGES,
   writeUnwrappedTranscript,
 } from '../test-support/fixtures/unwrapped-transcript.js';
-import { mirrorRoot, mirrorRoots } from '../test-support/fixtures/mirror-roots.js';
-
-vi.mock('@titan-design/session-read', async (importOriginal) =>
-  (await import('../test-support/fixtures/mirror-roots.js')).withMirrors(importOriginal),
-);
+import { mirrorRoot, useMirror } from '../test-support/fixtures/mirror-roots.js';
 
 const SLUG = 'sample-initiative';
 const CRASHED = '0a0a0a0a-1111-4222-8333-444444444444';
@@ -41,7 +37,7 @@ beforeEach(() => {
 
 afterEach(() => {
   resetRunners();
-  mirrorRoots.length = 0;
+  vi.unstubAllEnvs();
   rmSync(claudeHome, { recursive: true, force: true });
 });
 
@@ -278,7 +274,7 @@ describe('session recover', () => {
     await withTempActiveRoot(async (activeRoot) => {
       await withConfigDirs(async () => {
         const mirror = mirrorRoot(path.join(claudeHome, 'mirror'), 'default');
-        mirrorRoots.push(mirror);
+        useMirror(path.join(claudeHome, 'mirror'));
         const cwd = path.join(activeRoot, SLUG);
         const projectDir = path.join(mirror.root, claudeProjectSlug(cwd));
         const when = new Date(Date.now() - QUIET_MS);
