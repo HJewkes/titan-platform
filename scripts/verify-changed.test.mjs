@@ -130,6 +130,30 @@ describe("relatedTestArgs", () => {
   });
 });
 
+const deadCheck = (indexedFiles, seedExists) =>
+  planCommands({ base: "origin/base", changed: ["packages/a/src/x.ts"], workspace: [{ dir: "packages/a/", name: "a", deps: [] }], hasTimeout: true, indexedFiles, seedExists }).find((step) => step.label.startsWith("dead:check"));
+
+describe("dead:check cold fallback", () => {
+  it("forbids a cold fallback on a seeded run past the file budget", () => {
+    const step = deadCheck(() => 1641, () => true);
+
+    expect(step.env.DEAD_CHECK_DEFER_COLD).toBe("1");
+  });
+
+  it("leaves the cold fallback allowed on a seeded run within the file budget", () => {
+    const step = deadCheck(() => 10, () => true);
+
+    expect(step.env.DEAD_CHECK_DEFER_COLD).toBeUndefined();
+  });
+
+  it("a deferred-cold exit defers dead:check to CI instead of failing", () => {
+    const step = deadCheck(() => 10, () => false);
+
+    expect(describeOutcome(step, 76).ok).toBe(true);
+    expect(describeOutcome({ label: "lint", cmd: "pnpm" }, 76).ok).toBe(false);
+  });
+});
+
 describe("planCommands", () => {
   const workspace = [{ dir: "packages/a/", name: "a", deps: [] }];
   const plan = planCommands({ base: "origin/main", changed: ["packages/a/src/x.ts"], workspace, hasTimeout: true });

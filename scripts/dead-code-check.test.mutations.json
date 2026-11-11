@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a corrupt seed falls back cold despite the defer flag",
+      "file": "scripts/dead-code-check.mjs",
+      "find": "    if (deferCold) throw new ColdFallbackDeferred(",
+      "replace": "    if (false) throw new ColdFallbackDeferred(",
+      "kills": [
+        "opening a seeded work graph refuses the cold fallback when a verify:changed run over the budget forbids it"
+      ]
+    }
+  ]
+}

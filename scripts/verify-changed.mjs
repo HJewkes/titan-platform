@@ -9,7 +9,8 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BUSY_EXIT_CODE } from "./dag-check-lock.mjs";
-import { MACHINE_SEED, usesMachineSeed } from "./dag-check-seed.mjs";
+import { COLD_DEFERRED_EXIT_CODE, DEFER_COLD_ENV } from "./dag-check-seed.mjs";
+import { workGraphSeed } from "./dead-code-check.mjs";
 import { LINT_TYPES_INPUTS } from "./lint-types.mjs";
 import { TYPED_BASELINE } from "./lint-units.mjs";
 import { flakeTargets, loadFlakeClasses, repeatGuard } from "./flake-repeat.mjs";
@@ -163,11 +164,12 @@ function deadCheckCommand(changed, workspace, base, indexedFiles, seedExists) {
   const dirs = deadCheckDirs(changed, workspace);
   if (dirs.length === 0) return null;
   // A seeded run re-parses only changed files, so the budget guards cold indexes only.
-  const files = seedExists() ? 0 : indexedFiles(dirs);
-  if (files > DEAD_CHECK_MAX_FILES) {
+  const files = indexedFiles(dirs);
+  const seeded = seedExists();
+  if (files > DEAD_CHECK_MAX_FILES && !seeded) {
     return { label: `dead:check: ${files} files in ${dirs.join(", ")} exceed the ${DEAD_CHECK_MAX_FILES}-file local budget, deferred to CI`, deferred: true };
   }
-  return { label: DEAD_CHECK_LABEL, cmd: "node", args: ["scripts/dead-code-check.mjs", `--paths=${dirs.join(",")}`], env: { BASE_REF: base, DAG_CHECK_LOCK_WAIT_MS: process.env.DAG_CHECK_LOCK_WAIT_MS || DEAD_CHECK_LOCK_WAIT_MS } };
+  return { label: DEAD_CHECK_LABEL, cmd: "node", args: ["scripts/dead-code-check.mjs", `--paths=${dirs.join(",")}`], env: { BASE_REF: base, DAG_CHECK_LOCK_WAIT_MS: process.env.DAG_CHECK_LOCK_WAIT_MS || DEAD_CHECK_LOCK_WAIT_MS, ...(files > DEAD_CHECK_MAX_FILES ? { [DEFER_COLD_ENV]: "1" } : {}) } };
 }
 
 const pnpmRun = (script) => ({ label: script, cmd: "pnpm", args: ["run", script] });
@@ -273,7 +275,7 @@ function timingSpool() {
 const indexedFiles = (dirs) =>
   gitLines(["ls-files", "--cached", "--other", "--exclude-standard", "--", ...dirs]).filter((path) => INDEXED_EXT.test(path)).length;
 
-const seedExists = () => usesMachineSeed([], process.env) && existsSync(MACHINE_SEED);
+const seedExists = () => workGraphSeed({ argv: [], env: process.env, exists: existsSync }) !== null;
 
 const hasTimeout = () => spawnSync("timeout", ["--version"], { stdio: "ignore" }).error === undefined;
 
@@ -301,6 +303,7 @@ async function locPasses(changed) {
 export function describeOutcome(step, status, signal = null, output = "") {
   if (status === 0) return { ok: true };
   if (status === BUSY_EXIT_CODE && step.label === DEAD_CHECK_LABEL) return { ok: true, note: `${DEAD_CHECK_LABEL} deferred to CI: dag-check lock busy` };
+  if (status === COLD_DEFERRED_EXIT_CODE && step.label === DEAD_CHECK_LABEL) return { ok: true, note: `${DEAD_CHECK_LABEL} deferred to CI: seed unusable, cold index over the file budget` };
   if (status === TIMEOUT_EXIT_STATUS && step.cmd === "timeout") {
     return { ok: false, message: `${step.label} timed out after ${VITEST_TIMEOUT_SECONDS} s (no test failed; CI is the authority)` };
   }

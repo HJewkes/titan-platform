@@ -17,7 +17,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { analyzeSource, identifierMentions } from "./dead-code-check-source.mjs";
-import { MACHINE_SEED, runWithColdRetry, usesMachineSeed } from "./dag-check-seed.mjs";
+import { COLD_DEFERRED_EXIT_CODE, DEFER_COLD_ENV, MACHINE_SEED, runWithColdRetry, usesMachineSeed } from "./dag-check-seed.mjs";
 import { BUSY_EXIT_CODE, INDEXER_HEAP_CAP_MB, DEFAULT_LOCK_DIR, LockTimeoutError, acquire, lockSlots, lockWaitMs, cleanupOnSignal, release, runCappedWorker, runCleanups } from "./dag-check-lock.mjs";
 
 const SCRIPT = fileURLToPath(import.meta.url);
@@ -286,7 +286,9 @@ export async function graphFromDb(dbPath) {
 }
 
 // A seed written by another schema or truncated mid-save must cost a cold index, never a failed check.
-export function openWorkGraph(graph, dbPath) {
+export class ColdFallbackDeferred extends Error {}
+
+export function openWorkGraph(graph, dbPath, { deferCold = false } = {}) {
   try {
     const store = graph.openCodeGraph(dbPath);
     store.listSnapshots({ limit: 1 });
@@ -296,13 +298,14 @@ export function openWorkGraph(graph, dbPath) {
     rmSync(dbPath, { force: true });
     rmSync(`${dbPath}-wal`, { force: true });
     rmSync(`${dbPath}-shm`, { force: true });
+    if (deferCold) throw new ColdFallbackDeferred("seed graph unusable; cold index deferred to CI");
     return graph.openCodeGraph(dbPath);
   }
 }
 
 async function indexGraph(workDir, dirs = TIERS) {
   const graph = await import(ENTRY);
-  const store = openWorkGraph(graph, path.join(workDir, "graph.db"));
+  const store = openWorkGraph(graph, path.join(workDir, "graph.db"), { deferCold: Boolean(process.env[DEFER_COLD_ENV]) });
   try {
     const paths = dirs.map((sub) => path.join(ROOT, sub)).filter((p) => existsSync(p));
     // Dead exports read nodes, edges and roles only; skipping metrics trims a scoped verify:changed run.
@@ -330,6 +333,18 @@ function checkGrowth(baseline, baseRef) {
 
 /** Runs in the worker: the supervisor holds the lock and owns workDir, so an OOM here leaves neither behind. */
 async function check(workDir, args) {
+  try {
+    return await checkGraph(workDir, args);
+  } catch (err) {
+    if (err instanceof ColdFallbackDeferred) {
+      console.error(err.message);
+      return COLD_DEFERRED_EXIT_CODE;
+    }
+    throw err;
+  }
+}
+
+async function checkGraph(workDir, args) {
   const { db, reportOnly, update, paths } = parseCliArgs(args);
   const baseline = readBaseline();
   const growth = update ? [] : checkGrowth(baseline ?? [], process.env.BASE_REF);
@@ -377,7 +392,7 @@ function runSeededWorker({ workDir, args, cleanups, log }) {
     mkdirSync(workDir);
   };
   // runWithColdRetry keys the retry on a --seed-db marker in argv; the worker never sees it.
-  return runWithColdRetry({ argv: seed ? [...args, "--seed-db", seed] : args, runWorker, clearWork, log });
+  return runWithColdRetry({ argv: seed ? [...args, "--seed-db", seed] : args, runWorker, clearWork, log, deferCold: Boolean(process.env[DEFER_COLD_ENV]) });
 }
 
 /** Holds a dag-check lock slot for the whole check, so it counts against the same bound on graphs in memory as dag:check. */
