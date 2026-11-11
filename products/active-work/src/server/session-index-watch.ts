@@ -48,7 +48,7 @@ interface WatchLogger {
   warn(obj: object, msg: string): void;
 }
 
-interface SessionIndexWatchOptions {
+export interface SessionIndexWatchOptions {
   /** Starts the backstop poll and returns its stop; injectable so a test can fire it by hand. */
   startPoll?: (tick: () => void, intervalMs: number) => () => void;
   deps?: Partial<WatchDeps>;
