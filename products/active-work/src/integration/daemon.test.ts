@@ -7,6 +7,8 @@ import type { ChildProcess } from 'node:child_process';
 import { mkdtempSync, rmSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { z } from 'zod';
+import { parseJson } from '../test-support/parse-json.js';
 import { waitForHealth } from '../test-support/child-startup.js';
 import {
   findDaemonPidFile,
@@ -19,10 +21,15 @@ import {
 /** A pid high enough that nothing on the box owns it. */
 const SUCCESSOR_PID = 999_999;
 
-interface HealthPayload {
-  ok: boolean;
-  pid: number;
-  port: number;
+const healthSchema = z.object({ ok: z.boolean(), pid: z.number(), port: z.number() });
+type HealthPayload = z.output<typeof healthSchema>;
+
+const rpcSchema = z.object({ ok: z.boolean(), data: z.object({ sections: z.unknown() }).optional() });
+
+const mcpSchema = z.object({ result: z.object({ tools: z.array(z.unknown()).optional() }).optional() });
+
+function isErrnoException(err: unknown): err is NodeJS.ErrnoException {
+  return err instanceof Error;
 }
 
 /**
@@ -34,7 +41,7 @@ interface HealthPayload {
  */
 async function waitForHealthPayload(port: number, timeoutMs: number, daemon: SpawnedDaemon): Promise<HealthPayload> {
   const res = await waitForHealth(port, timeoutMs, daemon.child, daemon.stderr);
-  return (await res.json()) as HealthPayload;
+  return healthSchema.parse(await res.json());
 }
 
 function isAlive(pid: number): boolean {
@@ -42,7 +49,7 @@ function isAlive(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (err) {
-    return (err as NodeJS.ErrnoException).code === 'EPERM';
+    return isErrnoException(err) && err.code === 'EPERM';
   }
 }
 
@@ -78,7 +85,7 @@ describe('integration: daemon over HTTP', () => {
 
       const healthRes = await fetch(`http://127.0.0.1:${port}/health`);
       expect(healthRes.status).toBe(200);
-      const health = (await healthRes.json()) as { ok: boolean; port: number };
+      const health = healthSchema.parse(await healthRes.json());
       expect(health.ok).toBe(true);
       expect(health.port).toBe(port);
 
@@ -88,7 +95,7 @@ describe('integration: daemon over HTTP', () => {
         body: '{}',
       });
       expect(rpcRes.status).toBe(200);
-      const rpc = (await rpcRes.json()) as { ok: boolean; data?: { sections: unknown } };
+      const rpc = rpcSchema.parse(await rpcRes.json());
       expect(rpc.ok).toBe(true);
       expect(rpc.data?.sections).toBeDefined();
 
@@ -110,13 +117,13 @@ describe('integration: daemon over HTTP', () => {
       expect(mcpRes.ok).toBe(true);
       // Response may be JSON or an SSE stream; handle both.
       const text = await mcpRes.text();
-      let parsed: { result?: { tools?: unknown[] } };
+      let parsed: z.output<typeof mcpSchema>;
       if (text.startsWith('{')) {
-        parsed = JSON.parse(text) as typeof parsed;
+        parsed = parseJson(text, mcpSchema);
       } else {
         const dataLine = text.split('\n').find((l) => l.startsWith('data:'));
         expect(dataLine).toBeDefined();
-        parsed = JSON.parse(dataLine!.slice('data:'.length).trim()) as typeof parsed;
+        parsed = parseJson(dataLine!.slice('data:'.length).trim(), mcpSchema);
       }
       expect(Array.isArray(parsed.result?.tools)).toBe(true);
       expect(parsed.result!.tools!.length).toBeGreaterThanOrEqual(35);

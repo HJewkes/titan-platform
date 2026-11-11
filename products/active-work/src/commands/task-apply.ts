@@ -7,7 +7,7 @@ import { today } from '../utils/today.js';
 import { NotFoundError, ValidationError } from '../errors.js';
 import { loadEdgeIndex } from '../tasks/edge-index.js';
 import { groupPlan, hasEdgeOps, parsePlan, type PlanEntry } from './_task-apply-plan.js';
-import { applySlug, type LineResult } from './_task-apply-run.js';
+import { applySlug, TASK_APPLY_IO, type LineResult, type TaskApplyIo } from './_task-apply-run.js';
 
 // Strict on purpose, like `task note`: the verb takes a plan and two flags, nothing else.
 const ArgsSchema = z
@@ -70,10 +70,11 @@ async function applyPlan(
   entries: PlanEntry[],
   dryRun: boolean,
   caller: CommandContext['caller'],
+  io: TaskApplyIo,
 ): Promise<Line[]> {
   // Tag-only plans skip the whole-root read, so a malformed file elsewhere cannot block them.
   const edges = hasEdgeOps(entries) ? await loadEdgeIndex() : undefined;
-  const run = { date: today(), dryRun, edges, caller };
+  const run = { date: today(), dryRun, edges, caller, io };
   const lines = entries.filter((entry) => entry.error !== undefined).map(failedLine);
   for (const [slug, tasks] of groupPlan(entries)) {
     lines.push(...(await applySlug(slug, tasks, run)));
@@ -127,33 +128,45 @@ function failureError(summary: Summary): ValidationError {
   );
 }
 
-export default defineCommand<Args, z.infer<typeof ResultSchema>>({
-  name: 'task.apply',
-  description:
-    'Apply a JSONL plan of tag, note, done, set_parent and add_dep ops to many tasks: one lock per initiative, one write per task, idempotent',
-  args: ArgsSchema,
-  result: ResultSchema,
-  cli: {
-    positional: ['plan'],
-    options: {
-      dry_run: { long: '--dry-run', description: 'Compute and report every result; write no task' },
-      report: { long: '--report', description: 'Write one JSONL result line per plan line here' },
+async function runApply(
+  io: TaskApplyIo,
+  args: Args,
+  ctx: CommandContext,
+): Promise<Summary | string> {
+  getActiveRoot();
+  const cwd = ctx.cwd ?? process.cwd();
+  const { entries, unknownKeys } = parsePlan(await readPlan(cwd, args.plan));
+  warnUnknownKeys(ctx, unknownKeys);
+  const summary = summarize(
+    await applyPlan(entries, args.dry_run === true, ctx.caller, io),
+    args.dry_run === true,
+  );
+  if (args.report !== undefined) await writeReport(cwd, args.report, summary.results);
+  if (summary.counts.failed > 0) {
+    if (ctx.format !== 'json') process.stdout.write(renderText(summary));
+    throw failureError(summary);
+  }
+  return ctx.format === 'json' ? summary : renderText(summary);
+}
+
+export function createTaskApply(io: TaskApplyIo = TASK_APPLY_IO) {
+  return defineCommand<Args, z.infer<typeof ResultSchema>>({
+    name: 'task.apply',
+    description:
+      'Apply a JSONL plan of tag, note, done, set_parent and add_dep ops to many tasks: one lock per initiative, one write per task, idempotent',
+    args: ArgsSchema,
+    result: ResultSchema,
+    cli: {
+      positional: ['plan'],
+      options: {
+        dry_run: { long: '--dry-run', description: 'Compute and report every result; write no task' },
+        report: { long: '--report', description: 'Write one JSONL result line per plan line here' },
+      },
     },
-  },
-  async run(args, ctx) {
-    getActiveRoot();
-    const cwd = ctx.cwd ?? process.cwd();
-    const { entries, unknownKeys } = parsePlan(await readPlan(cwd, args.plan));
-    warnUnknownKeys(ctx, unknownKeys);
-    const summary = summarize(
-      await applyPlan(entries, args.dry_run === true, ctx.caller),
-      args.dry_run === true,
-    );
-    if (args.report !== undefined) await writeReport(cwd, args.report, summary.results);
-    if (summary.counts.failed > 0) {
-      if (ctx.format !== 'json') process.stdout.write(renderText(summary));
-      throw failureError(summary);
-    }
-    return ctx.format === 'json' ? summary : renderText(summary);
-  },
-});
+    async run(args, ctx) {
+      return runApply(io, args, ctx);
+    },
+  });
+}
+
+export default createTaskApply();

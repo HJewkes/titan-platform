@@ -39,18 +39,21 @@ export function spawnClaudeResume(
  * every Claude config dir's `projects`, profiles included) and launch `claude --resume` there, so the caller
  * doesn't need to already know or remember where the session ran.
  */
-export async function runResume(argv: string[]): Promise<void> {
+export async function runResume(
+  argv: string[],
+  exit: (code: number) => Promise<void> = exitAfterFlush,
+): Promise<void> {
   const parsed = parseResumeArgs(argv);
   if (!parsed) {
     process.stderr.write(color.red('usage: aw resume <session_id> [--no-rc] [--profile <name>]\n'));
-    return exitAfterFlush(EXIT.USAGE);
+    return exit(EXIT.USAGE);
   }
   try {
-    return exitAfterFlush(await resumeSession(parsed));
+    return exit(await resumeSession(parsed));
   } catch (err) {
     const { message, code } = formatError(err);
     process.stderr.write(color.red(`error: ${message}\n`));
-    return exitAfterFlush(code);
+    return exit(code);
   }
 }
 
