@@ -1,7 +1,7 @@
 import { dirname, join } from "node:path";
 import { deployedBinPath } from "./deploy-checkout.js";
 import type { DeployPorts } from "./deploy.js";
-import { installedServiceFile } from "./service-control.js";
+import { installedServiceFile, isSystemd } from "./service-control.js";
 import type { CommandResult } from "./run-command.js";
 
 /** `undefined` when the checkout already exists; otherwise the clone's result, or `no-remote`. Never copies a working tree. */
@@ -24,30 +24,34 @@ const xmlEscaped = (value: string): string => value.replace(/&/g, "&amp;").repla
 export function serviceRunsFromCheckout(ports: DeployPorts, checkout: string): boolean {
   const raw = ports.readFile(installedServiceFile(ports));
   if (raw === undefined) return false;
-  const text = withoutInertLines(raw);
+  const text = isSystemd(ports) ? systemdExecStarts(raw) : raw;
   const bin = deployedBinPath(checkout);
   return namesWholePath(text, bin) || namesWholePath(text, xmlEscaped(bin));
 }
 
-const SYSTEMD_ASSIGNMENT = /^\s*([A-Za-z][A-Za-z0-9-]*)\s*=(.*)$/;
+const SYSTEMD_SECTION = /^\s*\[([^\]]*)\]\s*$/;
+const SYSTEMD_KEY_VALUE = /^\s*([^\s=]+)\s*=(.*)$/;
 const EXEC_PREFIX = /^\s*[-@:+!]*/;
 
 /**
- * Keeps what can start the service: in a systemd unit only `ExecStart` values (after joining `\`
- * continuations, as systemd does), since comments, `Environment=` and every other key are data.
- * Lines that are not `Key=value` (plist XML) pass through unchanged.
+ * What systemd would launch: the `ExecStart` values of `[Service]` that survive the last empty
+ * `ExecStart=` reset, after joining `\` continuations. Comments, other keys, other sections and
+ * lines systemd cannot parse are dropped, never searched.
  */
-function withoutInertLines(text: string): string {
-  return text
-    .replace(/\\\r?\n/g, " ")
-    .split("\n")
-    .filter((line) => !/^\s*[#;]/.test(line))
-    .flatMap((line) => {
-      const assignment = SYSTEMD_ASSIGNMENT.exec(line);
-      if (assignment === null) return [line];
-      return assignment[1] === "ExecStart" ? [(assignment[2] ?? "").replace(EXEC_PREFIX, "")] : [];
-    })
-    .join("\n");
+function systemdExecStarts(text: string): string {
+  const starts: string[] = [];
+  let section = "";
+  for (const line of text.replace(/\r\n?/g, "\n").replace(/\\\n/g, " ").split("\n")) {
+    if (/^\s*[#;]/.test(line)) continue;
+    const header = SYSTEMD_SECTION.exec(line);
+    if (header !== null) section = header[1] ?? "";
+    const assignment = header === null ? SYSTEMD_KEY_VALUE.exec(line) : null;
+    if (section !== "Service" || assignment?.[1] !== "ExecStart") continue;
+    const value = (assignment[2] ?? "").trim();
+    if (value === "") starts.length = 0;
+    else starts.push(value.replace(EXEC_PREFIX, ""));
+  }
+  return starts.join("\n");
 }
 
 /**
