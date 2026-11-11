@@ -78,23 +78,30 @@ const refuses = (port: number): Promise<boolean> =>
     socket.once("error", () => resolve(true));
   });
 
+// Binds a listening socket on fd 3 and execs the command with LISTEN_FDS and LISTEN_PID set to its own pid, as systemd does. Node has no public way to read a server's fd, so the socket is made by the launcher.
+const LAUNCHER = `
+import os, socket, sys
+sock = socket.socket()
+sock.bind(("127.0.0.1", 0))
+sock.listen()
+os.dup2(sock.fileno(), 3)
+os.set_inheritable(3, True)
+os.environ["LISTEN_FDS"] = "1"
+os.environ["LISTEN_PID"] = str(os.getpid())
+os.execv(sys.argv[1], sys.argv[1:])
+`;
+
 /** Starts serve as a child whose fd 3 is a listening socket and whose LISTEN_PID is its own pid, as systemd passes it. Only the child owns the socket. */
 async function serveOnPassedSocket(requestedPort: number): Promise<{ socketPort: number; started: Record<string, unknown>; child: ChildProcess }> {
-  const socket = createServer();
-  await new Promise<void>((resolve) => socket.listen(0, "127.0.0.1", resolve));
-  const socketPort = portOf(socket);
-  const script = `LISTEN_FDS=1 LISTEN_PID=$$; export LISTEN_FDS LISTEN_PID; exec "$0" "$@"`;
-  const args = ["-c", script, process.execPath, "--input-type=module", "-e", FIXTURE, scratchDir(), String(requestedPort)];
-  // node does not type the handle's fd; a spawn takes the number, not the server.
-  const fd = readPath(socket, "_handle", "fd");
-  if (typeof fd !== "number" || fd < 0) throw new Error("the listening socket has no fd on this platform");
-  const child = spawn("sh", args, { env: { ...process.env, FACTORY_DIST }, stdio: ["ignore", "pipe", "inherit", fd] });
-  await new Promise<void>((resolve) => socket.close(() => resolve()));
+  const args = ["-I", "-c", LAUNCHER, process.execPath, "--input-type=module", "-e", FIXTURE, scratchDir(), String(requestedPort)];
+  const child = spawn("python3", args, { env: { ...process.env, FACTORY_DIST }, stdio: ["ignore", "pipe", "inherit"] });
   cleanups.push(async () => {
     child.kill("SIGTERM");
     if (child.exitCode === null) await once(child, "exit");
   });
-  return { socketPort, child, started: await startLine(child) };
+  const started = await startLine(child);
+  if (typeof started.port !== "number") throw new Error("serve did not log its port");
+  return { socketPort: started.port, child, started };
 }
 
 async function startLine(child: ChildProcess): Promise<Record<string, unknown>> {

@@ -1,11 +1,14 @@
+import { execFile } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { promisify } from "node:util";
 import {
   BRANCH_PREFIX,
   createWorktreeAllocator,
   DEFAULT_BASE_PATH,
   describeRefusal,
   findGitRoot,
+  gitChildEnv,
   inspectForRelease as inspectWithPackage,
   MissingAssignedWorktreeRecordError,
   pruneStaleWorktrees,
@@ -14,6 +17,7 @@ import {
   recreateWorktree as platformRecreate,
   runGit,
   setupWorktree,
+  type GitRunner,
   type ReleaseCheck,
   type ReleaseProof,
   type SetupRunner,
@@ -56,10 +60,34 @@ export interface WorktreeStrategyOptions extends PoolBudgets {
   addTimeoutMs?: number;
   /** Runs each `git worktree add`; tests inject one to observe how adds interleave. */
   runWorktreeAdd?: WorktreeAddRunner;
+  /** Builds the runner for `git worktree remove`; tests inject one to observe the deadline it is given. */
+  removeRunner?: (timeoutMs: number) => GitRunner;
   /** Runs the repository's declared setup step; tests inject one so no real install runs. */
   runSetup?: SetupRunner;
   /** CC-1469: read only when a pool refuses, to say who holds its trees. */
   treeHolders?: TreeHolders;
+}
+
+const execFileAsync = promisify(execFile);
+
+/** Removing a built tree deletes node_modules and dist, which outlasts runGit's 60 s default on a loaded disk. */
+const WORKTREE_REMOVE_TIMEOUT_MS = 600_000;
+
+function gitWithDeadline(timeoutMs: number): GitRunner {
+  return async (args, cwd) => {
+    try {
+      const { stdout } = await execFileAsync("git", [...args], {
+        cwd,
+        encoding: "utf8",
+        env: gitChildEnv(),
+        timeout: timeoutMs,
+        killSignal: "SIGKILL",
+      });
+      return stdout.trim();
+    } catch {
+      return null;
+    }
+  };
 }
 
 const branchFor = (name: string): string => `${BRANCH_PREFIX}${slug(name)}`;
@@ -217,8 +245,11 @@ interface TreeRef {
 }
 
 /** Without --force, so git itself still refuses a tree that gained untracked or modified files. */
-async function removeTree({ gitRoot, worktree, branch }: TreeRef): Promise<string | undefined> {
-  const removed = await runGit(["worktree", "remove", worktree], gitRoot);
+async function removeTree(
+  { gitRoot, worktree, branch }: TreeRef,
+  removeRunner: (timeoutMs: number) => GitRunner,
+): Promise<string | undefined> {
+  const removed = await removeRunner(WORKTREE_REMOVE_TIMEOUT_MS)(["worktree", "remove", worktree], gitRoot);
   if (removed === null && existsSync(worktree)) return `git would not remove ${worktree}`;
   await pruneStaleWorktrees(gitRoot);
   await runGit(["branch", "-D", branch], gitRoot);
@@ -230,13 +261,14 @@ async function releaseInspected(
   stoppedAt: number | undefined,
   ref: TreeRef,
   ghTimeoutMs: number | undefined,
+  removeRunner: (timeoutMs: number) => GitRunner,
 ): Promise<string | undefined> {
   if (stoppedAt !== undefined && Date.now() - stoppedAt < RECLAIM_GRACE_MS)
     return `agent stopped less than ${RECLAIM_GRACE_MS / 1000}s ago; inside the reclaim grace window`;
   const { gitRoot, worktree, branch, base = "HEAD" } = ref;
   const safety = await inspectForRelease(gitRoot, worktree, branch, base, "git-or-merged-pr-tip", ghTimeoutMs);
   if (safety.dirty || safety.unmerged) return describeRefusal(safety);
-  return removeTree(ref);
+  return removeTree(ref, removeRunner);
 }
 
 /** A tree this strategy cut and may remove; forced, parked, assigned and ref-less releases stay with the package. */
@@ -313,7 +345,7 @@ export function createWorktreeStrategy(opts: WorktreeStrategyOptions = {}): Isol
       const refusal =
         owned === undefined
           ? await releaseThroughPackage(allocator, ctx, allocation, releaseOpts)
-          : await releaseInspected(ctx.stoppedAt, owned, opts.ghTimeoutMs);
+          : await releaseInspected(ctx.stoppedAt, owned, opts.ghTimeoutMs, opts.removeRunner ?? gitWithDeadline);
       if (refusal !== undefined) recordRefusal(allocation, refusal);
       return refusal === undefined;
     },

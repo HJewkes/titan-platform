@@ -141,6 +141,26 @@ describe("sweepToolchain", () => {
     expect(fake.files.get(`${ADOPTION_BRANCH}:.node-version`)?.content).toBe("24.21.0\n");
   });
 
+  it("a foreign commit landing on a freshly created branch during the writes stops the PR from opening", async () => {
+    const w = world();
+    recordWrites(w);
+    const fake = drifted(w);
+    const putContent = fake.wire.putContent;
+    fake.wire.putContent = async (repo, request) => {
+      const written = await putContent(repo, request);
+      const key = `main...${request.branch}`;
+      const compared = fake.compares.get(key)!;
+      const foreign = { sha: fakeSha("foreign"), authorLogin: "stranger", committerLogin: "stranger", message: "unrelated change" };
+      fake.compares.set(key, { ...compared, commits: [...(compared.commits ?? []), foreign] });
+      return written;
+    };
+
+    const notes = await sweepToolchain(w.host, w.services);
+
+    expect(notes).toEqual([{ repo: DRIFTED, error: "LeftoverAdoptionBranchError" }]);
+    expect(fake.effects).toMatchObject({ createRef: 1, createPr: 0 });
+  });
+
   it("a leftover branch with a foreign commit is still refused with no write", async () => {
     const w = world();
     const fake = drifted(w);
