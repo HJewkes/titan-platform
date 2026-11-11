@@ -264,7 +264,7 @@ describe("a run held at registration waiting in its merge step", () => {
     expect(row.stalled).toEqual({ reason: "20 min in merging, over the 15 min limit" });
   });
 
-  it("emits only the phases agent-chat's burndown parses, which rejects the whole status array on any other (CC-791)", () => {
+  it("emits only the phases agent-chat's burndown knows (CC-791)", () => {
     expect(PhaseSchema.options).toEqual(["awaiting-pr", "ci", "fixing", "review", "awaiting-approval", "merging", "post-merge", "done", "failed", "cancelled"]);
   });
 
