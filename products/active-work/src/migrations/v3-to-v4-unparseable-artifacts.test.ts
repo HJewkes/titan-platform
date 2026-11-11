@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import YAML from 'yaml';
+import { z } from 'zod';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { v3ToV4Worktrees } from './v3-to-v4-worktrees.js';
@@ -73,9 +74,9 @@ describe('v3ToV4Worktrees unparseable artifacts.yml', () => {
 
     await v3ToV4Worktrees.run(activeRoot);
 
-    const next = YAML.parse(await readFile(path.join(good, 'artifacts.yml'), 'utf8')) as {
-      worktrees: Array<{ name: string }>;
-    };
+    const next = z
+      .object({ worktrees: z.array(z.object({ name: z.string() })) })
+      .parse(YAML.parse(await readFile(path.join(good, 'artifacts.yml'), 'utf8')));
     expect(next.worktrees.map((w) => w.name)).toEqual(['main']);
   });
 
@@ -84,10 +85,9 @@ describe('v3ToV4Worktrees unparseable artifacts.yml', () => {
 
     await v3ToV4Worktrees.run(activeRoot);
 
-    const next = YAML.parse(await readFile(path.join(dir, 'artifacts.yml'), 'utf8')) as Record<
-      string,
-      unknown
-    >;
+    const next = z
+      .record(z.string(), z.unknown())
+      .parse(YAML.parse(await readFile(path.join(dir, 'artifacts.yml'), 'utf8')));
     expect(next.branches).toEqual([{ repo: 'org/one', name: 'feat/a' }]);
     expect(next.worktrees).toEqual([
       {

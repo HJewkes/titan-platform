@@ -57,7 +57,6 @@
   "packages/rpc-client/src/client/event-stream.ts#EventStreamOptions",
   "packages/rpc-client/src/test-fixtures.ts#commands",
   "packages/session-analytics/src/fixture.ts#InboundFixture",
-  "packages/session-analytics/src/fixture.ts#insertTranscript",
   "packages/session-analytics/src/fixture.ts#OriginFixture",
   "packages/session-analytics/src/fixture.ts#SessionFixture",
   "packages/session-analytics/src/fixture.ts#SignalFixture",

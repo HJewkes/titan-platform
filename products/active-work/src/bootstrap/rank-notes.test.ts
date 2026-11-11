@@ -12,6 +12,7 @@ import {
   type NoteRelevance,
 } from './rank-notes.js';
 import type { LoadedNote } from '../notes/note-file.js';
+import { NoteFrontmatterSchema } from '../schemas/note.js';
 import { refreshInto, writeFile } from '../test-support/workspace-index/fixture.js';
 
 /**
@@ -26,9 +27,13 @@ function note(filename: string, title: string): LoadedNote {
   return {
     filename,
     path: `/active/alpha/sources/notes/${filename}`,
-    frontmatter: { kind: 'gotcha', title, created: '2026-09-01' },
+    frontmatter: NoteFrontmatterSchema.parse({
+      kind: 'gotcha',
+      title,
+      created: '2026-09-01',
+    }),
     body: title,
-  } as unknown as LoadedNote;
+  };
 }
 
 const NOTES = [note('a.md', 'Newest'), note('b.md', 'Middle'), note('c.md', 'Oldest')];
