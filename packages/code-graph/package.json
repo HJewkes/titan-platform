@@ -42,6 +42,9 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit"
   },
+  "peerDependencies": {
+    "zod": "^4.0.0"
+  },
   "dependencies": {
     "@titan-design/code-parser": "workspace:^",
     "@titan-design/embed": "workspace:^",
@@ -54,6 +57,7 @@
     "web-tree-sitter": "^0.26.6"
   },
   "devDependencies": {
-    "@titan-design/test-kit": "workspace:*"
+    "@titan-design/test-kit": "workspace:*",
+    "zod": "^4.4.3"
   }
 }

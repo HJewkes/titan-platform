@@ -11,6 +11,7 @@ const WRITE_SAVING = 3.0 / 1e6;
 const REBUILD_COST = 4.8 / 1e6;
 
 const request = (overrides: Partial<TtlRequestRow>): TtlRequestRow => ({
+  isSidechain: false,
   sessionId: "s",
   role: "worker:reviewer",
   profile: "reviewer",
@@ -210,6 +211,17 @@ describe("cacheTtlWhatIf reverse replay", () => {
     expect(withPlanner.netSavingUsd).toBeCloseTo(base.netSavingUsd, 10);
     expect(withPlanner).toMatchObject({ repriceSavingUsd: base.repriceSavingUsd, rebuilds: base.rebuilds, rebuildCostUsd: base.rebuildCostUsd });
     expect(withPlanner.noCacheNetUsd).toBeGreaterThan(base.noCacheNetUsd);
+  });
+
+  it("a sidechain request is never the previous prompt of a main-chain request", () => {
+    const sessionId = "p2";
+    const rows = [
+      request({ sessionId, profile: "planner", role: "worker:planner", cacheWrite5mTokens: 1_000 }),
+      request({ sessionId, profile: "planner", role: "worker:planner", isSidechain: true, ts: "2026-09-29T12:00:10Z", cacheWrite5mTokens: 90_000 }),
+      request({ sessionId, profile: "planner", role: "worker:planner", ts: "2026-09-29T12:00:30Z", cacheWrite5mTokens: 50_000, gapMs: 20 * MINUTE }),
+    ];
+
+    expect(cacheTtlWhatIf(rows).totals).toMatchObject({ reverseReverts: 1, reverseTokens: 1_000 });
   });
 });
 
