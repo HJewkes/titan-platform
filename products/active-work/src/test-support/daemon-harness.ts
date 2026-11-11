@@ -20,8 +20,12 @@ export function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const sock = net.createServer();
     sock.listen(0, '127.0.0.1', () => {
-      const { port } = sock.address() as net.AddressInfo;
-      sock.close(() => resolve(port));
+      const address = sock.address();
+      if (address === null || typeof address === 'string') {
+        sock.close(() => reject(new Error('Expected a TCP address from listen(0)')));
+        return;
+      }
+      sock.close(() => resolve(address.port));
     });
     sock.on('error', reject);
   });
