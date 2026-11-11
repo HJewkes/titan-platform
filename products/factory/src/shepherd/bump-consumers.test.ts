@@ -285,6 +285,22 @@ describe("bumpConsumers", () => {
     expect(fake.effects).toMatchObject({ createRef: 1, putContent: written, createPr: 1 });
   });
 
+  it("a foreign commit landing on a freshly created branch during the writes stops the PR from opening", async () => {
+    const w = world();
+    const fake = w.fakes.get(CONSUMER_A)!;
+    const putContent = fake.wire.putContent;
+    fake.wire.putContent = async (repo, request) => {
+      const written = await putContent(repo, request);
+      pushBranchCommit(fake, request.branch, { authorLogin: "stranger", committerLogin: "stranger", message: "unrelated change" }, {});
+      return written;
+    };
+
+    const notes = await bumpConsumers(w.host, w.services, ports(w));
+
+    expect(notes[0]).toMatchObject({ repo: CONSUMER_A, error: "LeftoverBumpBranchError" });
+    expect(fake.effects).toMatchObject({ createRef: 1, createPr: 0 });
+  });
+
   it("branch with a foreign commit stays fail-closed, naming the branch", async () => {
     const w = world();
     const branch = await leftoverWith(w, { authorLogin: "stranger", message: bumpCommitMessage("package.json") }, { "package.json": "{}\n" });

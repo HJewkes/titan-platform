@@ -215,9 +215,9 @@ async function openBump(port: GitHubPort, bump: PlannedBump, files: FileWrite[])
   const created = await port.ensureBranch(repo, branch, baseSha);
   const paths = new Set(files.map((file) => file.path));
   const sweepOnly = async (): Promise<void> => {
-    if (!created.done && !(await isSweepOnlyBranch(port, repo, tree.ref, branch, paths))) throw new LeftoverBumpBranchError(branch);
+    if (!(await isSweepOnlyBranch(port, repo, tree.ref, branch, paths))) throw new LeftoverBumpBranchError(branch);
   };
-  await sweepOnly();
+  if (!created.done) await sweepOnly();
   for (const file of files) {
     const expectedBlobSha = created.done ? file.expectedBlobSha : ((await port.getFile(repo, file.path, branch))?.blobSha ?? null);
     await port.putFile(repo, { path: file.path, branch, content: file.content, message: bumpCommitMessage(file.path), expectedBlobSha });
