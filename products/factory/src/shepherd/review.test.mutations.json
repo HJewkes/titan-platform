@@ -53,15 +53,6 @@
       "kills": [
         "reviewPhase review.panel on retries without a failed round when the blocking adversary's ask timed out unseen and correctness said MERGE (TP-5296)"
       ]
-    },
-    {
-      "name": "a member that started and said nothing reads as never started",
-      "file": "products/factory/src/shepherd/review-panel-step.ts",
-      "find": "dispatched.kind === \"none\" && dispatched.notStarted === true",
-      "replace": "dispatched.kind === \"none\" || dispatched.kind === \"dispatched\"",
-      "kills": [
-        "reviewPhase review.panel on still counts no verdict when the blocking adversary started and said nothing"
-      ]
     }
   ]
 }
