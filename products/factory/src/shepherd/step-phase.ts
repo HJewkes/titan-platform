@@ -2,7 +2,7 @@ import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
 
 /** The phases a Shepherd run moves through, as `shepherd.list` and `shepherd.timeline` report them; TP-466 section 2 pins them for the UI. */
-const PHASES = ["awaiting-pr", "ci", "fixing", "diagnosis", "review", "awaiting-approval", "merging", "post-merge", "done", "failed", "cancelled"] as const;
+const PHASES = ["awaiting-pr", "ci", "fixing", "review", "awaiting-approval", "merging", "post-merge", "done", "failed", "cancelled"] as const;
 
 export const PhaseSchema = z.enum(PHASES);
 export type Phase = z.infer<typeof PhaseSchema>;
@@ -126,13 +126,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-reverted": "post-merge",
 };
 
-/** Steps that wait on the implementer's next head; after a no-verdict diagnosis the wait is on the planner's findings, not a fix. */
-const HEAD_WAITS: readonly string[] = ["await-new-head", "sh-await-new-head"];
-const DIAGNOSIS_STEP = "sh-no-verdict-diagnosis";
-
-/** `previousStepId` is the step completed just before `stepId`; only the new-head wait reads it. */
-export function stepPhase(stepId: string, previousStepId?: string): Phase {
-  if (previousStepId !== undefined && stepIdMatches(DIAGNOSIS_STEP, previousStepId) && HEAD_WAITS.some((id) => stepIdMatches(id, stepId))) return "diagnosis";
+export function stepPhase(stepId: string): Phase {
   const family = Object.keys(STEP_PHASE).find((id) => stepIdMatches(id, stepId));
   return family === undefined ? "ci" : STEP_PHASE[family]!;
 }

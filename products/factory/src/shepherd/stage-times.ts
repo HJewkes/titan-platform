@@ -21,7 +21,6 @@ const PHASE_STAGE: Partial<Record<Phase, "queued" | "ci" | "review" | "hold" | "
   "awaiting-pr": "queued",
   ci: "ci",
   fixing: "ci",
-  diagnosis: "ci",
   review: "review",
   "awaiting-approval": "hold",
   merging: "land",
