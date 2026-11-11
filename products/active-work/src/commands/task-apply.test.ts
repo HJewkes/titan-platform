@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import YAML from 'yaml';
+import { z } from 'zod';
 import { describe, expect, it, vi } from 'vitest';
 import { invokeCommand } from '@titan-design/registry';
 import taskApply from './task-apply.js';
@@ -8,7 +9,7 @@ import './index.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
 import { today } from '../utils/today.js';
 import type { CommandContext } from '../registry/index.js';
-import type { Task } from '../schemas/task.js';
+import { TaskSchema, type Task } from '../schemas/task.js';
 import type * as FsAtomic from '../utils/fs-atomic.js';
 import type * as YamlIo from '../utils/yaml-io.js';
 
@@ -40,10 +41,18 @@ vi.mock('../utils/fs-atomic.js', async (importOriginal) => {
 const SLUG = 'sample-initiative';
 const OTHER = 'other-initiative';
 
-interface Summary {
-  counts: Record<'applied' | 'unchanged' | 'missing' | 'failed', number>;
-  results: { slug: string; id: string; result: string; changes: string[]; error?: string }[];
-}
+const ResultSchema = z.object({
+  slug: z.string(),
+  id: z.string(),
+  result: z.string(),
+  changes: z.array(z.string()),
+  error: z.string().optional(),
+});
+const SummarySchema = z.object({
+  counts: z.record(z.enum(['applied', 'unchanged', 'missing', 'failed']), z.number()),
+  results: z.array(ResultSchema),
+});
+type Summary = z.infer<typeof SummarySchema>;
 
 function ctx(activeRoot: string): CommandContext {
   return { activeRoot, warnings: [], format: 'json', cwd: activeRoot };
@@ -77,7 +86,7 @@ async function seedTask(
 }
 
 async function readTask(root: string, id: string, slug = SLUG): Promise<Task> {
-  return YAML.parse(await fs.readFile(taskFile(root, id, slug), 'utf8')) as Task;
+  return TaskSchema.parse(YAML.parse(await fs.readFile(taskFile(root, id, slug), 'utf8')));
 }
 
 async function writePlan(root: string, lines: unknown[]): Promise<string> {
@@ -91,7 +100,7 @@ async function apply(root: string, plan: string, flags: Record<string, unknown> 
 }
 
 function summaryOf(envelope: { ok: boolean }): Summary {
-  return (envelope as { ok: true; data: Summary }).data;
+  return SummarySchema.parse(z.object({ ok: z.literal(true), data: z.unknown() }).parse(envelope).data);
 }
 
 const FULL_LINE = {
@@ -233,7 +242,7 @@ describe('task.apply', () => {
       const results = text
         .trim()
         .split('\n')
-        .map((l) => JSON.parse(l) as Summary['results'][number]);
+        .map((l) => ResultSchema.parse(JSON.parse(l)));
       return { exitCode: out.exitCode, results };
     }
 

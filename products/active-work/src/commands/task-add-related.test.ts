@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import './index.js';
 import {
   RELATED_DEADLINE_MS,
@@ -144,14 +145,22 @@ describe('warnRelatedTasks', () => {
   });
 });
 
-interface Filed {
-  id: string;
-}
+const FiledSchema = z.looseObject({ id: z.string(), tags: z.array(z.string()).optional() });
+type Filed = z.infer<typeof FiledSchema>;
+const ListedSchema = z.object({ tasks: z.array(FiledSchema) });
 
-async function run<T = Filed>(ctx: CommandContext, name: string, args: unknown): Promise<T> {
+async function runRaw(ctx: CommandContext, name: string, args: unknown): Promise<unknown> {
   const cmd = registry.get(name);
   if (!cmd) throw new Error(`unknown command: ${name}`);
-  return cmd.run(cmd.args.parse(args), ctx) as Promise<T>;
+  return cmd.run(cmd.args.parse(args), ctx);
+}
+
+async function run(ctx: CommandContext, name: string, args: unknown): Promise<Filed> {
+  return FiledSchema.parse(await runRaw(ctx, name, args));
+}
+
+async function runLine(ctx: CommandContext, name: string, args: unknown): Promise<string> {
+  return z.string().parse(await runRaw(ctx, name, args));
 }
 
 async function fileExporterTask(ctx: CommandContext, title: string): Promise<Filed> {
@@ -163,10 +172,10 @@ async function withNeighbours(
 ): Promise<void> {
   await withEmptyActiveRoot(async (root) => {
     const setup: CommandContext = { activeRoot: root, warnings: [], format: 'json' };
-    await run(setup, 'new', { slug: SLUG, title: 'Related' });
+    await runRaw(setup, 'new', { slug: SLUG, title: 'Related' });
     const open = await fileExporterTask(setup, 'Build the parquet exporter');
     const closed = await fileExporterTask(setup, 'Retry the parquet exporter');
-    await run(setup, 'task.done', { slug: SLUG, id: closed.id });
+    await runRaw(setup, 'task.done', { slug: SLUG, id: closed.id });
     await fn({ ...setup, warnings: [], caller: 'agent' }, { open: open.id, closed: closed.id });
   });
 }
@@ -188,7 +197,7 @@ describe('task.add related list', () => {
       const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
       const human: CommandContext = { ...ctx, format: 'human' };
 
-      const line = await run<string>(human, 'task.add', {
+      const line = await runLine(human, 'task.add', {
         slug: SLUG,
         title: 'Harden the parquet exporter',
         done_when: DONE_WHEN,
@@ -219,14 +228,14 @@ describe('task.add related list', () => {
       expect(clock).toBeLessThanOrEqual(RELATED_DEADLINE_MS);
       expect(score.mock.calls.length).toBeLessThan(tasks.length);
       expect(warned.warnings).toEqual([]);
-      const listed = await run<{ tasks: Filed[] }>(ctx, 'task.list', { slug: SLUG });
+      const listed = ListedSchema.parse(await runRaw(ctx, 'task.list', { slug: SLUG }));
       expect(listed.tasks.map(({ id }) => id)).toContain(filed.id);
     });
   });
 
   it('a near-identical title found by the scan is tagged as a possible duplicate', async () => {
     await withNeighbours(async (ctx, { open }) => {
-      const filed = await run<Filed & { tags?: string[] }>(ctx, 'task.add', {
+      const filed = await run(ctx, 'task.add', {
         slug: SLUG,
         title: 'Build the parquet exporter',
         done_when: DONE_WHEN,
