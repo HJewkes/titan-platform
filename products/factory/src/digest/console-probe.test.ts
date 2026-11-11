@@ -52,5 +52,5 @@ describe("httpsProbe", () => {
     const port = await dripFeedingServer();
 
     await expect(httpsProbe(`https://127.0.0.1:${port}/`, 300)).rejects.toThrow("probe timed out");
-  });
+  }, 2_000); // the old idle timeout fired only after 5 s, so base overruns this and fails
 });
