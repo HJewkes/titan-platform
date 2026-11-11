@@ -20,6 +20,7 @@ import {
   HEAP_CAP_MB,
   ROOT_ROLES,
   updatedBaseline,
+  ColdFallbackDeferred,
   openWorkGraph,
   workGraphSeed,
 } from "./dead-code-check.mjs";
@@ -527,6 +528,18 @@ describe("opening a seeded work graph", () => {
       expect(store.listSnapshots({ limit: 1 })).toEqual([]);
     } finally {
       store.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses the cold fallback when a verify:changed run over the budget forbids it", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "dead-seed-"));
+    const db = path.join(dir, "graph.db");
+    writeFileSync(db, "not a sqlite database, a seed cut short");
+    const graph = await import(new URL("../packages/code-graph/dist/index.js", import.meta.url).href);
+    try {
+      expect(() => openWorkGraph(graph, db, { deferCold: true })).toThrow(ColdFallbackDeferred);
+    } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
