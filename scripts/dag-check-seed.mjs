@@ -17,6 +17,11 @@ export function seedKeep(seedPath) {
   return seedPath === MACHINE_SEED ? 8 : 2;
 }
 
+/** verify:changed sets this on a dead:check run past its file budget: a cold index there is CI's job, not the local run's. */
+export const DEFER_COLD_ENV = "DEAD_CHECK_DEFER_COLD";
+/** dead:check's exit when DEFER_COLD_ENV forbade the cold index it would otherwise have fallen back to. */
+export const COLD_DEFERRED_EXIT_CODE = 76;
+
 /** True when this run owns the machine seed: no explicit --seed-db (CI keeps its own cache) and no opt-out. */
 export function usesMachineSeed(argv, env) {
   return !argv.includes("--seed-db") && !env.DAG_CHECK_NO_SEED;
@@ -44,9 +49,13 @@ export function refreshSeed({ workDb, seedPath = MACHINE_SEED, code }) {
  * Runs the indexer; when it hits the heap cap on a seeded graph, clears the work dir and runs it once more cold.
  * A seed carries every snapshot it ever held, so it can need more heap than the cold index it speeds up.
  */
-export async function runWithColdRetry({ argv, runWorker, clearWork, log }) {
+export async function runWithColdRetry({ argv, runWorker, clearWork, log, deferCold = false }) {
   const first = await runWorker(argv);
   if (!first.heapAbort || !argv.includes("--seed-db")) return first.code;
+  if (deferCold) {
+    log("seeded index ran out of memory; not retrying cold, deferred to CI");
+    return COLD_DEFERRED_EXIT_CODE;
+  }
   log("seeded index ran out of memory; retrying once without the seed");
   clearWork();
   const at = argv.indexOf("--seed-db");

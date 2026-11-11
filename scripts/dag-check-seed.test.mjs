@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { DEFAULT_LOCK_DIR } from "./dag-check-lock.mjs";
-import { MACHINE_SEED, refreshSeed, runWithColdRetry, seedArgs, seedKeep } from "./dag-check-seed.mjs";
+import { COLD_DEFERRED_EXIT_CODE, MACHINE_SEED, refreshSeed, runWithColdRetry, seedArgs, seedKeep } from "./dag-check-seed.mjs";
 import { seedDbPath } from "./dag-check-self.mjs";
 
 const ENTRY = new URL("../packages/code-graph/dist/index.js", import.meta.url);
@@ -119,7 +119,7 @@ describe("retrying a seeded index that ran out of memory", () => {
       calls.push(argv);
       return results.shift();
     };
-    return { calls, logs, cleared: () => cleared, run: (argv) => runWithColdRetry({ argv, runWorker, clearWork: () => cleared++, log: (m) => logs.push(m) }) };
+    return { calls, logs, cleared: () => cleared, run: (argv, deferCold) => runWithColdRetry({ argv, runWorker, clearWork: () => cleared++, log: (m) => logs.push(m), deferCold }) };
   };
 
   it("runs once more without the seed and returns that run's exit code", async () => {
@@ -129,6 +129,14 @@ describe("retrying a seeded index that ran out of memory", () => {
     expect(t.calls).toEqual([["--json", "--seed-db", "/seed.db"], ["--json"]]);
     expect(t.cleared()).toBe(1);
     expect(t.logs).toHaveLength(1);
+  });
+
+  it("defers instead of retrying cold when the caller forbids a cold index", async () => {
+    const t = setup([{ code: 2, heapAbort: true }, { code: 0, heapAbort: false }]);
+    const code = await t.run(["--json", "--seed-db", "/seed.db"], true);
+    expect(code).toBe(COLD_DEFERRED_EXIT_CODE);
+    expect(t.calls).toHaveLength(1);
+    expect(t.cleared()).toBe(0);
   });
 
   it("does not retry an unseeded run that ran out of memory", async () => {

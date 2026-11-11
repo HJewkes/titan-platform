@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a seeded heap abort retries cold despite the defer flag",
+      "file": "scripts/dag-check-seed.mjs",
+      "find": "  if (deferCold) {\n",
+      "replace": "  if (false) {\n",
+      "kills": [
+        "retrying a seeded index that ran out of memory defers instead of retrying cold when the caller forbids a cold index"
+      ]
+    }
+  ]
+}
