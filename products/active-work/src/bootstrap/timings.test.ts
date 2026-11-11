@@ -1,8 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
 import { assembleBootstrap } from './prompt.js';
 import openCommand, { formatTimings } from '../commands/open.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
+
+const timedOpenResult = z.object({
+  prompt: z.string(),
+  metadata: z.object({ timings_ms: z.record(z.string(), z.number()) }),
+});
 
 const SLUG = 'sample-initiative';
 const NOW = new Date('2026-05-12T16:00:00Z');
@@ -74,11 +80,13 @@ describe('open timings_ms', () => {
   it('adds archive and total to the result metadata and keeps them out of the prompt', async () => {
     await withTempActiveRoot(async (root) => {
       const args = openCommand.args.parse({ slug: SLUG, offline: true });
-      const result = (await openCommand.run(args, {
-        activeRoot: root,
-        warnings: [],
-        format: 'json',
-      })) as { prompt: string; metadata: { timings_ms: Record<string, number> } };
+      const result = timedOpenResult.parse(
+        await openCommand.run(args, {
+          activeRoot: root,
+          warnings: [],
+          format: 'json',
+        }),
+      );
 
       const timings = result.metadata.timings_ms;
       for (const key of ['load', 'archive', 'live_status', 'rank_notes', 'loop_retrieval', 'total']) {

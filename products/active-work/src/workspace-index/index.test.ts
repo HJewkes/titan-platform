@@ -2,11 +2,18 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
 import { openGraph, type WorkspaceGraph } from '../session-index/graph.js';
 import { refreshWorkspace } from './refresh.js';
 import { WORKSPACE_SPAN_SOURCE_BASE } from './schema.js';
-import { removeFile, scaffold, SHARED_SESSION_ID, writeFile } from '../test-support/workspace-index/fixture.js';
+import { sqlRows } from '../test-support/sql-rows.js';
+import {
+  removeFile,
+  scaffold,
+  SHARED_SESSION_ID,
+  writeFile,
+} from '../test-support/workspace-index/fixture.js';
 
 /**
  * What the index says, as opposed to whether it says it consistently. The
@@ -30,12 +37,11 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-const rows = <T>(sql: string, ...params: unknown[]): T[] =>
-  graph.db.prepare(sql).all(...params) as T[];
+const rows = (sql: string, ...params: unknown[]) => sqlRows(graph.db.prepare(sql).all(...params));
 
 describe('workspace rows', () => {
   it('keeps both a live task and its archived copy, which share one task ref', () => {
-    const filed = rows<{ path: string; status: string }>(
+    const filed = rows(
       'SELECT path, status FROM workspace_task WHERE task_ref = ? ORDER BY path',
       'task:AL-1',
     );
@@ -49,7 +55,7 @@ describe('workspace rows', () => {
   });
 
   it('keeps one row per session file when two initiatives record the same session id', () => {
-    const records = rows<{ path: string; initiative: string }>(
+    const records = rows(
       'SELECT path, initiative FROM session_record WHERE session_id = ? ORDER BY path',
       SHARED_SESSION_ID,
     );
@@ -129,7 +135,7 @@ describe('the session join', () => {
       .prepare('INSERT INTO session (session_id, started_at, turn_count) VALUES (?, ?, ?)')
       .run('alpha-one', '2026-09-02T09:00:00Z', 12);
 
-    const joined = rows<{ path: string; turn_count: number }>(
+    const joined = rows(
       `SELECT r.path, s.turn_count
          FROM session_record r
          JOIN session s ON r.session_ref = 'session:' || s.session_id
@@ -144,7 +150,7 @@ describe('the session join', () => {
 
 describe('derived edges', () => {
   const edges = (relation: string) =>
-    rows<{ source_ref: string; target_ref: string }>(
+    rows(
       'SELECT source_ref, target_ref FROM edge WHERE relation = ? ORDER BY source_ref, target_ref',
       relation,
     );
@@ -181,7 +187,7 @@ describe('derived edges', () => {
       target_ref: 'note:beta/2026-09-02-beta-lesson.md',
     });
     for (const edge of shared) {
-      expect(edge.source_ref.split('/')[0]).not.toBe(edge.target_ref.split('/')[0]);
+      expect(String(edge.source_ref).split('/')[0]).not.toBe(String(edge.target_ref).split('/')[0]);
     }
   });
 
@@ -213,9 +219,13 @@ describe('FTS spans', () => {
   it('resolves a span locator back to the exact bytes of the file', async () => {
     const { readFileSync } = await import('node:fs');
     const hit = graph.workspaceSpans.search('"The indexer was written"')[0];
-    const relative = graph.db
-      .prepare('SELECT source_key FROM workspace_file WHERE source_id = ?')
-      .get(hit.sourceId - WORKSPACE_SPAN_SOURCE_BASE) as { source_key: string };
+    const relative = z
+      .object({ source_key: z.string() })
+      .parse(
+        graph.db
+          .prepare('SELECT source_key FROM workspace_file WHERE source_id = ?')
+          .get(hit.sourceId - WORKSPACE_SPAN_SOURCE_BASE),
+      );
 
     const bytes = readFileSync(path.join(root, relative.source_key)).subarray(
       hit.byteOffset,
@@ -239,9 +249,7 @@ describe('FTS spans', () => {
     // pass over the live root took 5.2 seconds against 89,533 existing spans,
     // and 0.6 with it. A future migration dropping the index would be an 8x
     // regression with no other symptom.
-    const plan = rows<{ detail: string }>(
-      'EXPLAIN QUERY PLAN DELETE FROM workspace_span WHERE source_id = 1',
-    );
+    const plan = rows('EXPLAIN QUERY PLAN DELETE FROM workspace_span WHERE source_id = 1');
 
     expect(plan.map((row) => row.detail).join(' ')).toContain('idx_workspace_span_source');
   });
