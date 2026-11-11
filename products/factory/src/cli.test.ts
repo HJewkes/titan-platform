@@ -367,6 +367,29 @@ describe("shepherd register with a bare task ID", () => {
   });
 });
 
+describe("shepherd register refusals", () => {
+  const refusingDeps = (denied: string[]): CliDeps => {
+    const fixture = shepherdFixture({ frozen: true, seats: { seats: [], denied } });
+    fixture.fake.addPr({ headSha: H1, headRef: BRANCH });
+    return { workflows: fixture.workflows, routes: fixture.routes, host: { gatePollMs: 5 }, logger: silentLogger };
+  };
+
+  it("exits REFUSED for a repo on a deny list or charter hard stop", async () => {
+    const result = await cli(["--db", dbFile(), "shepherd", "register", `${REPO}#1`, "--task", "demo/T-1", "--implementer", "impl-a", "--offline", "--port", String(await deadPort())], refusingDeps([REPO]));
+
+    expect(result.code).toBe(EXIT.REFUSED);
+    expect(EXIT.REFUSED).toBe(65);
+    expect(result.err).toContain("registration refused");
+  });
+
+  it("still exits USAGE, not REFUSED, when the arguments are malformed", async () => {
+    const result = await cli(["--db", dbFile(), "shepherd", "register", `${REPO}#1`, "--implementer", "impl-a", "--offline", "--port", String(await deadPort())], refusingDeps([REPO]));
+
+    expect(result.code).toBe(EXIT.USAGE);
+    expect(EXIT.USAGE).toBe(2);
+  });
+});
+
 describe("shepherd register with only a target", () => {
   const AGENT_BRANCH = "agent-chat/tc-tp-2239";
   const taskIndex = (async () => new Response(JSON.stringify({ ok: true, data: { tasks: [{ id: "TP-2239", slug: "titan-platform" }] } }))) as typeof globalThis.fetch;
