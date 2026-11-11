@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type * as SessionAnalytics from '@titan-design/session-analytics';
+import { writeEpisodes } from '@titan-design/session-analytics';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { runRelated } from '../commands/context-related.js';
@@ -14,25 +14,19 @@ import { scaffold } from '../test-support/workspace-index/fixture.js';
 const STALE_SESSIONS = 10;
 
 /** Counts the episode step's chunks: one `writeEpisodes` call per session. */
-const episodeChunks = vi.hoisted(() => ({
+const episodeChunks = {
   enabled: false,
   started: 0,
   onFirstCall: (): void => {},
-}));
+};
 
-vi.mock('@titan-design/session-analytics', async (importOriginal) => {
-  const actual = await importOriginal<typeof SessionAnalytics>();
-  return {
-    ...actual,
-    writeEpisodes: (...args: Parameters<typeof actual.writeEpisodes>) => {
-      if (episodeChunks.enabled) {
-        episodeChunks.started += 1;
-        if (episodeChunks.started === 1) episodeChunks.onFirstCall();
-      }
-      return actual.writeEpisodes(...args);
-    },
-  };
-});
+const countingWrite: typeof writeEpisodes = (...args) => {
+  if (episodeChunks.enabled) {
+    episodeChunks.started += 1;
+    if (episodeChunks.started === 1) episodeChunks.onFirstCall();
+  }
+  return writeEpisodes(...args);
+};
 
 let dir: string;
 let activeRoot: string;
@@ -83,7 +77,14 @@ function writeSession(sessionId: string): void {
 }
 
 function refresh(options: RefreshOptions = {}) {
-  return runRefresh({ skipPrOutcomes: true, graph, root: corpus, activeRoot, ...options });
+  return runRefresh({
+    skipPrOutcomes: true,
+    graph,
+    root: corpus,
+    activeRoot,
+    steps: { writeEpisodes: countingWrite },
+    ...options,
+  });
 }
 
 /** An indexed corpus whose sessions all wait for episodes, as the live backlog does. */
