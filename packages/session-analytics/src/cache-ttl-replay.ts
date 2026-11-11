@@ -25,6 +25,21 @@ export function reverseReplayTokens(rows: readonly TtlRequestRow[]): Map<TtlRequ
   return reverted;
 }
 
+/** 5m write tokens of every request in a replayed session; a 1h TTL would write them at the 1h rate unless they revert to reads. */
+export function reverseWriteTokens(rows: readonly TtlRequestRow[]): Map<TtlRequestRow, number> {
+  const written = new Map<TtlRequestRow, number>();
+  for (const session of bySession(rows).values()) {
+    if (!isFiveMinuteSession(session)) continue;
+    for (const row of session) written.set(row, row.cacheWrite5mTokens);
+  }
+  return written;
+}
+
+/** The 1h write rate over the 5m rate, charged on the writes a replay keeps. */
+export function reversePremiumUsd(tokens: number, price: PriceRow): number {
+  return (tokens * (price.cacheWrite1h - price.cacheWrite5m)) / MTOK;
+}
+
 /** The rebuild write becomes a read, so the request saves the write rate less the read rate. */
 export function reverseSavingUsd(tokens: number, price: PriceRow): number {
   return (tokens * (price.cacheWrite5m - price.cacheRead)) / MTOK;
