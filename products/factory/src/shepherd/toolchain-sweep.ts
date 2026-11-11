@@ -85,9 +85,9 @@ export async function openAdoption(port: GitHubPort, plan: AdoptionPlan): Promis
   const paths = new Set(plan.files.map((file) => file.path));
   const messageOf = (path: string): string => `${plan.title}: ${path}`;
   const sweepOnly = async (): Promise<void> => {
-    if (!created.done && !(await isSweepOnlyBranch(port, plan.repo, plan.baseBranch, plan.branch, paths, messageOf))) throw new LeftoverAdoptionBranchError(plan.repo, plan.branch);
+    if (!(await isSweepOnlyBranch(port, plan.repo, plan.baseBranch, plan.branch, paths, messageOf))) throw new LeftoverAdoptionBranchError(plan.repo, plan.branch);
   };
-  await sweepOnly();
+  if (!created.done) await sweepOnly();
   for (const file of plan.files) {
     const expectedBlobSha = created.done ? file.expectedBlobSha : ((await port.getFile(plan.repo, file.path, plan.branch))?.blobSha ?? null);
     await port.putFile(plan.repo, { path: file.path, branch: plan.branch, content: file.content, message: messageOf(file.path), expectedBlobSha });
