@@ -26,43 +26,73 @@ function walk(root, dir = root) {
   });
 }
 
-// Resolve every tsconfig-looking token against the referring file's folder, so a reference counts only when it lands on a carried file.
-function referencedTargets(path, text, carried, compileGlobs) {
+// A tool runs from a folder the file text does not name: a package file's tools run from its own folder or the repo root,
+// while a workflow, root script or root manifest may run from the root or from any package (`working-directory`).
+function readFrom(path, ctx) {
+  const dir = posix.dirname(path);
+  const loose = !ctx.packageDirs.some((packageDir) => path.startsWith(`${packageDir}/`));
+  return [...new Set([dir, ".", ...(loose ? ctx.carried.map((target) => posix.dirname(target)) : [])])];
+}
+
+function referencedTargets(path, text, ctx) {
+  const bases = readFrom(path, ctx);
   const hits = new Set();
-  for (const [token] of text.matchAll(TOKEN)) {
-    const resolved = posix.normalize(posix.join(posix.dirname(path), token));
-    const matches = /[*?[{]/.test(token) ? compileGlobs([resolved]) : (candidate) => candidate === resolved;
-    carried.filter(matches).forEach((target) => hits.add(target));
+  for (const [raw] of text.matchAll(TOKEN)) {
+    // A variable or template prefix (`${here}/`, `$ROOT/`) is a folder the scan cannot know, so it is read as "some base".
+    const token = raw.replace(/\$\{[^}]*\}|\$\w+/g, "").replace(/^\/+/, "");
+    for (const base of bases) {
+      const resolved = posix.normalize(posix.join(base, token));
+      const matches = /[*?[{]/.test(token) ? ctx.compileGlobs([resolved]) : (candidate) => candidate === resolved;
+      ctx.carried.filter(matches).forEach((target) => hits.add(target));
+    }
   }
   return [...hits];
 }
 
-function manifestProblems(path, manifest, carried, compileGlobs) {
+function chainedTypecheck(path, scripts, ctx) {
+  const dir = posix.dirname(path);
+  const reached = ctx.carried.filter((target) => posix.dirname(target) === dir);
+  const rootLevel = !ctx.packageDirs.some((packageDir) => path.startsWith(`${packageDir}/`));
+  const target = reached[0] ?? (rootLevel ? ctx.carried[0] : undefined);
+  if (target === undefined) return [];
+  return Object.entries(scripts)
+    .filter(([key, value]) => key !== "typecheck" && RUNS_TYPECHECK.test(String(value)))
+    .map(([key]) => ({ target, how: `script \`${key}\`, which runs \`typecheck\`,` }));
+}
+
+function manifestProblems(path, manifest, ctx) {
   const { scripts = {}, ...rest } = manifest;
   const dir = posix.dirname(path);
-  const own = carried.filter((target) => posix.dirname(target) === dir);
   const named = Object.entries(scripts).flatMap(([key, value]) =>
-    referencedTargets(path, String(value), carried, compileGlobs)
+    referencedTargets(path, String(value), ctx)
       .filter((target) => !(key === "typecheck" && posix.dirname(target) === dir))
       .map((target) => ({ target, how: `script \`${key}\`` })),
   );
-  const chained = own.length === 0 ? [] : Object.entries(scripts)
-    .filter(([key, value]) => key !== "typecheck" && RUNS_TYPECHECK.test(String(value)))
-    .map(([key]) => ({ target: own[0], how: `script \`${key}\`, which runs \`typecheck\`,` }));
-  const elsewhere = referencedTargets(path, JSON.stringify(rest), carried, compileGlobs).map((target) => ({ target, how: "a field" }));
-  return [...named, ...chained, ...elsewhere];
+  const elsewhere = referencedTargets(path, JSON.stringify(rest), ctx).map((target) => ({ target, how: "a field" }));
+  return [...named, ...chainedTypecheck(path, scripts, ctx), ...elsewhere];
 }
 
-function problemsIn(root, path, carried, compileGlobs) {
+// A turbo task that depends on `typecheck` runs it as part of that task, so it counts like a script that runs it.
+function turboProblems(path, turbo, ctx) {
+  if (ctx.carried.length === 0) return [];
+  const tasks = Object.entries(turbo.tasks ?? turbo.pipeline ?? {});
+  return tasks
+    .filter(([name, task]) => name.split("#").pop() !== "typecheck" && (task.dependsOn ?? []).some((dep) => /(?:^|[\^#])typecheck$/.test(dep)))
+    .map(([name]) => ({ target: ctx.carried[0], how: `task \`${name}\`, which depends on \`typecheck\`,` }));
+}
+
+function problemsIn(root, path, ctx) {
   const text = readFileSync(join(root, path), "utf8");
-  if (posix.basename(path) === "package.json") return manifestProblems(path, JSON.parse(text), carried, compileGlobs);
-  return referencedTargets(path, text, carried, compileGlobs).filter((target) => target !== path).map((target) => ({ target, how: "it" }));
+  const name = posix.basename(path);
+  if (name === "package.json") return manifestProblems(path, JSON.parse(text), ctx);
+  const tokens = referencedTargets(path, text, ctx).filter((target) => target !== path).map((target) => ({ target, how: "it" }));
+  return name === "turbo.json" ? [...turboProblems(path, JSON.parse(text), ctx), ...tokens] : tokens;
 }
 
 /**
  * R61 (TP-5200): only a package's `typecheck` script may name a tsconfig the fix-proof config carries.
  * A carried file counts as test support, so a build that read it would let a test-only change alter shipped output.
- * References are resolved to paths, so two packages may each carry their own file. A symlink to a carried file, a wildcard
+ * References are resolved to paths from every folder the reader may run from, so two packages may each carry their own file. A symlink to a carried file, a wildcard
  * that matches one, and a script that runs `typecheck` all count as naming it.
  */
 export async function checkCarriedTsconfigReferences(root) {
@@ -80,9 +110,11 @@ export async function checkCarriedTsconfigReferences(root) {
     const target = realTarget(root, path);
     return carried.includes(target) ? [message(path, target, "a symlink")] : [];
   });
+  const packageDirs = files.filter((path) => posix.basename(path) === "package.json" && path !== "package.json").map((path) => posix.dirname(path));
+  const ctx = { carried, compileGlobs, packageDirs };
   const readers = files.filter((path) => READER_FILE.test(path) && !isTest(path));
   const named = readers.flatMap((path) =>
-    problemsIn(root, path, carried, compileGlobs).map(({ target, how }) => message(path, target, how)),
+    problemsIn(root, path, ctx).map(({ target, how }) => message(path, target, how)),
   );
   return [...links, ...named];
 }

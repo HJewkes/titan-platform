@@ -409,6 +409,52 @@ describe("R61 resolves references to paths", () => {
     expect(await checkCarriedTsconfigReferences(root)).toEqual([expect.stringContaining("(a symlink)")]);
   });
 
+  it("a workflow that names a carried tsconfig by its repo-root path fails", async () => {
+    const root = carriedTsconfigRoot();
+    mkdirSync(join(root, ".github/workflows"), { recursive: true });
+    writeFileSync(join(root, ".github/workflows/rel.yml"), `steps:\n  - run: pnpm exec tsc -p packages/a/${CARRIED_TSCONFIG}\n`);
+    expect(await checkCarriedTsconfigReferences(root)).toEqual([expect.stringContaining(".github/workflows/rel.yml` names `packages/a/")]);
+  });
+
+  it("a workflow step with a working-directory that names the bare file fails", async () => {
+    const root = carriedTsconfigRoot();
+    mkdirSync(join(root, ".github/workflows"), { recursive: true });
+    writeFileSync(join(root, ".github/workflows/rel.yml"), `steps:\n  - working-directory: packages/a\n    run: tsc -p ${CARRIED_TSCONFIG}\n`);
+    expect(await checkCarriedTsconfigReferences(root)).toHaveLength(1);
+  });
+
+  it("a root script file that names a carried tsconfig by its repo-root path fails", async () => {
+    const root = carriedTsconfigRoot();
+    mkdirSync(join(root, "scripts"), { recursive: true });
+    writeFileSync(join(root, "scripts/x.mjs"), `run("tsc -p packages/a/${CARRIED_TSCONFIG}");\n`);
+    expect(await checkCarriedTsconfigReferences(root)).toEqual([expect.stringContaining("`scripts/x.mjs` names `packages/a/")]);
+  });
+
+  it("a root script that joins a template prefix to the file name fails", async () => {
+    const root = carriedTsconfigRoot();
+    mkdirSync(join(root, "scripts"), { recursive: true });
+    writeFileSync(join(root, "scripts/x.mjs"), "run(`tsc -p ${here}/packages/a/tsconfig.typecheck.json`);\n");
+    expect(await checkCarriedTsconfigReferences(root)).toHaveLength(1);
+  });
+
+  it("a root script that runs every package typecheck fails", async () => {
+    const root = carriedTsconfigRoot();
+    writeFileSync(join(root, "package.json"), JSON.stringify({ scripts: { typecheck: "turbo run typecheck", build: "pnpm -r build && pnpm -r typecheck" } }));
+    expect(await checkCarriedTsconfigReferences(root)).toEqual([expect.stringContaining("script `build`, which runs `typecheck`,")]);
+  });
+
+  it("a root typecheck script alone passes", async () => {
+    const root = carriedTsconfigRoot();
+    writeFileSync(join(root, "package.json"), JSON.stringify({ scripts: { typecheck: "turbo run typecheck" } }));
+    expect(await checkCarriedTsconfigReferences(root)).toEqual([]);
+  });
+
+  it("a turbo task that depends on typecheck fails", async () => {
+    const root = carriedTsconfigRoot();
+    writeFileSync(join(root, "turbo.json"), JSON.stringify({ tasks: { typecheck: {}, build: { dependsOn: ["^build", "typecheck"] } } }));
+    expect(await checkCarriedTsconfigReferences(root)).toEqual([expect.stringContaining("task `build`, which depends on `typecheck`,")]);
+  });
+
   it("a build script file that names a carried tsconfig fails", async () => {
     const root = carriedTsconfigRoot({ files: { "build.mjs": `run("tsc -p ${CARRIED_TSCONFIG}");\n` } });
     expect(await checkCarriedTsconfigReferences(root)).toEqual([expect.stringContaining("`packages/a/build.mjs` names")]);
