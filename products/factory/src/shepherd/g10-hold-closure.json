@@ -237,6 +237,7 @@
   "shepherd/conflict-base.ts",
   "shepherd/conflict-check.ts",
   "shepherd/conflict-demotion.ts",
+  "shepherd/consumer-bump-pins.ts",
   "shepherd/consumer-bump.ts",
   "shepherd/correct-verdict.ts",
   "shepherd/dead-end-route.ts",
