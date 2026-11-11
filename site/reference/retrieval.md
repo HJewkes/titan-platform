@@ -159,6 +159,36 @@ pass `estimateTokens` in the budget; it is called for every tier of every candid
 planContext(candidates, { tokens: 4000, estimateTokens: (text) => myTokenizer.count(text) });
 ```
 
+## Context mode: one request, two answers
+
+`engine.retrieve(request, options)` takes one request, validated with
+`RetrievalRequestSchema` (zod) and discriminated on `mode`. Unknown keys are rejected at
+every level, so a `list` request with a `budget` is invalid.
+
+| Field | Modes | Meaning |
+| --- | --- | --- |
+| `mode` | both | `"list"` or `"context"`, required |
+| `query` | both | the search text |
+| `limit` | both | results to rank; default 10 in list mode, 20 in context mode |
+| `rerank` | both | `false` skips the reranker for this request |
+| `budget` | context only | the planner budget minus `estimateTokens` |
+
+The call options are `tierSource` (required in context mode: `tiers(result, signal)`
+returns the renderings, cheapest first), `categoryOf` (default `result.sources[0]`),
+`estimateTokens` and `signal`.
+
+`mode: "list"` returns `{ mode, results, degraded, timingsMs }`, exactly what `search`
+returns. `mode: "context"` returns `{ mode, entries, dropped, usedTokens, budgetTokens,
+degraded, timingsMs }`, and `timingsMs` gains a `tiers` key.
+
+Context mode adds one drop reason to the table above: `tier-error`, the tier source threw
+for that result. Those drops come first in `dropped`, in rank order, then the planner's own.
+A failed tier load never rejects the request: all failures together add one degradation,
+`{ retriever: "tiers", reason: "error", message: "<n> of <m> tier loads failed; first: <message>" }`.
+
+Tier loads run concurrently and only for the ranked `limit` results, never for the
+overfetched candidates. A missing `tierSource` throws `TypeError` before any retriever runs.
+
 ## Gotchas
 
 **A graph-only hit has no locator.** It was reached by expansion, not by matching text. Do
@@ -168,6 +198,12 @@ not fabricate an excerpt for it; the session miner returns `excerpt: null`.
 retriever gets its own `AbortController`; one that exceeds the deadline lands in `degraded`
 with `reason: "timeout"` while the others finish normally. `timingsMs` on the gather result
 reports what each one actually took.
+
+**Context-mode budgets count chars/4, not real tokens.** Pass `estimateTokens` in the call
+options to budget against a tokenizer.
+
+**Tier sources run once per ranked result, all at once.** Keep them cheap, or lower `limit`.
+They get the request's `signal` and have no deadline of their own.
 
 ## Where it came from
 

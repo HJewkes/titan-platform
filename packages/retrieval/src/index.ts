@@ -17,3 +17,5 @@ export type { EngineOptions, RetrievalEngine, SearchOptions, SearchResponse } fr
 export { RERANK_STAGE, createRetrievalEngine } from "./engine.js";
 export type { ContextBudget, ContextCandidate, ContextEntry, ContextPlan, DropReason, DroppedCandidate } from "./context/plan.js";
 export { estimateTokens, planContext } from "./context/plan.js";
+export type { ContextResponse, ListResponse, RetrievalCallOptions, RetrievalDropReason, RetrievalDropped, RetrievalRequest, RetrievalResponse, TierSource } from "./context/request.js";
+export { ContextBudgetSchema, RetrievalRequestSchema, TIERS_STAGE } from "./context/request.js";

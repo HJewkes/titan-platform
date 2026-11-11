@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "one failed tier load rejects the request",
+      "file": "packages/retrieval/src/context/request.ts",
+      "find": "await Promise.allSettled(",
+      "replace": "await Promise.all(",
+      "kills": [
+        "retrieve a tier source that throws drops that result as tier-error and degrades once"
+      ]
+    },
+    {
+      "name": "context mode drops retriever degradations",
+      "file": "packages/retrieval/src/engine.ts",
+      "find": "[...ranked.degraded, loaded.degradation] : ranked.degraded",
+      "replace": "[loaded.degradation] : []",
+      "kills": [
+        "retrieve context mode keeps retriever degradations"
+      ]
+    },
+    {
+      "name": "categoryOf ignored",
+      "file": "packages/retrieval/src/engine.ts",
+      "find": "call.categoryOf ?? defaultCategory",
+      "replace": "defaultCategory",
+      "kills": [
+        "retrieve context mode plans within budget using categoryOf"
+      ]
+    },
+    {
+      "name": "tiers loaded beyond the requested limit",
+      "file": "packages/retrieval/src/engine.ts",
+      "find": "limit: request.limit ?? CONTEXT_DEFAULT_LIMIT",
+      "replace": "limit: CONTEXT_DEFAULT_LIMIT",
+      "kills": [
+        "retrieve loads tiers only for the ranked candidates, not the overfetch"
+      ]
+    },
+    {
+      "name": "list mode ignores limit",
+      "file": "packages/retrieval/src/engine.ts",
+      "find": "{ limit: parsed.limit, rerank",
+      "replace": "{ limit: undefined, rerank",
+      "kills": [
+        "retrieve list mode returns what search returns"
+      ]
+    }
+  ]
+}
