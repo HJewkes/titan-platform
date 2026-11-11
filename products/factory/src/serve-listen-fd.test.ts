@@ -78,12 +78,13 @@ const refuses = (port: number): Promise<boolean> =>
     socket.once("error", () => resolve(true));
   });
 
-// Binds a listening socket on fd 3 and execs the command with LISTEN_FDS and LISTEN_PID set to its own pid, as systemd does. Node has no public way to read a server's fd, so the socket is made by the launcher.
+// Binds a listening socket on fd 3 and execs the command with LISTEN_FDS and LISTEN_PID set to its own pid, as systemd does. Node has no public way to read a server's fd, so the socket is made by the launcher, which also reports the port it bound on stderr so a test need not trust serve's own log.
 const LAUNCHER = `
 import os, socket, sys
 sock = socket.socket()
 sock.bind(("127.0.0.1", 0))
 sock.listen()
+print("BOUND_PORT=" + str(sock.getsockname()[1]), file=sys.stderr, flush=True)
 os.dup2(sock.fileno(), 3)
 os.set_inheritable(3, True)
 os.environ["LISTEN_FDS"] = "1"
@@ -94,14 +95,27 @@ os.execv(sys.argv[1], sys.argv[1:])
 /** Starts serve as a child whose fd 3 is a listening socket and whose LISTEN_PID is its own pid, as systemd passes it. Only the child owns the socket. */
 async function serveOnPassedSocket(requestedPort: number): Promise<{ socketPort: number; started: Record<string, unknown>; child: ChildProcess }> {
   const args = ["-I", "-c", LAUNCHER, process.execPath, "--input-type=module", "-e", FIXTURE, scratchDir(), String(requestedPort)];
-  const child = spawn("python3", args, { env: { ...process.env, FACTORY_DIST }, stdio: ["ignore", "pipe", "inherit"] });
+  const child = spawn("python3", args, { env: { ...process.env, FACTORY_DIST }, stdio: ["ignore", "pipe", "pipe"] });
   cleanups.push(async () => {
     child.kill("SIGTERM");
     if (child.exitCode === null) await once(child, "exit");
   });
+  const socketPort = await launcherPort(child);
   const started = await startLine(child);
-  if (typeof started.port !== "number") throw new Error("serve did not log its port");
-  return { socketPort: started.port, child, started };
+  return { socketPort, child, started };
+}
+
+async function launcherPort(child: ChildProcess): Promise<number> {
+  let seen = "";
+  for await (const chunk of child.stderr!) {
+    seen += String(chunk);
+    const match = /BOUND_PORT=(\d+)\n/.exec(seen);
+    if (match) {
+      child.stderr!.resume();
+      return Number(match[1]);
+    }
+  }
+  throw new Error("the launcher exited before it reported its bound port");
 }
 
 async function startLine(child: ChildProcess): Promise<Record<string, unknown>> {
