@@ -382,16 +382,6 @@
       "count": 2
     }
   },
-  "products/active-work/src/test-support/cli-runner.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "products/active-work/src/test-support/daemon-harness.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/active-work/src/utils/coerce-dates.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
