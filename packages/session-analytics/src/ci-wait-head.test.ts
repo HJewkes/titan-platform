@@ -35,4 +35,13 @@ describe("the shared ci-wait head rule", () => {
     expect(gapCauseOf([{ tool: "Bash", heads: ["gh pr merge"] }])).toBe("other-bash");
     expect(waitClusters("gh pr merge 3")).toEqual(["other"]);
   });
+
+  it.each(["cat ci-wait-head.ts", "grep ci-wait x", "vim src/ci-wait.ts"])("keeps the prior cluster for %s, which only mentions the helper", (command) => {
+    expect(CI_WAIT_IN_COMMAND.test(command)).toBe(false);
+    expect(waitClusters(command)).toEqual(["other"]);
+  });
+
+  it.each(["ci-wait 12", "cd x && ci-wait 12", "./bin/ci-wait", "git push; ci-wait"])("reads %s as an invocation of the helper", (command) => {
+    expect(CI_WAIT_IN_COMMAND.test(command)).toBe(true);
+  });
 });
