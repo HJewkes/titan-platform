@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
 import { searchWorkspace } from '../search/index.js';
 import { hasLegacyWorkspaceSpans } from '../search/workspace-spans.js';
@@ -110,7 +111,7 @@ const locators = (): unknown[] =>
     .all();
 
 const count = (table: string): number =>
-  (graph.db.prepare(`SELECT count(*) AS n FROM ${table}`).get() as { n: number }).n;
+  z.object({ n: z.number() }).parse(graph.db.prepare(`SELECT count(*) AS n FROM ${table}`).get()).n;
 
 describe('workspace span backfill', () => {
   it('flips a legacy graph with one clean pass, leaving what a fresh index holds', async () => {

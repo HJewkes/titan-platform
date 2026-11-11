@@ -28,21 +28,22 @@ async function seedInitiative(root: string): Promise<void> {
 
 async function loadFailure(root: string): Promise<HumanOnlyUnreadableError> {
   const err: unknown = await loadHumanOnlyInitiatives(root).catch((e: unknown) => e);
-  expect(err).toBeInstanceOf(HumanOnlyUnreadableError);
-  return err as HumanOnlyUnreadableError;
+  if (!(err instanceof HumanOnlyUnreadableError)) {
+    throw new Error('expected loadHumanOnlyInitiatives to reject with HumanOnlyUnreadableError');
+  }
+  return err;
 }
 
 async function listWarnings(): Promise<string[]> {
-  const warnings: string[] = [];
-  const run = async (cmd: { run: (args: never, ctx: never) => Promise<unknown> }, args: object) => {
-    const context = { activeRoot: '', warnings: [] as string[], format: 'json' as const };
-    await cmd.run(args as never, context as never);
-    warnings.push(...context.warnings);
+  const context = {
+    activeRoot: '',
+    warnings: [] as string[],
+    format: 'json' as const,
   };
-  await run(noteListCmd, { all_initiatives: true });
-  await run(sourceListCmd, { all_initiatives: true });
-  await run(inventoryCmd, {});
-  return warnings;
+  await noteListCmd.run(noteListCmd.args.parse({ all_initiatives: true }), context);
+  await sourceListCmd.run(sourceListCmd.args.parse({ all_initiatives: true }), context);
+  await inventoryCmd.run(inventoryCmd.args.parse({}), context);
+  return context.warnings;
 }
 
 describe('human-only charter failure reasons', () => {
