@@ -8,6 +8,7 @@ import { connect } from "node:net";
 import { networkInterfaces, tmpdir } from "node:os";
 import path from "node:path";
 import { connect as tlsConnect } from "node:tls";
+import { Worker } from "node:worker_threads";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { partialFake } from "@titan-design/test-kit";
@@ -15,6 +16,7 @@ import type { Hono } from "hono";
 import { SESSION_COOKIE, TokenFileError, ensureTokenFile, mintLoginCode, signSession } from "./auth.js";
 import { DaemonAlreadyRunningError, DaemonPortInUseError, startDaemon, type DaemonHandle, type RemoteListenerOptions, type StartDaemonOptions } from "./daemon.js";
 import type * as BindGuardModule from "./bind-guard.js";
+import type * as LifecycleModule from "./lifecycle.js";
 import { NonLoopbackBindError, RemoteBindError, assertRemoteHost } from "./bind-guard.js";
 import { daemonPaths, readPidFile, writePidFile } from "./lifecycle.js";
 import { silentLogger } from "./logger.js";
@@ -26,6 +28,20 @@ import { TlsFileError } from "./tls-files.js";
 vi.mock("./bind-guard.js", async (importOriginal) => {
   const actual = await importOriginal<typeof BindGuardModule>();
   return { ...actual, assertRemoteHost: vi.fn(actual.assertRemoteHost) };
+});
+
+// Lets one test hold the pid-file write open; every other test gets the real function.
+const pidWriteGate = vi.hoisted(() => ({ hold: null as Promise<void> | null, entered: null as (() => void) | null }));
+vi.mock("./lifecycle.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof LifecycleModule>();
+  return {
+    ...actual,
+    writePidFile: vi.fn(async (...args: Parameters<typeof actual.writePidFile>) => {
+      pidWriteGate.entered?.();
+      await pidWriteGate.hold;
+      return actual.writePidFile(...args);
+    }),
+  };
 });
 
 function portOf(server: Server): number {
@@ -185,6 +201,50 @@ describe("startDaemon", () => {
     handle = null;
   });
 });
+
+describe("startDaemon on an inherited socket", () => {
+  afterEach(() => {
+    pidWriteGate.hold = null;
+    pidWriteGate.entered = null;
+  });
+
+  it("holds an mcp request until the pid file is written", async () => {
+    const socket = await bindInheritableSocket();
+    let release!: () => void;
+    pidWriteGate.hold = new Promise<void>((resolve) => (release = resolve));
+    const writing = new Promise<void>((resolve) => (pidWriteGate.entered = resolve));
+    const starting = startDaemon(options({ listenFd: socket.fd, toolPrefix: "test__", mcpName: "test-mcp" }));
+    await writing;
+
+    let answered = false;
+    const headers = { "content-type": "application/json", accept: "application/json, text/event-stream", "x-titan-client": "test" };
+    const reply = post(socket.port, "/mcp", headers, '{"jsonrpc":"2.0","id":1,"method":"tools/list"}').then((r) => ((answered = true), r));
+    await new Promise((r) => setTimeout(r, 300));
+    const answeredBeforePidFile = answered;
+    release();
+    handle = await starting;
+
+    expect(answeredBeforePidFile).toBe(false);
+    expect((await reply).status).toBe(200);
+    socket.release();
+  });
+});
+
+// A listening socket's fd can only be adopted by a loop that is not already polling it. A worker
+// binds it and then parks, so it never accepts and the daemon under test owns every connection.
+async function bindInheritableSocket(): Promise<{ fd: number; port: number; release: () => void }> {
+  const park = new Int32Array(new SharedArrayBuffer(4));
+  const code = `
+    const { workerData, parentPort } = require("node:worker_threads");
+    const server = require("node:net").createServer().listen(0, "127.0.0.1", () => {
+      parentPort.postMessage({ fd: server._handle.fd, port: server.address().port });
+      Atomics.wait(workerData.park, 0, 0);
+      server.close();
+    });`;
+  const worker = new Worker(code, { eval: true, workerData: { park } });
+  const [{ fd, port }] = (await once(worker, "message")) as [{ fd: number; port: number }];
+  return { fd, port, release: () => { Atomics.store(park, 0, 1); Atomics.notify(park, 0); } };
+}
 
 describe("request guards over a real socket", () => {
   it("refuses the cross-origin probe: text/plain body with a foreign Host and Origin", async () => {
