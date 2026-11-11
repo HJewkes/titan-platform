@@ -35,6 +35,13 @@
       "find": "inspectForRelease(gitRoot, worktree, branch, base, \"git-or-merged-pr-tip\", ghTimeoutMs)",
       "replace": "inspectForRelease(gitRoot, worktree, branch, base, \"git\", ghTimeoutMs)",
       "kills": ["worktree release after the work landed when gh reports the PR releases a squash-merged branch when gh reports the PR merged at its exact tip"]
+    },
+    {
+      "name": "worktree remove gets the 60 s default deadline again",
+      "file": "packages/agent-dispatch/src/isolation/worktree.ts",
+      "find": "const WORKTREE_REMOVE_TIMEOUT_MS = 600_000;",
+      "replace": "const WORKTREE_REMOVE_TIMEOUT_MS = 60_000;",
+      "kills": ["worktree removal deadline does not cut off a worktree remove that outlasts git's 60 s default"]
     }
   ]
 }
