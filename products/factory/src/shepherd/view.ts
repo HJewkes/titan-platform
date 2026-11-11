@@ -127,7 +127,7 @@ const SentNoticeData = z.object({ result: z.object({ sent: z.literal(true) }) })
  * wait through the owner's sent-back gate instead.
  */
 function heldWakeWait(run: WorkflowRun, steps: readonly StepResult[]): string | undefined {
-  if (run.currentStep === null || !stepIdMatches("await-new-head", run.currentStep)) return undefined;
+  if (run.status === "failed" || run.status === "cancelled" || run.currentStep === null || !stepIdMatches("await-new-head", run.currentStep)) return undefined;
   const at = lastIndexWhere(steps, (result) => stepIdMatches("sh-wake-implementer", result.stepId));
   const wake = HeldWakeData.safeParse(steps[at]?.data);
   if (!wake.success || wake.data.result.held === undefined) return undefined;
@@ -141,7 +141,7 @@ function heldWakeWait(run: WorkflowRun, steps: readonly StepResult[]): string | 
  */
 function diagnosisWait(run: WorkflowRun, steps: readonly StepResult[], pending: { gate: GateRecord } | undefined): string | undefined {
   const current = run.currentStep;
-  if (pending || current === null || !["await-new-head", "sh-await-new-head"].some((id) => stepIdMatches(id, current))) return undefined;
+  if (pending || run.status === "failed" || run.status === "cancelled" || current === null || !["await-new-head", "sh-await-new-head"].some((id) => stepIdMatches(id, current))) return undefined;
   const previous = steps.at(-1)?.stepId;
   return previous !== undefined && stepIdMatches("sh-no-verdict-diagnosis", previous) ? "waiting for the diagnosis planner's findings and a new head" : undefined;
 }
