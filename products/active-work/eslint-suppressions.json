@@ -269,24 +269,9 @@
       "count": 1
     }
   },
-  "products/active-work/src/server/related-during-refresh.test.ts": {
-    "titan/no-internal-module-mock": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/server/session-index-watch.test.ts": {
-    "titan/no-internal-module-mock": {
-      "count": 6
-    }
-  },
   "products/active-work/src/server/session-index-watch.ts": {
     "titan/max-function-lines": {
       "count": 3
-    }
-  },
-  "products/active-work/src/session-index/delta-pass.test.ts": {
-    "titan/no-internal-module-mock": {
-      "count": 1
     }
   },
   "products/active-work/src/session-index/delta-pass.ts": {
@@ -304,18 +289,8 @@
       "count": 1
     }
   },
-  "products/active-work/src/session-index/refresh.test.ts": {
-    "titan/no-internal-module-mock": {
-      "count": 2
-    }
-  },
   "products/active-work/src/session-index/refresh.ts": {
     "titan/max-function-lines": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/session-index/rollup-resume.test.ts": {
-    "titan/no-internal-module-mock": {
       "count": 1
     }
   },
