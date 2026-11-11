@@ -22,9 +22,19 @@ const xmlEscaped = (value: string): string => value.replace(/&/g, "&amp;").repla
  * and the sha check would roll the deploy back.
  */
 export function serviceRunsFromCheckout(ports: DeployPorts, checkout: string): boolean {
-  const text = ports.readFile(installedServiceFile(ports));
+  const raw = ports.readFile(installedServiceFile(ports));
+  if (raw === undefined) return false;
+  const text = withoutInertLines(raw);
   const bin = deployedBinPath(checkout);
-  return text !== undefined && (namesWholePath(text, bin) || namesWholePath(text, xmlEscaped(bin)));
+  return namesWholePath(text, bin) || namesWholePath(text, xmlEscaped(bin));
+}
+
+/** systemd ignores `#`/`;` comment lines, and an `Environment=` value is data, not a started program. */
+function withoutInertLines(text: string): string {
+  return text
+    .split("\n")
+    .filter((line) => !/^\s*([#;]|Environment=)/.test(line))
+    .join("\n");
 }
 
 /**

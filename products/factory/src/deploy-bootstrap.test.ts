@@ -44,7 +44,33 @@ describe("serviceRunsFromCheckout", () => {
 
   it("accepts the bin as a quoted or XML-escaped argument", () => {
     expect(serviceRunsFromCheckout(portsReading(`ExecStart="${BIN}"`), CHECKOUT)).toBe(true);
-    expect(serviceRunsFromCheckout(portsReading(`<string>${BIN.replace(/&/g, "&amp;")}</string>`), CHECKOUT)).toBe(true);
+  });
+
+  it("accepts an XML-escaped bin whose checkout path contains an ampersand", () => {
+    const checkout = "/srv/a&b/factory";
+    const escaped = deployedBinPath(checkout).replace(/&/g, "&amp;");
+    expect(serviceRunsFromCheckout(portsReading(`<string>${escaped}</string>`), checkout)).toBe(true);
+  });
+
+  it.each([
+    ["a commented ExecStart", `#ExecStart=${BIN}`],
+    ["a semicolon-commented ExecStart", `  ;ExecStart=${BIN}`],
+    ["an Environment line", `Environment=X=${BIN}`],
+  ])("rejects a unit whose only mention of the bin is %s", (_label, line) => {
+    expect(serviceRunsFromCheckout(portsReading(line), CHECKOUT)).toBe(false);
+  });
+
+  it.each([
+    ["a comment", `# was ${BIN}`],
+    ["an Environment line", `Environment=BIN=${BIN}`],
+  ])("rejects an ExecStart from another tree when %s names the bin", (_label, line) => {
+    const unit = `[Service]\n${line}\nExecStart=/usr/bin/node /srv/other/bin.js serve\n`;
+    expect(serviceRunsFromCheckout(portsReading(unit), CHECKOUT)).toBe(false);
+  });
+
+  it("accepts an ExecStart that names the bin among comment and Environment lines", () => {
+    const unit = `# note\nEnvironment=A=b\nExecStart=/usr/bin/node ${BIN} serve\n`;
+    expect(serviceRunsFromCheckout(portsReading(unit), CHECKOUT)).toBe(true);
   });
 
   it("rejects a missing service file", () => {
