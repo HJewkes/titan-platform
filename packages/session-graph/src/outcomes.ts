@@ -12,6 +12,21 @@ export interface PrKey {
 }
 
 /**
+ * Why a PR is due: `unchecked` was never asked, `recheck` is open or closed and can still move,
+ * `backfill` is merged and checked but its commit times are missing, so one answer finalises it.
+ */
+export type PrOutcomeBand = "unchecked" | "recheck" | "backfill";
+
+/** A due PR, with what a caller needs to throttle it without reading the graph. */
+export interface PrDue extends PrKey {
+  band: PrOutcomeBand;
+  /** Stored state, lower case (`open`, `closed`, `merged`), or null when no source has said. */
+  state: string | null;
+  /** ISO time of the last forge answer, or null when never asked. */
+  checkedAt: string | null;
+}
+
+/**
  * What a forge knows and a transcript cannot state: a merge done by another
  * session or in the browser, a close, and the review history. Every field is
  * optional; an omitted or null field leaves whatever the transcripts derived.
@@ -41,9 +56,9 @@ export type PrResolution = ReadonlyMap<string, ResolvedPr | null | undefined>;
 /**
  * Supplied by the caller, never by this package: session-graph is tier 2 and
  * must not learn which forge a product talks to. Called once per pass with every
- * PR whose outcome may still change.
+ * PR whose outcome may still change, in polling order; a resolver may skip any of them to throttle, and a skipped PR is offered again.
  */
-export type PrResolver = (prs: readonly PrKey[]) => PromiseLike<PrResolution> | PrResolution;
+export type PrResolver = (prs: readonly PrDue[]) => PromiseLike<PrResolution> | PrResolution;
 
 export interface PrEnrichment {
   /** PRs handed to the resolver. */
@@ -59,14 +74,17 @@ export interface PrEnrichment {
 export const NO_PR_OUTCOMES: PrEnrichment = Object.freeze({ requested: 0, applied: 0, failed: false });
 
 /**
- * A merge is final, so a merged PR is asked about once commit times are known; open and closed PRs
- * can still move. Never-checked PRs lead and missing commit times trail, so a per-pass cap cannot starve open PRs.
+ * The one rule for which PRs are due (TP-5183). A merge is final, so a merged PR is asked about once commit
+ * times are known; open and closed PRs can still move. Never-checked PRs lead and backfill trails, so a
+ * per-pass cap cannot starve open PRs; within a band the least recently checked go first.
  */
 const PRS_NEEDING_OUTCOME = `
-  SELECT pr_ref, repo, number FROM pr
+  SELECT pr_ref, repo, number, state, outcome_checked_at,
+    CASE WHEN outcome_checked_at IS NULL THEN 'unchecked' WHEN state IS NOT 'merged' THEN 'recheck' ELSE 'backfill' END AS band
+  FROM pr
   WHERE repo IS NOT NULL AND number IS NOT NULL
     AND (outcome_checked_at IS NULL OR state IS NOT 'merged' OR commit_times IS NULL)
-  ORDER BY CASE WHEN outcome_checked_at IS NULL THEN 0 WHEN state IS NOT 'merged' THEN 1 ELSE 2 END, pr_ref`;
+  ORDER BY CASE WHEN outcome_checked_at IS NULL THEN 0 WHEN state IS NOT 'merged' THEN 1 ELSE 2 END, outcome_checked_at, pr_ref`;
 
 /** A stale forge cache must not reopen a PR a transcript saw merged, so `merged` is sticky. */
 const APPLY_OUTCOME = `
@@ -80,9 +98,19 @@ const APPLY_OUTCOME = `
     outcome_checked_at = @checkedAt
   WHERE pr_ref = @prRef`;
 
-export function prsNeedingOutcome(graph: SessionGraph): PrKey[] {
-  const rows = graph.db.prepare<[], { pr_ref: string; repo: string; number: number }>(PRS_NEEDING_OUTCOME).all();
-  return rows.map((r) => ({ prRef: r.pr_ref, repo: r.repo, number: r.number }));
+interface DueRow {
+  pr_ref: string;
+  repo: string;
+  number: number;
+  state: string | null;
+  outcome_checked_at: string | null;
+  band: PrOutcomeBand;
+}
+
+/** The PRs a resolver should be asked about this pass, in polling order. */
+export function prsNeedingOutcome(graph: SessionGraph): PrDue[] {
+  const rows = graph.db.prepare<[], DueRow>(PRS_NEEDING_OUTCOME).all();
+  return rows.map((r) => ({ prRef: r.pr_ref, repo: r.repo, number: r.number, band: r.band, state: r.state, checkedAt: r.outcome_checked_at }));
 }
 
 /**

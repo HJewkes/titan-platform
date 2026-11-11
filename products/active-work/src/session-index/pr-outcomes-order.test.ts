@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import type { PrKey } from '@titan-design/session-graph';
+import { prsNeedingOutcome } from '@titan-design/session-graph';
 import type { CommandResult, RunCommand } from '../utils/run-command.js';
 import { openGraph, type WorkspaceGraph } from './graph.js';
 import { clearPrFailureBackoff, ghPrResolver } from './pr-outcomes.js';
@@ -32,7 +32,6 @@ function addPr(number: number, state: string | null, checkedAt: string | null, c
     .run(`pr:${REPO}#${number}`, REPO, number, state, checkedAt, commitTimes);
 }
 
-const key = (number: number): PrKey => ({ prRef: `pr:${REPO}#${number}`, repo: REPO, number });
 
 function recordingGh(): RunCommand & { asked: number[] } {
   const asked: number[] = [];
@@ -52,7 +51,7 @@ describe('PR outcome batch order', () => {
     const gh = recordingGh();
     const now = () => Date.parse('2026-01-01T00:00:00Z');
 
-    await ghPrResolver(graph, { run: gh, limit: 2, now })([1, 2, 3, 4].map(key));
+    await ghPrResolver({ run: gh, limit: 2, now })(prsNeedingOutcome(graph));
 
     expect([...gh.asked].sort()).toEqual([3, 4]);
   });
@@ -64,7 +63,7 @@ describe('PR outcome batch order', () => {
     const gh = recordingGh();
     const now = () => Date.parse('2026-01-01T00:00:00Z');
 
-    await ghPrResolver(graph, { run: gh, now })([11, 10, 12].map(key));
+    await ghPrResolver({ run: gh, now })(prsNeedingOutcome(graph));
 
     expect(gh.asked).toEqual([12, 10, 11]);
   });
