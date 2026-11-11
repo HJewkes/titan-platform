@@ -156,12 +156,24 @@ async function loadTask(file: string): Promise<Task | undefined> {
   }
 }
 
+/** The lock and write steps of one run, injectable so a test can observe them. */
+export interface TaskApplyIo {
+  withFileLock<T>(target: string, fn: () => Promise<T>): Promise<T>;
+  writeYaml: typeof writeYaml;
+}
+
+export const TASK_APPLY_IO: TaskApplyIo = {
+  withFileLock: (target, fn) => withFileLock(target, fn),
+  writeYaml,
+};
+
 /** What every line of one `task apply` run shares; `edges` is loaded only when a line needs it. */
 interface ApplyContext {
   date: string;
   dryRun: boolean;
   edges?: EdgeIndex;
   caller?: CommandContext['caller'];
+  io: TaskApplyIo;
 }
 
 /** On a failed write, put the index back, so later lines are not checked against edges never written. */
@@ -170,9 +182,10 @@ async function writeOrRollBack(
   slug: string,
   written: { task: Task; original: Task },
   edges: EdgeIndex | undefined,
+  io: TaskApplyIo,
 ): Promise<void> {
   try {
-    await writeYaml(file, written.task, TaskSchema);
+    await io.writeYaml(file, written.task, TaskSchema);
   } catch (err) {
     recordTask(edges, slug, written.original);
     throw err;
@@ -195,7 +208,7 @@ async function applyTask(
   }
   const dirty = lines.some((line) => line.result === 'applied');
   if (dirty && !run.dryRun) {
-    await writeOrRollBack(file, entries[0]!.slug, { task, original }, run.edges);
+    await writeOrRollBack(file, entries[0]!.slug, { task, original }, run.edges, run.io);
   }
   return lines;
 }
@@ -224,7 +237,7 @@ export async function applySlug(
 ): Promise<LineResult[]> {
   const dir = getInitiativeDir(slug);
   if (!existsSync(dir)) return [...tasks.values()].flat().map((e) => result(e, 'missing'));
-  return withFileLock(getLockPath(slug), async () => {
+  return run.io.withFileLock(getLockPath(slug), async () => {
     const lines: LineResult[] = [];
     for (const [id, entries] of tasks) {
       const file = path.join(dir, 'tasks', `${id}.yml`);
