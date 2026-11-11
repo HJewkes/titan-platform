@@ -358,3 +358,19 @@ describe("bumpConsumers", () => {
     expect(writes(w).every((count) => count === 0)).toBe(true);
   });
 });
+
+describe("bumpConsumers on a tree with a pnpm patch", () => {
+  it("hands the patch file to the lockfile regeneration beside the manifests", async () => {
+    const w = world();
+    const fake = w.fakes.get(CONSUMER_A)!;
+    const root: unknown = JSON.parse(fake.files.get("main:package.json")!.content);
+    const patchPath = "patches/example-a@1.2.0.patch";
+    fake.files.set("main:package.json", { content: `${JSON.stringify({ ...Object(root), pnpm: { patchedDependencies: { "@titan-design/example-a@1.2.0": patchPath } } }, null, 2)}\n`, blobSha: fakeSha("patched-root") });
+    fake.files.set(`main:${patchPath}`, { content: "--- a/index.js\n+++ b/index.js\n", blobSha: fakeSha("patch") });
+
+    await bumpConsumers(w.host, w.services, { registry: w.registry, regen: w.regen });
+
+    const forA = w.regenCalls.find((tree) => tree.files[patchPath] !== undefined);
+    expect(forA?.files[patchPath]).toBe("--- a/index.js\n+++ b/index.js\n");
+  });
+});

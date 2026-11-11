@@ -4,11 +4,7 @@ import path from 'node:path';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { resolveSessionLocation } from './resolve-session-location.js';
 import { withEmptyActiveRoot } from '../test-support/test-helpers.js';
-import { mirrorRoot, mirrorRoots } from '../test-support/fixtures/mirror-roots.js';
-
-vi.mock('@titan-design/session-read', async (importOriginal) =>
-  (await import('../test-support/fixtures/mirror-roots.js')).withMirrors(importOriginal),
-);
+import { useMirror } from '../test-support/fixtures/mirror-roots.js';
 
 let projectsRoot: string;
 const originalEnv = process.env.CLAUDE_PROJECTS_ROOT;
@@ -20,7 +16,6 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
-  mirrorRoots.length = 0;
   rmSync(projectsRoot, { recursive: true, force: true });
   if (originalEnv === undefined) delete process.env.CLAUDE_PROJECTS_ROOT;
   else process.env.CLAUDE_PROJECTS_ROOT = originalEnv;
@@ -206,7 +201,7 @@ describe('resolveSessionLocation config dirs', () => {
   it('never resumes a session that only a mirror of another host holds', async () => {
     const mirrorDir = path.join(projectsRoot, 'mirror');
     await writeIn(path.join(mirrorDir, 'agents'), 'mirrored-only', '/synthetic/m');
-    mirrorRoots.push(mirrorRoot(mirrorDir, 'agents'));
+    useMirror(mirrorDir);
     useConfigDirs(path.join(projectsRoot, '.claude'));
     await withEmptyActiveRoot(async (activeRoot) => {
       expect(await resolveSessionLocation(activeRoot, 'mirrored-only')).toBeNull();
@@ -218,7 +213,7 @@ describe('resolveSessionLocation config dirs', () => {
     const mirrorDir = path.join(projectsRoot, 'mirror');
     await writeIn(defaultDir, 'mirrored-too', '/synthetic/n');
     await writeIn(path.join(mirrorDir, 'default'), 'mirrored-too', '/synthetic/n');
-    mirrorRoots.push(mirrorRoot(mirrorDir, 'default'));
+    useMirror(mirrorDir);
     useConfigDirs(defaultDir);
     await withEmptyActiveRoot(async (activeRoot) => {
       const result = await resolveSessionLocation(activeRoot, 'mirrored-too');
