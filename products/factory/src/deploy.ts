@@ -153,7 +153,7 @@ async function planDeploy(deploy: Deploy): Promise<Plan> {
   if (fetched.code !== 0) return refuse(`git fetch origin main failed: ${detail(fetched)}`);
   const target = await resolveTarget(ports, deploy.options.expect);
   if (typeof target !== "object") return refuse(target);
-  return planFor(deploy, target.sha, !serviceRunsFromCheckout(ports, deploy.options.checkout));
+  return planFor(deploy, target.sha, !(await serviceRunsFromCheckout(ports, deploy.options.checkout)));
 }
 
 async function ensureCheckout({ ports, options }: Deploy): Promise<Stop | undefined> {

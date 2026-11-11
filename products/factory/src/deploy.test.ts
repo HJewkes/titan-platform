@@ -185,7 +185,8 @@ function fakeMachine(init: MachineInit = {}) {
         stuck = false;
         return kickstart();
       }
-      return ok(`${TARGET} = {\n\tpid = ${job.pid}\n}\n`);
+      const bin = /<string>(.*)<\/string>/.exec(files.get(plistPath(ports.home)) ?? "")?.[1];
+      return ok(`${TARGET} = {\n\tpid = ${job.pid}\n\targuments = {\n\t\t/usr/bin/node\n\t\t${bin}\n\t\tserve\n\t}\n}\n`);
     },
     systemctl: async (args) => {
       calls.push(`systemctl ${args.join(" ")}`);
