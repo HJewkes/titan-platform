@@ -256,6 +256,7 @@ describe('startSessionIndexWatch', () => {
     let clock = 0;
     const scheduler = createScheduler(runner, createDirtySet(), log, new AbortController().signal, {
       now: () => clock,
+      readPressure,
     });
 
     await scheduler.runNow(1_000);
