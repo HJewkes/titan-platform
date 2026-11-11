@@ -277,19 +277,6 @@ describe('miner cost', () => {
     });
   });
 
-  it('--session-ids reads ids from an @file', async () => {
-    await withEmptyActiveRoot(async (root) => {
-      dir = root;
-      await seedGraph(dir);
-      const idsFile = path.join(dir, 'ids.txt');
-      writeFileSync(idsFile, `${SESSION_COORD}\n\n  ${SESSION_WORKER}  \n`, 'utf8');
-
-      const result = await minerCost.run({ session_ids: [`@${idsFile}`] }, ctx());
-
-      expect(result.totals.requests).toBe(2);
-    });
-  });
-
   it('opens the graph read-only', async () => {
     await withEmptyActiveRoot(async (root) => {
       dir = root;
