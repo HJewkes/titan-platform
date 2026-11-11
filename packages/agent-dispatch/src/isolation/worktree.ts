@@ -1,14 +1,12 @@
-import { execFile } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { promisify } from "node:util";
 import {
   BRANCH_PREFIX,
   createWorktreeAllocator,
   DEFAULT_BASE_PATH,
   describeRefusal,
   findGitRoot,
-  gitChildEnv,
+  gitRunnerWithDeadline,
   inspectForRelease as inspectWithPackage,
   MissingAssignedWorktreeRecordError,
   pruneStaleWorktrees,
@@ -68,27 +66,8 @@ export interface WorktreeStrategyOptions extends PoolBudgets {
   treeHolders?: TreeHolders;
 }
 
-const execFileAsync = promisify(execFile);
-
 /** Removing a built tree deletes node_modules and dist, which outlasts runGit's 60 s default on a loaded disk. */
 const WORKTREE_REMOVE_TIMEOUT_MS = 600_000;
-
-function gitWithDeadline(timeoutMs: number): GitRunner {
-  return async (args, cwd) => {
-    try {
-      const { stdout } = await execFileAsync("git", [...args], {
-        cwd,
-        encoding: "utf8",
-        env: gitChildEnv(),
-        timeout: timeoutMs,
-        killSignal: "SIGKILL",
-      });
-      return stdout.trim();
-    } catch {
-      return null;
-    }
-  };
-}
 
 const branchFor = (name: string): string => `${BRANCH_PREFIX}${slug(name)}`;
 
@@ -345,7 +324,7 @@ export function createWorktreeStrategy(opts: WorktreeStrategyOptions = {}): Isol
       const refusal =
         owned === undefined
           ? await releaseThroughPackage(allocator, ctx, allocation, releaseOpts)
-          : await releaseInspected(ctx.stoppedAt, owned, opts.ghTimeoutMs, opts.removeRunner ?? gitWithDeadline);
+          : await releaseInspected(ctx.stoppedAt, owned, opts.ghTimeoutMs, opts.removeRunner ?? gitRunnerWithDeadline);
       if (refusal !== undefined) recordRefusal(allocation, refusal);
       return refusal === undefined;
     },
