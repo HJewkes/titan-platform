@@ -295,7 +295,8 @@ describe("retrieve", () => {
     await expect(missing).rejects.toThrow(TypeError);
     await expect(engine.retrieve({ mode: "context", query: "q", budget: { tokens: 10 } })).rejects.toThrow(/tierSource is required/);
     expect(retrieve).not.toHaveBeenCalled();
-    await expect(engine.retrieve({ mode: "list", query: "q", budget: { tokens: 10 } } as never)).rejects.toThrow();
+    const untyped = JSON.parse('{"mode":"list","query":"q","budget":{"tokens":10}}');
+    await expect(engine.retrieve(untyped)).rejects.toThrow();
   });
 
   it("context mode costs with the injected estimator", async () => {
