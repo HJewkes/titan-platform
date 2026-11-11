@@ -10,6 +10,7 @@ import { fieldSchema, schemaKind } from '@titan-design/registry';
 import { buildProgram } from '../program.js';
 import { defineCommand, registry } from '../registry/index.js';
 import { SCHEMA_VERSION } from '../session-index/graph.js';
+import { parseJson } from '../test-support/parse-json.js';
 import { REPO_ROOT, runCli, runCliInProcess, type RunResult } from '../test-support/cli-runner.js';
 
 /**
@@ -34,8 +35,12 @@ function closedPort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
     server.listen(0, '127.0.0.1', () => {
-      const { port } = server.address() as net.AddressInfo;
-      server.close(() => resolve(port));
+      const address = server.address();
+      if (address === null || typeof address === 'string') {
+        reject(new Error('expected a TCP address'));
+        return;
+      }
+      server.close(() => resolve(address.port));
     });
     server.on('error', reject);
   });
@@ -82,10 +87,13 @@ describe('cli integration', () => {
       { ACTIVE_ROOT: activeRoot },
     );
     expect(res.status).toBe(0);
-    const parsed = JSON.parse(res.stdout) as {
-      ok: boolean;
-      data: { slug: string; dir: string; rank: number; task_prefix: string };
-    };
+    const parsed = parseJson(
+      res.stdout,
+      z.object({
+        ok: z.boolean(),
+        data: z.object({ slug: z.string(), dir: z.string(), rank: z.number(), task_prefix: z.string() }),
+      }),
+    );
     expect(parsed.ok).toBe(true);
     expect(parsed.data.slug).toBe('my-test-slug');
     expect(parsed.data.dir).toBe(path.join(activeRoot, 'my-test-slug'));
@@ -98,10 +106,13 @@ describe('cli integration', () => {
   it('active-work list --json returns a valid success envelope', async () => {
     const res = await runCliInProcess(['--json', 'list'], { ACTIVE_ROOT: activeRoot });
     expect(res.status).toBe(0);
-    const parsed = JSON.parse(res.stdout) as {
-      ok: boolean;
-      data: { sections: Array<{ heading: string; items: unknown[] }> };
-    };
+    const parsed = parseJson(
+      res.stdout,
+      z.object({
+        ok: z.boolean(),
+        data: z.object({ sections: z.array(z.object({ heading: z.string(), items: z.array(z.unknown()) })) }),
+      }),
+    );
     expect(parsed.ok).toBe(true);
     expect(parsed.data.sections.map((s) => s.heading)).toEqual([
       'Focused',
@@ -123,13 +134,16 @@ describe('cli integration', () => {
     const raw = await fs.readFile(logPath, 'utf8');
     const lines = raw.trim().split('\n');
     expect(lines.length).toBeGreaterThanOrEqual(1);
-    const last = JSON.parse(lines[lines.length - 1]) as {
-      command: string;
-      success: boolean;
-      exit_code: number;
-      ts: string;
-      duration_ms: number;
-    };
+    const last = parseJson(
+      lines[lines.length - 1],
+      z.object({
+        command: z.string(),
+        success: z.boolean(),
+        exit_code: z.number(),
+        ts: z.string(),
+        duration_ms: z.number(),
+      }),
+    );
     expect(last.command).toBe('list');
     expect(last.success).toBe(true);
     expect(last.exit_code).toBe(0);
@@ -176,9 +190,10 @@ describe('cli integration', () => {
 
     expect(status).toBe(0);
     // tsup substitutes the define, so a built bundle must match package.json.
-    const pkg = JSON.parse(await fs.readFile(path.join(REPO_ROOT, 'package.json'), 'utf8')) as {
-      version: string;
-    };
+    const pkg = parseJson(
+      await fs.readFile(path.join(REPO_ROOT, 'package.json'), 'utf8'),
+      z.object({ version: z.string() }),
+    );
     expect(reported).toBe(pkg.version);
   });
 
@@ -201,12 +216,15 @@ describe('cli integration', () => {
       env,
     );
     expect(opened.status).toBe(0);
-    const { ref } = (JSON.parse(opened.stdout) as { data: { ref: string } }).data;
+    const { ref } = parseJson(opened.stdout, z.object({ data: z.object({ ref: z.string() }) })).data;
 
     const due = await runCliInProcess(['--json', 'loops', slug, '--due'], env);
-    const listed = JSON.parse(due.stdout) as {
-      data: { open: Array<{ ref: string; trigger_met?: string[] }> };
-    };
+    const listed = parseJson(
+      due.stdout,
+      z.object({
+        data: z.object({ open: z.array(z.object({ ref: z.string(), trigger_met: z.array(z.string()).optional() })) }),
+      }),
+    );
     expect(listed.data.open).toMatchObject([{ ref, trigger_met: ['due'] }]);
 
     expect((await runCliInProcess(['loop', 'resolve', slug, ref], env)).status).toBe(0);
@@ -229,7 +247,7 @@ describe('cli integration', () => {
     const listIds = async (tagArgs: string[]): Promise<string[]> => {
       const res = await runCliInProcess(['--json', 'deliverable', 'list', ...tagArgs], env);
       expect(res.status).toBe(0);
-      return (JSON.parse(res.stdout) as { data: Array<{ id: string }> }).data.map((row) => row.id);
+      return parseJson(res.stdout, z.object({ data: z.array(z.object({ id: z.string() })) })).data.map((row) => row.id);
     };
 
     const repeated = await listIds(['--tag', 'web', '--tag', 'ui']);
@@ -359,14 +377,17 @@ describe('cli integration', () => {
         ],
         env,
       );
-      taskId = (JSON.parse(added.stdout) as { data: { id: string } }).data.id;
+      taskId = parseJson(added.stdout, z.object({ data: z.object({ id: z.string() }) })).data.id;
     });
 
     it('appends a line that starts with a dash and adds a tag in one call', async () => {
       const res = await taskEdit('--append', '- item: "two" # kept', '--add-tag', 'gamma');
 
       expect(res.status).toBe(0);
-      const { data } = JSON.parse(res.stdout) as { data: { notes: string; tags: string[] } };
+      const { data } = parseJson(
+        res.stdout,
+        z.object({ data: z.object({ notes: z.string(), tags: z.array(z.string()) }) }),
+      );
       expect(data.notes).toBe('One\n- item: "two" # kept');
       expect(data.tags).toEqual(['alpha', 'beta', 'gamma']);
     });
@@ -377,7 +398,7 @@ describe('cli integration', () => {
       const res = await taskEdit('--add-tag', 'alpha');
 
       expect(res.status).toBe(0);
-      const { warnings } = JSON.parse(res.stdout) as { warnings: string[] };
+      const { warnings } = parseJson(res.stdout, z.object({ warnings: z.array(z.string()) }));
       expect(warnings).toEqual(['Tag already present, nothing added: alpha']);
       expect(await readTaskFile()).toBe(before);
     });
@@ -409,7 +430,7 @@ describe('cli integration', () => {
       const res = await taskEdit('tags', 'x, y', '--force');
 
       expect(res.status).toBe(0);
-      const { data } = JSON.parse(res.stdout) as { data: { tags: string[] } };
+      const { data } = parseJson(res.stdout, z.object({ data: z.object({ tags: z.array(z.string()) }) }));
       expect(data.tags).toEqual(['x', 'y']);
     });
 

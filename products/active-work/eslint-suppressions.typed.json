@@ -214,16 +214,6 @@
       "count": 1
     }
   },
-  "products/active-work/src/integration/cli.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 12
-    }
-  },
-  "products/active-work/src/integration/daemon.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 6
-    }
-  },
   "products/active-work/src/launcher-init.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
@@ -270,11 +260,6 @@
     },
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
-    }
-  },
-  "products/active-work/src/search/document-frequency.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 10
     }
   },
   "products/active-work/src/search/resolve.ts": {
@@ -374,11 +359,6 @@
   "products/active-work/src/sessions/worker-rollup.ts": {
     "@typescript-eslint/no-unnecessary-condition": {
       "count": 2
-    }
-  },
-  "products/active-work/src/setup/steps.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 13
     }
   },
   "products/active-work/src/setup/supervision-launchd.ts": {

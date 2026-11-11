@@ -295,6 +295,7 @@
   "shepherd/machine-linux.ts",
   "shepherd/machine-stop.ts",
   "shepherd/main-ci-cleared.ts",
+  "shepherd/main-ci-reads.ts",
   "shepherd/main-fixed.ts",
   "shepherd/main-green-ack.ts",
   "shepherd/main-red-logs.ts",
