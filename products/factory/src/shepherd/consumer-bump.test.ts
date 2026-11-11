@@ -173,6 +173,53 @@ describe("planConsumerBump override handling", () => {
     expect(plan.edits.map(({ path, name }) => `${path} ${name}`)).toEqual([`packages/x/package.json ${B}`]);
     expect(plan.leftAlone).toContainEqual({ path: "packages/x/package.json", name: A, spec: "^0.1.0", reason: "pinned by pnpm.overrides" });
   });
+
+  const bumpedNames = (manifest: RepoFile) => planConsumerBump(tree(manifest), latest({ [A]: "0.2.0" })).edits.map(({ name }) => name);
+
+  it("bumps a direct dependency when a pnpm parent-scoped selector names its package", () => {
+    expect(bumpedNames(pkg({ dependencies: { [A]: "^0.1.0" }, pnpm: { overrides: { [`foo>${A}`]: "0.1.0" } } }))).toEqual([A]);
+  });
+
+  it("bumps a direct dependency when an npm parent-scoped override names its package", () => {
+    expect(bumpedNames(pkg({ dependencies: { [A]: "^0.1.0" }, overrides: { foo: { [A]: "0.1.0" } } }))).toEqual([A]);
+  });
+
+  it("bumps a direct dependency when a selector range does not match its version", () => {
+    expect(bumpedNames(pkg({ dependencies: { [A]: "^0.1.0" }, pnpm: { overrides: { [`${A}@^1`]: "1.0.0" } } }))).toEqual([A]);
+  });
+
+  it("keeps a direct dependency unbumped when a selector range matches its version", () => {
+    expect(bumpedNames(pkg({ dependencies: { [A]: "^0.1.0" }, pnpm: { overrides: { [`${A}@^0.1.0`]: "0.1.0" } } }))).toEqual([]);
+  });
+
+  const bumpedUnder = (range: string, spec: string, newest = "0.9.0") =>
+    planConsumerBump(tree(pkg({ dependencies: { [A]: spec }, pnpm: { overrides: { [`${A}@${range}`]: "0.2.0" } } })), latest({ [A]: newest })).edits.length === 0;
+
+  it.each([
+    ["^0", "^0.2.0", true],
+    ["^0.0", "^0.2.0", false],
+    ["^0.0.3", "^0.2.0", false],
+    ["^0.1", "^0.1.0", true],
+    ["~0", "^0.2.0", true],
+    ["^0.1.3", "^0.1.0", true],
+  ])("pins by selector range %s against a dependency declared %s: %s", (range, spec, pinned) => {
+    expect(bumpedUnder(range, spec)).toBe(pinned);
+  });
+
+  it("keeps a dependency unbumped when the selector range holds only the version the bump would reach", () => {
+    expect(bumpedUnder("^0.2.0", "^0.1.0", "0.2.1")).toBe(true);
+  });
+
+  it("lists an unparseable or glob resolutions key naming a titan package instead of dropping it", () => {
+    const manifest = pkg({ resolutions: { [`**/${A}`]: "0.1.0", "@titan-design/*": "0.1.0", "**/zod": "3.0.0" } });
+
+    const plan = planConsumerBump(tree(manifest), latest({}));
+
+    expect(plan.leftAlone).toEqual([
+      { path: "package.json", name: `**/${A}`, spec: "0.1.0", reason: "resolutions key not readable as a package selector" },
+      { path: "package.json", name: "@titan-design/*", spec: "0.1.0", reason: "resolutions key not readable as a package selector" },
+    ]);
+  });
 });
 
 describe("readConsumerTree", () => {

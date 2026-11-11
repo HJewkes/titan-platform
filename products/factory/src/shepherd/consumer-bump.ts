@@ -3,7 +3,7 @@ import { findNodeAtLocation, parseTree } from "jsonc-parser";
 import type { GitHubPort, RepoFile, RepoSlug } from "@titan-design/github";
 import { parse as parseYaml, parseAllDocuments } from "yaml";
 import { z } from "zod";
-import { manifestPins, record, workspacePins, type OverridePin } from "./consumer-bump-pins.js";
+import { manifestPins, pinReaches, record, workspacePins, type OverridePin } from "./consumer-bump-pins.js";
 import type { Registration } from "./store.js";
 
 export const BUMP_BRANCH_PREFIX = "shepherd/bump-consumers-";
@@ -197,7 +197,11 @@ export function planConsumerBump(tree: ConsumerTree, latest: ReadonlyMap<string,
 /** A pin already at npm latest costs nothing to leave, so only a pin behind latest, or one that cannot be compared, is listed. */
 function pinsLeftAlone(pins: OverridePin[], latest: ReadonlyMap<string, string | null>): LeftAlone[] {
   const seen = new Map<string, LeftAlone>();
-  for (const { name, spec, field, path } of pins) {
+  for (const { name, spec, field, path, unreadable } of pins) {
+    if (unreadable) {
+      seen.set(`${path}\0${name}\0${field}`, { path, name, spec, reason: `${field} key not readable as a package selector` });
+      continue;
+    }
     if (!TITAN_NAME.test(name) || decide(spec, latest.get(name)) === null) continue;
     seen.set(`${path}\0${name}\0${spec}\0${field}`, { path, name, spec, reason: `pinned by ${field}` });
   }
@@ -205,12 +209,11 @@ function pinsLeftAlone(pins: OverridePin[], latest: ReadonlyMap<string, string |
 }
 
 function decideFile(file: RepoFile, latest: ReadonlyMap<string, string | null>, pins: OverridePin[]): Pick<ConsumerBumpPlan, "edits" | "leftAlone"> {
-  const pinnedBy = new Map(pins.map((pin) => [pin.name, pin.field]));
   const edits: SpecifierEdit[] = [];
   const leftAlone: LeftAlone[] = [];
   for (const [field, name, spec] of titanDepEntries(file)) {
-    const pinned = pinnedBy.get(name);
-    const decision = pinned === undefined ? decide(spec, latest.get(name)) : { reason: `pinned by ${pinned}` };
+    const pinned = pins.find((pin) => pin.name === name && pinReaches(pin, spec, latest.get(name) ?? ""));
+    const decision = pinned === undefined ? decide(spec, latest.get(name)) : { reason: `pinned by ${pinned.field}` };
     if (decision === null) continue;
     if ("reason" in decision) leftAlone.push({ path: file.path, name, spec, reason: decision.reason });
     else edits.push({ path: file.path, field, name, from: spec, ...decision });
