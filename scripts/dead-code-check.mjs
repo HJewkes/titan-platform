@@ -11,12 +11,13 @@
 // database by rename, so it never reads a snapshot still being written. --paths=<dir,...> indexes only those package
 // dirs and judges only their findings and baseline entries, for verify:changed; it cannot be combined with --update.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { analyzeSource, identifierMentions } from "./dead-code-check-source.mjs";
+import { MACHINE_SEED, runWithColdRetry, usesMachineSeed } from "./dag-check-seed.mjs";
 import { BUSY_EXIT_CODE, INDEXER_HEAP_CAP_MB, DEFAULT_LOCK_DIR, LockTimeoutError, acquire, lockSlots, lockWaitMs, cleanupOnSignal, release, runCappedWorker, runCleanups } from "./dag-check-lock.mjs";
 
 const SCRIPT = fileURLToPath(import.meta.url);
@@ -284,9 +285,24 @@ export async function graphFromDb(dbPath) {
   }
 }
 
+// A seed written by another schema or truncated mid-save must cost a cold index, never a failed check.
+export function openWorkGraph(graph, dbPath) {
+  try {
+    const store = graph.openCodeGraph(dbPath);
+    store.listSnapshots({ limit: 1 });
+    return store;
+  } catch (err) {
+    console.error(`seed graph unusable, indexing cold: ${err instanceof Error ? err.message : String(err)}`);
+    rmSync(dbPath, { force: true });
+    rmSync(`${dbPath}-wal`, { force: true });
+    rmSync(`${dbPath}-shm`, { force: true });
+    return graph.openCodeGraph(dbPath);
+  }
+}
+
 async function indexGraph(workDir, dirs = TIERS) {
   const graph = await import(ENTRY);
-  const store = graph.openCodeGraph(path.join(workDir, "graph.db"));
+  const store = openWorkGraph(graph, path.join(workDir, "graph.db"));
   try {
     const paths = dirs.map((sub) => path.join(ROOT, sub)).filter((p) => existsSync(p));
     // Dead exports read nodes, edges and roles only; skipping metrics trims a scoped verify:changed run.
@@ -328,6 +344,42 @@ async function check(workDir, args) {
   return exitCode({ growth, fresh: result.fresh, reportOnly });
 }
 
+/**
+ * The machine seed to copy into the work graph, or null to index cold. A --db run reads an existing graph and
+ * indexes nothing. The seed is only read here: this graph has metrics off and may be --paths scoped, so only
+ * dag:check refreshes it.
+ */
+export function workGraphSeed({ argv, env, exists, seedPath = MACHINE_SEED }) {
+  if (argv.some((a) => a === "--db" || a.startsWith("--db="))) return null;
+  return usesMachineSeed(argv, env) && exists(seedPath) ? seedPath : null;
+}
+
+function seedWorkGraph(workDir, args, log) {
+  const seed = workGraphSeed({ argv: args, env: process.env, exists: existsSync });
+  if (seed) {
+    copyFileSync(seed, path.join(workDir, "graph.db"));
+    log(`seeded the graph from ${seed}`);
+  }
+  return seed;
+}
+
+/** Runs the worker on a copy of the machine seed when there is one, and once more cold if that seeded run runs out of heap. */
+function runSeededWorker({ workDir, args, cleanups, log }) {
+  const seed = seedWorkGraph(workDir, args, log);
+  const runWorker = async (argv) => {
+    const outcome = {};
+    const workerArgs = [WORKER_FLAG, workDir, ...argv.filter((a, i) => a !== "--seed-db" && argv[i - 1] !== "--seed-db")];
+    const code = await runCappedWorker({ script: SCRIPT, args: workerArgs, name: "dead:check", heapCapMb: HEAP_CAP_MB, cleanups, log, outcome });
+    return { code, heapAbort: outcome.heapAbort };
+  };
+  const clearWork = () => {
+    rmSync(workDir, { recursive: true, force: true });
+    mkdirSync(workDir);
+  };
+  // runWithColdRetry keys the retry on a --seed-db marker in argv; the worker never sees it.
+  return runWithColdRetry({ argv: seed ? [...args, "--seed-db", seed] : args, runWorker, clearWork, log });
+}
+
 /** Holds a dag-check lock slot for the whole check, so it counts against the same bound on graphs in memory as dag:check. */
 async function supervise(args) {
   if (!existsSync(ENTRY)) {
@@ -350,8 +402,7 @@ async function supervise(args) {
   const workDir = mkdtempSync(path.join(tmpdir(), "dead-check-"));
   cleanups.push(() => rmSync(workDir, { recursive: true, force: true }));
   try {
-    const workerArgs = [WORKER_FLAG, workDir, ...args];
-    hold.exit = await runCappedWorker({ script: SCRIPT, args: workerArgs, name: "dead:check", heapCapMb: HEAP_CAP_MB, cleanups, log });
+    hold.exit = await runSeededWorker({ workDir, args, cleanups, log });
     return hold.exit;
   } finally {
     runCleanups(cleanups);

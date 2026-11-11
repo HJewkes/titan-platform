@@ -20,7 +20,10 @@ import {
   HEAP_CAP_MB,
   ROOT_ROLES,
   updatedBaseline,
+  openWorkGraph,
+  workGraphSeed,
 } from "./dead-code-check.mjs";
+import { MACHINE_SEED } from "./dag-check-seed.mjs";
 import { maskSource } from "./dead-code-check-source.mjs";
 import { HEAP_CAP_MB as DAG_CHECK_HEAP_CAP_MB } from "./dag-check-self.mjs";
 import { release, tryAcquire } from "./dag-check-lock.mjs";
@@ -484,5 +487,47 @@ describe("the report", () => {
 describe("dead:check worker heap cap", () => {
   it("is at least dag-check-self's cap so --update on main does not OOM", () => {
     expect(HEAP_CAP_MB).toBeGreaterThanOrEqual(DAG_CHECK_HEAP_CAP_MB);
+  });
+});
+
+describe("seeding the work graph", () => {
+  const present = () => true;
+  const absent = () => false;
+
+  it("seeds a bare run from the machine seed when one exists", () => {
+    expect(workGraphSeed({ argv: [], env: {}, exists: present })).toBe(MACHINE_SEED);
+  });
+
+  it("seeds a --paths run from the machine seed too", () => {
+    expect(workGraphSeed({ argv: ["--paths=packages/a,products/b"], env: {}, exists: present })).toBe(MACHINE_SEED);
+  });
+
+  it("indexes cold when DAG_CHECK_NO_SEED is set", () => {
+    expect(workGraphSeed({ argv: [], env: { DAG_CHECK_NO_SEED: "1" }, exists: present })).toBeNull();
+  });
+
+  it("indexes cold when no machine seed exists", () => {
+    expect(workGraphSeed({ argv: [], env: {}, exists: absent })).toBeNull();
+  });
+
+  it("never seeds a --db run, which reads an existing graph", () => {
+    expect(workGraphSeed({ argv: ["--db", "/tmp/graph.db"], env: {}, exists: present })).toBeNull();
+    expect(workGraphSeed({ argv: ["--db=/tmp/graph.db"], env: {}, exists: present })).toBeNull();
+  });
+});
+
+describe("opening a seeded work graph", () => {
+  it("falls back to an empty graph when the seed is not a usable database", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "dead-seed-"));
+    const db = path.join(dir, "graph.db");
+    writeFileSync(db, "not a sqlite database, a seed cut short");
+    const graph = await import(new URL("../packages/code-graph/dist/index.js", import.meta.url).href);
+    const store = openWorkGraph(graph, db);
+    try {
+      expect(store.listSnapshots({ limit: 1 })).toEqual([]);
+    } finally {
+      store.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
