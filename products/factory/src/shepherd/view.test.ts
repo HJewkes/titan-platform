@@ -597,6 +597,23 @@ describe("shepherd timeline verdict and wake entries", () => {
     expect(watchRow({ registration, run }).nextAction).toBe(`no fixer could start (${refusal}), waiting for a new head`);
   });
 
+  it.each(["cancelled", "failed"] as const)("does not read a %s run at await-new-head as still waiting on a held wake", (status) => {
+    const refusal = "agent-chat refused to start the successor impl-1-s3: DispatchError";
+    const run = withResults([{ stepId: "sh-wake-implementer:0", at: "2026-01-01T00:02:00.000Z", result: { kind: "unhandled", reason: refusal, held: { agent: "impl-1-s3" } } }]);
+    run.currentStep = "await-new-head:0";
+    run.status = status;
+
+    expect(watchRow({ registration, run }).nextAction).toBe("none");
+  });
+
+  it.each(["cancelled", "failed"] as const)("does not read a %s run at await-new-head as still waiting on the diagnosis", (status) => {
+    const run = withResults([{ stepId: "sh-no-verdict-diagnosis", at: "2026-01-01T00:02:00.000Z", result: {} }]);
+    run.currentStep = "await-new-head:0";
+    run.status = status;
+
+    expect(watchRow({ registration, run }).nextAction).toBe("none");
+  });
+
   it("emits entries that the timeline schema accepts", () => {
     const run = withResults([
       { stepId: `sh-await-verdict:${H1}`, at: "2026-01-01T00:01:00.000Z", result: { kind: "verdict", verdict: "MERGE", head: H1, locator, reviewer } },
