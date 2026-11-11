@@ -10,6 +10,10 @@
 // the latest "head" snapshot of an existing code-graph database instead of indexing; dag:check writes that
 // database by rename, so it never reads a snapshot still being written. --paths=<dir,...> indexes only those package
 // dirs and judges only their findings and baseline entries, for verify:changed; it cannot be combined with --update.
+// Seeding: a bare or --paths run copies the machine seed (the graph dag:check keeps) into its work graph when one
+// exists, and only dag:check refreshes it. --db runs and runs with DAG_CHECK_NO_SEED set stay cold. A seeded run that
+// hits the heap cap retries once cold; with DEAD_CHECK_DEFER_COLD set it exits 76 instead, leaving the cold index to
+// CI, and so does a seed that cannot be opened. --seed-db is not a flag of this script: it exits 2 as unknown.
 import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -365,7 +369,7 @@ function runSeededWorker({ workDir, args, cleanups, log }) {
   const seed = seedWorkGraph(workDir, args, log);
   const runWorker = async (argv) => {
     const outcome = {};
-    const workerArgs = [WORKER_FLAG, workDir, ...argv.filter((a, i) => a !== "--seed-db" && argv[i - 1] !== "--seed-db")];
+    const workerArgs = [WORKER_FLAG, workDir, ...argv];
     const code = await runCappedWorker({ script: SCRIPT, args: workerArgs, name: "dead:check", heapCapMb: HEAP_CAP_MB, cleanups, log, outcome });
     return { code, heapAbort: outcome.heapAbort };
   };
@@ -373,8 +377,7 @@ function runSeededWorker({ workDir, args, cleanups, log }) {
     rmSync(workDir, { recursive: true, force: true });
     mkdirSync(workDir);
   };
-  // runWithColdRetry keys the retry on a --seed-db marker in argv; the worker never sees it.
-  return runWithColdRetry({ argv: seed ? [...args, "--seed-db", seed] : args, runWorker, clearWork, log, deferCold: Boolean(process.env[DEFER_COLD_ENV]) });
+  return runWithColdRetry({ argv: args, seeded: Boolean(seed), runWorker, clearWork, log, deferCold: Boolean(process.env[DEFER_COLD_ENV]) });
 }
 
 /** Holds a dag-check lock slot for the whole check, so it counts against the same bound on graphs in memory as dag:check. */

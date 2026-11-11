@@ -119,7 +119,7 @@ describe("retrying a seeded index that ran out of memory", () => {
       calls.push(argv);
       return results.shift();
     };
-    return { calls, logs, cleared: () => cleared, run: (argv, deferCold) => runWithColdRetry({ argv, runWorker, clearWork: () => cleared++, log: (m) => logs.push(m), deferCold }) };
+    return { calls, logs, cleared: () => cleared, run: (argv, deferCold, seeded) => runWithColdRetry({ argv, runWorker, clearWork: () => cleared++, log: (m) => logs.push(m), deferCold, ...(seeded === undefined ? {} : { seeded }) }) };
   };
 
   it("runs once more without the seed and returns that run's exit code", async () => {
@@ -149,6 +149,14 @@ describe("retrying a seeded index that ran out of memory", () => {
     const t = setup([{ code: 1, heapAbort: false }]);
     expect(await t.run(["--seed-db", "/seed.db"])).toBe(1);
     expect(t.calls).toHaveLength(1);
+  });
+
+  it("retries cold from plain argv when the caller names the seed it copied", async () => {
+    const t = setup([{ code: 2, heapAbort: true }, { code: 0, heapAbort: false }]);
+    const code = await t.run(["--json"], false, true);
+    expect(code).toBe(0);
+    expect(t.calls).toEqual([["--json"], ["--json"]]);
+    expect(t.cleared()).toBe(1);
   });
 
   it("stops after one retry", async () => {
