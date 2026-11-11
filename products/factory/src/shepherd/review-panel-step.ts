@@ -28,7 +28,7 @@ const MAX_CITED_FILES = 20;
 /** The citation form aggregate checks: `path/to/file.ext:line`. */
 const CITED_PATH = /(?<![\w./-])((?:[\w.-]+\/)*[\w-][\w.-]*\.[A-Za-z]\w*):\d+/g;
 
-type Intent = { kind: "intent"; plan?: { members: readonly { shape: string; profile: string }[] }; panel?: "on"; panelReviewers?: Record<string, string> } & Record<string, unknown>;
+type Intent = { kind: "intent"; plan?: { members: readonly { shape: string; profile: string; blocking?: boolean }[] }; panel?: "on"; panelReviewers?: Record<string, string> } & Record<string, unknown>;
 /** An intent recorded under `review.panel` on: one recorded before the flag, or under off or shadow, reviews with one reviewer. */
 type PanelIntent = Intent & Required<Pick<Intent, "plan" | "panelReviewers">> & { panel: "on" };
 
@@ -275,11 +275,23 @@ function proofShortfall(verdict: PanelVerdictRecord, head: string, line: string 
 }
 
 /** Names the seat that withheld the verdict, so a round where every dispatched member answered never reads as a silent reviewer. */
-function panelNone(verdict: PanelVerdictRecord): Verdict {
+function panelNone(verdict: PanelVerdictRecord, unstarted: boolean): Verdict {
   if (verdict.outcome === "timeout") return { kind: "none", cause: "timeout", reason: "a blocking panel member gave no verdict" };
   const shortfall = "every dispatched panel member answered, but the fix-proof needs a tests member the panel never planned";
   const reason = verdict.fixProofShortfall === true ? shortfall : "a blocking panel member gave no verdict";
+  if (unstarted && verdict.fixProofShortfall !== true) return { kind: "none", cause: "not-started", reason: "a blocking panel member never started" };
   return { kind: "none", cause: "no-verdict", reason };
+}
+
+/**
+ * Whether every blocking member that withheld a verdict never started (TP-5296), as the single reviewer's `notStarted` reads in
+ * not-reviewed.ts: the round retries the review and is no failed round. One that started and said nothing keeps the round no-verdict.
+ */
+function withheldNeverStarted(plan: PanelIntent["plan"], members: readonly DispatchedMember[], results: readonly MemberResult[]): boolean {
+  const heard = new Set(results.filter(({ result }) => result.kind === "verdict").map(({ shape }) => shape));
+  const withheld = plan.members.filter((member) => member.blocking === true && !heard.has(member.shape as MemberResult["shape"]));
+  const unstarted = new Set(members.filter(({ dispatched }) => dispatched.kind === "none" && dispatched.notStarted === true).map(({ shape }) => shape));
+  return withheld.length > 0 && withheld.every((member) => unstarted.has(member.shape as OverlayShape));
 }
 
 const MemberVerdict = z.looseObject({
@@ -324,7 +336,7 @@ export async function panelReview(ctx: WorkflowContext, intent: PanelIntent, bas
   if (verdict.outcome === "FIX_FIRST") return panelFixFirst(target.head, verdict);
   const shortfall = proofShortfall(verdict, target.head, base.fixProof);
   if (shortfall) return shortfall;
-  if (verdict.outcome !== "MERGE" && taken.awaited.kind === "verdict") return panelNone(verdict);
+  if (verdict.outcome !== "MERGE" && taken.awaited.kind === "verdict") return panelNone(verdict, withheldNeverStarted(intent.plan, members, results));
   const merged = panelMerge(verdict, results, memberProfiles(members));
   const decided = await verdictOf(ctx, target, awaiting, dispatchedReviewer, taken.awaited, standing, adversaryAttest(intent, merged));
   return decided.kind === "MERGE" && verdict.outcome === "MERGE" ? { ...decided, panel: merged } : decided;

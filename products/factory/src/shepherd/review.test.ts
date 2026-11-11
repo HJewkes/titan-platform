@@ -1638,6 +1638,28 @@ describe("reviewPhase", () => {
       expect(verdicts).toEqual([{ kind: "none", cause: "no-verdict", reason: "a blocking panel member gave no verdict" }]);
     });
 
+    it("on retries without a failed round when the blocking adversary's ask timed out unseen and correctness said MERGE (TP-5296)", async () => {
+      const dispatch = fakeDispatch();
+      const spawn = dispatch.spawn.bind(dispatch);
+      dispatch.spawn = async (name, ...rest) => (name === adversary ? Promise.reject(new ReviewerAskTimedOut("agent-chat timed out")) : spawn(name, ...rest));
+
+      const { verdicts, resultOf } = await review({ dispatch, policy: AUTO, panel: "on", files: securityFiles });
+
+      expect(resultOf(`sh-review:${H1}:adversary`)).toMatchObject({ kind: "none", notStarted: true });
+      expect(verdicts).toEqual([{ kind: "none", cause: "not-started", reason: "a blocking panel member never started" }]);
+    });
+
+    it("on still counts no verdict when the blocking adversary started and said nothing", async () => {
+      const dispatch = fakeDispatch();
+      const read = (input: AwaitVerdictInput, held: FakeDispatch, now: number) =>
+        held.agents.filter((who) => who.agentId === input.reviewerAgentId && who.name !== adversary).map((who) => said(who, verdictAt(input.head, "MERGE"), now + 1));
+
+      const { verdicts, resultOf } = await review({ dispatch, policy: AUTO, panel: "on", files: securityFiles, read });
+
+      expect(resultOf(`sh-review:${H1}:adversary`)).toMatchObject({ kind: "dispatched" });
+      expect(verdicts).toEqual([{ kind: "none", cause: "no-verdict", reason: "a blocking panel member gave no verdict" }]);
+    });
+
     it("on merges past an advisory member's FIX_FIRST, so only the blocking members decide", async () => {
       const dispatch = fakeDispatch();
       const perf = "rv-octo-demo-1-perf";
