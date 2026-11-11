@@ -23,7 +23,7 @@ interface NoReproTestOnly {
 }
 
 /** Whether the NO_REPRO proceeds; `unreadReason` is why the diff stayed unread after its retry, so a run record can name it. */
-export interface NoReproDecision {
+interface NoReproDecision {
   proceeds: boolean;
   unreadReason?: string;
 }
