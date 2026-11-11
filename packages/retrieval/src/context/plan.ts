@@ -47,6 +47,7 @@ interface Resolved {
   tokens: number;
   quotaOf(category: string): number;
   defaultTierOf(c: ContextCandidate): number;
+  ceilingOf(c: ContextCandidate): number;
   cost(c: ContextCandidate, tier: number): number;
 }
 
@@ -80,6 +81,7 @@ function resolveBudget(budget: ContextBudget): Resolved {
     tokens: budget.tokens,
     quotaOf: (category) => lookup(budget.quotas, category) ?? defaultQuota,
     defaultTierOf: (c) => Math.min(lookup(budget.defaultTiers, c.category) ?? 0, ceilingOf(c)),
+    ceilingOf,
     cost: (c, tier) => estimate(c.tiers[tier] ?? ""),
   };
 }
@@ -161,6 +163,26 @@ function applyCap(placed: Working[], cap: number, r: Resolved): { kept: Working[
   return { kept, dropped };
 }
 
+function promote(w: Working, cap: number, leftover: number, r: Resolved): number | null {
+  const next = w.tier + 1;
+  if (next > r.ceilingOf(w.candidate)) return null;
+  const cost = r.cost(w.candidate, next);
+  if (cost > cap || cost - w.tokens > leftover) return null;
+  return next;
+}
+
+function deepenPass(kept: Working[], cap: number, r: Resolved): void {
+  let leftover = r.tokens - kept.reduce((sum, w) => sum + w.tokens, 0);
+  for (const w of kept) {
+    for (let next = promote(w, cap, leftover, r); next !== null; next = promote(w, cap, leftover, r)) {
+      const tokens = r.cost(w.candidate, next);
+      leftover -= tokens - w.tokens;
+      w.tier = next;
+      w.tokens = tokens;
+    }
+  }
+}
+
 function toPlan(kept: Working[], dropped: DroppedCandidate[], r: Resolved): ContextPlan {
   const entries = kept.map(
     (w): ContextEntry => ({
@@ -180,6 +202,8 @@ export function planContext(candidates: readonly ContextCandidate[], budget: Con
   const r = resolveBudget(budget);
   const { placed, dropped: breadthDrops } = breadthPass(byScore(candidates), r);
   if (placed.length === 0) return toPlan([], breadthDrops, r);
-  const { kept, dropped: capDrops } = applyCap(placed, (2 * r.tokens) / placed.length, r);
+  const cap = (2 * r.tokens) / placed.length;
+  const { kept, dropped: capDrops } = applyCap(placed, cap, r);
+  deepenPass(kept, cap, r);
   return toPlan(kept, [...breadthDrops, ...capDrops], r);
 }
