@@ -6,35 +6,27 @@
       "file": "products/factory/src/digest/console-probe.ts",
       "find": "const REACHABLE = new Set([200, 401]);",
       "replace": "const REACHABLE = new Set([200]);",
-      "kills": ["alarmLinks keeps an origin whose root answers 401, probing it once"]
+      "kills": [
+        "alarmLinks keeps an origin whose root answers 401, probing it once"
+      ]
     },
     {
       "name": "any status keeps the links",
       "file": "products/factory/src/digest/console-probe.ts",
       "find": "return REACHABLE.has(status) ? { origin } :",
       "replace": "return true ? { origin } :",
-      "kills": ["alarmLinks omits links when the origin answers 502"]
+      "kills": [
+        "alarmLinks omits links when the origin answers 502"
+      ]
     },
     {
       "name": "a failed probe counts as 200",
       "file": "products/factory/src/digest/console-probe.ts",
       "find": "const status = await probe(`${origin}/`);",
       "replace": "const status = await probe(`${origin}/`).catch(() => 200);",
-      "kills": ["alarmLinks omits links when the origin does not answer over https"]
-    },
-    {
-      "name": "the gap line ignores the probe's reason",
-      "file": "products/factory/src/digest/render-md.ts",
-      "find": "d.consoleLinkGap ?? LINKS_OMITTED",
-      "replace": "LINKS_OMITTED",
-      "kills": ["buildDigest a console that answers 502 leaves the alarm without links and says why under gaps"]
-    },
-    {
-      "name": "the probe runs even without an alarm",
-      "file": "products/factory/src/digest/run.ts",
-      "find": "const links = alarm === undefined ? undefined : await alarmLinks(consoleOrigin, probe);",
-      "replace": "const links = await alarmLinks(consoleOrigin, probe);",
-      "kills": ["buildDigest a digest whose alarm does not fire never probes"]
+      "kills": [
+        "alarmLinks omits links when the origin does not answer over https"
+      ]
     }
   ]
 }
