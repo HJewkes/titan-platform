@@ -14,7 +14,7 @@ import { CORRECT_VERDICT_STEP, correctOnce } from "./correct-verdict.js";
 import { Awaited, Dispatched } from "./review-schemas.js";
 import { fileFollowUpsAt } from "./follow-ups-step.js";
 import { freshReviewerBase } from "./cleanup.js";
-import { REVIEW_STEP } from "./review-steps.js";
+import { MAX_NOT_STARTED_REVIEWS, REVIEW_STEP } from "./review-steps.js";
 import type { ReviewerRoles } from "./reviewer-roles.js";
 import { takeAwaited, verdictOf, type AwaitedResult, type ProofStanding } from "./take-verdict.js";
 import type { ScopeRound } from "./scope-check-round.js";
@@ -337,7 +337,8 @@ export async function panelReview(ctx: WorkflowContext, intent: PanelIntent, bas
   if (verdict.outcome === "FIX_FIRST") return panelFixFirst(target.head, verdict);
   const shortfall = proofShortfall(verdict, target.head, base.fixProof);
   if (shortfall) return shortfall;
-  if (verdict.outcome !== "MERGE" && taken.awaited.kind === "verdict") return panelNone(verdict, withheldNeverStarted(intent.plan, members, results));
+  const retryable = ctx.iteration(`${PANEL_VERDICT_STEP}:${target.head}`) < MAX_NOT_STARTED_REVIEWS;
+  if (verdict.outcome !== "MERGE" && taken.awaited.kind === "verdict") return panelNone(verdict, retryable && withheldNeverStarted(intent.plan, members, results));
   const merged = panelMerge(verdict, results, memberProfiles(members));
   const decided = await verdictOf(ctx, target, awaiting, dispatchedReviewer, taken.awaited, standing, adversaryAttest(intent, merged));
   return decided.kind === "MERGE" && verdict.outcome === "MERGE" ? { ...decided, panel: merged } : decided;

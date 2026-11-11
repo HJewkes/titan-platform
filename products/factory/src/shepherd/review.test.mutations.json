@@ -46,12 +46,13 @@
       ]
     },
     {
-      "name": "a panel round whose blocking member never started counts as no-verdict",
+      "name": "a panel round whose blocking member never started counts no-verdict past the cap",
       "file": "products/factory/src/shepherd/review-panel-step.ts",
-      "find": "if (unstarted && verdict.fixProofShortfall !== true)",
-      "replace": "if (false && verdict.fixProofShortfall !== true)",
+      "find": "return panelNone(verdict, retryable && withheldNeverStarted(intent.plan, members, results));",
+      "replace": "return panelNone(verdict, false);",
       "kills": [
-        "reviewPhase review.panel on retries without a failed round when the blocking adversary's ask timed out unseen and correctness said MERGE (TP-5296)"
+        "reviewPhase review.panel on retries without a failed round when the blocking adversary's ask timed out unseen and correctness said MERGE (TP-5296)",
+        "reviewPhase review.panel on counts no verdict once the blocking adversary has failed to start three rounds at one head (TP-5296)"
       ]
     }
   ]

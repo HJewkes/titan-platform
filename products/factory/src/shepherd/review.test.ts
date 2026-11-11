@@ -1649,6 +1649,16 @@ describe("reviewPhase", () => {
       expect(verdicts).toEqual([{ kind: "none", cause: "not-started", reason: "a blocking panel member never started" }]);
     });
 
+    it("on counts no verdict once the blocking adversary has failed to start three rounds at one head (TP-5296)", async () => {
+      const dispatch = fakeDispatch();
+      const spawn = dispatch.spawn.bind(dispatch);
+      dispatch.spawn = async (name, ...rest) => (name.endsWith("adversary") ? Promise.reject(new ReviewerAskTimedOut("agent-chat timed out")) : spawn(name, ...rest));
+
+      const { verdicts } = await review({ dispatch, policy: AUTO, panel: "on", files: securityFiles, requests: [{ headSha: H1 }, { headSha: H1 }, { headSha: H1 }] });
+
+      expect(verdicts.map((verdict) => verdict.kind === "none" && verdict.cause)).toEqual(["not-started", "not-started", "no-verdict"]);
+    });
+
     it("on still counts no verdict when the blocking adversary started and said nothing", async () => {
       const dispatch = fakeDispatch();
       const read = (input: AwaitVerdictInput, held: FakeDispatch, now: number) =>
