@@ -6,11 +6,18 @@ const FOOTER = (door: string) =>
 const TWO_WAY_DIFF = "10\t2\tsrc/cli/status.ts\0" + "20\t1\tsrc/cli/status.test.ts\0";
 const MIGRATION_DIFF = "10\t0\tsrc/db/migrations/001-init.sql\0";
 
-function harness(diff: string, body: string, extraEnv: Record<string, string> = {}, files: Record<string, string> = {}) {
+function harness(
+  diff: string,
+  body: string,
+  extraEnv: Record<string, string> = {},
+  files: Record<string, string> = {},
+  git: { nameStatus?: string; revs?: Record<string, string> } = {},
+) {
   const out: string[] = [];
   const err: string[] = [];
   const deps: CliDeps = {
     diff: () => diff,
+    nameStatus: () => git.nameStatus ?? "",
     readText: (path) => {
       if (path === "body.md") return body;
       if (path in files) return files[path] ?? "";
@@ -117,5 +124,12 @@ describe("review-burden bin", () => {
     const { deps, err } = harness("", "", {}, { "rb.json": '{"protectedPath":["x"]}' });
     expect(run(["--body-file", "body.md", "--config", "rb.json"], deps)).toBe(2);
     expect(err.join("")).toContain("unknown key protectedPath");
+  });
+
+  it("a deleted stored-data path yields a stored-data-deleted fact", () => {
+    const files = { "rb.json": '{"storedDataGlobs":["data/**"]}' };
+    const { deps, out } = harness("0\t12\tdata/schema.json\0", "", {}, files, { nameStatus: "D\0data/schema.json\0" });
+    run(["--body-file", "body.md", "--config", "rb.json"], deps);
+    expect(doorOf(out).facts).toEqual([{ kind: "stored-data-deleted", path: "data/schema.json" }]);
   });
 });

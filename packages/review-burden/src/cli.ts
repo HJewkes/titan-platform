@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { parseBurdenConfig } from "./bin-config.js";
 import type { BurdenConfig, ChangedFile } from "./config.js";
 import { doorFacts, effectiveDoor, underDeclared, type ChangesetBump, type DoorFacts } from "./door.js";
+import { changedFiles } from "./git-diff.js";
 import { parseFooter, type Footer } from "./footer.js";
 import { burdenScore, type BurdenScore } from "./score.js";
 
@@ -11,6 +12,8 @@ export const BODY_ENV = "REVIEW_BURDEN_BODY";
 export interface CliDeps {
   /** The `git diff -M --numstat -z <base>...HEAD` output. */
   diff(base: string): string;
+  /** The `git diff -M --name-status -z <base>...HEAD` output; the same `-M` as `diff`, so renames pair up. */
+  nameStatus(base: string): string;
   readText(path: string): string;
   env: Readonly<Record<string, string | undefined>>;
   out(text: string): void;
@@ -42,29 +45,6 @@ function parseArgs(argv: readonly string[]): Options {
     } else throw new Error(`unknown argument ${arg ?? ""}`);
   }
   return options;
-}
-
-/**
- * Parses `git diff --numstat -z`: `add<TAB>del<TAB>path<NUL>`, and for a rename `add<TAB>del<TAB><NUL>old<NUL>new<NUL>`.
- */
-function parseNumstat(text: string): ChangedFile[] {
-  const fields = text.split("\0");
-  const files: ChangedFile[] = [];
-  for (let i = 0; i < fields.length; i++) {
-    const [add = "0", del = "0", ...rest] = (fields[i] ?? "").split("\t");
-    if (rest.length === 0) continue;
-    const named = rest.join("\t");
-    const paths = named === "" ? { previousPath: fields[++i] ?? "", path: fields[++i] ?? "" } : { path: named, previousPath: undefined };
-    const file: ChangedFile = {
-      path: paths.path,
-      status: paths.previousPath ? "renamed" : "modified",
-      additions: Number(add) || 0,
-      deletions: Number(del) || 0,
-    };
-    if (paths.previousPath) file.previousPath = paths.previousPath;
-    files.push(file);
-  }
-  return files;
 }
 
 function changesetBumps(files: readonly ChangedFile[], readText: CliDeps["readText"]): ChangesetBump[] {
@@ -125,7 +105,7 @@ export function run(argv: readonly string[], deps: CliDeps): number {
     deps.err(`review-burden: ${error instanceof Error ? error.message : String(error)}\n`);
     return 2;
   }
-  const files = parseNumstat(deps.diff(options.base));
+  const files = changedFiles(deps.diff(options.base), deps.nameStatus(options.base));
   const body = readBody(options, deps);
   const score = burdenScore({ files, body, config });
   const door = doorFacts({ files, changesetBumps: changesetBumps(files, deps.readText), config });
@@ -139,9 +119,14 @@ export function run(argv: readonly string[], deps: CliDeps): number {
   return 1;
 }
 
+function gitDiff(format: "--numstat" | "--name-status", base: string): string {
+  return execFileSync("git", ["diff", "-M", format, "-z", `${base}...HEAD`], { encoding: "utf8" });
+}
+
 export function realDeps(): CliDeps {
   return {
-    diff: (base) => execFileSync("git", ["diff", "-M", "--numstat", "-z", `${base}...HEAD`], { encoding: "utf8" }),
+    diff: (base) => gitDiff("--numstat", base),
+    nameStatus: (base) => gitDiff("--name-status", base),
     readText: (path) => readFileSync(path, "utf8"),
     env: process.env,
     out: (text) => process.stdout.write(text),
