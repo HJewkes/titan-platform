@@ -303,7 +303,7 @@ async function locPasses(changed) {
 export function describeOutcome(step, status, signal = null, output = "") {
   if (status === 0) return { ok: true };
   if (status === BUSY_EXIT_CODE && step.label === DEAD_CHECK_LABEL) return { ok: true, note: `${DEAD_CHECK_LABEL} deferred to CI: dag-check lock busy` };
-  if (status === COLD_DEFERRED_EXIT_CODE && step.label === DEAD_CHECK_LABEL) return { ok: true, note: `${DEAD_CHECK_LABEL} deferred to CI: seed unusable, cold index over the file budget` };
+  if (status === COLD_DEFERRED_EXIT_CODE && step.label === DEAD_CHECK_LABEL) return { ok: true, note: `${DEAD_CHECK_LABEL} deferred to CI: seed unusable, cold index over the file budget; run pnpm dag:check to rebuild the seed` };
   if (status === TIMEOUT_EXIT_STATUS && step.cmd === "timeout") {
     return { ok: false, message: `${step.label} timed out after ${VITEST_TIMEOUT_SECONDS} s (no test failed; CI is the authority)` };
   }

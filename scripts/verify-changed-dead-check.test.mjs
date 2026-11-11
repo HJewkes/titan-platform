@@ -45,6 +45,12 @@ describe("verify:changed dead:check step", () => {
     expect(describeOutcome(step, 75)).toEqual({ ok: true, note: "dead:check deferred to CI: dag-check lock busy" });
   });
 
+  it("a deferred-cold exit tells the user to run pnpm dag:check", () => {
+    const step = deadCheckStep(["packages/a/src/x.ts"]);
+
+    expect(describeOutcome(step, 76).note).toContain("run pnpm dag:check to rebuild the seed");
+  });
+
   it("any other dead:check exit still fails", () => {
     const step = deadCheckStep(["packages/a/src/x.ts"]);
 
