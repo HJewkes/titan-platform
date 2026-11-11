@@ -20,10 +20,10 @@
       ]
     },
     {
-      "name": "a build script naming a carried tsconfig is allowed",
+      "name": "any script in the package may name its carried tsconfig",
       "file": "scripts/structure-rules-fix-proof.mjs",
-      "find": "!(key === \"typecheck\" && ownTypecheck)",
-      "replace": "false",
+      "find": "!(key === \"typecheck\" && posix.dirname(target) === dir)",
+      "replace": "posix.dirname(target) !== dir",
       "kills": [
         "R61 who may name a carried tsconfig a build script that names a carried tsconfig fails with the R61 message"
       ]
