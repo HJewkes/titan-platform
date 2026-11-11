@@ -4,19 +4,19 @@
     {
       "name": "the resolver polls every PR it is handed",
       "file": "products/active-work/src/session-index/pr-outcomes.ts",
-      "find": "      if (!row?.outcome_checked_at) return true;\n      if (row.state?.toLowerCase() === 'merged') return row.commit_times === null;\n      return isDue(row, now, every);\n",
-      "replace": "      return true;\n",
+      "find": "(pr.band !== 'recheck' || isDue(pr, now, every))",
+      "replace": "true",
       "kills": [
-        "the gh PR resolver a pass over 100 merged and checked PRs and 3 open ones polls only the 3 open"
+        "the gh PR resolver recheck intervals an open PR checked within the interval is not asked again"
       ]
     },
     {
-      "name": "a never-checked merged PR is skipped",
+      "name": "a backfill PR waits for the closed interval",
       "file": "products/active-work/src/session-index/pr-outcomes.ts",
-      "find": "      if (!row?.outcome_checked_at) return true;\n",
+      "find": "pr.band !== 'recheck' || ",
       "replace": "",
       "kills": [
-        "the gh PR resolver recheck intervals a merged PR the forge never checked is asked about, a checked one is not"
+        "the gh PR resolver recheck intervals a checked merged PR missing commit times is asked inside the closed interval"
       ]
     },
     {

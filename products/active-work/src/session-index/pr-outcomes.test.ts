@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { enrichPrs } from '@titan-design/session-graph';
+import { enrichPrs, prsNeedingOutcome } from '@titan-design/session-graph';
 import { lookup } from '../test-support/test-helpers.js';
 import type { CommandResult, RunCommand } from '../utils/run-command.js';
 import { openGraph, type WorkspaceGraph } from './graph.js';
@@ -106,7 +106,7 @@ describe('the gh PR resolver', () => {
       'acme/demo#2': pr({ state: 'CLOSED', closedAt: '2026-09-21T09:00:00Z' }),
     });
 
-    const result = await enrichPrs(graph, ghPrResolver(graph, { run: gh }));
+    const result = await enrichPrs(graph, ghPrResolver({ run: gh }));
 
     expect(result).toMatchObject({ requested: 2, applied: 2, failed: false });
     expect(rowFor(1)).toMatchObject({
@@ -139,9 +139,7 @@ describe('the gh PR resolver', () => {
       }),
     });
 
-    const resolution = await ghPrResolver(graph, { run: gh })([
-      { prRef: 'pr:acme/demo#3', repo: 'acme/demo', number: 3 },
-    ]);
+    const resolution = await ghPrResolver({ run: gh })(prsNeedingOutcome(graph));
 
     expect(resolution.get('pr:acme/demo#3')).toEqual({
       state: 'OPEN',
@@ -159,9 +157,7 @@ describe('the gh PR resolver', () => {
     addPr(4);
     const gh = fakeGh({ 'acme/demo#4': { state: 'OPEN' } });
 
-    const resolution = await ghPrResolver(graph, { run: gh })([
-      { prRef: 'pr:acme/demo#4', repo: 'acme/demo', number: 4 },
-    ]);
+    const resolution = await ghPrResolver({ run: gh })(prsNeedingOutcome(graph));
 
     expect(resolution.get('pr:acme/demo#4')).toMatchObject({ commitTimes: [], reviews: [] });
   });
@@ -174,7 +170,7 @@ describe('the gh PR resolver', () => {
     for (let n = 100; n < 160; n++) addPr(n);
     const gh = fakeGh({});
 
-    await enrichPrs(graph, ghPrResolver(graph, { run: gh }));
+    await enrichPrs(graph, ghPrResolver({ run: gh }));
 
     expect(gh.asked).toHaveLength(50);
     expect(gh.asked).not.toContain('acme/demo#1');
@@ -183,7 +179,7 @@ describe('the gh PR resolver', () => {
     expect(gh.asked).not.toContain('acme/demo#3');
 
     gh.asked.length = 0;
-    await enrichPrs(graph, ghPrResolver(graph, { run: gh }));
+    await enrichPrs(graph, ghPrResolver({ run: gh }));
 
     expect(gh.asked).toHaveLength(11);
     expect(gh.asked).toContain('acme/demo#3');
@@ -208,9 +204,7 @@ describe('the gh PR resolver', () => {
     const gh = fakeGh({ 'acme/demo#3': pr({ reviews: 'not-a-list' }) });
     const errors: string[] = [];
 
-    const resolution = await ghPrResolver(graph, { run: gh, errors })([
-      { prRef: 'pr:acme/demo#3', repo: 'acme/demo', number: 3 },
-    ]);
+    const resolution = await ghPrResolver({ run: gh, errors })(prsNeedingOutcome(graph));
 
     expect(resolution.size).toBe(0);
     expect(errors).toEqual(['prs: acme/demo#3: unexpected gh pr view output at reviews']);
@@ -220,9 +214,7 @@ describe('the gh PR resolver', () => {
     addPr(4);
     const gh = fakeGh({ 'acme/demo#4': pr({ state: 'MERGED', isCrossRepository: false }) });
 
-    const resolution = await ghPrResolver(graph, { run: gh })([
-      { prRef: 'pr:acme/demo#4', repo: 'acme/demo', number: 4 },
-    ]);
+    const resolution = await ghPrResolver({ run: gh })(prsNeedingOutcome(graph));
 
     expect(resolution.get('pr:acme/demo#4')).toMatchObject({ state: 'MERGED' });
   });
@@ -259,16 +251,15 @@ describe('the gh PR resolver', () => {
     let clock = 1_000_000;
     addPr(1);
     const gh = fakeGh({ 'acme/demo#1': { code: 1, stdout: '', stderr: 'boom\n' } });
-    const resolver = ghPrResolver(graph, { run: gh, now: () => clock });
-    const keys = [{ prRef: 'pr:acme/demo#1', repo: 'acme/demo', number: 1 }];
+    const resolver = ghPrResolver({ run: gh, now: () => clock });
 
-    await resolver(keys);
+    await resolver(prsNeedingOutcome(graph));
     clock += backoffMs;
-    await resolver(keys);
+    await resolver(prsNeedingOutcome(graph));
     expect(gh.asked).toEqual(['acme/demo#1']);
 
     clock += 1;
-    await resolver(keys);
+    await resolver(prsNeedingOutcome(graph));
     expect(gh.asked).toEqual(['acme/demo#1', 'acme/demo#1']);
   });
 
@@ -277,21 +268,18 @@ describe('the gh PR resolver', () => {
     const closedMs = 24 * 60 * 60 * 1000;
     const checkedAt = '2026-11-01T00:00:00.000Z';
     const checkedMs = Date.parse(checkedAt);
-    const keyFor = (n: number): { prRef: string; repo: string; number: number }[] => [
-      { prRef: `pr:acme/demo#${n}`, repo: 'acme/demo', number: n },
-    ];
 
     it('an open PR checked within the interval is not asked again', async () => {
       addPr(1, { state: 'open', checkedAt });
       const gh = fakeGh({});
       let clock = checkedMs + openMs - 1;
-      const resolver = ghPrResolver(graph, { run: gh, now: () => clock });
+      const resolver = ghPrResolver({ run: gh, now: () => clock });
 
-      await resolver(keyFor(1));
+      await resolver(prsNeedingOutcome(graph));
       expect(gh.asked).toEqual([]);
 
       clock = checkedMs + openMs;
-      await resolver(keyFor(1));
+      await resolver(prsNeedingOutcome(graph));
       expect(gh.asked).toEqual(['acme/demo#1']);
     });
 
@@ -299,13 +287,13 @@ describe('the gh PR resolver', () => {
       addPr(2, { state: 'closed', checkedAt });
       const gh = fakeGh({});
       let clock = checkedMs + closedMs - 1;
-      const resolver = ghPrResolver(graph, { run: gh, now: () => clock });
+      const resolver = ghPrResolver({ run: gh, now: () => clock });
 
-      await resolver(keyFor(2));
+      await resolver(prsNeedingOutcome(graph));
       expect(gh.asked).toEqual([]);
 
       clock = checkedMs + closedMs;
-      await resolver(keyFor(2));
+      await resolver(prsNeedingOutcome(graph));
       expect(gh.asked).toEqual(['acme/demo#2']);
     });
 
@@ -313,9 +301,9 @@ describe('the gh PR resolver', () => {
       addPr(4, { state: 'merged' });
       addPr(5, { state: 'merged', checkedAt });
       const gh = fakeGh({});
-      const resolver = ghPrResolver(graph, { run: gh, now: () => checkedMs + closedMs * 10 });
+      const resolver = ghPrResolver({ run: gh, now: () => checkedMs + closedMs * 10 });
 
-      await resolver([...keyFor(4), ...keyFor(5)]);
+      await enrichPrs(graph, resolver);
 
       expect(gh.asked).toEqual(['acme/demo#4']);
     });
@@ -323,7 +311,7 @@ describe('the gh PR resolver', () => {
     it('a checked merged PR with no commit times is asked once, then final', async () => {
       addPr(6, { state: 'merged', checkedAt, commitTimes: null });
       const gh = fakeGh({ 'acme/demo#6': pr({ state: 'MERGED', mergedAt: checkedAt }) });
-      const resolver = ghPrResolver(graph, { run: gh, now: () => checkedMs + closedMs * 10 });
+      const resolver = ghPrResolver({ run: gh, now: () => checkedMs + closedMs * 10 });
 
       await enrichPrs(graph, resolver);
       await enrichPrs(graph, resolver);
@@ -331,16 +319,26 @@ describe('the gh PR resolver', () => {
       expect(gh.asked).toEqual(['acme/demo#6']);
     });
 
+    it('a checked merged PR missing commit times is asked inside the closed interval', async () => {
+      addPr(7, { state: 'merged', checkedAt, commitTimes: null });
+      const gh = fakeGh({ 'acme/demo#7': pr({ state: 'MERGED', mergedAt: checkedAt }) });
+      const resolver = ghPrResolver({ run: gh, now: () => checkedMs + 1 });
+
+      await enrichPrs(graph, resolver);
+
+      expect(gh.asked).toEqual(['acme/demo#7']);
+    });
+
     it('honours configured intervals over the defaults', async () => {
       addPr(3, { state: 'open', checkedAt });
       const gh = fakeGh({});
-      const resolver = ghPrResolver(graph, {
+      const resolver = ghPrResolver({
         run: gh,
         now: () => checkedMs + 1000,
         openRecheckMs: 1000,
       });
 
-      await resolver(keyFor(3));
+      await resolver(prsNeedingOutcome(graph));
 
       expect(gh.asked).toEqual(['acme/demo#3']);
     });
