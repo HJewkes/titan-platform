@@ -179,9 +179,12 @@ export function planConsumerBump(tree: ConsumerTree, latest: ReadonlyMap<string,
   const plan: ConsumerBumpPlan = { edits: [], files: [], leftAlone: [] };
   const workspace = workspacePins(tree.workspaceYaml);
   plan.leftAlone.push(...pinsLeftAlone(workspace, latest));
+  // Package managers read overrides and resolutions only from the root manifest and apply them to every workspace package.
+  const [root] = tree.manifests;
+  const rootPins = root ? manifestPins(parseManifest(root), root.path) : [];
   for (const file of tree.manifests) {
-    const pins = manifestPins(parseManifest(file), file.path);
-    const { edits, leftAlone } = decideFile(file, latest, [...pins, ...workspace]);
+    const pins = file === root ? rootPins : manifestPins(parseManifest(file), file.path);
+    const { edits, leftAlone } = decideFile(file, latest, [...pins, ...rootPins, ...workspace]);
     plan.leftAlone.push(...pinsLeftAlone(pins, latest), ...leftAlone);
     const edited = applyEdits(file, edits);
     plan.edits.push(...edited.applied);

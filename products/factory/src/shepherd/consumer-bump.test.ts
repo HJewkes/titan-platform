@@ -163,6 +163,16 @@ describe("planConsumerBump override handling", () => {
     ]);
     expect(consumerDepNames(withYaml(manifest, yaml))).toEqual([A, B, C]);
   });
+
+  it("keeps a workspace package's dependency unbumped when the root package.json pins it by override", () => {
+    const root = file("package.json", JSON.stringify({ pnpm: { overrides: { [A]: "0.1.0" } } }, null, 2));
+    const member = file("packages/x/package.json", JSON.stringify({ dependencies: { [A]: "^0.1.0", [B]: "^0.1.0" } }, null, 2));
+
+    const plan = planConsumerBump(tree(root, member), latest({ [A]: "0.2.0", [B]: "0.2.0" }));
+
+    expect(plan.edits.map(({ path, name }) => `${path} ${name}`)).toEqual([`packages/x/package.json ${B}`]);
+    expect(plan.leftAlone).toContainEqual({ path: "packages/x/package.json", name: A, spec: "^0.1.0", reason: "pinned by pnpm.overrides" });
+  });
 });
 
 describe("readConsumerTree", () => {
