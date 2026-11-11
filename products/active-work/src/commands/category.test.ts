@@ -8,6 +8,7 @@ import taskAdd from './task-add.js';
 import taskEdit from './task-edit.js';
 import { ValidationError } from '../errors.js';
 import type { CommandContext } from '../registry/index.js';
+import { asTask } from '../test-support/as-task.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
 
 const SLUG = 'sample-initiative';
@@ -60,7 +61,7 @@ describe('task add with categories', () => {
 
       const created = await taskAdd.run({ slug: SLUG, title: 'Categorised', ...args }, ctx(root));
 
-      const onDisk = await readTask(root, (created as { id: string }).id);
+      const onDisk = await readTask(root, asTask(created).id);
       expect(onDisk).toMatchObject(args);
     });
   });
@@ -75,9 +76,9 @@ describe('task add with categories', () => {
         .catch((err: unknown) => err);
 
       expect(error).toBeInstanceOf(ValidationError);
-      expect((error as Error).message).toContain(
-        'Unknown kind: chore (allowed: epic, feature, bug)',
-      );
+      expect(error).toMatchObject({
+        message: expect.stringContaining('Unknown kind: chore (allowed: epic, feature, bug)'),
+      });
       expect(await taskFiles(root)).toEqual(before);
     });
   });
@@ -98,7 +99,7 @@ describe('task add with categories', () => {
 
       const created = await taskAdd.run({ slug: SLUG, title: 'Free', ...args }, ctx(root));
 
-      expect(await readTask(root, (created as { id: string }).id)).toMatchObject(args);
+      expect(await readTask(root, asTask(created).id)).toMatchObject(args);
     });
   });
 });

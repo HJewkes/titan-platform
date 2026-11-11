@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { z } from 'zod';
 import './index.js';
 import { registry } from '../registry/index.js';
 import type { CommandContext } from '../registry/types.js';
@@ -15,16 +16,39 @@ import { withEmptyActiveRoot } from '../test-support/test-helpers.js';
 
 const GOOD = 'the gate refuses short entries and the tests prove it';
 
-async function run(name: string, args: unknown, activeRoot: string, caller?: 'agent') {
+const RowSchema = z.looseObject({
+  id: z.string(),
+  status: z.string(),
+  tags: z.array(z.string()).optional(),
+  done_when: z.string().optional(),
+});
+type Row = z.infer<typeof RowSchema>;
+const ListSchema = z.object({
+  tasks: z.array(z.looseObject({ title: z.string(), tags: z.array(z.string()).optional() })),
+});
+
+async function runRaw(name: string, args: unknown, activeRoot: string, caller?: 'agent') {
   const cmd = registry.get(name);
   if (!cmd) throw new Error(`unknown command: ${name}`);
   const ctx: CommandContext = { activeRoot, warnings: [], format: 'json', caller };
-  return cmd.run(cmd.args.parse(args), ctx) as Promise<{ id: string }>;
+  return cmd.run(cmd.args.parse(args), ctx);
+}
+
+async function run(name: string, args: unknown, activeRoot: string, caller?: 'agent') {
+  return RowSchema.pick({ id: true }).parse(await runRaw(name, args, activeRoot, caller));
+}
+
+async function runRow(name: string, args: unknown, activeRoot: string, caller?: 'agent'): Promise<Row> {
+  return RowSchema.parse(await runRaw(name, args, activeRoot, caller));
+}
+
+async function listTasks(root: string) {
+  return ListSchema.parse(await runRaw('task.list', { slug: 'gate-test' }, root)).tasks;
 }
 
 async function withInitiative(fn: (root: string) => Promise<void>): Promise<void> {
   await withEmptyActiveRoot(async (root) => {
-    await run('new', { slug: 'gate-test', title: 'Gate' }, root);
+    await runRaw('new', { slug: 'gate-test', title: 'Gate' }, root);
     await fn(root);
   });
 }
@@ -54,15 +78,15 @@ describe('task.add done_when gate', () => {
 
   it('an agent caller with a good done_when files the task', async () => {
     await withInitiative(async (root) => {
-      const task = await run('task.add', { slug: 'gate-test', title: 'T', done_when: GOOD }, root, 'agent');
+      const task = await runRaw('task.add', { slug: 'gate-test', title: 'T', done_when: GOOD }, root, 'agent');
       expect(task.id).toMatch(/-1$/);
     });
   });
 
   it('a human caller with a short done_when still files', async () => {
     await withInitiative(async (root) => {
-      await run('task.add', { slug: 'gate-test', title: 'T', done_when: 'ok' }, root);
-      await run('task.add', { slug: 'gate-test', title: 'U' }, root);
+      await runRaw('task.add', { slug: 'gate-test', title: 'T', done_when: 'ok' }, root);
+      await runRaw('task.add', { slug: 'gate-test', title: 'U' }, root);
       expect(await taskFiles(root)).toHaveLength(2);
     });
   });
@@ -81,7 +105,7 @@ describe('task.add done_when gate', () => {
   it('the refused call leaves the next id unchanged', async () => {
     await withInitiative(async (root) => {
       await expect(run('task.add', { slug: 'gate-test', title: 'T' }, root, 'agent')).rejects.toThrow();
-      const task = await run('task.add', { slug: 'gate-test', title: 'T', done_when: GOOD }, root, 'agent');
+      const task = await runRaw('task.add', { slug: 'gate-test', title: 'T', done_when: GOOD }, root, 'agent');
       expect(task.id).toMatch(/-1$/);
     });
   });
@@ -89,11 +113,10 @@ describe('task.add done_when gate', () => {
 
 describe('task.add --draft', () => {
   const draft = { slug: 'gate-test', title: 'Sketch the idea', draft: true };
-  type Row = { id: string; status: string; tags?: string[]; done_when?: string };
 
   it('an agent caller with --draft files a draft and no done_when', async () => {
     await withInitiative(async (root) => {
-      const task = (await run('task.add', draft, root, 'agent')) as Row;
+      const task = await runRow('task.add', draft, root, 'agent');
       expect(task.tags).toContain('draft');
       expect(task.done_when).toBeUndefined();
     });
@@ -101,7 +124,7 @@ describe('task.add --draft', () => {
 
   it('a draft is written as an open task so a reader that knows only open and done parses it', async () => {
     await withInitiative(async (root) => {
-      const task = (await run('task.add', { ...draft, tags: ['x'] }, root, 'agent')) as Row;
+      const task = await runRow('task.add', { ...draft, tags: ['x'] }, root, 'agent');
       expect(task.status).toBe('open');
       expect(task.tags).toEqual(['x', 'draft']);
     });
@@ -117,7 +140,7 @@ describe('task.add --draft', () => {
 
   it('a human caller without --draft files an untagged open task', async () => {
     await withInitiative(async (root) => {
-      const task = (await run('task.add', { slug: 'gate-test', title: 'T' }, root)) as Row;
+      const task = await runRow('task.add', { slug: 'gate-test', title: 'T' }, root);
       expect(task.status).toBe('open');
       expect(task.tags).toBeUndefined();
     });
@@ -125,8 +148,8 @@ describe('task.add --draft', () => {
 
   it('a draft is absent from the bootstrap open list', async () => {
     await withInitiative(async (root) => {
-      await run('task.add', { ...draft, title: 'Hidden draft title' }, root, 'agent');
-      await run('task.add', { slug: 'gate-test', title: 'Visible open title', done_when: GOOD }, root, 'agent');
+      await runRaw('task.add', { ...draft, title: 'Hidden draft title' }, root, 'agent');
+      await runRaw('task.add', { slug: 'gate-test', title: 'Visible open title', done_when: GOOD }, root, 'agent');
       const { prompt } = await assembleBootstrap({
         activeRoot: root,
         slug: 'gate-test',
@@ -140,19 +163,17 @@ describe('task.add --draft', () => {
 
   it('task list still shows a draft', async () => {
     await withInitiative(async (root) => {
-      await run('task.add', draft, root, 'agent');
-      const listed = (await run('task.list', { slug: 'gate-test' }, root)) as unknown as {
-        tasks: { title: string }[];
-      };
-      expect(listed.tasks.map((t) => t.title)).toContain('Sketch the idea');
+      await runRaw('task.add', draft, root, 'agent');
+      const tasks = await listTasks(root);
+      expect(tasks.map((t) => t.title)).toContain('Sketch the idea');
     });
   });
 
   it('task edit --remove-tag draft promotes a draft once it has a usable done_when', async () => {
     await withInitiative(async (root) => {
       const { id } = await run('task.add', { ...draft, title: 'Promoted title' }, root, 'agent');
-      await run('task.edit', { slug: 'gate-test', id, field: 'done_when', value: GOOD }, root, 'agent');
-      await run('task.edit', { slug: 'gate-test', id, remove_tag: 'draft' }, root, 'agent');
+      await runRaw('task.edit', { slug: 'gate-test', id, field: 'done_when', value: GOOD }, root, 'agent');
+      await runRaw('task.edit', { slug: 'gate-test', id, remove_tag: 'draft' }, root, 'agent');
       const { prompt } = await assembleBootstrap({
         activeRoot: root,
         slug: 'gate-test',
@@ -166,23 +187,21 @@ describe('task.add --draft', () => {
   it('an agent removing draft from a draft with no done_when is refused and the tag stays', async () => {
     await withInitiative(async (root) => {
       const { id } = await run('task.add', draft, root, 'agent');
-      await expect(run('task.edit', { slug: 'gate-test', id, remove_tag: 'draft' }, root, 'agent')).rejects.toThrow(
+      await expect(runRaw('task.edit', { slug: 'gate-test', id, remove_tag: 'draft' }, root, 'agent')).rejects.toThrow(
         /cannot leave draft/,
       );
       await expect(
-        run('task.edit', { slug: 'gate-test', id, field: 'tags', value: 'x', force: true }, root, 'agent'),
+        runRaw('task.edit', { slug: 'gate-test', id, field: 'tags', value: 'x', force: true }, root, 'agent'),
       ).rejects.toThrow(/cannot leave draft/);
-      const listed = (await run('task.list', { slug: 'gate-test' }, root)) as unknown as {
-        tasks: { tags?: string[] }[];
-      };
-      expect(listed.tasks[0]?.tags).toContain('draft');
+      const tasks = await listTasks(root);
+      expect(tasks[0]?.tags).toContain('draft');
     });
   });
 
   it('a human removing draft from a draft with no done_when is allowed', async () => {
     await withInitiative(async (root) => {
       const { id } = await run('task.add', draft, root, 'agent');
-      await run('task.edit', { slug: 'gate-test', id, remove_tag: 'draft' }, root);
+      await runRaw('task.edit', { slug: 'gate-test', id, remove_tag: 'draft' }, root);
     });
   });
 });

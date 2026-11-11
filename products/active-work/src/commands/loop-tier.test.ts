@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
 import loopImport from './loop-import.js';
 import loopTier from './loop-tier.js';
@@ -13,6 +14,15 @@ import { withTempActiveRoot } from '../test-support/test-helpers.js';
 function makeCtx(activeRoot: string): CommandContext {
   return { activeRoot, warnings: [], format: 'json', cwd: activeRoot };
 }
+
+const BoardResponseSchema = z.object({
+  ok: z.boolean(),
+  data: z.object({
+    ledger: z.object({ path: z.string() }),
+    loops: z.array(z.object({ id: z.string(), tier: z.string().nullable(), source: z.string() })),
+    tree: z.object({ nodes: z.array(z.unknown()) }),
+  }),
+});
 
 function ledgerPath(root: string): string {
   return path.join(root, 'titan-platform', 'sources', 'open-loops.yml');
@@ -110,14 +120,7 @@ describe('loop board over the daemon', () => {
         body: '{}',
       });
 
-      const body = (await res.json()) as {
-        ok: boolean;
-        data: {
-          ledger: { path: string };
-          loops: Array<{ id: string; tier: string | null; source: string }>;
-          tree: { nodes: unknown[] };
-        };
-      };
+      const body = BoardResponseSchema.parse(await res.json());
       expect(body.ok).toBe(true);
       expect(body.data.ledger.path).toBe(ledgerPath(root));
       const ledgerLoops = body.data.loops.filter((loop) => loop.source === 'ledger');

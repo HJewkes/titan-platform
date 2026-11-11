@@ -14,7 +14,7 @@ export { RELEASE_SWEEP_MS, TOOLCHAIN_SWEEP_MS };
 export const CONSUMER_BUMP_SWEEP_MS = 3_600_000;
 
 async function sweepReleases(host: FactoryHost, services: ShepherdServices, log: Logger): Promise<void> {
-  for (const note of await sweepVersionPackages(host, services)) log.info({ ...note }, "swept a Version Packages PR");
+  for (const note of await sweepVersionPackages(host, services)) logNote(log, note, "swept a Version Packages PR");
 }
 
 /** An error note is something an operator must read, so it logs at warn; the rest stay at info. */
