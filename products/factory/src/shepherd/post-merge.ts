@@ -11,7 +11,7 @@ import { failureOf } from "./error-class.js";
 import { judgeMain, mainRulesReader, onlyCancels, warningOf, type BaseReader, type MainRules, type RulesReader } from "./main-verdict.js";
 import { CleanupResult, runCleanup, type CleanupInput } from "./cleanup.js";
 import { clearedOnGreen } from "./main-green-ack.js";
-import { MainCiReads } from "./main-watch.js";
+import { MainCiReads } from "./main-ci-reads.js";
 import { rerunAlongsideFixer, rerunRedMain, type RerunInput } from "./main-rerun.js";
 import { FixTaskResult, FreezeResult, MAIN_RED_STEPS, MAIN_RERUN_STEP, UnfreezeResult, mainRedFyi, mainRedRoutes, type MainRedAbout, type MainRedWiring, type RedInput, type EpisodeInput } from "./main-red.js";
 import type { ShepherdDeps } from "./phases.js";
