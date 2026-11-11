@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a gate roster timeout is not a busy refusal, so the step never asks again",
+      "file": "products/factory/src/shepherd/review-wait.ts",
+      "find": "export class ReviewerGateRosterUnread extends ReviewerBrokerBusy {",
+      "replace": "export class ReviewerGateRosterUnread extends Error {",
+      "kills": [
+        "a spawn-gate roster read that times out at admission (TP-5295) spawns the reviewer on the next ask, a minute later, with no 5-min session-start wait"
+      ]
+    },
+    {
+      "name": "the gate roster timeout stays a timed-out ask and waits out the session start",
+      "file": "products/factory/src/shepherd/reviewer-dispatch.ts",
+      "find": "throw notLaunched(error);",
+      "replace": "throw error;",
+      "kills": [
+        "a spawn-gate roster read that times out at admission (TP-5295) spawns the reviewer on the next ask, a minute later, with no 5-min session-start wait"
+      ]
+    }
+  ]
+}

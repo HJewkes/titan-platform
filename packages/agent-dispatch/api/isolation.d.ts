@@ -607,6 +607,8 @@ interface WorktreeStrategyOptions extends PoolBudgets {
     addTimeoutMs?: number;
     /** Runs each `git worktree add`; tests inject one to observe how adds interleave. */
     runWorktreeAdd?: WorktreeAddRunner;
+    /** Builds the runner for `git worktree remove`; tests inject one to observe the deadline it is given. */
+    removeRunner?: (timeoutMs: number) => GitRunner;
     /** Runs the repository's declared setup step; tests inject one so no real install runs. */
     runSetup?: SetupRunner;
     /** CC-1469: read only when a pool refuses, to say who holds its trees. */
