@@ -15,8 +15,8 @@ const WORKSPACE = [
   { dir: "deploy/hub/", name: "hub", deps: [] },
 ];
 
-const deadCheckStep = (changed, indexedFiles = () => 10) =>
-  planCommands({ base: "origin/base", changed, workspace: WORKSPACE, hasTimeout: true, indexedFiles }).find((step) => step.label.startsWith("dead:check"));
+const deadCheckStep = (changed, indexedFiles = () => 10, seedExists = () => false) =>
+  planCommands({ base: "origin/base", changed, workspace: WORKSPACE, hasTimeout: true, indexedFiles, seedExists }).find((step) => step.label.startsWith("dead:check"));
 
 describe("verify:changed dead:check step", () => {
   it("indexes only the touched graph-root packages and checks baseline growth against the base", () => {
@@ -58,6 +58,19 @@ describe("verify:changed dead:check step", () => {
 
     expect(sized(600).args).toEqual(["scripts/dead-code-check.mjs", "--paths=packages/a"]);
     expect(sized(601)).toEqual({ label: "dead:check: 601 files in packages/a exceed the 600-file local budget, deferred to CI", deferred: true });
+  });
+
+  it("runs dead:check on a products/factory change when the machine seed exists", () => {
+    const step = deadCheckStep(["packages/a/src/x.ts"], () => 1641, () => true);
+
+    expect(step.args).toEqual(["scripts/dead-code-check.mjs", "--paths=packages/a"]);
+    expect(step.deferred).toBeUndefined();
+  });
+
+  it("still defers a member past the file budget to CI when no machine seed exists", () => {
+    const step = deadCheckStep(["packages/a/src/x.ts"], () => 1641, () => false);
+
+    expect(step).toEqual({ label: "dead:check: 1641 files in packages/a exceed the 600-file local budget, deferred to CI", deferred: true });
   });
 
   it("is skipped when no graph-root package changed", () => {
