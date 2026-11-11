@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { DEFAULT_LOCK_DIR } from "./dag-check-lock.mjs";
-import { COLD_DEFERRED_EXIT_CODE, MACHINE_SEED, refreshSeed, runWithColdRetry, seedArgs, seedKeep } from "./dag-check-seed.mjs";
+import { COLD_DEFERRED_EXIT_CODE, ColdFallbackDeferred, MACHINE_SEED, openSeededWorkGraph, refreshSeed, runWithColdRetry, seedArgs, seedKeep } from "./dag-check-seed.mjs";
 import { seedDbPath } from "./dag-check-self.mjs";
 
 const ENTRY = new URL("../packages/code-graph/dist/index.js", import.meta.url);
@@ -155,5 +155,65 @@ describe("retrying a seeded index that ran out of memory", () => {
     const t = setup([{ code: 2, heapAbort: true }, { code: 2, heapAbort: true }]);
     expect(await t.run(["--seed-db", "/seed.db"])).toBe(2);
     expect(t.calls).toHaveLength(2);
+  });
+});
+
+describe("opening a seeded work graph", () => {
+  it("falls back to an empty graph when the seed is not a usable database", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "dead-seed-"));
+    const db = path.join(dir, "graph.db");
+    writeFileSync(db, "not a sqlite database, a seed cut short");
+    const graph = await import(ENTRY.href);
+    const store = openSeededWorkGraph(graph, db);
+    try {
+      expect(store.listSnapshots({ limit: 1 })).toEqual([]);
+    } finally {
+      store.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("closes a store that opens but fails to list snapshots before removing the db files", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "dead-seed-"));
+    const db = path.join(dir, "graph.db");
+    const events = [];
+    const opened = { listSnapshots: () => { throw new Error("schema mismatch"); }, close: () => events.push(existsSync(db) ? "close-with-db-present" : "close-after-removal") };
+    const graph = { openCodeGraph: () => { if (events.length === 0 && !existsSync(`${db}.opened`)) { writeFileSync(db, "seed"); writeFileSync(`${db}.opened`, ""); return opened; } return { listSnapshots: () => [] }; } };
+    try {
+      const store = openSeededWorkGraph(graph, db);
+      expect(events).toEqual(["close-with-db-present"]);
+      expect(existsSync(db)).toBe(false);
+      expect(store.listSnapshots()).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("clears the commit of every snapshot in a usable seed", async () => {
+    const graph = await import(ENTRY.href);
+    const dir = mkdtempSync(path.join(tmpdir(), "dead-seed-"));
+    dirs.push(dir);
+    const db = path.join(dir, "graph.db");
+    const seed = graph.openCodeGraph(db);
+    seed.db.prepare("UPDATE snapshot SET commit_hash = 'abc'").run();
+    seed.close();
+    const store = openSeededWorkGraph(graph, db);
+    try {
+      expect(store.db.prepare("SELECT COUNT(*) AS n FROM snapshot WHERE commit_hash IS NOT NULL").get().n).toBe(0);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("refuses the cold fallback when a verify:changed run over the budget forbids it", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "dead-seed-"));
+    const db = path.join(dir, "graph.db");
+    writeFileSync(db, "not a sqlite database, a seed cut short");
+    const graph = await import(ENTRY.href);
+    try {
+      expect(() => openSeededWorkGraph(graph, db, { deferCold: true })).toThrow(ColdFallbackDeferred);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

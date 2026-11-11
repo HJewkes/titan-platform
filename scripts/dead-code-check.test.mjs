@@ -20,8 +20,6 @@ import {
   HEAP_CAP_MB,
   ROOT_ROLES,
   updatedBaseline,
-  ColdFallbackDeferred,
-  openWorkGraph,
   workGraphSeed,
 } from "./dead-code-check.mjs";
 import { MACHINE_SEED } from "./dag-check-seed.mjs";
@@ -514,49 +512,5 @@ describe("seeding the work graph", () => {
   it("never seeds a --db run, which reads an existing graph", () => {
     expect(workGraphSeed({ argv: ["--db", "/tmp/graph.db"], env: {}, exists: present })).toBeNull();
     expect(workGraphSeed({ argv: ["--db=/tmp/graph.db"], env: {}, exists: present })).toBeNull();
-  });
-});
-
-describe("opening a seeded work graph", () => {
-  it("falls back to an empty graph when the seed is not a usable database", async () => {
-    const dir = mkdtempSync(path.join(tmpdir(), "dead-seed-"));
-    const db = path.join(dir, "graph.db");
-    writeFileSync(db, "not a sqlite database, a seed cut short");
-    const graph = await import(new URL("../packages/code-graph/dist/index.js", import.meta.url).href);
-    const store = openWorkGraph(graph, db);
-    try {
-      expect(store.listSnapshots({ limit: 1 })).toEqual([]);
-    } finally {
-      store.close();
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it("closes a store that opens but fails to list snapshots before removing the db files", async () => {
-    const dir = mkdtempSync(path.join(tmpdir(), "dead-seed-"));
-    const db = path.join(dir, "graph.db");
-    const events = [];
-    const opened = { listSnapshots: () => { throw new Error("schema mismatch"); }, close: () => events.push(existsSync(db) ? "close-with-db-present" : "close-after-removal") };
-    const graph = { openCodeGraph: () => { if (events.length === 0 && !existsSync(`${db}.opened`)) { writeFileSync(db, "seed"); writeFileSync(`${db}.opened`, ""); return opened; } return { listSnapshots: () => [] }; } };
-    try {
-      const store = openWorkGraph(graph, db);
-      expect(events).toEqual(["close-with-db-present"]);
-      expect(existsSync(db)).toBe(false);
-      expect(store.listSnapshots()).toEqual([]);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it("refuses the cold fallback when a verify:changed run over the budget forbids it", async () => {
-    const dir = mkdtempSync(path.join(tmpdir(), "dead-seed-"));
-    const db = path.join(dir, "graph.db");
-    writeFileSync(db, "not a sqlite database, a seed cut short");
-    const graph = await import(new URL("../packages/code-graph/dist/index.js", import.meta.url).href);
-    try {
-      expect(() => openWorkGraph(graph, db, { deferCold: true })).toThrow(ColdFallbackDeferred);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
   });
 });
