@@ -2,7 +2,7 @@ import { isRecord } from '@titan-design/rpc-protocol/narrow';
 import type { ChangedFile, PackageJsonChange } from './config.js';
 
 /** The git reads the sides need; the bin passes its CliDeps. */
-export interface ManifestReader {
+interface ManifestReader {
   mergeBase(base: string): string;
   show(rev: string, path: string): string;
   err(text: string): void;

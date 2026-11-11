@@ -3,7 +3,7 @@ import type { ChangedFile, FileStatus } from './config.js';
 /**
  * Parses `git diff --numstat -z`: `add<TAB>del<TAB>path<NUL>`, and for a rename `add<TAB>del<TAB><NUL>old<NUL>new<NUL>`.
  */
-export function parseNumstat(text: string): ChangedFile[] {
+function parseNumstat(text: string): ChangedFile[] {
   const fields = text.split('\0');
   const files: ChangedFile[] = [];
   for (let i = 0; i < fields.length; i++) {
