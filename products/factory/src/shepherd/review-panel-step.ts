@@ -28,7 +28,8 @@ const MAX_CITED_FILES = 20;
 /** The citation form aggregate checks: `path/to/file.ext:line`. */
 const CITED_PATH = /(?<![\w./-])((?:[\w.-]+\/)*[\w-][\w.-]*\.[A-Za-z]\w*):\d+/g;
 
-type Intent = { kind: "intent"; plan?: { members: readonly { shape: string; profile: string; blocking?: boolean }[] }; panel?: "on"; panelReviewers?: Record<string, string> } & Record<string, unknown>;
+type PlannedMember = { shape: string; profile: string; blocking?: boolean };
+type Intent = { kind: "intent"; plan?: { members: readonly PlannedMember[] }; panel?: "on"; panelReviewers?: Record<string, string> } & Record<string, unknown>;
 /** An intent recorded under `review.panel` on: one recorded before the flag, or under off or shadow, reviews with one reviewer. */
 type PanelIntent = Intent & Required<Pick<Intent, "plan" | "panelReviewers">> & { panel: "on" };
 
@@ -288,10 +289,10 @@ function panelNone(verdict: PanelVerdictRecord, unstarted: boolean): Verdict {
  * not-reviewed.ts: the round retries the review and is no failed round. One that started and said nothing keeps the round no-verdict.
  */
 function withheldNeverStarted(plan: PanelIntent["plan"], members: readonly DispatchedMember[], results: readonly MemberResult[]): boolean {
-  const heard = new Set(results.filter(({ result }) => result.kind === "verdict").map(({ shape }) => shape));
-  const withheld = plan.members.filter((member) => member.blocking === true && !heard.has(member.shape as MemberResult["shape"]));
-  const unstarted = new Set(members.filter(({ dispatched }) => dispatched.kind === "none" && dispatched.notStarted === true).map(({ shape }) => shape));
-  return withheld.length > 0 && withheld.every((member) => unstarted.has(member.shape as OverlayShape));
+  const heard = new Set<string>(results.filter(({ result }) => result.kind === "verdict").map(({ shape }) => shape));
+  const withheld = plan.members.filter((member) => member.blocking === true && !heard.has(member.shape));
+  const unstarted = new Set<string>(members.filter(({ dispatched }) => dispatched.kind === "none" && dispatched.notStarted === true).map(({ shape }) => shape));
+  return withheld.length > 0 && withheld.every((member) => unstarted.has(member.shape));
 }
 
 const MemberVerdict = z.looseObject({
