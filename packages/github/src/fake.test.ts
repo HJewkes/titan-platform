@@ -323,4 +323,29 @@ describe("review write effects over the fake", () => {
     await expect(port.dismissReview(REPO, 1, id, "stale")).rejects.toThrow(/lost/);
     expect(fake.effects.dismissReview).toBe(0);
   });
+
+  it("counts a createReview that a lands fault rejected after it landed", async () => {
+    const fake = fakeGitHub();
+    fake.addPr({ headSha: H1 });
+    const port = githubPort(fake.wire);
+    fake.createReviewFaults = [{ error: new FakeHttpError(502, "lost after"), lands: true }];
+
+    await expect(port.createReview(REPO, 1, approval)).rejects.toThrow(/lost after/);
+
+    expect(fake.effects.createReview).toBe(1);
+    expect(await port.listReviews(REPO, 1)).toHaveLength(1);
+  });
+
+  it("counts a dismissal that a lands fault rejected after it landed", async () => {
+    const fake = fakeGitHub();
+    fake.addPr({ headSha: H1 });
+    const port = githubPort(fake.wire);
+    const { id } = await port.createReview(REPO, 1, approval);
+    fake.dismissReviewFaults = [{ error: new FakeHttpError(502, "lost after"), lands: true }];
+
+    await expect(port.dismissReview(REPO, 1, id, "stale")).rejects.toThrow(/lost after/);
+
+    expect(fake.effects.dismissReview).toBe(1);
+    expect((await port.listReviews(REPO, 1))[0]?.state).toBe("DISMISSED");
+  });
 });
