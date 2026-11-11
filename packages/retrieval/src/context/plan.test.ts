@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { FIXTURE_CORPUS, fixtureCandidate } from "./fixture.js";
-import { planContext } from "./plan.js";
+import { estimateTokens, planContext } from "./plan.js";
 
 const ids = (plan: { entries: { id: string }[] }): string[] => plan.entries.map((e) => e.id);
 const cand = (id: string, score: number, tiers: number[], category = "notes") =>
@@ -111,5 +111,96 @@ describe("planContext", () => {
     for (const tokens of [-1, 1.5, Number.NaN]) {
       expect(() => planContext([], { tokens })).toThrow(RangeError);
     }
+  });
+});
+
+describe("planContext deepening", () => {
+  const tierOf = (plan: { entries: { id: string; tier: number }[] }, id: string): number | undefined =>
+    plan.entries.find((e) => e.id === id)?.tier;
+
+  it("places every candidate at tier 0 before deepening any", () => {
+    const set = [0.9, 0.8, 0.7, 0.6, 0.5, 0.4].map((score, i) => cand(`c${i}`, score, [4, 8, 12]));
+    const plan = planContext(set, { tokens: 24 });
+    expect(plan.entries).toHaveLength(6);
+    expect(plan.entries.every((e) => e.tier === 0)).toBe(true);
+  });
+
+  it("spends leftover on the best hit first", () => {
+    const plan = planContext([cand("b", 0.8, [4, 8]), cand("a", 0.9, [4, 8])], { tokens: 12 });
+    expect(tierOf(plan, "a")).toBe(1);
+    expect(tierOf(plan, "b")).toBe(0);
+  });
+
+  it("deepens one tier at a time and stops at the first tier that does not fit", () => {
+    const reachesTwo = planContext([cand("x", 0.9, [4, 8, 12, 200])], { tokens: 30 });
+    expect(tierOf(reachesTwo, "x")).toBe(2);
+    const blocked = planContext([cand("y", 0.9, [4, 40, 8])], { tokens: 20 });
+    expect(tierOf(blocked, "y")).toBe(0);
+  });
+
+  it("stops deepening at exactly twice the mean share", () => {
+    const set = [cand("e1", 0.9, [2, 20, 24]), cand("e2", 0.8, [2]), cand("e3", 0.7, [2]), cand("e4", 0.6, [2])];
+    const plan = planContext(set, { tokens: 40 });
+    const e1 = plan.entries.find((e) => e.id === "e1");
+    expect(e1?.tier).toBe(1);
+    expect(e1?.tokens).toBe(20);
+  });
+
+  it("ignores quotas while deepening", () => {
+    const set = [cand("n1", 0.9, [4, 16]), cand("t1", 0.8, [4], "tasks")];
+    const plan = planContext(set, { tokens: 40, quotas: { notes: 0.25 } });
+    const n1 = plan.entries.find((e) => e.id === "n1");
+    expect(n1?.tier).toBe(1);
+    expect(n1?.tokens).toBe(16);
+  });
+
+  it("never deepens past maxTier", () => {
+    const set = [cand("a", 0.9, [4, 8, 12]), cand("b", 0.8, [4, 8, 12]), cand("c", 0.7, [4, 8, 12])];
+    const capped = planContext(set, { tokens: 200, maxTier: 1 });
+    expect(capped.entries.map((e) => e.tier)).toEqual([1, 1, 1]);
+    const clamped = planContext([cand("a", 0.9, [4, 8, 12])], {
+      tokens: 200,
+      maxTier: 1,
+      defaultTiers: { notes: 2 },
+    });
+    expect(tierOf(clamped, "a")).toBe(1);
+  });
+
+  it("uses the injected estimator for every cost", () => {
+    const words = vi.fn((text: string) => text.split(" ").length);
+    const set = [
+      { id: "a", category: "notes", score: 0.9, tiers: ["one two", "one two three four five"] },
+      { id: "b", category: "notes", score: 0.8, tiers: ["alpha", "alpha beta gamma"] },
+    ];
+    const plan = planContext(set, { tokens: 20, estimateTokens: words });
+    expect(words).toHaveBeenCalled();
+    for (const e of plan.entries) expect(e.tokens).toBe(e.text.split(" ").length);
+    expect(plan.entries.map((e) => e.tier)).toEqual([1, 1]);
+    expect(plan.usedTokens).toBe(8);
+    expect(estimateTokens("abcde")).toBe(2);
+    expect(estimateTokens("")).toBe(0);
+  });
+
+  it.each(Array.from({ length: 201 }, (_, tokens) => tokens))(
+    "keeps usedTokens within budget after deepening at %i tokens",
+    (tokens) => {
+      const plan = planContext(FIXTURE_CORPUS, { tokens, quotas: { notes: 0.4, tasks: 0.4, sources: 0.4 } });
+      expect(plan.usedTokens).toBeLessThanOrEqual(tokens);
+      expect(plan.usedTokens).toBe(plan.entries.reduce((sum, e) => sum + e.tokens, 0));
+    },
+  );
+
+  it("keeps the cap computed from the breadth count after an over-cap drop", () => {
+    const set = [
+      cand("s2", 0.9, [24], "sources"),
+      cand("n1", 0.8, [2, 20, 25]),
+      cand("n2", 0.7, [2]),
+      cand("n3", 0.6, [2]),
+    ];
+    const plan = planContext(set, { tokens: 40 });
+    expect(plan.dropped).toEqual([{ id: "s2", category: "sources", reason: "over-cap" }]);
+    const n1 = plan.entries.find((e) => e.id === "n1");
+    expect(n1?.tier).toBe(1);
+    expect(n1?.tokens).toBe(20);
   });
 });
