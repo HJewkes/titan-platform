@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { BRANCH, callCommand, shepherdFixture, shepherdRuns, type FixtureOptions, type ShepherdFixture } from "../test-support/shepherd.js";
+import { EXIT } from "../exit-codes.js";
 import { loadSeatBook } from "./seats.js";
 import { AccountLimitStore } from "./account-store.js";
 import type { MergeEvaluation, Registered } from "./commands.js";
@@ -154,7 +155,7 @@ describe("shepherd.register", () => {
 
     const envelope = await w.call("shepherd.register", pr1);
 
-    expect(envelope).toMatchObject({ ok: false, error: expect.stringMatching(/registration refused/) });
+    expect(envelope).toMatchObject({ ok: false, code: EXIT.REFUSED, error: expect.stringMatching(/registration refused/) });
     expect(shepherdRuns(w.host)).toEqual([]);
     expect(await w.call("shepherd.status", {})).toEqual({ ok: true, data: [] });
   });
@@ -198,7 +199,7 @@ describe("shepherd.register", () => {
 
     const envelope = await w.call("shepherd.register", { ...pr1, policy: { merge: "owner-gate" } });
 
-    expect(envelope).toMatchObject({ ok: false, error: expect.stringMatching(/registration refused.*gate-2-visual, g10-security, proof-fixture, owner-asked/) });
+    expect(envelope).toMatchObject({ ok: false, code: EXIT.REFUSED, error: expect.stringMatching(/registration refused.*gate-2-visual, g10-security, proof-fixture, owner-asked/) });
     expect(shepherdRuns(w.host)).toEqual([]);
   });
 
@@ -312,7 +313,7 @@ describe("shepherd.register kind", () => {
 
     const envelope = await w.call("shepherd.register", { ...pr1, kind: "unknown" });
 
-    expect(envelope).toMatchObject({ ok: false, error: expect.stringMatching(/correctness.*unknown/) });
+    expect(envelope).toMatchObject({ ok: false, code: EXIT.REFUSED, error: expect.stringMatching(/correctness.*unknown/) });
     expect((await registered(w, pr1)).registration.kind).toBe("correctness");
   });
 
@@ -426,7 +427,7 @@ describe("shepherd.register kind on a failed run", () => {
 
     const envelope = await w.call("shepherd.register", { ...pr1, implementer: "impl-z", kind: "unknown" });
 
-    expect(envelope).toMatchObject({ ok: false, error: expect.stringMatching(/correctness.*unknown/) });
+    expect(envelope).toMatchObject({ ok: false, code: EXIT.REFUSED, error: expect.stringMatching(/correctness.*unknown/) });
     expect(shepherdRuns(w.host)).toEqual([failedRunId]);
     expect(w.routes.shepherd!.store.get().byPr(REPO, 1)).toMatchObject({ runId: failedRunId, implementer: pr1.implementer });
   });
@@ -654,7 +655,7 @@ describe("shepherd.register after a cancelled run (TP-3731)", () => {
     const refused = await w.call("shepherd.register", { ...pr1, kind: "feature" });
     const again = await registered(w, pr1);
 
-    expect(refused).toMatchObject({ ok: false, error: expect.stringMatching(/correctness.*feature/) });
+    expect(refused).toMatchObject({ ok: false, code: EXIT.REFUSED, error: expect.stringMatching(/correctness.*feature/) });
     expect(again).toMatchObject({ created: true, previousRunId: cancelled, registration: { kind: "correctness" } });
   });
 });

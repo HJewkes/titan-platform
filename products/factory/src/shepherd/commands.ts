@@ -1,6 +1,7 @@
 import type { RepoSlug } from "@titan-design/github";
 import type { GateRecord } from "@titan-design/hitl";
 import { EXIT, defineCommand, type AnyCommand } from "@titan-design/registry";
+import { EXIT as FACTORY_EXIT } from "../exit-codes.js";
 import type { WorkflowRun, WorkflowStatus } from "@titan-design/workflow";
 import { z } from "zod";
 import type { GateDecision } from "../gate-policy.js";
@@ -88,7 +89,7 @@ function refresh(store: ShepherdStore, existing: Registration, args: RegisterArg
   try {
     store.update(runId, { ...meta, ...move });
   } catch (error) {
-    if (error instanceof RegistrationRefused) throw coded(`registration refused: ${error.message}`, EXIT.DATAERR);
+    if (error instanceof RegistrationRefused) throw coded(`registration refused: ${error.message}`, FACTORY_EXIT.REFUSED);
     throw error;
   }
   if (args.pr !== undefined && existing.pr === null) store.setPr(runId, args.pr);

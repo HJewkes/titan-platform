@@ -1,5 +1,6 @@
 import type { GitHubPort } from "@titan-design/github";
 import { EXIT } from "@titan-design/registry";
+import { EXIT as FACTORY_EXIT } from "../exit-codes.js";
 import { z } from "zod";
 import { RequestedPolicyFields, resolveEffectivePolicy } from "./policy.js";
 import { RegistrationRefused, type EffectivePolicy } from "./policy-schema.js";
@@ -44,7 +45,7 @@ export function policyFor(seats: () => SeatBook, args: RegisterArgs): EffectiveP
     if (found.kind === "none") throw coded(`no seat lists ${args.repo}; add it to a seat file under claude-channels/sources/autonomy/seats`, EXIT.DATAERR);
     return resolveEffectivePolicy(found, args.policy ?? {});
   } catch (error) {
-    if (error instanceof RegistrationRefused) throw coded(`registration refused: ${error.message}`, EXIT.DATAERR);
+    if (error instanceof RegistrationRefused) throw coded(`registration refused: ${error.message}`, FACTORY_EXIT.REFUSED);
     throw error;
   }
 }
@@ -69,5 +70,5 @@ export function sliceAfter(existing: Registration, args: RegisterArgs): string |
 /** Checked before a failed run is replaced, so a refused kind leaves the run and its registration untouched. */
 export function refuseKindMove(existing: Registration, args: RegisterArgs, { guard, diff }: KindMove): void {
   const refusal = args.kind === undefined ? undefined : guard(existing.kind, args.kind, diff);
-  if (refusal) throw coded(`registration refused: run ${existing.runId}: ${refusal}`, EXIT.DATAERR);
+  if (refusal) throw coded(`registration refused: run ${existing.runId}: ${refusal}`, FACTORY_EXIT.REFUSED);
 }
