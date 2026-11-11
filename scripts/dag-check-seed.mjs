@@ -48,18 +48,19 @@ export function refreshSeed({ workDb, seedPath = MACHINE_SEED, code }) {
 /**
  * Runs the indexer; when it hits the heap cap on a seeded graph, clears the work dir and runs it once more cold.
  * A seed carries every snapshot it ever held, so it can need more heap than the cold index it speeds up.
+ * `seeded` names a seed the caller copied itself, so no --seed-db marker has to ride in argv.
  */
-export async function runWithColdRetry({ argv, runWorker, clearWork, log, deferCold = false }) {
+export async function runWithColdRetry({ argv, runWorker, clearWork, log, deferCold = false, seeded = argv.includes("--seed-db") }) {
   const first = await runWorker(argv);
-  if (!first.heapAbort || !argv.includes("--seed-db")) return first.code;
+  if (!first.heapAbort || !seeded) return first.code;
   if (deferCold) {
-    log("seeded index ran out of memory; not retrying cold, deferred to CI");
+    log("seeded index ran out of memory; not retrying cold, deferred to CI (run pnpm dag:check to rebuild the seed)");
     return COLD_DEFERRED_EXIT_CODE;
   }
   log("seeded index ran out of memory; retrying once without the seed");
   clearWork();
   const at = argv.indexOf("--seed-db");
-  const cold = [...argv.slice(0, at), ...argv.slice(at + 2)];
+  const cold = at === -1 ? argv : [...argv.slice(0, at), ...argv.slice(at + 2)];
   return (await runWorker(cold)).code;
 }
 
@@ -96,7 +97,7 @@ export function openSeededWorkGraph(graph, dbPath, { deferCold = false } = {}) {
     // A db that opens but fails to read is still held open; its files must not be removed under it.
     store?.close();
     removeDb(dbPath);
-    if (deferCold) throw new ColdFallbackDeferred("seed graph unusable; cold index deferred to CI");
+    if (deferCold) throw new ColdFallbackDeferred("seed graph unusable; cold index deferred to CI (run pnpm dag:check to rebuild the seed)");
     return graph.openCodeGraph(dbPath);
   }
 }

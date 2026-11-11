@@ -352,6 +352,10 @@ describe("the script header", () => {
     expect(header).not.toContain("always exits 0");
     expect(header).toContain("Exits 1 on a new dead export, or 0 under --report-only");
     expect(header).toContain("Exits 75 when the dag-check lock stays busy past the wait bound (DAG_CHECK_LOCK_WAIT_MS, 8 minutes), and 2 on an index failure, a BASE_REF that names no commit, an unknown flag,");
+    expect(header).toContain("a bare or --paths run copies the machine seed");
+    expect(header).toContain("--db runs and runs with DAG_CHECK_NO_SEED set stay cold");
+    expect(header).toContain("retries once cold");
+    expect(header).toContain("DEAD_CHECK_DEFER_COLD set it exits 76");
     expect(header).toContain('a --db path that does not exist or holds no "head" snapshot, or an out-of-memory abort');
   });
 });
@@ -480,6 +484,12 @@ describe("the report", () => {
   it("says a report-only run does not fail", () => {
     const fresh = [{ id: "a.ts#x", name: "x", file: "a.ts" }];
     expect(formatReport({ fresh, carried: [], fixed: [] }, { reportOnly: true })).toContain("report-only, not failing");
+  });
+});
+
+describe("the internal seed marker", () => {
+  it("rejects a user-passed --seed-db as an unknown flag", () => {
+    expect(() => parseCliArgs(["--seed-db", "x"])).toThrow(/seed-db/);
   });
 });
 
