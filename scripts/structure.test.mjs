@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -285,7 +285,7 @@ const cases = [
     rule: "R61 a carried tsconfig is named only by a typecheck script",
     check: checkCarriedTsconfigReferences,
     root: () => carriedTsconfigRoot({ scripts: { build: `tsc -p ${CARRIED_TSCONFIG}` } }),
-    message: "`packages/a/package.json` names `packages/a/tsconfig.typecheck.json`, which `.github/fix-proof.json` carries as test support.",
+    message: "`packages/a/package.json` names `packages/a/tsconfig.typecheck.json` (script `build`), which `.github/fix-proof.json` carries as test support.",
   },
   {
     rule: "R59 no Python file in a package or product",
@@ -367,6 +367,51 @@ describe("R61 who may name a carried tsconfig", () => {
   it("a tsconfig.json edit is not carried, so it is not checked by R61", async () => {
     const root = carriedTsconfigRoot({ files: { "tsconfig.json": '{ "include": ["src"] }' } });
     expect(await checkCarriedTsconfigReferences(root)).toEqual([]);
+  });
+});
+
+describe("R61 resolves references to paths", () => {
+  const second = (root, scripts = { typecheck: `tsc -p ${CARRIED_TSCONFIG}` }) => {
+    mkdirSync(join(root, "packages/b"), { recursive: true });
+    writeFileSync(join(root, "packages/b/package.json"), JSON.stringify({ name: "@titan-design/b", scripts }));
+    writeFileSync(join(root, "packages/b", CARRIED_TSCONFIG), "{}");
+    return root;
+  };
+
+  it("two packages that each name their own carried tsconfig from their typecheck script pass", async () => {
+    expect(await checkCarriedTsconfigReferences(second(carriedTsconfigRoot()))).toEqual([]);
+  });
+
+  it("a tsconfig that extends its own carried sibling is reported against that sibling", async () => {
+    const root = second(carriedTsconfigRoot());
+    writeFileSync(join(root, "packages/b/tsconfig.json"), `{ "extends": "./${CARRIED_TSCONFIG}" }`);
+    expect(await checkCarriedTsconfigReferences(root)).toEqual([expect.stringContaining(`\`packages/b/tsconfig.json\` names \`packages/b/${CARRIED_TSCONFIG}\``)]);
+  });
+
+  it("a typecheck script that names another package's carried tsconfig fails", async () => {
+    const root = second(carriedTsconfigRoot(), { typecheck: `tsc -p ../a/${CARRIED_TSCONFIG}` });
+    expect(await checkCarriedTsconfigReferences(root)).toEqual([expect.stringContaining(`names \`packages/a/${CARRIED_TSCONFIG}\``)]);
+  });
+
+  it("a build script that runs the typecheck script fails", async () => {
+    const root = carriedTsconfigRoot({ scripts: { typecheck: `tsc -p ${CARRIED_TSCONFIG}`, build: "tsup && pnpm run typecheck" } });
+    expect(await checkCarriedTsconfigReferences(root)).toEqual([expect.stringContaining("script `build`, which runs `typecheck`,")]);
+  });
+
+  it("a wildcard that matches a carried tsconfig fails", async () => {
+    const root = carriedTsconfigRoot({ scripts: { typecheck: "tsc", build: "tsc -p tsconfig.type*.json" } });
+    expect(await checkCarriedTsconfigReferences(root)).toHaveLength(1);
+  });
+
+  it("a symlink to a carried tsconfig fails", async () => {
+    const root = carriedTsconfigRoot();
+    symlinkSync(CARRIED_TSCONFIG, join(root, "packages/a/tsconfig.json"));
+    expect(await checkCarriedTsconfigReferences(root)).toEqual([expect.stringContaining("(a symlink)")]);
+  });
+
+  it("a build script file that names a carried tsconfig fails", async () => {
+    const root = carriedTsconfigRoot({ files: { "build.mjs": `run("tsc -p ${CARRIED_TSCONFIG}");\n` } });
+    expect(await checkCarriedTsconfigReferences(root)).toEqual([expect.stringContaining("`packages/a/build.mjs` names")]);
   });
 });
 
