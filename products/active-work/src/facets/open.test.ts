@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import openCommand, { sessionAbout } from '../commands/open.js';
 import type { LoadedFacet } from './facet-file.js';
 import type { CommandContext } from '../registry/index.js';
@@ -9,12 +10,19 @@ function makeCtx(activeRoot: string): CommandContext {
   return { activeRoot, warnings: [], format: 'json' };
 }
 
-interface OpenEnvelope {
-  slug: string;
-  prompt: string;
-  facet?: { name: string; tags: string[]; about?: string };
-  metadata: { facet?: string };
-}
+const openEnvelope = z.object({
+  slug: z.string(),
+  prompt: z.string(),
+  facet: z
+    .object({
+      name: z.string(),
+      tags: z.array(z.string()),
+      about: z.string().optional(),
+    })
+    .optional(),
+  metadata: z.object({ facet: z.string().optional() }),
+});
+type OpenEnvelope = z.infer<typeof openEnvelope>;
 
 async function openAlias(activeRoot: string, about?: string): Promise<OpenEnvelope> {
   await writeFacet(
@@ -26,7 +34,7 @@ async function openAlias(activeRoot: string, about?: string): Promise<OpenEnvelo
   );
   const args = { slug: 'widgets', offline: true, ...(about ? { about } : {}) };
   const out = await openCommand.run(openCommand.args.parse(args), makeCtx(activeRoot));
-  return openCommand.result.parse(out) as OpenEnvelope;
+  return openEnvelope.parse(out);
 }
 
 describe('open through a facet alias', () => {

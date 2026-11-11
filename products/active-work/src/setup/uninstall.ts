@@ -18,7 +18,12 @@ import {
 import { runOnce } from './steps-register.js';
 
 interface UninstallReport {
-  steps: Array<{ name: string; done: boolean; message?: string; error?: string }>;
+  steps: Array<{
+    name: string;
+    done: boolean;
+    message?: string;
+    error?: string;
+  }>;
   activeRootPreservedAt: string;
 }
 
@@ -136,88 +141,69 @@ async function uninstallMcp(deps: SetupDeps = {}): Promise<StepResult> {
   };
 }
 
+type UninstallStep = UninstallReport['steps'][number];
+
+function toReportStep(r: StepResult): UninstallStep {
+  return {
+    name: r.name,
+    done: r.ok ? r.done : false,
+    ...(r.ok ? { message: r.message } : { error: r.error }),
+  };
+}
+
+/** Confirms one step, then runs it or records it as skipped. */
+async function confirmAndRun(
+  resolved: ReturnType<typeof resolveDeps>,
+  step: { name: string; prompt: string; run: () => Promise<StepResult> },
+): Promise<UninstallStep> {
+  if (!(await confirmStep(resolved.prompts, resolved.yes, step.prompt))) {
+    return { name: step.name, done: false, message: 'Skipped' };
+  }
+  return toReportStep(await step.run());
+}
+
 export async function runUninstall(deps: SetupDeps = {}): Promise<UninstallReport> {
   const resolved = resolveDeps(deps);
-  const steps: UninstallReport['steps'] = [];
+  const steps: UninstallStep[] = [];
 
-  const wantSkill = await confirmStep(
-    resolved.prompts,
-    resolved.yes,
-    'Remove the active-work skill from ~/.claude/skills/?',
+  steps.push(
+    await confirmAndRun(resolved, {
+      name: STEP_SKILL,
+      prompt: 'Remove the active-work skill from ~/.claude/skills/?',
+      run: () => uninstallSkill(deps),
+    }),
   );
-  if (wantSkill) {
-    const r = await uninstallSkill(deps);
-    steps.push({
-      name: r.name,
-      done: r.ok ? r.done : false,
-      ...(r.ok ? { message: r.message } : { error: r.error }),
-    });
-  } else {
-    steps.push({ name: STEP_SKILL, done: false, message: 'Skipped' });
-  }
-
-  const wantCommand = await confirmStep(
-    resolved.prompts,
-    resolved.yes,
-    'Remove the /aw-prompt command from ~/.claude/commands/?',
+  steps.push(
+    await confirmAndRun(resolved, {
+      name: STEP_COMMAND,
+      prompt: 'Remove the /aw-prompt command from ~/.claude/commands/?',
+      run: () => uninstallCommand(deps),
+    }),
   );
-  if (wantCommand) {
-    const r = await uninstallCommand(deps);
-    steps.push({
-      name: r.name,
-      done: r.ok ? r.done : false,
-      ...(r.ok ? { message: r.message } : { error: r.error }),
-    });
-  } else {
-    steps.push({ name: STEP_COMMAND, done: false, message: 'Skipped' });
-  }
-
   const supervisor = getSupervisor();
   if (supervisor) {
-    const wantSupervision = await confirmStep(
-      resolved.prompts,
-      resolved.yes,
-      supervisor.uninstallPrompt,
+    steps.push(
+      await confirmAndRun(resolved, {
+        name: STEP_SUPERVISION,
+        prompt: supervisor.uninstallPrompt,
+        run: () => supervisor.uninstall(deps),
+      }),
     );
-    if (wantSupervision) {
-      const r = await supervisor.uninstall(deps);
-      steps.push({
-        name: r.name,
-        done: r.ok ? r.done : false,
-        ...(r.ok ? { message: r.message } : { error: r.error }),
-      });
-    } else {
-      steps.push({ name: STEP_SUPERVISION, done: false, message: 'Skipped' });
-    }
   }
-
-  const wantDaemon = await confirmStep(resolved.prompts, resolved.yes, 'Stop the daemon?');
-  if (wantDaemon) {
-    const r = await uninstallStopDaemon(deps);
-    steps.push({
-      name: r.name,
-      done: r.ok ? r.done : false,
-      ...(r.ok ? { message: r.message } : { error: r.error }),
-    });
-  } else {
-    steps.push({ name: STEP_DAEMON, done: false, message: 'Skipped' });
-  }
-
-  const wantMcp = await confirmStep(
-    resolved.prompts,
-    resolved.yes,
-    'Unregister MCP from Claude Code?',
+  steps.push(
+    await confirmAndRun(resolved, {
+      name: STEP_DAEMON,
+      prompt: 'Stop the daemon?',
+      run: () => uninstallStopDaemon(deps),
+    }),
   );
-  if (wantMcp) {
-    const r = await uninstallMcp(deps);
-    steps.push({
-      name: r.name,
-      done: r.ok ? r.done : false,
-      ...(r.ok ? { message: r.message } : { error: r.error }),
-    });
-  } else {
-    steps.push({ name: STEP_MCP, done: false, message: 'Skipped' });
-  }
+  steps.push(
+    await confirmAndRun(resolved, {
+      name: STEP_MCP,
+      prompt: 'Unregister MCP from Claude Code?',
+      run: () => uninstallMcp(deps),
+    }),
+  );
 
   return {
     steps,

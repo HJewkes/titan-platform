@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
 import { graphNoteRelevance } from '../bootstrap/rank-notes.js';
 import type { WorkspaceGraph } from '../session-index/graph.js';
@@ -58,9 +59,15 @@ describe('workspaceSpanTable', () => {
   });
 
   it('probes legacy spans through the source index rather than a scan', () => {
-    const plan = graph.db
-      .prepare('EXPLAIN QUERY PLAN SELECT 1 AS hit FROM search_span WHERE source_id >= ? LIMIT 1')
-      .all(WORKSPACE_SPAN_SOURCE_BASE) as { detail: string }[];
+    const plan = z
+      .array(z.object({ detail: z.string() }))
+      .parse(
+        graph.db
+          .prepare(
+            'EXPLAIN QUERY PLAN SELECT 1 AS hit FROM search_span WHERE source_id >= ? LIMIT 1',
+          )
+          .all(WORKSPACE_SPAN_SOURCE_BASE),
+      );
 
     expect(plan.map((step) => step.detail).join('\n')).toContain('idx_search_span_source');
   });
