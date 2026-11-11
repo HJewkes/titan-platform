@@ -989,6 +989,8 @@ declare const REBUILD_GAP_BANDS: readonly string[];
 /** One request as the TTL what-if needs it. */
 interface TtlRequestRow {
     sessionId: string;
+    /** Sidechain requests run in their own cache chain, apart from the main one. */
+    isSidechain: boolean;
     role: string;
     profile: string;
     model: string;
@@ -1017,6 +1019,8 @@ declare const bucketSchema: z.ZodObject<{
     reverseReverts: z.ZodNumber;
     reverseTokens: z.ZodNumber;
     reverseSavingUsd: z.ZodNumber;
+    reversePremiumUsd: z.ZodNumber;
+    reverseNetUsd: z.ZodNumber;
     key: z.ZodString;
 }, z.core.$strip>;
 declare const cacheTtlWhatIfSchema: z.ZodObject<{
@@ -1040,6 +1044,8 @@ declare const cacheTtlWhatIfSchema: z.ZodObject<{
         reverseReverts: z.ZodNumber;
         reverseTokens: z.ZodNumber;
         reverseSavingUsd: z.ZodNumber;
+        reversePremiumUsd: z.ZodNumber;
+        reverseNetUsd: z.ZodNumber;
     }, z.core.$strip>;
     unpricedRequests: z.ZodNumber;
     byRole: z.ZodArray<z.ZodObject<{
@@ -1058,6 +1064,8 @@ declare const cacheTtlWhatIfSchema: z.ZodObject<{
         reverseReverts: z.ZodNumber;
         reverseTokens: z.ZodNumber;
         reverseSavingUsd: z.ZodNumber;
+        reversePremiumUsd: z.ZodNumber;
+        reverseNetUsd: z.ZodNumber;
         key: z.ZodString;
     }, z.core.$strip>>;
     byProfile: z.ZodArray<z.ZodObject<{
@@ -1076,6 +1084,8 @@ declare const cacheTtlWhatIfSchema: z.ZodObject<{
         reverseReverts: z.ZodNumber;
         reverseTokens: z.ZodNumber;
         reverseSavingUsd: z.ZodNumber;
+        reversePremiumUsd: z.ZodNumber;
+        reverseNetUsd: z.ZodNumber;
         key: z.ZodString;
     }, z.core.$strip>>;
     lossRoles: z.ZodArray<z.ZodString>;

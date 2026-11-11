@@ -14,14 +14,13 @@ import { ciWaitHead } from "../workflows/ci-wait-head.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { liveLastNone, noneReasonOf } from "./none-reason.js";
 import { MAX_NOT_STARTED_REVIEWS, notStartedStreak, reviewerName } from "./review-steps.js";
-import { reviewWait } from "./review-wait.js";
+import { ciWaitRunning, diagnosisWait, leadingWait, nextAction, type WaitContext } from "./view-waits.js";
 import { MERGE_EVIDENCE_STEP } from "./merge-facts.js";
 import { TERMINAL_PHASE, endedAt, runOutcome } from "./run-end.js";
 import { stageSpans } from "./stage-times.js";
 import { stepPhase, type Phase } from "./step-phase.js";
 import { RiskTierSchema, TimelineEntrySchema, WAKE_KINDS, WAKE_MODES, WatchRowSchema, type TimelineEntry, type WatchRow } from "./view-schema.js";
 import { PHASE_STALL_LIMIT_MS } from "./phase-limits.js";
-import { spawnQueuePosition } from "./review-queue.js";
 import type { Registration } from "./store.js";
 import type { TrainHolder } from "./train.js";
 import type { WakeInput, WakeStepResult } from "./wake.js";
@@ -71,77 +70,6 @@ function phaseSince(run: WorkflowRun, steps: readonly StepResult[], phase: Phase
   return previous?.completedAt ?? run.startedAt;
 }
 
-const WAITING: Readonly<Record<Phase, string>> = {
-  "awaiting-pr": "waiting for a PR on the registered branch",
-  ci: "waiting for CI",
-  fixing: "waiting for the implementer's new head",
-  review: "waiting for the review",
-  "awaiting-approval": "waiting on the merge decision",
-  merging: "merging",
-  "post-merge": "watching main CI after the merge",
-  done: "none",
-  failed: "none",
-  cancelled: "none",
-};
-
-function nextAction(phase: Phase, headSha: string | null, gate: GateRecord | undefined, gateStep: string | undefined, registration: Registration, behind: TrainHolder | undefined): string {
-  if (gate) return `owner: resolve ${gateStep}`;
-  if (phase === "merging" && behind) return `waiting for the merge train behind run ${behind.runId} (#${behind.pr})`;
-  if (phase === "ci" && headSha) return `waiting for CI on ${headSha.slice(0, 7)}`;
-  return (phase === "review" && admissionWait(registration)) || WAITING[phase];
-}
-
-/** A review the spawn gate keeps waiting also says where it stands in the gate's queue. */
-function admissionWait({ repo, pr }: Registration): string | undefined {
-  const wait = reviewWait(repo, pr);
-  const position = spawnQueuePosition(repo, pr);
-  return wait && position ? `${wait}; waiting for a spawn slot, ${position}` : wait;
-}
-
-/** sh-cleanup can wait an hour per part on agents to exit, long after main CI was read, so it must not read as a main CI wait. */
-const cleanupWait = (run: WorkflowRun, phase: Phase): string | undefined =>
-  phase === "post-merge" && run.currentStep !== null && stepIdMatches("sh-cleanup", run.currentStep) ? "cleaning up after the merge: head branch, task and agents" : undefined;
-
-const BaseCheckData = z.object({ result: z.object({ allowed: z.literal(false), reason: z.string() }) });
-
-/** While a head waits for its PR to be retargeted, the refused base is the next action. */
-function baseWait(run: WorkflowRun, steps: readonly StepResult[]): string | undefined {
-  if (run.currentStep === null || !stepIdMatches("base-wait", run.currentStep)) return undefined;
-  const check = BaseCheckData.safeParse(steps.filter((result) => stepIdMatches("base-check", result.stepId)).at(-1)?.data);
-  return check.success ? check.data.result.reason : undefined;
-}
-
-const FreezeHoldData = z.object({ result: z.object({ hold: z.literal(true), reason: z.string() }) });
-
-function lastIndexWhere<T>(items: readonly T[], match: (item: T) => boolean): number {
-  for (let index = items.length - 1; index >= 0; index--) if (match(items[index]!)) return index;
-  return -1;
-}
-
-const HeldWakeData =z.object({ result: z.object({ kind: z.literal("unhandled"), reason: z.string(), held: z.unknown() }) });
-const SentNoticeData = z.object({ result: z.object({ sent: z.literal(true) }) });
-
-/**
- * While a held send-back waits for a new head, the refusal that held it is the next action, not an implementer's push.
- * The seat counts as told only by a sent notice recorded after that wake: a NO_REPRO, or a failed notice, reached the
- * wait through the owner's sent-back gate instead.
- */
-function heldWakeWait(run: WorkflowRun, steps: readonly StepResult[]): string | undefined {
-  if (run.currentStep === null || !stepIdMatches("await-new-head", run.currentStep)) return undefined;
-  const at = lastIndexWhere(steps, (result) => stepIdMatches("sh-wake-implementer", result.stepId));
-  const wake = HeldWakeData.safeParse(steps[at]?.data);
-  if (!wake.success || wake.data.result.held === undefined) return undefined;
-  const told = steps.slice(at + 1).some((result) => stepIdMatches("sh-exit-notice", result.stepId) && SentNoticeData.safeParse(result.data).success);
-  return `no fixer could start (${wake.data.result.reason})${told ? "; the seat was told" : ""}, waiting for a new head`;
-}
-
-/** While a red head waits out a frozen main or a red base, the hold's own reason is the next action. */
-function freezeWait(run: WorkflowRun, steps: readonly StepResult[]): string | undefined {
-  if (!["sh-freeze-wait", "sh-base-wait"].some((id) => run.currentStep !== null && stepIdMatches(id, run.currentStep))) return undefined;
-  const hold = FreezeHoldData.safeParse(steps.filter((result) => stepIdMatches("sh-freeze-hold", result.stepId)).at(-1)?.data);
-  return hold.success ? hold.data.result.reason : undefined;
-}
-
 export interface RowInput {
   registration: Registration;
   run: WorkflowRun;
@@ -179,8 +107,6 @@ function liveStage(run: WorkflowRun, steps: readonly StepResult[], phase: Phase,
   return { name: holding ? "hold" : open.stage, minutes: Math.floor((open.endedAt - open.startedAt) / MINUTE) };
 }
 
-const ciWaitRunning = (run: WorkflowRun): boolean => run.status === "running" && run.currentStep !== null && stepIdMatches("ci-wait", run.currentStep);
-
 /**
  * A running ci-wait judges only the head it read itself, noted in memory per read; until its first read in this serve
  * (a restarted step, or reads that keep failing) the head is unknown, and an older step's head is not the one it judges (TP-4767).
@@ -190,7 +116,13 @@ function rowHead(run: WorkflowRun, steps: readonly StepResult[], { repo, pr }: R
   return steps.map(headOf).filter((head) => head !== undefined).at(-1) ?? null;
 }
 
-const CI_HEAD_UNREAD = "waiting for CI (head not yet read)";
+function rowWait({ registration, run, pending, train }: Omit<RowInput, "now">, { steps, phase, headSha }: Omit<WaitContext, "run" | "pending">, holding: boolean): string {
+  const leading = leadingWait({ run, steps, phase, headSha, pending });
+  if (leading !== undefined) return leading;
+  if (holding) return holdWait(registration, headSha);
+  const behind = train?.runId === run.id ? undefined : train;
+  return diagnosisWait(run, steps, pending) ?? nextAction(phase, headSha, pending?.gate, pending && stepOf(pending.gate.id), registration, behind);
+}
 
 /** One watch-list row; a failed run, a review the broker keeps refusing, or a phase past its limit reads as stalled. */
 export function watchRow({ registration, run, pending, train, now = new Date() }: RowInput): WatchRow {
@@ -210,7 +142,7 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     phase,
     headSha,
     phaseSince: since,
-    nextAction: freezeWait(run, steps) ?? baseWait(run, steps) ?? heldWakeWait(run, steps) ?? cleanupWait(run, phase) ?? (headSha === null && ciWaitRunning(run) && !pending ? CI_HEAD_UNREAD : undefined) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending && stepOf(pending.gate.id), registration, train?.runId === run.id ? undefined : train)),
+    nextAction: rowWait({ registration, run, pending, train }, { steps, phase, headSha }, holding),
     pendingGate: pending ? { gateId: pending.gate.id, stepId: stepOf(pending.gate.id), since: pending.gate.createdAt } : null,
     held,
     stalled: asStalled(stallReason(run, steps, phase, since, now, { registration, headSha, holding })),

@@ -20,7 +20,7 @@ export function linkGateArgs(argv: readonly string[]): { gate: string } | null {
   return { gate };
 }
 
-const httpsProbe: HttpsProbe = (url) =>
+export const httpsProbe: HttpsProbe = (url) =>
   new Promise((resolve, reject) => {
     const req = request(url, { method: "GET", timeout: PROBE_TIMEOUT_MS }, (res) => {
       res.resume();

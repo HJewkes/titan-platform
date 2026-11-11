@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import YAML from 'yaml';
+import { z } from 'zod';
 import wrap from './wrap.js';
 import {
   handleOnComplete,
@@ -19,10 +20,16 @@ const FIXTURE = path.join(
   '../test-support/fixtures/agent-chat/on-complete-worker.json',
 );
 
-type Payload = Record<string, unknown> & { facts: Record<string, unknown> };
+const PayloadSchema = z.looseObject({ facts: z.record(z.string(), z.unknown()) });
+const FrontSchema = z.record(z.string(), z.unknown());
+const WorkerSchema = z.looseObject({
+  facts: z.looseObject({ report: z.looseObject({ text: z.string() }).optional() }).optional(),
+  resolves: z.array(z.string()).optional(),
+});
+type Payload = z.infer<typeof PayloadSchema>;
 
 async function loadPayload(): Promise<Payload> {
-  return JSON.parse(await fs.readFile(FIXTURE, 'utf8')) as Payload;
+  return PayloadSchema.parse(JSON.parse(await fs.readFile(FIXTURE, 'utf8')));
 }
 
 /** Turn the hook's argv back into wrap args through wrap's own option table. */
@@ -57,7 +64,7 @@ async function readRecord(file: string): Promise<{ front: Record<string, unknown
   const raw = await fs.readFile(file, 'utf8');
   const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(raw);
   return {
-    front: YAML.parse(match?.[1] ?? '') as Record<string, unknown>,
+    front: FrontSchema.parse(YAML.parse(match?.[1] ?? '')),
     body: match?.[2] ?? '',
   };
 }
@@ -97,9 +104,9 @@ describe('hooks agent-chat-complete with worker facts', () => {
     expect(front.kind).toBe('worker');
     expect(front.track).toBe('adhoc');
     expect(front.no_loops).toBe(true);
-    const worker = front.worker as { facts: Record<string, unknown>; resolves?: string[] };
-    expect(worker.facts.taskId).toBe('SX-42');
-    expect(worker.facts.pr).toEqual({ repo: 'example-org/sample-repo', number: 17 });
+    const worker = WorkerSchema.parse(front.worker);
+    expect(worker.facts?.taskId).toBe('SX-42');
+    expect(worker.facts?.pr).toEqual({ repo: 'example-org/sample-repo', number: 17 });
     expect(worker.resolves).toEqual(['SX-42']);
     expect(body).toMatch(/^Status: DONE$/m);
     expect(body).toContain('PR: example-org/sample-repo#17');
@@ -132,7 +139,7 @@ describe('hooks agent-chat-complete with worker facts', () => {
       'worker',
     ]);
     expect(front.parent_session_id).toBeUndefined();
-    expect((front.worker as { facts: { report: { text: string } } }).facts.report.text).toBe(text);
+    expect(WorkerSchema.parse(front.worker).facts?.report?.text).toBe(text);
     expect(body.trim()).toBe(text);
   });
 
@@ -148,7 +155,7 @@ describe('hooks agent-chat-complete with worker facts', () => {
       lastAction: 'Bash: pnpm vitest run __tests__/widget.test.ts',
     });
 
-    const worker = front.worker as Record<string, unknown>;
+    const worker = FrontSchema.parse(front.worker);
     expect(worker.outcome).toBe('exited-no-report');
     expect(worker.last_action).toBe('Bash: pnpm vitest run __tests__/widget.test.ts');
     expect(body).toContain('Last action: Bash: pnpm vitest run');

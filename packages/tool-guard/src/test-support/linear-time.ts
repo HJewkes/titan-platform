@@ -11,11 +11,20 @@ const MAX_RATIO = 5;
  */
 export const LINEARITY_CPU_MS = 8_000;
 
-const timed = (run: () => void): number => {
-  const elapsed = cpuStopwatch();
-  run();
-  return elapsed();
-};
+// Thread CPU ticks in 1 ms steps on Linux, so a run under a tick reads as 0 and one over it as 1. Dividing by that 0 or by a
+// floor below a tick made a linear one-tick run score 19 against the limit of 5 on a loaded runner (TP-5262).
+const CPU_TICK_MS = 1;
+
+/** A measure that reads one run's cost off `startStopwatch`, a fresh stopwatch per run. */
+export const timedBy =
+  (startStopwatch: () => () => number) =>
+  (run: () => void): number => {
+    const elapsed = startStopwatch();
+    run();
+    return elapsed();
+  };
+
+const timed = timedBy(cpuStopwatch);
 
 /**
  * Asserts the work grows no faster than linearly, inside a `cpuBudgetIt` test. `prepare(size)` builds the input outside
@@ -40,7 +49,7 @@ export function expectLinearTime(prepare: (size: number) => () => void, topSize:
     best.large = Math.min(best.large, measure(large));
     expectWithinCpuBudget();
   }
-  const ratio = best.large / Math.max(best.small, 0.05);
+  const ratio = best.large / Math.max(best.small, CPU_TICK_MS);
   expect(ratio).toBeLessThan(MAX_RATIO);
   return ratio;
 }

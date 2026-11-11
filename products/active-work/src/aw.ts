@@ -83,38 +83,51 @@ function printInfoAndExit(args: string[]): boolean {
   return true;
 }
 
-function rejectSubcommand(): Promise<void> {
+/** The process-level effects `main` performs, injectable so tests never exit or spawn. */
+export interface AwDeps {
+  exit(code: number): Promise<void>;
+  open: (slug: string, adhoc: boolean) => Promise<OpenSuccess>;
+  launch: typeof launchSession;
+}
+
+const defaultAwDeps: AwDeps = {
+  exit: exitAfterFlush,
+  open: openSlugOrInit,
+  launch: launchSession,
+};
+
+function rejectSubcommand(exit: AwDeps['exit']): Promise<void> {
   process.stderr.write(
     color.red(
       'error: `aw` only launches a Claude session for an initiative. ' +
         'Use `active-work` for other commands.\n',
     ),
   );
-  return exitAfterFlush(EXIT.USAGE);
+  return exit(EXIT.USAGE);
 }
 
-export async function main(argv: string[]): Promise<void> {
+export async function main(argv: string[], deps: AwDeps = defaultAwDeps): Promise<void> {
   const args = argv.slice(2);
-  if (printInfoAndExit(args)) return exitAfterFlush(EXIT.OK);
+  if (printInfoAndExit(args)) return deps.exit(EXIT.OK);
   if (args[0] === 'resume') {
-    await runResume(argv);
+    await runResume(argv, deps.exit);
     return;
   }
   // `--pick` forces the interactive picker instead of resolving from cwd;
   // `--adhoc` (alias `--ad-hoc`) reframes the prompt as ad-hoc work;
   // `--no-rc` launches without Remote Control; `--profile` picks the account.
   const { pick, adhoc, remoteControl, profile, positional, usageError } = parseLauncherFlags(args);
-  if (usageError) return rejectSubcommand();
+  if (usageError) return rejectSubcommand(deps.exit);
 
   try {
     if (profile) requireProfileDir(profile);
-    const opened = await openInitiative(positional[0], { pick, adhoc });
-    if (!opened) return exitAfterFlush(EXIT.OK);
-    return exitAfterFlush(await launchSession(opened, { remoteControl, profile }));
+    const opened = await openInitiative(positional[0], { pick, adhoc }, deps.open);
+    if (!opened) return deps.exit(EXIT.OK);
+    return deps.exit(await deps.launch(opened, { remoteControl, profile }));
   } catch (err) {
     const { message, code } = formatError(err);
     process.stderr.write(color.red(`error: ${message}\n`));
-    return exitAfterFlush(code);
+    return deps.exit(code);
   }
 }
 
@@ -122,9 +135,10 @@ export async function main(argv: string[]): Promise<void> {
 async function openInitiative(
   slug: string | undefined,
   { pick, adhoc }: { pick: boolean; adhoc: boolean },
+  open: AwDeps['open'],
 ): Promise<OpenSuccess | null> {
   if (slug !== undefined) {
-    const opened = await openSlugOrInit(slug, adhoc);
+    const opened = await open(slug, adhoc);
     if (opened.facet) {
       process.stderr.write(color.dim(`Opening ${opened.slug} (facet ${opened.facet.name})\n`));
     }

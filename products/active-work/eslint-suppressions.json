@@ -1,26 +1,6 @@
 {
-  "products/active-work/src/aw-resume-spawn.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/aw.test.ts": {
-    "titan/no-internal-module-mock": {
-      "count": 2
-    }
-  },
   "products/active-work/src/bootstrap/archive-tasks.ts": {
     "titan/max-function-lines": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/bootstrap/parse-once.test.ts": {
-    "titan/no-internal-module-mock": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/bootstrap/rank-notes.test.ts": {
-    "titan/no-chained-type-assertions": {
       "count": 1
     }
   },
@@ -69,11 +49,6 @@
       "count": 2
     }
   },
-  "products/active-work/src/commands/miner-status.test.ts": {
-    "titan/no-internal-module-mock": {
-      "count": 1
-    }
-  },
   "products/active-work/src/commands/miner-status.ts": {
     "titan/max-function-lines": {
       "count": 1
@@ -104,11 +79,6 @@
       "count": 1
     }
   },
-  "products/active-work/src/commands/session-recover.test.ts": {
-    "titan/no-internal-module-mock": {
-      "count": 1
-    }
-  },
   "products/active-work/src/commands/sessions-browser.ts": {
     "titan/max-function-lines": {
       "count": 1
@@ -122,16 +92,6 @@
   "products/active-work/src/commands/sync.ts": {
     "titan/max-function-lines": {
       "count": 1
-    }
-  },
-  "products/active-work/src/commands/task-add-gate.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 2
-    }
-  },
-  "products/active-work/src/commands/task-apply.test.ts": {
-    "titan/no-internal-module-mock": {
-      "count": 2
     }
   },
   "products/active-work/src/commands/task-delete.ts": {
@@ -284,11 +244,6 @@
       "count": 1
     }
   },
-  "products/active-work/src/server/daemon-shutdown-order.test.ts": {
-    "titan/no-internal-module-mock": {
-      "count": 4
-    }
-  },
   "products/active-work/src/server/daemon.ts": {
     "titan/max-function-lines": {
       "count": 1
@@ -299,34 +254,14 @@
       "count": 1
     }
   },
-  "products/active-work/src/server/host-lease.test.ts": {
-    "titan/no-internal-module-mock": {
-      "count": 2
-    }
-  },
   "products/active-work/src/server/logger.ts": {
     "titan/no-chained-type-assertions": {
       "count": 1
     }
   },
-  "products/active-work/src/server/related-during-refresh.test.ts": {
-    "titan/no-internal-module-mock": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/server/session-index-watch.test.ts": {
-    "titan/no-internal-module-mock": {
-      "count": 6
-    }
-  },
   "products/active-work/src/server/session-index-watch.ts": {
     "titan/max-function-lines": {
       "count": 3
-    }
-  },
-  "products/active-work/src/session-index/delta-pass.test.ts": {
-    "titan/no-internal-module-mock": {
-      "count": 1
     }
   },
   "products/active-work/src/session-index/delta-pass.ts": {
@@ -344,18 +279,8 @@
       "count": 1
     }
   },
-  "products/active-work/src/session-index/refresh.test.ts": {
-    "titan/no-internal-module-mock": {
-      "count": 2
-    }
-  },
   "products/active-work/src/session-index/refresh.ts": {
     "titan/max-function-lines": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/session-index/rollup-resume.test.ts": {
-    "titan/no-internal-module-mock": {
       "count": 1
     }
   },
@@ -372,11 +297,6 @@
   "products/active-work/src/sessions/lease.ts": {
     "titan/max-function-lines": {
       "count": 3
-    }
-  },
-  "products/active-work/src/sessions/resolve-session-location.test.ts": {
-    "titan/no-internal-module-mock": {
-      "count": 1
     }
   },
   "products/active-work/src/setup/steps-daemon.ts": {
@@ -404,29 +324,14 @@
       "count": 2
     }
   },
-  "products/active-work/src/setup/steps.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 13
-    }
-  },
   "products/active-work/src/setup/steps.ts": {
     "titan/max-function-lines": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/setup/supervision-launchd.test.ts": {
-    "titan/no-chained-type-assertions": {
       "count": 1
     }
   },
   "products/active-work/src/setup/supervision-launchd.ts": {
     "titan/max-function-lines": {
       "count": 3
-    }
-  },
-  "products/active-work/src/setup/supervision-systemd.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 2
     }
   },
   "products/active-work/src/setup/supervision-systemd.ts": {

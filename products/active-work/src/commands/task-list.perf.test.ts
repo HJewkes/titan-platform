@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import taskList from './task-list.js';
 import type { CommandContext } from '../registry/index.js';
 import { mapConcurrent } from '../utils/map-concurrent.js';
@@ -8,7 +8,11 @@ import { withEmptyActiveRoot } from '../test-support/test-helpers.js';
 
 // Every parse starts with a read of the file, so task-file reads count parses.
 const parseCount = { value: 0 };
-const statCount = { value: 0 };
+let statSpy: MockInstance<typeof fs.stat>;
+
+function yamlStatCount(): number {
+  return statSpy.mock.calls.filter(([file]) => String(file).endsWith('.yml')).length;
+}
 
 const INITIATIVES = 45;
 const TASKS_PER_INITIATIVE = 200;
@@ -57,12 +61,7 @@ describe('task.list on 9,000 synthetic tasks', () => {
       if (String(file).endsWith('.yml')) parseCount.value += 1;
       return readFile(file, options);
     });
-    statCount.value = 0;
-    const stat = fs.stat.bind(fs);
-    vi.spyOn(fs, 'stat').mockImplementation(((file: Parameters<typeof fs.stat>[0], options?: Parameters<typeof fs.stat>[1]) => {
-      if (String(file).endsWith('.yml')) statCount.value += 1;
-      return stat(file, options as never);
-    }));
+    statSpy = vi.spyOn(fs, 'stat');
   });
 
   afterEach(() => {
@@ -103,12 +102,12 @@ describe('task.list on 9,000 synthetic tasks', () => {
       await writeSyntheticRoot(root);
       await listAll(root);
       parseCount.value = 0;
-      statCount.value = 0;
+      statSpy.mockClear();
 
       await listAll(root);
 
       expect(parseCount.value).toBe(0);
-      expect(statCount.value).toBeLessThanOrEqual(INITIATIVES * TASKS_PER_INITIATIVE);
+      expect(yamlStatCount()).toBeLessThanOrEqual(INITIATIVES * TASKS_PER_INITIATIVE);
     });
   });
 });

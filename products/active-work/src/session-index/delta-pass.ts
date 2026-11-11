@@ -14,11 +14,11 @@ import type { WorkspaceGraph } from './graph.js';
 import type { DrainedDirtySet } from './dirty-set.js';
 import { transcriptFromPath } from './transcript-path.js';
 import { taskResolver } from './tasks.js';
-import { refreshEpisodes, snapshotOffsets } from './episodes.js';
+import { snapshotOffsets } from './episodes.js';
 import { clearDocumentFrequency } from '../search/document-frequency.js';
-import { refreshWorkspace } from '../workspace-index/refresh.js';
 import { bytesAdvanced, dbBytes, lapTimer, rowsWrittenCounter } from './pass-metrics.js';
 import type { RefreshSummary } from './refresh.js';
+import type { RefreshSteps } from './refresh-steps.js';
 
 type IndexStatus = 'indexed' | 'unchanged' | 'rewound' | 'missing' | 'quarantined';
 
@@ -37,6 +37,7 @@ interface DeltaPassOptions {
   skipWorkspace?: boolean;
   /** Called once scan and rollup have committed, before the episode step. */
   onIndexed?: () => void;
+  steps: RefreshSteps;
 }
 
 /**
@@ -118,7 +119,7 @@ async function scanTranscripts(
  * replay and the quarantine report.
  */
 export async function runDeltaPass(options: DeltaPassOptions): Promise<RefreshSummary> {
-  const { graph, transcripts, yieldPoint } = options;
+  const { graph, transcripts, yieldPoint, steps } = options;
   const startedAt = new Date().toISOString();
   const started = Date.now();
   const offsetsBefore = snapshotOffsets(graph);
@@ -133,17 +134,18 @@ export async function runDeltaPass(options: DeltaPassOptions): Promise<RefreshSu
   const tasks = await enrichTasks(graph, taskResolver(options.taskRoot), newTasks);
   phases.rollup = lap();
   options.onIndexed?.();
-  const episodes = await refreshEpisodes(
+  const episodes = await steps.refreshEpisodes(
     graph,
     offsetsBefore,
     options.episodeLimit,
     yieldPoint,
     false,
+    steps.writeEpisodes,
   );
   phases.episodes = lap();
   const workspace =
     options.activeRootChanged && !options.skipWorkspace
-      ? await refreshWorkspace(graph, { activeRoot: options.activeRoot ?? options.taskRoot })
+      ? await steps.refreshWorkspace(graph, { activeRoot: options.activeRoot ?? options.taskRoot })
       : null;
   phases.workspace = lap();
   return {

@@ -6,19 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type * as DaemonPackage from '@titan-design/daemon';
 import { DaemonError } from '../errors.js';
 import { runDaemon } from './daemon.js';
 import { hostLeaseRefusal, leasePath } from './host-lease.js';
-
-const startDaemon = vi.hoisted(() => vi.fn());
-const getLogger = vi.hoisted(() => vi.fn());
-
-vi.mock('@titan-design/daemon', async (importOriginal) => ({
-  ...(await importOriginal<typeof DaemonPackage>()),
-  startDaemon,
-}));
-vi.mock('./logger.js', () => ({ getLogger }));
 
 let home: string;
 
@@ -29,7 +19,6 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
-  vi.clearAllMocks();
   rmSync(home, { recursive: true, force: true });
 });
 
@@ -94,11 +83,14 @@ describe('runDaemon under the factory host lease', () => {
   it('refuses before the logger or the socket when the lease names another host', async () => {
     writeLease(`not-${os.hostname()}`);
 
-    const started = runDaemon({ port: 0 });
+    const getLogger = vi.fn();
+    const start = vi.fn();
+
+    const started = runDaemon({ port: 0, deps: { getLogger, start } });
 
     await expect(started).rejects.toBeInstanceOf(DaemonError);
     await expect(started).rejects.toThrow(/refusing to start/);
     expect(getLogger).not.toHaveBeenCalled();
-    expect(startDaemon).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
   });
 });

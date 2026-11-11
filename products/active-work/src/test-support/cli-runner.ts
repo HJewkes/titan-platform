@@ -35,12 +35,17 @@ function processEnv(env: Env): NodeJS.ProcessEnv {
   return { ...process.env, NO_COLOR: '1', ...env };
 }
 
+function orEmpty(output: string | null): string {
+  return output ?? '';
+}
+
 export function runCli(args: string[], env: Env = {}): RunResult {
   const result = spawnSync(process.execPath, [requireDistBin(), ...args], {
     encoding: 'utf8',
     env: processEnv(env),
   });
-  return { status: result.status ?? -1, stdout: result.stdout, stderr: result.stderr };
+  // spawnSync leaves stdout and stderr null when the child never starts, whatever the typings say.
+  return { status: result.status ?? -1, stdout: orEmpty(result.stdout), stderr: orEmpty(result.stderr) };
 }
 
 export function runCliAsync(args: string[], env: Env = {}): Promise<RunResult> {
@@ -61,6 +66,12 @@ let mainPromise: Promise<Main> | undefined;
 // In-process runs share stdout, stderr and process.env, so they take turns.
 let queue: Promise<unknown> = Promise.resolve();
 
+type ErrorListener = (err: Error) => void;
+
+function isErrorListener(value: unknown): value is ErrorListener {
+  return typeof value === 'function';
+}
+
 // main() adds an EPIPE listener per call; drop them so a long file stays under the listener cap.
 function keepErrorListeners(): () => void {
   const streams = [process.stdout, process.stderr];
@@ -68,9 +79,19 @@ function keepErrorListeners(): () => void {
   return () =>
     streams.forEach((stream, i) => {
       for (const l of stream.listeners('error')) {
-        if (!before[i].includes(l)) stream.off('error', l as never);
+        if (!before[i].includes(l) && isErrorListener(l)) stream.off('error', l);
       }
     });
+}
+
+// defineProperty takes the stub untyped; spyOn would demand a `never` return the stub cannot honour.
+function replaceExit(stub: (code?: number) => void): () => void {
+  const realExit = process.exit;
+  const define = (value: unknown): void => {
+    Object.defineProperty(process, 'exit', { configurable: true, writable: true, value });
+  };
+  define(stub);
+  return () => define(realExit);
 }
 
 /** Swap stdout, stderr and process.exit for recorders until the returned restore runs. */
@@ -78,24 +99,26 @@ function capture(): { result: () => RunResult; exited: Promise<void>; restore: (
   const out = { stdout: '', stderr: '', status: undefined as number | undefined };
   let onExit = (): void => {};
   const exited = new Promise<void>((resolve) => (onExit = resolve));
-  const recorder = (stream: 'stdout' | 'stderr') =>
-    ((chunk: string | Uint8Array, encOrCb?: unknown, cb?: unknown): boolean => {
+  const recorder =
+    (stream: 'stdout' | 'stderr') =>
+    (chunk: string | Uint8Array, encOrCb?: BufferEncoding | WriteCallback, cb?: WriteCallback): boolean => {
       out[stream] += typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString();
-      const done = (typeof encOrCb === 'function' ? encOrCb : cb) as WriteCallback | undefined;
+      const done = typeof encOrCb === 'function' ? encOrCb : cb;
       done?.();
       return true;
-    }) as typeof process.stdout.write;
+    };
   const dropAddedListeners = keepErrorListeners();
   const spies = [
     vi.spyOn(process.stdout, 'write').mockImplementation(recorder('stdout')),
     vi.spyOn(process.stderr, 'write').mockImplementation(recorder('stderr')),
-    vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
-      out.status ??= code ?? 0;
-      onExit();
-    }) as typeof process.exit),
   ];
+  const restoreExit = replaceExit((code) => {
+    out.status ??= code ?? 0;
+    onExit();
+  });
   const restore = (): void => {
     for (const spy of spies) spy.mockRestore();
+    restoreExit();
     dropAddedListeners();
   };
   return { result: () => ({ status: out.status ?? -1, stdout: out.stdout, stderr: out.stderr }), exited, restore };

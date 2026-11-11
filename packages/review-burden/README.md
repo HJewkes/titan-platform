@@ -23,12 +23,17 @@ underDeclared(declared, computed.door);
 ```sh
 pnpm review:burden --base origin/main --body-file body.md
 REVIEW_BURDEN_BODY="$body" pnpm review:burden --enforce
+pnpm review:burden --config review-burden.json
 ```
 
-It reads `git diff -M --numstat -z <base>...HEAD` (default base `origin/main`) and the PR body
+It reads `git diff -M --numstat -z <base>...HEAD` (default base `origin/main`) and the same diff
+with `--name-status -z` for each file's real status, plus both sides of every changed
+`package.json` (the merge base and `HEAD`). `--config <file>` is a JSON object with any of
+`protectedPaths`, `storedDataGlobs`, `generatedGlobs`, `testGlobs`, `ignoredGlobs`,
+`migrationGlobs` and `apiGlobs`, each replacing its default. It also reads the PR body
 from `--body-file` or the `REVIEW_BURDEN_BODY` variable, prints the burden table, then one JSON
 line with the score, door facts and parsed footer. It exits 0 by default. With `--enforce` it
 exits 1 and prints a remediation message when the footer is missing or the declared door is
-`two-way` while the diff is one-way. An unknown argument exits 2.
+`two-way` while the diff is one-way. An unknown argument or a bad config file exits 2.
 
 See `site/reference/review-burden.md` for the formula and the footer format.

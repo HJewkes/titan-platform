@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
 import { openGraph, type WorkspaceGraph } from '../session-index/graph.js';
 import { refreshWorkspace } from './refresh.js';
@@ -110,7 +111,7 @@ describe('workspace index convergence', () => {
     ]);
 
     expect(staged.dump).toEqual(await rebuild());
-    const titles = staged.dump.workspace_task as { title: string }[];
+    const titles = z.array(z.object({ title: z.string() })).parse(staged.dump.workspace_task);
     expect(titles.map((t) => t.title)).toContain('Retitled after the fact');
   });
 
@@ -138,9 +139,10 @@ describe('workspace index convergence', () => {
     ]);
 
     expect(staged.dump).toEqual(await rebuild());
-    const mentions = (staged.dump.edge as { relation: string; target_ref: string }[]).filter(
-      (e) => e.relation === 'mentions' && e.target_ref === 'task:BE-9',
-    );
+    const mentions = z
+      .array(z.object({ relation: z.string(), target_ref: z.string() }))
+      .parse(staged.dump.edge)
+      .filter((e) => e.relation === 'mentions' && e.target_ref === 'task:BE-9');
     expect(mentions).toHaveLength(1);
   });
 

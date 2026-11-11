@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { mkdtempSync, rmSync, existsSync } from 'node:fs';
-import type { spawn as nodeSpawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type * as clackPrompts from '@clack/prompts';
@@ -16,6 +16,30 @@ import { stepInstallSkill } from './steps-install.js';
 import { stepRegisterMcp, stepRegisterAgentChatHooks } from './steps-register.js';
 import { stepStartDaemon, stepIngestion, stepSupervision } from './steps-daemon.js';
 import { runSetup } from './steps.js';
+import { asSpawn } from '../test-support/spawn-fake.js';
+
+function hasFunction(value: unknown, member: string): boolean {
+  return typeof value === 'object' && value !== null && typeof Reflect.get(value, member) === 'function';
+}
+
+function isChild(value: unknown): value is ChildProcess {
+  return hasFunction(value, 'on');
+}
+
+function isPrompts(value: unknown): value is typeof clackPrompts {
+  return hasFunction(value, 'confirm') && hasFunction(value, 'isCancel');
+}
+
+/** Hand a structural child fake to code that wants a ChildProcess, without a cast. */
+function asChild(fake: unknown): ChildProcess {
+  if (!isChild(fake)) throw new Error('a child fake must have an `on` method');
+  return fake;
+}
+
+function asPrompts(fake: unknown): typeof clackPrompts {
+  if (!isPrompts(fake)) throw new Error('a prompts fake must have `confirm` and `isCancel` functions');
+  return fake;
+}
 
 function makeTempPaths(): {
   paths: StepPaths;
@@ -331,14 +355,13 @@ describe('stepRegisterMcp', () => {
         },
       };
       queueMicrotask(() => {
-        const err = new Error('not found') as NodeJS.ErrnoException;
-        err.code = 'ENOENT';
+        const err = Object.assign(new Error('not found'), { code: 'ENOENT' });
         handlers.error.forEach((cb) => cb(err));
       });
-      return child as unknown as ReturnType<typeof nodeSpawn>;
+      return asChild(child);
     });
     const result = await stepRegisterMcp({
-      spawn: fakeSpawn as unknown as typeof nodeSpawn,
+      spawn: asSpawn(fakeSpawn),
     });
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -361,10 +384,10 @@ describe('stepRegisterMcp', () => {
       queueMicrotask(() => {
         handlers.close.forEach((cb) => cb(0));
       });
-      return child as unknown as ReturnType<typeof nodeSpawn>;
+      return asChild(child);
     });
     const result = await stepRegisterMcp({
-      spawn: fakeSpawn as unknown as typeof nodeSpawn,
+      spawn: asSpawn(fakeSpawn),
     });
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.done).toBe(true);
@@ -381,10 +404,10 @@ describe('stepStartDaemon', () => {
   const unsupervised = async () => ({ kind: 'launchd', active: false });
 
   it('skips the manual start when launchd already supervises the daemon', async () => {
-    const prompts = {
+    const prompts = asPrompts({
       confirm: vi.fn(async () => true),
       isCancel: vi.fn(() => false),
-    } as unknown as typeof clackPrompts;
+    });
 
     const result = await stepStartDaemon({ prompts, supervisorActive: supervised });
 
@@ -409,10 +432,10 @@ describe('stepStartDaemon', () => {
   });
 
   it('skips on cancel/no answer', async () => {
-    const prompts = {
+    const prompts = asPrompts({
       confirm: vi.fn(async () => false),
       isCancel: vi.fn(() => false),
-    } as unknown as typeof clackPrompts;
+    });
     const result = await stepStartDaemon({
       prompts,
       supervisorActive: unsupervised,
@@ -468,14 +491,14 @@ describe('stepSupervision', () => {
         const code = args.includes('bootout') ? 3 : 0;
         handlers.close.forEach((cb) => cb(code));
       });
-      return child as unknown as ReturnType<typeof nodeSpawn>;
+      return asChild(child);
     });
     try {
       const result = await stepSupervision({
         yes: true,
         paths,
         fs,
-        spawn: spawn as unknown as typeof nodeSpawn,
+        spawn: asSpawn(spawn),
       });
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -495,10 +518,10 @@ describe('stepSupervision', () => {
 
   it('respects a cancel/no answer on linux', async () => {
     setPlatform('linux');
-    const prompts = {
+    const prompts = asPrompts({
       confirm: vi.fn(async () => false),
       isCancel: vi.fn(() => false),
-    } as unknown as typeof clackPrompts;
+    });
     const result = await stepSupervision({ prompts });
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -533,14 +556,14 @@ describe('stepSupervision', () => {
         const code = args.includes('enable') ? 1 : 0;
         handlers.close.forEach((cb) => cb(code));
       });
-      return child as unknown as ReturnType<typeof nodeSpawn>;
+      return asChild(child);
     });
     try {
       const result = await stepSupervision({
         yes: true,
         paths,
         fs,
-        spawn: spawn as unknown as typeof nodeSpawn,
+        spawn: asSpawn(spawn),
       });
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -590,10 +613,10 @@ describe('stepStartDaemon (linux supervision detection)', () => {
           handlers.close.forEach((cb) => cb(0));
         }
       });
-      return child as unknown as ReturnType<typeof nodeSpawn>;
+      return asChild(child);
     });
     const result = await stepStartDaemon({
-      spawn: fakeSpawn as unknown as typeof nodeSpawn,
+      spawn: asSpawn(fakeSpawn),
       yes: true,
     });
     expect(result.ok).toBe(true);
