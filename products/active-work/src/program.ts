@@ -188,7 +188,7 @@ function refuseCommaList(long: string, accumulate: Accumulator): Accumulator {
 
 /** `@<file>` expands before the comma check, so each line of the file is held to the rule a repeated flag is. */
 function expandFiles(long: string, accumulate: Accumulator): Accumulator {
-  const flag = long.split(/\s/)[0]!;
+  const flag = long.split(/\s/)[0];
   return (value, previous) => {
     let collected = previous;
     for (const line of expandFileValue(flag, value)) collected = accumulate(line, collected);
