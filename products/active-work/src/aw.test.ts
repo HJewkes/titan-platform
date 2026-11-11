@@ -90,9 +90,10 @@ describe('aw --profile', () => {
 
   it('rejects an unknown profile for resume before looking the session up', async () => {
     const lookup = vi.spyOn(resumeCommand, 'run').mockResolvedValue({
+      session_id: 'abc123',
       cwd: profilesRoot,
-      source: 'session-log',
-    } as Awaited<ReturnType<typeof resumeCommand.run>>);
+      source: 'active-work',
+    });
 
     await main(['node', 'aw', 'resume', 'abc123', '--profile', 'ghost'], deps);
 
