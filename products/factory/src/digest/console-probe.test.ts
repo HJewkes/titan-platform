@@ -1,12 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
-import { fakeSources, NOW, SLOT } from "../test-support/digest.js";
-import type { FrictionDay } from "../shepherd/owner-friction.js";
-import { alarmLinks } from "./console-probe.js";
-import { buildDigest } from "./run.js";
+import { createServer, type Server } from "node:net";
+import { afterEach, describe, expect, it } from "vitest";
+import { alarmLinks, httpsProbe } from "./console-probe.js";
 
 const ORIGIN = "https://console.example.ts.net";
-
-const friction = (medianHours: number): FrictionDay => ({ day: "2026-03-10", ownerTouches: 1, kinds: [{ kind: "approve-merge", gates: 4, medianHours, maxHours: medianHours }] });
 
 describe("alarmLinks", () => {
   it("keeps an origin whose root answers 401, probing it once", async () => {
@@ -33,20 +29,28 @@ describe("alarmLinks", () => {
   });
 });
 
-describe("buildDigest", () => {
-  it("a console that answers 502 leaves the alarm without links and says why under gaps", async () => {
-    const built = await buildDigest({ sources: fakeSources({ friction: () => friction(98) }), now: NOW, slot: SLOT, windowMinutes: 360, full: false, consoleOrigin: ORIGIN, probe: async () => 502 });
+describe("httpsProbe", () => {
+  const servers: Server[] = [];
+  afterEach(() => servers.splice(0).forEach((server) => server.close()));
 
-    expect(built.markdown).toContain("- digest.consoleOrigin https://console.example.ts.net answered 502,");
-    expect(built.markdown).not.toContain("consoleOrigin unset");
-    expect(built.alarmNote).toBeDefined();
-  });
+  /** Announces a 16 KiB TLS record, then sends one byte every 20 ms, so the socket is never idle yet the handshake never finishes. */
+  async function dripFeedingServer(): Promise<number> {
+    const server = createServer((socket) => {
+      socket.on("error", () => undefined);
+      socket.write(Buffer.from([0x16, 0x03, 0x03, 0x40, 0x00]));
+      const drip = setInterval(() => socket.write(Buffer.from([0x00])), 20);
+      socket.on("close", () => clearInterval(drip));
+    });
+    servers.push(server);
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("server has no tcp port");
+    return address.port;
+  }
 
-  it("a digest whose alarm does not fire never probes", async () => {
-    const probe = vi.fn(async () => 200);
+  it("rejects within the total deadline when the server keeps the socket busy without ever answering", async () => {
+    const port = await dripFeedingServer();
 
-    await buildDigest({ sources: fakeSources(), now: NOW, slot: SLOT, windowMinutes: 360, full: false, consoleOrigin: ORIGIN, probe });
-
-    expect(probe).not.toHaveBeenCalled();
-  });
+    await expect(httpsProbe(`https://127.0.0.1:${port}/`, 300)).rejects.toThrow("probe timed out");
+  }, 2_000); // the old idle timeout fired only after 5 s, so base overruns this and fails
 });

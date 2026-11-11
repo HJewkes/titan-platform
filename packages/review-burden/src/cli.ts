@@ -133,7 +133,7 @@ export function realDeps(): CliDeps {
   return {
     diff: (base) => gitDiff("--numstat", base),
     nameStatus: (base) => gitDiff("--name-status", base),
-    mergeBase: (base) => execFileSync("git", ["merge-base", base, "HEAD"], { encoding: "utf8" }).trim(),
+    mergeBase: (base) => execFileSync("git", ["merge-base", base, "HEAD"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim(),
     show: (rev, path) => execFileSync("git", ["show", `${rev}:${path}`], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }),
     readText: (path) => readFileSync(path, "utf8"),
     env: process.env,
