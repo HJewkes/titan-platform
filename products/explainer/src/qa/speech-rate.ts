@@ -42,6 +42,7 @@ export function speechRateReport(spoken: readonly SpokenBeat[]): SpeechRateRepor
 
 /** The one-line speech-rate verdict the qa notes lead with. */
 export function speechRateSummary(report: SpeechRateReport): string {
+  if (report.beats.length === 0) return "speech rate: not measured (no beat has word timings)";
   if (report.overallWpm === null) return "speech rate: no voiced beats";
   const band = `${OVERALL_WPM_BAND.min}-${OVERALL_WPM_BAND.max}`;
   const overall = `${report.overallWpm} wpm overall (${report.overallInBand ? "in" : "OUTSIDE"} ${band})`;

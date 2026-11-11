@@ -9,11 +9,6 @@
       "count": 1
     }
   },
-  "products/active-work/src/bootstrap/parse-once.test.ts": {
-    "titan/no-internal-module-mock": {
-      "count": 1
-    }
-  },
   "products/active-work/src/commands/archive.ts": {
     "titan/max-function-lines": {
       "count": 1
@@ -59,11 +54,6 @@
       "count": 2
     }
   },
-  "products/active-work/src/commands/miner-status.test.ts": {
-    "titan/no-internal-module-mock": {
-      "count": 1
-    }
-  },
   "products/active-work/src/commands/miner-status.ts": {
     "titan/max-function-lines": {
       "count": 1
@@ -91,11 +81,6 @@
   },
   "products/active-work/src/commands/session-list.ts": {
     "titan/max-function-lines": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/commands/session-recover.test.ts": {
-    "titan/no-internal-module-mock": {
       "count": 1
     }
   },
@@ -352,11 +337,6 @@
   "products/active-work/src/sessions/lease.ts": {
     "titan/max-function-lines": {
       "count": 3
-    }
-  },
-  "products/active-work/src/sessions/resolve-session-location.test.ts": {
-    "titan/no-internal-module-mock": {
-      "count": 1
     }
   },
   "products/active-work/src/setup/steps-daemon.ts": {

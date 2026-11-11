@@ -37,4 +37,10 @@ describe("speech rate", () => {
     expect(report.overallInBand).toBe(false);
     expect(speechRateSummary(report)).toBe("speech rate: no voiced beats");
   });
+
+  it("says the rate was not measured when no beat is given", () => {
+    const report = speechRateReport([]);
+    expect(report.overallWpm).toBeNull();
+    expect(speechRateSummary(report)).toBe("speech rate: not measured (no beat has word timings)");
+  });
 });

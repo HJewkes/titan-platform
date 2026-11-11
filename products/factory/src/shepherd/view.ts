@@ -135,6 +135,17 @@ function heldWakeWait(run: WorkflowRun, steps: readonly StepResult[]): string | 
   return `no fixer could start (${wake.data.result.reason})${told ? "; the seat was told" : ""}, waiting for a new head`;
 }
 
+/**
+ * After a no-verdict diagnosis the new-head wait is on the planner's findings, not a fix. The phase stays `fixing`
+ * because agent-chat branches on it (seat-watch, park blocker, custody); only the next action says why (TP-3820).
+ */
+function diagnosisWait(run: WorkflowRun, steps: readonly StepResult[], pending: { gate: GateRecord } | undefined): string | undefined {
+  const current = run.currentStep;
+  if (pending || current === null || !["await-new-head", "sh-await-new-head"].some((id) => stepIdMatches(id, current))) return undefined;
+  const previous = steps.at(-1)?.stepId;
+  return previous !== undefined && stepIdMatches("sh-no-verdict-diagnosis", previous) ? "waiting for the diagnosis planner's findings and a new head" : undefined;
+}
+
 /** While a red head waits out a frozen main or a red base, the hold's own reason is the next action. */
 function freezeWait(run: WorkflowRun, steps: readonly StepResult[]): string | undefined {
   if (!["sh-freeze-wait", "sh-base-wait"].some((id) => run.currentStep !== null && stepIdMatches(id, run.currentStep))) return undefined;
@@ -210,7 +221,7 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     phase,
     headSha,
     phaseSince: since,
-    nextAction: freezeWait(run, steps) ?? baseWait(run, steps) ?? heldWakeWait(run, steps) ?? cleanupWait(run, phase) ?? (headSha === null && ciWaitRunning(run) && !pending ? CI_HEAD_UNREAD : undefined) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending && stepOf(pending.gate.id), registration, train?.runId === run.id ? undefined : train)),
+    nextAction: freezeWait(run, steps) ?? baseWait(run, steps) ?? heldWakeWait(run, steps) ?? cleanupWait(run, phase) ?? (headSha === null && ciWaitRunning(run) && !pending ? CI_HEAD_UNREAD : undefined) ?? (holding ? holdWait(registration, headSha) : diagnosisWait(run, steps, pending) ?? nextAction(phase, headSha, pending?.gate, pending && stepOf(pending.gate.id), registration, train?.runId === run.id ? undefined : train)),
     pendingGate: pending ? { gateId: pending.gate.id, stepId: stepOf(pending.gate.id), since: pending.gate.createdAt } : null,
     held,
     stalled: asStalled(stallReason(run, steps, phase, since, now, { registration, headSha, holding })),
