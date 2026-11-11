@@ -8,7 +8,6 @@ import { renameSync, unlinkSync } from "node:fs";
 import { relinkAfterDeploy, relinkCli } from "./deploy-cli-link.js";
 import { deployedBinPath } from "./deploy-checkout.js";
 import type { DeployPorts } from "./deploy.js";
-import { plistPath } from "./service.js";
 
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof Fs>();
@@ -167,48 +166,49 @@ describe("relinkAfterDeploy", () => {
   const checkout = "/srv/tester/deploy/titan-platform";
   const bin = deployedBinPath(checkout);
 
-  const run = (code: number, unitText: string): { out: string; err: string } => {
-    const ports = partialFake<DeployPorts>({ platform: "darwin", home: HOME, readFile: (path: string) => (path === plistPath(HOME) ? unitText : undefined) });
+  const run = async (code: number, runBin: string): Promise<{ out: string; err: string }> => {
+    const printed = `gui/501/job = {\n\targuments = {\n\t\t/usr/bin/node\n\t\t${runBin}\n\t}\n}\n`;
+    const ports = partialFake<DeployPorts>({ platform: "darwin", uid: 501, home: HOME, launchctl: async () => ({ code: 0, stdout: printed, stderr: "" }) });
     let out = "";
     let err = "";
-    relinkAfterDeploy({ code, ports, checkout, link: { linkPath }, io: { stdout: (t) => void (out += t), stderr: (t) => void (err += t) } });
+    await relinkAfterDeploy({ code, ports, checkout, link: { linkPath }, io: { stdout: (t) => void (out += t), stderr: (t) => void (err += t) } });
     return { out, err };
   };
 
-  it("repoints a stale factory symlink after an exit-0 deploy whose service runs the checkout", () => {
+  it("repoints a stale factory symlink after an exit-0 deploy whose service runs the checkout", async () => {
     symlinkSync(factoryBin("stale"), linkPath);
 
-    const { out } = run(0, `<string>${bin}</string>`);
+    const { out } = await run(0, bin);
 
     expect(readlinkSync(linkPath)).toBe(bin);
     expect(out).toContain("repointed");
   });
 
-  it("leaves the link alone after a failed deploy", () => {
+  it("leaves the link alone after a failed deploy", async () => {
     const stale = factoryBin("stale");
     symlinkSync(stale, linkPath);
 
-    run(1, `<string>${bin}</string>`);
+    await run(1, bin);
 
     expect(readlinkSync(linkPath)).toBe(stale);
   });
 
-  it("leaves the link alone after a prepare-only deploy whose service runs another tree", () => {
+  it("leaves the link alone after a prepare-only deploy whose service runs another tree", async () => {
     const stale = factoryBin("stale");
     symlinkSync(stale, linkPath);
 
-    run(0, "<string>/srv/dev-tree/products/factory/dist/bin.js</string>");
+    await run(0, "/srv/dev-tree/products/factory/dist/bin.js");
 
     expect(readlinkSync(linkPath)).toBe(stale);
   });
 
-  it.skipIf(process.getuid?.() === 0)("warns instead of throwing when the relink fails and leaves no temp link behind", () => {
+  it.skipIf(process.getuid?.() === 0)("warns instead of throwing when the relink fails and leaves no temp link behind", async () => {
     symlinkSync(factoryBin("stale"), linkPath);
     chmodSync(join(dir, "bin"), 0o500);
 
     let err: string;
     try {
-      ({ err } = run(0, `<string>${bin}</string>`));
+      ({ err } = await run(0, bin));
     } finally {
       chmodSync(join(dir, "bin"), 0o700);
     }

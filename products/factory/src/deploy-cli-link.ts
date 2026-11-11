@@ -55,9 +55,9 @@ export function relinkCli(ports: CliLinkPorts, bin: string): string {
  * The deploy verb's last step: relink only after an exit-0 deploy whose service runs the checkout, so a
  * prepare-only deploy leaves CLI and serve matching. A relink failure warns and never changes the exit code.
  */
-export function relinkAfterDeploy(args: { code: number; ports: DeployPorts; checkout: string; link: CliLinkPorts; io: { stdout: (t: string) => void; stderr: (t: string) => void } }): void {
+export async function relinkAfterDeploy(args: { code: number; ports: DeployPorts; checkout: string; link: CliLinkPorts; io: { stdout: (t: string) => void; stderr: (t: string) => void } }): Promise<void> {
   const { code, ports, checkout, link, io } = args;
-  if (code !== 0 || !serviceRunsFromCheckout(ports, checkout)) return;
+  if (code !== 0 || !(await serviceRunsFromCheckout(ports, checkout))) return;
   try {
     io.stdout(`${relinkCli(link, deployedBinPath(checkout))}\n`);
   } catch (err) {
