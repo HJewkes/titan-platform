@@ -10,14 +10,19 @@ export const LINKS_OMITTED = "digest.consoleOrigin unset: alarm links omitted";
 /** Resolves to the HTTP status of a GET on the url; rejects on an empty reply, a timeout or a connection error. */
 export type HttpsProbe = (url: string) => Promise<number>;
 
-export const httpsProbe: HttpsProbe = (url) =>
+/** The deadline covers the whole exchange: a server that drips bytes keeps a socket-idle timeout from ever firing. */
+export const httpsProbe = (url: string, deadlineMs: number = PROBE_TIMEOUT_MS): Promise<number> =>
   new Promise((resolve, reject) => {
-    const req = request(url, { method: "GET", timeout: PROBE_TIMEOUT_MS }, (res) => {
+    const req = request(url, { method: "GET" }, (res) => {
+      clearTimeout(deadline);
       res.resume();
       resolve(res.statusCode ?? 0);
     });
-    req.on("timeout", () => req.destroy(new Error("probe timed out")));
-    req.on("error", reject);
+    const deadline = setTimeout(() => req.destroy(new Error("probe timed out")), deadlineMs);
+    req.on("error", (error) => {
+      clearTimeout(deadline);
+      reject(error);
+    });
     req.end();
   });
 
