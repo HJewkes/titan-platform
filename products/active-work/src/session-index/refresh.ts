@@ -233,7 +233,7 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
       resolveOrigins: agentChatOriginResolver(undefined, options.taskRoot),
       resolvePrs: options.skipPrOutcomes
         ? undefined
-        : ghPrResolver(graph, {
+        : ghPrResolver({
             run: options.runGh,
             errors: prErrors,
             onPolled: (count) => {
