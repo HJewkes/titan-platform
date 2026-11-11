@@ -151,12 +151,14 @@ relative to main, which is what CI does; with `BASE_REF` unset, `dag:check` stil
 
 `pnpm dead:check` lists exports that no other module imports, and CI fails the pull
 request on a new one. That includes an export used only inside its own file: drop the
-`export` keyword. `pnpm dag:check` already runs it; run it alone with `pnpm dead:check`,
-which indexes the tree itself. Like `dag:check`, it needs the built
+`export` keyword. `pnpm dag:check` runs it on a graph seeded from the machine graph, which takes about
+30 s. Use `pnpm dag:check`; bare `dead:check` is for `--update` and `--db`. A bare
+`pnpm dead:check` indexes the whole tree cold and runs past 10 minutes locally. Exit 75
+means the dag-check lock stayed busy: retry once. Both need the built
 `@titan-design/code-graph`:
 
 ```sh
-pnpm build && pnpm dead:check
+pnpm build && pnpm dag:check
 ```
 
 Exports that predate the check sit in `.codewatch/dead-exports.json`. The baseline only

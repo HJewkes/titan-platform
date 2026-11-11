@@ -1,11 +1,9 @@
+import { CI_WAIT_HEAD } from "./ci-wait-head.js";
 import type { ActionCall } from "./turn-action.js";
 
 /** What the previous request in the same chain did last, before the gap that forced a rebuild. */
 export const GAP_CAUSES = ["ci-wait", "other-bash", "end-of-turn"] as const;
 export type GapCause = (typeof GAP_CAUSES)[number];
-
-/** Command heads of the `gh pr checks` / `gh run` / `ci-wait` family, as session-read reduces them. */
-const CI_WAIT_HEAD = /^(?:ci-wait|gh pr checks|gh run)\b/;
 
 /**
  * The gap's cause from the tool calls the previous request issued. Only its last call counts, since

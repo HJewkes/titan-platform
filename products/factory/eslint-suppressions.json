@@ -339,11 +339,6 @@
       "count": 1
     }
   },
-  "products/factory/src/shepherd/view.ts": {
-    "titan/max-line-length": {
-      "count": 1
-    }
-  },
   "products/factory/src/shepherd/waiting.ts": {
     "titan/max-line-length": {
       "count": 1
