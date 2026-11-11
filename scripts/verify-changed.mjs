@@ -9,6 +9,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BUSY_EXIT_CODE } from "./dag-check-lock.mjs";
+import { MACHINE_SEED, usesMachineSeed } from "./dag-check-seed.mjs";
 import { LINT_TYPES_INPUTS } from "./lint-types.mjs";
 import { TYPED_BASELINE } from "./lint-units.mjs";
 import { flakeTargets, loadFlakeClasses, repeatGuard } from "./flake-repeat.mjs";
@@ -158,10 +159,11 @@ const DEAD_CHECK_LOCK_WAIT_MS = "30000";
 const DEAD_CHECK_LABEL = "dead:check";
 const INDEXED_EXT = /\.(?:[cm]?[jt]sx?|py)$/;
 
-function deadCheckCommand(changed, workspace, base, indexedFiles) {
+function deadCheckCommand(changed, workspace, base, indexedFiles, seedExists) {
   const dirs = deadCheckDirs(changed, workspace);
   if (dirs.length === 0) return null;
-  const files = indexedFiles(dirs);
+  // A seeded run re-parses only changed files, so the budget guards cold indexes only.
+  const files = seedExists() ? 0 : indexedFiles(dirs);
   if (files > DEAD_CHECK_MAX_FILES) {
     return { label: `dead:check: ${files} files in ${dirs.join(", ")} exceed the ${DEAD_CHECK_MAX_FILES}-file local budget, deferred to CI`, deferred: true };
   }
@@ -212,7 +214,7 @@ export const CI_COVERAGE = [
   { job: "validate", run: "pnpm registry:closure", disposition: "local", label: "registry:closure" },
   { job: "dag-check", run: /INDEX_VERSION|codewatch-summary\.mjs/, disposition: "setup", reason: "cache key and report summary, not a check" },
   { job: "dag-check", run: /^pnpm dag:check:graph /, disposition: "separate-gate", reason: "pnpm dag:check, about 200 s seeded, runs beside verify:changed" },
-  { job: "dag-check", run: /^pnpm dead:check /, disposition: "local-scoped", label: "dead:check", reason: "indexes only the touched packages, and defers past a 600-file budget to CI" },
+  { job: "dag-check", run: /^pnpm dead:check /, disposition: "local-scoped", label: "dead:check", reason: "indexes only the touched packages from the machine seed, and defers past a 600-file budget to CI when no seed exists" },
   { job: "dag-check", run: "pnpm lint:types", disposition: "local-scoped", label: "lint:types", reason: "scoped by lintTypesScope over CI's test-scope graph" },
   { job: "perf", run: "pnpm vitest run --project perf", disposition: "ci-only", reason: "timing budgets need a runner with no other test load, so a local run would not be the authority" },
   { job: "hub-compose", run: /[\s\S]/, disposition: "ci-only", reason: "needs Docker; CI already scopes the job by path" },
@@ -223,7 +225,7 @@ export const CI_COVERAGE = [
  * change: a trigger list that misses an input fails silently, and only CI catches it. LOC runs in-process after the
  * build, which produces the code-graph dist it reads.
  */
-export function planCommands({ base, changed, workspace, hasTimeout, spool, flakeClasses = NO_FLAKE_CLASSES, indexedFiles = () => 0 }) {
+export function planCommands({ base, changed, workspace, hasTimeout, spool, flakeClasses = NO_FLAKE_CLASSES, indexedFiles = () => 0, seedExists = () => false }) {
   if (changed.length === 0) return [];
   return [
     pnpmRun("env:doctor"),
@@ -241,7 +243,7 @@ export function planCommands({ base, changed, workspace, hasTimeout, spool, flak
     { label: "changeset status", cmd: "pnpm", args: ["exec", "changeset", "status", `--since=${base}`] },
     { ...pnpmRun("index-version:check"), env: { BASE_REF: base } },
     { ...pnpmRun("registry:closure"), env: { CLOSURE_BASE: base } },
-    deadCheckCommand(changed, workspace, base, indexedFiles),
+    deadCheckCommand(changed, workspace, base, indexedFiles, seedExists),
     lintTypesCommand(changed, workspace),
   ].filter(Boolean);
 }
@@ -270,6 +272,8 @@ function timingSpool() {
 // The files under `dirs` the indexer would read, tracked or not.
 const indexedFiles = (dirs) =>
   gitLines(["ls-files", "--cached", "--other", "--exclude-standard", "--", ...dirs]).filter((path) => INDEXED_EXT.test(path)).length;
+
+const seedExists = () => usesMachineSeed([], process.env) && existsSync(MACHINE_SEED);
 
 const hasTimeout = () => spawnSync("timeout", ["--version"], { stdio: "ignore" }).error === undefined;
 
@@ -359,7 +363,7 @@ async function runStep(step, changed) {
 async function main() {
   const base = process.env.VERIFY_CHANGED_BASE || process.argv[2] || DEFAULT_BASE;
   const changed = changedFiles(base);
-  const plan = planCommands({ base, changed, workspace: readWorkspace(ROOT), hasTimeout: hasTimeout(), spool: timingSpool(), flakeClasses: loadFlakeClasses(FLAKE_CLASSES_PATH), indexedFiles });
+  const plan = planCommands({ base, changed, workspace: readWorkspace(ROOT), hasTimeout: hasTimeout(), spool: timingSpool(), flakeClasses: loadFlakeClasses(FLAKE_CLASSES_PATH), indexedFiles, seedExists });
   if (plan.length === 0) console.log(`verify:changed: nothing changed against ${base}`);
   const failures = [];
   for (const step of plan) {
