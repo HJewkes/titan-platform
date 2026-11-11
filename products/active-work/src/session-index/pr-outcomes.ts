@@ -16,14 +16,14 @@ import type { WorkspaceGraph } from './graph.js';
  * row stays unchecked and the next pass asks again.
  */
 
-export const PR_OUTCOME_BATCH = 50;
+const PR_OUTCOME_BATCH = 50;
 const CONCURRENCY = 5;
 const DEFAULT_FAIL_BACKOFF_MS = 30 * 60 * 1000;
 const DEFAULT_OPEN_RECHECK_MS = 10 * 60 * 1000;
 const DEFAULT_CLOSED_RECHECK_MS = 24 * 60 * 60 * 1000;
 const GH_FIELDS = 'state,mergedAt,closedAt,reviews,commits';
 
-export interface PrOutcomeOptions {
+interface PrOutcomeOptions {
   /** Process boundary; tests replace it so the real `gh` never runs. */
   run?: RunCommand;
   /** PRs asked about per pass. */
