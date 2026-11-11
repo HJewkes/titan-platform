@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Checks the burndown port map against agent-chat's src/agents/burndown/ at a ref, and refreshes the map's per-file facts.
-// check exits 1 for unmapped, removed, unpinned or unknown-portedFrom entries or for subdirectories, 2 for drift alone, 0 when clean.
+// check exits 1 for unmapped, removed, unpinned or unknown-portedFrom entries, 2 for drift alone, 0 when clean.
 // Usage: node scripts/burndown-port-map.mjs check [--agent-chat <dir>] [--ref <sha>] [--map <file>]
 //        node scripts/burndown-port-map.mjs facts --ref <sha> [--agent-chat <dir>] [--map <file>]
 import { execFileSync } from "node:child_process";
