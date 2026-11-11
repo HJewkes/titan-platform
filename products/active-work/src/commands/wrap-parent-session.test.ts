@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import YAML from 'yaml';
+import { z } from 'zod';
 import wrap from './wrap.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
 import { setGitRunner, resetRunners, type CommandRunner } from '../utils/git-gh.js';
@@ -29,7 +30,7 @@ function baseArgs(overrides: Record<string, unknown> = {}) {
 async function readFrontmatter(file: string): Promise<Record<string, unknown>> {
   const raw = await fs.readFile(file, 'utf8');
   const block = /^---\r?\n([\s\S]*?)\r?\n---/.exec(raw);
-  return YAML.parse(block?.[1] ?? '') as Record<string, unknown>;
+  return z.record(z.string(), z.unknown()).parse(YAML.parse(block?.[1] ?? ''));
 }
 
 beforeEach(() => {

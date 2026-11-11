@@ -143,27 +143,7 @@
       "count": 1
     }
   },
-  "products/active-work/src/commands/task-edit-flags.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/commands/task-edit-guard.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/active-work/src/commands/task-edit.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/commands/task-list.perf.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/commands/task-note.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }
@@ -181,16 +161,6 @@
   "products/active-work/src/commands/track.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
-    }
-  },
-  "products/active-work/src/commands/wrap-parent-session.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/commands/wrap.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
     }
   },
   "products/active-work/src/dashboard/components/StateBadge.tsx": {
@@ -240,11 +210,6 @@
     }
   },
   "products/active-work/src/drain/transcript-reader.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/integration/end-to-end.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }
