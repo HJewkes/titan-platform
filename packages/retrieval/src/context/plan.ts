@@ -63,6 +63,12 @@ function requireFinite(value: number, name: string): void {
   }
 }
 
+function requireNonNegativeInteger(value: number, name: string): void {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new RangeError(`${name} must be a non-negative integer, got ${value}`);
+  }
+}
+
 function lookup(table: Record<string, number> | undefined, key: string): number | undefined {
   return table !== undefined && Object.hasOwn(table, key) ? table[key] : undefined;
 }
@@ -74,7 +80,10 @@ function resolveBudget(budget: ContextBudget): Resolved {
   for (const [category, quota] of Object.entries(budget.quotas ?? {})) requireFinite(quota, `quota for ${category}`);
   const defaultQuota = budget.defaultQuota ?? 1;
   requireFinite(defaultQuota, "defaultQuota");
-  if (budget.maxTier !== undefined) requireFinite(budget.maxTier, "maxTier");
+  if (budget.maxTier !== undefined) requireNonNegativeInteger(budget.maxTier, "maxTier");
+  for (const [category, tier] of Object.entries(budget.defaultTiers ?? {})) {
+    requireNonNegativeInteger(tier, `default tier for ${category}`);
+  }
   const estimate = budget.estimateTokens ?? estimateTokens;
   const ceilingOf = (c: ContextCandidate): number => Math.min(c.tiers.length - 1, budget.maxTier ?? Infinity);
   return {
