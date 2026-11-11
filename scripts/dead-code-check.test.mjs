@@ -20,6 +20,7 @@ import {
   HEAP_CAP_MB,
   ROOT_ROLES,
   updatedBaseline,
+  openWorkGraph,
   workGraphSeed,
 } from "./dead-code-check.mjs";
 import { MACHINE_SEED } from "./dag-check-seed.mjs";
@@ -512,5 +513,21 @@ describe("seeding the work graph", () => {
   it("never seeds a --db run, which reads an existing graph", () => {
     expect(workGraphSeed({ argv: ["--db", "/tmp/graph.db"], env: {}, exists: present })).toBeNull();
     expect(workGraphSeed({ argv: ["--db=/tmp/graph.db"], env: {}, exists: present })).toBeNull();
+  });
+});
+
+describe("opening a seeded work graph", () => {
+  it("falls back to an empty graph when the seed is not a usable database", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "dead-seed-"));
+    const db = path.join(dir, "graph.db");
+    writeFileSync(db, "not a sqlite database, a seed cut short");
+    const graph = await import(new URL("../packages/code-graph/dist/index.js", import.meta.url).href);
+    const store = openWorkGraph(graph, db);
+    try {
+      expect(store.listSnapshots({ limit: 1 })).toEqual([]);
+    } finally {
+      store.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

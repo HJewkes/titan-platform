@@ -285,9 +285,24 @@ export async function graphFromDb(dbPath) {
   }
 }
 
+// A seed written by another schema or truncated mid-save must cost a cold index, never a failed check.
+export function openWorkGraph(graph, dbPath) {
+  try {
+    const store = graph.openCodeGraph(dbPath);
+    store.listSnapshots({ limit: 1 });
+    return store;
+  } catch (err) {
+    console.error(`seed graph unusable, indexing cold: ${err instanceof Error ? err.message : String(err)}`);
+    rmSync(dbPath, { force: true });
+    rmSync(`${dbPath}-wal`, { force: true });
+    rmSync(`${dbPath}-shm`, { force: true });
+    return graph.openCodeGraph(dbPath);
+  }
+}
+
 async function indexGraph(workDir, dirs = TIERS) {
   const graph = await import(ENTRY);
-  const store = graph.openCodeGraph(path.join(workDir, "graph.db"));
+  const store = openWorkGraph(graph, path.join(workDir, "graph.db"));
   try {
     const paths = dirs.map((sub) => path.join(ROOT, sub)).filter((p) => existsSync(p));
     // Dead exports read nodes, edges and roles only; skipping metrics trims a scoped verify:changed run.
