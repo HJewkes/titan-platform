@@ -35,12 +35,17 @@ function processEnv(env: Env): NodeJS.ProcessEnv {
   return { ...process.env, NO_COLOR: '1', ...env };
 }
 
+function orEmpty(output: string | null): string {
+  return output ?? '';
+}
+
 export function runCli(args: string[], env: Env = {}): RunResult {
   const result = spawnSync(process.execPath, [requireDistBin(), ...args], {
     encoding: 'utf8',
     env: processEnv(env),
   });
-  return { status: result.status ?? -1, stdout: result.stdout, stderr: result.stderr };
+  // spawnSync leaves stdout and stderr null when the child never starts, whatever the typings say.
+  return { status: result.status ?? -1, stdout: orEmpty(result.stdout), stderr: orEmpty(result.stderr) };
 }
 
 export function runCliAsync(args: string[], env: Env = {}): Promise<RunResult> {
