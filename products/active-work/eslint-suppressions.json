@@ -279,11 +279,6 @@
       "count": 1
     }
   },
-  "products/active-work/src/server/session-index-watch.test.ts": {
-    "titan/no-internal-module-mock": {
-      "count": 6
-    }
-  },
   "products/active-work/src/server/session-index-watch.ts": {
     "titan/max-function-lines": {
       "count": 3
