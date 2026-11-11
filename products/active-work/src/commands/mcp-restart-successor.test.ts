@@ -81,24 +81,24 @@ describe('restart successor script', () => {
         `require('node:fs').writeFileSync(${JSON.stringify(marker)}, JSON.stringify({ at: Date.now(), argv: process.argv.slice(2) }));`,
       );
       const port = await freePort();
-      const dummy = startProcess(['-e', 'setTimeout(() => {}, 1500)']);
-      const dummyExited = new Promise<number>((resolve) =>
-        dummy.once('exit', () => resolve(Date.now())),
-      );
+      // The predecessor stamps its own exit, so the bound has no parent-side event lag.
+      const exitFile = path.join(tmp, 'predecessor-exit.txt');
+      const dummy = startProcess([
+        '-e',
+        `process.on('exit', () => require('node:fs').writeFileSync(${JSON.stringify(exitFile)}, String(Date.now()))); setTimeout(() => {}, 1500)`,
+      ]);
+      const dummyExited = new Promise<void>((resolve) => dummy.once('exit', () => resolve()));
 
       startProcess(['-e', SUCCESSOR_SCRIPT, String(dummy.pid), entry, String(port)]);
       await new Promise((r) => setTimeout(r, 700));
       expect(existsSync(marker)).toBe(false);
-      // The dummy is still running here (its exit event has not fired), so the
-      // successor may not serve before this moment.
-      const knownRunningAt = Date.now();
 
       await dummyExited;
       expect(await until(() => existsSync(marker), 10_000)).toBe(true);
       const served = z
         .object({ at: z.number(), argv: z.array(z.string()) })
         .parse(JSON.parse(readFileSync(marker, 'utf8')));
-      expect(served.at).toBeGreaterThanOrEqual(knownRunningAt);
+      expect(served.at).toBeGreaterThanOrEqual(Number(readFileSync(exitFile, 'utf8')));
       expect(served.argv).toEqual(['mcp', 'serve', '--port', String(port)]);
     },
     HARD_TIMEOUT_MS,
