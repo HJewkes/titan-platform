@@ -532,6 +532,22 @@ describe("opening a seeded work graph", () => {
     }
   });
 
+  it("closes a store that opens but fails to list snapshots before removing the db files", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "dead-seed-"));
+    const db = path.join(dir, "graph.db");
+    const events = [];
+    const opened = { listSnapshots: () => { throw new Error("schema mismatch"); }, close: () => events.push(existsSync(db) ? "close-with-db-present" : "close-after-removal") };
+    const graph = { openCodeGraph: () => { if (events.length === 0 && !existsSync(`${db}.opened`)) { writeFileSync(db, "seed"); writeFileSync(`${db}.opened`, ""); return opened; } return { listSnapshots: () => [] }; } };
+    try {
+      const store = openWorkGraph(graph, db);
+      expect(events).toEqual(["close-with-db-present"]);
+      expect(existsSync(db)).toBe(false);
+      expect(store.listSnapshots()).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("refuses the cold fallback when a verify:changed run over the budget forbids it", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "dead-seed-"));
     const db = path.join(dir, "graph.db");

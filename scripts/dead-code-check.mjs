@@ -289,12 +289,15 @@ export async function graphFromDb(dbPath) {
 export class ColdFallbackDeferred extends Error {}
 
 export function openWorkGraph(graph, dbPath, { deferCold = false } = {}) {
+  let store;
   try {
-    const store = graph.openCodeGraph(dbPath);
+    store = graph.openCodeGraph(dbPath);
     store.listSnapshots({ limit: 1 });
     return store;
   } catch (err) {
     console.error(`seed graph unusable, indexing cold: ${err instanceof Error ? err.message : String(err)}`);
+    // A db that opens but fails to read is still held open; its files must not be removed under it.
+    store?.close();
     rmSync(dbPath, { force: true });
     rmSync(`${dbPath}-wal`, { force: true });
     rmSync(`${dbPath}-shm`, { force: true });
