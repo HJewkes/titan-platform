@@ -102,6 +102,63 @@ throws leaves the RRF-fused ranking in place and adds
 `{ retriever: RERANK_STAGE, reason: 'error', message }` to the same `degraded` array, so a
 cross-encoder that runs out of memory costs the reordering and not the answer.
 
+## Token-budget context planning
+
+`planContext(candidates, budget)` turns a scored list of candidates into a prompt-ready
+plan that fits a token budget. Each candidate carries an `id`, a `category`, a `score` and
+`tiers`: renderings from cheapest (tier 0) to richest. The result is
+`{ entries, dropped, usedTokens, budgetTokens }`; each entry names the tier it landed on
+and its token cost.
+
+```ts
+import { planContext } from '@titan-design/retrieval';
+
+const plan = planContext(
+  [
+    { id: 'note-a', category: 'notes', score: 0.9, tiers: ['A: title', 'A: title and summary', 'A: full text of the note'] },
+    { id: 'doc-b', category: 'docs', score: 0.7, tiers: ['B: title', 'B: title and summary'] },
+    { id: 'note-c', category: 'notes', score: 0.4, tiers: ['C: title'] },
+  ],
+  { tokens: 40, quotas: { notes: 0.5 }, defaultQuota: 0.75 },
+);
+// plan.entries: kept renderings, best score first
+// plan.dropped: [{ id, category, reason }] for anything left out
+```
+
+It runs three passes over the candidates, best score first:
+
+1. **Breadth.** Every candidate is placed at its default tier (tier 0 unless
+   `defaultTiers[category]` says otherwise, never above `maxTier`) while it still fits.
+2. **Cap.** No entry may cost more than twice the mean share, `2 * tokens / placed`. An
+   entry over the cap falls back to the richest lower tier that fits under it, and is
+   dropped as `over-cap` if none does.
+3. **Deepening.** With the budget left over, the best hits are promoted one tier at a
+   time, each promotion staying under the cap and inside the leftover tokens.
+
+**Quotas.** `quotas` maps a category to a fraction of `tokens` that category may use
+(`0.5` is half the budget). A category with no entry uses `defaultQuota`, which is `1`
+when unset, so by default nothing is quota-limited. Quotas, `tokens` (a non-negative
+integer) and `maxTier` are validated up front; a bad value throws a `RangeError`.
+
+**Drop reasons.** Every candidate that is left out appears in `dropped` as
+`{ id, category, reason }`:
+
+| `reason` | Meaning |
+| --- | --- |
+| `over-budget` | placing it would pass the total `tokens` |
+| `over-quota` | placing it would pass its category's quota |
+| `duplicate` | a higher-scored candidate with the same `id` was already placed |
+| `over-cap` | too big for the 2x-mean cap at every tier up to its default |
+| `no-tiers` | `tiers` was empty |
+
+**Token estimation.** Cost is `estimateTokens(text)`, which is `Math.ceil(text.length / 4)`.
+That is a rough chars-per-token ratio and not a tokenizer. To budget against a real one,
+pass `estimateTokens` in the budget; it is called for every tier of every candidate:
+
+```ts
+planContext(candidates, { tokens: 4000, estimateTokens: (text) => myTokenizer.count(text) });
+```
+
 ## Gotchas
 
 **A graph-only hit has no locator.** It was reached by expansion, not by matching text. Do

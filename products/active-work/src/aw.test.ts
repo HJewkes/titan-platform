@@ -1,12 +1,19 @@
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import type * as ChildProcessModule from 'node:child_process';
 import { describe, expect, it, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import { EXIT, NotFoundError } from './errors.js';
 import { PROFILE_ROOT_ENV } from './utils/profile-dir.js';
 
 import { helpText, main, type AwDeps } from './aw.js';
 import { openSlugOrInit } from './launcher-open.js';
+
+const spawnSpy = vi.hoisted(() => vi.fn());
+vi.mock('node:child_process', async (importOriginal) => ({
+  ...(await importOriginal<typeof ChildProcessModule>()),
+  spawn: spawnSpy,
+}));
 
 function fakeDeps(): { [K in keyof AwDeps]: ReturnType<typeof vi.fn<AwDeps[K]>> } {
   return {
@@ -55,6 +62,7 @@ describe('aw --profile', () => {
     mkdirSync(path.join(profilesRoot, 'agents'));
     mkdirSync(path.join(profilesRoot, 'server'));
     vi.stubEnv(PROFILE_ROOT_ENV, profilesRoot);
+    spawnSpy.mockClear();
     deps = fakeDeps();
     stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
   });
@@ -83,7 +91,7 @@ describe('aw --profile', () => {
     await main(['node', 'aw', 'resume', 'abc123', '--profile', 'ghost'], deps);
 
     expect(deps.exit).toHaveBeenCalledWith(EXIT.USAGE);
-    expect(deps.launch).not.toHaveBeenCalled();
+    expect(spawnSpy).not.toHaveBeenCalled();
   });
 
   it('documents --profile in the help text', () => {

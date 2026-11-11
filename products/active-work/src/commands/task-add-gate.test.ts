@@ -78,7 +78,7 @@ describe('task.add done_when gate', () => {
 
   it('an agent caller with a good done_when files the task', async () => {
     await withInitiative(async (root) => {
-      const task = await runRaw('task.add', { slug: 'gate-test', title: 'T', done_when: GOOD }, root, 'agent');
+      const task = await run('task.add', { slug: 'gate-test', title: 'T', done_when: GOOD }, root, 'agent');
       expect(task.id).toMatch(/-1$/);
     });
   });
@@ -105,7 +105,7 @@ describe('task.add done_when gate', () => {
   it('the refused call leaves the next id unchanged', async () => {
     await withInitiative(async (root) => {
       await expect(run('task.add', { slug: 'gate-test', title: 'T' }, root, 'agent')).rejects.toThrow();
-      const task = await runRaw('task.add', { slug: 'gate-test', title: 'T', done_when: GOOD }, root, 'agent');
+      const task = await run('task.add', { slug: 'gate-test', title: 'T', done_when: GOOD }, root, 'agent');
       expect(task.id).toMatch(/-1$/);
     });
   });
