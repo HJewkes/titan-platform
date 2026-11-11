@@ -27,6 +27,15 @@
       "kills": [
         "alarmLinks omits links when the origin does not answer over https"
       ]
+    },
+    {
+      "name": "the probe only times out on socket idle",
+      "file": "products/factory/src/digest/console-probe.ts",
+      "find": "const deadline = setTimeout(() => req.destroy(new Error(\"probe timed out\")), deadlineMs);",
+      "replace": "const deadline = setTimeout(() => undefined, deadlineMs);",
+      "kills": [
+        "httpsProbe rejects within the total deadline when the server keeps the socket busy without ever answering"
+      ]
     }
   ]
 }

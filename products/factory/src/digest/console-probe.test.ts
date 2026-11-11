@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { alarmLinks } from "./console-probe.js";
+import { createServer, type Server } from "node:net";
+import { afterEach, describe, expect, it } from "vitest";
+import { alarmLinks, httpsProbe } from "./console-probe.js";
 
 const ORIGIN = "https://console.example.ts.net";
 
@@ -25,5 +26,31 @@ describe("alarmLinks", () => {
     });
 
     expect(links).toMatchObject({ gap: expect.stringContaining("did not answer over https (connect ECONNREFUSED)") });
+  });
+});
+
+describe("httpsProbe", () => {
+  const servers: Server[] = [];
+  afterEach(() => servers.splice(0).forEach((server) => server.close()));
+
+  /** Announces a 16 KiB TLS record, then sends one byte every 20 ms, so the socket is never idle yet the handshake never finishes. */
+  async function dripFeedingServer(): Promise<number> {
+    const server = createServer((socket) => {
+      socket.on("error", () => undefined);
+      socket.write(Buffer.from([0x16, 0x03, 0x03, 0x40, 0x00]));
+      const drip = setInterval(() => socket.write(Buffer.from([0x00])), 20);
+      socket.on("close", () => clearInterval(drip));
+    });
+    servers.push(server);
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("server has no tcp port");
+    return address.port;
+  }
+
+  it("rejects within the total deadline when the server keeps the socket busy without ever answering", async () => {
+    const port = await dripFeedingServer();
+
+    await expect(httpsProbe(`https://127.0.0.1:${port}/`, 300)).rejects.toThrow("probe timed out");
   });
 });
