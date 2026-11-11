@@ -3,16 +3,16 @@
   "mutations": [
     {
       "name": "a run in sh-cleanup reads as watching main CI again",
-      "file": "products/factory/src/shepherd/view.ts",
-      "find": "heldWakeWait(run, steps) ?? cleanupWait(run, phase) ??",
-      "replace": "heldWakeWait(run, steps) ??",
+      "file": "products/factory/src/shepherd/view-waits.ts",
+      "find": "  ({ run, steps }) => heldWakeWait(run, steps),\n  ({ run, phase }) => cleanupWait(run, phase),\n",
+      "replace": "  ({ run, steps }) => heldWakeWait(run, steps),\n",
       "kills": [
         "a run parked in recovery after it recorded its outcome says a running run past its main CI read is cleaning up, not watching main CI"
       ]
     },
     {
       "name": "every post-merge step reads as cleaning up",
-      "file": "products/factory/src/shepherd/view.ts",
+      "file": "products/factory/src/shepherd/view-waits.ts",
       "find": "phase === \"post-merge\" && run.currentStep !== null && stepIdMatches(\"sh-cleanup\", run.currentStep) ?",
       "replace": "phase === \"post-merge\" && run.currentStep !== null && stepPhase(run.currentStep) === \"post-merge\" ?",
       "kills": [
@@ -21,7 +21,7 @@
     },
     {
       "name": "a finished run left on sh-cleanup reads as still cleaning up",
-      "file": "products/factory/src/shepherd/view.ts",
+      "file": "products/factory/src/shepherd/view-waits.ts",
       "find": "phase === \"post-merge\" && run.currentStep !== null",
       "replace": "run.currentStep !== null",
       "kills": [
@@ -39,7 +39,7 @@
     },
     {
       "name": "a run that stopped at ci-wait reads as still waiting",
-      "file": "products/factory/src/shepherd/view.ts",
+      "file": "products/factory/src/shepherd/view-waits.ts",
       "find": "const ciWaitRunning = (run: WorkflowRun): boolean => run.status === \"running\" && run.currentStep",
       "replace": "const ciWaitRunning = (run: WorkflowRun): boolean => run.currentStep",
       "kills": [
