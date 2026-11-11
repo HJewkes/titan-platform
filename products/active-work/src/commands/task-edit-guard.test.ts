@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import taskEdit from './task-edit.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
 import { UsageError } from '../errors.js';
-import type { Task } from '../schemas/task.js';
+import { TaskSchema, type Task } from '../schemas/task.js';
 import { asTask } from '../test-support/as-task.js';
 
 const SLUG = 'sample-initiative';
@@ -34,7 +34,7 @@ async function seedTask(root: string, overrides: Partial<Task> = {}): Promise<vo
 }
 
 async function readTask(root: string): Promise<Task> {
-  return YAML.parse(await fs.readFile(taskFile(root), 'utf8')) as Task;
+  return TaskSchema.parse(YAML.parse(await fs.readFile(taskFile(root), 'utf8')));
 }
 
 async function edit(root: string, args: Record<string, unknown>): Promise<Task> {

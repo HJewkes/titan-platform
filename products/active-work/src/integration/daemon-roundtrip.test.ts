@@ -11,38 +11,40 @@ import { describe, it, expect } from 'vitest';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
+import { z } from 'zod';
 import { waitForHealth } from '../test-support/child-startup.js';
 import { findDaemonPidFile, findFreePort, spawnDaemon, stopDaemon } from '../test-support/daemon-harness.js';
 
-interface JsonOk<T> {
-  ok: true;
-  data: T;
-}
-
-async function postJson<T>(
+async function postJson<S extends z.ZodType>(
+  schema: S,
   url: string,
   body: unknown,
-): Promise<{ status: number; envelope: JsonOk<T> }> {
+): Promise<{ status: number; envelope: { ok: true; data: z.infer<S> } }> {
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-titan-client': 'test' },
     body: JSON.stringify(body),
   });
-  const envelope = (await res.json()) as JsonOk<T>;
-  return { status: res.status, envelope };
+  const raw = z.object({ ok: z.literal(true), data: z.unknown() }).parse(await res.json());
+  return { status: res.status, envelope: { ok: raw.ok, data: schema.parse(raw.data) } };
 }
 
-interface ParsedMcpJson {
-  result?: { tools?: unknown[]; content?: Array<{ type: string; text: string }> };
-  error?: unknown;
-}
+const mcpResponse = z.object({
+  result: z
+    .object({
+      tools: z.array(z.unknown()).optional(),
+      content: z.array(z.object({ type: z.string(), text: z.string() })).optional(),
+    })
+    .optional(),
+  error: z.unknown().optional(),
+});
 
-function parseMcpResponse(raw: string): ParsedMcpJson {
-  if (raw.startsWith('{')) return JSON.parse(raw) as ParsedMcpJson;
+function parseMcpResponse(raw: string): z.infer<typeof mcpResponse> {
+  if (raw.startsWith('{')) return mcpResponse.parse(JSON.parse(raw));
   // Server-Sent Events form: data:<json>\n
   const dataLine = raw.split('\n').find((l) => l.startsWith('data:'));
   if (!dataLine) throw new Error(`unexpected MCP response shape: ${raw.slice(0, 200)}`);
-  return JSON.parse(dataLine.slice('data:'.length).trim()) as ParsedMcpJson;
+  return mcpResponse.parse(JSON.parse(dataLine.slice('data:'.length).trim()));
 }
 
 describe('integration: live daemon roundtrip on a random port', () => {
@@ -59,7 +61,9 @@ describe('integration: live daemon roundtrip on a random port', () => {
       // /health
       const healthRes = await fetch(`http://127.0.0.1:${port}/health`);
       expect(healthRes.status).toBe(200);
-      const health = (await healthRes.json()) as { ok: boolean; port: number; version: string };
+      const health = z
+        .object({ ok: z.boolean(), port: z.number(), version: z.string() })
+        .parse(await healthRes.json());
       expect(health.ok).toBe(true);
       expect(health.port).toBe(port);
       expect(typeof health.version).toBe('string');
@@ -67,11 +71,12 @@ describe('integration: live daemon roundtrip on a random port', () => {
       // /version
       const versionRes = await fetch(`http://127.0.0.1:${port}/version`);
       expect(versionRes.status).toBe(200);
-      const version = (await versionRes.json()) as { version: string };
+      const version = z.object({ version: z.string() }).parse(await versionRes.json());
       expect(typeof version.version).toBe('string');
 
       // /rpc/new — create an initiative on disk via the live HTTP path.
-      const newRes = await postJson<{ slug: string; dir: string }>(
+      const newRes = await postJson(
+        z.object({ slug: z.string(), dir: z.string() }),
         `http://127.0.0.1:${port}/rpc/new`,
         { slug: 'rt-init', title: 'Roundtrip Init', ship_target: '2026-Q4' },
       );
@@ -81,7 +86,7 @@ describe('integration: live daemon roundtrip on a random port', () => {
       expect(existsSync(path.join(activeRoot, 'rt-init', 'brief.md'))).toBe(true);
 
       // /rpc/task.add — task file written.
-      const taskRes = await postJson<{ id: string }>(`http://127.0.0.1:${port}/rpc/task.add`, {
+      const taskRes = await postJson(z.object({ id: z.string() }), `http://127.0.0.1:${port}/rpc/task.add`, {
         slug: 'rt-init',
         title: 'first task',
       });
@@ -90,9 +95,15 @@ describe('integration: live daemon roundtrip on a random port', () => {
       expect(existsSync(path.join(activeRoot, 'rt-init', 'tasks', 'RI-1.yml'))).toBe(true);
 
       // /rpc/list — initiative shows up.
-      const listRes = await postJson<{
-        sections: Array<{ heading: string; items: Array<{ slug: string }> }>;
-      }>(`http://127.0.0.1:${port}/rpc/list`, {});
+      const listRes = await postJson(
+        z.object({
+          sections: z.array(
+            z.object({ heading: z.string(), items: z.array(z.object({ slug: z.string() })) }),
+          ),
+        }),
+        `http://127.0.0.1:${port}/rpc/list`,
+        {},
+      );
       const focused = listRes.envelope.data.sections.find((s) => s.heading === 'Focused');
       expect(focused?.items.map((i) => i.slug)).toContain('rt-init');
 
@@ -135,10 +146,9 @@ describe('integration: live daemon roundtrip on a random port', () => {
       const callParsed = parseMcpResponse(await callRes.text());
       const content = callParsed.result?.content;
       expect(Array.isArray(content)).toBe(true);
-      const inner = JSON.parse(content![0].text) as {
-        ok: boolean;
-        data: { sections: unknown };
-      };
+      const inner = z
+        .object({ ok: z.boolean(), data: z.object({ sections: z.unknown() }) })
+        .parse(JSON.parse(content![0].text));
       expect(inner.ok).toBe(true);
       expect(inner.data.sections).toBeDefined();
 

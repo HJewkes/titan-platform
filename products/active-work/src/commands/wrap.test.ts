@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import YAML from 'yaml';
+import { z } from 'zod';
 import wrap from './wrap.js';
 import { registry } from '../registry/index.js';
 import './index.js'; // populate the registry
@@ -85,7 +86,7 @@ function baseArgs(overrides: Record<string, unknown> = {}) {
 
 async function readArtifacts(activeRoot: string): Promise<Record<string, unknown>> {
   const raw = await fs.readFile(path.join(activeRoot, SLUG, 'artifacts.yml'), 'utf8');
-  return YAML.parse(raw) as Record<string, unknown>;
+  return z.record(z.string(), z.unknown()).parse(YAML.parse(raw));
 }
 
 const WORKER_FACTS = {
@@ -132,7 +133,7 @@ async function seedPriorLoop(
 async function readFrontmatter(file: string): Promise<Record<string, unknown>> {
   const raw = await fs.readFile(file, 'utf8');
   const block = /^---\r?\n([\s\S]*?)\r?\n---/.exec(raw);
-  return YAML.parse(block?.[1] ?? '') as Record<string, unknown>;
+  return z.record(z.string(), z.unknown()).parse(YAML.parse(block?.[1] ?? ''));
 }
 
 describe('wrap', () => {
