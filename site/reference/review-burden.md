@@ -51,6 +51,7 @@ underDeclared(declared, computed.door); // true: fail the check and name compute
 ```sh
 pnpm review:burden --base origin/main --body-file body.md
 REVIEW_BURDEN_BODY="$body" pnpm review:burden --enforce
+pnpm review:burden --config review-burden.json
 ```
 
 The `review-burden` bin reads `git diff -M --numstat -z <base>...HEAD` (default base
@@ -58,8 +59,14 @@ The `review-burden` bin reads `git diff -M --numstat -z <base>...HEAD` (default 
 burden table and then one JSON line built from `burdenScore`, `doorFacts` and `parseFooter`.
 It exits 0 by default, so a CI job can run it in shadow mode. With `--enforce` it exits 1
 with a remediation message when the footer is missing or `underDeclared` is true. Changeset
-bumps come from changed `.changeset/*.md` files in the working tree; the bin does not read
-`package.json` sides, so it reports no surface-key door facts. An unknown argument exits 2.
+bumps come from changed `.changeset/*.md` files in the working tree.
+
+It also reads the same diff with `--name-status -z` (same `-M`) so each file carries its real
+status, and both sides of every changed `package.json`, from the merge base and `HEAD`, so
+surface-key door facts reach the JSON line. `--config <file>` is a JSON object with any of
+`protectedPaths`, `storedDataGlobs`, `generatedGlobs`, `testGlobs`, `ignoredGlobs`,
+`migrationGlobs` and `apiGlobs`, each replacing its default. An unknown argument or a bad
+config file exits 2.
 
 ## The footer
 

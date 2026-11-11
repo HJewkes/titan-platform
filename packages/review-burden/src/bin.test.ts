@@ -18,6 +18,12 @@ function harness(
   const deps: CliDeps = {
     diff: () => diff,
     nameStatus: () => git.nameStatus ?? "",
+    mergeBase: () => "BASE",
+    show: (rev, path) => {
+      const text = git.revs?.[`${rev}:${path}`];
+      if (text === undefined) throw new Error(`no ${rev}:${path}`);
+      return text;
+    },
     readText: (path) => {
       if (path === "body.md") return body;
       if (path in files) return files[path] ?? "";
@@ -131,5 +137,31 @@ describe("review-burden bin", () => {
     const { deps, out } = harness("0\t12\tdata/schema.json\0", "", {}, files, { nameStatus: "D\0data/schema.json\0" });
     run(["--body-file", "body.md", "--config", "rb.json"], deps);
     expect(doorOf(out).facts).toEqual([{ kind: "stored-data-deleted", path: "data/schema.json" }]);
+  });
+
+  it("a bin name removed on the head package.json yields package-key-removed", () => {
+    const revs = {
+      "BASE:packages/x/package.json": '{"name":"@s/x","bin":{"x":"a.js","y":"b.js"}}',
+      "HEAD:packages/x/package.json": '{"name":"@s/x","bin":{"x":"a.js"}}',
+    };
+    const { deps, out } = harness("1\t1\tpackages/x/package.json\0", "", {}, {}, { nameStatus: "M\0packages/x/package.json\0", revs });
+    run(["--body-file", "body.md"], deps);
+    expect(doorOf(out).facts).toEqual([{ kind: "package-key-removed", path: "packages/x/package.json", detail: "bin y" }]);
+  });
+
+  it("a new package.json reads only the head side", () => {
+    const revs = { "HEAD:packages/y/package.json": '{"name":"@s/y"}' };
+    const { deps, out, err } = harness("5\t0\tpackages/y/package.json\0", "", {}, {}, { nameStatus: "A\0packages/y/package.json\0", revs });
+    run(["--body-file", "body.md"], deps);
+    expect(doorOf(out).facts).toEqual([]);
+    expect(err).toEqual([]);
+  });
+
+  it("an unparsable package.json side is skipped with a warning and the bin exits 0", () => {
+    const revs = { "BASE:packages/x/package.json": '{"name":"@s/x"}', "HEAD:packages/x/package.json": "{" };
+    const { deps, out, err } = harness("1\t1\tpackages/x/package.json\0", "", {}, {}, { nameStatus: "M\0packages/x/package.json\0", revs });
+    expect(run(["--body-file", "body.md"], deps)).toBe(0);
+    expect(doorOf(out).facts).toEqual([]);
+    expect(err.join("")).toContain("skipped packages/x/package.json");
   });
 });

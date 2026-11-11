@@ -5,6 +5,7 @@ import type { BurdenConfig, ChangedFile } from "./config.js";
 import { doorFacts, effectiveDoor, underDeclared, type ChangesetBump, type DoorFacts } from "./door.js";
 import { changedFiles } from "./git-diff.js";
 import { parseFooter, type Footer } from "./footer.js";
+import { packageJsonChanges } from "./package-sides.js";
 import { burdenScore, type BurdenScore } from "./score.js";
 
 export const BODY_ENV = "REVIEW_BURDEN_BODY";
@@ -14,6 +15,10 @@ export interface CliDeps {
   diff(base: string): string;
   /** The `git diff -M --name-status -z <base>...HEAD` output; the same `-M` as `diff`, so renames pair up. */
   nameStatus(base: string): string;
+  /** `git merge-base <base> HEAD`, trimmed. */
+  mergeBase(base: string): string;
+  /** `git show <rev>:<path>`; throws when the path does not exist at `rev`. */
+  show(rev: string, path: string): string;
   readText(path: string): string;
   env: Readonly<Record<string, string | undefined>>;
   out(text: string): void;
@@ -107,8 +112,9 @@ export function run(argv: readonly string[], deps: CliDeps): number {
   }
   const files = changedFiles(deps.diff(options.base), deps.nameStatus(options.base));
   const body = readBody(options, deps);
-  const score = burdenScore({ files, body, config });
-  const door = doorFacts({ files, changesetBumps: changesetBumps(files, deps.readText), config });
+  const packageJsons = packageJsonChanges(files, options.base, deps);
+  const score = burdenScore({ files, body, config, packageJsons });
+  const door = doorFacts({ files, changesetBumps: changesetBumps(files, deps.readText), config, packageJsons });
   const footer = parseFooter(body);
   const effective = effectiveDoor(footer.door, door.door);
   deps.out(`${burdenTable(score)}\n`);
@@ -127,6 +133,8 @@ export function realDeps(): CliDeps {
   return {
     diff: (base) => gitDiff("--numstat", base),
     nameStatus: (base) => gitDiff("--name-status", base),
+    mergeBase: (base) => execFileSync("git", ["merge-base", base, "HEAD"], { encoding: "utf8" }).trim(),
+    show: (rev, path) => execFileSync("git", ["show", `${rev}:${path}`], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }),
     readText: (path) => readFileSync(path, "utf8"),
     env: process.env,
     out: (text) => process.stdout.write(text),
