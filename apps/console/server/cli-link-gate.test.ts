@@ -1,6 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
-import { linkGate, linkGateArgs } from "./cli-link-gate.js";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { createServer as createHttpsServer, globalAgent, type Server } from "node:https";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { httpsProbe, linkGate, linkGateArgs } from "./cli-link-gate.js";
 import { resolveConfig, type Machine } from "./config.js";
+import { writeSelfSignedCert } from "./test-support.js";
 
 const HOME = "/srv/tester";
 const LAN_IP = "192.0.2.10";
@@ -45,5 +50,60 @@ describe("titan-console link gate", () => {
     expect(linkGateArgs(["link", "gate"])).toBeNull();
     expect(linkGateArgs(["link", "gate", "a/b", "x"])).toBeNull();
     expect(linkGateArgs(["inbox", "link", "a/b"])).toBeNull();
+  });
+});
+
+function loopbackUrl(listener: Server): string {
+  const address = listener.address();
+  if (address === null || typeof address === "string") throw new Error("listener has no port");
+  return `https://127.0.0.1:${address.port}/`;
+}
+
+describe("httpsProbe against a loopback TLS listener", () => {
+  let dir: string;
+  let server: Server;
+  let status = 200;
+  let hangUp = false;
+  let url: string;
+  const savedCa = globalAgent.options.ca;
+
+  beforeAll(async () => {
+    dir = mkdtempSync(path.join(tmpdir(), "link-gate-tls-"));
+    const pair = writeSelfSignedCert(dir, ["127.0.0.1"]);
+    globalAgent.options.ca = pair.cert;
+    server = createHttpsServer({ cert: pair.cert, key: readFileSync(pair.keyFile, "utf8") }, (req, res) => {
+      if (hangUp) return req.socket.destroy();
+      res.writeHead(status).end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    url = loopbackUrl(server);
+  });
+
+  afterAll(async () => {
+    globalAgent.options.ca = savedCa;
+    await new Promise((resolve) => server.close(resolve));
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it.each([200, 401])("resolves to %i when the listener answers it", async (code) => {
+    status = code;
+    hangUp = false;
+
+    await expect(httpsProbe(url)).resolves.toBe(code);
+  });
+
+  it("rejects when the listener closes the connection with no reply", async () => {
+    hangUp = true;
+
+    await expect(httpsProbe(url)).rejects.toThrow();
+  });
+
+  it("rejects when nothing listens on the port", async () => {
+    const closed = createHttpsServer();
+    await new Promise<void>((resolve) => closed.listen(0, "127.0.0.1", resolve));
+    const deadUrl = loopbackUrl(closed);
+    await new Promise((resolve) => closed.close(resolve));
+
+    await expect(httpsProbe(deadUrl)).rejects.toThrow();
   });
 });
