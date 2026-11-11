@@ -113,7 +113,10 @@ describe('cli output to a pipe', () => {
     expect(piped.status).toBe(0);
     expect(piped.stdout.length).toBe(reference.length);
     const parsed = z
-      .object({ ok: z.boolean(), data: z.object({ tasks: z.array(z.unknown()) }) })
+      .object({
+        ok: z.boolean(),
+        data: z.object({ tasks: z.array(z.unknown()) }),
+      })
       .parse(JSON.parse(piped.stdout.toString('utf8')));
     expect(parsed.ok).toBe(true);
     expect(parsed.data.tasks).toHaveLength(TASK_COUNT);

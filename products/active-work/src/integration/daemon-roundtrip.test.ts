@@ -8,28 +8,33 @@
  * and the dashboard placeholder route that the unit suite can't see.
  */
 import { describe, it, expect } from 'vitest';
+import { z } from 'zod';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
-import { z } from 'zod';
 import { waitForHealth } from '../test-support/child-startup.js';
 import { findDaemonPidFile, findFreePort, spawnDaemon, stopDaemon } from '../test-support/daemon-harness.js';
 
-async function postJson<S extends z.ZodType>(
-  schema: S,
+const jsonOk = <T extends z.ZodType>(data: T) => z.object({ ok: z.literal(true), data });
+
+async function postJson<T extends z.ZodType>(
   url: string,
   body: unknown,
-): Promise<{ status: number; envelope: { ok: true; data: z.infer<S> } }> {
+  data: T,
+): Promise<{
+  status: number;
+  envelope: z.infer<ReturnType<typeof jsonOk<T>>>;
+}> {
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-titan-client': 'test' },
     body: JSON.stringify(body),
   });
-  const raw = z.object({ ok: z.literal(true), data: z.unknown() }).parse(await res.json());
-  return { status: res.status, envelope: { ok: raw.ok, data: schema.parse(raw.data) } };
+  const envelope = jsonOk(data).parse(await res.json());
+  return { status: res.status, envelope };
 }
 
-const mcpResponse = z.object({
+const parsedMcpJson = z.object({
   result: z
     .object({
       tools: z.array(z.unknown()).optional(),
@@ -38,13 +43,14 @@ const mcpResponse = z.object({
     .optional(),
   error: z.unknown().optional(),
 });
+type ParsedMcpJson = z.infer<typeof parsedMcpJson>;
 
-function parseMcpResponse(raw: string): z.infer<typeof mcpResponse> {
-  if (raw.startsWith('{')) return mcpResponse.parse(JSON.parse(raw));
+function parseMcpResponse(raw: string): ParsedMcpJson {
+  if (raw.startsWith('{')) return parsedMcpJson.parse(JSON.parse(raw));
   // Server-Sent Events form: data:<json>\n
   const dataLine = raw.split('\n').find((l) => l.startsWith('data:'));
   if (!dataLine) throw new Error(`unexpected MCP response shape: ${raw.slice(0, 200)}`);
-  return mcpResponse.parse(JSON.parse(dataLine.slice('data:'.length).trim()));
+  return parsedMcpJson.parse(JSON.parse(dataLine.slice('data:'.length).trim()));
 }
 
 describe('integration: live daemon roundtrip on a random port', () => {
@@ -76,9 +82,9 @@ describe('integration: live daemon roundtrip on a random port', () => {
 
       // /rpc/new — create an initiative on disk via the live HTTP path.
       const newRes = await postJson(
-        z.object({ slug: z.string(), dir: z.string() }),
         `http://127.0.0.1:${port}/rpc/new`,
         { slug: 'rt-init', title: 'Roundtrip Init', ship_target: '2026-Q4' },
+        z.object({ slug: z.string(), dir: z.string() }),
       );
       expect(newRes.status).toBe(200);
       expect(newRes.envelope.ok).toBe(true);
@@ -86,23 +92,27 @@ describe('integration: live daemon roundtrip on a random port', () => {
       expect(existsSync(path.join(activeRoot, 'rt-init', 'brief.md'))).toBe(true);
 
       // /rpc/task.add — task file written.
-      const taskRes = await postJson(z.object({ id: z.string() }), `http://127.0.0.1:${port}/rpc/task.add`, {
-        slug: 'rt-init',
-        title: 'first task',
-      });
+      const taskRes = await postJson(
+        `http://127.0.0.1:${port}/rpc/task.add`,
+        { slug: 'rt-init', title: 'first task' },
+        z.object({ id: z.string() }),
+      );
       expect(taskRes.envelope.ok).toBe(true);
       expect(taskRes.envelope.data.id).toBe('RI-1');
       expect(existsSync(path.join(activeRoot, 'rt-init', 'tasks', 'RI-1.yml'))).toBe(true);
 
       // /rpc/list — initiative shows up.
       const listRes = await postJson(
-        z.object({
-          sections: z.array(
-            z.object({ heading: z.string(), items: z.array(z.object({ slug: z.string() })) }),
-          ),
-        }),
         `http://127.0.0.1:${port}/rpc/list`,
         {},
+        z.object({
+          sections: z.array(
+            z.object({
+              heading: z.string(),
+              items: z.array(z.object({ slug: z.string() })),
+            }),
+          ),
+        }),
       );
       const focused = listRes.envelope.data.sections.find((s) => s.heading === 'Focused');
       expect(focused?.items.map((i) => i.slug)).toContain('rt-init');

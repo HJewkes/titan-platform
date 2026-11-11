@@ -2,16 +2,17 @@ import { EventEmitter } from 'node:events';
 import type { spawn } from 'node:child_process';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { spawnClaudeResume } from './launcher-resume.js';
+import { asSpawn } from './test-support/spawn-fake.js';
 
 type SpawnCall = { cmd: string; args: readonly string[]; env: NodeJS.ProcessEnv | undefined };
 
 function fakeSpawn(calls: SpawnCall[]): typeof spawn {
-  return ((cmd: string, args: readonly string[], opts: { env?: NodeJS.ProcessEnv }) => {
+  return asSpawn((cmd: string, args: readonly string[], opts: { env?: NodeJS.ProcessEnv }) => {
     calls.push({ cmd, args, env: opts.env });
     const child = new EventEmitter();
     queueMicrotask(() => child.emit('exit', 0, null));
     return child;
-  }) as unknown as typeof spawn;
+  });
 }
 
 afterEach(() => vi.unstubAllEnvs());
