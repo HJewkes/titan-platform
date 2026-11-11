@@ -40,6 +40,25 @@
         "agentChatReviewerDispatch roster retired generations refuses a reviewer whose seat's retired first generation the implementer spawned",
         "agentChatReviewerDispatch roster retired generations proves nothing, and still reads the roster, on an agent-chat that predates --include-retired"
       ]
+    },
+    {
+      "name": "a gate roster timeout reads as a landed ask again",
+      "file": "products/factory/src/shepherd/reviewer-dispatch.ts",
+      "find": "throw notLaunched(error);",
+      "replace": "throw error;",
+      "kills": [
+        "agentChatReviewerDispatch reviewer-slot reading reports a gate roster read that timed out as a not-launched busy refusal, launching nobody (TP-5295)"
+      ]
+    },
+    {
+      "name": "an agents.spawn timeout reads as not launched",
+      "file": "products/factory/src/shepherd/reviewer-dispatch.ts",
+      "find": "if (error instanceof DispatchTimeoutError) throw new ReviewerAskTimedOut(error.message, { cause: error });",
+      "replace": "if (error instanceof DispatchTimeoutError) throw new ReviewerGateRosterUnread(error.message, { cause: error });",
+      "kills": [
+        "agentChatReviewerDispatch reviewer-slot reading keeps an agents.spawn that times out behind the gate a timed-out ask, because the reviewer may be running (TP-5295)",
+        "agentChatReviewerDispatch spawn reports a spawn that timed out as a timed-out ask, not a broker outage, because the reviewer may be running"
+      ]
     }
   ]
 }
