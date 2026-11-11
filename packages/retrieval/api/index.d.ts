@@ -268,4 +268,42 @@ declare function createRetrievalEngine(options: EngineOptions): RetrievalEngine;
 /** What a failed rerank reports itself as in `degraded`, alongside the retrievers' own entries. */
 declare const RERANK_STAGE = "rerank";
 
-export { BruteForceVectorIndex, type Candidate, type CrossEncoderOptions, type Degradation, type EngineOptions, type FtsRetrieverOptions, type FusedResult, type GatherOptions, type GatheredLists, type GraphRetrieverOptions, type Hit, RERANK_STAGE, type RankedList, type Reranked, type Reranker, type RetrievalEngine, type RetrieveOptions, type Retriever, type RrfOptions, type SearchOptions, type SearchResponse, type VectorIndex, type VectorMatch, type VectorRetrieverOptions, type WalkGraph, type WalkNeighbour, type WalkOptions, type WalkStep, applyDropoff, createRetrievalEngine, crossEncoderReranker, defaultHubDegree, defaultMatchExpression, expandGraph, ftsRetriever, fuseByRRF, gatherFailOpen, graphRetriever, rerankCandidates, vectorRetriever, walkGraph };
+type DropReason = "over-budget" | "over-quota" | "duplicate" | "over-cap" | "no-tiers";
+interface ContextCandidate {
+    id: string;
+    category: string;
+    score: number;
+    /** Renderings from cheapest (tier 0) to richest. */
+    tiers: string[];
+}
+interface ContextBudget {
+    tokens: number;
+    quotas?: Record<string, number>;
+    defaultQuota?: number;
+    defaultTiers?: Record<string, number>;
+    maxTier?: number;
+    estimateTokens?: (text: string) => number;
+}
+interface ContextEntry {
+    id: string;
+    category: string;
+    tier: number;
+    text: string;
+    tokens: number;
+    score: number;
+}
+interface DroppedCandidate {
+    id: string;
+    category: string;
+    reason: DropReason;
+}
+interface ContextPlan {
+    entries: ContextEntry[];
+    dropped: DroppedCandidate[];
+    usedTokens: number;
+    budgetTokens: number;
+}
+declare function estimateTokens(text: string): number;
+declare function planContext(candidates: readonly ContextCandidate[], budget: ContextBudget): ContextPlan;
+
+export { BruteForceVectorIndex, type Candidate, type ContextBudget, type ContextCandidate, type ContextEntry, type ContextPlan, type CrossEncoderOptions, type Degradation, type DropReason, type DroppedCandidate, type EngineOptions, type FtsRetrieverOptions, type FusedResult, type GatherOptions, type GatheredLists, type GraphRetrieverOptions, type Hit, RERANK_STAGE, type RankedList, type Reranked, type Reranker, type RetrievalEngine, type RetrieveOptions, type Retriever, type RrfOptions, type SearchOptions, type SearchResponse, type VectorIndex, type VectorMatch, type VectorRetrieverOptions, type WalkGraph, type WalkNeighbour, type WalkOptions, type WalkStep, applyDropoff, createRetrievalEngine, crossEncoderReranker, defaultHubDegree, defaultMatchExpression, estimateTokens, expandGraph, ftsRetriever, fuseByRRF, gatherFailOpen, graphRetriever, planContext, rerankCandidates, vectorRetriever, walkGraph };

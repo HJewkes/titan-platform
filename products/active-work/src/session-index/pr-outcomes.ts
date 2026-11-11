@@ -1,17 +1,16 @@
-import type { PrKey, PrResolution, PrResolver, ResolvedPr } from '@titan-design/session-graph';
+import type { PrDue, PrResolution, PrResolver, ResolvedPr } from '@titan-design/session-graph';
 import { z } from 'zod';
 
 import { runCommand, type RunCommand } from '../utils/run-command.js';
-import type { WorkspaceGraph } from './graph.js';
 
 /**
  * Resolve PR outcomes against GitHub through `gh` (TP-275, design G8).
  *
  * A transcript only sees a merge it ran itself; a merge done in the browser or
  * by another session, a close, and the review history exist only on the forge.
- * `@titan-design/session-graph` takes this as its `PrResolver` and hands it
- * every PR not yet known to be merged. This side narrows that to what can
- * still change, caps it per pass, and turns every `gh` failure into an error
+ * `@titan-design/session-graph` takes this as its `PrResolver` and decides which PRs are due and in what
+ * order (`prsNeedingOutcome`). This side only throttles: it skips a PR inside its failure backoff or, for a
+ * `recheck` PR, inside its recheck interval, caps the rest per pass, and turns every `gh` failure into an error
  * line rather than a thrown pass: the PR is left out of the resolution, so its
  * row stays unchecked and the next pass asks again.
  */
@@ -67,11 +66,11 @@ function recheckIntervals(options: PrOutcomeOptions): RecheckIntervals {
   };
 }
 
-/** A checked PR is due once its state's interval has passed. */
-function isDue(row: CheckedRow, now: number, every: RecheckIntervals): boolean {
-  const checked = Date.parse(row.outcome_checked_at ?? '');
+/** A `recheck` PR is due once its state's interval has passed since the last check. */
+function isDue(pr: PrDue, now: number, every: RecheckIntervals): boolean {
+  const checked = Date.parse(pr.checkedAt ?? '');
   if (Number.isNaN(checked)) return true;
-  const interval = row.state?.toLowerCase() === 'open' ? every.open : every.closed;
+  const interval = pr.state?.toLowerCase() === 'open' ? every.open : every.closed;
   return now - checked >= interval;
 }
 
@@ -88,13 +87,6 @@ const GhPrSchema = z.looseObject({
 
 type GhPr = z.infer<typeof GhPrSchema>;
 
-interface CheckedRow {
-  pr_ref: string;
-  state: string | null;
-  outcome_checked_at: string | null;
-  commit_times: string | null;
-}
-
 /** The round rule lives in session-graph; this side only hands over what the forge said. */
 function toResolved(pr: GhPr): ResolvedPr {
   return {
@@ -109,56 +101,24 @@ function toResolved(pr: GhPr): ResolvedPr {
   };
 }
 
-/** Bands match session-graph's PRS_NEEDING_OUTCOME, so a cap cannot starve open PRs behind backfill. */
-function byPollingOrder(byRef: ReadonlyMap<string, CheckedRow>): (a: PrKey, b: PrKey) => number {
-  const band = (pr: PrKey): number => {
-    const row = byRef.get(pr.prRef);
-    if (!row?.outcome_checked_at) return 0;
-    return row.state?.toLowerCase() === 'merged' ? 2 : 1;
-  };
-  const checkedAt = (pr: PrKey): string => byRef.get(pr.prRef)?.outcome_checked_at ?? '';
-  return (a, b) =>
-    band(a) - band(b) ||
-    checkedAt(a).localeCompare(checkedAt(b)) ||
-    a.prRef.localeCompare(b.prRef);
-}
-
 /**
- * The package re-asks a checked PR until it is merged, which would re-query
- * every PR each pass. A never-checked PR is always asked, since a transcript-seen
- * merge is unchecked until the forge confirms it. A checked merged PR is final
- * once its commit times are stored; with them missing the package offers it, and
- * one answer fills them (an empty list counts), so it is asked once. Any other PR is asked again only
- * after its recheck interval (short for open, long for closed so a reopen is
- * seen), and the least recently checked go first so a long tail is not
- * starved by the same fifty.
+ * Throttling only; session-graph's `prsNeedingOutcome` already decided which PRs are due and their order.
+ * A PR that failed recently waits out the backoff. A `recheck` PR waits out its state's interval (short for
+ * open, long for closed so a reopen is seen). `unchecked` and `backfill` PRs are asked at once: one answer
+ * settles a backfill PR, since it always carries commit times.
  */
-function selectPrs(
-  graph: WorkspaceGraph,
-  prs: readonly PrKey[],
-  limit: number,
-  now: number,
-  every: RecheckIntervals,
-): PrKey[] {
+function selectPrs(prs: readonly PrDue[], limit: number, now: number, every: RecheckIntervals): PrDue[] {
   const backoff = failBackoffMs();
-  const rows = graph.db
-    .prepare<[], CheckedRow>('SELECT pr_ref, state, outcome_checked_at, commit_times FROM pr')
-    .all();
-  const byRef = new Map(rows.map((row) => [row.pr_ref, row]));
+  const inBackoff = (pr: PrDue): boolean => {
+    const failed = failedAt.get(pr.prRef);
+    return failed !== undefined && now - failed <= backoff;
+  };
   return prs
-    .filter((pr) => {
-      const failed = failedAt.get(pr.prRef);
-      if (failed !== undefined && now - failed <= backoff) return false;
-      const row = byRef.get(pr.prRef);
-      if (!row?.outcome_checked_at) return true;
-      if (row.state?.toLowerCase() === 'merged') return row.commit_times === null;
-      return isDue(row, now, every);
-    })
-    .sort(byPollingOrder(byRef))
+    .filter((pr) => !inBackoff(pr) && (pr.band !== 'recheck' || isDue(pr, now, every)))
     .slice(0, limit);
 }
 
-async function viewPr(run: RunCommand, pr: PrKey): Promise<ResolvedPr> {
+async function viewPr(run: RunCommand, pr: PrDue): Promise<ResolvedPr> {
   const args = ['pr', 'view', String(pr.number), '--repo', pr.repo, '--json', GH_FIELDS];
   const result = await run('gh', args);
   if (result.code !== 0) {
@@ -173,12 +133,12 @@ async function viewPr(run: RunCommand, pr: PrKey): Promise<ResolvedPr> {
   return toResolved(parsed.data);
 }
 
-export function ghPrResolver(graph: WorkspaceGraph, options: PrOutcomeOptions = {}): PrResolver {
+export function ghPrResolver(options: PrOutcomeOptions = {}): PrResolver {
   const run = options.run ?? runCommand;
   const now = options.now ?? Date.now;
   const every = recheckIntervals(options);
-  return async (prs: readonly PrKey[]): Promise<PrResolution> => {
-    const queue = selectPrs(graph, prs, options.limit ?? PR_OUTCOME_BATCH, now(), every);
+  return async (prs: readonly PrDue[]): Promise<PrResolution> => {
+    const queue = selectPrs(prs, options.limit ?? PR_OUTCOME_BATCH, now(), every);
     options.onPolled?.(queue.length);
     const resolved = new Map<string, ResolvedPr>();
     const worker = async (): Promise<void> => {
