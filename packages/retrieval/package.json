@@ -36,7 +36,8 @@
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
-    "@huggingface/transformers": "^3.0.0"
+    "@huggingface/transformers": "^3.0.0",
+    "zod": "^4.0.0"
   },
   "peerDependenciesMeta": {
     "@huggingface/transformers": {
@@ -46,5 +47,8 @@
   "dependencies": {
     "@titan-design/embed": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^"
+  },
+  "devDependencies": {
+    "zod": "^4.4.3"
   }
 }
