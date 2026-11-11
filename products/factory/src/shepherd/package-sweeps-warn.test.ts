@@ -5,6 +5,7 @@ import type { FactoryHost } from "../host.js";
 import type { Sweep } from "../sweep.js";
 import { startPackageSweeps } from "./package-sweeps.js";
 import type { ShepherdServices } from "./services.js";
+import type { Registration } from "./store.js";
 
 let started: Sweep[] = [];
 
@@ -16,15 +17,15 @@ afterEach(() => {
 });
 
 /** A port with no methods makes every read throw, which each sweep turns into an error note. */
-async function runSweeps(remotes: string[]) {
+async function runSweeps(remotes: string[], releaseSweepMs = 1e9) {
   const log = partialFake<Logger>({ info: vi.fn(), warn: vi.fn(), error: vi.fn() });
   const services = partialFake<ShepherdServices>({
     port: partialFake<ShepherdServices["port"]>({}),
     seats: () => partialFake<ReturnType<ShepherdServices["seats"]>>({ seats: remotes.length > 0 ? [partialFake<ReturnType<ShepherdServices["seats"]>["seats"][number]>({ remotes })] : [], denied: [] }),
-    store: partialFake<ShepherdServices["store"]>({ get: () => partialFake<ReturnType<ShepherdServices["store"]["get"]>>({ all: () => [] }) }),
+    store: partialFake<ShepherdServices["store"]>({ get: () => partialFake<ReturnType<ShepherdServices["store"]["get"]>>({ all: () => (releaseSweepMs < 1e9 ? [partialFake<Registration>({ repo: "acme/widgets" })] : []) }) }),
   });
   vi.useFakeTimers();
-  started = startPackageSweeps(partialFake<FactoryHost>(), services, { releaseSweepMs: 1e9, toolchainSweepMs: 1_000, consumerBumpSweepMs: 1_000 }, log);
+  started = startPackageSweeps(partialFake<FactoryHost>(), services, { releaseSweepMs, toolchainSweepMs: 1_000, consumerBumpSweepMs: 1_000 }, log);
   await vi.advanceTimersByTimeAsync(1_000);
   return log;
 }
@@ -42,5 +43,12 @@ describe("package sweep note logging", () => {
 
     expect(log.warn).toHaveBeenCalledWith(expect.objectContaining({ repo: "acme/widgets", error: expect.any(String) }), "swept a consumer bump");
     expect(log.info).not.toHaveBeenCalledWith(expect.anything(), "swept a consumer bump");
+  });
+
+  it("logs a Version Packages error note at warn", async () => {
+    const log = await runSweeps([], 1_000);
+
+    expect(log.warn).toHaveBeenCalledWith(expect.objectContaining({ repo: "acme/widgets", error: expect.any(String) }), "swept a Version Packages PR");
+    expect(log.info).not.toHaveBeenCalledWith(expect.anything(), "swept a Version Packages PR");
   });
 });

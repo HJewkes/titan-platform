@@ -2,6 +2,7 @@ import { promises as fs, mkdtempSync, rmSync, utimesSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { claudeProjectSlug } from '@titan-design/session-read';
 import sessionRecover, { recoverUnwrapped } from './session-recover.js';
 import open from './open.js';
@@ -19,11 +20,7 @@ import {
   OWNER_MESSAGES,
   writeUnwrappedTranscript,
 } from '../test-support/fixtures/unwrapped-transcript.js';
-import { mirrorRoot, mirrorRoots } from '../test-support/fixtures/mirror-roots.js';
-
-vi.mock('@titan-design/session-read', async (importOriginal) =>
-  (await import('../test-support/fixtures/mirror-roots.js')).withMirrors(importOriginal),
-);
+import { mirrorRoot, useMirror } from '../test-support/fixtures/mirror-roots.js';
 
 const SLUG = 'sample-initiative';
 const CRASHED = '0a0a0a0a-1111-4222-8333-444444444444';
@@ -40,7 +37,7 @@ beforeEach(() => {
 
 afterEach(() => {
   resetRunners();
-  mirrorRoots.length = 0;
+  vi.unstubAllEnvs();
   rmSync(claudeHome, { recursive: true, force: true });
 });
 
@@ -145,10 +142,10 @@ describe('session recover', () => {
       expect(record).toContain(`> ${LAST_ASSISTANT_TEXT}`);
       const lines = (await readRecord(transcript)).trim().split('\n');
       const at = (raw: string | undefined) =>
-        (JSON.parse(raw ?? '{}') as { timestamp: string }).timestamp;
+        z.object({ timestamp: z.string() }).parse(JSON.parse(raw ?? '{}')).timestamp;
       const { started, ended } = await readFrontmatter(result.recovered!.path);
-      expect(new Date(started as string).toISOString()).toBe(at(lines[0]));
-      expect(new Date(ended as string).toISOString()).toBe(at(lines.at(-1)));
+      expect(z.coerce.date().parse(started).toISOString()).toBe(at(lines[0]));
+      expect(z.coerce.date().parse(ended).toISOString()).toBe(at(lines.at(-1)));
     });
   });
 
@@ -277,7 +274,7 @@ describe('session recover', () => {
     await withTempActiveRoot(async (activeRoot) => {
       await withConfigDirs(async () => {
         const mirror = mirrorRoot(path.join(claudeHome, 'mirror'), 'default');
-        mirrorRoots.push(mirror);
+        useMirror(path.join(claudeHome, 'mirror'));
         const cwd = path.join(activeRoot, SLUG);
         const projectDir = path.join(mirror.root, claudeProjectSlug(cwd));
         const when = new Date(Date.now() - QUIET_MS);

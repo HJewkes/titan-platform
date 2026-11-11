@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import YAML from 'yaml';
+import { z } from 'zod';
 
 import loopImport from './loop-import.js';
 import loopTier from './loop-tier.js';
@@ -9,13 +10,15 @@ import type { CommandContext } from '../registry/index.js';
 import { SNAPSHOT, TIER_SEED, TREE } from '../test-support/fixtures/loop-ledger.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
 
-interface Row {
-  id: string;
-  title: string;
-  tier?: string;
-  tier_rank?: number;
-  tier_set?: { at: string; by: string };
-}
+const RowSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  tier: z.string().optional(),
+  tier_rank: z.number().optional(),
+  tier_set: z.object({ at: z.string(), by: z.string() }).optional(),
+});
+type Row = z.infer<typeof RowSchema>;
+const LedgerSchema = z.object({ loops: z.array(RowSchema) });
 
 function makeCtx(activeRoot: string): CommandContext {
   return { activeRoot, warnings: [], format: 'json', cwd: activeRoot };
@@ -38,7 +41,7 @@ async function ledgerText(root: string): Promise<string> {
 }
 
 async function ledgerRows(root: string): Promise<Map<string, Row>> {
-  const rows = (YAML.parse(await ledgerText(root)) as { loops: Row[] }).loops;
+  const { loops: rows } = LedgerSchema.parse(YAML.parse(await ledgerText(root)));
   return new Map(rows.map((row) => [row.id, row]));
 }
 

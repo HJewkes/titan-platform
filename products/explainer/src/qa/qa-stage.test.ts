@@ -80,3 +80,26 @@ describe("qa stage spec", () => {
     expect(first.config.qa).toMatchObject({ gate: [...ERROR_KINDS] });
   });
 });
+
+describe("qa stage speech rate", () => {
+  const withWords = (words: unknown) => () => ({ words: harness.store().putText(JSON.stringify(words), "words", FROM) });
+
+  it("leads qa.json with speechRate after schema and the notes with the speech-rate line", async () => {
+    const words = { beats: [{ id: "b1", startS: 0, durationS: 4, words: [{ word: "one", start: 0, end: 1 }] }] };
+
+    const { outcome } = await runQa({}, withWords(words));
+    const stored: Record<string, unknown> = JSON.parse(harness.store().readText(outcome.outputs.qa!));
+
+    expect(Object.keys(stored).slice(0, 2)).toEqual(["schema", "speechRate"]);
+    expect(outcome.notes?.[0]).toMatch(/^speech rate: /);
+  });
+
+  it("reads a words.json with no word timings as not measured, not as 0 wpm outside the band", async () => {
+    const words = { beats: [{ id: "b1", startS: 0, durationS: 4 }] };
+
+    const { outcome, report } = await runQa({}, withWords(words));
+
+    expect(report.speechRate).toMatchObject({ overallWpm: null, beats: [] });
+    expect(outcome.notes?.[0]).toBe("speech rate: not measured (no beat has word timings)");
+  });
+});
