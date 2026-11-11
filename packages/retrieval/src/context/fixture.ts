@@ -1,6 +1,6 @@
 import type { ContextCandidate } from "./plan.js";
 
-export type FixtureTopic = "lighthouse" | "tide" | "ferry";
+type FixtureTopic = "lighthouse" | "tide" | "ferry";
 
 const PHRASES: Record<FixtureTopic, string> = {
   lighthouse: "the keeper trims the lamp wick at dusk ",
@@ -9,7 +9,7 @@ const PHRASES: Record<FixtureTopic, string> = {
 };
 
 /** Exactly `tokens * 4` characters, so the default estimator returns `tokens`. */
-export function fixtureText(topic: FixtureTopic, tokens: number, tier = 0): string {
+function fixtureText(topic: FixtureTopic, tokens: number, tier = 0): string {
   const length = tokens * 4;
   const phrase = PHRASES[topic];
   const body = `t${tier}:${phrase.repeat(Math.ceil(length / phrase.length) + 1)}`;

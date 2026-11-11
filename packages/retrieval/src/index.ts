@@ -15,3 +15,5 @@ export type { Candidate, CrossEncoderOptions, Reranked, Reranker } from "./reran
 export { crossEncoderReranker, rerankCandidates } from "./rerank.js";
 export type { EngineOptions, RetrievalEngine, SearchOptions, SearchResponse } from "./engine.js";
 export { RERANK_STAGE, createRetrievalEngine } from "./engine.js";
+export type { ContextBudget, ContextCandidate, ContextEntry, ContextPlan, DropReason, DroppedCandidate } from "./context/plan.js";
+export { estimateTokens, planContext } from "./context/plan.js";
