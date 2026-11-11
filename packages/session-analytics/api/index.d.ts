@@ -989,6 +989,8 @@ declare const REBUILD_GAP_BANDS: readonly string[];
 /** One request as the TTL what-if needs it. */
 interface TtlRequestRow {
     sessionId: string;
+    /** Sidechain requests run in their own cache chain, apart from the main one. */
+    isSidechain: boolean;
     role: string;
     profile: string;
     model: string;
