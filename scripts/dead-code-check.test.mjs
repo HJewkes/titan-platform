@@ -20,7 +20,6 @@ import {
   HEAP_CAP_MB,
   ROOT_ROLES,
   updatedBaseline,
-  openWorkGraph,
   workGraphSeed,
 } from "./dead-code-check.mjs";
 import { MACHINE_SEED } from "./dag-check-seed.mjs";
@@ -353,6 +352,10 @@ describe("the script header", () => {
     expect(header).not.toContain("always exits 0");
     expect(header).toContain("Exits 1 on a new dead export, or 0 under --report-only");
     expect(header).toContain("Exits 75 when the dag-check lock stays busy past the wait bound (DAG_CHECK_LOCK_WAIT_MS, 8 minutes), and 2 on an index failure, a BASE_REF that names no commit, an unknown flag,");
+    expect(header).toContain("a bare or --paths run copies the machine seed");
+    expect(header).toContain("--db runs and runs with DAG_CHECK_NO_SEED set stay cold");
+    expect(header).toContain("retries once cold");
+    expect(header).toContain("DEAD_CHECK_DEFER_COLD set it exits 76");
     expect(header).toContain('a --db path that does not exist or holds no "head" snapshot, or an out-of-memory abort');
   });
 });
@@ -484,6 +487,12 @@ describe("the report", () => {
   });
 });
 
+describe("the internal seed marker", () => {
+  it("rejects a user-passed --seed-db as an unknown flag", () => {
+    expect(() => parseCliArgs(["--seed-db", "x"])).toThrow(/seed-db/);
+  });
+});
+
 describe("dead:check worker heap cap", () => {
   it("is at least dag-check-self's cap so --update on main does not OOM", () => {
     expect(HEAP_CAP_MB).toBeGreaterThanOrEqual(DAG_CHECK_HEAP_CAP_MB);
@@ -513,21 +522,5 @@ describe("seeding the work graph", () => {
   it("never seeds a --db run, which reads an existing graph", () => {
     expect(workGraphSeed({ argv: ["--db", "/tmp/graph.db"], env: {}, exists: present })).toBeNull();
     expect(workGraphSeed({ argv: ["--db=/tmp/graph.db"], env: {}, exists: present })).toBeNull();
-  });
-});
-
-describe("opening a seeded work graph", () => {
-  it("falls back to an empty graph when the seed is not a usable database", async () => {
-    const dir = mkdtempSync(path.join(tmpdir(), "dead-seed-"));
-    const db = path.join(dir, "graph.db");
-    writeFileSync(db, "not a sqlite database, a seed cut short");
-    const graph = await import(new URL("../packages/code-graph/dist/index.js", import.meta.url).href);
-    const store = openWorkGraph(graph, db);
-    try {
-      expect(store.listSnapshots({ limit: 1 })).toEqual([]);
-    } finally {
-      store.close();
-      rmSync(dir, { recursive: true, force: true });
-    }
   });
 });

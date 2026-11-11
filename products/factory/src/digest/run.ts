@@ -4,7 +4,8 @@ import { collectDigest, type DigestSources } from "./collect.js";
 import type { DigestSlot } from "./model.js";
 import type { DigestPushConfig } from "../config.js";
 import { DEFAULT_CAPS, NO_CAPS, rankDigest } from "./rank.js";
-import { alarmNote, gateAlarm, safeConsoleOrigin } from "./gate-alarm.js";
+import { alarmNote, gateAlarm } from "./gate-alarm.js";
+import { alarmLinks, httpsProbe, type HttpsProbe } from "./console-probe.js";
 import { renderMarkdown } from "./render-md.js";
 import { pushDigest, type PushDeps } from "./push.js";
 import type { Directories } from "./sources.js";
@@ -17,6 +18,7 @@ export interface DigestRun {
   windowMinutes: number;
   full: boolean;
   consoleOrigin?: string;
+  probe?: HttpsProbe;
 }
 
 interface BuiltDigest {
@@ -25,11 +27,13 @@ interface BuiltDigest {
   alarmNote?: string;
 }
 
-export async function buildDigest({ sources, now, slot, windowMinutes, full, consoleOrigin }: DigestRun): Promise<BuiltDigest> {
+export async function buildDigest({ sources, now, slot, windowMinutes, full, consoleOrigin, probe = httpsProbe }: DigestRun): Promise<BuiltDigest> {
   const model = await collectDigest({ sources, now, slot, windowMinutes });
-  const markdown = renderMarkdown(rankDigest({ ...model, ...(consoleOrigin !== undefined && { consoleOrigin }) }, full ? NO_CAPS : DEFAULT_CAPS));
   const alarm = gateAlarm(model.friction, model.ownerGateAlarm ?? []);
-  const origin = consoleOrigin === undefined ? undefined : safeConsoleOrigin(consoleOrigin);
+  const links = alarm === undefined ? undefined : await alarmLinks(consoleOrigin, probe);
+  const linkFields = links === undefined ? {} : "origin" in links ? { consoleOrigin: links.origin } : { consoleLinkGap: links.gap };
+  const markdown = renderMarkdown(rankDigest({ ...model, ...linkFields }, full ? NO_CAPS : DEFAULT_CAPS));
+  const origin = links !== undefined && "origin" in links ? links.origin : undefined;
   return { markdown, ...(alarm !== undefined && { alarmNote: alarmNote(alarm, origin) }) };
 }
 
