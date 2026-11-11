@@ -6,21 +6,21 @@
       "file": "packages/retrieval/src/context/plan.ts",
       "find": "if (typeof verdict === \"string\") state.dropped.push({ id: candidate.id, category: candidate.category, reason: verdict });",
       "replace": "if (typeof verdict === \"string\") { state.dropped.push({ id: candidate.id, category: candidate.category, reason: verdict }); break; }",
-      "kills": ["drops a candidate that does not fit and keeps walking to a smaller later one"]
+      "kills": ["planContext drops a candidate that does not fit and keeps walking to a smaller later one"]
     },
     {
       "name": "the category quota check is removed",
       "file": "packages/retrieval/src/context/plan.ts",
       "find": "if (categoryUsed + cost > quotaTokens) return \"over-quota\";",
       "replace": "",
-      "kills": ["measures a category quota in tokens and drops past it as over-quota"]
+      "kills": ["planContext measures a category quota in tokens and drops past it as over-quota"]
     },
     {
       "name": "a category with no quota entry gets no quota",
       "file": "packages/retrieval/src/context/plan.ts",
       "find": "lookup(budget.quotas, category) ?? defaultQuota",
       "replace": "lookup(budget.quotas, category) ?? 0",
-      "kills": ["gives a category with no quota entry the defaultQuota"]
+      "kills": ["planContext gives a category with no quota entry the defaultQuota"]
     },
     {
       "name": "the cap step is skipped",
@@ -28,8 +28,8 @@
       "find": "applyCap(placed, (2 * r.tokens) / placed.length, r);",
       "replace": "{ kept: placed, dropped: [] };",
       "kills": [
-        "falls back to the deepest lower tier under twice the mean share",
-        "drops an entry whose cheapest tier exceeds the cap as over-cap"
+        "planContext falls back to the deepest lower tier under twice the mean share",
+        "planContext drops an entry whose cheapest tier exceeds the cap as over-cap"
       ]
     },
     {
@@ -37,7 +37,7 @@
       "file": "packages/retrieval/src/context/plan.ts",
       "find": "const verdict = judge(candidate, state, r);",
       "replace": "const seen = state.dropped.some((d) => d.id === candidate.id);\n    const verdict = seen ? \"duplicate\" : judge(candidate, state, r);",
-      "kills": ["lets a later copy place when the first copy was dropped over quota"]
+      "kills": ["planContext lets a later copy place when the first copy was dropped over quota"]
     }
   ]
 }
