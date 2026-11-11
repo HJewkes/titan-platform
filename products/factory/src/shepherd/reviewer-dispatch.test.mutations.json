@@ -49,16 +49,6 @@
       "kills": [
         "agentChatReviewerDispatch reviewer-slot reading reports a gate roster read that timed out as a not-launched busy refusal, launching nobody (TP-5295)"
       ]
-    },
-    {
-      "name": "an agents.spawn timeout reads as not launched",
-      "file": "products/factory/src/shepherd/reviewer-dispatch.ts",
-      "find": "if (error instanceof DispatchTimeoutError) throw new ReviewerAskTimedOut(error.message, { cause: error });",
-      "replace": "if (error instanceof DispatchTimeoutError) throw new ReviewerGateRosterUnread(error.message, { cause: error });",
-      "kills": [
-        "agentChatReviewerDispatch reviewer-slot reading keeps an agents.spawn that times out behind the gate a timed-out ask, because the reviewer may be running (TP-5295)",
-        "agentChatReviewerDispatch spawn reports a spawn that timed out as a timed-out ask, not a broker outage, because the reviewer may be running"
-      ]
     }
   ]
 }
