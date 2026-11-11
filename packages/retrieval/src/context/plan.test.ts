@@ -112,6 +112,14 @@ describe("planContext", () => {
       expect(() => planContext([], { tokens })).toThrow(RangeError);
     }
   });
+
+  it.each([-1, 1.5, Number.NaN])("rejects maxTier %s", (maxTier) => {
+    expect(() => planContext([], { tokens: 10, maxTier })).toThrow(RangeError);
+  });
+
+  it.each([-1, 1.5, Number.NaN])("rejects a default tier of %s", (tier) => {
+    expect(() => planContext([], { tokens: 10, defaultTiers: { notes: tier } })).toThrow(RangeError);
+  });
 });
 
 describe("planContext deepening", () => {
