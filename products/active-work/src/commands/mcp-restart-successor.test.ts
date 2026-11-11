@@ -89,13 +89,16 @@ describe('restart successor script', () => {
       startProcess(['-e', SUCCESSOR_SCRIPT, String(dummy.pid), entry, String(port)]);
       await new Promise((r) => setTimeout(r, 700));
       expect(existsSync(marker)).toBe(false);
+      // The dummy is still running here (its exit event has not fired), so the
+      // successor may not serve before this moment.
+      const knownRunningAt = Date.now();
 
-      const exitedAt = await dummyExited;
+      await dummyExited;
       expect(await until(() => existsSync(marker), 10_000)).toBe(true);
       const served = z
         .object({ at: z.number(), argv: z.array(z.string()) })
         .parse(JSON.parse(readFileSync(marker, 'utf8')));
-      expect(served.at).toBeGreaterThanOrEqual(exitedAt - 50);
+      expect(served.at).toBeGreaterThanOrEqual(knownRunningAt);
       expect(served.argv).toEqual(['mcp', 'serve', '--port', String(port)]);
     },
     HARD_TIMEOUT_MS,
