@@ -24,6 +24,7 @@ import {
 import { BUILD_VERSION } from './version.js';
 import { color } from './utils/color.js';
 import { appendUsage } from './utils/usage-log.js';
+import { expandFileValue } from './cli-file-values.js';
 import { exitAfterFlush } from './utils/exit.js';
 import { attachSpawnCommand } from './spawn/args.js';
 import { processSpawnDeps } from './spawn/run.js';
@@ -185,10 +186,20 @@ function refuseCommaList(long: string, accumulate: Accumulator): Accumulator {
   };
 }
 
+/** `@<file>` expands before the comma check, so each line of the file is held to the rule a repeated flag is. */
+function expandFiles(long: string, accumulate: Accumulator): Accumulator {
+  const flag = long.split(/\s/)[0]!;
+  return (value, previous) => {
+    let collected = previous;
+    for (const line of expandFileValue(flag, value)) collected = accumulate(line, collected);
+    return collected ?? [];
+  };
+}
+
 function attachOption(sub: Command, cmd: AnyCommand, key: string, opt: CliOption): void {
   const flags = optionFlagSpec(cmd, key, opt);
   const accumulate = collectOptionParser(cmd, key);
-  const collect = accumulate && refuseCommaList(opt.long, accumulate);
+  const collect = accumulate && expandFiles(opt.long, refuseCommaList(opt.long, accumulate));
   if (opt.required && collect) {
     sub.requiredOption(flags, opt.description, collect);
   } else if (opt.required) {
