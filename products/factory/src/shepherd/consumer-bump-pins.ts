@@ -11,7 +11,7 @@ export interface OverridePin {
   path: string;
 }
 
-export const WORKSPACE_YAML_FIELD = "pnpm-workspace.yaml overrides";
+const WORKSPACE_YAML_FIELD = "pnpm-workspace.yaml overrides";
 
 export const record = (value: unknown): [string, unknown][] => (value !== null && typeof value === "object" && !Array.isArray(value) ? Object.entries(value) : []);
 
