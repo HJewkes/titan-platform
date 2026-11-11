@@ -212,7 +212,7 @@ function decideFile(file: RepoFile, latest: ReadonlyMap<string, string | null>, 
   const edits: SpecifierEdit[] = [];
   const leftAlone: LeftAlone[] = [];
   for (const [field, name, spec] of titanDepEntries(file)) {
-    const pinned = pins.find((pin) => pin.name === name && pinReaches(pin, spec));
+    const pinned = pins.find((pin) => pin.name === name && pinReaches(pin, spec, latest.get(name) ?? ""));
     const decision = pinned === undefined ? decide(spec, latest.get(name)) : { reason: `pinned by ${pinned.field}` };
     if (decision === null) continue;
     if ("reason" in decision) leftAlone.push({ path: file.path, name, spec, reason: decision.reason });

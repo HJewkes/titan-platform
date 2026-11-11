@@ -78,7 +78,6 @@ export function workspacePins(workspaceYaml: RepoFile | null): OverridePin[] {
   return flatPins(overrides, WORKSPACE_YAML_FIELD, workspaceYaml.path);
 }
 
-const SPEC_VERSION = /^[\^~]?(\d+)\.(\d+)\.(\d+)$/;
 const SELECTOR_RANGE = /^([\^~]?)(\d+)(?:\.(\d+))?(?:\.(\d+))?$/;
 
 type Triple = [number, number, number];
@@ -88,25 +87,34 @@ const compare = (a: Triple, b: Triple): number => a[0] - b[0] || a[1] - b[1] || 
 /** The half-open `[lower, upper)` span of a caret, tilde or partial-version range. */
 function rangeSpan(op: string, major: number, minor: number | null, patch: number | null): [Triple, Triple] {
   const lower: Triple = [major, minor ?? 0, patch ?? 0];
-  const caretUpper: Triple = major > 0 ? [major + 1, 0, 0] : minor !== null && minor > 0 ? [0, minor + 1, 0] : patch !== null ? [0, 0, patch + 1] : [0, (minor ?? 0) + 1, 0];
+  const caretUpper: Triple = major > 0 || minor === null ? [major + 1, 0, 0] : minor > 0 ? [0, minor + 1, 0] : patch !== null ? [0, 0, patch + 1] : [0, minor + 1, 0];
   const partialUpper: Triple = minor === null ? [major + 1, 0, 0] : patch === null ? [major, minor + 1, 0] : [major, minor, patch + 1];
   const tildeUpper: Triple = minor === null ? [major + 1, 0, 0] : [major, minor + 1, 0];
   return [lower, op === "^" ? caretUpper : op === "~" ? tildeUpper : partialUpper];
 }
 
+const overlaps = (a: [Triple, Triple], b: [Triple, Triple]): boolean => compare(a[0], b[1]) < 0 && compare(b[0], a[1]) < 0;
+
+/** The span of versions a bumpable declaration (`^1.2.3`, `~1.2.3`, `1.2.3`) can resolve to; null when it is none of those. */
+function specSpan(spec: string): [Triple, Triple] | null {
+  const match = /^([\^~]?)(\d+)\.(\d+)\.(\d+)$/.exec(spec);
+  return match === null ? null : rangeSpan(match[1] ?? "", Number(match[2]), Number(match[3]), Number(match[4]));
+}
+
 /**
  * Whether a pin reaches a direct dependency declared with `spec`. A parent-scoped pin never does; a `name@range`
- * selector does only when the dependency's own version sits in that range. A spec or range this reader cannot
- * compare counts as reached, so the dependency stays unbumped rather than being rewritten under a live pin.
+ * selector does when it shares any version with the span `spec` allows, or with the span of `spec` once bumped to
+ * `target` (a bare version): an install may sit anywhere in the first, and the bump moves it into the second.
+ * A spec or range this reader cannot compare counts as reached, so the dependency stays unbumped rather than being
+ * rewritten under a live pin.
  */
-export function pinReaches(pin: Pick<OverridePin, "scoped" | "range" | "unreadable">, spec: string): boolean {
+export function pinReaches(pin: Pick<OverridePin, "scoped" | "range" | "unreadable">, spec: string, target: string): boolean {
   if (pin.scoped || pin.unreadable) return false;
   if (pin.range === null) return true;
-  const version = SPEC_VERSION.exec(spec);
   const range = SELECTOR_RANGE.exec(pin.range);
-  if (version === null || range === null) return true;
-  const current: Triple = [Number(version[1]), Number(version[2]), Number(version[3])];
-  const optional = (part: string | undefined): number | null => (part === undefined ? null : Number(part));
-  const [lower, upper] = rangeSpan(range[1] ?? "", Number(range[2]), optional(range[3]), optional(range[4]));
-  return compare(current, lower) >= 0 && compare(current, upper) < 0;
+  const current = specSpan(spec);
+  if (current === null || range === null) return true;
+  const selector = rangeSpan(range[1] ?? "", Number(range[2]), range[3] === undefined ? null : Number(range[3]), range[4] === undefined ? null : Number(range[4]));
+  const bumped = specSpan(`${spec.match(/^[\^~]?/)?.[0] ?? ""}${target}`);
+  return overlaps(selector, current) || (bumped !== null && overlaps(selector, bumped));
 }

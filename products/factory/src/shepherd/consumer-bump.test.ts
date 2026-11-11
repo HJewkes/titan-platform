@@ -192,6 +192,24 @@ describe("planConsumerBump override handling", () => {
     expect(bumpedNames(pkg({ dependencies: { [A]: "^0.1.0" }, pnpm: { overrides: { [`${A}@^0.1.0`]: "0.1.0" } } }))).toEqual([]);
   });
 
+  const bumpedUnder = (range: string, spec: string, newest = "0.9.0") =>
+    planConsumerBump(tree(pkg({ dependencies: { [A]: spec }, pnpm: { overrides: { [`${A}@${range}`]: "0.2.0" } } })), latest({ [A]: newest })).edits.length === 0;
+
+  it.each([
+    ["^0", "^0.2.0", true],
+    ["^0.0", "^0.2.0", false],
+    ["^0.0.3", "^0.2.0", false],
+    ["^0.1", "^0.1.0", true],
+    ["~0", "^0.2.0", true],
+    ["^0.1.3", "^0.1.0", true],
+  ])("pins by selector range %s against a dependency declared %s: %s", (range, spec, pinned) => {
+    expect(bumpedUnder(range, spec)).toBe(pinned);
+  });
+
+  it("keeps a dependency unbumped when the selector range holds only the version the bump would reach", () => {
+    expect(bumpedUnder("^0.2.0", "^0.1.0", "0.2.1")).toBe(true);
+  });
+
   it("lists an unparseable or glob resolutions key naming a titan package instead of dropping it", () => {
     const manifest = pkg({ resolutions: { [`**/${A}`]: "0.1.0", "@titan-design/*": "0.1.0", "**/zod": "3.0.0" } });
 
