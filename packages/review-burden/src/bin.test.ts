@@ -97,4 +97,25 @@ describe("review-burden bin", () => {
     run(["--body-file", "body.md"], deps);
     expect(doorOf(out).facts).toEqual([{ kind: "major-changeset" }]);
   });
+
+  it("reads protectedPaths from --config and reports an authority-path fact", () => {
+    const files = { "rb.json": '{"protectedPaths":[".github/workflows/**"]}' };
+    const { deps, out } = harness("1\t0\t.github/workflows/ci.yml\0", "", {}, files);
+    run(["--body-file", "body.md", "--config", "rb.json"], deps);
+    expect(doorOf(out).facts).toEqual([{ kind: "authority-path", path: ".github/workflows/ci.yml" }]);
+  });
+
+  it("applies generatedGlobs from --config to the score", () => {
+    const files = { "rb.json": '{"generatedGlobs":["**/*.gen.ts"]}' };
+    const { deps, out } = harness("100\t0\tsrc/api.gen.ts\0", "", {}, files);
+    run(["--body-file", "body.md", "--config", "rb.json"], deps);
+    const json = JSON.parse(out.join("").trim().split("\n").at(-1) ?? "");
+    expect(json.score.facts.productionLines).toBe(0);
+  });
+
+  it("exits 2 on a config file with an unknown key", () => {
+    const { deps, err } = harness("", "", {}, { "rb.json": '{"protectedPath":["x"]}' });
+    expect(run(["--body-file", "body.md", "--config", "rb.json"], deps)).toBe(2);
+    expect(err.join("")).toContain("unknown key protectedPath");
+  });
 });

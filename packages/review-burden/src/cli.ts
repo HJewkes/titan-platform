@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import type { ChangedFile } from "./config.js";
+import { parseBurdenConfig } from "./bin-config.js";
+import type { BurdenConfig, ChangedFile } from "./config.js";
 import { doorFacts, effectiveDoor, underDeclared, type ChangesetBump, type DoorFacts } from "./door.js";
 import { parseFooter, type Footer } from "./footer.js";
 import { burdenScore, type BurdenScore } from "./score.js";
@@ -19,7 +20,14 @@ export interface CliDeps {
 interface Options {
   base: string;
   bodyFile?: string;
+  configPath?: string;
   enforce: boolean;
+}
+
+function assignValue(options: Options, arg: "--base" | "--body-file" | "--config", value: string): void {
+  if (arg === "--base") options.base = value;
+  else if (arg === "--body-file") options.bodyFile = value;
+  else options.configPath = value;
 }
 
 function parseArgs(argv: readonly string[]): Options {
@@ -27,11 +35,10 @@ function parseArgs(argv: readonly string[]): Options {
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--enforce") options.enforce = true;
-    else if (arg === "--base" || arg === "--body-file") {
+    else if (arg === "--base" || arg === "--body-file" || arg === "--config") {
       const value = argv[++i];
       if (!value) throw new Error(`${arg} needs a value`);
-      if (arg === "--base") options.base = value;
-      else options.bodyFile = value;
+      assignValue(options, arg, value);
     } else throw new Error(`unknown argument ${arg ?? ""}`);
   }
   return options;
@@ -78,6 +85,11 @@ function changesetBumps(files: readonly ChangedFile[], readText: CliDeps["readTe
   return bumps;
 }
 
+function readConfig(options: Options, deps: CliDeps): Partial<BurdenConfig> {
+  if (!options.configPath) return {};
+  return parseBurdenConfig(deps.readText(options.configPath), options.configPath);
+}
+
 function readBody(options: Options, deps: CliDeps): string {
   if (options.bodyFile) return deps.readText(options.bodyFile);
   return deps.env[BODY_ENV] ?? "";
@@ -105,16 +117,18 @@ function remediation(footer: Footer, door: DoorFacts): string[] {
 /** Prints the table and a JSON line; returns the exit code. Only `--enforce` can make it non-zero. */
 export function run(argv: readonly string[], deps: CliDeps): number {
   let options: Options;
+  let config: Partial<BurdenConfig>;
   try {
     options = parseArgs(argv);
+    config = readConfig(options, deps);
   } catch (error) {
     deps.err(`review-burden: ${error instanceof Error ? error.message : String(error)}\n`);
     return 2;
   }
   const files = parseNumstat(deps.diff(options.base));
   const body = readBody(options, deps);
-  const score = burdenScore({ files, body });
-  const door = doorFacts({ files, changesetBumps: changesetBumps(files, deps.readText) });
+  const score = burdenScore({ files, body, config });
+  const door = doorFacts({ files, changesetBumps: changesetBumps(files, deps.readText), config });
   const footer = parseFooter(body);
   const effective = effectiveDoor(footer.door, door.door);
   deps.out(`${burdenTable(score)}\n`);
