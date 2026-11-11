@@ -19,20 +19,17 @@ import { openGraph, type WorkspaceGraph } from './graph.js';
 import { selectAll, selectOne } from '../test-support/session-index/query.js';
 import { runRefresh } from './refresh.js';
 import { RefreshScheduler } from './scheduler.js';
-import type * as Episodes from './episodes.js';
+import { refreshEpisodes } from './episodes.js';
 
-const episodeStep = vi.hoisted(() => ({ before: null as (() => Promise<void>) | null }));
+const episodeStep: { before: (() => Promise<void>) | null } = { before: null };
 
-vi.mock('./episodes.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof Episodes>();
-  return {
-    ...actual,
-    refreshEpisodes: async (...args: Parameters<typeof actual.refreshEpisodes>) => {
-      await episodeStep.before?.();
-      return actual.refreshEpisodes(...args);
-    },
-  };
-});
+/** Runs `episodeStep.before` ahead of the real episode step, so a test can hold it. */
+const steps = {
+  refreshEpisodes: async (...args: Parameters<typeof refreshEpisodes>) => {
+    await episodeStep.before?.();
+    return refreshEpisodes(...args);
+  },
+};
 
 const UNCHANGED = 1_000;
 
@@ -292,7 +289,7 @@ describe('delta pass behind runNow', () => {
       return episodes.blocked;
     };
     const scheduler = new RefreshScheduler((_kind, onIndexed) =>
-      runRefresh({ graph, mode: 'delta', transcripts, taskRoot: dir, onIndexed }),
+      runRefresh({ graph, mode: 'delta', transcripts, taskRoot: dir, onIndexed, steps }),
     );
 
     try {
@@ -315,7 +312,7 @@ describe('delta pass behind runNow', () => {
     return new RefreshScheduler(
       async (_kind, onIndexed) => {
         const transcripts = await transcriptsFromDirty(graph, dirty.drain(), roots);
-        return runRefresh({ graph, mode: 'delta', transcripts, taskRoot: dir, onIndexed });
+        return runRefresh({ graph, mode: 'delta', transcripts, taskRoot: dir, onIndexed, steps });
       },
       { hasUndrained: () => dirty.size > 0 },
     );

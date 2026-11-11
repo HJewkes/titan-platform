@@ -98,6 +98,7 @@ export async function refreshEpisodes(
   limit: number = DEFAULT_EPISODE_LIMIT,
   yieldPoint: () => Promise<void>,
   sweep = true,
+  write: typeof writeEpisodes = writeEpisodes,
 ): Promise<EpisodePass> {
   const changed = sessionsChangedSince(graph, before);
   const due = episodeCandidates(graph, changed);
@@ -107,7 +108,7 @@ export async function refreshEpisodes(
   const batch = stale.slice(0, limit);
   let written = 0;
   for (const sessionId of [...due, ...batch]) {
-    written += writeEpisodes(graph, [sessionId]).length;
+    written += write(graph, [sessionId]).length;
     await yieldPoint();
   }
   return {
