@@ -468,6 +468,7 @@
   "shepherd/turn-check.ts",
   "shepherd/version-packages.ts",
   "shepherd/view-schema.ts",
+  "shepherd/view-waits.ts",
   "shepherd/view.ts",
   "shepherd/visual-accept-adapter.ts",
   "shepherd/visual-accept.ts",
