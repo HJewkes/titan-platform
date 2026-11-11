@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
+import { findNodeAtLocation, parseTree } from "jsonc-parser";
 import type { GitHubPort, RepoFile, RepoSlug } from "@titan-design/github";
 import { parse as parseYaml, parseAllDocuments } from "yaml";
 import { z } from "zod";
+import { manifestPins, record, workspacePins, type OverridePin } from "./consumer-bump-pins.js";
 import type { Registration } from "./store.js";
 
 export const BUMP_BRANCH_PREFIX = "shepherd/bump-consumers-";
@@ -129,6 +131,8 @@ function npmPackages(text: string): Record<string, unknown> {
 
 interface SpecifierEdit {
   path: string;
+  /** The dependency field the edit lands in. */
+  field: string;
   name: string;
   from: string;
   to: string;
@@ -156,10 +160,14 @@ export interface ConsumerBumpPlan {
   leftAlone: LeftAlone[];
 }
 
-/** Every `@titan-design/*` name the tree's manifests depend on, sorted, for the caller to look up with `npmLatest`. */
+/** Every `@titan-design/*` name the tree's manifests depend on or pin by override, sorted, for the caller to look up with `npmLatest`. */
 export function consumerDepNames(tree: ConsumerTree): string[] {
-  const names = tree.manifests.flatMap((file) => titanDeps(file).map(([name]) => name));
+  const names = [...tree.manifests.flatMap((file) => titanDeps(file).map(([name]) => name)), ...treePins(tree).map(({ name }) => name).filter((name) => TITAN_NAME.test(name))];
   return [...new Set(names)].sort();
+}
+
+function treePins(tree: ConsumerTree): OverridePin[] {
+  return [...tree.manifests.flatMap((file) => manifestPins(parseManifest(file), file.path)), ...workspacePins(tree.workspaceYaml)];
 }
 
 /**
@@ -169,9 +177,12 @@ export function consumerDepNames(tree: ConsumerTree): string[] {
  */
 export function planConsumerBump(tree: ConsumerTree, latest: ReadonlyMap<string, string | null>): ConsumerBumpPlan {
   const plan: ConsumerBumpPlan = { edits: [], files: [], leftAlone: [] };
+  const workspace = workspacePins(tree.workspaceYaml);
+  plan.leftAlone.push(...pinsLeftAlone(workspace, latest));
   for (const file of tree.manifests) {
-    const { edits, leftAlone } = decideFile(file, latest);
-    plan.leftAlone.push(...leftAlone);
+    const pins = manifestPins(parseManifest(file), file.path);
+    const { edits, leftAlone } = decideFile(file, latest, [...pins, ...workspace]);
+    plan.leftAlone.push(...pinsLeftAlone(pins, latest), ...leftAlone);
     const edited = applyEdits(file, edits);
     plan.edits.push(...edited.applied);
     plan.leftAlone.push(...edited.missed);
@@ -180,21 +191,29 @@ export function planConsumerBump(tree: ConsumerTree, latest: ReadonlyMap<string,
   return plan;
 }
 
-function decideFile(file: RepoFile, latest: ReadonlyMap<string, string | null>): Pick<ConsumerBumpPlan, "edits" | "leftAlone"> {
-  const edits = new Map<string, SpecifierEdit>();
-  const leftAlone = new Map<string, LeftAlone>();
-  for (const [name, spec] of titanDeps(file)) {
-    const decision = decide(spec, latest.get(name));
-    const key = `${name}\0${spec}`;
-    if (decision === null) continue;
-    if ("reason" in decision) leftAlone.set(key, { path: file.path, name, spec, reason: decision.reason });
-    else edits.set(key, { path: file.path, name, from: spec, ...decision });
+/** A pin already at npm latest costs nothing to leave, so only a pin behind latest, or one that cannot be compared, is listed. */
+function pinsLeftAlone(pins: OverridePin[], latest: ReadonlyMap<string, string | null>): LeftAlone[] {
+  const seen = new Map<string, LeftAlone>();
+  for (const { name, spec, field, path } of pins) {
+    if (!TITAN_NAME.test(name) || decide(spec, latest.get(name)) === null) continue;
+    seen.set(`${path}\0${name}\0${spec}\0${field}`, { path, name, spec, reason: `pinned by ${field}` });
   }
-  for (const [name, spec, field] of pinnedTitanDeps(file)) leftAlone.set(`${name}\0${spec}\0${field}`, { path: file.path, name, spec, reason: `pinned by ${field}` });
-  return { edits: [...edits.values()], leftAlone: [...leftAlone.values()] };
+  return [...seen.values()];
 }
 
-const record = (value: unknown): [string, unknown][] => (value !== null && typeof value === "object" && !Array.isArray(value) ? Object.entries(value) : []);
+function decideFile(file: RepoFile, latest: ReadonlyMap<string, string | null>, pins: OverridePin[]): Pick<ConsumerBumpPlan, "edits" | "leftAlone"> {
+  const pinnedBy = new Map(pins.map((pin) => [pin.name, pin.field]));
+  const edits: SpecifierEdit[] = [];
+  const leftAlone: LeftAlone[] = [];
+  for (const [field, name, spec] of titanDepEntries(file)) {
+    const pinned = pinnedBy.get(name);
+    const decision = pinned === undefined ? decide(spec, latest.get(name)) : { reason: `pinned by ${pinned}` };
+    if (decision === null) continue;
+    if ("reason" in decision) leftAlone.push({ path: file.path, name, spec, reason: decision.reason });
+    else edits.push({ path: file.path, field, name, from: spec, ...decision });
+  }
+  return { edits, leftAlone };
+}
 
 function parseManifest(file: RepoFile): Map<string, unknown> {
   try {
@@ -204,22 +223,16 @@ function parseManifest(file: RepoFile): Map<string, unknown> {
   }
 }
 
-const titanPairs = (entries: [string, unknown][]): [string, string][] => entries.filter((dep): dep is [string, string] => TITAN_NAME.test(dep[0]) && typeof dep[1] === "string");
-
-export function titanDeps(file: RepoFile): [string, string][] {
+/** Titan dependency pairs as `[field, name, spec]`. */
+function titanDepEntries(file: RepoFile): [string, string, string][] {
   const fields = parseManifest(file);
-  return titanPairs(DEP_FIELDS.flatMap((field) => record(fields.get(field))));
+  return DEP_FIELDS.flatMap((field) =>
+    record(fields.get(field)).flatMap(([name, spec]): [string, string, string][] => (TITAN_NAME.test(name) && typeof spec === "string" ? [[field, name, spec]] : [])),
+  );
 }
 
-/** Titan pairs under an override field, as `[name, spec, field]`; they are never bumped. */
-function pinnedTitanDeps(file: RepoFile): [string, string, string][] {
-  const fields = parseManifest(file);
-  const sources: [string, unknown][] = [
-    ["pnpm.overrides", record(fields.get("pnpm")).find(([key]) => key === "overrides")?.[1]],
-    ["overrides", fields.get("overrides")],
-    ["resolutions", fields.get("resolutions")],
-  ];
-  return sources.flatMap(([field, value]) => titanPairs(record(value)).map(([name, spec]): [string, string, string] => [name, spec, field]));
+export function titanDeps(file: RepoFile): [string, string][] {
+  return titanDepEntries(file).map(([, name, spec]) => [name, spec]);
 }
 
 type Decision = { to: string; version: string } | { reason: string } | null;
@@ -252,23 +265,21 @@ function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-/** Rewrites each exact `"name": "spec"` pair in place, so formatting and key order survive; a pair not written literally is left alone. */
+/** Replaces each dependency's value node found by its `[field, name]` path, so no other node moves and formatting and key order survive. */
 function applyEdits(file: RepoFile, edits: SpecifierEdit[]): { content: string; applied: SpecifierEdit[]; missed: LeftAlone[] } {
   let content = file.content;
   const applied: SpecifierEdit[] = [];
   const missed: LeftAlone[] = [];
   for (const edit of edits) {
-    const pair = new RegExp(`("${escapeRegExp(edit.name)}"\\s*:\\s*")${escapeRegExp(edit.from)}"`, "g");
-    const next = content.replace(pair, (_match, head: string) => `${head}${edit.to}"`);
-    if (next === content) missed.push({ path: edit.path, name: edit.name, spec: edit.from, reason: "pair not written literally" });
-    else applied.push(edit);
-    content = next;
+    const node = findNodeAtLocation(parseTree(content) ?? { type: "null", offset: 0, length: 0 }, [edit.field, edit.name]);
+    if (node?.type !== "string" || node.value !== edit.from) {
+      missed.push({ path: edit.path, name: edit.name, spec: edit.from, reason: "pair not written literally" });
+      continue;
+    }
+    content = `${content.slice(0, node.offset)}${JSON.stringify(edit.to)}${content.slice(node.offset + node.length)}`;
+    applied.push(edit);
   }
   return { content, applied, missed };
-}
-
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /** One branch per release set: a rerun of the same set lands on it, a newer release gets a new one. */
