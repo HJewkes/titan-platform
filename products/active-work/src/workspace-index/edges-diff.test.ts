@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { z } from 'zod';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { openGraph, type WorkspaceGraph } from '../session-index/graph.js';
@@ -29,22 +30,28 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-interface Row {
-  edge_id: number;
-  source_ref: string;
-  relation: string;
-  target_ref: string;
-}
+const rowSchema = z.object({
+  edge_id: z.number(),
+  source_ref: z.string(),
+  relation: z.string(),
+  target_ref: z.string(),
+});
+type Row = z.infer<typeof rowSchema>;
 
 function edgeRows(db: WorkspaceGraph['db']): Row[] {
-  return db
-    .prepare('SELECT edge_id, source_ref, relation, target_ref FROM edge ORDER BY edge_id')
-    .all() as Row[];
+  return z
+    .array(rowSchema)
+    .parse(
+      db
+        .prepare('SELECT edge_id, source_ref, relation, target_ref FROM edge ORDER BY edge_id')
+        .all(),
+    );
 }
 
 function maxEdgeId(): number {
-  const row = graph.db.prepare('SELECT max(edge_id) AS id FROM edge').get() as { id: number };
-  return row.id;
+  return z
+    .object({ id: z.number() })
+    .parse(graph.db.prepare('SELECT max(edge_id) AS id FROM edge').get()).id;
 }
 
 const triple = (row: Row): string => `${row.source_ref} ${row.relation} ${row.target_ref}`;

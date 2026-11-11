@@ -3,6 +3,7 @@ import type { spawn as nodeSpawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
+import { asSpawn } from '../test-support/spawn-fake.js';
 import {
   STEP_SUPERVISION,
   UNIT_NAME,
@@ -60,9 +61,9 @@ function makeFakeSpawn(
       const code = opts.exitCodes?.(call) ?? 0;
       handlers.close.forEach((cb) => cb(code));
     });
-    return child as unknown as ReturnType<typeof nodeSpawn>;
+    return child;
   });
-  return { spawn: spawnFn as unknown as typeof nodeSpawn, calls };
+  return { spawn: asSpawn(spawnFn), calls };
 }
 
 function makeTempPaths(): { paths: StepPaths; cleanup: () => void } {

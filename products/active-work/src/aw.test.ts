@@ -44,9 +44,10 @@ describe('openSlugOrInit (TP-356 reviewer nit)', () => {
 
     await expect(openSlugOrInit('New_Thing', false)).rejects.toSatisfy((err: unknown) => {
       expect(err).toBeInstanceOf(NotFoundError);
-      expect((err as NotFoundError).code).toBe(66);
-      expect((err as Error).message).toContain(original);
-      expect((err as Error).message).toContain(
+      if (!(err instanceof NotFoundError)) return false;
+      expect(err.code).toBe(66);
+      expect(err.message).toContain(original);
+      expect(err.message).toContain(
         'To create it, use a lowercase kebab-case slug (e.g. my-new-thing).',
       );
       return true;

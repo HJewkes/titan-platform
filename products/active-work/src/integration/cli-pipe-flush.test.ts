@@ -10,6 +10,7 @@ import {
 } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { z } from 'zod';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { assertSafeToRemove } from '../test-support/test-helpers.js';
 import { requireDistBin, runCli } from '../test-support/cli-runner.js';
@@ -111,10 +112,12 @@ describe('cli output to a pipe', () => {
 
     expect(piped.status).toBe(0);
     expect(piped.stdout.length).toBe(reference.length);
-    const parsed = JSON.parse(piped.stdout.toString('utf8')) as {
-      ok: boolean;
-      data: { tasks: unknown[] };
-    };
+    const parsed = z
+      .object({
+        ok: z.boolean(),
+        data: z.object({ tasks: z.array(z.unknown()) }),
+      })
+      .parse(JSON.parse(piped.stdout.toString('utf8')));
     expect(parsed.ok).toBe(true);
     expect(parsed.data.tasks).toHaveLength(TASK_COUNT);
   });
