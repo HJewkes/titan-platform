@@ -37,10 +37,10 @@ export async function atomicWrite(targetPath: string, content: string | Buffer):
 /** A holder refreshes its lock every `LOCK_STALE_MS / 2`; one older than this crashed. */
 export const LOCK_STALE_MS = 10_000;
 /** Longer than `LOCK_STALE_MS`, so a waiter outlasts and reclaims a crashed holder's lock. */
-export const LOCK_TIMEOUT_MS = 20_000;
+const LOCK_TIMEOUT_MS = 20_000;
 const RETRY_MIN_MS = 10;
 
-export interface FileLockOptions {
+interface FileLockOptions {
   timeoutMs?: number;
 }
 
