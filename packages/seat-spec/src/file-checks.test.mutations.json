@@ -29,12 +29,12 @@
       ]
     },
     {
-      "name": "a relative agent-writable root is refused",
+      "name": "unclean paths are refused, not normalized",
       "file": "packages/seat-spec/src/file-checks.ts",
-      "find": "const relative = ctx.agentWritableRoots.find((root) => !path.posix.isAbsolute(root));",
-      "replace": "const relative = undefined;",
+      "find": "const dirRefusal = uncleanInput(filePath, ctx) ?? unsafeDir(ctx);",
+      "replace": "const dirRefusal = unsafeDir(ctx);",
       "kills": [
-        "checkOwnerFile refuses a relative agent-writable root instead of skipping the overlap check"
+        "checkOwnerFile refuses a file path with a .. that lands back inside the seats dir instead of normalizing it"
       ]
     }
   ]

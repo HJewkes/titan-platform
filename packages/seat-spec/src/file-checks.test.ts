@@ -9,8 +9,29 @@ describe("checkOwnerFile", () => {
     expect(checkOwnerFile(SEAT_FILE, facts(), context())).toBeUndefined();
   });
 
-  it("passes a seats directory given with a trailing slash", () => {
-    expect(checkOwnerFile(SEAT_FILE, facts(), context({ seatsDir: `${SEATS_DIR}/` }))).toBeUndefined();
+  it.each([
+    ["a .. that lands back inside the seats dir", `${HOME}/wt/link/../../.agent-chat/seats/example-steward.seat.json`],
+    ["a . segment", `${SEATS_DIR}/./example-steward.seat.json`],
+    ["an empty segment", `${HOME}//.agent-chat/seats/example-steward.seat.json`],
+    ["a relative path", "seats/example-steward.seat.json"],
+    ["a path that climbs out", `${SEATS_DIR}/../example-steward.seat.json`],
+    ["an empty path", ""],
+  ])("refuses a file path with %s instead of normalizing it", (_label, filePath) => {
+    expect(checkOwnerFile(filePath, facts(), context())).toMatchObject({ code: "unclean_path" });
+  });
+
+  it.each([
+    ["a trailing slash", `${SEATS_DIR}/`],
+    ["a .. that resolves back to it", `${HOME}/wt/link/../../.agent-chat/seats`],
+    ["a relative path", ".agent-chat/seats"],
+  ])("refuses a seats dir with %s instead of normalizing it", (_label, seatsDir) => {
+    expect(checkOwnerFile(SEAT_FILE, facts(), context({ seatsDir }))).toMatchObject({ code: "unclean_path" });
+  });
+
+  it("refuses an empty agent-writable root list, since overlap cannot be checked", () => {
+    expect(checkOwnerFile(SEAT_FILE, facts(), context({ agentWritableRoots: [] }))).toMatchObject({
+      code: "agent_writable_path",
+    });
   });
 
   it.each([
@@ -26,8 +47,6 @@ describe("checkOwnerFile", () => {
   it.each([
     ["in a subdirectory", `${SEATS_DIR}/nested/example-steward.seat.json`],
     ["beside the seats directory", `${HOME}/.agent-chat/example-steward.seat.json`],
-    ["a relative path", "seats/example-steward.seat.json"],
-    ["a path that climbs out", `${SEATS_DIR}/../example-steward.seat.json`],
   ])("refuses a file %s", (_label, filePath) => {
     expect(checkOwnerFile(filePath, facts(), context())).toMatchObject({ code: "outside_seats_dir" });
   });
@@ -41,16 +60,24 @@ describe("checkOwnerFile", () => {
   it.each([
     ["an empty", ""],
     ["a relative", "home/example"],
-  ])("refuses %s agent-writable root instead of skipping the overlap check", (_label, root) => {
+    ["a ..", `${HOME}/wt/link/../..`],
+    ["a trailing-slash", `${HOME}/wt/`],
+  ])("refuses %s agent-writable root instead of normalizing or skipping it", (_label, root) => {
     const ctx = context({ agentWritableRoots: [root] });
 
-    expect(checkOwnerFile(SEAT_FILE, facts(), ctx)).toMatchObject({ code: "agent_writable_path" });
+    expect(checkOwnerFile(SEAT_FILE, facts(), ctx)).toMatchObject({ code: "unclean_path" });
   });
 
   it("refuses an agent-writable root inside the seats directory", () => {
     const ctx = context({ agentWritableRoots: [`${SEATS_DIR}/scratch`] });
 
     expect(checkOwnerFile(SEAT_FILE, facts(), ctx)).toMatchObject({ code: "agent_writable_path" });
+  });
+
+  it("refuses a seats directory when the agent root is /", () => {
+    expect(checkOwnerFile(SEAT_FILE, facts(), context({ agentWritableRoots: ["/"] }))).toMatchObject({
+      code: "agent_writable_path",
+    });
   });
 
   it("does not treat a sibling with a shared prefix as inside an agent root", () => {

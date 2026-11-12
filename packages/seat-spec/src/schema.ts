@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isCleanAbsolutePath } from "./clean-path.js";
 
 export const SEAT_SCHEMA = "titan-seat/v1";
 export const SEAT_INDEX_SCHEMA = "titan-seat-index/v1";
@@ -16,15 +17,9 @@ const CRON_FIELDS = 5;
 
 const seatName = z.string().regex(SEAT_NAME);
 const nameList = z.array(z.string().min(1));
-const DEL = 0x7f;
-const hasControlChar = (value: string): boolean =>
-  [...value].some((char) => char.charCodeAt(0) < 0x20 || char.charCodeAt(0) === DEL);
 const absolutePath = z
   .string()
-  .refine(
-    (value) => value.startsWith("/") && !value.split("/").includes("..") && !hasControlChar(value),
-    "must be an absolute path with no .. and no control characters",
-  );
+  .refine(isCleanAbsolutePath, "must be a clean absolute path: no empty, . or .. segment, no control characters");
 const cron = z.string().refine((value) => value.trim().split(/\s+/).length === CRON_FIELDS, "must be a 5-field cron");
 
 const promptSchema = z.strictObject({

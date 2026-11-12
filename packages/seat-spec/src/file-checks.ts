@@ -1,4 +1,5 @@
 import path from "node:path";
+import { isCleanAbsolutePath } from "./clean-path.js";
 import type { SeatRefusal } from "./refusal.js";
 
 /** The `lstat` facts a check needs; a `fs.Stats` from `lstat` satisfies it. */
@@ -18,7 +19,8 @@ export interface OwnerFileContext {
   seatsDirFacts: FileFacts;
   /**
    * Absolute roots an agent can write (worktrees, agent scratch); none may contain the seats directory.
-   * A relative or empty root is refused. Pass realpath output: the compare is case-sensitive.
+   * The list must not be empty, and each root must be a clean absolute path. Pass realpath output:
+   * the compare is case-sensitive.
    */
   agentWritableRoots: readonly string[];
 }
@@ -35,24 +37,37 @@ function unsafeOwner(facts: FileFacts, ownerUid: number): SeatRefusal | undefine
   return undefined;
 }
 
-const clean = (value: string): string => path.posix.normalize(value).replace(/(.)\/+$/, "$1");
+/** Both paths are clean absolute paths (checked first), so a prefix compare on whole segments is exact. */
+const isWithin = (root: string, target: string): boolean =>
+  root === "/" || target === root || target.startsWith(`${root}/`);
 
-const isWithin = (root: string, target: string): boolean => {
-  const rel = path.posix.relative(clean(root), clean(target));
-  return rel === "" || (rel !== ".." && !rel.startsWith("../") && !path.posix.isAbsolute(rel));
-};
+/**
+ * Every path the caller supplies must already be clean, and the agent roots must be listed:
+ * a guard that tidies or skips an input it cannot judge would pass a file it never checked.
+ */
+function uncleanInput(filePath: string, ctx: OwnerFileContext): SeatRefusal | undefined {
+  const inputs: [string, string][] = [
+    ["file path", filePath],
+    ["seats dir", ctx.seatsDir],
+    ...ctx.agentWritableRoots.map((root): [string, string] => ["agent-writable root", root]),
+  ];
+  const unclean = inputs.find(([, value]) => !isCleanAbsolutePath(value));
+  if (unclean !== undefined) {
+    return { code: "unclean_path", detail: `${unclean[0]} "${unclean[1]}" is not a clean absolute path` };
+  }
+  if (ctx.agentWritableRoots.length === 0) {
+    return { code: "agent_writable_path", detail: "no agent-writable roots given, so overlap cannot be checked" };
+  }
+  return undefined;
+}
 
 function unsafeDir(ctx: OwnerFileContext): SeatRefusal | undefined {
   const dir = ctx.seatsDirFacts;
-  if (!path.posix.isAbsolute(ctx.seatsDir) || dir.isSymbolicLink() || !dir.isDirectory()) {
-    return { code: "seats_dir_unsafe", detail: `${ctx.seatsDir} is not a real absolute directory` };
+  if (dir.isSymbolicLink() || !dir.isDirectory()) {
+    return { code: "seats_dir_unsafe", detail: `${ctx.seatsDir} is not a real directory` };
   }
   const owner = unsafeOwner(dir, ctx.ownerUid);
   if (owner !== undefined) return { code: "seats_dir_unsafe", detail: owner.detail };
-  const relative = ctx.agentWritableRoots.find((root) => !path.posix.isAbsolute(root));
-  if (relative !== undefined) {
-    return { code: "agent_writable_path", detail: `agent-writable root "${relative}" is not absolute, so overlap cannot be checked` };
-  }
   const writable = ctx.agentWritableRoots.find((root) => isWithin(root, ctx.seatsDir) || isWithin(ctx.seatsDir, root));
   if (writable !== undefined) return { code: "agent_writable_path", detail: `${ctx.seatsDir} overlaps ${writable}` };
   return undefined;
@@ -61,12 +76,13 @@ function unsafeDir(ctx: OwnerFileContext): SeatRefusal | undefined {
 /**
  * The seat-policy fail-closed rules for an owner-held file: a regular file, not a symlink, owned
  * by the owner, not group- or world-writable, directly inside a safe seats directory that no agent
- * root overlaps. `filePath` is the absolute path the reader opened.
+ * root overlaps. `filePath`, `seatsDir` and every agent root must already be clean absolute paths
+ * (no empty, `.` or `..` segment, no trailing slash); anything else is refused, never normalized.
  */
 export function checkOwnerFile(filePath: string, facts: FileFacts, ctx: OwnerFileContext): SeatRefusal | undefined {
-  const dirRefusal = unsafeDir(ctx);
+  const dirRefusal = uncleanInput(filePath, ctx) ?? unsafeDir(ctx);
   if (dirRefusal !== undefined) return dirRefusal;
-  if (!path.posix.isAbsolute(filePath) || path.posix.dirname(clean(filePath)) !== clean(ctx.seatsDir)) {
+  if (path.posix.dirname(filePath) !== ctx.seatsDir) {
     return { code: "outside_seats_dir", detail: `${filePath} is not directly inside ${ctx.seatsDir}` };
   }
   if (facts.isSymbolicLink()) return { code: "symlink", detail: `${filePath} is a symlink` };

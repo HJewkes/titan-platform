@@ -64,6 +64,14 @@ describe("parseSeat", () => {
     expect(codeOf({ ...stewardSeat(), prompt })).toMatchObject({ code: "invalid_field" });
   });
 
+  it.each([
+    ["cwd", "/home/example/./projects"],
+    ["configDir", "/home/example//profiles"],
+    ["cwd", "/home/example/projects/"],
+  ])("refuses a %s that is not already clean (%s)", (field, value) => {
+    expect(codeOf({ ...stewardSeat(), [field]: value })).toMatchObject({ code: "invalid_field" });
+  });
+
   it.each([["cwd"], ["configDir"]])("refuses a %s with a control character", (field) => {
     expect(codeOf({ ...stewardSeat(), [field]: "/home/example/a\u0000b" })).toMatchObject({ code: "invalid_field" });
   });
