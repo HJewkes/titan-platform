@@ -18,14 +18,13 @@ export interface DecisionTask {
 
 type ActiveWorkReads = {
   "task.list": { args: { all_initiatives: true; status: "open"; tag: string }; result: { tasks: DecisionTask[] } };
-  /** `agent_visible` is absent from a daemon older than TP-5453 P6b; absent reads as owner-only. */
-  inventory: { args: Record<string, never>; result: { initiatives: { slug: string; agent_visible?: boolean }[] } };
+  inventory: { args: Record<string, never>; result: { initiatives: { slug: string; human_only: boolean }[]; human_only_known: boolean } };
 };
 
 export interface ActiveWorkSourceOptions {
   origin: string;
   fetch?: typeof fetch;
-  /** Personal (owner-only by the brief's `visibility`) initiatives are left out unless asked for. */
+  /** Personal (charter `human_only`) initiatives are left out unless asked for. */
   includePersonal?: boolean;
   pollMs?: number;
 }
@@ -57,10 +56,11 @@ export function decisionTaskItem(task: DecisionTask, personal: boolean): OwnerIt
   };
 }
 
-/** Personal unless active-work's isAgentVisible says otherwise, so an unknown or unmarked initiative never leaks. */
+/** An unreadable charter makes every initiative personal, so nothing private leaks on a bad read. */
 function personalSlugs(inventory: ActiveWorkReads["inventory"]["result"]): (slug: string) => boolean {
-  const shared = new Set(inventory.initiatives.filter((entry) => entry.agent_visible === true).map((entry) => entry.slug));
-  return (slug) => !shared.has(slug);
+  if (!inventory.human_only_known) return () => true;
+  const personal = new Set(inventory.initiatives.filter((entry) => entry.human_only).map((entry) => entry.slug));
+  return (slug) => personal.has(slug);
 }
 
 /** Open `needs-decision` tasks over the active-work daemon's loopback rpc, the reader the factory's Shepherd already uses. */
