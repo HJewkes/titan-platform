@@ -21,6 +21,13 @@ const CiPolicyScope = z.strictObject({
     .refine((files) => new Set(files.map((file) => file.path)).size === files.length, "each pinned path appears once"),
 });
 const PathScope = z.strictObject({ paths: z.array(bounded).min(1).max(200) });
+/** The owner's task validation (TP-5411): the done_when they read, by hash, and the owner-rule reason it needed them. */
+const TaskScope = z.strictObject({
+  doneWhenHash: z.string().regex(/^[0-9a-f]{8}$/),
+  reason: z.enum(["new-direction", "one-way-door", "new-cap", "authority-widening"]),
+  visualSignoff: z.boolean(),
+});
+const TaskKey = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*\/[A-Z][A-Z0-9]*-[0-9]+$/, "a task key is <initiative>/<ID>");
 
 const bindingFields = {
   questionId: z.string().min(1),
@@ -33,6 +40,7 @@ const bindingFields = {
 const PlanBinding = z.discriminatedUnion("gate", [
   z.strictObject({ ...bindingFields, gate: z.literal("ci-policy"), scope: CiPolicyScope }),
   z.strictObject({ ...bindingFields, gate: z.enum(["skill", "visual"]), scope: PathScope }),
+  z.strictObject({ ...bindingFields, task: TaskKey, gate: z.literal("task"), scope: TaskScope }),
 ]);
 
 export const PlanBindings = z

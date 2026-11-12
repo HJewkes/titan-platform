@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the owner-validate tag check is dropped",
+      "file": "products/factory/src/shepherd/task-approval-round.ts",
+      "find": "if (!task.tags.includes(OWNER_VALIDATE_TAG)) throw",
+      "replace": "if (task.tags.includes(\"never\")) throw",
+      "kills": [
+        "shepherd plan-round --task-approval plan-round --task-approval refuses a task not tagged owner-validate"
+      ]
+    },
+    {
+      "name": "the reason check is dropped",
+      "file": "products/factory/src/shepherd/task-approval-round.ts",
+      "find": "if (!isReason(request.reason)) throw",
+      "replace": "if (request.reason === \"\") throw",
+      "kills": [
+        "shepherd plan-round --task-approval plan-round --task-approval refuses a reason outside the four"
+      ]
+    },
+    {
+      "name": "the round binds no visual sign-off",
+      "file": "products/factory/src/shepherd/task-approval-round.ts",
+      "find": "reason, visualSignoff: request.visualSignoff };",
+      "replace": "reason, visualSignoff: false };",
+      "kills": [
+        "shepherd plan-round --task-approval plan-round --task-approval drafts one question bound to the task gate"
+      ]
+    }
+  ]
+}

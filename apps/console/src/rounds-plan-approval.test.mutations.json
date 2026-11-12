@@ -38,6 +38,15 @@
       "kills": [
         "a plan round's approval scope on the round page shows the owner each bound question's gate, task, repo, CI-policy keys and pinned files beside the question"
       ]
+    },
+    {
+      "name": "a task binding shows as a path approval",
+      "file": "apps/console/src/pages/PlanApprovalScope.tsx",
+      "find": "if (gate === \"task\") return",
+      "replace": "if (gate === \"never\") return",
+      "kills": [
+        "a task validation question on the round page shows the owner that the approve pick validates the task for every PR, with its reason and visual sign-off"
+      ]
     }
   ]
 }

@@ -17,21 +17,29 @@ export function PlanApprovalsProvider({ manifest, children }: { manifest: Manife
 const blobLabel = (blob: string | null): string => (blob === null ? "absent at head" : `content ${blob.slice(0, 12)}`);
 
 function scopeLines(binding: PlanBinding): string[] {
+  if (binding.gate === "task") {
+    const { doneWhenHash, reason, visualSignoff } = binding.scope;
+    return [`Done when, as shown above (hash ${doneWhenHash})`, `Why it needs you: ${reason}`, `Visual sign-off at merge: ${visualSignoff ? "yes" : "no"}`];
+  }
   if (binding.gate !== "ci-policy") return binding.scope.paths.map((path) => `Path: ${path}`);
   const keys = `CI-policy weakened: ${binding.scope.ciPolicyKeys.join(", ")}`;
   return [keys, ...binding.scope.files.map(({ path, blob }) => `File: ${path} (${blobLabel(blob)})`)];
+}
+
+function headline({ approve, gate, task, repo }: PlanBinding): string {
+  if (gate === "task") return `"${approve}" records your validation of ${task}, for every PR of the task, as:`;
+  return `"${approve}" records a ${gate} plan approval for ${task} in ${repo}, covering only:`;
 }
 
 /** What picking the question's approve option records; nothing for a question no binding names. */
 export function PlanApprovalScope({ questionId }: { questionId: string }): ReactNode {
   const binding = useContext(PlanApprovalsContext).find((each) => each.questionId === questionId);
   if (binding === undefined) return null;
-  const { approve, gate, task, repo } = binding;
   return (
     <Card variant="subtle" testID={`plan-approval-scope-${questionId}`}>
       <CardContent>
         <VStack gap={1}>
-          <Typography variant="subtitle2">{`"${approve}" records a ${gate} plan approval for ${task} in ${repo}, covering only:`}</Typography>
+          <Typography variant="subtitle2">{headline(binding)}</Typography>
           {scopeLines(binding).map((line) => (
             <Typography key={line} variant="caption" color="secondary">{line}</Typography>
           ))}

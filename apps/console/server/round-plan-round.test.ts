@@ -75,3 +75,22 @@ describe("a plan round built by owner-queue", () => {
     expect(revised).toEqual([]);
   });
 });
+
+describe("a task validation round built by owner-queue", () => {
+  const TASK_SCOPE = { doneWhenHash: "0123abcd", reason: "new-cap" as const, visualSignoff: true };
+  const taskBody = (): string =>
+    JSON.stringify(buildPlanRound({ unit: "validate-example-tp-1", round: 1, task: PLAN_TASK, repo: PLAN_REPO, asks: [{ gate: "task", scope: TASK_SCOPE, title: "A new capability", context: "Done when: it ships." }] }));
+
+  it("is one question whose approve pick records one task approval, and whose not-now pick records none", () => {
+    const manifest = manifestOf(taskBody());
+
+    const approved = approvedPlans("validate-example-tp-1-r1", manifest, feedbackPicking(manifest, (options) => options[0]!));
+    const notNow = approvedPlans("validate-example-tp-1-r1", manifest, feedbackPicking(manifest, (options) => options[1]!));
+
+    expect([roundRuleRefusal(manifest), manifest.questions.length]).toEqual([null, 1]);
+    expect(approved.map(({ record }) => RecordedAction.parse(record).action)).toEqual([
+      { kind: "plan-approval", task: PLAN_TASK, repo: PLAN_REPO, round: "validate-example-tp-1-r1", gate: "task", scope: TASK_SCOPE },
+    ]);
+    expect(notNow).toEqual([]);
+  });
+});

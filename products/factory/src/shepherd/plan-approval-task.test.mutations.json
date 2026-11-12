@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "record accepts a task approval from any resolver with a confirm event",
+      "file": "products/factory/src/shepherd/plan-approval.ts",
+      "find": "if (actor !== CONSOLE_ACTOR || !resolver.confirmEvent) throw",
+      "replace": "if (!resolver.confirmEvent) throw",
+      "kills": [
+        "the owner's task approval a task approval written by any other actor is refused: a coordinator"
+      ]
+    },
+    {
+      "name": "a registering run claims task rows",
+      "file": "products/factory/src/shepherd/plan-approval.ts",
+      "find": "AND task = ? AND repo = ? AND gate != 'task'\").run(runId",
+      "replace": "AND task = ? AND repo = ?\").run(runId",
+      "kills": [
+        "the owner's task approval a task approval is not claimed by a registering run"
+      ]
+    },
+    {
+      "name": "a task row keeps the run the console named",
+      "file": "products/factory/src/shepherd/plan-approval.ts",
+      "find": "const claimed = gate === \"task\" ? null : (claimRun ?? null);",
+      "replace": "const claimed = claimRun ?? null;",
+      "kills": [
+        "the owner's task approval a task approval is not claimed by a registering run"
+      ]
+    },
+    {
+      "name": "the reason enum is widened to any string",
+      "file": "products/factory/src/shepherd/plan-approval.ts",
+      "find": "  reason: z.enum(TASK_APPROVAL_REASONS),",
+      "replace": "  reason: z.string(),",
+      "kills": [
+        "the owner's task approval a task scope missing its reason is refused"
+      ]
+    },
+    {
+      "name": "the reader drops the done_when hash compare",
+      "file": "products/factory/src/shepherd/owner-task-approval.ts",
+      "find": "return approval?.scope.doneWhenHash === doneWhenHash(doneWhen) ? approval : undefined;",
+      "replace": "return doneWhen === \"\" ? undefined : approval;",
+      "kills": [
+        "the owner's task approval a task approval for an older done_when reads as none"
+      ]
+    }
+  ]
+}

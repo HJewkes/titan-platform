@@ -4,7 +4,7 @@ import { field } from "./rounds.js";
 type QuestionInput = ManifestInput["questions"][number];
 type SectionInput = NonNullable<ManifestInput["sections"]>[number];
 
-export type PlanGate = "ci-policy" | "skill" | "visual";
+export type PlanGate = "ci-policy" | "skill" | "visual" | "task";
 
 /** A ci-policy approval pins each file the PR changes by its git blob sha; null means the file is absent at head. */
 export interface CiPolicyPlanScope {
@@ -17,7 +17,14 @@ export interface PathPlanScope {
   paths: string[];
 }
 
-export type PlanGateScope = { gate: "ci-policy"; scope: CiPolicyPlanScope } | { gate: "skill" | "visual"; scope: PathPlanScope };
+/** A task approval validates the task's WHAT: the done_when the owner read, by hash, and the owner-rule reason it needed them. */
+export interface TaskPlanScope {
+  doneWhenHash: string;
+  reason: "new-direction" | "one-way-door" | "new-cap" | "authority-widening";
+  visualSignoff: boolean;
+}
+
+export type PlanGateScope = { gate: "ci-policy"; scope: CiPolicyPlanScope } | { gate: "skill" | "visual"; scope: PathPlanScope } | { gate: "task"; scope: TaskPlanScope };
 
 /** `title` heads the question's section and `context` is what the owner reads beside the pinned scope. */
 export type PlanAsk = PlanGateScope & { title: string; context: string };
@@ -48,8 +55,28 @@ interface Rendered {
   binding: PlanApproval;
 }
 
+/** A task ask validates the task itself, so it reads as one yes-or-not-now on the task's title, not as a pinned change. */
+function renderTaskAsk(ask: PlanAsk, input: PlanRoundInput, questionId: string, used: Set<string>): Rendered {
+  const { task, repo } = input;
+  const id = task.slice(task.indexOf("/") + 1);
+  const prompt = field(`Validate ${id}: ${ask.title}?`, `Validate ${id}?`, questionId);
+  const approve = field(`Approve: validate ${task} as described below`, "Approve", questionId, used);
+  const notNow = field(`Not now: leave ${task} unvalidated`, "Not now", questionId, used);
+  const section: SectionInput = {
+    id: `s-${questionId}`,
+    title: field(ask.title, `The task ${task}`, questionId),
+    deciding: prompt,
+    changed: field(`A task that waits for your validation before it is worked: ${task}`, "A task", questionId),
+    context: field(ask.context, "No further context.", questionId),
+    questionIds: [questionId],
+  };
+  const question: QuestionInput = { id: questionId, kind: "pick-one", prompt, options: [approve, notNow], signsOff: prompt };
+  return { question, section, binding: { questionId, approve, task, repo, ...structuredClone(gateScope(ask)) } };
+}
+
 /** Labels name the gate and the task, so two asks never share an option and none reads as a blanket sign-off. */
 function renderPlanAsk(ask: PlanAsk, input: PlanRoundInput, questionId: string, used: Set<string>): Rendered {
+  if (ask.gate === "task") return renderTaskAsk(ask, input, questionId, used);
   const { task, repo } = input;
   const prompt = field(`May the planned ${ask.gate} change for ${task} merge as pinned below?`, "A plan approval", questionId);
   const approve = field(`Approve this ${ask.gate} change for ${task} as pinned below`, "Approve", questionId, used);
@@ -66,7 +93,11 @@ function renderPlanAsk(ask: PlanAsk, input: PlanRoundInput, questionId: string, 
   return { question, section, binding: { questionId, approve, task, repo, ...structuredClone(gateScope(ask)) } };
 }
 
-const gateScope = (ask: PlanAsk): PlanGateScope => (ask.gate === "ci-policy" ? { gate: ask.gate, scope: ask.scope } : { gate: ask.gate, scope: ask.scope });
+function gateScope(ask: PlanAsk): PlanGateScope {
+  if (ask.gate === "ci-policy") return { gate: ask.gate, scope: ask.scope };
+  if (ask.gate === "task") return { gate: ask.gate, scope: ask.scope };
+  return { gate: ask.gate, scope: ask.scope };
+}
 
 /**
  * Turns one PR's predicted WHAT gates into a questions-only round@2 round.json whose `planApprovals` bind each question's

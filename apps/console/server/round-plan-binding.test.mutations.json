@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the task binding takes any scope",
+      "file": "apps/console/server/round-plan-binding.ts",
+      "find": "gate: z.literal(\"task\"), scope: TaskScope }",
+      "replace": "gate: z.literal(\"task\"), scope: z.unknown() }",
+      "kills": [
+        "a plan round's task binding a task binding parses; a task binding with path scope is refused"
+      ]
+    },
+    {
+      "name": "the task binding takes any task name",
+      "file": "apps/console/server/round-plan-binding.ts",
+      "find": "...bindingFields, task: TaskKey, gate",
+      "replace": "...bindingFields, gate",
+      "kills": [
+        "a plan round's task binding a task binding with a bare task id is refused"
+      ]
+    }
+  ]
+}
