@@ -10,7 +10,8 @@
  * `supersedes` (TP-3990) is the console's own field, not review-schema's: the ids of earlier rounds this one replaces,
  * which `round-supersede.ts` withdraws while they are still open. It is lifted off before the strict parse, so the
  * vendored copy stays byte-for-byte the release and survives TP-3232's swap. `planApprovals` (TP-4357) is lifted the same
- * way: the plan-approval entries a plan round's answer records (`round-plan-binding.ts`).
+ * way: the plan-approval entries a plan round's answer records (`round-plan-binding.ts`). `kind` (TP-5409) is lifted too:
+ * `feedback` marks a post-merge visual sheet, which shows what changed and asks for notes, so it may bind no merge.
  */
 import { z } from "zod";
 import * as reviewSchema from "./review-schema-0.3/index.js";
@@ -32,18 +33,32 @@ const ContractRound = reviewSchema.RoundSchema.transform((manifest, ctx) => {
 
 const Supersedes = z.array(z.string().regex(ROUND_ID, "a round id is a plain name")).min(1).max(MAX_SUPERSEDES);
 
-export const RoundSchema = z.looseObject({ supersedes: Supersedes.optional(), planApprovals: PlanBindings.optional() }).transform(({ supersedes, planApprovals, ...rest }, ctx) => {
+const RoundKind = z.enum(["feedback"]);
+type RoundKind = z.infer<typeof RoundKind>;
+
+export const FEEDBACK_MERGE_REFUSED = "a feedback round asks nothing that merges: drop the merge binding";
+
+/** A post-merge feedback sheet (TP-5409) shows what already merged, so no question in it may bind a merge. */
+function feedbackProblems(kind: RoundKind | undefined, questions: readonly { id: string; kind: string; merge?: unknown }[]): string[] {
+  if (kind !== "feedback") return [];
+  return questions.filter((question) => question.kind === "pick-one" && question.merge !== undefined).map((question) => `question ${question.id}: ${FEEDBACK_MERGE_REFUSED}`);
+}
+
+const ConsoleFields = z.looseObject({ supersedes: Supersedes.optional(), planApprovals: PlanBindings.optional(), kind: RoundKind.optional() });
+
+export const RoundSchema = ConsoleFields.transform(({ supersedes, planApprovals, kind, ...rest }, ctx) => {
   const parsed = ContractRound.safeParse(rest);
   if (!parsed.success) {
     ctx.issues.push(...parsed.error.issues.map((issue) => ({ ...issue, input: undefined })));
     return z.NEVER;
   }
-  const problems = planBindingProblems(planApprovals ?? [], parsed.data.questions);
+  const bindings = planBindingProblems(planApprovals ?? [], parsed.data.questions).map((message) => ({ path: "planApprovals", message }));
+  const problems = [...bindings, ...feedbackProblems(kind, parsed.data.questions).map((message) => ({ path: "questions", message }))];
   if (problems.length > 0) {
-    ctx.issues.push(...problems.map((message) => ({ code: "custom" as const, path: ["planApprovals"], message, input: undefined })));
+    ctx.issues.push(...problems.map(({ path, message }) => ({ code: "custom" as const, path: [path], message, input: undefined })));
     return z.NEVER;
   }
-  return { ...parsed.data, ...(supersedes !== undefined && { supersedes }), ...(planApprovals !== undefined && { planApprovals }) };
+  return { ...parsed.data, ...(supersedes !== undefined && { supersedes }), ...(planApprovals !== undefined && { planApprovals }), ...(kind !== undefined && { kind }) };
 });
 
 const notBlindAb = (answer: { pairs?: unknown }): boolean => answer.pairs === undefined;
