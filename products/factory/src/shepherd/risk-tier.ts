@@ -49,6 +49,16 @@ const DEEP_REVIEW_LINES = 800;
 /** Owner Q2 (decision 504): CI workflow files need a person even when the reviewer writes `CI-policy: unchanged`. */
 const CI_PERSON_FILES = [".github/workflows/**", ".github/codeowners", ".codewatch/**"];
 
+/** TP-5403 Q1: the files that cut or publish a release, so a policy touch among them stays the owner's. */
+const PUBLISH_FILES = [
+  ".changeset/config.json",
+  ...["version-packages.ts", "release-follow.ts", "bump-*.ts", "consumer-bump*.ts", "leftover-bump.ts"].map((name) => `products/factory/src/shepherd/${name}`),
+  "products/factory/src/cli-release.ts",
+];
+
+/** TP-5403 Q1: agent settings and the factory config, which sets defaults such as the gate-reset switches. */
+const SETTINGS_FILES = [".claude/**", ".agent-chat/**", "products/factory/src/config.ts", "products/factory/src/config-ref.ts"];
+
 /** Owner Q1 (decision 504): the files that define the owner's own gates, so an agent sign-off never stands in for theirs. */
 const OWNER_LEVER_FILES = [...MERGE_POLICY_FILES, ...HOLD_COMMAND_FILES, ...OWNER_ACTION_FILES].map((glob) => glob.toLowerCase());
 
@@ -82,6 +92,8 @@ function highReasons(facts: RiskFacts): (string | undefined)[] {
     pathReason("owner packet", facts.ownerPacket),
     pathReason("owner gate file", matching(facts.paths.filter((path) => !isTest(path)), OWNER_LEVER_FILES)),
     pathReason("CI workflow file", matching(facts.paths, CI_PERSON_FILES)),
+    pathReason("publish file", matching(facts.paths, PUBLISH_FILES)),
+    pathReason("settings file", matching(facts.paths, SETTINGS_FILES)),
     ciPolicyReason(facts.ciPolicy),
     facts.authorityLine === "widened" ? "Authority widened" : undefined,
     pathReason("visual", facts.visual),
