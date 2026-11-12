@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a held check's test file falls out of its table",
+      "file": "products/factory/src/shepherd/g10-class-rules.ts",
+      "find": "  return HELD_CHECK_TABLES.has(table) && ",
+      "replace": "  return false && ",
+      "kills": [
+        "the named policy tables (TP-5403) counts a held check's test file in its table despite the test exemption"
+      ]
+    },
+    {
+      "name": "a rename's old path is not attributed",
+      "file": "products/factory/src/shepherd/g10-class-rules.ts",
+      "find": "files.flatMap(({ path, previousPath }) => (previousPath === undefined ? [path] : [path, previousPath]))",
+      "replace": "files.map(({ path }) => path)",
+      "kills": [
+        "the named policy tables (TP-5403) names the tables each policy path matches, a rename's old path included"
+      ]
+    },
+    {
+      "name": "the import closure is left out of the named tables",
+      "file": "products/factory/src/shepherd/g10-class-rules.ts",
+      "find": "\"hold-closure\": HOLD_CLOSURE.map(inClosureRoot) }",
+      "replace": "\"hold-closure\": [] }",
+      "kills": [
+        "the named policy tables (TP-5403) the policy table rebuilt from POLICY_TABLES equals the listed globs"
+      ]
+    }
+  ]
+}

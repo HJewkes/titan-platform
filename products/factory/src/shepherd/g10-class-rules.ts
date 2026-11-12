@@ -109,20 +109,23 @@ const matchesHeldCheck = compileGlobs([...GATE_RESOLVE_CHECK_FILES, ...HOLD_CLOS
 /** Case-folded (TP-4158): a case-insensitive checkout still imports `Gate-Resolve-x.test-helpers.ts` as the helper. */
 const inHeldCheck = (path: string): boolean => matchesHeldCheck(path.toLowerCase());
 
+/** The named tables the listed policy class is the union of, in the order their globs are listed. */
+const LISTED_POLICY_TABLES = {
+  "default-policy": DEFAULT_CLASS_RULES.policy,
+  "merge-policy": MERGE_POLICY_FILES,
+  "hold-command": HOLD_COMMAND_FILES,
+  "owner-action": OWNER_ACTION_FILES,
+  "gate-resolve-actor": GATE_RESOLVE_ACTOR_FILES,
+  "owner-skill-guard": OWNER_SKILL_GUARD_FILES,
+  "gate-resolve-check": GATE_RESOLVE_CHECK_FILES,
+  "signoff-policy": SIGNOFF_POLICY_FILES,
+  "hold-closure-check": HOLD_CLOSURE_CHECK_FILES,
+} satisfies Record<string, readonly string[]>;
+
 /** The listed table, before the import closure: the seeds `g10-hold-closure.test.ts` walks from. */
 export const SHEPHERD_LISTED_RULES: ClassRules = {
   ...DEFAULT_CLASS_RULES,
-  policy: [
-    ...DEFAULT_CLASS_RULES.policy,
-    ...MERGE_POLICY_FILES,
-    ...HOLD_COMMAND_FILES,
-    ...OWNER_ACTION_FILES,
-    ...GATE_RESOLVE_ACTOR_FILES,
-    ...OWNER_SKILL_GUARD_FILES,
-    ...GATE_RESOLVE_CHECK_FILES,
-    ...SIGNOFF_POLICY_FILES,
-    ...HOLD_CLOSURE_CHECK_FILES,
-  ],
+  policy: Object.values(LISTED_POLICY_TABLES).flat(),
   security: [...DEFAULT_CLASS_RULES.security, ...AGENT_CHAT_SECURITY_FILES],
 };
 
@@ -153,4 +156,32 @@ export function shepherdPathTouches(files: readonly Pick<ChangedFile, "path" | "
   const touches: string[] = pathTouches(files, SHEPHERD_CLASS_RULES);
   const inCheck = files.some(({ path, previousPath }) => inHeldCheck(path) || (previousPath !== undefined && inHeldCheck(previousPath)));
   return inCheck && !touches.includes("policy") ? [...touches, "policy"] : touches;
+}
+
+/** Every named table the policy class is the union of, the import closure last (TP-5403). */
+export const POLICY_TABLES = { ...LISTED_POLICY_TABLES, "hold-closure": HOLD_CLOSURE.map(inClosureRoot) } satisfies Record<string, readonly string[]>;
+
+export type PolicyTable = keyof typeof POLICY_TABLES;
+
+const isPolicyTable = (name: string): name is PolicyTable => Object.hasOwn(POLICY_TABLES, name);
+const POLICY_TABLE_NAMES: readonly PolicyTable[] = Object.keys(POLICY_TABLES).filter(isPolicyTable);
+
+const HELD_CHECK_TABLES: ReadonlySet<PolicyTable> = new Set<PolicyTable>(["gate-resolve-check", "hold-closure-check"]);
+
+function inTable(table: PolicyTable, path: string): boolean {
+  if (pathTouches([{ path }], { ...SHEPHERD_CLASS_RULES, policy: POLICY_TABLES[table] }).includes("policy")) return true;
+  return HELD_CHECK_TABLES.has(table) && compileGlobs(POLICY_TABLES[table])(path.toLowerCase());
+}
+
+/**
+ * Each changed path the policy class holds, a rename's old path included, with the named tables it matches under the
+ * same test exemption and held-check rule as `shepherdPathTouches`. A held path no table names maps to an empty list.
+ */
+export function policyTablesOf(files: readonly Pick<ChangedFile, "path" | "previousPath">[]): Map<string, PolicyTable[]> {
+  const paths = files.flatMap(({ path, previousPath }) => (previousPath === undefined ? [path] : [path, previousPath]));
+  const tables = new Map<string, PolicyTable[]>();
+  for (const path of paths.filter((path) => shepherdPathTouches([{ path }]).includes("policy"))) {
+    tables.set(path, POLICY_TABLE_NAMES.filter((table) => inTable(table, path)));
+  }
+  return tables;
 }
