@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import YAML from 'yaml';
+import { z } from 'zod';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { v1ToV2Artifacts } from './v1-to-v2-artifacts.js';
@@ -47,7 +48,7 @@ describe('v1ToV2Artifacts null list elements', () => {
 
     await expect(v1ToV2Artifacts.run(activeRoot)).resolves.toBeUndefined();
 
-    const next = YAML.parse(await readFile(file, 'utf8')) as Record<string, unknown>;
+    const next = z.record(z.string(), z.unknown()).parse(YAML.parse(await readFile(file, 'utf8')));
     expect(next.branches).toEqual([{ repo: 'org/one', name: 'feat/a' }]);
     expect(next.stashes).toEqual([{ repo: 'org/one', label: 'wip' }]);
     expect(next.prs).toBeUndefined();
@@ -82,7 +83,7 @@ describe('v1ToV2Artifacts null list elements', () => {
 
     await v1ToV2Artifacts.run(activeRoot);
 
-    const next = YAML.parse(await readFile(file, 'utf8')) as Record<string, unknown>;
+    const next = z.record(z.string(), z.unknown()).parse(YAML.parse(await readFile(file, 'utf8')));
     expect(next.branches).toEqual([{ repo: 'org/one', name: 'feat/a', note: 'keep' }]);
     expect(next.stashes).toEqual([{ repo: 'org/one', label: 'wip', sha: 'deadbeef' }]);
     expect(next.prs).toBeUndefined();

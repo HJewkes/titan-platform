@@ -6,14 +6,16 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { spawn } from 'node:child_process';
+import { ChildProcess, spawn } from 'node:child_process';
+import type * as ChildProcessModule from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import * as paths from '../utils/paths.js';
 import { writePidFile } from '../server/lifecycle.js';
 import mcpRestart from './mcp-restart.js';
 
-vi.mock('node:child_process', () => ({
+vi.mock('node:child_process', async (importOriginal) => ({
+  ...(await importOriginal<typeof ChildProcessModule>()),
   spawn: vi.fn(() => ({ pid: SPAWNED_PID, unref: () => {} })),
 }));
 
@@ -39,7 +41,7 @@ function stubHealth(payload: unknown | null): void {
 }
 
 function run(): ReturnType<typeof mcpRestart.run> {
-  return mcpRestart.run({}, {} as never);
+  return mcpRestart.run({}, { activeRoot: tmp, warnings: [], format: 'json' });
 }
 
 beforeEach(() => {
@@ -68,7 +70,9 @@ describe('mcp restart', () => {
   it('fails loudly when the successor dies instead of reporting its pid', async () => {
     await writePidFile(DEAD_PID, { port: 8123, version: '0.1.0', started: 'x' });
     stubHealth(null);
-    vi.mocked(spawn).mockReturnValueOnce({ pid: DEAD_PID, unref: () => {} } as never);
+    vi.mocked(spawn).mockReturnValueOnce(
+      Object.assign(new ChildProcess(), { pid: DEAD_PID, unref: () => {} }),
+    );
 
     await expect(run()).rejects.toThrow(/exited immediately/);
     expect(vi.mocked(spawn)).toHaveBeenCalledOnce();
@@ -80,7 +84,65 @@ describe('mcp restart', () => {
 
     await run();
 
-    const args = vi.mocked(spawn).mock.calls[0][1] as string[];
-    expect(args).toEqual(expect.arrayContaining(['mcp', 'serve', '--port', '8123']));
+    const args = vi.mocked(spawn).mock.calls[0]?.[1];
+    expect(args).toEqual(expect.arrayContaining(['8123']));
+  });
+
+  describe('when stopping the current daemon would kill the caller (TP-83)', () => {
+    const OLD_PID = 424_242;
+
+    /** The old daemon is "alive" until SIGTERM, which ends this very call as it does through MCP. */
+    function stubCallerKilledByStop(): void {
+      let alive = true;
+      vi.spyOn(process, 'kill').mockImplementation((pid: number, sig?: string | number) => {
+        if (pid !== OLD_PID) return true;
+        if (sig === 0) {
+          if (!alive) throw Object.assign(new Error('gone'), { code: 'ESRCH' });
+          return true;
+        }
+        alive = false;
+        throw new Error('caller terminated with the daemon');
+      });
+    }
+
+    it('spawns the successor before it stops the old daemon', async () => {
+      await writePidFile(OLD_PID, { port: 8123, version: '0.1.0', started: 'x' });
+      stubCallerKilledByStop();
+      stubHealth(null);
+
+      await run().catch(() => undefined);
+
+      expect(vi.mocked(spawn)).toHaveBeenCalledOnce();
+    });
+
+    it('hands the successor the old pid to wait for and the port to bind', async () => {
+      await writePidFile(OLD_PID, { port: 8123, version: '0.1.0', started: 'x' });
+      stubCallerKilledByStop();
+      stubHealth(null);
+
+      await run().catch(() => undefined);
+
+      expect(vi.mocked(spawn).mock.calls[0]?.[1]).toEqual(
+        expect.arrayContaining([String(OLD_PID), '8123']),
+      );
+    });
+  });
+
+  it('tells the caller to start the daemon manually when the successor never listens', async () => {
+    vi.useFakeTimers();
+    await writePidFile(DEAD_PID, { port: 8123, version: '0.1.0', started: 'x' });
+    stubHealth(null);
+
+    const state = { settled: false };
+    const outcome = run().then(
+      () => undefined,
+      (err: Error) => err,
+    ).finally(() => {
+      state.settled = true;
+    });
+    // File reads inside run() are real I/O, so the clock must keep advancing until it settles.
+    while (!state.settled) await vi.advanceTimersByTimeAsync(1_000);
+
+    expect((await outcome)?.message).toMatch(/mcp serve --detach/);
   });
 });

@@ -69,12 +69,12 @@ const FAILURE = 1;
 const pollBudgetSpent = (ports: ServicePorts, startedAt: number, polls: number): boolean => ports.now() - startedAt >= polls * POLL_MS;
 
 const labelOf = (ports: ServicePorts): string => serviceLabel(ports.labelPrefix);
-const serviceTarget = (ports: ServicePorts): string => `gui/${ports.uid}/${labelOf(ports)}`;
+export const serviceTarget = (ports: ServicePorts): string => `gui/${ports.uid}/${labelOf(ports)}`;
 const detail = (result: CommandResult): string => (result.stderr.trim() || result.stdout.trim() || `exit ${result.code}`);
-const isSystemd = (ports: ServicePorts): boolean => ports.platform === "linux";
+export const isSystemd = (ports: ServicePorts): boolean => ports.platform === "linux";
 const serviceName = (ports: ServicePorts): string => (isSystemd(ports) ? UNIT_NAME : labelOf(ports));
 /** The plist or unit `service install` writes for this platform. */
-export const installedServiceFile = (ports: ServicePorts): string => (isSystemd(ports) ? unitPath(ports.home, ports.xdgConfigHome) : plistPath(ports.home, ports.labelPrefix));
+const installedServiceFile = (ports: ServicePorts): string => (isSystemd(ports) ? unitPath(ports.home, ports.xdgConfigHome) : plistPath(ports.home, ports.labelPrefix));
 export const renderServiceFile = (ports: ServicePorts, options: PlistOptions): string => (isSystemd(ports) ? renderUnit(options) : renderPlist({ ...options, ...(ports.labelPrefix === undefined ? {} : { labelPrefix: ports.labelPrefix }) }));
 
 function fail(io: ServiceIo, message: string): number {

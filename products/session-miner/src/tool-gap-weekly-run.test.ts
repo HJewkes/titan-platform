@@ -1,15 +1,20 @@
+import type * as childProcess from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { resolveConfig } from "./config.js";
 import { createMinerContext, type MinerContext } from "./context.js";
 import { EXIT_LOCKED } from "./graph-refresh.js";
 import { seedBashCall, seedEventsDb, seedInsightGraph, type FixtureBashCall } from "./insights/fixture.js";
 import { patternId } from "./insights/post-filter.js";
 import type { BashCall } from "./insights/tool-gaps-sources.js";
-import { runToolGapWeekly, snapshotPath, weekSnapshotSchema, type ActiveWorkPort, type ToolGapWeeklyOptions } from "./tool-gap-weekly-run.js";
+import { activeWorkCli, runToolGapWeekly, snapshotPath, weekSnapshotSchema, type ActiveWorkPort, type ToolGapWeeklyOptions } from "./tool-gap-weekly-run.js";
 import type { OpenTask } from "./tool-gap-weekly.js";
+
+type ExecCallback = (err: Error | null, out: { stdout: string; stderr: string }) => void;
+const execFileMock = vi.hoisted(() => vi.fn((_file: string, _args: string[], callback: ExecCallback) => callback(null, { stdout: "", stderr: "" })));
+vi.mock("node:child_process", async (importOriginal) => ({ ...(await importOriginal<typeof childProcess>()), execFile: execFileMock }));
 
 const CALLS: FixtureBashCall[] = [
   { toolUseId: "tu-1", sessionId: "impl-1", ts: "2026-09-10T01:00:00Z", outputChars: 400, command: "agent-chat agent ls | grep -E running" },
@@ -124,5 +129,16 @@ describe("tool-gap-weekly runner", () => {
 
     expect(result).toEqual({ outcome: "locked", exitCode: EXIT_LOCKED });
     expect(fakes.digests).toEqual([]);
+  });
+});
+
+describe("active-work CLI port", () => {
+  it("passes one --tags flag per tag to task add and never joins tags with commas", async () => {
+    await activeWorkCli.add("demo", { kind: "add", patternId: GREP, title: "Tool gap: grep", tags: ["tool-gap", "pattern-x", "item-114"], body: "body text" });
+
+    expect(execFileMock.mock.calls[0]?.slice(0, 2)).toEqual([
+      "active-work",
+      ["task", "add", "demo", "--title", "Tool gap: grep", "--tags", "tool-gap", "--tags", "pattern-x", "--tags", "item-114", "--notes", "body text"],
+    ]);
   });
 });

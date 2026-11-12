@@ -5,8 +5,8 @@ import {
   refreshCorpus,
   rollupSessions,
   syncPrices,
-  type DiscoveredTranscript,
 } from '@titan-design/session-graph';
+import type { DiscoveredTranscript } from '@titan-design/session-read';
 import {
   costPerOutcomeSchema,
   LIST_PRICE_CAVEAT,
@@ -159,7 +159,7 @@ describe('miner outcomes', () => {
       expect(() => costPerOutcomeSchema.parse(result)).not.toThrow();
       expect(result.bySeat).toHaveLength(1);
       expect(result.bySeat[0]).toMatchObject({ key: 'seat-a', assignments: 1, merged: 1 });
-      expect(result.bySeat[0]!.costUsd).toBeGreaterThan(0);
+      expect(result.bySeat[0].costUsd).toBeGreaterThan(0);
       expect(result.joinSource.agentName).toBe(1);
       expect(result.skipped).toEqual({ badLines: 1, noAgent: 0 });
       expect(process.stderr.write).not.toHaveBeenCalled();

@@ -3,6 +3,7 @@ import type { spawn as nodeSpawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
+import { asSpawn } from '../test-support/spawn-fake.js';
 import {
   STEP_SUPERVISION,
   UNIT_NAME,
@@ -47,22 +48,22 @@ function makeFakeSpawn(
       stderr: { on: () => undefined },
       on: (event, cb) => {
         handlers[event] ??= [];
-        handlers[event]!.push(cb);
+        handlers[event].push(cb);
       },
     };
     queueMicrotask(() => {
       if (opts.enoent?.(call)) {
         const err = new Error('not found') as NodeJS.ErrnoException;
         err.code = 'ENOENT';
-        handlers.error?.forEach((cb) => cb(err));
+        handlers.error.forEach((cb) => cb(err));
         return;
       }
       const code = opts.exitCodes?.(call) ?? 0;
-      handlers.close?.forEach((cb) => cb(code));
+      handlers.close.forEach((cb) => cb(code));
     });
-    return child as unknown as ReturnType<typeof nodeSpawn>;
+    return child;
   });
-  return { spawn: spawnFn as unknown as typeof nodeSpawn, calls };
+  return { spawn: asSpawn(spawnFn), calls };
 }
 
 function makeTempPaths(): { paths: StepPaths; cleanup: () => void } {
@@ -121,6 +122,17 @@ describe('renderUnit', () => {
     });
     expect(unit).toContain('ExecStart=/usr/bin/node "/path with spaces/cli.js" mcp serve');
   });
+
+  it('doubles % and escapes $ in a quoted ExecStart argument', () => {
+    const unit = renderUnit({
+      cliEntry: '/srv/my x/50%/$HOME/cli.js',
+      homeDir: '/home/u',
+      nodeBin: '/usr/bin/node',
+    });
+    expect(unit).toContain(
+      'ExecStart=/usr/bin/node "/srv/my x/50%%/$$HOME/cli.js" mcp serve',
+    );
+  });
 });
 
 describe('renderUnit environment and logs', () => {
@@ -158,6 +170,12 @@ describe('renderUnit environment and logs', () => {
     const unit = renderUnit(base);
     expect(unit).toContain('StandardOutput=append:/home/u/.local/state/active-work/daemon.out.log');
     expect(unit).toContain('StandardError=append:/home/u/.local/state/active-work/daemon.err.log');
+  });
+
+  it('doubles % in the append: log paths so systemd does not read a specifier', () => {
+    const unit = renderUnit({ ...base, homeDir: '/home/50%u' });
+    expect(unit).toContain('StandardOutput=append:/home/50%%u/.local/state/active-work/daemon.out.log');
+    expect(unit).toContain('StandardError=append:/home/50%%u/.local/state/active-work/daemon.err.log');
   });
 
   it('adds no --port by default, matching the plist', () => {
@@ -219,8 +237,8 @@ describe('stepInstallSupervision', () => {
     }
     // daemon-reload, then enable-linger (username-agnostic), then enable --now.
     expect(calls[0]).toEqual({ cmd: 'systemctl', args: ['--user', 'daemon-reload'] });
-    expect(calls[1]!.cmd).toBe('loginctl');
-    expect(calls[1]!.args[0]).toBe('enable-linger');
+    expect(calls[1].cmd).toBe('loginctl');
+    expect(calls[1].args[0]).toBe('enable-linger');
     expect(calls[2]).toEqual({
       cmd: 'systemctl',
       args: ['--user', 'enable', '--now', UNIT_NAME],

@@ -3,13 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { readStdinJson } from './read-stdin-json.js';
 
 function streamOf(text: string): NodeJS.ReadableStream {
-  return Readable.from([Buffer.from(text, 'utf8')]) as unknown as NodeJS.ReadableStream;
+  return Readable.from([Buffer.from(text, 'utf8')]);
 }
 
 describe('readStdinJson', () => {
   it('parses a JSON object piped in across multiple chunks', async () => {
     const stream = Readable.from([Buffer.from('{"a":1,'), Buffer.from('"b":"two"}')]);
-    const result = await readStdinJson(stream as unknown as NodeJS.ReadableStream);
+    const result = await readStdinJson(stream);
     expect(result).toEqual({ a: 1, b: 'two' });
   });
 

@@ -1,5 +1,6 @@
 import { SpanScope, SpanFtsTables, EdgeTable } from '@titan-design/store-sqlite';
 import { Embedder } from '@titan-design/embed';
+import { z } from 'zod';
 
 /** One candidate from one retriever. Lower `rank` is better; `score` is retriever-specific and optional. */
 interface Hit {
@@ -234,6 +235,110 @@ interface CrossEncoderOptions {
 /** In-process cross-encoder (default `Xenova/ms-marco-MiniLM-L-6-v2`), loaded on first use. */
 declare function crossEncoderReranker(options?: CrossEncoderOptions): Reranker;
 
+type DropReason = "over-budget" | "over-quota" | "duplicate" | "over-cap" | "no-tiers";
+interface ContextCandidate {
+    id: string;
+    category: string;
+    score: number;
+    /** Renderings from cheapest (tier 0) to richest. */
+    tiers: string[];
+}
+interface ContextBudget {
+    tokens: number;
+    quotas?: Record<string, number>;
+    defaultQuota?: number;
+    defaultTiers?: Record<string, number>;
+    maxTier?: number;
+    estimateTokens?: (text: string) => number;
+}
+interface ContextEntry {
+    id: string;
+    category: string;
+    tier: number;
+    text: string;
+    tokens: number;
+    score: number;
+}
+interface DroppedCandidate {
+    id: string;
+    category: string;
+    reason: DropReason;
+}
+interface ContextPlan {
+    entries: ContextEntry[];
+    dropped: DroppedCandidate[];
+    usedTokens: number;
+    budgetTokens: number;
+}
+declare function estimateTokens(text: string): number;
+declare function planContext(candidates: readonly ContextCandidate[], budget: ContextBudget): ContextPlan;
+
+/** The serialisable part of the planner's `ContextBudget`: everything but the estimator. */
+declare const ContextBudgetSchema: z.ZodObject<{
+    tokens: z.ZodNumber;
+    quotas: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>;
+    defaultQuota: z.ZodOptional<z.ZodNumber>;
+    defaultTiers: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>;
+    maxTier: z.ZodOptional<z.ZodNumber>;
+}, z.core.$strict>;
+/** One request shape for both modes, discriminated on `mode`. */
+declare const RetrievalRequestSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
+    query: z.ZodString;
+    limit: z.ZodOptional<z.ZodNumber>;
+    rerank: z.ZodOptional<z.ZodBoolean>;
+    mode: z.ZodLiteral<"list">;
+}, z.core.$strict>, z.ZodObject<{
+    budget: z.ZodObject<{
+        tokens: z.ZodNumber;
+        quotas: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>;
+        defaultQuota: z.ZodOptional<z.ZodNumber>;
+        defaultTiers: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>;
+        maxTier: z.ZodOptional<z.ZodNumber>;
+    }, z.core.$strict>;
+    query: z.ZodString;
+    limit: z.ZodOptional<z.ZodNumber>;
+    rerank: z.ZodOptional<z.ZodBoolean>;
+    mode: z.ZodLiteral<"context">;
+}, z.core.$strict>], "mode">;
+type RetrievalRequest = z.infer<typeof RetrievalRequestSchema>;
+/** Loads one ranked result's renderings, cheapest (tier 0) first. */
+interface TierSource {
+    tiers(result: FusedResult, signal?: AbortSignal): Promise<string[]>;
+}
+interface RetrievalCallOptions {
+    signal?: AbortSignal;
+    /** Required in context mode. */
+    tierSource?: TierSource;
+    /** The category quotas and default tiers key on. Default: the result's first source. */
+    categoryOf?: (result: FusedResult) => string;
+    /** Token estimator for context mode. Default: `estimateTokens`, ceil(chars / 4). */
+    estimateTokens?: (text: string) => number;
+}
+/** A failed tier load reports itself under this name in `degraded`. */
+declare const TIERS_STAGE = "tiers";
+type RetrievalDropReason = DropReason | "tier-error";
+interface RetrievalDropped {
+    id: string;
+    category: string;
+    reason: RetrievalDropReason;
+}
+interface ListResponse {
+    mode: "list";
+    results: FusedResult[];
+    degraded: Degradation[];
+    timingsMs: Record<string, number>;
+}
+interface ContextResponse {
+    mode: "context";
+    entries: ContextEntry[];
+    dropped: RetrievalDropped[];
+    usedTokens: number;
+    budgetTokens: number;
+    degraded: Degradation[];
+    timingsMs: Record<string, number>;
+}
+type RetrievalResponse = ListResponse | ContextResponse;
+
 interface EngineOptions {
     retrievers: Retriever[];
     fusion?: RrfOptions;
@@ -262,10 +367,12 @@ interface SearchResponse {
 }
 interface RetrievalEngine {
     search(query: string, options?: SearchOptions): Promise<SearchResponse>;
+    /** `mode: "list"` is `search`; `mode: "context"` plans a token-budgeted context block from the same ranking. */
+    retrieve(request: RetrievalRequest, options?: RetrievalCallOptions): Promise<RetrievalResponse>;
 }
 /** Retrievers in parallel (fail-open), RRF fusion, score filters, optional cross-encoder rerank. */
 declare function createRetrievalEngine(options: EngineOptions): RetrievalEngine;
 /** What a failed rerank reports itself as in `degraded`, alongside the retrievers' own entries. */
 declare const RERANK_STAGE = "rerank";
 
-export { BruteForceVectorIndex, type Candidate, type CrossEncoderOptions, type Degradation, type EngineOptions, type FtsRetrieverOptions, type FusedResult, type GatherOptions, type GatheredLists, type GraphRetrieverOptions, type Hit, RERANK_STAGE, type RankedList, type Reranked, type Reranker, type RetrievalEngine, type RetrieveOptions, type Retriever, type RrfOptions, type SearchOptions, type SearchResponse, type VectorIndex, type VectorMatch, type VectorRetrieverOptions, type WalkGraph, type WalkNeighbour, type WalkOptions, type WalkStep, applyDropoff, createRetrievalEngine, crossEncoderReranker, defaultHubDegree, defaultMatchExpression, expandGraph, ftsRetriever, fuseByRRF, gatherFailOpen, graphRetriever, rerankCandidates, vectorRetriever, walkGraph };
+export { BruteForceVectorIndex, type Candidate, type ContextBudget, ContextBudgetSchema, type ContextCandidate, type ContextEntry, type ContextPlan, type ContextResponse, type CrossEncoderOptions, type Degradation, type DropReason, type DroppedCandidate, type EngineOptions, type FtsRetrieverOptions, type FusedResult, type GatherOptions, type GatheredLists, type GraphRetrieverOptions, type Hit, type ListResponse, RERANK_STAGE, type RankedList, type Reranked, type Reranker, type RetrievalCallOptions, type RetrievalDropReason, type RetrievalDropped, type RetrievalEngine, type RetrievalRequest, RetrievalRequestSchema, type RetrievalResponse, type RetrieveOptions, type Retriever, type RrfOptions, type SearchOptions, type SearchResponse, TIERS_STAGE, type TierSource, type VectorIndex, type VectorMatch, type VectorRetrieverOptions, type WalkGraph, type WalkNeighbour, type WalkOptions, type WalkStep, applyDropoff, createRetrievalEngine, crossEncoderReranker, defaultHubDegree, defaultMatchExpression, estimateTokens, expandGraph, ftsRetriever, fuseByRRF, gatherFailOpen, graphRetriever, planContext, rerankCandidates, vectorRetriever, walkGraph };

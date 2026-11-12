@@ -4,17 +4,30 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+const opened = vi.hoisted(() => [] as { file: string; timeout: number | undefined }[]);
+
+// Wraps the real driver so the test can read the options each open used, without changing what it does.
+vi.mock('better-sqlite3', async (importOriginal) => {
+  const actual = await importOriginal<{ default: typeof Database }>();
+  class Recording extends actual.default {
+    constructor(file?: string | Buffer, options?: Database.Options) {
+      super(file, options);
+      opened.push({ file: String(file), timeout: options?.timeout });
+    }
+  }
+  return { default: Recording };
+});
+
 import { resolveOrigins, sessionsNeedingOrigin } from '@titan-design/session-graph';
 
 import { openGraph } from './graph.js';
 import {
   agentChatOriginResolver,
   BRIEF_EXCERPT_CHARS,
-  eventsDbSource,
   resolveFromSource,
   type IsKnownTask,
-  type OpenDatabase,
 } from './origin-agent-chat.js';
+import { eventsDbSource, type OpenDatabase } from './origin-agent-chat-read.js';
 
 // Copied from `sqlite3 ~/.agent-chat/events.db .schema` on 2026-09-23.
 const EVENTS_DDL = `
@@ -45,7 +58,7 @@ interface Row {
   actor: string;
   target?: string;
   ref?: string;
-  meta?: Record<string, string>;
+  meta?: Record<string, unknown>;
 }
 
 let home: string;
@@ -194,9 +207,9 @@ describe('agent-chat origin adapter', () => {
 
     const { origins } = resolve([WORKER_SESSION, legacySession, 'later-session']);
 
-    expect(origins[WORKER_SESSION]?.parentSessionId).toBe(COORD_SESSION);
-    expect(origins[legacySession]?.parentSessionId).toBe(COORD_SESSION);
-    expect(origins['later-session']?.parentSessionId).toBeNull();
+    expect(origins[WORKER_SESSION].parentSessionId).toBe(COORD_SESSION);
+    expect(origins[legacySession].parentSessionId).toBe(COORD_SESSION);
+    expect(origins['later-session'].parentSessionId).toBeNull();
   });
 
   it('reads brief length and excerpt from plan.json', () => {
@@ -556,8 +569,8 @@ describe('experiment arm and follow-ups (CC-168)', () => {
 
     const { origins } = resolve();
 
-    expect(origins[WORKER_SESSION]?.followupKinds).toEqual({ fix: 2, rebase: 1 });
-    expect(origins[COORD_SESSION]?.followupKinds).toBeNull();
+    expect(origins[WORKER_SESSION].followupKinds).toEqual({ fix: 2, rebase: 1 });
+    expect(origins[COORD_SESSION].followupKinds).toBeNull();
   });
 
   it('a follow-up after a respawn under the same name counts toward the new session', () => {
@@ -574,8 +587,8 @@ describe('experiment arm and follow-ups (CC-168)', () => {
 
     const { origins } = resolve([WORKER_SESSION, laterSession]);
 
-    expect(origins[WORKER_SESSION]?.followupKinds).toEqual({ fix: 1 });
-    expect(origins[laterSession]?.followupKinds).toEqual({ review: 1 });
+    expect(origins[WORKER_SESSION].followupKinds).toEqual({ fix: 1 });
+    expect(origins[laterSession].followupKinds).toEqual({ review: 1 });
   });
 
   it('one query over session_origin gives the arm table for an experiment', async () => {
@@ -628,7 +641,7 @@ describe('route decision on the spawn row (CC-1666)', () => {
     const [spawn, attach] = spawnedWorker('coord', 'aaaa1111');
     return [
       ...adoptedCoordinator('coord', 'aaaa1111'),
-      { ...spawn, meta: { ...spawn.meta, ...extra } as Record<string, string> },
+      { ...spawn, meta: { ...spawn.meta, ...extra } },
       attach,
     ];
   }
@@ -657,7 +670,7 @@ describe('route decision on the spawn row (CC-1666)', () => {
     const origin = resolve().origins[WORKER_SESSION];
 
     expect(origin).toMatchObject({ routeMode: null, routeSource: null, routeFacts: null });
-    expect(origin?.routeCandidateWanted).toBeNull();
+    expect(origin.routeCandidateWanted).toBeNull();
   });
 
   it('ignores a malformed route value and keeps the valid ones', () => {
@@ -672,22 +685,25 @@ describe('route decision on the spawn row (CC-1666)', () => {
 });
 
 describe('a locked events.db (TP-4479)', () => {
-  it('fails the origin pass within the short busy timeout instead of waiting 5 s', async () => {
+  it('opens the locked events.db with the short busy timeout and fails the origin pass', async () => {
     writeEvents([]);
     const graph = openGraph(path.join(home, 'graph.sqlite3'));
     graph.db
       .prepare('INSERT INTO session (session_id, turn_count) VALUES (?, 0)')
       .run(WORKER_SESSION);
-    const holder = new Database(path.join(home, 'events.db'));
+    const eventsFile = path.join(home, 'events.db');
+    const holder = new Database(eventsFile);
     holder.exec('BEGIN EXCLUSIVE');
+    opened.length = 0;
     vi.stubEnv('AGENT_CHAT_HOME', home);
-    const startedAt = Date.now();
 
     try {
       const outcome = await resolveOrigins(graph, agentChatOriginResolver(undefined, home));
 
-      expect(Date.now() - startedAt).toBeLessThan(1_000);
       expect(outcome).toMatchObject({ failed: true, applied: 0 });
+      const eventsOpens = opened.filter((open) => open.file === eventsFile);
+      expect(eventsOpens).not.toHaveLength(0);
+      expect(eventsOpens.every((open) => open.timeout === 100)).toBe(true);
     } finally {
       vi.unstubAllEnvs();
       holder.exec('ROLLBACK');

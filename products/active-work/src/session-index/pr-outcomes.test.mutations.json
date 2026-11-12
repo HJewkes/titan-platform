@@ -4,10 +4,28 @@
     {
       "name": "the resolver polls every PR it is handed",
       "file": "products/active-work/src/session-index/pr-outcomes.ts",
-      "find": "      return !row?.outcome_checked_at || row.state?.toLowerCase() === 'open';\n",
-      "replace": "      return true;\n",
+      "find": "(pr.band !== 'recheck' || isDue(pr, now, every))",
+      "replace": "true",
       "kills": [
-        "the gh PR resolver a pass over 100 merged and checked PRs and 3 open ones polls only the 3 open"
+        "the gh PR resolver recheck intervals an open PR checked within the interval is not asked again"
+      ]
+    },
+    {
+      "name": "a backfill PR waits for the closed interval",
+      "file": "products/active-work/src/session-index/pr-outcomes.ts",
+      "find": "pr.band !== 'recheck' || ",
+      "replace": "",
+      "kills": [
+        "the gh PR resolver recheck intervals a checked merged PR missing commit times is asked inside the closed interval"
+      ]
+    },
+    {
+      "name": "a closed PR waits only the open interval",
+      "file": "products/active-work/src/session-index/pr-outcomes.ts",
+      "find": "? every.open : every.closed;",
+      "replace": "? every.open : every.open;",
+      "kills": [
+        "the gh PR resolver recheck intervals a closed PR is re-checked after the interval"
       ]
     }
   ]

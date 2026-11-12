@@ -1,6 +1,6 @@
 import type { GitHubPort, PullRequest, RepoFile, RepoSlug } from "@titan-design/github";
 import type { FactoryHost } from "../host.js";
-import { BUMP_BRANCH_PREFIX, bumpBranch, consumerDepNames, planConsumerBump, readConsumerTree, type ConsumerBumpPlan, type ConsumerTree, type LatestRegistry } from "./consumer-bump.js";
+import { BUMP_BRANCH_PREFIX, bumpBranch, consumerDepNames, planConsumerBump, readConsumerTree, type ConsumerBumpPlan, type ConsumerTree, type LatestRegistry, type LeftAlone } from "./consumer-bump.js";
 import { failureOf } from "./error-class.js";
 import type { LockfileRegen, LockfileTree } from "./lockfile-regen.js";
 import { BUMP_TITLE, bumpCommitMessage, isSweepOnlyBranch } from "./leftover-bump.js";
@@ -16,8 +16,8 @@ interface PlannedBump {
   branch: string;
 }
 
-/** A consumer with nothing to open: already on npm latest, or a read or lookup that failed. */
-type ConsumerBumpNote = { repo: RepoSlug; current: true } | { repo: RepoSlug; error: string };
+/** A consumer with nothing to open: already on npm latest, only deps a bump leaves alone, or a read or lookup that failed. */
+type ConsumerBumpNote = { repo: RepoSlug; current: true } | { repo: RepoSlug; leftAlone: LeftAlone[] } | { repo: RepoSlug; error: string };
 
 interface ConsumerBumpPlans {
   bumps: PlannedBump[];
@@ -31,8 +31,9 @@ export async function planConsumerBumps(services: Pick<ShepherdServices, "port" 
   for (const repo of repos) {
     try {
       const planned = await planOne(services, repo, latest);
-      if (planned.plan.edits.length === 0) result.notes.push({ repo, current: true });
-      else result.bumps.push(planned);
+      if (planned.plan.edits.length > 0) result.bumps.push(planned);
+      else if (planned.plan.leftAlone.length > 0) result.notes.push({ repo, leftAlone: planned.plan.leftAlone });
+      else result.notes.push({ repo, current: true });
     } catch (error) {
       result.notes.push({ repo, error: failureOf(error) });
     }
@@ -73,6 +74,8 @@ interface ConsumerBumpSweepNote {
   skipped?: "open" | "closed";
   registered?: string;
   current?: true;
+  /** A repo with titan deps but none a bump can raise: each is listed with why it was left. */
+  leftAlone?: LeftAlone[];
   error?: string;
   /** The leftover branch that blocked this repo: it holds a commit the sweep did not write, so a human deletes it or opens its PR. */
   branch?: string;
@@ -126,6 +129,14 @@ async function openBumpOf(services: Pick<ShepherdServices, "port">, repo: RepoSl
   return (await services.port.listOpenPrs(repo, BUMP_BRANCH_PREFIX)).find((pr) => headInRepo(pr, repo));
 }
 
+/** Classifies the PR on the planned branch: a PR opened after the open-PR list was read is still open, not closed. */
+async function existingBumpOf(port: Pick<GitHubPort, "findPr">, bump: PlannedBump): Promise<{ pr: number; skipped: "open" | "closed" } | undefined> {
+  const found = await port.findPr(bump.repo, bump.branch);
+  if (!found) return undefined;
+  if (!headInRepo(found, bump.repo)) throw new Error(`${bump.repo} PR #${found.number} from a fork holds ${bump.branch}`);
+  return { pr: found.number, skipped: found.state === "open" ? "open" : "closed" };
+}
+
 /** A consumer the sweep would leave alone because its bump PR already exists. */
 interface SkippedBump {
   repo: RepoSlug;
@@ -152,9 +163,8 @@ export async function previewConsumerBumps(services: Pick<ShepherdServices, "por
   const notes = [...errors, ...planned.notes];
   for (const bump of planned.bumps) {
     try {
-      const closed = await services.port.findPr(bump.repo, bump.branch);
-      if (closed && !headInRepo(closed, bump.repo)) throw new Error(`${bump.repo} PR #${closed.number} from a fork holds ${bump.branch}`);
-      if (closed) skips.push({ repo: bump.repo, pr: closed.number, skipped: "closed" });
+      const existing = await existingBumpOf(services.port, bump);
+      if (existing) skips.push({ repo: bump.repo, ...existing });
       else bumps.push(bump);
     } catch (error) {
       notes.push({ repo: bump.repo, error: failureOf(error) });
@@ -165,9 +175,9 @@ export async function previewConsumerBumps(services: Pick<ShepherdServices, "por
 
 async function bumpOne(host: FactoryHost, services: ShepherdServices, regen: LockfileRegen, bump: PlannedBump): Promise<ConsumerBumpSweepNote> {
   const { repo } = bump;
-  const closed = await services.port.findPr(repo, bump.branch);
-  if (closed && !headInRepo(closed, repo)) throw new Error(`${repo} PR #${closed.number} from a fork holds ${bump.branch}`);
-  if (closed) return { repo, pr: closed.number, skipped: "closed" };
+  const existing = await existingBumpOf(services.port, bump);
+  if (existing?.skipped === "open") return { repo, ...existing, ...(await registerOnce(host, services, repo, existing.pr)) };
+  if (existing) return { repo, ...existing };
   const changed = await regenerate(regen, bump);
   const pr = await openBump(services.port, bump, changed);
   return { repo, pr: pr.number, ...(await registerOnce(host, services, repo, pr.number)) };
@@ -178,7 +188,7 @@ async function regenerate(regen: LockfileRegen, bump: PlannedBump): Promise<File
   const lockfile = bump.tree.lockfile;
   if (!lockfile) throw new Error(`${bump.repo} has no lockfile to regenerate`);
   const edited = new Map(bump.plan.files.map((file) => [file.path, file]));
-  const readFiles = [...bump.tree.manifests, lockfile.file, bump.tree.workspaceYaml, bump.tree.npmrc].filter((file): file is RepoFile => file !== null);
+  const readFiles = [...bump.tree.manifests, lockfile.file, bump.tree.workspaceYaml, bump.tree.npmrc, ...bump.tree.patches].filter((file): file is RepoFile => file !== null);
   const tree: LockfileTree = { kind: lockfile.kind, files: Object.fromEntries(readFiles.map((file) => [file.path, edited.get(file.path)?.content ?? file.content])) };
   const regenerated = await regen(tree);
   const blobs = new Map(readFiles.map((file) => [file.path, file.blobSha]));
@@ -205,9 +215,9 @@ async function openBump(port: GitHubPort, bump: PlannedBump, files: FileWrite[])
   const created = await port.ensureBranch(repo, branch, baseSha);
   const paths = new Set(files.map((file) => file.path));
   const sweepOnly = async (): Promise<void> => {
-    if (!created.done && !(await isSweepOnlyBranch(port, repo, tree.ref, branch, paths))) throw new LeftoverBumpBranchError(branch);
+    if (!(await isSweepOnlyBranch(port, repo, tree.ref, branch, paths))) throw new LeftoverBumpBranchError(branch);
   };
-  await sweepOnly();
+  if (!created.done) await sweepOnly();
   for (const file of files) {
     const expectedBlobSha = created.done ? file.expectedBlobSha : ((await port.getFile(repo, file.path, branch))?.blobSha ?? null);
     await port.putFile(repo, { path: file.path, branch, content: file.content, message: bumpCommitMessage(file.path), expectedBlobSha });

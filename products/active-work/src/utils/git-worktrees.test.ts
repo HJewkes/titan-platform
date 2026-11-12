@@ -58,13 +58,13 @@ describe('parseWorktreePorcelain', () => {
   });
 
   it('marks a detached worktree with a null branch', () => {
-    const detached = parseWorktreePorcelain(PORCELAIN)[1]!;
+    const detached = parseWorktreePorcelain(PORCELAIN)[1];
     expect(detached.detached).toBe(true);
     expect(detached.branch).toBeNull();
   });
 
   it('marks a bare worktree', () => {
-    const bare = parseWorktreePorcelain(PORCELAIN)[2]!;
+    const bare = parseWorktreePorcelain(PORCELAIN)[2];
     expect(bare.bare).toBe(true);
     expect(bare.head).toBeNull();
   });
@@ -72,7 +72,7 @@ describe('parseWorktreePorcelain', () => {
   it('ignores unknown keys and stray leading lines', () => {
     const entries = parseWorktreePorcelain('locked\nworktree /repo/a\nprunable gitdir gone\n');
     expect(entries).toHaveLength(1);
-    expect(entries[0]!.path).toBe('/repo/a');
+    expect(entries[0].path).toBe('/repo/a');
   });
 
   it('returns an empty list for empty output', () => {

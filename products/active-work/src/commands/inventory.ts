@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { listInitiativeSlugs } from '../lint/index.js';
+import { listInitiativeSlugs } from '../sessions/initiatives.js';
 import { getActiveRoot } from '../utils/paths.js';
 import { inventoryCache } from '../workspace-index/inventory-cache.js';
 import { summarizeInventory, totalInventory } from '../workspace-index/inventory-summary.js';
@@ -43,7 +43,7 @@ type Result = z.infer<typeof ResultSchema>;
 export default defineCommand<Args, Result>({
   name: 'inventory',
   description:
-    'What is where under the active root: file count, bytes and newest mtime per initiative and record class, with nested sources (unindexed files under sources/<dir>/) counted separately.',
+    'What is where under the active root: file count, bytes and newest mtime per initiative and record class, with nested sources (unindexed files under sources/<dir>/) counted separately. Classes: initiatives, tasks, sessions, notes, sources, nested_sources, and other, which holds every remaining visible file under the initiative (handoff, snapshots, artifacts, non-markdown sources); dot-files are excluded.',
   args: ArgsSchema,
   result: ResultSchema,
   cli: { usage: 'active-work inventory [--json]' },

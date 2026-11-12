@@ -96,7 +96,7 @@ describe('loop.open', () => {
     await withTempActiveRoot(async (root) => {
       const res = await open(root, { text: 'Ask: is PR #57 merged / closed?  ' + 'x'.repeat(80) });
 
-      const id = res.ref.split('#')[1]!;
+      const id = res.ref.split('#')[1];
       expect(id).toMatch(/^[a-z0-9-]+$/);
       expect(id.length).toBeLessThanOrEqual(48);
       expect(id.endsWith('-')).toBe(false);

@@ -213,6 +213,7 @@ graph TD
   workflow --> storeSqlite
   activeWork --> agentDispatch
   activeWork --> agentProtocol
+  activeWork --> appPaths
   activeWork --> clusterPkg
   activeWork --> daemon
   activeWork --> decider

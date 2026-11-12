@@ -73,6 +73,11 @@ interface ReportWindow {
     since: string | null;
     until: string | null;
 }
+/** Indexed transcripts, and the readable (status `ok`) ones whose audit facet is missing or older than `facetVersion`; a quarantined or missing file cannot be extracted, so it is no backlog. */
+declare function readCoverage(db: Db, facetVersion: number | null): {
+    transcriptsIndexed: number;
+    facetBacklog: number;
+};
 /** An arrival that opens a wake episode: a turn-start record or a mid-loop `queued_command` delivery. */
 interface WakeEventRow {
     key: string;
@@ -720,8 +725,11 @@ interface CostReportOptions {
 /** Reads the graph and never writes it, so a read-only connection is enough. */
 declare function costReport(db: Db, options?: CostReportOptions): CostReport;
 
-/** The tool calls each request in the window issued, keyed by `request_id`; a request with none is absent. */
-declare function readRequestToolCalls(db: Db, window: ReportWindow): Map<string, ActionCall[]>;
+/**
+ * The tool calls each request in the window issued, keyed by `request_id`; a request with none is absent.
+ * `sessionIds` limits the read to those sessions, so a caller that needs only some sessions' calls does not scan the rest.
+ */
+declare function readRequestToolCalls(db: Db, window: ReportWindow, sessionIds?: readonly string[]): Map<string, ActionCall[]>;
 
 declare const WAKE_FROM_KINDS: readonly ["seat", "agent", "broadcast", "broker", "none"];
 type WakeFromKind = (typeof WAKE_FROM_KINDS)[number];
@@ -972,22 +980,32 @@ type CostReportSection = keyof typeof COST_REPORT_SECTIONS;
 /** Some sections of the report under its header, with the caveat and footer last as in the full text. */
 declare function renderCostReportSections(report: CostReport, sections: readonly CostReportSection[]): string;
 
+/** What the previous request in the same chain did last, before the gap that forced a rebuild. */
+declare const GAP_CAUSES: readonly ["ci-wait", "other-bash", "end-of-turn"];
+type GapCause = (typeof GAP_CAUSES)[number];
+
 /** Gap bands past a 5-minute TTL: the next request finds the cache gone. */
 declare const REBUILD_GAP_BANDS: readonly string[];
 /** One request as the TTL what-if needs it. */
 interface TtlRequestRow {
     sessionId: string;
+    /** Sidechain requests run in their own cache chain, apart from the main one. */
+    isSidechain: boolean;
     role: string;
     profile: string;
     model: string;
     ts: string;
     cacheReadTokens: number;
     cacheWrite1hTokens: number;
+    cacheWrite5mTokens: number;
     /** Milliseconds since the session's previous request; null for its first. */
     gapMs: number | null;
+    /** The previous request's last action in the same chain; absent reads as `end-of-turn`. */
+    previousAction?: GapCause;
 }
 declare const bucketSchema: z.ZodObject<{
     fiveMinuteLoses: z.ZodBoolean;
+    noCacheCheaper: z.ZodBoolean;
     sessions: z.ZodNumber;
     requests: z.ZodNumber;
     write1hTokens: z.ZodNumber;
@@ -997,6 +1015,12 @@ declare const bucketSchema: z.ZodObject<{
     rebuildCostUsd: z.ZodNumber;
     netSavingUsd: z.ZodNumber;
     netPerSessionUsd: z.ZodNumber;
+    noCacheNetUsd: z.ZodNumber;
+    reverseReverts: z.ZodNumber;
+    reverseTokens: z.ZodNumber;
+    reverseSavingUsd: z.ZodNumber;
+    reversePremiumUsd: z.ZodNumber;
+    reverseNetUsd: z.ZodNumber;
     key: z.ZodString;
 }, z.core.$strip>;
 declare const cacheTtlWhatIfSchema: z.ZodObject<{
@@ -1016,10 +1040,17 @@ declare const cacheTtlWhatIfSchema: z.ZodObject<{
         rebuildCostUsd: z.ZodNumber;
         netSavingUsd: z.ZodNumber;
         netPerSessionUsd: z.ZodNumber;
+        noCacheNetUsd: z.ZodNumber;
+        reverseReverts: z.ZodNumber;
+        reverseTokens: z.ZodNumber;
+        reverseSavingUsd: z.ZodNumber;
+        reversePremiumUsd: z.ZodNumber;
+        reverseNetUsd: z.ZodNumber;
     }, z.core.$strip>;
     unpricedRequests: z.ZodNumber;
     byRole: z.ZodArray<z.ZodObject<{
         fiveMinuteLoses: z.ZodBoolean;
+        noCacheCheaper: z.ZodBoolean;
         sessions: z.ZodNumber;
         requests: z.ZodNumber;
         write1hTokens: z.ZodNumber;
@@ -1029,10 +1060,17 @@ declare const cacheTtlWhatIfSchema: z.ZodObject<{
         rebuildCostUsd: z.ZodNumber;
         netSavingUsd: z.ZodNumber;
         netPerSessionUsd: z.ZodNumber;
+        noCacheNetUsd: z.ZodNumber;
+        reverseReverts: z.ZodNumber;
+        reverseTokens: z.ZodNumber;
+        reverseSavingUsd: z.ZodNumber;
+        reversePremiumUsd: z.ZodNumber;
+        reverseNetUsd: z.ZodNumber;
         key: z.ZodString;
     }, z.core.$strip>>;
     byProfile: z.ZodArray<z.ZodObject<{
         fiveMinuteLoses: z.ZodBoolean;
+        noCacheCheaper: z.ZodBoolean;
         sessions: z.ZodNumber;
         requests: z.ZodNumber;
         write1hTokens: z.ZodNumber;
@@ -1042,9 +1080,25 @@ declare const cacheTtlWhatIfSchema: z.ZodObject<{
         rebuildCostUsd: z.ZodNumber;
         netSavingUsd: z.ZodNumber;
         netPerSessionUsd: z.ZodNumber;
+        noCacheNetUsd: z.ZodNumber;
+        reverseReverts: z.ZodNumber;
+        reverseTokens: z.ZodNumber;
+        reverseSavingUsd: z.ZodNumber;
+        reversePremiumUsd: z.ZodNumber;
+        reverseNetUsd: z.ZodNumber;
         key: z.ZodString;
     }, z.core.$strip>>;
     lossRoles: z.ZodArray<z.ZodString>;
+    byGapCause: z.ZodArray<z.ZodObject<{
+        cause: z.ZodEnum<{
+            "ci-wait": "ci-wait";
+            "other-bash": "other-bash";
+            "end-of-turn": "end-of-turn";
+        }>;
+        rebuilds: z.ZodNumber;
+        rebuildTokens: z.ZodNumber;
+        rebuildCostUsd: z.ZodNumber;
+    }, z.core.$strip>>;
 }, z.core.$strip>;
 type CacheTtlWhatIf = z.infer<typeof cacheTtlWhatIfSchema>;
 type CacheTtlBucket = z.infer<typeof bucketSchema>;
@@ -2741,7 +2795,7 @@ declare function firstDivergence(a: readonly RequestBlock[], b: readonly Request
  */
 declare function prefixReuse(rows: readonly PrefixRow[], options?: PrefixReuseOptions): PrefixReuse;
 
-export { ACTION_CLASSES, AGENT_LIFECYCLE, ALL_REPOS, type ActionCall, type ActionClass, type ActionRule, type ActualsTask, type AgentLog, type AgentNameRow, type Agreement, type AgreementRow, type AgreementSummary, type Assignment, BLOCKED_FLOW_SOURCES, BOOT_TOOL, type Band, type BashRule, type BlockedFlowInput, type BlockedFlowReport, type BlockedFlowSource, type BrokerEntry, CHANNEL_CLUSTER_MS, CI_STATES, CONTEXT_BANDS, CONTEXT_RESET_TOKENS, COORDINATOR_MERGE_DEDUPE_REQUESTS, COORDINATOR_MIN_EPISODE_REQUESTS, COORDINATOR_WAVE_QUIET_REQUESTS, COST_REPORT_SECTIONS, type CacheTtlBucket, type CacheTtlWhatIf, type CacheWriteTtl, type CappedHours, type CiState, type ComparisonSpec, type ContractReport, type CoordDutyTable, type CostBucket, type CostPerOutcomeOptions, type CostPerOutcomeReport, type CostReport, type CostReportOptions, type CostReportSection, type CycleParams, DARK_MIN, DEFAULT_ACTION_RULES, DEFAULT_ACTIVE_CAP_MINUTES, DEFAULT_BOOT_REQUESTS, DEFAULT_CONFIGURED_K, DEFAULT_DONE_OUTCOMES, DEFAULT_EPISODE_ROLES, DEFAULT_K_SWEEP, DEFAULT_MECHANICAL_CLASSES, DEFAULT_MERGED_OUTCOMES, DEFAULT_NO_ACTION_CLASSES, DEFAULT_REVIEWER_PRS, DEFAULT_REVIEWER_ROLE, DEFAULT_STANDING_ROLE, DROP_REASONS, type DarkGap, type DenialRecord, type DispatchRecord, type Divergence, type DivergenceGroup, type DutyCall, type DutyKind, type DutyRuleSet, type DutyTableOptions, type DutyTurn, ERROR_CLASSES, EVENTS_TABLE_DDL, type EpisodeInbound, type EpisodeInput, type EpisodeNames, type EpisodeRequest, type EpisodeRequestRow, type EpisodeSignal, type ErrorClass, type EstimateBand, FOLLOW_UP_CLASSES, FRICTION_ASKER, FRICTION_CLUSTERS, type FollowUpClass, type FrictionCluster, type FrictionClusterRow, type FrictionDailyReport, type FrictionLine, type FrictionRow, type FrictionSource, GAP_BANDS, type GenerationEnd, HANDOFFS_SQL, HEURISTIC_VERSIONS, type HandoffCohort, type HandoffOptions, type HandoffRecord, type HandoffRequestRow, type HandoffSession, type HandoffTeleport, type HandoffThreshold, type Heuristic, type HumanRole, IDLE_GAP_MS, type IdleSlotRow, type InheritMode, type KSweep, LAST_PROMPTS_SQL, LIST_PRICE_CAVEAT, LIVENESS_SOURCES, type LastEventRecord, type LatencyRow, type LatencyStats, type LivenessInput, type LivenessReport, type LivenessSource, type LogClusterRow, type LogSide, type LogSignal, type LogSignalKind, MIN_COST_COVERAGE, type MechanicalShare, type MergeOutcome, type MergeStatus, type MeterInputs, type MeterOptions, type MeterResult, NON_FRICTION, NOT_MEASURED, type Outcome, type OutcomeBucket, POOLED_REVIEWERS, PROFILE_ROLES, PROMPT_STALE_MIN, type ParsedVerdict, type PrDiff, type PrFeatures, type PrefixReuse, type PrefixReuseOptions, type PrefixRow, type ProposedItem, type PullState, REBUILD_GAP_BANDS, REPORT_STATUSES, REVIEW_FILL_COMPARISON, type ReportScope, type ReportSide, type ReportStatus, type ReportWindow, type ReviewFillReport, type ReviewerComparison, type RoleActions, type RouteAgreement, type RouteFailureRow, type RouteMiss, type RouteMissKind, type RouteOutcomeGroup, type RouteOutcomesOptions, type RowDelta, SPAWNS_SQL, SPLITLESS_CACHE_WRITE_TTL, STANDING_PEER_MIN_ASSIGNMENTS, STANDING_PEER_MIN_HOURS, SUCCESSOR_REWORK_COMPARISON, type ScorecardJournalInput, type ScorecardJournalRowId, type ScorecardRow, type SeatContextOptions, type SeatContextRow, type SeatGeneration, type SeatGenerationsInput, type SeatJournal, type SeatSessions, type SessionClass, type SessionClassification, type SessionFacts, type SessionOrigin, SessionTimeline, SessionTimelineAccumulator, type SessionTimelineOptions, type SlotTick, type SpawnRecord, type StalePromptRow, type SuccessorReworkOptions, type SuccessorReworkReport, TELEPORT_COMPLETED_EVENT, TELEPORT_EVENT, TICK_HOLD_MAX_MIN, TOKEN_CLASSES, TP1550_RULES, type TaskActuals, type TaskActualsFlag, type TaskActualsOptions, type TaskInitiative, type TaskPr, type TeleportEvent, type TokenClass, type ToolField, type ToolRule, type TranscriptCopy, type Trigger, type TtlRequestRow, UNKNOWN_PROFILE, UNSTATED_REASON, type UnreportedExit, type UnreportedExitRow, V3_RULES, VERDICTS_SQL, type VerdictRecord, WAKE_FROM_KINDS, type WakeCauseBucket, type WakeCauseEpisodes, type WakeEpisode, type WakeEpisodes, type WakeEventRow, type WakeFromKind, type WakeGapCell, type WakePair, type WindowComparison, type WorkerFacts, type WorkerReportRecord, type WorkerRole, type WorkerSessionRecord, type WrittenEpisodes, assignmentCount, assignmentSchema, bandOf, blockedFlowReport, blockedFlowSchema, buildEpisodes, buildSessionTimeline, buildWakeEpisodes, cacheTtlReport, cacheTtlWhatIf, cacheTtlWhatIfSchema, classifyDeniedAction, classifyError, classifyFollowUp, classifyRequest, classifySession, clusterOf, compareWindows, contextBand, coordDutyTableSchema, costPerOutcome, costPerOutcomeSchema, costPerRequest, costReport, costReportSchema, countMisses, darkGaps, dedupeDenials, dutyTable, episodeNames, eventsDbCommand, extractConcerns, extractFriction, firstDivergence, followUpSignals, frictionDailyReport, frictionDeposit, frictionDepositId, gapBand, handoffThreshold, handoffThresholdSchema, heuristicFor, idleSlotMinutes, initiativeFromCwd, isBootAction, latencyStats, latencyStatsSchema, lineCluster, listMergedPrRefs, livenessReport, livenessSchema, mergeCopies, mergeOutcomes, parseBrokerLog, parseDenials, parsePrRef, parseReport, parseSeatJournal, parseTeleportEvents, parseVerdict, prFeaturesFor, prKey, prefixReuse, readAgentSessions, readDispatchJournal, readEpisodeInput, readHandoffs, readLastPrompts, readRequestToolCalls, readSpawnerMessages, readSpawns, readTtlRows, readVerdicts, readWorkerReports, readWorkerSessions, renderBlockedFlowText, renderCacheTtlText, renderCostPerOutcomeText, renderCostReportSections, renderCostReportText, renderFrictionMarkdown, renderLivenessText, renderLogTop, renderReportTop, renderReviewFillText, renderSuccessorReworkText, renderWindowComparisonText, reviewFillReport, reviewFillSchema, roleFromProfile, routeFailureRows, routeMisses, routeOutcomes, scopeFilter, scorecardJournalRows, scorecardRowText, seatContext, seatContextSchema, seatGenerations, seatGenerationsSchema, seatOf, sessionInitiative, sessionRole, staleEpisodeSessions, staleEpisodeSessionsYielding, stalePromptRows, successorReworkReport, successorReworkSchema, summarizeWakeEpisodes, sweepK, taskActuals, transcriptSignals, unreportedExitRows, wakeEpisodesSchema, workerRole, writeEpisodes };
+export { ACTION_CLASSES, AGENT_LIFECYCLE, ALL_REPOS, type ActionCall, type ActionClass, type ActionRule, type ActualsTask, type AgentLog, type AgentNameRow, type Agreement, type AgreementRow, type AgreementSummary, type Assignment, BLOCKED_FLOW_SOURCES, BOOT_TOOL, type Band, type BashRule, type BlockedFlowInput, type BlockedFlowReport, type BlockedFlowSource, type BrokerEntry, CHANNEL_CLUSTER_MS, CI_STATES, CONTEXT_BANDS, CONTEXT_RESET_TOKENS, COORDINATOR_MERGE_DEDUPE_REQUESTS, COORDINATOR_MIN_EPISODE_REQUESTS, COORDINATOR_WAVE_QUIET_REQUESTS, COST_REPORT_SECTIONS, type CacheTtlBucket, type CacheTtlWhatIf, type CacheWriteTtl, type CappedHours, type CiState, type ComparisonSpec, type ContractReport, type CoordDutyTable, type CostBucket, type CostPerOutcomeOptions, type CostPerOutcomeReport, type CostReport, type CostReportOptions, type CostReportSection, type CycleParams, DARK_MIN, DEFAULT_ACTION_RULES, DEFAULT_ACTIVE_CAP_MINUTES, DEFAULT_BOOT_REQUESTS, DEFAULT_CONFIGURED_K, DEFAULT_DONE_OUTCOMES, DEFAULT_EPISODE_ROLES, DEFAULT_K_SWEEP, DEFAULT_MECHANICAL_CLASSES, DEFAULT_MERGED_OUTCOMES, DEFAULT_NO_ACTION_CLASSES, DEFAULT_REVIEWER_PRS, DEFAULT_REVIEWER_ROLE, DEFAULT_STANDING_ROLE, DROP_REASONS, type DarkGap, type DenialRecord, type DispatchRecord, type Divergence, type DivergenceGroup, type DutyCall, type DutyKind, type DutyRuleSet, type DutyTableOptions, type DutyTurn, ERROR_CLASSES, EVENTS_TABLE_DDL, type EpisodeInbound, type EpisodeInput, type EpisodeNames, type EpisodeRequest, type EpisodeRequestRow, type EpisodeSignal, type ErrorClass, type EstimateBand, FOLLOW_UP_CLASSES, FRICTION_ASKER, FRICTION_CLUSTERS, type FollowUpClass, type FrictionCluster, type FrictionClusterRow, type FrictionDailyReport, type FrictionLine, type FrictionRow, type FrictionSource, GAP_BANDS, type GenerationEnd, HANDOFFS_SQL, HEURISTIC_VERSIONS, type HandoffCohort, type HandoffOptions, type HandoffRecord, type HandoffRequestRow, type HandoffSession, type HandoffTeleport, type HandoffThreshold, type Heuristic, type HumanRole, IDLE_GAP_MS, type IdleSlotRow, type InheritMode, type KSweep, LAST_PROMPTS_SQL, LIST_PRICE_CAVEAT, LIVENESS_SOURCES, type LastEventRecord, type LatencyRow, type LatencyStats, type LivenessInput, type LivenessReport, type LivenessSource, type LogClusterRow, type LogSide, type LogSignal, type LogSignalKind, MIN_COST_COVERAGE, type MechanicalShare, type MergeOutcome, type MergeStatus, type MeterInputs, type MeterOptions, type MeterResult, NON_FRICTION, NOT_MEASURED, type Outcome, type OutcomeBucket, POOLED_REVIEWERS, PROFILE_ROLES, PROMPT_STALE_MIN, type ParsedVerdict, type PrDiff, type PrFeatures, type PrefixReuse, type PrefixReuseOptions, type PrefixRow, type ProposedItem, type PullState, REBUILD_GAP_BANDS, REPORT_STATUSES, REVIEW_FILL_COMPARISON, type ReportScope, type ReportSide, type ReportStatus, type ReportWindow, type ReviewFillReport, type ReviewerComparison, type RoleActions, type RouteAgreement, type RouteFailureRow, type RouteMiss, type RouteMissKind, type RouteOutcomeGroup, type RouteOutcomesOptions, type RowDelta, SPAWNS_SQL, SPLITLESS_CACHE_WRITE_TTL, STANDING_PEER_MIN_ASSIGNMENTS, STANDING_PEER_MIN_HOURS, SUCCESSOR_REWORK_COMPARISON, type ScorecardJournalInput, type ScorecardJournalRowId, type ScorecardRow, type SeatContextOptions, type SeatContextRow, type SeatGeneration, type SeatGenerationsInput, type SeatJournal, type SeatSessions, type SessionClass, type SessionClassification, type SessionFacts, type SessionOrigin, SessionTimeline, SessionTimelineAccumulator, type SessionTimelineOptions, type SlotTick, type SpawnRecord, type StalePromptRow, type SuccessorReworkOptions, type SuccessorReworkReport, TELEPORT_COMPLETED_EVENT, TELEPORT_EVENT, TICK_HOLD_MAX_MIN, TOKEN_CLASSES, TP1550_RULES, type TaskActuals, type TaskActualsFlag, type TaskActualsOptions, type TaskInitiative, type TaskPr, type TeleportEvent, type TokenClass, type ToolField, type ToolRule, type TranscriptCopy, type Trigger, type TtlRequestRow, UNKNOWN_PROFILE, UNSTATED_REASON, type UnreportedExit, type UnreportedExitRow, V3_RULES, VERDICTS_SQL, type VerdictRecord, WAKE_FROM_KINDS, type WakeCauseBucket, type WakeCauseEpisodes, type WakeEpisode, type WakeEpisodes, type WakeEventRow, type WakeFromKind, type WakeGapCell, type WakePair, type WindowComparison, type WorkerFacts, type WorkerReportRecord, type WorkerRole, type WorkerSessionRecord, type WrittenEpisodes, assignmentCount, assignmentSchema, bandOf, blockedFlowReport, blockedFlowSchema, buildEpisodes, buildSessionTimeline, buildWakeEpisodes, cacheTtlReport, cacheTtlWhatIf, cacheTtlWhatIfSchema, classifyDeniedAction, classifyError, classifyFollowUp, classifyRequest, classifySession, clusterOf, compareWindows, contextBand, coordDutyTableSchema, costPerOutcome, costPerOutcomeSchema, costPerRequest, costReport, costReportSchema, countMisses, darkGaps, dedupeDenials, dutyTable, episodeNames, eventsDbCommand, extractConcerns, extractFriction, firstDivergence, followUpSignals, frictionDailyReport, frictionDeposit, frictionDepositId, gapBand, handoffThreshold, handoffThresholdSchema, heuristicFor, idleSlotMinutes, initiativeFromCwd, isBootAction, latencyStats, latencyStatsSchema, lineCluster, listMergedPrRefs, livenessReport, livenessSchema, mergeCopies, mergeOutcomes, parseBrokerLog, parseDenials, parsePrRef, parseReport, parseSeatJournal, parseTeleportEvents, parseVerdict, prFeaturesFor, prKey, prefixReuse, readAgentSessions, readCoverage, readDispatchJournal, readEpisodeInput, readHandoffs, readLastPrompts, readRequestToolCalls, readSpawnerMessages, readSpawns, readTtlRows, readVerdicts, readWorkerReports, readWorkerSessions, renderBlockedFlowText, renderCacheTtlText, renderCostPerOutcomeText, renderCostReportSections, renderCostReportText, renderFrictionMarkdown, renderLivenessText, renderLogTop, renderReportTop, renderReviewFillText, renderSuccessorReworkText, renderWindowComparisonText, reviewFillReport, reviewFillSchema, roleFromProfile, routeFailureRows, routeMisses, routeOutcomes, scopeFilter, scorecardJournalRows, scorecardRowText, seatContext, seatContextSchema, seatGenerations, seatGenerationsSchema, seatOf, sessionInitiative, sessionRole, staleEpisodeSessions, staleEpisodeSessionsYielding, stalePromptRows, successorReworkReport, successorReworkSchema, summarizeWakeEpisodes, sweepK, taskActuals, transcriptSignals, unreportedExitRows, wakeEpisodesSchema, workerRole, writeEpisodes };
 
 // ./dist/timeline-entry.d.ts
 import { ToolFamily } from '@titan-design/session-read';

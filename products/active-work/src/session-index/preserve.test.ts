@@ -5,6 +5,7 @@ import { resetIndex } from '@titan-design/session-graph';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { openGraph, type WorkspaceGraph } from './graph.js';
+import { selectAll, selectOne } from '../test-support/session-index/query.js';
 import {
   forgetPreserved,
   listPreserved,
@@ -60,10 +61,7 @@ function insertPruned(): void {
 }
 
 const sessions = (): { session_id: string; turn_count: number }[] =>
-  graph.db.prepare('SELECT session_id, turn_count FROM session').all() as {
-    session_id: string;
-    turn_count: number;
-  }[];
+  selectAll<{ session_id: string; turn_count: number }>(graph.db, 'SELECT session_id, turn_count FROM session');
 
 describe('preserved rows', () => {
   it('survives the reset that would otherwise erase them', () => {
@@ -166,9 +164,7 @@ describe('preserved rows', () => {
     graph.db
       .prepare("INSERT INTO transcript (source_key, status) VALUES ('~/gone.jsonl', 'missing')")
       .run();
-    const gone = graph.db.prepare('SELECT source_id FROM transcript').get() as {
-      source_id: number;
-    };
+    const gone = selectOne<{ source_id: number }>(graph.db, 'SELECT source_id FROM transcript');
     graph.db
       .prepare('INSERT INTO session (session_id, started_at, turn_count) VALUES (?, ?, ?)')
       .run('pruned', '2026-06-01T10:00:00Z', 882);
@@ -222,7 +218,7 @@ describe('preserved rows', () => {
     });
 
     const count = () =>
-      (graph.db.prepare('SELECT COUNT(*) c FROM permission_phase').get() as { c: number }).c;
+      selectOne<{ c: number }>(graph.db, 'SELECT COUNT(*) c FROM permission_phase').c;
 
     expect(replayPreserved(graph)).toEqual({ restored: 0, merged: 0, skipped: 1 });
     expect(replayPreserved(graph)).toEqual({ restored: 0, merged: 0, skipped: 1 });
@@ -279,9 +275,7 @@ describe('preserved audit rows', () => {
     graph.db
       .prepare("INSERT INTO transcript (source_key, status) VALUES ('~/gone.jsonl', 'missing')")
       .run();
-    const { source_id } = graph.db.prepare('SELECT source_id FROM transcript').get() as {
-      source_id: number;
-    };
+    const { source_id } = selectOne<{ source_id: number }>(graph.db, 'SELECT source_id FROM transcript');
     graph.db
       .prepare('INSERT INTO session (session_id, started_at, turn_count) VALUES (?, ?, ?)')
       .run('pruned', '2026-06-01T10:00:00Z', 3);
@@ -313,7 +307,7 @@ describe('preserved audit rows', () => {
   }
 
   const count = (table: string): number =>
-    (graph.db.prepare(`SELECT COUNT(*) c FROM "${table}"`).get() as { c: number }).c;
+    selectOne<{ c: number }>(graph.db, `SELECT COUNT(*) c FROM "${table}"`).c;
 
   it('a --full rebuild keeps request, compaction and session_origin rows for a session whose transcript is gone', async () => {
     const transcriptId = seedPrunedSession();

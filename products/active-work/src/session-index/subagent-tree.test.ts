@@ -15,7 +15,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { openGraph, type SessionGraph } from './graph.js';
+import { openGraph, type WorkspaceGraph } from './graph.js';
+import { selectMaybe, selectOne } from '../test-support/session-index/query.js';
 import { runRefresh } from './refresh.js';
 import { FIXTURE_CWD } from '../test-support/session-index/fixture.js';
 
@@ -26,7 +27,7 @@ const NESTED_TOOL_USE_ID = 'toolu_01NestedDispatch0000000';
 
 let dir: string;
 let root: string;
-let graph: SessionGraph;
+let graph: WorkspaceGraph;
 
 beforeEach(() => {
   dir = mkdtempSync(path.join(os.tmpdir(), 'aw-subagent-'));
@@ -169,18 +170,10 @@ function writeSubagent(turns = 2, { nestedDispatch = false } = {}): void {
 }
 
 const factsFor = (sessionId: string): number =>
-  (
-    graph.db.prepare('SELECT COUNT(*) AS n FROM fact WHERE session_id = ?').get(sessionId) as {
-      n: number;
-    }
-  ).n;
+  selectOne<{ n: number }>(graph.db, 'SELECT COUNT(*) AS n FROM fact WHERE session_id = ?', sessionId).n;
 
 const turnsFor = (sessionId: string): number =>
-  (
-    graph.db.prepare('SELECT turn_count AS n FROM session WHERE session_id = ?').get(sessionId) as {
-      n: number;
-    } | null
-  )?.n ?? -1;
+  selectMaybe<{ n: number }>(graph.db, 'SELECT turn_count AS n FROM session WHERE session_id = ?', sessionId)?.n ?? -1;
 
 describe('subagent sidechains', () => {
   it('does not credit the parent with its subagent’s work', async () => {

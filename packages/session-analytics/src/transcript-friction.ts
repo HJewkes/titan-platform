@@ -1,5 +1,6 @@
 import { decodeClaudeToolLines, type ClaudeToolLine } from "@titan-design/session-read";
 import { z } from "zod";
+import { CI_WAIT_IN_COMMAND } from "./ci-wait-head.js";
 import { classifyFollowUp } from "./follow-up-class.js";
 import type { FrictionCluster } from "./friction-lines.js";
 import { classifyError, type ErrorClass } from "./tool-error-class.js";
@@ -41,7 +42,7 @@ const ERROR_CLUSTER: Partial<Record<ErrorClass, FrictionCluster>> = {
   "agent-chat-refused": "broker-infra",
 };
 
-const CI_POLL = /\bgh (?:pr checks|run (?:watch|view|list))\b|\bgh pr view\b.*\bstatusCheckRollup\b/;
+const CI_POLL = new RegExp(`${CI_WAIT_IN_COMMAND.source}|\\bgh pr view\\b.*\\bstatusCheckRollup\\b`);
 const TEST_RUN = /\b(?:vitest|jest|pytest|go test|cargo test|npm test|pnpm (?:[\w-]+ )*test)\b/;
 const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 const DENIAL_TEXT = /auto mode classifier\. Reason:|Permission to use .* (?:has been )?denied/;

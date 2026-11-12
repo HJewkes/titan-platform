@@ -8,7 +8,8 @@ import './index.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
 import { UsageError } from '../errors.js';
 import type { CommandContext } from '../registry/index.js';
-import type { Task } from '../schemas/task.js';
+import { TaskSchema, type Task } from '../schemas/task.js';
+import { asTask } from '../test-support/as-task.js';
 
 const SLUG = 'sample-initiative';
 const ID = 'SI-7';
@@ -48,11 +49,15 @@ async function seedTask(root: string, overrides: Partial<Task> = {}): Promise<st
 }
 
 async function readTask(root: string): Promise<Task> {
-  return YAML.parse(await fs.readFile(taskFile(root), 'utf8')) as Task;
+  return TaskSchema.parse(YAML.parse(await fs.readFile(taskFile(root), 'utf8')));
 }
 
-function edit(root: string, flags: Record<string, unknown>, context = ctx(root)): Promise<Task> {
-  return taskEdit.run({ slug: SLUG, id: ID, ...flags }, context);
+async function edit(
+  root: string,
+  flags: Record<string, unknown>,
+  context = ctx(root),
+): Promise<Task> {
+  return asTask(await taskEdit.run({ slug: SLUG, id: ID, ...flags }, context));
 }
 
 function untouchedFields(task: Task): Partial<Task> {
@@ -272,7 +277,7 @@ describe('task.edit --remove-tag', () => {
       await seedTask(root);
       const written: string[] = [];
       const original = process.stderr.write.bind(process.stderr);
-      process.stderr.write = ((chunk: string) => written.push(chunk) > 0) as typeof original;
+      process.stderr.write = ((chunk: string) => written.push(chunk) > 0);
 
       try {
         await edit(root, { remove_tag: 'delta' }, { ...ctx(root), format });

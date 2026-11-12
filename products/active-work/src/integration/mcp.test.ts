@@ -11,6 +11,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { z } from 'zod';
 import { captureStderr, withStderr } from '../test-support/child-startup.js';
 import { requireDistBin } from '../test-support/cli-runner.js';
 
@@ -51,8 +52,10 @@ describe('integration: stdio MCP server', () => {
         arguments: {},
       });
       expect(result.isError).toBe(false);
-      const content = result.content as Array<{ type: string; text: string }>;
-      const envelope = JSON.parse(content[0]!.text) as { ok: boolean };
+      const content = z
+        .array(z.object({ type: z.string(), text: z.string() }))
+        .parse(result.content);
+      const envelope = z.object({ ok: z.boolean() }).parse(JSON.parse(content[0].text));
       expect(envelope.ok).toBe(true);
 
       await client.close();

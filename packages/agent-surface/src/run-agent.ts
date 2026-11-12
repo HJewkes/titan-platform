@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
+import { exitLine, installLauncherSignals } from "./launcher-signals.js";
 import { clearOutputTail, tailKeeper, writeOutputTail } from "./launch-output.js";
 import { NO_PANE_SOURCES, paneEscapes, type PaneSources } from "./pane-identity.js";
 import { SURFACE_NAMES, type LaunchPlan, type SurfaceName } from "./types.js";
@@ -44,7 +45,10 @@ export interface RunAgentOptions {
   paneSources?: PaneSources;
   /** Prefix for the launcher's own messages on stderr. */
   label?: string;
-  /** Called once with the spawned child, right after spawn and before the brief is written, so a host can attach its own handlers. */
+  /**
+   * Called once with the spawned child, right after spawn and before the brief is written, so a host can attach its own handlers.
+   * A throw aborts the launch: the child is killed and the error propagates out of `runAgent`.
+   */
   onSpawn?: (child: ChildProcess) => void;
 }
 
@@ -129,7 +133,19 @@ function exec(plan: LaunchPlan, options: RunAgentOptions): void {
     // The brief goes in on stdin for headless; an interactive surface hands the terminal straight through.
     stdio: plan.stdin === undefined ? "inherit" : ["pipe", "inherit", "pipe"],
   });
-  options.onSpawn?.(child);
+  const removeSignals = installLauncherSignals(child, {
+    label,
+    agent: plan.agentId,
+    interactive: plan.stdin === undefined,
+    shellPassesHangup: plan.stdin === undefined && plan.surface.startsWith("iterm"),
+  });
+  try {
+    options.onSpawn?.(child);
+  } catch (err) {
+    removeSignals();
+    child.kill();
+    throw err;
+  }
   const stderrTail = tailKeeper();
   // Headless only. Drained and passed on so the pipe never fills; the tail is what the host reads.
   child.stderr?.on("data", (chunk: Buffer) => {
@@ -144,6 +160,8 @@ function exec(plan: LaunchPlan, options: RunAgentOptions): void {
   });
   // Exit the way the child did, so whatever watches the surface sees the agent's outcome, not the launcher's.
   child.on("exit", (code, signal) => {
+    removeSignals();
+    process.stderr.write(exitLine(label, plan.agentId, code, signal));
     const finish = (): never => {
       writeOutputTail(options.agentDir, stderrTail.text());
       process.exit(signal !== null ? 128 : (code ?? 0));

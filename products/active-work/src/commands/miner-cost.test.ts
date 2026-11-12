@@ -5,8 +5,8 @@ import {
   refreshCorpus,
   rollupSessions,
   syncPrices,
-  type DiscoveredTranscript,
 } from '@titan-design/session-graph';
+import type { DiscoveredTranscript } from '@titan-design/session-read';
 import {
   costReport,
   LIST_PRICE_CAVEAT,
@@ -259,6 +259,21 @@ describe('miner cost', () => {
 
       const topOne = await minerCost.run({ top: 1 }, ctx());
       expect(topOne.topSessions).toHaveLength(1);
+    });
+  });
+
+  it('--session-ids limits the cost report to the listed sessions', async () => {
+    await withEmptyActiveRoot(async (root) => {
+      dir = root;
+      await seedGraph(dir);
+      const db = openGraphReadOnly(defaultGraphPath());
+      const expected = costReport(db, { scope: { sessionIds: [SESSION_ADHOC, SESSION_WORKER] } });
+      db.close();
+
+      const result = await minerCost.run({ session_ids: [SESSION_ADHOC, SESSION_WORKER] }, ctx());
+
+      expect(result.totals.requests).toBe(3);
+      expect(result).toEqual(expected);
     });
   });
 

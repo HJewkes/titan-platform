@@ -12,12 +12,12 @@ import { createServer as createHttpsServer, Server as HttpsServer } from "node:h
 import type { ServerType } from "@hono/node-server";
 import type { Hono } from "hono";
 import type { BaseContext } from "@titan-design/registry";
-import { isLoopbackHost, NonLoopbackBindError } from "./bind-guard.js";
+import { assertInheritedAddress, isLoopbackHost, NonLoopbackBindError } from "./bind-guard.js";
 import { EventHub } from "./events.js";
 import { watchTree, type TreeWatcher } from "./file-watch.js";
 import { DEFAULT_ALLOWED_HOSTS, createRequestGuard, type RequestGuardOptions } from "./guards.js";
 import { buildHttpApp, type EventLimits, type HttpAppOptions, type RpcBodyLimit, type RpcSample } from "./http.js";
-import { holdUntil, listenOn, readyLatch, type ListenTarget, type ServeOptions } from "./listen-target.js";
+import { holdMcpUntil, holdUntil, listenOn, readyLatch, type ListenTarget, type ServeOptions } from "./listen-target.js";
 import { DEFAULT_DAEMON_PORT, daemonPaths, getProcessStartTime, isProcessAlive, pidFileModifiedAt, probeHealth, readPidFile, removePidFile, writePidFile, type DaemonPaths, type PidFileContents } from "./lifecycle.js";
 import { consoleLogger, type Logger } from "./logger.js";
 import { buildContentApp, type ContentOriginOptions } from "./content-origin.js";
@@ -120,9 +120,12 @@ export async function startDaemon<Ctx extends BaseContext>(options: StartDaemonO
   let boundPort = options.port ?? DEFAULT_DAEMON_PORT;
   const ready = readyLatch();
   const shared = { ...toHttpOptions(options), hub, port: () => boundPort, ready: ready.isOpen };
-  const target = listenTarget(options, boundPort);
+  const target: ListenTarget = options.listenFd === undefined ? { hostname: options.host ?? DEFAULT_HOST, port: boundPort } : { fd: options.listenFd };
   const { fetch } = buildHttpApp(shared);
-  const server = await listenLoopback("fd" in target ? holdUntil(fetch, ready.opened) : fetch, target, mcpHandler(options, () => boundPort));
+  const mcp = mcpHandler(options, () => boundPort);
+  const held = "fd" in target;
+  const server = await listenLoopback(held ? holdUntil(fetch, ready.opened) : fetch, target, held ? holdMcpUntil(mcp, ready.opened) : mcp);
+  if ("fd" in target) await assertInheritedAddress(server, { allowNonLoopback: options.allowUnauthenticatedNonLoopback === true, remote }, graceMs, log);
   boundPort = boundPortOf(server, boundPort);
   const servers = [server, ...(await listenRemoteOrClose({ remote, shared, port: boundPort, loopback: server, graceMs, log }))];
   const content = await listenContentOrClose({ origin: options.contentOrigin, remote, host: options.host ?? DEFAULT_HOST, hosts: guardOptions(options).allowedHosts, bound: servers, graceMs, log });
@@ -299,10 +302,6 @@ function mcpHandler<Ctx extends BaseContext>(
   };
   const guard = createRequestGuard(guardOptions(options), port);
   return (req, res) => handleMcpRequest(mcpOptions, guard, req, res);
-}
-
-function listenTarget<Ctx extends BaseContext>(options: StartDaemonOptions<Ctx>, port: number): ListenTarget {
-  return options.listenFd === undefined ? { hostname: options.host ?? DEFAULT_HOST, port } : { fd: options.listenFd };
 }
 
 function listenLoopback(

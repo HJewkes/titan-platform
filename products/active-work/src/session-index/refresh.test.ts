@@ -6,46 +6,18 @@ import Database from 'better-sqlite3';
 import { PRICE_TABLE, PRICE_TABLE_VERSION } from '@titan-design/session-analytics';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { openGraph, type SessionGraph } from './graph.js';
-import {
-  readRefreshLockHolder,
-  refreshLockHolderPath,
-  runRefresh,
-  withRefreshLock,
-  type RefreshSummary,
-} from './refresh.js';
+import { openGraph, type WorkspaceGraph } from './graph.js';
+import { selectAll, selectOne } from '../test-support/session-index/query.js';
+import { readRefreshLockHolder, refreshLockHolderPath, withRefreshLock } from './refresh-lock.js';
+import { runRefresh, type RefreshSummary } from './refresh.js';
 import { RefreshScheduler } from './scheduler.js';
-import type * as Preserve from './preserve.js';
-import type * as WorkspaceRefresh from '../workspace-index/refresh.js';
+import { replayPreserved } from './preserve.js';
+import { refreshWorkspace } from '../workspace-index/refresh.js';
 import { FACT_LINE_COUNT, FIXTURE_LINES, SESSION, renderTranscript } from '../test-support/session-index/fixture.js';
-
-const phases = vi.hoisted((): string[] => []);
-
-vi.mock('../workspace-index/refresh.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof WorkspaceRefresh>();
-  return {
-    ...actual,
-    refreshWorkspace: (...args: Parameters<typeof actual.refreshWorkspace>) => {
-      phases.push('workspace');
-      return actual.refreshWorkspace(...args);
-    },
-  };
-});
-
-vi.mock('./preserve.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof Preserve>();
-  return {
-    ...actual,
-    replayPreserved: (...args: Parameters<typeof actual.replayPreserved>) => {
-      phases.push('preserved');
-      return actual.replayPreserved(...args);
-    },
-  };
-});
 
 let dir: string;
 let root: string;
-let graph: SessionGraph;
+let graph: WorkspaceGraph;
 
 beforeEach(() => {
   dir = mkdtempSync(path.join(os.tmpdir(), 'aw-refresh-'));
@@ -71,22 +43,33 @@ describe('runRefresh', () => {
 
     await runRefresh({ skipPrOutcomes: true, graph, root });
 
-    const fields = graph.db
-      .prepare("SELECT DISTINCT field FROM search_span WHERE owner_ref LIKE 'session:%' ORDER BY field")
-      .all() as { field: string }[];
+    const fields = selectAll<{ field: string }>(
+      graph.db,
+      "SELECT DISTINCT field FROM search_span WHERE owner_ref LIKE 'session:%' ORDER BY field",
+    );
     expect(fields.map((row) => row.field)).toEqual(['assistant_response', 'prompt']);
-    const blocks = graph.db.prepare('SELECT COUNT(*) AS n FROM context_block').get() as { n: number };
+    const blocks = selectOne<{ n: number }>(graph.db, 'SELECT COUNT(*) AS n FROM context_block');
     expect(blocks.n).toBe(0);
   });
 
   it('a pass yields before the workspace half and before replaying preserved rows', async () => {
     writeTranscript('a.jsonl');
-    phases.length = 0;
+    const phases: string[] = [];
     const yieldPoint = vi.fn(async () => {
       phases.push('yield');
     });
+    const steps = {
+      refreshWorkspace: (...args: Parameters<typeof refreshWorkspace>) => {
+        phases.push('workspace');
+        return refreshWorkspace(...args);
+      },
+      replayPreserved: (...args: Parameters<typeof replayPreserved>) => {
+        phases.push('preserved');
+        return replayPreserved(...args);
+      },
+    };
 
-    await runRefresh({ skipPrOutcomes: true, graph, root, activeRoot: dir, yieldPoint });
+    await runRefresh({ skipPrOutcomes: true, graph, root, activeRoot: dir, yieldPoint, steps });
 
     expect(phases.slice(-4)).toEqual(['yield', 'workspace', 'yield', 'preserved']);
   });
@@ -248,19 +231,17 @@ function writeSpawnRow(sessionId: string): void {
 }
 
 function statusOf(name: string): string {
-  const row = graph.db
-    .prepare<[string], { status: string }>('SELECT status FROM transcript WHERE source_key LIKE ?')
-    .get(`%${name}`) as { status: string };
+  const row = selectOne<{ status: string }>(
+    graph.db,
+    'SELECT status FROM transcript WHERE source_key LIKE ?',
+    `%${name}`,
+  );
   return row.status;
 }
 
 function counts(): Record<string, number> {
   const scalar = (table: string): number =>
-    (
-      graph.db.prepare<[], { n: number }>(`SELECT COUNT(*) AS n FROM ${table}`).get() as {
-        n: number;
-      }
-    ).n;
+    selectOne<{ n: number }>(graph.db, `SELECT COUNT(*) AS n FROM ${table}`).n;
   return {
     facts: scalar('fact'),
     sessions: scalar('session'),
@@ -273,20 +254,33 @@ function counts(): Record<string, number> {
 
 describe('RefreshScheduler', () => {
   const summary = (): RefreshSummary => ({
+    kind: 'full',
     startedAt: new Date().toISOString(),
     durationMs: 0,
     transcripts: 0,
     scanned: 0,
+    filesOpened: 0,
+    bytesRead: 0,
+    rowsWritten: 0,
+    dbBytes: 0,
+    phases: {},
     indexed: 0,
     rewound: 0,
     unchanged: 0,
     quarantined: 0,
     missing: 0,
     reconciledMissing: 0,
+    facetsBackfilled: 0,
+    facetBacklog: 0,
+    episodesWritten: 0,
+    episodeBacklog: null,
     factsAdded: 0,
     turnsRolledUp: 0,
     tasksRequested: 0,
     tasksApplied: 0,
+    prsPolled: 0,
+    workspace: null,
+    preserved: { restored: 0, merged: 0, skipped: 0 },
     errors: [],
   });
 

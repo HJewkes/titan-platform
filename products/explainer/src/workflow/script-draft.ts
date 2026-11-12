@@ -8,6 +8,7 @@ import { declareScriptReadings } from "../heteronym-readings.js";
 import { leadBeatLines, leadBeats, uncuedTargets, type LeadBeat } from "../lead-beats.js";
 import { LANES_CHAPTER, type CoverageManifest } from "../lint-coverage.js";
 import type { Stamped, LedgerStamp } from "../ledger-stamp.js";
+import { cueStandIns } from "../cue-stand-ins.js";
 import { CUE_KIND_ROLES, unknownCueKinds } from "../pace-items.js";
 import { budgetSection, planFaults, planHint, retimeOverBudget } from "../script-budget.js";
 import { parseScript } from "../script-load.js";
@@ -174,9 +175,10 @@ function cueFault(script: ScriptV1, plan: ScriptPlan): string | undefined {
  */
 function cueKindFault(script: ScriptV1): string | undefined {
   const kinds = Object.keys(CUE_KIND_ROLES).join(", ");
-  const faults = script.beats.flatMap((beat, i) =>
-    unknownCueKinds(beat).map((kind) => `beats.${i}.visual.cues: cue target kind "${kind}" in ${beat.id} is not one of ${kinds}`),
-  );
+  const faults = script.beats.flatMap((beat, i) => [
+    ...unknownCueKinds(beat).map((kind) => `beats.${i}.visual.cues: cue target kind "${kind}" in ${beat.id} is not one of ${kinds}`),
+    ...cueStandIns(beat).map(({ target, replacement }) => `beats.${i}.visual.cues: cue target "${target}" in ${beat.id} is terminal or timeline content under a generic kind: use ${replacement}:`),
+  ]);
   return faults.length > 0 ? faults.join("; ") : undefined;
 }
 

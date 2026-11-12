@@ -5,6 +5,7 @@ import path from 'node:path';
 import { openDatabase, runMigrations, SpanFtsTables } from '@titan-design/store-sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { sqlRows, type SqlRow } from '../test-support/sql-rows.js';
 import { openGraph, SCHEMA_VERSION } from '../session-index/graph.js';
 import {
   MIGRATIONS,
@@ -58,10 +59,10 @@ function seedSchema1002Graph(): void {
   db.close();
 }
 
-function read<T>(sql: string): T[] {
+function read(sql: string): SqlRow[] {
   const db = new Database(dbPath, { readonly: true });
   try {
-    return db.prepare(sql).all() as T[];
+    return sqlRows(db.prepare(sql).all());
   } finally {
     db.close();
   }
@@ -73,10 +74,7 @@ const existingRows = () => ({
   notes: read('SELECT * FROM note ORDER BY path'),
 });
 
-const schemaObjects = () =>
-  read<{ name: string; sql: string | null }>(
-    'SELECT name, sql FROM sqlite_master ORDER BY type, name',
-  );
+const schemaObjects = () => read('SELECT name, sql FROM sqlite_master ORDER BY type, name');
 
 describe('migration 1003: workspace span tables', () => {
   it('is the top of the chain', () => {

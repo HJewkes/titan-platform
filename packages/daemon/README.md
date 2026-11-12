@@ -139,6 +139,11 @@ file exists rather than answered 503. `close()` closes this process's copy of th
 only, so its owner keeps it listening and the next process accepts what queues in between.
 A restart then refuses no connections. The remote listener still binds its own port.
 
+The daemon checks the socket's real address after binding, not `host`. A socket that is not
+bound to loopback throws `NonLoopbackBindError` before the pid file is written, unless
+`allowUnauthenticatedNonLoopback` is set; with a `remote` listener it throws `RemoteBindError`
+even then.
+
 ## Bind address
 
 The daemon has no authentication, so `startDaemon` throws `NonLoopbackBindError` (carrying

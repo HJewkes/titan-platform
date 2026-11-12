@@ -69,6 +69,19 @@ The skill's "wrap up" / "I'm done" trigger phrases prompt Claude to do this for 
 
 **Briefs.** `brief.md` per initiative — frontmatter with the structured fields (state, rank, ship_target, owner, task_prefix, worktrees, and an optional `profile`), prose body for the operator's freeform context. `profile` names a Claude account profile directory under `~/.claude-profiles` (override the root with `CLAUDE_PROFILE_ROOT`); `aw` sets `CLAUDE_CONFIG_DIR` from it so the initiative runs on its own account and usage budget. A profile that does not exist on disk is a warning, not a failure — the session launches on whatever account is already active.
 
+An optional `autonomy` block opts the initiative in to agent-chat's unattended `burndown` tick. `mode` is required and must be `burndown` (any other value fails validation); `lanes`, `accounts`, `grants` and `repo` are optional, and unknown keys are rejected:
+
+```yaml
+autonomy:
+  mode: burndown
+  lanes: 2
+  accounts: [acct-a, acct-b]
+  grants: [merge-on-green-approve, task-close-on-merged-pr]
+  repo: acme/widgets
+```
+
+Field types and validation rules are in [docs/architecture.md](docs/architecture.md#the-autonomy-block).
+
 **Handoffs.** `handoff.md` per initiative — pure prose, no frontmatter. The "what to do next when you pick this up again" note. Updated freely between sessions.
 
 **Tasks.** `tasks/<ID>.yml`, one file per task. ID is `<task_prefix>-<sequential>`, monotonic and never reused. Fields: title, priority (lower = higher), severity, estimate, status (`open` | `done`), tags, notes.
@@ -127,7 +140,7 @@ The most-used surface, grouped by purpose. Run `active-work <command> --help` fo
 | Deliverables | `active-work deliverable set <id> --status\|--target\|--owner-seat ...` | Update one deliverable; `--target none` clears the date |
 | Deliverables | `active-work deliverable list [--tag t]... [--status s]` | List deliverables with open and done counts of joined tasks across all initiatives; a repeated `--tag` ANDs |
 | Deliverables | `active-work deliverable ship <id> [--force]` | Mark shipped; refuses while a joined task is open, naming it, unless `--force` |
-| Tasks | `active-work task add\|edit ... --deliverable <ids>` | Join a task to deliverables (`edit` adds, keeping the others); refuses an unknown id |
+| Tasks | `active-work task add\|edit ... --deliverable <id> [--deliverable <id>]` | Join a task to deliverables (`edit` adds, keeping the others); refuses an unknown id |
 | Categories | `active-work task add\|edit ... --kind k --cos c --area a --due YYYY-MM-DD` | Set the category fields; with `titan-platform/categories.yml` present, an unknown kind, status, cos or area (or cos `fixed` without a due) exits non-zero, names the axis and the allowed values, and writes nothing. A root without that file skips the check |
 | Categories | `active-work category list [--axis kind\|status\|cos\|area]` | Print the category registry, or one axis of it |
 | Categories | `active-work category init [--areas <file>]` | Seed `categories.yml` once from the `kind:` and `cos:` tags in use, the statuses open, done, wont-do and icebox, and the area section printed by titan-platform `scripts/areas.mjs`; leaves an existing file untouched |

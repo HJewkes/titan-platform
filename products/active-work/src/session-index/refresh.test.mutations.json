@@ -12,7 +12,7 @@
     },
     {
       "name": "the lock wait sleeps out its retry delay through an abort",
-      "file": "products/active-work/src/session-index/refresh.ts",
+      "file": "products/active-work/src/session-index/refresh-lock.ts",
       "find": "await sleep(retryDelayMs(attempt), undefined, { signal: options.signal })",
       "replace": "await sleep(retryDelayMs(attempt), undefined, {})",
       "kills": [

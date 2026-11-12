@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import YAML from 'yaml';
+import { z } from 'zod';
 import wrap from './wrap.js';
 import { registry } from '../registry/index.js';
 import './index.js'; // populate the registry
@@ -85,7 +86,7 @@ function baseArgs(overrides: Record<string, unknown> = {}) {
 
 async function readArtifacts(activeRoot: string): Promise<Record<string, unknown>> {
   const raw = await fs.readFile(path.join(activeRoot, SLUG, 'artifacts.yml'), 'utf8');
-  return YAML.parse(raw) as Record<string, unknown>;
+  return z.record(z.string(), z.unknown()).parse(YAML.parse(raw));
 }
 
 const WORKER_FACTS = {
@@ -132,7 +133,7 @@ async function seedPriorLoop(
 async function readFrontmatter(file: string): Promise<Record<string, unknown>> {
   const raw = await fs.readFile(file, 'utf8');
   const block = /^---\r?\n([\s\S]*?)\r?\n---/.exec(raw);
-  return YAML.parse(block?.[1] ?? '') as Record<string, unknown>;
+  return z.record(z.string(), z.unknown()).parse(YAML.parse(block?.[1] ?? ''));
 }
 
 describe('wrap', () => {
@@ -151,7 +152,7 @@ describe('wrap', () => {
 
       const [loop] = await deriveOpenLoops(path.join(activeRoot, SLUG), { now: new Date() });
       expect(result.ready_to_end).toBe(true);
-      expect(loop?.due).toBe(due);
+      expect(loop.due).toBe(due);
     });
   });
 
@@ -567,6 +568,38 @@ describe('wrap', () => {
       });
     });
 
+    it('lets a later wrap under the same session id close a loop its earlier wrap opened', async () => {
+      await withTempActiveRoot(async (activeRoot) => {
+        const first = await wrap.run(
+          baseArgs({
+            session_id: 'sess-reused',
+            started: '2026-05-11T09:00:00Z',
+            ended: '2026-05-11T10:00:00Z',
+            next_steps: [{ id: 'p1', text: 'checkpoint loop', kind: 'prose' }],
+          }),
+          makeCtx(activeRoot),
+        );
+        const firstRef = `${first.filename.replace(/\.md$/, '')}#p1`;
+
+        const second = await wrap.run(
+          baseArgs({
+            session_id: 'sess-reused',
+            started: '2026-05-11T10:30:00Z',
+            ended: '2026-05-11T11:00:00Z',
+            resolves: [{ ref: firstRef, outcome: 'done' }],
+          }),
+          makeCtx(activeRoot),
+        );
+
+        expect(second.filename).not.toBe(first.filename);
+        expect(second.resolves_rejected).toEqual([]);
+        const loops = await deriveOpenLoops(path.join(activeRoot, SLUG), {
+          now: new Date('2026-05-14T10:30:00Z'),
+        });
+        expect(loops.map((l) => l.ref)).not.toContain(firstRef);
+      });
+    });
+
     it('counts only the refs that closed a loop when some are bad', async () => {
       await withTempActiveRoot(async (activeRoot) => {
         const priorRef = await seedPriorLoop(activeRoot);
@@ -742,16 +775,16 @@ describe('wrap', () => {
         const notesDir = path.join(activeRoot, SLUG, 'sources', 'notes');
         const files = await fs.readdir(notesDir);
         expect(files).toEqual([`${today()}-flock-is-per-initiative.md`]);
-        const frontmatter = await readFrontmatter(path.join(notesDir, files[0]!));
+        const frontmatter = await readFrontmatter(path.join(notesDir, files[0]));
         expect(frontmatter).toMatchObject({
           kind: 'gotcha',
           title: 'flock is per-initiative',
           created: today(),
           tags: ['locking'],
         });
-        const raw = await fs.readFile(path.join(notesDir, files[0]!), 'utf8');
+        const raw = await fs.readFile(path.join(notesDir, files[0]), 'utf8');
         expect(raw).toContain('Nesting a second lock');
-        expect(result.files_updated).toContain(path.join('sources', 'notes', files[0]!));
+        expect(result.files_updated).toContain(path.join('sources', 'notes', files[0]));
       });
     });
 
@@ -799,7 +832,7 @@ describe('wrap', () => {
         }
         return GIT_WITH_WORK(
           bin,
-          args[1] === LINKED ? [args[0]!, sampleRepo(), ...args.slice(2)] : args,
+          args[1] === LINKED ? [args[0], sampleRepo(), ...args.slice(2)] : args,
         );
       });
       await withTempActiveRoot(async (activeRoot) => {

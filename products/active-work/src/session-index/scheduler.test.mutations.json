@@ -3,7 +3,7 @@
   "mutations": [
     {
       "name": "runNow reads stale at half its budget",
-      "file": "products/active-work/src/session-index/scheduler.ts",
+      "file": "products/active-work/src/session-index/scheduler-timing.ts",
       "find": "    }, budgetMs);\n",
       "replace": "    }, budgetMs / 2);\n",
       "kills": [

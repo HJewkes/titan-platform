@@ -8,9 +8,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { daemonPaths, silentLogger } from '@titan-design/daemon';
 import { runDaemon, startActiveWorkDaemon } from './daemon.js';
-import type * as RefreshModule from '../session-index/refresh.js';
-import type * as MachinePressureModule from '../utils/machine-pressure.js';
-import { refreshLockHolderPath } from '../session-index/refresh.js';
+import type { RefreshOptions } from '../session-index/refresh.js';
+import { refreshLockHolderPath } from '../session-index/refresh-lock.js';
 import { assertSafeToRemove, withEmptyActiveRoot } from '../test-support/test-helpers.js';
 
 const pass = vi.hoisted(() => {
@@ -21,35 +20,22 @@ const pass = vi.hoisted(() => {
   };
 });
 
-const log = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
-
-vi.mock('./logger.js', () => ({ getLogger: () => log }));
+const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 
 // The real probe would run sysctl, and a loaded machine would hold the pass before its first yield.
-vi.mock('../utils/machine-pressure.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof MachinePressureModule>()),
-  readMachinePressure: async () => ({ swapUsedPct: 0, pressureLevel: 1 }),
-}));
+const calm = async () => ({ swapUsedPct: 0, pressureLevel: 1 });
 
 // A related request that never finishes: the pass's yield point would wait out the gate.
-vi.mock('../session-index/reader-gate.js', () => ({
-  readerGate: {
-    enter: () => () => {},
-    idle: (_maxWaitMs: number) => new Promise<void>((resolve) => setTimeout(resolve, 60_000)),
-  },
-}));
+const gate = { idle: (_maxWaitMs: number) => new Promise<void>((resolve) => setTimeout(resolve, 60_000)) };
 
 // A pass that reaches its first yield point and keeps yielding, like a chunked episode sweep.
-vi.mock('../session-index/refresh.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof RefreshModule>()),
-  runRefresh: async (options: RefreshModule.RefreshOptions) => {
-    for (;;) {
-      const yielded = options.yieldPoint!();
-      pass.reached();
-      await yielded;
-    }
-  },
-}));
+async function yieldForever(options: RefreshOptions): Promise<never> {
+  for (;;) {
+    const yielded = options.yieldPoint!();
+    pass.reached();
+    await yielded;
+  }
+}
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -84,7 +70,13 @@ describe('daemon shutdown ordering', () => {
     vi.stubEnv('AW_SHUTDOWN_INDEX_MS', String(capMs));
     vi.stubEnv('CLAUDE_CONFIG_DIRS', path.join(os.tmpdir(), 'aw-no-transcripts'));
     await withEmptyActiveRoot(async () => {
-      const running = runDaemon({ port: 0 });
+      const running = runDaemon({
+        port: 0,
+        deps: {
+          getLogger: () => log,
+          watch: { deps: { readPressure: calm, gate, refresh: yieldForever } },
+        },
+      });
       await pass.atYield;
 
       process.emit('SIGTERM', 'SIGTERM');

@@ -13,6 +13,31 @@ export function captionError(caption: string | undefined): SendError | undefined
   };
 }
 
+/**
+ * The Bot API caps an uploaded photo at 10 MB and any other uploaded file, a voice
+ * note included, at 50 MB (https://core.telegram.org/bots/api#sending-files). Past
+ * that Telegram rejects the request, so refusing first spares the upload. Read as
+ * MiB, so a file Telegram would take is never refused here.
+ */
+export const TELEGRAM_MAX_PHOTO_BYTES = 10 * 1024 * 1024;
+export const TELEGRAM_MAX_VOICE_BYTES = 50 * 1024 * 1024;
+
+/** Reuses `too-long`, which already carries a limit and a length, rather than widening the error union. */
+export function mediaSizeError(
+  file: MediaFile,
+  limit: number,
+  what: string,
+): SendError | undefined {
+  const length = file.bytes.byteLength;
+  if (length <= limit) return undefined;
+  return {
+    kind: "too-long",
+    limit,
+    length,
+    message: `${what} is ${length} bytes; the upload limit is ${limit}`,
+  };
+}
+
 /** Telegram plays a voice note only as OGG with Opus, so that is the default label. */
 const VOICE_DEFAULTS = { fileName: "voice.ogg", mimeType: "audio/ogg" };
 const PHOTO_DEFAULTS = { fileName: "photo.jpg", mimeType: "image/jpeg" };

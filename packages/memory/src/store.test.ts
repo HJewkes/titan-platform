@@ -37,6 +37,31 @@ describe("PlaybookStore", () => {
     expect(store.get("b-corrupt")).toBeUndefined();
   });
 
+  it("skips a bullet row and a feedback row whose ref is not a memory ref", () => {
+    const good = store.add({ id: "b-good", content: "Run the linter before committing" });
+    store.recordFeedback(good.id, "helpful");
+    new EntityTable(db, { name: DEFAULT_MEMORY_TABLES.entity }).upsert({
+      ref: "session:b-foreign",
+      kind: "bullet",
+      name: "general",
+      attrs: { ...good, id: undefined },
+      tValid: T0.toISOString(),
+    });
+    db.prepare(`INSERT INTO ${DEFAULT_MEMORY_TABLES.feedback} (bullet_ref, type, at) VALUES (?, ?, ?)`).run("session:b-foreign", "harmful", T0.toISOString());
+
+    expect(store.list().map((b) => b.id)).toEqual([good.id]);
+    expect([...store.feedbackByBulletId().keys()]).toEqual([good.id]);
+  });
+
+  it("skips a supersedes edge whose target ref is not a memory ref", () => {
+    const next = store.add({ id: "b-new", content: "use pnpm" });
+    const old = store.add({ id: "b-old", content: "use npm" });
+    store.deprecate(old.id, "replaced", next.id);
+    new EdgeTable(db, { name: DEFAULT_MEMORY_TABLES.edge }).assert({ sourceRef: bulletRef(next.id), relation: "supersedes", targetRef: "session:b-foreign", tValid: T0.toISOString() });
+
+    expect(store.supersededBy(next.id)).toEqual([old.id]);
+  });
+
   it("adds a bullet with defaults and reads it back", () => {
     const bullet = store.add({ content: "Run the linter before committing", tags: ["git"] });
     expect(bullet.id).toMatch(/^b-/);

@@ -15,29 +15,27 @@ import { discoverTranscripts } from '@titan-design/session-read';
 import { graphDocumentFrequency } from '../search/document-frequency.js';
 import { createDirtySet } from './dirty-set.js';
 import { transcriptsFromDirty, unknownRootCandidates } from './delta-pass.js';
-import { openGraph, type SessionGraph } from './graph.js';
+import { openGraph, type WorkspaceGraph } from './graph.js';
+import { selectAll, selectOne } from '../test-support/session-index/query.js';
 import { runRefresh } from './refresh.js';
 import { RefreshScheduler } from './scheduler.js';
-import type * as Episodes from './episodes.js';
+import { refreshEpisodes } from './episodes.js';
 
-const episodeStep = vi.hoisted(() => ({ before: null as (() => Promise<void>) | null }));
+const episodeStep: { before: (() => Promise<void>) | null } = { before: null };
 
-vi.mock('./episodes.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof Episodes>();
-  return {
-    ...actual,
-    refreshEpisodes: async (...args: Parameters<typeof actual.refreshEpisodes>) => {
-      await episodeStep.before?.();
-      return actual.refreshEpisodes(...args);
-    },
-  };
-});
+/** Runs `episodeStep.before` ahead of the real episode step, so a test can hold it. */
+const steps = {
+  refreshEpisodes: async (...args: Parameters<typeof refreshEpisodes>) => {
+    await episodeStep.before?.();
+    return refreshEpisodes(...args);
+  },
+};
 
 const UNCHANGED = 1_000;
 
 let dir: string;
 let root: string;
-let graph: SessionGraph;
+let graph: WorkspaceGraph;
 
 beforeEach(() => {
   dir = mkdtempSync(path.join(os.tmpdir(), 'aw-delta-'));
@@ -160,14 +158,12 @@ describe('delta pass', () => {
       .join('');
 
   const storedFields = (): string[] =>
-    (
-      graph.db.prepare('SELECT DISTINCT field FROM search_span ORDER BY field').all() as {
-        field: string;
-      }[]
-    ).map((row) => row.field);
+    selectAll<{ field: string }>(graph.db, 'SELECT DISTINCT field FROM search_span ORDER BY field').map(
+      (row) => row.field,
+    );
 
   const contextBlocks = (): number =>
-    (graph.db.prepare('SELECT COUNT(*) AS n FROM context_block').get() as { n: number }).n;
+    selectOne<{ n: number }>(graph.db, 'SELECT COUNT(*) AS n FROM context_block').n;
 
   it('stores no tool span or context block for bytes a delta pass indexes', async () => {
     writeTranscript(1);
@@ -201,7 +197,7 @@ describe('delta pass', () => {
       skipWorkspace: true,
       taskRoot: dir,
     });
-    const spans = (graph.db.prepare('SELECT COUNT(*) AS n FROM search_span').get() as { n: number })
+    const spans = selectOne<{ n: number }>(graph.db, 'SELECT COUNT(*) AS n FROM search_span')
       .n;
     appendFileSync(path.join(root, 'demo', 's1.jsonl'), userLine(1, 'a later prompt'), 'utf8');
     const transcripts = await discoverTranscripts(root);
@@ -250,11 +246,7 @@ describe('delta pass aborted mid-scan', () => {
     })}\n`;
 
   const unrolledTurns = (): number =>
-    (
-      graph.db.prepare('SELECT COUNT(*) AS n FROM turn WHERE ended_at IS NULL').get() as {
-        n: number;
-      }
-    ).n;
+    selectOne<{ n: number }>(graph.db, 'SELECT COUNT(*) AS n FROM turn WHERE ended_at IS NULL').n;
 
   it('rolls up the sessions it committed before the abort', async () => {
     for (const n of [1, 2]) appendFileSync(writeTranscript(n), assistantLine(n), 'utf8');
@@ -267,7 +259,7 @@ describe('delta pass aborted mid-scan', () => {
     const pass = runRefresh({ graph, mode: 'delta', transcripts, yieldPoint, taskRoot: dir });
 
     await expect(pass).rejects.toBe(aborted);
-    const turns = graph.db.prepare('SELECT COUNT(*) AS n FROM turn').get() as { n: number };
+    const turns = selectOne<{ n: number }>(graph.db, 'SELECT COUNT(*) AS n FROM turn');
     expect(turns.n).toBe(1);
     expect(unrolledTurns()).toBe(0);
   });
@@ -297,7 +289,7 @@ describe('delta pass behind runNow', () => {
       return episodes.blocked;
     };
     const scheduler = new RefreshScheduler((_kind, onIndexed) =>
-      runRefresh({ graph, mode: 'delta', transcripts, taskRoot: dir, onIndexed }),
+      runRefresh({ graph, mode: 'delta', transcripts, taskRoot: dir, onIndexed, steps }),
     );
 
     try {
@@ -320,7 +312,7 @@ describe('delta pass behind runNow', () => {
     return new RefreshScheduler(
       async (_kind, onIndexed) => {
         const transcripts = await transcriptsFromDirty(graph, dirty.drain(), roots);
-        return runRefresh({ graph, mode: 'delta', transcripts, taskRoot: dir, onIndexed });
+        return runRefresh({ graph, mode: 'delta', transcripts, taskRoot: dir, onIndexed, steps });
       },
       { hasUndrained: () => dirty.size > 0 },
     );

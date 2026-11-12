@@ -7,7 +7,8 @@ import { invokeTool } from '../server/mcp.js';
 import './index.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
 import type { CommandContext } from '../registry/index.js';
-import type { Task } from '../schemas/task.js';
+import { TaskSchema, type Task } from '../schemas/task.js';
+import { asTask } from '../test-support/as-task.js';
 
 const SLUG = 'sample-initiative';
 const ID = 'SI-7';
@@ -37,16 +38,17 @@ async function seedTask(root: string): Promise<void> {
 }
 
 async function readTask(root: string): Promise<Task> {
-  return YAML.parse(await fs.readFile(taskFile(root), 'utf8')) as Task;
+  return TaskSchema.parse(YAML.parse(await fs.readFile(taskFile(root), 'utf8')));
 }
 
-function note(root: string, text: string, id = ID): Promise<Task> {
-  return taskNote.run({ slug: SLUG, id, text }, ctx(root));
+async function note(root: string, text: string, id = ID): Promise<Task> {
+  return asTask(await taskNote.run({ slug: SLUG, id, text }, ctx(root)));
 }
 
-function withoutNotesAndStamp(task: Task): Partial<Task> {
-  const { notes: _notes, updated: _updated, ...rest } = task;
-  return rest;
+function withoutNotesAndStamp(task: Task): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(task).filter(([key]) => key !== 'notes' && key !== 'updated'),
+  );
 }
 
 describe('task.note', () => {

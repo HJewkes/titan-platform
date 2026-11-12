@@ -10,7 +10,7 @@ import { ReviewerBrokerBusy, ReviewerBrokerDown } from "./review.js";
 import { reviewerRoleFor, type ReviewerRoles } from "./reviewer-roles.js";
 import { toPresence } from "./presence.js";
 import { HOME_PREFIXES } from "./seats.js";
-import { ReviewerAskTimedOut, ReviewerMachineHold, ReviewerSpawnQueued } from "./review-wait.js";
+import { ReviewerAskTimedOut, ReviewerGateRosterUnread, ReviewerMachineHold, ReviewerSpawnQueued } from "./review-wait.js";
 import { SpawnDeferred } from "./spawn-gate.js";
 import type { ReviewAsk, RosterReader, SpawnGate } from "./ports.js";
 
@@ -113,6 +113,7 @@ function busyReason(message: string): { reason: string; code?: string } | undefi
 /**
  * Only an unreachable broker or a refusal that clears with time is safe to ask again. A timeout gets its own class, because
  * the call may have landed: the review layer looks for the reviewer before asking again. Every other failure stays a refusal.
+ * A timeout of the gate's own roster read arrives as ReviewerGateRosterUnread, because nothing was launched.
  */
 async function askBroker<T>(ask: () => T | Promise<T>, onMachineHold?: AgentChatReviewerDispatchOptions["onMachineHold"]): Promise<T> {
   try {
@@ -198,6 +199,10 @@ function runningReviewers(rows: readonly ReviewerRosterRow[], now: number): stri
   return rows.filter((row) => REVIEWER_NAME.test(row.name) && holdsLiveSession(row, now)).map((row) => row.name);
 }
 
+/** A gate roster read that timed out started nobody, since the launch runs only after it; any other failure is left as it was (TP-5295). */
+const notLaunched = (error: unknown): unknown =>
+  error instanceof DispatchTimeoutError ? new ReviewerGateRosterUnread(`spawn gate: ${error.message}`, { cause: error }) : error;
+
 /** Reads the roster for the gate and tells it what was read, or why nothing was, so `shepherd status` never shows an unread roster as 0. */
 async function readRunningReviews(roster: RosterReader, gate: SpawnGate, firstSeen: Map<string, number>): Promise<number[]> {
   let rows: ReviewerRosterRow[];
@@ -205,7 +210,7 @@ async function readRunningReviews(roster: RosterReader, gate: SpawnGate, firstSe
     rows = rosterRows(await roster.rows());
   } catch (error) {
     gate.noteReviewers({ rosterError: error instanceof Error ? error.message : String(error) });
-    throw error;
+    throw notLaunched(error);
   }
   const now = Date.now();
   gate.noteReviewers({ running: runningReviewers(rows, now) });

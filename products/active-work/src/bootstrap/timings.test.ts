@@ -1,8 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
 import { assembleBootstrap } from './prompt.js';
 import openCommand, { formatTimings } from '../commands/open.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
+
+const timedOpenResult = z.object({
+  prompt: z.string(),
+  metadata: z.object({ timings_ms: z.record(z.string(), z.number()) }),
+});
 
 const SLUG = 'sample-initiative';
 const NOW = new Date('2026-05-12T16:00:00Z');
@@ -22,7 +28,7 @@ const assemble = (root: string, clock?: () => number) =>
     now: NOW,
     detectSiblings: false,
     includeLiveStatus: false,
-    noteRelevance: async () => new Map(),
+    noteRelevance: () => [],
     loopRetriever: async () => ({ hits: [], degraded: [], query: { terms: [], expression: '' } }),
     hitLog: async () => null,
     ...(clock ? { clock } : {}),
@@ -74,11 +80,13 @@ describe('open timings_ms', () => {
   it('adds archive and total to the result metadata and keeps them out of the prompt', async () => {
     await withTempActiveRoot(async (root) => {
       const args = openCommand.args.parse({ slug: SLUG, offline: true });
-      const result = (await openCommand.run(args, {
-        activeRoot: root,
-        warnings: [],
-        format: 'json',
-      })) as { prompt: string; metadata: { timings_ms: Record<string, number> } };
+      const result = timedOpenResult.parse(
+        await openCommand.run(args, {
+          activeRoot: root,
+          warnings: [],
+          format: 'json',
+        }),
+      );
 
       const timings = result.metadata.timings_ms;
       for (const key of ['load', 'archive', 'live_status', 'rank_notes', 'loop_retrieval', 'total']) {
@@ -104,7 +112,7 @@ describe('open timings_ms', () => {
       vi.stubEnv('AW_TIMING', '1');
       await run();
       expect(write).toHaveBeenCalledTimes(1);
-      expect(String(write.mock.calls[0]![0])).toMatch(/^aw timing sample-initiative: load=\d+ms .* total=\d+ms\n$/);
+      expect(String(write.mock.calls[0][0])).toMatch(/^aw timing sample-initiative: load=\d+ms .* total=\d+ms\n$/);
     });
   });
 

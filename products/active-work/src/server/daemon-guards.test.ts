@@ -67,17 +67,18 @@ function get(port: number, route: string, host: string): Promise<RawResponse> {
 }
 
 function jsonHeaders(route: string, extra: Record<string, string> = {}): Record<string, string> {
-  const accept = route === '/mcp' ? { accept: MCP_ACCEPT } : {};
+  const accept: Record<string, string> = route === '/mcp' ? { accept: MCP_ACCEPT } : {};
   return { 'content-type': 'application/json', [CLIENT_HEADER]: 'test', ...accept, ...extra };
 }
 
 /** The browser half of the dashboard: relative URLs resolve against the page, and a POST carries its Origin. */
 function browserAt(origin: string): typeof fetch {
-  return ((input: RequestInfo | URL, init: RequestInit = {}) => {
+  const browserFetch: typeof fetch = (input, init = {}) => {
     const headers = new Headers(init.headers);
     headers.set('origin', origin);
     return originalFetch(new URL(String(input), origin), { ...init, headers });
-  }) as typeof fetch;
+  };
+  return browserFetch;
 }
 
 async function withDaemon(fn: (port: number) => Promise<void>): Promise<void> {
@@ -145,7 +146,7 @@ describe.each(ROUTES)('daemon request guards on $route', ({ route, body }) => {
 
   it('refuses a JSON POST with neither an Origin nor a client header with 403', async () => {
     await withDaemon(async (port) => {
-      const accept = route === '/mcp' ? { accept: MCP_ACCEPT } : {};
+      const accept: Record<string, string> = route === '/mcp' ? { accept: MCP_ACCEPT } : {};
       const headers = { 'content-type': 'application/json', ...accept };
       const res = await post(port, route, headers, body);
 

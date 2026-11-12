@@ -154,6 +154,53 @@ describe('deriveOpenLoops', () => {
     expect(loops.map((l) => l.ref)).toEqual([`${opener}#n2`]);
   });
 
+  it('closes a loop opened by an earlier file that shares the resolver session_id', async () => {
+    const opener = await writeSession({
+      session_id: 'reused',
+      ended: '2026-07-01T00:00:00Z',
+      next_steps: [{ id: 'n1', text: 'opened days ago', kind: 'prose' }],
+    });
+    await writeSession({
+      session_id: 'reused',
+      ended: '2026-07-05T00:00:00Z',
+      resolves: [{ ref: `${opener}#n1`, outcome: 'done' }],
+    });
+
+    expect(await deriveOpenLoops(initiativeDir, { now: NOW })).toEqual([]);
+  });
+
+  it('still rejects a file resolving its own loop', async () => {
+    const own = await writeSession({
+      session_id: 'solo',
+      ended: '2026-07-03T00:00:00Z',
+      next_steps: [{ id: 'n1', text: 'mine', kind: 'prose' }],
+      resolves: [{ ref: '2026-07-03-solo#n1', outcome: 'done' }],
+    });
+
+    const loops = await deriveOpenLoops(initiativeDir, { now: NOW });
+    expect(loops.map((l) => l.ref)).toEqual([`${own}#n1`]);
+  });
+
+  it('still blocks two same-id files closing each other', async () => {
+    await writeSession({
+      session_id: 'twin',
+      ended: '2026-07-01T00:00:00Z',
+      file: 'twin-a',
+      next_steps: [{ id: 'a1', text: 'a', kind: 'prose' }],
+      resolves: [{ ref: 'twin-b#b1', outcome: 'done' }],
+    });
+    await writeSession({
+      session_id: 'twin',
+      ended: '2026-07-01T00:00:00Z',
+      file: 'twin-b',
+      next_steps: [{ id: 'b1', text: 'b', kind: 'prose' }],
+      resolves: [{ ref: 'twin-a#a1', outcome: 'done' }],
+    });
+
+    const loops = await deriveOpenLoops(initiativeDir, { now: NOW });
+    expect(loops.map((l) => l.ref).sort()).toEqual(['twin-a#a1', 'twin-b#b1']);
+  });
+
   it('closes a loop abandoned by a later session', async () => {
     const opener = await writeSession({
       session_id: 'aaa',
@@ -432,27 +479,24 @@ describe('self-resolution', () => {
     ]);
   });
 
-  it('rejects a self-directed resolve that a filename collision aimed at the earlier file', async () => {
-    // The caller predicted its own stem, but `pickAvailableFilename` parked it
-    // at `-1`, so the ref now names a *different* record's live loop.
+  it('lets a collision-suffixed file resolve its same-id predecessor loop', async () => {
+    // TP-42 / TP-232: under one session id the earlier file is that session's
+    // own prior wrap, so closing its loop is legitimate, not self-resolution.
     const earlier = await writeSession({
       session_id: 'dupe',
       file: '2026-07-01-1000-dupe',
       ended: '2026-07-01T10:00:00Z',
-      next_steps: [{ id: 'n1', text: 'must stay open', kind: 'prose' }],
+      next_steps: [{ id: 'n1', text: 'closed by the -1 wrap', kind: 'prose' }],
     });
-    const collided = await writeSession({
+    await writeSession({
       session_id: 'dupe',
       file: '2026-07-01-1000-dupe-1',
       ended: '2026-07-01T11:00:00Z',
       resolves: [{ ref: `${earlier}#n1`, outcome: 'done' }],
     });
 
-    const loops = await deriveOpenLoops(initiativeDir, { now: NOW });
-    expect(loops.map((l) => l.ref)).toEqual([`${earlier}#n1`]);
-    expect(await findDanglingResolves(initiativeDir)).toEqual([
-      { sessionFile: collided, ref: `${earlier}#n1`, kind: 'self' },
-    ]);
+    expect(await deriveOpenLoops(initiativeDir, { now: NOW })).toEqual([]);
+    expect(await findDanglingResolves(initiativeDir)).toEqual([]);
   });
 
   it('rejects a resolve cycle between two sessions sharing an `ended`', async () => {
@@ -657,8 +701,8 @@ describe('deriveResolvedLoops', () => {
     });
 
     const [loop] = await deriveResolvedLoops(initiativeDir, { now: NOW });
-    expect(loop?.outcome).toBe('done');
-    expect(loop?.note).toBeUndefined();
+    expect(loop.outcome).toBe('done');
+    expect(loop.note).toBeUndefined();
   });
 
   it('lets the later of two resolutions win', async () => {
@@ -679,8 +723,8 @@ describe('deriveResolvedLoops', () => {
     });
 
     const [loop] = await deriveResolvedLoops(initiativeDir, { now: NOW });
-    expect(loop?.outcome).toBe('abandoned');
-    expect(loop?.note).toBe('reverted, not worth it');
+    expect(loop.outcome).toBe('abandoned');
+    expect(loop.note).toBe('reverted, not worth it');
   });
 
   // `iso8601` accepts any timezone offset, so "later" cannot be decided by
@@ -707,9 +751,9 @@ describe('deriveResolvedLoops', () => {
     });
 
     const [loop] = await deriveResolvedLoops(initiativeDir, { now: NOW });
-    expect(loop?.outcome).toBe('abandoned');
-    expect(loop?.note).toBe('reverted an hour later');
-    expect(loop?.closedBy).toBe('2026-07-22-c');
+    expect(loop.outcome).toBe('abandoned');
+    expect(loop.note).toBe('reverted an hour later');
+    expect(loop.closedBy).toBe('2026-07-22-c');
   });
 
   // Auto-resolution states no outcome and gives no reason; reporting it as
@@ -744,7 +788,7 @@ describe('triggersMet', () => {
       next_steps: [{ id: 'n1', text: 'a promise', ...step }],
     });
     const [loop] = await deriveOpenLoops(initiativeDir, { now: NOW });
-    return loop!;
+    return loop;
   }
 
   it('reports nothing for a loop whose condition has not fired', async () => {

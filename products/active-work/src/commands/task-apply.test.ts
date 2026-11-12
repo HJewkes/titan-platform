@@ -1,49 +1,49 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import YAML from 'yaml';
-import { describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
+import { describe, expect, it } from 'vitest';
 import { invokeCommand } from '@titan-design/registry';
-import taskApply from './task-apply.js';
+import { createTaskApply } from './task-apply.js';
 import './index.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
 import { today } from '../utils/today.js';
 import type { CommandContext } from '../registry/index.js';
-import type { Task } from '../schemas/task.js';
-import type * as FsAtomic from '../utils/fs-atomic.js';
-import type * as YamlIo from '../utils/yaml-io.js';
+import { TaskSchema, type Task } from '../schemas/task.js';
+import { withFileLock } from '../utils/fs-atomic.js';
+import { writeYaml } from '../utils/yaml-io.js';
+import type { TaskApplyIo } from './_task-apply-run.js';
 
-const lockTargets = vi.hoisted(() => [] as string[]);
-const writtenFiles = vi.hoisted(() => [] as string[]);
+const lockTargets: string[] = [];
+const writtenFiles: string[] = [];
 
-vi.mock('../utils/yaml-io.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof YamlIo>();
-  return {
-    ...actual,
-    writeYaml: (...args: Parameters<typeof actual.writeYaml>) => {
-      writtenFiles.push(args[0]);
-      return actual.writeYaml(...args);
-    },
-  };
-});
-
-vi.mock('../utils/fs-atomic.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof FsAtomic>();
-  return {
-    ...actual,
-    withFileLock: <T>(target: string, fn: () => Promise<T>) => {
-      lockTargets.push(target);
-      return actual.withFileLock(target, fn);
-    },
-  };
-});
+const spyIo: TaskApplyIo = {
+  withFileLock: (target, fn) => {
+    lockTargets.push(target);
+    return withFileLock(target, fn);
+  },
+  writeYaml: (...args) => {
+    writtenFiles.push(args[0]);
+    return writeYaml(...args);
+  },
+};
+const spiedTaskApply = createTaskApply(spyIo);
 
 const SLUG = 'sample-initiative';
 const OTHER = 'other-initiative';
 
-interface Summary {
-  counts: Record<'applied' | 'unchanged' | 'missing' | 'failed', number>;
-  results: { slug: string; id: string; result: string; changes: string[]; error?: string }[];
-}
+const ResultSchema = z.object({
+  slug: z.string(),
+  id: z.string(),
+  result: z.string(),
+  changes: z.array(z.string()),
+  error: z.string().optional(),
+});
+const SummarySchema = z.object({
+  counts: z.record(z.enum(['applied', 'unchanged', 'missing', 'failed']), z.number()),
+  results: z.array(ResultSchema),
+});
+type Summary = z.infer<typeof SummarySchema>;
 
 function ctx(activeRoot: string): CommandContext {
   return { activeRoot, warnings: [], format: 'json', cwd: activeRoot };
@@ -77,7 +77,7 @@ async function seedTask(
 }
 
 async function readTask(root: string, id: string, slug = SLUG): Promise<Task> {
-  return YAML.parse(await fs.readFile(taskFile(root, id, slug), 'utf8')) as Task;
+  return TaskSchema.parse(YAML.parse(await fs.readFile(taskFile(root, id, slug), 'utf8')));
 }
 
 async function writePlan(root: string, lines: unknown[]): Promise<string> {
@@ -87,11 +87,11 @@ async function writePlan(root: string, lines: unknown[]): Promise<string> {
 }
 
 async function apply(root: string, plan: string, flags: Record<string, unknown> = {}) {
-  return invokeCommand(taskApply, { plan, ...flags }, ctx(root));
+  return invokeCommand(spiedTaskApply, { plan, ...flags }, ctx(root));
 }
 
 function summaryOf(envelope: { ok: boolean }): Summary {
-  return (envelope as { ok: true; data: Summary }).data;
+  return SummarySchema.parse(z.object({ ok: z.literal(true), data: z.unknown() }).parse(envelope).data);
 }
 
 const FULL_LINE = {
@@ -233,7 +233,7 @@ describe('task.apply', () => {
       const results = text
         .trim()
         .split('\n')
-        .map((l) => JSON.parse(l) as Summary['results'][number]);
+        .map((l) => ResultSchema.parse(JSON.parse(l)));
       return { exitCode: out.exitCode, results };
     }
 
@@ -309,9 +309,9 @@ describe('task.apply', () => {
           'failed',
           'applied',
         ]);
-        expect(results[1]!.error).toContain('dep cycle');
-        expect(results[2]!.error).toContain('SI-404 is not a known task id');
-        expect(results[3]!.error).toContain(`parent OI-1 is in ${OTHER}`);
+        expect(results[1].error).toContain('dep cycle');
+        expect(results[2].error).toContain('SI-404 is not a known task id');
+        expect(results[3].error).toContain(`parent OI-1 is in ${OTHER}`);
         expect((await readTask(root, 'SI-2')).dep).toBeUndefined();
         expect(await readTask(root, 'SI-3')).toMatchObject({ parent: 'SI-1' });
         expect((await readTask(root, 'SI-3')).dep).toBeUndefined();
@@ -361,7 +361,7 @@ describe('task.apply draft promotion', () => {
       await seedTask(root, 'SI-2');
       const plan = await writePlan(root, [...REMOVE_DRAFT, { slug: SLUG, id: 'SI-2', ops: [{ add_tag: 'x' }] }]);
       const report = path.join(root, 'report.jsonl');
-      const out = await invokeCommand(taskApply, { plan, report }, agent(root));
+      const out = await invokeCommand(spiedTaskApply, { plan, report }, agent(root));
       expect(out.exitCode).not.toBe(0);
       const lines = (await fs.readFile(report, 'utf8')).trim().split('\n').map((l) => JSON.parse(l));
       expect(lines[0]).toMatchObject({ id: 'SI-1', result: 'failed' });
@@ -375,7 +375,7 @@ describe('task.apply draft promotion', () => {
     await withTempActiveRoot(async (root) => {
       await seedTask(root, 'SI-1', SLUG, { tags: ['draft'], done_when: GOOD });
       const plan = await writePlan(root, REMOVE_DRAFT);
-      const out = summaryOf((await invokeCommand(taskApply, { plan }, agent(root))).envelope);
+      const out = summaryOf((await invokeCommand(spiedTaskApply, { plan }, agent(root))).envelope);
       expect(out.counts.applied).toBe(1);
       expect((await readTask(root, 'SI-1')).tags).not.toContain('draft');
     });

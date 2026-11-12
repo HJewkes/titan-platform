@@ -4,17 +4,17 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { claudeTranscriptRoots, discoverAllTranscripts } from '@titan-design/session-read';
+import { AUDIT_FACET, FACET_TABLE } from '@titan-design/session-graph';
+import { EXTRACT_VERSION } from '@titan-design/session-read';
+import type { CommandContext } from '../registry/types.js';
+import minerCost from './miner-cost.js';
 import minerStatus from './miner-status.js';
 import { defaultGraphPath, openGraph } from '../session-index/graph.js';
 import { runRefresh } from '../session-index/refresh.js';
 import { WORKSPACE_SPAN_SOURCE_BASE } from '../workspace-index/schema.js';
 import { FIXTURE_LINES, SESSION, renderTranscript } from '../test-support/session-index/fixture.js';
 import { withEmptyActiveRoot } from '../test-support/test-helpers.js';
-import { mirrorRoot, mirrorRoots } from '../test-support/fixtures/mirror-roots.js';
-
-vi.mock('@titan-design/session-read', async (importOriginal) =>
-  (await import('../test-support/fixtures/mirror-roots.js')).withMirrors(importOriginal),
-);
+import { mirrorRoot, useMirror } from '../test-support/fixtures/mirror-roots.js';
 
 let configRoot: string;
 
@@ -30,7 +30,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
-  mirrorRoots.length = 0;
   rmSync(configRoot, { recursive: true, force: true });
 });
 
@@ -60,15 +59,19 @@ function writeCorpus(accounts: Record<string, number>): void {
 
 /** Each account's transcripts in a mirror of host `mac`. */
 function writeMirror(accounts: Record<string, number>): void {
+  const mirrorDir = path.join(configRoot, 'mirror');
   for (const [account, count] of Object.entries(accounts)) {
-    const mirror = mirrorRoot(path.join(configRoot, 'mirror'), account);
-    writeTranscripts(mirror.root, `mac-${account}`, count);
-    mirrorRoots.push(mirror);
+    writeTranscripts(mirrorRoot(mirrorDir, account).root, `mac-${account}`, count);
   }
+  useMirror(mirrorDir);
+}
+
+function ctx(): CommandContext {
+  return { activeRoot: '', warnings: [], format: 'json' };
 }
 
 function status(): ReturnType<typeof minerStatus.run> {
-  return minerStatus.run({}, {} as never);
+  return minerStatus.run({}, ctx());
 }
 
 describe('miner status', () => {
@@ -177,6 +180,34 @@ describe('miner status', () => {
       const result = await status();
 
       expect(result.facetBacklog).toBe(2);
+    });
+  });
+
+  it('cost coverage and miner status agree on the facet backlog', async () => {
+    await withEmptyActiveRoot(async () => {
+      const graph = openGraph(defaultGraphPath());
+      const facet = (key: string, version: number): void => {
+        const { sourceId } = graph.transcripts.ensure(key);
+        graph.db
+          .prepare(
+            `INSERT INTO ${FACET_TABLE} (transcript_id, facet, version, indexed_to) VALUES (?, ?, ?, 0)`,
+          )
+          .run(sourceId, AUDIT_FACET, version);
+      };
+      graph.transcripts.ensure('~/synthetic/no-facet.jsonl');
+      facet('~/synthetic/stale-facet.jsonl', EXTRACT_VERSION - 1);
+      facet('~/synthetic/current-facet.jsonl', EXTRACT_VERSION);
+      graph.transcripts.ensure('~/synthetic/gone.jsonl');
+      graph.transcripts.markStatus('~/synthetic/gone.jsonl', 'missing', 'file deleted');
+      graph.transcripts.ensure('~/synthetic/broken.jsonl');
+      graph.transcripts.markStatus('~/synthetic/broken.jsonl', 'quarantined', 'unparseable');
+      graph.db.close();
+
+      const statusBacklog = (await status()).facetBacklog;
+      const cost = await minerCost.run({}, ctx());
+
+      expect(statusBacklog).toBe(2);
+      expect(cost.coverage.facetBacklog).toBe(statusBacklog);
     });
   });
 });

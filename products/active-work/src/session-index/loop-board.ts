@@ -9,7 +9,7 @@
 import path from 'node:path';
 import YAML from 'yaml';
 import { z } from 'zod';
-import { listInitiativeSlugs } from '../sessions/initiatives.js';
+import { listInitiativeSlugsOrEmpty } from '../sessions/initiatives.js';
 import { loadTasks } from '../lint/load-tasks.js';
 import {
   LOOP_STATUSES,
@@ -331,7 +331,7 @@ async function loadSessionSet(activeRoot: string, slug: string, now: Date): Prom
 
 export async function loadBoard(activeRoot: string, paths: LedgerPaths, now: Date): Promise<LoopBoard> {
   const warnings: string[] = [];
-  const slugs = await listInitiativeSlugs(activeRoot);
+  const slugs = await listInitiativeSlugsOrEmpty(activeRoot);
   const [ledger, tree, sessions] = await Promise.all([
     loadLedger(paths, warnings),
     loadTree(paths, warnings),

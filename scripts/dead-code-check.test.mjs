@@ -20,7 +20,9 @@ import {
   HEAP_CAP_MB,
   ROOT_ROLES,
   updatedBaseline,
+  workGraphSeed,
 } from "./dead-code-check.mjs";
+import { MACHINE_SEED } from "./dag-check-seed.mjs";
 import { maskSource } from "./dead-code-check-source.mjs";
 import { HEAP_CAP_MB as DAG_CHECK_HEAP_CAP_MB } from "./dag-check-self.mjs";
 import { release, tryAcquire } from "./dag-check-lock.mjs";
@@ -350,6 +352,10 @@ describe("the script header", () => {
     expect(header).not.toContain("always exits 0");
     expect(header).toContain("Exits 1 on a new dead export, or 0 under --report-only");
     expect(header).toContain("Exits 75 when the dag-check lock stays busy past the wait bound (DAG_CHECK_LOCK_WAIT_MS, 8 minutes), and 2 on an index failure, a BASE_REF that names no commit, an unknown flag,");
+    expect(header).toContain("a bare or --paths run copies the machine seed");
+    expect(header).toContain("--db runs and runs with DAG_CHECK_NO_SEED set stay cold");
+    expect(header).toContain("retries once cold");
+    expect(header).toContain("DEAD_CHECK_DEFER_COLD set it exits 76");
     expect(header).toContain('a --db path that does not exist or holds no "head" snapshot, or an out-of-memory abort');
   });
 });
@@ -481,8 +487,40 @@ describe("the report", () => {
   });
 });
 
+describe("the internal seed marker", () => {
+  it("rejects a user-passed --seed-db as an unknown flag", () => {
+    expect(() => parseCliArgs(["--seed-db", "x"])).toThrow(/seed-db/);
+  });
+});
+
 describe("dead:check worker heap cap", () => {
   it("is at least dag-check-self's cap so --update on main does not OOM", () => {
     expect(HEAP_CAP_MB).toBeGreaterThanOrEqual(DAG_CHECK_HEAP_CAP_MB);
+  });
+});
+
+describe("seeding the work graph", () => {
+  const present = () => true;
+  const absent = () => false;
+
+  it("seeds a bare run from the machine seed when one exists", () => {
+    expect(workGraphSeed({ argv: [], env: {}, exists: present })).toBe(MACHINE_SEED);
+  });
+
+  it("seeds a --paths run from the machine seed too", () => {
+    expect(workGraphSeed({ argv: ["--paths=packages/a,products/b"], env: {}, exists: present })).toBe(MACHINE_SEED);
+  });
+
+  it("indexes cold when DAG_CHECK_NO_SEED is set", () => {
+    expect(workGraphSeed({ argv: [], env: { DAG_CHECK_NO_SEED: "1" }, exists: present })).toBeNull();
+  });
+
+  it("indexes cold when no machine seed exists", () => {
+    expect(workGraphSeed({ argv: [], env: {}, exists: absent })).toBeNull();
+  });
+
+  it("never seeds a --db run, which reads an existing graph", () => {
+    expect(workGraphSeed({ argv: ["--db", "/tmp/graph.db"], env: {}, exists: present })).toBeNull();
+    expect(workGraphSeed({ argv: ["--db=/tmp/graph.db"], env: {}, exists: present })).toBeNull();
   });
 });

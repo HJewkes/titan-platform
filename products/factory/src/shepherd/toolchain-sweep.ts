@@ -1,7 +1,8 @@
 import type { GitHubPort, PullRequest, RepoSlug } from "@titan-design/github";
 import type { FactoryHost } from "../host.js";
 import { TOOLCHAIN_CONSUMERS, adoptionPlan, readCanonical, readConsumer } from "../workflows/toolchain-fanout.js";
-import { registerToolchainAdoption } from "./self-register.js";
+import { isSweepOnlyBranch } from "./leftover-bump.js";
+import { headInRepo, registerToolchainAdoption } from "./self-register.js";
 import type { ShepherdServices } from "./services.js";
 import { failureOf } from "./error-class.js";
 
@@ -64,15 +65,37 @@ async function adoptOne(host: FactoryHost, services: ShepherdServices, plan: Ado
   return { repo: plan.repo, pr: pr.number, ...(await registerOnce(host, services, plan.repo, pr.number)) };
 }
 
-/** Builds the branch through the contents API, so no checkout or push is involved; each write is a no-op on a retry. */
-async function openAdoption(port: GitHubPort, plan: AdoptionPlan): Promise<PullRequest> {
+/** The branch holds a commit that is not this sweep's own write of a plan file, so a person deletes it or opens its PR. */
+class LeftoverAdoptionBranchError extends Error {
+  constructor(repo: RepoSlug, branch: string) {
+    super(`${repo}: leftover branch ${branch} already exists; refusing to adopt over it`);
+    this.name = "LeftoverAdoptionBranchError";
+  }
+}
+
+/**
+ * Builds the branch through the contents API, so no checkout or push is involved. A branch that already exists with no PR is
+ * resumed only while every commit on it is this sweep's own write of one of the plan's files, checked before and after the
+ * writes; any other leftover is refused with nothing written. Each write carries the blob it expects, re-read on a resumed branch.
+ */
+export async function openAdoption(port: GitHubPort, plan: AdoptionPlan): Promise<PullRequest> {
   const baseSha = await port.getHeadSha(plan.repo, plan.baseBranch);
   if (baseSha === null) throw new Error(`${plan.repo} has no ${plan.baseBranch} branch`);
-  await port.ensureBranch(plan.repo, plan.branch, baseSha);
+  const created = await port.ensureBranch(plan.repo, plan.branch, baseSha);
+  const paths = new Set(plan.files.map((file) => file.path));
+  const messageOf = (path: string): string => `${plan.title}: ${path}`;
+  const sweepOnly = async (): Promise<void> => {
+    if (!(await isSweepOnlyBranch(port, plan.repo, plan.baseBranch, plan.branch, paths, messageOf))) throw new LeftoverAdoptionBranchError(plan.repo, plan.branch);
+  };
+  if (!created.done) await sweepOnly();
   for (const file of plan.files) {
-    await port.putFile(plan.repo, { path: file.path, branch: plan.branch, content: file.content, message: `${plan.title}: ${file.path}`, expectedBlobSha: file.expectedBlobSha });
+    const expectedBlobSha = created.done ? file.expectedBlobSha : ((await port.getFile(plan.repo, file.path, plan.branch))?.blobSha ?? null);
+    await port.putFile(plan.repo, { path: file.path, branch: plan.branch, content: file.content, message: messageOf(file.path), expectedBlobSha });
   }
-  return (await port.openPr(plan.repo, { head: plan.branch, base: plan.baseBranch, title: plan.title, body: adoptionBody(plan) })).pr;
+  await sweepOnly();
+  const opened = await port.openPr(plan.repo, { head: plan.branch, base: plan.baseBranch, title: plan.title, body: adoptionBody(plan) });
+  if (!opened.done || !headInRepo(opened.pr, plan.repo)) throw new Error(`${plan.repo} PR #${opened.pr.number} on ${plan.branch} was not opened by this sweep`);
+  return opened.pr;
 }
 
 function adoptionBody(plan: AdoptionPlan): string {

@@ -37,6 +37,18 @@ function isPicker(value: unknown): value is PickerResult {
   return typeof value === 'object' && value !== null && 'picker' in value;
 }
 
+type OpenOutcome = Awaited<ReturnType<typeof openCommand.run>>;
+
+function asOpen(out: OpenOutcome): OpenSuccess {
+  if (isPicker(out)) throw new Error('expected an open result, got the picker');
+  return out;
+}
+
+function asPicker(out: OpenOutcome): PickerResult {
+  if (!isPicker(out)) throw new Error('expected the picker, got an open result');
+  return out;
+}
+
 async function makeInitiativeWithWorktree(
   activeRoot: string,
   slug: string,
@@ -77,7 +89,7 @@ describe('open command', () => {
         makeCtx(activeRoot),
       );
       expect(isPicker(out)).toBe(false);
-      const result = out as OpenSuccess;
+      const result = asOpen(out);
       expect(result.slug).toBe('sample-initiative');
       expect(result.prompt).toContain('Sample Initiative');
       expect(result.cwd_hint).toBe(path.join(os.homedir(), 'code/sample'));
@@ -90,7 +102,7 @@ describe('open command', () => {
     await withTempActiveRoot(async (activeRoot) => {
       const out = await openCommand.run({}, makeCtx(activeRoot));
       expect(isPicker(out)).toBe(true);
-      const picker = out as PickerResult;
+      const picker = asPicker(out);
       expect(picker.initiatives).toEqual([
         {
           slug: 'sample-initiative',
@@ -109,7 +121,7 @@ describe('open command', () => {
         makeCtx(activeRoot),
       );
       expect(isPicker(out)).toBe(false);
-      const result = out as OpenSuccess;
+      const result = asOpen(out);
       expect(result.slug).toBe('sample-initiative');
       expect(result.resolved_from).toBe('cwd');
       // The launch dir is the matched worktree, not the brief default.
@@ -123,7 +135,7 @@ describe('open command', () => {
         { offline: true },
         makeCtx(activeRoot, path.join(os.homedir(), 'code/sample/src')),
       );
-      const result = out as OpenSuccess;
+      const result = asOpen(out);
       expect(result.slug).toBe('sample-initiative');
       expect(result.resolved_from).toBe('cwd');
     });
@@ -143,7 +155,7 @@ describe('open command', () => {
         { cwd: path.join(os.homedir(), 'code/sample/src/deep/nested'), offline: true },
         makeCtx(activeRoot),
       );
-      const result = out as OpenSuccess;
+      const result = asOpen(out);
       expect(result.slug).toBe('sample-initiative');
       expect(result.resolved_from).toBe('cwd');
     });
@@ -186,7 +198,7 @@ describe('open command', () => {
           { cwd: path.join(linkWork, 'src'), offline: true },
           makeCtx(activeRoot),
         );
-        const result = out as OpenSuccess;
+        const result = asOpen(out);
         expect(result.slug).toBe('linked-init');
         expect(result.resolved_from).toBe('cwd');
       } finally {
@@ -221,7 +233,7 @@ describe('open command', () => {
         { slug: 'sample-initiative', adhoc: true, offline: true },
         makeCtx(activeRoot),
       );
-      const result = out as OpenSuccess;
+      const result = asOpen(out);
       expect(result.prompt).toContain('ad-hoc session');
       expect(result.prompt).not.toContain('Work the top task unless redirected.');
     });
@@ -233,7 +245,7 @@ describe('open command', () => {
         { slug: 'sample-initiative', offline: true },
         makeCtx(activeRoot),
       );
-      const result = out as OpenSuccess;
+      const result = asOpen(out);
       expect(result.resolved_from).toBe('slug');
     });
   });
@@ -252,7 +264,7 @@ describe('open command', () => {
         { cwd: path.join(os.homedir(), 'code/mono/packages/app/src'), offline: true },
         makeCtx(activeRoot),
       );
-      const result = out as OpenSuccess;
+      const result = asOpen(out);
       expect(result.slug).toBe('mono-inner');
     });
   });
@@ -318,7 +330,7 @@ describe('open command', () => {
       );
 
       const out = await openCommand.run({}, makeCtx(activeRoot));
-      const picker = out as PickerResult;
+      const picker = asPicker(out);
       const order = picker.initiatives.map((i) => i.slug);
       expect(order).toEqual(['sample-initiative', 'b-second-focused', 'a-backburner', 'c-paused']);
     });
@@ -338,7 +350,7 @@ describe('open command', () => {
   it('resolves a unique prefix to the full slug', async () => {
     await withTempActiveRoot(async (activeRoot) => {
       const out = await openCommand.run({ slug: 'sample', offline: true }, makeCtx(activeRoot));
-      const result = out as OpenSuccess;
+      const result = asOpen(out);
       expect(result.slug).toBe('sample-initiative');
     });
   });
@@ -406,8 +418,8 @@ describe('open command — sibling session leases (CC-9)', () => {
   it('warns the second session about the first', async () => {
     await withTempActiveRoot(async (activeRoot) => {
       await withoutBranches(activeRoot);
-      const first = (await openCommand.run({ slug: SLUG }, makeCtx(activeRoot))) as OpenSuccess;
-      const second = (await openCommand.run({ slug: SLUG }, makeCtx(activeRoot))) as OpenSuccess;
+      const first = asOpen(await openCommand.run({ slug: SLUG }, makeCtx(activeRoot)));
+      const second = asOpen(await openCommand.run({ slug: SLUG }, makeCtx(activeRoot)));
 
       expect(first.prompt).not.toContain('# Another session may already be live');
       expect(second.prompt).toContain('# Another session may already be live');
@@ -421,11 +433,11 @@ describe('open command — sibling session leases (CC-9)', () => {
       await withoutBranches(activeRoot);
       await openCommand.run({ slug: SLUG }, makeCtx(activeRoot));
       const [file] = await leaseFiles(activeRoot);
-      const ownLeaseId = (file as string).replace(/\.json$/, '');
+      const ownLeaseId = (file).replace(/\.json$/, '');
 
       process.env.AW_LEASE_ID = ownLeaseId;
       try {
-        const out = (await openCommand.run({ slug: SLUG }, makeCtx(activeRoot))) as OpenSuccess;
+        const out = asOpen(await openCommand.run({ slug: SLUG }, makeCtx(activeRoot)));
         expect(out.prompt).not.toContain('# Another session may already be live');
       } finally {
         delete process.env.AW_LEASE_ID;
@@ -437,10 +449,9 @@ describe('open command — sibling session leases (CC-9)', () => {
     await withTempActiveRoot(async (activeRoot) => {
       await withoutBranches(activeRoot);
       await openCommand.run({ slug: SLUG }, makeCtx(activeRoot));
-      const out = (await openCommand.run(
-        { slug: SLUG, no_sibling_check: true },
-        makeCtx(activeRoot),
-      )) as OpenSuccess;
+      const out = asOpen(
+        await openCommand.run({ slug: SLUG, no_sibling_check: true }, makeCtx(activeRoot)),
+      );
 
       expect(out.prompt).not.toContain('# Another session may already be live');
       expect(await leaseFiles(activeRoot)).toHaveLength(1);

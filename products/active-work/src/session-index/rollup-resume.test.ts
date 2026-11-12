@@ -3,31 +3,22 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type * as SessionGraphPackage from '@titan-design/session-graph';
-import { openGraph, type SessionGraph } from './graph.js';
-import { runRefresh } from './refresh.js';
+import { indexTranscript, type refreshCorpus } from '@titan-design/session-graph';
+import { openGraph, type WorkspaceGraph } from './graph.js';
+import { selectOne } from '../test-support/session-index/query.js';
+import { runRefresh, type RefreshOptions } from './refresh.js';
 import { FIXTURE_LINES, renderTranscript } from '../test-support/session-index/fixture.js';
 
-const cut = vi.hoisted(() => ({ armed: false }));
-
 // Index the first transcript, advancing its watermark, then die before the rollup.
-vi.mock('@titan-design/session-graph', async (importOriginal) => {
-  const actual = await importOriginal<typeof SessionGraphPackage>();
-  return {
-    ...actual,
-    refreshCorpus: async (...args: Parameters<typeof actual.refreshCorpus>) => {
-      if (!cut.armed) return actual.refreshCorpus(...args);
-      const [graph, transcripts] = args;
-      const first = transcripts[0];
-      if (first) await actual.indexTranscript(graph, first);
-      throw new Error('pass killed between index and rollup');
-    },
-  };
-});
+const cut: typeof refreshCorpus = async (graph, transcripts) => {
+  const first = transcripts.at(0);
+  if (first) await indexTranscript(graph, first);
+  throw new Error('pass killed between index and rollup');
+};
 
 let dir: string;
 let root: string;
-let graph: SessionGraph;
+let graph: WorkspaceGraph;
 
 beforeEach(() => {
   dir = mkdtempSync(path.join(os.tmpdir(), 'aw-rollup-resume-'));
@@ -39,25 +30,21 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  cut.armed = false;
   vi.unstubAllEnvs();
   graph.db.close();
   rmSync(dir, { recursive: true, force: true });
 });
 
 const unfinishedTurns = (): number =>
-  (graph.db.prepare('SELECT COUNT(*) AS n FROM turn WHERE ended_at IS NULL').get() as { n: number })
-    .n;
+  selectOne<{ n: number }>(graph.db, 'SELECT COUNT(*) AS n FROM turn WHERE ended_at IS NULL').n;
 
-const pass = (): ReturnType<typeof runRefresh> =>
-  runRefresh({ graph, root, skipPrOutcomes: true, skipWorkspace: true, taskRoot: dir });
+const pass = (steps: RefreshOptions['steps'] = {}): ReturnType<typeof runRefresh> =>
+  runRefresh({ graph, root, skipPrOutcomes: true, skipWorkspace: true, taskRoot: dir, steps });
 
 describe('a full pass cut between index and rollup', () => {
   it('leaves no turn without ended_at after the next pass', async () => {
-    cut.armed = true;
-    await expect(pass()).rejects.toThrow('pass killed');
+    await expect(pass({ refreshCorpus: cut })).rejects.toThrow('pass killed');
     expect(unfinishedTurns()).toBeGreaterThan(0);
-    cut.armed = false;
 
     const next = await pass();
 

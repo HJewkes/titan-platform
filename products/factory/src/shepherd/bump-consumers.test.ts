@@ -37,6 +37,16 @@ function bumpShapedPr(w: World, repo: RepoSlug, headRef: string, paths = ["packa
 const writes = (w: World) => [...w.fakes.values()].map(({ effects }) => effects.createRef + effects.putContent + effects.createPr);
 
 describe("planConsumerBumps", () => {
+  it("a repo whose only titan deps were left alone is noted with the reasons, not as current", async () => {
+    const w = world();
+    const manifest = JSON.stringify({ name: "consumer-c", dependencies: { "@titan-design/example-c": "workspace:*" } });
+    w.fakes.get(CONSUMER_C)!.files.set("main:package.json", { content: manifest, blobSha: fakeSha("left-alone") });
+
+    const { notes } = await planConsumerBumps(w.services, w.registry, [CONSUMER_C]);
+
+    expect(notes).toEqual([{ repo: CONSUMER_C, leftAlone: [{ path: "package.json", name: "@titan-design/example-c", spec: "workspace:*", reason: expect.any(String) }] }]);
+  });
+
   it("plans a bump for each behind consumer and notes the current one current", async () => {
     const w = world();
 
@@ -275,6 +285,22 @@ describe("bumpConsumers", () => {
     expect(fake.effects).toMatchObject({ createRef: 1, putContent: written, createPr: 1 });
   });
 
+  it("a foreign commit landing on a freshly created branch during the writes stops the PR from opening", async () => {
+    const w = world();
+    const fake = w.fakes.get(CONSUMER_A)!;
+    const putContent = fake.wire.putContent;
+    fake.wire.putContent = async (repo, request) => {
+      const written = await putContent(repo, request);
+      pushBranchCommit(fake, request.branch, { authorLogin: "stranger", committerLogin: "stranger", message: "unrelated change" }, {});
+      return written;
+    };
+
+    const notes = await bumpConsumers(w.host, w.services, ports(w));
+
+    expect(notes[0]).toMatchObject({ repo: CONSUMER_A, error: "LeftoverBumpBranchError" });
+    expect(fake.effects).toMatchObject({ createRef: 1, createPr: 0 });
+  });
+
   it("branch with a foreign commit stays fail-closed, naming the branch", async () => {
     const w = world();
     const branch = await leftoverWith(w, { authorLogin: "stranger", message: bumpCommitMessage("package.json") }, { "package.json": "{}\n" });
@@ -321,6 +347,19 @@ describe("bumpConsumers", () => {
     expect(notes[1]).toMatchObject({ repo: CONSUMER_B, registered: expect.any(String) });
   });
 
+  it("a bump PR opened between the open-PR list and the branch check is registered as open, not reported closed", async () => {
+    const w = world();
+    const { bumps } = await planConsumerBumps(w.services, w.registry);
+    const open = bumpShapedPr(w, CONSUMER_A, bumps[0]!.branch);
+    const port = { ...w.services.port, listOpenPrs: async () => [] };
+
+    const notes = await bumpConsumers(w.host, { ...w.services, port }, ports(w));
+
+    expect(notes[0]).toMatchObject({ repo: CONSUMER_A, pr: open.number, skipped: "open", registered: expect.any(String) });
+    expect(w.fakes.get(CONSUMER_A)!.effects).toMatchObject({ createRef: 0, putContent: 0, createPr: 0 });
+    expect(w.services.store.get().byPr(CONSUMER_A, open.number)).toBeDefined();
+  });
+
   it("creates no branch when the lockfile regen fails", async () => {
     const w = world({ regenFails: true });
 
@@ -333,5 +372,21 @@ describe("bumpConsumers", () => {
     ]);
     expect(w.regenCalls).toHaveLength(2);
     expect(writes(w).every((count) => count === 0)).toBe(true);
+  });
+});
+
+describe("bumpConsumers on a tree with a pnpm patch", () => {
+  it("hands the patch file to the lockfile regeneration beside the manifests", async () => {
+    const w = world();
+    const fake = w.fakes.get(CONSUMER_A)!;
+    const root: unknown = JSON.parse(fake.files.get("main:package.json")!.content);
+    const patchPath = "patches/example-a@1.2.0.patch";
+    fake.files.set("main:package.json", { content: `${JSON.stringify({ ...Object(root), pnpm: { patchedDependencies: { "@titan-design/example-a@1.2.0": patchPath } } }, null, 2)}\n`, blobSha: fakeSha("patched-root") });
+    fake.files.set(`main:${patchPath}`, { content: "--- a/index.js\n+++ b/index.js\n", blobSha: fakeSha("patch") });
+
+    await bumpConsumers(w.host, w.services, { registry: w.registry, regen: w.regen });
+
+    const forA = w.regenCalls.find((tree) => tree.files[patchPath] !== undefined);
+    expect(forA?.files[patchPath]).toBe("--- a/index.js\n+++ b/index.js\n");
   });
 });
