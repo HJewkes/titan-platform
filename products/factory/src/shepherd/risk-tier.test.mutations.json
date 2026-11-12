@@ -7,7 +7,7 @@
       "find": "    pathReason(\"publish file\", matching(facts.paths, PUBLISH_FILES)),\n",
       "replace": "",
       "kills": [
-        "riskTier, one row per tier table line a publish file is high"
+        "riskTier, one row per tier table line 'a publish file' is 'high'"
       ]
     },
     {
@@ -16,7 +16,7 @@
       "find": "    pathReason(\"settings file\", matching(facts.paths, SETTINGS_FILES)),\n",
       "replace": "",
       "kills": [
-        "riskTier, one row per tier table line a settings file is high"
+        "riskTier, one row per tier table line 'a settings file' is 'high'"
       ]
     }
   ]
