@@ -11,6 +11,7 @@ const WRITE_SAVING = 3.0 / 1e6;
 const REBUILD_COST = 4.8 / 1e6;
 
 const request = (overrides: Partial<TtlRequestRow>): TtlRequestRow => ({
+  isSidechain: false,
   sessionId: "s",
   role: "worker:reviewer",
   profile: "reviewer",
@@ -139,6 +140,41 @@ describe("cacheTtlWhatIf reverse replay", () => {
     expect(renderCacheTtlText(whatIf)).toContain("1h replay saving");
   });
 
+  it("replays over an unpriced middle request, which still holds the cache", () => {
+    const rows = [
+      request({ sessionId: "u", cacheWrite5mTokens: 30_000 }),
+      request({ sessionId: "u", model: "unpriced-model", ts: "2026-09-29T12:00:10Z", cacheReadTokens: 30_000, cacheWrite5mTokens: 70_000, gapMs: 10_000 }),
+      request({ sessionId: "u", ts: "2026-09-29T12:00:20Z", cacheWrite5mTokens: 80_000, gapMs: 20 * MINUTE }),
+    ];
+
+    expect(cacheTtlWhatIf(rows)).toMatchObject({ unpricedRequests: 1, totals: { reverseReverts: 1, reverseTokens: 80_000 } });
+  });
+
+  it("an unpriced 1h write keeps its session out of the replay", () => {
+    const rows = [...fiveMinuteSession("m", 20 * MINUTE), request({ sessionId: "m", model: "unpriced-model", cacheWrite1hTokens: 1_000, ts: "2026-09-29T12:01:00Z", gapMs: MINUTE })];
+
+    expect(cacheTtlWhatIf(rows).totals.reverseTokens).toBe(0);
+  });
+
+  it("reports the net after the 1h write premium on the writes a replay keeps, per role and profile", () => {
+    const whatIf = cacheTtlWhatIf(fiveMinuteSession("p1", 20 * MINUTE));
+    const premium = 100_000 * WRITE_SAVING;
+    const net = 100_000 * REVERT_SAVING - premium;
+
+    expect(whatIf.totals.reversePremiumUsd).toBeCloseTo(premium, 10);
+    expect(whatIf.totals.reverseNetUsd).toBeCloseTo(net, 10);
+    expect(whatIf.byRole[0]!.reverseNetUsd).toBeCloseTo(net, 10);
+    expect(whatIf.byProfile[0]!.reverseNetUsd).toBeCloseTo(net, 10);
+    expect(renderCacheTtlText(whatIf)).toContain("less the 1h write premium");
+  });
+
+  it("a replay that reverts nothing is a net loss of the premium", () => {
+    const whatIf = cacheTtlWhatIf(fiveMinuteSession("short", 4 * MINUTE));
+
+    expect(whatIf.totals.reverseSavingUsd).toBe(0);
+    expect(whatIf.totals.reverseNetUsd).toBeCloseTo(-200_000 * WRITE_SAVING, 10);
+  });
+
   it("reverts no more than the previous prompt held", () => {
     const rows = [request({ sessionId: "s", cacheWrite5mTokens: 30_000 }), request({ sessionId: "s", cacheWrite5mTokens: 80_000, gapMs: 10 * MINUTE })];
 
@@ -175,6 +211,17 @@ describe("cacheTtlWhatIf reverse replay", () => {
     expect(withPlanner.netSavingUsd).toBeCloseTo(base.netSavingUsd, 10);
     expect(withPlanner).toMatchObject({ repriceSavingUsd: base.repriceSavingUsd, rebuilds: base.rebuilds, rebuildCostUsd: base.rebuildCostUsd });
     expect(withPlanner.noCacheNetUsd).toBeGreaterThan(base.noCacheNetUsd);
+  });
+
+  it("a sidechain request is never the previous prompt of a main-chain request", () => {
+    const sessionId = "p2";
+    const rows = [
+      request({ sessionId, profile: "planner", role: "worker:planner", cacheWrite5mTokens: 1_000 }),
+      request({ sessionId, profile: "planner", role: "worker:planner", isSidechain: true, ts: "2026-09-29T12:00:10Z", cacheWrite5mTokens: 90_000 }),
+      request({ sessionId, profile: "planner", role: "worker:planner", ts: "2026-09-29T12:00:30Z", cacheWrite5mTokens: 50_000, gapMs: 20 * MINUTE }),
+    ];
+
+    expect(cacheTtlWhatIf(rows).totals).toMatchObject({ reverseReverts: 1, reverseTokens: 1_000 });
   });
 });
 

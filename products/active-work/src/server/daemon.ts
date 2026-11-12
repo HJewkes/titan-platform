@@ -25,12 +25,21 @@ import { getLogger } from './logger.js';
 import { mcpOptions } from './mcp.js';
 import {
   startSessionIndexWatch,
+  type SessionIndexWatchOptions,
   type SessionIndexWatcher,
   type WatcherStatus,
 } from './session-index-watch.js';
 
+interface DaemonDeps {
+  getLogger: () => Logger;
+  start: typeof startActiveWorkDaemon;
+  /** Forwarded to the session index watcher. */
+  watch: SessionIndexWatchOptions;
+}
+
 interface RunDaemonOptions {
   port?: number;
+  deps?: Partial<DaemonDeps>;
 }
 
 function resolvePort(options: RunDaemonOptions): number {
@@ -123,18 +132,24 @@ export async function runDaemon(options: RunDaemonOptions = {}): Promise<void> {
   // Before the logger, the socket or any watcher: a refused host touches nothing (TP-1777).
   const refusal = hostLeaseRefusal();
   if (refusal) throw new DaemonError(refusal);
-  const log = getLogger();
+  const deps: DaemonDeps = {
+    getLogger,
+    start: startActiveWorkDaemon,
+    watch: {},
+    ...options.deps,
+  };
+  const log = deps.getLogger();
   // Read through a closure: the watcher only starts once the port is bound.
   let indexWatch: SessionIndexWatcher | null = null;
 
-  const handle = await startActiveWorkDaemon({
+  const handle = await deps.start({
     stateDir: getStateRoot(),
     port: resolvePort(options),
     logger: log,
     health: () => ({ index: toHealthIndexState(indexWatch?.status()) }),
   });
 
-  indexWatch = startSessionIndexWatch(log);
+  indexWatch = startSessionIndexWatch(log, deps.watch);
 
   await new Promise<void>((resolve) => {
     let shuttingDown = false;
@@ -149,7 +164,7 @@ export async function runDaemon(options: RunDaemonOptions = {}): Promise<void> {
         } catch (err) {
           log.error({ err }, 'error closing daemon');
         }
-        log.info('stopped');
+        log.info({}, 'stopped');
         resolve();
       })();
     };

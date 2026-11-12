@@ -1,5 +1,5 @@
 import { discoverAllTranscripts, discoverTranscripts } from '@titan-design/session-read';
-import { refreshCorpus, resetIndex, syncPrices } from '@titan-design/session-graph';
+import { resetIndex, syncPrices } from '@titan-design/session-graph';
 import { PRICE_TABLE, PRICE_TABLE_VERSION } from '@titan-design/session-analytics';
 import { defaultGraphPath, openGraph, type WorkspaceGraph } from './graph.js';
 import { taskResolver } from './tasks.js';
@@ -7,10 +7,11 @@ import { ghPrResolver } from './pr-outcomes.js';
 import { agentChatOriginResolver } from './origin-agent-chat.js';
 import type { RunCommand } from '../utils/run-command.js';
 import { clearDocumentFrequency } from '../search/document-frequency.js';
-import { refreshWorkspace, type WorkspaceRefreshSummary } from '../workspace-index/refresh.js';
+import type { WorkspaceRefreshSummary } from '../workspace-index/refresh.js';
 import { resetWorkspaceIndex, resetWorkspaceSpans } from '../workspace-index/write.js';
-import { preserveUnreachable, replayPreserved, type ReplaySummary } from './preserve.js';
-import { refreshEpisodes, snapshotOffsets } from './episodes.js';
+import { preserveUnreachable, type ReplaySummary } from './preserve.js';
+import { snapshotOffsets } from './episodes.js';
+import { refreshSteps, type RefreshSteps } from './refresh-steps.js';
 import { runDeltaPass } from './delta-pass.js';
 import { bytesAdvanced, dbBytes, lapTimer, rowsWrittenCounter } from './pass-metrics.js';
 import { restoreUnvisited, retiredSessions, sealedFilter, unvisitedOk } from './retired.js';
@@ -91,6 +92,8 @@ export interface RefreshOptions {
    * the event loop to readers. Defaults to one `setImmediate` turn.
    */
   yieldPoint?: () => Promise<void>;
+  /** Replaces phases of the pass; for tests. Unset steps run the real ones. */
+  steps?: Partial<RefreshSteps>;
 }
 
 const yieldToEventLoop = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
@@ -168,6 +171,7 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
   const graph = options.graph ?? openGraph(options.dbPath ?? defaultGraphPath());
   const owned = options.graph === undefined;
   const yieldPoint = options.yieldPoint ?? yieldToEventLoop;
+  const steps = refreshSteps(options.steps);
   const lap = lapTimer();
   const phases: Record<string, number> = {};
 
@@ -183,6 +187,7 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
         activeRoot: options.activeRoot,
         skipWorkspace: options.skipWorkspace,
         onIndexed: options.onIndexed,
+        steps,
       });
     }
     const rowsWritten = rowsWrittenCounter(graph.db);
@@ -220,7 +225,7 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
     phases.discover = lap();
     const prErrors: string[] = [];
     let prsPolled = 0;
-    const summary = await refreshCorpus(graph, visiting, {
+    const summary = await steps.refreshCorpus(graph, visiting, {
       full: options.full,
       verifyHash: verify,
       withContentHash: verify,
@@ -228,7 +233,7 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
       resolveOrigins: agentChatOriginResolver(undefined, options.taskRoot),
       resolvePrs: options.skipPrOutcomes
         ? undefined
-        : ghPrResolver(graph, {
+        : ghPrResolver({
             run: options.runGh,
             errors: prErrors,
             onPolled: (count) => {
@@ -242,12 +247,13 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
     const restored = restoreUnvisited(graph, unvisited);
     phases.corpus = lap();
     // After the rollup, because segmentation reads the wake causes it derives.
-    const episodes = await refreshEpisodes(
+    const episodes = await steps.refreshEpisodes(
       graph,
       offsetsBefore,
       options.episodeLimit,
       yieldPoint,
       options.episodeSweep,
+      steps.writeEpisodes,
     );
     await yieldPoint();
     phases.episodes = lap();
@@ -257,7 +263,7 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
     if (options.resetWorkspaceSpans && !options.skipWorkspace) resetWorkspaceSpans(graph);
     const workspace = options.skipWorkspace
       ? null
-      : await refreshWorkspace(graph, {
+      : await steps.refreshWorkspace(graph, {
           activeRoot: options.activeRoot ?? options.taskRoot,
           full: options.full,
         });
@@ -268,7 +274,7 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
     // and running it every pass means a partial or accidental delete heals
     // itself rather than waiting for someone to notice it.
     await yieldPoint();
-    const preserved = replayPreserved(graph);
+    const preserved = steps.replayPreserved(graph);
     phases.preserve = lap();
 
     return {

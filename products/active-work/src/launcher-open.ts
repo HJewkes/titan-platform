@@ -79,9 +79,13 @@ export async function runOpen(
  * Open `slug`; when nothing matches and someone is at the terminal, offer to
  * scaffold it and open an init session instead (TP-356).
  */
-export async function openSlugOrInit(slug: string, adhoc: boolean): Promise<OpenSuccess> {
+export async function openSlugOrInit(
+  slug: string,
+  adhoc: boolean,
+  open: typeof runOpenSuccess = runOpenSuccess,
+): Promise<OpenSuccess> {
   try {
-    return await runOpenSuccess({ slug, adhoc });
+    return await open({ slug, adhoc });
   } catch (err) {
     const isTTY = Boolean(process.stdin.isTTY);
     if (shouldOfferInit({ error: err, slug, isTTY })) return initInitiative(slug, err);

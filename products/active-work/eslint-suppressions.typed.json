@@ -143,27 +143,7 @@
       "count": 1
     }
   },
-  "products/active-work/src/commands/task-edit-flags.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/commands/task-edit-guard.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/active-work/src/commands/task-edit.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/commands/task-list.perf.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/commands/task-note.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }
@@ -181,16 +161,6 @@
   "products/active-work/src/commands/track.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
-    }
-  },
-  "products/active-work/src/commands/wrap-parent-session.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/commands/wrap.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
     }
   },
   "products/active-work/src/dashboard/components/StateBadge.tsx": {
@@ -244,21 +214,6 @@
       "count": 1
     }
   },
-  "products/active-work/src/integration/cli.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 12
-    }
-  },
-  "products/active-work/src/integration/daemon.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 6
-    }
-  },
-  "products/active-work/src/integration/end-to-end.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/active-work/src/launcher-init.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
@@ -305,11 +260,6 @@
     },
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
-    }
-  },
-  "products/active-work/src/search/document-frequency.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 10
     }
   },
   "products/active-work/src/search/resolve.ts": {
@@ -411,11 +361,6 @@
       "count": 2
     }
   },
-  "products/active-work/src/setup/steps.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 13
-    }
-  },
   "products/active-work/src/setup/supervision-launchd.ts": {
     "@typescript-eslint/no-unnecessary-condition": {
       "count": 3
@@ -435,16 +380,6 @@
   "products/active-work/src/setup/supervision.ts": {
     "@typescript-eslint/no-unnecessary-condition": {
       "count": 2
-    }
-  },
-  "products/active-work/src/test-support/cli-runner.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "products/active-work/src/test-support/daemon-harness.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
     }
   },
   "products/active-work/src/utils/coerce-dates.ts": {

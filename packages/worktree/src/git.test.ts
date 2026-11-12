@@ -136,6 +136,14 @@ describe("gitRunnerWithDeadline", () => {
     expect(answer).toBeNull();
   });
 
+  it("kills with SIGKILL, so a git that ignores SIGTERM still stops at the deadline", async () => {
+    writeFileSync(path.join(stubDir, "git"), "#!/bin/sh\ntrap '' TERM\nexec sleep 30\n");
+
+    const answer = await gitRunnerWithDeadline(200)(["status"], stubDir);
+
+    expect(answer).toBeNull();
+  });
+
   it("gives runGit a finite default deadline", () => {
     expect(DEFAULT_GIT_TIMEOUT_MS).toBeGreaterThan(0);
     expect(Number.isFinite(DEFAULT_GIT_TIMEOUT_MS)).toBe(true);

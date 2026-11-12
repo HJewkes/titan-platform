@@ -43,7 +43,7 @@ type Parsed = { line: string; verdict: FixProofResult["verdict"] };
 type Bound = { boundBase?: string };
 /** `nonSourceProceed` marks a NO_REPRO on a diff with no source path that `nonSourceNoRepro: record-fact` sends on to review. */
 type FixProofRead = (
-  | ({ kind: "result"; testOnlyProceed?: true } & Parsed & Bound)
+  | ({ kind: "result"; testOnlyProceed?: true; unreadDiff?: string } & Parsed & Bound)
   | ({ kind: "untrusted"; reason: string } & Parsed & Bound)
   | ({ kind: "skipped" | "missing" | "error"; reason: string } & Bound)
   | WorkflowCiRead
@@ -53,7 +53,7 @@ type FixProofRead = (
 export const FixProofReadSchema = z.discriminatedUnion("kind", [
   z.looseObject({
     kind: z.literal("result"), line: z.string(), verdict: z.string(), boundBase: z.string().optional(),
-    testOnlyProceed: z.literal(true).optional(), nonSourceProceed: z.literal(true).optional(),
+    testOnlyProceed: z.literal(true).optional(), unreadDiff: z.string().optional(), nonSourceProceed: z.literal(true).optional(),
   }),
   z.looseObject({ kind: z.literal("untrusted"), line: z.string(), verdict: z.string(), reason: z.string(), boundBase: z.string().optional() }),
   z.looseObject({ kind: z.enum(["skipped", "missing", "error"]), reason: z.string(), boundBase: z.string().optional() }),
@@ -338,7 +338,9 @@ async function gatedRead(deps: GatedDeps, input: FixProofInput, gate: OpenGate, 
   if (ci !== undefined) return ci;
   const read = await readResult(deps.port, input, gate.pr, binding, timing, signal);
   const gated = { flag: deps.noReproProceed, kind: gate.kind, repo: input.repo, pr: gate.pr, head: input.head };
-  return read.kind === "result" && (await proceedsOnNoRepro(deps.port, gated, read.line)) ? { ...read, testOnlyProceed: true } : read;
+  if (read.kind !== "result") return read;
+  const { proceeds, unreadReason } = await proceedsOnNoRepro(deps.port, gated, read.line);
+  return { ...read, ...(proceeds && { testOnlyProceed: true as const }), ...(unreadReason !== undefined && { unreadDiff: unreadReason }) };
 }
 
 /**

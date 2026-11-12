@@ -216,6 +216,40 @@ describe('RefreshScheduler', () => {
     await scheduler.close();
   });
 
+  it('onError receives the failed pass kind and the backoff the scheduler chose', async () => {
+    const clock = fakeClock();
+    const boom = new Error('corpus unreadable');
+    const run = vi.fn(async () => {
+      throw boom;
+    });
+    const onError = vi.fn();
+    const scheduler = new RefreshScheduler(run, { ...clock, baseBackoffMs: 1_000, onError });
+
+    scheduler.trigger();
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
+    await scheduler.close();
+
+    expect(onError).toHaveBeenCalledWith(boom, { kind: 'full', backoffMs: 1_000 });
+  });
+
+  it('onError reports a doubling backoff for consecutive failed delta passes', async () => {
+    const clock = fakeClock();
+    const run = vi.fn(async () => {
+      throw new Error('corpus unreadable');
+    });
+    const onError = vi.fn();
+    const scheduler = new RefreshScheduler(run, { ...clock, baseBackoffMs: 1_000, onError });
+
+    await scheduler.runNow(1_000);
+    clock.advance(1_000);
+    await scheduler.runNow(1_000);
+
+    expect(onError.mock.calls.map(([, failure]) => failure)).toEqual([
+      { kind: 'delta', backoffMs: 1_000 },
+      { kind: 'delta', backoffMs: 2_000 },
+    ]);
+  });
+
   it('collapses triggers that arrive mid-hold into one pass after the resume', async () => {
     const clock = fakeClock();
     const run = vi.fn(async () => summary);

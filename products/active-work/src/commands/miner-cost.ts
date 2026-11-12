@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises';
 import {
   costReport,
   costReportSchema,
@@ -6,7 +5,6 @@ import {
 } from '@titan-design/session-analytics';
 import { EXTRACT_VERSION } from '@titan-design/session-read';
 import { z } from 'zod';
-import { UsageError } from '../errors.js';
 import { defineCommand } from '../registry/index.js';
 import { defaultGraphPath, openGraphReadOnly } from '../session-index/graph.js';
 
@@ -26,27 +24,6 @@ const ArgsSchema = z.object({
   session_ids: z.array(z.string().min(1)).optional(),
 });
 type Args = z.infer<typeof ArgsSchema>;
-
-/** An `@<file>` value stands for the ids on its lines; any other value is one id. */
-async function expandSessionIds(values: readonly string[]): Promise<string[]> {
-  const ids: string[] = [];
-  for (const value of values) {
-    if (!value.startsWith('@')) {
-      ids.push(value);
-      continue;
-    }
-    const text = await readFile(value.slice(1), 'utf8');
-    const fileIds = text
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-    if (fileIds.length === 0) {
-      throw new UsageError(`--session-ids file ${value.slice(1)} has no session ids`);
-    }
-    ids.push(...fileIds);
-  }
-  return ids;
-}
 
 const ResultSchema = costReportSchema;
 type Result = z.infer<typeof ResultSchema>;
@@ -77,7 +54,6 @@ export default defineCommand<Args, Result>({
     },
   },
   async run(args, ctx) {
-    const sessionIds = args.session_ids && (await expandSessionIds(args.session_ids));
     const db = openGraphReadOnly(defaultGraphPath());
     try {
       const report = costReport(db, {
@@ -85,7 +61,7 @@ export default defineCommand<Args, Result>({
         since: args.since,
         until: args.until,
         top: args.top,
-        ...(sessionIds ? { scope: { sessionIds } } : {}),
+        ...(args.session_ids ? { scope: { sessionIds: args.session_ids } } : {}),
         facetVersion: EXTRACT_VERSION,
       });
       if (ctx.format !== 'json') process.stderr.write(renderCostReportText(report));

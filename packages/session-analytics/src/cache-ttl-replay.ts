@@ -25,6 +25,21 @@ export function reverseReplayTokens(rows: readonly TtlRequestRow[]): Map<TtlRequ
   return reverted;
 }
 
+/** 5m write tokens of every request in a replayed session; a 1h TTL would write them at the 1h rate unless they revert to reads. */
+export function reverseWriteTokens(rows: readonly TtlRequestRow[]): Map<TtlRequestRow, number> {
+  const written = new Map<TtlRequestRow, number>();
+  for (const session of bySession(rows).values()) {
+    if (!isFiveMinuteSession(session)) continue;
+    for (const row of session) written.set(row, row.cacheWrite5mTokens);
+  }
+  return written;
+}
+
+/** The 1h write rate over the 5m rate, charged on the writes a replay keeps. */
+export function reversePremiumUsd(tokens: number, price: PriceRow): number {
+  return (tokens * (price.cacheWrite1h - price.cacheWrite5m)) / MTOK;
+}
+
 /** The rebuild write becomes a read, so the request saves the write rate less the read rate. */
 export function reverseSavingUsd(tokens: number, price: PriceRow): number {
   return (tokens * (price.cacheWrite5m - price.cacheRead)) / MTOK;
@@ -38,12 +53,14 @@ function isFiveMinuteSession(rows: readonly TtlRequestRow[]): boolean {
   return rows.some((row) => row.cacheWrite5mTokens > 0) && rows.every((row) => row.cacheWrite1hTokens === 0);
 }
 
+/** Rows grouped by (session, chain): a sidechain has its own cache, so it is never a main request's previous prompt. */
 function bySession(rows: readonly TtlRequestRow[]): Map<string, TtlRequestRow[]> {
   const sessions = new Map<string, TtlRequestRow[]>();
   for (const row of rows) {
-    const members = sessions.get(row.sessionId);
+    const key = `${row.sessionId}\u0000${row.isSidechain}`;
+    const members = sessions.get(key);
     if (members) members.push(row);
-    else sessions.set(row.sessionId, [row]);
+    else sessions.set(key, [row]);
   }
   return sessions;
 }

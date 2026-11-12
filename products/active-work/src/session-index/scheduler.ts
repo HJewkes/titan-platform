@@ -1,8 +1,10 @@
 import type { RefreshSummary } from './refresh.js';
 import { cancellableSleep, withinBudget, type Freshness } from './scheduler-timing.js';
+import type { Execution, GateDecision, PassKind, PassRun, SchedulerOptions, SchedulerStatus } from './scheduler-types.js';
 
 export { withinBudget };
 export type { Freshness };
+export type { PassFailure, PassKind, SchedulerStatus } from './scheduler-types.js';
 
 /**
  * Collapses a burst of refresh requests into a bounded number of runs, without
@@ -14,54 +16,6 @@ export type { Freshness };
  * flight, and at most one more full pass queued behind it.
  */
 
-export interface SchedulerStatus {
-  running: boolean;
-  pending: boolean;
-  last: RefreshSummary | null;
-  lastError: string | null;
-  consecutiveErrors: number;
-  /** Rounds skipped because another process held the refresh lock. */
-  lockSkips: number;
-  /** The gate is closed; stays true through a hold-cap pass. */
-  held: boolean;
-  holdReason: string | null;
-  heldSince: string | null;
-}
-
-interface SchedulerOptions {
-  onError?: (err: unknown) => void;
-  /** Called instead of `onError` when the refresh lock stayed held; the round retries with backoff. */
-  onLockSkip?: (skips: number) => void;
-  /** Least time between the starts of two runs; a burst inside it collapses to one trailing run. */
-  minIntervalMs?: number;
-  /** Least idle time after a pass ends before the next starts; defaults to `minIntervalMs`. */
-  minIdleMs?: number;
-  /** Injectable for tests; defaults to `Date.now`. */
-  now?: () => number;
-  /** Injectable for tests; defaults to a real timer. */
-  sleep?: (ms: number) => Promise<void>;
-  baseBackoffMs?: number;
-  maxBackoffMs?: number;
-  /** Checked before each pass; while it holds, the pass stays pending and the gate is asked again. */
-  gate?: () => Promise<GateDecision>;
-  /** How long to wait between gate checks while held; defaults to 60 s. */
-  gateRecheckMs?: number;
-  /** Longest the gate may hold continuously before one pass is let through; defaults to 30 min. */
-  maxHoldMs?: number;
-  /** Called only when the gate flips between held and open, never on a recheck. */
-  onHoldChange?: (held: boolean, reason?: string) => void;
-  /** Whether changes wait that no pass has drained yet; a reader joining an indexed delta checks it (TP-893). */
-  hasUndrained?: () => boolean;
-}
-
-/** A full pass walks the corpus; a delta pass indexes only what the watcher reported. */
-export type PassKind = 'full' | 'delta';
-
-interface GateDecision {
-  hold: boolean;
-  reason?: string;
-}
-
 const DEFAULT_BASE_BACKOFF_MS = 1_000;
 const DEFAULT_MAX_BACKOFF_MS = 60_000;
 export const DEFAULT_MIN_INTERVAL_MS = 15_000;
@@ -71,24 +25,6 @@ const DEFAULT_MAX_HOLD_MS = 30 * 60_000;
 /** proper-lockfile gives up with ELOCKED once its retries run out: someone else is mid-pass. */
 export function isLockContention(err: unknown): boolean {
   return (err as { code?: unknown } | null)?.code === 'ELOCKED';
-}
-
-/** Lets a pass tell the scheduler its index writes are committed before it finishes. */
-type PassRun = (
-  kind: PassKind,
-  onIndexed: () => void,
-  onLockWait: (waiting: boolean) => void,
-) => Promise<RefreshSummary>;
-
-interface Execution {
-  /** Resolves true when the pass succeeded. */
-  done: Promise<boolean>;
-  /** Resolves true once readers can read the pass's writes; false if it failed first. */
-  indexed: Promise<boolean>;
-  /** Set when the pass reports its writes committed, so its drain is already behind it. */
-  pastIndexed: boolean;
-  /** True while the pass waits on a refresh lock another process holds; it indexes nothing yet. */
-  lockWaiting: boolean;
 }
 
 export class RefreshScheduler {
@@ -297,10 +233,10 @@ export class RefreshScheduler {
       }
       this.consecutiveErrors += 1;
       this.lastError = err instanceof Error ? err.message : String(err);
-      this.options.onError?.(err);
       // Back off so a permanently broken corpus cannot spin the daemon.
-      if (kind === 'full') this.backoff = this.pause(this.backoffMs(this.consecutiveErrors));
-      else this.startDeltaBackoff();
+      const backoffMs = kind === 'full' ? this.backoffMs(this.consecutiveErrors) : this.startDeltaBackoff();
+      if (kind === 'full') this.backoff = this.pause(backoffMs);
+      this.options.onError?.(err, { kind, backoffMs });
       return false;
     }
   }
@@ -313,9 +249,11 @@ export class RefreshScheduler {
     this.deltaBackoffUntil = 0;
   }
 
-  private startDeltaBackoff(): void {
+  private startDeltaBackoff(): number {
     this.deltaFailures += 1;
-    this.deltaBackoffUntil = this.now() + this.backoffMs(this.deltaFailures);
+    const backoffMs = this.backoffMs(this.deltaFailures);
+    this.deltaBackoffUntil = this.now() + backoffMs;
+    return backoffMs;
   }
 
   private minIdle(): number {

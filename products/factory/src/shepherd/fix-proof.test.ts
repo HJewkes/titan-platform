@@ -717,7 +717,7 @@ describe("readFixProof", () => {
 
     const result = await read();
 
-    expect(result).toEqual({ kind: "result", line: resultLine(H, "vacuous"), verdict: "vacuous" });
+    expect(result).toEqual({ kind: "result", line: resultLine(H, "vacuous"), verdict: "vacuous", unreadDiff: expect.stringContaining(`not the ${H} under judgement`) });
     expect(result).not.toHaveProperty("testOnlyProceed");
   });
 

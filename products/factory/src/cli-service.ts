@@ -158,7 +158,7 @@ function registerServiceDeploy(service: Command, verbs: Verbs): void {
     const watch = windowMs !== undefined && { watch: { windowMs } };
     const options = { checkout, remote, stateDir, logDir: stateDir, port: opts.port, expect: opts.expect, drain: drainOf(opts), morningQueuesDir: morningQueuesDir(io.env), ...watch };
     const code = await runServiceVerb("deploy", ports, io, () => deployService(ports, io, options), MANAGED_PLATFORMS);
-    relinkAfterDeploy({ code, ports, checkout, link: deps.cliLink ?? systemCliLinkPorts(ports.home), io });
+    await relinkAfterDeploy({ code, ports, checkout, link: deps.cliLink ?? systemCliLinkPorts(ports.home), io });
     setExit(code);
   });
 }

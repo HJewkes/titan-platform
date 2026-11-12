@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { once } from "node:events";
+import { promises as fsPromises } from "node:fs";
 import { chmod, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { createServer, request, type ClientRequest, type IncomingMessage, type RequestOptions } from "node:http";
 import { request as httpsRequest } from "node:https";
@@ -8,6 +9,7 @@ import { connect } from "node:net";
 import { networkInterfaces, tmpdir } from "node:os";
 import path from "node:path";
 import { connect as tlsConnect } from "node:tls";
+import { Worker } from "node:worker_threads";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { partialFake } from "@titan-design/test-kit";
@@ -185,6 +187,67 @@ describe("startDaemon", () => {
     handle = null;
   });
 });
+
+describe("startDaemon on an inherited socket", () => {
+  it("holds an mcp request until the pid file is written", async () => {
+    const socket = await bindInheritableSocket();
+    const pidFile = holdPidFileWrite();
+    try {
+      const starting = startDaemon(options({ listenFd: socket.fd, toolPrefix: "test__", mcpName: "test-mcp" }));
+      await pidFile.writing;
+
+      let answered = false;
+      const headers = { "content-type": "application/json", accept: "application/json, text/event-stream", "x-titan-client": "test" };
+      const reply = post(socket.port, "/mcp", headers, '{"jsonrpc":"2.0","id":1,"method":"tools/list"}').then((r) => ((answered = true), r));
+      await new Promise((r) => setTimeout(r, 300));
+      const answeredBeforePidFile = answered;
+      pidFile.release();
+      handle = await starting;
+
+      expect(answeredBeforePidFile).toBe(false);
+      expect((await reply).status).toBe(200);
+    } finally {
+      pidFile.release();
+      pidFile.restore();
+    }
+  });
+});
+
+// writePidFile makes its directory first; holding that call holds the pid file back. The caller
+// restores the spy, so a failing test cannot leave later startDaemon calls hanging in mkdir.
+function holdPidFileWrite(): { release: () => void; restore: () => void; writing: Promise<void> } {
+  const original = fsPromises.mkdir.bind(fsPromises);
+  let release!: () => void;
+  const hold = new Promise<void>((resolve) => (release = resolve));
+  let entered!: () => void;
+  const writing = new Promise<void>((resolve) => (entered = resolve));
+  const spy = vi.spyOn(fsPromises, "mkdir").mockImplementation(async (target, opts) => {
+    if (String(target).startsWith(stateDir)) {
+      entered();
+      await hold;
+    }
+    return original(target, opts);
+  });
+  return { release, restore: () => spy.mockRestore(), writing };
+}
+
+// A listening socket's fd can only be adopted by a loop that is not already polling it. A worker
+// binds it and then parks for good, so it never accepts and never closes the fd: the daemon that
+// adopts it is the fd's only closer. The worker is unref'd and dies with the process.
+async function bindInheritableSocket(): Promise<{ fd: number; port: number }> {
+  const park = new Int32Array(new SharedArrayBuffer(4));
+  const code = `
+    const { workerData, parentPort } = require("node:worker_threads");
+    const server = require("node:net").createServer().listen(0, "127.0.0.1", () => {
+      parentPort.postMessage(server._handle.fd + ":" + server.address().port);
+      Atomics.wait(workerData.park, 0, 0);
+    });`;
+  const worker = new Worker(code, { eval: true, workerData: { park } });
+  worker.unref();
+  const [message] = await once(worker, "message");
+  const [fd = 0, port = 0] = String(message).split(":").map(Number);
+  return { fd, port };
+}
 
 describe("request guards over a real socket", () => {
   it("refuses the cross-origin probe: text/plain body with a foreign Host and Origin", async () => {

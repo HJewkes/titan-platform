@@ -10,6 +10,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { promises as fs, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
+import { z } from 'zod';
 
 import '../commands/index.js';
 import { registry } from '../registry/index.js';
@@ -19,12 +20,12 @@ interface RunOpts {
   ctx?: Partial<CommandContext>;
 }
 
-async function runCmd<T = unknown>(
+async function runCmd(
   name: string,
   args: unknown,
   activeRoot: string,
   opts: RunOpts = {},
-): Promise<T> {
+): Promise<unknown> {
   const cmd = registry.get(name);
   if (!cmd) throw new Error(`unknown command: ${name}`);
   const parsed = cmd.args.parse(args ?? {});
@@ -34,69 +35,99 @@ async function runCmd<T = unknown>(
     format: 'json',
     ...opts.ctx,
   };
-  return (await cmd.run(parsed, ctx)) as T;
+  return cmd.run(parsed, ctx);
 }
 
-interface InitiativeNewResult {
-  slug: string;
-  dir: string;
-  rank: number;
-  task_prefix: string;
+async function runCmdAs<S extends z.ZodType>(
+  schema: S,
+  name: string,
+  args: unknown,
+  activeRoot: string,
+  opts: RunOpts = {},
+): Promise<z.infer<S>> {
+  return schema.parse(await runCmd(name, args, activeRoot, opts));
 }
 
-interface ListSection {
-  heading: string;
-  items: Array<{ slug: string; title: string; state: string; rank?: number }>;
-}
+const initiativeNewResult = z.object({
+  slug: z.string(),
+  dir: z.string(),
+  rank: z.number(),
+  task_prefix: z.string(),
+});
 
-interface ListResult {
-  sections: ListSection[];
-  parse_errors: Array<{ slug: string; error: string }>;
-}
+const listResult = z.object({
+  sections: z.array(
+    z.object({
+      heading: z.string(),
+      items: z.array(
+        z.object({
+          slug: z.string(),
+          title: z.string(),
+          state: z.string(),
+          rank: z.number().optional(),
+        }),
+      ),
+    }),
+  ),
+  parse_errors: z.array(z.object({ slug: z.string(), error: z.string() })),
+});
 
-interface AuditResult {
-  initiatives: Array<{ slug: string; state: string; rank?: number }>;
-  parse_errors: unknown[];
-  worktree_conflicts: unknown[];
-}
+const auditResult = z.object({
+  initiatives: z.array(
+    z.object({
+      slug: z.string(),
+      state: z.string(),
+      rank: z.number().optional(),
+    }),
+  ),
+  parse_errors: z.array(z.unknown()),
+  worktree_conflicts: z.array(z.unknown()),
+});
 
-interface OpenResult {
-  slug: string;
-  prompt: string;
-  cwd_hint: string;
-  metadata: { brief_title: string };
-}
+const openResult = z.object({
+  slug: z.string(),
+  prompt: z.string(),
+  cwd_hint: z.string(),
+  metadata: z.object({ brief_title: z.string() }),
+});
 
-interface DiscoverHit {
-  source: string;
-  ref: string;
-  metadata?: Record<string, unknown>;
-}
+const discoverResult = z.object({
+  hits: z.array(
+    z.object({
+      source: z.string(),
+      ref: z.string(),
+      metadata: z.record(z.string(), z.unknown()).optional(),
+    }),
+  ),
+  errors: z.array(z.unknown()),
+});
 
-interface DiscoverResult {
-  hits: DiscoverHit[];
-  errors: unknown[];
-}
+const foldResult = z.object({
+  ref: z.string(),
+  into: z.string(),
+  session_file: z.string(),
+});
 
-interface FoldResult {
-  ref: string;
-  into: string;
-  session_file: string;
-}
+const wrapResult = z.object({ path: z.string(), filename: z.string() });
 
-interface WrapResult {
-  path: string;
-  filename: string;
-}
+const sessionListResult = z.object({
+  sessions: z.array(z.object({ filename: z.string(), first_line: z.string() })),
+  errors: z.array(z.unknown()),
+});
 
-interface SessionListResult {
-  sessions: Array<{ filename: string; first_line: string }>;
-  errors: unknown[];
-}
+const taskListResult = z.object({
+  tasks: z.array(
+    z.object({
+      id: z.string(),
+      slug: z.string(),
+      status: z.string(),
+      priority: z.number(),
+      tags: z.array(z.string()).optional(),
+    }),
+  ),
+});
 
-interface TaskListResult {
-  tasks: Array<{ id: string; slug: string; status: string; priority: number; tags?: string[] }>;
-}
+const taskIdResult = z.object({ id: z.string() });
 
 const ROOT_STACK: string[] = [];
 
@@ -146,7 +177,8 @@ describe('end-to-end: full lifecycle through the registry', () => {
   });
 
   it('initiative lifecycle: new -> task.add -> task.done -> open -> audit -> list -> archive', async () => {
-    const created = await runCmd<InitiativeNewResult>(
+    const created = await runCmdAs(
+      initiativeNewResult,
       'new',
       { slug: 'e2e-test', title: 'E2E Test', ship_target: '2026-Q4' },
       activeRoot,
@@ -155,12 +187,14 @@ describe('end-to-end: full lifecycle through the registry', () => {
     expect(created.dir).toBe(path.join(activeRoot, 'e2e-test'));
     expect(created.task_prefix).toBe('ET');
 
-    const t1 = await runCmd<{ id: string }>(
+    const t1 = await runCmdAs(
+      taskIdResult,
       'task.add',
       { slug: 'e2e-test', title: 'First task', priority: 1 },
       activeRoot,
     );
-    const t2 = await runCmd<{ id: string }>(
+    const t2 = await runCmdAs(
+      taskIdResult,
       'task.add',
       { slug: 'e2e-test', title: 'Second task', priority: 2 },
       activeRoot,
@@ -170,7 +204,7 @@ describe('end-to-end: full lifecycle through the registry', () => {
 
     await runCmd('task.done', { slug: 'e2e-test', id: t1.id }, activeRoot);
 
-    const opened = await runCmd<OpenResult>('open', { slug: 'e2e-test' }, activeRoot);
+    const opened = await runCmdAs(openResult, 'open', { slug: 'e2e-test' }, activeRoot);
     expect(opened.metadata.brief_title).toBe('E2E Test');
     expect(opened.prompt).toContain('E2E Test');
     expect(opened.prompt).toContain('Second task');
@@ -180,18 +214,18 @@ describe('end-to-end: full lifecycle through the registry', () => {
       '1 task completed — `active-work task list e2e-test --status done --json`',
     );
 
-    const audit = await runCmd<AuditResult>('audit', {}, activeRoot);
+    const audit = await runCmdAs(auditResult, 'audit', {}, activeRoot);
     expect(audit.initiatives).toHaveLength(1);
     expect(audit.initiatives[0]?.slug).toBe('e2e-test');
     expect(audit.parse_errors).toEqual([]);
     expect(audit.worktree_conflicts).toEqual([]);
 
-    const listed = await runCmd<ListResult>('list', {}, activeRoot);
+    const listed = await runCmdAs(listResult, 'list', {}, activeRoot);
     const focused = listed.sections.find((s) => s.heading === 'Focused');
     expect(focused?.items.map((i) => i.slug)).toContain('e2e-test');
 
     await runCmd('archive', { slug: 'e2e-test', domain: 'engineering' }, activeRoot);
-    const after = await runCmd<ListResult>('list', {}, activeRoot);
+    const after = await runCmdAs(listResult, 'list', {}, activeRoot);
     const totalAfter = after.sections.reduce((acc, s) => acc + s.items.length, 0);
     expect(totalAfter).toBe(0);
   });
@@ -202,7 +236,7 @@ describe('end-to-end: full lifecycle through the registry', () => {
     await runCmd('new', { slug: 'init-c', title: 'C' }, activeRoot);
 
     // After three creates, ranks should be a=1, b=2, c=3.
-    let listed = await runCmd<ListResult>('list', {}, activeRoot);
+    let listed = await runCmdAs(listResult, 'list', {}, activeRoot);
     let focused = listed.sections.find((s) => s.heading === 'Focused')!;
     const rankBefore = new Map(focused.items.map((i) => [i.slug, i.rank]));
     expect(rankBefore.get('init-a')).toBe(1);
@@ -211,7 +245,7 @@ describe('end-to-end: full lifecycle through the registry', () => {
 
     // Promote c to rank 1.
     await runCmd('focus', { slug: 'init-c', rank: 1 }, activeRoot);
-    listed = await runCmd<ListResult>('list', {}, activeRoot);
+    listed = await runCmdAs(listResult, 'list', {}, activeRoot);
     focused = listed.sections.find((s) => s.heading === 'Focused')!;
     const rankAfter = new Map(focused.items.map((i) => [i.slug, i.rank]));
     expect(rankAfter.get('init-c')).toBe(1);
@@ -221,10 +255,14 @@ describe('end-to-end: full lifecycle through the registry', () => {
     // Pause init-a. Survivors compact to c=1, b=2.
     await runCmd(
       'pause',
-      { slug: 'init-a', since: '2026-05-12', restart_trigger: 'wait for design review' },
+      {
+        slug: 'init-a',
+        since: '2026-05-12',
+        restart_trigger: 'wait for design review',
+      },
       activeRoot,
     );
-    listed = await runCmd<ListResult>('list', {}, activeRoot);
+    listed = await runCmdAs(listResult, 'list', {}, activeRoot);
     focused = listed.sections.find((s) => s.heading === 'Focused')!;
     const paused = listed.sections.find((s) => s.heading === 'Paused')!;
     expect(paused.items.map((i) => i.slug)).toContain('init-a');
@@ -234,13 +272,13 @@ describe('end-to-end: full lifecycle through the registry', () => {
 
     // Unpause init-a -> backburner.
     await runCmd('unpause', { slug: 'init-a' }, activeRoot);
-    listed = await runCmd<ListResult>('list', {}, activeRoot);
+    listed = await runCmdAs(listResult, 'list', {}, activeRoot);
     const backburner = listed.sections.find((s) => s.heading === 'Backburner')!;
     expect(backburner.items.map((i) => i.slug)).toContain('init-a');
     const focusedAfter = listed.sections.find((s) => s.heading === 'Focused')!;
     expect(focusedAfter.items.map((i) => i.slug)).not.toContain('init-a');
 
-    const audit = await runCmd<AuditResult>('audit', {}, activeRoot);
+    const audit = await runCmdAs(auditResult, 'audit', {}, activeRoot);
     const states = new Map(audit.initiatives.map((i) => [i.slug, i.state]));
     expect(states.get('init-a')).toBe('backburner');
     expect(states.get('init-b')).toBe('focused');
@@ -257,7 +295,8 @@ describe('end-to-end: full lifecycle through the registry', () => {
     await runCmd('task.add', { slug: 'multi-b', title: 'B1', tags: ['backend'] }, activeRoot);
     await runCmd('task.add', { slug: 'multi-b', title: 'B2', tags: ['ops'] }, activeRoot);
 
-    const all = await runCmd<TaskListResult>(
+    const all = await runCmdAs(
+      taskListResult,
       'task.list',
       { all_initiatives: true, status: 'open' },
       activeRoot,
@@ -267,7 +306,8 @@ describe('end-to-end: full lifecycle through the registry', () => {
     expect(slugs.has('multi-a')).toBe(true);
     expect(slugs.has('multi-b')).toBe(true);
 
-    const tagged = await runCmd<TaskListResult>(
+    const tagged = await runCmdAs(
+      taskListResult,
       'task.list',
       { all_initiatives: true, status: 'open', tag: 'backend' },
       activeRoot,
@@ -295,13 +335,13 @@ describe('end-to-end: full lifecycle through the registry', () => {
       }) + '\n',
     );
 
-    const first = await runCmd<DiscoverResult>('discover', {}, activeRoot);
+    const first = await runCmdAs(discoverResult, 'discover', {}, activeRoot);
     const claudeHit = first.hits.find((h) => h.source === 'claude-session' && h.ref === sessionRef);
     expect(claudeHit).toBeDefined();
 
     await runCmd('fold', { ref: sessionRef, into: 'triage-target', note: 'absorbed' }, activeRoot);
 
-    const second = await runCmd<DiscoverResult>('discover', {}, activeRoot);
+    const second = await runCmdAs(discoverResult, 'discover', {}, activeRoot);
     const stillThere = second.hits.find(
       (h) => h.source === 'claude-session' && h.ref === sessionRef,
     );
@@ -311,14 +351,24 @@ describe('end-to-end: full lifecycle through the registry', () => {
   it('fold does not overwrite an existing session file on a same-minute repeat', async () => {
     await runCmd('new', { slug: 'fold-collision', title: 'Fold Collision' }, activeRoot);
 
-    const first = await runCmd<FoldResult>(
+    const first = await runCmdAs(
+      foldResult,
       'fold',
-      { ref: '/Users/anon/code/repeat-ref', into: 'fold-collision', note: 'first' },
+      {
+        ref: '/Users/anon/code/repeat-ref',
+        into: 'fold-collision',
+        note: 'first',
+      },
       activeRoot,
     );
-    const second = await runCmd<FoldResult>(
+    const second = await runCmdAs(
+      foldResult,
       'fold',
-      { ref: '/Users/anon/code/repeat-ref', into: 'fold-collision', note: 'second' },
+      {
+        ref: '/Users/anon/code/repeat-ref',
+        into: 'fold-collision',
+        note: 'second',
+      },
       activeRoot,
     );
 
@@ -338,7 +388,8 @@ describe('end-to-end: full lifecycle through the registry', () => {
     const ended = '2026-05-12T16:00:00.000Z';
     const body = 'First-line preview\nSecond line of body content.\n';
 
-    const first = await runCmd<WrapResult>(
+    const first = await runCmdAs(
+      wrapResult,
       'wrap',
       {
         slug: 'sess-test',
@@ -355,7 +406,8 @@ describe('end-to-end: full lifecycle through the registry', () => {
     );
     expect(first.filename).toBe('2026-05-12-1523-abc123.md');
 
-    const listed = await runCmd<SessionListResult>(
+    const listed = await runCmdAs(
+      sessionListResult,
       'session.list',
       { slug: 'sess-test' },
       activeRoot,
@@ -365,7 +417,8 @@ describe('end-to-end: full lifecycle through the registry', () => {
     expect(listed.sessions[0]?.first_line).toBe('First-line preview');
 
     // Same session_id + started timestamp -> -1 collision suffix.
-    const second = await runCmd<WrapResult>(
+    const second = await runCmdAs(
+      wrapResult,
       'wrap',
       {
         slug: 'sess-test',
