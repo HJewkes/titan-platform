@@ -1,5 +1,6 @@
 import type { WaitingGate } from "../shepherd/waiting-schema.js";
 import type { FrictionDay } from "../shepherd/owner-friction.js";
+import type { ScorecardSection } from "./scorecard.js";
 
 /** One owner action; `keys` are the PR refs and run ids it names, so the same ask from two sources merges into one. */
 export interface Ask {
@@ -135,6 +136,8 @@ export interface DigestModel {
   flow?: FlowStats;
   /** The latest day of owner friction; absent when the gate store could not be read. */
   friction?: FrictionDay;
+  /** The ticket scorecard's weekly headline or open-week line; absent when the digest reads no scorecard. */
+  scorecard?: ScorecardSection;
   /** Questions the decider answered in the window, oldest first; absent when there are none. */
   decided?: DecidedLine[];
   /** The 7-day reversal rate per class; read only alongside `decided`. */

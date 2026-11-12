@@ -5,6 +5,7 @@ import {
   type Retriever,
 } from '@titan-design/retrieval';
 import { defaultGraphPath, openGraph, type WorkspaceGraph } from '../session-index/graph.js';
+import { loadAgentVisibility, type AgentVisibility } from '../sessions/visibility.js';
 import { getActiveRoot } from '../utils/paths.js';
 import { SEARCH_CLASSES, capFor, type SearchClass } from './classes.js';
 import { resolveHits, type ResolvedHit } from './resolve.js';
@@ -18,6 +19,9 @@ import { workspaceSpanReader } from './workspace-spans.js';
  * one initiative has to be findable from another without anyone having filed it
  * twice. `initiative` biases the ranking; it never removes a result. A strong
  * foreign hit beating a weak local one is the entire point.
+ *
+ * The one filter is privacy: a hit from an initiative that is not agent-visible is
+ * never returned, whoever asks (TP-5453 P6).
  */
 
 interface SearchOptions {
@@ -33,6 +37,8 @@ interface SearchOptions {
   classes?: string[];
   /** The query is already an FTS5 expression; pass it through untouched. */
   rawExpression?: boolean;
+  /** Which initiatives may be served; read from the briefs under `activeRoot` when absent. */
+  visible?: AgentVisibility;
 }
 
 interface SearchResult {
@@ -90,12 +96,10 @@ export async function searchWorkspace(
     });
 
     const response = await engine.search(query, { limit });
-    const resolved = await resolveHits(
-      graph,
-      response.results,
-      activeRoot,
-      options.excerptWidth ?? 160,
-    );
+    const visible = options.visible ?? (await loadAgentVisibility(activeRoot));
+    const resolved = (
+      await resolveHits(graph, response.results, activeRoot, options.excerptWidth ?? 160)
+    ).filter((hit) => visible(hit.initiative));
 
     const boosted = options.initiative
       ? resolved

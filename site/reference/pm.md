@@ -263,6 +263,27 @@ const { remote, head } = readReviewPin(readme);
 const { usd, lastTs } = sumRunCost(runsTsv);
 ```
 
+## Initiative visibility
+
+`isAgentVisible({ slug, brief })` is the one test every agent-facing reader applies before it
+serves an initiative's tasks, notes, sources or sessions. `brief` is the brief's parsed front
+matter, or `null` when `brief.md` is missing or its YAML will not parse. It fails closed: a
+`null` brief, a non-object, or a `visibility` outside the closed set (`owner-only`,
+`agent-visible`) is owner-only, and so is a brief with no `visibility` key. Validate the field
+itself with `InitiativeVisibilitySchema`.
+
+```ts
+import { isAgentVisible } from "@titan-design/pm";
+
+isAgentVisible({ slug: "alpha", brief: { visibility: "agent-visible" } }); // true
+isAgentVisible({ slug: "private-notes", brief: { title: "Notes" } }); // false: no key
+isAgentVisible({ slug: "alpha", brief: null }); // false: unparsable
+```
+
+A transitional list, dated 2026-11-12, keeps a named set of code initiatives visible while their
+briefs carry no `visibility` key yet. An explicit `visibility` always wins over it, and a
+follow-up deletes the list once those briefs declare it.
+
 ## What it deliberately does not do
 
 It reads no files, parses no YAML and writes nothing, the category and deliverable
