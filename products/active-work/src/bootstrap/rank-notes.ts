@@ -152,6 +152,8 @@ interface RankNotesInput {
   subject: string;
   /** Injectable for tests; defaults to a query against the live graph. */
   relevance?: NoteRelevance;
+  /** Foreign notes only from initiatives this allows; required so no caller can forget it (TP-5453 P6). */
+  isVisible: (initiative: string) => boolean;
 }
 
 /** `note:<initiative>/<filename>` — how the indexer keys a note. */
@@ -202,7 +204,7 @@ export function rankNotes(input: RankNotesInput): NoteRanking {
   if (hits.length === 0) return dateOrder;
 
   const foreign = hits
-    .filter((hit) => initiativeOf(hit.ref) !== input.slug)
+    .filter((hit) => initiativeOf(hit.ref) !== input.slug && input.isVisible(initiativeOf(hit.ref)))
     .filter((hit) => hit.scorePerTerm >= FOREIGN_FLOOR_PER_TERM)
     .slice(0, FOREIGN_CAP)
     .map((hit) => ({

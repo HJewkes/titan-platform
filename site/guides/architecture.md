@@ -242,6 +242,7 @@ graph TD
   evals --> fixProof
   evals --> health
   evals --> hitl
+  evals --> pm
   evals --> reviewPanel
   evals --> reviewWorkflow
   evals --> sessionAnalytics

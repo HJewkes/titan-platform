@@ -1,3 +1,4 @@
+import { InitiativeVisibilitySchema } from '@titan-design/pm';
 import { z } from 'zod';
 
 const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -106,6 +107,8 @@ export const BriefFrontmatterSchema = z
     // current highest id — so task.add itself never rewrites brief.md.
     task_seq: TaskSeqSchema.optional(),
     autonomy: AutonomySchema.optional(),
+    // Absent means owner-only: agent-facing readers serve only `agent-visible` (TP-5453 P6).
+    visibility: InitiativeVisibilitySchema.optional(),
   })
   .superRefine((value, ctx) => {
     if (value.state === 'focused' && value.rank === undefined) {
