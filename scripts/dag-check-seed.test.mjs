@@ -135,6 +135,7 @@ describe("retrying a seeded index that ran out of memory", () => {
     const t = setup([{ code: 2, heapAbort: true }, { code: 0, heapAbort: false }]);
     const code = await t.run(["--json", "--seed-db", "/seed.db"], true);
     expect(code).toBe(COLD_DEFERRED_EXIT_CODE);
+    expect(t.logs.join("\n")).toContain("run pnpm dag:check to rebuild the seed");
     expect(t.calls).toHaveLength(1);
     expect(t.cleared()).toBe(0);
   });
@@ -219,7 +220,14 @@ describe("opening a seeded work graph", () => {
     writeFileSync(db, "not a sqlite database, a seed cut short");
     const graph = await import(ENTRY.href);
     try {
-      expect(() => openSeededWorkGraph(graph, db, { deferCold: true })).toThrow(ColdFallbackDeferred);
+      let thrown;
+      try {
+        openSeededWorkGraph(graph, db, { deferCold: true });
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).toBeInstanceOf(ColdFallbackDeferred);
+      expect(thrown.message).toContain("run pnpm dag:check to rebuild the seed");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
