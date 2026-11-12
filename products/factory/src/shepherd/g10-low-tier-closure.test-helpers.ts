@@ -5,7 +5,7 @@ import { z } from "zod";
 import { COMPILER_OPTIONS } from "./gate-resolve-closure.test-helpers.js";
 
 /** A repository to walk: files by absolute path, and the workspace packages a bare `@titan-design/*` import names. */
-export interface RepoTree {
+interface RepoTree {
   root: string;
   host: ts.ModuleResolutionHost;
   /** Package name to its directory, relative to the root. */
@@ -86,7 +86,7 @@ function importsOf(tree: RepoTree, name: string): Imports {
   return result;
 }
 
-export interface LowTierClosure {
+interface LowTierClosure {
   reached: string[];
   unresolved: string[];
 }
