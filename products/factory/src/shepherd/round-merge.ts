@@ -76,7 +76,7 @@ function parseRound(roundBytes: string | Uint8Array): z.infer<typeof RoundManife
 }
 
 /** Whether feedback.json answers this exact round.json: the manifest hash, unit and round all match. Undefined when it does. */
-export function answerBindingRefusal(round: z.infer<typeof RoundManifest>, roundBytes: string | Uint8Array, feedback: RoundFeedback): string | undefined {
+function answerBindingRefusal(round: z.infer<typeof RoundManifest>, roundBytes: string | Uint8Array, feedback: RoundFeedback): string | undefined {
   if (createHash("sha256").update(roundBytes).digest("hex") !== feedback.manifestSha256) return "the feedback was not written against this round.json (manifest hash differs)";
   if (feedback.unit !== round.unit || feedback.round !== round.round) return `the feedback is for ${feedback.unit} r${feedback.round}, the round is ${round.unit} r${round.round}`;
   return undefined;
