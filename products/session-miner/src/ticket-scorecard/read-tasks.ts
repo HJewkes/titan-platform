@@ -32,7 +32,7 @@ export interface TaskLoad {
   maxMtimeMs: number;
 }
 
-export function taskKey(initiative: string, id: string): string {
+function taskKey(initiative: string, id: string): string {
   return `${initiative}/${id}`;
 }
 

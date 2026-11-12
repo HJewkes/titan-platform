@@ -24,7 +24,7 @@ function fixRoundSpans(run: RunSteps): [string, string][] {
  * Lineage successors that are not already a counted fix round. A successor that joined while an await-new-head step
  * was waiting is the same round that step records, so it is fed once, through the step.
  */
-export function standaloneSuccessors(run: RunSteps, successorAts: readonly string[]): number {
+function standaloneSuccessors(run: RunSteps, successorAts: readonly string[]): number {
   const spans = fixRoundSpans(run);
   return successorAts.filter((at) => !spans.some(([from, to]) => at > from && at <= to)).length;
 }

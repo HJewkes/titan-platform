@@ -18,7 +18,7 @@ export interface ScorecardPaths {
 }
 
 /** Every source the job reads; null where the store is absent, which reads as not measured. */
-export interface Sources {
+interface Sources {
   events: Db | null;
   factory: Db | null;
   graph: Db | null;

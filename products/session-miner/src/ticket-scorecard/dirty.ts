@@ -4,7 +4,7 @@ import { readPrChanges, readRequestChanges } from "./read-graph.js";
 import { resolveTaskRef } from "./read-tasks.js";
 import { isoOf, msOf, type Marks } from "./watermarks.js";
 
-export interface DirtySet {
+interface DirtySet {
   /** Dispatched tasks whose row may have changed. */
   keys: Set<string>;
   marks: Marks;

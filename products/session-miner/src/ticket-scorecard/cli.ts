@@ -27,7 +27,7 @@ function stateHome(env: NodeJS.ProcessEnv): string {
 }
 
 /** The scorecard's own store: `--store`, else `TITAN_SCORECARD_STORE`, else `~/.local/share/titan-scorecard/scorecard.sqlite3`. */
-export function defaultStoreFile(env: NodeJS.ProcessEnv): string {
+function defaultStoreFile(env: NodeJS.ProcessEnv): string {
   return expandHome(env.TITAN_SCORECARD_STORE ?? path.join(dataHome(env), "titan-scorecard", "scorecard.sqlite3"));
 }
 
@@ -58,7 +58,7 @@ function runOptions(config: MinerConfig, flags: RunFlags, env: NodeJS.ProcessEnv
   };
 }
 
-export function renderRun(result: ScorecardRunResult): string {
+function renderRun(result: ScorecardRunResult): string {
   const lines = [
     `ticket-scorecard ${result.mode}: ${result.ok ? "ok" : "not measured"} in ${result.ms} ms`,
     `  not measured: ${result.notMeasured.length === 0 ? "none" : result.notMeasured.join(", ")}`,
