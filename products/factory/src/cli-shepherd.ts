@@ -40,7 +40,8 @@ interface ShepherdOpts extends TimelineView, StatusFilter {
 }
 
 type SliceOpts = { slice?: string | false; lastSlice?: true };
-type RegisterOpts = ShepherdOpts & SliceOpts & { branch?: string; head?: string; base?: string; task?: string; implementer?: string; reviewer?: string; kind?: string; kindReason?: string; policy?: string };
+type KindOpts = { kind?: string; kindReason?: string };
+type RegisterOpts = ShepherdOpts & SliceOpts & KindOpts & { branch?: string; head?: string; base?: string; task?: string; implementer?: string; reviewer?: string; policy?: string };
 
 /** The shepherd.* registry commands as verbs: on titan-factory serve when one answers, else against the database here; register needs --offline for that. */
 export function registerShepherd(program: Command, verbs: Verbs): void {
@@ -232,7 +233,9 @@ async function registerArgs(target: string, opts: RegisterOpts, { io, deps }: Ve
   const task = await qualifyTask(given, { origin: activeWorkOrigin(io.env), ...(deps.fetch && { fetch: deps.fetch }) });
   // Not `callerOf`: only an agent-chat name can be messaged, so a terminal registration records no registrant.
   const registrant = io.env.AGENT_CHAT_NAME || undefined;
-  return { ...parsed, branch, head, base, task, implementer, registrant, reviewer, kind, ...(kindReason !== undefined && { kindReason, actor: callerOf(io.env) }), slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, lastSlice, policy };
+  const kindMove = kindReason === undefined ? {} : { kindReason, actor: callerOf(io.env) };
+  const sliceArgs = { slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, lastSlice };
+  return { ...parsed, branch, head, base, task, implementer, registrant, reviewer, kind, ...kindMove, ...sliceArgs, policy };
 }
 
 async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () => object | Promise<object>, opts: ShepherdOpts): Promise<void> {

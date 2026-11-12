@@ -22,7 +22,7 @@ type ReviewRead = Pick<WorkflowRun, "stepResults" | "currentStep">;
 const REVIEW_STEPS = ["sh-review-intent", "sh-review", "sh-review-panel", "sh-review-request", "sh-await-verdict"];
 
 /** True once any review step ran or is running, at any head of the run. */
-export function reviewStarted(run: ReviewRead): boolean {
+function reviewStarted(run: ReviewRead): boolean {
   const ids = [...Object.values(run.stepResults).map((result) => result.stepId), ...(run.currentStep === null ? [] : [run.currentStep])];
   return ids.some((id) => REVIEW_STEPS.some((step) => stepIdMatches(step, id)));
 }

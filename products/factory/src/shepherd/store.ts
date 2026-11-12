@@ -8,7 +8,7 @@ import { mergeBaseExceptionTable, repointMergeBaseException, type MergeBaseExcep
 import { watchListTable, type WatchList } from "./watch-list.js";
 import { gateEvidenceTable, holdPassedAt, type GateEvidence } from "./lan-gates.js";
 import { registrationOf } from "./registration-of.js";
-import { appendEvent, eventsFor, latestChangeId, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
+import { appendEvent, appendKindMove, eventsFor, latestChangeId, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
 import { moveAccountHold } from "./account-store.js";
 import { parkSettled, repointParkSettled, settlePark, type ParkSettle } from "./park-settled.js";
 import { HoldSatisfiedBySchema, type HoldSatisfaction, type HoldSatisfiedBy } from "./hold-satisfaction.js";
@@ -17,8 +17,7 @@ import { afterHold, isAdversaryHold, liftClass, liftTop, type HoldSlots, type Li
 import { isOwnerHold, liftOwnerHold, placeOwnerHold, recordOwnerAsked, type OwnerHold } from "./owner-hold-rows.js";
 import { writeRegistrant, writeRegistrationFacts, type RegistrationFacts, type RegistrationFactsInput } from "./registration-facts.js";
 import { RegistrationRefused, repeatedPolicy, type EffectivePolicy } from "./policy-schema.js";
-import { FIX_PROOF_KINDS, TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
-import type { KindMove } from "./task-kind.js";
+import { TASK_KINDS, kindMoveRefusal, type KindMove, type TaskKind } from "./task-kind.js";
 
 export { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
 
@@ -151,7 +150,7 @@ export class ShepherdStore implements HoldLookup {
       const kind = explicitKind ?? stored.kind;
       const refusal = (meta.guard ?? kindMoveRefusal)(stored.kind, kind, meta.diff, meta.early);
       if (refusal) throw new RegistrationRefused(`run ${runId}: ${refusal}`);
-      if (FIX_PROOF_KINDS.has(stored.kind) && !FIX_PROOF_KINDS.has(kind)) this.recordKindMove(stored, kind, meta);
+      appendKindMove(this.db, stored, kind, meta, this.stamp());
       this.db
         .prepare("UPDATE shepherd_registration SET task = ?, implementer = ?, reviewer = ?, policy = ?, kind = ?, slice = ?, updated_at = ? WHERE run_id = ?")
         .run(meta.task, meta.implementer, meta.reviewer ?? null, JSON.stringify(policy), kind, meta.slice ?? null, this.stamp(), runId);
@@ -277,12 +276,6 @@ export class ShepherdStore implements HoldLookup {
   /** Records a sweep's cancel of the run's gate; the caller writes it only after the cancel took. */
   recordGateCancel(runId: string, reason: string, at: string): void {
     if (this.byRun(runId)) this.record(runId, "gate-cancel", reason, at, {});
-  }
-
-  /** The move off the fix-proof kinds the guard let through, in the update's transaction, so the change is visible on the timeline. */
-  private recordKindMove(stored: Registration, kind: TaskKind, meta: RegistrationUpdate): void {
-    const reason = `kind ${stored.kind} -> ${kind}: ${meta.early?.reason ?? "no reason given"}`;
-    this.record(stored.runId, "kind-move", reason, this.stamp(), { actor: meta.early?.actor, headSha: meta.headSha ?? stored.headSha ?? undefined });
   }
 
   private record(runId: string, kind: EventKind, reason: string | null, at: string, by: EventContext): void {

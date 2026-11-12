@@ -1,5 +1,6 @@
 import type { Db, Migration } from "@titan-design/store-sqlite";
 import { z } from "zod";
+import { FIX_PROOF_KINDS, type EarlyMove, type TaskKind } from "./task-kind.js";
 
 const EVENT_DDL = `
   CREATE TABLE shepherd_event (
@@ -150,4 +151,23 @@ export function eventsSince(db: Db, since = ""): ShepherdEvent[] {
 
 function fromRow(row: EventRow): ShepherdEvent {
   return { runId: row.run_id, repo: row.repo, pr: row.pr, kind: row.kind, reason: row.reason, actor: row.actor, at: row.at, headSha: row.head_sha, ...(row.reclass === 1 && { reclass: true }) };
+}
+
+/** The run a kind move reads: its stored kind and where the event is filed. */
+interface MovedRun {
+  runId: string;
+  repo: string;
+  pr: number | null;
+  kind: TaskKind;
+  headSha: string | null;
+}
+
+/**
+ * Records a move off the fix-proof kinds, which only an early correctness move passes the guard with (TP-5399), so the change shows
+ * on the run's timeline with who asked and why. The caller appends inside the update's transaction; any other move records nothing.
+ */
+export function appendKindMove(db: Db, run: MovedRun, to: TaskKind, move: { early?: EarlyMove; headSha?: string }, at: string): void {
+  if (!FIX_PROOF_KINDS.has(run.kind) || FIX_PROOF_KINDS.has(to)) return;
+  const reason = `kind ${run.kind} -> ${to}: ${move.early?.reason ?? "no reason given"}`;
+  appendEvent(db, { runId: run.runId, repo: run.repo, pr: run.pr, kind: "kind-move", reason, actor: move.early?.actor, at, headSha: move.headSha ?? run.headSha });
 }
