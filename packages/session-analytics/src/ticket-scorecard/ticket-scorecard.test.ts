@@ -43,6 +43,17 @@ describe("task rows", () => {
     expect(built.reviewRounds).toBe(4);
   });
 
+  it("fix rounds count suffixed await-new-head step ids", () => {
+    const runs = [
+      { runId: "r1", stepIds: ["sh-await-pr:0", "sh-await-new-head:1", "sh-main-ci:2", "sh-await-new-head:3"], reviewRounds: 0, successors: 0 },
+      { runId: "r2", stepIds: ["await-new-head:0", "await-new-head-later:1", "sh-land:2"], reviewRounds: 0, successors: 0 },
+    ];
+
+    const built = row({ runs });
+
+    expect(built.fixRounds).toBe(3);
+  });
+
   it("task row marks merged only through a registration for the task", () => {
     const prs = [
       { repo: REPO, pr: 10, mergedAt: "2026-11-02T12:00:00.000Z", closedAt: "2026-11-02T12:00:00.000Z" },
