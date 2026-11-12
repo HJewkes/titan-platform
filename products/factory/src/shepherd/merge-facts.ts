@@ -192,8 +192,8 @@ function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined,
   if (pathGate) return pathGate;
   const policyGate = ciPolicyGate(evidence, honour, headSha);
   if (policyGate && policyGate.rule.rowId !== "ci-policy-budget") return policyGate;
-  const decision = decideAfterPolicy(headSha, evidence, visual, honour);
-  return policyGate && decision.outcome === "allow" ? policyGate : ownerTierNoted(decision, evidence);
+  const decision = ownerTierNoted(decideAfterPolicy(headSha, evidence, visual, honour), evidence);
+  return policyGate && decision.outcome === "allow" ? policyGate : decision;
 }
 
 /** Everything after the CI-policy row; a budget class gates only where the rest would allow, so no other gate hides behind it. */
