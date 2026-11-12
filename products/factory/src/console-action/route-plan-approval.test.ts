@@ -7,6 +7,7 @@ import { fakeGitHub, githubPort } from "@titan-design/github";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defineWorkflow } from "../definition.js";
 import { startFactoryServer, type FactoryServer } from "../serve.js";
+import { ownerTaskApproval } from "../shepherd/owner-task-approval.js";
 import { OWNER_GATE_POLICY } from "../shepherd/policy.js";
 import type { ShepherdStore } from "../shepherd/store.js";
 import { TEST_BRIEF } from "../test-support/brief.js";
@@ -135,5 +136,18 @@ describe("POST /owner/console-action plan-approval", () => {
 
     expect(answer).toMatchObject([422, { outcome: "refused", reason: "record" }]);
     expect(w.store().planApprovals().forRun(runId, TASK, REPO)).toEqual([]);
+  });
+
+  it("records a console task approval unclaimed, even with one live run of the task, and the task reads it back", async () => {
+    const w = await world();
+    const runId = await liveRegistration(w, 1);
+    const task = { gate: "task", scope: { doneWhen: "Synthetic done.", reason: "new-cap", visualSignoff: false }, round: "validate-example-tp-1-r1" };
+    writeApproval(w, task);
+
+    const answer = await post(w.server);
+
+    expect(answer).toEqual([200, { outcome: "plan-approved", task: TASK, gate: "task", claimedRun: null }]);
+    expect(w.store().planApprovals().forRun(runId, TASK, REPO)).toEqual([]);
+    expect(ownerTaskApproval(w.store(), TASK, "Synthetic done.")).toEqual(task);
   });
 });
