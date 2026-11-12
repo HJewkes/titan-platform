@@ -40,8 +40,28 @@ describe("private exclusion", () => {
 
   afterAll(() => rmSync(root, { recursive: true, force: true }));
 
-  it("reads every non-engineering initiative and its own task prefixes as private markers", () => {
-    expect(readPrivateMarkers(root)).toEqual({ slugs: ["book-club", "garden-plans"], prefixes: ["BKC", "GDN"] });
+  it("reads every initiative that is not agent-visible, and its own task prefixes, as private markers", () => {
+    expect(readPrivateMarkers(root, policy.initiatives)).toEqual({ slugs: ["book-club", "garden-plans"], prefixes: ["BKC", "GDN"] });
+  });
+
+  it("allows an initiative only when isAgentVisible serves its brief", () => {
+    const scratch = mkdtempSync(join(tmpdir(), "exclusion-visibility-"));
+    const brief = (slug: string, text: string) => {
+      mkdirSync(join(scratch, slug), { recursive: true });
+      writeFileSync(join(scratch, slug, "brief.md"), text);
+    };
+    brief("alpha", "---\ntitle: Alpha\nvisibility: agent-visible\n---\n");
+    brief("private-notes", "---\ntitle: Private notes\n---\n");
+    brief("broken", "---\nvisibility: [agent-visible\n---\n");
+    brief("marked-private", "---\nvisibility: owner-only\n---\n");
+    try {
+      const scratchPolicy = defaultPolicy(scratch);
+
+      expect(scratchPolicy.initiatives).toEqual(["alpha"]);
+      expect(scratchPolicy.markers.slugs).toEqual(["broken", "marked-private", "private-notes"]);
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
   });
 
   it("self-test: the clean case passes and all four planted private cases are rejected", () => {

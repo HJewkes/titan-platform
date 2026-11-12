@@ -111,6 +111,8 @@ describe("buildReviewPrCases", { timeout: 30_000 }, () => {
     activeWorkRoot = join(scratch, "active-work");
     mkdirSync(join(activeWorkRoot, PRIVATE_SLUG), { recursive: true });
     writeFileSync(join(activeWorkRoot, PRIVATE_SLUG, "brief.md"), "# private\n");
+    mkdirSync(join(activeWorkRoot, "titan-platform"), { recursive: true });
+    writeFileSync(join(activeWorkRoot, "titan-platform", "brief.md"), "---\nvisibility: agent-visible\n---\n");
   }, 60_000);
 
   afterAll(() => rmSync(scratch, { recursive: true, force: true }));

@@ -8,6 +8,7 @@ import { flowStats, implementerHours, mergedInWindow, taskToMerge, type AgentSpa
 import { prKey, runKey } from "./keys.js";
 import { subjectOf } from "../needs/overlap.js";
 import type { AgentChatLedger, Ask, AttestedLine, AutoPassed, DecidedLine, DigestModel, DigestSlot, FlowStats, Merged, PoolLine, ProofFixture, Stuck } from "./model.js";
+import type { ScorecardSection } from "./scorecard.js";
 import { seatLines } from "./seats.js";
 
 export interface GateFact {
@@ -35,6 +36,8 @@ export interface DigestSources {
   spend(): PoolLine[] | Promise<PoolLine[]>;
   /** The owner-friction row for the day of `now`, or undefined when the store has none. Optional: a source that cannot read the gate store leaves the section out. */
   friction?(now: Date): FrictionDay | undefined;
+  /** The ticket scorecard: the closed week's frozen file in the first slot after its close, else the open week so far. Optional: without it the digest leaves the line out. */
+  scorecard?(now: Date, since: Date): ScorecardSection;
   /** Task dates and the broker roster for the flow numbers and the Seats section. Optional: without it the digest leaves flow out and lists no seats. */
   flow?: FlowPorts;
 }
@@ -131,12 +134,13 @@ function waitingSection(rows: readonly WatchRow[], now: Date): Pick<DigestModel,
 }
 
 /** Owner friction, flow and seats; friction and flow are left out when their port is missing or fails, and seats come up empty. */
-async function measuredSections(sources: DigestSources, gaps: string[], rows: readonly WatchRow[], since: Date, now: Date): Promise<Pick<DigestModel, "friction" | "flow" | "seats">> {
+async function measuredSections(sources: DigestSources, gaps: string[], rows: readonly WatchRow[], since: Date, now: Date): Promise<Pick<DigestModel, "friction" | "flow" | "seats" | "scorecard">> {
   const friction = await guarded(gaps, "owner friction", undefined, () => sources.friction?.(now));
+  const scorecard = await guarded(gaps, "ticket scorecard", undefined, () => sources.scorecard?.(now, since));
   const roster = sources.flow ? await guarded(gaps, "agent-chat roster", undefined, () => sources.flow!.roster()) : undefined;
   const merged = mergedInWindow(rows, since);
   const flow = roster && (await collectFlow(sources.flow!, merged, roster, since, now, gaps));
-  return { seats: roster ? seatLines(merged, roster, since) : [], ...(friction && { friction }), ...(flow && { flow }) };
+  return { seats: roster ? seatLines(merged, roster, since) : [], ...(friction && { friction }), ...(flow && { flow }), ...(scorecard && { scorecard }) };
 }
 
 async function collectFlow(ports: FlowPorts, merged: readonly WatchRow[], spans: readonly AgentSpan[], since: Date, now: Date, gaps: string[]): Promise<FlowStats> {

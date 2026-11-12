@@ -38,7 +38,7 @@ export type { AnsweredContext, FeedbackInput, RoundItemsContext } from "./round-
 export { buildOwnerRounds } from "./rounds.js";
 export type { OwnerRound, OwnerRoundOptions, OwnerRounds, Principle, RoundQuestionBinding, SkipReason } from "./rounds.js";
 export { buildPlanRound } from "./plan-round.js";
-export type { CiPolicyPlanScope, PathPlanScope, PlanApproval, PlanAsk, PlanGate, PlanGateScope, PlanRound, PlanRoundInput } from "./plan-round.js";
+export type { CiPolicyPlanScope, PathPlanScope, PlanApproval, PlanAsk, PlanGate, PlanGateScope, PlanRound, PlanRoundInput, TaskPlanScope } from "./plan-round.js";
 export { PARKED, STALE_RULES, staleLabel } from "./stale.js";
 export { stackContext, supersede } from "./supersede.js";
 export type { StackedItem, Superseded, WithdrawnItem } from "./supersede.js";

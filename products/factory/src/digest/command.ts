@@ -12,6 +12,7 @@ import { activeWorkOrigin } from "../shepherd/cleanup-ports.js";
 import { activeWorkTaskDates, agentChatSpans } from "./flow-sources.js";
 import { readFriction } from "./friction.js";
 import { pacePath, readPacePools } from "./pace.js";
+import { readScorecard, scorecardPaths } from "./scorecard.js";
 import type { HttpsProbe } from "./console-probe.js";
 import { buildDigest, deliverDigest, syncAlarmNote } from "./run.js";
 import { currentSlot, DEFAULT_SLOTS, DEFAULT_TIMEZONE } from "./slots.js";
@@ -113,6 +114,7 @@ export async function runDigestVerb(io: DigestIo, call: FactoryCall, flags: Dige
     ...fileSources(config),
     spend: () => readPacePools(pacePath(io.env)),
     ...(deps.dbPath !== undefined && { friction: (at: Date) => readFriction(deps.dbPath!, at) }),
+    scorecard: (at: Date, since: Date) => readScorecard(scorecardPaths(io.env), at, since),
     flow: { taskCreated: activeWorkTaskDates({ origin: activeWorkOrigin(io.env) }), roster: agentChatSpans(deps.exec ?? execProcess, agentChatBin) },
   };
   const run = { sources, now, slot, windowMinutes: flags.sinceMinutes ?? windowMinutes, full: flags.full === true, consoleOrigin: config.digest?.consoleOrigin };
