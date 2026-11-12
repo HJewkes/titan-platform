@@ -223,6 +223,17 @@ describe("cacheTtlWhatIf reverse replay", () => {
 
     expect(cacheTtlWhatIf(rows).totals).toMatchObject({ reverseReverts: 1, reverseTokens: 1_000 });
   });
+
+  it("replays a main chain on 5m even when only its sidechain wrote at 1h", () => {
+    const sessionId = "p3";
+    const rows = [
+      request({ sessionId, profile: "planner", role: "worker:planner", cacheWrite5mTokens: 100_000 }),
+      request({ sessionId, profile: "planner", role: "worker:planner", isSidechain: true, ts: "2026-09-29T12:00:10Z", cacheWrite1hTokens: 90_000 }),
+      request({ sessionId, profile: "planner", role: "worker:planner", ts: "2026-09-29T12:00:30Z", cacheWrite5mTokens: 100_000, gapMs: 20 * MINUTE }),
+    ];
+
+    expect(cacheTtlWhatIf(rows).totals).toMatchObject({ reverseReverts: 1, reverseTokens: 100_000 });
+  });
 });
 
 describe("cacheTtlReport", () => {
