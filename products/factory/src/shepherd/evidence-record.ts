@@ -45,6 +45,10 @@ export interface EvidenceRecord {
   visualDelta?: VisualDelta;
   /** The visual tier under `shepherd.visualTier` (TP-4761); absent when that is off for the repo or no visual path changed. */
   visualTier?: VisualTierRecord;
+  /** Under `shepherd.visualGate: async` (TP-5408), the changed paths the run's visual globs match; nothing gates on them. */
+  visualChanged?: string[];
+  /** Under `shepherd.visualGate: async`, the mode the decision was made under. */
+  visualGate?: "async";
   /** Each claimed attestation row met at this head, with the roster rows that met it (TP-3110). */
   attested?: { step: string; closure: string; meeters: { name: string; agentId: string; shape: "correctness" | "adversary" }[] }[];
   /** Each claimed row left unmet, and why. */
@@ -68,7 +72,7 @@ interface RecordObserved {
   headBlobs?: Record<string, string | null>;
 }
 
-type RecordExtras = Pick<EvidenceRecord, "ciPolicy" | "visualDelta" | "visualTier" | "oldPath"> & { riskTier: RiskTier; attest?: AttestJudgment };
+type RecordExtras = Pick<EvidenceRecord, "ciPolicy" | "visualDelta" | "visualTier" | "visualChanged" | "visualGate" | "oldPath"> & { riskTier: RiskTier; attest?: AttestJudgment };
 
 /** A head that claims nothing records nothing; a meeter other than the accepted reviewer is the adversary member. */
 function attestFields(attest: AttestJudgment | undefined, resolver: AgentIdentity): Pick<EvidenceRecord, "attested" | "attestUnmet" | "attestUnread" | "attestWaiting"> {
@@ -93,7 +97,7 @@ export function evidenceRecord(
   input: RecordInput,
   { pr, merge, runs, ciPolicyChanges, headBlobs }: RecordObserved,
   decision: GateDecision,
-  { ciPolicy, riskTier, visualDelta, visualTier, attest, oldPath }: RecordExtras,
+  { ciPolicy, riskTier, visualDelta, visualTier, visualChanged, visualGate, attest, oldPath }: RecordExtras,
 ): EvidenceRecord {
   return {
     runId: input.runId,
@@ -115,6 +119,8 @@ export function evidenceRecord(
     riskTier,
     ...(visualDelta && { visualDelta }),
     ...(visualTier && { visualTier }),
+    ...(visualChanged && { visualChanged }),
+    ...(visualGate && { visualGate }),
     ...attestFields(attest, input.resolver),
     ...(oldPath && { oldPath }),
   };

@@ -29,6 +29,7 @@ import { readVisualDelta, type VisualDelta, type VisualThreshold } from "./visua
 import { thresholdClearance, unclearedBaselines, visualDeltaGate } from "./visual-threshold-gate.js";
 import { oldPathGate, oldPathOf, type OldPathField, type OldPathWiring } from "../old-path/freeze-gate.js";
 import { readVisualTier, tierClearance, tierOutcome } from "./visual-tier-guard.js";
+import { asyncVisualNote, visualChangedField, visualGateField, type VisualGateMode } from "./visual-gate-mode.js";
 
 export { isGithubPath };
 export { budgetAt } from "./ci-policy-guard.js";
@@ -115,6 +116,8 @@ export interface MergeEvidence extends GrantWithheldField, OldPathField {
   ciPolicyClass?: CiPolicyClass;
   visualDelta?: VisualDelta;
   visualTier?: unknown;
+  /** Stamped by the evidence step under `shepherd.visualGate: async` (TP-5408); absent decides as `owner`. */
+  visualGate?: "async";
   attest?: AttestDecided;
   /** The input's `Attests:` tokens, so a re-read at this head judges the same lines. */
   attestVerdicts?: AttestVerdicts;
@@ -135,6 +138,7 @@ export interface DecidableEvidence extends GrantWithheldField, OldPathField {
   visualDelta?: VisualDelta;
   /** The TP-4761 tier, read back unvalidated from a stored record; visual-tier-guard.ts parses it before it decides. */
   visualTier?: unknown;
+  visualGate?: "async";
   attest?: AttestDecided;
 }
 
@@ -203,7 +207,7 @@ function decideAfterPolicy(headSha: string, evidence: DecidableEvidence, visual:
   const decision = evaluate(DEFAULT_TABLE, { action: "merge", actor: AUTHORITY_ACTOR, tainted: false, subject: { repo: evidence.record.repo, pr: String(evidence.record.pr) }, facts: { merge: evidence.merge } });
   if (decision.verdict === "allow" && AUTO_MERGE_RULES.includes(decision.ruleId)) {
     const { changedPaths } = evidence.merge;
-    const clearance = visualClearance(changedPaths, evidence.head, visual, thresholdClearance(evidence.visualDelta)) + tierClearance(evidence.visualTier, changedPaths, visual.visualPaths);
+    const clearance = visualClearance(changedPaths, evidence.head, visual, thresholdClearance(evidence.visualDelta)) + tierClearance(evidence.visualTier, changedPaths, visual.visualPaths) + asyncVisualNote(evidence.visualGate, changedPaths, visual.visualPaths);
     return { outcome: "allow", rule: authorityRule(decision.ruleId), reason: `${decision.ruleId} holds at ${headSha}${clearance}${honour.note()}` };
   }
   const reason = decision.verdict === "allow" ? `${decision.ruleId} allows, but only ${AUTO_MERGE_RULES.join(" and ")} merge without the owner` : decision.reason;
@@ -222,10 +226,11 @@ function changedFilesGate(evidence: DecidableEvidence, { visualPaths, visualBase
   if (skills.length > 0 && !honour.coversPaths("skill", skills)) {
     return { outcome: "gate", rule: guardRule("skill-path"), reason: `${SKILL_REASON_PREFIX}${shownPaths(skills)}${honour.unplanned("skill")}` };
   }
-  const deltaGate = visualDeltaGate(evidence.visualDelta);
+  const deltaGate = evidence.visualGate === "async" ? undefined : visualDeltaGate(evidence.visualDelta);
   if (deltaGate !== undefined) return { outcome: "gate", rule: guardRule("visual-path"), reason: `${VISUAL_REASON_PREFIX}${deltaGate}` };
   if (visualPaths === undefined) return undefined;
   if (evidence.merge.changedPaths.length === 0) return { outcome: "gate", rule: guardRule("files-unread"), reason: `no changed files were read at ${evidence.head}${asVisual}; the owner decides` };
+  if (evidence.visualGate === "async") return undefined;
   const visual = visualMatches(evidence.merge.changedPaths, visualPaths);
   if (visual.length === 0 || honour.coversPaths("visual", visual)) return undefined;
   const tier = tierOutcome(evidence.visualTier, visual);
@@ -294,10 +299,10 @@ interface KindRead {
 }
 
 /** A store that is not bound or fails reads as no kind, which fails MRG-AU-RC closed instead of failing the evidence step. */
-export function registeredKind(store: ShepherdStoreRef, runId: string): KindRead {
+export function registeredKind(store: ShepherdStoreRef, runId: string, visualGate?: VisualGateMode): KindRead {
   try {
     const registration = store.get().byRun(runId);
-    const ownerHold = ownerHoldOf(registration);
+    const ownerHold = ownerHoldOf(registration, visualGate);
     return { ...(registration?.kind !== undefined && { kind: registration.kind }), ...(registration && { task: registration.task }), ...(ownerHold !== undefined && { ownerHold }) };
   } catch (error) {
     return { unread: `the registered kind is unreadable: store unreadable: ${errorClass(error)}` };
@@ -351,6 +356,8 @@ interface EvidenceReads extends OldPathWiring {
   threshold?: VisualThreshold;
   /** Raw `shepherd.visualTier` for the repo; absent records no tier. */
   tier?: unknown;
+  /** `shepherd.visualGate`, read at each head; absent means `owner`. */
+  visualGate?: VisualGateMode;
   /** Judges the head's attestation claims at the PR's base; absent judges none. */
   attest?: (input: MergeEvidenceInput, baseRef: string) => Promise<AttestJudgment | undefined>;
 }
@@ -369,15 +376,15 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
   const unknown = { ...(requiredChecksUnknown !== undefined && { requiredChecksUnknown }), ...(unreadFacts && { unreadFacts }), ...(changedFilesUnread !== undefined && { changedFilesUnread }) };
   const ciPolicy = input.ciPolicy && { ciPolicy: input.ciPolicy, ...(observed.ciPolicyClass && { ciPolicyClass: observed.ciPolicyClass }) };
   const tier = await readVisualTier(port, merge, { repo: input.repo, baseRef: pr.baseRef, visualPaths: input.visualPaths, config: reads.tier });
-  const visual = { ...(await visualDeltaOf(port, input, observed, reads.threshold)), ...tier };
   const judged = await reads.attest?.(input, pr.baseRef);
   const attest = { ...(judged && { attest: judged }), ...(input.attest && { attestVerdicts: input.attest }) };
   const oldPath = await oldPathOf(reads.oldPath, input.repo, observed.prFiles, kind ?? {});
+  const visual = { ...(await visualDeltaOf(port, input, observed, reads.threshold)), ...tier, ...visualGateField(reads.visualGate) };
   const decidable: DecidableEvidence = { head: input.head, merge, record: input, mergeableState, ...unknown, ...ciPolicy, ...visual, ...attest, ...oldPath, ...grantWithheldField(input) };
   const decision = decideAutoMerge(input.head, decidable, input.visualPaths, input.visualBaselines);
   const visualPaths = input.visualPaths && { visualPaths: input.visualPaths };
-  const risk = riskFactsOf({ paths: merge.changedPaths, changedLines: observed.changedLines, unread: changedFilesUnread, ...ciPolicy, ...visualPaths, ownerHold: kind?.ownerHold ?? kind?.unread });
-  const record = evidenceRecord(input, observed, decision, { ...ciPolicy, riskTier: riskTier(risk), ...visual, ...(judged && { attest: judged }), ...oldPath });
+  const risk = riskFactsOf({ paths: merge.changedPaths, changedLines: observed.changedLines, unread: changedFilesUnread, ...ciPolicy, ...visualPaths, ownerHold: kind?.ownerHold ?? kind?.unread, visualGate: reads.visualGate });
+  const record = evidenceRecord(input, observed, decision, { ...ciPolicy, riskTier: riskTier(risk), ...visual, ...visualChangedField(reads.visualGate, merge.changedPaths, input.visualPaths), ...(judged && { attest: judged }), ...oldPath });
   const comment = await port.upsertComment(input.repo, input.pr, evidenceMarker(input.head), evidenceComment(record));
   return { head: input.head, merge, record, mergeableState, ...unknown, ...ciPolicy, ...visual, ...attest, ...oldPath, ...grantWithheldField(input), commentId: comment.id };
 }
