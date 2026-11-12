@@ -1,6 +1,6 @@
 import { PriceRow, RequestTokens } from '@titan-design/agent-protocol/pricing';
 export { LongPromptPrice, PRICE_TABLE, PRICE_TABLE_VERSION, PriceRow, PricedRequest, RequestTokens, findPrice, priceRequest } from '@titan-design/agent-protocol/pricing';
-import { Db } from '@titan-design/store-sqlite';
+import { Db, Migration } from '@titan-design/store-sqlite';
 import { z } from 'zod';
 import { EpisodeRow, SessionGraph } from '@titan-design/session-graph';
 import { S as SessionTimeline } from './timeline-entry.js';
@@ -2795,7 +2795,249 @@ declare function firstDivergence(a: readonly RequestBlock[], b: readonly Request
  */
 declare function prefixReuse(rows: readonly PrefixRow[], options?: PrefixReuseOptions): PrefixReuse;
 
-export { ACTION_CLASSES, AGENT_LIFECYCLE, ALL_REPOS, type ActionCall, type ActionClass, type ActionRule, type ActualsTask, type AgentLog, type AgentNameRow, type Agreement, type AgreementRow, type AgreementSummary, type Assignment, BLOCKED_FLOW_SOURCES, BOOT_TOOL, type Band, type BashRule, type BlockedFlowInput, type BlockedFlowReport, type BlockedFlowSource, type BrokerEntry, CHANNEL_CLUSTER_MS, CI_STATES, CONTEXT_BANDS, CONTEXT_RESET_TOKENS, COORDINATOR_MERGE_DEDUPE_REQUESTS, COORDINATOR_MIN_EPISODE_REQUESTS, COORDINATOR_WAVE_QUIET_REQUESTS, COST_REPORT_SECTIONS, type CacheTtlBucket, type CacheTtlWhatIf, type CacheWriteTtl, type CappedHours, type CiState, type ComparisonSpec, type ContractReport, type CoordDutyTable, type CostBucket, type CostPerOutcomeOptions, type CostPerOutcomeReport, type CostReport, type CostReportOptions, type CostReportSection, type CycleParams, DARK_MIN, DEFAULT_ACTION_RULES, DEFAULT_ACTIVE_CAP_MINUTES, DEFAULT_BOOT_REQUESTS, DEFAULT_CONFIGURED_K, DEFAULT_DONE_OUTCOMES, DEFAULT_EPISODE_ROLES, DEFAULT_K_SWEEP, DEFAULT_MECHANICAL_CLASSES, DEFAULT_MERGED_OUTCOMES, DEFAULT_NO_ACTION_CLASSES, DEFAULT_REVIEWER_PRS, DEFAULT_REVIEWER_ROLE, DEFAULT_STANDING_ROLE, DROP_REASONS, type DarkGap, type DenialRecord, type DispatchRecord, type Divergence, type DivergenceGroup, type DutyCall, type DutyKind, type DutyRuleSet, type DutyTableOptions, type DutyTurn, ERROR_CLASSES, EVENTS_TABLE_DDL, type EpisodeInbound, type EpisodeInput, type EpisodeNames, type EpisodeRequest, type EpisodeRequestRow, type EpisodeSignal, type ErrorClass, type EstimateBand, FOLLOW_UP_CLASSES, FRICTION_ASKER, FRICTION_CLUSTERS, type FollowUpClass, type FrictionCluster, type FrictionClusterRow, type FrictionDailyReport, type FrictionLine, type FrictionRow, type FrictionSource, GAP_BANDS, type GenerationEnd, HANDOFFS_SQL, HEURISTIC_VERSIONS, type HandoffCohort, type HandoffOptions, type HandoffRecord, type HandoffRequestRow, type HandoffSession, type HandoffTeleport, type HandoffThreshold, type Heuristic, type HumanRole, IDLE_GAP_MS, type IdleSlotRow, type InheritMode, type KSweep, LAST_PROMPTS_SQL, LIST_PRICE_CAVEAT, LIVENESS_SOURCES, type LastEventRecord, type LatencyRow, type LatencyStats, type LivenessInput, type LivenessReport, type LivenessSource, type LogClusterRow, type LogSide, type LogSignal, type LogSignalKind, MIN_COST_COVERAGE, type MechanicalShare, type MergeOutcome, type MergeStatus, type MeterInputs, type MeterOptions, type MeterResult, NON_FRICTION, NOT_MEASURED, type Outcome, type OutcomeBucket, POOLED_REVIEWERS, PROFILE_ROLES, PROMPT_STALE_MIN, type ParsedVerdict, type PrDiff, type PrFeatures, type PrefixReuse, type PrefixReuseOptions, type PrefixRow, type ProposedItem, type PullState, REBUILD_GAP_BANDS, REPORT_STATUSES, REVIEW_FILL_COMPARISON, type ReportScope, type ReportSide, type ReportStatus, type ReportWindow, type ReviewFillReport, type ReviewerComparison, type RoleActions, type RouteAgreement, type RouteFailureRow, type RouteMiss, type RouteMissKind, type RouteOutcomeGroup, type RouteOutcomesOptions, type RowDelta, SPAWNS_SQL, SPLITLESS_CACHE_WRITE_TTL, STANDING_PEER_MIN_ASSIGNMENTS, STANDING_PEER_MIN_HOURS, SUCCESSOR_REWORK_COMPARISON, type ScorecardJournalInput, type ScorecardJournalRowId, type ScorecardRow, type SeatContextOptions, type SeatContextRow, type SeatGeneration, type SeatGenerationsInput, type SeatJournal, type SeatSessions, type SessionClass, type SessionClassification, type SessionFacts, type SessionOrigin, SessionTimeline, SessionTimelineAccumulator, type SessionTimelineOptions, type SlotTick, type SpawnRecord, type StalePromptRow, type SuccessorReworkOptions, type SuccessorReworkReport, TELEPORT_COMPLETED_EVENT, TELEPORT_EVENT, TICK_HOLD_MAX_MIN, TOKEN_CLASSES, TP1550_RULES, type TaskActuals, type TaskActualsFlag, type TaskActualsOptions, type TaskInitiative, type TaskPr, type TeleportEvent, type TokenClass, type ToolField, type ToolRule, type TranscriptCopy, type Trigger, type TtlRequestRow, UNKNOWN_PROFILE, UNSTATED_REASON, type UnreportedExit, type UnreportedExitRow, V3_RULES, VERDICTS_SQL, type VerdictRecord, WAKE_FROM_KINDS, type WakeCauseBucket, type WakeCauseEpisodes, type WakeEpisode, type WakeEpisodes, type WakeEventRow, type WakeFromKind, type WakeGapCell, type WakePair, type WindowComparison, type WorkerFacts, type WorkerReportRecord, type WorkerRole, type WorkerSessionRecord, type WrittenEpisodes, assignmentCount, assignmentSchema, bandOf, blockedFlowReport, blockedFlowSchema, buildEpisodes, buildSessionTimeline, buildWakeEpisodes, cacheTtlReport, cacheTtlWhatIf, cacheTtlWhatIfSchema, classifyDeniedAction, classifyError, classifyFollowUp, classifyRequest, classifySession, clusterOf, compareWindows, contextBand, coordDutyTableSchema, costPerOutcome, costPerOutcomeSchema, costPerRequest, costReport, costReportSchema, countMisses, darkGaps, dedupeDenials, dutyTable, episodeNames, eventsDbCommand, extractConcerns, extractFriction, firstDivergence, followUpSignals, frictionDailyReport, frictionDeposit, frictionDepositId, gapBand, handoffThreshold, handoffThresholdSchema, heuristicFor, idleSlotMinutes, initiativeFromCwd, isBootAction, latencyStats, latencyStatsSchema, lineCluster, listMergedPrRefs, livenessReport, livenessSchema, mergeCopies, mergeOutcomes, parseBrokerLog, parseDenials, parsePrRef, parseReport, parseSeatJournal, parseTeleportEvents, parseVerdict, prFeaturesFor, prKey, prefixReuse, readAgentSessions, readCoverage, readDispatchJournal, readEpisodeInput, readHandoffs, readLastPrompts, readRequestToolCalls, readSpawnerMessages, readSpawns, readTtlRows, readVerdicts, readWorkerReports, readWorkerSessions, renderBlockedFlowText, renderCacheTtlText, renderCostPerOutcomeText, renderCostReportSections, renderCostReportText, renderFrictionMarkdown, renderLivenessText, renderLogTop, renderReportTop, renderReviewFillText, renderSuccessorReworkText, renderWindowComparisonText, reviewFillReport, reviewFillSchema, roleFromProfile, routeFailureRows, routeMisses, routeOutcomes, scopeFilter, scorecardJournalRows, scorecardRowText, seatContext, seatContextSchema, seatGenerations, seatGenerationsSchema, seatOf, sessionInitiative, sessionRole, staleEpisodeSessions, staleEpisodeSessionsYielding, stalePromptRows, successorReworkReport, successorReworkSchema, summarizeWakeEpisodes, sweepK, taskActuals, transcriptSignals, unreportedExitRows, wakeEpisodesSchema, workerRole, writeEpisodes };
+/**
+ * Typed inputs and rows of the ticket scorecard (TP-5446). The caller reads its stores and hands
+ * these in already grouped per task; nothing here touches a file, a clock or the network.
+ */
+/** `recorded` when the value came from a field written at the source, else the heuristic that inferred it. */
+type Provenance = "recorded" | `inferred:${string}`;
+/** A value with where it came from. */
+interface Labelled<T> {
+    value: T;
+    origin: Provenance;
+}
+type TaskClass = "product" | "upkeep";
+/** The census classifier still says `mixed`; the owner's 2026-11-12 decision maps it to upkeep. */
+type ClassLabel = TaskClass | "mixed";
+interface ScorecardTask {
+    initiative: string;
+    taskId: string;
+    /** ISO datetime, or a date alone for older task files. */
+    createdAt: string;
+    doneAt: string | null;
+    estimate: number | null;
+}
+/** An `agent_spawned` row whose meta names the task. `actor` is the spawner. */
+interface ScorecardSpawn {
+    ts: string;
+    actor: string;
+    /** `meta.launched_by`; a Shepherd spawn is outside the dispatched population. */
+    launchedBy: string | null;
+    /** F12 `dispatch_rule`, once agent-chat records it. */
+    dispatchRule: string | null;
+}
+/** A `shepherd_registration` row for the task. */
+interface ScorecardRegistration {
+    repo: string;
+    pr: number;
+}
+/** A `shepherd-pr` workflow run for the task. */
+interface ScorecardRun {
+    runId: string;
+    /** The `stepId` of every entry in `step_results`, one per iteration. */
+    stepIds: readonly string[];
+    /** Distinct heads awaited, as `task-actuals-shepherd` counts them. */
+    reviewRounds: number;
+    /** `shepherd_lineage` rows of this run whose role is `successor`. */
+    successors: number;
+}
+/** A `hitl_gate` on one of the task's runs. */
+interface ScorecardGate {
+    createdAt: string;
+    resolvedAt: string | null;
+    /** `resolved_by.class`, an authority actor class. */
+    resolvedByClass: string | null;
+}
+/** A graph `pr` row. */
+interface ScorecardPr {
+    repo: string;
+    pr: number;
+    mergedAt: string | null;
+    closedAt: string | null;
+}
+interface ScorecardFollowUp {
+    taskId: string;
+    estimate: number | null;
+}
+/** The task's cost from `taskActuals`, and how its sessions were linked to the task. */
+interface ScorecardActuals {
+    usd: number;
+    link: Provenance;
+}
+/** Where the rule pick placed the task in its dispatch week's pool. */
+interface RulePlacement {
+    rankPct: number;
+    inTopK: boolean;
+}
+/** Labels the caller supplies: recorded task fields, or the S3 inferred backfill. */
+interface ScorecardLabels {
+    class?: Labelled<ClassLabel>;
+    source?: Labelled<string>;
+    serves?: Labelled<string>;
+    rank?: Labelled<string>;
+    doneReason?: Labelled<string>;
+    revertedBy?: Labelled<string>;
+    briefHasDoneWhen?: Labelled<boolean>;
+    followUps?: Labelled<readonly ScorecardFollowUp[]>;
+}
+interface TaskRowInput {
+    task: ScorecardTask;
+    spawns: readonly ScorecardSpawn[];
+    registrations: readonly ScorecardRegistration[];
+    runs: readonly ScorecardRun[];
+    gates: readonly ScorecardGate[];
+    prs: readonly ScorecardPr[];
+    labels: ScorecardLabels;
+    actuals?: ScorecardActuals;
+    rule?: RulePlacement;
+}
+/** One dispatched task; keyed on (initiative, taskId). Null means not measured, never zero. */
+interface TaskRow {
+    initiative: string;
+    taskId: string;
+    firstDispatchTs: string;
+    dispatcher: string;
+    dispatchRule: string | null;
+    classAtDispatch: TaskClass | null;
+    sourceAtDispatch: string | null;
+    servesAtDispatch: string | null;
+    rankAtDispatch: string | null;
+    ageAtDispatchH: number | null;
+    ruleRankPct: number | null;
+    inRuleTopk: boolean | null;
+    mergedAt: string | null;
+    prs: number;
+    fixRounds: number;
+    reviewRounds: number;
+    revertedBy: string | null;
+    doneReason: string | null;
+    followupsN: number | null;
+    followupsEst: number | null;
+    briefHasDoneWhen: boolean | null;
+    leadCreatedDoneH: number | null;
+    leadDispatchMergeH: number | null;
+    usd: number | null;
+    usdLink: Provenance | null;
+    ownerGates: number;
+    ownerGateHours: number;
+    dupPrs: number;
+    /** Per labelled column: `recorded`, or the heuristic that inferred it. */
+    provenance: Readonly<Record<string, Provenance>>;
+    inputsHash: string;
+}
+
+/**
+ * The scorecard row for one task, or null when no worker spawn outside Shepherd dispatched it.
+ * A pure function of its input: the same input always gives the same row and `inputsHash`.
+ */
+declare function taskRow(input: TaskRowInput): TaskRow | null;
+
+/** A task in the rule-ready pool at a week's start (the `pool_snapshot` row). */
+interface PoolTask {
+    taskId: string;
+    class: TaskClass | null;
+    /**
+     * Lower is picked first. Today the caller passes the task's `priority`, as E1 did; once the owner's `rank`
+     * (F6) exists it passes that. Null sorts after every ranked task.
+     */
+    rank: number | null;
+    createdAt: string;
+}
+interface RulePick {
+    /** The whole pool in rule order. */
+    ranked: readonly string[];
+    /** The first K of `ranked`. */
+    topK: readonly string[];
+}
+/**
+ * E1's simple rule: product before upkeep, then rank ascending, then oldest first, and take K. K is the number
+ * of distinct tasks first dispatched that week. Ties fall to the task id, so the pick never depends on input order.
+ */
+declare function rulePick(pool: readonly PoolTask[], k: number): RulePick;
+/** Where the rule put one task: its position as a share of the pool, and whether it made the top K. Null when outside the pool. */
+declare function rulePlacement(pick: RulePick, taskId: string): RulePlacement | null;
+
+/** One week's figures over a set of task rows. A null share means nothing in the set was measured. */
+declare const weekMetricsSchema: z.ZodObject<{
+    dispatched: z.ZodNumber;
+    productShare: z.ZodNullable<z.ZodNumber>;
+    upkeepShare: z.ZodNullable<z.ZodNumber>;
+    ownerSourcedShare: z.ZodNullable<z.ZodNumber>;
+    sameDayShare: z.ZodNullable<z.ZodNumber>;
+    ageMedianH: z.ZodNullable<z.ZodNumber>;
+    ruleAgreement: z.ZodNullable<z.ZodNumber>;
+    ruleRankPctMedian: z.ZodNullable<z.ZodNumber>;
+    merged: z.ZodNumber;
+    leadDispatchMergeMedianH: z.ZodNullable<z.ZodNumber>;
+    leadDispatchMergeP90H: z.ZodNullable<z.ZodNumber>;
+    fixRounds3PlusShare: z.ZodNullable<z.ZodNumber>;
+    reviewRoundsMedian: z.ZodNullable<z.ZodNumber>;
+    reverts: z.ZodNumber;
+    followupsPerMerged: z.ZodNullable<z.ZodNumber>;
+    usd: z.ZodNumber;
+    costPerMerged: z.ZodNullable<z.ZodNumber>;
+    unmergedUsd: z.ZodNumber;
+    ownerGatedShare: z.ZodNullable<z.ZodNumber>;
+    ownerGateHours: z.ZodNumber;
+    inferredShare: z.ZodNullable<z.ZodNumber>;
+}, z.core.$strip>;
+type WeekMetrics = z.infer<typeof weekMetricsSchema>;
+
+/** The red-week bounds. S17 loads them from `scorecard.yml`; these are the owner-accepted defaults (plan section 7). */
+interface ScorecardThresholds {
+    /** Red when the upkeep share of dispatch is above it. */
+    upkeepShareMax: number;
+    /** Red when the owner-sourced share of dispatch is below it. */
+    ownerSourcedShareMin: number;
+    /** Red when the rule top-K agreement is below it. */
+    ruleAgreementMin: number;
+    /** Red when the cost per merged task, in USD, is above it. */
+    costPerMergedMax: number;
+}
+declare const RED_FLAGS: readonly ["upkeep-cap", "owner-floor", "rule-agreement", "cost"];
+type RedFlag = (typeof RED_FLAGS)[number];
+declare const DEFAULT_THRESHOLDS: ScorecardThresholds;
+/** The flags a week trips. A figure that was not measured trips nothing; red pages nobody. */
+declare function redFlags(metrics: WeekMetrics, thresholds: ScorecardThresholds): RedFlag[];
+
+/** The breakdowns a week is cut by. `seat` waits for F12 `dispatch_rule`; until then the dispatcher is the spawner. */
+declare const WEEK_DIMENSIONS: readonly ["all", "initiative", "dispatcher"];
+type WeekDimension = (typeof WEEK_DIMENSIONS)[number];
+/** One weekly series cell, keyed on (isoWeek, dimension, key). */
+interface WeekRow {
+    isoWeek: string;
+    dimension: WeekDimension;
+    key: string;
+    metrics: WeekMetrics;
+    redFlags: RedFlag[];
+}
+/**
+ * Every weekly cell over the task rows, each task in the ISO (UTC) week of its first dispatch. The rows are
+ * sorted first, so the cells and their figures do not depend on the order the rows arrive in.
+ */
+declare function weekRows(rows: readonly TaskRow[], thresholds: ScorecardThresholds): WeekRow[];
+
+/** The ISO 8601 week of an instant, in UTC: `2026-W45`. */
+declare function isoWeek(ts: string): string;
+
+/** The scorecard store's own database: the derived tables plus the kit's per-source watermark table. */
+declare const SCORECARD_MIGRATIONS: readonly Migration[];
+/**
+ * Upsert task rows; a row whose `inputsHash` is already stored is skipped. Returns how many rows changed.
+ * `computedAt` comes from the caller, so the store reads no clock.
+ */
+declare function upsertTaskRows(db: Db, rows: readonly TaskRow[], computedAt: string): number;
+/** Every stored task row, in key order. */
+declare function readTaskRows(db: Db): TaskRow[];
+/** Upsert weekly cells; a rerun over the same task rows rewrites the same contents. */
+declare function upsertWeekRows(db: Db, rows: readonly WeekRow[], computedAt: string): void;
+/** Every stored weekly cell, in key order. */
+declare function readWeekRows(db: Db): WeekRow[];
+/** Write a week's rule-ready pool once: a later call for the same week keeps the first snapshot and writes nothing. */
+declare function writePoolSnapshot(db: Db, isoWeek: string, pool: readonly PoolTask[]): number;
+declare function readPoolSnapshot(db: Db, isoWeek: string): PoolTask[];
+
+export { ACTION_CLASSES, AGENT_LIFECYCLE, ALL_REPOS, type ActionCall, type ActionClass, type ActionRule, type ActualsTask, type AgentLog, type AgentNameRow, type Agreement, type AgreementRow, type AgreementSummary, type Assignment, BLOCKED_FLOW_SOURCES, BOOT_TOOL, type Band, type BashRule, type BlockedFlowInput, type BlockedFlowReport, type BlockedFlowSource, type BrokerEntry, CHANNEL_CLUSTER_MS, CI_STATES, CONTEXT_BANDS, CONTEXT_RESET_TOKENS, COORDINATOR_MERGE_DEDUPE_REQUESTS, COORDINATOR_MIN_EPISODE_REQUESTS, COORDINATOR_WAVE_QUIET_REQUESTS, COST_REPORT_SECTIONS, type CacheTtlBucket, type CacheTtlWhatIf, type CacheWriteTtl, type CappedHours, type CiState, type ClassLabel, type ComparisonSpec, type ContractReport, type CoordDutyTable, type CostBucket, type CostPerOutcomeOptions, type CostPerOutcomeReport, type CostReport, type CostReportOptions, type CostReportSection, type CycleParams, DARK_MIN, DEFAULT_ACTION_RULES, DEFAULT_ACTIVE_CAP_MINUTES, DEFAULT_BOOT_REQUESTS, DEFAULT_CONFIGURED_K, DEFAULT_DONE_OUTCOMES, DEFAULT_EPISODE_ROLES, DEFAULT_K_SWEEP, DEFAULT_MECHANICAL_CLASSES, DEFAULT_MERGED_OUTCOMES, DEFAULT_NO_ACTION_CLASSES, DEFAULT_REVIEWER_PRS, DEFAULT_REVIEWER_ROLE, DEFAULT_STANDING_ROLE, DEFAULT_THRESHOLDS, DROP_REASONS, type DarkGap, type DenialRecord, type DispatchRecord, type Divergence, type DivergenceGroup, type DutyCall, type DutyKind, type DutyRuleSet, type DutyTableOptions, type DutyTurn, ERROR_CLASSES, EVENTS_TABLE_DDL, type EpisodeInbound, type EpisodeInput, type EpisodeNames, type EpisodeRequest, type EpisodeRequestRow, type EpisodeSignal, type ErrorClass, type EstimateBand, FOLLOW_UP_CLASSES, FRICTION_ASKER, FRICTION_CLUSTERS, type FollowUpClass, type FrictionCluster, type FrictionClusterRow, type FrictionDailyReport, type FrictionLine, type FrictionRow, type FrictionSource, GAP_BANDS, type GenerationEnd, HANDOFFS_SQL, HEURISTIC_VERSIONS, type HandoffCohort, type HandoffOptions, type HandoffRecord, type HandoffRequestRow, type HandoffSession, type HandoffTeleport, type HandoffThreshold, type Heuristic, type HumanRole, IDLE_GAP_MS, type IdleSlotRow, type InheritMode, type KSweep, LAST_PROMPTS_SQL, LIST_PRICE_CAVEAT, LIVENESS_SOURCES, type Labelled, type LastEventRecord, type LatencyRow, type LatencyStats, type LivenessInput, type LivenessReport, type LivenessSource, type LogClusterRow, type LogSide, type LogSignal, type LogSignalKind, MIN_COST_COVERAGE, type MechanicalShare, type MergeOutcome, type MergeStatus, type MeterInputs, type MeterOptions, type MeterResult, NON_FRICTION, NOT_MEASURED, type Outcome, type OutcomeBucket, POOLED_REVIEWERS, PROFILE_ROLES, PROMPT_STALE_MIN, type ParsedVerdict, type PoolTask, type PrDiff, type PrFeatures, type PrefixReuse, type PrefixReuseOptions, type PrefixRow, type ProposedItem, type Provenance, type PullState, REBUILD_GAP_BANDS, REPORT_STATUSES, REVIEW_FILL_COMPARISON, type RedFlag, type ReportScope, type ReportSide, type ReportStatus, type ReportWindow, type ReviewFillReport, type ReviewerComparison, type RoleActions, type RouteAgreement, type RouteFailureRow, type RouteMiss, type RouteMissKind, type RouteOutcomeGroup, type RouteOutcomesOptions, type RowDelta, type RulePick, type RulePlacement, SCORECARD_MIGRATIONS, SPAWNS_SQL, SPLITLESS_CACHE_WRITE_TTL, STANDING_PEER_MIN_ASSIGNMENTS, STANDING_PEER_MIN_HOURS, SUCCESSOR_REWORK_COMPARISON, type ScorecardActuals, type ScorecardFollowUp, type ScorecardGate, type ScorecardJournalInput, type ScorecardJournalRowId, type ScorecardLabels, type ScorecardPr, type ScorecardRegistration, type ScorecardRow, type ScorecardRun, type ScorecardSpawn, type ScorecardTask, type ScorecardThresholds, type SeatContextOptions, type SeatContextRow, type SeatGeneration, type SeatGenerationsInput, type SeatJournal, type SeatSessions, type SessionClass, type SessionClassification, type SessionFacts, type SessionOrigin, SessionTimeline, SessionTimelineAccumulator, type SessionTimelineOptions, type SlotTick, type SpawnRecord, type StalePromptRow, type SuccessorReworkOptions, type SuccessorReworkReport, TELEPORT_COMPLETED_EVENT, TELEPORT_EVENT, TICK_HOLD_MAX_MIN, TOKEN_CLASSES, TP1550_RULES, type TaskActuals, type TaskActualsFlag, type TaskActualsOptions, type TaskClass, type TaskInitiative, type TaskPr, type TaskRow, type TaskRowInput, type TeleportEvent, type TokenClass, type ToolField, type ToolRule, type TranscriptCopy, type Trigger, type TtlRequestRow, UNKNOWN_PROFILE, UNSTATED_REASON, type UnreportedExit, type UnreportedExitRow, V3_RULES, VERDICTS_SQL, type VerdictRecord, WAKE_FROM_KINDS, type WakeCauseBucket, type WakeCauseEpisodes, type WakeEpisode, type WakeEpisodes, type WakeEventRow, type WakeFromKind, type WakeGapCell, type WakePair, type WeekDimension, type WeekMetrics, type WeekRow, type WindowComparison, type WorkerFacts, type WorkerReportRecord, type WorkerRole, type WorkerSessionRecord, type WrittenEpisodes, assignmentCount, assignmentSchema, bandOf, blockedFlowReport, blockedFlowSchema, buildEpisodes, buildSessionTimeline, buildWakeEpisodes, cacheTtlReport, cacheTtlWhatIf, cacheTtlWhatIfSchema, classifyDeniedAction, classifyError, classifyFollowUp, classifyRequest, classifySession, clusterOf, compareWindows, contextBand, coordDutyTableSchema, costPerOutcome, costPerOutcomeSchema, costPerRequest, costReport, costReportSchema, countMisses, darkGaps, dedupeDenials, dutyTable, episodeNames, eventsDbCommand, extractConcerns, extractFriction, firstDivergence, followUpSignals, frictionDailyReport, frictionDeposit, frictionDepositId, gapBand, handoffThreshold, handoffThresholdSchema, heuristicFor, idleSlotMinutes, initiativeFromCwd, isBootAction, isoWeek, latencyStats, latencyStatsSchema, lineCluster, listMergedPrRefs, livenessReport, livenessSchema, mergeCopies, mergeOutcomes, parseBrokerLog, parseDenials, parsePrRef, parseReport, parseSeatJournal, parseTeleportEvents, parseVerdict, prFeaturesFor, prKey, prefixReuse, readAgentSessions, readCoverage, readDispatchJournal, readEpisodeInput, readHandoffs, readLastPrompts, readPoolSnapshot, readRequestToolCalls, readSpawnerMessages, readSpawns, readTaskRows, readTtlRows, readVerdicts, readWeekRows, readWorkerReports, readWorkerSessions, redFlags, renderBlockedFlowText, renderCacheTtlText, renderCostPerOutcomeText, renderCostReportSections, renderCostReportText, renderFrictionMarkdown, renderLivenessText, renderLogTop, renderReportTop, renderReviewFillText, renderSuccessorReworkText, renderWindowComparisonText, reviewFillReport, reviewFillSchema, roleFromProfile, routeFailureRows, routeMisses, routeOutcomes, rulePick, rulePlacement, scopeFilter, scorecardJournalRows, scorecardRowText, seatContext, seatContextSchema, seatGenerations, seatGenerationsSchema, seatOf, sessionInitiative, sessionRole, staleEpisodeSessions, staleEpisodeSessionsYielding, stalePromptRows, successorReworkReport, successorReworkSchema, summarizeWakeEpisodes, sweepK, taskActuals, taskRow, transcriptSignals, unreportedExitRows, upsertTaskRows, upsertWeekRows, wakeEpisodesSchema, weekRows, workerRole, writeEpisodes, writePoolSnapshot };
 
 // ./dist/timeline-entry.d.ts
 import { ToolFamily } from '@titan-design/session-read';

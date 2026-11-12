@@ -41,6 +41,7 @@ import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { waitingCommand } from "./waiting.js";
 import { visualDeltaCommand } from "./visual-delta-command.js";
 import { visualWeekCommand } from "./visual-week-command.js";
+import { visualFeedbackCommand } from "./visual-feedback-command.js";
 import { watchCommand } from "./watch-command.js";
 import { timelineEntries, type PrTimeline } from "./view.js";
 import type { WatchRow } from "./view-schema.js";
@@ -364,6 +365,7 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.watch": watchCommand,
   "shepherd.visual-delta": visualDeltaCommand,
   "shepherd.visual-week": visualWeekCommand,
+  "shepherd.visual-week-feedback": visualFeedbackCommand,
   "shepherd.brief": briefCommand,
 };
 
