@@ -28,6 +28,7 @@ Domain-free building blocks. No titan dependencies.
 | `png-delta` | Bounded PNG decode, pixelmatch share and delta image, and a small RGBA PNG encoder for untrusted screenshot pairs | none |
 | [`review-burden`](/reference/review-burden) | Pure review-burden score for a pull request: path classes, one-way door facts and the merge-danger footer parser | `fix-proof`, `rpc-protocol` |
 | [`rpc-protocol`](/reference/rpc-protocol) | Dependency-free wire contract between a titan daemon and its clients: envelope, exit codes, routes, SSE vocabulary, CommandMap | none |
+| [`seat-spec`](/reference/seat-spec) | Owner-held seat definitions: the titan-seat/v1 schema, parseSeat, fail-closed file checks and the pure launch resolver | none |
 | [`store-sqlite`](/reference/store-sqlite) | SQLite table-factory kit: bi-temporal edges, current-state entities with soft expiry, content-addressed cache, contentless FTS5, watermark, migrations | none |
 | [`test-kit`](/reference/test-kit) | Typed test doubles: partialFake builds a T from only the fields a test uses, without a cast | none |
 | [`tool-guard`](/reference/tool-guard) | Classifies Claude Code tool calls into guarded authority actions, with a POSIX shell tokenizer | `authority`, `fix-proof` |

@@ -34,6 +34,7 @@ Before adding code:
 | [`png-delta`](#cap-png-delta) | 0 | You hold two untrusted PNG screenshots, a base and a head, and need to know how much of the rendered content changed (`snapshotShare`), see which pixels moved (`pixelDelta`, drawn by pixelmatch, then `encodePng`), or decode one PNG under a hard pixel cap (`decodePngBounded`). |
 | [`review-burden`](#cap-review-burden) | 0 | You need to say how much a pull request asks of its reviewer, or whether a revert would undo it, from facts alone with no model call. |
 | [`rpc-protocol`](#cap-rpc-protocol) | 0 | You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary. |
+| [`seat-spec`](#cap-seat-spec) | 0 | You launch a standing seat and the owner's definition, not the requester, must decide its profile, account, permission mode, surface, cwd, depth and Remote Control. |
 | [`store-sqlite`](#cap-store-sqlite) | 0 | You are storing anything in SQLite and want an edge graph, a contentless FTS5 index, a content-hash cache, an ingest watermark or migrations, without writing the DDL yourself. |
 | [`test-kit`](#cap-test-kit) | 0 | A test needs a value of an interface type but the code under test reads only a few of its fields: `partialFake<T>({ ... })` builds it without an `as unknown as T` double cast. |
 | [`tool-guard`](#cap-tool-guard) | 0 | A hook or guard must see what a Bash command string would actually run: every simple command through `;`, `&&`, pipes, subshells, substitutions, `bash -c`, `eval`, wrappers and package runners, with redirect targets, heredoc bodies, decoded ANSI-C strings and literal variables kept. |
@@ -478,6 +479,26 @@ Key exports:
 - `routes`: `CLIENT_HEADER`, `EVENTS_PATH`, `HEALTH_PATH`, `RPC_PREFIX`, `RPC_STATUS`, `VERSION_PATH`, `rpcFailureStatus`
 - `sse`: `SSE_EVENTS`, `SSE_HEARTBEAT_MS`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/rpc-protocol)
+
+<a id="cap-seat-spec"></a>
+
+### [`seat-spec`](https://hjewkes.github.io/titan-platform/reference/seat-spec)
+
+Tier 0, `@titan-design/seat-spec@0.0.0`. Owner-held seat definitions: the titan-seat/v1 schema, parseSeat, fail-closed file checks and the pure launch resolver
+
+**Use this when:**
+
+You launch a standing seat and the owner's definition, not the requester, must decide its profile, account, permission mode, surface, cwd, depth and Remote Control. `loadSeat` takes what a thin reader saw (lstat facts and bytes for the `titan-seat/v1` file, the seat index and the pinned prompt) and refuses with a named code on any unreadable file, unsafe owner or mode, unknown or missing field, bypass mode, headless surface, prompt hash mismatch or unlisted `ownerOnlyRead`; `resolveLaunch` then builds the launch from the definition alone and lists the requester fields it overrode. It does no I/O. For an autonomy coordinator's `autonomy-seat/v1` front matter use coordinator.
+
+Key exports:
+
+- `schema`: `SEAT_SCHEMA`, `SEAT_INDEX_SCHEMA`, `seatSchema`, `SeatDefinition`, `SeatIndex`
+- `refusal`: `SeatRefusal`
+- `parse`: `parseSeat`, `parseSeatIndex`
+- `file-checks`: `checkOwnerFile`
+- `load`: `loadSeat`, `SEAT_FILE_SUFFIX`
+- `resolve`: `resolveLaunch`
+- More in the [reference page](https://hjewkes.github.io/titan-platform/reference/seat-spec)
 
 <a id="cap-store-sqlite"></a>
 

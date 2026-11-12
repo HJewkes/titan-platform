@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "group- and world-writable modes are refused",
+      "file": "packages/seat-spec/src/file-checks.ts",
+      "find": "const WRITABLE_BY_OTHERS = 0o022;",
+      "replace": "const WRITABLE_BY_OTHERS = 0o002;",
+      "kills": ["checkOwnerFile refuses a group-writable file"]
+    },
+    {
+      "name": "a symlinked seat file is refused",
+      "file": "packages/seat-spec/src/file-checks.ts",
+      "find": "if (facts.isSymbolicLink()) return { code: \"symlink\", detail: `${filePath} is a symlink` };",
+      "replace": "",
+      "kills": ["checkOwnerFile refuses a symlink"]
+    },
+    {
+      "name": "an agent root inside the seats directory is refused",
+      "file": "packages/seat-spec/src/file-checks.ts",
+      "find": "isWithin(root, ctx.seatsDir) || isWithin(ctx.seatsDir, root)",
+      "replace": "isWithin(root, ctx.seatsDir)",
+      "kills": ["checkOwnerFile refuses an agent-writable root inside the seats directory"]
+    }
+  ]
+}
