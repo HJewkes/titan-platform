@@ -5,9 +5,9 @@ import { riskFactsOf, riskTier } from "./risk-tier.js";
  * TP-5403 (owner triage q28 A): the policy tables a touch may go low on. A table not named here, one added later
  * included, keeps the owner gate; nothing lists the tables that are blocked.
  */
-export const LOW_POLICY_TABLES: readonly PolicyTable[] = ["default-policy", "signoff-policy", "hold-closure"];
+const LOW_POLICY_TABLES: readonly PolicyTable[] = ["default-policy", "signoff-policy", "hold-closure"];
 
-export type LowTierPolicy = { eligible: true; tables: PolicyTable[] } | { eligible: false; kept: string };
+type LowTierPolicy = { eligible: true; tables: PolicyTable[] } | { eligible: false; kept: string };
 
 type LowTierRead = Parameters<typeof riskFactsOf>[0];
 
