@@ -1,0 +1,29 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an unparsable brief is served",
+      "file": "packages/pm/src/visibility.ts",
+      "find": "if (!parsed.success) return false;",
+      "replace": "if (!parsed.success) return true;",
+      "kills": [
+        "isAgentVisible withholds an initiative whose brief could not be parsed",
+        "isAgentVisible withholds a visibility value outside the closed set"
+      ]
+    },
+    {
+      "name": "a brief with no visibility key is served",
+      "file": "packages/pm/src/visibility.ts",
+      "find": "return transitional.has(initiative.slug);",
+      "replace": "return true;",
+      "kills": ["isAgentVisible withholds a new initiative whose brief has no visibility key"]
+    },
+    {
+      "name": "the transitional list overrides an explicit owner-only",
+      "file": "packages/pm/src/visibility.ts",
+      "find": "if (declared !== undefined) return declared === \"agent-visible\";",
+      "replace": "if (declared === \"agent-visible\") return true;",
+      "kills": ["isAgentVisible lets an explicit owner-only brief override the transitional list"]
+    }
+  ]
+}
