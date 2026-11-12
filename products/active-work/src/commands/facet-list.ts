@@ -50,7 +50,7 @@ export default defineCommand<Args, Result>({
         tags: facet.tags,
         ...(facet.about !== undefined ? { about: facet.about } : {}),
         path: facet.path,
-        shadowed: shadowed[i]!,
+        shadowed: shadowed[i],
       })),
       errors: malformed,
     };
