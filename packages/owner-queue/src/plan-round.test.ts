@@ -13,6 +13,7 @@ const CI_ASK: PlanAsk = {
 const SKILL_ASK: PlanAsk = { gate: "skill", scope: { paths: [".claude/skills/example/SKILL.md"] }, title: "The skill file", context: "One new skill." };
 const VISUAL_ASK: PlanAsk = { gate: "visual", scope: { paths: ["packages/ui/src/Button.tsx"] }, title: "The button", context: "A new variant." };
 
+const TASK_ASK: PlanAsk = { gate: "task", scope: { doneWhen: "The store moved.", reason: "one-way-door", visualSignoff: false }, title: "Move the store", context: "Done when: it moved." };
 const input = (asks: PlanAsk[], extra: Partial<PlanRoundInput> = {}): PlanRoundInput => ({ unit: "plan-example-tp-1", round: 1, task: TASK, repo: REPO, asks, ...extra });
 
 const pickOne = (question: { kind: string; options?: string[] }) => (question.kind === "pick-one" ? question.options! : []);
@@ -54,6 +55,14 @@ describe("buildPlanRound", () => {
 
     expect(() => buildPlanRound(input([]))).toThrow("at least one ask");
     expect(RoundSchema.safeParse(manifest).success).toBe(true);
+  });
+
+  it("asks a task approval as one validate question whose approve option binds the task scope", () => {
+    const round = buildPlanRound(input([TASK_ASK]));
+
+    expect(round.questions[0]).toMatchObject({ prompt: "Validate TP-1: Move the store?" });
+    expect(pickOne(round.questions[0]!)).toEqual([`Approve: validate ${TASK} as described below`, `Not now: leave ${TASK} unvalidated`]);
+    expect(round.planApprovals).toEqual([{ questionId: "q1", approve: `Approve: validate ${TASK} as described below`, task: TASK, repo: REPO, gate: "task", scope: TASK_ASK.scope }]);
   });
 
   it("carries supersedes only when it is given", () => {

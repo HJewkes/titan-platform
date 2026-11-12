@@ -17,6 +17,7 @@ import { defineCommand } from '../registry/index.js';
 import { TaskSchema } from '../schemas/task.js';
 import { SessionFrontmatterSchema } from '../schemas/session.js';
 import { ArtifactsSchema, type Artifacts } from '../schemas/artifacts.js';
+import { loadAgentVisibility } from '../sessions/visibility.js';
 import { getActiveRoot, getInitiativeDir } from '../utils/paths.js';
 import { readYaml } from '../utils/yaml-io.js';
 import { readFrontmatter } from '../utils/gray-matter-io.js';
@@ -94,6 +95,15 @@ function buildMatcher(id: string): RegExp {
 function snippet(text: string): string {
   const trimmed = text.trim();
   return trimmed.length > MAX_SNIPPET ? `${trimmed.slice(0, MAX_SNIPPET)}…` : trimmed;
+}
+
+/**
+ * The cross-initiative scan skips owner-only initiatives (TP-5453 P6). A named `--slug`
+ * reads that initiative by path as before, so a session inside it keeps its own data.
+ */
+async function visibleSlugs(): Promise<string[]> {
+  const isVisible = await loadAgentVisibility(getActiveRoot());
+  return (await listSlugs()).filter((slug) => isVisible(slug));
 }
 
 async function listSlugs(): Promise<string[]> {
@@ -296,7 +306,7 @@ export default defineCommand<Args, Result>({
   },
   async run(args) {
     const match = buildMatcher(args.id);
-    const slugs = args.slug ? [args.slug] : await listSlugs();
+    const slugs = args.slug ? [args.slug] : await visibleSlugs();
 
     const scan: Scan = { references: [], errors: [], subject: null };
     for (const slug of slugs) {

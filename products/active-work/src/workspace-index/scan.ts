@@ -1,6 +1,7 @@
 import { promises as fs, type Dirent } from 'node:fs';
 import path from 'node:path';
 import { listInitiativeSlugs } from '../sessions/initiatives.js';
+import { initiativeIsAgentVisible } from '../sessions/visibility.js';
 import { toRelative } from './refs.js';
 
 /**
@@ -123,9 +124,21 @@ export async function scanWorkspaceSlug(activeRoot: string, slug: string): Promi
   return described.filter((file): file is WorkspaceFile => file !== null);
 }
 
+/**
+ * An owner-only initiative keeps only its brief, so owner tooling can still list it; its
+ * tasks, notes, sessions and sources never enter the agent-searchable index (TP-5453 P6).
+ */
+async function indexableFiles(activeRoot: string, slug: string): Promise<WorkspaceFile[]> {
+  const [files, visible] = await Promise.all([
+    scanWorkspaceSlug(activeRoot, slug),
+    initiativeIsAgentVisible(activeRoot, slug),
+  ]);
+  return visible ? files : files.filter((file) => file.class === 'initiative');
+}
+
 /** Every indexable file under the active root, sorted by relative path. */
 export async function scanWorkspace(activeRoot: string): Promise<WorkspaceFile[]> {
   const slugs = await listInitiativeSlugs(activeRoot);
-  const perSlug = await Promise.all(slugs.map((slug) => scanWorkspaceSlug(activeRoot, slug)));
+  const perSlug = await Promise.all(slugs.map((slug) => indexableFiles(activeRoot, slug)));
   return perSlug.flat().sort((a, b) => a.path.localeCompare(b.path));
 }
