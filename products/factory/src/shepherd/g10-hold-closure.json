@@ -366,6 +366,7 @@
   "shepherd/register-identity.ts",
   "shepherd/register-infer.ts",
   "shepherd/register-kind.ts",
+  "shepherd/registered-kind.ts",
   "shepherd/registrant.ts",
   "shepherd/registration-facts.ts",
   "shepherd/registration-lookup.ts",

@@ -10,6 +10,7 @@ import { isRepoKey } from "./shepherd/seats.js";
 import { ConsoleOriginSchema } from "./digest/gate-alarm.js";
 import { SeatDigestPacingSchema } from "./shepherd/seat-digest-pace.js";
 import { VisualThresholdSchema } from "./shepherd/visual-threshold-config.js";
+import { VisualGateSchema } from "./shepherd/visual-gate-mode.js";
 
 /** execFile throws on a NUL byte, which would fail the post-merge step after the merge instead of at config load. */
 const noNul = z.string().refine((value) => !value.includes("\0"), "must not contain a NUL byte");
@@ -270,8 +271,7 @@ export const FactoryConfigSchema = z.object({
        * or when no other open PR is registered with that task and the body has no `Last slice: no`; else it notes the merge.
        */
       taskClose: z.enum(["keep", "last-slice-only"]).optional(),
-      /** TP-5408: `async` merges a visual PR on reviews and green CI and records `visualChanged`; absent means `owner`, the merge gate. */
-      visualGate: z.enum(["owner", "async"]).optional(),
+      visualGate: VisualGateSchema.optional(),
       /**
        * Mounts `POST /gates/answer-ship`, which resolves an approve-merge gate as owner-remote from a console Ship answer
        * read out of `roundsDir`. No token: any same-user caller can post, as for gateNotify. Absent means the route 404s.

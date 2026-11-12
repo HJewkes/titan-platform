@@ -9,20 +9,19 @@ import type { CiPolicyFileChange } from "./ci-policy-changes.js";
 import { isGithubPath, withCiPolicyRead } from "./ci-policy-read.js";
 import type { CiPolicyClass } from "./ci-policy-class.js";
 import { ciPolicyGate, unknownAndCiPolicy } from "./ci-policy-guard.js";
-import { errorClass } from "./error-class.js";
 import { grantWithheldField, withGrantWithheld, type GrantWithheldField } from "./grant-withheld.js";
 import { SKILL_REASON_PREFIX, VISUAL_REASON_PREFIX, evidenceComment, evidenceMarker } from "./evidence-comment.js";
 import type { PlanApproval } from "./plan-approval.js";
 import { planHonour, type PlanHonour } from "./plan-approval-cover.js";
 import { pinnedPaths } from "./pr-changed-paths.js";
 import { REVIEW_CHECK_NAME } from "./publish-review.js";
-import type { ShepherdStoreRef } from "./store.js";
 import { skillPathsIn } from "./skill-paths.js";
 import { baselineCheckGreen, changedBaselines, shownPaths, visualClearance, visualMatches } from "./visual-gate.js";
 import type { VisualBaselines, VisualPolicy } from "./policy-schema.js";
 import { remergeFact, type CarryRule, type RemergeResult } from "./remerge-carry.js";
 import { reviewBypassable } from "./review-bypass.js";
-import { ownerHoldOf, riskFactsOf, riskTier } from "./risk-tier.js";
+import { riskFactsOf, riskTier } from "./risk-tier.js";
+import type { KindRead } from "./registered-kind.js";
 import type { CarryResult } from "./tree-carry.js";
 import { evidenceRecord, type EvidenceRecord } from "./evidence-record.js";
 import { readVisualDelta, type VisualDelta, type VisualThreshold } from "./visual-delta-read.js";
@@ -32,6 +31,7 @@ import { readVisualTier, tierClearance, tierOutcome } from "./visual-tier-guard.
 import { asyncVisualNote, visualChangedField, visualGateField, type VisualGateMode } from "./visual-gate-mode.js";
 
 export { isGithubPath };
+export { registeredKind } from "./registered-kind.js";
 export { budgetAt } from "./ci-policy-guard.js";
 export type { EvidenceRecord, OldPathWiring };
 
@@ -288,26 +288,6 @@ interface Observed {
   headBlobs?: Record<string, string | null>;
   /** The pinned changed files with their statuses, or why they could not be read. */
   prFiles: PrFile[] | string;
-}
-
-interface KindRead {
-  kind?: string;
-  task?: string;
-  /** Why the registration could not be read. */
-  unread?: string;
-  /** The owner's own hold or gate on the run, for the risk tier. */
-  ownerHold?: string;
-}
-
-/** A store that is not bound or fails reads as no kind, which fails MRG-AU-RC closed instead of failing the evidence step. */
-export function registeredKind(store: ShepherdStoreRef, runId: string, visualGate?: VisualGateMode): KindRead {
-  try {
-    const registration = store.get().byRun(runId);
-    const ownerHold = ownerHoldOf(registration, visualGate);
-    return { ...(registration?.kind !== undefined && { kind: registration.kind }), ...(registration && { task: registration.task }), ...(ownerHold !== undefined && { ownerHold }) };
-  } catch (error) {
-    return { unread: `the registered kind is unreadable: store unreadable: ${errorClass(error)}` };
-  }
 }
 
 /** Only an equal tree probe or a carrying remerge probe for this head becomes a fact; the reviewer's text never does. */

@@ -1,8 +1,15 @@
 // TP-5408 (gate model S5, owner decision D-B): `shepherd.visualGate` takes visual review off the merge gate. Under
 // `async` a visual path is a recorded fact the post-merge feedback sheet reads, not a guard row, sign-off or tier.
+import { z } from "zod";
 import { shownPaths, visualMatches } from "./visual-gate.js";
 
-export type VisualGateMode = "owner" | "async";
+/**
+ * `shepherd.visualGate`, a live switch. `async` merges a visual PR on its reviews and green CI and records `visualChanged`;
+ * `owner`, or absent, keeps the owner's merge gate.
+ */
+export const VisualGateSchema = z.enum(["owner", "async"]);
+
+export type VisualGateMode = z.infer<typeof VisualGateSchema>;
 
 /** Only an exact `async` leaves the merge gate; absent, or anything else, keeps the owner's gate. */
 export function visualGateMode(value: unknown): VisualGateMode {
