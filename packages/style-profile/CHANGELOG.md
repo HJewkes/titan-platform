@@ -1,5 +1,12 @@
 # @titan-design/style-profile
 
+## 0.4.2
+
+### Patch Changes
+
+- 1dbfbab: Remove the dead bare-category fallback in `lookupStability`, and make `detectLanguages` stop reporting `typescript` for a profile with no naming or structure evidence.
+- 00099bd: Narrow exporter inputs instead of asserting types, so typed lint reports nothing for this package.
+
 ## 0.4.1
 
 ### Patch Changes

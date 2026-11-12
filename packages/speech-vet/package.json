@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/speech-vet",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Speech text vetting: pronunciation override markup, heteronym reading checks, lexicon.v1, initialism spelling, number normalization and phone-level pronunciation verdicts",
   "type": "module",
   "main": "./dist/index.js",

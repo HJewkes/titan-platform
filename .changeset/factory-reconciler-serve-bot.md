@@ -1,5 +1,0 @@
----
-"@titan-design/factory": minor
----
-
-Serve now starts the GitHub backstop reconciler as the bot, and only as the bot (TP-3431 d, I13). The serve verb's new `reconciler` dep builds it from the config file's `reconciler` block, and serve builds its ports over its own bot identity's access: the bot's client, its login, and a `git ls-remote` that sends the bot's token as git's only credential, with the user's global, system and `-c` config, credential helpers, askpass and every transport but https shut out. With `reconciler.enabled` and a bot that is absent, refused or has no login, serve starts no reconciler, logs `reconciler.no-bot` with the reason, and never falls back on the user login's client. `/health` `sources.reconciler` reads `running`, `disabled` or `no-bot`. Each repo's pass logs one `reconciler.cost` line (GraphQL `rateLimit.cost`, REST reads, how many answered 304, and the rows appended by kind), a refused or failed pass included. The bot's Octokit client now leaves every rate-limit wait to the pool (`poolOwnsWaits`). `BOT_LOGIN` sits beside `BOT_TOKEN_PATH`, fixed in code and undefined until ratified.

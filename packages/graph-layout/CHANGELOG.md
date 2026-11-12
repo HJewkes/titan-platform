@@ -1,5 +1,50 @@
 # @titan-design/graph-layout
 
+## 0.2.0
+
+### Minor Changes
+
+- 538c0f7: code-graph adds `extractProtocolEdges`, which reads HTTP routes, SSE streams and MCP tools from source text and links each to the files that call it, plus a `NO_PROTOCOL_SOURCE` diagnostic when a repo declares none. graph-layout's `emitRepoMap` takes those edges as `protocolEdges` and draws one labelled one-way `protocol` arrow per container pair, or labels the container import arrows "imports only" when there is no arrow to draw.
+
+### Patch Changes
+
+- 1b1ce99: Offset the route of an edge from a group to one of its own descendants by that group's position, so it starts on the group's border instead of landing in the parent's frame.
+- a773f6a: `computeCompoundLayout` no longer hands a group-to-itself edge to ELK. The edge stays in the output without a route.
+- 86b7703: Document that consumers must install zod ^4, the peer dependency of code-graph.
+- Updated dependencies [59b9c44]
+- Updated dependencies [67eec51]
+- Updated dependencies [381d771]
+- Updated dependencies [31bb9da]
+- Updated dependencies [6901057]
+- Updated dependencies [e5528b6]
+- Updated dependencies [a2a5565]
+- Updated dependencies [7492819]
+- Updated dependencies [54d25fc]
+- Updated dependencies [c89daa1]
+- Updated dependencies [7a34209]
+- Updated dependencies [3e0deea]
+- Updated dependencies [7792f8b]
+- Updated dependencies [98c0177]
+- Updated dependencies [6d48afe]
+- Updated dependencies [6683a46]
+- Updated dependencies [ae8141d]
+- Updated dependencies [9b42150]
+- Updated dependencies [0cc47b8]
+- Updated dependencies [9e475ec]
+- Updated dependencies [fe5a2c5]
+- Updated dependencies [49dfd8c]
+- Updated dependencies [4ba0aa3]
+- Updated dependencies [a230498]
+- Updated dependencies [d905ebb]
+- Updated dependencies [709ab1e]
+- Updated dependencies [fe806c0]
+- Updated dependencies [538c0f7]
+- Updated dependencies [8e66971]
+- Updated dependencies [565913d]
+- Updated dependencies [30d9837]
+- Updated dependencies [a306c70]
+  - @titan-design/code-graph@0.19.0
+
 ## 0.1.0
 
 ### Minor Changes
