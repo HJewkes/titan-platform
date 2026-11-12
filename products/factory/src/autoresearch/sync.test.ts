@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, githubPort } from "@titan-design/github";
@@ -7,7 +7,18 @@ import { execDatedGit } from "./integrate.js";
 import { syncRatchet } from "./sync.js";
 
 const IDENTITY = ["-c", "user.name=sync fixture", "-c", "user.email=fixture@example.invalid"];
-const git = (cwd: string, ...args: string[]) => execDatedGit([...IDENTITY, ...args], cwd);
+/** Config that makes git ignore the machine's global and system config, and run no hooks, in every fixture call. */
+const ISOLATION = {
+  GIT_CONFIG_GLOBAL: "/dev/null",
+  GIT_CONFIG_SYSTEM: "/dev/null",
+  GIT_CONFIG_NOSYSTEM: "1",
+  GIT_CONFIG_COUNT: "1",
+  GIT_CONFIG_KEY_0: "core.hooksPath",
+  GIT_CONFIG_VALUE_0: "/dev/null",
+};
+/** The one way the fixture runs git, including the git the sync under test runs; isolation wins over the caller's env. */
+const isolatedGit: typeof execDatedGit = (args, cwd, env = {}) => execDatedGit(args, cwd, { ...env, ...ISOLATION });
+const git = (cwd: string, ...args: string[]) => isolatedGit([...IDENTITY, ...args], cwd);
 const AT = "2026-10-21T00:00:00Z";
 const PREFIX = "autoresearch/fixture";
 const RATCHET = `refs/heads/${PREFIX}/run-1`;
@@ -63,7 +74,7 @@ describe("syncing the ratchet after its snapshot PR merges", () => {
   it("merges main in with the old head as first parent, so the next PR diffs only new work", async () => {
     const { bare, work, kept, main, port, input } = await fixture();
 
-    const result = await syncRatchet(execDatedGit, port, input);
+    const result = await syncRatchet(isolatedGit, port, input);
 
     const to = await remoteRatchet(bare);
     expect(result).toEqual({ state: "merged", merged: { from: kept, to, main }, treeChanged: true });
@@ -76,7 +87,7 @@ describe("syncing the ratchet after its snapshot PR merges", () => {
   it("reports the tree unchanged when main gained only the snapshot log", async () => {
     const { bare, kept, port, input } = await fixture({});
 
-    const result = await syncRatchet(execDatedGit, port, input);
+    const result = await syncRatchet(isolatedGit, port, input);
 
     expect(result).toMatchObject({ state: "merged", treeChanged: false });
     expect(await remoteRatchet(bare)).not.toBe(kept);
@@ -87,17 +98,17 @@ describe("syncing the ratchet after its snapshot PR merges", () => {
     const open = fake.addPr({ headRef: `${PREFIX}-snap/run-1/m2`, headSha: kept });
     const closed = fake.addPr({ state: "closed", headRef: `${PREFIX}-snap/run-1/m3`, headSha: kept });
 
-    expect(await syncRatchet(execDatedGit, port, { ...input, pr: open.number })).toEqual({ state: "open" });
-    expect(await syncRatchet(execDatedGit, port, { ...input, pr: closed.number })).toEqual({ state: "closed" });
+    expect(await syncRatchet(isolatedGit, port, { ...input, pr: open.number })).toEqual({ state: "open" });
+    expect(await syncRatchet(isolatedGit, port, { ...input, pr: closed.number })).toEqual({ state: "closed" });
     expect(await remoteRatchet(bare)).toBe(kept);
   });
 
   it("parks a restart after the push on the ratchet lease instead of moving the ratchet again", async () => {
     const { bare, port, input } = await fixture();
-    await syncRatchet(execDatedGit, port, input);
+    await syncRatchet(isolatedGit, port, input);
     const synced = await remoteRatchet(bare);
 
-    await expect(syncRatchet(execDatedGit, port, input)).rejects.toThrow("[ratchet-moved]");
+    await expect(syncRatchet(isolatedGit, port, input)).rejects.toThrow("[ratchet-moved]");
     expect(await remoteRatchet(bare)).toBe(synced);
   });
 });
@@ -106,7 +117,7 @@ describe("a sync the loop must hold at its gate", () => {
   it("returns a conflict as data, leaving the remote ratchet and the tree as they were", async () => {
     const { bare, kept, port, input } = await fixture({ "src.txt": "main moved the same line\n" });
 
-    const result = await syncRatchet(execDatedGit, port, input);
+    const result = await syncRatchet(isolatedGit, port, input);
 
     expect(result).toEqual({ state: "merged", conflict: ["src.txt"] });
     expect(await remoteRatchet(bare)).toBe(kept);
@@ -116,7 +127,7 @@ describe("a sync the loop must hold at its gate", () => {
   it("returns main's frozen changes and pushes nothing", async () => {
     const { bare, kept, port, input } = await fixture({ "eval/score.sh": "exit 0\n" });
 
-    const result = await syncRatchet(execDatedGit, port, input);
+    const result = await syncRatchet(isolatedGit, port, input);
 
     expect(result).toEqual({ state: "merged", frozen: ["eval/score.sh"] });
     expect(await remoteRatchet(bare)).toBe(kept);
@@ -128,7 +139,7 @@ describe("a sync the loop must hold at its gate", () => {
     await git(work, "merge", "--quiet", "--no-ff", "-X", "theirs", "-m", "resolve", main);
     const resolved = await git(work, "rev-parse", "HEAD");
 
-    const result = await syncRatchet(execDatedGit, port, { ...input, resolved });
+    const result = await syncRatchet(isolatedGit, port, { ...input, resolved });
 
     expect(result).toEqual({ state: "merged", merged: { from: kept, to: resolved, main }, treeChanged: true });
     expect(await remoteRatchet(bare)).toBe(resolved);
@@ -139,8 +150,41 @@ describe("a sync the loop must hold at its gate", () => {
     const onlyRatchet = await commitOn(work, kept, { "fix.txt": "fix\n" });
     const onlyMain = await commitOn(work, main, { "fix.txt": "fix\n" });
 
-    await expect(syncRatchet(execDatedGit, port, { ...input, resolved: onlyRatchet })).rejects.toThrow("[sync-resolved]");
-    await expect(syncRatchet(execDatedGit, port, { ...input, resolved: onlyMain })).rejects.toThrow("[sync-resolved]");
+    await expect(syncRatchet(isolatedGit, port, { ...input, resolved: onlyRatchet })).rejects.toThrow("[sync-resolved]");
+    await expect(syncRatchet(isolatedGit, port, { ...input, resolved: onlyMain })).rejects.toThrow("[sync-resolved]");
     expect(await remoteRatchet(bare)).toBe(kept);
+  });
+});
+
+describe("the fixture's git", () => {
+  it("fixture git calls ignore a machine hook set in global config or in the environment", async () => {
+    const home = mkdtempSync(join(tmpdir(), "ar-sync-home-"));
+    roots.push(home);
+    const hooks = join(home, "hooks");
+    mkdirSync(hooks);
+    writeFileSync(join(hooks, "pre-push"), "#!/bin/sh\necho refused by a machine hook >&2\nexit 1\n");
+    chmodSync(join(hooks, "pre-push"), 0o755);
+    writeFileSync(join(home, ".gitconfig"), `[core]\n\thooksPath = ${hooks}\n`);
+    // An agent host installs its push hook through GIT_CONFIG_* env, which outranks every config file.
+    const hostile = {
+      HOME: home,
+      XDG_CONFIG_HOME: home,
+      GIT_CONFIG_GLOBAL: join(home, ".gitconfig"),
+      GIT_CONFIG_COUNT: "1",
+      GIT_CONFIG_KEY_0: "core.hooksPath",
+      GIT_CONFIG_VALUE_0: hooks,
+    };
+    const before = process.env;
+    process.env = { ...before, ...hostile };
+    try {
+      const pushed = await fixture().then(
+        () => "pushed",
+        (error: unknown) => String(error),
+      );
+
+      expect(pushed).toBe("pushed");
+    } finally {
+      process.env = before;
+    }
   });
 });

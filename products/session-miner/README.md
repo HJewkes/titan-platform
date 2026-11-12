@@ -545,6 +545,44 @@ every other figure uses the binary class. `--sample` checks that each task in th
 sample is in the population. Under the table it prints, per ISO week, the population's tasks and the share whose dispatch
 link is inferred, and the count of spawns left unlinked.
 
+### Scheduled run
+
+`ops/systemd/ticket-scorecard.{service,timer}` run `ticket-scorecard run` at 05:45, 11:45 and
+17:45 Denver time, 15 minutes before each factory digest, with `Persistent=true` so a missed slot
+runs at the next boot. The service reuses `~/.config/titan-session-miner/refresh.env` (`ACTIVE_ROOT`
+and `TITAN_MINER_GRAPH`), so install the scheduled refresh first. The labels file defaults under
+`ACTIVE_ROOT`; to put it elsewhere, add `TITAN_SCORECARD_LABELS=<file>` to that env file. The job
+runs `titan-factory shepherd stats --per-run --json`, and the unit's `PATH` starts with
+`~/.local/bin`, where `titan-factory service deploy` links the binary. A host without it exits 69
+and names the factory CLI. Exit 75 (another run holds the lock) counts as success.
+
+Budget, measured on the build host with `run --dry-run` (a full rebuild into memory, nothing
+written): 9.3 s and 9.3 s wall (rebuild reported 9.3 s and 8.9 s) over 3,071 tasks. The unit's
+`TimeoutStartSec=20min` is double the plan's 10 minute rebuild ceiling. An incremental run reads
+less, so it needs under 60 s. Read the `run` table to confirm after the first week.
+
+To install (an owner step):
+
+```sh
+pnpm -C ~/projects/titan-platform --filter @titan-design/session-miner... build
+install -m 644 -t ~/.config/systemd/user ~/projects/titan-platform/ops/systemd/ticket-scorecard.service ~/projects/titan-platform/ops/systemd/ticket-scorecard.timer
+systemctl --user daemon-reload
+systemctl --user enable --now ticket-scorecard.timer
+```
+
+Then add the unit to `machine-inventory.md` (item 197).
+
+To read the last run:
+
+```sh
+systemctl --user start ticket-scorecard.service   # runs a pass at once
+journalctl --user -u ticket-scorecard -n 20       # the run's log
+systemctl --user list-timers ticket-scorecard.timer
+sqlite3 -readonly ~/.local/share/titan-scorecard/scorecard.sqlite3 'select * from run order by started_at desc limit 3'
+```
+
+A failed pass leaves the unit in `systemctl --user --failed`.
+
 ## Daily self-improve classification (TP-685)
 
 `titan-miner self-improve-daily --chunks <dir> --prompts <dir> --out <dir> [--max-budget-usd 3]`
