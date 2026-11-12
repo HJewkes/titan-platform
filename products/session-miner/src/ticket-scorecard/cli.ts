@@ -62,6 +62,7 @@ function renderRun(result: ScorecardRunResult): string {
   const lines = [
     `ticket-scorecard ${result.mode}: ${result.ok ? "ok" : "not measured"} in ${result.ms} ms`,
     `  not measured: ${result.notMeasured.length === 0 ? "none" : result.notMeasured.join(", ")}`,
+    `  labels: ${result.labels === null ? "none" : `${result.labels.rows} rows, ${result.labels.invalid} invalid`}`,
     `  dirty tasks ${result.dirtyTasks}  task rows changed ${result.taskRowsChanged} of ${result.taskRows}  week cells changed ${result.weekRowsChanged} of ${result.weekRows}`,
     `  phase cells changed ${result.phaseRowsChanged}  pool rows written ${result.poolRowsWritten}  marks advanced ${result.marksAdvanced}`,
     `  frozen ${result.frozen.join(", ") || "none"}  drift ${result.drift.join(", ") || "none"}`,

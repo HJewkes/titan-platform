@@ -50,6 +50,8 @@ export interface ScorecardRunResult {
   exitCode: number;
   /** Stores that were absent or did not answer; their facts read as not measured. */
   notMeasured: SourceName[];
+  /** Label rows read and lines that did not parse; null when the file is absent. */
+  labels: { rows: number; invalid: number } | null;
   dirtyTasks: number;
   taskRowsChanged: number;
   weekRowsChanged: number;
@@ -132,14 +134,15 @@ async function runLocked(options: ScorecardRunOptions): Promise<ScorecardRunResu
     const ms = Math.max(0, options.now().getTime() - startedAt.getTime());
     const mode = options.rebuild ? "rebuild" : "incremental";
     recordRun(store, { startedAt: startedAt.toISOString(), ms, rowsChanged: changedCount(changes), mode, ok: s !== null });
-    return resultOf(store, changes, { mode, ok: s !== null, notMeasured: notMeasured(sources), ms });
+    const labels = sources.labels === null ? null : { rows: sources.labels.rows, invalid: sources.labels.invalid };
+    return resultOf(store, changes, { mode, ok: s !== null, notMeasured: notMeasured(sources), labels, ms });
   } finally {
     store.close();
     closeSources(sources);
   }
 }
 
-function resultOf(store: Db, c: Changes, head: Pick<ScorecardRunResult, "mode" | "ok" | "notMeasured" | "ms">): ScorecardRunResult {
+function resultOf(store: Db, c: Changes, head: Pick<ScorecardRunResult, "mode" | "ok" | "notMeasured" | "labels" | "ms">): ScorecardRunResult {
   const counts = { taskRows: readTaskRows(store).length, weekRows: readWeekRows(store).length };
   const { freeze, ...rest } = c;
   return { ...head, exitCode: head.ok ? EXIT.OK : EXIT_NOT_MEASURED, ...rest, ...counts, frozen: freeze.frozen, drift: freeze.drift };

@@ -40,9 +40,10 @@ beforeEach(() => {
   world.register("AA-1", 11, "run-a", { status: "running", startedAt: "2026-11-10T12:00:00.000Z" });
   world.register("AA-2", 12, "run-b", { status: "completed", startedAt: "2026-11-10T12:00:00.000Z", completedAt: "2026-11-10T16:00:00.000Z" });
   world.pr(12, { mergedAt: "2026-11-10T15:00:00.000Z", checkedAt: "2026-11-10T15:30:00.000Z" });
+  const heuristics = { class: "census-test:theme", source: "census-test:source" };
   world.labels([
-    { initiative: "alpha", id: "AA-1", class: "product", source: "owner", heuristic: "census-test" },
-    { initiative: "alpha", id: "AA-2", class: "mixed", source: "follow-up", heuristic: "census-test" },
+    { task: "alpha/AA-1", class: "product", source: "owner", serves: null, heuristics },
+    { task: "alpha/AA-2", class: "mixed", source: "follow-up", serves: null, heuristics },
   ]);
 });
 
@@ -55,7 +56,8 @@ describe("ticket-scorecard run", () => {
 
     const second = await run(world.options(W46_THU));
 
-    expect(first.taskRowsChanged).toBe(2);
+    expect(first).toMatchObject({ taskRowsChanged: 2, labels: { rows: 2, invalid: 0 } });
+    expect(storeRows(world).get("AA-2")).toMatchObject({ classAtDispatch: "upkeep", provenance: { classAtDispatch: "inferred:census-test:theme" } });
     expect(second).toMatchObject({ ok: true, taskRowsChanged: 0, weekRowsChanged: 0, phaseRowsChanged: 0, poolRowsWritten: 0, marksAdvanced: 0, frozen: [], drift: [] });
     expect(world.dumpStore()).toBe(before);
   });
