@@ -1583,6 +1583,20 @@ policy, authority or security path, or a `security` kind, takes `g10-adversary`.
 changed lines or a store migration takes `g10-review`. A file list Shepherd cannot read whole
 takes `g10-adversary`.
 
+A policy touch that is low tier by its paths takes `g10-review` instead (TP-5403), so one opus
+`MERGE` at its head with green checks releases it and no owner gate is raised. Low tier means no
+authority or security path, a risk tier that is low once the policy touch is set aside (no `.github`
+path, no publish or settings file, no owner gate file, no visual path, no owner hold, 800 changed
+lines or fewer), and every policy path in an allowed table: the default policy globs, the signoff
+policy files or the hold closure (`lowTierPolicyTouch` in `g10-low-tier.ts`). Anything it cannot
+judge keeps `g10-adversary`. The hold reason names the tables, as
+`g10-review: low-tier policy touch (hold-closure)`, or the fact that kept the run adversary, as
+`g10-adversary: policy touch (kept: gate-resolve-actor)`. The release records the rule
+`g10-review/low-tier`, which `shepherd timeline` shows as a `decision` entry, and the merge evidence
+records `lowTier` beside `riskTier`. `shepherd.gateReset.lowTierPolicy` switches it: absent or `on`
+places the review hold, `shadow` keeps the adversary hold and names the review it would have had,
+and `off` keeps the adversary hold. It is a live editable row.
+
 Policy paths also cover who may resolve a gate, not only the owner's rule file. The list is
 `GATE_RESOLVE_ACTOR_FILES` in `products/factory/src/shepherd/g10-class-rules.ts`: hitl's whole
 source, the workflow runtime, its types and its gate authorize step, queue-mirror's whole source
