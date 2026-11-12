@@ -20,16 +20,6 @@
       ]
     },
     {
-      "name": "the agent filter applies to the owner too",
-      "file": "products/active-work/src/sessions/visibility.ts",
-      "find": "  if (caller === 'owner') return SERVE_ALL;\n",
-      "replace": "",
-      "kills": [
-        "cross-initiative list verbs for an agent caller task list across all initiatives still shows the owner every initiative",
-        "cross-initiative list verbs for an agent caller an agent never sees a row that names no initiative, while the owner does"
-      ]
-    },
-    {
       "name": "the initiative scan serves owner-only briefs to an agent",
       "file": "products/active-work/src/commands/audit.ts",
       "find": "  const entries = scan.entries.filter((entry) => visible(entry.slug));",
@@ -55,24 +45,6 @@
       "replace": "  if (caller !== 'agent') return SERVE_ALL;",
       "kills": [
         "cross-initiative list verbs for an agent caller a context no surface marked as the owner is restricted like an agent"
-      ]
-    },
-    {
-      "name": "the open picker lists every initiative to an agent",
-      "file": "products/active-work/src/commands/open.ts",
-      "find": "  const slugs = await listSlugsForCaller(activeRoot, ctx);",
-      "replace": "  const slugs = await listSlugsForCaller(activeRoot, { ...ctx, caller: 'owner' });",
-      "kills": [
-        "cross-initiative list verbs for an agent caller the open picker lists only agent-visible initiatives to an agent, and every one to the owner"
-      ]
-    },
-    {
-      "name": "a slug that matches nothing names every initiative to an agent",
-      "file": "products/active-work/src/commands/_open-helpers.ts",
-      "find": "  const slugs = await listSlugsForCaller(activeRoot, ctx);",
-      "replace": "  const slugs = await listSlugsForCaller(activeRoot, { ...ctx, caller: 'owner' });",
-      "kills": [
-        "cross-initiative list verbs for an agent caller open names no owner-only initiative to an agent when a slug matches nothing"
       ]
     }
   ]

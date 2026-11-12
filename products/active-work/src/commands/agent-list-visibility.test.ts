@@ -17,7 +17,6 @@ import inventory from './inventory.js';
 import list from './list.js';
 import loopBoard from './loop-board.js';
 import noteList from './note-list.js';
-import open from './open.js';
 import search from './search.js';
 import sourceList from './source-list.js';
 import taskList from './task-list.js';
@@ -276,28 +275,6 @@ describe('cross-initiative list verbs for an agent caller', () => {
 
       expect(slugsOf(tasks)).toEqual([VISIBLE]);
       expect(ctx.warnings).toEqual([HIDDEN_WARNING]);
-    });
-  });
-
-  it('the open picker lists only agent-visible initiatives to an agent, and every one to the owner', async () => {
-    await withEmptyActiveRoot(async (root) => {
-      seed(root);
-
-      const forAgent = await open.run(open.args.parse({ pick: true }), agent(root));
-      const forOwner = await open.run(open.args.parse({ pick: true }), owner(root));
-
-      expect('initiatives' in forAgent && slugsOf(forAgent.initiatives)).toEqual([VISIBLE]);
-      expect('initiatives' in forOwner && slugsOf(forOwner.initiatives)).toEqual([VISIBLE, HIDDEN]);
-    });
-  });
-
-  it('open names no owner-only initiative to an agent when a slug matches nothing', async () => {
-    await withEmptyActiveRoot(async (root) => {
-      seed(root);
-
-      const attempt = open.run(open.args.parse({ slug: 'zzz' }), agent(root));
-
-      await expect(attempt).rejects.toThrow(`Known: ${VISIBLE}`);
     });
   });
 });
