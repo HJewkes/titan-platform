@@ -2834,7 +2834,7 @@ interface ScorecardRegistration {
 /** A `shepherd-pr` workflow run for the task. */
 interface ScorecardRun {
     runId: string;
-    /** The `stepId` of every entry in `step_results`, one per iteration. */
+    /** The `stepId` of every entry in `step_results` (`<family>` or `<family>:<n>`), or just its family; one per iteration. */
     stepIds: readonly string[];
     /** Distinct heads awaited, as `task-actuals-shepherd` counts them. */
     reviewRounds: number;
