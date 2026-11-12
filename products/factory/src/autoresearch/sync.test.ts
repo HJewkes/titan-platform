@@ -157,7 +157,7 @@ describe("a sync the loop must hold at its gate", () => {
 });
 
 describe("the fixture's git", () => {
-  it("fixture git calls ignore the machine's global hooks", async () => {
+  it("fixture git calls ignore a machine hook set in global config or in the environment", async () => {
     const home = mkdtempSync(join(tmpdir(), "ar-sync-home-"));
     roots.push(home);
     const hooks = join(home, "hooks");
@@ -165,13 +165,24 @@ describe("the fixture's git", () => {
     writeFileSync(join(hooks, "pre-push"), "#!/bin/sh\necho refused by a machine hook >&2\nexit 1\n");
     chmodSync(join(hooks, "pre-push"), 0o755);
     writeFileSync(join(home, ".gitconfig"), `[core]\n\thooksPath = ${hooks}\n`);
-    const hostile = { HOME: home, XDG_CONFIG_HOME: home, GIT_CONFIG_GLOBAL: join(home, ".gitconfig") };
+    // An agent host installs its push hook through GIT_CONFIG_* env, which outranks every config file.
+    const hostile = {
+      HOME: home,
+      XDG_CONFIG_HOME: home,
+      GIT_CONFIG_GLOBAL: join(home, ".gitconfig"),
+      GIT_CONFIG_COUNT: "1",
+      GIT_CONFIG_KEY_0: "core.hooksPath",
+      GIT_CONFIG_VALUE_0: hooks,
+    };
     const before = process.env;
     process.env = { ...before, ...hostile };
     try {
-      const { bare, main } = await fixture();
+      const pushed = await fixture().then(
+        () => "pushed",
+        (error: unknown) => String(error),
+      );
 
-      expect(await git(bare, "rev-parse", "refs/heads/main")).toBe(main);
+      expect(pushed).toBe("pushed");
     } finally {
       process.env = before;
     }
