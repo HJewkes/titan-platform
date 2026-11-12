@@ -125,11 +125,6 @@ export function registrantMigration(version = 38): Migration {
   return { version, name: "factory:shepherd_registration_registrant", up: (db) => db.exec(TP3653_DDL) };
 }
 
-/** Set when a run is replaced after any review step ran, so a restart never clears that a review started (TP-5399). */
-export function reviewStartedMigration(version = 52): Migration {
-  return { version, name: "factory:shepherd_registration_review_started", up: (db) => db.exec("ALTER TABLE shepherd_registration ADD COLUMN review_started INTEGER") };
-}
-
 /** Set by `register --last-slice`: under `taskClose: last-slice-only` the run's merge closes its task (TP-4274). */
 export function lastSliceMigration(version = 43): Migration {
   return { version, name: "factory:shepherd_registration_last_slice", up: (db) => db.exec("ALTER TABLE shepherd_registration ADD COLUMN last_slice INTEGER") };

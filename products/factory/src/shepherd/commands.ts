@@ -17,7 +17,7 @@ import { cachedByHead, localPrFiles } from "./git-pr-files.js";
 import { applyRegistrationHold } from "./registration-hold.js";
 import { briefCommand } from "./brief-command.js";
 import { prsCommand } from "./prs-command.js";
-import { kindMove, reviewStarted, testOnlyHint } from "./register-kind.js";
+import { kindMove, testOnlyHint } from "./register-kind.js";
 import type { KindMove } from "./task-kind.js";
 import { PrArg, RegisterArgs, RepoArg, coded, headBranch, policyFor, refuseKindMove, sliceAfter } from "./register-args.js";
 import { endSuperseded, isDivergedEnd, isReplayDiverged, restartFor } from "./restart.js";
@@ -103,7 +103,7 @@ function startRun(ctx: FactoryContext, args: RegisterArgs, branch: string | unde
 
 /** A dead run's registration moves to a new run, which starts at the pull request's current head; any other run comes back unchanged. */
 export async function restartRegistered(ctx: FactoryContext, store: ShepherdStore, known: Registration, args: RegisterArgs, policy: EffectivePolicy): Promise<Registered> {
-  const move = await kindMove(servicesOf(ctx), known, args, ctx.host.runtime.status(known.runId));
+  const move = await kindMove(servicesOf(ctx), known, args);
   const restart = await restartFor(ctx.host, servicesOf(ctx), known);
   if (!restart) return refresh(store, known, args, policy, move);
   refuseKindMove(known, args, move);
@@ -112,8 +112,7 @@ export async function restartRegistered(ctx: FactoryContext, store: ShepherdStor
   const seeded = isDivergedEnd(previousRun) ? { ...args, head: args.head ?? lastReadHead(previousRun) } : args;
   let runId: string;
   try {
-    const carried = { reviewStarted: reviewStarted(previousRun) };
-    runId = startRun(ctx, args, known.branch ?? undefined, policy, (started) => store.repoint(previousRunId, started, carried));
+    runId = startRun(ctx, args, known.branch ?? undefined, policy, (started) => store.repoint(previousRunId, started));
   } catch (error) {
     const winner = store.byRun(previousRunId) ? undefined : findRegistration(ctx, store, args.repo, args.pr, known.branch ?? undefined);
     if (!winner) {

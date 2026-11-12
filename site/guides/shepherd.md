@@ -42,7 +42,6 @@ error (exit 2) naming the flag to pass and the branch it read. The other flags:
 | --- | --- |
 | `--reviewer <name>` | the agent that reviews |
 | `--kind <kind>` | `correctness`, `security`, `feature`, `refactor`, `test-only` or `unknown`; a new registration without it stores `correctness`. `test-only` is for a PR that only adds or changes tests; see [the test-only kind](#the-test-only-kind) |
-| `--kind-reason <text>` | why a `correctness` run moves to `refactor` or `feature`; the move needs it, and the run records it with the caller as a `kind-move` event |
 | `--policy <json>` | narrows the seat policy; see [seat policy](#seat-policy) |
 
 Registration is idempotent (`products/factory/src/shepherd/commands.ts`). A repeat for the
@@ -87,13 +86,6 @@ opens the fix-proof gate described next: `correctness`,
 `correctness` or `test-only` run to `feature`, `refactor` or `unknown`, or a `security` run to
 any other kind. That repeat is refused with exit 65 and a reason naming both kinds. Moving
 `correctness` to `security`, or `feature`, `refactor` or `unknown` to any kind, still applies.
-One narrow exception (TP-5399): a `correctness` run moves to `refactor` or `feature` when no
-review step (`sh-review-intent`, `sh-review`, `sh-review-panel`, `sh-review-request`,
-`sh-review-refused`, `sh-review-stop`, `sh-review-scope`, `sh-review-shadow`,
-`sh-await-verdict`) has run at any head, in this run or any run a restart replaced, and the repeat gives `--kind-reason`. The store records
-a `kind-move` event with the caller and the reason, so the run's timeline shows the move. It is
-for a fix whose proof cannot reproduce, such as a rename to the same value. Once a review has
-started, or when the run cannot be read, the move is refused as before.
 A move into `test-only` meets the diff check [below](#the-test-only-kind).
 
 On a `correctness`, `security` or `test-only` run, or any `fix/` branch, Shepherd reads the

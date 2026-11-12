@@ -40,8 +40,7 @@ interface ShepherdOpts extends TimelineView, StatusFilter {
 }
 
 type SliceOpts = { slice?: string | false; lastSlice?: true };
-type KindOpts = { kind?: string; kindReason?: string };
-type RegisterOpts = ShepherdOpts & SliceOpts & KindOpts & { branch?: string; head?: string; base?: string; task?: string; implementer?: string; reviewer?: string; policy?: string };
+type RegisterOpts = ShepherdOpts & SliceOpts & { branch?: string; head?: string; base?: string; task?: string; implementer?: string; reviewer?: string; kind?: string; policy?: string };
 
 /** The shepherd.* registry commands as verbs: on titan-factory serve when one answers, else against the database here; register needs --offline for that. */
 export function registerShepherd(program: Command, verbs: Verbs): void {
@@ -70,8 +69,7 @@ export function registerShepherd(program: Command, verbs: Verbs): void {
 
 type VerbOf = (spec: string, description: string) => Command;
 
-/** The register verb, whose options name everything a registration records. */
-function registerRegisterVerb(verb: VerbOf, verbs: Verbs): void {
+function registerRunVerbs(verb: VerbOf, verbs: Verbs): void {
   verb("register <target>", "shepherd owner/repo#N, or owner/repo with --branch before its PR exists; a repeat returns the existing run, or a new one if it failed, or was cancelled or stopped closed with its PR open")
     .option("--branch <name>", "the PR's head branch")
     .option("--head <sha>", "the PR's head commit; with --branch, Shepherd does not read the PR from GitHub to register it")
@@ -80,17 +78,12 @@ function registerRegisterVerb(verb: VerbOf, verbs: Verbs): void {
     .option("--implementer <name>", "the agent that pushes fixes; defaults to <name> of an agent-chat/<name> head branch")
     .option("--reviewer <name>", "the agent that reviews")
     .option("--kind <kind>", "correctness, security, feature, refactor, test-only (the PR changes only tests) or unknown")
-    .option("--kind-reason <text>", "why a correctness run moves to refactor or feature; allowed only before any review starts, and recorded with the caller as an event")
     .option("--slice <label>", "this PR is one slice of a multi-slice task: landing notes the task instead of closing it")
     .option("--no-slice", "clear a slice kept from an earlier registration")
     .option("--last-slice", "this PR is its task's last slice, as a 'Last slice: yes' body line says; under taskClose last-slice-only its merge closes the task")
     .option("--policy <json>", 'narrow the seat policy, e.g. {"merge":"never"}')
     .option("--offline", "record the run in the database here when no titan-factory serve answers; nothing drives it until serve starts")
     .action((target: string, opts: RegisterOpts) => runShepherd(verbs, "shepherd.register", () => registerArgs(target, opts, verbs), opts));
-}
-
-function registerRunVerbs(verb: VerbOf, verbs: Verbs): void {
-  registerRegisterVerb(verb, verbs);
   withStatusFilters(verb("status [target]", "one line per shepherded PR, optionally only owner/repo or owner/repo#N, then serve's deploy and reviewer-slot lines"))
     .option("--deploy", "with --json, print { rows, deploy, reviewSlots } so serve's deploy block and reviewer-slot reading ride along; without it --json stays the bare row array")
     .action((target: string | undefined, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.status", () => statusArgs(target ? parseTarget(target) : undefined, opts), opts));
@@ -232,15 +225,13 @@ const PR_VERBS = [
 async function registerArgs(target: string, opts: RegisterOpts, { io, deps }: Verbs): Promise<Record<string, unknown>> {
   const policy = opts.policy === undefined ? undefined : parsePayload(opts.policy);
   if (opts.policy !== undefined && !policy) throw new Error("--policy must be a JSON object");
-  const { branch, head, base, reviewer, kind, kindReason, slice, lastSlice } = opts;
+  const { branch, head, base, reviewer, kind, slice, lastSlice } = opts;
   const parsed = parseTarget(target);
   const { task: given, implementer } = await inferIdentity(parsed, opts, deps.headRef);
   const task = await qualifyTask(given, { origin: activeWorkOrigin(io.env), ...(deps.fetch && { fetch: deps.fetch }) });
   // Not `callerOf`: only an agent-chat name can be messaged, so a terminal registration records no registrant.
   const registrant = io.env.AGENT_CHAT_NAME || undefined;
-  const kindMove = kindReason === undefined ? {} : { kindReason, actor: callerOf(io.env) };
-  const sliceArgs = { slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, lastSlice };
-  return { ...parsed, branch, head, base, task, implementer, registrant, reviewer, kind, ...kindMove, ...sliceArgs, policy };
+  return { ...parsed, branch, head, base, task, implementer, registrant, reviewer, kind, slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, lastSlice, policy };
 }
 
 async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () => object | Promise<object>, opts: ShepherdOpts): Promise<void> {

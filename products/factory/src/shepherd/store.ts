@@ -15,10 +15,10 @@ import { HoldSatisfiedBySchema, type HoldSatisfaction, type HoldSatisfiedBy } fr
 import { readSlots, reclassHold, recordVouch, repointRunRows, vouchedLine, writeSlotRow, type Reclass, type Vouch } from "./hold-slot-rows.js";
 import { afterHold, isAdversaryHold, liftClass, liftTop, type HoldSlots, type Lift, type SlotHold } from "./hold-slots.js";
 import { isOwnerHold, liftOwnerHold, placeOwnerHold, recordOwnerAsked, type OwnerHold } from "./owner-hold-rows.js";
-import { carryReviewStarted, writeRegistrant, writeRegistrationFacts, type RegistrationFacts, type RegistrationFactsInput } from "./registration-facts.js";
-import { repeatedPolicy, type EffectivePolicy } from "./policy-schema.js";
-import { TASK_KINDS, type KindMove, type TaskKind } from "./task-kind.js";
-import { guardKindMove } from "./kind-move-guard.js";
+import { writeRegistrant, writeRegistrationFacts, type RegistrationFacts, type RegistrationFactsInput } from "./registration-facts.js";
+import { RegistrationRefused, repeatedPolicy, type EffectivePolicy } from "./policy-schema.js";
+import { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
+import type { KindMove } from "./task-kind.js";
 
 export { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
 
@@ -78,7 +78,7 @@ export interface HoldLookup {
   heldReason(repo: RepoSlug, pr: number, branch?: string, sha?: string): string | undefined;
 }
 
-export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lastSliceMigration, lineageMigration, ownerHoldMigration, parkSettledMigration, registrantMigration, registrationFactsMigration, repairStopMigration, reviewRequestMigration, reviewStartedMigration, shepherdMigration, sliceMigration } from "./store-migrations.js";
+export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lastSliceMigration, lineageMigration, ownerHoldMigration, parkSettledMigration, registrantMigration, registrationFactsMigration, repairStopMigration, reviewRequestMigration, shepherdMigration, sliceMigration } from "./store-migrations.js";
 
 import type { Author, AuthorInput, AuthorRow } from "./author-types.js";
 export type { Author, AuthorInput } from "./author-types.js";
@@ -149,7 +149,8 @@ export class ShepherdStore implements HoldLookup {
       if (!stored) throw new Error(`shepherd-pr run ${runId} has no registration`);
       const policy = repeatedPolicy(meta.policy, stored.policy);
       const kind = explicitKind ?? stored.kind;
-      guardKindMove(this.db, stored, kind, meta, this.stamp());
+      const refusal = (meta.guard ?? kindMoveRefusal)(stored.kind, kind, meta.diff);
+      if (refusal) throw new RegistrationRefused(`run ${runId}: ${refusal}`);
       this.db
         .prepare("UPDATE shepherd_registration SET task = ?, implementer = ?, reviewer = ?, policy = ?, kind = ?, slice = ?, updated_at = ? WHERE run_id = ?")
         .run(meta.task, meta.implementer, meta.reviewer ?? null, JSON.stringify(policy), kind, meta.slice ?? null, this.stamp(), runId);
@@ -167,8 +168,8 @@ export class ShepherdStore implements HoldLookup {
     return this.changed(runId, this.byRun(runId)!);
   }
 
-  /** Points a registration, and the authors, hold events, proofs, settled parks, merge-base exception and own account hold recorded for its run, at the run that replaces its failed one; the old run stays in the workflow database. `carried` keeps a started review (`carryReviewStarted`). */
-  repoint(runId: string, newRunId: string, carried: { reviewStarted?: boolean } = {}): Registration {
+  /** Points a registration, and the authors, hold events, proofs, settled parks, merge-base exception and own account hold recorded for its run, at the run that replaces its failed one; the old run stays in the workflow database. */
+  repoint(runId: string, newRunId: string): Registration {
     const move = this.db.transaction(() => {
       const changed = this.db.prepare("UPDATE shepherd_registration SET run_id = ?, updated_at = ? WHERE run_id = ?").run(newRunId, this.stamp(), runId).changes;
       if (changed === 0) throw new Error(`shepherd-pr run ${runId} has no registration`);
@@ -178,7 +179,6 @@ export class ShepherdStore implements HoldLookup {
       repointMergeBaseException(this.db, runId, newRunId);
       repointPlanApprovals(this.db, runId, newRunId);
       moveAccountHold(this.db, runId, newRunId);
-      carryReviewStarted(this.db, newRunId, carried.reviewStarted === true);
     });
     move();
     return this.changed(newRunId, this.byRun(newRunId)!);

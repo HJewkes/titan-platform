@@ -16,8 +16,6 @@ export interface RegistrationFacts {
   headSha: string | null;
   base: string | null;
   lastSlice?: boolean;
-  /** An earlier run of this registration started a review; the current run's own steps are read beside it. */
-  reviewStarted?: true;
 }
 
 /** A fact the caller omits keeps the stored one; a store opened without the facts migration is written only when one is given. */
@@ -37,12 +35,7 @@ export function writeRegistrant(db: Db, runId: string, registrant: string | unde
   db.prepare(first).run(registrant, registrant === implementer ? 1 : 0, runId);
 }
 
-/** A run replaced after it started a review leaves that on the registration, so an early kind move stays refused after the restart (TP-5399). */
-export function carryReviewStarted(db: Db, runId: string, started: boolean): void {
-  if (started) db.prepare("UPDATE shepherd_registration SET review_started = 1 WHERE run_id = ?").run(runId);
-}
-
 /** The columns read as null on a row from before the facts migration. */
 export function registrationFactsOf(row: RegistrationRow): RegistrationFacts {
-  return { headSha: row.head_sha ?? null, base: row.base ?? null, lastSlice: row.last_slice === 1, ...(row.review_started === 1 && { reviewStarted: true as const }) };
+  return { headSha: row.head_sha ?? null, base: row.base ?? null, lastSlice: row.last_slice === 1 };
 }
