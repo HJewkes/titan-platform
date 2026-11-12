@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Alert, Button, ButtonText, Card, CardContent, HStack, Link, Pill, Section, SectionContent, SectionHeader, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, Button, ButtonText, HStack, Link, Pill, Section, SectionContent, SectionHeader, Typography, VStack } from "@titan-design/react-ui";
 import type { RoundDetail } from "../../server/rounds.js";
 import type { Question, Section as RoundSection } from "../../server/round-schema.js";
 import { refToRoute } from "../refs.js";
