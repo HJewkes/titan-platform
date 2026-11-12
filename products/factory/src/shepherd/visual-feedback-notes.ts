@@ -10,7 +10,7 @@ const RoundFile = z.looseObject({
 });
 const AnswersFile = z.looseObject({ answers: z.array(z.looseObject({ questionId: z.string(), text: z.string().optional() })) });
 
-export type RoundFileData = z.infer<typeof RoundFile>;
+type RoundFileData = z.infer<typeof RoundFile>;
 
 export interface NoteTask {
   key: string;
