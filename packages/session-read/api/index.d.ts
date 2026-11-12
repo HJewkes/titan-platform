@@ -1274,7 +1274,7 @@ declare function bashSignals(command: string, git: GitIntent | null): AuditSigna
 /** agent-chat opens an injected orientation block with this line. */
 declare const ORIENTATION_HEADER = "# Orientation: active-work initiative \"";
 /** `none` is a definite "no id links", distinct from a session no task-aware resolver has seen. */
-type AssignmentSource = "name" | "name-over-brief" | "brief-anchor" | "brief-paragraph" | "none";
+type AssignmentSource = "spawn-meta" | "name" | "name-over-brief" | "brief-anchor" | "brief-paragraph" | "none";
 interface AssignmentInput {
     readonly agentName: string;
     readonly brief: string;
@@ -1282,6 +1282,8 @@ interface AssignmentInput {
     readonly isKnown: (taskId: string) => boolean;
     /** Length of the injected orientation block, from agent-chat's `agent_spawned` meta `briefing_chars`. */
     readonly briefingChars?: number;
+    /** The spawn's recorded `meta.task`, bare (`TP-7`) or initiative-qualified (`demo/TP-7`). */
+    readonly spawnTask?: string;
 }
 interface Assignment {
     readonly taskIds: readonly string[];
@@ -1293,7 +1295,10 @@ interface Assignment {
  * A recorded `briefingChars` wins over the heading rules, which break when agent-chat renames a heading.
  */
 declare function orientationEnd(brief: string, briefingChars?: number): number | null;
-/** The task ids a spawned session was assigned, and which rule found them. */
+/**
+ * The task ids a spawned session was assigned, and which rule found them. The spawner's recorded
+ * `meta.task` wins: it is written at the source, where the name and brief rules only read prose.
+ */
 declare function assignedTaskIds(input: AssignmentInput): Assignment;
 
 type RequestSection = "tools" | "system" | "messages";

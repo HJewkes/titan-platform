@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a bypass permission mode is refused by name",
+      "file": "packages/seat-spec/src/parse.ts",
+      "find": "if ((BYPASS_PERMISSION_MODES as readonly unknown[]).includes(mode)) {",
+      "replace": "if (false) {",
+      "kills": [
+        "parseSeat refuses the bypassPermissions permission mode by name"
+      ]
+    },
+    {
+      "name": "a headless surface is refused by name",
+      "file": "packages/seat-spec/src/parse.ts",
+      "find": "if (raw.surface === \"headless\") {",
+      "replace": "if (raw.surface === \"none\") {",
+      "kills": [
+        "parseSeat refuses a headless surface by name"
+      ]
+    },
+    {
+      "name": "a missing field is named rather than reported as invalid",
+      "file": "packages/seat-spec/src/parse.ts",
+      "find": "if (valueAt(raw, issue.path) === undefined) return { code: \"missing_field\", detail: field };",
+      "replace": "",
+      "kills": [
+        "parseSeat refuses a definition missing a required field, naming it"
+      ]
+    },
+    {
+      "name": "the definition name must match the file name",
+      "file": "packages/seat-spec/src/parse.ts",
+      "find": "if (parsed.data.name !== expectedName) {",
+      "replace": "if (false) {",
+      "kills": [
+        "parseSeat refuses a definition whose name differs from its file name"
+      ]
+    },
+    {
+      "name": "owner-only readers must be listed seats",
+      "file": "packages/seat-spec/src/schema.ts",
+      "find": "index.ownerOnlyReaders.every((reader) => index.seats.includes(reader))",
+      "replace": "true",
+      "kills": [
+        "parseSeatIndex refuses an owner-only reader that is not a listed seat"
+      ]
+    }
+  ]
+}

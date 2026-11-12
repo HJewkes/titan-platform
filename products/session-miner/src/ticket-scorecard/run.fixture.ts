@@ -56,9 +56,22 @@ export class ScorecardWorld {
     writeFileSync(path.join(dir, `${id}.yml`), stringify(body));
   }
 
-  spawn(taskId: string, at: string, actor = "seat-one", launchedBy?: string): void {
-    const meta = JSON.stringify({ task: taskId, work_role: "implementer", ...(launchedBy && { launched_by: launchedBy }) });
+  spawn(taskId: string, at: string, actor = "seat-one", launchedBy?: string, sessionId?: string): void {
+    const meta = JSON.stringify({ task: taskId, work_role: "implementer", ...(launchedBy && { launched_by: launchedBy }), ...(sessionId && { session_id: sessionId }) });
     this.events.prepare("INSERT INTO events (ts, kind, actor, meta) VALUES (?, 'agent_spawned', ?, ?)").run(Date.parse(at), actor, meta);
+  }
+
+  /** A spawn that recorded no `meta.task`, only the spawned session. */
+  untaskedSpawn(sessionId: string, at: string, actor = "seat-one"): void {
+    const meta = JSON.stringify({ session_id: sessionId, work_role: "implementer" });
+    this.events.prepare("INSERT INTO events (ts, kind, actor, meta) VALUES (?, 'agent_spawned', ?, ?)").run(Date.parse(at), actor, meta);
+  }
+
+  /** The session graph's resolved origin link for a session. */
+  origin(sessionId: string, taskIds: readonly string[], source: string): void {
+    this.graph
+      .prepare("INSERT INTO session_origin (session_id, origin_system, task_ids, task_source, resolved_at) VALUES (?, 'agent-chat', ?, ?, '2026-11-10T00:00:00Z')")
+      .run(sessionId, taskIds.length === 0 ? null : JSON.stringify(taskIds), source);
   }
 
   register(taskId: string, pr: number, runId: string, spec: RunSpec): void {
