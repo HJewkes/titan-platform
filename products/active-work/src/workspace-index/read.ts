@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { isAgentVisible } from '@titan-design/pm';
 import YAML from 'yaml';
 import { NoteFrontmatterSchema } from '../schemas/note.js';
 import { TaskSchema } from '../schemas/task.js';
@@ -70,10 +71,13 @@ function readInitiative(file: WorkspaceFile, raw: string): WorkspaceRecord {
       task_prefix: brief.task_prefix,
       updated: brief.updated,
     },
-    spans: compact([
-      locate(raw, 'title', brief.title),
-      lead === undefined ? null : locate(raw, 'body', lead),
-    ]),
+    // An owner-only brief keeps its row for owner tooling but nothing an agent can search.
+    spans: isAgentVisible({ slug: file.slug, brief: data })
+      ? compact([
+          locate(raw, 'title', brief.title),
+          lead === undefined ? null : locate(raw, 'body', lead),
+        ])
+      : [],
     tags: [],
     body: '',
   };

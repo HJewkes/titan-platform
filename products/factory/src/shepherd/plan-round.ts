@@ -183,7 +183,7 @@ interface PlanRoundResult {
 export const planUnit = (task: string): string => `plan-${task.toLowerCase().replace(/\//g, "-")}`;
 
 /** Every binding is checked with the factory's own record schema, so a round that would record nothing is refused here, not at the owner's pick. */
-function checkBindings(round: PlanRound): void {
+export function checkBindings(round: PlanRound): void {
   for (const { task, repo, gate, scope } of round.planApprovals) {
     const parsed = PlanApprovalActionSchema.safeParse({ kind: "plan-approval", task, repo, round: "x", gate, scope });
     if (!parsed.success) throw new PlanRoundRefused(`the ${gate} binding would not record: ${z.prettifyError(parsed.error)}`);

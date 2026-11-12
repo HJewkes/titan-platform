@@ -10,8 +10,8 @@ import { openDatabase, SpanFtsTables, spanFtsTablesDdl, type Db } from '@titan-d
  */
 
 interface PrecedentSearchOptions {
-  /** Initiatives whose rows are never returned; required so no caller can forget it. */
-  humanOnly: ReadonlySet<string>;
+  /** False withholds an initiative's rows; required so no caller can forget it (TP-5453 P6). */
+  isVisible: (initiative: string) => boolean;
   /** Return rows no initiative claims; off by default (TP-695 Q6). */
   includeUnclaimed?: boolean;
   limit?: number;
@@ -35,7 +35,7 @@ export function isUnclaimed(row: LedgerRow): boolean {
 
 function visibleRows(rows: LedgerRow[], options: PrecedentSearchOptions): LedgerRow[] {
   return rows.filter((row) => {
-    if (row.initiative !== null && options.humanOnly.has(row.initiative)) return false;
+    if (row.initiative !== null && !options.isVisible(row.initiative)) return false;
     if (isUnclaimed(row) && options.includeUnclaimed !== true) return false;
     return options.category === undefined || row.category === options.category;
   });

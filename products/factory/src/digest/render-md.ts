@@ -4,6 +4,7 @@ import type { FrictionDay } from "../shepherd/owner-friction.js";
 import type { Ask, AttestedLine, DecidedLine, DigestModel, FlowStats, PoolLine, ProofFixture, ReversalLine } from "./model.js";
 import { alarmLine, gateAlarm, safeConsoleOrigin } from "./gate-alarm.js";
 import { DEFAULT_CAPS, type RankedDigest } from "./rank.js";
+import { scorecardLines } from "./scorecard.js";
 
 export const WORD_LIMIT = DEFAULT_CAPS.words;
 export const FULL_COMMAND = "titan-factory digest run --full";
@@ -126,6 +127,7 @@ function body(d: RankedDigest, decidedShown: number): string[] {
     ...waitingLines(d.waiting),
     ...flowLines(d.flow),
     ...frictionLines(d.friction),
+    ...scorecardLines(d.scorecard),
     ...(d.gaps.length > 0 ? section("Gaps", d.gaps.map((gap) => `- ${clip(gap, REASON_WORDS)}`), "") : []),
   ];
 }

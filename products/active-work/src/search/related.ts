@@ -102,8 +102,6 @@ export interface RelatedInput {
   exclude?: string[];
   /** How the caller renders a hit, so the budget counts what is actually printed. */
   render?: (hit: RelatedHit) => string;
-  /** False drops the hit before the cap, so a withheld initiative never takes a slot. */
-  servable?: (initiative: string | null) => boolean;
   dbPath?: string;
   activeRoot?: string;
 }
@@ -249,7 +247,6 @@ async function rankedHits(
   activeRoot: string,
 ): Promise<{ hits: RelatedHit[]; degraded: RelatedDegradation[] }> {
   const exclude = new Set(input.exclude ?? []);
-  const servable = input.servable ?? (() => true);
   const result = await searchWorkspace(query.expression, {
     graph,
     rawExpression: true,
@@ -259,7 +256,7 @@ async function rankedHits(
     ...(input.activeRoot !== undefined ? { activeRoot: input.activeRoot } : {}),
   });
   const kept = result.hits
-    .filter((hit) => !exclude.has(hit.ref) && servedByRelated(hit) && servable(hit.initiative))
+    .filter((hit) => !exclude.has(hit.ref) && servedByRelated(hit))
     .slice(0, limit)
     .map(toRelatedHit);
   return {

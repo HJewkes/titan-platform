@@ -82,7 +82,7 @@ async function extractQueueRows(activeRoot: string, humanOnly: string[] = []) {
 
 async function searchHits(activeRoot: string) {
   const rows = (await readLedgerRows(activeRoot)).rows;
-  return searchPrecedents(rows, 'restart the broker', { humanOnly: new Set() });
+  return searchPrecedents(rows, 'restart the broker', { isVisible: () => true });
 }
 
 beforeEach(() => {

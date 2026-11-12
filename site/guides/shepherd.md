@@ -454,6 +454,59 @@ branch-prefix seat is chosen per PR and is not checked ahead of time. A roster t
 read raises no alarm; serve warns once that it skipped the check, and again after the next
 successful read.
 
+## The gate model {#gate-model}
+
+The owner accepted the gate audit on 2026-11-12 (TP-5412). Its rule: a class of pull request
+merges on reviews plus green CI only when that class comes from a named path table, a
+registration field or a round's structured field. A class Shepherd cannot name keeps the owner
+gate. No class comes from matching a reason string or a path's shape. The table below shows
+what is on main today; the rows marked *planned* are decided but not built.
+
+| Class | How Shepherd finds it | What merges it |
+| --- | --- | --- |
+| Ordinary change under an `auto` policy | no row below matches | a reviewer `MERGE` at the head and green required checks (`MRG-AU-RV`) |
+| Visual-path change, `shepherd.visualGate: async` | the seat's `visual_paths` globs; recorded as `visualChanged` | the same reviews and green CI; no owner sign-off; the [feedback sheet](#visual-baselines) follows the merge |
+| Authority, security or policy change | `SHEPHERD_CLASS_RULES` path tables, or a `security` kind | `g10-adversary`: two independent reviewer `MERGE`s, then the seat releases the hold |
+| Low-tier policy touch | `lowTierPolicyTouch` in `g10-low-tier.ts` (named policy tables only) | *planned*: one opus `MERGE`. The classifier is on main, and nothing calls it yet, so the row above still applies |
+| Over 400 changed lines, or a store migration | line count, path table | `g10-review`: one opus `MERGE` releases the hold |
+| `owner-gate` seat policy, visual path under `visualGate: owner`, or `gate-2-visual` | registration, seat policy | the owner's `approve-merge` answer |
+| Unknown class: unread or empty file list, unlisted path table | the read failed or no table matches | the owner's `approve-merge` answer |
+
+**What still raises an owner gate.** The `owner-gate` policy and a hold that names the owner.
+One-way items: money, external accounts, deletion and publishing a new package. A visual path
+while `visualGate` is `owner` (or absent). An unread file list (`files-unread`). A `main-red`
+or `main-frozen` stop after the merge. The risk tier records publish files and settings files
+(`PUBLISH_FILES`, `SETTINGS_FILES` in `risk-tier.ts`) as high, but the tier is evidence only
+today; it does not stop a merge by itself.
+
+**The visual switch.** `shepherd.visualGate` takes `owner` or `async` and is read live. An
+absent key means `owner`, so nothing changes until the rollout turns it on per the owner's
+config. Any value other than exactly `async` reads as `owner`. The stamp is recorded on the
+merge evidence at each head, so a later config change does not alter a decision already
+recorded. See [Visual paths](#visual-paths) for what `async` skips.
+
+**The feedback sheet.** Under `async`, `titan-factory shepherd visual-week-feedback` batches a
+repo's merged visual pull requests of an ended ISO week into one read-only console round of
+kind `feedback`. The console shows it as a what-changed sheet: per PR, the link, head and
+task, the changed visual paths and one optional notes box. It has no Ship control, adds no
+inbox item and no nudge, and asks nothing that binds a merge. See
+[Visual baselines](#visual-baselines) for the command. The sheet lists PRs by PR number, lowest
+first, and the measured visual tier appears as a label only. Ranking by tier (tier 2 first, then
+the largest diff) is *planned* and not built. A note you write on the sheet
+is meant to become a task. That sweep (`visual-feedback-notes`) is not on main yet.
+The visual threshold (TP-4320) and tiers (TP-4761) are measurements on that sheet, not merge
+gates, once `visualGate` is `async`. Until then the [tier](#visual-tiers) halves still gate.
+
+**Owner approval moves to prioritization.** Owner decision 2026-11-12: the owner's one
+approval is on the task, not on the merge. A planner marks a task `owner-validate` only for a
+new product or UX direction with no prior decision, a one-way door, a new cap, or a plan that
+widens authority or permissions. The owner approves that task once in the console, and nothing
+is asked at merge for its planned paths. Every other task dispatches on the two-way-door rule
+and shows in the digest. A piece of work that matters for taste is flagged for visual sign-off
+when the task is approved, and only that task waits at merge. This is *planned*: the `task`
+approval record and the dispatcher check are not on main, so the merge gates above are what
+runs today.
+
 ## Merges and the guard on R27 {#merge-guard}
 
 From the bot account (A21, M1a) until M3's walk over main moves exists, the rule that agents
@@ -1386,6 +1439,12 @@ argv. Filing a closed week again prints `created: false`. A week that has not en
 refused, because its round would change under a re-run. When `visualGate` is not `async`,
 the command prints `mode: off` and builds nothing.
 
+**Notes become tasks.** `titan-factory shepherd visual-feedback-notes --initiative <slug>`
+reads the answered `feedback` rounds in `shepherd.visualDelivery.roundsDir` and files one
+active-work task per non-blank note, from the round's PR and frame. The initiative is the
+prefix of the PR's task, else `--initiative`. A ledger of round id and note index in the
+factory state dir makes a re-run file nothing already filed; an unanswered round files nothing.
+
 ### Visual tiers {#visual-tiers}
 
 `shepherd.visualTier` in the factory config sorts a head that the visual-path row would gate
@@ -2273,6 +2332,29 @@ A registration claims every unclaimed approval of its task. Give each PR of a mu
 own plan round with a slice task such as `titan-platform/TP-1234-s2`, and register that PR with
 the same `--task`. Two PRs under one task string fail closed: the first to register claims both
 approvals, and the second gates.
+
+**Validating a task (gate model S8a, TP-5411).** A task tagged `owner-validate` waits for the
+owner's own validation of its WHAT. The coordinator drafts that one question:
+
+```
+titan-factory shepherd plan-round --task-approval <initiative>/<ID> --reason <reason> --repo <owner/name> [--visual-signoff] | titan-console decisions file - --seat <coordinator> --initiative <slug>
+```
+
+It reads the task's title, `done_when` and tags from active-work and refuses a task without the
+`owner-validate` tag, a key that is not `<initiative>/<ID>`, and a `--reason` outside owner rule
+Q4's four: `new-direction`, `one-way-door`, `new-cap`, `authority-widening`. The round has one
+question, `Validate <ID>: <title>?`, with approve and not-now options. The binding carries the
+whole done_when text, whitespace collapsed and never cut, and the console's scope card shows that
+field with the reason and the visual sign-off flag, so the owner reads exactly what the approval
+binds whoever drafted the round. The console and the record both refuse a done_when holding
+escape, invisible or control characters, or uncollapsed whitespace, rather than show it altered.
+The approve pick records a `task` row in `shepherd_plan_approval`, keyed by the task key and
+holding the done_when text itself, not a digest of it. No run
+claims it, so it covers every PR of the task, and only the console's owner-remote writes it. Code
+reads it only through `ownerTaskApproval` (`products/factory/src/shepherd/owner-task-approval.ts`),
+which reads none when the done_when differs in any word from the text the owner approved. Nothing at dispatch
+or merge reads it yet; S8b adds the check and the merge backstop. A refusal exits 65 and an
+unreachable active-work exits 69, each with no round printed.
 
 **Content drift.** A `ci-policy` approval holds only while every byte the PR merges matches its
 pin, so a policy plan carries the final content of every file in its PR, and the implementer
