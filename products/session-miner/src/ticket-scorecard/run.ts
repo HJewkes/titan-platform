@@ -24,6 +24,7 @@ import { freezeWeeks, type FreezeResult } from "./freeze.js";
 import { buildIndexes, closeSources, notMeasured, openSources, rowSources, type RowSources, type ScorecardPaths } from "./load.js";
 import type { PerRunSource } from "./per-run.js";
 import { snapshotPool } from "./pool.js";
+import type { OriginLinkCounts } from "./read-origin.js";
 import { computeRows } from "./rows.js";
 import type { SourceName } from "./sources.js";
 import { readMarks, writeMarks } from "./watermarks.js";
@@ -60,6 +61,8 @@ export interface ScorecardRunResult {
   phaseRowsChanged: number;
   poolRowsWritten: number;
   marksAdvanced: number;
+  /** Spawns with no recorded task, by how the session origin link fared; null when no row was computed. */
+  originLinks: OriginLinkCounts | null;
   taskRows: number;
   weekRows: number;
   frozen: string[];
@@ -74,6 +77,7 @@ interface Changes {
   phaseRowsChanged: number;
   poolRowsWritten: number;
   marksAdvanced: number;
+  originLinks: OriginLinkCounts | null;
   freeze: FreezeResult;
 }
 
@@ -89,13 +93,13 @@ function syncWeekRows(store: Db, cells: readonly WeekRow[], computedAt: string):
   return changed.length;
 }
 
-function computeTaskRows(store: Db, s: RowSources, options: ScorecardRunOptions, computedAt: string): Pick<Changes, "dirtyTasks" | "taskRowsChanged" | "marksAdvanced"> {
+function computeTaskRows(store: Db, s: RowSources, options: ScorecardRunOptions, computedAt: string): Pick<Changes, "dirtyTasks" | "taskRowsChanged" | "marksAdvanced" | "originLinks"> {
   const before = readMarks(store);
   const idx = buildIndexes(s);
   const dirty = dirtySet(s, idx, before, options.rebuild);
   const rows = computeRows(store, s, idx, dirty.keys);
   const taskRowsChanged = upsertTaskRows(store, rows, computedAt);
-  return { dirtyTasks: dirty.keys.size, taskRowsChanged, marksAdvanced: writeMarks(store, before, dirty.marks) };
+  return { dirtyTasks: dirty.keys.size, taskRowsChanged, marksAdvanced: writeMarks(store, before, dirty.marks), originLinks: idx.originLinks };
 }
 
 const NO_FREEZE: FreezeResult = { frozen: [], drift: [], filesWritten: 0 };
@@ -124,7 +128,7 @@ function changedCount(c: Changes): number {
   return c.taskRowsChanged + c.weekRowsChanged + c.phaseRowsChanged + c.poolRowsWritten + c.freeze.filesWritten;
 }
 
-const NOTHING: Changes = { dirtyTasks: 0, taskRowsChanged: 0, weekRowsChanged: 0, phaseRowsChanged: 0, poolRowsWritten: 0, marksAdvanced: 0, freeze: NO_FREEZE };
+const NOTHING: Changes = { dirtyTasks: 0, taskRowsChanged: 0, weekRowsChanged: 0, phaseRowsChanged: 0, poolRowsWritten: 0, marksAdvanced: 0, originLinks: null, freeze: NO_FREEZE };
 
 async function runLocked(options: ScorecardRunOptions): Promise<ScorecardRunResult> {
   const startedAt = options.now();

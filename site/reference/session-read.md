@@ -303,7 +303,10 @@ assignedTaskIds({ agentName: "factory-tp422", brief, isKnown });
 // { taskIds: ["TP-422"], source: "name" }
 ```
 
-`source` says which rule found the ids. The name wins over the brief. `name-over-brief`
+`source` says which rule found the ids. A recorded task wins over both name and brief:
+pass the spawn's `meta.task` as `spawnTask` (bare `TP-7` or `initiative/TP-7`), and when
+`isKnown` accepts it the result is that one id with source `spawn-meta`. An unknown or
+absent `spawnTask` falls through to the rules below. The name wins over the brief. `name-over-brief`
 marks a name whose ids the brief does not repeat. `brief-anchor` is a line that begins with
 `TASK`, `ASSIGNMENT`, `YOUR TASK`, `IMPLEMENT` or `GOAL`; ids in parentheses on it are
 references, not assignments. `brief-paragraph` is the first known id near the start of the

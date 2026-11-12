@@ -46,6 +46,18 @@ describe("assignedTaskIds", () => {
     expect(assign(brief)).toEqual({ taskIds: ["TP-40"], source: "brief-paragraph" });
   });
 
+  it("meta task wins over name and brief", () => {
+    const result = assignedTaskIds({ agentName: "factory-tp422", brief: "TASK: TP-423 the follow-up", isKnown: everyId, spawnTask: "demo/TP-500" });
+
+    expect(result).toEqual({ taskIds: ["TP-500"], source: "spawn-meta" });
+  });
+
+  it("falls back to the name and brief when the recorded meta task is not a known task", () => {
+    const result = assignedTaskIds({ agentName: "factory-tp422", brief: "", isKnown: known("TP-422"), spawnTask: "none" });
+
+    expect(result).toEqual({ taskIds: ["TP-422"], source: "name" });
+  });
+
   it("prefers the name when name and brief disagree", () => {
     const result = assign("TASK: TP-423 the follow-up", "factory-tp422");
 
