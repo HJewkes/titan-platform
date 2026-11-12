@@ -216,6 +216,79 @@ describe('RefreshScheduler', () => {
     await scheduler.close();
   });
 
+  it('a gate that throws before the first pass counts as open: the pass runs and nothing is reported held', async () => {
+    const clock = fakeClock();
+    const run = vi.fn(async () => summary);
+    const onHoldChange = vi.fn();
+    const scheduler = new RefreshScheduler(run, {
+      ...clock,
+      gate: async () => {
+        throw new Error('probe failed');
+      },
+      onHoldChange,
+    });
+
+    scheduler.trigger();
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+
+    expect(scheduler.status().held).toBe(false);
+    expect(onHoldChange).not.toHaveBeenCalled();
+  });
+
+  it('a gate that throws at the post-cap recheck counts as open: held clears and the resume is reported', async () => {
+    const clock = fakeClock();
+    let calls = 0;
+    const run = vi.fn(async () => summary);
+    const onHoldChange = vi.fn();
+    const scheduler = new RefreshScheduler(run, {
+      ...clock,
+      gate: async () => {
+        calls += 1;
+        if (calls > 7) throw new Error('probe failed');
+        return { hold: true, reason: 'swap 70% used' };
+      },
+      gateRecheckMs: 60_000,
+      maxHoldMs: 300_000,
+      onHoldChange,
+    });
+
+    scheduler.trigger();
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(scheduler.status().running).toBe(false));
+
+    expect(calls).toBe(8);
+    expect(scheduler.status().held).toBe(false);
+    expect(onHoldChange.mock.calls.at(-1)).toEqual([false, undefined]);
+  });
+
+  it('a post-cap recheck that finds the gate open reports the resume once', async () => {
+    const clock = fakeClock();
+    let gateOpen = false;
+    const run = vi.fn(async () => {
+      gateOpen = true;
+      return summary;
+    });
+    const onHoldChange = vi.fn();
+    const scheduler = new RefreshScheduler(run, {
+      ...clock,
+      gate: async () => (gateOpen ? { hold: false } : { hold: true, reason: 'swap 70% used' }),
+      gateRecheckMs: 60_000,
+      maxHoldMs: 300_000,
+      onHoldChange,
+    });
+
+    scheduler.trigger();
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(scheduler.status().running).toBe(false));
+
+    expect(scheduler.status().held).toBe(false);
+    expect(onHoldChange.mock.calls).toEqual([
+      [true, 'swap 70% used'],
+      [false, 'hold cap 300000 ms reached'],
+      [false, undefined],
+    ]);
+  });
+
   it('onError receives the failed pass kind and the backoff the scheduler chose', async () => {
     const clock = fakeClock();
     const boom = new Error('corpus unreadable');

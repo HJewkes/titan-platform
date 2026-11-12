@@ -22,6 +22,15 @@ export const DEFAULT_MIN_INTERVAL_MS = 15_000;
 export const DEFAULT_GATE_RECHECK_MS = 60_000;
 const DEFAULT_MAX_HOLD_MS = 30 * 60_000;
 
+/**
+ * A gate that throws counts as open, at the first check and at the post-cap recheck alike.
+ * The gate only defers work under resource pressure; a broken probe must not freeze the index
+ * (or leave readers stuck on stale data), so an unreadable gate is treated as no pressure.
+ */
+async function readGate(gate: () => Promise<GateDecision>): Promise<GateDecision> {
+  return gate().catch((): GateDecision => ({ hold: false }));
+}
+
 /** proper-lockfile gives up with ELOCKED once its retries run out: someone else is mid-pass. */
 export function isLockContention(err: unknown): boolean {
   return (err as { code?: unknown } | null)?.code === 'ELOCKED';
@@ -154,7 +163,7 @@ export class RefreshScheduler {
     const maxHoldMs = this.options.maxHoldMs ?? DEFAULT_MAX_HOLD_MS;
     let holdStart = this.now();
     for (;;) {
-      const decision = await gate().catch((): GateDecision => ({ hold: false }));
+      const decision = await readGate(gate);
       if ((this.hold !== null) !== decision.hold) {
         holdStart = this.now();
         onHoldChange?.(decision.hold, decision.reason);
@@ -180,10 +189,11 @@ export class RefreshScheduler {
   private async recheckAfterCap(): Promise<void> {
     const { gate } = this.options;
     if (!gate || !this.capReleased || this.closed) return;
-    const decision = await gate().catch((): GateDecision => ({ hold: true }));
+    const decision = await readGate(gate);
     if (decision.hold) return;
     this.hold = null;
     this.capReleased = false;
+    this.options.onHoldChange?.(false, decision.reason);
   }
 
   /** Sleep that `close()` cuts short; an injected `sleep` is raced against the close instead. */
