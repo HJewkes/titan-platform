@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { parseFrontmatter } from '../utils/gray-matter-io.js';
+import { initiativeIsAgentVisible } from '../sessions/visibility.js';
 import set from './set.js';
 import { withEmptyActiveRoot } from '../test-support/test-helpers.js';
 import type { CommandContext } from '../registry/types.js';
@@ -67,6 +68,54 @@ describe('set on a brief that opts into burndown', () => {
       ).rejects.toThrow(/grant/);
 
       expect(await fs.readFile(briefPath, 'utf8')).toBe(BRIEF_WITH_AUTONOMY);
+    });
+  });
+});
+
+describe('set visibility', () => {
+  const BRIEF = `---
+schema_version: 5
+title: Alpha
+updated: '2026-09-01'
+state: backburner
+task_prefix: AL
+---
+# Alpha
+`;
+
+  it('the owner marks an initiative agent-visible, and agent-facing readers then serve it', async () => {
+    await withEmptyActiveRoot(async (activeRoot) => {
+      const briefPath = await scaffold(activeRoot, 'alpha', BRIEF);
+      expect(await initiativeIsAgentVisible(activeRoot, 'alpha')).toBe(false);
+
+      await set.run({ slug: 'alpha', field: 'visibility', value: 'agent-visible' }, makeCtx(activeRoot));
+
+      expect(parseFrontmatter(await fs.readFile(briefPath, 'utf8')).data.visibility).toBe('agent-visible');
+      expect(await initiativeIsAgentVisible(activeRoot, 'alpha')).toBe(true);
+    });
+  });
+
+  it('refuses a value outside the closed set', async () => {
+    await withEmptyActiveRoot(async (activeRoot) => {
+      await scaffold(activeRoot, 'alpha', BRIEF);
+
+      await expect(
+        set.run({ slug: 'alpha', field: 'visibility', value: 'public' }, makeCtx(activeRoot)),
+      ).rejects.toThrow(/visibility/);
+    });
+  });
+
+  it('refuses an agent caller, so an agent cannot widen its own read access', async () => {
+    await withEmptyActiveRoot(async (activeRoot) => {
+      const briefPath = await scaffold(activeRoot, 'alpha', BRIEF);
+
+      await expect(
+        set.run(
+          { slug: 'alpha', field: 'visibility', value: 'agent-visible' },
+          { ...makeCtx(activeRoot), caller: 'agent' },
+        ),
+      ).rejects.toThrow(/owner/);
+      expect(parseFrontmatter(await fs.readFile(briefPath, 'utf8')).data.visibility).toBeUndefined();
     });
   });
 });

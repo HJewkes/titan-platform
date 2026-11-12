@@ -199,5 +199,6 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
     inboxActions: inboxActionsOf(config),
     shipped: { dir: config.shippedDir ?? path.join(config.stateDir, "shipped"), dayStart: dayStartFrom(config.dayStart) },
     ...(config.blockerHours !== undefined && { blockerHours: config.blockerHours }),
+    ...(config.scorecardStore !== undefined && { scorecard: { storeFile: config.scorecardStore } }),
   };
 }
