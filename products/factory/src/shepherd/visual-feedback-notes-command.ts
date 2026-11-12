@@ -1,6 +1,6 @@
 // `titan-factory shepherd visual-feedback-notes` (TP-5410): the sweep over the console's answered feedback rounds, with the
 // real ports: rounds read from the console rounds dir, tasks added with the active-work CLI, a JSON ledger in the state dir.
-import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { EXIT, defineCommand } from "@titan-design/registry";
 import { z } from "zod";
@@ -8,7 +8,7 @@ import { configPath, factoryStateDir, loadConfig } from "../config.js";
 import type { FactoryContext } from "../context.js";
 import { coded } from "./register-args.js";
 import { systemDeliveryExec, type DeliveryExec } from "./visual-delivery.js";
-import { readRegularText } from "./visual-feedback-notes-read.js";
+import { readRounds } from "./round-ship-sweep.js";
 import { sweepFeedbackNotes, type NoteTask, type NotesPorts, type NotesResult } from "./visual-feedback-notes.js";
 
 const Args = z.object({ initiative: z.string().min(1) });
@@ -41,8 +41,7 @@ async function addTask(exec: DeliveryExec, task: NoteTask): Promise<void> {
 
 function portsOf(roundsDir: string, ledger: string, exec: DeliveryExec): NotesPorts {
   return {
-    roundIds: async () => (await readdir(roundsDir, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort(),
-    read: (id, file) => readRegularText(join(roundsDir, id, file)),
+    rounds: async () => (await readRounds(roundsDir)).sort((a, b) => a.id.localeCompare(b.id)),
     filed: async () => new Set(await readLedger(ledger)),
     file: async (task) => {
       await addTask(exec, task);

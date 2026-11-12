@@ -37,7 +37,7 @@ export const RoundFeedbackSchema = z.object({
   round: z.number().int(),
   manifestSha256: z.string(),
   submittedAt: z.string(),
-  answers: z.array(z.object({ questionId: z.string(), pick: z.string().optional(), revisionRequested: z.boolean().optional() })),
+  answers: z.array(z.object({ questionId: z.string(), pick: z.string().optional(), revisionRequested: z.boolean().optional(), text: z.string().optional() })),
 });
 
 export type RoundFeedback = z.infer<typeof RoundFeedbackSchema>;
@@ -75,9 +75,22 @@ function parseRound(roundBytes: string | Uint8Array): z.infer<typeof RoundManife
   }
 }
 
-function refusal(round: z.infer<typeof RoundManifest>, roundBytes: string | Uint8Array, feedback: RoundFeedback, now: Date, maxAgeMs: number): string | undefined {
+/** Whether feedback.json answers this exact round.json: the manifest hash, unit and round all match. Undefined when it does. */
+export function answerBindingRefusal(round: z.infer<typeof RoundManifest>, roundBytes: string | Uint8Array, feedback: RoundFeedback): string | undefined {
   if (createHash("sha256").update(roundBytes).digest("hex") !== feedback.manifestSha256) return "the feedback was not written against this round.json (manifest hash differs)";
   if (feedback.unit !== round.unit || feedback.round !== round.round) return `the feedback is for ${feedback.unit} r${feedback.round}, the round is ${round.unit} r${round.round}`;
+  return undefined;
+}
+
+/** The binding check on raw round bytes, for a reader that has no use for the manifest's questions. */
+export function boundAnswerRefusal(roundBytes: string | Uint8Array, feedback: RoundFeedback): string | undefined {
+  const round = parseRound(roundBytes);
+  return round ? answerBindingRefusal(round, roundBytes, feedback) : "round.json does not read as a round";
+}
+
+function refusal(round: z.infer<typeof RoundManifest>, roundBytes: string | Uint8Array, feedback: RoundFeedback, now: Date, maxAgeMs: number): string | undefined {
+  const unbound = answerBindingRefusal(round, roundBytes, feedback);
+  if (unbound !== undefined) return unbound;
   const age = now.getTime() - Date.parse(feedback.submittedAt);
   return Number.isNaN(age) || age > maxAgeMs ? "the submit is stale or has no valid time" : undefined;
 }
