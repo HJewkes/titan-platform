@@ -1216,7 +1216,7 @@ Tier 2, `@titan-design/session-analytics@0.17.4`. Pricing, session classificatio
 
 **Use this when:**
 
-You need cost, session class, role, episodes or a spend report over mined sessions, or the timeline read model behind a session view (turns, minute buckets, token and cost series). Also for agent-chat operations: it reads agent-chat's events.db through a connection the caller opened, parses broker.log lines, transcript denials and seat journals the caller reads, and reports blocked merges, dark agents and review fill. Also for a coordinator duty meter over seat transcript lines the caller reads. Session parsing is session-read; storage is session-graph.
+You need cost, session class, role, episodes or a spend report over mined sessions, or the timeline read model behind a session view (turns, minute buckets, token and cost series). Also for agent-chat operations: it reads agent-chat's events.db through a connection the caller opened, parses broker.log lines, transcript denials and seat journals the caller reads, and reports blocked merges, dark agents and review fill. Also for a coordinator duty meter over seat transcript lines the caller reads, and for the per-task ticket scorecard core (task rows, weekly cells, the rule pick and red flags) over rows the caller reads. Session parsing is session-read; storage is session-graph.
 
 Key exports:
 
