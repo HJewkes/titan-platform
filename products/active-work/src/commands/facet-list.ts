@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { listFacets } from '../facets/facet-file.js';
 import { defineCommand } from '../registry/index.js';
 import { listInitiativeSlugsOrEmpty } from '../sessions/initiatives.js';
+import { slugsForCaller } from '../sessions/visibility.js';
 
 const ArgsSchema = z.object({
   slug: z.string().min(1).optional(),
@@ -38,7 +39,9 @@ export default defineCommand<Args, Result>({
   },
   async run(args, ctx) {
     const slugs = await listInitiativeSlugsOrEmpty(ctx.activeRoot);
-    const owners = args.slug ? slugs.filter((s) => s === args.slug) : slugs;
+    const owners = args.slug
+      ? slugs.filter((s) => s === args.slug)
+      : await slugsForCaller(ctx.activeRoot, slugs, ctx);
     const { facets, malformed } = await listFacets(ctx.activeRoot, owners);
     return {
       facets: facets.map((facet) => ({

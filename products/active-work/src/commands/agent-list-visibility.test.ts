@@ -11,6 +11,8 @@ import { FIXTURE_LINES, renderTranscript } from '../test-support/session-index/f
 import { withEmptyActiveRoot } from '../test-support/test-helpers.js';
 import artifactList from './artifact-list.js';
 import audit from './audit.js';
+import facetAdd from './facet-add.js';
+import facetList from './facet-list.js';
 import inventory from './inventory.js';
 import list from './list.js';
 import loopBoard from './loop-board.js';
@@ -175,6 +177,20 @@ describe('cross-initiative list verbs for an agent caller', () => {
         [VISIBLE, true],
         [HIDDEN, false],
       ]);
+    });
+  });
+
+  it('facet list hides the facets an owner-only initiative defines from an agent', async () => {
+    await withEmptyActiveRoot(async (root) => {
+      seed(root);
+      await facetAdd.run({ slug: VISIBLE, alias: 'widgets', tags: ['ui'] }, owner(root));
+      await facetAdd.run({ slug: HIDDEN, alias: 'gadgets', tags: ['ui'] }, owner(root));
+
+      const forAgent = await facetList.run({}, agent(root));
+      const forOwner = await facetList.run({}, owner(root));
+
+      expect(forAgent.facets.map((facet) => facet.owner)).toEqual([VISIBLE]);
+      expect(forOwner.facets.map((facet) => facet.owner).sort()).toEqual([VISIBLE, HIDDEN]);
     });
   });
 
