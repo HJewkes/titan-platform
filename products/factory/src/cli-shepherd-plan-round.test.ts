@@ -8,7 +8,7 @@ import { fakeActiveWork } from "./test-support/active-work.js";
 
 const REPO = "example-org/example-repo";
 const DONE_WHEN = "The widget renders in both themes.";
-const task = (tags: string[]) => ({ id: "TP-7", status: "open", title: "Add a dark theme", done_when: DONE_WHEN, notes: "", tags });
+const task = (tags: string[], doneWhen = DONE_WHEN) => ({ id: "TP-7", status: "open", title: "Add a dark theme", done_when: doneWhen, notes: "", tags });
 
 async function planRound(args: string[], fetch: typeof globalThis.fetch) {
   const out = { stdout: "", stderr: "" };
@@ -36,6 +36,34 @@ describe("shepherd plan-round --task-approval", () => {
     expect(round.planApprovals).toEqual([{ questionId: "q1", approve: round.questions[0].options[0], task: "example/TP-7", repo: REPO, gate: "task", scope }]);
     const { task: boundTask, repo, gate } = round.planApprovals[0];
     expect(PlanApprovalActionSchema.safeParse({ kind: "plan-approval", task: boundTask, repo, round: "r", gate, scope }).success).toBe(true);
+  });
+
+  it("plan-round --task-approval shows the whole of a done_when over 160 characters, the text its hash covers", async () => {
+    const long = `${"The widget renders in both themes and every page keeps its layout. ".repeat(3)}\nThen the store moves to a new account.`;
+    const aw = fakeActiveWork([task(["owner-validate"], long)]);
+
+    const { code, stdout } = await planRound(approvalArgs(), aw.fetch);
+
+    expect(code).toBe(EXIT.OK);
+    const round = JSON.parse(stdout);
+    const shown = long.trim().replace(/\s+/g, " ");
+    expect(shown.length).toBeGreaterThan(160);
+    expect(round.sections[0].context).toContain(`Done when: ${shown}\n`);
+    expect(round.planApprovals[0].scope.doneWhenHash).toBe(doneWhenHash(shown));
+  });
+
+  it.each([
+    ["a bidi override", "The widget renders \u202ein both themes."],
+    ["an escape sequence", "The widget renders \u001b[8mhidden\u001b[0m in both themes."],
+    ["a zero-width space", "The widget\u200b renders in both themes."],
+  ])("plan-round --task-approval refuses a done_when holding %s, which the owner would not see", async (_case, doneWhen) => {
+    const aw = fakeActiveWork([task(["owner-validate"], doneWhen)]);
+
+    const { code, stdout, stderr } = await planRound(approvalArgs(), aw.fetch);
+
+    expect(code).toBe(EXIT.DATAERR);
+    expect(stdout).toBe("");
+    expect(stderr).toContain("the owner would not see");
   });
 
   it("plan-round --task-approval refuses a task not tagged owner-validate", async () => {

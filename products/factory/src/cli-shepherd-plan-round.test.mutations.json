@@ -27,6 +27,24 @@
       "kills": [
         "shepherd plan-round --task-approval plan-round --task-approval drafts one question bound to the task gate"
       ]
+    },
+    {
+      "name": "the shown done_when is cut to one prompt line",
+      "file": "products/factory/src/shepherd/task-approval-round.ts",
+      "find": "[`Done when: ${doneWhen}`,",
+      "replace": "[`Done when: ${shownLine(doneWhen)}`,",
+      "kills": [
+        "shepherd plan-round --task-approval plan-round --task-approval shows the whole of a done_when over 160 characters, the text its hash covers"
+      ]
+    },
+    {
+      "name": "a done_when the prompt would clean is shown",
+      "file": "products/factory/src/shepherd/task-approval-round.ts",
+      "find": "if (promptLine(hashed) !== hashed || LONE_SURROGATE.test(hashed)) {",
+      "replace": "if (LONE_SURROGATE.test(hashed)) {",
+      "kills": [
+        "shepherd plan-round --task-approval plan-round --task-approval refuses a done_when holding a bidi override, which the owner would not see"
+      ]
     }
   ]
 }

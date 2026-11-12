@@ -71,9 +71,11 @@ const isOp = (value: string): value is Op => (OPS as readonly string[]).includes
 
 /** The 8 hex digits an `ops:none=<h>` tag carries; reflowing the text keeps it, editing a word does not. */
 export function doneWhenHash(doneWhen: string): string {
-  const collapsed = doneWhen.trim().replace(/\s+/g, " ");
-  return createHash("sha256").update(collapsed).digest("hex").slice(0, 8);
+  return createHash("sha256").update(hashedDoneWhen(doneWhen)).digest("hex").slice(0, 8);
 }
+
+/** The exact text `doneWhenHash` covers: trimmed, every whitespace run one space. */
+export const hashedDoneWhen = (doneWhen: string): string => doneWhen.trim().replace(/\s+/g, " ");
 
 /** The tag that marks every hit in `doneWhen` as subject matter. */
 export const opsNoneTag = (doneWhen: string): string => `ops:none=${doneWhenHash(doneWhen)}`;
