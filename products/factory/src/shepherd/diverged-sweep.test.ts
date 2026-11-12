@@ -350,7 +350,7 @@ describe("restartDivergedRuns reclassification", () => {
 
     const restarted = next.routes.shepherd!.store.get().byRun(sweep.restarted[0]!.newRunId);
     expect(sweep.restarted[0]!.runId).toBe(oldRunIds[0]);
-    expect(restarted?.holdReason).toBe("g10-adversary: policy touch");
+    expect(restarted?.holdReason).toBe("g10-adversary: policy touch (kept: high: owner gate file products/factory/src/shepherd/g10-x.ts)");
   });
 
   it("classes a restarted run at the head the sweep read, not the last read head it was seeded with", async () => {

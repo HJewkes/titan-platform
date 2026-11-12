@@ -191,11 +191,13 @@ const WakeRecord = z.discriminatedUnion("kind", [
   z.looseObject({ kind: z.literal("unhandled"), reason: z.string().optional(), held: z.unknown().optional() }),
 ]);
 const FixFirstRecord = z.looseObject({ fixFirst: z.number().int().positive() });
+const DecisionRecord = z.looseObject({ released: z.literal(true), head: z.string(), rule: z.string(), reviewerProfile: z.string(), verdict: z.looseObject({ reviewer: z.looseObject({ agentId: z.string() }) }) });
 
 /** A verdict or wake step whose record parses gets its own entry; anything else stays a plain step. */
 function recordedEntry(stepId: string, payload: unknown): TimelineEntry | undefined {
   if (stepIdMatches("sh-await-verdict", stepId) || stepIdMatches("sh-seat-recheck", stepId)) return verdictEntry(stepId, payload);
   if (stepIdMatches("sh-wake-implementer", stepId)) return wakeEntry(stepId, payload);
+  if (stepIdMatches("sh-g10-release", stepId)) return decisionEntry(stepId, payload);
   if (stepIdMatches("sh-wake-fix-first", stepId) && FixFirstRecord.safeParse(payload).success) {
     return { kind: "wake", stepId, request: "review", outcome: null, agent: null, mode: null, sessionId: null };
   }
@@ -234,6 +236,14 @@ function wakeEntry(stepId: string, payload: unknown): TimelineEntry | undefined 
   const unhandled = { kind: "wake", stepId, request: null, outcome: "unhandled", agent: null, mode: null, sessionId: null } as const;
   if (parsed.data.kind === "unhandled") return parsed.data.held === undefined || parsed.data.reason === undefined ? unhandled : { ...unhandled, held: parsed.data.reason };
   return { ...unhandled, outcome: "woken", agent: parsed.data.agent, mode: parsed.data.mode ?? null, sessionId: parsed.data.sessionId ?? null };
+}
+
+/** A release that recorded its rule; a refusal, or a two-MERGE release with its own refs, stays a plain step. */
+function decisionEntry(stepId: string, payload: unknown): TimelineEntry | undefined {
+  const parsed = DecisionRecord.safeParse(payload);
+  if (!parsed.success) return undefined;
+  const { rule, head, reviewerProfile, verdict } = parsed.data;
+  return { kind: "decision", stepId, rule, head, reviewer: verdict.reviewer.agentId, profile: reviewerProfile };
 }
 
 function eventEntry({ kind, reason, actor, at, headSha }: ShepherdEvent): TimelineEntry {

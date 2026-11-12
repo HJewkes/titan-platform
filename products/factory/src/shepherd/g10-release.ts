@@ -31,6 +31,9 @@ export const G10_ADVERSARY_CLASS = "g10-adversary";
 export const TWO_MERGE_RULE = "g10-adversary/two-merge";
 export type TwoMergeMode = "shadow" | "on";
 
+/** TP-5403: the rule a `g10-review` hold releases under; only the low-tier policy rule places that class. */
+export const LOW_TIER_RULE = "g10-review/low-tier";
+
 export const holdClassOf = (reason: string | null | undefined): string | undefined => (reason?.includes(":") ? reason.slice(0, reason.indexOf(":")) : undefined);
 
 /** Profiles whose model is Opus: the G10 review is an opus reviewer's, and the profile name is all Shepherd can read of the model. */
@@ -136,14 +139,15 @@ function heldRun(store: ShepherdStore, runId: string): G10Run & { holdReason: st
   return { held: registration?.held ?? false, holdReason, holdReviewer: registration?.holdReviewer ?? null, recorded: holdRecorded(store, runId, holdReason) };
 }
 
+/** The release event carries Shepherd and the head just read; the step records the rule, the verdict ref and the reviewer's profile. */
 async function releaseOnReview(deps: ShepherdDeps, raw: unknown) {
   const input = G10ReleaseInput.parse(raw);
   const prHead = (await deps.port.getPr(input.repo, input.pr)).headSha;
   const store = deps.store.get();
   const run = heldRun(store, input.runId);
   const judged = satisfiesG10(run, input.verdict, prHead, input.checks, input.reviewerProfile, input.mergeUp);
-  const released = judged && run.holdReason !== null && store.releaseIfHeld(input.runId, run.holdReason);
-  return { released, head: prHead, ...(released && { verdict: input.verdict }) };
+  const released = judged && run.holdReason !== null && store.releaseIfHeld(input.runId, run.holdReason, { actor: SHEPHERD_ACTOR, headSha: prHead });
+  return { released, head: prHead, ...(released && { rule: LOW_TIER_RULE, verdict: input.verdict, reviewerProfile: input.reviewerProfile }) };
 }
 
 /** The roster as the lineage check reads it; an unwired or failed read is undefined, so the hold stays. */

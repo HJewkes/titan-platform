@@ -87,6 +87,7 @@ describe("factory rows", () => {
       "shepherd.gateReset.nonSourceNoRepro",
       "shepherd.gateReset.heldRepair",
       "shepherd.gateReset.twoMergeRelease",
+      "shepherd.gateReset.lowTierPolicy",
       "shepherd.review.adversaryProfile",
       "shepherd.review.fallbackConfigDirs",
       "shepherd.review.maxConcurrent",

@@ -4,6 +4,7 @@ import type { CiPolicy, SourceTextLocator } from "@titan-design/session-read";
 import type { GateDecision } from "../gate-policy.js";
 import type { AttestJudgment } from "./attest-evidence.js";
 import type { CiPolicyFileChange } from "./ci-policy-changes.js";
+import type { LowTierPolicy } from "./g10-low-tier.js";
 import type { RiskTier } from "./risk-tier.js";
 import type { VisualDelta } from "./visual-delta-read.js";
 import type { VisualTierRecord } from "./visual-tier-guard.js";
@@ -41,6 +42,8 @@ export interface EvidenceRecord {
   proofBase?: string;
   /** The head's risk tier and why (TP-3734 r1); shadow only, so nothing decides on it yet. */
   riskTier?: RiskTier;
+  /** On a policy touch, whether it is low tier at this head and on which tables, or the fact that kept it (TP-5403). */
+  lowTier?: LowTierPolicy;
   /** The measured visual delta under `shepherd.visualThreshold` (TP-4320); absent when that is off for the repo. */
   visualDelta?: VisualDelta;
   /** The visual tier under `shepherd.visualTier` (TP-4761); absent when that is off for the repo or no visual path changed. */
@@ -68,7 +71,7 @@ interface RecordObserved {
   headBlobs?: Record<string, string | null>;
 }
 
-type RecordExtras = Pick<EvidenceRecord, "ciPolicy" | "visualDelta" | "visualTier" | "oldPath"> & { riskTier: RiskTier; attest?: AttestJudgment };
+type RecordExtras = Pick<EvidenceRecord, "ciPolicy" | "visualDelta" | "visualTier" | "oldPath" | "lowTier"> & { riskTier: RiskTier; attest?: AttestJudgment };
 
 /** A head that claims nothing records nothing; a meeter other than the accepted reviewer is the adversary member. */
 function attestFields(attest: AttestJudgment | undefined, resolver: AgentIdentity): Pick<EvidenceRecord, "attested" | "attestUnmet" | "attestUnread" | "attestWaiting"> {
@@ -93,7 +96,7 @@ export function evidenceRecord(
   input: RecordInput,
   { pr, merge, runs, ciPolicyChanges, headBlobs }: RecordObserved,
   decision: GateDecision,
-  { ciPolicy, riskTier, visualDelta, visualTier, attest, oldPath }: RecordExtras,
+  { ciPolicy, riskTier, lowTier, visualDelta, visualTier, attest, oldPath }: RecordExtras,
 ): EvidenceRecord {
   return {
     runId: input.runId,
@@ -113,6 +116,7 @@ export function evidenceRecord(
     ...(headBlobs && { headBlobs }),
     ...proofFields(input),
     riskTier,
+    ...(lowTier && { lowTier }),
     ...(visualDelta && { visualDelta }),
     ...(visualTier && { visualTier }),
     ...attestFields(attest, input.resolver),

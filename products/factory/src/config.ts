@@ -255,10 +255,13 @@ export const FactoryConfigSchema = z.object({
        * diff is tests alone go to review on a vacuous or test-less fix-proof, recorded as unverified; any source change keeps NO_REPRO.
        * `nonSourceNoRepro: record-fact` does the same for any non-security PR whose every path is tests, workflows, changesets or
        * docs, recorded as `no-repro-non-source`; absent means `keep-owner`, today's sh-sent-back gate (TP-4275).
+       * `lowTierPolicy` (TP-5403) holds a low-tier policy touch `g10-review`, released on one opus MERGE; absent means `on`,
+       * `shadow` holds it `g10-adversary` and names the would-be review in the hold reason, `off` holds it adversary as before.
        */
       gateReset: z
         .strictObject({
           twoMergeRelease: z.enum(["off", "shadow", "on"]).optional(),
+          lowTierPolicy: z.enum(["off", "shadow", "on"]).optional(),
           heldRepair: z.enum(["off", "on"]).optional(),
           noReproProceed: z.enum(["off", "on"]).optional(),
           nonSourceNoRepro: z.enum(["keep-owner", "record-fact"]).optional(),

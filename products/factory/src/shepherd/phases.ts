@@ -12,6 +12,7 @@ import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import type { PushWatch } from "./push-signal.js";
 import type { DiagnosisPorts, ReplanPorts, VisualPacketPorts } from "./spawn-ports.js";
 import type { CleanupPorts, ExitNoticePorts, RemoveDir, RosterReader, SpawnGate, SuiteRules, TaskClose } from "./ports.js";
+import type { LowTierMode } from "./g10-low-tier.js";
 
 /** Which PR, which head, and which land round a phase acts for. */
 export interface PhaseTarget {
@@ -150,6 +151,8 @@ export interface ShepherdDeps {
   stackRestack?: (repo: RepoSlug) => boolean;
   /** `on` repairs a run held only under a g10 class while the hold keeps gating its merge; absent means `off`. */
   heldRepair?: "off" | "on";
+  /** `shepherd.gateReset.lowTierPolicy` (TP-5403): whether a low-tier policy touch is held `g10-review`; absent means `on`. */
+  lowTierPolicy?: LowTierMode;
   /** `on` lets a vacuous fix-proof on a test-only PR with a tests-only diff proceed to review; absent means `off`. */
   noReproProceed?: "off" | "on";
   /** `record-fact` sends a NO_REPRO on a diff with no source path on to review, recorded on the run (TP-4275); absent means `keep-owner`. */

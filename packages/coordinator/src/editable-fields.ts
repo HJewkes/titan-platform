@@ -60,6 +60,7 @@ export const EDITABLE_FIELDS: readonly EditableField[] = [
   shaped("factory", "shepherd.gateReset.nonSourceNoRepro", z.enum(["keep-owner", "record-fact"]), "live"),
   shaped("factory", "shepherd.gateReset.heldRepair", onOff, "live"),
   shaped("factory", "shepherd.gateReset.twoMergeRelease", z.enum(["off", "shadow", "on"]), "live"),
+  shaped("factory", "shepherd.gateReset.lowTierPolicy", z.enum(["off", "shadow", "on"]), "live"),
   shaped("factory", "shepherd.review.adversaryProfile", profileName, "live"),
   shaped("factory", "shepherd.review.fallbackConfigDirs", z.array(absoluteDir).max(16), "live"),
   field("factory", "shepherd.review.maxConcurrent", { min: 1, max: 64, integer: true }, "live"),

@@ -7,7 +7,10 @@ import { riskFactsOf, riskTier } from "./risk-tier.js";
  */
 const LOW_POLICY_TABLES: readonly PolicyTable[] = ["default-policy", "signoff-policy", "hold-closure"];
 
-type LowTierPolicy = { eligible: true; tables: PolicyTable[] } | { eligible: false; kept: string };
+export type LowTierPolicy = { eligible: true; tables: PolicyTable[] } | { eligible: false; kept: string };
+
+/** `shepherd.gateReset.lowTierPolicy`: `on` holds a low-tier policy touch `g10-review`, `shadow` only names it, `off` ignores it. */
+export type LowTierMode = "off" | "shadow" | "on";
 
 type LowTierRead = Parameters<typeof riskFactsOf>[0];
 

@@ -23,6 +23,7 @@ import type { VisualBaselines, VisualPolicy } from "./policy-schema.js";
 import { remergeFact, type CarryRule, type RemergeResult } from "./remerge-carry.js";
 import { reviewBypassable } from "./review-bypass.js";
 import { ownerHoldOf, riskFactsOf, riskTier } from "./risk-tier.js";
+import { lowTierPolicyTouch } from "./g10-low-tier.js";
 import type { CarryResult } from "./tree-carry.js";
 import { evidenceRecord, type EvidenceRecord } from "./evidence-record.js";
 import { readVisualDelta, type VisualDelta, type VisualThreshold } from "./visual-delta-read.js";
@@ -376,8 +377,10 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
   const decidable: DecidableEvidence = { head: input.head, merge, record: input, mergeableState, ...unknown, ...ciPolicy, ...visual, ...attest, ...oldPath, ...grantWithheldField(input) };
   const decision = decideAutoMerge(input.head, decidable, input.visualPaths, input.visualBaselines);
   const visualPaths = input.visualPaths && { visualPaths: input.visualPaths };
-  const risk = riskFactsOf({ paths: merge.changedPaths, changedLines: observed.changedLines, unread: changedFilesUnread, ...ciPolicy, ...visualPaths, ownerHold: kind?.ownerHold ?? kind?.unread });
-  const record = evidenceRecord(input, observed, decision, { ...ciPolicy, riskTier: riskTier(risk), ...visual, ...(judged && { attest: judged }), ...oldPath });
+  const riskRead = { paths: merge.changedPaths, changedLines: observed.changedLines, unread: changedFilesUnread, ...ciPolicy, ...visualPaths, ownerHold: kind?.ownerHold ?? kind?.unread };
+  const risk = riskFactsOf(riskRead);
+  const lowTier = risk.touches.includes("policy") ? { lowTier: lowTierPolicyTouch(riskRead) } : undefined;
+  const record = evidenceRecord(input, observed, decision, { ...ciPolicy, riskTier: riskTier(risk), ...lowTier, ...visual, ...(judged && { attest: judged }), ...oldPath });
   const comment = await port.upsertComment(input.repo, input.pr, evidenceMarker(input.head), evidenceComment(record));
   return { head: input.head, merge, record, mergeableState, ...unknown, ...ciPolicy, ...visual, ...attest, ...oldPath, ...grantWithheldField(input), commentId: comment.id };
 }
