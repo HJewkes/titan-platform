@@ -12,6 +12,7 @@ import { coordinatorFilePath } from "./config-store/materialize.js";
 import { coordinatorRootsFrom, type CoordinatorRoots } from "./config-surfaces/coordinator.js";
 import { hostSurfaceRootsFrom, type HostSurfaceRoots } from "./config-surfaces/host.js";
 import { coordinatorDayFrom, type CoordinatorDayConfig } from "./coord-day.js";
+import { scorecardStoreFrom, type ScorecardConfig } from "./scorecard-view.js";
 
 /** Off 7400, which the active-work daemon and `titan-miner serve` both default to. */
 export const DEFAULT_CONSOLE_PORT = 7500;
@@ -27,7 +28,7 @@ export const DEFAULT_CODEWATCH_URL = "http://127.0.0.1:7433";
 /** Where the repo-review skill writes its folders, under the active-work root. */
 const REVIEWS_UNDER_ROOT = ["titan-platform", "sources", "research", "repo-review"];
 
-export interface ConsoleConfig extends BlockerConfig, CoordinatorDayConfig {
+export interface ConsoleConfig extends BlockerConfig, CoordinatorDayConfig, ScorecardConfig {
   /** 0 binds an ephemeral port. */
   port: number;
   /**
@@ -180,8 +181,9 @@ function lanOptionsFrom(env: NodeJS.ProcessEnv, home: string, stateDir: string, 
 }
 
 /** The dirs other processes write and the console reads from or files into. */
-function dataDirsFrom(env: NodeJS.ProcessEnv, home: string, platform: NodeJS.Platform, stateDir: string): Pick<ConsoleConfig, "inboxDir" | "roundsDir" | "reviewsDir" | "storybooksDir"> {
+function dataDirsFrom(env: NodeJS.ProcessEnv, home: string, platform: NodeJS.Platform, stateDir: string): Pick<ConsoleConfig, "inboxDir" | "roundsDir" | "reviewsDir" | "storybooksDir" | "scorecardStore"> {
   return {
+    scorecardStore: scorecardStoreFrom(env, home),
     storybooksDir: path.join(stateDir, "storybooks"),
     inboxDir: expandHome(env.TITAN_CONSOLE_INBOX_DIR || path.join(stateDir, "inbox", "deposits"), home),
     roundsDir: expandHome(env.TITAN_CONSOLE_ROUNDS_DIR || path.join(stateDir, "rounds"), home),
