@@ -392,7 +392,7 @@ describe('precedent search', () => {
       const agentCtx = { activeRoot, warnings: [] as string[], format: 'json' as const, caller: 'agent' as const };
 
       const forAgent = await precedentSearch.run(args, agentCtx);
-      const forOwner = await precedentSearch.run(args, { activeRoot, warnings: [], format: 'json' });
+      const forOwner = await precedentSearch.run(args, { activeRoot, warnings: [], format: 'json', caller: 'owner' });
 
       expect(forAgent.hits).toEqual([]);
       expect(agentCtx.warnings).toHaveLength(1);

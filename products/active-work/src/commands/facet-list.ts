@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { listFacets } from '../facets/facet-file.js';
 import { defineCommand } from '../registry/index.js';
-import { listInitiativeSlugsOrEmpty } from '../sessions/initiatives.js';
-import { slugsForCaller } from '../sessions/visibility.js';
+import { isInitiativeSlug } from '../sessions/initiatives.js';
+import { listSlugsForCaller } from '../sessions/visibility.js';
 
 const ArgsSchema = z.object({
   slug: z.string().min(1).optional(),
@@ -38,19 +38,19 @@ export default defineCommand<Args, Result>({
     usage: 'active-work facet list [slug]',
   },
   async run(args, ctx) {
-    const slugs = await listInitiativeSlugsOrEmpty(ctx.activeRoot);
     const owners = args.slug
-      ? slugs.filter((s) => s === args.slug)
-      : await slugsForCaller(ctx.activeRoot, slugs, ctx);
+      ? (await isInitiativeSlug(ctx.activeRoot, args.slug)) ? [args.slug] : []
+      : await listSlugsForCaller(ctx.activeRoot, ctx);
     const { facets, malformed } = await listFacets(ctx.activeRoot, owners);
+    const shadowed = await Promise.all(facets.map((facet) => isInitiativeSlug(ctx.activeRoot, facet.name)));
     return {
-      facets: facets.map((facet) => ({
+      facets: facets.map((facet, i) => ({
         alias: facet.name,
         owner: facet.owner,
         tags: facet.tags,
         ...(facet.about !== undefined ? { about: facet.about } : {}),
         path: facet.path,
-        shadowed: slugs.includes(facet.name),
+        shadowed: shadowed[i]!,
       })),
       errors: malformed,
     };

@@ -64,7 +64,7 @@ const promptCommand = defineCommand<PromptArgs, string>({
 
     let slug: string;
     if (args.slug) {
-      slug = await resolveSlug(activeRoot, args.slug);
+      slug = await resolveSlug(activeRoot, args.slug, ctx);
     } else {
       const cwd = args.cwd ?? ctx.cwd;
       const matched = cwd ? await resolveSlugFromCwd(activeRoot, cwd) : null;

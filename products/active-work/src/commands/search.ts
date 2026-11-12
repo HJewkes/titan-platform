@@ -52,7 +52,7 @@ export default defineCommand<Args, Result>({
   },
   async run(args, ctx) {
     // An agent also loses transcript hits with no initiative: nothing says whose they are (TP-5453 P6b).
-    const visible = ctx.caller === 'agent' ? await callerVisibility(getActiveRoot(), ctx.caller) : undefined;
+    const visible = ctx.caller !== 'owner' ? await callerVisibility(getActiveRoot(), ctx.caller) : undefined;
     const { hits, degraded } = await searchWorkspace(args.query, {
       limit: args.limit,
       initiative: args.initiative,

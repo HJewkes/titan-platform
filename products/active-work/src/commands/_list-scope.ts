@@ -1,8 +1,7 @@
 import { HumanOnlyUnreadableError, loadHumanOnlyInitiatives } from '../decider/human-only.js';
 import { UsageError } from '../errors.js';
 import type { CommandContext } from '../registry/types.js';
-import { listInitiativeSlugs } from '../sessions/initiatives.js';
-import { slugsForCaller } from '../sessions/visibility.js';
+import { listSlugsForCaller } from '../sessions/visibility.js';
 import { getActiveRoot } from '../utils/paths.js';
 import { validateSlug } from '../utils/slug.js';
 
@@ -30,7 +29,7 @@ export async function resolveListSlugs(
   }
   if (scope.all_initiatives) {
     const activeRoot = getActiveRoot();
-    return slugsForCaller(activeRoot, await listInitiativeSlugs(activeRoot), ctx);
+    return listSlugsForCaller(activeRoot, ctx);
   }
   if (!scope.slug) throw new UsageError(`${command} requires a slug or --all-initiatives`);
   const slugCheck = validateSlug(scope.slug);

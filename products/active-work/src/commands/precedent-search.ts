@@ -66,10 +66,10 @@ function toHit(row: LedgerRow, score: number): z.infer<typeof HitSchema> {
   };
 }
 
-/** An unclaimed row names no initiative, so an agent never gets one (TP-5453 P6b). */
+/** An unclaimed row names no initiative, so only the owner gets one (TP-5453 P6b). */
 function unclaimedFor(asked: boolean | undefined, ctx: CommandContext): boolean | undefined {
-  if (asked !== true || ctx.caller !== 'agent') return asked;
-  ctx.warnings.push('include_unclaimed is not served to an agent caller: unclaimed precedents name no initiative');
+  if (asked !== true || ctx.caller === 'owner') return asked;
+  ctx.warnings.push('include_unclaimed is served only to the owner: unclaimed precedents name no initiative');
   return false;
 }
 

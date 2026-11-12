@@ -90,7 +90,7 @@ async function scanInitiatives(activeRoot: string): Promise<ScanResult> {
   return { entries, errors };
 }
 
-/** The scan a caller may see: for an agent, owner-only initiatives and their parse errors drop out, counted once. */
+/** The scan a caller may see: for a non-owner, owner-only initiatives and their parse errors drop out, counted once. */
 export async function scanInitiativesForCaller(
   activeRoot: string,
   ctx: Pick<CommandContext, 'caller' | 'warnings'>,

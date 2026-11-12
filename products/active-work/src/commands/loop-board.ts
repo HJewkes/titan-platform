@@ -19,7 +19,7 @@ function boardFor(board: LoopBoard, visible: AgentVisibility): LoopBoard {
     nodes: board.tree.nodes.map((node) => ({ ...node, loops: node.loops.filter((id) => kept.has(id)) })),
   };
   const noun = hidden === 1 ? 'loop' : 'loops';
-  return { ...board, loops, tree, warnings: [...board.warnings, `${hidden} ${noun} of owner-only initiatives hidden from an agent caller`] };
+  return { ...board, loops, tree, warnings: [...board.warnings, `${hidden} ${noun} of owner-only initiatives hidden from a non-owner caller`] };
 }
 
 export default defineCommand<Args, LoopBoard>({

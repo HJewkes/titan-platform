@@ -3,7 +3,7 @@ import path from 'node:path';
 import { isAgentVisible } from '@titan-design/pm';
 import type { CommandContext } from '../registry/types.js';
 import { parseFrontmatter } from '../utils/gray-matter-io.js';
-import { listInitiativeSlugsOrEmpty } from './initiatives.js';
+import { listInitiativeSlugs, listInitiativeSlugsOrEmpty } from './initiatives.js';
 
 /**
  * Agent-facing readers ask here, never the charter, whether an initiative may be served
@@ -48,15 +48,15 @@ export async function ownerOnlySlugs(activeRoot: string): Promise<string[]> {
 const SERVE_ALL: AgentVisibility = () => true;
 
 /**
- * The cross-initiative list verbs filter only for a caller the surface marks as an agent
- * (TP-5453 P6b): the owner's plain terminal and the daemon's loopback RPC keep their listing.
- * For an agent a row with no initiative fails closed, since nothing says whose it is.
+ * Only a caller the surface names the owner is served every initiative (TP-5453 P6b); an agent,
+ * or a context no surface marked, is restricted. A row with no initiative fails closed for a
+ * restricted caller, since nothing says whose it is.
  */
 export async function callerVisibility(
   activeRoot: string,
   caller: CommandContext['caller'],
 ): Promise<AgentVisibility> {
-  if (caller !== 'agent') return SERVE_ALL;
+  if (caller === 'owner') return SERVE_ALL;
   const visible = await loadAgentVisibility(activeRoot);
   return (initiative) => initiative !== null && visible(initiative);
 }
@@ -65,10 +65,10 @@ export async function callerVisibility(
 export function noteHiddenInitiatives(warnings: string[], hidden: number): void {
   if (hidden === 0) return;
   const noun = hidden === 1 ? 'initiative' : 'initiatives';
-  warnings.push(`${hidden} owner-only ${noun} hidden from an agent caller`);
+  warnings.push(`${hidden} owner-only ${noun} hidden from a non-owner caller`);
 }
 
-/** The slugs this caller may list; an agent loses the owner-only ones and is told how many. */
+/** The slugs this caller may list; a non-owner loses the owner-only ones and is told how many. */
 export async function slugsForCaller(
   activeRoot: string,
   slugs: readonly string[],
@@ -78,4 +78,15 @@ export async function slugsForCaller(
   const kept = slugs.filter((slug) => visible(slug));
   noteHiddenInitiatives(ctx.warnings, slugs.length - kept.length);
   return kept;
+}
+
+/**
+ * Every initiative this caller may list. Commands enumerate initiatives only through here, so a
+ * new verb inherits the filter; `slug-enumeration.test.ts` holds them to it.
+ */
+export async function listSlugsForCaller(
+  activeRoot: string,
+  ctx: Pick<CommandContext, 'caller' | 'warnings'>,
+): Promise<string[]> {
+  return slugsForCaller(activeRoot, await listInitiativeSlugs(activeRoot), ctx);
 }

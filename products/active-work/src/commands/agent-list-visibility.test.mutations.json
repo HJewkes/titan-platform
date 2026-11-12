@@ -4,8 +4,8 @@
     {
       "name": "task list across initiatives serves every initiative to an agent",
       "file": "products/active-work/src/commands/task-list.ts",
-      "find": "? await slugsForCaller(getActiveRoot(), await listSlugs(), ctx)",
-      "replace": "? await listSlugs()",
+      "find": "? await listSlugsForCaller(getActiveRoot(), ctx)",
+      "replace": "? await listSlugsForCaller(getActiveRoot(), { ...ctx, caller: 'owner' })",
       "kills": [
         "cross-initiative list verbs for an agent caller task list across all initiatives hides owner-only initiatives from an agent"
       ]
@@ -13,7 +13,7 @@
     {
       "name": "search lets an agent keep unclaimed transcript hits",
       "file": "products/active-work/src/commands/search.ts",
-      "find": "const visible = ctx.caller === 'agent' ? await callerVisibility(getActiveRoot(), ctx.caller) : undefined;",
+      "find": "const visible = ctx.caller !== 'owner' ? await callerVisibility(getActiveRoot(), ctx.caller) : undefined;",
       "replace": "const visible = undefined;",
       "kills": [
         "cross-initiative list verbs for an agent caller search gives an agent no transcript hit that names no initiative, and the owner keeps it"
@@ -22,7 +22,7 @@
     {
       "name": "the agent filter applies to the owner too",
       "file": "products/active-work/src/sessions/visibility.ts",
-      "find": "  if (caller !== 'agent') return SERVE_ALL;\n",
+      "find": "  if (caller === 'owner') return SERVE_ALL;\n",
       "replace": "",
       "kills": [
         "cross-initiative list verbs for an agent caller task list across all initiatives still shows the owner every initiative",
@@ -46,6 +46,33 @@
       "replace": "  const loops = board.loops;",
       "kills": [
         "cross-initiative list verbs for an agent caller loop board hides owner-only loops and their tree-node ids from an agent"
+      ]
+    },
+    {
+      "name": "a context no surface marked is served as the owner",
+      "file": "products/active-work/src/sessions/visibility.ts",
+      "find": "  if (caller === 'owner') return SERVE_ALL;",
+      "replace": "  if (caller !== 'agent') return SERVE_ALL;",
+      "kills": [
+        "cross-initiative list verbs for an agent caller a context no surface marked as the owner is restricted like an agent"
+      ]
+    },
+    {
+      "name": "the open picker lists every initiative to an agent",
+      "file": "products/active-work/src/commands/open.ts",
+      "find": "  const slugs = await listSlugsForCaller(activeRoot, ctx);",
+      "replace": "  const slugs = await listSlugsForCaller(activeRoot, { ...ctx, caller: 'owner' });",
+      "kills": [
+        "cross-initiative list verbs for an agent caller the open picker lists only agent-visible initiatives to an agent, and every one to the owner"
+      ]
+    },
+    {
+      "name": "a slug that matches nothing names every initiative to an agent",
+      "file": "products/active-work/src/commands/_open-helpers.ts",
+      "find": "  const slugs = await listSlugsForCaller(activeRoot, ctx);",
+      "replace": "  const slugs = await listSlugsForCaller(activeRoot, { ...ctx, caller: 'owner' });",
+      "kills": [
+        "cross-initiative list verbs for an agent caller open names no owner-only initiative to an agent when a slug matches nothing"
       ]
     }
   ]

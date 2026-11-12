@@ -5,8 +5,7 @@ import { ArtifactsSchema, type Artifacts } from '../schemas/artifacts.js';
 import { getActiveRoot, getInitiativeDir, getLockPath } from '../utils/paths.js';
 import { withFileLock } from '../utils/fs-atomic.js';
 import { readYaml } from '../utils/yaml-io.js';
-import { listInitiativeSlugsOrEmpty } from '../sessions/initiatives.js';
-import { slugsForCaller } from '../sessions/visibility.js';
+import { listSlugsForCaller } from '../sessions/visibility.js';
 import { UsageError } from '../errors.js';
 import { defineCommand, type CommandContext } from '../registry/index.js';
 
@@ -34,7 +33,7 @@ async function readForSlug(slug: string): Promise<Artifacts> {
 
 async function listSlugsWithArtifacts(ctx: CommandContext): Promise<string[]> {
   const root = getActiveRoot();
-  const slugs = await slugsForCaller(root, await listInitiativeSlugsOrEmpty(root), ctx);
+  const slugs = await listSlugsForCaller(root, ctx);
   const present = await Promise.all(
     slugs.map((slug) =>
       fs.access(path.join(root, slug, 'artifacts.yml')).then(

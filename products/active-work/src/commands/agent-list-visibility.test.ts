@@ -17,6 +17,7 @@ import inventory from './inventory.js';
 import list from './list.js';
 import loopBoard from './loop-board.js';
 import noteList from './note-list.js';
+import open from './open.js';
 import search from './search.js';
 import sourceList from './source-list.js';
 import taskList from './task-list.js';
@@ -29,7 +30,7 @@ import taskList from './task-list.js';
 
 const VISIBLE = 'alpha';
 const HIDDEN = 'private-notes';
-const HIDDEN_WARNING = '1 owner-only initiative hidden from an agent caller';
+const HIDDEN_WARNING = '1 owner-only initiative hidden from a non-owner caller';
 
 function writeFile(root: string, relativePath: string, contents: string): void {
   const target = path.join(root, ...relativePath.split('/'));
@@ -67,6 +68,10 @@ function agent(activeRoot: string): CommandContext {
 }
 
 function owner(activeRoot: string): CommandContext {
+  return { activeRoot, warnings: [], format: 'json', caller: 'owner' };
+}
+
+function unmarked(activeRoot: string): CommandContext {
   return { activeRoot, warnings: [], format: 'json' };
 }
 
@@ -216,7 +221,7 @@ describe('cross-initiative list verbs for an agent caller', () => {
 
       expect(slugsOf(result.initiatives)).toEqual([VISIBLE]);
       expect(result.parse_errors).toEqual([]);
-      expect(ctx.warnings).toEqual(['2 owner-only initiatives hidden from an agent caller']);
+      expect(ctx.warnings).toEqual(['2 owner-only initiatives hidden from a non-owner caller']);
     });
   });
 
@@ -232,7 +237,7 @@ describe('cross-initiative list verbs for an agent caller', () => {
 
       expect(forAgent.loops.map((loop) => loop.initiative)).not.toContain('other-initiative');
       expect(forAgent.tree?.nodes.flatMap((node) => node.loops)).not.toContain('loop-b');
-      expect(forAgent.warnings).toContain('1 loop of owner-only initiatives hidden from an agent caller');
+      expect(forAgent.warnings).toContain('1 loop of owner-only initiatives hidden from a non-owner caller');
       expect(forOwner.loops.map((loop) => loop.id)).toContain('loop-b');
     });
   });
@@ -255,10 +260,44 @@ describe('cross-initiative list verbs for an agent caller', () => {
       seed(root);
 
       const forAgent = await callerVisibility(root, 'agent');
-      const forOwner = await callerVisibility(root, undefined);
+      const forOwner = await callerVisibility(root, 'owner');
 
       expect([forAgent(null), forAgent(VISIBLE), forAgent(HIDDEN)]).toEqual([false, true, false]);
       expect([forOwner(null), forOwner(HIDDEN)]).toEqual([true, true]);
+    });
+  });
+
+  it('a context no surface marked as the owner is restricted like an agent', async () => {
+    await withEmptyActiveRoot(async (root) => {
+      seed(root);
+      const ctx = unmarked(root);
+
+      const { tasks } = await taskList.run({ all_initiatives: true }, ctx);
+
+      expect(slugsOf(tasks)).toEqual([VISIBLE]);
+      expect(ctx.warnings).toEqual([HIDDEN_WARNING]);
+    });
+  });
+
+  it('the open picker lists only agent-visible initiatives to an agent, and every one to the owner', async () => {
+    await withEmptyActiveRoot(async (root) => {
+      seed(root);
+
+      const forAgent = await open.run(open.args.parse({ pick: true }), agent(root));
+      const forOwner = await open.run(open.args.parse({ pick: true }), owner(root));
+
+      expect('initiatives' in forAgent && slugsOf(forAgent.initiatives)).toEqual([VISIBLE]);
+      expect('initiatives' in forOwner && slugsOf(forOwner.initiatives)).toEqual([VISIBLE, HIDDEN]);
+    });
+  });
+
+  it('open names no owner-only initiative to an agent when a slug matches nothing', async () => {
+    await withEmptyActiveRoot(async (root) => {
+      seed(root);
+
+      const attempt = open.run(open.args.parse({ slug: 'zzz' }), agent(root));
+
+      await expect(attempt).rejects.toThrow(`Known: ${VISIBLE}`);
     });
   });
 });

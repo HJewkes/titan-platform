@@ -8,7 +8,7 @@ import type { CommandContext } from '../registry/index.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
 
 function makeCtx(activeRoot: string, cwd?: string): CommandContext {
-  return { activeRoot, warnings: [], format: 'json', cwd };
+  return { activeRoot, warnings: [], format: 'json', cwd, caller: 'owner' };
 }
 
 interface OpenSuccess {

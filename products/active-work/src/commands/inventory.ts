@@ -1,6 +1,5 @@
 import { z } from 'zod';
-import { listInitiativeSlugs } from '../sessions/initiatives.js';
-import { loadAgentVisibility, slugsForCaller } from '../sessions/visibility.js';
+import { listSlugsForCaller, loadAgentVisibility } from '../sessions/visibility.js';
 import { getActiveRoot } from '../utils/paths.js';
 import { inventoryCache } from '../workspace-index/inventory-cache.js';
 import { summarizeInventory, totalInventory } from '../workspace-index/inventory-summary.js';
@@ -52,13 +51,12 @@ export default defineCommand<Args, Result>({
   cli: { usage: 'active-work inventory [--json]' },
   async run(_args, ctx) {
     const activeRoot = getActiveRoot();
-    const [allSlugs, files, humanOnly, isVisible] = await Promise.all([
-      listInitiativeSlugs(activeRoot),
+    const [slugs, files, humanOnly, isVisible] = await Promise.all([
+      listSlugsForCaller(activeRoot, ctx),
       inventoryCache.scan(activeRoot),
       humanOnlyPredicate(activeRoot, ctx.warnings),
       loadAgentVisibility(activeRoot),
     ]);
-    const slugs = await slugsForCaller(activeRoot, allSlugs, ctx);
     const initiatives = summarizeInventory(slugs, files, humanOnly.isHumanOnly).map((row) => ({
       ...row,
       agent_visible: isVisible(row.slug),
