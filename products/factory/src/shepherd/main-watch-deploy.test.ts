@@ -1,5 +1,6 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import { openDatabase } from "@titan-design/store-sqlite";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { AncestryProbe } from "../build-ancestry.js";
 import { readWanted, type WantedStore } from "./deploy-pacer.js";
@@ -148,5 +149,27 @@ describe("main CI watch queues a redeploy for every green merge on the factory r
     const notes = await sweepMain(deps(w), [REPO]);
 
     expect(notes).toEqual([{ repo: REPO, sha, outcome: "error", detail: "the redeploy was not queued: Error" }]);
+  });
+});
+
+describe("main's own green under a required check that runs only on pull requests (TP-5485)", () => {
+  const POLICY = ".github/required-checks.json";
+  /** Main's live rulesets once fix-proof-mutants, which fix-proof.yml runs on pull_request alone, became required. */
+  const RULESET = ["dag-check", "fix-proof-mutants", "hub-compose", "validate"];
+  /** What a push to main runs of those, plus ci.yml's main-only shards. */
+  const PUSH_CHECKS = ["dag-check", "hub-compose", "validate", "test-shard (1)", "test-shard (2)", "test-shard (3)"];
+
+  it("queues the redeploy under titan-platform's own committed policy, so a deploy-skew wait can end", async () => {
+    const w = world();
+    w.fake.files.set(`main:${POLICY}`, { content: readFileSync(new URL(`../../../../${POLICY}`, import.meta.url), "utf8"), blobSha: "policy" });
+    w.fake.rules = { contexts: RULESET, strict: false };
+    await sweepMain(deps(w), [REPO]);
+    const sha = merged(w, 1, T0 + MINUTE, undefined);
+    w.fake.setRuns(sha, PUSH_CHECKS.map((name, id) => successRun(name, id + 1, iso(T0 + MINUTE))));
+    w.clock.now = T0 + 5 * MINUTE;
+
+    await sweepMain(deps(w), [REPO]);
+
+    expect(queued(w)).toBe(sha);
   });
 });

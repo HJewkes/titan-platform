@@ -397,6 +397,37 @@ empty has `value: null` and `measured: false`, never 0, and `scorecardRowText(ro
 carrying a `usd_est`, and its `coverage` field says how many did. Baselines and targets are
 program data and stay with the caller.
 
+## Ticket scorecard
+
+The pure core of the per-task scorecard (TP-5446): one row per dispatched task, weekly cells
+over those rows, and the store they live in. It reads no file, clock or network. The caller
+reads events.db, factory.sqlite3, the graph and the task files, groups what it read per task,
+and passes in the class and source labels, each `recorded` or `inferred:<heuristic-id>`.
+
+- `taskRow(input)` — the row for one task, or null when no spawn outside Shepherd dispatched
+  it. The first such spawn is the dispatch. A PR counts only when a Shepherd registration
+  names it for the task. Fix rounds are the `await-new-head` and `sh-await-new-head` steps
+  plus the lineage successors. An inferred `mixed` class is stored as `upkeep`. `provenance`
+  gives each labelled column's origin, and `inputsHash` (sha256 over the canonical input,
+  list order ignored) lets a run skip a row that has not changed.
+- `rulePick(pool, k)` and `rulePlacement(pick, taskId)` — E1's simple rule: product before
+  upkeep, then rank ascending, then oldest first, ties by task id; take K.
+- `weekRows(rows, thresholds)` — one cell per ISO week (UTC) of first dispatch and per
+  dimension (`all`, `initiative`, `dispatcher`), with `WeekMetrics` and its red flags. A
+  share is null when nothing in the cell was measured.
+- `redFlags(metrics, thresholds)` and `DEFAULT_THRESHOLDS` — upkeep above 25%, owner-sourced
+  below 10%, rule agreement below 20%, cost above $10 per merged task. A value equal to its
+  bound is not red, and an unmeasured value trips nothing.
+- `SCORECARD_MIGRATIONS`, `upsertTaskRows`, `readTaskRows`, `upsertWeekRows`, `readWeekRows`,
+  `writePoolSnapshot` and `readPoolSnapshot` — the SQLite store. Every write is an upsert on
+  the row's key, so a rerun is idempotent. A week's pool snapshot is written once.
+- `phaseWeeks(runs)`, `upsertPhaseWeeks` and `readPhaseWeeks` — Shepherd phase medians
+  (TP-467): the median and p90 minutes finished runs spent in each stage, per ISO week of
+  completion, per repo and over `all`. An unchanged cell is not rewritten.
+- `recordRun(db, run)` logs one pass of the job, and `clearDerivedRows(db)` empties the task,
+  week and phase tables for a rebuild; the pool snapshot, run log and watermarks stay.
+- `isoWeek(ts)` — `2026-W45`.
+
 ## Things that will bite you
 
 Fable's cache read is **0.025** of its input rate, not the 0.1 every other model uses.

@@ -1209,6 +1209,13 @@ the merge grant, the remote stays at `owner-gate`. A seat with both the grant an
 `visual_paths` still gates visual files. `--policy '{"merge":"owner-gate","ownerGateReason":"gate-2-visual"}'` still gates
 every merge. A seat without `visual_paths` behaves as before.
 
+`shepherd.visualGate` (live; `owner` or `async`, absent means `owner`) switches this off
+(TP-5408). Under `async` a matching file does not gate: the merge goes on to `MRG-AU-RV`,
+and the evidence records the matched files as `visualChanged`. A visual path alone no
+longer makes the risk tier high or asks for an owner sign-off, and a `visual-gate2` hold or
+a `gate-2-visual` registration no longer counts as the owner's own hold on the risk tier.
+An unread file list still gates on `files-unread`.
+
 ### Visual baselines {#visual-baselines}
 
 A seat can add `visual_baselines: { check, paths }` beside `visual_paths`. The check is one
@@ -1365,6 +1372,24 @@ and within 24 hours. A PR whose head moves before the Ship stays pending and app
 next week's batch. The command is read-only: it resolves no gate and writes no file, so
 redirect its output to keep it. It asks `titan-factory serve` when one answers and otherwise
 runs here.
+
+**Post-merge feedback sheet.** Once `shepherd.visualGate` is `async`, visual changes no
+longer wait on the owner before the merge. They are shown after it instead:
+
+```sh
+titan-factory shepherd visual-week-feedback --repo owner/design [--week 2026-W45] [--file]
+```
+
+It collects the repo's PRs that Shepherd merged in one ended ISO week (default: the last one) whose
+merge evidence at the merged head recorded `visualChanged`. It prints one round of `kind`
+`feedback`, unit `vf-<name>-<hash>-<week>`, with a section per PR: what changed, the merge
+and head shas, the measured tier as a label only, and the task. Each PR has one optional
+`text` notes question. No question binds a merge, and the console refuses a `feedback` round
+that has one. A week with no visual merges prints `round: null`. With `--file`, the round is
+filed through `titan-console decisions file` using the `shepherd.visualDelivery.console`
+argv. Filing a closed week again prints `created: false`. A week that has not ended is
+refused, because its round would change under a re-run. When `visualGate` is not `async`,
+the command prints `mode: off` and builds nothing.
 
 ### Visual tiers {#visual-tiers}
 
