@@ -1368,6 +1368,24 @@ next week's batch. The command is read-only: it resolves no gate and writes no f
 redirect its output to keep it. It asks `titan-factory serve` when one answers and otherwise
 runs here.
 
+**Post-merge feedback sheet.** Once `shepherd.visualGate` is `async`, visual changes no
+longer wait on the owner before the merge. They are shown after it instead:
+
+```sh
+titan-factory shepherd visual-week-feedback --repo owner/design [--week 2026-W45] [--file]
+```
+
+It collects the repo's PRs that Shepherd merged in one ended ISO week (default: the last one) whose
+merge evidence at the merged head recorded `visualChanged`. It prints one round of `kind`
+`feedback`, unit `vf-<name>-<hash>-<week>`, with a section per PR: what changed, the merge
+and head shas, the measured tier as a label only, and the task. Each PR has one optional
+`text` notes question. No question binds a merge, and the console refuses a `feedback` round
+that has one. A week with no visual merges prints `round: null`. With `--file`, the round is
+filed through `titan-console decisions file` using the `shepherd.visualDelivery.console`
+argv. Filing a closed week again prints `created: false`. A week that has not ended is
+refused, because its round would change under a re-run. When `visualGate` is not `async`,
+the command prints `mode: off` and builds nothing.
+
 ### Visual tiers {#visual-tiers}
 
 `shepherd.visualTier` in the factory config sorts a head that the visual-path row would gate
