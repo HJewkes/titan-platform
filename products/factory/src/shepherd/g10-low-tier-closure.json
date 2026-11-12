@@ -349,6 +349,7 @@
   "packages/session-read/src/fold.ts",
   "packages/session-read/src/index.ts",
   "packages/session-read/src/injected-markers.ts",
+  "packages/session-read/src/labelled-line.ts",
   "packages/session-read/src/line-reader.ts",
   "packages/session-read/src/normalized.ts",
   "packages/session-read/src/observation-stream.ts",
