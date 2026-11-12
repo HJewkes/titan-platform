@@ -511,8 +511,8 @@ own store, `~/.local/share/titan-scorecard/scorecard.sqlite3` (`--store` or
   follow-up tag naming them, or a PR or request that changed in the graph. A dirty row whose
   inputs hash matches the stored one is not rewritten, so a run over unchanged sources writes
   nothing but its line in the `run` table.
-- **Fix rounds.** The reader passes each step's family (`sh-await-new-head:2` becomes
-  `sh-await-new-head`). It drops a lineage successor that joined while an await-new-head step
+- **Fix rounds.** The core counts a step by its family (`sh-await-new-head:2` counts as
+  `sh-await-new-head`), and the reader passes the family already. It drops a lineage successor that joined while an await-new-head step
   was waiting, because that step already counts the round.
 - **Review rounds and phase medians** come from `titan-factory shepherd stats --per-run --json`.
   Factory owns the step-to-stage map, so the job asks it over the CLI rather than copying it.
@@ -527,6 +527,17 @@ own store, `~/.local/share/titan-scorecard/scorecard.sqlite3` (`--store` or
   the label columns null. Exit 75 means another run holds the lock.
 - `--rebuild` empties the task, week and phase tables and recomputes from the raw stores. The
   pool snapshots stay. `--dry-run` rebuilds into an in-memory store and prints the counts.
+
+`titan-miner ticket-scorecard reproduce [--population coordinator-seats] [--from <t>] [--to <t>]
+[--expected <file>] [--sample <file>]` rebuilds the rows in memory, as `--dry-run` does, and checks
+them against the 2026-11-12 hand audit (E1). `e1-expected.json` holds the audit's figures, its
+window and the seven seats of its population, each figure with the plan's tolerance: percentage
+points for a share, percent of the value for a count, or exact. It prints a pass/miss table and
+exits 0 only when every figure passes. A figure the rows cannot give yet, such as reverts before
+the registration records them, is "not measured" with the reason, never zero. The class shares
+read the labels file's optional three-way `class_raw`, since the audit ranked mixed separately;
+every other figure uses the binary class. `--sample` checks that each task in the audit's
+sample is in the population.
 
 ## Daily self-improve classification (TP-685)
 
