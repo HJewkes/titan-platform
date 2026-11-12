@@ -2,4 +2,4 @@
 "@titan-design/graph-layout": patch
 ---
 
-Declare the zod ^4 peer dependency that code-graph requires.
+Document that consumers must install zod ^4, the peer dependency of code-graph.
