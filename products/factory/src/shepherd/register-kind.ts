@@ -3,7 +3,7 @@ import { stepIdMatches } from "../definition.js";
 import type { RegisterArgs } from "./register-args.js";
 import type { ShepherdServices } from "./services.js";
 import type { Registration } from "./store.js";
-import { kindMoveRefusal, type KindMove } from "./task-kind.js";
+import { kindMoveRefusal, withRecordedReview, type KindMove } from "./task-kind.js";
 import { testOnlyDiff } from "./test-only-diff.js";
 
 /**
@@ -13,7 +13,7 @@ import { testOnlyDiff } from "./test-only-diff.js";
 export async function kindMove(services: ShepherdServices, known: Registration, args: RegisterArgs, run: ReviewRead | undefined): Promise<KindMove> {
   const diff = args.kind === "test-only" ? await testOnlyDiff(services.port, args.repo, args.pr ?? known.pr, args.head ?? known.headSha ?? undefined) : undefined;
   const early = { reviewStarted: run && reviewStarted(run), reason: args.kindReason, actor: args.actor };
-  return { guard: kindMoveRefusal, diff, early };
+  return { guard: kindMoveRefusal, diff, early: withRecordedReview(early, known.reviewStarted === true) };
 }
 
 type ReviewRead = Pick<WorkflowRun, "stepResults" | "currentStep">;
@@ -21,8 +21,8 @@ type ReviewRead = Pick<WorkflowRun, "stepResults" | "currentStep">;
 /** The steps that brief, dispatch, ask for or await a reviewer; the fix-proof read before them reviews nothing. */
 const REVIEW_STEPS = ["sh-review-intent", "sh-review", "sh-review-panel", "sh-review-request", "sh-review-refused", "sh-review-stop", "sh-review-scope", "sh-review-shadow", "sh-await-verdict"];
 
-/** True once any review step ran or is running, at any head of the run. */
-function reviewStarted(run: ReviewRead): boolean {
+/** True once any review step ran or is running, at any head of the run; a restart carries it on the registration (`repoint`). */
+export function reviewStarted(run: ReviewRead): boolean {
   const ids = [...Object.values(run.stepResults).map((result) => result.stepId), ...(run.currentStep === null ? [] : [run.currentStep])];
   return ids.some((id) => REVIEW_STEPS.some((step) => stepIdMatches(step, id)));
 }

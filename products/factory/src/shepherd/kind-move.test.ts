@@ -1,6 +1,7 @@
 import type { StepResult } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
 import { H1, REPO } from "../test-support/land.js";
 import { BRANCH, callCommand, shepherdFixture, type ShepherdFixture } from "../test-support/shepherd.js";
 import type { Registered } from "./commands.js";
@@ -41,6 +42,15 @@ function withStep(w: World, runId: string, stepId: string): void {
     const run = status(id);
     return id === runId && run ? { ...run, stepResults: { ...run.stepResults, [`${stepId}:0`]: reviewStep(stepId) } } : run;
   });
+}
+
+/** A correctness run that failed after `stepId` ran, so the next register restarts it on a new run. */
+async function failedRunAfter(w: World, stepId: string): Promise<string> {
+  const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY), task: "demo/T-1", after: "not json" });
+  await w.host.runtime.wait(runId);
+  w.routes.shepherd!.store.get().register({ ...RENAME_PR, runId, policy: OWNER_GATE_POLICY, kind: "correctness" });
+  withStep(w, runId, stepId);
+  return runId;
 }
 
 const kindMoves = (w: World, runId: string) => w.routes.shepherd!.store.get().eventsOf(runId).filter((event) => event.kind === "kind-move");
@@ -85,6 +95,28 @@ describe("moving a correctness run's kind before review (TP-5399)", () => {
     expect(moved).toMatchObject({ ok: false, error: expect.stringContaining("without --kind-reason") });
     expect(w.routes.shepherd!.store.get().byRun(runId)?.kind).toBe("correctness");
     expect(kindMoves(w, runId)).toEqual([]);
+  });
+
+  it("refuses the move after a reviewed run restarts, since the registration keeps that a review started", async () => {
+    const w = world();
+    const reviewed = await failedRunAfter(w, "sh-review-panel:" + H1);
+    const restarted = await w.call<Registered>("shepherd.register", RENAME_PR);
+    if (!restarted.ok) throw new Error(restarted.error);
+
+    const moved = await w.call<Registered>("shepherd.register", MOVE);
+
+    expect(restarted.data).toMatchObject({ created: true, previousRunId: reviewed });
+    expect(moved).toMatchObject({ ok: false, error: expect.stringContaining("a review has started") });
+    expect(w.routes.shepherd!.store.get().byRun(restarted.data.runId)?.kind).toBe("correctness");
+  });
+
+  it("still moves a restarted run whose earlier run never reached review", async () => {
+    const w = world();
+    await failedRunAfter(w, "sh-fix-proof:" + H1);
+    const restarted = await w.call<Registered>("shepherd.register", RENAME_PR);
+    if (!restarted.ok) throw new Error(restarted.error);
+
+    expect(await w.call<Registered>("shepherd.register", MOVE)).toMatchObject({ ok: true, data: { registration: { kind: "refactor" } } });
   });
 
   it("refuses a whitespace-only reason as no reason", async () => {

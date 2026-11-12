@@ -17,7 +17,7 @@ import { cachedByHead, localPrFiles } from "./git-pr-files.js";
 import { applyRegistrationHold } from "./registration-hold.js";
 import { briefCommand } from "./brief-command.js";
 import { prsCommand } from "./prs-command.js";
-import { kindMove, testOnlyHint } from "./register-kind.js";
+import { kindMove, reviewStarted, testOnlyHint } from "./register-kind.js";
 import type { KindMove } from "./task-kind.js";
 import { PrArg, RegisterArgs, RepoArg, coded, headBranch, policyFor, refuseKindMove, sliceAfter } from "./register-args.js";
 import { endSuperseded, isDivergedEnd, isReplayDiverged, restartFor } from "./restart.js";
@@ -112,7 +112,8 @@ export async function restartRegistered(ctx: FactoryContext, store: ShepherdStor
   const seeded = isDivergedEnd(previousRun) ? { ...args, head: args.head ?? lastReadHead(previousRun) } : args;
   let runId: string;
   try {
-    runId = startRun(ctx, args, known.branch ?? undefined, policy, (started) => store.repoint(previousRunId, started));
+    const carried = { reviewStarted: reviewStarted(previousRun) };
+    runId = startRun(ctx, args, known.branch ?? undefined, policy, (started) => store.repoint(previousRunId, started, carried));
   } catch (error) {
     const winner = store.byRun(previousRunId) ? undefined : findRegistration(ctx, store, args.repo, args.pr, known.branch ?? undefined);
     if (!winner) {

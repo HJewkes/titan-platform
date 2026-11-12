@@ -90,7 +90,7 @@ any other kind. That repeat is refused with exit 65 and a reason naming both kin
 One narrow exception (TP-5399): a `correctness` run moves to `refactor` or `feature` when no
 review step (`sh-review-intent`, `sh-review`, `sh-review-panel`, `sh-review-request`,
 `sh-review-refused`, `sh-review-stop`, `sh-review-scope`, `sh-review-shadow`,
-`sh-await-verdict`) has run at any head and the repeat gives `--kind-reason`. The store records
+`sh-await-verdict`) has run at any head, in this run or any run a restart replaced, and the repeat gives `--kind-reason`. The store records
 a `kind-move` event with the caller and the reason, so the run's timeline shows the move. It is
 for a fix whose proof cannot reproduce, such as a rename to the same value. Once a review has
 started, or when the run cannot be read, the move is refused as before.

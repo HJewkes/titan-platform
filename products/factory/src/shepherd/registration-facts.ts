@@ -16,6 +16,8 @@ export interface RegistrationFacts {
   headSha: string | null;
   base: string | null;
   lastSlice?: boolean;
+  /** An earlier run of this registration started a review; the current run's own steps are read beside it. */
+  reviewStarted?: true;
 }
 
 /** A fact the caller omits keeps the stored one; a store opened without the facts migration is written only when one is given. */
@@ -37,5 +39,5 @@ export function writeRegistrant(db: Db, runId: string, registrant: string | unde
 
 /** The columns read as null on a row from before the facts migration. */
 export function registrationFactsOf(row: RegistrationRow): RegistrationFacts {
-  return { headSha: row.head_sha ?? null, base: row.base ?? null, lastSlice: row.last_slice === 1 };
+  return { headSha: row.head_sha ?? null, base: row.base ?? null, lastSlice: row.last_slice === 1, ...(row.review_started === 1 && { reviewStarted: true as const }) };
 }

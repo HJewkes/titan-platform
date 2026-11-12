@@ -46,6 +46,11 @@ function reasonOf(diff: Exclude<TestOnlyDiff, { kind: "test-only" }>): string {
   }
 }
 
+/** A review an earlier run of the registration started refuses the move whatever the current run shows; a missing read stays missing. */
+export function withRecordedReview(early: EarlyMove | undefined, recorded: boolean): EarlyMove | undefined {
+  return recorded && early ? { ...early, reviewStarted: true } : early;
+}
+
 /** The kinds a correctness run may move to before any review starts, at a head whose proof cannot reproduce (TP-5399). */
 const EARLY_MOVE_KINDS: ReadonlySet<TaskKind> = new Set(["refactor", "feature"]);
 
