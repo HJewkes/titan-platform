@@ -42,7 +42,7 @@ export const RELATED_DEFAULT_BUDGET = 1500;
 export const RELATED_DEFAULT_TOKENS = 375;
 /** How many ranked hits context mode plans over. */
 export const RELATED_CONTEXT_CANDIDATES = 20;
-export type RelatedMode = 'list' | 'context';
+type RelatedMode = 'list' | 'context';
 
 /** Workspace classes only. Transcripts are the raw form of what the notes distil. */
 export const RELATED_DEFAULT_CLASSES = ['notes', 'sources', 'tasks', 'sessions'];
@@ -61,7 +61,7 @@ export interface RelatedDegradation {
   message: string;
 }
 
-export interface RelatedEntry {
+interface RelatedEntry {
   ref: string;
   class: string;
   tier: number;
@@ -69,7 +69,7 @@ export interface RelatedEntry {
   tokens: number;
 }
 
-export interface RelatedDropped {
+interface RelatedDropped {
   ref: string;
   class: string;
   reason: DropReason;
@@ -188,7 +188,7 @@ function openIndex(dbPath: string): WorkspaceGraph | RelatedDegradation {
 }
 
 /** Each class's page share, read as its share of the token budget. */
-export function sharesAsQuotas(): Record<string, number> {
+function sharesAsQuotas(): Record<string, number> {
   return Object.fromEntries(SEARCH_CLASSES.map((cls) => [cls.name, cls.share]));
 }
 

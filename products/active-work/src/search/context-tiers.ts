@@ -3,7 +3,7 @@ import path from 'node:path';
 import { toAbsolute } from '../workspace-index/refs.js';
 import type { RelatedHit } from './related.js';
 
-export const SPAN_TEXT_MAX_CHARS = 2000;
+const SPAN_TEXT_MAX_CHARS = 2000;
 /** UTF-8 spends at most 4 bytes on a character, so this many bytes always cover the cap. */
 const SPAN_READ_MAX_BYTES = SPAN_TEXT_MAX_CHARS * 4;
 
@@ -12,7 +12,7 @@ export function seeLine(hit: Pick<RelatedHit, 'ref' | 'title'>): string {
 }
 
 /** The span's text, capped; null when the file will not read or the span is empty. Never throws. */
-export async function readSpan(
+async function readSpan(
   file: string,
   byteOffset: number,
   byteLength: number,
