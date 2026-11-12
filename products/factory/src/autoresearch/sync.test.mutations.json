@@ -2,10 +2,10 @@
   "v": 1,
   "mutations": [
     {
-      "name": "the dated git runner drops the caller's env, so no isolation reaches git",
+      "name": "the dated git runner lets the process env override the isolation env",
       "file": "products/factory/src/autoresearch/integrate.ts",
       "find": "env: { ...process.env, ...env } }",
-      "replace": "env: { ...process.env } }",
+      "replace": "env: { ...env, ...process.env } }",
       "kills": [
         "the fixture's git fixture git calls ignore the machine's global hooks"
       ]
