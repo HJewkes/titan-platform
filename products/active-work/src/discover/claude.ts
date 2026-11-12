@@ -1,7 +1,7 @@
-import { promises as fs, type Dirent } from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import type { DiscoveryHit, DiscoverySourceError } from "./types.js";
+import { promises as fs, type Dirent } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import type { DiscoveryHit, DiscoverySourceError } from './types.js';
 
 /**
  * Scan `~/.claude/projects/` for recent session JSONLs and surface one hit
@@ -27,12 +27,12 @@ interface CwdAggregate {
 }
 
 const MAX_SCAN_LINES = 200;
-const COMPACTION_SUBJECT_PREFIX = "[compaction] ";
+const COMPACTION_SUBJECT_PREFIX = '[compaction] ';
 
 export async function discoverClaudeSessions(): Promise<DiscoverClaudeResult> {
   const root =
     process.env.CLAUDE_PROJECTS_ROOT ??
-    path.join(os.homedir(), ".claude", "projects");
+    path.join(os.homedir(), '.claude', 'projects');
   const errors: DiscoverySourceError[] = [];
 
   let projectDirs: Dirent[];
@@ -41,9 +41,9 @@ export async function discoverClaudeSessions(): Promise<DiscoverClaudeResult> {
   } catch (err) {
     // No claude projects dir at all? That's not an error — return empty.
     const e = err as NodeJS.ErrnoException;
-    if (e.code !== "ENOENT")
+    if (e.code !== 'ENOENT')
       errors.push({
-        source: "claude-session",
+        source: 'claude-session',
         error: e.message ?? String(err),
       });
     return { hits: [], errors };
@@ -72,7 +72,7 @@ async function scanProjectDir(
     return;
   }
   for (const file of files) {
-    if (!file.isFile() || !file.name.endsWith(".jsonl")) continue;
+    if (!file.isFile() || !file.name.endsWith('.jsonl')) continue;
     try {
       await aggregateSession(path.join(dirPath, file.name), byCwd);
     } catch (err) {
@@ -89,9 +89,9 @@ function errorMessage(err: unknown): string {
 }
 
 function toHit(agg: CwdAggregate): DiscoveryHit {
-  const suffix = agg.subject ? ` — ${agg.subject}` : "";
+  const suffix = agg.subject ? ` — ${agg.subject}` : '';
   return {
-    source: "claude-session",
+    source: 'claude-session',
     ref: agg.cwd,
     detail: `${agg.sessionCount} session(s) at ${agg.cwd}${suffix}`,
     metadata: {
@@ -110,8 +110,8 @@ async function aggregateSession(
 ): Promise<void> {
   const stat = await fs.stat(filePath);
   // Read up to MAX_SCAN_LINES; this is a light scan, not a parser.
-  const raw = await fs.readFile(filePath, "utf8");
-  const lines = raw.split("\n").slice(0, MAX_SCAN_LINES);
+  const raw = await fs.readFile(filePath, 'utf8');
+  const lines = raw.split('\n').slice(0, MAX_SCAN_LINES);
 
   let cwd: string | undefined;
   let firstUserMessage: string | undefined;
@@ -125,9 +125,9 @@ async function aggregateSession(
     } catch {
       continue;
     }
-    if (!record || typeof record !== "object") continue;
+    if (!record || typeof record !== 'object') continue;
     const rec = record as Record<string, unknown>;
-    if (!cwd && typeof rec.cwd === "string" && rec.cwd.length > 0) {
+    if (!cwd && typeof rec.cwd === 'string' && rec.cwd.length > 0) {
       cwd = rec.cwd;
     }
     if (!firstUserMessage) {
@@ -143,8 +143,8 @@ async function aggregateSession(
     ? `${COMPACTION_SUBJECT_PREFIX}${truncate(lastCompactionSummary, 120)}`
     : firstUserMessage
     ? truncate(firstUserMessage, 120)
-    : "";
-  const sessionId = path.basename(filePath, ".jsonl");
+    : '';
+  const sessionId = path.basename(filePath, '.jsonl');
 
   const existing = byCwd.get(cwd);
   if (!existing) {
@@ -170,18 +170,18 @@ async function aggregateSession(
 function extractUserMessageText(
   rec: Record<string, unknown>
 ): string | undefined {
-  if (rec.type !== "user") return undefined;
+  if (rec.type !== 'user') return undefined;
   const message = rec.message;
-  if (!message || typeof message !== "object") return undefined;
+  if (!message || typeof message !== 'object') return undefined;
   const content = (message as Record<string, unknown>).content;
-  if (typeof content === "string") return content.trim() || undefined;
+  if (typeof content === 'string') return content.trim() || undefined;
   if (Array.isArray(content)) {
     for (const block of content) {
       if (
         block &&
-        typeof block === "object" &&
-        (block as Record<string, unknown>).type === "text" &&
-        typeof (block as Record<string, unknown>).text === "string"
+        typeof block === 'object' &&
+        (block as Record<string, unknown>).type === 'text' &&
+        typeof (block as Record<string, unknown>).text === 'string'
       ) {
         const text = ((block as Record<string, unknown>).text as string).trim();
         if (text) return text;
@@ -194,14 +194,14 @@ function extractUserMessageText(
 function extractCompactionSummary(
   rec: Record<string, unknown>
 ): string | undefined {
-  if (rec.type !== "summary") return undefined;
-  if (typeof rec.summary === "string" && rec.summary.trim().length > 0) {
+  if (rec.type !== 'summary') return undefined;
+  if (typeof rec.summary === 'string' && rec.summary.trim().length > 0) {
     return rec.summary.trim();
   }
   return undefined;
 }
 
 function truncate(s: string, max: number): string {
-  const oneline = s.replace(/\s+/g, " ").trim();
+  const oneline = s.replace(/\s+/g, ' ').trim();
   return oneline.length > max ? `${oneline.slice(0, max - 1)}…` : oneline;
 }
