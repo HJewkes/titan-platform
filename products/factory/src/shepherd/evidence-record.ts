@@ -92,6 +92,9 @@ const proofFields = (input: RecordInput): Pick<EvidenceRecord, "proofUnverified"
   ...(input.proofBase !== undefined && { proofBase: input.proofBase }),
 });
 
+/** The head's risk tier, and beside it the low-tier read of a policy touch. */
+const tierFields = (riskTier: RiskTier, lowTier: EvidenceRecord["lowTier"]): Pick<EvidenceRecord, "riskTier" | "lowTier"> => ({ riskTier, ...(lowTier && { lowTier }) });
+
 export function evidenceRecord(
   input: RecordInput,
   { pr, merge, runs, ciPolicyChanges, headBlobs }: RecordObserved,
@@ -115,8 +118,7 @@ export function evidenceRecord(
     ...(ciPolicyChanges && { ciPolicyChanges }),
     ...(headBlobs && { headBlobs }),
     ...proofFields(input),
-    riskTier,
-    ...(lowTier && { lowTier }),
+    ...tierFields(riskTier, lowTier),
     ...(visualDelta && { visualDelta }),
     ...(visualTier && { visualTier }),
     ...attestFields(attest, input.resolver),

@@ -4,8 +4,8 @@
     {
       "name": "the record drops the low-tier decision",
       "file": "products/factory/src/shepherd/evidence-record.ts",
-      "find": "    ...(lowTier && { lowTier }),\n",
-      "replace": "",
+      "find": "({ riskTier, ...(lowTier && { lowTier }) })",
+      "replace": "({ riskTier })",
       "kills": [
         "the merge evidence of a low-tier policy touch the record carries the low-tier decision beside the risk tier"
       ]

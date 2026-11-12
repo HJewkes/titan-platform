@@ -191,7 +191,10 @@ const WakeRecord = z.discriminatedUnion("kind", [
   z.looseObject({ kind: z.literal("unhandled"), reason: z.string().optional(), held: z.unknown().optional() }),
 ]);
 const FixFirstRecord = z.looseObject({ fixFirst: z.number().int().positive() });
-const DecisionRecord = z.looseObject({ released: z.literal(true), head: z.string(), rule: z.string(), reviewerProfile: z.string(), verdict: z.looseObject({ reviewer: z.looseObject({ agentId: z.string() }) }) });
+const DecisionRecord = z.looseObject({
+  ...{ released: z.literal(true), head: z.string(), rule: z.string(), reviewerProfile: z.string() },
+  verdict: z.looseObject({ reviewer: z.looseObject({ agentId: z.string() }) }),
+});
 
 /** A verdict or wake step whose record parses gets its own entry; anything else stays a plain step. */
 function recordedEntry(stepId: string, payload: unknown): TimelineEntry | undefined {
