@@ -35,7 +35,7 @@ async function writeLedger(file: string, keys: readonly string[]): Promise<void>
 async function addTask(exec: DeliveryExec, task: NoteTask): Promise<void> {
   const argv = ["active-work", "task", "add", task.initiative, "--title", task.title, "--done-when", task.doneWhen, "--tags", "visual-feedback", "--notes", task.notes, "--quiet"];
   const result = await exec(argv, AbortSignal.timeout(60_000));
-  if (result.status !== 0) throw new Error(`active-work task add exit ${result.status}: ${result.detail}`);
+  if (result.status !== 0) throw new Error(`active-work task add exit ${result.status}: ${result.stderr.trim().split("\n")[0] ?? ""}`);
 }
 
 function portsOf(roundsDir: string, ledger: string, exec: DeliveryExec): NotesPorts {

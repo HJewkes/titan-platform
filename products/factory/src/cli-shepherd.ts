@@ -96,9 +96,12 @@ function registerRunVerbs(verb: VerbOf, verbs: Verbs): void {
     .action((opts: ShepherdOpts) => runShepherd(verbs, "shepherd.waiting", () => ({}), opts));
   registerVisualDeltaVerb(verb, verbs);
   registerBriefVerb(verb, verbs);
+  registerVisualVerbs(verb, verbs);
+}
+
+function registerVisualVerbs(verb: VerbOf, verbs: Verbs): void {
   registerVisualWeekVerb(verb, verbs);
   registerVisualFeedbackVerb(verb, verbs);
-  registerFeedbackNotesVerb(verb, verbs);
 }
 
 /** TP-5409: the post-merge visual feedback sheet for a repo's ended week; off unless shepherd.visualGate is async. */
@@ -109,6 +112,7 @@ function registerVisualFeedbackVerb(verb: VerbOf, verbs: Verbs): void {
     .option("--file", "file the round with titan-console decisions file")
     .action((opts: ShepherdOpts & { repo: string; week?: string; file?: boolean }) =>
       runShepherd(verbs, "shepherd.visual-week-feedback", () => ({ repo: opts.repo, ...(opts.week !== undefined && { week: opts.week }), ...(opts.file === true && { file: true }) }), opts));
+  registerFeedbackNotesVerb(verb, verbs);
 }
 
 /** TP-4761 S3: the weekly Ship batch for a repo's pending visual-path gates, printed. Reads gates and holds; resolves nothing. */
