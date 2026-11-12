@@ -12,6 +12,7 @@ import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import type { PushWatch } from "./push-signal.js";
 import type { DiagnosisPorts, ReplanPorts, VisualPacketPorts } from "./spawn-ports.js";
 import type { CleanupPorts, ExitNoticePorts, RemoveDir, RosterReader, SpawnGate, SuiteRules, TaskClose } from "./ports.js";
+import type { VisualGateMode } from "./visual-gate-config.js";
 
 /** Which PR, which head, and which land round a phase acts for. */
 export interface PhaseTarget {
@@ -158,6 +159,8 @@ export interface ShepherdDeps {
   nonSourceNoRepro?: "keep-owner" | "record-fact";
   /** `last-slice-only` closes a merged PR's task only on its last slice; absent means `keep`. */
   taskClose?: TaskClose;
+  /** `shepherd.visualGate` (TP-5408): `async` takes visual review off the merge gate; absent means `owner`. */
+  visualGate?: VisualGateMode;
   /** `shepherd.visualPacket`: whether a visual approve-merge gate spawns its review packager; absent means `off`. */
   visualPacket?: VisualPacketPorts;
   /** The planner failed rounds with no adversary verdict spawn (TP-3796); absent records a failed spawn, so ops hears instead. */

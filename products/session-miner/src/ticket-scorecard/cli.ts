@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expandHome } from "@titan-design/session-read";
@@ -5,7 +6,9 @@ import type { Command } from "commander";
 import type { MinerConfig } from "../config.js";
 import type { ScorecardPaths } from "./load.js";
 import { factoryPerRunCli } from "./per-run.js";
-import { runTicketScorecard, type ScorecardRunOptions, type ScorecardRunResult } from "./run.js";
+import { rawClassOf, readSample, rebuiltRows, renderReport, reproduce } from "./reproduce.js";
+import { e1ExpectedFile, parseExpected, type ExpectedFile } from "./reproduce-spec.js";
+import { EXIT_NOT_MEASURED, runTicketScorecard, type ScorecardRunOptions, type ScorecardRunResult } from "./run.js";
 
 /** The S3 backfill export, kept in the initiative's sources folder where the owner can read it. */
 const LABELS_FILE = path.join("titan-platform", "sources", "TP-5446-backfill", "labels-inferred-2026-11-12.jsonl");
@@ -70,6 +73,24 @@ function renderRun(result: ScorecardRunResult): string {
   return `${lines.join("\n")}\n`;
 }
 
+/** Some figure is outside its tolerance or not measured yet. */
+const EXIT_MISS = 1;
+
+interface ReproduceFlags extends RunFlags {
+  population: string;
+  expected?: string;
+  sample?: string;
+  from?: string;
+  to?: string;
+}
+
+/** The expected figures, with the window narrowed or widened by `--from` and `--to`. */
+function expectedOf(flags: ReproduceFlags): ExpectedFile {
+  const spec = flags.expected === undefined ? e1ExpectedFile() : parseExpected(JSON.parse(readFileSync(expandHome(flags.expected), "utf8")));
+  const iso = (t: string) => new Date(t).toISOString();
+  return { ...spec, window: { from: flags.from === undefined ? spec.window.from : iso(flags.from), to: flags.to === undefined ? spec.window.to : iso(flags.to) } };
+}
+
 type Io = { stdout: (t: string) => void; stderr: (t: string) => void; env?: NodeJS.ProcessEnv };
 
 /** `ticket-scorecard run`: the scheduled job. Every store but the scorecard's own opens read-only. */
@@ -89,5 +110,33 @@ export function attachTicketScorecard(program: Command, config: () => MinerConfi
       if ("locked" in result) io.stderr("ticket-scorecard: another run holds the lock; exiting\n");
       else io.stdout(program.opts().json === true ? `${JSON.stringify(result)}\n` : renderRun(result));
       onExit(result.exitCode);
+    });
+  attachReproduce(program, group, config, io, onExit);
+}
+
+/** `ticket-scorecard reproduce`: rebuild the rows in memory and check them against the hand audit's frozen figures. */
+function attachReproduce(program: Command, group: Command, config: () => MinerConfig, io: Io, onExit: (code: number) => void): void {
+  group
+    .command("reproduce")
+    .description("rebuild the rows in memory and print a pass/miss table against the 2026-11-12 hand audit (E1); writes nothing")
+    .option("--population <name>", "the dispatcher set the figures cover", "coordinator-seats")
+    .option("--from <time>", "window start, inclusive (default: the expected file's)")
+    .option("--to <time>", "window end, exclusive (default: the expected file's)")
+    .option("--expected <file>", "expected figures JSON (default: the bundled e1-expected.json)")
+    .option("--sample <file>", "the hand audit's sample JSONL; checks every sampled task is in the population")
+    .option("--labels <file>", "the inferred-labels JSONL (TITAN_SCORECARD_LABELS)")
+    .option("--factory-db <file>", "factory's database, read-only (TITAN_FACTORY_DB)")
+    .action(async (flags: ReproduceFlags) => {
+      const env = io.env ?? process.env;
+      const options = runOptions(config(), { ...flags, dryRun: true }, env);
+      const rows = await rebuiltRows(options);
+      if (rows === null) {
+        io.stderr("ticket-scorecard reproduce: a store the rows need is missing; run `ticket-scorecard run --dry-run` to see which\n");
+        return onExit(EXIT_NOT_MEASURED);
+      }
+      const input = { rows, rawClass: rawClassOf(options.paths.labelsFile), sample: flags.sample === undefined ? null : readSample(expandHome(flags.sample)) };
+      const report = reproduce(input, expectedOf(flags), flags.population);
+      io.stdout(program.opts().json === true ? `${JSON.stringify(report)}\n` : renderReport(report));
+      onExit(report.ok ? 0 : EXIT_MISS);
     });
 }

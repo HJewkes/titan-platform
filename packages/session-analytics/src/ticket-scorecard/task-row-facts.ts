@@ -4,8 +4,13 @@ import type { ScorecardGate, ScorecardPr, ScorecardRegistration, ScorecardRun, S
 /** Shepherd spawns its own fixers and reviewers; the scorecard counts only what someone else dispatched. */
 const SHEPHERD_LAUNCHER = "shepherd";
 
-/** The step ids that wait for an implementer's next head, one per fix round (`step-phase.ts` maps both to fixing). */
-const FIX_ROUND_STEP_IDS: ReadonlySet<string> = new Set(["await-new-head", "sh-await-new-head"]);
+/** The step families that wait for an implementer's next head, one per fix round (`step-phase.ts` maps both to fixing). */
+const FIX_ROUND_FAMILIES: ReadonlySet<string> = new Set(["await-new-head", "sh-await-new-head"]);
+
+/** A step id is `<family>` or `<family>:<call index>` (the workflow engine's key); the family names the step. */
+function stepFamily(stepId: string): string {
+  return stepId.split(":")[0]!;
+}
 
 /** The authority actor classes that are the owner. */
 const OWNER_CLASSES: ReadonlySet<string> = new Set(["owner-terminal", "owner-remote"]);
@@ -50,7 +55,7 @@ export function duplicatePrs(prs: readonly ScorecardPr[]): number {
 
 /** One round per await-new-head step, plus one per lineage successor (plan section 2, metric 17). */
 export function fixRounds(runs: readonly ScorecardRun[]): number {
-  return runs.reduce((acc, run) => acc + run.stepIds.filter((id) => FIX_ROUND_STEP_IDS.has(id)).length + run.successors, 0);
+  return runs.reduce((acc, run) => acc + run.stepIds.filter((id) => FIX_ROUND_FAMILIES.has(stepFamily(id))).length + run.successors, 0);
 }
 
 export function reviewRounds(runs: readonly ScorecardRun[]): number {

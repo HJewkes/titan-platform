@@ -92,6 +92,8 @@ export interface FactoryRouteDeps extends Omit<LandPrDeps, "gitCache" | keyof Po
   nonSourceNoRepro?: Live<"keep-owner" | "record-fact" | undefined>;
   /** `last-slice-only` closes a merged PR's task only on its last slice; absent means `keep`, every merge closes. A getter is read per cleanup. */
   taskClose?: Live<TaskClose | undefined>;
+  /** `shepherd.visualGate` (TP-5408); absent means `owner`. A getter is read at each merge-evidence step and gate. */
+  visualGate?: Live<"owner" | "async" | undefined>;
   /** `shepherd.visualPacket` and the ports its spawn uses; absent means `off`. */
   visualPacket?: VisualPacketPorts;
   /** The planner failed rounds with no adversary verdict spawn; absent means ops hears instead. */
