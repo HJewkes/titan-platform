@@ -31,6 +31,8 @@ export const roundSummary = z.discriminatedUnion("valid", [
     ship: z.boolean(),
     /** Present when a pick-one offers a merge with no binding: it is answerable, but its answer taps no merge. */
     unbound: z.literal(true).optional(),
+    /** Present on a post-merge feedback sheet (TP-5458): it shows what merged, asks only optional notes, and waits on no decision. */
+    feedback: z.literal(true).optional(),
     recommendations: z.enum(["after-answer", "shown"]),
     ...withdrawnReason,
   }),
