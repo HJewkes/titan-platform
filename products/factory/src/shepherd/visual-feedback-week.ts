@@ -27,13 +27,13 @@ export type FeedbackWeekResult =
   | { mode: "async"; repo: string; week: string; round: FeedbackRound | null; filed?: Filed };
 
 /** S5 spells the switch `owner | async`, absent meaning owner; anything else reads as owner too. */
-export const feedbackModeOn = (shepherd: unknown): boolean => readPath(shepherd, "visualGate") === "async";
+const feedbackModeOn = (shepherd: unknown): boolean => readPath(shepherd, "visualGate") === "async";
 
 /** The last ISO week that has ended by `now`. */
 export const lastClosedWeek = (now: Date): string => isoWeek(new Date(now.getTime() - WEEK_MS));
 
 /** A week still running would change under a re-run and conflict with its own filed round, so only an ended one is built. */
-export function weekProblem(week: string, now: Date): string | undefined {
+function weekProblem(week: string, now: Date): string | undefined {
   const range = isoWeekRange(week);
   if (range === undefined) return `week ${week} is not an ISO week like 2026-W45`;
   return range.end > now.getTime() ? `week ${week} has not ended; a feedback sheet covers an ended week` : undefined;

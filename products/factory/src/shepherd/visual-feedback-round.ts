@@ -48,7 +48,7 @@ export interface FeedbackRound {
 }
 
 /** `vf-<name>-<hash>-<week>`: the repo name for the reader, a hash of the full repo key so two owners never share a unit, all within a round id's 64 characters. */
-export function feedbackUnit(repo: string, week: string): string {
+function feedbackUnit(repo: string, week: string): string {
   const key = repo.toLowerCase();
   const name = (key.split("/")[1] ?? key).replace(/[^a-z0-9_-]/g, "-").slice(0, 30);
   const hash = createHash("sha256").update(key).digest("hex").slice(0, 6);

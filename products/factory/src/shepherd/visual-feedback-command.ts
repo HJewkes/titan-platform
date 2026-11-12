@@ -27,7 +27,7 @@ interface FileVia {
 }
 
 /** round.json is written under the factory state dir first, as `decisions file` reads a path; a re-file of the same bytes reports `created: false`. */
-export async function fileFeedbackRound(round: FeedbackRound, via: FileVia): Promise<Filed> {
+async function fileFeedbackRound(round: FeedbackRound, via: FileVia): Promise<Filed> {
   await mkdir(via.dir, { recursive: true, mode: 0o700 });
   const source = join(via.dir, `${round.unit}.json`);
   await writeFile(source, `${JSON.stringify(round, null, 2)}\n`, { mode: 0o600 });
