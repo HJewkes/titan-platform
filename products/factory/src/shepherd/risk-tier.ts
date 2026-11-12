@@ -97,10 +97,13 @@ const heldIn = (tablesOf: ReadonlyMap<string, readonly PolicyTable[]>, wanted: r
 /** A held path no named table covers: an unknown class keeps the owner gate. */
 const unnamedIn = (tablesOf: ReadonlyMap<string, readonly PolicyTable[]>): string[] => [...tablesOf].filter(([, tables]) => tables.length === 0).map(([path]) => path);
 
+/** One row per table, its paths shown as the tier's reasons show them, so the row count stays bounded on a wide diff. */
+const tableRow = (label: string, paths: readonly string[]): string[] => (paths.length > 0 ? [`${label} ${shownPaths(paths)}`] : []);
+
 /** The policy-table owner-tier rows of a `policyTablesOf` read, each led by its table name. */
 export function ownerTierPolicyRows(tablesOf: ReadonlyMap<string, readonly PolicyTable[]>): string[] {
-  const named = [...tablesOf].flatMap(([path, tables]) => tables.filter((table) => OWNER_TIER_TABLES.includes(table)).map((table) => `${table} ${path}`));
-  return [...named, ...unnamedIn(tablesOf).map((path) => `unnamed policy path ${path}`)];
+  const named = OWNER_TIER_TABLES.flatMap((table) => tableRow(table, heldIn(tablesOf, [table])));
+  return [...named, ...tableRow("unnamed policy path", unnamedIn(tablesOf))];
 }
 
 /** What the owner-tier rows read at a head: its changed paths, and whether a CI change is a budget one a coordinator may accept. */
@@ -115,7 +118,7 @@ interface OwnerTierRead {
  * packet, CI policy and owner holds are left out: visual by the task, the rest because each gates on its own row already.
  */
 export function ownerTierRows({ paths, ciBudget }: OwnerTierRead): string[] {
-  const named = (label: string, globs: readonly string[]): string[] => matching(paths, globs).map((path) => `${label} ${path}`);
+  const named = (label: string, globs: readonly string[]): string[] => tableRow(label, matching(paths, globs));
   return [...ownerTierPolicyRows(policyTablesAt(paths)), ...(ciBudget ? [] : named("CI workflow file", CI_PERSON_FILES)), ...named("publish file", PUBLISH_FILES), ...named("settings file", SETTINGS_FILES)];
 }
 
@@ -128,7 +131,6 @@ function highReasons(facts: RiskFacts): (string | undefined)[] {
     pathReason("owner packet", facts.ownerPacket),
     pathReason("owner gate file", matching(facts.paths.filter((path) => !isTest(path)), OWNER_LEVER_FILES)),
     pathReason("gate-resolve file", heldIn(policyTablesAt(facts.paths), GATE_RESOLVE_TABLES)),
-    pathReason("unnamed policy path", unnamedIn(policyTablesAt(facts.paths))),
     pathReason("CI workflow file", matching(facts.paths, CI_PERSON_FILES)),
     pathReason("publish file", matching(facts.paths, PUBLISH_FILES)),
     pathReason("settings file", matching(facts.paths, SETTINGS_FILES)),

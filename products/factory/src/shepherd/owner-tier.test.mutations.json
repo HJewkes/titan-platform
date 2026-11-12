@@ -14,7 +14,7 @@
     {
       "name": "a policy path no table names is no row",
       "file": "products/factory/src/shepherd/risk-tier.ts",
-      "find": "return [...named, ...unnamedIn(tablesOf).map((path) => `unnamed policy path ${path}`)];",
+      "find": "return [...named, ...tableRow(\"unnamed policy path\", unnamedIn(tablesOf))];",
       "replace": "return named;",
       "kills": [
         "ownerTierRows a policy path no table names is an owner-tier row"

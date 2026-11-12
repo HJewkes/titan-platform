@@ -5,7 +5,6 @@ import type { GateDecision, PolicyRule } from "../gate-policy.js";
 import type { CiPolicyClass } from "./ci-policy-class.js";
 import { budgetAt } from "./ci-policy-guard.js";
 import { ownerTierRows } from "./risk-tier.js";
-import { shownPaths } from "./visual-gate.js";
 
 /** `shepherd.gateReset.ownerTier` (TP-5406): absent means `shadow`, which records the rows and changes no outcome (Q-S2c). */
 export type OwnerTierMode = "off" | "shadow" | "on";
@@ -53,12 +52,12 @@ function stampedMode(stamp: unknown): OwnerTierMode {
 export function ownerTierGate(evidence: OwnerTierEvidence, rule: PolicyRule): GateDecision | undefined {
   if (stampedMode(evidence.ownerTier) !== "on") return undefined;
   const rows = rowsAt(evidence);
-  return rows.length === 0 ? undefined : { outcome: "gate", rule, reason: `${OWNER_TIER_REASON_PREFIX}${shownPaths(rows)}` };
+  return rows.length === 0 ? undefined : { outcome: "gate", rule, reason: `${OWNER_TIER_REASON_PREFIX}${rows.join("; ")}` };
 }
 
 /** Under `shadow`, an allow names the rows it would have gated on. */
 export function ownerTierNote(evidence: OwnerTierEvidence): string {
   if (stampedMode(evidence.ownerTier) !== "shadow") return "";
   const rows = rowsAt(evidence);
-  return rows.length === 0 ? "" : `; owner tier would gate: ${shownPaths(rows)}`;
+  return rows.length === 0 ? "" : `; owner tier would gate: ${rows.join("; ")}`;
 }

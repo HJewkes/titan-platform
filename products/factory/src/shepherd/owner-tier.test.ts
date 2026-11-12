@@ -83,7 +83,7 @@ describe("the owner-tier merge guard", () => {
     const decision = decideAutoMerge(HEAD, evidence);
     expect(decision).toMatchObject({ outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "owner-tier" } });
     expect(decision.reason).toBe("owner tier: merge-policy products/factory/src/shepherd/g10-release.ts");
-    expect(decisionClassOf(decision.rule)).toBe("D4");
+    expect(decisionClassOf({ ...decision.rule, step: "approve-merge", prompt: "" })).toBe("D4");
     expect(evidence.record.ownerTier).toEqual({ mode: "on", rows: ["merge-policy products/factory/src/shepherd/g10-release.ts"] });
   });
 
@@ -132,7 +132,7 @@ describe("the owner-tier merge guard", () => {
 
   it("under on, a measured budget-class CI change stays on its coordinator row, not owner-tier", async () => {
     const evidence = await evidenceFor([".github/workflows/ci.yml"], "on");
-    const budget: DecidableEvidence = { ...evidence, ciPolicy: { kind: "weakened", keys: ["timeout-minutes"] }, ciPolicyClass: { kind: "budget", measurement: "https://example.test/run/1" } };
+    const budget: DecidableEvidence = { ...evidence, ciPolicy: { kind: "weakened", keys: ["other"] }, ciPolicyClass: { kind: "budget", measurement: "https://example.test/run/1" } };
     expect(decideAutoMerge(HEAD, budget).rule.rowId).toBe("ci-policy-budget");
     const weakening: DecidableEvidence = { ...budget, ciPolicyClass: { kind: "weakening", why: "a required check is removed" } };
     expect(decideAutoMerge(HEAD, weakening)).toMatchObject({ rule: { rowId: "owner-tier" }, reason: "owner tier: CI workflow file .github/workflows/ci.yml" });
