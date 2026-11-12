@@ -1,5 +1,6 @@
 import { kitDdl, type Db, type Migration } from "@titan-design/store-sqlite";
 import { z } from "zod";
+import { PHASE_WEEK_MIGRATION } from "./run-store.js";
 import { RED_FLAGS } from "./red-flags.js";
 import type { PoolTask } from "./rule-pick.js";
 import type { Provenance, TaskClass, TaskRow } from "./types.js";
@@ -86,7 +87,18 @@ const SCORECARD_DDL = `
 /** The scorecard store's own database: the derived tables plus the kit's per-source watermark table. */
 export const SCORECARD_MIGRATIONS: readonly Migration[] = [
   { version: 1, name: "ticket-scorecard:tables", up: (db) => db.exec(SCORECARD_DDL + kitDdl({ watermark: true })) },
+  PHASE_WEEK_MIGRATION,
 ];
+
+/**
+ * Empty the tables a rebuild recomputes from raw. The pool snapshot stays: it records readiness at a week's start,
+ * which no later read can recover. The run log and the watermarks stay too; the rebuild advances the watermarks.
+ */
+export function clearDerivedRows(db: Db): void {
+  db.transaction(() => {
+    for (const table of ["task_row", "week_row", "phase_week"]) db.prepare(`DELETE FROM ${table}`).run();
+  })();
+}
 
 type SqlValue = string | number | null;
 

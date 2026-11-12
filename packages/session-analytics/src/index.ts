@@ -220,4 +220,17 @@ export { weekRows } from "./ticket-scorecard/week-rows.js";
 export type { RedFlag, ScorecardThresholds } from "./ticket-scorecard/red-flags.js";
 export { DEFAULT_THRESHOLDS, redFlags } from "./ticket-scorecard/red-flags.js";
 export { isoWeek } from "./ticket-scorecard/stats.js";
-export { SCORECARD_MIGRATIONS, readPoolSnapshot, readTaskRows, readWeekRows, upsertTaskRows, upsertWeekRows, writePoolSnapshot } from "./ticket-scorecard/store.js";
+export {
+  SCORECARD_MIGRATIONS,
+  clearDerivedRows,
+  readPoolSnapshot,
+  readTaskRows,
+  readWeekRows,
+  upsertTaskRows,
+  upsertWeekRows,
+  writePoolSnapshot,
+} from "./ticket-scorecard/store.js";
+export type { PhaseRun, PhaseWeek } from "./ticket-scorecard/phase-weeks.js";
+export { phaseWeeks } from "./ticket-scorecard/phase-weeks.js";
+export type { ScorecardRunLog } from "./ticket-scorecard/run-store.js";
+export { readPhaseWeeks, recordRun, upsertPhaseWeeks } from "./ticket-scorecard/run-store.js";
