@@ -6,6 +6,8 @@ import { OWNER_PACKET_FILES, adversaryTouches } from "./signoffs.js";
 import { skillPathsIn } from "./skill-paths.js";
 import type { Registration } from "./store.js";
 import { shownPaths, visualMatches } from "./visual-gate.js";
+import type { VisualGateMode } from "./visual-gate-config.js";
+import { keepsOwnerGate, visualGateMode } from "./visual-gate-mode.js";
 
 /**
  * TP-3734 tiers: low merges on green CI and a MERGE, medium needs one more agent sign-off, high needs the owner.
@@ -41,6 +43,8 @@ interface RiskFacts {
   unread: string | undefined;
   /** Set by the revert breaker (TP-3736): low becomes medium. */
   tighten?: boolean;
+  /** `shepherd.visualGate` (TP-5408): under `async` a visual path alone raises no tier; absent means `owner`. */
+  visualGate?: VisualGateMode;
 }
 
 /** Owner Q4 (decision 504): past this many lines a second correctness MERGE is the medium sign-off; below it size picks the reviewer only. */
@@ -48,6 +52,16 @@ const DEEP_REVIEW_LINES = 800;
 
 /** Owner Q2 (decision 504): CI workflow files need a person even when the reviewer writes `CI-policy: unchanged`. */
 const CI_PERSON_FILES = [".github/workflows/**", ".github/codeowners", ".codewatch/**"];
+
+/** TP-5403 Q1: the files that cut or publish a release, so a policy touch among them stays the owner's. */
+const PUBLISH_FILES = [
+  ".changeset/config.json",
+  ...["version-packages.ts", "release-follow.ts", "bump-*.ts", "consumer-bump*.ts", "leftover-bump.ts"].map((name) => `products/factory/src/shepherd/${name}`),
+  "products/factory/src/cli-release.ts",
+];
+
+/** TP-5403 Q1: agent settings and the factory config, which sets defaults such as the gate-reset switches. */
+const SETTINGS_FILES = [".claude/**", ".agent-chat/**", "products/factory/src/config.ts", "products/factory/src/config-ref.ts"];
 
 /** Owner Q1 (decision 504): the files that define the owner's own gates, so an agent sign-off never stands in for theirs. */
 const OWNER_LEVER_FILES = [...MERGE_POLICY_FILES, ...HOLD_COMMAND_FILES, ...OWNER_ACTION_FILES].map((glob) => glob.toLowerCase());
@@ -82,9 +96,11 @@ function highReasons(facts: RiskFacts): (string | undefined)[] {
     pathReason("owner packet", facts.ownerPacket),
     pathReason("owner gate file", matching(facts.paths.filter((path) => !isTest(path)), OWNER_LEVER_FILES)),
     pathReason("CI workflow file", matching(facts.paths, CI_PERSON_FILES)),
+    pathReason("publish file", matching(facts.paths, PUBLISH_FILES)),
+    pathReason("settings file", matching(facts.paths, SETTINGS_FILES)),
     ciPolicyReason(facts.ciPolicy),
     facts.authorityLine === "widened" ? "Authority widened" : undefined,
-    pathReason("visual", facts.visual),
+    visualGateMode(facts.visualGate) === "async" ? undefined : pathReason("visual", facts.visual),
     facts.ownerHold && `owner hold: ${facts.ownerHold}`,
   ];
 }
@@ -120,24 +136,29 @@ interface RiskRead {
   ciPolicy?: CiPolicy;
   visualPaths?: readonly string[];
   ownerHold: string | undefined;
+  visualGate?: VisualGateMode;
 }
 
-export function riskFactsOf({ paths, changedLines, unread, ciPolicy, visualPaths, ownerHold }: RiskRead): RiskFacts {
+export function riskFactsOf({ paths, changedLines, unread, ciPolicy, visualPaths, ownerHold, visualGate }: RiskRead): RiskFacts {
   const ownerPacket = paths.filter((path) => OWNER_PACKET_FILES.includes(folded(path)));
   const touches = shepherdPathTouches(paths.map((path) => ({ path })));
   const visual = visualPaths === undefined ? [] : visualMatches(paths, visualPaths);
-  return { paths, touches, ownerPacket, skillPaths: skillPathsIn(paths), ...(ciPolicy && { ciPolicy }), visual, ownerHold, changedLines, unread };
+  return { paths, touches, ownerPacket, skillPaths: skillPathsIn(paths), ...(ciPolicy && { ciPolicy }), visual, ownerHold, changedLines, unread, ...(visualGate && { visualGate }) };
 }
 
 const OWNER_GATE_RISK: readonly string[] = ["owner-asked", "gate-2-visual"];
 const OWNER_HOLD_CLASSES: readonly string[] = ["owner-asked", "visual-gate2"];
 
-/** The owner's own hold or registration gate on the run: an owner-asked slot, a visual-gate2 hold, or an owner-asked or visual registration. */
-export function ownerHoldOf(registration: Registration | undefined): string | undefined {
+/**
+ * The owner's own hold or registration gate on the run: an owner-asked slot, a visual-gate2 hold, or an owner-asked or
+ * visual registration. Under `visualGate: async` the visual hold and registration are not the owner's (TP-5408).
+ */
+export function ownerHoldOf(registration: Registration | undefined, visualGate?: VisualGateMode): string | undefined {
   if (registration === undefined) return undefined;
   if (registration.ownerHold) return registration.ownerHold.reason;
   const held = registration.held ? registration.holdReason : null;
-  if (held !== null && OWNER_HOLD_CLASSES.includes(held.split(":")[0]!)) return held;
+  const heldClass = held?.split(":")[0] ?? "";
+  if (held !== null && OWNER_HOLD_CLASSES.includes(heldClass) && keepsOwnerGate(visualGate, heldClass)) return held;
   const gate = registration.policy.ownerGateReason;
-  return gate !== undefined && OWNER_GATE_RISK.includes(gate) ? `owner gate ${gate}` : undefined;
+  return gate !== undefined && OWNER_GATE_RISK.includes(gate) && keepsOwnerGate(visualGate, gate) ? `owner gate ${gate}` : undefined;
 }

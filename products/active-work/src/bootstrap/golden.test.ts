@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { assembleBootstrap, type BootstrapInput, type BootstrapMetadata } from './prompt.js';
 import type { LoopRetriever } from './loop-context.js';
 import type { RelatedHit } from '../search/related.js';
-import { withTempActiveRoot } from '../test-support/test-helpers.js';
+import { withTempActiveRoot, writeAgentVisibleBrief } from '../test-support/test-helpers.js';
 
 /**
  * Golden output for two fixture initiatives: one bare, one that renders every
@@ -290,6 +290,7 @@ describe('bootstrap golden output', () => {
       await pauseBrief(root);
       await writeSessions(root);
       await writeTasksAndNotes(root);
+      writeAgentVisibleBrief(root, 'example-app');
 
       const { prompt, metadata } = await assembleBootstrap(fullInput(root));
 

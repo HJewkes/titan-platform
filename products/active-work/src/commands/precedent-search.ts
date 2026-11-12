@@ -1,9 +1,9 @@
 import type { LedgerRow } from '@titan-design/decider';
 import { z } from 'zod';
 import { defineCommand } from '../registry/index.js';
-import { loadHumanOnlyInitiatives } from '../decider/human-only.js';
 import { readLedgerRows } from '../decider/ledger.js';
 import { isUnclaimed, searchPrecedents } from '../decider/search.js';
+import { loadAgentVisibility } from '../sessions/visibility.js';
 import { getActiveRoot } from '../utils/paths.js';
 
 const ArgsSchema = z.object({
@@ -90,14 +90,14 @@ export default defineCommand<Args, Result>({
   },
   async run(args) {
     const activeRoot = getActiveRoot();
-    const humanOnly = await loadHumanOnlyInitiatives(activeRoot);
+    const isVisible = await loadAgentVisibility(activeRoot);
     const { rows, malformed } = await readLedgerRows(activeRoot);
     const hits = await searchPrecedents(rows, args.query, {
       limit: args.limit,
       initiative: args.initiative,
       category: args.class,
       includeUnclaimed: args.include_unclaimed,
-      humanOnly,
+      isVisible,
     });
     return {
       query: args.query,

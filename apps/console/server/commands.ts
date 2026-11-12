@@ -27,6 +27,7 @@ import { roundFramesCommands } from "./round-frames.js";
 import { roundsRevealCommands } from "./round-reveal.js";
 import type { RoundListeners } from "./listeners.js";
 import { reviewsCommands, type ReviewsSource } from "./reviews.js";
+import { scorecardCommands, type ScorecardSource } from "./scorecard-view.js";
 import type { SeatNotifier } from "./round-notice-transport.js";
 import { roundsCommands } from "./rounds-commands.js";
 import type { RoundsSource } from "./rounds.js";
@@ -93,6 +94,8 @@ export interface ConsoleSources {
   shipped?: ShippedOptions;
   /** Optional so test sources need not build one; absent, `config.compareTree` is `not-configured`. */
   configStore?: ConfigStoreSource;
+  /** Optional so test sources need not build one; absent, the `scorecard.*` reads are not served. */
+  scorecard?: ScorecardSource;
   /** Hours before `blockers.banner` shows an item; absent means 12. */
   blockerHours?: number;
 }
@@ -188,7 +191,7 @@ function coordinatorReads(coordinator: CoordinatorSource | undefined, shipped: S
 }
 
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, videoNotify, explainerBin, work, coordinator, configStore, shipped, invalidation, blockerHours }: ConsoleSources) {
+export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, videoNotify, explainerBin, work, coordinator, configStore, shipped, invalidation, blockerHours, scorecard }: ConsoleSources) {
   const configReaders = surfaceReaders(coordinatorRoots, hostSurfaces);
   return {
     ...upstreamsCommands(upstreams),
@@ -214,6 +217,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...(reviews === undefined ? {} : reviewsCommands(reviews)),
     ...workCommands(activeWork, work),
     ...coordinatorReads(coordinator, shipped, shepherd),
+    ...(scorecard === undefined ? {} : scorecardCommands(scorecard)),
   };
 }
 
