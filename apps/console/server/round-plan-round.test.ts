@@ -77,7 +77,7 @@ describe("a plan round built by owner-queue", () => {
 });
 
 describe("a task validation round built by owner-queue", () => {
-  const TASK_SCOPE = { doneWhenHash: "0123abcd", reason: "new-cap" as const, visualSignoff: true };
+  const TASK_SCOPE = { doneWhen: "It ships.", reason: "new-cap" as const, visualSignoff: true };
   const taskBody = (): string =>
     JSON.stringify(buildPlanRound({ unit: "validate-example-tp-1", round: 1, task: PLAN_TASK, repo: PLAN_REPO, asks: [{ gate: "task", scope: TASK_SCOPE, title: "A new capability", context: "Done when: it ships." }] }));
 

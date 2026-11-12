@@ -2,7 +2,6 @@ import type { GateResolver } from "@titan-design/hitl";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { doneWhenHash } from "../dispatch/ops.js";
 import { SHEPHERD_MIGRATIONS } from "../workflows.js";
 import { ownerTaskApproval } from "./owner-task-approval.js";
 import { PlanApprovalRefused, PlanApprovalSchema, type TaskApproval } from "./plan-approval.js";
@@ -13,7 +12,7 @@ const REPO = "example-org/example-repo";
 const TASK = "example/TP-1";
 const DONE_WHEN = "The widget renders in both themes.";
 const CONSOLE = (confirmEvent: string): GateResolver => ({ class: "owner-remote", id: "titan-console", channel: "console:inbox", confirmEvent });
-const TASK_APPROVAL: TaskApproval = { gate: "task", scope: { doneWhenHash: doneWhenHash(DONE_WHEN), reason: "new-direction", visualSignoff: true }, round: "validate-example-tp-1-r1" };
+const TASK_APPROVAL: TaskApproval = { gate: "task", scope: { doneWhen: DONE_WHEN, reason: "new-direction", visualSignoff: true }, round: "validate-example-tp-1-r1" };
 
 function openStore(): { store: ShepherdStore; db: Db } {
   const db = openDatabase(":memory:");
@@ -60,7 +59,7 @@ describe("the owner's task approval", () => {
 
   it("a task scope missing its reason is refused", () => {
     const { scope } = TASK_APPROVAL;
-    const noReason = { doneWhenHash: scope.doneWhenHash, visualSignoff: scope.visualSignoff };
+    const noReason = { doneWhen: scope.doneWhen, visualSignoff: scope.visualSignoff };
 
     expect(PlanApprovalSchema.safeParse({ gate: "task", scope: noReason, round: "r" }).success).toBe(false);
     expect(PlanApprovalSchema.safeParse({ gate: "task", scope: { ...scope, reason: "nice-to-have" }, round: "r" }).success).toBe(false);
@@ -71,6 +70,26 @@ describe("the owner's task approval", () => {
     approveTask(store);
 
     expect(ownerTaskApproval(store, TASK, "The widget renders in one theme.")).toBeUndefined();
+    expect(ownerTaskApproval(store, TASK, `${DONE_WHEN} ref 10824333`)).toBeUndefined();
+  });
+
+  it("a task approval still reads back when the done_when is only reflowed", () => {
+    const { store } = openStore();
+    approveTask(store);
+
+    expect(ownerTaskApproval(store, TASK, "  The widget renders\nin both   themes.\n")).toEqual(TASK_APPROVAL);
+  });
+
+  it.each([
+    ["uncollapsed whitespace", "The widget renders\nin both themes."],
+    ["an escape sequence", "The widget renders \u001b[8mhidden\u001b[0m in both themes."],
+    ["a zero-width space", "The widget\u200b renders in both themes."],
+    ["no text", ""],
+  ])("a task approval whose done_when holds %s, which the owner would not see as bound, is refused", (_case, doneWhen) => {
+    const { store } = openStore();
+
+    expect(() => store.planApprovals().record({ ...TASK_APPROVAL, scope: { ...TASK_APPROVAL.scope, doneWhen }, task: TASK, repo: REPO }, CONSOLE("action:1"))).toThrow();
+    expect(ownerTaskApproval(store, TASK, doneWhen)).toBeUndefined();
   });
 
   it.each(["TP-1", "example/tp-1", "Example/TP-1", "example/TP-1/extra"])("a task key %s that is not <initiative>/<ID> is refused on write and on read", (key) => {

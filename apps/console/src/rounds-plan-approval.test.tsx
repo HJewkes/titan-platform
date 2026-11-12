@@ -71,19 +71,19 @@ function withTaskQuestion(): Record<string, unknown> {
   round.sections[0]!.questionIds.push("task");
   round.sections[0]!.parts.push({ id: "task", label: "The task", proposed: "Done when: it ships.", lang: "md" });
   round.questions.push({ id: "task", kind: "pick-one", prompt: "Validate TP-1: A new capability?", options: [VALIDATE, "Not now: leave example/TP-1 unvalidated"], required: true, signsOff: "task", recommendation: { answer: VALIDATE, rationale: "Synthetic.", confidence: 0.8, by: "fixture-agent" } });
-  round.planApprovals.push({ questionId: "task", approve: VALIDATE, task: PLAN_TASK, repo: PLAN_REPO, gate: "task", scope: { doneWhenHash: "0123abcd", reason: "new-cap", visualSignoff: true } });
+  round.planApprovals.push({ questionId: "task", approve: VALIDATE, task: PLAN_TASK, repo: PLAN_REPO, gate: "task", scope: { doneWhen: "The widget renders in both themes.", reason: "new-cap", visualSignoff: true } });
   return round;
 }
 
 describe("a task validation question on the round page", () => {
-  it("shows the owner that the approve pick validates the task for every PR, with its reason and visual sign-off", async () => {
+  it("shows the owner that the approve pick validates the task for every PR, with the done_when it binds, its reason and visual sign-off", async () => {
     await world.remove();
     world = await planWorld(withTaskQuestion());
     await renderPlanRound();
 
     expect(linesIn("task")).toEqual([
       `"${VALIDATE}" records your validation of ${PLAN_TASK}, for every PR of the task, as:`,
-      "Done when, as shown above (hash 0123abcd)",
+      "Done when: The widget renders in both themes.",
       "Why it needs you: new-cap",
       "Visual sign-off at merge: yes",
     ]);

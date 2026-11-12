@@ -20,30 +20,30 @@
       ]
     },
     {
-      "name": "a task row keeps the run the console named",
-      "file": "products/factory/src/shepherd/plan-approval.ts",
-      "find": "const claimed = gate === \"task\" ? null : (claimRun ?? null);",
-      "replace": "const claimed = claimRun ?? null;",
-      "kills": [
-        "the owner's task approval a task approval is not claimed by a registering run"
-      ]
-    },
-    {
-      "name": "the reason enum is widened to any string",
-      "file": "products/factory/src/shepherd/plan-approval.ts",
-      "find": "  reason: z.enum(TASK_APPROVAL_REASONS),",
-      "replace": "  reason: z.string(),",
-      "kills": [
-        "the owner's task approval a task scope missing its reason is refused"
-      ]
-    },
-    {
-      "name": "the reader drops the done_when hash compare",
+      "name": "the reader drops the done_when compare",
       "file": "products/factory/src/shepherd/owner-task-approval.ts",
-      "find": "return approval?.scope.doneWhenHash === doneWhenHash(doneWhen) ? approval : undefined;",
+      "find": "return approval?.scope.doneWhen === collapsedDoneWhen(doneWhen) ? approval : undefined;",
       "replace": "return doneWhen === \"\" ? undefined : approval;",
       "kills": [
         "the owner's task approval a task approval for an older done_when reads as none"
+      ]
+    },
+    {
+      "name": "the record accepts a done_when the owner would see altered",
+      "file": "products/factory/src/shepherd/plan-approval.ts",
+      "find": "collapsedDoneWhen(doneWhen) === doneWhen && promptLine(doneWhen) === doneWhen &&",
+      "replace": "true &&",
+      "kills": [
+        "the owner's task approval a task approval whose done_when holds uncollapsed whitespace, which the owner would not see as bound, is refused"
+      ]
+    },
+    {
+      "name": "the reader compares the stored text without collapsing the current one",
+      "file": "products/factory/src/shepherd/owner-task-approval.ts",
+      "find": "=== collapsedDoneWhen(doneWhen) ?",
+      "replace": "=== doneWhen ?",
+      "kills": [
+        "the owner's task approval a task approval still reads back when the done_when is only reflowed"
       ]
     }
   ]

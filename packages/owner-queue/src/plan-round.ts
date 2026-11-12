@@ -17,9 +17,9 @@ export interface PathPlanScope {
   paths: string[];
 }
 
-/** A task approval validates the task's WHAT: the done_when the owner read, by hash, and the owner-rule reason it needed them. */
+/** A task approval validates the task's WHAT: the done_when text the owner read in the scope card, and the owner-rule reason it needed them. */
 export interface TaskPlanScope {
-  doneWhenHash: string;
+  doneWhen: string;
   reason: "new-direction" | "one-way-door" | "new-cap" | "authority-widening";
   visualSignoff: boolean;
 }

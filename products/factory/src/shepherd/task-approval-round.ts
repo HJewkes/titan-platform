@@ -2,11 +2,10 @@
 // one-question round.json whose binding is a `task` plan approval. It writes nothing; the owner's approve pick, filed
 // through the console, is the only path to the row.
 import { isRepo } from "@titan-design/github";
-import { buildPlanRound, promptLine, type PlanRound } from "@titan-design/owner-queue";
+import { buildPlanRound, type PlanRound } from "@titan-design/owner-queue";
 import { createRpcClient, liveSource } from "@titan-design/rpc-client";
-import { doneWhenHash, hashedDoneWhen } from "../dispatch/ops.js";
 import { shownLine } from "./ci-policy-changes.js";
-import { TASK_APPROVAL_REASONS, TaskKeySchema, type TaskScope } from "./plan-approval.js";
+import { collapsedDoneWhen, isShownAsBound, TASK_APPROVAL_REASONS, TaskKeySchema, type TaskScope } from "./plan-approval.js";
 import { checkBindings, PlanRoundRefused } from "./plan-round.js";
 
 const OWNER_VALIDATE_TAG = "owner-validate";
@@ -61,23 +60,20 @@ function checkedRequest(request: TaskApprovalRequest): { initiative: string; id:
   return { initiative: request.taskKey.slice(0, slash), id: request.taskKey.slice(slash + 1), reason: request.reason };
 }
 
-const LONE_SURROGATE = /[\u{d800}-\u{dfff}]/u;
-
 /**
- * The owner approves the hash of what they read, so they are shown the whole of the text `doneWhenHash` covers, uncut.
- * A done_when the prompt would clean (escapes, invisible or control characters) is refused, never shown altered.
+ * The binding carries the done_when text and the console's scope card shows that field, so the owner reads exactly what the
+ * row binds. A done_when the card would show altered (escapes, invisible or control characters) is refused, never cleaned.
  */
-function shownDoneWhen(taskKey: string, doneWhen: string): string {
-  const hashed = hashedDoneWhen(doneWhen);
-  if (hashed === "") throw new PlanRoundRefused(`${taskKey} has no done_when for the owner to validate`);
-  if (promptLine(hashed) !== hashed || LONE_SURROGATE.test(hashed)) {
+function boundDoneWhen(taskKey: string, doneWhen: string): string {
+  const collapsed = collapsedDoneWhen(doneWhen);
+  if (collapsed === "") throw new PlanRoundRefused(`${taskKey} has no done_when for the owner to validate`);
+  if (!isShownAsBound(collapsed)) {
     throw new PlanRoundRefused(`${taskKey}'s done_when holds escape, invisible or control characters the owner would not see; edit them out of the task first`);
   }
-  return hashed;
+  return collapsed;
 }
 
-const contextOf = (doneWhen: string, scope: TaskScope): string =>
-  [`Done when: ${doneWhen}`, `Why it needs you: ${scope.reason}.`, `Visual sign-off at merge: ${scope.visualSignoff ? "yes" : "no"}.`].join("\n");
+const CONTEXT = "Approving records your validation of exactly the done_when pinned below; any later edit to it needs your validation again.";
 
 /** Refuses a key, reason or task the record would not hold, so nothing reaches the owner that their pick could not record. */
 export async function taskApprovalRound(request: TaskApprovalRequest, reads: TaskApprovalReads): Promise<PlanRound> {
@@ -85,9 +81,8 @@ export async function taskApprovalRound(request: TaskApprovalRequest, reads: Tas
   const task = await reads.task(initiative, id);
   if (task === undefined) throw new PlanRoundRefused(`active-work holds no task ${id} in ${initiative}`);
   if (!task.tags.includes(OWNER_VALIDATE_TAG)) throw new PlanRoundRefused(`${request.taskKey} is not tagged ${OWNER_VALIDATE_TAG}, so no task approval is asked for`);
-  const doneWhen = shownDoneWhen(request.taskKey, task.doneWhen);
-  const scope: TaskScope = { doneWhenHash: doneWhenHash(doneWhen), reason, visualSignoff: request.visualSignoff };
-  const ask = { gate: "task" as const, scope, title: shownLine(task.title) || id, context: contextOf(doneWhen, scope) };
+  const scope: TaskScope = { doneWhen: boundDoneWhen(request.taskKey, task.doneWhen), reason, visualSignoff: request.visualSignoff };
+  const ask = { gate: "task" as const, scope, title: shownLine(task.title) || id, context: CONTEXT };
   const unit = `validate-${request.taskKey.toLowerCase().replace(/\//g, "-")}`;
   const { round, supersedes, storybookUrl, taskKey, repo } = request;
   const built = buildPlanRound({ unit, round, task: taskKey, repo, asks: [ask], ...(supersedes && { supersedes }), ...(storybookUrl && { storybookUrl }) });

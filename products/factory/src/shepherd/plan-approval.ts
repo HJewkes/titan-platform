@@ -1,4 +1,5 @@
 import type { GateResolver } from "@titan-design/hitl";
+import { promptLine } from "@titan-design/owner-queue";
 import { CI_POLICY_KEYS } from "@titan-design/session-read";
 import type { Db, Migration } from "@titan-design/store-sqlite";
 import { z } from "zod";
@@ -28,9 +29,21 @@ export const TASK_APPROVAL_REASONS = ["new-direction", "one-way-door", "new-cap"
 /** The canonical `<initiative>/<ID>` key; a bare ID or any other shape is refused, never resolved. */
 export const TaskKeySchema = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*\/[A-Z][A-Z0-9]*-[0-9]+$/, "a task key is <initiative>/<ID>");
 
-/** What the owner validated for a task: the done_when they read, by its `doneWhenHash`, and why it needed them. */
+/** A done_when as the owner reads and the row binds it: trimmed, every whitespace run one space. */
+export const collapsedDoneWhen = (doneWhen: string): string => doneWhen.trim().replace(/\s+/g, " ");
+
+const LONE_SURROGATE = /[\u{d800}-\u{dfff}]/u;
+
+/** True when the owner's screen would show `doneWhen` exactly as the row binds it: collapsed, with nothing a prompt strips. */
+export const isShownAsBound = (doneWhen: string): boolean =>
+  collapsedDoneWhen(doneWhen) === doneWhen && promptLine(doneWhen) === doneWhen && !LONE_SURROGATE.test(doneWhen);
+
+/**
+ * What the owner validated for a task: the done_when text itself, which the console shows in the scope card and the row
+ * keeps, so the approval binds exactly what they read and a reader compares the whole text, never a short digest of it.
+ */
 export const TaskScopeSchema = z.strictObject({
-  doneWhenHash: z.string().regex(/^[0-9a-f]{8}$/),
+  doneWhen: z.string().min(1).max(4000).refine(isShownAsBound, "a done_when is collapsed whitespace with no escape, invisible or control characters"),
   reason: z.enum(TASK_APPROVAL_REASONS),
   visualSignoff: z.boolean(),
 });

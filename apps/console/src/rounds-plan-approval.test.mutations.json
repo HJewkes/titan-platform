@@ -40,12 +40,12 @@
       ]
     },
     {
-      "name": "a task binding shows as a path approval",
+      "name": "the scope card leaves out the bound done_when",
       "file": "apps/console/src/pages/PlanApprovalScope.tsx",
-      "find": "if (gate === \"task\") return",
-      "replace": "if (gate === \"never\") return",
+      "find": "return [`Done when: ${doneWhen}`, ",
+      "replace": "return [",
       "kills": [
-        "a task validation question on the round page shows the owner that the approve pick validates the task for every PR, with its reason and visual sign-off"
+        "a task validation question on the round page shows the owner that the approve pick validates the task for every PR, with the done_when it binds, its reason and visual sign-off"
       ]
     }
   ]

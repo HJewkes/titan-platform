@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import { runCli } from "./cli.js";
 import type { CliDeps } from "./cli-types.js";
 import { PlanApprovalActionSchema } from "./console-action/record.js";
-import { doneWhenHash } from "./dispatch/ops.js";
 import { fakeActiveWork } from "./test-support/active-work.js";
 
 const REPO = "example-org/example-repo";
@@ -31,14 +30,13 @@ describe("shepherd plan-round --task-approval", () => {
     expect(round.questions).toHaveLength(1);
     expect(round.questions[0]).toMatchObject({ kind: "pick-one", prompt: "Validate TP-7: Add a dark theme?" });
     expect(round.questions[0].options).toEqual(["Approve: validate example/TP-7 as described below", "Not now: leave example/TP-7 unvalidated"]);
-    expect(round.sections[0].context).toContain(`Done when: ${DONE_WHEN}`);
-    const scope = { doneWhenHash: doneWhenHash(DONE_WHEN), reason: "new-direction", visualSignoff: true };
+    const scope = { doneWhen: DONE_WHEN, reason: "new-direction", visualSignoff: true };
     expect(round.planApprovals).toEqual([{ questionId: "q1", approve: round.questions[0].options[0], task: "example/TP-7", repo: REPO, gate: "task", scope }]);
     const { task: boundTask, repo, gate } = round.planApprovals[0];
     expect(PlanApprovalActionSchema.safeParse({ kind: "plan-approval", task: boundTask, repo, round: "r", gate, scope }).success).toBe(true);
   });
 
-  it("plan-round --task-approval shows the whole of a done_when over 160 characters, the text its hash covers", async () => {
+  it("plan-round --task-approval binds the whole of a done_when over 160 characters, uncut", async () => {
     const long = `${"The widget renders in both themes and every page keeps its layout. ".repeat(3)}\nThen the store moves to a new account.`;
     const aw = fakeActiveWork([task(["owner-validate"], long)]);
 
@@ -48,8 +46,7 @@ describe("shepherd plan-round --task-approval", () => {
     const round = JSON.parse(stdout);
     const shown = long.trim().replace(/\s+/g, " ");
     expect(shown.length).toBeGreaterThan(160);
-    expect(round.sections[0].context).toContain(`Done when: ${shown}\n`);
-    expect(round.planApprovals[0].scope.doneWhenHash).toBe(doneWhenHash(shown));
+    expect(round.planApprovals[0].scope.doneWhen).toBe(shown);
   });
 
   it.each([

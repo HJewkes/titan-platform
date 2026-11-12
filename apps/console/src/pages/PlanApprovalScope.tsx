@@ -18,8 +18,8 @@ const blobLabel = (blob: string | null): string => (blob === null ? "absent at h
 
 function scopeLines(binding: PlanBinding): string[] {
   if (binding.gate === "task") {
-    const { doneWhenHash, reason, visualSignoff } = binding.scope;
-    return [`Done when, as shown above (hash ${doneWhenHash})`, `Why it needs you: ${reason}`, `Visual sign-off at merge: ${visualSignoff ? "yes" : "no"}`];
+    const { doneWhen, reason, visualSignoff } = binding.scope;
+    return [`Done when: ${doneWhen}`, `Why it needs you: ${reason}`, `Visual sign-off at merge: ${visualSignoff ? "yes" : "no"}`];
   }
   if (binding.gate !== "ci-policy") return binding.scope.paths.map((path) => `Path: ${path}`);
   const keys = `CI-policy weakened: ${binding.scope.ciPolicyKeys.join(", ")}`;

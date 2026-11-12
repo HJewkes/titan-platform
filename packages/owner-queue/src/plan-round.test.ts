@@ -13,7 +13,7 @@ const CI_ASK: PlanAsk = {
 const SKILL_ASK: PlanAsk = { gate: "skill", scope: { paths: [".claude/skills/example/SKILL.md"] }, title: "The skill file", context: "One new skill." };
 const VISUAL_ASK: PlanAsk = { gate: "visual", scope: { paths: ["packages/ui/src/Button.tsx"] }, title: "The button", context: "A new variant." };
 
-const TASK_ASK: PlanAsk = { gate: "task", scope: { doneWhenHash: "0123abcd", reason: "one-way-door", visualSignoff: false }, title: "Move the store", context: "Done when: it moved." };
+const TASK_ASK: PlanAsk = { gate: "task", scope: { doneWhen: "The store moved.", reason: "one-way-door", visualSignoff: false }, title: "Move the store", context: "Done when: it moved." };
 const input = (asks: PlanAsk[], extra: Partial<PlanRoundInput> = {}): PlanRoundInput => ({ unit: "plan-example-tp-1", round: 1, task: TASK, repo: REPO, asks, ...extra });
 
 const pickOne = (question: { kind: string; options?: string[] }) => (question.kind === "pick-one" ? question.options! : []);

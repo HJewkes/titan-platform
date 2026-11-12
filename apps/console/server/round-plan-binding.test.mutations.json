@@ -18,6 +18,15 @@
       "kills": [
         "a plan round's task binding a task binding with a bare task id is refused"
       ]
+    },
+    {
+      "name": "the task binding takes a done_when the card would show altered",
+      "file": "apps/console/server/round-plan-binding.ts",
+      "find": "refine(shownAsBound,",
+      "replace": "refine(() => true,",
+      "kills": [
+        "a plan round's task binding a task binding with a done_when holding an escape sequence is refused"
+      ]
     }
   ]
 }

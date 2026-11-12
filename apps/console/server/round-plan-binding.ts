@@ -5,6 +5,7 @@
  * here, the round id from the round's directory and the actor from the factory's console resolver. The factory parses the
  * action again, strictly, before it writes a row; this copy refuses a malformed round when it is read.
  */
+import { promptLine } from "@titan-design/owner-queue";
 import { CI_POLICY_KEYS } from "@titan-design/session-read";
 import { z } from "zod";
 
@@ -21,9 +22,12 @@ const CiPolicyScope = z.strictObject({
     .refine((files) => new Set(files.map((file) => file.path)).size === files.length, "each pinned path appears once"),
 });
 const PathScope = z.strictObject({ paths: z.array(bounded).min(1).max(200) });
-/** The owner's task validation (TP-5411): the done_when they read, by hash, and the owner-rule reason it needed them. */
+const LONE_SURROGATE = /[\u{d800}-\u{dfff}]/u;
+/** The scope card shows this text as the row binds it, so a text the card would show collapsed or cleaned is refused. */
+const shownAsBound = (text: string): boolean => text.trim().replace(/\s+/g, " ") === text && promptLine(text) === text && !LONE_SURROGATE.test(text);
+/** The owner's task validation (TP-5411): the done_when text they read in the scope card, and the owner-rule reason it needed them. */
 const TaskScope = z.strictObject({
-  doneWhenHash: z.string().regex(/^[0-9a-f]{8}$/),
+  doneWhen: z.string().min(1).max(4000).refine(shownAsBound, "a done_when is collapsed whitespace with no escape, invisible or control characters"),
   reason: z.enum(["new-direction", "one-way-door", "new-cap", "authority-widening"]),
   visualSignoff: z.boolean(),
 });

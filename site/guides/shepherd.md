@@ -2284,14 +2284,16 @@ titan-factory shepherd plan-round --task-approval <initiative>/<ID> --reason <re
 It reads the task's title, `done_when` and tags from active-work and refuses a task without the
 `owner-validate` tag, a key that is not `<initiative>/<ID>`, and a `--reason` outside owner rule
 Q4's four: `new-direction`, `one-way-door`, `new-cap`, `authority-widening`. The round has one
-question, `Validate <ID>: <title>?`, with approve and not-now options; the owner reads the
-whole done_when, exactly the text its hash covers and never cut, with the reason and the visual
-sign-off flag beside it. A done_when holding escape, invisible or control characters is refused
-rather than shown altered. The approve pick records a `task`
-row in `shepherd_plan_approval`, keyed by the task key and pinned to the done_when's hash. No run
+question, `Validate <ID>: <title>?`, with approve and not-now options. The binding carries the
+whole done_when text, whitespace collapsed and never cut, and the console's scope card shows that
+field with the reason and the visual sign-off flag, so the owner reads exactly what the approval
+binds whoever drafted the round. The console and the record both refuse a done_when holding
+escape, invisible or control characters, or uncollapsed whitespace, rather than show it altered.
+The approve pick records a `task` row in `shepherd_plan_approval`, keyed by the task key and
+holding the done_when text itself, not a digest of it. No run
 claims it, so it covers every PR of the task, and only the console's owner-remote writes it. Code
 reads it only through `ownerTaskApproval` (`products/factory/src/shepherd/owner-task-approval.ts`),
-which reads none when the done_when has changed since the owner approved it. Nothing at dispatch
+which reads none when the done_when differs in any word from the text the owner approved. Nothing at dispatch
 or merge reads it yet; S8b adds the check and the merge backstop. A refusal exits 65 and an
 unreachable active-work exits 69, each with no round printed.
 
