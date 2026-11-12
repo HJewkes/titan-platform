@@ -74,7 +74,7 @@ export const context = (over: Partial<OwnerFileContext> = {}): OwnerFileContext 
   ...over,
 });
 
-export const LISTED_SEATS = ["example-steward", "example-desk", "example-second-desk"];
+const LISTED_SEATS = ["example-steward", "example-desk", "example-second-desk"];
 
 export const indexJson = (ownerOnlyReaders: string[] = [], seats: string[] = LISTED_SEATS): string =>
   json({ schema: "titan-seat-index/v1", seats, ownerOnlyReaders });
