@@ -6,8 +6,10 @@ const MTOK = 1e6;
 const REVERSE_GAP_BAND = GAP_BANDS[1]!.name;
 
 /**
- * Tokens a 1h TTL would have served as a read instead of a rebuild write, per request. Only sessions
- * observed purely on 5m are replayed: one 1h write marks a mixed or 1h session, where nothing is claimed.
+ * Tokens a 1h TTL would have served as a read instead of a rebuild write, per request. Only chains
+ * (a session's main chain, or one of its sidechains) observed purely on 5m are replayed: one 1h write
+ * marks a mixed or 1h chain, where nothing is claimed. A main chain on 5m is therefore replayed even
+ * when its sidechain wrote at 1h, and the reverse.
  * After a 5-60 minute gap the 1h cache still held the previous prompt, so `min(write, previous prompt)`
  * reverts. A first request, a gap past an hour (1h expired too) and a missing previous request claim nothing.
  */

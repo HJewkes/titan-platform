@@ -143,3 +143,65 @@ describe('context.related', () => {
     expect(note && 'readIf' in note).toBe(expected !== undefined);
   });
 });
+
+describe('context.related in context mode', () => {
+  it('a spawn trigger logs placed entries only, ranked in rendered order', async () => {
+    const log = recorder();
+    let result = await runRelated(
+      { for: 'indexer converges', initiative: 'alpha', trigger: 'spawn', mode: 'context', tokens: 1 },
+      { activeRoot: root, dbPath, hitLog: recorder().writer },
+    );
+    let tokens = 1;
+    while ((result.entries ?? []).length === 0 && tokens < 400) {
+      tokens += 1;
+      result = await runRelated(
+        { for: 'indexer converges', initiative: 'alpha', trigger: 'spawn', mode: 'context', tokens },
+        { activeRoot: root, dbPath, hitLog: recorder().writer },
+      );
+    }
+    result = await runRelated(
+      { for: 'indexer converges', initiative: 'alpha', trigger: 'spawn', mode: 'context', tokens },
+      { activeRoot: root, dbPath, hitLog: log.writer },
+    );
+
+    const placed = result.entries!.map((entry) => entry.ref);
+    expect(result.dropped!.length).toBeGreaterThan(0);
+    expect(log.entries.map((entry) => entry.ref)).toEqual(placed);
+    expect(log.entries.map((entry) => entry.rank)).toEqual(placed.map((_, i) => i + 1));
+    const droppedRefs = result.dropped!.map((drop) => drop.ref);
+    expect(log.entries.some((entry) => droppedRefs.includes(entry.ref))).toBe(false);
+  });
+
+  it('maxTier caps every entry', async () => {
+    const run = (maxTier?: number) =>
+      runRelated(
+        {
+          for: 'the alpha lesson',
+          initiative: 'alpha',
+          mode: 'context',
+          tokens: 2000,
+          ...(maxTier !== undefined ? { maxTier } : {}),
+        },
+        { activeRoot: root, dbPath, hitLog: recorder().writer },
+      );
+
+    const deep = await run();
+    const shallow = await run(0);
+
+    expect(deep.entries!.some((entry) => entry.tier > 0)).toBe(true);
+    expect(shallow.entries!.length).toBeGreaterThan(0);
+    expect(shallow.entries!.every((entry) => entry.tier === 0)).toBe(true);
+  });
+
+  it('the command result schema keeps the context fields', async () => {
+    const result = await runRelated(
+      { for: 'the alpha lesson', initiative: 'alpha', mode: 'context', tokens: 2000 },
+      { activeRoot: root, dbPath, hitLog: recorder().writer },
+    );
+
+    const parsed = contextRelatedCmd.result.parse(result);
+
+    expect(result.entries!.length).toBeGreaterThan(0);
+    expect(parsed.entries).toEqual(result.entries);
+  });
+});
