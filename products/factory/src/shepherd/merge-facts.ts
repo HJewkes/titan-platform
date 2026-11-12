@@ -28,7 +28,8 @@ import { readVisualDelta, type VisualDelta, type VisualThreshold } from "./visua
 import { thresholdClearance, unclearedBaselines, visualDeltaGate } from "./visual-threshold-gate.js";
 import { oldPathGate, oldPathOf, type OldPathField, type OldPathWiring } from "../old-path/freeze-gate.js";
 import { readVisualTier, tierClearance, tierOutcome } from "./visual-tier-guard.js";
-import { asyncVisualNote, visualChangedField, visualGateField, type VisualGateMode } from "./visual-gate-mode.js";
+import { asyncVisualNote, visualChangedField, visualGateField } from "./visual-gate-mode.js";
+import type { VisualGateMode } from "./visual-gate-config.js";
 
 export { isGithubPath };
 export { registeredKind } from "./registered-kind.js";

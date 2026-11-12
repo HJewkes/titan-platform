@@ -1,7 +1,7 @@
 import { errorClass } from "./error-class.js";
 import { ownerHoldOf } from "./risk-tier.js";
 import type { ShepherdStoreRef } from "./store.js";
-import type { VisualGateMode } from "./visual-gate-mode.js";
+import type { VisualGateMode } from "./visual-gate-config.js";
 
 /** What the merge evidence reads from the run's registration. */
 export interface KindRead {

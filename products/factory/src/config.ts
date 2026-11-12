@@ -10,7 +10,7 @@ import { isRepoKey } from "./shepherd/seats.js";
 import { ConsoleOriginSchema } from "./digest/gate-alarm.js";
 import { SeatDigestPacingSchema } from "./shepherd/seat-digest-pace.js";
 import { VisualThresholdSchema } from "./shepherd/visual-threshold-config.js";
-import { VisualGateSchema } from "./shepherd/visual-gate-mode.js";
+import { VisualGateSchema } from "./shepherd/visual-gate-config.js";
 import { RedSeatConfigSchema } from "./shepherd/red-seat-config.js";
 
 /** execFile throws on a NUL byte, which would fail the post-merge step after the merge instead of at config load. */

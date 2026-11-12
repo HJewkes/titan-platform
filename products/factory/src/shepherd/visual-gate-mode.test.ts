@@ -6,7 +6,7 @@ import { decideAutoMerge, mergeEvidence, noFreezeStoreUntilTp523, type MergeEvid
 import { ownerHoldOf, riskFactsOf, riskTier } from "./risk-tier.js";
 import { requiredSignoffs } from "./signoffs.js";
 import type { Registration } from "./store.js";
-import type { VisualGateMode } from "./visual-gate-mode.js";
+import type { VisualGateMode } from "./visual-gate-config.js";
 
 const HEAD = fakeSha("visual-gate-head");
 const REVIEWER = { agentId: "agent-rv-1", sessionId: "session-rv-1" };

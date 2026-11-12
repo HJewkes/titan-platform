@@ -6,7 +6,8 @@ import { OWNER_PACKET_FILES, adversaryTouches } from "./signoffs.js";
 import { skillPathsIn } from "./skill-paths.js";
 import type { Registration } from "./store.js";
 import { shownPaths, visualMatches } from "./visual-gate.js";
-import { keepsOwnerGate, visualGateMode, type VisualGateMode } from "./visual-gate-mode.js";
+import type { VisualGateMode } from "./visual-gate-config.js";
+import { keepsOwnerGate, visualGateMode } from "./visual-gate-mode.js";
 
 /**
  * TP-3734 tiers: low merges on green CI and a MERGE, medium needs one more agent sign-off, high needs the owner.

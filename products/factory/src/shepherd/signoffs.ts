@@ -1,4 +1,5 @@
-import { visualGateMode, type VisualGateMode } from "./visual-gate-mode.js";
+import type { VisualGateMode } from "./visual-gate-config.js";
+import { visualGateMode } from "./visual-gate-mode.js";
 
 type Signoff = "correctness" | "adversary" | "owner";
 

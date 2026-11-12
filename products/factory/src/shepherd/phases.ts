@@ -12,7 +12,7 @@ import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import type { PushWatch } from "./push-signal.js";
 import type { DiagnosisPorts, ReplanPorts, VisualPacketPorts } from "./spawn-ports.js";
 import type { CleanupPorts, ExitNoticePorts, RemoveDir, RosterReader, SpawnGate, SuiteRules, TaskClose } from "./ports.js";
-import type { VisualGateMode } from "./visual-gate-mode.js";
+import type { VisualGateMode } from "./visual-gate-config.js";
 
 /** Which PR, which head, and which land round a phase acts for. */
 export interface PhaseTarget {
