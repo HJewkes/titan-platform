@@ -12,7 +12,7 @@ const yesNo = (value: boolean | null): string => (value === null ? NOT_MEASURED 
 
 /** Each row: label, value, and the provenance key a labelled column is stored under. */
 const FIELDS: readonly [string, (r: ScorecardTaskRow) => string, string?][] = [
-  ["First dispatch", (r) => r.firstDispatchTs],
+  ["First dispatch", (r) => r.firstDispatchTs, "firstDispatchTs"],
   ["Dispatcher", (r) => r.dispatcher],
   ["Dispatch rule", (r) => r.dispatchRule ?? NOT_MEASURED],
   ["Class", (r) => r.classAtDispatch ?? NOT_MEASURED, "classAtDispatch"],

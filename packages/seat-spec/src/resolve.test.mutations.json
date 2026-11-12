@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a non-root seat never takes the requester's depth",
+      "file": "packages/seat-spec/src/resolve.ts",
+      "find": "depth: seat.root ? 0 : 1,",
+      "replace": "depth: seat.root ? 0 : 3,",
+      "kills": ["resolveLaunch gives a non-root seat depth 1 whatever depth the requester has"]
+    },
+    {
+      "name": "a launch aimed at another seat is refused",
+      "file": "packages/seat-spec/src/resolve.ts",
+      "find": "if (request.seat !== seat.name) {",
+      "replace": "if (false) {",
+      "kills": ["resolveLaunch refuses a launch aimed at another seat"]
+    }
+  ]
+}

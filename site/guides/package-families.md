@@ -69,6 +69,8 @@ composes all three.
   per-repository budget, with release, park, re-create and sweep.
 - [`coordinator`](/reference/coordinator): the zod schema and types for the seat config an
   autonomy coordinator reads.
+- [`seat-spec`](/reference/seat-spec): the owner-held `titan-seat/v1` definition every launch
+  path loads, its fail-closed file checks, and a pure resolver that builds the launch from it.
 - [`dispatch-ledger`](/reference/dispatch-ledger): the burndown claim ledger's zod schema,
   its claim-phase transition table, and a byte-preserving `burndown.json` parse and export.
 - [`pm`](/reference/pm): the zod schema and type for an active-work task record.
