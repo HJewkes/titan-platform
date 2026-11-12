@@ -66,11 +66,18 @@ export function orderEventKindsMigration(version = 44): Migration {
   return { version, name: "factory:shepherd_event_merge_order", up: (db) => db.exec(rebuildWithKinds(ORDER_KINDS)) };
 }
 
-export const EVENT_KINDS = [...ORDER_KINDS, "order-wait"] as const;
+const ORDER_WAIT_KINDS = [...ORDER_KINDS, "order-wait"] as const;
 
 /** A merge step that started waiting behind another PR's merge-order reservation (TP-4133). */
 export function orderWaitKindMigration(version = 45): Migration {
-  return { version, name: "factory:shepherd_event_order_wait", up: (db) => db.exec(rebuildWithKinds(EVENT_KINDS)) };
+  return { version, name: "factory:shepherd_event_order_wait", up: (db) => db.exec(rebuildWithKinds(ORDER_WAIT_KINDS)) };
+}
+
+export const EVENT_KINDS = [...ORDER_WAIT_KINDS, "kind-move"] as const;
+
+/** A correctness run moved off the fix-proof kinds before review, with who moved it and why (TP-5399). */
+export function kindMoveEventMigration(version = 51): Migration {
+  return { version, name: "factory:shepherd_event_kind_move", up: (db) => db.exec(rebuildWithKinds(EVENT_KINDS)) };
 }
 
 export type EventKind = (typeof EVENT_KINDS)[number];

@@ -58,3 +58,9 @@ export function mayProceedLine(line: string): boolean {
   if (!parsed.ok || !VACUOUS_VERDICTS.has(parsed.result.verdict) || parsed.result.mutants !== undefined) return false;
   return true;
 }
+
+/** A line that ran no test and names no deleted one: the proof's own reading that the diff holds no test. */
+export function noTestsLine(line: string): boolean {
+  const parsed = parseResultLine(line);
+  return mayProceedLine(line) && parsed.ok && parsed.result.verdict === "no-tests" && parsed.result.deletedTests.length === 0;
+}

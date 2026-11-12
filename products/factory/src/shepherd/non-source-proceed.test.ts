@@ -17,9 +17,9 @@ const JOB = 77;
 /** A run that never waived, so its proof standing reads no waiver step. */
 const unwaived = partialFake<WorkflowContext>({ iteration: () => 0 });
 
-function vacuousLine(mutants?: FixProofResult["mutants"], base = "main"): string {
+function vacuousLine(mutants?: FixProofResult["mutants"], base = "main", verdict: FixProofResult["verdict"] = "vacuous"): string {
   const counts: FixProofResult["counts"] = { reproduces: 0, "passes-on-base": 0, "new-api": 0, "fails-on-head": 0, "not-run": 0 };
-  return formatResultLine({ head: H, mergeBase: MERGE_BASE, base, verdict: "vacuous", counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false, ...(mutants && { mutants }) });
+  return formatResultLine({ head: H, mergeBase: MERGE_BASE, base, verdict, counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false, ...(mutants && { mutants }) });
 }
 
 type Flag = "keep-owner" | "record-fact" | undefined;
@@ -156,5 +156,49 @@ describe("shepherd.gateReset.nonSourceNoRepro (TP-4275)", () => {
     const line = vacuousLine(undefined, "release");
 
     expect(await standingOf(TEST_CONVERSION, "record-fact", "correctness", line)).toMatchObject({ standing: { unverified: "unread", reason: expect.stringContaining("before the deadline") } });
+  });
+});
+
+/** TP-5399's two dead ends, replayed with synthetic paths: a docs-only diff, and a same-value rename in source. */
+const DOCS_ONLY: PrFile[] = [
+  { path: "packages/x/README.md", status: "modified" },
+  { path: ".changeset/x-readme.md", status: "added" },
+];
+const SOURCE_RENAME: PrFile[] = [
+  { path: "packages/x/src/exit-codes.ts", status: "modified" },
+  { path: ".changeset/x-exit-codes.md", status: "added" },
+];
+const noTestsLine = (): string => vacuousLine(undefined, "main", "no-tests");
+
+describe("a diff with no source and no test file (TP-5399)", () => {
+  it.each([
+    ["correctness", undefined],
+    ["correctness", "keep-owner"],
+    ["security", undefined],
+    ["test-only", undefined],
+  ] as const)("records a docs-only %s run's test-less proof as a fact and lets review proceed with the flag %s", async (kind, flag) => {
+    expect(await standingOf(DOCS_ONLY, flag, kind, noTestsLine())).toEqual(NON_SOURCE);
+  });
+
+  it("still ends a correctness run whose diff changes source on its vacuous proof, as before", async () => {
+    expect(await standingOf(SOURCE_RENAME, undefined, "correctness", vacuousLine())).toMatchObject({ ended: { kind: "NO_REPRO", headSha: H } });
+  });
+
+  it("still ends a correctness run whose diff changes source on a test-less proof", async () => {
+    expect(await standingOf(SOURCE_RENAME, undefined, "correctness", noTestsLine())).toMatchObject({ ended: { kind: "NO_REPRO", headSha: H } });
+  });
+
+  it("still ends a docs-only run whose line ran tests, since then the plan found a test the class rules miss", async () => {
+    expect(await standingOf(DOCS_ONLY, undefined, "correctness", vacuousLine())).toMatchObject({ ended: { kind: "NO_REPRO" } });
+  });
+
+  it("still ends a docs-only run when a changed path is not a regular file GitHub returns inline", async () => {
+    expect(await standingOf(DOCS_ONLY, undefined, "correctness", noTestsLine(), ["packages/x/README.md"])).toMatchObject({ ended: { kind: "NO_REPRO" } });
+  });
+
+  it("still ends a run whose diff renames a test out to a docs path", async () => {
+    const files: PrFile[] = [{ path: "packages/x/notes.md", previousPath: "packages/x/src/parse.test.ts", status: "renamed" }];
+
+    expect(await standingOf(files, undefined, "correctness", noTestsLine())).toMatchObject({ ended: { kind: "NO_REPRO" } });
   });
 });

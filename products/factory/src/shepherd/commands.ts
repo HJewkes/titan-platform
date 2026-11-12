@@ -103,7 +103,7 @@ function startRun(ctx: FactoryContext, args: RegisterArgs, branch: string | unde
 
 /** A dead run's registration moves to a new run, which starts at the pull request's current head; any other run comes back unchanged. */
 export async function restartRegistered(ctx: FactoryContext, store: ShepherdStore, known: Registration, args: RegisterArgs, policy: EffectivePolicy): Promise<Registered> {
-  const move = await kindMove(servicesOf(ctx), known, args);
+  const move = await kindMove(servicesOf(ctx), known, args, ctx.host.runtime.status(known.runId));
   const restart = await restartFor(ctx.host, servicesOf(ctx), known);
   if (!restart) return refresh(store, known, args, policy, move);
   refuseKindMove(known, args, move);

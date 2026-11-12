@@ -27,6 +27,9 @@ export const RegisterArgs = z
     registrant: z.string().min(1).optional(),
     reviewer: z.string().min(1).optional(),
     kind: z.enum(TASK_KINDS).optional(),
+    /** Why a correctness run moves to refactor or feature before review; recorded on the move's event with `actor`. */
+    kindReason: z.string().min(1).optional(),
+    actor: z.string().min(1).optional(),
     slice: z.string().min(1).optional(),
     noSlice: z.boolean().optional(),
     lastSlice: z.boolean().optional(),
@@ -67,7 +70,7 @@ export function sliceAfter(existing: Registration, args: RegisterArgs): string |
 }
 
 /** Checked before a failed run is replaced, so a refused kind leaves the run and its registration untouched. */
-export function refuseKindMove(existing: Registration, args: RegisterArgs, { guard, diff }: KindMove): void {
-  const refusal = args.kind === undefined ? undefined : guard(existing.kind, args.kind, diff);
+export function refuseKindMove(existing: Registration, args: RegisterArgs, { guard, diff, early }: KindMove): void {
+  const refusal = args.kind === undefined ? undefined : guard(existing.kind, args.kind, diff, early);
   if (refusal) throw coded(`registration refused: run ${existing.runId}: ${refusal}`, EXIT.DATAERR);
 }

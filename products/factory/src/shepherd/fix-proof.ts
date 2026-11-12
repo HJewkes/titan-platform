@@ -8,11 +8,11 @@ import { deadline, type DeadlineTiming } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
 import { FIX_PROOF_CHECK, harnessTouch } from "./fix-proof-harness.js";
-import { mayProceedLine, proceedsOnNoRepro } from "./no-repro-test-only.js";
+import { mayProceedLine, noTestsLine, proceedsOnNoRepro } from "./no-repro-test-only.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
 import { FIX_PROOF_KINDS } from "./task-kind.js";
-import { sourceFreeDiff } from "./test-only-diff.js";
+import { codeFreeDiff, sourceFreeDiff } from "./test-only-diff.js";
 import { workflowCiProof, WorkflowCiReadSchema, type WorkflowCiRead } from "./workflow-ci-proof.js";
 
 export { FIX_PROOF_CHECK };
@@ -350,13 +350,23 @@ async function gatedRead(deps: GatedDeps, input: FixProofInput, gate: OpenGate, 
  * and a result line proceeds only on a diff the fix-proof plan reads with no source path under the trusted configs.
  */
 async function nonSourceProceeds(deps: Pick<ShepherdDeps, "port" | "nonSourceNoRepro">, input: FixProofInput, gate: OpenGate, read: FixProofRead): Promise<boolean> {
+  if (await codeFreeProceeds(deps.port, input, gate, read)) return true;
   if (deps.nonSourceNoRepro !== "record-fact" || gate.kind === "security" || fixProofVerdict(read, input.head) === undefined) return false;
   if (read.kind === "workflow-ci") return true;
   if (read.kind !== "result" || read.testOnlyProceed === true || !mayProceedLine(read.line)) return false;
   return sourceFreeDiff(deps.port, input.repo, gate.pr, input.head);
 }
 
-export const fixProofRoute = (deps: ShepherdDeps): StepRoute =>
+/**
+ * TP-5399: a trusted no-tests NO_REPRO on a diff with no source and no test file has nothing a proof could reproduce, so it goes on to
+ * review under any kind and any flag, recorded as `no-repro-non-source`; waking the implementer could only end in a dead end.
+ */
+async function codeFreeProceeds(port: GitHubPort, input: FixProofInput, gate: OpenGate, read: FixProofRead): Promise<boolean> {
+  if (read.kind !== "result" || read.testOnlyProceed === true || fixProofVerdict(read, input.head) === undefined || !noTestsLine(read.line)) return false;
+  return codeFreeDiff(port, input.repo, gate.pr, input.head);
+}
+
+export const fixProofRoute =(deps: ShepherdDeps): StepRoute =>
   codeRoute(FIX_PROOF_STEP, deps.now, (input: unknown, signal, clock) => readFixProof(deps, input, { now: deps.now, sleep: deps.sleep, pollMs: deps.pollMs, startedAt: clock.firstStartedAtMs }, signal));
 
 export const fixProofStepId = (head: string, base?: string): string => `${FIX_PROOF_STEP}:${head}${base === undefined ? "" : `@${base}`}`;

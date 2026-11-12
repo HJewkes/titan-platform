@@ -31,6 +31,27 @@ describe("kindMoveRefusal", () => {
   it("still refuses correctness to feature", () => {
     expect(kindMoveRefusal("correctness", "feature")).toMatch(/outside the fix-proof kinds/);
   });
+
+  const reason = "no behaviour changes";
+  it.each<TaskKind>(["refactor", "feature"])("lets correctness move to %s before review with a reason (TP-5399)", (to) => {
+    expect(kindMoveRefusal("correctness", to, undefined, { reviewStarted: false, reason })).toBeUndefined();
+  });
+
+  it.each([
+    ["a review has started", { reviewStarted: true, reason }, /a review has started/],
+    ["the run's review state is unread", { reviewStarted: undefined, reason }, /could not be read/],
+    ["no reason is given", { reviewStarted: false, reason: undefined }, /without --kind-reason/],
+  ])("refuses correctness to refactor when %s", (_, early, refusal) => {
+    expect(kindMoveRefusal("correctness", "refactor", undefined, early)).toMatch(refusal);
+  });
+
+  it.each<[TaskKind, TaskKind]>([
+    ["test-only", "refactor"],
+    ["correctness", "unknown"],
+    ["security", "refactor"],
+  ])("keeps refusing %s to %s before review", (from, to) => {
+    expect(kindMoveRefusal(from, to, undefined, { reviewStarted: false, reason })).toBeDefined();
+  });
 });
 
 describe("testOnlyMoveRefusal", () => {
