@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the strictest order is inverted",
+      "file": "packages/review-panel/src/briefs/adversary.ts",
+      "find": "[\"widened\", \"malformed\", \"unchanged\", \"tightened\"]",
+      "replace": "[\"tightened\", \"unchanged\", \"malformed\", \"widened\"]",
+      "kills": [
+        "authorityLine two lines read the strictest, widened over unchanged"
+      ]
+    },
+    {
+      "name": "the raw-line scan is replaced by a scan that skips fenced lines",
+      "file": "packages/review-panel/src/briefs/adversary.ts",
+      "find": "text.split(\"\\n\").map(authorityReading)",
+      "replace": "text.split(\"\\n\").filter((line, at, lines) => lines.slice(0, at).filter((earlier) => earlier.trim().startsWith(\"```\")).length % 2 === 0).map(authorityReading)",
+      "kills": [
+        "authorityLine a widened line hidden in a fence still reads widened"
+      ]
+    },
+    {
+      "name": "a malformed value is read as unchanged",
+      "file": "packages/review-panel/src/briefs/adversary.ts",
+      "find": "?? \"malformed\"",
+      "replace": "?? \"unchanged\"",
+      "kills": [
+        "authorityLine an Authority line with another value reads malformed"
+      ]
+    },
+    {
+      "name": "the label fold is removed for an exact Authority: prefix",
+      "file": "packages/review-panel/src/briefs/adversary.ts",
+      "find": "labelledLineRest(raw, AUTHORITY_HEADING, WIDENED)",
+      "replace": "(raw.trim().startsWith(AUTHORITY_HEADING) ? raw.trim().slice(AUTHORITY_HEADING.length).trim() : undefined)",
+      "kills": [
+        "authorityLine a bulleted widened line before a plain unchanged line reads widened",
+        "authorityLine a decorated widened line alone reads widened"
+      ]
+    }
+  ]
+}

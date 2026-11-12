@@ -71,7 +71,7 @@ afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
 const ORIGIN = "http://127.0.0.1:7400";
 const BLOCK = "Follow-ups:\n- Cache the head lookup | A second lookup at one head reads the cache | medium";
-const verdictText = `Probes: removed bound -> test fails\n\n${BLOCK}\n\nVerdict: MERGE\nPR: ${REPO}#1\nHead: ${H}\n`;
+const verdictText = `Probes: removed bound -> test fails\nAuthority: unchanged\n\n${BLOCK}\n\nVerdict: MERGE\nPR: ${REPO}#1\nHead: ${H}\n`;
 
 function reviewers(now: () => number) {
   const agents: ReviewerAgent[] = [];
