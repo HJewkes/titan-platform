@@ -28,7 +28,7 @@ async function read(runs: CheckRun[]) {
   fake.setRuns(HEAD, runs);
   const port = githubPort(fake.wire);
   const ci = await readCi(port, { repo: REPO, pr: 1, contexts: REQUIRED, strict: false });
-  return { ci, passes: await requiredChecksPass({ repo: REPO, contexts: REQUIRED }, HEAD, portReads(port)) };
+  return { ci, passes: await requiredChecksPass({ repo: REPO, contexts: REQUIRED }, await port.getPr(REPO, 1), portReads(port)) };
 }
 
 describe("ci-wait never reads a skipped run, or a failure a newer run left unjudged, as red", () => {
