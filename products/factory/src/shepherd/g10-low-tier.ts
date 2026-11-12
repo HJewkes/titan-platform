@@ -10,9 +10,11 @@ import { riskFactsOf, riskTier } from "./risk-tier.js";
 const LOW_POLICY_TABLES: readonly PolicyTable[] = ["default-policy", "signoff-policy", "hold-closure"];
 
 /**
- * Every file the low-tier refusal runs or reads, as repo paths: the import closure of this module and of
- * `registration-hold.ts`, workspace packages included. An edit to one could weaken the gate that judges it, so it never
- * goes low. `g10-low-tier-closure.test.ts` recomputes the walk and fails until this list matches it (`vitest -u`).
+ * The classifier's own definition, as repo paths: the import closure of this module and of `registration-hold.ts`,
+ * workspace packages included. A path here never goes low. Code that calls the rule or writes the verdicts the release
+ * reads is not in it; that code sits in `signoff-policy` or `hold-closure`, and whether it may go low is the q28 boundary
+ * the owner settles before setting `lowTierPolicy: on`. `g10-low-tier-closure.test.ts` recomputes the walk and fails
+ * until this list matches it (`vitest -u`).
  */
 const REFUSAL_CLOSURE: ReadonlySet<string> = new Set(z.array(z.string()).parse(refusalClosureJson).map((path) => path.toLowerCase()));
 

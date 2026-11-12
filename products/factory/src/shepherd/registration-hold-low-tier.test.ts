@@ -40,13 +40,13 @@ function rig(files: PrFile[], visualPaths?: string[]): Rig {
 const hold = (r: Rig, lowTier?: LowTierMode) => applyRegistrationHold(r.port, r.store, "run-1", lowTier === undefined ? {} : { lowTier });
 
 const reclassAtNextHead = (r: Rig) =>
-  reclassUnread({ port: r.port, store: { get: () => r.store, bind: () => () => undefined }, now: () => 0, sleep: async () => undefined }, { runId: "run-1", head: NEXT_HEAD }, new AbortController().signal);
+  reclassUnread({ port: r.port, store: { get: () => r.store, bind: () => () => undefined }, now: () => 0, sleep: async () => undefined, lowTierPolicy: "on" }, { runId: "run-1", head: NEXT_HEAD }, new AbortController().signal);
 
 describe("the low-tier policy hold at registration", () => {
   it("a low-tier policy touch is held g10-review naming its tables", async () => {
     const r = rig([file(HOLD_CLOSURE_PATH, 10)]);
 
-    expect(await hold(r)).toBe(LOW_TIER_HOLD);
+    expect(await hold(r, "on")).toBe(LOW_TIER_HOLD);
     expect(r.store.eventsOf("run-1")).toEqual([expect.objectContaining({ kind: "hold", reason: LOW_TIER_HOLD, actor: "shepherd" })]);
   });
 
@@ -72,7 +72,7 @@ describe("the low-tier policy hold at registration", () => {
     const r = rig([file(HOLD_CLOSURE_PATH, 10)]);
     r.store.hold("run-1", "stalled: no CI read");
 
-    expect(await hold(r)).toBe("g10-adversary: low-tier policy touch (hold-closure), over a stalled hold");
+    expect(await hold(r, "on")).toBe("g10-adversary: low-tier policy touch (hold-closure), over a stalled hold");
   });
 
   it("a policy path the run's visual globs name keeps the owner gate", async () => {
@@ -105,7 +105,7 @@ describe("the low-tier policy switch", () => {
 describe("the low-tier policy hold at a later head", () => {
   it("a low-tier run whose next head adds an authority path is re-held g10-adversary", async () => {
     const r = rig([file(HOLD_CLOSURE_PATH, 10)]);
-    await hold(r);
+    await hold(r, "on");
     r.store.releaseIfHeld("run-1", LOW_TIER_HOLD, { actor: "shepherd" });
     r.setFiles([file(HOLD_CLOSURE_PATH, 10), file(AUTHORITY_PATH, 5)]);
 
@@ -115,7 +115,7 @@ describe("the low-tier policy hold at a later head", () => {
 
   it("a released low-tier hold is not re-held at a later low-tier head", async () => {
     const r = rig([file(HOLD_CLOSURE_PATH, 10)]);
-    await hold(r);
+    await hold(r, "on");
     r.store.releaseIfHeld("run-1", LOW_TIER_HOLD, { actor: "shepherd" });
     r.setFiles([file(HOLD_CLOSURE_PATH, 20)]);
 

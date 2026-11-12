@@ -472,7 +472,7 @@ what is on main today; the rows marked *planned* are decided but not built.
 | Ordinary change under an `auto` policy | no row below matches | a reviewer `MERGE` at the head and green required checks (`MRG-AU-RV`) |
 | Visual-path change, `shepherd.visualGate: async` | the seat's `visual_paths` globs; recorded as `visualChanged` | the same reviews and green CI; no owner sign-off; the [feedback sheet](#visual-baselines) follows the merge |
 | Authority, security or policy change | `SHEPHERD_CLASS_RULES` path tables, or a `security` kind | `g10-adversary`: two independent reviewer `MERGE`s, then the seat releases the hold |
-| Low-tier policy touch | `lowTierPolicyTouch` in `g10-low-tier.ts` (named policy tables only, never a file the refusal itself runs) | `g10-review`: one opus `MERGE` at the head releases the hold; `shepherd.gateReset.lowTierPolicy` switches it |
+| Low-tier policy touch | `lowTierPolicyTouch` in `g10-low-tier.ts` (named policy tables only, never a file in the classifier's own import closure) | Ships in shadow: stays `g10-adversary` and names the low tier. Under `shepherd.gateReset.lowTierPolicy: on`, an owner config edit, `g10-review`: one opus `MERGE` at the head releases the hold |
 | Over 400 changed lines, or a store migration | line count, path table | `g10-review`: one opus `MERGE` releases the hold |
 | `owner-gate` seat policy, visual path under `visualGate: owner`, or `gate-2-visual` | registration, seat policy | the owner's `approve-merge` answer |
 | Unknown class: unread or empty file list, unlisted path table | the read failed or no table matches | the owner's `approve-merge` answer |
@@ -1676,24 +1676,30 @@ policy, authority or security path, or a `security` kind, takes `g10-adversary`.
 changed lines or a store migration takes `g10-review`. A file list Shepherd cannot read whole
 takes `g10-adversary`.
 
-A policy touch that is low tier by its paths takes `g10-review` instead (TP-5403), so one opus
-`MERGE` at its head with green checks releases it and no owner gate is raised. Low tier means no
-authority or security path, a risk tier that is low once the policy touch is set aside (no `.github`
-path, no publish or settings file, no owner gate file, no visual path, no owner hold, 800 changed
-lines or fewer), and every policy path in an allowed table: the default policy globs, the signoff
-policy files or the hold closure (`lowTierPolicyTouch` in `g10-low-tier.ts`). No file the refusal
-itself runs or reads ever goes low: `g10-low-tier-closure.json` lists the import closure of
-`g10-low-tier.ts` and `registration-hold.ts`, into workspace package sources too (the adversary
+A policy touch that is low tier by its paths can take `g10-review` instead (TP-5403), so one opus
+`MERGE` at its head with green checks releases it and no owner gate is raised. This ships in shadow:
+`shepherd.gateReset.lowTierPolicy` absent means `shadow`, which keeps the adversary hold and only
+names the review the run would have had. `on` places the review hold; setting it is an owner config
+edit that follows the owner's decision on which gate code may go low. `off` keeps the adversary hold
+and names nothing. It is a live editable row.
+
+Low tier means no authority or security path, a risk tier that is low once the policy touch is set
+aside (no `.github` path, no publish or settings file, no owner gate file, no visual path, no owner
+hold, 800 changed lines or fewer), and every policy path in an allowed table: the default policy
+globs, the signoff policy files or the hold closure (`lowTierPolicyTouch` in `g10-low-tier.ts`).
+The classifier's own definition never goes low: `g10-low-tier-closure.json` lists the import closure
+of `g10-low-tier.ts` and `registration-hold.ts`, into workspace package sources too (the adversary
 touches, the class globs and their matchers, the file and line-count readers, the visual gate), and
 a path on it keeps `g10-adversary` with `kept: gate input <path>`. `g10-low-tier-closure.test.ts`
-recomputes the walk and fails until the list matches (`vitest -u` rewrites it). Anything it cannot
-judge keeps `g10-adversary`. The hold reason names the tables, as
-`g10-review: low-tier policy touch (hold-closure)`, or the fact that kept the run adversary, as
-`g10-adversary: policy touch (kept: gate-resolve-actor)`. The release records the rule
-`g10-review/low-tier`, which `shepherd timeline` shows as a `decision` entry, and the merge evidence
-records `lowTier` beside `riskTier`. `shepherd.gateReset.lowTierPolicy` switches it: absent or `on`
-places the review hold, `shadow` keeps the adversary hold and names the review it would have had,
-and `off` keeps the adversary hold. It is a live editable row.
+recomputes the walk and fails until the list matches (`vitest -u` rewrites it). That closure is all
+that is kept: code that calls the rule or writes the verdicts the release reads sits in the signoff
+policy or hold closure tables, and whether it may go low under `on` is the owner's call. Anything
+the classifier cannot judge keeps `g10-adversary`. The hold reason names the tables, as
+`g10-review: low-tier policy touch (hold-closure)` under `on` or
+`g10-adversary: policy touch (shadow: low tier hold-closure)` under `shadow`, or the fact that kept
+the run adversary, as `g10-adversary: policy touch (kept: gate-resolve-actor)`. The release records
+the rule `g10-review/low-tier`, which `shepherd timeline` shows as a `decision` entry, and the merge
+evidence records `lowTier` beside `riskTier`.
 
 Policy paths also cover who may resolve a gate, not only the owner's rule file. The list is
 `GATE_RESOLVE_ACTOR_FILES` in `products/factory/src/shepherd/g10-class-rules.ts`: hitl's whole

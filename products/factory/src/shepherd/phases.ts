@@ -151,7 +151,7 @@ export interface ShepherdDeps {
   stackRestack?: (repo: RepoSlug) => boolean;
   /** `on` repairs a run held only under a g10 class while the hold keeps gating its merge; absent means `off`. */
   heldRepair?: "off" | "on";
-  /** `shepherd.gateReset.lowTierPolicy` (TP-5403): whether a low-tier policy touch is held `g10-review`; absent means `on`. */
+  /** `shepherd.gateReset.lowTierPolicy` (TP-5403): whether a low-tier policy touch is held `g10-review`; absent means `shadow`. */
   lowTierPolicy?: "off" | "shadow" | "on";
   /** `on` lets a vacuous fix-proof on a test-only PR with a tests-only diff proceed to review; absent means `off`. */
   noReproProceed?: "off" | "on";
