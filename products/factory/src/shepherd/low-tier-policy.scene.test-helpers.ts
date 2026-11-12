@@ -28,7 +28,8 @@ async function registrationHold(files: PrFile[], { wire = (each) => each, lowTie
   fake.addPr({ number: PR, headSha: HEAD });
   fake.prFiles.set(PR, files);
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19), reclassMarkMigration(25)]);
+  const base = [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11)];
+  runMigrations(db, [...base, shepherdEventMigration(16), holdSlotsMigration(19), reclassMarkMigration(25)]);
   const store = new ShepherdStore(db);
   store.register({ repo: REPO, pr: PR, runId: "classify", task: TASK, implementer: "fc-synthetic", kind: "feature", policy: AUTO });
   const held = await applyRegistrationHold(githubPort(wire(fake.wire)), store, "classify", { pause: async () => undefined, ...(lowTier && { lowTier }) });
