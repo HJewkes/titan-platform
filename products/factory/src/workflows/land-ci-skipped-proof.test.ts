@@ -1,4 +1,4 @@
-import { fakeGitHub, fakeSha, githubPort, successRun, type CheckRun } from "@titan-design/github";
+import { fakeGitHub, fakeSha, githubPort, successRun, type CheckRun, type PullRequest } from "@titan-design/github";
 import type { RoutedStepInput } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -13,7 +13,9 @@ const HEAD = fakeSha("release-head");
 const REQUIRED = ["dag-check", "hub-compose", "validate", "fix-proof-mutants"];
 const CI_RUN = 7001;
 const PROOF_RUN = 7002;
+const CANCELLED_RUN = 7003;
 const FIX_PROOF_JOBS = ["fix-proof-base", "fix-proof", "fix-proof-head", "fix-proof-mutants"];
+const RELEASE_HEAD = { headRef: "changeset-release/main", headRepo: REPO };
 
 const Outcome = z.object({ ok: z.boolean(), error: z.string().optional(), output: z.string().optional() });
 const Output = z.object({ result: z.object({ verdict: z.string() }) });
@@ -32,10 +34,10 @@ const ciRun = (): CheckRun[] =>
 /** The release PR's fix-proof workflow run: its `if:` skips every job on the release branch. */
 const skippedProofRun = (): CheckRun[] => FIX_PROOF_JOBS.map((name, i) => job(name, 31 + i, PROOF_RUN, "skipped"));
 
-async function ciWait(runs: CheckRun[]) {
+async function ciWait(runs: CheckRun[], head: Partial<PullRequest> = RELEASE_HEAD) {
   const fake = fakeGitHub();
   fake.rules = { contexts: REQUIRED, strict: false };
-  fake.addPr({ headSha: HEAD, mergeableState: "clean" });
+  fake.addPr({ headSha: HEAD, mergeableState: "clean", ...head });
   fake.setRuns(HEAD, runs);
   const clock = { now: T0 };
   const route = landRoutes({ port: githubPort(fake.wire), now: () => clock.now, sleep: async (ms) => void (clock.now += ms), pollMs: POLL_MS, ciTimeoutMs: TIMEOUT_MS }).find((candidate) => candidate.match === "ci-wait");
@@ -70,6 +72,37 @@ describe("ci-wait settles a required fix-proof job that the workflow skipped at 
 
     expect(out.ok).toBe(false);
     expect(out.error).toContain("waiting on fix-proof-mutants, fix-proof-base");
+  });
+
+  it("still waits on an all-skipped fix-proof run at a head that is not the release branch", async () => {
+    const out = await ciWait([...ciRun(), ...skippedProofRun()], { headRef: "topic-1", headRepo: REPO });
+
+    expect(out.ok).toBe(false);
+    expect(out.error).toContain("waiting on fix-proof-mutants");
+  });
+
+  it("still waits on a release branch pushed from a fork, which the workflow does not exempt", async () => {
+    const out = await ciWait([...ciRun(), ...skippedProofRun()], { ...RELEASE_HEAD, headRepo: "fork/demo" });
+
+    expect(out.ok).toBe(false);
+    expect(out.error).toContain("waiting on fix-proof-mutants");
+  });
+
+  it("still waits when a proof run's mutants job was cancelled and a later edit run skipped every job", async () => {
+    const cancelled = FIX_PROOF_JOBS.map((name, i) => job(name, 21 + i, CANCELLED_RUN, name === "fix-proof-mutants" ? "cancelled" : name === "fix-proof" ? "skipped" : "success"));
+
+    const out = await ciWait([...ciRun(), ...cancelled, ...skippedProofRun()], { headRef: "topic-1", headRepo: REPO });
+
+    expect(out.ok).toBe(false);
+    expect(out.error).toContain("waiting on fix-proof-mutants");
+  });
+
+  it("does not settle the release head when a proof job there ran and was cancelled before an all-skipped run", async () => {
+    const cancelled = FIX_PROOF_JOBS.map((name, i) => job(name, 21 + i, CANCELLED_RUN, name === "fix-proof-mutants" ? "cancelled" : name === "fix-proof" ? "skipped" : "success"));
+
+    const out = await ciWait([...ciRun(), ...cancelled, ...skippedProofRun()]);
+
+    expect(out.verdict).not.toBe("green");
   });
 
   it("still waits when the skipped run is missing the judge, so not every fix-proof job is accounted for", async () => {

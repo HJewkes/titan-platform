@@ -80,7 +80,7 @@ export async function greenAtHead(port: GitHubPort, target: AwaitHeadTarget, pr:
   if (!rules.readable) return (timing.onReadError?.(rules.reason), false);
   const contexts = rules.checks.contexts;
   const reads: PrReads = timing.snapshot ?? portReads(port);
-  return contexts.length > 0 && (await requiredChecksPass({ repo: target.repo, contexts }, pr.headSha, reads).catch((error: unknown) => {
+  return contexts.length > 0 && (await requiredChecksPass({ repo: target.repo, contexts }, pr, reads).catch((error: unknown) => {
     timing.onReadError?.(`${target.repo}#${target.pr} checks at ${pr.headSha}: ${error instanceof Error ? error.message : String(error)}`);
     return false;
   }));
