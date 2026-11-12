@@ -72,9 +72,11 @@ function entriesOf(repoRoot: string, dir: string, ids: ReadonlySet<string>, sour
   const manifest = readJsonObject(source, path.join(repoRoot, dir, "package.json"));
   if (!manifest) return [];
   const mappings = outputMappings(repoRoot, dir, source);
-  return manifestTargets(manifest).flatMap((target) => {
-    if (target === ".") return packageRootTargets(dir, mappings).flatMap((t) => matchTarget(t, mappings, ids));
-    return matchTarget(joinId(dir, target), mappings, ids);
+  const matches = (target: string) =>
+    (target === "." ? packageRootTargets(dir, mappings) : [joinId(dir, target)]).flatMap((t) => matchTarget(t, mappings, ids));
+  return manifestTargets(manifest).flatMap(({ target, excluding }) => {
+    const excluded = new Set(excluding.flatMap(matches));
+    return matches(target).filter((id) => !excluded.has(id));
   });
 }
 

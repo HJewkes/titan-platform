@@ -146,7 +146,7 @@ describe("titan-factory planner probe", () => {
     let stderr = "";
     const io: CliIo = { stdout: () => {}, stderr: (text) => void (stderr += text), env: {} };
     const code = await runCli(["planner", "probe", "merges", "--since", SINCE, "--repo", REPO, "--repo", "other-org/other-repo"], io, { workflows: factoryWorkflows, routes: [], planner: { run: gh } });
-    expect(asked[0]).toEqual(["pr", "list", "--repo", REPO, "--state", "merged", "--search", `merged:>=${SINCE}`, "--json", "number,mergedAt", "--limit", "100"]);
+    expect(asked[0]).toEqual(["pr", "list", "--repo", REPO, "--state", "merged", "--search", `merged:>=${SINCE.replace(".000Z", "Z")}`, "--json", "number,mergedAt", "--limit", "100"]);
     expect(code).toBe(1);
     expect(stderr).toBe("planner probe merges: gh pr list: exit 4: gh: auth required\n");
   });
