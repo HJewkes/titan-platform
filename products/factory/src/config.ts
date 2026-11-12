@@ -11,6 +11,7 @@ import { ConsoleOriginSchema } from "./digest/gate-alarm.js";
 import { SeatDigestPacingSchema } from "./shepherd/seat-digest-pace.js";
 import { VisualThresholdSchema } from "./shepherd/visual-threshold-config.js";
 import { VisualGateSchema } from "./shepherd/visual-gate-mode.js";
+import { RedSeatConfigSchema } from "./shepherd/red-seat-config.js";
 
 /** execFile throws on a NUL byte, which would fail the post-merge step after the merge instead of at config load. */
 const noNul = z.string().refine((value) => !value.includes("\0"), "must not contain a NUL byte");
@@ -238,13 +239,7 @@ export const FactoryConfigSchema = z.object({
       mergeWake: MergeWakeConfigSchema.optional(),
       /** The agent-chat seat told when the deploy alarm goes up and while it stands; absent is warned about at serve start and fails `service check`. */
       hubSeat: z.string().min(1).optional(),
-      /**
-       * Where serve's main CI watch sends a red-main event, ahead of the run's seat, the branch-prefix seat and `hubSeat`: the
-       * repo's entry (keys match in any case), else `fallback`. Red events only; merge policy and seat identity never read it.
-       */
-      redSeat: z
-        .strictObject({ repos: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), z.string().min(1)).optional(), fallback: z.string().min(1).optional() })
-        .optional(),
+      redSeat: RedSeatConfigSchema.optional(),
       deployAlarm: DeployAlarmConfigSchema.optional(),
       gateNotify: GateNotifyConfigSchema.optional(),
       /** Paces each seat's Shepherd digest (TP-4207); absent sends every change on the sweep that sees it. */

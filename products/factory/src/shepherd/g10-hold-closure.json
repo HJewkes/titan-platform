@@ -358,6 +358,7 @@
   "shepherd/readdress-command.ts",
   "shepherd/readdress.ts",
   "shepherd/recorded-route.ts",
+  "shepherd/red-seat-config.ts",
   "shepherd/redeploy-adapter.ts",
   "shepherd/redeploy.ts",
   "shepherd/refollow-command.ts",
