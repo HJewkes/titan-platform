@@ -25,6 +25,7 @@ import { activeWorkCli, notifyCommand, runToolGapWeekly } from "./tool-gap-weekl
 import { defaultProfilesRoot } from "./friction-transcripts.js";
 import { defaultFrictionArchive, parseWindowMs, renderFrictionResult, runFrictionDaily, titanConsoleInbox, type ConsoleInboxPort } from "./friction-daily-run.js";
 import { attachReportIntake } from "./report-intake-run.js";
+import { attachTicketScorecard } from "./ticket-scorecard/cli.js";
 import { DEFAULT_MAX_BUDGET_USD, checkInputs, runSelfImproveDaily, type DailyOptions, type RunnerFor } from "./self-improve/run.js";
 
 export interface CliIo {
@@ -174,6 +175,7 @@ function attachScheduled(program: Command, io: CliIo, onExit: (code: number) => 
   attachSelfImproveDaily(program, io, onExit);
   attachFrictionDaily(program, io, onExit);
   attachReportIntake(program, () => resolveConfig(configOverrides(program.opts()), io.env), io, onExit);
+  attachTicketScorecard(program, () => resolveConfig(configOverrides(program.opts()), io.env), io, onExit);
 }
 
 interface FrictionDailyFlags {
