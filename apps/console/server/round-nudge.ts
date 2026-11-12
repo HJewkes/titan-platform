@@ -107,8 +107,8 @@ function nudgeLine(round: QueueRound, recommendations: readonly StatedRecommenda
   return `${waited}: reply rec to answer all ${round.manifest.questions.length} with the recommendation (${stated})`;
 }
 
-/** Strictly over six hours, unanswered and not withdrawn, as the queue read it. */
-const isDue = (round: QueueRound, now: number): boolean => round.feedback === null && round.withdrawn === null && now - Date.parse(round.updatedAt) > NUDGE_AFTER_MS;
+/** Strictly over six hours, unanswered and not withdrawn, as the queue read it. A feedback sheet (TP-5458) waits on no decision, so it never nudges. */
+const isDue = (round: QueueRound, now: number): boolean => round.manifest.kind !== "feedback" && round.feedback === null && round.withdrawn === null && now - Date.parse(round.updatedAt) > NUDGE_AFTER_MS;
 
 function nudgeOf(round: QueueRound, now: number, nudgedAt: string | null): RoundNudge {
   const recommendationsHidden = round.manifest.recommendations === "after-answer";

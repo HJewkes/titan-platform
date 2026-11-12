@@ -1204,6 +1204,13 @@ the merge grant, the remote stays at `owner-gate`. A seat with both the grant an
 `visual_paths` still gates visual files. `--policy '{"merge":"owner-gate","ownerGateReason":"gate-2-visual"}'` still gates
 every merge. A seat without `visual_paths` behaves as before.
 
+`shepherd.visualGate` (live; `owner` or `async`, absent means `owner`) switches this off
+(TP-5408). Under `async` a matching file does not gate: the merge goes on to `MRG-AU-RV`,
+and the evidence records the matched files as `visualChanged`. A visual path alone no
+longer makes the risk tier high or asks for an owner sign-off, and a `visual-gate2` hold or
+a `gate-2-visual` registration no longer counts as the owner's own hold on the risk tier.
+An unread file list still gates on `files-unread`.
+
 ### Visual baselines {#visual-baselines}
 
 A seat can add `visual_baselines: { check, paths }` beside `visual_paths`. The check is one
