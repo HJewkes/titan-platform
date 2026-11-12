@@ -31,6 +31,9 @@ export const SHEPHERD_PORT_ACCESS = {
   "shepherd.watch": "read",
   "shepherd.visual-delta": "read",
   "shepherd.visual-week": "read",
+  // With --file it writes a round into the console.
+  "shepherd.visual-week-feedback": "write",
+  "shepherd.visual-feedback-notes": "write",
   "shepherd.brief": "read",
 } as const satisfies Record<ShepherdCommandName, PortAccess>;
 

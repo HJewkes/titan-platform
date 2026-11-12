@@ -5,6 +5,7 @@
  * only, this one ranks by relevance. Callers pass the text a trigger already
  * carries and get a bounded, fail-open list of openable hits back.
  */
+import { ContextBudgetSchema } from '@titan-design/retrieval';
 import { z } from 'zod';
 import { defineCommand } from '../registry/index.js';
 import { SEARCH_CLASSES } from '../search/classes.js';
@@ -15,9 +16,11 @@ import {
   type HitLogWriter,
 } from '../search/hit-log.js';
 import {
+  RELATED_CONTEXT_CANDIDATES,
   RELATED_DEFAULT_BUDGET,
   RELATED_DEFAULT_CLASSES,
   RELATED_DEFAULT_LIMIT,
+  RELATED_DEFAULT_TOKENS,
   relatedContext,
   type RelatedInput,
   type RelatedResult,
@@ -28,7 +31,6 @@ import {
   type EnsureFresh,
 } from '../session-index/freshness.js';
 import { readerGate } from '../session-index/reader-gate.js';
-import { humanOnlyPredicate } from './_list-scope.js';
 import { nowIso } from '../utils/today.js';
 
 const CLASS_NAMES = SEARCH_CLASSES.map((cls) => cls.name);
@@ -38,6 +40,9 @@ const ArgsSchema = z.object({
   initiative: z.string().min(1).optional(),
   limit: z.number().int().positive().max(50).optional(),
   budget: z.number().int().positive().optional(),
+  mode: z.enum(['list', 'context']).optional(),
+  tokens: ContextBudgetSchema.shape.tokens.positive().optional(),
+  maxTier: ContextBudgetSchema.shape.maxTier,
   classes: z
     .array(z.string())
     .refine((names) => names.every((name) => CLASS_NAMES.includes(name)), {
@@ -67,6 +72,22 @@ const ResultSchema = z.object({
   // Why the list is short or empty. Never an error: a caller renders what it got.
   degraded: z.array(z.object({ source: z.string(), reason: z.string(), message: z.string() })),
   query: z.object({ terms: z.array(z.string()), expression: z.string() }),
+  entries: z
+    .array(
+      z.object({
+        ref: z.string(),
+        class: z.string(),
+        tier: z.number(),
+        text: z.string(),
+        tokens: z.number(),
+      }),
+    )
+    .optional(),
+  dropped: z
+    .array(z.object({ ref: z.string(), class: z.string(), reason: z.string() }))
+    .optional(),
+  usedTokens: z.number().optional(),
+  budgetTokens: z.number().optional(),
 });
 
 type Args = z.infer<typeof ArgsSchema>;
@@ -99,28 +120,17 @@ const STALE_INDEX = {
   message: `the workspace index did not catch up within ${RELATED_FRESH_BUDGET_MS} ms; recent writes may be missing`,
 };
 
-type Servable = (initiative: string | null) => boolean;
-
-/**
- * A trigger renders hits into an agent's prompt, so human-only initiatives stay out. An
- * unreadable charter cannot say which those are, so only the caller's own initiative is served.
- */
-async function servableFor(args: Args, activeRoot: string, warnings: string[]): Promise<Servable> {
-  if (args.trigger === undefined) return () => true;
-  const humanOnly = await humanOnlyPredicate(activeRoot, warnings);
-  if (!humanOnly.known) return (initiative) => initiative !== null && initiative === args.initiative;
-  return (initiative) => initiative === null || !humanOnly.isHumanOnly(initiative);
-}
-
-function relatedInput(args: Args, deps: RelatedDeps, servable: Servable): RelatedInput {
+function relatedInput(args: Args, deps: RelatedDeps): RelatedInput {
   return {
     text: args.for,
     activeRoot: deps.activeRoot,
-    servable,
     ...(deps.dbPath !== undefined ? { dbPath: deps.dbPath } : {}),
     ...(args.initiative !== undefined ? { initiative: args.initiative } : {}),
     ...(args.limit !== undefined ? { limit: args.limit } : {}),
     ...(args.budget !== undefined ? { budget: args.budget } : {}),
+    ...(args.mode !== undefined ? { mode: args.mode } : {}),
+    ...(args.tokens !== undefined ? { tokens: args.tokens } : {}),
+    ...(args.maxTier !== undefined ? { maxTier: args.maxTier } : {}),
     ...(args.classes !== undefined ? { classes: args.classes } : {}),
     ...(args.exclude !== undefined ? { exclude: args.exclude } : {}),
   };
@@ -128,8 +138,6 @@ function relatedInput(args: Args, deps: RelatedDeps, servable: Servable): Relate
 
 /** The command's body, with the index and hit log injectable so tests never touch the live ones. */
 export async function runRelated(args: Args, deps: RelatedDeps): Promise<RelatedResult> {
-  const charterWarnings: string[] = [];
-  const servable = await servableFor(args, deps.activeRoot, charterWarnings);
   // Before entering the gate, which would otherwise hold off the very pass this waits on.
   const ensureFresh = deps.ensureFresh ?? ((budgetMs, scope) => indexFreshness.ensure(budgetMs, scope));
   // Related ranks workspace documents only, so a transcript pass would buy it nothing.
@@ -139,11 +147,8 @@ export async function runRelated(args: Args, deps: RelatedDeps): Promise<Related
   // A daemon refresh pass holds off while this runs, so the request waits for one chunk at most.
   const release = readerGate.enter();
   try {
-    const result = await relatedContext(relatedInput(args, deps, servable));
+    const result = await relatedContext(relatedInput(args, deps));
     if (freshness === 'stale') result.degraded.push({ ...STALE_INDEX });
-    for (const message of charterWarnings) {
-      result.degraded.push({ source: 'charter', reason: 'unreadable', message });
-    }
     await logServed(args, result, deps.hitLog ?? fileHitLog());
     return result;
   } finally {
@@ -166,7 +171,19 @@ export default defineCommand<Args, Result>({
       },
       limit: {
         long: '--limit',
-        description: `Most hits to return (default ${RELATED_DEFAULT_LIMIT})`,
+        description: `Most hits to return (default ${RELATED_DEFAULT_LIMIT}); in context mode, candidates planned over (default ${RELATED_CONTEXT_CANDIDATES})`,
+      },
+      mode: {
+        long: '--mode',
+        description: 'list (default) or context: assemble a token-budgeted block, best hits deepened',
+      },
+      tokens: {
+        long: '--tokens',
+        description: `Context mode: token budget (default ${RELATED_DEFAULT_TOKENS}); --budget is ignored`,
+      },
+      maxTier: {
+        long: '--max-tier',
+        description: 'Context mode: deepest tier, 0 line, 1 excerpt, 2 span text',
       },
       budget: {
         long: '--budget',
@@ -186,7 +203,7 @@ export default defineCommand<Args, Result>({
       },
     },
     usage:
-      'context related --for <text> [--initiative <slug>] [--limit 6] [--budget 1500] [--classes notes --classes tasks] [--exclude <ref> --exclude <ref>] [--trigger spawn]',
+      'context related --for <text> [--initiative <slug>] [--limit 6] [--budget 1500] [--classes notes --classes tasks] [--exclude <ref> --exclude <ref>] [--trigger spawn] [--mode context --tokens 375 --max-tier 1]',
   },
   async run(args, ctx) {
     return runRelated(args, { activeRoot: ctx.activeRoot });

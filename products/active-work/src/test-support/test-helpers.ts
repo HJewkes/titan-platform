@@ -1,4 +1,4 @@
-import { mkdtempSync, cpSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, cpSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 // Namespace import, not `{ homedir }`: `sandbox-home.ts` redirects home by
 // REPLACING `os.homedir`, and a named import binds the original function, which
 // under the threads pool does not track a runtime `$HOME` write. Every src file
@@ -105,4 +105,10 @@ export async function withEmptyActiveRoot<T>(fn: (activeRoot: string) => Promise
 /** Reads a record by key typed as possibly missing, which `noUncheckedIndexedAccess` would do but this package leaves off. */
 export function lookup<T>(table: Record<string, T>, key: string): T | undefined {
   return table[key];
+}
+
+/** A minimal agent-visible brief, so a fixture's foreign initiative is served (TP-5453 P6). */
+export function writeAgentVisibleBrief(activeRoot: string, slug: string): void {
+  mkdirSync(join(activeRoot, slug), { recursive: true });
+  writeFileSync(join(activeRoot, slug, 'brief.md'), '---\nvisibility: agent-visible\n---\n');
 }

@@ -84,7 +84,7 @@ export const DEFAULT_SESSION_START_TIMEOUT_MS = 5 * 60_000;
 /** How long Shepherd's own MERGE waits on a seat reviewer's WAIT at the same head before the round is held. */
 const DEFAULT_SEAT_WAIT_MS = 30 * 60_000;
 export { MAX_RESUME_FILL_TOKENS } from "./reviewer-choice.js";
-const DEFAULT_POLL_MS = 30_000;
+export const DEFAULT_POLL_MS = 30_000;
 export { BUSY_FIRST_WAIT_MS, BUSY_LONGEST_WAIT_MS, DEFAULT_BUSY_WAIT_MS, ReviewerBrokerBusy, ReviewerBrokerDown } from "./review-wait.js";
 export { DEFAULT_DETACH_GRACE_MS, DEFAULT_EXIT_GRACE_MS, awaitVerdict, parseAwaitVerdictInput } from "./await-verdict.js";
 export { FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS, acceptVerdict } from "@titan-design/review-panel";
@@ -307,7 +307,7 @@ const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> 
 /** The body of the sh-correct-verdict step, with the same session-start and busy budgets as sh-review; an adversary is resumed under its own account. */
 const correctReviewer: BrokerStepBody<CorrectVerdictInput, CorrectedResult> = (deps, wired, input, signal, repeat) => {
   const { dispatch, sessionStartTimeoutMs, busyWaitMs } = wired;
-  const timing = { ...brokerTiming(deps), timeoutMs: sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, busyWaitMs: busyWaitMs ?? DEFAULT_BUSY_WAIT_MS };
+  const timing = { ...bootTiming(deps, wired), timeoutMs: sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, busyWaitMs: busyWaitMs ?? DEFAULT_BUSY_WAIT_MS };
   return correctVerdict(memberDispatch(wired, input.shape) ?? dispatch, input, timing, signal, repeat);
 };
 
@@ -323,7 +323,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     codeRoute(LATE_VERDICT_STEP, deps.now, (raw: unknown, signal, clock) => seatVetoed(wiring, (late: unknown, lateSignal) => lateVerdict(deps, wiring, parseAwaitVerdictInput(late), lateSignal, clock.firstStartedAtMs), deps.now, seatWait, ownerIn(deps.store))(raw, signal)),
     repeatAwareRoute(CORRECT_VERDICT_STEP, deps.now, brokerStep(deps, wiring, CorrectVerdictInputSchema, correctReviewer)),
     codeRoute(SEAT_RECHECK_STEP, deps.now, seatVetoed(wiring, async (raw: unknown) => heldMerge(raw), deps.now, seatWait, ownerIn(deps.store))),
-    codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput, signal: AbortSignal) => mergeEvidence(deps.port, input, wiring?.isFrozen ?? noFreezeStoreUntilTp523, registeredKind(deps.store, input.runId), { sleep: (ms) => deps.sleep(ms, signal) }, { reviewAppId: wiring?.reviewAppId, threshold: wiring?.visualThreshold?.(input.repo), tier: wiring?.visualTier?.(input.repo), oldPath: wiring?.oldPath, attest: attestJudge(deps.port, deps.store, wiring ?? {}, { timing: { ...brokerTiming(deps), brokerDownWaitMs: wiring?.brokerDownWaitMs ?? DEFAULT_BROKER_DOWN_WAIT_MS }, budgetMs: wiring?.sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, signal }) })),
+    codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput, signal: AbortSignal) => mergeEvidence(deps.port, input, wiring?.isFrozen ?? noFreezeStoreUntilTp523, registeredKind(deps.store, input.runId, deps.visualGate), { sleep: (ms) => deps.sleep(ms, signal) }, { reviewAppId: wiring?.reviewAppId, visualGate: deps.visualGate, threshold: wiring?.visualThreshold?.(input.repo), tier: wiring?.visualTier?.(input.repo), oldPath: wiring?.oldPath, attest: attestJudge(deps.port, deps.store, wiring ?? {}, { timing: { ...brokerTiming(deps), brokerDownWaitMs: wiring?.brokerDownWaitMs ?? DEFAULT_BROKER_DOWN_WAIT_MS }, budgetMs: wiring?.sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, signal }) })),
     carryRoute(deps.now, { ports: deps.gitCache, ...wiring?.carry }),
     publishReviewRoute(deps),
     ...accountRoutes(deps, wiring?.accounts),

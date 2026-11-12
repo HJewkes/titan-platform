@@ -151,3 +151,27 @@ describe("directory-form main and bin targets", () => {
     expect([...entries]).toEqual(["packages/lib/src/index.ts"]);
   });
 });
+
+describe("null exports subpaths subtract from looser keys, as Node resolves them", () => {
+  const files = [
+    "packages/lib/src/a.ts",
+    "packages/lib/src/exact.ts",
+    "packages/lib/src/internal/x.ts",
+    "packages/lib/src/internal/deep/y.ts",
+  ];
+
+  it("roots only what Node still resolves under a null pattern and a null exact key", () => {
+    const source = libSource({ exports: { "./*": "./dist/*.js", "./internal/*": null, "./exact.js": null } });
+    const sourceWithExt = libSource({ exports: { "./*": "./dist/*", "./internal/*": null, "./exact": null } });
+    expect([...packageEntryFileIds(REPO, files, source)].sort()).toEqual(["packages/lib/src/a.ts", "packages/lib/src/exact.ts"]);
+    expect([...packageEntryFileIds(REPO, files, sourceWithExt)].sort()).toEqual(["packages/lib/src/a.ts"]);
+  });
+
+  it("keeps a more specific non-null key rooted under a looser null pattern", () => {
+    const source = libSource({ exports: { "./*": null, "./internal/*": "./dist/internal/*.js" } });
+    expect([...packageEntryFileIds(REPO, files, source)].sort()).toEqual([
+      "packages/lib/src/internal/deep/y.ts",
+      "packages/lib/src/internal/x.ts",
+    ]);
+  });
+});

@@ -91,12 +91,18 @@ describe("factory rows", () => {
       "shepherd.review.fallbackConfigDirs",
       "shepherd.review.maxConcurrent",
       "shepherd.taskClose",
+      "shepherd.visualGate",
     ]);
   });
 
   it("takes taskClose as keep or last-slice-only only", () => {
     expect(checkEditableValue("factory", "shepherd.taskClose", "last-slice-only").ok).toBe(true);
     expect(checkEditableValue("factory", "shepherd.taskClose", "on").ok).toBe(false);
+  });
+
+  it("takes visualGate as owner or async only", () => {
+    expect(checkEditableValue("factory", "shepherd.visualGate", "async").ok).toBe(true);
+    expect(checkEditableValue("factory", "shepherd.visualGate", "on").ok).toBe(false);
   });
 
   it("accepts a profile name and refuses one that reads as a flag or a path", () => {

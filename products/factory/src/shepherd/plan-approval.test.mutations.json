@@ -13,8 +13,8 @@
     {
       "name": "the read returns only rows another actor wrote",
       "file": "products/factory/src/shepherd/plan-approval.ts",
-      "find": "AND repo = ? AND actor = ? ORDER BY",
-      "replace": "AND repo = ? AND actor != ? ORDER BY",
+      "find": "AND repo = ? AND actor = ? AND gate != 'task' ORDER BY",
+      "replace": "AND repo = ? AND actor != ? AND gate != 'task' ORDER BY",
       "kills": [
         "the plan-approval store never reads back a row an agent inserted directly, even one claimed by the run"
       ]

@@ -407,7 +407,7 @@ describe("reviewRoutes", () => {
     });
 
     it("removes only a panel member's own checkout dir, under its shape, once the member reaches a verdict", async () => {
-      const probed = message({ text: `Probes: empty token -> refused\n\n${block()}` });
+      const probed = message({ text: `Probes: empty token -> refused\nAuthority: unchanged\n\n${block()}` });
       const route = reviewRoutes(withFakeFs, { reader: { read: async () => [probed] } }).find((candidate) => candidate.match === "sh-await-verdict")!;
 
       const stepId = `sh-await-verdict:${HEAD}:adversary`;
@@ -1464,7 +1464,7 @@ describe("reviewPhase", () => {
   const said = (who: ReviewerAgent, text: string, writtenAt: number): ReviewerMessage => ({ agentId: who.agentId, sessionId: who.sessionId, writtenAt, text, locator: locatorIn(who.sessionId) });
   const verdictAt = (head: string, verdict = "MERGE") => `Read it all.\n\nVerdict: ${verdict}\nPR: ${REPO}#1\nHead: ${head}\n`;
   /** An adversary member's verdict carries the probes it ran, or it is refused. */
-  const probedAt = (head: string, verdict = "MERGE") => `Probes: empty token -> refused\n\n${verdictAt(head, verdict)}`;
+  const probedAt = (head: string, verdict = "MERGE") => `Probes: empty token -> refused\nAuthority: unchanged\n\n${verdictAt(head, verdict)}`;
   const verdictBy = (who: ReviewerAgent, head: string) => (who.name.endsWith("-adversary") ? probedAt(head) : verdictAt(head));
 
   interface Scene {

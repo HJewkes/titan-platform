@@ -64,6 +64,7 @@ export const EDITABLE_FIELDS: readonly EditableField[] = [
   shaped("factory", "shepherd.review.fallbackConfigDirs", z.array(absoluteDir).max(16), "live"),
   field("factory", "shepherd.review.maxConcurrent", { min: 1, max: 64, integer: true }, "live"),
   shaped("factory", "shepherd.taskClose", z.enum(["keep", "last-slice-only"]), "live"),
+  shaped("factory", "shepherd.visualGate", z.enum(["owner", "async"]), "live"),
 ];
 
 function matches(pattern: string, path: string): boolean {

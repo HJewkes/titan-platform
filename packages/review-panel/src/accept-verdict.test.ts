@@ -77,7 +77,7 @@ describe("acceptVerdict malformed record", () => {
   });
 
   it("covers every refusal the schema lists, the two Shepherd's scope check sends included", () => {
-    const exercised = new Set(["no_block", "multiple_blocks", "bad_verdict", "missing_pr_line", "bad_pr", "missing_head_line", "bad_head", "wrong_target", "ci_policy_malformed", "ci_policy_prose", "probes_missing", "scope_untagged", "repeated_finding"]);
+    const exercised = new Set(["no_block", "multiple_blocks", "bad_verdict", "missing_pr_line", "bad_pr", "missing_head_line", "bad_head", "wrong_target", "ci_policy_malformed", "ci_policy_prose", "probes_missing", "authority_missing", "scope_untagged", "repeated_finding"]);
 
     expect(new Set(Object.keys(MALFORMED_REFUSALS))).toEqual(exercised);
   });
@@ -96,7 +96,26 @@ describe("acceptVerdict malformed record", () => {
     });
 
     it("accepts an adversary MERGE that lists its probes", () => {
-      expect(acceptVerdict(adversary, [said(`Probes: empty token -> refused; expired token -> refused\n\n${merge}`)])).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+      expect(acceptVerdict(adversary, [said(`Probes: empty token -> refused; expired token -> refused\nAuthority: unchanged\n\n${merge}`)])).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+    });
+
+    it("an adversary MERGE carries its Authority value", () => {
+      expect(acceptVerdict(adversary, [said(`Probes: empty token -> refused\nAuthority: widened\n\n${merge}`)])).toMatchObject({ verdict: "MERGE", authority: "widened" });
+    });
+
+    it("an adversary MERGE with no Authority line is refused once as authority_missing", () => {
+      expect(acceptVerdict(adversary, [said(`Probes: empty token -> refused\n\n${merge}`)])).toEqual({ kind: "none", malformed: { refusal: "authority_missing", writtenAt: WRITTEN_AT } });
+    });
+
+    it("an adversary MERGE whose Authority line holds another value is refused as authority_missing", () => {
+      expect(readMalformed(acceptVerdict(adversary, [said(`Probes: empty token -> refused\nAuthority: probably fine\n\n${merge}`)]))?.refusal).toBe("authority_missing");
+    });
+
+    it("a correctness MERGE is not asked for an Authority line", () => {
+      const accepted = acceptVerdict({ ...input, shape: "correctness" }, [said(merge)]);
+
+      expect(accepted).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+      expect(accepted).not.toHaveProperty("authority");
     });
 
     it("accepts a correctness MERGE with no Probes line, so the rule binds the adversary alone", () => {

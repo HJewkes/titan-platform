@@ -153,6 +153,7 @@ function summaryOf({ id, status, updatedAt, parsed }: LoadedRound): RoundSummary
     id, status, updatedAt, valid: true, unit: manifest.unit, round: manifest.round,
     questions: manifest.questions.length, design: isDesign(manifest), ship: isShip(manifest), recommendations: manifest.recommendations,
     ...(hasUnboundMergeOffer(manifest.questions) && { unbound: true as const }),
+    ...(manifest.kind === "feedback" && { feedback: true as const }),
   };
 }
 

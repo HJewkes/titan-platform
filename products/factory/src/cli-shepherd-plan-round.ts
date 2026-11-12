@@ -9,6 +9,8 @@ import { runCommand, type CommandResult } from "./run-command.js";
 import { parseNameStatus, verifyPlan } from "./shepherd/plan-round-verify.js";
 import { planRound, PlanRoundRefused, readPlanBlock, type GitRead } from "./shepherd/plan-round.js";
 import { loadSeatBook, lookupSeat } from "./shepherd/seats.js";
+import { activeWorkOrigin } from "./shepherd/cleanup-ports.js";
+import { activeWorkTaskForApproval, taskApprovalRound, type TaskApprovalReads } from "./shepherd/task-approval-round.js";
 
 type Run = (file: string, args: readonly string[]) => Promise<CommandResult | undefined>;
 
@@ -48,6 +50,9 @@ export interface PlanRoundPorts {
   visualPaths: (repo: string) => readonly string[] | undefined;
 }
 
+/** The verb's own ports: a plan's, and the active-work task a `--task-approval` round asks about. */
+type PlanRoundVerbPorts = PlanRoundPorts & { taskReads: () => TaskApprovalReads };
+
 export interface PlanRoundArgs {
   round: number;
   supersedes: string[];
@@ -56,6 +61,10 @@ export interface PlanRoundArgs {
   storybookUrl?: string;
   pinFrom?: string;
   verify?: string;
+  taskApproval?: string;
+  reason?: string;
+  visualSignoff?: boolean;
+  repo?: string;
 }
 
 function failed(io: CliIo, error: unknown): number {
@@ -96,12 +105,42 @@ async function verifyPlanRound(source: string, ref: string, args: PlanRoundArgs,
   }
 }
 
+/** A task approval asks about the task, not a PR, so it takes no plan and pins no files. */
+function taskApprovalUsage(source: string | undefined, args: PlanRoundArgs): string | undefined {
+  if (source !== undefined || args.verify !== undefined || args.pinFrom !== undefined) return "--task-approval takes no plan, --verify or --pin-from";
+  if (args.reason === undefined || args.repo === undefined) return "--task-approval needs --reason and --repo";
+  return undefined;
+}
+
+/** `--task-approval <initiative>/<ID>`: prints the one-question round.json; 65 for a task, key or reason the record would refuse, 69 when active-work is down. */
+async function draftTaskApprovalRound(taskKey: string, args: PlanRoundArgs, ports: PlanRoundVerbPorts): Promise<number> {
+  const optional = { ...(args.supersedes.length > 0 && { supersedes: args.supersedes }), ...(args.storybookUrl && { storybookUrl: args.storybookUrl }) };
+  const request = { taskKey, repo: args.repo ?? "", reason: args.reason ?? "", visualSignoff: args.visualSignoff === true, round: args.round, ...optional };
+  try {
+    ports.io.stdout(`${JSON.stringify(await taskApprovalRound(request, ports.taskReads()), null, 2)}\n`);
+    return EXIT.OK;
+  } catch (error) {
+    if (error instanceof PlanRoundRefused) return failed(ports.io, error);
+    ports.io.stderr(`error: active-work could not be read: ${error instanceof Error ? error.message : String(error)}\n`);
+    return EXIT.UNAVAILABLE;
+  }
+}
+
+function usage(io: CliIo, message: string): number {
+  io.stderr(`error: ${message}\n`);
+  return EXIT.USAGE;
+}
+
 /** The verify reads a head against the plan's own pins, so a pin taken from another ref would check nothing. */
-async function runPlanRound(source: string, args: PlanRoundArgs, ports: PlanRoundPorts): Promise<number> {
+async function runPlanRound(source: string | undefined, args: PlanRoundArgs, ports: PlanRoundVerbPorts): Promise<number> {
+  if (args.taskApproval !== undefined) {
+    const refusal = taskApprovalUsage(source, args);
+    return refusal === undefined ? draftTaskApprovalRound(args.taskApproval, args, ports) : usage(ports.io, refusal);
+  }
+  if (source === undefined) return usage(ports.io, "plan-round needs a <plan>, or --task-approval <initiative>/<ID>");
   if (args.verify === undefined) return draftPlanRound(source, args, ports);
   if (args.pinFrom === undefined) return verifyPlanRound(source, args.verify, args, ports);
-  ports.io.stderr("error: --verify and --pin-from do not combine: verify the head against the plan, then re-ask with --pin-from\n");
-  return EXIT.USAGE;
+  return usage(ports.io, "--verify and --pin-from do not combine: verify the head against the plan, then re-ask with --pin-from");
 }
 
 function seatVisualPaths(env: NodeJS.ProcessEnv, repo: string): readonly string[] | undefined {
@@ -114,7 +153,7 @@ const collect = (value: string, previous: string[]): string[] => [...previous, v
 /** `shepherd plan-round`: drafts only. It never reaches serve, the store or the console; the coordinator pipes it to `titan-console decisions file -`. */
 export function registerShepherdPlanRound(shepherd: Command, verbs: Verbs): void {
   shepherd
-    .command("plan-round <plan>")
+    .command("plan-round [plan]")
     .description("print one PR's plan round.json from a plan.md's ```plan-round fence, a JSON file or - (stdin), binding each WHAT gate its planned files would hit; writes nothing")
     .option("--round <n>", "the round number", parsePositiveInt, 1)
     .option("--supersedes <round-id>", "a console round this one replaces; repeatable", collect, [])
@@ -123,12 +162,17 @@ export function registerShepherdPlanRound(shepherd: Command, verbs: Verbs): void
     .option("--storybook-url <url>", "the loopback Storybook URL round@2 requires (default http://127.0.0.1:6006/)")
     .option("--pin-from <ref>", "the re-ask: pin each planned file to its blob at this ref, read in --checkout; the block gives no inline content")
     .option("--verify <ref>", "print no round; exit 1 when the ref changes a path the plan does not list or a pinned file's bytes drifted")
-    .action(async (source: string, args: PlanRoundArgs) => {
-      const ports: PlanRoundPorts = {
+    .option("--task-approval <initiative/ID>", "print the owner's task validation round for a task tagged owner-validate, read from active-work; takes no plan")
+    .option("--reason <reason>", "with --task-approval: new-direction, one-way-door, new-cap or authority-widening")
+    .option("--visual-signoff", "with --task-approval: the owner signs off the task's visual changes at merge")
+    .option("--repo <owner/name>", "with --task-approval: the repo the approval is filed under")
+    .action(async (source: string | undefined, args: PlanRoundArgs) => {
+      const ports: PlanRoundVerbPorts = {
         io: verbs.io,
         readPlan: (from) => (from === "-" ? text(process.stdin) : readFile(from, "utf8")),
         git: (checkout) => checkoutGit(checkout),
         visualPaths: (repo) => seatVisualPaths(verbs.io.env, repo),
+        taskReads: () => activeWorkTaskForApproval({ origin: activeWorkOrigin(verbs.io.env), ...(verbs.deps.fetch && { fetch: verbs.deps.fetch }) }),
       };
       verbs.setExit(await runPlanRound(source, args, ports));
     });

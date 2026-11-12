@@ -34,6 +34,7 @@ Before adding code:
 | [`png-delta`](#cap-png-delta) | 0 | You hold two untrusted PNG screenshots, a base and a head, and need to know how much of the rendered content changed (`snapshotShare`), see which pixels moved (`pixelDelta`, drawn by pixelmatch, then `encodePng`), or decode one PNG under a hard pixel cap (`decodePngBounded`). |
 | [`review-burden`](#cap-review-burden) | 0 | You need to say how much a pull request asks of its reviewer, or whether a revert would undo it, from facts alone with no model call. |
 | [`rpc-protocol`](#cap-rpc-protocol) | 0 | You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary. |
+| [`seat-spec`](#cap-seat-spec) | 0 | You launch a standing seat and the owner's definition, not the requester, must decide its profile, account, permission mode, surface, cwd, depth and Remote Control. |
 | [`store-sqlite`](#cap-store-sqlite) | 0 | You are storing anything in SQLite and want an edge graph, a contentless FTS5 index, a content-hash cache, an ingest watermark or migrations, without writing the DDL yourself. |
 | [`test-kit`](#cap-test-kit) | 0 | A test needs a value of an interface type but the code under test reads only a few of its fields: `partialFake<T>({ ... })` builds it without an `as unknown as T` double cast. |
 | [`tool-guard`](#cap-tool-guard) | 0 | A hook or guard must see what a Bash command string would actually run: every simple command through `;`, `&&`, pipes, subshells, substitutions, `bash -c`, `eval`, wrappers and package runners, with redirect targets, heredoc bodies, decoded ANSI-C strings and literal variables kept. |
@@ -66,7 +67,7 @@ Before adding code:
 | [`graph-layout`](#cap-graph-layout) | 2 | A product draws a code-graph snapshot as boxes and routed edges: collapse files to packages, directories or one focused package, then lay the result out with ELK layered (flat or nested), with the same coordinates for any input order. |
 | [`memory`](#cap-memory) | 2 | An agent must carry lessons between sessions in a rule playbook whose confidence decays with evidence and stays small without manual curation. |
 | [`owner-queue`](#cap-owner-queue) | 2 | You gather the things only the owner can answer from several stores of record (chat questions, hitl gates, task notes, review rounds) into one list and need one `OwnerItem` shape, a `QueueSource` port for adapters, a merge that joins duplicates only on an exact shared key including a PR's head sha, a deterministic rank, and pure stale rules that label an item gone elsewhere from source facts (PR merged, head moved, task done, asker retired), and `buildOwnerRounds`, which turns open Decide items into titan-review round@2 manifests with `Principle:` batching and shadow-mode picks revealed only after the answer, plus `fromRoundQuestions`/`answeredFromFeedback` to read a round's questions and feedback back as OwnerItems, and `ask:`/`component:`/`token:`/`topic:` relation keys that relate items without merging them, and `consolidate`, which turns the open queue into the approvals Flow (per-PR and topic groups, influence order, holds, and a per-PR `shipBlockedBy` from open change requests), and an optional `audience` (owner or operator) with the `forAudience` reader filter, and owner card fields (`class`, `irreversible`, `shown`, `default`, `onSilence`, option `consequence`) checked by `cardLint`/`ownerCardSchema`. |
-| [`pm`](#cap-pm) | 2 | You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags, notes, parent, dep, deliverables, kind, cos, area and due), read a task's parent and dep edges with `readEdges`, check a proposed edge change for unknown ids and cycles with `checkEdges`, validate a task's kind, status, cos and area against the category registry with `CategoryRegistrySchema` and `checkCategories`, or validate the platform-wide deliverable registry with `DeliverableSchema` and `parseDeliverableRegistry`, or gate a repo review on every recommendation and P1 or P2 topic having a task, dup, fold, drop or pending-owner row with `summaryRecommendations`, `prioritizedTopics`, `parseDispositions` and `checkDispositions`. |
+| [`pm`](#cap-pm) | 2 | You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags, notes, parent, dep, deliverables, kind, cos, area and due), read a task's parent and dep edges with `readEdges`, check a proposed edge change for unknown ids and cycles with `checkEdges`, validate a task's kind, status, cos and area against the category registry with `CategoryRegistrySchema` and `checkCategories`, or validate the platform-wide deliverable registry with `DeliverableSchema` and `parseDeliverableRegistry`, or gate a repo review on every recommendation and P1 or P2 topic having a task, dup, fold, drop or pending-owner row with `summaryRecommendations`, `prioritizedTopics`, `parseDispositions` and `checkDispositions`, or decide whether an agent-facing reader may serve an initiative with `isAgentVisible` (a missing, unparsable or undeclared brief `visibility` is owner-only). |
 | [`queue-mirror`](#cap-queue-mirror) | 2 | A local queue of human decisions (approvals, hitl gates) should also be answerable from a Matrix room, with verdicts folded back. |
 | [`render-qa`](#cap-render-qa) | 2 | You need to check a rendered page's layout at chosen moments (overlaps, off-frame, small or low-contrast text, wraps, frame rules) and separate held errors from transient ones before encoding, sample a whole video on a fixed 2 Hz grid with a settled sample per beat (`sweepMoments`), measure text line boxes, clipping ancestors and content boxes at moments (`probeMoments`), count changed pixels per frame of an MP4 (`frameDiffs`, through ffmpeg), or find an MP4's black, silent (2 s and more) and frozen stretches (`mediaScan`, through ffmpeg). |
 | [`review-panel`](#cap-review-panel) | 2 | You start reviewers for a pull request and read their verdicts, and want Shepherd's panel types (`PrFacts`, `PrClass`, `PanelPlan`, `PanelVerdict`), `classifyPr` to class a PR from its paths and kind, `planPanel` to pick its reviewers by shape, profile and blocking flag, the reviewer ports (`ReviewerDispatch`, `ReviewerReader`) your adapters satisfy, `acceptVerdict` to decide whether a reviewer's final message is its verdict for this PR at this head, `aggregate` to turn the members' verdicts into one fail-closed panel verdict, and `reviewPullRequest` to run the whole panel for one head over those ports. |
@@ -478,6 +479,26 @@ Key exports:
 - `routes`: `CLIENT_HEADER`, `EVENTS_PATH`, `HEALTH_PATH`, `RPC_PREFIX`, `RPC_STATUS`, `VERSION_PATH`, `rpcFailureStatus`
 - `sse`: `SSE_EVENTS`, `SSE_HEARTBEAT_MS`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/rpc-protocol)
+
+<a id="cap-seat-spec"></a>
+
+### [`seat-spec`](https://hjewkes.github.io/titan-platform/reference/seat-spec)
+
+Tier 0, `@titan-design/seat-spec@0.0.0`. Owner-held seat definitions: the titan-seat/v1 schema, parseSeat, fail-closed file checks and the pure launch resolver
+
+**Use this when:**
+
+You launch a standing seat and the owner's definition, not the requester, must decide its profile, account, permission mode, surface, cwd, depth and Remote Control. `loadSeat` takes what a thin reader saw (lstat facts and bytes for the `titan-seat/v1` file, the seat index and the pinned prompt) and refuses with a named code on any unreadable file, unsafe owner or mode, unknown or missing field, bypass mode, headless surface, prompt hash mismatch or unlisted `ownerOnlyRead`; `resolveLaunch` then builds the launch from the definition alone and lists the requester fields it overrode. It does no I/O. For an autonomy coordinator's `autonomy-seat/v1` front matter use coordinator.
+
+Key exports:
+
+- `schema`: `SEAT_SCHEMA`, `SEAT_INDEX_SCHEMA`, `seatSchema`, `SeatDefinition`, `SeatIndex`
+- `refusal`: `SeatRefusal`
+- `parse`: `parseSeat`, `parseSeatIndex`
+- `file-checks`: `checkOwnerFile`
+- `load`: `loadSeat`, `SEAT_FILE_SUFFIX`
+- `resolve`: `resolveLaunch`
+- More in the [reference page](https://hjewkes.github.io/titan-platform/reference/seat-spec)
 
 <a id="cap-store-sqlite"></a>
 
@@ -1116,15 +1137,15 @@ Tier 2, `@titan-design/pm@0.4.0`. Project-management schemas: the zod task schem
 
 **Use this when:**
 
-You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags, notes, parent, dep, deliverables, kind, cos, area and due), read a task's parent and dep edges with `readEdges`, check a proposed edge change for unknown ids and cycles with `checkEdges`, validate a task's kind, status, cos and area against the category registry with `CategoryRegistrySchema` and `checkCategories`, or validate the platform-wide deliverable registry with `DeliverableSchema` and `parseDeliverableRegistry`, or gate a repo review on every recommendation and P1 or P2 topic having a task, dup, fold, drop or pending-owner row with `summaryRecommendations`, `prioritizedTopics`, `parseDispositions` and `checkDispositions`. Pure code; it reads no files, so parse the task, registry and deliverable YAML in the host and hand the objects over. For a seat's front matter use `coordinator` instead.
+You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags, notes, parent, dep, deliverables, kind, cos, area and due), read a task's parent and dep edges with `readEdges`, check a proposed edge change for unknown ids and cycles with `checkEdges`, validate a task's kind, status, cos and area against the category registry with `CategoryRegistrySchema` and `checkCategories`, or validate the platform-wide deliverable registry with `DeliverableSchema` and `parseDeliverableRegistry`, or gate a repo review on every recommendation and P1 or P2 topic having a task, dup, fold, drop or pending-owner row with `summaryRecommendations`, `prioritizedTopics`, `parseDispositions` and `checkDispositions`, or decide whether an agent-facing reader may serve an initiative with `isAgentVisible` (a missing, unparsable or undeclared brief `visibility` is owner-only). Pure code; it reads no files, so parse the task, registry and deliverable YAML in the host and hand the objects over. For a seat's front matter use `coordinator` instead.
 
 Key exports:
 
 - `task`: `TaskSchema`
+- `visibility`: `InitiativeVisibilitySchema`, `isAgentVisible`
 - `deliverable`: `DeliverableSchema`, `deliverablePath`, `deliverablesDir`, `parseDeliverableRegistry`
 - `edges`: `checkEdges`, `readEdges`
 - `dispositions`: `DispositionRowSchema`, `checkDispositions`, `parseDispositions`
-- `review-summary`: `prioritizedTopics`, `summaryRecommendations`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/pm)
 
 <a id="cap-queue-mirror"></a>
@@ -1216,7 +1237,7 @@ Tier 2, `@titan-design/session-analytics@0.17.4`. Pricing, session classificatio
 
 **Use this when:**
 
-You need cost, session class, role, episodes or a spend report over mined sessions, or the timeline read model behind a session view (turns, minute buckets, token and cost series). Also for agent-chat operations: it reads agent-chat's events.db through a connection the caller opened, parses broker.log lines, transcript denials and seat journals the caller reads, and reports blocked merges, dark agents and review fill. Also for a coordinator duty meter over seat transcript lines the caller reads. Session parsing is session-read; storage is session-graph.
+You need cost, session class, role, episodes or a spend report over mined sessions, or the timeline read model behind a session view (turns, minute buckets, token and cost series). Also for agent-chat operations: it reads agent-chat's events.db through a connection the caller opened, parses broker.log lines, transcript denials and seat journals the caller reads, and reports blocked merges, dark agents and review fill. Also for a coordinator duty meter over seat transcript lines the caller reads, and for the per-task ticket scorecard core (task rows, weekly cells, the rule pick and red flags) over rows the caller reads. Session parsing is session-read; storage is session-graph.
 
 Key exports:
 

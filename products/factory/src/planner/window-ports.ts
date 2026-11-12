@@ -31,12 +31,18 @@ async function redRunsConcluded(run: PlannerRun, repo: string, since: string, co
   return runs.map((r) => ({ id: r.databaseId, workflow: r.workflowName, createdAt: r.createdAt }));
 }
 
+/** GitHub search qualifiers take second-precision times; a fractional `.000Z` is not a documented form. */
+const toSecondPrecision = (since: string): string => since.replace(/\.\d+(?=Z|[+-]\d{2}:?\d{2}$)/, "");
+
 export function ghWindow(run: PlannerRun): WindowGitHub {
   return {
-    mergedPrs: (repo, since) =>
-      ghJson(run, ["pr", "list", "--repo", repo, "--state", "merged", "--search", `merged:>=${since}`, "--json", "number,mergedAt", "--limit", PAGE], MergedPrs),
+    mergedPrs: (repo, since) => {
+      const from = toSecondPrecision(since);
+      return ghJson(run, ["pr", "list", "--repo", repo, "--state", "merged", "--search", `merged:>=${from}`, "--json", "number,mergedAt", "--limit", PAGE], MergedPrs);
+    },
     redMainRuns: async (repo, since) => {
-      const perConclusion = await Promise.all(RED_CONCLUSIONS.map((conclusion) => redRunsConcluded(run, repo, since, conclusion)));
+      const from = toSecondPrecision(since);
+      const perConclusion = await Promise.all(RED_CONCLUSIONS.map((conclusion) => redRunsConcluded(run, repo, from, conclusion)));
       return perConclusion.flat();
     },
   };
