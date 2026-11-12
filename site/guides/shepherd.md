@@ -2278,7 +2278,9 @@ It reads the task's title, `done_when` and tags from active-work and refuses a t
 `owner-validate` tag, a key that is not `<initiative>/<ID>`, and a `--reason` outside owner rule
 Q4's four: `new-direction`, `one-way-door`, `new-cap`, `authority-widening`. The round has one
 question, `Validate <ID>: <title>?`, with approve and not-now options; the owner reads the
-done_when, the reason and the visual sign-off flag beside it. The approve pick records a `task`
+whole done_when, exactly the text its hash covers and never cut, with the reason and the visual
+sign-off flag beside it. A done_when holding escape, invisible or control characters is refused
+rather than shown altered. The approve pick records a `task`
 row in `shepherd_plan_approval`, keyed by the task key and pinned to the done_when's hash. No run
 claims it, so it covers every PR of the task, and only the console's owner-remote writes it. Code
 reads it only through `ownerTaskApproval` (`products/factory/src/shepherd/owner-task-approval.ts`),
