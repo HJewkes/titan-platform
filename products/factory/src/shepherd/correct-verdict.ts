@@ -4,7 +4,7 @@ import type { DeadlineTiming } from "../workflows/deadline.js";
 import { step } from "../workflows/land.js";
 import { HEAD } from "./await-verdict.js";
 import { Awaited } from "./review-schemas.js";
-import { clearReviewWait, noteReviewWait, startedSession, whileBrokerBusy, whileBrokerDown, type BusyTiming, type PollTiming } from "./review-wait.js";
+import { clearReviewWait, noteReviewWait, startedSession, patientRoster, rosterUnread, whileBrokerBusy, whileBrokerDown, type BrokerDownTiming, type BusyTiming, type PollTiming } from "./review-wait.js";
 import { MalformedSchema, correctionPrompt, isUsageLimit, readMalformed, type AwaitVerdictInput, type Malformed, type ReviewerAgent, type ReviewerDispatch } from "@titan-design/review-panel";
 
 export const CORRECT_VERDICT_STEP = "sh-correct-verdict";
@@ -29,7 +29,7 @@ export const Corrected = z.discriminatedUnion("kind", [z.looseObject({ kind: z.l
 type NoCorrection = { kind: "none"; reason: string };
 export type CorrectedResult = { kind: "asked"; startedAt: number } | NoCorrection;
 
-export type CorrectTiming = PollTiming & BusyTiming & DeadlineTiming;
+export type CorrectTiming = PollTiming & BusyTiming & DeadlineTiming & BrokerDownTiming;
 
 const none = (reason: string): NoCorrection => ({ kind: "none", reason });
 
@@ -38,7 +38,10 @@ const landed = (input: CorrectVerdictInput) => (row: ReviewerAgent) => row.prese
 
 /** Resumes the exited reviewer's own session once; a repeat whose resume already landed asks nothing, so the reviewer is never prompted twice. */
 async function askOnce(dispatch: ReviewerDispatch, input: CorrectVerdictInput, timing: CorrectTiming, signal: AbortSignal, repeat: boolean): Promise<NoCorrection | undefined> {
-  const rows = (await whileBrokerDown(timing, signal, () => dispatch.roster())).filter((row) => row.agentId === input.reviewerAgentId);
+  // An unread roster corrected nobody, so the answer is a retryable none, not a refusal.
+  const roster = await patientRoster(timing, signal, timing.timeoutMs, () => dispatch.roster()).catch((error: unknown) => none(rosterUnread(error).reason));
+  if ("kind" in roster) return roster;
+  const rows = roster.filter((row) => row.agentId === input.reviewerAgentId);
   const row = rows[0];
   if (rows.length !== 1 || row === undefined) return none("the reviewer is not on the roster exactly once");
   if (repeat && landed(input)(row)) return undefined;
