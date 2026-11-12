@@ -7,6 +7,7 @@ rank: 1
 ship_target: 2026-Q3
 owner: hjewkes
 task_prefix: SI
+visibility: agent-visible
 ---
 
 # Sample Initiative

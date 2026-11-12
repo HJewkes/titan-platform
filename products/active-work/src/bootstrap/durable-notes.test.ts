@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { assembleBootstrap } from './prompt.js';
-import { withTempActiveRoot } from '../test-support/test-helpers.js';
+import { withTempActiveRoot, writeAgentVisibleBrief } from '../test-support/test-helpers.js';
 
 const SLUG = 'sample-initiative';
 const NOW = new Date('2026-07-28T12:00:00Z');
@@ -155,6 +155,7 @@ describe('bootstrap durable notes', () => {
   it('labels a foreign note with the initiative it came from', async () => {
     await withTempActiveRoot(async (root) => {
       await writeNote(root, '2026-06-01-one.md', noteFixture('fyi', 'One', '2026-06-01'));
+      writeAgentVisibleBrief(root, 'other-thing');
 
       const { prompt } = await assembleBootstrap({
         activeRoot: root,

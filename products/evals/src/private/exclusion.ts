@@ -1,10 +1,10 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { isAgentVisible } from "@titan-design/pm";
+import YAML from "yaml";
 
 /** Layer 1: cases come only from these repos (bare names; `owner/` is ignored). */
 const ENGINEERING_REPOS = ["titan-platform", "agent-chat", "relay", "codewatch", "active-work", "titan-design"] as const;
-/** Layer 1: a task is joined only from these initiatives. titan-design is a public repo with a public TD-* namespace. */
-const ENGINEERING_INITIATIVES = ["titan-platform", "codewatch", "relay", "claude-channels", "titan-design"] as const;
 /** Task-id prefix to its engineering initiative; a prefix not listed is never joined. */
 const ENGINEERING_TASK_PREFIXES: Readonly<Record<string, string>> = {
   TP: "titan-platform",
@@ -39,10 +39,30 @@ type ExclusionReason = "private-repo" | "private-task" | "private-marker";
 
 const repoName = (repo: string): string => repo.slice(repo.lastIndexOf("/") + 1);
 
-/** Layer 1 for task joins: the initiative a task id may be read from, or undefined when it must not be opened. */
-export function engineeringInitiativeOf(taskId: string, initiatives: readonly string[] = ENGINEERING_INITIATIVES): string | undefined {
-  const initiative = ENGINEERING_TASK_PREFIXES[taskId.split("-")[0] ?? ""];
-  return initiative !== undefined && initiatives.includes(initiative) ? initiative : undefined;
+/** Layer 1 for task joins: the initiative a bare task id names, or undefined when its prefix is not listed. */
+export function engineeringInitiativeOf(taskId: string): string | undefined {
+  return ENGINEERING_TASK_PREFIXES[taskId.split("-")[0] ?? ""];
+}
+
+/** The brief's front matter; none reads as empty, and YAML that will not parse reads as null (owner-only). */
+function briefFrontmatter(file: string): unknown {
+  const text = readFileSync(file, "utf8");
+  const block = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
+  if (block === null) return {};
+  try {
+    return YAML.parse(block[1] ?? "") ?? {};
+  } catch {
+    return null;
+  }
+}
+
+/** Layer 1: the initiatives `isAgentVisible` serves, the same test active-work's readers apply (TP-5453 P6). */
+function readAgentVisibleInitiatives(activeWorkRoot: string): string[] {
+  return readdirSync(activeWorkRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && existsSync(join(activeWorkRoot, entry.name, "brief.md")))
+    .filter((entry) => isAgentVisible({ slug: entry.name, brief: briefFrontmatter(join(activeWorkRoot, entry.name, "brief.md")) }))
+    .map((entry) => entry.name)
+    .sort();
 }
 
 function taskPrefixes(initiativeDir: string): string[] {
@@ -50,8 +70,8 @@ function taskPrefixes(initiativeDir: string): string[] {
   return dirs.flatMap((dir) => readdirSync(dir).flatMap((file) => /^([A-Z]+)-\d+\.yml$/.exec(file)?.[1] ?? []));
 }
 
-/** Every initiative dir (one holding brief.md) outside the allowlist is private, so new initiatives are covered on creation. */
-export function readPrivateMarkers(activeWorkRoot: string, initiatives: readonly string[] = ENGINEERING_INITIATIVES): PrivateMarkers {
+/** Every initiative dir (one holding brief.md) that is not agent-visible is private, so new initiatives are covered on creation. */
+export function readPrivateMarkers(activeWorkRoot: string, initiatives: readonly string[]): PrivateMarkers {
   const slugs = readdirSync(activeWorkRoot, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && !initiatives.includes(entry.name) && existsSync(join(activeWorkRoot, entry.name, "brief.md")))
     .map((entry) => entry.name)
@@ -62,7 +82,8 @@ export function readPrivateMarkers(activeWorkRoot: string, initiatives: readonly
 }
 
 export function defaultPolicy(activeWorkRoot: string): ExclusionPolicy {
-  return { repos: ENGINEERING_REPOS, initiatives: ENGINEERING_INITIATIVES, markers: readPrivateMarkers(activeWorkRoot) };
+  const initiatives = readAgentVisibleInitiatives(activeWorkRoot);
+  return { repos: ENGINEERING_REPOS, initiatives, markers: readPrivateMarkers(activeWorkRoot, initiatives) };
 }
 
 /** Bare slugs never match: `/status` is a daemon endpoint in these repos, so only path, citation and field forms count. */

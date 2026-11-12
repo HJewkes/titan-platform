@@ -41,7 +41,7 @@ beforeEach(async () => {
   dbPath = path.join(dir, 'graph.sqlite3');
   writeFile(
     'alpha/brief.md',
-    '---\nschema_version: 5\ntitle: alpha initiative\nupdated: 2026-09-01\nstate: backburner\ntask_prefix: AL\n---\n\nThe alpha initiative.\n',
+    '---\nschema_version: 5\ntitle: alpha initiative\nupdated: 2026-09-01\nstate: backburner\ntask_prefix: AL\nvisibility: agent-visible\n---\n\nThe alpha initiative.\n',
   );
   writeFile(
     'alpha/sources/notes/2026-09-02-alpha-lesson.md',

@@ -9,7 +9,8 @@ parent and dep edges, and `CategoryRegistrySchema`, `categoriesPath` and
 `checkCategories` for the closed kind, status, cos and area categories, and
 `DeliverableSchema`, `deliverablesDir` and `parseDeliverableRegistry` for the
 deliverable registry, and `summaryRecommendations`, `prioritizedTopics`,
-`parseDispositions` and `checkDispositions` for the repo-review disposition gate. Pure code: no fs, process or network. See
+`parseDispositions` and `checkDispositions` for the repo-review disposition gate, and
+`isAgentVisible` and `InitiativeVisibilitySchema` for an initiative brief's `visibility`. Pure code: no fs, process or network. See
 `site/reference/pm.md`.
 
 The first npm publish is pending and owner-only; trusted publishing is set up after it.

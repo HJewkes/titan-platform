@@ -6,7 +6,7 @@ import { assembleBootstrap, type BootstrapInput } from './prompt.js';
 import type { LoopRetriever } from './loop-context.js';
 import type { HitLogEntry, HitLogWriter } from '../search/hit-log.js';
 import type { RelatedHit } from '../search/related.js';
-import { withTempActiveRoot } from '../test-support/test-helpers.js';
+import { withTempActiveRoot, writeAgentVisibleBrief } from '../test-support/test-helpers.js';
 
 /**
  * The bootstrap's per-loop `see:` lines and the hit log, end to end through
@@ -137,6 +137,7 @@ describe('bootstrap loop retrieval', () => {
         "---\nkind: fyi\ntitle: Local\ncreated: '2026-05-01'\n---\n\nbody\n",
       );
       const log = recorder();
+      writeAgentVisibleBrief(root, 'example-app');
 
       await bootstrap(root, {
         loopRetriever: fixed([hit('note:sample-initiative/a.md', SLUG, 'A')]),

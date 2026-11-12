@@ -9,13 +9,22 @@
  */
 
 import Database from 'better-sqlite3';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { extractPrecedents, type ExtractResult } from './extract.js';
 import { ledgerPath, readLedgerRows } from './ledger.js';
+import { loadAgentVisibility } from '../sessions/visibility.js';
 import { searchPrecedents } from './search.js';
 import { openGraph } from '../session-index/graph.js';
 import { runRefresh } from '../session-index/refresh.js';
@@ -352,6 +361,11 @@ describe('v1 precedents.jsonl rows', () => {
   });
 });
 
+function markOwnerOnly(activeRoot: string): void {
+  const brief = path.join(activeRoot, 'sample-initiative', 'brief.md');
+  writeFileSync(brief, readFileSync(brief, 'utf8').replace('visibility: agent-visible', 'visibility: owner-only'));
+}
+
 describe('precedent search', () => {
   it('ranks the matching precedent first and filters by category', async () => {
     await withTempActiveRoot(async (activeRoot) => {
@@ -359,10 +373,10 @@ describe('precedent search', () => {
       await run(activeRoot);
       const rows = await ledgerRows(activeRoot);
 
-      const hits = await searchPrecedents(rows, MERGE_QUERY, { humanOnly: new Set() });
+      const hits = await searchPrecedents(rows, MERGE_QUERY, { isVisible: () => true });
       const tasteOnly = await searchPrecedents(rows, MERGE_QUERY, {
         category: 'visual_taste',
-        humanOnly: new Set(),
+        isVisible: () => true,
       });
 
       expect(hits[0].row.locator?.toolUseId).toBe('tu-merge');
@@ -375,9 +389,9 @@ describe('precedent search', () => {
       const result = await run(activeRoot);
       const rows = await ledgerRows(activeRoot);
 
-      const hidden = await searchPrecedents(rows, MERGE_QUERY, { humanOnly: new Set() });
+      const hidden = await searchPrecedents(rows, MERGE_QUERY, { isVisible: () => true });
       const shown = await searchPrecedents(rows, MERGE_QUERY, {
-        humanOnly: new Set(),
+        isVisible: () => true,
         includeUnclaimed: true,
       });
 
@@ -428,20 +442,23 @@ describe('human-only initiatives', () => {
     });
   });
 
-  it('drops listed rows from search, including rows written before the listing, even with unclaimed rows included', async () => {
+  it('withholds an owner-only initiative\'s rows, including rows written before it was marked, even with unclaimed rows included', async () => {
     await withTempActiveRoot(async (activeRoot) => {
       registerWorktree(activeRoot);
       await run(activeRoot);
       const rows = await ledgerRows(activeRoot);
 
-      const open = await searchPrecedents(rows, MERGE_QUERY, { humanOnly: new Set() });
-      const listed = await searchPrecedents(rows, MERGE_QUERY, {
-        humanOnly: new Set(['sample-initiative']),
+      const open = await searchPrecedents(rows, MERGE_QUERY, {
+        isVisible: await loadAgentVisibility(activeRoot),
+      });
+      markOwnerOnly(activeRoot);
+      const ownerOnly = await searchPrecedents(rows, MERGE_QUERY, {
+        isVisible: await loadAgentVisibility(activeRoot),
         includeUnclaimed: true,
       });
 
       expect(open.length).toBeGreaterThan(0);
-      expect(listed).toEqual([]);
+      expect(ownerOnly).toEqual([]);
     });
   });
 });

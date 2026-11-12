@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   graphNoteRelevance,
-  rankNotes,
+  rankNotes as rankNotesWithVisibility,
   subjectOf,
   subjectTerms,
   type NoteHit,
@@ -22,6 +22,10 @@ import { refreshInto, writeFile } from '../test-support/workspace-index/fixture.
  * ordering rules are asserted on their own rather than through an index that
  * would make the tests about FTS.
  */
+
+/** Every initiative visible unless a test says otherwise. */
+const rank = (input: Omit<Parameters<typeof rankNotesWithVisibility>[0], 'isVisible'>) =>
+  rankNotesWithVisibility({ isVisible: () => true, ...input });
 
 function note(filename: string, title: string): LoadedNote {
   return {
@@ -90,7 +94,7 @@ describe('subjectTerms', () => {
 
 describe('rankNotes', () => {
   it('falls back to date order when the relevance source throws', () => {
-    const ranking = rankNotes({
+    const ranking = rank({
       notes: NOTES,
       slug: 'alpha',
       subject: 'anything at all',
@@ -105,13 +109,13 @@ describe('rankNotes', () => {
   });
 
   it('falls back to date order when the subject is all stop words', () => {
-    const ranking = rankNotes({ notes: NOTES, slug: 'alpha', subject: 'the and of it' });
+    const ranking = rank({ notes: NOTES, slug: 'alpha', subject: 'the and of it' });
     expect(ranking.ranked).toBe(false);
     expect(titles(ranking)).toEqual(['Newest', 'Middle', 'Oldest']);
   });
 
   it('fuses relevance with recency rather than replacing one with the other', () => {
-    const ranking = rankNotes({
+    const ranking = rank({
       notes: NOTES,
       slug: 'alpha',
       subject: 'matching subject',
@@ -133,7 +137,7 @@ describe('rankNotes', () => {
   });
 
   it('keeps a note the query never matched, on its recency rank alone', () => {
-    const ranking = rankNotes({
+    const ranking = rank({
       notes: NOTES,
       slug: 'alpha',
       subject: 'matching subject',
@@ -145,7 +149,7 @@ describe('rankNotes', () => {
   });
 
   it('shows a foreign note only when it matches well in absolute terms', () => {
-    const weak = rankNotes({
+    const weak = rank({
       notes: NOTES,
       slug: 'alpha',
       subject: 'matching subject',
@@ -153,7 +157,7 @@ describe('rankNotes', () => {
     });
     expect(weak.foreign).toEqual([]);
 
-    const strong = rankNotes({
+    const strong = rank({
       notes: NOTES,
       slug: 'alpha',
       subject: 'matching subject',
@@ -164,11 +168,26 @@ describe('rankNotes', () => {
     ]);
   });
 
+  it('never shows a foreign note from an owner-only initiative, however well it matches', () => {
+    const ranking = rankNotesWithVisibility({
+      notes: NOTES,
+      slug: 'alpha',
+      subject: 'matching subject',
+      relevance: relevance([
+        { ref: 'note:private-notes/x.md', scorePerTerm: 9.0, title: 'Hidden' },
+        { ref: 'note:beta/y.md', scorePerTerm: 9.0, title: 'Shown' },
+      ]),
+      isVisible: (initiative) => initiative !== 'private-notes',
+    });
+
+    expect(ranking.foreign).toEqual([{ initiative: 'beta', title: 'Shown', ref: 'note:beta/y.md' }]);
+  });
+
   it('is a floor on the match, not on the rest of the field', () => {
     // The foreign note is the single best hit here. It still has to clear the
     // floor — a relative floor would admit it for being top of a weak field,
     // which is the failure mode that made 22 of 28 initiatives show one.
-    const ranking = rankNotes({
+    const ranking = rank({
       notes: NOTES,
       slug: 'alpha',
       subject: 'matching subject',
@@ -180,7 +199,7 @@ describe('rankNotes', () => {
   });
 
   it('caps foreign notes at three however many clear the floor', () => {
-    const ranking = rankNotes({
+    const ranking = rank({
       notes: NOTES,
       slug: 'alpha',
       subject: 'matching subject',
@@ -198,7 +217,7 @@ describe('rankNotes', () => {
   });
 
   it('falls back to the ref when the row behind a span is gone', () => {
-    const ranking = rankNotes({
+    const ranking = rank({
       notes: NOTES,
       slug: 'alpha',
       subject: 'matching subject',
@@ -217,7 +236,7 @@ describe('rankNotes against a real index', () => {
     writeFile(
       root,
       'alpha/brief.md',
-      '---\nschema_version: 5\ntitle: alpha\nupdated: 2026-09-01\n---\n',
+      '---\nschema_version: 5\ntitle: alpha\nupdated: 2026-09-01\nvisibility: agent-visible\n---\n',
     );
     writeFile(root, 'alpha/sources/notes/plain.md', body(''));
     writeFile(root, 'alpha/sources/notes/cites.md', body(' on TP-84'));
@@ -225,7 +244,7 @@ describe('rankNotes against a real index', () => {
     (await refreshInto(dbPath, root)).db.close();
     try {
       // Newest first, so date order alone would put the plain note on top.
-      const ranking = rankNotes({
+      const ranking = rank({
         notes: [note('plain.md', 'Plain'), note('cites.md', 'Cites')],
         slug: 'alpha',
         subject: subjectOf({ topTaskId: 'TP-84', topTaskTitle: 'Score the harness' }),
