@@ -193,3 +193,31 @@ export type { DispatchRecord, ScorecardJournalInput, ScorecardJournalRowId, Scor
 export { MIN_COST_COVERAGE, NOT_MEASURED, readDispatchJournal, scorecardJournalRows, scorecardRowText } from "./scorecard-rows.js";
 export type { Divergence, DivergenceGroup, PrefixReuse, PrefixReuseOptions, PrefixRow } from "./prefix-reuse.js";
 export { firstDivergence, prefixReuse } from "./prefix-reuse.js";
+export type {
+  ClassLabel,
+  Labelled,
+  Provenance,
+  RulePlacement,
+  ScorecardActuals,
+  ScorecardFollowUp,
+  ScorecardGate,
+  ScorecardLabels,
+  ScorecardPr,
+  ScorecardRegistration,
+  ScorecardRun,
+  ScorecardSpawn,
+  ScorecardTask,
+  TaskClass,
+  TaskRow,
+  TaskRowInput,
+} from "./ticket-scorecard/types.js";
+export { taskRow } from "./ticket-scorecard/task-row.js";
+export type { PoolTask, RulePick } from "./ticket-scorecard/rule-pick.js";
+export { rulePick, rulePlacement } from "./ticket-scorecard/rule-pick.js";
+export type { WeekMetrics } from "./ticket-scorecard/week-metrics.js";
+export type { WeekDimension, WeekRow } from "./ticket-scorecard/week-rows.js";
+export { weekRows } from "./ticket-scorecard/week-rows.js";
+export type { RedFlag, ScorecardThresholds } from "./ticket-scorecard/red-flags.js";
+export { DEFAULT_THRESHOLDS, redFlags } from "./ticket-scorecard/red-flags.js";
+export { isoWeek } from "./ticket-scorecard/stats.js";
+export { SCORECARD_MIGRATIONS, readPoolSnapshot, readTaskRows, readWeekRows, upsertTaskRows, upsertWeekRows, writePoolSnapshot } from "./ticket-scorecard/store.js";
