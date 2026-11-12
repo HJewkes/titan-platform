@@ -192,6 +192,7 @@ function RoundName({ round }: { round: RoundSummary }): ReactNode {
 function kindOf(round: RoundSummary): string {
   if (!round.valid) return "invalid";
   if (round.ship) return "ship";
+  if (round.feedback) return "feedback";
   if (round.unbound) return "unbound: no merge tap";
   return round.design ? "design" : "questions";
 }
