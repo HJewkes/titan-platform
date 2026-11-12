@@ -470,9 +470,8 @@ interface AdversaryHoldContext {
 /** A line starting `Probes:` above the verdict block. */
 declare function hasProbesLine(text: string): boolean;
 /**
- * Every raw line, fenced or not, that starts `Authority:` is read, as the CI-policy line is, so a hidden `widened` still
- * counts. The rest of the line must be exactly one of the three values; anything else reads `malformed`. Two lines read the
- * strictest. No such line reads undefined.
+ * Every raw line, fenced or not, that carries the Authority label is a reading, as every CI-policy labelled line is, so a
+ * hidden or decorated `widened` still counts. Several readings read the strictest. No labelled line reads undefined.
  */
 declare function authorityLine(text: string): AuthorityLine | "malformed" | undefined;
 
@@ -595,7 +594,7 @@ declare const isUsageLimit: (result: {
  * made no investigative call is `none` with the depth-floor reason; a message the reader did not count is judged as before.
  * A MERGE whose CI-policy line reads malformed is refused for one correction, unless the only other labelled lines are
  * harmless prose (see `mergeCiPolicy`); a weakened reading wins over malformed in the parser, so a weakening is never
- * corrected away. An adversary verdict with no `Probes:` line is refused for one correction too, and so is an adversary MERGE whose `Authority:` line is absent or not one of the three values.
+ * corrected away. An adversary verdict with no `Probes:` line is refused for one correction too, and so is an adversary MERGE whose `authorityLine` reading is absent or malformed.
  */
 declare function acceptVerdict(input: AwaitVerdictInput, messages: readonly ReviewerMessage[]): AwaitVerdictResult;
 
