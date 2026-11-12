@@ -52,7 +52,7 @@ type SeatIndex = z.infer<typeof seatIndexSchema>;
  * Every reason a seat definition is refused. The list is closed: a broker reports the code in
  * `seat_definition_unloadable: <code>` and never falls back to the requester's own launch.
  */
-declare const SEAT_REFUSAL_CODES: readonly ["unreadable", "malformed_json", "not_an_object", "unknown_schema", "unknown_field", "missing_field", "invalid_field", "bypass_permission_mode", "headless_surface", "name_mismatch", "symlink", "not_regular_file", "wrong_owner", "writable_by_others", "outside_seats_dir", "agent_writable_path", "seats_dir_unsafe", "prompt_unreadable", "prompt_hash_mismatch", "owner_only_read_not_listed", "not_in_index"];
+declare const SEAT_REFUSAL_CODES: readonly ["unreadable", "malformed_json", "not_an_object", "unknown_schema", "unknown_field", "missing_field", "invalid_field", "bypass_permission_mode", "headless_surface", "name_mismatch", "symlink", "not_regular_file", "wrong_owner", "writable_by_others", "outside_seats_dir", "agent_writable_path", "seats_dir_unsafe", "prompt_unreadable", "prompt_hash_mismatch", "owner_only_read_not_listed", "not_in_index", "unclean_path"];
 type SeatRefusalCode = (typeof SEAT_REFUSAL_CODES)[number];
 /** `detail` names the field, path or value the code is about. */
 interface SeatRefusal {
@@ -94,14 +94,16 @@ interface OwnerFileContext {
     seatsDirFacts: FileFacts;
     /**
      * Absolute roots an agent can write (worktrees, agent scratch); none may contain the seats directory.
-     * A relative or empty root is refused. Pass realpath output: the compare is case-sensitive.
+     * The list must not be empty, and each root must be a clean absolute path. Pass realpath output:
+     * the compare is case-sensitive.
      */
     agentWritableRoots: readonly string[];
 }
 /**
  * The seat-policy fail-closed rules for an owner-held file: a regular file, not a symlink, owned
  * by the owner, not group- or world-writable, directly inside a safe seats directory that no agent
- * root overlaps. `filePath` is the absolute path the reader opened.
+ * root overlaps. `filePath`, `seatsDir` and every agent root must already be clean absolute paths
+ * (no empty, `.` or `..` segment, no trailing slash); anything else is refused, never normalized.
  */
 declare function checkOwnerFile(filePath: string, facts: FileFacts, ctx: OwnerFileContext): SeatRefusal | undefined;
 

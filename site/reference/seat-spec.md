@@ -80,8 +80,11 @@ const resolved = resolveLaunch(loaded.seat, { seat: "example-steward", profile: 
   from the index stops it loading.
 - `ownerOnlyRead` is honoured only for the single seat the index lists in `ownerOnlyReaders`;
   an index naming two, or naming a seat outside `seats`, is refused.
-- Every `agentWritableRoots` entry must be absolute; pass realpath output, since the overlap
-  compare is case-sensitive.
+- The file path, `seatsDir` and every `agentWritableRoots` entry must already be clean absolute
+  paths: no empty, `.` or `..` segment, no trailing slash. Anything else is refused
+  (`unclean_path`), never normalized, because the kernel follows a symlink before it applies
+  `..`. The root list must not be empty. Pass realpath output, since the compare is
+  case-sensitive.
 - `resolveLaunch` gives a root seat depth 0 and any other seat depth 1, whatever the
   requester's own depth.
 - `seatHash` is the sha256 of the exact bytes passed in; pass the bytes, not a re-serialised
