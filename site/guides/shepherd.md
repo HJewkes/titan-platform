@@ -2249,6 +2249,25 @@ own plan round with a slice task such as `titan-platform/TP-1234-s2`, and regist
 the same `--task`. Two PRs under one task string fail closed: the first to register claims both
 approvals, and the second gates.
 
+**Validating a task (gate model S8a, TP-5411).** A task tagged `owner-validate` waits for the
+owner's own validation of its WHAT. The coordinator drafts that one question:
+
+```
+titan-factory shepherd plan-round --task-approval <initiative>/<ID> --reason <reason> --repo <owner/name> [--visual-signoff] | titan-console decisions file - --seat <coordinator> --initiative <slug>
+```
+
+It reads the task's title, `done_when` and tags from active-work and refuses a task without the
+`owner-validate` tag, a key that is not `<initiative>/<ID>`, and a `--reason` outside owner rule
+Q4's four: `new-direction`, `one-way-door`, `new-cap`, `authority-widening`. The round has one
+question, `Validate <ID>: <title>?`, with approve and not-now options; the owner reads the
+done_when, the reason and the visual sign-off flag beside it. The approve pick records a `task`
+row in `shepherd_plan_approval`, keyed by the task key and pinned to the done_when's hash. No run
+claims it, so it covers every PR of the task, and only the console's owner-remote writes it. Code
+reads it only through `ownerTaskApproval` (`products/factory/src/shepherd/owner-task-approval.ts`),
+which reads none when the done_when has changed since the owner approved it. Nothing at dispatch
+or merge reads it yet; S8b adds the check and the merge backstop. A refusal exits 65 and an
+unreachable active-work exits 69, each with no round printed.
+
 **Content drift.** A `ci-policy` approval holds only while every byte the PR merges matches its
 pin, so a policy plan carries the final content of every file in its PR, and the implementer
 writes those files byte-for-byte. Skill and visual approvals pin paths, not content: only an
