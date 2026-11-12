@@ -1,4 +1,6 @@
+import { z } from "zod";
 import { policyTablesOf, type PolicyTable } from "./g10-class-rules.js";
+import refusalClosureJson from "./g10-low-tier-closure.json" with { type: "json" };
 import { riskFactsOf, riskTier } from "./risk-tier.js";
 
 /**
@@ -8,10 +10,11 @@ import { riskFactsOf, riskTier } from "./risk-tier.js";
 const LOW_POLICY_TABLES: readonly PolicyTable[] = ["default-policy", "signoff-policy", "hold-closure"];
 
 /**
- * The files that define the low-tier refusal's own inputs: `ADVERSARY_TOUCHES` and `OWNER_PACKET_FILES` in `signoffs.ts`,
- * `DEFAULT_CLASS_RULES` in review-panel's `classify.ts`. An edit to them could weaken the gate that judges it, so it never goes low.
+ * Every file the low-tier refusal runs or reads, as repo paths: the import closure of this module and of
+ * `registration-hold.ts`, workspace packages included. An edit to one could weaken the gate that judges it, so it never
+ * goes low. `g10-low-tier-closure.test.ts` recomputes the walk and fails until this list matches it (`vitest -u`).
  */
-const GATE_INPUT_FILES: readonly string[] = ["products/factory/src/shepherd/signoffs.ts", "packages/review-panel/src/classify.ts"];
+const REFUSAL_CLOSURE: ReadonlySet<string> = new Set(z.array(z.string()).parse(refusalClosureJson).map((path) => path.toLowerCase()));
 
 export type LowTierPolicy = { eligible: true; tables: PolicyTable[] } | { eligible: false; kept: string };
 
@@ -40,7 +43,7 @@ function classify(read: LowTierRead): LowTierPolicy {
   if (adversary.length > 0) return kept(`${adversary.join(", ")} touch`);
   const tier = riskTier({ ...facts, touches: facts.touches.filter((touch) => touch !== "policy") });
   if (tier.tier !== "low") return kept(tier.reasons[0] ?? `${tier.tier} tier`);
-  const gateInput = read.paths.find((path) => GATE_INPUT_FILES.includes(path.toLowerCase()));
+  const gateInput = read.paths.find((path) => REFUSAL_CLOSURE.has(path.toLowerCase()));
   if (gateInput !== undefined) return kept(`gate input ${gateInput}`);
   return byTables(policyTablesOf(read.paths.map((path) => ({ path }))));
 }

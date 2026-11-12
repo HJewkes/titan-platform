@@ -97,12 +97,13 @@ const SIGNOFF_POLICY_FILES = [
 
 /**
  * The hold table's completeness checks as one unit: the hold-closure test, its sidecar, its walk and the list it keeps,
- * and the importer check (TP-3764) with its sidecar. Test file or not, each is policy: deleting one lets an unheld module
- * through in the same pull request.
+ * the importer check (TP-3764) with its sidecar, and the same four for the low-tier refusal closure (TP-5403). Test file
+ * or not, each is policy: deleting one lets an unheld module, or a low-tier one, through in the same pull request.
  */
 const HOLD_CLOSURE_CHECK_FILES = [
   ...["g10-hold-closure.test.ts", "g10-hold-closure.test.mutations.json", "g10-hold-closure.test-helpers.ts", "g10-hold-closure.json"],
   ...["hold-table-coverage.test.ts", "hold-table-coverage.test.mutations.json"],
+  ...["g10-low-tier-closure.test.ts", "g10-low-tier-closure.test.mutations.json", "g10-low-tier-closure.test-helpers.ts", "g10-low-tier-closure.json"],
 ].map(inShepherd);
 
 const matchesHeldCheck = compileGlobs([...GATE_RESOLVE_CHECK_FILES, ...HOLD_CLOSURE_CHECK_FILES]);

@@ -467,7 +467,7 @@ what is on main today; the rows marked *planned* are decided but not built.
 | Ordinary change under an `auto` policy | no row below matches | a reviewer `MERGE` at the head and green required checks (`MRG-AU-RV`) |
 | Visual-path change, `shepherd.visualGate: async` | the seat's `visual_paths` globs; recorded as `visualChanged` | the same reviews and green CI; no owner sign-off; the [feedback sheet](#visual-baselines) follows the merge |
 | Authority, security or policy change | `SHEPHERD_CLASS_RULES` path tables, or a `security` kind | `g10-adversary`: two independent reviewer `MERGE`s, then the seat releases the hold |
-| Low-tier policy touch | `lowTierPolicyTouch` in `g10-low-tier.ts` (named policy tables only) | *planned*: one opus `MERGE`. The classifier is on main, and nothing calls it yet, so the row above still applies |
+| Low-tier policy touch | `lowTierPolicyTouch` in `g10-low-tier.ts` (named policy tables only, never a file the refusal itself runs) | `g10-review`: one opus `MERGE` at the head releases the hold; `shepherd.gateReset.lowTierPolicy` switches it |
 | Over 400 changed lines, or a store migration | line count, path table | `g10-review`: one opus `MERGE` releases the hold |
 | `owner-gate` seat policy, visual path under `visualGate: owner`, or `gate-2-visual` | registration, seat policy | the owner's `approve-merge` answer |
 | Unknown class: unread or empty file list, unlisted path table | the read failed or no table matches | the owner's `approve-merge` answer |
@@ -1676,10 +1676,12 @@ A policy touch that is low tier by its paths takes `g10-review` instead (TP-5403
 authority or security path, a risk tier that is low once the policy touch is set aside (no `.github`
 path, no publish or settings file, no owner gate file, no visual path, no owner hold, 800 changed
 lines or fewer), and every policy path in an allowed table: the default policy globs, the signoff
-policy files or the hold closure (`lowTierPolicyTouch` in `g10-low-tier.ts`). The files that define
-its own inputs never go low: `signoffs.ts` (the adversary touches and owner packet) and review-panel's
-`classify.ts` (the authority and security globs), so an edit that could weaken the gate keeps
-`g10-adversary` with `kept: gate input <path>`. Anything it cannot
+policy files or the hold closure (`lowTierPolicyTouch` in `g10-low-tier.ts`). No file the refusal
+itself runs or reads ever goes low: `g10-low-tier-closure.json` lists the import closure of
+`g10-low-tier.ts` and `registration-hold.ts`, into workspace package sources too (the adversary
+touches, the class globs and their matchers, the file and line-count readers, the visual gate), and
+a path on it keeps `g10-adversary` with `kept: gate input <path>`. `g10-low-tier-closure.test.ts`
+recomputes the walk and fails until the list matches (`vitest -u` rewrites it). Anything it cannot
 judge keeps `g10-adversary`. The hold reason names the tables, as
 `g10-review: low-tier policy touch (hold-closure)`, or the fact that kept the run adversary, as
 `g10-adversary: policy touch (kept: gate-resolve-actor)`. The release records the rule

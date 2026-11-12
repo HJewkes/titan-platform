@@ -3,7 +3,7 @@ import { lowTierPolicyTouch } from "./g10-low-tier.js";
 
 const HOLD_CLOSURE_PATH = "products/factory/src/shepherd/wake-loop.ts";
 const SIGNOFF_PATH = "products/factory/src/shepherd/carry-merge.ts";
-const GATE_RESOLVE_ACTOR_PATH = "packages/workflow/src/runtime.ts";
+const GATE_RESOLVE_ACTOR_PATH = "packages/queue-mirror/src/mirror.ts";
 /** Synthetic: matches the default `*policy*` glob and the gate-resolve actor `gate-answer-*` glob at once. */
 const DEFAULT_AND_ACTOR_PATH = "products/factory/src/gate-answer-policy.ts";
 const OWNER_SKILL_GUARD_PATH = "products/factory/src/shepherd/approval-carry.ts";
