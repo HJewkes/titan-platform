@@ -4,9 +4,9 @@ import type { LoadSeatInput } from "./load.js";
 
 export const HOME = "/home/example";
 export const SEATS_DIR = `${HOME}/.agent-chat/seats`;
-export const OWNER_UID = 1000;
-export const PROMPT_TEXT = "# example-steward\n\nWork the weekly review.\n";
-export const PROMPT_SHA = createHash("sha256").update(PROMPT_TEXT).digest("hex");
+const OWNER_UID = 1000;
+const PROMPT_TEXT = "# example-steward\n\nWork the weekly review.\n";
+const PROMPT_SHA = createHash("sha256").update(PROMPT_TEXT).digest("hex");
 
 /** A steward in the shape of the plan's 2.4 sketch. */
 export const stewardSeat = (): Record<string, unknown> => ({
