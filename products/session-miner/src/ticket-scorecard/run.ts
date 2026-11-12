@@ -29,7 +29,7 @@ import type { SourceName } from "./sources.js";
 import { readMarks, writeMarks } from "./watermarks.js";
 
 /** sysexits' EX_UNAVAILABLE: a store a row needs is missing, so nothing was recomputed and the unit shows failed. */
-const EXIT_NOT_MEASURED = 69;
+export const EXIT_NOT_MEASURED = 69;
 
 export interface ScorecardRunOptions {
   paths: ScorecardPaths;
@@ -42,6 +42,8 @@ export interface ScorecardRunOptions {
   rebuild: boolean;
   now: () => Date;
   perRun: PerRunSource;
+  /** Reads the store after a measured pass, before it closes; `reproduce` takes its rows from an in-memory rebuild here. */
+  inspect?: (store: Db) => void;
 }
 
 export interface ScorecardRunResult {
@@ -131,6 +133,7 @@ async function runLocked(options: ScorecardRunOptions): Promise<ScorecardRunResu
   try {
     const s = rowSources(sources);
     const changes = s === null ? NOTHING : store.transaction(() => computeAll(store, s, options))();
+    if (s !== null) options.inspect?.(store);
     const ms = Math.max(0, options.now().getTime() - startedAt.getTime());
     const mode = options.rebuild ? "rebuild" : "incremental";
     recordRun(store, { startedAt: startedAt.toISOString(), ms, rowsChanged: changedCount(changes), mode, ok: s !== null });
