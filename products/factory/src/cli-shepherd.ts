@@ -70,7 +70,8 @@ export function registerShepherd(program: Command, verbs: Verbs): void {
 
 type VerbOf = (spec: string, description: string) => Command;
 
-function registerRunVerbs(verb: VerbOf, verbs: Verbs): void {
+/** The register verb, whose options name everything a registration records. */
+function registerRegisterVerb(verb: VerbOf, verbs: Verbs): void {
   verb("register <target>", "shepherd owner/repo#N, or owner/repo with --branch before its PR exists; a repeat returns the existing run, or a new one if it failed, or was cancelled or stopped closed with its PR open")
     .option("--branch <name>", "the PR's head branch")
     .option("--head <sha>", "the PR's head commit; with --branch, Shepherd does not read the PR from GitHub to register it")
@@ -86,6 +87,10 @@ function registerRunVerbs(verb: VerbOf, verbs: Verbs): void {
     .option("--policy <json>", 'narrow the seat policy, e.g. {"merge":"never"}')
     .option("--offline", "record the run in the database here when no titan-factory serve answers; nothing drives it until serve starts")
     .action((target: string, opts: RegisterOpts) => runShepherd(verbs, "shepherd.register", () => registerArgs(target, opts, verbs), opts));
+}
+
+function registerRunVerbs(verb: VerbOf, verbs: Verbs): void {
+  registerRegisterVerb(verb, verbs);
   withStatusFilters(verb("status [target]", "one line per shepherded PR, optionally only owner/repo or owner/repo#N, then serve's deploy and reviewer-slot lines"))
     .option("--deploy", "with --json, print { rows, deploy, reviewSlots } so serve's deploy block and reviewer-slot reading ride along; without it --json stays the bare row array")
     .action((target: string | undefined, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.status", () => statusArgs(target ? parseTarget(target) : undefined, opts), opts));
