@@ -69,7 +69,7 @@ describe("shepherd.visualGate on the merge guard's visual-path row", () => {
 
   it("decides a stored async record the same way at decide time, and an unstamped one as owner", async () => {
     const stored = await evidenceAt(visualPr, "async");
-    const { visualGate: _stamp, ...unstamped } = stored;
+    const unstamped = { ...stored, visualGate: undefined };
 
     expect(decideAutoMerge(HEAD, stored, VISUAL_PATHS).outcome).toBe("allow");
     expect(decideAutoMerge(HEAD, unstamped, VISUAL_PATHS)).toMatchObject({ outcome: "gate", rule: { rowId: "visual-path" } });

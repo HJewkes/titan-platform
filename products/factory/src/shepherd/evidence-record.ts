@@ -93,11 +93,21 @@ const proofFields = (input: RecordInput): Pick<EvidenceRecord, "proofUnverified"
   ...(input.proofBase !== undefined && { proofBase: input.proofBase }),
 });
 
+type VisualFields = Pick<EvidenceRecord, "visualDelta" | "visualTier" | "visualChanged" | "visualGate">;
+
+/** The visual facts the head recorded, absent keys left out. */
+const visualFields = ({ visualDelta, visualTier, visualChanged, visualGate }: VisualFields): VisualFields => ({
+  ...(visualDelta && { visualDelta }),
+  ...(visualTier && { visualTier }),
+  ...(visualChanged && { visualChanged }),
+  ...(visualGate && { visualGate }),
+});
+
 export function evidenceRecord(
   input: RecordInput,
   { pr, merge, runs, ciPolicyChanges, headBlobs }: RecordObserved,
   decision: GateDecision,
-  { ciPolicy, riskTier, visualDelta, visualTier, visualChanged, visualGate, attest, oldPath }: RecordExtras,
+  { ciPolicy, riskTier, attest, oldPath, ...visual }: RecordExtras,
 ): EvidenceRecord {
   return {
     runId: input.runId,
@@ -117,10 +127,7 @@ export function evidenceRecord(
     ...(headBlobs && { headBlobs }),
     ...proofFields(input),
     riskTier,
-    ...(visualDelta && { visualDelta }),
-    ...(visualTier && { visualTier }),
-    ...(visualChanged && { visualChanged }),
-    ...(visualGate && { visualGate }),
+    ...visualFields(visual),
     ...attestFields(attest, input.resolver),
     ...(oldPath && { oldPath }),
   };

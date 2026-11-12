@@ -207,7 +207,8 @@ function decideAfterPolicy(headSha: string, evidence: DecidableEvidence, visual:
   const decision = evaluate(DEFAULT_TABLE, { action: "merge", actor: AUTHORITY_ACTOR, tainted: false, subject: { repo: evidence.record.repo, pr: String(evidence.record.pr) }, facts: { merge: evidence.merge } });
   if (decision.verdict === "allow" && AUTO_MERGE_RULES.includes(decision.ruleId)) {
     const { changedPaths } = evidence.merge;
-    const clearance = visualClearance(changedPaths, evidence.head, visual, thresholdClearance(evidence.visualDelta)) + tierClearance(evidence.visualTier, changedPaths, visual.visualPaths) + asyncVisualNote(evidence.visualGate, changedPaths, visual.visualPaths);
+    const visualNotes = tierClearance(evidence.visualTier, changedPaths, visual.visualPaths) + asyncVisualNote(evidence.visualGate, changedPaths, visual.visualPaths);
+    const clearance = visualClearance(changedPaths, evidence.head, visual, thresholdClearance(evidence.visualDelta)) + visualNotes;
     return { outcome: "allow", rule: authorityRule(decision.ruleId), reason: `${decision.ruleId} holds at ${headSha}${clearance}${honour.note()}` };
   }
   const reason = decision.verdict === "allow" ? `${decision.ruleId} allows, but only ${AUTO_MERGE_RULES.join(" and ")} merge without the owner` : decision.reason;
@@ -383,8 +384,10 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
   const decidable: DecidableEvidence = { head: input.head, merge, record: input, mergeableState, ...unknown, ...ciPolicy, ...visual, ...attest, ...oldPath, ...grantWithheldField(input) };
   const decision = decideAutoMerge(input.head, decidable, input.visualPaths, input.visualBaselines);
   const visualPaths = input.visualPaths && { visualPaths: input.visualPaths };
-  const risk = riskFactsOf({ paths: merge.changedPaths, changedLines: observed.changedLines, unread: changedFilesUnread, ...ciPolicy, ...visualPaths, ownerHold: kind?.ownerHold ?? kind?.unread, visualGate: reads.visualGate });
-  const record = evidenceRecord(input, observed, decision, { ...ciPolicy, riskTier: riskTier(risk), ...visual, ...visualChangedField(reads.visualGate, merge.changedPaths, input.visualPaths), ...(judged && { attest: judged }), ...oldPath });
+  const ownerHold = kind?.ownerHold ?? kind?.unread;
+  const risk = riskFactsOf({ paths: merge.changedPaths, changedLines: observed.changedLines, unread: changedFilesUnread, ...ciPolicy, ...visualPaths, ownerHold, visualGate: reads.visualGate });
+  const visualChanged = visualChangedField(reads.visualGate, merge.changedPaths, input.visualPaths);
+  const record = evidenceRecord(input, observed, decision, { ...ciPolicy, riskTier: riskTier(risk), ...visual, ...visualChanged, ...(judged && { attest: judged }), ...oldPath });
   const comment = await port.upsertComment(input.repo, input.pr, evidenceMarker(input.head), evidenceComment(record));
   return { head: input.head, merge, record, mergeableState, ...unknown, ...ciPolicy, ...visual, ...attest, ...oldPath, ...grantWithheldField(input), commentId: comment.id };
 }
