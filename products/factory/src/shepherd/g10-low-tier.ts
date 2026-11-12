@@ -7,6 +7,12 @@ import { riskFactsOf, riskTier } from "./risk-tier.js";
  */
 const LOW_POLICY_TABLES: readonly PolicyTable[] = ["default-policy", "signoff-policy", "hold-closure"];
 
+/**
+ * The files that define the low-tier refusal's own inputs: `ADVERSARY_TOUCHES` and `OWNER_PACKET_FILES` in `signoffs.ts`,
+ * `DEFAULT_CLASS_RULES` in review-panel's `classify.ts`. An edit to them could weaken the gate that judges it, so it never goes low.
+ */
+const GATE_INPUT_FILES: readonly string[] = ["products/factory/src/shepherd/signoffs.ts", "packages/review-panel/src/classify.ts"];
+
 export type LowTierPolicy = { eligible: true; tables: PolicyTable[] } | { eligible: false; kept: string };
 
 /** `shepherd.gateReset.lowTierPolicy`: `on` holds a low-tier policy touch `g10-review`, `shadow` only names it, `off` ignores it. */
@@ -34,6 +40,8 @@ function classify(read: LowTierRead): LowTierPolicy {
   if (adversary.length > 0) return kept(`${adversary.join(", ")} touch`);
   const tier = riskTier({ ...facts, touches: facts.touches.filter((touch) => touch !== "policy") });
   if (tier.tier !== "low") return kept(tier.reasons[0] ?? `${tier.tier} tier`);
+  const gateInput = read.paths.find((path) => GATE_INPUT_FILES.includes(path.toLowerCase()));
+  if (gateInput !== undefined) return kept(`gate input ${gateInput}`);
   return byTables(policyTablesOf(read.paths.map((path) => ({ path }))));
 }
 

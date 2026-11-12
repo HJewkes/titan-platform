@@ -1617,7 +1617,10 @@ A policy touch that is low tier by its paths takes `g10-review` instead (TP-5403
 authority or security path, a risk tier that is low once the policy touch is set aside (no `.github`
 path, no publish or settings file, no owner gate file, no visual path, no owner hold, 800 changed
 lines or fewer), and every policy path in an allowed table: the default policy globs, the signoff
-policy files or the hold closure (`lowTierPolicyTouch` in `g10-low-tier.ts`). Anything it cannot
+policy files or the hold closure (`lowTierPolicyTouch` in `g10-low-tier.ts`). The files that define
+its own inputs never go low: `signoffs.ts` (the adversary touches and owner packet) and review-panel's
+`classify.ts` (the authority and security globs), so an edit that could weaken the gate keeps
+`g10-adversary` with `kept: gate input <path>`. Anything it cannot
 judge keeps `g10-adversary`. The hold reason names the tables, as
 `g10-review: low-tier policy touch (hold-closure)`, or the fact that kept the run adversary, as
 `g10-adversary: policy touch (kept: gate-resolve-actor)`. The release records the rule

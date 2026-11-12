@@ -56,6 +56,18 @@ describe("the low-tier policy hold at registration", () => {
     expect(await hold(r)).toBe("g10-adversary: policy touch (kept: medium: size: 900 changed lines, over 800)");
   });
 
+  it("a one-line edit to the adversary touches is held g10-adversary", async () => {
+    const r = rig([file("products/factory/src/shepherd/signoffs.ts", 1)]);
+
+    expect(await hold(r)).toBe("g10-adversary: policy touch (kept: gate input products/factory/src/shepherd/signoffs.ts)");
+  });
+
+  it("an edit to the review-panel class rules is held g10-adversary", async () => {
+    const r = rig([file("packages/review-panel/src/classify.ts", 1)]);
+
+    expect(await hold(r)).toBe("g10-adversary: policy touch (kept: gate input packages/review-panel/src/classify.ts)");
+  });
+
   it("a low-tier hold over a stalled hold goes in as adversary", async () => {
     const r = rig([file(HOLD_CLOSURE_PATH, 10)]);
     r.store.hold("run-1", "stalled: no CI read");
