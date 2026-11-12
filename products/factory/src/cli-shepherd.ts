@@ -96,6 +96,10 @@ function registerRunVerbs(verb: VerbOf, verbs: Verbs): void {
     .action((opts: ShepherdOpts) => runShepherd(verbs, "shepherd.waiting", () => ({}), opts));
   registerVisualDeltaVerb(verb, verbs);
   registerBriefVerb(verb, verbs);
+  registerVisualVerbs(verb, verbs);
+}
+
+function registerVisualVerbs(verb: VerbOf, verbs: Verbs): void {
   registerVisualWeekVerb(verb, verbs);
   registerVisualFeedbackVerb(verb, verbs);
 }
@@ -108,6 +112,7 @@ function registerVisualFeedbackVerb(verb: VerbOf, verbs: Verbs): void {
     .option("--file", "file the round with titan-console decisions file")
     .action((opts: ShepherdOpts & { repo: string; week?: string; file?: boolean }) =>
       runShepherd(verbs, "shepherd.visual-week-feedback", () => ({ repo: opts.repo, ...(opts.week !== undefined && { week: opts.week }), ...(opts.file === true && { file: true }) }), opts));
+  registerFeedbackNotesVerb(verb, verbs);
 }
 
 /** TP-4761 S3: the weekly Ship batch for a repo's pending visual-path gates, printed. Reads gates and holds; resolves nothing. */
@@ -299,4 +304,11 @@ function printShepherd(io: CliIo, name: ShepherdCommandName, envelope: JsonEnvel
 function jsonOf(name: ShepherdCommandName, data: unknown, opts: ShepherdOpts, tail: StatusTail | undefined): unknown {
   if (name === "shepherd.timeline" && opts.last !== undefined) return lastEntries(SHEPHERD_COMMAND_MAP[name].result.parse(data), opts.last).timeline;
   return opts.deploy && tail ? { rows: data, ...tail } : data;
+}
+
+/** TP-5410: files one task per note of the answered feedback rounds; a re-run files nothing already filed. */
+function registerFeedbackNotesVerb(verb: VerbOf, verbs: Verbs): void {
+  verb("visual-feedback-notes", "file one active-work task per non-blank note of every answered feedback round in the console rounds dir; idempotent on round id and note index")
+    .requiredOption("--initiative <slug>", "the initiative for a note whose PR has no task of its own")
+    .action((opts: ShepherdOpts & { initiative: string }) => runShepherd(verbs, "shepherd.visual-feedback-notes", () => ({ initiative: opts.initiative }), opts));
 }
