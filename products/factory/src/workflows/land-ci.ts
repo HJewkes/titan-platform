@@ -6,6 +6,7 @@ import type { HeadObserver } from "../head-guard/head-regression.js";
 import type { OrphanedCheck } from "./land-orphan.js";
 import { portReads, type PrReads } from "./pr-snapshot.js";
 import { newestRanPerCheck, SKIPS } from "./skip-hidden.js";
+import { fixProofSkippedAt, isSkippedFixProofJob } from "../shepherd/fix-proof-jobs.js";
 
 /** mergeable_state values that let a merge through; `unknown` means GitHub has not settled, and `blocked` is judged apart. */
 const MERGEABLE = new Set(["clean", "unstable", "has_hooks"]);
@@ -107,10 +108,15 @@ interface Judged {
   red: CheckRun[];
 }
 
-/** The runs a verdict is judged on. The snapshot settles a head on this same set: once every finding left is red, nothing is still running. */
+/**
+ * The runs a verdict is judged on. The snapshot settles a head on this same set: once every finding left is red, nothing is still running.
+ * A required fix-proof job whose workflow skipped every job at the head is settled, as GitHub's merge gate reads it (TP-5470).
+ */
 function findingsAt(input: Pick<CiInput, "contexts">, headSha: string, allRuns: readonly CheckRun[]): Judged {
   const runs = withoutSupersededCancels(withoutCancelledWorkflowRuns(allRuns));
-  const findings = input.contexts.length === 0 ? openRepoFindings(headSha, runs) : headCheckFindings({ headSha, contexts: input.contexts, runs, requiredApps: [GITHUB_ACTIONS_APP_ID] });
+  const all = input.contexts.length === 0 ? openRepoFindings(headSha, runs) : headCheckFindings({ headSha, contexts: input.contexts, runs, requiredApps: [GITHUB_ACTIONS_APP_ID] });
+  const proofSkipped = fixProofSkippedAt(runs, headSha);
+  const findings = all.filter((finding) => !(proofSkipped && finding.kind === "failed" && isSkippedFixProofJob(finding.run)));
   return { findings, red: redRuns(findings, runs.filter((run) => run.headSha === headSha && run.appId === GITHUB_ACTIONS_APP_ID)) };
 }
 
