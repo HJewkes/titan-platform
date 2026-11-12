@@ -4,6 +4,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey } from "@titan-design/rpc-client";
+import { z } from "zod";
 import { APPROVE, PLAN_REPO, PLAN_ROUND, PLAN_TASK, planRound, planWorld, type PlanWorld } from "../server/round-plan-approval.test-helpers.js";
 import { getRound } from "../server/rounds.js";
 import { App } from "./App.js";
@@ -58,9 +59,15 @@ describe("a plan round's approval scope on the round page", () => {
 
 const VALIDATE = "Approve: validate example/TP-1 as described below";
 
+const PlanRoundShape = z.looseObject({
+  sections: z.array(z.looseObject({ questionIds: z.array(z.string()), parts: z.array(z.unknown()) })),
+  questions: z.array(z.unknown()),
+  planApprovals: z.array(z.unknown()),
+});
+
 /** The synthetic plan round with a third question: the owner's validation of the task itself. */
 function withTaskQuestion(): Record<string, unknown> {
-  const round = planRound() as { sections: { questionIds: string[]; parts: unknown[] }[]; questions: unknown[]; planApprovals: unknown[] };
+  const round = PlanRoundShape.parse(planRound());
   round.sections[0]!.questionIds.push("task");
   round.sections[0]!.parts.push({ id: "task", label: "The task", proposed: "Done when: it ships.", lang: "md" });
   round.questions.push({ id: "task", kind: "pick-one", prompt: "Validate TP-1: A new capability?", options: [VALIDATE, "Not now: leave example/TP-1 unvalidated"], required: true, signsOff: "task", recommendation: { answer: VALIDATE, rationale: "Synthetic.", confidence: 0.8, by: "fixture-agent" } });

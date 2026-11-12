@@ -1,10 +1,11 @@
 import type { GateResolver } from "@titan-design/hitl";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { doneWhenHash } from "../dispatch/ops.js";
 import { SHEPHERD_MIGRATIONS } from "../workflows.js";
 import { ownerTaskApproval } from "./owner-task-approval.js";
-import { PlanApprovalRefused, PlanApprovalSchema, type PlanApproval } from "./plan-approval.js";
+import { PlanApprovalRefused, PlanApprovalSchema, type TaskApproval } from "./plan-approval.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ShepherdStore } from "./store.js";
 
@@ -12,7 +13,7 @@ const REPO = "example-org/example-repo";
 const TASK = "example/TP-1";
 const DONE_WHEN = "The widget renders in both themes.";
 const CONSOLE = (confirmEvent: string): GateResolver => ({ class: "owner-remote", id: "titan-console", channel: "console:inbox", confirmEvent });
-const TASK_APPROVAL: PlanApproval = { gate: "task", scope: { doneWhenHash: doneWhenHash(DONE_WHEN), reason: "new-direction", visualSignoff: true }, round: "validate-example-tp-1-r1" };
+const TASK_APPROVAL: TaskApproval = { gate: "task", scope: { doneWhenHash: doneWhenHash(DONE_WHEN), reason: "new-direction", visualSignoff: true }, round: "validate-example-tp-1-r1" };
 
 function openStore(): { store: ShepherdStore; db: Db } {
   const db = openDatabase(":memory:");
@@ -22,7 +23,8 @@ function openStore(): { store: ShepherdStore; db: Db } {
 
 const approveTask = (store: ShepherdStore, resolver: GateResolver = CONSOLE("action:1"), task = TASK, claimRun?: string) =>
   store.planApprovals().record({ ...TASK_APPROVAL, task, repo: REPO }, resolver, claimRun);
-const claims = (db: Db): unknown[] => db.prepare("SELECT claimed_run FROM shepherd_plan_approval").all().map((row) => (row as { claimed_run: unknown }).claimed_run);
+const ClaimRow = z.object({ claimed_run: z.string().nullable() });
+const claims = (db: Db): (string | null)[] => db.prepare("SELECT claimed_run FROM shepherd_plan_approval").all().map((row) => ClaimRow.parse(row).claimed_run);
 
 describe("the owner's task approval", () => {
   it("a console task approval is recorded and read back by task key", () => {
@@ -57,8 +59,8 @@ describe("the owner's task approval", () => {
   });
 
   it("a task scope missing its reason is refused", () => {
-    const { scope } = TASK_APPROVAL as Extract<PlanApproval, { gate: "task" }>;
-    const { reason: _dropped, ...noReason } = scope;
+    const { scope } = TASK_APPROVAL;
+    const noReason = { doneWhenHash: scope.doneWhenHash, visualSignoff: scope.visualSignoff };
 
     expect(PlanApprovalSchema.safeParse({ gate: "task", scope: noReason, round: "r" }).success).toBe(false);
     expect(PlanApprovalSchema.safeParse({ gate: "task", scope: { ...scope, reason: "nice-to-have" }, round: "r" }).success).toBe(false);
@@ -81,7 +83,7 @@ describe("the owner's task approval", () => {
   it("never reads back a task row an agent inserted directly", () => {
     const { store, db } = openStore();
     const insert = "INSERT INTO shepherd_plan_approval (confirm_event, task, repo, gate, scope, round, actor, claimed_run, answered_at) VALUES ('forged', ?, ?, 'task', ?, 'r', 'agent:x', NULL, 't')";
-    db.prepare(insert).run(TASK, REPO, JSON.stringify((TASK_APPROVAL as Extract<PlanApproval, { gate: "task" }>).scope));
+    db.prepare(insert).run(TASK, REPO, JSON.stringify(TASK_APPROVAL.scope));
 
     expect(ownerTaskApproval(store, TASK, DONE_WHEN)).toBeUndefined();
   });

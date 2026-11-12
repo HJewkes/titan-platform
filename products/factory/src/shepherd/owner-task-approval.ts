@@ -4,7 +4,7 @@
 import { doneWhenHash } from "../dispatch/ops.js";
 import { PlanApprovalRefused, TaskKeySchema, type PlanApprovals, type TaskApproval } from "./plan-approval.js";
 
-export interface TaskApprovalSource {
+interface TaskApprovalSource {
   planApprovals(): PlanApprovals;
 }
 

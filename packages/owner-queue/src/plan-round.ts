@@ -55,41 +55,48 @@ interface Rendered {
   binding: PlanApproval;
 }
 
+/** The words one question shows: its prompt, its two options and its section's headings. */
+interface Words {
+  prompt: string;
+  approve: string;
+  other: string;
+  title: string;
+  changed: string;
+}
+
 /** A task ask validates the task itself, so it reads as one yes-or-not-now on the task's title, not as a pinned change. */
-function renderTaskAsk(ask: PlanAsk, input: PlanRoundInput, questionId: string, used: Set<string>): Rendered {
-  const { task, repo } = input;
+function taskWords(ask: PlanAsk, task: string, questionId: string, used: Set<string>): Words {
   const id = task.slice(task.indexOf("/") + 1);
-  const prompt = field(`Validate ${id}: ${ask.title}?`, `Validate ${id}?`, questionId);
-  const approve = field(`Approve: validate ${task} as described below`, "Approve", questionId, used);
-  const notNow = field(`Not now: leave ${task} unvalidated`, "Not now", questionId, used);
-  const section: SectionInput = {
-    id: `s-${questionId}`,
+  return {
+    prompt: field(`Validate ${id}: ${ask.title}?`, `Validate ${id}?`, questionId),
+    approve: field(`Approve: validate ${task} as described below`, "Approve", questionId, used),
+    other: field(`Not now: leave ${task} unvalidated`, "Not now", questionId, used),
     title: field(ask.title, `The task ${task}`, questionId),
-    deciding: prompt,
     changed: field(`A task that waits for your validation before it is worked: ${task}`, "A task", questionId),
-    context: field(ask.context, "No further context.", questionId),
-    questionIds: [questionId],
   };
-  const question: QuestionInput = { id: questionId, kind: "pick-one", prompt, options: [approve, notNow], signsOff: prompt };
-  return { question, section, binding: { questionId, approve, task, repo, ...structuredClone(gateScope(ask)) } };
+}
+
+function changeWords(ask: PlanAsk, task: string, questionId: string, used: Set<string>): Words {
+  const prompt = field(`May the planned ${ask.gate} change for ${task} merge as pinned below?`, "A plan approval", questionId);
+  const approve = field(`Approve this ${ask.gate} change for ${task} as pinned below`, "Approve", questionId, used);
+  const revise = field(`Revise: send the plan back for ${task}`, "Revise", questionId, used);
+  const title = field(ask.title, `The ${ask.gate} plan for ${task}`, questionId);
+  return { prompt, approve, other: revise, title, changed: field(`A plan for ${task} that the ${ask.gate} gate would hold at merge`, "A plan", questionId) };
 }
 
 /** Labels name the gate and the task, so two asks never share an option and none reads as a blanket sign-off. */
 function renderPlanAsk(ask: PlanAsk, input: PlanRoundInput, questionId: string, used: Set<string>): Rendered {
-  if (ask.gate === "task") return renderTaskAsk(ask, input, questionId, used);
   const { task, repo } = input;
-  const prompt = field(`May the planned ${ask.gate} change for ${task} merge as pinned below?`, "A plan approval", questionId);
-  const approve = field(`Approve this ${ask.gate} change for ${task} as pinned below`, "Approve", questionId, used);
-  const revise = field(`Revise: send the plan back for ${task}`, "Revise", questionId, used);
+  const { prompt, approve, other, title, changed } = (ask.gate === "task" ? taskWords : changeWords)(ask, task, questionId, used);
   const section: SectionInput = {
     id: `s-${questionId}`,
-    title: field(ask.title, `The ${ask.gate} plan for ${task}`, questionId),
+    title,
     deciding: prompt,
-    changed: field(`A plan for ${task} that the ${ask.gate} gate would hold at merge`, "A plan", questionId),
+    changed,
     context: field(ask.context, "No further context.", questionId),
     questionIds: [questionId],
   };
-  const question: QuestionInput = { id: questionId, kind: "pick-one", prompt, options: [approve, revise], signsOff: prompt };
+  const question: QuestionInput = { id: questionId, kind: "pick-one", prompt, options: [approve, other], signsOff: prompt };
   return { question, section, binding: { questionId, approve, task, repo, ...structuredClone(gateScope(ask)) } };
 }
 

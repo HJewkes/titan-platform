@@ -9,11 +9,11 @@ import { shownLine } from "./ci-policy-changes.js";
 import { TASK_APPROVAL_REASONS, TaskKeySchema, type TaskScope } from "./plan-approval.js";
 import { checkBindings, PlanRoundRefused } from "./plan-round.js";
 
-export const OWNER_VALIDATE_TAG = "owner-validate";
+const OWNER_VALIDATE_TAG = "owner-validate";
 const DEFAULT_TIMEOUT_MS = 3000;
 
 /** The fields of one active-work task the round shows the owner and binds. */
-export interface TaskForApproval {
+interface TaskForApproval {
   title: string;
   doneWhen: string;
   tags: string[];
@@ -41,7 +41,7 @@ export function activeWorkTaskForApproval(options: { origin: string; fetch?: typ
   };
 }
 
-export interface TaskApprovalRequest {
+interface TaskApprovalRequest {
   taskKey: string;
   repo: string;
   reason: string;
