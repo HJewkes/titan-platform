@@ -77,7 +77,7 @@ const malformedNone = (refusal: Malformed["refusal"], writtenAt: number, text = 
  * made no investigative call is `none` with the depth-floor reason; a message the reader did not count is judged as before.
  * A MERGE whose CI-policy line reads malformed is refused for one correction, unless the only other labelled lines are
  * harmless prose (see `mergeCiPolicy`); a weakened reading wins over malformed in the parser, so a weakening is never
- * corrected away. An adversary verdict with no `Probes:` line is refused for one correction too, and so is an adversary MERGE whose `Authority:` line is absent or not one of the three values.
+ * corrected away. An adversary verdict with no `Probes:` line is refused for one correction too, and so is an adversary MERGE whose `authorityLine` reading is absent or malformed.
  */
 export function acceptVerdict(input: AwaitVerdictInput, messages: readonly ReviewerMessage[]): AwaitVerdictResult {
   const final = messages.at(-1);

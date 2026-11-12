@@ -1,3 +1,4 @@
+import { labelledLineRest } from "@titan-design/session-read";
 import { boundedFindings, findingsText } from "../fix-first-findings.js";
 
 /** The line an adversary verdict must carry above its block; a verdict without it is malformed. */
@@ -68,21 +69,32 @@ export function hasProbesLine(text: string): boolean {
   return lines.slice(0, verdictAt < 0 ? undefined : verdictAt).some((line) => line.startsWith(PROBES_HEADING) && line.length > PROBES_HEADING.length);
 }
 
-const AUTHORITY_VALUES: readonly AuthorityLine[] = ["unchanged", "tightened", "widened"];
+const SAFER_VALUES: readonly AuthorityLine[] = ["unchanged", "tightened"];
+const WIDENED: AuthorityLine = "widened";
 /** Strictest first: a widening is never read away, and an unreadable line is never read as the safer value. */
 const STRICTNESS = ["widened", "malformed", "unchanged", "tightened"] as const;
 
 /**
- * Every raw line, fenced or not, that starts `Authority:` is read, as the CI-policy line is, so a hidden `widened` still
- * counts. The rest of the line must be exactly one of the three values; anything else reads `malformed`. Two lines read the
- * strictest. No such line reads undefined.
+ * One raw line's reading, or undefined when it carries no Authority label. The label is found through session-read's
+ * `labelledLineRest`, the fold the CI-policy line is read with, so a bullet, bold, quote, any case or a full-width colon
+ * still labels the line. A rest that folds to exactly `widened` reads widened however it is decorated; unchanged and
+ * tightened count only on a plain `Authority: <value>` line, as CI-policy's unchanged counts only when canonical. Any
+ * other labelled line reads malformed.
+ */
+function authorityReading(raw: string): AuthorityLine | "malformed" | undefined {
+  const rest = labelledLineRest(raw, AUTHORITY_HEADING, WIDENED);
+  if (rest === undefined) return undefined;
+  if (rest === WIDENED) return WIDENED;
+  const line = raw.trim();
+  const value = line.startsWith(AUTHORITY_HEADING) ? line.slice(AUTHORITY_HEADING.length).trim() : undefined;
+  return SAFER_VALUES.find((known) => known === value) ?? "malformed";
+}
+
+/**
+ * Every raw line, fenced or not, that carries the Authority label is a reading, as every CI-policy labelled line is, so a
+ * hidden or decorated `widened` still counts. Several readings read the strictest. No labelled line reads undefined.
  */
 export function authorityLine(text: string): AuthorityLine | "malformed" | undefined {
-  const readings = text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith(AUTHORITY_HEADING))
-    .map((line) => line.slice(AUTHORITY_HEADING.length).trim())
-    .map((value) => AUTHORITY_VALUES.find((known) => known === value) ?? "malformed");
+  const readings = text.split("\n").map(authorityReading);
   return STRICTNESS.find((reading) => readings.includes(reading));
 }
