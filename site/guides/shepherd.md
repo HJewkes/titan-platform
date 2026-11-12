@@ -91,6 +91,11 @@ A move into `test-only` meets the diff check [below](#the-test-only-kind).
 On a `correctness`, `security` or `test-only` run, or any `fix/` branch, Shepherd reads the
 head's fix-proof result before the review. A vacuous or test-less proof ends the round as
 `NO_REPRO`, unless its mutation check proves it (see [the test-only kind](#the-test-only-kind)). A proof that shows nothing about the head goes to the reviewer marked unverified.
+A `no-tests` line on a diff whose every path, a rename's old path included, is Markdown
+(`**/*.md`: docs and changesets) goes on to review under any kind, recorded
+as `no-repro-non-source`, with no implementer wake: a docs or changeset diff has nothing to
+reproduce (TP-5399). The check is an allowlist of non-code paths, so a script, server route or
+config outside `src/` still needs its proof.
 A `NO_REPRO` wakes the implementer for a reproducing test at most twice per run. The third
 goes to the `sh-sent-back` gate, worded `fix-proof did not reproduce (NO_REPRO)`. A `NO_REPRO`
 is not a reviewer's `FIX_FIRST`, so it never counts toward `fix-first-runaway` (TP-3900).

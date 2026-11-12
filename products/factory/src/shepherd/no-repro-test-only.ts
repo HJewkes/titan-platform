@@ -1,6 +1,6 @@
 import { parseResultLine } from "@titan-design/fix-proof";
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
-import { supportOnlyDiff, testOnlyDiff, type TestOnlyDiff } from "./test-only-diff.js";
+import { codeFreeDiff, supportOnlyDiff, testOnlyDiff, type TestOnlyDiff } from "./test-only-diff.js";
 
 /** A vacuous or test-less proof: the two results the NO_REPRO verdict ends a review on. */
 const VACUOUS_VERDICTS: ReadonlySet<string> = new Set(["vacuous", "no-tests"]);
@@ -57,4 +57,14 @@ export function mayProceedLine(line: string): boolean {
   const parsed = parseResultLine(line);
   if (!parsed.ok || !VACUOUS_VERDICTS.has(parsed.result.verdict) || parsed.result.mutants !== undefined) return false;
   return true;
+}
+
+/**
+ * TP-5399: a no-tests line with no mutants and no deleted test, on a diff with no source and no test file (`codeFreeDiff`), has
+ * nothing a proof could reproduce, so it goes on to review under any kind and any flag; waking the implementer could only dead-end.
+ */
+export async function codeFreeNoRepro(port: GitHubPort, at: { repo: RepoSlug; pr: number | null; head: string }, line: string): Promise<boolean> {
+  const parsed = parseResultLine(line);
+  if (!mayProceedLine(line) || !parsed.ok || parsed.result.verdict !== "no-tests" || parsed.result.deletedTests.length > 0) return false;
+  return codeFreeDiff(port, at.repo, at.pr, at.head);
 }
