@@ -26,7 +26,7 @@ export function FeedbackRound({ round }: { round: ValidRound }): ReactNode {
   const state = useRoundAnswers(locked ? [] : round.manifest.questions, round.notes, locked, undefined, draft);
   return (
     <VStack gap={4} testID="round-feedback-sheet">
-      <Typography variant="body2" color="secondary">Already merged: nothing here blocks or undoes a merge. Every notes box is optional.</Typography>
+      <Typography variant="body2" color="secondary">Every notes box is optional: send the sheet blank to mark it read.</Typography>
       {(round.manifest.prGroups ?? []).map((group) => (
         <FeedbackPr key={group.pr} group={group} round={round} state={state} locked={locked} />
       ))}
@@ -80,7 +80,7 @@ function PrFiles({ group }: { group: PrGroup }): ReactNode {
   if (files.length === 0) return null;
   return (
     <VStack gap={1} testID={`round-feedback-files-${group.pr}`}>
-      {files.map((file) => <Typography key={file.path} variant="monoLabel" color="secondary" className="break-all">{file.path}</Typography>)}
+      {files.map((file) => <Typography key={file.path} variant="mono" color="secondary" className="break-all">{file.path}</Typography>)}
     </VStack>
   );
 }
