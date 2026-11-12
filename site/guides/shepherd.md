@@ -490,8 +490,9 @@ repo's merged visual pull requests of an ended ISO week into one read-only conso
 kind `feedback`. The console shows it as a what-changed sheet: per PR, the link, head and
 task, the changed visual paths and one optional notes box. It has no Ship control, adds no
 inbox item and no nudge, and asks nothing that binds a merge. See
-[Visual baselines](#visual-baselines) for the command. The measured visual tier stays on the sheet
-as a label for ranking, tier 2 first and the largest diff first. A note you write on the sheet
+[Visual baselines](#visual-baselines) for the command. The sheet lists PRs by PR number, lowest
+first, and the measured visual tier appears as a label only. Ranking by tier (tier 2 first, then
+the largest diff) is *planned* and not built. A note you write on the sheet
 is meant to become a task. That sweep (`visual-feedback-notes`) is not on main yet.
 The visual threshold (TP-4320) and tiers (TP-4761) are measurements on that sheet, not merge
 gates, once `visualGate` is `async`. Until then the [tier](#visual-tiers) halves still gate.
