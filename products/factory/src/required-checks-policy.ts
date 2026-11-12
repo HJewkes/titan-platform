@@ -61,7 +61,7 @@ export async function readChecksPolicy(port: GitHubPort, repo: RepoSlug, baseRef
 }
 
 /** `contexts` run only on pushes to the branch; `prOnly` are required contexts whose workflow runs only on pull requests. */
-export type MainPolicyRead = { readable: true; contexts: string[]; prOnly: string[] } | { readable: false; reason: string };
+type MainPolicyRead = { readable: true; contexts: string[]; prOnly: string[] } | { readable: false; reason: string };
 
 /**
  * Checks that run only on pushes to `branch` and still judge its own CI red, such as main's test shards (TP-4401). They
