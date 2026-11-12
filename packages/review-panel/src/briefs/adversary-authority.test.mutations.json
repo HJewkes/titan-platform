@@ -22,8 +22,8 @@
     {
       "name": "a malformed value is read as unchanged",
       "file": "packages/review-panel/src/briefs/adversary.ts",
-      "find": "? (value as AuthorityLine) : \"malformed\"",
-      "replace": "? (value as AuthorityLine) : \"unchanged\"",
+      "find": "?? \"malformed\"",
+      "replace": "?? \"unchanged\"",
       "kills": [
         "authorityLine an Authority line with another value reads malformed"
       ]
