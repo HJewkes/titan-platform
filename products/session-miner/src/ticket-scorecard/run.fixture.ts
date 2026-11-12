@@ -50,7 +50,9 @@ export class ScorecardWorld {
   task(id: string, fields: { created?: string; status?: string; priority?: number; tags?: string[]; archived?: boolean } = {}): void {
     const dir = path.join(this.dir, "root", INITIATIVE, "tasks", fields.archived ? "archive" : "");
     const status = fields.status ?? "open";
-    const body = { id, title: `Synthetic task ${id}`, priority: fields.priority ?? 1, status, created: fields.created ?? "2026-11-01", updated: "2026-11-01", done_at: status === "done" ? "2026-11-11T00:00:00Z" : null, tags: fields.tags ?? [] };
+    const doneAt = status === "done" ? "2026-11-11T00:00:00Z" : null;
+    const created = fields.created ?? "2026-11-01";
+    const body = { id, title: `Synthetic task ${id}`, priority: fields.priority ?? 1, status, created, updated: created, done_at: doneAt, tags: fields.tags ?? [] };
     writeFileSync(path.join(dir, `${id}.yml`), stringify(body));
   }
 
@@ -98,7 +100,8 @@ export class ScorecardWorld {
       labelsFile: this.file("labels.jsonl"),
     };
     const perRun = [...this.perRun];
-    return { paths, storeFile: this.file("scorecard.sqlite3"), weeksDir: this.file("weeks"), lockFile: this.file("run.lock"), rebuild: false, now: () => new Date(now), perRun: async () => perRun, ...overrides };
+    const files = { storeFile: this.file("scorecard.sqlite3"), weeksDir: this.file("weeks"), lockFile: this.file("run.lock") };
+    return { paths, ...files, rebuild: false, now: () => new Date(now), perRun: async () => perRun, ...overrides };
   }
 
   /** The scorecard store's data tables, minus the run log, as one comparable string. */
