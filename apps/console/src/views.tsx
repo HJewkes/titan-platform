@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ActivityIcon, AlertTriangleIcon, AwardIcon, BotIcon, BrainIcon, ChartIcon, EqualIcon, HeadphonesIcon, HistoryIcon, KanbanIcon, LayersIcon, RepeatIcon, ScaleIcon, StarIcon, TargetIcon, TrendingUpIcon, type SideNavItem } from "@titan-design/react-ui";
+import { ActivityIcon, AlertTriangleIcon, AwardIcon, BotIcon, BrainIcon, ChartIcon, CircleCheckIcon, EqualIcon, HeadphonesIcon, HistoryIcon, KanbanIcon, LayersIcon, RepeatIcon, ScaleIcon, StarIcon, TargetIcon, TrendingUpIcon, type SideNavItem } from "@titan-design/react-ui";
 import { VIEW_KEYS, type ViewKey } from "./router.js";
 
 export interface ViewSpec {
@@ -14,7 +14,7 @@ export interface ViewSpec {
 
 const ICON_SIZE = 20;
 
-/** The rail. Home borrows the activity glyph, Inbox the alert glyph, Tree the trending-up glyph, Rounds the target glyph, Reviews the star glyph, Theater the headphones glyph, Shepherd the scale glyph, Coordinator the chart glyph, Research the award glyph and Config the equal glyph, because react-ui exports no home, inbox, tree, search, play or settings icon. */
+/** The rail. Home borrows the activity glyph, Inbox the alert glyph, Tree the trending-up glyph, Rounds the target glyph, Reviews the star glyph, Theater the headphones glyph, Shepherd the scale glyph, Coordinator the chart glyph, Research the award glyph, Scorecard the circle-check glyph and Config the equal glyph, because react-ui exports no home, inbox, tree, search, play or settings icon. */
 const SPECS: Record<ViewKey, Omit<ViewSpec, "key">> = {
   home: { label: "Home", title: "Home", icon: <ActivityIcon size={ICON_SIZE} /> },
   inbox: { label: "Inbox", title: "Inbox", icon: <AlertTriangleIcon size={ICON_SIZE} /> },
@@ -31,6 +31,7 @@ const SPECS: Record<ViewKey, Omit<ViewSpec, "key">> = {
   theater: { label: "Theater", title: "Theater", icon: <HeadphonesIcon size={ICON_SIZE} /> },
   shepherd: { label: "Shepherd", title: "Shepherd", icon: <ScaleIcon size={ICON_SIZE} /> },
   autoresearch: { label: "Research", title: "Autoresearch", icon: <AwardIcon size={ICON_SIZE} /> },
+  scorecard: { label: "Score", title: "Ticket scorecard", icon: <CircleCheckIcon size={ICON_SIZE} /> },
   config: { label: "Config", title: "Config", icon: <EqualIcon size={ICON_SIZE} /> },
 };
 
