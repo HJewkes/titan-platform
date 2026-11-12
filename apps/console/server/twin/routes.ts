@@ -46,6 +46,8 @@ export const TWIN_ROUTES: readonly TwinRoute[] = [
   { name: "autoresearch-idea-decided", hash: "#/autoresearch/ar-7c1e?idea=i-5b3c7e9a1d0f" },
   { name: "autoresearch-idea-reeval", hash: "#/autoresearch/ar-7c1e?idea=i-0d4e8f2a6b1c" },
   { name: "autoresearch-run-pre-s3a", hash: "#/autoresearch/ar-2b90" },
+  { name: "scorecard", hash: "#/scorecard" },
+  { name: "scorecard-task", hash: `#/scorecard/${encodeURIComponent("orbit-relay/OR-15")}` },
   { name: "config", hash: "#/config" },
 ];
 
