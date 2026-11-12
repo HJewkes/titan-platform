@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the strictest order is inverted",
+      "file": "packages/review-panel/src/briefs/adversary.ts",
+      "find": "[\"widened\", \"malformed\", \"unchanged\", \"tightened\"]",
+      "replace": "[\"tightened\", \"unchanged\", \"malformed\", \"widened\"]",
+      "kills": [
+        "authorityLine two lines read the strictest, widened over unchanged"
+      ]
+    },
+    {
+      "name": "the raw-line scan is replaced by a scan that skips fenced lines",
+      "file": "packages/review-panel/src/briefs/adversary.ts",
+      "find": "    .filter((line) => line.startsWith(AUTHORITY_HEADING))",
+      "replace": "    .filter((line, at, lines) => line.startsWith(AUTHORITY_HEADING) && lines.slice(0, at).filter((earlier) => earlier.startsWith(\"```\")).length % 2 === 0)",
+      "kills": [
+        "authorityLine a widened line hidden in a fence still reads widened"
+      ]
+    },
+    {
+      "name": "a malformed value is read as unchanged",
+      "file": "packages/review-panel/src/briefs/adversary.ts",
+      "find": "? (value as AuthorityLine) : \"malformed\"",
+      "replace": "? (value as AuthorityLine) : \"unchanged\"",
+      "kills": [
+        "authorityLine an Authority line with another value reads malformed"
+      ]
+    }
+  ]
+}

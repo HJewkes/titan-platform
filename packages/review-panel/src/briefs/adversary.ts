@@ -3,6 +3,12 @@ import { boundedFindings, findingsText } from "../fix-first-findings.js";
 /** The line an adversary verdict must carry above its block; a verdict without it is malformed. */
 export const PROBES_HEADING = "Probes:";
 
+/** The labelled line an adversary verdict carries above its block: whether the change widens what any agent, account or path may do. */
+export const AUTHORITY_HEADING = "Authority:";
+
+/** The closed value set of the Authority line; the same three values the Shepherd risk tier reads. */
+export type AuthorityLine = "unchanged" | "tightened" | "widened";
+
 export const ADVERSARY_OVERLAY: readonly string[] = [
   "You are the adversary member of a review panel. Other members judge correctness and scope; your question is whether this change fails open or can be bypassed.",
   "Probe every guard, check, schema and policy the diff adds, changes or relies on:",
@@ -13,6 +19,7 @@ export const ADVERSARY_OVERLAY: readonly string[] = [
   "- An error path that allows: a throw, timeout or parse failure that ends in the permitted branch.",
   "For each probe, give the input you tried and what the code did with it. A fail-open or bypass you can show is blocking.",
   `Whatever your verdict, above the verdict lines write a line that starts \`${PROBES_HEADING}\` and lists each probe as \`<input> -> <what the code did>\`, separated by \`;\`. A verdict without that line is not read.`,
+  `Above the verdict lines also write \`${AUTHORITY_HEADING} unchanged\`, \`${AUTHORITY_HEADING} tightened\` or \`${AUTHORITY_HEADING} widened\`: whether this change lets any agent, account or path do something it could not before (widened), less (tightened), or neither (unchanged). Nothing else on the line.`,
 ];
 
 /** Why a hold asked for an adversary, as the host knows it; every field is text other agents wrote, so it is rendered as data. */
@@ -59,4 +66,23 @@ export function hasProbesLine(text: string): boolean {
   const lines = text.split("\n").map((line) => line.trim());
   const verdictAt = lines.findIndex((line) => line.startsWith("Verdict:"));
   return lines.slice(0, verdictAt < 0 ? undefined : verdictAt).some((line) => line.startsWith(PROBES_HEADING) && line.length > PROBES_HEADING.length);
+}
+
+const AUTHORITY_VALUES: readonly AuthorityLine[] = ["unchanged", "tightened", "widened"];
+/** Strictest first: a widening is never read away, and an unreadable line is never read as the safer value. */
+const STRICTNESS = ["widened", "malformed", "unchanged", "tightened"] as const;
+
+/**
+ * Every raw line, fenced or not, that starts `Authority:` is read, as the CI-policy line is, so a hidden `widened` still
+ * counts. The rest of the line must be exactly one of the three values; anything else reads `malformed`. Two lines read the
+ * strictest. No such line reads undefined.
+ */
+export function authorityLine(text: string): AuthorityLine | "malformed" | undefined {
+  const readings = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith(AUTHORITY_HEADING))
+    .map((line) => line.slice(AUTHORITY_HEADING.length).trim())
+    .map((value) => AUTHORITY_VALUES.find((known) => known === value) ?? "malformed");
+  return STRICTNESS.find((reading) => readings.includes(reading));
 }

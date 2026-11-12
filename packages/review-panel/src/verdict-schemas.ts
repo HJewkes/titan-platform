@@ -66,6 +66,7 @@ export const MALFORMED_REFUSALS: Record<MalformedRefusal, true> = {
   ci_policy_malformed: true,
   ci_policy_prose: true,
   probes_missing: true,
+  authority_missing: true,
   scope_untagged: true,
   repeated_finding: true,
 };
