@@ -268,6 +268,16 @@ describe("a run held at registration waiting in its merge step", () => {
     expect(PhaseSchema.options).toEqual(["awaiting-pr", "ci", "fixing", "review", "awaiting-approval", "merging", "post-merge", "done", "failed", "cancelled"]);
   });
 
+  it("keeps a run waiting for a new head after a no-verdict diagnosis in phase fixing and names the planner in its next action", () => {
+    const after = (previous: string): WorkflowRun => ({ ...pausedAt("await-new-head:0"), stepResults: { [previous]: { stepId: previous, iteration: 0, agentId: "shepherd", completedAt: "2026-01-01T00:30:00.000Z", signal: null, data: {} } } });
+
+    const diagnosing = watchRow({ registration, run: after("sh-no-verdict-diagnosis:" + "1".repeat(40)) });
+    const fixing = watchRow({ registration, run: after("sh-wake-fix-first:" + "1".repeat(40)) });
+
+    expect(diagnosing).toMatchObject({ phase: "fixing", phaseSince: "2026-01-01T00:30:00.000Z", nextAction: "waiting for the diagnosis planner's findings and a new head" });
+    expect(fixing).toMatchObject({ phase: "fixing", nextAction: "waiting for the implementer's new head" });
+  });
+
   it("names a hold with no reviewer by its reason alone", () => {
     const owner = { ...held, holdReviewer: null } as Registration;
 
@@ -497,13 +507,41 @@ describe("shepherd timeline verdict and wake entries", () => {
       ["FIX_FIRST", H1],
       ["MERGE", H2],
     ]);
-    expect(entries[2]).toEqual({ kind: "verdict", stepId: `sh-await-verdict:${H2}`, verdict: "MERGE", headSha: H2, locator: { path: "sessions/rev.jsonl", start: 100, end: 120 }, reviewer: "rev-1" });
+    expect(entries[2]).toEqual({ kind: "verdict", stepId: `sh-await-verdict:${H2}`, verdict: "MERGE", headSha: H2, locator: { path: "sessions/rev.jsonl", start: 100, end: 120 }, reviewer: "rev-1", note: null });
   });
 
-  it("maps a wait that ended without a verdict to verdict none with no head", () => {
+  it("maps a wait that ended without a verdict to verdict none at the step's head, with its reason and no reviewer", () => {
     const run = withResults([{ stepId: `sh-await-verdict:${H1}`, at: "2026-01-01T00:01:00.000Z", result: { kind: "none", reason: "wait" } }]);
 
-    expect(timelineEntries(run, [])).toEqual([{ kind: "verdict", stepId: `sh-await-verdict:${H1}`, verdict: "none", headSha: null, locator: null, reviewer: null }]);
+    expect(timelineEntries(run, [])).toEqual([{ kind: "verdict", stepId: `sh-await-verdict:${H1}`, verdict: "none", headSha: H1, locator: null, reviewer: null, note: "reviewer said WAIT" }]);
+  });
+
+  it("keeps no reviewer on a none that timed out, even when the record names one", () => {
+    const run = withResults([{ stepId: `sh-await-verdict:${H1}`, at: "2026-01-01T00:01:00.000Z", result: { kind: "none", ended: "deadline", reviewer } }]);
+
+    expect(timelineEntries(run, [])).toEqual([expect.objectContaining({ verdict: "none", reviewer: null, note: "no verdict before the wait ran out" })]);
+  });
+
+  it("names Shepherd's own reviewer, never the seat, on a none whose MERGE a seat WAIT held", () => {
+    const seatHeld = { kind: "verdict", verdict: "MERGE", head: H1, locator, reviewer: { agentId: "agent-rv-own", sessionId: "s-own" } };
+    const result = { kind: "none", reason: `seat check: rv-seat said WAIT at ${H1}, so its required checks had not finished`, seat: "rv-seat", seatHeld };
+    const run = withResults([{ stepId: `sh-await-verdict:${H1}`, at: "2026-01-01T00:01:00.000Z", result }]);
+
+    expect(timelineEntries(run, [])).toEqual([
+      { kind: "verdict", stepId: `sh-await-verdict:${H1}`, verdict: "none", headSha: H1, locator: null, reviewer: "agent-rv-own", note: "seat WAIT from rv-seat, Shepherd MERGE held" },
+    ]);
+  });
+
+  it("gives a seat recheck that let the held MERGE stand its own verdict entry", () => {
+    const run = withResults([{ stepId: `sh-seat-recheck:${H1}`, at: "2026-01-01T00:01:00.000Z", result: { kind: "verdict", verdict: "MERGE", head: H1, locator, reviewer: { agentId: "agent-rv-own", sessionId: "s-own" } } }]);
+
+    expect(timelineEntries(run, [])).toEqual([expect.objectContaining({ kind: "verdict", stepId: `sh-seat-recheck:${H1}`, verdict: "MERGE", headSha: H1, reviewer: "agent-rv-own", note: null })]);
+  });
+
+  it("leaves a panel member's none without a head-level note", () => {
+    const run = withResults([{ stepId: `sh-await-verdict:${H1}:arch`, at: "2026-01-01T00:01:00.000Z", result: { kind: "none", reason: "wait" } }]);
+
+    expect(timelineEntries(run, [])).toEqual([expect.objectContaining({ kind: "verdict", verdict: "none", note: null })]);
   });
 
   it("leaves the locator null when the verdict's locator lacks a transcript span", () => {
@@ -559,6 +597,23 @@ describe("shepherd timeline verdict and wake entries", () => {
     expect(watchRow({ registration, run }).nextAction).toBe(`no fixer could start (${refusal}), waiting for a new head`);
   });
 
+  it.each(["cancelled", "failed"] as const)("does not read a %s run at await-new-head as still waiting on a held wake", (status) => {
+    const refusal = "agent-chat refused to start the successor impl-1-s3: DispatchError";
+    const run = withResults([{ stepId: "sh-wake-implementer:0", at: "2026-01-01T00:02:00.000Z", result: { kind: "unhandled", reason: refusal, held: { agent: "impl-1-s3" } } }]);
+    run.currentStep = "await-new-head:0";
+    run.status = status;
+
+    expect(watchRow({ registration, run }).nextAction).toBe("none");
+  });
+
+  it.each(["cancelled", "failed"] as const)("does not read a %s run at await-new-head as still waiting on the diagnosis", (status) => {
+    const run = withResults([{ stepId: "sh-no-verdict-diagnosis", at: "2026-01-01T00:02:00.000Z", result: {} }]);
+    run.currentStep = "await-new-head:0";
+    run.status = status;
+
+    expect(watchRow({ registration, run }).nextAction).toBe("none");
+  });
+
   it("emits entries that the timeline schema accepts", () => {
     const run = withResults([
       { stepId: `sh-await-verdict:${H1}`, at: "2026-01-01T00:01:00.000Z", result: { kind: "verdict", verdict: "MERGE", head: H1, locator, reviewer } },
@@ -584,15 +639,19 @@ describe("a held run whose wait saw a pushed head", () => {
   const H1 = "1".repeat(40);
   const H2 = "2".repeat(40);
 
-  it("names the pushed head while CI runs at it", () => {
+  it("names the pushed head once the live ci-wait reads it", () => {
     const run = { ...pausedAt("ci-wait:r1:0"), status: "running" } as WorkflowRun;
     run.stepResults["ci-wait:0"] = { stepId: "ci-wait", iteration: 0, agentId: null, signal: null, completedAt: "2026-01-01T00:01:00.000Z", data: { result: { verdict: "red", headSha: H1 } } };
     run.stepResults["sh-held-wait:0"] = { stepId: "sh-held-wait", iteration: 0, agentId: null, signal: null, completedAt: "2026-01-01T00:02:00.000Z", data: { result: { moved: true, headSha: H2 } } };
+    noteCiWaitHead("acme/widgets", 1, H2);
+    try {
+      const row = watchRow({ registration: { ...registration, held: true, holdReason: "owner review", holdSatisfied: null }, run });
 
-    const row = watchRow({ registration: { ...registration, held: true, holdReason: "owner review", holdSatisfied: null }, run });
-
-    expect(row).toMatchObject({ phase: "ci", headSha: H2 });
-    expect(row.nextAction).toContain(H2.slice(0, 7));
+      expect(row).toMatchObject({ phase: "ci", headSha: H2 });
+      expect(row.nextAction).toContain(H2.slice(0, 7));
+    } finally {
+      clearCiWaitHead("acme/widgets", 1);
+    }
   });
 });
 
@@ -614,6 +673,18 @@ describe("a run whose PR moved while its ci-wait runs (TP-4092)", () => {
     } finally {
       clearCiWaitHead("acme/widgets", 1);
     }
+  });
+
+  it("says the head is not yet read, never an older step's head, while the live ci-wait has read none (TP-4767)", () => {
+    const row = watchRow({ registration, run: waitingAt("ci-wait:r5:0") });
+
+    expect(row).toMatchObject({ phase: "ci", headSha: null, nextAction: "waiting for CI (head not yet read)" });
+  });
+
+  it("keeps the recorded head of a run that stopped at ci-wait", () => {
+    const run = { ...waitingAt("ci-wait:r5:0"), status: "failed" } as WorkflowRun;
+
+    expect(watchRow({ registration, run }).headSha).toBe(H1);
   });
 
   it("keeps the recorded head once the run has left ci-wait", () => {

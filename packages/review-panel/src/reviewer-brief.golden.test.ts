@@ -64,6 +64,26 @@ describe("rendered briefs against main's output", () => {
     expect(brief.indexOf("Attests:")).toBeLessThan(brief.lastIndexOf("Verdict: <MERGE or FIX_FIRST>"));
   });
 
+  it("names the changed closure files of a claim beside the Attests instruction", () => {
+    const brief = reviewerBrief({ ...target, attestClaims: [{ ...attestClaims[0]!, changedFiles: ["src/ci-wait.ts", "src/helper.ts"] }] });
+
+    expect(brief).toContain("Files of ci-wait's closure this PR changed: `src/ci-wait.ts`, `src/helper.ts`.");
+    expect(brief.indexOf("Files of ci-wait")).toBeLessThan(brief.indexOf("`Attests:"));
+  });
+
+  it("counts the closure files beyond thirty instead of listing them", () => {
+    const changedFiles = Array.from({ length: 33 }, (_, i) => `src/f${i}.ts`);
+
+    const brief = reviewerBrief({ ...target, attestClaims: [{ ...attestClaims[0]!, changedFiles }] });
+
+    expect(brief).toContain("`src/f29.ts`, +3 more.");
+    expect(brief).not.toContain("src/f30.ts");
+  });
+
+  it("adds no files section for claims without changed files", () => {
+    expect(reviewerBrief({ ...target, attestClaims })).not.toContain("closure this PR changed");
+  });
+
   it("is byte-identical for both scoped fix-round re-reviews", () => {
     for (const [name, rendered] of scopedReviews) expect(rendered, name).toBe(golden[name]);
   });

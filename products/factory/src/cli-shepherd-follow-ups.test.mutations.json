@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a dropped block exits 1 instead of 0",
+      "file": "products/factory/src/cli-shepherd-follow-ups.ts",
+      "find": "    return EXIT.OK;\n",
+      "replace": "    return warning ? EXIT.FAILURE : EXIT.OK;\n",
+      "kills": [
+        "shepherd follow-ups the verb prints the named warning for a malformed block, files nothing, and exits 0"
+      ]
+    },
+    {
+      "name": "an unreachable active-work exits 1 instead of 69",
+      "file": "products/factory/src/cli-shepherd-follow-ups.ts",
+      "find": "EXIT.FAILURE : EXIT.UNAVAILABLE",
+      "replace": "EXIT.FAILURE : EXIT.FAILURE",
+      "kills": [
+        "shepherd follow-ups the verb exits 69 when active-work is down"
+      ]
+    }
+  ]
+}

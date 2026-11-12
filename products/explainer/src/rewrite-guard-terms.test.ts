@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { guardBeat, termsToKeep } from "./rewrite-guard.js";
+import { planRegisterEdits } from "./rewrite-plan.js";
 import { renderRewritePrompt } from "./rewrite-prompt.js";
 import { ScriptSchema, type ScriptBeat, type ScriptV1 } from "./script-schema.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
@@ -32,16 +33,16 @@ describe("a term declared as a fact id", () => {
     expect(rules).toEqual([]);
   });
 
-  it("rejects a rewrite that loses the ticket's number", () => {
+  it("accepts a rewrite that stops saying the ticket's number, since a daily says no id aloud", () => {
     const rewritten = "You could lose the whole dock queue today. An open ticket shows the dock server can wait forever.";
 
     const rules = rulesFor(before, rewritten);
 
-    expect(rules).toContain("new-term");
+    expect(rules).toEqual([]);
   });
 
-  it("does not hold a rewrite to a fact id the original never said", () => {
-    const silent = spelledBeat("The dock server checks each scan and keeps every row it wrote to the ledger.", [TICKET]);
+  it("does not hold a rewrite to a term the original never said", () => {
+    const silent = spelledBeat("The dock server checks each scan and keeps every row it wrote to the ledger.", ["harbour crane"]);
     const rewritten = "The dock server checks each scan and keeps all the rows it wrote to the ledger.";
 
     const rules = rulesFor(silent, rewritten);
@@ -70,13 +71,13 @@ describe("an item the beat cites but does not introduce", () => {
 
     const rejections = guardBeat(before, after);
 
-    expect(rejections.map((rejection) => rejection.rule)).toContain("new-term");
+    expect(rejections.map((rejection) => rejection.rule)).toContain("id-changed");
   });
 
-  it("rejects a rewrite that stops naming the ticket", () => {
+  it("accepts a rewrite that names the ticket by what it is instead of its id", () => {
     const rules = rulesFor(before, "Therefore we would rule on the dock ticket first, before the dock server waits again.");
 
-    expect(rules).toContain("new-term");
+    expect(rules).toEqual([]);
   });
 
   it("accepts a rewrite that cuts a repeat and names the ticket once", () => {
@@ -108,20 +109,20 @@ describe("a term written with its digits", () => {
     expect(rules).toEqual([]);
   });
 
-  it("is lost when the rewrite says a different number", () => {
+  it("is refused when the rewrite says a different id", () => {
     const before = spelledBeat("So the landing that counts is PR 6420, and it switched the dock order on for every run.", ["PR 6420"]);
 
     const rules = rulesFor(before, "So the landing to read is PR 6421, and it switched the dock order on for every run.");
 
-    expect(rules).toContain("new-term");
+    expect(rules).toContain("id-changed");
   });
 });
 
 describe("a number respelled by the rewrite", () => {
-  const before = spelledBeat("So pull requests 6420 and 6421 belong together on the dock board this week.", []);
+  const before = spelledBeat("So the dock keeps 6420 crates and 6421 labels together on the board this week.", []);
 
   it("does not count the old spelling's words as dropped content terms", () => {
-    const after = { spoken: "So pull request sixty-four twenty and pull request sixty-four twenty-one belong together on the dock board this week.", labelsAdded: [] };
+    const after = { spoken: "So the dock keeps sixty-four twenty crates and sixty-four twenty-one labels together on the board this week.", labelsAdded: [] };
 
     const rejections = guardBeat(before, after);
 
@@ -139,21 +140,22 @@ describe("a number respelled by the rewrite", () => {
 });
 
 describe("the terms the prompt asks a rewrite to keep", () => {
-  it("names a fact id's item as the line says it, never the id", () => {
+  it("names only the terms the line says, never an id", () => {
     const beat = spelledBeat("Then ticket TP-7001 and the desk server stay open.", [TICKET, "desk server", PULL]);
 
     const terms = termsToKeep(beat);
 
-    expect(terms).toEqual(["seventy oh one", "desk server"]);
+    expect(terms).toEqual(["desk server"]);
   });
 
-  it("puts no fact id in the rendered prompt", () => {
+  it("asks the rewrite to cut a spoken id and puts no fact id in the prompt", () => {
     const beat = spelledBeat("Then ticket TP-7001 stays open.", [TICKET]);
     const chapter = { id: beat.chapter, label: "Blocker", question: "Why does the queue wait?" };
 
-    const prompt = renderRewritePrompt(chapter, [beat], { round: 1, directives: [{ beat: beat.id, chapter: beat.chapter, numbers: ["seventy oh one"] }] });
+    const prompt = renderRewritePrompt(chapter, [beat], planRegisterEdits({ beats: [beat] }, []));
 
-    expect(prompt).toContain("Terms to keep: seventy oh one");
+    expect(prompt).toContain("Terms to keep: (none)");
+    expect(prompt).toContain('- Ids: this beat says "TP seventy oh one". Cut each one');
     expect(prompt).not.toContain(TICKET);
   });
 });

@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "buildAudit links no incident by ancestry",
+      "file": "products/factory/src/owner-gates/audit-write.ts",
+      "find": "  return linkIncidents(inputs.incidents, merges, inputs.isAncestor);",
+      "replace": "  return new Map(merges.map((merge) => [merge, []]));",
+      "kills": ["buildAudit links an incident at a descendant of the merge and marks the item BAD: incident"]
+    }
+  ]
+}

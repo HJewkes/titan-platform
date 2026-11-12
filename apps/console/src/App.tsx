@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Alert, AppShell, BrandLockup, TopBar } from "@titan-design/react-ui";
+import { Alert, AppShell, BrandLockup, Page, TopBar } from "@titan-design/react-ui";
 import { BlockerBanner } from "./BlockerBanner.js";
 import { BuildFooter } from "./BuildFooter.js";
 import { useRelayInvalidation, useReturnInvalidation } from "./data/live.js";
@@ -7,10 +7,10 @@ import { useRoutePerf } from "./data/perf.js";
 import { useStaleSince } from "./data/stale.js";
 import { PAGES } from "./pages/index.js";
 import { useMediaQuery } from "./pages/FramePins.js";
-import { Page } from "./pages/PageShell.js";
 import { PlaceholderPage } from "./pages/PlaceholderPage.js";
 import { BELOW_MD } from "./pages/TasksPage.js";
 import { navigate, useRoute, type Route } from "./router.js";
+import { useWaitView } from "./shell/Loading.js";
 import { PhoneNav } from "./shell/PhoneNav.js";
 import { NAV_ITEMS, viewFor } from "./views.js";
 
@@ -20,6 +20,7 @@ const BRAND = "agents";
 export function App(): ReactNode {
   const route = useRoute();
   useRoutePerf(route);
+  useWaitView(route.view);
   useRelayInvalidation();
   useReturnInvalidation();
   const isPhone = useMediaQuery(BELOW_MD);
@@ -56,7 +57,7 @@ function RoutedView({ route }: { route: Route }): ReactNode {
   const Registered = PAGES[route.view];
   if (Registered) return <Registered route={route} />;
   return (
-    <Page maxWidth="narrow">
+    <Page maxWidth="narrow" isScrollable={false}>
       <PlaceholderPage view={viewFor(route.view)} />
     </Page>
   );

@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -9,6 +9,7 @@ import { deployBuildLogPath, deployWindowPath } from "./deploy-output.js";
 import { UNAVAILABLE } from "./deploy-watch-window.js";
 import { deployRecordPath, deployService, parseDeployRecord, type DeployOptions, type DeployPorts } from "./deploy.js";
 import type { DeployIncident } from "./deploy-incident.js";
+import { deployIncidentLogPath, parseDeployIncidents } from "./deploy-incident-log.js";
 import { clearDeployPause, deployHoldPath, deployPausePath, readDeployHolds, readDeployPause } from "./deploy-pause.js";
 import { plistPath, SERVICE_LABEL } from "./service.js";
 import type { CommandResult } from "./run-command.js";
@@ -184,7 +185,8 @@ function fakeMachine(init: MachineInit = {}) {
         stuck = false;
         return kickstart();
       }
-      return ok(`${TARGET} = {\n\tpid = ${job.pid}\n}\n`);
+      const bin = /<string>(.*)<\/string>/.exec(files.get(plistPath(ports.home)) ?? "")?.[1];
+      return ok(`${TARGET} = {\n\tpid = ${job.pid}\n\targuments = {\n\t\t/usr/bin/node\n\t\t${bin}\n\t\tserve\n\t}\n}\n`);
     },
     systemctl: async (args) => {
       calls.push(`systemctl ${args.join(" ")}`);
@@ -849,6 +851,24 @@ describe("service deploy rollback pause", () => {
     expect(machine.incidents.map((incident) => incident.kind)).toEqual(["rolled-back"]);
   });
 
+  it("a restart rollback writes the incident with its target to deploy-incidents.jsonl", async () => {
+    const machine = fakeMachine({ misreports: STRAY });
+
+    await deploy(machine);
+
+    const logged = parseDeployIncidents(machine.files.get(deployIncidentLogPath(STATE)) ?? "");
+    expect(logged).toEqual([expect.objectContaining({ kind: "rolled-back", target: TIP, from: BASE, at: expect.any(String) })]);
+  });
+
+  it("a clean deploy leaves an empty incident log", async () => {
+    const machine = fakeMachine();
+
+    const { code } = await deploy(machine);
+
+    expect(code).toBe(0);
+    expect(machine.files.get(deployIncidentLogPath(STATE))).toBe("");
+  });
+
   describe("after a drain that timed out on runs parked behind a stalled train head", () => {
     const parked = ["p1", "p2", "p3", "p4", "p5", "p6"];
     const busy = parked.map((runId) => ({ runId, step: "merge:0", phase: "merging" }));
@@ -1332,6 +1352,25 @@ describe("titan-factory service deploy verb", () => {
     expect(code).toBe(1);
     expect(machine.holds().manual).toMatchObject({ set: true, hold: { source: "morning:seat-a:7" } });
     expect(machine.mutations()).toEqual([]);
+  });
+
+  it("repoints the CLI link under the injected deploy home, not the host's", async () => {
+    const home = mkdtempSync(join(tmpdir(), "factory-deploy-home-"));
+    scratch.push(home);
+    const staleBuild = join(home, "tree", "products", "factory", "dist", "bin.js");
+    mkdirSync(join(staleBuild, ".."), { recursive: true });
+    writeFileSync(staleBuild, "stale build");
+    const link = join(home, ".local", "bin", "titan-factory");
+    mkdirSync(join(link, ".."), { recursive: true });
+    symlinkSync(staleBuild, link);
+    const deployedBin = `${CHECKOUT}/products/factory/dist/bin.js`;
+    const machine = fakeMachine({ files: { [plistPath(home)]: `<string>${deployedBin}</string>` } });
+    machine.ports.home = home;
+
+    const code = await cliIn(configured({ deployCheckout: CHECKOUT }), machine);
+
+    expect(code).toBe(0);
+    expect(readlinkSync(link)).toBe(deployedBin);
   });
 
   it("deploys from service.deployCheckout when it is configured", async () => {

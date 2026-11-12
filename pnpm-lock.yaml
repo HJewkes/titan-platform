@@ -52,7 +52,7 @@ importers:
         version: 8.70.0(eslint@9.39.5(jiti@1.21.7))(typescript@5.9.3)
       vite:
         specifier: ^8.0.3
-        version: 8.3.0(@types/node@25.9.5)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1)
+        version: 8.3.0(@types/node@25.9.5)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1)
       vitepress:
         specifier: ^1.6.4
         version: 1.6.4(@algolia/client-search@5.59.0)(@types/node@25.9.5)(lightningcss@1.33.0)(postcss@8.5.28)(search-insights@2.17.3)(terser@5.51.2)(typescript@5.9.3)
@@ -61,7 +61,7 @@ importers:
         version: 2.0.17(mermaid@11.17.2)(vitepress@1.6.4(@algolia/client-search@5.59.0)(@types/node@25.9.5)(lightningcss@1.33.0)(postcss@8.5.28)(search-insights@2.17.3)(terser@5.51.2)(typescript@5.9.3))
       vitest:
         specifier: ^4.1.11
-        version: 4.1.11(@types/node@25.9.5)(jsdom@30.1.0)(vite@8.3.0(@types/node@25.9.5)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1))
+        version: 4.1.11(@types/node@25.9.5)(jsdom@30.1.0)(vite@8.3.0(@types/node@25.9.5)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1))
       yaml:
         specifier: ^2.9.1
         version: 2.9.1
@@ -463,6 +463,9 @@ importers:
       '@titan-design/test-kit':
         specifier: workspace:*
         version: link:../test-kit
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
 
   packages/code-parser:
     dependencies:
@@ -852,6 +855,9 @@ importers:
         specifier: workspace:^
         version: link:../frame-capture
     devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
       playwright-core:
         specifier: 1.63.0
         version: 1.63.0
@@ -867,6 +873,10 @@ importers:
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../store-sqlite
+    devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
 
   packages/review-burden:
     dependencies:
@@ -972,6 +982,9 @@ importers:
         specifier: workspace:^
         version: link:../store-sqlite
     devDependencies:
+      esbuild:
+        specifier: ^0.27.0
+        version: 0.27.7
       zod:
         specifier: ^4.4.3
         version: 4.5.4
@@ -1241,6 +1254,9 @@ importers:
       '@titan-design/agent-protocol':
         specifier: workspace:^
         version: link:../../packages/agent-protocol
+      '@titan-design/app-paths':
+        specifier: workspace:^
+        version: link:../../packages/app-paths
       '@titan-design/cluster':
         specifier: workspace:^
         version: link:../../packages/cluster
@@ -1286,9 +1302,6 @@ importers:
       commander:
         specifier: ^14.0.3
         version: 14.0.3
-      env-paths:
-        specifier: ^4.0.0
-        version: 4.0.0
       gray-matter:
         specifier: ^4.0.3
         version: 4.0.3
@@ -1331,7 +1344,10 @@ importers:
         version: 19.3.0(@types/react@19.3.0)
       '@vitejs/plugin-react':
         specifier: ^6.0.1
-        version: 6.1.1(vite@8.3.0(@types/node@22.20.5)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1))
+        version: 6.1.1(vite@8.3.0(@types/node@22.20.5)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1))
+      env-paths:
+        specifier: ^4.0.0
+        version: 4.0.0
       react:
         specifier: ^19.2.6
         version: 19.3.0
@@ -1349,10 +1365,10 @@ importers:
         version: 4.23.13
       vite:
         specifier: ^8.0.12
-        version: 8.3.0(@types/node@22.20.5)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1)
+        version: 8.3.0(@types/node@22.20.5)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1)
       vite-plugin-singlefile:
         specifier: ^2.3.3
-        version: 2.3.3(rollup@4.63.1)(vite@8.3.0(@types/node@22.20.5)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1))
+        version: 2.3.3(rollup@4.63.1)(vite@8.3.0(@types/node@22.20.5)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1))
 
   products/corpus-query:
     dependencies:
@@ -1559,6 +1575,9 @@ importers:
 
   products/factory:
     dependencies:
+      '@pnpm/parse-overrides':
+        specifier: ^1001.0.4
+        version: 1001.0.4
       '@titan-design/agent':
         specifier: workspace:^
         version: link:../../packages/agent
@@ -1577,6 +1596,9 @@ importers:
       '@titan-design/cluster':
         specifier: workspace:^
         version: link:../../packages/cluster
+      '@titan-design/code-graph':
+        specifier: workspace:^
+        version: link:../../packages/code-graph
       '@titan-design/coordinator':
         specifier: workspace:^
         version: link:../../packages/coordinator
@@ -1586,6 +1608,9 @@ importers:
       '@titan-design/dispatch-ledger':
         specifier: workspace:^
         version: link:../../packages/dispatch-ledger
+      '@titan-design/evidence':
+        specifier: workspace:^
+        version: link:../../packages/evidence
       '@titan-design/fix-proof':
         specifier: workspace:^
         version: link:../../packages/fix-proof
@@ -1640,6 +1665,9 @@ importers:
       commander:
         specifier: ^14.0.3
         version: 14.0.3
+      jsonc-parser:
+        specifier: ^3.3.1
+        version: 3.3.1
       yaml:
         specifier: ^2.9.1
         version: 2.9.1
@@ -1662,6 +1690,9 @@ importers:
 
   products/fleet-panel:
     dependencies:
+      '@titan-design/anthropic-account':
+        specifier: workspace:^
+        version: link:../../packages/anthropic-account
       '@titan-design/rpc-protocol':
         specifier: workspace:^
         version: link:../../packages/rpc-protocol
@@ -1680,6 +1711,9 @@ importers:
       '@titan-design/rpc-protocol':
         specifier: workspace:^
         version: link:../../packages/rpc-protocol
+      '@titan-design/session-read':
+        specifier: workspace:^
+        version: link:../../packages/session-read
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../../packages/store-sqlite
@@ -3260,6 +3294,34 @@ packages:
   '@pinojs/redact@0.4.0':
     resolution: {integrity: sha512-k2ENnmBugE/rzQfEcdWHcCY+/FM3VLzH9cYEsbdsoqrvzAKRhUZeRNhAZvB8OitQJ1TBed3yqWtdjzS6wJKBwg==}
 
+  '@pnpm/catalogs.protocol-parser@1001.0.0':
+    resolution: {integrity: sha512-9rHKCMRvhfv7TSAVSCVLI+8OZhi1OcT8lanAGqOPbGgQTkFrPH3PfEWJNxz43xqrXRa4HCFRAMu+g19su5eRLA==}
+    engines: {node: '>=18.12'}
+
+  '@pnpm/catalogs.resolver@1000.0.5':
+    resolution: {integrity: sha512-h6UiDAu/Ztj0LCd9sqmJwSWvJYTMUuxo/+/Iz2WZuWboyUI+2BylWJvokkMG4hNlvroLzBQ5+cz9/e+TDSLpoA==}
+    engines: {node: '>=18.12'}
+
+  '@pnpm/catalogs.types@1000.0.0':
+    resolution: {integrity: sha512-xRf72lk7xHNvbenA4sp4Of/90QDdRW0CRYT+V+EbqpUXu1xsXtedHai34cTU6VGe7C1hUukxxE9eYTtIpYrx5g==}
+    engines: {node: '>=18.12'}
+
+  '@pnpm/constants@1001.3.1':
+    resolution: {integrity: sha512-2hf0s4pVrVEH8RvdJJ7YRKjQdiG8m0iAT26TTqXnCbK30kKwJW69VLmP5tED5zstmDRXcOeH5eRcrpkdwczQ9g==}
+    engines: {node: '>=18.12'}
+
+  '@pnpm/error@1000.1.0':
+    resolution: {integrity: sha512-Dqc2IJJPjUatwc9Letw+vG29rnaMrDGi5g6WCx1HiZYm0obXbTmLygeRafMbgf+sLKXrWE1shOeiayQuczBdoA==}
+    engines: {node: '>=18.12'}
+
+  '@pnpm/parse-overrides@1001.0.4':
+    resolution: {integrity: sha512-fk6gFXDKN61vZfb/qbTne/938GPQaYy8U+B2TdBPxPuw2M/U8l1ltlUoJZzR3SW4O+jghzaFKTVVIPiPs3K1AQ==}
+    engines: {node: '>=18.12'}
+
+  '@pnpm/parse-wanted-dependency@1001.0.0':
+    resolution: {integrity: sha512-cIZao+Jdu/4znu76d3ttAWBycDj6GWKiDVNlx1GVgqYgS/Qn7ak3Lm0FGIMAIHr5oOnX63jwzKIhW35AHNaTjQ==}
+    engines: {node: '>=18.12'}
+
   '@protobufjs/aspromise@1.1.2':
     resolution: {integrity: sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ==}
 
@@ -4305,6 +4367,9 @@ packages:
 
   buffer-from@1.1.2:
     resolution: {integrity: sha512-E+XQCRwSbaaiChtv6k6Dwgc+bx+Bs6vuKJHHl5kox/BaKbhiXzqQOwK4cO22yElGp2OCmjwVhT3HmxgyPGnJfQ==}
+
+  builtins@5.1.0:
+    resolution: {integrity: sha512-SW9lzGTLvWTP1AY8xeAMZimqDrIaSdLQUcVr9DMef51niJ022Ri87SwRRKYm4A6iHfkPaiVUu/Duw2Wc4J7kKg==}
 
   bundle-require@5.1.0:
     resolution: {integrity: sha512-3WrrOuZiyaaZPWiEt4G3+IffISVC9HYlWueJEBWED4ZH4aIAC2PnkdnuRrR94M+w6yGWn4AglWtJtBI8YqvgoA==}
@@ -5492,6 +5557,9 @@ packages:
     resolution: {integrity: sha512-XmOWe7eyHYH14cLdVPoyg+GOH3rYX++KpzrylJwSW98t3Nk+U8XOl8FWKOgwtzdb8lXGf6zYwDUzeHMWfxasyg==}
     engines: {node: '>=6'}
     hasBin: true
+
+  jsonc-parser@3.3.1:
+    resolution: {integrity: sha512-HUgH65KyejrUFPvHFPbqOY0rsFip3Bo5wb4ngvdi1EpCYWUQDC5V+Y7mZws+DLkr4M//zQJoanu1SP+87Dv1oQ==}
 
   jsonfile@4.0.0:
     resolution: {integrity: sha512-m6F1R3z8jjlf2imQHS2Qez5sjKWQzbuuhuJ/FKYFRZvPE3PuHcSMVZzfsLhGVOkfd20obL5SWEBew5ShlquNxg==}
@@ -7053,6 +7121,10 @@ packages:
   uuid@14.0.2:
     resolution: {integrity: sha512-xZe/16rV4aa+HGSOCiY2YeLT1OybRLrrkL/Rqaq7p7GMVXjFh+6wN4oMYgjFmnSnhY8t6Xpdl2l9qmnHYuMHwQ==}
     hasBin: true
+
+  validate-npm-package-name@5.0.0:
+    resolution: {integrity: sha512-YuKoXDAhBYxY7SfOKxHBDoSyENFeW5VvIIQp2TGQuit8gpK6MnWaQelBKxso72DoxTZfZdcP3W90LqpSkgPzLQ==}
+    engines: {node: ^14.17.0 || ^16.13.0 || >=18.0.0}
 
   vary@1.1.2:
     resolution: {integrity: sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg==}
@@ -8790,6 +8862,32 @@ snapshots:
 
   '@pinojs/redact@0.4.0': {}
 
+  '@pnpm/catalogs.protocol-parser@1001.0.0': {}
+
+  '@pnpm/catalogs.resolver@1000.0.5':
+    dependencies:
+      '@pnpm/catalogs.protocol-parser': 1001.0.0
+      '@pnpm/error': 1000.1.0
+
+  '@pnpm/catalogs.types@1000.0.0': {}
+
+  '@pnpm/constants@1001.3.1': {}
+
+  '@pnpm/error@1000.1.0':
+    dependencies:
+      '@pnpm/constants': 1001.3.1
+
+  '@pnpm/parse-overrides@1001.0.4':
+    dependencies:
+      '@pnpm/catalogs.resolver': 1000.0.5
+      '@pnpm/catalogs.types': 1000.0.0
+      '@pnpm/error': 1000.1.0
+      '@pnpm/parse-wanted-dependency': 1001.0.0
+
+  '@pnpm/parse-wanted-dependency@1001.0.0':
+    dependencies:
+      validate-npm-package-name: 5.0.0
+
   '@protobufjs/aspromise@1.1.2': {}
 
   '@protobufjs/base64@1.1.2': {}
@@ -9495,10 +9593,10 @@ snapshots:
 
   '@vercel/oidc@3.2.0': {}
 
-  '@vitejs/plugin-react@6.1.1(vite@8.3.0(@types/node@22.20.5)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1))':
+  '@vitejs/plugin-react@6.1.1(vite@8.3.0(@types/node@22.20.5)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1))':
     dependencies:
       '@rolldown/pluginutils': 1.0.1
-      vite: 8.3.0(@types/node@22.20.5)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1)
+      vite: 8.3.0(@types/node@22.20.5)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1)
 
   '@vitejs/plugin-react@6.1.1(vite@8.3.0(@types/node@25.9.5)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1))':
     dependencies:
@@ -9518,6 +9616,14 @@ snapshots:
       '@vitest/utils': 4.1.11
       chai: 6.3.0
       tinyrainbow: 3.2.0
+
+  '@vitest/mocker@4.1.11(vite@8.3.0(@types/node@25.9.5)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1))':
+    dependencies:
+      '@vitest/spy': 4.1.11
+      estree-walker: 3.0.3
+      magic-string: 0.30.21
+    optionalDependencies:
+      vite: 8.3.0(@types/node@25.9.5)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1)
 
   '@vitest/mocker@4.1.11(vite@8.3.0(@types/node@25.9.5)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1))':
     dependencies:
@@ -9876,6 +9982,10 @@ snapshots:
       node-int64: 0.4.0
 
   buffer-from@1.1.2: {}
+
+  builtins@5.1.0:
+    dependencies:
+      semver: 7.8.5
 
   bundle-require@5.1.0(esbuild@0.27.7):
     dependencies:
@@ -11166,6 +11276,8 @@ snapshots:
   json-with-bigint@3.5.12: {}
 
   json5@2.2.3: {}
+
+  jsonc-parser@3.3.1: {}
 
   jsonfile@4.0.0:
     optionalDependencies:
@@ -12923,6 +13035,10 @@ snapshots:
 
   uuid@14.0.2: {}
 
+  validate-npm-package-name@5.0.0:
+    dependencies:
+      builtins: 5.1.0
+
   vary@1.1.2: {}
 
   vfile-message@4.0.3:
@@ -12935,10 +13051,10 @@ snapshots:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
 
-  vite-plugin-singlefile@2.3.3(rollup@4.63.1)(vite@8.3.0(@types/node@22.20.5)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1)):
+  vite-plugin-singlefile@2.3.3(rollup@4.63.1)(vite@8.3.0(@types/node@22.20.5)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1)):
     dependencies:
       micromatch: 4.0.8
-      vite: 8.3.0(@types/node@22.20.5)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1)
+      vite: 8.3.0(@types/node@22.20.5)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1)
     optionalDependencies:
       rollup: 4.63.1
 
@@ -12960,7 +13076,7 @@ snapshots:
       lightningcss: 1.33.0
       terser: 5.51.2
 
-  vite@8.3.0(@types/node@22.20.5)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1):
+  vite@8.3.0(@types/node@22.20.5)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1):
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.7
@@ -12969,6 +13085,22 @@ snapshots:
       tinyglobby: 0.2.17
     optionalDependencies:
       '@types/node': 22.20.5
+      esbuild: 0.28.2
+      fsevents: 2.3.3
+      jiti: 1.21.7
+      terser: 5.51.2
+      tsx: 4.23.13
+      yaml: 2.9.1
+
+  vite@8.3.0(@types/node@25.9.5)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1):
+    dependencies:
+      lightningcss: 1.33.0
+      picomatch: 4.0.7
+      postcss: 8.5.28
+      rolldown: 1.2.9
+      tinyglobby: 0.2.17
+    optionalDependencies:
+      '@types/node': 25.9.5
       esbuild: 0.27.7
       fsevents: 2.3.3
       jiti: 1.21.7
@@ -13048,6 +13180,34 @@ snapshots:
       - terser
       - typescript
       - universal-cookie
+
+  vitest@4.1.11(@types/node@25.9.5)(jsdom@30.1.0)(vite@8.3.0(@types/node@25.9.5)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1)):
+    dependencies:
+      '@vitest/expect': 4.1.11
+      '@vitest/mocker': 4.1.11(vite@8.3.0(@types/node@25.9.5)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1))
+      '@vitest/pretty-format': 4.1.11
+      '@vitest/runner': 4.1.11
+      '@vitest/snapshot': 4.1.11
+      '@vitest/spy': 4.1.11
+      '@vitest/utils': 4.1.11
+      es-module-lexer: 2.3.2
+      expect-type: 1.4.0
+      magic-string: 0.30.21
+      obug: 2.2.1
+      pathe: 2.0.3
+      picomatch: 4.0.7
+      std-env: 4.3.0
+      tinybench: 2.9.0
+      tinyexec: 1.3.1
+      tinyglobby: 0.2.17
+      tinyrainbow: 3.2.0
+      vite: 8.3.0(@types/node@25.9.5)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1)
+      why-is-node-running: 2.3.0
+    optionalDependencies:
+      '@types/node': 25.9.5
+      jsdom: 30.1.0
+    transitivePeerDependencies:
+      - msw
 
   vitest@4.1.11(@types/node@25.9.5)(jsdom@30.1.0)(vite@8.3.0(@types/node@25.9.5)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1)):
     dependencies:

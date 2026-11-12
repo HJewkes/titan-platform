@@ -20,7 +20,7 @@ import { loadSessionsFromDir } from './open-loops.js';
 import { renderRecoveredBody } from './recovered-body.js';
 import { writeSessionFile, type SessionWriteResult } from './session-file.js';
 
-export interface InitiativeTranscript {
+interface InitiativeTranscript {
   sessionId: string;
   path: string;
   /** The transcript root's account, used as the source namespace. */
@@ -87,7 +87,7 @@ async function recordedFilenames(activeRoot: string, slug: string): Promise<stri
   }
 }
 
-export interface UnrecordedTranscripts {
+interface UnrecordedTranscripts {
   candidates: InitiativeTranscript[];
   recorded: Set<string>;
   live: Set<string>;
@@ -135,7 +135,7 @@ async function newestRecordEnded(target: RecoverTarget): Promise<number | null> 
   return ends.length === 0 ? null : Math.max(...ends);
 }
 
-export interface NewestPick {
+interface NewestPick {
   chosen: InitiativeTranscript | undefined;
   /** Why nothing was chosen. */
   reason?: string;

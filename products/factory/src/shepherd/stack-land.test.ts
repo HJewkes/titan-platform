@@ -5,7 +5,13 @@ import { join } from "node:path";
 import { fakeGitHub, githubPort, type FakeGitHub } from "@titan-design/github";
 import { fixtureEnv, gitIn, seedRepoWithOrigin } from "@titan-design/test-kit/git";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { configuredStackRestack, restackChild, stackChildren, type ChildWake, type RestackInput, type StackLandDeps } from "./stack-land.js";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
+import { configuredStackRestack, restackChild, stackChildren, stackLandRoutes, type ChildWake, type RestackInput, type StackLandDeps } from "./stack-land.js";
+import { nodeCacheFs } from "./carry-cache-adapter.js";
+import { shepherdStoreRef } from "./store.js";
+import type { ShepherdDeps } from "./phases.js";
+import { partialFake } from "@titan-design/test-kit";
+import type { RoutedStepInput } from "@titan-design/workflow";
 import type { Git } from "./tree-carry.js";
 
 const REPO = "acme/widgets";
@@ -95,7 +101,7 @@ function buildStack(options: StackOptions = {}): Stack {
 
   const wakes: ChildWake[] = [];
   const seen: string[][] = [];
-  const deps: StackLandDeps = { port: githubPort(fake.wire), wakeChild: async (wake) => (wakes.push(wake), true), held: () => undefined, stateDir: join(root, "state"), remote: () => origin, git: recordingGit(seen, options.beforePush) };
+  const deps: StackLandDeps = { port: githubPort(fake.wire), wakeChild: async (wake) => (wakes.push(wake), true), held: () => undefined, stateDir: join(root, "state"), remote: () => origin, ports: { ...hostCarryPorts, git: recordingGit(seen, options.beforePush) } };
   const input: RestackInput = { repo: REPO, parentPr, parentHeadRef: PARENT, parentFinal, squash, child: { pr: childPr, headRef: childBranch, headSha: childHead } };
   return { fake, parentPr, childPr, grandchildPr, parentFinal, childHead, grandchildHead, squash, wakes, seen, deps, input };
 }
@@ -318,5 +324,24 @@ describe("configuredStackRestack", () => {
   it("is off when there is no config file or the read throws", () => {
     expect(configuredStackRestack(() => undefined)(REPO)).toBe(false);
     expect(configuredStackRestack(() => { throw new Error("invalid config"); })(REPO)).toBe(false);
+  });
+});
+
+describe("stackLandRoutes", { timeout: 30_000 }, () => {
+  it("a restack fetches and pushes through deps.gitCache's git", async () => {
+    const s = buildStack();
+    const seen: string[][] = [];
+    const real = recordingGit(seen);
+    const githubUrl = `https://github.com/${REPO}.git`;
+    const git: Git = (gitDir, args, signal) => real(gitDir, args.map((arg) => (arg === githubUrl ? origin : arg)), signal);
+    const gitCache = { git, fs: nodeCacheFs, stateDir: () => join(root, "state") };
+    const deps: ShepherdDeps = { gitCache, port: githubPort(s.fake.wire), store: shepherdStoreRef(), now: () => 0, sleep: async () => undefined, agentChatBin: "agent-chat", stackRestack: () => true };
+    const route = stackLandRoutes(deps).find((candidate) => candidate.match === "sh-restack")!;
+
+    const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt: JSON.stringify(s.input), signal: new AbortController().signal, attempt: 0, requestKey: "k" }));
+
+    expect(outcome.ok).toBe(true);
+    expect(seen.map((args) => args[0])).toEqual(expect.arrayContaining(["fetch", "push"]));
+    expect(originRef(`refs/heads/${CHILD}`)).not.toBe(s.childHead);
   });
 });

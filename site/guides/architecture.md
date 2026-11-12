@@ -213,6 +213,7 @@ graph TD
   workflow --> storeSqlite
   activeWork --> agentDispatch
   activeWork --> agentProtocol
+  activeWork --> appPaths
   activeWork --> clusterPkg
   activeWork --> daemon
   activeWork --> decider
@@ -274,9 +275,11 @@ graph TD
   factory --> authority
   factory --> autoresearch
   factory --> clusterPkg
+  factory --> codeGraph
   factory --> coordinator
   factory --> daemon
   factory --> dispatchLedger
+  factory --> evidence
   factory --> fixProof
   factory --> github
   factory --> health
@@ -293,11 +296,13 @@ graph TD
   factory --> storeSqlite
   factory --> workflow
   factory --> worktree
+  fleetPanel --> anthropicAccount
   fleetPanel --> rpcProtocol
   retrievalEval --> appPaths
   retrievalEval --> embed
   retrievalEval --> retrieval
   retrievalEval --> rpcProtocol
+  retrievalEval --> sessionRead
   retrievalEval --> storeSqlite
   sessionMiner --> appPaths
   sessionMiner --> clusterPkg

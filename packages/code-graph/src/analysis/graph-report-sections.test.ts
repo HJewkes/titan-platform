@@ -99,6 +99,22 @@ describe("hotspots", () => {
     expect(hotspotScoreOf(ctx, "new.ts")).toBe(25);
   });
 
+  it("scores every topHotspots row the same as hotspotScoreOf", () => {
+    const ctx = context({
+      nodes: [file("a.ts"), file("b.ts"), file("c.ts")],
+      metrics: [
+        metric("a.ts", "churn_30d", 10), metric("a.ts", "cognitive_max", 7),
+        metric("b.ts", "churn_30d", 3), metric("b.ts", "cognitive_max", 9), metric("b.ts", "recency_30d", 0.3),
+        metric("c.ts", "churn_30d", 5), metric("c.ts", "cognitive_max", 5), metric("c.ts", "recency_30d", 0.55),
+      ],
+    });
+
+    const rows = topHotspots(ctx, 10);
+
+    expect(rows).toHaveLength(3);
+    for (const row of rows) expect(row.score).toBe(hotspotScoreOf(ctx, row.nodeId));
+  });
+
   it("reads the lifetime window's metrics when the window is lifetime", () => {
     const ctx = context({
       nodes: [file("a.ts")],

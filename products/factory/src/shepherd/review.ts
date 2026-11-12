@@ -3,11 +3,11 @@ import type { OwnerOverride } from "./override-stats.js";
 import type { StepDeclaration } from "../definition.js";
 import type { StepRoute } from "@titan-design/workflow";
 import { z } from "zod";
-import { codeRoute, step } from "../workflows/land.js";
+import { codeRoute, repeatAwareRoute, step } from "../workflows/land.js";
 import type { StepClock } from "../workflows/deadline.js";
 import { CORRECT_VERDICT_STEP, CorrectVerdictInputSchema, correctVerdict, type CorrectVerdictInput, type CorrectedResult } from "./correct-verdict.js";
 import { reviewBrief, type CodewatchEvidence, type CodewatchReader } from "./codewatch-questions.js";
-import { attestJudge } from "./attest-evidence.js";
+import { attestJudge, type AttestSkewWiring } from "./attest-evidence.js";
 import { briefClaimsAt } from "./attest-read.js";
 import { AWAIT_VERDICT_STEP, HEAD, awaitLateVerdict, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
 import { awaitVerdictStep } from "./await-verdict-step.js";
@@ -19,10 +19,10 @@ import { ownerIn } from "./seat-tie.js";
 import { checkoutRootOf, dropCheckout, holdContextOf, thenDropCheckout } from "./review-member.js";
 import { Intended, ReviewCauseSchema } from "./review-schemas.js";
 import { MERGE_EVIDENCE_STEPS } from "./merge-evidence-gate.js";
-import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput } from "./merge-facts.js";
+import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput, type OldPathWiring } from "./merge-facts.js";
 import type { ShepherdDeps, ShepherdPhases } from "./phases.js";
 import { PUBLISH_REVIEW_STEPS, publishReviewRoute } from "./publish-review.js";
-import { DEFAULT_BROKER_DOWN_WAIT_MS, DEFAULT_BUSY_WAIT_MS, ReviewerAskTimedOut, ReviewerBrokerStillDown, busyWaits, clearReviewWait, notStarted, noteReviewWait, rosterUnread, startedSession, timedOutUnseen, whileBrokerBooting, whileBrokerBusy, whileRosterSlow, type BrokerDownTiming, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
+import { DEFAULT_BROKER_DOWN_WAIT_MS, DEFAULT_BUSY_WAIT_MS, ReviewerAskTimedOut, ReviewerBrokerStillDown, busyWaits, clearReviewWait, notStarted, noteReviewWait, rosterUnread, rosterUnreadAfterAsk, patientRoster, startedSession, timedOutUnseen, whileBrokerBooting, whileBrokerBusy, type BrokerDownTiming, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
 import { CARRY_STEP, carryRoute, type CarryOptions } from "./tree-carry.js";
 import { reviewerRoleFor, type ReviewerFacts, type ReviewerRoles } from "./reviewer-roles.js";
 import { spawnFacts } from "./spawn-facts.js";
@@ -36,8 +36,9 @@ import { SCOPE_CHECK_STEPS, scopeCheckModeOf, scopeCheckRoute, type ScopeCheckWi
 import { FIX_PROOF_STEPS, readFixProofAt } from "./fix-proof.js";
 import { PROOF_WAIVER_STEPS, fixProofRoutes, proofStandingAt } from "./proof-waiver.js";
 import type { MachineStopWatch } from "./machine-stop.js";
-import type { VisualThreshold } from "./visual-delta-read.js";
+import type { VisualReadsWiring } from "./visual-tier-guard.js";
 import { REVIEW_STEP } from "./review-steps.js";
+import { FOLLOW_UPS_STEPS, followUpsRoute, type FollowUpsWiring } from "./follow-ups-step.js";
 import { REVIEW_STOP_STEPS, reviewStopRoute } from "./review-stop.js";
 import type { HoldMember, PanelMode } from "./review-panel-plan.js";
 import { PANEL_STEPS, PROOF_PLAN_FIELDS, panelVerdictRoute, plannedPanel, proofPlanFields, type PanelOnPlan, type ProfileCheck } from "./review-panel-step.js";
@@ -73,6 +74,7 @@ export const REVIEW_STEPS: readonly StepDeclaration[] = [
   ...NO_REVIEWER_STEPS,
   ...SCOPE_CHECK_STEPS,
   { id: REVIEW_SHADOW_STEP, kind: "dispatch" },
+  ...FOLLOW_UPS_STEPS,
 ];
 
 export const DEFAULT_VERDICT_TIMEOUT_MS = 30 * 60_000;
@@ -169,7 +171,7 @@ function notStartedInTime(intent: ReviewIntent, rosterError: string | undefined)
   return { kind: "none", reason: `reviewer ${intent.reviewer} did not start one session in time${cause}` };
 }
 
-export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeCheckWiring {
+export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeCheckWiring, AttestSkewWiring, OldPathWiring, VisualReadsWiring, FollowUpsWiring {
   reader: ReviewerReader;
   /** Absent means no reviewer is dispatched and the owner gate decides. */
   dispatch?: ReviewerDispatch;
@@ -196,7 +198,7 @@ export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeC
   /** The profile each class of PR is spawned with; a spawned reviewer's profile travels with its verdict. */
   roles?: ReviewerRoles;
   /** How the `sh-carry` probe reaches git; absent means the system git against the factory's cache. */
-  carry?: Omit<CarryOptions, "signal">;
+  carry?: Omit<CarryOptions, "signal" | "ports">;
   /** The reviewer accounts in failover order; absent means no account is checked before a spawn, and a limit holds the one default account. */
   accounts?: ReviewAccounts;
   /** The stops the spawn gate and the broker saw; absent means a silent reviewer is a timeout whatever the machine did. */
@@ -211,8 +213,6 @@ export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeC
   adversaryDispatch?: ReviewerDispatch;
   /** `shepherd.gateReset.twoMergeRelease` other than off: whether two MERGEs release a g10-adversary hold or only record that they would. */
   twoMergeRelease?: TwoMergeMode;
-  /** `shepherd.visualThreshold` for a repo, read per evidence step; absent, or undefined for a repo, measures nothing. */
-  visualThreshold?: (repo: string) => VisualThreshold | undefined;
   /** `review.workflow`, recorded on the intent: `shadow` records each round's would-action, `on:preflight` refuses a head preflight fails. Absent means `off`. */
   workflow?: ReviewWorkflowWiring;
 }
@@ -251,7 +251,7 @@ const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (dep
   const { dispatch, accounts } = wired;
   const timing = bootTiming(deps, wired);
   const budgetMs = wired.sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS;
-  const roster = await whileRosterSlow(timing, signal, budgetMs, () => whileBrokerBooting(timing, signal, () => dispatch.roster())).catch(rosterUnread);
+  const roster = await patientRoster(timing, signal, budgetMs, () => dispatch.roster()).catch(rosterUnread);
   if ("kind" in roster) return roster;
   const store = deps.store.get();
   const registration = store.byRun(input.runId);
@@ -278,7 +278,8 @@ const memberDispatch = (wired: Wired, shape: string | undefined): ReviewerDispat
 const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> = async (deps, wired, { intent, runId, fixFirsts, ownerBrief, fixProof, fixProofUnverified, fixProofWaivedAt, workflowCiProof, shape, profile, convergence, earlierFindings, scopedRereview, ...target }, signal, repeat, clock) => {
   const { dispatch, questions, codewatch, sessionStartTimeoutMs, busyWaitMs, roles } = wired;
   const timing = { ...bootTiming(deps, wired), timeoutMs: sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, busyWaitMs: busyWaitMs ?? DEFAULT_BUSY_WAIT_MS };
-  const roster = await whileBrokerBooting(timing, signal, () => dispatch.roster());
+  const roster = await patientRoster(timing, signal, timing.timeoutMs, () => dispatch.roster()).catch(rosterUnread);
+  if ("kind" in roster) return roster;
   // A held name was spawned by an earlier run, and a refused spawn holds none; a repeat that crashed before its resume landed asks again.
   const asked = roster.some(intent.mode === "resume" ? (agent) => repeat && resumedSince(intent)(agent) : holds(intent));
   const waits: string[] = [];
@@ -291,11 +292,13 @@ const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> 
     await dropCheckout(deps, target, shape);
     return outcome;
   }
-  const { agent: started, rosterError } = await startedSession(() => dispatch.roster(), holds(intent), { ...timing, startedAt: asked ? clock?.firstStartedAtMs : undefined }, signal);
+  const { agent: started, rosterError, onlyTimedOut } = await startedSession(() => dispatch.roster(), holds(intent), { ...timing, startedAt: asked ? clock?.firstStartedAtMs : undefined }, signal);
   if (!started) {
     await dropCheckout(deps, target, shape);
     // An unseen timed-out ask started nobody, so the review is retried now rather than held as no-reviewer.
-    return outcome === "timed-out" ? timedOutUnseen(timing.timeoutMs, waits) : notStartedInTime(intent, rosterError);
+    if (outcome === "timed-out") return timedOutUnseen(timing.timeoutMs, waits);
+    // The ask went through but no roster read ever answered, so nothing is known about the session; retry rather than count a round.
+    return onlyTimedOut ? rosterUnreadAfterAsk(timing.timeoutMs, waits) : notStartedInTime(intent, rosterError);
   }
   const spawnedAs = profile ?? (roles && reviewerRoleFor(facts, roles));
   return { kind: "dispatched", ...intent, agentId: started.agentId, sessionId: started.sessionId, startedAt: deps.now(), ...(intent.mode === "spawn" && spawnedAs !== undefined && { profile: spawnedAs }), ...busyWaits(waits), ...(asking?.codewatch && { codewatch: asking.codewatch }), ...scopedResultFields(scopedRereview) };
@@ -307,12 +310,6 @@ const correctReviewer: BrokerStepBody<CorrectVerdictInput, CorrectedResult> = (d
   const timing = { ...brokerTiming(deps), timeoutMs: sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, busyWaitMs: busyWaitMs ?? DEFAULT_BUSY_WAIT_MS };
   return correctVerdict(memberDispatch(wired, input.shape) ?? dispatch, input, timing, signal, repeat);
 };
-
-/** `codeRoute` for a body that must know it ran before: a first run is attempt 0 with no restarts, and only the recovery of an interrupted step raises either. */
-function repeatAwareRoute<I>(match: string, now: () => number, fn: (input: I, signal: AbortSignal, clock: StepClock, repeat: boolean) => Promise<object>): StepRoute {
-  const routeFor = (repeat: boolean) => codeRoute(match, now, (input: I, signal, clock) => fn(input, signal, clock, repeat));
-  return { ...routeFor(false), runner: { run: (step) => routeFor(step.attempt > 0 || (step.restarts ?? 0) > 0).runner.run(step) } };
-}
 
 /** With no reader wired the verdict step answers `none` at once, so the owner gate decides. */
 export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonly StepRoute[] => {
@@ -326,8 +323,8 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     codeRoute(LATE_VERDICT_STEP, deps.now, (raw: unknown, signal, clock) => seatVetoed(wiring, (late: unknown, lateSignal) => lateVerdict(deps, wiring, parseAwaitVerdictInput(late), lateSignal, clock.firstStartedAtMs), deps.now, seatWait, ownerIn(deps.store))(raw, signal)),
     repeatAwareRoute(CORRECT_VERDICT_STEP, deps.now, brokerStep(deps, wiring, CorrectVerdictInputSchema, correctReviewer)),
     codeRoute(SEAT_RECHECK_STEP, deps.now, seatVetoed(wiring, async (raw: unknown) => heldMerge(raw), deps.now, seatWait, ownerIn(deps.store))),
-    codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput, signal: AbortSignal) => mergeEvidence(deps.port, input, wiring?.isFrozen ?? noFreezeStoreUntilTp523, registeredKind(deps.store, input.runId), { sleep: (ms) => deps.sleep(ms, signal) }, { reviewAppId: wiring?.reviewAppId, threshold: wiring?.visualThreshold?.(input.repo), attest: attestJudge(deps.port, deps.store, wiring ?? {}) })),
-    carryRoute(deps.now, wiring?.carry),
+    codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput, signal: AbortSignal) => mergeEvidence(deps.port, input, wiring?.isFrozen ?? noFreezeStoreUntilTp523, registeredKind(deps.store, input.runId), { sleep: (ms) => deps.sleep(ms, signal) }, { reviewAppId: wiring?.reviewAppId, threshold: wiring?.visualThreshold?.(input.repo), tier: wiring?.visualTier?.(input.repo), oldPath: wiring?.oldPath, attest: attestJudge(deps.port, deps.store, wiring ?? {}, { timing: { ...brokerTiming(deps), brokerDownWaitMs: wiring?.brokerDownWaitMs ?? DEFAULT_BROKER_DOWN_WAIT_MS }, budgetMs: wiring?.sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, signal }) })),
+    carryRoute(deps.now, { ports: deps.gitCache, ...wiring?.carry }),
     publishReviewRoute(deps),
     ...accountRoutes(deps, wiring?.accounts),
     reviewRequestRoute(deps),
@@ -337,6 +334,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     ...noReviewerRoutes(deps, wiring?.accounts?.alert),
     scopeCheckRoute(deps.now),
     reviewShadowRoute(deps.now, wiring),
+    followUpsRoute(deps.now, wiring?.followUps),
   ];
 };
 

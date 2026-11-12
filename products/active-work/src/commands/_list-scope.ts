@@ -1,6 +1,6 @@
 import { HumanOnlyUnreadableError, loadHumanOnlyInitiatives } from '../decider/human-only.js';
 import { UsageError } from '../errors.js';
-import { listInitiativeSlugs } from '../lint/index.js';
+import { listInitiativeSlugs } from '../sessions/initiatives.js';
 import { getActiveRoot } from '../utils/paths.js';
 import { validateSlug } from '../utils/slug.js';
 
@@ -9,7 +9,7 @@ interface ListScope {
   all_initiatives?: boolean;
 }
 
-export interface HumanOnlyPredicate {
+interface HumanOnlyPredicate {
   known: boolean;
   isHumanOnly: (slug: string) => boolean;
 }

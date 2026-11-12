@@ -1,11 +1,15 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { RoundSummary } from "../../server/rounds.js";
 import { RoundSetLinks } from "./RoundSetNav.js";
 import { roundsInSet, setKeyOf, setPositionOf } from "./round-set.js";
+import { BELOW_MD } from "./phone.js";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 beforeEach(() => {
   window.location.hash = "";
 });
@@ -52,6 +56,14 @@ describe("RoundSetLinks", () => {
     expect(screen.getByText("Next: jar-lids-r3 →")).toBeTruthy();
     fireEvent.click(screen.getByText("jar-lids · 2 of 4"));
     expect(window.location.hash).toBe("#/rounds?set=jar-lids");
+  });
+
+  it("leaves the neighbours' ids off on a phone, so Prev, the set and Next share a row", () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === BELOW_MD, media: query, addEventListener: () => undefined, removeEventListener: () => undefined }));
+    render(<RoundSetLinks rounds={rounds} id="jar-lids-r2" />);
+    expect(screen.getByText("← Prev").closest("a")?.getAttribute("href")).toBe("#/rounds/jar-lids-r1");
+    expect(screen.getByText("Next →").closest("a")?.getAttribute("href")).toBe("#/rounds/jar-lids-r3");
+    expect(screen.queryByText(/jar-lids-r1/)).toBeNull();
   });
 
   it("disables the step past an end and hides the key hint for a set of one", () => {

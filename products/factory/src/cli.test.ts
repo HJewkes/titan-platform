@@ -13,9 +13,11 @@ import { openFactoryHost } from "./host.js";
 import { DEPRECATED_INTERVAL } from "./reconciler/config.js";
 import type { StepRoute } from "@titan-design/workflow";
 import { startFactoryServer, type FactoryServer } from "./serve.js";
+import { hostCarryPorts } from "./shepherd/carry-cache-adapter.js";
 import { H1, REPO, gateId, gateOpened } from "./test-support/land.js";
 import { BRANCH, callCommand, shepherdFixture } from "./test-support/shepherd.js";
 import { landPrRoutes, landPrWorkflow } from "./workflows/land-pr.js";
+import { hostPostMerge } from "./workflows/post-merge-adapter.js";
 import { partialFake } from "@titan-design/test-kit";
 import { portOf } from "./test-support/fakes.js";
 
@@ -38,7 +40,7 @@ function landDeps(hangAt?: string): CliDeps & { routes: readonly StepRoute[] } {
   fake.addPr({ headSha: H1 });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   let clock = 0;
-  const routes = landPrRoutes({ port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms) });
+  const routes = landPrRoutes({ ...hostPostMerge(), gitCache: hostCarryPorts, port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms) });
   return { workflows: [landPrWorkflow()], routes: hangAt ? hanging(routes, hangAt) : routes, host: { gatePollMs: 5 }, logger: silentLogger };
 }
 
@@ -362,6 +364,29 @@ describe("shepherd register with a bare task ID", () => {
     const result = await cli(["shepherd", "register", "o/r#1", "--task", "CC-784", "--implementer", "agent", "--offline"], { ...landDeps(), fetch });
     expect(result.code).toBe(EXIT.USAGE);
     expect(result.err).toContain("pass --task <initiative>/<ID>");
+  });
+});
+
+describe("shepherd register refusals", () => {
+  const refusingDeps = (denied: string[]): CliDeps => {
+    const fixture = shepherdFixture({ frozen: true, seats: { seats: [], denied } });
+    fixture.fake.addPr({ headSha: H1, headRef: BRANCH });
+    return { workflows: fixture.workflows, routes: fixture.routes, host: { gatePollMs: 5 }, logger: silentLogger };
+  };
+
+  it("exits REFUSED for a repo on a deny list or charter hard stop", async () => {
+    const result = await cli(["--db", dbFile(), "shepherd", "register", `${REPO}#1`, "--task", "demo/T-1", "--implementer", "impl-a", "--offline", "--port", String(await deadPort())], refusingDeps([REPO]));
+
+    expect(result.code).toBe(EXIT.REFUSED);
+    expect(EXIT.REFUSED).toBe(65);
+    expect(result.err).toContain("registration refused");
+  });
+
+  it("still exits USAGE, not REFUSED, when the arguments are malformed", async () => {
+    const result = await cli(["--db", dbFile(), "shepherd", "register", `${REPO}#1`, "--implementer", "impl-a", "--offline", "--port", String(await deadPort())], refusingDeps([REPO]));
+
+    expect(result.code).toBe(EXIT.USAGE);
+    expect(EXIT.USAGE).toBe(2);
   });
 });
 

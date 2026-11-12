@@ -31,18 +31,22 @@ const missing = () => {
 };
 
 describe("the tree tally", () => {
-  it("counts a real tree that fills before its watch lands", async () => {
+  it("counts a real tree that fills before its watch lands", () => {
     const base = root();
-    const { tally, close } = createTreeTally({ root: base });
+    // Real directory and scans, but the root's rename events are delivered by hand: inotify delivery is the kernel's and
+    // can lag arbitrarily under load, which is not what this case is about.
+    const { watch, callbacks } = fakeWatch();
+    const { tally } = createTreeTally({ root: base, watch });
 
     mkdirSync(join(base, "f-one", "repo", ".git"), { recursive: true });
     writeFileSync(join(base, "f-one", "repo", ".git", "HEAD"), "ref");
     writeFileSync(join(base, "stray.txt"), "x");
+    callbacks.get(base)("rename", "f-one");
+    callbacks.get(base)("rename", "stray.txt");
 
     // Sums the tally: a footprint run of this test puts the whole root under its own f- dir.
-    const totals = () => Object.values(tally.byDir).reduce((sum, { files, dirs }) => ({ files: sum.files + files, dirs: sum.dirs + dirs }), { files: 0, dirs: 0 });
-    await vi.waitFor(() => expect(totals()).toEqual({ files: 2, dirs: 2 }));
-    close();
+    const totals = Object.values(tally.byDir).reduce((sum, { files, dirs }) => ({ files: sum.files + files, dirs: sum.dirs + dirs }), { files: 0, dirs: 0 });
+    expect(totals).toEqual({ files: 2, dirs: 2 });
   });
 
   it("counts a path once however often it is replaced", () => {

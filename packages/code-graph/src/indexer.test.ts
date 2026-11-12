@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { FIXTURE_TSCONFIG, openTestStore } from "./incremental.test-helpers.js";
+import { FIXTURE_TSCONFIG, fullIndexSnapshot, openTestStore, readSnapshot } from "./incremental.test-helpers.js";
 import { indexPaths } from "./indexer.js";
 import type { CodeGraphStore } from "./store.js";
 
@@ -128,8 +128,9 @@ describe("indexPaths", () => {
 
     await fs.writeFile(path.join(root, "src/b.ts"), `${B_TS}export const extra = 2;\n`);
     const structural = await index();
-    // The index.ts barrel re-exports from b.ts, so it re-extracts against b's new surface (TP-3636).
-    expect(structural.reparsed).toBe(2);
+    // The index.ts barrel re-exports only `classify` from b.ts and never names `extra`, so it stays reused (TP-3676).
+    expect(structural.reparsed).toBe(1);
+    expect(readSnapshot(store, structural.snapshotId)).toEqual(await fullIndexSnapshot(root));
     expect(structural.cosmetic).toBe(0);
     const symbols = store.listNodes(structural.snapshotId, { includeSymbols: true });
     expect(symbols.map((n) => n.id)).toContain("src/b.ts#extra");
@@ -219,7 +220,7 @@ describe("indexPaths", () => {
     const nodes = store.listNodes(result.snapshotId, { includeSymbols: true });
     expect(nodes.find((n) => n.id === "src/loader.py")).toMatchObject({ kind: "file", language: "python" });
     expect(nodes.map((n) => n.id)).toContain("src/loader.py#load");
-    expect(nodes.find((n) => n.id === "npm:json")).toMatchObject({ kind: "external" });
+    expect(nodes.find((n) => n.id === "python:json")).toMatchObject({ kind: "external" });
 
     const edges = store.listEdges(result.snapshotId);
     expect(edges).toContainEqual(

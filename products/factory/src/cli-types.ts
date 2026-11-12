@@ -3,6 +3,7 @@ import type { StepRoute } from "@titan-design/workflow";
 import type { BotIdentity } from "./bot-identity.js";
 import type { InboxLink } from "./blocker/link.js";
 import type { WorkflowDefinition } from "./definition.js";
+import type { CliLinkPorts } from "./deploy-cli-link.js";
 import type { DeployPorts } from "./deploy.js";
 import type { GitBehindProbe } from "./deploy-behind.js";
 import type { DeployWatch } from "./deploy-watch.js";
@@ -10,16 +11,19 @@ import type { GateNotifyOptions } from "./gate-notify-sweep.js";
 import type { ConsoleAnswersOptions } from "./gate-answer-rpc.js";
 import type { SourcesReader } from "./github-sources/mode.js";
 import type { FactoryHost, FactoryHostOptions, FactoryRoutes } from "./host.js";
+import type { OwnerGatesAuditDeps } from "./owner-gates/audit-command.js";
 import type { PlannerDeps } from "./planner/command.js";
 import type { ServeReconciler } from "./reconciler/bot-ports.js";
 import type { CheckPorts } from "./service-check.js";
 import type { ServicePorts } from "./service-control.js";
 import type { ServeIngressOptions } from "./serve-ingress.js";
+import type { ConsumerBumpPorts } from "./shepherd/bump-consumers.js";
 import type { DeployPacerOptions } from "./shepherd/deploy-pacer.js";
 import type { FixerRetirePorts } from "./shepherd/fixer-retire.js";
 import type { MainWatchPorts } from "./shepherd/main-watch.js";
 import type { HeadRefRead } from "./shepherd/register-identity.js";
 import type { SeatDigestPorts } from "./shepherd/seat-digest.js";
+import type { CiTimingFallbackPorts } from "./ci-timing-fallback.js";
 
 export interface CliIo {
   stdout: (text: string) => void;
@@ -43,6 +47,8 @@ export interface CliDeps {
   check?: CheckPorts;
   /** What `service deploy` runs git, pnpm and launchctl or systemctl through; defaults to the real machine in this bin's own checkout. */
   deploy?: DeployPorts;
+  /** The CLI symlink `service deploy` repoints after a successful rollout; defaults to .local/bin/titan-factory under the deploy ports' home, so a faked `deploy` confines it too. */
+  cliLink?: CliLinkPorts;
   /** What `shepherd register` resolves a bare task ID through; defaults to the global fetch. */
   fetch?: typeof fetch;
   /** How `shepherd register` reads a PR's head branch to infer a missing --task or --implementer; defaults to gh. */
@@ -60,6 +66,7 @@ export interface CliDeps {
   fixerRetire?: (env: NodeJS.ProcessEnv) => FixerRetirePorts | undefined;
   /** The serve verb's seat digest; absent, or undefined for an env, means serve sends none. */
   seatDigest?: (env: NodeJS.ProcessEnv) => SeatDigestPorts | undefined;
+  ciTimingFallback?: (env: NodeJS.ProcessEnv) => CiTimingFallbackPorts | undefined;
   /** The serve verb's gate notifier; absent, or undefined for an env, means serve posts no gate to agent-chat. */
   gateNotify?: (env: NodeJS.ProcessEnv) => GateNotifyOptions | undefined;
   /** The serve verb's console Ship route; absent, or undefined for an env, means serve does not mount it. */
@@ -74,8 +81,12 @@ export interface CliDeps {
   bot?: () => BotIdentity;
   /** The deprecation lines the serve verb logs at start for the config file; absent means it logs none. */
   configDeprecations?: (env: NodeJS.ProcessEnv) => string[];
+  /** What `owner-gates audit` and `weekly` judge, probe ancestry and read the clock through; defaults to sonnet via `claude -p`, the deploy checkout and the system clock. */
+  ownerGatesAudit?: OwnerGatesAuditDeps;
   /** What `planner wake` runs agent-chat and its input commands through; defaults to the real machine. */
   planner?: PlannerDeps;
+  /** What `release bump-consumers` asks npm latest and regenerates lockfiles through; defaults to registry.npmjs.org and a scratch-dir install. */
+  consumerBump?: ConsumerBumpPorts;
   /** What `blocker raise` asks for the inbox link; defaults to the configured titan-console argv. */
   inboxLink?: InboxLink;
   /** Ends the process once serve has closed, so a child an abandoned tick still holds cannot keep it alive; absent means serve returns instead. */

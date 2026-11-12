@@ -5,6 +5,7 @@
  * only, this one ranks by relevance. Callers pass the text a trigger already
  * carries and get a bounded, fail-open list of openable hits back.
  */
+import { ContextBudgetSchema } from '@titan-design/retrieval';
 import { z } from 'zod';
 import { defineCommand } from '../registry/index.js';
 import { SEARCH_CLASSES } from '../search/classes.js';
@@ -15,9 +16,11 @@ import {
   type HitLogWriter,
 } from '../search/hit-log.js';
 import {
+  RELATED_CONTEXT_CANDIDATES,
   RELATED_DEFAULT_BUDGET,
   RELATED_DEFAULT_CLASSES,
   RELATED_DEFAULT_LIMIT,
+  RELATED_DEFAULT_TOKENS,
   relatedContext,
   type RelatedInput,
   type RelatedResult,
@@ -38,6 +41,9 @@ const ArgsSchema = z.object({
   initiative: z.string().min(1).optional(),
   limit: z.number().int().positive().max(50).optional(),
   budget: z.number().int().positive().optional(),
+  mode: z.enum(['list', 'context']).optional(),
+  tokens: ContextBudgetSchema.shape.tokens.positive().optional(),
+  maxTier: ContextBudgetSchema.shape.maxTier,
   classes: z
     .array(z.string())
     .refine((names) => names.every((name) => CLASS_NAMES.includes(name)), {
@@ -67,6 +73,22 @@ const ResultSchema = z.object({
   // Why the list is short or empty. Never an error: a caller renders what it got.
   degraded: z.array(z.object({ source: z.string(), reason: z.string(), message: z.string() })),
   query: z.object({ terms: z.array(z.string()), expression: z.string() }),
+  entries: z
+    .array(
+      z.object({
+        ref: z.string(),
+        class: z.string(),
+        tier: z.number(),
+        text: z.string(),
+        tokens: z.number(),
+      }),
+    )
+    .optional(),
+  dropped: z
+    .array(z.object({ ref: z.string(), class: z.string(), reason: z.string() }))
+    .optional(),
+  usedTokens: z.number().optional(),
+  budgetTokens: z.number().optional(),
 });
 
 type Args = z.infer<typeof ArgsSchema>;
@@ -85,7 +107,7 @@ async function logServed(args: Args, result: RelatedResult, hitLog: HitLogWriter
     result.degraded.push({ source: 'hit-log', reason: 'error', message: failure });
 }
 
-export interface RelatedDeps {
+interface RelatedDeps {
   activeRoot: string;
   hitLog?: HitLogWriter;
   dbPath?: string;
@@ -121,6 +143,9 @@ function relatedInput(args: Args, deps: RelatedDeps, servable: Servable): Relate
     ...(args.initiative !== undefined ? { initiative: args.initiative } : {}),
     ...(args.limit !== undefined ? { limit: args.limit } : {}),
     ...(args.budget !== undefined ? { budget: args.budget } : {}),
+    ...(args.mode !== undefined ? { mode: args.mode } : {}),
+    ...(args.tokens !== undefined ? { tokens: args.tokens } : {}),
+    ...(args.maxTier !== undefined ? { maxTier: args.maxTier } : {}),
     ...(args.classes !== undefined ? { classes: args.classes } : {}),
     ...(args.exclude !== undefined ? { exclude: args.exclude } : {}),
   };
@@ -166,7 +191,19 @@ export default defineCommand<Args, Result>({
       },
       limit: {
         long: '--limit',
-        description: `Most hits to return (default ${RELATED_DEFAULT_LIMIT})`,
+        description: `Most hits to return (default ${RELATED_DEFAULT_LIMIT}); in context mode, candidates planned over (default ${RELATED_CONTEXT_CANDIDATES})`,
+      },
+      mode: {
+        long: '--mode',
+        description: 'list (default) or context: assemble a token-budgeted block, best hits deepened',
+      },
+      tokens: {
+        long: '--tokens',
+        description: `Context mode: token budget (default ${RELATED_DEFAULT_TOKENS}); --budget is ignored`,
+      },
+      maxTier: {
+        long: '--max-tier',
+        description: 'Context mode: deepest tier, 0 line, 1 excerpt, 2 span text',
       },
       budget: {
         long: '--budget',
@@ -174,11 +211,11 @@ export default defineCommand<Args, Result>({
       },
       classes: {
         long: '--classes',
-        description: `Comma-separated classes (default ${RELATED_DEFAULT_CLASSES.join(',')})`,
+        description: `Class to search (default ${RELATED_DEFAULT_CLASSES.join(', ')}). Repeat the flag for each value`,
       },
       exclude: {
         long: '--exclude',
-        description: 'Comma-separated refs the caller already shows',
+        description: 'Ref the caller already shows. Repeat the flag for each value',
       },
       trigger: {
         long: '--trigger',
@@ -186,7 +223,7 @@ export default defineCommand<Args, Result>({
       },
     },
     usage:
-      'context related --for <text> [--initiative <slug>] [--limit 6] [--budget 1500] [--classes notes,sources,tasks,sessions] [--exclude <ref>,<ref>] [--trigger spawn]',
+      'context related --for <text> [--initiative <slug>] [--limit 6] [--budget 1500] [--classes notes --classes tasks] [--exclude <ref> --exclude <ref>] [--trigger spawn] [--mode context --tokens 375 --max-tier 1]',
   },
   async run(args, ctx) {
     return runRelated(args, { activeRoot: ctx.activeRoot });

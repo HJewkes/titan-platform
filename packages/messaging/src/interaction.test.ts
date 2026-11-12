@@ -162,6 +162,7 @@ describe("Telegram interactions", () => {
       drafts: false,
       draftStreaming: false,
       threads: false,
+      media: true,
     });
   });
 

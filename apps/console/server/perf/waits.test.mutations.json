@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "waits rank by their slowest single wait",
+      "file": "apps/console/server/perf/waits.ts",
+      "find": ".sort((a, b) => b.ownerMs - a.ownerMs || a.command.localeCompare(b.command));",
+      "replace": ".sort((a, b) => b.max - a.max || a.command.localeCompare(b.command));",
+      "kills": [
+        "ranking waits puts the command that cost the owner the most total time first, whatever its single slowest wait"
+      ]
+    },
+    {
+      "name": "a wait at the budget counts as a breach",
+      "file": "apps/console/server/perf/waits.ts",
+      "find": "overBudget: times.filter((ms) => ms > budgetMs).length,",
+      "replace": "overBudget: times.filter((ms) => ms > 0).length,",
+      "kills": [
+        "ranking waits gives p50, p95 and the waits past the command's budget"
+      ]
+    },
+    {
+      "name": "a wait with no command is dropped",
+      "file": "apps/console/server/perf/waits.ts",
+      "find": "row.commands.length === 0 ? [NO_COMMAND] : row.commands",
+      "replace": "row.commands",
+      "kills": [
+        "ranking waits charges a wait to each command it was on, and one on none to the no-command bucket"
+      ]
+    },
+    {
+      "name": "a wait may name any command",
+      "file": "apps/console/server/perf/commands.ts",
+      "find": "commands: z.array(known).max(MAX_WAIT_COMMANDS)",
+      "replace": "commands: z.array(z.string()).max(MAX_WAIT_COMMANDS)",
+      "kills": [
+        "perf.report with waits refuses a wait that names an unknown command or carries an id"
+      ]
+    },
+    {
+      "name": "the CLI ignores --top",
+      "file": "apps/console/server/cli-perf.ts",
+      "find": "...ranked.slice(0, top).map(",
+      "replace": "...ranked.map(",
+      "kills": [
+        "titan-console perf waits prints the top N from the day files, most owner time first"
+      ]
+    }
+  ]
+}

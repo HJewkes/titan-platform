@@ -2,6 +2,7 @@ import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import { contextBand } from "./bands.js";
 import type { ReportWindow } from "./cost-report-queries.js";
+import { readToolUseOwner, type ToolUseOwner } from "./request-owner.js";
 
 const APPROVE = "approve";
 const CHANGES_REQUESTED = "changes_requested";
@@ -12,13 +13,6 @@ const VERDICTS = `
   WHERE (@since IS NULL OR ts >= @since) AND (@until IS NULL OR ts < @until)
 `;
 const CHANGES = `SELECT pr_ref AS prRef, ts FROM pr_review WHERE verdict = '${CHANGES_REQUESTED}' AND pr_ref IS NOT NULL`;
-/** The ownership rule of request-owner.ts: the latest request at or before the tool use. That module drops the tool use id, so the lookup is repeated here. */
-const ISSUER = `
-  SELECT r.model, r.context_tokens AS tokens FROM tool_call c
-  JOIN request r ON r.transcript_id = c.transcript_id AND r.byte_offset <= c.byte_offset
-  WHERE c.tool_use_id = @toolUseId AND c.transcript_id = @transcriptId
-  ORDER BY r.byte_offset DESC LIMIT 1
-`;
 
 interface VerdictRow {
   sourceKey: string;
@@ -26,11 +20,6 @@ interface VerdictRow {
   ts: string;
   prRef: string | null;
   transcriptId: number | null;
-}
-
-interface Issuer {
-  model: string;
-  tokens: number;
 }
 
 const count = z.number().int().nonnegative();
@@ -79,10 +68,10 @@ export function reviewFillReport(db: Db, window: ReportWindow): ReviewFillReport
   return { window, unfilled, unresolved, rows: [...cells.values()].map(withRates) };
 }
 
-function issuerOf(db: Db, row: VerdictRow): Issuer | null {
+function issuerOf(db: Db, row: VerdictRow): ToolUseOwner | null {
   const toolUseId = CHAT_KEY.exec(row.sourceKey)?.[1];
   if (!toolUseId || row.transcriptId === null) return null;
-  return db.prepare<[object], Issuer>(ISSUER).get({ toolUseId, transcriptId: row.transcriptId }) ?? null;
+  return readToolUseOwner(db, row.transcriptId, toolUseId);
 }
 
 function readChangesByPr(db: Db): Map<string, string[]> {

@@ -1,4 +1,5 @@
-import { FakeHttpError, fakeGitHub, fakeSha, githubPort, type ForcePush } from "@titan-design/github";
+import { FakeHttpError, fakeGitHub, fakeSha, githubPort, type FakeGitHub, type ForcePush } from "@titan-design/github";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { partialFake } from "@titan-design/test-kit";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
@@ -10,8 +11,9 @@ import type { ReviewerAgent, ReviewerMessage } from "@titan-design/review-panel"
 import type { ReviewWiring } from "./review.js";
 import type { RoutedStepInput } from "@titan-design/workflow";
 import type { Verdict } from "./phases.js";
+import { attestationsFileOf } from "./attest-read.js";
 import type { RemergeResult } from "./remerge-carry.js";
-import type { CarryResult } from "./tree-carry.js";
+import type { CarryResult, Git, GitCachePorts } from "./tree-carry.js";
 import { fakeLocator } from "../test-support/fakes.js";
 
 const REPO = "acme/widgets";
@@ -35,10 +37,14 @@ interface Rig {
 }
 
 /** A context whose steps answer from the given scope and probe result, recording each step's input. */
-function rig(scope: { kind: string | null; baseRef: string | null; askedHead?: string | null; g10Held?: boolean }, probe: CarryResult, seats: { clear: boolean } = { clear: true }, remerge: RemergeResult = NOT_REMERGED, recordedNext?: string): Rig {
+type ClaimsAnswer = (input: Record<string, unknown>) => Promise<object>;
+const NO_CLAIMS: ClaimsAnswer = async () => ({ claimed: 0 });
+
+function rig(scope: { kind: string | null; baseRef: string | null; askedHead?: string | null; g10Held?: boolean }, probe: CarryResult, seats: { clear: boolean } = { clear: true }, remerge: RemergeResult = NOT_REMERGED, recordedNext?: string, claims: ClaimsAnswer = NO_CLAIMS): Rig {
   const asked: Rig["asked"] = [];
-  const answer = (stepId: string, input: Record<string, unknown>): object => {
+  const answer = async (stepId: string, input: Record<string, unknown>): Promise<object> => {
     if (stepId.startsWith("sh-carry-scope")) return scope;
+    if (stepId.startsWith("sh-carry-claims:")) return claims(input);
     if (stepId.startsWith("sh-carry:")) return probe;
     if (stepId.startsWith("sh-carry-seat:")) return seats;
     if (stepId.startsWith("sh-remerge:")) return remerge;
@@ -49,7 +55,7 @@ function rig(scope: { kind: string | null; baseRef: string | null; askedHead?: s
   const dispatch = async (stepId: string, _template: string, options: { vars: Record<string, string> }) => {
     const input = z.record(z.string(), z.unknown()).parse(JSON.parse(Object.values(options.vars)[0]!));
     asked.push({ stepId, input });
-    return { data: { result: answer(stepId, input) } };
+    return { data: { result: await answer(stepId, input) } };
   };
   return {
     ctx: Object.assign(partialFake<WorkflowContext>(), { runId: "run-1", dispatch, historyNext: () => recordedNext, param: () => undefined }),
@@ -544,13 +550,68 @@ describe("carrying a MERGE across a merge-up whose PR diff is unchanged (TP-3725
   });
 });
 
+describe("carrying a MERGE across a clean merge-up to a head that claims attestation rows (TP-4740)", () => {
+  const MERGE_UP: CarryResult = { ...EQUAL, firstParent: REVIEWED };
+  const SCOPE = { kind: "correctness", baseRef: "main" };
+  const CI_WAIT_ROW = { step: "ci-wait", closure: fakeSha("ci-wait-closure"), pr: 1 };
+
+  function attestWorld(atHead: unknown): FakeGitHub {
+    const github = fakeGitHub();
+    github.addPr({ headSha: NEW_HEAD });
+    github.files.set(`main:${attestationsFileOf(2)}`, { content: "[]", blobSha: "attest-base" });
+    github.files.set(`${NEW_HEAD}:${attestationsFileOf(1)}`, { content: typeof atHead === "string" ? atHead : JSON.stringify(atHead), blobSha: "attest-head" });
+    return github;
+  }
+
+  /** Answers the claims step from the real route, reading the world's attestation files at the base and the head. */
+  function claimsFrom(github: FakeGitHub): ClaimsAnswer {
+    const route = carryRoutes({ gitCache: hostCarryPorts, now: () => 0, port: githubPort(github.wire), store: partialFake<ShepherdStoreRef>() }, undefined).find((r) => r.match === "sh-carry-claims")!;
+    return async (input) => {
+      const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 0, requestKey: "k" }));
+      if (!outcome.ok) throw new Error(outcome.error);
+      return z.object({ result: z.record(z.string(), z.unknown()) }).parse(JSON.parse(outcome.output)).result;
+    };
+  }
+
+  const claimsRig = (atHead: unknown) => rig(SCOPE, MERGE_UP, { clear: true }, NOT_REMERGED, undefined, claimsFrom(attestWorld(atHead)));
+  it("a claimed ci-wait row refuses the carry, so the run asks a fresh review at the new head and takes no carried evidence", async () => {
+    const r = claimsRig([CI_WAIT_ROW]);
+
+    const verdict = await carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]));
+
+    expect(verdict).toBeUndefined();
+    const ids = r.asked.map((step) => step.stepId);
+    expect(ids.some((id) => id.startsWith("sh-merge-evidence"))).toBe(false);
+    expect(ids.some((id) => id.startsWith("sh-publish-review"))).toBe(false);
+    expect(ids).not.toContain(`sh-carry:${NEW_HEAD}`);
+    expect(r.asked.find((step) => step.stepId.startsWith("sh-carry-claims:"))!.input).toEqual({ ...TARGET, baseRef: "main", head: NEW_HEAD });
+  });
+
+  it("a head whose attestation rows match the base carries the MERGE as before", async () => {
+    const r = claimsRig([]);
+
+    const verdict = await carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]));
+
+    expect(verdict).toMatchObject({ kind: "MERGE", headSha: NEW_HEAD, mergeUpFrom: REVIEWED });
+    expect(carryOf(r)).toEqual({ fromHead: REVIEWED, head: NEW_HEAD, result: MERGE_UP, rule: "tree-equal" });
+  });
+
+  it("an unreadable attestation file at the head does not carry", async () => {
+    const r = claimsRig("{not json");
+
+    await expect(carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]))).resolves.toBeUndefined();
+
+    expect(r.asked.some((step) => step.stepId.startsWith("sh-merge-evidence"))).toBe(false);
+  });
+});
+
 describe("the carry scope step", () => {
   async function scopeOf(held: boolean): Promise<Record<string, unknown>> {
     const github = fakeGitHub();
     github.addPr({ headSha: NEW_HEAD });
     const run = partialFake<Registration>({ holdReason: held ? "g10-review: authority touch" : null });
     const store = partialFake<ShepherdStoreRef>({ get: () => partialFake<ShepherdStore>({ byRun: () => run, eventsOf: () => [] }) });
-    const route = carryRoutes({ now: () => 0, port: githubPort(github.wire), store }, undefined)[0]!;
+    const route = carryRoutes({ gitCache: hostCarryPorts, now: () => 0, port: githubPort(github.wire), store }, undefined)[0]!;
     const prompt = JSON.stringify({ ...TARGET, runId: "run-1" });
     const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" }));
     if (!outcome.ok) throw new Error(outcome.error);
@@ -581,5 +642,51 @@ describe("replaying a run recorded before the clean merge-up rule", () => {
     expect(verdict).toMatchObject({ kind: "MERGE", headSha: NEW_HEAD });
     expect(verdict).not.toHaveProperty("mergeUpFrom");
     expect(r.asked.some((step) => step.stepId.startsWith("sh-merge-up:"))).toBe(false);
+  });
+});
+
+describe("the carry routes' git cache", () => {
+  const SET = { packetSha: "a".repeat(64), packetId: "p-1", ciRunId: "7", fromHead: REVIEWED, files: [], removed: [], sidePaths: [] };
+  const probeInput = { repo: REPO, baseRef: "main", fromHead: REVIEWED, head: NEW_HEAD };
+  const ROUTE_INPUTS: Record<string, object> = {
+    "sh-remerge": { ...probeInput, generated: [] },
+    "sh-approval-carry:fix": probeInput,
+    "sh-approval-carry:own": probeInput,
+    "sh-approval-carry:set": { repo: REPO, fromHead: REVIEWED, head: NEW_HEAD, mode: "shadow", set: SET },
+    "sh-review-scope": { repo: REPO, baseRef: "main", sinceHead: REVIEWED, head: NEW_HEAD },
+  };
+
+  function recorded(stateDir = "/synthetic/state") {
+    const calls: { gitDir: string; args: readonly string[] }[] = [];
+    const git: Git = async (gitDir, args) => (calls.push({ gitDir, args }), { code: 1, stdout: "", stderr: "synthetic refusal" });
+    const ports: GitCachePorts = { git, fs: { exists: () => true, mkdirp: () => undefined }, stateDir: () => stateDir };
+    return { calls, ports };
+  }
+
+  async function runRoute(step: string, ports: GitCachePorts, wiring?: ReviewWiring): Promise<void> {
+    const deps = { now: () => 0, port: githubPort(fakeGitHub().wire), store: partialFake<ShepherdStoreRef>(), gitCache: ports };
+    const route = carryRoutes(deps, wiring).find((candidate) => candidate.match === step)!;
+    const prompt = JSON.stringify(ROUTE_INPUTS[step]);
+    const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" }));
+    if (!outcome.ok) throw new Error(outcome.error);
+  }
+
+  it("every carry route reaches git through deps.gitCache", async () => {
+    for (const step of Object.keys(ROUTE_INPUTS)) {
+      const { calls, ports } = recorded();
+
+      await runRoute(step, ports);
+
+      expect(calls.length, step).toBeGreaterThan(0);
+    }
+  });
+
+  it("a wiring.carry stateDir override still wins over the ports' state dir", async () => {
+    const { calls, ports } = recorded("/synthetic/ports-state");
+
+    await runRoute("sh-approval-carry:fix", ports, partialFake<ReviewWiring>({ carry: { stateDir: "/synthetic/override-state" } }));
+
+    expect(calls[0]!.gitDir).toContain("/synthetic/override-state/");
+    expect(calls[0]!.gitDir).not.toContain("ports-state");
   });
 });

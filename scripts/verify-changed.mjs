@@ -8,6 +8,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { BUSY_EXIT_CODE } from "./dag-check-lock.mjs";
+import { COLD_DEFERRED_EXIT_CODE, DEFER_COLD_ENV } from "./dag-check-seed.mjs";
+import { workGraphSeed } from "./dead-code-check.mjs";
 import { LINT_TYPES_INPUTS } from "./lint-types.mjs";
 import { TYPED_BASELINE } from "./lint-units.mjs";
 import { flakeTargets, loadFlakeClasses, repeatGuard } from "./flake-repeat.mjs";
@@ -152,19 +155,40 @@ function deadCheckDirs(changed, workspace) {
 
 // products/active-work's 525 indexed files take about 55 s; the largest products take minutes, so CI owns them.
 const DEAD_CHECK_MAX_FILES = 600;
+// A local push should not sit behind other worktrees' dag-check runs for the lock's 8-minute default; CI runs it.
+const DEAD_CHECK_LOCK_WAIT_MS = "30000";
+const DEAD_CHECK_LABEL = "dead:check";
 const INDEXED_EXT = /\.(?:[cm]?[jt]sx?|py)$/;
 
-function deadCheckCommand(changed, workspace, base, indexedFiles) {
+function deadCheckCommand(changed, workspace, base, indexedFiles, seedExists) {
   const dirs = deadCheckDirs(changed, workspace);
   if (dirs.length === 0) return null;
+  // A seeded run re-parses only changed files, so the budget guards cold indexes only.
   const files = indexedFiles(dirs);
-  if (files > DEAD_CHECK_MAX_FILES) {
+  const seeded = seedExists();
+  if (files > DEAD_CHECK_MAX_FILES && !seeded) {
     return { label: `dead:check: ${files} files in ${dirs.join(", ")} exceed the ${DEAD_CHECK_MAX_FILES}-file local budget, deferred to CI`, deferred: true };
   }
-  return { label: "dead:check", cmd: "node", args: ["scripts/dead-code-check.mjs", `--paths=${dirs.join(",")}`], env: { BASE_REF: base } };
+  return { label: DEAD_CHECK_LABEL, cmd: "node", args: ["scripts/dead-code-check.mjs", `--paths=${dirs.join(",")}`], env: { BASE_REF: base, DAG_CHECK_LOCK_WAIT_MS: process.env.DAG_CHECK_LOCK_WAIT_MS || DEAD_CHECK_LOCK_WAIT_MS, ...(files > DEAD_CHECK_MAX_FILES ? { [DEFER_COLD_ENV]: "1" } : {}) } };
 }
 
 const pnpmRun = (script) => ({ label: script, cmd: "pnpm", args: ["run", script] });
+
+// errors-only keeps other worktrees' cache replays out of the output, so a real failure is not truncated away.
+const buildStep = () => ({ label: "build", cmd: "pnpm", args: ["run", "build", "--output-logs=errors-only"], captureOutput: true });
+
+const TURBO_FAILED_TASK = /^(?:\s*(\S+#\S+?):\s+(?:ERROR\s+)?command .* exited \(\d+\)|\s*Failed:\s+(\S+#\S+))\s*$/;
+
+/** The `<package>#<task>` names turbo reports as failed, in first-seen order and without repeats. */
+export function failedTurboTasks(output) {
+  const names = [];
+  for (const line of output.split("\n")) {
+    const match = TURBO_FAILED_TASK.exec(line);
+    const name = match && (match[1] ?? match[2]);
+    if (name && !names.includes(name)) names.push(name);
+  }
+  return names;
+}
 
 /**
  * Every ci.yml `run:` step, matched by job and by its command (a string matches the whole command or its leading
@@ -193,7 +217,7 @@ export const CI_COVERAGE = [
   { job: "validate", run: "pnpm registry:closure", disposition: "local", label: "registry:closure" },
   { job: "dag-check", run: /INDEX_VERSION|codewatch-summary\.mjs/, disposition: "setup", reason: "cache key and report summary, not a check" },
   { job: "dag-check", run: /^pnpm dag:check:graph /, disposition: "separate-gate", reason: "pnpm dag:check, about 200 s seeded, runs beside verify:changed" },
-  { job: "dag-check", run: /^pnpm dead:check /, disposition: "local-scoped", label: "dead:check", reason: "indexes only the touched packages, and defers past a 600-file budget to CI" },
+  { job: "dag-check", run: /^pnpm dead:check /, disposition: "local-scoped", label: "dead:check", reason: "indexes only the touched packages from the machine seed, and defers past a 600-file budget to CI when no seed exists" },
   { job: "dag-check", run: "pnpm lint:types", disposition: "local-scoped", label: "lint:types", reason: "scoped by lintTypesScope over CI's test-scope graph" },
   { job: "perf", run: "pnpm vitest run --project perf", disposition: "ci-only", reason: "timing budgets need a runner with no other test load, so a local run would not be the authority" },
   { job: "hub-compose", run: /[\s\S]/, disposition: "ci-only", reason: "needs Docker; CI already scopes the job by path" },
@@ -204,11 +228,11 @@ export const CI_COVERAGE = [
  * change: a trigger list that misses an input fails silently, and only CI catches it. LOC runs in-process after the
  * build, which produces the code-graph dist it reads.
  */
-export function planCommands({ base, changed, workspace, hasTimeout, spool, flakeClasses = NO_FLAKE_CLASSES, indexedFiles = () => 0 }) {
+export function planCommands({ base, changed, workspace, hasTimeout, spool, flakeClasses = NO_FLAKE_CLASSES, indexedFiles = () => 0, seedExists = () => false }) {
   if (changed.length === 0) return [];
   return [
     pnpmRun("env:doctor"),
-    pnpmRun("build"),
+    buildStep(),
     { label: LOC_LABEL, inProcess: true },
     pnpmRun("merge:lint"),
     pnpmRun("sidecar:finds"),
@@ -222,7 +246,7 @@ export function planCommands({ base, changed, workspace, hasTimeout, spool, flak
     { label: "changeset status", cmd: "pnpm", args: ["exec", "changeset", "status", `--since=${base}`] },
     { ...pnpmRun("index-version:check"), env: { BASE_REF: base } },
     { ...pnpmRun("registry:closure"), env: { CLOSURE_BASE: base } },
-    deadCheckCommand(changed, workspace, base, indexedFiles),
+    deadCheckCommand(changed, workspace, base, indexedFiles, seedExists),
     lintTypesCommand(changed, workspace),
   ].filter(Boolean);
 }
@@ -252,6 +276,8 @@ function timingSpool() {
 const indexedFiles = (dirs) =>
   gitLines(["ls-files", "--cached", "--other", "--exclude-standard", "--", ...dirs]).filter((path) => INDEXED_EXT.test(path)).length;
 
+const seedExists = () => workGraphSeed({ argv: [], env: process.env, exists: existsSync }) !== null;
+
 const hasTimeout = () => spawnSync("timeout", ["--version"], { stdio: "ignore" }).error === undefined;
 
 async function overLoc(changed) {
@@ -275,14 +301,18 @@ async function locPasses(changed) {
 }
 
 /** How a finished step is reported: a kill by the vitest cap is a timeout, never a test failure. */
-export function describeOutcome(step, status, signal = null) {
+export function describeOutcome(step, status, signal = null, output = "") {
   if (status === 0) return { ok: true };
+  if (status === BUSY_EXIT_CODE && step.label === DEAD_CHECK_LABEL) return { ok: true, note: `${DEAD_CHECK_LABEL} deferred to CI: dag-check lock busy` };
+  if (status === COLD_DEFERRED_EXIT_CODE && step.label === DEAD_CHECK_LABEL) return { ok: true, note: `${DEAD_CHECK_LABEL} deferred to CI: seed unusable, cold index over the file budget; run pnpm dag:check to rebuild the seed` };
   if (status === TIMEOUT_EXIT_STATUS && step.cmd === "timeout") {
     return { ok: false, message: `${step.label} timed out after ${VITEST_TIMEOUT_SECONDS} s (no test failed; CI is the authority)` };
   }
   // A signal-killed child has a null status, so the signal is the only thing that says why it stopped.
   const how = signal ? `killed by ${signal}` : `exit status ${status}`;
   const scope = step.scope ? `, scope ${step.scope}` : "";
+  const failedTasks = step.captureOutput ? failedTurboTasks(output) : [];
+  if (failedTasks.length > 0) return { ok: false, message: `${step.label} failed (${how}): ${failedTasks.join(", ")}`, failedTasks };
   return { ok: false, message: `${step.label} failed (${how}${scope})` };
 }
 
@@ -309,11 +339,27 @@ function runFlakeStep(step) {
   return { ok: verdict.ok, message: `${FLAKE_LABEL} failed on ${verdict.message}` };
 }
 
+// Output is echoed as it arrives in one piece, then on failure the failing tasks are printed last.
+function runCapturedStep(step) {
+  const result = spawnSync(step.cmd, step.args, {
+    cwd: ROOT,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+    env: { ...process.env, ...step.env },
+  });
+  process.stdout.write(result.stdout ?? "");
+  process.stderr.write(result.stderr ?? "");
+  const outcome = describeOutcome(step, result.status, result.signal, `${result.stdout ?? ""}${result.stderr ?? ""}`);
+  for (const task of outcome.failedTasks ?? []) console.error(`verify:changed: failed task ${task}`);
+  return outcome;
+}
+
 async function runStep(step, changed) {
   if (step.deferred) return { ok: true };
   if (step.flake) return runFlakeStep(step);
   if (step.inProcess) return { ok: await locPasses(changed), message: `${step.label} failed` };
   const { cmd, args, env } = step;
+  if (step.captureOutput) return runCapturedStep(step);
   const { status, signal } = spawnSync(cmd, args, { cwd: ROOT, stdio: "inherit", env: { ...process.env, ...env } });
   return describeOutcome(step, status, signal);
 }
@@ -321,12 +367,13 @@ async function runStep(step, changed) {
 async function main() {
   const base = process.env.VERIFY_CHANGED_BASE || process.argv[2] || DEFAULT_BASE;
   const changed = changedFiles(base);
-  const plan = planCommands({ base, changed, workspace: readWorkspace(ROOT), hasTimeout: hasTimeout(), spool: timingSpool(), flakeClasses: loadFlakeClasses(FLAKE_CLASSES_PATH), indexedFiles });
+  const plan = planCommands({ base, changed, workspace: readWorkspace(ROOT), hasTimeout: hasTimeout(), spool: timingSpool(), flakeClasses: loadFlakeClasses(FLAKE_CLASSES_PATH), indexedFiles, seedExists });
   if (plan.length === 0) console.log(`verify:changed: nothing changed against ${base}`);
   const failures = [];
   for (const step of plan) {
     console.log(`verify:changed: ${step.label}`);
     const outcome = await runStep(step, changed);
+    if (outcome.note) console.log(`verify:changed: ${outcome.note}`);
     if (outcome.ok) continue;
     console.error(`verify:changed: ${outcome.message}`);
     failures.push(outcome.message);

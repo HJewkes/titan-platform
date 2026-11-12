@@ -3,7 +3,9 @@ export { LongPromptPrice, PRICE_TABLE, PRICE_TABLE_VERSION, PriceRow, PricedRequ
 import { Db } from '@titan-design/store-sqlite';
 import { z } from 'zod';
 import { EpisodeRow, SessionGraph } from '@titan-design/session-graph';
-import { ToolFamily, NormalizedSessionObservation, FirstRequest, RequestBlock } from '@titan-design/session-read';
+import { S as SessionTimeline } from './timeline-entry.js';
+export { C as CompactionMark, M as ModelRequests, a as SESSION_TIMELINE_VERSION, T as TIMELINE_GAP_MIN_MS, b as TIMELINE_TEXT_CAP, c as TimelineAgentSpan, d as TimelineError, e as TimelineErrorBreakdown, f as TimelineFileBreakdown, g as TimelineFileTouch, h as TimelineGap, i as TimelineMessage, j as TimelineMinuteBucket, k as TimelineTokenPoint, l as TimelineTokens, m as TimelineToolBreakdown, n as TimelineToolCall, o as TimelineToolOutcome, p as TimelineTotals, q as TimelineTurn, r as TimelineTurnOrigin, s as TokenTimeline, t as ToolFamilyCount, u as ToolNameCount, v as countAtOrBefore } from './timeline-entry.js';
+import { NormalizedSessionObservation, FirstRequest, RequestBlock } from '@titan-design/session-read';
 export { ToolFamily } from '@titan-design/session-read';
 import { ChangedFile, ReviewClass, PrTouch, ClassRules } from '@titan-design/review-panel';
 
@@ -19,7 +21,7 @@ interface SessionOrigin {
     profile?: string | null;
 }
 interface SessionFacts {
-    /** The harness entrypoint. Agent-chat workers and `-p` miners both report "sdk-cli". */
+    /** The harness entrypoint. Agent-chat workers and `-p` miners both report "sdk-cli"; the other SDK entrypoints ("sdk-ts", "sdk-py", any "sdk-*") are other_headless. */
     startType?: string | null;
     origin?: SessionOrigin | null;
     firstUserText?: string | null;
@@ -71,6 +73,11 @@ interface ReportWindow {
     since: string | null;
     until: string | null;
 }
+/** Indexed transcripts, and the readable (status `ok`) ones whose audit facet is missing or older than `facetVersion`; a quarantined or missing file cannot be extracted, so it is no backlog. */
+declare function readCoverage(db: Db, facetVersion: number | null): {
+    transcriptsIndexed: number;
+    facetBacklog: number;
+};
 /** An arrival that opens a wake episode: a turn-start record or a mid-loop `queued_command` delivery. */
 interface WakeEventRow {
     key: string;
@@ -718,8 +725,11 @@ interface CostReportOptions {
 /** Reads the graph and never writes it, so a read-only connection is enough. */
 declare function costReport(db: Db, options?: CostReportOptions): CostReport;
 
-/** The tool calls each request in the window issued, keyed by `request_id`; a request with none is absent. */
-declare function readRequestToolCalls(db: Db, window: ReportWindow): Map<string, ActionCall[]>;
+/**
+ * The tool calls each request in the window issued, keyed by `request_id`; a request with none is absent.
+ * `sessionIds` limits the read to those sessions, so a caller that needs only some sessions' calls does not scan the rest.
+ */
+declare function readRequestToolCalls(db: Db, window: ReportWindow, sessionIds?: readonly string[]): Map<string, ActionCall[]>;
 
 declare const WAKE_FROM_KINDS: readonly ["seat", "agent", "broadcast", "broker", "none"];
 type WakeFromKind = (typeof WAKE_FROM_KINDS)[number];
@@ -970,22 +980,32 @@ type CostReportSection = keyof typeof COST_REPORT_SECTIONS;
 /** Some sections of the report under its header, with the caveat and footer last as in the full text. */
 declare function renderCostReportSections(report: CostReport, sections: readonly CostReportSection[]): string;
 
+/** What the previous request in the same chain did last, before the gap that forced a rebuild. */
+declare const GAP_CAUSES: readonly ["ci-wait", "other-bash", "end-of-turn"];
+type GapCause = (typeof GAP_CAUSES)[number];
+
 /** Gap bands past a 5-minute TTL: the next request finds the cache gone. */
 declare const REBUILD_GAP_BANDS: readonly string[];
 /** One request as the TTL what-if needs it. */
 interface TtlRequestRow {
     sessionId: string;
+    /** Sidechain requests run in their own cache chain, apart from the main one. */
+    isSidechain: boolean;
     role: string;
     profile: string;
     model: string;
     ts: string;
     cacheReadTokens: number;
     cacheWrite1hTokens: number;
+    cacheWrite5mTokens: number;
     /** Milliseconds since the session's previous request; null for its first. */
     gapMs: number | null;
+    /** The previous request's last action in the same chain; absent reads as `end-of-turn`. */
+    previousAction?: GapCause;
 }
 declare const bucketSchema: z.ZodObject<{
     fiveMinuteLoses: z.ZodBoolean;
+    noCacheCheaper: z.ZodBoolean;
     sessions: z.ZodNumber;
     requests: z.ZodNumber;
     write1hTokens: z.ZodNumber;
@@ -995,6 +1015,12 @@ declare const bucketSchema: z.ZodObject<{
     rebuildCostUsd: z.ZodNumber;
     netSavingUsd: z.ZodNumber;
     netPerSessionUsd: z.ZodNumber;
+    noCacheNetUsd: z.ZodNumber;
+    reverseReverts: z.ZodNumber;
+    reverseTokens: z.ZodNumber;
+    reverseSavingUsd: z.ZodNumber;
+    reversePremiumUsd: z.ZodNumber;
+    reverseNetUsd: z.ZodNumber;
     key: z.ZodString;
 }, z.core.$strip>;
 declare const cacheTtlWhatIfSchema: z.ZodObject<{
@@ -1014,10 +1040,17 @@ declare const cacheTtlWhatIfSchema: z.ZodObject<{
         rebuildCostUsd: z.ZodNumber;
         netSavingUsd: z.ZodNumber;
         netPerSessionUsd: z.ZodNumber;
+        noCacheNetUsd: z.ZodNumber;
+        reverseReverts: z.ZodNumber;
+        reverseTokens: z.ZodNumber;
+        reverseSavingUsd: z.ZodNumber;
+        reversePremiumUsd: z.ZodNumber;
+        reverseNetUsd: z.ZodNumber;
     }, z.core.$strip>;
     unpricedRequests: z.ZodNumber;
     byRole: z.ZodArray<z.ZodObject<{
         fiveMinuteLoses: z.ZodBoolean;
+        noCacheCheaper: z.ZodBoolean;
         sessions: z.ZodNumber;
         requests: z.ZodNumber;
         write1hTokens: z.ZodNumber;
@@ -1027,10 +1060,17 @@ declare const cacheTtlWhatIfSchema: z.ZodObject<{
         rebuildCostUsd: z.ZodNumber;
         netSavingUsd: z.ZodNumber;
         netPerSessionUsd: z.ZodNumber;
+        noCacheNetUsd: z.ZodNumber;
+        reverseReverts: z.ZodNumber;
+        reverseTokens: z.ZodNumber;
+        reverseSavingUsd: z.ZodNumber;
+        reversePremiumUsd: z.ZodNumber;
+        reverseNetUsd: z.ZodNumber;
         key: z.ZodString;
     }, z.core.$strip>>;
     byProfile: z.ZodArray<z.ZodObject<{
         fiveMinuteLoses: z.ZodBoolean;
+        noCacheCheaper: z.ZodBoolean;
         sessions: z.ZodNumber;
         requests: z.ZodNumber;
         write1hTokens: z.ZodNumber;
@@ -1040,9 +1080,25 @@ declare const cacheTtlWhatIfSchema: z.ZodObject<{
         rebuildCostUsd: z.ZodNumber;
         netSavingUsd: z.ZodNumber;
         netPerSessionUsd: z.ZodNumber;
+        noCacheNetUsd: z.ZodNumber;
+        reverseReverts: z.ZodNumber;
+        reverseTokens: z.ZodNumber;
+        reverseSavingUsd: z.ZodNumber;
+        reversePremiumUsd: z.ZodNumber;
+        reverseNetUsd: z.ZodNumber;
         key: z.ZodString;
     }, z.core.$strip>>;
     lossRoles: z.ZodArray<z.ZodString>;
+    byGapCause: z.ZodArray<z.ZodObject<{
+        cause: z.ZodEnum<{
+            "ci-wait": "ci-wait";
+            "other-bash": "other-bash";
+            "end-of-turn": "end-of-turn";
+        }>;
+        rebuilds: z.ZodNumber;
+        rebuildTokens: z.ZodNumber;
+        rebuildCostUsd: z.ZodNumber;
+    }, z.core.$strip>>;
 }, z.core.$strip>;
 type CacheTtlWhatIf = z.infer<typeof cacheTtlWhatIfSchema>;
 type CacheTtlBucket = z.infer<typeof bucketSchema>;
@@ -1994,224 +2050,6 @@ declare const seatGenerationsSchema: z.ZodArray<z.ZodObject<{
 /** The seat's generations in start order: committed handoffs, completed teleports and exits end one; spawns and handoffs start one. */
 declare function seatGenerations(input: SeatGenerationsInput): SeatGeneration[];
 
-/** Bump when a field is removed or changes meaning. Adding a field keeps the version. */
-declare const SESSION_TIMELINE_VERSION = 1;
-/** Idle time between two events that counts as a gap. */
-declare const TIMELINE_GAP_MIN_MS: number;
-/** Default cap on each message text. The byte offset still points at the full record. */
-declare const TIMELINE_TEXT_CAP = 4000;
-/** `prompt` is typed or sent text, `injected` is a harness block, `compaction` is a continuation summary, `none` is activity before any user message. */
-type TimelineTurnOrigin = "prompt" | "injected" | "compaction" | "none";
-/** `unknown` is a result whose source did not report an error state; `pending` has no result yet. */
-type TimelineToolOutcome = "success" | "error" | "unknown" | "pending";
-interface TimelineMessage {
-    role: "user" | "assistant";
-    /** Source order across the whole session; sort a turn's messages and tool calls by it to interleave them. */
-    seq: number;
-    atMs: number | null;
-    text: string;
-    /** True when `text` was cut at the cap. */
-    truncated: boolean;
-    /** Offset of the transcript line, for reading the full record. */
-    byteOffset: number;
-}
-interface TimelineToolCall {
-    /** The harness's own call id, unique within the session. */
-    id: string;
-    seq: number;
-    turnIndex: number;
-    name: string;
-    family: ToolFamily;
-    atMs: number | null;
-    /** When the result arrived; null while pending. */
-    endMs: number | null;
-    /** Observed call-to-result span, not harness execution time. */
-    durationMs: number | null;
-    outcome: TimelineToolOutcome;
-    errorMessage: string | null;
-    /** One line naming what the call acted on: a path, a command, a pattern or a description. */
-    inputSummary: string;
-    filePath: string | null;
-    sidechain: boolean;
-    byteOffset: number;
-}
-/** Prompt-side counts are disjoint: `input` excludes cache reads and cache writes. */
-interface TimelineTokens {
-    input: number;
-    cacheRead: number;
-    /** All cache writes, `cacheWrite5m + cacheWrite1h`. */
-    cacheWrite: number;
-    /** Writes at the 5m rate, including a total the source reported without a split. */
-    cacheWrite5m: number;
-    /** Writes at the 1h rate. */
-    cacheWrite1h: number;
-    output: number;
-}
-interface TimelineTurn {
-    index: number;
-    origin: TimelineTurnOrigin;
-    /** The session-read injected-marker name when `origin` is `injected` or `compaction`. */
-    injectedMarker: string | null;
-    startMs: number | null;
-    endMs: number | null;
-    /** Idle time before this turn when it is `TIMELINE_GAP_MIN_MS` or more, else null. */
-    gapBeforeMs: number | null;
-    /** The message that opened the turn; null when `origin` is `none`. */
-    user: TimelineMessage | null;
-    assistant: TimelineMessage[];
-    toolCalls: TimelineToolCall[];
-    errorCount: number;
-    tokens: TimelineTokens;
-    costUsd: number;
-}
-/** One UTC clock minute that held activity. Minutes with none are omitted. */
-interface TimelineMinuteBucket {
-    /** Start of the minute. */
-    minuteMs: number;
-    /** Messages, tool calls and tool results. */
-    events: number;
-    messages: number;
-    toolCalls: number;
-    errors: number;
-    outputTokens: number;
-    costUsd: number;
-    /** Set on the first bucket after a gap. */
-    gapBeforeMs: number | null;
-}
-/** An idle stretch. Time spent waiting on a tool call that later returned is not idle, so it is never a gap. */
-interface TimelineGap {
-    startMs: number;
-    endMs: number;
-    durationMs: number;
-}
-/** One API request. Points are in source order and cumulative fields run over that order. */
-interface TimelineTokenPoint {
-    atMs: number;
-    turnIndex: number | null;
-    model: string | null;
-    /** The prompt size of this request: input plus cache read plus cache write. Null when the source omitted a count. */
-    contextTokens: number | null;
-    outputTokens: number;
-    cumulativeOutputTokens: number;
-    costUsd: number;
-    cumulativeCostUsd: number;
-    /** False when no price row covers the model; `costUsd` is then 0. */
-    priced: boolean;
-    /** True on the first request after a compaction. */
-    afterCompaction: boolean;
-}
-interface CompactionMark {
-    atMs: number | null;
-    turnIndex: number | null;
-    byteOffset: number;
-    summary: string | null;
-    summaryTruncated: boolean;
-}
-interface ModelRequests {
-    model: string;
-    requests: number;
-}
-interface TokenTimeline {
-    /** `delta` has per-request points. A `snapshot` source reports running totals only: `points` is empty and nothing is priced, so every `costUsd` is 0. */
-    basis: "delta" | "snapshot" | "unreported";
-    points: TimelineTokenPoint[];
-    compactions: CompactionMark[];
-    /** Most requests first. */
-    models: ModelRequests[];
-}
-interface ToolNameCount {
-    name: string;
-    family: ToolFamily;
-    calls: number;
-    errors: number;
-    durationMs: number;
-}
-interface ToolFamilyCount {
-    family: ToolFamily;
-    calls: number;
-    errors: number;
-    /** Call start times, ascending, for `countAtOrBefore`. */
-    atMs: number[];
-}
-interface TimelineToolBreakdown {
-    /** Most calls first. */
-    byName: ToolNameCount[];
-    byFamily: ToolFamilyCount[];
-    /** Every call start time, ascending. */
-    atMs: number[];
-}
-interface TimelineFileTouch {
-    path: string;
-    access: "read" | "write";
-    /** First touch of this path with this access. */
-    atMs: number | null;
-    calls: number;
-}
-interface TimelineFileBreakdown {
-    /** One row per path and access, ordered by first touch. */
-    touches: TimelineFileTouch[];
-    readCount: number;
-    writeCount: number;
-}
-interface TimelineError {
-    callId: string;
-    toolName: string;
-    turnIndex: number;
-    /** When the failing result arrived. */
-    atMs: number | null;
-    message: string;
-    sidechain: boolean;
-}
-interface TimelineErrorBreakdown {
-    /** Failed calls over all calls; 0 with no calls. */
-    rate: number;
-    items: TimelineError[];
-    atMs: number[];
-}
-/** A subagent dispatch, from its tool call to that call's result. */
-interface TimelineAgentSpan {
-    callId: string;
-    label: string;
-    startMs: number | null;
-    endMs: number | null;
-    outcome: TimelineToolOutcome;
-}
-interface TimelineTotals {
-    turns: number;
-    userMessages: number;
-    assistantMessages: number;
-    toolCalls: number;
-    errors: number;
-    compactions: number;
-    /** API requests with usage. Null on a `snapshot` basis, which cannot count them. */
-    requests: number | null;
-    unpricedRequests: number;
-    tokens: TimelineTokens;
-    /** 0 on a `snapshot` basis, which has no per-request usage to price. */
-    costUsd: number;
-}
-/**
- * Everything a session view reads, as plain JSON. Every `*Ms` field is epoch milliseconds,
- * so the model holds no time zone and a renderer picks one.
- */
-interface SessionTimeline {
-    version: typeof SESSION_TIMELINE_VERSION;
-    sessionId: string | null;
-    harness: string | null;
-    startMs: number | null;
-    endMs: number | null;
-    durationMs: number;
-    totals: TimelineTotals;
-    turns: TimelineTurn[];
-    buckets: TimelineMinuteBucket[];
-    gaps: TimelineGap[];
-    tokens: TokenTimeline;
-    tools: TimelineToolBreakdown;
-    files: TimelineFileBreakdown;
-    errors: TimelineErrorBreakdown;
-    agents: TimelineAgentSpan[];
-}
-
 interface SessionTimelineOptions {
     /** Idle time that counts as a gap. Defaults to `TIMELINE_GAP_MIN_MS`. */
     gapMinMs?: number;
@@ -2237,9 +2075,6 @@ declare class SessionTimelineAccumulator {
 }
 /** The read model behind every session view: turns, minute buckets, the token and cost series, and tool, file and error breakdowns. */
 declare function buildSessionTimeline(observations: Iterable<NormalizedSessionObservation>, options?: SessionTimelineOptions): SessionTimeline;
-
-/** How many of the ascending `sortedMs` are at or before `targetMs`, by binary search. */
-declare function countAtOrBefore(sortedMs: readonly number[], targetMs: number): number;
 
 declare const reviewFillSchema: z.ZodObject<{
     window: z.ZodObject<{
@@ -2960,4 +2795,230 @@ declare function firstDivergence(a: readonly RequestBlock[], b: readonly Request
  */
 declare function prefixReuse(rows: readonly PrefixRow[], options?: PrefixReuseOptions): PrefixReuse;
 
-export { ACTION_CLASSES, AGENT_LIFECYCLE, ALL_REPOS, type ActionCall, type ActionClass, type ActionRule, type ActualsTask, type AgentLog, type AgentNameRow, type Agreement, type AgreementRow, type AgreementSummary, type Assignment, BLOCKED_FLOW_SOURCES, BOOT_TOOL, type Band, type BashRule, type BlockedFlowInput, type BlockedFlowReport, type BlockedFlowSource, type BrokerEntry, CHANNEL_CLUSTER_MS, CI_STATES, CONTEXT_BANDS, CONTEXT_RESET_TOKENS, COORDINATOR_MERGE_DEDUPE_REQUESTS, COORDINATOR_MIN_EPISODE_REQUESTS, COORDINATOR_WAVE_QUIET_REQUESTS, COST_REPORT_SECTIONS, type CacheTtlBucket, type CacheTtlWhatIf, type CacheWriteTtl, type CappedHours, type CiState, type CompactionMark, type ComparisonSpec, type ContractReport, type CoordDutyTable, type CostBucket, type CostPerOutcomeOptions, type CostPerOutcomeReport, type CostReport, type CostReportOptions, type CostReportSection, type CycleParams, DARK_MIN, DEFAULT_ACTION_RULES, DEFAULT_ACTIVE_CAP_MINUTES, DEFAULT_BOOT_REQUESTS, DEFAULT_CONFIGURED_K, DEFAULT_DONE_OUTCOMES, DEFAULT_EPISODE_ROLES, DEFAULT_K_SWEEP, DEFAULT_MECHANICAL_CLASSES, DEFAULT_MERGED_OUTCOMES, DEFAULT_NO_ACTION_CLASSES, DEFAULT_REVIEWER_PRS, DEFAULT_REVIEWER_ROLE, DEFAULT_STANDING_ROLE, DROP_REASONS, type DarkGap, type DenialRecord, type DispatchRecord, type Divergence, type DivergenceGroup, type DutyCall, type DutyKind, type DutyRuleSet, type DutyTableOptions, type DutyTurn, ERROR_CLASSES, EVENTS_TABLE_DDL, type EpisodeInbound, type EpisodeInput, type EpisodeNames, type EpisodeRequest, type EpisodeRequestRow, type EpisodeSignal, type ErrorClass, type EstimateBand, FOLLOW_UP_CLASSES, FRICTION_ASKER, FRICTION_CLUSTERS, type FollowUpClass, type FrictionCluster, type FrictionClusterRow, type FrictionDailyReport, type FrictionLine, type FrictionRow, type FrictionSource, GAP_BANDS, type GenerationEnd, HANDOFFS_SQL, HEURISTIC_VERSIONS, type HandoffCohort, type HandoffOptions, type HandoffRecord, type HandoffRequestRow, type HandoffSession, type HandoffTeleport, type HandoffThreshold, type Heuristic, type HumanRole, IDLE_GAP_MS, type IdleSlotRow, type InheritMode, type KSweep, LAST_PROMPTS_SQL, LIST_PRICE_CAVEAT, LIVENESS_SOURCES, type LastEventRecord, type LatencyRow, type LatencyStats, type LivenessInput, type LivenessReport, type LivenessSource, type LogClusterRow, type LogSide, type LogSignal, type LogSignalKind, MIN_COST_COVERAGE, type MechanicalShare, type MergeOutcome, type MergeStatus, type MeterInputs, type MeterOptions, type MeterResult, type ModelRequests, NON_FRICTION, NOT_MEASURED, type Outcome, type OutcomeBucket, POOLED_REVIEWERS, PROFILE_ROLES, PROMPT_STALE_MIN, type ParsedVerdict, type PrDiff, type PrFeatures, type PrefixReuse, type PrefixReuseOptions, type PrefixRow, type ProposedItem, type PullState, REBUILD_GAP_BANDS, REPORT_STATUSES, REVIEW_FILL_COMPARISON, type ReportScope, type ReportSide, type ReportStatus, type ReportWindow, type ReviewFillReport, type ReviewerComparison, type RoleActions, type RouteAgreement, type RouteFailureRow, type RouteMiss, type RouteMissKind, type RouteOutcomeGroup, type RouteOutcomesOptions, type RowDelta, SESSION_TIMELINE_VERSION, SPAWNS_SQL, SPLITLESS_CACHE_WRITE_TTL, STANDING_PEER_MIN_ASSIGNMENTS, STANDING_PEER_MIN_HOURS, SUCCESSOR_REWORK_COMPARISON, type ScorecardJournalInput, type ScorecardJournalRowId, type ScorecardRow, type SeatContextOptions, type SeatContextRow, type SeatGeneration, type SeatGenerationsInput, type SeatJournal, type SeatSessions, type SessionClass, type SessionClassification, type SessionFacts, type SessionOrigin, type SessionTimeline, SessionTimelineAccumulator, type SessionTimelineOptions, type SlotTick, type SpawnRecord, type StalePromptRow, type SuccessorReworkOptions, type SuccessorReworkReport, TELEPORT_COMPLETED_EVENT, TELEPORT_EVENT, TICK_HOLD_MAX_MIN, TIMELINE_GAP_MIN_MS, TIMELINE_TEXT_CAP, TOKEN_CLASSES, TP1550_RULES, type TaskActuals, type TaskActualsFlag, type TaskActualsOptions, type TaskInitiative, type TaskPr, type TeleportEvent, type TimelineAgentSpan, type TimelineError, type TimelineErrorBreakdown, type TimelineFileBreakdown, type TimelineFileTouch, type TimelineGap, type TimelineMessage, type TimelineMinuteBucket, type TimelineTokenPoint, type TimelineTokens, type TimelineToolBreakdown, type TimelineToolCall, type TimelineToolOutcome, type TimelineTotals, type TimelineTurn, type TimelineTurnOrigin, type TokenClass, type TokenTimeline, type ToolFamilyCount, type ToolField, type ToolNameCount, type ToolRule, type TranscriptCopy, type Trigger, type TtlRequestRow, UNKNOWN_PROFILE, UNSTATED_REASON, type UnreportedExit, type UnreportedExitRow, V3_RULES, VERDICTS_SQL, type VerdictRecord, WAKE_FROM_KINDS, type WakeCauseBucket, type WakeCauseEpisodes, type WakeEpisode, type WakeEpisodes, type WakeEventRow, type WakeFromKind, type WakeGapCell, type WakePair, type WindowComparison, type WorkerFacts, type WorkerReportRecord, type WorkerRole, type WorkerSessionRecord, type WrittenEpisodes, assignmentCount, assignmentSchema, bandOf, blockedFlowReport, blockedFlowSchema, buildEpisodes, buildSessionTimeline, buildWakeEpisodes, cacheTtlReport, cacheTtlWhatIf, cacheTtlWhatIfSchema, classifyDeniedAction, classifyError, classifyFollowUp, classifyRequest, classifySession, clusterOf, compareWindows, contextBand, coordDutyTableSchema, costPerOutcome, costPerOutcomeSchema, costPerRequest, costReport, costReportSchema, countAtOrBefore, countMisses, darkGaps, dedupeDenials, dutyTable, episodeNames, eventsDbCommand, extractConcerns, extractFriction, firstDivergence, followUpSignals, frictionDailyReport, frictionDeposit, frictionDepositId, gapBand, handoffThreshold, handoffThresholdSchema, heuristicFor, idleSlotMinutes, initiativeFromCwd, isBootAction, latencyStats, latencyStatsSchema, lineCluster, listMergedPrRefs, livenessReport, livenessSchema, mergeCopies, mergeOutcomes, parseBrokerLog, parseDenials, parsePrRef, parseReport, parseSeatJournal, parseTeleportEvents, parseVerdict, prFeaturesFor, prKey, prefixReuse, readAgentSessions, readDispatchJournal, readEpisodeInput, readHandoffs, readLastPrompts, readRequestToolCalls, readSpawnerMessages, readSpawns, readTtlRows, readVerdicts, readWorkerReports, readWorkerSessions, renderBlockedFlowText, renderCacheTtlText, renderCostPerOutcomeText, renderCostReportSections, renderCostReportText, renderFrictionMarkdown, renderLivenessText, renderLogTop, renderReportTop, renderReviewFillText, renderSuccessorReworkText, renderWindowComparisonText, reviewFillReport, reviewFillSchema, roleFromProfile, routeFailureRows, routeMisses, routeOutcomes, scopeFilter, scorecardJournalRows, scorecardRowText, seatContext, seatContextSchema, seatGenerations, seatGenerationsSchema, seatOf, sessionInitiative, sessionRole, staleEpisodeSessions, staleEpisodeSessionsYielding, stalePromptRows, successorReworkReport, successorReworkSchema, summarizeWakeEpisodes, sweepK, taskActuals, transcriptSignals, unreportedExitRows, wakeEpisodesSchema, workerRole, writeEpisodes };
+export { ACTION_CLASSES, AGENT_LIFECYCLE, ALL_REPOS, type ActionCall, type ActionClass, type ActionRule, type ActualsTask, type AgentLog, type AgentNameRow, type Agreement, type AgreementRow, type AgreementSummary, type Assignment, BLOCKED_FLOW_SOURCES, BOOT_TOOL, type Band, type BashRule, type BlockedFlowInput, type BlockedFlowReport, type BlockedFlowSource, type BrokerEntry, CHANNEL_CLUSTER_MS, CI_STATES, CONTEXT_BANDS, CONTEXT_RESET_TOKENS, COORDINATOR_MERGE_DEDUPE_REQUESTS, COORDINATOR_MIN_EPISODE_REQUESTS, COORDINATOR_WAVE_QUIET_REQUESTS, COST_REPORT_SECTIONS, type CacheTtlBucket, type CacheTtlWhatIf, type CacheWriteTtl, type CappedHours, type CiState, type ComparisonSpec, type ContractReport, type CoordDutyTable, type CostBucket, type CostPerOutcomeOptions, type CostPerOutcomeReport, type CostReport, type CostReportOptions, type CostReportSection, type CycleParams, DARK_MIN, DEFAULT_ACTION_RULES, DEFAULT_ACTIVE_CAP_MINUTES, DEFAULT_BOOT_REQUESTS, DEFAULT_CONFIGURED_K, DEFAULT_DONE_OUTCOMES, DEFAULT_EPISODE_ROLES, DEFAULT_K_SWEEP, DEFAULT_MECHANICAL_CLASSES, DEFAULT_MERGED_OUTCOMES, DEFAULT_NO_ACTION_CLASSES, DEFAULT_REVIEWER_PRS, DEFAULT_REVIEWER_ROLE, DEFAULT_STANDING_ROLE, DROP_REASONS, type DarkGap, type DenialRecord, type DispatchRecord, type Divergence, type DivergenceGroup, type DutyCall, type DutyKind, type DutyRuleSet, type DutyTableOptions, type DutyTurn, ERROR_CLASSES, EVENTS_TABLE_DDL, type EpisodeInbound, type EpisodeInput, type EpisodeNames, type EpisodeRequest, type EpisodeRequestRow, type EpisodeSignal, type ErrorClass, type EstimateBand, FOLLOW_UP_CLASSES, FRICTION_ASKER, FRICTION_CLUSTERS, type FollowUpClass, type FrictionCluster, type FrictionClusterRow, type FrictionDailyReport, type FrictionLine, type FrictionRow, type FrictionSource, GAP_BANDS, type GenerationEnd, HANDOFFS_SQL, HEURISTIC_VERSIONS, type HandoffCohort, type HandoffOptions, type HandoffRecord, type HandoffRequestRow, type HandoffSession, type HandoffTeleport, type HandoffThreshold, type Heuristic, type HumanRole, IDLE_GAP_MS, type IdleSlotRow, type InheritMode, type KSweep, LAST_PROMPTS_SQL, LIST_PRICE_CAVEAT, LIVENESS_SOURCES, type LastEventRecord, type LatencyRow, type LatencyStats, type LivenessInput, type LivenessReport, type LivenessSource, type LogClusterRow, type LogSide, type LogSignal, type LogSignalKind, MIN_COST_COVERAGE, type MechanicalShare, type MergeOutcome, type MergeStatus, type MeterInputs, type MeterOptions, type MeterResult, NON_FRICTION, NOT_MEASURED, type Outcome, type OutcomeBucket, POOLED_REVIEWERS, PROFILE_ROLES, PROMPT_STALE_MIN, type ParsedVerdict, type PrDiff, type PrFeatures, type PrefixReuse, type PrefixReuseOptions, type PrefixRow, type ProposedItem, type PullState, REBUILD_GAP_BANDS, REPORT_STATUSES, REVIEW_FILL_COMPARISON, type ReportScope, type ReportSide, type ReportStatus, type ReportWindow, type ReviewFillReport, type ReviewerComparison, type RoleActions, type RouteAgreement, type RouteFailureRow, type RouteMiss, type RouteMissKind, type RouteOutcomeGroup, type RouteOutcomesOptions, type RowDelta, SPAWNS_SQL, SPLITLESS_CACHE_WRITE_TTL, STANDING_PEER_MIN_ASSIGNMENTS, STANDING_PEER_MIN_HOURS, SUCCESSOR_REWORK_COMPARISON, type ScorecardJournalInput, type ScorecardJournalRowId, type ScorecardRow, type SeatContextOptions, type SeatContextRow, type SeatGeneration, type SeatGenerationsInput, type SeatJournal, type SeatSessions, type SessionClass, type SessionClassification, type SessionFacts, type SessionOrigin, SessionTimeline, SessionTimelineAccumulator, type SessionTimelineOptions, type SlotTick, type SpawnRecord, type StalePromptRow, type SuccessorReworkOptions, type SuccessorReworkReport, TELEPORT_COMPLETED_EVENT, TELEPORT_EVENT, TICK_HOLD_MAX_MIN, TOKEN_CLASSES, TP1550_RULES, type TaskActuals, type TaskActualsFlag, type TaskActualsOptions, type TaskInitiative, type TaskPr, type TeleportEvent, type TokenClass, type ToolField, type ToolRule, type TranscriptCopy, type Trigger, type TtlRequestRow, UNKNOWN_PROFILE, UNSTATED_REASON, type UnreportedExit, type UnreportedExitRow, V3_RULES, VERDICTS_SQL, type VerdictRecord, WAKE_FROM_KINDS, type WakeCauseBucket, type WakeCauseEpisodes, type WakeEpisode, type WakeEpisodes, type WakeEventRow, type WakeFromKind, type WakeGapCell, type WakePair, type WindowComparison, type WorkerFacts, type WorkerReportRecord, type WorkerRole, type WorkerSessionRecord, type WrittenEpisodes, assignmentCount, assignmentSchema, bandOf, blockedFlowReport, blockedFlowSchema, buildEpisodes, buildSessionTimeline, buildWakeEpisodes, cacheTtlReport, cacheTtlWhatIf, cacheTtlWhatIfSchema, classifyDeniedAction, classifyError, classifyFollowUp, classifyRequest, classifySession, clusterOf, compareWindows, contextBand, coordDutyTableSchema, costPerOutcome, costPerOutcomeSchema, costPerRequest, costReport, costReportSchema, countMisses, darkGaps, dedupeDenials, dutyTable, episodeNames, eventsDbCommand, extractConcerns, extractFriction, firstDivergence, followUpSignals, frictionDailyReport, frictionDeposit, frictionDepositId, gapBand, handoffThreshold, handoffThresholdSchema, heuristicFor, idleSlotMinutes, initiativeFromCwd, isBootAction, latencyStats, latencyStatsSchema, lineCluster, listMergedPrRefs, livenessReport, livenessSchema, mergeCopies, mergeOutcomes, parseBrokerLog, parseDenials, parsePrRef, parseReport, parseSeatJournal, parseTeleportEvents, parseVerdict, prFeaturesFor, prKey, prefixReuse, readAgentSessions, readCoverage, readDispatchJournal, readEpisodeInput, readHandoffs, readLastPrompts, readRequestToolCalls, readSpawnerMessages, readSpawns, readTtlRows, readVerdicts, readWorkerReports, readWorkerSessions, renderBlockedFlowText, renderCacheTtlText, renderCostPerOutcomeText, renderCostReportSections, renderCostReportText, renderFrictionMarkdown, renderLivenessText, renderLogTop, renderReportTop, renderReviewFillText, renderSuccessorReworkText, renderWindowComparisonText, reviewFillReport, reviewFillSchema, roleFromProfile, routeFailureRows, routeMisses, routeOutcomes, scopeFilter, scorecardJournalRows, scorecardRowText, seatContext, seatContextSchema, seatGenerations, seatGenerationsSchema, seatOf, sessionInitiative, sessionRole, staleEpisodeSessions, staleEpisodeSessionsYielding, stalePromptRows, successorReworkReport, successorReworkSchema, summarizeWakeEpisodes, sweepK, taskActuals, transcriptSignals, unreportedExitRows, wakeEpisodesSchema, workerRole, writeEpisodes };
+
+// ./dist/timeline-entry.d.ts
+import { ToolFamily } from '@titan-design/session-read';
+
+/** Bump when a field is removed or changes meaning. Adding a field keeps the version. */
+declare const SESSION_TIMELINE_VERSION = 1;
+/** Idle time between two events that counts as a gap. */
+declare const TIMELINE_GAP_MIN_MS: number;
+/** Default cap on each message text. The byte offset still points at the full record. */
+declare const TIMELINE_TEXT_CAP = 4000;
+/** `prompt` is typed or sent text, `injected` is a harness block, `compaction` is a continuation summary, `none` is activity before any user message. */
+type TimelineTurnOrigin = "prompt" | "injected" | "compaction" | "none";
+/** `unknown` is a result whose source did not report an error state; `pending` has no result yet. */
+type TimelineToolOutcome = "success" | "error" | "unknown" | "pending";
+interface TimelineMessage {
+    role: "user" | "assistant";
+    /** Source order across the whole session; sort a turn's messages and tool calls by it to interleave them. */
+    seq: number;
+    atMs: number | null;
+    text: string;
+    /** True when `text` was cut at the cap. */
+    truncated: boolean;
+    /** Offset of the transcript line, for reading the full record. */
+    byteOffset: number;
+}
+interface TimelineToolCall {
+    /** The harness's own call id, unique within the session. */
+    id: string;
+    seq: number;
+    turnIndex: number;
+    name: string;
+    family: ToolFamily;
+    atMs: number | null;
+    /** When the result arrived; null while pending. */
+    endMs: number | null;
+    /** Observed call-to-result span, not harness execution time. */
+    durationMs: number | null;
+    outcome: TimelineToolOutcome;
+    errorMessage: string | null;
+    /** One line naming what the call acted on: a path, a command, a pattern or a description. */
+    inputSummary: string;
+    filePath: string | null;
+    sidechain: boolean;
+    byteOffset: number;
+}
+/** Prompt-side counts are disjoint: `input` excludes cache reads and cache writes. */
+interface TimelineTokens {
+    input: number;
+    cacheRead: number;
+    /** All cache writes, `cacheWrite5m + cacheWrite1h`. */
+    cacheWrite: number;
+    /** Writes at the 5m rate, including a total the source reported without a split. */
+    cacheWrite5m: number;
+    /** Writes at the 1h rate. */
+    cacheWrite1h: number;
+    output: number;
+}
+interface TimelineTurn {
+    index: number;
+    origin: TimelineTurnOrigin;
+    /** The session-read injected-marker name when `origin` is `injected` or `compaction`. */
+    injectedMarker: string | null;
+    startMs: number | null;
+    endMs: number | null;
+    /** Idle time before this turn when it is `TIMELINE_GAP_MIN_MS` or more, else null. */
+    gapBeforeMs: number | null;
+    /** The message that opened the turn; null when `origin` is `none`. */
+    user: TimelineMessage | null;
+    assistant: TimelineMessage[];
+    toolCalls: TimelineToolCall[];
+    errorCount: number;
+    tokens: TimelineTokens;
+    costUsd: number;
+}
+/** One UTC clock minute that held activity. Minutes with none are omitted. */
+interface TimelineMinuteBucket {
+    /** Start of the minute. */
+    minuteMs: number;
+    /** Messages, tool calls and tool results. */
+    events: number;
+    messages: number;
+    toolCalls: number;
+    errors: number;
+    outputTokens: number;
+    costUsd: number;
+    /** Set on the first bucket after a gap. */
+    gapBeforeMs: number | null;
+}
+/** An idle stretch. Time spent waiting on a tool call that later returned is not idle, so it is never a gap. */
+interface TimelineGap {
+    startMs: number;
+    endMs: number;
+    durationMs: number;
+}
+/** One API request. Points are in source order and cumulative fields run over that order. */
+interface TimelineTokenPoint {
+    atMs: number;
+    turnIndex: number | null;
+    model: string | null;
+    /** The prompt size of this request: input plus cache read plus cache write. Null when the source omitted a count. */
+    contextTokens: number | null;
+    outputTokens: number;
+    cumulativeOutputTokens: number;
+    costUsd: number;
+    cumulativeCostUsd: number;
+    /** False when no price row covers the model; `costUsd` is then 0. */
+    priced: boolean;
+    /** True on the first request after a compaction. */
+    afterCompaction: boolean;
+}
+interface CompactionMark {
+    atMs: number | null;
+    turnIndex: number | null;
+    byteOffset: number;
+    summary: string | null;
+    summaryTruncated: boolean;
+}
+interface ModelRequests {
+    model: string;
+    requests: number;
+}
+interface TokenTimeline {
+    /** `delta` has per-request points. A `snapshot` source reports running totals only: `points` is empty and nothing is priced, so every `costUsd` is 0. */
+    basis: "delta" | "snapshot" | "unreported";
+    points: TimelineTokenPoint[];
+    compactions: CompactionMark[];
+    /** Most requests first. */
+    models: ModelRequests[];
+}
+interface ToolNameCount {
+    name: string;
+    family: ToolFamily;
+    calls: number;
+    errors: number;
+    durationMs: number;
+}
+interface ToolFamilyCount {
+    family: ToolFamily;
+    calls: number;
+    errors: number;
+    /** Call start times, ascending, for `countAtOrBefore`. */
+    atMs: number[];
+}
+interface TimelineToolBreakdown {
+    /** Most calls first. */
+    byName: ToolNameCount[];
+    byFamily: ToolFamilyCount[];
+    /** Every call start time, ascending. */
+    atMs: number[];
+}
+interface TimelineFileTouch {
+    path: string;
+    access: "read" | "write";
+    /** First touch of this path with this access. */
+    atMs: number | null;
+    calls: number;
+}
+interface TimelineFileBreakdown {
+    /** One row per path and access, ordered by first touch. */
+    touches: TimelineFileTouch[];
+    readCount: number;
+    writeCount: number;
+}
+interface TimelineError {
+    callId: string;
+    toolName: string;
+    turnIndex: number;
+    /** When the failing result arrived. */
+    atMs: number | null;
+    message: string;
+    sidechain: boolean;
+}
+interface TimelineErrorBreakdown {
+    /** Failed calls over all calls; 0 with no calls. */
+    rate: number;
+    items: TimelineError[];
+    atMs: number[];
+}
+/** A subagent dispatch, from its tool call to that call's result. */
+interface TimelineAgentSpan {
+    callId: string;
+    label: string;
+    startMs: number | null;
+    endMs: number | null;
+    outcome: TimelineToolOutcome;
+}
+interface TimelineTotals {
+    turns: number;
+    userMessages: number;
+    assistantMessages: number;
+    toolCalls: number;
+    errors: number;
+    compactions: number;
+    /** API requests with usage. Null on a `snapshot` basis, which cannot count them. */
+    requests: number | null;
+    unpricedRequests: number;
+    tokens: TimelineTokens;
+    /** 0 on a `snapshot` basis, which has no per-request usage to price. */
+    costUsd: number;
+}
+/**
+ * Everything a session view reads, as plain JSON. Every `*Ms` field is epoch milliseconds,
+ * so the model holds no time zone and a renderer picks one.
+ */
+interface SessionTimeline {
+    version: typeof SESSION_TIMELINE_VERSION;
+    sessionId: string | null;
+    harness: string | null;
+    startMs: number | null;
+    endMs: number | null;
+    durationMs: number;
+    totals: TimelineTotals;
+    turns: TimelineTurn[];
+    buckets: TimelineMinuteBucket[];
+    gaps: TimelineGap[];
+    tokens: TokenTimeline;
+    tools: TimelineToolBreakdown;
+    files: TimelineFileBreakdown;
+    errors: TimelineErrorBreakdown;
+    agents: TimelineAgentSpan[];
+}
+
+/** How many of the ascending `sortedMs` are at or before `targetMs`, by binary search. */
+declare function countAtOrBefore(sortedMs: readonly number[], targetMs: number): number;
+
+export { type CompactionMark as C, type ModelRequests as M, type SessionTimeline as S, TIMELINE_GAP_MIN_MS as T, SESSION_TIMELINE_VERSION as a, TIMELINE_TEXT_CAP as b, type TimelineAgentSpan as c, type TimelineError as d, type TimelineErrorBreakdown as e, type TimelineFileBreakdown as f, type TimelineFileTouch as g, type TimelineGap as h, type TimelineMessage as i, type TimelineMinuteBucket as j, type TimelineTokenPoint as k, type TimelineTokens as l, type TimelineToolBreakdown as m, type TimelineToolCall as n, type TimelineToolOutcome as o, type TimelineTotals as p, type TimelineTurn as q, type TimelineTurnOrigin as r, type TokenTimeline as s, type ToolFamilyCount as t, type ToolNameCount as u, countAtOrBefore as v };

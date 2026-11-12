@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the served log records dropped hits too",
+      "file": "products/active-work/src/search/related.ts",
+      "find": "hits: hits.filter((hit) => placed.has(hit.ref)),",
+      "replace": "hits,",
+      "kills": ["context.related in context mode a spawn trigger logs placed entries only, ranked in rendered order"]
+    },
+    {
+      "name": "maxTier is not forwarded",
+      "file": "products/active-work/src/commands/context-related.ts",
+      "find": "    ...(args.maxTier !== undefined ? { maxTier: args.maxTier } : {}),\n",
+      "replace": "",
+      "kills": ["context.related in context mode maxTier caps every entry"]
+    },
+    {
+      "name": "the result schema drops entries",
+      "file": "products/active-work/src/commands/context-related.ts",
+      "find": "  entries: z\n",
+      "replace": "  entriesUnused: z\n",
+      "kills": ["context.related in context mode the command result schema keeps the context fields"]
+    }
+  ]
+}

@@ -8,6 +8,7 @@ import { registerShepherdCoverage } from "./cli-coverage.js";
 import { registerOwnerRelease } from "./cli-owner-release.js";
 import { callerOf, parsePort, parsePositiveInt, parseTarget, statusArgs, statusRows, withStatusFilters, type StatusFilter } from "./cli-options.js";
 import { localEnvelope, postRpc, unansweredMessage } from "./cli-shepherd-rpc.js";
+import { registerShepherdFollowUps } from "./cli-shepherd-follow-ups.js";
 import { registerShepherdPlanRound } from "./cli-shepherd-plan-round.js";
 import { registerShepherdWait } from "./cli-shepherd-wait.js";
 import { registerShepherdWatch } from "./cli-shepherd-watch.js";
@@ -59,6 +60,7 @@ export function registerShepherd(program: Command, verbs: Verbs): void {
   registerShepherdStats(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   registerShepherdCoverage(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   registerShepherdWait(shepherd, verbs);
+  registerShepherdFollowUps(shepherd, verbs);
   registerShepherdWatch(verb, verbs, runShepherd);
   registerOwnerRelease(shepherd, verbs);
   registerShepherdPlanRound(shepherd, verbs);
@@ -68,7 +70,7 @@ export function registerShepherd(program: Command, verbs: Verbs): void {
 type VerbOf = (spec: string, description: string) => Command;
 
 function registerRunVerbs(verb: VerbOf, verbs: Verbs): void {
-  verb("register <target>", "shepherd owner/repo#N, or owner/repo with --branch before its PR exists; a repeat returns the existing run, or a new one if it failed, or was cancelled with its PR open")
+  verb("register <target>", "shepherd owner/repo#N, or owner/repo with --branch before its PR exists; a repeat returns the existing run, or a new one if it failed, or was cancelled or stopped closed with its PR open")
     .option("--branch <name>", "the PR's head branch")
     .option("--head <sha>", "the PR's head commit; with --branch, Shepherd does not read the PR from GitHub to register it")
     .option("--base <name>", "the PR's base branch; with --head, Shepherd classes the PR's files from local git")
@@ -94,6 +96,16 @@ function registerRunVerbs(verb: VerbOf, verbs: Verbs): void {
     .action((opts: ShepherdOpts) => runShepherd(verbs, "shepherd.waiting", () => ({}), opts));
   registerVisualDeltaVerb(verb, verbs);
   registerBriefVerb(verb, verbs);
+  registerVisualWeekVerb(verb, verbs);
+}
+
+/** TP-4761 S3: the weekly Ship batch for a repo's pending visual-path gates, printed. Reads gates and holds; resolves nothing. */
+function registerVisualWeekVerb(verb: VerbOf, verbs: Verbs): void {
+  verb("visual-week", "print as JSON the weekly Ship batch round spec for --repo: one merge-bound question per pending visual-path approve-merge gate at a current, unheld head; resolves no gate. With --images, writes each PR's pr-visual before and after pairs under that directory and adds a section per PR")
+    .requiredOption("--repo <owner/repo>", "the repo whose pending visual-path gates to batch")
+    .option("--images <dir>", "a round directory to write each PR's pr-<n>/ pairs and manifest.json into")
+    .action((opts: ShepherdOpts & { repo: string; images?: string }) =>
+      runShepherd(verbs, "shepherd.visual-week", () => ({ repo: opts.repo, ...(opts.images !== undefined && { images: resolve(opts.images) }) }), opts));
 }
 
 /** TP-1696: the owner PR section for one PR, printed. Reads GitHub, Shepherd and active-work; writes nothing. */
@@ -128,6 +140,13 @@ function registerHoldVerbs(verb: VerbOf, verbs: Verbs): void {
   verb("resync", "end runs and gates whose PR was merged or closed outside Shepherd, cancel gates of ended runs, supersede moved heads")
     .option("--dry-run", "print what it would end, cancel or supersede, and write nothing")
     .action((opts: ShepherdOpts & { dryRun?: boolean }) => runShepherd(verbs, "shepherd.resync", () => ({ dryRun: opts.dryRun === true }), opts));
+  verb("readdress-dead-ends", "list each pending dead-end owner gate (exit with no push, fix-first-runaway, failed-rounds) and the seat it would go to (TP-4759); writes nothing without --apply")
+    .option("--apply", "cancel each listed gate that has a seat, so its run asks that seat at the same head")
+    .action((opts: ShepherdOpts & { apply?: boolean }) => runShepherd(verbs, "shepherd.readdress-dead-ends", () => ({ apply: opts.apply === true }), opts));
+  verb("refollow", "cancel each pending land gate at the PR's open head whose run holds an owner merge on an earlier land gate, so the run asks again and its approval carry decides (TP-4812)")
+    .option("--repo <owner/repo>", "only gates of runs on this repo")
+    .option("--dry-run", "list the gates it would cancel, and cancel none")
+    .action((opts: ShepherdOpts & { repo?: string; dryRun?: boolean }) => runShepherd(verbs, "shepherd.refollow", () => ({ repo: opts.repo, dryRun: opts.dryRun === true }), opts));
 }
 
 /** A repair stop is the seat's stop on fixers short of an owner hold; it is not a hold, so these verbs never touch the release path. */

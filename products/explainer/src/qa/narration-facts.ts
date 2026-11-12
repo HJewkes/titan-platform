@@ -180,11 +180,19 @@ function nameHeard(name: string, spoken: string): boolean {
   return key === "" || keys.includes(key) || spelled || joined || expanded(name, keys) || numberHeard(name, spoken);
 }
 
-/** One beat's on-screen numbers and headline names that its narration never says. */
-export function unspokenFacts(beat: string, texts: readonly ScreenText[], spoken: string): NarrationFact[] {
+const NO_CITED_IDS: ReadonlySet<number> = new Set();
+
+/** Only a bare digit run cites: "$2,324", "2.3k" or "2324%" is a quantity whatever id it equals. */
+const citesId = ({ value, mention }: ShownNumber, citedIds: ReadonlySet<number>): boolean => /^\d+$/.test(mention) && citedIds.has(value);
+
+/**
+ * One beat's on-screen numbers and headline names that its narration never says. `citedIds` holds the numbers of the
+ * PR and task ids the beat cites: one shown bare ("Cards for 2324 and 2325") is a citation, as "PR 2324" is.
+ */
+export function unspokenFacts(beat: string, texts: readonly ScreenText[], spoken: string, citedIds: ReadonlySet<number> = NO_CITED_IDS): NarrationFact[] {
   const unique = [...new Map(texts.map((text) => [text.text, text])).values()];
   const said = spokenValues(spoken);
-  const numbers = claimNumbers(unique).filter((n) => !heard(n.value, said, spoken)).map((n): NarrationFact => ({ beat, kind: "number", fact: n.mention, shown: n.shown }));
+  const numbers = claimNumbers(unique).filter((n) => !citesId(n, citedIds) && !heard(n.value, said, spoken)).map((n): NarrationFact => ({ beat, kind: "number", fact: n.mention, shown: n.shown }));
   const names = unique.filter(isHeadline).flatMap((text) =>
     headlineNames(text.text).filter((name) => !nameHeard(name, spoken)).map((name): NarrationFact => ({ beat, kind: "name", fact: name, shown: text.text })),
   );
@@ -207,13 +215,17 @@ function settledTexts(samples: readonly ScreenText[], counting: (figure: ScreenT
   });
 }
 
-/** The report for qa.json: every probed beat's on-screen text against the words heard in it. */
-export function narrationFactsReport(probed: readonly { beat: string; texts: readonly ScreenText[] }[], spoken: (beat: string) => string): NarrationFactsReport {
+/** The report for qa.json: every probed beat's on-screen text against the words heard in it and the ids it cites. */
+export function narrationFactsReport(
+  probed: readonly { beat: string; texts: readonly ScreenText[] }[],
+  spoken: (beat: string) => string,
+  citedIds: (beat: string) => ReadonlySet<number> = () => NO_CITED_IDS,
+): NarrationFactsReport {
   const byBeat = new Map<string, (typeof probed)[number][]>();
   for (const moment of probed) byBeat.set(moment.beat, [...(byBeat.get(moment.beat) ?? []), moment]);
   const findings = [...byBeat].flatMap(([beat, moments]) => {
     const texts = settledTexts(moments.flatMap((moment) => moment.texts), countingFigures(moments));
-    return unspokenFacts(beat, texts, spoken(beat));
+    return unspokenFacts(beat, texts, spoken(beat), citedIds(beat));
   });
   return { beats: byBeat.size, findings };
 }

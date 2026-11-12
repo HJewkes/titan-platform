@@ -1,7 +1,7 @@
 import type { AccountProfile } from "../profile.js";
 import { pollAll, pollUsage, type PollAllEntry, type PollFailure, type PollOptions } from "../node/poll.js";
 import { refreshIfNeeded, type RefreshResult } from "../node/refresh.js";
-import { fetchOf, profilesOf, type CliContext } from "./context.js";
+import { fetchOf, keychainOf, profilesOf, type CliContext } from "./context.js";
 import { EXIT_FAILED, EXIT_LOGIN, EXIT_OK, exitFor, failureLine, printableLabel, windowsText } from "./report.js";
 
 // The timer runs every 150 s, so a token due within 10 minutes gets several tries before
@@ -43,8 +43,28 @@ function skippedText(entry: PollAllEntry): string | null {
   return `rate limited, skipped until ${new Date(entry.backoffUntil * 1000).toISOString()}`;
 }
 
-function reportEntry(entry: PollAllEntry, context: CliContext): number {
+const ACCOUNT_LABELS_ENV = "ANTHROPIC_ACCOUNT_LABELS";
+
+// Unset or empty means every profile is an account. A listed set marks the rest, such as a
+// stray config dir, as not worth failing the timer over.
+function accountLabelsOf(context: CliContext): ReadonlySet<string> | null {
+  const labels = (context.env[ACCOUNT_LABELS_ENV] ?? "")
+    .split(",")
+    .map((label) => label.trim())
+    .filter((label) => label.length > 0);
+  return labels.length === 0 ? null : new Set(labels);
+}
+
+function isIgnorableLoginFailure(result: PollAllEntry["result"]): boolean {
+  return !result.ok && (result.failure === "missing" || result.failure === "refused");
+}
+
+function reportEntry(entry: PollAllEntry, context: CliContext, accounts: ReadonlySet<string> | null): number {
   const { label, result } = entry;
+  if (accounts !== null && !accounts.has(label) && isIgnorableLoginFailure(result) && !result.ok) {
+    context.err(failureLine(label, `${failureText(result)}, not a listed account, ignored`));
+    return EXIT_OK;
+  }
   const skipped = skippedText(entry);
   if (skipped !== null) {
     context.out(`${printableLabel(label)}: ${skipped}`);
@@ -69,12 +89,14 @@ async function pollEntries(profiles: AccountProfile[], write: boolean, options: 
   return results;
 }
 
-// Refreshes first, when asked, so a token renewed this run is the one polled.
+// Refreshes first, when asked, so a token renewed this run is the one polled. On darwin the
+// login lives in the Keychain, which this never writes: renewal is left to Claude Code.
 export async function runPoll(flags: PollFlags, context: CliContext): Promise<number> {
   const profiles = profilesOf(context);
   const now = context.now();
-  const refreshCodes = flags.refresh ? await refreshAll(profiles, now, context) : [];
-  const options: PollOptions = { fetch: fetchOf(context), now, uid: context.uid };
+  const refresh = flags.refresh && (context.platform ?? process.platform) !== "darwin";
+  const refreshCodes = refresh ? await refreshAll(profiles, now, context) : [];
+  const options: PollOptions = { ...keychainOf(context), fetch: fetchOf(context), now, uid: context.uid };
   const entries = await pollEntries(profiles, flags.write, options);
-  return exitFor([...refreshCodes, ...entries.map((entry) => reportEntry(entry, context))]);
+  return exitFor([...refreshCodes, ...entries.map((entry) => reportEntry(entry, context, accountLabelsOf(context)))]);
 }

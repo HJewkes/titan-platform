@@ -5,7 +5,8 @@ import { isCarryFencedPath } from "@titan-design/authority";
 import { gitIn, seedRepo } from "@titan-design/test-kit/git";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { changedPathsBetween } from "./changed-paths.js";
-import { CarryRefusal, systemGit } from "./tree-carry.js";
+import { systemGit } from "./carry-cache-adapter.js";
+import { CarryRefusal } from "./tree-carry.js";
 
 
 let root: string;

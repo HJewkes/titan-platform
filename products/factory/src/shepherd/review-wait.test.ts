@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ReviewerAskTimedOut, ReviewerBrokerBusy, notStarted, rosterUnread, startedSession, timedOutUnseen, whileBrokerBusy, whileRosterSlow } from "./review-wait.js";
+import { ReviewerAskTimedOut, ReviewerBrokerBusy, notStarted, rosterUnread, startedSession, timedOutUnseen, untilRosterRead, whileBrokerBusy, whileRosterSlow } from "./review-wait.js";
 
 const LEAKY = "refused at https://db.example.invalid/x with tok_FAKE0000SECRET";
 const leaks = (text: string) => text.includes("db.example.invalid") || text.includes("tok_FAKE0000SECRET");
@@ -66,5 +66,43 @@ describe("a roster read that times out", () => {
 
     await expect(whileRosterSlow(clock(), new AbortController().signal, 300_000, () => Promise.reject(failure))).rejects.toBe(failure);
     expect(() => rosterUnread(failure)).toThrow(failure);
+  });
+});
+
+describe("a roster read that stays timed out past a whole budget", () => {
+  it("is read again after doubling pauses until it answers, rather than giving up", async () => {
+    let now = 0;
+    const pauses: number[] = [];
+    const timing = { now: () => now, sleep: async (ms: number) => void ((now += ms), pauses.push(ms)), pollMs: 30_000, brokerDownWaitMs: 15 * 60_000 };
+    const answersAt = 20 * 60_000;
+    const read = async () => (now < answersAt ? Promise.reject(new ReviewerAskTimedOut("timed out")) : ["roster"]);
+
+    const roster = await untilRosterRead(timing, new AbortController().signal, 60_000, read);
+
+    expect(roster).toEqual(["roster"]);
+    expect(pauses.filter((ms) => ms !== timing.pollMs)).toEqual([60_000, 120_000, 240_000, 480_000]);
+  });
+
+  it("notes each pause with its round, next pause and total wait, and clears the note once the roster is read", async () => {
+    let now = 0;
+    const timing = { now: () => now, sleep: async (ms: number) => void (now += ms), pollMs: 30_000, brokerDownWaitMs: 15 * 60_000 };
+    const notes: (string | undefined)[] = [];
+    const answersAt = 5 * 60_000;
+    const read = async () => (now < answersAt ? Promise.reject(new ReviewerAskTimedOut("timed out")) : ["roster"]);
+
+    await untilRosterRead(timing, new AbortController().signal, 60_000, read, (text) => void notes.push(text));
+
+    expect(notes).toEqual([
+      "roster unread after round 1; reading again in 1 min (1 min waited so far)",
+      "roster unread after round 2; reading again in 2 min (3 min waited so far)",
+      undefined,
+    ]);
+  });
+
+  it("rethrows a failure that is not a timed-out read", async () => {
+    const failure = new Error("not a timeout");
+    const timing = { now: () => 0, sleep: async () => undefined, pollMs: 30_000, brokerDownWaitMs: 15 * 60_000 };
+
+    await expect(untilRosterRead(timing, new AbortController().signal, 60_000, () => Promise.reject(failure))).rejects.toBe(failure);
   });
 });

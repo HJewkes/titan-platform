@@ -1,0 +1,45 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an adversary touch found on re-read lifts the hold",
+      "file": "products/factory/src/shepherd/g10-reclass.ts",
+      "find": "  if (wanted !== undefined) return { reclassed: false, kept: wanted };\n",
+      "replace": "",
+      "kills": [
+        "a run held because its changed files were unread at registration, read again at a CI read keeps its hold when the whole read finds an authority touch",
+        "a run held because its changed files were unread at registration, read again at a CI read keeps its hold when the read fails again on both tries",
+        "a run held because its changed files were unread at registration, read again at a CI read keeps its hold when the list comes back cut short at GitHub's cap"
+      ]
+    },
+    {
+      "name": "a run held for any reason is re-read",
+      "file": "products/factory/src/shepherd/g10-reclass.ts",
+      "find": "  if (!from || !isUnreadRegistrationHold(from)) return classHead(deps, input, pause);",
+      "replace": "  if (!from) return classHead(deps, input, pause);",
+      "kills": [
+        "a run held because its changed files were unread at registration, read again at a CI read reads nothing for a run held for another reason"
+      ]
+    },
+    {
+      "name": "the swap is a plain release without the re-class mark",
+      "file": "products/factory/src/shepherd/g10-reclass.ts",
+      "find": "  const placed = deps.store.get().reclassIfHeld(input.runId, from, () => undefined, { actor: SHEPHERD_ACTOR, headSha: input.head });\n  return { reclassed: placed !== false };",
+      "replace": "  deps.store.get().release(input.runId, { actor: SHEPHERD_ACTOR, headSha: input.head });\n  return { reclassed: true };",
+      "kills": [
+        "a run held because its changed files were unread at registration, read again at a CI read is unheld when the whole read finds a 900-line PR with no adversary touch, as its registration would have left it"
+      ]
+    },
+    {
+      "name": "a run with no unread hold is never classed again",
+      "file": "products/factory/src/shepherd/g10-reclass.ts",
+      "find": "return classHead(deps, input, pause);",
+      "replace": "return { reclassed: false };",
+      "kills": [
+        "a consumer bump run, classed manifest-only at registration, read again at a CI read is held g10-adversary once its fixer pushes a file in the adversary class",
+        "a run with no G10 hold, classed again at a CI read is held g10-adversary when a bump fixer's push adds an authority file to a manifest-only head",
+        "a run with no G10 hold, classed again at a CI read stacks the adversary hold over a stall, which waits under it"
+      ]
+    }
+  ]
+}

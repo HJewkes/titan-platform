@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the record schema accepts basis no-pixel-diff again",
+      "file": "products/factory/src/shepherd/visual-tier-guard.ts",
+      "find": "basis: z.literal(\"non-rendering\")",
+      "replace": "basis: z.enum([\"non-rendering\", \"no-pixel-diff\"])",
+      "kills": ["visual tier fails closed (TP-4761 S1) a stored tier record with basis no-pixel-diff gates as tier 2"]
+    },
+    {
+      "name": "an uncompilable list matches nothing",
+      "file": "products/factory/src/shepherd/visual-tier.ts",
+      "find": "  const matches = compileGlobs(globs.map((glob) => glob.toLowerCase()));\n",
+      "replace": "  let matches: (path: string) => boolean = () => false;\n  try {\n    matches = compileGlobs(globs.map((glob) => glob.toLowerCase()));\n  } catch {\n    matches = () => false;\n  }\n",
+      "kills": ["visual tier fails closed (TP-4761 S1) a tier policy with an uncompilable, empty or blank list is tier 2 for every head"]
+    },
+    {
+      "name": "the outside and inert rows run before the gating rows",
+      "file": "products/factory/src/shepherd/visual-tier.ts",
+      "find": "    [\"harness\", caseFolded(config.harnessPaths)],\n    [\"rendering\", caseFolded(config.renderingPaths)],\n    [\"snapshot\", caseFolded(config.storyDiff.paths)],\n    [\"outside\", (path) => !visual(path)],\n    [\"inert\", cannotRender],\n",
+      "replace": "    [\"outside\", (path) => !visual(path)],\n    [\"inert\", cannotRender],\n    [\"harness\", caseFolded(config.harnessPaths)],\n    [\"rendering\", caseFolded(config.renderingPaths)],\n    [\"snapshot\", caseFolded(config.storyDiff.paths)],\n",
+      "kills": ["visual tier fails closed (TP-4761 S1) a gating path outside the visual globs or with a test-like name makes a story-only head tier 2"]
+    },
+    {
+      "name": "an unrecognised path defaults to logic",
+      "file": "products/factory/src/shepherd/visual-tier.ts",
+      "find": "?.[0] ?? \"rendered\";",
+      "replace": "?.[0] ?? \"logic\";",
+      "kills": ["visual tier fails closed (TP-4761 S1) every path no clearing row recognises is rendered, so it is tier 2"]
+    }
+  ]
+}

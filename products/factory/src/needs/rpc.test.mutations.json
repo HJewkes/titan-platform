@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "fyi count still sends the fyi items",
+      "file": "products/factory/src/needs/rpc.ts",
+      "find": "  if (fyi !== \"count\") return read;\n",
+      "replace": "  if (fyi !== \"count\" || fyi === \"count\") return read;\n",
+      "kills": [
+        "needs.list over the daemon with fyi count, sends every ask whole and only the number of fyi items"
+      ]
+    }
+  ]
+}

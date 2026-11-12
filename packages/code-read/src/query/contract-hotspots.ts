@@ -1,6 +1,5 @@
 import { z } from "zod";
-import { BaselineFields } from "./contract-findings.js";
-import { NodeRef, SnapshotRef } from "./schemas.js";
+import { BaselineFields, NodeRef, SnapshotRef } from "./schemas.js";
 
 /** Most rows one `hotspots.list` page returns; a table pages with `offset`. */
 export const HOTSPOTS_PAGE_MAX = 500;

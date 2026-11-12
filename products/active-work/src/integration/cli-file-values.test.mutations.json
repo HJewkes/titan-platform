@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "file lines are not trimmed",
+      "file": "products/active-work/src/cli-file-values.ts",
+      "find": ".map((line) => line.trim())",
+      "replace": ".map((line) => line)",
+      "kills": ["array flag @<file> values an @file stands for its non-blank lines, trimmed, after the values before it"]
+    },
+    {
+      "name": "an empty file is accepted",
+      "file": "products/active-work/src/cli-file-values.ts",
+      "find": "if (lines.length === 0) throw",
+      "replace": "if (false) throw",
+      "kills": ["array flag @<file> values an @file with no values is a usage error naming the file"]
+    },
+    {
+      "name": "an unreadable file reads as empty",
+      "file": "products/active-work/src/cli-file-values.ts",
+      "find": "    throw new InvalidArgumentError(`${flag} @${file}: cannot read it (${errorCode(error)})`);",
+      "replace": "    return '';",
+      "kills": ["array flag @<file> values an unreadable @file is a usage error naming the file"]
+    },
+    {
+      "name": "file lines skip the comma check",
+      "file": "products/active-work/src/program.ts",
+      "find": "expandFiles(opt.long, refuseCommaList(opt.long, accumulate))",
+      "replace": "expandFiles(opt.long, accumulate)",
+      "kills": ["array flag @<file> values a comma in an @file line is refused like a comma in the flag"]
+    }
+  ]
+}

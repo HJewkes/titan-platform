@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { MAP_PATH, diffFiles, forwardEdges, parseExternalImporters, parseImports, parseLsTree } from "./burndown-port-map.mjs";
+import { MAP_PATH, diffFiles, forwardEdges, parseExternalImporters, parseImports, parseLsTree, portClaims } from "./burndown-port-map.mjs";
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "burndown-port-map.mjs");
 const roots = [];
@@ -124,5 +124,90 @@ describe("burndown-port-map", () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("2 files, 2 mapped, 0 unmapped, 0 removed");
+  });
+});
+
+/** A sandbox whose `a.ts` is committed twice, so `base` is the first commit and HEAD holds a change to a.ts. */
+function movedSandbox(entry, { leaf = false, moved = true } = {}) {
+  const { repo, map } = sandbox(["a.ts", "b.ts"], ["a.ts", "b.ts"]);
+  const git = (...args) => execFileSync("git", ["-C", repo, ...args], { encoding: "utf8" }).trim();
+  const base = git("rev-parse", "HEAD");
+  const touched = moved ? "a.ts" : "b.ts";
+  writeFileSync(join(repo, "src", "agents", "burndown", touched), "export const moved = 1\n");
+  git("add", ".");
+  git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "move");
+  const body = { source: { sha: git("rev-parse", "HEAD") }, files: [{ file: "a.ts", ...(leaf ? {} : entry(base)) }, { file: "b.ts" }], leafPorts: leaf ? [{ file: "a.ts", ...entry(base) }] : [] };
+  writeFileSync(map, JSON.stringify(body));
+  return { repo, map, head: git("rev-parse", "--short", "HEAD") };
+}
+
+describe("burndown-port-map drift check", () => {
+  it("exits 2 and names a ported file whose agent-chat source moved after portedFrom", () => {
+    const box = movedSandbox((base) => ({ ported: true, portedFrom: base }));
+
+    const result = runCheck(box);
+
+    expect(result.status).toBe(2);
+    expect(result.stdout).toContain(`drifted: a.ts (ported) ${box.head}`);
+  });
+
+  it("exits 2 and names a leaf port whose agent-chat source moved after portedFrom", () => {
+    const box = movedSandbox((base) => ({ portedFrom: base }), { leaf: true });
+
+    const result = runCheck(box);
+
+    expect(result.status).toBe(2);
+    expect(result.stdout).toContain(`drifted: a.ts (leaf) ${box.head}`);
+  });
+
+  it("exits 0 when only a file other than the ported one moved", () => {
+    const result = runCheck(movedSandbox((base) => ({ ported: true, portedFrom: base }), { moved: false }));
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).not.toContain("drifted:");
+  });
+
+  it("exits 1, not 2, when a ported file has no 40-hex portedFrom even though another entry drifted", () => {
+    const box = movedSandbox((base) => ({ ported: true, portedFrom: base }));
+    const map = JSON.parse(readFileSync(box.map, "utf8"));
+    map.leafPorts = [{ file: "b.ts", portedFrom: "28c31ed" }];
+    writeFileSync(box.map, JSON.stringify(map));
+
+    const result = runCheck(box);
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain("unpinned: b.ts (leaf)");
+    expect(result.stdout).toContain("drifted: a.ts");
+  });
+
+  it("exits 1 and names a pinned portedFrom the clone does not hold instead of a raw git error", () => {
+    const missing = "b".repeat(40);
+    const box = movedSandbox(() => ({ ported: true, portedFrom: missing }));
+
+    const result = runCheck(box);
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain(`unknown portedFrom: a.ts (ported) ${missing}`);
+    expect(result.stderr).not.toContain("fatal");
+  });
+
+  it("splits claims into pinned and unpinned by a full 40-hex portedFrom", () => {
+    const full = "a".repeat(40);
+    const map = { files: [{ file: "x.ts", ported: true, portedFrom: full }, { file: "y.ts", ported: true, portedFrom: "abc1234" }, { file: "z.ts", ported: false }], leafPorts: [{ file: "w.ts" }] };
+
+    const { pinned, unpinned } = portClaims(map);
+
+    expect(pinned.map((c) => c.file)).toEqual(["x.ts"]);
+    expect(unpinned.map((c) => c.file)).toEqual(["y.ts", "w.ts"]);
+  });
+
+  it("pins every ported file and leaf port in the committed map to a full sha, 28c31ed for the TP-2627 ports", () => {
+    const map = JSON.parse(readFileSync(MAP_PATH, "utf8"));
+    const { unpinned } = portClaims(map);
+    const tp2627 = [...map.files.filter((f) => f.ported), ...map.leafPorts].map((c) => c.portedFrom);
+
+    expect(unpinned).toEqual([]);
+    expect(tp2627).toHaveLength(13);
+    expect(tp2627.every((s) => s === "28c31ed3456276be0d04e5a37c15e531837444ee")).toBe(true);
   });
 });

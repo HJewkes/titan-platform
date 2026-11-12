@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "weekly audits the current week",
+      "file": "products/factory/src/owner-gates/command.ts",
+      "find": "  const items = await runAudit(verbs, { week: previousWeek(now), judge: opts.judge, keepExisting: true }, now);",
+      "replace": "  const items = await runAudit(verbs, { week: isoWeek(now), judge: opts.judge, keepExisting: true }, now);",
+      "kills": ["titan-factory owner-gates weekly audits the previous ISO week, then files the demotion card with that audit consulted"]
+    },
+    {
+      "name": "weekly reports with no audit consulted",
+      "file": "products/factory/src/owner-gates/command.ts",
+      "find": "  if (items) await reportAction(verbs, { deposit: true, auditBad: badByClass(items) }, now);",
+      "replace": "  if (items) await reportAction(verbs, { deposit: true }, now);",
+      "kills": ["titan-factory owner-gates weekly audits the previous ISO week, then files the demotion card with that audit consulted"]
+    },
+    {
+      "name": "weekly stops at an audit file already written",
+      "file": "products/factory/src/owner-gates/command.ts",
+      "find": "judge: opts.judge, keepExisting: true }, now);",
+      "replace": "judge: opts.judge, keepExisting: false }, now);",
+      "kills": ["titan-factory owner-gates weekly still reports when the previous week's audit file is already written"]
+    },
+    {
+      "name": "an unread incident log reads as no incidents",
+      "file": "products/factory/src/owner-gates/audit-command.ts",
+      "find": "    incidents: readDeployIncidents(factoryStateDir(env)),",
+      "replace": "    incidents: readDeployIncidents(factoryStateDir(env)) ?? [],",
+      "kills": ["titan-factory owner-gates audit reports incidents unknown when the factory state dir holds no incident log"]
+    },
+    {
+      "name": "the audit links incidents by no ancestry at all",
+      "file": "products/factory/src/owner-gates/audit-command.ts",
+      "find": "    isAncestor: injected?.isAncestor ?? deployCheckoutAncestry(deployCheckoutFor(env)),",
+      "replace": "    isAncestor: async () => false,",
+      "kills": ["titan-factory owner-gates audit reads the incident log from the factory state dir and reports unknown when ancestry cannot answer"]
+    }
+  ]
+}

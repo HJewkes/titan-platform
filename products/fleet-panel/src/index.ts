@@ -1,5 +1,5 @@
 export type { AccountUsage, Presence, RosterEntry, Slots, StatusLineReading, UsageWindow } from "./inputs.js";
-export { parseAccounts, parseRoster, parseSlots, parseStatusLine } from "./inputs.js";
+export { accountUsageOf, parseRoster, parseSlots, parseStatusLine } from "./inputs.js";
 export type { SseFrame, StatusReport } from "./events.js";
 export { EventBook, SseParser, statusReportOf } from "./events.js";
 export type { AccountStrip, AgentRow, ContextReading, CostReading, Snapshot, SnapshotInputs } from "./snapshot.js";

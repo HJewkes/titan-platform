@@ -62,6 +62,28 @@ describe("factory needs client", () => {
     expect(list.gaps).toEqual(["morning: x"]);
   });
 
+  it("asks the factory to count fyi items rather than send them, and passes the count on", async () => {
+    const asked: Record<string, unknown>[] = [];
+    factory = await startFakeDaemon({ ok: true }, (_command, args) => {
+      asked.push(args);
+      return { items: [gateItem("gate:a/approve-merge")], gaps: [], fyiCount: 412 };
+    });
+
+    const list = await factoryNeeds(factory.port).list();
+
+    expect(asked).toEqual([{ fyi: "count" }]);
+    expect(list.items.map((item) => item.id)).toEqual(["gate:a/approve-merge"]);
+    expect(list.fyiCount).toBe(412);
+  });
+
+  it("reports no count from a factory that lists its fyi items instead", async () => {
+    const port = await serveNeeds({ items: [gateItem("gate:a/approve-merge")], gaps: [] });
+
+    const list = await factoryNeeds(port).list();
+
+    expect(list.fyiCount).toBeUndefined();
+  });
+
   it("turns one invalid item into a gap that names it and keeps the rest", async () => {
     const port = await serveNeeds({ items: [gateItem("gate:a/approve-merge"), { ...gateItem("gate:bad/approve-merge"), kind: "nonsense" }, 7], gaps: [] });
 

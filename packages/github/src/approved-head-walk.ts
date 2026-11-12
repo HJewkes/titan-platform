@@ -1,4 +1,4 @@
-import type { GitHubPort, RepoSlug } from "./port.js";
+import type { GitHubPort, RepoSlug } from "./port-types.js";
 
 /** How many base merges may sit between the approved head and the PR head, as in agent-chat's `scripts/seat/premerge`. */
 export const MAX_BASE_MERGES = 5;

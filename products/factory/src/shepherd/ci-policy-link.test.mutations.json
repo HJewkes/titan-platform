@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a measurement link is compared case-sensitively",
+      "file": "products/factory/src/shepherd/ci-policy-class.ts",
+      "find": "`${owner}/${name}`.toLowerCase() === repo.toLowerCase()",
+      "replace": "`${owner}/${name}` === repo",
+      "kills": [
+        "reading the measurement run link in a PR body reads a measurement link whose owner and repo differ only in case as budget"
+      ]
+    }
+  ]
+}

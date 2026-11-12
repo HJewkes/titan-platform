@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { gitIn, seedRepo, withHistory } from "@titan-design/test-kit/git";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { fixCarry, type FixCarryResult } from "./fix-carry.js";
 
 const REPO = "acme/widgets";
@@ -44,7 +45,7 @@ function approvedAndMergedUp(): { h1: string; h2: string } {
 }
 
 const probe = (fromHead: string, head: string): Promise<FixCarryResult> =>
-  fixCarry({ repo: REPO, baseRef: "main", fromHead, head }, { stateDir, remote: () => origin });
+  fixCarry({ repo: REPO, baseRef: "main", fromHead, head }, { ports: hostCarryPorts, stateDir, remote: () => origin });
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "fix-carry-"));
@@ -126,7 +127,7 @@ describe("fixCarry", { timeout: 30_000 }, () => {
   });
 
   it("asks again when git cannot be read", async () => {
-    const result = await fixCarry({ repo: REPO, baseRef: "main", fromHead: "a".repeat(40), head: "b".repeat(40) }, { stateDir, remote: () => join(root, "missing") });
+    const result = await fixCarry({ repo: REPO, baseRef: "main", fromHead: "a".repeat(40), head: "b".repeat(40) }, { ports: hostCarryPorts, stateDir, remote: () => join(root, "missing") });
 
     expect(result.carries).toBe(false);
   });

@@ -11,8 +11,8 @@
     {
       "name": "the log reader drops route rows",
       "file": "apps/console/server/perf/recorder.ts",
-      "find": "[rpcRow, upstreamRow, routeRow]",
-      "replace": "[rpcRow, upstreamRow]",
+      "find": "[rpcRow, upstreamRow, routeRow, waitRow]",
+      "replace": "[rpcRow, upstreamRow, waitRow]",
       "kills": ["route timing summary a route row reported today is read back from the log for the 24 h window"]
     }
   ]

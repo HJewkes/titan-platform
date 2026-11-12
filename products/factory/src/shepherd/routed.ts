@@ -5,7 +5,7 @@ import { step, type LandOutcome } from "../workflows/land.js";
 import type { ObservedPr } from "./observe.js";
 import type { Verdict } from "./phases.js";
 import { isCorrectionFailure } from "./correct-verdict.js";
-import { FAILED_ROUND_WORDS, INFRA_FAILURES, MALFORMED_ROUND, MAX_FAILED_ROUNDS, MAX_SEAT_HELD_ROUNDS, MAX_THROTTLED_ROUNDS, SEAT_HELD_ROUNDS_WORDS, fixFirstEscalation, nextCloserStreak, roundKind, type CloserStreak, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
+import { FAILED_ROUND_WORDS, INFRA_FAILURES, MALFORMED_ROUND, MAX_FAILED_ROUNDS, MAX_SEAT_HELD_ROUNDS, MAX_THROTTLED_ROUNDS, MAX_UNKNOWN_OBSERVE_ROUNDS, SEAT_HELD_ROUNDS_WORDS, fixFirstEscalation, nextCloserStreak, roundKind, type CloserStreak, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
 import { fixFirstEntry, type FixFirstTrail } from "./fix-first-trail.js";
 import { onEscalated, type FailedRoundsRun } from "./failed-rounds-demotion.js";
 import { onFixFirstEscalated, type FixFirstDemotionRun } from "./fix-first-demotion.js";
@@ -98,7 +98,7 @@ function failedRoundsEscalation(run: RoundCounts, routed: Routed): Escalated {
   return { escalation: "failed-rounds", detail: lastRoundDetail(routed), ...(infra && { infraOnly: true as const }), ...(never && { neverVerdict: true as const }) };
 }
 
-/** D8's convergence review answers a runaway first; any other escalation, or one D8 leaves, goes on to D7 and then the owner gate. */
+/** D8's convergence review answers a runaway first; any other escalation, or one D8 leaves, goes on to D7, then the seat's dead-end gate or the owner's. */
 export async function routeEscalation(run: FailedRoundsRun & FixFirstDemotionRun, headSha: string, escalated: Escalated): Promise<boolean> {
   return (await onFixFirstEscalated(run, headSha, escalated)) ?? onEscalated(run, headSha, escalated);
 }
@@ -109,6 +109,19 @@ function seatHoldRunOut(held: Map<string, number>, headSha: string, reason: stri
   held.set(headSha, rounds);
   if (rounds < MAX_SEAT_HELD_ROUNDS) return undefined;
   return { escalation: "failed-rounds", words: SEAT_HELD_ROUNDS_WORDS, detail: `at ${headSha}, the last with ${reason ?? "no reason given"}` };
+}
+
+/** An observe read GitHub leaves unknown routes to a new land round, so a head it never settles needs its own bound before the owner is asked (TP-1956). */
+export function unknownObserveRunOut(rounds: Map<string, number>, { headSha, observed, route }: Routed): Escalated | undefined {
+  if (route !== "new-cycle" || observed.runState !== "open" || observed.mergeableState !== "unknown") {
+    rounds.delete(headSha);
+    return undefined;
+  }
+  const count = (rounds.get(headSha) ?? 0) + 1;
+  rounds.set(headSha, count);
+  if (count < MAX_UNKNOWN_OBSERVE_ROUNDS) return undefined;
+  const words = `the observe read left mergeable_state unknown for ${MAX_UNKNOWN_OBSERVE_ROUNDS} rounds at one head`;
+  return { escalation: "failed-rounds", words, detail: `at ${headSha}, every observe read came back unknown` };
 }
 
 export function endedOutcome({ observed, headSha }: Routed): LandOutcome {

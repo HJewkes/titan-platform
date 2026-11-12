@@ -8,11 +8,12 @@ import { formatResume, routesOf } from "../cli-host-verbs.js";
 import { parsePort } from "../cli-options.js";
 import { postRpc, unansweredMessage } from "../cli-shepherd-rpc.js";
 import { EXIT } from "../exit-codes.js";
-import { untilSettledOrGated, type FactoryHost } from "../host.js";
+import { untilSettledOrGated, type DriveOutcome, type FactoryHost } from "../host.js";
 import { createFactoryRegistry, factoryContext } from "../registry.js";
 import { FACTORY_PORT } from "../serve.js";
 import { probeServe } from "../serve-probe.js";
 import { targetPorts } from "./configured.js";
+import { shuttingDownOnSignal } from "./eval-signals.js";
 import { planDryRun } from "./plan-dry-run.js";
 
 const RUNGS = ["none", "L0", "L1", "L2", "L3"] as const;
@@ -43,11 +44,13 @@ type After = (data: unknown, host: FactoryHost) => Promise<void>;
 
 async function inProcess(verbs: Verbs, name: string, args: object, after?: After): Promise<JsonEnvelope<unknown>> {
   let envelope: JsonEnvelope<unknown> = { ok: false, error: `${name} did not run`, code: RPC_EXIT.SOFTWARE };
-  await verbs.withHost(async (host, routes) => {
-    envelope = await inProcessCaller(createFactoryRegistry(), () => factoryContext(host, routes))(name, args);
-    if (envelope.ok && after) await after(envelope.data, host);
-    return EXIT.OK;
-  });
+  await verbs.withHost((host, routes) =>
+    shuttingDownOnSignal(host.runtime, async () => {
+      envelope = await inProcessCaller(createFactoryRegistry(), () => factoryContext(host, routes))(name, args);
+      if (envelope.ok && after) await after(envelope.data, host);
+      return EXIT.OK;
+    }),
+  );
   return envelope;
 }
 
@@ -97,21 +100,26 @@ function formatSummaries(runs: readonly ArRunSummary[]): string {
 /** With no serve, the run is driven here until it ends or waits on a human, as `land` does. */
 async function startVerb(verbs: Verbs, target: string, opts: { pin: string; lanes?: number; rounds?: number; port: number }): Promise<void> {
   const config = { ...(opts.lanes ? { lanes: opts.lanes } : {}), ...(opts.rounds ? { rounds: opts.rounds } : {}) };
-  let ended: { status: string; error: string | null } | undefined;
+  let ended: { status: string; error: string | null; outcome: DriveOutcome } | undefined;
   const drive: After = async (data, host) => {
     const { runId } = Started.parse(data);
-    await untilSettledOrGated(host.runtime, host.pendingGates, runId, verbs.deps.host?.gatePollMs ?? 250);
+    const outcome = await untilSettledOrGated(host.runtime, host.pendingGates, runId, verbs.deps.host?.gatePollMs ?? 250);
     const run = host.runtime.status(runId);
-    ended = { status: run?.status ?? "unknown", error: run?.error ?? null };
+    ended = { status: run?.status ?? "unknown", error: run?.error ?? null, outcome };
   };
   const answer = await call(verbs, opts.port, "autoresearch.start", { target, pin: opts.pin, config }, {}, drive);
   if (answer === undefined) return;
   const started = Started.parse(answer);
   if (ended === undefined) return verbs.io.stdout(`run ${started.runId} autoresearch ${target}: ${started.status} on titan-factory serve (port ${opts.port})\n`);
+  if (ended.outcome === "ownership-lost") return (verbs.io.stderr(ownershipLost(started.runId)), verbs.setExit(EXIT.FAILURE));
   const detail = ended.error ? ` (${ended.error})` : "";
   verbs.io.stdout(`run ${started.runId} autoresearch ${target}: ${ended.status}${detail}\nno titan-factory serve answered on port ${opts.port}, so this ran in-process; run titan-factory serve to keep it alive\n`);
   if (ended.status === "failed") verbs.setExit(EXIT.FAILURE);
 }
+
+/** C-287: a lease lost mid-run, as under a host stall, leaves the run unfinished with nobody driving it; it is resumed, not lost. */
+const ownershipLost = (runId: string): string =>
+  `error: run ${runId} lost its lease in this process and stopped unfinished; it is resumable: titan-factory autoresearch resume ${runId}\n`;
 
 function registerStart(group: Command, verbs: Verbs): void {
   group
@@ -129,11 +137,15 @@ function registerResume(group: Command, verbs: Verbs): void {
     .command("resume <runId>")
     .description("drive an unfinished autoresearch run in this process until it ends or waits on a human")
     .action((runId: string) =>
-      verbs.withHost(async (host) => {
-        if (host.runtime.status(runId)?.workflowName !== AUTORESEARCH_WORKFLOW) return (verbs.io.stderr(`error: [not_found] no autoresearch run ${runId}\n`), EXIT.FAILURE);
-        verbs.io.stdout(formatResume(await host.resume()));
-        return EXIT.OK;
-      }),
+      verbs.withHost((host) =>
+        shuttingDownOnSignal(host.runtime, async () => {
+          if (host.runtime.status(runId)?.workflowName !== AUTORESEARCH_WORKFLOW) return (verbs.io.stderr(`error: [not_found] no autoresearch run ${runId}\n`), EXIT.FAILURE);
+          const report = await host.resume();
+          verbs.io.stdout(formatResume(report));
+          if (!report.lost?.includes(runId)) return EXIT.OK;
+          return (verbs.io.stderr(ownershipLost(runId)), EXIT.FAILURE);
+        }),
+      ),
     );
 }
 

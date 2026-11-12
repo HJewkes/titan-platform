@@ -72,3 +72,32 @@ ranking and reports `{ retriever: RERANK_STAGE, reason: "error", message }` in t
 `degraded` array, so a cross-encoder that runs out of memory costs the reordering and not
 the answer. `textFor` throwing degrades the same way.
 
+
+## Context mode
+
+`planContext` turns scored candidates into a token-budgeted block: breadth first at each
+candidate's default tier, then a cap of twice the mean share per entry, then deepening the
+best hits with whatever budget is left. The rules are in
+[the reference page](https://hjewkes.github.io/titan-platform/reference/retrieval).
+
+`engine.retrieve(request, { tierSource, categoryOf, estimateTokens, signal })` runs the same
+ranking as `search` and plans the result:
+
+```ts
+const tierSource: TierSource = {
+  tiers: async (result) => {
+    const title = titleOf(result.id);
+    return [title, `${title}: ${summaryOf(result.id)}`];
+  },
+};
+
+const response = await engine.retrieve(
+  { mode: "context", query: "deploy checklist", limit: 20, budget: { tokens: 600, quotas: { notes: 0.5 } } },
+  { tierSource, categoryOf: (result) => result.id.split(":")[0]! },
+);
+```
+
+`mode: "list"` returns exactly what `search` does. A tier source that throws drops that
+result as `tier-error` and adds one `{ retriever: TIERS_STAGE, reason: "error" }`
+degradation; a missing `tierSource` in context mode throws `TypeError`, and a malformed
+request throws `ZodError`. `zod` ^4 is a peer dependency.

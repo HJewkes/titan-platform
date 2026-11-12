@@ -10,17 +10,15 @@ import { isRepoKey } from "./seats.js";
 import {
   BranchName,
   CarryRefusal,
-  carryCacheDir,
-  carryStateDir,
+  cacheFor,
   ensureCache,
   fetchArgs,
-  githubRemote,
   isAncestor,
   must,
   reasonOf,
   remoteBase,
   serialized,
-  systemGit,
+  type CacheHandle,
   type CarryOptions,
   type Git,
 } from "./tree-carry.js";
@@ -86,8 +84,9 @@ function classify(touched: string[], generated: readonly string[], facts: Remerg
   return { carries: false, ...facts, paths: touched, generatedPaths: matched, reason: `the merge changed ${touched.length - matched.length} path(s) outside the declared generated files` };
 }
 
-async function probe(git: Git, dir: string, url: string, input: RemergeInput, signal?: AbortSignal): Promise<RemergeResult> {
-  await ensureCache(git, dir, signal);
+async function probe(cache: CacheHandle, input: RemergeInput, signal?: AbortSignal): Promise<RemergeResult> {
+  const { git, dir, url } = cache;
+  await ensureCache(cache, signal);
   await must(git, dir, fetchArgs(url, input), signal);
   const base = await mergedBase(git, dir, input, signal);
   if (typeof base !== "string") return base;
@@ -102,21 +101,20 @@ async function probe(git: Git, dir: string, url: string, input: RemergeInput, si
  * Does `head` carry what was decided at `fromHead`: is it `fromHead` plus one merge of the base whose remerge-diff is empty or
  * touches only declared generated files? Every failure, from bad input to a refused fetch, answers no with a reason.
  */
-export async function remerge(raw: unknown, options: CarryOptions = {}): Promise<RemergeResult> {
+export async function remerge(raw: unknown, options: CarryOptions): Promise<RemergeResult> {
   const parsed = RemergeInputSchema.safeParse(raw);
   if (!parsed.success) return { carries: false, reason: `invalid remerge input: ${parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ")}` };
   const input = parsed.data;
   try {
-    const dir = carryCacheDir(carryStateDir(options.stateDir), input.repo);
-    const url = (options.remote ?? githubRemote)(input.repo);
-    return await serialized(dir, () => probe(options.git ?? systemGit, dir, url, input, options.signal));
+    const cache = cacheFor(input.repo, options);
+    return await serialized(cache.dir, () => probe(cache, input, options.signal));
   } catch (error) {
     options.signal?.throwIfAborted();
     return { carries: false, reason: reasonOf(error) };
   }
 }
 
-export function remergeRoute(now: () => number, options: Omit<CarryOptions, "signal"> = {}): StepRoute {
+export function remergeRoute(now: () => number, options: Omit<CarryOptions, "signal">): StepRoute {
   return codeRoute(REMERGE_STEP, now, (input: unknown, signal) => remerge(input, { ...options, signal }));
 }
 

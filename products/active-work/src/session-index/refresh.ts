@@ -1,29 +1,22 @@
-import os from 'node:os';
-import path from 'node:path';
-import { setTimeout as sleep } from 'node:timers/promises';
-import { promises as fs } from 'node:fs';
-import lockfile from 'proper-lockfile';
-import { z } from 'zod';
 import { discoverAllTranscripts, discoverTranscripts } from '@titan-design/session-read';
-import { refreshCorpus, resetIndex, syncPrices } from '@titan-design/session-graph';
+import { resetIndex, syncPrices } from '@titan-design/session-graph';
 import { PRICE_TABLE, PRICE_TABLE_VERSION } from '@titan-design/session-analytics';
 import { defaultGraphPath, openGraph, type WorkspaceGraph } from './graph.js';
 import { taskResolver } from './tasks.js';
 import { ghPrResolver } from './pr-outcomes.js';
 import { agentChatOriginResolver } from './origin-agent-chat.js';
-import type { RunCommand } from '../discover/run-command.js';
+import type { RunCommand } from '../utils/run-command.js';
 import { clearDocumentFrequency } from '../search/document-frequency.js';
-import { refreshWorkspace, type WorkspaceRefreshSummary } from '../workspace-index/refresh.js';
+import type { WorkspaceRefreshSummary } from '../workspace-index/refresh.js';
 import { resetWorkspaceIndex, resetWorkspaceSpans } from '../workspace-index/write.js';
-import { preserveUnreachable, replayPreserved, type ReplaySummary } from './preserve.js';
-import { refreshEpisodes, snapshotOffsets } from './episodes.js';
+import { preserveUnreachable, type ReplaySummary } from './preserve.js';
+import { snapshotOffsets } from './episodes.js';
+import { refreshSteps, type RefreshSteps } from './refresh-steps.js';
 import { runDeltaPass } from './delta-pass.js';
 import { bytesAdvanced, dbBytes, lapTimer, rowsWrittenCounter } from './pass-metrics.js';
 import { restoreUnvisited, retiredSessions, sealedFilter, unvisitedOk } from './retired.js';
 import { rollupUnfinishedTurns } from './unfinished-turns.js';
 import type { DiscoveredTranscript } from '@titan-design/session-read';
-import { atomicWrite } from '../utils/fs-atomic.js';
-import { isLockContention } from './scheduler.js';
 
 /**
  * One refresh pass over the transcript corpus: discover -> index each changed
@@ -99,6 +92,8 @@ export interface RefreshOptions {
    * the event loop to readers. Defaults to one `setImmediate` turn.
    */
   yieldPoint?: () => Promise<void>;
+  /** Replaces phases of the pass; for tests. Unset steps run the real ones. */
+  steps?: Partial<RefreshSteps>;
 }
 
 const yieldToEventLoop = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
@@ -153,140 +148,6 @@ export interface RefreshSummary {
   errors: string[];
 }
 
-export const LOCK_STALE_MS = 60_000;
-
-/** `<minerRoot>/graph.sqlite3.lock` — the cross-process refresh mutex. */
-export function refreshLockPath(): string {
-  return `${defaultGraphPath()}.lock`;
-}
-
-/** Written beside the lock while it is held, so a blocked caller can name who holds it (TP-791). */
-export interface RefreshLockHolder {
-  pid: number;
-  command: string;
-  startedAt: string;
-  /** Set when the holder file outlived its writer: `pid` is gone, or it was written before the last boot. */
-  stale?: boolean;
-}
-
-const RefreshLockHolderSchema = z.looseObject({
-  pid: z.number(),
-  command: z.string(),
-  startedAt: z.string(),
-  stale: z.boolean().optional().catch(undefined),
-});
-
-export interface RefreshLockOptions {
-  /** Attempts after the first; `0` fails at once with ELOCKED. Omitted, the call blocks about 4 minutes. */
-  retries?: number;
-  /** Called once with the current holder when the first attempt finds the lock held and the call will wait. */
-  onWait?: (holder: RefreshLockHolder | null) => void;
-  /** Ends the wait for the lock; the call then rejects with the abort reason, holding nothing. */
-  signal?: AbortSignal;
-}
-
-/** proper-lockfile's ELOCKED, carrying the holder file's contents when there was one. */
-export type RefreshLockError = Error & { code: 'ELOCKED'; holder: RefreshLockHolder | null };
-
-/** 120 retries backing off from 200 ms by 1.5x to 2 s: about 4 minutes in all. */
-const BLOCKING_RETRIES = 120;
-
-function retryDelayMs(attempt: number): number {
-  return Math.min(200 * 1.5 ** attempt, 2_000);
-}
-
-export function refreshLockHolderPath(): string {
-  return `${refreshLockPath()}.holder.json`;
-}
-
-function isRunning(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    return (err as NodeJS.ErrnoException).code === 'EPERM';
-  }
-}
-
-/** On darwin libuv reads `os.uptime()` from `kern.boottime`. */
-function bootedAtMs(): number {
-  return Date.now() - os.uptime() * 1_000;
-}
-
-/** A pid alive now may be a different process if the file predates the last boot. */
-export async function readRefreshLockHolder(
-  bootedAt: number = bootedAtMs(),
-): Promise<RefreshLockHolder | null> {
-  try {
-    const raw = await fs.readFile(refreshLockHolderPath(), 'utf8');
-    const parsed = RefreshLockHolderSchema.safeParse(JSON.parse(raw));
-    if (!parsed.success) return null;
-    const holder = parsed.data;
-    const live = isRunning(holder.pid) && Date.parse(holder.startedAt) >= bootedAt;
-    return live ? holder : { ...holder, stale: true };
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Our own retry loop over single attempts, rather than proper-lockfile's, so
- * the wait between attempts can be aborted and the holder reported before it.
- */
-async function acquireRefreshLock(
-  target: string,
-  options: RefreshLockOptions,
-): Promise<() => Promise<void>> {
-  const retries = options.retries ?? BLOCKING_RETRIES;
-  options.signal?.throwIfAborted();
-  for (let attempt = 0; ; attempt += 1) {
-    try {
-      return await lockfile.lock(target, { realpath: false, stale: LOCK_STALE_MS, retries: 0 });
-    } catch (err) {
-      if (!isLockContention(err)) throw err;
-      if (attempt >= retries) {
-        (err as RefreshLockError).holder = await readRefreshLockHolder();
-        throw err;
-      }
-      if (attempt === 0) options.onWait?.(await readRefreshLockHolder());
-      await sleep(retryDelayMs(attempt), undefined, { signal: options.signal }).catch(
-        (sleepErr: unknown) => {
-          options.signal?.throwIfAborted();
-          throw sleepErr;
-        },
-      );
-    }
-  }
-}
-
-/**
- * Run `fn` holding the refresh lock, *blocking* until the current holder
- * releases rather than failing fast: a user typing `miner refresh` while the
- * daemon happens to be mid-pass wants their refresh to happen, not an error.
- * A crashed holder's lock goes stale after `LOCK_STALE_MS`.
- */
-export async function withRefreshLock<T>(
-  fn: () => Promise<T>,
-  options: RefreshLockOptions = {},
-): Promise<T> {
-  const target = refreshLockPath();
-  await fs.mkdir(path.dirname(target), { recursive: true });
-  await fs.writeFile(target, '', { flag: 'a' });
-  const release = await acquireRefreshLock(target, options);
-  try {
-    const holder: RefreshLockHolder = {
-      pid: process.pid,
-      command: process.argv.slice(1).join(' '),
-      startedAt: new Date().toISOString(),
-    };
-    await atomicWrite(refreshLockHolderPath(), JSON.stringify(holder));
-    return await fn();
-  } finally {
-    await fs.rm(refreshLockHolderPath(), { force: true });
-    await release();
-  }
-}
-
 /**
  * `verifyHashes` defaults to `full` on purpose, and drives both of the
  * package's hash options: `verifyHash` re-reads each transcript's consumed
@@ -310,6 +171,7 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
   const graph = options.graph ?? openGraph(options.dbPath ?? defaultGraphPath());
   const owned = options.graph === undefined;
   const yieldPoint = options.yieldPoint ?? yieldToEventLoop;
+  const steps = refreshSteps(options.steps);
   const lap = lapTimer();
   const phases: Record<string, number> = {};
 
@@ -325,6 +187,7 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
         activeRoot: options.activeRoot,
         skipWorkspace: options.skipWorkspace,
         onIndexed: options.onIndexed,
+        steps,
       });
     }
     const rowsWritten = rowsWrittenCounter(graph.db);
@@ -362,7 +225,7 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
     phases.discover = lap();
     const prErrors: string[] = [];
     let prsPolled = 0;
-    const summary = await refreshCorpus(graph, visiting, {
+    const summary = await steps.refreshCorpus(graph, visiting, {
       full: options.full,
       verifyHash: verify,
       withContentHash: verify,
@@ -370,7 +233,7 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
       resolveOrigins: agentChatOriginResolver(undefined, options.taskRoot),
       resolvePrs: options.skipPrOutcomes
         ? undefined
-        : ghPrResolver(graph, {
+        : ghPrResolver({
             run: options.runGh,
             errors: prErrors,
             onPolled: (count) => {
@@ -384,12 +247,13 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
     const restored = restoreUnvisited(graph, unvisited);
     phases.corpus = lap();
     // After the rollup, because segmentation reads the wake causes it derives.
-    const episodes = await refreshEpisodes(
+    const episodes = await steps.refreshEpisodes(
       graph,
       offsetsBefore,
       options.episodeLimit,
       yieldPoint,
       options.episodeSweep,
+      steps.writeEpisodes,
     );
     await yieldPoint();
     phases.episodes = lap();
@@ -399,7 +263,7 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
     if (options.resetWorkspaceSpans && !options.skipWorkspace) resetWorkspaceSpans(graph);
     const workspace = options.skipWorkspace
       ? null
-      : await refreshWorkspace(graph, {
+      : await steps.refreshWorkspace(graph, {
           activeRoot: options.activeRoot ?? options.taskRoot,
           full: options.full,
         });
@@ -410,7 +274,7 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
     // and running it every pass means a partial or accidental delete heals
     // itself rather than waiting for someone to notice it.
     await yieldPoint();
-    const preserved = replayPreserved(graph);
+    const preserved = steps.replayPreserved(graph);
     phases.preserve = lap();
 
     return {

@@ -13,7 +13,7 @@
     },
     {
       "name": "serve wires no recheck into the merge wait",
-      "file": "products/factory/src/workflows.ts",
+      "file": "products/factory/src/workflows-routes.ts",
       "find": ", adversary.takeRehold, g10Recheck(holds))",
       "replace": ", adversary.takeRehold)",
       "kills": [

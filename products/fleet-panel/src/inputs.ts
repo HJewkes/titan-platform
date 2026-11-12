@@ -4,6 +4,8 @@
  * than failing the whole roster, because one odd row must not blank the panel.
  */
 
+import type { AccountUsage as AccountRow, AccountWindow } from "@titan-design/anthropic-account";
+
 export type Presence = "live" | "detached" | "exited";
 
 /** One row of `agent-chat agent ls --json`. */
@@ -27,7 +29,7 @@ export interface UsageWindow {
   resetsAtMs: number | null;
 }
 
-/** One row of `agent-chat agent budget --accounts --json`. */
+/** One Anthropic login, as `readAccounts` reports it. */
 export interface AccountUsage {
   configDirs: string[];
   fiveHour: UsageWindow | null;
@@ -88,33 +90,21 @@ export function parseRoster(stdout: string): RosterEntry[] {
   return rows.map(rosterEntry).filter((entry): entry is RosterEntry => entry !== null);
 }
 
-function usageWindow(value: unknown): UsageWindow | null {
-  if (!isObject(value)) return null;
-  const usedPct = num(value.used_pct);
-  if (usedPct === null) return null;
-  const resetsAt = num(value.resets_at);
-  return { usedPct, resetsAtMs: resetsAt === null ? null : resetsAt * 1000 };
+function usageWindow(window: AccountWindow | undefined): UsageWindow | null {
+  if (window === undefined) return null;
+  return { usedPct: window.used_pct, resetsAtMs: window.resets_at === undefined ? null : window.resets_at * 1000 };
 }
 
-function accountUsage(row: unknown): AccountUsage | null {
-  if (!isObject(row)) return null;
-  const dirs = Array.isArray(row.config_dirs) ? row.config_dirs.map(str) : [str(row.config_dir)];
-  const configDirs = dirs.filter((dir): dir is string => dir !== null);
-  if (configDirs.length === 0) return null;
+/** The panel's view of one login's row from `readAccounts`. */
+export function accountUsageOf(row: AccountRow): AccountUsage {
   return {
-    configDirs,
-    fiveHour: usageWindow(row.five_hour),
-    sevenDay: usageWindow(row.seven_day),
-    ageSeconds: num(row.age_seconds),
-    stale: row.stale === true,
-    authFail: row.auth_fail === true,
+    configDirs: [...row.config_dirs],
+    fiveHour: usageWindow(row.windows.five_hour),
+    sevenDay: usageWindow(row.windows.seven_day),
+    ageSeconds: row.age_seconds,
+    stale: row.stale,
+    authFail: row.auth_fail,
   };
-}
-
-export function parseAccounts(stdout: string): AccountUsage[] {
-  const rows: unknown = JSON.parse(stdout);
-  if (!Array.isArray(rows)) throw new Error("agent budget --accounts --json did not print an array");
-  return rows.map(accountUsage).filter((row): row is AccountUsage => row !== null);
 }
 
 export function parseStatusLine(text: string): StatusLineReading | null {

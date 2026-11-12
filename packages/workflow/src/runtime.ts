@@ -10,7 +10,7 @@ import type { WorkflowRuntimeOptions, WorkflowStartOptions } from "./runtime-opt
 import { failureText, fenceOf, messageOf, vaultOf, positiveDuration, RuntimeShutdown, sameFence, timestampAt, WorkflowPersistenceError } from "./runtime-values.js";
 import { parseSignal as defaultParseSignal } from "./signals.js";
 import { DEFAULT_MAX_STEP_DATA_BYTES } from "./step-output.js";
-import { completedTiming } from "./step-timing.js";
+import { completedTiming, everyTrySpend } from "./step-timing.js";
 import { ACTIVE_STATUSES, WorkflowOwnershipLostError, WorkflowRunStore, newRun } from "./store.js";
 import { WorkflowCancelledError, WorkflowNotOwnedError, WorkflowRecoveryRequiredError, type ActiveStep, type WorkflowFn, type WorkflowRun } from "./types.js";
 
@@ -222,6 +222,9 @@ export class WorkflowRuntime {
     else this.baseDeps.emit({ type: "workflow_cancelled", runId: run.id, reason: error ?? "cancelled" });
   }
 
+  /** Whether this runtime still drives the run: false once the run ended, parked, was shut down here or lost its lease. */
+  isLive(runId: string): boolean { return this.live.has(runId); }
+
   status(runId: string): WorkflowRun | undefined {
     return this.live.get(runId)?.ctx.run ?? this.store.get(runId);
   }
@@ -281,7 +284,7 @@ export class WorkflowRuntime {
       const step = run.activeSteps[stepId];
       if (!step) return false;
       const iteration = Number(step.iterKey.slice(step.iterKey.lastIndexOf(":") + 1));
-      run.stepResults[step.iterKey] = { stepId, iteration, operation: "dispatch", agentId: null, signal: null, completedAt: this.isoNow(), ...completedTiming(step), output };
+      run.stepResults[step.iterKey] = { stepId, iteration, operation: "dispatch", agentId: null, signal: null, completedAt: this.isoNow(), ...completedTiming(step), output, ...everyTrySpend(step) };
       delete run.activeSteps[stepId];
       this.save(run);
       return true;

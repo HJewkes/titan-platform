@@ -36,8 +36,3 @@ export function getLogger(): Logger {
   cachedLogger ??= buildLogger();
   return cachedLogger;
 }
-
-/** Reset the cached logger. Used by tests that need a clean instance. */
-export function resetLogger(): void {
-  cachedLogger = undefined;
-}

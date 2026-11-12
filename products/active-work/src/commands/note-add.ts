@@ -83,14 +83,14 @@ export default defineCommand<Args, Result>({
         long: '--body-file',
         description: 'Path to a file containing the markdown body',
       },
-      tags: { long: '--tags', description: 'Comma-separated tags' },
+      tags: { long: '--tags', description: 'Tag for the note. Repeat the flag for each value' },
       read_if: {
         long: '--read-if',
         description: `One-line condition, at most ${NOTE_READ_IF_MAX_LENGTH} chars, for when a session should read this note; shown beside it in the bootstrap`,
       },
     },
     usage:
-      'active-work note add <slug> --kind <process|gotcha|fyi|decision> --title <text> (--body <text> | --body-file <path>) [--tags a,b] [--read-if <condition>]',
+      'active-work note add <slug> --kind <process|gotcha|fyi|decision> --title <text> (--body <text> | --body-file <path>) [--tags a --tags b] [--read-if <condition>]',
   },
   async run(args) {
     const initiativeDir = getInitiativeDir(args.slug);

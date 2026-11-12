@@ -39,7 +39,7 @@ export const channelTarget = z
   });
 
 // Actions a brief may unlock for agent-chat's burndown tick (burndown design, section 5).
-export const AUTONOMY_GRANTS = [
+const AUTONOMY_GRANTS = [
   'merge-on-green-approve',
   'task-close-on-merged-pr',
   'release-through-ci',
@@ -56,7 +56,7 @@ const profileName = z
 // Opt-in to unattended dispatch, read by agent-chat's `burndown` tick. Strict so
 // a misspelled key or grant fails loudly instead of silently granting nothing.
 // Defaults stay unset here: the tick applies them, so a rewrite never adds keys.
-export const AutonomySchema = z
+const AutonomySchema = z
   .object({
     mode: z.literal('burndown', {
       error: 'autonomy.mode must be "burndown"; remove the autonomy block to opt out',
@@ -73,8 +73,6 @@ export const AutonomySchema = z
     repo: z.string().min(1).optional(),
   })
   .strict();
-
-export type Autonomy = z.infer<typeof AutonomySchema>;
 
 export const BriefFrontmatterSchema = z
   .object({

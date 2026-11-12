@@ -5,12 +5,13 @@ import { fakeGitHub, fakeSha, githubPort, type PrFile } from "@titan-design/gith
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { gitIn, seedRepo } from "@titan-design/test-kit/git";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { hostCarryPorts, systemGit } from "./carry-cache-adapter.js";
 import { shepherdEventMigration } from "./events.js";
 import { CopyDetectionSkipped, cachedByHead, gitPrFiles, prFilesOf, type PrFilesRead } from "./git-pr-files.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { applyRegistrationHold, g10HoldAt } from "./registration-hold.js";
 import { holdSlotsMigration, registrationFactsMigration } from "./store-migrations.js";
-import { systemGit, type Git } from "./tree-carry.js";
+import type { Git } from "./tree-carry.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration } from "./store.js";
 
 const REPO = "acme/widgets";
@@ -81,7 +82,7 @@ function apiAnswering(files: PrFile[]) {
   return { api, port: githubPort(api.wire), pr };
 }
 
-const gitRead: PrFilesRead = (target) => ((reads += 1), gitPrFiles(target, { stateDir, remote: () => origin }));
+const gitRead: PrFilesRead = (target) => ((reads += 1), gitPrFiles(target, { ports: hostCarryPorts, stateDir, remote: () => origin }));
 
 /** Real git with a rename limit of 1, so it skips copy detection and warns as it would on a very large diff. */
 const limitedGit: Git = (dir, args, signal) => systemGit(dir, args[0] === "diff" ? ["-c", "diff.renameLimit=1", ...args] : args, signal);
@@ -106,10 +107,10 @@ const CASES: { name: string; change: () => void; recorded: PrFile[]; reason: str
     reason: "g10-adversary: policy touch",
   },
   {
-    name: "a deleted store migration",
+    name: "a deleted store migration, which the hold closure holds as policy",
     change: () => unlinkSync(join(origin, MIGRATION_FILE)),
     recorded: [{ path: MIGRATION_FILE, status: "removed", additions: 0, deletions: 20 }],
-    reason: undefined,
+    reason: "g10-adversary: policy touch",
   },
   { name: "a diff adding a policy file", change: growPolicy, recorded: GROWN, reason: "g10-adversary: policy touch" },
 ];
@@ -125,6 +126,22 @@ beforeEach(() => {
 
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
+describe("gitPrFiles ports", { timeout: 30_000 }, () => {
+  it("gitPrFiles diffs through the ports it is given", async () => {
+    const head = feature(growPolicy);
+    openPr(1, head);
+    const seen: string[] = [];
+    const git: Git = (gitDir, args, signal) => (seen.push(args[0] ?? ""), systemGit(gitDir, args, signal));
+    const ports = { ...hostCarryPorts, git, stateDir: () => stateDir };
+
+    const files = await gitPrFiles({ repo: REPO, pr: 1, base: "main", head }, { ports, remote: () => origin });
+
+    expect(files.map((file) => file.path)).toContain("products/factory/src/shepherd/g10-big.ts");
+    expect(seen).toContain("fetch");
+    expect(seen).toContain("diff");
+  });
+});
+
 describe("the G10 class from local git", { timeout: 30_000 }, () => {
   it.each(CASES)("equals the class of the recorded GitHub file list for $name", async ({ change, recorded, reason }) => {
     const head = feature(change);
@@ -132,7 +149,7 @@ describe("the G10 class from local git", { timeout: 30_000 }, () => {
     openPr(pr, head);
     const local = fakeGitHub({ repo: REPO });
 
-    const files = await gitPrFiles({ repo: REPO, pr, base: "main", head }, { stateDir, remote: () => origin });
+    const files = await gitPrFiles({ repo: REPO, pr, base: "main", head }, { ports: hostCarryPorts, stateDir, remote: () => origin });
     const viaGit = await g10HoldAt(githubPort(local.wire), { repo: REPO, pr, head, base: "main" }, gitRead);
     const viaApi = await g10HoldAt(apiPort, { repo: REPO, pr });
 
@@ -181,7 +198,7 @@ describe("a fresh-name copy of a policy file", { timeout: 30_000 }, () => {
     const fake = fakeGitHub({ repo: REPO });
     store.register({ repo: REPO, pr: 1, runId: "run-1", task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY, kind: "feature", headSha: head, base: "main" });
 
-    const files = await gitPrFiles({ repo: REPO, pr: 1, base: "main", head }, { stateDir, remote: () => origin });
+    const files = await gitPrFiles({ repo: REPO, pr: 1, base: "main", head }, { ports: hostCarryPorts, stateDir, remote: () => origin });
     const reason = await applyRegistrationHold(githubPort(fake.wire), store, "run-1", { local: gitRead });
 
     expect(files).toContainEqual({ path: COPY, previousPath: POLICY_FILE, status: "copied", additions: 30, deletions: 0 });
@@ -194,7 +211,7 @@ describe("a fresh-name copy of a policy file", { timeout: 30_000 }, () => {
     const head = feature(copyThenWire);
     const { api, port, pr } = apiAnswering([{ path: COPY, status: "added", additions: 30, deletions: 0 }]);
     openPr(pr, head);
-    const limited: PrFilesRead = (target) => gitPrFiles(target, { stateDir, remote: () => origin, git: limitedGit });
+    const limited: PrFilesRead = (target) => gitPrFiles(target, { ports: { ...hostCarryPorts, git: limitedGit }, stateDir, remote: () => origin });
 
     const read = prFilesOf(port, { repo: REPO, pr, head, base: "main" }, limited);
     await expect(read).rejects.toBeInstanceOf(CopyDetectionSkipped);

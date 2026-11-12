@@ -56,7 +56,7 @@ function fakeTasks(state: TaskState, slicing: TaskSlicing = NO_SLICING): Cleanup
   const closed: string[] = [];
   const notes: string[] = [];
   const appended: string[] = [];
-  return { closed, notes, state: async () => state, slicing: async () => ({ ...slicing, notes: [slicing.notes, ...appended].join("\n") }), done: async (initiative, id) => void closed.push(`${initiative}/${id}`), appendNote: async (initiative, id, line) => void (notes.push(`${initiative}/${id}: ${line}`), appended.push(line)) };
+  return { closed, notes, state: async () => state, slicing: async () => ({ ...slicing, notes: [slicing.notes, ...appended].join("\n") }), done: async (initiative, id) => void closed.push(`${initiative}/${id}`), reopen: async () => undefined, appendNote: async (initiative, id, line) => void (notes.push(`${initiative}/${id}: ${line}`), appended.push(line)) };
 }
 
 const planOf = (...names: string[]): string => `# Plan\n\n\`\`\`burndown-slices\n${JSON.stringify(names.map((n) => ({ n, title: `slice ${n}`, points: 1, doneWhen: "a test passes", owns: [`src/${n}.ts`] })))}\n\`\`\`\n`;
@@ -73,7 +73,7 @@ function world(options: { fake?: FakeGitHub; port?: GitHubPort; agents?: FakeAge
   return { fake, clock, agents, tasks, store, run };
 }
 
-function mergedPr(fake: FakeGitHub, head: { headRef: string; headRepo: string | null }): FakeGitHub {
+function mergedPr(fake: FakeGitHub, head: { headRef: string; headRepo: string | null; body?: string }): FakeGitHub {
   fake.addPr({ ...head, headSha: fakeSha("head"), state: "closed", merged: true, mergeSha: fakeSha("merge") });
   if (!fake.refs.has(head.headRef)) fake.refs.set(head.headRef, fakeSha("head"));
   return fake;
@@ -268,14 +268,68 @@ describe("sh-cleanup task", () => {
       expect(w.tasks.closed).toEqual([]);
     });
 
-    it("keeps a slice-less registration of a sliced task open, since its own slice is never noted", async () => {
+    it("keeps a slice-less registration open when the one slice left is only a guess, since the plan lists more", async () => {
       const w = world({ slicing: sliced(`${landed("S2")}\n${landed("S3")}`) });
 
       const result = await w.run();
 
       expect(result.task).toBe("left-open");
       expect(w.tasks.closed).toEqual([]);
-      expect(w.tasks.notes).toEqual([`demo/TP-1: PR ${REPO}#1 at ${fakeSha("merge")} merged; task left open: it has slices S1`]);
+    });
+
+    it("keeps the task open when the body only mentions the unlanded slices", async () => {
+      const fake = mergedPr(fakeGitHub({ repo: REPO }), { headRef: "feat/x", headRepo: REPO, body: "Slices b and c follow in later PRs." });
+      const w = world({ fake, slicing: { tags: [], notes: "", plan: planOf("a", "b", "c") } });
+
+      expect((await w.run()).task).toBe("left-open");
+    });
+
+    it("keeps a slice-less registration open while other slices are unlanded and its body names none", async () => {
+      const w = world({ slicing: sliced(landed("S3")) });
+
+      const result = await w.run();
+
+      expect(result.task).toBe("left-open");
+      expect(w.tasks.closed).toEqual([]);
+      expect(w.tasks.notes).toEqual([`demo/TP-1: PR ${REPO}#1 at ${fakeSha("merge")} merged; task left open: it has slices S1, S2`]);
+    });
+
+    it("closes when the PR body declares every unlanded slice, as #3257 did for slices a and b", async () => {
+      const fake = mergedPr(fakeGitHub({ repo: REPO }), { headRef: "feat/x", headRepo: REPO, body: "Slices a and b ship together.\n\nCarries slices: a, b" });
+      const w = world({ fake, slicing: { tags: [], notes: "", plan: planOf("a", "b") } });
+
+      expect((await w.run()).task).toBe("done");
+    });
+
+    it("keeps the task open when the PR body declares only some of the unlanded slices", async () => {
+      const fake = mergedPr(fakeGitHub({ repo: REPO }), { headRef: "feat/x", headRepo: REPO, body: "Carries slices: a, b" });
+      const w = world({ fake, slicing: { tags: [], notes: "", plan: planOf("a", "b", "c") } });
+
+      expect((await w.run()).task).toBe("left-open");
+      expect(w.tasks.closed).toEqual([]);
+    });
+
+    it("closes when a bridge PR carries the plan's only slice and its body names none, as #3250 did", async () => {
+      const fake = mergedPr(fakeGitHub({ repo: REPO }), { headRef: "feat/x", headRepo: REPO, body: "Bridge task TP-1." });
+      const w = world({ fake, slicing: { tags: [], notes: "", plan: planOf("a") } });
+
+      expect((await w.run()).task).toBe("done");
+    });
+
+    it("keeps the sole unlanded slice's task open when the body says Last slice: no", async () => {
+      const fake = mergedPr(fakeGitHub({ repo: REPO }), { headRef: "feat/x", headRepo: REPO, body: "Last slice: no" });
+      const w = world({ fake, slicing: { tags: [], notes: "", plan: planOf("a") } });
+
+      expect((await w.run()).task).toBe("left-open");
+    });
+
+    it("keeps the task open when another registered PR on it is still open", async () => {
+      const fake = mergedPr(fakeGitHub({ repo: REPO }), { headRef: "feat/x", headRepo: REPO });
+      fake.addPr({ headRef: "feat/y", headRepo: REPO, headSha: fakeSha("other") });
+      const w = world({ fake, slicing: { tags: [], notes: "", plan: planOf("a") } });
+      w.store.register({ ...base, pr: 2, runId: "run-2" });
+
+      expect((await w.run()).task).toBe("left-open");
     });
   });
 

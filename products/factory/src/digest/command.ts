@@ -12,6 +12,7 @@ import { activeWorkOrigin } from "../shepherd/cleanup-ports.js";
 import { activeWorkTaskDates, agentChatSpans } from "./flow-sources.js";
 import { readFriction } from "./friction.js";
 import { pacePath, readPacePools } from "./pace.js";
+import type { HttpsProbe } from "./console-probe.js";
 import { buildDigest, deliverDigest, syncAlarmNote } from "./run.js";
 import { currentSlot, DEFAULT_SLOTS, DEFAULT_TIMEZONE } from "./slots.js";
 import { digestDirectories, execProcess, fileSources, queuesDirOf, type Exec } from "./sources.js";
@@ -37,6 +38,7 @@ export interface DigestDeps {
   dbPath?: string;
   exec?: Exec;
   now?: Date;
+  probe?: HttpsProbe;
 }
 
 const UNIT_MINUTES: Readonly<Record<string, number>> = { m: 1, h: 60, d: 1440 };
@@ -113,7 +115,8 @@ export async function runDigestVerb(io: DigestIo, call: FactoryCall, flags: Dige
     ...(deps.dbPath !== undefined && { friction: (at: Date) => readFriction(deps.dbPath!, at) }),
     flow: { taskCreated: activeWorkTaskDates({ origin: activeWorkOrigin(io.env) }), roster: agentChatSpans(deps.exec ?? execProcess, agentChatBin) },
   };
-  const { markdown, alarmNote } = await buildDigest({ sources, now, slot, windowMinutes: flags.sinceMinutes ?? windowMinutes, full: flags.full === true, consoleOrigin: config.digest?.consoleOrigin });
+  const run = { sources, now, slot, windowMinutes: flags.sinceMinutes ?? windowMinutes, full: flags.full === true, consoleOrigin: config.digest?.consoleOrigin };
+  const { markdown, alarmNote } = await buildDigest(deps.probe === undefined ? run : { ...run, probe: deps.probe });
   if (flags.dryRun) return (io.stdout(markdown), 0);
   const dirs = digestDirectories(config, io.env);
   const { written, warnings } = await deliverDigest(markdown, slot, dirs, config.digest?.push);

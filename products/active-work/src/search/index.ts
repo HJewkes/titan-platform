@@ -20,7 +20,7 @@ import { workspaceSpanReader } from './workspace-spans.js';
  * foreign hit beating a weak local one is the entire point.
  */
 
-export interface SearchOptions {
+interface SearchOptions {
   limit?: number;
   /** Bias towards this initiative. A boost, never a filter. */
   initiative?: string;
@@ -35,7 +35,7 @@ export interface SearchOptions {
   rawExpression?: boolean;
 }
 
-export interface SearchResult {
+interface SearchResult {
   hits: ResolvedHit[];
   /** Retrievers that failed or timed out. Their absence narrows results; it never fails the search. */
   degraded: Degradation[];

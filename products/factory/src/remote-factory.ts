@@ -16,6 +16,8 @@ export const FROZEN_HOST_WRITE_VERBS: ReadonlySet<string> = new Set([
   "shepherd owner-release",
   "shepherd review",
   "shepherd resync",
+  "shepherd readdress-dead-ends",
+  "shepherd refollow",
   "shepherd freeze",
   "shepherd unfreeze",
   "shepherd thaw",

@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the guard lets a rewrite say an id the original did not",
+      "file": "products/explainer/src/rewrite-guard.ts",
+      "find": "    ...idRejections(before, after.spoken),\n",
+      "replace": "",
+      "kills": [
+        "a rewrite that takes an id out of the line is refused when it says an id the original did not"
+      ]
+    },
+    {
+      "name": "a cited id is held as a term the line must keep saying",
+      "file": "products/explainer/src/rewrite-guard.ts",
+      "find": ".filter((term) => !isIdTerm(term));",
+      "replace": ";",
+      "kills": [
+        "a rewrite that takes an id out of the line is accepted when a script id the beat declares leaves"
+      ]
+    },
+    {
+      "name": "an id's TP lead counts as a dropped entity",
+      "file": "products/explainer/src/rewrite-guard.ts",
+      "find": "[...after.labelsAdded, ...ids.map((id) => id.text)]",
+      "replace": "[...after.labelsAdded]",
+      "kills": [
+        "a rewrite that takes an id out of the line is accepted when a ticket id leaves, its TP lead included"
+      ]
+    },
+    {
+      "name": "an id's lead words count as dropped content terms",
+      "file": "products/explainer/src/rewrite-guard.ts",
+      "find": "const withoutIds = cut(text, spokenIds(before));",
+      "replace": "const withoutIds = text;",
+      "kills": [
+        "a rewrite that takes an id out of the line is accepted when a pull request id leaves with its lead words"
+      ]
+    },
+    {
+      "name": "the guard lets a number the screen shows leave the line",
+      "file": "products/explainer/src/rewrite-guard.ts",
+      "find": "    ...shownUnspoken(before, after),\n",
+      "replace": "",
+      "kills": [
+        "a rewrite that cuts what is not an id is still refused when a number the screen shows leaves the line"
+      ]
+    }
+  ]
+}

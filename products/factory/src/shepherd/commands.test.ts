@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, fakeSha, githubPort } from "@titan-design/github";
@@ -8,12 +8,20 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { BRANCH, callCommand, shepherdFixture, shepherdRuns, type FixtureOptions, type ShepherdFixture } from "../test-support/shepherd.js";
+import { loadSeatBook } from "./seats.js";
 import { AccountLimitStore } from "./account-store.js";
 import type { MergeEvaluation, Registered } from "./commands.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { PrTimelineSchema, type PrTimeline } from "./view.js";
 import { WatchRowSchema, type WatchRow } from "./view-schema.js";
 import type { Waiting } from "./waiting-schema.js";
+import { runOutcome } from "./run-end.js";
+
+function readOnlySeatDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), "seats-"));
+  writeFileSync(join(dir, "s.md"), `---\nschema: autonomy-seat/v1\nname: demo-seat\nrepos:\n  - remote: ${REPO}\n    read_only: true\n---\n`);
+  return dir;
+}
 
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
@@ -149,6 +157,39 @@ describe("shepherd.register", () => {
     expect(envelope).toMatchObject({ ok: false, error: expect.stringMatching(/registration refused/) });
     expect(shepherdRuns(w.host)).toEqual([]);
     expect(await w.call("shepherd.status", {})).toEqual({ ok: true, data: [] });
+  });
+
+  const NO_SEAT = `no seat lists ${REPO}; add it to a seat file under claude-channels/sources/autonomy/seats`;
+  const seatOf = (extra: object) => ({ name: "demo-seat", remotes: [] as string[], paths: {}, grants: [], ...extra });
+
+  it("a repo no seat lists is refused with the seat-file message and starts no run", async () => {
+    const w = world({ seats: { seats: [seatOf({ remotes: ["octo/other"] })], denied: [] } });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+
+    const envelope = await w.call("shepherd.register", pr1);
+
+    expect(envelope).toEqual({ ok: false, error: NO_SEAT, code: expect.anything() });
+    expect(shepherdRuns(w.host)).toEqual([]);
+  });
+
+  it("a repo a seat lists only as read_only counts as not covered", async () => {
+    const book = loadSeatBook({ seatsDir: readOnlySeatDir(), home: tmpdir() });
+    const w = world({ seats: book });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+
+    const envelope = await w.call("shepherd.register", pr1);
+
+    expect(envelope).toMatchObject({ ok: false, error: NO_SEAT });
+    expect(shepherdRuns(w.host)).toEqual([]);
+  });
+
+  it("a repo a seat lists registers under that seat", async () => {
+    const w = world({ seats: { seats: [seatOf({ remotes: [REPO] })], denied: [] } });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+
+    const { registration } = await registered(w, pr1);
+
+    expect(registration.policy).toMatchObject({ seat: "demo-seat" });
   });
 
   it("an owner-gate request with no reason is refused naming the four reasons, and starts no run", async () => {
@@ -684,7 +725,6 @@ describe("shepherd.register after a stopped run", () => {
 
   it.each([
     ["merged", LANDED],
-    ["closed", stoppedStep("closed")],
     ["stuck-behind", stoppedStep("stuck-behind")],
     ["merge-denied", stoppedStep("merge-denied")],
   ])("a run that ended %s starts nothing and only updates the metadata", async (_ended, result) => {
@@ -695,6 +735,34 @@ describe("shepherd.register after a stopped run", () => {
 
     expect(again).toMatchObject({ runId, created: false, registration: { implementer: "impl-b" } });
     expect(again.previousRunId).toBeUndefined();
+    expect(shepherdRuns(w.host)).toEqual([runId]);
+  });
+
+  it("a run stopped closed gets a new run at the head pushed after the pull request reopened", async () => {
+    const w = world();
+    w.fake.addPr({ headSha: H1, headRef: BRANCH, state: "closed" });
+    const closedRunId = (await registered(w, pr1)).runId;
+    await w.host.runtime.wait(closedRunId);
+    expect(runOutcome(Object.values(w.host.runtime.status(closedRunId)!.stepResults))).toMatchObject({ reason: "closed" });
+    Object.assign(w.fake.pr(1), { state: "open", mergeableState: "clean" });
+    w.fake.pushHead(1, FIXED);
+
+    const again = await registered(w, pr1);
+
+    expect(again).toMatchObject({ created: true, previousRunId: closedRunId, previousStop: "closed", registration: { runId: again.runId } });
+    expect(w.routes.shepherd!.store.get().byPr(REPO, 1)?.runId).toBe(again.runId);
+    await gateOpened(w.host, gateId(again.runId, "approve-merge"));
+    expect(w.host.gates.get(gateId(again.runId, "approve-merge"))?.prompt).toContain(`at head ${FIXED}`);
+  });
+
+  it("a run stopped closed on a pull request that is still closed starts nothing", async () => {
+    const w = world({ frozen: true });
+    const runId = await endedAs(w, stoppedStep("closed"));
+    Object.assign(w.fake.pr(1), { state: "closed" });
+
+    const again = await registered(w, pr1);
+
+    expect(again).toMatchObject({ runId, created: false });
     expect(shepherdRuns(w.host)).toEqual([runId]);
   });
 

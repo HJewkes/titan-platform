@@ -1,0 +1,53 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an exit with no seat told always takes the owner's sent-back gate",
+      "file": "products/factory/src/shepherd/flake-check.ts",
+      "find": "return asksSeat(run.ctx, \"sh-sent-back\") ? seat() : owner();",
+      "replace": "return owner();",
+      "kills": [
+        "a fixer's exit with no push, with the dead-end seat route on (TP-4759) opens sh-dead-end for the registrant's seat after a ci-red wake, where no single seat owns the repo",
+        "a fixer's exit with no push, with the dead-end seat route on (TP-4759) opens sh-dead-end for the registrant's seat after a fix-proof wake, where no single seat owns the repo"
+      ]
+    },
+    {
+      "name": "a fix-first-runaway is no dead end and keeps approve-merge",
+      "file": "products/factory/src/shepherd/dead-end.ts",
+      "find": "  \"fix-first-runaway\": \"fix-first-runaway\",\n",
+      "replace": "",
+      "kills": [
+        "a route escalation, with the dead-end seat route on (TP-4759) fix-first-runaway opens sh-dead-end for the seat, not approve-merge"
+      ]
+    },
+    {
+      "name": "the escalation D7 leaves goes straight to land's approve-merge",
+      "file": "products/factory/src/shepherd/failed-rounds-demotion.ts",
+      "find": "  return escalateToDeadEnd(run, headSha, demoted.escalated);",
+      "replace": "  run.escalations.set(headSha, demoted.escalated);\n  return true;",
+      "kills": [
+        "a route escalation, with the dead-end seat route on (TP-4759) fix-first-runaway opens sh-dead-end for the seat, not approve-merge",
+        "a route escalation, with the dead-end seat route on (TP-4759) failed-rounds opens sh-dead-end for the seat, not approve-merge"
+      ]
+    },
+    {
+      "name": "a dead end with no lineage or repo seat is addressed to the hub seat",
+      "file": "products/factory/src/shepherd/dead-end.ts",
+      "find": "if (lineageSeat !== undefined || repoSeat === undefined) return lineageSeat;",
+      "replace": "if (lineageSeat !== undefined) return lineageSeat;",
+      "kills": [
+        "a fixer's exit with no push, with the dead-end seat route on (TP-4759) with no resolvable seat the owner's sent-back gate opens as before, never the hub seat's"
+      ]
+    },
+    {
+      "name": "a run resumed on its old owner gate asks the seat anyway",
+      "file": "products/factory/src/shepherd/dead-end-route.ts",
+      "find": "  return paused === undefined || !stepIdMatches(ownerGate, paused);",
+      "replace": "  return true;",
+      "kills": [
+        "a route escalation, with the dead-end seat route on (TP-4759) a run resumed while paused on a pre-TP-4759 approve-merge keeps that gate and records no address",
+        "a run paused on a pre-TP-4759 sent-back gate keeps that gate when resumed with the seat route on, asking no seat"
+      ]
+    }
+  ]
+}

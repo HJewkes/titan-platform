@@ -11,6 +11,7 @@ import { FixerResult, MAIN_RERUN_STEP, THAWED, notRefused, patiently, type Episo
 import { failedTests, failingLogs, type FailingRead } from "./main-red-logs.js";
 import type { ShepherdDeps } from "./phases.js";
 import { tailBytes } from "./wake-brief.js";
+import { isoAt } from "../time-iso.js";
 
 /** How long Shepherd waits for its rerun of main's failed jobs before the episode goes on to a fixer. */
 const SH_MAIN_RERUN_TIMEOUT_MS = 60 * 60_000;
@@ -93,7 +94,7 @@ async function redToRerun(deps: ShepherdDeps, wiring: MainRedWiring | undefined,
   const tests = failedTests(read.log);
   if (tests.length === 0) return stays("the failing jobs name no failing test, so main is not rerun");
   if (read.failing.some((run) => run.workflowRunId === null)) return stays("a failing check has no Actions run to rerun");
-  const since = new Date(deps.now() - FLAKE_REPEAT_MS).toISOString();
+  const since = isoAt(deps.now() - FLAKE_REPEAT_MS);
   const repeats = new Set(freezes.episodes.rerunThawedTests(input.repo, since));
   const again = tests.filter((test) => repeats.has(test));
   if (again.length > 0) return stays(`${again.join(", ")} already thawed main on a rerun within 24 h, so it stays frozen for a real fix`);

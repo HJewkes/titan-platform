@@ -4,10 +4,12 @@ import { isAbsolute, join } from "node:path";
 import { ASK_LABEL_PATTERN } from "@titan-design/agent-dispatch";
 import { z } from "zod";
 import { ArConfigSchema } from "./autoresearch/config.js";
+import { MarkersConfigSchema } from "./markers/config.js";
 import { ReconcilerConfigSchema, reconcilerDeprecations } from "./reconciler/config.js";
 import { isRepoKey } from "./shepherd/seats.js";
 import { ConsoleOriginSchema } from "./digest/gate-alarm.js";
 import { SeatDigestPacingSchema } from "./shepherd/seat-digest-pace.js";
+import { VisualThresholdSchema } from "./shepherd/visual-threshold-config.js";
 
 /** execFile throws on a NUL byte, which would fail the post-merge step after the merge instead of at config load. */
 const noNul = z.string().refine((value) => !value.includes("\0"), "must not contain a NUL byte");
@@ -21,6 +23,14 @@ export const PostMergeConfigSchema = z.strictObject({
 });
 
 export type PostMergeConfig = z.infer<typeof PostMergeConfigSchema>;
+
+/** The tick a Shepherd merge wakes after its settle window; capped at 30 s, the wake's own deadline (TP-1433). */
+export const MergeWakeConfigSchema = z.strictObject({
+  ...PostMergeConfigSchema.shape,
+  settleMs: z.number().int().positive().max(30_000).optional(),
+});
+
+export type MergeWakeConfig = z.infer<typeof MergeWakeConfigSchema>;
 
 /** Reaches the agent-chat argv as one literal argument, so a value that reads as a flag or holds whitespace is refused. */
 const argvWord = noNul.regex(/^[^-\s]\S*$/, "must be one argument: not empty, no leading dash, no whitespace");
@@ -118,28 +128,6 @@ export const FlakyChecksSchema = z.strictObject({
   waitSeconds: z.number().int().min(0).max(900),
 });
 
-const MI = 1024 * 1024;
-
-/**
- * One repo's visual-diff threshold (TP-4320). Absent, or `off`, records nothing; `shadow` records the delta on the merge
- * evidence, and nothing decides on it; `on` also decides the merge on it. `maxChangedShare` defaults to 0.01 of the content box and `pixelTolerance` to 0.1.
- * The caps bound the measuring work per evidence step, so each has a ceiling config cannot raise: `maxSnapshots` pairs,
- * `maxBytes` per blob, `maxPixels` per decoded image and `maxTotalPixels` decoded over the step.
- */
-const VisualThresholdSchema = z.strictObject({
-  mode: z.enum(["off", "shadow", "on"]),
-  maxChangedShare: z.number().min(0).max(1).optional(),
-  pixelTolerance: z.number().min(0).max(1).optional(),
-  snapshotPaths: z.array(z.string().min(1)),
-  apiPaths: z.array(z.string().min(1)),
-  tokenPaths: z.array(z.string().min(1)),
-  harnessPaths: z.array(z.string().min(1)),
-  maxSnapshots: z.number().int().positive().max(200).optional(),
-  maxBytes: z.number().int().positive().max(20 * MI).optional(),
-  maxPixels: z.number().int().positive().max(32 * MI).optional(),
-  maxTotalPixels: z.number().int().positive().max(256 * MI).optional(),
-});
-
 /** Overrides of the machine limits a factory spawn must pass; the defaults are the seat values. */
 export const SpawnGateConfigSchema = z.strictObject({
   load5: z.number().positive().optional(),
@@ -178,6 +166,8 @@ export const ReviewCheckConfigSchema = z.strictObject({
   appId: z.number().int().positive(),
   installationId: z.number().int().positive(),
   privateKeyPath: absolutePath,
+  /** The App's bot login, for example `my-app[bot]`: Shepherd dismisses or reuses only approvals by this login. */
+  login: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9-]*\[bot\]$/, "a GitHub App's bot login, for example my-app[bot]").optional(),
 });
 
 export type ReviewCheckConfig = z.infer<typeof ReviewCheckConfigSchema>;
@@ -230,6 +220,7 @@ export const FactoryConfigSchema = z.object({
   github: GithubConfigSchema.optional(),
   reconciler: ReconcilerConfigSchema.optional(),
   autoresearch: ArConfigSchema.optional(),
+  markers: MarkersConfigSchema.optional(),
   shepherd: z
     .object({
       seatsDir: z.string().min(1).optional(),
@@ -242,6 +233,8 @@ export const FactoryConfigSchema = z.object({
       flakyChecks: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), FlakyChecksSchema).optional(),
       repos: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), ShepherdRepoConfigSchema).optional(),
       reviewCheck: ReviewCheckConfigSchema.optional(),
+      /** Run after each Shepherd merge, once per settle window, to wake the burndown tick; absent means no wake. */
+      mergeWake: MergeWakeConfigSchema.optional(),
       /** The agent-chat seat told when the deploy alarm goes up and while it stands; absent is warned about at serve start and fails `service check`. */
       hubSeat: z.string().min(1).optional(),
       /**
@@ -289,6 +282,11 @@ export const FactoryConfigSchema = z.object({
       /** Per repo, the visual-diff threshold the merge evidence measures against; read at each evidence step. */
       visualThreshold: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), VisualThresholdSchema).optional(),
       /**
+       * Per repo, the visual merge tier policy (TP-4761): `mode` off|shadow|on and the path classes. Kept raw here, as
+       * visual-tier.ts parses it whole at each evidence step and reads any malformed entry as tier 2.
+       */
+      visualTier: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), z.unknown()).optional(),
+      /**
        * Off when absent. `shadow` or `on` asks the owner, at a head whose only red check is its seat's `visualBaselines.check`,
        * whether CI's regenerated set is the one to commit, before any fixer is woken. Only `on` lets that set carry a later head.
        */
@@ -297,6 +295,8 @@ export const FactoryConfigSchema = z.object({
       visualPacketProfile: profileName.optional(),
       /** The profile of the planner failed review rounds with no adversary verdict spawn (TP-3796); absent means `bd-planner`. */
       diagnosisProfile: profileName.optional(),
+      /** The profile of the planner a dead-end gate's replan answer spawns (TP-4759); absent means `bd-planner`. */
+      replanProfile: profileName.optional(),
       /** The `titan-review` binary that packager's brief names; absent means `$HOME/.local/bin/titan-review`. */
       titanReviewBin: absolutePath.optional(),
       /**

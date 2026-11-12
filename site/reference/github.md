@@ -82,6 +82,10 @@ await port.upsertComment("o/r", pr.number, marker, `${marker}\nchecks green`); /
 fake.reviewComments.set(pr.number, [{ id: 1, author: "alice", authorAssociation: "MEMBER", path: "src/a.ts", line: 12, body: "nit", resolved: false }]);
 await port.listReviewComments("o/r", pr.number); // every inline comment, with its author's association and its thread's resolved state
 
+const { id } = await port.createReview("o/r", pr.number, { commitId: pr.headSha, body: `${marker}\napproved at head` }); // as the App
+await port.listReviews("o/r", pr.number);                    // [{ id, state: "APPROVED", commitId: pr.headSha, login: "fake-app[bot]", userType: "Bot", body }]
+await port.dismissReview("o/r", pr.number, id, "a newer head is not reviewed"); // state becomes "DISMISSED"
+
 fake.forcePushes.set(pr.number, [{ before: "<replaced head sha>", after: pr.headSha }]);
 await port.listForcePushes("o/r", pr.number); // [{ before, after }], oldest first; more than 100 throws ForcePushesTruncated
 ```
@@ -282,6 +286,27 @@ A token split across stdout and stderr is cut from both halves. A wire built
 without `appToken` refuses `createCheckRun`. `fakeGitHub({ appId })` records the run under that
 app id (default `FAKE_APP_ID`), so `latestCheckRuns` returns it; each posted run is also
 appended to `fake.createdCheckRuns` as `{ id, repo, request }`.
+
+### Pull request reviews under a GitHub App
+
+`createReview(repo, pr, { commitId, body })` posts an `APPROVE` review pinned to `commit_id`, so the
+approval names the head it covers. `dismissReview(repo, pr, reviewId, message)` sends `PUT
+pulls/{n}/reviews/{id}/dismissals`. Both are App-scoped writes like `createCheckRun`: they share one
+helper on each wire, so the token rides in the child env of that call (or on the App's own Octokit
+client), errors are redacted the same way, and a wire built without `appToken` refuses before any
+call. An App identity is needed because GitHub refuses an author's approval of their own PR.
+`listReviews(repo, pr)` reads every review, all pages, as the caller's own login, and returns `{ id,
+state, commitId, login, userType, body }`; a caller acting on its own reviews filters on `login` or
+`userType: "Bot"` and a marker in `body`. `createReview` posts unconditionally, so a caller that may
+replay lists first. A `commitId` that is not a full sha, a review id that is not a positive integer
+and an empty dismissal message throw `GitHubInputError` before any call.
+
+On `fakeGitHub()`, `fake.reviews` maps a PR to its reviews. `createReview` appends `{ state:
+"APPROVED", login: fake.appLogin, userType: "Bot" }` (`appLogin` defaults to `fake-app[bot]`), and
+`dismissReview` marks it `DISMISSED` in place. Like GitHub, an unknown review id answers 404 and
+a review that is neither an approval nor a change request answers 422. `createReviewFaults` and
+`dismissReviewFaults` queue one error per call; `lands: true` means the write happened before the
+answer was lost.
 
 ### Ancestry and pull-head reads
 

@@ -2,13 +2,13 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type * as childProcess from "node:child_process";
-import { DispatchError } from "@titan-design/agent-dispatch";
+import { DispatchError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReviewTarget } from "@titan-design/review-panel";
 import { isolateAgentChatHome } from "../test-support/agent-chat-home.js";
 import { provablyIndependent } from "./lineage.js";
 import { ReviewerBrokerBusy, ReviewerBrokerDown } from "./review.js";
-import { ReviewerAskTimedOut, ReviewerMachineHold } from "./review-wait.js";
+import { ReviewerAskTimedOut, ReviewerGateRosterUnread, ReviewerMachineHold } from "./review-wait.js";
 import { agentChatReviewerDispatch, expandHome, runningReviewStarts, type ReviewerRosterRow, type AgentChatReviewerDispatchOptions } from "./reviewer-dispatch.js";
 import { createRosterReader } from "./roster.js";
 import { spawnGate } from "./spawn-gate.js";
@@ -456,6 +456,22 @@ describe("agentChatReviewerDispatch spawn", () => {
       await expect(spawned).resolves.toBeUndefined();
     });
 
+    it("lets a lineage read the broker answers after 36 s finish, though the roster read would time out", async () => {
+      vi.useFakeTimers();
+      execFileHook.override = (_bin, _args, { timeout }, done) => {
+        setTimeout(() => (36_000 > timeout ? done(Object.assign(new Error("killed"), { killed: true, signal: "SIGTERM" }), "", "") : done(null, "[]", "")), Math.min(36_000, timeout));
+        return { stdin: { on: () => undefined, end: () => undefined } };
+      };
+      const dispatch = dispatchOver();
+
+      const lineage = dispatch.lineage();
+      const roster = failure(dispatch.roster());
+      await vi.advanceTimersByTimeAsync(36_000);
+
+      await expect(lineage).resolves.toMatchObject({ rows: [] });
+      expect(await roster).toBeInstanceOf(ReviewerAskTimedOut);
+    });
+
     it("maps a broker that hangs past 90 s to a timed-out ask", async () => {
       vi.useFakeTimers();
       brokerAnsweringAfter(10 * 60_000);
@@ -535,6 +551,28 @@ describe("agentChatReviewerDispatch reviewer-slot reading", () => {
     await failure(dispatch.spawn("rv-demo-7", BRIEF, target));
 
     expect(gate.reviewSlots()).toStrictEqual({ cap: 3, readAt: "2026-10-13T12:00:00.000Z", rosterError: "agent ls timed out after 10000 ms" });
+  });
+
+  it("reports a gate roster read that timed out as a not-launched busy refusal, launching nobody (TP-5295)", async () => {
+    const gate = gateAt(Date.parse("2026-10-13T12:00:00Z"));
+    const dispatch = dispatchOver(undefined, { gate, roster: createRosterReader(async () => Promise.reject(new DispatchTimeoutError("broker did not answer agents_result"))) });
+
+    const error = await failure(dispatch.spawn("rv-demo-7", BRIEF, target));
+
+    expect(error).toBeInstanceOf(ReviewerGateRosterUnread);
+    expect(error).toBeInstanceOf(ReviewerBrokerBusy);
+    expect(error).not.toBeInstanceOf(ReviewerAskTimedOut);
+    expect(wasRun()).toBe(false);
+  });
+
+  it("keeps an agents.spawn that times out behind the gate a timed-out ask, because the reviewer may be running (TP-5295)", async () => {
+    const gate = gateAt(Date.parse("2026-10-13T12:00:00Z"));
+    const dispatch = dispatchOver("exec sleep 5\n", { gate, roster: createRosterReader(async () => []), spawnTimeoutMs: 200 });
+
+    const error = await failure(dispatch.spawn("rv-demo-7", BRIEF, target));
+
+    expect(error).toBeInstanceOf(ReviewerAskTimedOut);
+    expect(error).not.toBeInstanceOf(ReviewerGateRosterUnread);
   });
 });
 

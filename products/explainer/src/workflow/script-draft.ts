@@ -8,6 +8,7 @@ import { declareScriptReadings } from "../heteronym-readings.js";
 import { leadBeatLines, leadBeats, uncuedTargets, type LeadBeat } from "../lead-beats.js";
 import { LANES_CHAPTER, type CoverageManifest } from "../lint-coverage.js";
 import type { Stamped, LedgerStamp } from "../ledger-stamp.js";
+import { cueStandIns } from "../cue-stand-ins.js";
 import { CUE_KIND_ROLES, unknownCueKinds } from "../pace-items.js";
 import { budgetSection, planFaults, planHint, retimeOverBudget } from "../script-budget.js";
 import { parseScript } from "../script-load.js";
@@ -79,7 +80,7 @@ function laneLine(lane: CoverageManifest["lanes"][number], coverage: CoverageMan
 export const coverageSection = (coverage: CoverageManifest): string =>
   `## Coverage (coverage.json)
 
-Every merged PR of the day is named or counted under its lane. Name each thread below by citing its PR fact ids in the beat that names it. Count the rest of a lane in a "${LANES_CHAPTER}" chapter beat that cites the lane's rollup fact and says or shows the lane's merged total.
+Every merged PR of the day is named or counted under its lane. Name each thread below by what it did, citing its PR fact ids in the beat that names it; the PR numbers below go on screen, never in spoken. Count the rest of a lane in a "${LANES_CHAPTER}" chapter beat that cites the lane's rollup fact and says or shows the lane's merged total.
 
 ${coverage.lanes.map((lane) => laneLine(lane, coverage)).join("\n")}`;
 
@@ -105,6 +106,7 @@ export const sharedSections = (spine: string, plan: ScriptPlan, coverage?: Cover
 
 /** The reply rules every script task ends on, whole script or one chapter. */
 export const REPLY_RULES = `- Every cue's atCue word must be a word the beat speaks.
+- No spoken line says a pull request, task, fact, map or item id, in digits or in words ("PR 1234", "TP-1234", "F7"): name the change by what it did ("the guard fix"), and put the id on screen with its lead ("PR 1234", "TP-1234", never a bare number), in a label, a chip or the headline, and in fact_ids.
 - Cite only fact ids from the facts pack, and state no number the facts pack does not hold. Where the spine has a Cites table, a beat that names an item cites the fact ids that table lists for it.
 - Set "facts_pack" to "facts.md".`;
 
@@ -173,9 +175,10 @@ function cueFault(script: ScriptV1, plan: ScriptPlan): string | undefined {
  */
 function cueKindFault(script: ScriptV1): string | undefined {
   const kinds = Object.keys(CUE_KIND_ROLES).join(", ");
-  const faults = script.beats.flatMap((beat, i) =>
-    unknownCueKinds(beat).map((kind) => `beats.${i}.visual.cues: cue target kind "${kind}" in ${beat.id} is not one of ${kinds}`),
-  );
+  const faults = script.beats.flatMap((beat, i) => [
+    ...unknownCueKinds(beat).map((kind) => `beats.${i}.visual.cues: cue target kind "${kind}" in ${beat.id} is not one of ${kinds}`),
+    ...cueStandIns(beat).map(({ target, replacement }) => `beats.${i}.visual.cues: cue target "${target}" in ${beat.id} is terminal or timeline content under a generic kind: use ${replacement}:`),
+  ]);
   return faults.length > 0 ? faults.join("; ") : undefined;
 }
 

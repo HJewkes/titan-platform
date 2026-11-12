@@ -26,8 +26,8 @@ export interface ToolchainWorld {
  * Real GitHub starts a new branch with its base's files; the fake does not, so the drifted repo's files are seeded on the adoption branch too.
  */
 export function toolchainWorld(): ToolchainWorld {
-  const fakes = new Map<RepoSlug, FakeGitHub>([[CANONICAL_REPO, seeded(CANONICAL_FILES, ["main"])]]);
-  for (const { repo } of TOOLCHAIN_CONSUMERS) fakes.set(repo, repo === DRIFTED ? seeded(DRIFTED_FILES, ["main", ADOPTION_BRANCH]) : seeded(CANONICAL_FILES, ["main"]));
+  const fakes = new Map<RepoSlug, FakeGitHub>([[CANONICAL_REPO, seeded(CANONICAL_REPO, CANONICAL_FILES, ["main"])]]);
+  for (const { repo } of TOOLCHAIN_CONSUMERS) fakes.set(repo, repo === DRIFTED ? seeded(repo, DRIFTED_FILES, ["main", ADOPTION_BRANCH]) : seeded(repo, CANONICAL_FILES, ["main"]));
   const ports = new Map([...fakes].map(([repo, fake]) => [repo, githubPort(fake.wire)]));
   const portFor = (repo: RepoSlug): GitHubPort => {
     const port = ports.get(repo);
@@ -35,13 +35,14 @@ export function toolchainWorld(): ToolchainWorld {
     return port;
   };
   const port = new Proxy(portFor(CANONICAL_REPO), {
-    get: (_target, method) => (repo: RepoSlug, ...rest: unknown[]) => Reflect.apply(Reflect.get(portFor(repo), method), undefined, [repo, ...rest]),
+    // Every fake acts as the same login, so a call that names no repo goes to the canonical one.
+    get: (_target, method) => (method === "actorLogin" ? () => portFor(CANONICAL_REPO).actorLogin() : (repo: RepoSlug, ...rest: unknown[]) => Reflect.apply(Reflect.get(portFor(repo), method), undefined, [repo, ...rest])),
   });
   return { fakes, port };
 }
 
-function seeded(files: Record<string, string>, refs: string[]): FakeGitHub {
-  const fake = fakeGitHub();
+function seeded(repo: RepoSlug, files: Record<string, string>, refs: string[]): FakeGitHub {
+  const fake = fakeGitHub({ repo });
   for (const ref of refs) for (const [path, content] of Object.entries(files)) fake.files.set(`${ref}:${path}`, { content, blobSha: fakeSha(path) });
   return fake;
 }

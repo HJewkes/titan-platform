@@ -5,6 +5,8 @@ import { Command, CommanderError } from "commander";
 import { configDeprecations, resolveDbPath } from "./config.js";
 import { configuredDeployWatch } from "./deploy-watch-ports.js";
 import { configuredDeployPacer } from "./deploy-pacer-sweep.js";
+import { ghCiTimingPorts } from "./ci-timing-fallback.js";
+import { FACTORY_REPO } from "./build-info.js";
 import { configuredFixerRetire, configuredMainWatch } from "./main-watch-ports.js";
 import { configuredSeatDigest } from "./seat-digest-ports.js";
 import { configuredConsoleAnswers } from "./gate-answer-rpc.js";
@@ -25,6 +27,7 @@ import { registerReview } from "./review/command.js";
 import { registerContextAudit } from "./context-audit/command.js";
 import { registerBotToken } from "./cli-bot-token.js";
 import { registerToolchain } from "./cli-toolchain.js";
+import { registerRelease } from "./cli-release.js";
 import { postRpc } from "./cli-shepherd-rpc.js";
 import { registerShepherd } from "./cli-shepherd.js";
 import { registerLand } from "./cli-land.js";
@@ -40,7 +43,7 @@ export { EXIT };
 export { formatResume } from "./cli-host-verbs.js";
 
 const defaultIo: CliIo = { stdout: (t) => process.stdout.write(t), stderr: (t) => process.stderr.write(t), env: process.env };
-const defaultDeps: CliDeps = { workflows: factoryWorkflows, host: { registry: factoryRegistry }, routes: factoryRoutes, deployWatch: (env) => configuredDeployWatch(env, deployCheckoutFor(env)), deployPacer: (env) => configuredDeployPacer(env, deployCheckoutFor(env)), mainWatch: configuredMainWatch, fixerRetire: configuredFixerRetire, seatDigest: configuredSeatDigest, gateNotify: configuredGateNotify, consoleAnswers: configuredConsoleAnswers, sources: (env, log) => sourcesReader(env, { log }), ingress: (env) => ({ secretPath: webhookSecretPath(env) }), reconciler: serveReconciler, configDeprecations, exitAfterServe: () => process.exit() };
+const defaultDeps: CliDeps = { workflows: factoryWorkflows, host: { registry: factoryRegistry }, routes: factoryRoutes, deployWatch: (env) => configuredDeployWatch(env, deployCheckoutFor(env)), deployPacer: (env) => configuredDeployPacer(env, deployCheckoutFor(env)), mainWatch: configuredMainWatch, fixerRetire: configuredFixerRetire, seatDigest: configuredSeatDigest, ciTimingFallback: () => (FACTORY_REPO === undefined ? undefined : ghCiTimingPorts(FACTORY_REPO)), gateNotify: configuredGateNotify, consoleAnswers: configuredConsoleAnswers, sources: (env, log) => sourcesReader(env, { log }), ingress: (env) => ({ secretPath: webhookSecretPath(env) }), reconciler: serveReconciler, configDeprecations, exitAfterServe: () => process.exit() };
 
 /** Parse argv and run one verb. Returns the exit code instead of exiting, so tests can call it. */
 export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDeps = defaultDeps): Promise<number> {
@@ -69,7 +72,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDep
     }
   };
   const verbs: Verbs = { io, deps, dbPath, withHost, setExit };
-  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit, registerBuildSurface, registerToolchain, registerScorecard, registerContextAudit, registerOwnerGates, registerBlocker, registerBotToken, registerPlanner, registerAutoresearch, registerReview, registerMarkers]) register(program, verbs);
+  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit, registerBuildSurface, registerToolchain, registerRelease, registerScorecard, registerContextAudit, registerOwnerGates, registerBlocker, registerBotToken, registerPlanner, registerAutoresearch, registerReview, registerMarkers]) register(program, verbs);
   return parse(program, argv, io, () => exitCode);
 }
 

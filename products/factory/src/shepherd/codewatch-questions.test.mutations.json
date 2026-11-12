@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the anchor keeps only the start line, so a range past EOF passes",
+      "file": "products/factory/src/shepherd/codewatch-questions.ts",
+      "find": "anchor: `head/${path}#L${start}${end === undefined ? \"\" : `-L${end}`}`",
+      "replace": "anchor: `head/${path}#L${start}`",
+      "kills": [
+        "codewatchReader anchor check at the head drops a range whose start is in the file but whose end runs past it"
+      ]
+    },
+    {
+      "name": "an unreadable head fails open and keeps the text-safe questions",
+      "file": "products/factory/src/shepherd/codewatch-questions.ts",
+      "find": "lines = await headLines(target);",
+      "replace": "lines = await headLines(target).catch(() => ({ lines: () => Array.from({ length: 10_000 }, () => \"\") }));",
+      "kills": [
+        "codewatchReader anchor check at the head keeps no questions and warns when the head cannot be read"
+      ]
+    },
+    {
+      "name": "every text-safe question is anchor-checked, with no budget",
+      "file": "products/factory/src/shepherd/codewatch-questions.ts",
+      "find": "of safe.slice(0, MAX_ANCHOR_CHECKS))",
+      "replace": "of safe)",
+      "kills": [
+        "codewatchReader anchor check at the head stops checking anchors after the check budget however many questions the report holds"
+      ]
+    }
+  ]
+}

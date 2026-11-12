@@ -309,11 +309,6 @@
       "count": 1
     }
   },
-  "products/factory/src/shepherd/stale-gates.ts": {
-    "titan/max-line-length": {
-      "count": 1
-    }
-  },
   "products/factory/src/shepherd/stats-cost.ts": {
     "titan/max-line-length": {
       "count": 2
@@ -344,11 +339,6 @@
       "count": 1
     }
   },
-  "products/factory/src/shepherd/view.ts": {
-    "titan/max-line-length": {
-      "count": 1
-    }
-  },
   "products/factory/src/shepherd/waiting.ts": {
     "titan/max-line-length": {
       "count": 1
@@ -364,9 +354,14 @@
       "count": 1
     }
   },
+  "products/factory/src/workflows-routes.ts": {
+    "titan/max-line-length": {
+      "count": 6
+    }
+  },
   "products/factory/src/workflows.ts": {
     "titan/max-line-length": {
-      "count": 10
+      "count": 4
     }
   },
   "products/factory/src/workflows/land-ci-wait.ts": {

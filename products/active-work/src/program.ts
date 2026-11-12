@@ -1,5 +1,4 @@
 import { Command, InvalidArgumentError } from 'commander';
-import type { ZodSchema, ZodTypeAny } from 'zod';
 import { registry } from './registry/index.js';
 import './commands/index.js'; // populates the registry via side effect
 import { getActiveRoot } from './utils/paths.js';
@@ -13,69 +12,22 @@ import {
   type CliMeta,
   type CommandContext,
 } from './registry/index.js';
-import { readCommanderOption } from '@titan-design/registry';
+import {
+  collectCliArgs,
+  collectOptionParser,
+  commandPath,
+  fieldSchema,
+  optionFlagSpec,
+  positionalSpec,
+  schemaKind,
+} from '@titan-design/registry';
 import { BUILD_VERSION } from './version.js';
 import { color } from './utils/color.js';
 import { appendUsage } from './utils/usage-log.js';
+import { expandFileValue } from './cli-file-values.js';
 import { exitAfterFlush } from './utils/exit.js';
 import { attachSpawnCommand } from './spawn/args.js';
 import { processSpawnDeps } from './spawn/run.js';
-
-/**
- * Look up the inner zod type, skipping optional/nullable/default wrappers.
- *
- * Returns the unwrapped def type string (e.g. `'string'`, `'number'`,
- * `'array'`, `'boolean'`, `'enum'`) so the dispatcher can decide how to
- * coerce a raw commander value before zod parsing.
- */
-function unwrapZodType(schema: ZodTypeAny | undefined): string | undefined {
-  if (!schema) return undefined;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let def = (schema as any)?._zod?.def;
-  while (def && (def.type === 'optional' || def.type === 'nullable' || def.type === 'default')) {
-    def = def.innerType?._zod?.def;
-  }
-  return def?.type as string | undefined;
-}
-
-/**
- * Pull the per-field zod schema out of a top-level `z.object({...})`.
- *
- * Returns `undefined` when the schema isn't an object or the field is
- * absent — callers fall back to treating the value as a plain string.
- */
-function fieldSchema(args: ZodSchema, name: string): ZodTypeAny | undefined {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const shape = (args as any)?._zod?.def?.shape;
-  if (!shape) return undefined;
-  return shape[name] as ZodTypeAny | undefined;
-}
-
-/** Coerce a raw commander value (string | boolean | undefined) to the type implied by zod. */
-function coerce(value: unknown, zodType: string | undefined): unknown {
-  if (value === undefined) return undefined;
-  if (zodType === 'boolean') {
-    return value === true || value === 'true';
-  }
-  if (zodType === 'number') {
-    if (typeof value === 'number') return value;
-    const n = Number(value);
-    return Number.isNaN(n) ? value : n;
-  }
-  if (zodType === 'array') {
-    const parts: unknown[] = Array.isArray(value) ? value : [value];
-    return parts
-      .flatMap((part) => String(part).split(','))
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
-  }
-  return value;
-}
-
-/** Split a registry command name like `task.add` into commander sub-command path parts. */
-function splitName(name: string): string[] {
-  return name.split('.');
-}
 
 /**
  * Walk/create a chain of `commander` sub-commands for the given group
@@ -166,21 +118,9 @@ function makeAction(
 
 /** Gather commander's positionals and options into one object, coerced to the zod field types. */
 function collectRawArgs(cmd: AnyCommand, handlerArgs: unknown[]): Record<string, unknown> {
-  const meta: CliMeta = cmd.cli ?? {};
-  const positionalNames = meta.positional ?? [];
-  const optsFromCommander = (handlerArgs[positionalNames.length] ?? {}) as Record<string, unknown>;
-  const raw: Record<string, unknown> = {};
-
-  positionalNames.forEach((pname, i) => {
-    const value = handlerArgs[i];
-    if (value !== undefined) raw[pname] = coerce(value, unwrapZodType(fieldSchema(cmd.args, pname)));
-  });
-
-  for (const [key, opt] of Object.entries(meta.options ?? {})) {
-    const value = readCommanderOption(optsFromCommander, opt.long);
-    if (value !== undefined) raw[key] = coerce(value, unwrapZodType(fieldSchema(cmd.args, key)));
-  }
-  return raw;
+  const positionalCount = (cmd.cli?.positional ?? []).length;
+  const opts = (handlerArgs[positionalCount] ?? {}) as Record<string, unknown>;
+  return collectCliArgs(cmd, handlerArgs.slice(0, positionalCount), opts);
 }
 
 async function invoke(
@@ -213,29 +153,6 @@ async function invoke(
   }
 }
 
-/**
- * Translate a registry `CliMeta` description of a single option into the
- * commander option-spec string. Boolean zod fields become bare flags
- * (`--flag`); everything else takes an option-argument (`--flag <value>`).
- */
-function buildOptionFlags(
-  cmd: AnyCommand,
-  key: string,
-  opt: CliMeta['options'] extends infer M ? (M extends Record<string, infer O> ? O : never) : never,
-): string {
-  const zodType = unwrapZodType(fieldSchema(cmd.args, key));
-  const short = opt.short ? `${opt.short}, ` : '';
-  if (zodType === 'boolean') {
-    return `${short}${opt.long}`;
-  }
-  return `${short}${opt.long} <value>`;
-}
-
-/** A repeated array option accumulates (`--tag a --tag b`) instead of keeping the last value. */
-function collectRepeated(value: string, previous: string[] | undefined): string[] {
-  return [...(previous ?? []), value];
-}
-
 /** Single-tag flags: commander would keep only the last of a repeat and drop the rest silently. */
 const SINGLE_USE_OPTIONS: ReadonlySet<string> = new Set([
   'task.edit:add_tag',
@@ -251,12 +168,44 @@ function refuseRepeat(flag: string): (value: string, previous: string | undefine
   };
 }
 
+type Accumulator = (value: string, previous: string[] | undefined) => string[];
+
+/**
+ * Array flags take one value per occurrence. A comma is refused rather than kept, because
+ * `--tags a,b` from a caller used to the old comma lists would otherwise store one wrong value.
+ */
+function refuseCommaList(long: string, accumulate: Accumulator): Accumulator {
+  const flag = long.split(/\s/)[0];
+  return (value, previous) => {
+    if (value.includes(',')) {
+      const parts = value.split(',').map((part) => part.trim()).filter((part) => part.length > 0);
+      const repeated = parts.map((part) => `${flag} ${part}`).join(' ');
+      throw new InvalidArgumentError(`${flag} ${value}: pass ${repeated}`);
+    }
+    return accumulate(value, previous);
+  };
+}
+
+/** `@<file>` expands before the comma check, so each line of the file is held to the rule a repeated flag is. */
+function expandFiles(long: string, accumulate: Accumulator): Accumulator {
+  const flag = long.split(/\s/)[0];
+  return (value, previous) => {
+    let collected = previous;
+    for (const line of expandFileValue(flag, value)) collected = accumulate(line, collected);
+    return collected ?? [];
+  };
+}
+
 function attachOption(sub: Command, cmd: AnyCommand, key: string, opt: CliOption): void {
-  const flags = buildOptionFlags(cmd, key, opt);
-  if (opt.required) {
+  const flags = optionFlagSpec(cmd, key, opt);
+  const accumulate = collectOptionParser(cmd, key);
+  const collect = accumulate && expandFiles(opt.long, refuseCommaList(opt.long, accumulate));
+  if (opt.required && collect) {
+    sub.requiredOption(flags, opt.description, collect);
+  } else if (opt.required) {
     sub.requiredOption(flags, opt.description);
-  } else if (unwrapZodType(fieldSchema(cmd.args, key)) === 'array') {
-    sub.option(flags, opt.description, collectRepeated);
+  } else if (collect) {
+    sub.option(flags, opt.description, collect);
   } else if (SINGLE_USE_OPTIONS.has(`${cmd.name}:${key}`)) {
     sub.option(flags, opt.description, refuseRepeat(opt.long));
   } else {
@@ -266,19 +215,15 @@ function attachOption(sub: Command, cmd: AnyCommand, key: string, opt: CliOption
 
 /** Attach one registry command as a sub-command under its appropriate parent. */
 function attachCommand(root: Command, cmd: AnyCommand): void {
-  const parts = splitName(cmd.name);
+  const parts = commandPath(cmd.name);
   const leafName = parts[parts.length - 1]!;
   const parent = ensureGroup(root, parts.slice(0, -1));
   const sub = parent.command(leafName).description(cmd.description);
 
   const meta: CliMeta = cmd.cli ?? {};
   for (const pname of meta.positional ?? []) {
-    const zType = unwrapZodType(fieldSchema(cmd.args, pname));
-    const optional =
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (fieldSchema(cmd.args, pname) as any)?._zod?.def?.type === 'optional';
-    const display = optional ? `[${pname}]` : `<${pname}>`;
-    sub.argument(display, `${pname}${zType ? ` (${zType})` : ''}`);
+    const kind = schemaKind(fieldSchema(cmd.args, pname));
+    sub.argument(positionalSpec(cmd, pname), `${pname}${kind ? ` (${kind})` : ''}`);
   }
 
   for (const [key, opt] of Object.entries(meta.options ?? {})) {

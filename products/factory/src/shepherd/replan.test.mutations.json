@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the replan brief leaves out the failed sessions",
+      "file": "products/factory/src/shepherd/replan.ts",
+      "find": "    ...(input.sessions.length > 0 ? input.sessions.map((session) => sessionLine(session, roster)) : [\"- none recorded\"]),\n",
+      "replace": "",
+      "kills": [
+        "a dead-end gate's replan answer replan spawns bd-planner once with each failed session's transcript path in the brief, and the run waits for a new head"
+      ]
+    },
+    {
+      "name": "a refused replan spawn waits for a new head instead of asking the seat again",
+      "file": "products/factory/src/shepherd/dead-end.ts",
+      "find": "if (await replanned(run, end, addressed, attempt)) return awaitAfterExit(run, headSha, end.red);",
+      "replace": "await replanned(run, end, addressed, attempt);\n    return awaitAfterExit(run, headSha, end.red);",
+      "kills": [
+        "a dead-end gate's replan answer a refused replan spawn tells the seat and asks again without replan recommended"
+      ]
+    }
+  ]
+}

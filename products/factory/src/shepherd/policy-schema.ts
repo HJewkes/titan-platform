@@ -62,6 +62,28 @@ export const EffectivePolicySchema: z.ZodType<EffectivePolicy> = z.strictObject(
   release: z.literal("grant").optional(),
 });
 
+/** A stored policy carries a key this build's schema lacks: the store was written by a newer build than the one reading it. */
+export class PolicyNewerThanBuild extends Error {
+  override readonly name = "PolicyNewerThanBuild";
+  constructor(readonly keys: readonly string[]) {
+    super(`PolicyNewerThanBuild: stored policy carries ${keys.map((key) => `"${key}"`).join(", ")}, which this build does not know; deploy current main (titan-factory service deploy) so this CLI is as new as the store`);
+  }
+}
+
+/**
+ * Reads a stored policy (registration row or run param). An unknown key other than `approved`, which is refused on purpose,
+ * is a build older than the store and throws `PolicyNewerThanBuild` rather than a raw zod error.
+ */
+export function parseStoredPolicy(raw: string): EffectivePolicy {
+  const value: unknown = JSON.parse(raw);
+  const parsed = EffectivePolicySchema.safeParse(value);
+  if (parsed.success) return parsed.data;
+  const unknown = parsed.error.issues.flatMap((issue) => (issue.code === "unrecognized_keys" ? issue.keys.map((key) => [...issue.path, key].join(".")) : []));
+  const newer = unknown.filter((key) => key !== "approved");
+  if (newer.length > 0) throw new PolicyNewerThanBuild(newer);
+  throw parsed.error;
+}
+
 export class RegistrationRefused extends Error {
   override readonly name = "RegistrationRefused";
 }

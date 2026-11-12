@@ -1,26 +1,23 @@
 import { createHash } from "node:crypto";
 import { GITHUB_ACTIONS_APP_ID } from "./readiness.js";
-import { COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, PR_COMMITS_CAP, PR_FILES_CAP } from "./port.js";
+import { PR_COMMITS_CAP, PR_FILES_CAP } from "./port-types.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
 import { FORCE_PUSHES_CAP, type ForcePush } from "./force-pushes.js";
 import type { OpenPrRequest } from "./pr-list.js";
-import type { CheckRun, GitHubWire, LoggedCommit, MergeMethod, PrFile, PullRequest, PutFileRequest } from "./port.js";
+import type { CheckRun, GitHubWire, LoggedCommit, MergeMethod, PrFile, PullRequest, PutFileRequest } from "./port-types.js";
 import type { FakeEffects, FakeFaultyRead, FakeGitHub } from "./fake-types.js";
 import { fakeMergeIntoBranch } from "./fake-merge-into-branch.js";
 import { fakeContentBytes } from "./fake-bytes.js";
+import { fakeListDirectory } from "./fake-directory.js";
 import { fakeAncestry, fakeLsRemote } from "./fake-ancestry.js";
 import { revalidateOpenPrs, revalidateRef, revalidateRulesets } from "./fake-conditional-reads.js";
+import { compareCommits, compareFiles } from "./fake-compare.js";
+import { fakeReviewWire } from "./fake-reviews.js";
+import { FakeHttpError } from "./fake-http-error.js";
 
 export type { FakeEffects, FakeFaultyRead, FakeGitHub } from "./fake-types.js";
 
-export class FakeHttpError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(`HTTP ${status}: ${message}`);
-  }
-}
+export { FakeHttpError };
 
 const attemptKey = (run: CheckRun): string => `${run.name}\u0000${run.appId}\u0000${run.workflowRunId}`;
 
@@ -51,7 +48,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
   const repo = options.repo ?? "o/r";
   let counter = 0;
   const nextSha = (tag: string): string => fakeSha(`${tag}${++counter}`);
-  const effects: FakeEffects = { createRef: 0, deleteRef: 0, putContent: 0, createPr: 0, updateBranch: 0, updateRef: 0, merge: 0, rerunFailedJobs: 0 };
+  const effects: FakeEffects = { createRef: 0, deleteRef: 0, putContent: 0, createPr: 0, updateBranch: 0, updateRef: 0, merge: 0, rerunFailedJobs: 0, createReview: 0, dismissReview: 0 };
   const prs = new Map<number, PullRequest>();
   const runs = new Map<string, CheckRun[]>();
   const runStatus = new Map<number, string>();
@@ -89,6 +86,8 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     compares: new Map(),
     comments: new Map(),
     reviewComments: new Map(),
+    reviews: new Map(),
+    appLogin: "fake-app[bot]",
     forcePushes: new Map(),
     addPr(fields) {
       const number = prs.size + 1;
@@ -131,6 +130,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     getDefaultBranch: async () => read("getDefaultBranch", () => base),
     getContent: async (_repo, path, ref) => record("getContent", getContent(fake, path, ref)),
     getContentBytes: async (_repo, path, ref, maxBytes) => record("getContentBytes", fakeContentBytes(fake, path, ref, maxBytes)),
+    listDirectory: async (_repo, path, ref) => record("listDirectory", fakeListDirectory(fake, path, ref)),
     putContent: async (_repo, request) => record("putContent", putContent(fake, request, nextSha)),
     listPrs: async (_repo, headBranch) => record("listPrs", [...prs.values()].filter((pr) => pr.headRef === headBranch).map((pr) => ({ ...pr }))),
     listOpenPrs: async () => record("listOpenPrs", [...prs.values()].filter((pr) => pr.state === "open").map((pr) => ({ ...pr }))),
@@ -180,6 +180,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     listCommits: async (_repo, since) => record("listCommits", listCommits(fake, since)),
     compareAncestry: async (_repo, base, head) => read("compareAncestry", () => fakeAncestry({ commits: fake.commits, refs: fake.refs, prs }, base, head)),
     compareFiles: async (_repo, base, head) => record("compareFiles", compareFiles(fake, base, head)),
+    compareCommits: async (_repo, base, head) => record("compareCommits", compareCommits(fake, base, head)),
     getAuthenticatedLogin: async () => record("getAuthenticatedLogin", fake.actor),
     listIssueComments: async (_repo, number) => record("listIssueComments", (fake.comments.get(number) ?? []).map((comment) => ({ ...comment }))),
     createComment: async (_repo, number, body) => {
@@ -188,6 +189,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     },
     listReviewComments: async (_repo, number) => record("listReviewComments", (fake.reviewComments.get(number) ?? []).map((comment) => ({ ...comment }))),
     listForcePushes: async (_repo, number) => record("listForcePushes", listForcePushes(fake, number)),
+    ...fakeReviewWire(() => fake, (number) => mustPr(prs, number).number, record, () => 7000 + ++counter),
   };
   const fake: FakeGitHub = Object.assign(state, { wire, gitExec: fakeLsRemote(prs, () => read("lsRemote", () => undefined)) });
   return fake;
@@ -248,12 +250,6 @@ function listPrFiles(fake: FakeGitHub, number: number): { files: PrFile[]; chang
 function listCommits(fake: FakeGitHub, since: string): LoggedCommit[] {
   const after = fake.history.filter((commit) => Date.parse(commit.committedAt) >= Date.parse(since));
   return after.sort((a, b) => Date.parse(b.committedAt) - Date.parse(a.committedAt)).map(({ sha, message }) => ({ sha, message }));
-}
-
-function compareFiles(fake: FakeGitHub, base: string, head: string): { mergeBaseSha: string; files: string[]; truncated: boolean } {
-  const input = fake.compares.get(`${base}...${head}`) ?? { mergeBaseSha: fake.refs.get(base) ?? base, files: [] };
-  const truncated = input.files.length >= COMPARE_FILE_CAP || (input.totalCommits ?? 0) > COMPARE_COMMIT_CAP;
-  return { mergeBaseSha: input.mergeBaseSha, files: input.files.slice(0, COMPARE_FILE_CAP), truncated };
 }
 
 function createComment(fake: FakeGitHub, number: number, body: string, id: number): { id: number } {

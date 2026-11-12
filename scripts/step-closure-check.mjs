@@ -2,16 +2,21 @@
 // `pnpm registry:closure`: a factory fact step whose import closure changed against the base must change its schema
 // hash or bump, or carry an attestation for the new closure (TP-3106 S6). `--write` refreshes the committed lock.
 // The closure walk is TypeScript, so this runs the factory's built products/factory/dist/registry/closure-main.js: build first.
-// On a pull request, an attestation row the base lacks must name that PR, so one PR cannot attest for another (TP-3110 S5).
+// On a pull request, an attestation row the base lacks must name that PR, so one PR cannot attest for another (TP-3110 S5),
+// or a parent PR the branch is stacked on, so a child never deletes or copies its parent's file (TP-4840).
+// Rows live one file per PR, attestations/<pr>.json, so two PRs adding rows never conflict (TP-4745); a row's pr names its file.
 // Usage: node scripts/step-closure-check.mjs [--write] [base]   (base: argv, CLOSURE_BASE, origin/$GITHUB_BASE_REF on a PR, then origin/main)
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const LOCK_PATH = "products/factory/src/registry/closure.lock.json";
-export const ATTESTATIONS_PATH = "products/factory/src/registry/attestations.json";
+export const ATTESTATIONS_DIR = "products/factory/src/registry/attestations";
+/** The one file every PR appended to before TP-4745; read only at a base that predates the directory, refused in the tree. */
+export const LEGACY_ATTESTATIONS_PATH = "products/factory/src/registry/attestations.json";
+const PR_FILE = /^([1-9][0-9]*)\.json$/;
 const CLOSURE_MAIN = join(ROOT, "products/factory/dist/registry/closure-main.js");
 const DEFAULT_BASE = "origin/main";
 
@@ -25,13 +30,37 @@ export function readBaseLock(git, base) {
   }
 }
 
-/** The base's attestation rows, or none when the base has no attestations file. */
+/** The rows of each named `<pr>.json`, with a failure for a name no PR file could have or a row naming another PR. */
+export function rowsOfFiles(names, read) {
+  const rows = [];
+  const failures = [];
+  for (const name of names) {
+    const pr = Number(PR_FILE.exec(name)?.[1]);
+    if (Number.isNaN(pr)) failures.push(`${ATTESTATIONS_DIR}/${name}: not a <pr>.json attestations file`);
+    if (Number.isNaN(pr)) continue;
+    const fileRows = JSON.parse(read(`${ATTESTATIONS_DIR}/${name}`));
+    rows.push(...fileRows);
+    failures.push(...fileRows.filter((row) => row.pr !== pr).map((row) => `${ATTESTATIONS_DIR}/${name}: a row names PR ${row.pr}; it belongs in ${row.pr}.json`));
+  }
+  return { rows, failures };
+}
+
+/** The base's attestation rows: its PR files, else its legacy file, else none. */
 export function readBaseAttestations(git, base) {
   try {
-    return JSON.parse(git(["show", `${base}:${ATTESTATIONS_PATH}`]));
+    const names = git(["ls-tree", "--name-only", base, `${ATTESTATIONS_DIR}/`]).split("\n").filter(Boolean).map((path) => path.slice(ATTESTATIONS_DIR.length + 1));
+    if (names.length > 0) return rowsOfFiles(names, (path) => git(["show", `${base}:${path}`])).rows;
+    return JSON.parse(git(["show", `${base}:${LEGACY_ATTESTATIONS_PATH}`]));
   } catch {
     return [];
   }
+}
+
+/** The working tree's rows from its PR files; a legacy file left in the tree fails, as a PR appending to it conflicts again. */
+export function readTreeAttestations(listDir, readFile) {
+  const { rows, failures } = rowsOfFiles(listDir(ATTESTATIONS_DIR), readFile);
+  const legacy = listDir(dirname(LEGACY_ATTESTATIONS_PATH)).includes("attestations.json");
+  return { rows, failures: legacy ? [`${LEGACY_ATTESTATIONS_PATH} is retired; move its rows to ${ATTESTATIONS_DIR}/<pr>.json`, ...failures] : failures };
 }
 
 /** The pull request number from the Actions event payload; undefined off a pull request. */
@@ -42,22 +71,41 @@ export function readPrNumber(env, readFile) {
 
 const sameRow = (a, b) => a.step === b.step && a.closure === b.closure && a.pr === b.pr;
 
-/** Rows the working tree adds over the base: each must name this PR. Skipped when there is no PR. */
-export function judgeAddedRows(baseRows, rows, prNumber) {
+/**
+ * Whether PR `pr` is a parent this branch is stacked on: every commit in base..HEAD that touched `<pr>.json` is in
+ * that PR's own head, fetched from GitHub's refs/pull/<pr>/head. Resolved from git, not the PR body, so it is the
+ * same on every run; a commit of this branch's own that writes the file, or a fetch that fails, judges it foreign.
+ */
+export function isStackedParent(git, base, pr) {
+  const parentHead = `refs/closure-parent/${pr}`;
+  try {
+    git(["fetch", "--quiet", "--no-tags", "origin", `+refs/pull/${pr}/head:${parentHead}`]);
+    const commits = git(["log", "--format=%H", `${base}..HEAD`, "--", `${ATTESTATIONS_DIR}/${pr}.json`]).split("\n").filter(Boolean);
+    for (const commit of commits) git(["merge-base", "--is-ancestor", commit, parentHead]);
+    return commits.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Rows the working tree adds over the base: each must name this PR or a stacked parent's. Skipped when there is no PR. */
+export function judgeAddedRows(baseRows, rows, prNumber, isParent = () => false) {
   const added = rows.filter((row) => !baseRows.some((old) => sameRow(old, row)));
   const label = (row) => `${row.step}@${String(row.closure).slice(0, 12)}`;
   const notices = added.map((row) => `attest required: ${label(row)}`);
   if (prNumber === undefined) return { failures: [], notices };
-  const failures = added.filter((row) => row.pr !== prNumber).map((row) => `${label(row)}: an added attestation row names PR ${row.pr}, not this PR #${prNumber}`);
-  return { failures, notices };
+  const foreign = added.filter((row) => row.pr !== prNumber);
+  const parents = new Set([...new Set(foreign.map((row) => row.pr))].filter((pr) => isParent(pr)));
+  const failures = foreign.filter((row) => !parents.has(row.pr)).map((row) => `${label(row)}: an added attestation row names PR ${row.pr}, not this PR #${prNumber}`);
+  return { failures, notices: [...notices, ...[...parents].map((pr) => `rows of #${pr} accepted: this branch is stacked on it`)] };
 }
 
-/** Base from git, the committed lock and attestations from the working tree; `check` computes and judges. */
-export function runCheck({ git, readFile, check, base, prNumber }) {
-  const attestations = JSON.parse(readFile(ATTESTATIONS_PATH));
-  const result = check({ base: readBaseLock(git, base), committed: JSON.parse(readFile(LOCK_PATH)), attestations });
-  const added = judgeAddedRows(readBaseAttestations(git, base), attestations, prNumber);
-  return { ...result, failures: [...result.failures, ...added.failures], notices: [...result.notices, ...added.notices] };
+/** Base from git, the committed lock and attestation files from the working tree; `check` computes and judges. */
+export function runCheck({ git, readFile, listDir, check, base, prNumber }) {
+  const tree = readTreeAttestations(listDir, readFile);
+  const result = check({ base: readBaseLock(git, base), committed: JSON.parse(readFile(LOCK_PATH)), attestations: tree.rows });
+  const added = judgeAddedRows(readBaseAttestations(git, base), tree.rows, prNumber, (pr) => isStackedParent(git, base, pr));
+  return { ...result, failures: [...result.failures, ...tree.failures, ...added.failures], notices: [...result.notices, ...added.notices] };
 }
 
 /** argv, then CLOSURE_BASE, then the pull request's base branch (so a stacked PR is judged against its parent), then origin/main. */
@@ -78,9 +126,10 @@ function main(argv = process.argv.slice(2), env = process.env) {
   }
   const git = (args) => execFileSync("git", args, { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   const readFile = (path) => readFileSync(join(ROOT, path), "utf8");
+  const listDir = (path) => (existsSync(join(ROOT, path)) ? readdirSync(join(ROOT, path)) : []);
   const check = (input) => JSON.parse(closureMain([], JSON.stringify(input)));
   const prNumber = readPrNumber(env, (path) => readFileSync(path, "utf8"));
-  const { failures, notices } = runCheck({ git, readFile, check, base: resolveBase(argv, env), prNumber });
+  const { failures, notices } = runCheck({ git, readFile, listDir, check, base: resolveBase(argv, env), prNumber });
   for (const notice of notices) console.log(`registry:closure: ${notice}`);
   for (const failure of failures) console.error(`registry:closure: ${failure}`);
   if (failures.length > 0) process.exitCode = 1;

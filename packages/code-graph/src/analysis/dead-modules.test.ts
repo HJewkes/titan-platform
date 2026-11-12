@@ -173,4 +173,17 @@ describe("topDeadModules views (C-155)", () => {
     expect(rows.find((r) => r.nodeId === "src/shared.ts")?.reachableOnlyFrom).toBe("lab");
     expect(rows.find((r) => r.nodeId === "src/storyTest.ts")?.reachableOnlyFrom).toBe("story");
   });
+
+  it("the public view seeds a manifest entry and what it imports, though no role does", () => {
+    const graphNodes = [...repoNodes, file("src/entry.ts", "source"), file("src/entryDep.ts", "source")];
+    const graphEdges = [...repoEdges, edge("src/entry.ts", "src/entryDep.ts", "imports")];
+
+    const ids = topDeadModules(graphNodes, graphEdges, ctxOf(graphNodes), 10, {
+      view: "public",
+      entryIds: new Set(["src/entry.ts"]),
+    }).map((r) => r.nodeId);
+
+    expect(ids).not.toContain("src/entry.ts");
+    expect(ids).not.toContain("src/entryDep.ts");
+  });
 });

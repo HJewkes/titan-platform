@@ -43,7 +43,7 @@ export function beginEntry(ctx: WorkflowContext, definition: WorkflowDefinition,
     // D-M2-01 measures every entry from these, so they are sent however the entry settled.
     await swallow(deps, site, () => deps.sink({ ...site, kind: "entry-end", counters: { ...meter.counters } }));
   };
-  return { ctx: shadowed, notAfter: notAfterShadow(ctx, deps, { definition, log }), end };
+  return { ctx: shadowed, notAfter: notAfterShadow(ctx, deps, { definition, log, meter }), end };
 }
 
 /** O5: each MERGE Shepherd carried live this entry, against what the diff pin says; one probe failing skips only its own row. */

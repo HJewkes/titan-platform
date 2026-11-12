@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { AgentNameRow, WakeEventRow } from "./cost-report-queries.js";
+import { groupBy } from "./report-helpers.js";
 import { roleFromProfile } from "./roles.js";
 import { ACTION_CLASSES, type ActionClass } from "./turn-action.js";
 
@@ -179,17 +180,6 @@ function pairBuckets(episodes: readonly WakeEpisode[]): WakePair[] {
       return { from, fromKind, to, ...costOf(members) };
     })
     .sort((a, b) => b.costUsd - a.costUsd || a.from.localeCompare(b.from) || a.to.localeCompare(b.to) || a.fromKind.localeCompare(b.fromKind));
-}
-
-function groupBy<T>(rows: readonly T[], keyOf: (row: T) => string): Map<string, T[]> {
-  const groups = new Map<string, T[]>();
-  for (const row of rows) {
-    const key = keyOf(row);
-    const members = groups.get(key);
-    if (members) members.push(row);
-    else groups.set(key, [row]);
-  }
-  return groups;
 }
 
 function byCostThenKey(a: { key: string; costUsd: number }, b: { key: string; costUsd: number }): number {

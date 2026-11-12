@@ -28,33 +28,15 @@ export { gitTreeSource } from "./git-tree-source.js";
 export type { Extractor, ParsedFile } from "@titan-design/code-parser";
 export { getLanguageFromPath, getSupportedLanguages, parseFile, shouldIncludeFile } from "@titan-design/code-parser";
 
-export type { LanguageExtractorOptions } from "./extractors/dispatch.js";
-export { LanguageExtractor } from "./extractors/dispatch.js";
-export { PythonGraphExtractor } from "./extractors/python-extractor.js";
-export type { TsMorphGraphExtractorOptions } from "./extractors/ts-morph-extractor.js";
-export { TsMorphGraphExtractor } from "./extractors/ts-morph-extractor.js";
-export { buildFileModuleNodes } from "./extractors/file-nodes.js";
-export type { DeepAst, DeepAstInput, MemberInfo, ParamInfo } from "./extractors/deep-ast.js";
-export { computeDeepAst } from "./extractors/deep-ast.js";
-export {
-  externalId,
-  fileId,
-  moduleId,
-  packageId,
-  parentModuleId,
-  parseSymbolId,
-  symbolId,
-  SYMBOL_ID_SEP,
-} from "./extractors/ids.js";
+export * from "./extractors/barrel.js";
 
 export type { ReadFile, ReuseBasis, SourceLanguage } from "./incremental.js";
 export { hashContent, readSourceFiles, structuralSignature } from "./incremental.js";
 export { walkSourceFiles } from "./file-walk.js";
 export { collectDeclaredNames, collectDeclaredSpans, type LineSpan } from "./declared-names.js";
 export { edgeWeight, pruneDanglingReferences, resolveBarrelEdges } from "./barrel-resolve.js";
-export { ALL_ROLES, annotateRoles, classifyRole, computeRoleHints, loadRoleGlobs } from "./roles.js";
+export { ALL_ROLES, annotateRoles, classifyRole, computeRoleHints, loadRoleGlobs, type AnnotateRolesOptions, type RoleHints } from "./roles.js";
 export { UNIMPORTED_ROLES } from "./unimported-roles.js";
-export type { AnnotateRolesOptions, RoleHints } from "./roles.js";
 export type { RoleGlobs } from "./role-globs.js";
 export { isGeneratedByHeuristic, isGeneratedFile, loadGeneratedPatterns } from "./generated.js";
 export { canonicalEdgeKind, canonicalMetricName, canonicalRole } from "./aliases.js";
@@ -73,6 +55,8 @@ export { ALIAS_BASE_ATTR, buildLineage, lineagePath } from "./identity/lineage.j
 export type { AliasChainOptions, PriorSnapshotOptions, ResolveAliasOptions } from "./identity/store-identity.js";
 export { aliasChain, loadLineage, priorSnapshotForRef, resolveAlias } from "./identity/store-identity.js";
 export { computeMetrics } from "./metrics.js";
+export { computeLcomMetrics } from "./lcom.js";
+export { cognitiveComplexityOf, cognitiveSplitOf } from "./cognitive-complexity.js";
 export { computeSourceMetrics, SOURCE_METRIC_NAMES } from "./source-metrics.js";
 export { SYMBOL_METRIC_NAMES } from "./symbol-metrics.js";
 export { EXCEPTION_METRIC_NAMES } from "./analysis/exception-handling.js";
@@ -80,8 +64,8 @@ export { assembleIndexerMetrics, buildIndexerMetrics } from "./index-metrics.js"
 export type { AssembledIndexerMetrics } from "./index-metrics.js";
 export { computeDeadCodeMetrics, DEAD_CODE_METRIC_NAMES } from "./analysis/dead-code.js";
 export { computeGrowthRiskMetrics, GROWTH_RISK_METRIC_NAMES } from "./analysis/growth-risk.js";
-export type { LinkMethod, LinkTestsOptions, TestSourceLink } from "./analysis/test-linker.js";
-export { groupTestsBySource, linkTestsToSources, testCoverageCountMetrics } from "./analysis/test-linker.js";
+export { groupTestsBySource, linkTestsToSources, testCoverageCountMetrics, type LinkMethod, type LinkTestsOptions, type TestSourceLink } from "./analysis/test-linker.js";
+export { fileTestReach, MOCK_MASK_CAP, testsReachingMasked, type MaskedReach, type MockProfiles, type UnmaskedTest } from "./analysis/test-reach.js";
 export { attributeCoverage, COVERAGE_METRIC_NAME, coveredFunctionStarts, type IstanbulCoverage, type SymbolSpan } from "./analysis/coverage.js";
 export { MAX_BODY_DELETES, planBodyDeletes, type BodyDeletePlan, type BodyDeleteSkip, type BodyDeleteTarget, type PlanBodyDeletesInput } from "./analysis/body-delete.js";
 export { DELETION_CANDIDATE_SIGNAL, extremeFindings, PSEUDO_TESTED_SIGNAL, type ExtremeFindingsInput, type ExtremeSummary } from "./analysis/pseudo-tested.js";
@@ -189,6 +173,7 @@ export { publicApiFiles, topUnusedExports } from "./analysis/unused-exports.js";
 export * from "./analysis/complexity-distribution.js";
 export * from "./analysis/dependency-graph-metrics.js";
 export { topDeadModules } from "./analysis/dead-modules.js";
+export { packageEntryFileIds } from "./package-entries.js";
 export { topGrowthRisks } from "./analysis/growth-risks.js";
 export { topUntestedRisks } from "./analysis/untested-risks.js";
 export { computeReportDrift, type ComputeDriftInput } from "./analysis/graph-report-drift.js";

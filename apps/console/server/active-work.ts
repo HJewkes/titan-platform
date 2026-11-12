@@ -2,7 +2,12 @@ import { z } from "zod";
 import { DELIVERABLE_STATUSES } from "@titan-design/pm";
 import { EXIT } from "@titan-design/registry";
 import { liveSource } from "@titan-design/rpc-client";
+import { loopBoard, loopTierWire } from "./loop-board.js";
 import { timedFetch, type UpstreamObserver } from "./perf/timed-fetch.js";
+
+/** The statuses the category registry must list (`@titan-design/pm` requires all four); `wont-do` is closed, the rest are live. */
+const TASK_STATUSES = ["open", "done", "wont-do", "icebox"] as const;
+export const CLOSED_TASK_STATUSES: ReadonlySet<string> = new Set(["done", "wont-do"]);
 
 const stat = z.object({ files: z.number(), bytes: z.number(), newest_mtime: z.string().nullable() });
 
@@ -27,7 +32,7 @@ const task = z.object({
   parent: z.string().optional(),
   dep: z.array(z.string()).optional(),
   deliverables: z.array(z.string()).optional(),
-  status: z.enum(["open", "done"]),
+  status: z.enum(TASK_STATUSES),
   notes: z.string().optional(),
   done_when: z.string().optional(),
   updated: z.string(),
@@ -107,10 +112,19 @@ const READS = {
   "context.graph": z.object({ references: z.array(reference) }),
   /** The platform-wide deliverables registry; a daemon older than active-work 0.23 has no such command. */
   "deliverable.list": z.array(deliverable),
+  /** The platform-wide open-loops board; a daemon older than active-work 0.25 has no such command. */
+  "loop.board": loopBoard,
+};
+
+/** The active-work writes the console may call, kept apart so `READS` stays write-free. Only owner-write commands call them. */
+const WRITES = {
+  "loop.tier": loopTierWire,
 };
 
 export type ReadName = keyof typeof READS;
 export type ReadResult<K extends ReadName> = z.infer<(typeof READS)[K]>;
+type WriteName = keyof typeof WRITES;
+type WriteResult<K extends WriteName> = z.infer<(typeof WRITES)[K]>;
 export type WireInitiative = z.infer<typeof initiativeItem>;
 export type WireTask = z.infer<typeof task>;
 export type WireDeliverable = z.infer<typeof deliverable>;
@@ -119,6 +133,8 @@ export type WireInventoryInitiative = z.infer<typeof inventoryInitiative>;
 export interface ActiveWork {
   /** Rejects with an error that carries a sysexits `code` when the daemon is down, refuses, or answers another shape. */
   read<K extends ReadName>(command: K, args?: Record<string, unknown>): Promise<ReadResult<K>>;
+  /** Rejects as `read` does. Absent on a read-only source, such as a test's; a write through it is then unavailable. */
+  write?<K extends WriteName>(command: K, args: Record<string, unknown>): Promise<WriteResult<K>>;
 }
 
 const READ_TIMEOUT_MS = 10_000;
@@ -138,13 +154,21 @@ export function activeWorkClient(port: number, timeoutMs: number = READ_TIMEOUT_
     origin: `http://127.0.0.1:${port}`,
     fetch: timedFetch("active-work", recorder, (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(timeoutMs) })),
   });
+  const dataOf = async (command: string, args: Record<string, unknown>): Promise<unknown> => {
+    const envelope = await source.call(command, args);
+    if (!envelope.ok) throw failure(`active-work ${command}: ${envelope.error}`, envelope.code);
+    return envelope.data;
+  };
   return {
     async read(command, args = {}) {
-      const envelope = await source.call(command, args);
-      if (!envelope.ok) throw failure(`active-work ${command}: ${envelope.error}`, envelope.code);
-      const parsed = READS[command].safeParse(envelope.data);
+      const parsed = READS[command].safeParse(await dataOf(command, args));
       if (!parsed.success) throw unexpectedShape(`active-work ${command}`);
       return parsed.data as ReadResult<typeof command>;
+    },
+    async write(command, args) {
+      const parsed = WRITES[command].safeParse(await dataOf(command, args));
+      if (!parsed.success) throw unexpectedShape(`active-work ${command}`);
+      return parsed.data;
     },
   };
 }

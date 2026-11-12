@@ -21,6 +21,7 @@ each failure once a day per profile through an injected owner-queue deposit call
 ```sh
 anthropic-account poll [--write [--refresh]]
 anthropic-account status [--json | --statusline]
+anthropic-account install|uninstall [--dry-run]
 ```
 
 - `poll` sends one usage request per profile and prints its windows. `--write` stores each
@@ -32,12 +33,17 @@ anthropic-account status [--json | --statusline]
   refresh lock. Leave it off to keep the poller read-only on credentials. A failed refresh
   is printed to stderr; it does not file an owner-queue deposit.
 - `status` reads local files only: each profile's login state and newest reading.
-  `--json` prints them as one document, and `--statusline` prints the format
-  `~/.claude/scripts/rate-limits.sh` prints, from the newest reading that has both the
-  five-hour and the weekly window.
+  `--json` prints `{ schema: 2, accounts }`, one row per Anthropic login naming all its
+  config dirs (`readAccounts`). `--statusline` prints the format
+  `~/.claude/scripts/rate-limits.sh` prints, from the same rows.
 
 Profiles are `~/.claude` and each dir under `~/.claude-profiles`, or under
 `CLAUDE_PROFILE_ROOT` when it is set; a non-empty `CLAUDE_CONFIG_DIRS` replaces the scan.
+
+`ANTHROPIC_ACCOUNT_LABELS` (comma-separated labels, e.g. `agents,personal`) names the
+profiles `poll` treats as accounts. When set, a profile outside the list whose login is
+missing or refused (such as malformed) prints a stderr warning and does not affect the exit
+code; any other failure still fails. Unset or empty, every profile is an account.
 
 Exit codes: 0 ok, 1 a poll, refresh or read failed, 2 a login is expired or refused (or,
 for `status`, missing), 64 a usage error. Each account whose login is not present gets one stderr line,
@@ -46,15 +52,17 @@ for `status`, missing), 64 a usage error. Each account whose login is not presen
 
 ## Installing the poll timer
 
-The bin installs and enables nothing. The templates in `systemd/` run
-`poll --write --refresh` every 150 s. On the host, its operator runs:
+`anthropic-account install` writes the units from `systemd/` into
+`~/.config/systemd/user` and runs `systemctl --user daemon-reload` and
+`enable --now anthropic-account-poll.timer`. On macOS it writes a launchd agent
+(`com.titan.anthropic-account-poll`, every 150 s, `poll --write` with no `--refresh`) to
+`~/Library/LaunchAgents` and bootstraps it. `uninstall` disables or boots out and removes
+the same files. `--dry-run` prints the paths, contents and commands and changes nothing.
+The units run `~/.local/bin/anthropic-account`, so install the package there first:
 
 ```sh
 npm install -g --prefix ~/.local @titan-design/anthropic-account
-mkdir -p ~/.config/systemd/user
-cp "$(npm root -g --prefix ~/.local)/@titan-design/anthropic-account/systemd/"anthropic-account-poll* ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now anthropic-account-poll.timer
+anthropic-account install
 journalctl --user -u anthropic-account-poll.service -n 20
 ```
 

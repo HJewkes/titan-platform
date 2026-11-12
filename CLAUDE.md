@@ -54,10 +54,26 @@ pnpm build && pnpm typecheck && pnpm lint && pnpm test && pnpm dag:check && pnpm
 ```
 
 All six must be green. `dag:check` is self-hosted: it runs against this repo's own
-`@titan-design/code-graph`, built by `pnpm build`. `scripts/dag-check.sh` remains for one
-release as a fallback that needs `CODEWATCH_CLI` pointed at a built codewatch checkout.
+`@titan-design/code-graph`, built by `pnpm build`.
 
 Before each push, implementers run `pnpm verify:changed`: max-file-loc, changeset status, tsc for touched packages and related vitest tests, on files changed against origin/main.
+
+## Pre-push checks
+
+Run these before each push, after `pnpm build`. Full detail: `site/guides/contributing.md`.
+
+```
+pnpm verify:changed
+pnpm lint:types --only=<package dir>
+pnpm dag:check
+```
+
+- `pnpm lint:types` applies the type-aware rules in `eslint.typed.config.js`; `pnpm lint` does
+  not, so passing it is no proof. Pass `--only=<package dir>` for each package you touched.
+- `pnpm dag:check` seeds from the machine graph, takes about 30 s, and runs the dead-export
+  check on the graph it builds, so a new unused export fails it. Exit 75 means the dag-check
+  lock stayed busy: retry once. Use `pnpm dag:check`; bare `dead:check` is for `--update` and
+  `--db`. Bare `pnpm dead:check` indexes the whole tree cold and runs past 10 minutes locally.
 
 ## Rules that CI enforces
 

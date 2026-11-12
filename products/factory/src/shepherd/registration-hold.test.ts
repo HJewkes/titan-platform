@@ -111,10 +111,49 @@ describe("the G10 hold Shepherd places at registration", () => {
     expect(await holdOf(r)).toBeUndefined();
   });
 
-  it.each(["store-migrations.ts", "store.ts", "events.ts", "train.ts", "account-store.ts"])("leaves a factory store migration in %s unheld", async (name) => {
+  it.each(["store-migrations.ts", "store.ts", "events.ts", "train.ts", "account-store.ts"])("holds a factory store migration in %s g10-adversary, since the hold rows live there", async (name) => {
     const r = rig([file(`products/factory/src/shepherd/${name}`, 30)]);
 
+    expect(await holdOf(r)).toBe("g10-adversary: policy touch");
+  });
+
+  it.each([
+    ...["signoffs.ts", "merge-standing.ts", "reviewer-lineage.ts", "auto-pass.ts", "fix-proof.ts", "take-verdict.ts", "store.ts", "events.ts"],
+    ...["registration-of.ts", "proof-waiver.ts", "proof-waiver-table.ts", "seat-recheck.ts", "carry-merge.ts", "merge-up-carry.ts", "approved-set-carry.ts", "no-reviewer-hold.ts"],
+  ])("holds Shepherd's sign-off or merge-standing module %s g10-adversary", async (name) => {
+    const r = rig([file(`products/factory/src/shepherd/${name}`, 10)]);
+
+    expect(await holdOf(r)).toBe("g10-adversary: policy touch");
+  });
+
+  it.each(["packages/fix-proof/src/gate.ts", "packages/fix-proof/src/deep/x.ts", "packages/review-panel/src/classify.ts", "packages/review-panel/src/deep/x.ts"])("holds the fix-proof or panel source %s g10-adversary", async (path) => {
+    const r = rig([file(path, 10)]);
+
+    expect(await holdOf(r)).toBe("g10-adversary: policy touch");
+  });
+
+  it.each(["tree-carry.ts", "git-pr-files.ts", "review.ts"])("holds %s, which a listed policy module imports, g10-adversary", async (name) => {
+    const r = rig([file(`products/factory/src/shepherd/${name}`, 10)]);
+
+    expect(await holdOf(r)).toBe("g10-adversary: policy touch");
+  });
+
+  it.each(["packages/fix-proof/src/gate.test.ts", "products/factory/src/shepherd/signoffs.test.ts"])("leaves a test file %s of a sign-off policy path unheld", async (path) => {
+    const r = rig([file(path, 10)]);
+
     expect(await holdOf(r)).toBeUndefined();
+  });
+
+  it.each(["hold-table-coverage.test.ts", "hold-table-coverage.test.mutations.json"])("holds the hold table's importer check %s g10-adversary, test file or not", async (name) => {
+    const r = rig([file(`products/factory/src/shepherd/${name}`, 2)]);
+
+    expect(await holdOf(r)).toBe("g10-adversary: policy touch");
+  });
+
+  it.each(["g10-hold-closure.test.ts", "g10-hold-closure.test.mutations.json", "g10-hold-closure.test-helpers.ts", "g10-hold-closure.json"])("holds the hold-closure check's %s g10-adversary, test file or not", async (name) => {
+    const r = rig([file(`products/factory/src/shepherd/${name}`, 2)]);
+
+    expect(await holdOf(r)).toBe("g10-adversary: policy touch");
   });
 
   it.each([

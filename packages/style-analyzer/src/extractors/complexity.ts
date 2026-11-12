@@ -1,4 +1,5 @@
 import type { Node } from "web-tree-sitter";
+import { cyclomaticOf, nestingDepthOf } from "@titan-design/code-parser";
 import {
   PY_FUNCTION_TYPES,
   TS_FUNCTION_DECLARATION,
@@ -16,43 +17,6 @@ interface FunctionInfo {
 
 // Generators are left out on purpose: the complexity metric has always counted only these two.
 const TS_FUNCTION_TYPES: ReadonlySet<string> = new Set([TS_FUNCTION_DECLARATION, TS_METHOD_DEFINITION]);
-
-const TS_NESTING_TYPES = new Set([
-  "if_statement",
-  "for_statement",
-  "for_in_statement",
-  "while_statement",
-  "do_statement",
-  "switch_statement",
-  "try_statement",
-]);
-
-const PY_NESTING_TYPES = new Set([
-  "if_statement",
-  "for_statement",
-  "while_statement",
-  "try_statement",
-]);
-
-const TS_BRANCH_TYPES = new Set([
-  "if_statement",
-  "for_statement",
-  "for_in_statement",
-  "while_statement",
-  "do_statement",
-  "switch_case",
-  "catch_clause",
-  "ternary_expression",
-]);
-
-const PY_BRANCH_TYPES = new Set([
-  "if_statement",
-  "elif_clause",
-  "for_statement",
-  "while_statement",
-  "except_clause",
-  "conditional_expression",
-]);
 
 export class ComplexityExtractor implements StyleExtractor {
   readonly name = "complexity";
@@ -137,10 +101,8 @@ export class ComplexityExtractor implements StyleExtractor {
     if (!body) return null;
 
     const statementCount = this.countStatements(body, language);
-    const maxNestingDepth = this.measureNestingDepth(body, language, 0);
-    const cyclomaticComplexity = this.measureCyclomaticComplexity(
-      body, language,
-    );
+    const maxNestingDepth = nestingDepthOf(body, language);
+    const cyclomaticComplexity = cyclomaticOf(body, language);
 
     return {
       name,
@@ -205,83 +167,5 @@ export class ComplexityExtractor implements StyleExtractor {
       "augmented_assignment",
     ]);
     return statementTypes.has(node.type);
-  }
-
-  private measureNestingDepth(
-    node: Node,
-    language: string,
-    depth: number,
-  ): number {
-    const nestingTypes = language === "python"
-      ? PY_NESTING_TYPES
-      : TS_NESTING_TYPES;
-
-    let maxDepth = depth;
-
-    for (const child of node.namedChildren) {
-      if (nestingTypes.has(child.type)) {
-        const childMax = this.measureNestingDepth(
-          child, language, depth + 1,
-        );
-        if (childMax > maxDepth) maxDepth = childMax;
-      } else {
-        const childMax = this.measureNestingDepth(
-          child, language, depth,
-        );
-        if (childMax > maxDepth) maxDepth = childMax;
-      }
-    }
-
-    return maxDepth;
-  }
-
-  private measureCyclomaticComplexity(
-    body: Node,
-    language: string,
-  ): number {
-    let complexity = 1;
-    const branchTypes = language === "python"
-      ? PY_BRANCH_TYPES
-      : TS_BRANCH_TYPES;
-
-    const visit = (node: Node): void => {
-      complexity += this.branchIncrement(node, language, branchTypes);
-
-      for (const child of node.namedChildren) {
-        visit(child);
-      }
-    };
-
-    visit(body);
-    return complexity;
-  }
-
-  private branchIncrement(
-    node: Node,
-    language: string,
-    branchTypes: Set<string>,
-  ): number {
-    let increment = 0;
-    if (branchTypes.has(node.type)) {
-      increment++;
-    }
-
-    if (node.type === "binary_expression") {
-      const operator = node.childForFieldName("operator");
-      if (operator) {
-        const text = operator.text;
-        if (text === "&&" || text === "||") {
-          increment++;
-        }
-      }
-    }
-
-    if (
-      language === "python" &&
-      node.type === "boolean_operator"
-    ) {
-      increment++;
-    }
-    return increment;
   }
 }

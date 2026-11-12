@@ -1,4 +1,5 @@
 import type { ServiceAnswer } from "@titan-design/agent-dispatch";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { formatResultLine, type FixProofResult, type Verdict as ProofVerdict } from "@titan-design/fix-proof";
 import { fakeGitHub, fakeSha, githubPort, successRun, type CheckRun } from "@titan-design/github";
 import type { GateResolver } from "@titan-design/hitl";
@@ -92,7 +93,7 @@ async function reviewScene(heads: readonly string[], answer: (host: FactoryHost,
   }
   let clock = 10_000;
   const store = shepherdStoreRef();
-  const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async () => undefined } };
+  const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async () => undefined } };
   const reviewers = mergingReviewers(() => clock);
   const inputs: Record<string, unknown> = {};
   const recorded = [...reviewRoutes(deps, { reader: reviewers.reader, dispatch: reviewers.dispatch, timeoutMs: 5_000 }), seatNoticeRoute(deps.now, undefined, deps.sleep)].map((route): StepRoute => ({ ...route, runner: { run: (step) => ((inputs[step.stepId] = JSON.parse(step.prompt)), route.runner.run(step)) } }));

@@ -1,4 +1,5 @@
 import { mkdtempSync, rmSync } from "node:fs";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DispatchError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
@@ -888,6 +889,31 @@ describe("sh-review", () => {
     expect(steps.clock.sleeps).toBe(2);
   });
 
+  it("sh-review waits out a timed-out first roster read and spawns the reviewer once it answers, not a refusal (TP-3020)", async () => {
+    const dispatch = fakeDispatch();
+    const roster = dispatch.roster;
+    let reads = 0;
+    dispatch.roster = async () => (reads++ < 3 ? Promise.reject(new ReviewerAskTimedOut("agent-chat timed out")) : roster());
+    const steps = reviewSteps(dispatch);
+
+    const { result } = await steps.review(spawnIntent);
+
+    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-octo-demo-7", at: START });
+    expect(result).not.toHaveProperty("refused");
+    expect(dispatch.spawns).toHaveLength(1);
+    expect(steps.clock.sleeps).toBeGreaterThanOrEqual(3);
+  });
+
+  it("sh-review answers a first roster read timed out past the session-start window as not started, never refused (TP-3020)", async () => {
+    const dispatch = fakeDispatch();
+    dispatch.roster = async () => Promise.reject(new ReviewerAskTimedOut("agent-chat timed out"));
+
+    const { result } = await reviewSteps(dispatch).review(spawnIntent);
+
+    expect(result).toEqual({ kind: "none", notStarted: true, reason: "the reviewer dispatch was refused: ReviewerAskTimedOut (roster unread after 0 min)" });
+    expect(dispatch.spawns).toEqual([]);
+  });
+
   it("names the last roster error when the started reviewer is never seen because every later roster read failed", async () => {
     const dispatch = fakeDispatch();
     const roster = dispatch.roster;
@@ -899,6 +925,29 @@ describe("sh-review", () => {
 
     expect(dispatch.spawns).toHaveLength(1);
     expect(result).toEqual({ kind: "none", reason: `reviewer rv-octo-demo-7 did not start one session in time; the last roster read failed: Error` });
+  });
+
+  it("answers not-started, naming the timeout and the wait, when every roster read after a successful ask timed out", async () => {
+    const dispatch = fakeDispatch();
+    const roster = dispatch.roster;
+    let reads = 0;
+    dispatch.roster = async () => (reads++ === 0 ? roster() : Promise.reject(new ReviewerAskTimedOut("agent-chat timed out")));
+
+    const { result } = await reviewSteps(dispatch).review(spawnIntent);
+
+    expect(result).toEqual({ kind: "none", notStarted: true, reason: "the reviewer dispatch was refused: ReviewerAskTimedOut (roster unread after 0 min)" });
+  });
+
+  it("keeps the did-not-start reason when a roster read answered between timed-out reads", async () => {
+    const dispatch = fakeDispatch([], { onSpawn: () => undefined });
+    const roster = dispatch.roster;
+    let reads = 0;
+    dispatch.roster = async () => (reads++ % 2 === 1 ? Promise.reject(new ReviewerAskTimedOut("agent-chat timed out")) : roster());
+
+    const { result } = await reviewSteps(dispatch).review(spawnIntent);
+
+    expect(result).toMatchObject({ kind: "none", reason: expect.stringContaining("did not start one session in time") });
+    expect(result).not.toHaveProperty("notStarted");
   });
 
   it("says only that the reviewer did not start in time when every roster read succeeded", async () => {
@@ -1454,7 +1503,7 @@ describe("reviewPhase", () => {
     fake.prFiles.set(1, scene.files ?? [{ path: "src/a.ts", status: "modified" }]);
     let clock = 10_000;
     const store = shepherdStoreRef();
-    const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async (path) => void scene.removals?.push(path) } };
+    const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async (path) => void scene.removals?.push(path) } };
     const own = (input: AwaitVerdictInput) => scene.dispatch.agents.filter((candidate) => candidate.agentId === input.reviewerAgentId).map((who) => said(who, verdictBy(who, input.head), clock + 1));
     const reader: ReviewerReader = { read: async (input) => (scene.read ? scene.read(input, scene.dispatch, clock) : own(input)) };
     const verdicts: Verdict[] = [];
@@ -1586,6 +1635,38 @@ describe("reviewPhase", () => {
 
       expect(stepIds).toEqual([`sh-fix-proof:${H1}`, `sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-review:${H1}:adversary`, `sh-await-verdict:${H1}`, `sh-review-panel:${H1}`]);
       expect(resultOf(`sh-review-panel:${H1}`)).toMatchObject({ outcome: "no-verdict" });
+      expect(verdicts).toEqual([{ kind: "none", cause: "no-verdict", reason: "a blocking panel member gave no verdict" }]);
+    });
+
+    it("on retries without a failed round when the blocking adversary's ask timed out unseen and correctness said MERGE (TP-5296)", async () => {
+      const dispatch = fakeDispatch();
+      const spawn = dispatch.spawn.bind(dispatch);
+      dispatch.spawn = async (name, ...rest) => (name === adversary ? Promise.reject(new ReviewerAskTimedOut("agent-chat timed out")) : spawn(name, ...rest));
+
+      const { verdicts, resultOf } = await review({ dispatch, policy: AUTO, panel: "on", files: securityFiles });
+
+      expect(resultOf(`sh-review:${H1}:adversary`)).toMatchObject({ kind: "none", notStarted: true });
+      expect(verdicts).toEqual([{ kind: "none", cause: "not-started", reason: "a blocking panel member never started" }]);
+    });
+
+    it("on counts no verdict once the blocking adversary has failed to start three rounds at one head (TP-5296)", async () => {
+      const dispatch = fakeDispatch();
+      const spawn = dispatch.spawn.bind(dispatch);
+      dispatch.spawn = async (name, ...rest) => (name.endsWith("adversary") ? Promise.reject(new ReviewerAskTimedOut("agent-chat timed out")) : spawn(name, ...rest));
+
+      const { verdicts } = await review({ dispatch, policy: AUTO, panel: "on", files: securityFiles, requests: [{ headSha: H1 }, { headSha: H1 }, { headSha: H1 }] });
+
+      expect(verdicts.map((verdict) => verdict.kind === "none" && verdict.cause)).toEqual(["not-started", "not-started", "no-verdict"]);
+    });
+
+    it("on still counts no verdict when the blocking adversary started and said nothing", async () => {
+      const dispatch = fakeDispatch();
+      const read = (input: AwaitVerdictInput, held: FakeDispatch, now: number) =>
+        held.agents.filter((who) => who.agentId === input.reviewerAgentId && who.name !== adversary).map((who) => said(who, verdictAt(input.head, "MERGE"), now + 1));
+
+      const { verdicts, resultOf } = await review({ dispatch, policy: AUTO, panel: "on", files: securityFiles, read });
+
+      expect(resultOf(`sh-review:${H1}:adversary`)).toMatchObject({ kind: "dispatched" });
       expect(verdicts).toEqual([{ kind: "none", cause: "no-verdict", reason: "a blocking panel member gave no verdict" }]);
     });
 
@@ -2621,5 +2702,22 @@ describe("reviewPhase", () => {
 
     expect(verdicts).toEqual([{ kind: "none", cause: "not-started", reason: `no-reviewer: Error at ${H1}; TP-2446` }]);
     expect(stepIds.filter((id) => id.startsWith("sh-await-verdict"))).toEqual([]);
+  });
+});
+
+describe("the sh-carry route's git cache", () => {
+  it("sh-carry probes through deps.gitCache", async () => {
+    const gitDirs: string[] = [];
+    const git = async (gitDir: string) => (gitDirs.push(gitDir), { code: 1, stdout: "", stderr: "synthetic refusal" });
+    const gitCache = { git, fs: { exists: () => true, mkdirp: () => undefined }, stateDir: () => "/synthetic/state" };
+    const deps: ShepherdDeps = { gitCache, port: githubPort(fakeGitHub().wire), store: shepherdStoreRef(), now: () => 0, sleep: async () => undefined, agentChatBin: "agent-chat" };
+    const route = reviewRoutes(deps, partialFake<ReviewWiring>()).find((candidate) => candidate.match === "sh-carry")!;
+    const prompt = JSON.stringify({ repo: "octo/demo", baseRef: "main", fromHead: fakeSha("review-head-1"), head: fakeSha("moved") });
+
+    const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" }));
+
+    expect(outcome.ok).toBe(true);
+    expect(gitDirs.length).toBeGreaterThan(0);
+    expect(gitDirs[0]).toContain("/synthetic/state/");
   });
 });

@@ -17,7 +17,8 @@ import { repeatedResolution } from "./gate-resolve.js";
 import type { FactoryHost } from "./host.js";
 import type { TellOwner } from "./owner-ops/standing-answers.js";
 import { readCapped, TOO_LARGE } from "./resolve-proof.js";
-import { VISUAL_ACCEPT_GATE, configuredVisualSetCarry } from "./shepherd/visual-accept.js";
+import { VISUAL_ACCEPT_GATE } from "./shepherd/visual-accept.js";
+import { configuredVisualSetCarry } from "./shepherd/visual-accept-adapter.js";
 import { deliveryFileFor } from "./shepherd/visual-delivery.js";
 import { packetDirFor } from "./shepherd/visual-packet-trigger.js";
 

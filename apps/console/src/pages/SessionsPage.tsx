@@ -1,22 +1,6 @@
 import { useState, type ReactNode } from "react";
-import {
-  Alert,
-  Button,
-  ButtonText,
-  Chip,
-  DateTime,
-  HStack,
-  Link,
-  Spinner,
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
-  Typography,
-  VStack,
-} from "@titan-design/react-ui";
+import { Alert, Button, ButtonText, Chip, DateTime, HStack, Link, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Typography, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import { useQuery } from "../data/rpc.js";
 import { open, type Route } from "../router.js";
 import { SessionDetailPage } from "./SessionDetailPage.js";

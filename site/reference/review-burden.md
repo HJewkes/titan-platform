@@ -46,6 +46,28 @@ effectiveDoor(declared, computed.door); // the stricter of the two
 underDeclared(declared, computed.door); // true: fail the check and name computed.facts
 ```
 
+## The bin
+
+```sh
+pnpm review:burden --base origin/main --body-file body.md
+REVIEW_BURDEN_BODY="$body" pnpm review:burden --enforce
+pnpm review:burden --config review-burden.json
+```
+
+The `review-burden` bin reads `git diff -M --numstat -z <base>...HEAD` (default base
+`origin/main`; `-z` makes each record NUL-terminated, with a rename as `add<TAB>del<TAB><NUL>old<NUL>new<NUL>`, so paths are never quoted) and the PR body from `--body-file` or `REVIEW_BURDEN_BODY`. It prints the
+burden table and then one JSON line built from `burdenScore`, `doorFacts` and `parseFooter`.
+It exits 0 by default, so a CI job can run it in shadow mode. With `--enforce` it exits 1
+with a remediation message when the footer is missing or `underDeclared` is true. Changeset
+bumps come from changed `.changeset/*.md` files in the working tree.
+
+It also reads the same diff with `--name-status -z` (same `-M`) so each file carries its real
+status, and both sides of every changed `package.json`, from the merge base and `HEAD`, so
+surface-key door facts reach the JSON line. `--config <file>` is a JSON object with any of
+`protectedPaths`, `storedDataGlobs`, `generatedGlobs`, `testGlobs`, `ignoredGlobs`,
+`migrationGlobs` and `apiGlobs`, each replacing its default. An unknown argument or a bad
+config file exits 2.
+
 ## The footer
 
 At the end of the PR body, above the attribution line:
@@ -93,7 +115,7 @@ can print why each part scored what it did.
 
 ## What it deliberately does not do
 
-- No I/O. A caller runs `git diff -M --numstat` or reads GitHub's file list, parses the two
+- No I/O in the library. The bin is the one reader of git; any other caller runs `git diff -M --numstat -z` or reads GitHub's file list, parses the two
   `package.json` sides and the changesets, and passes them in.
 - No thresholds or routing. Which score sends a PR to which reviewer is the caller's config.
 - No authority import. Protected paths come in as a glob list.

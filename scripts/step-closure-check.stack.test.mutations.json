@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a stacked parent's rows are judged foreign",
+      "file": "scripts/step-closure-check.mjs",
+      "find": "return commits.length > 0;",
+      "replace": "return false;",
+      "kills": [
+        "a child stacked on an open parent keeps the parent's row and passes"
+      ]
+    },
+    {
+      "name": "the child's own commits to the parent's file are not checked",
+      "file": "scripts/step-closure-check.mjs",
+      "find": "for (const commit of commits) git([\"merge-base\", \"--is-ancestor\", commit, parentHead]);",
+      "replace": "",
+      "kills": [
+        "a row the child itself writes into the parent's file fails"
+      ]
+    },
+    {
+      "name": "a failed fetch accepts the rows",
+      "file": "scripts/step-closure-check.mjs",
+      "find": "  } catch {\n    return false;\n  }\n}\n\n/** Rows the working tree",
+      "replace": "  } catch {\n    return true;\n  }\n}\n\n/** Rows the working tree",
+      "kills": [
+        "a row for a PR the branch is not stacked on still fails"
+      ]
+    }
+  ]
+}

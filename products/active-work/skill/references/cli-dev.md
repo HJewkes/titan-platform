@@ -22,7 +22,7 @@ If you are modifying the `active-work` skill, adding a CLI command, extending th
 | `src/sources/` | Reads `<slug>/sources/*.md` at call time. There is no sidecar index and no `sources:` frontmatter field — a stored list drifts from the directory, so the listing is always derived. |
 | `skill/` | This skill. Copied into `~/.claude/skills/active-work/` by `scripts/postinstall.js`. |
 | `scripts/` | npm lifecycle hooks: `postinstall.js`, `preuninstall.js`. |
-| `__tests__/` | Vitest tests; fixtures under `__tests__/fixtures/`. |
+| `src/**/*.test.ts` | Vitest tests, next to their source; shared helpers and fixtures under `src/test-support/`. |
 
 ## Adding a new command
 
@@ -34,7 +34,7 @@ If you are modifying the `active-work` skill, adding a CLI command, extending th
    - `handler(input, ctx)` returning the validated output
 2. Add the import + registration in `src/commands/index.ts`.
 3. The CLI dispatcher and MCP server both pick it up automatically — do not hand-maintain MCP tool definitions.
-4. Add a test under `__tests__/commands/<name>.test.ts`. Use `withTempActiveRoot` / `withEmptyActiveRoot` helpers from `__tests__/setup/test-helpers.ts` for filesystem isolation.
+4. Add a test beside it as `src/commands/<name>.test.ts`. Use `withTempActiveRoot` / `withEmptyActiveRoot` helpers from `src/test-support/test-helpers.ts` for filesystem isolation.
 
 ## Schema + write discipline
 

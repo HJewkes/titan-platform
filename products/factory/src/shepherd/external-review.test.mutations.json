@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a reused reviewer name reads its oldest session again",
+      "file": "products/factory/src/shepherd/external-review.ts",
+      "find": "return roster.find((agent) => agent.name === name && agent.sessionId !== \"\");",
+      "replace": "return roster.filter((agent) => agent.name === name && agent.sessionId !== \"\").at(-1);",
+      "kills": [
+        "latestSession picks the first listed session of a name reused across sessions, as the roster lists newest first"
+      ]
+    },
+    {
+      "name": "acceptExternalVerdict drops the reviewer's Follow-ups fields",
+      "file": "products/factory/src/shepherd/external-review.ts",
+      "find": ", ...followUpsFields(message.text) };",
+      "replace": " };",
+      "kills": [
+        "acceptExternalVerdict an adopted seat reviewer's MERGE carries its Follow-ups items",
+        "acceptExternalVerdict an adopted seat reviewer's malformed Follow-ups block carries its warning and the MERGE stands"
+      ]
+    }
+  ]
+}

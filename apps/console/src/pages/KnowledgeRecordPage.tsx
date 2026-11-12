@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { Alert, BreadcrumbItem, Breadcrumbs, Card, CardContent, DateTime, FilePathLabel, HStack, Link, MarkdownProse, Pill, Spinner, Tab, TabList, Tabs, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, BreadcrumbItem, Breadcrumbs, Card, CardContent, DateTime, FilePathLabel, HStack, Link, MarkdownProse, PageHeader, Pill, Tab, TabList, Tabs, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import { EXIT } from "@titan-design/registry";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
@@ -43,7 +44,7 @@ function Reader({ record }: { record: KnowledgeRecord }): ReactNode {
   return (
     <VStack gap={4}>
       <VStack gap={2}>
-        <Typography variant="h2">{record.title}</Typography>
+        <PageHeader title={record.title} />
         <Meta record={record} />
       </VStack>
       {record.truncated ? <Alert status="info" size="compact" message="This file is longer than active-work's read cap; this is its head." /> : null}

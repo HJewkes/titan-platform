@@ -22,13 +22,13 @@ export interface PlanEntry {
   error?: string;
 }
 
-export interface ParsedPlan {
+interface ParsedPlan {
   entries: PlanEntry[];
   unknownKeys: string[];
 }
 
 /** slug -> task id -> the plan entries for that task, in plan order. */
-export type GroupedPlan = Map<string, Map<string, PlanEntry[]>>;
+type GroupedPlan = Map<string, Map<string, PlanEntry[]>>;
 
 const LINE_KEYS = new Set(['slug', 'id', 'ops']);
 

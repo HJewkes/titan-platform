@@ -20,12 +20,12 @@ import {
 } from './open-loops.js';
 import { writeSessionFile } from './session-file.js';
 
-export interface LedgerTarget {
+interface LedgerTarget {
   slug: string;
   activeRoot: string;
 }
 
-export interface LedgerEntry {
+interface LedgerEntry {
   path: string;
   /** Stem of the record written; the identity half of a ref it opens. */
   sessionFile: string;
@@ -43,7 +43,7 @@ export async function assertInitiativeExists({ slug, activeRoot }: LedgerTarget)
   }
 }
 
-/** One id per record: derivation rejects a resolve that shares the opener's session id. */
+/** One id per ledger record, so each entry is its own session file. */
 function ledgerSessionId(): string {
   return `loop-${randomBytes(4).toString('hex')}`;
 }

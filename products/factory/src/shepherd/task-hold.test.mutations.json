@@ -22,8 +22,8 @@
     {
       "name": "--last-slice with no slice name stops at a finished list",
       "file": "products/factory/src/shepherd/cleanup.ts",
-      "find": "heldBy === undefined || (lastSlice && heldBy === ALL_SLICES_LANDED)",
-      "replace": "heldBy === undefined",
+      "find": "heldBy === undefined || ((lastSlice || carried.length > 0) && heldBy === ALL_SLICES_LANDED)",
+      "replace": "heldBy === undefined || (carried.length > 0 && heldBy === ALL_SLICES_LANDED)",
       "kills": [
         "a task its slices do not finish closes on a --last-slice PR that names no slice once every block slice merged"
       ]
@@ -31,7 +31,7 @@
     {
       "name": "a hold tag does not hold",
       "file": "products/factory/src/shepherd/held-open.ts",
-      "find": "if (hold !== undefined) return `it is tagged ${hold}`;",
+      "find": "if (hold !== undefined) return { reason: `it is tagged ${hold}` };",
       "replace": "",
       "kills": [
         "a task tagged hold:<reason> stays open when the slice that completes its block merges",

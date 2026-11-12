@@ -1,3 +1,4 @@
+import { liveRow } from "../test-support/registrant-routing.js";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -20,6 +21,7 @@ import { shepherdStoreRef } from "./store.js";
 import { demotionOffForTest, withDemotionOff } from "../test-support/gate-demotions.js";
 import { readPath } from "../narrow.js";
 import { partialFake } from "@titan-design/test-kit";
+import { deadEndParam, deadEndWorkflow } from "../test-support/dead-end.js";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => {
@@ -141,6 +143,11 @@ async function conflictAfterSeatGate(): Promise<{ host: FactoryHost; fake: FakeG
   await gateOpened(run.host, gateId(run.runId, "approve-merge", 1));
   return { ...run, fake };
 }
+
+// The guard gate at the new head waits out the whole supersede pipeline, which outlasts the 10 s
+// budget of scripts/wait-budget.mjs on a loaded runner.
+const GUARD_PIPELINE_WAIT_MS = 20_000;
+const GUARD_PIPELINE_TEST_MS = 45_000;
 
 const VISUAL_POLICY: EffectivePolicy = { merge: "auto", mergeMethod: "squash", fixer: false, seat: "none", visualPaths: ["**/*.css"] };
 
@@ -537,10 +544,10 @@ describe("a pending shepherd-merge-guard approve-merge gate", () => {
 
     expect(superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge"), from: GATED, to: MOVED, condition: "head-moved" }]);
     expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("cancelled");
-    await gateOpened(host, gateId(runId, "approve-merge", 1));
+    await gateOpened(host, gateId(runId, "approve-merge", 1), GUARD_PIPELINE_WAIT_MS);
     expect(reviewed).toEqual([GATED, MOVED]);
     expect(host.gates.get(gateId(runId, "approve-merge", 1))?.prompt).toContain(`at head ${MOVED}`);
-  });
+  }, GUARD_PIPELINE_TEST_MS);
 
   it("a dry run reports it and cancels nothing", async () => {
     const { host, fake, services, runId } = await guardGatedAtGated();
@@ -588,6 +595,30 @@ describe("a pending sh-sent-back gate whose pull request head moved", () => {
     host.gates.cancel(gateId(runId, "sh-sent-back"), "the owner cancelled it");
 
     expect(await host.runtime.wait(runId)).toMatchObject({ status: "failed", error: expect.stringContaining("sh-sent-back was cancelled: the owner cancelled it") });
+  });
+});
+
+describe("a pending sh-dead-end gate whose pull request head moved", () => {
+  it("a new PR head cancels a pending sh-dead-end as superseded", async () => {
+    const fake = fakeGitHub();
+    fake.addPr({ headSha: SENT_BACK });
+    const store = shepherdStoreRef();
+    const exitNotice = { seatFor: () => "tc-synthetic", lastReport: async () => undefined, send: async () => undefined };
+    const rows = [liveRow("tc-synthetic")];
+    const roster = { read: async () => ({ kind: "known" as const, rows }), rows: async () => rows, invalidate: () => undefined };
+    const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), exitNotice, roster });
+    const host = openFactoryHost({ dbPath: ":memory:", workflows: [deadEndWorkflow], routes, gatePollMs: 5 });
+    hosts.push(host);
+    const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", deadEnd: deadEndParam([SENT_BACK]) });
+    store.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+    await gateOpened(host, gateId(runId, "sh-dead-end"));
+    fake.pushHead(1, MOVED);
+
+    const superseded = await supersedeMovedGates(host, routes.shepherd!);
+
+    expect(superseded).toEqual([{ runId, gateId: gateId(runId, "sh-dead-end"), from: SENT_BACK, to: MOVED, condition: "head-moved" }]);
+    expect(host.gates.get(gateId(runId, "sh-dead-end"))?.status).toBe("cancelled");
+    await vi.waitFor(() => expect(host.runtime.status(runId)?.status).toBe("completed"));
   });
 });
 

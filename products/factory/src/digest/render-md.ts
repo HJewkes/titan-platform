@@ -1,3 +1,4 @@
+import { LINKS_OMITTED } from "./console-probe.js";
 import type { WaitingGate } from "../shepherd/waiting-schema.js";
 import type { FrictionDay } from "../shepherd/owner-friction.js";
 import type { Ask, AttestedLine, DecidedLine, DigestModel, FlowStats, PoolLine, ProofFixture, ReversalLine } from "./model.js";
@@ -130,7 +131,6 @@ function body(d: RankedDigest, decidedShown: number): string[] {
 }
 
 const ALARM_CUT = 3;
-const LINKS_OMITTED = "digest.consoleOrigin unset: alarm links omitted";
 
 /** The alarm line goes straight after the title so the push headline, the first three lines, carries it. */
 function alarmLines(d: RankedDigest, shown: number | undefined): string[] {
@@ -141,7 +141,7 @@ function alarmLines(d: RankedDigest, shown: number | undefined): string[] {
 
 function withAlarmGap(d: RankedDigest): RankedDigest {
   const origin = d.consoleOrigin === undefined ? undefined : safeConsoleOrigin(d.consoleOrigin);
-  return origin === undefined && gateAlarm(d.friction, d.ownerGateAlarm ?? []) !== undefined ? { ...d, gaps: [...d.gaps, LINKS_OMITTED] } : d;
+  return origin === undefined && gateAlarm(d.friction, d.ownerGateAlarm ?? []) !== undefined ? { ...d, gaps: [...d.gaps, d.consoleLinkGap ?? LINKS_OMITTED] } : d;
 }
 
 function document(d: RankedDigest, decidedShown: number, alarmShown?: number): string {

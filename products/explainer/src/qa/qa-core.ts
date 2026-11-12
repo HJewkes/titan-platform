@@ -4,6 +4,7 @@ import { parseTimeline } from "../composition/timeline.js";
 import { renameWordsBeats, storyboardIds } from "../render/beat-ids.js";
 import { RENDER_FPS } from "../render/render-video.js";
 import { ResolvedSchema } from "../resolve-stage.js";
+import { citedIdNumbers } from "../spoken-ids.js";
 import { readTiming } from "../timing.js";
 import { captionReport } from "./caption-check.js";
 import { contrastReport } from "./contrast-check.js";
@@ -11,6 +12,7 @@ import { cueGate, type CueGateResult } from "./cue-gate.js";
 import { CONTRAST, type QaGate } from "./gate-profile.js";
 import type { QaEngine } from "./qa-engine.js";
 import { measuredFindings } from "./qa-measured.js";
+import { speechRateReport } from "./speech-rate.js";
 import { narrationFactsReport } from "./narration-facts.js";
 import { INLINE_MAX_BYTES, mediaScanByBeat, qaReport, type QaReport } from "./qa-report.js";
 import { timelineFromArtifact, timelineS, type QaTimeline } from "./qa-timeline.js";
@@ -45,7 +47,7 @@ interface QaSources {
   put: (name: string, text: string) => string;
 }
 
-type Measured = Pick<QaReport, "sweep" | "framediff" | "probe" | "measured" | "timing" | "mediaScan" | "captions" | "narrationFacts" | "flash" | "contrast">;
+type Measured = Pick<QaReport, "sweep" | "framediff" | "probe" | "measured" | "timing" | "mediaScan" | "captions" | "narrationFacts" | "flash" | "contrast" | "speechRate">;
 
 /** What the timing gates read of the script: the beats it declares held, by `heldS` or the held speech band. */
 const HeldScriptSchema = z.object({ beats: z.array(z.object({ id: z.string(), band: z.string().optional(), heldS: z.number().optional() })) });
@@ -58,10 +60,26 @@ function heldBeats(sources: QaSources, ids: ReadonlyMap<string, string>): Set<st
   return new Set(beats.filter((beat) => beat.band === "held" || (beat.heldS ?? 0) > 0).flatMap((beat) => ids.get(beat.id) ?? []));
 }
 
+const CitingScriptSchema = z.object({ beats: z.array(z.object({ id: z.string(), fact_ids: z.array(z.string()).default([]), new_terms: z.array(z.string()).default([]) })) });
+
+/** The PR and task id numbers each beat cites, by storyboard id, so narration-facts reads one shown bare as a citation. */
+function citedIdsByBeat(sources: QaSources, ids: ReadonlyMap<string, string>): Map<string, Set<number>> {
+  const { beats } = CitingScriptSchema.parse(sources.script);
+  return new Map(beats.flatMap((beat) => {
+    const board = ids.get(beat.id);
+    return board === undefined ? [] : [[board, citedIdNumbers([...beat.fact_ids, ...beat.new_terms])] as const];
+  }));
+}
+
 /** A series too large to sit inline in qa.json goes to its own artifact; returns its sha. */
 function storedIfLarge(sources: QaSources, name: string, value: unknown): string | undefined {
   const text = JSON.stringify(value);
   return text.length <= INLINE_MAX_BYTES ? undefined : sources.put(name, `${text}\n`);
+}
+
+/** A beat with no word timings is unmeasured: it counts as no words only if left in, which would read as 0 wpm. */
+function measuredBeats(words: ReturnType<typeof readTiming>) {
+  return [...words].flatMap(([id, beat]) => (beat.words === undefined ? [] : [{ id, words: beat.words.length, durationS: beat.durationS }]));
 }
 
 /** The MP4's frame change and the probe, inline or by sha, and the page-measured findings they give. */
@@ -73,6 +91,7 @@ async function measure(sources: QaSources, engine: QaEngine, timeline: QaTimelin
   const probe = storedIfLarge(sources, "qa-probe", probed);
   const ids = timelineIds(sources);
   const words = readTiming(renameWordsBeats(sources.words, ids));
+  const cited = citedIdsByBeat(sources, ids);
   const timing = timingReport({ timeline, words, held: heldBeats(sources, ids), diffs, fps: RENDER_FPS, probed, profile: config.timing ?? timingProfile() });
   return {
     sweep: config.sweep !== false,
@@ -82,7 +101,8 @@ async function measure(sources: QaSources, engine: QaEngine, timeline: QaTimelin
     timing,
     mediaScan: mediaScanByBeat(await engine.mediaScan(sources.mp4), timeline),
     captions: captionReport(sources.vtt, sources.words),
-    narrationFacts: narrationFactsReport(probed, (beat) => (words.get(beat)?.words ?? []).map((w) => w.word).join(" ")),
+    narrationFacts: narrationFactsReport(probed, (beat) => (words.get(beat)?.words ?? []).map((w) => w.word).join(" "), (beat) => cited.get(beat) ?? new Set()),
+    speechRate: speechRateReport(measuredBeats(words)),
     flash: await engine.flashScan(sources.mp4),
     contrast: contrastReport(parseTimeline(sources.timeline).beats, [...inspection.held.errors, ...inspection.held.info], CONTRAST, options),
   };

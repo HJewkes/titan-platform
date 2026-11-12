@@ -27,7 +27,7 @@ const iso8601 = z
  * process exits as soon as it has produced the prompt. There is nothing to
  * signal, so liveness is a TTL *guess* and must be rendered as one.
  */
-export const LeaseModeSchema = z.enum(['launcher', 'oneshot']);
+const LeaseModeSchema = z.enum(['launcher', 'oneshot']);
 
 export const LeaseSchema = z.object({
   /** Random hex; also the filename stem (`<lease_id>.json`). */

@@ -1,5 +1,5 @@
 {
-  "$comment": "Architectural fitness rules for titan-platform, run by codewatch's `graph check` (scripts/dag-check.sh). The package-layers rule IS the platform DAG: a package may import only packages in the same tier or a lower one. `$tiers` is the source of truth (edited by scripts/new-package.mjs); `layers` is derived from it by dropping empty tiers, because codewatch rejects empty layers.",
+  "$comment": "Architectural fitness rules for titan-platform, run by codewatch's `graph check` (scripts/dag-check-self.mjs). The package-layers rule IS the platform DAG: a package may import only packages in the same tier or a lower one. `$tiers` is the source of truth (edited by scripts/new-package.mjs); `layers` is derived from it by dropping empty tiers, because codewatch rejects empty layers.",
   "rules": [
     {
       "id": "package-layers",
@@ -1119,6 +1119,46 @@
       ]
     },
     {
+      "id": "active-work-layers",
+      "type": "layered-deps",
+      "$comment": "products/active-work in four layers, lowest first: L0 base (errors, version, utils, schemas, registry), L1 store, L2 indexes and services, L3 surfaces (the rest of src). A layer imports only its own or a lower one, so the store layer can later move into a package as a directory (TP-3542 plan, D1). Colocated tests may reach across layers.",
+      "excludeRoles": [
+        "test",
+        "fixture"
+      ],
+      "layers": [
+        [
+          "products/active-work/src/errors.ts",
+          "products/active-work/src/version.ts",
+          "products/active-work/src/utils",
+          "products/active-work/src/schemas",
+          "products/active-work/src/registry"
+        ],
+        [
+          "products/active-work/src/notes",
+          "products/active-work/src/facets",
+          "products/active-work/src/sessions",
+          "products/active-work/src/tasks",
+          "products/active-work/src/sources",
+          "products/active-work/src/lint",
+          "products/active-work/src/migrations"
+        ],
+        [
+          "products/active-work/src/session-index",
+          "products/active-work/src/workspace-index",
+          "products/active-work/src/search",
+          "products/active-work/src/drain",
+          "products/active-work/src/discover",
+          "products/active-work/src/decider",
+          "products/active-work/src/wrap",
+          "products/active-work/src/bootstrap"
+        ],
+        [
+          "products/active-work/src"
+        ]
+      ]
+    },
+    {
       "id": "code-graph-catalogue-pure",
       "type": "layered-deps",
       "$comment": "The metric catalogue imports only its own directory and types.ts, so a browser-safe subpath can re-export it without pulling in ts-morph, tree-sitter, or SQLite.",
@@ -1259,19 +1299,9 @@
       "metric": "loc",
       "kind": "file",
       "max": 350,
-      "$comment": "Vendored verbatim from titan-design review-schema-v0.3.0 (4fcb3827); exempt by owner answer 2026-10-16 ('Yes, scoped'). TP-3232 deletes the vendored copy and this exclude. The products/active-work entries: owner decision 443 (2026-10-18), adopted verbatim from HJewkes/active-work eead047; TP-3541 removes this exclude.",
+      "$comment": "Vendored verbatim from titan-design review-schema-v0.3.0 (4fcb3827); exempt by owner answer 2026-10-16 ('Yes, scoped'). TP-3232 deletes the vendored copy and this exclude.",
       "exclude": [
-        "apps/console/server/review-schema-0.3/schema.ts",
-        "products/active-work/src/aw.ts",
-        "products/active-work/src/bootstrap/prompt.ts",
-        "products/active-work/src/commands/task-edit.ts",
-        "products/active-work/src/commands/wrap.ts",
-        "products/active-work/src/doctor.ts",
-        "products/active-work/src/migrations/v2-to-v3-open-loops.ts",
-        "products/active-work/src/session-index/origin-agent-chat.ts",
-        "products/active-work/src/session-index/refresh.ts",
-        "products/active-work/src/sessions/open-loops.ts",
-        "products/active-work/src/setup/steps.ts"
+        "apps/console/server/review-schema-0.3/schema.ts"
       ],
       "excludeRoles": [
         "test",
@@ -1284,10 +1314,6 @@
       "metric": "cyclomatic_max",
       "kind": "file",
       "max": 30,
-      "$comment": "The products/active-work entries: owner decision 443 (2026-10-18), adopted verbatim from HJewkes/active-work eead047; TP-3541 removes this exclude.",
-      "exclude": [
-        "products/active-work/src/bootstrap/prompt.ts"
-      ],
       "excludeRoles": [
         "test",
         "fixture"

@@ -52,7 +52,7 @@ export default defineCommand<Args, Deliverable>({
       owner_seat: { long: '--owner-seat', description: 'Seat that owns it', required: true },
       target: { long: '--target', description: 'Target date, YYYY-MM-DD' },
       status: { long: '--status', description: 'planned|active|dropped (default planned)' },
-      tags: { long: '--tags', description: 'Comma-separated retrieval tags' },
+      tags: { long: '--tags', description: 'Retrieval tag. Repeat the flag for each value' },
     },
   },
   async run(args, ctx) {

@@ -110,6 +110,20 @@ describe("qa stage text contrast (WCAG 1.4.3)", () => {
     expect(failedGates(Object.values(checks)).map((check) => check.name)).toContain("text-contrast");
   });
 
+  it("reports text over a background image as unmeasured, apart from pass and fail", async () => {
+    // Arrange
+    const unmeasured: Finding = { kind: "contrast-unmeasured", el: "span.label", text: "Desk C", px: 30, reason: "background image", at: { x: 100, y: 200, w: 300, h: 30 } };
+
+    // Act
+    const { report, checks } = await runChart({ kind: "line", series: DESKS }, () => [unmeasured]);
+
+    // Assert
+    expect(report.contrast?.text).toEqual({ below: [], unmeasured: [{ beat: "b1", text: "Desk C", px: 30, reason: "background image" }] });
+    expect(checks["text-contrast"]).toMatchObject({
+      gate: true, pass: true, detail: 'no text under the contrast thresholds; 1 text runs unmeasured: [b1] "Desk C" unmeasured: background image',
+    });
+  });
+
   it("passes when render-qa measured no text under its thresholds", async () => {
     // Arrange / Act
     const { checks } = await runChart({ kind: "line", series: DESKS });

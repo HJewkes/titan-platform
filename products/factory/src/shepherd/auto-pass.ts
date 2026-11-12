@@ -24,9 +24,14 @@ export interface GateDemotions {
   noMergeNoAsk: boolean;
   /** TP-3796: failed rounds where no adversary ever returned a verdict spawn one diagnosis planner, never a fourth blind review or the owner. */
   neverVerdictDiagnosis: boolean;
+  /** TP-4759: exited-without-push, fix-first-runaway and failed-rounds ask the registering seat (`deadEndGate`), not the owner. */
+  deadEndSeat: boolean;
 }
 
-export const GATE_DEMOTIONS: GateDemotions = { failedRounds: true, mainRed: true, failedFallback: true, conflict: true, fixFirstRunaway: true, noMergeNoAsk: true, neverVerdictDiagnosis: true };
+export const GATE_DEMOTIONS: GateDemotions = {
+  ...{ failedRounds: true, mainRed: true, failedFallback: true, conflict: true, fixFirstRunaway: true, noMergeNoAsk: true, neverVerdictDiagnosis: true },
+  deadEndSeat: true,
+};
 
 const AUTO_PASS_RULES = ["D7/fallback-reviewer", "D13/main-red-fyi", "D7/ops-notice", "D7/seat-notice", "D8/convergence-review", "R4/fresh-reviewer", "D7/no-verdict-diagnosis"] as const;
 type AutoPassRule = (typeof AUTO_PASS_RULES)[number];

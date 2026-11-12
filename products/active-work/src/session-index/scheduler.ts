@@ -1,4 +1,10 @@
 import type { RefreshSummary } from './refresh.js';
+import { cancellableSleep, withinBudget, type Freshness } from './scheduler-timing.js';
+import type { Execution, GateDecision, PassKind, PassRun, SchedulerOptions, SchedulerStatus } from './scheduler-types.js';
+
+export { withinBudget };
+export type { Freshness };
+export type { PassFailure, PassKind, SchedulerStatus } from './scheduler-types.js';
 
 /**
  * Collapses a burst of refresh requests into a bounded number of runs, without
@@ -10,110 +16,15 @@ import type { RefreshSummary } from './refresh.js';
  * flight, and at most one more full pass queued behind it.
  */
 
-export interface SchedulerStatus {
-  running: boolean;
-  pending: boolean;
-  last: RefreshSummary | null;
-  lastError: string | null;
-  consecutiveErrors: number;
-  /** Rounds skipped because another process held the refresh lock. */
-  lockSkips: number;
-}
-
-export interface SchedulerOptions {
-  onError?: (err: unknown) => void;
-  /** Called instead of `onError` when the refresh lock stayed held; the round retries with backoff. */
-  onLockSkip?: (skips: number) => void;
-  /** Least time between the starts of two runs; a burst inside it collapses to one trailing run. */
-  minIntervalMs?: number;
-  /** Least idle time after a pass ends before the next starts; defaults to `minIntervalMs`. */
-  minIdleMs?: number;
-  /** Injectable for tests; defaults to `Date.now`. */
-  now?: () => number;
-  /** Injectable for tests; defaults to a real timer. */
-  sleep?: (ms: number) => Promise<void>;
-  baseBackoffMs?: number;
-  maxBackoffMs?: number;
-  /** Checked before each pass; while it holds, the pass stays pending and the gate is asked again. */
-  gate?: () => Promise<GateDecision>;
-  /** How long to wait between gate checks while held; defaults to 60 s. */
-  gateRecheckMs?: number;
-  /** Called only when the gate flips between held and open, never on a recheck. */
-  onHoldChange?: (held: boolean, reason?: string) => void;
-  /** Whether changes wait that no pass has drained yet; a reader joining an indexed delta checks it (TP-893). */
-  hasUndrained?: () => boolean;
-}
-
-/** A full pass walks the corpus; a delta pass indexes only what the watcher reported. */
-export type PassKind = 'full' | 'delta';
-
-/** Whether an on-demand refresh finished inside the caller's budget. */
-export type Freshness = 'fresh' | 'stale';
-
-export interface GateDecision {
-  hold: boolean;
-  reason?: string;
-}
-
 const DEFAULT_BASE_BACKOFF_MS = 1_000;
 const DEFAULT_MAX_BACKOFF_MS = 60_000;
 export const DEFAULT_MIN_INTERVAL_MS = 15_000;
 export const DEFAULT_GATE_RECHECK_MS = 60_000;
+const DEFAULT_MAX_HOLD_MS = 30 * 60_000;
 
 /** proper-lockfile gives up with ELOCKED once its retries run out: someone else is mid-pass. */
 export function isLockContention(err: unknown): boolean {
   return (err as { code?: unknown } | null)?.code === 'ELOCKED';
-}
-
-/** A timer that `cancel` ends early, so `close()` never waits out a backoff. */
-function cancellableSleep(ms: number): { done: Promise<void>; cancel: () => void } {
-  let cancel = (): void => {};
-  const done = new Promise<void>((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    timer.unref?.();
-    cancel = () => {
-      clearTimeout(timer);
-      resolve();
-    };
-  });
-  return { done, cancel };
-}
-
-/** Resolves `'fresh'` if `pass` succeeds within `budgetMs`, else `'stale'` at the budget. */
-export async function withinBudget(
-  pass: (expired: () => boolean) => Promise<boolean>,
-  budgetMs: number,
-): Promise<Freshness> {
-  let timer: NodeJS.Timeout | undefined;
-  let over = false;
-  const expired = new Promise<false>((resolve) => {
-    timer = setTimeout(() => {
-      over = true;
-      resolve(false);
-    }, budgetMs);
-    timer.unref?.();
-  });
-  const ok = await Promise.race([pass(() => over), expired]);
-  clearTimeout(timer);
-  return ok ? 'fresh' : 'stale';
-}
-
-/** Lets a pass tell the scheduler its index writes are committed before it finishes. */
-export type PassRun = (
-  kind: PassKind,
-  onIndexed: () => void,
-  onLockWait: (waiting: boolean) => void,
-) => Promise<RefreshSummary>;
-
-interface Execution {
-  /** Resolves true when the pass succeeded. */
-  done: Promise<boolean>;
-  /** Resolves true once readers can read the pass's writes; false if it failed first. */
-  indexed: Promise<boolean>;
-  /** Set when the pass reports its writes committed, so its drain is already behind it. */
-  pastIndexed: boolean;
-  /** True while the pass waits on a refresh lock another process holds; it indexes nothing yet. */
-  lockWaiting: boolean;
 }
 
 export class RefreshScheduler {
@@ -127,7 +38,12 @@ export class RefreshScheduler {
   private lastError: string | null = null;
   private consecutiveErrors = 0;
   private lockSkips = 0;
-  private held = false;
+  private deltaFailures = 0;
+  /** Until this instant a failing delta pass is not retried by readers. */
+  private deltaBackoffUntil = 0;
+  private hold: { reason: string | null; since: string } | null = null;
+  /** True from a hold-cap release until the next gate check, which re-reports the hold. */
+  private capReleased = false;
   private lastStartedAt: number | null = null;
   private lastEndedAt: number | null = null;
   private cancelSleep: () => void = () => {};
@@ -162,7 +78,8 @@ export class RefreshScheduler {
    * (TP-873). Never rejects: a pass that fails, or outlasts the budget, reads as `'stale'`.
    */
   runNow(budgetMs: number): Promise<Freshness> {
-    if (this.closed || this.held) return Promise.resolve('stale');
+    if (this.closed || this.hold) return Promise.resolve('stale');
+    if (!this.executing && this.now() < this.deltaBackoffUntil) return Promise.resolve('stale');
     return withinBudget((expired) => this.indexedSinceNow(expired), budgetMs);
   }
 
@@ -224,6 +141,7 @@ export class RefreshScheduler {
       if (this.closed) return;
       this.lastStartedAt = this.now();
       await this.execute('full').done;
+      await this.recheckAfterCap();
       await this.backoff;
       this.backoff = null;
       this.lastEndedAt = this.now();
@@ -233,16 +151,39 @@ export class RefreshScheduler {
   /** Resolves true once the gate is open, false if `close()` came first. `pending` stays set meanwhile. */
   private async waitForGate(gate: () => Promise<GateDecision>): Promise<boolean> {
     const { onHoldChange } = this.options;
+    const maxHoldMs = this.options.maxHoldMs ?? DEFAULT_MAX_HOLD_MS;
+    let holdStart = this.now();
     for (;;) {
       const decision = await gate().catch((): GateDecision => ({ hold: false }));
-      if (this.held !== decision.hold) {
-        this.held = decision.hold;
+      if ((this.hold !== null) !== decision.hold) {
+        holdStart = this.now();
         onHoldChange?.(decision.hold, decision.reason);
+      } else if (decision.hold && this.capReleased) {
+        onHoldChange?.(true, decision.reason);
       }
+      this.capReleased = false;
+      this.hold = decision.hold ? { reason: decision.reason ?? null, since: this.hold?.since ?? new Date(this.now()).toISOString() } : null;
       if (!decision.hold) return true;
+      // A gate that never opens must not starve the index forever: let one pass through.
+      // `held` stays true through the pass, since the gate is still closed; `recheckAfterCap` clears it once the gate opens.
+      if (this.now() - holdStart > maxHoldMs) {
+        this.capReleased = true;
+        onHoldChange?.(false, `hold cap ${maxHoldMs} ms reached`);
+        return true;
+      }
       await this.pause(this.options.gateRecheckMs ?? DEFAULT_GATE_RECHECK_MS);
       if (this.closed) return false;
     }
+  }
+
+  /** A cap pass leaves `hold` set; ask the gate once more so readers stop reading stale as soon as it has opened. */
+  private async recheckAfterCap(): Promise<void> {
+    const { gate } = this.options;
+    if (!gate || !this.capReleased || this.closed) return;
+    const decision = await gate().catch((): GateDecision => ({ hold: true }));
+    if (decision.hold) return;
+    this.hold = null;
+    this.capReleased = false;
   }
 
   /** Sleep that `close()` cuts short; an injected `sleep` is raced against the close instead. */
@@ -279,9 +220,7 @@ export class RefreshScheduler {
   ): Promise<boolean> {
     try {
       this.last = await this.run(kind, onIndexed, onLockWait);
-      this.lastError = null;
-      this.consecutiveErrors = 0;
-      this.lockSkips = 0;
+      this.clearFailures();
       return true;
     } catch (err) {
       if (isLockContention(err)) {
@@ -294,11 +233,27 @@ export class RefreshScheduler {
       }
       this.consecutiveErrors += 1;
       this.lastError = err instanceof Error ? err.message : String(err);
-      this.options.onError?.(err);
       // Back off so a permanently broken corpus cannot spin the daemon.
-      if (kind === 'full') this.backoff = this.pause(this.backoffMs(this.consecutiveErrors));
+      const backoffMs = kind === 'full' ? this.backoffMs(this.consecutiveErrors) : this.startDeltaBackoff();
+      if (kind === 'full') this.backoff = this.pause(backoffMs);
+      this.options.onError?.(err, { kind, backoffMs });
       return false;
     }
+  }
+
+  private clearFailures(): void {
+    this.lastError = null;
+    this.consecutiveErrors = 0;
+    this.lockSkips = 0;
+    this.deltaFailures = 0;
+    this.deltaBackoffUntil = 0;
+  }
+
+  private startDeltaBackoff(): number {
+    this.deltaFailures += 1;
+    const backoffMs = this.backoffMs(this.deltaFailures);
+    this.deltaBackoffUntil = this.now() + backoffMs;
+    return backoffMs;
   }
 
   private minIdle(): number {
@@ -327,6 +282,9 @@ export class RefreshScheduler {
       lastError: this.lastError,
       consecutiveErrors: this.consecutiveErrors,
       lockSkips: this.lockSkips,
+      held: this.hold !== null,
+      holdReason: this.hold?.reason ?? null,
+      heldSince: this.hold?.since ?? null,
     };
   }
 

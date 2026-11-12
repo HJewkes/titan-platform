@@ -21,16 +21,16 @@ const needsProcess = [
   "products/session-miner/src/memory/discover.test.ts",
 ];
 
-// active-work kept its tests in a __tests__ tree when it was folded in (TP-3535). Its sandbox-home setup redirects
-// os.homedir() to a temp dir per file, so a test that forgets to stub home cannot touch the operator's files.
-const activeWorkTests = ["products/active-work/__tests__/**/*.test.ts"];
-const activeWorkSetup = ["products/active-work/__tests__/setup/sandbox-home.ts"];
+// active-work's sandbox-home setup redirects os.homedir() to a temp dir per file, so a test that forgets to stub home
+// cannot touch the operator's files. Its own projects keep that setup off every other product's tests.
+const activeWorkTests = ["products/active-work/{src,scripts}/**/*.test.ts"];
+const activeWorkSetup = ["products/active-work/src/test-support/sandbox-home.ts"];
 // These assign process.env.HOME or spy on os.homedir() in-process.
 const activeWorkNeedsProcess = [
-  "products/active-work/__tests__/commands/setup.test.ts",
-  "products/active-work/__tests__/integration/end-to-end.test.ts",
-  "products/active-work/__tests__/server/session-index-watch.test.ts",
-  "products/active-work/__tests__/setup/test-helpers-guard.test.ts",
+  "products/active-work/src/commands/setup.test.ts",
+  "products/active-work/src/integration/end-to-end.test.ts",
+  "products/active-work/src/server/session-index-watch.test.ts",
+  "products/active-work/src/test-support/test-helpers-guard.test.ts",
 ];
 
 // With isolate:false a worker keeps one module graph across files, so these files pay their shared imports once per
@@ -44,7 +44,8 @@ const explainerTests = ["products/explainer/src/**/*.test.{ts,tsx}"];
 const consoleTests = ["apps/console/{src,scripts,server}/**/*.test.{ts,tsx}"];
 // vi.mock replaces only a module the worker has not loaded yet, so in a shared graph these files' mocks miss; a HOME
 // stub would outlive its file. bot-identity asserts on @titan-design/github's process-wide rate budget, which another
-// file's client has already moved. They run isolated.
+// file's client has already moved. host.ownership-lost's lease-loss wait hangs to its timeout only in a shared factory
+// fork of a full run, never alone or under CPU load (TP-4788). They run isolated.
 const sharedGraphNeedsIsolation = [
   "apps/console/server/config-writers.test.ts",
   "apps/console/server/daemon.test.ts",
@@ -55,7 +56,10 @@ const sharedGraphNeedsIsolation = [
   "products/explainer/src/yaml-dir.test.ts",
   "products/factory/src/bot-identity.test.ts",
   "products/factory/src/bot-token-path.test.ts",
+  "products/factory/src/deploy-cli-link.test.ts",
+  "products/factory/src/host.ownership-lost.test.ts",
   "products/factory/src/remote-factory.test.ts",
+  "products/factory/src/serve-loop-delay.test.ts",
   "products/factory/src/shepherd/merge-facts.test.ts",
   "products/factory/src/shepherd/policy.test.ts",
   "products/factory/src/shepherd/reviewer-reader.test.ts",
@@ -140,7 +144,16 @@ export default defineConfig({
             "scripts/**/*.test.mjs",
             ...heapProbe,
           ],
-          exclude: ["**/node_modules/**", ...REPO_TIER_INCLUDE, ...needsProcess, ...perfTests, ...factoryTests, ...explainerTests, ...consoleTests],
+          exclude: [
+            "**/node_modules/**",
+            ...REPO_TIER_INCLUDE,
+            ...needsProcess,
+            ...perfTests,
+            ...factoryTests,
+            ...explainerTests,
+            ...consoleTests,
+            ...activeWorkTests,
+          ],
         },
       },
       {

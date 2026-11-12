@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "one account row is dropped",
+      "file": "products/fleet-panel/src/sources.ts",
+      "find": ".map(accountUsageOf),",
+      "replace": ".map(accountUsageOf).slice(1),",
+      "kills": [
+        "nodeSources accounts reads the accounts from the home's profiles without running the CLI"
+      ]
+    }
+  ]
+}

@@ -8,7 +8,9 @@ export type EdgeKind =
   | "extends"
   | "implements"
   | "references"
-  | "depends-on";
+  | "depends-on"
+  /** A test file to a module its `vi.mock` / `jest.mock` replaces: no dependency, so no walk follows it. */
+  | "mocks";
 
 /** `requalify` maps a bare-name symbol id from before index version 0.14.0 to its scope-qualified successor. */
 export type IdAliasReason = "rename" | "move" | "merge" | "requalify";

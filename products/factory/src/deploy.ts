@@ -6,6 +6,7 @@ import { closureDirs, FACTORY_PACKAGE, nativeBuildChanges, readWorkspace, touche
 import { changedPaths, runtimeTouched, showAt } from "./deploy-range.js";
 import { versionRefusal, type IntentPorts } from "./deploy-intents.js";
 import { announce, resolveAlarms, type NoticePorts } from "./deploy-notices.js";
+import { ensureDeployIncidentLog, recordDeployIncident } from "./deploy-incident-log.js";
 import { deployLockPath, releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
 import { deployHeld } from "./deploy-hold-gate.js";
 import { writeDeployPause, type DeployPause } from "./deploy-pause.js";
@@ -109,6 +110,8 @@ export function parseDeployRecord(text: string | undefined): DeployRecord | unde
 /** Fast-forward, build and restart the service checkout to `expect` or origin/main; never resets, so a rollback restores `dist` only. */
 export async function deployService(ports: DeployPorts, io: ServiceIo, options: DeployOptions): Promise<number> {
   ports.mkdir(options.stateDir);
+  const unlogged = ensureDeployIncidentLog(ports, options.stateDir);
+  if (unlogged !== undefined) io.stderr(`warning: the deploy incident log could not be created: ${unlogged}\n`);
   const lock = deployLockPath(options.stateDir);
   const held = takeLock(ports, lock);
   if (held !== undefined) {
@@ -150,7 +153,7 @@ async function planDeploy(deploy: Deploy): Promise<Plan> {
   if (fetched.code !== 0) return refuse(`git fetch origin main failed: ${detail(fetched)}`);
   const target = await resolveTarget(ports, deploy.options.expect);
   if (typeof target !== "object") return refuse(target);
-  return planFor(deploy, target.sha, !serviceRunsFromCheckout(ports, deploy.options.checkout));
+  return planFor(deploy, target.sha, !(await serviceRunsFromCheckout(ports, deploy.options.checkout)));
 }
 
 async function ensureCheckout({ ports, options }: Deploy): Promise<Stop | undefined> {
@@ -346,7 +349,10 @@ async function rollBackRestart(deploy: Deploy, go: Go, backup: string, why: stri
   const lost = pause(deploy, go, why, unverified === undefined ? "verified" : "failed") ?? pauseFailure;
   const told = `${why}${unverified === undefined ? "" : `; ${unverified}`}${lost === undefined ? "" : `; the deploy pause could not be written: ${lost}`}`;
   if (unverified !== undefined || lost !== undefined) deploy.io.stderr(`ALERT: the rollback of ${go.target} needs a person: ${told}\n`);
-  await announce(deploy.ports, deploy.io, { kind, target: go.target, from: go.running ?? UNKNOWN, why: told, at: new Date(deploy.ports.now()).toISOString() });
+  const incident = { kind, target: go.target, from: go.running ?? UNKNOWN, why: told, at: new Date(deploy.ports.now()).toISOString() } as const;
+  const unrecorded = recordDeployIncident(deploy.ports, deploy.options.stateDir, incident);
+  if (unrecorded !== undefined) deploy.io.stderr(`warning: the incident for ${go.target} could not be written to the incident log: ${unrecorded}\n`);
+  await announce(deploy.ports, deploy.io, incident);
   return finish(deploy, go, "rolled-back", told);
 }
 

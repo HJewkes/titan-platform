@@ -1,14 +1,7 @@
 export type { Arm, EvalPair, Label, LabelScope, LinkMethod, Provenance } from "./pairs.js";
 export { formatPairs, labelKeys, LABEL_SCOPES, parsePairs, scopePair } from "./pairs.js";
 export type { ToolUse, TranscriptHead } from "./corpus/transcripts.js";
-export {
-  defaultTranscriptRoots,
-  discoverTranscripts,
-  readHead,
-  streamToolUses,
-  textOf,
-  transcriptId,
-} from "./corpus/transcripts.js";
+export { readHead, streamToolUses, textOf, transcriptId } from "./corpus/transcripts.js";
 export { dedupeLabels, labelledPathOf, normaliseLabel } from "./mine/labels.js";
 export { listOfMaps, readFrontmatter, scalarField } from "./mine/frontmatter.js";
 export type { Link, Spawn, SpawnMining } from "./mine/spawn-arm.js";

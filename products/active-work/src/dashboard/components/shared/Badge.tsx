@@ -7,7 +7,7 @@ import React from 'react';
 import { View, Text } from 'react-native';
 import { typography } from '../../tokens.js';
 
-export interface BadgeProps {
+interface BadgeProps {
   label: string;
   /** Semantic color used for text, dot, border, and tinted background. */
   color: string;

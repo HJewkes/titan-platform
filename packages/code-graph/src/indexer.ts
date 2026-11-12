@@ -11,7 +11,7 @@ import { rootsAtRevision } from "./git-tree-source.js";
 import { pruneDanglingReferences } from "./barrel-resolve.js";
 import { fileId } from "./extractors/ids.js";
 import { buildFingerprints, classifyForReuse, loadReuseBasis, readSourceFiles, streamFiles, type ReadFile, type StreamedFiles, type StreamFilesInput } from "./incremental.js";
-import { computeContentAffected, computeDeltaAffected, surfaceChangedIds } from "./reuse-delta.js";
+import { computeContentAffected, computeDeltaAffected, surfaceChanges } from "./reuse-delta.js";
 import { spliceStream } from "./stream-splice.js";
 import { assembleIndexerMetrics } from "./index-metrics.js";
 import { loadEntryPoints } from "./analysis/test-kinds.js";
@@ -26,7 +26,7 @@ import type { GraphMetric, IdAlias } from "./types.js";
  * index version is never reused, so a change to node/edge shape or to a metric's
  * value for the same bytes can never be carried forward from an incompatible graph.
  */
-export const INDEX_VERSION = "0.32.0";
+export const INDEX_VERSION = "0.35.0";
 
 /** The languages walked and extracted. `typescript` covers `.ts`, `.tsx`, `.mjs` and `.cjs`. */
 const LANGUAGES = ["typescript", "python"] as const;
@@ -172,10 +172,11 @@ async function streamWithReuse(input: StreamInput): Promise<ReuseStream> {
   if (!reuse) return { streamed, toParse, reusedFileIds };
   const parsedIds = new Set(toParse.map(idOf));
   const textChanged = new Set(toParse.filter((rf) => reuse.fingerprints.get(idOf(rf)) !== rf.hash).map(idOf));
-  const surface = surfaceChangedIds(reuse, streamed.fragments, textChanged, parsedIds, currentFileIds);
+  const surface = surfaceChanges(reuse, streamed.fragments, textChanged, parsedIds, currentFileIds);
   // Edges came from the seed for reused files and for cosmetic ones alike, so both re-extract.
   const seedEdges = (id: string): boolean => !parsedIds.has(id) || streamed.cosmeticFileIds.has(id);
-  const content = new Set([...computeContentAffected(reuse, surface)].filter(seedEdges));
+  const textById = new Map(readFiles.map((rf) => [idOf(rf), rf.content]));
+  const content = new Set([...computeContentAffected(reuse, surface, (id) => textById.get(id))].filter(seedEdges));
   if (content.size === 0) return { streamed, toParse, reusedFileIds };
   const files = readFiles.filter((rf) => content.has(idOf(rf)));
   const second = await streamFiles({ ...input, readFiles: files, toParse: files, reusedFileIds: [], affected: content });

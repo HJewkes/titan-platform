@@ -22,7 +22,7 @@
     {
       "name": "approvals.flow reads the factory on every call",
       "file": "apps/console/server/commands.ts",
-      "find": "...approvalsCommands({ ...sources, factory: cache.factory }),",
+      "find": "...approvalsCommands(cached),",
       "replace": "...approvalsCommands(sources),",
       "kills": [
         "approvals.flow beside the inbox reads the factory once across two flows inside the fresh window"

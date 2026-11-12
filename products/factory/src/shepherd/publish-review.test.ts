@@ -8,7 +8,7 @@ import type { ShepherdPhases } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { REVIEW_CHECK_NAME } from "./publish-review.js";
-import { ATTESTATIONS_PATH } from "./attest-read.js";
+import { attestationsFileOf } from "./attest-read.js";
 import type { AwaitVerdictInput, ReviewerAgent, ReviewerDispatch, ReviewerReader } from "@titan-design/review-panel";
 import { reviewPhase } from "./review.js";
 import { shepherdStoreRef } from "./store.js";
@@ -93,7 +93,7 @@ describe("sh-publish-review", () => {
     let moved = false;
     const moveOnce = (head: string) => void (head === A && !moved && ((moved = true), fake.pushHead(1, B)));
 
-    await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE", moveOnce), reviewCheck: githubPort(fake.wire) });
+    await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE", moveOnce), reviewCheck: githubPort(fake.wire, { login: fake.appLogin }) });
 
     expect(posted(fake).slice(0, 2)).toEqual([
       { name: REVIEW_CHECK_NAME, headSha: A, conclusion: "success" },
@@ -106,7 +106,7 @@ describe("sh-publish-review", () => {
     const fake = fakeGitHub();
     fake.addPr = ((orig) => (fields) => orig({ ...fields, autoMerge: true }))(fake.addPr);
 
-    await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE"), reviewCheck: githubPort(fake.wire) });
+    await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE"), reviewCheck: githubPort(fake.wire, { login: fake.appLogin }) });
 
     expect(posted(fake)[0]).toEqual({ name: REVIEW_CHECK_NAME, headSha: A, conclusion: "action_required" });
   });
@@ -114,9 +114,9 @@ describe("sh-publish-review", () => {
   it("posts the MERGE again as action_required once its evidence finds an attestation unmet", async () => {
     const fake = fakeGitHub();
     const row = { step: "ci-wait", closure: fakeSha("publish-review-closure"), pr: 1 };
-    fake.files.set(`${A}:${ATTESTATIONS_PATH}`, { content: JSON.stringify([row]), blobSha: "attest-a" });
+    fake.files.set(`${A}:${attestationsFileOf(1)}`, { content: JSON.stringify([row]), blobSha: "attest-a" });
 
-    await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE"), reviewCheck: githubPort(fake.wire) });
+    await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE"), reviewCheck: githubPort(fake.wire, { login: fake.appLogin }) });
 
     expect(posted(fake).slice(0, 2)).toEqual([
       { name: REVIEW_CHECK_NAME, headSha: A, conclusion: "success" },
@@ -128,7 +128,7 @@ describe("sh-publish-review", () => {
   it("posts a FIX_FIRST as failure at the reviewed head", async () => {
     const fake = fakeGitHub();
 
-    await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "FIX_FIRST"), reviewCheck: githubPort(fake.wire), gate: "sh-sent-back" });
+    await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "FIX_FIRST"), reviewCheck: githubPort(fake.wire, { login: fake.appLogin }), gate: "sh-sent-back" });
 
     expect(posted(fake)).toEqual([{ name: REVIEW_CHECK_NAME, headSha: A, conclusion: "failure" }]);
   });
@@ -139,7 +139,7 @@ describe("sh-publish-review", () => {
     const { host, runId } = await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE") });
 
     expect(fake.createdCheckRuns).toEqual([]);
-    expect(publishResults(host, runId)).toEqual([{ headSha: A, conclusion: "success", published: false, reason: "no shepherd.reviewCheck App is configured" }]);
+    expect(publishResults(host, runId)).toEqual([{ headSha: A, conclusion: "success", published: false, reason: "no shepherd.reviewCheck App is configured", review: { reviewError: "no shepherd.reviewCheck App is configured" } }]);
   });
 
   it("records a failed post without failing the run, and carries checkRunUrl only when published", async () => {
@@ -149,15 +149,46 @@ describe("sh-publish-review", () => {
 
     const { host, runId } = await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE"), reviewCheck: failing });
 
-    expect(publishResults(host, runId)).toEqual([{ headSha: A, conclusion: "success", published: false, reason: "the check run post failed: HTTP 401" }]);
+    const [approval] = fake.reviews.get(1) ?? [];
+    expect(publishResults(host, runId)).toEqual([{ headSha: A, conclusion: "success", published: false, reason: "the check run post failed: HTTP 401", review: { approved: approval!.id } }]);
   });
 
   it("carries the check run URL in the step output when published", async () => {
     const fake = fakeGitHub();
 
-    const { host, runId } = await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE"), reviewCheck: githubPort(fake.wire) });
+    const { host, runId } = await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE"), reviewCheck: githubPort(fake.wire, { login: fake.appLogin }) });
 
     const [id] = fake.createdCheckRuns.map((run) => run.id);
-    expect(publishResults(host, runId)).toEqual([{ headSha: A, conclusion: "success", published: true, checkRunId: id, checkRunUrl: `https://github.com/${REPO}/runs/${id}` }]);
+    const [approval] = fake.reviews.get(1) ?? [];
+    expect(publishResults(host, runId)).toEqual([{ headSha: A, conclusion: "success", published: true, checkRunId: id, checkRunUrl: `https://github.com/${REPO}/runs/${id}`, review: { approved: approval!.id } }]);
+  });
+
+  it("a MERGE at the head approves the PR at that head under the App, beside the success check", async () => {
+    const fake = fakeGitHub();
+
+    await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE"), reviewCheck: githubPort(fake.wire, { login: fake.appLogin }) });
+
+    expect(fake.reviews.get(1)?.map(({ state, commitId, login }) => ({ state, commitId, login }))).toEqual([{ state: "APPROVED", commitId: A, login: fake.appLogin }]);
+  });
+
+  it("a FIX_FIRST posts no approval and records no review in the step result", async () => {
+    const fake = fakeGitHub();
+
+    const { host, runId } = await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "FIX_FIRST"), reviewCheck: githubPort(fake.wire, { login: fake.appLogin }), gate: "sh-sent-back" });
+
+    expect(fake.reviews.get(1) ?? []).toEqual([]);
+    expect(publishResults(host, runId).map((result) => "review" in result)).toEqual([false]);
+  });
+
+  it("a head moved after the MERGE dismisses the approval at the reviewed head when the new head publishes action_required", async () => {
+    const fake = fakeGitHub();
+    let moved = false;
+    const moveOnce = (head: string) => void (head === A && !moved && ((moved = true), fake.pushHead(1, B)));
+
+    const { host, runId } = await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE", moveOnce), reviewCheck: githubPort(fake.wire, { login: fake.appLogin }) });
+
+    const [approval] = fake.reviews.get(1) ?? [];
+    expect(approval).toMatchObject({ commitId: A, state: "DISMISSED" });
+    expect(publishResults(host, runId).slice(0, 2).map((result) => result.review)).toEqual([{ approved: approval!.id }, { dismissed: [approval!.id] }]);
   });
 });

@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "every publish approves, not only a success",
+      "file": "products/factory/src/shepherd/review-approval.ts",
+      "find": "  if (success) await approve(client.port, target, check, kept, result);",
+      "replace": "  await approve(client.port, target, check, kept, result);",
+      "kills": [
+        "syncApproval a FIX_FIRST at the head Shepherd approved dismisses that approval, so no Shepherd approval is left standing"
+      ]
+    },
+    {
+      "name": "approvals at other heads only are dismissed, so the approved head keeps its own",
+      "file": "products/factory/src/shepherd/review-approval.ts",
+      "find": "own.filter((review) => review !== kept)",
+      "replace": "own.filter((review) => review.commitId !== check.headSha)",
+      "kills": [
+        "syncApproval a FIX_FIRST at the head Shepherd approved dismisses that approval, so no Shepherd approval is left standing"
+      ]
+    },
+    {
+      "name": "a success with no App configured records nothing",
+      "file": "products/factory/src/shepherd/review-approval.ts",
+      "find": "  if (!client) return success ? { reviewError: NO_APP } : undefined;",
+      "replace": "  if (!client) return undefined;",
+      "kills": [
+        "syncApproval with no App configured a success records the missing App instead of approving"
+      ]
+    },
+    {
+      "name": "a replay posts again instead of reusing its approval",
+      "file": "products/factory/src/shepherd/review-approval.ts",
+      "find": "result.approved = kept?.id ?? (await",
+      "replace": "result.approved = (await",
+      "kills": [
+        "syncApproval a replay after a crash finds its approval at the head and posts no second one"
+      ]
+    },
+    {
+      "name": "a refused dismissal stops the rest and fails the step",
+      "file": "products/factory/src/shepherd/review-approval.ts",
+      "find": "      result.reviewError ??= failed(`dismissing review ${review.id} failed`, target, check, error);",
+      "replace": "      throw error;",
+      "kills": [
+        "syncApproval a dismissal GitHub refuses is recorded by status, and the other stale approvals are still dismissed"
+      ]
+    }
+  ]
+}

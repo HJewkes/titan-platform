@@ -8,6 +8,7 @@ import generatedPathsJson from "./generated-paths.json" with { type: "json" };
 import mergeOrderJson from "./merge-order.json" with { type: "json" };
 import { holdBarsMerge, type GateEvidenceSource, type HoldFacts } from "./lan-gates.js";
 import { inStepOrder, lastCiHead, payloadOf, stepName } from "./stats.js";
+import { thawWait } from "./thaw-wait.js";
 
 export const ORDER_WAIT_STEP = "sh-order-wait";
 
@@ -138,6 +139,12 @@ export class MergeOrder {
     return head !== undefined && head !== reservation.headSha && !merging;
   }
 
+  /** Waiting at its head on a freeze or a deploy, which no merge of its own can end (TP-4778). */
+  inThawWait(runId: string): boolean {
+    const run = this.runs.get(runId);
+    return run !== undefined && thawWait(run) !== undefined;
+  }
+
   /** The head the run's merge step is at, which a lan-gates hold is read at. */
   mergeHead(runId: string): string | undefined {
     const run = this.runs.get(runId);
@@ -163,10 +170,11 @@ export interface RunHolds extends GateEvidenceSource {
 /**
  * Driving, and not held by its registration. A held reserver waits on a person, so its reservation stops ordering peers
  * while the hold lasts instead of until its TTL (TP-4133). Only the registration, its gate evidence and the run's merge head are
- * read, never the merge guard, which reads this predicate.
+ * read, never the merge guard, which reads this predicate. A reserver waiting at its head on a freeze or a deploy stops
+ * ordering them for as long as that wait lasts, and orders again once a decision or a new head ends it (TP-4778).
  */
 export function orderDriving(order: MergeOrder, holds: RunHolds): (runId: string) => boolean {
-  return (runId) => order.isDriving(runId) && !holdBarsMerge(holds, holds.byRun(runId), order.mergeHead(runId));
+  return (runId) => order.isDriving(runId) && !order.inThawWait(runId) && !holdBarsMerge(holds, holds.byRun(runId), order.mergeHead(runId));
 }
 
 /** A store bound to whichever factory database the host opened; reading it unbound throws, so a merge fails closed. */

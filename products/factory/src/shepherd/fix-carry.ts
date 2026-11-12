@@ -6,18 +6,15 @@ import { isRepoKey } from "./seats.js";
 import {
   BranchName,
   CarryRefusal,
-  carryCacheDir,
-  carryStateDir,
+  cacheFor,
   ensureCache,
   fetchArgs,
-  githubRemote,
   must,
   reasonOf,
   remoteBase,
   serialized,
-  systemGit,
+  type CacheHandle,
   type CarryOptions,
-  type Git,
 } from "./tree-carry.js";
 
 /** Under the approval-carry family so the step reads as awaiting approval; its own route is the longer match, so the approval record's passthrough never takes it. */
@@ -51,8 +48,9 @@ function judge(merged: { base: string; mergeTree: string; headTree: string }): F
   return refuse(`tree of the head differs from the approved head merged onto ${merged.base}`, facts);
 }
 
-async function probe(git: Git, dir: string, url: string, input: FixCarryInput, signal?: AbortSignal): Promise<FixCarryResult> {
-  await ensureCache(git, dir, signal);
+async function probe(cache: CacheHandle, input: FixCarryInput, signal?: AbortSignal): Promise<FixCarryResult> {
+  const { git, dir, url } = cache;
+  await ensureCache(cache, signal);
   await must(git, dir, fetchArgs(url, input), signal);
   const ancestry = await git(dir, ["merge-base", "--is-ancestor", input.fromHead, input.head], signal);
   if (ancestry.code === 1) return refuse(`${input.head} does not contain ${input.fromHead}, so it is a rebase, not a fix on top`);
@@ -70,21 +68,20 @@ async function probe(git: Git, dir: string, url: string, input: FixCarryInput, s
  * Does `head` differ from the approved `fromHead` merged with the base commit `head` already contains by nothing (a clean
  * merge-up)? A fix of any size asks the owner again (TP-3070). Any failure, from bad input to a refused fetch or an unreadable file, answers no with a reason.
  */
-export async function fixCarry(raw: unknown, options: CarryOptions = {}): Promise<FixCarryResult> {
+export async function fixCarry(raw: unknown, options: CarryOptions): Promise<FixCarryResult> {
   const parsed = FixInputSchema.safeParse(raw);
   if (!parsed.success) return refuse(`invalid fix-carry input: ${parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ")}`);
   const input = parsed.data;
   try {
-    const dir = carryCacheDir(carryStateDir(options.stateDir), input.repo);
-    const url = (options.remote ?? githubRemote)(input.repo);
-    return await serialized(dir, () => probe(options.git ?? systemGit, dir, url, input, options.signal));
+    const cache = cacheFor(input.repo, options);
+    return await serialized(cache.dir, () => probe(cache, input, options.signal));
   } catch (error) {
     options.signal?.throwIfAborted();
     return refuse(reasonOf(error));
   }
 }
 
-export function fixCarryRoute(now: () => number, options: Omit<CarryOptions, "signal"> = {}): StepRoute {
+export function fixCarryRoute(now: () => number, options: Omit<CarryOptions, "signal">): StepRoute {
   return codeRoute(FIX_CARRY_STEP, now, (input: unknown, signal) => fixCarry(input, { ...options, signal }));
 }
 

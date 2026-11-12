@@ -35,11 +35,13 @@ type EdgeWeights = Readonly<Record<string, number | undefined>>;
 const DEFAULT_EDGE_WEIGHTS: EdgeWeights = {
   imports: 1.0,
   "re-exports": 0.5,
-  calls: 1.5,
+  // The store's default edge read hides calls; direct callers must rank the same graph.
+  calls: 0,
   extends: 1.0,
   implements: 1.0,
   references: 1.0,
   "depends-on": 1.0,
+  mocks: 0,
 };
 
 /** Edge weight used by PageRank for a given edge kind, honoring user overrides. */

@@ -28,7 +28,7 @@ type Probe = (released: string, baseRef: string) => Promise<CarryResult>;
  * minutes, so the hold is written by a compare-and-swap on the run's change mark: a hold or release made meanwhile stands,
  * and the step reads the run again. A re-hold the merge guard placed at this head is reported too, so the seat is told.
  */
-export function g10ReholdRoutes(deps: Pick<ShepherdDeps, "port" | "store" | "now">, probe?: Omit<CarryOptions, "signal">) {
+export function g10ReholdRoutes(deps: Pick<ShepherdDeps, "port" | "store" | "now">, probe: Omit<CarryOptions, "signal">) {
   return [
     codeRoute(G10_REHOLD_STEP, deps.now, async (raw: unknown, signal) => {
       const input = ReholdInput.parse(raw);

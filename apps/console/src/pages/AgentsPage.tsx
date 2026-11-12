@@ -1,21 +1,6 @@
 import { useState, type ReactNode } from "react";
-import {
-  Alert,
-  Avatar,
-  Checkbox,
-  DateTime,
-  HStack,
-  Link,
-  Spinner,
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
-  Typography,
-  VStack,
-} from "@titan-design/react-ui";
+import { Alert, Avatar, Checkbox, DateTime, HStack, Link, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Typography, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import { useQuery } from "../data/rpc.js";
 import { open, type Route } from "../router.js";
 import { AgentDetailPage } from "./AgentDetailPage.js";

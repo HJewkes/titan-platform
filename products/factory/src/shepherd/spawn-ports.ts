@@ -12,8 +12,10 @@ export interface VisualPacketPorts {
   agents?: Pick<AgentChatAgents, "roster" | "spawn">;
   /** The repo's seat checkout: the packager starts in it, and from-ci and the lint read git objects from it. None spawns nothing. */
   cwdFor?: (repo: string) => string | undefined;
-  /** `shepherd.titanReviewBin`; absent means `$HOME/.local/bin/titan-review`, named in full as `~/.local/bin` is not on every PATH. */
-  titanReviewBin?: string;
+  /** `shepherd.titanReviewBin`, or `$HOME/.local/bin/titan-review` named in full as `~/.local/bin` is not on every PATH; the wiring resolves it. */
+  titanReviewBin: string;
+  /** Creates the packet dir before the packager starts; a filesystem call, so the wiring supplies it. */
+  makeDir: (dir: string) => void;
 }
 
 /** How the diagnosis planner is spawned; the profile is passed to agent-chat as configured, never lowered. */
@@ -28,3 +30,6 @@ export interface DiagnosisPorts {
   /** The seat the planner reports to; absent means it reports to its spawner. */
   reportTo?: () => string | undefined;
 }
+
+/** How a dead-end gate's replan planner is spawned; it reports to the seat that answered replan, never to the hub. */
+export type ReplanPorts = Pick<DiagnosisPorts, "profile" | "agents" | "cwdFor">;

@@ -6,9 +6,11 @@ import { openFactoryHost, type FactoryHost, type FactoryRoutes } from "./host.js
 import type { FactoryContext } from "./context.js";
 import { createFactoryRegistry, parsePrRef } from "./registry.js";
 import { TOOL_PREFIX } from "./serve.js";
+import { hostCarryPorts } from "./shepherd/carry-cache-adapter.js";
 import { H1, REPO, gateId, gateOpened } from "./test-support/land.js";
 import { callCommand } from "./test-support/shepherd.js";
 import { landPrRoutes, landPrWorkflow } from "./workflows/land-pr.js";
+import { hostPostMerge } from "./workflows/post-merge-adapter.js";
 import { OWNER } from "./test-support/resolver.js";
 import { readPath } from "./narrow.js";
 import { partialFake } from "@titan-design/test-kit";
@@ -22,7 +24,7 @@ function world(): { host: FactoryHost; fake: FakeGitHub; routes: FactoryRoutes }
   fake.addPr({ headSha: H1 });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   let clock = 0;
-  const routes = landPrRoutes({ port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms) });
+  const routes = landPrRoutes({ ...hostPostMerge(), gitCache: hostCarryPorts, port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   return { host, fake, routes };
@@ -45,7 +47,7 @@ describe("factory registry", () => {
   it("surfaces the factory, shepherd, needs and autoresearch commands as MCP tools, with no prefix doubling and no resolve tool", () => {
     const tools = listTools({ registry: createFactoryRegistry(), createContext: () => partialFake<FactoryContext>({ warnings: [], format: "json" }), toolPrefix: TOOL_PREFIX, name: "titan-factory", version: "0" });
 
-    const shepherd = ["brief", "fix-pr", "freeze", "ghBudget", "ghRead", "hold", "list", "merge", "merge-base", "order", "prs", "register", "release", "repair-stop", "resync", "review", "status", "thaw", "timeline", "visual-delta", "waiting", "watch"].map((verb) => `shepherd__${verb}`);
+    const shepherd = ["brief", "fix-pr", "freeze", "ghBudget", "ghRead", "hold", "list", "merge", "merge-base", "order", "prs", "readdress-dead-ends", "refollow", "register", "release", "repair-stop", "resync", "review", "status", "thaw", "timeline", "visual-delta", "visual-week", "waiting", "watch"].map((verb) => `shepherd__${verb}`);
     const autoresearch = ["autoresearch__add-idea", "autoresearch__diff", "autoresearch__milestone", "autoresearch__run", "autoresearch__runs", "autoresearch__start"];
     expect(tools.map((tool) => tool.name).sort()).toEqual([...autoresearch, "factory__build-surface__abandon", "factory__build-surface__start", "factory__gates", "factory__gates-review", "factory__land", "factory__status", "gate__ownerEvidence", "needs__count", "needs__list", "owner-op__preview", ...shepherd]);
   });

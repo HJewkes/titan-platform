@@ -213,5 +213,3 @@ export const v1ToV2Artifacts: Migration = {
     await appendMigrationLog(activeRoot, logEntries);
   },
 };
-
-export default v1ToV2Artifacts;

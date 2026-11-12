@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./timeline": {
+      "types": "./dist/timeline-entry.d.ts",
+      "import": "./dist/timeline-entry.js"
     }
   },
   "files": [
@@ -46,6 +50,7 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "esbuild": "^0.27.0",
     "zod": "^4.4.3"
   }
 }

@@ -3,8 +3,8 @@
  * an initiative.
  *
  * A lease is a small JSON file under `<activeRoot>/.sessions/<slug>/`. The
- * directory is dot-prefixed on purpose: `listInitiativeSlugs` (both copies —
- * `src/commands/_open-helpers.ts` and `src/lint/index.ts`) skips dot entries,
+ * directory is dot-prefixed on purpose: `listInitiativeSlugs` (in
+ * `src/sessions/initiatives.ts`) skips dot entries,
  * so leases are invisible to the picker, the linter, doctor's initiative walk,
  * and the artifact hashing. They sit under the active root rather than the XDG
  * state root because `ACTIVE_ROOT` is the one path tests can redirect, which
@@ -29,7 +29,7 @@ import { promises as fs, unlinkSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { LeaseSchema, type Lease, type LeaseMode } from '../schemas/lease.js';
-import { getProcessCommand, isProcessAlive } from '../server/lifecycle.js';
+import { getProcessCommand, isProcessAlive } from '@titan-design/daemon';
 
 /**
  * How long a `oneshot` lease is assumed to represent a live session.
@@ -61,7 +61,7 @@ function leasePath(activeRoot: string, slug: string, leaseId: string): string {
   return path.join(leaseDir(activeRoot, slug), `${leaseId}.json`);
 }
 
-export interface AcquireLeaseInput {
+interface AcquireLeaseInput {
   activeRoot: string;
   slug: string;
   cwd: string;
@@ -75,7 +75,7 @@ export interface AcquireLeaseInput {
   getComm?: (pid: number) => string | null;
 }
 
-export interface AcquiredLease {
+interface AcquiredLease {
   leaseId: string;
   release: () => Promise<void>;
 }
@@ -158,7 +158,7 @@ export interface LiveSibling {
   label?: string;
 }
 
-export interface ReadLiveLeasesInput {
+interface ReadLiveLeasesInput {
   activeRoot: string;
   slug: string;
   now?: Date;

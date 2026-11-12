@@ -1,20 +1,5 @@
 {
-  "products/active-work/src/aw.ts": {
-    "titan/max-function-lines": {
-      "count": 6
-    }
-  },
   "products/active-work/src/bootstrap/archive-tasks.ts": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/bootstrap/prompt.ts": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/commands/_open-helpers.ts": {
     "titan/max-function-lines": {
       "count": 1
     }
@@ -114,11 +99,6 @@
       "count": 2
     }
   },
-  "products/active-work/src/commands/task-edit.ts": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
   "products/active-work/src/commands/task-reorder.ts": {
     "titan/max-function-lines": {
       "count": 2
@@ -135,11 +115,6 @@
     }
   },
   "products/active-work/src/commands/worktree-set.ts": {
-    "titan/max-function-lines": {
-      "count": 2
-    }
-  },
-  "products/active-work/src/commands/wrap.ts": {
     "titan/max-function-lines": {
       "count": 2
     }
@@ -191,7 +166,7 @@
   },
   "products/active-work/src/discover/claude.ts": {
     "titan/max-function-lines": {
-      "count": 2
+      "count": 1
     }
   },
   "products/active-work/src/discover/git.ts": {
@@ -210,16 +185,6 @@
     }
   },
   "products/active-work/src/discover/projects.ts": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/discover/run-command.ts": {
-    "titan/max-function-lines": {
-      "count": 2
-    }
-  },
-  "products/active-work/src/doctor.ts": {
     "titan/max-function-lines": {
       "count": 1
     }
@@ -265,11 +230,6 @@
     }
   },
   "products/active-work/src/search/index.ts": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/search/related.ts": {
     "titan/max-function-lines": {
       "count": 1
     }
@@ -334,9 +294,34 @@
       "count": 3
     }
   },
+  "products/active-work/src/setup/steps-daemon.ts": {
+    "titan/max-function-lines": {
+      "count": 3
+    }
+  },
+  "products/active-work/src/setup/steps-deps.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/setup/steps-install.ts": {
+    "titan/max-function-lines": {
+      "count": 2
+    }
+  },
+  "products/active-work/src/setup/steps-local.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/setup/steps-register.ts": {
+    "titan/max-function-lines": {
+      "count": 2
+    }
+  },
   "products/active-work/src/setup/steps.ts": {
     "titan/max-function-lines": {
-      "count": 12
+      "count": 1
     }
   },
   "products/active-work/src/setup/supervision-launchd.ts": {
@@ -346,10 +331,20 @@
   },
   "products/active-work/src/setup/supervision-systemd.ts": {
     "titan/max-function-lines": {
-      "count": 3
+      "count": 2
+    }
+  },
+  "products/active-work/src/setup/uninstall.ts": {
+    "titan/max-function-lines": {
+      "count": 2
     }
   },
   "products/active-work/src/utils/git-gh.ts": {
+    "titan/max-function-lines": {
+      "count": 2
+    }
+  },
+  "products/active-work/src/utils/run-command.ts": {
     "titan/max-function-lines": {
       "count": 2
     }

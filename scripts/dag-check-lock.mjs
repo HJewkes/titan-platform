@@ -514,6 +514,9 @@ function killGroup(pid) {
   }
 }
 
+/** Heap cap for any worker that opens the code-graph index; 1024 aborted seeded and `--update` runs (TP-3068, TP-5079). */
+export const INDEXER_HEAP_CAP_MB = 2048;
+
 /** Run a script under a heap cap in its own process group, so one kill also stops the git it is waiting on. */
 export async function runCappedWorker({ script, args, name, heapCapMb, cleanups, log, outcome = {}, stdio = "inherit" }) {
   const argv = [`--max-old-space-size=${heapCapMb}`, script, ...args];

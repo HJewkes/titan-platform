@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
-import { Alert, Button, ButtonText, EmptyState, HStack, Input, Link, Spinner, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, Button, ButtonText, EmptyState, HStack, Input, Link, Typography, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { refToRoute } from "../refs.js";

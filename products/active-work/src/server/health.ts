@@ -23,4 +23,8 @@ export interface HealthIndexState {
   consecutiveErrors: number;
   /** The longest the event loop stalled during the last pass (TP-343); null before one finishes. */
   lastMaxLoopStallMs: number | null;
+  /** The gate is closed, so readers see a stale index (TP-1012). */
+  held: boolean;
+  holdReason: string | null;
+  heldSince: string | null;
 }

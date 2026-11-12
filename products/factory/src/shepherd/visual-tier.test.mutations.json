@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the story row is dropped",
+      "file": "products/factory/src/shepherd/visual-tier.ts",
+      "find": "    [\"story\", caseFolded([...config.storyPaths, \"**/*.stories.*\"])],\n",
+      "replace": "",
+      "kills": ["visual tier verdict (TP-4761 S1) story and test only head is tier 1 non-rendering"]
+    },
+    {
+      "name": "proveTierOne skips baselineCheckGreen",
+      "file": "products/factory/src/shepherd/visual-tier.ts",
+      "find": "if (pathsOf(\"logic\").length > 0 && !baselineCheckGreen(",
+      "replace": "if (false && !baselineCheckGreen(",
+      "kills": ["visual tier verdict (TP-4761 S1) logic-only head with the visual check green and no snapshot changed is tier 1"]
+    },
+    {
+      "name": "the rendering row moves below logic",
+      "file": "products/factory/src/shepherd/visual-tier.ts",
+      "find": "    [\"rendering\", caseFolded(config.renderingPaths)],\n",
+      "replace": "    [\"logic\", (path) => CODE_FILE.test(path.toLowerCase()) && logic(path)],\n    [\"rendering\", caseFolded(config.renderingPaths)],\n",
+      "kills": ["visual tier verdict (TP-4761 S1) a token .ts under renderingPaths is tier 2 though it is .ts"]
+    },
+    {
+      "name": "the harness row is dropped",
+      "file": "products/factory/src/shepherd/visual-tier.ts",
+      "find": "    [\"harness\", caseFolded(config.harnessPaths)],\n",
+      "replace": "",
+      "kills": ["visual tier verdict (TP-4761 S1) a changed capture script is tier 2 whatever the artifact says"]
+    },
+    {
+      "name": "the proof branch is restored, so a rendered path skips the clearing check",
+      "file": "products/factory/src/shepherd/visual-tier.ts",
+      "find": "  const offending = classes.find(([, cls]) => !CLEARING.has(cls));",
+      "replace": "  const offending = classes.find(([, cls]) => cls !== \"rendered\" && !CLEARING.has(cls));",
+      "kills": ["visual tier verdict (TP-4761 S1) a rendered path is tier 2 even with a zero-diff pixel read in hand"]
+    }
+  ]
+}

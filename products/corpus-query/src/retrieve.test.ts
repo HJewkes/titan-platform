@@ -48,7 +48,7 @@ describe("retrieve", () => {
   it("merges overlapping windows in one chapter into a single passage", () => {
     const { passages } = retrieve(db, CUP_AND_WON, { window: 2 });
 
-    const first = passages.filter((p) => p.chapterId === "harbour-masters/1/1");
+    const first = passages.filter((p) => p.chapterId === "harbour-masters/01/01");
     // hits at 2, 9, 10: windows 0-4, 7-11 and 8-12 merge to 7-12
     expect(first.map((p) => [p.firstParagraph, p.lastParagraph])).toEqual([[0, 4], [7, 12]]);
   });
@@ -77,16 +77,16 @@ describe("retrieve", () => {
   it("builds ids from the chapter id, so a title code shared by two series stays distinct", () => {
     const { passages } = retrieve(db, { phrases: ["kettle trophy won"] }, { window: 0 });
 
-    const shared = passages.filter((p) => p.chapterId !== "harbour-masters/1/1");
+    const shared = passages.filter((p) => p.chapterId !== "harbour-masters/01/01");
     expect(new Set(shared.map((p) => p.id)).size).toBe(2);
-    expect(shared.map((p) => p.id.split("#")[0]).sort()).toEqual(["harbour-masters/1/2", "tide-of-fortune/1/1"]);
+    expect(shared.map((p) => p.id.split("#")[0]).sort()).toEqual(["harbour-masters/01/02", "tide-of-fortune/01/01"]);
     expect(shared.map((p) => p.ref).sort()).toEqual(["HM 1.2", "ToF 1.1"]);
   });
 
   it("returns passages in story order across series", () => {
     const { passages } = retrieve(db, { phrases: ["kettle trophy"] }, { window: 0 });
 
-    expect(passages.map((p) => p.chapterId)).toEqual(["harbour-masters/1/1", "harbour-masters/1/1", "harbour-masters/1/2", "tide-of-fortune/1/1"]);
+    expect(passages.map((p) => p.chapterId)).toEqual(["harbour-masters/01/01", "harbour-masters/01/01", "harbour-masters/01/02", "tide-of-fortune/01/01"]);
   });
 
   it("leaves out passages listed in excludeIds", () => {

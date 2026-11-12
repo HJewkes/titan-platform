@@ -17,13 +17,14 @@ import { sleep, step } from "../workflows/land.js";
 import { MergePolicyResult } from "../workflows/land-steps.js";
 import { landPrWorkflow } from "../workflows/land-pr.js";
 import { prSnapshot, type PrSnapshot } from "../workflows/pr-snapshot.js";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { MergeHeldError, holdingPort } from "./hold.js";
 import type { ParkPort } from "./park.js";
 import type { Git } from "./tree-carry.js";
 import type { ReviewRequest, ShepherdPhases, Verdict, WakeOutcome, WakeRequest } from "./phases.js";
 import { CI_UNREAD_REASON, ciUnreadAsNone } from "./ci-unread.js";
 import { supersedeMovedGates } from "./head-moved.js";
-import { shepherdPrWorkflow } from "./pr.js";
+import { DEFAULT_PHASES, shepherdPrWorkflow } from "./pr.js";
 import { MAX_REPAIRS, MAX_THROTTLED_ROUNDS } from "./route-table.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import type { EffectivePolicy } from "./policy-schema.js";
@@ -137,6 +138,12 @@ async function approveAndFinish(host: FactoryHost, runId: string, headSha: strin
 function pushes(fake: FakeGitHub, headSha: string): (request: WakeRequest) => WakeOutcome {
   return () => (fake.pushHead(1, headSha), { kind: "woken", agent: "impl-a" });
 }
+
+describe("the default shepherd-pr phases", () => {
+  it("the default workflow without a visualSetCarry phase treats set-carry as off", () => {
+    expect(DEFAULT_PHASES.visualSetCarry).toBeUndefined();
+  });
+});
 
 describe("shepherd-pr", () => {
   it("records why a run on a PR closed without merging ended, so the watch row reads it as stopped", async () => {
@@ -1094,9 +1101,9 @@ describe("the Version Packages PR", () => {
   }
 
   /** The changesets PR as PR 1, registered the way the release sweep registers it. */
-  function releaseWorld(registry: PackageRegistry, policy = RELEASE_POLICY): { w: World; runId: string; reviews: ReviewRequest[] } {
+  function releaseWorld(registry: PackageRegistry, policy = RELEASE_POLICY, validate?: (headSha: string) => string): { w: World; runId: string; reviews: ReviewRequest[] } {
     const { phases, reviews } = fakePhases({});
-    const w = world(phases, undefined, undefined, undefined, registry);
+    const w = world(phases, validate, undefined, undefined, registry);
     w.fake.addPr({ headSha: H1, headRef: VERSION_PACKAGES_BRANCH, headRepo: REPO, mergeSha: fakeSha("test-merge") });
     w.fake.prFiles.set(1, RELEASE_FILES);
     setWidgetManifest(w.fake, H1);
@@ -1117,6 +1124,15 @@ describe("the Version Packages PR", () => {
     expect(stepIds(w.host, runId).filter((id) => id.startsWith("sh-park"))).toEqual([]);
     expect(stepResult(w.host, runId, "merge-policy:0")).toMatchObject({ result: { outcome: "allow", rule: { table: "shepherd-release", rowId: "version-packages" } } });
     expect(w.store.byRun(runId)?.releaseReady).toMatchObject({ head: H1 });
+  });
+
+  it("never merges a release whose required CI is red at its head, though its preflight passed", async () => {
+    const { w, runId } = releaseWorld(async () => "trusted", RELEASE_POLICY, () => "failure");
+
+    await gateOpened(w.host, gateId(runId, "ci-failed"));
+
+    expect(w.fake.effects.merge).toBe(0);
+    expect(stepIds(w.host, runId).filter((id) => id.startsWith("sh-release-preflight") || id.startsWith("merge-policy"))).toEqual([]);
   });
 
   it("gates with the package's name when npm has never seen it", async () => {
@@ -1491,7 +1507,7 @@ describe("a fixer that exits without pushing a new head", () => {
   }
 
   it("reruns the failed jobs once at the same head before any wake, so a failure that heals wakes no one", async () => {
-    const { w, wakes } = redOnFlake(["products/factory/src/shepherd/wake.ts"], true);
+    const { w, wakes } = redOnFlake(["packages/x/src/a.ts"], true);
     const runId = shepherdPr1(w);
 
     await approve(w.host, runId, H1);
@@ -1512,7 +1528,7 @@ describe("a fixer that exits without pushing a new head", () => {
   });
 
   it("reruns once per head: a head still red after the rerun and a second exit opens the gate", async () => {
-    const { w, wakes } = redOnFlake(["products/factory/src/shepherd/wake.ts"], false);
+    const { w, wakes } = redOnFlake(["packages/x/src/a.ts"], false);
     const runId = shepherdPr1(w);
 
     await gateOpened(w.host, gateId(runId, "sh-sent-back"));
@@ -1858,11 +1874,11 @@ describe("merge steps allocate no worktree (CC-276 S3)", () => {
     fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
     fake.onGetPr = (pr) => (fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]), pr.headSha !== H1 && (pr.mergeableState = "clean"));
     const ref = shepherdStoreRef();
-    const carry = { stateDir: mkdtempSync(join(tmpdir(), "no-worktree-")), git: cleanMergeUp };
+    const carry = { stateDir: mkdtempSync(join(tmpdir(), "no-worktree-")) };
     const park: ParkPort = async () => (record("park"), { lines: [] });
     const port = githubPort(fake.wire);
     const mainGreen = { ...port, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 9), successRun("dag-check", 10)]), port.checkRuns(repo, sha)) };
-    const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), park, review: { reader: { read: async () => [] }, carry } });
+    const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), park, review: { reader: { read: async () => [] }, carry }, gitCache: { ...hostCarryPorts, git: cleanMergeUp } });
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(phases)], routes, gatePollMs: 5 });
     hosts.push(host);
     const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(AUTO_POLICY) });

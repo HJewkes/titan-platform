@@ -15,11 +15,11 @@ export function leasePath(): string {
 }
 
 /** What a missing lease file reads as; any other read failure is `{ error }`. */
-export type LeaseRead = { text: string } | { absent: true } | { error: string };
+type LeaseRead = { text: string } | { absent: true } | { error: string };
 
-export type LeaseVerdict = { ok: true } | { ok: false; message: string };
+type LeaseVerdict = { ok: true } | { ok: false; message: string };
 
-export interface LeaseSeams {
+interface LeaseSeams {
   read: (file: string) => LeaseRead;
   hostname: () => string;
 }
@@ -28,11 +28,11 @@ export interface LeaseSeams {
  * Case-insensitive, and only the first label counts, so `Mac`, `mac.local` and
  * `mac.example.com` are one host.
  */
-export function normaliseHost(name: string): string {
+function normaliseHost(name: string): string {
   return name.trim().toLowerCase().split('.')[0] ?? '';
 }
 
-export function checkHostLease(lease: LeaseRead, hostname: string, file: string): LeaseVerdict {
+function checkHostLease(lease: LeaseRead, hostname: string, file: string): LeaseVerdict {
   if ('absent' in lease) return { ok: true };
   if ('error' in lease) {
     return refuse(`factory host lease ${file} is unreadable (${lease.error}); refusing to start`);

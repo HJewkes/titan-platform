@@ -2,18 +2,18 @@ import type { InventoryFile } from './inventory.js';
 import { WIRE_CLASSES, wireClass, type WireClass } from './wire.js';
 
 /** File count, total bytes and newest mtime over a set of files. */
-export interface InventoryStat {
+interface InventoryStat {
   files: number;
   bytes: number;
   newest_mtime: string | null;
 }
 
-export interface NestedDirStat extends InventoryStat {
+interface NestedDirStat extends InventoryStat {
   /** The top-level `sources/` subdirectory, relative to the initiative. */
   dir: string;
 }
 
-export interface InitiativeInventory {
+interface InitiativeInventory {
   slug: string;
   /** Listed in the charter's `human_only_initiatives`: keep out of fixtures and exports. */
   human_only: boolean;

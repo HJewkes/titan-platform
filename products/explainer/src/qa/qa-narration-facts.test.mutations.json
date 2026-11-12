@@ -14,10 +14,19 @@
     {
       "name": "qa reads no narration for the facts report",
       "file": "products/explainer/src/qa/qa-core.ts",
-      "find": "narrationFactsReport(probed, (beat) => (words.get(beat)?.words ?? []).map((w) => w.word).join(\" \"))",
-      "replace": "narrationFactsReport(probed, () => \"\")",
+      "find": "narrationFactsReport(probed, (beat) => (words.get(beat)?.words ?? []).map((w) => w.word).join(\" \"),",
+      "replace": "narrationFactsReport(probed, () => \"\",",
       "kills": [
         "qa stage narration facts passes when the narration says the headline's number in words"
+      ]
+    },
+    {
+      "name": "qa reads no cited ids for the facts report",
+      "file": "products/explainer/src/qa/qa-core.ts",
+      "find": "(beat) => cited.get(beat) ?? new Set())",
+      "replace": "() => new Set())",
+      "kills": [
+        "qa stage narration facts passes a headline that shows the number of a pull request the beat cites, left unspoken"
       ]
     },
     {

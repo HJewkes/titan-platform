@@ -69,6 +69,19 @@ The skill's "wrap up" / "I'm done" trigger phrases prompt Claude to do this for 
 
 **Briefs.** `brief.md` per initiative — frontmatter with the structured fields (state, rank, ship_target, owner, task_prefix, worktrees, and an optional `profile`), prose body for the operator's freeform context. `profile` names a Claude account profile directory under `~/.claude-profiles` (override the root with `CLAUDE_PROFILE_ROOT`); `aw` sets `CLAUDE_CONFIG_DIR` from it so the initiative runs on its own account and usage budget. A profile that does not exist on disk is a warning, not a failure — the session launches on whatever account is already active.
 
+An optional `autonomy` block opts the initiative in to agent-chat's unattended `burndown` tick. `mode` is required and must be `burndown` (any other value fails validation); `lanes`, `accounts`, `grants` and `repo` are optional, and unknown keys are rejected:
+
+```yaml
+autonomy:
+  mode: burndown
+  lanes: 2
+  accounts: [acct-a, acct-b]
+  grants: [merge-on-green-approve, task-close-on-merged-pr]
+  repo: acme/widgets
+```
+
+Field types and validation rules are in [docs/architecture.md](docs/architecture.md#the-autonomy-block).
+
 **Handoffs.** `handoff.md` per initiative — pure prose, no frontmatter. The "what to do next when you pick this up again" note. Updated freely between sessions.
 
 **Tasks.** `tasks/<ID>.yml`, one file per task. ID is `<task_prefix>-<sequential>`, monotonic and never reused. Fields: title, priority (lower = higher), severity, estimate, status (`open` | `done`), tags, notes.
@@ -120,14 +133,14 @@ The most-used surface, grouped by purpose. Run `active-work <command> --help` fo
 | Tasks | `active-work task add <slug> --title ... --priority N` | Add a task |
 | Tasks | `active-work task done <slug> <id>` | Mark a task done |
 | Tasks | `active-work task edit <slug> <id> --append "<line>"` | Append a note line (also `<field> <value>`, `--add-tag`, `--remove-tag`) |
-| Tasks | `active-work task add\|edit ... --parent <id> --dep <ids>` | Set the parent (same initiative) and deps (any initiative); `edit` also takes `--remove-dep <ids>`. Refuses an unknown id, an id filed in two initiatives, a parent in another initiative and a parent or dep cycle |
+| Tasks | `active-work task add\|edit ... --parent <id> --dep <id> [--dep <id>]` | Set the parent (same initiative) and deps (any initiative), one `--dep` per id; `edit` also takes `--remove-dep <id>`. Refuses an unknown id, an id filed in two initiatives, a parent in another initiative and a parent or dep cycle |
 | Tasks | `active-work task add\|edit\|done ... --quiet` | Print one line instead of the task: `MF-3 created`, `MF-3 edited: notes`, `MF-3 done 2026-10-04` |
 | Tasks | `active-work task list [slug]` | List tasks for an initiative or across all |
 | Deliverables | `active-work deliverable add <id> --title ... --done-when ... --owner-seat ...` | Add a deliverable to the platform-wide registry (`titan-platform/deliverables/<id>.yml`, status `planned`); refuses an existing id |
 | Deliverables | `active-work deliverable set <id> --status\|--target\|--owner-seat ...` | Update one deliverable; `--target none` clears the date |
 | Deliverables | `active-work deliverable list [--tag t]... [--status s]` | List deliverables with open and done counts of joined tasks across all initiatives; a repeated `--tag` ANDs |
 | Deliverables | `active-work deliverable ship <id> [--force]` | Mark shipped; refuses while a joined task is open, naming it, unless `--force` |
-| Tasks | `active-work task add\|edit ... --deliverable <ids>` | Join a task to deliverables (`edit` adds, keeping the others); refuses an unknown id |
+| Tasks | `active-work task add\|edit ... --deliverable <id> [--deliverable <id>]` | Join a task to deliverables (`edit` adds, keeping the others); refuses an unknown id |
 | Categories | `active-work task add\|edit ... --kind k --cos c --area a --due YYYY-MM-DD` | Set the category fields; with `titan-platform/categories.yml` present, an unknown kind, status, cos or area (or cos `fixed` without a due) exits non-zero, names the axis and the allowed values, and writes nothing. A root without that file skips the check |
 | Categories | `active-work category list [--axis kind\|status\|cos\|area]` | Print the category registry, or one axis of it |
 | Categories | `active-work category init [--areas <file>]` | Seed `categories.yml` once from the `kind:` and `cos:` tags in use, the statuses open, done, wont-do and icebox, and the area section printed by titan-platform `scripts/areas.mjs`; leaves an existing file untouched |
@@ -135,7 +148,7 @@ The most-used surface, grouped by purpose. Run `active-work <command> --help` fo
 | Sessions | `aw <slug>` | Launch Claude with the bootstrap prompt |
 | Sessions | `active-work spawn <name> <profile> (--brief-file <path>\|--brief-stdin) [--host h] [--account <name\|least-used>] [--cwd d] [--briefing slug] [--surface s] [--remote-control]` | Spawn an agent through `agent-chat agent spawn` as yourself (an agent's `AGENT_CHAT_NAME` is forwarded). With no `--account`, the broker picks the least-used logged-in account and prints the readings; a refusal prints them and exits 1. CLI only, never an MCP tool. Finds `agent-chat` on `PATH`, or `AGENT_CHAT_BIN` |
 | Sessions | `active-work open <slug>` | Print the bootstrap prompt to stdout (no claude spawn) |
-| Sessions | `active-work facet add <slug> <alias> --tags a,b [--about ...]` | Add a facet alias that `aw <alias>` opens |
+| Sessions | `active-work facet add <slug> <alias> --tags a --tags b [--about ...]` | Add a facet alias that `aw <alias>` opens |
 | Sessions | `active-work facet list [slug]` | List facet aliases, flagging shadowed ones |
 | Daemon | `active-work mcp serve [--detach]` | Start the HTTP + MCP daemon |
 | Daemon | `active-work mcp status` | Health-check the running daemon |
@@ -211,7 +224,7 @@ src/
 skill/                  # SKILL.md + reference docs (copied to ~/.claude/)
 scripts/                # postinstall, preuninstall, gen-cli-reference
 docs/                   # architecture overview + auto-generated CLI reference
-__tests__/              # vitest unit + integration tests
+# vitest tests sit next to their source as *.test.ts; shared helpers in src/test-support/
 ```
 
 ## Troubleshooting

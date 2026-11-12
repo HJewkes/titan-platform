@@ -27,7 +27,7 @@ it("sizes in-test waits for a loaded runner and keeps them under the test timeou
   expect(config.test.expect.poll.timeout).toBe(WAIT_BUDGET_MS);
   expect(config.test.setupFiles).toContain("scripts/vitest-wait-budget.mjs");
   // extends: true appends a project's setupFiles to the root's, so active-work's sandbox-home adds and replaces nothing.
-  const ACTIVE_WORK_SETUP = ["products/active-work/__tests__/setup/sandbox-home.ts"];
+  const ACTIVE_WORK_SETUP = ["products/active-work/src/test-support/sandbox-home.ts"];
   for (const project of config.test.projects) {
     const expected = project.test.name.startsWith("active-work") ? ACTIVE_WORK_SETUP : undefined;
     expect(project.test.setupFiles, project.test.name).toEqual(expected);
@@ -46,9 +46,9 @@ it("names every project in a scoped CI run", () => {
   expect(named.sort()).toEqual(config.test.projects.map((project) => project.test.name).sort());
 });
 
-// active-work's __tests__ tree sat outside every project's include, so none of its tests ran (TP-4152).
-it("runs every active-work __tests__ file in exactly one project", () => {
-  const files = globSync("products/active-work/__tests__/**/*.test.ts", { cwd: ROOT });
+// active-work's tests once sat outside every project's include, so none of them ran (TP-4152).
+it("runs every active-work test file in exactly one project", () => {
+  const files = globSync("products/active-work/{src,scripts}/**/*.test.ts", { cwd: ROOT });
   expect(files.length).toBeGreaterThan(0);
   for (const file of files) expect(projectsRunning(file), file).toHaveLength(1);
 });

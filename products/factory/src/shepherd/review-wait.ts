@@ -1,3 +1,4 @@
+import { BrokerUnavailableError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
 import { deadline, type DeadlineTiming } from "../workflows/deadline.js";
 import { errorClass, failureOf } from "./error-class.js";
 import { ReviewSuperseded } from "./review-dispatcher.js";
@@ -72,8 +73,8 @@ export async function whileBrokerBooting<T>(timing: BrokerDownTiming, signal: Ab
 class ReviewerRosterUnread extends Error {
   override readonly name = "ReviewerRosterUnread";
 
-  constructor(budgetMs: number) {
-    super(`ReviewerAskTimedOut (roster unread after ${minutes(budgetMs)})`);
+  constructor(cause: ReviewerAskTimedOut, budgetMs: number) {
+    super(`ReviewerAskTimedOut (roster unread after ${minutes(budgetMs)})`, { cause });
   }
 }
 
@@ -86,11 +87,15 @@ export async function whileRosterSlow<T>(timing: PollTiming, signal: AbortSignal
       return await read();
     } catch (error) {
       if (!(error instanceof ReviewerAskTimedOut)) throw error;
-      if (timing.now() - startedAt >= budgetMs) throw new ReviewerRosterUnread(budgetMs);
+      if (timing.now() - startedAt >= budgetMs) throw new ReviewerRosterUnread(error, budgetMs);
     }
     await timing.sleep(timing.pollMs, signal);
   }
 }
+
+/** Every step's roster read waits out a booting broker and then a slow one, so no step turns a busy broker into a refusal (TP-3020). */
+export const patientRoster = <T>(timing: BrokerDownTiming, signal: AbortSignal, budgetMs: number, read: () => Promise<T>): Promise<T> =>
+  whileRosterSlow(timing, signal, budgetMs, () => whileBrokerBooting(timing, signal, read));
 
 /** An unread roster started nobody, so the step says so rather than reading as a refusal; any other throw stays one. */
 export function rosterUnread(error: unknown): NotStarted {
@@ -103,6 +108,12 @@ export class ReviewerBrokerBusy extends Error {
   override readonly name: string = "ReviewerBrokerBusy";
 }
 
+/** The broker's own failures that clear with time; a permission, missing-file or parse failure reads the same every time. */
+const TRANSIENT = [ReviewerAskTimedOut, ReviewerBrokerDown, ReviewerBrokerBusy, DispatchTimeoutError, BrokerUnavailableError];
+
+export const transient = (error: unknown): boolean =>
+  TRANSIENT.some((kind) => error instanceof kind) || /^HTTP 5\d\d$/.test(failureOf(error));
+
 /** The broker refused because the machine stop holds; a storm can outlast the busy wait, so the hold has its own, longer ceiling. */
 export class ReviewerMachineHold extends ReviewerBrokerBusy {
   override readonly name: string = "ReviewerMachineHold";
@@ -111,6 +122,11 @@ export class ReviewerMachineHold extends ReviewerBrokerBusy {
 /** The factory's own spawn gate deferred a start that is not queued, so it asks again after the gate's window rather than a doubling wait. */
 export class ReviewerSpawnQueued extends ReviewerMachineHold {
   override readonly name = "ReviewerSpawnQueued";
+}
+
+/** The spawn gate's roster read timed out before the launch, so nobody was asked to start and the step asks again (TP-5295). */
+export class ReviewerGateRosterUnread extends ReviewerBrokerBusy {
+  override readonly name = "ReviewerGateRosterUnread";
 }
 
 /**
@@ -153,6 +169,12 @@ export function timedOutUnseen(waitedMs: number, waits: string[]): NotStarted {
   return { kind: "none", reason, notStarted: true, ...busyWaits(waits) };
 }
 
+/** An ask that went through, followed by roster reads that all timed out, left the session unseen; built from the class and the wait alone, since it becomes a stored step reason. */
+export function rosterUnreadAfterAsk(waitedMs: number, waits: string[]): NotStarted {
+  const reason = `the reviewer dispatch was refused: ReviewerAskTimedOut (roster unread after ${minutes(waitedMs)})`;
+  return { kind: "none", reason, notStarted: true, ...busyWaits(waits) };
+}
+
 /** The first wait after a busy refusal; each later wait doubles, up to the longest. */
 export const BUSY_FIRST_WAIT_MS = 60_000;
 export const BUSY_LONGEST_WAIT_MS = 8 * 60_000;
@@ -160,6 +182,30 @@ export const BUSY_LONGEST_WAIT_MS = 8 * 60_000;
 export const DEFAULT_BUSY_WAIT_MS = 30 * 60_000;
 /** A machine stop lifts on its own once load settles, so its wait is spent apart from the busy budget, up to this ceiling. */
 export const DEFAULT_HOLD_WAIT_MS = 3 * 60 * 60_000;
+
+/** Records what an unread roster waits on, or clears it with undefined once the roster is read. */
+export type RosterNote = (text: string | undefined) => void;
+
+/**
+ * A roster still unread after a whole budget is read again after a doubling pause, with no cap on rounds. A step that already
+ * holds its verdict waits out a slow broker; failing would throw that verdict away and cost a re-register (TP-5086).
+ */
+export async function untilRosterRead<T>(timing: BrokerDownTiming, signal: AbortSignal, budgetMs: number, read: () => Promise<T>, note?: RosterNote): Promise<T> {
+  const startedAt = timing.now();
+  let round = 0;
+  for (let pause = BUSY_FIRST_WAIT_MS; ; pause = Math.min(pause * 2, BUSY_LONGEST_WAIT_MS)) {
+    try {
+      const roster = await patientRoster(timing, signal, budgetMs, read);
+      note?.(undefined);
+      return roster;
+    } catch (error) {
+      if (!(error instanceof ReviewerRosterUnread)) throw error;
+    }
+    round += 1;
+    note?.(`roster unread after round ${round}; reading again in ${minutes(pause)} (${minutes(timing.now() - startedAt)} waited so far)`);
+    await timing.sleep(pause, signal);
+  }
+}
 
 export interface BusyTiming {
   now: () => number;
@@ -215,13 +261,14 @@ export function reviewWait(repo: string, pr: number | null): string | undefined 
   return pr === null ? undefined : waits.get(keyOf(repo, pr));
 }
 
-type Started<A> = { agent?: A; rosterError?: string };
+/** `onlyTimedOut` means every read failed with a timeout and none answered, so the roster was never seen at all. */
+type Started<A> = { agent?: A; rosterError?: string; onlyTimedOut?: true };
 
-async function readRoster<A>(roster: () => Promise<readonly A[]>): Promise<{ agents: readonly A[]; error?: string }> {
+async function readRoster<A>(roster: () => Promise<readonly A[]>): Promise<{ agents: readonly A[]; error?: string; timedOut?: true }> {
   try {
     return { agents: await roster() };
   } catch (error) {
-    return { agents: [], error: failureOf(error) };
+    return { agents: [], error: failureOf(error), ...(error instanceof ReviewerAskTimedOut && { timedOut: true as const }) };
   }
 }
 
@@ -232,13 +279,17 @@ async function readRoster<A>(roster: () => Promise<readonly A[]>): Promise<{ age
 export async function startedSession<A extends { sessionId: string }>(roster: () => Promise<readonly A[]>, holds: (agent: A) => boolean, timing: DeadlineTiming & { pollMs: number }, signal: AbortSignal): Promise<Started<A>> {
   const clock = deadline(timing);
   let rosterError: string | undefined;
+  let answered = false;
+  let failedOtherwise = false;
   for (;;) {
     const read = await readRoster(roster);
     rosterError = read.error ?? rosterError;
+    answered ||= read.error === undefined;
+    failedOtherwise ||= read.error !== undefined && !read.timedOut;
     const found = read.agents.filter(holds);
     if (found.length > 1) return {};
     if (found[0] && found[0].sessionId !== "") return { agent: found[0] };
-    if (clock.expired()) return rosterError === undefined ? {} : { rosterError };
+    if (clock.expired()) return rosterError === undefined ? {} : { rosterError, ...(!answered && !failedOtherwise && { onlyTimedOut: true as const }) };
     await clock.sleep(timing.pollMs, signal);
   }
 }

@@ -1,3 +1,4 @@
+import { Page, PageHeader } from "@titan-design/react-ui";
 import { createElement, type ReactNode } from "react";
 import { VIEW_KEYS, type Route, type ViewKey } from "../router.js";
 import { viewFor } from "../views.js";
@@ -10,7 +11,7 @@ import { InboxPage } from "./InboxPage.js";
 import { InitiativeDetailPage } from "./InitiativeDetailPage.js";
 import { InitiativesPage } from "./InitiativesPage.js";
 import { KnowledgePage } from "./KnowledgePage.js";
-import { Page, PageHeader, type PageMaxWidth } from "./PageShell.js";
+import { LoopsPage } from "./LoopsPage.js";
 import { ReviewDetailPage } from "./ReviewDetailPage.js";
 import { ReviewsPage } from "./ReviewsPage.js";
 import { RoundDetailPage } from "./RoundDetailPage.js";
@@ -22,13 +23,13 @@ import { TaskDetailPage } from "./TaskDetailPage.js";
 import { TasksPage } from "./TasksPage.js";
 import { TheaterPage } from "./TheaterPage.js";
 import { TheaterPlayer } from "./TheaterPlayer.js";
+import { TreePage } from "./TreePage.js";
 
 type PageComponent = (props: { route: Route }) => ReactNode;
 
 /** How a view sits in its Page. A detail route carries its own trail and heading, so only a list route gets the view's title. */
 interface Layout {
-  maxWidth: PageMaxWidth;
-  isScrollable?: boolean;
+  maxWidth: "narrow" | "wide" | "full";
   /** Set when the view titles itself, as the initiatives overview does. */
   hasOwnTitle?: boolean;
 }
@@ -50,13 +51,15 @@ const TheaterView: PageComponent = ({ route }) => (route.id ? createElement(Thea
 const WIDE: Layout = { maxWidth: "wide" };
 const NARROW: Layout = { maxWidth: "narrow" };
 // The player and the round's frame overlay lay themselves out, so the page only gives them the gutter.
-const OWNS_LAYOUT: Layout = { maxWidth: "full", isScrollable: false };
+const OWNS_LAYOUT: Layout = { maxWidth: "full" };
 
 const SHELLED: Partial<Record<ViewKey, Shelled>> = {
   home: { list: WIDE, render: HomePage },
   inbox: { list: WIDE, render: InboxPage },
   initiatives: { list: { maxWidth: "wide", hasOwnTitle: true }, detail: WIDE, render: WorkPage },
   tasks: { list: { maxWidth: "full" }, detail: WIDE, render: TasksView },
+  loops: { list: { maxWidth: "full" }, render: LoopsPage },
+  tree: { list: { maxWidth: "full" }, render: TreePage },
   sessions: { list: WIDE, detail: WIDE, render: SessionsRoute },
   knowledge: { list: WIDE, detail: NARROW, render: KnowledgePage },
   agents: { list: WIDE, detail: WIDE, render: AgentsRoute },
@@ -69,11 +72,12 @@ const SHELLED: Partial<Record<ViewKey, Shelled>> = {
   config: { list: WIDE, render: ConfigPage },
 };
 
+// The console's document scrolls, so the page never adds a scroller of its own.
 function inPage(view: ViewKey, { list, detail = list, render }: Shelled): PageComponent {
   return ({ route }) => {
     const layout = route.id ? detail : list;
     const header = route.id || layout.hasOwnTitle ? undefined : createElement(PageHeader, { title: viewFor(view).title });
-    return createElement(Page, { header, maxWidth: layout.maxWidth, isScrollable: layout.isScrollable ?? true }, createElement(render, { route }));
+    return createElement(Page, { header, maxWidth: layout.maxWidth, isScrollable: false }, createElement(render, { route }));
   };
 }
 

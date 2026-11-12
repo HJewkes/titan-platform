@@ -8,11 +8,12 @@ import type { ReviewOutcome } from "./route-table.js";
 import { ReviewCauseSchema, type ReviewCause, type ReviewCauseKind } from "./review-schemas.js";
 import { inRange, isoWeek } from "./stats.js";
 import { DEPTH_FLOOR_REASON } from "@titan-design/review-panel";
+import { parseIsoMs } from "../time-iso.js";
 
 export type { ReviewCause } from "./review-schemas.js";
 
 /** Why a MERGE did not carry to a moved head, for `merge-up-not-carried` and `seat-push`. */
-type CarryRefusal = "base-unknown" | "not-one-merge" | "base-off-branch" | "remerge-touched" | "probe-failed" | "seat";
+type CarryRefusal = "base-unknown" | "not-one-merge" | "base-off-branch" | "remerge-touched" | "probe-failed" | "seat" | "attest-claims";
 
 /** Why the same head was reviewed again, for `retry`. */
 type RetryReason = "timeout" | "no-verdict" | "depth-floor" | "malformed" | "not-started" | "machine-stop";
@@ -30,6 +31,8 @@ export interface CarryProbe {
   baseRef?: string | null;
   remergeReason?: string;
   seatClear?: boolean;
+  /** False when the head claims attestation rows or its claims could not be read. */
+  claimsClear?: boolean;
 }
 
 /** The run's own record up to a review; none of it costs a GitHub call. */
@@ -58,6 +61,7 @@ export function noteCarryStep(probe: CarryProbe, stepId: string, result: unknown
   if (stepIdMatches("sh-carry-scope", stepId)) Object.assign(probe, { kind: nullableText(answer.kind), baseRef: nullableText(answer.baseRef) });
   else if (stepIdMatches("sh-remerge", stepId) && answer.carries !== true) probe.remergeReason = text(answer.reason) ?? "";
   else if (stepIdMatches("sh-carry-seat", stepId)) probe.seatClear = answer.clear === true;
+  else if (stepIdMatches("sh-carry-claims", stepId)) probe.claimsClear = answer.claimed === 0;
 }
 
 /** The remerge probe's refusal text, as `remerge-carry.ts` words it, to its closed name. */
@@ -71,6 +75,7 @@ function remergeRefusal(reason: string): CarryRefusal {
 function carryRefusal(probe: CarryProbe): { kind: string } | { reason: CarryRefusal } {
   if (probe.kind === undefined || probe.kind === null || !CARRYING_KINDS.has(probe.kind)) return { kind: probe.kind ?? "unregistered" };
   if (probe.baseRef === null || probe.baseRef === undefined) return { reason: "base-unknown" };
+  if (probe.claimsClear === false) return { reason: "attest-claims" };
   if (probe.seatClear === false) return { reason: "seat" };
   return { reason: probe.remergeReason === undefined ? "probe-failed" : remergeRefusal(probe.remergeReason) };
 }
@@ -179,7 +184,7 @@ export function reviewCauseStats(runs: readonly WorkflowRun[], range: { from?: s
     if (!repo) continue;
     for (const result of Object.values(run.stepResults)) {
       const cause = stepIdMatches("sh-review-intent", result.stepId) ? recordedCause(result) : undefined;
-      const at = Date.parse(result.completedAt);
+      const at = parseIsoMs(result.completedAt);
       if (!cause || !inRange(at, range)) continue;
       const week = isoWeek(at);
       const row = rows.get(`${repo} ${week}`) ?? { repo, week, reviews: 0, causes: {} };

@@ -20,6 +20,7 @@ const KINDS = [
 /** `<handle>/<id>.md` transcripts with their `.score.json` and `.digest.md` siblings, all citing the video id. */
 export const youtubeLayout: CorpusLayout = {
   name: "youtube",
+  accepts: (relPath) => KINDS.some((k) => relPath.endsWith(k.suffix)),
   describe(relPath, text): ChapterMeta | undefined {
     const kind = KINDS.find((k) => relPath.endsWith(k.suffix));
     if (!kind) return undefined;

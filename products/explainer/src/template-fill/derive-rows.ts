@@ -28,15 +28,15 @@ export function deriveList(beat: ScriptBeat, scope: BeatScope, mark?: Mark): Der
 
 const textItems = (field: string, texts: readonly string[]) => texts.map((text, i) => ({ id: `${field}-${i + 1}`, text }));
 
-function verdictSlots(beat: ScriptBeat, verdict: string, call: string, reasons: readonly string[]): Derived {
-  return { slots: { verdict, call, reasons: textItems("reasons", reasons) }, reveals: itemReveals(beat, "reasons", reasons.length), hints: { qaLeadLine: true } };
+function verdictSlots(beat: ScriptBeat, verdict: string, call: string | undefined, reasons: readonly string[]): Derived {
+  const slots = { verdict, ...(call === undefined ? {} : { call }), reasons: textItems("reasons", reasons) };
+  return { slots, reveals: itemReveals(beat, "reasons", reasons.length), hints: { qaLeadLine: true } };
 }
 
-/** The verdict is the first label, its call the head before `: ` (or the first chip), the other labels its reasons. */
+/** The verdict is the first label, its call (when it has one) the head before `: ` or the first chip, the other labels its reasons. */
 export function deriveVerdict(beat: ScriptBeat): Derivation {
   const [lead, ...reasons] = beat.visual.labels;
   const call = lead?.includes(": ") ? lead.slice(0, lead.indexOf(": ")) : beat.visual.chips[0]?.text;
-  if (call === undefined) return { reason: "verdict-card has no call: no `<call>: …` first label and no chip" };
   if (reasons.length === 0) return { reason: "verdict-card has no reasons: no label after the verdict" };
   return verdictSlots(beat, lead ?? beat.visual.assertion, call, reasons);
 }

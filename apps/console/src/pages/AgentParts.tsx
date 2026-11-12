@@ -1,21 +1,6 @@
 import type { ReactNode } from "react";
-import {
-  Alert,
-  Avatar,
-  DateTime,
-  ListItem,
-  ListItemContent,
-  ListItemDivider,
-  ListItemTrailing,
-  Pill,
-  Spinner,
-  Tab,
-  TabList,
-  Tabs,
-  Typography,
-  VStack,
-  type PillTone,
-} from "@titan-design/react-ui";
+import { Alert, Avatar, DateTime, ListItem, ListItemContent, ListItemDivider, ListItemTrailing, Pill, Tab, TabList, Tabs, Typography, VStack, type PillTone } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open, type Route } from "../router.js";
