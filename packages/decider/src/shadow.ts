@@ -21,6 +21,8 @@ export interface CategoryScore {
   /** Agreement of always taking the asker's recommendation, the bar the decider must clear by a margin. */
   baseline: number | null;
   overrules: number;
+  /** In-window bulk owner rows: asked in a form nobody can learn from, so they carry no sample. */
+  bulk: number;
   recommendAuto: boolean;
   demote: boolean;
 }
@@ -62,8 +64,12 @@ function within(row: LedgerRow, now: number, days: number): boolean {
 
 const SCORED_OUTCOMES = new Set(["accept", "amend", "other", "redirect"]);
 
+function isOwnerRow(row: LedgerRow): boolean {
+  return row.answered_by === "owner-terminal" || row.answered_by === "owner-remote";
+}
+
 function isOwnerAnswer(row: LedgerRow): boolean {
-  return (row.answered_by === "owner-terminal" || row.answered_by === "owner-remote") && SCORED_OUTCOMES.has(row.outcome ?? "");
+  return isOwnerRow(row) && SCORED_OUTCOMES.has(row.outcome ?? "");
 }
 
 interface Tally {
@@ -72,10 +78,11 @@ interface Tally {
   missedRedirects: number;
   baselineAgreed: number;
   overrules: number;
+  bulk: number;
 }
 
 function emptyTally(): Tally {
-  return { samples: 0, agreed: 0, missedRedirects: 0, baselineAgreed: 0, overrules: 0 };
+  return { samples: 0, agreed: 0, missedRedirects: 0, baselineAgreed: 0, overrules: 0, bulk: 0 };
 }
 
 function addSample(tally: Tally, row: LedgerRow, prediction: Prediction): void {
@@ -115,10 +122,11 @@ function tallies(predictions: ReadonlyMap<string, Prediction>, ledger: readonly 
   };
   for (const row of ledger) {
     if (row.answered_by === "overrule" && within(row, now, DEMOTE_WINDOW_DAYS)) tallyFor(row.category).overrules += 1;
+    const inWindow = within(row, now, categoryPolicy(options.policy, row.category).windowDays);
+    if (row.outcome === "bulk" && isOwnerRow(row) && inWindow) tallyFor(row.category).bulk += 1;
     const prediction = predictions.get(row.key);
     if (!prediction || !isOwnerAnswer(row)) continue;
-    if (within(row, now, categoryPolicy(options.policy, row.category).windowDays))
-      addSample(tallyFor(row.category), row, prediction);
+    if (inWindow) addSample(tallyFor(row.category), row, prediction);
   }
   return byCategory;
 }
@@ -134,6 +142,7 @@ function toScore(category: string, tally: Tally, policy: CategoryPolicy): Catego
     missedRedirects: tally.missedRedirects,
     baseline: ratio(tally.baselineAgreed),
     overrules: tally.overrules,
+    bulk: tally.bulk,
     recommendAuto: recommendsAuto({ ...tally, agreement }, policy),
     demote: policy.mode === "auto" && tally.overrules >= DEMOTE_OVERRULES,
   };
