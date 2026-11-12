@@ -76,8 +76,12 @@ const resolved = resolveLaunch(loaded.seat, { seat: "example-steward", profile: 
 
 - Refusals are returned, not thrown. A file the reader could not open is `unreadable`, never
   "no seat".
+- A seat the index's `seats` list does not name is refused (`not_in_index`), so removing a seat
+  from the index stops it loading.
 - `ownerOnlyRead` is honoured only for the single seat the index lists in `ownerOnlyReaders`;
-  an index naming two is refused.
+  an index naming two, or naming a seat outside `seats`, is refused.
+- Every `agentWritableRoots` entry must be absolute; pass realpath output, since the overlap
+  compare is case-sensitive.
 - `resolveLaunch` gives a root seat depth 0 and any other seat depth 1, whatever the
   requester's own depth.
 - `seatHash` is the sha256 of the exact bytes passed in; pass the bytes, not a re-serialised
