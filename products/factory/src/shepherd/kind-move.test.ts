@@ -61,6 +61,8 @@ describe("moving a correctness run's kind before review (TP-5399)", () => {
     ["a review intent", "sh-review-intent:" + H1, false],
     ["a reviewer dispatch", "sh-review:" + H1, false],
     ["a verdict wait", "sh-await-verdict:" + H1, false],
+    ["a shadow review", "sh-review-shadow:" + H1, false],
+    ["a refused review", "sh-review-refused:" + H1, false],
   ])("after %s, %s", async (_, stepId, allowed) => {
     const w = world();
     const runId = await registeredRun(w);
@@ -83,6 +85,16 @@ describe("moving a correctness run's kind before review (TP-5399)", () => {
     expect(moved).toMatchObject({ ok: false, error: expect.stringContaining("without --kind-reason") });
     expect(w.routes.shepherd!.store.get().byRun(runId)?.kind).toBe("correctness");
     expect(kindMoves(w, runId)).toEqual([]);
+  });
+
+  it("refuses a whitespace-only reason as no reason", async () => {
+    const w = world();
+    const runId = await registeredRun(w);
+
+    const moved = await w.call<Registered>("shepherd.register", { ...MOVE, kindReason: "   " });
+
+    expect(moved.ok).toBe(false);
+    expect(w.routes.shepherd!.store.get().byRun(runId)?.kind).toBe("correctness");
   });
 
   it("refuses a move to unknown, which no early move reaches", async () => {

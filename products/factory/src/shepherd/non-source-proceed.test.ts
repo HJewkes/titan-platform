@@ -196,6 +196,17 @@ describe("a diff with no source and no test file (TP-5399)", () => {
     expect(await standingOf(DOCS_ONLY, undefined, "correctness", noTestsLine(), ["packages/x/README.md"])).toMatchObject({ ended: { kind: "NO_REPRO" } });
   });
 
+  it.each([
+    ["a console server route", "apps/console/server/g10-hold.ts", "security"],
+    ["a root script", "scripts/stage-version-guard.mjs", "correctness"],
+    ["a product install script", "products/active-work/scripts/postinstall.js", "correctness"],
+    ["a root config", "package.json", "correctness"],
+  ] as const)("still ends a run whose test-less diff changes code outside src, as %s does", async (_, path, kind) => {
+    const files: PrFile[] = [{ path, status: "modified" }, ...DOCS_ONLY];
+
+    expect(await standingOf(files, undefined, kind, noTestsLine())).toMatchObject({ ended: { kind: "NO_REPRO" } });
+  });
+
   it("still ends a run whose diff renames a test out to a docs path", async () => {
     const files: PrFile[] = [{ path: "packages/x/notes.md", previousPath: "packages/x/src/parse.test.ts", status: "renamed" }];
 

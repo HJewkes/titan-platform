@@ -28,7 +28,7 @@ export const RegisterArgs = z
     reviewer: z.string().min(1).optional(),
     kind: z.enum(TASK_KINDS).optional(),
     /** Why a correctness run moves to refactor or feature before review; recorded on the move's event with `actor`. */
-    kindReason: z.string().min(1).optional(),
+    kindReason: z.string().trim().min(1).optional(),
     actor: z.string().min(1).optional(),
     slice: z.string().min(1).optional(),
     noSlice: z.boolean().optional(),

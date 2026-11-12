@@ -19,7 +19,7 @@ export async function kindMove(services: ShepherdServices, known: Registration, 
 type ReviewRead = Pick<WorkflowRun, "stepResults" | "currentStep">;
 
 /** The steps that brief, dispatch, ask for or await a reviewer; the fix-proof read before them reviews nothing. */
-const REVIEW_STEPS = ["sh-review-intent", "sh-review", "sh-review-panel", "sh-review-request", "sh-await-verdict"];
+const REVIEW_STEPS = ["sh-review-intent", "sh-review", "sh-review-panel", "sh-review-request", "sh-review-refused", "sh-review-stop", "sh-review-scope", "sh-review-shadow", "sh-await-verdict"];
 
 /** True once any review step ran or is running, at any head of the run. */
 function reviewStarted(run: ReviewRead): boolean {

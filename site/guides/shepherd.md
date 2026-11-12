@@ -89,6 +89,7 @@ any other kind. That repeat is refused with exit 65 and a reason naming both kin
 `correctness` to `security`, or `feature`, `refactor` or `unknown` to any kind, still applies.
 One narrow exception (TP-5399): a `correctness` run moves to `refactor` or `feature` when no
 review step (`sh-review-intent`, `sh-review`, `sh-review-panel`, `sh-review-request`,
+`sh-review-refused`, `sh-review-stop`, `sh-review-scope`, `sh-review-shadow`,
 `sh-await-verdict`) has run at any head and the repeat gives `--kind-reason`. The store records
 a `kind-move` event with the caller and the reason, so the run's timeline shows the move. It is
 for a fix whose proof cannot reproduce, such as a rename to the same value. Once a review has
@@ -98,10 +99,11 @@ A move into `test-only` meets the diff check [below](#the-test-only-kind).
 On a `correctness`, `security` or `test-only` run, or any `fix/` branch, Shepherd reads the
 head's fix-proof result before the review. A vacuous or test-less proof ends the round as
 `NO_REPRO`, unless its mutation check proves it (see [the test-only kind](#the-test-only-kind)). A proof that shows nothing about the head goes to the reviewer marked unverified.
-A `no-tests` line on a diff that touches no source and no test file (the review panel's `test`
-and `source` class rules, which the risk tiers read) goes on to review under any kind, recorded
+A `no-tests` line on a diff whose every path, a rename's old path included, is Markdown
+(`**/*.md`: docs and changesets) goes on to review under any kind, recorded
 as `no-repro-non-source`, with no implementer wake: a docs or changeset diff has nothing to
-reproduce (TP-5399).
+reproduce (TP-5399). The check is an allowlist of non-code paths, so a script, server route or
+config outside `src/` still needs its proof.
 A `NO_REPRO` wakes the implementer for a reproducing test at most twice per run. The third
 goes to the `sh-sent-back` gate, worded `fix-proof did not reproduce (NO_REPRO)`. A `NO_REPRO`
 is not a reviewer's `FIX_FIRST`, so it never counts toward `fix-first-runaway` (TP-3900).
