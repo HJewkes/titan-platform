@@ -69,7 +69,7 @@ export function noteHiddenInitiatives(warnings: string[], hidden: number): void 
 }
 
 /** The slugs this caller may list; a non-owner loses the owner-only ones and is told how many. */
-export async function slugsForCaller(
+async function slugsForCaller(
   activeRoot: string,
   slugs: readonly string[],
   ctx: Pick<CommandContext, 'caller' | 'warnings'>,
