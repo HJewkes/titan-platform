@@ -4,7 +4,11 @@ import { loadSeat } from "./load.js";
 
 const refusalCode = (result: ReturnType<typeof loadSeat>) => (result.ok ? "ok" : result.refusal.code);
 
-const deskIndex = (readers: string[]) => ({ path: `${SEATS_DIR}/index.json`, facts: facts(), content: indexJson(readers) });
+const deskIndex = (readers: string[], seats?: string[]) => ({
+  path: `${SEATS_DIR}/index.json`,
+  facts: facts(),
+  content: indexJson(readers, seats),
+});
 
 describe("loadSeat", () => {
   it("loads a seat whose files, prompt hash and index all check out, with the file's hash", () => {
@@ -71,6 +75,18 @@ describe("loadSeat", () => {
     const result = loadSeat(loadInput(deskSeat(), { index: deskIndex(["example-desk", "example-steward"]) }));
 
     expect(refusalCode(result)).toBe("invalid_field");
+  });
+
+  it("refuses a seat the index does not list, even when every file checks out", () => {
+    const result = loadSeat(loadInput(stewardSeat(), { index: deskIndex([], []) }));
+
+    expect(result).toMatchObject({ ok: false, refusal: { code: "not_in_index", detail: expect.stringContaining("example-steward") } });
+  });
+
+  it("refuses an index whose owner-only reader is not a listed seat", () => {
+    const result = loadSeat(loadInput(deskSeat(), { index: deskIndex(["example-desk"], ["example-steward"]) }));
+
+    expect(result).toMatchObject({ ok: false, refusal: { code: "invalid_field", detail: expect.stringContaining("ownerOnlyReaders") } });
   });
 
   it("hashes the exact bytes it was given", () => {

@@ -38,6 +38,15 @@ describe("checkOwnerFile", () => {
     expect(checkOwnerFile(SEAT_FILE, facts(), ctx)).toMatchObject({ code: "agent_writable_path" });
   });
 
+  it.each([
+    ["an empty", ""],
+    ["a relative", "home/example"],
+  ])("refuses %s agent-writable root instead of skipping the overlap check", (_label, root) => {
+    const ctx = context({ agentWritableRoots: [root] });
+
+    expect(checkOwnerFile(SEAT_FILE, facts(), ctx)).toMatchObject({ code: "agent_writable_path" });
+  });
+
   it("refuses an agent-writable root inside the seats directory", () => {
     const ctx = context({ agentWritableRoots: [`${SEATS_DIR}/scratch`] });
 

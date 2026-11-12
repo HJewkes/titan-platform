@@ -60,6 +60,11 @@ function checkPrompt(seat: SeatDefinition, prompt: LoadSeatInput["prompt"]): Sea
   return { ok: true };
 }
 
+function checkListed(seat: SeatDefinition, index: SeatIndex): SeatResult<object> {
+  if (index.seats.includes(seat.name)) return { ok: true };
+  return refuse("not_in_index", `${seat.name} is not listed in the seat index`);
+}
+
 /** Owner-only reads are honoured for the one seat the owner lists in the index, and refused for any other. */
 function checkOwnerOnlyRead(seat: SeatDefinition, index: SeatIndex): SeatResult<object> {
   if (seat.ownerOnlyRead !== true || index.ownerOnlyReaders.includes(seat.name)) return { ok: true };
@@ -78,6 +83,8 @@ export function loadSeat(input: LoadSeatInput): LoadedSeat {
   if (!read.ok) return read;
   const parsed = parseSeat(read.text, input.name);
   if (!parsed.ok) return parsed;
+  const listed = checkListed(parsed.seat, index.index);
+  if (!listed.ok) return listed;
   const prompt = checkPrompt(parsed.seat, input.prompt);
   if (!prompt.ok) return prompt;
   const reader = checkOwnerOnlyRead(parsed.seat, index.index);

@@ -23,6 +23,7 @@ export const SEAT_REFUSAL_CODES = [
   "prompt_unreadable",
   "prompt_hash_mismatch",
   "owner_only_read_not_listed",
+  "not_in_index",
 ] as const;
 
 export type SeatRefusalCode = (typeof SEAT_REFUSAL_CODES)[number];

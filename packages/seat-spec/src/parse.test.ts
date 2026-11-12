@@ -64,6 +64,10 @@ describe("parseSeat", () => {
     expect(codeOf({ ...stewardSeat(), prompt })).toMatchObject({ code: "invalid_field" });
   });
 
+  it.each([["cwd"], ["configDir"]])("refuses a %s with a control character", (field) => {
+    expect(codeOf({ ...stewardSeat(), [field]: "/home/example/a\u0000b" })).toMatchObject({ code: "invalid_field" });
+  });
+
   it("refuses a seat that allows more than one instance", () => {
     expect(codeOf({ ...stewardSeat(), singleInstance: false })).toMatchObject({ code: "invalid_field" });
   });
@@ -80,6 +84,12 @@ describe("parseSeatIndex", () => {
 
   it("accepts one owner-only reader", () => {
     expect(index(["example-desk"])).toMatchObject({ ok: true });
+  });
+
+  it("refuses an owner-only reader that is not a listed seat", () => {
+    const result = parseSeatIndex(json({ schema: "titan-seat-index/v1", seats: ["example-steward"], ownerOnlyReaders: ["example-desk"] }));
+
+    expect(result).toMatchObject({ ok: false, refusal: { code: "invalid_field", detail: expect.stringContaining("ownerOnlyReaders") } });
   });
 
   it("refuses a second owner-only reader", () => {

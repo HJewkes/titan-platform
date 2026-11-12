@@ -74,8 +74,10 @@ export const context = (over: Partial<OwnerFileContext> = {}): OwnerFileContext 
   ...over,
 });
 
-export const indexJson = (ownerOnlyReaders: string[] = []): string =>
-  json({ schema: "titan-seat-index/v1", seats: ["example-steward", "example-desk"], ownerOnlyReaders });
+export const LISTED_SEATS = ["example-steward", "example-desk", "example-second-desk"];
+
+export const indexJson = (ownerOnlyReaders: string[] = [], seats: string[] = LISTED_SEATS): string =>
+  json({ schema: "titan-seat-index/v1", seats, ownerOnlyReaders });
 
 /** A load input for `seat` whose every file passes the checks. */
 export const loadInput = (seat: Record<string, unknown>, over: Partial<LoadSeatInput> = {}): LoadSeatInput => {

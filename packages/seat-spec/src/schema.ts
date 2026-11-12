@@ -16,9 +16,13 @@ const CRON_FIELDS = 5;
 
 const seatName = z.string().regex(SEAT_NAME);
 const nameList = z.array(z.string().min(1));
+const CONTROL_CHAR = /[\u0000-\u001f\u007f]/;
 const absolutePath = z
   .string()
-  .refine((value) => value.startsWith("/") && !value.split("/").includes(".."), "must be an absolute path with no ..");
+  .refine(
+    (value) => value.startsWith("/") && !value.split("/").includes("..") && !CONTROL_CHAR.test(value),
+    "must be an absolute path with no .. and no control characters",
+  );
 const cron = z.string().refine((value) => value.trim().split(/\s+/).length === CRON_FIELDS, "must be a 5-field cron");
 
 const promptSchema = z.strictObject({
@@ -56,10 +60,15 @@ export const seatSchema = z.strictObject({
 
 export type SeatDefinition = z.infer<typeof seatSchema>;
 
-export const seatIndexSchema = z.strictObject({
-  schema: z.literal(SEAT_INDEX_SCHEMA),
-  seats: z.array(seatName),
-  ownerOnlyReaders: z.array(seatName).max(1, "at most one seat may read owner-only data"),
-});
+export const seatIndexSchema = z
+  .strictObject({
+    schema: z.literal(SEAT_INDEX_SCHEMA),
+    seats: z.array(seatName),
+    ownerOnlyReaders: z.array(seatName).max(1, "at most one seat may read owner-only data"),
+  })
+  .refine((index) => index.ownerOnlyReaders.every((reader) => index.seats.includes(reader)), {
+    message: "every owner-only reader must be a listed seat",
+    path: ["ownerOnlyReaders"],
+  });
 
 export type SeatIndex = z.infer<typeof seatIndexSchema>;

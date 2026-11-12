@@ -16,7 +16,10 @@ export interface OwnerFileContext {
   /** Absolute, resolved path of the owner-held seats directory. */
   seatsDir: string;
   seatsDirFacts: FileFacts;
-  /** Absolute roots an agent can write (worktrees, agent scratch); none may contain the seats directory. */
+  /**
+   * Absolute roots an agent can write (worktrees, agent scratch); none may contain the seats directory.
+   * A relative or empty root is refused. Pass realpath output: the compare is case-sensitive.
+   */
   agentWritableRoots: readonly string[];
 }
 
@@ -46,6 +49,10 @@ function unsafeDir(ctx: OwnerFileContext): SeatRefusal | undefined {
   }
   const owner = unsafeOwner(dir, ctx.ownerUid);
   if (owner !== undefined) return { code: "seats_dir_unsafe", detail: owner.detail };
+  const relative = ctx.agentWritableRoots.find((root) => !path.posix.isAbsolute(root));
+  if (relative !== undefined) {
+    return { code: "agent_writable_path", detail: `agent-writable root "${relative}" is not absolute, so overlap cannot be checked` };
+  }
   const writable = ctx.agentWritableRoots.find((root) => isWithin(root, ctx.seatsDir) || isWithin(ctx.seatsDir, root));
   if (writable !== undefined) return { code: "agent_writable_path", detail: `${ctx.seatsDir} overlaps ${writable}` };
   return undefined;
