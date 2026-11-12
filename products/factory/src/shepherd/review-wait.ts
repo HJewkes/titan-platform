@@ -109,7 +109,7 @@ export class ReviewerBrokerBusy extends Error {
 }
 
 /** The broker's own failures that clear with time; a permission, missing-file or parse failure reads the same every time. */
-const TRANSIENT = [ReviewerAskTimedOut, ReviewerBrokerDown, ReviewerBrokerBusy, DispatchTimeoutError, BrokerUnavailableError];
+const TRANSIENT = [ReviewerAskTimedOut, ReviewerRosterUnread, ReviewerBrokerDown, ReviewerBrokerBusy, DispatchTimeoutError, BrokerUnavailableError];
 
 export const transient = (error: unknown): boolean =>
   TRANSIENT.some((kind) => error instanceof kind) || /^HTTP 5\d\d$/.test(failureOf(error));

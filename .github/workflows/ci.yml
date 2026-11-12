@@ -19,10 +19,20 @@ env:
 
 jobs:
   validate:
+    # validate is the required check, and a scope placed on the shards runs its tests only there, so validate carries the
+    # shards' result (TP-4730). !cancelled() keeps it running, and failing, after a red shard: a skipped required check
+    # reads as passed.
+    needs: test-shard
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     # Green runs take 30 to 72 minutes; a hung test step once sat 74 minutes past its last file (TP-4287).
     timeout-minutes: 90
     steps:
+      # needs.test-shard.result is success only when every leg of the matrix concluded success.
+      - name: Require every test shard to pass
+        env:
+          SHARDS: ${{ needs.test-shard.result }}
+        run: test "$SHARDS" = success || { echo "::error::test-shard concluded $SHARDS"; exit 1; }
       - uses: actions/checkout@v4
         with:
           # The changeset guard diffs against origin/<base>, which a shallow clone lacks.
@@ -147,7 +157,8 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
       # A pull request runs the packages its diff reaches through the workspace graph. Main runs everything, but in the
-      # test-shard job below, in parallel with this one, so this step is pull-request only (TP-4401).
+      # test-shard job below, in parallel with this one, so this step is pull-request only (TP-4401). A scope past
+      # SHARD_ABOVE_FILES in scripts/test-scope.mjs runs in that matrix instead, and this step only names it (TP-4730).
       - name: Run the tests in scope
         if: github.event_name == 'pull_request'
         env:
@@ -155,7 +166,7 @@ jobs:
           HEAD_REF: ${{ github.head_ref }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: pnpm test:scope --run
+        run: pnpm test:scope --run --skip-sharded
       # Per-file collect, setup and test time from scripts/vitest-file-timing.mjs; a none scope writes no file.
       - name: Upload the vitest file timing
         if: always()
@@ -195,13 +206,15 @@ jobs:
         run: pnpm registry:closure
 
   # Main's full suite as three parallel shards beside validate, so main's wall time is the slowest of them (TP-4401).
-  # Pull requests keep the scoped single-job run in validate. Branch protection requires validate, which a pull request
-  # still runs. Shepherd judges main by the required contexts, so each shard is listed under mainContexts in
+  # A pull request whose scope passes SHARD_ABOVE_FILES runs it here too, and validate keeps the smaller scopes; each
+  # shard places the scope itself with the same script, so the two jobs agree without one waiting on the other (TP-4730).
+  # A shard with nothing placed on it stops after the plan step and reports success. validate needs this job and fails
+  # unless every shard passed, so the required check holds a pull request's tests wherever they ran.
+  # Shepherd judges main by the required contexts, so each shard is listed under mainContexts in
   # .github/required-checks.json and a red shard still freezes main; renaming the job or the matrix must update that list.
   # Each shard repeats install, a turbo-cached build,
   # the debs and Chromium; the restore-key fallback to the previous main's turbo cache makes the build a replay.
   test-shard:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:
@@ -210,13 +223,25 @@ jobs:
         shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The scope diffs the pull request's base against its head, as validate does, so both jobs place it alike.
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Place the tests in scope
+        id: plan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: pnpm test:scope --plan
       - name: Restore turbo cache
+        if: steps.plan.outputs.placement == 'shards'
         uses: actions/cache/restore@v4
         with:
           path: .turbo/cache
@@ -225,33 +250,39 @@ jobs:
             turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
             turbo-${{ runner.os }}-
       - run: pnpm build
+        if: steps.plan.outputs.placement == 'shards'
         env:
           TURBO_TELEMETRY_DISABLED: 1
       - name: Restore vitest results
+        if: steps.plan.outputs.placement == 'shards'
         uses: actions/cache/restore@v4
         with:
           path: node_modules/.vite/vitest
           key: vitest-results-${{ runner.os }}-shard${{ matrix.shard }}of3-${{ github.sha }}
           restore-keys: vitest-results-${{ runner.os }}-shard${{ matrix.shard }}of3-
       - name: Read the runner image version
+        if: steps.plan.outputs.placement == 'shards'
         id: image
         run: echo "version=${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
       - name: Restore the zsh and ffmpeg debs
+        if: steps.plan.outputs.placement == 'shards'
         id: debs
         uses: actions/cache/restore@v4
         with:
           path: ~/apt-debs
           key: apt-debs-zsh-ffmpeg-${{ runner.os }}-${{ steps.image.outputs.version }}
       - name: Download the zsh and ffmpeg debs
-        if: steps.debs.outputs.cache-hit != 'true'
+        if: steps.plan.outputs.placement == 'shards' && steps.debs.outputs.cache-hit != 'true'
         run: |
           mkdir -p ~/apt-debs/partial
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends --download-only -o APT::Sandbox::User=root -o Dir::Cache::archives="$HOME/apt-debs" zsh ffmpeg
           sudo chmod -R a+rX ~/apt-debs
       - name: Install zsh and ffmpeg
+        if: steps.plan.outputs.placement == 'shards'
         run: sudo dpkg -i "$HOME"/apt-debs/*.deb
       - name: Read the playwright-core version
+        if: steps.plan.outputs.placement == 'shards'
         id: playwright
         run: |
           version=$(pnpm --filter @titan-design/frame-capture exec node -p "require('playwright-core/package.json').version")
@@ -261,28 +292,33 @@ jobs:
           esac
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Restore the Chromium cache
+        if: steps.plan.outputs.placement == 'shards'
         uses: actions/cache/restore@v4
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
       - name: Install Chromium for frame-capture
+        if: steps.plan.outputs.placement == 'shards'
         run: pnpm --filter @titan-design/frame-capture exec playwright-core install --with-deps --only-shell chromium
-      # The same reporters scripts/test-scope.mjs passes on CI (CI_REPORTERS), so a hang still fails and names its file.
-      - name: Run this shard of the full suite
-        run: >
-          pnpm exec vitest run --passWithNoTests
-          --reporter=default --reporter=hanging-process --reporter=./scripts/vitest-file-watchdog.mjs
-          --reporter=./scripts/vitest-file-timing.mjs
-          --shard=${{ matrix.shard }}/3
+      # test-scope.mjs adds its CI reporters (CI_REPORTERS), so a hang still fails and names its file.
+      - name: Run this shard of the tests in scope
+        if: steps.plan.outputs.placement == 'shards'
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: pnpm test:scope --run --shard=${{ matrix.shard }}/3
       - name: Upload the vitest file timing
-        if: always()
+        if: always() && steps.plan.outputs.placement == 'shards'
         uses: actions/upload-artifact@v4
         with:
           name: vitest-file-timing-shard${{ matrix.shard }}of3-${{ github.run_attempt }}
           path: vitest-file-timing.json
           if-no-files-found: ignore
+      # Only main saves, so a pull request's scoped shard never reorders main's full-suite shards.
       - name: Save vitest results
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.plan.outputs.placement == 'shards' }}
         uses: actions/cache/save@v4
         with:
           path: node_modules/.vite/vitest

@@ -11,7 +11,8 @@ import { registeredOwners } from "./seat-tie.js";
 import { registeredKind } from "./merge-facts.js";
 import { everG10Held } from "./registration-hold.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
-import { mergeVerdict, type ReviewWiring } from "./review.js";
+import { DEFAULT_POLL_MS, DEFAULT_SESSION_START_TIMEOUT_MS, mergeVerdict, type ReviewWiring } from "./review.js";
+import { DEFAULT_BROKER_DOWN_WAIT_MS, patientRoster, type BrokerDownTiming } from "./review-wait.js";
 import { CiPolicySchema } from "./review-schemas.js";
 import { FIX_CARRY_STEP, fixCarryRoute } from "./fix-carry.js";
 import { REVIEW_SCOPE_STEP, reviewScopeRoute } from "./review-scope.js";
@@ -198,17 +199,20 @@ async function seatHeads(port: ShepherdDeps["port"], input: SeatInput): Promise<
  * at that head would have. An unreadable roster, transcript, commit list or force-push list refuses too. With no dispatch wired there is no
  * roster to read. The store, when given, names the registered owners that tie a seat reviewer whose transcript shows nothing.
  */
-export function carrySeatRoute(deps: Pick<ShepherdDeps, "now" | "port"> & Partial<Pick<ShepherdDeps, "store">>, wiring: ReviewWiring | undefined): StepRoute {
-  return codeRoute(CARRY_SEAT_STEP, deps.now, async (input: SeatInput) => {
+export function carrySeatRoute(deps: Pick<ShepherdDeps, "now" | "sleep" | "pollMs" | "port"> & Partial<Pick<ShepherdDeps, "store">>, wiring: ReviewWiring | undefined): StepRoute {
+  return codeRoute(CARRY_SEAT_STEP, deps.now, async (input: SeatInput, signal: AbortSignal) => {
     const dispatch = wiring?.dispatch;
     if (!dispatch) return { clear: true };
+    const timing: BrokerDownTiming = { now: deps.now, sleep: deps.sleep, pollMs: deps.pollMs ?? DEFAULT_POLL_MS, brokerDownWaitMs: wiring.brokerDownWaitMs ?? DEFAULT_BROKER_DOWN_WAIT_MS };
+    const budgetMs = wiring.sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS;
     const walked = await seatHeads(deps.port, input);
     if ("reason" in walked) return { clear: false, reason: walked.reason };
     for (const head of walked.heads) {
       const target = { repo: input.repo, pr: input.pr, head };
       const owners = deps.store && registeredOwners(deps.store, target);
-      const check = await seatFixFirst(() => dispatch.roster(), wiring.reader, { ...target, ...owners });
-      if (check.kind !== "clear") return { clear: false, reason: check.kind === "none" ? check.reason : `a seat reviewer said FIX_FIRST at ${head}` };
+      const check = await seatFixFirst(() => patientRoster(timing, signal, budgetMs, () => dispatch.roster()), wiring.reader, { ...target, ...owners });
+      if (check.kind === "none") return { clear: false, reason: check.reason, ...(check.retry && { retry: true }) };
+      if (check.kind !== "clear") return { clear: false, reason: `a seat reviewer said FIX_FIRST at ${head}` };
     }
     return { clear: true };
   });
@@ -300,7 +304,7 @@ export async function carriedVerdict(ctx: WorkflowContext, target: CarryTarget, 
 }
 
 /** The routes the carry steps dispatch to; the remerge probe reaches git as the tree probe does. */
-export function carryRoutes(deps: Pick<ShepherdDeps, "port" | "store" | "now" | "gitCache">, wiring: ReviewWiring | undefined): StepRoute[] {
+export function carryRoutes(deps: Pick<ShepherdDeps, "port" | "store" | "now" | "sleep" | "pollMs" | "gitCache">, wiring: ReviewWiring | undefined): StepRoute[] {
   const carry = { ports: deps.gitCache, ...wiring?.carry };
   return [
     carryScopeRoute(deps),

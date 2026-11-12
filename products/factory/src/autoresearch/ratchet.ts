@@ -8,7 +8,7 @@ const run = promisify(execFile);
 export const execGit: Git = async (args, cwd) => (await run("git", [...args], { cwd })).stdout.trim();
 
 /** Slash-separated segments, so an empty, doubled, leading or trailing slash cannot widen the prefix to `refs/heads/`. */
-const PREFIX = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
+export const PREFIX = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
 
 /**
  * The ratchet writes only a run's own branch under the target's prefix. Each refusal has its own code, so a test can
