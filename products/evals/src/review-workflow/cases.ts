@@ -11,7 +11,7 @@ type Target = ReplayInput["target"];
 
 const block = (verdict: "MERGE" | "FIX_FIRST", { repo, pr, head }: Target): string => `Verdict: ${verdict}\nPR: ${repo}#${pr}\nHead: ${head}\n`;
 /** Every reply carries a Probes line, which an adversary's verdict needs and correctness ignores. */
-const merges = (target: Target): Reply => ({ say: `Probes: drove the change past its edges.\n\n${block("MERGE", target)}` });
+const merges = (target: Target): Reply => ({ say: `Probes: drove the change past its edges.\nAuthority: unchanged\n\n${block("MERGE", target)}` });
 const fixFirst = (target: Target, finding: string): Reply => ({ say: `Probes: drove the change past its edges.\n\n1. ${finding}\n\n${block("FIX_FIRST", target)}` });
 /** A member that writes the same reply on every attempt and correction. */
 const always = (reply: Reply): MemberScript => ({ first: reply, corrected: reply, retry: reply });
