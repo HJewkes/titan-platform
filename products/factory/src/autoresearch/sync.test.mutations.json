@@ -7,7 +7,7 @@
       "find": "env: { ...process.env, ...env } }",
       "replace": "env: { ...process.env } }",
       "kills": [
-        "fixture git calls ignore the machine's global hooks"
+        "the fixture's git fixture git calls ignore the machine's global hooks"
       ]
     }
   ]
