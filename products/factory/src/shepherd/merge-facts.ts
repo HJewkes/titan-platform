@@ -24,7 +24,7 @@ import { remergeFact, type CarryRule, type RemergeResult } from "./remerge-carry
 import { reviewBypassable } from "./review-bypass.js";
 import { ownerHoldOf, riskFactsOf, riskTier } from "./risk-tier.js";
 import { lowTierPolicyTouch } from "./g10-low-tier.js";
-import { ownerTierGate, ownerTierNote, ownerTierStamp, type OwnerTierField, type OwnerTierWiring } from "./owner-tier.js";
+import { ownerTierGate, ownerTierNoted, ownerTierStamp, type OwnerTierField, type OwnerTierWiring } from "./owner-tier.js";
 import type { CarryResult } from "./tree-carry.js";
 import { evidenceRecord, type EvidenceRecord } from "./evidence-record.js";
 import { readVisualDelta, type VisualDelta, type VisualThreshold } from "./visual-delta-read.js";
@@ -193,7 +193,7 @@ function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined,
   const policyGate = ciPolicyGate(evidence, honour, headSha);
   if (policyGate && policyGate.rule.rowId !== "ci-policy-budget") return policyGate;
   const decision = decideAfterPolicy(headSha, evidence, visual, honour);
-  return policyGate && decision.outcome === "allow" ? policyGate : decision;
+  return policyGate && decision.outcome === "allow" ? policyGate : ownerTierNoted(decision, evidence);
 }
 
 /** Everything after the CI-policy row; a budget class gates only where the rest would allow, so no other gate hides behind it. */
@@ -206,7 +206,7 @@ function decideAfterPolicy(headSha: string, evidence: DecidableEvidence, visual:
   if (decision.verdict === "allow" && AUTO_MERGE_RULES.includes(decision.ruleId)) {
     const { changedPaths } = evidence.merge;
     const clearance = visualClearance(changedPaths, evidence.head, visual, thresholdClearance(evidence.visualDelta)) + tierClearance(evidence.visualTier, changedPaths, visual.visualPaths);
-    return { outcome: "allow", rule: authorityRule(decision.ruleId), reason: `${decision.ruleId} holds at ${headSha}${clearance}${honour.note()}${ownerTierNote(evidence)}` };
+    return { outcome: "allow", rule: authorityRule(decision.ruleId), reason: `${decision.ruleId} holds at ${headSha}${clearance}${honour.note()}` };
   }
   const reason = decision.verdict === "allow" ? `${decision.ruleId} allows, but only ${AUTO_MERGE_RULES.join(" and ")} merge without the owner` : decision.reason;
   return { outcome: "gate", rule: authorityRule(decision.ruleId), reason: withGrantWithheld(reason, evidence) };
@@ -366,7 +366,7 @@ async function visualDeltaOf(port: GitHubPort, input: MergeEvidenceInput, { pr, 
 /** The body of the sh-merge-evidence step: observe, decide, and post one comment per head. */
 export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, kind?: KindRead, clock?: SettleClock, reads: EvidenceReads = {}): Promise<MergeEvidence & { commentId: number }> {
   const observed = await collectMergeFacts(port, input, isFrozen, kind, clock, reads.reviewAppId);
-  const { pr, pr: { mergeableState }, merge, requiredChecksUnknown, unreadFacts, changedFilesUnread } = observed;
+  const { pr, pr: { mergeableState }, merge, changedLines, requiredChecksUnknown, unreadFacts, changedFilesUnread } = observed;
   const unknown = { ...(requiredChecksUnknown !== undefined && { requiredChecksUnknown }), ...(unreadFacts && { unreadFacts }), ...(changedFilesUnread !== undefined && { changedFilesUnread }) };
   const ciPolicy = input.ciPolicy && { ciPolicy: input.ciPolicy, ...(observed.ciPolicyClass && { ciPolicyClass: observed.ciPolicyClass }) };
   const tier = await readVisualTier(port, merge, { repo: input.repo, baseRef: pr.baseRef, visualPaths: input.visualPaths, config: reads.tier });
@@ -377,7 +377,7 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
   const decidable: DecidableEvidence = { head: input.head, merge, record: input, mergeableState, ...unknown, ...ciPolicy, ...visual, ...attest, ...oldPath, ...grantWithheldField(input) };
   const ownerTier = ownerTierStamp(reads.ownerTier, decidable);
   const decision = decideAutoMerge(input.head, { ...decidable, ...ownerTier }, input.visualPaths, input.visualBaselines);
-  const riskRead = { paths: merge.changedPaths, changedLines: observed.changedLines, unread: changedFilesUnread, ...ciPolicy, ...(input.visualPaths && { visualPaths: input.visualPaths }), ownerHold: kind?.ownerHold ?? kind?.unread };
+  const riskRead = { paths: merge.changedPaths, changedLines, unread: changedFilesUnread, ...ciPolicy, visualPaths: input.visualPaths, ownerHold: kind?.ownerHold ?? kind?.unread };
   const risk = riskFactsOf(riskRead);
   const lowTier = risk.touches.includes("policy") ? { lowTier: lowTierPolicyTouch(riskRead) } : undefined;
   const record = evidenceRecord(input, observed, decision, { ...ciPolicy, riskTier: riskTier(risk), ...lowTier, ...ownerTier, ...visual, ...(judged && { attest: judged }), ...oldPath });

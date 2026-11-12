@@ -120,13 +120,12 @@ describe("the owner-tier merge guard", () => {
     const shadowed = await evidenceFor(["packages/workflow/src/runtime.ts"], "shadow");
     const stored: DecidableEvidence = JSON.parse(JSON.stringify({ ...shadowed, ownerTier: { mode: "on", rows: [] } }));
     expect(decideAutoMerge(HEAD, stored)).toMatchObject({ outcome: "gate", rule: { rowId: "owner-tier" }, reason: "owner tier: gate-resolve-actor packages/workflow/src/runtime.ts" });
-    const { ownerTier: _dropped, ...unstamped } = stored;
-    expect(decideAutoMerge(HEAD, unstamped).outcome).toBe("allow");
+    expect(decideAutoMerge(HEAD, { ...stored, ownerTier: undefined }).outcome).toBe("allow");
   });
 
   it("a stamp with an unknown mode reads as on", async () => {
     const evidence = await evidenceFor(["products/factory/src/config.ts"], "shadow");
-    const stored = JSON.parse(JSON.stringify({ ...evidence, ownerTier: { mode: "later", rows: [] } })) as DecidableEvidence;
+    const stored: DecidableEvidence = JSON.parse(JSON.stringify({ ...evidence, ownerTier: { mode: "later", rows: [] } }));
     expect(decideAutoMerge(HEAD, stored)).toMatchObject({ outcome: "gate", rule: { rowId: "owner-tier" } });
   });
 

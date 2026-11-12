@@ -55,9 +55,9 @@ export function ownerTierGate(evidence: OwnerTierEvidence, rule: PolicyRule): Ga
   return rows.length === 0 ? undefined : { outcome: "gate", rule, reason: `${OWNER_TIER_REASON_PREFIX}${rows.join("; ")}` };
 }
 
-/** Under `shadow`, an allow names the rows it would have gated on. */
-export function ownerTierNote(evidence: OwnerTierEvidence): string {
-  if (stampedMode(evidence.ownerTier) !== "shadow") return "";
+/** Under `shadow`, an allow names the rows it would have gated on; a gate, or any other mode, is left as it is. */
+export function ownerTierNoted(decision: GateDecision, evidence: OwnerTierEvidence): GateDecision {
+  if (decision.outcome !== "allow" || stampedMode(evidence.ownerTier) !== "shadow") return decision;
   const rows = rowsAt(evidence);
-  return rows.length === 0 ? "" : `; owner tier would gate: ${rows.join("; ")}`;
+  return rows.length === 0 ? decision : { ...decision, reason: `${decision.reason}; owner tier would gate: ${rows.join("; ")}` };
 }

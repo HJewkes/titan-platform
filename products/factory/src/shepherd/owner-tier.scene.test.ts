@@ -41,9 +41,10 @@ async function gatedOn(scene: ReturnType<typeof run>): Promise<GateRecord> {
 }
 
 /** The machine evidence the run posted at HEAD, read back from its PR comment. */
-function postedEvidence(scene: ReturnType<typeof run>): Record<string, unknown> {
+function postedEvidence(scene: ReturnType<typeof run>): unknown {
   const body = scene.fake.comments.get(PR)?.find((comment) => comment.body.includes(evidenceMarker(HEAD)))?.body ?? "";
-  return JSON.parse(body.split("```json\n")[1]!.split("\n```")[0]!) as Record<string, unknown>;
+  const posted: unknown = JSON.parse(body.split("```json\n")[1]!.split("\n```")[0]!);
+  return posted;
 }
 
 describe("under ownerTier on", () => {
@@ -93,9 +94,9 @@ describe("under ownerTier shadow", () => {
     await vi.waitFor(() => expect(scene.fake.effects.merge).toBe(1), { timeout: 20_000 });
 
     expect(scene.approveMerge()).toBeUndefined();
-    const posted = postedEvidence(scene);
-    expect(posted.ownerTier).toEqual({ mode: "shadow", rows: ["merge-policy products/factory/src/shepherd/g10-release.ts"] });
-    expect(posted.decision).toMatchObject({ outcome: "allow", rule: { rowId: "MRG-AU-RV" } });
-    expect((posted.decision as { reason: string }).reason).toContain("; owner tier would gate: merge-policy products/factory/src/shepherd/g10-release.ts");
+    expect(postedEvidence(scene)).toMatchObject({
+      ownerTier: { mode: "shadow", rows: ["merge-policy products/factory/src/shepherd/g10-release.ts"] },
+      decision: { outcome: "allow", rule: { rowId: "MRG-AU-RV" }, reason: expect.stringContaining("; owner tier would gate: merge-policy products/factory/src/shepherd/g10-release.ts") },
+    });
   });
 });

@@ -119,7 +119,8 @@ interface OwnerTierRead {
  */
 export function ownerTierRows({ paths, ciBudget }: OwnerTierRead): string[] {
   const named = (label: string, globs: readonly string[]): string[] => tableRow(label, matching(paths, globs));
-  return [...ownerTierPolicyRows(policyTablesAt(paths)), ...(ciBudget ? [] : named("CI workflow file", CI_PERSON_FILES)), ...named("publish file", PUBLISH_FILES), ...named("settings file", SETTINGS_FILES)];
+  const ci = ciBudget ? [] : named("CI workflow file", CI_PERSON_FILES);
+  return [...ownerTierPolicyRows(policyTablesAt(paths)), ...ci, ...named("publish file", PUBLISH_FILES), ...named("settings file", SETTINGS_FILES)];
 }
 
 /** A failed read never lowers a tier: unread or empty file lists read as high, as the merge guard reads them visual. */

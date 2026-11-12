@@ -43,8 +43,8 @@
     {
       "name": "a budget-class CI change keeps the CI workflow row",
       "file": "products/factory/src/shepherd/risk-tier.ts",
-      "find": "...(ciBudget ? [] : named(\"CI workflow file\", CI_PERSON_FILES))",
-      "replace": "...(false ? [] : named(\"CI workflow file\", CI_PERSON_FILES))",
+      "find": "const ci = ciBudget ? [] : named(\"CI workflow file\", CI_PERSON_FILES);",
+      "replace": "const ci = named(\"CI workflow file\", CI_PERSON_FILES);",
       "kills": [
         "ownerTierRows a budget-class CI change skips the CI workflow row and keeps the others",
         "the owner-tier merge guard under on, a measured budget-class CI change stays on its coordinator row, not owner-tier"
