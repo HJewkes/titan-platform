@@ -1386,6 +1386,12 @@ argv. Filing a closed week again prints `created: false`. A week that has not en
 refused, because its round would change under a re-run. When `visualGate` is not `async`,
 the command prints `mode: off` and builds nothing.
 
+**Notes become tasks.** `titan-factory shepherd visual-feedback-notes --initiative <slug>`
+reads the answered `feedback` rounds in `shepherd.visualDelivery.roundsDir` and files one
+active-work task per non-blank note, from the round's PR and frame. The initiative is the
+prefix of the PR's task, else `--initiative`. A ledger of round id and note index in the
+factory state dir makes a re-run file nothing already filed; an unanswered round files nothing.
+
 ### Visual tiers {#visual-tiers}
 
 `shepherd.visualTier` in the factory config sorts a head that the visual-path row would gate
