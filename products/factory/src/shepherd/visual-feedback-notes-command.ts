@@ -8,6 +8,7 @@ import { configPath, factoryStateDir, loadConfig } from "../config.js";
 import type { FactoryContext } from "../context.js";
 import { coded } from "./register-args.js";
 import { systemDeliveryExec, type DeliveryExec } from "./visual-delivery.js";
+import { readRegularText } from "./visual-feedback-notes-read.js";
 import { sweepFeedbackNotes, type NoteTask, type NotesPorts, type NotesResult } from "./visual-feedback-notes.js";
 
 const Args = z.object({ initiative: z.string().min(1) });
@@ -41,7 +42,7 @@ async function addTask(exec: DeliveryExec, task: NoteTask): Promise<void> {
 function portsOf(roundsDir: string, ledger: string, exec: DeliveryExec): NotesPorts {
   return {
     roundIds: async () => (await readdir(roundsDir, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort(),
-    read: (id, file) => readOrUndefined(join(roundsDir, id, file)),
+    read: (id, file) => readRegularText(join(roundsDir, id, file)),
     filed: async () => new Set(await readLedger(ledger)),
     file: async (task) => {
       await addTask(exec, task);

@@ -481,6 +481,7 @@
   "shepherd/visual-feedback-command.ts",
   "shepherd/visual-feedback-merged.ts",
   "shepherd/visual-feedback-notes-command.ts",
+  "shepherd/visual-feedback-notes-read.ts",
   "shepherd/visual-feedback-notes.ts",
   "shepherd/visual-feedback-round.ts",
   "shepherd/visual-feedback-week.ts",

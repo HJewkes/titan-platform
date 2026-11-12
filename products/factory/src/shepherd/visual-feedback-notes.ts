@@ -8,7 +8,14 @@ const RoundFile = z.looseObject({
   sections: z.array(z.looseObject({ id: z.string(), changed: z.string().optional(), context: z.string().optional() })).default([]),
   prGroups: z.array(z.looseObject({ pr: z.string(), sectionIds: z.array(z.string()).default([]), task: z.looseObject({ id: z.string() }).optional() })).default([]),
 });
-const AnswersFile = z.looseObject({ answers: z.array(z.looseObject({ questionId: z.string(), text: z.string().optional() })) });
+/** Binds the answers to a submit of this exact round, as the console's own reader of feedback.json does. */
+const AnswersFile = z.looseObject({
+  unit: z.string(),
+  round: z.number().int(),
+  manifestSha256: z.string(),
+  submittedAt: z.string(),
+  answers: z.array(z.looseObject({ questionId: z.string(), text: z.string().optional() })),
+});
 
 type RoundFileData = z.infer<typeof RoundFile>;
 
@@ -51,8 +58,13 @@ const titleOf = (note: string): string => {
   return line.length > TITLE_MAX ? `${line.slice(0, TITLE_MAX - 1)}…` : line;
 };
 
+const prefixOf = (taskId: string | undefined): string | undefined => {
+  const prefix = taskId?.includes("/") ? taskId.split("/")[0]! : "";
+  return /^[A-Za-z0-9][\w.-]*$/.test(prefix) ? prefix : undefined;
+};
+
 /** The task's initiative is the `<initiative>/<id>` prefix of the PR's task, else the fallback. */
-const initiativeOf = (taskId: string | undefined, fallback: string): string => (taskId?.includes("/") ? taskId.split("/")[0]! : fallback);
+const initiativeOf = (taskId: string | undefined, fallback: string): string => (prefixOf(taskId) ?? fallback);
 
 /** The notes question of one PR is `notes-pr-<n>`; its index among the round's questions is the key's stable part. */
 function noteTasks(id: string, round: RoundFileData, texts: ReadonlyMap<string, string>, fallback: string): NoteTask[] {
@@ -79,7 +91,7 @@ async function pending(id: string, ports: NotesPorts, fallback: string): Promise
   const round = parse(await ports.read(id, "round.json"), RoundFile);
   if (round?.kind !== "feedback") return [];
   const answers = parse(await ports.read(id, "feedback.json"), AnswersFile);
-  if (!answers) return [];
+  if (!answers || answers.unit !== id) return [];
   const texts = new Map(answers.answers.flatMap((answer) => (answer.text === undefined ? [] : [[answer.questionId, answer.text] as const])));
   return noteTasks(id, round, texts, fallback);
 }

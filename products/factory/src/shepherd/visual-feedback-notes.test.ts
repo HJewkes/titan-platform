@@ -11,7 +11,8 @@ const feedbackRound = {
     { pr: "sample/repo#12", sectionIds: ["pr-12"] },
   ],
 };
-const answers = { answers: [{ questionId: "notes-pr-7", text: "Tighten the badge\nmore detail" }, { questionId: "notes-pr-9", text: "   " }, { questionId: "notes-pr-12", text: "Dark mode border" }] };
+const bound = { unit: "vf-a-1-2026-W45", round: 1, manifestSha256: "0".repeat(64), submittedAt: "2026-11-10T00:00:00.000Z" };
+const answers = { ...bound, answers: [{ questionId: "notes-pr-7", text: "Tighten the badge\nmore detail" }, { questionId: "notes-pr-9", text: "   " }, { questionId: "notes-pr-12", text: "Dark mode border" }] };
 
 function world(files: Record<string, unknown>) {
   const filed = new Set<string>();
@@ -58,8 +59,16 @@ describe("the feedback notes sweep", () => {
     expect(tasks).toHaveLength(0);
   });
 
+  it("files nothing for a feedback.json with no submit binding", async () => {
+    const { ports, tasks } = world({ "vf-a-1-2026-W45/round.json": feedbackRound, "vf-a-1-2026-W45/feedback.json": { answers: answers.answers } });
+
+    await sweepFeedbackNotes(ports, "x");
+
+    expect(tasks).toHaveLength(0);
+  });
+
   it("ignores a round that is not of kind feedback", async () => {
-    const { ports, tasks } = world({ "r1/round.json": { ...feedbackRound, kind: "design" }, "r1/feedback.json": answers });
+    const { ports, tasks } = world({ "r1/round.json": { ...feedbackRound, kind: "design" }, "r1/feedback.json": { ...answers, unit: "r1" } });
 
     await sweepFeedbackNotes(ports, "x");
 
@@ -67,7 +76,7 @@ describe("the feedback notes sweep", () => {
   });
 
   it("records a failed filing and leaves it to the next run", async () => {
-    const { ports } = world({ "r1/round.json": feedbackRound, "r1/feedback.json": answers });
+    const { ports } = world({ "r1/round.json": feedbackRound, "r1/feedback.json": { ...answers, unit: "r1" } });
     ports.file = async () => {
       throw new Error("boom");
     };
