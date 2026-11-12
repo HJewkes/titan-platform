@@ -70,7 +70,8 @@ function mergedVisualOf(run: WorkflowRun, range: { start: number; end: number })
   if (evidence === undefined) return undefined;
   const tier = evidence.record.visualTier?.verdict.tier;
   const task = run.params.task;
-  return { pr: Number(run.params.pr), headSha: evidence.head, mergeSha: merge.mergeSha, mergedAt: merge.step.completedAt, visualChanged: evidence.record.visualChanged, ...(tier !== undefined && { tier }), ...(task && { task }) };
+  const labels = { ...(tier !== undefined && { tier }), ...(task && { task }) };
+  return { pr: Number(run.params.pr), headSha: evidence.head, mergeSha: merge.mergeSha, mergedAt: merge.step.completedAt, visualChanged: evidence.record.visualChanged, ...labels };
 }
 
 /** One entry per merged PR of `repo` in `week`, lowest PR first; a PR two runs merged keeps its latest merge. */

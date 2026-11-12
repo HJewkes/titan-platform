@@ -10,7 +10,11 @@ const REPO = "example-org/example-design";
 const HEAD = "a".repeat(40);
 const ASKER = { seat: "shepherd", initiative: null };
 
-function feedbackRound(): Record<string, unknown> {
+const SECTION = { id: "pr-7", title: `${REPO}#7`, deciding: "Nothing to decide: this already merged.", changed: "1 visual path(s) changed: src/button.css.", context: "Merged 2026-11-04.", questionIds: ["notes-pr-7"] };
+const NOTES = { id: "notes-pr-7", kind: "text", prompt: `Notes or ideas for a later iteration of ${REPO}#7 (optional)` };
+const SHIP = { id: "ship-7", kind: "pick-one", prompt: `Ship ${REPO}#7 at ${HEAD.slice(0, 12)}?`, options: ["Ship", "Don't ship"], required: true, signsOff: "button", page: `${REPO}#7`, merge: { repo: REPO, pr: 7, headSha: HEAD, ship: ["Ship"] } };
+
+function feedbackRound(sections: unknown[] = [SECTION], questions: unknown[] = [NOTES]): Record<string, unknown> {
   return {
     schema: "titan-review/round@2",
     kind: "feedback",
@@ -21,16 +25,16 @@ function feedbackRound(): Record<string, unknown> {
     widths: [1280],
     variants: [],
     recommendations: "after-answer",
-    sections: [{ id: "pr-7", title: `${REPO}#7`, deciding: "Nothing to decide: this already merged.", changed: "1 visual path(s) changed: src/button.css.", context: "Merged 2026-11-04.", questionIds: ["notes-pr-7"] }],
-    questions: [{ id: "notes-pr-7", kind: "text", prompt: `Notes or ideas for a later iteration of ${REPO}#7 (optional)` }],
+    sections,
+    questions,
     prGroups: [{ pr: `${REPO}#7`, headSha: HEAD, sectionIds: ["pr-7"], files: [{ path: "src/button.css" }] }],
   };
 }
 
-function withShip(round: Record<string, unknown>): Record<string, unknown> {
-  const ship = { id: "ship-7", kind: "pick-one", prompt: `Ship ${REPO}#7 at ${HEAD.slice(0, 12)}?`, options: ["Ship", "Don't ship"], required: true, signsOff: "button", page: `${REPO}#7`, merge: { repo: REPO, pr: 7, headSha: HEAD, ship: ["Ship"] } };
-  const [section] = round.sections as { questionIds: string[] }[];
-  return { ...round, questions: [...(round.questions as unknown[]), ship], sections: [{ ...section, parts: [{ id: "button", label: "Button", current: "a", proposed: "b" }], questionIds: [...section!.questionIds, "ship-7"] }] };
+/** The same round with a Ship that would pass every other check, so only the feedback rule refuses it. */
+function withShip(): Record<string, unknown> {
+  const section = { ...SECTION, parts: [{ id: "button", label: "Button", current: "a", proposed: "b" }], questionIds: [...SECTION.questionIds, SHIP.id] };
+  return feedbackRound([section], [NOTES, SHIP]);
 }
 
 let root: string;
@@ -52,7 +56,7 @@ describe("a feedback round", () => {
   });
 
   it("is refused when a question binds a merge", () => {
-    const parsed = RoundSchema.safeParse(withShip(feedbackRound()));
+    const parsed = RoundSchema.safeParse(withShip());
 
     expect(parsed.error?.issues.map((issue) => issue.message)).toEqual([`question ship-7: ${FEEDBACK_MERGE_REFUSED}`]);
   });
