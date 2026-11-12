@@ -287,6 +287,7 @@
   "shepherd/held-repair.ts",
   "shepherd/held-verdict.ts",
   "shepherd/held-wake.ts",
+  "shepherd/kind-move-guard.ts",
   "shepherd/lan-gates.ts",
   "shepherd/last-read-head.ts",
   "shepherd/leave-land.ts",
