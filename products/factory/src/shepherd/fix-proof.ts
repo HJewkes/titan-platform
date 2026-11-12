@@ -8,6 +8,7 @@ import { deadline, type DeadlineTiming } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
 import { FIX_PROOF_CHECK, harnessTouch } from "./fix-proof-harness.js";
+import { FIX_PROOF_EXEC_CHECKS } from "./fix-proof-jobs.js";
 import { codeFreeNoRepro, mayProceedLine, proceedsOnNoRepro } from "./no-repro-test-only.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
@@ -19,8 +20,6 @@ export { FIX_PROOF_CHECK, type FixProofUnverified };
 
 const FIX_PROOF_STEP = "sh-fix-proof";
 export const FIX_PROOF_STEPS: readonly StepDeclaration[] = [{ id: FIX_PROOF_STEP, kind: "dispatch" }];
-/** The judge sits behind `needs:` on these jobs, so GitHub creates it only after all of them have finished. */
-const FIX_PROOF_EXEC_CHECKS: ReadonlySet<string> = new Set(["fix-proof-base", "fix-proof-head", "fix-proof-mutants"]);
 /**
  * Above the four-job run's worst case: the 15-minute exec jobs, then the 8-minute judge created only after them, plus
  * queue gaps. A judge that runs to its limit is still read.
