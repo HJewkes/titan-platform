@@ -6,9 +6,9 @@ import { measureFigures, populationRows, type Measure, type ReproduceInput } fro
 import { figureLabel, type ExpectedFile, type Tolerance } from "./reproduce-spec.js";
 import { runTicketScorecard, type ScorecardRunOptions } from "./run.js";
 
-export type Verdict = "pass" | "miss" | "not measured";
+type Verdict = "pass" | "miss" | "not measured";
 
-export interface ReproduceLine {
+interface ReproduceLine {
   figure: string;
   expected: number;
   tolerance: Tolerance;
@@ -18,7 +18,7 @@ export interface ReproduceLine {
   note: string | null;
 }
 
-export interface ReproduceReport {
+interface ReproduceReport {
   population: string;
   populationRows: number;
   lines: ReproduceLine[];
@@ -63,7 +63,10 @@ function numberText(value: number): string {
 /** The pass/miss table as markdown, one row per figure. */
 export function renderReport(report: ReproduceReport): string {
   const head = [`population ${report.population}: ${report.populationRows} tasks`, "", "| figure | expected | tolerance | actual | verdict | note |", "|---|---:|---|---:|---|---|"];
-  const rows = report.lines.map((l) => `| ${l.figure} | ${numberText(l.expected)} | ${toleranceText(l.tolerance)} | ${l.actual === null ? "–" : numberText(l.actual)} | ${l.verdict} | ${l.note ?? ""} |`);
+  const rows = report.lines.map((l) => {
+    const actual = l.actual === null ? "–" : numberText(l.actual);
+    return `| ${l.figure} | ${numberText(l.expected)} | ${toleranceText(l.tolerance)} | ${actual} | ${l.verdict} | ${l.note ?? ""} |`;
+  });
   const counts = (["pass", "miss", "not measured"] as const).map((v) => `${report.lines.filter((l) => l.verdict === v).length} ${v}`);
   return `${[...head, ...rows, "", counts.join(", ")].join("\n")}\n`;
 }
