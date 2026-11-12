@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import os from 'node:os';
 import path from 'node:path';
 import Database from 'better-sqlite3';
+import { estimateTokens } from '@titan-design/retrieval';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { graphNoteRelevance } from '../bootstrap/rank-notes.js';
@@ -9,7 +10,7 @@ import { DF_CAP_FLOOR } from './derive-query.js';
 import { searchWorkspace } from './index.js';
 import { relatedContext, withinBudget, type RelatedInput } from './related.js';
 import { openGraph, type WorkspaceGraph } from '../session-index/graph.js';
-import { demoteToLegacy, refreshInto, scaffold, writeFile } from '../test-support/workspace-index/fixture.js';
+import { demoteToLegacy, refreshInto, removeFile, scaffold, writeFile } from '../test-support/workspace-index/fixture.js';
 
 /**
  * `context related` over the miniature active root.
@@ -239,5 +240,116 @@ describe('withinBudget', () => {
     const kept = withinBudget(['aaaa', 'bbbbbbbb', 'c'], 10, (hit) => hit);
 
     expect(kept).toEqual(['aaaa']);
+  });
+});
+
+describe('relatedContext in context mode', () => {
+  const refsOf = (items: { ref: string }[]) => items.map((item) => item.ref);
+
+  function sessionRecord(n: number): string {
+    return [
+      '---',
+      `session_id: keeper-log-${n}`,
+      `started: 2026-09-1${n}T09:00:00Z`,
+      `ended: 2026-09-1${n}T09:30:00Z`,
+      'track: canonical',
+      'next_steps: []',
+      'resolves: []',
+      '---',
+      '',
+      `The lighthouse keeper logged entry ${n} about the lighthouse lamp.`,
+      '',
+    ].join('\n');
+  }
+
+  it('no mode returns the list shape unchanged', async () => {
+    const implicit = await related({ text: 'indexer converges' });
+    const explicit = await related({ text: 'indexer converges', mode: 'list' });
+
+    expect(JSON.stringify(implicit)).toBe(JSON.stringify(explicit));
+    expect('entries' in implicit).toBe(false);
+  });
+
+  it('context mode spends at most the token budget', async () => {
+    let chosen: Awaited<ReturnType<typeof related>> | undefined;
+    let budget = 0;
+    for (budget = 5; budget <= 400 && chosen === undefined; budget += 5) {
+      const attempt = await related({
+        text: 'indexer lesson beta alpha',
+        mode: 'context',
+        tokens: budget,
+      });
+      const overBudget = (attempt.dropped ?? []).some((drop) => drop.reason === 'over-budget');
+      if ((attempt.entries ?? []).length > 0 && overBudget) chosen = attempt;
+    }
+    budget -= 5;
+
+    expect(chosen).toBeDefined();
+    const entries = chosen!.entries!;
+    const sum = entries.reduce((total, entry) => total + entry.tokens, 0);
+    expect(sum).toBeLessThanOrEqual(budget);
+    expect(chosen!.usedTokens).toBe(sum);
+    expect(chosen!.budgetTokens).toBe(budget);
+    expect(entries.every((entry) => entry.tokens === estimateTokens(entry.text))).toBe(true);
+    expect(refsOf(chosen!.hits)).toEqual(refsOf(entries));
+  });
+
+  it('class shares act as token quotas', async () => {
+    for (const n of [1, 2, 3, 4]) {
+      writeFile(
+        root,
+        `alpha/sessions/2026-09-1${n}-0900-lighthouse-keeper-log-entry-0${n}.md`,
+        sessionRecord(n),
+      );
+    }
+    writeFile(
+      root,
+      'alpha/sources/notes/2026-09-10-lighthouse.md',
+      '---\nkind: process\ntitle: The lighthouse log\ncreated: 2026-09-10\n---\n\nThe lighthouse lamp burns oil.\n',
+    );
+    (await refreshInto(dbPath, root)).db.close();
+
+    // Quotas bind at placement; deepening is capped per entry, not per class, so test tier 0.
+    const result = await related({ text: 'lighthouse', mode: 'context', tokens: 100, maxTier: 0 });
+
+    const sessionTokens = result
+      .entries!.filter((entry) => entry.class === 'sessions')
+      .reduce((total, entry) => total + entry.tokens, 0);
+    expect(refsOf(result.entries!)).toContain('note:alpha/2026-09-10-lighthouse.md');
+    expect(sessionTokens).toBeLessThanOrEqual(0.2 * 100);
+    expect(result.dropped).toContainEqual(
+      expect.objectContaining({ class: 'sessions', reason: 'over-quota' }),
+    );
+  });
+
+  it('a hit whose file is missing stays at tier 1', async () => {
+    removeFile(root, 'alpha/sources/notes/2026-09-02-alpha-lesson.md');
+
+    const result = await related({
+      text: 'the alpha lesson',
+      initiative: 'alpha',
+      mode: 'context',
+      tokens: 2000,
+    });
+
+    const missing = result.entries!.find((e) => e.ref === 'note:alpha/2026-09-02-alpha-lesson.md');
+    expect(result.degraded.filter((d) => d.source === 'search')).toEqual([]);
+    expect(missing?.tier).toBe(1);
+    expect(result.entries!.some((entry) => entry.tier === 2)).toBe(true);
+  });
+
+  it('context mode on a missing index still carries empty context fields', async () => {
+    const result = await relatedContext({
+      dbPath: path.join(dir, 'none.sqlite3'),
+      activeRoot: root,
+      text: 'lesson',
+      mode: 'context',
+      tokens: 50,
+    });
+
+    expect(result).toMatchObject({ entries: [], dropped: [], usedTokens: 0, budgetTokens: 50 });
+    expect(result.degraded).toEqual([
+      expect.objectContaining({ source: 'index', reason: 'missing' }),
+    ]);
   });
 });
