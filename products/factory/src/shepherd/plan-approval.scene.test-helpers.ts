@@ -13,6 +13,7 @@ import { OWNER_GATE_POLICY } from "./policy.js";
 import type { EffectivePolicy } from "./policy-schema.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { reviewPhase } from "./review.js";
+import type { ReviewerRoles } from "./reviewer-roles.js";
 import { shepherdStoreRef, type ShepherdStoreRef } from "./store.js";
 
 /** The real shepherd-pr run the plan-approval scenes merge or gate, shared by the TP-4284 rows and the TP-4360 plan round. */
@@ -60,12 +61,16 @@ export interface Row {
   wire?: (wire: GitHubWire) => GitHubWire;
   /** The G10 hold its registration placed, which a seat reviewed and released at the head before the first CI read. */
   seatReleased?: string;
+  /** The G10 hold its registration placed, still gating at the first CI read. */
+  held?: string;
+  /** The profile each reviewer class is spawned at; absent spawns with no profile recorded. */
+  roles?: ReviewerRoles;
 }
 
 export type FakeGitHub = ReturnType<typeof fakeGitHub>;
 
 /** One shepherd-pr run of the PR under an auto policy, reviewed MERGE with green checks, after `seed` sets the files and the row's approval is written. */
-export function plannedRun({ files, policy, reviewerLines, approve, wire = (each) => each, seatReleased }: Row, seed: (fake: FakeGitHub) => void) {
+export function plannedRun({ files, policy, reviewerLines, approve, wire = (each) => each, seatReleased, held, roles }: Row, seed: (fake: FakeGitHub) => void) {
   const fake = fakeGitHub();
   fake.addPr({ number: PR, headSha: HEAD, mergeSha: fakeSha("planned-merge") });
   fake.setRuns(HEAD, [successRun("validate", 1), successRun("dag-check", 2)]);
@@ -78,7 +83,7 @@ export function plannedRun({ files, policy, reviewerLines, approve, wire = (each
     signal.throwIfAborted();
     await new Promise<void>((resolve) => setImmediate(resolve));
   };
-  const review = { ...mergingReviewers(() => clock, reviewerLines), timeoutMs: 5 * MINUTE };
+  const review = { ...mergingReviewers(() => clock, reviewerLines), timeoutMs: 5 * MINUTE, ...(roles && { roles }) };
   const routes = factoryRoutesFor({ port: githubPort(wire(fake.wire)), store, now: () => clock, sleep: tick, review });
   const workflow = shepherdPrWorkflow({ review: reviewPhase, wake: async () => ({ kind: "unhandled", reason: "no fixer here" }) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [workflow], routes, gatePollMs: 5 });
@@ -91,7 +96,8 @@ export function plannedRun({ files, policy, reviewerLines, approve, wire = (each
     store.get().hold(runId, seatReleased, undefined, { actor: "shepherd" });
     store.get().release(runId, { actor: "seat", headSha: HEAD });
   }
-  return { fake, approveMerge: () => host.gates.get(gateId(runId, "approve-merge")) };
+  if (held !== undefined) store.get().hold(runId, held, undefined, { actor: "shepherd" });
+  return { fake, approveMerge: () => host.gates.get(gateId(runId, "approve-merge")), store, runId, host };
 }
 
 let confirmations = 0;

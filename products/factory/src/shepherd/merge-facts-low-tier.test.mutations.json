@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the record drops the low-tier decision",
+      "file": "products/factory/src/shepherd/evidence-record.ts",
+      "find": "    ...(lowTier && { lowTier }),\n",
+      "replace": "",
+      "kills": [
+        "the merge evidence of a low-tier policy touch the record carries the low-tier decision beside the risk tier"
+      ]
+    },
+    {
+      "name": "every PR records a low-tier decision",
+      "file": "products/factory/src/shepherd/merge-facts.ts",
+      "find": "const lowTier = risk.touches.includes(\"policy\") ?",
+      "replace": "const lowTier = true ?",
+      "kills": [
+        "the merge evidence of a low-tier policy touch a PR with no policy path records no low-tier decision"
+      ]
+    },
+    {
+      "name": "every hold class requires the adversary's attestation",
+      "file": "products/factory/src/shepherd/attest-evidence.ts",
+      "find": "|| holdClassOf(registration.holdReason) === G10_ADVERSARY_CLASS,",
+      "replace": "|| true,",
+      "kills": [
+        "the merge evidence of a low-tier policy touch a low-tier run's claimed row is met by the correctness MERGE alone"
+      ]
+    },
+    {
+      "name": "no hold class requires the adversary's attestation",
+      "file": "products/factory/src/shepherd/attest-evidence.ts",
+      "find": "|| holdClassOf(registration.holdReason) === G10_ADVERSARY_CLASS,",
+      "replace": "|| false,",
+      "kills": [
+        "the merge evidence of a low-tier policy touch the same claim under an adversary hold still wants the adversary"
+      ]
+    }
+  ]
+}
