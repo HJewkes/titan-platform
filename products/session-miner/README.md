@@ -511,6 +511,11 @@ own store, `~/.local/share/titan-scorecard/scorecard.sqlite3` (`--store` or
   follow-up tag naming them, or a PR or request that changed in the graph. A dirty row whose
   inputs hash matches the stored one is not rewritten, so a run over unchanged sources writes
   nothing but its line in the `run` table.
+- **Task links.** A spawn links to a task through its recorded `meta.task`. A spawn that recorded
+  none falls back to the graph's resolved `session_origin` link for the spawned session, when that
+  link names exactly one task. The row then marks its first dispatch `inferred:<task_source>`, so
+  it counts toward the inferred share. A recorded `meta.task` always wins. A link naming several
+  tasks or none leaves the spawn unlinked, and the run prints those counts.
 - **Fix rounds.** The core counts a step by its family (`sh-await-new-head:2` counts as
   `sh-await-new-head`), and the reader passes the family already. It drops a lineage successor that joined while an await-new-head step
   was waiting, because that step already counts the round.
@@ -537,7 +542,8 @@ exits 0 only when every figure passes. A figure the rows cannot give yet, such a
 the registration records them, is "not measured" with the reason, never zero. The class shares
 read the labels file's optional three-way `class_raw`, since the audit ranked mixed separately;
 every other figure uses the binary class. `--sample` checks that each task in the audit's
-sample is in the population.
+sample is in the population. Under the table it prints, per ISO week, the population's tasks and the share whose dispatch
+link is inferred, and the count of spawns left unlinked.
 
 ## Daily self-improve classification (TP-685)
 

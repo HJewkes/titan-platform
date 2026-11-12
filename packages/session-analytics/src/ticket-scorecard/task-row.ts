@@ -63,7 +63,7 @@ export function taskRow(input: TaskRowInput): TaskRow | null {
     ruleRankPct: input.rule?.rankPct ?? null,
     inRuleTopk: input.rule?.inTopK ?? null,
     ...outcomeFacts(input, dispatch.ts),
-    provenance: provenanceOf(input),
+    provenance: { ...provenanceOf(input), ...(dispatch.link === undefined ? {} : { firstDispatchTs: dispatch.link }) },
     inputsHash: inputsHash(input),
   };
 }

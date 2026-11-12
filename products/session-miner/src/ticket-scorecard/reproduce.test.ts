@@ -115,6 +115,20 @@ describe("ticket-scorecard reproduce", () => {
     expect(report.lines.every((l) => l.verdict === "not measured" && l.actual === null && l.note !== null)).toBe(true);
   });
 
+  it("reproduce gives each week's population and the share whose dispatch link is inferred", () => {
+    const rows = ROWS.map((r) => (r.taskId === "AA-2" ? { ...r, provenance: { firstDispatchTs: "inferred:name" as const } } : r));
+    const counts = { linked: 1, several: 2, none: 3, noOrigin: 4 };
+
+    const report = reproduce({ ...INPUT, rows }, frozenSlice(), "seats", counts);
+
+    expect(report.weeks).toEqual([
+      { week: "2026-W45", tasks: 3, inferredLink: 1 },
+      { week: "2026-W46", tasks: 1, inferredLink: 0 },
+    ]);
+    expect(renderReport(report)).toContain("| 2026-W45 | 3 | 1 | 33.3% |");
+    expect(renderReport(report)).toContain("unlinked 9 (2 several tasks, 3 no task, 4 no origin)");
+  });
+
   it("the bundled E1 file parses with the plan's tolerance on every figure", () => {
     const spec = e1ExpectedFile();
 
