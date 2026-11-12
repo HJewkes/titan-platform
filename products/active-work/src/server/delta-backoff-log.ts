@@ -1,4 +1,4 @@
-import type { PassKind } from "../session-index/scheduler.js";
+import type { PassFailure, PassKind } from "../session-index/scheduler.js";
 
 interface WatchLogger {
   info(obj: object, msg: string): void;
@@ -14,15 +14,11 @@ type Run<T> = (
 const BASE_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 60_000;
 
-/** Passed to the scheduler so its backoff and the logged `backoffMs` come from one pair of numbers. */
+/** Passed to the scheduler, which owns the backoff and reports it to `onError`. */
 export const BACKOFF_OPTIONS = {
   baseBackoffMs: BASE_BACKOFF_MS,
   maxBackoffMs: MAX_BACKOFF_MS,
 };
-
-function backoffAfter(failures: number): number {
-  return Math.min(BASE_BACKOFF_MS * 2 ** (failures - 1), MAX_BACKOFF_MS);
-}
 
 /**
  * Logs a failing delta once when its backoff starts and once when a pass next
@@ -33,28 +29,22 @@ function backoffAfter(failures: number): number {
 export function deltaBackoffLog(
   log: WatchLogger,
   signal: AbortSignal
-): { wrap<T>(run: Run<T>): Run<T>; onError(err: unknown): void } {
-  let failures = 0;
-  let failedKind: PassKind | null = null;
+): { wrap<T>(run: Run<T>): Run<T>; onError(err: unknown, failure: PassFailure): void } {
+  let deltaFailing = false;
   return {
     wrap: (run) => async (kind, onIndexed, onLockWait) => {
-      try {
-        const result = await run(kind, onIndexed, onLockWait);
-        if (failures > 0) log.info({}, "session index delta recovered");
-        failures = 0;
-        return result;
-      } catch (err) {
-        failedKind = kind;
-        throw err;
-      }
+      const result = await run(kind, onIndexed, onLockWait);
+      if (deltaFailing) log.info({}, "session index delta recovered");
+      deltaFailing = false;
+      return result;
     },
-    onError: (err) => {
+    onError: (err, { kind, backoffMs }) => {
       if (signal.aborted) return;
-      if (failedKind !== "delta")
+      if (kind !== "delta")
         return log.warn({ err }, "session index refresh failed");
-      failures += 1;
+      deltaFailing = true;
       log.warn(
-        { err, backoffMs: backoffAfter(failures) },
+        { err, backoffMs },
         "session index delta failed; backing off"
       );
     },

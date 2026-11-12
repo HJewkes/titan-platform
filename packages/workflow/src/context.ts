@@ -320,7 +320,6 @@ export class RunContext implements WorkflowContext {
 
   private holdUnsettled(step: ActiveStep, outcome: Extract<DurableStepOutcome, { kind: "cancellation_unknown" }>): never {
     if (outcome.usage) step.unsettledUsage = outcome.usage;
-    else delete step.unsettledUsage;
     return this.requireRecovery(step, "unknown", outcome.reason);
   }
 

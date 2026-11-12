@@ -4,6 +4,7 @@ import { addWorktree, boundedAdd, WORKTREE_ADD_TIMEOUT_MS, type WorktreeAddRunne
 import { resolveBranchBase, resolveRequestedBase, type BranchBase } from "./branch-base.js";
 import { MissingAssignedWorktreeRecordError, WorktreeInUseError } from "./errors.js";
 import { capacityError } from "./capacity.js";
+import { ensureBaseExcluded } from "./exclude.js";
 import { findGitRoot, gitOrNull } from "./git.js";
 import { checkoutOf, copyClaudeDir, pruneStaleWorktrees, removeWorktree } from "./layout.js";
 import {
@@ -190,12 +191,14 @@ async function allocate(req: WorktreeRequest, opts: WorktreeOptions): Promise<Wo
   const base = req.baseRef === undefined
     ? await resolveBranchBase(gitRoot, timeout)
     : await resolveRequestedBase(gitRoot, req.baseRef, timeout);
+  const excludeWarning = await ensureBaseExcluded(gitRoot, basePathOf(opts));
   const reused = await attachWorktree(gitRoot, branch, worktreePath, {
     base: base.sha,
     force: req.forceReset === true,
     run: boundedAdd(opts.runWorktreeAdd, opts.addTimeoutMs ?? WORKTREE_ADD_TIMEOUT_MS),
   });
   const warnings = [
+    ...(excludeWarning === undefined ? [] : [excludeWarning]),
     ...copyClaudeDir(gitRoot, worktreePath),
     ...(base.warning === undefined ? [] : [base.warning]),
   ];

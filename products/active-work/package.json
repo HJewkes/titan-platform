@@ -38,7 +38,7 @@
     "gen:cli-reference": "pnpm build:cli && node scripts/gen-cli-reference.mjs",
     "postinstall": "node scripts/postinstall.js",
     "preuninstall": "node scripts/preuninstall.js",
-    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "prepack": "node scripts/gen-cli-reference.mjs && test -s docs/cli-reference.md"
   },
   "devDependencies": {
@@ -48,6 +48,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "env-paths": "^4.0.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-native-web": "^0.21.2",
@@ -81,7 +82,6 @@
     "@titan-design/store-sqlite": "workspace:^",
     "better-sqlite3": "^13.0.2",
     "commander": "^14.0.3",
-    "env-paths": "^4.0.0",
     "gray-matter": "^4.0.3",
     "hono": "^4.12.18",
     "picocolors": "^1.1.1",

@@ -91,7 +91,7 @@ export const BEAT_SLOTS = {
     .object({ kind: z.enum(["bar", "line", "spark", "gauge"]), title: Label.optional(), unit: Label.optional(), cap: z.number().optional(), series: z.array(Point).min(1).max(12), ...ChartFrame })
     .strict(),
   list: z.object({ title: Label.optional(), rows: z.array(ListRow).min(1).max(5) }).strict(),
-  "verdict-card": z.object({ verdict: Line, call: Label, reasons: items(1, 3) }).strict(),
+  "verdict-card": z.object({ verdict: Line, call: Label.optional(), reasons: items(1, 3) }).strict(),
   "change-group": z.object({ groups: z.array(z.object({ id: Id, title: Label, why: Line, files: z.array(z.string().min(1)).min(1), pin: Id.optional() }).strict()).min(2).max(4) }).strict(),
   "diff-map": z.object({ nodes: z.array(Node.extend({ change: Change })).min(2).max(12), edges: z.array(Edge.extend({ change: Change })).max(16) }).strict(),
   "finding-card": z.object({ findings: z.array(Finding).min(1).max(4) }).strict(),

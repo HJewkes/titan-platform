@@ -10,11 +10,11 @@ import {
   graphDocumentFrequency,
   graphTermStatistics,
 } from './document-frequency.js';
-import { openGraph, type SessionGraph } from '../session-index/graph.js';
+import { openGraph, type WorkspaceGraph } from '../session-index/graph.js';
 import { WORKSPACE_SPAN_SOURCE_BASE } from '../workspace-index/schema.js';
 
 let dir: string;
-let graph: SessionGraph;
+let graph: WorkspaceGraph;
 
 beforeEach(() => {
   dir = mkdtempSync(path.join(os.tmpdir(), 'aw-df-'));
@@ -50,13 +50,13 @@ describe('countMatches', () => {
     indexSpans('rare', 3);
     indexSpans('other', 4);
 
-    expect(countMatches(graph as never, '"rare"', 10)).toBe(3);
+    expect(countMatches(graph, '"rare"', 10)).toBe(3);
   });
 
   it('stops at the cap when the term has more matches than it', () => {
     indexSpans('common', 15);
 
-    expect(countMatches(graph as never, '"common"', 10)).toBe(10);
+    expect(countMatches(graph, '"common"', 10)).toBe(10);
   });
 });
 
@@ -64,26 +64,26 @@ describe('graphDocumentFrequency', () => {
   it('reads a common term past the exact-count cap from the FTS vocabulary', () => {
     indexSpans('common', 2500);
 
-    expect(graphDocumentFrequency(graph as never)('common')).toBe(2500);
+    expect(graphDocumentFrequency(graph)('common')).toBe(2500);
   });
 
   it('counts a rare term exactly, leaving out spans that were purged', () => {
     indexSpans('rare', 4);
     graph.spans.purgeOwner('session:rare-0');
 
-    expect(graphDocumentFrequency(graph as never)('rare')).toBe(3);
+    expect(graphDocumentFrequency(graph)('rare')).toBe(3);
   });
 
   it('bounds a phrase term by its rarest token', () => {
     indexSpans('alpha_beta', 2);
 
-    expect(graphDocumentFrequency(graph as never)('alpha_beta')).toBe(2);
+    expect(graphDocumentFrequency(graph)('alpha_beta')).toBe(2);
   });
 
   it('reads zero for a term the corpus never saw', () => {
     indexSpans('present', 2);
 
-    expect(graphDocumentFrequency(graph as never)('absent')).toBe(0);
+    expect(graphDocumentFrequency(graph)('absent')).toBe(0);
   });
 });
 
@@ -91,17 +91,17 @@ describe('graphTermStatistics', () => {
   it('caps a transcript query at the floor on a small graph', () => {
     indexSpans('word', 10);
 
-    expect(graphTermStatistics(graph as never).maxDfFor(['transcripts'])).toBe(DF_CAP_FLOOR);
+    expect(graphTermStatistics(graph).maxDfFor(['transcripts'])).toBe(DF_CAP_FLOOR);
   });
 
   it('caps a query that mixes transcripts with a workspace class', () => {
-    expect(graphTermStatistics(graph as never).maxDfFor(['notes', 'transcripts'])).toBe(DF_CAP_FLOOR);
+    expect(graphTermStatistics(graph).maxDfFor(['notes', 'transcripts'])).toBe(DF_CAP_FLOOR);
   });
 
   it('leaves a workspace query uncapped once the graph is cut over', () => {
     indexSpans('word', 10);
 
-    expect(graphTermStatistics(graph as never).maxDfFor(['notes', 'tasks'])).toBe(Number.POSITIVE_INFINITY);
+    expect(graphTermStatistics(graph).maxDfFor(['notes', 'tasks'])).toBe(Number.POSITIVE_INFINITY);
   });
 
   it('keeps capping a workspace query while legacy workspace spans remain', () => {
@@ -110,7 +110,7 @@ describe('graphTermStatistics', () => {
       'word',
     );
 
-    expect(graphTermStatistics(graph as never).maxDfFor(['notes', 'tasks'])).toBe(DF_CAP_FLOOR);
+    expect(graphTermStatistics(graph).maxDfFor(['notes', 'tasks'])).toBe(DF_CAP_FLOOR);
   });
 });
 

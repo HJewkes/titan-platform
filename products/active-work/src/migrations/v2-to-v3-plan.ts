@@ -3,6 +3,7 @@ import path from 'node:path';
 import { ValidationError } from '../errors.js';
 import { BriefFrontmatterSchema, type BriefFrontmatter } from '../schemas/brief.js';
 import { SessionFrontmatterSchema, type SessionFrontmatter } from '../schemas/session.js';
+import { listInitiativeSlugsOrEmpty } from '../sessions/initiatives.js';
 import { buildSessionStem, sessionFilePathForStem } from '../sessions/session-file.js';
 import { readRawFrontmatter } from '../utils/gray-matter-io.js';
 import { loadProposal, type Proposal, type ProposalInitiative } from './v3-proposal.js';
@@ -66,21 +67,12 @@ async function pathExists(p: string): Promise<boolean> {
   }
 }
 
-async function listInitiativeSlugs(activeRoot: string): Promise<string[]> {
-  let entries;
-  try {
-    entries = await fs.readdir(activeRoot, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-  const slugs: string[] = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
-    if (await pathExists(path.join(activeRoot, entry.name, 'brief.md'))) {
-      slugs.push(entry.name);
-    }
-  }
-  return slugs.sort();
+async function listSlugsWithBrief(activeRoot: string): Promise<string[]> {
+  const slugs = await listInitiativeSlugsOrEmpty(activeRoot);
+  const present = await Promise.all(
+    slugs.map((slug) => pathExists(path.join(activeRoot, slug, 'brief.md'))),
+  );
+  return slugs.filter((_, i) => present[i]);
 }
 
 /**
@@ -313,7 +305,7 @@ function assertProposalSlugsExist(proposal: Proposal, known: string[]): void {
  */
 export async function planV2ToV3(activeRoot: string): Promise<MigrationPlan> {
   const { proposal, origin } = await loadProposal();
-  const slugs = await listInitiativeSlugs(activeRoot);
+  const slugs = await listSlugsWithBrief(activeRoot);
   assertProposalSlugsExist(proposal, slugs);
 
   const byslug = new Map(proposal.initiatives.map((i) => [i.slug, i]));

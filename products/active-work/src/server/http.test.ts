@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { z } from 'zod';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,6 +8,13 @@ import { EventHub } from '@titan-design/daemon';
 import { withEmptyActiveRoot, withTempActiveRoot } from '../test-support/test-helpers.js';
 
 const TEST_PORT = 17400;
+
+async function parseBody<S extends z.ZodType>(res: Response, schema: S): Promise<z.infer<S>> {
+  return schema.parse(await res.json());
+}
+
+const okEnvelope = z.object({ ok: z.boolean() });
+const errorEnvelope = z.object({ ok: z.boolean(), error: z.string() });
 
 async function get(app: ReturnType<typeof buildHttpApp>, p: string): Promise<Response> {
   return app.fetch(new Request(`http://127.0.0.1:${TEST_PORT}${p}`));
@@ -27,7 +35,7 @@ describe('GET /health', () => {
     const app = buildHttpApp({ port: TEST_PORT });
     const res = await get(app, '/health');
     expect(res.status).toBe(200);
-    const body = (await res.json()) as Record<string, unknown>;
+    const body = await parseBody(res, z.record(z.string(), z.unknown()));
     expect(body.ok).toBe(true);
     expect(typeof body.version).toBe('string');
     expect(typeof body.pid).toBe('number');
@@ -41,7 +49,7 @@ describe('GET /version', () => {
     const app = buildHttpApp({ port: TEST_PORT });
     const res = await get(app, '/version');
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { version: string };
+    const body = await parseBody(res, z.object({ version: z.string() }));
     expect(typeof body.version).toBe('string');
     expect(body.version.length).toBeGreaterThan(0);
   });
@@ -53,7 +61,12 @@ describe('POST /rpc/:name', () => {
       const app = buildHttpApp({ port: TEST_PORT });
       const res = await post(app, '/rpc/list', {});
       expect(res.status).toBe(200);
-      const body = (await res.json()) as { ok: boolean; data?: { sections: unknown } };
+      const body = await parseBody(
+        res,
+        okEnvelope.extend({
+          data: z.object({ sections: z.unknown() }).optional(),
+        }),
+      );
       expect(body.ok).toBe(true);
       expect(body.data?.sections).toBeDefined();
     });
@@ -65,10 +78,17 @@ describe('POST /rpc/:name', () => {
       const app = buildHttpApp({ port: TEST_PORT });
       const res = await post(app, '/rpc/context.related', { for: 'TP-85 retrieval' });
       expect(res.status).toBe(200);
-      const body = (await res.json()) as {
-        ok: boolean;
-        data?: { hits: unknown[]; degraded: { reason: string }[] };
-      };
+      const body = await parseBody(
+        res,
+        okEnvelope.extend({
+          data: z
+            .object({
+              hits: z.array(z.unknown()),
+              degraded: z.array(z.object({ reason: z.string() })),
+            })
+            .optional(),
+        }),
+      );
       expect(body.ok).toBe(true);
       expect(body.data?.hits).toEqual([]);
       expect(body.data?.degraded[0]?.reason).toBe('missing');
@@ -80,7 +100,7 @@ describe('POST /rpc/:name', () => {
       const app = buildHttpApp({ port: TEST_PORT });
       await post(app, '/rpc/new', { slug: 'rpc-gate', title: 'Rpc gate' });
       const res = await post(app, '/rpc/task.add', { slug: 'rpc-gate', title: 'No done when' });
-      const body = (await res.json()) as { ok: boolean };
+      const body = await parseBody(res, okEnvelope);
       expect(body.ok).toBe(true);
     });
   });
@@ -89,7 +109,7 @@ describe('POST /rpc/:name', () => {
     const app = buildHttpApp({ port: TEST_PORT });
     const res = await post(app, '/rpc/does-not-exist', {});
     expect(res.status).toBe(404);
-    const body = (await res.json()) as { ok: boolean; error: string };
+    const body = await parseBody(res, errorEnvelope);
     expect(body.ok).toBe(false);
     expect(body.error).toMatch(/Unknown command/);
   });
@@ -100,7 +120,7 @@ describe('POST /rpc/:name', () => {
       // task.add requires slug + title.
       const res = await post(app, '/rpc/task.add', {});
       expect(res.status).toBe(400);
-      const body = (await res.json()) as { ok: boolean; error: string };
+      const body = await parseBody(res, errorEnvelope);
       expect(body.ok).toBe(false);
       expect(body.error).toMatch(/Invalid arguments/i);
     });

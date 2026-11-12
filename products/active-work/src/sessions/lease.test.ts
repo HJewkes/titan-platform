@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import {
   acquireLease,
   leaseDir,
@@ -23,6 +24,10 @@ const comm = (name: string | null) => (): string | null => name;
 
 function minutesBefore(now: Date, minutes: number): Date {
   return new Date(now.getTime() - minutes * 60_000);
+}
+
+async function readLease(file: string): Promise<Record<string, unknown>> {
+  return z.record(z.string(), z.unknown()).parse(JSON.parse(await fs.readFile(file, 'utf8')));
 }
 
 async function writeRawLease(
@@ -59,7 +64,7 @@ describe('acquireLease / releaseLease', () => {
       });
 
       const file = path.join(leaseDir(activeRoot, SLUG), `${leaseId}.json`);
-      const parsed = JSON.parse(await fs.readFile(file, 'utf8')) as Record<string, unknown>;
+      const parsed = await readLease(file);
       expect(parsed).toEqual({
         lease_id: leaseId,
         slug: SLUG,
@@ -89,7 +94,7 @@ describe('acquireLease / releaseLease', () => {
         getComm: comm(null),
       });
       const file = path.join(leaseDir(activeRoot, SLUG), `${leaseId}.json`);
-      const parsed = JSON.parse(await fs.readFile(file, 'utf8')) as Record<string, unknown>;
+      const parsed = await readLease(file);
       expect(parsed.pid_comm).toBeUndefined();
     });
   });
@@ -113,7 +118,7 @@ describe('acquireLease / releaseLease', () => {
         pid: 999,
       });
       const file = path.join(leaseDir(activeRoot, SLUG), `${leaseId}.json`);
-      const parsed = JSON.parse(await fs.readFile(file, 'utf8')) as Record<string, unknown>;
+      const parsed = await readLease(file);
       expect(parsed.pid).toBeUndefined();
     });
   });
@@ -156,8 +161,17 @@ describe('readLiveLeases', () => {
         mode: 'launcher',
         pid: 4321,
         now: minutesBefore(NOW, 10),
+        getComm: comm('node'),
       });
-      const live = await readLiveLeases({ activeRoot, slug: SLUG, now: NOW, isAlive: alive });
+      // Both probes are injected: a real `ps` on pid 4321 would record whatever
+      // process holds it at write time and then mismatch once it exits.
+      const live = await readLiveLeases({
+        activeRoot,
+        slug: SLUG,
+        now: NOW,
+        isAlive: alive,
+        getComm: comm('node'),
+      });
       expect(live).toHaveLength(1);
       expect(live[0]).toMatchObject({ lease_id: leaseId, pid: 4321, mode: 'launcher' });
       expect(await leaseFiles(activeRoot, SLUG)).toHaveLength(1);
@@ -215,6 +229,30 @@ describe('readLiveLeases', () => {
     });
   });
 
+  // Pins TP-4982: a recorded identity that the read-time probe cannot confirm
+  // drops the lease, so an un-injected probe made the test above flaky.
+  it('filters a launcher lease whose recorded identity can no longer be read', async () => {
+    await withTempActiveRoot(async (activeRoot) => {
+      await acquireLease({
+        activeRoot,
+        slug: SLUG,
+        cwd: '/tmp/a',
+        mode: 'launcher',
+        pid: 4321,
+        now: minutesBefore(NOW, 10),
+        getComm: comm('node'),
+      });
+      const live = await readLiveLeases({
+        activeRoot,
+        slug: SLUG,
+        now: NOW,
+        isAlive: alive,
+        getComm: comm(null),
+      });
+      expect(live).toEqual([]);
+    });
+  });
+
   it('filters AND unlinks a launcher lease whose pid is dead', async () => {
     await withTempActiveRoot(async (activeRoot) => {
       await acquireLease({
@@ -224,6 +262,7 @@ describe('readLiveLeases', () => {
         mode: 'launcher',
         pid: 4321,
         now: minutesBefore(NOW, 10),
+        getComm: comm(null),
       });
       expect(await readLiveLeases({ activeRoot, slug: SLUG, now: NOW, isAlive: dead })).toEqual([]);
       expect(await leaseFiles(activeRoot, SLUG)).toEqual([]);
@@ -241,6 +280,7 @@ describe('readLiveLeases', () => {
         mode: 'launcher',
         pid: 4321,
         now: new Date(NOW.getTime() - LAUNCHER_MAX_AGE_MS - 1000),
+        getComm: comm(null),
       });
       expect(await readLiveLeases({ activeRoot, slug: SLUG, now: NOW, isAlive: alive })).toEqual(
         [],

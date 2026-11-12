@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import YAML from 'yaml';
+import { z } from 'zod';
 import wrap from './wrap.js';
 import { registry } from '../registry/index.js';
 import './index.js'; // populate the registry
@@ -85,7 +86,7 @@ function baseArgs(overrides: Record<string, unknown> = {}) {
 
 async function readArtifacts(activeRoot: string): Promise<Record<string, unknown>> {
   const raw = await fs.readFile(path.join(activeRoot, SLUG, 'artifacts.yml'), 'utf8');
-  return YAML.parse(raw) as Record<string, unknown>;
+  return z.record(z.string(), z.unknown()).parse(YAML.parse(raw));
 }
 
 const WORKER_FACTS = {
@@ -132,7 +133,7 @@ async function seedPriorLoop(
 async function readFrontmatter(file: string): Promise<Record<string, unknown>> {
   const raw = await fs.readFile(file, 'utf8');
   const block = /^---\r?\n([\s\S]*?)\r?\n---/.exec(raw);
-  return YAML.parse(block?.[1] ?? '') as Record<string, unknown>;
+  return z.record(z.string(), z.unknown()).parse(YAML.parse(block?.[1] ?? ''));
 }
 
 describe('wrap', () => {
@@ -151,7 +152,7 @@ describe('wrap', () => {
 
       const [loop] = await deriveOpenLoops(path.join(activeRoot, SLUG), { now: new Date() });
       expect(result.ready_to_end).toBe(true);
-      expect(loop?.due).toBe(due);
+      expect(loop.due).toBe(due);
     });
   });
 
@@ -774,16 +775,16 @@ describe('wrap', () => {
         const notesDir = path.join(activeRoot, SLUG, 'sources', 'notes');
         const files = await fs.readdir(notesDir);
         expect(files).toEqual([`${today()}-flock-is-per-initiative.md`]);
-        const frontmatter = await readFrontmatter(path.join(notesDir, files[0]!));
+        const frontmatter = await readFrontmatter(path.join(notesDir, files[0]));
         expect(frontmatter).toMatchObject({
           kind: 'gotcha',
           title: 'flock is per-initiative',
           created: today(),
           tags: ['locking'],
         });
-        const raw = await fs.readFile(path.join(notesDir, files[0]!), 'utf8');
+        const raw = await fs.readFile(path.join(notesDir, files[0]), 'utf8');
         expect(raw).toContain('Nesting a second lock');
-        expect(result.files_updated).toContain(path.join('sources', 'notes', files[0]!));
+        expect(result.files_updated).toContain(path.join('sources', 'notes', files[0]));
       });
     });
 
@@ -831,7 +832,7 @@ describe('wrap', () => {
         }
         return GIT_WITH_WORK(
           bin,
-          args[1] === LINKED ? [args[0]!, sampleRepo(), ...args.slice(2)] : args,
+          args[1] === LINKED ? [args[0], sampleRepo(), ...args.slice(2)] : args,
         );
       });
       await withTempActiveRoot(async (activeRoot) => {

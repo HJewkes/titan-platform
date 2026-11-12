@@ -105,8 +105,8 @@ describe('active-work setup', () => {
       const result = await setupCmd.run({ printSupervision: true }, ctx);
 
       expect(writeSpy).not.toHaveBeenCalled();
-      expect(typeof result).toBe('string');
-      const unit = result as string;
+      if (typeof result !== 'string') throw new Error('expected the bare unit text');
+      const unit = result;
       expect(unit.startsWith('[Unit]\n')).toBe(true);
       expect(unit.endsWith('WantedBy=default.target\n')).toBe(true);
       const pathLine = unit.split('\n').find((l) => l.startsWith('Environment="PATH='));
@@ -131,12 +131,12 @@ describe('active-work setup', () => {
 
     const install = await stepInstallCommand({});
     expect(install.ok).toBe(true);
-    expect(install.done).toBe(true);
+    expect(install.ok && install.done).toBe(true);
     expect(existsSync(target)).toBe(true);
 
     const remove = await uninstallCommand({});
     expect(remove.ok).toBe(true);
-    expect(remove.done).toBe(true);
+    expect(remove.ok && remove.done).toBe(true);
     expect(existsSync(target)).toBe(false);
   });
 

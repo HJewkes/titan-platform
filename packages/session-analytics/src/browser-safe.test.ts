@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { build } from "esbuild";
 
 // The ./timeline subpath ships to browsers, so its import graph may reach only these two files, and the types file only as types.
 const srcDir = path.dirname(fileURLToPath(import.meta.url));
@@ -31,5 +32,23 @@ describe("browser safety of the ./timeline entry", () => {
 
   it.each(sources)("$file touches no Node-only global", ({ text }) => {
     expect(text).not.toMatch(NODE_GLOBAL_USE);
+  });
+
+  it("bundles for platform browser with no Node builtin, SQLite, session-graph or session-read module", async () => {
+    const result = await build({
+      entryPoints: [path.join(srcDir, "timeline-entry.ts")],
+      bundle: true,
+      platform: "browser",
+      format: "esm",
+      write: false,
+      metafile: true,
+      logLevel: "silent",
+    });
+    const inputs = Object.keys(result.metafile.inputs);
+
+    expect(result.errors).toEqual([]);
+    expect(result.warnings).toEqual([]);
+    expect(inputs.some((i) => i.endsWith("/count-at-or-before.ts"))).toBe(true);
+    expect(inputs.filter((i) => /node:|better-sqlite3|store-sqlite|session-graph|session-read/.test(i))).toEqual([]);
   });
 });

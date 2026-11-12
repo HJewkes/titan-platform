@@ -3,6 +3,7 @@ import type { spawn as nodeSpawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
+import { asSpawn } from '../test-support/spawn-fake.js';
 import {
   STEP_SUPERVISION,
   UNIT_NAME,
@@ -47,22 +48,22 @@ function makeFakeSpawn(
       stderr: { on: () => undefined },
       on: (event, cb) => {
         handlers[event] ??= [];
-        handlers[event]!.push(cb);
+        handlers[event].push(cb);
       },
     };
     queueMicrotask(() => {
       if (opts.enoent?.(call)) {
         const err = new Error('not found') as NodeJS.ErrnoException;
         err.code = 'ENOENT';
-        handlers.error?.forEach((cb) => cb(err));
+        handlers.error.forEach((cb) => cb(err));
         return;
       }
       const code = opts.exitCodes?.(call) ?? 0;
-      handlers.close?.forEach((cb) => cb(code));
+      handlers.close.forEach((cb) => cb(code));
     });
-    return child as unknown as ReturnType<typeof nodeSpawn>;
+    return child;
   });
-  return { spawn: spawnFn as unknown as typeof nodeSpawn, calls };
+  return { spawn: asSpawn(spawnFn), calls };
 }
 
 function makeTempPaths(): { paths: StepPaths; cleanup: () => void } {
@@ -236,8 +237,8 @@ describe('stepInstallSupervision', () => {
     }
     // daemon-reload, then enable-linger (username-agnostic), then enable --now.
     expect(calls[0]).toEqual({ cmd: 'systemctl', args: ['--user', 'daemon-reload'] });
-    expect(calls[1]!.cmd).toBe('loginctl');
-    expect(calls[1]!.args[0]).toBe('enable-linger');
+    expect(calls[1].cmd).toBe('loginctl');
+    expect(calls[1].args[0]).toBe('enable-linger');
     expect(calls[2]).toEqual({
       cmd: 'systemctl',
       args: ['--user', 'enable', '--now', UNIT_NAME],

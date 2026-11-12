@@ -11,7 +11,7 @@ import {
   type SourceRead,
   type SourceWatermarks,
 } from '@titan-design/decider';
-import { listInitiativeSlugs } from '../lint/index.js';
+import { listInitiativeSlugs } from '../sessions/initiatives.js';
 
 /**
  * The decider ledger lives in one SQLite file inside the active root. The v1

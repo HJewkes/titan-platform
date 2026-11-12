@@ -61,7 +61,7 @@ function truncateLines(
     const head = Math.min(kept - 1, Math.max(1, Math.round(kept * headRatio)));
     const tail = kept - head;
     const omittedLines = total - kept;
-    const marker = separator ?? `\n--- ${omittedLines} lines omitted ---\n`;
+    const marker = separator ?? `\n--- ${omittedLines} ${omittedLines === 1 ? "line" : "lines"} omitted ---\n`;
     if (spanBytes(0, head) + utf8Length(marker) + spanBytes(total - tail, total) <= maxBytes) {
       const text = lines.slice(0, head).join("\n") + marker + lines.slice(total - tail).join("\n");
       return { text, truncated: true, originalLines: total, omittedLines };

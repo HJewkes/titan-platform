@@ -6,7 +6,7 @@ export interface MachinePressure {
   pressureLevel: number;
 }
 
-export interface HoldDecision {
+interface HoldDecision {
   hold: boolean;
   reason?: string;
 }

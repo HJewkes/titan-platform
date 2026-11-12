@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import '../commands/index.js';
 import { registry } from '../registry/index.js';
 import { commandNameToToolName } from './mcp.js';
@@ -19,7 +20,7 @@ const FIXTURE = new URL('./__fixtures__/mcp-tool-names.json', import.meta.url);
 
 describe('MCP tool names', () => {
   it('match the committed fixture exactly', () => {
-    const expected = JSON.parse(readFileSync(FIXTURE, 'utf8')) as string[];
+    const expected = z.array(z.string()).parse(JSON.parse(readFileSync(FIXTURE, 'utf8')));
     const actual = registry.list().map((cmd) => commandNameToToolName(cmd.name));
     expect(actual).toEqual(expected);
   });

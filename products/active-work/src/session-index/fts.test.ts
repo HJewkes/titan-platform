@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { applyDelta, indexTranscript, resetIndex } from '@titan-design/session-graph';
 import { extractTranscript } from '@titan-design/session-read';
 import { openGraph, type SessionGraph } from './graph.js';
+import { selectOne } from '../test-support/session-index/query.js';
 import { FIXTURE_LINES, offsetAfterLine, renderTranscript } from '../test-support/session-index/fixture.js';
 
 let dir: string;
@@ -69,7 +70,7 @@ function search(query: string): { span_id: number; field: string }[] {
 }
 
 const scalar = (sql: string): number =>
-  (graph.db.prepare<[], { n: number }>(sql).get() as { n: number }).n;
+  selectOne<{ n: number }>(graph.db, sql).n;
 
 describe('search_fts population', () => {
   it('finds a prompt by a word from its text', async () => {

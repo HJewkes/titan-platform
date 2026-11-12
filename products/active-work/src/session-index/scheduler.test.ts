@@ -2,7 +2,36 @@ import { describe, expect, it, vi } from 'vitest';
 import { RefreshScheduler } from './scheduler.js';
 import type { RefreshSummary } from './refresh.js';
 
-const summary = {} as RefreshSummary;
+const summary: RefreshSummary = {
+  kind: 'full',
+  startedAt: '2026-07-01T00:00:00Z',
+  durationMs: 0,
+  transcripts: 0,
+  scanned: 0,
+  filesOpened: 0,
+  bytesRead: 0,
+  rowsWritten: 0,
+  dbBytes: 0,
+  phases: {},
+  indexed: 0,
+  rewound: 0,
+  unchanged: 0,
+  quarantined: 0,
+  missing: 0,
+  reconciledMissing: 0,
+  facetsBackfilled: 0,
+  facetBacklog: 0,
+  episodesWritten: 0,
+  episodeBacklog: null,
+  factsAdded: 0,
+  turnsRolledUp: 0,
+  tasksRequested: 0,
+  tasksApplied: 0,
+  prsPolled: 0,
+  workspace: null,
+  preserved: { restored: 0, merged: 0, skipped: 0 },
+  errors: [],
+};
 
 /** A fake clock whose sleep advances time and records each wait. */
 function fakeClock() {
@@ -107,6 +136,118 @@ describe('RefreshScheduler', () => {
     expect(run).toHaveBeenCalledTimes(1);
     finish();
     await scheduler.close();
+  });
+
+  it('status reports held, holdReason and heldSince through a hold, a reason change and the gate opening', async () => {
+    const clock = fakeClock();
+    const decisions = [
+      { hold: true, reason: 'swap 70% used' },
+      { hold: true, reason: 'swap 70% used' },
+      { hold: true, reason: 'pressure level 2' },
+      { hold: false },
+    ];
+    const seen: ReturnType<RefreshScheduler['status']>[] = [];
+    const gate = vi.fn(async () => {
+      seen.push(scheduler.status());
+      return decisions.shift() ?? { hold: false };
+    });
+    const run = vi.fn(async () => {
+      seen.push(scheduler.status());
+      return summary;
+    });
+    const scheduler = new RefreshScheduler(run, { ...clock, gate, gateRecheckMs: 60_000 });
+
+    scheduler.trigger();
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+
+    const since = new Date(0).toISOString();
+    const view = seen.map(({ held, holdReason, heldSince }) => ({ held, holdReason, heldSince }));
+    expect(view).toEqual([
+      { held: false, holdReason: null, heldSince: null },
+      { held: true, holdReason: 'swap 70% used', heldSince: since },
+      { held: true, holdReason: 'swap 70% used', heldSince: since },
+      { held: true, holdReason: 'pressure level 2', heldSince: since },
+      { held: false, holdReason: null, heldSince: null },
+    ]);
+  });
+
+  it('status stays held after a hold-cap pass because the gate is still closed', async () => {
+    const clock = fakeClock();
+    let atRun: ReturnType<RefreshScheduler['status']> | null = null;
+    const run = vi.fn(async () => {
+      atRun = scheduler.status();
+      return summary;
+    });
+    const scheduler = new RefreshScheduler(run, {
+      ...clock,
+      gate: async () => ({ hold: true, reason: 'swap 70% used' }),
+      gateRecheckMs: 60_000,
+      maxHoldMs: 300_000,
+    });
+
+    scheduler.trigger();
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+
+    expect(atRun).toMatchObject({ held: true, holdReason: 'swap 70% used' });
+    expect(scheduler.status().held).toBe(true);
+  });
+
+  it('a gate that opens during the hold-cap pass lets runNow serve fresh reads once the pass ends', async () => {
+    const clock = fakeClock();
+    let gateOpen = false;
+    const run = vi.fn(async () => {
+      gateOpen = true;
+      return summary;
+    });
+    const scheduler = new RefreshScheduler(run, {
+      ...clock,
+      gate: async () => (gateOpen ? { hold: false } : { hold: true, reason: 'swap 70% used' }),
+      gateRecheckMs: 60_000,
+      maxHoldMs: 300_000,
+    });
+
+    scheduler.trigger();
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(scheduler.status().running).toBe(false));
+    const read = await scheduler.runNow(1_000);
+
+    expect(read).toBe('fresh');
+    expect(run).toHaveBeenCalledTimes(2);
+    await scheduler.close();
+  });
+
+  it('onError receives the failed pass kind and the backoff the scheduler chose', async () => {
+    const clock = fakeClock();
+    const boom = new Error('corpus unreadable');
+    const run = vi.fn(async () => {
+      throw boom;
+    });
+    const onError = vi.fn();
+    const scheduler = new RefreshScheduler(run, { ...clock, baseBackoffMs: 1_000, onError });
+
+    scheduler.trigger();
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
+    await scheduler.close();
+
+    expect(onError).toHaveBeenCalledWith(boom, { kind: 'full', backoffMs: 1_000 });
+  });
+
+  it('onError reports a doubling backoff for consecutive failed delta passes', async () => {
+    const clock = fakeClock();
+    const run = vi.fn(async () => {
+      throw new Error('corpus unreadable');
+    });
+    const onError = vi.fn();
+    const scheduler = new RefreshScheduler(run, { ...clock, baseBackoffMs: 1_000, onError });
+
+    await scheduler.runNow(1_000);
+    clock.advance(1_000);
+    await scheduler.runNow(1_000);
+
+    expect(onError.mock.calls.map(([, failure]) => failure)).toEqual([
+      { kind: 'delta', backoffMs: 1_000 },
+      { kind: 'delta', backoffMs: 2_000 },
+    ]);
   });
 
   it('collapses triggers that arrive mid-hold into one pass after the resume', async () => {

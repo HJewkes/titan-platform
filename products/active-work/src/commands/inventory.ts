@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { listInitiativeSlugs } from '../lint/index.js';
+import { listInitiativeSlugs } from '../sessions/initiatives.js';
 import { getActiveRoot } from '../utils/paths.js';
 import { inventoryCache } from '../workspace-index/inventory-cache.js';
 import { summarizeInventory, totalInventory } from '../workspace-index/inventory-summary.js';

@@ -40,9 +40,9 @@ import type { WorkspaceGraph } from './graph.js';
  * back always wins. `merge` writes named columns onto a row derivation already
  * produced, for a value that is about the row rather than in it.
  */
-export type PreserveMode = 'insert' | 'merge';
+type PreserveMode = 'insert' | 'merge';
 
-export interface PreservedRow {
+interface PreservedRow {
   table: string;
   /**
    * The columns that identify one row of `table`, spelled out rather than left

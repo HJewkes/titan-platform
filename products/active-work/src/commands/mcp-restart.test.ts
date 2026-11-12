@@ -6,14 +6,16 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { spawn } from 'node:child_process';
+import { ChildProcess, spawn } from 'node:child_process';
+import type * as ChildProcessModule from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import * as paths from '../utils/paths.js';
 import { writePidFile } from '../server/lifecycle.js';
 import mcpRestart from './mcp-restart.js';
 
-vi.mock('node:child_process', () => ({
+vi.mock('node:child_process', async (importOriginal) => ({
+  ...(await importOriginal<typeof ChildProcessModule>()),
   spawn: vi.fn(() => ({ pid: SPAWNED_PID, unref: () => {} })),
 }));
 
@@ -39,7 +41,7 @@ function stubHealth(payload: unknown | null): void {
 }
 
 function run(): ReturnType<typeof mcpRestart.run> {
-  return mcpRestart.run({}, {} as never);
+  return mcpRestart.run({}, { activeRoot: tmp, warnings: [], format: 'json' });
 }
 
 beforeEach(() => {
@@ -68,7 +70,9 @@ describe('mcp restart', () => {
   it('fails loudly when the successor dies instead of reporting its pid', async () => {
     await writePidFile(DEAD_PID, { port: 8123, version: '0.1.0', started: 'x' });
     stubHealth(null);
-    vi.mocked(spawn).mockReturnValueOnce({ pid: DEAD_PID, unref: () => {} } as never);
+    vi.mocked(spawn).mockReturnValueOnce(
+      Object.assign(new ChildProcess(), { pid: DEAD_PID, unref: () => {} }),
+    );
 
     await expect(run()).rejects.toThrow(/exited immediately/);
     expect(vi.mocked(spawn)).toHaveBeenCalledOnce();
@@ -80,7 +84,7 @@ describe('mcp restart', () => {
 
     await run();
 
-    const args = vi.mocked(spawn).mock.calls[0][1] as string[];
+    const args = vi.mocked(spawn).mock.calls[0]?.[1];
     expect(args).toEqual(expect.arrayContaining(['8123']));
   });
 

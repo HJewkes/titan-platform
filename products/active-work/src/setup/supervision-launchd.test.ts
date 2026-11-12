@@ -3,6 +3,7 @@ import type { spawn as nodeSpawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, afterEach } from 'vitest';
+import { asSpawn } from '../test-support/spawn-fake.js';
 import {
   PLIST_LABEL,
   getPlistPath,
@@ -28,7 +29,7 @@ function makeFakeSpawn(
   } = {},
 ): { spawn: typeof nodeSpawn; calls: SpawnCall[] } {
   const calls: SpawnCall[] = [];
-  const spawnFn = ((cmd: string, args: string[]) => {
+  const spawnFn = asSpawn((cmd: string, args: string[]) => {
     const call: SpawnCall = { cmd, args };
     calls.push(call);
     const handlers: Record<string, ((arg?: unknown) => void)[]> = {};
@@ -36,21 +37,21 @@ function makeFakeSpawn(
       stderr: { on: () => undefined },
       on: (event: string, cb: (arg?: unknown) => void) => {
         handlers[event] ??= [];
-        handlers[event]!.push(cb);
+        handlers[event].push(cb);
       },
     };
     queueMicrotask(() => {
       if (opts.enoent?.(call)) {
         const err = new Error('not found') as NodeJS.ErrnoException;
         err.code = 'ENOENT';
-        handlers.error?.forEach((cb) => cb(err));
+        handlers.error.forEach((cb) => cb(err));
         return;
       }
       const code = opts.exitCodes?.(call) ?? 0;
-      handlers.close?.forEach((cb) => cb(code));
+      handlers.close.forEach((cb) => cb(code));
     });
     return child;
-  }) as unknown as typeof nodeSpawn;
+  });
   return { spawn: spawnFn, calls };
 }
 

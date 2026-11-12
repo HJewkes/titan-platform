@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
 import { searchWorkspace } from '../search/index.js';
 import { hasLegacyWorkspaceSpans } from '../search/workspace-spans.js';
@@ -14,7 +15,7 @@ import {
 import { refreshWorkspace } from './refresh.js';
 import { WORKSPACE_SPAN_SOURCE_BASE } from './schema.js';
 import { WorkspaceWriter } from './write.js';
-import { legacyGraphInto, removeFile, scaffold, writeFile } from '../test-support/workspace-index/fixture.js';
+import { legacyGraphInto, scaffold, writeFile } from '../test-support/workspace-index/fixture.js';
 
 /**
  * The cutover from `search_span` to `workspace_span` (TP-4680). Each graph here
@@ -110,7 +111,7 @@ const locators = (): unknown[] =>
     .all();
 
 const count = (table: string): number =>
-  (graph.db.prepare(`SELECT count(*) AS n FROM ${table}`).get() as { n: number }).n;
+  z.object({ n: z.number() }).parse(graph.db.prepare(`SELECT count(*) AS n FROM ${table}`).get()).n;
 
 describe('workspace span backfill', () => {
   it('flips a legacy graph with one clean pass, leaving what a fresh index holds', async () => {

@@ -124,6 +124,11 @@ export class ReviewerSpawnQueued extends ReviewerMachineHold {
   override readonly name = "ReviewerSpawnQueued";
 }
 
+/** The spawn gate's roster read timed out before the launch, so nobody was asked to start and the step asks again (TP-5295). */
+export class ReviewerGateRosterUnread extends ReviewerBrokerBusy {
+  override readonly name = "ReviewerGateRosterUnread";
+}
+
 /**
  * The busy wait ran out with the broker still refusing; nobody was started, so the review never began. The message is
  * built here from the refusal's class and the budget alone, since it becomes a stored step reason.

@@ -42,8 +42,8 @@ async function writeJsonl(spec: JsonlSpec): Promise<string> {
 describe('sessions command', () => {
   it('exports CLI metadata with limit and include-active options', () => {
     expect(sessions.name).toBe('sessions');
-    expect(sessions.cli?.options?.limit?.long).toBe('--limit');
-    expect(sessions.cli?.options?.include_active?.long).toBe('--include-active');
+    expect(sessions.cli?.options?.limit.long).toBe('--limit');
+    expect(sessions.cli?.options?.include_active.long).toBe('--include-active');
   });
 
   it('returns sessions sorted by mtime desc and extracts cwd', async () => {

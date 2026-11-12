@@ -797,7 +797,7 @@ Tier 1, `@titan-design/retrieval@0.3.1`. FTS + vector + graph retrieval with RRF
 
 **Use this when:**
 
-You need search over a store-sqlite corpus that fuses FTS, vectors and graph hops and keeps answering when one retriever is down. `fuseByRRF` and `gatherFailOpen` work over your own retrievers too.
+You need search over a store-sqlite corpus that fuses FTS, vectors and graph hops and keeps answering when one retriever is down. `fuseByRRF` and `gatherFailOpen` work over your own retrievers too. `engine.retrieve` takes one zod-validated request: `mode: "list"` is `search`, and `mode: "context"` turns the same ranking into a token-budgeted, tiered context block via `planContext`.
 
 Key exports:
 

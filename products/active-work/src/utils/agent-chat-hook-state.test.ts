@@ -30,12 +30,13 @@ describe('agent-chat hook state', () => {
   it('defaults the linkage fields for a stash written before they existed', async () => {
     // A file left on disk by the previous version must still parse rather than
     // stranding a peer that was mid-flight across the upgrade.
+    // @ts-expect-error the legacy stash lacks the linkage fields the type now requires
     await stashSpawnContext('agent-old', {
       slug: 'demo-initiative',
       sessionId: 'sess-old',
       name: 'scout',
       started: '2026-08-01T00:00:00.000Z',
-    } as never);
+    });
 
     expect(await takeSpawnContext('agent-old')).toEqual({
       slug: 'demo-initiative',

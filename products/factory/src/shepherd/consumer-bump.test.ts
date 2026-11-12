@@ -1,5 +1,6 @@
 import { fakeGitHub, fakeSha, githubPort, type RepoFile } from "@titan-design/github";
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { BUMP_BRANCH_PREFIX, bumpBranch, consumerDepNames, npmLatest, planConsumerBump, readConsumerTree, type ConsumerTree } from "./consumer-bump.js";
 
 const REPO = "acme/consumer-a";
@@ -12,7 +13,7 @@ function file(path: string, content: string): RepoFile {
 }
 
 function tree(...manifests: RepoFile[]): ConsumerTree {
-  return { repo: REPO, ref: "main", manifests, lockfile: null, workspaceYaml: null, npmrc: null };
+  return { repo: REPO, ref: "main", manifests, lockfile: null, workspaceYaml: null, npmrc: null, patches: [] };
 }
 
 const latest = (entries: Record<string, string | null>) => new Map(Object.entries(entries));
@@ -27,6 +28,21 @@ describe("planConsumerBump", () => {
     expect(plan.files).toEqual([{ path: "package.json", content: after, expectedBlobSha: fakeSha("package.json") }]);
     expect(plan.edits.map(({ name, from, to }) => `${name} ${from} ${to}`)).toEqual([`${A} ^0.12.1 ^0.21.2`, `${B} ~0.3.0 ~0.3.1`, `${C} 0.6.1 0.6.2`]);
     expect(plan.leftAlone).toEqual([]);
+  });
+
+  it("a titan pair under pnpm.overrides, overrides or resolutions is left alone with the field as its reason", () => {
+    const manifest = file("package.json", JSON.stringify({ pnpm: { overrides: { [A]: "^1.0.0" } }, overrides: { [B]: "1.0.0" }, resolutions: { [C]: "1.0.0", zod: "3.0.0" } }, null, 2));
+
+    const plan = planConsumerBump(tree(manifest), latest({ [A]: "2.0.0", [B]: "2.0.0", [C]: "2.0.0" }));
+
+    expect(plan.edits).toEqual([]);
+    expect(plan.files).toEqual([]);
+    expect(plan.leftAlone).toEqual([
+      { path: "package.json", name: A, spec: "^1.0.0", reason: "pinned by pnpm.overrides" },
+      { path: "package.json", name: B, spec: "1.0.0", reason: "pinned by overrides" },
+      { path: "package.json", name: C, spec: "1.0.0", reason: "pinned by resolutions" },
+    ]);
+    expect(consumerDepNames(tree(manifest))).toEqual([A, B, C]);
   });
 
   it("leaves a dep already on latest unedited", () => {
@@ -78,6 +94,134 @@ describe("planConsumerBump", () => {
   });
 });
 
+describe("planConsumerBump override handling", () => {
+  const pkg = (value: unknown) => file("package.json", JSON.stringify(value, null, 2));
+  const withYaml = (manifest: RepoFile, yaml: string): ConsumerTree => ({ ...tree(manifest), workspaceYaml: file("pnpm-workspace.yaml", yaml) });
+
+  it("rewrites no override field when a dependency and an override carry the same name and spec literal", () => {
+    const manifest = pkg({ overrides: { [A]: "^0.12.1" }, pnpm: { overrides: { [A]: "^0.12.1" } }, dependencies: { [A]: "^0.12.1" } });
+
+    const plan = planConsumerBump(tree(manifest), latest({ [A]: "0.21.2" }));
+
+    expect(plan.files).toEqual([]);
+    expect(plan.edits).toEqual([]);
+  });
+
+  it("bumps a dependency by path when the same literal sits in an unrelated field", () => {
+    const manifest = pkg({ dependencies: { [A]: "^0.12.1" }, config: { [A]: "^0.12.1" }, devDependencies: { [A]: "^0.12.1" } });
+
+    const plan = planConsumerBump(tree(manifest), latest({ [A]: "0.21.2" }));
+
+    const written = z.record(z.string(), z.record(z.string(), z.string())).parse(JSON.parse(plan.files[0]?.content ?? "{}"));
+    expect([written.dependencies?.[A], written.devDependencies?.[A], written.config?.[A]]).toEqual(["^0.21.2", "^0.21.2", "^0.12.1"]);
+  });
+
+  it("leaves a dependency alone when an override pins its name", () => {
+    const manifest = pkg({ dependencies: { [A]: "^0.1.0" }, resolutions: { [A]: "0.1.0" } });
+
+    const plan = planConsumerBump(tree(manifest), latest({ [A]: "0.2.0" }));
+
+    expect(plan.files).toEqual([]);
+    expect(plan.leftAlone).toContainEqual({ path: "package.json", name: A, spec: "^0.1.0", reason: "pinned by resolutions" });
+  });
+
+  it("lists a pin only while it is behind npm latest", () => {
+    const manifest = pkg({ pnpm: { overrides: { [A]: "1.0.0", [B]: "1.0.0" } } });
+
+    const plan = planConsumerBump(tree(manifest), latest({ [A]: "1.0.0", [B]: "1.1.0" }));
+
+    expect(plan.leftAlone).toEqual([{ path: "package.json", name: B, spec: "1.0.0", reason: "pinned by pnpm.overrides" }]);
+  });
+
+  it("lists pnpm selector keys by their target package", () => {
+    const manifest = pkg({ pnpm: { overrides: { [`${A}@^1`]: "1.0.0", [`foo>${B}`]: "1.0.0", [`foo@2>${C}@3`]: "1.0.0", "foo>bar": "1.0.0" } } });
+
+    const plan = planConsumerBump(tree(manifest), latest({ [A]: "2.0.0", [B]: "2.0.0", [C]: "2.0.0" }));
+
+    expect(plan.leftAlone.map(({ name, reason }) => [name, reason])).toEqual([[A, "pinned by pnpm.overrides"], [B, "pinned by pnpm.overrides"], [C, "pinned by pnpm.overrides"]]);
+  });
+
+  it("lists npm nested overrides and dot keys by the package they pin", () => {
+    const manifest = pkg({ overrides: { foo: { [A]: "1.0.0", bar: { [`${B}@^1`]: "1.0.0" } }, [C]: { ".": "1.0.0", baz: "1.0.0" } } });
+
+    const plan = planConsumerBump(tree(manifest), latest({ [A]: "2.0.0", [B]: "2.0.0", [C]: "2.0.0" }));
+
+    expect(plan.leftAlone.map(({ name, reason }) => [name, reason])).toEqual([[A, "pinned by overrides"], [B, "pinned by overrides"], [C, "pinned by overrides"]]);
+  });
+
+  it("lists pnpm-workspace.yaml overrides and keeps dependencies they pin unbumped", () => {
+    const manifest = pkg({ dependencies: { [A]: "^0.1.0", [B]: "^0.1.0" } });
+    const yaml = `overrides:\n  "${A}": 0.1.0\n  "foo>${C}": 0.1.0\n`;
+
+    const plan = planConsumerBump(withYaml(manifest, yaml), latest({ [A]: "0.2.0", [B]: "0.2.0", [C]: "0.2.0" }));
+
+    expect(plan.edits.map(({ name }) => name)).toEqual([B]);
+    expect(plan.leftAlone).toEqual([
+      { path: "pnpm-workspace.yaml", name: A, spec: "0.1.0", reason: "pinned by pnpm-workspace.yaml overrides" },
+      { path: "pnpm-workspace.yaml", name: C, spec: "0.1.0", reason: "pinned by pnpm-workspace.yaml overrides" },
+      { path: "package.json", name: A, spec: "^0.1.0", reason: "pinned by pnpm-workspace.yaml overrides" },
+    ]);
+    expect(consumerDepNames(withYaml(manifest, yaml))).toEqual([A, B, C]);
+  });
+
+  it("keeps a workspace package's dependency unbumped when the root package.json pins it by override", () => {
+    const root = file("package.json", JSON.stringify({ pnpm: { overrides: { [A]: "0.1.0" } } }, null, 2));
+    const member = file("packages/x/package.json", JSON.stringify({ dependencies: { [A]: "^0.1.0", [B]: "^0.1.0" } }, null, 2));
+
+    const plan = planConsumerBump(tree(root, member), latest({ [A]: "0.2.0", [B]: "0.2.0" }));
+
+    expect(plan.edits.map(({ path, name }) => `${path} ${name}`)).toEqual([`packages/x/package.json ${B}`]);
+    expect(plan.leftAlone).toContainEqual({ path: "packages/x/package.json", name: A, spec: "^0.1.0", reason: "pinned by pnpm.overrides" });
+  });
+
+  const bumpedNames = (manifest: RepoFile) => planConsumerBump(tree(manifest), latest({ [A]: "0.2.0" })).edits.map(({ name }) => name);
+
+  it("bumps a direct dependency when a pnpm parent-scoped selector names its package", () => {
+    expect(bumpedNames(pkg({ dependencies: { [A]: "^0.1.0" }, pnpm: { overrides: { [`foo>${A}`]: "0.1.0" } } }))).toEqual([A]);
+  });
+
+  it("bumps a direct dependency when an npm parent-scoped override names its package", () => {
+    expect(bumpedNames(pkg({ dependencies: { [A]: "^0.1.0" }, overrides: { foo: { [A]: "0.1.0" } } }))).toEqual([A]);
+  });
+
+  it("bumps a direct dependency when a selector range does not match its version", () => {
+    expect(bumpedNames(pkg({ dependencies: { [A]: "^0.1.0" }, pnpm: { overrides: { [`${A}@^1`]: "1.0.0" } } }))).toEqual([A]);
+  });
+
+  it("keeps a direct dependency unbumped when a selector range matches its version", () => {
+    expect(bumpedNames(pkg({ dependencies: { [A]: "^0.1.0" }, pnpm: { overrides: { [`${A}@^0.1.0`]: "0.1.0" } } }))).toEqual([]);
+  });
+
+  const bumpedUnder = (range: string, spec: string, newest = "0.9.0") =>
+    planConsumerBump(tree(pkg({ dependencies: { [A]: spec }, pnpm: { overrides: { [`${A}@${range}`]: "0.2.0" } } })), latest({ [A]: newest })).edits.length === 0;
+
+  it.each([
+    ["^0", "^0.2.0", true],
+    ["^0.0", "^0.2.0", false],
+    ["^0.0.3", "^0.2.0", false],
+    ["^0.1", "^0.1.0", true],
+    ["~0", "^0.2.0", true],
+    ["^0.1.3", "^0.1.0", true],
+  ])("pins by selector range %s against a dependency declared %s: %s", (range, spec, pinned) => {
+    expect(bumpedUnder(range, spec)).toBe(pinned);
+  });
+
+  it("keeps a dependency unbumped when the selector range holds only the version the bump would reach", () => {
+    expect(bumpedUnder("^0.2.0", "^0.1.0", "0.2.1")).toBe(true);
+  });
+
+  it("lists an unparseable or glob resolutions key naming a titan package instead of dropping it", () => {
+    const manifest = pkg({ resolutions: { [`**/${A}`]: "0.1.0", "@titan-design/*": "0.1.0", "**/zod": "3.0.0" } });
+
+    const plan = planConsumerBump(tree(manifest), latest({}));
+
+    expect(plan.leftAlone).toEqual([
+      { path: "package.json", name: `**/${A}`, spec: "0.1.0", reason: "resolutions key not readable as a package selector" },
+      { path: "package.json", name: "@titan-design/*", spec: "0.1.0", reason: "resolutions key not readable as a package selector" },
+    ]);
+  });
+});
+
 describe("readConsumerTree", () => {
   function seededPort(files: Record<string, string>) {
     const fake = fakeGitHub();
@@ -110,6 +254,29 @@ describe("readConsumerTree", () => {
     expect(npm.manifests.map(({ path }) => path)).toEqual(["package.json", "apps/web/package.json"]);
     expect(npm).toMatchObject({ lockfile: { kind: "npm" }, workspaceYaml: null, npmrc: { content: "engine-strict=true\n" } });
     expect(consumerDepNames(npm)).toEqual([B]);
+  });
+
+  it("readConsumerTree reads the patch files a pnpm consumer names", async () => {
+    const port = seededPort({
+      "package.json": JSON.stringify({ name: "root", pnpm: { patchedDependencies: { "example-a@1.0.0": "patches/example-a.patch" } } }),
+      "pnpm-lock.yaml": "lockfileVersion: '9.0'\n\nimporters:\n\n  .:\n    dependencies: {}\n",
+      "pnpm-workspace.yaml": "patchedDependencies:\n  example-b@2.0.0: patches/example-b.patch\n  example-c@3.0.0: patches/example-c.patch\n",
+      "patches/example-a.patch": "diff a\n",
+      "patches/example-b.patch": "diff b\n",
+    });
+
+    const read = await readConsumerTree(port, REPO, "main");
+
+    expect(read.patches.map(({ path, content }) => [path, content])).toEqual([
+      ["patches/example-a.patch", "diff a\n"],
+      ["patches/example-b.patch", "diff b\n"],
+    ]);
+  });
+
+  it.each([["../outside.patch"], ["/etc/outside.patch"]])("refuses a patch path outside the repo: %s", async (path) => {
+    const port = seededPort({ "package.json": JSON.stringify({ pnpm: { patchedDependencies: { "example-a@1.0.0": path } } }) });
+
+    await expect(readConsumerTree(port, REPO, "main")).rejects.toThrow(/outside the repo/);
   });
 
   it("refuses a lockfile workspace key that climbs out of the repo", async () => {

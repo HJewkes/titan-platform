@@ -129,6 +129,8 @@ export interface DigestModel {
   ownerGateAlarm?: WaitingGate[];
   /** The console origin the alarm links to; absent when `digest.consoleOrigin` is unset. */
   consoleOrigin?: string;
+  /** Why the stale-gate alarm carries no links when the console probe failed (TP-5279); absent otherwise. */
+  consoleLinkGap?: string;
   /** Task-to-merge p50 and merges per implementer slot-hour; absent when the task or roster port is not wired or the roster could not be read. */
   flow?: FlowStats;
   /** The latest day of owner friction; absent when the gate store could not be read. */

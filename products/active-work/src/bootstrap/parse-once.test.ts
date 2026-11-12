@@ -1,19 +1,9 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { archiveStaleTasks } from "./archive-tasks.js";
 import { assembleBootstrap } from "./prompt.js";
 import { withTempActiveRoot } from "../test-support/test-helpers.js";
-
-const readYamlSpy = vi.hoisted(() => vi.fn());
-
-vi.mock("../utils/yaml-io.js", async (importOriginal) => {
-  const actual = await importOriginal<
-    typeof import("../utils/yaml-io.js")
-  >();
-  readYamlSpy.mockImplementation(actual.readYaml);
-  return { ...actual, readYaml: readYamlSpy };
-});
 
 const SLUG = "sample-initiative";
 const NOW = new Date("2026-05-12T16:00:00Z");
@@ -56,15 +46,21 @@ function normalize(prompt: string, activeRoot: string): string {
     .replace(/^- Bootstrap: .*$/m, "- Bootstrap: <TS>");
 }
 
+let readFileSpy: MockInstance<typeof fs.readFile>;
+
 function taskReads(tasksDir: string): string[] {
-  return readYamlSpy.mock.calls
+  return readFileSpy.mock.calls
     .map(([file]) => String(file))
     .filter((file) => file.startsWith(tasksDir));
 }
 
 describe("bootstrap parses each task file once", () => {
   beforeEach(() => {
-    readYamlSpy.mockClear();
+    readFileSpy = vi.spyOn(fs, "readFile");
+  });
+
+  afterEach(() => {
+    readFileSpy.mockRestore();
   });
 
   it("reads every task file exactly once and renders the same prompt as a fresh load", async () => {

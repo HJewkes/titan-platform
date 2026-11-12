@@ -89,8 +89,14 @@ as a read, written again at the 5m rate. It reports the net saving per role and 
 profile, and `lossRoles` names the roles whose rebuilds make 5m a loss. It also prices a
 no-cache alternative, every prompt token at the input rate: `noCacheNetUsd` is the cost today less
 that, and `noCacheCheaper` flags a role or profile where dropping the cache would pay.
+It also replays sessions already on 5m toward 1h: after a 5-60 minute gap, the rebuild write
+reverts to a read of `min(write, previous prompt)`, reported as `reverseSavingUsd` per role and
+profile, with `reversePremiumUsd` and `reverseNetUsd` after the 1h write premium. Sessions with any 1h write, first requests and gaps over an hour claim nothing.
+`byGapCause` splits the rebuilds by the last action before the gap (`ci-wait`, `other-bash` or
+`end-of-turn`), read from the previous request's tool calls on the same sidechain, and the text
+render adds a by-gap-cause table.
 `TtlRequestRow` gains `cacheWrite5mTokens`. `renderCacheTtlText` prints both tables with a
-`no-cache net` column.
+`1h replay saving` and a `no-cache net` column.
 
 Both reports take an optional `scope` of `sessionIds`, an agent-chat `agentPrefix` and
 `roles`, which narrows every request-keyed field; compactions and coverage stay window-wide.

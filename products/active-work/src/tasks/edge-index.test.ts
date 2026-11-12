@@ -6,7 +6,7 @@ import taskAdd from '../commands/task-add.js';
 import taskEdit from '../commands/task-edit.js';
 import { ValidationError } from '../errors.js';
 import type { CommandContext } from '../registry/index.js';
-import type { Task } from '../schemas/task.js';
+import { TaskSchema, type Task } from '../schemas/task.js';
 import { buildEdgeIndex, edgeWriteErrors } from './edge-index.js';
 import { withEmptyActiveRoot } from '../test-support/test-helpers.js';
 
@@ -54,7 +54,9 @@ function ctx(activeRoot: string): CommandContext {
 }
 
 async function readTask(root: string, slug: string, id: string): Promise<Task> {
-  return YAML.parse(await fs.readFile(path.join(root, slug, 'tasks', `${id}.yml`), 'utf8')) as Task;
+  return TaskSchema.parse(
+    YAML.parse(await fs.readFile(path.join(root, slug, 'tasks', `${id}.yml`), 'utf8')),
+  );
 }
 
 async function taskFiles(root: string, slug: string): Promise<string[]> {
