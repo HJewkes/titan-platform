@@ -35,7 +35,7 @@ function sectionOf({ pr, merge, head, paths, tier, task }: MergedFixture) {
 }
 
 /** The round.json a weekly sheet carries, every value synthetic. */
-export function feedbackManifest(): Record<string, unknown> {
+function feedbackManifest(): Record<string, unknown> {
   return {
     schema: "titan-review/round@2",
     kind: "feedback",
