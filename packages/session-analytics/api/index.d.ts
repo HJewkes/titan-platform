@@ -2817,7 +2817,7 @@ interface ScorecardTask {
     doneAt: string | null;
     estimate: number | null;
 }
-/** An `agent_spawned` row whose meta names the task. `actor` is the spawner. */
+/** An `agent_spawned` row linked to the task. `actor` is the spawner. */
 interface ScorecardSpawn {
     ts: string;
     actor: string;
@@ -2825,6 +2825,8 @@ interface ScorecardSpawn {
     launchedBy: string | null;
     /** F12 `dispatch_rule`, once agent-chat records it. */
     dispatchRule: string | null;
+    /** How the spawn was linked to the task; absent means its recorded `meta.task`. */
+    link?: Provenance;
 }
 /** A `shepherd_registration` row for the task. */
 interface ScorecardRegistration {

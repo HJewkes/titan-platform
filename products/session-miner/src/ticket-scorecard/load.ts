@@ -5,6 +5,7 @@ import { readTaskEvents, type TaskEvent } from "./read-events.js";
 import { readRegistrations, type Registration } from "./read-factory.js";
 import { prKey } from "./read-graph.js";
 import { readLabels, type LabelLoad } from "./read-labels.js";
+import { originLinkedEvents, type OriginLinkCounts } from "./read-origin.js";
 import { loadTasks, resolveTaskRef, type TaskFacts, type TaskLoad } from "./read-tasks.js";
 import { openReadOnly, type SourceName } from "./sources.js";
 
@@ -74,8 +75,10 @@ export function rowSources(s: Sources): RowSources | null {
 
 /** The joins built once per run, each keyed on a task key (`initiative/ID`). */
 export interface Indexes {
+  /** Recorded task events, then the spawns linked only through the session origin. */
   events: TaskEvent[];
   maxEventId: number;
+  originLinks: OriginLinkCounts;
   spawnsByKey: Map<string, ScorecardSpawn[]>;
   regsByKey: Map<string, Registration[]>;
   keyByRun: Map<string, string>;
@@ -91,8 +94,11 @@ function push<K, V>(map: Map<K, V[]>, key: K, value: V): void {
 }
 
 export function buildIndexes(s: RowSources): Indexes {
-  const { events, maxId } = readTaskEvents(s.events);
-  const idx: Indexes = { events, maxEventId: maxId, spawnsByKey: new Map(), regsByKey: new Map(), keyByRun: new Map(), keysByPr: new Map(), childrenOf: new Map() };
+  const read = readTaskEvents(s.events);
+  const fromOrigin = originLinkedEvents(s.graph, read.untasked);
+  const events = [...read.events, ...fromOrigin.events];
+  const joins = { spawnsByKey: new Map(), regsByKey: new Map(), keyByRun: new Map(), keysByPr: new Map(), childrenOf: new Map() };
+  const idx: Indexes = { events, maxEventId: read.maxId, originLinks: fromOrigin.counts, ...joins };
   for (const event of events) {
     const key = resolveTaskRef(s.tasks, event.taskRef);
     if (key !== null && event.kind === "agent_spawned") push(idx.spawnsByKey, key, event.spawn);

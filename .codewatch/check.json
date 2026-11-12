@@ -25,7 +25,8 @@
           "packages/owner-proof",
           "packages/openai-account",
           "packages/review-burden",
-          "packages/png-delta"
+          "packages/png-delta",
+          "packages/seat-spec"
         ],
         "1": [
           "packages/retrieval",
@@ -113,7 +114,8 @@
           "packages/owner-proof",
           "packages/openai-account",
           "packages/review-burden",
-          "packages/png-delta"
+          "packages/png-delta",
+          "packages/seat-spec"
         ],
         [
           "packages/retrieval",

@@ -111,6 +111,29 @@ function measure(p: Population, figure: ExpectedFigure): Measure {
   }
 }
 
+/** One ISO week of the population: its dispatched tasks, and how many were linked only through the session origin. */
+export interface WeekLinks {
+  week: string;
+  tasks: number;
+  inferredLink: number;
+}
+
+function linkInferred(row: TaskRow): boolean {
+  const origin = row.provenance.firstDispatchTs;
+  return origin !== undefined && origin !== "recorded";
+}
+
+/** Per ISO week of first dispatch, the population's tasks and those whose dispatch link is inferred. */
+export function weekLinks(rows: readonly TaskRow[]): WeekLinks[] {
+  const weeks = new Map<string, WeekLinks>();
+  for (const row of rows) {
+    const week = isoWeek(row.firstDispatchTs);
+    const cell = weeks.get(week) ?? { week, tasks: 0, inferredLink: 0 };
+    weeks.set(week, { week, tasks: cell.tasks + 1, inferredLink: cell.inferredLink + (linkInferred(row) ? 1 : 0) });
+  }
+  return [...weeks.values()].sort((a, b) => (a.week < b.week ? -1 : a.week > b.week ? 1 : 0));
+}
+
 /** Each expected figure, measured over the population's rows. */
 export function measureFigures(input: ReproduceInput, spec: ExpectedFile, population: string): Measure[] {
   const p: Population = { ...input, rows: populationRows(input.rows, spec, population), selfSources: new Set(spec.selfSources) };
