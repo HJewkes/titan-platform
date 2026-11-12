@@ -24,7 +24,11 @@ export function queuePowerLevels(): PowerLevels {
     kick: 100,
     ban: 100,
     redact: 100,
-    events: { "m.reaction": 100, "io.titan.resolution": 100, "m.room.power_levels": 100 },
+    events: {
+      "m.reaction": 100,
+      "io.titan.resolution": 100,
+      "m.room.power_levels": 100,
+    },
   };
 }
 
@@ -35,32 +39,75 @@ export interface BootstrapQueueOptions {
   name?: string;
 }
 
-const directoryPath = (alias: string) => `/_matrix/client/v3/directory/room/${encodeURIComponent(alias)}`;
+const directoryPath = (alias: string) =>
+  `/_matrix/client/v3/directory/room/${encodeURIComponent(alias)}`;
 
-async function resolveAlias(client: AppserviceClient, alias: string): Promise<string | undefined> {
+async function resolveAlias(
+  client: AppserviceClient,
+  alias: string
+): Promise<string | undefined> {
   try {
-    return (await client.request<{ room_id: string }>("GET", directoryPath(alias))).room_id;
+    return (
+      await client.request<{ room_id: string }>("GET", directoryPath(alias))
+    ).room_id;
   } catch (err) {
     if (err instanceof MatrixError && err.status === 404) return undefined;
     throw err;
   }
 }
 
+async function inviteMissingMirrors(
+  owner: AppserviceClient,
+  roomId: string,
+  mirrorUserIds: string[]
+): Promise<void> {
+  const { chunk } = await owner.request<{
+    chunk: Array<{ state_key: string; content: { membership?: string } }>;
+  }>("GET", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/members`);
+  const present = new Set(
+    chunk
+      .filter(
+        (e) =>
+          e.content.membership === "join" || e.content.membership === "invite"
+      )
+      .map((e) => e.state_key)
+  );
+  for (const user_id of mirrorUserIds.filter((id) => !present.has(id))) {
+    await owner.request(
+      "POST",
+      `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/invite`,
+      { body: { user_id } }
+    );
+  }
+}
+
 /**
  * Creates the owner's #queue at the server's default room version (v12), so the owner is creator.
- * An alias that already resolves returns its room id unchanged.
+ * An alias that already resolves returns its room id, after inviting any mirror that is neither joined nor invited.
  */
-export async function bootstrapQueueRoom(owner: AppserviceClient, options: BootstrapQueueOptions): Promise<string> {
+export async function bootstrapQueueRoom(
+  owner: AppserviceClient,
+  options: BootstrapQueueOptions
+): Promise<string> {
   const existing = await resolveAlias(owner, options.alias);
-  if (existing) return existing;
-  const { room_id: roomId } = await owner.request<{ room_id: string }>("POST", "/_matrix/client/v3/createRoom", {
-    body: {
-      preset: "private_chat",
-      name: options.name ?? "queue",
-      invite: options.mirrorUserIds,
-      power_level_content_override: queuePowerLevels(),
-    },
+  if (existing) {
+    await inviteMissingMirrors(owner, existing, options.mirrorUserIds);
+    return existing;
+  }
+  const { room_id: roomId } = await owner.request<{ room_id: string }>(
+    "POST",
+    "/_matrix/client/v3/createRoom",
+    {
+      body: {
+        preset: "private_chat",
+        name: options.name ?? "queue",
+        invite: options.mirrorUserIds,
+        power_level_content_override: queuePowerLevels(),
+      },
+    }
+  );
+  await owner.request("PUT", directoryPath(options.alias), {
+    body: { room_id: roomId },
   });
-  await owner.request("PUT", directoryPath(options.alias), { body: { room_id: roomId } });
   return roomId;
 }

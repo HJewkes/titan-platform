@@ -139,19 +139,6 @@ const DOMAIN_DDL = `
 `;
 
 /**
- * Every workspace table, in an order safe to clear. The watermark table is not
- * derived, so it is rewound rather than emptied — same rule the session graph
- * states for `transcript`.
- */
-export const WORKSPACE_TABLES = [
-  'note',
-  'workspace_task',
-  'session_record',
-  'source',
-  'initiative',
-] as const;
-
-/**
  * active-work's migrations live in a fixed band far above the chain they extend.
  *
  * They used to be numbered positionally off `SESSION_GRAPH_MIGRATIONS` (TP-35),
@@ -177,7 +164,7 @@ const SPAN_SOURCE_INDEX = `
   CREATE INDEX IF NOT EXISTS idx_search_span_source ON search_span(source_id);
 `;
 
-export const WORKSPACE_MIGRATIONS: Migration[] = [
+const WORKSPACE_MIGRATIONS: Migration[] = [
   {
     version: WORKSPACE_MIGRATION_VERSION,
     name: 'workspace index tables',

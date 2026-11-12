@@ -27,6 +27,7 @@ import { registerReview } from "./review/command.js";
 import { registerContextAudit } from "./context-audit/command.js";
 import { registerBotToken } from "./cli-bot-token.js";
 import { registerToolchain } from "./cli-toolchain.js";
+import { registerRelease } from "./cli-release.js";
 import { postRpc } from "./cli-shepherd-rpc.js";
 import { registerShepherd } from "./cli-shepherd.js";
 import { registerLand } from "./cli-land.js";
@@ -71,7 +72,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDep
     }
   };
   const verbs: Verbs = { io, deps, dbPath, withHost, setExit };
-  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit, registerBuildSurface, registerToolchain, registerScorecard, registerContextAudit, registerOwnerGates, registerBlocker, registerBotToken, registerPlanner, registerAutoresearch, registerReview, registerMarkers]) register(program, verbs);
+  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit, registerBuildSurface, registerToolchain, registerRelease, registerScorecard, registerContextAudit, registerOwnerGates, registerBlocker, registerBotToken, registerPlanner, registerAutoresearch, registerReview, registerMarkers]) register(program, verbs);
   return parse(program, argv, io, () => exitCode);
 }
 

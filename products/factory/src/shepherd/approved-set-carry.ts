@@ -10,7 +10,7 @@ import type { ShepherdPhases, VisualSetCarry } from "./phases.js";
 import type { OwnerGateReason } from "./policy-schema.js";
 import { isRepoKey } from "./seats.js";
 import type { VisualAcceptRun } from "./visual-accept.js";
-import { CarryRefusal, carryCacheDir, carryStateDir, ensureCache, githubRemote, isAncestor, must, reasonOf, serialized, systemGit, type CarryOptions, type Git } from "./tree-carry.js";
+import { CarryRefusal, cacheFor, ensureCache, isAncestor, must, reasonOf, serialized, type CacheHandle, type CarryOptions, type Git } from "./tree-carry.js";
 
 /** Under the approval-carry family so the step reads as awaiting approval; like the own-merge-up probe, its route is the longer match. */
 export const SET_CARRY_STEP = "sh-approval-carry:set";
@@ -41,8 +41,9 @@ async function objectsAt(git: Git, dir: string, head: string, paths: readonly st
   return new Map(entries.map(([, mode = "", type, id = "", path = ""]) => [path, type === "blob" && mode === "100644" ? id : `${type} ${mode}`]));
 }
 
-async function probe(git: Git, dir: string, url: string, { fromHead, head, mode, set }: SetCarryInput, signal?: AbortSignal): Promise<SetCarryResult> {
-  await ensureCache(git, dir, signal);
+async function probe(cache: CacheHandle, { fromHead, head, mode, set }: SetCarryInput, signal?: AbortSignal): Promise<SetCarryResult> {
+  const { git, dir, url } = cache;
+  await ensureCache(cache, signal);
   await must(git, dir, ["fetch", "--no-tags", "--no-write-fetch-head", "--quiet", url, fromHead, head], signal);
   if (!(await isAncestor(git, dir, fromHead, head, signal))) return refuse(mode, `${fromHead} is not an ancestor of ${head}`);
   const changed = await changedPathsBetween(git, dir, fromHead, head, signal);
@@ -57,21 +58,20 @@ async function probe(git: Git, dir: string, url: string, { fromHead, head, mode,
  * Does `head` commit exactly the set the owner accepted at `fromHead`: a descendant of it whose diff names only set paths,
  * each file at its accepted blob and each removed path gone? Every failure, from bad input to a refused fetch, answers no.
  */
-export async function setCarry(raw: unknown, options: CarryOptions = {}): Promise<SetCarryResult> {
+export async function setCarry(raw: unknown, options: CarryOptions): Promise<SetCarryResult> {
   const parsed = InputSchema.safeParse(raw);
   if (!parsed.success) return refuse("shadow", "invalid set carry input");
   const input = parsed.data;
   try {
-    const dir = carryCacheDir(carryStateDir(options.stateDir), input.repo);
-    const url = (options.remote ?? githubRemote)(input.repo);
-    return await serialized(dir, () => probe(options.git ?? systemGit, dir, url, input, options.signal));
+    const cache = cacheFor(input.repo, options);
+    return await serialized(cache.dir, () => probe(cache, input, options.signal));
   } catch (error) {
     options.signal?.throwIfAborted();
     return refuse(input.mode, reasonOf(error));
   }
 }
 
-export function setCarryRoute(now: () => number, options: Omit<CarryOptions, "signal"> = {}): StepRoute {
+export function setCarryRoute(now: () => number, options: Omit<CarryOptions, "signal">): StepRoute {
   return codeRoute(SET_CARRY_STEP, now, (input: unknown, signal) => setCarry(input, { ...options, signal }));
 }
 

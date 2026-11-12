@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { holdSlotsMigration } from "./store-migrations.js";
 import { shepherdEventMigration } from "./events.js";
 import { z } from "zod";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { G10_REHOLD_STEP, g10ReholdRoutes } from "./g10-rehold.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdStoreRef, type ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration } from "./store.js";
@@ -50,7 +51,7 @@ function rig(shape: Shape, head = MOVED, during: (store: ShepherdStore) => void 
   store.hold("run-1", ADVERSARY);
   store.release("run-1", { headSha: REVIEWED });
   const deps = { port: githubPort(fake.wire), store: ref, now: () => 0 };
-  const [route] = g10ReholdRoutes(deps, { git: scriptedGit(shape, () => during(store)) });
+  const [route] = g10ReholdRoutes(deps, { ports: { ...hostCarryPorts, git: scriptedGit(shape, () => during(store)) } });
   const run = async (input: { head: string }) => {
     const prompt = JSON.stringify({ runId: "run-1", repo: REPO, pr, ...input });
     const result = await route!.runner.run({ runId: "run-1", workflowName: "shepherd-pr", stepId: G10_REHOLD_STEP, iteration: 0, prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" });

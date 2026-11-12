@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReviewSuperseded } from "./review-dispatcher.js";
 import { HEAD_A, HEAD_B, TICK_MS, flush, idle, scene, target } from "./review-dispatcher.test-helpers.js";
-import { notStarted } from "./review-wait.js";
+import { DEFAULT_HOLD_WAIT_MS, notStarted } from "./review-wait.js";
 import { spawnQueuePosition } from "./review-queue.js";
 import { SpawnDeferred } from "./spawn-gate.js";
 
@@ -84,10 +84,12 @@ describe("the push dispatcher starts reviews from the one queue on its three tri
   });
 
   it("gives up on a review still queued after the hold, as a deferral its step reports", async () => {
-    const { state, queue } = scene();
+    const hold = DEFAULT_HOLD_WAIT_MS;
+    // One tick at the hold, not 180 of them: each fake tick yields to the real event loop, so a loaded runner turned the walk into minutes.
+    const { state, queue } = scene({ tickMs: hold, holdMs: hold });
     queue("rv-demo-7", { fixer: false });
 
-    await vi.advanceTimersByTimeAsync(3 * 60 * 60_000);
+    await vi.advanceTimersByTimeAsync(hold);
 
     expect(state.launched).toEqual([]);
     expect(state.settled.get("rv-demo-7")).toBe(new SpawnDeferred("").name);

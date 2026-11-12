@@ -5,6 +5,7 @@ import { FlashReportSchema } from "./flash-scan.js";
 import { ContrastReportSchema } from "./contrast-check.js";
 import { NarrationFactsReportSchema } from "./narration-facts.js";
 import type { QaTimeline } from "./qa-timeline.js";
+import { SpeechRateReportSchema } from "./speech-rate.js";
 import { TIMING_GATES } from "./timing-gates.js";
 
 const RectSchema = z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() });
@@ -102,6 +103,8 @@ export const QaReportSchema = z.object({
   flash: FlashReportSchema.optional(),
   /** Text and chart marks under the gate profile's contrast thresholds (`contrast-check.ts`); absent before the check. */
   contrast: ContrastReportSchema.optional(),
+  /** Measured words a minute per beat and overall (`speech-rate.ts`); reported only, and first; absent before the check. */
+  speechRate: SpeechRateReportSchema.optional(),
   notes: z.array(z.string()),
 });
 export type QaReport = z.infer<typeof QaReportSchema>;
@@ -116,7 +119,7 @@ type QaReportBase = Omit<QaReport, "schema" | "pass" | "errorCounts" | "infoCoun
 export function qaReport(held: Held, base: QaReportBase): QaReport {
   const gated = base.measured.some((finding) => MEASURED_GATES.includes(finding.code)) || base.timing.gates.some((gate) => TIMING_GATES.includes(gate.id) && !gate.pass);
   return {
-    schema: "explainer.qa/v1", pass: held.errors.length === 0 && !gated, ...base,
+    schema: "explainer.qa/v1", ...(base.speechRate === undefined ? {} : { speechRate: base.speechRate }), pass: held.errors.length === 0 && !gated, ...base,
     errorCounts: countByKind(held.errors), infoCounts: countByKind(held.info), errors: held.errors.map(finding), info: held.info.map(finding),
   };
 }

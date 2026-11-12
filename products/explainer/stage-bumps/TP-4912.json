@@ -1,0 +1,1 @@
+{ "stages": ["resolve", "render", "qa"], "why": "render-qa scores text against its composited ground, the worst sample of a gradient under it, and reports text over an image or filter as unmeasured instead of a page-background ratio" }

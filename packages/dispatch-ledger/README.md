@@ -7,8 +7,9 @@ bytes.
 Tier 2 of the titan-platform DAG. May import only packages in the same tier or
 below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
 
-Ported from agent-chat `src/agents/burndown` at commit `67005f3`. Re-port anything that
-lands there before the agent-chat copy is deleted.
+Ported from agent-chat `src/agents/burndown` at commit `7b87af6`. Re-port anything that
+lands there before the agent-chat copy is deleted. The CC-1181 ledger-lock wait in that
+commit is not ported: it only changes the pid lock, and the TP-2579 lease replaces that lock.
 
 ## Schema and vocabularies
 

@@ -235,5 +235,3 @@ const ALL_COMMANDS: AnyCommand[] = [
 for (const cmd of ALL_COMMANDS) {
   register(cmd);
 }
-
-export { ALL_COMMANDS };

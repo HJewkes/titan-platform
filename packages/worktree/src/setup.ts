@@ -2,7 +2,7 @@ import { execFile, spawn } from "node:child_process";
 import { lstatSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { gitChildEnv, withPinnedGitProtocols } from "./git.js";
+import { DEFAULT_GIT_TIMEOUT_MS, gitChildEnv, withPinnedGitProtocols } from "./git.js";
 import { signalGroup } from "./process-group.js";
 
 const execFileAsync = promisify(execFile);
@@ -164,6 +164,8 @@ async function gitOutput(
       cwd,
       encoding: "utf8",
       env: gitChildEnv(),
+      timeout: DEFAULT_GIT_TIMEOUT_MS,
+      killSignal: "SIGKILL",
     });
     return stdout;
   } catch {

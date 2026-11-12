@@ -16,6 +16,11 @@ import { wakePhase } from "./shepherd/wake-phase.js";
 import { isolateAgentChatHome } from "./test-support/agent-chat-home.js";
 import { H1, REPO, gateId, gateOpened } from "./test-support/land.js";
 import { configuredRoutes, configuredSpawnLimits, type FactoryRouteDeps } from "./workflows.js";
+import { factoryShepherdPhases } from "./shepherd-phases.js";
+import { bindCarryStateDir } from "./shepherd/carry-cache-adapter.js";
+import { partialFake } from "@titan-design/test-kit";
+import type { RoutedStepInput } from "@titan-design/workflow";
+import type { ReviewWiring } from "./shepherd/review.js";
 import { landPrWorkflow } from "./workflows/land-pr.js";
 import { NO_COMMAND, type ChoreExec } from "./workflows/post-merge.js";
 import { OWNER } from "./test-support/resolver.js";
@@ -61,6 +66,15 @@ async function landWith(env: NodeJS.ProcessEnv): Promise<{ argvs: (readonly stri
   const record = Object.values(host.runtime.status(runId)!.stepResults).find((result) => result.stepId === "post-merge")?.data;
   return { argvs, record };
 }
+
+describe("factoryWorkflows shepherd phases", () => {
+  it("reads shepherd.visualSetCarry from the config file", () => {
+    const env = configHome({ shepherd: { visualSetCarry: "on" } });
+    vi.stubEnv("XDG_CONFIG_HOME", env.XDG_CONFIG_HOME);
+
+    expect(factoryShepherdPhases.visualSetCarry?.()).toBe("on");
+  });
+});
 
 describe("configuredRoutes", () => {
   it("runs the postMerge argv from the config file after a merge through the real route set", async () => {
@@ -476,5 +490,24 @@ describe("configuredSpawnLimits", () => {
 
   it("leaves every review limit unset when shepherd.review names none, so the defaults hold", () => {
     expect(configuredSpawnLimits({ review: { profile: "rv" } })).toEqual({});
+  });
+});
+
+describe("configured shepherd deps", () => {
+  it("configured shepherd deps carry hostCarryPorts", async () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "workflows-carry-"));
+    const unbind = bindCarryStateDir(stateDir);
+    try {
+      const routes = configuredRoutes({}, { port: githubPort(fakeGitHub().wire), review: partialFake<ReviewWiring>({ carry: { remote: () => join(stateDir, "no-such-origin.git") } }) });
+      const route = routes.find((candidate) => candidate.match === "sh-carry")!;
+      const prompt = JSON.stringify({ repo: REPO, baseRef: "main", fromHead: H1, head: fakeSha("moved") });
+
+      await route.runner.run(partialFake<RoutedStepInput>({ prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" }));
+
+      expect(existsSync(join(stateDir, "git-cache", "octo", "demo.git", "HEAD"))).toBe(true);
+    } finally {
+      unbind();
+      rmSync(stateDir, { recursive: true, force: true });
+    }
   });
 });

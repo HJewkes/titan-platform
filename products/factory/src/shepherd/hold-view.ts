@@ -5,8 +5,8 @@ import type { WatchRow } from "./view-schema.js";
 
 /**
  * A held run's merge step polls the hold rather than merging, so its next action names the hold and the merging limit
- * does not apply. The phase stays `merging` until CC-791: agent-chat's burndown rejects a status array with any phase
- * it does not know. Only a hold satisfied at the run's own head lets the merge through.
+ * does not apply. The phase stays `merging`, which agent-chat's burndown already knows, rather than
+ * a new phase of its own. Only a hold satisfied at the run's own head lets the merge through.
  */
 export function waitsOnHold(run: WorkflowRun, held: WatchRow["held"], headSha: string | null): boolean {
   const merging = run.currentStep !== null && stepIdMatches("merge", run.currentStep);

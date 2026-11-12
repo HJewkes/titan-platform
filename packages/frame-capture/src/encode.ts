@@ -27,9 +27,8 @@ export interface Encoder {
   finish(): Promise<void>
 }
 
-/** One ffmpeg reading PNGs on stdin, muxing mix.wav, writing H.264 + AAC with no run-specific metadata. */
-export function startEncoder(out: string, fps: number, audio: string): Encoder {
-  const args = [
+function encoderArgs(out: string, fps: number, audio: string): string[] {
+  return [
     '-f', 'image2pipe', '-framerate', String(fps), '-c:v', 'png', '-i', '-',
     '-i', audio,
     '-map', '0:v', '-map', '1:a',
@@ -38,16 +37,31 @@ export function startEncoder(out: string, fps: number, audio: string): Encoder {
     '-map_metadata', '-1', '-fflags', '+bitexact', '-flags:v', '+bitexact', '-flags:a', '+bitexact',
     out,
   ]
-  const ffmpeg = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...args], {
+}
+
+/** One ffmpeg reading PNGs on stdin, muxing mix.wav, writing H.264 + AAC with no run-specific metadata. */
+export function startEncoder(out: string, fps: number, audio: string): Encoder {
+  const ffmpeg = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...encoderArgs(out, fps, audio)], {
     stdio: ['pipe', 'inherit', 'inherit'],
+  })
+  // An ffmpeg that dies mid-encode surfaces first as EPIPE on stdin; the exit reason from 'close' is the useful error.
+  let stdinError: Error | undefined
+  ffmpeg.stdin.on('error', (error) => {
+    stdinError = error
   })
   const closed = new Promise<void>((resolve, reject) => {
     ffmpeg.on('error', reject)
-    ffmpeg.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}`))))
+    ffmpeg.on('close', (code, signal) =>
+      code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code ?? signal}`, { cause: stdinError })),
+    )
   })
+  // A death between writes must not become an unhandled rejection before finish() or the next write awaits it.
+  closed.catch(() => undefined)
   return {
     async write(png) {
-      if (!ffmpeg.stdin.write(png)) await once(ffmpeg.stdin, 'drain')
+      if (stdinError) return closed
+      if (ffmpeg.stdin.write(png)) return
+      await Promise.race([once(ffmpeg.stdin, 'drain').catch(() => closed), closed])
     },
     async finish() {
       ffmpeg.stdin.end()

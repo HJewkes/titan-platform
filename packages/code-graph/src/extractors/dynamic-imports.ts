@@ -8,28 +8,46 @@ import type { GraphEdge } from "../types.js";
 import { symbolId } from "./ids.js";
 import { addWeightedEdge } from "./reference-weight.js";
 
+function staticSpecifier(arg: Node | undefined): string | undefined {
+  return Node.isStringLiteral(arg) || Node.isNoSubstitutionTemplateLiteral(arg)
+    ? arg.getLiteralText()
+    : undefined;
+}
+
 /**
- * String-literal specifiers of dynamic `import("…")` expressions in a file
+ * Static specifiers of dynamic `import("…")` expressions in a file
  * (C-65). The static import graph only records `import`/`export` *declarations*,
  * so a module loaded lazily — e.g. `cli/src/index.ts` doing
  * `import("./commands/analyze.js")` to register a command — otherwise has no
  * inbound edge and reads `fan_in` 0, falsely appearing dead. Capturing these
  * closes that blind spot for the common case.
  *
- * Only string-literal specifiers are returned; a computed specifier
- * (`import(variable)`) is genuinely unresolvable statically and is left out (a
+ * Only static specifiers are returned (a string literal or a template literal
+ * with no substitution); a computed specifier
+ * (`import(variable)`, a template with a substitution) is genuinely unresolvable statically and is left out (a
  * documented blind spot, same class as DI/registry-string wiring).
  */
-export function dynamicImportSpecifiers(sourceFile: SourceFile): string[] {
+function dynamicImportSpecifiers(sourceFile: SourceFile): string[] {
   const out: string[] = [];
   for (const call of sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression)) {
     if (call.getExpression().getKind() !== SyntaxKind.ImportKeyword) continue;
-    const arg = call.getArguments()[0];
-    if (arg && arg.getKind() === SyntaxKind.StringLiteral) {
-      out.push(arg.asKindOrThrow(SyntaxKind.StringLiteral).getLiteralText());
-    }
+    const specifier = staticSpecifier(call.getArguments()[0]);
+    if (specifier !== undefined) out.push(specifier);
   }
   return out;
+}
+
+/** An `imports` edge from the file to each module a static dynamic `import()` loads (C-65). */
+export function recordDynamicImportEdges(
+  sourceFile: SourceFile,
+  srcFileId: string,
+  agg: Map<string, GraphEdge>,
+  resolve: (specifier: string) => string | null,
+): void {
+  for (const specifier of dynamicImportSpecifiers(sourceFile)) {
+    const dstId = resolve(specifier);
+    if (dstId) addWeightedEdge(agg, srcFileId, dstId, "imports", specifier, 1);
+  }
 }
 
 /** One export pulled out of a destructured dynamic import. */
@@ -59,11 +77,10 @@ function dynamicImportBindings(
   const out: DynamicImportBinding[] = [];
   for (const call of sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression)) {
     if (call.getExpression().getKind() !== SyntaxKind.ImportKeyword) continue;
-    const arg = call.getArguments()[0];
-    if (!arg || arg.getKind() !== SyntaxKind.StringLiteral) continue;
+    const specifier = staticSpecifier(call.getArguments()[0]);
+    if (specifier === undefined) continue;
     const pattern = destructuredTargetOf(call);
     if (!pattern) continue;
-    const specifier = arg.asKindOrThrow(SyntaxKind.StringLiteral).getLiteralText();
     for (const importedName of destructuredNames(pattern)) {
       out.push({ specifier, importedName });
     }

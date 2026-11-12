@@ -22,7 +22,7 @@ import { handleDashboard } from './dashboard-routes.js';
 import { startedAt, type HealthIndexState } from './health.js';
 import { BUILD_VERSION } from '../version.js';
 
-export interface BuildHttpAppOptions {
+interface BuildHttpAppOptions {
   port: number;
   /**
    * Optional event hub for live-reload SSE. When present, `/events` streams

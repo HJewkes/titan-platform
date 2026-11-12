@@ -219,3 +219,12 @@ function shaped<T>(value: unknown): T;
 function shaped(value: unknown): unknown {
   return value;
 }
+
+export function isRetryableWrite(error: unknown): boolean {
+  return isTransient(error) || (httpStatusOf(error) ?? 0) >= 500;
+}
+
+export function httpStatusOf(error: unknown): number | undefined {
+  if (typeof error !== "object" || error === null || !("status" in error)) return undefined;
+  return typeof error.status === "number" ? error.status : undefined;
+}

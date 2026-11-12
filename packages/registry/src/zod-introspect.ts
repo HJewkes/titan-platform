@@ -1,7 +1,7 @@
 import { ZodArray, ZodDefault, ZodNullable, ZodObject, ZodOptional, ZodType } from "zod";
 
 /** The zod 4 `def.type` discriminator of a schema, e.g. "string", "array", "enum". */
-export type SchemaKind = string;
+export type SchemaKind = ZodType["def"]["type"];
 
 type Wrapper = ZodOptional<ZodType> | ZodNullable<ZodType> | ZodDefault<ZodType>;
 

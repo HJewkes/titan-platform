@@ -16,6 +16,7 @@ import { singleSeat } from "./held-repair.js";
 import type { ShepherdDeps } from "./phases.js";
 import type { CauseTrail } from "./review-cause.js";
 import { PUSH_WATCH_TICK_MS, headPoll, type HeadPoll } from "./push-signal.js";
+import { parseIsoMs } from "../time-iso.js";
 
 const FREEZE_HOLD_STEP = "sh-freeze-hold";
 const FREEZE_WAIT_STEP = "sh-freeze-wait";
@@ -149,7 +150,7 @@ async function notRedAt(port: GitHubPort, input: HoldInput, sha: string, read: F
 /** When the earliest failing run at the head started, since a pull_request run tests the base as it stood then. */
 async function failingStartedAt(port: GitHubPort, input: HoldInput): Promise<number | undefined> {
   const runs = actionsRunsAt(await port.latestCheckRuns(input.repo, input.headSha), input.headSha).filter((run) => input.failing.includes(run.name));
-  const starts = runs.map((run) => Date.parse(run.startedAt ?? ""));
+  const starts = runs.map((run) => parseIsoMs(run.startedAt ?? ""));
   return starts.length === 0 || starts.some(Number.isNaN) ? undefined : Math.min(...starts);
 }
 
@@ -164,7 +165,7 @@ async function ciBaseOf(port: GitHubPort, input: HoldInput, baseSha: string): Pr
   let sha: string | undefined = baseSha;
   for (let hop = 0; hop < CI_BASE_WALK && sha !== undefined; hop++) {
     const commit = await port.getCommit(input.repo, sha);
-    const committedAt = Date.parse(commit.committedAt ?? "");
+    const committedAt = parseIsoMs(commit.committedAt ?? "");
     if (Number.isNaN(committedAt)) return undefined;
     if (committedAt <= startedAt) return sha === baseSha ? undefined : sha;
     sha = commit.parents[0];

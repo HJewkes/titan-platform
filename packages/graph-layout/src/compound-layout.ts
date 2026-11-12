@@ -31,13 +31,15 @@ import type {
 //     positions accumulate down the tree.
 //   - ELK reports an edge's route in the frame of the edge's LCA (lowest common
 //     ancestor group of its endpoints), even though the edge stays declared at
-//     the root, so each route needs its LCA's offset added back.
+//     the root, so each route needs its LCA's offset added back. When one end is a
+//     group enclosing the other, that group is the LCA.
 
 const ROOT_ID = "root";
 
 interface CompoundTree {
   root: ElkNode;
-  // Ancestor group ids, outermost first, for every leaf and every group.
+  // Outermost first, the group ids enclosing each leaf, and for each group its ancestors and
+  // then itself: ELK reports a group-to-descendant edge in the group's own frame.
   chains: Map<string, string[]>;
 }
 
@@ -69,6 +71,12 @@ function isVertical(layoutOptions: Record<string, string>): boolean {
   return direction === "DOWN" || direction === "UP";
 }
 
+// A group-to-itself edge is dropped: ELK cannot route it from the border of a compound
+// node, and a group box has no meaningful self-arrow.
+function withoutGroupSelfLoops(edges: GraphEdge[], groups: Map<string, ElkNode>): GraphEdge[] {
+  return edges.filter((e) => e.srcId !== e.dstId || !groups.has(e.srcId));
+}
+
 function buildCompoundTree(
   nodes: GraphNode[],
   edges: GraphEdge[],
@@ -86,7 +94,7 @@ function buildCompoundTree(
       if (!group) {
         group = groupNode(gid, groupHeaders?.get(gid), vertical);
         groups.set(gid, group);
-        chains.set(gid, chain.slice(0, depth));
+        chains.set(gid, chain.slice(0, depth + 1));
         parent.children!.push(group);
       }
       parent = group;
@@ -96,7 +104,8 @@ function buildCompoundTree(
   }
   // Group ids are valid edge ends, so aggregate edges between group boxes route in this same pass.
   const root = groups.get(ROOT_ID)!;
-  return { root: { ...root, edges: toElkEdges(edges, new Set(chains.keys())) }, chains };
+  const routable = withoutGroupSelfLoops(edges, groups);
+  return { root: { ...root, edges: toElkEdges(routable, new Set(chains.keys())) }, chains };
 }
 
 // Absolute top-left of every node, accumulated down the parent chain.
@@ -142,7 +151,7 @@ function collectElkEdges(root: ElkNode): ElkExtendedEdge[] {
   return [...(root.edges ?? []), ...(root.children ?? []).flatMap(collectElkEdges)];
 }
 
-// The deepest shared ancestor group of two nodes, or null when they only meet at the root.
+// The deepest group shared by two chains, or null when they only meet at the root.
 function lcaGroupId(a: string[], b: string[]): string | null {
   let i = 0;
   while (i < a.length && i < b.length && a[i] === b[i]) i++;

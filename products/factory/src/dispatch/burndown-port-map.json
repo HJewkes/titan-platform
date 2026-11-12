@@ -149,7 +149,7 @@
       ],
       "externalImporters": [],
       "ported": false,
-      "portedFrom": "67005f389acbb182c0f8807d95bf973e826d2638"
+      "portedFrom": "7b87af6e65c9c057e51a9a33ccf10d6e08f21ab1"
     },
     {
       "file": "classify-task.ts",
@@ -517,7 +517,7 @@
         "src/digest/collect.ts"
       ],
       "ported": false,
-      "portedFrom": "67005f389acbb182c0f8807d95bf973e826d2638"
+      "portedFrom": "7b87af6e65c9c057e51a9a33ccf10d6e08f21ab1"
     },
     {
       "file": "LICENSE.openrig",
@@ -675,7 +675,8 @@
       "dest": "F3",
       "imports": [],
       "externalImporters": [],
-      "ported": true
+      "ported": true,
+      "portedFrom": "28c31ed3456276be0d04e5a37c15e531837444ee"
     },
     {
       "file": "orphan-queue.ts",
@@ -732,7 +733,8 @@
       "externalImporters": [
         "src/cli/verbs/burndown-unstall.ts"
       ],
-      "ported": true
+      "ported": true,
+      "portedFrom": "28c31ed3456276be0d04e5a37c15e531837444ee"
     },
     {
       "file": "park-sweep.ts",
@@ -968,7 +970,8 @@
       "externalImporters": [
         "src/cli/verbs/burndown-unstall.ts"
       ],
-      "ported": true
+      "ported": true,
+      "portedFrom": "28c31ed3456276be0d04e5a37c15e531837444ee"
     },
     {
       "file": "review-diff.ts",
@@ -978,7 +981,8 @@
         "exec.ts"
       ],
       "externalImporters": [],
-      "ported": true
+      "ported": true,
+      "portedFrom": "28c31ed3456276be0d04e5a37c15e531837444ee"
     },
     {
       "file": "run-tick.ts",
@@ -1380,7 +1384,8 @@
         "report.ts"
       ],
       "externalImporters": [],
-      "ported": true
+      "ported": true,
+      "portedFrom": "28c31ed3456276be0d04e5a37c15e531837444ee"
     },
     {
       "file": "slice-repo.ts",
@@ -1435,7 +1440,8 @@
       "dest": "F3",
       "imports": [],
       "externalImporters": [],
-      "ported": true
+      "ported": true,
+      "portedFrom": "28c31ed3456276be0d04e5a37c15e531837444ee"
     },
     {
       "file": "spend-meter.ts",
@@ -1490,7 +1496,7 @@
       ],
       "externalImporters": [],
       "ported": false,
-      "portedFrom": "67005f389acbb182c0f8807d95bf973e826d2638"
+      "portedFrom": "7b87af6e65c9c057e51a9a33ccf10d6e08f21ab1"
     },
     {
       "file": "stall.ts",
@@ -1693,7 +1699,8 @@
         "observe.ts",
         "score-render.ts",
         "seed-slices.ts"
-      ]
+      ],
+      "portedFrom": "28c31ed3456276be0d04e5a37c15e531837444ee"
     },
     {
       "file": "collision.ts",
@@ -1708,7 +1715,8 @@
       ],
       "covers": [
         "landed-sweep.ts"
-      ]
+      ],
+      "portedFrom": "28c31ed3456276be0d04e5a37c15e531837444ee"
     },
     {
       "file": "exec.ts",
@@ -1723,7 +1731,8 @@
         "pr-adopt-ports.ts",
         "pr-state.ts",
         "tick.ts"
-      ]
+      ],
+      "portedFrom": "28c31ed3456276be0d04e5a37c15e531837444ee"
     },
     {
       "file": "observe.ts",
@@ -1735,7 +1744,8 @@
       "covers": [
         "collision.ts",
         "landed-sweep.ts"
-      ]
+      ],
+      "portedFrom": "28c31ed3456276be0d04e5a37c15e531837444ee"
     },
     {
       "file": "plan.ts",
@@ -1750,7 +1760,8 @@
       "covers": [
         "advance.ts",
         "seat-deliver.ts"
-      ]
+      ],
+      "portedFrom": "28c31ed3456276be0d04e5a37c15e531837444ee"
     },
     {
       "file": "pr-adopt-ports.ts",
@@ -1763,7 +1774,8 @@
       "covers": [
         "exited-adopt.ts",
         "pr-state.ts"
-      ]
+      ],
+      "portedFrom": "28c31ed3456276be0d04e5a37c15e531837444ee"
     },
     {
       "file": "trust-gate.ts",
@@ -1776,7 +1788,8 @@
         "observe.ts",
         "plan.ts",
         "seat-plan.ts"
-      ]
+      ],
+      "portedFrom": "28c31ed3456276be0d04e5a37c15e531837444ee"
     }
   ],
   "knownForwardEdges": [

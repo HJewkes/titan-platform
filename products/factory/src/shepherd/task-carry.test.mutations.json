@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a declared or sole slice never carries",
+      "file": "products/factory/src/shepherd/task-close.ts",
+      "find": "unlanded.every((label) => declared.has(label)) || (planned === 1 && unlanded.length === 1)",
+      "replace": "false",
+      "kills": [
+        "carriesUnlanded carries every unlanded slice a Carries slices line names, as #3257 did for a and b",
+        "carriesUnlanded carries the plan's only slice with no declaration and no sibling open, as #3250 did"
+      ]
+    },
+    {
+      "name": "a Carries slices line naming some unlanded slices carries them all",
+      "file": "products/factory/src/shepherd/task-close.ts",
+      "find": "unlanded.every((label) => declared.has(label))",
+      "replace": "unlanded.some((label) => declared.has(label))",
+      "kills": [
+        "carriesUnlanded does not carry when the Carries slices line names only some of the unlanded slices"
+      ]
+    },
+    {
+      "name": "the sole-slice exception ignores the plan size",
+      "file": "products/factory/src/shepherd/task-close.ts",
+      "find": "(planned === 1 && unlanded.length === 1)",
+      "replace": "unlanded.length === 1",
+      "kills": [
+        "carriesUnlanded does not carry later slices of a longer plan on a mention of slices"
+      ]
+    },
+    {
+      "name": "a declaration carries past an open sibling",
+      "file": "products/factory/src/shepherd/task-close.ts",
+      "find": "if (otherOpen.length > 0) return false;",
+      "replace": "",
+      "kills": [
+        "carriesUnlanded does not carry a declared slice while another registered PR is open"
+      ]
+    }
+  ]
+}

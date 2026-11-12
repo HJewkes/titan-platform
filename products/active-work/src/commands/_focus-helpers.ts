@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { BriefFrontmatterSchema, type BriefFrontmatter } from '../schemas/brief.js';
-import { getActiveRoot, getInitiativeDir } from '../utils/paths.js';
+import { getActiveRoot } from '../utils/paths.js';
 import { readFrontmatter } from '../utils/gray-matter-io.js';
 
 export interface InitiativeBrief {
@@ -9,13 +9,6 @@ export interface InitiativeBrief {
   briefPath: string;
   frontmatter: BriefFrontmatter;
   body: string;
-}
-
-/**
- * Resolve the path to an initiative's `brief.md` for a given slug.
- */
-export function briefPathFor(slug: string): string {
-  return path.join(getInitiativeDir(slug), 'brief.md');
 }
 
 /**

@@ -13,6 +13,7 @@ export const WIRE_CLASSES = [
   'notes',
   'sources',
   'nested_sources',
+  'other',
 ] as const;
 
 export type WireClass = (typeof WIRE_CLASSES)[number];
@@ -24,6 +25,7 @@ const TO_WIRE: Record<InventoryClass, WireClass> = {
   note: 'notes',
   source: 'sources',
   nested_source: 'nested_sources',
+  other: 'other',
 };
 
 export function wireClass(cls: InventoryClass): WireClass {

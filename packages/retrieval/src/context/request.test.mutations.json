@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "list schema strips unknown keys",
+      "file": "packages/retrieval/src/context/request.ts",
+      "find": "z.strictObject({ mode: z.literal(\"list\")",
+      "replace": "z.object({ mode: z.literal(\"list\")",
+      "kills": [
+        "RetrievalRequestSchema rejects a context request without a budget and a list request with one"
+      ]
+    },
+    {
+      "name": "token budget accepts fractions",
+      "file": "packages/retrieval/src/context/request.ts",
+      "find": "tokens: z.number().int().nonnegative()",
+      "replace": "tokens: z.number().nonnegative()",
+      "kills": [
+        "RetrievalRequestSchema rejects budgets the planner would throw on"
+      ]
+    },
+    {
+      "name": "budget schema strips unknown keys",
+      "file": "packages/retrieval/src/context/request.ts",
+      "find": "export const ContextBudgetSchema = z.strictObject(",
+      "replace": "export const ContextBudgetSchema = z.object(",
+      "kills": [
+        "RetrievalRequestSchema rejects an estimator or any unknown key inside the budget"
+      ]
+    }
+  ]
+}

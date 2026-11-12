@@ -1,10 +1,12 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type CheckRun, type FakeGitHub, type GitHubPort } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
+import { hostCarryPorts } from "../shepherd/carry-cache-adapter.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import type { FlakyChecks } from "./land-flaky.js";
 import { landPrRoutes, landPrWorkflow } from "./land-pr.js";
+import { hostPostMerge } from "./post-merge-adapter.js";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
@@ -32,7 +34,7 @@ function world(runs: (reruns: number, headSha: string) => CheckRun[], flakyCheck
   const sleeps: number[] = [];
   let clock = 0;
   const port = githubPort(fake.wire);
-  const routes = landPrRoutes({ port: hooks.port?.(port) ?? port, now: () => clock, sleep: async (ms) => { clock += ms; sleeps.push(ms); await hooks.onSleep?.(fake, ms); }, flakyChecks });
+  const routes = landPrRoutes({ ...hostPostMerge(), gitCache: hostCarryPorts, port: hooks.port?.(port) ?? port, now: () => clock, sleep: async (ms) => { clock += ms; sleeps.push(ms); await hooks.onSleep?.(fake, ms); }, flakyChecks });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   return { host, fake, sleeps, runId: host.runtime.start("land-pr", { repo: REPO, pr: "1" }) };

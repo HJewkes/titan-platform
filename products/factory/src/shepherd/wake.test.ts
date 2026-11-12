@@ -1,4 +1,5 @@
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SpawnDeferred } from "./spawn-gate.js";
@@ -118,7 +119,7 @@ function wakeStep(scene: Scene = {}) {
   const clock = { now: T0, sleeps: [] as number[] };
   const sleep = async (ms: number) => void (clock.sleeps.push(ms), (clock.now += ms), scene.onSleep?.(ms, fake, agents));
   const store = boundStore(scene.registered === null ? undefined : (scene.registered ?? registration));
-  const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock.now, sleep, pollMs: 1_000, agentChatBin: scene.agentChatBin ?? "/opt/bin/agent-chat", ...(scene.agentChatConfigDir !== undefined && { agentChatConfigDir: scene.agentChatConfigDir }), ...(scene.successorAccounts && { successorAccounts: () => scene.successorAccounts! }), ...(scene.accountLimits && { accountLimits: scene.accountLimits }), ...(scene.advisory && { advisory: scene.advisory }), ...(scene.exitNotice && { exitNotice: scene.exitNotice }) };
+  const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(fake.wire), store, now: () => clock.now, sleep, pollMs: 1_000, agentChatBin: scene.agentChatBin ?? "/opt/bin/agent-chat", ...(scene.agentChatConfigDir !== undefined && { agentChatConfigDir: scene.agentChatConfigDir }), ...(scene.successorAccounts && { successorAccounts: () => scene.successorAccounts! }), ...(scene.accountLimits && { accountLimits: scene.accountLimits }), ...(scene.advisory && { advisory: scene.advisory }), ...(scene.exitNotice && { exitNotice: scene.exitNotice }) };
   const turnSince = async () => scene.turnSince?.(agents) ?? true;
   const wiring: WakeWiring = { turnSince, readWarmth: async (path) => scene.warmth?.[path], checkoutFor: scene.checkoutFor ?? (() => MAIN_CHECKOUT), ...(scene.home !== undefined && { home: scene.home }), ...(!scene.noAgents && { agents }) };
   const route = wakeRoutes(deps, wiring).find((candidate) => candidate.match === "sh-wake-implementer")!;
@@ -403,6 +404,24 @@ describe("sh-wake-implementer: who is woken", () => {
     const { result } = await run("review", fixFirst("fix it"));
 
     expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "live", sessionId: "s-impl-a" });
+    expect(agents.asked).toEqual([]);
+  });
+
+  it("asks nobody when the implementer exited and a new head was pushed since the wake was requested (TP-5171)", async () => {
+    const { agents, run } = wakeStep({ rows: [row("impl-a")], pr: { headSha: H2 } });
+
+    const { result } = await run("ci-red");
+
+    expect(result).toMatchObject({ kind: "woken", agent: "impl-a" });
+    expect(agents.asked).toEqual([]);
+  });
+
+  it("advances with the registered implementer when its lineage is gone from the roster and a new head was pushed (TP-5171)", async () => {
+    const { agents, run } = wakeStep({ rows: [], pr: { headSha: H2 } });
+
+    const { result } = await run("ci-red");
+
+    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "live" });
     expect(agents.asked).toEqual([]);
   });
 
@@ -998,7 +1017,7 @@ describe("wakePhase", () => {
   async function runPhase(agents: ImplementerAgents, fake: FakeGitHub, readWarmth: (path: string) => Promise<Warmth | undefined> = async () => warmAt(1), kind: WakeRequest["kind"] = "review") {
     const store = shepherdStoreRef();
     let clock = T0;
-    const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "/opt/bin/agent-chat" };
+    const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "/opt/bin/agent-chat" };
     const outcomes: WakeOutcome[] = [];
     const request: WakeRequest = { kind, repo: REPO, pr: 1, round: 0, headSha: H1, payload: kind === "review" ? fixFirst("fix it") : {} };
     // shepherd-pr records a FIX_FIRST at its round, before the wake reads the count.
@@ -1194,13 +1213,13 @@ describe("a held wake and the repair budget", () => {
     let refusals = 0;
     agents.spawn = async () => Promise.reject(new DispatchError(`refusal ${++refusals}`));
     let pushed = 0;
-    fake.onGetPr = (pr) => void (refusals > pushed && (pr.headSha = fakeSha(`by-hand-${++pushed}`)));
     const store = shepherdStoreRef();
     let clock = T0;
-    const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "/opt/bin/agent-chat" };
+    const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "/opt/bin/agent-chat" };
     const outcomes: WakeOutcome[] = [];
     const run = async (ctx: Parameters<typeof wakePhase>[0]) => {
       for (let round = 0; ; round++) {
+        if (refusals > pushed) fake.pushHead(1, fakeSha(`by-hand-${++pushed}`));
         const headSha = fake.pr(1).headSha;
         if (!(await spendRepair(ctx, { repo: REPO, pr: 1 }, "review", headSha))) return;
         outcomes.push(await wakePhase(ctx, { kind: "review", repo: REPO, pr: 1, round, headSha, payload: { kind: "FIX_FIRST", headSha, text: "fix it" } }));
@@ -1268,7 +1287,7 @@ describe("the fix-proof bounce cap", () => {
       phase = wakeModule.wakePhase;
       const store = shepherdStoreRef();
       let clock = T0;
-      const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "/opt/bin/agent-chat" };
+      const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "/opt/bin/agent-chat" };
       const wiring: WakeWiring = { agents, readWarmth: async () => warmAt(1), turnSince: async () => true, checkoutFor: () => MAIN_CHECKOUT };
       const routes = Object.assign([...wakeModule.wakeRoutes(deps, wiring)], { database: { extraMigrations: [shepherdMigration(4), lineageMigration(5), sliceMigration(8)], bind: store.bind } });
       const host = openFactoryHost({ dbPath, workflows: [defineWorkflow({ name: "bounce-test", steps: [...wakeModule.WAKE_STEPS, { id: HOLD, kind: "assisted" }, { id: REVIEWED, kind: "seed" }], run })], routes, gatePollMs: 5 });

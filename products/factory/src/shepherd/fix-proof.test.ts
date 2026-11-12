@@ -1,4 +1,5 @@
 import { CONFIG_PATH, formatResultLine, parseResultLine, type FixProofResult } from "@titan-design/fix-proof";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { fakeGitHub, fakeSha, ghCliWire, githubPort, successRun, type CheckRun, type FakeGitHub, type GitHubPort, type PrFile } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
@@ -179,7 +180,7 @@ describe("sh-fix-proof in reviewPhase", () => {
     if (scene.baseValidate !== undefined) seedBaseCi(fake, scene.baseValidate);
     let clock = 10_000;
     const store = shepherdStoreRef();
-    const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async () => undefined }, ...(scene.noReproProceed && { noReproProceed: scene.noReproProceed }) };
+    const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async () => undefined }, ...(scene.noReproProceed && { noReproProceed: scene.noReproProceed }) };
     const dispatch = fakeDispatch();
     if (scene.external) dispatch.agents.push({ name: scene.external, agentId: `agent-${scene.external}`, sessionId: `session-${scene.external}`, presence: "live", spawnedBy: null, predecessor: null });
     const said = (who: ReviewerAgent): ReviewerMessage => ({ agentId: who.agentId, sessionId: who.sessionId, writtenAt: clock + 1, text: `Probes: empty token -> refused\n\nVerdict: MERGE\nPR: ${REPO}#1\nHead: ${H}\n`, locator: locatorIn(who.sessionId) });
@@ -716,7 +717,7 @@ describe("readFixProof", () => {
 
     const result = await read();
 
-    expect(result).toEqual({ kind: "result", line: resultLine(H, "vacuous"), verdict: "vacuous" });
+    expect(result).toEqual({ kind: "result", line: resultLine(H, "vacuous"), verdict: "vacuous", unreadDiff: expect.stringContaining(`not the ${H} under judgement`) });
     expect(result).not.toHaveProperty("testOnlyProceed");
   });
 
@@ -852,6 +853,26 @@ describe("readFixProof", () => {
     const { read } = registered("correctness", ids.map((id) => fixProofRun({ id })), { logs: { 78: actionsLog(resultLine(H, "reproduced")) } });
 
     expect(await read()).toMatchObject({ kind: "untrusted", verdict: "reproduced", reason: expect.stringContaining("2 fix-proof runs") });
+  });
+
+  it("reads the newest of several bound runs at the head when every one is NO_REPRO, as a reopened PR has (TP-4788)", async () => {
+    const noTests = resultLine(H, "no-tests");
+    const { read } = registered("correctness", [77, 79, 78].map((id) => fixProofRun({ id })), { logs: { 78: actionsLog(resultLine(H, "vacuous")), 79: actionsLog(noTests) } });
+
+    expect(await read()).toEqual({ kind: "result", line: noTests, verdict: "no-tests" });
+  });
+
+  it("still distrusts several bound runs at the head whose vacuous lines their mutants prove", async () => {
+    const proved = actionsLog(mutantsLine("killed"));
+    const { read } = registered("correctness", [77, 78].map((id) => fixProofRun({ id })), { logs: { 77: proved, 78: proved } });
+
+    expect(await read()).toMatchObject({ kind: "untrusted", reason: expect.stringContaining("2 fix-proof runs") });
+  });
+
+  it("still distrusts the newest of several NO_REPRO runs when it did not conclude success", async () => {
+    const { read } = registered("correctness", [fixProofRun({ id: 77 }), fixProofRun({ id: 78, conclusion: "failure" })], { logs: { 78: actionsLog(resultLine(H, "vacuous")) } });
+
+    expect(await read()).toMatchObject({ kind: "untrusted", reason: expect.stringContaining("failure") });
   });
 
   it("distrusts the line when no fix-proof run at the head is bound to this PR", async () => {

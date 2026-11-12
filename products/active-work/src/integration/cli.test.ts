@@ -1,0 +1,494 @@
+import { promises as fs, mkdtempSync, rmSync } from 'node:fs';
+import net from 'node:net';
+import path from 'node:path';
+import os from 'node:os';
+import { describe, expect, it, beforeAll, beforeEach, afterEach } from 'vitest';
+import envPaths from 'env-paths';
+import Database from 'better-sqlite3';
+import { z } from 'zod';
+import { fieldSchema, schemaKind } from '@titan-design/registry';
+import { buildProgram } from '../program.js';
+import { defineCommand, registry } from '../registry/index.js';
+import { SCHEMA_VERSION } from '../session-index/graph.js';
+import { parseJson } from '../test-support/parse-json.js';
+import { REPO_ROOT, runCli, runCliInProcess, type RunResult } from '../test-support/cli-runner.js';
+
+/**
+ * Locate the directory where `appendUsage` writes — derived the same way
+ * the production code derives it (env-paths "log"). We piggyback on a
+ * scratch HOME so the test never touches the operator's real state dir.
+ */
+function usageLogPathFor(home: string, xdgState: string): string {
+  const env = { HOME: home, XDG_STATE_HOME: xdgState };
+  const original = { ...process.env };
+  try {
+    Object.assign(process.env, env);
+    const p = envPaths('active-work', { suffix: '' });
+    return path.join(p.log, 'usage.jsonl');
+  } finally {
+    process.env = original;
+  }
+}
+
+/** A loopback port that was free a moment ago and has nothing listening on it now. */
+function closedPort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      if (address === null || typeof address === 'string') {
+        reject(new Error('expected a TCP address'));
+        return;
+      }
+      server.close(() => resolve(address.port));
+    });
+    server.on('error', reject);
+  });
+}
+
+describe('cli integration', () => {
+  let activeRoot: string;
+  let stateHome: string;
+  let homeDir: string;
+
+  beforeEach(() => {
+    activeRoot = mkdtempSync(path.join(os.tmpdir(), 'aw-cli-active-'));
+    stateHome = mkdtempSync(path.join(os.tmpdir(), 'aw-cli-state-'));
+    homeDir = mkdtempSync(path.join(os.tmpdir(), 'aw-cli-home-'));
+  });
+
+  afterEach(() => {
+    rmSync(activeRoot, { recursive: true, force: true });
+    rmSync(stateHome, { recursive: true, force: true });
+    rmSync(homeDir, { recursive: true, force: true });
+  });
+
+  it('prints help and exits 0 for --help', () => {
+    const res = runCli(['--help']);
+    expect(res.status).toBe(0);
+    expect(res.stdout).toMatch(/Usage:\s+active-work/);
+    expect(res.stdout).toMatch(/active-work CLI/);
+  });
+
+  it('exits with USAGE (64) for an unknown command', () => {
+    const res = runCli(['nonexistent-command']);
+    expect(res.status).toBe(64);
+  });
+
+  it('exits 64 with a clear error when a required option is missing', async () => {
+    const res = await runCliInProcess(['new', 'my-slug'], { ACTIVE_ROOT: activeRoot });
+    expect(res.status).toBe(64);
+    expect(res.stderr).toMatch(/--title/);
+  });
+
+  it('active-work new creates an initiative dir and prints success envelope in --json', async () => {
+    const res = runCli(
+      ['--json', 'new', 'my-test-slug', '--title', 'Test', '--ship-target', '2026-Q3'],
+      { ACTIVE_ROOT: activeRoot },
+    );
+    expect(res.status).toBe(0);
+    const parsed = parseJson(
+      res.stdout,
+      z.object({
+        ok: z.boolean(),
+        data: z.object({ slug: z.string(), dir: z.string(), rank: z.number(), task_prefix: z.string() }),
+      }),
+    );
+    expect(parsed.ok).toBe(true);
+    expect(parsed.data.slug).toBe('my-test-slug');
+    expect(parsed.data.dir).toBe(path.join(activeRoot, 'my-test-slug'));
+    expect(parsed.data.rank).toBe(1);
+    expect(parsed.data.task_prefix).toBe('MTS');
+    const stat = await fs.stat(path.join(activeRoot, 'my-test-slug'));
+    expect(stat.isDirectory()).toBe(true);
+  });
+
+  it('active-work list --json returns a valid success envelope', async () => {
+    const res = await runCliInProcess(['--json', 'list'], { ACTIVE_ROOT: activeRoot });
+    expect(res.status).toBe(0);
+    const parsed = parseJson(
+      res.stdout,
+      z.object({
+        ok: z.boolean(),
+        data: z.object({ sections: z.array(z.object({ heading: z.string(), items: z.array(z.unknown()) })) }),
+      }),
+    );
+    expect(parsed.ok).toBe(true);
+    expect(parsed.data.sections.map((s) => s.heading)).toEqual([
+      'Focused',
+      'Backburner',
+      'Paused',
+      'Done',
+    ]);
+  });
+
+  it('writes a structured line to usage.jsonl on every invocation', async () => {
+    const logPath = usageLogPathFor(homeDir, stateHome);
+    const res = runCli(['--json', 'list'], {
+      ACTIVE_ROOT: activeRoot,
+      XDG_STATE_HOME: stateHome,
+      HOME: homeDir,
+    });
+    expect(res.status).toBe(0);
+
+    const raw = await fs.readFile(logPath, 'utf8');
+    const lines = raw.trim().split('\n');
+    expect(lines.length).toBeGreaterThanOrEqual(1);
+    const last = parseJson(
+      lines[lines.length - 1],
+      z.object({
+        command: z.string(),
+        success: z.boolean(),
+        exit_code: z.number(),
+        ts: z.string(),
+        duration_ms: z.number(),
+      }),
+    );
+    expect(last.command).toBe('list');
+    expect(last.success).toBe(true);
+    expect(last.exit_code).toBe(0);
+    expect(typeof last.ts).toBe('string');
+    expect(typeof last.duration_ms).toBe('number');
+  });
+
+  it('refuses a session graph from a newer active-work with an upgrade message, not a stack', async () => {
+    const graphPath = path.join(activeRoot, '.miner', 'graph.sqlite3');
+    const futureVersion = SCHEMA_VERSION + 1;
+    await fs.mkdir(path.dirname(graphPath), { recursive: true });
+    const db = new Database(graphPath);
+    db.exec(
+      'CREATE TABLE _migration (version INTEGER PRIMARY KEY, name TEXT, applied_at TEXT NOT NULL)',
+    );
+    db.prepare('INSERT INTO _migration VALUES (?, ?, ?)').run(
+      futureVersion,
+      'future',
+      new Date().toISOString(),
+    );
+    db.close();
+
+    // A closed port: were the open to succeed, miner status must not reach the operator's daemon.
+    const res = runCli(['miner', 'status'], {
+      ACTIVE_ROOT: activeRoot,
+      AW_PORT: String(await closedPort()),
+    });
+
+    expect(res.status).toBe(78);
+    expect(res.stderr).toContain(
+      `error: session graph ${graphPath} records schema version ${futureVersion}`,
+    );
+    expect(res.stderr).toContain('Upgrade active-work');
+    expect(res.stderr).not.toMatch(/^\s+at /m);
+  });
+
+  it('reports the version of the build it is, not a constant', async () => {
+    // Through 0.4.0 this answered '0.1.0' from a hardcoded placeholder while the
+    // installed package was three releases ahead. The daemon runs the installed
+    // binary rather than the repo, so this field is how anyone establishes which
+    // build is live — a constant cannot answer it.
+    const { status, stdout } = runCli(['--version']);
+    const reported = stdout.trim();
+
+    expect(status).toBe(0);
+    // tsup substitutes the define, so a built bundle must match package.json.
+    const pkg = parseJson(
+      await fs.readFile(path.join(REPO_ROOT, 'package.json'), 'utf8'),
+      z.object({ version: z.string() }),
+    );
+    expect(reported).toBe(pkg.version);
+  });
+
+  it('opens a loop outside wrap, lists it as due, and refuses to resolve it twice', async () => {
+    const env = { ACTIVE_ROOT: activeRoot };
+    const slug = 'loop-demo';
+    await runCliInProcess(['new', slug, '--title', 'Loop demo', '--ship-target', '2026-Q3'], env);
+
+    const opened = await runCliInProcess(
+      [
+        '--json',
+        'loop',
+        'open',
+        slug,
+        '--text',
+        'Restore the pool',
+        '--due',
+        '2026-01-01T00:00:00Z',
+      ],
+      env,
+    );
+    expect(opened.status).toBe(0);
+    const { ref } = parseJson(opened.stdout, z.object({ data: z.object({ ref: z.string() }) })).data;
+
+    const due = await runCliInProcess(['--json', 'loops', slug, '--due'], env);
+    const listed = parseJson(
+      due.stdout,
+      z.object({
+        data: z.object({ open: z.array(z.object({ ref: z.string(), trigger_met: z.array(z.string()).optional() })) }),
+      }),
+    );
+    expect(listed.data.open).toMatchObject([{ ref, trigger_met: ['due'] }]);
+
+    expect((await runCliInProcess(['loop', 'resolve', slug, ref], env)).status).toBe(0);
+    const again = await runCliInProcess(['loop', 'resolve', slug, ref], env);
+    expect(again.status).toBe(65);
+    expect(again.stderr).toMatch(/already closed: done/);
+    expect((await runCliInProcess(['--json', 'loops', slug, '--due'], env)).stdout).toContain('"open":[]');
+  });
+
+  // Commander keeps only the last value of an option unless it collects, so each case below
+  // ends on a tag that would match more rows on its own.
+  it('ANDs a repeated --tag on deliverable list, keeping every value', async () => {
+    const env = { ACTIVE_ROOT: activeRoot };
+    const required = ['--title', 'T', '--done-when', 'Ships', '--owner-seat', 'seat-a'];
+    const tags = (...values: string[]): string[] => values.flatMap((value) => ['--tags', value]);
+    await runCliInProcess(['deliverable', 'add', 'A', ...required, ...tags('ui', 'web')], env);
+    await runCliInProcess(['deliverable', 'add', 'B', ...required, ...tags('ui')], env);
+    await runCliInProcess(['deliverable', 'add', 'C', ...required, ...tags('ui', 'web', 'x')], env);
+    await runCliInProcess(['deliverable', 'add', 'D', ...required, ...tags('x')], env);
+    const listIds = async (tagArgs: string[]): Promise<string[]> => {
+      const res = await runCliInProcess(['--json', 'deliverable', 'list', ...tagArgs], env);
+      expect(res.status).toBe(0);
+      return parseJson(res.stdout, z.object({ data: z.array(z.object({ id: z.string() })) })).data.map((row) => row.id);
+    };
+
+    const repeated = await listIds(['--tag', 'web', '--tag', 'ui']);
+    const three = await listIds(['--tag', 'ui', '--tag', 'web', '--tag', 'x']);
+
+    expect(repeated).toEqual(['A', 'C']);
+    expect(three).toEqual(['C']);
+  });
+
+  describe('registry projection of a command schema', () => {
+    const fixture = defineCommand<{ name: string; tag?: string[] }, unknown>({
+      name: 'fixture-echo',
+      description: 'Echo parsed args back',
+      args: z.object({ name: z.string().default('anon'), tag: z.array(z.string()).optional() }),
+      result: z.unknown(),
+      cli: { positional: ['name'], options: { tag: { long: '--tag', description: 'Repeatable' } } },
+      run: (args) => Promise.resolve(args),
+    });
+
+    beforeAll(() => {
+      if (!registry.has(fixture.name)) registry.register(fixture);
+    });
+
+    const echo = async (args: string[]): Promise<unknown> => {
+      const res = await runCliInProcess(['--json', 'fixture-echo', ...args], { ACTIVE_ROOT: activeRoot });
+      expect(res.status).toBe(0);
+      return z.object({ data: z.unknown() }).parse(JSON.parse(res.stdout)).data;
+    };
+
+    it('collects a repeated array flag into one value per occurrence', async () => {
+      expect(await echo(['--tag', 'a', '--tag', 'b'])).toEqual({ name: 'anon', tag: ['a', 'b'] });
+    });
+
+    it('refuses a comma list in an array flag and shows the repeated form', async () => {
+      const res = await runCliInProcess(['fixture-echo', 'x', '--tag', 'a,b'], { ACTIVE_ROOT: activeRoot });
+      expect(res.status).toBe(64);
+      expect(res.stderr).toContain('--tag a,b: pass --tag a --tag b');
+    });
+
+    it('renders a .default() positional as optional', () => {
+      const sub = buildProgram().commands.find((c) => c.name() === 'fixture-echo');
+      expect(sub?.usage()).toBe('[options] [name]');
+    });
+  });
+
+  // Seats wrote `--tags a,b,c` for years; after comma-splitting went away that would have
+  // filed one tag named "a,b,c" without a word, so it must fail before anything is written.
+  describe('comma lists in array flags', () => {
+    const env = (): Record<string, string> => ({ ACTIVE_ROOT: activeRoot });
+    const SLUG = 'comma-demo';
+
+    beforeEach(async () => {
+      await runCliInProcess(['new', SLUG, '--title', 'Comma demo', '--ship-target', '2026-Q3'], env());
+    });
+
+    it('refuses task add --tags a,b,c and files no task', async () => {
+      const res = await runCliInProcess(
+        ['task', 'add', SLUG, '--title', 'T', '--done-when', 'Ships', '--tags', 'a,b,c'],
+        env(),
+      );
+
+      expect(res.status).toBe(64);
+      expect(res.stderr).toContain('--tags a,b,c: pass --tags a --tags b --tags c');
+      await expect(fs.readdir(path.join(activeRoot, SLUG, 'tasks'))).resolves.toEqual([]);
+    });
+
+    it('refuses a comma list in a required array flag', async () => {
+      const res = await runCliInProcess(['facet', 'add', SLUG, 'demo', '--tags', 'a,b'], env());
+
+      expect(res.status).toBe(64);
+      expect(res.stderr).toContain('--tags a,b: pass --tags a --tags b');
+    });
+
+    it('documents every array flag as repeatable, never as a comma list', () => {
+      const arrayFlags = registry.list().flatMap((cmd) =>
+        Object.entries(cmd.cli?.options ?? {})
+          .filter(([key]) => schemaKind(fieldSchema(cmd.args, key)) === 'array')
+          .map(([, opt]) => ({ flag: `${cmd.name} ${opt.long}`, text: `${opt.description} ${cmd.cli?.usage ?? ''}` })),
+      );
+
+      expect(arrayFlags.length).toBeGreaterThanOrEqual(14);
+      const misdocumented = arrayFlags.filter(({ text }) => !/repeat/i.test(text) || /comma/i.test(text));
+      expect(misdocumented.map(({ flag }) => flag)).toEqual([]);
+    });
+
+    it('collects every occurrence of a required array flag', async () => {
+      const res = await runCliInProcess(
+        ['--json', 'facet', 'add', SLUG, 'demo', '--tags', 'a', '--tags', 'b'],
+        env(),
+      );
+
+      expect(res.status).toBe(0);
+      const parsed = z.object({ data: z.object({ tags: z.array(z.string()) }) }).parse(JSON.parse(res.stdout));
+      expect(parsed.data.tags).toEqual(['a', 'b']);
+    });
+  });
+
+  describe('task edit flags', () => {
+    const SLUG = 'flag-demo';
+    let taskId: string;
+
+    const taskEdit = (...args: string[]): Promise<RunResult> =>
+      runCliInProcess(['--json', 'task', 'edit', SLUG, taskId, ...args], { ACTIVE_ROOT: activeRoot });
+
+    const readTaskFile = (): Promise<string> =>
+      fs.readFile(path.join(activeRoot, SLUG, 'tasks', `${taskId}.yml`), 'utf8');
+
+    beforeEach(async () => {
+      const env = { ACTIVE_ROOT: activeRoot };
+      await runCliInProcess(['new', SLUG, '--title', 'Flag demo', '--ship-target', '2026-Q3'], env);
+      const added = await runCliInProcess(
+        [
+          '--json',
+          'task',
+          'add',
+          SLUG,
+          '--title',
+          'Demo',
+          '--done-when',
+          'the edit flags leave the other fields untouched',
+          '--tags',
+          'alpha',
+          '--tags',
+          'beta',
+          '--notes',
+          'One',
+        ],
+        env,
+      );
+      taskId = parseJson(added.stdout, z.object({ data: z.object({ id: z.string() }) })).data.id;
+    });
+
+    it('appends a line that starts with a dash and adds a tag in one call', async () => {
+      const res = await taskEdit('--append', '- item: "two" # kept', '--add-tag', 'gamma');
+
+      expect(res.status).toBe(0);
+      const { data } = parseJson(
+        res.stdout,
+        z.object({ data: z.object({ notes: z.string(), tags: z.array(z.string()) }) }),
+      );
+      expect(data.notes).toBe('One\n- item: "two" # kept');
+      expect(data.tags).toEqual(['alpha', 'beta', 'gamma']);
+    });
+
+    it('exits 0 and reports the no-op when the tag is already present', async () => {
+      const before = await readTaskFile();
+
+      const res = await taskEdit('--add-tag', 'alpha');
+
+      expect(res.status).toBe(0);
+      const { warnings } = parseJson(res.stdout, z.object({ warnings: z.array(z.string()) }));
+      expect(warnings).toEqual(['Tag already present, nothing added: alpha']);
+      expect(await readTaskFile()).toBe(before);
+    });
+
+    it.each(['--add-tag', '--remove-tag'])(
+      'exits 64 and leaves the file untouched when %s is repeated',
+      async (flag) => {
+        const before = await readTaskFile();
+
+        const res = await taskEdit(flag, 'alpha', flag, 'beta');
+
+        expect(res.status).toBe(64);
+        expect(res.stderr).toContain(flag);
+        expect(await readTaskFile()).toBe(before);
+      },
+    );
+
+    it('refuses a four-argument tags edit that drops a tag unless --force is passed', async () => {
+      const before = await readTaskFile();
+
+      const res = await taskEdit('tags', 'x, y');
+
+      expect(res.status).not.toBe(0);
+      expect(res.stdout + res.stderr).toContain('--force');
+      expect(await readTaskFile()).toBe(before);
+    });
+
+    it('still replaces a whole field with the four-argument form', async () => {
+      const res = await taskEdit('tags', 'x, y', '--force');
+
+      expect(res.status).toBe(0);
+      const { data } = parseJson(res.stdout, z.object({ data: z.object({ tags: z.array(z.string()) }) }));
+      expect(data.tags).toEqual(['x', 'y']);
+    });
+
+    it.each([
+      ['the field form mixed with a flag', ['notes', 'Two', '--append', 'Three'], /not both/],
+      ['no operation', [], /Nothing to edit/],
+      ['a field without a value', ['notes'], /needs both <field> and <value>/],
+      ['an empty --append', ['--append', ''], /non-empty text/],
+    ])('exits 64 and leaves the file untouched for %s', async (_label, args, message) => {
+      const before = await readTaskFile();
+
+      const res = await taskEdit(...args);
+
+      expect(res.status).toBe(64);
+      expect(res.stdout).toMatch(message);
+      expect(await readTaskFile()).toBe(before);
+    });
+  });
+
+  describe('task --quiet', () => {
+    const SLUG = 'quiet-demo';
+    const env = (): Record<string, string> => ({ ACTIVE_ROOT: activeRoot });
+
+    beforeEach(async () => {
+      await runCliInProcess(['new', SLUG, '--title', 'Quiet demo', '--ship-target', '2026-Q3'], env());
+    });
+
+    it('task add --quiet prints "<id> created"', async () => {
+      const res = await runCliInProcess(['task', 'add', SLUG, '--title', 'Demo', '--done-when', 'the quiet output prints exactly the new id line', '--quiet'], env());
+
+      expect(res.status).toBe(0);
+      expect(res.stdout).toBe('QD-1 created\n');
+    });
+
+    it('task edit --quiet prints "<id> edited: <what>"', async () => {
+      await runCliInProcess(['task', 'add', SLUG, '--title', 'Demo', '--done-when', 'the quiet output prints exactly the new id line', '--quiet'], env());
+
+      const res = await runCliInProcess(['task', 'edit', SLUG, 'QD-1', '--append', 'Two', '--quiet'], env());
+
+      expect(res.status).toBe(0);
+      expect(res.stdout).toBe('QD-1 edited: notes\n');
+    });
+
+    it('task done --quiet prints "<id> done <date>"', async () => {
+      await runCliInProcess(['task', 'add', SLUG, '--title', 'Demo', '--done-when', 'the quiet output prints exactly the new id line', '--quiet'], env());
+
+      const res = await runCliInProcess(['task', 'done', SLUG, 'QD-1', '--quiet'], env());
+
+      expect(res.status).toBe(0);
+      expect(res.stdout).toMatch(/^QD-1 done \d{4}-\d{2}-\d{2}\n$/);
+    });
+
+    it('exits 64 and writes nothing for --quiet with --json', async () => {
+      const res = await runCliInProcess(['--json', 'task', 'add', SLUG, '--title', 'Demo', '--done-when', 'the quiet output prints exactly the new id line', '--quiet'], env());
+
+      expect(res.status).toBe(64);
+      expect(res.stdout).toContain('--quiet and --json cannot be combined');
+      await expect(fs.readdir(path.join(activeRoot, SLUG, 'tasks'))).resolves.toEqual([]);
+    });
+  });
+});

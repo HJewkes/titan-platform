@@ -9,7 +9,7 @@ import { NotFoundError, ValidationError } from '../errors.js';
 
 const PREFIX_RE = /^[A-Z][A-Z0-9]*$/;
 
-export interface Brief {
+interface Brief {
   slug: string;
   path: string;
   frontmatter: Record<string, unknown>;

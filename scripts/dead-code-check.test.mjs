@@ -17,10 +17,14 @@ import {
   parseCliArgs,
   readBaseAdoptedPaths,
   readBaseBaseline,
+  HEAP_CAP_MB,
   ROOT_ROLES,
   updatedBaseline,
+  workGraphSeed,
 } from "./dead-code-check.mjs";
+import { MACHINE_SEED } from "./dag-check-seed.mjs";
 import { maskSource } from "./dead-code-check-source.mjs";
+import { HEAP_CAP_MB as DAG_CHECK_HEAP_CAP_MB } from "./dag-check-self.mjs";
 import { release, tryAcquire } from "./dag-check-lock.mjs";
 
 const file = (id, role = "source") => ({ id, kind: "file", name: id.split("/").pop(), role });
@@ -176,6 +180,72 @@ describe("masking comments and literals in source", () => {
   it("does not let a quote inside a regex literal swallow the code after it", () => {
     expect(maskSource("const r = /'/;\nuse(orphan);\n")).toContain("use(orphan);");
   });
+
+  // The quote in each regex opens a string on the old masker, which then ran to the end of the line and ate `use(orphan);`.
+  it.each([
+    ["return", "function f() { return /'/.source; use(orphan); }"],
+    ["typeof", "const t = typeof /'/; use(orphan);"],
+    ["case", "switch (x) { case /'/.source: use(orphan); }"],
+    ["in", "const h = 'a' in /'/; use(orphan);"],
+    ["of", "for (const r of /'/g.source) use(orphan);"],
+    ["delete", "delete /'/.x; use(orphan);"],
+    ["void", "void /'/; use(orphan);"],
+    ["throw", "function f() { throw /'/; use(orphan); }"],
+    ["new", "const n = new /'/.constructor(); use(orphan);"],
+    ["yield", "function* g() { yield /'/; use(orphan); }"],
+  ])("reads a slash after the keyword %s as a regex start", (_keyword, source) => {
+    expect(maskSource(source)).toContain("use(orphan);");
+  });
+
+  it("does not let an apostrophe in JSX text blank the rest of the line", () => {
+    expect(maskSource("const a = <p>don't</p>; use(orphan);\n")).toContain("use(orphan);");
+  });
+
+  it("does not let the slash of a closing JSX tag blank the rest of the line", () => {
+    expect(maskSource("const a = <p>text</p>; use(orphan);\n")).toContain("use(orphan);");
+  });
+
+  it("treats a leading // in JSX text as text, not a comment running past the closing tag", () => {
+    expect(maskSource("const a = <p>// note</p>; use(orphan);\n")).toContain("use(orphan);");
+  });
+
+  it("blanks JSX text so a word in it is not a use", () => {
+    expect(maskSource("const a = <p>orphan</p>;\n")).not.toContain("orphan");
+  });
+});
+
+describe("whole-module imports read by the parser", () => {
+  const CONSUMER = `${PKG}/src/consumer.ts`;
+  const dynamicImportOf = (source) => {
+    const { nodes, edges } = demoGraph();
+    nodes.push(file(CONSUMER));
+    edges.push({ ...edge(CONSUMER, INTERNAL, "imports"), attrs: { specifier: "./internal.js" } });
+    return deadIn({ nodes, edges }, { sources: { [CONSUMER]: source } });
+  };
+
+  it("matches import() with a template-literal specifier", () => {
+    expect(dynamicImportOf("const internal = await import(`./internal.js`);")).toEqual([]);
+  });
+
+  it("does not match import() with a substitution, which has no fixed specifier", () => {
+    expect(dynamicImportOf("const internal = await import(`./${name}.js`);")).toEqual([`${INTERNAL}#orphan`]);
+  });
+});
+
+describe("object keys and interface members", () => {
+  const localOnlyIn = (source) => findingsIn(demoGraph(), { sources: { [INTERNAL]: source } })[0].localOnly;
+
+  it("does not count an object key as a use of an export", () => {
+    expect(localOnlyIn("export const orphan = 1;\nconst o = { orphan: 2 };\n")).toBe(false);
+  });
+
+  it("does not count an interface member as a use of an export", () => {
+    expect(localOnlyIn("export const orphan = 1;\ninterface Shape { orphan: number; orphan2(): void }\n")).toBe(false);
+  });
+
+  it("still counts a shorthand property as a use", () => {
+    expect(localOnlyIn("export const orphan = 1;\nconst o = { orphan };\n")).toBe(true);
+  });
 });
 
 describe("the shrink-only baseline", () => {
@@ -282,6 +352,10 @@ describe("the script header", () => {
     expect(header).not.toContain("always exits 0");
     expect(header).toContain("Exits 1 on a new dead export, or 0 under --report-only");
     expect(header).toContain("Exits 75 when the dag-check lock stays busy past the wait bound (DAG_CHECK_LOCK_WAIT_MS, 8 minutes), and 2 on an index failure, a BASE_REF that names no commit, an unknown flag,");
+    expect(header).toContain("a bare or --paths run copies the machine seed");
+    expect(header).toContain("--db runs and runs with DAG_CHECK_NO_SEED set stay cold");
+    expect(header).toContain("retries once cold");
+    expect(header).toContain("DEAD_CHECK_DEFER_COLD set it exits 76");
     expect(header).toContain('a --db path that does not exist or holds no "head" snapshot, or an out-of-memory abort');
   });
 });
@@ -410,5 +484,43 @@ describe("the report", () => {
   it("says a report-only run does not fail", () => {
     const fresh = [{ id: "a.ts#x", name: "x", file: "a.ts" }];
     expect(formatReport({ fresh, carried: [], fixed: [] }, { reportOnly: true })).toContain("report-only, not failing");
+  });
+});
+
+describe("the internal seed marker", () => {
+  it("rejects a user-passed --seed-db as an unknown flag", () => {
+    expect(() => parseCliArgs(["--seed-db", "x"])).toThrow(/seed-db/);
+  });
+});
+
+describe("dead:check worker heap cap", () => {
+  it("is at least dag-check-self's cap so --update on main does not OOM", () => {
+    expect(HEAP_CAP_MB).toBeGreaterThanOrEqual(DAG_CHECK_HEAP_CAP_MB);
+  });
+});
+
+describe("seeding the work graph", () => {
+  const present = () => true;
+  const absent = () => false;
+
+  it("seeds a bare run from the machine seed when one exists", () => {
+    expect(workGraphSeed({ argv: [], env: {}, exists: present })).toBe(MACHINE_SEED);
+  });
+
+  it("seeds a --paths run from the machine seed too", () => {
+    expect(workGraphSeed({ argv: ["--paths=packages/a,products/b"], env: {}, exists: present })).toBe(MACHINE_SEED);
+  });
+
+  it("indexes cold when DAG_CHECK_NO_SEED is set", () => {
+    expect(workGraphSeed({ argv: [], env: { DAG_CHECK_NO_SEED: "1" }, exists: present })).toBeNull();
+  });
+
+  it("indexes cold when no machine seed exists", () => {
+    expect(workGraphSeed({ argv: [], env: {}, exists: absent })).toBeNull();
+  });
+
+  it("never seeds a --db run, which reads an existing graph", () => {
+    expect(workGraphSeed({ argv: ["--db", "/tmp/graph.db"], env: {}, exists: present })).toBeNull();
+    expect(workGraphSeed({ argv: ["--db=/tmp/graph.db"], env: {}, exists: present })).toBeNull();
   });
 });

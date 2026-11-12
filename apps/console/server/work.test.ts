@@ -13,6 +13,18 @@ import { readInitiative, readNotes, readPortfolio, readRecord, searchRecords, ty
 const NO_AGENTS = { broker: brokerReader({ port: 1, tokenPath: "/nonexistent/ui.token" }), eventsDbPath: "/nonexistent/events.db", seatPrefixes: [] };
 const NO_SESSIONS = { graphPath: "/nonexistent/graph.sqlite3" };
 
+interface InventoryAnswer {
+  initiatives: Array<{ slug: string; total: { newest_mtime: string | null }; classes: Record<string, { newest_mtime: string | null }> }>;
+}
+
+function isInventory(answer: unknown): answer is InventoryAnswer {
+  return typeof answer === "object" && answer !== null && "initiatives" in answer && Array.isArray(answer.initiatives);
+}
+
+function orbitClasses(answer: InventoryAnswer): InventoryAnswer["initiatives"][number]["classes"] {
+  return answer.initiatives.find((entry) => entry.slug === "orbit-relay")!.classes;
+}
+
 let daemon: FakeDaemon | undefined;
 let calls: string[] = [];
 
@@ -48,6 +60,20 @@ describe("the portfolio", () => {
       sessions: 2,
       newestActivity: "2031-03-04T16:20:00.000Z",
     });
+  });
+
+  it("dates newest activity from the whole workspace, so a file outside every record class still counts", async () => {
+    const strayMtime = "2031-04-01T00:00:00.000Z";
+    daemon = await startFakeDaemon({ ok: true }, (command, args) => {
+      const answer = fixtureAnswer(command, args);
+      if (command !== "inventory" || !isInventory(answer)) return answer;
+      const olderClassMtime = "2031-03-01T00:00:00.000Z";
+      const olderClasses = Object.fromEntries(Object.entries(orbitClasses(answer)).map(([name, stat]) => [name, { ...stat, newest_mtime: olderClassMtime }]));
+      const initiatives = answer.initiatives.map((entry) => (entry.slug === "orbit-relay" ? { ...entry, total: { ...entry.total, newest_mtime: strayMtime }, classes: olderClasses } : entry));
+      return { ...answer, initiatives };
+    });
+    const { initiatives } = await readPortfolio(activeWorkClient(daemon.port));
+    expect(initiatives.find((row) => row.slug === "orbit-relay")?.newestActivity).toBe(strayMtime);
   });
 
   it("carries each brief's task prefix, and none for a brief that names none", async () => {

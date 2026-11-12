@@ -1,4 +1,5 @@
 import { mkdtempSync, rmSync } from "node:fs";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DispatchError, type AgentRow } from "@titan-design/agent-dispatch";
@@ -61,7 +62,7 @@ function world(fake: FakeGitHub, ci: "success" | "failure", notice: ExitNoticePo
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, ci), successRun("dag-check", 2)]);
   let clock = 0;
   const store = shepherdStoreRef();
-  const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms, signal) => ((clock += ms), sleep(1, signal)), agentChatBin: "/opt/bin/agent-chat" };
+  const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms, signal) => ((clock += ms), sleep(1, signal)), agentChatBin: "/opt/bin/agent-chat" };
   const wake = wakeRoutes(deps, { agents: refusingAgents(), readWarmth: async () => undefined, checkoutFor: () => SCRATCH }).find((route) => route.match === WAKE_STEP)!;
   const factory = factoryRoutesFor({ port: deps.port, store, now: deps.now, sleep: deps.sleep, exitNotice: notice });
   const routes = Object.assign(factory.map((route) => (route.match === WAKE_STEP ? wake : route)), { database: factory.database, shepherd: factory.shepherd });

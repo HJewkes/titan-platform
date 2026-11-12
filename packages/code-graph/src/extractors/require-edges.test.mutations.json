@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "require edges are not marked require",
+      "file": "packages/code-graph/src/extractors/require-edges.ts",
+      "find": ", 1).require = true;",
+      "replace": ", 1);",
+      "kills": [
+        "require edges point a file at each in-repo module a static require() specifier resolves to, marked require"
+      ]
+    }
+  ]
+}

@@ -2,8 +2,11 @@ import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   buildReportContext,
+  cognitiveComplexityOf,
+  cognitiveSplitOf,
   compilePatterns,
   computeDeepAst,
+  computeLcomMetrics,
   computeReportDrift,
   computePartitionQuality,
   computeRecencyWindows,
@@ -12,6 +15,7 @@ import {
   loadHistoryMetrics,
   matchesAny,
   openCodeGraph,
+  parseFile,
   patternToRegex,
   planPrune,
   publicApiFiles,
@@ -216,5 +220,27 @@ describe("store reads and prune", () => {
     expect(planPrune(store, { keep: 1 }).remove).toHaveLength(2);
     expect(runPrune(store, { keep: 1 }).rowsAfter.snapshot).toBe(1);
     store.close();
+  });
+});
+
+describe("class cohesion and cognitive complexity (root exports)", () => {
+  it("computeLcomMetrics reports two components for a class with unrelated methods", async () => {
+    const file = await parseFile(
+      "class C { x = 0; y = 0; a() { return this.x; } b() { return this.y; } }\n",
+      "c.ts",
+      "typescript",
+    );
+
+    const metrics = computeLcomMetrics(file, "c.ts");
+
+    expect(metrics.find((m) => m.name === "lcom4_max")?.value).toBe(2);
+  });
+
+  it("cognitiveComplexityOf and cognitiveSplitOf score a single if as 1 with no markup", async () => {
+    const file = await parseFile("function f(a: boolean) { if (a) { return 1; } return 0; }\n", "f.ts", "typescript");
+    const body = file.tree.rootNode.descendantsOfType("statement_block")[0]!;
+
+    expect(cognitiveComplexityOf(body, "typescript")).toBe(1);
+    expect(cognitiveSplitOf(body, "typescript")).toEqual({ total: 1, markup: 0 });
   });
 });

@@ -13,6 +13,11 @@ const UPDATE_BRANCH = /\bstep update-branch[: ]/;
 /** GitHub's side gave out: a 5xx, no connection, or an empty or cut-off body. A 4xx is the request's own fault. */
 const GH_API_FAILED = /\bgh api\b.* failed \(\d+\): ?(.*)$/s;
 const GH_SERVER_SIDE = /HTTP 5\d\d|error connecting|unexpected end of JSON input|^\s*$/;
+/**
+ * A read GitHub never answered by the transport's deadline. The Octokit deadline names the method first, so a timed-out
+ * write, which may have landed, never matches and is never sent again.
+ */
+const GH_READ_TIMEOUT = /^(GET|HEAD) \S+ timed out after \d+ ms/;
 
 /** The class of an error text, read from its prefix when present; unprefixed legacy text is classified the same way the prefix was chosen. */
 export function failureClassOf(error: string): FailureClass {
@@ -23,7 +28,7 @@ export function failureClassOf(error: string): FailureClass {
   if (parseRateLimitMarker(error)) return "gh-rate-limit";
   if (LAND_RULES.test(error)) return "land-rules";
   const ghTail = GH_API_FAILED.exec(error)?.[1];
-  if (ghTail !== undefined && GH_SERVER_SIDE.test(ghTail)) return "gh-api-5xx";
+  if (ghTail !== undefined && (GH_SERVER_SIDE.test(ghTail) || GH_READ_TIMEOUT.test(ghTail))) return "gh-api-5xx";
   if (UPDATE_BRANCH.test(error)) return "update-branch";
   return "other";
 }

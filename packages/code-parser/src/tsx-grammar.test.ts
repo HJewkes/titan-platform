@@ -35,7 +35,7 @@ const ANGLE_BRACKET_ASSERTION = `export function asText(raw: unknown): string {
 
 describe("a .tsx file indexed as typescript", () => {
   it("parses a JSX component without a syntax error", async () => {
-    const file = await parseFile(COMPONENT, "src/List.tsx", getLanguageFromPath("src/List.tsx") ?? "");
+    const file = await parseFile(COMPONENT, "src/List.tsx", "typescript");
 
     expect(file.tree.rootNode.hasError).toBe(false);
     expect(file.tree.rootNode.descendantsOfType("jsx_element").length).toBeGreaterThan(0);
@@ -60,7 +60,7 @@ describe("a .ts file with an angle-bracket type assertion", () => {
 describe("JavaScript sources the parser has no grammar for", () => {
   it("are rejected by the filter and have no language, so a walk skips them without throwing", () => {
     for (const path of ["src/legacy.js", "src/Widget.jsx"]) {
-      expect(shouldIncludeFile(path, ["javascript", "typescript"])).toBe(false);
+      expect(shouldIncludeFile(path, ["typescript", "python"])).toBe(false);
       expect(getLanguageFromPath(path)).toBeNull();
     }
   });

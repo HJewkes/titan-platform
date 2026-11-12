@@ -1,5 +1,6 @@
 import { ITEM_KEY, assertSendable, type MatrixEvent, type MessagesPage, type SyncBatch, type SyncOptions } from "@titan-design/matrix-bus";
 import type { MirrorBus } from "./mirror.js";
+import { waitFor } from "./supervise.js";
 
 interface Batch {
   since: string;
@@ -78,20 +79,7 @@ export class FakeHub implements MirrorBus {
       if (batch) {
         next += 1;
         yield batch;
-      } else await this.nextBatch(signal);
+      } else await waitFor(this.waiters, signal);
     }
-  }
-
-  private nextBatch(signal?: AbortSignal): Promise<void> {
-    return new Promise((resolve) => {
-      if (signal?.aborted) return resolve();
-      const done = () => {
-        this.waiters.delete(done);
-        signal?.removeEventListener("abort", done);
-        resolve();
-      };
-      this.waiters.add(done);
-      signal?.addEventListener("abort", done);
-    });
   }
 }

@@ -1,20 +1,19 @@
 import { DispatchTimeoutError, type AgentRow } from "@titan-design/agent-dispatch";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
-import { stepIdMatches } from "../definition.js";
 import type { FactoryHost } from "../host.js";
-import { resolveCommand } from "../resolve-command.js";
 import { liveRoute } from "./exit-notice.js";
 import { registrantSeat, runLineage, spawnerSeat } from "./registrant.js";
 import { FINISHED_PHASES } from "./step-phase.js";
 import type { ShepherdServices } from "./services.js";
 import type { ShepherdStore } from "./store.js";
-import type { WatchRow } from "./view-schema.js";
 import { holdsLiveSession } from "./wake-roster.js";
 import { rowsWithRuns, runFinished } from "./watch-rows.js";
+import { supersededFailures } from "./seat-digest-superseded.js";
 import { digestDelta, digestText, type DigestItem } from "./seat-digest-text.js";
+import { failedItem, finishedItem, gateItem, prRef, reviewErrorItem, seatFixItem, type DigestInput } from "./seat-digest-items.js";
+export type { DigestInput } from "./seat-digest-items.js";
 import type { DigestPacer, DigestPacing, PendingItems } from "./seat-digest-pace.js";
 import { digestWatches, watchedKeys, type DigestWatches } from "./watch-list.js";
 import type { ExitNoticePorts, FallbackSeat } from "./ports.js";
@@ -58,19 +57,16 @@ const REROUTE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /**
  * What a seat was last told: the open items by key with each one's PR ref, every finished run it has heard of, and when
- * it was last sent one. `refs` is optional so memory written before deltas still loads.
+ * it was last sent one. `refs` is optional so memory written before deltas still loads; so is `failed`, the told failed
+ * runs by key with their PR ref, which memory written before TP-4926 lacks.
  */
-const SeatStateSchema = z.object({ open: z.array(z.string()), refs: z.record(z.string(), z.string()).optional(), finished: z.array(z.string()), at: z.string().optional() });
+const RefsSchema = z.record(z.string(), z.string()).optional();
+const SeatStateSchema = z.object({ open: z.array(z.string()), refs: RefsSchema, finished: z.array(z.string()), failed: RefsSchema, at: z.string().optional() });
 export type SeatState = z.infer<typeof SeatStateSchema>;
 
 export interface SeatDigestMemory {
   get(seat: string): SeatState | undefined;
   set(seat: string, state: SeatState): void;
-}
-
-export interface DigestInput {
-  row: WatchRow;
-  run: WorkflowRun;
 }
 
 interface SeatView {
@@ -82,38 +78,9 @@ interface SeatView {
   watched: string[];
   /** Each run this seat watches that has ended, whatever its watch's `on`, with its finished item's key if it has one. */
   ended: { runId: string; key: string | undefined }[];
-}
-
-const SEAT_FIX_GATES: ReadonlySet<string> = new Set(["ci-failed", "sh-sent-back", "dead-end"]);
-const SeatNoticeRecord = z.looseObject({ result: z.looseObject({ sent: z.literal(true), gate: z.string(), headSha: z.string() }) });
-
-const pr = (row: WatchRow): string => `${row.repo}#${row.pr ?? row.branch}`;
-
-function gateItem(row: WatchRow): DigestItem | undefined {
-  const gate = row.pendingGate;
-  if (gate === null) return undefined;
-  const command = resolveCommand(row.runId, gate.stepId);
-  return { key: `gate:${gate.gateId}`, line: `- ${pr(row)} waits on ${gate.stepId}: \`${command}\``, pr: pr(row), gate: { stepId: gate.stepId, command } };
-}
-
-function latestSeatNotice(run: WorkflowRun): StepResult | undefined {
-  const notices = Object.values(run.stepResults).filter((result) => stepIdMatches("sh-seat-notice", result.stepId));
-  return notices.sort((a, b) => a.completedAt.localeCompare(b.completedAt)).at(-1);
-}
-
-/** A run the seat was told to fix waits for a new head with no gate and no fixer; only its record shows the seat owns it. */
-function seatFixItem({ row, run }: DigestInput): DigestItem | undefined {
-  if (row.pendingGate !== null || row.outcome !== null || run.currentStep === null || !stepIdMatches("await-new-head", run.currentStep)) return undefined;
-  const notice = SeatNoticeRecord.safeParse(latestSeatNotice(run)?.data);
-  if (!notice.success || !SEAT_FIX_GATES.has(notice.data.result.gate) || notice.data.result.headSha !== row.headSha) return undefined;
-  const { gate, headSha } = notice.data.result;
-  return { key: `seat:${row.runId}:${gate}:${headSha}`, line: `- ${pr(row)} ${gate} at ${headSha.slice(0, 7)}, no fixer woken: start a fix round, push a fix, or close the PR`, pr: pr(row) };
-}
-
-function finishedItem(row: WatchRow): DigestItem | undefined {
-  if (row.outcome === null) return undefined;
-  const how = row.outcome.kind === "merged" ? "merged" : `stopped${row.outcome.reason === null ? "" : ` (${row.outcome.reason})`}`;
-  return { key: row.runId, line: `- ${pr(row)} ${how}`, pr: pr(row) };
+  /** Failed runs read now, and the failed-item key and PR of every run read, so a later run on a PR supersedes its failure. */
+  failed: DigestItem[];
+  reads: { key: string; pr: string }[];
 }
 
 /**
@@ -127,7 +94,7 @@ function seatViews(inputs: readonly DigestInput[], routes: Pick<DigestRoutes, "s
     const copy = routes.copyOf?.(input.row);
     for (const seat of new Set([own, copy])) {
       if (seat === undefined) continue;
-      const view = views.get(seat) ?? views.set(seat, { open: [], finished: [], settled: [], watched: [], ended: [] }).get(seat)!;
+      const view = views.get(seat) ?? views.set(seat, { open: [], finished: [], settled: [], watched: [], ended: [], failed: [], reads: [] }).get(seat)!;
       addRun(view, input, quiet, seat === (copy ?? own) ? routes.watches : undefined);
     }
   }
@@ -136,12 +103,18 @@ function seatViews(inputs: readonly DigestInput[], routes: Pick<DigestRoutes, "s
 
 /** `watches` is passed only for the seat watching the run: the copy seat when the watch names one, else the run's own. */
 function addRun(view: SeatView, input: DigestInput, quiet: (input: DigestInput) => boolean, watches: DigestWatches | undefined): void {
+  const failed = failedItem(input);
+  if (input.superseded) return void (failed && view.failed.push(failed));
   if (quiet(input)) {
     if (input.row.outcome !== null || FINISHED_PHASES.has(input.row.phase)) view.settled.push(input.row.runId);
     return;
   }
   const open = gateItem(input.row) ?? seatFixItem(input);
   if (open) view.open.push(open);
+  const reviewError = reviewErrorItem(input);
+  if (reviewError) view.open.push(reviewError);
+  if (failed) view.failed.push(failed);
+  view.reads.push({ key: `failed:${input.row.runId}`, pr: prRef(input.row) });
   const finished = finishedItem(input.row);
   if (finished) view.finished.push(finished);
   const watch = watches?.of(input.row.runId);
@@ -157,13 +130,23 @@ function freshRuns(view: SeatView, last: SeatState | undefined): DigestItem[] {
   return view.finished.filter((item) => !known.has(item.key));
 }
 
+/**
+ * The failed runs to announce (TP-4926): each once, so its key joins `finished` when told, and none on a seat's first
+ * sweep, which takes history as known. The rest are the told failures no later run on their PR has superseded.
+ */
+function failures(view: SeatView, last: SeatState | undefined): { fresh: DigestItem[]; carried: Record<string, string> } {
+  const known = new Set(last?.finished ?? view.failed.map((item) => item.key));
+  const superseded = ([key, pr]: [string, string]): boolean => view.reads.some((read) => read.pr === pr && read.key !== key);
+  return { fresh: view.failed.filter((item) => !known.has(item.key)), carried: Object.fromEntries(Object.entries(last?.failed ?? {}).filter((entry) => !superseded(entry))) };
+}
+
 /** A new open item, a moved one included, and a watched run's end are prompt-class; a cleared item or another finished run is batch-class. */
-function pendingItems(view: SeatView, fresh: readonly DigestItem[], last: SeatState | undefined): PendingItems {
+function pendingItems(view: SeatView, fresh: readonly DigestItem[], last: SeatState | undefined, failed: readonly DigestItem[]): PendingItems {
   const delta = digestDelta(view.open, fresh, last);
   const watchedEnd = (item: DigestItem): boolean => view.watched.includes(item.key);
   const ended = (items: readonly DigestItem[]): string[] => items.map((item) => `finished:${item.key}`);
   return {
-    prompt: [...delta.added.map((item) => item.key), ...ended(fresh.filter(watchedEnd))],
+    prompt: [...delta.added.map((item) => item.key), ...failed.map((item) => item.key), ...ended(fresh.filter(watchedEnd))],
     batch: [...delta.cleared.map((key) => `cleared:${key}`), ...ended(fresh.filter((item) => !watchedEnd(item)))],
   };
 }
@@ -178,10 +161,11 @@ function toldEnds(view: SeatView, fresh: readonly DigestItem[], last: SeatState 
 }
 
 /** Finished runs stay known once heard of, because a sweep reads only the finished runs its seat has not heard of. */
-const stateOf = (view: SeatView, last: SeatState | undefined, sentAt: string | undefined): SeatState => ({
+const stateOf = (view: SeatView, last: SeatState | undefined, sentAt: string | undefined, failed: ReturnType<typeof failures>): SeatState => ({
   open: view.open.map((item) => item.key).sort(),
   refs: Object.fromEntries([...view.open].sort((a, b) => a.key.localeCompare(b.key)).map((item) => [item.key, item.pr])),
-  finished: [...new Set([...(last?.finished ?? []), ...view.finished.map((item) => item.key), ...view.settled])].sort(),
+  finished: [...new Set([...(last?.finished ?? []), ...view.finished.map((item) => item.key), ...view.failed.map((item) => item.key), ...view.settled])].sort(),
+  ...(Object.keys(failed.carried).length + failed.fresh.length > 0 && { failed: { ...failed.carried, ...Object.fromEntries(failed.fresh.map((item) => [item.key, item.pr])) } }),
   at: sentAt ?? last?.at,
 });
 
@@ -259,6 +243,12 @@ function held(pacer: DigestPacer | undefined, seat: string, text: string | undef
   return false;
 }
 
+function seatText(seat: string, view: SeatView, last: SeatState | undefined) {
+  const fresh = freshRuns(view, last);
+  const failedRuns = failures(view, last);
+  return { fresh, failedRuns, text: digestText(seat, view.open, fresh, last, { fresh: failedRuns.fresh, carried: Object.keys(failedRuns.carried).length }) };
+}
+
 /**
  * One message per seat whose state changed. A refused send leaves its memory alone, so the next sweep tries again, and so
  * does a seat `unsendable` names, whose reason is its failure's cause. A send the broker never acknowledged (it usually
@@ -273,15 +263,14 @@ export async function sendSeatDigests(
   const unsendable = routes.unsendable ?? new Map<string, string>();
   for (const [seat, view] of seatViews(inputs, { ...routes, seatOf: routes.seatOf ?? repoSeats(ports.seatLookup()) }, rerouteQuiet(routes, memory, now))) {
     const last = memory.get(seat);
-    const fresh = freshRuns(view, last);
-    const text = digestText(seat, view.open, fresh, last);
-    if (held(pacer, seat, text, () => pendingItems(view, fresh, last), now)) continue;
+    const { fresh, failedRuns, text } = seatText(seat, view, last);
+    if (held(pacer, seat, text, () => pendingItems(view, fresh, last, failedRuns.fresh), now)) continue;
     const why = text === undefined ? undefined : unsendable.get(seat);
     if (why !== undefined) {
       failed.push({ seat, cause: why });
       continue;
     }
-    const state = stateOf(view, last, text === undefined ? undefined : now.toISOString());
+    const state = stateOf(view, last, text === undefined ? undefined : now.toISOString(), failedRuns);
     const earlier = unackedFor(memory).get(seat);
     if (text !== undefined && earlier?.text === text && now.getTime() - earlier.at < UNACKED_RETRY_MS) continue;
     try {
@@ -358,7 +347,7 @@ export async function sweepSeatDigests(host: FactoryHost, services: ShepherdServ
   const reads = digestReads(memory, routes.seatOf);
   const watched = (runId: string): boolean => watches.of(runId) !== undefined;
   const inputs = await rowsWithRuns(host, services, (registration, status) => watched(registration.runId) || reads(registration, runFinished(status)));
-  return sendSeatDigests(inputs, ports, memory, routes, now, pacer);
+  return sendSeatDigests([...inputs, ...(await supersededFailures(host, services, now))], ports, memory, routes, now, pacer);
 }
 
 const MemoryFile = z.record(z.string(), SeatStateSchema);

@@ -4,8 +4,8 @@
     {
       "name": "any kind proceeds on a diff of test support",
       "file": "products/factory/src/shepherd/no-repro-test-only.ts",
-      "find": "return gate.kind === \"test-only\" && supportOnlyDiff(",
-      "replace": "return supportOnlyDiff(",
+      "find": "proceeds: gate.kind === \"test-only\" && (await supportOnlyDiff(",
+      "replace": "proceeds: (await supportOnlyDiff(",
       "kills": [
         "proceedsOnNoRepro on a diff of test support with no test in it (TP-4573) keeps a correctness registration gated"
       ]
@@ -13,8 +13,8 @@
     {
       "name": "a test-only registration never proceeds on a diff of test support",
       "file": "products/factory/src/shepherd/no-repro-test-only.ts",
-      "find": "return gate.kind === \"test-only\" && supportOnlyDiff(port, gate.repo, gate.pr, gate.head);",
-      "replace": "return false;",
+      "find": "proceeds: gate.kind === \"test-only\" && (await supportOnlyDiff(port, gate.repo, gate.pr, gate.head)) };",
+      "replace": "proceeds: false };",
       "kills": [
         "proceedsOnNoRepro on a diff of test support with no test in it (TP-4573) lets a test-only registration proceed on its no-tests proof"
       ]

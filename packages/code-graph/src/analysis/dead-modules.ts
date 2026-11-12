@@ -34,15 +34,19 @@ const CONSUMER_PRECEDENCE: readonly DeadModuleConsumer[] = ["lab", "story", "tes
  */
 const ENTRY_FILE_RE = /(?:^|\/)main\.[jt]sx?$/;
 
-function isRoot(node: GraphNode, roles: ReadonlySet<NodeRole>): boolean {
-  return (
-    node.kind === "file" &&
-    ((node.role !== undefined && roles.has(node.role)) || ENTRY_FILE_RE.test(node.id))
-  );
+interface RootSeeds {
+  roles: ReadonlySet<NodeRole>;
+  entryIds: ReadonlySet<string>;
 }
 
-function isRowCandidate(node: GraphNode, roots: ReadonlySet<NodeRole>): boolean {
-  if (node.kind !== "file" || isRoot(node, roots)) return false;
+function isRoot(node: GraphNode, seeds: RootSeeds): boolean {
+  if (node.kind !== "file") return false;
+  if (node.role !== undefined && seeds.roles.has(node.role)) return true;
+  return ENTRY_FILE_RE.test(node.id) || seeds.entryIds.has(node.id);
+}
+
+function isRowCandidate(node: GraphNode, seeds: RootSeeds): boolean {
+  if (node.kind !== "file" || isRoot(node, seeds)) return false;
   return node.role === undefined || !NEVER_ROW_ROLES.has(node.role);
 }
 
@@ -50,9 +54,10 @@ function isRowCandidate(node: GraphNode, roots: ReadonlySet<NodeRole>): boolean 
  * Files unreachable from the entry roots by a forward BFS over `imports` /
  * `re-exports` edges — "no importer found given configured entry points" (C-65),
  * NOT proven dead. Catches transitively-dead chains, not just fan-in-0 files.
- * Blind spots (disclosed): a computed dynamic `import(variable)`, DI/registry
- * strings, and any package entry that isn't an index barrel escape the roots and
- * could make a live file look dead — so treat it as a lead, not a verdict.
+ * Package manifest entries seed it too when the caller passes `entryIds` (see
+ * `packageEntryFileIds`). Blind spots (disclosed): a computed dynamic
+ * `import(variable)` and DI/registry strings escape the roots and could make a
+ * live file look dead — so treat it as a lead, not a verdict.
  * Ranked by LOC (a large unreferenced file is the most worth removing).
  *
  * The `"public"` view (C-155) drops test, story and lab from the seeds and tags a
@@ -66,13 +71,16 @@ export function topDeadModules(
   options: DeadModulesOptions = {},
 ): DeadModuleRow[] {
   const view: DeadModuleView = options.view ?? "all-consumers";
-  const roots = view === "public" ? PUBLIC_ROOT_ROLES : ENTRY_ROOT_ROLES;
+  const seeds: RootSeeds = {
+    roles: view === "public" ? PUBLIC_ROOT_ROLES : ENTRY_ROOT_ROLES,
+    entryIds: options.entryIds ?? new Set(),
+  };
   const out = outgoingModuleEdges(edges);
-  const reached = reachableFrom(nodes, out, (n) => isRoot(n, roots));
+  const reached = reachableFrom(nodes, out, (n) => isRoot(n, seeds));
   const consumerOf = view === "public" ? consumerLookup(nodes, out) : () => undefined;
   const rows: DeadModuleRow[] = [];
   for (const n of nodes) {
-    if (!isRowCandidate(n, roots) || reached.has(n.id) || !keepNode(ctx, n.id)) continue;
+    if (!isRowCandidate(n, seeds) || reached.has(n.id) || !keepNode(ctx, n.id)) continue;
     const row: DeadModuleRow = { nodeId: n.id, loc: lookupMetric(ctx, "loc", n.id) ?? 0, role: n.role ?? "source" };
     const consumer = consumerOf(n.id);
     if (consumer) row.reachableOnlyFrom = consumer;

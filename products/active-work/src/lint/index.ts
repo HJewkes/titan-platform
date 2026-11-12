@@ -1,5 +1,5 @@
-import { promises as fs, type Dirent } from 'node:fs';
 import path from 'node:path';
+import { listInitiativeSlugs } from '../sessions/initiatives.js';
 import { getActiveRoot } from '../utils/paths.js';
 import { lintBrief } from './brief.js';
 import { lintHashes } from './hashes.js';
@@ -9,7 +9,7 @@ import { lintTasks } from './task.js';
 import { lintZeroLoops } from './zero-loops.js';
 import { DEFAULT_LIMITS, type LintFinding, type LintLimits } from './types.js';
 
-export type { LintFinding, LintLevel, LintLimits } from './types.js';
+export type { LintFinding, LintLimits } from './types.js';
 export { DEFAULT_LIMITS } from './types.js';
 export { lintBrief } from './brief.js';
 export { lintTasks } from './task.js';
@@ -45,21 +45,6 @@ export async function lintSlug(slug: string, options: LintOptions = {}): Promise
     lintHashes(slug, initiativeDir),
   ]);
   return [...brief, ...tasks, ...openLoops, ...zeroLoops, ...sources, ...hashes];
-}
-
-export async function listInitiativeSlugs(activeRoot: string): Promise<string[]> {
-  let entries: Dirent[];
-  try {
-    entries = await fs.readdir(activeRoot, { withFileTypes: true });
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
-    if (code === 'ENOENT') return [];
-    throw err;
-  }
-  return entries
-    .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
-    .map((e) => e.name)
-    .sort();
 }
 
 /**

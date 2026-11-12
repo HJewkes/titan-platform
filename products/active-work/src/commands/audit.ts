@@ -42,21 +42,17 @@ const STATE_ORDER: Record<BriefFrontmatter['state'], number> = {
   done: 3,
 };
 
-export interface ScanEntry {
+interface ScanEntry {
   slug: string;
   frontmatter: BriefFrontmatter;
   /** Registered worktrees, which moved to artifacts.yml in v4 (AW-67). */
   worktrees: RegisteredWorktree[];
 }
 
-export interface ScanError {
-  slug: string;
-  error: string;
-}
-
-export interface ScanResult {
+interface ScanResult {
   entries: ScanEntry[];
-  errors: ScanError[];
+  // Inline, not a named interface: list's default export infers this shape, and declaration emit cannot name a private type.
+  errors: { slug: string; error: string }[];
 }
 
 export async function scanInitiatives(activeRoot: string): Promise<ScanResult> {
@@ -68,7 +64,7 @@ export async function scanInitiatives(activeRoot: string): Promise<ScanResult> {
   }
 
   const entries: ScanEntry[] = [];
-  const errors: ScanError[] = [];
+  const errors: ScanResult['errors'] = [];
 
   for (const dirent of dirents) {
     if (!dirent.isDirectory()) continue;

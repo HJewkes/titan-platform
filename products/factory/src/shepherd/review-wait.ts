@@ -93,6 +93,10 @@ export async function whileRosterSlow<T>(timing: PollTiming, signal: AbortSignal
   }
 }
 
+/** Every step's roster read waits out a booting broker and then a slow one, so no step turns a busy broker into a refusal (TP-3020). */
+export const patientRoster = <T>(timing: BrokerDownTiming, signal: AbortSignal, budgetMs: number, read: () => Promise<T>): Promise<T> =>
+  whileRosterSlow(timing, signal, budgetMs, () => whileBrokerBooting(timing, signal, read));
+
 /** An unread roster started nobody, so the step says so rather than reading as a refusal; any other throw stays one. */
 export function rosterUnread(error: unknown): NotStarted {
   if (!(error instanceof ReviewerRosterUnread)) throw error;
@@ -118,6 +122,11 @@ export class ReviewerMachineHold extends ReviewerBrokerBusy {
 /** The factory's own spawn gate deferred a start that is not queued, so it asks again after the gate's window rather than a doubling wait. */
 export class ReviewerSpawnQueued extends ReviewerMachineHold {
   override readonly name = "ReviewerSpawnQueued";
+}
+
+/** The spawn gate's roster read timed out before the launch, so nobody was asked to start and the step asks again (TP-5295). */
+export class ReviewerGateRosterUnread extends ReviewerBrokerBusy {
+  override readonly name = "ReviewerGateRosterUnread";
 }
 
 /**
@@ -173,6 +182,30 @@ export const BUSY_LONGEST_WAIT_MS = 8 * 60_000;
 export const DEFAULT_BUSY_WAIT_MS = 30 * 60_000;
 /** A machine stop lifts on its own once load settles, so its wait is spent apart from the busy budget, up to this ceiling. */
 export const DEFAULT_HOLD_WAIT_MS = 3 * 60 * 60_000;
+
+/** Records what an unread roster waits on, or clears it with undefined once the roster is read. */
+export type RosterNote = (text: string | undefined) => void;
+
+/**
+ * A roster still unread after a whole budget is read again after a doubling pause, with no cap on rounds. A step that already
+ * holds its verdict waits out a slow broker; failing would throw that verdict away and cost a re-register (TP-5086).
+ */
+export async function untilRosterRead<T>(timing: BrokerDownTiming, signal: AbortSignal, budgetMs: number, read: () => Promise<T>, note?: RosterNote): Promise<T> {
+  const startedAt = timing.now();
+  let round = 0;
+  for (let pause = BUSY_FIRST_WAIT_MS; ; pause = Math.min(pause * 2, BUSY_LONGEST_WAIT_MS)) {
+    try {
+      const roster = await patientRoster(timing, signal, budgetMs, read);
+      note?.(undefined);
+      return roster;
+    } catch (error) {
+      if (!(error instanceof ReviewerRosterUnread)) throw error;
+    }
+    round += 1;
+    note?.(`roster unread after round ${round}; reading again in ${minutes(pause)} (${minutes(timing.now() - startedAt)} waited so far)`);
+    await timing.sleep(pause, signal);
+  }
+}
 
 export interface BusyTiming {
   now: () => number;

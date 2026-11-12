@@ -54,6 +54,7 @@ interface ChapterRow {
   id: string;
   rel_path: string;
   sha256: string;
+  meta_json: string;
 }
 
 function listFiles(root: string): string[] {
@@ -63,28 +64,37 @@ function listFiles(root: string): string[] {
     .sort();
 }
 
+/** Path first: a file the layout rejects by name is never read. */
+function readDocument(root: string, relPath: string, layout: CorpusLayout): { bytes: Buffer; text: string; meta: ChapterMeta } | undefined {
+  if (!layout.accepts(relPath)) return undefined;
+  const bytes = readFileSync(path.join(root, relPath));
+  const text = bytes.toString("utf8");
+  const meta = layout.describe(relPath, text);
+  return meta && { bytes, text, meta };
+}
+
 /** Bring the index in line with the files under `root`: new and changed files are (re)indexed, vanished ones purged. */
 export function indexCorpus(db: Db, root: string, layout: CorpusLayout): IndexStats {
   migrateIndex(db);
   const spans = openSpans(db);
   const stats: IndexStats = { documents: 0, indexed: 0, unchanged: 0, removed: 0, skipped: 0, headerless: 0, paragraphs: 0 };
-  const known = new Map(db.prepare<[], ChapterRow>("SELECT source_id, id, rel_path, sha256 FROM chapter").all().map((r) => [r.rel_path, r]));
+  const known = new Map(db.prepare<[], ChapterRow>("SELECT source_id, id, rel_path, sha256, meta_json FROM chapter").all().map((r) => [r.rel_path, r]));
   const seen = new Set<string>();
 
   for (const relPath of listFiles(root)) {
-    const bytes = readFileSync(path.join(root, relPath));
-    const text = bytes.toString("utf8");
-    const meta = layout.describe(relPath, text);
-    if (!meta) {
+    const read = readDocument(root, relPath, layout);
+    if (!read) {
       stats.skipped++;
       continue;
     }
+    const { bytes, text, meta } = read;
     stats.documents++;
     seen.add(relPath);
     if (meta.title === "") stats.headerless++;
     const sha256 = createHash("sha256").update(bytes).digest("hex");
     const prior = known.get(relPath);
-    if (prior?.sha256 === sha256) {
+    // Meta is compared too: a layout switch changes ids and metadata without touching the bytes.
+    if (prior?.sha256 === sha256 && prior.meta_json === JSON.stringify(meta)) {
       stats.unchanged++;
       continue;
     }

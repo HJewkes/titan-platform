@@ -40,7 +40,7 @@
     },
     {
       "name": "a lineage gone from the roster ends the wake unhandled",
-      "file": "products/factory/src/shepherd/wake.ts",
+      "file": "products/factory/src/shepherd/wake-loop.ts",
       "find": "if (newest === undefined) return successorChoice(deps, wiring, task, task.implementer, roster);",
       "replace": "if (newest === undefined) return `no agent of ${task.implementer}'s lineage is on the roster`;",
       "kills": [

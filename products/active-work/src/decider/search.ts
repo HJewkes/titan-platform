@@ -9,7 +9,7 @@ import { openDatabase, SpanFtsTables, spanFtsTablesDdl, type Db } from '@titan-d
  * text out of any file the miner owns.
  */
 
-export interface PrecedentSearchOptions {
+interface PrecedentSearchOptions {
   /** Initiatives whose rows are never returned; required so no caller can forget it. */
   humanOnly: ReadonlySet<string>;
   /** Return rows no initiative claims; off by default (TP-695 Q6). */
@@ -21,7 +21,7 @@ export interface PrecedentSearchOptions {
   category?: string;
 }
 
-export interface PrecedentHit {
+interface PrecedentHit {
   score: number;
   row: LedgerRow;
 }
@@ -33,7 +33,7 @@ export function isUnclaimed(row: LedgerRow): boolean {
   return row.unclaimed || row.initiative === null;
 }
 
-export function visibleRows(rows: LedgerRow[], options: PrecedentSearchOptions): LedgerRow[] {
+function visibleRows(rows: LedgerRow[], options: PrecedentSearchOptions): LedgerRow[] {
   return rows.filter((row) => {
     if (row.initiative !== null && options.humanOnly.has(row.initiative)) return false;
     if (isUnclaimed(row) && options.includeUnclaimed !== true) return false;

@@ -4,6 +4,9 @@
   "description": "Pure review-burden score for a pull request: path classes, one-way door facts and the merge-danger footer parser",
   "type": "module",
   "main": "./dist/index.js",
+  "bin": {
+    "review-burden": "./dist/bin.js"
+  },
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {

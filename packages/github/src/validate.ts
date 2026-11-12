@@ -1,5 +1,5 @@
 import { CHECK_CONCLUSIONS, type CheckConclusion } from "./check-run-create.js";
-import type { MergeMethod } from "./port.js";
+import type { MergeMethod } from "./port-types.js";
 
 /** A value that would change which GitHub resource a `gh api` path names; thrown before any call. */
 export class GitHubInputError extends Error {
@@ -101,6 +101,12 @@ export function checkTimestamp(field: string, value: string): string {
 export function checkMarker(marker: string): string {
   if (marker.length === 0) throw new GitHubInputError("marker", marker, "expected a non-empty string");
   return marker;
+}
+
+/** GitHub answers 422 for an empty dismissal message, after the App token was minted for nothing. */
+export function checkNonEmpty(field: string, value: string): string {
+  if (value.trim().length === 0) throw new GitHubInputError(field, value, "expected a non-empty string");
+  return value;
 }
 
 /** A check run posted under an App token may only end in these; anything else is refused before a wire call. */

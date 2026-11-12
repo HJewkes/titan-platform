@@ -82,7 +82,9 @@ priceRequest(
   task edges, falling back to the `cf_analyze.py` cwd rule.
 - `buildSessionTimeline(observations, options?)`, `SessionTimelineAccumulator`,
   `countAtOrBefore(sortedMs, targetMs)` and the `SessionTimeline` types — the read model behind
-  a session view; see "Session timeline" below.
+  a session view; see "Session timeline" below. A browser bundle imports `countAtOrBefore` and the
+  timeline types from the `@titan-design/session-analytics/timeline` subpath, whose import graph
+  holds no Node module.
 
 ```ts
 import { openDatabase } from "@titan-design/store-sqlite";
@@ -220,8 +222,24 @@ text form.
   up) finds a 5m cache gone. Its cache read is charged again at the 5m write rate, less the read
   it no longer pays. Past an hour the 1h cache had expired too, so the read is already near zero
   and only the reprice applies.
+- **Reverse replay.** A session observed purely on 5m is replayed toward 1h: a request after a
+  5-60 minute gap reverts `min(5m write, previous prompt)` to a read, saving the 5m write rate
+  less the read rate (`reverseReverts`, `reverseTokens`, `reverseSavingUsd`, per role and per
+  profile, with `reversePremiumUsd` and `reverseNetUsd` after the 1h-over-5m write premium on the writes kept, beside the 1h-to-5m direction). It claims nothing for a first request, a gap over an
+  hour, or a session with any 1h write.
 - **Net.** Per role and per profile: reprice saving less rebuild cost, and the same per session.
   `lossRoles` lists the roles whose net is negative, typically seats that wait on CI.
+- **No cache.** Per role and per profile, `noCacheNetUsd` prices every prompt token at the input rate
+  with no cache writes or reads, as cost today less that cost. Positive means no cache is cheaper
+  (`noCacheCheaper`), typically a one-shot profile that writes a cache and never reads it. The text
+  table adds a `no-cache net` column and flags those buckets. `TtlRequestRow` gains
+  `cacheWrite5mTokens`; the 5m-against-1h numbers do not change.
+- **Gap cause.** `byGapCause` splits the rebuilds by the last action before the gap: `ci-wait` (a
+  Bash call whose command head is `gh pr checks`, `gh run` or `ci-wait`), `other-bash`, or
+  `end-of-turn` (no tool call, or a non-Bash last call). `readTtlRows` sets `previousAction` from
+  the previous request on the same thread (same `is_sidechain`), so a subagent's calls never
+  stand in for the main thread's; the graph has no per-agent id, so nested subagents share one
+  chain. A row without `previousAction` reads as `end-of-turn`. The text render adds a by-cause table.
 
 The gap is the request's `gap_ms` when the miner stored one. Otherwise it is the time since the
 session's previous request on the same thread, which may fall before the window.

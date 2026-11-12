@@ -11,7 +11,7 @@ import { getConfigRoot } from './paths.js';
  * stub) isn't read from disk anywhere yet, so it's deliberately left out of
  * this schema rather than validated and then ignored.
  */
-export const GlobalConfigSchema = z.object({
+const GlobalConfigSchema = z.object({
   channels: z.array(channelTarget).optional(),
   loops: z
     .object({
@@ -26,7 +26,7 @@ export const GlobalConfigSchema = z.object({
     .optional(),
 });
 
-export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;
+type GlobalConfig = z.infer<typeof GlobalConfigSchema>;
 
 /**
  * Channels loaded on every `aw`/`open` launch when the user's config.json

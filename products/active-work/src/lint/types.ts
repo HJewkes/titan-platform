@@ -1,4 +1,4 @@
-export type LintLevel = 'warn' | 'error';
+type LintLevel = 'warn' | 'error';
 
 export interface LintFinding {
   level: LintLevel;

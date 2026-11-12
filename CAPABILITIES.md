@@ -43,8 +43,8 @@ Before adding code:
 | [`agent-surface`](#cap-agent-surface) | 1 | A host must present a long-lived agent somewhere: detached and headless, or in an iTerm2 pane, tab or window it can later close and confirm closed. |
 | [`daemon`](#cap-daemon) | 1 | You want a registry reachable over loopback HTTP and MCP with health, SSE, file watching and a pid file, or just one of those utilities. |
 | [`egress-scan`](#cap-egress-scan) | 1 | Text is about to leave the machine for a public repo and you must refuse absolute home paths, active-work data directory paths, terms from a private list or credential tokens (GitHub, Anthropic, AWS, Slack, PEM private keys), reporting only `file:line`, the rule id and the token kind. |
-| [`frame-capture`](#cap-frame-capture) | 1 | You need deterministic PNG frames, or an MP4, of a web page that animates on a timeline: the page publishes `window.__titanMotion` (`seek(t)`, `ready()`, `duration`) and `captureFrames` drives it under a virtual clock (`VIRTUAL_TIME_SCRIPT`) across parallel Playwright browsers, failing on any page error or unloaded font face; `startEncoder` and `mixAudio` wrap ffmpeg. |
-| [`github`](#cap-github) | 1 | Code must read or change GitHub (refs, files, pull requests, required checks, check runs, job logs, merges, reruns, branch deletes) over REST through the caller's `gh` login, with every write safe to repeat after a crash and polling paced by ETags and a shared rate budget. |
+| [`frame-capture`](#cap-frame-capture) | 1 | You need deterministic PNG frames, or an MP4, of a web page that animates on a timeline: the page publishes `window.__titanMotion` (`seek(t)`, `ready()`, `duration`) and `captureFrames` drives it under a virtual clock (`VIRTUAL_TIME_SCRIPT`) across parallel Playwright browsers, failing on any page error or unloaded font face; `startEncoder` and `mixAudio` wrap ffmpeg; `checkPops` walks a grid of `t` and flags sudden visual pops (a mount, a cut, a jump) that fast smooth motion would not cause. |
+| [`github`](#cap-github) | 1 | Code must read or change GitHub (refs, files, pull requests, required checks, check runs, App-posted pull request approvals and their dismissal, job logs, merges, reruns, branch deletes) over REST through the caller's `gh` login, with every write safe to repeat after a crash and polling paced by ETags and a shared rate budget. |
 | [`health`](#cap-health) | 1 | You emit or read a health route's payload and want one open contract: `healthReportSchema` for health/v1 (pass, warn or fail with named checks, after draft-inadarei-api-health-check) and `parseHealthReport` to read any payload, legacy `ok`-only ones included, without ever reading better than its worst check. |
 | [`hitl`](#cap-hitl) | 1 | A step must pause for a human decision and resume, possibly in another process, after a restart. |
 | [`matrix-bus`](#cap-matrix-bus) | 1 | You talk to a Matrix homeserver without an SDK: appservice sends, the queue item codec, or bootstrapping the `#queue` room. |
@@ -283,9 +283,11 @@ You want tree-sitter syntax trees for TypeScript, TSX or Python and nothing else
 
 Key exports:
 
-- `types`: `Extractor`, `ParsedFile`
+- `types`: `Extractor`
 - `parser`: `getSupportedLanguages`, `parseFile`
 - `file-filter`: `getLanguageFromPath`, `isExcludedDir`, `shouldIncludeFile`
+- `complexity-kinds`: `cyclomaticOf`, `nestingDepthOf`, `PY_BRANCH_TYPES`, `PY_NESTING_TYPES`, `TS_BRANCH_TYPES`, `TS_NESTING_TYPES`
+- More in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-parser)
 
 <a id="cap-embed"></a>
 
@@ -302,9 +304,9 @@ Key exports:
 - `prefixes`: `defaultPrefixesFor`, `vectorSpaceId`
 - `hash-embedder`: `HashEmbedder`
 - `ollama-embedder`: `OllamaEmbedder`
-- `local-embedder`: `LocalEmbedder`
+- `local-embedder`: `LocalEmbedder`, `loadTransformersPipeline`
 - `create`: `createEmbedder`, `instantiateEmbedder`
-- `vector`: `cosineSimilarity`, `dot`, `fromFloat32Buffer`, `norm`, `normalize`
+- `vector`: `cosineSimilarity`, `dot`, `fromFloat32Buffer`, `norm`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/embed)
 
 <a id="cap-eslint-plugin"></a>
@@ -664,14 +666,14 @@ Tier 1, `@titan-design/frame-capture@0.1.0`. Deterministic frame capture of any 
 
 **Use this when:**
 
-You need deterministic PNG frames, or an MP4, of a web page that animates on a timeline: the page publishes `window.__titanMotion` (`seek(t)`, `ready()`, `duration`) and `captureFrames` drives it under a virtual clock (`VIRTUAL_TIME_SCRIPT`) across parallel Playwright browsers, failing on any page error or unloaded font face; `startEncoder` and `mixAudio` wrap ffmpeg. It does not know what a beat or a timeline is: the motion runtime that publishes the protocol is titan-design's react-ui `/motion`, and composing a video is a product's job.
+You need deterministic PNG frames, or an MP4, of a web page that animates on a timeline: the page publishes `window.__titanMotion` (`seek(t)`, `ready()`, `duration`) and `captureFrames` drives it under a virtual clock (`VIRTUAL_TIME_SCRIPT`) across parallel Playwright browsers, failing on any page error or unloaded font face; `startEncoder` and `mixAudio` wrap ffmpeg; `checkPops` walks a grid of `t` and flags sudden visual pops (a mount, a cut, a jump) that fast smooth motion would not cause. It does not know what a beat or a timeline is: the motion runtime that publishes the protocol is titan-design's react-ui `/motion`, and composing a video is a product's job.
 
 Key exports:
 
-- `protocol`: `TITAN_MOTION_GLOBAL`
 - `capture`: `captureFrame`, `FontLoadError`, `launch`, `openCapturePage`, `screenshotFrame`, `settleFonts`, `withBrowser`, `withCapturePage`
 - `frames`: `captureFrames`
 - `encode`: `mixAudio`, `startEncoder`
+- `pops`: `changedPixels`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/frame-capture)
 
 <a id="cap-github"></a>
@@ -682,7 +684,7 @@ Tier 1, `@titan-design/github@0.11.0`. GitHub REST port over the gh CLI: validat
 
 **Use this when:**
 
-Code must read or change GitHub (refs, files, pull requests, required checks, check runs, job logs, merges, reruns, branch deletes) over REST through the caller's `gh` login, with every write safe to repeat after a crash and polling paced by ETags and a shared rate budget. `mergeReadiness` decides, without I/O, whether a PR may merge at an approved head. A long-running service uses `octokitWire()` on `sharedOctokit()`: the same port, with one throttled, GET-only-retry budget per process. Use `fakeGitHub()` in tests instead of stubbing `gh`. `formatSquashMessage` (and the `titan-squash-message` bin) builds a deterministic, trailer- and email-free squash commit message from a PR and its commits. `ciVerdict` and `ciWait` (and `titan-gh ci-wait`) judge or wait on a sha's CI over the base branch's required contexts. A shell or agent reading one PR uses `titan-gh pr-status` and `titan-gh pr-context` instead of `gh pr view --json` piped to `jq`. `gitDiffPin` and `diffCarry` are I2's diff hash and its two carry exclusions.
+Code must read or change GitHub (refs, files, pull requests, required checks, check runs, App-posted pull request approvals and their dismissal, job logs, merges, reruns, branch deletes) over REST through the caller's `gh` login, with every write safe to repeat after a crash and polling paced by ETags and a shared rate budget. `mergeReadiness` decides, without I/O, whether a PR may merge at an approved head. A long-running service uses `octokitWire()` on `sharedOctokit()`: the same port, with one throttled, GET-only-retry budget per process. Use `fakeGitHub()` in tests instead of stubbing `gh`. `formatSquashMessage` (and the `titan-squash-message` bin) builds a deterministic, trailer- and email-free squash commit message from a PR and its commits. `ciVerdict` and `ciWait` (and `titan-gh ci-wait`) judge or wait on a sha's CI over the base branch's required contexts. A shell or agent reading one PR uses `titan-gh pr-status` and `titan-gh pr-context` instead of `gh pr view --json` piped to `jq`. `gitDiffPin` and `diffCarry` are I2's diff hash and its two carry exclusions.
 
 Key exports:
 
@@ -795,7 +797,7 @@ Tier 1, `@titan-design/retrieval@0.3.1`. FTS + vector + graph retrieval with RRF
 
 **Use this when:**
 
-You need search over a store-sqlite corpus that fuses FTS, vectors and graph hops and keeps answering when one retriever is down. `fuseByRRF` and `gatherFailOpen` work over your own retrievers too.
+You need search over a store-sqlite corpus that fuses FTS, vectors and graph hops and keeps answering when one retriever is down. `fuseByRRF` and `gatherFailOpen` work over your own retrievers too. `engine.retrieve` takes one zod-validated request: `mode: "list"` is `search`, and `mode: "context"` turns the same ranking into a token-budgeted, tiered context block via `planContext`.
 
 Key exports:
 
@@ -965,7 +967,7 @@ Key exports:
 - `index-source`: `workingTreeSource`
 - `git-tree-source`: `gitTreeSource`
 - `@titan-design/code-parser`: `getLanguageFromPath`, `getSupportedLanguages`, `parseFile`, `shouldIncludeFile`
-- `extractors/dispatch`: `LanguageExtractor`
+- `incremental`: `hashContent`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-graph)
 
 <a id="cap-code-read"></a>
@@ -1313,7 +1315,7 @@ Key exports:
 
 ### [`style-checker`](https://hjewkes.github.io/titan-platform/reference/style-checker)
 
-Tier 2, `@titan-design/style-checker@0.4.4`. Run external lint tools (ruff, ESLint) against configs generated from a style profile, normalize their output into one diagnostic shape, and diff observations against a profile
+Tier 2, `@titan-design/style-checker@0.4.4`. Run external lint tools (ruff, ESLint, pyright, vulture, pydoclint, import-linter) against configs generated from a style profile, normalize their output into one diagnostic shape, and diff observations against a profile
 
 **Use this when:**
 
@@ -1706,8 +1708,9 @@ You change retrieval behaviour and need recall measured before and after, agains
 Key exports:
 
 - `pairs`: `formatPairs`, `labelKeys`, `parsePairs`, `scopePair`
-- `corpus/transcripts`: `defaultTranscriptRoots`, `discoverTranscripts`, `readHead`, `streamToolUses`, `textOf`, `transcriptId`
-- `mine/labels`: `dedupeLabels`, `labelledPathOf`
+- `corpus/transcripts`: `readHead`, `streamToolUses`, `textOf`, `transcriptId`
+- `mine/labels`: `dedupeLabels`, `labelledPathOf`, `normaliseLabel`
+- `mine/frontmatter`: `listOfMaps`
 - More in `products/retrieval-eval/src/index.ts`
 
 <a id="cap-session-miner"></a>

@@ -12,6 +12,7 @@ import { cueGate, type CueGateResult } from "./cue-gate.js";
 import { CONTRAST, type QaGate } from "./gate-profile.js";
 import type { QaEngine } from "./qa-engine.js";
 import { measuredFindings } from "./qa-measured.js";
+import { speechRateReport } from "./speech-rate.js";
 import { narrationFactsReport } from "./narration-facts.js";
 import { INLINE_MAX_BYTES, mediaScanByBeat, qaReport, type QaReport } from "./qa-report.js";
 import { timelineFromArtifact, timelineS, type QaTimeline } from "./qa-timeline.js";
@@ -46,7 +47,7 @@ interface QaSources {
   put: (name: string, text: string) => string;
 }
 
-type Measured = Pick<QaReport, "sweep" | "framediff" | "probe" | "measured" | "timing" | "mediaScan" | "captions" | "narrationFacts" | "flash" | "contrast">;
+type Measured = Pick<QaReport, "sweep" | "framediff" | "probe" | "measured" | "timing" | "mediaScan" | "captions" | "narrationFacts" | "flash" | "contrast" | "speechRate">;
 
 /** What the timing gates read of the script: the beats it declares held, by `heldS` or the held speech band. */
 const HeldScriptSchema = z.object({ beats: z.array(z.object({ id: z.string(), band: z.string().optional(), heldS: z.number().optional() })) });
@@ -76,6 +77,11 @@ function storedIfLarge(sources: QaSources, name: string, value: unknown): string
   return text.length <= INLINE_MAX_BYTES ? undefined : sources.put(name, `${text}\n`);
 }
 
+/** A beat with no word timings is unmeasured: it counts as no words only if left in, which would read as 0 wpm. */
+function measuredBeats(words: ReturnType<typeof readTiming>) {
+  return [...words].flatMap(([id, beat]) => (beat.words === undefined ? [] : [{ id, words: beat.words.length, durationS: beat.durationS }]));
+}
+
 /** The MP4's frame change and the probe, inline or by sha, and the page-measured findings they give. */
 async function measure(sources: QaSources, engine: QaEngine, timeline: QaTimeline, inspection: CueGateResult, config: QaConfig): Promise<Measured> {
   const diffs = await engine.frameDiffs(sources.mp4);
@@ -96,6 +102,7 @@ async function measure(sources: QaSources, engine: QaEngine, timeline: QaTimelin
     mediaScan: mediaScanByBeat(await engine.mediaScan(sources.mp4), timeline),
     captions: captionReport(sources.vtt, sources.words),
     narrationFacts: narrationFactsReport(probed, (beat) => (words.get(beat)?.words ?? []).map((w) => w.word).join(" "), (beat) => cited.get(beat) ?? new Set()),
+    speechRate: speechRateReport(measuredBeats(words)),
     flash: await engine.flashScan(sources.mp4),
     contrast: contrastReport(parseTimeline(sources.timeline).beats, [...inspection.held.errors, ...inspection.held.info], CONTRAST, options),
   };

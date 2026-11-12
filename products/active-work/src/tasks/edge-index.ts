@@ -1,6 +1,6 @@
 import { checkEdges, readEdges, type EdgeError } from '@titan-design/pm';
 import { ValidationError } from '../errors.js';
-import { listInitiativeSlugs } from '../lint/index.js';
+import { listInitiativeSlugs } from '../sessions/initiatives.js';
 import type { Task } from '../schemas/task.js';
 import { getActiveRoot } from '../utils/paths.js';
 import { loadExistingTasks } from '../utils/task-seq.js';
@@ -15,7 +15,7 @@ export interface EdgeIndex {
 }
 
 /** A proposed edge write on one task. An omitted field keeps the task's current edges. */
-export interface EdgeWrite {
+interface EdgeWrite {
   slug: string;
   id: string;
   parent?: string;

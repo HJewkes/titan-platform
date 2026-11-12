@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { gitIn, seedRepo, withHistory } from "@titan-design/test-kit/git";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { generatedPathsFor, remerge, remergeFact, type RemergeResult } from "./remerge-carry.js";
 
 const REPO = "acme/widgets";
@@ -68,7 +69,7 @@ function mergeMain(): string {
 }
 
 const probe = (fromHead: string, head: string, remote = origin): Promise<RemergeResult> =>
-  remerge({ repo: REPO, baseRef: "main", fromHead, head, generated: GENERATED }, { stateDir, remote: () => remote });
+  remerge({ repo: REPO, baseRef: "main", fromHead, head, generated: GENERATED }, { ports: hostCarryPorts, stateDir, remote: () => remote });
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "remerge-carry-"));
@@ -109,7 +110,7 @@ describe("remerge", { timeout: 30_000 }, () => {
     const reviewed = conflictingOn(file);
     const head = resolveMerge({ [file]: "resolved\n" });
 
-    const result = await remerge({ repo: REPO, baseRef: "main", fromHead: reviewed, head, generated: generatedPathsFor("HJewkes/titan-platform") }, { stateDir, remote: () => origin });
+    const result = await remerge({ repo: REPO, baseRef: "main", fromHead: reviewed, head, generated: generatedPathsFor("HJewkes/titan-platform") }, { ports: hostCarryPorts, stateDir, remote: () => origin });
 
     expect(result).toMatchObject({ carries: false, paths: [file], generatedPaths: [] });
   });
@@ -177,7 +178,7 @@ describe("remerge", { timeout: 30_000 }, () => {
     const reviewed = conflictingOn("CAPABILITIES.md");
     const head = resolveMerge({ "CAPABILITIES.md": "regenerated\n" });
 
-    const result = await remerge({ repo: REPO, baseRef: "main", fromHead: reviewed, head, generated: [] }, { stateDir, remote: () => origin });
+    const result = await remerge({ repo: REPO, baseRef: "main", fromHead: reviewed, head, generated: [] }, { ports: hostCarryPorts, stateDir, remote: () => origin });
 
     expect(result).toMatchObject({ carries: false, paths: ["CAPABILITIES.md"] });
   });
@@ -190,7 +191,7 @@ describe("remerge", { timeout: 30_000 }, () => {
   });
 
   it("does not carry malformed input and touches no git", async () => {
-    const result = await remerge({ repo: "../escape", baseRef: "--upload-pack=x", fromHead: "abc", head: "def", generated: [] }, { stateDir });
+    const result = await remerge({ repo: "../escape", baseRef: "--upload-pack=x", fromHead: "abc", head: "def", generated: [] }, { ports: hostCarryPorts, stateDir });
 
     expect(result.carries).toBe(false);
     expect(existsSync(join(stateDir, "git-cache"))).toBe(false);

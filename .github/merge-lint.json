@@ -5,7 +5,7 @@
     "include": ["**/*"],
     "brief": ["**/CLAUDE.md", "**/AGENTS.md", "**/SKILL.md", "**/briefs/**", "**/*.brief.md", "profiles/*.json"]
   },
-  "exclude": ["**/*.test.*", "**/__tests__/**", "**/fixtures/**", "**/testdata/**", "**/CHANGELOG.md", ".changeset/**", "site/**", "docs/**", "**/README.md"],
+  "exclude": ["**/*.test.*", "**/__tests__/**", "products/active-work/src/test-support/**", "**/fixtures/**", "**/testdata/**", "**/CHANGELOG.md", ".changeset/**", "site/**", "docs/**", "**/README.md"],
   "allow": [
     {
       "path": "packages/github/src/gh-cli.ts",

@@ -52,4 +52,7 @@ stderr tail goes to `stderr-tail.txt` beside the plan. It exits the way the agen
 a usage error and 66 an unreadable plan.
 
 The bin execs `plan.bin` as written and inherits its environment unscrubbed. A host that
-resolves `claude` or scrubs secrets calls `runAgent(plan, { resolveBin, baseEnv })` instead.
+resolves `claude` or scrubs secrets calls `runAgent(plan, { resolveBin, baseEnv })` instead. `onSpawn(child)` is called once, right after
+spawn and before the brief is written, for a host that attaches its own handlers to the child; a throw aborts the launch (the child is killed).
+The launcher forwards SIGTERM, SIGINT and SIGHUP to the agent, logging one stderr line per signal and one for the agent's exit.
+Two cases are logged but not forwarded. On an interactive surface (a plan with no `stdin`) SIGINT is skipped, because the terminal already delivers it to the agent's foreground process group. On an iTerm surface (a surface name starting `iterm`) SIGHUP is skipped for an interactive plan, because the job-control shell in front of the launcher passes the hangup on to the agent's group. Under tmux the launcher is the session leader and nothing else signals the agent, so SIGHUP is still forwarded there.

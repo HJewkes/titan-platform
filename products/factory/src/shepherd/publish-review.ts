@@ -1,14 +1,14 @@
-import { readFile } from "node:fs/promises";
-import { appInstallationTokenOverHttp, githubPort, octokitWire, type GitHubPort, type RepoSlug } from "@titan-design/github";
+import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
-import type { ReviewCheckConfig } from "../config.js";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
 import type { ObservedPr } from "./observe.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
+import { syncApproval, type ReviewApproval } from "./review-approval.js";
 import { reviewCheck, type ReviewCheckInput, type ReviewConclusion } from "./review-check.js";
+import type { ReviewRetryTiming } from "./review-retry.js";
 import { REVIEW_OUTCOMES, type ReviewOutcome } from "./route-table.js";
 
 const PUBLISH_REVIEW_STEP = "sh-publish-review";
@@ -33,7 +33,7 @@ type PublishInput = z.infer<typeof PublishInputSchema>;
 /** Where the armed flag is read, so the mapper guard sees what GitHub says at publish time. */
 type ArmedReader = Pick<GitHubPort, "getPr">;
 
-type PublishResult = { headSha: string; conclusion: ReviewConclusion } & ({ published: true; checkRunId: number; checkRunUrl: string } | { published: false; reason: string });
+type PublishResult = { headSha: string; conclusion: ReviewConclusion; review?: ReviewApproval } & ({ published: true; checkRunId: number; checkRunUrl: string } | { published: false; reason: string });
 
 const PublishedResult = z.looseObject({ published: z.boolean() });
 
@@ -68,11 +68,21 @@ function reviewOutcome(verdict: Verdict, observed: ObservedPr, headSha: string):
 }
 
 export const publishReviewRoute = (deps: ShepherdDeps): StepRoute =>
-  codeRoute(PUBLISH_REVIEW_STEP, deps.now, async (raw: unknown) => publish(deps.reviewCheck, deps.port, PublishInputSchema.parse(raw)));
+  codeRoute(PUBLISH_REVIEW_STEP, deps.now, async (raw: unknown, signal) => {
+    const timing = { now: deps.now, sleep: (ms: number) => deps.sleep(ms, signal) };
+    return publish(deps.reviewCheck, deps.port, PublishInputSchema.parse(raw), timing);
+  });
+
+/** The check run, then Shepherd's approvals brought into line with it; neither failing fails the step. */
+async function publish(port: GitHubPort | undefined, reads: ArmedReader, input: PublishInput, timing: ReviewRetryTiming): Promise<PublishResult> {
+  const check = reviewCheck({ ...input, autoMergeArmed: await autoMergeArmed(reads, input) });
+  const posted = await postCheck(port, input, check);
+  const review = await syncApproval(port && { port, timing }, input, check);
+  return { ...posted, ...(review && { review }) };
+}
 
 /** Each publish is a new run, and GitHub keeps the newest per name and App, so a repeat after a crash is harmless. */
-async function publish(port: GitHubPort | undefined, reads: ArmedReader, input: PublishInput): Promise<PublishResult> {
-  const check = reviewCheck({ ...input, autoMergeArmed: await autoMergeArmed(reads, input) });
+async function postCheck(port: GitHubPort | undefined, input: PublishInput, check: ReturnType<typeof reviewCheck>): Promise<PublishResult> {
   const posted = { headSha: check.headSha, conclusion: check.conclusion };
   if (!port) return { ...posted, published: false, reason: "no shepherd.reviewCheck App is configured" };
   try {
@@ -93,14 +103,4 @@ async function autoMergeArmed(reads: ArmedReader, input: PublishInput): Promise<
     console.warn(`shepherd: reading auto-merge of ${input.repo}#${input.pr} failed: ${consoleTextOf(error)}`);
     return true;
   }
-}
-
-/** The App-token port the publish step posts through; the key is read per post, so a missing file fails that post only. */
-export function reviewCheckPort(config: ReviewCheckConfig | undefined): GitHubPort | undefined {
-  if (!config) return undefined;
-  const appToken = async (): Promise<string> => {
-    const privateKeyPem = await readFile(config.privateKeyPath, "utf8");
-    return (await appInstallationTokenOverHttp({ appId: config.appId, installationId: config.installationId, privateKeyPem, now: Date.now })).token;
-  };
-  return githubPort(octokitWire({ appToken }));
 }

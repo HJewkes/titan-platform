@@ -18,7 +18,7 @@ import type { WorkerRecord } from '../schemas/worker-record.js';
 export const SESSION_KINDS = ['worker', 'adhoc', 'sidecar', 'canonical'] as const;
 export type SessionKind = (typeof SESSION_KINDS)[number];
 
-export const UNATTRIBUTED = 'unattributed';
+const UNATTRIBUTED = 'unattributed';
 const MAX_EXCEPTION_SUMMARY = 100;
 
 const STUB_PATTERN = /^Peer "([^"]*)"[^\n]*?(?:exited with|exit inferred)/;
@@ -27,10 +27,9 @@ const MAX_EXCEPTIONS_PER_SPAWNER = 3;
 const CONCERNS_STATUS = /^Status:\s*(?:DONE_WITH_CONCERNS|BLOCKED|NEEDS_CONTEXT)\b/m;
 const MERGED_WORD = /\bmerged\b/i;
 
-export const WorkerOutcomeSchema = z.enum(['merged', 'open_pr', 'no_report', 'concerns']);
-export type WorkerOutcome = z.infer<typeof WorkerOutcomeSchema>;
+type WorkerOutcome = 'merged' | 'open_pr' | 'no_report' | 'concerns';
 
-export const WorkerExceptionSchema = z.object({
+const WorkerExceptionSchema = z.object({
   session_id: z.string(),
   ended: z.string(),
   agent: z.string().nullable(),
@@ -38,7 +37,7 @@ export const WorkerExceptionSchema = z.object({
   summary: z.string(),
 });
 
-export const SpawnerRollupSchema = z.object({
+const SpawnerRollupSchema = z.object({
   spawner: z.string(),
   total: z.number().int(),
   merged: z.number().int(),
@@ -53,9 +52,9 @@ export const WorkerRollupSchema = z.object({
   spawners: z.array(SpawnerRollupSchema),
 });
 
-export type WorkerException = z.infer<typeof WorkerExceptionSchema>;
-export type SpawnerRollup = z.infer<typeof SpawnerRollupSchema>;
-export type WorkerRollup = z.infer<typeof WorkerRollupSchema>;
+type WorkerException = z.infer<typeof WorkerExceptionSchema>;
+type SpawnerRollup = z.infer<typeof SpawnerRollupSchema>;
+type WorkerRollup = z.infer<typeof WorkerRollupSchema>;
 
 /** The slice of a session record the roll-up reads. */
 export interface RollupInput {
@@ -77,7 +76,7 @@ function firstLineOf(body: string): string {
 }
 
 /** The agent name inside a stub record's `Peer "<name>" ...` line, if it is one. */
-export function stubAgentName(body: string): string | null {
+function stubAgentName(body: string): string | null {
   const match = STUB_PATTERN.exec(body.trimStart());
   return match ? (match[1] ?? '') : null;
 }

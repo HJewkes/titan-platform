@@ -1,0 +1,381 @@
+import {
+  appendFileSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { discoverTranscripts } from '@titan-design/session-read';
+import { graphDocumentFrequency } from '../search/document-frequency.js';
+import { createDirtySet } from './dirty-set.js';
+import { transcriptsFromDirty, unknownRootCandidates } from './delta-pass.js';
+import { openGraph, type WorkspaceGraph } from './graph.js';
+import { selectAll, selectOne } from '../test-support/session-index/query.js';
+import { runRefresh } from './refresh.js';
+import { RefreshScheduler } from './scheduler.js';
+import { refreshEpisodes } from './episodes.js';
+
+const episodeStep: { before: (() => Promise<void>) | null } = { before: null };
+
+/** Runs `episodeStep.before` ahead of the real episode step, so a test can hold it. */
+const steps = {
+  refreshEpisodes: async (...args: Parameters<typeof refreshEpisodes>) => {
+    await episodeStep.before?.();
+    return refreshEpisodes(...args);
+  },
+};
+
+const UNCHANGED = 1_000;
+
+let dir: string;
+let root: string;
+let graph: WorkspaceGraph;
+
+beforeEach(() => {
+  dir = mkdtempSync(path.join(os.tmpdir(), 'aw-delta-'));
+  root = path.join(dir, 'projects');
+  mkdirSync(path.join(root, 'demo'), { recursive: true });
+  graph = openGraph(path.join(dir, 'graph.sqlite3'));
+  vi.stubEnv('AGENT_CHAT_HOME', path.join(dir, 'agent-chat'));
+});
+
+afterEach(() => {
+  episodeStep.before = null;
+  vi.unstubAllEnvs();
+  graph.db.close();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+const userLine = (n: number, text: string): string =>
+  `${JSON.stringify({
+    type: 'user',
+    sessionId: `sess-${n}`,
+    uuid: `u-${n}-${text.length}`,
+    timestamp: '2026-01-01T00:00:00.000Z',
+    message: { role: 'user', content: text },
+  })}\n`;
+
+function writeTranscript(n: number): string {
+  const file = path.join(root, 'demo', `s${n}.jsonl`);
+  writeFileSync(file, userLine(n, 'first prompt'), 'utf8');
+  return file;
+}
+
+const indexedAt = (): Map<string, string | null> =>
+  new Map(graph.transcripts.list().map((row) => [row.sourceKey, row.lastIndexedAt]));
+
+describe('delta pass', () => {
+  it('opens only the one transcript the dirty set names among 1,000 unchanged ones', async () => {
+    for (let n = 0; n < UNCHANGED; n += 1) writeTranscript(n);
+    await runRefresh({ graph, root, skipPrOutcomes: true, skipWorkspace: true, taskRoot: dir });
+    const before = indexedAt();
+    const changed = path.join(root, 'demo', 's7.jsonl');
+    const appended = userLine(7, 'a second, longer prompt');
+    appendFileSync(changed, appended, 'utf8');
+    const dirty = createDirtySet();
+    dirty.add(root, 'demo/s7.jsonl');
+
+    const transcripts = await transcriptsFromDirty(graph, dirty.drain(), [
+      { root, account: 'default' },
+    ]);
+    const summary = await runRefresh({ graph, mode: 'delta', transcripts, taskRoot: dir });
+
+    expect(summary).toMatchObject({
+      kind: 'delta',
+      transcripts: 1,
+      scanned: 1,
+      indexed: 1,
+      unchanged: 0,
+      filesOpened: 1,
+      bytesRead: Buffer.byteLength(appended),
+    });
+    expect(Object.keys(summary.phases)).toEqual(['scan', 'rollup', 'episodes', 'workspace']);
+    const changedKey = [...before.keys()].find((key) => key.endsWith('/demo/s7.jsonl'));
+    for (const [key, stamp] of indexedAt()) {
+      if (key !== changedKey) expect(stamp).toBe(before.get(key));
+    }
+  }, 60_000);
+
+  it('counts a term higher after a delta pass indexes a transcript containing it', async () => {
+    writeTranscript(1);
+    await runRefresh({ graph, root, skipPrOutcomes: true, skipWorkspace: true, taskRoot: dir });
+    const frequency = graphDocumentFrequency(graph);
+    const before = frequency('prompt');
+    appendFileSync(path.join(root, 'demo', 's1.jsonl'), userLine(1, 'another prompt here'), 'utf8');
+    const dirty = createDirtySet();
+    dirty.add(root, 'demo/s1.jsonl');
+    const transcripts = await transcriptsFromDirty(graph, dirty.drain(), [
+      { root, account: 'default' },
+    ]);
+
+    await runRefresh({ graph, mode: 'delta', transcripts, skipWorkspace: true, taskRoot: dir });
+
+    expect(frequency('prompt')).toBeGreaterThan(before);
+  });
+
+  it('counts a term higher after a full refresh indexes a transcript containing it', async () => {
+    writeTranscript(1);
+    await runRefresh({ graph, root, skipPrOutcomes: true, skipWorkspace: true, taskRoot: dir });
+    const frequency = graphDocumentFrequency(graph);
+    const before = frequency('prompt');
+    writeTranscript(2);
+
+    await runRefresh({ graph, root, skipPrOutcomes: true, skipWorkspace: true, taskRoot: dir });
+
+    expect(frequency('prompt')).toBeGreaterThan(before);
+  });
+
+  const toolLines = (n: number): string =>
+    [
+      {
+        type: 'assistant',
+        sessionId: `sess-${n}`,
+        uuid: `a-tool-${n}`,
+        timestamp: '2026-01-01T00:00:05.000Z',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: `t${n}`, name: 'Bash', input: { command: 'ls' } }],
+        },
+      },
+      {
+        type: 'user',
+        sessionId: `sess-${n}`,
+        uuid: `u-tool-${n}`,
+        timestamp: '2026-01-01T00:00:06.000Z',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: `t${n}`, content: 'listing output' }],
+        },
+      },
+    ]
+      .map((line) => `${JSON.stringify(line)}\n`)
+      .join('');
+
+  const storedFields = (): string[] =>
+    selectAll<{ field: string }>(graph.db, 'SELECT DISTINCT field FROM search_span ORDER BY field').map(
+      (row) => row.field,
+    );
+
+  const contextBlocks = (): number =>
+    selectOne<{ n: number }>(graph.db, 'SELECT COUNT(*) AS n FROM context_block').n;
+
+  it('stores no tool span or context block for bytes a delta pass indexes', async () => {
+    writeTranscript(1);
+    await runRefresh({ graph, root, skipPrOutcomes: true, skipWorkspace: true, taskRoot: dir });
+    appendFileSync(path.join(root, 'demo', 's1.jsonl'), toolLines(1), 'utf8');
+    const dirty = createDirtySet();
+    dirty.add(root, 'demo/s1.jsonl');
+    const transcripts = await transcriptsFromDirty(graph, dirty.drain(), [
+      { root, account: 'default' },
+    ]);
+
+    const summary = await runRefresh({
+      graph,
+      mode: 'delta',
+      transcripts,
+      skipWorkspace: true,
+      taskRoot: dir,
+    });
+
+    expect(summary.indexed).toBe(1);
+    expect(storedFields()).toEqual(['prompt']);
+    expect(contextBlocks()).toBe(0);
+  });
+
+  it('reports the rows each pass wrote and the database size it left', async () => {
+    writeTranscript(1);
+    const full = await runRefresh({
+      graph,
+      root,
+      skipPrOutcomes: true,
+      skipWorkspace: true,
+      taskRoot: dir,
+    });
+    const spans = selectOne<{ n: number }>(graph.db, 'SELECT COUNT(*) AS n FROM search_span')
+      .n;
+    appendFileSync(path.join(root, 'demo', 's1.jsonl'), userLine(1, 'a later prompt'), 'utf8');
+    const transcripts = await discoverTranscripts(root);
+
+    const delta = await runRefresh({ graph, mode: 'delta', transcripts, taskRoot: dir });
+    // Folded into the main file, its size is exactly the pages the pass counts.
+    graph.db.pragma('wal_checkpoint(TRUNCATE)');
+    const idle = await runRefresh({ graph, mode: 'delta', transcripts: [], taskRoot: dir });
+
+    expect(full.rowsWritten).toBeGreaterThan(spans);
+    expect(delta.rowsWritten).toBeGreaterThan(0);
+    expect(idle.rowsWritten).toBe(0);
+    expect(full.dbBytes).toBeGreaterThan(0);
+    expect(idle.dbBytes).toBe(statSync(path.join(dir, 'graph.sqlite3')).size);
+  });
+
+  it('visits only recent rows and files with no row when a root is unknown', async () => {
+    const [settled, recent] = [writeTranscript(1), writeTranscript(2)];
+    await runRefresh({ graph, root, skipPrOutcomes: true, skipWorkspace: true, taskRoot: dir });
+    const longAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    for (const row of graph.transcripts.list()) {
+      if (!row.sourceKey.endsWith('s1.jsonl')) continue;
+      graph.transcripts.advance(row.sourceKey, {
+        lastOffset: row.lastOffset,
+        fileMtime: longAgo.toISOString(),
+      });
+    }
+    utimesSync(settled, longAgo, longAgo);
+    const fresh = writeTranscript(3);
+
+    const found = await unknownRootCandidates(graph, { root, account: 'default' });
+
+    expect(found.map((t) => t.absolutePath).sort()).toEqual([recent, fresh].sort());
+  });
+});
+
+describe('delta pass aborted mid-scan', () => {
+  const assistantLine = (n: number): string =>
+    `${JSON.stringify({
+      type: 'assistant',
+      sessionId: `sess-${n}`,
+      uuid: `a-${n}`,
+      parentUuid: `u-${n}-12`,
+      timestamp: '2026-01-01T00:00:05.000Z',
+      message: { role: 'assistant', content: [{ type: 'text', text: 'done' }] },
+    })}\n`;
+
+  const unrolledTurns = (): number =>
+    selectOne<{ n: number }>(graph.db, 'SELECT COUNT(*) AS n FROM turn WHERE ended_at IS NULL').n;
+
+  it('rolls up the sessions it committed before the abort', async () => {
+    for (const n of [1, 2]) appendFileSync(writeTranscript(n), assistantLine(n), 'utf8');
+    const transcripts = await discoverTranscripts(root);
+    const aborted = new Error('watcher closed');
+    const yieldPoint = vi.fn(async () => {
+      throw aborted;
+    });
+
+    const pass = runRefresh({ graph, mode: 'delta', transcripts, yieldPoint, taskRoot: dir });
+
+    await expect(pass).rejects.toBe(aborted);
+    const turns = selectOne<{ n: number }>(graph.db, 'SELECT COUNT(*) AS n FROM turn');
+    expect(turns.n).toBe(1);
+    expect(unrolledTurns()).toBe(0);
+  });
+});
+
+describe('delta pass behind runNow', () => {
+  /** Resolves after `ms`, or at once when released. */
+  function blockFor(ms: number): { blocked: Promise<void>; release: () => void } {
+    let release = (): void => {};
+    const blocked = new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, ms);
+      release = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+    });
+    return { blocked, release };
+  }
+
+  it('reads fresh inside the related budget while the episode step blocks for 5 s', async () => {
+    writeTranscript(1);
+    const transcripts = await discoverTranscripts(root);
+    const episodes = blockFor(5_000);
+    let episodeStepBlocked = false;
+    episodeStep.before = () => {
+      episodeStepBlocked = true;
+      return episodes.blocked;
+    };
+    const scheduler = new RefreshScheduler((_kind, onIndexed) =>
+      runRefresh({ graph, mode: 'delta', transcripts, taskRoot: dir, onIndexed, steps }),
+    );
+
+    try {
+      // 'fresh' means the read settled before the budget's timer, so no clock is read here.
+      const freshness = await scheduler.runNow(800);
+
+      expect(freshness).toBe('fresh');
+      expect(episodeStepBlocked).toBe(true);
+      expect(scheduler.status().running).toBe(true);
+    } finally {
+      episodes.release();
+      await scheduler.close();
+    }
+    expect(scheduler.status().running).toBe(false);
+  });
+
+  /** A scheduler whose delta drains `dirty` the way the daemon's pass runner does. */
+  function dirtyScheduler(dirty: ReturnType<typeof createDirtySet>): RefreshScheduler {
+    const roots = [{ root, account: 'default' }];
+    return new RefreshScheduler(
+      async (_kind, onIndexed) => {
+        const transcripts = await transcriptsFromDirty(graph, dirty.drain(), roots);
+        return runRefresh({ graph, mode: 'delta', transcripts, taskRoot: dir, onIndexed, steps });
+      },
+      { hasUndrained: () => dirty.size > 0 },
+    );
+  }
+
+  /** Blocks only the first pass's episode step, writing `s2` while it holds. */
+  function writeDuringFirstEpisodes(
+    dirty: ReturnType<typeof createDirtySet>,
+    block: Promise<void>,
+  ): void {
+    let calls = 0;
+    episodeStep.before = () => {
+      calls += 1;
+      if (calls > 1) return Promise.resolve();
+      writeTranscript(2);
+      dirty.add(root, 'demo/s2.jsonl');
+      return block;
+    };
+  }
+
+  const isIndexed = (name: string): boolean =>
+    graph.transcripts.list().some((row) => row.sourceKey.endsWith(`/demo/${name}`));
+
+  it('reads stale when it joins a delta in its episode step after a path was written', async () => {
+    writeTranscript(1);
+    const dirty = createDirtySet();
+    dirty.add(root, 'demo/s1.jsonl');
+    const episodes = blockFor(5_000);
+    writeDuringFirstEpisodes(dirty, episodes.blocked);
+    const scheduler = dirtyScheduler(dirty);
+
+    try {
+      const first = await scheduler.runNow(800);
+      const joined = await scheduler.runNow(300);
+
+      expect(first).toBe('fresh');
+      expect(joined).toBe('stale');
+      expect(isIndexed('s2.jsonl')).toBe(false);
+    } finally {
+      episodes.release();
+      await scheduler.close();
+    }
+  });
+
+  it('reads fresh once a follow-up delta indexes the path written during the episode step', async () => {
+    writeTranscript(1);
+    const dirty = createDirtySet();
+    dirty.add(root, 'demo/s1.jsonl');
+    const episodes = blockFor(5_000);
+    writeDuringFirstEpisodes(dirty, episodes.blocked);
+    const scheduler = dirtyScheduler(dirty);
+
+    try {
+      await scheduler.runNow(800);
+      setTimeout(episodes.release, 100);
+      const joined = await scheduler.runNow(3_000);
+
+      expect(joined).toBe('fresh');
+      expect(isIndexed('s2.jsonl')).toBe(true);
+      expect(dirty.size).toBe(0);
+    } finally {
+      episodes.release();
+      await scheduler.close();
+    }
+  });
+});

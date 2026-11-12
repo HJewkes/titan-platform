@@ -6,14 +6,25 @@ import type {
   EditInput,
   InteractionResult,
   InteractiveTransport,
+  MediaSendResult,
   MessageRef,
+  PhotoInput,
   SendError,
   SendInput,
   SendResult,
+  VoiceInput,
 } from "./contract.js";
 import { emptyEditError, sendFailed } from "./contract.js";
 import type { TelegramConfig } from "./telegram-api.js";
 import { describeCause } from "./send-failure.js";
+import {
+  captionError,
+  mediaSizeError,
+  photoForm,
+  TELEGRAM_MAX_PHOTO_BYTES,
+  TELEGRAM_MAX_VOICE_BYTES,
+  voiceForm,
+} from "./telegram-media.js";
 import {
   callBotApi,
   redactToken,
@@ -23,6 +34,7 @@ import {
 
 /** The Bot API plumbing lives next door; re-exported so no consumer's import path moves. */
 export * from "./telegram-api.js";
+export { TELEGRAM_MAX_CAPTION_LENGTH } from "./telegram-media.js";
 
 /** The message never quotes a data value: consumers may put ids in it. */
 function buttonsError(rows: readonly ButtonRow[]): SendError | undefined {
@@ -208,6 +220,33 @@ export class TelegramTransport implements InteractiveTransport {
     });
   }
 
+  /** Uploaded as multipart, so the bytes go with the request and no public URL is needed. */
+  async sendVoice({ handle, audio }: VoiceInput): Promise<MediaSendResult> {
+    const oversized = mediaSizeError(audio, TELEGRAM_MAX_VOICE_BYTES, "Voice note");
+    if (oversized) return { ok: false, error: oversized };
+    return await this.upload(handle, "sendVoice", (chatId) => voiceForm(chatId, audio));
+  }
+
+  async sendPhoto({ handle, image, caption }: PhotoInput): Promise<MediaSendResult> {
+    const invalid = captionError(caption) ?? mediaSizeError(image, TELEGRAM_MAX_PHOTO_BYTES, "Photo");
+    if (invalid) return { ok: false, error: invalid };
+    return await this.upload(handle, "sendPhoto", (chatId) => photoForm(chatId, image, caption));
+  }
+
+  private async upload(
+    handle: string,
+    method: string,
+    form: (chatId: string | number) => FormData,
+  ): Promise<MediaSendResult> {
+    const chatId = await this.resolveChatId(handle);
+    if (chatId.kind !== "ok") return { ok: false, error: chatId.error };
+    const call = await callBotApi(this.config, method, form(chatId.value), handle);
+    if (!call.ok) return { ok: false, error: call.error };
+    const messageId = readMessageId(call.result);
+    if (messageId === undefined) return { ok: true };
+    return { ok: true, ref: { channel: "telegram", chat: String(chatId.value), messageId } };
+  }
+
   private async interact(
     method: string,
     body: Record<string, unknown>,
@@ -265,6 +304,7 @@ function telegramCapabilities(config: TelegramConfig): ChannelCapabilities {
     drafts: false,
     draftStreaming: false,
     threads: false,
+    media: true,
   };
 }
 

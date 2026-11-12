@@ -1,4 +1,4 @@
-import type { ParsedFile } from "@titan-design/code-parser";
+import { cyclomaticOf, nestingDepthOf, type ParsedFile } from "@titan-design/code-parser";
 import type { Node } from "web-tree-sitter";
 import { EXCEPTION_METRIC_NAMES, exceptionMetrics } from "./analysis/exception-handling.js";
 import { jsxDepthOf } from "./analysis/jsx-metrics.js";
@@ -11,43 +11,6 @@ import { PY_FUNCTION_TYPES, TS_BOUND_FUNCTION_TYPES, TS_FUNCTION_DECL_TYPES } fr
 import { qualify, walkScopes } from "./scope-path.js";
 import { functionShapeStats, SYMBOL_METRIC_NAMES, symbolMetrics, type FunctionStats } from "./symbol-metrics.js";
 import type { GraphMetric } from "./types.js";
-
-const TS_NESTING_TYPES = new Set([
-  "if_statement",
-  "for_statement",
-  "for_in_statement",
-  "while_statement",
-  "do_statement",
-  "switch_statement",
-  "try_statement",
-]);
-
-const PY_NESTING_TYPES = new Set([
-  "if_statement",
-  "for_statement",
-  "while_statement",
-  "try_statement",
-]);
-
-const TS_BRANCH_TYPES = new Set([
-  "if_statement",
-  "for_statement",
-  "for_in_statement",
-  "while_statement",
-  "do_statement",
-  "switch_case",
-  "catch_clause",
-  "ternary_expression",
-]);
-
-const PY_BRANCH_TYPES = new Set([
-  "if_statement",
-  "elif_clause",
-  "for_statement",
-  "while_statement",
-  "except_clause",
-  "conditional_expression",
-]);
 
 /**
  * Names of every metric `computeSourceMetrics` can emit. These are pure
@@ -190,7 +153,7 @@ function analyzeFunctions(file: ParsedFile): FunctionStats[] {
       cognitive: cognitive.total,
       markupCognitive: cognitive.markup,
       logicCognitive: cognitive.total - cognitive.markup,
-      nestingDepth: nestingDepthOf(fn.body, file.language, 0),
+      nestingDepth: nestingDepthOf(fn.body, file.language, 0, { flattenElseIf: true }),
       jsxDepth,
       loc: fn.node.endPosition.row - fn.node.startPosition.row + 1,
       props: isComponent(fn.name, jsxDepth) ? propStatsOf(fn.node, types) : null,
@@ -235,42 +198,4 @@ function functionAt(
 function jsxDepthIn(file: ParsedFile, root: Node): number {
   if (file.language === "python") return 0;
   return jsxDepthOf(root, (node) => functionAt(node, TS_FUNCTION_DECL_TYPES) !== null);
-}
-
-/** An `else if` parses as else_clause > if_statement; ESLint max-depth and Sonar keep the chain flat. */
-function isElseIf(parent: Node, child: Node): boolean {
-  return parent.type === "else_clause" && child.type === "if_statement";
-}
-
-function nestingDepthOf(node: Node, language: string, depth: number): number {
-  const nestingTypes =
-    language === "python" ? PY_NESTING_TYPES : TS_NESTING_TYPES;
-  let maxDepth = depth;
-  for (const child of node.namedChildren) {
-    const next = nestingTypes.has(child.type) && !isElseIf(node, child) ? depth + 1 : depth;
-    const childMax = nestingDepthOf(child, language, next);
-    if (childMax > maxDepth) maxDepth = childMax;
-  }
-  return maxDepth;
-}
-
-function cyclomaticOf(body: Node, language: string): number {
-  const branchTypes =
-    language === "python" ? PY_BRANCH_TYPES : TS_BRANCH_TYPES;
-  let complexity = 1;
-  const visit = (node: Node): void => {
-    if (branchTypes.has(node.type)) complexity++;
-    if (node.type === "binary_expression") {
-      const op = node.childForFieldName("operator");
-      if (op && (op.text === "&&" || op.text === "||")) complexity++;
-    }
-    if (language === "python" && node.type === "boolean_operator") {
-      complexity++;
-    }
-    for (const child of node.namedChildren) {
-      visit(child);
-    }
-  };
-  visit(body);
-  return complexity;
 }

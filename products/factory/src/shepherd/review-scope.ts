@@ -6,17 +6,15 @@ import { isRepoKey } from "./seats.js";
 import {
   BranchName,
   CarryRefusal,
-  carryCacheDir,
-  carryStateDir,
+  cacheFor,
   ensureCache,
   fetchArgs,
-  githubRemote,
   isAncestor,
   must,
   reasonOf,
   remoteBase,
   serialized,
-  systemGit,
+  type CacheHandle,
   type CarryOptions,
   type Git,
 } from "./tree-carry.js";
@@ -142,9 +140,10 @@ async function fixDiff(git: Git, dir: string, from: string, to: string, signal?:
 }
 
 /** The fix diff runs from the reviewed head merged with the base the head contains, so main's changes a merge brought in drop out. */
-async function probe(git: Git, dir: string, url: string, input: ReviewScopeInput, signal?: AbortSignal): Promise<ReviewScopeResult> {
+async function probe(cache: CacheHandle, input: ReviewScopeInput, signal?: AbortSignal): Promise<ReviewScopeResult> {
+  const { git, dir, url } = cache;
   const { sinceHead, head } = input;
-  await ensureCache(git, dir, signal);
+  await ensureCache(cache, signal);
   await must(git, dir, fetchArgs(url, { ...input, fromHead: sinceHead }), signal);
   if (!(await isAncestor(git, dir, sinceHead, head, signal))) return full(`${head} does not contain ${sinceHead}, so it is a rebase, not a fix on top`);
   const base = await must(git, dir, ["merge-base", head, remoteBase(input.baseRef)], signal);
@@ -158,21 +157,20 @@ async function probe(git: Git, dir: string, url: string, input: ReviewScopeInput
 }
 
 /** Any failure, from bad input to a refused fetch, answers a full review with a fixed-vocabulary reason. */
-export async function reviewScope(raw: unknown, options: CarryOptions = {}): Promise<ReviewScopeResult> {
+export async function reviewScope(raw: unknown, options: CarryOptions): Promise<ReviewScopeResult> {
   const parsed = ScopeInputSchema.safeParse(raw);
   if (!parsed.success) return full(`invalid review-scope input: ${parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ")}`);
   const input = parsed.data;
   try {
-    const dir = carryCacheDir(carryStateDir(options.stateDir), input.repo);
-    const url = (options.remote ?? githubRemote)(input.repo);
-    return await serialized(dir, () => probe(options.git ?? systemGit, dir, url, input, options.signal));
+    const cache = cacheFor(input.repo, options);
+    return await serialized(cache.dir, () => probe(cache, input, options.signal));
   } catch (error) {
     options.signal?.throwIfAborted();
     return full(reasonOf(error));
   }
 }
 
-export function reviewScopeRoute(now: () => number, options: Omit<CarryOptions, "signal"> = {}): StepRoute {
+export function reviewScopeRoute(now: () => number, options: Omit<CarryOptions, "signal">): StepRoute {
   return codeRoute(REVIEW_SCOPE_STEP, now, (input: unknown, signal) => reviewScope(input, { ...options, signal }));
 }
 

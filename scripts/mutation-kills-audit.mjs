@@ -7,7 +7,7 @@
 //
 // It also checks each mutation's `find` against its target file at head with fix-proof's own `checkMutation`, so a change
 // that drifts a target out from under a sidecar fails on that PR instead of on a later unrelated one (TP-4439).
-// `--finds` runs only that check: no test runs, so it is fast enough for every PR.
+// `--finds` runs only that check and the spec parse: no test runs, so it is fast enough for every PR.
 //
 //   node scripts/mutation-kills-audit.mjs --finds [sidecar...]       only the find check
 //   node scripts/mutation-kills-audit.mjs [sidecar...]               default: every tracked *.test.mutations.json
@@ -115,8 +115,9 @@ function killProblems(path, sidecar, base) {
 function audit(path, base, findsOnly, config) {
   const text = readFileSync(path, "utf8");
   const finds = findProblems(path, text, readTextOrNull, config);
-  if (findsOnly) return finds;
   const refused = specProblem(path, text);
+  // The spec parse is cheap and holds fix-proof's mutation cap, so the fast mode runs it too (TP-4968).
+  if (findsOnly) return [...(refused === null ? [] : [refused]), ...finds];
   const sidecar = jsonOrNull(text);
   const kills = sidecar === null ? [] : killProblems(path, sidecar, base);
   return [...(refused === null ? [] : [refused]), ...finds, ...kills];

@@ -4,17 +4,17 @@ import { listForcePushes } from "./force-pushes.js";
 import { graphql } from "./graphql.js";
 import { checkRunBody } from "./check-run-create.js";
 import { GhError, execGh, type GhExec } from "./exec.js";
-import type { CreateCheckRunRequest } from "./check-run-create.js";
-import type { CheckRun, Commit, GitHubWire, IssueComment, JobStep, PrFile, PullRequest, RepoFile, SquashSource } from "./port.js";
+import type { CheckRun, Commit, GitHubWire, IssueComment, JobStep, PrFile, PullRequest, RepoFile, SquashSource } from "./port-types.js";
 import type { OpenPrList } from "./pr-list.js";
 import { revalidateRef, revalidateRulesets } from "./conditional-reads.js";
 import type { ReviewComment } from "./review-comment.js";
+import { createReview, dismissReview, listReviews } from "./pull-reviews.js";
 import { restCaller, type Rest } from "./rest.js";
 import { readContentBytes } from "./file-bytes.js";
 import { listDirectory } from "./directory.js";
 import { listCommitStatuses } from "./commit-status-read.js";
 import { sendMergeIntoBranch } from "./merge-into-branch.js";
-import { compareFiles, readAncestry } from "./compare.js";
+import { compareCommits, compareFiles, readAncestry } from "./compare.js";
 import { branchRules, classicRequiredChecks, type GhRule } from "./rules-read.js";
 
 export interface GhCliOptions {
@@ -23,8 +23,8 @@ export interface GhCliOptions {
   /** Most recent conditional GETs whose ETag and body are kept. */
   etagCacheSize?: number;
   /**
-   * Mints the GitHub App installation token that `createCheckRun` posts under. It is called per
-   * check run, so a cached provider should refresh itself; without it `createCheckRun` refuses.
+   * Mints the GitHub App installation token that `createCheckRun`, `createReview` and `dismissReview` write under. It
+   * is called per write, so a cached provider should refresh itself; without it those writes refuse.
    */
   appToken?: () => Promise<string>;
   /** Waits between attempts of a failed read; tests inject one so they do not sleep. */
@@ -38,14 +38,17 @@ const stripEscapes = (log: string): string => log.replace(/\u001b\[[0-9;]*[A-Za-
 /** The `gh` CLI wire, for CLI processes; a long-running service uses `octokitWire` instead. */
 export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): GitHubWire {
   const api = restCaller(exec, options.budget ?? sharedRateBudget, options.etagCacheSize ?? 500, options.sleep);
-  return wireOver(api, (repo, request) => createCheckRun(exec, options, repo, request));
+  return wireOver(api, (name, call) => asAppOverGh(exec, options, name, call));
 }
 
-/** Posts a check run as the GitHub App, which is a different identity from the one `api` speaks as. */
-export type CheckRunPoster = (repo: string, request: CreateCheckRunRequest) => Promise<{ id: number }>;
+/**
+ * Runs `call` over a `Rest` that speaks as the GitHub App, a different identity from the one the wire reads as.
+ * `name` labels the refusal when the wire has no App token provider.
+ */
+export type AppScope = <T>(name: string, call: (app: Rest) => Promise<T>) => Promise<T>;
 
 /** Every wire method over one `Rest`, whichever transport implements it. */
-export function wireOver(api: Rest, postCheckRun: CheckRunPoster): GitHubWire {
+export function wireOver(api: Rest, asApp: AppScope): GitHubWire {
   return {
     getRef: async (repo, branch) => (await api.getOrNull<{ object: { sha: string } }>(`repos/${repo}/git/ref/heads/${branch}`))?.object.sha ?? null,
     createRef: async (repo, branch, sha) => void (await api.send("POST", `repos/${repo}/git/refs`, { ref: `refs/heads/${branch}`, sha })),
@@ -73,7 +76,7 @@ export function wireOver(api: Rest, postCheckRun: CheckRunPoster): GitHubWire {
     reviewRulesBypassable: (repo, branch) => reviewRulesBypassable(api, repo, branch),
     getBranchProtected: (repo, branch) => branchProtected(api, repo, branch),
     listCheckRuns: (repo, sha, filter) => listCheckRuns(api, repo, sha, filter),
-    createCheckRun: postCheckRun,
+    createCheckRun: (repo, request) => asApp("createCheckRun", async (app) => ({ id: (await app.send<{ id: number }>("POST", `repos/${repo}/check-runs`, {}, checkRunBody(request))).id })),
     getCommit: async (repo, sha) => {
       const commit = await api.get<{ sha: string; parents: { sha: string }[]; tree?: { sha: string }; committer?: { date?: string }; message?: string }>(`repos/${repo}/git/commits/${sha}`);
       const committedAt = commit.committer?.date;
@@ -101,24 +104,27 @@ export function wireOver(api: Rest, postCheckRun: CheckRunPoster): GitHubWire {
     listPrCommits: (repo, number) => api.pages(`repos/${repo}/pulls/${number}/commits`, { per_page: "100" }, (page: { sha: string }[]) => page.map((commit) => commit.sha)),
     listCommits: (repo, since) => api.pages(`repos/${repo}/commits`, { since, per_page: "100" }, (page: { sha: string; commit: { message: string } }[]) => page.map((commit) => ({ sha: commit.sha, message: commit.commit.message }))),
     compareFiles: (repo, base, head) => compareFiles(api, repo, base, head),
+    compareCommits: (repo, base, head) => compareCommits(api, repo, base, head),
     compareAncestry: (repo, base, head) => readAncestry(api, repo, base, head),
     getAuthenticatedLogin: async () => (await api.get<{ login: string }>("user")).login,
     listIssueComments: (repo, number) => listIssueComments(api, repo, number),
     createComment: async (repo, number, body) => ({ id: (await api.send<{ id: number }>("POST", `repos/${repo}/issues/${number}/comments`, {}, JSON.stringify({ body }))).id }),
     listReviewComments: (repo, number) => listReviewComments(api, repo, number),
+    listReviews: (repo, number) => listReviews(api, repo, number),
+    createReview: (repo, number, request) => asApp("createReview", (app) => createReview(app, repo, number, request)),
+    dismissReview: (repo, number, reviewId, message) => asApp("dismissReview", (app) => dismissReview(app, repo, number, reviewId, message)),
     listForcePushes: (repo, number) => listForcePushes(api, repo, number),
   };
 }
 
 /** The token rides in the child env of this one call; any error is rebuilt without it. */
-async function createCheckRun(exec: GhExec, options: GhCliOptions, repo: string, request: CreateCheckRunRequest): Promise<{ id: number }> {
-  if (!options.appToken) throw new Error("createCheckRun needs a GitHub App token provider (GhCliOptions.appToken)");
+async function asAppOverGh<T>(exec: GhExec, options: GhCliOptions, name: string, call: (app: Rest) => Promise<T>): Promise<T> {
+  if (!options.appToken) throw new Error(`${name} needs a GitHub App token provider (GhCliOptions.appToken)`);
   let token = "";
   try {
     token = await options.appToken();
     const scoped: GhExec = (args, input, execOptions) => exec(args, input, { ...execOptions, env: { ...execOptions?.env, GH_TOKEN: token } });
-    const api = restCaller(scoped, options.budget ?? sharedRateBudget, 0);
-    return { id: (await api.send<{ id: number }>("POST", `repos/${repo}/check-runs`, {}, checkRunBody(request))).id };
+    return await call(restCaller(scoped, options.budget ?? sharedRateBudget, 0));
   } catch (error) {
     throw redactedError(error, [token]);
   }

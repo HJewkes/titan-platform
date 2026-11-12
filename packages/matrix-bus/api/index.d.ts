@@ -29,10 +29,11 @@ interface MessagesPage {
     state?: MatrixEvent[];
 }
 /**
- * One /sync response. The bus is used for a single room (`#queue`), so `limited` and
- * `prev_batch` come from that room's timeline: `limited` true means the server omitted
- * older events in the gap, and `prev_batch` is the token to page backward from to
- * backfill it (e.g. after the client was offline, such as a laptop sleep).
+ * One /sync response. `limited` is true when any joined room's timeline omitted older
+ * events in the gap. `prev_batch` is the token from the first limited room and carries no
+ * room id, so it is correct only when the /sync filter admits a single room (`#queue`):
+ * with several rooms it may belong to a different room than the one being backfilled.
+ * Page backward from it to backfill the gap (e.g. after a laptop sleep).
  */
 interface SyncBatch {
     since: string;
@@ -182,7 +183,7 @@ interface BootstrapQueueOptions {
 }
 /**
  * Creates the owner's #queue at the server's default room version (v12), so the owner is creator.
- * An alias that already resolves returns its room id unchanged.
+ * An alias that already resolves returns its room id, after inviting any mirror that is neither joined nor invited.
  */
 declare function bootstrapQueueRoom(owner: AppserviceClient, options: BootstrapQueueOptions): Promise<string>;
 

@@ -5,7 +5,7 @@
 import { NotFoundError } from './errors.js';
 import { validateSlug } from './utils/slug.js';
 
-export interface InitOfferInput {
+interface InitOfferInput {
   error: unknown;
   slug: string;
   isTTY: boolean;

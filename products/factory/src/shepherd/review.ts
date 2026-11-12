@@ -22,7 +22,7 @@ import { MERGE_EVIDENCE_STEPS } from "./merge-evidence-gate.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput, type OldPathWiring } from "./merge-facts.js";
 import type { ShepherdDeps, ShepherdPhases } from "./phases.js";
 import { PUBLISH_REVIEW_STEPS, publishReviewRoute } from "./publish-review.js";
-import { DEFAULT_BROKER_DOWN_WAIT_MS, DEFAULT_BUSY_WAIT_MS, ReviewerAskTimedOut, ReviewerBrokerStillDown, busyWaits, clearReviewWait, notStarted, noteReviewWait, rosterUnread, rosterUnreadAfterAsk, startedSession, timedOutUnseen, whileBrokerBooting, whileBrokerBusy, whileRosterSlow, type BrokerDownTiming, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
+import { DEFAULT_BROKER_DOWN_WAIT_MS, DEFAULT_BUSY_WAIT_MS, ReviewerAskTimedOut, ReviewerBrokerStillDown, busyWaits, clearReviewWait, notStarted, noteReviewWait, rosterUnread, rosterUnreadAfterAsk, patientRoster, startedSession, timedOutUnseen, whileBrokerBooting, whileBrokerBusy, type BrokerDownTiming, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
 import { CARRY_STEP, carryRoute, type CarryOptions } from "./tree-carry.js";
 import { reviewerRoleFor, type ReviewerFacts, type ReviewerRoles } from "./reviewer-roles.js";
 import { spawnFacts } from "./spawn-facts.js";
@@ -198,7 +198,7 @@ export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeC
   /** The profile each class of PR is spawned with; a spawned reviewer's profile travels with its verdict. */
   roles?: ReviewerRoles;
   /** How the `sh-carry` probe reaches git; absent means the system git against the factory's cache. */
-  carry?: Omit<CarryOptions, "signal">;
+  carry?: Omit<CarryOptions, "signal" | "ports">;
   /** The reviewer accounts in failover order; absent means no account is checked before a spawn, and a limit holds the one default account. */
   accounts?: ReviewAccounts;
   /** The stops the spawn gate and the broker saw; absent means a silent reviewer is a timeout whatever the machine did. */
@@ -251,7 +251,7 @@ const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (dep
   const { dispatch, accounts } = wired;
   const timing = bootTiming(deps, wired);
   const budgetMs = wired.sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS;
-  const roster = await whileRosterSlow(timing, signal, budgetMs, () => whileBrokerBooting(timing, signal, () => dispatch.roster())).catch(rosterUnread);
+  const roster = await patientRoster(timing, signal, budgetMs, () => dispatch.roster()).catch(rosterUnread);
   if ("kind" in roster) return roster;
   const store = deps.store.get();
   const registration = store.byRun(input.runId);
@@ -278,7 +278,8 @@ const memberDispatch = (wired: Wired, shape: string | undefined): ReviewerDispat
 const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> = async (deps, wired, { intent, runId, fixFirsts, ownerBrief, fixProof, fixProofUnverified, fixProofWaivedAt, workflowCiProof, shape, profile, convergence, earlierFindings, scopedRereview, ...target }, signal, repeat, clock) => {
   const { dispatch, questions, codewatch, sessionStartTimeoutMs, busyWaitMs, roles } = wired;
   const timing = { ...bootTiming(deps, wired), timeoutMs: sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, busyWaitMs: busyWaitMs ?? DEFAULT_BUSY_WAIT_MS };
-  const roster = await whileBrokerBooting(timing, signal, () => dispatch.roster());
+  const roster = await patientRoster(timing, signal, timing.timeoutMs, () => dispatch.roster()).catch(rosterUnread);
+  if ("kind" in roster) return roster;
   // A held name was spawned by an earlier run, and a refused spawn holds none; a repeat that crashed before its resume landed asks again.
   const asked = roster.some(intent.mode === "resume" ? (agent) => repeat && resumedSince(intent)(agent) : holds(intent));
   const waits: string[] = [];
@@ -323,7 +324,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     repeatAwareRoute(CORRECT_VERDICT_STEP, deps.now, brokerStep(deps, wiring, CorrectVerdictInputSchema, correctReviewer)),
     codeRoute(SEAT_RECHECK_STEP, deps.now, seatVetoed(wiring, async (raw: unknown) => heldMerge(raw), deps.now, seatWait, ownerIn(deps.store))),
     codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput, signal: AbortSignal) => mergeEvidence(deps.port, input, wiring?.isFrozen ?? noFreezeStoreUntilTp523, registeredKind(deps.store, input.runId), { sleep: (ms) => deps.sleep(ms, signal) }, { reviewAppId: wiring?.reviewAppId, threshold: wiring?.visualThreshold?.(input.repo), tier: wiring?.visualTier?.(input.repo), oldPath: wiring?.oldPath, attest: attestJudge(deps.port, deps.store, wiring ?? {}, { timing: { ...brokerTiming(deps), brokerDownWaitMs: wiring?.brokerDownWaitMs ?? DEFAULT_BROKER_DOWN_WAIT_MS }, budgetMs: wiring?.sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, signal }) })),
-    carryRoute(deps.now, wiring?.carry),
+    carryRoute(deps.now, { ports: deps.gitCache, ...wiring?.carry }),
     publishReviewRoute(deps),
     ...accountRoutes(deps, wiring?.accounts),
     reviewRequestRoute(deps),

@@ -5,10 +5,12 @@ import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@t
 import type { StepRoute } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FactoryHost } from "../host.js";
+import { hostCarryPorts } from "../shepherd/carry-cache-adapter.js";
 import { crashAt } from "../test-support/crash.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { landPrRoutes, landPrWorkflow } from "./land-pr.js";
+import { hostPostMerge } from "./post-merge-adapter.js";
 
 const H2 = fakeSha("head2");
 const dirs: string[] = [];
@@ -43,7 +45,7 @@ function landPrWorld(): World {
     fake.setRuns(pr.headSha, [validate, successRun("dag-check", 2)]);
   };
   let clock = 0;
-  world.routes = landPrRoutes({ port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms) });
+  world.routes = landPrRoutes({ ...hostPostMerge(), gitCache: hostCarryPorts, port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms) });
   return world;
 }
 
@@ -98,7 +100,7 @@ function expectLandedOnce(survivor: FactoryHost, runId: string, world: World): v
   expect(run?.status).toBe("completed");
   // Only a merged outcome reaches post-merge; a replayed merge that reads the merged PR as closed stops short of it.
   expect(Object.values(run!.stepResults).map((result) => result.stepId)).toContain("post-merge");
-  expect(world.fake.effects).toEqual({ createRef: 0, deleteRef: 0, putContent: 0, createPr: 0, updateBranch: 0, updateRef: 0, merge: 1, rerunFailedJobs: 1 });
+  expect(world.fake.effects).toEqual({ createRef: 0, deleteRef: 0, putContent: 0, createPr: 0, updateBranch: 0, updateRef: 0, merge: 1, rerunFailedJobs: 1, createReview: 0, dismissReview: 0 });
   expect(world.fake.pr(1)).toMatchObject({ merged: true, headSha: H2 });
   expect(survivor.gates.get(gateId(runId, "ci-failed"))?.status).toBe("resolved");
   expect(survivor.gates.get(gateId(runId, "approve-merge"))?.status).toBe("resolved");

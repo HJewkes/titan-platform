@@ -8,6 +8,8 @@ import { youtubeLayout } from "./youtube-layout.js";
  */
 export interface CorpusLayout {
   readonly name: string;
+  /** Decided from the path alone, so the indexer never reads a file this rejects. */
+  accepts(relPath: string): boolean;
   /** Undefined means the file is not a document of this corpus, and is skipped. */
   describe(relPath: string, text: string): ChapterMeta | undefined;
 }
@@ -19,7 +21,8 @@ const UNRANKED = Object.keys(SERIES_RANK).length;
 const CHAPTER_PATH = /^([^/]+)\/book_(\d+)\/chapter_(\d+)(?:_preseason_(\d+))?\.txt$/;
 const OTHER_PATH = /^other\/([^/]+)\.txt$/;
 
-function chapterId(series: string, book: number, chapter: number, preseason: number | undefined): string {
+/** Digits keep their padding in the id, so `chapter_01` and `chapter_1` never share one. */
+function chapterId(series: string, book: string, chapter: string, preseason: string | undefined): string {
   return `${series}/${book}/${chapter}${preseason === undefined ? "" : `p${preseason}`}`;
 }
 
@@ -33,7 +36,7 @@ function describeChapter(match: RegExpExecArray, relPath: string, text: string):
   const series = match[1]!;
   const [book, chapter] = [Number(match[2]), Number(match[3])];
   const preseason = match[4] === undefined ? undefined : Number(match[4]);
-  const id = chapterId(series, book, chapter, preseason);
+  const id = chapterId(series, match[2]!, match[3]!, match[4]);
   const header = headerMeta(text);
   // Preseason posts are numbered chapter 0, so they fall before chapter 1 and among themselves by number.
   const order = [0, SERIES_RANK[series] ?? UNRANKED, series, book, chapter, preseason ?? 0];
@@ -52,6 +55,7 @@ function describeOther(match: RegExpExecArray, relPath: string, text: string): C
 /** `<series>/book_NN/chapter_KK[_preseason_N].txt` plus `other/<date>_<slug>.txt`, each with a TITLE/PUBLISHED/POST_ID header. */
 export const archiveLayout: CorpusLayout = {
   name: "archive",
+  accepts: (relPath) => OTHER_PATH.test(relPath) || CHAPTER_PATH.test(relPath),
   describe(relPath, text) {
     const other = OTHER_PATH.exec(relPath);
     if (other) return describeOther(other, relPath, text);
@@ -63,6 +67,7 @@ export const archiveLayout: CorpusLayout = {
 /** One `.txt` file is one document, ordered by path; header lines are used when present. */
 export const plainLayout: CorpusLayout = {
   name: "plain",
+  accepts: (relPath) => relPath.endsWith(".txt"),
   describe(relPath, text) {
     if (!relPath.endsWith(".txt")) return undefined;
     const header = headerMeta(text);

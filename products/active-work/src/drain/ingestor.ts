@@ -12,12 +12,12 @@ export interface IngestBlobInput {
   timestamp: string;
 }
 
-export interface IngestBlobResult {
+interface IngestBlobResult {
   templateId: string;
   isNewTemplate: boolean;
 }
 
-export interface MinerIngestorOptions {
+interface MinerIngestorOptions {
   /**
    * Hold occurrence appends and `templates.yml` rewrites in memory until
    * `flush()`. Off by default, so a single-blob caller keeps the durable

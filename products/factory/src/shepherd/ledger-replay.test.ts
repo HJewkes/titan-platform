@@ -9,6 +9,7 @@ import { factoryRoutesFor } from "../workflows.js";
 import { MAX_UPDATE_CYCLES, MAX_UPDATE_RETRIES, sleep } from "../workflows/land.js";
 import { UPDATE_GAP_MS, spaceUpdates } from "../test-support/land.js";
 import { landPrWorkflow } from "../workflows/land-pr.js";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { freezeStoreRef } from "./freeze.js";
 import type { MainRedWiring } from "./main-red.js";
 import type { ReviewRequest, ShepherdPhases, Verdict, WakeOutcome } from "./phases.js";
@@ -186,7 +187,7 @@ function heldReviewer(replay: Replay): Omit<ReviewWiring, "isFrozen"> {
   const refuse = async (): Promise<never> => Promise.reject(new Error("the replay starts no reviewer"));
   const said = (head: string, index: number) => ({ agentId: reviewer.agentId, sessionId: reviewer.sessionId, writtenAt: index, text: `Verdict: MERGE\nPR: ${REPO}#1\nHead: ${head}`, locator: LOCATOR });
   const sent = ({ text }: { text: string }, index: number) => ({ agentId: reviewer.agentId, sessionId: reviewer.sessionId, writtenAt: 100 + index, text, locator: LOCATOR });
-  const carry = { stateDir: mkdtempSync(join(tmpdir(), "ledger-replay-")), git: scriptedGit(replay) };
+  const carry = { stateDir: mkdtempSync(join(tmpdir(), "ledger-replay-")) };
   const finished = () => [...replay.heldMerges.map(said), ...replay.seatObjections.map(objected)];
   const readSeat = async (input: AwaitVerdictInput) => {
     if (input.reviewerAgentId === reviewer.agentId) replay.namedSeatReads += 1;
@@ -209,7 +210,7 @@ function openReplay(replay: Replay): FactoryHost {
   spaceUpdates(replay.fake, (ms) => void (clock += ms), replay.updateGapMs);
   const port = mainCi(replay.fake, replay.fixture.main ?? "green");
   const store = shepherdStoreRef();
-  const routes = factoryRoutesFor({ port, store, freeze: freezeStoreRef(() => clock), now: () => clock, sleep: tick, registry: async () => "trusted" as const, mainRed: fixerWiring(replay.trace.fixers), review: heldReviewer(replay) });
+  const routes = factoryRoutesFor({ port, store, freeze: freezeStoreRef(() => clock), now: () => clock, sleep: tick, registry: async () => "trusted" as const, mainRed: fixerWiring(replay.trace.fixers), review: heldReviewer(replay), gitCache: { ...hostCarryPorts, git: scriptedGit(replay) } });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(scriptedPhases(replay)), landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   replay.store = store.get();

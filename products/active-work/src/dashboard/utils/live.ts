@@ -9,7 +9,7 @@
 
 export type LiveStatus = 'connecting' | 'open' | 'closed';
 
-export interface LiveHandlers {
+interface LiveHandlers {
   onChange: () => void;
   onStatus?: (status: LiveStatus) => void;
 }

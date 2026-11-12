@@ -1,0 +1,49 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the approval drops commit_id, so it pins no head",
+      "file": "packages/github/src/pull-reviews.ts",
+      "find": "JSON.stringify({ commit_id: request.commitId, event: \"APPROVE\", body: request.body })",
+      "replace": "JSON.stringify({ event: \"APPROVE\", body: request.body })",
+      "kills": ["gh wire reviews createReview posts an APPROVE at the commit under the App token only"]
+    },
+    {
+      "name": "createReview posts as the user instead of the App",
+      "file": "packages/github/src/gh-cli.ts",
+      "find": "asApp(\"createReview\", (app) => createReview(app, repo, number, request))",
+      "replace": "createReview(api, repo, number, request)",
+      "kills": [
+        "gh wire reviews createReview posts an APPROVE at the commit under the App token only",
+        "gh wire reviews both review writes refuse a wire with no App token provider before any exec"
+      ]
+    },
+    {
+      "name": "dismissReview sends a POST instead of a PUT",
+      "file": "packages/github/src/pull-reviews.ts",
+      "find": "await api.send(\"PUT\", `repos/${repo}/pulls/${number}/reviews/${reviewId}/dismissals`",
+      "replace": "await api.send(\"POST\", `repos/${repo}/pulls/${number}/reviews/${reviewId}/dismissals`",
+      "kills": [
+        "gh wire reviews dismissReview sends a PUT to the review's dismissals under the App token",
+        "octokit wire reviews posts the approval and the dismissal through the App's client, never the user's"
+      ]
+    },
+    {
+      "name": "listReviews reads the review id as its commit",
+      "file": "packages/github/src/pull-reviews.ts",
+      "find": "commitId: review.commit_id,",
+      "replace": "commitId: String(review.id),",
+      "kills": ["gh wire reviews listReviews reads every page as the user and maps login, user type and commit"]
+    },
+    {
+      "name": "the fake's dismissal leaves the review approved",
+      "file": "packages/github/src/fake-reviews.ts",
+      "find": "  review.state = \"DISMISSED\";\n",
+      "replace": "",
+      "kills": [
+        "fake reviews an approval lists as the App's bot review at its commit, and a dismissal marks it dismissed",
+        "fake reviews a landed dismissal fault throws after the review is already dismissed"
+      ]
+    }
+  ]
+}

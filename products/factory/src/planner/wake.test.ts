@@ -16,10 +16,12 @@ interface Call {
 let dir: string;
 let calls: Call[];
 let merged: { code: number; stdout: string };
+let windowEvents: Record<string, { code: number; stdout: string }>;
 
 const run: PlannerRun = async (file, args, options) => {
   calls.push({ file, args, options });
   if (file === "gh") return { ...merged, stderr: merged.code === 0 ? "" : "gh: rate limited" };
+  if (file === "probe") return { ...windowEvents[args[0]!]!, stderr: "probe: offline" };
   if (args[1] === "spawn") writeFileSync(join(dir, "reviews", `review-${spawns().length}.md`), "# Review\n");
   return { code: 0, stdout: "", stderr: "" };
 };
@@ -63,6 +65,7 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "planner-wake-"));
   calls = [];
   merged = { code: 0, stdout: "101 abc123 2026-01-01T10:00:00Z\n" };
+  windowEvents = { merges: { code: 0, stdout: "" }, ownerContact: { code: 0, stdout: "" }, newRed: { code: 0, stdout: "" } };
   mkdirSync(join(dir, "tasks"));
   mkdirSync(join(dir, "reviews"));
   fixture("brief.md", "You are the planner.\n");
@@ -174,5 +177,54 @@ describe("titan-factory planner wake", () => {
     await runCli(["planner", "wake", "--config", writeConfig()], io, { workflows: factoryWorkflows, routes: [], planner: { run: busy } });
     expect(out).toMatch(/skip: factory-planner is working/);
     expect(spawns()).toHaveLength(0);
+  });
+});
+
+describe("titan-factory planner wake, prior window", () => {
+  const priorWindow = {
+    merges: ["probe", "merges", "--since", "{since}"],
+    ownerContact: ["probe", "ownerContact", "--since", "{since}"],
+    newRed: ["probe", "newRed", "--since", "{since}"],
+  };
+  const changeInputs = (): void => void fixture("decisions.md", "2. Owner: a new decision.\n");
+  const skipLog = (): string => readFileSync(join(dir, "reviews", "skipped.log"), "utf8");
+
+  it("a window with no merges, owner contact or new red since the last spawn skips with one line in the review dir", async () => {
+    const config = writeConfig({ priorWindow });
+    await wake(config);
+    changeInputs();
+    const second = await wake(config);
+    expect(second.code).toBe(0);
+    expect(spawns()).toHaveLength(1);
+    const line = "2026-01-02T03:00:00.000Z skip: prior window since 2026-01-02T03:00:00.000Z had 0 merges, 0 owner contact, 0 new red\n";
+    expect(skipLog()).toBe(line);
+    expect(second.out).toBe(line);
+    expect(calls.find((call) => call.args[0] === "newRed")!.args).toEqual(["newRed", "--since", "2026-01-02T03:00:00.000Z"]);
+  });
+
+  it.each(["merges", "ownerContact", "newRed"])("one %s event in the prior window runs the review", async (probe) => {
+    const config = writeConfig({ priorWindow });
+    await wake(config);
+    changeInputs();
+    windowEvents[probe] = { code: 0, stdout: "event 1\n" };
+    const second = await wake(config);
+    expect(second.out).toMatch(/spawned factory-planner/);
+    expect(spawns()).toHaveLength(2);
+  });
+
+  it("a probe that fails runs the review rather than skipping it", async () => {
+    const config = writeConfig({ priorWindow });
+    await wake(config);
+    changeInputs();
+    windowEvents.ownerContact = { code: 2, stdout: "" };
+    const second = await wake(config);
+    expect(second.out).toMatch(/prior window unavailable \(ownerContact: exit 2: probe: offline\); running/);
+    expect(spawns()).toHaveLength(2);
+  });
+
+  it("the first wake, with no spawn to measure a window from, runs the review", async () => {
+    await wake(writeConfig({ priorWindow }));
+    expect(spawns()).toHaveLength(1);
+    expect(calls.some((call) => call.file === "probe")).toBe(false);
   });
 });

@@ -12,6 +12,7 @@ tsRuleTester.run("no-wall-clock-motion", noWallClockMotion, {
     { name: "Date.now in a test file under ui/beats", code: "Date.now();", filename: "/repo/src/ui/beats/title.test.tsx" },
     { name: "Date.now in a spec file", code: "Date.now();", filename: "/repo/src/ui/beats/title.spec.ts" },
     { name: "Date.now in a __tests__ directory", code: "Date.now();", filename: "/repo/src/ui/beats/__tests__/clock.ts" },
+    { name: "Date.now in a test-helpers file", code: "Date.now();", filename: "/repo/src/ui/beats/pure-run.test-helpers.ts" },
     { name: "Date.now outside beat and motion code", code: "Date.now();", filename: "/repo/src/server/clock.ts" },
     { name: "a path that only resembles a beat directory", code: "Date.now();", filename: "/repo/src/ui/beatsheet/x.ts" },
     { name: "motion derived from the beat time", code: "const x = progress * 40;", filename: beat },
@@ -23,6 +24,7 @@ tsRuleTester.run("no-wall-clock-motion", noWallClockMotion, {
   invalid: [
     { name: "Date.now in ui/beats", code: "Date.now();", filename: beat, errors: [{ message: message("Date.now") }] },
     { name: "Date.now in a motion directory", code: "Date.now();", filename: "/repo/src/motion/tween.ts", errors: [{ message: message("Date.now") }] },
+    { name: "Date.now in a source file named like a helper", code: "Date.now();", filename: "/repo/src/ui/beats/test-helpers.ts", errors: [{ message: message("Date.now") }] },
     { name: "performance.now", code: "performance.now();", filename: beat, errors: [{ message: message("performance.now") }] },
     { name: "Math.random", code: "Math.random();", filename: beat, errors: [{ message: message("Math.random") }] },
     { name: "setTimeout", code: "setTimeout(go, 100);", filename: beat, errors: [{ message: message("setTimeout") }] },

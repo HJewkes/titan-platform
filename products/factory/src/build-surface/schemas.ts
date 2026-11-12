@@ -42,8 +42,8 @@ export const ReviewRowSchema = z.object({
 export const ReviewReportSchema = z.object({ head: Sha, verdict: z.enum(["PASS", "BLOCK"]), rows: z.array(ReviewRowSchema) });
 export type ReviewReport = z.infer<typeof ReviewReportSchema>;
 
-/** What a validator command said: accepted, or one rejection per line of its stdout. */
-export const ValidationSchema = z.object({ accepted: z.boolean(), rejections: z.array(z.string()) });
+/** What a validator command said: accepted, or one rejection per line of its stdout. `infra` marks a command that failed for its environment, so its rejections say nothing about the work. */
+export const ValidationSchema = z.object({ accepted: z.boolean(), rejections: z.array(z.string()), infra: z.boolean().optional() });
 export type Validation = z.infer<typeof ValidationSchema>;
 
 export const AgentStepSchema = <T extends z.ZodType>(report: T) => z.object({ agent: z.string(), sessionId: z.string(), report });

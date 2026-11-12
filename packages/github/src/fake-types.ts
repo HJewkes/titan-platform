@@ -3,7 +3,8 @@ import type { GitExec } from "./exec.js";
 import type { ForcePush } from "./force-pushes.js";
 import type { MergeIntoBranchResult } from "./merge-into-branch.js";
 import type { ReviewComment } from "./review-comment.js";
-import type { CheckRun, Commit, CommitStatus, GitHubWire, IssueComment, JobStep, LoggedCommit, MergeMessage, PrFile, PullRequest, RequiredChecks, SquashSource } from "./port.js";
+import type { PullReview } from "./pull-reviews.js";
+import type { BranchCommit, CheckRun, Commit, CommitStatus, GitHubWire, IssueComment, JobStep, LoggedCommit, MergeMessage, PrFile, PullRequest, RequiredChecks, SquashSource } from "./port-types.js";
 
 /** Counts of calls that change GitHub; a crash test asserts each is at most one. */
 export interface FakeEffects {
@@ -15,6 +16,8 @@ export interface FakeEffects {
   updateRef: number;
   merge: number;
   rerunFailedJobs: number;
+  createReview: number;
+  dismissReview: number;
 }
 
 /** Reads a test can make fail, for a caller that must treat a failed read as transient. */
@@ -56,6 +59,10 @@ export interface FakeGitHub {
   updateBranchFaults?: { error: Error; lands?: boolean }[];
   /** Faults the next comment posts throw, one per call; `lands` means the comment was posted before the answer was lost. */
   createCommentFaults?: { error: Error; lands?: boolean }[];
+  /** Faults the next review posts throw, one per call; `lands` means the review was recorded before the answer was lost. */
+  createReviewFaults?: { error: Error; lands?: boolean }[];
+  /** Faults the next review dismissals throw, one per call; `lands` means the dismissal happened before the answer was lost. */
+  dismissReviewFaults?: { error: Error; lands?: boolean }[];
   /** Faults the next merge PUTs throw, one per call; `lands` means the merge happened before the answer was lost. */
   mergeFaults?: { error: Error; lands?: boolean }[];
   /** Faults the next rerun-failed-jobs posts throw, one per call; `lands` means the rerun was queued before the answer was lost. */
@@ -102,12 +109,16 @@ export interface FakeGitHub {
   baseChanges: { number: number; base: string }[];
   /** The default branch's history for `listCommits`, in any order; it answers those at or after `since`, newest first. */
   history: (LoggedCommit & { committedAt: string })[];
-  /** `base...head` to the compare inputs; an unset pair compares as no change. Caps of 300 files and 250 commits apply. */
-  compares: Map<string, { mergeBaseSha: string; files: string[]; totalCommits?: number }>;
+  /** `base...head` to the compare inputs; an unset pair compares as no change. `renames` maps a new path to its previous one, which is listed too. Caps of 300 files and 250 commits apply; `totalCommits` defaults to the length of `commits`. */
+  compares: Map<string, { mergeBaseSha: string; files: string[]; renames?: Record<string, string>; totalCommits?: number; commits?: BranchCommit[] }>;
   /** PR number to its issue comments, in posting order. */
   comments: Map<number, IssueComment[]>;
   /** PR number to its inline review comments, resolved or not. */
   reviewComments: Map<number, ReviewComment[]>;
+  /** PR number to its reviews, in posting order; `createReview` appends the App's approval and `dismissReview` marks one `DISMISSED` in place. */
+  reviews: Map<number, PullReview[]>;
+  /** The login `createReview` posts as, the App's bot account, distinct from `actor`. */
+  appLogin: string;
   /** PR number to its head force-pushes, oldest first; unset means none. `listForcePushes` reads at most 100, like the GraphQL page. */
   forcePushes: Map<number, ForcePush[]>;
 }

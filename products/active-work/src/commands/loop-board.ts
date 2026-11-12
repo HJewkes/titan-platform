@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { resolveLedgerPaths } from '../sessions/ledger-file.js';
-import { LoopBoardSchema, loadBoard, type LoopBoard } from '../sessions/loop-board.js';
+import { LoopBoardSchema, loadBoard, type LoopBoard } from '../session-index/loop-board.js';
 import { defineCommand } from '../registry/index.js';
 
 const ArgsSchema = z.object({});

@@ -214,7 +214,7 @@ describe("a merge step behind a merge-order reservation", () => {
   function mergeRig(rules: MergeOrderRules): MergeRig {
     const fake = fakeGitHub({ repo: REPO });
     const store = shepherdStoreRef();
-    const train = mergeTrainRef();
+    const train = mergeTrainRef(() => AT + 60_000);
     let waits = 0;
     const sleep = async () => {
       if (++waits > MAX_WAITS) throw new Error(`still held after ${MAX_WAITS} waits`);

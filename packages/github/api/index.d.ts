@@ -13,6 +13,24 @@ interface CreateCheckRunRequest {
     externalId: string;
 }
 
+/**
+ * The open PRs, or `notModified` when they are unchanged since the read that answered `etag`. Rows carry no `behind`
+ * and an `unknown` mergeable state, like every list row, and a change to either does not change the ETag.
+ */
+type OpenPrList = {
+    notModified: true;
+} | {
+    notModified: false;
+    prs: PullRequest[];
+    etag: string | null;
+};
+interface OpenPrRequest {
+    head: string;
+    base: string;
+    title: string;
+    body: string;
+}
+
 /** Below this many remaining calls of a resource, every call waits its share of the time left until reset. */
 declare const RATE_FLOOR = 500;
 /** One budget per GitHub login: every wire that shares it paces against the same remaining count. */
@@ -93,48 +111,6 @@ interface Rest {
     send<T>(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, fields?: Fields, input?: string): Promise<T>;
 }
 
-/** One force-push of a PR's head branch: the head it replaced, null once GitHub no longer has that commit, and the new head. */
-interface ForcePush {
-    before: string | null;
-    after: string | null;
-}
-/** What the wire read: the first `FORCE_PUSHES_CAP` pushes, oldest first, and whether more exist past them. */
-interface ForcePushPage {
-    pushes: ForcePush[];
-    more: boolean;
-}
-/** One GraphQL page; the port reads no further. */
-declare const FORCE_PUSHES_CAP = 100;
-/** Named so a caller that reports only an error's class still says the list was cut short. */
-declare class ForcePushesTruncated extends Error {
-    constructor();
-}
-
-/** The list came back shorter than the PR's own count, so a path may be missing. */
-declare class FileListTruncatedError extends Error {
-    readonly expected: number;
-    readonly received: number;
-    constructor(expected: number, received: number);
-}
-
-/**
- * The open PRs, or `notModified` when they are unchanged since the read that answered `etag`. Rows carry no `behind`
- * and an `unknown` mergeable state, like every list row, and a change to either does not change the ETag.
- */
-type OpenPrList = {
-    notModified: true;
-} | {
-    notModified: false;
-    prs: PullRequest[];
-    etag: string | null;
-};
-interface OpenPrRequest {
-    head: string;
-    base: string;
-    title: string;
-    body: string;
-}
-
 /** A branch tip, or `notModified` when it is unchanged since the read that answered `etag`; a missing branch reads as a null `sha`. */
 type RefRead = {
     notModified: true;
@@ -173,12 +149,74 @@ interface ReviewComment {
     resolved: boolean;
 }
 
+/** One pull request review as GitHub records it. */
+interface PullReview {
+    id: number;
+    /** `APPROVED`, `CHANGES_REQUESTED`, `COMMENTED`, `DISMISSED` or `PENDING`. */
+    state: string;
+    /** The head the review was given at; null when GitHub no longer has that commit. */
+    commitId: string | null;
+    /** Login of the reviewer; empty for a deleted account. */
+    login: string;
+    /** `User` or `Bot`, so a caller can tell an App's review from a person's. */
+    userType: string;
+    body: string;
+}
+/**
+ * An APPROVE review given at `commitId`. The pin only records the head it was given at: GitHub still counts the approval
+ * after a later push unless branch protection dismisses stale approvals, so a caller that must not vouch for a newer
+ * head dismisses the review itself.
+ */
+interface CreateReviewRequest {
+    commitId: string;
+    body: string;
+}
+
 /**
  * Where `head` stands relative to `base`, as GitHub's compare `status` says: `ahead` means `base` is an ancestor of
  * `head`, `behind` the reverse. `missing` is a 404: GitHub does not have one of the commits, which right after a push
  * can mean it has not caught up yet, so it is not proof the commit never existed.
  */
 type Ancestry = "ahead" | "behind" | "identical" | "diverged" | "missing";
+
+/**
+ * What GitHub's Merges API did with `head`: 201 made a merge commit, 204 found `head` already in the branch, and 409
+ * found a conflict. A conflict is an answer, not an error, because a caller building a batch ejects one member and
+ * goes on; a contained head is no conflict, so it must never eject.
+ */
+type MergeIntoBranchResult = {
+    outcome: "merged";
+    sha: string;
+} | {
+    outcome: "already-contained";
+} | {
+    outcome: "conflict";
+};
+interface MergeIntoBranchRequest {
+    /** The branch the merge commit lands on. */
+    branch: string;
+    /** The commit merged in. */
+    head: string;
+    /** The merge commit's message; absent, GitHub writes its default. */
+    message?: string;
+}
+
+/** One force-push of a PR's head branch: the head it replaced, null once GitHub no longer has that commit, and the new head. */
+interface ForcePush {
+    before: string | null;
+    after: string | null;
+}
+/** What the wire read: the first `FORCE_PUSHES_CAP` pushes, oldest first, and whether more exist past them. */
+interface ForcePushPage {
+    pushes: ForcePush[];
+    more: boolean;
+}
+/** One GraphQL page; the port reads no further. */
+declare const FORCE_PUSHES_CAP = 100;
+/** Named so a caller that reports only an error's class still says the list was cut short. */
+declare class ForcePushesTruncated extends Error {
+    constructor();
+}
 
 interface Commit {
     sha: string;
@@ -211,10 +249,20 @@ interface LoggedCommit {
     sha: string;
     message: string;
 }
-/** A file in a directory listing: its repo path and blob sha, with no content read. */
-interface RepoEntry {
-    path: string;
-    blobSha: string;
+/** One commit a branch holds past its merge base; a login is null when GitHub ties that git identity to no account. */
+interface BranchCommit {
+    sha: string;
+    authorLogin: string | null;
+    committerLogin: string | null;
+    message: string;
+}
+/** A branch's own commits, oldest first, and the paths they change together; check `truncated` before trusting either. */
+interface BranchCommits {
+    mergeBaseSha: string;
+    commits: BranchCommit[];
+    files: string[];
+    /** GitHub caps compare at 300 files and 250 commits without saying so. */
+    truncated: boolean;
 }
 /** A file in a directory listing: its repo path and blob sha, with no content read. */
 interface RepoEntry {
@@ -271,33 +319,6 @@ interface CheckRun {
 interface CheckRunPr {
     number: number;
     baseRef: string;
-}
-
-/**
- * What GitHub's Merges API did with `head`: 201 made a merge commit, 204 found `head` already in the branch, and 409
- * found a conflict. A conflict is an answer, not an error, because a caller building a batch ejects one member and
- * goes on; a contained head is no conflict, so it must never eject.
- */
-type MergeIntoBranchResult = {
-    outcome: "merged";
-    sha: string;
-} | {
-    outcome: "already-contained";
-} | {
-    outcome: "conflict";
-};
-interface MergeIntoBranchRequest {
-    /** The branch the merge commit lands on. */
-    branch: string;
-    /** The commit merged in. */
-    head: string;
-    /** The merge commit's message; absent, GitHub writes its default. */
-    message?: string;
-}
-
-/** A write whose precondition no longer holds, such as a blob that changed under an edit. */
-declare class GitHubConflictError extends Error {
-    constructor(message: string);
 }
 
 /** `owner/name`. */
@@ -449,6 +470,8 @@ interface GitHubWire {
     /** Commits on the default branch committed at or after `since`, newest first, every page. */
     listCommits(repo: RepoSlug, since: string): Promise<LoggedCommit[]>;
     compareFiles(repo: RepoSlug, base: string, head: string): Promise<CompareResult>;
+    /** The compare API's commits and files for `base...head`, every page. */
+    compareCommits(repo: RepoSlug, base: string, head: string): Promise<BranchCommits>;
     /** The compare API's `status` for `base...head`; a 404 answers `missing`. */
     compareAncestry(repo: RepoSlug, base: string, head: string): Promise<Ancestry>;
     getAuthenticatedLogin(): Promise<string>;
@@ -457,6 +480,13 @@ interface GitHubWire {
         id: number;
     }>;
     listReviewComments(repo: RepoSlug, number: number): Promise<ReviewComment[]>;
+    listReviews(repo: RepoSlug, number: number): Promise<PullReview[]>;
+    /** `POST pulls/{n}/reviews` with `event: APPROVE` at `commit_id`, as the GitHub App; the wire refuses when it has no App token. */
+    createReview(repo: RepoSlug, number: number, request: CreateReviewRequest): Promise<{
+        id: number;
+    }>;
+    /** `PUT pulls/{n}/reviews/{id}/dismissals`, as the GitHub App; the wire refuses when it has no App token. */
+    dismissReview(repo: RepoSlug, number: number, reviewId: number, message: string): Promise<void>;
     /** The PR's first `FORCE_PUSHES_CAP` head force-pushes, oldest first, and whether more exist. */
     listForcePushes(repo: RepoSlug, number: number): Promise<ForcePushPage>;
 }
@@ -558,6 +588,10 @@ interface GitHubPort {
     listDefaultBranchCommits(repo: RepoSlug, since: string): Promise<LoggedCommit[]>;
     /** The merge base of `base` and `head`, and the paths changed since it; check `truncated` before trusting the list. */
     compareFiles(repo: RepoSlug, base: string, head: string): Promise<CompareResult>;
+    /** The commits on `head` past its merge base with `base`, oldest first, with author and committer logins, and the paths they change; needs no PR. */
+    listBranchCommits(repo: RepoSlug, base: string, head: string): Promise<BranchCommits>;
+    /** The login this port writes as: `GitHubPortOptions.login` when set, else the authenticated user, read once. */
+    actorLogin(): Promise<string>;
     /** Whether `head` is ahead of, behind, identical to or diverged from `base`; `missing` when GitHub has not got one of them (HTTP 404). Any other failure throws. */
     compareAncestry(repo: RepoSlug, base: string, head: string): Promise<Ancestry>;
     /**
@@ -569,6 +603,17 @@ interface GitHubPort {
     }>>;
     /** Every inline review comment on the PR, resolved ones included; filter on `resolved`. */
     listReviewComments(repo: RepoSlug, number: number): Promise<ReviewComment[]>;
+    /** Every review on the PR, any author and state; a caller that acts on its own reviews filters on `login` or `userType` and its own marker in `body`. */
+    listReviews(repo: RepoSlug, number: number): Promise<PullReview[]>;
+    /**
+     * Approves the PR at `commitId` under the App identity the wire was configured with, so the approval names the head it
+     * covers. It posts unconditionally: a caller that may replay lists reviews first. A `commitId` that is not a full sha throws `GitHubInputError` before any call.
+     */
+    createReview(repo: RepoSlug, number: number, request: CreateReviewRequest): Promise<{
+        id: number;
+    }>;
+    /** Dismisses review `reviewId` under the App identity; GitHub answers 422 for a review that is not an approval or a change request. An empty message throws `GitHubInputError` before any call. */
+    dismissReview(repo: RepoSlug, number: number, reviewId: number, message: string): Promise<void>;
     /** The PR's head force-pushes, oldest first, each with the head it replaced and the new one. Throws `ForcePushesTruncated` rather than return a short list. */
     listForcePushes(repo: RepoSlug, number: number): Promise<ForcePush[]>;
 }
@@ -581,8 +626,21 @@ interface GitHubPortOptions {
     /** Waits between retries of a comment post, a merge or a rerun; tests inject one that does not wait. */
     sleep?: (ms: number) => Promise<void>;
 }
+
 /** Every argument is validated before any wire call, because each one becomes part of a `gh api` path. */
 declare function githubPort(wire: GitHubWire, options?: GitHubPortOptions): GitHubPort;
+
+/** The list came back shorter than the PR's own count, so a path may be missing. */
+declare class FileListTruncatedError extends Error {
+    readonly expected: number;
+    readonly received: number;
+    constructor(expected: number, received: number);
+}
+
+/** A write whose precondition no longer holds, such as a blob that changed under an edit. */
+declare class GitHubConflictError extends Error {
+    constructor(message: string);
+}
 
 /** A write that kept answering a 5xx or an unreadable answer; `status` is the last answer's, so callers still classify it. */
 declare class WriteRetriesExhaustedError extends Error {
@@ -1074,8 +1132,8 @@ interface GhCliOptions {
     /** Most recent conditional GETs whose ETag and body are kept. */
     etagCacheSize?: number;
     /**
-     * Mints the GitHub App installation token that `createCheckRun` posts under. It is called per
-     * check run, so a cached provider should refresh itself; without it `createCheckRun` refuses.
+     * Mints the GitHub App installation token that `createCheckRun`, `createReview` and `dismissReview` write under. It
+     * is called per write, so a cached provider should refresh itself; without it those writes refuse.
      */
     appToken?: () => Promise<string>;
     /** Waits between attempts of a failed read; tests inject one so they do not sleep. */
@@ -1089,7 +1147,7 @@ interface OctokitWireOptions {
     client?: GitHubClient;
     /** Most recent conditional GETs whose ETag and body are kept. */
     etagCacheSize?: number;
-    /** Mints the GitHub App installation token `createCheckRun` posts under, per check run; without it `createCheckRun` refuses. */
+    /** Mints the GitHub App installation token `createCheckRun`, `createReview` and `dismissReview` write under, per write; without it those writes refuse. */
     appToken?: () => Promise<string>;
     /** Options for the App identity's own client; its token is always the one `appToken` minted. */
     appClientOptions?: Omit<OctokitClientOptions, "token" | "reauthOn401">;
@@ -1125,6 +1183,8 @@ interface FakeEffects {
     updateRef: number;
     merge: number;
     rerunFailedJobs: number;
+    createReview: number;
+    dismissReview: number;
 }
 /** Reads a test can make fail, for a caller that must treat a failed read as transient. */
 type FakeFaultyRead = "getDefaultBranch" | "getBranchRules" | "getClassicRequiredChecks" | "listCheckRuns" | "listCommitStatuses" | "resolveCommit" | "compareAncestry" | "lsRemote";
@@ -1169,6 +1229,16 @@ interface FakeGitHub {
     }[];
     /** Faults the next comment posts throw, one per call; `lands` means the comment was posted before the answer was lost. */
     createCommentFaults?: {
+        error: Error;
+        lands?: boolean;
+    }[];
+    /** Faults the next review posts throw, one per call; `lands` means the review was recorded before the answer was lost. */
+    createReviewFaults?: {
+        error: Error;
+        lands?: boolean;
+    }[];
+    /** Faults the next review dismissals throw, one per call; `lands` means the dismissal happened before the answer was lost. */
+    dismissReviewFaults?: {
         error: Error;
         lands?: boolean;
     }[];
@@ -1243,24 +1313,32 @@ interface FakeGitHub {
     history: (LoggedCommit & {
         committedAt: string;
     })[];
-    /** `base...head` to the compare inputs; an unset pair compares as no change. Caps of 300 files and 250 commits apply. */
+    /** `base...head` to the compare inputs; an unset pair compares as no change. `renames` maps a new path to its previous one, which is listed too. Caps of 300 files and 250 commits apply; `totalCommits` defaults to the length of `commits`. */
     compares: Map<string, {
         mergeBaseSha: string;
         files: string[];
+        renames?: Record<string, string>;
         totalCommits?: number;
+        commits?: BranchCommit[];
     }>;
     /** PR number to its issue comments, in posting order. */
     comments: Map<number, IssueComment[]>;
     /** PR number to its inline review comments, resolved or not. */
     reviewComments: Map<number, ReviewComment[]>;
+    /** PR number to its reviews, in posting order; `createReview` appends the App's approval and `dismissReview` marks one `DISMISSED` in place. */
+    reviews: Map<number, PullReview[]>;
+    /** The login `createReview` posts as, the App's bot account, distinct from `actor`. */
+    appLogin: string;
     /** PR number to its head force-pushes, oldest first; unset means none. `listForcePushes` reads at most 100, like the GraphQL page. */
     forcePushes: Map<number, ForcePush[]>;
 }
 
+/** What the fake throws where GitHub answers an HTTP error; callers branch on `status`. */
 declare class FakeHttpError extends Error {
     readonly status: number;
     constructor(status: number, message: string);
 }
+
 /** A real-shaped commit sha, stable per tag, so tests can name heads. */
 declare function fakeSha(tag: string): string;
 declare function successRun(name: string, id: number, startedAt?: string, conclusion?: string, appId?: number, headSha?: string): CheckRun;
@@ -1444,4 +1522,4 @@ declare function memoryPoolStateStore(): PoolStateStore;
 declare function isPoolUnavailable(value: unknown): value is PoolUnavailable;
 declare function githubApiPool<C, A extends PoolAnswer>(options: GithubApiPoolOptions<C, A>): GithubApiPool<C, A>;
 
-export { type AmbiguousDiffPin, type Ancestry, type AppCredentials, type ApprovedHeadWalk, type ApprovedHeadWalkInput, BACKSTOP_CAPS, type BackstopCommit, type BackstopDonePr, type BackstopOpenPr, type BackstopRange, type BackstopRequest, type BackstopReview, type BackstopSnapshot, type BackstopTrain, BackstopTruncated, BlobTooLargeError, CHECK_CONCLUSIONS, COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, type CallClass, type CheckConclusion, type CheckFinding, type CheckRun, type CheckRunPr, type CiVerdict, type CiVerdictInput, type CiWaitOptions, type CiWaitOutcome, type CiWaitResult, type CleanMergeTree, type Commit, type CommitStatus, type CompareResult, type Cooldown, type CreateCheckRunRequest, DIFF_HASH_ARGS, DONE_OVERLAP_MS, type DiffCarry, DiffHashError, type DiffPin, type DiffPinOptions, type DiffSerialisation, type ExactDiffPin, FAKE_APP_ID, FORCE_PUSHES_CAP, type FakeEffects, type FakeFaultyRead, type FakeGitHub, FakeHttpError, type Fields, FileListTruncatedError, type ForcePush, type ForcePushPage, ForcePushesTruncated, GITHUB_ACTIONS_APP_ID, type GatewayBudget, type GhCliOptions, GhError, type GhExec, type GhExecOptions, type GhResult, type GitExec, type GitHubClient, GitHubConflictError, type GitHubFailure, type GitHubFailureInput, GitHubInputError, type GitHubPort, type GitHubPortOptions, GitHubRequestError, type GitHubWire, type GithubApiPool, type GithubApiPoolOptions, HARDENED_GIT_ENV, type HeadChecksInput, type HeadRef, type InstallationToken, type IssueComment, type JobStep, type LoggedCommit, LsRemoteError, type LsRemoteOptions, MAX_BASE_MERGES, MUTATION_SPACING_MS, type MergeBlockReason, type MergeBlocker, type MergeIntoBranchRequest, type MergeIntoBranchResult, type MergeMessage, type MergeMethod, type MergeReadiness, type MergeReadinessInput, type MergeUpCheck, type MergeUpProof, type OctokitClientOptions, type OctokitWireOptions, type OpenPrList, type OpenPrRequest, POOL_PRIORITY, PROBE_REARM_MS, PR_COMMITS_CAP, PR_FILES_CAP, type PoolAnswer, type PoolClock, type PoolPairState, type PoolPriority, type PoolStateStore, type PoolUnavailable, type PrFile, type ProbeVerdict, type PullRequest, type PutFileRequest, RATE_FLOOR, RATE_LIMIT_PHRASES, type RateBudget, type RateBudgetOptions, type RateLane, type RateLimit, type RateLimitFacts, type RateLimitProbeAnswer, type RateWindow, type RefRead, type RepoEntry, type RepoFile, type RepoSlug, type RequiredChecks, type ResetSource, type Rest, type ReviewComment, type RollupContext, type RulesetList, type SkipReason, type SquashCommit, type SquashInput, type SquashMessage, type SquashSource, TRAIN_PREFIX, type WriteResult, WriteRetriesExhaustedError, appInstallationToken, appInstallationTokenOverHttp, approvedHeadWalk, backoffMs, ciVerdict, ciWait, classifyGitHubFailure, defangCiSkip, diffCarry, diffHashes, execGh, execGit, fakeGitHub, fakeSha, formatSquashMessage, ghCliWire, gitDiffPin, gitMergeUpCheck, githubApiPool, githubPort, graphqlPoints, headCheckFindings, isConcluded, isPassing, isPassingConclusion, isPoolUnavailable, isRepo, isSucceeded, latestPerName, loadRequiredContexts, lsRemoteBranchHead, lsRemotePullHead, memoryPoolStateStore, mergeReadiness, nextResetAt, octokitClient, octokitRest, octokitWire, parseGitHubToken, parseRateLimitMarker, probeVerdict, probedBucket, rateBudget, rateLimitMarker, readBackstopSnapshot, serialiseDiff, sharedOctokit, sharedRateBudget, signAppJwt, snapshotRequests, statusCheckRuns, successRun, withoutSupersededCancels };
+export { type AmbiguousDiffPin, type Ancestry, type AppCredentials, type ApprovedHeadWalk, type ApprovedHeadWalkInput, BACKSTOP_CAPS, type BackstopCommit, type BackstopDonePr, type BackstopOpenPr, type BackstopRange, type BackstopRequest, type BackstopReview, type BackstopSnapshot, type BackstopTrain, BackstopTruncated, BlobTooLargeError, type BranchCommit, type BranchCommits, CHECK_CONCLUSIONS, COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, type CallClass, type CheckConclusion, type CheckFinding, type CheckRun, type CheckRunPr, type CiVerdict, type CiVerdictInput, type CiWaitOptions, type CiWaitOutcome, type CiWaitResult, type CleanMergeTree, type Commit, type CommitStatus, type CompareResult, type Cooldown, type CreateCheckRunRequest, type CreateReviewRequest, DIFF_HASH_ARGS, DONE_OVERLAP_MS, type DiffCarry, DiffHashError, type DiffPin, type DiffPinOptions, type DiffSerialisation, type ExactDiffPin, FAKE_APP_ID, FORCE_PUSHES_CAP, type FakeEffects, type FakeFaultyRead, type FakeGitHub, FakeHttpError, type Fields, FileListTruncatedError, type ForcePush, type ForcePushPage, ForcePushesTruncated, GITHUB_ACTIONS_APP_ID, type GatewayBudget, type GhCliOptions, GhError, type GhExec, type GhExecOptions, type GhResult, type GitExec, type GitHubClient, GitHubConflictError, type GitHubFailure, type GitHubFailureInput, GitHubInputError, type GitHubPort, type GitHubPortOptions, GitHubRequestError, type GitHubWire, type GithubApiPool, type GithubApiPoolOptions, HARDENED_GIT_ENV, type HeadChecksInput, type HeadRef, type InstallationToken, type IssueComment, type JobStep, type LoggedCommit, LsRemoteError, type LsRemoteOptions, MAX_BASE_MERGES, MUTATION_SPACING_MS, type MergeBlockReason, type MergeBlocker, type MergeIntoBranchRequest, type MergeIntoBranchResult, type MergeMessage, type MergeMethod, type MergeReadiness, type MergeReadinessInput, type MergeUpCheck, type MergeUpProof, type OctokitClientOptions, type OctokitWireOptions, type OpenPrList, type OpenPrRequest, POOL_PRIORITY, PROBE_REARM_MS, PR_COMMITS_CAP, PR_FILES_CAP, type PoolAnswer, type PoolClock, type PoolPairState, type PoolPriority, type PoolStateStore, type PoolUnavailable, type PrFile, type ProbeVerdict, type PullRequest, type PullReview, type PutFileRequest, RATE_FLOOR, RATE_LIMIT_PHRASES, type RateBudget, type RateBudgetOptions, type RateLane, type RateLimit, type RateLimitFacts, type RateLimitProbeAnswer, type RateWindow, type RefRead, type RepoEntry, type RepoFile, type RepoSlug, type RequiredChecks, type ResetSource, type Rest, type ReviewComment, type RollupContext, type RulesetList, type SkipReason, type SquashCommit, type SquashInput, type SquashMessage, type SquashSource, TRAIN_PREFIX, type WriteResult, WriteRetriesExhaustedError, appInstallationToken, appInstallationTokenOverHttp, approvedHeadWalk, backoffMs, ciVerdict, ciWait, classifyGitHubFailure, defangCiSkip, diffCarry, diffHashes, execGh, execGit, fakeGitHub, fakeSha, formatSquashMessage, ghCliWire, gitDiffPin, gitMergeUpCheck, githubApiPool, githubPort, graphqlPoints, headCheckFindings, isConcluded, isPassing, isPassingConclusion, isPoolUnavailable, isRepo, isSucceeded, latestPerName, loadRequiredContexts, lsRemoteBranchHead, lsRemotePullHead, memoryPoolStateStore, mergeReadiness, nextResetAt, octokitClient, octokitRest, octokitWire, parseGitHubToken, parseRateLimitMarker, probeVerdict, probedBucket, rateBudget, rateLimitMarker, readBackstopSnapshot, serialiseDiff, sharedOctokit, sharedRateBudget, signAppJwt, snapshotRequests, statusCheckRuns, successRun, withoutSupersededCancels };

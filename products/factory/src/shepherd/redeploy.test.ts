@@ -90,7 +90,7 @@ describe("sh-redeploy after main CI", () => {
   it("queues the merge sha for the deploy pacer instead of spawning a deployer", async () => {
     const fake = fakePorts();
     const store = memoryStore();
-    const w = world("success", systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", node: "/bin/node", now: () => AT }, fake.ports, store));
+    const w = world("success", systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", node: "/bin/node", platform: "linux", now: () => AT }, fake.ports, store));
     const runId = await mergeIn(w, OWN_REPO);
 
     await w.host.runtime.wait(runId);
@@ -102,7 +102,7 @@ describe("sh-redeploy after main CI", () => {
   });
 
   it("records spawned false when the queue write fails, and still unfreezes and cleans up", async () => {
-    const w = world("success", systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", node: "/bin/node" }, fakePorts().ports, memoryStore(true)));
+    const w = world("success", systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", node: "/bin/node", platform: "linux", now: () => AT }, fakePorts().ports, memoryStore(true)));
     const runId = await mergeIn(w, OWN_REPO);
 
     await w.host.runtime.wait(runId);
@@ -200,7 +200,7 @@ const stepIdsOf = (w: ReturnType<typeof world>, runId: string) => Object.values(
 
 describe("sh-redeploy when the deployer cannot start", () => {
   it.each(["spawn", "mkdir", "openAppend"] as const)("records spawned false when %s throws, and still unfreezes and cleans up", async (failing) => {
-    const deployer = spawnOnly(systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", node: "/bin/node" }, fakePorts(failing).ports));
+    const deployer = spawnOnly(systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", node: "/bin/node", platform: "linux", now: () => AT }, fakePorts(failing).ports, memoryStore()));
     const w = world("success", deployer);
     const runId = await mergeIn(w, OWN_REPO);
 
@@ -272,7 +272,7 @@ describe("redeploy", () => {
   });
 });
 
-const deployerOn = (platform: NodeJS.Platform, ports: DeployerPorts, at = AT) => systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", node: "/bin/node", platform, now: () => at }, ports);
+const deployerOn = (platform: NodeJS.Platform, ports: DeployerPorts, at = AT) => systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", node: "/bin/node", platform, now: () => at }, ports, memoryStore());
 const setsidCall = { file: "/bin/node", args: DEPLOY_ARGS, options: { cwd: "/state", detached: true, stdio: ["ignore", 9, 9] } };
 
 describe("systemDeployer on darwin", () => {
@@ -302,7 +302,7 @@ describe("deployPacerPorts", () => {
   it("spawns through the same systemd-run unit and log as the per-merge deployer, in the deployer's state dir", () => {
     const fake = fakePorts();
 
-    const pacer = deployPacerPorts({ bin: "/factory/dist/bin.js", stateDir: "/state", node: "/bin/node", platform: "linux", now: () => AT }, fake.ports);
+    const pacer = deployPacerPorts({ bin: "/factory/dist/bin.js", stateDir: "/state", node: "/bin/node", platform: "linux", now: () => AT }, fake.ports, memoryStore());
     const started = pacer.spawn(SHA);
 
     expect(pacer.stateDir).toBe("/state");
@@ -314,7 +314,7 @@ describe("deployPacerPorts", () => {
   it("queues into the file the pacer reads", async () => {
     const store = memoryStore();
 
-    await systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", now: () => AT }, fakePorts().ports, store).request?.(SHA);
+    await systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", node: "/bin/node", platform: "linux", now: () => AT }, fakePorts().ports, store).request?.(SHA);
 
     expect([...store.files.keys()]).toEqual([join("/state", DEPLOY_WANTED)]);
   });

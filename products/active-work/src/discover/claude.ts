@@ -13,7 +13,7 @@ import type { DiscoveryHit, DiscoverySourceError } from './types.js';
  * cross-reference step.
  */
 
-export interface DiscoverClaudeResult {
+interface DiscoverClaudeResult {
   hits: DiscoveryHit[];
   errors: DiscoverySourceError[];
 }
@@ -30,8 +30,9 @@ const MAX_SCAN_LINES = 200;
 const COMPACTION_SUBJECT_PREFIX = '[compaction] ';
 
 export async function discoverClaudeSessions(): Promise<DiscoverClaudeResult> {
-  const root = process.env.CLAUDE_PROJECTS_ROOT ?? path.join(os.homedir(), '.claude', 'projects');
-  const hits: DiscoveryHit[] = [];
+  const root =
+    process.env.CLAUDE_PROJECTS_ROOT ??
+    path.join(os.homedir(), '.claude', 'projects');
   const errors: DiscoverySourceError[] = [];
 
   let projectDirs: Dirent[];
@@ -40,61 +41,73 @@ export async function discoverClaudeSessions(): Promise<DiscoverClaudeResult> {
   } catch (err) {
     // No claude projects dir at all? That's not an error — return empty.
     const e = err as NodeJS.ErrnoException;
-    if (e.code === 'ENOENT') return { hits, errors };
-    errors.push({ source: 'claude-session', error: e.message ?? String(err) });
-    return { hits, errors };
+    if (e.code !== 'ENOENT')
+      errors.push({
+        source: 'claude-session',
+        error: e.message ?? String(err),
+      });
+    return { hits: [], errors };
   }
 
   const byCwd = new Map<string, CwdAggregate>();
-
   for (const dir of projectDirs) {
-    if (!dir.isDirectory()) continue;
-    const dirPath = path.join(root, dir.name);
-    let files: Dirent[];
-    try {
-      files = await fs.readdir(dirPath, { withFileTypes: true });
-    } catch (err) {
-      errors.push({
-        source: `claude-session:${dir.name}`,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      continue;
-    }
-    for (const file of files) {
-      if (!file.isFile() || !file.name.endsWith('.jsonl')) continue;
-      const filePath = path.join(dirPath, file.name);
-      try {
-        await aggregateSession(filePath, byCwd);
-      } catch (err) {
-        errors.push({
-          source: `claude-session:${file.name}`,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
+    if (dir.isDirectory()) await scanProjectDir(root, dir.name, byCwd, errors);
   }
 
-  for (const agg of byCwd.values()) {
-    hits.push({
-      source: 'claude-session',
-      ref: agg.cwd,
-      detail: `${agg.sessionCount} session(s) at ${agg.cwd}${
-        agg.subject ? ` — ${agg.subject}` : ''
-      }`,
-      metadata: {
-        cwd: agg.cwd,
-        sessionCount: agg.sessionCount,
-        lastMtime: new Date(agg.lastMtimeMs).toISOString(),
-        lastSessionId: agg.lastSessionId,
-        subject: agg.subject,
-      },
-    });
-  }
-
-  return { hits, errors };
+  return { hits: [...byCwd.values()].map(toHit), errors };
 }
 
-async function aggregateSession(filePath: string, byCwd: Map<string, CwdAggregate>): Promise<void> {
+async function scanProjectDir(
+  root: string,
+  name: string,
+  byCwd: Map<string, CwdAggregate>,
+  errors: DiscoverySourceError[]
+): Promise<void> {
+  const dirPath = path.join(root, name);
+  let files: Dirent[];
+  try {
+    files = await fs.readdir(dirPath, { withFileTypes: true });
+  } catch (err) {
+    errors.push({ source: `claude-session:${name}`, error: errorMessage(err) });
+    return;
+  }
+  for (const file of files) {
+    if (!file.isFile() || !file.name.endsWith('.jsonl')) continue;
+    try {
+      await aggregateSession(path.join(dirPath, file.name), byCwd);
+    } catch (err) {
+      errors.push({
+        source: `claude-session:${file.name}`,
+        error: errorMessage(err),
+      });
+    }
+  }
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function toHit(agg: CwdAggregate): DiscoveryHit {
+  const suffix = agg.subject ? ` — ${agg.subject}` : '';
+  return {
+    source: 'claude-session',
+    ref: agg.cwd,
+    detail: `${agg.sessionCount} session(s) at ${agg.cwd}${suffix}`,
+    metadata: {
+      cwd: agg.cwd,
+      sessionCount: agg.sessionCount,
+      lastMtime: new Date(agg.lastMtimeMs).toISOString(),
+      lastSessionId: agg.lastSessionId,
+      subject: agg.subject,
+    },
+  };
+}
+
+async function aggregateSession(
+  filePath: string,
+  byCwd: Map<string, CwdAggregate>
+): Promise<void> {
   const stat = await fs.stat(filePath);
   // Read up to MAX_SCAN_LINES; this is a light scan, not a parser.
   const raw = await fs.readFile(filePath, 'utf8');
@@ -129,8 +142,8 @@ async function aggregateSession(filePath: string, byCwd: Map<string, CwdAggregat
   const subject = lastCompactionSummary
     ? `${COMPACTION_SUBJECT_PREFIX}${truncate(lastCompactionSummary, 120)}`
     : firstUserMessage
-      ? truncate(firstUserMessage, 120)
-      : '';
+    ? truncate(firstUserMessage, 120)
+    : '';
   const sessionId = path.basename(filePath, '.jsonl');
 
   const existing = byCwd.get(cwd);
@@ -154,7 +167,9 @@ async function aggregateSession(filePath: string, byCwd: Map<string, CwdAggregat
   }
 }
 
-function extractUserMessageText(rec: Record<string, unknown>): string | undefined {
+function extractUserMessageText(
+  rec: Record<string, unknown>
+): string | undefined {
   if (rec.type !== 'user') return undefined;
   const message = rec.message;
   if (!message || typeof message !== 'object') return undefined;
@@ -176,7 +191,9 @@ function extractUserMessageText(rec: Record<string, unknown>): string | undefine
   return undefined;
 }
 
-function extractCompactionSummary(rec: Record<string, unknown>): string | undefined {
+function extractCompactionSummary(
+  rec: Record<string, unknown>
+): string | undefined {
   if (rec.type !== 'summary') return undefined;
   if (typeof rec.summary === 'string' && rec.summary.trim().length > 0) {
     return rec.summary.trim();

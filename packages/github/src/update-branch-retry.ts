@@ -1,36 +1,25 @@
-import { isTransient } from "./rest.js";
-import type { GitHubWire, RepoSlug, WriteResult } from "./port.js";
+import { httpStatusOf } from "./rest.js";
+import { pause, writeWithReadBack, type RetrySchedule } from "./write-read-back.js";
+import type { GitHubWire, RepoSlug, WriteResult } from "./port-types.js";
+import { closedSkip } from "./close-pr.js";
+
+export async function updateBranch(wire: GitHubWire, repo: RepoSlug, number: number, expectedHeadSha: string): Promise<WriteResult> {
+  const pr = await wire.getPr(repo, number);
+  const skipped = closedSkip(pr) ?? (pr.headSha !== expectedHeadSha ? "head-moved" : !pr.behind ? "up-to-date" : undefined);
+  if (skipped) return { done: false, skipped };
+  return sendUpdateBranch(wire, repo, number, expectedHeadSha);
+}
+
+/** One write, then an immediate read-back; any other failure of that read-back throws the first PUT's error. */
+const UPDATE_BRANCH_SCHEDULE: RetrySchedule = { delays: [0], rawError: true };
 
 /** An unreadable answer or a 5xx may hide a PUT that landed, so it is sent once more with the same expected head: GitHub refuses a landed one as a head mismatch, which reads as done. */
-export async function sendUpdateBranch(wire: GitHubWire, repo: RepoSlug, number: number, expectedHeadSha: string): Promise<WriteResult> {
-  try {
-    await wire.updateBranch(repo, number, expectedHeadSha);
-    return { done: true };
-  } catch (error) {
-    if (!isRetryableWrite(error)) throw error;
-    return retryUpdateBranch(wire, repo, number, expectedHeadSha, error);
-  }
-}
-
-async function retryUpdateBranch(wire: GitHubWire, repo: RepoSlug, number: number, expectedHeadSha: string, original: unknown): Promise<WriteResult> {
-  try {
-    await wire.updateBranch(repo, number, expectedHeadSha);
-  } catch (error) {
-    if (isHeadMismatch(error)) return { done: true };
-    throw original;
-  }
-  return { done: true };
-}
-
-export function isRetryableWrite(error: unknown): boolean {
-  return isTransient(error) || (httpStatusOf(error) ?? 0) >= 500;
+function sendUpdateBranch(wire: GitHubWire, repo: RepoSlug, number: number, expectedHeadSha: string): Promise<WriteResult> {
+  const put = async (): Promise<WriteResult> => (await wire.updateBranch(repo, number, expectedHeadSha), { done: true });
+  const landed = (): Promise<WriteResult | undefined> => put().catch((error: unknown) => (isHeadMismatch(error) ? { done: true as const } : undefined));
+  return writeWithReadBack(`update-branch PUT ${repo}#${number} at ${expectedHeadSha}`, put, landed, pause, UPDATE_BRANCH_SCHEDULE);
 }
 
 function isHeadMismatch(error: unknown): boolean {
   return httpStatusOf(error) === 422 && /expected head sha|head (branch )?(was )?(modified|moved)/i.test(error instanceof Error ? error.message : "");
-}
-
-export function httpStatusOf(error: unknown): number | undefined {
-  if (typeof error !== "object" || error === null || !("status" in error)) return undefined;
-  return typeof error.status === "number" ? error.status : undefined;
 }

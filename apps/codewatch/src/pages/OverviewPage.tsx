@@ -6,7 +6,7 @@ import { Note, QueryView } from "../components/QueryView.js";
 import { directionText, formatNumber, missingText } from "../components/format.js";
 import { CALLS, overviewMetrics } from "../data/calls.js";
 import { useQuery } from "../data/rpc.js";
-import { href, nodeHref } from "../router.js";
+import { DEFAULT_PRIORITIES_QUERY, href, nodeHref } from "../router.js";
 import { useReport } from "../report-context.js";
 
 type HierarchyRow = CodeReadCommandMap["hierarchy.get"]["result"]["nodes"][number];
@@ -36,10 +36,10 @@ function Headline(): ReactNode {
       <QueryView result={counts} label="finding counts">
         {(data) => (
           <>
-            <Stat label="Findings" value={formatNumber(data.total)} link={href({ page: "priorities", query: { filters: {}, sort: "severity", offset: 0 } })} />
+            <Stat label="Findings" value={formatNumber(data.total)} link={href({ page: "priorities", query: DEFAULT_PRIORITIES_QUERY })} />
             {Object.entries(data.facets?.severity ?? {}).map(([severity, count]) => (
               <Stat key={severity} label={severity} value={formatNumber(count)}
-                link={href({ page: "priorities", query: { filters: { severity: [severity] }, sort: "severity", offset: 0 } })} />
+                link={href({ page: "priorities", query: { ...DEFAULT_PRIORITIES_QUERY, filters: { severity: [severity] } } })} />
             ))}
           </>
         )}

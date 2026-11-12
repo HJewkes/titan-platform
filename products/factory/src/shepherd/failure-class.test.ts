@@ -20,6 +20,13 @@ describe("failureClassOf", () => {
     expect(failureClassOf("step merge:0 (iteration 0) failed: gh api -i -X GET failed (1): ")).toBe("gh-api-5xx");
   });
 
+  it("files a read GitHub never answered as gh-api-5xx and a timed-out write as other", () => {
+    const read = "gh api -X GET repos/acme/widgets/pulls?state=open&per_page=100 failed (1): GET /repos/acme/widgets/pulls?state=open&per_page=100 timed out after 60000 ms";
+    const write = "gh api -X PUT repos/acme/widgets/pulls/1/merge failed (1): PUT /repos/acme/widgets/pulls/1/merge timed out after 60000 ms";
+    expect(failureClassOf(`step sh-observe:abc (iteration 0) failed: ${read} (after 1 gh-api-5xx retries)`)).toBe("gh-api-5xx");
+    expect(failureClassOf(`step merge:0 (iteration 0) failed: ${write}`)).toBe("other");
+  });
+
   it("files an update-branch conflict or stuck head as update-branch, not as a GitHub outage", () => {
     expect(failureClassOf("step update-branch:0 (iteration 0) failed: gh api -i -X PUT failed (1): gh: merge conflict between base and head (HTTP 422)")).toBe("update-branch");
     expect(failureClassOf("step update-branch:1 (iteration 0) failed: update-branch: head still abc123 after 300000 ms")).toBe("update-branch");

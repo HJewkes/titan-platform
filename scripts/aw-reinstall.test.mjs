@@ -1,15 +1,18 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const SCRIPTS = dirname(fileURLToPath(import.meta.url));
-const run = (script, ...args) =>
-  execFileSync("bash", [join(SCRIPTS, script), ...args], {
+const run = (script, ...rest) => {
+  const overrides = typeof rest.at(-1) === "object" ? rest.pop() : {};
+  return execFileSync("bash", [join(SCRIPTS, script), ...rest], {
     encoding: "utf8",
-    env: { ...process.env, AW_REPO: "/repo", AW_STAGE_ROOT: "/stage", AW_BIN_DIR: "/bin-dir", AW_LOG: "/log/aw.log" },
+    env: { ...process.env, AW_REPO: "/repo", AW_STAGE_ROOT: "/stage", AW_BIN_DIR: "/bin-dir", AW_LOG: "/log/aw.log", ...overrides },
   });
+};
 
 describe("aw-reinstall.sh --dry-run", () => {
   it("prints every step in order and runs none of them", () => {
@@ -34,6 +37,30 @@ describe("aw-reinstall.sh --dry-run", () => {
     expect(timed).toHaveLength(2);
     expect(timed[0]).toBeLessThan(lines.findIndex((l) => l.includes("fetch")));
     expect(timed[1]).toBeGreaterThan(restart);
+  });
+
+  it("runs install and build through the corepack-pinned pnpm, not whichever pnpm is on PATH", () => {
+    const out = run("aw-reinstall.sh", "--dry-run");
+    expect(out).toMatch(/^pnpm: corepack pnpm@/m);
+    expect(out).toMatch(/\[dry-run\] corepack pnpm@.+ --dir \/stage\/.+ install --frozen-lockfile/);
+    expect(out).toMatch(/\[dry-run\] corepack pnpm@.+ --dir \/stage\/.+ --filter .* build/);
+    expect(out).not.toMatch(/\[dry-run\] pnpm /);
+  });
+
+  it("reads the pin from origin/main and strips the +sha512 suffix", () => {
+    const dir = mkdtempSync(join(tmpdir(), "aw-reinstall-"));
+    try {
+      const git = (...args) => execFileSync("git", ["-C", dir, ...args], { encoding: "utf8" });
+      git("init", "-q");
+      writeFileSync(join(dir, "package.json"), JSON.stringify({ packageManager: "pnpm@9.15.0+sha512.abc" }, null, 2));
+      git("add", "package.json");
+      git("-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", "init");
+      git("update-ref", "refs/remotes/origin/main", "HEAD");
+      const out = run("aw-reinstall.sh", "--dry-run", { AW_REPO: dir });
+      expect(out.split("\n")).toContain("pnpm: corepack pnpm@9.15.0");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("rejects an unknown argument", () => {

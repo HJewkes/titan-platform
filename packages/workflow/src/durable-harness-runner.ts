@@ -5,8 +5,10 @@ import type {
   Harness,
   HarnessRunRequestFor,
 } from "@titan-design/agent";
+import type { UsageMeasurement } from "@titan-design/agent-protocol";
 import type {
   DurableStepOutcome,
+  StepUsage,
   RecoverableStepDispatchInput,
   RecoverableStepRunner,
 } from "./types.js";
@@ -37,9 +39,18 @@ function succeeded(result: DurableHarnessSuccess): DurableStepOutcome {
   return { kind: "succeeded", output: outputText(result), ...(usage ? { usage } : {}) };
 }
 
+/** A terminal's spend as an optional `usage` field, absent when it reported none. */
+function spendOf(measurements: readonly UsageMeasurement[] | undefined): { usage?: StepUsage } {
+  const usage = usageFromMeasurements(measurements ?? []);
+  return usage ? { usage } : {};
+}
+
 function failed(terminal: Extract<Terminal<Harness>, { outcome: "failed" }>): DurableStepOutcome {
-  const usage = usageFromMeasurements(terminal.usage ?? []);
-  return { kind: "failed", error: terminal.reason, retryable: terminal.retryable, ...(usage ? { usage } : {}) };
+  return { kind: "failed", error: terminal.reason, retryable: terminal.retryable, ...spendOf(terminal.usage) };
+}
+
+function unsettled(terminal: Extract<Terminal<Harness>, { outcome: "cancellation_unknown" }>): DurableStepOutcome {
+  return { kind: "cancellation_unknown", reason: terminal.reason, ...spendOf(terminal.usage) };
 }
 
 function terminalOutcome<H extends Harness>(terminal: Terminal<H>): DurableStepOutcome {
@@ -47,7 +58,7 @@ function terminalOutcome<H extends Harness>(terminal: Terminal<H>): DurableStepO
     case "succeeded": return succeeded(terminal.result);
     case "failed": return failed(terminal);
     case "cancelled": return { kind: "cancelled", reason: terminal.reason };
-    case "cancellation_unknown": return { kind: "cancellation_unknown", reason: terminal.reason };
+    case "cancellation_unknown": return unsettled(terminal);
     // A step that produced no output cannot be proven side-effect free, so it is never retried.
     case "ended": return { kind: "failed", error: `ended: ${terminal.evidence}`, retryable: false };
   }

@@ -1,9 +1,11 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type CheckRun, type FakeGitHub } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
+import { hostCarryPorts } from "../shepherd/carry-cache-adapter.js";
 import { expectBrief } from "../test-support/brief.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { landPrRoutes, landPrWorkflow } from "./land-pr.js";
+import { hostPostMerge } from "./post-merge-adapter.js";
 import { OWNER } from "../test-support/resolver.js";
 
 const H2 = fakeSha("head2");
@@ -22,7 +24,7 @@ function landPrWorld(validate: Validate): { host: FactoryHost; fake: FakeGitHub;
   fake.addPr({ headSha: H1 });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [validate(pr.headSha, fake.effects.rerunFailedJobs), successRun("dag-check", 2)]);
   let clock = 0;
-  const routes = landPrRoutes({ port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms) });
+  const routes = landPrRoutes({ ...hostPostMerge(), gitCache: hostCarryPorts, port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   return { host, fake, runId: host.runtime.start("land-pr", { repo: REPO, pr: "1", task: "TASK-1" }) };
@@ -138,7 +140,7 @@ describe("land-pr", () => {
 
   it("fails the run before any step when pr is not a positive integer", async () => {
     const fake = fakeGitHub();
-    const host = openFactoryHost({ dbPath: ":memory:", workflows: [landPrWorkflow()], routes: landPrRoutes({ port: githubPort(fake.wire) }) });
+    const host = openFactoryHost({ dbPath: ":memory:", workflows: [landPrWorkflow()], routes: landPrRoutes({ ...hostPostMerge(), gitCache: hostCarryPorts, port: githubPort(fake.wire) }) });
     hosts.push(host);
 
     const failed = await host.runtime.wait(host.runtime.start("land-pr", { repo: REPO, pr: "1.5" }));

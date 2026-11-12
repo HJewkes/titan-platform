@@ -3,7 +3,7 @@
   "mutations": [
     {
       "name": "a live agent idle through both asks is left to its seat",
-      "file": "products/factory/src/shepherd/wake.ts",
+      "file": "products/factory/src/shepherd/wake-loop.ts",
       "find": "if (asked.choice.mode !== \"live\" || fallback !== \"message\") return unhandled(stalled);",
       "replace": "return unhandled(stalled);",
       "kills": [
@@ -32,7 +32,7 @@
     },
     {
       "name": "the loop forgets the retired agent and picks by roster again",
-      "file": "products/factory/src/shepherd/wake.ts",
+      "file": "products/factory/src/shepherd/wake-loop.ts",
       "find": "if (loop.hung !== undefined) return successorChoice(deps, wiring, task, loop.hung, roster);",
       "replace": "",
       "kills": [

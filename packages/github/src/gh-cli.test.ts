@@ -377,6 +377,8 @@ const ROUTES: [RegExp, unknown][] = [
   [/pulls$/, [pull]],
   [/compare\//, { status: "behind", behind_by: 1, merge_base_commit: { sha: H2 }, files: [] }],
   [/issues\/7\/comments$/, []],
+  [/pulls\/7\/reviews$/, []],
+  [/pulls\/7\/reviews\/\d+\/dismissals$/, { id: 9 }],
   [/^user$/, { login: "octo" }],
   [/pulls\/7\/files$/, []],
   [/pulls\/7\/commits$/, []],
@@ -467,10 +469,15 @@ describe("gh api adapter, REST only", () => {
       getSquashSource: () => port.getSquashSource(REPO, 7),
       listDefaultBranchCommits: () => port.listDefaultBranchCommits(REPO, "2026-01-01T00:00:00Z"),
       compareFiles: () => port.compareFiles(REPO, "main", "topic"),
+      listBranchCommits: () => port.listBranchCommits(REPO, "main", "topic"),
+      actorLogin: () => port.actorLogin(),
       compareAncestry: () => port.compareAncestry(REPO, H1, H2),
       upsertComment: () => port.upsertComment(REPO, 7, "<!-- m -->", "<!-- m --> b"),
       listReviewComments: () => port.listReviewComments(REPO, 7),
       listForcePushes: () => port.listForcePushes(REPO, 7),
+      listReviews: () => port.listReviews(REPO, 7),
+      createReview: () => port.createReview(REPO, 7, { commitId: H1, body: "b" }),
+      dismissReview: () => port.dismissReview(REPO, 7, 9, "m"),
     };
     const graphqlCalls: string[] = [];
 

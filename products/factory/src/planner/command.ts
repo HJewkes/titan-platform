@@ -9,13 +9,17 @@ import { ownerInboxDir } from "../deploy-watch-ports.js";
 import { PLANNER_ALARM_ASKER, PLANNER_ALARM_KEYS } from "./alarm.js";
 import { loadPlannerConfig } from "./config.js";
 import { runProcess, type PlannerRun } from "./inputs.js";
+import { registerPlannerProbe } from "./probe-command.js";
 import { plannerWake, type PlannerAlarmPort } from "./wake.js";
+import type { WindowSources } from "./window-probes.js";
 
 /** What `planner wake` runs agent-chat, gh and input commands through, and reads and waits on the time with; defaults to the machine. */
 export interface PlannerDeps {
   run?: PlannerRun;
   now?: () => Date;
   sleep?: (ms: number) => Promise<void>;
+  /** What `planner probe` reads its window from; defaults to gh, the factory store and the console rounds dir. */
+  windowSources?: () => WindowSources;
 }
 
 /** The owner inbox spool the titan console reads, which `titan-console inbox file -` feeds too. */
@@ -30,12 +34,12 @@ function inboxAlarm(env: NodeJS.ProcessEnv): PlannerAlarmPort {
 
 /** `titan-factory planner wake`: the factory-planner timer's entry, gated on a fingerprint of the planner's inputs. */
 export function registerPlanner(program: Command, verbs: Verbs): void {
-  program
-    .command("planner")
-    .description("the scheduled factory-planner review")
+  const planner = program.command("planner").description("the scheduled factory-planner review");
+  registerPlannerProbe(planner, verbs);
+  planner
     .command("wake")
-    .description("spawn a fresh factory-planner and wait for its review, or exit 0 with one line when nothing it reads has changed since the last run")
-    .requiredOption("--config <path>", "planner wake config (JSON: brief, cwd, inputs, profile, reviewDir)")
+    .description("spawn a fresh factory-planner and wait for its review, or exit 0 with one line when nothing it reads has changed or the prior window had no merges, owner contact or new red")
+    .requiredOption("--config <path>", "planner wake config (JSON: brief, cwd, inputs, profile, reviewDir, priorWindow)")
     .option("--profile <name>", "agent-chat profile to spawn the planner on (overrides the config)")
     .action(async (opts: { config: string; profile?: string }) => {
       const config = loadPlannerConfig(opts.config);

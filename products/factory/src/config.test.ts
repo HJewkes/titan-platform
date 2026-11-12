@@ -196,6 +196,14 @@ describe("loadConfig", () => {
     expect(() => load({ ...reviewCheck, token: "x" })).toThrow(/reviewCheck/);
   });
 
+  it.each(["my-app", " ", "my-app[bot] ", "other app[bot]"])("rejects %j as the review-check App's login, which must be a bot login", (login) => {
+    const reviewCheck = { appId: 101, installationId: 202, privateKeyPath: "/keys/app.pem" };
+    const load = (block: object) => loadConfig(configPath(xdg({ shepherd: { reviewCheck: block } })));
+
+    expect(load({ ...reviewCheck, login: "my-app[bot]" }).shepherd?.reviewCheck?.login).toBe("my-app[bot]");
+    expect(() => load({ ...reviewCheck, login })).toThrow(/reviewCheck/);
+  });
+
   it.each(["https://github.com/acme/dotfiles", "acme/dotfiles.git"])("rejects %s as a hard-stop repo", (repo) => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { charterPath: "/charter.md", hardStopRepos: { "dotfiles-merge": [repo] } } })))).toThrow(/hardStopRepos/);
   });
@@ -224,6 +232,20 @@ describe("loadConfig", () => {
     ["a NUL in the cwd", { argv: ["chore"], cwd: "/work\0x" }, /postMerge\.cwd: must not contain a NUL/],
   ])("rejects a post-merge command with %s", (_label, postMerge, key) => {
     expect(() => loadConfig(configPath(xdg({ postMerge })))).toThrow(key);
+  });
+
+  it("reads the merge wake as an argv with its settle window", () => {
+    const mergeWake = { argv: ["systemctl", "--user", "start", "--no-block", "burndown.service"], timeoutMs: 10_000, settleMs: 20_000 };
+
+    expect(loadConfig(configPath(xdg({ shepherd: { mergeWake } }))).shepherd?.mergeWake).toEqual(mergeWake);
+  });
+
+  it.each([
+    ["a settle window over the 30 s wake deadline", { argv: ["wake"], settleMs: 30_001 }, /mergeWake\.settleMs/],
+    ["a shell flag", { argv: ["wake"], shell: true }, /mergeWake.*shell/],
+    ["a shell string argv", { argv: "wake now" }, /mergeWake\.argv/],
+  ])("rejects a merge wake with %s", (_label, mergeWake, key) => {
+    expect(() => loadConfig(configPath(xdg({ shepherd: { mergeWake } })))).toThrow(key);
   });
 
   it("reads the gate notifier with the owner-remote class and the titan-factory label by default", () => {

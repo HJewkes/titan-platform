@@ -80,8 +80,9 @@ with the same ETag cache, 304 rules and next-page guard. The client, `octokitCli
   - A REST call fails after `CORE_TIMEOUT_MS` (60 s) and a GraphQL call after `GRAPHQL_TIMEOUT_MS` (30 s); a timed-out call is not retried. The deadline spans the call's retries and throttle waits.
 
 `client.budget()` reports the last `x-ratelimit-*` window per lane (`rest`, `graphql`), and the
-cooldowns the throttle is still waiting out. `createCheckRun` posts as the App on its own
-client and throttle key. `appInstallationTokenOverHttp` mints the App's token over that path.
+cooldowns the throttle is still waiting out. `createCheckRun`, `createReview` (an APPROVE at a
+commit) and `dismissReview` post as the App on its own client and throttle key; `listReviews`
+reads a PR's reviews as the user. `appInstallationTokenOverHttp` mints the App's token over that path.
 `ghCliWire` stays as the wire for CLI processes such as `titan-gh`.
 `listOpenPrs(repo, headPrefix?)` lists open PRs; list rows carry no `behind` or
 `mergeableState`.

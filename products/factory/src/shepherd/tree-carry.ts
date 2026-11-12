@@ -1,27 +1,15 @@
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
-import { resolveDbPath } from "../config.js";
 import { CLOSURE_LOCK_DRIVER, type GitConfigEntry } from "../merge-drivers.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { HEAD } from "./await-verdict.js";
+import type { CacheFs, Git, GitCachePorts } from "./carry-cache-ports.js";
 import { errorClass } from "./error-class.js";
 import { isRepoKey } from "./seats.js";
 
 export const CARRY_STEP = "sh-carry";
-const GIT_TIMEOUT_MS = 10 * 60_000;
-
-export interface GitResult {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
-
-/** Runs git against one bare repository; resolves with the exit code instead of rejecting. */
-export type Git = (gitDir: string, args: readonly string[], signal?: AbortSignal) => Promise<GitResult>;
 
 /** `fromHead` is the head whose MERGE would be carried, `head` the new green head. */
 export type CarryInput = z.infer<typeof CarryInputSchema>;
@@ -33,12 +21,21 @@ export type CarryInput = z.infer<typeof CarryInputSchema>;
 export type CarryResult = z.infer<typeof CarryResultSchema>;
 
 export interface CarryOptions {
-  /** Holds `git-cache/<owner>/<name>.git`; absent means the bound state dir, else the configured database's directory. */
+  /** The host effects the cache is reached through: git, the fs and the state dir. */
+  ports: GitCachePorts;
+  /** Holds `git-cache/<owner>/<name>.git`; absent means the ports' state dir. */
   stateDir?: string;
   /** The fetch URL for `repo`; absent means GitHub over https. */
   remote?: (repo: string) => string;
-  git?: Git;
   signal?: AbortSignal;
+}
+
+/** One repo's bare cache: where it lives, how to reach it, and the effects that read it. */
+export interface CacheHandle {
+  git: Git;
+  fs: CacheFs;
+  dir: string;
+  url: string;
 }
 
 const Sha = z.string().regex(HEAD, "must be 40 lowercase hex characters");
@@ -55,46 +52,21 @@ export class CarryRefusal extends Error {
   }
 }
 
-/** Never prompts and never reads a user credential helper; GitHub auth comes from `gh`. */
-const GIT_ENV: Readonly<Record<string, string>> = {
-  GIT_TERMINAL_PROMPT: "0",
-  GIT_CONFIG_COUNT: "2",
-  GIT_CONFIG_KEY_0: "credential.helper",
-  GIT_CONFIG_VALUE_0: "",
-  GIT_CONFIG_KEY_1: "credential.helper",
-  GIT_CONFIG_VALUE_1: "!gh auth git-credential",
-};
-
-export const systemGit: Git = (gitDir, args, signal) =>
-  new Promise((resolve) => {
-    const options = { encoding: "utf8" as const, timeout: GIT_TIMEOUT_MS, signal, env: { ...process.env, ...GIT_ENV } };
-    execFile("git", ["--git-dir", gitDir, ...args], options, (error, stdout, stderr) => {
-      const code = error ? (typeof error.code === "number" ? error.code : 128) : 0;
-      resolve({ code, stdout, stderr: stderr || error?.message || "" });
-    });
-  });
-
-let boundStateDir: string | undefined;
-
-/** The server binds its state dir so the cache sits beside its database; the returned function unbinds it. */
-export function bindCarryStateDir(stateDir: string): () => void {
-  boundStateDir = stateDir;
-  return () => {
-    if (boundStateDir === stateDir) boundStateDir = undefined;
-  };
-}
-
-/** Where the git cache lives: the given dir, else the bound state dir, else the configured database's directory. */
-export function carryStateDir(stateDir?: string): string {
-  return stateDir ?? boundStateDir ?? dirname(resolveDbPath({ env: process.env }));
-}
+export type { CacheFs, Git, GitCachePorts, GitResult } from "./carry-cache-ports.js";
 
 export function carryCacheDir(stateDir: string, repo: string): string {
   const [owner = "", name = ""] = repo.toLowerCase().split("/");
   return join(stateDir, "git-cache", owner, `${name}.git`);
 }
 
-export const githubRemote = (repo: string): string => `https://github.com/${repo}.git`;
+const githubRemote = (repo: string): string => `https://github.com/${repo}.git`;
+
+/** Resolves the repo's cache through the ports; the state dir is read here, at call time. */
+export function cacheFor(repo: string, options: CarryOptions): CacheHandle {
+  const { ports } = options;
+  const dir = carryCacheDir(options.stateDir ?? ports.stateDir(), repo);
+  return { git: ports.git, fs: ports.fs, dir, url: (options.remote ?? githubRemote)(repo) };
+}
 const firstLine = (text: string): string => text.trim().split("\n")[0] ?? "";
 
 export async function must(git: Git, dir: string, args: readonly string[], signal?: AbortSignal): Promise<string> {
@@ -128,9 +100,10 @@ async function registerMergeDrivers(git: Git, dir: string, signal?: AbortSignal)
   }
 }
 
-export async function ensureCache(git: Git, dir: string, signal?: AbortSignal): Promise<void> {
-  if (!existsSync(join(dir, "HEAD"))) {
-    mkdirSync(dirname(dir), { recursive: true });
+export async function ensureCache(cache: Pick<CacheHandle, "git" | "fs" | "dir">, signal?: AbortSignal): Promise<void> {
+  const { git, fs, dir } = cache;
+  if (!fs.exists(join(dir, "HEAD"))) {
+    fs.mkdirp(dirname(dir));
     await must(git, dir, ["init", "--bare", "--quiet"], signal);
   }
   await registerMergeDrivers(git, dir, signal);
@@ -183,8 +156,9 @@ async function samePrDiff(git: Git, dir: string, input: CarryInput, base: string
   return reviewed.code === 0 && merged.code === 0 && patchIdOf(reviewed.stdout) === patchIdOf(merged.stdout);
 }
 
-async function probe(git: Git, dir: string, url: string, input: CarryInput, signal?: AbortSignal): Promise<CarryResult> {
-  await ensureCache(git, dir, signal);
+async function probe(cache: CacheHandle, input: CarryInput, signal?: AbortSignal): Promise<CarryResult> {
+  const { git, dir, url } = cache;
+  await ensureCache(cache, signal);
   await must(git, dir, fetchArgs(url, input), signal);
   const parents = await mergeParents(git, dir, input.head, signal);
   if (!("first" in parents)) return parents;
@@ -210,12 +184,10 @@ export const reasonOf = (error: unknown): string => (error instanceof CarryRefus
 const issuesOf = (error: z.ZodError): string => error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ");
 
 /** Runs `task` on the repo's cache, one at a time; a failure answers through `refused`, never a throw. */
-async function inCache<T>(repo: string, options: CarryOptions, task: (git: Git, dir: string, url: string) => Promise<T>, refused: (reason: string) => T): Promise<T> {
+async function inCache<T>(repo: string, options: CarryOptions, task: (cache: CacheHandle) => Promise<T>, refused: (reason: string) => T): Promise<T> {
   try {
-    const stateDir = options.stateDir ?? boundStateDir ?? dirname(resolveDbPath({ env: process.env }));
-    const dir = carryCacheDir(stateDir, repo);
-    const url = (options.remote ?? githubRemote)(repo);
-    return await serialized(dir, () => task(options.git ?? systemGit, dir, url));
+    const cache = cacheFor(repo, options);
+    return await serialized(cache.dir, () => task(cache));
   } catch (error) {
     options.signal?.throwIfAborted();
     return refused(reasonOf(error));
@@ -223,11 +195,11 @@ async function inCache<T>(repo: string, options: CarryOptions, task: (git: Git, 
 }
 
 /** Does `head` carry the review of `fromHead`? Every failure, from bad input to a refused fetch, answers not equal with a reason. */
-export async function carry(raw: unknown, options: CarryOptions = {}): Promise<CarryResult> {
+export async function carry(raw: unknown, options: CarryOptions): Promise<CarryResult> {
   const parsed = CarryInputSchema.safeParse(raw);
   if (!parsed.success) return { equal: false, reason: `invalid carry input: ${issuesOf(parsed.error)}` };
   const input = parsed.data;
-  return inCache(input.repo, options, (git, dir, url) => probe(git, dir, url, input, options.signal), (reason) => ({ equal: false, reason }));
+  return inCache(input.repo, options, (cache) => probe(cache, input, options.signal), (reason) => ({ equal: false, reason }));
 }
 
 const MergeTreeInputSchema = z.object({ repo: z.string().refine(isRepoKey, "must be owner/repo"), baseRef: BranchName, headSha: Sha });
@@ -236,12 +208,13 @@ const MergeTreeInputSchema = z.object({ repo: z.string().refine(isRepoKey, "must
  * `git merge-tree` of the head onto the base tip as fetched now: the merge GitHub's own mergeability read computes. It
  * answers `clean`, `conflict`, or `unread: <why>` from a fixed vocabulary, since the answer can reach a public PR.
  */
-export async function localMergeTree(raw: unknown, options: CarryOptions = {}): Promise<string> {
+export async function localMergeTree(raw: unknown, options: CarryOptions): Promise<string> {
   const parsed = MergeTreeInputSchema.safeParse(raw);
   if (!parsed.success) return `unread: invalid input: ${issuesOf(parsed.error)}`;
   const { repo, baseRef, headSha } = parsed.data;
-  const merge = async (git: Git, dir: string, url: string): Promise<string> => {
-    await ensureCache(git, dir, options.signal);
+  const merge = async (cache: CacheHandle): Promise<string> => {
+    const { git, dir, url } = cache;
+    await ensureCache(cache, options.signal);
     await must(git, dir, ["fetch", "--no-tags", "--no-write-fetch-head", "--quiet", url, headSha, `+refs/heads/${baseRef}:${remoteBase(baseRef)}`], options.signal);
     const merged = await git(dir, ["merge-tree", "--write-tree", "--no-messages", remoteBase(baseRef), headSha], options.signal);
     if (merged.code > 1) throw new CarryRefusal("merge-tree", merged.code);
@@ -250,7 +223,7 @@ export async function localMergeTree(raw: unknown, options: CarryOptions = {}): 
   return inCache(repo, options, merge, (reason) => `unread: ${reason}`);
 }
 
-export function carryRoute(now: () => number, options: Omit<CarryOptions, "signal"> = {}): StepRoute {
+export function carryRoute(now: () => number, options: Omit<CarryOptions, "signal">): StepRoute {
   return codeRoute(CARRY_STEP, now, (input: unknown, signal) => carry(input, { ...options, signal }));
 }
 

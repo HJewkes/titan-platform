@@ -12,10 +12,11 @@ import {
 } from "@titan-design/fix-proof";
 import type { Finding } from "../check/findings.js";
 import type { CodeGraphStore } from "../store.js";
-import type { GraphEdge } from "../types.js";
+import type { GraphEdge, GraphNode } from "../types.js";
 import { planBodyDeletes } from "./body-delete.js";
 import { coveredFunctionStarts, type IstanbulCoverage } from "./coverage.js";
 import { extremeFindings, type ExtremeSummary } from "./pseudo-tested.js";
+import { fileTestReach } from "./test-reach.js";
 
 const run = promisify(execFile);
 const TS_SOURCE = /\.(?:ts|tsx|mts|cts)$/;
@@ -28,7 +29,7 @@ export interface ExtremeMutationOptions {
   changed: ReadonlyMap<string, readonly (readonly [number, number])[]>;
   /** A whole-suite Istanbul `coverage-final.json` and the commit it was measured at, which must be `head`. */
   coverage: { head: string; data: IstanbulCoverage };
-  /** A snapshot at head, read only for its import edges. */
+  /** A snapshot at head, read only for its import and mocks edges. */
   store: Pick<CodeGraphStore, "listEdges">;
   snapshotId: number;
   max?: number;
@@ -80,30 +81,29 @@ function repoPathOf(repo: string): (abs: string) => string | null {
   };
 }
 
-/** Files each file imports or re-exports from, transitively, memoised per start file. */
-function importReach(edges: readonly GraphEdge[]): (file: string) => ReadonlySet<string> {
-  const out = new Map<string, string[]>();
-  for (const edge of edges) {
-    if (edge.kind === "imports" || edge.kind === "re-exports") out.set(edge.srcId, [...(out.get(edge.srcId) ?? []), edge.dstId]);
-  }
+/**
+ * Files each test file loads at runtime, transitively, memoised per test (TP-4950). A module the test's own
+ * `vi.mock` replaces is not reached through that hop, so a mocked module does not count as tested by it.
+ */
+function testReach(testFiles: readonly string[], edges: readonly GraphEdge[]): (testFile: string) => ReadonlySet<string> {
+  const nodes = testFiles.map((id): GraphNode => ({ id, kind: "file", name: path.posix.basename(id), role: "test" }));
+  const { tests, reaching } = fileTestReach(nodes, edges);
+  const bitOf = new Map(tests.map((id, i) => [id, i]));
   const memo = new Map<string, Set<string>>();
-  return (file) => {
-    const reached = memo.get(file) ?? closure(out, file);
-    memo.set(file, reached);
+  return (testFile) => {
+    const reached = memo.get(testFile) ?? reachedBy(reaching, testFile, bitOf.get(testFile));
+    memo.set(testFile, reached);
     return reached;
   };
 }
 
-function closure(out: ReadonlyMap<string, readonly string[]>, file: string): Set<string> {
-  const seen = new Set<string>();
-  const stack = [...(out.get(file) ?? [])];
-  while (stack.length > 0) {
-    const next = stack.pop()!;
-    if (seen.has(next)) continue;
-    seen.add(next);
-    stack.push(...(out.get(next) ?? []));
+function reachedBy(reaching: ReadonlyMap<string, Uint32Array>, testFile: string, bit: number | undefined): Set<string> {
+  const out = new Set<string>();
+  if (bit === undefined) return out;
+  for (const [id, bits] of reaching) {
+    if (id !== testFile && (bits[bit >>> 5]! & (1 << (bit & 31))) !== 0) out.add(id);
   }
-  return seen;
+  return out;
 }
 
 function emptyReport(head: string): HeadMutantsReport {
@@ -128,6 +128,6 @@ export async function runExtremeMutation(o: ExtremeMutationOptions): Promise<Ext
     mutations.length === 0
       ? emptyReport(head)
       : await execHeadMutants({ repo: o.repo, head, mutations, budgetMs: o.budgetMs, sandboxUser: o.sandboxUser, exec: o.exec });
-  const reachedFiles = importReach(o.store.listEdges(o.snapshotId));
+  const reachedFiles = testReach(testFiles, o.store.listEdges(o.snapshotId));
   return { ...extremeFindings({ plan, report, reachedFiles, testFiles }), report };
 }
