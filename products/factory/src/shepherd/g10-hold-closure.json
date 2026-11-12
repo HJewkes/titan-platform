@@ -57,6 +57,7 @@
   "digest/gate-alarm.ts",
   "digest/keys.ts",
   "digest/model.ts",
+  "digest/scorecard.ts",
   "dispatch/glob-pattern.ts",
   "dispatch/old-paths.ts",
   "dispatch/ops.ts",
