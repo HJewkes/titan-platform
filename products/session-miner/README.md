@@ -496,6 +496,38 @@ often a suggested closeout met no re-engagement. The strict rate counts every re
 rate counts only resumes logged under the coordinator's own name, since agent-chat logs a CLI resume
 (Shepherd's fix rounds among them) under `human`.
 
+## Ticket scorecard run (TP-5446)
+
+`titan-miner ticket-scorecard run [--rebuild] [--dry-run] [--store <file>] [--labels <file>]
+[--factory-db <file>]` keeps one row per dispatched task and the weekly cells over them, using
+session-analytics' scorecard core. It reads agent-chat's events table, factory's database, the
+graph (`--graph` or `TITAN_MINER_GRAPH`), the task files of the throughput initiatives (with
+`tasks/archive/`), and the inferred-labels JSONL. All of those open read-only. It writes only its
+own store, `~/.local/share/titan-scorecard/scorecard.sqlite3` (`--store` or
+`TITAN_SCORECARD_STORE`), and `weeks/<YYYY-Www>.json` beside it. It makes no model or network call.
+
+- **Incremental.** Each source keeps a watermark. The dirty set holds the tasks with a new spawn
+  or resume, an open or changed Shepherd run, a new or resolved gate, a newer task file, a new
+  follow-up tag naming them, or a PR or request that changed in the graph. A dirty row whose
+  inputs hash matches the stored one is not rewritten, so a run over unchanged sources writes
+  nothing but its line in the `run` table.
+- **Fix rounds.** The reader passes each step's family (`sh-await-new-head:2` becomes
+  `sh-await-new-head`). It drops a lineage successor that joined while an await-new-head step
+  was waiting, because that step already counts the round.
+- **Review rounds and phase medians** come from `titan-factory shepherd stats --per-run --json`.
+  Factory owns the step-to-stage map, so the job asks it over the CLI rather than copying it.
+- **Pool snapshot.** The first run of each ISO week (UTC) records the open, dispatchable tasks
+  with their class and priority. Later runs that week write nothing.
+- **Weekly freeze.** Each closed week is frozen once to `weeks/<week>.json`. If a closed week
+  later computes differently, the frozen file is kept, the new figures go to
+  `<week>.drift.json`, and the run reports the week under `drift`.
+- **Not measured.** A missing events, factory, graph or task store, or a factory CLI that does
+  not answer, means nothing is recomputed. Rows built over a missing store would read its facts
+  as zero. In that case the run exits 69 and names the store. A missing labels file only leaves
+  the label columns null. Exit 75 means another run holds the lock.
+- `--rebuild` empties the task, week and phase tables and recomputes from the raw stores. The
+  pool snapshots stay. `--dry-run` rebuilds into an in-memory store and prints the counts.
+
 ## Daily self-improve classification (TP-685)
 
 `titan-miner self-improve-daily --chunks <dir> --prompts <dir> --out <dir> [--max-budget-usd 3]`

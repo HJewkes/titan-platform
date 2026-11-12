@@ -115,7 +115,8 @@ function roundItems(round: QueueRound, items: QueueItems): void {
   const manifest = ownerQueueManifest(round, items);
   if (manifest === undefined) return;
   if (round.feedback === null) {
-    openItems(round, manifest, items);
+    // An open feedback sheet (TP-5458) waits on no decision, so it asks the inbox nothing; its sent notes still record.
+    if (round.manifest.kind !== "feedback" || round.withdrawn !== null) openItems(round, manifest, items);
     return;
   }
   const feedback = ownerQueueFeedback(round, round.feedback, items);
