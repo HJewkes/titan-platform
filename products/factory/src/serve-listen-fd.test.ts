@@ -105,17 +105,22 @@ async function serveOnPassedSocket(requestedPort: number): Promise<{ socketPort:
   return { socketPort, child, started };
 }
 
-async function launcherPort(child: ChildProcess): Promise<number> {
-  let seen = "";
-  for await (const chunk of child.stderr!) {
-    seen += String(chunk);
-    const match = /BOUND_PORT=(\d+)\n/.exec(seen);
-    if (match) {
-      child.stderr!.resume();
-      return Number(match[1]);
-    }
-  }
-  throw new Error("the launcher exited before it reported its bound port");
+// A listener, not for-await: breaking out of an async iterator destroys the stream, which would hide why serve failed to start. Everything after the port line goes to the test output.
+function launcherPort(child: ChildProcess): Promise<number> {
+  return new Promise((resolve, reject) => {
+    let seen = "";
+    let reported = false;
+    child.stderr!.on("data", (chunk) => {
+      if (reported) return void process.stderr.write(chunk);
+      seen += String(chunk);
+      const match = /BOUND_PORT=(\d+)\n/.exec(seen);
+      if (!match) return;
+      reported = true;
+      process.stderr.write(seen.slice(match.index + match[0].length));
+      resolve(Number(match[1]));
+    });
+    child.once("close", () => reject(new Error("the launcher exited before it reported its bound port")));
+  });
 }
 
 async function startLine(child: ChildProcess): Promise<Record<string, unknown>> {
