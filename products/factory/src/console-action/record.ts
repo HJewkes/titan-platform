@@ -4,7 +4,7 @@ import { open } from "node:fs/promises";
 import { join } from "node:path";
 import { ownerOpSchema, type OwnerOp } from "@titan-design/owner-queue";
 import { z } from "zod";
-import { CiPolicyScopeSchema, PathScopeSchema } from "../shepherd/plan-approval.js";
+import { CiPolicyScopeSchema, PathScopeSchema, TaskKeySchema, TaskScopeSchema } from "../shepherd/plan-approval.js";
 import { refused, type Outcome } from "./outcome.js";
 
 export const MAX_ACTION_RECORD_BYTES = 64 * 1024;
@@ -40,6 +40,7 @@ const planApprovalFields = { kind: z.literal("plan-approval"), task: z.string().
 export const PlanApprovalActionSchema = z.discriminatedUnion("gate", [
   z.strictObject({ ...planApprovalFields, gate: z.literal("ci-policy"), scope: CiPolicyScopeSchema }),
   z.strictObject({ ...planApprovalFields, gate: z.enum(["skill", "visual"]), scope: PathScopeSchema }),
+  z.strictObject({ ...planApprovalFields, task: TaskKeySchema, gate: z.literal("task"), scope: TaskScopeSchema }),
 ]);
 /** The console writes the rest of the record (read-back, digest, session, peer class); the factory reads only the action. */
 const ActionRecord = z.looseObject({ action: z.discriminatedUnion("kind", [GateActionSchema, ReleaseActionSchema, PlanApprovalActionSchema]) });
