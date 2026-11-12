@@ -262,6 +262,7 @@
   "shepherd/fix-proof-base.ts",
   "shepherd/fix-proof-cap.ts",
   "shepherd/fix-proof-harness.ts",
+  "shepherd/fix-proof-jobs.ts",
   "shepherd/fixer-limit.ts",
   "shepherd/fixer-retire.ts",
   "shepherd/flake-check.ts",
