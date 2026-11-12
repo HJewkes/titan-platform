@@ -1,7 +1,7 @@
 import { compileGlobs } from "@titan-design/fix-proof";
 import { DEFAULT_CLASS_RULES } from "@titan-design/review-panel";
 import type { CiPolicy } from "@titan-design/session-read";
-import { HOLD_COMMAND_FILES, MERGE_POLICY_FILES, OWNER_ACTION_FILES, shepherdPathTouches } from "./g10-class-rules.js";
+import { HOLD_COMMAND_FILES, MERGE_POLICY_FILES, OWNER_ACTION_FILES, policyTablesOf, shepherdPathTouches, type PolicyTable } from "./g10-class-rules.js";
 import { OWNER_PACKET_FILES, adversaryTouches } from "./signoffs.js";
 import { skillPathsIn } from "./skill-paths.js";
 import type { Registration } from "./store.js";
@@ -9,7 +9,7 @@ import { shownPaths, visualMatches } from "./visual-gate.js";
 
 /**
  * TP-3734 tiers: low merges on green CI and a MERGE, medium needs one more agent sign-off, high needs the owner.
- * r1 only records the tier on the merge evidence; nothing decides on it yet.
+ * The tier is recorded on the merge evidence; the owner-tier rows below (TP-5406) are what the merge guard decides on.
  */
 export type RiskTierName = "low" | "medium" | "high";
 
@@ -83,6 +83,42 @@ function ciPolicyReason(ciPolicy: CiPolicy | undefined): string | undefined {
 
 const pathReason = (what: string, paths: readonly string[]): string | undefined => (paths.length > 0 ? `${what} ${shownPaths(paths)}` : undefined);
 
+/** The gate model's owner stop list (TP-5406): a path in one of these named policy tables waits for the owner at merge. */
+const OWNER_TIER_TABLES: readonly PolicyTable[] = ["merge-policy", "hold-command", "owner-action", "gate-resolve-actor", "gate-resolve-check"];
+
+const GATE_RESOLVE_TABLES: readonly PolicyTable[] = ["gate-resolve-actor", "gate-resolve-check"];
+
+/** Each changed path the policy class holds, its case-folded spelling included, with the named tables that hold it. */
+const policyTablesAt = (paths: readonly string[]): Map<string, PolicyTable[]> => policyTablesOf([...new Set([...paths, ...paths.map(folded)])].map((path) => ({ path })));
+
+const heldIn = (tablesOf: ReadonlyMap<string, readonly PolicyTable[]>, wanted: readonly PolicyTable[]): string[] =>
+  [...tablesOf].filter(([, tables]) => tables.some((table) => wanted.includes(table))).map(([path]) => path);
+
+/** A held path no named table covers: an unknown class keeps the owner gate. */
+const unnamedIn = (tablesOf: ReadonlyMap<string, readonly PolicyTable[]>): string[] => [...tablesOf].filter(([, tables]) => tables.length === 0).map(([path]) => path);
+
+/** The policy-table owner-tier rows of a `policyTablesOf` read, each led by its table name. */
+export function ownerTierPolicyRows(tablesOf: ReadonlyMap<string, readonly PolicyTable[]>): string[] {
+  const named = [...tablesOf].flatMap(([path, tables]) => tables.filter((table) => OWNER_TIER_TABLES.includes(table)).map((table) => `${table} ${path}`));
+  return [...named, ...unnamedIn(tablesOf).map((path) => `unnamed policy path ${path}`)];
+}
+
+/** What the owner-tier rows read at a head: its changed paths, and whether a CI change is a budget one a coordinator may accept. */
+interface OwnerTierRead {
+  paths: readonly string[];
+  /** Owner decision 552 (2), Q-S2a: a measured budget-class CI change keeps its coordinator path, so the CI row skips it. */
+  ciBudget: boolean;
+}
+
+/**
+ * The high-tier rows that stop for the owner at merge, each led by its table name. Visual, skill, unread files, the owner
+ * packet, CI policy and owner holds are left out: visual by the task, the rest because each gates on its own row already.
+ */
+export function ownerTierRows({ paths, ciBudget }: OwnerTierRead): string[] {
+  const named = (label: string, globs: readonly string[]): string[] => matching(paths, globs).map((path) => `${label} ${path}`);
+  return [...ownerTierPolicyRows(policyTablesAt(paths)), ...(ciBudget ? [] : named("CI workflow file", CI_PERSON_FILES)), ...named("publish file", PUBLISH_FILES), ...named("settings file", SETTINGS_FILES)];
+}
+
 /** A failed read never lowers a tier: unread or empty file lists read as high, as the merge guard reads them visual. */
 function highReasons(facts: RiskFacts): (string | undefined)[] {
   const unread = facts.unread ?? (facts.paths.length === 0 ? "no changed files were read" : undefined);
@@ -91,6 +127,8 @@ function highReasons(facts: RiskFacts): (string | undefined)[] {
     pathReason("skill path", facts.skillPaths),
     pathReason("owner packet", facts.ownerPacket),
     pathReason("owner gate file", matching(facts.paths.filter((path) => !isTest(path)), OWNER_LEVER_FILES)),
+    pathReason("gate-resolve file", heldIn(policyTablesAt(facts.paths), GATE_RESOLVE_TABLES)),
+    pathReason("unnamed policy path", unnamedIn(policyTablesAt(facts.paths))),
     pathReason("CI workflow file", matching(facts.paths, CI_PERSON_FILES)),
     pathReason("publish file", matching(facts.paths, PUBLISH_FILES)),
     pathReason("settings file", matching(facts.paths, SETTINGS_FILES)),

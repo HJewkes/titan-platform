@@ -5,6 +5,7 @@ import type { GateDecision } from "../gate-policy.js";
 import type { AttestJudgment } from "./attest-evidence.js";
 import type { CiPolicyFileChange } from "./ci-policy-changes.js";
 import type { LowTierPolicy } from "./g10-low-tier.js";
+import type { OwnerTierField } from "./owner-tier.js";
 import type { RiskTier } from "./risk-tier.js";
 import type { VisualDelta } from "./visual-delta-read.js";
 import type { VisualTierRecord } from "./visual-tier-guard.js";
@@ -17,8 +18,11 @@ interface EvidenceCheckRun {
   conclusion: string | null;
 }
 
-/** What `allowEvidence` stores in `merge-policy`, whole. The PR comment carries the same record with `verdictLocator` reduced to a `LocatorReference`. */
-export interface EvidenceRecord {
+/**
+ * What `allowEvidence` stores in `merge-policy`, whole. The PR comment carries the same record with `verdictLocator` reduced to a `LocatorReference`.
+ * `ownerTier` is the owner stop-list mode read at this head and the rows it gates, or under shadow would gate (TP-5406).
+ */
+export interface EvidenceRecord extends OwnerTierField {
   runId: string;
   repo: RepoSlug;
   pr: number;
@@ -40,7 +44,7 @@ export interface EvidenceRecord {
   headBlobs?: Record<string, string | null>;
   proofUnverified?: string;
   proofBase?: string;
-  /** The head's risk tier and why (TP-3734 r1); shadow only, so nothing decides on it yet. */
+  /** The head's risk tier and why (TP-3734 r1); its owner-tier rows decide through `ownerTier`. */
   riskTier?: RiskTier;
   /** On a policy touch, whether it is low tier at this head and on which tables, or the fact that kept it (TP-5403). */
   lowTier?: LowTierPolicy;
@@ -71,7 +75,7 @@ interface RecordObserved {
   headBlobs?: Record<string, string | null>;
 }
 
-type RecordExtras = Pick<EvidenceRecord, "ciPolicy" | "visualDelta" | "visualTier" | "oldPath" | "lowTier"> & { riskTier: RiskTier; attest?: AttestJudgment };
+type RecordExtras = Pick<EvidenceRecord, "ciPolicy" | "visualDelta" | "visualTier" | "oldPath" | "lowTier" | "ownerTier"> & { riskTier: RiskTier; attest?: AttestJudgment };
 
 /** A head that claims nothing records nothing; a meeter other than the accepted reviewer is the adversary member. */
 function attestFields(attest: AttestJudgment | undefined, resolver: AgentIdentity): Pick<EvidenceRecord, "attested" | "attestUnmet" | "attestUnread" | "attestWaiting"> {
@@ -99,7 +103,7 @@ export function evidenceRecord(
   input: RecordInput,
   { pr, merge, runs, ciPolicyChanges, headBlobs }: RecordObserved,
   decision: GateDecision,
-  { ciPolicy, riskTier, lowTier, visualDelta, visualTier, attest, oldPath }: RecordExtras,
+  { ciPolicy, riskTier, lowTier, ownerTier, visualDelta, visualTier, attest, oldPath }: RecordExtras,
 ): EvidenceRecord {
   return {
     runId: input.runId,
@@ -119,6 +123,7 @@ export function evidenceRecord(
     ...(headBlobs && { headBlobs }),
     ...proofFields(input),
     ...tierFields(riskTier, lowTier),
+    ...(ownerTier && { ownerTier }),
     ...(visualDelta && { visualDelta }),
     ...(visualTier && { visualTier }),
     ...attestFields(attest, input.resolver),

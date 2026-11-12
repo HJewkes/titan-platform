@@ -111,6 +111,7 @@ const READERS = {
   "shepherd.gateReset.heldRepair": (s: Shepherd) => s.gateReset?.heldRepair,
   "shepherd.gateReset.twoMergeRelease": (s: Shepherd) => s.gateReset?.twoMergeRelease,
   "shepherd.gateReset.lowTierPolicy": (s: Shepherd) => s.gateReset?.lowTierPolicy,
+  "shepherd.gateReset.ownerTier": (s: Shepherd) => s.gateReset?.ownerTier,
   "shepherd.review.adversaryProfile": (s: Shepherd) => s.review?.adversaryProfile,
   "shepherd.review.fallbackConfigDirs": (s: Shepherd) => s.review?.fallbackConfigDirs,
   "shepherd.review.maxConcurrent": (s: Shepherd) => s.review?.maxConcurrent,

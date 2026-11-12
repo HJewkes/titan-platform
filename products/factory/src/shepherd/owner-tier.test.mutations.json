@@ -1,0 +1,54 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the gate-resolve-actor table drops off the stop list",
+      "file": "products/factory/src/shepherd/risk-tier.ts",
+      "find": "\"owner-action\", \"gate-resolve-actor\", \"gate-resolve-check\"]",
+      "replace": "\"owner-action\", \"gate-resolve-check\"]",
+      "kills": [
+        "ownerTierRows a gate-resolve-actor file is an owner-tier row",
+        "the owner-tier merge guard a stored on-stamp gates at decide time; an unstamped record decides as off"
+      ]
+    },
+    {
+      "name": "a policy path no table names is no row",
+      "file": "products/factory/src/shepherd/risk-tier.ts",
+      "find": "return [...named, ...unnamedIn(tablesOf).map((path) => `unnamed policy path ${path}`)];",
+      "replace": "return named;",
+      "kills": [
+        "ownerTierRows a policy path no table names is an owner-tier row"
+      ]
+    },
+    {
+      "name": "shadow gates as on does",
+      "file": "products/factory/src/shepherd/owner-tier.ts",
+      "find": "if (stampedMode(evidence.ownerTier) !== \"on\") return undefined;",
+      "replace": "if (stampedMode(evidence.ownerTier) === \"off\") return undefined;",
+      "kills": [
+        "the owner-tier merge guard shadow allows and names the rows it would gate on",
+        "the owner-tier merge guard an absent flag reads as shadow"
+      ]
+    },
+    {
+      "name": "decide time ignores the stamp",
+      "file": "products/factory/src/shepherd/owner-tier.ts",
+      "find": "if (stamp === undefined) return \"off\";",
+      "replace": "return \"off\";",
+      "kills": [
+        "the owner-tier merge guard a stored on-stamp gates at decide time; an unstamped record decides as off",
+        "the owner-tier merge guard a stamp with an unknown mode reads as on"
+      ]
+    },
+    {
+      "name": "a budget-class CI change keeps the CI workflow row",
+      "file": "products/factory/src/shepherd/risk-tier.ts",
+      "find": "...(ciBudget ? [] : named(\"CI workflow file\", CI_PERSON_FILES))",
+      "replace": "...(false ? [] : named(\"CI workflow file\", CI_PERSON_FILES))",
+      "kills": [
+        "ownerTierRows a budget-class CI change skips the CI workflow row and keeps the others",
+        "the owner-tier merge guard under on, a measured budget-class CI change stays on its coordinator row, not owner-tier"
+      ]
+    }
+  ]
+}

@@ -88,11 +88,18 @@ describe("factory rows", () => {
       "shepherd.gateReset.heldRepair",
       "shepherd.gateReset.twoMergeRelease",
       "shepherd.gateReset.lowTierPolicy",
+      "shepherd.gateReset.ownerTier",
       "shepherd.review.adversaryProfile",
       "shepherd.review.fallbackConfigDirs",
       "shepherd.review.maxConcurrent",
       "shepherd.taskClose",
     ]);
+  });
+
+  it("takes ownerTier as off, shadow or on only", () => {
+    for (const mode of ["off", "shadow", "on"]) expect(checkEditableValue("factory", "shepherd.gateReset.ownerTier", mode).ok).toBe(true);
+    expect(checkEditableValue("factory", "shepherd.gateReset.ownerTier", "owner")).toEqual(expect.objectContaining({ ok: false, reason: "invalid" }));
+    expect(checkEditableValue("factory", "shepherd.gateReset.ownerTier", true).ok).toBe(false);
   });
 
   it("takes taskClose as keep or last-slice-only only", () => {

@@ -24,6 +24,7 @@ import { remergeFact, type CarryRule, type RemergeResult } from "./remerge-carry
 import { reviewBypassable } from "./review-bypass.js";
 import { ownerHoldOf, riskFactsOf, riskTier } from "./risk-tier.js";
 import { lowTierPolicyTouch } from "./g10-low-tier.js";
+import { ownerTierGate, ownerTierNote, ownerTierStamp, type OwnerTierField, type OwnerTierWiring } from "./owner-tier.js";
 import type { CarryResult } from "./tree-carry.js";
 import { evidenceRecord, type EvidenceRecord } from "./evidence-record.js";
 import { readVisualDelta, type VisualDelta, type VisualThreshold } from "./visual-delta-read.js";
@@ -99,7 +100,7 @@ export interface MergeEvidenceInput extends GrantWithheldField {
 }
 
 /** The facts observed at one head, and the record of what they decided there. */
-export interface MergeEvidence extends GrantWithheldField, OldPathField {
+export interface MergeEvidence extends GrantWithheldField, OldPathField, OwnerTierField {
   head: string;
   merge: MergeFacts;
   record: EvidenceRecord;
@@ -122,7 +123,7 @@ export interface MergeEvidence extends GrantWithheldField, OldPathField {
 }
 
 /** Just what `decideAutoMerge` reads, so the evidence step can decide before its record exists. */
-export interface DecidableEvidence extends GrantWithheldField, OldPathField {
+export interface DecidableEvidence extends GrantWithheldField, OldPathField, OwnerTierField {
   head: string;
   merge: MergeFacts;
   /** `headBlobs` is read only to check a weakened CI policy against an owner's plan approval. */
@@ -140,7 +141,7 @@ export interface DecidableEvidence extends GrantWithheldField, OldPathField {
 }
 
 /** Every row the merge guard gates on; the owner section words each one (why-asked.ts), as do the evidence comment and the decision class. */
-export const MERGE_GUARD_ROWS = ["no-facts", "head-mismatch", "files-unread", "skill-path", "visual-path", "required-checks-unknown", "merge-state-unsettled", "github-path", "ci-policy-weakened", "ci-policy-budget", "ci-policy-malformed", "attest-unmet", "attest-deploy-skew", "old-path-untagged"] as const;
+export const MERGE_GUARD_ROWS = ["no-facts", "head-mismatch", "files-unread", "skill-path", "visual-path", "required-checks-unknown", "merge-state-unsettled", "github-path", "ci-policy-weakened", "ci-policy-budget", "ci-policy-malformed", "attest-unmet", "attest-deploy-skew", "old-path-untagged", "owner-tier"] as const;
 export type MergeGuardRow = (typeof MERGE_GUARD_ROWS)[number];
 
 export function guardRule(rowId: MergeGuardRow): PolicyRule {
@@ -187,7 +188,7 @@ function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined,
   if (evidence.head !== headSha || evidence.merge.head !== headSha) {
     return { outcome: "gate", rule: guardRule("head-mismatch"), reason: `merge facts were collected at ${evidence.head}, not ${headSha}` };
   }
-  const pathGate = changedFilesGate(evidence, visual, honour);
+  const pathGate = changedFilesGate(evidence, visual, honour) ?? ownerTierGate(evidence, guardRule("owner-tier"));
   if (pathGate) return pathGate;
   const policyGate = ciPolicyGate(evidence, honour, headSha);
   if (policyGate && policyGate.rule.rowId !== "ci-policy-budget") return policyGate;
@@ -205,7 +206,7 @@ function decideAfterPolicy(headSha: string, evidence: DecidableEvidence, visual:
   if (decision.verdict === "allow" && AUTO_MERGE_RULES.includes(decision.ruleId)) {
     const { changedPaths } = evidence.merge;
     const clearance = visualClearance(changedPaths, evidence.head, visual, thresholdClearance(evidence.visualDelta)) + tierClearance(evidence.visualTier, changedPaths, visual.visualPaths);
-    return { outcome: "allow", rule: authorityRule(decision.ruleId), reason: `${decision.ruleId} holds at ${headSha}${clearance}${honour.note()}` };
+    return { outcome: "allow", rule: authorityRule(decision.ruleId), reason: `${decision.ruleId} holds at ${headSha}${clearance}${honour.note()}${ownerTierNote(evidence)}` };
   }
   const reason = decision.verdict === "allow" ? `${decision.ruleId} allows, but only ${AUTO_MERGE_RULES.join(" and ")} merge without the owner` : decision.reason;
   return { outcome: "gate", rule: authorityRule(decision.ruleId), reason: withGrantWithheld(reason, evidence) };
@@ -347,7 +348,7 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
 }
 
 /** What the evidence step reads beyond its input: the App `shepherd/review` counts from, the repo's `shepherd.visualThreshold`, the attestation judge and the old-path judge. */
-interface EvidenceReads extends OldPathWiring {
+interface EvidenceReads extends OldPathWiring, OwnerTierWiring {
   reviewAppId?: number;
   threshold?: VisualThreshold;
   /** Raw `shepherd.visualTier` for the repo; absent records no tier. */
@@ -365,8 +366,7 @@ async function visualDeltaOf(port: GitHubPort, input: MergeEvidenceInput, { pr, 
 /** The body of the sh-merge-evidence step: observe, decide, and post one comment per head. */
 export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, kind?: KindRead, clock?: SettleClock, reads: EvidenceReads = {}): Promise<MergeEvidence & { commentId: number }> {
   const observed = await collectMergeFacts(port, input, isFrozen, kind, clock, reads.reviewAppId);
-  const { pr, merge, requiredChecksUnknown, unreadFacts, changedFilesUnread } = observed;
-  const mergeableState = pr.mergeableState;
+  const { pr, pr: { mergeableState }, merge, requiredChecksUnknown, unreadFacts, changedFilesUnread } = observed;
   const unknown = { ...(requiredChecksUnknown !== undefined && { requiredChecksUnknown }), ...(unreadFacts && { unreadFacts }), ...(changedFilesUnread !== undefined && { changedFilesUnread }) };
   const ciPolicy = input.ciPolicy && { ciPolicy: input.ciPolicy, ...(observed.ciPolicyClass && { ciPolicyClass: observed.ciPolicyClass }) };
   const tier = await readVisualTier(port, merge, { repo: input.repo, baseRef: pr.baseRef, visualPaths: input.visualPaths, config: reads.tier });
@@ -375,12 +375,12 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
   const attest = { ...(judged && { attest: judged }), ...(input.attest && { attestVerdicts: input.attest }) };
   const oldPath = await oldPathOf(reads.oldPath, input.repo, observed.prFiles, kind ?? {});
   const decidable: DecidableEvidence = { head: input.head, merge, record: input, mergeableState, ...unknown, ...ciPolicy, ...visual, ...attest, ...oldPath, ...grantWithheldField(input) };
-  const decision = decideAutoMerge(input.head, decidable, input.visualPaths, input.visualBaselines);
-  const visualPaths = input.visualPaths && { visualPaths: input.visualPaths };
-  const riskRead = { paths: merge.changedPaths, changedLines: observed.changedLines, unread: changedFilesUnread, ...ciPolicy, ...visualPaths, ownerHold: kind?.ownerHold ?? kind?.unread };
+  const ownerTier = ownerTierStamp(reads.ownerTier, decidable);
+  const decision = decideAutoMerge(input.head, { ...decidable, ...ownerTier }, input.visualPaths, input.visualBaselines);
+  const riskRead = { paths: merge.changedPaths, changedLines: observed.changedLines, unread: changedFilesUnread, ...ciPolicy, ...(input.visualPaths && { visualPaths: input.visualPaths }), ownerHold: kind?.ownerHold ?? kind?.unread };
   const risk = riskFactsOf(riskRead);
   const lowTier = risk.touches.includes("policy") ? { lowTier: lowTierPolicyTouch(riskRead) } : undefined;
-  const record = evidenceRecord(input, observed, decision, { ...ciPolicy, riskTier: riskTier(risk), ...lowTier, ...visual, ...(judged && { attest: judged }), ...oldPath });
+  const record = evidenceRecord(input, observed, decision, { ...ciPolicy, riskTier: riskTier(risk), ...lowTier, ...ownerTier, ...visual, ...(judged && { attest: judged }), ...oldPath });
   const comment = await port.upsertComment(input.repo, input.pr, evidenceMarker(input.head), evidenceComment(record));
-  return { head: input.head, merge, record, mergeableState, ...unknown, ...ciPolicy, ...visual, ...attest, ...oldPath, ...grantWithheldField(input), commentId: comment.id };
+  return { head: input.head, merge, record, mergeableState, ...unknown, ...ciPolicy, ...visual, ...attest, ...oldPath, ...ownerTier, ...grantWithheldField(input), commentId: comment.id };
 }

@@ -34,6 +34,7 @@ const MERGE_GUARD_CLASS: Record<string, DClass> = {
   "attest-unmet": "D6",
   "attest-deploy-skew": "D5",
   "old-path-untagged": "D6",
+  "owner-tier": "D4",
   "merge-state-unsettled": "D5",
   "no-facts": "D5",
   "head-mismatch": "D5",

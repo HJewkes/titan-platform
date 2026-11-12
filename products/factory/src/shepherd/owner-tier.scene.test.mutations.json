@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "decideOnFacts skips the owner-tier check",
+      "file": "products/factory/src/shepherd/merge-facts.ts",
+      "find": "changedFilesGate(evidence, visual, honour) ?? ownerTierGate(evidence, guardRule(\"owner-tier\"));",
+      "replace": "changedFilesGate(evidence, visual, honour);",
+      "kills": [
+        "under ownerTier on a reviewed green PR touching a merge-policy file raises approve-merge on owner-tier",
+        "under ownerTier on a reviewed green PR touching a settings file raises approve-merge on owner-tier"
+      ]
+    },
+    {
+      "name": "the merge-evidence route passes no mode",
+      "file": "products/factory/src/shepherd/review.ts",
+      "find": "ownerTier: deps.ownerTier, ",
+      "replace": "",
+      "kills": [
+        "under ownerTier on a reviewed green PR touching a hold-command file raises approve-merge on owner-tier",
+        "under ownerTier on the owner-tier gate is not resolvable by the coordinator delegate"
+      ]
+    },
+    {
+      "name": "the shepherd deps drop the live getter",
+      "file": "products/factory/src/workflows-routes.ts",
+      "find": "get ownerTier() { return current(deps.ownerTier); }, ",
+      "replace": "",
+      "kills": [
+        "under ownerTier on a reviewed green PR touching a publish file raises approve-merge on owner-tier"
+      ]
+    },
+    {
+      "name": "an unset flag reads as on",
+      "file": "products/factory/src/shepherd/owner-tier.ts",
+      "find": "const read = mode ?? \"shadow\";",
+      "replace": "const read = mode ?? \"on\";",
+      "kills": [
+        "under ownerTier shadow with the flag left unset, the same PR merges on MRG-AU-RV and its evidence records the rows"
+      ]
+    }
+  ]
+}
