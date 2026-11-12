@@ -20,7 +20,7 @@ function packageRelative(target: string): string | null {
 }
 
 /** A manifest target and the files of it that Node refuses to serve because a more specific `exports` key is `null`. */
-export interface ManifestTarget {
+interface ManifestTarget {
   target: string;
   excluding: string[];
 }
