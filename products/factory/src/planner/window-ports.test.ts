@@ -43,7 +43,38 @@ it("rejects when the gh query for one conclusion exits non-zero", async () => {
   await expect(ghWindow(gh).redMainRuns("org/repo", SINCE)).rejects.toThrow("exit 1: boom");
 });
 
-const feedbackAt = (submittedAt: string): string => JSON.stringify({ unit: "u", round: 1, manifestSha256: "abc", submittedAt, answers: [] });
+describe("since precision", () => {
+  const SECOND_PRECISION = "2026-01-02T03:00:00Z";
+
+  it("sends a since without milliseconds in the merged search qualifier", async () => {
+    const calls: (readonly string[])[] = [];
+    const gh: PlannerRun = async (_file, args) => {
+      calls.push(args);
+      return { code: 0, stdout: "[]", stderr: "" };
+    };
+
+    await ghWindow(gh).mergedPrs("org/repo", SINCE);
+
+    expect(calls).toEqual([
+      ["pr", "list", "--repo", "org/repo", "--state", "merged", "--search", `merged:>=${SECOND_PRECISION}`, "--json", "number,mergedAt", "--limit", "100"],
+    ]);
+  });
+
+  it("sends a since without milliseconds in every red-run created qualifier", async () => {
+    const calls: (readonly string[])[] = [];
+    const gh: PlannerRun = async (_file, args) => {
+      calls.push(args);
+      return { code: 0, stdout: "[]", stderr: "" };
+    };
+
+    await ghWindow(gh).redMainRuns("org/repo", SINCE);
+
+    const created = calls.map((args) => args[args.indexOf("--created") + 1]);
+    expect(created).toEqual([`>=${SECOND_PRECISION}`, `>=${SECOND_PRECISION}`, `>=${SECOND_PRECISION}`]);
+  });
+});
+
+const feedbackAt =(submittedAt: string): string => JSON.stringify({ unit: "u", round: 1, manifestSha256: "abc", submittedAt, answers: [] });
 
 describe("roundAnswers", () => {
   const dirs: string[] = [];
