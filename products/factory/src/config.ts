@@ -259,8 +259,7 @@ export const FactoryConfigSchema = z.object({
       gateReset: z
         .strictObject({
           twoMergeRelease: z.enum(["off", "shadow", "on"]).optional(),
-          lowTierPolicy: z.enum(["off", "shadow", "on"]).optional(),
-          ownerTier: z.enum(["off", "shadow", "on"]).optional(),
+          lowTierPolicy: z.enum(["off", "shadow", "on"]).optional(), ownerTier: z.enum(["off", "shadow", "on"]).optional(),
           heldRepair: z.enum(["off", "on"]).optional(),
           noReproProceed: z.enum(["off", "on"]).optional(),
           nonSourceNoRepro: z.enum(["keep-owner", "record-fact"]).optional(),
