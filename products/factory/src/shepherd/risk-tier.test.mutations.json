@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the publish row is dropped",
+      "file": "products/factory/src/shepherd/risk-tier.ts",
+      "find": "    pathReason(\"publish file\", matching(facts.paths, PUBLISH_FILES)),\n",
+      "replace": "",
+      "kills": [
+        "riskTier, one row per tier table line a publish file is high"
+      ]
+    },
+    {
+      "name": "the settings row is dropped",
+      "file": "products/factory/src/shepherd/risk-tier.ts",
+      "find": "    pathReason(\"settings file\", matching(facts.paths, SETTINGS_FILES)),\n",
+      "replace": "",
+      "kills": [
+        "riskTier, one row per tier table line a settings file is high"
+      ]
+    }
+  ]
+}
