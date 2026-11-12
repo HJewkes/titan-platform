@@ -131,7 +131,7 @@ export default defineCommand<Args, Result>({
   },
   async run(args, ctx) {
     const [slugs, humanOnly] = await Promise.all([
-      resolveListSlugs('source.list', args),
+      resolveListSlugs('source.list', args, ctx),
       humanOnlyPredicate(getActiveRoot(), ctx.warnings),
     ]);
     const nested = args.nested ?? false;

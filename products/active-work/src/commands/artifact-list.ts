@@ -6,8 +6,9 @@ import { getActiveRoot, getInitiativeDir, getLockPath } from '../utils/paths.js'
 import { withFileLock } from '../utils/fs-atomic.js';
 import { readYaml } from '../utils/yaml-io.js';
 import { listInitiativeSlugsOrEmpty } from '../sessions/initiatives.js';
+import { slugsForCaller } from '../sessions/visibility.js';
 import { UsageError } from '../errors.js';
-import { defineCommand } from '../registry/index.js';
+import { defineCommand, type CommandContext } from '../registry/index.js';
 
 const ArgsSchema = z.object({
   slug: z.string().optional(),
@@ -31,9 +32,9 @@ async function readForSlug(slug: string): Promise<Artifacts> {
   return withFileLock(getLockPath(slug), () => readYaml(artifactsPath, ArtifactsSchema));
 }
 
-async function listSlugsWithArtifacts(): Promise<string[]> {
+async function listSlugsWithArtifacts(ctx: CommandContext): Promise<string[]> {
   const root = getActiveRoot();
-  const slugs = await listInitiativeSlugsOrEmpty(root);
+  const slugs = await slugsForCaller(root, await listInitiativeSlugsOrEmpty(root), ctx);
   const present = await Promise.all(
     slugs.map((slug) =>
       fs.access(path.join(root, slug, 'artifacts.yml')).then(
@@ -59,9 +60,9 @@ export default defineCommand<Args, Result>({
       },
     },
   },
-  async run(args) {
+  async run(args, ctx) {
     if (args.all_initiatives) {
-      const slugs = await listSlugsWithArtifacts();
+      const slugs = await listSlugsWithArtifacts(ctx);
       const items: Array<{ slug: string; artifacts: Artifacts }> = [];
       for (const slug of slugs) {
         items.push({ slug, artifacts: await readForSlug(slug) });

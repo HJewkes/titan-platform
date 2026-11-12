@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { defineCommand } from '../registry/index.js';
 import { searchWorkspace } from '../search/index.js';
+import { callerVisibility } from '../sessions/visibility.js';
+import { getActiveRoot } from '../utils/paths.js';
 
 const ArgsSchema = z.object({
   query: z.string().min(1),
@@ -48,10 +50,13 @@ export default defineCommand<Args, Result>({
     },
     usage: 'active-work search <query> [--limit 10] [--initiative <slug>]',
   },
-  async run(args) {
+  async run(args, ctx) {
+    // An agent also loses transcript hits with no initiative: nothing says whose they are (TP-5453 P6b).
+    const visible = ctx.caller === 'agent' ? await callerVisibility(getActiveRoot(), ctx.caller) : undefined;
     const { hits, degraded } = await searchWorkspace(args.query, {
       limit: args.limit,
       initiative: args.initiative,
+      ...(visible ? { visible } : {}),
     });
     return {
       query: args.query,

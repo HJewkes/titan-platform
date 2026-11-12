@@ -7,6 +7,7 @@ import { getActiveRoot, getInitiativeDir } from '../utils/paths.js';
 import { mapConcurrent } from '../utils/map-concurrent.js';
 import { readYaml } from '../utils/yaml-io.js';
 import { UsageError } from '../errors.js';
+import { slugsForCaller } from '../sessions/visibility.js';
 import { closedStatusIds, loadCategoryRegistry } from './_categories.js';
 
 // No schema default: buildFilter picks it, because the default depends on --id. The values a root
@@ -202,10 +203,10 @@ export default defineCommand<Args, Result>({
       },
     },
   },
-  async run(args) {
+  async run(args, ctx) {
     const keep = await buildFilter(args);
     const slugs: string[] = args.all_initiatives
-      ? await listSlugs()
+      ? await slugsForCaller(getActiveRoot(), await listSlugs(), ctx)
       : (() => {
           if (!args.slug) {
             throw new UsageError('task.list requires --all-initiatives or a slug');
@@ -214,7 +215,8 @@ export default defineCommand<Args, Result>({
         })();
 
     const listings = await mapConcurrent(slugs, READ_CONCURRENCY, listTaskFiles);
-    if (args.all_initiatives) forgetMissingInitiatives(listings);
+    // An agent's listing omits hidden initiatives that still exist, so only a full listing may evict.
+    if (args.all_initiatives && ctx.caller !== 'agent') forgetMissingInitiatives(listings);
 
     const tasks: TaskWithSlug[] = [];
     for (const listing of listings) {

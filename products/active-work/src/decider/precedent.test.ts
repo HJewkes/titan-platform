@@ -22,6 +22,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
+import precedentSearch from '../commands/precedent-search.js';
 import { extractPrecedents, type ExtractResult } from './extract.js';
 import { ledgerPath, readLedgerRows } from './ledger.js';
 import { loadAgentVisibility } from '../sessions/visibility.js';
@@ -384,6 +385,21 @@ describe('precedent search', () => {
     });
   });
 
+  it('serves unclaimed precedents to the owner when asked, but never to an agent', async () => {
+    await withTempActiveRoot(async (activeRoot) => {
+      await run(activeRoot);
+      const args = { query: MERGE_QUERY, include_unclaimed: true };
+      const agentCtx = { activeRoot, warnings: [] as string[], format: 'json' as const, caller: 'agent' as const };
+
+      const forAgent = await precedentSearch.run(args, agentCtx);
+      const forOwner = await precedentSearch.run(args, { activeRoot, warnings: [], format: 'json' });
+
+      expect(forAgent.hits).toEqual([]);
+      expect(agentCtx.warnings).toHaveLength(1);
+      expect(forOwner.hits[0]?.question).toBe(MERGE_Q);
+    });
+  });
+
   it('hides rows no initiative claims unless unclaimed rows are asked for', async () => {
     await withTempActiveRoot(async (activeRoot) => {
       const result = await run(activeRoot);
@@ -411,6 +427,20 @@ describe('human-only initiatives', () => {
       registerWorktree(activeRoot);
       writeNote(activeRoot, '2026-09-01-private.md', noteFrontmatter, 'Body.');
       writeCharter(activeRoot, ['sample-initiative']);
+
+      const result = await run(activeRoot);
+
+      expect(await ledgerRows(activeRoot)).toEqual([]);
+      expect(summary(result, 'transcript').excluded['human-only-initiative']).toBe(2);
+      expect(summary(result, 'note').excluded['human-only-initiative']).toBe(1);
+    });
+  });
+
+  it('extracts nothing from an initiative whose brief makes it owner-only', async () => {
+    await withTempActiveRoot(async (activeRoot) => {
+      registerWorktree(activeRoot);
+      writeNote(activeRoot, '2026-09-01-private.md', noteFrontmatter, 'Body.');
+      markOwnerOnly(activeRoot);
 
       const result = await run(activeRoot);
 

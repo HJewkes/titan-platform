@@ -1,6 +1,6 @@
 import type { LedgerRow } from '@titan-design/decider';
 import { z } from 'zod';
-import { defineCommand } from '../registry/index.js';
+import { defineCommand, type CommandContext } from '../registry/index.js';
 import { readLedgerRows } from '../decider/ledger.js';
 import { isUnclaimed, searchPrecedents } from '../decider/search.js';
 import { loadAgentVisibility } from '../sessions/visibility.js';
@@ -66,6 +66,13 @@ function toHit(row: LedgerRow, score: number): z.infer<typeof HitSchema> {
   };
 }
 
+/** An unclaimed row names no initiative, so an agent never gets one (TP-5453 P6b). */
+function unclaimedFor(asked: boolean | undefined, ctx: CommandContext): boolean | undefined {
+  if (asked !== true || ctx.caller !== 'agent') return asked;
+  ctx.warnings.push('include_unclaimed is not served to an agent caller: unclaimed precedents name no initiative');
+  return false;
+}
+
 export default defineCommand<Args, Result>({
   name: 'precedent.search',
   description: 'Rank indexed precedents (answered questions, decisions) for a query.',
@@ -88,15 +95,16 @@ export default defineCommand<Args, Result>({
     usage:
       'active-work precedent search <query> [--limit 8] [--initiative <slug>] [--class <c>] [--include-unclaimed]',
   },
-  async run(args) {
+  async run(args, ctx) {
     const activeRoot = getActiveRoot();
     const isVisible = await loadAgentVisibility(activeRoot);
+    const includeUnclaimed = unclaimedFor(args.include_unclaimed, ctx);
     const { rows, malformed } = await readLedgerRows(activeRoot);
     const hits = await searchPrecedents(rows, args.query, {
       limit: args.limit,
       initiative: args.initiative,
       category: args.class,
-      includeUnclaimed: args.include_unclaimed,
+      includeUnclaimed,
       isVisible,
     });
     return {

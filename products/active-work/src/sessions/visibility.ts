@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { isAgentVisible } from '@titan-design/pm';
+import type { CommandContext } from '../registry/types.js';
 import { parseFrontmatter } from '../utils/gray-matter-io.js';
 import { listInitiativeSlugsOrEmpty } from './initiatives.js';
 
@@ -25,9 +26,56 @@ export async function initiativeIsAgentVisible(activeRoot: string, slug: string)
 /** Rows tied to no initiative (null) stay servable; an initiative with no directory does not. */
 export type AgentVisibility = (initiative: string | null) => boolean;
 
-export async function loadAgentVisibility(activeRoot: string): Promise<AgentVisibility> {
+async function slugsByVisibility(activeRoot: string): Promise<{ visible: string[]; ownerOnly: string[] }> {
   const slugs = await listInitiativeSlugsOrEmpty(activeRoot);
   const verdicts = await Promise.all(slugs.map((slug) => initiativeIsAgentVisible(activeRoot, slug)));
-  const visible = new Set(slugs.filter((_, i) => verdicts[i]));
+  return {
+    visible: slugs.filter((_, i) => verdicts[i]),
+    ownerOnly: slugs.filter((_, i) => !verdicts[i]),
+  };
+}
+
+export async function loadAgentVisibility(activeRoot: string): Promise<AgentVisibility> {
+  const visible = new Set((await slugsByVisibility(activeRoot)).visible);
   return (initiative) => initiative === null || visible.has(initiative);
+}
+
+/** Every initiative isAgentVisible withholds, for writers that must keep its rows out of agent-read stores. */
+export async function ownerOnlySlugs(activeRoot: string): Promise<string[]> {
+  return (await slugsByVisibility(activeRoot)).ownerOnly;
+}
+
+const SERVE_ALL: AgentVisibility = () => true;
+
+/**
+ * The cross-initiative list verbs filter only for a caller the surface marks as an agent
+ * (TP-5453 P6b): the owner's plain terminal and the daemon's loopback RPC keep their listing.
+ * For an agent a row with no initiative fails closed, since nothing says whose it is.
+ */
+export async function callerVisibility(
+  activeRoot: string,
+  caller: CommandContext['caller'],
+): Promise<AgentVisibility> {
+  if (caller !== 'agent') return SERVE_ALL;
+  const visible = await loadAgentVisibility(activeRoot);
+  return (initiative) => initiative !== null && visible(initiative);
+}
+
+/** Reports what was withheld as a count, never by name. */
+export function noteHiddenInitiatives(warnings: string[], hidden: number): void {
+  if (hidden === 0) return;
+  const noun = hidden === 1 ? 'initiative' : 'initiatives';
+  warnings.push(`${hidden} owner-only ${noun} hidden from an agent caller`);
+}
+
+/** The slugs this caller may list; an agent loses the owner-only ones and is told how many. */
+export async function slugsForCaller(
+  activeRoot: string,
+  slugs: readonly string[],
+  ctx: Pick<CommandContext, 'caller' | 'warnings'>,
+): Promise<string[]> {
+  const visible = await callerVisibility(activeRoot, ctx.caller);
+  const kept = slugs.filter((slug) => visible(slug));
+  noteHiddenInitiatives(ctx.warnings, slugs.length - kept.length);
+  return kept;
 }

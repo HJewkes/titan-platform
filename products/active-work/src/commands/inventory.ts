@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { listInitiativeSlugs } from '../sessions/initiatives.js';
+import { loadAgentVisibility, slugsForCaller } from '../sessions/visibility.js';
 import { getActiveRoot } from '../utils/paths.js';
 import { inventoryCache } from '../workspace-index/inventory-cache.js';
 import { summarizeInventory, totalInventory } from '../workspace-index/inventory-summary.js';
@@ -25,6 +26,8 @@ const ClassesSchema = z.object(
 const InitiativeSchema = z.object({
   slug: z.string(),
   human_only: z.boolean(),
+  // The brief's `visibility`, through isAgentVisible: false means owner-only (TP-5453 P6b).
+  agent_visible: z.boolean(),
   total: StatSchema,
   classes: ClassesSchema,
   nested_dirs: z.array(StatSchema.extend({ dir: z.string() })),
@@ -49,12 +52,17 @@ export default defineCommand<Args, Result>({
   cli: { usage: 'active-work inventory [--json]' },
   async run(_args, ctx) {
     const activeRoot = getActiveRoot();
-    const [slugs, files, humanOnly] = await Promise.all([
+    const [allSlugs, files, humanOnly, isVisible] = await Promise.all([
       listInitiativeSlugs(activeRoot),
       inventoryCache.scan(activeRoot),
       humanOnlyPredicate(activeRoot, ctx.warnings),
+      loadAgentVisibility(activeRoot),
     ]);
-    const initiatives = summarizeInventory(slugs, files, humanOnly.isHumanOnly);
+    const slugs = await slugsForCaller(activeRoot, allSlugs, ctx);
+    const initiatives = summarizeInventory(slugs, files, humanOnly.isHumanOnly).map((row) => ({
+      ...row,
+      agent_visible: isVisible(row.slug),
+    }));
     return {
       initiatives,
       totals: totalInventory(initiatives),
