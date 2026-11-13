@@ -1,5 +1,12 @@
 # titan-console
 
+## 0.14.2
+
+### Patch Changes
+
+- Updated dependencies [04aea95]
+  - @titan-design/coordinator@0.7.0
+
 ## 0.14.1
 
 ### Patch Changes

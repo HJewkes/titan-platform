@@ -1,5 +1,16 @@
 # @titan-design/evals
 
+## 0.6.6
+
+### Patch Changes
+
+- Updated dependencies [f0c6bea]
+- Updated dependencies [8485c89]
+  - @titan-design/authority@0.7.0
+  - @titan-design/workflow@0.15.0
+  - @titan-design/hitl@0.10.1
+  - @titan-design/review-workflow@0.1.1
+
 ## 0.6.5
 
 ### Patch Changes
