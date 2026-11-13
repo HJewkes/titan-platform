@@ -32,7 +32,8 @@ describe("lane admission", () => {
     expect(landed.decision).toBe("admit");
   });
 
-  it("holds only gate-creating work above 10 owner-queue items, and nothing at 10", () => {
+  it("holds only gate-creating work above 10 gates waiting on the owner, and nothing at 10", () => {
+    expect(codes({ ownerQueue: 8 })).toEqual([]);
     expect(codes({ ownerQueue: 10 })).toEqual([]);
 
     const held = admitLane({ ...calm, ownerQueue: 11 }, DEFAULT_LIMITS);

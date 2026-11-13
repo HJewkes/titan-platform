@@ -5,15 +5,14 @@ import { deployBlockOf, type DeployHealth } from "../deploy-health.js";
 import { EXIT } from "../exit-codes.js";
 import type { FactoryHost, FactoryRoutes } from "../host.js";
 import { errorMessage } from "../narrow.js";
-import { ownerQueueSources } from "../needs/command.js";
-import { collectNeeds } from "../needs/merged.js";
 import { probeServe } from "../serve-probe.js";
 import { FACTORY_PORT } from "../serve.js";
 import { DEFAULT_ACCOUNT } from "../shepherd/account-limit.js";
 import { AccountLimitStore } from "../shepherd/account-store.js";
 import { FreezeStore } from "../shepherd/freeze.js";
 import { FINISHED_PHASES } from "../shepherd/step-phase.js";
-import { runFinished, watchRows } from "../shepherd/watch-rows.js";
+import { waitingGates } from "../shepherd/waiting.js";
+import { runFinished, waitingFilter, watchRows } from "../shepherd/watch-rows.js";
 import type { LaneSignals, SignalName } from "./back-pressure.js";
 
 /** Which Shepherd registrations belong to the lane, by their `initiative/ID` task key. */
@@ -57,11 +56,10 @@ function reviewerCounts(host: FactoryHost, env: NodeJS.ProcessEnv): NonNullable<
   return { accounts: dirs.length, exhausted: dirs.filter((dir) => store.exhausted(dir) !== undefined).length };
 }
 
-/** The merged owner queue `titan-factory needs` reads; any source it could not read makes the count unread. */
-async function ownerQueueCount(host: FactoryHost, env: NodeJS.ProcessEnv): Promise<number> {
-  const list = await collectNeeds(ownerQueueSources(env, host.gates));
-  if (list.gaps.length > 0) throw new Error(`${list.gaps.length} owner-queue source(s) unread`);
-  return list.items.length;
+/** The Shepherd gates `titan-factory shepherd waiting` lists under "waiting on the owner", read the way that command reads them. */
+async function ownerQueueCount(host: FactoryHost, routes: FactoryRoutes): Promise<number> {
+  if (!routes.shepherd) throw new Error("this host was opened without the shepherd routes");
+  return waitingGates(await watchRows(host, routes.shepherd, waitingFilter(host))).owner.length;
 }
 
 async function attempt<T>(unread: Unread, names: readonly SignalName[], read: () => T | Promise<T>): Promise<T | undefined> {
@@ -80,7 +78,7 @@ async function readHost(verbs: Verbs, host: FactoryHost, routes: FactoryRoutes, 
   const cutoff = deploy && deployCutoff(deploy, Date.now());
   const prs = await attempt(unread, ["openPrs"], () => prCounts(host, routes, scope, cutoff));
   const reviewers = await attempt(unread, ["reviewers"], () => reviewerCounts(host, verbs.io.env));
-  const ownerQueue = await attempt(unread, ["ownerQueue"], () => ownerQueueCount(host, verbs.io.env));
+  const ownerQueue = await attempt(unread, ["ownerQueue"], () => ownerQueueCount(host, routes));
   const redMain = await attempt(unread, ["redMain"], () => new FreezeStore(host.db).activeFreezes().map((freeze) => freeze.repo));
   return {
     ...(prs?.openPrs !== undefined && { openPrs: prs.openPrs }),

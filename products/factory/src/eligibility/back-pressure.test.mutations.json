@@ -20,14 +20,14 @@
       "file": "products/factory/src/eligibility/back-pressure.ts",
       "find": "if (count === undefined || count <= limit) return [];",
       "replace": "if (count === undefined || count < limit) return [];",
-      "kills": ["lane admission holds only gate-creating work above 10 owner-queue items, and nothing at 10"]
+      "kills": ["lane admission holds only gate-creating work above 10 gates waiting on the owner, and nothing at 10"]
     },
     {
       "name": "the owner-queue hold reaches tasks with no owner steps",
       "file": "products/factory/src/eligibility/back-pressure.ts",
       "find": "hold.scope === \"lane\" || gateCreating",
       "replace": "true",
-      "kills": ["lane admission holds only gate-creating work above 10 owner-queue items, and nothing at 10"]
+      "kills": ["lane admission holds only gate-creating work above 10 gates waiting on the owner, and nothing at 10"]
     },
     {
       "name": "one week of inflow over outflow pauses filing",

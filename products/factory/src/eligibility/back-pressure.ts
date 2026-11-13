@@ -8,7 +8,7 @@ import { isoWeek } from "../shepherd/stats.js";
 export interface BackPressureLimits {
   /** Work in flight (unmerged PRs plus merged ones not yet deployed) at which the lane admits no new spawn. */
   laneOpenPrs: number;
-  /** Owner-queue items above which no gate-creating task is dispatched. */
+  /** Shepherd gates waiting on the owner above which no gate-creating task is dispatched. */
   ownerQueue: number;
   /** Complete weeks in a row of task inflow above outflow that pause agent filing in the lane; reported, not enforced. */
   inflowWeeks: number;
@@ -23,6 +23,7 @@ export interface LaneSignals {
   openPrs?: number;
   /** Lane PRs whose run merged no earlier than the oldest commit the running factory build lacks. */
   mergedNotDeployed?: number;
+  /** Shepherd gates waiting on the owner, as `titan-factory shepherd waiting` lists them; not the `needs` inbox. */
   ownerQueue?: number;
   reviewers?: { accounts: number; exhausted: number };
   /** The deploy alarm's causes; empty while the deploy is healthy. */
@@ -63,7 +64,7 @@ function prHolds(signals: LaneSignals, limit: number): Hold[] {
 
 function ownerQueueHolds(count: number | undefined, limit: number): Hold[] {
   if (count === undefined || count <= limit) return [];
-  return [{ code: "owner-queue", scope: "gate-creating", numbers: { items: count, limit }, detail: `${count} owner-queue item(s) above a limit of ${limit}` }];
+  return [{ code: "owner-queue", scope: "gate-creating", numbers: { items: count, limit }, detail: `${count} gate(s) waiting on the owner, above a limit of ${limit}` }];
 }
 
 function reviewerHolds(reviewers: LaneSignals["reviewers"]): Hold[] {
