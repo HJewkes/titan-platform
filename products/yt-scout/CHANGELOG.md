@@ -1,5 +1,12 @@
 # @titan-design/yt-scout
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [1f5ed48]
+  - @titan-design/owner-queue@0.7.0
+
 ## 0.1.0
 
 ### Minor Changes
