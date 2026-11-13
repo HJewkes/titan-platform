@@ -1,3 +1,4 @@
+import { activeWorkRoot } from "@titan-design/app-paths";
 import { resolve } from "node:path";
 import type { JsonEnvelope } from "@titan-design/registry";
 import type { Command } from "commander";
@@ -27,7 +28,7 @@ import { SHEPHERD_COMMAND_MAP, type ShepherdCommandName } from "./shepherd/comma
 import { formatShepherd, lastEntries, type TimelineView } from "./shepherd/format.js";
 import { writesPort } from "./shepherd/port-access.js";
 import { inferIdentity } from "./shepherd/register-identity.js";
-import { qualifyTask, TaskIndexUnavailable, TaskKeyRefused } from "./shepherd/task-ref.js";
+import { qualifyTask, TaskKeyRefused } from "./shepherd/task-ref.js";
 import { overdueOwnerGates } from "./shepherd/waiting.js";
 import { WaitingSchema } from "./shepherd/waiting-schema.js";
 import { errorMessage } from "./narrow.js";
@@ -246,14 +247,23 @@ async function registerArgs(target: string, opts: RegisterOpts, { io, deps }: Ve
   const { branch, head, base, reviewer, kind, slice, lastSlice } = opts;
   const parsed = parseTarget(target);
   const { task: given, implementer } = await inferIdentity(parsed, opts, deps.headRef);
-  const task = await qualifyTask(given, { origin: activeWorkOrigin(io.env), ...(deps.fetch && { fetch: deps.fetch }) });
+  const task = await checkedTask(given, { io, deps });
   // Not `callerOf`: only an agent-chat name can be messaged, so a terminal registration records no registrant.
   const registrant = io.env.AGENT_CHAT_NAME || undefined;
-  return { ...parsed, branch, head, base, task, implementer, registrant, reviewer, kind, slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, lastSlice, policy };
+  const slices = { slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, lastSlice };
+  return { ...parsed, branch, head, base, ...task, implementer, registrant, reviewer, kind, ...slices, policy };
 }
 
-/** A task key that resolves to no one task is a refusal, and an unreadable task index is the index being down, not a usage slip. */
-const argsExit = (err: unknown): number => (err instanceof TaskKeyRefused ? EXIT.REFUSED : err instanceof TaskIndexUnavailable ? EXIT.UNAVAILABLE : EXIT.USAGE);
+/** The canonical key, or the key as given with `taskUnverified` and a warning when no complete task index answered. */
+async function checkedTask(given: string, { io, deps }: Pick<Verbs, "io" | "deps">): Promise<{ task: string; taskUnverified?: true }> {
+  const checked = await qualifyTask(given, { origin: activeWorkOrigin(io.env), activeRoot: activeWorkRoot({ env: io.env }), ...(deps.fetch && { fetch: deps.fetch }) });
+  if (checked.verified) return { task: checked.key };
+  io.stderr(`warning: ${checked.warning}; the run records taskVerified=false (reinstall active-work to check keys)\n`);
+  return { task: checked.key, taskUnverified: true };
+}
+
+/** A task key that resolves to no one task is a refusal, not a usage slip. */
+const argsExit = (err: unknown): number => (err instanceof TaskKeyRefused ? EXIT.REFUSED : EXIT.USAGE);
 
 async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () => object | Promise<object>, opts: ShepherdOpts): Promise<void> {
   let args: object;
