@@ -18,6 +18,14 @@ describe("attestTokens", () => {
     expect(attestTokens(`Checked.\n${line}\n\n${block}`)).toEqual([CI_WAIT, MERGE_STEP]);
   });
 
+  it.each([
+    ["a withheld attestation", `Attests withheld: ${CI_WAIT}`],
+    ["a refused attestation", `Attests (not given): ${CI_WAIT}`],
+    ["a quoted Attests line", `> Attests: ${CI_WAIT}`],
+  ])("%s is no Attests line", (_shape, line) => {
+    expect(attestTokens(`Checked.\n${line}\n\n${block}`)).toEqual([]);
+  });
+
   it("a code name that only starts with the label is no Attests line", () => {
     expect(attestTokens(`Checked.\nattests-reader: ${CI_WAIT}\n\n${block}`)).toEqual([]);
   });

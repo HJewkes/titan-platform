@@ -46,6 +46,28 @@ describe("acceptVerdict repeated verdict block", () => {
   });
 
   it.each([
+    ["a withdrawal", "On a second look ci-wait's closure does change behaviour, so I withdraw the attestation above."],
+    ["a refusal that names no attestation", "On reflection I can't vouch for ci-wait; the retry path changed."],
+    ["a cleanup note that qualifies the verdict", "I removed the review checkout, but ci-wait is not unchanged."],
+    ["a note about something else", "Ran the suite once more."],
+  ])("a short final message carrying %s keeps the earlier Attests line out", (_shape, note) => {
+    const result = acceptVerdict(input, [fullVerdict(1), at(2, `${note}\n\n${block()}CI-policy: unchanged`)]);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+    expect(result).not.toHaveProperty("attests");
+  });
+
+  it.each([
+    ["two blocks", `${block("FIX_FIRST")}\n${block("FIX_FIRST")}`],
+    ["a block with no PR line", `Verdict: FIX_FIRST\nHead: ${HEAD}\n`],
+  ])("a refused block of %s between the full verdict and the repeat ends the search", (_shape, refused) => {
+    const result = acceptVerdict(input, [fullVerdict(1), at(2, `${review}\n\n${refused}`), bareRepeat(3)]);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+    expect(result).not.toHaveProperty("attests");
+  });
+
+  it.each([
     ["another head", block("MERGE", "d".repeat(40))],
     ["a FIX_FIRST", block("FIX_FIRST")],
   ])("an earlier message at %s lends nothing", (_shape, otherBlock) => {
@@ -75,7 +97,7 @@ describe("acceptVerdict repeated verdict block", () => {
     const weakenedEarlier = at(1, `${review}\nAttests: ${CI_WAIT}\n\n${block()}CI-policy: weakened permissions`);
 
     const result = acceptVerdict(input, [weakenedEarlier, bareRepeat(2)]);
-    const weakenedFinal = acceptVerdict(input, [fullVerdict(1), at(2, `Done.\n\n${block()}CI-policy: weakened permissions`)]);
+    const weakenedFinal = acceptVerdict(input, [fullVerdict(1), at(2, `Removed the review checkout.\n\n${block()}CI-policy: weakened permissions`)]);
 
     expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE", ciPolicy: { kind: "unchanged" }, attests: [CI_WAIT] });
     expect(weakenedFinal).toMatchObject({ kind: "verdict", verdict: "MERGE", ciPolicy: { kind: "weakened", keys: ["permissions"] }, attests: [CI_WAIT] });

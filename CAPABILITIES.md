@@ -185,7 +185,7 @@ Key exports:
 
 ### [`anthropic-account`](https://hjewkes.github.io/titan-platform/reference/anthropic-account)
 
-Tier 0, `@titan-design/anthropic-account@0.4.0`. Anthropic account state: usage readings, token-free login state, account labels and secret redaction, with a ./node subpath for profiles, the 0600-gated credentials read, the usage file, the usage poller and the locked, atomic token refresh
+Tier 0, `@titan-design/anthropic-account@0.4.1`. Anthropic account state: usage readings, token-free login state, account labels and secret redaction, with a ./node subpath for profiles, the 0600-gated credentials read, the usage file, the usage poller and the locked, atomic token refresh
 
 **Use this when:**
 

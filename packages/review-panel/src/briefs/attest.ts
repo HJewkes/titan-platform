@@ -38,12 +38,17 @@ export function attestTokens(text: string): string[] {
   return [...byStep.values()];
 }
 
-/** The raw text after the heading's colon, on a line `labelledLineRest` reads as labelled `Attests:` in any decoration. */
+/**
+ * The word `Attests` then its colon, with only a bullet, bold, italics or backticks around it: `Attests withheld:`,
+ * `Attests (not given):` and a quoted line decline or cite an attestation, so none of them is the heading.
+ */
+const EXACT_HEADING = /^(?:[-*+]\s+)?[*_`]*attests[*_`]*\s*:/i;
+
+/** The raw text after the heading's colon, on a line `labelledLineRest` reads as labelled `Attests:` that is the exact heading. */
 function attestsRest(line: string): string | undefined {
   if (labelledLineRest(line, ATTESTS_HEADING) === undefined) return undefined;
-  const normalized = line.normalize("NFKC");
-  const colon = normalized.indexOf(":");
-  return colon < 0 ? undefined : normalized.slice(colon + 1);
+  const heading = EXACT_HEADING.exec(line.normalize("NFKC"));
+  return heading ? heading.input.slice(heading[0].length) : undefined;
 }
 
 const DECORATION = /^[\s*_`]+|[\s*_`]+$/g;

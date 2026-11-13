@@ -224,10 +224,10 @@ const HANDS_OFF = "Do not push, merge, comment or edit anything.";
 const probeLine = (runDir: string, where: string): string =>
   `Run a probe that may use git, network or destructive commands only in a scratch repo under \`"${runDir}/probe"\` whose origin is a local bare repo under \`"${runDir}"\` (git init --bare); ${where}never against a real remote, and never piped to a shell outside \`"${runDir}"\`.`;
 
-/** The reviewer starts in a real checkout, so a probe that pushes or fetches would reach the real remote unless it is sent elsewhere. */
 /** A reviewer that cleans up after its verdict ends on a bare repeat of the block, and the full review above it is not the final message. */
 const FINAL_MESSAGE_IS_REVIEW = "Your final message is your whole review and verdict; send no message after it.";
 
+/** The reviewer starts in a real checkout, so a probe that pushes or fetches would reach the real remote unless it is sent elsewhere. */
 function handsOffLines(runDir: string, sourceCheckout: string | undefined, scoped: boolean): string[] {
   if (sourceCheckout !== undefined) return runDirHandsOffLines(runDir, sourceCheckout, scoped);
   return [
