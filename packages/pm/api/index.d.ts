@@ -1,4 +1,5 @@
 import { z } from 'zod';
+export { B as Bet, a as BetSchema, F as Freeze, b as FreezeEndCondition, c as FreezeEndConditionSchema, d as FreezeSchema, O as OutOfScope, e as OutOfScopeSchema, f as Outcome, g as OutcomeSchema, h as OwnerIntentRef, i as OwnerIntentRefSchema, P as Prediction, j as PredictionSchema } from './planning.js';
 
 declare const DELIVERABLE_ID_REGEX: RegExp;
 declare const TaskSchema: z.ZodObject<{
@@ -143,132 +144,6 @@ interface BetLookup {
 declare function betProblem({ bet: betId }: {
     bet?: string;
 }, lookup: BetLookup): Promise<string | null>;
-
-/** Where the owner said it: the record id plus the reference to the exact quote. */
-declare const OwnerIntentRefSchema: z.ZodObject<{
-    intent_ref: z.ZodString;
-    quote_ref: z.ZodString;
-}, z.core.$strict>;
-type OwnerIntentRef = z.infer<typeof OwnerIntentRefSchema>;
-/** One success statement per initiative: an outcome the owner would notice and the measure for it. */
-declare const OutcomeSchema: z.ZodObject<{
-    id: z.ZodString;
-    initiative: z.ZodString;
-    statement: z.ZodString;
-    measure: z.ZodString;
-    state: z.ZodEnum<{
-        draft: "draft";
-        active: "active";
-        retired: "retired";
-    }>;
-    owner_intent: z.ZodOptional<z.ZodObject<{
-        intent_ref: z.ZodString;
-        quote_ref: z.ZodString;
-    }, z.core.$strict>>;
-}, z.core.$strict>;
-type Outcome = z.infer<typeof OutcomeSchema>;
-/** What the bet is expected to move, from where, to what, and when the reading is due. */
-declare const PredictionSchema: z.ZodObject<{
-    metric: z.ZodString;
-    direction: z.ZodEnum<{
-        increase: "increase";
-        decrease: "decrease";
-    }>;
-    baseline: z.ZodNumber;
-    expected: z.ZodNumber;
-    read_by: z.ZodString;
-}, z.core.$strict>;
-type Prediction = z.infer<typeof PredictionSchema>;
-declare const BetSchema: z.ZodObject<{
-    id: z.ZodString;
-    initiative: z.ZodString;
-    week: z.ZodString;
-    outcome: z.ZodString;
-    order: z.ZodNumber;
-    tasks: z.ZodOptional<z.ZodArray<z.ZodString>>;
-    selector: z.ZodOptional<z.ZodString>;
-    prediction: z.ZodObject<{
-        metric: z.ZodString;
-        direction: z.ZodEnum<{
-            increase: "increase";
-            decrease: "decrease";
-        }>;
-        baseline: z.ZodNumber;
-        expected: z.ZodNumber;
-        read_by: z.ZodString;
-    }, z.core.$strict>;
-    state: z.ZodEnum<{
-        proposed: "proposed";
-        selected: "selected";
-        dropped: "dropped";
-        done: "done";
-    }>;
-    cites: z.ZodOptional<z.ZodArray<z.ZodObject<{
-        intent_ref: z.ZodString;
-        quote_ref: z.ZodString;
-    }, z.core.$strict>>>;
-}, z.core.$strict>;
-type Bet = z.infer<typeof BetSchema>;
-declare const FreezeEndConditionSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
-    kind: z.ZodLiteral<"date">;
-    date: z.ZodString;
-}, z.core.$strict>, z.ZodObject<{
-    kind: z.ZodLiteral<"task-done">;
-    task: z.ZodString;
-}, z.core.$strict>, z.ZodObject<{
-    kind: z.ZodLiteral<"measure">;
-    metric: z.ZodString;
-    direction: z.ZodEnum<{
-        increase: "increase";
-        decrease: "decrease";
-    }>;
-    threshold: z.ZodNumber;
-}, z.core.$strict>, z.ZodObject<{
-    kind: z.ZodLiteral<"owner">;
-}, z.core.$strict>], "kind">;
-type FreezeEndCondition = z.infer<typeof FreezeEndConditionSchema>;
-declare const FreezeSchema: z.ZodObject<{
-    intent_ref: z.ZodString;
-    quote_ref: z.ZodString;
-    id: z.ZodString;
-    initiative: z.ZodString;
-    tag: z.ZodOptional<z.ZodString>;
-    selector: z.ZodOptional<z.ZodString>;
-    reason: z.ZodString;
-    end_condition: z.ZodDiscriminatedUnion<[z.ZodObject<{
-        kind: z.ZodLiteral<"date">;
-        date: z.ZodString;
-    }, z.core.$strict>, z.ZodObject<{
-        kind: z.ZodLiteral<"task-done">;
-        task: z.ZodString;
-    }, z.core.$strict>, z.ZodObject<{
-        kind: z.ZodLiteral<"measure">;
-        metric: z.ZodString;
-        direction: z.ZodEnum<{
-            increase: "increase";
-            decrease: "decrease";
-        }>;
-        threshold: z.ZodNumber;
-    }, z.core.$strict>, z.ZodObject<{
-        kind: z.ZodLiteral<"owner">;
-    }, z.core.$strict>], "kind">;
-    set_by: z.ZodEnum<{
-        owner: "owner";
-        decider: "decider";
-    }>;
-}, z.core.$strict>;
-type Freeze = z.infer<typeof FreezeSchema>;
-/** Work the owner ruled out, with the reference and date of the statement that did so. */
-declare const OutOfScopeSchema: z.ZodObject<{
-    date: z.ZodString;
-    revisit_when: z.ZodOptional<z.ZodString>;
-    intent_ref: z.ZodString;
-    quote_ref: z.ZodString;
-    id: z.ZodString;
-    initiative: z.ZodString;
-    statement: z.ZodString;
-}, z.core.$strict>;
-type OutOfScope = z.infer<typeof OutOfScopeSchema>;
 
 declare const DELIVERABLE_STATUSES: readonly ["planned", "active", "shipped", "dropped"];
 /** One deliverable, stored at `<deliverablesDir>/<id>.yml`. */
@@ -594,4 +469,135 @@ type CategorizedTask = Pick<Task, "id" | "status" | "kind" | "cos" | "area" | "d
  */
 declare function checkCategories(task: CategorizedTask, registry: CategoryRegistry | null): CategoryError[];
 
-export { type AreaEntry, BUILT_IN_STATUSES, type Bet, type BetLookup, BetSchema, type CategorizedTask, type CategoryAxis, type CategoryError, type CategoryRegistry, CategoryRegistrySchema, type ClaimRow, type CriticalPathOptions, type CriticalPathResult, type CrossInitiativeParentWarning, DELIVERABLE_ID_REGEX, DELIVERABLE_STATUSES, DISPOSITION_KINDS, type Deliverable, type DeliverableEntry, DeliverableSchema, type DeliverableStatus, type DispositionCheck, type DispositionKind, type DispositionRow, DispositionRowSchema, type EdgeChange, type EdgeCheck, type EdgeError, type EdgeField, type Edges, type ExternalDep, type Freeze, type FreezeEndCondition, FreezeEndConditionSchema, FreezeSchema, type InitiativeBriefRef, type InitiativeVisibility, InitiativeVisibilitySchema, type OutOfScope, OutOfScopeSchema, type Outcome, OutcomeSchema, type OwnerIntentRef, OwnerIntentRefSchema, type Prediction, PredictionSchema, type ReviewItem, type ReviewPin, type RunCost, type StatusEntry, TOPIC_PRIORITIES, TOPIC_VERDICTS, type Task, type TaskFloat, type TaskRequire, TaskRequireSchema, TaskSchema, type TaskTreeNode, type TopicPriority, type TopicRow, type TopicVerdict, betProblem, categoriesPath, checkCategories, checkDispositions, checkEdges, criticalPath, deliverablePath, deliverablesDir, isAgentVisible, parseCategoryRegistry, parseClaimsAudit, parseDeliverableRegistry, parseDispositions, parseTopicsJudged, prioritizedTopics, readEdges, readReviewPin, readTsv, sumRunCost, summaryRecommendations, taskTree };
+export { type AreaEntry, BUILT_IN_STATUSES, type BetLookup, type CategorizedTask, type CategoryAxis, type CategoryError, type CategoryRegistry, CategoryRegistrySchema, type ClaimRow, type CriticalPathOptions, type CriticalPathResult, type CrossInitiativeParentWarning, DELIVERABLE_ID_REGEX, DELIVERABLE_STATUSES, DISPOSITION_KINDS, type Deliverable, type DeliverableEntry, DeliverableSchema, type DeliverableStatus, type DispositionCheck, type DispositionKind, type DispositionRow, DispositionRowSchema, type EdgeChange, type EdgeCheck, type EdgeError, type EdgeField, type Edges, type ExternalDep, type InitiativeBriefRef, type InitiativeVisibility, InitiativeVisibilitySchema, type ReviewItem, type ReviewPin, type RunCost, type StatusEntry, TOPIC_PRIORITIES, TOPIC_VERDICTS, type Task, type TaskFloat, type TaskRequire, TaskRequireSchema, TaskSchema, type TaskTreeNode, type TopicPriority, type TopicRow, type TopicVerdict, betProblem, categoriesPath, checkCategories, checkDispositions, checkEdges, criticalPath, deliverablePath, deliverablesDir, isAgentVisible, parseCategoryRegistry, parseClaimsAudit, parseDeliverableRegistry, parseDispositions, parseTopicsJudged, prioritizedTopics, readEdges, readReviewPin, readTsv, sumRunCost, summaryRecommendations, taskTree };
+
+// ./dist/planning.d.ts
+import { z } from 'zod';
+
+/** Where the owner said it: the record id plus the reference to the exact quote. */
+declare const OwnerIntentRefSchema: z.ZodObject<{
+    intent_ref: z.ZodString;
+    quote_ref: z.ZodString;
+}, z.core.$strict>;
+type OwnerIntentRef = z.infer<typeof OwnerIntentRefSchema>;
+/** One success statement per initiative: an outcome the owner would notice and the measure for it. */
+declare const OutcomeSchema: z.ZodObject<{
+    id: z.ZodString;
+    initiative: z.ZodString;
+    statement: z.ZodString;
+    measure: z.ZodString;
+    state: z.ZodEnum<{
+        draft: "draft";
+        active: "active";
+        retired: "retired";
+    }>;
+    owner_intent: z.ZodOptional<z.ZodObject<{
+        intent_ref: z.ZodString;
+        quote_ref: z.ZodString;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
+type Outcome = z.infer<typeof OutcomeSchema>;
+/** What the bet is expected to move, from where, to what, and when the reading is due. */
+declare const PredictionSchema: z.ZodObject<{
+    metric: z.ZodString;
+    direction: z.ZodEnum<{
+        increase: "increase";
+        decrease: "decrease";
+    }>;
+    baseline: z.ZodNumber;
+    expected: z.ZodNumber;
+    read_by: z.ZodString;
+}, z.core.$strict>;
+type Prediction = z.infer<typeof PredictionSchema>;
+declare const BetSchema: z.ZodObject<{
+    id: z.ZodString;
+    initiative: z.ZodString;
+    week: z.ZodString;
+    outcome: z.ZodString;
+    order: z.ZodNumber;
+    tasks: z.ZodOptional<z.ZodArray<z.ZodString>>;
+    selector: z.ZodOptional<z.ZodString>;
+    prediction: z.ZodObject<{
+        metric: z.ZodString;
+        direction: z.ZodEnum<{
+            increase: "increase";
+            decrease: "decrease";
+        }>;
+        baseline: z.ZodNumber;
+        expected: z.ZodNumber;
+        read_by: z.ZodString;
+    }, z.core.$strict>;
+    state: z.ZodEnum<{
+        proposed: "proposed";
+        selected: "selected";
+        dropped: "dropped";
+        done: "done";
+    }>;
+    cites: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        intent_ref: z.ZodString;
+        quote_ref: z.ZodString;
+    }, z.core.$strict>>>;
+}, z.core.$strict>;
+type Bet = z.infer<typeof BetSchema>;
+declare const FreezeEndConditionSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
+    kind: z.ZodLiteral<"date">;
+    date: z.ZodString;
+}, z.core.$strict>, z.ZodObject<{
+    kind: z.ZodLiteral<"task-done">;
+    task: z.ZodString;
+}, z.core.$strict>, z.ZodObject<{
+    kind: z.ZodLiteral<"measure">;
+    metric: z.ZodString;
+    direction: z.ZodEnum<{
+        increase: "increase";
+        decrease: "decrease";
+    }>;
+    threshold: z.ZodNumber;
+}, z.core.$strict>, z.ZodObject<{
+    kind: z.ZodLiteral<"owner">;
+}, z.core.$strict>], "kind">;
+type FreezeEndCondition = z.infer<typeof FreezeEndConditionSchema>;
+declare const FreezeSchema: z.ZodObject<{
+    intent_ref: z.ZodString;
+    quote_ref: z.ZodString;
+    id: z.ZodString;
+    initiative: z.ZodString;
+    tag: z.ZodOptional<z.ZodString>;
+    selector: z.ZodOptional<z.ZodString>;
+    reason: z.ZodString;
+    end_condition: z.ZodDiscriminatedUnion<[z.ZodObject<{
+        kind: z.ZodLiteral<"date">;
+        date: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"task-done">;
+        task: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"measure">;
+        metric: z.ZodString;
+        direction: z.ZodEnum<{
+            increase: "increase";
+            decrease: "decrease";
+        }>;
+        threshold: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"owner">;
+    }, z.core.$strict>], "kind">;
+    set_by: z.ZodEnum<{
+        owner: "owner";
+        decider: "decider";
+    }>;
+}, z.core.$strict>;
+type Freeze = z.infer<typeof FreezeSchema>;
+/** Work the owner ruled out, with the reference and date of the statement that did so. */
+declare const OutOfScopeSchema: z.ZodObject<{
+    date: z.ZodString;
+    revisit_when: z.ZodOptional<z.ZodString>;
+    intent_ref: z.ZodString;
+    quote_ref: z.ZodString;
+    id: z.ZodString;
+    initiative: z.ZodString;
+    statement: z.ZodString;
+}, z.core.$strict>;
+type OutOfScope = z.infer<typeof OutOfScopeSchema>;
+
+export { type Bet as B, type Freeze as F, type OutOfScope as O, type Prediction as P, BetSchema as a, type FreezeEndCondition as b, FreezeEndConditionSchema as c, FreezeSchema as d, OutOfScopeSchema as e, type Outcome as f, OutcomeSchema as g, type OwnerIntentRef as h, OwnerIntentRefSchema as i, PredictionSchema as j };
