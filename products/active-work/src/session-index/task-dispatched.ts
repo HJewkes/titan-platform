@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { agentChatHome, openBriefly, type OpenDatabase } from '../session-index/origin-agent-chat-read.js';
+import { agentChatHome, openBriefly, type OpenDatabase } from './origin-agent-chat-read.js';
 import type { Task } from '../schemas/task.js';
 
 /*

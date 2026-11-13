@@ -26,7 +26,7 @@ import {
 import { quietOption, TaskOrLineSchema, quietOr, type TaskOrLine } from './_task-quiet.js';
 import { TASK_PLAN_OPTIONS } from './_task-plan-fields.js';
 import { assertNotRelabel, assertProvenance, provenanceChange, TASK_PROVENANCE_OPTIONS } from './_task-provenance.js';
-import { dispatchCheck } from '../tasks/dispatched.js';
+import { dispatchCheck } from '../session-index/task-dispatched.js';
 
 interface TaskChange {
   changes: Partial<Task>;

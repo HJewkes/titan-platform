@@ -17,21 +17,21 @@
     },
     {
       "name": "a started task is not dispatched",
-      "file": "products/active-work/src/tasks/dispatched.ts",
+      "file": "products/active-work/src/session-index/task-dispatched.ts",
       "find": "task.started_at !== undefined ||",
       "replace": "",
       "kills": ["task edit guards relabels after dispatch class edit after dispatch is refused from the CLI"]
     },
     {
       "name": "a spawn naming the qualified id is missed",
-      "file": "products/active-work/src/tasks/dispatched.ts",
+      "file": "products/active-work/src/session-index/task-dispatched.ts",
       "find": "get(id, `${slug}/${id}`)",
       "replace": "get(id, id)",
       "kills": ["task edit guards relabels after dispatch refuses source and serves once a spawn names the task, but still takes blocked_on"]
     },
     {
       "name": "an unreadable spawn store lets the relabel through",
-      "file": "products/active-work/src/tasks/dispatched.ts",
+      "file": "products/active-work/src/session-index/task-dispatched.ts",
       "find": "return true;",
       "replace": "return false;",
       "kills": ["task edit guards relabels after dispatch treats an unreadable spawn store as dispatched"]
