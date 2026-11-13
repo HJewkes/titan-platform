@@ -2,9 +2,9 @@ export const DONE_WHEN_MIN_CHARS = 40;
 
 const fold = (s: string): string => s.trim().replace(/\s+/g, ' ').toLowerCase();
 
-/** An agent runs under either variable; a human shell sets neither. */
-export function agentCaller(env: NodeJS.ProcessEnv): 'agent' | undefined {
-  return env.AGENT_CHAT_NAME || env.CLAUDECODE ? 'agent' : undefined;
+/** An agent runs under either variable; a human shell sets neither, so the CLI names it the owner. */
+export function cliCaller(env: NodeJS.ProcessEnv): 'agent' | 'owner' {
+  return env.AGENT_CHAT_NAME || env.CLAUDECODE ? 'agent' : 'owner';
 }
 
 /** Why a done_when is unusable, or undefined when it can be filed. */

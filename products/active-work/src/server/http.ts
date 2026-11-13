@@ -46,7 +46,8 @@ interface BuildHttpAppOptions {
 export function buildHttpApp(options: BuildHttpAppOptions): Hono {
   return pkgBuildHttpApp<CommandContext>({
     registry,
-    createContext: () => ({ activeRoot: getActiveRoot(), warnings: [], format: 'json', remote: true }),
+    // HTTP is the owner's surface, as the daemon's /rpc is in mcpOptions (TP-5453 P6b).
+    createContext: () => ({ activeRoot: getActiveRoot(), warnings: [], format: 'json', caller: 'owner', remote: true }),
     formatError,
     version: BUILD_VERSION,
     startedAt,

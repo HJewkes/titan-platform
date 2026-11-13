@@ -3,7 +3,7 @@ import { registry } from './registry/index.js';
 import './commands/index.js'; // populates the registry via side effect
 import { getActiveRoot } from './utils/paths.js';
 import { formatError, EXIT } from './errors.js';
-import { agentCaller } from './commands/_done-when-gate.js';
+import { cliCaller } from './commands/_done-when-gate.js';
 import {
   successEnvelope,
   errorEnvelope,
@@ -100,7 +100,7 @@ function makeAction(
       warnings: [],
       format,
       cwd: process.cwd(),
-      caller: agentCaller(process.env),
+      caller: cliCaller(process.env),
     };
 
     const result = await invoke(cmd, raw, ctx, format);

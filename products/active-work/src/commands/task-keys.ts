@@ -4,7 +4,7 @@ import { isAgentVisible } from '@titan-design/pm';
 import { z } from 'zod';
 import { defineCommand } from '../registry/index.js';
 import { getActiveRoot } from '../utils/paths.js';
-import { scanInitiatives } from './audit.js';
+import { scanInitiativesForCaller } from './audit.js';
 
 const TASK_FILE = /^([A-Z][A-Z0-9]*-\d+)\.yml$/;
 
@@ -44,9 +44,9 @@ export default defineCommand<z.infer<typeof ArgsSchema>, Result>({
   args: ArgsSchema,
   result: ResultSchema,
   cli: { usage: 'task keys' },
-  async run() {
+  async run(_args, ctx) {
     const activeRoot = getActiveRoot();
-    const { entries } = await scanInitiatives(activeRoot);
+    const { entries } = await scanInitiativesForCaller(activeRoot, ctx);
     const initiatives = await Promise.all(
       entries.map(async ({ slug, frontmatter }) => ({
         slug,

@@ -10,7 +10,9 @@ import { mergeChannels } from '../launcher-args.js';
 import { resolveDefaultChannels } from '../utils/global-config.js';
 import { acquireLease } from '../sessions/lease.js';
 import type { LoadedFacet } from '../facets/facet-file.js';
-import { listInitiativeSlugsOrEmpty, resolveSlugFromCwd } from '../sessions/initiatives.js';
+import { resolveSlugFromCwd } from '../sessions/initiatives.js';
+import { listSlugsForCaller } from '../sessions/visibility.js';
+import type { CommandContext } from '../registry/types.js';
 import { resolveSlugOrFacet, resolveCwdHint } from './_open-helpers.js';
 
 /** Done tasks older than this are auto-archived on bootstrap (AW-8). */
@@ -144,8 +146,11 @@ function compareInitiatives(a: InitiativeSummary, b: InitiativeSummary): number 
   return a.slug.localeCompare(b.slug);
 }
 
-async function collectInitiatives(activeRoot: string): Promise<InitiativeSummary[]> {
-  const slugs = await listInitiativeSlugsOrEmpty(activeRoot);
+async function collectInitiatives(
+  activeRoot: string,
+  ctx: Pick<CommandContext, 'caller' | 'warnings'>,
+): Promise<InitiativeSummary[]> {
+  const slugs = await listSlugsForCaller(activeRoot, ctx);
   const summaries: InitiativeSummary[] = [];
   for (const slug of slugs) {
     const summary = await loadInitiativeSummary(activeRoot, slug);
@@ -322,7 +327,7 @@ const openCommand = defineCommand<OpenArgs, OpenResult>({
     const deferLease = args.lease_mode === 'defer';
 
     if (args.slug) {
-      const { slug, facet } = await resolveSlugOrFacet(activeRoot, args.slug);
+      const { slug, facet } = await resolveSlugOrFacet(activeRoot, args.slug, ctx);
       return bootstrapInitiative(activeRoot, slug, {
         ...(facet ? { facet } : {}),
         offline: args.offline,
@@ -356,7 +361,7 @@ const openCommand = defineCommand<OpenArgs, OpenResult>({
       }
     }
 
-    const initiatives = await collectInitiatives(activeRoot);
+    const initiatives = await collectInitiatives(activeRoot, ctx);
     return { picker: true, initiatives };
   },
 });
