@@ -329,6 +329,26 @@ describe("acceptVerdict Attests line", () => {
     expect(below).toMatchObject({ kind: "verdict", verdict: "MERGE" });
     expect(below).not.toHaveProperty("attests");
   });
+
+  it("a bare repeat after a full verdict with Attests attests nothing", () => {
+    const full = { ...said(`Checked the retry path.\n\nFollow-ups:\n- Name the retry bound | The bound is a named constant | low\n\nAttests: ${CI_WAIT}\n\n${block("MERGE")}`), writtenAt: DISPATCHED_AT + 1 };
+    const repeat = { ...said(block("MERGE")), writtenAt: DISPATCHED_AT + 2 };
+
+    const result = acceptVerdict(input, [full, repeat]);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+    expect(result).not.toHaveProperty("attests");
+    expect(result).not.toHaveProperty("followUps");
+  });
+
+  it("a final message carrying the full verdict and Attests is read", () => {
+    const draft = { ...said(`Still reading.\n\n${block("MERGE")}`), writtenAt: DISPATCHED_AT + 1 };
+    const final = { ...said(`Checked the retry path.\n\nFollow-ups:\n- Name the retry bound | The bound is a named constant | low\n\nAttests: ${CI_WAIT}, ${MERGE_STEP}\n\n${block("MERGE")}`), writtenAt: DISPATCHED_AT + 2 };
+
+    const result = acceptVerdict(input, [draft, final]);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE", attests: [CI_WAIT, MERGE_STEP], followUps: [{ title: "Name the retry bound" }] });
+  });
 });
 
 describe("acceptVerdict CI-policy prose beside a correct block", () => {
