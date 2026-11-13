@@ -69,7 +69,7 @@ export interface Row {
   roles?: ReviewerRoles;
   /** `shepherd.gateReset.lowTierPolicy` for the run's own reclass reads; absent leaves it unset, which reads `shadow`. */
   lowTier?: LowTierMode;
-  /** `shepherd.gateReset.ownerTier` for the run's routes; absent leaves it unset, which reads as shadow. */
+  /** `shepherd.gateReset.ownerTier` for the run's routes; absent stands for an unset key, which the config reader reads as shadow. */
   ownerTier?: OwnerTierMode;
 }
 
@@ -90,7 +90,7 @@ export function plannedRun({ files, policy, reviewerLines, approve, wire = (each
     await new Promise<void>((resolve) => setImmediate(resolve));
   };
   const review = { ...mergingReviewers(() => clock, reviewerLines), timeoutMs: 5 * MINUTE, ...(roles && { roles }) };
-  const routes = factoryRoutesFor({ port: githubPort(wire(fake.wire)), store, now: () => clock, sleep: tick, review, ...(lowTier && { lowTierPolicy: lowTier }), ...(ownerTier && { ownerTier }) });
+  const routes = factoryRoutesFor({ port: githubPort(wire(fake.wire)), store, now: () => clock, sleep: tick, review, ...(lowTier && { lowTierPolicy: lowTier }), ownerTier: ownerTier ?? "shadow" });
   const workflow = shepherdPrWorkflow({ review: reviewPhase, wake: async () => ({ kind: "unhandled", reason: "no fixer here" }) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [workflow], routes, gatePollMs: 5 });
   // Per test: under isolate:false this module loads once per worker, so a top-level afterEach would close only the first importing file's hosts.

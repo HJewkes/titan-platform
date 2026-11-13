@@ -62,7 +62,7 @@ function world(files: PrFile[] = [{ path: "src/a.ts", status: "modified" }]): Fa
 }
 
 async function collect(fake: FakeGitHub, overrides: Partial<MergeEvidenceInput> = {}, kind: string | null = "correctness") {
-  return mergeEvidence(githubPort(fake.wire), { ...input, ...overrides }, noFreezeStoreUntilTp523, kind === null ? {} : { kind });
+  return mergeEvidence(githubPort(fake.wire), { ...input, ...overrides }, noFreezeStoreUntilTp523, kind === null ? {} : { kind }, undefined, { ownerTier: "off" });
 }
 
 afterEach(() => vi.mocked(evaluate).mockReset());
@@ -831,7 +831,7 @@ describe("the D21 card's lines on a weakened CI-policy line (TP-2407 c)", () => 
     const fake = manyFiles(300);
     const port = { ...githubPort(fake.wire), getFile: vi.fn(githubPort(fake.wire).getFile) };
 
-    const evidence = await mergeEvidence(port, { ...input, ...WEAKENED }, noFreezeStoreUntilTp523, { kind: "correctness" });
+    const evidence = await mergeEvidence(port, { ...input, ...WEAKENED }, noFreezeStoreUntilTp523, { kind: "correctness" }, undefined, { ownerTier: "off" });
 
     expect(port.getFile).toHaveBeenCalledTimes(20);
     expect(evidence.unreadFacts).toEqual(["the CI-policy lines of 290 more .github/ files were not read", "the head blobs of the changed files are unread: 300 changed files, more than the 20 a plan approval pins"]);
@@ -855,7 +855,7 @@ describe("the D21 card's lines on a weakened CI-policy line (TP-2407 c)", () => 
   it("still gates when a file read fails, naming the unread file in unreadFacts and not the error's text", async () => {
     const port = { ...githubPort(seeded().wire), getFile: async () => Promise.reject(Object.assign(new Error("server error at /internal"), { status: 502 })) };
 
-    const evidence = await mergeEvidence(port, { ...input, ...WEAKENED }, noFreezeStoreUntilTp523, { kind: "correctness" });
+    const evidence = await mergeEvidence(port, { ...input, ...WEAKENED }, noFreezeStoreUntilTp523, { kind: "correctness" }, undefined, { ownerTier: "off" });
 
     expect(evidence.unreadFacts).toEqual([`the CI-policy lines of ${CI} are unreadable: HTTP 502`, "the head blobs of the changed files are unread: HTTP 502"]);
     expect(evidence.record).not.toHaveProperty("headBlobs");

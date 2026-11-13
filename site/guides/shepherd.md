@@ -2326,6 +2326,11 @@ The evidence step stamps the mode it read, and decide time recomputes the rows f
 changed paths, so a stored record decides the same way at the same head. A record from before the
 row decides as `off`, and a stamp whose mode is not `shadow` reads as `on`.
 
+The gate guards its own code. `owner-tier.ts` and `merge-facts.ts`, which call and decide the row,
+sit in the `merge-policy` table, so a change to either gates on the owner under `on` and never goes
+low tier. The config reader turns an absent key into `shadow`; the evidence step reads a mode that
+never arrived, as from a route that lost its wiring, as `on`.
+
 The CI-policy rule checks content, not lines. Everything the PR merges must be byte-identical
 to what the owner approved, so a weakening anywhere in the PR, inside `.github/` or not, was in
 front of the owner. A PR that mixes code with an approved policy edit still gates. The visual

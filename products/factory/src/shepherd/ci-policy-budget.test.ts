@@ -89,7 +89,7 @@ async function evidenceFor(file: CiPolicyFile, body = BODY, overrides: Partial<M
   fake.prFiles.set(1, [file.path, ...others].map((path): PrFile => ({ path, status: "modified" })));
   fake.files.set(`main:${file.path}`, { content: file.before, blobSha: fakeSha(`main:${file.path}`) });
   fake.files.set(`${HEAD}:${file.path}`, { content: file.after, blobSha: fakeSha(`head:${file.path}`) });
-  return mergeEvidence(githubPort(fake.wire), { ...input, ...overrides }, noFreezeStoreUntilTp523, { kind: "correctness" });
+  return mergeEvidence(githubPort(fake.wire), { ...input, ...overrides }, noFreezeStoreUntilTp523, { kind: "correctness" }, undefined, { ownerTier: "off" });
 }
 
 const guard = (rowId: string) => ({ table: "shepherd-merge-guard", rowId, version: 1 });

@@ -26,8 +26,25 @@
       "find": "if (stampedMode(evidence.ownerTier) !== \"on\") return undefined;",
       "replace": "if (stampedMode(evidence.ownerTier) === \"off\") return undefined;",
       "kills": [
-        "the owner-tier merge guard shadow allows and names the rows it would gate on",
-        "the owner-tier merge guard an absent flag reads as shadow"
+        "the owner-tier merge guard shadow allows and names the rows it would gate on"
+      ]
+    },
+    {
+      "name": "an unwired mode reads as shadow",
+      "file": "products/factory/src/shepherd/owner-tier.ts",
+      "find": "const read = mode ?? \"on\";",
+      "replace": "const read = mode ?? \"shadow\";",
+      "kills": [
+        "the owner-tier merge guard a route that lost its wiring passes no mode, which fails closed as on"
+      ]
+    },
+    {
+      "name": "the gate's own file drops off the merge-policy table",
+      "file": "products/factory/src/shepherd/g10-class-rules.ts",
+      "find": "\"risk-tier.ts\", \"owner-tier.ts\", \"merge-facts.ts\"]",
+      "replace": "\"risk-tier.ts\", \"merge-facts.ts\"]",
+      "kills": [
+        "ownerTierRows the gate's own code products/factory/src/shepherd/owner-tier.ts is a merge-policy row"
       ]
     },
     {
@@ -48,6 +65,15 @@
       "kills": [
         "ownerTierRows a budget-class CI change skips the CI workflow row and keeps the others",
         "the owner-tier merge guard under on, a measured budget-class CI change stays on its coordinator row, not owner-tier"
+      ]
+    },
+    {
+      "name": "the config reader leaves an absent key unset",
+      "file": "products/factory/src/config-ref.ts",
+      "find": "s.gateReset?.ownerTier ?? \"shadow\",",
+      "replace": "s.gateReset?.ownerTier,",
+      "kills": [
+        "the owner-tier merge guard an absent config key reads as shadow at the config reader"
       ]
     }
   ]

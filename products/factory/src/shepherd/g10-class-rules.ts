@@ -6,7 +6,7 @@ import holdClosureJson from "./g10-hold-closure.json" with { type: "json" };
 const inShepherd = (name: string): string => `products/factory/src/shepherd/${name}`;
 
 /** Shepherd's merge-policy files. These tables sit apart from registration-hold.ts so risk-tier.ts can read them without an import cycle through policy.ts. */
-export const MERGE_POLICY_FILES = ["g10-*.ts", "adversary-*.ts", "merge-evidence-gate.ts", "task-kind.ts", "registration-hold.ts", "release-head.ts", "risk-tier.ts"].map((name) => `**/${name}`);
+export const MERGE_POLICY_FILES = ["g10-*.ts", "adversary-*.ts", "merge-evidence-gate.ts", "task-kind.ts", "registration-hold.ts", "release-head.ts", "risk-tier.ts", "owner-tier.ts", "merge-facts.ts"].map((name) => `**/${name}`);
 /** Shepherd's hold, release, seat and reviewer-choice code, matched by exact path because the names are common elsewhere. */
 export const HOLD_COMMAND_FILES = ["commands.ts", "operator-hold.ts", "seats.ts", "release.ts", "reviewer-choice.ts"].map((name) => `products/factory/src/shepherd/${name}`);
 /**

@@ -343,7 +343,6 @@
   "shepherd/owner-kept.ts",
   "shepherd/owner-section.ts",
   "shepherd/owner-send-back.ts",
-  "shepherd/owner-tier.ts",
   "shepherd/package-sweeps.ts",
   "shepherd/park-retry.ts",
   "shepherd/park-settled.ts",

@@ -21,7 +21,7 @@ export interface OwnerTierField {
 }
 
 export interface OwnerTierWiring {
-  /** The live `shepherd.gateReset.ownerTier`; absent means `shadow`. */
+  /** The live `shepherd.gateReset.ownerTier`, its absent key already read as `shadow` by the config reader; unwired reads as `on`. */
   ownerTier?: OwnerTierMode;
 }
 
@@ -37,8 +37,9 @@ const OWNER_TIER_REASON_PREFIX = "owner tier: ";
 /** Recomputed from the head's own facts, so a stored record decides the same way at the same head. */
 const rowsAt = (evidence: OwnerTierEvidence): string[] => ownerTierRows({ paths: evidence.merge.changedPaths, ciBudget: budgetAt(evidence, evidence.head) !== undefined });
 
+/** A route that lost its wiring passes `undefined`, so that fails closed as `on` rather than quietly reading `shadow`. */
 export function ownerTierStamp(mode: OwnerTierMode | undefined, evidence: OwnerTierEvidence): OwnerTierField {
-  const read = mode ?? "shadow";
+  const read = mode ?? "on";
   return read === "off" ? {} : { ownerTier: { mode: read, rows: rowsAt(evidence) } };
 }
 

@@ -88,8 +88,8 @@ describe("under ownerTier on", () => {
 });
 
 describe("under ownerTier shadow", () => {
-  it.each([["set to shadow", "shadow"], ["left unset", undefined]] as const)("with the flag %s, the same PR merges on MRG-AU-RV and its evidence records the rows", async (_how, mode) => {
-    const scene = run(changed("products/factory/src/shepherd/g10-release.ts", PLAIN), mode);
+  it("the same PR merges on MRG-AU-RV and its evidence records the rows", async () => {
+    const scene = run(changed("products/factory/src/shepherd/g10-release.ts", PLAIN), "shadow");
 
     await vi.waitFor(() => expect(scene.fake.effects.merge).toBe(1), { timeout: 20_000 });
 
