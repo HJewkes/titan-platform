@@ -2,7 +2,7 @@ import type { FollowUp } from "@titan-design/review-panel";
 
 /** active-work's task `class` (TP-5446 F1). */
 export const TASK_CLASSES = ["product", "upkeep"] as const;
-export type TaskClass = (typeof TASK_CLASSES)[number];
+type TaskClass = (typeof TASK_CLASSES)[number];
 
 /**
  * A follow-up's provenance (TP-5446 F3, F4) uses active-work's `task add` argument names: `from_pr` and `from_task` become
