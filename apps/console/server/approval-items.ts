@@ -6,7 +6,7 @@
 import { answeredFromFeedback, collapseRepeats, fromRoundQuestions, type OwnerItem, type WithdrawnItem } from "@titan-design/owner-queue";
 import { readAnswer, readSpool } from "@titan-design/owner-queue/spool";
 import { readWithdrawal } from "@titan-design/owner-queue/withdraw";
-import type { Manifest } from "./round-schema.js";
+import { reviewManifest, type ReviewManifest } from "./round-schema.js";
 import type { QueueRound, Withdrawal } from "./rounds.js";
 
 interface QueueItems {
@@ -29,7 +29,7 @@ function withdrawnItem(item: OwnerItem, { reason }: Withdrawal): WithdrawnItem {
 }
 
 /** An unsent round's questions are asked, unless the round was withdrawn: then they are listed as withdrawn only. */
-function openItems(round: QueueRound, manifest: Manifest, items: QueueItems): void {
+function openItems(round: QueueRound, manifest: ReviewManifest, items: QueueItems): void {
   try {
     const asked = fromRoundQuestions(manifest, round.id, { openedAt: round.updatedAt });
     const { withdrawn } = round;
@@ -40,12 +40,16 @@ function openItems(round: QueueRound, manifest: Manifest, items: QueueItems): vo
   }
 }
 
-/** A sent round is closed, so its questions are answered items only; feedback that does not fit leaves it open. */
+/**
+ * A sent round is closed, so its questions are answered items only; feedback that does not fit leaves it open.
+ * owner-queue parses the manifest strictly, so it gets the review-schema manifest, never the console's own fields.
+ */
 function roundItems(round: QueueRound, items: QueueItems): void {
-  const { manifest, feedback } = round;
+  const { feedback } = round;
+  const manifest = reviewManifest(round.manifest);
   if (feedback === null) {
     // An open feedback sheet (TP-5458) waits on no decision, so it asks the inbox nothing; its sent notes still record.
-    if (manifest.kind !== "feedback" || round.withdrawn !== null) openItems(round, manifest, items);
+    if (round.manifest.kind !== "feedback" || round.withdrawn !== null) openItems(round, manifest, items);
     return;
   }
   try {

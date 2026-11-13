@@ -68,5 +68,12 @@ export const FeedbackSchema = reviewSchema.FeedbackSchema.refine((feedback) => f
 
 export type Feedback = z.output<typeof FeedbackSchema>;
 export type Manifest = z.output<typeof RoundSchema>;
+
+export type ReviewManifest = Omit<Manifest, "supersedes" | "planApprovals" | "kind">;
+
+/** The manifest as review-schema reads it: its strict parse refuses the console's own fields, so they come off. */
+export function reviewManifest({ supersedes: _supersedes, planApprovals: _planApprovals, kind: _kind, ...manifest }: Manifest): ReviewManifest {
+  return manifest;
+}
 export type Question = Manifest["questions"][number];
 export type Section = reviewSchema.Section;

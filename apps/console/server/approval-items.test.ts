@@ -159,6 +159,36 @@ describe("roundQueueItems", () => {
   });
 });
 
+describe("roundQueueItems with the console's own round fields", () => {
+  const consoleFields = (round: QueueRound): QueueRound => {
+    const [question] = round.manifest.questions;
+    if (question?.kind !== "pick-one") throw new Error(`${round.id} opens with no pick-one question`);
+    const planApprovals = [{ questionId: question.id, approve: question.options[0] ?? "", task: "example/TP-1", repo: "example-org/example-repo", gate: "skill" as const, scope: { paths: [".claude/skills/example/SKILL.md"] } }];
+    return { ...round, manifest: { ...round.manifest, supersedes: ["older-r1"], planApprovals } };
+  };
+
+  it("asks an open round that supersedes others and binds plan approvals, with no gap", async () => {
+    const plain = roundOf(await fixtureRounds(), SHOWN);
+
+    const items = roundQueueItems([consoleFields(plain)]);
+
+    expect(items.gaps).toEqual([]);
+    expect(items.open.map((item) => item.id)).toEqual(roundQueueItems([plain]).open.map((item) => item.id));
+    expect(items.open).not.toEqual([]);
+  });
+
+  it("records a sent feedback sheet that supersedes others and binds plan approvals as answered, with no gap", async () => {
+    const plain = roundOf(await fixtureRounds(), "kiln-schedule-r1");
+    const sheet = consoleFields(plain);
+
+    const items = roundQueueItems([{ ...sheet, manifest: { ...sheet.manifest, kind: "feedback" } }]);
+
+    expect(items.gaps).toEqual([]);
+    expect(items.open).toEqual([]);
+    expect(items.answered.map((item) => item.id)).toEqual(["round:kiln-schedule-r1/unit-start"]);
+  });
+});
+
 describe("roundQueueItems reads review-schema 0.3 feedback (TP-3272)", () => {
   it("keeps a shown round answered through rounds.submit, so its question does not open again", async () => {
     const dir = path.join(root, "rounds");
