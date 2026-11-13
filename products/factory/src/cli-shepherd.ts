@@ -41,7 +41,8 @@ interface ShepherdOpts extends TimelineView, StatusFilter {
 }
 
 type SliceOpts = { slice?: string | false; lastSlice?: true };
-type RegisterOpts = ShepherdOpts & SliceOpts & { branch?: string; head?: string; base?: string; task?: string; implementer?: string; reviewer?: string; kind?: string; reverts?: string; policy?: string };
+type RegisterFlags = { branch?: string; head?: string; base?: string; task?: string; implementer?: string; reviewer?: string; kind?: string; reverts?: string; policy?: string };
+type RegisterOpts = ShepherdOpts & SliceOpts & RegisterFlags;
 
 /** The shepherd.* registry commands as verbs: on titan-factory serve when one answers, else against the database here; register needs --offline for that. */
 export function registerShepherd(program: Command, verbs: Verbs): void {
@@ -249,7 +250,8 @@ async function registerArgs(target: string, opts: RegisterOpts, { io, deps }: Ve
   const task = await qualifyTask(given, { origin: activeWorkOrigin(io.env), ...(deps.fetch && { fetch: deps.fetch }) });
   // Not `callerOf`: an OS user name is no agent name, so a terminal registration records `owner` (TP-5446 F15).
   const registrant = io.env.AGENT_CHAT_NAME || OWNER_REGISTRANT;
-  return { ...parsed, branch, head, base, task, implementer, registrant, reviewer, kind, reverts, slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, lastSlice, policy };
+  const sliceArgs = { slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, lastSlice };
+  return { ...parsed, branch, head, base, task, implementer, registrant, reviewer, kind, reverts, ...sliceArgs, policy };
 }
 
 async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () => object | Promise<object>, opts: ShepherdOpts): Promise<void> {
