@@ -1,0 +1,22 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a remote call reads the daemon's environment",
+      "file": "products/active-work/src/commands/_task-provenance.ts",
+      "find": "if (ctx.remote === true) return 'unknown';",
+      "replace": "",
+      "kills": [
+        "filed_by on the daemon surfaces task add over rpc never records filed_by owner (an owner-started daemon)",
+        "filed_by on the daemon surfaces task add over mcp never records filed_by owner (a daemon an agent started)"
+      ]
+    },
+    {
+      "name": "the daemon's /rpc context is not marked remote",
+      "file": "products/active-work/src/server/mcp.ts",
+      "find": "      remote: true,\n",
+      "replace": "",
+      "kills": ["filed_by on the daemon surfaces task add over rpc never records filed_by owner (an owner-started daemon)"]
+    }
+  ]
+}
