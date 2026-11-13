@@ -116,6 +116,53 @@ declare const ownerCardSchema: zod.ZodObject<{
         name: zod.ZodString;
         agentId: zod.ZodString;
         force: zod.ZodBoolean;
+    }, zod_v4_core.$strict>, zod.ZodObject<{
+        kind: zod.ZodLiteral<"plan-bet-select">;
+        initiative: zod.ZodString;
+        week: zod.ZodString;
+        bets: zod.ZodArray<zod.ZodString>;
+    }, zod_v4_core.$strict>, zod.ZodObject<{
+        kind: zod.ZodLiteral<"plan-outcome-edit">;
+        outcome: zod.ZodString;
+        to: zod.ZodObject<{
+            statement: zod.ZodOptional<zod.ZodString>;
+            measure: zod.ZodOptional<zod.ZodString>;
+        }, zod_v4_core.$strict>;
+        from: zod.ZodOptional<zod.ZodObject<{
+            statement: zod.ZodString;
+            measure: zod.ZodString;
+        }, zod_v4_core.$strict>>;
+    }, zod_v4_core.$strict>, zod.ZodObject<{
+        kind: zod.ZodLiteral<"plan-freeze-set">;
+        initiative: zod.ZodString;
+        freeze: zod.ZodDiscriminatedUnion<[zod.ZodObject<{
+            intent_ref: zod.ZodString;
+            quote_ref: zod.ZodString;
+            action: zod.ZodLiteral<"set">;
+            tag: zod.ZodOptional<zod.ZodString>;
+            selector: zod.ZodOptional<zod.ZodString>;
+            reason: zod.ZodString;
+            end_condition: zod.ZodDiscriminatedUnion<[zod.ZodObject<{
+                kind: zod.ZodLiteral<"date">;
+                date: zod.ZodString;
+            }, zod_v4_core.$strict>, zod.ZodObject<{
+                kind: zod.ZodLiteral<"task-done">;
+                task: zod.ZodString;
+            }, zod_v4_core.$strict>, zod.ZodObject<{
+                kind: zod.ZodLiteral<"measure">;
+                metric: zod.ZodString;
+                direction: zod.ZodEnum<{
+                    increase: "increase";
+                    decrease: "decrease";
+                }>;
+                threshold: zod.ZodNumber;
+            }, zod_v4_core.$strict>, zod.ZodObject<{
+                kind: zod.ZodLiteral<"owner">;
+            }, zod_v4_core.$strict>], "kind">;
+        }, zod_v4_core.$strict>, zod.ZodObject<{
+            action: zod.ZodLiteral<"end">;
+            id: zod.ZodString;
+        }, zod_v4_core.$strict>], "action">;
     }, zod_v4_core.$strict>], "kind">>;
     evidenceRef: zod.ZodOptional<zod.ZodString>;
     anchors: zod.ZodOptional<zod.ZodArray<zod.ZodString>>;
@@ -248,6 +295,53 @@ declare const ownerOpSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     name: z.ZodString;
     agentId: z.ZodString;
     force: z.ZodBoolean;
+}, z.core.$strict>, z.ZodObject<{
+    kind: z.ZodLiteral<"plan-bet-select">;
+    initiative: z.ZodString;
+    week: z.ZodString;
+    bets: z.ZodArray<z.ZodString>;
+}, z.core.$strict>, z.ZodObject<{
+    kind: z.ZodLiteral<"plan-outcome-edit">;
+    outcome: z.ZodString;
+    to: z.ZodObject<{
+        statement: z.ZodOptional<z.ZodString>;
+        measure: z.ZodOptional<z.ZodString>;
+    }, z.core.$strict>;
+    from: z.ZodOptional<z.ZodObject<{
+        statement: z.ZodString;
+        measure: z.ZodString;
+    }, z.core.$strict>>;
+}, z.core.$strict>, z.ZodObject<{
+    kind: z.ZodLiteral<"plan-freeze-set">;
+    initiative: z.ZodString;
+    freeze: z.ZodDiscriminatedUnion<[z.ZodObject<{
+        intent_ref: z.ZodString;
+        quote_ref: z.ZodString;
+        action: z.ZodLiteral<"set">;
+        tag: z.ZodOptional<z.ZodString>;
+        selector: z.ZodOptional<z.ZodString>;
+        reason: z.ZodString;
+        end_condition: z.ZodDiscriminatedUnion<[z.ZodObject<{
+            kind: z.ZodLiteral<"date">;
+            date: z.ZodString;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"task-done">;
+            task: z.ZodString;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"measure">;
+            metric: z.ZodString;
+            direction: z.ZodEnum<{
+                increase: "increase";
+                decrease: "decrease";
+            }>;
+            threshold: z.ZodNumber;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"owner">;
+        }, z.core.$strict>], "kind">;
+    }, z.core.$strict>, z.ZodObject<{
+        action: z.ZodLiteral<"end">;
+        id: z.ZodString;
+    }, z.core.$strict>], "action">;
 }, z.core.$strict>], "kind">;
 type OwnerOp = z.infer<typeof ownerOpSchema>;
 type OwnerOpKind = OwnerOp["kind"];
@@ -779,6 +873,53 @@ declare const ownerItemDepositSchema: z.ZodObject<{
         name: z.ZodString;
         agentId: z.ZodString;
         force: z.ZodBoolean;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"plan-bet-select">;
+        initiative: z.ZodString;
+        week: z.ZodString;
+        bets: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"plan-outcome-edit">;
+        outcome: z.ZodString;
+        to: z.ZodObject<{
+            statement: z.ZodOptional<z.ZodString>;
+            measure: z.ZodOptional<z.ZodString>;
+        }, z.core.$strict>;
+        from: z.ZodOptional<z.ZodObject<{
+            statement: z.ZodString;
+            measure: z.ZodString;
+        }, z.core.$strict>>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"plan-freeze-set">;
+        initiative: z.ZodString;
+        freeze: z.ZodDiscriminatedUnion<[z.ZodObject<{
+            intent_ref: z.ZodString;
+            quote_ref: z.ZodString;
+            action: z.ZodLiteral<"set">;
+            tag: z.ZodOptional<z.ZodString>;
+            selector: z.ZodOptional<z.ZodString>;
+            reason: z.ZodString;
+            end_condition: z.ZodDiscriminatedUnion<[z.ZodObject<{
+                kind: z.ZodLiteral<"date">;
+                date: z.ZodString;
+            }, z.core.$strict>, z.ZodObject<{
+                kind: z.ZodLiteral<"task-done">;
+                task: z.ZodString;
+            }, z.core.$strict>, z.ZodObject<{
+                kind: z.ZodLiteral<"measure">;
+                metric: z.ZodString;
+                direction: z.ZodEnum<{
+                    increase: "increase";
+                    decrease: "decrease";
+                }>;
+                threshold: z.ZodNumber;
+            }, z.core.$strict>, z.ZodObject<{
+                kind: z.ZodLiteral<"owner">;
+            }, z.core.$strict>], "kind">;
+        }, z.core.$strict>, z.ZodObject<{
+            action: z.ZodLiteral<"end">;
+            id: z.ZodString;
+        }, z.core.$strict>], "action">;
     }, z.core.$strict>], "kind">>;
     evidenceRef: z.ZodOptional<z.ZodString>;
     anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;
@@ -982,6 +1123,53 @@ declare const ownerItemSchema: z.ZodObject<{
         name: z.ZodString;
         agentId: z.ZodString;
         force: z.ZodBoolean;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"plan-bet-select">;
+        initiative: z.ZodString;
+        week: z.ZodString;
+        bets: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"plan-outcome-edit">;
+        outcome: z.ZodString;
+        to: z.ZodObject<{
+            statement: z.ZodOptional<z.ZodString>;
+            measure: z.ZodOptional<z.ZodString>;
+        }, z.core.$strict>;
+        from: z.ZodOptional<z.ZodObject<{
+            statement: z.ZodString;
+            measure: z.ZodString;
+        }, z.core.$strict>>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"plan-freeze-set">;
+        initiative: z.ZodString;
+        freeze: z.ZodDiscriminatedUnion<[z.ZodObject<{
+            intent_ref: z.ZodString;
+            quote_ref: z.ZodString;
+            action: z.ZodLiteral<"set">;
+            tag: z.ZodOptional<z.ZodString>;
+            selector: z.ZodOptional<z.ZodString>;
+            reason: z.ZodString;
+            end_condition: z.ZodDiscriminatedUnion<[z.ZodObject<{
+                kind: z.ZodLiteral<"date">;
+                date: z.ZodString;
+            }, z.core.$strict>, z.ZodObject<{
+                kind: z.ZodLiteral<"task-done">;
+                task: z.ZodString;
+            }, z.core.$strict>, z.ZodObject<{
+                kind: z.ZodLiteral<"measure">;
+                metric: z.ZodString;
+                direction: z.ZodEnum<{
+                    increase: "increase";
+                    decrease: "decrease";
+                }>;
+                threshold: z.ZodNumber;
+            }, z.core.$strict>, z.ZodObject<{
+                kind: z.ZodLiteral<"owner">;
+            }, z.core.$strict>], "kind">;
+        }, z.core.$strict>, z.ZodObject<{
+            action: z.ZodLiteral<"end">;
+            id: z.ZodString;
+        }, z.core.$strict>], "action">;
     }, z.core.$strict>], "kind">>;
     evidenceRef: z.ZodOptional<z.ZodString>;
     anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;
