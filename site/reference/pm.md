@@ -318,6 +318,31 @@ OutOfScopeSchema.parse({
 });
 ```
 
+### The plan store (`@titan-design/pm/node`)
+
+The `./node` subpath is the one file store for these records, so every writer agrees on the
+layout and the lock. A record lives at `<activeRoot>/<initiative>/plan/<dir>/<suffix>.yml`, where
+`<dir>` is `outcomes`, `bets`, `freezes` or `out-of-scope` and `<suffix>` is the part of the id
+after the slash. A bet keeps its week as a field, so selecting it never moves the file.
+
+| Export | Does |
+|---|---|
+| `readPlanRecord(root, kind, id)` | the record, or `null` for a malformed id or a missing file; a file that fails its schema throws |
+| `loadPlanRecords(root, initiative, kind)` | every record of one kind, in filename order; a missing folder holds none |
+| `writePlanRecord(root, kind, record)` | validates before any disk write, then writes atomically |
+| `withPlanLock(root, initiative, fn)` | runs `fn` holding `<initiative>/plan/.lock` (proper-lockfile, 10 s stale, 20 s wait) |
+| `nextPlanId(initiative, letter, records)` | the next `<initiative>/<letter><n>` id |
+| `PlanStoreError` | a refusal with `kind`: `invalid`, `not-found` (no initiative folder) or `lock-timeout` |
+
+```ts
+import { readPlanRecord, withPlanLock, writePlanRecord } from "@titan-design/pm/node";
+
+await withPlanLock(root, "alpha", async () => {
+  const bet = await readPlanRecord(root, "bet", "alpha/B1");
+  if (bet !== null) await writePlanRecord(root, "bet", { ...bet, order: 2 });
+});
+```
+
 ## Task provenance
 
 `TaskSchema` carries where a task came from and why it closed, so the ticket scorecard reads
@@ -359,8 +384,8 @@ brief may require it.
 
 ## What it deliberately does not do
 
-It reads no files, parses no YAML and writes nothing, the category and deliverable
-registries included. It does not check that a task's `deliverables` ids exist. It
+The root entry reads no files, parses no YAML and writes nothing, the category and deliverable
+registries included; only the `./node` plan store touches disk. It does not check that a task's `deliverables` ids exist. It
 does not choose the area ids; those come from `$tiers` and the products outside this repo. It has no task numbering, and it
 knows a task's initiative only by its id prefix (`EC` for `EC-1`).
 
