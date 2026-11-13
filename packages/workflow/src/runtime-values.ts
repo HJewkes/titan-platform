@@ -48,9 +48,9 @@ export function vaultOf(capabilities: Readonly<Record<string, WorkflowCapability
 }
 
 /** The class a rejection carries as its own `errorClass` field, so a host sets it where it fails rather than in the text. */
-export function errorClassOf(error: unknown): string | undefined {
-  if (typeof error !== "object" || error === null || !("errorClass" in error)) return undefined;
-  return typeof error.errorClass === "string" && error.errorClass !== "" ? error.errorClass : undefined;
+export function errorClassOf(error: unknown): Pick<WorkflowRun, "errorClass"> {
+  if (typeof error !== "object" || error === null || !("errorClass" in error)) return {};
+  return typeof error.errorClass === "string" && error.errorClass !== "" ? { errorClass: error.errorClass } : {};
 }
 
 /** The text a failed run records: secrets of the runtime's capabilities redacted. */

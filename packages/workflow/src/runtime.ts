@@ -187,7 +187,7 @@ export class WorkflowRuntime {
     if (error instanceof WorkflowRecoveryRequiredError || run.status === "recovery_required") return this.park(run);
     if (abortReason instanceof WorkflowCancelledError) return this.finish(run, "cancelled", abortReason.reason);
     if (error instanceof WorkflowCancelledError) return this.finish(run, "cancelled", error.reason);
-    this.finish(run, "failed", failureText(error, this.baseDeps.capabilities), errorClassOf(error));
+    this.finish(Object.assign(run, errorClassOf(error)), "failed", failureText(error, this.baseDeps.capabilities));
   }
 
   shutdown(): void {
@@ -209,13 +209,11 @@ export class WorkflowRuntime {
     return this.isQuiesced;
   }
 
-  private finish(run: WorkflowRun, status: "completed" | "failed" | "cancelled", error: string | null, errorClass?: string): void {
+  private finish(run: WorkflowRun, status: "completed" | "failed" | "cancelled", error: string | null): void {
     this.dropLive(run.id);
     run.status = status;
     run.completedAt = this.isoNow();
     run.error = error;
-    if (errorClass === undefined) delete run.errorClass;
-    else run.errorClass = errorClass;
     run.activeSteps = {};
     this.save(run);
     this.release(run);
