@@ -26,7 +26,7 @@ export interface PlanView {
   initiative: string;
   /** The week's selected bets, in the owner's stated order. */
   bets: readonly Bet[];
-  /** Freezes still in force; `activeFreezes` decides which ones are. */
+  /** Freezes still in force; `freezeActive` in active-work.ts decides which ones are. */
   freezes: readonly Freeze[];
   outOfScope: readonly OutOfScope[];
 }
@@ -81,9 +81,8 @@ function planRefusals(task: Task, plan: PlanView): Refusal[] {
 }
 
 /** Every reason the task may not be dispatched under the plan, in rule order; empty when it may. */
-function refusalsFor(task: Task, plan: PlanView): Refusal[] {
+function refusalsFor(task: Task, bet: Bet | undefined, plan: PlanView): Refusal[] {
   const key = taskKey(plan.initiative, task);
-  const bet = plan.bets.find((candidate) => candidate.id === task.bet);
   return [...betRefusals(task, key, bet), ...fieldRefusals(task), ...planRefusals(task, plan)];
 }
 
@@ -109,8 +108,8 @@ export function evaluateEligibility(tasks: readonly Task[], plan: PlanView): Eli
   const eligible: EligibleTask[] = [];
   const refused: RefusedTask[] = [];
   for (const task of tasks) {
-    const refusals = refusalsFor(task, plan);
     const bet = plan.bets.find((candidate) => candidate.id === task.bet);
+    const refusals = refusalsFor(task, bet, plan);
     if (refusals.length === 0 && bet !== undefined) eligible.push({ task, bet });
     else refused.push({ id: task.id, refusals });
   }

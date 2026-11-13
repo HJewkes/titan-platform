@@ -87,6 +87,20 @@ describe("dispatch eligible", () => {
     expect(report.eligible.map((entry: Body) => entry.id)).toEqual(["AL-2", "AL-3"]);
   });
 
+  it("a freeze the owner has ended no longer refuses its tagged task", async () => {
+    const rpc = fakeRpc({
+      tasks: [row(1, { tags: ["held"] })],
+      bets: [selectedBet(1, 1, ["alpha/AL-1"])],
+      freezes: [{ ...freeze(1, "held", { kind: "owner" }), ended_on: "2026-11-10" }],
+    });
+
+    const { stdout } = await eligible(["--week", "2026-W47", "--json"], rpc.fetch);
+
+    const report = JSON.parse(stdout);
+    expect(report.refused).toEqual([]);
+    expect(report.eligible.map((entry: Body) => entry.id)).toEqual(["AL-1"]);
+  });
+
   it("--tag narrows the candidates to one lane", async () => {
     const rpc = fakeRpc({ tasks: [row(1, { tags: ["console"] }), row(2)], bets: [] });
 

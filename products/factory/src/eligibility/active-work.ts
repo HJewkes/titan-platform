@@ -31,8 +31,9 @@ async function taskIsDone(client: Client, key: string): Promise<boolean> {
   return tasks.some((row) => z.object({ status: z.literal("done") }).safeParse(row).success);
 }
 
-/** Whether a freeze is still in force; an end condition this reader cannot measure keeps it in force. */
+/** Whether a freeze is still in force: not ended by the owner, and an end condition this reader cannot measure keeps it in force. */
 async function freezeActive(client: Client, freeze: Freeze, today: string): Promise<boolean> {
+  if (freeze.ended_on !== undefined) return false;
   const end = freeze.end_condition;
   if (end.kind === "date") return today < end.date;
   if (end.kind === "task-done") return !(await taskIsDone(client, end.task));

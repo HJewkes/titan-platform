@@ -36,6 +36,15 @@
       "kills": [
         "dispatch eligible --tag narrows the candidates to one lane"
       ]
+    },
+    {
+      "name": "an owner-ended freeze stays in force",
+      "file": "products/factory/src/eligibility/active-work.ts",
+      "find": "  if (freeze.ended_on !== undefined) return false;\n",
+      "replace": "",
+      "kills": [
+        "dispatch eligible a freeze the owner has ended no longer refuses its tagged task"
+      ]
     }
   ]
 }
