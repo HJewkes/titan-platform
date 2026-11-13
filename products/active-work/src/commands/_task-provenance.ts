@@ -52,7 +52,7 @@ type ProvenanceArgs = { [K in keyof typeof TaskProvenanceArgsShape]?: z.infer<(t
 
 export type ProvenanceField = 'class' | 'serves' | 'source' | 'source_ref' | 'blocked_on';
 
-export const PROVENANCE_FIELDS = ['class', 'serves', 'source', 'source_ref', 'blocked_on'] as const satisfies readonly ProvenanceField[];
+const PROVENANCE_FIELDS = ['class', 'serves', 'source', 'source_ref', 'blocked_on'] as const satisfies readonly ProvenanceField[];
 
 /** Fields that move a task's scorecard row, so only the owner may change them once the task is dispatched. */
 const DISPATCH_LOCKED_FIELDS = ['class', 'source', 'serves'] as const satisfies readonly ProvenanceField[];
@@ -117,7 +117,7 @@ export async function assertProvenance(activeRoot: string, task: Task): Promise<
 }
 
 /** Whether the task has been dispatched: started, or named by a spawn. */
-export type DispatchCheck = (task: Task) => Promise<boolean>;
+type DispatchCheck = (task: Task) => Promise<boolean>;
 
 /** Refuses a CLI or RPC edit to class, source or serves once the task is dispatched; only the owner relabels then. */
 export async function assertNotRelabel(task: Task, changes: Partial<Task>, dispatched: DispatchCheck): Promise<void> {

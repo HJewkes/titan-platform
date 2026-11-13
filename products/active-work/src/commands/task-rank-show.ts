@@ -36,7 +36,7 @@ function shown(task: Task, args: Args): task is Task & { rank: Row['rank'] } {
 }
 
 /** Ranked tasks, p0 first, then by priority within a rank. */
-export function rankRows(tasks: readonly Task[], args: Args): Row[] {
+function rankRows(tasks: readonly Task[], args: Args): Row[] {
   return tasks
     .filter((task) => shown(task, args))
     .map(({ id, title, rank, status, priority }) => ({ id, title, rank, status, priority }))
