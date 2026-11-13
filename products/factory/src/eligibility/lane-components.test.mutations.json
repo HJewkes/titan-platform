@@ -25,8 +25,8 @@
     {
       "name": "an unread named component reads as healthy",
       "file": "products/factory/src/eligibility/back-pressure.ts",
-      "find": "if (!read) stalls.unreadComponents += 1;",
-      "replace": "if (!read) continue;",
+      "find": "if (!healthRead(signals, isDeploy)) stalls.unreadComponents += 1;",
+      "replace": "if (!healthRead(signals, isDeploy)) continue;",
       "kills": ["mapped lane admission counts a named component whose health is unread as stalled"]
     },
     {

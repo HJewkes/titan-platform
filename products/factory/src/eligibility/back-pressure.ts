@@ -92,13 +92,17 @@ function everyStall(signals: LaneSignals): Stalls {
   return { deployCauses: signals.deployStall?.length ?? 0, redMainRepos: signals.redMain?.length ?? 0, unreadComponents: 0 };
 }
 
+function healthRead(signals: LaneSignals, isDeploy: boolean): boolean {
+  if (isDeploy) return signals.unread.deploy === undefined && signals.deployStall !== undefined;
+  return signals.unread.redMain === undefined && signals.redMain !== undefined;
+}
+
 function namedStalls(signals: LaneSignals, components: readonly Component[]): Stalls {
   const stalls: Stalls = { deployCauses: 0, redMainRepos: 0, unreadComponents: 0 };
   const red = new Set(signals.redMain?.map((repo) => repo.toLowerCase()));
   for (const component of components) {
     const isDeploy = component === "factory-deploy";
-    const read = isDeploy ? signals.unread.deploy === undefined && signals.deployStall !== undefined : signals.unread.redMain === undefined && signals.redMain !== undefined;
-    if (!read) stalls.unreadComponents += 1;
+    if (!healthRead(signals, isDeploy)) stalls.unreadComponents += 1;
     else if (isDeploy) stalls.deployCauses = signals.deployStall?.length ?? 0;
     else if (red.has(component.slice("main:".length).toLowerCase())) stalls.redMainRepos += 1;
   }
@@ -110,7 +114,11 @@ function dependencyHolds(signals: LaneSignals, components: readonly Component[] 
   const stalls = components === undefined ? everyStall(signals) : namedStalls(signals, components);
   const { deployCauses, redMainRepos, unreadComponents } = stalls;
   if (deployCauses + redMainRepos + unreadComponents === 0) return [];
-  const parts = [deployCauses > 0 && `deploy alarm (${deployCauses} cause(s))`, redMainRepos > 0 && `red main in ${redMainRepos} repo(s)`, unreadComponents > 0 && `${unreadComponents} component(s) unreadable`];
+  const parts = [
+    deployCauses > 0 && `deploy alarm (${deployCauses} cause(s))`,
+    redMainRepos > 0 && `red main in ${redMainRepos} repo(s)`,
+    unreadComponents > 0 && `${unreadComponents} component(s) unreadable`,
+  ];
   const scope = components === undefined ? "the lane has no component mapping, so it depends on every component" : `the lane depends on ${components.join(", ")}`;
   return [{ code: "dependency-stalled", scope: "lane", numbers: { ...stalls }, detail: `${parts.filter(Boolean).join(", ")}; ${scope}` }];
 }
