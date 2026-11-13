@@ -3,6 +3,16 @@ export { InitiativeVisibilitySchema, isAgentVisible } from "./visibility.js";
 export type { InitiativeBriefRef, InitiativeVisibility } from "./visibility.js";
 export type { Task } from "./task.js";
 export {
+  BetSchema,
+  FreezeEndConditionSchema,
+  FreezeSchema,
+  OutOfScopeSchema,
+  OutcomeSchema,
+  OwnerIntentRefSchema,
+  PredictionSchema,
+} from "./planning.js";
+export type { Bet, Freeze, FreezeEndCondition, OutOfScope, Outcome, OwnerIntentRef, Prediction } from "./planning.js";
+export {
   DELIVERABLE_STATUSES,
   DeliverableSchema,
   deliverablePath,
