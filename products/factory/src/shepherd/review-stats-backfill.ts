@@ -24,7 +24,7 @@ export function cacheOwnDiffReader(options: CarryOptions): OwnDiffReader {
   };
 }
 
-export interface BackfillCounts {
+interface BackfillCounts {
   computed: number;
   missing: number;
 }
