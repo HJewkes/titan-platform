@@ -64,7 +64,15 @@ type RouteBody = z.infer<typeof routeBody>;
 
 const unreachable = (detail: string): Unreachable => ({ status: "unreachable", detail });
 
-function settledOutcome({ outcome, gateId, runId, stillHeld, name, caveats, closedHead, clearedPause, task, gate, claimedRun, op, ids }: RouteBody): ActionOutcome | undefined {
+/** A planning op's answer carries the plan record ids it wrote, or found already written. */
+function planSettled({ outcome, op, ids }: RouteBody): ActionOutcome | undefined {
+  if (ids === undefined) return undefined;
+  if (outcome === "plan-applied" && op) return { status: "plan-applied", op, ids };
+  return outcome === "already" ? { status: "already", ids } : undefined;
+}
+
+function settledOutcome(body: RouteBody): ActionOutcome | undefined {
+  const { outcome, gateId, runId, stillHeld, name, caveats, closedHead, clearedPause, task, gate, claimedRun } = body;
   if (outcome === "resolved" && gateId) return { status: "resolved", gateId };
   if (outcome === "released" && runId && stillHeld !== undefined) return { status: "released", runId, stillHeld };
   if ((outcome === "accepted" || outcome === "approved") && runId) return { status: outcome, runId };
@@ -72,8 +80,8 @@ function settledOutcome({ outcome, gateId, runId, stillHeld, name, caveats, clos
   if (outcome === "pr-closed" && closedHead) return { status: "pr-closed", closedHead };
   if (outcome === "pause-cleared" && clearedPause && stillHeld !== undefined) return { status: "pause-cleared", clearedPause, stillHeld };
   if (outcome === "plan-approved" && task && gate && claimedRun !== undefined) return { status: "plan-approved", task, gate, claimedRun };
-  if (outcome === "plan-applied" && op && ids) return { status: "plan-applied", op, ids };
-  if (outcome === "already" && ids) return { status: "already", ids };
+  const plan = planSettled(body);
+  if (plan !== undefined) return plan;
   if (outcome === "already" && (gateId || runId || name || closedHead || clearedPause || task)) return alreadyOf({ gateId, runId, name, closedHead, clearedPause, task });
   return undefined;
 }
