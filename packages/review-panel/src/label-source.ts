@@ -5,7 +5,7 @@ import { FOLLOW_UPS_HEADING } from "./follow-ups.js";
 import type { ReviewerMessage } from "./ports.js";
 
 /** Above this much text before its Verdict line, a final message is a review in its own right, never a repeat. */
-export const BARE_PREFACE_CHARS = 400;
+const BARE_PREFACE_CHARS = 400;
 const LENDING_LABELS = [ATTESTS_HEADING, FOLLOW_UPS_HEADING, AUTHORITY_HEADING, PROBES_HEADING];
 
 interface MergeBlock {

@@ -60,6 +60,12 @@ const fromDispatch = (input: AwaitVerdictInput, message: ReviewerMessage): boole
 /** An earlier message may lend a MERGE its Attests and Follow-ups only when its locator points into the dispatched session too. */
 const isOwnEarlier = (input: AwaitVerdictInput, message: ReviewerMessage): boolean => fromDispatch(input, message) && reviewerSessionOf(message) === input.reviewerSessionId;
 
+/** The text Attests and Follow-ups are read from: a MERGE whose final message is a bare repeat reads the full verdict above it. */
+function labelText(input: AwaitVerdictInput, final: ReviewerMessage, block: Parameters<typeof labelSource>[1] & { verdict: string }, messages: readonly ReviewerMessage[]): string {
+  if (block.verdict !== "MERGE") return final.text;
+  return labelSource(final, block, messages.slice(0, -1).filter((message) => isOwnEarlier(input, message))).text;
+}
+
 const attestsField = (text: string): { attests?: string[] } => {
   const attests = attestTokens(text);
   return attests.length > 0 ? { attests } : {};
@@ -103,7 +109,7 @@ export function acceptVerdict(input: AwaitVerdictInput, messages: readonly Revie
   if (input.shape === "adversary" && block.verdict === "MERGE" && (authority === undefined || authority === "malformed")) return malformedNone("authority_missing", final.writtenAt);
   const ciPolicy = block.verdict === "MERGE" ? mergeCiPolicy(block.ciPolicy, final.text, block.lineOffset) : undefined;
   if (ciPolicy === "ci_policy_prose" || ciPolicy === "ci_policy_malformed") return malformedNone(ciPolicy, final.writtenAt, final.text);
-  const labels = block.verdict === "MERGE" ? labelSource(final, block, messages.slice(0, -1).filter((message) => isOwnEarlier(input, message))).text : final.text;
+  const labels = labelText(input, final, block, messages);
   const accepted: AcceptedVerdict = { kind: "verdict", head: block.head, locator: final.locator, reviewer: { agentId: final.agentId, sessionId: final.sessionId }, ownerBrief: parseOwnerBrief(final.text), ...followUpsFields(labels) };
   return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE", ...(ciPolicy && { ciPolicy }), ...attestsField(labels), ...(authority && authority !== "malformed" && { authority }) } : { ...accepted, verdict: "FIX_FIRST", text: fixFirstFindings(input, messages.filter((message) => fromDispatch(input, message)), final.text), ...(block.closer && { closer: block.closer }) };
 }
