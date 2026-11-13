@@ -13,8 +13,8 @@
     {
       "name": "a repeat registration replaces the first registrant",
       "file": "products/factory/src/shepherd/registration-facts.ts",
-      "find": "WHERE run_id = ? AND registrant IS NULL\";",
-      "replace": "WHERE run_id = ?\";",
+      "find": "WHERE run_id = ? AND ${replaceable}`;",
+      "replace": "WHERE run_id = ?`;",
       "kills": [
         "Shepherd's seat notice and digest follow the run's registrant, not the repo's seat (TP-3653) a restarted successor run keeps the original registrant when the successor registers the PR again",
         "Shepherd's seat notice and digest follow the run's registrant, not the repo's seat (TP-3653) a restarted successor of a fixer that registered its own PR still sends to the session that spawned that fixer"
