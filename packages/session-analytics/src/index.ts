@@ -131,7 +131,7 @@ export { frictionDailyReport } from "./friction-daily.js";
 export { FRICTION_ASKER, frictionDeposit, frictionDepositId, renderFrictionMarkdown, renderLogTop, renderReportTop } from "./friction-render.js";
 export type { GenerationEnd, SeatGeneration, SeatGenerationsInput } from "./seat-generations.js";
 export { TELEPORT_COMPLETED_EVENT, seatGenerations, seatGenerationsSchema } from "./seat-generations.js";
-export { readAgentSessions, readCoverage } from "./cost-report-queries.js";
+export { readAgentNames, readAgentSessions, readCoverage } from "./cost-report-queries.js";
 export type {
   CompactionMark,
   ModelRequests,

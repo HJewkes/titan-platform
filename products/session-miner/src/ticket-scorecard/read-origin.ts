@@ -60,7 +60,7 @@ export function originLinkedEvents(graph: Db, untasked: readonly UntaskedSpawn[]
     else if (link.taskIds.length > 1) counts.several++;
     else {
       counts.linked++;
-      events.push({ id: u.id, kind: "agent_spawned", taskRef: link.taskIds[0]!, spawn: { ...u.spawn, link: `inferred:${link.source}` } });
+      events.push({ id: u.id, kind: "agent_spawned", taskRef: link.taskIds[0]!, spawn: { ...u.spawn, link: `inferred:${link.source}` }, model: u.model });
     }
   }
   return { events, counts };
