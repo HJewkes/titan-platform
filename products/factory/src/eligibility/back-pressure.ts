@@ -1,4 +1,5 @@
 import { isoWeek } from "../shepherd/stats.js";
+import type { Component } from "./lane-components.js";
 
 /*
  * Back-pressure (operating model PROPOSAL 2.3, TP-5453 P4b): a lane admits new work only while it can land it.
@@ -79,13 +80,47 @@ function reviewerHolds(reviewers: LaneSignals["reviewers"]): Hold[] {
   return [{ code: "reviewer-limit", scope: "lane", numbers: { ...reviewers }, detail: `all ${reviewers.accounts} reviewer account(s) are at their usage limit` }];
 }
 
-/** No structured lane-to-component mapping exists, so a stall holds every lane (fails closed). */
-function dependencyHolds(signals: LaneSignals): Hold[] {
-  const causes = signals.deployStall?.length ?? 0;
-  const red = signals.redMain?.length ?? 0;
-  if (causes === 0 && red === 0) return [];
-  const detail = [causes > 0 ? `deploy alarm (${causes} cause(s))` : "", red > 0 ? `red main in ${red} repo(s)` : ""].filter(Boolean).join(", ");
-  return [{ code: "dependency-stalled", scope: "lane", numbers: { deployCauses: causes, redMainRepos: red }, detail: `${detail}; no lane-to-component mapping, so every lane holds` }];
+interface Stalls {
+  deployCauses: number;
+  redMainRepos: number;
+  /** Named components whose health could not be read; each counts as stalled. */
+  unreadComponents: number;
+}
+
+/** An unmapped lane depends on every component; an unread signal there is held by `signal-unreadable` instead. */
+function everyStall(signals: LaneSignals): Stalls {
+  return { deployCauses: signals.deployStall?.length ?? 0, redMainRepos: signals.redMain?.length ?? 0, unreadComponents: 0 };
+}
+
+function healthRead(signals: LaneSignals, isDeploy: boolean): boolean {
+  if (isDeploy) return signals.unread.deploy === undefined && signals.deployStall !== undefined;
+  return signals.unread.redMain === undefined && signals.redMain !== undefined;
+}
+
+function namedStalls(signals: LaneSignals, components: readonly Component[]): Stalls {
+  const stalls: Stalls = { deployCauses: 0, redMainRepos: 0, unreadComponents: 0 };
+  const red = new Set(signals.redMain?.map((repo) => repo.toLowerCase()));
+  for (const component of components) {
+    const isDeploy = component === "factory-deploy";
+    if (!healthRead(signals, isDeploy)) stalls.unreadComponents += 1;
+    else if (isDeploy) stalls.deployCauses = signals.deployStall?.length ?? 0;
+    else if (red.has(component.slice("main:".length).toLowerCase())) stalls.redMainRepos += 1;
+  }
+  return stalls;
+}
+
+/** A deploy stall or red main holds the lane only through a component it depends on (`lane-components.ts`). */
+function dependencyHolds(signals: LaneSignals, components: readonly Component[] | undefined): Hold[] {
+  const stalls = components === undefined ? everyStall(signals) : namedStalls(signals, components);
+  const { deployCauses, redMainRepos, unreadComponents } = stalls;
+  if (deployCauses + redMainRepos + unreadComponents === 0) return [];
+  const parts = [
+    deployCauses > 0 && `deploy alarm (${deployCauses} cause(s))`,
+    redMainRepos > 0 && `red main in ${redMainRepos} repo(s)`,
+    unreadComponents > 0 && `${unreadComponents} component(s) unreadable`,
+  ];
+  const scope = components === undefined ? "the lane has no component mapping, so it depends on every component" : `the lane depends on ${components.join(", ")}`;
+  return [{ code: "dependency-stalled", scope: "lane", numbers: { ...stalls }, detail: `${parts.filter(Boolean).join(", ")}; ${scope}` }];
 }
 
 /** A signal nobody could read holds what it guards, so an outage never reads as headroom. */
@@ -98,13 +133,13 @@ function unreadHolds(unread: LaneSignals["unread"]): Hold[] {
   }));
 }
 
-/** Admit or hold the lane, with every hold that applies and the numbers behind it. */
-export function admitLane(signals: LaneSignals, limits: BackPressureLimits): Admission {
+/** Admit or hold the lane, with every hold that applies and the numbers behind it; `components` undefined means every component. */
+export function admitLane(signals: LaneSignals, limits: BackPressureLimits, components?: readonly Component[]): Admission {
   const holds = [
     ...prHolds(signals, limits.laneOpenPrs),
     ...ownerQueueHolds(signals.ownerQueue, limits.ownerQueue),
     ...reviewerHolds(signals.reviewers),
-    ...dependencyHolds(signals),
+    ...dependencyHolds(signals, components),
     ...unreadHolds(signals.unread),
   ];
   return { decision: holds.some((hold) => hold.scope === "lane") ? "hold" : "admit", holds };

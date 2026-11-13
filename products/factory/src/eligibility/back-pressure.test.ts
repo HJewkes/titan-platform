@@ -49,12 +49,12 @@ describe("lane admission", () => {
     expect(codes({ reviewers: { accounts: 2, exhausted: 2 } })).toEqual(["reviewer-limit"]);
   });
 
-  it("holds every lane on a deploy alarm or a red main, with the counts behind it", () => {
+  it("holds an unmapped lane on any deploy alarm or red main, with the counts behind it", () => {
     expect(codes({ deployStall: ["2 refusals in a row"] })).toEqual(["dependency-stalled"]);
 
     const red = admitLane({ ...calm, redMain: ["octo/demo"] }, DEFAULT_LIMITS);
 
-    expect(red.holds).toEqual([expect.objectContaining({ code: "dependency-stalled", numbers: { deployCauses: 0, redMainRepos: 1 } })]);
+    expect(red.holds).toEqual([expect.objectContaining({ code: "dependency-stalled", numbers: { deployCauses: 0, redMainRepos: 1, unreadComponents: 0 } })]);
   });
 
   it("a signal nobody could read holds what it guards instead of reading as headroom", () => {
