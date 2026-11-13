@@ -524,6 +524,21 @@ The env file sets `CLAUDE_CONFIG_DIR` (a pool account's profile, never the owner
 `claude -p --model sonnet --max-turns 1 "reply ok"`, then
 `titan-factory owner-gates audit --dry-run`.
 
+## Review stats: daily refresh
+
+`titan-factory shepherd stats --reviews` refreshes `review-stats.sqlite3` beside the ledger, then prints the report. A round
+whose run recorded no own-diff id takes one from the git-cache, read-only: a head the cache lacks stays without an id and the
+refresh line counts it.
+
+The 05:00 timer is `ops/systemd/titan-review-stats.{service,timer}`. It runs from the deploy checkout and reads the same env
+file as the owner-gates unit. Install it once per host:
+
+```sh
+cp ops/systemd/titan-review-stats.{service,timer} ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now titan-review-stats.timer
+```
+
 ## Owner-queue sources
 
 `src/needs/` holds the factory's `QueueSource` adapters for `@titan-design/owner-queue`. Each
