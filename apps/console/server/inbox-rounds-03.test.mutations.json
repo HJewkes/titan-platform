@@ -2,18 +2,6 @@
   "v": 1,
   "mutations": [
     {
-      "name": "owner-queue parses the 0.3 round unprojected, so the round is a gap again",
-      "file": "apps/console/server/approval-items.ts",
-      "find": "ManifestSchema.safeParse(manifestFor01(round.manifest))",
-      "replace": "ManifestSchema.safeParse(round.manifest)",
-      "kills": [
-        "a round only review-schema 0.3 reads, in the inbox (TP-4356) is one blocking row with its question count and no unreadable-round gap",
-        "a round only review-schema 0.3 reads, in the inbox (TP-4356) folds each PR gate at the head the round pins into the round's row",
-        "a round only review-schema 0.3 reads, in the inbox (TP-4356) keeps a PR gate at a head other than the round's pin as its own row",
-        "a round only review-schema 0.3 reads, in the inbox (TP-4356) keeps a gate the round's answer cannot settle, such as an sh-sent-back gate at the pinned head, as its own row"
-      ]
-    },
-    {
       "name": "a gate folds into the round covering its PR at any head",
       "file": "apps/console/server/inbox-blocking.ts",
       "find": "const roundId = head === undefined ? undefined : covering.get(head);",

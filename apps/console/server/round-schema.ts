@@ -1,20 +1,18 @@
 /**
- * The console's one round.json schema: review-schema 0.3.0's strict `RoundSchema`, vendored in `review-schema-0.3/`
- * because 0.3.0 is not on npm yet. It is a product-side adapter, so TP-3232 points this file at the release and
- * deletes the vendored directory; `round-schema.sunset.test.ts` fails the day the installed package makes that possible.
+ * The console's one round.json schema: review-schema's strict `RoundSchema`, with the console's own fields lifted off.
  *
  * A blind-ab round is refused. Its takes name their engines, the page must never see them, and the console
  * keeps no blind key, so the review harness answers those rounds. Feedback with a blind-ab answer (`pairs`,
  * whose `engine` the harness fills in after the send) is refused for the same reason.
  *
  * `supersedes` (TP-3990) is the console's own field, not review-schema's: the ids of earlier rounds this one replaces,
- * which `round-supersede.ts` withdraws while they are still open. It is lifted off before the strict parse, so the
- * vendored copy stays byte-for-byte the release and survives TP-3232's swap. `planApprovals` (TP-4357) is lifted the same
+ * which `round-supersede.ts` withdraws while they are still open. It is lifted off before the strict parse, since
+ * review-schema does not know it. `planApprovals` (TP-4357) is lifted the same
  * way: the plan-approval entries a plan round's answer records (`round-plan-binding.ts`). `kind` (TP-5409) is lifted too:
  * `feedback` marks a post-merge visual sheet, which shows what changed and asks for notes, so it may bind no merge.
  */
 import { z } from "zod";
-import * as reviewSchema from "./review-schema-0.3/index.js";
+import * as reviewSchema from "@titan-design/review-schema";
 import { PlanBindings, planBindingProblems } from "./round-plan-binding.js";
 
 export const BLIND_AB_REFUSED = "a blind-ab round is answered in the review harness";

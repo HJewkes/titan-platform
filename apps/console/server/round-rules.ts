@@ -1,6 +1,6 @@
 /**
- * The builder rules a round must pass to enter the rounds dir (TP-3769): review-schema's `lintRound`, vendored in
- * `review-schema-0.3/lint.ts`, plus the harness's Ship-last order, which `applyRoundRules` applies by reordering
+ * The builder rules a round must pass to enter the rounds dir (TP-3769): review-schema's `lintRound`,
+ * plus the harness's Ship-last order, which `applyRoundRules` applies by reordering
  * (review-harness round-rules.ts `shipLast`). The page asks a section's questions in `questionIds` order, and
  * `lintRound` passes a Ship with no frames anywhere in its section, so a side question after Ship would be asked
  * once the merge is already answered.
@@ -9,7 +9,7 @@
  * are what frames.json and feedback.json bind by sha256. `rounds.get` never runs these rules, so a round already on
  * disk keeps opening.
  */
-import { lintRound, type LintProblem } from "./review-schema-0.3/index.js";
+import { lintRound, type LintProblem } from "@titan-design/review-schema";
 import type { Manifest, Question } from "./round-schema.js";
 
 const isShip = (question: Question): boolean => question.kind === "pick-one" && question.merge !== undefined;

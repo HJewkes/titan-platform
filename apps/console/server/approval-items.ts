@@ -6,13 +6,7 @@
 import { answeredFromFeedback, collapseRepeats, fromRoundQuestions, type OwnerItem, type WithdrawnItem } from "@titan-design/owner-queue";
 import { readAnswer, readSpool } from "@titan-design/owner-queue/spool";
 import { readWithdrawal } from "@titan-design/owner-queue/withdraw";
-import {
-  FeedbackSchema as OwnerQueueFeedbackSchema,
-  ManifestSchema,
-  type Feedback as OwnerQueueFeedback,
-  type Manifest as OwnerQueueManifest,
-} from "@titan-design/review-schema";
-import type { Feedback, Manifest } from "./round-schema.js";
+import type { Manifest } from "./round-schema.js";
 import type { QueueRound, Withdrawal } from "./rounds.js";
 
 interface QueueItems {
@@ -35,7 +29,7 @@ function withdrawnItem(item: OwnerItem, { reason }: Withdrawal): WithdrawnItem {
 }
 
 /** An unsent round's questions are asked, unless the round was withdrawn: then they are listed as withdrawn only. */
-function openItems(round: QueueRound, manifest: OwnerQueueManifest, items: QueueItems): void {
+function openItems(round: QueueRound, manifest: Manifest, items: QueueItems): void {
   try {
     const asked = fromRoundQuestions(manifest, round.id, { openedAt: round.updatedAt });
     const { withdrawn } = round;
@@ -46,81 +40,14 @@ function openItems(round: QueueRound, manifest: OwnerQueueManifest, items: Queue
   }
 }
 
-/** The question, recommendation and section fields `fromRoundQuestions` reads; 0.1 knows each of them. */
-const QUESTION_KEYS_01 = ["id", "prompt", "required", "scope", "page", "kind", "options", "revisionOption", "signsOff", "merge", "min", "max"];
-const RECOMMENDATION_KEYS_01 = ["answer", "rationale", "confidence", "by"];
-const SECTION_KEYS_01 = ["id", "title", "deciding", "changed", "context", "kind", "questionIds"];
-
-const only = (value: object, keys: readonly string[]): Record<string, unknown> =>
-  Object.fromEntries(Object.entries(value).filter(([key]) => keys.includes(key)));
-
-function questionFor01(question: Manifest["questions"][number]): Record<string, unknown> {
-  const kept = only(question, QUESTION_KEYS_01);
-  const recommendation = "recommendation" in question ? question.recommendation : undefined;
-  return recommendation === undefined ? kept : { ...kept, recommendation: only(recommendation, RECOMMENDATION_KEYS_01) };
-}
-
-/**
- * A 0.3 round, already validated by the console's strict reader, projected onto the 0.1 shape owner-queue parses:
- * only what its queue items read is kept, and the frames go, since no item shows one (TP-4356). TP-3232 deletes this.
- */
-function manifestFor01({ schema, unit, round, storybookUrl, context, widths, recommendations, questions, sections }: Manifest): Record<string, unknown> {
-  return {
-    schema,
-    unit,
-    round,
-    storybookUrl,
-    widths,
-    recommendations,
-    variants: [],
-    questions: questions.map(questionFor01),
-    sections: sections.map((section) => only(section, SECTION_KEYS_01)),
-    ...(context !== undefined && { context }),
-  };
-}
-
-/** A round the projection still leaves outside 0.1 is a gap until TP-3232 installs 0.3 in owner-queue too. */
-function ownerQueueManifest(round: QueueRound, items: QueueItems): OwnerQueueManifest | undefined {
-  const result = ManifestSchema.safeParse(manifestFor01(round.manifest));
-  if (!result.success) items.gaps.push(`${round.id}: needs review-schema 0.3 in owner-queue (TP-3232)`);
-  return result.data;
-}
-
-/** Keys review-schema 0.3 added to feedback@1 that 0.1 refuses as unknown; `answeredFromFeedback` reads none of them. */
-const NEW_ANSWER_KEYS = ["optionNotes", "after", "recommendationSeen"];
-const NEW_RECOMMENDATION_KEYS = ["weakPoint", "fallback"];
-const NEW_VARIANT_KEYS = ["clip", "audio"];
-
-const without = (value: object, keys: readonly string[]): Record<string, unknown> =>
-  Object.fromEntries(Object.entries(value).filter(([key]) => !keys.includes(key)));
-
-function answerFor01({ recommendation, ...answer }: Feedback["answers"][number]): Record<string, unknown> {
-  const kept = without(answer, NEW_ANSWER_KEYS);
-  return recommendation === undefined ? kept : { ...kept, recommendation: without(recommendation, NEW_RECOMMENDATION_KEYS) };
-}
-
-/**
- * 0.3 feedback projected onto the 0.1 shape owner-queue parses. Any other drift fails the 0.1 parse and is a gap,
- * with no items: the round was answered, so its questions must not open again.
- */
-function ownerQueueFeedback(round: QueueRound, feedback: Feedback, items: QueueItems): OwnerQueueFeedback | undefined {
-  const projected = { ...feedback, answers: feedback.answers.map(answerFor01), variants: feedback.variants.map((each) => without(each, NEW_VARIANT_KEYS)) };
-  const result = OwnerQueueFeedbackSchema.safeParse(projected);
-  if (!result.success) items.gaps.push(`${round.id}: its feedback needs review-schema 0.3 in owner-queue (TP-3232)`);
-  return result.data;
-}
-
 /** A sent round is closed, so its questions are answered items only; feedback that does not fit leaves it open. */
 function roundItems(round: QueueRound, items: QueueItems): void {
-  const manifest = ownerQueueManifest(round, items);
-  if (manifest === undefined) return;
-  if (round.feedback === null) {
+  const { manifest, feedback } = round;
+  if (feedback === null) {
     // An open feedback sheet (TP-5458) waits on no decision, so it asks the inbox nothing; its sent notes still record.
-    if (round.manifest.kind !== "feedback" || round.withdrawn !== null) openItems(round, manifest, items);
+    if (manifest.kind !== "feedback" || round.withdrawn !== null) openItems(round, manifest, items);
     return;
   }
-  const feedback = ownerQueueFeedback(round, round.feedback, items);
-  if (feedback === undefined) return;
   try {
     const context = { roundId: round.id, openedAt: round.updatedAt };
     items.answered.push(...answeredFromFeedback(feedback, manifest, context));

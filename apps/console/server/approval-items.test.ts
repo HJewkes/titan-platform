@@ -183,17 +183,6 @@ describe("roundQueueItems reads review-schema 0.3 feedback (TP-3272)", () => {
     expect(roundOf(rounds, SHOWN).feedback).toBeNull();
     expect(gaps.join("\n")).toMatch(new RegExp(`^${SHOWN}: feedback\\.json: .*"foo"`, "m"));
   });
-
-  it("reports feedback that does not project onto owner-queue's 0.1 shape as a gap, with no items and no throw", async () => {
-    const sent = roundOf(await fixtureRounds(submitShown), SHOWN);
-    if (sent.feedback === null) throw new Error("the submit wrote no feedback");
-    const answers = sent.feedback.answers.map((answer) => ({ ...answer, pairs: [{ pair: "line-1", choice: "A" as const }] }));
-    const drifted = { ...sent, feedback: { ...sent.feedback, answers } };
-
-    const items = roundQueueItems([drifted]);
-
-    expect(items).toEqual({ open: [], answered: [], withdrawn: [], gaps: [`${SHOWN}: its feedback needs review-schema 0.3 in owner-queue (TP-3232)`] });
-  });
 });
 
 describe("spoolQueueItems", () => {
