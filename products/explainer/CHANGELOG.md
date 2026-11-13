@@ -1,5 +1,12 @@
 # @titan-design/explainer
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [feec10d]
+  - @titan-design/pm@0.6.0
+
 ## 0.3.0
 
 ### Minor Changes
