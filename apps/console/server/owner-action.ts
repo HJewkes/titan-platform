@@ -6,7 +6,7 @@
  * adversary loop closes on a g10-held PR) and `already` for a `merge-at-head` op, `retired` and `already` for a
  * `retire-agent` op, `pr-closed` and `already` (each with the closed head) for a `close-pr` op, `pause-cleared` and
  * `already` (each with the cleared pause) for a `deploy-pause-clear` op, `plan-approved` and `already` (each with the task) for a
- * plan round's approval, and `moved`, `gone` and `refused` for any of them.
+ * plan round's approval, `plan-applied` and `already` (each with the plan record ids) for a planning op, and `moved`, `gone` and `refused` for any of them.
  */
 import { z } from "zod";
 
@@ -23,7 +23,9 @@ export type ActionOutcome =
   | { status: "pause-cleared"; clearedPause: string; stillHeld: string | null }
   /** `claimedRun` is the task's one live run the approval bound to, or null until a registration claims it. */
   | { status: "plan-approved"; task: string; gate: string; claimedRun: string | null }
-  | { status: "already"; gateId?: string; runId?: string; name?: string; closedHead?: string; clearedPause?: string; task?: string }
+  /** A planning op wrote the owner's bets, outcome or freeze; `ids` are the plan records it wrote. */
+  | { status: "plan-applied"; op: string; ids: string[] }
+  | { status: "already"; gateId?: string; runId?: string; name?: string; closedHead?: string; clearedPause?: string; task?: string; ids?: string[] }
   /** `currentAgentId` only for a retire-agent whose name moved, `currentPause` only for a deploy-pause-clear whose newer pause stands; every other op moves with a head. */
   | { status: "moved"; currentHead: string | null; currentAgentId?: string; currentPause?: string }
   | { status: "gone"; reason: string }
@@ -51,6 +53,8 @@ const routeBody = z.looseObject({
   task: z.string().optional(),
   gate: z.string().optional(),
   claimedRun: z.string().nullable().optional(),
+  op: z.string().optional(),
+  ids: z.array(z.string()).optional(),
   reason: z.string().optional(),
   detail: z.string().optional(),
   error: z.string().optional(),
@@ -60,7 +64,7 @@ type RouteBody = z.infer<typeof routeBody>;
 
 const unreachable = (detail: string): Unreachable => ({ status: "unreachable", detail });
 
-function settledOutcome({ outcome, gateId, runId, stillHeld, name, caveats, closedHead, clearedPause, task, gate, claimedRun }: RouteBody): ActionOutcome | undefined {
+function settledOutcome({ outcome, gateId, runId, stillHeld, name, caveats, closedHead, clearedPause, task, gate, claimedRun, op, ids }: RouteBody): ActionOutcome | undefined {
   if (outcome === "resolved" && gateId) return { status: "resolved", gateId };
   if (outcome === "released" && runId && stillHeld !== undefined) return { status: "released", runId, stillHeld };
   if ((outcome === "accepted" || outcome === "approved") && runId) return { status: outcome, runId };
@@ -68,6 +72,8 @@ function settledOutcome({ outcome, gateId, runId, stillHeld, name, caveats, clos
   if (outcome === "pr-closed" && closedHead) return { status: "pr-closed", closedHead };
   if (outcome === "pause-cleared" && clearedPause && stillHeld !== undefined) return { status: "pause-cleared", clearedPause, stillHeld };
   if (outcome === "plan-approved" && task && gate && claimedRun !== undefined) return { status: "plan-approved", task, gate, claimedRun };
+  if (outcome === "plan-applied" && op && ids) return { status: "plan-applied", op, ids };
+  if (outcome === "already" && ids) return { status: "already", ids };
   if (outcome === "already" && (gateId || runId || name || closedHead || clearedPause || task)) return alreadyOf({ gateId, runId, name, closedHead, clearedPause, task });
   return undefined;
 }
