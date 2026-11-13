@@ -66,6 +66,7 @@
   "dist-build.ts",
   "doc/task-source.ts",
   "eligibility/back-pressure.ts",
+  "eligibility/lane-components.ts",
   "event-log/ci-keys.ts",
   "event-log/event-log.ts",
   "event-log/repo-keys.ts",

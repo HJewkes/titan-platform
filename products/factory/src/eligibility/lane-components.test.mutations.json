@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a mapped lane holds on a red main in any repo",
+      "file": "products/factory/src/eligibility/back-pressure.ts",
+      "find": "else if (red.has(component.slice(\"main:\".length).toLowerCase())) stalls.redMainRepos += 1;",
+      "replace": "else if (red.size > 0) stalls.redMainRepos += 1;",
+      "kills": ["mapped lane admission admits a lane through a stall in a component it does not name"]
+    },
+    {
+      "name": "a mapped lane ignores the mapping and depends on everything",
+      "file": "products/factory/src/eligibility/back-pressure.ts",
+      "find": "const stalls = components === undefined ? everyStall(signals) : namedStalls(signals, components);",
+      "replace": "const stalls = everyStall(signals);",
+      "kills": ["mapped lane admission admits a lane through a stall in a component it does not name"]
+    },
+    {
+      "name": "the red-main match is case-sensitive",
+      "file": "products/factory/src/eligibility/back-pressure.ts",
+      "find": "const red = new Set(signals.redMain?.map((repo) => repo.toLowerCase()));",
+      "replace": "const red = new Set(signals.redMain);",
+      "kills": ["mapped lane admission holds a lane on a red main in a repo it names, whatever the case of the slug"]
+    },
+    {
+      "name": "an unread named component reads as healthy",
+      "file": "products/factory/src/eligibility/back-pressure.ts",
+      "find": "if (!healthRead(signals, isDeploy)) stalls.unreadComponents += 1;",
+      "replace": "if (!healthRead(signals, isDeploy)) continue;",
+      "kills": ["mapped lane admission counts a named component whose health is unread as stalled"]
+    },
+    {
+      "name": "the lookup ignores the tag",
+      "file": "products/factory/src/eligibility/lane-components.ts",
+      "find": "entry.initiative === lane.initiative && entry.tag === (lane.tag ?? null)",
+      "replace": "entry.initiative === lane.initiative",
+      "kills": ["lane component lookup leaves a lane with no entry unmapped", "lane component lookup finds a lane by initiative and tag, and the untagged lane only without a tag"]
+    }
+  ]
+}
