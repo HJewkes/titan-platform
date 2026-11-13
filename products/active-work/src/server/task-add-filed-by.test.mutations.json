@@ -14,7 +14,7 @@
     {
       "name": "the daemon's /rpc context is not marked remote",
       "file": "products/active-work/src/server/mcp.ts",
-      "find": "      remote: true,\n",
+      "find": "remote: true,",
       "replace": "",
       "kills": ["filed_by on the daemon surfaces task add over rpc never records filed_by owner (an owner-started daemon)"]
     }
