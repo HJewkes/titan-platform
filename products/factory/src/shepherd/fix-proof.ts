@@ -9,15 +9,14 @@ import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
 import { FIX_PROOF_CHECK, harnessTouch } from "./fix-proof-harness.js";
 import { FIX_PROOF_EXEC_CHECKS } from "./fix-proof-jobs.js";
-import { mayProceedLine, proceedsOnNoRepro } from "./no-repro-test-only.js";
+import { codeFreeNoRepro, mayProceedLine, proceedsOnNoRepro } from "./no-repro-test-only.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
 import { FIX_PROOF_KINDS } from "./task-kind.js";
 import { sourceFreeDiff } from "./test-only-diff.js";
 import { workflowCiProof, WorkflowCiReadSchema, type WorkflowCiRead } from "./workflow-ci-proof.js";
 
-export { FIX_PROOF_CHECK };
-export type { FixProofUnverified };
+export { FIX_PROOF_CHECK, type FixProofUnverified };
 
 const FIX_PROOF_STEP = "sh-fix-proof";
 export const FIX_PROOF_STEPS: readonly StepDeclaration[] = [{ id: FIX_PROOF_STEP, kind: "dispatch" }];
@@ -349,6 +348,7 @@ async function gatedRead(deps: GatedDeps, input: FixProofInput, gate: OpenGate, 
  * and a result line proceeds only on a diff the fix-proof plan reads with no source path under the trusted configs.
  */
 async function nonSourceProceeds(deps: Pick<ShepherdDeps, "port" | "nonSourceNoRepro">, input: FixProofInput, gate: OpenGate, read: FixProofRead): Promise<boolean> {
+  if (read.kind === "result" && !read.testOnlyProceed && (await codeFreeNoRepro(deps.port, { repo: input.repo, pr: gate.pr, head: input.head }, read.line))) return true;
   if (deps.nonSourceNoRepro !== "record-fact" || gate.kind === "security" || fixProofVerdict(read, input.head) === undefined) return false;
   if (read.kind === "workflow-ci") return true;
   if (read.kind !== "result" || read.testOnlyProceed === true || !mayProceedLine(read.line)) return false;

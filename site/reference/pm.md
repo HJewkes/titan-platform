@@ -284,10 +284,128 @@ A transitional list, dated 2026-11-12, keeps a named set of code initiatives vis
 briefs carry no `visibility` key yet. An explicit `visibility` always wins over it, and a
 follow-up deletes the list once those briefs declare it.
 
+## Task keys
+
+`resolveTaskKey(input, index)` turns a task reference into the one canonical key,
+`<initiative>/<TASK-ID>`, that execution records join on. `input` is a bare id (`AL-7`), a
+prefixed key (`alpha/AL-7`) or a repo-qualified one (`acme/alpha/AL-7`). `index` holds every
+task's id and initiative and every initiative's `task_prefix`, as active-work records them.
+The answer is `{ ok: true, key }`, or `{ ok: false, reason, detail }` with `reason` one of
+`malformed`, `not-found`, `ambiguous` or `wrong-initiative`. An id two initiatives hold goes to
+the one whose `task_prefix` issued it. A qualifier that is not the task's initiative is refused,
+never corrected; the refusal carries the key the id alone resolves to as `proposed`, so a report
+can name it.
+
+```ts
+import { resolveTaskKey } from "@titan-design/pm";
+
+const index = { tasks: [{ id: "AL-7", initiative: "alpha" }], prefixes: [{ initiative: "alpha", taskPrefix: "AL" }] };
+resolveTaskKey("AL-7", index); // { ok: true, key: "alpha/AL-7", ... }
+resolveTaskKey("beta/AL-7", index); // { ok: false, reason: "wrong-initiative", proposed: "alpha/AL-7", ... }
+```
+
+## Planning records
+
+Four strict schemas type the planning layer an initiative keeps beside its tasks. Each record
+has a stable id prefixed by its `initiative` slug, and an id filed under another initiative is
+refused. Unknown keys are refused too.
+
+| Schema | Id form | Carries |
+|---|---|---|
+| `OutcomeSchema` | `alpha/faster-landing` | `statement`, `measure`, `state` (`draft`, `active`, `retired`), optional `owner_intent` |
+| `BetSchema` | `alpha/B1` | ISO `week`, `outcome` id, `order`, `tasks` (`alpha/AL-1` keys) or a `selector`, `prediction`, `state` (`proposed`, `selected`, `dropped`, `done`), optional `cites` |
+| `FreezeSchema` | `alpha/F1` | exactly one of `tag` or `selector`, `reason`, `end_condition`, `set_by` (`owner`, `decider`), `intent_ref`, `quote_ref`, optional `ended_on` once the owner ends it |
+| `OutOfScopeSchema` | `alpha/X1` | `statement`, `intent_ref`, `quote_ref`, `date` of the owner statement, optional `revisit_when` |
+
+A bet's `prediction` names the `metric` it should move, its `direction`, the `baseline`, the
+`expected` value and the `read_by` date. A freeze's `end_condition` is one of `{ kind: "date", date }`,
+`{ kind: "task-done", task }`, `{ kind: "measure", metric, direction, threshold }` or `{ kind: "owner" }`.
+
+An owner-intent reference (`OwnerIntentRefSchema`) is a pair: `intent_ref`, a decision id (`D12`)
+or an intent line id (`alpha/I3`), and `quote_ref`, a single token that points at the quote
+(`msg:a1b2c3`). Quoted text with spaces is refused, so prose cannot stand in for the reference.
+
+```ts
+import { OutOfScopeSchema } from "@titan-design/pm";
+
+OutOfScopeSchema.parse({
+  id: "alpha/X1",
+  initiative: "alpha",
+  statement: "No mobile client this quarter",
+  intent_ref: "alpha/I4",
+  quote_ref: "msg:7c6b5a",
+  date: "2026-11-12",
+});
+```
+
+### The plan store (`@titan-design/pm/node`)
+
+The `./node` subpath is the one file store for these records, so every writer agrees on the
+layout and the lock. A record lives at `<activeRoot>/<initiative>/plan/<dir>/<suffix>.yml`, where
+`<dir>` is `outcomes`, `bets`, `freezes` or `out-of-scope` and `<suffix>` is the part of the id
+after the slash. A bet keeps its week as a field, so selecting it never moves the file.
+
+| Export | Does |
+|---|---|
+| `readPlanRecord(root, kind, id)` | the record, or `null` for a malformed id or a missing file; a file that fails its schema throws |
+| `loadPlanRecords(root, initiative, kind)` | every record of one kind, in filename order; a missing folder holds none |
+| `writePlanRecord(root, kind, record)` | validates before any disk write, then writes atomically |
+| `withPlanLock(root, initiative, fn)` | runs `fn` holding `<initiative>/plan/.lock` (proper-lockfile, 10 s stale, 20 s wait) |
+| `nextPlanId(initiative, letter, records)` | the next `<initiative>/<letter><n>` id |
+| `PlanStoreError` | a refusal with `kind`: `invalid`, `not-found` (no initiative folder) or `lock-timeout` |
+
+```ts
+import { readPlanRecord, withPlanLock, writePlanRecord } from "@titan-design/pm/node";
+
+await withPlanLock(root, "alpha", async () => {
+  const bet = await readPlanRecord(root, "bet", "alpha/B1");
+  if (bet !== null) await writePlanRecord(root, "bet", { ...bet, order: 2 });
+});
+```
+
+## Task provenance
+
+`TaskSchema` carries where a task came from and why it closed, so the ticket scorecard reads
+them instead of inferring them. Every field is optional on read: a task file written before
+these fields still parses.
+
+| Field | Values |
+|---|---|
+| `class` | `product`, `upkeep` |
+| `serves` | an `OutcomeSchema` id (`alpha/faster-landing`), or `none` |
+| `source` | `owner`, `plan`, `follow-up`, `review`, `sweep`, `audit`, `coordinator`, `incident` |
+| `source_ref` | a string, or `{ from_pr: "owner/repo#12", from_task: "AL-7", head? }` |
+| `filed_by` | an agent name, or `owner` |
+| `rank` | `p0`, `p1`, `p2`, `p3` |
+| `done_reason` | `shipped`, `superseded`, `duplicate`, `moot`, `wont-do` |
+| `blocked_on` | `owner`, `decision`, `task`, `external` |
+| `bet` | a `BetSchema` id (`alpha/B1`); whether it exists is checked at write |
+| `fold` | `independent`, or a fold id (`alpha/FD1`, `<initiative>/FD<n>`) |
+| `owner_steps` | a list of `{ kind, note }`; `kind` is `release`, `restart`, `credential`, `sitting`, `config` or `publish`; `note` is one line; an empty list is allowed |
+| `field_origin` | per field above: `filed`, `owner`, `audit` or `inferred:<heuristic-id>` |
+
+`source_ref` must fit `source`. `owner` needs a single-token decision or owner-queue item id
+(`D12`); whether it exists is active-work's check. `plan` takes `path#slice`. `follow-up` and
+`review` take the `from_pr` object, and no other source does. A `source_ref` with no `source`
+is refused.
+
+An initiative brief's `task_require` (`TaskRequireSchema`) lists which of `class`, `serves`,
+`source` and `source_ref` every new task there must carry. The schema only reads the list;
+active-work's `task add` and `task edit` enforce it.
+
+A task names its bet only if the bet exists. `betProblem(task, lookup)` answers through a
+`BetLookup` (`has(betId): Promise<boolean>`), which the planning store implements once the plan
+verbs write `<initiative>/plan/`. Until then active-work's lookup knows no bet, so a task naming
+one is refused at write and a task with no bet passes.
+
+To add a provenance field, add it to `TaskProvenanceShape` in `src/provenance.ts`, optional.
+Its `field_origin` key follows from that shape. List it in `TASK_REQUIRABLE_FIELDS` if a
+brief may require it.
+
 ## What it deliberately does not do
 
-It reads no files, parses no YAML and writes nothing, the category and deliverable
-registries included. It does not check that a task's `deliverables` ids exist. It
+The root entry reads no files, parses no YAML and writes nothing, the category and deliverable
+registries included; only the `./node` plan store touches disk. It does not check that a task's `deliverables` ids exist. It
 does not choose the area ids; those come from `$tiers` and the products outside this repo. It has no task numbering, and it
 knows a task's initiative only by its id prefix (`EC` for `EC-1`).
 

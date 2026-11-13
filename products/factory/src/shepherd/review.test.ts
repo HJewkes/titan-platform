@@ -407,7 +407,7 @@ describe("reviewRoutes", () => {
     });
 
     it("removes only a panel member's own checkout dir, under its shape, once the member reaches a verdict", async () => {
-      const probed = message({ text: `Probes: empty token -> refused\n\n${block()}` });
+      const probed = message({ text: `Probes: empty token -> refused\nAuthority: unchanged\n\n${block()}` });
       const route = reviewRoutes(withFakeFs, { reader: { read: async () => [probed] } }).find((candidate) => candidate.match === "sh-await-verdict")!;
 
       const stepId = `sh-await-verdict:${HEAD}:adversary`;
@@ -1464,7 +1464,7 @@ describe("reviewPhase", () => {
   const said = (who: ReviewerAgent, text: string, writtenAt: number): ReviewerMessage => ({ agentId: who.agentId, sessionId: who.sessionId, writtenAt, text, locator: locatorIn(who.sessionId) });
   const verdictAt = (head: string, verdict = "MERGE") => `Read it all.\n\nVerdict: ${verdict}\nPR: ${REPO}#1\nHead: ${head}\n`;
   /** An adversary member's verdict carries the probes it ran, or it is refused. */
-  const probedAt = (head: string, verdict = "MERGE") => `Probes: empty token -> refused\n\n${verdictAt(head, verdict)}`;
+  const probedAt = (head: string, verdict = "MERGE") => `Probes: empty token -> refused\nAuthority: unchanged\n\n${verdictAt(head, verdict)}`;
   const verdictBy = (who: ReviewerAgent, head: string) => (who.name.endsWith("-adversary") ? probedAt(head) : verdictAt(head));
 
   interface Scene {
@@ -1492,6 +1492,8 @@ describe("reviewPhase", () => {
     panel?: PanelMode;
     /** A g10-adversary hold's member, as `shepherd.gateReset.twoMergeRelease` other than off wires it. */
     holdMember?: HoldMember;
+    /** Wires the own-diff step against a cache whose fetch fails, so it records unread without reaching a network. */
+    ownDiff?: { stateDir: string };
     /** The PR's changed files; absent means one source file with no line counts. */
     files?: PrFile[];
   }
@@ -1512,7 +1514,7 @@ describe("reviewPhase", () => {
       for (const { headSha, fresh } of requests) verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha, ...(fresh && { fresh: true }), ...(scene.cause && { cause: scene.cause }) }));
     };
     const { awaited } = scene;
-    const wired = reviewRoutes(deps, { reader, dispatch: scene.dispatch, timeoutMs: 5_000, ...(scene.roles && { roles: scene.roles }), ...(scene.machineStop && { machineStop: scene.machineStop }), ...(scene.panel && { panel: scene.panel }), ...(scene.holdMember && { holdMember: scene.holdMember }) });
+    const wired = reviewRoutes(deps, { reader, dispatch: scene.dispatch, timeoutMs: 5_000, ...(scene.roles && { roles: scene.roles }), ...(scene.machineStop && { machineStop: scene.machineStop }), ...(scene.panel && { panel: scene.panel }), ...(scene.holdMember && { holdMember: scene.holdMember }), ...(scene.ownDiff && { ownDiff: true, carry: { stateDir: scene.ownDiff.stateDir, remote: () => join(scene.ownDiff!.stateDir, "absent.git") } }) });
     const swapped = wired.map((route) => (awaited && route.match === "sh-await-verdict" ? codeRoute(route.match, deps.now, async (input: AwaitVerdictInput) => awaited(input)) : route));
     const inputs: Record<string, unknown> = {};
     const recorded = swapped.map((route): StepRoute => ({ ...route, runner: { run: (step) => ((inputs[step.stepId] = JSON.parse(step.prompt)), route.runner.run(step)) } }));
@@ -1536,6 +1538,19 @@ describe("reviewPhase", () => {
     expect(stepIds).toEqual([`sh-fix-proof:${H1}`, `sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`]);
     expect(resultOf(`sh-review-intent:${H1}`)).toEqual(intent);
     expect(inputs[`sh-review:${H1}`]).toEqual({ repo: REPO, pr: 1, head: H1, intent, runId: expect.any(String) });
+  });
+
+  it("records the head's own-diff between the intent and the review when the host wires it, and a failed read as unread", async () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "review-own-diff-"));
+    try {
+      const { stepIds, resultOf } = await review({ dispatch: fakeDispatch(), policy: AUTO, ownDiff: { stateDir } });
+
+      expect(stepIds.slice(0, 4)).toEqual([`sh-fix-proof:${H1}`, `sh-review-intent:${H1}`, `sh-own-diff:${H1}`, `sh-review:${H1}`]);
+      expect(resultOf(`sh-review-intent:${H1}`)).toMatchObject({ ownDiff: true });
+      expect(resultOf(`sh-own-diff:${H1}`)).toEqual({ unread: "git fetch exited 128" });
+    } finally {
+      rmSync(stateDir, { recursive: true, force: true });
+    }
   });
 
   it("takes a dispatched reviewer's CI-unread-only FIX_FIRST as no verdict and records sh-ci-unread", async () => {

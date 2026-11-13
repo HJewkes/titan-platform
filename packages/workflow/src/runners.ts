@@ -78,7 +78,8 @@ export function idempotentRunner(live: LegacyStepRunner): RecoverableStepRunner 
 
 export function toDurableOutcome(outcome: StepRunOutcome): DurableStepOutcome {
   if (outcome.ok) return { kind: "succeeded", output: outcome.output, usage: outcome.usage };
-  return { kind: "failed", error: outcome.error, retryable: outcome.retryable, code: outcome.code, usage: outcome.usage };
+  const { error, retryable, code, usage, errorClass } = outcome;
+  return { kind: "failed", error, retryable, code, usage, ...(errorClass === undefined ? {} : { errorClass }) };
 }
 
 function failedOutcome(error: unknown): DurableStepOutcome {

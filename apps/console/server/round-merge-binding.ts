@@ -5,9 +5,9 @@
  *
  * Only where a round is authored (`round-import.ts`): a round already in the rounds dir stays listed and answerable,
  * flagged unbound, because an owner may be mid-answer on it and an unbound pick taps no merge.
- * Product-side because `review-schema-0.3/` is vendored and never edited; review-schema takes it upstream.
+ * Product-side until review-schema takes it upstream.
  */
-import type * as reviewSchema from "./review-schema-0.3/index.js";
+import type * as reviewSchema from "@titan-design/review-schema";
 
 type Question = reviewSchema.Manifest["questions"][number];
 type PickOne = Extract<Question, { kind: "pick-one" }>;

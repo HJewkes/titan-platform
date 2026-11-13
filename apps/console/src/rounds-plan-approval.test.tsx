@@ -4,7 +4,8 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey } from "@titan-design/rpc-client";
-import { APPROVE, PLAN_REPO, PLAN_ROUND, PLAN_TASK, planWorld, type PlanWorld } from "../server/round-plan-approval.test-helpers.js";
+import { z } from "zod";
+import { APPROVE, PLAN_REPO, PLAN_ROUND, PLAN_TASK, planRound, planWorld, type PlanWorld } from "../server/round-plan-approval.test-helpers.js";
 import { getRound } from "../server/rounds.js";
 import { App } from "./App.js";
 
@@ -53,5 +54,38 @@ describe("a plan round's approval scope on the round page", () => {
     await renderPlanRound();
 
     expect(linesIn("skill")).toEqual([`"${APPROVE.skill}" records a skill plan approval for ${PLAN_TASK} in ${PLAN_REPO}, covering only:`, "Path: .claude/skills/example/SKILL.md"]);
+  });
+});
+
+const VALIDATE = "Approve: validate example/TP-1 as described below";
+
+const PlanRoundShape = z.looseObject({
+  sections: z.array(z.looseObject({ questionIds: z.array(z.string()), parts: z.array(z.unknown()) })),
+  questions: z.array(z.unknown()),
+  planApprovals: z.array(z.unknown()),
+});
+
+/** The synthetic plan round with a third question: the owner's validation of the task itself. */
+function withTaskQuestion(): Record<string, unknown> {
+  const round = PlanRoundShape.parse(planRound());
+  round.sections[0]!.questionIds.push("task");
+  round.sections[0]!.parts.push({ id: "task", label: "The task", proposed: "Done when: it ships.", lang: "md" });
+  round.questions.push({ id: "task", kind: "pick-one", prompt: "Validate TP-1: A new capability?", options: [VALIDATE, "Not now: leave example/TP-1 unvalidated"], required: true, signsOff: "task", recommendation: { answer: VALIDATE, rationale: "Synthetic.", confidence: 0.8, by: "fixture-agent" } });
+  round.planApprovals.push({ questionId: "task", approve: VALIDATE, task: PLAN_TASK, repo: PLAN_REPO, gate: "task", scope: { doneWhen: "The widget renders in both themes.", reason: "new-cap", visualSignoff: true } });
+  return round;
+}
+
+describe("a task validation question on the round page", () => {
+  it("shows the owner that the approve pick validates the task for every PR, with the done_when it binds, its reason and visual sign-off", async () => {
+    await world.remove();
+    world = await planWorld(withTaskQuestion());
+    await renderPlanRound();
+
+    expect(linesIn("task")).toEqual([
+      `"${VALIDATE}" records your validation of ${PLAN_TASK}, for every PR of the task, as:`,
+      "Done when: The widget renders in both themes.",
+      "Why it needs you: new-cap",
+      "Visual sign-off at merge: yes",
+    ]);
   });
 });

@@ -13,6 +13,8 @@ import { eventsSince } from "./shepherd/events.js";
 import { readAllGates } from "./shepherd/owner-friction-read.js";
 import { ownerFriction, type FrictionDay } from "./shepherd/owner-friction.js";
 import { reviewCauseStats, type ReviewCauseRow } from "./shepherd/review-cause.js";
+import { hostCarryPorts } from "./shepherd/carry-cache-adapter.js";
+import { cacheOwnDiffReader } from "./shepherd/review-stats-backfill.js";
 import { formatReviewReport, reviewReport } from "./shepherd/review-stats-report.js";
 import { REVIEW_STATS_DB, ReviewStatsStore } from "./shepherd/review-stats-store.js";
 import { ledgerRuns, readRetireCosts, refreshReviewStats } from "./shepherd/review-stats.js";
@@ -110,10 +112,13 @@ async function reviewsReport(db: ReturnType<typeof openDatabase>, opts: StatsOpt
   const store = ReviewStatsStore.open(path.join(path.dirname(dbPath), REVIEW_STATS_DB));
   try {
     const runs = ledgerRuns(db).runs(store.refreshedThrough());
-    const refresh = await refreshReviewStats({ store, runs: { runs: () => runs }, retire: readRetireCosts(seatLogsDir(io.env)), transcripts: claudeTranscripts() });
+    const ownDiffs = cacheOwnDiffReader({ ports: hostCarryPorts, stateDir: path.dirname(dbPath) });
+    const refresh = await refreshReviewStats({ store, runs: { runs: () => runs }, retire: readRetireCosts(seatLogsDir(io.env)), transcripts: claudeTranscripts(), ownDiffs });
     const report = reviewReport(store.db, { from: opts.from, to: opts.to, repo: opts.repo, ...(opts.sinceScoped && { sinceScoped: Date.parse(`${opts.sinceScoped}T00:00:00Z`) }) }, now, opts.rows);
     if (opts.json) return `${JSON.stringify({ ...report, refresh }, null, 2)}\n`;
-    return `${formatReviewReport(report)}refresh: ${refresh.added} new reviews, ${refresh.repriced} repriced, ${refresh.transcriptReads} transcript reads\n`;
+    const { added, repriced, transcriptReads, ownDiffsComputed, ownDiffsMissing } = refresh;
+    const counts = `${added} new reviews, ${repriced} repriced, ${transcriptReads} transcript reads, ${ownDiffsComputed} own-diff ids from the git-cache, ${ownDiffsMissing} heads missing from it`;
+    return `${formatReviewReport(report)}refresh: ${counts}\n`;
   } finally {
     store.close();
   }

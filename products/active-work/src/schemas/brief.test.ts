@@ -159,6 +159,12 @@ describe('BriefFrontmatterSchema', () => {
     const result = BriefFrontmatterSchema.safeParse({ ...validBase, title: '' });
     expect(result.success).toBe(false);
   });
+
+  it('keeps the task_require list so a rewrite of the brief does not drop it', () => {
+    const result = BriefFrontmatterSchema.parse({ ...validBase, task_require: ['class', 'source'] });
+    expect(result.task_require).toEqual(['class', 'source']);
+    expect(BriefFrontmatterSchema.safeParse({ ...validBase, task_require: ['title'] }).success).toBe(false);
+  });
 });
 
 describe('BriefFrontmatterSchema autonomy block', () => {

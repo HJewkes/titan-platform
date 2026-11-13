@@ -1,0 +1,22 @@
+# Ticket scorecard run: one row per dispatched task and the weekly cells over them, into the scorecard's own
+# store (TP-5446). Reads events, factory and the graph read-only; makes no network call.
+# Install steps: products/session-miner/README.md, "Scheduled run".
+[Unit]
+Description=Session miner: ticket scorecard run
+After=network-online.target
+
+[Service]
+Type=oneshot
+# The job shells out to titan-factory (shepherd stats --per-run), which `service deploy` links into %h/.local/bin; a
+# name it cannot find there makes the run exit 69 rather than score without it.
+Environment="PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
+# Sets ACTIVE_ROOT and TITAN_MINER_GRAPH; required, so a host without it fails rather than reading the wrong graph.
+# The labels file defaults under ACTIVE_ROOT; to move it, add TITAN_SCORECARD_LABELS=<file> to the same env file.
+EnvironmentFile=%h/.config/titan-session-miner/refresh.env
+ExecStart=/usr/bin/node %h/projects/titan-platform/products/session-miner/dist/bin.js --graph "${TITAN_MINER_GRAPH}" ticket-scorecard run
+# 75 is "another run holds the lock": nothing happened and the next tick retries.
+SuccessExitStatus=75
+# Budget: two live --dry-run rebuilds on basement took 9.3 s each; the plan allows a rebuild 10 min, so 20 min is double.
+TimeoutStartSec=20min
+Nice=10
+IOSchedulingClass=idle

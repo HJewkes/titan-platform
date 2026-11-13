@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an own diff equal to the last verdict head's reads as changed",
+      "file": "products/factory/src/shepherd/review-stats-own-diff.ts",
+      "find": "return id === previous.id ? `after-${previous.verdict}` : \"changed\";",
+      "replace": "return id !== previous.id ? `after-${previous.verdict}` : \"changed\";",
+      "kills": [
+        "ReviewStatsStore a v3 store migrates to v4 and refills"
+      ]
+    },
+    {
+      "name": "v4 keeps the watermark, so no refresh refills the new columns",
+      "file": "products/factory/src/shepherd/review-stats-store.ts",
+      "find": "    GROUP BY run.repo, run.pr;\n  DELETE FROM review_meta WHERE key = 'refreshed_through';`;",
+      "replace": "    GROUP BY run.repo, run.pr;`;",
+      "kills": [
+        "ReviewStatsStore a v3 store migrates to v4 and refills"
+      ]
+    }
+  ]
+}

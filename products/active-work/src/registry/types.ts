@@ -26,6 +26,9 @@ export interface CommandContext extends BaseContext {
   // agents to stricter input rules; owner-only initiatives are served only to 'owner',
   // so a surface that sets nothing reads as restricted (TP-5453 P6b).
   caller?: 'owner' | 'agent';
+  // Set by the daemon's /rpc and MCP-over-HTTP surfaces: the process environment there is the daemon's, so it says
+  // nothing about who called. Stdio MCP runs as the caller's child and leaves it unset.
+  remote?: true;
 }
 
 export type Command<Args = unknown, Result = unknown> = PkgCommand<Args, Result, CommandContext>;

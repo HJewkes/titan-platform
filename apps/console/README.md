@@ -426,8 +426,8 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
   instead of a shell `command`. The op is a pointer, not authority. A `resolve-gate` or
   `release-hold` op maps onto the live Shepherd row's own gate or hold action, at the row's head,
   and a hold of another class offers nothing. A kind on `CONSOLE_OPS` (today `merge-at-head`,
-  `retire-agent`, `close-pr` and `deploy-pause-clear`) becomes an `owner-op` tap whose read-back comes
-  from the factory. Any other kind stays on the terminal until its factory effect lands. A
+  `retire-agent`, `close-pr`, `deploy-pause-clear` and the planning ops) becomes an `owner-op` tap whose
+  read-back comes from the factory. Any other kind stays on the terminal until its factory effect lands. A
   `retire-agent` op is offered only as a plain retire. The agent must still hold the name under the
   op's `agentId`, its session must have exited, and it must work on no live Shepherd run. A
   `force: true` op always stays on the terminal. A `close-pr` tap
@@ -438,6 +438,16 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
   the deposit names (`pausedAt` and `target`) and no deployer is running. The op is posted as
   deposited and never re-pinned to a newer pause. A manual hold (`service pause --set`) is never
   cleared by this tap; the read-back says when one will keep deploys held.
+- **Planning ops (TP-5453).** Only the owner selects bets, edits an outcome or sets an owner freeze,
+  and only through these taps. The factory reads every fact from active-work's plan store. A
+  `plan-bet-select` tap ("Select bets") reads back, for each bet, its rank, the outcome it serves,
+  its prediction (metric, direction, baseline, expected value, read-by date) and its tasks or
+  selector. It is offered only while every bet named is of the op's week and proposed or already
+  selected. A `plan-outcome-edit` tap shows each changed field before and after. The record posts
+  the before, so the factory refuses the tap if the outcome changed since. A `plan-freeze-set` tap
+  shows what the freeze stops, why, and when it ends. Setting one writes `set_by: owner`, and ending
+  one writes `ended_on`. active-work's own `plan freeze add` records `decider` and refuses
+  `--set-by owner`.
 - **Retire from the agent page.** An agent page offers Retire for an exited agent that agent-chat
   spawned (`taps.prepare` and `taps.act`, keyed by `{kind: "retire-agent", name}`, behind the same
   `TITAN_CONSOLE_INBOX_ACTIONS` switch and owner-write guard). It needs no deposit: the console
@@ -1049,9 +1059,11 @@ the record's sha256 as the confirm event. The console pins the route's answers i
 | 200 `retired` (with `name`, `caveats`) | "Retired `name`", plus agent-chat's caveats: a `retire-agent` op ran a plain retire |
 | 200 `pr-closed` (with `closedHead`) | "PR closed at `abc1234`; its branch is kept": a `close-pr` op closed the PR at the pinned head |
 | 200 `pause-cleared` (with `clearedPause`, `stillHeld`) | "Deploy pause cleared; the deploy pacer may deploy within about a minute", or that deploys stay held by hand, with the hold's reason |
+| 200 `plan-applied` (with `op`, `ids`) | "Selected `alpha/B1, alpha/B3`; plan bet list --week now returns them", "Outcome `id` updated" or "Freeze `id` written as yours" |
 | 200 `already` | "Already done by this confirmation": a replay reposts the same record bytes |
 | 409 `moved` | "PR moved to `abc1234`, read again"; with `currentAgentId`, the name is now a different agent; for a deploy pause (with `currentPause`), "A deploy pause from `<time>` stands instead and is kept, read again" |
 | 409 `refused` `deploying` | the reason: a deployer holds the deploy lock, so tap again once it ends |
+| 409 `refused` `plan-busy` | the reason: another plan writer holds the initiative's plan lock, so tap again |
 | 410 `gone`, 403 or 422 `refused` | the reason |
 | 404 | the route is not mounted: the factory has no `consoleAnswers.actionsDir` |
 | 5xx, a redirect, no answer | unreachable; the tap may be retried with the same confirm |

@@ -9,6 +9,7 @@ import { readYaml, writeYaml } from '../utils/yaml-io.js';
 import { nowIso, today } from '../utils/today.js';
 import { NotFoundError, UsageError, ValidationError } from '../errors.js';
 import { assertEdgeWrite } from '../tasks/edge-index.js';
+import { assertKnownBet } from './_bet-check.js';
 import { assertKnownDeliverables } from './_deliverables.js';
 import { assertCategories, CATEGORY_OPTIONS, changedCategoryFields } from './_categories.js';
 import {
@@ -23,6 +24,9 @@ import {
   type PatchField,
 } from './_task-edit-parse.js';
 import { quietOption, TaskOrLineSchema, quietOr, type TaskOrLine } from './_task-quiet.js';
+import { TASK_PLAN_OPTIONS } from './_task-plan-fields.js';
+import { assertNotRelabel, assertProvenance, provenanceChange, TASK_PROVENANCE_OPTIONS } from './_task-provenance.js';
+import { dispatchCheck } from '../session-index/task-dispatched.js';
 
 interface TaskChange {
   changes: Partial<Task>;
@@ -60,6 +64,13 @@ function edgeChange(task: Task, edit: PatchEdit): TaskChange {
 function newDeliverables(task: Task, edit: PatchEdit): string[] {
   const current = task.deliverables ?? [];
   return [...new Set(edit.addDeliverables ?? [])].filter((id) => !current.includes(id));
+}
+
+/** Owner steps the edit adds that the task does not already list. */
+function newOwnerSteps(task: Task, edit: PatchEdit): NonNullable<Task['owner_steps']> {
+  const same = (a: { kind: string; note: string }, b: { kind: string; note: string }): boolean =>
+    a.kind === b.kind && a.note === b.note;
+  return (edit.addOwnerSteps ?? []).filter((step) => !(task.owner_steps ?? []).some((have) => same(have, step)));
 }
 
 function newFields(task: Task, edit: PatchEdit): [PatchField, string][] {
@@ -100,7 +111,10 @@ export function patchChange(task: Task, edit: PatchEdit): TaskChange {
     notices.push(`Deliverable already present, nothing added: ${id}`);
   }
   if (added.length > 0) changes.deliverables = [...(task.deliverables ?? []), ...added];
+  const steps = newOwnerSteps(task, edit);
+  if (steps.length > 0) changes.owner_steps = [...(task.owner_steps ?? []), ...steps];
   if (edit.append !== undefined) changes.notes = appendLine(task.notes, edit.append);
+  Object.assign(changes, provenanceChange(task, edit.provenance).changes);
   const tags = tagChange(current, edit);
   if (tags.tags !== undefined) changes.tags = tags.tags;
   notices.push(...tags.notices);
@@ -183,7 +197,9 @@ function editedLine(task: Task, edit: Edit): string {
   }
   parts.push(...edgeParts(task, edit));
   parts.push(...newDeliverables(task, edit).map((id) => `+deliverable ${id}`));
+  parts.push(...newOwnerSteps(task, edit).map((step) => `+owner-step ${step.kind}`));
   parts.push(...newFields(task, edit).map(([key, value]) => `${key} ${value}`));
+  parts.push(...provenanceChange(task, edit.provenance).parts);
   return parts.length === 0 ? `${task.id} unchanged` : `${task.id} edited: ${parts.join(', ')}`;
 }
 
@@ -210,6 +226,11 @@ async function assertWritable(
   slug: string,
 ): Promise<void> {
   assertPromotable(ctx, task, next);
+  if (changes.bet !== undefined) await assertKnownBet(next);
+  if (changes.field_origin !== undefined) {
+    await assertNotRelabel(task, changes, dispatchCheck(slug));
+    await assertProvenance(getActiveRoot(), next);
+  }
   await assertCategories(getActiveRoot(), next, changedCategoryFields(changes));
   const added = edit.kind === 'patch' ? newDeliverables(task, edit) : [];
   if (added.length > 0) await assertKnownDeliverables(getActiveRoot(), added);
@@ -276,6 +297,8 @@ export default defineCommand<Args, TaskOrLine>({
         description: 'Deliverable id to add, keeping the others. Repeat the flag for each value',
       },
       ...CATEGORY_OPTIONS,
+      ...TASK_PLAN_OPTIONS,
+      ...TASK_PROVENANCE_OPTIONS,
       force: {
         long: '--force',
         description: 'Let the field form replace notes, drop tags or replace a non-empty done_when',

@@ -13,6 +13,7 @@ export type { ReviewVerdictMatch, Verdict } from "./review-verdict.js";
 export { parseReviewVerdicts } from "./review-verdict.js";
 export type { CiPolicy, CiPolicyKey, CiPolicyLabelledLine, VerdictBlockRefusal, VerdictBlockResult, VerdictBlockVerdict } from "./verdict-block.js";
 export { CI_POLICY_KEYS, ciPolicyLabelledLines, parseVerdictBlock, refusedLines, visibleLines } from "./verdict-block.js";
+export { labelledLineRest } from "./labelled-line.js";
 export type { RepoIdentity } from "./repo-root.js";
 export { clearRepoCache, parseOriginUrl, repoNameFromRemoteUrl, resolveRepo } from "./repo-root.js";
 export type { GitIntent, TaskIntent } from "./bash-parse.js";

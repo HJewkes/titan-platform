@@ -51,7 +51,7 @@ function mergingReviewers(): { dispatch: ReviewerDispatch; reader: ReviewerReade
   const resume = async (name: string) => agents.forEach((agent, i) => agent.name === name && (agents[i] = { ...agent, presence: "live" }));
   const dispatch: ReviewerDispatch = { roster: async () => [...agents], spawn: async (name) => void agents.push({ ...row(name), spawnedBy: "human" }), resume };
   const reader: ReviewerReader = {
-    read: async (input) => agents.filter((who) => who.agentId === input.reviewerAgentId).map((who) => said(who, `Read it all.\n\nProbes: an empty list -> refused\nVerdict: MERGE\nPR: ${REPO}#1\nHead: ${input.head}\n`)),
+    read: async (input) => agents.filter((who) => who.agentId === input.reviewerAgentId).map((who) => said(who, `Read it all.\n\nProbes: an empty list -> refused\nAuthority: unchanged\nVerdict: MERGE\nPR: ${REPO}#1\nHead: ${input.head}\n`)),
   };
   return { dispatch, reader, roster: rosterOver(agents) };
 }

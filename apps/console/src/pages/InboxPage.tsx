@@ -11,6 +11,7 @@ import { openExternal } from "./homeLinks.js";
 import { FocusBadge, FocusNotice, FocusTarget, holdsFocus, InboxFocusProvider, useIsFocused } from "./InboxFocus.js";
 import { NudgeSection } from "./InboxNudges.js";
 import { PLANNING_READ, PlanningSection } from "./InboxPlanning.js";
+import { isPlanOpKind, OP_VERB } from "./inbox-op-verbs.js";
 import { InboxReadBack, type InboxReady } from "./InboxReadBack.js";
 import { ShipLineageLine } from "./ShipLineage.js";
 import { TapSheet, type TapCommands, type TapConfirmChoice } from "./TapSheet.js";
@@ -76,7 +77,6 @@ const VERB: Record<InboxAction["kind"], string> = {
   terminal: "Run on terminal",
 };
 
-const OP_VERB: Partial<Record<Extract<InboxAction, { kind: "owner-op" }>["op"]["kind"], string>> = { "merge-at-head": "Merge at head", "retire-agent": "Retire", "close-pr": "Close PR", "deploy-pause-clear": "Clear deploy pause" };
 
 type GateDecision = Extract<InboxAction, { kind: "resolve-gate" }>["decision"];
 
@@ -112,7 +112,10 @@ function verdictChoicesOf({ readBack }: InboxReady): readonly TapConfirmChoice[]
   ];
 }
 
-const readingOf = (action: InboxAction): string => (action.kind === "approve-chat" ? "Reading the agent's prompt from the broker" : "Reading the live gate and head");
+function readingOf(action: InboxAction): string {
+  if (action.kind === "approve-chat") return "Reading the agent's prompt from the broker";
+  return action.kind === "owner-op" && isPlanOpKind(action.op.kind) ? "Reading the live plan" : "Reading the live gate and head";
+}
 
 function followEvidence(evidence: string): void {
   if (evidence.startsWith("#")) open(parseRoute(evidence));

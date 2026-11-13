@@ -138,12 +138,12 @@ async function compareTrees(git: Git, dir: string, input: CarryInput, base: stri
  * A patch id in the manner of `git patch-id`: the diff with its blob ids, hunk line numbers and whitespace dropped, so the
  * same change read against a moved base hashes the same.
  */
-function patchIdOf(diff: string): string {
+export function patchIdOf(diff: string): string {
   const lines = diff.split("\n").filter((line) => !line.startsWith("index ")).map((line) => (line.startsWith("@@") ? "@@" : line.replace(/\s+/g, "")));
   return createHash("sha256").update(lines.join("\n")).digest("hex");
 }
 
-const DIFF_ARGS = ["diff", "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", "--binary", "--full-index"];
+export const DIFF_ARGS = ["diff", "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", "--binary", "--full-index"];
 
 /**
  * Whether the head's diff against the base it merged equals the reviewed head's diff against its merge base with that base.

@@ -1,5 +1,54 @@
 # @titan-design/code-read
 
+## 0.3.5
+
+### Patch Changes
+
+- 49f729c: Declare the baseline result fields once in `query/schemas.ts` and type `baselineFields()` from them, and read a rule's default severity through one `ruleSeverity()` helper. No behaviour change; the contract lock is unchanged.
+- 60c867c: Typed-lint burn-down: narrow the command-name list, the error-code read and the finding-delta keys with type guards instead of assertions. No behaviour change.
+- Updated dependencies [59b9c44]
+- Updated dependencies [67eec51]
+- Updated dependencies [381d771]
+- Updated dependencies [31bb9da]
+- Updated dependencies [6901057]
+- Updated dependencies [e5528b6]
+- Updated dependencies [a2a5565]
+- Updated dependencies [7492819]
+- Updated dependencies [54d25fc]
+- Updated dependencies [c89daa1]
+- Updated dependencies [7a34209]
+- Updated dependencies [3e0deea]
+- Updated dependencies [aa5085c]
+- Updated dependencies [b6ce883]
+- Updated dependencies [b6ce883]
+- Updated dependencies [d184763]
+- Updated dependencies [4515002]
+- Updated dependencies [820d4d2]
+- Updated dependencies [7792f8b]
+- Updated dependencies [98c0177]
+- Updated dependencies [6d48afe]
+- Updated dependencies [6683a46]
+- Updated dependencies [ae8141d]
+- Updated dependencies [5edd38d]
+- Updated dependencies [9b42150]
+- Updated dependencies [0cc47b8]
+- Updated dependencies [9e475ec]
+- Updated dependencies [fe5a2c5]
+- Updated dependencies [49dfd8c]
+- Updated dependencies [4ba0aa3]
+- Updated dependencies [a230498]
+- Updated dependencies [d905ebb]
+- Updated dependencies [709ab1e]
+- Updated dependencies [fe806c0]
+- Updated dependencies [538c0f7]
+- Updated dependencies [8e66971]
+- Updated dependencies [565913d]
+- Updated dependencies [30d9837]
+- Updated dependencies [a306c70]
+  - @titan-design/code-graph@0.19.0
+  - @titan-design/registry@0.6.0
+  - @titan-design/rpc-protocol@0.4.0
+
 ## 0.3.4
 
 ### Patch Changes

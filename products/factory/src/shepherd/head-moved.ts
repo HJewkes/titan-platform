@@ -8,6 +8,7 @@ import { SHEPHERD_POLICY_TABLE } from "./policy.js";
 import type { Escalation } from "./route-table.js";
 import { SUPERSEDED, cancelUnlessSettled, gateHead, headGateAsks } from "./stale-gates.js";
 import { readPath } from "../narrow.js";
+import { isReleaseOwnerRow, regeneratedRelease } from "./release-gate-carry.js";
 import { z } from "zod";
 
 const MERGE_GUARD_TABLE = "shepherd-merge-guard";
@@ -133,6 +134,13 @@ function releaseGateHead(run: WorkflowRun, prompt: string): string | undefined {
   return decision?.rule?.table === RELEASE_TABLE ? decision.headSha : undefined;
 }
 
+/** A release gate under a row that waits only on the owner; a regenerated release head keeps it pending (TP-5591). */
+function releaseOwnerGate(host: FactoryHost, pending: PendingGate): boolean {
+  const run = approveMergeRun(host, pending);
+  const rule = run && gatingDecision(run, pending.gate.prompt)?.rule;
+  return rule?.table === RELEASE_TABLE && isReleaseOwnerRow(rule.rowId);
+}
+
 interface AuthorityGate {
   head: string;
   reason: string;
@@ -194,20 +202,29 @@ function supersedableHead(host: FactoryHost, pending: PendingGate): string | und
   return run && (seatPolicyHead(run, gate.prompt) ?? guardGateHead(run, gate.prompt) ?? authorityGate(run, gate.prompt)?.head ?? routeGateHead(run, gate) ?? releaseGateHead(run, gate.prompt));
 }
 
+/** An owner-only release gate stays pending across a head changesets regenerated; the owner's answer then follows to that head. */
+async function keptRelease(services: ShepherdServices, runId: string, head: string): Promise<boolean> {
+  const registration = services.store.get().byRun(runId);
+  if (!registration || registration.pr === null) return false;
+  return regeneratedRelease(services.port, registration.repo, registration.pr, head);
+}
+
 /**
  * Cancels each shepherd-pr seat-policy, merge-guard, authority MRG-AU, shepherd-release or route-table (failed-rounds, fix-first-runaway, no-progress, conflict) approve-merge gate, sh-sent-back, sh-dead-end, ci-failed, sh-visual-accept or stuck-behind gate, whose PR moved past the
- * head it asks about; the run then takes the new head. `dryRun` reports those gates and cancels none.
+ * head it asks about; the run then takes the new head. An owner-only release gate whose new head is still release-only is kept.
+ * `dryRun` reports those gates and cancels none.
  */
 export async function supersedeMovedGates(host: FactoryHost, services: ShepherdServices, { dryRun = false } = {}): Promise<SupersededGate[]> {
   const superseded: SupersededGate[] = [];
   const asking = host.pendingGates().flatMap((pending) => {
     const asked = supersedableHead(host, pending);
-    return asked ? [{ ...pending, asked }] : [];
+    return asked ? [{ ...pending, asked, release: releaseOwnerGate(host, pending) }] : [];
   });
   const heads = await mapBounded(asking, RESYNC_CONCURRENCY, ({ runId, asked }) => movedHead(services, runId, asked), { timeoutMs: RESYNC_READ_TIMEOUT_MS, timer: services.readTimer });
-  for (const [index, { runId, gate, asked }] of asking.entries()) {
+  for (const [index, { runId, gate, asked, release }] of asking.entries()) {
     const head = readValue(heads[index]!);
     if (!head || host.gates.get(gate.id)?.status !== "pending") continue;
+    if (release && (await keptRelease(services, runId, head))) continue;
     if (!dryRun && !cancelUnlessSettled(host.gates, gate.id, `${SUPERSEDED}the pull request moved from head ${asked} to ${head}`)) continue;
     superseded.push({ runId, gateId: gate.id, from: asked, to: head, condition: "head-moved" });
   }

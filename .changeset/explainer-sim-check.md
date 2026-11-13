@@ -1,5 +1,0 @@
----
-"@titan-design/explainer": minor
----
-
-Add `sim-check` and cut failing sim beats at resolve. A `sim` slot's claim is now `{ fact, statistic, at }`: its value comes from a gathered `number` fact and its tolerance from `doctrine/sims/<id>.yaml`, so the script can no longer set `claim.value` or `claim.tolerance`. `simCheck` refuses a tolerance under three standard errors (`E-SIM-TOL-NOISE`), over a tenth of the claim (`E-SIM-TOL-LOOSE`) or on a `fittedFrom` statistic (`E-SIM-CIRCULAR`), and an unchecked sim whose narration states a number (`E-SIM-UNCHECKED-NUMBER`). The resolve stage sweeps and freezes each sim beat into a `sim-traces` artifact, drops every failing beat from `resolved` (listing it in `resolved.cut`, which tts skips), hashes the sim registry into `resolveConfig`, and adds the `sim-check` report and the `sim-cut-orphan` gate. Every resolve consumer reads the beats resolve kept (`keptBeats`: the script's beats less `resolved.cut`), so `slot-overrides`, `emphasis-target`, tts and its `cue-resolution` gate skip a cut beat rather than failing on it.

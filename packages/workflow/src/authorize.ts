@@ -5,7 +5,8 @@ import { waitForGate, type GateInput, type GateRecord, type GateResolver, type G
 import { z } from "zod";
 import { briefFields } from "./gate-brief.js";
 import type { WorkflowAuthorityOptions } from "./runtime-options.js";
-import { AuthorityDeniedError, AuthorityRefusedError, workflowStepRequestKey, type AuthorizeOptions, type AuthorizeRequest, type AuthorizeResult, type StepResult } from "./types.js";
+import { workflowStepRequestKey, type AuthorizeOptions, type AuthorizeRequest, type AuthorizeResult, type StepResult } from "./types.js";
+import { AuthorityDeniedError, AuthorityRefusedError } from "./step-errors.js";
 
 /** The `StepResult.data` key the F3 trace projection reads gate-decision records from. */
 export const TRACE_GATES_KEY = "titan.trace.gates";

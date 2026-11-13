@@ -1,9 +1,10 @@
 import type { GitHubPort } from "@titan-design/github";
 import type { GateResolver } from "@titan-design/hitl";
+import type { OwnerOpKind } from "@titan-design/owner-queue";
 
 export type Status = 200 | 400 | 403 | 409 | 410 | 413 | 422 | 500 | 503;
 
-type RefusalCode = "record" | "record-unreadable" | "class" | "evidence" | "mismatch" | "resolver" | "payload" | "github-unreadable" | "agent-chat-unavailable" | "deploying";
+type RefusalCode = "record" | "record-unreadable" | "class" | "evidence" | "mismatch" | "resolver" | "payload" | "github-unreadable" | "agent-chat-unavailable" | "deploying" | "plan-busy";
 export type Outcome =
   /** `covered` names the owner-at-head facts whose evidence the owner read on the card before this resolve (TP-4404). */
   | { outcome: "resolved"; gateId: string; covered?: string[] }
@@ -25,6 +26,9 @@ export type Outcome =
   /** A plan-approval tap recorded the owner's plan-time answer; `claimedRun` is the one live run of the task it bound to, or null until a registration claims it. */
   | { outcome: "plan-approved"; task: string; gate: string; claimedRun: string | null }
   | { outcome: "already"; task: string }
+  /** A planning op wrote the owner's bets, outcome or freeze; `ids` are the plan records it wrote. */
+  | { outcome: "plan-applied"; op: OwnerOpKind; ids: string[] }
+  | { outcome: "already"; ids: string[] }
   | { outcome: "moved"; currentHead: string | undefined }
   /** The name now belongs to a different agent than the one the owner confirmed. */
   | { outcome: "moved"; currentAgentId: string }
@@ -65,6 +69,7 @@ export function statusOf(outcome: Outcome): Status {
     case "pr-closed":
     case "pause-cleared":
     case "plan-approved":
+    case "plan-applied":
     case "already":
       return 200;
     case "moved":
@@ -79,6 +84,6 @@ export function statusOf(outcome: Outcome): Status {
 /** A running deployer is a conflict that passes, so a later tap may land; a record or class fault never will. */
 function refusalStatus(reason: RefusalCode): Status {
   if (reason === "github-unreadable" || reason === "agent-chat-unavailable") return 503;
-  if (reason === "deploying") return 409;
+  if (reason === "deploying" || reason === "plan-busy") return 409;
   return reason === "class" || reason === "resolver" ? 403 : 422;
 }

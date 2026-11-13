@@ -212,6 +212,10 @@ const remoteFactoryUrl = z.string().refine(isRemoteFactoryUrl, "must be an http 
 /** The schema strips unknown keys, so a misspelt remoteFactory would silently leave the frozen database writable. */
 const misspeltRemoteFactory = (key: string): boolean => key !== "remoteFactory" && key.toLowerCase().replace(/[^a-z]/g, "").startsWith("remotefactory");
 
+const whole = (min: number, max: number) => z.number().int().min(min).max(max).optional();
+/** The limits `dispatch eligible` judges a lane by (TP-5453 P4b); an absent key means its starting value in eligibility/back-pressure.ts. */
+const BackPressureConfigSchema = z.strictObject({ laneOpenPrs: whole(1, 64), ownerQueue: whole(0, 1000), inflowWeeks: whole(1, 12) });
+
 /** Owner-specific bindings live here, outside the public repo; later slices add repos and device keys. */
 export const FactoryConfigSchema = z.object({
   dbPath: z.string().min(1).optional(),
@@ -260,6 +264,7 @@ export const FactoryConfigSchema = z.object({
           nonSourceNoRepro: z.enum(["keep-owner", "record-fact"]).optional(),
         })
         .optional(),
+      backPressure: BackPressureConfigSchema.optional(),
       /**
        * How a registered PR's merge settles its `--task` (TP-4274). `keep`, the default when absent, closes it on every merge.
        * `last-slice-only` closes it only when the PR is its last slice (a `Last slice: yes` body line or `register --last-slice`),

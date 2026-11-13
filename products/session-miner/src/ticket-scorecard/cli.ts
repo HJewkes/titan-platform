@@ -5,6 +5,8 @@ import { expandHome } from "@titan-design/session-read";
 import type { Command } from "commander";
 import type { MinerConfig } from "../config.js";
 import type { ScorecardPaths } from "./load.js";
+import { factoryHealthLines } from "./health-text.js";
+import type { OriginLinkCounts } from "./read-origin.js";
 import { factoryPerRunCli } from "./per-run.js";
 import { rawClassOf, readSample, rebuiltRows, renderReport, reproduce } from "./reproduce.js";
 import { e1ExpectedFile, parseExpected, type ExpectedFile } from "./reproduce-spec.js";
@@ -61,14 +63,21 @@ function runOptions(config: MinerConfig, flags: RunFlags, env: NodeJS.ProcessEnv
   };
 }
 
+function originLinksText(counts: OriginLinkCounts | null): string {
+  if (counts === null) return "not measured";
+  return `${counts.linked} linked (inferred), unlinked: ${counts.several} several tasks, ${counts.none} no task, ${counts.noOrigin} no origin`;
+}
+
 function renderRun(result: ScorecardRunResult): string {
   const lines = [
     `ticket-scorecard ${result.mode}: ${result.ok ? "ok" : "not measured"} in ${result.ms} ms`,
     `  not measured: ${result.notMeasured.length === 0 ? "none" : result.notMeasured.join(", ")}`,
     `  labels: ${result.labels === null ? "none" : `${result.labels.rows} rows, ${result.labels.invalid} invalid`}`,
     `  dirty tasks ${result.dirtyTasks}  task rows changed ${result.taskRowsChanged} of ${result.taskRows}  week cells changed ${result.weekRowsChanged} of ${result.weekRows}`,
-    `  phase cells changed ${result.phaseRowsChanged}  pool rows written ${result.poolRowsWritten}  marks advanced ${result.marksAdvanced}`,
+    `  spawns without meta.task: ${originLinksText(result.originLinks)}`,
+    `  phase cells changed ${result.phaseRowsChanged}  factory health weeks changed ${result.healthRowsChanged}  pool rows written ${result.poolRowsWritten}  marks advanced ${result.marksAdvanced}`,
     `  frozen ${result.frozen.join(", ") || "none"}  drift ${result.drift.join(", ") || "none"}`,
+    ...result.factoryHealth.flatMap(factoryHealthLines),
   ];
   return `${lines.join("\n")}\n`;
 }
@@ -129,13 +138,13 @@ function attachReproduce(program: Command, group: Command, config: () => MinerCo
     .action(async (flags: ReproduceFlags) => {
       const env = io.env ?? process.env;
       const options = runOptions(config(), { ...flags, dryRun: true }, env);
-      const rows = await rebuiltRows(options);
-      if (rows === null) {
+      const rebuilt = await rebuiltRows(options);
+      if (rebuilt === null) {
         io.stderr("ticket-scorecard reproduce: a store the rows need is missing; run `ticket-scorecard run --dry-run` to see which\n");
         return onExit(EXIT_NOT_MEASURED);
       }
-      const input = { rows, rawClass: rawClassOf(options.paths.labelsFile), sample: flags.sample === undefined ? null : readSample(expandHome(flags.sample)) };
-      const report = reproduce(input, expectedOf(flags), flags.population);
+      const input = { rows: rebuilt.rows, rawClass: rawClassOf(options.paths.labelsFile), sample: flags.sample === undefined ? null : readSample(expandHome(flags.sample)) };
+      const report = reproduce(input, expectedOf(flags), flags.population, rebuilt.originLinks);
       io.stdout(program.opts().json === true ? `${JSON.stringify(report)}\n` : renderReport(report));
       onExit(report.ok ? 0 : EXIT_MISS);
     });

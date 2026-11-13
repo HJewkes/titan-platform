@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a qualified key passes through unchecked",
+      "file": "products/factory/src/shepherd/task-ref.ts",
+      "find": "  const resolved = resolveTaskKey(task, lookup.index);",
+      "replace": "  if (task.includes(\"/\")) return { key: task, verified: true };\n  const resolved = resolveTaskKey(task, lookup.index);",
+      "kills": ["qualifyTask refuses a key with another initiative's prefix rather than correcting it"]
+    },
+    {
+      "name": "owner-only initiatives count as visible",
+      "file": "products/factory/src/shepherd/task-ref.ts",
+      "find": "initiatives.filter((item) => item.agent_visible).map(",
+      "replace": "initiatives.map(",
+      "kills": ["loadTaskIndex maps each initiative's task prefix and keeps only agent-visible initiatives as visible"]
+    },
+    {
+      "name": "an older daemon gets no fallback",
+      "file": "products/factory/src/shepherd/task-ref.ts",
+      "find": "    if (!(error instanceof RpcError && error.message === \"Unknown command: task.keys\")) throw unavailable(error);",
+      "replace": "    throw unavailable(error);",
+      "kills": ["qualifyTask against a daemon older than task.keys resolves an open task through task.list"]
+    },
+    {
+      "name": "a malformed key passes when the index is down",
+      "file": "products/factory/src/shepherd/task-ref.ts",
+      "find": "    if (!shape.ok && shape.reason === \"malformed\") throw refused(task, shape);\n",
+      "replace": "",
+      "kills": ["qualifyTask still refuses a malformed key when the daemon cannot be reached"]
+    },
+    {
+      "name": "a partial index refuses what it cannot see",
+      "file": "products/factory/src/shepherd/task-ref.ts",
+      "find": "  if (resolved.reason === \"not-found\" && !lookup.complete) return unverified(",
+      "replace": "  if (resolved.reason === \"not-found\" && lookup.complete) return unverified(",
+      "kills": ["qualifyTask against a daemon older than task.keys stores a key it cannot find as unverified when the archives cannot be listed"]
+    }
+  ]
+}

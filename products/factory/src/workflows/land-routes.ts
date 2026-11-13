@@ -4,6 +4,7 @@ import type { z } from "zod";
 import { evidenceRecord } from "../evidence.js";
 import { requireBaseRequiredChecks } from "../required-checks.js";
 import { redactForEvidence } from "../redact.js";
+import { stepFailureClass } from "../shepherd/failure-class.js";
 import { checkBase, mergeOnAllowedBase, waitForRetarget, type BaseCheckInput, type BaseWaitInput } from "./land-base.js";
 import type { MergeInput } from "./land-merge-message.js";
 import type { CiInput } from "./land-ci.js";
@@ -82,6 +83,7 @@ function landEvidence(match: string, now: () => number): CodeRouteOptions {
   return {
     envelope: (record, step) => evidenceRecord(`land.${match}`, step, new Date(now()).toISOString(), record),
     errorText: redactForEvidence,
+    errorClass: (error) => stepFailureClass(match, error),
   };
 }
 

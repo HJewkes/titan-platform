@@ -85,6 +85,15 @@ describe("task rows", () => {
     expect(weekMetrics([recorded, inferred]).inferredShare).toBe(0.5);
   });
 
+  it("a first dispatch linked through the session origin marks the row inferred", () => {
+    const spawns = [{ ts: DISPATCHED, actor: "seat-one", launchedBy: null, dispatchRule: null, link: "inferred:name" as const }];
+
+    const built = row({ spawns });
+
+    expect(built.provenance).toEqual({ firstDispatchTs: "inferred:name" });
+    expect(weekMetrics([built, row()]).inferredShare).toBe(0.5);
+  });
+
   it("the inputs hash does not depend on the order the reader listed the inputs", () => {
     const gates = [
       { createdAt: "2026-11-02T11:00:00.000Z", resolvedAt: "2026-11-02T13:00:00.000Z", resolvedByClass: "owner-terminal" },

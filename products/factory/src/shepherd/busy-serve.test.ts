@@ -6,6 +6,7 @@ import { runCli } from "../cli.js";
 import { shepherdFixture } from "../test-support/shepherd.js";
 import { REPO } from "../test-support/land.js";
 import { portOf } from "../test-support/fakes.js";
+import { taskIndexFetch } from "../test-support/task-index.js";
 import { callCommand } from "../test-support/shepherd.js";
 import { openFactoryHost } from "../host.js";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -55,7 +56,7 @@ async function register(port: number, serveWaitMs: number): Promise<Registered> 
   let err = "";
   const io = { stdout: (t: string) => void (out += t), stderr: (t: string) => void (err += t), env: {} };
   const argv = ["shepherd", "register", `${REPO}#1`, "--task", "demo/T-1", "--implementer", "impl-a", "--json", "--port", String(port)];
-  const code = await runCli(argv, io, { workflows: fixture.workflows, routes: fixture.routes, logger: silentLogger, serveWaitMs });
+  const code = await runCli(argv, io, { workflows: fixture.workflows, routes: fixture.routes, logger: silentLogger, serveWaitMs, fetch: taskIndexFetch() });
   return { code, out, err };
 }
 

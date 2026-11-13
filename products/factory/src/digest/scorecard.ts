@@ -2,8 +2,9 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
-import { isoWeek, readWeekRows } from "@titan-design/session-analytics";
+import { factoryHealthSchema, isoWeek, readWeekRows, type FactoryHealth } from "@titan-design/session-analytics";
 import { openDatabase } from "@titan-design/store-sqlite";
+import { factoryHealthLine } from "./factory-health.js";
 
 /** The ticket scorecard's store and the frozen week files the job writes beside it (TP-5446). */
 export interface ScorecardPaths {
@@ -32,14 +33,19 @@ const headline = z.object({
 });
 type ScorecardHeadline = z.infer<typeof headline>;
 
-const frozenWeek = z.object({ isoWeek: z.string(), cells: z.array(z.object({ dimension: z.string(), metrics: headline, redFlags: z.array(z.string()) })) });
+/** A week frozen before TP-5446 S18 has no `factoryHealth`. */
+const frozenWeek = z.object({
+  isoWeek: z.string(),
+  cells: z.array(z.object({ dimension: z.string(), metrics: headline, redFlags: z.array(z.string()) })),
+  factoryHealth: factoryHealthSchema.nullable().optional(),
+});
 
 /**
  * `weekly` is the first digest after a weekly close: the closed week's headline, from its frozen file alone. Every
  * other slot is `open`, one line on the week so far. A null headline means nothing was measured, never zero.
  */
 export type ScorecardSection =
-  | { slot: "weekly"; isoWeek: string; headline: ScorecardHeadline | null; redFlags: string[] }
+  | { slot: "weekly"; isoWeek: string; headline: ScorecardHeadline | null; redFlags: string[]; factoryHealth: FactoryHealth | null }
   | { slot: "open"; isoWeek: string; headline: ScorecardHeadline | null; reason?: string };
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -53,7 +59,7 @@ function closedThisWindow(weeksDir: string, week: string, since: Date): string |
 function weeklySection(file: string, week: string): ScorecardSection {
   const frozen = frozenWeek.parse(JSON.parse(readFileSync(file, "utf8")));
   const all = frozen.cells.find((cell) => cell.dimension === "all");
-  return { slot: "weekly", isoWeek: week, headline: all?.metrics ?? null, redFlags: all?.redFlags ?? [] };
+  return { slot: "weekly", isoWeek: week, headline: all?.metrics ?? null, redFlags: all?.redFlags ?? [], factoryHealth: frozen.factoryHealth ?? null };
 }
 
 function openSection(storeFile: string, week: string): ScorecardSection {
@@ -102,11 +108,11 @@ function openLine(s: Extract<ScorecardSection, { slot: "open" }>): string {
   return `Ticket scorecard ${s.isoWeek} so far: ${h.dispatched} dispatched, ${h.merged} merged, upkeep ${share(h.upkeepShare)}${inferredMark(h)}.`;
 }
 
-/** The weekly slot gets its own heading, red flags and six numbers; every other slot gets the one line. */
+/** The weekly slot gets its own heading, red flags, six numbers and the factory health line; every other slot gets the one line. */
 export function scorecardLines(s: ScorecardSection | undefined): string[] {
   if (s === undefined) return [];
   if (s.slot === "open") return ["", openLine(s)];
   const red = s.redFlags.length === 0 ? "none" : s.redFlags.map((flag) => FLAG_TEXT[flag] ?? flag).join(", ");
   const body = s.headline === null ? [`No task was dispatched in ${s.isoWeek}.`] : headlineLines(s.headline);
-  return ["", `## Ticket scorecard ${s.isoWeek}`, `Red flags: ${red}`, ...body];
+  return ["", `## Ticket scorecard ${s.isoWeek}`, `Red flags: ${red}`, ...body, factoryHealthLine(s.factoryHealth)];
 }

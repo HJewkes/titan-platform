@@ -122,6 +122,7 @@ describe("the sh-follow-ups step at a verdict", () => {
       openTasks: () => {
         throw new TypeError("port exploded");
       },
+      classOf: () => Promise.reject(new Error("unreached")),
       add: () => Promise.reject(new Error("unreached")),
       appendNote: () => Promise.reject(new Error("unreached")),
     };
@@ -195,7 +196,7 @@ describe("fileFollowUpsAt on replay", () => {
 
 describe("followUpsBody's bound", () => {
   it("an active-work call that never answers records an error once the bound passes", async () => {
-    const hung: FollowUpTasks = { openTasks: () => new Promise(() => undefined), add: async () => "x", appendNote: async () => undefined };
+    const hung: FollowUpTasks = { openTasks: () => new Promise(() => undefined), classOf: async () => undefined, add: async () => "x", appendNote: async () => undefined };
     const input = { runId: "run-1", task: "demo/DM-1", repo: REPO, pr: 1, head: H1, reviewer: "agent-r", followUps: [{ title: "Cache it", doneWhen: "Cached", severity: "low" as const }] };
 
     const result = await followUpsBody(hung, input, new AbortController().signal, 20);
