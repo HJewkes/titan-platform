@@ -284,6 +284,26 @@ A transitional list, dated 2026-11-12, keeps a named set of code initiatives vis
 briefs carry no `visibility` key yet. An explicit `visibility` always wins over it, and a
 follow-up deletes the list once those briefs declare it.
 
+## Task keys
+
+`resolveTaskKey(input, index)` turns a task reference into the one canonical key,
+`<initiative>/<TASK-ID>`, that execution records join on. `input` is a bare id (`AL-7`), a
+prefixed key (`alpha/AL-7`) or a repo-qualified one (`acme/alpha/AL-7`). `index` holds every
+task's id and initiative and every initiative's `task_prefix`, as active-work records them.
+The answer is `{ ok: true, key }`, or `{ ok: false, reason, detail }` with `reason` one of
+`malformed`, `not-found`, `ambiguous` or `wrong-initiative`. An id two initiatives hold goes to
+the one whose `task_prefix` issued it. A qualifier that is not the task's initiative is refused,
+never corrected; the refusal carries the key the id alone resolves to as `proposed`, so a report
+can name it.
+
+```ts
+import { resolveTaskKey } from "@titan-design/pm";
+
+const index = { tasks: [{ id: "AL-7", initiative: "alpha" }], prefixes: [{ initiative: "alpha", taskPrefix: "AL" }] };
+resolveTaskKey("AL-7", index); // { ok: true, key: "alpha/AL-7", ... }
+resolveTaskKey("beta/AL-7", index); // { ok: false, reason: "wrong-initiative", proposed: "alpha/AL-7", ... }
+```
+
 ## Planning records
 
 Four strict schemas type the planning layer an initiative keeps beside its tasks. Each record

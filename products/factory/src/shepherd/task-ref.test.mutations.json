@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a qualified key passes through unchecked",
+      "file": "products/factory/src/shepherd/task-ref.ts",
+      "find": "  const resolved = resolveTaskKey(task, (await loadTaskIndex(options)).index);",
+      "replace": "  if (task.includes(\"/\")) return task;\n  const resolved = resolveTaskKey(task, (await loadTaskIndex(options)).index);",
+      "kills": ["qualifyTask refuses a key with another initiative's prefix rather than correcting it"]
+    },
+    {
+      "name": "owner-only initiatives count as visible",
+      "file": "products/factory/src/shepherd/task-ref.ts",
+      "find": "initiatives.filter((item) => item.agent_visible).map(",
+      "replace": "initiatives.map(",
+      "kills": ["loadTaskIndex maps each initiative's task prefix and keeps only agent-visible initiatives as visible"]
+    },
+    {
+      "name": "a down index reads as a refusal",
+      "file": "products/factory/src/shepherd/task-ref.ts",
+      "find": "    throw new TaskIndexUnavailable(`could not read",
+      "replace": "    throw new TaskKeyRefused(`could not read",
+      "kills": ["qualifyTask reports the index as unavailable when the daemon cannot be reached"]
+    }
+  ]
+}

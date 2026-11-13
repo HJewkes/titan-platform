@@ -8,6 +8,7 @@ import { EXIT, runCli } from "./cli.js";
 import type { CliDeps } from "./cli-types.js";
 import { H1, REPO } from "./test-support/land.js";
 import { BRANCH, shepherdFixture } from "./test-support/shepherd.js";
+import { taskIndexFetch } from "./test-support/task-index.js";
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
@@ -26,7 +27,7 @@ function world(): { dbPath: string; deps: CliDeps } {
   dirs.push(dir);
   const fixture = shepherdFixture();
   fixture.fake.addPr({ headSha: H1, headRef: BRANCH });
-  return { dbPath: join(dir, "state", "factory.sqlite3"), deps: { workflows: fixture.workflows, routes: fixture.routes, host: { gatePollMs: 5 }, logger: silentLogger } };
+  return { dbPath: join(dir, "state", "factory.sqlite3"), deps: { workflows: fixture.workflows, routes: fixture.routes, host: { gatePollMs: 5 }, logger: silentLogger, fetch: taskIndexFetch() } };
 }
 
 async function register(w: ReturnType<typeof world>, flags: string[], env: NodeJS.ProcessEnv = {}): Promise<{ code: number; out: string; err: string }> {

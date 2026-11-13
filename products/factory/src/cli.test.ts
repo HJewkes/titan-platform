@@ -20,6 +20,7 @@ import { landPrRoutes, landPrWorkflow } from "./workflows/land-pr.js";
 import { hostPostMerge } from "./workflows/post-merge-adapter.js";
 import { partialFake } from "@titan-design/test-kit";
 import { portOf } from "./test-support/fakes.js";
+import { taskIndexFetch } from "./test-support/task-index.js";
 
 const dirs: string[] = [];
 const cleanups: (() => Promise<void> | void)[] = [];
@@ -358,12 +359,23 @@ describe("shepherd hold", () => {
   });
 });
 
-describe("shepherd register with a bare task ID", () => {
-  it("exits with a usage error naming the expected form when no initiative has the ID", async () => {
-    const fetch = (async () => new Response(JSON.stringify({ ok: true, data: { tasks: [] } }))) as typeof globalThis.fetch;
-    const result = await cli(["shepherd", "register", "o/r#1", "--task", "CC-784", "--implementer", "agent", "--offline"], { ...landDeps(), fetch });
-    expect(result.code).toBe(EXIT.USAGE);
+describe("shepherd register task keys", () => {
+  it("refuses with 65 a bare ID no initiative has, naming the expected form", async () => {
+    const result = await cli(["shepherd", "register", "o/r#1", "--task", "CC-784", "--implementer", "agent", "--offline"], { ...landDeps(), fetch: taskIndexFetch([]) });
+    expect(result.code).toBe(EXIT.REFUSED);
     expect(result.err).toContain("pass --task <initiative>/<ID>");
+  });
+
+  it("refuses with 65 a key whose prefix is not the task's initiative", async () => {
+    const result = await cli(["--db", dbFile(), "shepherd", "register", `${REPO}#1`, "--task", "agent-chat/T-1", "--implementer", "impl-a", "--offline", "--port", String(await deadPort())], { ...landDeps(), fetch: taskIndexFetch() });
+    expect(result.code).toBe(EXIT.REFUSED);
+    expect(result.err).toContain("task T-1 is in demo, not agent-chat");
+  });
+
+  it("exits 69 when the task index cannot be read", async () => {
+    const down = (async () => Promise.reject(new TypeError("fetch failed"))) as typeof globalThis.fetch;
+    const result = await cli(["shepherd", "register", "o/r#1", "--task", "demo/T-1", "--implementer", "agent", "--offline"], { ...landDeps(), fetch: down });
+    expect(result.code).toBe(EXIT.UNAVAILABLE);
   });
 });
 
@@ -371,7 +383,7 @@ describe("shepherd register refusals", () => {
   const refusingDeps = (denied: string[]): CliDeps => {
     const fixture = shepherdFixture({ frozen: true, seats: { seats: [], denied } });
     fixture.fake.addPr({ headSha: H1, headRef: BRANCH });
-    return { workflows: fixture.workflows, routes: fixture.routes, host: { gatePollMs: 5 }, logger: silentLogger };
+    return { workflows: fixture.workflows, routes: fixture.routes, host: { gatePollMs: 5 }, logger: silentLogger, fetch: taskIndexFetch() };
   };
 
   it("exits REFUSED for a repo on a deny list or charter hard stop", async () => {
@@ -392,7 +404,7 @@ describe("shepherd register refusals", () => {
 
 describe("shepherd register with only a target", () => {
   const AGENT_BRANCH = "agent-chat/tc-tp-2239";
-  const taskIndex = (async () => new Response(JSON.stringify({ ok: true, data: { tasks: [{ id: "TP-2239", slug: "titan-platform" }] } }))) as typeof globalThis.fetch;
+  const taskIndex = taskIndexFetch([{ id: "TP-2239", slug: "titan-platform" }]);
 
   function inferDeps(headRef: string): CliDeps {
     const fixture = shepherdFixture({ frozen: true, prFiles: async () => [] });
