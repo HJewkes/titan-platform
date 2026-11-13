@@ -279,7 +279,7 @@ export class RunContext implements WorkflowContext {
       }
       if (!outcome.retryable || attempt - restarts >= this.deps.maxRetries) {
         this.consumeActive(active!);
-        throw new StepFailedError(stepId, iteration, outcome.error, { retryable: outcome.retryable, usage: failedUsage });
+        throw new StepFailedError(stepId, iteration, outcome.error, { retryable: outcome.retryable, usage: failedUsage, errorClass: outcome.errorClass });
       }
       attempt += 1;
       this.deps.emit({ type: "step_retry", runId: this.runId, stepId, attempt: retry, error: outcome.error });

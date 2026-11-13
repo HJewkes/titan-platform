@@ -7,7 +7,7 @@ import { settleUnfinished, type AbandonsOrphan, type WorkflowRegistration } from
 import { mustacheRenderer } from "./prompt.js";
 import { announceRecovery, HeldRuns, markStepRecovery, parkForRecovery, reconcileActiveSteps, removeAnswered } from "./recovery.js";
 import type { WorkflowRuntimeOptions, WorkflowStartOptions } from "./runtime-options.js";
-import { failureText, fenceOf, messageOf, vaultOf, positiveDuration, RuntimeShutdown, sameFence, timestampAt, WorkflowPersistenceError } from "./runtime-values.js";
+import { errorClassOf, failureText, fenceOf, messageOf, vaultOf, positiveDuration, RuntimeShutdown, sameFence, timestampAt, WorkflowPersistenceError } from "./runtime-values.js";
 import { parseSignal as defaultParseSignal } from "./signals.js";
 import { DEFAULT_MAX_STEP_DATA_BYTES } from "./step-output.js";
 import { completedTiming, everyTrySpend } from "./step-timing.js";
@@ -187,7 +187,7 @@ export class WorkflowRuntime {
     if (error instanceof WorkflowRecoveryRequiredError || run.status === "recovery_required") return this.park(run);
     if (abortReason instanceof WorkflowCancelledError) return this.finish(run, "cancelled", abortReason.reason);
     if (error instanceof WorkflowCancelledError) return this.finish(run, "cancelled", error.reason);
-    this.finish(run, "failed", failureText(error, this.baseDeps.capabilities));
+    this.finish(run, "failed", failureText(error, this.baseDeps.capabilities), errorClassOf(error));
   }
 
   shutdown(): void {
@@ -209,11 +209,13 @@ export class WorkflowRuntime {
     return this.isQuiesced;
   }
 
-  private finish(run: WorkflowRun, status: "completed" | "failed" | "cancelled", error: string | null): void {
+  private finish(run: WorkflowRun, status: "completed" | "failed" | "cancelled", error: string | null, errorClass?: string): void {
     this.dropLive(run.id);
     run.status = status;
     run.completedAt = this.isoNow();
     run.error = error;
+    if (errorClass === undefined) delete run.errorClass;
+    else run.errorClass = errorClass;
     run.activeSteps = {};
     this.save(run);
     this.release(run);

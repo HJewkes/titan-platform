@@ -53,6 +53,7 @@ export {
   WorkflowRunStore,
   WorkflowStoreSchemaOutdated,
   workflowDefinitionVersionMigration,
+  workflowErrorClassMigration,
   workflowMigration,
   workflowNameIndexMigration,
   workflowOwnershipMigration,

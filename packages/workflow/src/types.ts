@@ -105,6 +105,8 @@ export interface WorkflowRun {
   startedAt: string;
   completedAt: string | null;
   error: string | null;
+  /** A failed run's class, from the `errorClass` its rejection carried; absent on runs that recorded none. */
+  errorClass?: string;
 }
 
 export interface SeedResult {
@@ -206,7 +208,7 @@ export interface StepRunInput {
 
 export type DurableStepOutcome =
   | { kind: "succeeded"; output: string; usage?: StepUsage }
-  | { kind: "failed"; error: string; retryable: boolean; code?: "schema_invalid"; usage?: StepUsage }
+  | { kind: "failed"; error: string; retryable: boolean; code?: "schema_invalid"; usage?: StepUsage; errorClass?: string }
   | { kind: "cancelled"; reason: string }
   | { kind: "cancellation_unknown"; reason: string; usage?: StepUsage };
 
@@ -235,7 +237,7 @@ export type StepReconcileOutcome =
 
 export type StepRunOutcome =
   | { ok: true; output: string; runnerRef?: string; usage?: StepUsage }
-  | { ok: false; error: string; retryable: boolean; code?: "schema_invalid"; usage?: StepUsage };
+  | { ok: false; error: string; retryable: boolean; code?: "schema_invalid"; usage?: StepUsage; errorClass?: string };
 
 /** Where dispatched steps actually execute: an in-process agent, a queue, a subprocess. */
 export interface LegacyStepRunner {
@@ -274,11 +276,14 @@ export interface StepFailureDetail {
   retryable?: boolean;
   /** Cost of every failed attempt, when the runner reported it. */
   usage?: StepUsage;
+  /** The host's class for this failure, set where it failed, so no reader has to classify the text. */
+  errorClass?: string;
 }
 
 export class StepFailedError extends Error {
   readonly retryable: boolean;
   readonly usage: StepUsage | undefined;
+  readonly errorClass: string | undefined;
 
   constructor(
     readonly stepId: string,
@@ -290,6 +295,7 @@ export class StepFailedError extends Error {
     this.name = "StepFailedError";
     this.retryable = detail.retryable ?? false;
     this.usage = detail.usage;
+    this.errorClass = detail.errorClass;
   }
 }
 

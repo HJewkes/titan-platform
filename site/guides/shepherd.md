@@ -1067,9 +1067,9 @@ Reads the store read-only, so it is safe beside a running `serve`. Two reports, 
   `sh-reverted` (see resync above). A run that read main CI more than once counts its last read.
 
 - With `--failures`, per repo and ISO week: failed runs counted by failure class (`ci-timeout`,
-  `gh-api-5xx`, `gh-rate-limit`, `land-rules`, `update-branch`, `other`). Shepherd writes the
-  class as the error's `[<class>] ` prefix; an older error without one is classified from its
-  text. A `gh-api-5xx` is GitHub's side giving out: a 5xx, no connection, or an empty body. A
+  `gh-api-5xx`, `gh-rate-limit`, `land-rules`, `update-branch`, `other`). Shepherd records the
+  class in `workflow_run.error_class` where the run failed. Only a row written before that
+  column existed is classified from its text. A run parked for recovery counts as `other`. A `gh-api-5xx` is GitHub's side giving out: a 5xx, no connection, or an empty body. A
   `gh-rate-limit` is an answer `classifyGitHubFailure` called a limit: a primary limit, a
   secondary limit or a 429. The transport marks it `[gh-rate-limit …]`. JSON adds
   `"failures": [{ repo, week, failures, byClass }]`.
