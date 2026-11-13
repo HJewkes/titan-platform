@@ -7,6 +7,7 @@ import { withFileLock } from '../utils/fs-atomic.js';
 import { readYaml, writeYaml } from '../utils/yaml-io.js';
 import { nowIso, today } from '../utils/today.js';
 import { NotFoundError } from '../errors.js';
+import { filedOrigins } from './_task-provenance.js';
 import {
   quietOption,
   QuietArg,
@@ -18,10 +19,17 @@ import {
 const ArgsSchema = z.object({
   slug: z.string().min(1),
   id: z.string().min(1),
+  reason: TaskSchema.shape.done_reason,
   quiet: QuietArg,
 });
 
 type Args = z.infer<typeof ArgsSchema>;
+
+/** The closer's reason, marked as filed; closing without one keeps whatever the task carried. */
+function doneReason(task: Task, reason: Args['reason']): Partial<Task> {
+  if (reason === undefined) return {};
+  return { done_reason: reason, field_origin: filedOrigins(task.field_origin, ['done_reason']) };
+}
 
 export default defineCommand<Args, TaskOrLine>({
   name: 'task.done',
@@ -30,7 +38,10 @@ export default defineCommand<Args, TaskOrLine>({
   result: TaskOrLineSchema,
   cli: {
     positional: ['slug', 'id'],
-    options: { quiet: quietOption('PRJ-12 done 2026-10-04') },
+    options: {
+      reason: { long: '--reason', description: 'Why it closed: shipped|superseded|duplicate|moot|wont-do' },
+      quiet: quietOption('PRJ-12 done 2026-10-04'),
+    },
   },
   async run(args, ctx) {
     getActiveRoot();
@@ -51,6 +62,7 @@ export default defineCommand<Args, TaskOrLine>({
         status: 'done',
         done_at: nowIso(),
         updated: date,
+        ...doneReason(task, args.reason),
       };
       await writeYaml(file, updated, TaskSchema);
       return quietOr(args.quiet, ctx, updated, () => `${updated.id} done ${date}`);
