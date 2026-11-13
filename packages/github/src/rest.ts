@@ -2,6 +2,7 @@ import type { BudgetResource, RateBudget } from "./budget.js";
 import { GhError, type GhExec, type GhResult } from "./exec.js";
 import { rateLimitMarker } from "./rate-limit-marker.js";
 import { redact, redactStreams } from "./redact.js";
+import { transportOfGhOutput, transportOfStatus } from "./transport.js";
 
 export interface HttpResponse {
   status: number;
@@ -130,9 +131,11 @@ function runner(exec: GhExec, budget: RateBudget): Run {
   };
 }
 
+/** An error status names the kind; with none, or with a 2xx `gh` still failed on, only `gh`'s own words say what broke. */
 function failed(full: readonly string[], result: GhResult, response: HttpResponse | null): GhError {
   const marker = response ? rateLimitMarker(response.status, methodOf(full), response.headers, `${result.stderr}\n${response.body}`) : "";
-  return new GhError(full, result, response?.status, marker);
+  const transport = response && response.status >= 400 ? transportOfStatus(response.status) : transportOfGhOutput(result.stderr, result.stdout);
+  return new GhError(full, result, response?.status, marker, transport);
 }
 
 /** `gh api` sends a GET unless `-X` names another method. */

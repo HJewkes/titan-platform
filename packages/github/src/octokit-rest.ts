@@ -1,8 +1,9 @@
 import { GhError } from "./exec.js";
-import { GitHubRequestError, type GitHubClient } from "./octokit-client.js";
+import { GitHubDeadlineError, GitHubRequestError, type GitHubClient } from "./octokit-client.js";
 import { rateLimitMarker } from "./rate-limit-marker.js";
 import { redact } from "./redact.js";
 import { nextPage, type Fields, type Rest, type Revalidated } from "./rest.js";
+import { transportOfDeadline, transportOfStatus, type GhTransport } from "./transport.js";
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -107,9 +108,14 @@ function asGhError(method: Method, url: string, error: unknown): GhError {
   const args = ["api", "-X", method, redact(url, [])];
   if (error instanceof GitHubRequestError) {
     const marker = rateLimitMarker(error.status, method, headerMap(error.headers), error.message);
-    return new GhError(args, { code: 1, stdout: "", stderr: `${error.message} (HTTP ${error.status})` }, error.status, marker);
+    return new GhError(args, { code: 1, stdout: "", stderr: `${error.message} (HTTP ${error.status})` }, error.status, marker, requestTransport(error));
   }
-  return new GhError(args, { code: 1, stdout: "", stderr: redact(error instanceof Error ? error.message : String(error), []) });
+  const transport = error instanceof GitHubDeadlineError ? transportOfDeadline(error.method) : "none";
+  return new GhError(args, { code: 1, stdout: "", stderr: redact(error instanceof Error ? error.message : String(error), []) }, undefined, "", transport);
+}
+
+function requestTransport(error: GitHubRequestError): GhTransport {
+  return error.answered ? transportOfStatus(error.status) : "no-connection";
 }
 
 function headerMap(headers: Readonly<Record<string, unknown>>): ReadonlyMap<string, string> {
