@@ -11,6 +11,9 @@ declare const TaskSchema: z.ZodObject<{
         serves: "serves";
         source_ref: "source_ref";
         filed_by: "filed_by";
+        bet: "bet";
+        fold: "fold";
+        owner_steps: "owner_steps";
     }> & z.core.$partial, z.ZodString>>;
     class: z.ZodOptional<z.ZodEnum<{
         product: "product";
@@ -52,6 +55,19 @@ declare const TaskSchema: z.ZodObject<{
         task: "task";
         external: "external";
     }>>;
+    bet: z.ZodOptional<z.ZodString>;
+    fold: z.ZodOptional<z.ZodUnion<readonly [z.ZodLiteral<"independent">, z.ZodString]>>;
+    owner_steps: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        kind: z.ZodEnum<{
+            release: "release";
+            restart: "restart";
+            credential: "credential";
+            sitting: "sitting";
+            config: "config";
+            publish: "publish";
+        }>;
+        note: z.ZodString;
+    }, z.core.$strict>>>;
     id: z.ZodString;
     parent: z.ZodOptional<z.ZodString>;
     dep: z.ZodOptional<z.ZodArray<z.ZodString>>;
@@ -119,6 +135,14 @@ declare const TaskRequireSchema: z.ZodArray<z.ZodEnum<{
     source_ref: "source_ref";
 }>>;
 type TaskRequire = z.infer<typeof TaskRequireSchema>;
+/** Answers whether a bet id names a bet that exists. The planning store (TP-5453 P3) provides the real one. */
+interface BetLookup {
+    has(betId: string): Promise<boolean>;
+}
+/** Why a task's `bet` cannot be written, or null when it names no bet or a bet that exists. */
+declare function betProblem({ bet: betId }: {
+    bet?: string;
+}, lookup: BetLookup): Promise<string | null>;
 
 /** Where the owner said it: the record id plus the reference to the exact quote. */
 declare const OwnerIntentRefSchema: z.ZodObject<{
@@ -359,8 +383,8 @@ declare const DispositionRowSchema: z.ZodObject<{
     summary_line: z.ZodString;
     disposition: z.ZodEnum<{
         task: "task";
-        dup: "dup";
         fold: "fold";
+        dup: "dup";
         drop: "drop";
         "pending-owner": "pending-owner";
     }>;
@@ -570,4 +594,4 @@ type CategorizedTask = Pick<Task, "id" | "status" | "kind" | "cos" | "area" | "d
  */
 declare function checkCategories(task: CategorizedTask, registry: CategoryRegistry | null): CategoryError[];
 
-export { type AreaEntry, BUILT_IN_STATUSES, type Bet, BetSchema, type CategorizedTask, type CategoryAxis, type CategoryError, type CategoryRegistry, CategoryRegistrySchema, type ClaimRow, type CriticalPathOptions, type CriticalPathResult, type CrossInitiativeParentWarning, DELIVERABLE_ID_REGEX, DELIVERABLE_STATUSES, DISPOSITION_KINDS, type Deliverable, type DeliverableEntry, DeliverableSchema, type DeliverableStatus, type DispositionCheck, type DispositionKind, type DispositionRow, DispositionRowSchema, type EdgeChange, type EdgeCheck, type EdgeError, type EdgeField, type Edges, type ExternalDep, type Freeze, type FreezeEndCondition, FreezeEndConditionSchema, FreezeSchema, type InitiativeBriefRef, type InitiativeVisibility, InitiativeVisibilitySchema, type OutOfScope, OutOfScopeSchema, type Outcome, OutcomeSchema, type OwnerIntentRef, OwnerIntentRefSchema, type Prediction, PredictionSchema, type ReviewItem, type ReviewPin, type RunCost, type StatusEntry, TOPIC_PRIORITIES, TOPIC_VERDICTS, type Task, type TaskFloat, type TaskRequire, TaskRequireSchema, TaskSchema, type TaskTreeNode, type TopicPriority, type TopicRow, type TopicVerdict, categoriesPath, checkCategories, checkDispositions, checkEdges, criticalPath, deliverablePath, deliverablesDir, isAgentVisible, parseCategoryRegistry, parseClaimsAudit, parseDeliverableRegistry, parseDispositions, parseTopicsJudged, prioritizedTopics, readEdges, readReviewPin, readTsv, sumRunCost, summaryRecommendations, taskTree };
+export { type AreaEntry, BUILT_IN_STATUSES, type Bet, type BetLookup, BetSchema, type CategorizedTask, type CategoryAxis, type CategoryError, type CategoryRegistry, CategoryRegistrySchema, type ClaimRow, type CriticalPathOptions, type CriticalPathResult, type CrossInitiativeParentWarning, DELIVERABLE_ID_REGEX, DELIVERABLE_STATUSES, DISPOSITION_KINDS, type Deliverable, type DeliverableEntry, DeliverableSchema, type DeliverableStatus, type DispositionCheck, type DispositionKind, type DispositionRow, DispositionRowSchema, type EdgeChange, type EdgeCheck, type EdgeError, type EdgeField, type Edges, type ExternalDep, type Freeze, type FreezeEndCondition, FreezeEndConditionSchema, FreezeSchema, type InitiativeBriefRef, type InitiativeVisibility, InitiativeVisibilitySchema, type OutOfScope, OutOfScopeSchema, type Outcome, OutcomeSchema, type OwnerIntentRef, OwnerIntentRefSchema, type Prediction, PredictionSchema, type ReviewItem, type ReviewPin, type RunCost, type StatusEntry, TOPIC_PRIORITIES, TOPIC_VERDICTS, type Task, type TaskFloat, type TaskRequire, TaskRequireSchema, TaskSchema, type TaskTreeNode, type TopicPriority, type TopicRow, type TopicVerdict, betProblem, categoriesPath, checkCategories, checkDispositions, checkEdges, criticalPath, deliverablePath, deliverablesDir, isAgentVisible, parseCategoryRegistry, parseClaimsAudit, parseDeliverableRegistry, parseDispositions, parseTopicsJudged, prioritizedTopics, readEdges, readReviewPin, readTsv, sumRunCost, summaryRecommendations, taskTree };
