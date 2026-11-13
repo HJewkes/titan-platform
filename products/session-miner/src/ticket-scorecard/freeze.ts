@@ -11,7 +11,7 @@ export interface FreezeResult {
 }
 
 /** What a week file holds: the weekly cells, the Shepherd phase medians and the "Factory health" group. */
-export interface StoredWeeks {
+interface StoredWeeks {
   cells: readonly WeekRow[];
   phases: readonly PhaseWeek[];
   health: readonly FactoryHealth[];
