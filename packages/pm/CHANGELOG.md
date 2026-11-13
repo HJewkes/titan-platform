@@ -1,5 +1,11 @@
 # @titan-design/pm
 
+## 0.6.0
+
+### Minor Changes
+
+- feec10d: Add strict schemas for planning records: `OutcomeSchema`, `BetSchema` (with `PredictionSchema`), `FreezeSchema` (with `FreezeEndConditionSchema`) and `OutOfScopeSchema`, plus `OwnerIntentRefSchema` for owner-intent references (an intent id and a quote reference).
+
 ## 0.5.0
 
 ### Minor Changes
