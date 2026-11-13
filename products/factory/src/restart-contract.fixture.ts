@@ -61,6 +61,7 @@ export const PARKING_STEPS: Readonly<Record<string, string>> = {
   "sh-merge-up": `${RECORD}: a MERGE carried across a clean merge-up`,
   "sh-release-preflight": `${WRITE}: records or clears the registration's release-ready head`,
   "sh-release-follow": `${WRITE}: files a fix task when the release job failed`,
+  "sh-release-author": `${RECORD}: whether the release App authored the head a release answer follows to`,
   "sh-stack-children": `${RECORD}: the stacked children listed after the parent landed`,
   "sh-restack": `${WRITE}: pushes a child's restack and retargets its base`,
   "sh-redeploy": `${WRITE}: starts a service deploy`,

@@ -45,6 +45,7 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     latestCheckRuns: async (repo, sha) => latestPerName(await wire.listCheckRuns(repoOf(repo), checkSha("sha", sha))),
     createCheckRun: async (repo, request) => wire.createCheckRun(repoOf(repo), { ...request, headSha: checkSha("headSha", request.headSha), conclusion: checkConclusion(request.conclusion) }),
     getCommit: async (repo, sha) => wire.getCommit(repoOf(repo), checkSha("sha", sha)),
+    refActivity: async (repo, branch) => wire.listRefActivity(repoOf(repo), checkRef("branch", branch)),
     resolveCommit: async (repo, sha) => wire.resolveCommit(repoOf(repo), checkShaPrefix("sha", sha)),
     commitStatuses: async (repo, sha) => wire.listCommitStatuses(repoOf(repo), checkSha("sha", sha)),
     jobLogTail: async (repo, jobId, lines) => tail(await wire.getJobLog(repoOf(repo), checkPositiveInt("jobId", jobId)), checkPositiveInt("lines", lines)),

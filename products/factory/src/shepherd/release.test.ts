@@ -9,7 +9,7 @@ import {
   VERSION_PACKAGES_BRANCH,
   blockedOnlyByNpm,
   decideRelease,
-  isReleaseFile,
+  nonReleaseFiles,
   npmRegistry,
   publishedSince,
   releaseGuard,
@@ -56,10 +56,10 @@ function versionPackagesPr(files: PrFile[] = []): FakeGitHub {
 
 const preflight = (fake: FakeGitHub, registry: PackageRegistry = onNpm("@demo/widget")) => releasePreflight(githubPort(fake.wire), registry, { repo: REPO, pr: 1, head: HEAD });
 
-describe("isReleaseFile", () => {
+describe("nonReleaseFiles", () => {
   it.each<[PrFile, boolean]>([
     [{ path: "packages/widget/package.json", status: "modified" }, true],
-    [{ path: "packages/widget/CHANGELOG.md", status: "added" }, true],
+    [{ path: "packages/widget/CHANGELOG.md", status: "modified" }, true],
     [{ path: "pnpm-lock.yaml", status: "modified" }, false],
     [{ path: "packages/widget/package.json", status: "added" }, false],
     [{ path: "CAPABILITIES.md", status: "modified" }, true],
@@ -73,7 +73,31 @@ describe("isReleaseFile", () => {
     [{ path: ".github/workflows/package.json", status: "added" }, false],
     [{ path: "packages/widget/package.json", status: "renamed", previousPath: "src/package.json" }, false],
   ])("reads %o as a file changesets writes: %s", (file, expected) => {
-    expect(isReleaseFile(file)).toBe(expected);
+    expect(nonReleaseFiles([file])).toEqual(expected ? [] : [file]);
+  });
+
+  it("rejects an added CHANGELOG.md whose directory's package.json the PR does not modify", () => {
+    const changelog: PrFile = { path: "packages/widget/CHANGELOG.md", status: "added" };
+    const otherManifest: PrFile = { path: "packages/gadget/package.json", status: "modified" };
+
+    expect(nonReleaseFiles([changelog, otherManifest])).toEqual([changelog]);
+  });
+
+  it("accepts an added CHANGELOG.md beside a package.json the PR modifies, the root one included", () => {
+    const files: PrFile[] = [
+      { path: "packages/widget/CHANGELOG.md", status: "added" },
+      { path: "packages/widget/package.json", status: "modified" },
+      { path: "CHANGELOG.md", status: "added" },
+      { path: "package.json", status: "modified" },
+    ];
+
+    expect(nonReleaseFiles(files)).toEqual([]);
+  });
+
+  it("rejects an added CHANGELOG.md beside a renamed package.json", () => {
+    const changelog: PrFile = { path: "packages/widget/CHANGELOG.md", status: "added" };
+
+    expect(nonReleaseFiles([changelog, { path: "packages/widget/package.json", status: "renamed", previousPath: "packages/old/package.json" }])).toContainEqual(changelog);
   });
 });
 

@@ -11,6 +11,7 @@ import type { FixTasks } from "./main-red.js";
 import { isGithubPath } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { publishReview } from "./publish-review.js";
+import { RELEASE_AUTHOR_STEP, releaseAuthorRoute } from "./release-author.js";
 import type { EffectivePolicy, MergeMode } from "./policy-schema.js";
 import { RELEASE_FOLLOW_STEP, followRelease, npmVersionRegistry, type VersionRegistry } from "./release-follow.js";
 import type { ShepherdStore } from "./store.js";
@@ -24,6 +25,7 @@ export const RELEASE_PREFLIGHT_STEP = "sh-release-preflight";
 export const RELEASE_STEPS: readonly StepDeclaration[] = [
   { id: RELEASE_PREFLIGHT_STEP, kind: "dispatch" },
   { id: RELEASE_FOLLOW_STEP, kind: "dispatch" },
+  { id: RELEASE_AUTHOR_STEP, kind: "dispatch" },
 ];
 /** How long a ready Version Packages head holds the repo's other Shepherd merges; a stuck release cannot hold them longer. */
 export const RELEASE_FREEZE_MS = 30 * 60_000;
@@ -79,14 +81,26 @@ const CATALOG_FILES = new Set(["CAPABILITIES.md", "site/guides/capabilities.md"]
 
 /**
  * What `pnpm version-packages` writes: bumped manifests, changelogs, the regenerated catalog, and consumed changesets.
- * GitHub reports a type or mode change, a symlink swap among them, as `changed`, which no release writes.
+ * GitHub reports a type or mode change, a symlink swap among them, as `changed`, which no release writes. A release
+ * adds a CHANGELOG.md only beside a manifest it bumps, so an added one needs its directory's package.json modified.
  */
-export function isReleaseFile(file: PrFile): boolean {
+function isReleaseFile(file: PrFile, bumpedManifests: ReadonlySet<string>): boolean {
   if (isGithubPath(file.path) || file.previousPath !== undefined) return false;
   if (CONSUMED_CHANGESET.test(file.path)) return file.status === "removed";
   if (MANIFEST_FILE.test(file.path)) return file.status === "modified";
-  const written = file.status === "modified" || file.status === "added";
-  return written && (CHANGELOG_FILE.test(file.path) || CATALOG_FILES.has(file.path));
+  if (CATALOG_FILES.has(file.path)) return file.status === "modified" || file.status === "added";
+  if (!CHANGELOG_FILE.test(file.path)) return false;
+  return file.status === "modified" || (file.status === "added" && bumpedManifests.has(siblingManifest(file.path)));
+}
+
+function siblingManifest(path: string): string {
+  return path.replace(/CHANGELOG\.md$/, "package.json");
+}
+
+/** The PR's files `pnpm version-packages` would not write; empty means the diff is release-only. */
+export function nonReleaseFiles(files: readonly PrFile[]): PrFile[] {
+  const bumped = new Set(files.filter((file) => file.status === "modified" && file.previousPath === undefined && MANIFEST_FILE.test(file.path)).map((file) => file.path));
+  return files.filter((file) => !isReleaseFile(file, bumped));
 }
 
 export interface ReleaseTarget {
@@ -118,7 +132,7 @@ export async function releasePreflight(port: GitHubPort, registry: PackageRegist
   const pr = await port.getPr(target.repo, target.pr);
   const blockers = headBlockers(target, pr.headRef, pr.headRepo, pr.headSha);
   const files = await port.listPrFiles(target.repo, target.pr);
-  const foreign = files.filter((file) => !isReleaseFile(file)).map((file) => file.path);
+  const foreign = nonReleaseFiles(files).map((file) => file.path);
   if (foreign.length > 0) blockers.push(`it changes files a release does not write: ${foreign.join(", ")}`);
   const manifests = await readManifests(port, target, pr.baseRef, files);
   blockers.push(...manifests.blockers, ...manifestEditBlockers(manifests.pairs));
@@ -247,6 +261,7 @@ export function releaseRoutes(deps: ShepherdDeps, registry: PackageRegistry, ver
       const task = deps.store.get().byRun(input.runId)?.task;
       return followRelease({ ...deps, registry: versions, tasks }, { ...input, task }, signal);
     }),
+    releaseAuthorRoute(deps),
   ];
 }
 
