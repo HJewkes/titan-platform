@@ -1,5 +1,5 @@
 /** A synthetic initiative as active-work's `list` reports it. */
-export interface FakeInitiative {
+interface FakeInitiative {
   slug: string;
   task_prefix: string;
   agent_visible?: boolean;

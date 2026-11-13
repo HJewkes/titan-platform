@@ -5,21 +5,21 @@ import { z } from "zod";
 import type { TaskIndexLookup } from "./task-ref.js";
 
 /** Stands in for an initiative an agent may not read, so the report counts the row without naming it. */
-export const OWNER_ONLY = "<owner-only>";
+const OWNER_ONLY = "<owner-only>";
 
 interface RegistrationTask {
   runId: string;
   task: string;
 }
 
-export interface TaskKeyReportRow extends RegistrationTask {
+interface TaskKeyReportRow extends RegistrationTask {
   /** Why the stored key is not canonical: a refusal reason, or `bare` for a key that resolves only once rewritten. */
   reason: TaskKeyRefusal | "bare";
   /** The canonical key the id alone resolves to, or null for no match. */
   proposed: string | null;
 }
 
-export interface TaskKeyReport {
+interface TaskKeyReport {
   total: number;
   resolved: number;
   proposed: number;
