@@ -1,5 +1,18 @@
 # @titan-design/active-work
 
+## 0.27.0
+
+### Minor Changes
+
+- e2a51ca: `task add` and `task edit` take the task provenance fields: `--class`, `--serves` (checked against the plan's outcomes), `--source` with `--source-ref` or `--from-pr` and `--from-task`, and `--blocked-on`; each value given is marked `filed` in `field_origin`. `task add` records `filed_by` from `AGENT_CHAT_NAME` (or `owner` from a plain terminal), never from an argument, and refuses a task that leaves out a field the brief's `task_require` lists. Once a task has started or a spawn names it, `task edit` refuses changes to class, source and serves. `task done --reason` records `done_reason`. New read verb `task rank show <slug>` lists ranked tasks; no verb sets a rank (TP-5446 S8).
+- 5346139: Add the owner's planning ops (TP-5453 P3b): `plan-bet-select`, `plan-outcome-edit` and `plan-freeze-set` join the owner-queue op schema. The console offers each as an owner-op tap. Its read-back comes from the factory's `owner-op.preview`: each bet's outcome, prediction and tasks, an outcome's before and after, and what a freeze stops and when it ends. The factory gates the ops to owner-remote under HV-OR and applies them through pm's plan store under the initiative's plan lock. pm's `FreezeSchema` gains an optional `ended_on`. active-work's `plan freeze add` now records `set_by: decider` and refuses `--set-by owner`. No CLI, RPC or MCP verb selects a bet, edits an outcome or ends a freeze.
+
+### Patch Changes
+
+- 4caefe3: A task filed over the daemon's /rpc or MCP surface records `filed_by: unknown`. Before this, it took the daemon's own `AGENT_CHAT_NAME`, or `owner` when the daemon had none (TP-5446 S8 follow-up).
+- Updated dependencies [5346139]
+  - @titan-design/pm@0.9.0
+
 ## 0.26.0
 
 ### Minor Changes

@@ -1,5 +1,12 @@
 # @titan-design/evals
 
+## 0.6.4
+
+### Patch Changes
+
+- Updated dependencies [5346139]
+  - @titan-design/pm@0.9.0
+
 ## 0.6.3
 
 ### Patch Changes
