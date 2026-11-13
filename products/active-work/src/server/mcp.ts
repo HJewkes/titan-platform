@@ -45,6 +45,7 @@ export function mcpOptions(): McpServerOptions<CommandContext> {
       warnings: [],
       format: 'json',
       caller: surface === 'mcp' ? 'agent' : undefined,
+      remote: true,
     }),
     formatError,
     toolPrefix: TOOL_NAME_PREFIX,

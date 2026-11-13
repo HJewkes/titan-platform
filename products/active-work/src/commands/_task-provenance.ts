@@ -85,11 +85,15 @@ export function filedOrigins(current: Task['field_origin'], fields: readonly str
 
 const AGENT_NAME = /^[A-Za-z0-9][\w.-]*$/;
 
-/** The broker names every agent it spawns; an owner's own terminal sets no agent variable at all. */
-export function filedBy(env: NodeJS.ProcessEnv, caller: CommandContext['caller']): string {
+/**
+ * The broker names every agent it spawns; an owner's own terminal sets no agent variable at all. Over /rpc and MCP the
+ * environment is the daemon's, and no request carries a proven caller identity, so those calls file as unknown.
+ */
+export function filedBy(env: NodeJS.ProcessEnv, ctx: Pick<CommandContext, 'caller' | 'remote'>): string {
+  if (ctx.remote === true) return 'unknown';
   const name = env.AGENT_CHAT_NAME?.trim();
   if (name) return AGENT_NAME.test(name) ? name : 'unknown';
-  return caller === 'agent' ? 'unknown' : 'owner';
+  return ctx.caller === 'agent' ? 'unknown' : 'owner';
 }
 
 function briefRequire(frontmatter: Record<string, unknown>): TaskRequire {
