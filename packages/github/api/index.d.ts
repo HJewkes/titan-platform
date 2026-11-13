@@ -228,10 +228,16 @@ interface Commit {
     /** The full commit message; absent when the wire does not report it. */
     message?: string;
 }
-/** The GitHub accounts a commit's author and committer emails map to; null where GitHub links no account. */
-interface CommitLogins {
-    author: string | null;
-    committer: string | null;
+/**
+ * One move of a branch from GitHub's repository activity list: who pushed `before` to `after`. Unlike a commit's author,
+ * which GitHub derives from an email anyone can write, `actor` is the account that made the push; null when GitHub names none.
+ */
+interface RefActivity {
+    before: string;
+    after: string;
+    ref: string;
+    activityType: string;
+    actor: string | null;
 }
 /** One step of an Actions job, in run order; `conclusion` is null until the step completes. */
 interface JobStep {
@@ -444,8 +450,8 @@ interface GitHubWire {
         id: number;
     }>;
     getCommit(repo: RepoSlug, sha: string): Promise<Commit>;
-    /** `GET commits/{sha}`'s top-level `author.login` and `committer.login`, which the git commits endpoint lacks. */
-    getCommitLogins(repo: RepoSlug, sha: string): Promise<CommitLogins>;
+    /** `GET activity?ref=refs/heads/{branch}`, the first page of 100, newest first. */
+    listRefActivity(repo: RepoSlug, branch: string): Promise<RefActivity[]>;
     /** Null when GitHub has no such commit (HTTP 422 or 404). */
     resolveCommit(repo: RepoSlug, sha: string): Promise<string | null>;
     listCommitStatuses(repo: RepoSlug, sha: string): Promise<CommitStatus[]>;
@@ -556,8 +562,8 @@ interface GitHubPort {
         id: number;
     }>;
     getCommit(repo: RepoSlug, sha: string): Promise<Commit>;
-    /** Who GitHub says authored and committed `sha`: an App's commits read as its `<slug>[bot]` login. A failed read throws. */
-    commitLogins(repo: RepoSlug, sha: string): Promise<CommitLogins>;
+    /** The branch's latest 100 moves, newest first, each with the account that pushed it: an App reads as its `<slug>[bot]` login. A failed read throws. */
+    refActivity(repo: RepoSlug, branch: string): Promise<RefActivity[]>;
     /** Expands an abbreviated sha to the full one GitHub has; null when GitHub has no such commit, so a caller never polls a sha that cannot report. */
     resolveCommit(repo: RepoSlug, sha: string): Promise<string | null>;
     commitStatuses(repo: RepoSlug, sha: string): Promise<CommitStatus[]>;
@@ -1196,7 +1202,7 @@ interface FakeEffects {
     dismissReview: number;
 }
 /** Reads a test can make fail, for a caller that must treat a failed read as transient. */
-type FakeFaultyRead = "getDefaultBranch" | "getBranchRules" | "getClassicRequiredChecks" | "listCheckRuns" | "listCommitStatuses" | "resolveCommit" | "compareAncestry" | "lsRemote";
+type FakeFaultyRead = "getDefaultBranch" | "getBranchRules" | "getClassicRequiredChecks" | "listCheckRuns" | "listCommitStatuses" | "resolveCommit" | "compareAncestry" | "lsRemote" | "listRefActivity";
 interface FakeGitHub {
     wire: GitHubWire;
     /** A `GitExec` for `lsRemotePullHead`: `refs/pull/<n>/head` is the PR's current head, absent for a PR the fake lacks. A `lsRemote` read fault rejects the exec. */
@@ -1271,8 +1277,8 @@ interface FakeGitHub {
     }[];
     /** The synthetic history `compareAncestry` walks by parents; a sha that is no commit, parent, ref tip or PR head answers `missing`. */
     commits: Map<string, Commit>;
-    /** Sha to the logins `getCommitLogins` answers; an unset sha reads as a commit GitHub links to no account. */
-    commitLogins: Map<string, CommitLogins>;
+    /** Branch to the moves `listRefActivity` answers, newest first; an unset branch reads as no activity. */
+    refActivity: Map<string, RefActivity[]>;
     /** Sha to its combined status, newest per context. */
     statuses: Map<string, CommitStatus[]>;
     /** Errors the next calls of a read throw, one per call, before it answers. */

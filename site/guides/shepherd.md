@@ -490,16 +490,20 @@ config. Any value other than exactly `async` reads as `owner`. The stamp is reco
 merge evidence at each head, so a later config change does not alter a decision already
 recorded. See [Visual paths](#visual-paths) for what `async` skips.
 
-**The release author.** `shepherd.releaseAppLogin` names the release App's bot login, the
-`<app-slug>[bot]` account GitHub shows as the author of the App's commits. Set it to the login
-of the App whose client id is `vars.RELEASE_APP_CLIENT_ID` in `release.yml`. An owner's
-`approve-merge` answer on the [Version Packages](#version-packages) pull request is kept across
-a regenerated head, and carried to it, only when GitHub reads that head's author as this login
+**The release pusher.** `shepherd.releaseAppLogin` names the release App's bot login, the
+`<app-slug>[bot]` account GitHub shows as the actor of the App's pushes. Set it to the login
+of the App whose client id is `vars.RELEASE_APP_CLIENT_ID` in `release.yml`. The config refuses
+a value without the `[bot]` suffix, because a bare slug is a name a user could register. An
+owner's `approve-merge` answer on the [Version Packages](#version-packages) pull request is kept
+across a regenerated head, and carried to it, only when GitHub's repository activity list for
+`refs/heads/changeset-release/main` shows this login pushing the branch to that head
 (`products/factory/src/shepherd/release-author.ts`, step `sh-release-author:<head>`). Anyone who
-can push to `changeset-release/main` can push a head that changes release files only, so the
-file check alone does not show that changesets wrote it. An absent key, a head with no linked
-author or another author, or a failed read keeps nothing: the gate is cancelled and the owner is
-asked fresh at the new head. The value is read at serve start, so a change needs a restart.
+can push to `changeset-release/main` can push a head that changes release files only, and a
+commit's author login comes from an email the pusher writes, so neither the file check nor the
+author shows that changesets wrote it. The check reads the newest 100 moves of the branch. If the
+key is absent, no move reaches the head, another account pushed it, or the read fails, nothing is
+kept: the gate is cancelled and the owner is asked fresh at the new head. The value is read at
+serve start, so a change needs a restart.
 
 **The feedback sheet.** Under `async`, `titan-factory shepherd visual-week-feedback` batches a
 repo's merged visual pull requests of an ended ISO week into one read-only console round of
