@@ -46,8 +46,10 @@ export async function ownerOnlySlugs(activeRoot: string): Promise<string[]> {
 }
 
 /**
- * The owner-only slugs a reader must not name to this caller: none for the owner. A deny list, for readers
- * whose keys are not all initiatives (a miner bucket, a doctor path), so only an owner-only name is withheld.
+ * The owner-only slugs on disk that a reader must not name to this caller: none for the owner. A deny list, so
+ * only for names that all come from the live root (focus renumbering) or for counting what was withheld. Names
+ * from history (the session graph, the workspace index) go through callerVisibility, an allow list that also
+ * withholds an archived, renamed or unlisted initiative.
  */
 export async function hiddenSlugsForCaller(
   activeRoot: string,

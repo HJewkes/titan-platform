@@ -85,15 +85,16 @@ function sessionFilesCheck(malformed: string[]): DoctorCheck {
   };
 }
 
+const SHOW_ALL = (): boolean => true;
+
 async function slugsShown(activeRoot: string, deps: DoctorDeps): Promise<string[]> {
-  const hidden = deps.hiddenSlugs ?? new Set<string>();
-  return (await listInitiativeSlugs(activeRoot)).filter((slug) => !hidden.has(slug));
+  return (await listInitiativeSlugs(activeRoot)).filter(deps.shown ?? SHOW_ALL);
 }
 
 /** An indexed path is relative to the active root, so its first segment is the initiative it sits in. */
 function pathShown(deps: DoctorDeps): (relativePath: string) => boolean {
-  const hidden = deps.hiddenSlugs ?? new Set<string>();
-  return (relativePath) => !hidden.has(relativePath.split('/')[0]);
+  const shown = deps.shown ?? SHOW_ALL;
+  return (relativePath) => shown(relativePath.split('/')[0]);
 }
 
 /**

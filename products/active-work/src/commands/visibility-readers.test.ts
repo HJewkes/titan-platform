@@ -1,7 +1,9 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { CommandContext } from '../registry/types.js';
+import { defaultGraphPath, openGraph } from '../session-index/graph.js';
+import { refreshWorkspace } from '../workspace-index/refresh.js';
 import { withEmptyActiveRoot } from '../test-support/test-helpers.js';
 import { minerShownKeys, OWNER_ONLY_KEY, redactCostReport, redactOutcomeReport } from './_miner-redact.js';
 import doctor from './doctor.js';
@@ -17,6 +19,8 @@ import unfocus from './unfocus.js';
 
 const VISIBLE = 'alpha';
 const HIDDEN = 'private-notes';
+/** An initiative indexed and then renamed away, so its folder is gone from the root. */
+const RENAMED = 'renamed-plans';
 const HIDDEN_WARNING = '1 owner-only initiative hidden from a non-owner caller';
 
 function writeFile(root: string, relativePath: string, contents: string): void {
@@ -38,6 +42,15 @@ function seed(root: string): void {
   writeBrief(root, VISIBLE, 1, 'visibility: agent-visible\n');
   writeBrief(root, HIDDEN, 2, '');
   writeBrief(root, 'target', 3, 'visibility: agent-visible\n');
+}
+
+async function indexWorkspace(activeRoot: string): Promise<void> {
+  const graph = openGraph(defaultGraphPath());
+  try {
+    await refreshWorkspace(graph, { activeRoot });
+  } finally {
+    graph.db.close();
+  }
 }
 
 const context = (activeRoot: string, caller?: CommandContext['caller']): CommandContext => ({
@@ -168,6 +181,21 @@ describe('doctor (census row 20)', () => {
       expect(JSON.stringify(report)).not.toContain(HIDDEN);
       expect(JSON.stringify(report)).toContain(`${VISIBLE}/sessions/2026-09-01-bad.md`);
       expect(ctx.warnings).toEqual([HIDDEN_WARNING]);
+    });
+  });
+
+  it('names no initiative gone from the root to an agent through the workspace index', async () => {
+    await withEmptyActiveRoot(async (root) => {
+      seed(root);
+      writeBrief(root, RENAMED, 4, '');
+      await indexWorkspace(root);
+      rmSync(path.join(root, RENAMED), { recursive: true, force: true });
+
+      const agent = await doctor.run({}, context(root, 'agent'));
+      const owner = await doctor.run({}, context(root, 'owner'));
+
+      expect(JSON.stringify(agent)).not.toContain(RENAMED);
+      expect(JSON.stringify(owner)).toContain(`initiative:${RENAMED} -> ${RENAMED}/brief.md`);
     });
   });
 

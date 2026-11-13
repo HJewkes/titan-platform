@@ -54,8 +54,11 @@ export interface DoctorDeps {
   supervisorActive?: () => Promise<{ kind: string; active: boolean; path?: string } | null>;
   /** Sweep session leases; defaults to the real `.sessions/` walk. */
   sweepLeases?: (activeRoot: string) => Promise<LeaseSweepResult>;
-  /** Owner-only initiatives the caller may not see named; their findings are left out (TP-5556). */
-  hiddenSlugs?: ReadonlySet<string>;
+  /**
+   * Whether the caller may see an initiative named; findings under any other are left out (TP-5556). An allow
+   * list, since the workspace index names initiatives that may be gone from the root. Defaults to every one.
+   */
+  shown?: (slug: string) => boolean;
 }
 
 function checkInstall(deps: DoctorDeps): Promise<DoctorCheck[]> {

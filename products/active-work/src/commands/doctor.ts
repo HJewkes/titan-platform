@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { defineCommand } from '../registry/index.js';
 import { runDoctor, type CheckStatus } from '../doctor/index.js';
-import { hiddenSlugsForCaller, noteHiddenInitiatives } from '../sessions/visibility.js';
+import { callerVisibility, hiddenSlugsForCaller, noteHiddenInitiatives } from '../sessions/visibility.js';
 import { color } from '../utils/color.js';
 
 /**
@@ -39,9 +39,9 @@ export default defineCommand<Args, Result>({
   args: ArgsSchema,
   result: ResultSchema,
   async run(_args, ctx) {
-    const hiddenSlugs = await hiddenSlugsForCaller(ctx.activeRoot, ctx.caller);
-    noteHiddenInitiatives(ctx.warnings, hiddenSlugs.size);
-    const report = await runDoctor({ activeRoot: ctx.activeRoot, hiddenSlugs });
+    noteHiddenInitiatives(ctx.warnings, (await hiddenSlugsForCaller(ctx.activeRoot, ctx.caller)).size);
+    const shown = await callerVisibility(ctx.activeRoot, ctx.caller);
+    const report = await runDoctor({ activeRoot: ctx.activeRoot, shown });
     if (ctx.format !== 'json') {
       process.stderr.write(color.bold('active-work doctor') + '\n');
       for (const check of report.checks) {
