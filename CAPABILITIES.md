@@ -1114,7 +1114,7 @@ Key exports:
 
 ### [`owner-queue`](https://hjewkes.github.io/titan-platform/reference/owner-queue)
 
-Tier 2, `@titan-design/owner-queue@0.8.0`. The owner queue core: one OwnerItem schema across every store of record, the QueueSource port, merge-by-keys and rank as pure functions
+Tier 2, `@titan-design/owner-queue@0.8.1`. The owner queue core: one OwnerItem schema across every store of record, the QueueSource port, merge-by-keys and rank as pure functions
 
 **Use this when:**
 
@@ -1133,7 +1133,7 @@ Key exports:
 
 ### [`pm`](https://hjewkes.github.io/titan-platform/reference/pm)
 
-Tier 2, `@titan-design/pm@0.9.0`. Project-management schemas: the zod task schema and its type, as active-work stores tasks, with a ./node subpath for the planning-record file store
+Tier 2, `@titan-design/pm@0.10.0`. Project-management schemas: the zod task schema and its type, as active-work stores tasks, with a ./node subpath for the planning-record file store
 
 **Use this when:**
 
@@ -1453,7 +1453,7 @@ Thin compositions of the tiers. A linked product is published; the rest are priv
 
 ### [`active-work`](https://hjewkes.github.io/titan-platform/reference/active-work)
 
-Tier product, `@titan-design/active-work@0.27.0`. Durable workspace state for engineering work — CLI, MCP, and Claude skill for tracking initiatives across sessions
+Tier product, `@titan-design/active-work@0.28.0`. Durable workspace state for engineering work — CLI, MCP, and Claude skill for tracking initiatives across sessions
 
 **Use this when:**
 
