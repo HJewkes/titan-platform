@@ -302,7 +302,8 @@ declare const MAX_CLAIM_FILES = 30;
 /** The claims come from a file the PR's author wrote, so only a bounded, grammar-valid list reaches the prompt. */
 declare const MAX_ATTEST_CLAIMS = 8;
 /**
- * The tokens of the last visible `Attests:` line above the Verdict line, one per step. A malformed token is dropped, not
+ * The tokens of the last visible `Attests:` line above the Verdict line, one per step; the heading may be bolded, bulleted
+ * or spelt in another case, as session-read's `labelledLineRest` folds it. A malformed token is dropped, not
  * refused: it meets nothing, so the merge guard gates and no correction round is spent on it.
  */
 declare function attestTokens(text: string): string[];
@@ -595,6 +596,8 @@ declare const isUsageLimit: (result: {
  * A MERGE whose CI-policy line reads malformed is refused for one correction, unless the only other labelled lines are
  * harmless prose (see `mergeCiPolicy`); a weakened reading wins over malformed in the parser, so a weakening is never
  * corrected away. An adversary verdict with no `Probes:` line is refused for one correction too, and so is an adversary MERGE whose `authorityLine` reading is absent or malformed.
+ * A MERGE whose final message only repeats its block reads Attests and Follow-ups from the full verdict above it (see
+ * `labelSource`); CI-policy, Authority and Probes are read from the final message alone, so no older draft can weaken them.
  */
 declare function acceptVerdict(input: AwaitVerdictInput, messages: readonly ReviewerMessage[]): AwaitVerdictResult;
 
