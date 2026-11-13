@@ -207,7 +207,8 @@ function decideAfterPolicy(headSha: string, evidence: DecidableEvidence, visual:
   if (judged !== undefined) return { outcome: "gate", rule: guardRule(judged.row), reason: judged.reason };
   if (evidence.requiredChecksUnknown !== undefined) return { outcome: "gate", rule: guardRule("required-checks-unknown"), reason: evidence.requiredChecksUnknown };
   if (evidence.mergeableState === "unknown") return { outcome: "gate", rule: guardRule(UNSETTLED_ROW), reason: `mergeable_state unknown after ${SETTLE_MAX_READS} reads` };
-  const decision = evaluate(DEFAULT_TABLE, { action: "merge", actor: AUTHORITY_ACTOR, tainted: false, subject: { repo: evidence.record.repo, pr: String(evidence.record.pr) }, facts: { merge: evidence.merge } });
+  const subject = { repo: evidence.record.repo, pr: String(evidence.record.pr) };
+  const decision = evaluate(DEFAULT_TABLE, { action: "merge", actor: AUTHORITY_ACTOR, tainted: false, subject, facts: { merge: evidence.merge } });
   if (decision.verdict === "allow" && AUTO_MERGE_RULES.includes(decision.ruleId)) {
     const { changedPaths } = evidence.merge;
     const visualNotes = tierClearance(evidence.visualTier, changedPaths, visual.visualPaths) + asyncVisualNote(evidence.visualGate, changedPaths, visual.visualPaths);
@@ -303,7 +304,9 @@ function carryFact(carry: MergeEvidenceInput["carry"], head: string): CarryFact 
 }
 
 /** Every fact is read from GitHub, the run's own step outputs or its registration (`kind`), never from the reviewer's text. */
-export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, { kind, unread }: KindRead = {}, clock: SettleClock = REAL_CLOCK, reviewAppId?: number): Promise<Observed> {
+export async function collectMergeFacts(
+  port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, { kind, unread }: KindRead = {}, clock: SettleClock = REAL_CLOCK, reviewAppId?: number,
+): Promise<Observed> {
   const pr = await settledPr(port, input.repo, input.pr, clock);
   const [required, runs, paths, frozen, bypassable] = await Promise.all([
     readRequiredChecks(port, input.repo, pr.baseRef),
@@ -313,13 +316,10 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
     reviewBypassable(port, input.repo, pr),
   ]);
   const merge: MergeFacts = {
-    head: input.head,
-    resolver: input.resolver,
-    dispatchedReviewer: input.dispatchedReviewer,
+    head: input.head, resolver: input.resolver, dispatchedReviewer: input.dispatchedReviewer,
     verdict: { value: input.verdict.value, head: input.verdict.head },
     requiredContexts: required.readable ? required.checks.contexts : [],
-    allowedApps: [...ALLOWED_CHECK_APPS],
-    contextApps: reviewContextApps(reviewAppId),
+    allowedApps: [...ALLOWED_CHECK_APPS], contextApps: reviewContextApps(reviewAppId),
     checkRuns: runs.map(runFact),
     mergeTreeClean: mergeTreeClean(pr, input.head, bypassable.bypassable),
     repoFrozen: frozen,
@@ -353,9 +353,11 @@ async function visualDeltaOf(port: GitHubPort, input: MergeEvidenceInput, { pr, 
 }
 
 /** The body of the sh-merge-evidence step: observe, decide, and post one comment per head. */
-export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, kind?: KindRead, clock?: SettleClock, reads: EvidenceReads = {}): Promise<MergeEvidence & { commentId: number }> {
+export async function mergeEvidence(
+  port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, kind?: KindRead, clock?: SettleClock, reads: EvidenceReads = {},
+): Promise<MergeEvidence & { commentId: number }> {
   const observed = await collectMergeFacts(port, input, isFrozen, kind, clock, reads.reviewAppId);
-  const { pr, pr: { mergeableState }, merge, changedLines, requiredChecksUnknown, unreadFacts, changedFilesUnread } = observed;
+  const { pr, pr: { mergeableState }, merge, requiredChecksUnknown, unreadFacts, changedFilesUnread } = observed;
   const unknown = { ...(requiredChecksUnknown !== undefined && { requiredChecksUnknown }), ...(unreadFacts && { unreadFacts }), ...(changedFilesUnread !== undefined && { changedFilesUnread }) };
   const ciPolicy = input.ciPolicy && { ciPolicy: input.ciPolicy, ...(observed.ciPolicyClass && { ciPolicyClass: observed.ciPolicyClass }) };
   const tier = await readVisualTier(port, merge, { repo: input.repo, baseRef: pr.baseRef, visualPaths: input.visualPaths, config: reads.tier });
@@ -372,7 +374,8 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
   const risk = riskFactsOf(riskRead);
   const lowTier = risk.touches.includes("policy") ? { lowTier: lowTierPolicyTouch(riskRead) } : undefined;
   const visualChanged = visualChangedField(reads.visualGate, merge.changedPaths, input.visualPaths);
-  const record = evidenceRecord(input, observed, decision, { ...ciPolicy, riskTier: riskTier(risk), ...lowTier, ...ownerTier, ...visual, ...visualChanged, ...(judged && { attest: judged }), ...oldPath });
+  const tiers = { riskTier: riskTier(risk), ...lowTier, ...ownerTier };
+  const record = evidenceRecord(input, observed, decision, { ...ciPolicy, ...tiers, ...visual, ...visualChanged, ...(judged && { attest: judged }), ...oldPath });
   const comment = await port.upsertComment(input.repo, input.pr, evidenceMarker(input.head), evidenceComment(record));
   return { head: input.head, merge, record, mergeableState, ...unknown, ...ciPolicy, ...visual, ...attest, ...oldPath, ...ownerTier, ...grantWithheldField(input), commentId: comment.id };
 }

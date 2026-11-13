@@ -79,7 +79,8 @@ interface RecordObserved {
   headBlobs?: Record<string, string | null>;
 }
 
-type RecordExtras = Pick<EvidenceRecord, "ciPolicy" | "visualDelta" | "visualTier" | "visualChanged" | "visualGate" | "oldPath" | "lowTier" | "ownerTier"> & { riskTier: RiskTier; attest?: AttestJudgment };
+type RecordFields = "ciPolicy" | "visualDelta" | "visualTier" | "visualChanged" | "visualGate" | "oldPath" | "lowTier" | "ownerTier";
+type RecordExtras = Pick<EvidenceRecord, RecordFields> & { riskTier: RiskTier; attest?: AttestJudgment };
 
 /** A head that claims nothing records nothing; a meeter other than the accepted reviewer is the adversary member. */
 function attestFields(attest: AttestJudgment | undefined, resolver: AgentIdentity): Pick<EvidenceRecord, "attested" | "attestUnmet" | "attestUnread" | "attestWaiting"> {
