@@ -1,3 +1,4 @@
+import { activeWorkRoot } from "@titan-design/app-paths";
 import { readFile } from "node:fs/promises";
 import { text } from "node:stream/consumers";
 import { parseFollowUps } from "@titan-design/review-panel";
@@ -10,7 +11,7 @@ import { activeWorkFollowUpTasks, activeWorkOrigin } from "./shepherd/cleanup-po
 import { FixTaskRefused } from "./shepherd/main-red.js";
 import { fileFollowUps } from "./shepherd/follow-ups-file.js";
 import { HEAD } from "./shepherd/await-verdict.js";
-import { qualifyTask, TaskIndexUnavailable } from "./shepherd/task-ref.js";
+import { qualifyTask } from "./shepherd/task-ref.js";
 
 interface FollowUpsArgs {
   task: string;
@@ -27,7 +28,7 @@ function targetOf(ref: string, opts: FollowUpsArgs): { repo: string; pr: number 
 }
 
 async function qualified(task: string, verbs: Verbs): Promise<{ initiative: string; parent: string }> {
-  const full = await qualifyTask(task, { origin: activeWorkOrigin(verbs.io.env), ...(verbs.deps.fetch && { fetch: verbs.deps.fetch }) });
+  const { key: full } = await qualifyTask(task, { origin: activeWorkOrigin(verbs.io.env), activeRoot: activeWorkRoot({ env: verbs.io.env }), ...(verbs.deps.fetch && { fetch: verbs.deps.fetch }) });
   const at = full.indexOf("/");
   if (at <= 0 || at === full.length - 1) throw new UsageError("--task must be <initiative>/<ID>");
   return { initiative: full.slice(0, at), parent: full.slice(at + 1) };
@@ -41,7 +42,7 @@ async function run(ref: string, opts: FollowUpsArgs, verbs: Verbs): Promise<numb
     where = { ...(await qualified(opts.task, verbs)), ...targetOf(ref, opts) };
   } catch (error) {
     io.stderr(`error: ${errorMessage(error)}\n`);
-    return error instanceof TaskIndexUnavailable ? EXIT.UNAVAILABLE : EXIT.USAGE;
+    return EXIT.USAGE;
   }
   const { items, warning } = parseFollowUps(opts.verdictFile === undefined ? await text(process.stdin) : await readFile(opts.verdictFile, "utf8"));
   try {

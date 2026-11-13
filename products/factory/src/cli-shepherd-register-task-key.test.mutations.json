@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an unverified key is not marked on the run",
+      "file": "products/factory/src/shepherd/commands.ts",
+      "find": "args.taskUnverified === true ? { taskVerified: \"false\" } : {};",
+      "replace": "{};",
+      "kills": ["shepherd register task keys stores the key as given, marked taskVerified=false with a warning, when no task index answers"]
+    },
+    {
+      "name": "register prints no warning for an unverified key",
+      "file": "products/factory/src/cli-shepherd.ts",
+      "find": "  io.stderr(`warning: ${checked.warning}; the run records taskVerified=false (reinstall active-work to check keys)\\n`);\n",
+      "replace": "",
+      "kills": ["shepherd register task keys stores the key as given, marked taskVerified=false with a warning, when no task index answers"]
+    },
+    {
+      "name": "an older daemon's not-found key passes unverified",
+      "file": "products/factory/src/shepherd/task-ref.ts",
+      "find": "  if (resolved.reason === \"not-found\" && !lookup.complete) return unverified(",
+      "replace": "  if (resolved.reason === \"not-found\") return unverified(",
+      "kills": ["shepherd register task keys still refuses with 65 a key an older daemon's index has no task for"]
+    },
+    {
+      "name": "a refused key exits as a usage error",
+      "file": "products/factory/src/cli-shepherd.ts",
+      "find": "(err instanceof TaskKeyRefused ? EXIT.REFUSED : EXIT.USAGE)",
+      "replace": "(EXIT.USAGE)",
+      "kills": ["shepherd register task keys refuses with 65 a bare ID no initiative has, naming the expected form"]
+    }
+  ]
+}

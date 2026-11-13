@@ -24,6 +24,8 @@ export const RegisterArgs = z
     head: z.string().regex(HEAD, "must be 40 lowercase hex characters").optional(),
     base: BranchArg.optional(),
     task: z.string().min(1),
+    /** The CLI could not check `task` against a complete task index (an older or unreachable active-work), so it is stored as given. */
+    taskUnverified: z.boolean().optional(),
     implementer: z.string().min(1),
     registrant: z.string().min(1).optional(),
     reviewer: z.string().min(1).optional(),
