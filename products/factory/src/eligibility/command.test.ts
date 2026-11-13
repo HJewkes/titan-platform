@@ -122,7 +122,7 @@ describe("dispatch eligible", () => {
 
     const { stdout } = await eligible(["--week", "2026-W47", "--tag", "console"], rpc.fetch);
 
-    expect(stdout).toBe("lane alpha/console: admit; next none\nsignals openPrs=0 mergedNotDeployed=0 ownerQueue=0 reviewerAccounts=1 reviewersExhausted=0 deployCauses=0 redMainRepos=0 unread=none\nfiling open (2026-W44 in=1 out=0, 2026-W45 in=0 out=0)\nweek 2026-W47: 0 eligible, 1 refused (bet-not-selected=1)\nrefused AL-1 bet-not-selected\n");
+    expect(stdout).toBe("lane alpha/console: admit; next none\ndepends on everything (unmapped)\nsignals openPrs=0 mergedNotDeployed=0 ownerQueue=0 reviewerAccounts=1 reviewersExhausted=0 deployCauses=0 redMainRepos=0 unread=none\nfiling open (2026-W44 in=1 out=0, 2026-W45 in=0 out=0)\nweek 2026-W47: 0 eligible, 1 refused (bet-not-selected=1)\nrefused AL-1 bet-not-selected\n");
   });
 
   it("a malformed --week is a usage error and reads nothing", async () => {
@@ -170,8 +170,9 @@ describe("dispatch eligible", () => {
 
     const { stdout } = await eligible(["--week", "2026-W47"], rpc.fetch, { signals: { openPrs: 2, mergedNotDeployed: 1 } });
 
-    expect(stdout.split("\n").slice(0, 3)).toEqual([
+    expect(stdout.split("\n").slice(0, 4)).toEqual([
       "lane alpha: hold (merged-not-deployed); next none",
+      "depends on everything (unmapped)",
       "signals openPrs=2 mergedNotDeployed=1 ownerQueue=0 reviewerAccounts=1 reviewersExhausted=0 deployCauses=0 redMainRepos=0 unread=none",
       "hold merged-not-deployed lane open=2 mergedNotDeployed=1 limit=3: 2 unmerged and 1 merged-not-deployed PR(s) at a limit of 3",
     ]);
