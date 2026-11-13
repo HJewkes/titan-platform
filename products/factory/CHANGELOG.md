@@ -1,5 +1,26 @@
 # @titan-design/factory
 
+## 0.27.2
+
+### Patch Changes
+
+- f0c6bea: Shepherd records provenance where it files and registers (TP-5446 S11). Each reviewer follow-up it files passes `source: follow-up`, `from_pr` and `from_task`, plus the parent task's `class` when the parent has one. `shepherd register` adds the `revert` kind, which never carries a reviewed MERGE and must name the merged PR it reverts with `--reverts owner/repo#N`, stored in `shepherd_registration.reverts`. A registration from a terminal with no agent-chat name now records `owner` as its registrant, and an agent's later registration still replaces it. Shepherd now takes its carrying kinds from `@titan-design/authority` instead of its own copy.
+- 8485c89: A failed Shepherd run records its failure class in `workflow_run.error_class`, set where it failed, so nothing classifies the error text afterwards. Each `ci-wait` timeout throws a `ShepherdFailure` carrying `ci-timeout`. Every land and Shepherd code route records the class of its own failure: a GitHub rate limit, `land-rules`, a GitHub server-side failure, `update-branch`, or `other`, ranked as before. gh-retry reads the recorded class. `shepherd stats --failures` reads it too, and falls back to the old text rules only for rows written before the column existed. Which failures are retried, and how, is unchanged.
+- 04aea95: `titan-factory dispatch eligible` now opens with the lane's back-pressure admission (TP-5453 P4b, PROPOSAL 2.3): admit or hold, with closed hold codes (`lane-open-prs`, `merged-not-deployed`, `owner-queue`, `reviewer-limit`, `dependency-stalled`, `signal-unreadable`) and the numbers behind each, the task that would go first, and the lane's task inflow against outflow. It reads only. The limits are `shepherd.backPressure.laneOpenPrs` (3), `ownerQueue` (10, counted over the Shepherd gates `shepherd waiting` lists as waiting on the owner) and `inflowWeeks` (2); an absent key means that starting value. The coordinator adds the three as live editable factory rows.
+- f5b43ee: Shepherd records an `sh-own-diff` id for each reviewed head: the patch id of the head's diff against its merge base with the base branch, leaving out generated paths, the registry lock and attestation rows. It is measurement only; nothing reads it to decide (TP-5592 A1).
+- 9e170f6: review-stats schema v4 stores each round's own-diff id and whether a MERGE or FIX_FIRST pass re-read an own diff unchanged since the run's previous verdict head. The `pr_review` view and `titan-factory stats --reviews` add passes, unchanged passes and their cost per PR, plus totals, medians and the top 10 PRs by unchanged passes (TP-5592 A2).
+- 71da228: `shepherd stats --reviews` reads an own-diff id from the git-cache for a round whose run recorded none, counting the heads the cache lacks, and a daily systemd timer refreshes the store.
+- b46a861: `dispatch eligible` holds a lane on a deploy stall or red main only when the lane depends on the failing component: the factory deploy, or main CI of a named repo. A checked-in table maps each lane (initiative plus tag) to its components; a lane without an entry still depends on everything, and a named component whose health cannot be read counts as stalled.
+- Updated dependencies [f0c6bea]
+- Updated dependencies [8485c89]
+- Updated dependencies [04aea95]
+  - @titan-design/authority@0.7.0
+  - @titan-design/workflow@0.15.0
+  - @titan-design/coordinator@0.7.0
+  - @titan-design/hitl@0.10.1
+  - @titan-design/autoresearch@0.1.1
+  - @titan-design/review-workflow@0.1.1
+
 ## 0.27.1
 
 ### Patch Changes

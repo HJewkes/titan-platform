@@ -219,7 +219,7 @@ Key exports:
 
 ### [`authority`](https://hjewkes.github.io/titan-platform/reference/authority)
 
-Tier 0, `@titan-design/authority@0.6.0`. The authority decision table as data: who may merge, release, read secrets, spawn or actuate hardware, with a pure evaluator
+Tier 0, `@titan-design/authority@0.7.0`. The authority decision table as data: who may merge, release, read secrets, spawn or actuate hardware, with a pure evaluator
 
 **Use this when:**
 
@@ -542,7 +542,7 @@ Key exports:
 
 ### [`tool-guard`](https://hjewkes.github.io/titan-platform/reference/tool-guard)
 
-Tier 0, `@titan-design/tool-guard@0.6.0`. Classifies Claude Code tool calls into guarded authority actions, with a POSIX shell tokenizer
+Tier 0, `@titan-design/tool-guard@0.6.1`. Classifies Claude Code tool calls into guarded authority actions, with a POSIX shell tokenizer
 
 **Use this when:**
 
@@ -739,7 +739,7 @@ Key exports:
 
 ### [`hitl`](https://hjewkes.github.io/titan-platform/reference/hitl)
 
-Tier 1, `@titan-design/hitl@0.10.0`. Human-in-the-loop gate()/resolve() primitive
+Tier 1, `@titan-design/hitl@0.10.1`. Human-in-the-loop gate()/resolve() primitive
 
 **Use this when:**
 
@@ -955,7 +955,7 @@ Modules that know about a subject: transcripts, code, rules.
 
 ### [`autoresearch`](https://hjewkes.github.io/titan-platform/reference/autoresearch)
 
-Tier 2, `@titan-design/autoresearch@0.1.0`. Target-agnostic autoresearch engine: planner queue, Thompson selection, fidelity ladder and a noise-banded keep rule over ports
+Tier 2, `@titan-design/autoresearch@0.1.1`. Target-agnostic autoresearch engine: planner queue, Thompson selection, fidelity ladder and a noise-banded keep rule over ports
 
 **Use this when:**
 
@@ -1015,7 +1015,7 @@ Key exports:
 
 ### [`coordinator`](https://hjewkes.github.io/titan-platform/reference/coordinator)
 
-Tier 2, `@titan-design/coordinator@0.6.0`. Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types).
+Tier 2, `@titan-design/coordinator@0.7.0`. Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types).
 
 **Use this when:**
 
@@ -1212,7 +1212,7 @@ Key exports:
 
 ### [`review-workflow`](https://hjewkes.github.io/titan-platform/reference/review-workflow)
 
-Tier 2, `@titan-design/review-workflow@0.1.0`. PR review as a resumable workflow over ports: preflight, heals, a failure taxonomy with a retry policy, and a typed outcome
+Tier 2, `@titan-design/review-workflow@0.1.1`. PR review as a resumable workflow over ports: preflight, heals, a failure taxonomy with a retry policy, and a typed outcome
 
 **Use this when:**
 
@@ -1401,7 +1401,7 @@ Key exports:
 
 ### [`workflow`](https://hjewkes.github.io/titan-platform/reference/workflow)
 
-Tier 2, `@titan-design/workflow@0.14.0`. Durable imperative workflows: memoized steps, agent dispatch, human gates, replay on restart
+Tier 2, `@titan-design/workflow@0.15.0`. Durable imperative workflows: memoized steps, agent dispatch, human gates, replay on restart
 
 **Use this when:**
 
@@ -1454,7 +1454,7 @@ Thin compositions of the tiers. A linked product is published; the rest are priv
 
 ### [`active-work`](https://hjewkes.github.io/titan-platform/reference/active-work)
 
-Tier product, `@titan-design/active-work@0.28.0`. Durable workspace state for engineering work — CLI, MCP, and Claude skill for tracking initiatives across sessions
+Tier product, `@titan-design/active-work@0.29.0`. Durable workspace state for engineering work — CLI, MCP, and Claude skill for tracking initiatives across sessions
 
 **Use this when:**
 
