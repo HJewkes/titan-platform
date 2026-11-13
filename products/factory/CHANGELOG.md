@@ -1,5 +1,20 @@
 # @titan-design/factory
 
+## 0.27.4
+
+### Patch Changes
+
+- caa5937: Add a low-tier policy hold (TP-5403 slice B) that ships in shadow. Under `shepherd.gateReset.lowTierPolicy: on`, a low-tier policy touch is held `g10-review` instead of `g10-adversary`, so it lands on one opus MERGE at its head with green CI and no owner gate; the release records the rule `g10-review/low-tier`, the timeline shows it as a `decision` entry, and the merge evidence records `lowTier`. The switch (off, shadow, on) is a new editable factory row. Absent means `shadow`: the run keeps its `g10-adversary` hold and the reason names the low tier it would have had. Setting `on` is an owner config edit that follows the owner's decision on which gate code may go low.
+
+  No file in the classifier's own import closure (`g10-low-tier-closure.json`: the classifier, the registration hold, their file and line-count readers and the workspace package sources they import) goes low; a test recomputes the closure and fails when the list falls behind. Code that calls the rule or writes the verdicts the release reads is not in that closure.
+
+- 9778eb4: `GhError` carries a closed `transport` kind (`server-5xx`, `no-connection`, `empty-or-cut-body`, `read-timeout` or `none`), set where the error is raised: from the HTTP status, Octokit's failed connection, the deadline that fired (a read only; a timed-out write is `none`), or, for `gh api` failing before any answer, from its output at one boundary inside the package. Shepherd's `gh-api-5xx` class now reads that field instead of matching `gh`'s stderr; rows written before TP-5446 S11b still read their text.
+- Updated dependencies [caa5937]
+- Updated dependencies [9778eb4]
+  - @titan-design/coordinator@0.7.1
+  - @titan-design/github@0.13.0
+  - @titan-design/review-workflow@0.1.2
+
 ## 0.27.3
 
 ### Patch Changes
