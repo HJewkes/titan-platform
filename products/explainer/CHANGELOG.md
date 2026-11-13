@@ -1,5 +1,14 @@
 # @titan-design/explainer
 
+## 0.3.2
+
+### Patch Changes
+
+- Updated dependencies [1f5ed48]
+- Updated dependencies [46ae5e5]
+  - @titan-design/owner-queue@0.7.0
+  - @titan-design/pm@0.7.0
+
 ## 0.3.1
 
 ### Patch Changes
