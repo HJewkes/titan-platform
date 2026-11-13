@@ -27,6 +27,25 @@
       "kills": [
         "fileFollowUps files two same-titled items in one block once"
       ]
+    },
+    {
+      "name": "a follow-up names no parent task",
+      "file": "products/factory/src/shepherd/follow-ups-file.ts",
+      "find": "    from_task: where.parent,\n",
+      "replace": "",
+      "kills": [
+        "fileFollowUps shepherd follow-up carries from_pr and from_task"
+      ]
+    },
+    {
+      "name": "a follow-up drops its parent's class",
+      "file": "products/factory/src/shepherd/follow-ups-file.ts",
+      "find": "    ...(parentClass && { class: parentClass }),\n",
+      "replace": "",
+      "kills": [
+        "fileFollowUps shepherd follow-up carries class",
+        "fileFollowUps reads the parent's class once however many follow-ups it files, and not at all when every one dedupes"
+      ]
     }
   ]
 }

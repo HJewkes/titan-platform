@@ -10,6 +10,9 @@ interface FakeTask {
   notes: string;
   tags: string[];
   done_at?: string;
+  class?: string;
+  source?: string;
+  source_ref?: { from_pr: string; from_task: string };
 }
 
 interface FakeActiveWork {
@@ -51,11 +54,19 @@ function matchesList(task: FakeTask, body: Record<string, unknown>): boolean {
   return body.status === undefined || body.status === "all" || task.status === body.status;
 }
 
+/** As active-work's `task add` (TP-5446 S8) stores them: `--from-pr` with `--from-task` becomes one `source_ref`. */
+function provenanceOf(body: Record<string, unknown>): Pick<FakeTask, "class" | "source" | "source_ref"> {
+  const text = (key: string): string | undefined => (typeof body[key] === "string" ? body[key] : undefined);
+  const [fromPr, fromTask] = [text("from_pr"), text("from_task")];
+  const ref = fromPr !== undefined && fromTask !== undefined ? { from_pr: fromPr, from_task: fromTask } : undefined;
+  return Object.fromEntries(Object.entries({ class: text("class"), source: text("source"), source_ref: ref }).filter(([, value]) => value !== undefined));
+}
+
 /** Like the real `task.add`: the next id in the initiative, always `open`. */
 function add(fake: FakeActiveWork, body: Record<string, unknown>): { id: string } {
   const id = `FU-${fake.tasks.size + 1}`;
   const tags = Array.isArray(body.tags) ? body.tags.map(String) : [];
-  fake.tasks.set(id, { id, status: "open", title: String(body.title), severity: String(body.severity), done_when: String(body.done_when ?? ""), notes: String(body.notes ?? ""), tags });
+  fake.tasks.set(id, { id, status: "open", title: String(body.title), severity: String(body.severity), done_when: String(body.done_when ?? ""), notes: String(body.notes ?? ""), tags, ...provenanceOf(body) });
   return { id };
 }
 
