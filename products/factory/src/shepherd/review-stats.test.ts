@@ -328,9 +328,9 @@ describe("own-diff backfill from the git-cache", { timeout: 30_000 }, () => {
 
     const refresh = await refreshReviewStats({ store, runs: ledgerRuns(ledger([runOf("r1", steps)])), retire: new Map(), transcripts: portOf({}), ownDiffs: cacheOwnDiffReader({ ports: hostCarryPorts, stateDir }) });
 
-    const rows = ownDiffRows(store) as { own_diff_id: string | null; unchanged_since_verdict: string | null }[];
-    expect(rows[0]!.own_diff_id).toMatch(/^[0-9a-f]{64}$/);
-    expect(rows[1]).toEqual(expect.objectContaining({ own_diff_id: rows[0]!.own_diff_id, unchanged_since_verdict: "after-MERGE" }));
+    const rows = ownDiffRows(store);
+    expect(rows[0]).toEqual(expect.objectContaining({ own_diff_id: expect.stringMatching(/^[0-9a-f]{64}$/) }));
+    expect(rows[1]).toEqual(expect.objectContaining({ own_diff_id: expect.stringMatching(/^[0-9a-f]{64}$/), unchanged_since_verdict: "after-MERGE" }));
     expect(refresh).toEqual(expect.objectContaining({ ownDiffsComputed: 2, ownDiffsMissing: 0 }));
   });
 
