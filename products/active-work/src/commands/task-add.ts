@@ -17,6 +17,7 @@ import { nowIso, today } from '../utils/today.js';
 import { assertEdgeWrite } from '../tasks/edge-index.js';
 import { DRAFT_TAG } from '../tasks/draft.js';
 import { ValidationError } from '../errors.js';
+import { assertKnownBet } from './_bet-check.js';
 import { assertKnownDeliverables } from './_deliverables.js';
 import { doneWhenProblem } from './_done-when-gate.js';
 import {
@@ -164,6 +165,7 @@ export default defineCommand<Args, TaskOrLine>({
       }
       const task = newTask(args, id, args.priority ?? nextPriority(existing));
       await assertCategories(activeRoot, task, changedCategoryFields(args));
+      await assertKnownBet(task);
       const taskDir = path.join(getInitiativeDir(args.slug), 'tasks');
       await fs.mkdir(taskDir, { recursive: true });
       await writeYaml(path.join(taskDir, `${id}.yml`), task, TaskSchema);

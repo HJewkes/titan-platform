@@ -334,6 +334,9 @@ these fields still parses.
 | `rank` | `p0`, `p1`, `p2`, `p3` |
 | `done_reason` | `shipped`, `superseded`, `duplicate`, `moot`, `wont-do` |
 | `blocked_on` | `owner`, `decision`, `task`, `external` |
+| `bet` | a `BetSchema` id (`alpha/B1`); whether it exists is checked at write |
+| `fold` | `independent`, or a fold id (`alpha/FD1`, `<initiative>/FD<n>`) |
+| `owner_steps` | a list of `{ kind, note }`; `kind` is `release`, `restart`, `credential`, `sitting`, `config` or `publish`; `note` is one line; an empty list is allowed |
 | `field_origin` | per field above: `filed`, `owner`, `audit` or `inferred:<heuristic-id>` |
 
 `source_ref` must fit `source`. `owner` needs a single-token decision or owner-queue item id
@@ -344,6 +347,11 @@ is refused.
 An initiative brief's `task_require` (`TaskRequireSchema`) lists which of `class`, `serves`,
 `source` and `source_ref` every new task there must carry. The schema only reads the list;
 active-work's `task add` and `task edit` enforce it.
+
+A task names its bet only if the bet exists. `betProblem(task, lookup)` answers through a
+`BetLookup` (`has(betId): Promise<boolean>`), which the planning store implements once the plan
+verbs write `<initiative>/plan/`. Until then active-work's lookup knows no bet, so a task naming
+one is refused at write and a task with no bet passes.
 
 To add a provenance field, add it to `TaskProvenanceShape` in `src/provenance.ts`, optional.
 Its `field_origin` key follows from that shape. List it in `TASK_REQUIRABLE_FIELDS` if a

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { OUTCOME_ID_REGEX, TASK_ID_REGEX } from "./ids.js";
+import { BET_ID_REGEX, FOLD_ID_REGEX, OUTCOME_ID_REGEX, TASK_ID_REGEX } from "./ids.js";
 
 /*
  * Task provenance (TP-5446 plan, section 3.1, F1-F9): where a task came from and why it closed, recorded when the task
@@ -21,6 +21,8 @@ const DONE_REASONS = ["shipped", "superseded", "duplicate", "moot", "wont-do"] a
 
 const BLOCKERS = ["owner", "decision", "task", "external"] as const;
 
+const OWNER_STEP_KINDS = ["release", "restart", "credential", "sitting", "config", "publish"] as const;
+
 const closedSet = <const T extends readonly [string, ...string[]]>(field: string, values: T) =>
   z.enum(values, { error: `${field} must be one of: ${values.join(", ")}` });
 
@@ -29,6 +31,27 @@ const SERVES_NONE = "none";
 /** An outcome id in the planning `Outcome` format, or `none` for a task that serves no outcome. */
 const serves = z.union([z.literal(SERVES_NONE), z.string().regex(OUTCOME_ID_REGEX)], {
   error: `serves must be an outcome id (alpha/faster-landing) or ${SERVES_NONE}`,
+});
+
+/** A bet id in the planning `Bet` format. Whether the bet exists is checked at write, through a `BetLookup`. */
+const bet = z.string().regex(BET_ID_REGEX, { error: "bet must be a bet id (alpha/B1)" });
+
+const FOLD_INDEPENDENT = "independent";
+
+/** `independent` for a task that lands on its own, or the id of the fold it must land with. */
+const fold = z.union([z.literal(FOLD_INDEPENDENT), z.string().regex(FOLD_ID_REGEX)], {
+  error: `fold must be a fold id (alpha/FD1) or ${FOLD_INDEPENDENT}`,
+});
+
+/** A step only the owner can take, listed up front so an agent never starts a task it cannot finish. */
+const OwnerStepSchema = z.strictObject({
+  kind: closedSet("owner_steps kind", OWNER_STEP_KINDS),
+  note: z
+    .string()
+    .trim()
+    .min(1)
+    .max(200)
+    .regex(/^[^\r\n]*$/, { message: "owner_steps note must be one line" }),
 });
 
 const PR_REF_REGEX = /^[\w.-]+\/[\w.-]+#\d+$/;
@@ -65,6 +88,9 @@ const TaskProvenanceShape = {
   rank: closedSet("rank", TASK_RANKS).optional(),
   done_reason: closedSet("done_reason", DONE_REASONS).optional(),
   blocked_on: closedSet("blocked_on", BLOCKERS).optional(),
+  bet: bet.optional(),
+  fold: fold.optional(),
+  owner_steps: z.array(OwnerStepSchema).optional(),
 };
 
 type ProvenanceField = keyof typeof TaskProvenanceShape;
@@ -98,4 +124,15 @@ export function sourceRefProblem({ source, source_ref: ref }: SourceFields): str
   if (source === "follow-up" || source === "review") return isText(ref) ? `source ${source} needs from_pr and from_task` : null;
   if (!isText(ref)) return "only follow-up and review take a from_pr reference";
   return source === "plan" && !PLAN_REF_REGEX.test(ref) ? "source plan needs path#slice" : null;
+}
+
+/** Answers whether a bet id names a bet that exists. The planning store (TP-5453 P3) provides the real one. */
+export interface BetLookup {
+  has(betId: string): Promise<boolean>;
+}
+
+/** Why a task's `bet` cannot be written, or null when it names no bet or a bet that exists. */
+export async function betProblem({ bet: betId }: { bet?: string }, lookup: BetLookup): Promise<string | null> {
+  if (betId === undefined) return null;
+  return (await lookup.has(betId)) ? null : `Unknown bet id: ${betId}`;
 }

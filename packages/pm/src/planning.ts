@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { OUTCOME_ID_REGEX, SLUG, TASK_ID_REGEX } from "./ids.js";
+import { BET_ID_REGEX, OUTCOME_ID_REGEX, SLUG, TASK_ID_REGEX } from "./ids.js";
 import { isoDate } from "./task.js";
 
 // Planning records live in an initiative's plan/ folder, so each id carries its initiative as a prefix.
@@ -12,7 +12,7 @@ const scopedId = (suffix: string, example: string) =>
   z.string().regex(new RegExp(`^${SLUG}/${suffix}$`), { message: `id must look like ${example}` });
 
 const outcomeId = z.string().regex(OUTCOME_ID_REGEX, { message: "id must look like alpha/faster-landing" });
-const betId = scopedId("B\\d+", "alpha/B1");
+const betId = z.string().regex(BET_ID_REGEX, { message: "id must look like alpha/B1" });
 const freezeId = scopedId("F\\d+", "alpha/F1");
 const outOfScopeId = scopedId("X\\d+", "alpha/X1");
 

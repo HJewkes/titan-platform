@@ -9,6 +9,7 @@ import { readYaml, writeYaml } from '../utils/yaml-io.js';
 import { nowIso, today } from '../utils/today.js';
 import { NotFoundError, UsageError, ValidationError } from '../errors.js';
 import { assertEdgeWrite } from '../tasks/edge-index.js';
+import { assertKnownBet } from './_bet-check.js';
 import { assertKnownDeliverables } from './_deliverables.js';
 import { assertCategories, CATEGORY_OPTIONS, changedCategoryFields } from './_categories.js';
 import {
@@ -210,6 +211,7 @@ async function assertWritable(
   slug: string,
 ): Promise<void> {
   assertPromotable(ctx, task, next);
+  if (changes.bet !== undefined) await assertKnownBet(next);
   await assertCategories(getActiveRoot(), next, changedCategoryFields(changes));
   const added = edit.kind === 'patch' ? newDeliverables(task, edit) : [];
   if (added.length > 0) await assertKnownDeliverables(getActiveRoot(), added);

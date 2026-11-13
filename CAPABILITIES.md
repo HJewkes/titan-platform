@@ -1143,9 +1143,8 @@ Key exports:
 
 - `task`: `TaskSchema`
 - `visibility`: `InitiativeVisibilitySchema`, `isAgentVisible`
-- `provenance`: `TaskRequireSchema`
+- `provenance`: `betProblem`, `TaskRequireSchema`
 - `planning`: `BetSchema`, `FreezeEndConditionSchema`, `FreezeSchema`, `OutOfScopeSchema`, `OutcomeSchema`, `OwnerIntentRefSchema`, `PredictionSchema`
-- `deliverable`: `DeliverableSchema`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/pm)
 
 <a id="cap-queue-mirror"></a>
