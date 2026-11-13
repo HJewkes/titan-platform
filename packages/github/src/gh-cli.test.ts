@@ -451,6 +451,7 @@ describe("gh api adapter, REST only", () => {
       latestCheckRuns: () => port.latestCheckRuns(REPO, H1),
       createCheckRun: () => port.createCheckRun(REPO, { name: "n", headSha: H1, conclusion: "success", title: "t", summary: "s", externalId: "e" }),
       getCommit: () => port.getCommit(REPO, H1),
+      commitLogins: () => port.commitLogins(REPO, H1),
       resolveCommit: () => port.resolveCommit(REPO, H1.slice(0, 7)),
       commitStatuses: () => port.commitStatuses(REPO, H1),
       jobLogTail: () => port.jobLogTail(REPO, 42, 2),

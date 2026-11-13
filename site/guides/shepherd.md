@@ -490,6 +490,17 @@ config. Any value other than exactly `async` reads as `owner`. The stamp is reco
 merge evidence at each head, so a later config change does not alter a decision already
 recorded. See [Visual paths](#visual-paths) for what `async` skips.
 
+**The release author.** `shepherd.releaseAppLogin` names the release App's bot login, the
+`<app-slug>[bot]` account GitHub shows as the author of the App's commits. Set it to the login
+of the App whose client id is `vars.RELEASE_APP_CLIENT_ID` in `release.yml`. An owner's
+`approve-merge` answer on the [Version Packages](#version-packages) pull request is kept across
+a regenerated head, and carried to it, only when GitHub reads that head's author as this login
+(`products/factory/src/shepherd/release-author.ts`, step `sh-release-author:<head>`). Anyone who
+can push to `changeset-release/main` can push a head that changes release files only, so the
+file check alone does not show that changesets wrote it. An absent key, a head with no linked
+author or another author, or a failed read keeps nothing: the gate is cancelled and the owner is
+asked fresh at the new head. The value is read at serve start, so a change needs a restart.
+
 **The feedback sheet.** Under `async`, `titan-factory shepherd visual-week-feedback` batches a
 repo's merged visual pull requests of an ended ISO week into one read-only console round of
 kind `feedback`. The console shows it as a what-changed sheet: per PR, the link, head and
@@ -2089,7 +2100,8 @@ Shepherd lands it with no human step (`products/factory/src/shepherd/release.ts`
    empty commit, so Actions being down costs one commit, not one per sweep. The GitHub App of
    TP-447 replaces this.
 3. **A release preflight instead of a reviewer.** At each green head, `sh-release-preflight`
-   checks that every changed file is one `changeset version` writes, and that every public
+   checks that every changed file is one `changeset version` writes (an added `CHANGELOG.md`
+   counts only when the same pull request modifies the `package.json` beside it), and that every public
    package in the release is already on registry.npmjs.org. A brand-new package cannot use
    trusted publishing until its first version is published by hand, so it blocks with its
    name. The package's latest version must also name a trusted publisher

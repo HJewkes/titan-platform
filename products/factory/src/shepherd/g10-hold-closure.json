@@ -374,6 +374,7 @@
   "shepherd/registration-facts.ts",
   "shepherd/registration-lookup.ts",
   "shepherd/registration-row.ts",
+  "shepherd/release-author.ts",
   "shepherd/release-follow.ts",
   "shepherd/release-gate-carry.ts",
   "shepherd/remerge-carry.ts",
