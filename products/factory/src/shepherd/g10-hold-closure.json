@@ -375,6 +375,7 @@
   "shepherd/registration-lookup.ts",
   "shepherd/registration-row.ts",
   "shepherd/release-follow.ts",
+  "shepherd/release-gate-carry.ts",
   "shepherd/remerge-carry.ts",
   "shepherd/repair-stop-command.ts",
   "shepherd/repair-stop.ts",
