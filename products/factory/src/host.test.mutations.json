@@ -40,8 +40,8 @@
     {
       "name": "the host never applies the shadow disagreement log",
       "file": "products/factory/src/host.ts",
-      "find": ", shadowLogMigration(50)]",
-      "replace": "]",
+      "find": ", shadowLogMigration(50),",
+      "replace": ",",
       "kills": [
         "gate resolver migration a factory database created before the resolver migration gains the resolved_by column and its trigger when the host opens it",
         "marker table migration factoryMigrations applies the marker table at 49, after every tenant migration up to 48"

@@ -1,5 +1,60 @@
 # @titan-design/session-read
 
+## 0.17.0
+
+### Minor Changes
+
+- f896485: `readFirstRequest(path)` rebuilds the first API request a Claude Code transcript recorded: tools, system and message blocks in API order (messages in the request's `tail` order, not file order), the cache breakpoints it carried, the model, agent name and the usage of its response.
+- 1ac2768: New `labelledLineRest(raw, label, strictValue?)` exports the fold the CI-policy line is read with (NFKC, lower case, any decoration around or inside the label), so every reviewer-verdict label can be detected the same way. The CI-policy reader now calls it; its behaviour is unchanged.
+- cfdfb64: `extractTranscript` and `readTranscriptEvents` take a `spanTextCap` read option, the chars kept per span. The default stays `SPAN_TEXT_CAP` (16 KiB), which bounds the search index; a caller that parses a span, such as an agent's final JSON answer, passes `Infinity` to read it whole.
+- ff6fb95: `distinctRequests` and the `TranscriptRequest` type move into session-read, next to the transcript readers; factory's step-usage and autoresearch import them from there instead of from autoresearch internals.
+- f77d79d: `ciPolicyLabelledLines(text)` lists every labelled line a MERGE block's `ciPolicy` folds, each with its own reading, through the same reader `parseVerdictBlock` uses. The factory adds the read-only `gate.ownerEvidence` command (TP-4489, the first slice of TP-4404): the console card for an owner-at-head approve-merge gate is projected from the merge evidence the gate was opened on. Its facts are recomputed with land's own functions and must equal the gate's marker, unknown names included; a CI-policy section heads with the stored reading and shows the verdict text only when the shared reader still reads the same. A gate whose facts need file sections reads `missing` until they land.
+- 8436f35: Link scorecard dispatches through the session origin when a spawn recorded no task (TP-5446 slice S12). session-read's `assignedTaskIds` takes an optional `spawnTask`, the spawn's recorded `meta.task`; a known id there wins over the name and brief rules and reports source `spawn-meta`. active-work's agent-chat origin resolver passes it. session-analytics' `ScorecardSpawn` gains an optional `link` provenance; a first dispatch linked by inference records it under `provenance.firstDispatchTs`, so the row counts toward the week's inferred share. session-miner's `ticket-scorecard run` falls back, for a spawn with no `meta.task`, to the session graph's resolved `session_origin` link when it names exactly one task, marked `inferred:<task_source>`; a link naming several tasks or none is left unlinked and counted. `run` prints those counts, and `reproduce` adds a per-week table of the population and the share of its rows whose dispatch link is inferred. The console's task drill-down shows the inferred badge on the first dispatch.
+- 52dc7f3: A reviewer verdict correction now quotes the line that made the verdict malformed (TP-3798). `session-read` exports `refusedLines(text, refusal)`, which returns the non-canonical `Verdict:` lines (for `multiple_blocks`) or labelled CI-policy lines (for `ci_policy_malformed`); the reading itself is unchanged and still fails closed. `review-panel` records them as `malformed.quotes`, and `correctionPrompt` takes `quotes`, shows up to three of them cut to 120 characters inside `MAX_CORRECTION_PROMPT_CHARS`, and asks the reviewer to reword or remove them. `CI_POLICY_RULE` now says no other line may start with "CI policy" or "Verdict", markdown headings such as `**CI policy:**` included.
+- 78ae7d9: Stop writing tool spans, context blocks and unchanged state echoes by default (TP-880).
+
+  session-read: `ReadOptions` gains `toolSpans` and `contextBlocks` (default true), passed to `LineReader` as an optional `EmitPolicy`. A fact from an echo line (`ai-title`, `custom-title`, `agent-name`, `mode`, `permission-mode`, `cost-state`) carries `state: { key, value }`; `atis-latch`, `bridge-session` and `last-prompt` emit no fact. `EXTRACT_VERSION` is 9.
+
+  session-graph: `IndexOptions` gains `indexToolSpans` and `contextBlocks` (default false); `refreshCorpus` forwards `contextBlocks` to `backfillFacets`. Migration 14 replaces `session_state` with `echo_state`, keyed per transcript, and an echo fact is stored only when its value changed. `turn.thinking_ms` now counts the gap from a tool result past a skipped echo.
+
+  session-miner and active-work keep storing tool spans and context blocks; active-work does so on both its full and delta passes.
+
+### Patch Changes
+
+- ed29ec2: Remove the unused `modelForActiveTurn` method from the Codex decoder and narrow its private `metadata` scope parameter to `"conversation" | "turn"`, the only two values it is ever called with.
+- 5a67a0b: `findClaudeSessionSource` no longer reports a transcript unavailable when the cwd's project-directory name is longer than the filesystem allows for one name. It treats that exact path as absent and scans the project directories by session id, as it does for any other cwd whose directory Claude named differently.
+- 6525ba7: The verdict parser no longer reads a line naming a ci-policy identifier (`ci-policy-changes.ts`, `ciPolicyAt`) as a CI-policy line, so such a review parses MERGE; a weakened reading still fails closed wherever it sits. Shepherd's correction now quotes the blamed line, and the failed-round list and ops notice name a correction that did not parse `malformed`, not `timeout` (TP-3237).
+- 9b42150: Use the shared `isRecord`, `isObjectLike` and `errorCode` from `@titan-design/rpc-protocol/narrow` in place of local copies. Behaviour is unchanged.
+- cd8a1ce: Typed-lint burn-down: replaced type assertions with narrowing and dropped conditions the types already settle. No behaviour change.
+- 5f2b39f: Flatten the Claude transcript lookup's internal result protocol into status unions and keep one `messageOf` in the package. No behavior change.
+- Updated dependencies [c072542]
+- Updated dependencies [1f0e92e]
+- Updated dependencies [9470266]
+- Updated dependencies [175f8cc]
+- Updated dependencies [211db45]
+- Updated dependencies [1fe77c3]
+- Updated dependencies [7813c1f]
+- Updated dependencies [5edd38d]
+- Updated dependencies [5edd38d]
+- Updated dependencies [9614680]
+- Updated dependencies [c616533]
+- Updated dependencies [646f4d7]
+- Updated dependencies [1b7ad44]
+- Updated dependencies [6c3fb4b]
+- Updated dependencies [d46cbce]
+- Updated dependencies [ae64085]
+- Updated dependencies [1bc6431]
+- Updated dependencies [37bf5da]
+- Updated dependencies [8ca1def]
+- Updated dependencies [24cfcc9]
+- Updated dependencies [342c6ba]
+- Updated dependencies [342c6ba]
+- Updated dependencies [0100482]
+  - @titan-design/anthropic-account@0.4.0
+  - @titan-design/agent-protocol@0.10.0
+  - @titan-design/locator@0.2.2
+  - @titan-design/rpc-protocol@0.4.0
+
 ## 0.16.1
 
 ### Patch Changes

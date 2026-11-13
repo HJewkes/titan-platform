@@ -1,5 +1,46 @@
 # @titan-design/pm
 
+## 0.10.0
+
+### Minor Changes
+
+- 239d96b: One canonical task key, `<initiative>/<TASK-ID>` (TP-5453 P5). `pm` exports `resolveTaskKey`, which turns a bare id, a prefixed key or a repo-qualified key into the canonical key, or refuses it as malformed, not found, ambiguous or wrong-initiative; an id two initiatives hold goes to the one whose `task_prefix` issued it. active-work's new `task.keys` command lists each initiative's `task_prefix`, `agent_visible` and the ids of its task files, open and archived, read from file names (MCP tool `active__task__keys`). `titan-factory shepherd register` stores the canonical key and exits 65 on a key that resolves to no one task. On an active-work daemon older than `task.keys` it resolves through `task.list` plus the archive file names; when no complete index can be read it refuses only a malformed key, stores the rest as given with a warning, and marks the run `taskVerified=false` in its params; build-surface resolves its spec's tasks before any agent is spawned under them. `titan-factory shepherd task-key-report` lists the registrations whose key is not canonical, with a proposed mapping or no match, through a read-only store connection.
+
+## 0.9.0
+
+### Minor Changes
+
+- 5346139: Add the owner's planning ops (TP-5453 P3b): `plan-bet-select`, `plan-outcome-edit` and `plan-freeze-set` join the owner-queue op schema. The console offers each as an owner-op tap. Its read-back comes from the factory's `owner-op.preview`: each bet's outcome, prediction and tasks, an outcome's before and after, and what a freeze stops and when it ends. The factory gates the ops to owner-remote under HV-OR and applies them through pm's plan store under the initiative's plan lock. pm's `FreezeSchema` gains an optional `ended_on`. active-work's `plan freeze add` now records `set_by: decider` and refuses `--set-by owner`. No CLI, RPC or MCP verb selects a bet, edits an outcome or ends a freeze.
+
+## 0.8.0
+
+### Minor Changes
+
+- fc303a7: Add the optional task fields `bet`, `fold` and `owner_steps` to `TaskSchema`, with `BetLookup` and `betProblem` for the write-time check that a task's bet exists. active-work's `task add` and `task edit` refuse a task naming a bet the lookup does not know (TP-5453 P2).
+- d497596: Add a `./node` subpath to pm holding the planning-record file store (read, validated atomic write, the `<initiative>/plan/.lock`), so every plan writer shares one layout and one lock; the root entry stays pure. active-work's plan store is now a thin adapter over it, with no change in behaviour.
+
+## 0.7.0
+
+### Minor Changes
+
+- 46ae5e5: Add the task provenance fields `class`, `serves`, `source`, `source_ref`, `filed_by`, `rank`, `done_reason`, `blocked_on` and `field_origin` to `TaskSchema`, all optional on read, and `TaskRequireSchema` for a brief's `task_require` list, which active-work's brief schema now reads (TP-5446 S7).
+
+## 0.6.0
+
+### Minor Changes
+
+- feec10d: Add strict schemas for planning records: `OutcomeSchema`, `BetSchema` (with `PredictionSchema`), `FreezeSchema` (with `FreezeEndConditionSchema`) and `OutOfScopeSchema`, plus `OwnerIntentRefSchema` for owner-intent references (an intent id and a quote reference).
+
+## 0.5.0
+
+### Minor Changes
+
+- ad90aec: Add an initiative-level `visibility` (`owner-only` | `agent-visible`) to the brief and one predicate, `isAgentVisible`, in `@titan-design/pm` (TP-5453 P6). A brief with no `visibility`, or one that will not parse, is owner-only; a dated transitional list keeps the named code initiatives visible until their briefs declare it.
+
+  active-work: the workspace indexer stores only the initiative row of an owner-only initiative; `search`, the MCP search tool, `context.related`, the cross-initiative `context.graph` scan, `precedent search` and the bootstrap's foreign notes serve no owner-only initiative. `context.related` no longer reads the charter's `human_only_initiatives` and no longer reports a `charter` degradation. `set <slug> visibility <value>` is how the owner marks a brief, and it refuses an agent caller.
+
+  evals: the task-initiative allow-list and private markers come from `isAgentVisible` instead of a hard-coded list.
+
 ## 0.4.0
 
 ### Minor Changes

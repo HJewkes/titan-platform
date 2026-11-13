@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { DEFAULT_THRESHOLDS, SCORECARD_MIGRATIONS, taskRow, upsertWeekRows, weekRows, type TaskRow } from "@titan-design/session-analytics";
+import { DEFAULT_THRESHOLDS, SCORECARD_MIGRATIONS, taskRow, upsertWeekRows, weekRows, type FactoryHealth, type TaskRow } from "@titan-design/session-analytics";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { emptyModel } from "../test-support/digest.js";
 import { rankDigest } from "./rank.js";
@@ -28,10 +28,10 @@ function metrics(overrides: Record<string, number | null>): Record<string, numbe
   return { dispatched: 15, merged: 13, upkeepShare: 0.4, ownerSourcedShare: 0.12, leadDispatchMergeMedianH: 5.5, costPerMerged: 6.8, inferredShare: 0.75, ...overrides };
 }
 
-function freeze(week: string, cellMetrics: Record<string, number | null>, redFlags: string[], at: Date = CLOSED_AT): void {
+function freeze(week: string, cellMetrics: Record<string, number | null>, redFlags: string[], at: Date = CLOSED_AT, extra: Record<string, unknown> = {}): void {
   mkdirSync(paths.weeksDir, { recursive: true });
   const file = path.join(paths.weeksDir, `${week}.json`);
-  writeFileSync(file, JSON.stringify({ isoWeek: week, cells: [{ isoWeek: week, dimension: "all", key: "all", metrics: cellMetrics, redFlags }], phases: [] }));
+  writeFileSync(file, JSON.stringify({ isoWeek: week, cells: [{ isoWeek: week, dimension: "all", key: "all", metrics: cellMetrics, redFlags }], phases: [], ...extra }));
   utimesSync(file, at, at);
 }
 
@@ -105,6 +105,42 @@ describe("the ticket scorecard in the digest", () => {
 
     expect(lines).toContain("- Cost per merged task: not measured");
     expect(lines).toContain("- Upkeep share: 40%");
+  });
+});
+
+const HEALTH: FactoryHealth = {
+  isoWeek: "2031-W10",
+  covered: { upkeepShare: 0.4, reviewRoundsMedian: 1, merged: 13, usd: 88.4 },
+  selfGenerated: { agentFiled: 6, agentFiledInferred: 2, unlabelled: 0, closed: 12, mergedPrs: 8, perClosed: 0.5, perMergedPr: 0.75 },
+  fenceStops: { dispatched: 15, spawnRefusals: 3, gateHolds: 6, refusalsPer100: 20, holdsPer100: 40, guardDenials: null },
+  codeSize: null,
+  modelTiers: [
+    { model: "large", dispatched: 5, merged: 4, mergeRate: 0.8, fixRoundsMean: 1.5 },
+    { model: "small", dispatched: 10, merged: 9, mergeRate: 0.9, fixRoundsMean: 0.5 },
+  ],
+  wakes: [
+    { seat: "orbit-coord", timer: 4, event: 30, typed: 2, timerNoActionShare: null },
+    { seat: "kiln-coord", timer: 1, event: 10, typed: 0, timerNoActionShare: null },
+  ],
+};
+
+describe("the factory health group in the digest", () => {
+  it("digest weekly slot prints the factory health group as one line", () => {
+    freeze("2031-W10", metrics({}), [], CLOSED_AT, { factoryHealth: HEALTH });
+
+    const lines = scorecardLines(readScorecard(paths, NOW, SINCE));
+
+    expect(lines.filter((line) => line.startsWith("Factory health"))).toEqual([
+      "Factory health: agent-filed per closed task 0.5, per merged PR 0.75 (inferred labels); per 100 dispatched 20 refused, 40 held, guard denials not measured; code size not measured; merge rate by model large 80%, small 90%; seat wakes 5 timer, 40 event, no-action share not measured.",
+    ]);
+  });
+
+  it("a week frozen before the group shows factory health as not measured", () => {
+    freeze("2031-W10", metrics({}), []);
+
+    const lines = scorecardLines(readScorecard(paths, NOW, SINCE));
+
+    expect(lines.at(-1)).toBe("Factory health: not measured (week frozen before the group existed).");
   });
 });
 

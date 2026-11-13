@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/speech-g2p",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "English text to misaki phoneme tokens in pure TypeScript: lexicon G2P, spaCy-compatible tokenizer, compromise POS tagger",
   "type": "module",
   "main": "./dist/index.js",

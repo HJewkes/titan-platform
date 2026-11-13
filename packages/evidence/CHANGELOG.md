@@ -1,5 +1,15 @@
 # @titan-design/evidence
 
+## 0.5.0
+
+### Minor Changes
+
+- eaa03c2: `@titan-design/evidence/stats` adds `rocAuc` (Mann-Whitney, a tied pair counts half) and `aucInterval`, a seeded two-sample stratified percentile bootstrap that resamples whole clusters when cluster keys are given.
+
+### Patch Changes
+
+- 67aa361: Replace unchecked type assertions with narrowing; no behaviour change.
+
 ## 0.4.0
 
 ### Minor Changes

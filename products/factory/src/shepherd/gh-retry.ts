@@ -1,6 +1,6 @@
 import { classifyGitHubFailure, parseRateLimitMarker } from "@titan-design/github";
 import type { RoutedStepInput, StepRoute, StepRunOutcome } from "@titan-design/workflow";
-import { failureClassOf, type FailureClass } from "./failure-class.js";
+import { recordedFailureClass, type FailureClass } from "./failure-class.js";
 
 /** Waits before each retry, so a step is tried once and then up to this many more times. */
 const GH_RETRY_BACKOFF_MS: readonly number[] = [5_000, 20_000, 60_000];
@@ -26,10 +26,6 @@ interface Retried {
   error: string;
 }
 
-/** The text the workflow context files a failed step under, which is what `failureClassOf` reads the step name from. */
-function classOf(input: RoutedStepInput, error: string) {
-  return failureClassOf(`step ${input.stepId} (iteration ${input.iteration}) failed: ${error}`);
-}
 
 /** The retries ride on the evidence record the step already writes, so the run's step results show them. */
 function withRetries(output: string, retries: readonly Retried[]): string {
@@ -59,8 +55,10 @@ function waitFor(failureClass: FailureClass, error: string, done: number, timing
   return undefined;
 }
 
-function nextRetry(input: RoutedStepInput, error: string, retries: readonly Retried[], timing: GhRetryTiming): Retried | undefined {
-  const failureClass = classOf(input, error);
+/** Every route this wraps is a code route that records the class where its body failed, so the outcome's field decides. */
+function nextRetry(outcome: StepRunOutcome & { ok: false }, retries: readonly Retried[], timing: GhRetryTiming): Retried | undefined {
+  const { error } = outcome;
+  const failureClass = recordedFailureClass(outcome.errorClass);
   const waitMs = waitFor(failureClass, error, retries.filter((retry) => retry.class === failureClass).length, timing);
   return waitMs === undefined ? undefined : { attempt: retries.length + 1, class: failureClass, waitMs, error };
 }
@@ -78,7 +76,7 @@ async function runRetrying(route: StepRoute, input: RoutedStepInput, timing: GhR
   for (;;) {
     const outcome = await route.runner.run(input);
     if (outcome.ok) return { ...outcome, output: withRetries(outcome.output, retries) };
-    const retry = nextRetry(input, outcome.error, retries, timing);
+    const retry = nextRetry(outcome, retries, timing);
     if (!retry) return exhausted(outcome, retries);
     retries.push(retry);
     await timing.sleep(retry.waitMs, input.signal);

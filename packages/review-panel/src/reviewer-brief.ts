@@ -1,5 +1,5 @@
 import { parseResultLine } from "@titan-design/fix-proof";
-import { PROBES_HEADING } from "./briefs/adversary.js";
+import { AUTHORITY_HEADING, PROBES_HEADING } from "./briefs/adversary.js";
 import { attestRule, type AttestClaim } from "./briefs/attest.js";
 import { quoteLines } from "./briefs/quotes.js";
 import { fixProofLines, unverifiedLines, waivedLines, workflowCiLines, type FixProofUnverified, type WorkflowCiInput } from "./briefs/tests.js";
@@ -21,7 +21,7 @@ export const OWNER_BRIEF_END = "END-OWNER-BRIEF";
 export type ScopeRefusal = "scope_untagged" | "repeated_finding";
 
 /** Why a reviewer's final message was no verdict: the parser refused its block, the block named another repo, PR or head, or a MERGE's CI-policy line was off-format. */
-export type MalformedRefusal = VerdictBlockRefusal | "wrong_target" | "ci_policy_malformed" | "ci_policy_prose" | "probes_missing" | ScopeRefusal;
+export type MalformedRefusal = VerdictBlockRefusal | "wrong_target" | "ci_policy_malformed" | "ci_policy_prose" | "probes_missing" | "authority_missing" | ScopeRefusal;
 
 /** The name a reviewer extracts into: `review-<pr>-<first 12 hex of the head sha>`. */
 export function reviewCheckoutName(pr: number, head: string): string {
@@ -315,6 +315,7 @@ export const REFUSAL_SENTENCES: Record<MalformedRefusal, string> = {
   ci_policy_malformed: "its CI-policy line held more than the exact form",
   ci_policy_prose: "a prose line used the CI-policy label, or the exact line was not right after Head",
   probes_missing: "it had no Probes line above the Verdict line",
+  authority_missing: "it had no valid Authority line above the Verdict line",
   scope_untagged: `a blocking item cites only lines outside the fix's ranges and lacks \`${IMPORTANT_TAG}\` and a \`${CLASS_TAG}\` line`,
   repeated_finding: "a blocking item restates an earlier finding",
 };
@@ -333,6 +334,9 @@ const lastLine = (refusal: MalformedRefusal): string =>
 /** An adversary that wrote no probes is told the form again; the other refusals keep the prompt as it was. */
 const probesReminder = (refusal: MalformedRefusal): string[] =>
   refusal === "probes_missing" ? [`Above the verdict lines add \`${PROBES_HEADING} <input> -> <what the code did>; ...\` for each probe you ran.`] : [];
+
+const authorityReminder = (refusal: MalformedRefusal): string[] =>
+  refusal === "authority_missing" ? [`Above the verdict lines add \`${AUTHORITY_HEADING}\` and one of unchanged, tightened, widened.`] : [];
 
 interface CorrectionPromptInput {
   repo: RepoSlug;
@@ -359,6 +363,7 @@ function correctionLines(input: CorrectionPromptInput): string[] {
     refusalLine(input.refusal),
     CI_POLICY_REMINDER,
     ...probesReminder(input.refusal),
+    ...authorityReminder(input.refusal),
     "Do not review again from scratch. Send one message that holds your whole review again, every blocking item included if your verdict is FIX_FIRST, and end it with exactly these three lines, the verdict filled in and " +
       (input.ownerBrief ? "followed only by the CI-policy line and the owner block described below:" : "nothing after them but the CI-policy line:"),
     "",

@@ -1,6 +1,7 @@
 import { listAgents, retire } from "@titan-design/agent-dispatch";
 import { createRpcClient, liveSource, RpcError, type RpcClient } from "@titan-design/rpc-client";
-import type { FollowUpFields, FollowUpTasks } from "./follow-ups-file.js";
+import { TASK_CLASSES, type FollowUpFields, type FollowUpTasks } from "./follow-ups-file.js";
+import { isOneOf } from "../narrow.js";
 import { FixTaskRefused, type FixTaskFields, type FixTasks, type FlakeFields } from "./main-red.js";
 import { toPresence } from "./presence.js";
 import { createRosterReader, mutating } from "./roster.js";
@@ -28,7 +29,7 @@ export function agentChatCleanupAgents(
   };
 }
 
-type ListedTask = { id: string; title?: string; status: string; done_when?: string; notes?: string; tags?: string[] };
+type ListedTask = { id: string; title?: string; status: string; done_when?: string; notes?: string; tags?: string[]; class?: string };
 
 type ActiveWorkCommands = {
   "task.list": { args: { slug: string; status: "all" | "open"; tag?: string }; result: { tasks: ListedTask[] } };
@@ -97,6 +98,11 @@ export function activeWorkFollowUpTasks(options: { origin: string; fetch?: typeo
   return {
     openTasks: (slug) =>
       refusalsFinal(async () => (await client.call("task.list", { slug, status: "open" })).tasks.map((task) => ({ id: task.id, title: task.title ?? "" }))),
+    classOf: (slug, id) =>
+      refusalsFinal(async () => {
+        const found = (await client.call("task.list", { slug, status: "all" })).tasks.find((task) => task.id === id)?.class;
+        return found !== undefined && isOneOf(TASK_CLASSES, found) ? found : undefined;
+      }),
     add: (slug, fields) => refusalsFinal(async () => (await client.call("task.add", { slug, ...fields })).id),
     appendNote: (slug, id, line) => refusalsFinal(() => appendTaskNote(client, slug, id, line)),
   };

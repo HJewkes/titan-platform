@@ -453,6 +453,17 @@ describe('agent-chat origin task links', () => {
     });
   });
 
+  it('spawn-meta source is recorded', () => {
+    const rows = spawnedWorker('coord', 'aaaa1111', T0 + 1_000, 'tp-31-impl');
+    rows[0].meta = { ...rows[0].meta, task: 'example/TP-40' };
+    writeEvents([...adoptedCoordinator('coord', 'aaaa1111'), ...rows]);
+    writePlan('bbbb2222', { stdin: 'Task TP-31: add the widget.' });
+
+    const { origins } = resolve([WORKER_SESSION], knownOnly('TP-31', 'TP-40'));
+
+    expect(origins[WORKER_SESSION]).toMatchObject({ taskIds: ['TP-40'], taskSource: 'spawn-meta' });
+  });
+
   it('links from the agent name when the plan.json is missing', () => {
     writeEvents([
       ...adoptedCoordinator('coord', 'aaaa1111'),

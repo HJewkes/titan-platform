@@ -17,6 +17,9 @@ export interface TaskFacts {
   estimate: number | null;
   status: string;
   priority: number;
+  /** The recorded `source` and `filed_by`; null on task files filed before them. */
+  source: string | null;
+  filedBy: string | null;
   /** Parent ids named by the task's `follow-up:` tags. */
   followUpOf: string[];
   mtimeMs: number;
@@ -55,6 +58,8 @@ function factsOf(task: Task, initiative: string, mtimeMs: number): TaskFacts {
     estimate: task.estimate ?? null,
     status: task.status,
     priority: task.priority,
+    source: task.source ?? null,
+    filedBy: task.filed_by ?? null,
     followUpOf,
     mtimeMs,
   };

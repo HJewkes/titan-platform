@@ -1,5 +1,27 @@
 # @titan-design/retrieval
 
+## 0.4.0
+
+### Minor Changes
+
+- 42b6a21: Add `walkGraph({ neighbours, degree, degrees? }, seeds, { hops, hubDegree, maxNodes })`, a breadth-first walk over any adjacency that returns a hub (a non-seed node with degree at least `hubDegree`) but never expands it, so one busy node cannot flood the result. `hubDegree` defaults to `defaultHubDegree(degrees)`, max(50, p99 degree), also exported. `expandGraph` is now the edge-table adapter over it and gains optional `hubDegree` and `maxNodes`; without them its output is unchanged. The hub cap is adapted from graphify under Apache-2.0, and the package now ships a `NOTICE`.
+- c2bfa21: Add `planContext(candidates, budget)` and `estimateTokens`: a pure token-budget planner that places candidates within per-category token quotas and caps each entry at twice the mean share. It then deepens the best hits one tier at a time with the leftover budget, up to `maxTier`.
+- a8bdbd2: Add `engine.retrieve(request, options)` with one zod request schema, `RetrievalRequestSchema`, discriminated on `mode`. `mode: "list"` returns what `search` returns. `mode: "context"` ranks `limit` results (default 20), loads their renderings through a `TierSource`, and plans them into a token budget with `planContext`. A tier source that throws drops that result as `tier-error` and adds one `tiers` degradation instead of failing the request. `zod` ^4 is now a peer dependency.
+
+### Patch Changes
+
+- 42551ba: `ftsRetriever` now needs only the `search` method of a span table, so a caller can pass a reader that picks its table per query.
+- f996bb9: Narrow the optional transformers import and the test fetch stub without type assertions.
+- 98a2861: `planContext` now rejects a `maxTier` or `defaultTiers` entry that is negative, fractional or NaN with a `RangeError`, as it already does for the token budget.
+- aef50d8: Embed exports `loadTransformersPipeline(missingMessage)`, the one place that imports the optional `@huggingface/transformers` peer. `LocalEmbedder` and the retrieval cross-encoder reranker both load through it and keep their own missing-runtime messages.
+- Updated dependencies [c58d555]
+- Updated dependencies [6c3c967]
+- Updated dependencies [d279098]
+- Updated dependencies [aef50d8]
+- Updated dependencies [c1f9297]
+  - @titan-design/store-sqlite@0.5.0
+  - @titan-design/embed@0.2.1
+
 ## 0.3.1
 
 ### Patch Changes

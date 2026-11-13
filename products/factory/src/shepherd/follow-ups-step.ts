@@ -46,6 +46,7 @@ function bounded<T>(work: Promise<T>, signal: AbortSignal, ms: number): Promise<
 function boundedTasks(tasks: FollowUpTasks, signal: AbortSignal, ms: number): FollowUpTasks {
   return {
     openTasks: (initiative) => bounded(tasks.openTasks(initiative), signal, ms),
+    classOf: (initiative, id) => bounded(tasks.classOf(initiative, id), signal, ms),
     add: (initiative, fields) => bounded(tasks.add(initiative, fields), signal, ms),
     appendNote: (initiative, id, line) => bounded(tasks.appendNote(initiative, id, line), signal, ms),
   };

@@ -1,5 +1,71 @@
 # @titan-design/owner-queue
 
+## 0.8.1
+
+### Patch Changes
+
+- Updated dependencies [239d96b]
+  - @titan-design/pm@0.10.0
+
+## 0.8.0
+
+### Minor Changes
+
+- 5346139: Add the owner's planning ops (TP-5453 P3b): `plan-bet-select`, `plan-outcome-edit` and `plan-freeze-set` join the owner-queue op schema. The console offers each as an owner-op tap. Its read-back comes from the factory's `owner-op.preview`: each bet's outcome, prediction and tasks, an outcome's before and after, and what a freeze stops and when it ends. The factory gates the ops to owner-remote under HV-OR and applies them through pm's plan store under the initiative's plan lock. pm's `FreezeSchema` gains an optional `ended_on`. active-work's `plan freeze add` now records `set_by: decider` and refuses `--set-by owner`. No CLI, RPC or MCP verb selects a bet, edits an outcome or ends a freeze.
+
+### Patch Changes
+
+- Updated dependencies [5346139]
+  - @titan-design/pm@0.9.0
+
+## 0.7.0
+
+### Minor Changes
+
+- 1f5ed48: Depend on `@titan-design/review-schema` ^0.3.0. `fromRoundQuestions`, `answeredFromFeedback` and `FeedbackInput` now take review-schema 0.3's round@2 manifest and feedback@1 shapes, so a round or feedback that only 0.3 knows becomes queue items instead of failing to parse.
+
+## 0.6.0
+
+### Minor Changes
+
+- d666020: Cap a seat at five open owner asks and key a deposit's blocking on its `unblocksNow` line (TP-4353). `inbox.deposit` (and so `titan-console inbox file`) refuses an asker's sixth open deposit with 429, listing the five open ids to merge or withdraw; answered and withdrawn deposits do not count, and the owner (`hjewkes` or `owner`) is never capped. Deposits gain an optional `unblocksNow`: one trimmed line of at most 200 characters saying what the answer unblocks right now. A deposit without it lists under Planning, never Blocking.
+
+  Automation askers named in `TITAN_CONSOLE_CAP_EXEMPT_ASKERS` (a comma list of exact names, `titan-factory` when unset) skip the five-ask cap; their same-key alarms still fold into one item.
+
+- 2c20516: Add an inbox withdraw verb and auto-withdraw self-healed alarms (TP-4112). owner-queue gains a `./withdraw` subpath (`withdrawDeposit`, `restoreDeposit`, `withdrawMatching`, `readWithdrawal`): a seat withdraws only its own deposit, with `<id>.withdrawn` beside it and never an answer file, and each withdraw and restore is appended to the spool's `withdrawals.jsonl`. It also gains `alarmKey`, `collapseRepeats` and an optional `repeats` on `OwnerItem`. `titan-console inbox withdraw|restore|withdraw-matching` exposes it (refusal 65, unknown id 66); the inbox lists withdrawn deposits apart from answered ones and collapses open repeats of one alarm into the newest. A verified console update withdraws its earlier update-failure items, and a factory deploy that holds withdraws the open deploy alarms and incidents, both as `resolved`.
+- 5993fba: Let the owner approve a g10-held PR now and leave the merge to the adversary loop (TP-4003). A `merge-at-head` op may carry `waitFor: "adversary-loop"`. The factory then records a standing approval on the PR's Shepherd run, pinned to the confirmed head and to the g10 hold class the owner saw, and answers `approved`. The standing-answer sweep lifts the g10 hold as the owner once a g10 release Shepherd writes after the tap judges that hold met at that head, released or in shadow: the two-MERGE rule for `g10-adversary`, the single-MERGE release for `g10-review`. It then answers the run's approve-merge at that head. A new head, a hold escalated to another g10 class, a FIX_FIRST from the panel or the correctness reviewer, or expiry voids the approval and files a "Merge approval voided" owner inbox item. In the console, a g10-held merge-at-head shows "Merge without both MERGEs" (the forced merge, as before) beside "Approve; merge when the loop closes".
+- 5cd2a5a: Add `OwnerOp`, the typed target of an owner action: `ownerOpSchema` is a strict union of `resolve-gate`, `release-hold`, `merge-at-head`, `close-pr`, `factory-config-set`, `deploy-pause-clear` and `retire-agent`. An item and a deposit may carry an optional `op`. `fromDeposit` adds the `pr:<repo>#<n>@<head>` key an op implies, so a deposit about a PR merges with that PR's item at the same head; it never derives a `gate:` key. `opKeys(op)` returns those keys.
+- cda1b03: Add `buildPlanRound` (TP-4360): it turns one PR's predicted merge gates (ci-policy, skill, visual) into a questions-only round@2 round.json with a `planApprovals` block, which `titan-console decisions file -` takes as is. The owner's approve pick records each ask's task, repo, gate and scope as a plan approval.
+- e172135: Gate model S8a (TP-5411): a `task` gate kind for plan rounds. owner-queue's `buildPlanRound` takes a `task` ask (`TaskPlanScope`: the done_when text, owner-rule reason, visual sign-off flag) and renders it as one "Validate <ID>: <title>?" question with approve and not-now options. The factory records the owner's console approve pick as a `task` row in `shepherd_plan_approval`, keyed by the canonical `<initiative>/<ID>`, never claimed by a run, and read only through `ownerTaskApproval`. `titan-factory shepherd plan-round --task-approval <initiative>/<ID> --reason <reason> --repo <owner/name> [--visual-signoff]` drafts the round for a task tagged `owner-validate`.
+- 6d79a8b: Add `promptLine` and `PROMPT_LINE_BREAK` to `@titan-design/owner-queue`: one cleaner for author- or agent-written text bound for an owner prompt, which drops ANSI escape sequences, C0 and C1 controls and every format character (bidi overrides and isolates, zero-width and tag characters) and flattens CR, LF, NEL, U+2028 and U+2029. The D21 ci-policy card, the console's decisions-file line and the Shepherd wake brief's review comments now all use it, so the decisions line also drops bidi and escape sequences, the wake brief strips them from comment paths and bodies (a verdict line behind a bidi override is now quoted), and the ci-policy card also drops tag characters and soft hyphens.
+- 36e0a48: A deposit may carry an optional `blocker: { since, blocks }`, marking its asker as hard-blocked since a given time. It is allowed only on decide, approve and do deposits, `since` must be no more than 5 minutes ahead or 30 days behind the filing time, and a blocker deposit without `unblocksNow` takes `blocks` as its unblock line. Deposits without it parse unchanged.
+- 20c93ed: Record who actually withdrew an inbox deposit (TP-4121). `withdrawDeposit`, `restoreDeposit` and
+  `withdrawMatching` take a required `actor`, refuse a blank one, and write it beside the asker
+  (`by`) in the `<id>.withdrawn` marker and every `withdrawals.jsonl` row. A marker from before
+  this has no `actor` and still reads. `WithdrawnItem` gains an optional `actor`, which the
+  console's inbox read model fills from the marker.
+
+  `titan-console inbox withdraw|restore|withdraw-matching` take a required `--actor <seat>`; a
+  missing one exits 65 with one line on stderr. The console updater and the factory deployer
+  record their own names as actor when they auto-withdraw resolved alarms.
+
+### Patch Changes
+
+- a5f2f40: Let `withdrawDeposit` and `restoreDeposit` take a short deposit id (TP-4122). Besides the full
+  `deposit:<32 hex>`, either takes a hex prefix of at least 8 digits, bare or after `deposit:`, that
+  starts exactly one deposit in the spool, and reports the full id. An ambiguous prefix is refused
+  with every full id it matches; no match is `unknown` with `unknown id <x>; full form is
+deposit:<32 hex>`. Only an id of another item kind (`gate:`, `round:`) is refused as not a
+  deposit. The asker, actor and answered checks run on the resolved deposit as before.
+
+  `titan-console inbox withdraw|restore` pass the id through: an ambiguous prefix exits 65 and an
+  unknown one 66.
+
+- 7835f1b: Narrow thrown filesystem errors and round inputs by checking them instead of casting them.
+- Updated dependencies [eaa03c2]
+- Updated dependencies [67aa361]
+  - @titan-design/evidence@0.5.0
+
 ## 0.5.0
 
 ### Minor Changes

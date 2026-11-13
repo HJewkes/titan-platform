@@ -2,9 +2,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { RoundSchema as NpmRoundSchema } from "@titan-design/review-schema";
+import { RoundSchema as PackageRoundSchema } from "@titan-design/review-schema";
 import { FIXTURE_ROUNDS } from "./round-fixtures.js";
-import { RoundSchema as VendoredRoundSchema } from "./review-schema-0.3/schema.js";
 import { BLIND_AB_REFUSED, RoundSchema } from "./round-schema.js";
 
 const jsonObject = z.record(z.string(), z.unknown());
@@ -45,9 +44,9 @@ describe("the console's round schema", () => {
   });
 
   it.each(["kiln-schedule-r1", "kiln-schedule-r2", "lantern-cards-r1", "orbit-retry-r1", "ship-tile-r1"])(
-    "reads the 0.1 round %s to the same manifest as review-schema 0.1 does",
+    "reads the round %s to the same manifest as review-schema does",
     (id) => {
-      expect(RoundSchema.parse(fixture(id))).toEqual(NpmRoundSchema.parse(fixture(id)));
+      expect(RoundSchema.parse(fixture(id))).toEqual(PackageRoundSchema.parse(fixture(id)));
     },
   );
 
@@ -72,7 +71,7 @@ describe("the console's round schema", () => {
   it("refuses a blind-ab round that review-schema 0.3 accepts, so no engine reaches the page", () => {
     const round = blindAbRound();
 
-    expect(VendoredRoundSchema.safeParse(round).success).toBe(true);
+    expect(PackageRoundSchema.safeParse(round).success).toBe(true);
     expect(issuesOf(round)).toEqual([`questions: ${BLIND_AB_REFUSED}`]);
   });
 });
