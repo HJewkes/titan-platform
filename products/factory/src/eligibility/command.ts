@@ -7,6 +7,7 @@ import { activeWorkOrigin } from "../shepherd/cleanup-ports.js";
 import { isoWeek } from "../shepherd/stats.js";
 import { readEligibility, readLaneTasks } from "./active-work.js";
 import { admitLane, DEFAULT_LIMITS, filingFlow, holdsFor, type Admission, type BackPressureLimits, type Filing, type LaneSignals } from "./back-pressure.js";
+import { laneComponents } from "./lane-components.js";
 import { liveLaneSignals } from "./lane-signals.js";
 import type { Eligibility } from "./rules.js";
 
@@ -19,6 +20,8 @@ interface EligibleOptions {
 
 interface LaneReport {
   lane: { initiative: string; tag: string | null };
+  /** The components a deploy stall or red main must hit to hold the lane; null when unmapped, which means every one. */
+  dependsOn: readonly string[] | null;
   decision: Admission["decision"];
   holds: Admission["holds"];
   limits: BackPressureLimits;
@@ -78,6 +81,7 @@ function laneLines(lane: LaneReport): string[] {
   const flow = lane.filing.weeks.map((week) => `${week.week} in=${week.inflow} out=${week.outflow}`).join(", ");
   return [
     `lane ${name}: ${lane.decision}${codes.length ? ` (${codes.join(",")})` : ""}; next ${lane.next ?? "none"}`,
+    `depends on ${lane.dependsOn?.join(",") ?? "everything (unmapped)"}`,
     `signals ${Object.entries(lane.signals).map(([key, n]) => `${key}=${n ?? "unread"}`).join(" ")} unread=${lane.unread.join(",") || "none"}`,
     ...lane.holds.map((hold) => `hold ${hold.code} ${hold.scope} ${Object.entries(hold.numbers).map(([key, n]) => `${key}=${n}`).join(" ")}${hold.detail ? `: ${hold.detail}` : ""}`),
     `filing ${lane.filing.paused ? "paused" : "open"}${flow ? ` (${flow})` : ""}`,
@@ -101,10 +105,12 @@ async function judge(opts: EligibleOptions, verbs: Verbs, query: { week: string;
   const [result, laneTasks] = await Promise.all([readEligibility(source, { ...lane, ...query }), readLaneTasks(source, lane)]);
   const limits = limitsOf(loadConfig(configPath(verbs.io.env)));
   const signals = await (verbs.deps.laneSignals ?? liveLaneSignals(verbs))({ inLane: (key) => laneTasks.keys.has(key) });
-  const admission = admitLane(signals, limits);
+  const components = laneComponents(lane);
+  const admission = admitLane(signals, limits, components);
   const next = admission.decision === "admit" ? (result.eligible.find((entry) => heldCodes(admission, entry).length === 0)?.task.id ?? null) : null;
   const laneReport: LaneReport = {
     lane: { initiative: opts.initiative, tag: opts.tag ?? null },
+    dependsOn: components ?? null,
     ...admission,
     limits,
     signals: signalCounts(signals),
