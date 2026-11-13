@@ -1409,7 +1409,8 @@ Multi-step agent work (branches, loops, fan-out with `mapItems`, human gates) mu
 
 Key exports:
 
-- `types`: `AuthorityDeniedError`, `AuthorityRefusedError`, `StepFailedError`, `StepOutputInvalidError`, `WorkflowCancelledError`, `WorkflowNonDeterminismError`, `WorkflowNotOwnedError`, `WorkflowRecoveryRequiredError`, `WorkflowSchemaDriftError`, `workflowStepRequestKey`
+- `types`: `WorkflowCancelledError`, `WorkflowNonDeterminismError`, `WorkflowNotOwnedError`, `WorkflowRecoveryRequiredError`, `WorkflowSchemaDriftError`, `workflowStepRequestKey`
+- `step-errors`: `AuthorityDeniedError`, `AuthorityRefusedError`, `StepFailedError`, `StepOutputInvalidError`
 - `signals`: `createSignalParser`, `createSignalSetParser`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/workflow)
 

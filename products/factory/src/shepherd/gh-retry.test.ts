@@ -1,9 +1,10 @@
-import { fakeGitHub, githubPort, successRun, type GitHubPort } from "@titan-design/github";
+import { GhError, fakeGitHub, githubPort, successRun, type GitHubPort } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { landPrRoutes, landPrWorkflow } from "../workflows/land-pr.js";
+import { codeRoute } from "../workflows/land-routes.js";
 import { hostPostMerge } from "../workflows/post-merge-adapter.js";
 import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { failureClassOf } from "./failure-class.js";
@@ -12,10 +13,12 @@ import { retryingGhServerErrors } from "./gh-retry.js";
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
-const CONNECTING = "gh api -i -X GET failed (1): error connecting to api.github.com\ncheck your internet connection";
+/** A failed call as the transport throws it, whose message reads `gh <args> failed (1): <said>`. */
+const ghFailure = (args: string, said: string) => new GhError(args.split(" "), { code: 1, stdout: "", stderr: said });
+const CONNECTING = ghFailure("api -i -X GET", "error connecting to api.github.com\ncheck your internet connection");
 
 /** A land-pr run on one green PR whose port fails its first `failures` merges with `error`. */
-function world(failures: number, error: string) {
+function world(failures: number, error: Error) {
   const fake = fakeGitHub();
   fake.addPr({ headSha: H1 });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
@@ -24,7 +27,7 @@ function world(failures: number, error: string) {
   const port: GitHubPort = {
     ...real,
     merge: async (...args) => {
-      if (left-- > 0) throw new Error(error);
+      if (left-- > 0) throw error;
       return real.merge(...args);
     },
   };
@@ -64,12 +67,12 @@ describe("retryingGhServerErrors", () => {
     const status = host.runtime.status(runId);
     expect(status?.status).toBe("failed");
     expect(waits).toEqual([5_000, 20_000, 60_000]);
-    expect(failureClassOf(status?.error ?? "")).toBe("gh-api-5xx");
+    expect(failureClassOf(status?.error ?? "", status?.errorClass)).toBe("gh-api-5xx");
     expect(status?.error).toContain("after 3 gh-api-5xx retries");
   });
 
   it("does not retry a failure of another class", async () => {
-    const { host, runId, waits } = world(99, "gh api -i -X PUT failed (1): gh: Base branch was modified. (HTTP 405)");
+    const { host, runId, waits } = world(99, ghFailure("api -i -X PUT", "gh: Base branch was modified. (HTTP 405)"));
 
     await approve(host, runId);
 
@@ -78,18 +81,19 @@ describe("retryingGhServerErrors", () => {
   });
 });
 
-const timedOut = (method: string, path: string): string => `gh api -X ${method} ${path} failed (1): ${method} /${path} timed out after 60000 ms`;
+const timedOut = (method: string, path: string) => ghFailure(`api -X ${method} ${path}`, `${method} /${path} timed out after 60000 ms`);
 const PULLS_TIMEOUT = timedOut("GET", "repos/acme/widgets/pulls?state=open&per_page=100");
 
 /** One repeat-safe route at `stepId` that fails with each of `errors` in turn, then succeeds. */
-function scripted(stepId: string, errors: readonly string[]) {
+function scripted(stepId: string, errors: readonly Error[]) {
   let calls = 0;
   const sleeps: number[] = [];
-  const run = async () => {
+  const body = async () => {
     const error = errors[calls++];
-    return error === undefined ? { ok: true as const, output: "{}" } : { ok: false as const, error, retryable: false };
+    if (error) throw error;
+    return {};
   };
-  const [route] = retryingGhServerErrors([{ match: stepId, onRestart: "repeat", runner: { run } }], { sleep: async (ms) => void sleeps.push(ms) });
+  const [route] = retryingGhServerErrors([codeRoute(stepId, () => 0, body)], { sleep: async (ms) => void sleeps.push(ms) });
   const outcome = route!.runner.run({ runId: "r", workflowName: "w", stepId, iteration: 0, prompt: "{}", signal: new AbortController().signal, attempt: 0, requestKey: "k" });
   return { outcome, calls: () => calls, sleeps };
 }
@@ -106,14 +110,14 @@ describe("retryingGhServerErrors on a GitHub read timeout", () => {
   });
 
   it("retries sh-observe through a 5xx and then timeouts, and fails filed gh-api-5xx once the backoff is spent", async () => {
-    const run = scripted("sh-observe:abc", ["gh api -X GET repos/acme/widgets/pulls failed (1): Bad Gateway (HTTP 502)", PULLS_TIMEOUT, PULLS_TIMEOUT, PULLS_TIMEOUT]);
+    const run = scripted("sh-observe:abc", [ghFailure("api -X GET repos/acme/widgets/pulls", "Bad Gateway (HTTP 502)"), PULLS_TIMEOUT, PULLS_TIMEOUT, PULLS_TIMEOUT]);
 
     const outcome = await run.outcome;
 
     expect(run.calls()).toBe(4);
     expect(run.sleeps).toEqual([5_000, 20_000, 60_000]);
     expect(outcome.ok).toBe(false);
-    expect(failureClassOf(`step sh-observe:abc (iteration 0) failed: ${outcome.ok ? "" : outcome.error}`)).toBe("gh-api-5xx");
+    expect(outcome.ok ? undefined : outcome.errorClass).toBe("gh-api-5xx");
     expect(outcome.ok ? "" : outcome.error).toContain("(after 3 gh-api-5xx retries)");
   });
 
@@ -133,7 +137,10 @@ describe("retryingGhServerErrors on land-rules", () => {
     let calls = 0;
     const sleeps: number[] = [];
     const [route] = retryingGhServerErrors(
-      [{ match: "land-rules", onRestart: "repeat", runner: { run: async () => (calls++, { ok: false as const, error: "gh api failed (1): HTTP 503", retryable: false }) } }],
+      [codeRoute("land-rules", () => 0, async () => {
+        calls++;
+        throw ghFailure("api", "HTTP 503");
+      })],
       { sleep: async (ms) => void sleeps.push(ms) },
     );
 

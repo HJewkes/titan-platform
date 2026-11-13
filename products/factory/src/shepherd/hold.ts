@@ -1,6 +1,6 @@
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import { parseVerdictBlock } from "@titan-design/session-read";
-import { redactForEvidence } from "../redact.js";
+import { failedStep } from "./failure-class.js";
 import type { StepRoute } from "@titan-design/workflow";
 import { codeRoute } from "../workflows/land.js";
 import { acceptExternalVerdict, externalReviewer, latestSession, readNamedReviewer } from "./external-review.js";
@@ -157,7 +157,7 @@ export function waitWhileHeld(route: StepRoute, held: HeldCheck, timing: HoldTim
         try {
           waited = await untilReleased({ held, headNow, reviewAsked, reheld, recheck }, JSON.parse(input.prompt) as MergeTarget, input.signal, timing);
         } catch (error) {
-          return { ok: false, error: redactForEvidence(error instanceof Error ? error.message : String(error)), retryable: false };
+          return failedStep(route.match, error);
         }
         return (waited ? afterHold : route).runner.run(input);
       },
