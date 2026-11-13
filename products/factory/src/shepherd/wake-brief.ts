@@ -15,6 +15,7 @@ import { staleBaseWake } from "./stale-base.js";
 import { MAC_SUITE_RULES } from "./suite-host.js";
 import { failingRunsAt } from "../workflows/skip-hidden.js";
 import { ownerSendBackWake } from "./owner-send-back.js";
+import { attestDeclinedWake } from "./attest-send-back.js";
 import { CARRY_UNREADABLE, FLAKE_FIX_ASK, MUTANTS_ASK, MUTANTS_REASON, NO_REPRO_REASON, REPRO_ASK, UNCOVERED_LABEL } from "./no-repro-brief.js";
 
 /** A branch name that reaches a brief outside a fence, so it may hold nothing that could read as markup or a new line. */
@@ -188,7 +189,7 @@ function earlierFence(entry: FixFirstEntry, index: number): string {
 
 /** A repeat FIX_FIRST carries every earlier round's findings and class, then the reviewer's defect class and the findings whole, so no blocking item is summarised away. */
 function reviewWake(input: WakeFacts): { reason: string; payload: string } {
-  const owner = ownerSendBackWake(input.headSha, input.payload);
+  const owner = ownerSendBackWake(input.headSha, input.payload) ?? attestDeclinedWake(input.headSha, input.payload);
   if (owner) return owner;
   const { text = "", earlier = [] } = FixFirst.parse(input.payload);
   if (findingsText(text) === "") return noFindingsWake(input, text);

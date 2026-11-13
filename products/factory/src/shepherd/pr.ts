@@ -67,7 +67,7 @@ import { countConflictRound, freshFailedRounds, tappedReview, type FailedRoundsS
 import { diagnosisRoutes } from "./no-verdict-diagnosis.js";
 import { deadEndRoutes } from "./dead-end.js";
 import { askingOnlyOverMerge, type NoMergeRun } from "./no-merge-no-ask.js";
-import { sendBack } from "./send-back.js";
+import { attestDeclineRoute, sendBack } from "./send-back.js";
 
 export { SHEPHERD_STEPS };
 
@@ -263,7 +263,7 @@ async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
   if (escalated) return routeEscalation(run, headSha, escalated);
   switch (route) {
     case "merge":
-      return true;
+      return attestDeclineRoute(run.reviews, run.target.pr, routed, (payload) => woken(run, "review", headSha, payload));
     case "fresh-reviewer":
     case "retry-review":
     case "await-external":
