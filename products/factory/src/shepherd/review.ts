@@ -16,15 +16,15 @@ import { DEFAULT_ACCOUNT, type ReviewAccounts } from "./account-limit.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
 import { seatVetoed } from "./external-review.js";
 import { ownerIn } from "./seat-tie.js";
-import { checkoutRootOf, dropCheckout, holdContextOf, thenDropCheckout } from "./review-member.js";
+import { checkoutRootOf, dropCheckout, holdContextOf, memberDispatch, thenDropCheckout } from "./review-member.js";
 import { Intended, ReviewCauseSchema } from "./review-schemas.js";
 import { MERGE_EVIDENCE_STEPS } from "./merge-evidence-gate.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput, type OldPathWiring } from "./merge-facts.js";
 import type { ShepherdDeps, ShepherdPhases } from "./phases.js";
 import { PUBLISH_REVIEW_STEPS, publishReviewRoute } from "./publish-review.js";
-import { DEFAULT_BROKER_DOWN_WAIT_MS, DEFAULT_BUSY_WAIT_MS, ReviewerAskTimedOut, ReviewerBrokerStillDown, busyWaits, clearReviewWait, notStarted, noteReviewWait, rosterUnread, rosterUnreadAfterAsk, patientRoster, startedSession, timedOutUnseen, whileBrokerBooting, whileBrokerBusy, type BrokerDownTiming, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
+import { DEFAULT_BROKER_DOWN_WAIT_MS, DEFAULT_BUSY_WAIT_MS, ReviewerAskTimedOut, ReviewerBrokerStillDown, busyWaits, clearReviewWait, notStarted, notStartedInTime, noteReviewWait, rosterUnread, rosterUnreadAfterAsk, patientRoster, startedSession, timedOutUnseen, whileBrokerBooting, whileBrokerBusy, type BrokerDownTiming, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
 import { CARRY_STEP, carryRoute, type CarryOptions } from "./tree-carry.js";
-import { OWN_DIFF_STEP, ownDiffOn, ownDiffRoute, recordOwnDiff } from "./own-diff.js";
+import { OWN_DIFF_STEP, ownDiffOn, ownDiffRoute, recordOwnDiff, type OwnDiffWiring } from "./own-diff.js";
 import { reviewerRoleFor, type ReviewerFacts, type ReviewerRoles } from "./reviewer-roles.js";
 import { spawnFacts } from "./spawn-facts.js";
 import type { TwoMergeMode } from "./g10-release.js";
@@ -168,12 +168,7 @@ const holds = (intent: ReviewIntent) => (agent: ReviewerAgent) => (intent.agentI
 const resumedSince = (intent: ReviewIntent) => (agent: ReviewerAgent) =>
   holds(intent)(agent) && (agent.presence !== "exited" || (agent.lastWrittenAt !== undefined && agent.lastWrittenAt >= intent.at));
 
-function notStartedInTime(intent: ReviewIntent, rosterError: string | undefined): NoReview {
-  const cause = rosterError === undefined ? "" : `; the last roster read failed: ${rosterError}`;
-  return { kind: "none", reason: `reviewer ${intent.reviewer} did not start one session in time${cause}` };
-}
-
-export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeCheckWiring, AttestSkewWiring, OldPathWiring, VisualReadsWiring, FollowUpsWiring {
+export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeCheckWiring, AttestSkewWiring, OldPathWiring, VisualReadsWiring, FollowUpsWiring, OwnDiffWiring {
   reader: ReviewerReader;
   /** Absent means no reviewer is dispatched and the owner gate decides. */
   dispatch?: ReviewerDispatch;
@@ -217,8 +212,6 @@ export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeC
   twoMergeRelease?: TwoMergeMode;
   /** `review.workflow`, recorded on the intent: `shadow` records each round's would-action, `on:preflight` refuses a head preflight fails. Absent means `off`. */
   workflow?: ReviewWorkflowWiring;
-  /** Records each reviewed head's own-diff id for the scorecard (TP-5592); absent records none, and the intent says so. */
-  ownDiff?: true;
 }
 
 type Wired = ReviewWiring & { dispatch: ReviewerDispatch };
@@ -271,9 +264,6 @@ const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (dep
   return { ...intent, ...(preflight === undefined ? await plan() : preflight.planned) };
 };
 
-/** An adversary member runs under `review.adversaryConfigDir` when one is set; every other reviewer under the intent's account. */
-const memberDispatch = (wired: Wired, shape: string | undefined): ReviewerDispatch | undefined => (shape === "adversary" ? wired.adversaryDispatch : undefined);
-
 /**
  * The body of the sh-review step; `repeat` means a crash interrupted an earlier run. The brief is built from the target alone, so no registration text can
  * reach it, except an adversary's hold reason, which goes in fenced as data.
@@ -302,7 +292,7 @@ const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> 
     // An unseen timed-out ask started nobody, so the review is retried now rather than held as no-reviewer.
     if (outcome === "timed-out") return timedOutUnseen(timing.timeoutMs, waits);
     // The ask went through but no roster read ever answered, so nothing is known about the session; retry rather than count a round.
-    return onlyTimedOut ? rosterUnreadAfterAsk(timing.timeoutMs, waits) : notStartedInTime(intent, rosterError);
+    return onlyTimedOut ? rosterUnreadAfterAsk(timing.timeoutMs, waits) : notStartedInTime(intent.reviewer, rosterError);
   }
   const spawnedAs = profile ?? (roles && reviewerRoleFor(facts, roles));
   return { kind: "dispatched", ...intent, agentId: started.agentId, sessionId: started.sessionId, startedAt: deps.now(), ...(intent.mode === "spawn" && spawnedAs !== undefined && { profile: spawnedAs }), ...busyWaits(waits), ...(asking?.codewatch && { codewatch: asking.codewatch }), ...scopedResultFields(scopedRereview) };

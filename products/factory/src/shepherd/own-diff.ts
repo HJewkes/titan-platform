@@ -23,7 +23,7 @@ const OwnDiffStepInputSchema = z.object({ repo: z.string().refine(isRepoKey, "mu
 type OwnDiffStepInput = z.infer<typeof OwnDiffStepInputSchema>;
 
 /** `id` is the own diff's patch id and `base` the merge base it was read against; `unread` says, from a fixed vocabulary, why neither was read. */
-export const OwnDiffResultSchema = z.union([z.object({ id: z.string().min(1), base: Sha }), z.object({ unread: z.string().min(1) })]);
+const OwnDiffResultSchema = z.union([z.object({ id: z.string().min(1), base: Sha }), z.object({ unread: z.string().min(1) })]);
 export type OwnDiffResult = z.infer<typeof OwnDiffResultSchema>;
 
 const excluded = (repo: string): string[] => [...generatedPathsFor(repo), ...REGENERATED].map((path) => `:(exclude,glob)${path}`);
@@ -59,6 +59,11 @@ async function ownDiffOfPr(port: Pick<GitHubPort, "getPr">, input: OwnDiffStepIn
 
 export function ownDiffRoute(now: () => number, port: Pick<GitHubPort, "getPr">, options: Omit<CarryOptions, "signal">): StepRoute {
   return codeRoute(OWN_DIFF_STEP, now, (raw: unknown, signal) => ownDiffOfPr(port, OwnDiffStepInputSchema.parse(raw), { ...options, signal }));
+}
+
+export interface OwnDiffWiring {
+  /** Records each reviewed head's own-diff id for the scorecard; absent records none, and the intent says so. */
+  ownDiff?: true;
 }
 
 /** The intent records whether the host wired the step, so a run recorded before it, or without it, replays with no own-diff step. */

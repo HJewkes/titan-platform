@@ -46,6 +46,8 @@ function reviewedHead(): string {
   return reviewed;
 }
 
+const idOf = (result: OwnDiffResult): string | undefined => ("id" in result ? result.id : undefined);
+
 const read = (head: string): Promise<OwnDiffResult> => ownDiff({ repo: REPO, baseRef: "main", head }, { ports: hostCarryPorts, stateDir, remote: () => origin });
 
 beforeEach(() => {
@@ -65,8 +67,8 @@ describe("ownDiff", { timeout: 30_000 }, () => {
 
     const [before, after] = [await read(reviewed), await read(mergedOnly)];
 
-    expect(before).toHaveProperty("id");
-    expect(after).toEqual({ id: (before as { id: string }).id, base: git("rev-parse", "main") });
+    expect(idOf(before)).toBeDefined();
+    expect(after).toEqual({ id: idOf(before), base: git("rev-parse", "main") });
   });
 
   it("a merge whose resolution edits a PR file changes the own-diff id", async () => {
@@ -77,8 +79,8 @@ describe("ownDiff", { timeout: 30_000 }, () => {
 
     const [before, after] = [await read(reviewed), await read(git("rev-parse", "HEAD"))];
 
-    expect(after).toHaveProperty("id");
-    expect(after).not.toMatchObject({ id: (before as { id: string }).id });
+    expect(idOf(after)).toBeDefined();
+    expect(idOf(after)).not.toBe(idOf(before));
   });
 
   it("a regenerated closure.lock.json leaves the id unchanged", async () => {
@@ -86,7 +88,10 @@ describe("ownDiff", { timeout: 30_000 }, () => {
     mergeMain();
     const regenerated = commit(LOCK, '{ "regenerated": true }\n');
 
-    expect(await read(regenerated)).toMatchObject({ id: (await read(reviewed) as { id: string }).id });
+    const [before, after] = [await read(reviewed), await read(regenerated)];
+
+    expect(idOf(before)).toBeDefined();
+    expect(idOf(after)).toBe(idOf(before));
   });
 
   it("an unreadable merge base records unread", async () => {
