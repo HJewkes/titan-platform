@@ -1,3 +1,5 @@
+import { ShepherdFailure } from "../shepherd/failure-class.js";
+
 /** Updates a strict repo always gets before the time budget can stop the run, however fast they came. */
 export const MAX_UPDATE_CYCLES = 3;
 
@@ -131,6 +133,6 @@ export function waitsAgain(ci: { timedOut?: { afterMs: number; reason: string } 
     count.timeouts = 0;
     return false;
   }
-  if (++count.timeouts >= CI_WAIT_ATTEMPTS) throw new Error(`ci-wait timed out after ${ci.timedOut.afterMs} ms on each of ${CI_WAIT_ATTEMPTS} attempts: ${ci.timedOut.reason}`);
+  if (++count.timeouts >= CI_WAIT_ATTEMPTS) throw new ShepherdFailure("ci-timeout", `ci-wait timed out after ${ci.timedOut.afterMs} ms on each of ${CI_WAIT_ATTEMPTS} attempts: ${ci.timedOut.reason}`);
   return true;
 }

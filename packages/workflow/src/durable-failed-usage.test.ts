@@ -13,7 +13,8 @@ import { durableHarnessRunner } from "./durable-harness-runner.js";
 import { mapItems, type MapResult } from "./fan-out.js";
 import { WorkflowRuntime } from "./runtime.js";
 import { workflowMigration } from "./store.js";
-import { StepFailedError, type WorkflowFn } from "./types.js";
+import { type WorkflowFn } from "./types.js";
+import { StepFailedError } from "./step-errors.js";
 
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
