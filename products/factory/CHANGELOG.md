@@ -1,5 +1,14 @@
 # @titan-design/factory
 
+## 0.27.5
+
+### Patch Changes
+
+- 7f6fc30: A MERGE whose only unmet attestation rows are `no-meeter` (the correctness reviewer declined to attest) now goes back to
+  the implementer once, asking it to replace the claim with a step version bump, instead of opening the owner's
+  approve-merge gate; any other unmet reason, an unhandled wake, or a second decline asks the owner as before.
+- a136f65: A fact step's version bump can be recorded per PR in `src/registry/bumps/<pr>.json` (`{ step, pr }` rows), and the registry adds one per distinct PR to the step's declared `version.bump`. Two concurrent PRs bumping the same step each write their own file, so landing one no longer makes the other re-bump. `pnpm registry:closure` fails a bump row naming another PR, a row naming no fact step, and a removed base row.
+
 ## 0.27.4
 
 ### Patch Changes
