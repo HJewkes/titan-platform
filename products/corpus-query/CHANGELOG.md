@@ -1,5 +1,13 @@
 # @titan-design/corpus-query
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [8485c89]
+  - @titan-design/workflow@0.15.0
+  - @titan-design/hitl@0.10.1
+
 ## 0.1.0
 
 ### Minor Changes

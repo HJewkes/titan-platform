@@ -1,5 +1,13 @@
 # @titan-design/session-miner
 
+## 0.11.6
+
+### Patch Changes
+
+- Updated dependencies [8485c89]
+  - @titan-design/workflow@0.15.0
+  - @titan-design/hitl@0.10.1
+
 ## 0.11.5
 
 ### Patch Changes
