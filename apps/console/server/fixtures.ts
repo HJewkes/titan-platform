@@ -171,13 +171,13 @@ function search(args: Args) {
   return { query: args.query, hits: hits.map((hit, rank) => ({ ...hit, path: null, excerpt: `…${hit.title}…`, score: 1 / (rank + 1), sources: ["fts"] })), degraded: [] };
 }
 
-function inventory(humanOnlyKnown: boolean) {
+function inventory(humanOnlyKnown: boolean, agentHidden: ReadonlySet<string>) {
   const initiatives = INITIATIVES.map(({ slug }) => {
     const counts = COUNTS[slug]!;
     const tasks = TASKS.filter((task) => task.slug === slug).length;
     const classes = { initiatives: stat(1), tasks: stat(tasks), sessions: stat(counts.sessions), notes: stat(counts.notes), sources: stat(counts.sources), nested_sources: stat(counts.nested) };
     const files = 1 + tasks + counts.sessions + counts.notes + counts.sources + counts.nested;
-    return { slug, human_only: !humanOnlyKnown || PERSONAL.has(slug), agent_visible: !PERSONAL.has(slug), total: stat(files, counts.newest), classes, nested_dirs: [] };
+    return { slug, human_only: !humanOnlyKnown || PERSONAL.has(slug), agent_visible: !agentHidden.has(slug), total: stat(files, counts.newest), classes, nested_dirs: [] };
   });
   return { initiatives, totals: {}, human_only_known: humanOnlyKnown };
 }
@@ -193,6 +193,8 @@ const forSlug = <T extends { slug: string }>(rows: T[], args: Args): T[] => (arg
 export interface FixtureOptions {
   /** False imitates an unreadable charter: active-work then flags every initiative human-only. */
   humanOnlyKnown?: boolean;
+  /** The initiatives whose brief withholds them from agents; defaults to the personal one. */
+  agentHidden?: readonly string[];
 }
 
 /** What the synthetic active-work daemon answers for one read; only `orbit-relay` has records behind its lists. */
@@ -202,7 +204,7 @@ export function fixtureAnswer(command: string, args: Args, options: FixtureOptio
     case "list":
       return list();
     case "inventory":
-      return inventory(options.humanOnlyKnown ?? true);
+      return inventory(options.humanOnlyKnown ?? true, new Set(options.agentHidden ?? PERSONAL));
     case "task.list":
       return { tasks: forSlug(TASKS, args) };
     case "session.list":

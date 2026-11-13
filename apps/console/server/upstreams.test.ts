@@ -138,29 +138,16 @@ describe("the active-work reads createSources builds", () => {
 });
 
 describe("the decision log's owner-only reader", () => {
-  const inventoryOf = (initiatives: Record<string, unknown>[]): ActiveWork => ({
-    read: async () => ({ initiatives, human_only_known: true }) as never,
-  });
-
   it("excludes the initiatives isAgentVisible withholds, not the charter's human-only list", async () => {
-    const activeWork = inventoryOf([
-      { slug: "charter-listed", human_only: true, agent_visible: true },
-      { slug: "brief-withheld", human_only: false, agent_visible: false },
-    ]);
+    const ownerOnly = await ownerOnlyFrom(fixtureActiveWork({ agentHidden: ["kiln-tools"] }))();
 
-    const ownerOnly = await ownerOnlyFrom(activeWork)();
-
-    expect(ownerOnly).toEqual({ known: true, initiatives: new Set(["brief-withheld"]) });
+    expect(ownerOnly).toEqual({ known: true, initiatives: new Set(["kiln-tools"]) });
   });
 
-  it("treats a row without the flag as owner-only and a silent daemon as unknown (fail closed)", async () => {
+  it("does not depend on the charter read, and reads a silent daemon as unknown (fail closed)", async () => {
     const down: ActiveWork = { read: () => Promise.reject(new Error("connection refused")) };
 
-    expect(await ownerOnlyFrom(inventoryOf([{ slug: "older-daemon", human_only: false }]))()).toEqual({ known: true, initiatives: new Set(["older-daemon"]) });
+    expect(await ownerOnlyFrom(fixtureActiveWork({ humanOnlyKnown: false }))()).toEqual({ known: true, initiatives: new Set(["garden-plan"]) });
     expect(await ownerOnlyFrom(down)()).toEqual({ known: false });
-  });
-
-  it("names the fixture's personal initiative", async () => {
-    expect(await ownerOnlyFrom(fixtureActiveWork())()).toEqual({ known: true, initiatives: new Set(["garden-plan"]) });
   });
 });

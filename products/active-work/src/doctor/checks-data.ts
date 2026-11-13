@@ -93,7 +93,7 @@ async function slugsShown(activeRoot: string, deps: DoctorDeps): Promise<string[
 /** An indexed path is relative to the active root, so its first segment is the initiative it sits in. */
 function pathShown(deps: DoctorDeps): (relativePath: string) => boolean {
   const hidden = deps.hiddenSlugs ?? new Set<string>();
-  return (relativePath) => !hidden.has(relativePath.split('/')[0]!);
+  return (relativePath) => !hidden.has(relativePath.split('/')[0]);
 }
 
 /**

@@ -121,15 +121,16 @@ async function mcp(server: FactoryServer, method: string, params: object): Promi
   });
   const text = await res.text();
   const data = text.split("\n").find((line) => line.startsWith("data: "));
-  return (JSON.parse(data ? data.slice("data: ".length) : text) as { result: unknown }).result;
+  return z.object({ result: z.unknown() }).parse(JSON.parse(data ? data.slice("data: ".length) : text)).result;
 }
 
 async function mcpNeedsIds(server: FactoryServer): Promise<string[]> {
   const { tools } = z.object({ tools: z.array(z.object({ name: z.string() })) }).parse(await mcp(server, "tools/list", {}));
   const name = tools.map((tool) => tool.name).find((each) => each.includes("needs") && each.endsWith("list"))!;
   const { content } = z.object({ content: z.array(z.object({ text: z.string() })) }).parse(await mcp(server, "tools/call", { name, arguments: {} }));
-  const envelope = JSON.parse(content[0]!.text) as { data?: { items: OwnerItem[] }; items?: OwnerItem[] };
-  return (envelope.data ?? envelope).items!.map((item) => item.id);
+  const items = z.object({ items: z.array(z.object({ id: z.string() })) });
+  const parsed = z.union([items, z.object({ data: items }).transform((envelope) => envelope.data)]).parse(JSON.parse(content[0]!.text));
+  return parsed.items.map((item) => item.id);
 }
 
 describe("needs.list for an owner-only initiative", () => {
@@ -151,7 +152,7 @@ describe("needs.list for an owner-only initiative", () => {
     const ids = async (ownerOnly: boolean) => {
       const out: string[] = [];
       await runNeeds({ stdout: (text) => void out.push(text), stderr: () => undefined }, sources, { json: true, ownerOnly });
-      return (JSON.parse(out.join("")) as OwnerItem[]).map((item) => item.id);
+      return z.array(z.object({ id: z.string() })).parse(JSON.parse(out.join(""))).map((item) => item.id);
     };
 
     expect(await ids(true)).toContain(withheld.id);

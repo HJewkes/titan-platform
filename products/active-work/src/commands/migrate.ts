@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { defineCommand } from '../registry/index.js';
+import { defineCommand, type CommandContext } from '../registry/index.js';
 import { UsageError } from '../errors.js';
 import { CURRENT_VERSION } from '../migrations/index.js';
 import { applyV2ToV3, planV2ToV3 } from '../migrations/v2-to-v3-open-loops.js';
@@ -128,6 +128,11 @@ function render(result: Result): string {
   return lines.join('\n') + '\n';
 }
 
+/** The plan names every initiative and its session files, owner-only ones included (TP-5556). */
+function refuseNonOwner(caller: CommandContext['caller']): void {
+  if (caller !== 'owner') throw new UsageError('migrate reports every initiative, so only the owner can run it');
+}
+
 export default defineCommand<Args, Result>({
   name: 'migrate',
   description: 'Preview (or apply) the pending v2→v3 open-loops migration.',
@@ -141,10 +146,7 @@ export default defineCommand<Args, Result>({
     usage: 'active-work migrate --dry-run | --apply',
   },
   async run(args, ctx) {
-    // The plan names every initiative and its session files, owner-only ones included (TP-5556).
-    if (ctx.caller !== 'owner') {
-      throw new UsageError('migrate reports every initiative, so only the owner can run it');
-    }
+    refuseNonOwner(ctx.caller);
     if (args.apply !== true) {
       const plan = await planV2ToV3(ctx.activeRoot);
       const result = describe(plan, false);

@@ -1,6 +1,5 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import type { CostPerOutcomeReport, CostReport } from '@titan-design/session-analytics';
 import { describe, expect, it } from 'vitest';
 import { runDoctor } from '../doctor/index.js';
 import type { CommandContext } from '../registry/types.js';
@@ -49,7 +48,7 @@ const context = (activeRoot: string, caller?: CommandContext['caller']): Command
   ...(caller && { caller }),
 });
 
-function costReport(): CostReport {
+function costReport() {
   const bucket = (key: string, costUsd: number) => ({ key, requests: 2, sessions: 1, costUsd });
   const session = (sessionId: string, initiative: string) => ({
     sessionId,
@@ -63,10 +62,10 @@ function costReport(): CostReport {
   return {
     byInitiative: [bucket(VISIBLE, 1), bucket(HIDDEN, 2), bucket(`active-work:${HIDDEN}`, 3), bucket('repo:tools', 4)],
     topSessions: [session('s1', HIDDEN), session('s2', 'repo:tools')],
-  } as unknown as CostReport;
+  };
 }
 
-function outcomeReport(): CostPerOutcomeReport {
+function outcomeReport() {
   const bucket = (key: string, merged: number) => ({
     key,
     assignments: 2,
@@ -74,11 +73,11 @@ function outcomeReport(): CostPerOutcomeReport {
     done: 0,
     costUsd: 4,
     usdPerMerged: 4 / merged,
-    usdPerDone: null,
+    usdPerDone: null as number | null,
     requests: 8,
     requestsPerFinished: 8 / merged,
   });
-  return { byInitiative: [bucket(VISIBLE, 1), bucket(HIDDEN, 2)] } as unknown as CostPerOutcomeReport;
+  return { byInitiative: [bucket(VISIBLE, 1), bucket(HIDDEN, 2)] };
 }
 
 describe('miner cost and outcomes (census row 18)', () => {

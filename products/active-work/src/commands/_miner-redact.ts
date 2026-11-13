@@ -1,4 +1,4 @@
-import type { CostPerOutcomeReport, CostReport, OutcomeBucket } from '@titan-design/session-analytics';
+import type { CostBucket, CostReport, OutcomeBucket } from '@titan-design/session-analytics';
 import type { CommandContext } from '../registry/types.js';
 import { hiddenSlugsForCaller, noteHiddenInitiatives } from '../sessions/visibility.js';
 
@@ -29,10 +29,8 @@ function fold<T extends { key: string | null }>(rows: readonly T[], hidden: Hidd
   const folded = rows.filter((row) => namesHidden(row.key, hidden));
   if (folded.length === 0) return kept;
   const [first, ...rest] = folded;
-  return [...kept, rest.reduce(merge, { ...first!, key: OWNER_ONLY_KEY })];
+  return [...kept, rest.reduce(merge, { ...first, key: OWNER_ONLY_KEY })];
 }
-
-type CostBucket = CostReport['byInitiative'][number];
 
 const sumCost = (a: CostBucket, b: CostBucket): CostBucket => ({
   key: a.key,
@@ -41,7 +39,9 @@ const sumCost = (a: CostBucket, b: CostBucket): CostBucket => ({
   costUsd: a.costUsd + b.costUsd,
 });
 
-export function redactCostReport(report: CostReport, hidden: Hidden): CostReport {
+type InitiativeSpend = Pick<CostReport, 'byInitiative' | 'topSessions'>;
+
+export function redactCostReport<T extends InitiativeSpend>(report: T, hidden: Hidden): T {
   return {
     ...report,
     byInitiative: fold(report.byInitiative, hidden, sumCost),
@@ -73,7 +73,7 @@ const sumOutcome = (a: OutcomeBucket, b: OutcomeBucket): OutcomeBucket =>
     requests: a.requests + b.requests,
   });
 
-export function redactOutcomeReport<T extends CostPerOutcomeReport>(report: T, hidden: Hidden): T {
+export function redactOutcomeReport<T extends { byInitiative: OutcomeBucket[] }>(report: T, hidden: Hidden): T {
   return { ...report, byInitiative: fold(report.byInitiative, hidden, sumOutcome) };
 }
 
