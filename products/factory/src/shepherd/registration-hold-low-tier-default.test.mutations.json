@@ -1,0 +1,16 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "absent switch reads on",
+      "file": "products/factory/src/shepherd/registration-hold.ts",
+      "find": "mode: LowTierMode = \"shadow\"",
+      "replace": "mode: LowTierMode = \"on\"",
+      "kills": [
+        "the low-tier switch left unset an absent low-tier switch holds a low-tier policy touch g10-adversary with the shadow note",
+        "the low-tier switch left unset an absent low-tier switch places no g10-review hold at reclass",
+        "the low-tier switch left unset with the switch absent, a low-tier policy touch is not released by one opus MERGE"
+      ]
+    }
+  ]
+}

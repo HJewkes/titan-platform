@@ -95,6 +95,8 @@ export const TimelineEntrySchema = z.discriminatedUnion("kind", [
     resolvedAt: z.string().nullable(),
     resolvedBy: z.string().nullable(),
   }),
+  /** A release Shepherd decided by a rule (TP-5403): the rule, the head it released at, and the reviewer and profile it took. */
+  z.object({ kind: z.literal("decision"), stepId: z.string(), rule: z.string(), head: z.string(), reviewer: z.string(), profile: z.string() }),
   z.object({
     kind: z.literal("event"),
     event: z.enum(TIMELINE_EVENT_KINDS),

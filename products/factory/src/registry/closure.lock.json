@@ -1,8 +1,8 @@
 {
   "ci-wait": {
-    "closure": "40801c1c2d890c0af56a83ca983f7fbeb3c8607990d14a7df6243285f7f15075",
+    "closure": "0f1ccb1a1445bf10c66a30de7397eda94c3a910226a055f51a300e2c9686b699",
     "schemaHash": "26cea498a3de6ee618690121d1b57f68d71faffbfb84d4a16a4f669aee9e1756",
-    "bump": 5
+    "bump": 6
   },
   "merge": {
     "closure": "2329fdaf56f6cb9262d1b00e42af68e7f9eb4f14421d891ab457869a80552a7f",

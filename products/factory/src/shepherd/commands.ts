@@ -179,7 +179,8 @@ async function registerWithHold(args: RegisterArgs, ctx: FactoryContext): Promis
 export async function classifyRegistered(ctx: FactoryContext, registered: Registered, head?: string): Promise<Registered> {
   const services = servicesOf(ctx);
   const local = cachedByHead(services.prFiles ?? localPrFiles);
-  const g10Hold = await applyRegistrationHold(services.port, services.store.get(), registered.runId, { local, ...(head !== undefined && { head }) });
+  const lowTier = services.lowTierPolicy?.();
+  const g10Hold = await applyRegistrationHold(services.port, services.store.get(), registered.runId, { local, ...(head !== undefined && { head }), ...(lowTier && { lowTier }) });
   const held = g10Hold === undefined ? registered : { ...registered, g10Hold, registration: services.store.get().byRun(registered.runId)! };
   const sizeFlag = await sizeFlagFor(services.port, head === undefined ? held.registration : { ...held.registration, headSha: head }, { local });
   return sizeFlag === undefined ? held : { ...held, sizeFlag };

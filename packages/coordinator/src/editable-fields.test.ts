@@ -87,6 +87,7 @@ describe("factory rows", () => {
       "shepherd.gateReset.nonSourceNoRepro",
       "shepherd.gateReset.heldRepair",
       "shepherd.gateReset.twoMergeRelease",
+      "shepherd.gateReset.lowTierPolicy",
       "shepherd.backPressure.laneOpenPrs",
       "shepherd.backPressure.ownerQueue",
       "shepherd.backPressure.inflowWeeks",

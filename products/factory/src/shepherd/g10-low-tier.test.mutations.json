@@ -11,15 +11,6 @@
       ]
     },
     {
-      "name": "a kept table no longer keeps the gate",
-      "file": "products/factory/src/shepherd/g10-low-tier.ts",
-      "find": "    if (!tables.every((table) => LOW_POLICY_TABLES.includes(table))) return kept(tables.find((table) => !LOW_POLICY_TABLES.includes(table)) ?? path);\n",
-      "replace": "",
-      "kills": [
-        "lowTierPolicyTouch, the paths that keep the owner gate a gate-resolve-actor path keeps the owner gate"
-      ]
-    },
-    {
       "name": "the tier without policy is not checked",
       "file": "products/factory/src/shepherd/g10-low-tier.ts",
       "find": "  if (tier.tier !== \"low\") return",
@@ -44,6 +35,17 @@
       "replace": "",
       "kills": [
         "lowTierPolicyTouch, the paths that keep the owner gate a policy touch beside an authority path keeps the owner gate"
+      ]
+    },
+    {
+      "name": "a gate-input file goes low",
+      "file": "products/factory/src/shepherd/g10-low-tier.ts",
+      "find": "  if (gateInput !== undefined) return kept(`gate input ${gateInput}`);\n",
+      "replace": "",
+      "kills": [
+        "lowTierPolicyTouch, the paths that keep the owner gate an edit to the adversary touches or owner packet keeps the owner gate",
+        "lowTierPolicyTouch, the paths that keep the owner gate an edit to the review-panel class rules keeps the owner gate",
+        "lowTierPolicyTouch, the paths that keep the owner gate a rename out of a gate-input file keeps the owner gate"
       ]
     }
   ]
