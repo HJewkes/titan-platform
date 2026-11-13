@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "recorded bumps are ignored",
+      "file": "products/factory/src/registry/bumps.ts",
+      "find": "{ bump: entry.version.bump + prs.size }",
+      "replace": "{ bump: entry.version.bump }",
+      "kills": ["per-PR version bumps two PRs bumping one step both pass after either lands, with no re-bump"]
+    },
+    {
+      "name": "a row counts per occurrence, not per PR",
+      "file": "products/factory/src/registry/bumps.ts",
+      "find": "const prs = new Set(rows.filter((row) => row.step === entry.name).map((row) => row.pr));",
+      "replace": "const prs = rows.filter((row) => row.step === entry.name).map((row) => row.pr); Object.defineProperty(prs, \"size\", { get: () => prs.length });",
+      "kills": ["per-PR version bumps one PR's rows count once however often they name the step"]
+    },
+    {
+      "name": "a row moves every fact step",
+      "file": "products/factory/src/registry/bumps.ts",
+      "find": "rows.filter((row) => row.step === entry.name)",
+      "replace": "rows.filter(() => true)",
+      "kills": ["per-PR version bumps a row moves only the step it names"]
+    },
+    {
+      "name": "rows are read unvalidated",
+      "file": "products/factory/src/registry/bumps.ts",
+      "find": "bumpRowsSchema.parse(JSON.parse(readFileSync(join(dir, name), \"utf8\")))",
+      "replace": "(JSON.parse(readFileSync(join(dir, name), \"utf8\")) as BumpRow[])",
+      "kills": ["reading bump rows a malformed row throws rather than counting as no bump"]
+    }
+  ]
+}

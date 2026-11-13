@@ -1,5 +1,12 @@
 # @titan-design/explainer
 
+## 0.3.7
+
+### Patch Changes
+
+- Updated dependencies [9778eb4]
+  - @titan-design/github@0.13.0
+
 ## 0.3.6
 
 ### Patch Changes

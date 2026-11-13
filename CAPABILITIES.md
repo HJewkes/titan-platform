@@ -701,7 +701,7 @@ Key exports:
 
 ### [`github`](https://hjewkes.github.io/titan-platform/reference/github)
 
-Tier 1, `@titan-design/github@0.12.0`. GitHub REST port over the gh CLI: validated paths, required checks from branch rules, and an in-memory fake
+Tier 1, `@titan-design/github@0.13.0`. GitHub REST port over the gh CLI: validated paths, required checks from branch rules, and an in-memory fake
 
 **Use this when:**
 
@@ -1015,7 +1015,7 @@ Key exports:
 
 ### [`coordinator`](https://hjewkes.github.io/titan-platform/reference/coordinator)
 
-Tier 2, `@titan-design/coordinator@0.7.0`. Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types).
+Tier 2, `@titan-design/coordinator@0.7.1`. Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types).
 
 **Use this when:**
 
@@ -1212,7 +1212,7 @@ Key exports:
 
 ### [`review-workflow`](https://hjewkes.github.io/titan-platform/reference/review-workflow)
 
-Tier 2, `@titan-design/review-workflow@0.1.1`. PR review as a resumable workflow over ports: preflight, heals, a failure taxonomy with a retry policy, and a typed outcome
+Tier 2, `@titan-design/review-workflow@0.1.2`. PR review as a resumable workflow over ports: preflight, heals, a failure taxonomy with a retry policy, and a typed outcome
 
 **Use this when:**
 
@@ -1454,7 +1454,7 @@ Thin compositions of the tiers. A linked product is published; the rest are priv
 
 ### [`active-work`](https://hjewkes.github.io/titan-platform/reference/active-work)
 
-Tier product, `@titan-design/active-work@0.29.1`. Durable workspace state for engineering work — CLI, MCP, and Claude skill for tracking initiatives across sessions
+Tier product, `@titan-design/active-work@0.30.0`. Durable workspace state for engineering work — CLI, MCP, and Claude skill for tracking initiatives across sessions
 
 **Use this when:**
 
