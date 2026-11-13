@@ -1194,7 +1194,7 @@ Key exports:
 
 ### [`review-panel`](https://hjewkes.github.io/titan-platform/reference/review-panel)
 
-Tier 2, `@titan-design/review-panel@0.9.0`. Review-panel types and the reviewer ports a caller satisfies
+Tier 2, `@titan-design/review-panel@0.9.1`. Review-panel types and the reviewer ports a caller satisfies
 
 **Use this when:**
 
