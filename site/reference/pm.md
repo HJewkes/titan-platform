@@ -294,7 +294,7 @@ refused. Unknown keys are refused too.
 |---|---|---|
 | `OutcomeSchema` | `alpha/faster-landing` | `statement`, `measure`, `state` (`draft`, `active`, `retired`), optional `owner_intent` |
 | `BetSchema` | `alpha/B1` | ISO `week`, `outcome` id, `order`, `tasks` (`alpha/AL-1` keys) or a `selector`, `prediction`, `state` (`proposed`, `selected`, `dropped`, `done`), optional `cites` |
-| `FreezeSchema` | `alpha/F1` | exactly one of `tag` or `selector`, `reason`, `end_condition`, `set_by` (`owner`, `decider`), `intent_ref`, `quote_ref` |
+| `FreezeSchema` | `alpha/F1` | exactly one of `tag` or `selector`, `reason`, `end_condition`, `set_by` (`owner`, `decider`), `intent_ref`, `quote_ref`, optional `ended_on` once the owner ends it |
 | `OutOfScopeSchema` | `alpha/X1` | `statement`, `intent_ref`, `quote_ref`, `date` of the owner statement, optional `revisit_when` |
 
 A bet's `prediction` names the `metric` it should move, its `direction`, the `baseline`, the

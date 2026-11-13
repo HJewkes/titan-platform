@@ -2,6 +2,7 @@ import type { Decision } from "@titan-design/authority";
 import type { GitHubPort } from "@titan-design/github";
 import type { GateStatus } from "@titan-design/hitl";
 import { ownerOpSchema, type OwnerOp, type OwnerOpKind } from "@titan-design/owner-queue";
+import { activeWorkRoot } from "@titan-design/app-paths";
 import { EXIT, defineCommand } from "@titan-design/registry";
 import { z } from "zod";
 import { factoryStateDir } from "../config.js";
@@ -15,6 +16,7 @@ import type { ShepherdServices } from "../shepherd/services.js";
 import type { ShepherdStore } from "../shepherd/store.js";
 import { opAuthority } from "./authority.js";
 import { manualHoldReason, type PauseClearPorts } from "./pause-clear.js";
+import { planPreview, type PlanPreview } from "./plan-preview.js";
 import { forceStop, hasExited, liveRunOf, nameHolder } from "./retire-agent.js";
 
 interface PrPreview {
@@ -60,6 +62,7 @@ export interface OpPreview {
   gate?: GatePreview;
   agent?: AgentPreview;
   pause?: PausePreview;
+  plan?: PlanPreview;
 }
 
 type PrOp = Extract<OwnerOp, { repo: string; pr: number }>;
@@ -73,6 +76,8 @@ async function previewOp(op: OwnerOp, ctx: FactoryContext): Promise<OpPreview> {
   const base = { kind: op.kind, authority: opAuthority(op) };
   if (op.kind === "resolve-gate") return { ...base, gate: gatePreview(ctx.host, op.gateId) };
   if (op.kind === "deploy-pause-clear") return { ...base, pause: pausePreview(systemPauseClearPorts(), factoryStateDir(process.env)) };
+  const plan = await planPreview(op, activeWorkRoot({ env: process.env }));
+  if (plan !== undefined) return { ...base, plan };
   if (!isPrOp(op) && op.kind !== "retire-agent") return base;
   if (ctx.shepherd === undefined) throw unavailable(`previewing a ${op.kind} op needs the shepherd routes`);
   if (op.kind === "retire-agent") return { ...base, agent: await agentPreview(ctx.shepherd, ctx.host, op.name) };
@@ -124,7 +129,7 @@ function gatePreview(host: FactoryHost, gateId: string): GatePreview {
 
 export const ownerOpPreview = defineCommand<{ op: OwnerOp }, OpPreview, FactoryContext>({
   name: "owner-op.preview",
-  description: "The live read-back for one typed owner op: its authority decision for owner-remote and the PR, gate or deploy pause it names, as GitHub, Shepherd, the gate store and the deployer's state say now; reads only",
+  description: "The live read-back for one typed owner op: its authority decision for owner-remote and the PR, gate, deploy pause or plan records it names, as GitHub, Shepherd, the gate store, the deployer's state and active-work's plan store say now; reads only",
   args: z.object({ op: ownerOpSchema }),
   result: z.custom<OpPreview>(),
   run: async ({ op }, ctx) => previewOp(op, ctx),

@@ -117,6 +117,8 @@ export const FreezeSchema = z
     end_condition: FreezeEndConditionSchema,
     set_by: z.enum(FREEZE_SETTERS),
     ...OwnerIntentRefSchema.shape,
+    /** The day the owner ended the freeze; absent while it stands. */
+    ended_on: isoDate.optional(),
   })
   .refine(belongsToInitiative, initiativePrefix)
   .refine((freeze) => (freeze.tag === undefined) !== (freeze.selector === undefined), {
