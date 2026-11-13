@@ -411,6 +411,7 @@
   "shepherd/review-scope-round.ts",
   "shepherd/review-scope.ts",
   "shepherd/review-shadow.ts",
+  "shepherd/review-stats-backfill.ts",
   "shepherd/review-stats-own-diff.ts",
   "shepherd/review-stats-store.ts",
   "shepherd/review-stats.ts",

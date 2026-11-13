@@ -5,6 +5,7 @@ import type { Db } from "@titan-design/store-sqlite";
 import { WorkflowRunStore, type StepResult, type WorkflowRun, type WorkflowStatus } from "@titan-design/workflow";
 import { z } from "zod";
 import { autoPassStepId } from "./auto-pass.js";
+import { backfillOwnDiffs, NO_BACKFILL, type Backfill, type OwnDiffReader, type WantedHead } from "./review-stats-backfill.js";
 import { labelOwnDiff } from "./review-stats-own-diff.js";
 import type { CostSource, ReviewRow, ReviewRunRow, ReviewStatsStore, RoundLabels } from "./review-stats-store.js";
 import { SHEPHERD_WORKFLOW } from "./services.js";
@@ -170,7 +171,7 @@ function resolve(round: Round, step: StepResult, result: Record<string, unknown>
  * Steps are stored in the order they were recorded, so a resolving step belongs to the latest round of its shape opened before it.
  * A round is final once it has a verdict, a later round of its shape opens, or the run ends; `round` is its ordinal in the run.
  */
-function roundsOf(run: WorkflowRun): Round[] {
+function roundsOf(run: WorkflowRun, backfill: Backfill = NO_BACKFILL): Round[] {
   const rounds: Round[] = [];
   const causes = causeReader();
   const runStart = Date.parse(run.startedAt);
@@ -190,7 +191,7 @@ function roundsOf(run: WorkflowRun): Round[] {
   }
   if (FINISHED.includes(run.status)) for (const round of rounds) round.final = true;
   const kept = rounds.filter((round) => !(round.limitOnly && round.verdictAt !== null));
-  labelOwnDiff(run, kept);
+  labelOwnDiff(run, kept, backfill.ids.get(run.id));
   return kept;
 }
 
@@ -204,12 +205,18 @@ interface ReviewStatsDeps {
   runs: RunSource;
   retire: ReadonlyMap<string, RetireCost>;
   transcripts: TranscriptPort;
+  /** Reads an own-diff id for a head no step recorded one for; absent leaves such heads without an id. */
+  ownDiffs?: OwnDiffReader;
 }
 
 interface RefreshResult {
   added: number;
   repriced: number;
   transcriptReads: number;
+  /** Heads whose own-diff id was read from the git-cache because no step recorded one. */
+  ownDiffsComputed: number;
+  /** Heads with no recorded id that the cache could not answer for; they stay without one. */
+  ownDiffsMissing: number;
 }
 
 interface Pending {
@@ -221,12 +228,20 @@ interface Pending {
  * Final rounds not yet stored, which are priced, and final rounds already stored, whose labels alone are written again so a
  * row stored before v2 gains them. Unfinished rounds wait for a later refresh, so a stored row's cost never changes under a reader.
  */
-function finalRounds(runs: readonly WorkflowRun[], store: ReviewStatsStore): { pending: Pending[]; stored: Pending[] } {
+function finalRounds(runs: readonly WorkflowRun[], store: ReviewStatsStore, backfill: Backfill): { pending: Pending[]; stored: Pending[] } {
   const all = runs.flatMap((run) => {
     const stored = store.storedRounds(run.id);
-    return roundsOf(run).filter((round) => round.final).map((round) => ({ run, round, stored: stored.has(round.round) }));
+    return roundsOf(run, backfill).filter((round) => round.final).map((round) => ({ run, round, stored: stored.has(round.round) }));
   });
   return { pending: all.filter((item) => !item.stored), stored: all.filter((item) => item.stored) };
+}
+
+/** The final rounds' heads that no step gave an id, once per run. */
+function headsWithoutId(runs: readonly WorkflowRun[]): WantedHead[] {
+  return runs.flatMap((run) => {
+    const heads = new Set(roundsOf(run).filter((round) => round.final && round.head !== null && round.ownDiffId === null).map((round) => round.head!));
+    return [...heads].map((head) => ({ run, head }));
+  });
 }
 
 type Priced = Pick<ReviewRow, "tokens" | "usd" | "costSource" | "model">;
@@ -296,7 +311,8 @@ const latestCompletion = (runs: readonly WorkflowRun[], since: string | undefine
 export async function refreshReviewStats(deps: ReviewStatsDeps): Promise<RefreshResult> {
   const since = deps.store.refreshedThrough();
   const runs = deps.runs.runs(since);
-  const { pending, stored } = finalRounds(runs, deps.store);
+  const backfill = deps.ownDiffs ? await backfillOwnDiffs(headsWithoutId(runs), deps.ownDiffs) : NO_BACKFILL;
+  const { pending, stored } = finalRounds(runs, deps.store, backfill);
   const { price, reads } = pricer(deps, pending);
   const rows: ReviewRow[] = [];
   for (const item of pending) rows.push(reviewRow(item, await price(item.round)));
@@ -309,5 +325,5 @@ export async function refreshReviewStats(deps: ReviewStatsDeps): Promise<Refresh
     const through = latestCompletion(runs, since);
     if (through !== undefined) deps.store.setRefreshedThrough(through);
   });
-  return { added: rows.length, repriced, transcriptReads: reads() };
+  return { added: rows.length, repriced, transcriptReads: reads(), ownDiffsComputed: backfill.computed, ownDiffsMissing: backfill.missing };
 }

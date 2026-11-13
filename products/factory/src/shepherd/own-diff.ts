@@ -26,14 +26,14 @@ type OwnDiffStepInput = z.infer<typeof OwnDiffStepInputSchema>;
 const OwnDiffResultSchema = z.union([z.object({ id: z.string().min(1), base: Sha }), z.object({ unread: z.string().min(1) })]);
 export type OwnDiffResult = z.infer<typeof OwnDiffResultSchema>;
 
-const excluded = (repo: string): string[] => [...generatedPathsFor(repo), ...REGENERATED].map((path) => `:(exclude,glob)${path}`);
+export const ownDiffExclusions = (repo: string): string[] => [...generatedPathsFor(repo), ...REGENERATED].map((path) => `:(exclude,glob)${path}`);
 
 async function readOwnDiff(cache: CacheHandle, input: OwnDiffInput, signal?: AbortSignal): Promise<OwnDiffResult> {
   const { git, dir, url } = cache;
   await ensureCache(cache, signal);
   await must(git, dir, ["fetch", "--no-tags", "--no-write-fetch-head", "--quiet", url, input.head, `+refs/heads/${input.baseRef}:${remoteBase(input.baseRef)}`], signal);
   const base = await must(git, dir, ["merge-base", input.head, remoteBase(input.baseRef)], signal);
-  const diff = await must(git, dir, [...DIFF_ARGS, base, input.head, "--", ".", ...excluded(input.repo)], signal);
+  const diff = await must(git, dir, [...DIFF_ARGS, base, input.head, "--", ".", ...ownDiffExclusions(input.repo)], signal);
   return { id: patchIdOf(diff), base };
 }
 
