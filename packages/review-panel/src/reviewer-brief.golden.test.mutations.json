@@ -36,6 +36,15 @@
       "kills": [
         "rendered briefs against main's output a brief with claimed rows asks for the Attests line and names each step and closure"
       ]
+    },
+    {
+      "name": "a claim's changed files are never named",
+      "file": "packages/review-panel/src/briefs/attest.ts",
+      "find": "  if (paths.length === 0) return [];",
+      "replace": "  return [];",
+      "kills": [
+        "rendered briefs against main's output names the changed closure files of a claim beside the Attests instruction"
+      ]
     }
   ]
 }

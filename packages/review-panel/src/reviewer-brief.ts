@@ -1,6 +1,6 @@
 import { parseResultLine } from "@titan-design/fix-proof";
 import { AUTHORITY_HEADING, PROBES_HEADING } from "./briefs/adversary.js";
-import { attestRule, type AttestClaim } from "./briefs/attest.js";
+import { ATTESTS_HEADING, attestRule, type AttestClaim } from "./briefs/attest.js";
 import { quoteLines } from "./briefs/quotes.js";
 import { fixProofLines, unverifiedLines, waivedLines, workflowCiLines, type FixProofUnverified, type WorkflowCiInput } from "./briefs/tests.js";
 import type { VerdictBlockRefusal } from "@titan-design/session-read";
@@ -221,6 +221,17 @@ function checkoutLines(runDir: string, { repo, pr, head, sourceCheckout }: Revie
 
 const HANDS_OFF = "Do not push, merge, comment or edit anything.";
 
+/** Labels are read from the final message only, so a reviewer that cleans up after its verdict and repeats a bare block loses its Attests line. */
+const FINAL_MESSAGE_IS_REVIEW = `Your final message is your whole review and verdict, including any \`${ATTESTS_HEADING}\` and \`${FOLLOW_UPS_HEADING}\` lines; send no message after it.`;
+
+const ATTESTS_IN_FINAL_ONLY = `An \`${ATTESTS_HEADING}\` line counts only in your final message.`;
+
+/** The final-message rule rides with the attest rule, so a brief with no valid claim gains no line. */
+function attestLines(claims: readonly AttestClaim[]): string[] {
+  const rule = attestRule(claims);
+  return rule.length === 0 ? [] : [...rule, ATTESTS_IN_FINAL_ONLY];
+}
+
 const probeLine = (runDir: string, where: string): string =>
   `Run a probe that may use git, network or destructive commands only in a scratch repo under \`"${runDir}/probe"\` whose origin is a local bare repo under \`"${runDir}"\` (git init --bare); ${where}never against a real remote, and never piped to a shell outside \`"${runDir}"\`.`;
 
@@ -230,7 +241,7 @@ function handsOffLines(runDir: string, sourceCheckout: string | undefined, scope
   return [
     HANDS_OFF,
     probeLine(runDir, "never in your starting directory, which is a real checkout, "),
-    `After you write your verdict, remove your checkouts, head and base together, with the literal path \`${runDir}\` in double quotes, not \`$dir\`, which a later Bash call may not have set: \`rm -rf "${runDir}"\`. Remove exactly that directory.`,
+    `When your review is done and before you write your final message, remove your checkouts, head and base together, with the literal path \`${runDir}\` in double quotes, not \`$dir\`, which a later Bash call may not have set: \`rm -rf "${runDir}"\`. Remove exactly that directory. ${FINAL_MESSAGE_IS_REVIEW}`,
   ];
 }
 
@@ -241,7 +252,7 @@ function runDirHandsOffLines(runDir: string, sourceCheckout: string, scoped: boo
     HANDS_OFF,
     `Your starting directory is \`"${runDir}"\`. \`"${sourceCheckout}"\` is a real checkout: run only the \`git -C\` ${allowed} above against it, never a probe, a push or a pipe to a shell.`,
     probeLine(runDir, ""),
-    `After you write your verdict, remove your checkouts with literal paths in double quotes, not \`$dir\`, which a later Bash call may not have set: \`rm -rf "${runDir}/head" "${runDir}/base" "${runDir}/probe"\`. Leave \`"${runDir}"\` itself: it is your starting directory, and Shepherd removes it after your verdict.`,
+    `When your review is done and before you write your final message, remove your checkouts with literal paths in double quotes, not \`$dir\`, which a later Bash call may not have set: \`rm -rf "${runDir}/head" "${runDir}/base" "${runDir}/probe"\`. Leave \`"${runDir}"\` itself: it is your starting directory, and Shepherd removes it after your verdict. ${FINAL_MESSAGE_IS_REVIEW}`,
   ];
 }
 
@@ -251,7 +262,7 @@ function verdictRuleLines(input: ReviewerBriefInput, scope: ReviewScope | undefi
     ...ownerPickLines(input.ownerPicks ?? []),
     "MERGE means you would merge this head as it is. Anything blocking means FIX_FIRST.",
     CI_POLICY_RULE,
-    ...attestRule(input.attestClaims ?? []),
+    ...attestLines(input.attestClaims ?? []),
     `For FIX_FIRST, list every blocking item, then add a section that starts with a line \`${DEFECT_CLASS_HEADING}\` naming the defect class the items share and the boundary where one fix covers it.`,
     ...recurringLines(fixFirstCount(input), input.earlierFindings ?? [], scope),
     ...convergenceLines(input.convergence),

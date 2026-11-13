@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a MERGE goes to the merge decision whatever its attestation",
+      "file": "products/factory/src/shepherd/pr.ts",
+      "find": "      return attestDeclineRoute(run.reviews, run.target.pr, routed, (payload) => woken(run, \"review\", headSha, payload));",
+      "replace": "      return true;",
+      "kills": [
+        "a reviewer's declined attestation attest-unmet with only no-meeter rows sends back to the implementer with the bump instruction"
+      ]
+    },
+    {
+      "name": "the review wake brief ignores a declined attestation",
+      "file": "products/factory/src/shepherd/wake-brief.ts",
+      "find": " ?? attestDeclinedWake(input.headSha, input.payload);",
+      "replace": ";",
+      "kills": [
+        "a reviewer's declined attestation attest-unmet with only no-meeter rows sends back to the implementer with the bump instruction"
+      ]
+    },
+    {
+      "name": "any unmet row sends back, an author meeter included",
+      "file": "products/factory/src/shepherd/attest-send-back.ts",
+      "find": "why === NO_MEETER && ",
+      "replace": "",
+      "kills": [
+        "a reviewer's declined attestation attest-unmet meeter-is-author still raises approve-merge"
+      ]
+    },
+    {
+      "name": "the send-back has no cap",
+      "file": "products/factory/src/shepherd/send-back.ts",
+      "find": "attestSendBacksBefore(reviews, headSha) >= ATTEST_SEND_BACKS",
+      "replace": "attestSendBacksBefore(reviews, headSha) >= ATTEST_SEND_BACKS + 1",
+      "kills": [
+        "a reviewer's declined attestation a send-back past the cap raises approve-merge"
+      ]
+    }
+  ]
+}

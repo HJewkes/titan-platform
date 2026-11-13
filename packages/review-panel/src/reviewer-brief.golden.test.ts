@@ -68,7 +68,7 @@ describe("rendered briefs against main's output", () => {
     const brief = reviewerBrief({ ...target, attestClaims: [{ ...attestClaims[0]!, changedFiles: ["src/ci-wait.ts", "src/helper.ts"] }] });
 
     expect(brief).toContain("Files of ci-wait's closure this PR changed: `src/ci-wait.ts`, `src/helper.ts`.");
-    expect(brief.indexOf("Files of ci-wait")).toBeLessThan(brief.indexOf("`Attests:"));
+    expect(brief.indexOf("Files of ci-wait")).toBeLessThan(brief.indexOf("`Attests: ci-wait@"));
   });
 
   it("counts the closure files beyond thirty instead of listing them", () => {
