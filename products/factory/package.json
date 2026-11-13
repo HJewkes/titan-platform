@@ -54,7 +54,7 @@
     "@titan-design/png-delta": "workspace:^",
     "@titan-design/registry": "workspace:^",
     "@titan-design/review-panel": "workspace:^",
-    "@titan-design/review-schema": "^0.1.0",
+    "@titan-design/review-schema": "^0.3.0",
     "@titan-design/review-workflow": "workspace:^",
     "@titan-design/rpc-client": "workspace:^",
     "@titan-design/rpc-protocol": "workspace:^",
