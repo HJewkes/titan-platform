@@ -2,6 +2,56 @@ import { z } from 'zod';
 
 declare const DELIVERABLE_ID_REGEX: RegExp;
 declare const TaskSchema: z.ZodObject<{
+    field_origin: z.ZodOptional<z.ZodRecord<z.ZodEnum<{
+        class: "class";
+        source: "source";
+        rank: "rank";
+        done_reason: "done_reason";
+        blocked_on: "blocked_on";
+        serves: "serves";
+        source_ref: "source_ref";
+        filed_by: "filed_by";
+    }> & z.core.$partial, z.ZodString>>;
+    class: z.ZodOptional<z.ZodEnum<{
+        product: "product";
+        upkeep: "upkeep";
+    }>>;
+    serves: z.ZodOptional<z.ZodUnion<readonly [z.ZodLiteral<"none">, z.ZodString]>>;
+    source: z.ZodOptional<z.ZodEnum<{
+        owner: "owner";
+        plan: "plan";
+        "follow-up": "follow-up";
+        review: "review";
+        sweep: "sweep";
+        audit: "audit";
+        coordinator: "coordinator";
+        incident: "incident";
+    }>>;
+    source_ref: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodObject<{
+        from_pr: z.ZodString;
+        from_task: z.ZodString;
+        head: z.ZodOptional<z.ZodString>;
+    }, z.core.$strict>]>>;
+    filed_by: z.ZodOptional<z.ZodString>;
+    rank: z.ZodOptional<z.ZodEnum<{
+        p0: "p0";
+        p1: "p1";
+        p2: "p2";
+        p3: "p3";
+    }>>;
+    done_reason: z.ZodOptional<z.ZodEnum<{
+        shipped: "shipped";
+        superseded: "superseded";
+        duplicate: "duplicate";
+        moot: "moot";
+        "wont-do": "wont-do";
+    }>>;
+    blocked_on: z.ZodOptional<z.ZodEnum<{
+        owner: "owner";
+        decision: "decision";
+        task: "task";
+        external: "external";
+    }>>;
     id: z.ZodString;
     parent: z.ZodOptional<z.ZodString>;
     dep: z.ZodOptional<z.ZodArray<z.ZodString>>;
@@ -60,6 +110,15 @@ interface InitiativeBriefRef {
  * brief, or a visibility value outside the closed set, is owner-only.
  */
 declare function isAgentVisible(initiative: InitiativeBriefRef): boolean;
+
+/** A brief's `task_require`: the provenance fields every task filed in that initiative must carry. */
+declare const TaskRequireSchema: z.ZodArray<z.ZodEnum<{
+    class: "class";
+    source: "source";
+    serves: "serves";
+    source_ref: "source_ref";
+}>>;
+type TaskRequire = z.infer<typeof TaskRequireSchema>;
 
 /** Where the owner said it: the record id plus the reference to the exact quote. */
 declare const OwnerIntentRefSchema: z.ZodObject<{
@@ -195,10 +254,10 @@ declare const DeliverableSchema: z.ZodObject<{
     done_when: z.ZodString;
     target: z.ZodUnion<readonly [z.ZodString, z.ZodNull]>;
     status: z.ZodEnum<{
+        shipped: "shipped";
         active: "active";
         dropped: "dropped";
         planned: "planned";
-        shipped: "shipped";
     }>;
     owner_seat: z.ZodString;
     tags: z.ZodArray<z.ZodString>;
@@ -511,4 +570,4 @@ type CategorizedTask = Pick<Task, "id" | "status" | "kind" | "cos" | "area" | "d
  */
 declare function checkCategories(task: CategorizedTask, registry: CategoryRegistry | null): CategoryError[];
 
-export { type AreaEntry, BUILT_IN_STATUSES, type Bet, BetSchema, type CategorizedTask, type CategoryAxis, type CategoryError, type CategoryRegistry, CategoryRegistrySchema, type ClaimRow, type CriticalPathOptions, type CriticalPathResult, type CrossInitiativeParentWarning, DELIVERABLE_ID_REGEX, DELIVERABLE_STATUSES, DISPOSITION_KINDS, type Deliverable, type DeliverableEntry, DeliverableSchema, type DeliverableStatus, type DispositionCheck, type DispositionKind, type DispositionRow, DispositionRowSchema, type EdgeChange, type EdgeCheck, type EdgeError, type EdgeField, type Edges, type ExternalDep, type Freeze, type FreezeEndCondition, FreezeEndConditionSchema, FreezeSchema, type InitiativeBriefRef, type InitiativeVisibility, InitiativeVisibilitySchema, type OutOfScope, OutOfScopeSchema, type Outcome, OutcomeSchema, type OwnerIntentRef, OwnerIntentRefSchema, type Prediction, PredictionSchema, type ReviewItem, type ReviewPin, type RunCost, type StatusEntry, TOPIC_PRIORITIES, TOPIC_VERDICTS, type Task, type TaskFloat, TaskSchema, type TaskTreeNode, type TopicPriority, type TopicRow, type TopicVerdict, categoriesPath, checkCategories, checkDispositions, checkEdges, criticalPath, deliverablePath, deliverablesDir, isAgentVisible, parseCategoryRegistry, parseClaimsAudit, parseDeliverableRegistry, parseDispositions, parseTopicsJudged, prioritizedTopics, readEdges, readReviewPin, readTsv, sumRunCost, summaryRecommendations, taskTree };
+export { type AreaEntry, BUILT_IN_STATUSES, type Bet, BetSchema, type CategorizedTask, type CategoryAxis, type CategoryError, type CategoryRegistry, CategoryRegistrySchema, type ClaimRow, type CriticalPathOptions, type CriticalPathResult, type CrossInitiativeParentWarning, DELIVERABLE_ID_REGEX, DELIVERABLE_STATUSES, DISPOSITION_KINDS, type Deliverable, type DeliverableEntry, DeliverableSchema, type DeliverableStatus, type DispositionCheck, type DispositionKind, type DispositionRow, DispositionRowSchema, type EdgeChange, type EdgeCheck, type EdgeError, type EdgeField, type Edges, type ExternalDep, type Freeze, type FreezeEndCondition, FreezeEndConditionSchema, FreezeSchema, type InitiativeBriefRef, type InitiativeVisibility, InitiativeVisibilitySchema, type OutOfScope, OutOfScopeSchema, type Outcome, OutcomeSchema, type OwnerIntentRef, OwnerIntentRefSchema, type Prediction, PredictionSchema, type ReviewItem, type ReviewPin, type RunCost, type StatusEntry, TOPIC_PRIORITIES, TOPIC_VERDICTS, type Task, type TaskFloat, type TaskRequire, TaskRequireSchema, TaskSchema, type TaskTreeNode, type TopicPriority, type TopicRow, type TopicVerdict, categoriesPath, checkCategories, checkDispositions, checkEdges, criticalPath, deliverablePath, deliverablesDir, isAgentVisible, parseCategoryRegistry, parseClaimsAudit, parseDeliverableRegistry, parseDispositions, parseTopicsJudged, prioritizedTopics, readEdges, readReviewPin, readTsv, sumRunCost, summaryRecommendations, taskTree };

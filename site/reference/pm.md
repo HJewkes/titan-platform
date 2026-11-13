@@ -318,6 +318,37 @@ OutOfScopeSchema.parse({
 });
 ```
 
+## Task provenance
+
+`TaskSchema` carries where a task came from and why it closed, so the ticket scorecard reads
+them instead of inferring them. Every field is optional on read: a task file written before
+these fields still parses.
+
+| Field | Values |
+|---|---|
+| `class` | `product`, `upkeep` |
+| `serves` | an `OutcomeSchema` id (`alpha/faster-landing`), or `none` |
+| `source` | `owner`, `plan`, `follow-up`, `review`, `sweep`, `audit`, `coordinator`, `incident` |
+| `source_ref` | a string, or `{ from_pr: "owner/repo#12", from_task: "AL-7", head? }` |
+| `filed_by` | an agent name, or `owner` |
+| `rank` | `p0`, `p1`, `p2`, `p3` |
+| `done_reason` | `shipped`, `superseded`, `duplicate`, `moot`, `wont-do` |
+| `blocked_on` | `owner`, `decision`, `task`, `external` |
+| `field_origin` | per field above: `filed`, `owner`, `audit` or `inferred:<heuristic-id>` |
+
+`source_ref` must fit `source`. `owner` needs a single-token decision or owner-queue item id
+(`D12`); whether it exists is active-work's check. `plan` takes `path#slice`. `follow-up` and
+`review` take the `from_pr` object, and no other source does. A `source_ref` with no `source`
+is refused.
+
+An initiative brief's `task_require` (`TaskRequireSchema`) lists which of `class`, `serves`,
+`source` and `source_ref` every new task there must carry. The schema only reads the list;
+active-work's `task add` and `task edit` enforce it.
+
+To add a provenance field, add it to `TaskProvenanceShape` in `src/provenance.ts`, optional.
+Its `field_origin` key follows from that shape. List it in `TASK_REQUIRABLE_FIELDS` if a
+brief may require it.
+
 ## What it deliberately does not do
 
 It reads no files, parses no YAML and writes nothing, the category and deliverable

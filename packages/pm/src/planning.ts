@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { TASK_ID_REGEX, isoDate } from "./task.js";
+import { OUTCOME_ID_REGEX, SLUG, TASK_ID_REGEX } from "./ids.js";
+import { isoDate } from "./task.js";
 
 // Planning records live in an initiative's plan/ folder, so each id carries its initiative as a prefix.
-const SLUG = "[a-z0-9][a-z0-9-]*";
 
 const initiativeSlug = z.string().regex(new RegExp(`^${SLUG}$`), {
   message: "initiative must be a lowercase slug (e.g. alpha)",
@@ -11,7 +11,7 @@ const initiativeSlug = z.string().regex(new RegExp(`^${SLUG}$`), {
 const scopedId = (suffix: string, example: string) =>
   z.string().regex(new RegExp(`^${SLUG}/${suffix}$`), { message: `id must look like ${example}` });
 
-const outcomeId = scopedId(SLUG, "alpha/faster-landing");
+const outcomeId = z.string().regex(OUTCOME_ID_REGEX, { message: "id must look like alpha/faster-landing" });
 const betId = scopedId("B\\d+", "alpha/B1");
 const freezeId = scopedId("F\\d+", "alpha/F1");
 const outOfScopeId = scopedId("X\\d+", "alpha/X1");
