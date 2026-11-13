@@ -18,6 +18,17 @@
       "kills": [
         "attestTokens a bolded Attests heading is read"
       ]
+    },
+    {
+      "name": "any words before the colon make the Attests heading",
+      "file": "packages/review-panel/src/briefs/attest.ts",
+      "find": "const heading = EXACT_HEADING.exec(line.normalize(\"NFKC\"));",
+      "replace": "const heading = /^[^:]*:/.exec(line.normalize(\"NFKC\"));",
+      "kills": [
+        "attestTokens a withheld attestation is no Attests line",
+        "attestTokens a refused attestation is no Attests line",
+        "attestTokens a quoted Attests line is no Attests line"
+      ]
     }
   ]
 }
