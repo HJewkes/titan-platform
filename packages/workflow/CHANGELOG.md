@@ -1,5 +1,66 @@
 # @titan-design/workflow
 
+## 0.14.0
+
+### Minor Changes
+
+- 2256a3b: Meter agent-chat workflow steps from their transcripts and retire an agent mid-step when its slice's budget runs out. `StepUsage` gains `peakContextTokens`, and a code step can throw `CodeStepFailure` to keep what it spent.
+- fcc909b: Add `WorkflowRuntime.isLive(runId)`, which is true while this runtime still drives the run. A run this process drives in-process, under `titan-factory autoresearch start` or `resume`, now stops being waited on once the runtime has dropped it unfinished, for example after its lease lapsed. The CLI then exits nonzero with a single line that names the run as resumable and gives the resume command. The resume report lists such runs under `lost`. Serve's adoption sweep is unchanged.
+- 869014a: `StepUsage` gains optional `cacheReadTokens`, `cacheWrite5mTokens`, `cacheWrite1hTokens` and `model`. `agentRunner` fills them from the run's usage, and `addUsage` and `usageFromMeasurements` carry them. Absent stays absent.
+- 4a2495f: Capability context: `WorkflowRuntimeOptions.capabilities` and `ctx.capability(name)` give step bodies an opaque handle whose declared secrets are refused (`CapabilityLeakError`) or redacted before they reach step output, the trace, the store or a prompt variable. The factory's guarded context forwards `capability`.
+- 8641981: `ctx.capability(name)` now works only inside a step body (a seed's function). Asked from the workflow function between steps, it throws the new `CapabilityOutsideStepError`, which names the capability and never its handle or a secret. The scope is an `AsyncLocalStorage` entered around the seed's function, so two seeds running at once under `Promise.all` each get the handle while the workflow body between them does not. A workflow that read a capability outside a seed must move that call into one.
+- 0229ba6: Add `codeStep`, `codeRoute` and `codeRecordRoute`: the code-step pair a host dispatches JSON input through and records one `{ result }` record from, with an `envelope` hook for the stored record and an `errorText` hook for thrown messages.
+- ee64f09: Add `WorkflowRunStore.listByWorkflow` and `WorkflowRuntime.listByWorkflow`, which load one workflow's runs of the asked statuses with a `WHERE workflow_name = ?` read instead of every run. New tables get a `(workflow_name, status)` index, and `workflowNameIndexMigration` adds it to an existing table.
+- 2165cec: Keep per-step telemetry. A completed dispatch's `StepResult` now records `startedAt`, `firstStartedAt` and `restarts`, and a seed's records `startedAt`; `projectRunTrace` places each attempt at its recorded start. Every `WorkflowEvent` carries `at` from the runtime clock. A `codeRecordRoute` body may return `usage` beside `result`; the route reports it as the step's usage, so `mapItems` sums and budgets it like a dispatch's. All fields are optional, so stored runs and events from earlier releases read as before; no migration is needed.
+
+### Patch Changes
+
+- d9029a5: Map every character outside letters, digits and underscore in a step id to `_` when building `STEP_OUTPUT_` variables, so fan-out (`review/src/a.ts`) and suffixed (`ci-wait:final`) step outputs are reachable from a template. Ids that collide after mapping share one variable; the later result wins.
+- ceb951c: A durable step that ends with cancellation unknown now keeps the spend its harness reported. `DurableStepOutcome`'s `cancellation_unknown` gains `usage?`, and the parked try holds it as `unsettledUsage` on its active step. Reconcile answers the parked try with the same terminal again, so that report replaces the earlier one instead of adding to it. The spend is charged once: to the retry that replaces the try after a retry-safe restart, or to the answer `completeStep` records.
+- 0648eab: Tests now pin that a durable step whose harness stops after spending counts that spend once against a `mapItems` budget, for each of the aborted, wall_time_exceeded and cancelled_unknown stops, even when reconcile returns the same terminal again. Test only; no production code changes.
+- 9b42150: Use the shared `isRecord`, `isObjectLike` and `errorCode` from `@titan-design/rpc-protocol/narrow` in place of local copies. Behaviour is unchanged.
+- a1a1adc: Answering the only parked step of a `recovery_required` run with `completeStep` now lets the run resume instead of parking it again.
+- 77c8373: TP-3107 S4a: `FactoryHostOptions.markerShadow` wraps each workflow's guarded context in `shadowContext`. Before every fact step it reports a marker verdict, and after the live call it appends the step's marker. It is off by default and serve does not set it, so `step_results` stays authoritative. `@titan-design/workflow` now exports `memoKey` and `CapabilityVault`.
+- 8bfa004: A parked durable step keeps the spend its first `cancellation_unknown` report carried when a later report for the same step has no usage. Before, the repeat report dropped the recorded spend, so the operator's answer was charged nothing.
+- 50fd2a5: A replayed authorize step now reads its recorded outcome through a schema instead of a cast, so a malformed record throws a validation error rather than being trusted. Typed-lint cleanup elsewhere in the package changes no behavior.
+- Updated dependencies [ff061ba]
+- Updated dependencies [9386796]
+- Updated dependencies [e8159b1]
+- Updated dependencies [cca108a]
+- Updated dependencies [9411e94]
+- Updated dependencies [91e3e3d]
+- Updated dependencies [4ea511b]
+- Updated dependencies [2917ad8]
+- Updated dependencies [211db45]
+- Updated dependencies [b3f677b]
+- Updated dependencies [13f4ff8]
+- Updated dependencies [84d962e]
+- Updated dependencies [6c2df6a]
+- Updated dependencies [c58d555]
+- Updated dependencies [6c3c967]
+- Updated dependencies [c026f23]
+- Updated dependencies [286b626]
+- Updated dependencies [5edd38d]
+- Updated dependencies [9b42150]
+- Updated dependencies [9614680]
+- Updated dependencies [c1f9297]
+- Updated dependencies [646f4d7]
+- Updated dependencies [5e34e3d]
+- Updated dependencies [869014a]
+- Updated dependencies [d46cbce]
+- Updated dependencies [ae64085]
+- Updated dependencies [1b0c46a]
+- Updated dependencies [1bc6431]
+- Updated dependencies [342c6ba]
+- Updated dependencies [342c6ba]
+- Updated dependencies [0100482]
+  - @titan-design/agent@0.7.0
+  - @titan-design/authority@0.6.0
+  - @titan-design/agent-protocol@0.10.0
+  - @titan-design/hitl@0.10.0
+  - @titan-design/store-sqlite@0.5.0
+  - @titan-design/rpc-protocol@0.4.0
+
 ## 0.13.1
 
 ### Patch Changes

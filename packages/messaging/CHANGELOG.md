@@ -1,5 +1,21 @@
 # @titan-design/messaging
 
+## 0.5.0
+
+### Minor Changes
+
+- 770f604: `InteractiveTransport` gains `sendVoice({ handle, audio })` and `sendPhoto({ handle, image, caption })`, and `ChannelCapabilities` gains `media`. Both take bytes (`MediaFile`) and answer a `MediaSendResult`. Telegram uploads multipart form data with the chat id to `sendVoice` and `sendPhoto`, defaults the file label to OGG voice and JPEG photo, fails a caption over 1024 characters as `too-long` before any call, and reports a 429 as `rate-limited` with `retryAfterSeconds`. BlueBubbles answers `unsupported` with capability `media` and makes no request. `MockTransport` logs `sendVoice` and `sendPhoto` events and refuses them when `media` is off. A consumer's own `InteractiveTransport` implementation or `ChannelCapabilities` literal must add the two methods and the flag.
+
+### Patch Changes
+
+- 204e930: Export `TELEGRAM_MAX_PHOTO_BYTES` and `TELEGRAM_MAX_VOICE_BYTES` from the package entry so consumers can check media size before sending.
+- a038837: The README capability table now shows `false` for the Mock default of `buttonStates`, matching `DEFAULT_CAPABILITIES` in `mock.ts`.
+- 1e7df28: Narrow parsed JSON with a record guard instead of type assertions in the BlueBubbles and Telegram readers. No behaviour change.
+- 9b42150: Use the shared `isRecord`, `isObjectLike` and `errorCode` from `@titan-design/rpc-protocol/narrow` in place of local copies. Behaviour is unchanged.
+- 71dc883: Telegram `sendPhoto` and `sendVoice` now refuse a file over the Bot API upload limit (10 MB for a photo, 50 MB for a voice note) with a `too-long` error before any request, instead of uploading it to be rejected.
+- Updated dependencies [5edd38d]
+  - @titan-design/rpc-protocol@0.4.0
+
 ## 0.4.2
 
 ### Patch Changes

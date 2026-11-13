@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/review-burden",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Pure review-burden score for a pull request: path classes, one-way door facts and the merge-danger footer parser",
   "type": "module",
   "main": "./dist/index.js",

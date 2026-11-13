@@ -1,5 +1,102 @@
 # @titan-design/session-analytics
 
+## 0.18.0
+
+### Minor Changes
+
+- 225f3fb: `cacheTtlWhatIf` splits rebuilds by the last action before the gap: `ci-wait`, `other-bash` or `end-of-turn`, as `byGapCause`. `readTtlRows` takes the action from the previous request's tool calls in the same sidechain, and the text render adds a by-gap-cause table.
+- 09c91f4: `cacheTtlWhatIf` replays sessions already on 5m toward 1h: a 5-60 minute gap rebuild reverts to a read of `min(write, previous prompt)`. The saving is reported per role and profile as `reverseReverts`, `reverseTokens` and `reverseSavingUsd`.
+- 25fcc67: Move the return-contract report parser into session-analytics. `parseReport` now lives there, reads the `Head:` sha and the `CI:` paste (worst state first) as well as the status, PR, plan, PARKED line and proposed tasks, and accepts a sentence after the status word (`Status: DONE. Plan: ...`). session-analytics also exports `extractFriction`, `extractConcerns`, `lineCluster` and `clusterOf`. factory keeps only the `burndown-slices` reader. session-miner gains `titan-miner report intake --shadow [--since 24h] [--eval]`, which writes one row per worker report (status, PR, head, CI, concern classes, suggested actions), acts on nothing, and with `--eval` scores the suggested closeouts against what happened next in the event log.
+- 974b429: `routeOutcomes` joins routed spawns (the `session_origin.route_*` columns) to their PRs and Shepherd runs. It groups them by table, mode, prior, estimate band, profile, source and agreement, never pooled, and reports spawns, merged PRs, first-pass clean %, review rounds and fix-round spawns per PR, and implementer and all-in $ per merged PR. A run joins on its PR and the spawn's task, so two slices of one task never share a PR.
+- f896485: `prefixReuse(rows, { windowMin })` reports first-call cache-read share, input spend at list price, a simulated system-prompt hit rate within the window, and the pairwise first divergence of requests by block; `firstDivergence` compares two requests. `scripts/prefix-report.mjs` prints it over recent transcripts.
+- fb60007: `cacheTtlWhatIf` also prices a no-cache alternative per role and per profile: every prompt token at the input rate, with no cache writes or reads. Buckets gain `noCacheNetUsd` and `noCacheCheaper`, totals gain `noCacheNetUsd`, `TtlRequestRow` gains `cacheWrite5mTokens`, and the text table adds a `no-cache net` column that flags a bucket where no cache is cheaper. The 5m-against-1h numbers are unchanged.
+- 067c518: Add a browser-safe `@titan-design/session-analytics/timeline` subpath. It exports `countAtOrBefore` and the `SessionTimeline` types and imports no session-graph, store-sqlite, session-read or `node:*` module at runtime, so a browser session view can scrub a timeline without the Node-only barrel.
+- 207a81b: Add the daily friction audit. session-analytics gains `readWorkerReports`, which reads agent-chat's `Status:` report messages with each worker's last spawn, and `frictionDailyReport`, which takes each report's `Friction:` line (falling back to labelled `Concerns:` and blocked lines), buckets the lines by keyword and ranks the clusters by reports and agent-hours, plus `renderFrictionTop`, `renderFrictionMarkdown` and `frictionDeposit` for the day's owner inbox know-item. session-miner gains `titan-miner friction-daily [--since 24h] [--dry-run] [--archive-dir <dir>]`, which archives the raw rows, withdraws the earlier days' items and files today's through `titan-console`, and a daily 14:05 UTC systemd timer in `ops/systemd`.
+- 207a81b: Lead the daily friction audit with friction measured from worker transcripts. session-analytics gains `transcriptSignals` (denials and tool errors through insights Q5's classifier, in-turn waits over five minutes, and repeated commands and test re-runs with no edit between), `followUpSignals` (insights Q6's brief-fix and correction classes), `readWorkerSessions` and `readSpawnerMessages`, and a per-agent agreement between log and self-report. Q5's `classifyError` and Q6's `classifyFollowUp` move into session-analytics, and the miner's insights now import them. `frictionDailyReport` now takes `{ reports, logs, window }` and returns `logs`, `reports` and `agreement`. Report lines that are scope notes, or `Concerns:` lines that name no friction cause, are set aside as non-friction, and `ci-wait` needs a wait word. The renderers move to `renderLogTop` and `renderReportTop`. `titan-miner friction-daily` gains `--profiles <dir>`.
+- a6b29cd: Add the ticket scorecard core (TP-5446 slice S1): `taskRow`, `weekRows`, `rulePick`, `rulePlacement`, `redFlags` with `DEFAULT_THRESHOLDS`, `isoWeek`, and the SQLite store (`SCORECARD_MIGRATIONS`, task and week row upserts and reads, and the write-once weekly pool snapshot). Pure functions over typed rows the caller reads; no I/O beyond the `Db` handed in.
+- 8436f35: Link scorecard dispatches through the session origin when a spawn recorded no task (TP-5446 slice S12). session-read's `assignedTaskIds` takes an optional `spawnTask`, the spawn's recorded `meta.task`; a known id there wins over the name and brief rules and reports source `spawn-meta`. active-work's agent-chat origin resolver passes it. session-analytics' `ScorecardSpawn` gains an optional `link` provenance; a first dispatch linked by inference records it under `provenance.firstDispatchTs`, so the row counts toward the week's inferred share. session-miner's `ticket-scorecard run` falls back, for a spawn with no `meta.task`, to the session graph's resolved `session_origin` link when it names exactly one task, marked `inferred:<task_source>`; a link naming several tasks or none is left unlinked and counted. `run` prints those counts, and `reproduce` adds a per-week table of the population and the share of its rows whose dispatch link is inferred. The console's task drill-down shows the inferred badge on the first dispatch.
+- 047aa4c: Add the ticket scorecard job (TP-5446 slice S2). session-miner gains `titan-miner ticket-scorecard run [--rebuild] [--dry-run]`. It reads events.db, factory.sqlite3, the graph, the task files (archive included) and the inferred-labels file, all read-only. It keeps per-source watermarks and recomputes only the dirty tasks. It snapshots each ISO week's rule-ready pool once, freezes closed weeks to `weeks/<week>.json`, and reports a closed week that recomputes differently as drift without overwriting it. Each pass is logged to the `run` table. session-analytics adds Shepherd phase medians per week (`phaseWeeks`, `upsertPhaseWeeks`, `readPhaseWeeks`, store migration 2), `recordRun` and `clearDerivedRows`.
+- 49fa132: Full and `--full` index passes no longer hold the event loop for seconds (TP-4175). `refreshCorpus` and `indexTranscript` take a `yieldPoint`. With one, each transcript's delta is applied by the new `applyDeltaYielding` in bounded steps inside one transaction held open across the yields, so it still commits or rolls back whole. The rollup runs one session per transaction with a yield after each. Without a `yieldPoint`, nothing changes. session-analytics adds `staleEpisodeSessionsYielding`, which pages the backlog sweep by session and returns the same list as `staleEpisodeSessions`. active-work's full pass passes its `yieldPoint` to both. On a fixture of 500 transcripts, the longest synchronous chunk of a `--full` rebuild drops from 2380 ms to 141 ms.
+
+### Patch Changes
+
+- 49f5aef: `cacheTtlWhatIf` replays 5m sessions over every request, priced or not, so an unpriced middle request no longer hides a rebuild. It also reports `reversePremiumUsd` and `reverseNetUsd` per role and profile: the replay saving less the 1h-over-5m premium on the writes it keeps.
+- 5ba850e: `parseDenials` reads classifier refusals from session-read's `decodeClaudeToolLines` observations, joined to the refused call by call id, instead of its own transcript decoder. A refusal whose result carries no call id is no longer counted.
+- 12e2109: The cache-ttl gap cause and the transcript friction cluster now share one ci-wait head rule (`ci-wait`, `gh pr checks`, `gh run`) from `ci-wait-head`. Friction now reads every `gh run` subcommand as a CI wait, where it read only watch, view and list, and counts the bare `ci-wait` helper as a CI wait only when it is invoked, not when a command merely names it (`cat ci-wait-head.ts`).
+- 0145f82: Share one `groupBy`, one seat-and-window scope test and one report header and sources renderer across the reports, and move the review-fill tool-use owner lookup into request-owner. No behaviour change.
+- e595887: Classify sessions with an `sdk-ts` entrypoint and no origin row as `other_headless` instead of `human_interactive`.
+- eaa7649: `readCoverage` counts only readable (status `ok`) transcripts in `facetBacklog`, and is exported, so a quarantined or missing file no longer inflates the backlog that `miner cost` and `miner status` both report.
+- 9b42150: Use the shared `isRecord`, `isObjectLike` and `errorCode` from `@titan-design/rpc-protocol/narrow` in place of local copies. Behaviour is unchanged.
+- a97c166: Classify every `sdk-*` entrypoint other than `sdk-cli` (such as `sdk-py`) as other_headless, not only `sdk-ts`.
+- c465bf0: The cache-TTL reverse replay no longer treats a sidechain request as the previous prompt of a main-chain request. `TtlRequestRow` carries `isSidechain`, and the replay groups by session and chain.
+- 8ede337: Add `titan-miner ticket-scorecard reproduce` (TP-5446 slice S4). It rebuilds the scorecard's task rows in memory, read-only on every store, and prints a pass/miss table against the 2026-11-12 hand audit's figures (`e1-expected.json`) with the plan's tolerance table. A figure the rows cannot give yet is shown as not measured, with the reason. The inferred-labels reader accepts an optional `class_raw` (product, upkeep or mixed), used only where the audit ranked mixed separately. session-analytics: fix rounds now count a suffixed step id (`sh-await-new-head:<n>`) by its family, so every caller counts live step ids correctly.
+- 37d60d1: Typed-lint burn-down: the SQL readers type their rows through `prepare<Params, Row>` and the JSON key and record reads narrow instead of asserting. A tool-result array with a null element no longer throws in the denial classifier. No other behaviour change.
+- b705e6c: Test support only: the `./timeline` browser-safe test now bundles the entry for the browser platform and fails if the import graph reaches a Node built-in, SQLite, session-graph or session-read module. No production code changes.
+- 7fad537: The timeline bundle test now also asserts that count-at-or-before.ts is among the esbuild inputs, so an emptied entry fails it. Test only; no production code changes.
+- 72f1e2d: The `reverseReplayTokens` doc comment now says the 5m-only test applies per chain rather than per session, and a test shows a main chain on 5m is replayed when only its sidechain wrote at 1h. Doc and test only; no behavior change.
+- Updated dependencies [7492819]
+- Updated dependencies [211db45]
+- Updated dependencies [f896485]
+- Updated dependencies [e8fbf15]
+- Updated dependencies [c15f0dc]
+- Updated dependencies [7a34209]
+- Updated dependencies [f15a84e]
+- Updated dependencies [9185af6]
+- Updated dependencies [1ac2768]
+- Updated dependencies [8d8f84e]
+- Updated dependencies [c18be57]
+- Updated dependencies [ed2be7e]
+- Updated dependencies [8c67d72]
+- Updated dependencies [ed29ec2]
+- Updated dependencies [1ac2768]
+- Updated dependencies [5a67a0b]
+- Updated dependencies [cfdfb64]
+- Updated dependencies [ff6fb95]
+- Updated dependencies [c58d555]
+- Updated dependencies [6c3c967]
+- Updated dependencies [6525ba7]
+- Updated dependencies [2129fae]
+- Updated dependencies [44038c9]
+- Updated dependencies [7d3b5fb]
+- Updated dependencies [481f3e4]
+- Updated dependencies [801f9c4]
+- Updated dependencies [377cca9]
+- Updated dependencies [f77d79d]
+- Updated dependencies [5edd38d]
+- Updated dependencies [9b42150]
+- Updated dependencies [8436f35]
+- Updated dependencies [9614680]
+- Updated dependencies [b672645]
+- Updated dependencies [cd8a1ce]
+- Updated dependencies [c1f9297]
+- Updated dependencies [646f4d7]
+- Updated dependencies [5f2b39f]
+- Updated dependencies [ec95948]
+- Updated dependencies [478b783]
+- Updated dependencies [52dc7f3]
+- Updated dependencies [12afa80]
+- Updated dependencies [32637bd]
+- Updated dependencies [49fa132]
+- Updated dependencies [852d2a9]
+- Updated dependencies [d2cce6c]
+- Updated dependencies [59b27e3]
+- Updated dependencies [6bc98f3]
+- Updated dependencies [d46cbce]
+- Updated dependencies [ae64085]
+- Updated dependencies [1bc6431]
+- Updated dependencies [52673e6]
+- Updated dependencies [342c6ba]
+- Updated dependencies [342c6ba]
+- Updated dependencies [0100482]
+- Updated dependencies [78ae7d9]
+- Updated dependencies [7012bf0]
+  - @titan-design/review-panel@0.9.0
+  - @titan-design/agent-protocol@0.10.0
+  - @titan-design/session-read@0.17.0
+  - @titan-design/session-graph@0.19.0
+  - @titan-design/store-sqlite@0.5.0
+  - @titan-design/rpc-protocol@0.4.0
+
 ## 0.17.4
 
 ### Patch Changes

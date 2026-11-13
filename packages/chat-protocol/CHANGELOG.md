@@ -1,5 +1,12 @@
 # @titan-design/chat-protocol
 
+## 0.3.1
+
+### Patch Changes
+
+- 85333de: Correct four stale doc comments: the drift-guard test name, the agent graph node id on respawn, the messaging `SendInput` mirror note, and the single-room precondition on `SyncBatch.prev_batch`.
+- c9f7746: Clear the typed-lint baseline for chat-protocol: replace type assertions in the agent graph and spark routing with narrowing, with no change in behaviour.
+
 ## 0.3.0
 
 ### Minor Changes
