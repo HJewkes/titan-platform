@@ -24,6 +24,9 @@ export interface CommandContext extends BaseContext {
   // Set by surfaces that know an agent is calling (MCP, or a CLI run under an
   // agent's environment). Commands may hold agents to stricter input rules.
   caller?: 'agent';
+  // Set by the daemon's /rpc and MCP-over-HTTP surfaces: the process environment there is the daemon's, so it says
+  // nothing about who called. Stdio MCP runs as the caller's child and leaves it unset.
+  remote?: true;
 }
 
 export type Command<Args = unknown, Result = unknown> = PkgCommand<Args, Result, CommandContext>;
