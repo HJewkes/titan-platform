@@ -1,5 +1,13 @@
 # titan-console
 
+## 0.14.1
+
+### Patch Changes
+
+- Updated dependencies [239d96b]
+  - @titan-design/pm@0.10.0
+  - @titan-design/owner-queue@0.8.1
+
 ## 0.14.0
 
 ### Minor Changes
