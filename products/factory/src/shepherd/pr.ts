@@ -31,7 +31,6 @@ import { reviewPhase, reviewRoutes, type ReviewWiring } from "./review.js";
 import { standingVerdict } from "./review-request.js";
 import { reviewKeepingSeatHold } from "./seat-recheck.js";
 import { reviewRefusedRoute, standingMerge } from "./merge-standing.js";
-import { attestDeclineRoute } from "./attest-send-back.js";
 import { LeaveLand, untilLeft } from "./leave-land.js";
 import { observePr, observeRoute } from "./observe.js";
 import { recordedRoute } from "./recorded-route.js";
@@ -68,7 +67,7 @@ import { countConflictRound, freshFailedRounds, tappedReview, type FailedRoundsS
 import { diagnosisRoutes } from "./no-verdict-diagnosis.js";
 import { deadEndRoutes } from "./dead-end.js";
 import { askingOnlyOverMerge, type NoMergeRun } from "./no-merge-no-ask.js";
-import { sendBack } from "./send-back.js";
+import { attestDeclineRoute, sendBack } from "./send-back.js";
 
 export { SHEPHERD_STEPS };
 
