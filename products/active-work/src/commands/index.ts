@@ -28,6 +28,18 @@ import categoryList from './category-list.js';
 // Deliverables
 import deliverableAdd from './deliverable-add.js';
 import deliverableList from './deliverable-list.js';
+// Plan records (TP-5453 P3)
+import { planFreezeAdd, planOutcomeAdd, planOutOfScopeAdd } from './plan-add.js';
+import { planBetAdd, planBetList } from './plan-bet.js';
+import {
+  planBetShow,
+  planFreezeList,
+  planFreezeShow,
+  planOutcomeList,
+  planOutcomeShow,
+  planOutOfScopeList,
+  planOutOfScopeShow,
+} from './plan-read.js';
 import deliverableSet from './deliverable-set.js';
 import deliverableShip from './deliverable-ship.js';
 
@@ -149,6 +161,19 @@ const ALL_COMMANDS: AnyCommand[] = [
   deliverableList,
   deliverableSet,
   deliverableShip,
+  // plan records
+  planOutcomeAdd,
+  planOutcomeShow,
+  planOutcomeList,
+  planBetAdd,
+  planBetShow,
+  planBetList,
+  planFreezeAdd,
+  planFreezeShow,
+  planFreezeList,
+  planOutOfScopeAdd,
+  planOutOfScopeShow,
+  planOutOfScopeList,
   // tasks
   taskAdd,
   taskApply,

@@ -3,6 +3,7 @@ import type { Task } from '../schemas/task.js';
 import { UsageError } from '../errors.js';
 import { DueArg } from './_categories.js';
 import { QuietArg } from './_task-quiet.js';
+import { parseOwnerSteps, TaskPlanArgsShape } from './_task-plan-fields.js';
 
 const EDITABLE_FIELDS = [
   'title',
@@ -33,6 +34,7 @@ export const ArgsSchema = z.object({
   cos: z.string().min(1).optional(),
   area: z.string().min(1).optional(),
   due: DueArg,
+  ...TaskPlanArgsShape,
   force: z.boolean().optional(),
   quiet: QuietArg,
 });
@@ -63,7 +65,7 @@ export function coerceValue(field: EditableField, value: unknown): unknown {
   return value;
 }
 
-export const PATCH_FIELDS = ['kind', 'cos', 'area', 'due'] as const;
+export const PATCH_FIELDS = ['kind', 'cos', 'area', 'due', 'bet', 'fold'] as const;
 
 export type PatchField = (typeof PATCH_FIELDS)[number];
 
@@ -77,6 +79,7 @@ export interface PatchEdit {
   addDeps?: string[];
   removeDeps?: string[];
   addDeliverables?: string[];
+  addOwnerSteps?: Task['owner_steps'];
 }
 
 export type Edit = { kind: 'field'; field: EditableField; value: unknown } | PatchEdit;
@@ -131,6 +134,7 @@ function patchEdit(args: Args): Edit {
     addDeps: args.dep,
     removeDeps: args.remove_dep,
     addDeliverables: args.deliverable,
+    addOwnerSteps: parseOwnerSteps(args.owner_step),
     fields: patchFields(args),
   };
 }
@@ -148,6 +152,7 @@ const PATCH_KEYS = [
   'dep',
   'remove_dep',
   'deliverable',
+  'owner_step',
   ...PATCH_FIELDS,
 ] as const;
 
@@ -157,14 +162,14 @@ export function parseEdit(args: Args): Edit {
   if (fieldForm && flagForm) {
     throw new UsageError(
       'Pass either <field> <value> or --append/--add-tag/--remove-tag/--parent/--dep/--remove-dep/' +
-        '--deliverable/--kind/--cos/--area/--due, not both',
+        '--deliverable/--kind/--cos/--area/--due/--bet/--fold/--owner-step, not both',
     );
   }
   if (fieldForm) return fieldEdit(args);
   if (flagForm) return patchEdit(args);
   throw new UsageError(
     'Nothing to edit: pass <field> <value>, --append <text>, --add-tag <tag>, --remove-tag <tag>, ' +
-      '--parent <id>, --dep <id>, --remove-dep <id>, --deliverable <id>, --kind, --cos, --area ' +
-      'or --due',
+      '--parent <id>, --dep <id>, --remove-dep <id>, --deliverable <id>, --kind, --cos, --area, ' +
+      '--due, --bet, --fold or --owner-step',
   );
 }

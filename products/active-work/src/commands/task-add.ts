@@ -35,6 +35,7 @@ import {
   type TaskOrLine,
 } from './_task-quiet.js';
 import { warnRelatedTasks } from './_task-related.js';
+import { parseOwnerSteps, TASK_PLAN_OPTIONS, TaskPlanArgsShape } from './_task-plan-fields.js';
 
 const ArgsSchema = z.object({
   slug: z.string().min(1),
@@ -53,6 +54,7 @@ const ArgsSchema = z.object({
   area: z.string().min(1).optional(),
   due: DueArg,
   draft: z.boolean().optional(),
+  ...TaskPlanArgsShape,
   quiet: QuietArg,
 });
 
@@ -101,6 +103,9 @@ function newTask(args: Args, id: string, priority: number): Task {
     due: args.due,
     tags: args.draft ? [...new Set([...(args.tags ?? []), DRAFT_TAG])] : args.tags,
     notes: args.notes,
+    bet: args.bet,
+    fold: args.fold,
+    owner_steps: parseOwnerSteps(args.owner_step),
     created: nowIso(),
     updated: today(),
     done_at: null,
@@ -142,6 +147,7 @@ export default defineCommand<Args, TaskOrLine>({
         description: 'File as a draft without a done_when; tagged draft, hidden from the bootstrap; promote with task edit --remove-tag draft',
       },
       ...CATEGORY_OPTIONS,
+      ...TASK_PLAN_OPTIONS,
       quiet: quietOption('PRJ-12 created'),
     },
   },
