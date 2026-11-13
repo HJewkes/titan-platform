@@ -7,7 +7,7 @@ import { EXTRACT_VERSION } from '@titan-design/session-read';
 import { z } from 'zod';
 import { defineCommand } from '../registry/index.js';
 import { defaultGraphPath, openGraphReadOnly } from '../session-index/graph.js';
-import { minerHiddenSlugs, redactCostReport } from './_miner-redact.js';
+import { minerShownKeys, redactCostReport } from './_miner-redact.js';
 
 /**
  * `active-work miner cost` — spend over the session-signal index, sliced by
@@ -66,7 +66,7 @@ export default defineCommand<Args, Result>({
         facetVersion: EXTRACT_VERSION,
       });
       const keys = full.byInitiative.map((bucket) => bucket.key);
-      const report = redactCostReport(full, await minerHiddenSlugs(ctx, keys));
+      const report = redactCostReport(full, await minerShownKeys(ctx, keys));
       if (ctx.format !== 'json') process.stderr.write(renderCostReportText(report));
       return report;
     } finally {

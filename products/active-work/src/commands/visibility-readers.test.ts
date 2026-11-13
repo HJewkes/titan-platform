@@ -1,10 +1,9 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { runDoctor } from '../doctor/index.js';
 import type { CommandContext } from '../registry/types.js';
 import { withEmptyActiveRoot } from '../test-support/test-helpers.js';
-import { minerHiddenSlugs, OWNER_ONLY_KEY, redactCostReport, redactOutcomeReport } from './_miner-redact.js';
+import { minerShownKeys, OWNER_ONLY_KEY, redactCostReport, redactOutcomeReport } from './_miner-redact.js';
 import doctor from './doctor.js';
 import focus from './focus.js';
 import migrate from './migrate.js';
@@ -87,8 +86,8 @@ describe('miner cost and outcomes (census row 18)', () => {
       const ctx = context(root, 'agent');
       const report = costReport();
 
-      const hidden = await minerHiddenSlugs(ctx, report.byInitiative.map((bucket) => bucket.key));
-      const redacted = redactCostReport(report, hidden);
+      const shown = await minerShownKeys(ctx, report.byInitiative.map((bucket) => bucket.key));
+      const redacted = redactCostReport(report, shown);
 
       expect(JSON.stringify(redacted)).not.toContain(HIDDEN);
       expect(redacted.byInitiative.map((bucket) => [bucket.key, bucket.costUsd])).toEqual([
@@ -106,8 +105,8 @@ describe('miner cost and outcomes (census row 18)', () => {
       seed(root);
       const ctx = context(root);
 
-      const hidden = await minerHiddenSlugs(ctx, [VISIBLE, HIDDEN]);
-      const redacted = redactOutcomeReport(outcomeReport(), hidden);
+      const shown = await minerShownKeys(ctx, [VISIBLE, HIDDEN]);
+      const redacted = redactOutcomeReport(outcomeReport(), shown);
 
       expect(redacted.byInitiative.map((bucket) => [bucket.key, bucket.usdPerMerged])).toEqual([
         [VISIBLE, 4],
@@ -116,12 +115,36 @@ describe('miner cost and outcomes (census row 18)', () => {
     });
   });
 
+  it('withholds an initiative no longer in the root, such as an archived one, from an agent', async () => {
+    await withEmptyActiveRoot(async (root) => {
+      seed(root);
+      const ctx = context(root, 'agent');
+      const archived = { key: 'archived-plans', requests: 1, sessions: 1, costUsd: 7 };
+      const report = { byInitiative: [archived], topSessions: [] };
+
+      const redacted = redactCostReport(report, await minerShownKeys(ctx, ['archived-plans']));
+
+      expect(redacted.byInitiative.map((bucket) => bucket.key)).toEqual([OWNER_ONLY_KEY]);
+    });
+  });
+
+  it('withholds every initiative name from an agent when the root cannot be listed', async () => {
+    await withEmptyActiveRoot(async (root) => {
+      const ctx = context(path.join(root, 'missing'), 'agent');
+      const report = costReport();
+
+      const redacted = redactCostReport(report, await minerShownKeys(ctx, report.byInitiative.map((bucket) => bucket.key)));
+
+      expect(redacted.byInitiative.map((bucket) => bucket.key)).toEqual(['repo:tools', OWNER_ONLY_KEY]);
+    });
+  });
+
   it('leaves the owner every initiative name', async () => {
     await withEmptyActiveRoot(async (root) => {
       seed(root);
       const ctx = context(root, 'owner');
 
-      const redacted = redactCostReport(costReport(), await minerHiddenSlugs(ctx, [HIDDEN]));
+      const redacted = redactCostReport(costReport(), await minerShownKeys(ctx, [HIDDEN]));
 
       expect(redacted).toEqual(costReport());
       expect(ctx.warnings).toEqual([]);
@@ -153,7 +176,7 @@ describe('doctor (census row 20)', () => {
       seed(root);
       writeMalformedSessions(root);
 
-      const report = await runDoctor({ activeRoot: root });
+      const report = await doctor.run({}, context(root, 'owner'));
 
       expect(JSON.stringify(report)).toContain(`${HIDDEN}/sessions/2026-09-01-bad.md`);
     });

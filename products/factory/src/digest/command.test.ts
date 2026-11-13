@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -34,7 +35,37 @@ function capture(env: NodeJS.ProcessEnv) {
   return { out, io: { stdout: (t: string) => void out.push(t), stderr: (t: string) => void out.push(t), env } };
 }
 
+/** A loopback active-work daemon whose one needs-decision task sits in an initiative its brief keeps from agents. */
+async function ownerOnlyActiveWork(): Promise<{ port: number; close: () => Promise<void> }> {
+  const task = { slug: "private-plans", id: "PP-7", title: "Choose the private storage plan", status: "open", tags: ["needs-decision"], created: "2026-03-09", updated: "2026-03-09" };
+  const inventory = { initiatives: [{ slug: "private-plans", human_only: false, agent_visible: false }], human_only_known: true };
+  const server: Server = createServer((req, res) => {
+    const data = req.url?.endsWith("/task.list") ? { tasks: [task] } : inventory;
+    req.resume();
+    req.on("end", () => res.setHeader("content-type", "application/json").end(JSON.stringify({ ok: true, data })));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (address === null || typeof address === "string") throw new Error("the fake daemon has no port");
+  return { port: address.port, close: () => new Promise((resolve) => server.close(() => resolve())) };
+}
+
 describe("runDigestVerb", () => {
+  it("keeps an owner-only initiative's decision in the owner's Needs you (TP-5556)", async () => {
+    const { env } = workspace();
+    const daemon = await ownerOnlyActiveWork();
+    const { out, io } = capture({ ...env, AW_PORT: String(daemon.port) });
+
+    try {
+      await runDigestVerb(io, call, { dryRun: true }, { exec: noAgentChat, now: NOW });
+    } finally {
+      await daemon.close();
+    }
+
+    expect(out.join("")).toContain("PP-7: Choose the private storage plan");
+  });
+
+
   it("writes the slot's markdown to the digest dir and the iCloud dir", async () => {
     const { root, env } = workspace();
     const { out, io } = capture(env);

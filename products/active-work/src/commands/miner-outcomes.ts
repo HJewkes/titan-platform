@@ -10,7 +10,7 @@ import { defineCommand } from '../registry/index.js';
 import { readDispatchRecords, type DispatchSkipped } from '../session-index/dispatch-records.js';
 import { defaultGraphPath, openGraphReadOnly } from '../session-index/graph.js';
 import { getInitiativeDir } from '../utils/paths.js';
-import { minerHiddenSlugs, redactOutcomeReport } from './_miner-redact.js';
+import { minerShownKeys, redactOutcomeReport } from './_miner-redact.js';
 
 /**
  * `active-work miner outcomes` — what each merged and done outcome cost, per
@@ -91,7 +91,7 @@ export default defineCommand<Args, Result>({
     try {
       const full = { ...costPerOutcome(db, assignments, window), skipped };
       const keys = full.byInitiative.map((bucket) => bucket.key);
-      const report = redactOutcomeReport(full, await minerHiddenSlugs(ctx, keys));
+      const report = redactOutcomeReport(full, await minerShownKeys(ctx, keys));
       if (ctx.format !== 'json') {
         process.stderr.write(renderCostPerOutcomeText(report) + skippedLine(skipped));
       }

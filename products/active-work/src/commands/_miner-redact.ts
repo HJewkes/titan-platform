@@ -1,32 +1,35 @@
 import type { CostBucket, CostReport, OutcomeBucket } from '@titan-design/session-analytics';
 import type { CommandContext } from '../registry/types.js';
-import { hiddenSlugsForCaller, noteHiddenInitiatives } from '../sessions/visibility.js';
+import { callerVisibility, noteHiddenInitiatives } from '../sessions/visibility.js';
 
 /**
- * Miner spend reports key buckets by initiative name. A non-owner caller gets every owner-only
- * initiative folded into one bucket under this key, so totals still add up and no name is served
+ * Miner spend reports key buckets by initiative name. A non-owner caller gets every initiative not
+ * known to be agent-visible folded into one bucket under this key, so totals still add up and no name is served
  * (TP-5556, census row 18).
  */
 export const OWNER_ONLY_KEY = 'owner-only';
 
-type Hidden = ReadonlySet<string>;
+/** Whether a bucket key may be served to this caller by name. */
+type Shown = (key: string) => boolean;
 
 const CWD_PREFIX = 'active-work:';
+
+/**
+ * Keys that name no initiative: the cwd guesses for a repo, another directory, a temp fork or no cwd,
+ * and the outcome report's bucket for a dispatch with none. Every other key is an initiative name.
+ */
+const NON_INITIATIVE_PREFIXES = ['repo:', 'other:'];
+const NON_INITIATIVE_KEYS = new Set(['unknown', 'ac-fork(tmp)', '(none)']);
+
+const namesNoInitiative = (key: string): boolean =>
+  NON_INITIATIVE_KEYS.has(key) || NON_INITIATIVE_PREFIXES.some((prefix) => key.startsWith(prefix));
 
 /** A session's initiative is a slug, or `active-work:<slug>` when it was guessed from the cwd. */
 const slugOf = (key: string): string => (key.startsWith(CWD_PREFIX) ? key.slice(CWD_PREFIX.length) : key);
 
-function namesHidden(key: string | null, hidden: Hidden): boolean {
-  return key !== null && hidden.has(slugOf(key));
-}
-
-function hiddenNamed(keys: readonly (string | null)[], hidden: Hidden): number {
-  return new Set(keys.filter((key) => namesHidden(key, hidden)).map((key) => slugOf(key!))).size;
-}
-
-function fold<T extends { key: string | null }>(rows: readonly T[], hidden: Hidden, merge: (a: T, b: T) => T): T[] {
-  const kept = rows.filter((row) => !namesHidden(row.key, hidden));
-  const folded = rows.filter((row) => namesHidden(row.key, hidden));
+function fold<T extends { key: string }>(rows: readonly T[], shown: Shown, merge: (a: T, b: T) => T): T[] {
+  const kept = rows.filter((row) => shown(row.key));
+  const folded = rows.filter((row) => !shown(row.key));
   if (folded.length === 0) return kept;
   const [first, ...rest] = folded;
   return [...kept, rest.reduce(merge, { ...first, key: OWNER_ONLY_KEY })];
@@ -41,12 +44,12 @@ const sumCost = (a: CostBucket, b: CostBucket): CostBucket => ({
 
 type InitiativeSpend = Pick<CostReport, 'byInitiative' | 'topSessions'>;
 
-export function redactCostReport<T extends InitiativeSpend>(report: T, hidden: Hidden): T {
+export function redactCostReport<T extends InitiativeSpend>(report: T, shown: Shown): T {
   return {
     ...report,
-    byInitiative: fold(report.byInitiative, hidden, sumCost),
+    byInitiative: fold(report.byInitiative, shown, sumCost),
     topSessions: report.topSessions.map((row) =>
-      namesHidden(row.initiative, hidden) ? { ...row, initiative: OWNER_ONLY_KEY } : row,
+      shown(row.initiative) ? row : { ...row, initiative: OWNER_ONLY_KEY },
     ),
   };
 }
@@ -73,16 +76,21 @@ const sumOutcome = (a: OutcomeBucket, b: OutcomeBucket): OutcomeBucket =>
     requests: a.requests + b.requests,
   });
 
-export function redactOutcomeReport<T extends { byInitiative: OutcomeBucket[] }>(report: T, hidden: Hidden): T {
-  return { ...report, byInitiative: fold(report.byInitiative, hidden, sumOutcome) };
+export function redactOutcomeReport<T extends { byInitiative: OutcomeBucket[] }>(report: T, shown: Shown): T {
+  return { ...report, byInitiative: fold(report.byInitiative, shown, sumOutcome) };
 }
 
-/** The owner-only names this caller may not see, with the count noted as a warning when any appear. */
-export async function minerHiddenSlugs(
+/**
+ * An allow list, since the keys come from the session graph's history, not the live root: an archived,
+ * renamed or unlisted initiative is withheld from a non-owner, and an unreadable root withholds every one.
+ * The count of withheld initiatives is noted as a warning.
+ */
+export async function minerShownKeys(
   ctx: Pick<CommandContext, 'activeRoot' | 'caller' | 'warnings'>,
-  keys: readonly (string | null)[],
-): Promise<Hidden> {
-  const hidden = await hiddenSlugsForCaller(ctx.activeRoot, ctx.caller);
-  noteHiddenInitiatives(ctx.warnings, hiddenNamed(keys, hidden));
-  return hidden;
+  keys: readonly string[],
+): Promise<Shown> {
+  const visible = await callerVisibility(ctx.activeRoot, ctx.caller);
+  const shown: Shown = (key) => namesNoInitiative(key) || visible(slugOf(key));
+  noteHiddenInitiatives(ctx.warnings, new Set(keys.filter((key) => !shown(key)).map(slugOf)).size);
+  return shown;
 }

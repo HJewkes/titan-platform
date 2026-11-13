@@ -99,7 +99,8 @@ function factorySources(call: FactoryCall, env: NodeJS.ProcessEnv, morningDir: s
   return {
     rows: () => data<WatchRow[]>("shepherd.list", { state: "all" }),
     gates: async () => (await pendingGates()).map(gateFact),
-    needs: async () => collectNeeds(ownerQueueSources(env, pendingGateReader(await pendingGates()), { morningDir })),
+    // The digest goes to the owner (timer, iCloud, ntfy), so its "Needs you" keeps owner-only initiatives' asks (TP-5556).
+    needs: async () => collectNeeds(ownerQueueSources(env, pendingGateReader(await pendingGates()), { morningDir }), { ownerOnly: true }),
   };
 }
 

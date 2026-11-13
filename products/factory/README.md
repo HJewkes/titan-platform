@@ -572,6 +572,12 @@ two sources share and whether merging folded it; a merged item lists what it was
 `--json` prints the merged `OwnerItem[]` instead. A source that cannot be read prints a line on
 stderr and the command exits 69 after printing the rest.
 
+Needs-decision tasks from an initiative whose brief withholds it from agents carry `ownerOnly`.
+`needs.list` and `needs.count` keep them for serve's HTTP route (the console) and drop them over
+MCP. `titan-factory needs` keeps them only in a shell where none of `AGENT_CHAT_NAME`,
+`AGENT_CHAT_AGENT_ID` or `CLAUDECODE` is set, so the owner running it inside Claude Code also loses
+them. The digest always keeps them, since it goes to the owner.
+
 `titan-factory digest run` reads its "Needs you" section from this same list, minus `know`
 items, which are news and not asks.
 
