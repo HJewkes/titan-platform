@@ -129,6 +129,15 @@ describe("carrying a MERGE to a tree-equal head", () => {
     expect(r.asked.some((step) => step.stepId.startsWith("sh-merge-evidence"))).toBe(false);
   });
 
+  it("carries a revert run's MERGE to a tree-equal head, as a feature run's", async () => {
+    const r = rig({ kind: "revert", baseRef: "main" }, EQUAL);
+
+    const verdict = await carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]));
+
+    expect(verdict).toMatchObject({ kind: "MERGE", headSha: NEW_HEAD });
+    expect(carryOf(r)).toMatchObject({ fromHead: REVIEWED, head: NEW_HEAD, rule: "tree-equal" });
+  });
+
   it("carries a carried MERGE on from the head it was first reviewed at", async () => {
     const r = rig({ kind: "feature", baseRef: "main" }, EQUAL);
     const second = fakeSha("second");
