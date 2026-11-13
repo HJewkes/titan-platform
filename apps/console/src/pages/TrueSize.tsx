@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { Button, ButtonText, HStack, Typography, VStack } from "@titan-design/react-ui";
 import { Spinner } from "../shell/Loading.js";
-import { frameSizeMismatch } from "../../server/review-schema-0.3/media.js";
+import { frameSizeMismatch } from "@titan-design/review-schema";
 import type { Manifest } from "../../server/round-schema.js";
 import { useQuery } from "../data/rpc.js";
 import { RoundAudio } from "./AudioPlayer.js";

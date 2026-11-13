@@ -44,7 +44,7 @@
   },
   "dependencies": {
     "@titan-design/evidence": "workspace:^",
-    "@titan-design/review-schema": "^0.1.0"
+    "@titan-design/review-schema": "^0.3.0"
   },
   "peerDependencies": {
     "zod": "^4.3.6"
