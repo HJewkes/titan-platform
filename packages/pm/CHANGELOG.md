@@ -1,5 +1,12 @@
 # @titan-design/pm
 
+## 0.8.0
+
+### Minor Changes
+
+- fc303a7: Add the optional task fields `bet`, `fold` and `owner_steps` to `TaskSchema`, with `BetLookup` and `betProblem` for the write-time check that a task's bet exists. active-work's `task add` and `task edit` refuse a task naming a bet the lookup does not know (TP-5453 P2).
+- d497596: Add a `./node` subpath to pm holding the planning-record file store (read, validated atomic write, the `<initiative>/plan/.lock`), so every plan writer shares one layout and one lock; the root entry stays pure. active-work's plan store is now a thin adapter over it, with no change in behaviour.
+
 ## 0.7.0
 
 ### Minor Changes
