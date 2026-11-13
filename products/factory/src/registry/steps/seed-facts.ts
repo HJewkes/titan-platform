@@ -30,7 +30,7 @@ export const seedFactSteps: readonly FactEntry[] = [
   }),
   defineStep({
     ...step("merge", "dispatch", "software", irreversible("pr", `${WRITE}: merges the PR on GitHub`)),
-    version: { bump: 1 },
+    version: { bump: 2 },
     fact: "landed",
     input: z.object({ repo: z.string(), pr: z.number(), sha: z.string(), method: z.string() }),
     output: z.looseObject({ done: z.boolean(), skipped: z.string().optional(), mergeSha: z.string() }),

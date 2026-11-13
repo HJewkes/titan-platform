@@ -5,9 +5,9 @@
     "bump": 5
   },
   "merge": {
-    "closure": "703bed53b352204b0f62f642a468ca0816bdda145adebb44e02668a79055fa6b",
+    "closure": "2329fdaf56f6cb9262d1b00e42af68e7f9eb4f14421d891ab457869a80552a7f",
     "schemaHash": "653b05d2233a372f6a61ca09ffcb45d5e8716ff2d1a8b61b06f131a1fd2bfbcf",
-    "bump": 1
+    "bump": 2
   },
   "sh-await-verdict": {
     "closure": "156546760c332ec8e28fbd5e59a725a63898e22245e59914dc334b4358566bdf",
