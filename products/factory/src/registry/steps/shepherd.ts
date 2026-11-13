@@ -46,6 +46,7 @@ export const shepherdSteps = [
   step("sh-merge-up", "dispatch", "software", effect("item", `${RECORD}: a MERGE carried across a clean merge-up`)),
   step("sh-release-preflight", "dispatch", "software", effect("item", `${WRITE}: records or clears the registration's release-ready head`)),
   step("sh-release-follow", "dispatch", "software", effect("external", `${WRITE}: files a fix task when the release job failed`)),
+  step("sh-release-author", "dispatch", "software", effect("item", `${RECORD}: whether the release App authored the head a release answer follows to`)),
   step("sh-stack-children", "dispatch", "software", effect("item", `${RECORD}: the stacked children listed after the parent landed`)),
   step("sh-restack", "dispatch", "software", effect("pr", `${WRITE}: pushes a child's restack and retargets its base`)),
   step("sh-main-ci", "dispatch", "software", READ_EFFECT),
