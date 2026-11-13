@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the own diff keeps the regenerated lock",
+      "file": "products/factory/src/shepherd/own-diff.ts",
+      "find": "[...generatedPathsFor(repo), ...REGENERATED]",
+      "replace": "[...generatedPathsFor(repo)]",
+      "kills": [
+        "ownDiff a regenerated closure.lock.json leaves the id unchanged"
+      ]
+    },
+    {
+      "name": "the own diff is read against the base tip rather than the merge base",
+      "file": "products/factory/src/shepherd/own-diff.ts",
+      "find": "[\"merge-base\", input.head, remoteBase(input.baseRef)]",
+      "replace": "[\"rev-parse\", remoteBase(input.baseRef)]",
+      "kills": [
+        "ownDiff a head that only merged main has the reviewed head's own-diff id",
+        "ownDiff an unreadable merge base records unread"
+      ]
+    },
+    {
+      "name": "a replay recorded before the step runs it anyway",
+      "file": "products/factory/src/shepherd/own-diff.ts",
+      "find": "  if (next !== undefined && next !== stepId) return;\n",
+      "replace": "",
+      "kills": [
+        "recordOwnDiff a replay recorded before the step existed skips it"
+      ]
+    }
+  ]
+}

@@ -24,6 +24,7 @@ import type { ShepherdDeps, ShepherdPhases } from "./phases.js";
 import { PUBLISH_REVIEW_STEPS, publishReviewRoute } from "./publish-review.js";
 import { DEFAULT_BROKER_DOWN_WAIT_MS, DEFAULT_BUSY_WAIT_MS, ReviewerAskTimedOut, ReviewerBrokerStillDown, busyWaits, clearReviewWait, notStarted, noteReviewWait, rosterUnread, rosterUnreadAfterAsk, patientRoster, startedSession, timedOutUnseen, whileBrokerBooting, whileBrokerBusy, type BrokerDownTiming, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
 import { CARRY_STEP, carryRoute, type CarryOptions } from "./tree-carry.js";
+import { OWN_DIFF_STEP, ownDiffRoute, recordOwnDiff } from "./own-diff.js";
 import { reviewerRoleFor, type ReviewerFacts, type ReviewerRoles } from "./reviewer-roles.js";
 import { spawnFacts } from "./spawn-facts.js";
 import type { TwoMergeMode } from "./g10-release.js";
@@ -65,6 +66,7 @@ export const REVIEW_STEPS: readonly StepDeclaration[] = [
   { id: SEAT_RECHECK_STEP, kind: "dispatch" },
   ...MERGE_EVIDENCE_STEPS,
   { id: CARRY_STEP, kind: "dispatch" },
+  { id: OWN_DIFF_STEP, kind: "dispatch" },
   ...PUBLISH_REVIEW_STEPS,
   ...ACCOUNT_STEPS,
   ...REVIEW_REQUEST_STEPS,
@@ -325,6 +327,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     codeRoute(SEAT_RECHECK_STEP, deps.now, seatVetoed(wiring, async (raw: unknown) => heldMerge(raw), deps.now, seatWait, ownerIn(deps.store))),
     codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput, signal: AbortSignal) => mergeEvidence(deps.port, input, wiring?.isFrozen ?? noFreezeStoreUntilTp523, registeredKind(deps.store, input.runId, deps.visualGate), { sleep: (ms) => deps.sleep(ms, signal) }, { reviewAppId: wiring?.reviewAppId, visualGate: deps.visualGate, threshold: wiring?.visualThreshold?.(input.repo), tier: wiring?.visualTier?.(input.repo), oldPath: wiring?.oldPath, attest: attestJudge(deps.port, deps.store, wiring ?? {}, { timing: { ...brokerTiming(deps), brokerDownWaitMs: wiring?.brokerDownWaitMs ?? DEFAULT_BROKER_DOWN_WAIT_MS }, budgetMs: wiring?.sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, signal }) })),
     carryRoute(deps.now, { ports: deps.gitCache, ...wiring?.carry }),
+    ownDiffRoute(deps.now, deps.port, { ports: deps.gitCache, ...wiring?.carry }),
     publishReviewRoute(deps),
     ...accountRoutes(deps, wiring?.accounts),
     reviewRequestRoute(deps),
@@ -348,7 +351,7 @@ async function lateVerdict(deps: ShepherdDeps, wiring: ReviewWiring | undefined,
 }
 
 /**
- * Read the head's fix-proof result, record which reviewer this head gets, start or adopt it, wait for its verdict, and take a
+ * Read the head's fix-proof result, record the head's own-diff id and which reviewer this head gets, start or adopt it, wait for its verdict, and take a
  * MERGE through the evidence step. A vacuous or test-less proof ends the review as NO_REPRO before any reviewer is started, unless
  * the owner waived it at this head: then the review proceeds and its MERGE goes only to the owner gate. An
  * unverified one goes to the reviewer marked unverified, and its MERGE records that standing but keeps the policy's grant (decision 303).
@@ -362,6 +365,7 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   if ("ended" in gated) return gated.ended;
   const { standing } = gated;
   if (request.seatHeld?.head === target.head && recordsRecheck(ctx, target.head)) return recheckSeat(ctx, target, request.seatHeld, standing);
+  await recordOwnDiff(ctx, target);
   const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId, ...(request.fresh && { fresh: true }), ...(request.cause && { cause: request.cause }), ...proofPlanFields(proof, target.head, standing) }, Intended);
   if (intent.kind !== "intent" && typeof intent.exhausted === "string") return accountHeld(ctx, target, { account: intent.exhausted });
   if (intent.kind !== "intent") return preflightRefused(ctx, target, intent) ?? notReviewed(ctx, target, intent);
