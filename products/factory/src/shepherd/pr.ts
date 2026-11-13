@@ -31,6 +31,7 @@ import { reviewPhase, reviewRoutes, type ReviewWiring } from "./review.js";
 import { standingVerdict } from "./review-request.js";
 import { reviewKeepingSeatHold } from "./seat-recheck.js";
 import { reviewRefusedRoute, standingMerge } from "./merge-standing.js";
+import { ATTEST_SEND_BACKS, attestDeclined, attestSendBacksBefore, declinedSteps } from "./attest-send-back.js";
 import { LeaveLand, untilLeft } from "./leave-land.js";
 import { observePr, observeRoute } from "./observe.js";
 import { recordedRoute } from "./recorded-route.js";
@@ -263,7 +264,7 @@ async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
   if (escalated) return routeEscalation(run, headSha, escalated);
   switch (route) {
     case "merge":
-      return true;
+      return attestDeclineRoute(run, routed);
     case "fresh-reviewer":
     case "retry-review":
     case "await-external":
@@ -284,6 +285,18 @@ async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
       if (route === "update-branch" && behindAt(run.lastCi, headSha) && (routed.outcome === "MERGE" || routed.outcome === "carried" || run.lastCi?.baseMoved !== true)) return true;
       throw new LeaveLand();
   }
+}
+
+/**
+ * True goes on to the merge decision as before. A MERGE whose reviewer declined to attest a claimed step first goes back
+ * to the implementer to replace the claim with a version bump, once per run; an unhandled wake or a second decline asks
+ * the owner as before (TP-5689).
+ */
+async function attestDeclineRoute(run: ShepherdRun, { headSha, verdict }: Routed): Promise<boolean> {
+  const steps = declinedSteps(verdict, headSha);
+  if (steps.length === 0 || attestSendBacksBefore(run.reviews, headSha) >= ATTEST_SEND_BACKS) return true;
+  if (await woken(run, "review", headSha, attestDeclined(run.target.pr, steps))) throw new LeaveLand();
+  return true;
 }
 
 /**
