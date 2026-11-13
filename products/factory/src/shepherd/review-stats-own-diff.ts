@@ -13,9 +13,9 @@ interface OwnDiffRound {
 /** Only these resolve a round as a pass: a reviewer read the head and said so. */
 const PASS_VERDICTS = new Set(["MERGE", "FIX_FIRST"]);
 
-/** Each head's recorded own-diff id; an `unread` record, or none, leaves the head out. */
-function ownDiffIds(run: WorkflowRun): Map<string, string> {
-  const ids = new Map<string, string>();
+/** Each head's own-diff id: the recorded one, else the one read from the git-cache; an `unread` record, or none, leaves the head out. */
+function ownDiffIds(run: WorkflowRun, backfilled: ReadonlyMap<string, string>): Map<string, string> {
+  const ids = new Map<string, string>(backfilled);
   for (const [key, step] of Object.entries(run.stepResults)) {
     const result = payloadOf(step);
     const head = key.split(":")[1];
@@ -45,8 +45,8 @@ const labelOf = (id: string | undefined, previous: VerdictHead | undefined): str
  * a head whose own-diff id equals that head's re-read a change a reviewer had already judged. Every figure comes from the
  * run's own records, so a refresh labels a run the same way each time.
  */
-export function labelOwnDiff(run: WorkflowRun, rounds: OwnDiffRound[]): void {
-  const ids = ownDiffIds(run);
+export function labelOwnDiff(run: WorkflowRun, rounds: OwnDiffRound[], backfilled: ReadonlyMap<string, string> = new Map()): void {
+  const ids = ownDiffIds(run, backfilled);
   const labels = new Map<string, string | null>();
   let previous: VerdictHead | undefined;
   for (const head of new Set(rounds.flatMap((round) => round.head ?? []))) {

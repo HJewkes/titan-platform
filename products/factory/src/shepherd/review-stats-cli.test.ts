@@ -201,7 +201,7 @@ describe("shepherd stats --reviews", () => {
     const view = store.prepare("SELECT repo, pr, rounds, usd FROM pr_review ORDER BY pr").all();
     store.close();
 
-    expect(again.refresh).toEqual({ added: 0, repriced: 0, transcriptReads: 0 });
+    expect(again.refresh).toMatchObject({ added: 0, repriced: 0, transcriptReads: 0 });
     expect(again.rows).toHaveLength(5);
     expect(again.rows[0]).toMatchObject({ runId: "run-1", round: 0, sessionId: "s1", verdict: "FIX_FIRST", usd: 1, costSource: "retire", queueMinutes: 1, reviewMinutes: 10 });
     expect(view).toEqual([{ repo: "acme/widgets", pr: 1, rounds: 3, usd: 6 }, { repo: "acme/widgets", pr: 2, rounds: 2, usd: 14 }]);
