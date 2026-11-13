@@ -282,6 +282,7 @@ declare const ownerItemSchema: z.ZodObject<{
     seat: z.ZodOptional<z.ZodString>;
     initiative: z.ZodOptional<z.ZodString>;
     personal: z.ZodBoolean;
+    ownerOnly: z.ZodOptional<z.ZodBoolean>;
     lens: z.ZodEnum<{
         "blocking-agent": "blocking-agent";
         "blocking-merge": "blocking-merge";

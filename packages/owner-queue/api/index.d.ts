@@ -176,6 +176,7 @@ declare const ownerCardSchema: zod.ZodObject<{
     seat: zod.ZodOptional<zod.ZodString>;
     initiative: zod.ZodOptional<zod.ZodString>;
     personal: zod.ZodBoolean;
+    ownerOnly: zod.ZodOptional<zod.ZodBoolean>;
     lens: zod.ZodEnum<{
         "blocking-agent": "blocking-agent";
         "blocking-merge": "blocking-merge";
@@ -1183,6 +1184,7 @@ declare const ownerItemSchema: z.ZodObject<{
     seat: z.ZodOptional<z.ZodString>;
     initiative: z.ZodOptional<z.ZodString>;
     personal: z.ZodBoolean;
+    ownerOnly: z.ZodOptional<z.ZodBoolean>;
     lens: z.ZodEnum<{
         "blocking-agent": "blocking-agent";
         "blocking-merge": "blocking-merge";
