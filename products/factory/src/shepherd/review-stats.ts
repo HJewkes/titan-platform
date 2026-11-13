@@ -5,6 +5,7 @@ import type { Db } from "@titan-design/store-sqlite";
 import { WorkflowRunStore, type StepResult, type WorkflowRun, type WorkflowStatus } from "@titan-design/workflow";
 import { z } from "zod";
 import { autoPassStepId } from "./auto-pass.js";
+import { labelOwnDiff } from "./review-stats-own-diff.js";
 import type { CostSource, ReviewRow, ReviewRunRow, ReviewStatsStore, RoundLabels } from "./review-stats-store.js";
 import { SHEPHERD_WORKFLOW } from "./services.js";
 import { priceRound, type RoundCost, type SessionRead, type TranscriptPort } from "./stats-cost.js";
@@ -181,14 +182,16 @@ function roundsOf(run: WorkflowRun): Round[] {
     if (next) {
       const previous = latestOf(rounds, shape);
       if (previous) previous.final = true;
-      rounds.push({ ...next, shape, cause: causes.of(next.head), scoped: scopedOf(result), scopeUntagged: null, scopeRepeated: null });
+      rounds.push({ ...next, shape, cause: causes.of(next.head), scoped: scopedOf(result), scopeUntagged: null, scopeRepeated: null, ownDiffId: null, unchangedSinceVerdict: null });
     }
     const current = latestOf(rounds, shape);
     if (current && RESOLVING.has(stepName(key))) resolve(current, step, result);
     if (current && isFirstScopeCheck(key)) Object.assign(current, { scopeUntagged: num(result.untagged), scopeRepeated: num(result.repeated) });
   }
   if (FINISHED.includes(run.status)) for (const round of rounds) round.final = true;
-  return rounds.filter((round) => !(round.limitOnly && round.verdictAt !== null));
+  const kept = rounds.filter((round) => !(round.limitOnly && round.verdictAt !== null));
+  labelOwnDiff(run, kept);
+  return kept;
 }
 
 function runRow(run: WorkflowRun): ReviewRunRow {
@@ -267,7 +270,7 @@ function reviewRow({ run, round }: Pending, cost: Priced): ReviewRow {
     sessionId: round.sessionId, requestedAt: round.requestedAt, startedAt: round.startedAt, verdictAt: round.verdictAt,
     queueMs: round.startedAt === null ? null : round.startedAt - round.requestedAt, reviewMs: round.verdictAt === null ? null : round.verdictAt - begun,
     verdict: round.verdict, ...cost, model: cost.model ?? round.verdictModel, cause: round.cause, shape: round.shape, scoped: round.scoped,
-    scopeUntagged: round.scopeUntagged, scopeRepeated: round.scopeRepeated,
+    scopeUntagged: round.scopeUntagged, scopeRepeated: round.scopeRepeated, ownDiffId: round.ownDiffId, unchangedSinceVerdict: round.unchangedSinceVerdict,
   };
 }
 

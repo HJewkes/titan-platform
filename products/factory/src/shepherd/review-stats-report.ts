@@ -33,11 +33,25 @@ interface PrRow {
   repo: string;
   pr: number;
   rounds: number;
+  /** Rounds that returned MERGE or FIX_FIRST. */
+  passes: number;
   usd: number | null;
+  /** Passes at a head whose own diff equals the one at the run's previous verdict head, and what they cost. */
+  unchangedPasses: number;
+  unchangedUsd: number | null;
   reviewMinutes: number | null;
   queueMinutes: number | null;
   registeredToMergeMinutes: number | null;
   merged: boolean;
+}
+
+/** Passes that re-read an unchanged own diff, split by the verdict they followed, and the PRs with most of them. */
+interface Unchanged {
+  passes: number;
+  usd: number;
+  afterMerge: number;
+  afterFixFirst: number;
+  top: PrRow[];
 }
 
 /** A week's scoped fix rounds whose FIX_FIRST was checked, and the out-of-range and repeated items found in them. */
@@ -52,7 +66,8 @@ interface ReviewReport {
   at: string;
   range: { from: string | null; to: string | null; repo: string | null };
   perReview: Cut & { byRepo: Record<string, Cut>; byWeek: Record<string, Cut>; byModel: Record<string, Cut>; byVerdict: Record<string, number>; byCauseShape: Record<string, Cut> };
-  perPr: { n: number; usd: Omit<Dist, "total">; reviewMinutes: Omit<Dist, "total">; rounds: Omit<Dist, "total">; prs: PrRow[] };
+  perPr: { n: number; usd: Omit<Dist, "total">; reviewMinutes: Omit<Dist, "total">; rounds: Omit<Dist, "total">; passes: Dist; prs: PrRow[] };
+  unchanged: Unchanged;
   rereview: Rereview;
   scopeCheckByWeek: Record<string, ScopeCheckWeek>;
   rows?: ReviewRecord[];
@@ -64,12 +79,13 @@ const ReviewSql = z.object({
   queue_ms: z.number().nullable(), review_ms: z.number().nullable(), verdict: z.string().nullable(), usd: z.number().nullable(), cost_source: z.string().nullable(),
   input: z.number().nullable(), cache_read: z.number().nullable(), cache_write: z.number().nullable(), output: z.number().nullable(),
   cause: z.string().nullable(), shape: z.string().nullable(), scoped: z.number().nullable(), scope_untagged: z.number().nullable(), scope_repeated: z.number().nullable(),
+  own_diff_id: z.string().nullable(), unchanged_since_verdict: z.string().nullable(),
 });
 type ReviewSqlRow = z.infer<typeof ReviewSql>;
 
 const PrSql = z.object({
   repo: z.string(), pr: z.number(), rounds: z.number(), usd: z.number().nullable(), review_ms: z.number().nullable(), queue_ms: z.number().nullable(),
-  registered_at: z.number().nullable(), merged_at: z.number().nullable(),
+  registered_at: z.number().nullable(), merged_at: z.number().nullable(), passes: z.number(), unchanged_passes: z.number(), unchanged_usd: z.number().nullable(),
 });
 
 interface ReviewRecord {
@@ -92,6 +108,8 @@ interface ReviewRecord {
   cause: string | null;
   shape: string | null;
   scoped: boolean | null;
+  ownDiffId: string | null;
+  unchangedSinceVerdict: string | null;
 }
 
 const DAY_MS = 86_400_000;
@@ -152,11 +170,15 @@ function countBy(rows: readonly ReviewSqlRow[], key: (row: ReviewSqlRow) => stri
 function prRows(db: Db, range: ReviewRange): PrRow[] {
   const { where, params } = filterOf(range);
   const sql = `SELECT r.repo, r.pr, COUNT(*) AS rounds, SUM(r.usd) AS usd, SUM(r.review_ms) AS review_ms, SUM(r.queue_ms) AS queue_ms,
+      COUNT(CASE WHEN r.verdict IN ('MERGE', 'FIX_FIRST') THEN 1 END) AS passes,
+      COUNT(CASE WHEN r.unchanged_since_verdict LIKE 'after-%' THEN 1 END) AS unchanged_passes,
+      SUM(CASE WHEN r.unchanged_since_verdict LIKE 'after-%' THEN r.usd END) AS unchanged_usd,
       (SELECT MIN(registered_at) FROM review_run AS run WHERE run.repo = r.repo AND run.pr = r.pr) AS registered_at,
       (SELECT MAX(merged_at) FROM review_run AS run WHERE run.repo = r.repo AND run.pr = r.pr) AS merged_at
     FROM (SELECT * FROM review WHERE ${where}) AS r WHERE r.pr IS NOT NULL GROUP BY r.repo, r.pr ORDER BY usd DESC, r.repo, r.pr`;
   return z.array(PrSql).parse(db.prepare(sql).all(params)).map((row) => ({
-    repo: row.repo, pr: row.pr, rounds: row.rounds, usd: row.usd === null ? null : money(row.usd), reviewMinutes: toMinutes(row.review_ms), queueMinutes: toMinutes(row.queue_ms),
+    repo: row.repo, pr: row.pr, rounds: row.rounds, passes: row.passes, usd: row.usd === null ? null : money(row.usd),
+    unchangedPasses: row.unchanged_passes, unchangedUsd: row.unchanged_usd === null ? null : money(row.unchanged_usd), reviewMinutes: toMinutes(row.review_ms), queueMinutes: toMinutes(row.queue_ms),
     registeredToMergeMinutes: row.merged_at === null || row.registered_at === null ? null : toMinutes(row.merged_at - row.registered_at), merged: row.merged_at !== null,
   }));
 }
@@ -165,7 +187,7 @@ const record = (row: ReviewSqlRow): ReviewRecord => ({
   runId: row.run_id, round: row.round, repo: row.repo, pr: row.pr, headSha: row.head_sha, reviewer: row.reviewer, sessionId: row.session_id, model: row.model,
   requestedAt: isoOf(row.requested_at)!, startedAt: isoOf(row.started_at), verdictAt: isoOf(row.verdict_at), queueMinutes: toMinutes(row.queue_ms),
   reviewMinutes: toMinutes(row.review_ms), verdict: row.verdict, usd: row.usd, costSource: row.cost_source, cause: row.cause, shape: row.shape,
-  scoped: row.scoped === null ? null : row.scoped === 1,
+  scoped: row.scoped === null ? null : row.scoped === 1, ownDiffId: row.own_diff_id, unchangedSinceVerdict: row.unchanged_since_verdict,
 });
 
 const rereviewInput = (row: ReviewSqlRow) => ({ cause: row.cause, shape: row.shape, scoped: row.scoped, at: row.verdict_at ?? row.requested_at, usd: row.usd, tokens: tokensOf(row) });
@@ -183,6 +205,19 @@ const scopeCheckLines = (weeks: Record<string, ScopeCheckWeek>): string[] => {
   const lines = Object.entries(weeks).map(([week, c]) => `  ${week}  checked ${c.checked}  untagged ${c.untagged}  repeated ${c.repeated}`);
   return lines.length === 0 ? [] : ["scope checks by week:", ...lines];
 };
+
+/** Totals are re-countable from the rows: each unchanged pass is one row labelled `after-MERGE` or `after-FIX_FIRST`. */
+function unchangedOf(rows: readonly ReviewSqlRow[], prs: readonly PrRow[]): Unchanged {
+  const labelled = rows.filter((row) => row.unchanged_since_verdict?.startsWith("after-"));
+  const top = prs.filter((pr) => pr.unchangedPasses > 0).sort((a, b) => b.unchangedPasses - a.unchangedPasses || (b.unchangedUsd ?? 0) - (a.unchangedUsd ?? 0) || a.pr - b.pr);
+  return {
+    passes: labelled.length,
+    usd: money(labelled.reduce((sum, row) => sum + (row.usd ?? 0), 0)),
+    afterMerge: labelled.filter((row) => row.unchanged_since_verdict === "after-MERGE").length,
+    afterFixFirst: labelled.filter((row) => row.unchanged_since_verdict === "after-FIX_FIRST").length,
+    top: top.slice(0, 10),
+  };
+}
 
 const spread = ({ p50, p90: high, mean }: Dist): Omit<Dist, "total"> => ({ p50, p90: high, mean });
 
@@ -204,11 +239,12 @@ export function reviewReport(db: Db, range: ReviewRange, now: number, withRows =
     usd: spread(dist(prs.map((pr) => pr.usd), money)),
     reviewMinutes: spread(dist(prs.map((pr) => pr.reviewMinutes), tenth)),
     rounds: spread(dist(prs.map((pr) => pr.rounds), tenth)),
+    passes: dist(prs.map((pr) => pr.passes), tenth),
     prs,
   };
   const echoed = { from: range.from ?? null, to: range.to ?? null, repo: range.repo?.toLowerCase() ?? null };
   const rereview = rereviewOf(rows.map(rereviewInput), range.sinceScoped);
-  const report: ReviewReport = { v: 1, at: new Date(now).toISOString(), range: echoed, perReview, perPr, rereview, scopeCheckByWeek: scopeCheckByWeek(rows) };
+  const report: ReviewReport = { v: 1, at: new Date(now).toISOString(), range: echoed, perReview, perPr, unchanged: unchangedOf(rows, prs), rereview, scopeCheckByWeek: scopeCheckByWeek(rows) };
   return withRows ? { ...report, rows: rows.map(record) } : report;
 }
 
@@ -227,10 +263,13 @@ function cutLines(title: string, cuts: Record<string, Cut>): string[] {
 
 const prLine = (pr: PrRow): string => {
   const merged = pr.merged ? `merged after ${minText(pr.registeredToMergeMinutes)}` : "not merged";
-  return `  ${pr.repo}#${pr.pr}  rounds ${pr.rounds}  ${usdText(pr.usd)}  review ${minText(pr.reviewMinutes)}  queue ${minText(pr.queueMinutes)}  ${merged}`;
+  return `  ${pr.repo}#${pr.pr}  rounds ${pr.rounds}  passes ${pr.passes}  ${usdText(pr.usd)}  unchanged ${pr.unchangedPasses} ${usdText(pr.unchangedUsd)}  review ${minText(pr.reviewMinutes)}  queue ${minText(pr.queueMinutes)}  ${merged}`;
 };
 
-/** Text mode: the per-review distribution, its cuts, and the ten PRs whose reviews cost most. */
+const passesLine = (passes: Dist, unchanged: Unchanged): string =>
+  `passes ${passes.total}  per PR p50 ${passes.p50 ?? "-"} mean ${passes.mean ?? "-"} p90 ${passes.p90 ?? "-"}  unchanged ${unchanged.passes} ${usdText(unchanged.usd)} (after MERGE ${unchanged.afterMerge}, after FIX_FIRST ${unchanged.afterFixFirst})`;
+
+/** Text mode: the per-review distribution, its cuts, per-PR passes with their unchanged share, and the top ten PRs by cost and by unchanged passes. */
 export function formatReviewReport(report: ReviewReport): string {
   const r = report.perReview;
   if (r.n === 0) return "no reviews in range\n";
@@ -242,7 +281,9 @@ export function formatReviewReport(report: ReviewReport): string {
     ...rereviewLines(report.rereview),
     ...scopeCheckLines(report.scopeCheckByWeek),
     `PRs ${report.perPr.n}  usd p50 ${usdText(report.perPr.usd.p50)} p90 ${usdText(report.perPr.usd.p90)}  rounds p50 ${report.perPr.rounds.p50 ?? "-"} p90 ${report.perPr.rounds.p90 ?? "-"}`,
+    passesLine(report.perPr.passes, report.unchanged),
     "top 10 PRs by review cost:", ...report.perPr.prs.slice(0, 10).map(prLine),
+    ...(report.unchanged.top.length === 0 ? [] : ["top 10 PRs by unchanged passes:", ...report.unchanged.top.map(prLine)]),
   ];
   return `${lines.join("\n")}\n`;
 }

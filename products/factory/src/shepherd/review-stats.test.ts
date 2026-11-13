@@ -232,7 +232,7 @@ describe("pr_review view", () => {
 
     const rows = store.db.prepare("SELECT * FROM pr_review").all();
 
-    expect(rows).toEqual([{ repo: "acme/widgets", pr: 7, rounds: 3, usd: 7, review_ms: 21 * MIN, queue_ms: 3 * MIN, registered_at: at(0), merged_at: at(40) }]);
+    expect(rows).toEqual([{ repo: "acme/widgets", pr: 7, rounds: 3, usd: 7, review_ms: 21 * MIN, queue_ms: 3 * MIN, registered_at: at(0), merged_at: at(40), passes: 3, unchanged_passes: 0, unchanged_usd: null }]);
   });
 });
 
