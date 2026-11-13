@@ -4,7 +4,7 @@
     {
       "name": "a MERGE goes to the merge decision whatever its attestation",
       "file": "products/factory/src/shepherd/pr.ts",
-      "find": "      return attestDeclineRoute(run, routed);",
+      "find": "      return attestDeclineRoute(run.reviews, run.target.pr, routed, (payload) => woken(run, \"review\", headSha, payload));",
       "replace": "      return true;",
       "kills": [
         "a reviewer's declined attestation attest-unmet with only no-meeter rows sends back to the implementer with the bump instruction"
@@ -30,9 +30,9 @@
     },
     {
       "name": "the send-back has no cap",
-      "file": "products/factory/src/shepherd/pr.ts",
-      "find": "attestSendBacksBefore(run.reviews, headSha) >= ATTEST_SEND_BACKS",
-      "replace": "attestSendBacksBefore(run.reviews, headSha) >= ATTEST_SEND_BACKS + 1",
+      "file": "products/factory/src/shepherd/attest-send-back.ts",
+      "find": "attestSendBacksBefore(reviews, headSha) >= ATTEST_SEND_BACKS",
+      "replace": "attestSendBacksBefore(reviews, headSha) >= ATTEST_SEND_BACKS + 1",
       "kills": [
         "a reviewer's declined attestation a send-back past the cap raises approve-merge"
       ]
