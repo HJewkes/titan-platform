@@ -1433,8 +1433,8 @@ describe("reviewerBrief", () => {
     expect(brief()).toMatch(/foreground.*never.*Monitor.*ScheduleWakeup.*run_in_background/s);
   });
 
-  it("tells the reviewer to remove exactly its own checkout dir after the verdict", () => {
-    expect(brief()).toMatch(/After you write your verdict, remove your checkouts.*literal path.*not `\$dir`.*rm -rf "\/data\/reviews\/review-7-aaaaaaaaaaaa"`.*exactly that directory/);
+  it("tells the reviewer to remove exactly its own checkout dir before its final message", () => {
+    expect(brief()).toMatch(/before you write your final message, remove your checkouts.*literal path.*not `\$dir`.*rm -rf "\/data\/reviews\/review-7-aaaaaaaaaaaa"`.*exactly that directory/);
   });
 
   it("keeps each question on one line and asks at most the cap", () => {
