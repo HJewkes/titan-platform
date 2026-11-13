@@ -213,6 +213,7 @@
   "shepherd/attest-field.ts",
   "shepherd/attest-read.ts",
   "shepherd/attest-schema.ts",
+  "shepherd/attest-send-back.ts",
   "shepherd/attest-skew.ts",
   "shepherd/author-types.ts",
   "shepherd/await-verdict-step.ts",
