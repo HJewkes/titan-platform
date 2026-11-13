@@ -13,6 +13,7 @@ import { registerShepherdPlanRound } from "./cli-shepherd-plan-round.js";
 import { registerShepherdWait } from "./cli-shepherd-wait.js";
 import { registerShepherdWatch } from "./cli-shepherd-watch.js";
 import { registerShepherdStats } from "./cli-stats.js";
+import { registerShepherdTaskKeyReport } from "./cli-shepherd-task-key-report.js";
 import { gitBehind } from "./deploy-behind.js";
 import { deployBlockOf, deploySummary, withGitBehind, type DeployHealth } from "./deploy-health.js";
 import { EXIT } from "./exit-codes.js";
@@ -26,7 +27,7 @@ import { SHEPHERD_COMMAND_MAP, type ShepherdCommandName } from "./shepherd/comma
 import { formatShepherd, lastEntries, type TimelineView } from "./shepherd/format.js";
 import { writesPort } from "./shepherd/port-access.js";
 import { inferIdentity } from "./shepherd/register-identity.js";
-import { qualifyTask } from "./shepherd/task-ref.js";
+import { qualifyTask, TaskIndexUnavailable, TaskKeyRefused } from "./shepherd/task-ref.js";
 import { overdueOwnerGates } from "./shepherd/waiting.js";
 import { WaitingSchema } from "./shepherd/waiting-schema.js";
 import { errorMessage } from "./narrow.js";
@@ -61,6 +62,7 @@ export function registerShepherd(program: Command, verbs: Verbs): void {
   registerShepherdCoverage(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   registerShepherdWait(shepherd, verbs);
   registerShepherdFollowUps(shepherd, verbs);
+  registerShepherdTaskKeyReport(shepherd, verbs);
   registerShepherdWatch(verb, verbs, runShepherd);
   registerOwnerRelease(shepherd, verbs);
   registerShepherdPlanRound(shepherd, verbs);
@@ -250,13 +252,16 @@ async function registerArgs(target: string, opts: RegisterOpts, { io, deps }: Ve
   return { ...parsed, branch, head, base, task, implementer, registrant, reviewer, kind, slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, lastSlice, policy };
 }
 
+/** A task key that resolves to no one task is a refusal, and an unreadable task index is the index being down, not a usage slip. */
+const argsExit = (err: unknown): number => (err instanceof TaskKeyRefused ? EXIT.REFUSED : err instanceof TaskIndexUnavailable ? EXIT.UNAVAILABLE : EXIT.USAGE);
+
 async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () => object | Promise<object>, opts: ShepherdOpts): Promise<void> {
   let args: object;
   try {
     args = await argsOf();
   } catch (err) {
     verbs.io.stderr(`error: ${errorMessage(err)}\n`);
-    return verbs.setExit(EXIT.USAGE);
+    return verbs.setExit(argsExit(err));
   }
   const probe = await probeServe(opts.port, verbs.deps.serveWaitMs);
   const health = probe.state === "up" ? probe.health : null;

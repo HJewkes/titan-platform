@@ -1,3 +1,4 @@
+import { isAgentVisible } from '@titan-design/pm';
 import { z } from 'zod';
 import type { BriefFrontmatter } from '../schemas/brief.js';
 import { getActiveRoot } from '../utils/paths.js';
@@ -14,6 +15,9 @@ const itemSchema = z.object({
   ship_target: z.string().optional(),
   paused_since: z.string().optional(),
   updated: z.string(),
+  // Joins a bare task id to the initiative that issued it (TP-5453 P5).
+  task_prefix: z.string(),
+  agent_visible: z.boolean(),
 });
 
 const sectionSchema = z.object({
@@ -39,6 +43,8 @@ interface Item {
   ship_target?: string;
   paused_since?: string;
   updated: string;
+  task_prefix: string;
+  agent_visible: boolean;
 }
 
 function toItem(slug: string, fm: BriefFrontmatter): Item {
@@ -50,6 +56,8 @@ function toItem(slug: string, fm: BriefFrontmatter): Item {
     ...(fm.ship_target !== undefined ? { ship_target: fm.ship_target } : {}),
     ...(fm.paused_since !== undefined ? { paused_since: fm.paused_since } : {}),
     updated: fm.updated,
+    task_prefix: fm.task_prefix,
+    agent_visible: isAgentVisible({ slug, brief: fm }),
   };
 }
 

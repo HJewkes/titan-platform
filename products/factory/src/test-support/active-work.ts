@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { listAnswer } from "./task-index.js";
 
 /** A task as active-work stores it, with the fields `task.edit`'s guards read. */
 interface FakeTask {
@@ -59,8 +60,12 @@ function add(fake: FakeActiveWork, body: Record<string, unknown>): { id: string 
   return { id };
 }
 
+/** Every task lives in one initiative, `demo`, whose prefix is the first task's. */
+const DEMO_SLUG = "demo";
+
 function answer(fake: FakeActiveWork, command: string, body: Record<string, unknown>): unknown {
-  if (command === "task.list") return { tasks: [...fake.tasks.values()].filter((task) => matchesList(task, body)) };
+  if (command === "task.list") return { tasks: [...fake.tasks.values()].filter((task) => matchesList(task, body)).map((task) => (body.all_initiatives === true ? { ...task, slug: DEMO_SLUG } : task)) };
+  if (command === "list") return listAnswer([{ slug: DEMO_SLUG, task_prefix: [...fake.tasks.keys()][0]?.split("-")[0] ?? "DM" }]);
   if (command === "task.add") return add(fake, body);
   if (command !== "task.edit") throw new Refused(`the fake has no ${command}`);
   const task = fake.tasks.get(String(body.id));
