@@ -18,6 +18,7 @@ import { registerNeeds } from "./needs/command.js";
 import { registerBlocker } from "./blocker/command.js";
 import { registerOwnerGates } from "./owner-gates/command.js";
 import { registerPlanner } from "./planner/command.js";
+import { registerDispatch } from "./eligibility/command.js";
 import { registerAutoresearch } from "./autoresearch/cli.js";
 import { FROZEN_HOST_WRITE_VERBS, FrozenHostError, refuseFrozenHost } from "./remote-factory.js";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes } from "./host.js";
@@ -72,7 +73,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDep
     }
   };
   const verbs: Verbs = { io, deps, dbPath, withHost, setExit };
-  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit, registerBuildSurface, registerToolchain, registerRelease, registerScorecard, registerContextAudit, registerOwnerGates, registerBlocker, registerBotToken, registerPlanner, registerAutoresearch, registerReview, registerMarkers]) register(program, verbs);
+  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit, registerBuildSurface, registerToolchain, registerRelease, registerScorecard, registerContextAudit, registerOwnerGates, registerBlocker, registerBotToken, registerPlanner, registerDispatch, registerAutoresearch, registerReview, registerMarkers]) register(program, verbs);
   return parse(program, argv, io, () => exitCode);
 }
 
