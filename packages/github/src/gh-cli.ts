@@ -135,7 +135,7 @@ export function redactedError(error: unknown, secrets: readonly string[]): Error
   if (error instanceof GhError) {
     const { code, stdout, stderr } = error.result;
     const [cleanOut, cleanErr] = redactStreams(stdout, stderr, secrets);
-    return new GhError(error.args, { code, stdout: cleanOut, stderr: cleanErr }, error.status, error.rateLimit);
+    return new GhError(error.args, { code, stdout: cleanOut, stderr: cleanErr }, error.status, error.rateLimit, error.transport);
   }
   return new Error(redact(error instanceof Error ? error.message : String(error), secrets));
 }

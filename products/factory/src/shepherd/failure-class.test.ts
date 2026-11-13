@@ -1,11 +1,12 @@
-import { GhError } from "@titan-design/github";
+import { GhError, type GhTransport } from "@titan-design/github";
 import { StepFailedError, WorkflowCancelledError, type WorkflowContext } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { ShepherdFailure, classifyingFailures, failureClassOf, stepFailureClass } from "./failure-class.js";
 import { partialFake } from "@titan-design/test-kit";
 import { errorMessage } from "../narrow.js";
 
-const ghFailure = (args: string, said: string, rateLimit = "") => new GhError(args.split(" "), { code: 1, stdout: "", stderr: said }, undefined, rateLimit);
+const ghFailure = (args: string, said: string, transport: GhTransport = "none", rateLimit = "") =>
+  new GhError(args.split(" "), { code: 1, stdout: "", stderr: said }, undefined, rateLimit, transport);
 const LIMIT = "[gh-rate-limit status=403 method=GET x-ratelimit-remaining=0 x-ratelimit-reset=1760295660]";
 
 describe("a legacy row without the field is still classified", () => {
@@ -71,15 +72,23 @@ describe("the class a failing code step records", () => {
     expect(stepFailureClass("merge", new Error("wrapped", { cause: timedOut }))).toBe("ci-timeout");
   });
 
-  it("gh-api-5xx: a GitHub server error, a dropped connection and an unanswered read, but not a timed-out write", () => {
-    expect(stepFailureClass("merge", ghFailure("api -i -X GET", "gh: HTTP 504"))).toBe("gh-api-5xx");
-    expect(stepFailureClass("sh-observe", ghFailure("api -i -X GET", "error connecting to api.github.com"))).toBe("gh-api-5xx");
-    expect(stepFailureClass("sh-observe", ghFailure("api -X GET repos/acme/widgets/pulls", "GET /repos/acme/widgets/pulls timed out after 60000 ms"))).toBe("gh-api-5xx");
+  it("gh-api-5xx: each transport kind the transport set, read from the field", () => {
+    const kinds: GhTransport[] = ["server-5xx", "no-connection", "empty-or-cut-body", "read-timeout"];
+
+    for (const kind of kinds) expect(stepFailureClass("sh-observe", ghFailure("api -X GET repos/acme/widgets/pulls", "synthetic", kind))).toBe("gh-api-5xx");
+  });
+
+  it("a timed-out write, which the transport sets to none, is not gh-api-5xx", () => {
     expect(stepFailureClass("merge", ghFailure("api -X PUT repos/acme/widgets/pulls/1/merge", "PUT /repos/acme/widgets/pulls/1/merge timed out after 60000 ms"))).toBe("other");
   });
 
+  it("gh's text alone no longer classes a failure: one that reads like an outage but carries none is not gh-api-5xx", () => {
+    expect(stepFailureClass("merge", ghFailure("api -i -X GET", "gh: HTTP 504"))).toBe("other");
+    expect(stepFailureClass("sh-observe", ghFailure("api -X GET repos/acme/widgets/pulls", "GET /repos/acme/widgets/pulls timed out after 60000 ms"))).toBe("other");
+  });
+
   it("gh-rate-limit: the transport's limit field, on a land-rules read too", () => {
-    const limited = ghFailure("api -i repos/acme/widgets/pulls/1", "gh: API rate limit exceeded (HTTP 403)", LIMIT);
+    const limited = ghFailure("api -i repos/acme/widgets/pulls/1", "gh: API rate limit exceeded (HTTP 403)", "none", LIMIT);
 
     expect(stepFailureClass("sh-observe", limited)).toBe("gh-rate-limit");
     expect(stepFailureClass("land-rules", limited)).toBe("gh-rate-limit");
@@ -87,12 +96,12 @@ describe("the class a failing code step records", () => {
 
   it("land-rules: any other failure of the land-rules step, a GitHub server error included", () => {
     expect(stepFailureClass("land-rules", new Error("acme/widgets@main requires no status checks"))).toBe("land-rules");
-    expect(stepFailureClass("land-rules", ghFailure("api", "HTTP 503"))).toBe("land-rules");
+    expect(stepFailureClass("land-rules", ghFailure("api", "HTTP 503", "server-5xx"))).toBe("land-rules");
   });
 
   it("update-branch: a conflict or stuck head, while a GitHub server error there stays gh-api-5xx", () => {
     expect(stepFailureClass("update-branch", ghFailure("api -i -X PUT", "gh: merge conflict between base and head (HTTP 422)"))).toBe("update-branch");
-    expect(stepFailureClass("update-branch", ghFailure("api -i -X PUT", "unexpected end of JSON input"))).toBe("gh-api-5xx");
+    expect(stepFailureClass("update-branch", ghFailure("api -i -X PUT", "unexpected end of JSON input", "empty-or-cut-body"))).toBe("gh-api-5xx");
   });
 
   it("other: a refusal GitHub meant, or a plain error, in any other step", () => {
