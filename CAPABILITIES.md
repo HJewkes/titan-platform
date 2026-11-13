@@ -1015,7 +1015,7 @@ Key exports:
 
 ### [`coordinator`](https://hjewkes.github.io/titan-platform/reference/coordinator)
 
-Tier 2, `@titan-design/coordinator@0.7.1`. Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types).
+Tier 2, `@titan-design/coordinator@0.7.2`. Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types).
 
 **Use this when:**
 
