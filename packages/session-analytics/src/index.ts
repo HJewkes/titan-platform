@@ -234,3 +234,7 @@ export type { PhaseRun, PhaseWeek } from "./ticket-scorecard/phase-weeks.js";
 export { phaseWeeks } from "./ticket-scorecard/phase-weeks.js";
 export type { ScorecardRunLog } from "./ticket-scorecard/run-store.js";
 export { readPhaseWeeks, recordRun, upsertPhaseWeeks } from "./ticket-scorecard/run-store.js";
+export type { FactoryHealth, FactoryHealthInput, FiledTask, Filer, ModelTier, SeatWakes, WakeCount } from "./ticket-scorecard/factory-health.js";
+export { factoryHealthWeeks, filerOf, UNRECORDED_MODEL } from "./ticket-scorecard/factory-health.js";
+export { readFactoryHealth, upsertFactoryHealth } from "./ticket-scorecard/factory-health-store.js";
+export { firstDispatch } from "./ticket-scorecard/task-row-facts.js";
