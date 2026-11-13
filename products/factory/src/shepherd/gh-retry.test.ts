@@ -1,4 +1,4 @@
-import { GhError, fakeGitHub, githubPort, successRun, type GitHubPort } from "@titan-design/github";
+import { GhError, fakeGitHub, githubPort, successRun, type GhTransport, type GitHubPort } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
@@ -14,8 +14,8 @@ const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
 /** A failed call as the transport throws it, whose message reads `gh <args> failed (1): <said>`. */
-const ghFailure = (args: string, said: string) => new GhError(args.split(" "), { code: 1, stdout: "", stderr: said });
-const CONNECTING = ghFailure("api -i -X GET", "error connecting to api.github.com\ncheck your internet connection");
+const ghFailure = (args: string, said: string, transport: GhTransport = "none") => new GhError(args.split(" "), { code: 1, stdout: "", stderr: said }, undefined, "", transport);
+const CONNECTING = ghFailure("api -i -X GET", "error connecting to api.github.com\ncheck your internet connection", "no-connection");
 
 /** A land-pr run on one green PR whose port fails its first `failures` merges with `error`. */
 function world(failures: number, error: Error) {
@@ -81,7 +81,7 @@ describe("retryingGhServerErrors", () => {
   });
 });
 
-const timedOut = (method: string, path: string) => ghFailure(`api -X ${method} ${path}`, `${method} /${path} timed out after 60000 ms`);
+const timedOut = (method: string, path: string) => ghFailure(`api -X ${method} ${path}`, `${method} /${path} timed out after 60000 ms`, method === "GET" ? "read-timeout" : "none");
 const PULLS_TIMEOUT = timedOut("GET", "repos/acme/widgets/pulls?state=open&per_page=100");
 
 /** One repeat-safe route at `stepId` that fails with each of `errors` in turn, then succeeds. */
@@ -110,7 +110,7 @@ describe("retryingGhServerErrors on a GitHub read timeout", () => {
   });
 
   it("retries sh-observe through a 5xx and then timeouts, and fails filed gh-api-5xx once the backoff is spent", async () => {
-    const run = scripted("sh-observe:abc", [ghFailure("api -X GET repos/acme/widgets/pulls", "Bad Gateway (HTTP 502)"), PULLS_TIMEOUT, PULLS_TIMEOUT, PULLS_TIMEOUT]);
+    const run = scripted("sh-observe:abc", [ghFailure("api -X GET repos/acme/widgets/pulls", "Bad Gateway (HTTP 502)", "server-5xx"), PULLS_TIMEOUT, PULLS_TIMEOUT, PULLS_TIMEOUT]);
 
     const outcome = await run.outcome;
 
@@ -139,7 +139,7 @@ describe("retryingGhServerErrors on land-rules", () => {
     const [route] = retryingGhServerErrors(
       [codeRoute("land-rules", () => 0, async () => {
         calls++;
-        throw ghFailure("api", "HTTP 503");
+        throw ghFailure("api", "HTTP 503", "server-5xx");
       })],
       { sleep: async (ms) => void sleeps.push(ms) },
     );

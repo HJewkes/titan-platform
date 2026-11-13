@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { transportOfStatus, type GhTransport } from "./transport.js";
 
 export interface GhResult {
   code: number;
@@ -25,6 +26,8 @@ export class GhError extends Error {
     private readonly httpStatus?: number,
     /** A `rateLimitMarker`, put first so a caller that bounds the text it keeps still has it. */
     readonly rateLimit = "",
+    /** How the transport gave out, set by whoever raised this; a 5xx status alone already says `server-5xx`. */
+    readonly transport: GhTransport = transportOfStatus(httpStatus),
   ) {
     super(`${rateLimit ? `${rateLimit} ` : ""}gh ${args.slice(0, 4).join(" ")} failed (${result.code}): ${result.stderr.trim() || result.stdout.trim()}`);
     this.name = "GhError";
