@@ -21,12 +21,12 @@
       ]
     },
     {
-      "name": "a replay recorded before the step runs it anyway",
+      "name": "an intent without the flag runs the step anyway",
       "file": "products/factory/src/shepherd/own-diff.ts",
-      "find": "  if (next !== undefined && next !== stepId) return;\n",
-      "replace": "",
+      "find": "intent.ownDiff === true",
+      "replace": "true",
       "kills": [
-        "recordOwnDiff a replay recorded before the step existed skips it"
+        "ownDiffOn an intent recorded before the step, or without it wired, runs no own-diff step"
       ]
     }
   ]

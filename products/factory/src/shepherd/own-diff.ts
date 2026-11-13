@@ -61,13 +61,10 @@ export function ownDiffRoute(now: () => number, port: Pick<GitHubPort, "getPr">,
   return codeRoute(OWN_DIFF_STEP, now, (raw: unknown, signal) => ownDiffOfPr(port, OwnDiffStepInputSchema.parse(raw), { ...options, signal }));
 }
 
-/**
- * Recorded beside the review intent, for the scorecard alone: nothing reads it to decide. A record that goes on to anything
- * else at this point was made before the step existed, so a replay skips it.
- */
+/** The intent records whether the host wired the step, so a run recorded before it, or without it, replays with no own-diff step. */
+export const ownDiffOn = (intent: Readonly<Record<string, unknown>>): boolean => intent.ownDiff === true;
+
+/** Recorded right after the review intent, for the scorecard alone: nothing reads it to decide. */
 export async function recordOwnDiff(ctx: WorkflowContext, input: OwnDiffStepInput): Promise<void> {
-  const stepId = `${OWN_DIFF_STEP}:${input.head}`;
-  const next = ctx.historyNext();
-  if (next !== undefined && next !== stepId) return;
-  await step(ctx, stepId, input, OwnDiffResultSchema);
+  await step(ctx, `${OWN_DIFF_STEP}:${input.head}`, input, OwnDiffResultSchema);
 }

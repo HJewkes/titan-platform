@@ -24,7 +24,7 @@ import type { ShepherdDeps, ShepherdPhases } from "./phases.js";
 import { PUBLISH_REVIEW_STEPS, publishReviewRoute } from "./publish-review.js";
 import { DEFAULT_BROKER_DOWN_WAIT_MS, DEFAULT_BUSY_WAIT_MS, ReviewerAskTimedOut, ReviewerBrokerStillDown, busyWaits, clearReviewWait, notStarted, noteReviewWait, rosterUnread, rosterUnreadAfterAsk, patientRoster, startedSession, timedOutUnseen, whileBrokerBooting, whileBrokerBusy, type BrokerDownTiming, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
 import { CARRY_STEP, carryRoute, type CarryOptions } from "./tree-carry.js";
-import { OWN_DIFF_STEP, ownDiffRoute, recordOwnDiff } from "./own-diff.js";
+import { OWN_DIFF_STEP, ownDiffOn, ownDiffRoute, recordOwnDiff } from "./own-diff.js";
 import { reviewerRoleFor, type ReviewerFacts, type ReviewerRoles } from "./reviewer-roles.js";
 import { spawnFacts } from "./spawn-facts.js";
 import type { TwoMergeMode } from "./g10-release.js";
@@ -217,6 +217,8 @@ export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeC
   twoMergeRelease?: TwoMergeMode;
   /** `review.workflow`, recorded on the intent: `shadow` records each round's would-action, `on:preflight` refuses a head preflight fails. Absent means `off`. */
   workflow?: ReviewWorkflowWiring;
+  /** Records each reviewed head's own-diff id for the scorecard (TP-5592); absent records none, and the intent says so. */
+  ownDiff?: true;
 }
 
 type Wired = ReviewWiring & { dispatch: ReviewerDispatch };
@@ -264,7 +266,7 @@ const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (dep
   const preflight = billed.choice.mode !== "external" && preflightOn(wired.workflow) ? await preflightPlan(plan, wired.profileInstalled) : undefined;
   if (preflight?.kind === "none") return preflight;
   const requested = billed.choice.mode !== "external" && reviewPendingAt(registration, input.head) && store.takeReviewRequest(input.runId, input.head);
-  const intent = { kind: "intent" as const, head: input.head, ...billed.choice, at: deps.now(), ...(billed.account && { account: billed.account }), ...(input.cause && { cause: input.cause }), ...(requested && { requested: true }), ...scopeModeOf(wired.scopedRereview), ...scopeCheckModeOf(wired.scopeCheck), ...(wired.workflow && { workflow: wired.workflow }) };
+  const intent = { kind: "intent" as const, head: input.head, ...billed.choice, at: deps.now(), ...(billed.account && { account: billed.account }), ...(input.cause && { cause: input.cause }), ...(requested && { requested: true }), ...scopeModeOf(wired.scopedRereview), ...scopeCheckModeOf(wired.scopeCheck), ...(wired.workflow && { workflow: wired.workflow }), ...(wired.ownDiff && { ownDiff: true }) };
   if (billed.choice.mode === "external") return intent;
   return { ...intent, ...(preflight === undefined ? await plan() : preflight.planned) };
 };
@@ -351,7 +353,7 @@ async function lateVerdict(deps: ShepherdDeps, wiring: ReviewWiring | undefined,
 }
 
 /**
- * Read the head's fix-proof result, record the head's own-diff id and which reviewer this head gets, start or adopt it, wait for its verdict, and take a
+ * Read the head's fix-proof result, record which reviewer this head gets and, where the intent says so, the head's own-diff id, start or adopt it, wait for its verdict, and take a
  * MERGE through the evidence step. A vacuous or test-less proof ends the review as NO_REPRO before any reviewer is started, unless
  * the owner waived it at this head: then the review proceeds and its MERGE goes only to the owner gate. An
  * unverified one goes to the reviewer marked unverified, and its MERGE records that standing but keeps the policy's grant (decision 303).
@@ -365,10 +367,10 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   if ("ended" in gated) return gated.ended;
   const { standing } = gated;
   if (request.seatHeld?.head === target.head && recordsRecheck(ctx, target.head)) return recheckSeat(ctx, target, request.seatHeld, standing);
-  await recordOwnDiff(ctx, target);
   const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId, ...(request.fresh && { fresh: true }), ...(request.cause && { cause: request.cause }), ...proofPlanFields(proof, target.head, standing) }, Intended);
   if (intent.kind !== "intent" && typeof intent.exhausted === "string") return accountHeld(ctx, target, { account: intent.exhausted });
   if (intent.kind !== "intent") return preflightRefused(ctx, target, intent) ?? notReviewed(ctx, target, intent);
+  if (ownDiffOn(intent)) await recordOwnDiff(ctx, target);
   if (intent.mode === "external") return takeVerdict(ctx, target, { ...target, external: intent.reviewer }, undefined, DEFAULT_ACCOUNT, standing);
   const { dispatched, verdict } = await dispatchedRound(ctx, request, { target, proof, standing, intent });
   if (shadowOn(intent)) await recordShadow(ctx, { target, proof, intent, dispatched, verdict });

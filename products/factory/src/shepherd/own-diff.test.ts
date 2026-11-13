@@ -2,11 +2,9 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { gitIn, seedRepo } from "@titan-design/test-kit/git";
-import { partialFake } from "@titan-design/test-kit";
-import type { WorkflowContext } from "@titan-design/workflow";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { hostCarryPorts } from "./carry-cache-adapter.js";
-import { OWN_DIFF_STEP, ownDiff, recordOwnDiff, type OwnDiffResult } from "./own-diff.js";
+import { ownDiff, ownDiffOn, type OwnDiffResult } from "./own-diff.js";
 
 const REPO = "acme/widgets";
 const LOCK = "products/factory/src/registry/closure.lock.json";
@@ -104,26 +102,8 @@ describe("ownDiff", { timeout: 30_000 }, () => {
   });
 });
 
-describe("recordOwnDiff", () => {
-  const target = { repo: REPO, pr: 7, head: "a".repeat(40) };
-  const contextWith = (next: string | undefined) => {
-    const dispatch = vi.fn(async (_stepId: string) => ({ data: { result: { id: "x", base: "b".repeat(40) } } }));
-    return { ctx: Object.assign(partialFake<WorkflowContext>(), { runId: "run-1", dispatch, historyNext: () => next }), dispatch };
-  };
-
-  it("a replay recorded before the step existed skips it", async () => {
-    const { ctx, dispatch } = contextWith(`sh-review-intent:${target.head}`);
-
-    await recordOwnDiff(ctx, target);
-
-    expect(dispatch).not.toHaveBeenCalled();
-  });
-
-  it("a live run records the step at the head", async () => {
-    const { ctx, dispatch } = contextWith(undefined);
-
-    await recordOwnDiff(ctx, target);
-
-    expect(dispatch).toHaveBeenCalledWith(`${OWN_DIFF_STEP}:${target.head}`, expect.anything(), expect.anything());
+describe("ownDiffOn", () => {
+  it("an intent recorded before the step, or without it wired, runs no own-diff step", () => {
+    expect([ownDiffOn({ kind: "intent" }), ownDiffOn({ kind: "intent", ownDiff: true })]).toEqual([false, true]);
   });
 });
