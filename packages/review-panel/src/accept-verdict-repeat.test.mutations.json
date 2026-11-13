@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a bare final message lends from nothing earlier",
+      "file": "packages/review-panel/src/label-source.ts",
+      "find": "  if (!isBare(final.text, target.lineOffset)) return final;",
+      "replace": "  return final;",
+      "kills": [
+        "acceptVerdict repeated verdict block a MERGE whose final message repeats a bare verdict block keeps the Attests line of the full verdict above it"
+      ]
+    },
+    {
+      "name": "a full final message borrows an earlier draft's line too",
+      "file": "packages/review-panel/src/label-source.ts",
+      "find": "  if (!isBare(final.text, target.lineOffset)) return final;",
+      "replace": "",
+      "kills": [
+        "acceptVerdict repeated verdict block a full final verdict without Attests does not borrow an earlier draft's line"
+      ]
+    },
+    {
+      "name": "a block naming another head or verdict does not end the search",
+      "file": "packages/review-panel/src/label-source.ts",
+      "find": "    if (verdictAt === \"other\") return final;\n",
+      "replace": "    if (verdictAt === \"other\") continue;\n",
+      "kills": [
+        "acceptVerdict repeated verdict block an earlier message at another head lends nothing",
+        "acceptVerdict repeated verdict block an earlier message at a FIX_FIRST lends nothing"
+      ]
+    },
+    {
+      "name": "an earlier message's locator is not checked against the dispatched session",
+      "file": "packages/review-panel/src/accept-verdict.ts",
+      "find": "fromDispatch(input, message) && reviewerSessionOf(message) === input.reviewerSessionId;",
+      "replace": "fromDispatch(input, message);",
+      "kills": [
+        "acceptVerdict repeated verdict block a message from another session lends nothing"
+      ]
+    },
+    {
+      "name": "the CI-policy line is read from the lending message",
+      "file": "packages/review-panel/src/accept-verdict.ts",
+      "find": "mergeCiPolicy(block.ciPolicy, final.text, block.lineOffset)",
+      "replace": "mergeCiPolicy(parseVerdictBlock(labelSource(final, block, messages.slice(0, -1)).text).ciPolicy, final.text, block.lineOffset)",
+      "kills": [
+        "acceptVerdict repeated verdict block a CI-policy weakening is read from the final message only"
+      ]
+    }
+  ]
+}

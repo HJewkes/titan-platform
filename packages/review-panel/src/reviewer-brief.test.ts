@@ -76,6 +76,18 @@ describe("reviewerBrief", () => {
     expect(brief).toContain(`\`rm -rf "${runDir}"\``);
   });
 
+  it.each([
+    ["a review in a scratch dir", reviewerBrief(target)],
+    ["a review that starts in its run dir", reviewerBrief({ ...target, sourceCheckout: "/srv/checkouts/demo" })],
+  ])("the brief asks for cleanup before the final message, in %s", (_shape, brief) => {
+    const cleanup = brief.indexOf("rm -rf");
+    const sentence = brief.slice(brief.lastIndexOf("\n", cleanup), brief.indexOf("\n", cleanup));
+
+    expect(sentence).toContain("before you write your final message, remove your checkouts");
+    expect(sentence).toContain("Your final message is your whole review and verdict; send no message after it.");
+    expect(brief).not.toContain("After you write your verdict, remove");
+  });
+
   it("quotes the run dir in the removal command when the root has a space, as it does on macOS", () => {
     const root = "/Volumes/x/Library/Application Support/titan-factory/checkouts/reviews";
 

@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the Attests heading is matched as a bare prefix again",
+      "file": "packages/review-panel/src/briefs/attest.ts",
+      "find": "  if (labelledLineRest(line, ATTESTS_HEADING) === undefined) return undefined;",
+      "replace": "  if (!line.startsWith(ATTESTS_HEADING)) return undefined;",
+      "kills": [
+        "attestTokens a bolded Attests heading is read"
+      ]
+    },
+    {
+      "name": "token decoration is kept",
+      "file": "packages/review-panel/src/briefs/attest.ts",
+      "find": "token.replace(DECORATION, \"\")",
+      "replace": "token.trim()",
+      "kills": [
+        "attestTokens a bolded Attests heading is read"
+      ]
+    }
+  ]
+}

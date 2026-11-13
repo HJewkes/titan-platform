@@ -1,4 +1,4 @@
-import { visibleLines } from "@titan-design/session-read";
+import { labelledLineRest, visibleLines } from "@titan-design/session-read";
 
 /** The line a reviewer writes above its verdict block to attest that a step's behaviour is unchanged at this closure. */
 export const ATTESTS_HEADING = "Attests:";
@@ -22,20 +22,32 @@ const CLAIM_CLOSURE = /^[0-9a-f]{12,64}$/;
 export const MAX_ATTEST_CLAIMS = 8;
 
 /**
- * The tokens of the last visible `Attests:` line above the Verdict line, one per step. A malformed token is dropped, not
+ * The tokens of the last visible `Attests:` line above the Verdict line, one per step; the heading may be bolded, bulleted
+ * or spelt in another case, as session-read's `labelledLineRest` folds it. A malformed token is dropped, not
  * refused: it meets nothing, so the merge guard gates and no correction round is spent on it.
  */
 export function attestTokens(text: string): string[] {
   const lines = visibleLines(text);
   const verdictAt = lines.findIndex((line) => line?.startsWith("Verdict:"));
   const above = lines.slice(0, verdictAt < 0 ? 0 : verdictAt);
-  const line = above.filter((candidate) => candidate?.startsWith(ATTESTS_HEADING)).at(-1);
+  const line = above.filter((candidate) => candidate !== null && attestsRest(candidate) !== undefined).at(-1);
   if (!line) return [];
-  const tokens = line.slice(ATTESTS_HEADING.length).split(",").map((token) => token.trim()).filter((token) => ATTEST_TOKEN.test(token));
+  const tokens = (attestsRest(line) ?? "").split(",").map(bareToken).filter((token) => ATTEST_TOKEN.test(token));
   const byStep = new Map<string, string>();
   for (const token of tokens) if (!byStep.has(stepOf(token))) byStep.set(stepOf(token), token);
   return [...byStep.values()];
 }
+
+/** The raw text after the heading's colon, on a line `labelledLineRest` reads as labelled `Attests:` in any decoration. */
+function attestsRest(line: string): string | undefined {
+  if (labelledLineRest(line, ATTESTS_HEADING) === undefined) return undefined;
+  const normalized = line.normalize("NFKC");
+  const colon = normalized.indexOf(":");
+  return colon < 0 ? undefined : normalized.slice(colon + 1);
+}
+
+const DECORATION = /^[\s*_`]+|[\s*_`]+$/g;
+const bareToken = (token: string): string => token.replace(DECORATION, "");
 
 const stepOf = (token: string): string => token.slice(0, token.indexOf("@"));
 

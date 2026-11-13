@@ -1,7 +1,7 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GhExec } from "@titan-design/github";
 import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
-import type { ReviewerAgent } from "@titan-design/review-panel";
+import { acceptVerdict, type AwaitVerdictInput, type ReviewerAgent, type ReviewerMessage } from "@titan-design/review-panel";
 import { partialFake } from "@titan-design/test-kit";
 import { WorkflowRunStore, type RoutedStepInput, type WorkflowContext } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
@@ -58,7 +58,7 @@ function claimingWorld(): FakeGitHub {
   return fake;
 }
 
-const request = (reviewer: string): MergeEvidenceInput => ({
+const request = (reviewer: string, attests = [token(CI_WAIT)]): MergeEvidenceInput => ({
   runId: "run-1",
   repo: REPO,
   pr: 1,
@@ -67,7 +67,7 @@ const request = (reviewer: string): MergeEvidenceInput => ({
   resolver: identity(reviewer),
   dispatchedReviewer: identity(reviewer),
   seatGrants: ["merge-on-green-approve"],
-  attest: { attests: [token(CI_WAIT)] },
+  attest: { attests },
 });
 
 const registration = partialFake<Registration>({ runId: "run-1", implementer: "impl-a", holdReason: null, held: false, kind: "correctness" });
@@ -79,13 +79,13 @@ interface Brokerage {
 }
 
 /** The evidence step's judgement of a ci-wait claim, with the broker's reads on a fake clock that `sleep` advances. */
-async function judged(reviewer: string, { lineage, budgetMs }: Brokerage) {
+async function judged(reviewer: string, { lineage, budgetMs }: Brokerage, attests?: string[]) {
   const fake = claimingWorld();
   const port = githubPort(fake.wire);
   let clock = 0;
   const timing = { now: () => clock, sleep: async (ms: number) => void (clock += ms), pollMs: 5_000, brokerDownWaitMs: 15 * 60_000 };
   const judge = attestJudge(port, store, { dispatch: { roster: async () => roster }, lineage }, { timing, budgetMs, signal: new AbortController().signal });
-  return mergeEvidence(port, request(reviewer), noFreezeStoreUntilTp523, { kind: "correctness" }, undefined, { attest: judge });
+  return mergeEvidence(port, request(reviewer, attests), noFreezeStoreUntilTp523, { kind: "correctness" }, undefined, { attest: judge });
 }
 
 const wholeRoster = async () => ({ rows: roster, complete: true });
@@ -109,6 +109,23 @@ describe("attest smoke: production-shaped roster and a ci-wait claim", () => {
     const result = await judged("rev-1", { lineage: wholeRoster, budgetMs: 6 * 60_000 });
 
     expect(result.record.attested).toMatchObject([{ step: "ci-wait", meeters: [{ name: "rev-1" }] }]);
+    expect(result.record.attestUnmet).toEqual([]);
+  });
+
+  it("TP-5689: a reviewer that repeats its verdict after cleanup still meets the row", async () => {
+    const reviewer = identity("rev-1");
+    const asked: AwaitVerdictInput = { repo: REPO, pr: 1, head: HEAD, reviewerAgentId: reviewer.agentId, reviewerSessionId: reviewer.sessionId, dispatchedAt: 0 };
+    const locator = fakeLocator({ source: { conversation: { nativeId: reviewer.sessionId } } });
+    const said = (writtenAt: number, text: string): ReviewerMessage => ({ ...reviewer, writtenAt, text, locator, investigativeCalls: 3 });
+    const block = `Verdict: MERGE\nPR: ${REPO}#1\nHead: ${HEAD}\nCI-policy: unchanged`;
+    const review = `Read the closure change. ${"Behaviour is unchanged on every input. ".repeat(12)}\nAttests: ${token(CI_WAIT)}\n\n${block}`;
+
+    const accepted = acceptVerdict(asked, [said(1, review), said(2, `I removed the review checkout.\n\n${block}`)]);
+    const attests = accepted.kind === "verdict" && accepted.verdict === "MERGE" ? (accepted.attests ?? []) : [];
+    const result = await judged("rev-1", { lineage: wholeRoster, budgetMs: 6 * 60_000 }, attests);
+
+    expect(attests).toEqual([token(CI_WAIT)]);
+    expect(result.record.attested).toMatchObject([{ step: "ci-wait", closure: CI_WAIT.closure, meeters: [{ name: "rev-1" }] }]);
     expect(result.record.attestUnmet).toEqual([]);
   });
 

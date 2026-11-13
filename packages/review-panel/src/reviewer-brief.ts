@@ -225,12 +225,15 @@ const probeLine = (runDir: string, where: string): string =>
   `Run a probe that may use git, network or destructive commands only in a scratch repo under \`"${runDir}/probe"\` whose origin is a local bare repo under \`"${runDir}"\` (git init --bare); ${where}never against a real remote, and never piped to a shell outside \`"${runDir}"\`.`;
 
 /** The reviewer starts in a real checkout, so a probe that pushes or fetches would reach the real remote unless it is sent elsewhere. */
+/** A reviewer that cleans up after its verdict ends on a bare repeat of the block, and the full review above it is not the final message. */
+const FINAL_MESSAGE_IS_REVIEW = "Your final message is your whole review and verdict; send no message after it.";
+
 function handsOffLines(runDir: string, sourceCheckout: string | undefined, scoped: boolean): string[] {
   if (sourceCheckout !== undefined) return runDirHandsOffLines(runDir, sourceCheckout, scoped);
   return [
     HANDS_OFF,
     probeLine(runDir, "never in your starting directory, which is a real checkout, "),
-    `After you write your verdict, remove your checkouts, head and base together, with the literal path \`${runDir}\` in double quotes, not \`$dir\`, which a later Bash call may not have set: \`rm -rf "${runDir}"\`. Remove exactly that directory.`,
+    `When your review is done and before you write your final message, remove your checkouts, head and base together, with the literal path \`${runDir}\` in double quotes, not \`$dir\`, which a later Bash call may not have set: \`rm -rf "${runDir}"\`. Remove exactly that directory. ${FINAL_MESSAGE_IS_REVIEW}`,
   ];
 }
 
@@ -241,7 +244,7 @@ function runDirHandsOffLines(runDir: string, sourceCheckout: string, scoped: boo
     HANDS_OFF,
     `Your starting directory is \`"${runDir}"\`. \`"${sourceCheckout}"\` is a real checkout: run only the \`git -C\` ${allowed} above against it, never a probe, a push or a pipe to a shell.`,
     probeLine(runDir, ""),
-    `After you write your verdict, remove your checkouts with literal paths in double quotes, not \`$dir\`, which a later Bash call may not have set: \`rm -rf "${runDir}/head" "${runDir}/base" "${runDir}/probe"\`. Leave \`"${runDir}"\` itself: it is your starting directory, and Shepherd removes it after your verdict.`,
+    `When your review is done and before you write your final message, remove your checkouts with literal paths in double quotes, not \`$dir\`, which a later Bash call may not have set: \`rm -rf "${runDir}/head" "${runDir}/base" "${runDir}/probe"\`. Leave \`"${runDir}"\` itself: it is your starting directory, and Shepherd removes it after your verdict. ${FINAL_MESSAGE_IS_REVIEW}`,
   ];
 }
 

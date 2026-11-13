@@ -27,6 +27,15 @@
       "kills": [
         "attest smoke: main holds a registry commit the running build lacks TP-4752: case 5, the attest step waits under a named reason, re-read each round, and raises no closure-mismatch gate"
       ]
+    },
+    {
+      "name": "a bare repeat of the verdict is read alone",
+      "file": "packages/review-panel/src/label-source.ts",
+      "find": "  if (!isBare(final.text, target.lineOffset)) return final;",
+      "replace": "  return final;",
+      "kills": [
+        "attest smoke: production-shaped roster and a ci-wait claim TP-5689: a reviewer that repeats its verdict after cleanup still meets the row"
+      ]
     }
   ]
 }

@@ -5,6 +5,7 @@ import { mergeCiPolicy } from "./ci-policy-prose.js";
 import { DEPTH_FLOOR_REASON } from "./depth-floor.js";
 import { fixFirstFindings } from "./fix-first-findings.js";
 import { followUpsFields, type FollowUp, type FollowUpsWarning } from "./follow-ups.js";
+import { labelSource } from "./label-source.js";
 import type { AwaitVerdictInput, ReviewerMessage } from "./ports.js";
 import { parseOwnerBrief, type Malformed, type OwnerBrief } from "./verdict-schemas.js";
 import { namesTarget } from "./verdict-target.js";
@@ -56,6 +57,9 @@ const reviewerSessionOf = (message: ReviewerMessage): unknown => ["locator", "so
 const fromDispatch = (input: AwaitVerdictInput, message: ReviewerMessage): boolean =>
   message.agentId === input.reviewerAgentId && message.sessionId === input.reviewerSessionId && message.writtenAt > input.dispatchedAt;
 
+/** An earlier message may lend a MERGE its Attests and Follow-ups only when its locator points into the dispatched session too. */
+const isOwnEarlier = (input: AwaitVerdictInput, message: ReviewerMessage): boolean => fromDispatch(input, message) && reviewerSessionOf(message) === input.reviewerSessionId;
+
 const attestsField = (text: string): { attests?: string[] } => {
   const attests = attestTokens(text);
   return attests.length > 0 ? { attests } : {};
@@ -78,6 +82,8 @@ const malformedNone = (refusal: Malformed["refusal"], writtenAt: number, text = 
  * A MERGE whose CI-policy line reads malformed is refused for one correction, unless the only other labelled lines are
  * harmless prose (see `mergeCiPolicy`); a weakened reading wins over malformed in the parser, so a weakening is never
  * corrected away. An adversary verdict with no `Probes:` line is refused for one correction too, and so is an adversary MERGE whose `authorityLine` reading is absent or malformed.
+ * A MERGE whose final message only repeats its block reads Attests and Follow-ups from the full verdict above it (see
+ * `labelSource`); CI-policy, Authority and Probes are read from the final message alone, so no older draft can weaken them.
  */
 export function acceptVerdict(input: AwaitVerdictInput, messages: readonly ReviewerMessage[]): AwaitVerdictResult {
   const final = messages.at(-1);
@@ -97,6 +103,7 @@ export function acceptVerdict(input: AwaitVerdictInput, messages: readonly Revie
   if (input.shape === "adversary" && block.verdict === "MERGE" && (authority === undefined || authority === "malformed")) return malformedNone("authority_missing", final.writtenAt);
   const ciPolicy = block.verdict === "MERGE" ? mergeCiPolicy(block.ciPolicy, final.text, block.lineOffset) : undefined;
   if (ciPolicy === "ci_policy_prose" || ciPolicy === "ci_policy_malformed") return malformedNone(ciPolicy, final.writtenAt, final.text);
-  const accepted: AcceptedVerdict = { kind: "verdict", head: block.head, locator: final.locator, reviewer: { agentId: final.agentId, sessionId: final.sessionId }, ownerBrief: parseOwnerBrief(final.text), ...followUpsFields(final.text) };
-  return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE", ...(ciPolicy && { ciPolicy }), ...attestsField(final.text), ...(authority && authority !== "malformed" && { authority }) } : { ...accepted, verdict: "FIX_FIRST", text: fixFirstFindings(input, messages.filter((message) => fromDispatch(input, message)), final.text), ...(block.closer && { closer: block.closer }) };
+  const labels = block.verdict === "MERGE" ? labelSource(final, block, messages.slice(0, -1).filter((message) => isOwnEarlier(input, message))).text : final.text;
+  const accepted: AcceptedVerdict = { kind: "verdict", head: block.head, locator: final.locator, reviewer: { agentId: final.agentId, sessionId: final.sessionId }, ownerBrief: parseOwnerBrief(final.text), ...followUpsFields(labels) };
+  return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE", ...(ciPolicy && { ciPolicy }), ...attestsField(labels), ...(authority && authority !== "malformed" && { authority }) } : { ...accepted, verdict: "FIX_FIRST", text: fixFirstFindings(input, messages.filter((message) => fromDispatch(input, message)), final.text), ...(block.closer && { closer: block.closer }) };
 }

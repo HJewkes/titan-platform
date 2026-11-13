@@ -39,6 +39,15 @@
       "kills": [
         "reviewerBrief a non-source head sent on without a base-failing test is told to judge its tests, deletions and workflow edits, not to show one fail on the base"
       ]
+    },
+    {
+      "name": "a reviewer in its run dir is told to clean up after its verdict",
+      "file": "packages/review-panel/src/reviewer-brief.ts",
+      "find": "`When your review is done and before you write your final message, remove your checkouts with literal paths",
+      "replace": "`After you write your verdict, remove your checkouts with literal paths",
+      "kills": [
+        "reviewerBrief the brief asks for cleanup before the final message, in a review that starts in its run dir"
+      ]
     }
   ]
 }
