@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an unwired mode reads as shadow",
+      "file": "products/factory/src/shepherd/owner-tier.ts",
+      "find": "const read = mode ?? \"on\";",
+      "replace": "const read = mode ?? \"shadow\";",
+      "kills": [
+        "the owner-tier mode's wiring a route that lost its wiring passes no mode, which fails closed as on"
+      ]
+    },
+    {
+      "name": "the gate's own file drops off the merge-policy table",
+      "file": "products/factory/src/shepherd/g10-class-rules.ts",
+      "find": "\"risk-tier.ts\", \"owner-tier.ts\", \"merge-facts.ts\"]",
+      "replace": "\"risk-tier.ts\", \"merge-facts.ts\"]",
+      "kills": [
+        "the owner-tier gate guards its own code a change to products/factory/src/shepherd/owner-tier.ts is a merge-policy row"
+      ]
+    },
+    {
+      "name": "the config reader leaves an absent key unset",
+      "file": "products/factory/src/config-ref.ts",
+      "find": "s.gateReset?.ownerTier ?? \"shadow\",",
+      "replace": "s.gateReset?.ownerTier,",
+      "kills": [
+        "the owner-tier mode's wiring an absent config key reads as shadow at the config reader"
+      ]
+    }
+  ]
+}

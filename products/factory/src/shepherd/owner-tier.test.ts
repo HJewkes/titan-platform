@@ -1,6 +1,5 @@
 import { fakeGitHub, fakeSha, githubPort, successRun } from "@titan-design/github";
 import { describe, expect, it } from "vitest";
-import { LIVE_FIELDS } from "../config-ref.js";
 import { decisionClassOf } from "../decision-class.js";
 import { fakeLocator } from "../test-support/fakes.js";
 import { decideAutoMerge, mergeEvidence, noFreezeStoreUntilTp523, type DecidableEvidence, type MergeEvidenceInput } from "./merge-facts.js";
@@ -60,10 +59,6 @@ describe("ownerTierRows", () => {
     expect(rowsOf(["Products/Factory/src/shepherd/G10-Release.ts"])).toContain("merge-policy products/factory/src/shepherd/g10-release.ts");
   });
 
-  it.each(["products/factory/src/shepherd/owner-tier.ts", "products/factory/src/shepherd/merge-facts.ts"])("the gate's own code %s is a merge-policy row", (path) => {
-    expect(rowsOf([path])).toEqual([`merge-policy ${path}`]);
-  });
-
   it("a visual path alone is not an owner-tier row", () => {
     expect(rowsOf(["packages/ui/src/button.tsx", "site/guides/shepherd.md"])).toEqual([]);
   });
@@ -98,11 +93,6 @@ describe("the owner-tier merge guard", () => {
     expect(decision.outcome).toBe("allow");
     expect(decision.reason).toContain("; owner tier would gate: hold-command products/factory/src/shepherd/release.ts");
     expect(evidence.record.ownerTier).toEqual({ mode: "shadow", rows: ["hold-command products/factory/src/shepherd/release.ts"] });
-  });
-
-  it("an absent config key reads as shadow at the config reader", () => {
-    expect(LIVE_FIELDS["shepherd.gateReset.ownerTier"]({})).toBe("shadow");
-    expect(LIVE_FIELDS["shepherd.gateReset.ownerTier"]({ gateReset: { ownerTier: "on" } })).toBe("on");
   });
 
   it("a route that lost its wiring passes no mode, which fails closed as on", async () => {
