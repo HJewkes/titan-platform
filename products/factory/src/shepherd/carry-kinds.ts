@@ -1,2 +1,2 @@
-/** Kinds whose reviewed MERGE a tree-equal update may reuse; a security change always gets a fresh reviewer. */
-export const CARRYING_KINDS: ReadonlySet<string> = new Set(["correctness", "feature", "refactor", "revert"]);
+// Authority owns the set, so the carry Shepherd records and the merge rule that accepts it never disagree on a kind.
+export { CARRYING_KINDS } from "@titan-design/authority";

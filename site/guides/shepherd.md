@@ -41,7 +41,7 @@ error (exit 2) naming the flag to pass and the branch it read. The other flags:
 | Flag | Meaning |
 | --- | --- |
 | `--reviewer <name>` | the agent that reviews |
-| `--kind <kind>` | `correctness`, `security`, `feature`, `refactor`, `test-only`, `revert` or `unknown`; a new registration without it stores `correctness`. `test-only` is for a PR that only adds or changes tests; see [the test-only kind](#the-test-only-kind). `revert` is for a PR that undoes a merged one and gates as `feature` does |
+| `--kind <kind>` | `correctness`, `security`, `feature`, `refactor`, `test-only`, `revert` or `unknown`; a new registration without it stores `correctness`. `test-only` is for a PR that only adds or changes tests; see [the test-only kind](#the-test-only-kind). `revert` is for a PR that undoes a merged one; like `security` and `unknown` it never carries a reviewed MERGE |
 | `--reverts <owner/repo#N>` | the merged PR a `revert` registration undoes; `--kind revert` requires it, and it requires `--kind revert` |
 | `--policy <json>` | narrows the seat policy; see [seat policy](#seat-policy) |
 
@@ -68,9 +68,9 @@ closed, come back unchanged.
 A deploy can park a run as `recovery_required` with `replay diverged`. Serve's sweep restarts such a run unless an owner gate is still pending on it (`products/factory/src/shepherd/diverged-sweep.ts`). If the owner answers that run's approve-merge gate with `merge` while it is parked, the next sweep merges the PR at the approved head instead of restarting it. The run never read that answer. The merge waits for the same reads land makes first: the head is unchanged, the required checks are green, the head is not behind on a strict repo, it does not conflict, and the base is the default branch the gate named. The run then ends `cancelled` with a `sh-carried-merge` step naming the gate. If any of those reads fails, the head moved, or the answer was `abandon` or `send-back`, the sweep restarts the run as before (`diverged-merge.ts`, TP-3918).
 
 A repeat without `--kind` keeps the stored kind. What the kind controls today is carry and
-these refusals: only `correctness`, `feature`, `refactor` and `revert` may carry a reviewed MERGE across
+these refusals: only `correctness`, `feature` and `refactor` may carry a reviewed MERGE across
 a tree-equal update (MRG-AU-RC) or across a merge of the base whose remerge-diff resolved
-nothing reviewed (MRG-AU-RM); `security` and `unknown` always get a fresh review. A tree-equal
+nothing reviewed (MRG-AU-RM); `security`, `revert` and `unknown` always get a fresh review. Authority's `CARRYING_KINDS` (`pr-kind-not-security`) is the one list of carrying kinds; Shepherd imports it. A tree-equal
 update carries only when it is a clean merge-up: its first parent is the reviewed head (or a
 head an earlier merge-up carried that MERGE to), its second parent is on the base branch, and
 its tree equals `git merge-tree --write-tree` of the two. A conflict resolution, an extra
