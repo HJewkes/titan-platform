@@ -1,6 +1,7 @@
 import { BetSchema, FreezeSchema, OutOfScopeSchema, TaskSchema, type Freeze, type Task } from "@titan-design/pm";
 import { createRpcClient, liveSource, type LiveSourceOptions, type RpcClient } from "@titan-design/rpc-client";
 import { z } from "zod";
+import type { LaneTask } from "./back-pressure.js";
 import { evaluateEligibility, type Eligibility, type PlanView, type RefusedTask } from "./rules.js";
 
 type Rows = { tasks: unknown[] };
@@ -63,6 +64,16 @@ function parseTasks(rows: readonly unknown[]): { tasks: Task[]; unreadable: Refu
     else unreadable.push({ id: rowId(row), refusals: [{ code: "unreadable", detail: "does not parse as a pm task" }] });
   }
   return { tasks, unreadable };
+}
+
+const LaneTaskRow = z.object({ id: z.string(), created: z.string(), done_at: z.string().nullish() });
+
+/** Every task of the lane, open or done, keyed `initiative/ID`; a row without an id or created date is left out of the flow. */
+export async function readLaneTasks(options: LiveSourceOptions, lane: { initiative: string; tag?: string }): Promise<{ keys: Set<string>; tasks: LaneTask[] }> {
+  const client = createRpcClient<EligibilityCommands>(liveSource(options));
+  const { tasks: rows } = await client.call("task.list", { slug: lane.initiative, status: "all", ...(lane.tag !== undefined && { tag: lane.tag }) });
+  const parsed = rows.flatMap((row) => LaneTaskRow.safeParse(row).data ?? []);
+  return { keys: new Set(parsed.map((row) => `${lane.initiative}/${row.id}`)), tasks: parsed.map((row) => ({ created: row.created, doneAt: row.done_at ?? null })) };
 }
 
 /** The open tasks of one initiative (or one lane of it), judged against the week's plan over active-work's loopback rpc. Reads only. */
