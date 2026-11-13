@@ -311,6 +311,7 @@
   "packages/review-panel/src/follow-ups.ts",
   "packages/review-panel/src/glob.ts",
   "packages/review-panel/src/index.ts",
+  "packages/review-panel/src/label-source.ts",
   "packages/review-panel/src/plan.ts",
   "packages/review-panel/src/ports.ts",
   "packages/review-panel/src/review-pull-request.ts",
