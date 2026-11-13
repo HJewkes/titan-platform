@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a revert registration may leave out the PR it reverts",
+      "file": "products/factory/src/shepherd/register-args.ts",
+      "find": "  .refine((args) => args.kind !== \"revert\" || args.reverts !== undefined,",
+      "replace": "  .refine((args) => args.kind !== \"revert\" || true,",
+      "kills": [
+        "shepherd register --reverts (TP-5446 F14) revert registration without --reverts is refused"
+      ]
+    },
+    {
+      "name": "the reverted PR is never stored",
+      "file": "products/factory/src/shepherd/registration-facts.ts",
+      "find": "  if (facts.reverts !== undefined) db.prepare",
+      "replace": "  if (facts.reverts === \"never\") db.prepare",
+      "kills": [
+        "shepherd register --reverts (TP-5446 F14) records the PR a revert registration reverts"
+      ]
+    },
+    {
+      "name": "any kind may name a reverted PR",
+      "file": "products/factory/src/shepherd/register-args.ts",
+      "find": "  .refine((args) => args.reverts === undefined || args.kind === \"revert\",",
+      "replace": "  .refine((args) => args.reverts === undefined || true,",
+      "kills": [
+        "shepherd register --reverts (TP-5446 F14) refuses --reverts on a registration of another kind"
+      ]
+    },
+    {
+      "name": "a terminal registration records no registrant again",
+      "file": "products/factory/src/cli-shepherd.ts",
+      "find": "  const registrant = io.env.AGENT_CHAT_NAME || OWNER_REGISTRANT;",
+      "replace": "  const registrant = io.env.AGENT_CHAT_NAME || undefined;",
+      "kills": [
+        "shepherd register records its registrant from the environment (TP-5446 F15) a registration from a terminal with no agent-chat name records owner"
+      ]
+    },
+    {
+      "name": "owner holds the registrant against a later agent",
+      "file": "products/factory/src/shepherd/registration-facts.ts",
+      "find": "  const replaceable = registrant === OWNER_REGISTRANT ? \"registrant IS NULL\" :",
+      "replace": "  const replaceable = registrant !== \"\" ? \"registrant IS NULL\" :",
+      "kills": [
+        "shepherd register records its registrant from the environment (TP-5446 F15) an agent's repeat registration takes over from owner, so the run's notices follow that agent"
+      ]
+    }
+  ]
+}
