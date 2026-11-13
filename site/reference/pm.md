@@ -284,6 +284,40 @@ A transitional list, dated 2026-11-12, keeps a named set of code initiatives vis
 briefs carry no `visibility` key yet. An explicit `visibility` always wins over it, and a
 follow-up deletes the list once those briefs declare it.
 
+## Planning records
+
+Four strict schemas type the planning layer an initiative keeps beside its tasks. Each record
+has a stable id prefixed by its `initiative` slug, and an id filed under another initiative is
+refused. Unknown keys are refused too.
+
+| Schema | Id form | Carries |
+|---|---|---|
+| `OutcomeSchema` | `alpha/faster-landing` | `statement`, `measure`, `state` (`draft`, `active`, `retired`), optional `owner_intent` |
+| `BetSchema` | `alpha/B1` | ISO `week`, `outcome` id, `order`, `tasks` (`alpha/AL-1` keys) or a `selector`, `prediction`, `state` (`proposed`, `selected`, `dropped`, `done`), optional `cites` |
+| `FreezeSchema` | `alpha/F1` | exactly one of `tag` or `selector`, `reason`, `end_condition`, `set_by` (`owner`, `decider`), `intent_ref`, `quote_ref` |
+| `OutOfScopeSchema` | `alpha/X1` | `statement`, `intent_ref`, `quote_ref`, `date` of the owner statement, optional `revisit_when` |
+
+A bet's `prediction` names the `metric` it should move, its `direction`, the `baseline`, the
+`expected` value and the `read_by` date. A freeze's `end_condition` is one of `{ kind: "date", date }`,
+`{ kind: "task-done", task }`, `{ kind: "measure", metric, direction, threshold }` or `{ kind: "owner" }`.
+
+An owner-intent reference (`OwnerIntentRefSchema`) is a pair: `intent_ref`, a decision id (`D12`)
+or an intent line id (`alpha/I3`), and `quote_ref`, a single token that points at the quote
+(`msg:a1b2c3`). Quoted text with spaces is refused, so prose cannot stand in for the reference.
+
+```ts
+import { OutOfScopeSchema } from "@titan-design/pm";
+
+OutOfScopeSchema.parse({
+  id: "alpha/X1",
+  initiative: "alpha",
+  statement: "No mobile client this quarter",
+  intent_ref: "alpha/I4",
+  quote_ref: "msg:7c6b5a",
+  date: "2026-11-12",
+});
+```
+
 ## What it deliberately does not do
 
 It reads no files, parses no YAML and writes nothing, the category and deliverable
