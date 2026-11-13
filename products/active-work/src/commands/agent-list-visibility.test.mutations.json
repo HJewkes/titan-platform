@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "task list across initiatives serves every initiative to an agent",
+      "file": "products/active-work/src/commands/task-list.ts",
+      "find": "? await listSlugsForCaller(getActiveRoot(), ctx)",
+      "replace": "? await listSlugsForCaller(getActiveRoot(), { ...ctx, caller: 'owner' })",
+      "kills": [
+        "cross-initiative list verbs for an agent caller task list across all initiatives hides owner-only initiatives from an agent"
+      ]
+    },
+    {
+      "name": "search lets an agent keep unclaimed transcript hits",
+      "file": "products/active-work/src/commands/search.ts",
+      "find": "const visible = ctx.caller !== 'owner' ? await callerVisibility(getActiveRoot(), ctx.caller) : undefined;",
+      "replace": "const visible = undefined;",
+      "kills": [
+        "cross-initiative list verbs for an agent caller search gives an agent no transcript hit that names no initiative, and the owner keeps it"
+      ]
+    },
+    {
+      "name": "the initiative scan serves owner-only briefs to an agent",
+      "file": "products/active-work/src/commands/audit.ts",
+      "find": "  const entries = scan.entries.filter((entry) => visible(entry.slug));",
+      "replace": "  const entries = scan.entries;",
+      "kills": [
+        "cross-initiative list verbs for an agent caller list hides owner-only initiatives and their titles from an agent",
+        "cross-initiative list verbs for an agent caller audit hides owner-only initiatives and their parse errors from an agent"
+      ]
+    },
+    {
+      "name": "the loop board serves owner-only loops to an agent",
+      "file": "products/active-work/src/commands/loop-board.ts",
+      "find": "  const loops = board.loops.filter((loop) => visible(loop.initiative));",
+      "replace": "  const loops = board.loops;",
+      "kills": [
+        "cross-initiative list verbs for an agent caller loop board hides owner-only loops and their tree-node ids from an agent"
+      ]
+    },
+    {
+      "name": "a context no surface marked is served as the owner",
+      "file": "products/active-work/src/sessions/visibility.ts",
+      "find": "  if (caller === 'owner') return SERVE_ALL;",
+      "replace": "  if (caller !== 'agent') return SERVE_ALL;",
+      "kills": [
+        "cross-initiative list verbs for an agent caller a context no surface marked as the owner is restricted like an agent"
+      ]
+    }
+  ]
+}

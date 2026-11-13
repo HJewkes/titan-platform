@@ -84,7 +84,7 @@ export interface FactoryRouteDeps extends Omit<LandPrDeps, "gitCache" | keyof Po
   gateway?: GhGateway;
   /** `on` lets a g10 hold gate only the merge, so a held run repairs as usual; absent means `off`. A getter is read per check. */
   heldRepair?: Live<"off" | "on" | undefined>;
-  /** Whether a low-tier policy touch is held `g10-review` (TP-5403); absent means `on`. A getter is read per registration. */
+  /** Whether a low-tier policy touch is held `g10-review` (TP-5403); absent means `shadow`. A getter is read per registration. */
   lowTierPolicy?: Live<"off" | "shadow" | "on" | undefined>;
   /** Whether an owner-tier row gates the merge (TP-5406); absent means `shadow`. A getter is read per merge-evidence step. */
   ownerTier?: Live<"off" | "shadow" | "on" | undefined>;
@@ -94,6 +94,8 @@ export interface FactoryRouteDeps extends Omit<LandPrDeps, "gitCache" | keyof Po
   nonSourceNoRepro?: Live<"keep-owner" | "record-fact" | undefined>;
   /** `last-slice-only` closes a merged PR's task only on its last slice; absent means `keep`, every merge closes. A getter is read per cleanup. */
   taskClose?: Live<TaskClose | undefined>;
+  /** `shepherd.visualGate` (TP-5408); absent means `owner`. A getter is read at each merge-evidence step and gate. */
+  visualGate?: Live<"owner" | "async" | undefined>;
   /** `shepherd.visualPacket` and the ports its spawn uses; absent means `off`. */
   visualPacket?: VisualPacketPorts;
   /** The planner failed rounds with no adversary verdict spawn; absent means ops hears instead. */

@@ -50,7 +50,7 @@ interface HoldFiles {
   head?: string;
   /** The wait before a file list that disagrees with its count is read again; absent means a real timer. */
   pause?: Pause;
-  /** `shepherd.gateReset.lowTierPolicy`; absent means `on`. */
+  /** `shepherd.gateReset.lowTierPolicy`; absent means `shadow`, which changes no hold. */
   lowTier?: LowTierMode;
 }
 
@@ -173,7 +173,7 @@ export async function applyRegistrationHold(port: GitHubPort, store: ShepherdSto
   }
 }
 
-const registeredRead = (registration: Registration, mode: LowTierMode = "on"): RegisteredRead => {
+const registeredRead = (registration: Registration, mode: LowTierMode = "shadow"): RegisteredRead => {
   const visualPaths = registration.policy.visualPaths;
   return { ownerHold: ownerHoldOf(registration), mode, ...(visualPaths && { visualPaths }) };
 };

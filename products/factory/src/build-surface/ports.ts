@@ -47,4 +47,6 @@ export interface BuildSurfacePorts {
   shepherd: ShepherdPort;
   /** Where a broken gate or spec files its task. */
   tasks: Pick<FixTasks, "findByTag" | "add">;
+  /** The canonical `<initiative>/<ID>` for a spec's task; rejects a key that names no one task. */
+  taskKey(task: string): Promise<string>;
 }

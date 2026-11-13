@@ -7,7 +7,7 @@ import { settleUnfinished, type AbandonsOrphan, type WorkflowRegistration } from
 import { mustacheRenderer } from "./prompt.js";
 import { announceRecovery, HeldRuns, markStepRecovery, parkForRecovery, reconcileActiveSteps, removeAnswered } from "./recovery.js";
 import type { WorkflowRuntimeOptions, WorkflowStartOptions } from "./runtime-options.js";
-import { failureText, fenceOf, messageOf, vaultOf, positiveDuration, RuntimeShutdown, sameFence, timestampAt, WorkflowPersistenceError } from "./runtime-values.js";
+import { errorClassOf, failureText, fenceOf, messageOf, vaultOf, positiveDuration, RuntimeShutdown, sameFence, timestampAt, WorkflowPersistenceError } from "./runtime-values.js";
 import { parseSignal as defaultParseSignal } from "./signals.js";
 import { DEFAULT_MAX_STEP_DATA_BYTES } from "./step-output.js";
 import { completedTiming, everyTrySpend } from "./step-timing.js";
@@ -187,7 +187,7 @@ export class WorkflowRuntime {
     if (error instanceof WorkflowRecoveryRequiredError || run.status === "recovery_required") return this.park(run);
     if (abortReason instanceof WorkflowCancelledError) return this.finish(run, "cancelled", abortReason.reason);
     if (error instanceof WorkflowCancelledError) return this.finish(run, "cancelled", error.reason);
-    this.finish(run, "failed", failureText(error, this.baseDeps.capabilities));
+    this.finish(Object.assign(run, errorClassOf(error)), "failed", failureText(error, this.baseDeps.capabilities));
   }
 
   shutdown(): void {

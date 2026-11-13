@@ -174,8 +174,8 @@ describe("shepherd stats --reviews", () => {
     expect(report.perReview.byModel["claude-opus-5-5"].n).toBe(5);
     expect(report.perPr).toMatchObject({ n: 2, usd: { p50: 10, p90: 14, mean: 10 }, rounds: { p50: 2.5, p90: 3, mean: 2.5 } });
     expect(report.perPr.prs).toEqual([
-      { repo: "acme/widgets", pr: 2, rounds: 2, usd: 14, reviewMinutes: 90, queueMinutes: 9, registeredToMergeMinutes: null, merged: false },
-      { repo: "acme/widgets", pr: 1, rounds: 3, usd: 6, reviewMinutes: 60, queueMinutes: 6, registeredToMergeMinutes: 1480, merged: true },
+      { repo: "acme/widgets", pr: 2, rounds: 2, passes: 2, usd: 14, unchangedPasses: 0, unchangedUsd: null, reviewMinutes: 90, queueMinutes: 9, registeredToMergeMinutes: null, merged: false },
+      { repo: "acme/widgets", pr: 1, rounds: 3, passes: 3, usd: 6, unchangedPasses: 0, unchangedUsd: null, reviewMinutes: 60, queueMinutes: 6, registeredToMergeMinutes: 1480, merged: true },
     ]);
     expect(report.rows).toBeUndefined();
   });
@@ -201,7 +201,7 @@ describe("shepherd stats --reviews", () => {
     const view = store.prepare("SELECT repo, pr, rounds, usd FROM pr_review ORDER BY pr").all();
     store.close();
 
-    expect(again.refresh).toEqual({ added: 0, repriced: 0, transcriptReads: 0 });
+    expect(again.refresh).toMatchObject({ added: 0, repriced: 0, transcriptReads: 0 });
     expect(again.rows).toHaveLength(5);
     expect(again.rows[0]).toMatchObject({ runId: "run-1", round: 0, sessionId: "s1", verdict: "FIX_FIRST", usd: 1, costSource: "retire", queueMinutes: 1, reviewMinutes: 10 });
     expect(view).toEqual([{ repo: "acme/widgets", pr: 1, rounds: 3, usd: 6 }, { repo: "acme/widgets", pr: 2, rounds: 2, usd: 14 }]);

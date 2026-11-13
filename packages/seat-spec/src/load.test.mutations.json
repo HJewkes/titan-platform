@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the prompt hash must match the pinned sha256",
+      "file": "packages/seat-spec/src/load.ts",
+      "find": "if (actual !== seat.prompt.sha256) {",
+      "replace": "if (false) {",
+      "kills": [
+        "loadSeat refuses a prompt whose hash differs from the one the seat pins"
+      ]
+    },
+    {
+      "name": "only the listed owner-only reader may set ownerOnlyRead",
+      "file": "packages/seat-spec/src/load.ts",
+      "find": "if (seat.ownerOnlyRead !== true || index.ownerOnlyReaders.includes(seat.name)) return { ok: true };",
+      "replace": "return { ok: true };",
+      "kills": [
+        "loadSeat refuses a second seat that sets ownerOnlyRead"
+      ]
+    },
+    {
+      "name": "the seat file goes through the owner-file checks",
+      "file": "packages/seat-spec/src/load.ts",
+      "find": "if (unsafe !== undefined) return { ok: false, refusal: unsafe };",
+      "replace": "",
+      "kills": [
+        "loadSeat refuses a seat file that fails the owner-file checks"
+      ]
+    },
+    {
+      "name": "a seat must be listed in the index",
+      "file": "packages/seat-spec/src/load.ts",
+      "find": "if (index.seats.includes(seat.name)) return { ok: true };",
+      "replace": "return { ok: true };",
+      "kills": [
+        "loadSeat refuses a seat the index does not list, even when every file checks out"
+      ]
+    }
+  ]
+}

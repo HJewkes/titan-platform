@@ -3,7 +3,7 @@ import { lowTierPolicyTouch } from "./g10-low-tier.js";
 
 const HOLD_CLOSURE_PATH = "products/factory/src/shepherd/wake-loop.ts";
 const SIGNOFF_PATH = "products/factory/src/shepherd/carry-merge.ts";
-const GATE_RESOLVE_ACTOR_PATH = "packages/workflow/src/runtime.ts";
+const GATE_RESOLVE_ACTOR_PATH = "packages/queue-mirror/src/mirror.ts";
 /** Synthetic: matches the default `*policy*` glob and the gate-resolve actor `gate-answer-*` glob at once. */
 const DEFAULT_AND_ACTOR_PATH = "products/factory/src/gate-answer-policy.ts";
 const OWNER_SKILL_GUARD_PATH = "products/factory/src/shepherd/approval-carry.ts";
@@ -46,6 +46,18 @@ describe("lowTierPolicyTouch, the paths that keep the owner gate", () => {
 
   it("a policy table missing from the allowlist keeps the owner gate", () => {
     expect(judge({ paths: [HOLD_CLOSURE_PATH, OWNER_SKILL_GUARD_PATH] })).toEqual({ eligible: false, kept: "owner-skill-guard" });
+  });
+
+  it("an edit to the adversary touches or owner packet keeps the owner gate", () => {
+    expect(judge({ paths: ["products/factory/src/shepherd/signoffs.ts"] })).toEqual({ eligible: false, kept: "gate input products/factory/src/shepherd/signoffs.ts" });
+  });
+
+  it("an edit to the review-panel class rules keeps the owner gate", () => {
+    expect(judge({ paths: [HOLD_CLOSURE_PATH, "packages/review-panel/src/classify.ts"] })).toEqual({ eligible: false, kept: "gate input packages/review-panel/src/classify.ts" });
+  });
+
+  it("a rename out of a gate-input file keeps the owner gate", () => {
+    expect(judge({ paths: [SIGNOFF_PATH, "products/factory/src/shepherd/Signoffs.ts"] })).toEqual({ eligible: false, kept: "gate input products/factory/src/shepherd/Signoffs.ts" });
   });
 
   it("more than 800 changed lines keeps the owner gate", () => {

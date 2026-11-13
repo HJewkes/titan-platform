@@ -1,5 +1,14 @@
 # @titan-design/speech-tts
 
+## 0.1.1
+
+### Patch Changes
+
+- 9b42150: Use the shared `isRecord`, `isObjectLike` and `errorCode` from `@titan-design/rpc-protocol/narrow` in place of local copies. Behaviour is unchanged.
+- 10c117f: Fix Kokoro word timings after a word with no phonemes: the timeline no longer drifts one id per such word, so the last word keeps its timing. The "does not speak" warning names the 510-phoneme cut only when a chunk was cut.
+- Updated dependencies [5edd38d]
+  - @titan-design/rpc-protocol@0.4.0
+
 ## 0.1.0
 
 ### Minor Changes

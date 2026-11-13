@@ -116,6 +116,53 @@ declare const ownerCardSchema: zod.ZodObject<{
         name: zod.ZodString;
         agentId: zod.ZodString;
         force: zod.ZodBoolean;
+    }, zod_v4_core.$strict>, zod.ZodObject<{
+        kind: zod.ZodLiteral<"plan-bet-select">;
+        initiative: zod.ZodString;
+        week: zod.ZodString;
+        bets: zod.ZodArray<zod.ZodString>;
+    }, zod_v4_core.$strict>, zod.ZodObject<{
+        kind: zod.ZodLiteral<"plan-outcome-edit">;
+        outcome: zod.ZodString;
+        to: zod.ZodObject<{
+            statement: zod.ZodOptional<zod.ZodString>;
+            measure: zod.ZodOptional<zod.ZodString>;
+        }, zod_v4_core.$strict>;
+        from: zod.ZodOptional<zod.ZodObject<{
+            statement: zod.ZodString;
+            measure: zod.ZodString;
+        }, zod_v4_core.$strict>>;
+    }, zod_v4_core.$strict>, zod.ZodObject<{
+        kind: zod.ZodLiteral<"plan-freeze-set">;
+        initiative: zod.ZodString;
+        freeze: zod.ZodDiscriminatedUnion<[zod.ZodObject<{
+            intent_ref: zod.ZodString;
+            quote_ref: zod.ZodString;
+            action: zod.ZodLiteral<"set">;
+            tag: zod.ZodOptional<zod.ZodString>;
+            selector: zod.ZodOptional<zod.ZodString>;
+            reason: zod.ZodString;
+            end_condition: zod.ZodDiscriminatedUnion<[zod.ZodObject<{
+                kind: zod.ZodLiteral<"date">;
+                date: zod.ZodString;
+            }, zod_v4_core.$strict>, zod.ZodObject<{
+                kind: zod.ZodLiteral<"task-done">;
+                task: zod.ZodString;
+            }, zod_v4_core.$strict>, zod.ZodObject<{
+                kind: zod.ZodLiteral<"measure">;
+                metric: zod.ZodString;
+                direction: zod.ZodEnum<{
+                    increase: "increase";
+                    decrease: "decrease";
+                }>;
+                threshold: zod.ZodNumber;
+            }, zod_v4_core.$strict>, zod.ZodObject<{
+                kind: zod.ZodLiteral<"owner">;
+            }, zod_v4_core.$strict>], "kind">;
+        }, zod_v4_core.$strict>, zod.ZodObject<{
+            action: zod.ZodLiteral<"end">;
+            id: zod.ZodString;
+        }, zod_v4_core.$strict>], "action">;
     }, zod_v4_core.$strict>], "kind">>;
     evidenceRef: zod.ZodOptional<zod.ZodString>;
     anchors: zod.ZodOptional<zod.ZodArray<zod.ZodString>>;
@@ -248,6 +295,53 @@ declare const ownerOpSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     name: z.ZodString;
     agentId: z.ZodString;
     force: z.ZodBoolean;
+}, z.core.$strict>, z.ZodObject<{
+    kind: z.ZodLiteral<"plan-bet-select">;
+    initiative: z.ZodString;
+    week: z.ZodString;
+    bets: z.ZodArray<z.ZodString>;
+}, z.core.$strict>, z.ZodObject<{
+    kind: z.ZodLiteral<"plan-outcome-edit">;
+    outcome: z.ZodString;
+    to: z.ZodObject<{
+        statement: z.ZodOptional<z.ZodString>;
+        measure: z.ZodOptional<z.ZodString>;
+    }, z.core.$strict>;
+    from: z.ZodOptional<z.ZodObject<{
+        statement: z.ZodString;
+        measure: z.ZodString;
+    }, z.core.$strict>>;
+}, z.core.$strict>, z.ZodObject<{
+    kind: z.ZodLiteral<"plan-freeze-set">;
+    initiative: z.ZodString;
+    freeze: z.ZodDiscriminatedUnion<[z.ZodObject<{
+        intent_ref: z.ZodString;
+        quote_ref: z.ZodString;
+        action: z.ZodLiteral<"set">;
+        tag: z.ZodOptional<z.ZodString>;
+        selector: z.ZodOptional<z.ZodString>;
+        reason: z.ZodString;
+        end_condition: z.ZodDiscriminatedUnion<[z.ZodObject<{
+            kind: z.ZodLiteral<"date">;
+            date: z.ZodString;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"task-done">;
+            task: z.ZodString;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"measure">;
+            metric: z.ZodString;
+            direction: z.ZodEnum<{
+                increase: "increase";
+                decrease: "decrease";
+            }>;
+            threshold: z.ZodNumber;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"owner">;
+        }, z.core.$strict>], "kind">;
+    }, z.core.$strict>, z.ZodObject<{
+        action: z.ZodLiteral<"end">;
+        id: z.ZodString;
+    }, z.core.$strict>], "action">;
 }, z.core.$strict>], "kind">;
 type OwnerOp = z.infer<typeof ownerOpSchema>;
 type OwnerOpKind = OwnerOp["kind"];
@@ -577,7 +671,7 @@ declare function fromRoundQuestions(manifest: ManifestInput, roundId: string, co
  */
 declare function answeredFromFeedback(feedback: FeedbackInput, manifest: ManifestInput, context: AnsweredContext): OwnerItem[];
 
-type PlanGate = "ci-policy" | "skill" | "visual";
+type PlanGate = "ci-policy" | "skill" | "visual" | "task";
 /** A ci-policy approval pins each file the PR changes by its git blob sha; null means the file is absent at head. */
 interface CiPolicyPlanScope {
     ciPolicyKeys: string[];
@@ -590,12 +684,21 @@ interface CiPolicyPlanScope {
 interface PathPlanScope {
     paths: string[];
 }
+/** A task approval validates the task's WHAT: the done_when text the owner read in the scope card, and the owner-rule reason it needed them. */
+interface TaskPlanScope {
+    doneWhen: string;
+    reason: "new-direction" | "one-way-door" | "new-cap" | "authority-widening";
+    visualSignoff: boolean;
+}
 type PlanGateScope = {
     gate: "ci-policy";
     scope: CiPolicyPlanScope;
 } | {
     gate: "skill" | "visual";
     scope: PathPlanScope;
+} | {
+    gate: "task";
+    scope: TaskPlanScope;
 };
 /** `title` heads the question's section and `context` is what the owner reads beside the pinned scope. */
 type PlanAsk = PlanGateScope & {
@@ -670,7 +773,7 @@ interface StaleLabel {
  */
 declare function staleLabel(item: OwnerItem, evidence: StaleEvidence): StaleLabel | null;
 
-export { type AnsweredContext, Audience, CARD_RULES, type CardRule, type CiPolicyPlanScope, type ClosedStatus, type ConsolidateInput, type FeedbackInput, type Flow, type FlowGroup, HOLD_CLASSES, type HeldItem, INFLUENCE_RULES, type InfluenceContext, type InfluenceEdge, type InfluenceRule, ItemStatus, MERGE_WAITS, OwnerAnswer, OwnerItem, type OwnerOp, type OwnerOpKind, type OwnerRound, type OwnerRoundOptions, type OwnerRounds, PARKED, PROMPT_LINE_BREAK, type PathPlanScope, type PlanApproval, type PlanAsk, type PlanGate, type PlanGateScope, type PlanRound, type PlanRoundInput, type Principle, type PromptLineOptions, type QueueSource, RELATION_KEY_KINDS, ROUND_ANSWERER, type Recheck, type RecheckCite, type RecheckDrop, type RecheckFlag, type RecheckFlagKind, type RelationKeyKind, type ResolveResult, type RoundItemsContext, type RoundQuestionBinding, STALE_RULES, type ShipBlock, type ShipBlockReason, type SkipReason, type SourceEvent, SourceRef, type StackedItem, type StaleEvidence, type StaleLabel, type StaleRule, type Superseded, type WithdrawnItem, alarmKey, answeredFromFeedback, askKey, audienceOf, buildOwnerRounds, buildPlanRound, cardLint, collapseRepeats, componentKey, consolidate, forAudience, fromRoundQuestions, influenceEdges, isMergeKey, mergeByKeys, opKeys, ownerCardSchema, ownerOpSchema, prKey, promptLine, rank, recheck, relationKind, roundAskKey, roundItemId, stackContext, staleLabel, supersede, tokenKey, topicKey };
+export { type AnsweredContext, Audience, CARD_RULES, type CardRule, type CiPolicyPlanScope, type ClosedStatus, type ConsolidateInput, type FeedbackInput, type Flow, type FlowGroup, HOLD_CLASSES, type HeldItem, INFLUENCE_RULES, type InfluenceContext, type InfluenceEdge, type InfluenceRule, ItemStatus, MERGE_WAITS, OwnerAnswer, OwnerItem, type OwnerOp, type OwnerOpKind, type OwnerRound, type OwnerRoundOptions, type OwnerRounds, PARKED, PROMPT_LINE_BREAK, type PathPlanScope, type PlanApproval, type PlanAsk, type PlanGate, type PlanGateScope, type PlanRound, type PlanRoundInput, type Principle, type PromptLineOptions, type QueueSource, RELATION_KEY_KINDS, ROUND_ANSWERER, type Recheck, type RecheckCite, type RecheckDrop, type RecheckFlag, type RecheckFlagKind, type RelationKeyKind, type ResolveResult, type RoundItemsContext, type RoundQuestionBinding, STALE_RULES, type ShipBlock, type ShipBlockReason, type SkipReason, type SourceEvent, SourceRef, type StackedItem, type StaleEvidence, type StaleLabel, type StaleRule, type Superseded, type TaskPlanScope, type WithdrawnItem, alarmKey, answeredFromFeedback, askKey, audienceOf, buildOwnerRounds, buildPlanRound, cardLint, collapseRepeats, componentKey, consolidate, forAudience, fromRoundQuestions, influenceEdges, isMergeKey, mergeByKeys, opKeys, ownerCardSchema, ownerOpSchema, prKey, promptLine, rank, recheck, relationKind, roundAskKey, roundItemId, stackContext, staleLabel, supersede, tokenKey, topicKey };
 
 // ./dist/deposit.d.ts
 import { z } from 'zod';
@@ -770,6 +873,53 @@ declare const ownerItemDepositSchema: z.ZodObject<{
         name: z.ZodString;
         agentId: z.ZodString;
         force: z.ZodBoolean;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"plan-bet-select">;
+        initiative: z.ZodString;
+        week: z.ZodString;
+        bets: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"plan-outcome-edit">;
+        outcome: z.ZodString;
+        to: z.ZodObject<{
+            statement: z.ZodOptional<z.ZodString>;
+            measure: z.ZodOptional<z.ZodString>;
+        }, z.core.$strict>;
+        from: z.ZodOptional<z.ZodObject<{
+            statement: z.ZodString;
+            measure: z.ZodString;
+        }, z.core.$strict>>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"plan-freeze-set">;
+        initiative: z.ZodString;
+        freeze: z.ZodDiscriminatedUnion<[z.ZodObject<{
+            intent_ref: z.ZodString;
+            quote_ref: z.ZodString;
+            action: z.ZodLiteral<"set">;
+            tag: z.ZodOptional<z.ZodString>;
+            selector: z.ZodOptional<z.ZodString>;
+            reason: z.ZodString;
+            end_condition: z.ZodDiscriminatedUnion<[z.ZodObject<{
+                kind: z.ZodLiteral<"date">;
+                date: z.ZodString;
+            }, z.core.$strict>, z.ZodObject<{
+                kind: z.ZodLiteral<"task-done">;
+                task: z.ZodString;
+            }, z.core.$strict>, z.ZodObject<{
+                kind: z.ZodLiteral<"measure">;
+                metric: z.ZodString;
+                direction: z.ZodEnum<{
+                    increase: "increase";
+                    decrease: "decrease";
+                }>;
+                threshold: z.ZodNumber;
+            }, z.core.$strict>, z.ZodObject<{
+                kind: z.ZodLiteral<"owner">;
+            }, z.core.$strict>], "kind">;
+        }, z.core.$strict>, z.ZodObject<{
+            action: z.ZodLiteral<"end">;
+            id: z.ZodString;
+        }, z.core.$strict>], "action">;
     }, z.core.$strict>], "kind">>;
     evidenceRef: z.ZodOptional<z.ZodString>;
     anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;
@@ -973,6 +1123,53 @@ declare const ownerItemSchema: z.ZodObject<{
         name: z.ZodString;
         agentId: z.ZodString;
         force: z.ZodBoolean;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"plan-bet-select">;
+        initiative: z.ZodString;
+        week: z.ZodString;
+        bets: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"plan-outcome-edit">;
+        outcome: z.ZodString;
+        to: z.ZodObject<{
+            statement: z.ZodOptional<z.ZodString>;
+            measure: z.ZodOptional<z.ZodString>;
+        }, z.core.$strict>;
+        from: z.ZodOptional<z.ZodObject<{
+            statement: z.ZodString;
+            measure: z.ZodString;
+        }, z.core.$strict>>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"plan-freeze-set">;
+        initiative: z.ZodString;
+        freeze: z.ZodDiscriminatedUnion<[z.ZodObject<{
+            intent_ref: z.ZodString;
+            quote_ref: z.ZodString;
+            action: z.ZodLiteral<"set">;
+            tag: z.ZodOptional<z.ZodString>;
+            selector: z.ZodOptional<z.ZodString>;
+            reason: z.ZodString;
+            end_condition: z.ZodDiscriminatedUnion<[z.ZodObject<{
+                kind: z.ZodLiteral<"date">;
+                date: z.ZodString;
+            }, z.core.$strict>, z.ZodObject<{
+                kind: z.ZodLiteral<"task-done">;
+                task: z.ZodString;
+            }, z.core.$strict>, z.ZodObject<{
+                kind: z.ZodLiteral<"measure">;
+                metric: z.ZodString;
+                direction: z.ZodEnum<{
+                    increase: "increase";
+                    decrease: "decrease";
+                }>;
+                threshold: z.ZodNumber;
+            }, z.core.$strict>, z.ZodObject<{
+                kind: z.ZodLiteral<"owner">;
+            }, z.core.$strict>], "kind">;
+        }, z.core.$strict>, z.ZodObject<{
+            action: z.ZodLiteral<"end">;
+            id: z.ZodString;
+        }, z.core.$strict>], "action">;
     }, z.core.$strict>], "kind">>;
     evidenceRef: z.ZodOptional<z.ZodString>;
     anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;

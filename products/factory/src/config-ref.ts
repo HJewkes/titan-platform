@@ -112,10 +112,14 @@ const READERS = {
   "shepherd.gateReset.twoMergeRelease": (s: Shepherd) => s.gateReset?.twoMergeRelease,
   "shepherd.gateReset.lowTierPolicy": (s: Shepherd) => s.gateReset?.lowTierPolicy,
   "shepherd.gateReset.ownerTier": (s: Shepherd) => s.gateReset?.ownerTier,
+  "shepherd.backPressure.laneOpenPrs": (s: Shepherd) => s.backPressure?.laneOpenPrs,
+  "shepherd.backPressure.ownerQueue": (s: Shepherd) => s.backPressure?.ownerQueue,
+  "shepherd.backPressure.inflowWeeks": (s: Shepherd) => s.backPressure?.inflowWeeks,
   "shepherd.review.adversaryProfile": (s: Shepherd) => s.review?.adversaryProfile,
   "shepherd.review.fallbackConfigDirs": (s: Shepherd) => s.review?.fallbackConfigDirs,
   "shepherd.review.maxConcurrent": (s: Shepherd) => s.review?.maxConcurrent,
   "shepherd.taskClose": (s: Shepherd) => s.taskClose,
+  "shepherd.visualGate": (s: Shepherd) => s.visualGate,
 };
 
 type LiveValues = { [P in keyof typeof READERS]: ReturnType<(typeof READERS)[P]> };

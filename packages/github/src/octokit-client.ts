@@ -63,9 +63,23 @@ export class GitHubRequestError extends Error {
     message: string,
     readonly status: number,
     readonly headers: Readonly<Record<string, string>>,
+    /** False when no HTTP answer came: Octokit reports a failed connection as a 500 with no response. */
+    readonly answered = true,
   ) {
     super(message);
     this.name = "GitHubRequestError";
+  }
+}
+
+/** A call the lane's deadline cut off; `method` decides whether it may be sent again. */
+export class GitHubDeadlineError extends Error {
+  constructor(
+    readonly method: string,
+    what: string,
+    ms: number,
+  ) {
+    super(`${what} timed out after ${ms} ms`);
+    this.name = "GitHubDeadlineError";
   }
 }
 
@@ -110,7 +124,7 @@ function guard(octokit: InstanceType<typeof ThrottledOctokit>, budget: RateBudge
     const graphql = laneOf(options.url) === "graphql";
     await budget.acquire(graphql ? "graphql" : "core");
     const what = `${options.method} ${graphql ? "graphql" : options.url}`;
-    return withDeadline(what, graphql ? GRAPHQL_TIMEOUT_MS : CORE_TIMEOUT_MS, (signal) => {
+    return withDeadline(options.method, what, graphql ? GRAPHQL_TIMEOUT_MS : CORE_TIMEOUT_MS, (signal) => {
       options.request = { ...options.request, signal };
       return request(options);
     });
@@ -118,13 +132,13 @@ function guard(octokit: InstanceType<typeof ThrottledOctokit>, budget: RateBudge
 }
 
 /** The timer is a plain `setTimeout`, so the deadline is the caller's clock, fake or real. */
-async function withDeadline<T>(what: string, ms: number, run: (signal: AbortSignal) => T | Promise<T>): Promise<T> {
+async function withDeadline<T>(method: string, what: string, ms: number, run: (signal: AbortSignal) => T | Promise<T>): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
   try {
     return await run(controller.signal);
   } catch (error) {
-    if (controller.signal.aborted) throw new Error(`${what} timed out after ${ms} ms`);
+    if (controller.signal.aborted) throw new GitHubDeadlineError(method, what, ms);
     throw error;
   } finally {
     clearTimeout(timer);
@@ -208,11 +222,15 @@ function scrubbed(error: unknown, secret: string, observe: (headers: Headers) =>
   if (status === undefined) return new Error(message);
   const headers = Object.fromEntries(Object.entries(responseHeadersOf(error)).flatMap(([key, value]) => (value === undefined ? [] : [[key, String(value)]])));
   observe(headers);
-  return new GitHubRequestError(message, status, headers);
+  return new GitHubRequestError(message, status, headers, hasResponse(error));
 }
 
 function statusOf(error: unknown): number | undefined {
   return typeof error === "object" && error !== null && "status" in error && typeof error.status === "number" ? error.status : undefined;
+}
+
+function hasResponse(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "response" in error && error.response !== undefined;
 }
 
 function responseHeadersOf(error: unknown): object {

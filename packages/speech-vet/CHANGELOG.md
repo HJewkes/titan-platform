@@ -1,5 +1,19 @@
 # @titan-design/speech-vet
 
+## 0.1.1
+
+### Patch Changes
+
+- 9569f7b: Fold a final `e` and `y` in the content-term stemmer, and stem four-letter words, so "raises"/"raise", "carries"/"carry" and "sets"/"set" read as one term in the rewrite guard.
+- Updated dependencies [938ede4]
+- Updated dependencies [f7b9e60]
+- Updated dependencies [9b42150]
+- Updated dependencies [10c117f]
+- Updated dependencies [8bd93fc]
+  - @titan-design/speech-g2p@0.2.0
+  - @titan-design/speech-stt@0.1.1
+  - @titan-design/speech-tts@0.1.1
+
 ## 0.1.0
 
 ### Minor Changes

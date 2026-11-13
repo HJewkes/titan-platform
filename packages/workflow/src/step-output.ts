@@ -1,6 +1,6 @@
 import type { ZodType } from "zod";
 import { isRecord } from "@titan-design/rpc-protocol/narrow";
-import type { StepOutputFailureKind } from "./types.js";
+import type { StepOutputFailureKind } from "./step-errors.js";
 
 export const DEFAULT_MAX_STEP_DATA_BYTES = 65_536;
 

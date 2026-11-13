@@ -5,12 +5,12 @@ import { createActiveWorkSource } from "./active-work-source.js";
 
 const ORIGIN = "http://127.0.0.1:7400";
 
-function daemon(humanOnly: string[], known = true) {
+function daemon(humanOnly: string[], known = true, ownerOnly: string[] = []) {
   const calls: { url: string; body: unknown }[] = [];
   const tasks = [decisionTask(1), { ...decisionTask(2), slug: "home" }];
   const fetch = async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
     calls.push({ url: String(url), body: JSON.parse(String(init?.body)) });
-    const inventory = { initiatives: ["demo", "home"].map((slug) => ({ slug, human_only: humanOnly.includes(slug) })), human_only_known: known };
+    const inventory = { initiatives: ["demo", "home"].map((slug) => ({ slug, human_only: humanOnly.includes(slug), agent_visible: !ownerOnly.includes(slug) })), human_only_known: known };
     const data = String(url).endsWith("/task.list") ? { tasks } : inventory;
     return new Response(JSON.stringify({ ok: true, data }));
   };
@@ -43,6 +43,17 @@ describe("createActiveWorkSource", () => {
     expect(items.map((item) => [item.id, item.personal])).toEqual([
       ["task:D-1001", false],
       ["task:D-1002", true],
+    ]);
+  });
+
+  it("keeps an owner-only initiative's decisions in the owner's default inbox", async () => {
+    const { fetch } = daemon([], true, ["home"]);
+
+    const items = await createActiveWorkSource({ origin: ORIGIN, fetch }).open();
+
+    expect(items.map((item) => [item.id, item.personal])).toEqual([
+      ["task:D-1001", false],
+      ["task:D-1002", false],
     ]);
   });
 

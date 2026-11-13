@@ -9,13 +9,23 @@
  */
 
 import Database from 'better-sqlite3';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
+import precedentSearch from '../commands/precedent-search.js';
 import { extractPrecedents, type ExtractResult } from './extract.js';
 import { ledgerPath, readLedgerRows } from './ledger.js';
+import { loadAgentVisibility } from '../sessions/visibility.js';
 import { searchPrecedents } from './search.js';
 import { openGraph } from '../session-index/graph.js';
 import { runRefresh } from '../session-index/refresh.js';
@@ -352,6 +362,11 @@ describe('v1 precedents.jsonl rows', () => {
   });
 });
 
+function markOwnerOnly(activeRoot: string): void {
+  const brief = path.join(activeRoot, 'sample-initiative', 'brief.md');
+  writeFileSync(brief, readFileSync(brief, 'utf8').replace('visibility: agent-visible', 'visibility: owner-only'));
+}
+
 describe('precedent search', () => {
   it('ranks the matching precedent first and filters by category', async () => {
     await withTempActiveRoot(async (activeRoot) => {
@@ -359,14 +374,29 @@ describe('precedent search', () => {
       await run(activeRoot);
       const rows = await ledgerRows(activeRoot);
 
-      const hits = await searchPrecedents(rows, MERGE_QUERY, { humanOnly: new Set() });
+      const hits = await searchPrecedents(rows, MERGE_QUERY, { isVisible: () => true });
       const tasteOnly = await searchPrecedents(rows, MERGE_QUERY, {
         category: 'visual_taste',
-        humanOnly: new Set(),
+        isVisible: () => true,
       });
 
       expect(hits[0].row.locator?.toolUseId).toBe('tu-merge');
       expect(tasteOnly).toEqual([]);
+    });
+  });
+
+  it('serves unclaimed precedents to the owner when asked, but never to an agent', async () => {
+    await withTempActiveRoot(async (activeRoot) => {
+      await run(activeRoot);
+      const args = { query: MERGE_QUERY, include_unclaimed: true };
+      const agentCtx = { activeRoot, warnings: [] as string[], format: 'json' as const, caller: 'agent' as const };
+
+      const forAgent = await precedentSearch.run(args, agentCtx);
+      const forOwner = await precedentSearch.run(args, { activeRoot, warnings: [], format: 'json', caller: 'owner' });
+
+      expect(forAgent.hits).toEqual([]);
+      expect(agentCtx.warnings).toHaveLength(1);
+      expect(forOwner.hits[0]?.question).toBe(MERGE_Q);
     });
   });
 
@@ -375,9 +405,9 @@ describe('precedent search', () => {
       const result = await run(activeRoot);
       const rows = await ledgerRows(activeRoot);
 
-      const hidden = await searchPrecedents(rows, MERGE_QUERY, { humanOnly: new Set() });
+      const hidden = await searchPrecedents(rows, MERGE_QUERY, { isVisible: () => true });
       const shown = await searchPrecedents(rows, MERGE_QUERY, {
-        humanOnly: new Set(),
+        isVisible: () => true,
         includeUnclaimed: true,
       });
 
@@ -397,6 +427,20 @@ describe('human-only initiatives', () => {
       registerWorktree(activeRoot);
       writeNote(activeRoot, '2026-09-01-private.md', noteFrontmatter, 'Body.');
       writeCharter(activeRoot, ['sample-initiative']);
+
+      const result = await run(activeRoot);
+
+      expect(await ledgerRows(activeRoot)).toEqual([]);
+      expect(summary(result, 'transcript').excluded['human-only-initiative']).toBe(2);
+      expect(summary(result, 'note').excluded['human-only-initiative']).toBe(1);
+    });
+  });
+
+  it('extracts nothing from an initiative whose brief makes it owner-only', async () => {
+    await withTempActiveRoot(async (activeRoot) => {
+      registerWorktree(activeRoot);
+      writeNote(activeRoot, '2026-09-01-private.md', noteFrontmatter, 'Body.');
+      markOwnerOnly(activeRoot);
 
       const result = await run(activeRoot);
 
@@ -428,20 +472,23 @@ describe('human-only initiatives', () => {
     });
   });
 
-  it('drops listed rows from search, including rows written before the listing, even with unclaimed rows included', async () => {
+  it('withholds an owner-only initiative\'s rows, including rows written before it was marked, even with unclaimed rows included', async () => {
     await withTempActiveRoot(async (activeRoot) => {
       registerWorktree(activeRoot);
       await run(activeRoot);
       const rows = await ledgerRows(activeRoot);
 
-      const open = await searchPrecedents(rows, MERGE_QUERY, { humanOnly: new Set() });
-      const listed = await searchPrecedents(rows, MERGE_QUERY, {
-        humanOnly: new Set(['sample-initiative']),
+      const open = await searchPrecedents(rows, MERGE_QUERY, {
+        isVisible: await loadAgentVisibility(activeRoot),
+      });
+      markOwnerOnly(activeRoot);
+      const ownerOnly = await searchPrecedents(rows, MERGE_QUERY, {
+        isVisible: await loadAgentVisibility(activeRoot),
         includeUnclaimed: true,
       });
 
       expect(open.length).toBeGreaterThan(0);
-      expect(listed).toEqual([]);
+      expect(ownerOnly).toEqual([]);
     });
   });
 });

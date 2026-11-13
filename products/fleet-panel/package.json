@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/fleet-panel",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Claude Code mod: a live panel of running agent-chat agents, their accounts, context and spend",
   "type": "module",
   "main": "./dist/index.js",

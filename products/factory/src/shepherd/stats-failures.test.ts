@@ -22,6 +22,18 @@ describe("failureStats", () => {
     ]);
   });
 
+  it("counts a row under the class it recorded, whatever its text or prefix says", () => {
+    const [row] = failureStats([runOf("a", `[land-rules] ${CI_TIMEOUT}`, "2026-10-05T10:00:00.000Z", { errorClass: "update-branch" })]);
+
+    expect(row?.byClass).toMatchObject({ "update-branch": 1, "ci-timeout": 0, "land-rules": 0 });
+  });
+
+  it("counts a run parked for recovery as other, never by its text", () => {
+    const [row] = failureStats([runOf("a", `legacy attach failed: ${CI_TIMEOUT}`, null, { status: "recovery_required" })]);
+
+    expect(row?.byClass).toMatchObject({ other: 1, "ci-timeout": 0 });
+  });
+
   it("classifies a legacy unprefixed row by its text", () => {
     const [row] = failureStats([runOf("a", CI_TIMEOUT, "2026-10-05T10:00:00.000Z")]);
 

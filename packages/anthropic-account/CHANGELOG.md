@@ -1,5 +1,35 @@
 # @titan-design/anthropic-account
 
+## 0.4.1
+
+### Patch Changes
+
+- ff46e59: A usage reading whose window is `null` (the API's answer for an idle five-hour window) no longer discards the whole reading, so `status --statusline` prints the figures instead of the unknown line.
+
+## 0.4.0
+
+### Minor Changes
+
+- c072542: On darwin, `readLoginState`, `pollUsage` and the `anthropic-account` bin now read each config dir's OAuth login from the macOS Keychain with `security find-generic-password -s <service> -w`, read-only. The service is `Claude Code-credentials` for `~/.claude`, and that name plus `-` and the first eight hex digits of the SHA-256 of the dir's symlink-resolved path for any other dir, matching the darwin `rate-limits.sh`. A missing item reads as `missing`. Any other failure gives a fixed message, or `io` from a poll, and never quotes the output of `security`. Darwin never refreshes: an expired token reports expired, and `poll --refresh` skips the refresh step. `readAccounts` takes the same `platform`, `keychainExec` and `home` options and judges `auth_fail` from the Keychain login on darwin. New exports from `./node`: `keychainService`, `KEYCHAIN_SERVICE`, `KeychainExec`, `KeychainExecResult` and `KeychainOptions`. Other platforms still read `.credentials.json` as before.
+- 9470266: Add `mergeAccountReadings` and the `AccountUsage` type to the pure entry: one account's usage from its poller and status-line readings. A fresh poller (≤ 360 s) is the reading of record; status lines may lend a missing window or raise one inside the same window; a window whose every reset has passed reads as rolled to 0; readings are aged by when their rate_limits were observed.
+- 1b7ad44: Add `anthropic-account install|uninstall [--dry-run]`. On linux it writes the shipped poll units into the systemd user dir and enables the timer; on darwin it writes a launchd agent that runs `poll --write` (no `--refresh`) every 150 s and bootstraps it.
+- 37bf5da: Add `readAccounts` and `accountIdentity` to `./node`, and `groupByIdentity` to the root: one `AccountUsage` row per Anthropic login, naming every config dir on it, merged with `mergeAccountReadings`. `readReadings(configDir)` returns every reading in a sessions dir as an `ObservedReading`, keeping a status line's validated `prompt_cache` stamp so the merge dates its figures by the last API response. `parseObservedReading` is exported from the root.
+- 8ca1def: `status --json` now prints `{ schema: 2, accounts }`, one `readAccounts` row per Anthropic login, in place of `{ profiles }`. `status --statusline` renders from the same rows, so `~/.claude` and a profile on one login are one cell under the profile's label.
+
+### Patch Changes
+
+- 1f0e92e: `poll` reads `ANTHROPIC_ACCOUNT_LABELS`, a comma-separated list of account labels. A profile outside the list whose login is missing or refused now prints a stderr warning and no longer fails the run, so a stray config dir stops failing the timer. Failures on listed accounts, and HTTP or refresh failures anywhere, still exit non-zero. Unset, behavior is unchanged.
+- 175f8cc: Keep the weekly per-model cap and the severities from the usage response's `limits[]`, and fill the status line's scoped and severity fields from them.
+- 1fe77c3: Clear the typed-lint baseline for the package by narrowing in place of type assertions.
+- 5edd38d: Use the shared `isRecord` and `isObjectLike` from `@titan-design/rpc-protocol/narrow` in place of local copies. Behaviour is unchanged.
+- c616533: `status --statusline` renders from `readAccounts`, so each cell comes from `mergeAccountReadings`. That merge takes the poller's `usage-poll.json` as the reading of record while it is at most 360 seconds old and drops a window whose reset has already passed. A reading that has only `seven_day` now renders, since the usage response no longer carries `five_hour`, and the 5h fields print empty when `five_hour` is absent. The line format is unchanged when both windows are present.
+- 6c3fb4b: List `zod` under `dependencies` instead of `peerDependencies`. The `anthropic-account` bin imports
+  it at run time, so `npx -p @titan-design/anthropic-account` failed with `ERR_MODULE_NOT_FOUND`
+  wherever npm runs with `legacy-peer-deps=true`.
+- 24cfcc9: Test readAccounts auth_fail across members on darwin and linux, and pin the default-dir identity fallback (TP-4742).
+- Updated dependencies [5edd38d]
+  - @titan-design/rpc-protocol@0.4.0
+
 ## 0.3.0
 
 ### Minor Changes

@@ -24,6 +24,15 @@ export async function listInitiativeSlugs(activeRoot: string): Promise<string[]>
     .sort();
 }
 
+/** Whether `slug` names an initiative directory, read by path rather than by listing the root. */
+export async function isInitiativeSlug(activeRoot: string, slug: string): Promise<boolean> {
+  if (slug.startsWith('.') || slug.includes('/') || slug.includes(path.sep)) return false;
+  return fs.stat(path.join(activeRoot, slug)).then(
+    (stat) => stat.isDirectory(),
+    () => false,
+  );
+}
+
 /** For callers that must degrade to "no initiatives" rather than fail (launch, lookups, doctor, boards). */
 export async function listInitiativeSlugsOrEmpty(activeRoot: string): Promise<string[]> {
   try {

@@ -62,10 +62,14 @@ export const EDITABLE_FIELDS: readonly EditableField[] = [
   shaped("factory", "shepherd.gateReset.twoMergeRelease", z.enum(["off", "shadow", "on"]), "live"),
   shaped("factory", "shepherd.gateReset.lowTierPolicy", z.enum(["off", "shadow", "on"]), "live"),
   shaped("factory", "shepherd.gateReset.ownerTier", z.enum(["off", "shadow", "on"]), "live"),
+  field("factory", "shepherd.backPressure.laneOpenPrs", { min: 1, max: 64, integer: true }, "live"),
+  field("factory", "shepherd.backPressure.ownerQueue", { min: 0, max: 1000, integer: true }, "live"),
+  field("factory", "shepherd.backPressure.inflowWeeks", { min: 1, max: 12, integer: true }, "live"),
   shaped("factory", "shepherd.review.adversaryProfile", profileName, "live"),
   shaped("factory", "shepherd.review.fallbackConfigDirs", z.array(absoluteDir).max(16), "live"),
   field("factory", "shepherd.review.maxConcurrent", { min: 1, max: 64, integer: true }, "live"),
   shaped("factory", "shepherd.taskClose", z.enum(["keep", "last-slice-only"]), "live"),
+  shaped("factory", "shepherd.visualGate", z.enum(["owner", "async"]), "live"),
 ];
 
 function matches(pattern: string, path: string): boolean {

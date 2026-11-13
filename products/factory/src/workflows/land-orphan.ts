@@ -2,6 +2,7 @@ import type { GitHubPort } from "@titan-design/github";
 import { codeStep, type WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { CiInput, CiSnapshot } from "./land-ci.js";
+import { ShepherdFailure } from "../shepherd/failure-class.js";
 
 /**
  * How long a check waited on may stay queued or in progress before its workflow run is read, and how long it may then
@@ -84,7 +85,7 @@ export async function rerunOrphaned(ctx: WorkflowContext, stepId: string, input:
   const heads = rerunHeads.get(ctx) ?? rerunHeads.set(ctx, new Set()).get(ctx)!;
   if (heads.has(input.headSha)) {
     const jobs = input.jobs.map((job) => `${job.name} (${job.status})`).join(", ");
-    throw new Error(`ci-wait timed out on orphaned checks at ${input.headSha}: ${jobs} still open under a completed workflow run after one rerun`);
+    throw new ShepherdFailure("ci-timeout", `ci-wait timed out on orphaned checks at ${input.headSha}: ${jobs} still open under a completed workflow run after one rerun`);
   }
   heads.add(input.headSha);
   await codeStep(ctx, stepId, input, OrphanRerunResult);

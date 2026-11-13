@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the open picker lists every initiative to an agent",
+      "file": "products/active-work/src/commands/open.ts",
+      "find": "  const slugs = await listSlugsForCaller(activeRoot, ctx);",
+      "replace": "  const slugs = await listSlugsForCaller(activeRoot, { ...ctx, caller: 'owner' });",
+      "kills": [
+        "open across initiatives the picker lists only agent-visible initiatives to an agent, and every one to the owner"
+      ]
+    },
+    {
+      "name": "a slug that matches nothing names every initiative to an agent",
+      "file": "products/active-work/src/commands/_open-helpers.ts",
+      "find": "  const slugs = await listSlugsForCaller(activeRoot, ctx);",
+      "replace": "  const slugs = await listSlugsForCaller(activeRoot, { ...ctx, caller: 'owner' });",
+      "kills": [
+        "open across initiatives names no owner-only initiative to an agent when a slug matches nothing"
+      ]
+    }
+  ]
+}

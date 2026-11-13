@@ -43,6 +43,17 @@ describe("task rows", () => {
     expect(built.reviewRounds).toBe(4);
   });
 
+  it("fix rounds count suffixed await-new-head step ids", () => {
+    const runs = [
+      { runId: "r1", stepIds: ["sh-await-pr:0", "sh-await-new-head:1", "sh-main-ci:2", "sh-await-new-head:3"], reviewRounds: 0, successors: 0 },
+      { runId: "r2", stepIds: ["await-new-head:0", "await-new-head-later:1", "sh-land:2"], reviewRounds: 0, successors: 0 },
+    ];
+
+    const built = row({ runs });
+
+    expect(built.fixRounds).toBe(3);
+  });
+
   it("task row marks merged only through a registration for the task", () => {
     const prs = [
       { repo: REPO, pr: 10, mergedAt: "2026-11-02T12:00:00.000Z", closedAt: "2026-11-02T12:00:00.000Z" },
@@ -72,6 +83,15 @@ describe("task rows", () => {
     expect(inferred.classAtDispatch).toBe("upkeep");
     expect(inferred.provenance).toEqual({ classAtDispatch: "inferred:census-2026-11-12", sourceAtDispatch: "recorded" });
     expect(weekMetrics([recorded, inferred]).inferredShare).toBe(0.5);
+  });
+
+  it("a first dispatch linked through the session origin marks the row inferred", () => {
+    const spawns = [{ ts: DISPATCHED, actor: "seat-one", launchedBy: null, dispatchRule: null, link: "inferred:name" as const }];
+
+    const built = row({ spawns });
+
+    expect(built.provenance).toEqual({ firstDispatchTs: "inferred:name" });
+    expect(weekMetrics([built, row()]).inferredShare).toBe(0.5);
   });
 
   it("the inputs hash does not depend on the order the reader listed the inputs", () => {

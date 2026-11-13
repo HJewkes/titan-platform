@@ -70,8 +70,8 @@ any short, upper-case or over-long head are refused. A `FIX_FIRST` block may add
 ## Review verdicts and assigned tasks
 
 `parseReviewVerdicts(text)` reads a `chat_send` message for approve / changes-requested
-verdicts. `assignedTaskIds({ agentName, brief, isKnown, briefingChars? })` reads which task a spawned
-session was given, and `orientationEnd(brief, briefingChars?)` returns where the assignment
+verdicts. `assignedTaskIds({ agentName, brief, isKnown, briefingChars?, spawnTask? })` reads which task a spawned
+session was given (a known recorded `spawnTask`, the spawn's `meta.task`, wins as source `spawn-meta`), and `orientationEnd(brief, briefingChars?)` returns where the assignment
 starts in the brief. Pass `briefingChars` (agent-chat's `agent_spawned` meta `briefing_chars`)
 when it was recorded: it locates the end of the orientation block without relying on heading text. Signatures and examples are in the
 [reference page](https://hjewkes.github.io/titan-platform/reference/session-read.html).

@@ -46,8 +46,8 @@ describe("the low-tier decision on the timeline", () => {
   });
 
   it("the timeline shows the kept reason when a policy touch stays adversary", async () => {
-    const events = await holdEventsFor("packages/workflow/src/runtime.ts");
+    const events = await holdEventsFor("packages/queue-mirror/src/mirror.ts");
 
-    expect(timelineEntries(completedWith("sh-start", {}), [], events)).toContainEqual(expect.objectContaining({ kind: "event", event: "hold", reason: "g10-adversary: policy touch (kept: high: gate-resolve file packages/workflow/src/runtime.ts)", actor: "shepherd" }));
+    expect(timelineEntries(completedWith("sh-start", {}), [], events)).toContainEqual(expect.objectContaining({ kind: "event", event: "hold", reason: "g10-adversary: policy touch (kept: high: gate-resolve file packages/queue-mirror/src/mirror.ts)", actor: "shepherd" }));
   });
 });

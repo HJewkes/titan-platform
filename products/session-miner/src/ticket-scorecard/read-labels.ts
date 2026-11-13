@@ -1,8 +1,9 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
-import type { Labelled, ScorecardLabels } from "@titan-design/session-analytics";
+import type { ClassLabel, Labelled, ScorecardLabels } from "@titan-design/session-analytics";
 import { z } from "zod";
 
 const nullableText = z.string().min(1).nullable().optional();
+const classLabel = z.enum(["product", "upkeep", "mixed"]).nullable().optional();
 
 /**
  * One row of the S3 backfill export (`labels-inferred-<date>.jsonl`): labels the census classifiers inferred once for
@@ -10,7 +11,9 @@ const nullableText = z.string().min(1).nullable().optional();
  */
 const LabelRow = z.object({
   task: z.string().min(1),
-  class: z.enum(["product", "upkeep", "mixed"]).nullable().optional(),
+  class: classLabel,
+  /** The classifier's three-way label before `mixed` folds into upkeep; only the E1 reproduction reads it. */
+  class_raw: classLabel,
   source: nullableText,
   serves: nullableText,
   done_reason: nullableText,
@@ -23,6 +26,8 @@ type LabelRow = z.infer<typeof LabelRow>;
 export interface LabelLoad {
   /** Keyed `initiative/ID`, as the export writes it. */
   labels: Map<string, ScorecardLabels>;
+  /** The three-way `class_raw` label, keyed like `labels`, for the rows that carry it. */
+  rawClass: Map<string, ClassLabel>;
   rows: number;
   invalid: number;
   mtimeMs: number;
@@ -58,7 +63,7 @@ function parseLine(line: string): LabelRow | null {
 /** The inferred-labels file, or null when it is absent: labels then read as not measured. */
 export function readLabels(file: string): LabelLoad | null {
   if (!existsSync(file)) return null;
-  const load: LabelLoad = { labels: new Map(), rows: 0, invalid: 0, mtimeMs: Math.floor(statSync(file).mtimeMs) };
+  const load: LabelLoad = { labels: new Map(), rows: 0, invalid: 0, rawClass: new Map(), mtimeMs: Math.floor(statSync(file).mtimeMs) };
   for (const line of readFileSync(file, "utf8").split("\n")) {
     if (line.trim() === "") continue;
     const row = parseLine(line);
@@ -66,6 +71,7 @@ export function readLabels(file: string): LabelLoad | null {
     else {
       load.rows += 1;
       load.labels.set(row.task, labelsOf(row));
+      if (row.class_raw !== null && row.class_raw !== undefined) load.rawClass.set(row.task, row.class_raw);
     }
   }
   return load;

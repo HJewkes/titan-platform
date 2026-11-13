@@ -1,9 +1,9 @@
 import type { LedgerRow } from '@titan-design/decider';
 import { z } from 'zod';
-import { defineCommand } from '../registry/index.js';
-import { loadHumanOnlyInitiatives } from '../decider/human-only.js';
+import { defineCommand, type CommandContext } from '../registry/index.js';
 import { readLedgerRows } from '../decider/ledger.js';
 import { isUnclaimed, searchPrecedents } from '../decider/search.js';
+import { loadAgentVisibility } from '../sessions/visibility.js';
 import { getActiveRoot } from '../utils/paths.js';
 
 const ArgsSchema = z.object({
@@ -66,6 +66,13 @@ function toHit(row: LedgerRow, score: number): z.infer<typeof HitSchema> {
   };
 }
 
+/** An unclaimed row names no initiative, so only the owner gets one (TP-5453 P6b). */
+function unclaimedFor(asked: boolean | undefined, ctx: CommandContext): boolean | undefined {
+  if (asked !== true || ctx.caller === 'owner') return asked;
+  ctx.warnings.push('include_unclaimed is served only to the owner: unclaimed precedents name no initiative');
+  return false;
+}
+
 export default defineCommand<Args, Result>({
   name: 'precedent.search',
   description: 'Rank indexed precedents (answered questions, decisions) for a query.',
@@ -88,16 +95,17 @@ export default defineCommand<Args, Result>({
     usage:
       'active-work precedent search <query> [--limit 8] [--initiative <slug>] [--class <c>] [--include-unclaimed]',
   },
-  async run(args) {
+  async run(args, ctx) {
     const activeRoot = getActiveRoot();
-    const humanOnly = await loadHumanOnlyInitiatives(activeRoot);
+    const isVisible = await loadAgentVisibility(activeRoot);
+    const includeUnclaimed = unclaimedFor(args.include_unclaimed, ctx);
     const { rows, malformed } = await readLedgerRows(activeRoot);
     const hits = await searchPrecedents(rows, args.query, {
       limit: args.limit,
       initiative: args.initiative,
       category: args.class,
-      includeUnclaimed: args.include_unclaimed,
-      humanOnly,
+      includeUnclaimed,
+      isVisible,
     });
     return {
       query: args.query,

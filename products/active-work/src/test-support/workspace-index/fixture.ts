@@ -31,6 +31,7 @@ function brief(slug: string, prefix: string): string {
     'updated: 2026-09-01',
     'state: backburner',
     `task_prefix: ${prefix}`,
+    'visibility: agent-visible',
     '---',
     '',
     `The ${slug} initiative exists to prove the indexer works.`,

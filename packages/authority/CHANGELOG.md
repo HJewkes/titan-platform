@@ -1,5 +1,22 @@
 # @titan-design/authority
 
+## 0.7.0
+
+### Minor Changes
+
+- f0c6bea: Export `CARRYING_KINDS`, the PR kinds whose reviewed MERGE `pr-kind-not-security` lets carry to a new head, so callers that record a carry gate on the same set. The set is unchanged.
+
+## 0.6.0
+
+### Minor Changes
+
+- 9411e94: Add the `agent-retire` action class (TP-3622). RET-OR, approved by owner decision 532 of 2026-10-24, lets the owner retire an agent from the console, conditioned on a plain retire of an agent whose session has exited and that works on no live Shepherd run. Every other actor's row copies its `destructive-local` row word for word, so retire policy changes for owner-remote only. `destructive-local` is unchanged, so DSL-OR still denies every other local destructive action to owner-remote. The table now holds 51 allow, 6 gate and 67 deny rows.
+- 91e3e3d: Export the shared taint vocabulary: `TAINT_KINDS`, the `TaintSource` type and `taintSourceSchema`, which refuses an unknown kind and a `ref` over 200 characters.
+
+### Patch Changes
+
+- c026f23: Typed-lint burn-down: the condition lookup narrows with type guards instead of casts, and the tests build malformed requests without assertions. No behaviour change.
+
 ## 0.5.0
 
 ### Minor Changes

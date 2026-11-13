@@ -10,6 +10,8 @@ import { isRepoKey } from "./shepherd/seats.js";
 import { ConsoleOriginSchema } from "./digest/gate-alarm.js";
 import { SeatDigestPacingSchema } from "./shepherd/seat-digest-pace.js";
 import { VisualThresholdSchema } from "./shepherd/visual-threshold-config.js";
+import { VisualGateSchema } from "./shepherd/visual-gate-config.js";
+import { RedSeatConfigSchema } from "./shepherd/red-seat-config.js";
 
 /** execFile throws on a NUL byte, which would fail the post-merge step after the merge instead of at config load. */
 const noNul = z.string().refine((value) => !value.includes("\0"), "must not contain a NUL byte");
@@ -210,6 +212,10 @@ const remoteFactoryUrl = z.string().refine(isRemoteFactoryUrl, "must be an http 
 /** The schema strips unknown keys, so a misspelt remoteFactory would silently leave the frozen database writable. */
 const misspeltRemoteFactory = (key: string): boolean => key !== "remoteFactory" && key.toLowerCase().replace(/[^a-z]/g, "").startsWith("remotefactory");
 
+const whole = (min: number, max: number) => z.number().int().min(min).max(max).optional();
+/** The limits `dispatch eligible` judges a lane by (TP-5453 P4b); an absent key means its starting value in eligibility/back-pressure.ts. */
+const BackPressureConfigSchema = z.strictObject({ laneOpenPrs: whole(1, 64), ownerQueue: whole(0, 1000), inflowWeeks: whole(1, 12) });
+
 /** Owner-specific bindings live here, outside the public repo; later slices add repos and device keys. */
 export const FactoryConfigSchema = z.object({
   dbPath: z.string().min(1).optional(),
@@ -237,24 +243,17 @@ export const FactoryConfigSchema = z.object({
       mergeWake: MergeWakeConfigSchema.optional(),
       /** The agent-chat seat told when the deploy alarm goes up and while it stands; absent is warned about at serve start and fails `service check`. */
       hubSeat: z.string().min(1).optional(),
-      /**
-       * Where serve's main CI watch sends a red-main event, ahead of the run's seat, the branch-prefix seat and `hubSeat`: the
-       * repo's entry (keys match in any case), else `fallback`. Red events only; merge policy and seat identity never read it.
-       */
-      redSeat: z
-        .strictObject({ repos: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), z.string().min(1)).optional(), fallback: z.string().min(1).optional() })
-        .optional(),
+      redSeat: RedSeatConfigSchema.optional(),
       deployAlarm: DeployAlarmConfigSchema.optional(),
       gateNotify: GateNotifyConfigSchema.optional(),
       /** Paces each seat's Shepherd digest (TP-4207); absent sends every change on the sweep that sees it. */
       seatDigest: z.strictObject({ pacing: SeatDigestPacingSchema.optional() }).optional(),
-      /**
-       * Decisions 422 and 423's stopgaps, each off when absent. `twoMergeRelease` other than `off` gives a g10-adversary hold Shepherd's
+      /** Decisions 422 and 423's stopgaps, each off when absent. `twoMergeRelease` other than `off` gives a g10-adversary hold Shepherd's
        * own adversary member; `shadow` records where that member's MERGE and the correctness MERGE would release the hold, `on` releases it.
        * `heldRepair: on` lets a g10 hold gate only the merge, so its run repairs as usual. `noReproProceed: on` lets a test-only PR whose
        * diff is tests alone go to review on a vacuous or test-less fix-proof, recorded as unverified; any source change keeps NO_REPRO.
        * `nonSourceNoRepro: record-fact` does the same for any non-security PR whose every path is tests, workflows, changesets or
-       * docs, recorded as `no-repro-non-source`; absent means `keep-owner`, today's sh-sent-back gate (TP-4275). `lowTierPolicy`: `LowTierMode` (TP-5403). `ownerTier`: `OwnerTierMode` (TP-5406).
+       * docs, recorded as `no-repro-non-source`; absent means `keep-owner`, today's sh-sent-back gate (TP-4275). `lowTierPolicy` (TP-5403): absent means `shadow`; `on` is the owner's switch (q28), set only after the owner settles which gate code may go low. `ownerTier`: `OwnerTierMode` (TP-5406).
        */
       gateReset: z
         .strictObject({
@@ -265,12 +264,14 @@ export const FactoryConfigSchema = z.object({
           nonSourceNoRepro: z.enum(["keep-owner", "record-fact"]).optional(),
         })
         .optional(),
+      backPressure: BackPressureConfigSchema.optional(),
       /**
        * How a registered PR's merge settles its `--task` (TP-4274). `keep`, the default when absent, closes it on every merge.
        * `last-slice-only` closes it only when the PR is its last slice (a `Last slice: yes` body line or `register --last-slice`),
        * or when no other open PR is registered with that task and the body has no `Last slice: no`; else it notes the merge.
        */
       taskClose: z.enum(["keep", "last-slice-only"]).optional(),
+      visualGate: VisualGateSchema.optional(),
       /**
        * Mounts `POST /gates/answer-ship`, which resolves an approve-merge gate as owner-remote from a console Ship answer
        * read out of `roundsDir`. No token: any same-user caller can post, as for gateNotify. Absent means the route 404s.

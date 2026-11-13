@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "search serves hits from every initiative",
+      "file": "products/active-work/src/search/index.ts",
+      "find": "    ).filter((hit) => visible(hit.initiative));",
+      "replace": "    );",
+      "kills": [
+        "owner-only initiatives in agent-facing search search returns no hit from an owner-only or unparsable-brief initiative",
+        "owner-only initiatives in agent-facing search the MCP search tool returns no hit from an owner-only or unparsable-brief initiative"
+      ]
+    },
+    {
+      "name": "the indexer keeps an owner-only initiative's files",
+      "file": "products/active-work/src/workspace-index/scan.ts",
+      "find": "return visible ? files : files.filter((file) => file.class === 'initiative');",
+      "replace": "return files;",
+      "kills": [
+        "the workspace indexer and owner-only initiatives keeps only the initiative row of an owner-only initiative: no task, note or brief span"
+      ]
+    },
+    {
+      "name": "an owner-only brief keeps its spans",
+      "file": "products/active-work/src/workspace-index/read.ts",
+      "find": "spans: isAgentVisible({ slug: file.slug, brief: data })",
+      "replace": "spans: true",
+      "kills": [
+        "the workspace indexer and owner-only initiatives keeps only the initiative row of an owner-only initiative: no task, note or brief span"
+      ]
+    },
+    {
+      "name": "the cross-initiative graph scan reads every initiative",
+      "file": "products/active-work/src/commands/context-graph.ts",
+      "find": "return (await listSlugs()).filter((slug) => isVisible(slug));",
+      "replace": "return listSlugs();",
+      "kills": [
+        "owner-only initiatives in agent-facing search the cross-initiative context graph scan skips an owner-only initiative"
+      ]
+    },
+    {
+      "name": "a named graph scan is filtered too",
+      "file": "products/active-work/src/commands/context-graph.ts",
+      "find": "const slugs = args.slug ? [args.slug] : await visibleSlugs();",
+      "replace": "const slugs = (args.slug ? [args.slug] : await listSlugs()).filter((slug) => slug !== 'private-notes');",
+      "kills": [
+        "a session inside an owner-only initiative still traces its own ids when it names itself to context graph"
+      ]
+    }
+  ]
+}

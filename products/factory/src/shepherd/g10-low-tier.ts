@@ -1,4 +1,6 @@
+import { z } from "zod";
 import { policyTablesOf, type PolicyTable } from "./g10-class-rules.js";
+import refusalClosureJson from "./g10-low-tier-closure.json" with { type: "json" };
 import { riskFactsOf, riskTier } from "./risk-tier.js";
 
 /**
@@ -6,6 +8,15 @@ import { riskFactsOf, riskTier } from "./risk-tier.js";
  * included, keeps the owner gate; nothing lists the tables that are blocked.
  */
 const LOW_POLICY_TABLES: readonly PolicyTable[] = ["default-policy", "signoff-policy", "hold-closure"];
+
+/**
+ * The classifier's own definition, as repo paths: the import closure of this module and of `registration-hold.ts`,
+ * workspace packages included. A path here never goes low. Code that calls the rule or writes the verdicts the release
+ * reads is not in it; that code sits in `signoff-policy` or `hold-closure`, and whether it may go low is the q28 boundary
+ * the owner settles before setting `lowTierPolicy: on`. `g10-low-tier-closure.test.ts` recomputes the walk and fails
+ * until this list matches it (`vitest -u`).
+ */
+const REFUSAL_CLOSURE: ReadonlySet<string> = new Set(z.array(z.string()).parse(refusalClosureJson).map((path) => path.toLowerCase()));
 
 export type LowTierPolicy = { eligible: true; tables: PolicyTable[] } | { eligible: false; kept: string };
 
@@ -34,6 +45,8 @@ function classify(read: LowTierRead): LowTierPolicy {
   if (adversary.length > 0) return kept(`${adversary.join(", ")} touch`);
   const tier = riskTier({ ...facts, touches: facts.touches.filter((touch) => touch !== "policy") });
   if (tier.tier !== "low") return kept(tier.reasons[0] ?? `${tier.tier} tier`);
+  const gateInput = read.paths.find((path) => REFUSAL_CLOSURE.has(path.toLowerCase()));
+  if (gateInput !== undefined) return kept(`gate input ${gateInput}`);
   return byTables(policyTablesOf(read.paths.map((path) => ({ path }))));
 }
 

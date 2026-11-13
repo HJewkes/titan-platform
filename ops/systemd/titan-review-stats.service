@@ -1,0 +1,17 @@
+# Daily review-stats refresh: brings review-stats.sqlite3 up to date from the ledger, the seat logs, transcripts and the
+# git-cache (TP-5592). Reads all of them; the only thing it writes is the stats store beside the ledger.
+# Install steps: products/factory/README.md, "Review stats: daily refresh".
+[Unit]
+Description=Titan factory: daily review-stats refresh
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment="PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
+# Sets ACTIVE_ROOT and TITAN_FACTORY_DB; the same file the owner-gates unit reads.
+EnvironmentFile=%h/.config/titan-factory/owner-gates.env
+# The serve unit's own build: the dedicated deploy checkout `service deploy` keeps current.
+ExecStart=/usr/bin/node %h/.local/share/titan-factory/deploy/titan-platform/products/factory/dist/bin.js shepherd stats --reviews --json
+TimeoutStartSec=30min
+Nice=10
+IOSchedulingClass=idle

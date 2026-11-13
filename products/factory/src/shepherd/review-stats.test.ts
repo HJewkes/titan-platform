@@ -2,9 +2,12 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { USAGE_LIMIT_REASON } from "@titan-design/review-panel";
+import { gitIn, seedRepo } from "@titan-design/test-kit/git";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { WorkflowRunStore, workflowMigration, workflowOwnershipMigration, type WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
+import { hostCarryPorts } from "./carry-cache-adapter.js";
+import { cacheOwnDiffReader } from "./review-stats-backfill.js";
 import { ReviewStatsStore, REVIEW_STATS_DB, REVIEW_STATS_MIGRATIONS } from "./review-stats-store.js";
 import { ledgerRuns, readRetireCosts, refreshReviewStats } from "./review-stats.js";
 import type { SessionRead, TranscriptPort } from "./stats-cost.js";
@@ -83,7 +86,7 @@ describe("refreshReviewStats", () => {
 
     const result = await refreshReviewStats({ store, runs: ledgerRuns(ledger([runOf("r1", twoRounds())])), retire: readRetireCosts(logsWith([retireRow(SESSION.a, 1.5)])), transcripts: port });
 
-    expect(result).toEqual({ added: 2, repriced: 0, transcriptReads: 1 });
+    expect(result).toMatchObject({ added: 2, repriced: 0, transcriptReads: 1 });
     expect(reviewRows(store)).toEqual([
       { round: 0, repo: "acme/widgets", pr: 7, head_sha: "h1", session_id: SESSION.a, model: "claude-opus-5-5", queue_ms: 2 * MIN, review_ms: 8 * MIN, verdict: "FIX_FIRST", input: 1000, cache_write: 500, usd: 1.5, cost_source: "retire" },
       { round: 2, repo: "acme/widgets", pr: 7, head_sha: "h3", session_id: SESSION.b, model: "claude-haiku-4-5", queue_ms: 1 * MIN, review_ms: 9 * MIN, verdict: "MERGE", input: 0, cache_write: 0, usd: 5, cost_source: "transcript" },
@@ -99,7 +102,7 @@ describe("refreshReviewStats", () => {
 
     const result = await refreshReviewStats({ ...deps, transcripts: again });
 
-    expect(result).toEqual({ added: 0, repriced: 0, transcriptReads: 0 });
+    expect(result).toMatchObject({ added: 0, repriced: 0, transcriptReads: 0 });
     expect(again.paths).toEqual([]);
     expect(reviewRows(store)).toHaveLength(2);
   });
@@ -138,7 +141,7 @@ describe("refreshReviewStats", () => {
     const port = portOf({});
     const result = await refreshReviewStats({ store, runs, retire: readRetireCosts(logsWith([retireRow(SESSION.a, 0.75)])), transcripts: port });
 
-    expect(result).toEqual({ added: 0, repriced: 1, transcriptReads: 0 });
+    expect(result).toMatchObject({ added: 0, repriced: 1, transcriptReads: 0 });
     expect(reviewRows(store)).toEqual([expect.objectContaining({ usd: 0.75, cost_source: "retire" })]);
   });
 
@@ -224,6 +227,44 @@ describe("review labels", () => {
   });
 });
 
+const BASE = "b".repeat(40);
+const ownDiff = (head: string, minutes: number, id: string | null): Step => [`sh-own-diff:${head}:0`, minutes, id === null ? { unread: "git fetch exited 128" } : { id, base: BASE }];
+const ownDiffRows = (store: ReviewStatsStore) => store.db.prepare("SELECT head_sha, verdict, own_diff_id, unchanged_since_verdict FROM review ORDER BY round").all();
+
+describe("own-diff labels", () => {
+  it("a pass at a head whose own diff matches the last verdict head counts as unchanged", async () => {
+    const store = storeFile();
+    const steps: Step[] = [
+      ownDiff("h1", 0, "id-x"), ...reviewed("h1", SESSION.a, 0, 1, 5, "MERGE"),
+      ownDiff("h2", 10, "id-x"), ["sh-review:h2:0", 11, dispatched(SESSION.b, "h2", 10, 11)], ["sh-await-verdict:h2:0", 13, timedOut],
+      ["sh-review:h2:1", 14, dispatched(SESSION.c, "h2", 14, 14)], ["sh-await-verdict:h2:1", 16, verdict(SESSION.c, "h2", "MERGE")],
+      ownDiff("h3", 20, "id-y"), ...reviewed("h3", SESSION.a, 20, 21, 25, "MERGE"),
+      ownDiff("h4", 30, null), ...reviewed("h4", SESSION.b, 30, 31, 35, "MERGE"),
+    ];
+
+    await refreshReviewStats({ store, runs: ledgerRuns(ledger([runOf("r1", steps)])), retire: new Map(), transcripts: portOf({}) });
+
+    expect(ownDiffRows(store)).toEqual([
+      { head_sha: "h1", verdict: "MERGE", own_diff_id: "id-x", unchanged_since_verdict: null },
+      { head_sha: "h2", verdict: "none", own_diff_id: "id-x", unchanged_since_verdict: null },
+      { head_sha: "h2", verdict: "MERGE", own_diff_id: "id-x", unchanged_since_verdict: "after-MERGE" },
+      { head_sha: "h3", verdict: "MERGE", own_diff_id: "id-y", unchanged_since_verdict: "changed" },
+      { head_sha: "h4", verdict: "MERGE", own_diff_id: null, unchanged_since_verdict: null },
+    ]);
+  });
+
+  it("a pass after a FIX_FIRST at an unchanged head is counted and labelled after-FIX_FIRST", async () => {
+    const store = storeFile();
+    const steps: Step[] = [ownDiff("h1", 0, "id-x"), ...reviewed("h1", SESSION.a, 0, 1, 5, "FIX_FIRST"), ownDiff("h2", 10, "id-x"), ...reviewed("h2", SESSION.b, 10, 11, 15, "MERGE")];
+    const retire = readRetireCosts(logsWith([retireRow(SESSION.a, 1), retireRow(SESSION.b, 0.5)]));
+
+    await refreshReviewStats({ store, runs: ledgerRuns(ledger([runOf("r1", steps)])), retire, transcripts: portOf({}) });
+
+    expect(ownDiffRows(store)).toEqual([expect.objectContaining({ unchanged_since_verdict: null }), expect.objectContaining({ head_sha: "h2", unchanged_since_verdict: "after-FIX_FIRST" })]);
+    expect(store.db.prepare("SELECT passes, unchanged_passes, unchanged_usd FROM pr_review").get()).toEqual({ passes: 2, unchanged_passes: 1, unchanged_usd: 0.5 });
+  });
+});
+
 describe("pr_review view", () => {
   it("sums each PR's rounds, cost and review time across its runs, with its registration and merge", async () => {
     const store = storeFile();
@@ -232,7 +273,7 @@ describe("pr_review view", () => {
 
     const rows = store.db.prepare("SELECT * FROM pr_review").all();
 
-    expect(rows).toEqual([{ repo: "acme/widgets", pr: 7, rounds: 3, usd: 7, review_ms: 21 * MIN, queue_ms: 3 * MIN, registered_at: at(0), merged_at: at(40) }]);
+    expect(rows).toEqual([{ repo: "acme/widgets", pr: 7, rounds: 3, usd: 7, review_ms: 21 * MIN, queue_ms: 3 * MIN, registered_at: at(0), merged_at: at(40), passes: 3, unchanged_passes: 0, unchanged_usd: null }]);
   });
 });
 
@@ -247,5 +288,61 @@ describe("readRetireCosts", () => {
 
     expect([...costs.keys()].sort()).toEqual([SESSION.a, SESSION.c]);
     expect(costs.get(SESSION.a)).toEqual({ usd: 1, tokens: { input: 1000, cacheRead: 500, cacheWrite: 500, output: 1000 }, model: "claude-opus-5-5" });
+  });
+});
+
+/** A synthetic git-cache for acme/widgets: a feature head, then that head with main merged in, both reachable from `origin/main`'s fork. */
+function gitCacheWithHeads(): { stateDir: string; first: string; mergedMain: string } {
+  const root = mkdtempSync(join(tmpdir(), "review-stats-cache-"));
+  const origin = join(root, "origin");
+  seedRepo(origin, {});
+  const git = gitIn(origin);
+  const commit = (file: string, text: string): string => {
+    writeFileSync(join(origin, file), text);
+    git("add", file);
+    git("commit", "-q", "-m", `edit ${file}`);
+    return git("rev-parse", "HEAD");
+  };
+  commit("a.txt", "a0\n");
+  git("checkout", "-q", "-b", "feature");
+  const first = commit("a.txt", "a1\n");
+  git("checkout", "-q", "main");
+  commit("b.txt", "b1\n");
+  git("checkout", "-q", "feature");
+  git("merge", "-q", "--no-ff", "--no-edit", "main");
+  const mergedMain = git("rev-parse", "HEAD");
+  const stateDir = join(root, "state");
+  const cache = join(stateDir, "git-cache", "acme", "widgets.git");
+  mkdirSync(join(stateDir, "git-cache", "acme"), { recursive: true });
+  git("clone", "-q", "--bare", origin, cache);
+  gitIn(cache)("update-ref", "refs/remotes/origin/main", "main");
+  gitIn(cache)("update-ref", "refs/heads/feature", "feature");
+  return { stateDir, first, mergedMain };
+}
+
+describe("own-diff backfill from the git-cache", { timeout: 30_000 }, () => {
+  it("a round without an own-diff step takes its id from the git-cache", async () => {
+    const { stateDir, first, mergedMain } = gitCacheWithHeads();
+    const store = storeFile();
+    const steps: Step[] = [...reviewed(first, SESSION.a, 0, 1, 5, "MERGE"), ...reviewed(mergedMain, SESSION.b, 10, 11, 15, "MERGE")];
+
+    const refresh = await refreshReviewStats({ store, runs: ledgerRuns(ledger([runOf("r1", steps)])), retire: new Map(), transcripts: portOf({}), ownDiffs: cacheOwnDiffReader({ ports: hostCarryPorts, stateDir }) });
+
+    const rows = ownDiffRows(store);
+    expect(rows[0]).toEqual(expect.objectContaining({ own_diff_id: expect.stringMatching(/^[0-9a-f]{64}$/) }));
+    expect(rows[1]).toEqual(expect.objectContaining({ own_diff_id: expect.stringMatching(/^[0-9a-f]{64}$/), unchanged_since_verdict: "after-MERGE" }));
+    expect(refresh).toEqual(expect.objectContaining({ ownDiffsComputed: 2, ownDiffsMissing: 0 }));
+  });
+
+  it("a head missing from the cache stays without an id and is counted", async () => {
+    const { stateDir, first } = gitCacheWithHeads();
+    const store = storeFile();
+    const absent = "e".repeat(40);
+    const steps: Step[] = [...reviewed(first, SESSION.a, 0, 1, 5, "MERGE"), ...reviewed(absent, SESSION.b, 10, 11, 15, "MERGE")];
+
+    const refresh = await refreshReviewStats({ store, runs: ledgerRuns(ledger([runOf("r1", steps)])), retire: new Map(), transcripts: portOf({}), ownDiffs: cacheOwnDiffReader({ ports: hostCarryPorts, stateDir }) });
+
+    expect(ownDiffRows(store)).toEqual([expect.objectContaining({ head_sha: first, own_diff_id: expect.any(String) }), expect.objectContaining({ head_sha: absent, own_diff_id: null, unchanged_since_verdict: null })]);
+    expect(refresh).toEqual(expect.objectContaining({ ownDiffsComputed: 1, ownDiffsMissing: 1 }));
   });
 });

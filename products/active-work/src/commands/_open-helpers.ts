@@ -3,16 +3,20 @@ import { expandTilde } from '../utils/paths.js';
 import { readRegisteredWorktrees, defaultWorktreePath } from '../utils/registered-worktrees.js';
 import { NotFoundError } from '../errors.js';
 import { listFacets, type LoadedFacet } from '../facets/facet-file.js';
-import { listInitiativeSlugsOrEmpty } from '../sessions/initiatives.js';
+import { isInitiativeSlug } from '../sessions/initiatives.js';
+import { listSlugsForCaller } from '../sessions/visibility.js';
+import type { CommandContext } from '../registry/types.js';
+
+type Caller = Pick<CommandContext, 'caller' | 'warnings'>;
 
 /**
  * Resolve a user-supplied slug (exact or unique prefix) to a full slug.
- * Throws NotFoundError on no match, and on an ambiguous prefix.
+ * Throws NotFoundError on no match, and on an ambiguous prefix. An exact slug is read by path;
+ * a prefix matches, and an error lists, only the initiatives this caller may list.
  */
-export async function resolveSlug(activeRoot: string, input: string): Promise<string> {
-  const slugs = await listInitiativeSlugsOrEmpty(activeRoot);
-  if (slugs.includes(input)) return input;
-  return matchSlugPrefix(activeRoot, slugs, input, []);
+export async function resolveSlug(activeRoot: string, input: string, ctx: Caller): Promise<string> {
+  if (await isInitiativeSlug(activeRoot, input)) return input;
+  return matchSlugPrefix(activeRoot, await listSlugsForCaller(activeRoot, ctx), input, []);
 }
 
 interface SlugResolution {
@@ -28,9 +32,10 @@ interface SlugResolution {
 export async function resolveSlugOrFacet(
   activeRoot: string,
   input: string,
+  ctx: Caller,
 ): Promise<SlugResolution> {
-  const slugs = await listInitiativeSlugsOrEmpty(activeRoot);
-  if (slugs.includes(input)) return { slug: input };
+  if (await isInitiativeSlug(activeRoot, input)) return { slug: input };
+  const slugs = await listSlugsForCaller(activeRoot, ctx);
   const { facets } = await listFacets(activeRoot, slugs);
   const facet = facets.find((f) => f.name === input);
   if (facet) return { slug: facet.owner, facet };

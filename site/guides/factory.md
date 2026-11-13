@@ -69,10 +69,11 @@ sudo. It leaves a link that points at another checkout alone unless you add `--f
 (`products/factory/src/config.ts`). The database holds runs, gates and Shepherd
 registrations. Nothing else is written.
 
-A failed Shepherd run's `workflow_run.error` starts with its failure class, one of
-`[ci-timeout]`, `[gh-api-5xx]`, `[gh-rate-limit]`, `[land-rules]`, `[update-branch]` or `[other]`.
-`titan-factory shepherd stats --failures` counts failed runs by class per repo and ISO week, and
-classifies older rows without the prefix from their text. See [Stats](/guides/shepherd#stats).
+A failed Shepherd run records its failure class in `workflow_run.error_class`, set where it failed:
+`ci-timeout`, `gh-api-5xx`, `gh-rate-limit`, `land-rules`, `update-branch` or `other`. Its
+`workflow_run.error` also starts with the class as a `[<class>]` prefix, for people reading it.
+`titan-factory shepherd stats --failures` counts failed runs by class per repo and ISO week. Only rows
+written before the column existed are classified from their text. See [Stats](/guides/shepherd#stats).
 
 ## The config file
 

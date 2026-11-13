@@ -54,6 +54,7 @@ export const PARKING_STEPS: Readonly<Record<string, string>> = {
   "sh-scope-check": `${RECORD}: a scoped fix round's out-of-range and repeated FIX_FIRST items`,
   "sh-review-shadow": `${RECORD}: what review-workflow would have decided at a round, read once with the installed profiles`,
   "sh-remerge": `${RECORD}: a MERGE carried across a clean remerge`,
+  "sh-own-diff": `${RECORD}: the reviewed head's own-diff id against its merge base`,
   "sh-approval-carry:fix": `${RECORD}: an approval carried across a small fix`,
   "sh-approval-carry:own": `${RECORD}: an approval carried across an own merge-up`,
   "sh-approval-carry:set": `${RECORD}: a visual approval carried by the owner's accepted set`,

@@ -131,7 +131,8 @@ text. It is a separate row so that deleting it revokes carrying and leaves MRG-A
 was. It also requires `pr-kind-not-security`: the optional `kind` fact, which the caller
 reads from the run's registration, must be `correctness`, `feature` or `refactor`. The row
 never carries `kind: security` and fails closed on an unknown or missing kind. MRG-AU-RV
-does not read `kind`.
+does not read `kind`. `CARRYING_KINDS` exports that set of kinds, so a caller that records a
+carry, such as Shepherd, gates on the same list the row accepts.
 
 MRG-AU-RM allows the same automation merge for a head that is the reviewed head plus one merge
 of a base-branch commit, when that merge resolved nothing a reviewer reads. It keeps every

@@ -26,7 +26,7 @@ export interface ScorecardTask {
   estimate: number | null;
 }
 
-/** An `agent_spawned` row whose meta names the task. `actor` is the spawner. */
+/** An `agent_spawned` row linked to the task. `actor` is the spawner. */
 export interface ScorecardSpawn {
   ts: string;
   actor: string;
@@ -34,6 +34,8 @@ export interface ScorecardSpawn {
   launchedBy: string | null;
   /** F12 `dispatch_rule`, once agent-chat records it. */
   dispatchRule: string | null;
+  /** How the spawn was linked to the task; absent means its recorded `meta.task`. */
+  link?: Provenance;
 }
 
 /** A `shepherd_registration` row for the task. */
@@ -45,7 +47,7 @@ export interface ScorecardRegistration {
 /** A `shepherd-pr` workflow run for the task. */
 export interface ScorecardRun {
   runId: string;
-  /** The `stepId` of every entry in `step_results`, one per iteration. */
+  /** The `stepId` of every entry in `step_results` (`<family>` or `<family>:<n>`), or just its family; one per iteration. */
   stepIds: readonly string[];
   /** Distinct heads awaited, as `task-actuals-shepherd` counts them. */
   reviewRounds: number;

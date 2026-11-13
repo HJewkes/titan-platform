@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "class no longer orders tasks inside a bet",
+      "file": "products/factory/src/eligibility/rules.ts",
+      "find": "    classRank(a.task) - classRank(b.task) ||\n",
+      "replace": "",
+      "kills": [
+        "dispatch eligibility rules eligible tasks follow the owner's bet order, then product before upkeep, then oldest first"
+      ]
+    },
+    {
+      "name": "a selector freeze covers no task",
+      "file": "products/factory/src/eligibility/rules.ts",
+      "find": "return freeze.tag === undefined || (task.tags ?? []).includes(freeze.tag);",
+      "replace": "return freeze.tag !== undefined && (task.tags ?? []).includes(freeze.tag);",
+      "kills": [
+        "dispatch eligibility rules a freeze named by selector covers every task, so it fails closed"
+      ]
+    },
+    {
+      "name": "an empty owner_steps list is refused like an absent one",
+      "file": "products/factory/src/eligibility/rules.ts",
+      "find": "if (task.owner_steps === undefined) refusals",
+      "replace": "if (!task.owner_steps?.length) refusals",
+      "kills": [
+        "dispatch eligibility rules absent owner_steps and an unset fold are refused, while an empty owner_steps list passes"
+      ]
+    },
+    {
+      "name": "a blank done_when passes",
+      "file": "products/factory/src/eligibility/rules.ts",
+      "find": "if ((task.done_when ?? \"\").trim() === \"\") refusals",
+      "replace": "if (task.done_when === undefined) refusals",
+      "kills": [
+        "dispatch eligibility rules a task without done_when, or with a blank one, is refused with no-done-when"
+      ]
+    },
+    {
+      "name": "any selected bet approves the task",
+      "file": "products/factory/src/eligibility/rules.ts",
+      "find": "if (bet.tasks?.includes(key)) return [];",
+      "replace": "return [];",
+      "kills": [
+        "dispatch eligibility rules a task whose selected bet does not list it is refused with not-in-bet"
+      ]
+    }
+  ]
+}

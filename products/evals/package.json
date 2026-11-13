@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/evals",
-  "version": "0.5.5",
+  "version": "0.6.7",
   "description": "Eval registry: spec schemas for units, variants, cases, suites, checks and scorecards, with canonical content hashing",
   "type": "module",
   "main": "./dist/index.js",
@@ -41,6 +41,7 @@
     "@titan-design/fix-proof": "workspace:^",
     "@titan-design/health": "workspace:^",
     "@titan-design/hitl": "workspace:^",
+    "@titan-design/pm": "workspace:^",
     "@titan-design/review-panel": "workspace:^",
     "@titan-design/review-workflow": "workspace:^",
     "@titan-design/session-analytics": "workspace:^",
@@ -48,6 +49,7 @@
     "@titan-design/store-sqlite": "workspace:^",
     "@titan-design/workflow": "workspace:^",
     "commander": "^14.0.3",
+    "yaml": "^2.9.1",
     "zod": "^4.4.3"
   },
   "bin": {

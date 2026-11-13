@@ -511,8 +511,13 @@ own store, `~/.local/share/titan-scorecard/scorecard.sqlite3` (`--store` or
   follow-up tag naming them, or a PR or request that changed in the graph. A dirty row whose
   inputs hash matches the stored one is not rewritten, so a run over unchanged sources writes
   nothing but its line in the `run` table.
-- **Fix rounds.** The reader passes each step's family (`sh-await-new-head:2` becomes
-  `sh-await-new-head`). It drops a lineage successor that joined while an await-new-head step
+- **Task links.** A spawn links to a task through its recorded `meta.task`. A spawn that recorded
+  none falls back to the graph's resolved `session_origin` link for the spawned session, when that
+  link names exactly one task. The row then marks its first dispatch `inferred:<task_source>`, so
+  it counts toward the inferred share. A recorded `meta.task` always wins. A link naming several
+  tasks or none leaves the spawn unlinked, and the run prints those counts.
+- **Fix rounds.** The core counts a step by its family (`sh-await-new-head:2` counts as
+  `sh-await-new-head`), and the reader passes the family already. It drops a lineage successor that joined while an await-new-head step
   was waiting, because that step already counts the round.
 - **Review rounds and phase medians** come from `titan-factory shepherd stats --per-run --json`.
   Factory owns the step-to-stage map, so the job asks it over the CLI rather than copying it.
@@ -527,6 +532,56 @@ own store, `~/.local/share/titan-scorecard/scorecard.sqlite3` (`--store` or
   the label columns null. Exit 75 means another run holds the lock.
 - `--rebuild` empties the task, week and phase tables and recomputes from the raw stores. The
   pool snapshots stay. `--dry-run` rebuilds into an in-memory store and prints the counts.
+
+`titan-miner ticket-scorecard reproduce [--population coordinator-seats] [--from <t>] [--to <t>]
+[--expected <file>] [--sample <file>]` rebuilds the rows in memory, as `--dry-run` does, and checks
+them against the 2026-11-12 hand audit (E1). `e1-expected.json` holds the audit's figures, its
+window and the seven seats of its population, each figure with the plan's tolerance: percentage
+points for a share, percent of the value for a count, or exact. It prints a pass/miss table and
+exits 0 only when every figure passes. A figure the rows cannot give yet, such as reverts before
+the registration records them, is "not measured" with the reason, never zero. The class shares
+read the labels file's optional three-way `class_raw`, since the audit ranked mixed separately;
+every other figure uses the binary class. `--sample` checks that each task in the audit's
+sample is in the population. Under the table it prints, per ISO week, the population's tasks and the share whose dispatch
+link is inferred, and the count of spawns left unlinked.
+
+### Scheduled run
+
+`ops/systemd/ticket-scorecard.{service,timer}` run `ticket-scorecard run` at 05:45, 11:45 and
+17:45 Denver time, 15 minutes before each factory digest, with `Persistent=true` so a missed slot
+runs at the next boot. The service reuses `~/.config/titan-session-miner/refresh.env` (`ACTIVE_ROOT`
+and `TITAN_MINER_GRAPH`), so install the scheduled refresh first. The labels file defaults under
+`ACTIVE_ROOT`; to put it elsewhere, add `TITAN_SCORECARD_LABELS=<file>` to that env file. The job
+runs `titan-factory shepherd stats --per-run --json`, and the unit's `PATH` starts with
+`~/.local/bin`, where `titan-factory service deploy` links the binary. A host without it exits 69
+and names the factory CLI. Exit 75 (another run holds the lock) counts as success.
+
+Budget, measured on the build host with `run --dry-run` (a full rebuild into memory, nothing
+written): 9.3 s and 9.3 s wall (rebuild reported 9.3 s and 8.9 s) over 3,071 tasks. The unit's
+`TimeoutStartSec=20min` is double the plan's 10 minute rebuild ceiling. An incremental run reads
+less, so it needs under 60 s. Read the `run` table to confirm after the first week.
+
+To install (an owner step):
+
+```sh
+pnpm -C ~/projects/titan-platform --filter @titan-design/session-miner... build
+install -m 644 -t ~/.config/systemd/user ~/projects/titan-platform/ops/systemd/ticket-scorecard.service ~/projects/titan-platform/ops/systemd/ticket-scorecard.timer
+systemctl --user daemon-reload
+systemctl --user enable --now ticket-scorecard.timer
+```
+
+Then add the unit to `machine-inventory.md` (item 197).
+
+To read the last run:
+
+```sh
+systemctl --user start ticket-scorecard.service   # runs a pass at once
+journalctl --user -u ticket-scorecard -n 20       # the run's log
+systemctl --user list-timers ticket-scorecard.timer
+sqlite3 -readonly ~/.local/share/titan-scorecard/scorecard.sqlite3 'select * from run order by started_at desc limit 3'
+```
+
+A failed pass leaves the unit in `systemctl --user --failed`.
 
 ## Daily self-improve classification (TP-685)
 

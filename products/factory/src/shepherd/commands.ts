@@ -42,6 +42,7 @@ import { waitingCommand } from "./waiting.js";
 import { visualDeltaCommand } from "./visual-delta-command.js";
 import { visualWeekCommand } from "./visual-week-command.js";
 import { visualFeedbackCommand } from "./visual-feedback-command.js";
+import { visualFeedbackNotesCommand } from "./visual-feedback-notes-command.js";
 import { watchCommand } from "./watch-command.js";
 import { timelineEntries, type PrTimeline } from "./view.js";
 import type { WatchRow } from "./view-schema.js";
@@ -85,7 +86,7 @@ function servicesOf(ctx: FactoryContext): ShepherdServices {
 function refresh(store: ShepherdStore, existing: Registration, args: RegisterArgs, policy: EffectivePolicy, move: KindMove): Registered {
   const { runId } = existing;
   const { task, implementer, registrant, reviewer, kind, head: headSha, base } = args;
-  const meta = { task, implementer, registrant, reviewer, policy, kind, slice: sliceAfter(existing, args), headSha, base, lastSlice: args.lastSlice };
+  const meta = { task, implementer, registrant, reviewer, policy, kind, slice: sliceAfter(existing, args), headSha, base, lastSlice: args.lastSlice, reverts: args.reverts };
   try {
     store.update(runId, { ...meta, ...move });
   } catch (error) {
@@ -99,7 +100,9 @@ function refresh(store: ShepherdStore, existing: Registration, args: RegisterArg
 /** `onStart` writes the registration in the transaction that inserts the run, so neither commits without the other. */
 function startRun(ctx: FactoryContext, args: RegisterArgs, branch: string | undefined, policy: EffectivePolicy, onStart: (runId: string) => void): string {
   const target = { repo: args.repo, ...(args.pr !== undefined && { pr: String(args.pr) }), ...(branch !== undefined && { branch }) };
-  return ctx.host.runtime.start(SHEPHERD_WORKFLOW, { ...target, policy: JSON.stringify(policy), task: args.task }, { onStart });
+  // `workflow_run.params.taskVerified = "false"` is the one durable mark of a key stored without a complete index.
+  const unverified: Record<string, string> = args.taskUnverified === true ? { taskVerified: "false" } : {};
+  return ctx.host.runtime.start(SHEPHERD_WORKFLOW, { ...target, policy: JSON.stringify(policy), task: args.task, ...unverified }, { onStart });
 }
 
 /** A dead run's registration moves to a new run, which starts at the pull request's current head; any other run comes back unchanged. */
@@ -366,6 +369,7 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.visual-delta": visualDeltaCommand,
   "shepherd.visual-week": visualWeekCommand,
   "shepherd.visual-week-feedback": visualFeedbackCommand,
+  "shepherd.visual-feedback-notes": visualFeedbackNotesCommand,
   "shepherd.brief": briefCommand,
 };
 

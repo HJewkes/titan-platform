@@ -77,12 +77,16 @@ const CHANGELOG_FILE = /^(?:[^/]+\/)*CHANGELOG\.md$/;
 const CONSUMED_CHANGESET = /^\.changeset\/[^/]+\.md$/;
 const CATALOG_FILES = new Set(["CAPABILITIES.md", "site/guides/capabilities.md"]);
 
-/** What `pnpm version-packages` writes: bumped manifests, changelogs, the regenerated catalog, and consumed changesets. */
+/**
+ * What `pnpm version-packages` writes: bumped manifests, changelogs, the regenerated catalog, and consumed changesets.
+ * GitHub reports a type or mode change, a symlink swap among them, as `changed`, which no release writes.
+ */
 export function isReleaseFile(file: PrFile): boolean {
   if (isGithubPath(file.path) || file.previousPath !== undefined) return false;
   if (CONSUMED_CHANGESET.test(file.path)) return file.status === "removed";
   if (MANIFEST_FILE.test(file.path)) return file.status === "modified";
-  return CHANGELOG_FILE.test(file.path) || CATALOG_FILES.has(file.path);
+  const written = file.status === "modified" || file.status === "added";
+  return written && (CHANGELOG_FILE.test(file.path) || CATALOG_FILES.has(file.path));
 }
 
 export interface ReleaseTarget {
