@@ -133,7 +133,8 @@ describe("ticket-scorecard run", () => {
   it("a week frozen before the factory health group existed does not read as drift", async () => {
     await run(world.options(W47_MON));
     const frozenFile = path.join(world.file("weeks"), "2026-W46.json");
-    const { factoryHealth: _group, ...legacy } = JSON.parse(readFileSync(frozenFile, "utf8"));
+    const legacy = JSON.parse(readFileSync(frozenFile, "utf8"));
+    delete legacy.factoryHealth;
     writeFileSync(frozenFile, `${JSON.stringify(legacy, null, 2)}\n`);
 
     const second = await run(world.options(W47_TUE));
