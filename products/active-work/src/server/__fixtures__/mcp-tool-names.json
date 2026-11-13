@@ -86,6 +86,7 @@
   "active__task__delete",
   "active__task__done",
   "active__task__edit",
+  "active__task__keys",
   "active__task__list",
   "active__task__note",
   "active__task__rank__show",

@@ -2,16 +2,14 @@ import { resolveTaskKey, type TaskKeyIndex } from "@titan-design/pm";
 import { createRpcClient, liveSource } from "@titan-design/rpc-client";
 import { errorMessage } from "../narrow.js";
 
-interface InitiativeItem {
+interface InitiativeKeys {
   slug: string;
   task_prefix: string;
   agent_visible: boolean;
+  ids: string[];
 }
 
-type TaskIndexRpc = {
-  "task.list": { args: { all_initiatives: true; status: "all" }; result: { tasks: { id: string; slug: string }[] } };
-  list: { args: Record<string, never>; result: { sections: { items: InitiativeItem[] }[] } };
-};
+type TaskIndexRpc = { "task.keys": { args: Record<string, never>; result: { initiatives: InitiativeKeys[] } } };
 
 const EXPECTED_FORM = "pass --task <initiative>/<ID>";
 
@@ -32,19 +30,20 @@ interface LookupOptions {
   fetch?: typeof fetch;
 }
 
-/** Every task and every initiative's task prefix, read through the active-work daemon. */
+/** Every task file's id and every initiative's task prefix, read through the active-work daemon. */
 export async function loadTaskIndex(options: LookupOptions): Promise<TaskIndexLookup> {
   const client = createRpcClient<TaskIndexRpc>(liveSource(options));
+  let initiatives: InitiativeKeys[];
   try {
-    const [{ tasks }, { sections }] = await Promise.all([client.call("task.list", { all_initiatives: true, status: "all" }), client.call("list", {})]);
-    const initiatives = sections.flatMap((section) => section.items);
-    return {
-      index: { tasks: tasks.map(({ id, slug }) => ({ id, initiative: slug })), prefixes: initiatives.map(({ slug, task_prefix }) => ({ initiative: slug, taskPrefix: task_prefix })) },
-      agentVisible: new Set(initiatives.filter((item) => item.agent_visible).map((item) => item.slug)),
-    };
+    ({ initiatives } = await client.call("task.keys", {}));
   } catch (error) {
     throw new TaskIndexUnavailable(`could not read the active-work task index (${errorMessage(error)}); ${EXPECTED_FORM}`);
   }
+  const tasks = initiatives.flatMap(({ slug, ids }) => ids.map((id) => ({ id, initiative: slug })));
+  return {
+    index: { tasks, prefixes: initiatives.map(({ slug, task_prefix }) => ({ initiative: slug, taskPrefix: task_prefix })) },
+    agentVisible: new Set(initiatives.filter((item) => item.agent_visible).map((item) => item.slug)),
+  };
 }
 
 /** The canonical `<initiative>/<ID>` for a bare, prefixed or repo-qualified key; a key that resolves to no one task is refused, never corrected. */

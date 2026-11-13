@@ -17,16 +17,16 @@ const DEMO_TASKS: readonly FakeTaskRow[] = [{ id: "T-1", slug: "demo" }];
 const initiativesOf = (tasks: readonly FakeTaskRow[]): FakeInitiative[] =>
   [...new Map(tasks.map((task) => [task.slug, task.id.slice(0, task.id.lastIndexOf("-"))])).entries()].map(([slug, prefix]) => ({ slug, task_prefix: prefix }));
 
-/** The answer to `list` for `initiatives`: one section, every initiative agent-visible unless it says otherwise. */
-export function listAnswer(initiatives: readonly FakeInitiative[]) {
-  return { sections: [{ heading: "Focused", items: initiatives.map((item) => ({ ...item, agent_visible: item.agent_visible ?? true })) }] };
+/** The answer to `task.keys`: each initiative with its tasks' ids, agent-visible unless it says otherwise. */
+export function taskKeysAnswer(tasks: readonly FakeTaskRow[], initiatives: readonly FakeInitiative[]) {
+  return { initiatives: initiatives.map((item) => ({ ...item, agent_visible: item.agent_visible ?? true, ids: tasks.filter((task) => task.slug === item.slug).map((task) => task.id) })) };
 }
 
-/** An active-work daemon over `fetch` that answers only the task index: `task.list` with `tasks`, and `list` with `initiatives`. */
+/** An active-work daemon over `fetch` that answers only `task.keys`. */
 export function taskIndexFetch(tasks: readonly FakeTaskRow[] = DEMO_TASKS, initiatives: readonly FakeInitiative[] = initiativesOf(tasks)): typeof fetch {
   return async (url) => {
     const command = String(url).split("/rpc/")[1];
-    const data = command === "task.list" ? { tasks } : command === "list" ? listAnswer(initiatives) : undefined;
-    return new Response(JSON.stringify(data === undefined ? { ok: false, error: `the fake has no ${command}` } : { ok: true, data }));
+    const body = command === "task.keys" ? { ok: true, data: taskKeysAnswer(tasks, initiatives) } : { ok: false, error: `the fake has no ${command}` };
+    return new Response(JSON.stringify(body));
   };
 }

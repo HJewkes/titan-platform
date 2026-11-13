@@ -50,6 +50,7 @@ import taskDelete from './task-delete.js';
 import taskDone from './task-done.js';
 import taskEdit from './task-edit.js';
 import taskNote from './task-note.js';
+import taskKeys from './task-keys.js';
 import taskList from './task-list.js';
 import taskRankShow from './task-rank-show.js';
 import taskReorder from './task-reorder.js';
@@ -179,6 +180,7 @@ const ALL_COMMANDS: AnyCommand[] = [
   taskAdd,
   taskApply,
   taskDone,
+  taskKeys,
   taskList,
   taskShow,
   taskEdit,
