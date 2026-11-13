@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the page leaves the factory health section out",
+      "file": "apps/console/src/pages/ScorecardPage.tsx",
+      "find": "      <FactoryHealthSection week={week} />\n",
+      "replace": "",
+      "kills": ["the factory health section shows the group's figures, model tiers and seat wakes"]
+    },
+    {
+      "name": "inferred filings lose their badge",
+      "file": "apps/console/src/pages/ScorecardFactoryHealth.tsx",
+      "find": "  const inferred = g.agentFiledInferred > 0;",
+      "replace": "  const inferred = false;",
+      "kills": ["the factory health section shows the group's figures, model tiers and seat wakes"]
+    },
+    {
+      "name": "the timer no-action column reads as zero",
+      "file": "apps/console/src/pages/ScorecardFactoryHealth.tsx",
+      "find": "            <TableCell align=\"right\">{NOT_MEASURED}</TableCell>",
+      "replace": "            <TableCell align=\"right\">0</TableCell>",
+      "kills": ["the factory health section shows a figure with no source as not measured, never zero"]
+    }
+  ]
+}

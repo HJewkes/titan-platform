@@ -1,5 +1,5 @@
 // The ticket scorecard's twin answers: synthetic weeks, dispatchers and tasks, typed by the commands the page calls.
-import type { ScorecardTaskRow } from "../scorecard-schema.js";
+import type { ScorecardFactoryHealth, ScorecardTaskRow } from "../scorecard-schema.js";
 import { answer, type TwinCall } from "./answers.js";
 
 const OPEN_WEEK = "2031-W10";
@@ -31,6 +31,23 @@ const PHASES = [
   { isoWeek: OPEN_WEEK, repo: "all", stage: "review", runs: 9, medianMinutes: 22, p90Minutes: 58 },
 ];
 
+/** The open week's group: seat wakes measured, a figure with no source yet left null. */
+const HEALTH: ScorecardFactoryHealth = {
+  isoWeek: OPEN_WEEK,
+  covered: { upkeepShare: 0.42, reviewRoundsMedian: 1, merged: 9, usd: 61.2 },
+  selfGenerated: { agentFiled: 11, agentFiledInferred: 4, unlabelled: 1, closed: 14, mergedPrs: 10, perClosed: 0.79, perMergedPr: 1.1 },
+  fenceStops: { dispatched: 12, spawnRefusals: 3, gateHolds: 5, refusalsPer100: 25, holdsPer100: 41.67, guardDenials: null },
+  codeSize: null,
+  modelTiers: [
+    { model: "large", dispatched: 4, merged: 3, mergeRate: 0.75, fixRoundsMean: 1.5 },
+    { model: "small", dispatched: 8, merged: 6, mergeRate: 0.75, fixRoundsMean: 0.5 },
+  ],
+  wakes: [
+    { seat: "kiln-coord", timer: 2, event: 40, typed: 1, timerNoActionShare: null },
+    { seat: "orbit-coord", timer: 18, event: 25, typed: 3, timerNoActionShare: null },
+  ],
+};
+
 function task(taskId: string, overrides: Partial<ScorecardTaskRow>): ScorecardTaskRow {
   return {
     initiative: "orbit-relay", taskId, firstDispatchTs: "2031-03-04T09:00:00.000Z", dispatcher: "orbit-coord", dispatchRule: null,
@@ -52,8 +69,8 @@ export const SCORECARD_ANSWERS: readonly TwinCall[] = [
   answer("scorecard.weeks", {}, {
     store: { state: "ok" },
     weeks: [
-      { isoWeek: OPEN_WEEK, frozen: false, drift: false, cells: OPEN_CELLS, phases: PHASES },
-      { isoWeek: CLOSED_WEEK, frozen: true, drift: false, cells: CLOSED_CELLS, phases: [] },
+      { isoWeek: OPEN_WEEK, frozen: false, drift: false, cells: OPEN_CELLS, phases: PHASES, factoryHealth: HEALTH },
+      { isoWeek: CLOSED_WEEK, frozen: true, drift: false, cells: CLOSED_CELLS, phases: [], factoryHealth: null },
     ],
   }),
   answer("scorecard.tasks", { week: OPEN_WEEK }, { store: { state: "ok" }, total: 2, rows: [RETRY, BACKOFF] }),

@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the weeks carry no group",
+      "file": "apps/console/server/scorecard-view.ts",
+      "find": "    factoryHealth: health.find((h) => h.isoWeek === week) ?? null,",
+      "replace": "    factoryHealth: null,",
+      "kills": ["the scorecard view's reads attaches each week's factory health group, and none to a week the job scored without it"]
+    },
+    {
+      "name": "an old store is read as if it had the group table",
+      "file": "apps/console/server/scorecard-view.ts",
+      "find": "  return table === undefined ? [] : readFactoryHealth(db);",
+      "replace": "  return readFactoryHealth(db);",
+      "kills": ["the scorecard view's reads reads a store written before the factory health table as weeks without the group"]
+    }
+  ]
+}
