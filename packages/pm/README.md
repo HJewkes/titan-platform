@@ -11,7 +11,9 @@ parent and dep edges, and `CategoryRegistrySchema`, `categoriesPath` and
 deliverable registry, and `summaryRecommendations`, `prioritizedTopics`,
 `parseDispositions` and `checkDispositions` for the repo-review disposition gate, and
 `isAgentVisible` and `InitiativeVisibilitySchema` for an initiative brief's `visibility`, and
-`OutcomeSchema`, `BetSchema`, `FreezeSchema` and `OutOfScopeSchema` for planning records. Pure code: no fs, process or network. See
+`OutcomeSchema`, `BetSchema`, `FreezeSchema` and `OutOfScopeSchema` for planning records, and
+`TaskRequireSchema` for a brief's `task_require` list of the task provenance fields (`class`,
+`serves`, `source` and the rest, typed in `src/provenance.ts`) new tasks must carry. Pure code: no fs, process or network. See
 `site/reference/pm.md`.
 
 The first npm publish is pending and owner-only; trusted publishing is set up after it.

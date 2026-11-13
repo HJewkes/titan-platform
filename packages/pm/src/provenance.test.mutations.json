@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a provenance field becomes required on read",
+      "file": "packages/pm/src/provenance.ts",
+      "find": "  class: closedSet(\"class\", TASK_CLASSES).optional(),",
+      "replace": "  class: closedSet(\"class\", TASK_CLASSES),",
+      "kills": ["task provenance old task files still parse: SI-1.yml"]
+    },
+    {
+      "name": "source owner takes any ref or none",
+      "file": "packages/pm/src/provenance.ts",
+      "find": "return isText(ref) && OWNER_REF_REGEX.test(ref) ? null : \"source owner needs a decision or owner-queue item id\";",
+      "replace": "return null;",
+      "kills": ["task provenance source owner without an existing ref is refused"]
+    },
+    {
+      "name": "inferred needs no heuristic id",
+      "file": "packages/pm/src/provenance.ts",
+      "find": "inferred:[a-z0-9][a-z0-9.-]*)$/;",
+      "replace": "inferred:[a-z0-9.-]*)$/;",
+      "kills": ["task provenance field origin accepts inferred with a heuristic id"]
+    },
+    {
+      "name": "field origin takes any key",
+      "file": "packages/pm/src/provenance.ts",
+      "find": "z.partialRecord(z.object(TaskProvenanceShape).keyof(), fieldOrigin);",
+      "replace": "z.record(z.string(), fieldOrigin);",
+      "kills": ["task provenance field origin refuses a key that is not a provenance field"]
+    },
+    {
+      "name": "class admits mixed",
+      "file": "packages/pm/src/provenance.ts",
+      "find": "const TASK_CLASSES = [\"product\", \"upkeep\"] as const;",
+      "replace": "const TASK_CLASSES = [\"product\", \"upkeep\", \"mixed\"] as const;",
+      "kills": ["task provenance refuses an unknown class value"]
+    }
+  ]
+}

@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { TASK_ID_REGEX } from "./ids.js";
+import { sourceRefProblem, taskProvenanceFields } from "./provenance.js";
 
 const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -29,8 +31,6 @@ export const isoDatetime = z
 export const isoDateOrDatetime = z.union([isoDate, isoDatetime]);
 
 export const isoDateOrDatetimeOrNull = z.union([isoDateOrDatetime, z.null()]);
-
-export const TASK_ID_REGEX = /^[A-Z][A-Z0-9]*-\d+$/;
 
 const taskId = z.string().regex(TASK_ID_REGEX, {
   message: "id must match /^[A-Z][A-Z0-9]*-\\d+$/ (e.g. EC-1)",
@@ -98,6 +98,10 @@ export const TaskSchema = z.object({
   done_at: isoDateOrDatetimeOrNull,
   actual: ActualSchema.optional(),
   claimedHours: z.array(ClaimedHoursSchema).optional(),
+  ...taskProvenanceFields,
+}).superRefine((task, ctx) => {
+  const problem = sourceRefProblem(task);
+  if (problem !== null) ctx.addIssue({ code: "custom", path: ["source_ref"], message: problem });
 });
 
 export type Task = z.infer<typeof TaskSchema>;
