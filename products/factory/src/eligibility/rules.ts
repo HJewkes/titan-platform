@@ -2,7 +2,7 @@ import type { Bet, Freeze, OutOfScope, Task } from "@titan-design/pm";
 
 /*
  * The selection policy (operating model PROPOSAL 2.2, TP-5453 P4): which open tasks the dispatcher may take, and in
- * what order. Pure and deterministic; no model call. Back-pressure (PROPOSAL 2.3) is a later slice.
+ * what order. Pure and deterministic; no model call. Back-pressure (PROPOSAL 2.3) is back-pressure.ts.
  */
 
 /** The closed set of reasons a task is refused; one task may carry several. */

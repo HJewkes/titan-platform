@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the lane PR limit holds only above the limit",
+      "file": "products/factory/src/eligibility/back-pressure.ts",
+      "find": "if (signals.openPrs >= limit) return",
+      "replace": "if (signals.openPrs > limit) return",
+      "kills": ["lane admission holds the lane at 3 unmerged PRs but not at 2"]
+    },
+    {
+      "name": "a merged PR that is not deployed no longer counts as open",
+      "file": "products/factory/src/eligibility/back-pressure.ts",
+      "find": "if (signals.openPrs + merged >= limit) {",
+      "replace": "if (signals.openPrs >= limit) {",
+      "kills": ["lane admission counts a merged PR that is not yet deployed as open", "lane admission frees the slot as soon as the merged PR is deployed"]
+    },
+    {
+      "name": "the owner queue holds at its limit rather than above it",
+      "file": "products/factory/src/eligibility/back-pressure.ts",
+      "find": "if (count === undefined || count <= limit) return [];",
+      "replace": "if (count === undefined || count < limit) return [];",
+      "kills": ["lane admission holds only gate-creating work above 10 owner-queue items, and nothing at 10"]
+    },
+    {
+      "name": "the owner-queue hold reaches tasks with no owner steps",
+      "file": "products/factory/src/eligibility/back-pressure.ts",
+      "find": "hold.scope === \"lane\" || gateCreating",
+      "replace": "true",
+      "kills": ["lane admission holds only gate-creating work above 10 owner-queue items, and nothing at 10"]
+    },
+    {
+      "name": "one week of inflow over outflow pauses filing",
+      "file": "products/factory/src/eligibility/back-pressure.ts",
+      "find": "flow.every((week) => week.inflow > week.outflow)",
+      "replace": "flow.some((week) => week.inflow > week.outflow)",
+      "kills": ["filing flow stays open when one of the weeks drained as fast as it filled"]
+    }
+  ]
+}

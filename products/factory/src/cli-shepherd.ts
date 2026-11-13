@@ -278,7 +278,7 @@ async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () =
 }
 
 /** A block without `originLag` counts only asked deploys; git says how far main has really moved, and an unreadable git alarms. Serve's own reading is not counted twice. */
-async function checkedDeploy(verbs: Verbs, block: DeployHealth | null): Promise<DeployHealth | null> {
+export async function checkedDeploy(verbs: Verbs, block: DeployHealth | null): Promise<DeployHealth | null> {
   if (block === null || block.originLag !== undefined) return block;
   const probe = verbs.deps.deployBehind ?? gitBehind(deployCheckoutFor(verbs.io.env));
   return withGitBehind(block, await probe(block.runningSha), Date.now());
