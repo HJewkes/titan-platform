@@ -126,6 +126,18 @@ function newTask(args: Args, id: string, priority: number, filer: string): Task 
   };
 }
 
+async function assertFileable(
+  activeRoot: string,
+  frontmatter: Record<string, unknown>,
+  task: Task,
+  args: Args,
+): Promise<void> {
+  assertRequiredFields(frontmatter, task);
+  await assertProvenance(activeRoot, task);
+  await assertCategories(activeRoot, task, changedCategoryFields(args));
+  await assertKnownBet(task);
+}
+
 export default defineCommand<Args, TaskOrLine>({
   name: 'task.add',
   description: 'Create a new task in an initiative',
@@ -185,10 +197,7 @@ export default defineCommand<Args, TaskOrLine>({
         await assertEdgeWrite({ slug: args.slug, id, parent: args.parent, dep: args.dep });
       }
       const task = newTask(args, id, args.priority ?? nextPriority(existing), filedBy(process.env, ctx.caller));
-      assertRequiredFields(brief.frontmatter, task);
-      await assertProvenance(activeRoot, task);
-      await assertCategories(activeRoot, task, changedCategoryFields(args));
-      await assertKnownBet(task);
+      await assertFileable(activeRoot, brief.frontmatter, task, args);
       const taskDir = path.join(getInitiativeDir(args.slug), 'tasks');
       await fs.mkdir(taskDir, { recursive: true });
       await writeYaml(path.join(taskDir, `${id}.yml`), task, TaskSchema);

@@ -32,9 +32,9 @@ describe('task rank show', () => {
       for (const priority of [3, 1, 2]) {
         ids.push(asTask(await taskAdd.run({ slug: SLUG, title: `Task ${priority}`, priority }, ctx(root))).id);
       }
-      await rankOnDisk(root, ids[0]!, 'p1');
-      await rankOnDisk(root, ids[1]!, 'p2');
-      await rankOnDisk(root, ids[2]!, 'p1');
+      await rankOnDisk(root, ids[0], 'p1');
+      await rankOnDisk(root, ids[1], 'p2');
+      await rankOnDisk(root, ids[2], 'p1');
 
       const rows = await taskRankShow.run({ slug: SLUG }, ctx(root));
       const onlyP2 = await taskRankShow.run({ slug: SLUG, rank: 'p2' }, ctx(root));

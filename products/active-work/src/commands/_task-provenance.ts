@@ -21,6 +21,17 @@ export const TaskProvenanceArgsShape = {
   blocked_on: TaskSchema.shape.blocked_on,
 };
 
+/** Every provenance argument, so a parser can tell a provenance edit from no edit. */
+export const PROVENANCE_ARG_KEYS = [
+  'class',
+  'serves',
+  'source',
+  'source_ref',
+  'from_pr',
+  'from_task',
+  'blocked_on',
+] as const satisfies readonly (keyof typeof TaskProvenanceArgsShape)[];
+
 export const TASK_PROVENANCE_OPTIONS = {
   class: { long: '--class', description: 'product|upkeep' },
   serves: { long: '--serves', description: 'Outcome id this task serves (alpha/faster-landing), or none' },

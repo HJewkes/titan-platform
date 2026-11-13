@@ -4,7 +4,7 @@ import { UsageError } from '../errors.js';
 import { DueArg } from './_categories.js';
 import { QuietArg } from './_task-quiet.js';
 import { parseOwnerSteps, TaskPlanArgsShape } from './_task-plan-fields.js';
-import { provenanceArgs, TaskProvenanceArgsShape, type ProvenanceField } from './_task-provenance.js';
+import { PROVENANCE_ARG_KEYS, provenanceArgs, TaskProvenanceArgsShape, type ProvenanceField } from './_task-provenance.js';
 
 const EDITABLE_FIELDS = [
   'title',
@@ -158,7 +158,7 @@ const PATCH_KEYS = [
   'deliverable',
   'owner_step',
   ...PATCH_FIELDS,
-  ...(Object.keys(TaskProvenanceArgsShape) as (keyof typeof TaskProvenanceArgsShape)[]),
+  ...PROVENANCE_ARG_KEYS,
 ] as const;
 
 export function parseEdit(args: Args): Edit {
