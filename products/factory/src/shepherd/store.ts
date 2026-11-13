@@ -40,7 +40,7 @@ export interface RegistrationInput extends RegistrationFactsInput {
   registrant?: string;
 }
 
-export type RegistrationUpdate = Pick<RegistrationInput, "task" | "implementer" | "reviewer" | "policy" | "kind" | "slice" | "headSha" | "base" | "lastSlice" | "registrant"> & Partial<KindMove>;
+export type RegistrationUpdate = Pick<RegistrationInput, "task" | "implementer" | "reviewer" | "policy" | "kind" | "slice" | "headSha" | "base" | "lastSlice" | "registrant" | "reverts"> & Partial<KindMove>;
 
 export interface Registration extends RegistrationFacts {
   repo: RepoSlug;
@@ -78,7 +78,7 @@ export interface HoldLookup {
   heldReason(repo: RepoSlug, pr: number, branch?: string, sha?: string): string | undefined;
 }
 
-export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lastSliceMigration, lineageMigration, ownerHoldMigration, parkSettledMigration, registrantMigration, registrationFactsMigration, repairStopMigration, reviewRequestMigration, shepherdMigration, sliceMigration } from "./store-migrations.js";
+export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lastSliceMigration, lineageMigration, ownerHoldMigration, parkSettledMigration, registrantMigration, registrationFactsMigration, repairStopMigration, reviewRequestMigration, revertsMigration, shepherdMigration, sliceMigration } from "./store-migrations.js";
 
 import type { Author, AuthorInput, AuthorRow } from "./author-types.js";
 export type { Author, AuthorInput } from "./author-types.js";

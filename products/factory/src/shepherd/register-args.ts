@@ -14,6 +14,7 @@ export const RepoArg = z.string().refine(isRepoKey, "must be owner/repo");
 export const PrArg = z.number().int().positive();
 /** Git's ref-name rules, loosely: no whitespace, control characters or the characters git reserves. */
 const BranchArg = z.string().regex(/^[^\s~^:?*[\\\p{Cc}]+$/u, "must be a branch name");
+const PrRefArg = z.string().regex(/^[\w.-]+\/[\w.-]+#[1-9]\d*$/, "must be owner/repo#N");
 
 export const RegisterArgs = z
   .object({
@@ -27,13 +28,16 @@ export const RegisterArgs = z
     registrant: z.string().min(1).optional(),
     reviewer: z.string().min(1).optional(),
     kind: z.enum(TASK_KINDS).optional(),
+    reverts: PrRefArg.optional(),
     slice: z.string().min(1).optional(),
     noSlice: z.boolean().optional(),
     lastSlice: z.boolean().optional(),
     policy: RequestedPolicyFields.optional(),
   })
   .refine((args) => args.pr !== undefined || args.branch !== undefined, { message: "needs a pr or a branch", path: ["pr"] })
-  .refine((args) => args.slice === undefined || !args.noSlice, { message: "slice and noSlice are exclusive", path: ["noSlice"] });
+  .refine((args) => args.slice === undefined || !args.noSlice, { message: "slice and noSlice are exclusive", path: ["noSlice"] })
+  .refine((args) => args.kind !== "revert" || args.reverts !== undefined, { message: "a revert registration needs --reverts owner/repo#N, the PR it reverts", path: ["reverts"] })
+  .refine((args) => args.reverts === undefined || args.kind === "revert", { message: "--reverts needs --kind revert", path: ["kind"] });
 
 export type RegisterArgs = z.infer<typeof RegisterArgs>;
 

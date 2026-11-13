@@ -8,7 +8,8 @@ export interface KindMove {
   diff: TestOnlyDiff | undefined;
 }
 
-export const TASK_KINDS = ["correctness", "security", "feature", "refactor", "test-only", "unknown"] as const;
+/** `revert` undoes a merged PR and must name it (`register --reverts`); it gates as `feature` does, as reverts registered before it did. */
+export const TASK_KINDS = ["correctness", "security", "feature", "refactor", "test-only", "revert", "unknown"] as const;
 
 export type TaskKind = (typeof TASK_KINDS)[number];
 
