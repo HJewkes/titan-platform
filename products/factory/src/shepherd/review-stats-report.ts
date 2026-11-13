@@ -263,11 +263,14 @@ function cutLines(title: string, cuts: Record<string, Cut>): string[] {
 
 const prLine = (pr: PrRow): string => {
   const merged = pr.merged ? `merged after ${minText(pr.registeredToMergeMinutes)}` : "not merged";
-  return `  ${pr.repo}#${pr.pr}  rounds ${pr.rounds}  passes ${pr.passes}  ${usdText(pr.usd)}  unchanged ${pr.unchangedPasses} ${usdText(pr.unchangedUsd)}  review ${minText(pr.reviewMinutes)}  queue ${minText(pr.queueMinutes)}  ${merged}`;
+  const passes = `passes ${pr.passes}  ${usdText(pr.usd)}  unchanged ${pr.unchangedPasses} ${usdText(pr.unchangedUsd)}`;
+  return `  ${pr.repo}#${pr.pr}  rounds ${pr.rounds}  ${passes}  review ${minText(pr.reviewMinutes)}  queue ${minText(pr.queueMinutes)}  ${merged}`;
 };
 
-const passesLine = (passes: Dist, unchanged: Unchanged): string =>
-  `passes ${passes.total}  per PR p50 ${passes.p50 ?? "-"} mean ${passes.mean ?? "-"} p90 ${passes.p90 ?? "-"}  unchanged ${unchanged.passes} ${usdText(unchanged.usd)} (after MERGE ${unchanged.afterMerge}, after FIX_FIRST ${unchanged.afterFixFirst})`;
+const passesLine = (passes: Dist, unchanged: Unchanged): string => {
+  const split = `after MERGE ${unchanged.afterMerge}, after FIX_FIRST ${unchanged.afterFixFirst}`;
+  return `passes ${passes.total}  per PR p50 ${passes.p50 ?? "-"} mean ${passes.mean ?? "-"} p90 ${passes.p90 ?? "-"}  unchanged ${unchanged.passes} ${usdText(unchanged.usd)} (${split})`;
+};
 
 /** Text mode: the per-review distribution, its cuts, per-PR passes with their unchanged share, and the top ten PRs by cost and by unchanged passes. */
 export function formatReviewReport(report: ReviewReport): string {
