@@ -1,4 +1,4 @@
-/** A synthetic initiative as active-work's `list` reports it. */
+/** A synthetic initiative as active-work's `task.keys` reports it. */
 interface FakeInitiative {
   slug: string;
   task_prefix: string;
@@ -28,5 +28,14 @@ export function taskIndexFetch(tasks: readonly FakeTaskRow[] = DEMO_TASKS, initi
     const command = String(url).split("/rpc/")[1];
     const body = command === "task.keys" ? { ok: true, data: taskKeysAnswer(tasks, initiatives) } : { ok: false, error: `the fake has no ${command}` };
     return new Response(JSON.stringify(body));
+  };
+}
+
+/** An active-work daemon from before `task.keys`: it refuses that command as the registry does and lists only open tasks. */
+export function olderDaemonFetch(tasks: readonly FakeTaskRow[] = DEMO_TASKS): typeof fetch {
+  return async (url) => {
+    const command = String(url).split("/rpc/")[1];
+    if (command === "task.list") return new Response(JSON.stringify({ ok: true, data: { tasks } }));
+    return new Response(JSON.stringify({ ok: false, error: `Unknown command: ${command}`, code: 64 }), { status: 404 });
   };
 }

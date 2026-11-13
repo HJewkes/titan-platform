@@ -114,7 +114,7 @@ function systemBuildPorts(given: ProductionBuildPorts): BuildSurfacePorts {
     extract: claudePrintExtract,
     shepherd: rpcShepherd(given.rpc, given.github),
     tasks: activeWorkFixTasks({ origin: activeWorkOrigin(process.env) }),
-    taskKey: (task) => qualifyTask(task, { origin: activeWorkOrigin(process.env) }),
+    taskKey: async (task) => (await qualifyTask(task, { origin: activeWorkOrigin(process.env) })).key,
   };
 }
 

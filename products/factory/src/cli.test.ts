@@ -1,5 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { daemonPaths, probeHealth, readPidFile, silentLogger } from "@titan-design/daemon";
@@ -20,7 +21,7 @@ import { landPrRoutes, landPrWorkflow } from "./workflows/land-pr.js";
 import { hostPostMerge } from "./workflows/post-merge-adapter.js";
 import { partialFake } from "@titan-design/test-kit";
 import { portOf } from "./test-support/fakes.js";
-import { taskIndexFetch } from "./test-support/task-index.js";
+import { olderDaemonFetch, taskIndexFetch } from "./test-support/task-index.js";
 
 const dirs: string[] = [];
 const cleanups: (() => Promise<void> | void)[] = [];
@@ -372,10 +373,58 @@ describe("shepherd register task keys", () => {
     expect(result.err).toContain("task T-1 is in demo, not agent-chat");
   });
 
-  it("exits 69 when the task index cannot be read", async () => {
+  const registerDeps = (fetch: typeof globalThis.fetch): CliDeps => {
+    const fixture = shepherdFixture({ frozen: true, prFiles: async () => [] });
+    fixture.fake.addPr({ headSha: H1, headRef: BRANCH });
+    return { workflows: fixture.workflows, routes: fixture.routes, host: { gatePollMs: 5 }, logger: silentLogger, fetch };
+  };
+
+  const runParams = (dbPath: string, runId: string): Record<string, string> => {
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      const row = z.object({ params: z.string() }).parse(db.prepare("select params from workflow_run where id = ?").get(runId));
+      return z.record(z.string(), z.string()).parse(JSON.parse(row.params));
+    } finally {
+      db.close();
+    }
+  };
+
+  /** An empty active-work root, so an older daemon's archives list as none rather than unreadable. */
+  const activeRootEnv = (): NodeJS.ProcessEnv => {
+    const dir = mkdtempSync(join(tmpdir(), "factory-aw-root-"));
+    dirs.push(dir);
+    return { ACTIVE_ROOT: dir };
+  };
+
+  it("falls back to task.list on a daemon older than task.keys, stores the canonical key and does not exit 69", async () => {
+    const dbPath = dbFile();
+    const result = await cli(["--db", dbPath, "shepherd", "register", `${REPO}#1`, "--task", "T-1", "--implementer", "impl-a", "--offline", "--json", "--port", String(await deadPort())], registerDeps(olderDaemonFetch()), activeRootEnv());
+
+    expect(result.code).toBe(EXIT.OK);
+    expect(result.err).not.toContain("warning");
+    const { runId, registration } = JSON.parse(result.out);
+    expect(registration.task).toBe("demo/T-1");
+    expect(runParams(dbPath, runId).taskVerified).toBeUndefined();
+  });
+
+  it("still refuses with 65 a key an older daemon's index has no task for", async () => {
+    const result = await cli(["--db", dbFile(), "shepherd", "register", `${REPO}#1`, "--task", "demo/T-9", "--implementer", "impl-a", "--offline", "--port", String(await deadPort())], registerDeps(olderDaemonFetch()), activeRootEnv());
+
+    expect(result.code).toBe(EXIT.REFUSED);
+    expect(result.err).toContain("refused (not-found)");
+  });
+
+  it("stores the key as given, marked taskVerified=false with a warning, when no task index answers", async () => {
+    const dbPath = dbFile();
     const down = (async () => Promise.reject(new TypeError("fetch failed"))) as typeof globalThis.fetch;
-    const result = await cli(["shepherd", "register", "o/r#1", "--task", "demo/T-1", "--implementer", "agent", "--offline"], { ...landDeps(), fetch: down });
-    expect(result.code).toBe(EXIT.UNAVAILABLE);
+
+    const result = await cli(["--db", dbPath, "shepherd", "register", `${REPO}#1`, "--task", "demo/T-1", "--implementer", "impl-a", "--offline", "--json", "--port", String(await deadPort())], registerDeps(down));
+
+    expect(result.code).toBe(EXIT.OK);
+    expect(result.err).toContain('warning: task key "demo/T-1" stored as given, not verified');
+    const { runId, registration } = JSON.parse(result.out);
+    expect(registration.task).toBe("demo/T-1");
+    expect(runParams(dbPath, runId).taskVerified).toBe("false");
   });
 });
 
