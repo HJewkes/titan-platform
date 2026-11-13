@@ -13,6 +13,7 @@ import { agentChatAgents } from "../shepherd/agents.js";
 import { activeWorkFixTasks, activeWorkOrigin } from "../shepherd/cleanup-ports.js";
 import { postRpc } from "../cli-shepherd-rpc.js";
 import { FACTORY_PORT } from "../serve.js";
+import { qualifyTask } from "../shepherd/task-ref.js";
 import { sleep } from "../workflows/deadline.js";
 import type { BuildSurfacePorts, CommandRequest, CommandRun, ShepherdPort } from "./ports.js";
 import type { LandState } from "./schemas.js";
@@ -113,6 +114,7 @@ function systemBuildPorts(given: ProductionBuildPorts): BuildSurfacePorts {
     extract: claudePrintExtract,
     shepherd: rpcShepherd(given.rpc, given.github),
     tasks: activeWorkFixTasks({ origin: activeWorkOrigin(process.env) }),
+    taskKey: (task) => qualifyTask(task, { origin: activeWorkOrigin(process.env) }),
   };
 }
 

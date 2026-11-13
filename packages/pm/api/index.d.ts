@@ -128,6 +128,40 @@ interface InitiativeBriefRef {
  */
 declare function isAgentVisible(initiative: InitiativeBriefRef): boolean;
 
+/** One task as the active-work task index lists it: its id and the initiative whose `tasks/` folder holds its file. */
+interface TaskKeyEntry {
+    id: string;
+    initiative: string;
+}
+/** An initiative's task-id prefix, as its brief's `task_prefix` records it. */
+interface InitiativePrefix {
+    initiative: string;
+    taskPrefix: string;
+}
+interface TaskKeyIndex {
+    tasks: readonly TaskKeyEntry[];
+    prefixes: readonly InitiativePrefix[];
+}
+type TaskKeyRefusal = "malformed" | "not-found" | "ambiguous" | "wrong-initiative";
+type TaskKeyResolution = {
+    ok: true;
+    key: string;
+    initiative: string;
+    id: string;
+}
+/** `proposed` is the key the id alone resolves to, so a report can name it; a writer still refuses. */
+ | {
+    ok: false;
+    reason: TaskKeyRefusal;
+    detail: string;
+    proposed?: string;
+};
+/**
+ * The canonical task key `<initiative>/<TASK-ID>` for a bare id, a prefixed key or a repo-qualified one. A qualifier
+ * that is not the task's initiative is refused, never corrected: the writer must not guess which one was meant.
+ */
+declare function resolveTaskKey(input: string, index: TaskKeyIndex): TaskKeyResolution;
+
 /** A brief's `task_require`: the provenance fields every task filed in that initiative must carry. */
 declare const TaskRequireSchema: z.ZodArray<z.ZodEnum<{
     class: "class";
@@ -469,7 +503,7 @@ type CategorizedTask = Pick<Task, "id" | "status" | "kind" | "cos" | "area" | "d
  */
 declare function checkCategories(task: CategorizedTask, registry: CategoryRegistry | null): CategoryError[];
 
-export { type AreaEntry, BUILT_IN_STATUSES, type BetLookup, type CategorizedTask, type CategoryAxis, type CategoryError, type CategoryRegistry, CategoryRegistrySchema, type ClaimRow, type CriticalPathOptions, type CriticalPathResult, type CrossInitiativeParentWarning, DELIVERABLE_ID_REGEX, DELIVERABLE_STATUSES, DISPOSITION_KINDS, type Deliverable, type DeliverableEntry, DeliverableSchema, type DeliverableStatus, type DispositionCheck, type DispositionKind, type DispositionRow, DispositionRowSchema, type EdgeChange, type EdgeCheck, type EdgeError, type EdgeField, type Edges, type ExternalDep, type InitiativeBriefRef, type InitiativeVisibility, InitiativeVisibilitySchema, type ReviewItem, type ReviewPin, type RunCost, type StatusEntry, TOPIC_PRIORITIES, TOPIC_VERDICTS, type Task, type TaskFloat, type TaskRequire, TaskRequireSchema, TaskSchema, type TaskTreeNode, type TopicPriority, type TopicRow, type TopicVerdict, betProblem, categoriesPath, checkCategories, checkDispositions, checkEdges, criticalPath, deliverablePath, deliverablesDir, isAgentVisible, parseCategoryRegistry, parseClaimsAudit, parseDeliverableRegistry, parseDispositions, parseTopicsJudged, prioritizedTopics, readEdges, readReviewPin, readTsv, sumRunCost, summaryRecommendations, taskTree };
+export { type AreaEntry, BUILT_IN_STATUSES, type BetLookup, type CategorizedTask, type CategoryAxis, type CategoryError, type CategoryRegistry, CategoryRegistrySchema, type ClaimRow, type CriticalPathOptions, type CriticalPathResult, type CrossInitiativeParentWarning, DELIVERABLE_ID_REGEX, DELIVERABLE_STATUSES, DISPOSITION_KINDS, type Deliverable, type DeliverableEntry, DeliverableSchema, type DeliverableStatus, type DispositionCheck, type DispositionKind, type DispositionRow, DispositionRowSchema, type EdgeChange, type EdgeCheck, type EdgeError, type EdgeField, type Edges, type ExternalDep, type InitiativeBriefRef, type InitiativePrefix, type InitiativeVisibility, InitiativeVisibilitySchema, type ReviewItem, type ReviewPin, type RunCost, type StatusEntry, TOPIC_PRIORITIES, TOPIC_VERDICTS, type Task, type TaskFloat, type TaskKeyEntry, type TaskKeyIndex, type TaskKeyRefusal, type TaskKeyResolution, type TaskRequire, TaskRequireSchema, TaskSchema, type TaskTreeNode, type TopicPriority, type TopicRow, type TopicVerdict, betProblem, categoriesPath, checkCategories, checkDispositions, checkEdges, criticalPath, deliverablePath, deliverablesDir, isAgentVisible, parseCategoryRegistry, parseClaimsAudit, parseDeliverableRegistry, parseDispositions, parseTopicsJudged, prioritizedTopics, readEdges, readReviewPin, readTsv, resolveTaskKey, sumRunCost, summaryRecommendations, taskTree };
 
 // ./dist/planning.d.ts
 import { z } from 'zod';

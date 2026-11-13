@@ -63,6 +63,8 @@ interface FakeOptions {
   health?: number;
   /** What the tasks port throws instead of filing. */
   taskError?: string;
+  /** Resolves a spec task key; absent keeps every key as written. */
+  taskKey?: (task: string) => Promise<string>;
   /** Branches already on the remote, as a stopped earlier run left them. */
   branches?: Record<string, string>;
   /** Gate records already in an evidence directory, keyed by the directory. */
@@ -139,6 +141,7 @@ export function fakeBuild(options: FakeOptions = {}): FakeBuild {
       land: async ({ pr }) => ({ state: "merged", mergeSha: shaOf(9000 + pr) }),
     },
     tasks: fakeTasks(fake, options),
+    taskKey: options.taskKey ?? (async (task) => task),
   };
   return fake;
 }

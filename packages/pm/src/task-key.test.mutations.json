@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a wrong prefix is silently corrected",
+      "file": "packages/pm/src/task-key.ts",
+      "find": "  if (qualifier === undefined) return { ok: true, key, initiative, id };",
+      "replace": "  return { ok: true, key, initiative, id };",
+      "kills": ["resolveTaskKey refuses a wrong prefix and proposes the task's own key instead of fixing it"]
+    },
+    {
+      "name": "the prefix owner no longer breaks a tie",
+      "file": "packages/pm/src/task-key.ts",
+      "find": "  return issuers.length === 1 ? issuers[0]!.initiative : undefined;",
+      "replace": "  return undefined;",
+      "kills": ["resolveTaskKey picks the initiative whose task prefix issued an id that two initiatives hold"]
+    },
+    {
+      "name": "a qualifier holding the id is not trusted",
+      "file": "packages/pm/src/task-key.ts",
+      "find": "  if (qualifier !== undefined && holders.includes(qualifier)) return",
+      "replace": "  if (qualifier !== undefined && holders.includes(qualifier) && false) return",
+      "kills": ["resolveTaskKey picks the initiative whose task prefix issued an id that two initiatives hold"]
+    },
+    {
+      "name": "more than three segments parse",
+      "file": "packages/pm/src/task-key.ts",
+      "find": "  if (segments.length > 3 || ",
+      "replace": "  if (",
+      "kills": ["resolveTaskKey refuses the malformed key \"a/b/c/AL-7\""]
+    }
+  ]
+}

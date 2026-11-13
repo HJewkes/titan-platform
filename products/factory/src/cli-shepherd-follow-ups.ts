@@ -10,7 +10,7 @@ import { activeWorkFollowUpTasks, activeWorkOrigin } from "./shepherd/cleanup-po
 import { FixTaskRefused } from "./shepherd/main-red.js";
 import { fileFollowUps } from "./shepherd/follow-ups-file.js";
 import { HEAD } from "./shepherd/await-verdict.js";
-import { qualifyTask } from "./shepherd/task-ref.js";
+import { qualifyTask, TaskIndexUnavailable } from "./shepherd/task-ref.js";
 
 interface FollowUpsArgs {
   task: string;
@@ -41,7 +41,7 @@ async function run(ref: string, opts: FollowUpsArgs, verbs: Verbs): Promise<numb
     where = { ...(await qualified(opts.task, verbs)), ...targetOf(ref, opts) };
   } catch (error) {
     io.stderr(`error: ${errorMessage(error)}\n`);
-    return EXIT.USAGE;
+    return error instanceof TaskIndexUnavailable ? EXIT.UNAVAILABLE : EXIT.USAGE;
   }
   const { items, warning } = parseFollowUps(opts.verdictFile === undefined ? await text(process.stdin) : await readFile(opts.verdictFile, "utf8"));
   try {
