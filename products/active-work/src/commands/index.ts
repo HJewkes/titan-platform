@@ -46,6 +46,7 @@ import deliverableShip from './deliverable-ship.js';
 // Tasks
 import taskAdd from './task-add.js';
 import taskApply from './task-apply.js';
+import taskBackfillFields from './task-backfill-fields.js';
 import taskDelete from './task-delete.js';
 import taskDone from './task-done.js';
 import taskEdit from './task-edit.js';
@@ -179,6 +180,7 @@ const ALL_COMMANDS: AnyCommand[] = [
   // tasks
   taskAdd,
   taskApply,
+  taskBackfillFields,
   taskDone,
   taskKeys,
   taskList,
