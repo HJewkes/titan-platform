@@ -293,3 +293,8 @@ export async function startedSession<A extends { sessionId: string }>(roster: ()
     await clock.sleep(timing.pollMs, signal);
   }
 }
+
+export function notStartedInTime(reviewer: string, rosterError: string | undefined): { kind: "none"; reason: string } {
+  const cause = rosterError === undefined ? "" : `; the last roster read failed: ${rosterError}`;
+  return { kind: "none", reason: `reviewer ${reviewer} did not start one session in time${cause}` };
+}
