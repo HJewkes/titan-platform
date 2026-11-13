@@ -224,6 +224,44 @@ describe("review labels", () => {
   });
 });
 
+const BASE = "b".repeat(40);
+const ownDiff = (head: string, minutes: number, id: string | null): Step => [`sh-own-diff:${head}:0`, minutes, id === null ? { unread: "git fetch exited 128" } : { id, base: BASE }];
+const ownDiffRows = (store: ReviewStatsStore) => store.db.prepare("SELECT head_sha, verdict, own_diff_id, unchanged_since_verdict FROM review ORDER BY round").all();
+
+describe("own-diff labels", () => {
+  it("a pass at a head whose own diff matches the last verdict head counts as unchanged", async () => {
+    const store = storeFile();
+    const steps: Step[] = [
+      ownDiff("h1", 0, "id-x"), ...reviewed("h1", SESSION.a, 0, 1, 5, "MERGE"),
+      ownDiff("h2", 10, "id-x"), ["sh-review:h2:0", 11, dispatched(SESSION.b, "h2", 10, 11)], ["sh-await-verdict:h2:0", 13, timedOut],
+      ["sh-review:h2:1", 14, dispatched(SESSION.c, "h2", 14, 14)], ["sh-await-verdict:h2:1", 16, verdict(SESSION.c, "h2", "MERGE")],
+      ownDiff("h3", 20, "id-y"), ...reviewed("h3", SESSION.a, 20, 21, 25, "MERGE"),
+      ownDiff("h4", 30, null), ...reviewed("h4", SESSION.b, 30, 31, 35, "MERGE"),
+    ];
+
+    await refreshReviewStats({ store, runs: ledgerRuns(ledger([runOf("r1", steps)])), retire: new Map(), transcripts: portOf({}) });
+
+    expect(ownDiffRows(store)).toEqual([
+      { head_sha: "h1", verdict: "MERGE", own_diff_id: "id-x", unchanged_since_verdict: null },
+      { head_sha: "h2", verdict: "none", own_diff_id: "id-x", unchanged_since_verdict: null },
+      { head_sha: "h2", verdict: "MERGE", own_diff_id: "id-x", unchanged_since_verdict: "after-MERGE" },
+      { head_sha: "h3", verdict: "MERGE", own_diff_id: "id-y", unchanged_since_verdict: "changed" },
+      { head_sha: "h4", verdict: "MERGE", own_diff_id: null, unchanged_since_verdict: null },
+    ]);
+  });
+
+  it("a pass after a FIX_FIRST at an unchanged head is counted and labelled after-FIX_FIRST", async () => {
+    const store = storeFile();
+    const steps: Step[] = [ownDiff("h1", 0, "id-x"), ...reviewed("h1", SESSION.a, 0, 1, 5, "FIX_FIRST"), ownDiff("h2", 10, "id-x"), ...reviewed("h2", SESSION.b, 10, 11, 15, "MERGE")];
+    const retire = readRetireCosts(logsWith([retireRow(SESSION.a, 1), retireRow(SESSION.b, 0.5)]));
+
+    await refreshReviewStats({ store, runs: ledgerRuns(ledger([runOf("r1", steps)])), retire, transcripts: portOf({}) });
+
+    expect(ownDiffRows(store)).toEqual([expect.objectContaining({ unchanged_since_verdict: null }), expect.objectContaining({ head_sha: "h2", unchanged_since_verdict: "after-FIX_FIRST" })]);
+    expect(store.db.prepare("SELECT passes, unchanged_passes, unchanged_usd FROM pr_review").get()).toEqual({ passes: 2, unchanged_passes: 1, unchanged_usd: 0.5 });
+  });
+});
+
 describe("pr_review view", () => {
   it("sums each PR's rounds, cost and review time across its runs, with its registration and merge", async () => {
     const store = storeFile();
@@ -232,7 +270,7 @@ describe("pr_review view", () => {
 
     const rows = store.db.prepare("SELECT * FROM pr_review").all();
 
-    expect(rows).toEqual([{ repo: "acme/widgets", pr: 7, rounds: 3, usd: 7, review_ms: 21 * MIN, queue_ms: 3 * MIN, registered_at: at(0), merged_at: at(40) }]);
+    expect(rows).toEqual([{ repo: "acme/widgets", pr: 7, rounds: 3, usd: 7, review_ms: 21 * MIN, queue_ms: 3 * MIN, registered_at: at(0), merged_at: at(40), passes: 3, unchanged_passes: 0, unchanged_usd: null }]);
   });
 });
 
