@@ -92,7 +92,10 @@ async function acted(actionId: string, deps: Mounted, ops: OpDeps, answers: Stan
   const { host, port, store, freeze, deploy, now, agentChat, stateDir, readVerdictText, activeRoot } = deps;
   const read = await readRecord(deps.actionsDir, actionId);
   if ("outcome" in read) return read;
-  if ("op" in read) return actOnOp(actionId, read, ops, { host, port, services: { store, freeze }, answers, ledger: ops.ledger, deploy, now, agentChat, activeRoot, done: (id) => doneResults(stateDir, id) });
+  if ("op" in read) {
+    const context = { host, port, services: { store, freeze }, answers, ledger: ops.ledger, deploy, now, agentChat, activeRoot, done: (id: string) => doneResults(stateDir, id) };
+    return actOnOp(actionId, read, ops, context);
+  }
   const { action, confirmEvent } = read;
   if (action.kind === "plan-approval") return recordPlanApproval({ action, confirmEvent }, store.get(), host);
   return action.kind === "owner-release" ? releaseHold({ action, confirmEvent }, port, store.get(), host.batches) : resolveGate({ action, confirmEvent }, port, host, readVerdictText);

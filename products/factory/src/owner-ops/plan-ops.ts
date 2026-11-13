@@ -12,7 +12,6 @@ import type { OwnerOpsLedger } from "./ledger.js";
  */
 
 type BetSelect = Extract<OwnerOp, { kind: "plan-bet-select" }>;
-type OutcomeEdit = Extract<OwnerOp, { kind: "plan-outcome-edit" }>;
 type FreezeSet = Extract<OwnerOp, { kind: "plan-freeze-set" }>;
 
 export interface PlanOpDeps {
@@ -65,7 +64,8 @@ export async function editOutcome(_actionId: string, { op }: OpRead, deps: PlanO
   return underLock(deps.activeRoot, initiativeOf(op.outcome), async () => {
     const current = await readPlanRecord(deps.activeRoot, "outcome", op.outcome);
     if (current === null) return { outcome: "gone", reason: `no outcome ${op.outcome}` };
-    if (op.from !== undefined && (current.statement !== op.from.statement || current.measure !== op.from.measure)) return refused("mismatch", `${op.outcome} changed since it was read back; read it again`);
+    const moved = op.from !== undefined && (current.statement !== op.from.statement || current.measure !== op.from.measure);
+    if (moved) return refused("mismatch", `${op.outcome} changed since it was read back; read it again`);
     const next = { ...current, ...op.to };
     if (next.statement === current.statement && next.measure === current.measure) return { outcome: "already", ids: [op.outcome] };
     await writePlanRecord(deps.activeRoot, "outcome", next);
