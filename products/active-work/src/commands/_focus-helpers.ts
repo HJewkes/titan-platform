@@ -1,6 +1,8 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import type { CommandContext } from '../registry/types.js';
 import { BriefFrontmatterSchema, type BriefFrontmatter } from '../schemas/brief.js';
+import { hiddenSlugsForCaller, noteHiddenInitiatives } from '../sessions/visibility.js';
 import { getActiveRoot } from '../utils/paths.js';
 import { readFrontmatter } from '../utils/gray-matter-io.js';
 
@@ -52,4 +54,18 @@ export async function loadAllBriefs(): Promise<InitiativeBrief[]> {
  */
 export function sortSlugs(slugs: Iterable<string>): string[] {
   return [...new Set(slugs)].sort();
+}
+
+/**
+ * Renumbering moves every focused initiative, the caller's or not. The moves this caller may see named:
+ * a non-owner gets the owner-only ones as a count (TP-5556, census row 22b).
+ */
+export async function movesForCaller<T extends { slug: string }>(
+  moves: readonly T[],
+  ctx: Pick<CommandContext, 'activeRoot' | 'caller' | 'warnings'>,
+): Promise<T[]> {
+  const hidden = await hiddenSlugsForCaller(ctx.activeRoot, ctx.caller);
+  const shown = moves.filter((move) => !hidden.has(move.slug));
+  noteHiddenInitiatives(ctx.warnings, moves.length - shown.length);
+  return shown;
 }

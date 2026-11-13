@@ -45,6 +45,18 @@ export async function ownerOnlySlugs(activeRoot: string): Promise<string[]> {
   return (await slugsByVisibility(activeRoot)).ownerOnly;
 }
 
+/**
+ * The owner-only slugs a reader must not name to this caller: none for the owner. A deny list, for readers
+ * whose keys are not all initiatives (a miner bucket, a doctor path), so only an owner-only name is withheld.
+ */
+export async function hiddenSlugsForCaller(
+  activeRoot: string,
+  caller: CommandContext['caller'],
+): Promise<ReadonlySet<string>> {
+  if (caller === 'owner') return new Set();
+  return new Set(await ownerOnlySlugs(activeRoot));
+}
+
 const SERVE_ALL: AgentVisibility = () => true;
 
 /**

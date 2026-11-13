@@ -10,6 +10,7 @@ const ctxFor = (activeRoot: string): CommandContext => ({
   activeRoot,
   warnings: [],
   format: 'json',
+  caller: 'owner',
 });
 
 async function scaffold(root: string, slug: string): Promise<void> {

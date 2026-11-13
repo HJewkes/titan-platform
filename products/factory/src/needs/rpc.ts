@@ -45,7 +45,8 @@ function matches(item: OwnerItem, filter: NeedsFilter): boolean {
 
 async function readNeeds(filter: NeedsFilter, ctx: FactoryContext): Promise<NeedsListResult> {
   const personal = filter.personal === true;
-  const list = await collectNeeds(await (ctx.needsSources ?? liveSources(ctx))({ personal }), { personal });
+  const ownerOnly = ctx.caller === "owner";
+  const list = await collectNeeds(await (ctx.needsSources ?? liveSources(ctx))({ personal }), { personal, ownerOnly });
   return { items: list.items.filter((item) => matches(item, filter)), gaps: list.gaps };
 }
 
@@ -67,7 +68,7 @@ async function listNeeds({ fyi, ...filter }: NeedsListArgs, ctx: FactoryContext)
 
 const list = defineCommand<NeedsListArgs, NeedsListResult, FactoryContext>({
   name: "needs.list",
-  description: "Everything waiting on the owner as merged OwnerItem[], the set `titan-factory needs --json` prints, filtered by kind, lens or initiative; personal initiatives only when asked; `fyi: count` leaves fyi items out and counts them",
+  description: "Everything waiting on the owner as merged OwnerItem[], the set `titan-factory needs --json` prints, filtered by kind, lens or initiative; personal initiatives only when asked; owner-only initiatives only for the owner; `fyi: count` leaves fyi items out and counts them",
   args: needsListSchema,
   result: z.custom<NeedsListResult>(),
   run: listNeeds,

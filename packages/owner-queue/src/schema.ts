@@ -108,6 +108,8 @@ export const ownerItemSchema = z.object({
   seat: z.string().optional(),
   initiative: z.string().optional(),
   personal: z.boolean(),
+  /** The item's initiative is withheld from agents (isAgentVisible); only the owner's reads keep it. Absent means agent-visible. */
+  ownerOnly: z.boolean().optional(),
   lens: z.enum(LENSES),
   stuckKind: z.string().optional(),
   unblocks: z.array(z.string().min(1)),

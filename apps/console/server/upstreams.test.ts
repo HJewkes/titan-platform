@@ -6,7 +6,7 @@ import type { ActiveWork } from "./active-work.js";
 import { fixtureActiveWork } from "./fixtures.js";
 import { closedPort, startFakeDaemon } from "./test-support.js";
 import { resolveConfig } from "./config.js";
-import { createSources, fileUpstream, httpUpstream, humanOnlyFrom, probeUpstreams } from "./upstreams.js";
+import { createSources, fileUpstream, httpUpstream, ownerOnlyFrom, probeUpstreams } from "./upstreams.js";
 
 let dir: string;
 beforeEach(async () => {
@@ -137,15 +137,30 @@ describe("the active-work reads createSources builds", () => {
   });
 });
 
-describe("the decision log's human-only reader", () => {
-  it("names the initiatives active-work flags human-only", async () => {
-    const humanOnly = await humanOnlyFrom(fixtureActiveWork())();
-    expect(humanOnly).toEqual({ known: true, initiatives: new Set(["garden-plan"]) });
+describe("the decision log's owner-only reader", () => {
+  const inventoryOf = (initiatives: Record<string, unknown>[]): ActiveWork => ({
+    read: async () => ({ initiatives, human_only_known: true }) as never,
   });
 
-  it("reads as unknown when the charter is unread or active-work does not answer (fail closed)", async () => {
+  it("excludes the initiatives isAgentVisible withholds, not the charter's human-only list", async () => {
+    const activeWork = inventoryOf([
+      { slug: "charter-listed", human_only: true, agent_visible: true },
+      { slug: "brief-withheld", human_only: false, agent_visible: false },
+    ]);
+
+    const ownerOnly = await ownerOnlyFrom(activeWork)();
+
+    expect(ownerOnly).toEqual({ known: true, initiatives: new Set(["brief-withheld"]) });
+  });
+
+  it("treats a row without the flag as owner-only and a silent daemon as unknown (fail closed)", async () => {
     const down: ActiveWork = { read: () => Promise.reject(new Error("connection refused")) };
-    expect(await humanOnlyFrom(fixtureActiveWork({ humanOnlyKnown: false }))()).toEqual({ known: false });
-    expect(await humanOnlyFrom(down)()).toEqual({ known: false });
+
+    expect(await ownerOnlyFrom(inventoryOf([{ slug: "older-daemon", human_only: false }]))()).toEqual({ known: true, initiatives: new Set(["older-daemon"]) });
+    expect(await ownerOnlyFrom(down)()).toEqual({ known: false });
+  });
+
+  it("names the fixture's personal initiative", async () => {
+    expect(await ownerOnlyFrom(fixtureActiveWork())()).toEqual({ known: true, initiatives: new Set(["garden-plan"]) });
   });
 });

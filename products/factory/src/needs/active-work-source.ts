@@ -18,7 +18,7 @@ export interface DecisionTask {
 
 type ActiveWorkReads = {
   "task.list": { args: { all_initiatives: true; status: "open"; tag: string }; result: { tasks: DecisionTask[] } };
-  inventory: { args: Record<string, never>; result: { initiatives: { slug: string; human_only: boolean }[]; human_only_known: boolean } };
+  inventory: { args: Record<string, never>; result: { initiatives: { slug: string; human_only: boolean; agent_visible?: boolean }[]; human_only_known: boolean } };
 };
 
 export interface ActiveWorkSourceOptions {
@@ -37,7 +37,7 @@ function clip(text: string): string {
 }
 
 /** The question usually sits in the notes, so they lead the context; done_when says what an answer unblocks. */
-export function decisionTaskItem(task: DecisionTask, personal: boolean): OwnerItem {
+export function decisionTaskItem(task: DecisionTask, personal: boolean, ownerOnly = false): OwnerItem {
   const context = [task.notes, task.done_when && `Done when: ${task.done_when}`].filter(Boolean).join("\n\n");
   return {
     id: `task:${task.id}`,
@@ -49,6 +49,7 @@ export function decisionTaskItem(task: DecisionTask, personal: boolean): OwnerIt
     keys: [`task:${task.id}`],
     initiative: task.slug,
     personal,
+    ...(ownerOnly && { ownerOnly }),
     lens: "planning",
     unblocks: [`task:${task.id}`],
     openedAt: `${task.created}T00:00:00Z`,
@@ -63,6 +64,12 @@ function personalSlugs(inventory: ActiveWorkReads["inventory"]["result"]): (slug
   return (slug) => personal.has(slug);
 }
 
+/** Separate from personal: it follows the brief's visibility, and a daemon that does not report it is read as owner-only. */
+function ownerOnlySlugs(inventory: ActiveWorkReads["inventory"]["result"]): (slug: string) => boolean {
+  const visible = new Set(inventory.initiatives.filter((entry) => entry.agent_visible === true).map((entry) => entry.slug));
+  return (slug) => !visible.has(slug);
+}
+
 /** Open `needs-decision` tasks over the active-work daemon's loopback rpc, the reader the factory's Shepherd already uses. */
 export function createActiveWorkSource(options: ActiveWorkSourceOptions): QueueSource {
   const client = createRpcClient<ActiveWorkReads>(liveSource(options));
@@ -72,9 +79,10 @@ export function createActiveWorkSource(options: ActiveWorkSourceOptions): QueueS
       client.call("inventory", {}),
     ]);
     const isPersonal = personalSlugs(inventory);
+    const isOwnerOnly = ownerOnlySlugs(inventory);
     return tasks
       .filter((task) => options.includePersonal === true || !isPersonal(task.slug))
-      .map((task) => decisionTaskItem(task, isPersonal(task.slug)));
+      .map((task) => decisionTaskItem(task, isPersonal(task.slug), isOwnerOnly(task.slug)));
   };
   return {
     system: "active-work",

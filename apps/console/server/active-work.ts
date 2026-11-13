@@ -58,6 +58,8 @@ const deliverable = z.object({
 const inventoryInitiative = z.object({
   slug: z.string(),
   human_only: z.boolean(),
+  /** isAgentVisible's verdict; absent from a daemon older than TP-5453 P6b, which readers treat as owner-only. */
+  agent_visible: z.boolean().optional(),
   total: stat,
   classes: z.object({ tasks: stat, sessions: stat, notes: stat, sources: stat, nested_sources: stat }),
 });

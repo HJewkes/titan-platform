@@ -10,6 +10,8 @@ export type NeedsSources = (options: { personal: boolean }) => readonly QueueSou
 
 export interface FactoryContext extends BaseContext {
   host: FactoryHost;
+  /** Set by the surface: serve's HTTP (the console) is the owner, MCP an agent. Unset reads as restricted (TP-5556). */
+  caller?: "owner" | "agent";
   /** Absent when the host runs routes without the shepherd store; the shepherd commands then refuse. */
   shepherd?: ShepherdServices;
   /** The serving factory's name, which an owner proof must carry as its `aud`; defaults to this machine's hostname. */

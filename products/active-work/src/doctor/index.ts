@@ -54,6 +54,8 @@ export interface DoctorDeps {
   supervisorActive?: () => Promise<{ kind: string; active: boolean; path?: string } | null>;
   /** Sweep session leases; defaults to the real `.sessions/` walk. */
   sweepLeases?: (activeRoot: string) => Promise<LeaseSweepResult>;
+  /** Owner-only initiatives the caller may not see named; their findings are left out (TP-5556). */
+  hiddenSlugs?: ReadonlySet<string>;
 }
 
 function checkInstall(deps: DoctorDeps): Promise<DoctorCheck[]> {

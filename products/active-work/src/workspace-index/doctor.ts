@@ -30,8 +30,12 @@ const INDEXED_REFS = `
 export async function checkWorkspaceIndex(
   graph: WorkspaceGraph,
   activeRoot: string,
+  shown: (relativePath: string) => boolean = () => true,
 ): Promise<WorkspaceIndexHealth> {
-  const indexed = graph.db.prepare<[], { ref: string; path: string }>(INDEXED_REFS).all();
+  const indexed = graph.db
+    .prepare<[], { ref: string; path: string }>(INDEXED_REFS)
+    .all()
+    .filter((row) => shown(row.path));
   const results = await Promise.all(
     indexed.map(async (row) => ((await opens(toAbsolute(activeRoot, row.path))) ? null : row)),
   );

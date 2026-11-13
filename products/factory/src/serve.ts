@@ -271,7 +271,7 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
   const needsSources = options.needsSources ?? keptNeedsSources(process.env, host.gates);
   return {
     registry: createFactoryRegistry(log),
-    createContext: () => factoryContext(host, options.routes, proofs.aud, needsSources),
+    createContext: (surface) => factoryContext(host, options.routes, proofs.aud, needsSources, surface === "http" ? "owner" : "agent"),
     version: FACTORY_VERSION,
     stateDir: stateDirOf(options),
     port: options.port ?? FACTORY_PORT,

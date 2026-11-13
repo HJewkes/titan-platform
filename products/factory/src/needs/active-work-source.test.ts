@@ -57,6 +57,17 @@ describe("createActiveWorkSource", () => {
     ]);
   });
 
+  it("flags an owner-only initiative's decisions with the separate owner-only flag", async () => {
+    const { fetch } = daemon([], true, ["home"]);
+
+    const items = await createActiveWorkSource({ origin: ORIGIN, fetch }).open();
+
+    expect(items.map((item) => [item.id, item.ownerOnly === true])).toEqual([
+      ["task:D-1001", false],
+      ["task:D-1002", true],
+    ]);
+  });
+
   it("treats every initiative as personal when the charter is unreadable", async () => {
     const { fetch } = daemon([], false);
 

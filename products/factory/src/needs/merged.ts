@@ -23,9 +23,17 @@ async function readSource(source: QueueSource): Promise<{ items: OwnerItem[]; ga
   }
 }
 
-export async function collectNeeds(sources: readonly QueueSource[], { personal = false }: { personal?: boolean } = {}): Promise<NeedsList> {
+interface CollectOptions {
+  personal?: boolean;
+  /** Keeps items flagged owner-only; only an owner read sets it, so a caller that forgets is restricted (TP-5556). */
+  ownerOnly?: boolean;
+}
+
+export async function collectNeeds(sources: readonly QueueSource[], { personal = false, ownerOnly = false }: CollectOptions = {}): Promise<NeedsList> {
   const reads = await Promise.all(sources.map(readSource));
-  const open = reads.flatMap((read) => read.items).filter((item) => personal || !item.personal);
+  const open = reads
+    .flatMap((read) => read.items)
+    .filter((item) => (personal || !item.personal) && (ownerOnly || item.ownerOnly !== true));
   const counts: Record<string, number> = {};
   for (const item of open) counts[item.sources[0]!.system] = (counts[item.sources[0]!.system] ?? 0) + 1;
   return {

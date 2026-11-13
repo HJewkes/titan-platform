@@ -112,6 +112,53 @@ describe("needs.list over the daemon", () => {
   });
 });
 
+/** One JSON-RPC call to serve's MCP endpoint; the streamable transport may answer as one SSE event. */
+async function mcp(server: FactoryServer, method: string, params: object): Promise<unknown> {
+  const res = await fetch(`http://127.0.0.1:${server.port}/mcp`, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json, text/event-stream", "x-titan-client": "test" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+  });
+  const text = await res.text();
+  const data = text.split("\n").find((line) => line.startsWith("data: "));
+  return (JSON.parse(data ? data.slice("data: ".length) : text) as { result: unknown }).result;
+}
+
+async function mcpNeedsIds(server: FactoryServer): Promise<string[]> {
+  const { tools } = z.object({ tools: z.array(z.object({ name: z.string() })) }).parse(await mcp(server, "tools/list", {}));
+  const name = tools.map((tool) => tool.name).find((each) => each.includes("needs") && each.endsWith("list"))!;
+  const { content } = z.object({ content: z.array(z.object({ text: z.string() })) }).parse(await mcp(server, "tools/call", { name, arguments: {} }));
+  const envelope = JSON.parse(content[0]!.text) as { data?: { items: OwnerItem[] }; items?: OwnerItem[] };
+  return (envelope.data ?? envelope).items!.map((item) => item.id);
+}
+
+describe("needs.list for an owner-only initiative", () => {
+  it("serves its items to the owner's console over /rpc and hides them from an agent over MCP", async () => {
+    const withheld = decisionTaskItem({ ...decisionTask(1), slug: "private-plans" }, false, true);
+    const server = await serve(() => sources10_05([withheld]));
+
+    const owner = await rpc<{ items: OwnerItem[] }>(server, "needs.list");
+    const agent = await mcpNeedsIds(server);
+
+    expect(owner.items.map((item) => item.id)).toContain(withheld.id);
+    expect(agent).not.toContain(withheld.id);
+    expect(agent.length).toBeGreaterThan(0);
+  });
+
+  it("hides them from `needs --json` unless the shell is the owner's", async () => {
+    const withheld = decisionTaskItem({ ...decisionTask(1), slug: "private-plans" }, false, true);
+    const sources = await sources10_05([withheld]);
+    const ids = async (ownerOnly: boolean) => {
+      const out: string[] = [];
+      await runNeeds({ stdout: (text) => void out.push(text), stderr: () => undefined }, sources, { json: true, ownerOnly });
+      return (JSON.parse(out.join("")) as OwnerItem[]).map((item) => item.id);
+    };
+
+    expect(await ids(true)).toContain(withheld.id);
+    expect(await ids(false)).not.toContain(withheld.id);
+  });
+});
+
 describe("needs.count over the daemon", () => {
   it("counts the merged list by kind and lens under the same filters", async () => {
     const server = await serve(fixed10_05);

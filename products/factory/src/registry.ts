@@ -145,11 +145,12 @@ const gatesReview = defineCommand<Record<string, never>, { gates: ReviewGate[]; 
 });
 
 /** The context every surface runs a command in; the shepherd commands read the services their routes carry. */
-export function factoryContext(host: FactoryHost, routes: FactoryRoutes, aud?: string, needsSources?: NeedsSources): FactoryContext {
+export function factoryContext(host: FactoryHost, routes: FactoryRoutes, aud?: string, needsSources?: NeedsSources, caller?: FactoryContext["caller"]): FactoryContext {
   return {
     warnings: [],
     format: "json",
     host,
+    ...(caller && { caller }),
     ...(routes.shepherd && { shepherd: routes.shepherd }),
     ...(aud !== undefined && { aud }),
     ...(needsSources && { needsSources }),

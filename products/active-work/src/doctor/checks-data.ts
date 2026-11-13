@@ -85,13 +85,24 @@ function sessionFilesCheck(malformed: string[]): DoctorCheck {
   };
 }
 
+async function slugsShown(activeRoot: string, deps: DoctorDeps): Promise<string[]> {
+  const hidden = deps.hiddenSlugs ?? new Set<string>();
+  return (await listInitiativeSlugs(activeRoot)).filter((slug) => !hidden.has(slug));
+}
+
+/** An indexed path is relative to the active root, so its first segment is the initiative it sits in. */
+function pathShown(deps: DoctorDeps): (relativePath: string) => boolean {
+  const hidden = deps.hiddenSlugs ?? new Set<string>();
+  return (relativePath) => !hidden.has(relativePath.split('/')[0]!);
+}
+
 /**
  * Walk every initiative once and report both integrity signals derivation
  * cannot express in the ledger: rejected `resolves` and unparseable sessions.
  */
 export async function checkSessions(deps: DoctorDeps): Promise<DoctorCheck[]> {
   const activeRoot = deps.activeRoot ?? getActiveRoot();
-  const slugs = await listInitiativeSlugs(activeRoot);
+  const slugs = await slugsShown(activeRoot, deps);
   const byKind = new Map<DanglingKind, string[]>();
   const malformed: string[] = [];
   const badTaskRefs: string[] = [];
@@ -144,7 +155,7 @@ function noteTitlesCheck(entries: string[]): DoctorCheck {
 /** Notes whose stored title exceeds the write-time bound. */
 export async function checkNoteTitles(deps: DoctorDeps): Promise<DoctorCheck> {
   const activeRoot = deps.activeRoot ?? getActiveRoot();
-  const slugs = await listInitiativeSlugs(activeRoot);
+  const slugs = await slugsShown(activeRoot, deps);
   const overlong: string[] = [];
   for (const slug of slugs) {
     const { notes } = await loadNotesFromDir(nodePath.join(activeRoot, slug));
@@ -231,7 +242,7 @@ export async function checkWorkspaceIndexRefs(deps: DoctorDeps): Promise<DoctorC
     return workspaceIndexCheck(null);
   }
   try {
-    return workspaceIndexCheck(await checkWorkspaceIndex(graph, activeRoot));
+    return workspaceIndexCheck(await checkWorkspaceIndex(graph, activeRoot, pathShown(deps)));
   } finally {
     graph.db.close();
   }
@@ -240,7 +251,7 @@ export async function checkWorkspaceIndexRefs(deps: DoctorDeps): Promise<DoctorC
 /** Structured artifacts (tasks/*.yml, artifacts.yml, brief.md) whose content no longer matches the last CLI write (AW-66). */
 export async function checkArtifactHashes(deps: DoctorDeps): Promise<DoctorCheck> {
   const activeRoot = deps.activeRoot ?? getActiveRoot();
-  const slugs = await listInitiativeSlugs(activeRoot);
+  const slugs = await slugsShown(activeRoot, deps);
   const drifted: string[] = [];
   for (const slug of slugs) {
     const findings = await lintHashes(slug, nodePath.join(activeRoot, slug));

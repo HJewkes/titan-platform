@@ -115,12 +115,15 @@ export async function probeUpstreams(upstreams: readonly Upstream[]): Promise<Up
   return Promise.all(upstreams.map(async ({ id, label, target, probe }) => ({ id, label, target, ...(await probe()) })));
 }
 
-/** Active-work owns the charter read; an unreadable charter or a down daemon reads as unknown, which excludes every answer. */
-export function humanOnlyFrom(activeWork: ActiveWork): () => Promise<HumanOnly> {
+/**
+ * The decision log keeps out every initiative active-work's isAgentVisible withholds, since the decider it feeds is an
+ * agent reader (TP-5556). A down daemon reads as unknown, which excludes every answer; a row with no flag is owner-only.
+ */
+export function ownerOnlyFrom(activeWork: ActiveWork): () => Promise<HumanOnly> {
   return async () => {
     const inventory = await activeWork.read("inventory").catch(() => null);
-    if (inventory === null || !inventory.human_only_known) return { known: false };
-    return { known: true, initiatives: new Set(inventory.initiatives.filter((entry) => entry.human_only).map((entry) => entry.slug)) };
+    if (inventory === null) return { known: false };
+    return { known: true, initiatives: new Set(inventory.initiatives.filter((entry) => entry.agent_visible !== true).map((entry) => entry.slug)) };
   };
 }
 
@@ -191,7 +194,7 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
     coordinator: coordinatorOf(config, shepherd, activeWork),
     factory: factoryNeeds(config.factoryPort, undefined, recorder),
     hostSurfaces: config.hostSurfaces,
-    decisionLog: createDecisionLog({ stateDir: config.stateDir, decisionsFile: config.decisionsFile, humanOnly: humanOnlyFrom(activeWork), logger }),
+    decisionLog: createDecisionLog({ stateDir: config.stateDir, decisionsFile: config.decisionsFile, humanOnly: ownerOnlyFrom(activeWork), logger }),
     listeners: listenersOf(config, shepherd, logger),
     ...(config.agentChatBin !== undefined && { videoNotify: seatNotifier(config.agentChatBin) }),
     ...(config.explainerBin !== undefined && { explainerBin: config.explainerBin }),

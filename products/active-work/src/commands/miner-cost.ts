@@ -7,6 +7,7 @@ import { EXTRACT_VERSION } from '@titan-design/session-read';
 import { z } from 'zod';
 import { defineCommand } from '../registry/index.js';
 import { defaultGraphPath, openGraphReadOnly } from '../session-index/graph.js';
+import { minerHiddenSlugs, redactCostReport } from './_miner-redact.js';
 
 /**
  * `active-work miner cost` — spend over the session-signal index, sliced by
@@ -56,7 +57,7 @@ export default defineCommand<Args, Result>({
   async run(args, ctx) {
     const db = openGraphReadOnly(defaultGraphPath());
     try {
-      const report = costReport(db, {
+      const full = costReport(db, {
         days: args.days,
         since: args.since,
         until: args.until,
@@ -64,6 +65,8 @@ export default defineCommand<Args, Result>({
         ...(args.session_ids ? { scope: { sessionIds: args.session_ids } } : {}),
         facetVersion: EXTRACT_VERSION,
       });
+      const keys = full.byInitiative.map((bucket) => bucket.key);
+      const report = redactCostReport(full, await minerHiddenSlugs(ctx, keys));
       if (ctx.format !== 'json') process.stderr.write(renderCostReportText(report));
       return report;
     } finally {

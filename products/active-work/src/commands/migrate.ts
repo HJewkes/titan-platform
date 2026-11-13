@@ -141,6 +141,10 @@ export default defineCommand<Args, Result>({
     usage: 'active-work migrate --dry-run | --apply',
   },
   async run(args, ctx) {
+    // The plan names every initiative and its session files, owner-only ones included (TP-5556).
+    if (ctx.caller !== 'owner') {
+      throw new UsageError('migrate reports every initiative, so only the owner can run it');
+    }
     if (args.apply !== true) {
       const plan = await planV2ToV3(ctx.activeRoot);
       const result = describe(plan, false);

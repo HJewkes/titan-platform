@@ -58,8 +58,13 @@ export function keptNeedsSources(env: NodeJS.ProcessEnv, gates: GateReader, wind
 }
 
 /** Text for the owner, or the merged OwnerItem[] as JSON; a source that cannot be read still exits unavailable after the rest print. */
-export async function runNeeds(io: NeedsIo, sources: readonly QueueSource[], flags: { json: boolean }): Promise<number> {
-  const list = await collectNeeds(sources);
+/** The owner's plain terminal sets none of these; an agent's shell sets at least one, as active-work's CLI reads it. */
+function cliIsOwner(env: NodeJS.ProcessEnv): boolean {
+  return !(env.AGENT_CHAT_NAME || env.AGENT_CHAT_AGENT_ID || env.CLAUDECODE);
+}
+
+export async function runNeeds(io: NeedsIo, sources: readonly QueueSource[], flags: { json: boolean; ownerOnly?: boolean }): Promise<number> {
+  const list = await collectNeeds(sources, { ownerOnly: flags.ownerOnly === true });
   io.stdout(flags.json ? `${JSON.stringify(list.items, null, 2)}\n` : `${renderNeeds(list)}\n`);
   for (const gap of list.gaps) io.stderr(`${gap}\n`);
   return list.gaps.length > 0 ? EXIT.UNAVAILABLE : EXIT.OK;
@@ -68,7 +73,7 @@ export async function runNeeds(io: NeedsIo, sources: readonly QueueSource[], fla
 export function registerNeeds(program: Command, { io, withHost }: NeedsVerbs): void {
   program
     .command("needs")
-    .description("everything waiting on the owner, merged across agent-chat, factory gates, Morning queues and needs-decision tasks; personal initiatives left out")
+    .description("everything waiting on the owner, merged across agent-chat, factory gates, Morning queues and needs-decision tasks; personal initiatives left out, owner-only ones too in an agent's shell")
     .option("--json", "print the merged list as OwnerItem[]")
-    .action((opts: { json?: boolean }) => withHost((host) => runNeeds(io, ownerQueueSources(io.env, host.gates), { json: opts.json === true })));
+    .action((opts: { json?: boolean }) => withHost((host) => runNeeds(io, ownerQueueSources(io.env, host.gates), { json: opts.json === true, ownerOnly: cliIsOwner(io.env) })));
 }
