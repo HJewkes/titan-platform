@@ -9,6 +9,12 @@ export interface Commit {
   message?: string;
 }
 
+/** The GitHub accounts a commit's author and committer emails map to; null where GitHub links no account. */
+export interface CommitLogins {
+  author: string | null;
+  committer: string | null;
+}
+
 /** One step of an Actions job, in run order; `conclusion` is null until the step completes. */
 export interface JobStep {
   name: string;

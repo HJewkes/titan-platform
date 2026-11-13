@@ -84,6 +84,10 @@ export function wireOver(api: Rest, asApp: AppScope): GitHubWire {
       const message = commit.message;
       return { sha: commit.sha, parents: commit.parents.map((parent) => parent.sha), ...(tree ? { tree } : {}), ...(committedAt ? { committedAt } : {}), ...(message !== undefined ? { message } : {}) } satisfies Commit;
     },
+    getCommitLogins: async (repo, sha) => {
+      const commit = await api.get<{ author?: { login?: string } | null; committer?: { login?: string } | null }>(`repos/${repo}/commits/${sha}`);
+      return { author: commit.author?.login ?? null, committer: commit.committer?.login ?? null };
+    },
     resolveCommit: (repo, sha) => resolveCommit(api, repo, sha),
     listCommitStatuses: (repo, sha) => listCommitStatuses(api, repo, sha),
     getWorkflowRunStatus: async (repo, runId) => (await api.get<{ status: string }>(`repos/${repo}/actions/runs/${runId}`)).status,

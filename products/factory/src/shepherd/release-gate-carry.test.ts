@@ -19,10 +19,14 @@ const WIDGET_LOG = "packages/widget/CHANGELOG.md";
 const GATED = fakeSha("release-gated");
 const REGENERATED = fakeSha("release-regenerated");
 const BLOCKED = fakeSha("release-blocked");
+/** Synthetic logins: the configured release App's bot, and any other account that can push to the branch. */
+const RELEASE_BOT = "demo-release[bot]";
+const FOREIGN = "branch-pusher";
 
 /** A watched repo whose Version Packages PR bumps one public package, its release run parked on the owner's gate at GATED. */
-async function gatedRelease() {
-  const fixture = shepherdFixture();
+/** `null` configures no release App login. */
+async function gatedRelease(releaseAppLogin: string | null = RELEASE_BOT) {
+  const fixture = shepherdFixture(releaseAppLogin === null ? {} : { releaseAppLogin });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: fixture.workflows, routes: fixture.routes, gatePollMs: 5 });
   hosts.push(host);
   fixture.fake.addPr({ headSha: H1, headRef: BRANCH });
@@ -35,7 +39,8 @@ async function gatedRelease() {
     { path: ".changeset/widget-fix.md", status: "removed" },
   ]);
   fixture.fake.files.set(`${BASE}:${WIDGET}`, { content: JSON.stringify({ name: "@demo/widget", version: "1.0.0" }), blobSha: "w0" });
-  const versionAt = (head: string, version: string) => {
+  const versionAt = (head: string, version: string, author: string = RELEASE_BOT) => {
+    fixture.fake.commitLogins.set(head, { author, committer: "web-flow" });
     fixture.fake.compares.set(`main...${head}`, { mergeBaseSha: BASE, files: [] });
     fixture.fake.files.set(`${head}:${WIDGET}`, { content: JSON.stringify({ name: "@demo/widget", version }), blobSha: `w-${version}` });
   };
@@ -144,5 +149,49 @@ describe("an owner release gate across a changesets re-head (TP-5591)", () => {
     const superseded = await supersedeMovedGates(w.host, w.routes.shepherd!);
 
     expect(superseded).toMatchObject([{ gateId: w.gate, condition: "head-moved" }]);
+  });
+});
+
+describe("the release App's authorship of a regenerated head (TP-5606)", () => {
+  const unauthored: [string, string | null, string][] = [
+    ["another account authored the head", RELEASE_BOT, FOREIGN],
+    ["no release App login is configured", null, RELEASE_BOT],
+  ];
+
+  it.each(unauthored)("cancels the kept gate when %s", async (_scenario, configured, author) => {
+    const w = await gatedRelease(configured);
+    w.versionAt(REGENERATED, "1.2.0", author);
+    w.fake.pushHead(w.vp, REGENERATED);
+
+    const superseded = await supersedeMovedGates(w.host, w.routes.shepherd!);
+
+    expect(superseded).toEqual([{ runId: w.runId, gateId: w.gate, from: GATED, to: REGENERATED, condition: "head-moved" }]);
+    expect(w.host.gates.get(w.gate)?.status).toBe("cancelled");
+  });
+
+  it.each(unauthored)("asks the owner fresh instead of carrying the answer when %s", async (_scenario, configured, author) => {
+    const w = await gatedRelease(configured);
+    w.versionAt(REGENERATED, "1.2.0", author);
+    w.fake.pushHead(w.vp, REGENERATED);
+
+    w.host.gates.resolve(w.gate, { decision: "merge", headSha: GATED }, OWNER);
+    await gateOpened(w.host, gateId(w.runId, "approve-merge", 1), 10_000);
+
+    expect(ownerGateAt(w, REGENERATED)?.prompt).toContain("Policy shepherd-release/owner-gate:");
+    expect(resultOf(w, `sh-release-author:${REGENERATED}`)).toEqual({ head: REGENERATED, released: false });
+    expect(resultOf(w, `sh-approval-carry:${REGENERATED}`)).toBeUndefined();
+    expect(resultOf(w, "sh-landed")).toBeUndefined();
+  });
+
+  it("carries the owner's answer to a head the release App authored, matching its login in any case", async () => {
+    const w = await gatedRelease(RELEASE_BOT.toUpperCase());
+    w.versionAt(REGENERATED, "1.2.0");
+    w.fake.pushHead(w.vp, REGENERATED);
+
+    w.host.gates.resolve(w.gate, { decision: "merge", headSha: GATED }, OWNER);
+    await vi.waitFor(() => expect(resultOf(w, "sh-landed")).toBeDefined(), { timeout: 10_000 });
+
+    expect(resultOf(w, `sh-release-author:${REGENERATED}`)).toEqual({ head: REGENERATED, released: true });
+    expect(resultOf(w, "sh-landed")).toMatchObject({ pr: w.vp, headSha: REGENERATED });
   });
 });

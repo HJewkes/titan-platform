@@ -102,6 +102,8 @@ export interface FactoryRouteDeps extends Omit<LandPrDeps, "gitCache" | keyof Po
   visualDelivery?: VisualDeliveryWatch;
   /** True when `shepherd.consoleAnswers` is configured: approve-merge gates then offer `send-back`. */
   consoleAnswers?: boolean;
+  /** `shepherd.releaseAppLogin`, read at serve start: the release App's bot login a carried release answer requires; absent means none carries. */
+  releaseAppLogin?: string;
   /** Where `shepherd thaw` alerts the repo's red seat; absent means each hand thaw only logs its alert. */
   thawAlert?: ThawAlertPorts;
   /** Which repos order overlapping merges behind a conflicted PR's reservation; absent means `merge-order.json`. */

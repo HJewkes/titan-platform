@@ -268,6 +268,12 @@ export const FactoryConfigSchema = z.object({
       taskClose: z.enum(["keep", "last-slice-only"]).optional(),
       visualGate: VisualGateSchema.optional(),
       /**
+       * The release App's bot login, `<app-slug>[bot]` (TP-5606). An owner's approve-merge answer on the Version Packages PR
+       * is kept across, and carried to, a regenerated head only when GitHub reads that head's author as this login. Absent
+       * means no head does, so every re-head asks the owner fresh. Read at serve start.
+       */
+      releaseAppLogin: z.string().min(1).optional(),
+      /**
        * Mounts `POST /gates/answer-ship`, which resolves an approve-merge gate as owner-remote from a console Ship answer
        * read out of `roundsDir`. No token: any same-user caller can post, as for gateNotify. Absent means the route 404s.
        * `actionsDir` also mounts `POST /owner/console-action`, which resolves an approve-merge gate as owner-remote from the

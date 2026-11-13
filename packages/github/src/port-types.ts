@@ -6,7 +6,7 @@ import type { CreateReviewRequest, PullReview } from "./pull-reviews.js";
 import type { Ancestry } from "./compare.js";
 import type { MergeIntoBranchRequest, MergeIntoBranchResult } from "./merge-into-branch.js";
 import type { ForcePush, ForcePushPage } from "./force-pushes.js";
-import type { BranchCommits, CheckRun, Commit, CommitStatus, JobStep, LoggedCommit, MergeMessage, PutFileRequest, RepoEntry, RepoFile, SquashSource } from "./port-records.js";
+import type { BranchCommits, CheckRun, Commit, CommitLogins, CommitStatus, JobStep, LoggedCommit, MergeMessage, PutFileRequest, RepoEntry, RepoFile, SquashSource } from "./port-records.js";
 export type { BranchCommit, BranchCommits, CheckRun, CheckRunPr, Commit, CommitStatus, JobStep, LoggedCommit, MergeMessage, PutFileRequest, RepoEntry, RepoFile, SquashSource } from "./port-records.js";
 
 /** `owner/name`. */
@@ -126,6 +126,8 @@ export interface GitHubWire {
   /** Posts a completed check run as the GitHub App the wire was given a token for; the wire refuses when it has none. */
   createCheckRun(repo: RepoSlug, request: CreateCheckRunRequest): Promise<{ id: number }>;
   getCommit(repo: RepoSlug, sha: string): Promise<Commit>;
+  /** `GET commits/{sha}`'s top-level `author.login` and `committer.login`, which the git commits endpoint lacks. */
+  getCommitLogins(repo: RepoSlug, sha: string): Promise<CommitLogins>;
   /** Null when GitHub has no such commit (HTTP 422 or 404). */
   resolveCommit(repo: RepoSlug, sha: string): Promise<string | null>;
   listCommitStatuses(repo: RepoSlug, sha: string): Promise<CommitStatus[]>;
@@ -215,6 +217,8 @@ export interface GitHubPort {
   /** Posts a completed check run under the App identity the wire was configured with; `conclusion` outside success, failure and action_required throws `GitHubInputError` before any call. */
   createCheckRun(repo: RepoSlug, request: CreateCheckRunRequest): Promise<{ id: number }>;
   getCommit(repo: RepoSlug, sha: string): Promise<Commit>;
+  /** Who GitHub says authored and committed `sha`: an App's commits read as its `<slug>[bot]` login. A failed read throws. */
+  commitLogins(repo: RepoSlug, sha: string): Promise<CommitLogins>;
   /** Expands an abbreviated sha to the full one GitHub has; null when GitHub has no such commit, so a caller never polls a sha that cannot report. */
   resolveCommit(repo: RepoSlug, sha: string): Promise<string | null>;
   commitStatuses(repo: RepoSlug, sha: string): Promise<CommitStatus[]>;

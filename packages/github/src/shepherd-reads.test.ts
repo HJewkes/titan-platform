@@ -381,3 +381,19 @@ describe("fakeGitHub reads", () => {
     expect((await port.compareFiles("o/r", "main", "other")).files).toEqual([]);
   });
 });
+
+describe("commitLogins", () => {
+  const SHA = fakeSha("release-head");
+
+  it("reads the author's and committer's logins from the commits endpoint", async () => {
+    const gh = scripted({ [`repos/octo/demo/commits/${SHA}`]: [included({}, { sha: SHA, author: { login: "demo-release[bot]" }, committer: { login: "web-flow" } })] });
+
+    expect(await wireOver(gh.exec).commitLogins(REPO, SHA)).toEqual({ author: "demo-release[bot]", committer: "web-flow" });
+  });
+
+  it("reads null for a side GitHub links to no account", async () => {
+    const gh = scripted({ [`repos/octo/demo/commits/${SHA}`]: [included({}, { sha: SHA, author: null, committer: { login: "web-flow" } })] });
+
+    expect(await wireOver(gh.exec).commitLogins(REPO, SHA)).toEqual({ author: null, committer: "web-flow" });
+  });
+});

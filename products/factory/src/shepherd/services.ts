@@ -52,6 +52,8 @@ export interface ShepherdServices extends SnapshotServices {
   visualThreshold?: (repo: string) => VisualThreshold | undefined;
   /** Reads a task's title and done_when for `shepherd brief`; absent means the active-work daemon at its loopback origin. */
   tasks?: (slug: string, id: string) => Promise<{ title: string; done_when: string }>;
+  /** `shepherd.releaseAppLogin`: only a head it authored keeps an owner release gate; absent keeps none. */
+  releaseAppLogin?: string;
 }
 
 export interface MergeOrderServices {

@@ -48,6 +48,8 @@ export interface FixtureOptions {
   spawnGate?: SpawnGate;
   /** Every repo's `shepherd.visualThreshold`; absent means none, so `shepherd visual-delta` refuses. */
   visualThreshold?: VisualThreshold;
+  /** `shepherd.releaseAppLogin`; absent means none, so no release re-head keeps or takes the owner's answer. */
+  releaseAppLogin?: string;
 }
 
 /** A fake GitHub whose checks pass on every head, and the factory routes over it on a fake clock. */
@@ -70,6 +72,7 @@ export function shepherdFixture(options: FixtureOptions = {}): ShepherdFixture {
     ...(options.snapshot && { snapshot: prSnapshot(port, { now: () => clock }) }),
     ...(options.spawnGate && { spawnGate: options.spawnGate }),
     ...(options.visualThreshold && { visualThreshold: () => options.visualThreshold }),
+    ...(options.releaseAppLogin && { releaseAppLogin: options.releaseAppLogin }),
   });
   return { fake, routes, workflows: [shepherdPrWorkflow(IDLE_PHASES), landPrWorkflow()] };
 }

@@ -4,6 +4,7 @@ import type { ForcePush } from "./force-pushes.js";
 import type { MergeIntoBranchResult } from "./merge-into-branch.js";
 import type { ReviewComment } from "./review-comment.js";
 import type { PullReview } from "./pull-reviews.js";
+import type { CommitLogins } from "./port-records.js";
 import type { BranchCommit, CheckRun, Commit, CommitStatus, GitHubWire, IssueComment, JobStep, LoggedCommit, MergeMessage, PrFile, PullRequest, RequiredChecks, SquashSource } from "./port-types.js";
 
 /** Counts of calls that change GitHub; a crash test asserts each is at most one. */
@@ -73,6 +74,8 @@ export interface FakeGitHub {
   createdCheckRuns: { id: number; repo: string; request: CreateCheckRunRequest }[];
   /** The synthetic history `compareAncestry` walks by parents; a sha that is no commit, parent, ref tip or PR head answers `missing`. */
   commits: Map<string, Commit>;
+  /** Sha to the logins `getCommitLogins` answers; an unset sha reads as a commit GitHub links to no account. */
+  commitLogins: Map<string, CommitLogins>;
   /** Sha to its combined status, newest per context. */
   statuses: Map<string, CommitStatus[]>;
   /** Errors the next calls of a read throw, one per call, before it answers. */
