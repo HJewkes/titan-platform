@@ -37,11 +37,11 @@ describe("lowTierPolicyTouch, the paths that keep the owner gate", () => {
   });
 
   it("a gate-resolve-actor path keeps the owner gate", () => {
-    expect(judge({ paths: [GATE_RESOLVE_ACTOR_PATH] })).toEqual({ eligible: false, kept: "gate-resolve-actor" });
+    expect(judge({ paths: [GATE_RESOLVE_ACTOR_PATH] })).toEqual({ eligible: false, kept: `high: gate-resolve file ${GATE_RESOLVE_ACTOR_PATH}` });
   });
 
   it("a path in both an allowed and a kept table keeps the owner gate", () => {
-    expect(judge({ paths: [DEFAULT_AND_ACTOR_PATH] })).toEqual({ eligible: false, kept: "gate-resolve-actor" });
+    expect(judge({ paths: [DEFAULT_AND_ACTOR_PATH] })).toEqual({ eligible: false, kept: `high: gate-resolve file ${DEFAULT_AND_ACTOR_PATH}` });
   });
 
   it("a policy table missing from the allowlist keeps the owner gate", () => {

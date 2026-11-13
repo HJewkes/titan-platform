@@ -88,6 +88,7 @@ describe("factory rows", () => {
       "shepherd.gateReset.heldRepair",
       "shepherd.gateReset.twoMergeRelease",
       "shepherd.gateReset.lowTierPolicy",
+      "shepherd.gateReset.ownerTier",
       "shepherd.backPressure.laneOpenPrs",
       "shepherd.backPressure.ownerQueue",
       "shepherd.backPressure.inflowWeeks",
@@ -104,6 +105,12 @@ describe("factory rows", () => {
     expect(checkEditableValue("factory", "shepherd.backPressure.laneOpenPrs", 0).ok).toBe(false);
     expect(checkEditableValue("factory", "shepherd.backPressure.ownerQueue", 10.5).ok).toBe(false);
     expect(checkEditableValue("factory", "shepherd.backPressure.inflowWeeks", 13).ok).toBe(false);
+  });
+
+  it("takes ownerTier as off, shadow or on only", () => {
+    for (const mode of ["off", "shadow", "on"]) expect(checkEditableValue("factory", "shepherd.gateReset.ownerTier", mode).ok).toBe(true);
+    expect(checkEditableValue("factory", "shepherd.gateReset.ownerTier", "owner")).toEqual(expect.objectContaining({ ok: false, reason: "invalid" }));
+    expect(checkEditableValue("factory", "shepherd.gateReset.ownerTier", true).ok).toBe(false);
   });
 
   it("takes taskClose as keep or last-slice-only only", () => {

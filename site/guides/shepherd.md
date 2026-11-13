@@ -1685,8 +1685,8 @@ edit that follows the owner's decision on which gate code may go low. `off` keep
 and names nothing. It is a live editable row.
 
 Low tier means no authority or security path, a risk tier that is low once the policy touch is set
-aside (no `.github` path, no publish or settings file, no owner gate file, no visual path, no owner
-hold, 800 changed lines or fewer), and every policy path in an allowed table: the default policy
+aside (no `.github` path, no publish or settings file, no owner gate or gate-resolve file, no
+visual path, no owner hold, 800 changed lines or fewer), and every policy path in an allowed table: the default policy
 globs, the signoff policy files or the hold closure (`lowTierPolicyTouch` in `g10-low-tier.ts`).
 The classifier's own definition never goes low: `g10-low-tier-closure.json` lists the import closure
 of `g10-low-tier.ts` and `registration-hold.ts`, into workspace package sources too (the adversary
@@ -1698,7 +1698,10 @@ policy or hold closure tables, and whether it may go low under `on` is the owner
 the classifier cannot judge keeps `g10-adversary`. The hold reason names the tables, as
 `g10-review: low-tier policy touch (hold-closure)` under `on` or
 `g10-adversary: policy touch (shadow: low tier hold-closure)` under `shadow`, or the fact that kept
-the run adversary, as `g10-adversary: policy touch (kept: gate-resolve-actor)`. The release records
+the run adversary, as `g10-adversary: policy touch (kept: owner-skill-guard)`, or the risk tier
+reason that kept it, as
+`g10-adversary: policy touch (kept: high: gate-resolve file packages/workflow/src/runtime.ts)`.
+The release records
 the rule `g10-review/low-tier`, which `shepherd timeline` shows as a `decision` entry, and the merge
 evidence records `lowTier` beside `riskTier`.
 
@@ -2300,6 +2303,33 @@ verdict is stored in the evidence record's `oldPath` field and the evidence comm
 an untagged, stale-tagged, task-less or task-unreadable head gates at this row (class
 `deliberate`). A head whose files are unread gates only as `files-unread`. Tagging the task does
 not clear a gate at the same head: the owner decides it, or a new head re-judges.
+
+**`owner-tier` (gate model S2, TP-5406).** The owner's merge stop list: the risk tier's high rows,
+less visual, decide at merge. A head gates at this row (class `deliberate`, decision class D4) when
+a changed path, case folded, sits in one of the named policy tables `merge-policy`,
+`hold-command`, `owner-action`, `gate-resolve-actor` or `gate-resolve-check`; or is a CI workflow
+file (`.github/workflows/`, `.github/codeowners`, `.codewatch/`); or a publish file; or a
+settings file. A policy path that no named table covers gates too, as `unnamed policy path`, so an
+unknown class keeps the owner gate. Test files stay exempt, as they are in the policy class. A
+measured budget-class CI change, the one a coordinator may accept under the `ci-policy-budget`
+row (owner decision 552 (2)), skips the CI workflow row. The row has no stamped rule, so the
+coordinator delegate never resolves it: only the owner does.
+
+`shepherd.gateReset.ownerTier` switches it, and it is a live editable row:
+
+- `on` gates the merge on the row.
+- `shadow`, and an absent key, change no outcome: the evidence record stores
+  `ownerTier: { mode: "shadow", rows }` and an allow's reason ends `owner tier would gate: <rows>`.
+- `off` stamps nothing.
+
+The evidence step stamps the mode it read, and decide time recomputes the rows from the head's
+changed paths, so a stored record decides the same way at the same head. A record from before the
+row decides as `off`, and a stamp whose mode is not `shadow` reads as `on`.
+
+The gate guards its own code. `owner-tier.ts` and `merge-facts.ts`, which call and decide the row,
+sit in the `merge-policy` table, so a change to either gates on the owner under `on` and never goes
+low tier. The config reader turns an absent key into `shadow`; the evidence step reads a mode that
+never arrived, as from a route that lost its wiring, as `on`.
 
 The CI-policy rule checks content, not lines. Everything the PR merges must be byte-identical
 to what the owner approved, so a weakening anywhere in the PR, inside `.github/` or not, was in

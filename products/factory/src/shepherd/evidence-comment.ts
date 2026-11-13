@@ -71,6 +71,7 @@ const GUARD_RULE_WORDS: Record<string, string> = {
   "attest-unmet": "no independent reviewer attested a claimed attestation row",
   "attest-deploy-skew": "the attestation read waits for main's registry commits to deploy",
   "old-path-untagged": "the pull request changes old-path code and its task carries no carve-out tag",
+  "owner-tier": "the pull request changes a file on the owner's merge stop list",
 };
 
 const LONG_PATH_LIST = 5;

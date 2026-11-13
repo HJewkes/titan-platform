@@ -9,6 +9,7 @@ import { gateId } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import type { ReviewAccounts } from "./account-limit.js";
 import type { LowTierMode } from "./g10-low-tier.js";
+import type { OwnerTierMode } from "./owner-tier.js";
 import type { PlanApproval } from "./plan-approval.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import type { EffectivePolicy } from "./policy-schema.js";
@@ -68,12 +69,14 @@ export interface Row {
   roles?: ReviewerRoles;
   /** `shepherd.gateReset.lowTierPolicy` for the run's own reclass reads; absent leaves it unset, which reads `shadow`. */
   lowTier?: LowTierMode;
+  /** `shepherd.gateReset.ownerTier` for the run's routes; absent stands for an unset key, which the config reader reads as shadow. */
+  ownerTier?: OwnerTierMode;
 }
 
 export type FakeGitHub = ReturnType<typeof fakeGitHub>;
 
 /** One shepherd-pr run of the PR under an auto policy, reviewed MERGE with green checks, after `seed` sets the files and the row's approval is written. */
-export function plannedRun({ files, policy, reviewerLines, approve, wire = (each) => each, seatReleased, held, roles, lowTier }: Row, seed: (fake: FakeGitHub) => void) {
+export function plannedRun({ files, policy, reviewerLines, approve, wire = (each) => each, seatReleased, held, roles, lowTier, ownerTier }: Row, seed: (fake: FakeGitHub) => void) {
   const fake = fakeGitHub();
   fake.addPr({ number: PR, headSha: HEAD, mergeSha: fakeSha("planned-merge") });
   fake.setRuns(HEAD, [successRun("validate", 1), successRun("dag-check", 2)]);
@@ -87,7 +90,7 @@ export function plannedRun({ files, policy, reviewerLines, approve, wire = (each
     await new Promise<void>((resolve) => setImmediate(resolve));
   };
   const review = { ...mergingReviewers(() => clock, reviewerLines), timeoutMs: 5 * MINUTE, ...(roles && { roles }) };
-  const routes = factoryRoutesFor({ port: githubPort(wire(fake.wire)), store, now: () => clock, sleep: tick, review, ...(lowTier && { lowTierPolicy: lowTier }) });
+  const routes = factoryRoutesFor({ port: githubPort(wire(fake.wire)), store, now: () => clock, sleep: tick, review, ...(lowTier && { lowTierPolicy: lowTier }), ownerTier: ownerTier ?? "shadow" });
   const workflow = shepherdPrWorkflow({ review: reviewPhase, wake: async () => ({ kind: "unhandled", reason: "no fixer here" }) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [workflow], routes, gatePollMs: 5 });
   // Per test: under isolate:false this module loads once per worker, so a top-level afterEach would close only the first importing file's hosts.

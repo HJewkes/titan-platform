@@ -253,12 +253,12 @@ export const FactoryConfigSchema = z.object({
        * `heldRepair: on` lets a g10 hold gate only the merge, so its run repairs as usual. `noReproProceed: on` lets a test-only PR whose
        * diff is tests alone go to review on a vacuous or test-less fix-proof, recorded as unverified; any source change keeps NO_REPRO.
        * `nonSourceNoRepro: record-fact` does the same for any non-security PR whose every path is tests, workflows, changesets or
-       * docs, recorded as `no-repro-non-source`; absent means `keep-owner`, today's sh-sent-back gate (TP-4275). `lowTierPolicy` (TP-5403): absent means `shadow`; `on` is the owner's switch (q28), set only after the owner settles which gate code may go low.
+       * docs, recorded as `no-repro-non-source`; absent means `keep-owner`, today's sh-sent-back gate (TP-4275). `lowTierPolicy` (TP-5403): absent means `shadow`; `on` is the owner's switch (q28), set only after the owner settles which gate code may go low. `ownerTier`: `OwnerTierMode` (TP-5406).
        */
       gateReset: z
         .strictObject({
           twoMergeRelease: z.enum(["off", "shadow", "on"]).optional(),
-          lowTierPolicy: z.enum(["off", "shadow", "on"]).optional(),
+          lowTierPolicy: z.enum(["off", "shadow", "on"]).optional(), ownerTier: z.enum(["off", "shadow", "on"]).optional(),
           heldRepair: z.enum(["off", "on"]).optional(),
           noReproProceed: z.enum(["off", "on"]).optional(),
           nonSourceNoRepro: z.enum(["keep-owner", "record-fact"]).optional(),
