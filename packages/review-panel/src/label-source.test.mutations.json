@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "lines after the block are not checked for prose",
+      "file": "packages/review-panel/src/label-source.ts",
+      "find": "  const prose = lines.filter((line, index) => !own.has(index) && raw[index]!.trim() !== \"\");",
+      "replace": "  const prose = lines.filter((line, index) => index < (verdictAt ?? lines.length) && !own.has(index) && raw[index]!.trim() !== \"\");",
+      "kills": [
+        "labelSource withdrawal anywhere after the full review a final message carrying a withdrawal after the block reads its own lines",
+        "labelSource withdrawal anywhere after the full review a final message carrying a note after the block reads its own lines"
+      ]
+    },
+    {
+      "name": "a message with no block is always passed over",
+      "file": "packages/review-panel/src/label-source.ts",
+      "find": "    if (isBare(message.text, blockAt)) continue;",
+      "replace": "    if (blockAt === undefined || isBare(message.text, blockAt)) continue;",
+      "kills": [
+        "labelSource withdrawal anywhere after the full review a withdrawal in a message with no block between the full review and the repeat ends the search"
+      ]
+    },
+    {
+      "name": "a message with no block always ends the search",
+      "file": "packages/review-panel/src/label-source.ts",
+      "find": "    if (isBare(message.text, blockAt)) continue;",
+      "replace": "    if (blockAt !== undefined && isBare(message.text, blockAt)) continue;",
+      "kills": [
+        "labelSource withdrawal anywhere after the full review a cleanup note with no block between the full review and the repeat is passed over"
+      ]
+    }
+  ]
+}
