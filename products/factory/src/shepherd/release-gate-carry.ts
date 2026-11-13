@@ -43,10 +43,9 @@ function followedAnswer(ctx: WorkflowContext, fromHead: string, head: string): P
  * Wraps a release run's `assisted` so the owner's merge answer at one owner-only release gate answers the next one at a
  * regenerated head. That gate opens only once the preflight at the new head passed: head on changesets' branch, every
  * file a release file, manifests changing versions only, every package trusted on npm. A preflight-blocked or
- * no-preflight gate, any other gate, and every gate of a run that is not a release, is asked as before.
+ * no-preflight gate, and any other gate, is asked as before.
  */
-export function followingReleaseApproval({ ctx, release }: { ctx: WorkflowContext; release: boolean }, assisted: WorkflowContext["assisted"]): WorkflowContext["assisted"] {
-  if (!release) return assisted;
+export function followingReleaseApproval(ctx: WorkflowContext, assisted: WorkflowContext["assisted"]): WorkflowContext["assisted"] {
   let approved: string | undefined;
   return async (stepId, prompt, options) => {
     const asked = stepIdMatches("approve-merge", stepId) ? RELEASE_OWNER_GATE.exec(prompt)?.[1] : undefined;
