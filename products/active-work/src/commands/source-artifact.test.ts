@@ -23,7 +23,7 @@ import { withTempActiveRoot } from '../test-support/test-helpers.js';
 
 const SLUG = 'sample-initiative';
 
-const ctx = { activeRoot: '', warnings: [], format: 'json' as const };
+const ctx = { activeRoot: '', warnings: [], format: 'json' as const, caller: 'owner' as const };
 
 function initiativeDir(root: string): string {
   return path.join(root, SLUG);

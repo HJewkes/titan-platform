@@ -33,6 +33,7 @@ async function runCmd(
     activeRoot,
     warnings: [],
     format: 'json',
+    caller: 'owner',
     ...opts.ctx,
   };
   return cmd.run(parsed, ctx);

@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import resumeCommand from './commands/resume.js';
-import { agentCaller } from './commands/_done-when-gate.js';
+import { cliCaller } from './commands/_done-when-gate.js';
 import { awaitChild } from './launcher-open.js';
 import { buildResumeArgs, extractProfileFlag, NO_RC_FLAGS } from './launcher-args.js';
 import { CONFIG_DIR_ENV, requireProfileDir } from './launcher-profile.js';
@@ -80,7 +80,7 @@ async function resumeSession({ sessionId, remoteControl, profile }: ResumeArgs):
     warnings: [],
     format: 'json',
     cwd: process.cwd(),
-    caller: agentCaller(process.env),
+    caller: cliCaller(process.env),
   };
   const profileDir = profile ? requireProfileDir(profile) : undefined;
   const parsed = resumeCommand.args.parse({ session_id: sessionId });

@@ -39,6 +39,7 @@ async function listWarnings(): Promise<string[]> {
     activeRoot: '',
     warnings: [] as string[],
     format: 'json' as const,
+    caller: 'owner' as const,
   };
   await noteListCmd.run(noteListCmd.args.parse({ all_initiatives: true }), context);
   await sourceListCmd.run(sourceListCmd.args.parse({ all_initiatives: true }), context);

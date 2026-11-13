@@ -12,7 +12,7 @@ import { SNAPSHOT, TIER_SEED, TREE } from '../test-support/fixtures/loop-ledger.
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
 
 function makeCtx(activeRoot: string): CommandContext {
-  return { activeRoot, warnings: [], format: 'json', cwd: activeRoot };
+  return { activeRoot, warnings: [], format: 'json', cwd: activeRoot, caller: 'owner' };
 }
 
 const BoardResponseSchema = z.object({

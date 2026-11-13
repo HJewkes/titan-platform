@@ -9,6 +9,7 @@ import {
 } from '@titan-design/decider';
 import { toAbsolutePath } from '@titan-design/session-read';
 import { resolveSlugFromCwd } from '../sessions/initiatives.js';
+import { ownerOnlySlugs } from '../sessions/visibility.js';
 import { agentChatHome } from '../session-index/origin-agent-chat-read.js';
 import { defaultGraphPath, openGraphReadOnly } from '../session-index/graph.js';
 import { exclusionPolicy, loadHumanOnlyInitiatives } from './human-only.js';
@@ -62,11 +63,16 @@ function askTranscripts(graphPath: string): () => Promise<TranscriptFile[]> {
 
 /**
  * Index the human's answers into the decider ledger. The charter is read first
- * and an unreadable one stops the run before anything is written.
+ * and an unreadable one stops the run before anything is written. The ledger feeds
+ * agents, so an owner-only initiative's answers stay out of it as well (TP-5453 P6b).
  */
 export async function extractPrecedents(options: ExtractOptions): Promise<ExtractResult> {
   const { activeRoot } = options;
-  const policy = exclusionPolicy(await loadHumanOnlyInitiatives(activeRoot));
+  const [humanOnly, ownerOnly] = await Promise.all([
+    loadHumanOnlyInitiatives(activeRoot),
+    ownerOnlySlugs(activeRoot),
+  ]);
+  const policy = exclusionPolicy(new Set([...humanOnly, ...ownerOnly]));
   const resolveInitiative = cachedResolver(activeRoot);
   const sources = [
     v1PrecedentSource(activeRoot),

@@ -6,7 +6,7 @@ import inventoryCmd from './inventory.js';
 import { scanInventory } from '../workspace-index/inventory.js';
 import { withEmptyActiveRoot } from '../test-support/test-helpers.js';
 
-const ctx = () => ({ activeRoot: '', warnings: [] as string[], format: 'json' as const });
+const ctx = () => ({ activeRoot: '', warnings: [] as string[], format: 'json' as const, caller: 'owner' as const });
 
 async function put(root: string, rel: string, body: string, mtime?: string): Promise<void> {
   const file = path.join(root, rel);

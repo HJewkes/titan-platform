@@ -1,4 +1,4 @@
-import { promises as fs, type Dirent } from 'node:fs';
+import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { defineCommand } from '../registry/index.js';
@@ -7,6 +7,7 @@ import { getActiveRoot, getInitiativeDir } from '../utils/paths.js';
 import { mapConcurrent } from '../utils/map-concurrent.js';
 import { readYaml } from '../utils/yaml-io.js';
 import { UsageError } from '../errors.js';
+import { listSlugsForCaller } from '../sessions/visibility.js';
 import { closedStatusIds, loadCategoryRegistry } from './_categories.js';
 
 // No schema default: buildFilter picks it, because the default depends on --id. The values a root
@@ -37,18 +38,6 @@ type Result = z.infer<typeof ResultSchema>;
 
 function isMissing(err: unknown): boolean {
   return err instanceof Error && 'code' in err && err.code === 'ENOENT';
-}
-
-async function listSlugs(): Promise<string[]> {
-  const root = getActiveRoot();
-  let entries: Dirent[];
-  try {
-    entries = await fs.readdir(root, { withFileTypes: true });
-  } catch (err) {
-    if (isMissing(err)) return [];
-    throw err;
-  }
-  return entries.filter((e) => e.isDirectory()).map((e) => e.name);
 }
 
 interface CachedTask {
@@ -202,10 +191,10 @@ export default defineCommand<Args, Result>({
       },
     },
   },
-  async run(args) {
+  async run(args, ctx) {
     const keep = await buildFilter(args);
     const slugs: string[] = args.all_initiatives
-      ? await listSlugs()
+      ? await listSlugsForCaller(getActiveRoot(), ctx)
       : (() => {
           if (!args.slug) {
             throw new UsageError('task.list requires --all-initiatives or a slug');
@@ -214,7 +203,8 @@ export default defineCommand<Args, Result>({
         })();
 
     const listings = await mapConcurrent(slugs, READ_CONCURRENCY, listTaskFiles);
-    if (args.all_initiatives) forgetMissingInitiatives(listings);
+    // A non-owner's listing omits hidden initiatives that still exist, so only a full listing may evict.
+    if (args.all_initiatives && ctx.caller === 'owner') forgetMissingInitiatives(listings);
 
     const tasks: TaskWithSlug[] = [];
     for (const listing of listings) {

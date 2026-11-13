@@ -16,7 +16,7 @@ import { getLockPath } from '../utils/paths.js';
 import { asTask } from '../test-support/as-task.js';
 
 function ctx(activeRoot: string): CommandContext {
-  return { activeRoot, warnings: [], format: 'json' };
+  return { activeRoot, warnings: [], format: 'json', caller: 'owner' };
 }
 
 const SLUG = 'sample-initiative';
