@@ -1,6 +1,6 @@
 export { ACTION_CLASSES, ACTOR_CLASSES, CONDITION_KINDS, DELEGATE_RESOLVER_CLASSES, EVIDENCE_KINDS, MERGE_CONDITION_KINDS, QUESTION_CONDITION_KINDS, RESOLVER_CLASSES, TAINT_KINDS, VERDICTS } from "./vocabulary.js";
 export type { ActionClass, ActorClass, ConditionKind, DelegateResolverClass, EvidenceKind, MergeConditionKind, QuestionConditionKind, ResolverClass, TaintKind, Verdict } from "./vocabulary.js";
-export { isCarryFencedPath, unmetConditions } from "./conditions.js";
+export { CARRYING_KINDS, isCarryFencedPath, unmetConditions } from "./conditions.js";
 export type { AgentIdentity, CarryFact, CheckRunFact, ConditionFacts, MergeFacts, QuestionFacts } from "./conditions.js";
 export { policyTableSchema } from "./schema.js";
 export type { PolicyTable, Rule } from "./schema.js";
