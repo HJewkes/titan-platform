@@ -11,6 +11,7 @@ import { openExternal } from "./homeLinks.js";
 import { FocusBadge, FocusNotice, FocusTarget, holdsFocus, InboxFocusProvider, useIsFocused } from "./InboxFocus.js";
 import { NudgeSection } from "./InboxNudges.js";
 import { PLANNING_READ, PlanningSection } from "./InboxPlanning.js";
+import { isPlanOpKind, OP_VERB } from "./inbox-op-verbs.js";
 import { InboxReadBack, type InboxReady } from "./InboxReadBack.js";
 import { ShipLineageLine } from "./ShipLineage.js";
 import { TapSheet, type TapCommands, type TapConfirmChoice } from "./TapSheet.js";
@@ -76,13 +77,8 @@ const VERB: Record<InboxAction["kind"], string> = {
   terminal: "Run on terminal",
 };
 
-const OP_VERB: Partial<Record<Extract<InboxAction, { kind: "owner-op" }>["op"]["kind"], string>> = {
-  "merge-at-head": "Merge at head", "retire-agent": "Retire", "close-pr": "Close PR", "deploy-pause-clear": "Clear deploy pause",
-  "plan-bet-select": "Select bets", "plan-outcome-edit": "Edit outcome", "plan-freeze-set": "Set freeze",
-};
 
 type GateDecision = Extract<InboxAction, { kind: "resolve-gate" }>["decision"];
-const planOpOf = (action: InboxAction): boolean => action.kind === "owner-op" && action.op.kind.startsWith("plan-");
 
 /** A sent-back tap waits for the implementer's next head or waives this head's fix-proof, so it never reads as a merge. */
 const GATE_VERB: Record<GateDecision, string> = { merge: VERB["resolve-gate"], "await-new-head": "Wait for new head", "waive-proof": "Waive fix-proof" };
@@ -116,7 +112,10 @@ function verdictChoicesOf({ readBack }: InboxReady): readonly TapConfirmChoice[]
   ];
 }
 
-const readingOf = (action: InboxAction): string => (action.kind === "approve-chat" ? "Reading the agent's prompt from the broker" : `Reading the live ${planOpOf(action) ? "plan" : "gate and head"}`);
+function readingOf(action: InboxAction): string {
+  if (action.kind === "approve-chat") return "Reading the agent's prompt from the broker";
+  return action.kind === "owner-op" && isPlanOpKind(action.op.kind) ? "Reading the live plan" : "Reading the live gate and head";
+}
 
 function followEvidence(evidence: string): void {
   if (evidence.startsWith("#")) open(parseRoute(evidence));

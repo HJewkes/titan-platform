@@ -7,10 +7,10 @@
 import type { OwnerItem, OwnerOp } from "@titan-design/owner-queue";
 import type { Bet, Freeze, FreezeEndCondition, Outcome, Prediction } from "@titan-design/pm";
 
-export type PlanOp = Extract<OwnerOp, { kind: "plan-bet-select" | "plan-outcome-edit" | "plan-freeze-set" }>;
+type PlanOp = Extract<OwnerOp, { kind: "plan-bet-select" | "plan-outcome-edit" | "plan-freeze-set" }>;
 
 /** The factory's plan preview as the console pins it; `shepherd.ts` parses it with pm's own schemas. */
-export interface PlanFacts {
+interface PlanFacts {
   bets?: { id: string; bet: Bet | null; outcome: Outcome | null }[];
   outcome?: Outcome | null;
   freeze?: Freeze | null;
@@ -105,7 +105,7 @@ function outcomeEditReadBack(op: OutcomeEdit, outcome: Outcome | null, base: Bas
 }
 
 /** When a freeze ends, in words the owner reads on the phone. */
-export function endsWhen(end: FreezeEndCondition): string {
+function endsWhen(end: FreezeEndCondition): string {
   switch (end.kind) {
     case "date":
       return `on ${end.date}`;
