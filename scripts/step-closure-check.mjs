@@ -5,6 +5,8 @@
 // On a pull request, an attestation row the base lacks must name that PR, so one PR cannot attest for another (TP-3110 S5),
 // or a parent PR the branch is stacked on, so a child never deletes or copies its parent's file (TP-4840).
 // Rows live one file per PR, attestations/<pr>.json, so two PRs adding rows never conflict (TP-4745); a row's pr names its file.
+// Version bumps are rows too, bumps/<pr>.json of { step, pr }, summed into the step's bump by the registry, so two PRs
+// bumping one step both count when either lands (TP-5705). Bump rows are append-only and an added one must name this PR.
 // Usage: node scripts/step-closure-check.mjs [--write] [base]   (base: argv, CLOSURE_BASE, origin/$GITHUB_BASE_REF on a PR, then origin/main)
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
@@ -14,6 +16,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const LOCK_PATH = "products/factory/src/registry/closure.lock.json";
 export const ATTESTATIONS_DIR = "products/factory/src/registry/attestations";
+export const BUMPS_DIR = "products/factory/src/registry/bumps";
 /** The one file every PR appended to before TP-4745; read only at a base that predates the directory, refused in the tree. */
 export const LEGACY_ATTESTATIONS_PATH = "products/factory/src/registry/attestations.json";
 const PR_FILE = /^([1-9][0-9]*)\.json$/;
@@ -30,27 +33,40 @@ export function readBaseLock(git, base) {
   }
 }
 
-/** The rows of each named `<pr>.json`, with a failure for a name no PR file could have or a row naming another PR. */
-export function rowsOfFiles(names, read) {
+/** The rows of each named `<pr>.json` in `dir`, with a failure for a name no PR file could have or a row naming another PR. */
+export function rowsOfFiles(names, read, dir = ATTESTATIONS_DIR) {
   const rows = [];
   const failures = [];
   for (const name of names) {
     const pr = Number(PR_FILE.exec(name)?.[1]);
-    if (Number.isNaN(pr)) failures.push(`${ATTESTATIONS_DIR}/${name}: not a <pr>.json attestations file`);
+    if (Number.isNaN(pr)) failures.push(`${dir}/${name}: not a <pr>.json ${dir.split("/").at(-1)} file`);
     if (Number.isNaN(pr)) continue;
-    const fileRows = JSON.parse(read(`${ATTESTATIONS_DIR}/${name}`));
+    const fileRows = JSON.parse(read(`${dir}/${name}`));
     rows.push(...fileRows);
-    failures.push(...fileRows.filter((row) => row.pr !== pr).map((row) => `${ATTESTATIONS_DIR}/${name}: a row names PR ${row.pr}; it belongs in ${row.pr}.json`));
+    failures.push(...fileRows.filter((row) => row.pr !== pr).map((row) => `${dir}/${name}: a row names PR ${row.pr}; it belongs in ${row.pr}.json`));
   }
   return { rows, failures };
+}
+
+/** The rows of the base's PR files in `dir`, undefined when it has none; throws when the base cannot be read. */
+function readBaseRows(git, base, dir) {
+  const names = git(["ls-tree", "--name-only", base, `${dir}/`]).split("\n").filter(Boolean).map((path) => path.slice(dir.length + 1));
+  return names.length > 0 ? rowsOfFiles(names, (path) => git(["show", `${base}:${path}`]), dir).rows : undefined;
 }
 
 /** The base's attestation rows: its PR files, else its legacy file, else none. */
 export function readBaseAttestations(git, base) {
   try {
-    const names = git(["ls-tree", "--name-only", base, `${ATTESTATIONS_DIR}/`]).split("\n").filter(Boolean).map((path) => path.slice(ATTESTATIONS_DIR.length + 1));
-    if (names.length > 0) return rowsOfFiles(names, (path) => git(["show", `${base}:${path}`])).rows;
-    return JSON.parse(git(["show", `${base}:${LEGACY_ATTESTATIONS_PATH}`]));
+    return readBaseRows(git, base, ATTESTATIONS_DIR) ?? JSON.parse(git(["show", `${base}:${LEGACY_ATTESTATIONS_PATH}`]));
+  } catch {
+    return [];
+  }
+}
+
+/** The base's bump rows; an unreadable base has none, so every tree row is judged as added. */
+function readBaseBumps(git, base) {
+  try {
+    return readBaseRows(git, base, BUMPS_DIR) ?? [];
   } catch {
     return [];
   }
@@ -76,11 +92,11 @@ const sameRow = (a, b) => a.step === b.step && a.closure === b.closure && a.pr =
  * that PR's own head, fetched from GitHub's refs/pull/<pr>/head. Resolved from git, not the PR body, so it is the
  * same on every run; a commit of this branch's own that writes the file, or a fetch that fails, judges it foreign.
  */
-export function isStackedParent(git, base, pr) {
+export function isStackedParent(git, base, pr, dir = ATTESTATIONS_DIR) {
   const parentHead = `refs/closure-parent/${pr}`;
   try {
     git(["fetch", "--quiet", "--no-tags", "origin", `+refs/pull/${pr}/head:${parentHead}`]);
-    const commits = git(["log", "--format=%H", `${base}..HEAD`, "--", `${ATTESTATIONS_DIR}/${pr}.json`]).split("\n").filter(Boolean);
+    const commits = git(["log", "--format=%H", `${base}..HEAD`, "--", `${dir}/${pr}.json`]).split("\n").filter(Boolean);
     for (const commit of commits) git(["merge-base", "--is-ancestor", commit, parentHead]);
     return commits.length > 0;
   } catch {
@@ -100,12 +116,31 @@ export function judgeAddedRows(baseRows, rows, prNumber, isParent = () => false)
   return { failures, notices: [...notices, ...[...parents].map((pr) => `rows of #${pr} accepted: this branch is stacked on it`)] };
 }
 
-/** Base from git, the committed lock and attestation files from the working tree; `check` computes and judges. */
+const sameBump = (a, b) => a.step === b.step && a.pr === b.pr;
+
+/**
+ * A base bump row gone from the tree would lower the sum and pass as a version change, so rows are append-only; a row
+ * must name a fact step of the lock; an added row must name this PR or a stacked parent's, as attestations must.
+ */
+function judgeBumps({ baseRows, rows, steps, prNumber, isParent = () => false }) {
+  const removed = baseRows.filter((old) => !rows.some((row) => sameBump(row, old))).map((old) => `${old.step}: the bump row of PR ${old.pr} was removed; bump rows are append-only`);
+  const unknown = rows.filter((row) => !steps.includes(row.step)).map((row) => `${BUMPS_DIR}/${row.pr}.json: ${row.step} is not a fact step`);
+  const added = rows.filter((row) => !baseRows.some((old) => sameBump(old, row)));
+  const foreign = prNumber === undefined ? [] : added.filter((row) => row.pr !== prNumber && !isParent(row.pr));
+  return [...removed, ...unknown, ...foreign.map((row) => `${row.step}: an added bump row names PR ${row.pr}, not this PR #${prNumber}`)];
+}
+
+/** Base from git, the committed lock, attestation and bump files from the working tree; `check` computes and judges. */
 export function runCheck({ git, readFile, listDir, check, base, prNumber }) {
   const tree = readTreeAttestations(listDir, readFile);
-  const result = check({ base: readBaseLock(git, base), committed: JSON.parse(readFile(LOCK_PATH)), attestations: tree.rows });
+  const committed = JSON.parse(readFile(LOCK_PATH));
+  const result = check({ base: readBaseLock(git, base), committed, attestations: tree.rows });
   const added = judgeAddedRows(readBaseAttestations(git, base), tree.rows, prNumber, (pr) => isStackedParent(git, base, pr));
-  return { ...result, failures: [...result.failures, ...tree.failures, ...added.failures], notices: [...result.notices, ...added.notices] };
+  const bumps = rowsOfFiles(listDir(BUMPS_DIR), readFile, BUMPS_DIR);
+  const isBumpParent = (pr) => isStackedParent(git, base, pr, BUMPS_DIR);
+  const bumpFailures = judgeBumps({ baseRows: readBaseBumps(git, base), rows: bumps.rows, steps: Object.keys(committed), prNumber, isParent: isBumpParent });
+  const failures = [...result.failures, ...tree.failures, ...added.failures, ...bumps.failures, ...bumpFailures];
+  return { ...result, failures, notices: [...result.notices, ...added.notices] };
 }
 
 /** Whether HEAD is a merge commit with two parents, as GitHub builds refs/pull/<n>/merge; decided from git's structure alone. */
