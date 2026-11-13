@@ -5,8 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { EXIT, runCli } from "../cli.js";
 import type { CliDeps } from "../cli-types.js";
-import type { LaneSignals } from "./back-pressure.js";
-import type { LaneScope } from "./lane-signals.js";
+import type { LaneScope, LaneSignals } from "./back-pressure.js";
 
 type Body = Record<string, unknown>;
 

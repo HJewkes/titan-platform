@@ -33,6 +33,13 @@ export interface LaneSignals {
   unread: Readonly<Partial<Record<SignalName, string>>>;
 }
 
+/** Which Shepherd registrations belong to the lane, by their `initiative/ID` task key. */
+export interface LaneScope {
+  inLane: (taskKey: string) => boolean;
+}
+
+export type LaneSignalRead = (scope: LaneScope) => Promise<LaneSignals>;
+
 /** `deploy` unread also leaves `mergedNotDeployed` and `deployStall` absent: both are judged from the deploy reading. */
 export type SignalName = "openPrs" | "ownerQueue" | "reviewers" | "deploy" | "redMain";
 

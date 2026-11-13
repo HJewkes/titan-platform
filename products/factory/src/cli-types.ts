@@ -7,7 +7,7 @@ import type { CliLinkPorts } from "./deploy-cli-link.js";
 import type { DeployPorts } from "./deploy.js";
 import type { GitBehindProbe } from "./deploy-behind.js";
 import type { DeployWatch } from "./deploy-watch.js";
-import type { LaneSignalRead } from "./eligibility/lane-signals.js";
+import type { LaneSignalRead } from "./eligibility/back-pressure.js";
 import type { GateNotifyOptions } from "./gate-notify-sweep.js";
 import type { ConsoleAnswersOptions } from "./gate-answer-rpc.js";
 import type { SourcesReader } from "./github-sources/mode.js";

@@ -13,14 +13,7 @@ import { FreezeStore } from "../shepherd/freeze.js";
 import { FINISHED_PHASES } from "../shepherd/step-phase.js";
 import { waitingGates } from "../shepherd/waiting.js";
 import { runFinished, waitingFilter, watchRows } from "../shepherd/watch-rows.js";
-import type { LaneSignals, SignalName } from "./back-pressure.js";
-
-/** Which Shepherd registrations belong to the lane, by their `initiative/ID` task key. */
-export interface LaneScope {
-  inLane: (taskKey: string) => boolean;
-}
-
-export type LaneSignalRead = (scope: LaneScope) => Promise<LaneSignals>;
+import type { LaneScope, LaneSignalRead, LaneSignals, SignalName } from "./back-pressure.js";
 
 type Unread = Partial<Record<SignalName, string>>;
 
