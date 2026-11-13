@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a removed base bump row is not judged",
+      "file": "scripts/step-closure-check.mjs",
+      "find": "baseRows.filter((old) => !rows.some((row) => sameBump(row, old)))",
+      "replace": "baseRows.filter(() => false)",
+      "kills": [
+        "a removed bump row fails, so lowering the sum never passes as a version change"
+      ]
+    },
+    {
+      "name": "a bump row naming another PR is accepted",
+      "file": "scripts/step-closure-check.mjs",
+      "find": "row.pr !== prNumber && !isParent(row.pr)",
+      "replace": "!isParent(row.pr) && false",
+      "kills": [
+        "an added bump row naming another PR fails"
+      ]
+    },
+    {
+      "name": "a bump row on the base is judged as added",
+      "file": "scripts/step-closure-check.mjs",
+      "find": "const added = rows.filter((row) => !baseRows.some((old) => sameBump(old, row)));",
+      "replace": "const added = rows;",
+      "kills": [
+        "a PR's bump row passes after another PR's row for the same step lands"
+      ]
+    },
+    {
+      "name": "bump rows may name any step",
+      "file": "scripts/step-closure-check.mjs",
+      "find": "!steps.includes(row.step)",
+      "replace": "false",
+      "kills": [
+        "a bump row naming no fact step fails"
+      ]
+    }
+  ]
+}

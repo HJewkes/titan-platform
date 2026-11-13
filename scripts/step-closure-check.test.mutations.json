@@ -22,8 +22,8 @@
     {
       "name": "the PR number is read from the first row's pr",
       "file": "scripts/step-closure-check.mjs",
-      "find": "row.pr !== prNumber",
-      "replace": "row.pr !== rows[0].pr",
+      "find": "row.pr !== prNumber);",
+      "replace": "row.pr !== rows[0].pr);",
       "kills": [
         "an added attestation row naming another PR fails"
       ]
