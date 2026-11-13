@@ -18,6 +18,7 @@ const WIDGET_LOG = "packages/widget/CHANGELOG.md";
 /** Synthetic stand-ins for #1970's first gated head and the head changesets regenerated after a changeset-carrying merge. */
 const GATED = fakeSha("release-gated");
 const REGENERATED = fakeSha("release-regenerated");
+const BLOCKED = fakeSha("release-blocked");
 
 /** A watched repo whose Version Packages PR bumps one public package, its release run parked on the owner's gate at GATED. */
 async function gatedRelease() {
@@ -44,6 +45,19 @@ async function gatedRelease() {
   const gate = gateId(runId, "approve-merge");
   await gateOpened(host, gate);
   return { ...fixture, host, vp, runId, gate, versionAt };
+}
+
+type Gated = Awaited<ReturnType<typeof gatedRelease>>;
+
+/** A head whose PR files are all release files, so the sweep keeps the gate, but whose manifest adds `scripts`, which the preflight blocks. */
+function reheadWithScriptsEdit(w: Gated, head: string): void {
+  w.versionAt(head, "1.2.0");
+  w.fake.files.set(`${head}:${WIDGET}`, { content: JSON.stringify({ name: "@demo/widget", version: "1.2.0", scripts: { postinstall: "node setup.js" } }), blobSha: "w-scripts" });
+  w.fake.pushHead(w.vp, head);
+}
+
+function ownerGateAt(w: Gated, head: string) {
+  return w.host.pendingGates().find((pending) => pending.runId === w.runId && pending.gate.prompt.includes(`at head ${head}`))?.gate;
 }
 
 function resultOf(w: { host: FactoryHost; runId: string }, stepId: string): unknown {
@@ -85,6 +99,40 @@ describe("an owner release gate across a changesets re-head (TP-5591)", () => {
 
     expect(superseded).toEqual([{ runId: w.runId, gateId: w.gate, from: GATED, to: REGENERATED, condition: "head-moved" }]);
     expect(w.host.gates.get(w.gate)?.status).toBe("cancelled");
+  });
+
+  it("asks the owner fresh at a kept head whose manifest edit fails the full preflight", async () => {
+    const w = await gatedRelease();
+    reheadWithScriptsEdit(w, BLOCKED);
+
+    const superseded = await supersedeMovedGates(w.host, w.routes.shepherd!);
+    w.host.gates.resolve(w.gate, { decision: "merge", headSha: GATED }, OWNER);
+    await gateOpened(w.host, gateId(w.runId, "approve-merge", 1), 10_000);
+
+    expect(superseded).toEqual([]);
+    expect(w.host.gates.get(gateId(w.runId, "approve-merge", 1))?.prompt).toContain(`at head ${BLOCKED}`);
+    expect(w.host.gates.get(gateId(w.runId, "approve-merge", 1))?.prompt).toContain("Policy shepherd-release/preflight-blocked:");
+    expect(resultOf(w, `sh-approval-carry:${BLOCKED}`)).toBeUndefined();
+    expect(resultOf(w, "sh-landed")).toBeUndefined();
+  });
+
+  it("ends the carry at a blocked gate the owner never answered, so a later passing head asks again", async () => {
+    const w = await gatedRelease();
+    reheadWithScriptsEdit(w, BLOCKED);
+    await supersedeMovedGates(w.host, w.routes.shepherd!);
+    w.host.gates.resolve(w.gate, { decision: "merge", headSha: GATED }, OWNER);
+    const blockedGate = gateId(w.runId, "approve-merge", 1);
+    await gateOpened(w.host, blockedGate, 10_000);
+    w.versionAt(REGENERATED, "1.2.0");
+    w.fake.pushHead(w.vp, REGENERATED);
+
+    const superseded = await supersedeMovedGates(w.host, w.routes.shepherd!);
+    await vi.waitFor(() => expect(ownerGateAt(w, REGENERATED)).toBeDefined(), { timeout: 10_000 });
+
+    expect(superseded).toMatchObject([{ gateId: blockedGate, from: BLOCKED, to: REGENERATED }]);
+    expect(ownerGateAt(w, REGENERATED)?.prompt).toContain("Policy shepherd-release/owner-gate:");
+    expect(resultOf(w, `sh-approval-carry:${REGENERATED}`)).toBeUndefined();
+    expect(resultOf(w, "sh-landed")).toBeUndefined();
   });
 
   it("cancels the gate when the new head is no longer changesets' own branch", async () => {
