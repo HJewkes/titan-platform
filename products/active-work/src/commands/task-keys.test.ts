@@ -14,17 +14,30 @@ async function scaffold(activeRoot: string, slug: string, text: string, files: R
 }
 
 describe('task.keys', () => {
-  it('lists each initiative with its task prefix, visibility and the ids of open and archived task files', async () => {
+  it('lists each initiative for the owner with its task prefix, visibility and the ids of open and archived task files', async () => {
     await withEmptyActiveRoot(async (activeRoot) => {
       await scaffold(activeRoot, 'alpha', brief('AL', 1, 'agent-visible'), { 'AL-2.yml': 'not: parsed', 'archive/AL-1.yml': '', 'notes.txt': '' });
       await scaffold(activeRoot, 'beta', brief('BE', 2));
 
-      const result = await taskKeys.run({}, { activeRoot, warnings: [], format: 'json' });
+      const result = await taskKeys.run({}, { activeRoot, warnings: [], format: 'json', caller: 'owner' });
 
       expect(result.initiatives).toEqual([
         { slug: 'alpha', task_prefix: 'AL', agent_visible: true, ids: ['AL-1', 'AL-2'] },
         { slug: 'beta', task_prefix: 'BE', agent_visible: false, ids: [] },
       ]);
+    });
+  });
+
+  it('hides owner-only initiatives from an agent and says how many', async () => {
+    await withEmptyActiveRoot(async (activeRoot) => {
+      await scaffold(activeRoot, 'alpha', brief('AL', 1, 'agent-visible'), { 'AL-1.yml': '' });
+      await scaffold(activeRoot, 'beta', brief('BE', 2), { 'BE-1.yml': '' });
+      const warnings: string[] = [];
+
+      const result = await taskKeys.run({}, { activeRoot, warnings, format: 'json', caller: 'agent' });
+
+      expect(result.initiatives.map(({ slug }) => slug)).toEqual(['alpha']);
+      expect(warnings).toHaveLength(1);
     });
   });
 });
