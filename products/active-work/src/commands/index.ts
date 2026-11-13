@@ -28,17 +28,32 @@ import categoryList from './category-list.js';
 // Deliverables
 import deliverableAdd from './deliverable-add.js';
 import deliverableList from './deliverable-list.js';
+// Plan records (TP-5453 P3)
+import { planFreezeAdd, planOutcomeAdd, planOutOfScopeAdd } from './plan-add.js';
+import { planBetAdd, planBetList } from './plan-bet.js';
+import {
+  planBetShow,
+  planFreezeList,
+  planFreezeShow,
+  planOutcomeList,
+  planOutcomeShow,
+  planOutOfScopeList,
+  planOutOfScopeShow,
+} from './plan-read.js';
 import deliverableSet from './deliverable-set.js';
 import deliverableShip from './deliverable-ship.js';
 
 // Tasks
 import taskAdd from './task-add.js';
 import taskApply from './task-apply.js';
+import taskBackfillFields from './task-backfill-fields.js';
 import taskDelete from './task-delete.js';
 import taskDone from './task-done.js';
 import taskEdit from './task-edit.js';
 import taskNote from './task-note.js';
+import taskKeys from './task-keys.js';
 import taskList from './task-list.js';
+import taskRankShow from './task-rank-show.js';
 import taskReorder from './task-reorder.js';
 import taskShow from './task-show.js';
 
@@ -149,15 +164,31 @@ const ALL_COMMANDS: AnyCommand[] = [
   deliverableList,
   deliverableSet,
   deliverableShip,
+  // plan records
+  planOutcomeAdd,
+  planOutcomeShow,
+  planOutcomeList,
+  planBetAdd,
+  planBetShow,
+  planBetList,
+  planFreezeAdd,
+  planFreezeShow,
+  planFreezeList,
+  planOutOfScopeAdd,
+  planOutOfScopeShow,
+  planOutOfScopeList,
   // tasks
   taskAdd,
   taskApply,
+  taskBackfillFields,
   taskDone,
+  taskKeys,
   taskList,
   taskShow,
   taskEdit,
   taskNote,
   taskReorder,
+  taskRankShow,
   taskDelete,
   // sessions
   sessionList,

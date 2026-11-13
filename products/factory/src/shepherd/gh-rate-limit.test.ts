@@ -1,11 +1,12 @@
 import { fakeGitHub, fakeSha, ghCliWire, githubPort, octokitClient, octokitWire, rateBudget, successRun, type GhResult, type GitHubWire } from "@titan-design/github";
-import type { RoutedStepInput, StepRoute, StepRunOutcome } from "@titan-design/workflow";
+import type { RoutedStepInput, StepRoute } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO } from "../test-support/land.js";
 import { fakeLocator } from "../test-support/fakes.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
+import { codeRoute } from "../workflows/land-routes.js";
 import { failureClassOf } from "./failure-class.js";
 import { rateLimitWaitMs, retryingGhServerErrors } from "./gh-retry.js";
 import { OBSERVE_STEP } from "./observe.js";
@@ -93,7 +94,7 @@ describe("a Shepherd run whose sh-observe read meets a GitHub rate limit", () =>
     const status = w.host.runtime.status(w.runId)!;
     expect(w.cliReads).toHaveLength(1);
     expect(status.error).toContain("Resource not accessible by integration");
-    expect(failureClassOf(status.error ?? "")).toBe("other");
+    expect(failureClassOf(status.error ?? "", status.errorClass)).toBe("other");
     expect(w.fake.pr(1).merged).toBe(false);
   });
 });
@@ -102,26 +103,27 @@ const NOW = 1_760_295_060_000;
 const STEP: RoutedStepInput = { runId: "r", workflowName: "w", stepId: `${OBSERVE_STEP}:h`, iteration: 0, prompt: "{}", signal: new AbortController().signal, attempt: 0, requestKey: "k" };
 
 /** One repeat-safe route that fails with each of `errors` in turn, then succeeds; its sleeps are recorded, the clock never moves. */
-function retried(errors: readonly string[]) {
+function retried(errors: readonly Error[]) {
   const sleeps: number[] = [];
   let calls = 0;
-  const run = async (): Promise<StepRunOutcome> => {
+  const body = async () => {
     const error = errors[calls++];
-    return error === undefined ? { ok: true, output: "{}" } : { ok: false, error, retryable: false };
+    if (error) throw error;
+    return {};
   };
-  const [route] = retryingGhServerErrors([{ match: OBSERVE_STEP, onRestart: "repeat", runner: { run } }], { sleep: async (ms) => void sleeps.push(ms), now: () => NOW });
+  const [route] = retryingGhServerErrors([codeRoute(OBSERVE_STEP, () => NOW, body)], { sleep: async (ms) => void sleeps.push(ms), now: () => NOW });
   return { outcome: () => route!.runner.run(STEP), sleeps, calls: () => calls };
 }
 
-async function errorOf(pending: Promise<unknown>): Promise<string> {
+async function errorOf(pending: Promise<unknown>): Promise<Error> {
   const error = await pending.then(() => undefined, (rejection: unknown) => rejection);
   if (!(error instanceof Error)) throw new Error("expected a rejection");
-  return error.message;
+  return error;
 }
 
 const cliError = (result: GhResult, read: (wire: GitHubWire) => Promise<unknown> = (wire) => wire.getPr(REPO, 1)) => errorOf(read(ghCliWire(async () => result, { budget: rateBudget(), sleep: async () => undefined })));
 
-function octokitError(status: number, headers: Record<string, string>, message: string): Promise<string> {
+function octokitError(status: number, headers: Record<string, string>, message: string): Promise<Error> {
   const fetch: typeof globalThis.fetch = async () => new Response(JSON.stringify({ message }), { status, headers: { "content-type": "application/json", ...headers } });
   const client = octokitClient({ fetch, token: async () => "synthetic-token", throttleId: "gh-rate-limit-test", budget: rateBudget() });
   return errorOf(octokitWire({ client }).getPr(REPO, 1));
@@ -149,7 +151,7 @@ describe("retryingGhServerErrors on a rate limit", () => {
     expect(step.calls()).toBe(3);
     const failed = outcome.ok ? "" : outcome.error;
     expect(failed).toContain("after 2 gh-rate-limit retries");
-    expect(failureClassOf(failed)).toBe("gh-rate-limit");
+    expect(outcome.ok ? undefined : outcome.errorClass).toBe("gh-rate-limit");
   });
 
   it("never repeats a write that met a limit", async () => {

@@ -76,8 +76,12 @@ interface ActiveWorkDaemonSetup {
  * Origin in all three spellings, with and without the bound port.
  */
 export async function startActiveWorkDaemon(setup: ActiveWorkDaemonSetup): Promise<DaemonHandle> {
+  const options = mcpOptions();
   return startDaemon({
-    ...mcpOptions(),
+    ...options,
+    // Every daemon request runs in the daemon's process, whose environment says nothing about the caller. Stdio MCP
+    // shares mcpOptions() but runs as the caller's child, so only the daemon marks its context remote.
+    createContext: (surface, auth) => ({ ...options.createContext(surface, auth), remote: true as const }),
     stateDir: setup.stateDir,
     port: setup.port,
     watchRoot: getActiveRoot(),

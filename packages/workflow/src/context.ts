@@ -14,7 +14,8 @@ import { reportingStepFailure } from "./step-failure.js";
 import { completedTiming, dispatchTiming, newActiveStep, resumeCounts, resumedUsage, tryTiming } from "./step-timing.js";
 import { parseStepOutput } from "./step-output.js";
 import { addUsage } from "./usage.js";
-import { GATE_CANCELLED_SIGNAL, StepFailedError, StepOutputInvalidError, WorkflowCancelledError, WorkflowNonDeterminismError, WorkflowRecoveryRequiredError, WorkflowSchemaDriftError } from "./types.js";
+import { GATE_CANCELLED_SIGNAL, WorkflowCancelledError, WorkflowNonDeterminismError, WorkflowRecoveryRequiredError, WorkflowSchemaDriftError } from "./types.js";
+import { StepFailedError, StepOutputInvalidError } from "./step-errors.js";
 import type { ActiveStep, AssistedOptions, AuthorizeOptions, AuthorizeRequest, AuthorizeResult, DispatchOptions, DurableStepOutcome, SeedResult, StepOperation, StepResult, StepRunInput, WorkflowContext, WorkflowRun } from "./types.js";
 
 export type { ContextDeps, RecoveredStep } from "./context-deps.js";
@@ -279,7 +280,7 @@ export class RunContext implements WorkflowContext {
       }
       if (!outcome.retryable || attempt - restarts >= this.deps.maxRetries) {
         this.consumeActive(active!);
-        throw new StepFailedError(stepId, iteration, outcome.error, { retryable: outcome.retryable, usage: failedUsage });
+        throw new StepFailedError(stepId, iteration, outcome.error, { retryable: outcome.retryable, usage: failedUsage, errorClass: outcome.errorClass });
       }
       attempt += 1;
       this.deps.emit({ type: "step_retry", runId: this.runId, stepId, attempt: retry, error: outcome.error });

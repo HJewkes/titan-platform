@@ -8,6 +8,11 @@ Tier 2 of the titan-platform DAG. Depends on `code-graph` (types, `edgeWeight`,
 `resolveBarrelEdges`) and `elkjs`. The `package-layers` rule in `.codewatch/check.json`
 enforces the tier in CI.
 
+## Install
+
+`code-graph` declares `zod` `^4.0.0` as a peer dependency, so this package needs it too.
+Install `zod@^4` alongside it; graph-layout does not declare the peer itself.
+
 ## Exports
 
 | Export | Does |

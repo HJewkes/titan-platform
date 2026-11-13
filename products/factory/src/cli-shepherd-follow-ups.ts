@@ -1,3 +1,4 @@
+import { activeWorkRoot } from "@titan-design/app-paths";
 import { readFile } from "node:fs/promises";
 import { text } from "node:stream/consumers";
 import { parseFollowUps } from "@titan-design/review-panel";
@@ -27,7 +28,7 @@ function targetOf(ref: string, opts: FollowUpsArgs): { repo: string; pr: number 
 }
 
 async function qualified(task: string, verbs: Verbs): Promise<{ initiative: string; parent: string }> {
-  const full = await qualifyTask(task, { origin: activeWorkOrigin(verbs.io.env), ...(verbs.deps.fetch && { fetch: verbs.deps.fetch }) });
+  const { key: full } = await qualifyTask(task, { origin: activeWorkOrigin(verbs.io.env), activeRoot: activeWorkRoot({ env: verbs.io.env }), ...(verbs.deps.fetch && { fetch: verbs.deps.fetch }) });
   const at = full.indexOf("/");
   if (at <= 0 || at === full.length - 1) throw new UsageError("--task must be <initiative>/<ID>");
   return { initiative: full.slice(0, at), parent: full.slice(at + 1) };

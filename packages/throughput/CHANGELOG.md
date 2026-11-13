@@ -1,5 +1,14 @@
 # @titan-design/throughput
 
+## 0.3.2
+
+### Patch Changes
+
+- 3157198: Check the package's own `version` at import instead of casting it; a manifest without a string version now throws at import.
+- Updated dependencies [eaa03c2]
+- Updated dependencies [67aa361]
+  - @titan-design/evidence@0.5.0
+
 ## 0.3.1
 
 ### Patch Changes

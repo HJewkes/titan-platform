@@ -8,6 +8,7 @@ import { requireRequiredChecks } from "../required-checks.js";
 import { noRunVerdict, type NoRunWatch } from "../shepherd/ci-norun.js";
 import { orphanVerdict, orphanWatch } from "./land-orphan.js";
 import { clearCiWaitHead, noteCiWaitHead } from "./ci-wait-head.js";
+import { ShepherdFailure } from "../shepherd/failure-class.js";
 
 /** Writes go through the port, which re-reads the PR first; the snapshot is dropped once a write is through, so the next read sees it. */
 export async function afterWrite<T>(deps: LandDeps, input: { repo: string }, write: Promise<T>): Promise<T> {
@@ -21,7 +22,7 @@ export async function afterWrite<T>(deps: LandDeps, input: { repo: string }, wri
 /** A rerun and its wait can outlast the step's deadline; `continue` skips the expiry check, so it is made here. */
 async function rerunWithinDeadline(deps: LandDeps, input: CiInput, red: CiSnapshot, run: { timing: Timing; signal: AbortSignal; flaky: FlakyState; clock: Deadline }): Promise<boolean> {
   const rerun = await afterWrite(deps, input, rerunIfFlaky(deps.port, input, red, run.timing, run.signal, run.flaky));
-  if (rerun && run.clock.expired()) throw new Error(`ci-wait timed out after ${run.timing.timeoutMs} ms: rerunning a flaky check`);
+  if (rerun && run.clock.expired()) throw new ShepherdFailure("ci-timeout", `ci-wait timed out after ${run.timing.timeoutMs} ms: rerunning a flaky check`);
   return rerun;
 }
 
@@ -114,7 +115,7 @@ function isServerError(error: unknown): boolean {
 function atExpiry(timing: Timing, startedAt: number, poll: PollState): CiSnapshot | undefined {
   if (poll.unsettled && poll.answered) return { ...poll.answered, readAt: timing.now(), timedOut: { afterMs: timing.timeoutMs, reason: poll.last } };
   const ceilingMs = timing.timeoutMs * CI_BACKLOG_CEILING_FACTOR;
-  if (!poll.backlog) throw new Error(`ci-wait timed out after ${timing.timeoutMs} ms: ${poll.last}`);
+  if (!poll.backlog) throw new ShepherdFailure("ci-timeout", `ci-wait timed out after ${timing.timeoutMs} ms: ${poll.last}`);
   if (timing.now() - startedAt >= ceilingMs) throw new Error(`ci-wait gave up after ${ceilingMs} ms on a CI backlog: checks still queued or running, none red; ${poll.last}`);
   return undefined;
 }

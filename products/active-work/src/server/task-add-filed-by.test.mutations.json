@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a remote call reads the daemon's environment",
+      "file": "products/active-work/src/commands/_task-provenance.ts",
+      "find": "if (ctx.remote === true) return 'unknown';",
+      "replace": "",
+      "kills": [
+        "filed_by on the daemon surfaces task add over rpc never records filed_by owner (an owner-started daemon)",
+        "filed_by on the daemon surfaces task add over mcp never records filed_by owner (a daemon an agent started)"
+      ]
+    },
+    {
+      "name": "the daemon's context is not marked remote",
+      "file": "products/active-work/src/server/daemon.ts",
+      "find": "createContext: (surface, auth) => ({ ...options.createContext(surface, auth), remote: true as const }),",
+      "replace": "",
+      "kills": [
+        "filed_by on the daemon surfaces task add over rpc never records filed_by owner (an owner-started daemon)",
+        "filed_by on the daemon surfaces task add over mcp never records filed_by owner (a daemon an agent started)"
+      ]
+    },
+    {
+      "name": "every MCP context is marked remote, stdio included",
+      "file": "products/active-work/src/server/mcp.ts",
+      "find": "      caller: surface === 'mcp' ? 'agent' : undefined,",
+      "replace": "      caller: surface === 'mcp' ? 'agent' : undefined, remote: true,",
+      "kills": ["filed_by over stdio MCP task add over stdio mcp records the calling agent's name"]
+    }
+  ]
+}

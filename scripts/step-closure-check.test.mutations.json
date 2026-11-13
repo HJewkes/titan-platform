@@ -31,8 +31,8 @@
     {
       "name": "the PR base branch is ignored",
       "file": "scripts/step-closure-check.mjs",
-      "find": "return argv[0] || env.CLOSURE_BASE || prBase || DEFAULT_BASE;",
-      "replace": "return argv[0] || env.CLOSURE_BASE || DEFAULT_BASE;",
+      "find": "return argv[0] || env.CLOSURE_BASE || mergeBase || prBase || DEFAULT_BASE;",
+      "replace": "return argv[0] || env.CLOSURE_BASE || mergeBase || DEFAULT_BASE;",
       "kills": [
         "a PR stacked on a parent that added a row passes when judged against its own base",
         "the base is argv, then CLOSURE_BASE, then the PR base, then origin/main"

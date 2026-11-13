@@ -229,8 +229,13 @@ const FIXED_MESSAGE = {
   off: "The factory's console-action route is not mounted; run the item's command on the terminal",
 } as const;
 
+type OpOutcome = Parameters<typeof opMessageOf>[0];
+const OP_STATUSES: ReadonlySet<Outcome["status"]> = new Set(["accepted", "approved", "pr-closed", "pause-cleared", "retired", "released", "plan-applied"]);
+const isOpOutcome = (outcome: Outcome): outcome is OpOutcome => OP_STATUSES.has(outcome.status);
+
 function messageOf(outcome: Outcome, record: ActionRecord): string {
   if (!isOpRecord(record) && record.action.kind === "approve-chat") return verdictMessageOf(outcome, record, record.action.msgId);
+  if (isOpOutcome(outcome)) return opMessageOf(outcome);
   switch (outcome.status) {
     case "answered":
     case "already":
@@ -240,13 +245,6 @@ function messageOf(outcome: Outcome, record: ActionRecord): string {
       return `Not sent; the question is closed, likely answered elsewhere: ${outcome.reason}`;
     case "resolved":
       return resolvedMessage(record);
-    case "accepted":
-    case "approved":
-    case "pr-closed":
-    case "pause-cleared":
-    case "retired":
-    case "released":
-      return opMessageOf(outcome);
     case "plan-approved":
       return `Plan approval recorded for ${outcome.task}`;
     case "moved":
@@ -327,7 +325,7 @@ async function act(ctx: ActContext, store: PreparedStore, tap: Tap): Promise<Act
   return { actionId: tap.confirm, outcome, message: messageOf(outcome, record), ...(log !== undefined && { log }), ...(next !== undefined && { next }) };
 }
 
-const LANDED: ReadonlySet<Outcome["status"]> = new Set(["resolved", "released", "accepted", "approved", "pr-closed", "pause-cleared", "already"]);
+const LANDED: ReadonlySet<Outcome["status"]> = new Set(["resolved", "released", "accepted", "approved", "pr-closed", "pause-cleared", "plan-applied", "already"]);
 
 /** Only a landed tap on a PR has a next state to read; an answer to an agent has no run. */
 function nextAfter(sources: InboxSources, record: ActionRecord, outcome: Outcome): Promise<NextState | undefined> {

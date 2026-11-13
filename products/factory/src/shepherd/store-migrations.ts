@@ -130,6 +130,11 @@ export function lastSliceMigration(version = 43): Migration {
   return { version, name: "factory:shepherd_registration_last_slice", up: (db) => db.exec("ALTER TABLE shepherd_registration ADD COLUMN last_slice INTEGER") };
 }
 
+/** The merged PR a `revert` registration undoes, so a revert is read from the registration rather than its title (TP-5446 F14). */
+export function revertsMigration(version = 51): Migration {
+  return { version, name: "factory:shepherd_registration_reverts", up: (db) => db.exec("ALTER TABLE shepherd_registration ADD COLUMN reverts TEXT") };
+}
+
 const LINEAGE_DDL = `
   CREATE TABLE shepherd_lineage (
     run_id      TEXT NOT NULL,

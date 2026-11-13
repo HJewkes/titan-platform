@@ -133,4 +133,9 @@ describe('TaskSchema', () => {
     const result = TaskSchema.safeParse({ ...validBase, title: '' });
     expect(result.success).toBe(false);
   });
+
+  it('keeps the provenance rule that an owner source names its decision', () => {
+    expect(TaskSchema.safeParse({ ...validBase, source: 'owner' }).success).toBe(false);
+    expect(TaskSchema.safeParse({ ...validBase, source: 'owner', source_ref: 'D12' }).success).toBe(true);
+  });
 });

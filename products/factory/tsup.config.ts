@@ -28,4 +28,6 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   define: { __FACTORY_BUILD_SHA__: JSON.stringify(buildSha()) },
+  // `sqlite` exists only as `node:sqlite`; stripping the prefix turns it into a missing npm package.
+  removeNodeProtocol: false,
 });

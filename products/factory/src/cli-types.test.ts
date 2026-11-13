@@ -12,6 +12,7 @@ describe("cli-types leaf", () => {
       "./deploy-cli-link.js",
       "./deploy-watch.js",
       "./deploy.js",
+      "./eligibility/back-pressure.js",
       "./gate-answer-rpc.js",
       "./gate-notify-sweep.js",
       "./github-sources/mode.js",

@@ -16,14 +16,15 @@ import { DEFAULT_ACCOUNT, type ReviewAccounts } from "./account-limit.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
 import { seatVetoed } from "./external-review.js";
 import { ownerIn } from "./seat-tie.js";
-import { checkoutRootOf, dropCheckout, holdContextOf, thenDropCheckout } from "./review-member.js";
+import { checkoutRootOf, dropCheckout, holdContextOf, memberDispatch, thenDropCheckout } from "./review-member.js";
 import { Intended, ReviewCauseSchema } from "./review-schemas.js";
 import { MERGE_EVIDENCE_STEPS } from "./merge-evidence-gate.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput, type OldPathWiring } from "./merge-facts.js";
 import type { ShepherdDeps, ShepherdPhases } from "./phases.js";
 import { PUBLISH_REVIEW_STEPS, publishReviewRoute } from "./publish-review.js";
-import { DEFAULT_BROKER_DOWN_WAIT_MS, DEFAULT_BUSY_WAIT_MS, ReviewerAskTimedOut, ReviewerBrokerStillDown, busyWaits, clearReviewWait, notStarted, noteReviewWait, rosterUnread, rosterUnreadAfterAsk, patientRoster, startedSession, timedOutUnseen, whileBrokerBooting, whileBrokerBusy, type BrokerDownTiming, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
+import { DEFAULT_BROKER_DOWN_WAIT_MS, DEFAULT_BUSY_WAIT_MS, ReviewerAskTimedOut, ReviewerBrokerStillDown, busyWaits, clearReviewWait, notStarted, notStartedInTime, noteReviewWait, rosterUnread, rosterUnreadAfterAsk, patientRoster, startedSession, timedOutUnseen, whileBrokerBooting, whileBrokerBusy, type BrokerDownTiming, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
 import { CARRY_STEP, carryRoute, type CarryOptions } from "./tree-carry.js";
+import { OWN_DIFF_STEP, ownDiffOn, ownDiffRoute, recordOwnDiff, type OwnDiffWiring } from "./own-diff.js";
 import { reviewerRoleFor, type ReviewerFacts, type ReviewerRoles } from "./reviewer-roles.js";
 import { spawnFacts } from "./spawn-facts.js";
 import type { TwoMergeMode } from "./g10-release.js";
@@ -65,6 +66,7 @@ export const REVIEW_STEPS: readonly StepDeclaration[] = [
   { id: SEAT_RECHECK_STEP, kind: "dispatch" },
   ...MERGE_EVIDENCE_STEPS,
   { id: CARRY_STEP, kind: "dispatch" },
+  { id: OWN_DIFF_STEP, kind: "dispatch" },
   ...PUBLISH_REVIEW_STEPS,
   ...ACCOUNT_STEPS,
   ...REVIEW_REQUEST_STEPS,
@@ -166,12 +168,7 @@ const holds = (intent: ReviewIntent) => (agent: ReviewerAgent) => (intent.agentI
 const resumedSince = (intent: ReviewIntent) => (agent: ReviewerAgent) =>
   holds(intent)(agent) && (agent.presence !== "exited" || (agent.lastWrittenAt !== undefined && agent.lastWrittenAt >= intent.at));
 
-function notStartedInTime(intent: ReviewIntent, rosterError: string | undefined): NoReview {
-  const cause = rosterError === undefined ? "" : `; the last roster read failed: ${rosterError}`;
-  return { kind: "none", reason: `reviewer ${intent.reviewer} did not start one session in time${cause}` };
-}
-
-export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeCheckWiring, AttestSkewWiring, OldPathWiring, VisualReadsWiring, FollowUpsWiring {
+export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeCheckWiring, AttestSkewWiring, OldPathWiring, VisualReadsWiring, FollowUpsWiring, OwnDiffWiring {
   reader: ReviewerReader;
   /** Absent means no reviewer is dispatched and the owner gate decides. */
   dispatch?: ReviewerDispatch;
@@ -262,13 +259,10 @@ const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (dep
   const preflight = billed.choice.mode !== "external" && preflightOn(wired.workflow) ? await preflightPlan(plan, wired.profileInstalled) : undefined;
   if (preflight?.kind === "none") return preflight;
   const requested = billed.choice.mode !== "external" && reviewPendingAt(registration, input.head) && store.takeReviewRequest(input.runId, input.head);
-  const intent = { kind: "intent" as const, head: input.head, ...billed.choice, at: deps.now(), ...(billed.account && { account: billed.account }), ...(input.cause && { cause: input.cause }), ...(requested && { requested: true }), ...scopeModeOf(wired.scopedRereview), ...scopeCheckModeOf(wired.scopeCheck), ...(wired.workflow && { workflow: wired.workflow }) };
+  const intent = { kind: "intent" as const, head: input.head, ...billed.choice, at: deps.now(), ...(billed.account && { account: billed.account }), ...(input.cause && { cause: input.cause }), ...(requested && { requested: true }), ...scopeModeOf(wired.scopedRereview), ...scopeCheckModeOf(wired.scopeCheck), ...(wired.workflow && { workflow: wired.workflow }), ...(wired.ownDiff && { ownDiff: true }) };
   if (billed.choice.mode === "external") return intent;
   return { ...intent, ...(preflight === undefined ? await plan() : preflight.planned) };
 };
-
-/** An adversary member runs under `review.adversaryConfigDir` when one is set; every other reviewer under the intent's account. */
-const memberDispatch = (wired: Wired, shape: string | undefined): ReviewerDispatch | undefined => (shape === "adversary" ? wired.adversaryDispatch : undefined);
 
 /**
  * The body of the sh-review step; `repeat` means a crash interrupted an earlier run. The brief is built from the target alone, so no registration text can
@@ -298,7 +292,7 @@ const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> 
     // An unseen timed-out ask started nobody, so the review is retried now rather than held as no-reviewer.
     if (outcome === "timed-out") return timedOutUnseen(timing.timeoutMs, waits);
     // The ask went through but no roster read ever answered, so nothing is known about the session; retry rather than count a round.
-    return onlyTimedOut ? rosterUnreadAfterAsk(timing.timeoutMs, waits) : notStartedInTime(intent, rosterError);
+    return onlyTimedOut ? rosterUnreadAfterAsk(timing.timeoutMs, waits) : notStartedInTime(intent.reviewer, rosterError);
   }
   const spawnedAs = profile ?? (roles && reviewerRoleFor(facts, roles));
   return { kind: "dispatched", ...intent, agentId: started.agentId, sessionId: started.sessionId, startedAt: deps.now(), ...(intent.mode === "spawn" && spawnedAs !== undefined && { profile: spawnedAs }), ...busyWaits(waits), ...(asking?.codewatch && { codewatch: asking.codewatch }), ...scopedResultFields(scopedRereview) };
@@ -325,6 +319,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     codeRoute(SEAT_RECHECK_STEP, deps.now, seatVetoed(wiring, async (raw: unknown) => heldMerge(raw), deps.now, seatWait, ownerIn(deps.store))),
     codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput, signal: AbortSignal) => mergeEvidence(deps.port, input, wiring?.isFrozen ?? noFreezeStoreUntilTp523, registeredKind(deps.store, input.runId, deps.visualGate), { sleep: (ms) => deps.sleep(ms, signal) }, { reviewAppId: wiring?.reviewAppId, visualGate: deps.visualGate, threshold: wiring?.visualThreshold?.(input.repo), tier: wiring?.visualTier?.(input.repo), oldPath: wiring?.oldPath, attest: attestJudge(deps.port, deps.store, wiring ?? {}, { timing: { ...brokerTiming(deps), brokerDownWaitMs: wiring?.brokerDownWaitMs ?? DEFAULT_BROKER_DOWN_WAIT_MS }, budgetMs: wiring?.sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, signal }) })),
     carryRoute(deps.now, { ports: deps.gitCache, ...wiring?.carry }),
+    ownDiffRoute(deps.now, deps.port, { ports: deps.gitCache, ...wiring?.carry }),
     publishReviewRoute(deps),
     ...accountRoutes(deps, wiring?.accounts),
     reviewRequestRoute(deps),
@@ -348,7 +343,7 @@ async function lateVerdict(deps: ShepherdDeps, wiring: ReviewWiring | undefined,
 }
 
 /**
- * Read the head's fix-proof result, record which reviewer this head gets, start or adopt it, wait for its verdict, and take a
+ * Read the head's fix-proof result, record which reviewer this head gets and, where the intent says so, the head's own-diff id, start or adopt it, wait for its verdict, and take a
  * MERGE through the evidence step. A vacuous or test-less proof ends the review as NO_REPRO before any reviewer is started, unless
  * the owner waived it at this head: then the review proceeds and its MERGE goes only to the owner gate. An
  * unverified one goes to the reviewer marked unverified, and its MERGE records that standing but keeps the policy's grant (decision 303).
@@ -365,6 +360,7 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId, ...(request.fresh && { fresh: true }), ...(request.cause && { cause: request.cause }), ...proofPlanFields(proof, target.head, standing) }, Intended);
   if (intent.kind !== "intent" && typeof intent.exhausted === "string") return accountHeld(ctx, target, { account: intent.exhausted });
   if (intent.kind !== "intent") return preflightRefused(ctx, target, intent) ?? notReviewed(ctx, target, intent);
+  if (ownDiffOn(intent)) await recordOwnDiff(ctx, target);
   if (intent.mode === "external") return takeVerdict(ctx, target, { ...target, external: intent.reviewer }, undefined, DEFAULT_ACCOUNT, standing);
   const { dispatched, verdict } = await dispatchedRound(ctx, request, { target, proof, standing, intent });
   if (shadowOn(intent)) await recordShadow(ctx, { target, proof, intent, dispatched, verdict });

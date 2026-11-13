@@ -1,5 +1,16 @@
 # @titan-design/matrix-bus
 
+## 0.2.2
+
+### Patch Changes
+
+- 85333de: Correct four stale doc comments: the drift-guard test name, the agent graph node id on respawn, the messaging `SendInput` mirror note, and the single-room precondition on `SyncBatch.prev_batch`.
+- 7071810: `bootstrapQueueRoom` now invites any mirror user that is neither joined nor invited when the queue alias already resolves, so a mirror that was never invited no longer gets a 403 on join.
+- 9b42150: Use the shared `isRecord`, `isObjectLike` and `errorCode` from `@titan-design/rpc-protocol/narrow` in place of local copies. Behaviour is unchanged.
+- 1a1dd79: Replace unsafe type assertions in the item codec and owner fold with type guards.
+- Updated dependencies [5edd38d]
+  - @titan-design/rpc-protocol@0.4.0
+
 ## 0.2.1
 
 ### Patch Changes

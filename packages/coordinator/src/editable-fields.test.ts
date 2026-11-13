@@ -88,12 +88,22 @@ describe("factory rows", () => {
       "shepherd.gateReset.heldRepair",
       "shepherd.gateReset.twoMergeRelease",
       "shepherd.gateReset.lowTierPolicy",
+      "shepherd.backPressure.laneOpenPrs",
+      "shepherd.backPressure.ownerQueue",
+      "shepherd.backPressure.inflowWeeks",
       "shepherd.review.adversaryProfile",
       "shepherd.review.fallbackConfigDirs",
       "shepherd.review.maxConcurrent",
       "shepherd.taskClose",
       "shepherd.visualGate",
     ]);
+  });
+
+  it("bounds each back-pressure limit to a whole number in its range", () => {
+    expect(checkEditableValue("factory", "shepherd.backPressure.laneOpenPrs", 3).ok).toBe(true);
+    expect(checkEditableValue("factory", "shepherd.backPressure.laneOpenPrs", 0).ok).toBe(false);
+    expect(checkEditableValue("factory", "shepherd.backPressure.ownerQueue", 10.5).ok).toBe(false);
+    expect(checkEditableValue("factory", "shepherd.backPressure.inflowWeeks", 13).ok).toBe(false);
   });
 
   it("takes taskClose as keep or last-slice-only only", () => {

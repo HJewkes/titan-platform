@@ -6,7 +6,7 @@ import { depositItemId } from "@titan-design/owner-queue";
 import { withdrawnFileName, writeAnswer, writeDeposit } from "@titan-design/owner-queue/spool";
 import { WITHDRAW_LOG } from "@titan-design/owner-queue/withdraw";
 import { openDatabase } from "@titan-design/store-sqlite";
-import { FEEDBACK_SCHEMA_ID, MANIFEST_SCHEMA_ID } from "../review-schema-0.3/index.js";
+import { FEEDBACK_SCHEMA_ID, MANIFEST_SCHEMA_ID } from "@titan-design/review-schema";
 import { FEEDBACK_FILE, WITHDRAWN_FILE, WITHDRAWN_SCHEMA_ID } from "../rounds.js";
 import type { BrokerState } from "./broker.fixture.js";
 import { dateAt, draw, pad, WORDS, type Draw } from "./random.fixture.js";

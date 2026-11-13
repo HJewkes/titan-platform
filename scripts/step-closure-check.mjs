@@ -108,10 +108,25 @@ export function runCheck({ git, readFile, listDir, check, base, prNumber }) {
   return { ...result, failures: [...result.failures, ...tree.failures, ...added.failures], notices: [...result.notices, ...added.notices] };
 }
 
-/** argv, then CLOSURE_BASE, then the pull request's base branch (so a stacked PR is judged against its parent), then origin/main. */
-export function resolveBase(argv, env) {
+/** Whether HEAD is a merge commit with two parents, as GitHub builds refs/pull/<n>/merge; decided from git's structure alone. */
+export function isPullRequestMergeCommit(git, env) {
+  if (env.GITHUB_EVENT_NAME !== "pull_request") return false;
+  try {
+    return git(["rev-list", "--parents", "-n", "1", "HEAD"]).trim().split(" ").length === 3;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * argv, then CLOSURE_BASE, then the first parent of a pull request's merge commit (the base GitHub built it on, which a
+ * later move of the base branch cannot change), then the pull request's base branch (so a stacked PR is judged against
+ * its parent), then origin/main.
+ */
+export function resolveBase(argv, env, git = () => "") {
   const prBase = env.GITHUB_BASE_REF ? `origin/${env.GITHUB_BASE_REF}` : undefined;
-  return argv[0] || env.CLOSURE_BASE || prBase || DEFAULT_BASE;
+  const mergeBase = isPullRequestMergeCommit(git, env) ? "HEAD^1" : undefined;
+  return argv[0] || env.CLOSURE_BASE || mergeBase || prBase || DEFAULT_BASE;
 }
 
 function closureMain(args, input) {
@@ -129,7 +144,7 @@ function main(argv = process.argv.slice(2), env = process.env) {
   const listDir = (path) => (existsSync(join(ROOT, path)) ? readdirSync(join(ROOT, path)) : []);
   const check = (input) => JSON.parse(closureMain([], JSON.stringify(input)));
   const prNumber = readPrNumber(env, (path) => readFileSync(path, "utf8"));
-  const { failures, notices } = runCheck({ git, readFile, listDir, check, base: resolveBase(argv, env), prNumber });
+  const { failures, notices } = runCheck({ git, readFile, listDir, check, base: resolveBase(argv, env, git), prNumber });
   for (const notice of notices) console.log(`registry:closure: ${notice}`);
   for (const failure of failures) console.error(`registry:closure: ${failure}`);
   if (failures.length > 0) process.exitCode = 1;

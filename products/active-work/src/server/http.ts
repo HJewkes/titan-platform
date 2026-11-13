@@ -46,7 +46,7 @@ interface BuildHttpAppOptions {
 export function buildHttpApp(options: BuildHttpAppOptions): Hono {
   return pkgBuildHttpApp<CommandContext>({
     registry,
-    createContext: () => ({ activeRoot: getActiveRoot(), warnings: [], format: 'json' }),
+    createContext: () => ({ activeRoot: getActiveRoot(), warnings: [], format: 'json', remote: true }),
     formatError,
     version: BUILD_VERSION,
     startedAt,

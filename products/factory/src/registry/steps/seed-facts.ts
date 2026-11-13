@@ -8,7 +8,7 @@ const idempotencyKey = (input: unknown): string => JSON.stringify(input);
 export const seedFactSteps: readonly FactEntry[] = [
   defineStep({
     ...step("ci-wait", "dispatch", "software", READ_EFFECT),
-    version: { bump: 3 },
+    version: { bump: 5 },
     fact: "ci:green",
     input: z.object({ repo: z.string(), pr: z.number() }),
     output: z.looseObject({ verdict: z.string(), headSha: z.string(), mergeableState: z.string() }),
@@ -25,7 +25,7 @@ export const seedFactSteps: readonly FactEntry[] = [
     materialInputs: [{ fact: "head:pushed", fields: ["head"] }],
     projection: ["outcome", "head"],
     idempotencyKey,
-    version: { bump: 1 },
+    version: { bump: 2 },
     body: "products/factory/src/shepherd/await-verdict.ts",
   }),
   defineStep({
