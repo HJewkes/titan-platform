@@ -333,6 +333,7 @@
   "shepherd/outcome.ts",
   "shepherd/override-gate.ts",
   "shepherd/override-stats.ts",
+  "shepherd/own-diff.ts",
   "shepherd/own-merge-up.ts",
   "shepherd/owner-friction-read.ts",
   "shepherd/owner-friction.ts",

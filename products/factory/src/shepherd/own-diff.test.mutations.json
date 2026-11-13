@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the own diff keeps the regenerated lock",
+      "file": "products/factory/src/shepherd/own-diff.ts",
+      "find": "[...generatedPathsFor(repo), ...REGENERATED]",
+      "replace": "[...generatedPathsFor(repo)]",
+      "kills": [
+        "ownDiff a regenerated closure.lock.json leaves the id unchanged"
+      ]
+    },
+    {
+      "name": "the own diff is read against the base tip rather than the merge base",
+      "file": "products/factory/src/shepherd/own-diff.ts",
+      "find": "[\"merge-base\", input.head, remoteBase(input.baseRef)]",
+      "replace": "[\"rev-parse\", remoteBase(input.baseRef)]",
+      "kills": [
+        "ownDiff a head that only merged main has the reviewed head's own-diff id",
+        "ownDiff an unreadable merge base records unread"
+      ]
+    },
+    {
+      "name": "an intent without the flag runs the step anyway",
+      "file": "products/factory/src/shepherd/own-diff.ts",
+      "find": "intent.ownDiff === true",
+      "replace": "true",
+      "kills": [
+        "ownDiffOn an intent recorded before the step, or without it wired, runs no own-diff step"
+      ]
+    }
+  ]
+}
