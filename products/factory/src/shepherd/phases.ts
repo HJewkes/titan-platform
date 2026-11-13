@@ -169,6 +169,6 @@ export interface ShepherdDeps {
   consoleAnswers?: boolean;
   /** The name of the repo seat's `visualBaselines.check`; absent, or undefined for a repo, means no red head is offered for acceptance. */
   visualBaselineCheck?: (repo: string) => string | undefined;
-  /** `shepherd.releaseAppLogin` (TP-5606): only a head it authored takes the owner's carried release answer; absent means none does. */
+  /** `shepherd.releaseAppLogin` (TP-5606): only a head it pushed takes the owner's carried release answer; absent means none does. */
   releaseAppLogin?: string;
 }

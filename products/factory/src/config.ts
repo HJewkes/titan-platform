@@ -267,7 +267,7 @@ export const FactoryConfigSchema = z.object({
        */
       taskClose: z.enum(["keep", "last-slice-only"]).optional(),
       visualGate: VisualGateSchema.optional(),
-      /** The release App's `<app-slug>[bot]` login: only a head it authored keeps the owner's release answer (TP-5606); absent, none does. */
+      /** The release App's `<app-slug>[bot]` login: only a head it pushed keeps the owner's release answer (TP-5606); absent, none does. */
       releaseAppLogin: z.string().regex(/^[^\s[\]]+\[bot\]$/, "must be an App's <app-slug>[bot] login").optional(),
       /**
        * Mounts `POST /gates/answer-ship`, which resolves an approve-merge gate as owner-remote from a console Ship answer

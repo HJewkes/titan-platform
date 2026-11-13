@@ -9,10 +9,16 @@ export interface Commit {
   message?: string;
 }
 
-/** The GitHub accounts a commit's author and committer emails map to; null where GitHub links no account. */
-export interface CommitLogins {
-  author: string | null;
-  committer: string | null;
+/**
+ * One move of a branch from GitHub's repository activity list: who pushed `before` to `after`. Unlike a commit's author,
+ * which GitHub derives from an email anyone can write, `actor` is the account that made the push; null when GitHub names none.
+ */
+export interface RefActivity {
+  before: string;
+  after: string;
+  ref: string;
+  activityType: string;
+  actor: string | null;
 }
 
 /** One step of an Actions job, in run order; `conclusion` is null until the step completes. */

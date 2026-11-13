@@ -23,8 +23,10 @@ const BLOCKED = fakeSha("release-blocked");
 const RELEASE_BOT = "demo-release[bot]";
 const FOREIGN = "branch-pusher";
 
-/** A watched repo whose Version Packages PR bumps one public package, its release run parked on the owner's gate at GATED. */
-/** `null` configures no release App login. */
+/**
+ * A watched repo whose Version Packages PR bumps one public package, its release run parked on the owner's gate at GATED.
+ * `null` configures no release App login. `versionAt` records `pusher` moving the branch to the head, or no move for `null`.
+ */
 async function gatedRelease(releaseAppLogin: string | null = RELEASE_BOT) {
   const fixture = shepherdFixture(releaseAppLogin === null ? {} : { releaseAppLogin });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: fixture.workflows, routes: fixture.routes, gatePollMs: 5 });
@@ -39,8 +41,10 @@ async function gatedRelease(releaseAppLogin: string | null = RELEASE_BOT) {
     { path: ".changeset/widget-fix.md", status: "removed" },
   ]);
   fixture.fake.files.set(`${BASE}:${WIDGET}`, { content: JSON.stringify({ name: "@demo/widget", version: "1.0.0" }), blobSha: "w0" });
-  const versionAt = (head: string, version: string, author: string = RELEASE_BOT) => {
-    fixture.fake.commitLogins.set(head, { author, committer: "web-flow" });
+  const versionAt = (head: string, version: string, pusher: string | null = RELEASE_BOT) => {
+    const moves = fixture.fake.refActivity.get(VERSION_PACKAGES_BRANCH) ?? [];
+    const move = { before: moves[0]?.after ?? BASE, after: head, ref: `refs/heads/${VERSION_PACKAGES_BRANCH}`, activityType: "push", actor: pusher };
+    if (pusher !== null) fixture.fake.refActivity.set(VERSION_PACKAGES_BRANCH, [move, ...moves]);
     fixture.fake.compares.set(`main...${head}`, { mergeBaseSha: BASE, files: [] });
     fixture.fake.files.set(`${head}:${WIDGET}`, { content: JSON.stringify({ name: "@demo/widget", version }), blobSha: `w-${version}` });
   };
@@ -152,16 +156,25 @@ describe("an owner release gate across a changesets re-head (TP-5591)", () => {
   });
 });
 
-describe("the release App's authorship of a regenerated head (TP-5606)", () => {
-  const unauthored: [string, string | null, string][] = [
-    ["another account authored the head", RELEASE_BOT, FOREIGN],
-    ["no release App login is configured", null, RELEASE_BOT],
+describe("the release App's push of a regenerated head (TP-5606)", () => {
+  /** Each way the activity list fails to show the App pushing the head: who pushed it, if anyone, and whether the read throws. */
+  const unpushed: [string, string | null, string | null, boolean][] = [
+    ["a user account pushed the head", RELEASE_BOT, FOREIGN, false],
+    ["no activity entry moves the branch to the head", RELEASE_BOT, null, false],
+    ["the activity read throws", RELEASE_BOT, RELEASE_BOT, true],
+    ["no release App login is configured", null, RELEASE_BOT, false],
   ];
 
-  it.each(unauthored)("cancels the kept gate when %s", async (_scenario, configured, author) => {
+  async function reheaded(configured: string | null, pusher: string | null, faulted: boolean): Promise<Gated> {
     const w = await gatedRelease(configured);
-    w.versionAt(REGENERATED, "1.2.0", author);
+    w.versionAt(REGENERATED, "1.2.0", pusher);
     w.fake.pushHead(w.vp, REGENERATED);
+    if (faulted) w.fake.readFaults.listRefActivity = Array.from({ length: 4 }, () => new Error("activity read failed"));
+    return w;
+  }
+
+  it.each(unpushed)("cancels the kept gate when %s", async (_scenario, configured, pusher, faulted) => {
+    const w = await reheaded(configured, pusher, faulted);
 
     const superseded = await supersedeMovedGates(w.host, w.routes.shepherd!);
 
@@ -169,10 +182,8 @@ describe("the release App's authorship of a regenerated head (TP-5606)", () => {
     expect(w.host.gates.get(w.gate)?.status).toBe("cancelled");
   });
 
-  it.each(unauthored)("asks the owner fresh instead of carrying the answer when %s", async (_scenario, configured, author) => {
-    const w = await gatedRelease(configured);
-    w.versionAt(REGENERATED, "1.2.0", author);
-    w.fake.pushHead(w.vp, REGENERATED);
+  it.each(unpushed)("asks the owner fresh instead of carrying the answer when %s", async (_scenario, configured, pusher, faulted) => {
+    const w = await reheaded(configured, pusher, faulted);
 
     w.host.gates.resolve(w.gate, { decision: "merge", headSha: GATED }, OWNER);
     await gateOpened(w.host, gateId(w.runId, "approve-merge", 1), 10_000);
@@ -183,7 +194,14 @@ describe("the release App's authorship of a regenerated head (TP-5606)", () => {
     expect(resultOf(w, "sh-landed")).toBeUndefined();
   });
 
-  it("carries the owner's answer to a head the release App authored, matching its login in any case", async () => {
+  it("keeps the gate over a head the release App pushed", async () => {
+    const w = await reheaded(RELEASE_BOT, RELEASE_BOT, false);
+
+    expect(await supersedeMovedGates(w.host, w.routes.shepherd!)).toEqual([]);
+    expect(w.host.gates.get(w.gate)?.status).toBe("pending");
+  });
+
+  it("carries the owner's answer to a head the release App pushed, matching its login in any case", async () => {
     const w = await gatedRelease(RELEASE_BOT.toUpperCase());
     w.versionAt(REGENERATED, "1.2.0");
     w.fake.pushHead(w.vp, REGENERATED);

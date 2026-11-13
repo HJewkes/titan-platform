@@ -5,6 +5,7 @@ import { graphql } from "./graphql.js";
 import { checkRunBody } from "./check-run-create.js";
 import { GhError, execGh, type GhExec } from "./exec.js";
 import type { CheckRun, Commit, GitHubWire, IssueComment, JobStep, PrFile, PullRequest, RepoFile, SquashSource } from "./port-types.js";
+import type { RefActivity } from "./port-records.js";
 import type { OpenPrList } from "./pr-list.js";
 import { revalidateRef, revalidateRulesets } from "./conditional-reads.js";
 import type { ReviewComment } from "./review-comment.js";
@@ -84,10 +85,7 @@ export function wireOver(api: Rest, asApp: AppScope): GitHubWire {
       const message = commit.message;
       return { sha: commit.sha, parents: commit.parents.map((parent) => parent.sha), ...(tree ? { tree } : {}), ...(committedAt ? { committedAt } : {}), ...(message !== undefined ? { message } : {}) } satisfies Commit;
     },
-    getCommitLogins: async (repo, sha) => {
-      const commit = await api.get<{ author?: { login?: string } | null; committer?: { login?: string } | null }>(`repos/${repo}/commits/${sha}`);
-      return { author: commit.author?.login ?? null, committer: commit.committer?.login ?? null };
-    },
+    listRefActivity: (repo, branch) => listRefActivity(api, repo, branch),
     resolveCommit: (repo, sha) => resolveCommit(api, repo, sha),
     listCommitStatuses: (repo, sha) => listCommitStatuses(api, repo, sha),
     getWorkflowRunStatus: async (repo, runId) => (await api.get<{ status: string }>(`repos/${repo}/actions/runs/${runId}`)).status,
@@ -288,6 +286,19 @@ async function resolveCommit(api: Rest, repo: string, sha: string): Promise<stri
     if (error instanceof GhError && (error.status === 422 || error.status === 404)) return null;
     throw error;
   }
+}
+
+interface GhActivity {
+  before: string;
+  after: string;
+  ref: string;
+  activity_type: string;
+  actor?: { login?: string } | null;
+}
+
+async function listRefActivity(api: Rest, repo: string, branch: string): Promise<RefActivity[]> {
+  const activity = await api.get<GhActivity[]>(`repos/${repo}/activity`, { ref: `refs/heads/${branch}`, per_page: "100" });
+  return activity.map((entry) => ({ before: entry.before, after: entry.after, ref: entry.ref, activityType: entry.activity_type, actor: entry.actor?.login ?? null }));
 }
 
 /** Actions job URLs read `.../actions/runs/<runId>/job/<jobId>`. */

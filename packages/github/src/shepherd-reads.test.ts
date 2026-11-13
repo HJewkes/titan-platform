@@ -382,18 +382,23 @@ describe("fakeGitHub reads", () => {
   });
 });
 
-describe("commitLogins", () => {
-  const SHA = fakeSha("release-head");
+describe("refActivity", () => {
+  const AFTER = fakeSha("release-head");
+  const BEFORE = fakeSha("release-before");
+  const push = (actor: unknown) => ({ id: 1, node_id: "n", before: BEFORE, after: AFTER, ref: "refs/heads/changeset-release/main", timestamp: "2026-01-01T00:00:00Z", activity_type: "push", actor });
 
-  it("reads the author's and committer's logins from the commits endpoint", async () => {
-    const gh = scripted({ [`repos/octo/demo/commits/${SHA}`]: [included({}, { sha: SHA, author: { login: "demo-release[bot]" }, committer: { login: "web-flow" } })] });
+  it("reads each move of the branch with the account that pushed it", async () => {
+    const gh = scripted({ "repos/octo/demo/activity": [included({}, [push({ login: "demo-release[bot]", type: "Bot" })])] });
 
-    expect(await wireOver(gh.exec).commitLogins(REPO, SHA)).toEqual({ author: "demo-release[bot]", committer: "web-flow" });
+    const activity = await wireOver(gh.exec).refActivity(REPO, "changeset-release/main");
+
+    expect(activity).toEqual([{ before: BEFORE, after: AFTER, ref: "refs/heads/changeset-release/main", activityType: "push", actor: "demo-release[bot]" }]);
+    expect(decodeURIComponent(gh.calls[0]!.args.join(" "))).toContain("ref=refs/heads/changeset-release/main");
   });
 
-  it("reads null for a side GitHub links to no account", async () => {
-    const gh = scripted({ [`repos/octo/demo/commits/${SHA}`]: [included({}, { sha: SHA, author: null, committer: { login: "web-flow" } })] });
+  it("reads a move GitHub names no actor for as a null actor", async () => {
+    const gh = scripted({ "repos/octo/demo/activity": [included({}, [push(null)])] });
 
-    expect(await wireOver(gh.exec).commitLogins(REPO, SHA)).toEqual({ author: null, committer: "web-flow" });
+    expect((await wireOver(gh.exec).refActivity(REPO, "changeset-release/main"))[0]?.actor).toBeNull();
   });
 });
