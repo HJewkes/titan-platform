@@ -9,7 +9,7 @@ import { weekMetrics } from "./week-metrics.js";
  */
 
 /** Who filed a task: the owner, or an agent. */
-export type Filer = "owner" | "agent";
+type Filer = "owner" | "agent";
 
 /** A task file as filed: who filed it (recorded, or the inferred source label), and when it closed. */
 export interface FiledTask {
@@ -108,11 +108,11 @@ export const factoryHealthSchema = z.object({
   wakes: z.array(seatWakesSchema).nullable(),
 });
 export type FactoryHealth = z.infer<typeof factoryHealthSchema>;
-export type ModelTier = z.infer<typeof modelTierSchema>;
-export type SeatWakes = z.infer<typeof seatWakesSchema>;
+type ModelTier = z.infer<typeof modelTierSchema>;
+type SeatWakes = z.infer<typeof seatWakesSchema>;
 
 /** The model recorded for a dispatch that names none. */
-export const UNRECORDED_MODEL = "unrecorded";
+const UNRECORDED_MODEL = "unrecorded";
 
 const PER = 100;
 
@@ -159,7 +159,7 @@ function rowKey(row: TaskRow): string {
 }
 
 /** Merge rate over every dispatched task of the tier; fix rounds over those with a registered PR, as the week figures count them. */
-export function modelTiers(rows: readonly TaskRow[], models: ReadonlyMap<string, string | null>): ModelTier[] {
+function modelTiers(rows: readonly TaskRow[], models: ReadonlyMap<string, string | null>): ModelTier[] {
   const tiers = new Map<string, TaskRow[]>();
   for (const row of rows) {
     const model = models.get(rowKey(row)) ?? UNRECORDED_MODEL;
@@ -182,7 +182,7 @@ function wakeKind(cause: string): "timer" | "event" | "typed" | null {
 }
 
 /** Each seat's wakes in the week; causes that are neither (a tool result, a compaction) are left out. */
-export function seatWakes(wakes: readonly WakeCount[], week: string): SeatWakes[] {
+function seatWakes(wakes: readonly WakeCount[], week: string): SeatWakes[] {
   const seats = new Map<string, SeatWakes>();
   for (const wake of wakes) {
     const kind = wakeKind(wake.cause);
