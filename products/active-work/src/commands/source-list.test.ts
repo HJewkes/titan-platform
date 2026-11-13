@@ -7,7 +7,7 @@ import sourceAddCmd from './source-add.js';
 import { withEmptyActiveRoot, withTempActiveRoot } from '../test-support/test-helpers.js';
 
 const SLUG = 'sample-initiative';
-const ctx = { activeRoot: '', warnings: [], format: 'json' as const };
+const ctx = { activeRoot: '', warnings: [], format: 'json' as const, caller: 'owner' as const };
 
 async function writeSourceFiles(root: string, names: string[]): Promise<string> {
   const dir = path.join(root, SLUG, 'sources');
@@ -163,7 +163,7 @@ describe('source.list', () => {
     await withEmptyActiveRoot(async (root) => {
       await writeSourcesIn(root, ['alpha', 'beta']);
       await writeCharter(root, ['beta']);
-      const context = { activeRoot: '', warnings: [] as string[], format: 'json' as const };
+      const context = { activeRoot: '', warnings: [] as string[], format: 'json' as const, caller: 'owner' as const };
 
       const res = await sourceListCmd.run({ all_initiatives: true }, context);
 
@@ -189,7 +189,7 @@ describe('source.list', () => {
           await fs.mkdir(path.dirname(charter), { recursive: true });
           await fs.writeFile(charter, charterBody, 'utf8');
         }
-        const context = { activeRoot: '', warnings: [] as string[], format: 'json' as const };
+        const context = { activeRoot: '', warnings: [] as string[], format: 'json' as const, caller: 'owner' as const };
 
         const res = await sourceListCmd.run({ all_initiatives: true }, context);
 

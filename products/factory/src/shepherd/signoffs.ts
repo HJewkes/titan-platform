@@ -8,6 +8,8 @@ interface SignoffFacts {
   touches: readonly string[];
   /** Every changed path, a rename's old path included. */
   paths: readonly string[];
+  /** A low-tier policy touch (TP-5403): its policy paths need the correctness sign-off only. */
+  lowTier?: true;
   /** `shepherd.visualGate` (TP-5408): under `async` rendered output adds no owner sign-off; absent means `owner`. */
   visualGate?: VisualGateMode;
 }
@@ -22,11 +24,12 @@ export const adversaryTouches = (touches: readonly string[]): string[] => ADVERS
 
 /**
  * Review policy 458: one correctness sign-off by default. Size, dependency, migration and a security kind pick a stronger
- * correctness reviewer, not a second one. Only an adversarial path adds an adversary; the owner's rule file and rendered
- * output add the owner, rendered output only under `visualGate: owner`.
+ * correctness reviewer, not a second one. Only an adversarial path adds an adversary, unless it is a low-tier policy touch
+ * (TP-5403, owner triage q28 A); the owner's rule file and rendered output add the owner, rendered output only under
+ * `visualGate: owner`.
  */
-export function requiredSignoffs({ touches, paths, visualGate }: SignoffFacts): Signoff[] {
-  const adversary = adversaryTouches(touches).length > 0;
+export function requiredSignoffs({ touches, paths, lowTier, visualGate }: SignoffFacts): Signoff[] {
+  const adversary = lowTier !== true && adversaryTouches(touches).length > 0;
   const visualOwner = touches.includes("visual") && visualGateMode(visualGate) === "owner";
   const owner = visualOwner || paths.some((path) => OWNER_PACKET_FILES.includes(path));
   return ["correctness", ...(adversary ? (["adversary"] as const) : []), ...(owner ? (["owner"] as const) : [])];

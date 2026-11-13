@@ -11,7 +11,7 @@ import { today } from '../utils/today.js';
 import { withEmptyActiveRoot, withTempActiveRoot } from '../test-support/test-helpers.js';
 
 const SLUG = 'sample-initiative';
-const ctx = { activeRoot: '', warnings: [], format: 'json' as const };
+const ctx = { activeRoot: '', warnings: [], format: 'json' as const, caller: 'owner' as const };
 
 function notesDir(root: string): string {
   return path.join(root, SLUG, 'sources', 'notes');
@@ -253,7 +253,7 @@ describe('note.list', () => {
       await writeNoteIn(root, 'alpha', '2026-01-02-a.md', noteFixture('fyi', 'A', '2026-01-02'));
       await writeNoteIn(root, 'beta', '2026-03-01-b.md', noteFixture('plan', 'B', '2026-03-01'));
       await writeCharter(root, ['beta']);
-      const context = { activeRoot: '', warnings: [] as string[], format: 'json' as const };
+      const context = { activeRoot: '', warnings: [] as string[], format: 'json' as const, caller: 'owner' as const };
 
       const res = await noteListCmd.run({ all_initiatives: true }, context);
 
@@ -282,7 +282,7 @@ describe('note.list', () => {
           await fs.mkdir(path.dirname(charter), { recursive: true });
           await fs.writeFile(charter, charterBody, 'utf8');
         }
-        const context = { activeRoot: '', warnings: [] as string[], format: 'json' as const };
+        const context = { activeRoot: '', warnings: [] as string[], format: 'json' as const, caller: 'owner' as const };
 
         const res = await noteListCmd.run({ all_initiatives: true }, context);
 

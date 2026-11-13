@@ -21,6 +21,7 @@ import type { VisualBaselines, VisualPolicy } from "./policy-schema.js";
 import { remergeFact, type CarryRule, type RemergeResult } from "./remerge-carry.js";
 import { reviewBypassable } from "./review-bypass.js";
 import { riskFactsOf, riskTier } from "./risk-tier.js";
+import { lowTierPolicyTouch } from "./g10-low-tier.js";
 import type { KindRead } from "./registered-kind.js";
 import type { CarryResult } from "./tree-carry.js";
 import { evidenceRecord, type EvidenceRecord } from "./evidence-record.js";
@@ -366,9 +367,11 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
   const decision = decideAutoMerge(input.head, decidable, input.visualPaths, input.visualBaselines);
   const visualPaths = input.visualPaths && { visualPaths: input.visualPaths };
   const ownerHold = kind?.ownerHold ?? kind?.unread;
-  const risk = riskFactsOf({ paths: merge.changedPaths, changedLines: observed.changedLines, unread: changedFilesUnread, ...ciPolicy, ...visualPaths, ownerHold, visualGate: reads.visualGate });
+  const riskRead = { paths: merge.changedPaths, changedLines: observed.changedLines, unread: changedFilesUnread, ...ciPolicy, ...visualPaths, ownerHold, visualGate: reads.visualGate };
+  const risk = riskFactsOf(riskRead);
+  const lowTier = risk.touches.includes("policy") ? { lowTier: lowTierPolicyTouch(riskRead) } : undefined;
   const visualChanged = visualChangedField(reads.visualGate, merge.changedPaths, input.visualPaths);
-  const record = evidenceRecord(input, observed, decision, { ...ciPolicy, riskTier: riskTier(risk), ...visual, ...visualChanged, ...(judged && { attest: judged }), ...oldPath });
+  const record = evidenceRecord(input, observed, decision, { ...ciPolicy, riskTier: riskTier(risk), ...lowTier, ...visual, ...visualChanged, ...(judged && { attest: judged }), ...oldPath });
   const comment = await port.upsertComment(input.repo, input.pr, evidenceMarker(input.head), evidenceComment(record));
   return { head: input.head, merge, record, mergeableState, ...unknown, ...ciPolicy, ...visual, ...attest, ...oldPath, ...grantWithheldField(input), commentId: comment.id };
 }

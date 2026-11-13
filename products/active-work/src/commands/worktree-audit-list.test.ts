@@ -12,7 +12,7 @@ import { BriefFrontmatterSchema } from '../schemas/brief.js';
 import { ArtifactsSchema } from '../schemas/artifacts.js';
 
 function makeCtx(activeRoot: string): CommandContext {
-  return { activeRoot, warnings: [], format: 'json' };
+  return { activeRoot, warnings: [], format: 'json', caller: 'owner' };
 }
 
 async function run<A, R>(cmd: Command<A, R>, args: A, ctx: CommandContext): Promise<R> {

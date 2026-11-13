@@ -40,11 +40,13 @@ export function mcpOptions(): McpServerOptions<CommandContext> {
   return {
     registry,
     // The daemon shares this context with /rpc, whose one machine caller always sends a done_when.
+    // /rpc is named the owner because the console and the factory's needs inbox read through it;
+    // a loopback request carries no identity that could tell the owner from an agent (TP-5453 P6b).
     createContext: (surface) => ({
       activeRoot: getActiveRoot(),
       warnings: [],
       format: 'json',
-      caller: surface === 'mcp' ? 'agent' : undefined,
+      caller: surface === 'mcp' ? 'agent' : 'owner',
     }),
     formatError,
     toolPrefix: TOOL_NAME_PREFIX,

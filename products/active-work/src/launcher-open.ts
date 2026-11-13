@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import * as clackPrompts from '@clack/prompts';
 import newCommand from './commands/new.js';
 import openCommand from './commands/open.js';
-import { agentCaller } from './commands/_done-when-gate.js';
+import { cliCaller } from './commands/_done-when-gate.js';
 import { buildClaudeArgs } from './launcher-args.js';
 import { buildLauncherEnv } from './launcher-lease.js';
 import { launchProfileEnv } from './launcher-profile.js';
@@ -41,7 +41,7 @@ type OpenResult = OpenSuccess | PickerResult;
 function launcherContext(): CommandContext {
   return { activeRoot: getActiveRoot(), warnings: [], format: 'json',
     cwd: process.cwd(),
-    caller: agentCaller(process.env),
+    caller: cliCaller(process.env),
   };
 }
 

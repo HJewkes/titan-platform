@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "low tier is ignored, so every policy touch is held adversary",
+      "file": "products/factory/src/shepherd/registration-hold.ts",
+      "find": "  const low = lowTierOf(files, facts, registered);\n",
+      "replace": "  const low = undefined as LowTierPolicy | undefined;\n",
+      "kills": [
+        "the low-tier policy hold at registration a low-tier policy touch is held g10-review naming its tables"
+      ]
+    },
+    {
+      "name": "a policy touch kept from low tier is held review",
+      "file": "products/factory/src/shepherd/registration-hold.ts",
+      "find": "  if (!low.eligible) return `${adversary} (kept: ${low.kept})`;\n",
+      "replace": "  if (!low.eligible) return \"g10-review: low-tier policy touch ()\";\n",
+      "kills": [
+        "the low-tier policy hold at registration a policy touch over 800 lines is held g10-adversary"
+      ]
+    },
+    {
+      "name": "the head's changed lines are not passed",
+      "file": "products/factory/src/shepherd/registration-hold.ts",
+      "find": "lowTierPolicyTouch({ paths: facts.paths, changedLines, ",
+      "replace": "lowTierPolicyTouch({ paths: facts.paths, changedLines: 0, ",
+      "kills": [
+        "the low-tier policy hold at registration a policy touch over 800 lines is held g10-adversary"
+      ]
+    },
+    {
+      "name": "the run's visual globs are not passed",
+      "file": "products/factory/src/shepherd/registration-hold.ts",
+      "find": "ownerHold, ...(visualPaths && { visualPaths }) });",
+      "replace": "ownerHold });",
+      "kills": [
+        "the low-tier policy hold at registration a policy path the run's visual globs name keeps the owner gate"
+      ]
+    },
+    {
+      "name": "a review hold replaces another hold instead of going in as adversary",
+      "file": "products/factory/src/shepherd/registration-hold.ts",
+      "find": "  if (gating === null || isOwnerHold(gating) || isAdversaryHold(wanted)) return wanted;\n",
+      "replace": "  if (true) return wanted;\n",
+      "kills": [
+        "the low-tier policy hold at registration a low-tier hold over a stalled hold goes in as adversary"
+      ]
+    }
+  ]
+}

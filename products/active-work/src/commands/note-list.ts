@@ -114,7 +114,7 @@ export default defineCommand<Args, Result>({
   },
   async run(args, ctx) {
     const [slugs, humanOnly] = await Promise.all([
-      resolveListSlugs('note.list', args),
+      resolveListSlugs('note.list', args, ctx),
       humanOnlyPredicate(getActiveRoot(), ctx.warnings),
     ]);
     const perSlug = await Promise.all(

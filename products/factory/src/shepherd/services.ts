@@ -28,6 +28,8 @@ export interface ShepherdServices extends SnapshotServices {
   freeze?: FreezeStoreRef;
   /** Reads a registered head's changed files from Shepherd's git cache; absent means the serve process's cached reader. */
   prFiles?: PrFilesRead;
+  /** `shepherd.gateReset.lowTierPolicy`, read per registration (TP-5403); absent, or a read of none, means `shadow`. */
+  lowTierPolicy?: () => "off" | "shadow" | "on" | undefined;
   /** The clock `shepherd.prs` dates its merged window by; absent means the wall clock. */
   now?: () => number;
   /** Where `head-regression` lines go; absent means the daemon log. */
