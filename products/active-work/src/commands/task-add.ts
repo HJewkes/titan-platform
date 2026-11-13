@@ -196,7 +196,7 @@ export default defineCommand<Args, TaskOrLine>({
       if (args.parent !== undefined || args.dep !== undefined) {
         await assertEdgeWrite({ slug: args.slug, id, parent: args.parent, dep: args.dep });
       }
-      const task = newTask(args, id, args.priority ?? nextPriority(existing), filedBy(process.env, ctx.caller));
+      const task = newTask(args, id, args.priority ?? nextPriority(existing), filedBy(process.env, ctx));
       await assertFileable(activeRoot, brief.frontmatter, task, args);
       const taskDir = path.join(getInitiativeDir(args.slug), 'tasks');
       await fs.mkdir(taskDir, { recursive: true });
