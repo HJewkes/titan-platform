@@ -1,3 +1,4 @@
+import { activeWorkRoot } from "@titan-design/app-paths";
 import type { Logger, StartDaemonOptions } from "@titan-design/daemon";
 import { mountConsoleAction } from "./console-action/route.js";
 import { systemPauseClearPorts } from "./deploy-ports.js";
@@ -24,11 +25,13 @@ interface ServeRoutesDeps extends ConsoleAnswersServeOptions {
   stateDir: string;
   /** Where the deployer keeps its lock and pause files; the XDG state dir unless a test moves it. */
   deployStateDir: string;
+  /** active-work's data root for the planning ops; active-work's own resolution (ACTIVE_ROOT, else its data dir) unless a test moves it. */
+  activeRoot?: string;
   log: Logger;
 }
 
 /** The routes serve mounts beside the registry's; none of them is a command or an MCP tool. */
-export function mountServeRoutes(app: App, { routes, consoleAnswers, stateDir, deployStateDir, ...deps }: ServeRoutesDeps): void {
+export function mountServeRoutes(app: App, { routes, consoleAnswers, stateDir, deployStateDir, activeRoot = activeWorkRoot({ env: process.env }), ...deps }: ServeRoutesDeps): void {
   const { shepherd } = routes;
   mountResolveProof(app, { ...deps, port: shepherd?.port, store: shepherd?.store });
   if (consoleAnswers) mountGateAnswer(app, { host: deps.host, port: shepherd?.port, roundsDir: consoleAnswers.roundsDir, stateDir, now: deps.now, log: deps.log });
@@ -37,5 +40,5 @@ export function mountServeRoutes(app: App, { routes, consoleAnswers, stateDir, d
   const { actionsDir, agentChatBin } = consoleAnswers;
   const agentChat = agentChatBin === undefined ? undefined : agentChatRetirePort(agentChatBin);
   const deploy = { stateDir: deployStateDir, ports: systemPauseClearPorts() };
-  mountConsoleAction(app, { host, port: shepherd?.port, store: shepherd?.store, freeze: shepherd?.freeze, actionsDir, stateDir, deploy, now, log, agentChat });
+  mountConsoleAction(app, { host, port: shepherd?.port, store: shepherd?.store, freeze: shepherd?.freeze, actionsDir, stateDir, deploy, now, log, agentChat, activeRoot });
 }

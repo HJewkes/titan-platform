@@ -74,7 +74,7 @@ Modules that know about a subject: transcripts, code, rules.
 | [`dispatch-ledger`](/reference/dispatch-ledger) | Burndown claim ledger: zod schema, phase edges, and burndown.json parse and export. | `store-sqlite` |
 | [`graph-layout`](/reference/graph-layout) | Level collapses and deterministic ELK layered layouts (flat and compound) over a code-graph snapshot | `code-graph` |
 | [`memory`](/reference/memory) | Decaying rule playbook: bullets, feedback, deterministic curation, recall | `embed`, `retrieval`, `store-sqlite` |
-| [`owner-queue`](/reference/owner-queue) | The owner queue core: one OwnerItem schema across every store of record, the QueueSource port, merge-by-keys and rank as pure functions | `evidence`, `review-schema` |
+| [`owner-queue`](/reference/owner-queue) | The owner queue core: one OwnerItem schema across every store of record, the QueueSource port, merge-by-keys and rank as pure functions | `evidence`, `pm`, `review-schema` |
 | [`pm`](/reference/pm) | Project-management schemas: the zod task schema and its type, as active-work stores tasks, with a ./node subpath for the planning-record file store | `locator` |
 | [`queue-mirror`](/reference/queue-mirror) | Projects a local queue of human-actionable items into a Matrix room and folds the owner's verdicts back | `hitl`, `matrix-bus`, `rpc-protocol`, `store-sqlite` |
 | `render-qa` | Render QA gate: in-page geometry inspection, cue moments and the persistence rule over any __titanMotion page | `frame-capture` |

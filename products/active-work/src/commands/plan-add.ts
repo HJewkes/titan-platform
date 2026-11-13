@@ -7,7 +7,7 @@ import {
 } from '@titan-design/pm';
 import { z } from 'zod';
 import { defineCommand } from '../registry/index.js';
-import { UsageError } from '../errors.js';
+import { UsageError, ValidationError } from '../errors.js';
 import { today } from '../utils/today.js';
 import { loadPlanRecords, nextPlanId, planRecordExists, withPlanLock, writePlanRecord } from '../plan/store.js';
 
@@ -89,14 +89,22 @@ const FreezeArgsSchema = z.object({
   selector: text.optional(),
   reason: text,
   ends: text,
-  set_by: FreezeSchema.shape.set_by,
+  set_by: FreezeSchema.shape.set_by.optional(),
   intent_ref: text,
   quote_ref: text,
 });
 
+/*
+ * No CLI, RPC or MCP caller is proven to be the owner, so each records the decider as the setter. An owner freeze, and
+ * ending one, arrive only as the console's plan-freeze-set owner op (TP-5453 P3b).
+ */
+const CALLER_SETTER = 'decider' as const;
+const OWNER_FREEZE =
+  'set_by owner is refused here: no CLI or RPC caller is proven to be the owner. The owner sets a freeze from the console inbox (plan-freeze-set); this command records decider';
+
 export const planFreezeAdd = defineCommand({
   name: 'plan.freeze.add',
-  description: 'Freeze the tasks under one tag or selector until an end condition holds',
+  description: "Freeze the tasks under one tag or selector until an end condition holds, recorded as the decider's; an owner freeze is set from the console",
   args: FreezeArgsSchema,
   result: FreezeSchema,
   cli: {
@@ -106,19 +114,21 @@ export const planFreezeAdd = defineCommand({
       selector: { long: '--selector', description: 'Freeze tasks matching this selector (or pass --tag)' },
       reason: { long: '--reason', description: 'Why the work is frozen', required: true },
       ends: { long: '--ends', description: `End condition: ${END_FORMS}`, required: true },
-      set_by: { long: '--set-by', description: 'owner|decider', required: true },
+      set_by: { long: '--set-by', description: 'decider (the default); an owner freeze is set from the console inbox' },
       intent_ref: { ...INTENT_OPTIONS.intent_ref, required: true },
       quote_ref: { ...INTENT_OPTIONS.quote_ref, required: true },
     },
   },
-  run: async (args, ctx) =>
-    withPlanLock(ctx.activeRoot, args.initiative, async () => {
-      const { initiative, tag, selector, reason, set_by, intent_ref, quote_ref } = args;
+  run: async (args, ctx) => {
+    if (args.set_by === 'owner') throw new ValidationError(OWNER_FREEZE);
+    return withPlanLock(ctx.activeRoot, args.initiative, async () => {
+      const { initiative, tag, selector, reason, intent_ref, quote_ref } = args;
       const id = nextPlanId(initiative, 'F', await loadPlanRecords(ctx.activeRoot, initiative, 'freeze'));
       const end_condition = parseEndCondition(args.ends);
-      const freeze = { id, initiative, tag, selector, reason, end_condition, set_by, intent_ref, quote_ref };
+      const freeze = { id, initiative, tag, selector, reason, end_condition, set_by: CALLER_SETTER, intent_ref, quote_ref };
       return writePlanRecord(ctx.activeRoot, 'freeze', freeze);
-    }),
+    });
+  },
 });
 
 const OutOfScopeArgsSchema = z.object({

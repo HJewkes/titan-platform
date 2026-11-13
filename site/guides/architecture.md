@@ -155,6 +155,7 @@ graph TD
   messaging --> rpcProtocol
   openaiAccount --> anthropicAccount
   ownerQueue --> evidence
+  ownerQueue --> pm
   pm --> locator
   queueMirror --> hitl
   queueMirror --> matrixBus
