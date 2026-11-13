@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ReviewItem } from "./review-summary.js";
-import { TASK_ID_REGEX } from "./task.js";
+import { TASK_ID_REGEX } from "./ids.js";
 import { readTsv } from "./tsv.js";
 
 /**

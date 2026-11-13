@@ -10,7 +10,7 @@ const isoTimestamp = z.iso.datetime({ offset: true });
  */
 const isoDateOrTimestamp = z.union([PmTaskSchema.shape.created, isoTimestamp]);
 
-export const TaskSchema = PmTaskSchema.extend({
+export const TaskSchema = PmTaskSchema.safeExtend({
   created: isoDateOrTimestamp,
   done_at: z.union([isoDateOrTimestamp, z.null()]),
   started_at: isoTimestamp.optional(),
