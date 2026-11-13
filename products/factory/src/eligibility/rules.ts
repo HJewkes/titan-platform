@@ -5,19 +5,17 @@ import type { Bet, Freeze, OutOfScope, Task } from "@titan-design/pm";
  * what order. Pure and deterministic; no model call. Back-pressure (PROPOSAL 2.3) is a later slice.
  */
 
-const REFUSAL_CODES = [
-  "no-bet",
-  "bet-not-selected",
-  "no-done-when",
-  "not-in-bet",
-  "no-owner-steps",
-  "no-fold",
-  "frozen",
-  "out-of-scope",
-  "unreadable",
-] as const;
-
-type RefusalCode = (typeof REFUSAL_CODES)[number];
+/** The closed set of reasons a task is refused; one task may carry several. */
+type RefusalCode =
+  | "no-bet"
+  | "bet-not-selected"
+  | "no-done-when"
+  | "not-in-bet"
+  | "no-owner-steps"
+  | "no-fold"
+  | "frozen"
+  | "out-of-scope"
+  | "unreadable";
 
 interface Refusal {
   code: RefusalCode;

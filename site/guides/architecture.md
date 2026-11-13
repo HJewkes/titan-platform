@@ -288,6 +288,7 @@ graph TD
   factory --> health
   factory --> hitl
   factory --> ownerQueue
+  factory --> pm
   factory --> pngDelta
   factory --> registry
   factory --> reviewPanel
