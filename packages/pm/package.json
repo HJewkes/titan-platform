@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/pm",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Project-management schemas: the zod task schema and its type, as active-work stores tasks, with a ./node subpath for the planning-record file store",
   "type": "module",
   "main": "./dist/index.js",
