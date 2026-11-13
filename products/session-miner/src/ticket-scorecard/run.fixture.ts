@@ -56,9 +56,20 @@ export class ScorecardWorld {
     writeFileSync(path.join(dir, `${id}.yml`), stringify(body));
   }
 
-  spawn(taskId: string, at: string, actor = "seat-one", launchedBy?: string, sessionId?: string): void {
-    const meta = JSON.stringify({ task: taskId, work_role: "implementer", ...(launchedBy && { launched_by: launchedBy }), ...(sessionId && { session_id: sessionId }) });
+  spawn(taskId: string, at: string, actor = "seat-one", launchedBy?: string, sessionId?: string, model?: string): void {
+    const extra = { ...(launchedBy && { launched_by: launchedBy }), ...(sessionId && { session_id: sessionId }), ...(model && { model }) };
+    const meta = JSON.stringify({ task: taskId, work_role: "implementer", ...extra });
     this.events.prepare("INSERT INTO events (ts, kind, actor, meta) VALUES (?, 'agent_spawned', ?, ?)").run(Date.parse(at), actor, meta);
+  }
+
+  /** A spawn the broker refused. */
+  refusal(at: string): void {
+    this.events.prepare("INSERT INTO events (ts, kind, actor, meta) VALUES (?, 'agent_spawn_refused', 'seat-one', ?)").run(Date.parse(at), JSON.stringify({ profile: "implementer" }));
+  }
+
+  /** A Shepherd gate opened on a run. */
+  gate(id: string, createdAt: string): void {
+    this.factory.prepare("INSERT INTO hitl_gate (id, created_at) VALUES (?, ?)").run(id, createdAt);
   }
 
   /** A spawn that recorded no `meta.task`, only the spawned session. */
@@ -121,7 +132,7 @@ export class ScorecardWorld {
   dumpStore(): string {
     const db = openDatabase(this.file("scorecard.sqlite3"), { readonly: true });
     try {
-      const tables = ["task_row", "week_row", "phase_week", "pool_snapshot", "watermark"];
+      const tables = ["task_row", "week_row", "phase_week", "factory_health_week", "pool_snapshot", "watermark"];
       return JSON.stringify(tables.map((t) => db.prepare(`SELECT * FROM ${t} ORDER BY 1, 2`).all()));
     } finally {
       db.close();

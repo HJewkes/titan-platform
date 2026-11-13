@@ -2,7 +2,18 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { DEFAULT_THRESHOLDS, SCORECARD_MIGRATIONS, taskRow, upsertTaskRows, upsertWeekRows, weekRows, type TaskRow, type TaskRowInput } from "@titan-design/session-analytics";
+import {
+  DEFAULT_THRESHOLDS,
+  SCORECARD_MIGRATIONS,
+  factoryHealthWeeks,
+  taskRow,
+  upsertFactoryHealth,
+  upsertTaskRows,
+  upsertWeekRows,
+  weekRows,
+  type TaskRow,
+  type TaskRowInput,
+} from "@titan-design/session-analytics";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { readScorecardTask, readScorecardTasks, readScorecardWeeks, scorecardStoreFrom } from "./scorecard-view.js";
 
@@ -67,6 +78,34 @@ describe("the scorecard view's reads", () => {
     const all = weeks[0]!.cells.find((cell) => cell.dimension === "all")!;
     expect(all.redFlags).toContain("upkeep-cap");
     expect(all.metrics.costPerMerged).toBeNull();
+  });
+
+  it("attaches each week's factory health group, and none to a week the job scored without it", () => {
+    const rows = [row("OR-1", W09, false), row("OR-2", W10, true)];
+    seed(rows);
+    const db = openDatabase(storeFile);
+    const health = factoryHealthWeeks({ rows: [rows[1]!], dispatchModels: new Map(), filed: [], mergedPrAts: [], spawnRefusalAts: [W10], gateHoldAts: [], wakes: null });
+    upsertFactoryHealth(db, health, "2031-03-06T00:00:00.000Z");
+    db.close();
+
+    const { weeks } = readScorecardWeeks({ storeFile });
+
+    expect(weeks.map((w) => [w.isoWeek, w.factoryHealth?.fenceStops.spawnRefusals ?? null])).toEqual([
+      ["2031-W10", 1],
+      ["2031-W09", null],
+    ]);
+  });
+
+  it("reads a store written before the factory health table as weeks without the group", () => {
+    const db = openDatabase(storeFile);
+    runMigrations(db, SCORECARD_MIGRATIONS.slice(0, 2));
+    upsertWeekRows(db, weekRows([row("OR-1", W10, false)], DEFAULT_THRESHOLDS), "2031-03-06T00:00:00.000Z");
+    db.close();
+
+    const read = readScorecardWeeks({ storeFile });
+
+    expect(read.store.state).toBe("ok");
+    expect(read.weeks.map((w) => w.factoryHealth)).toEqual([null]);
   });
 
   it("lists only open tasks resting on an inferred label for review", () => {

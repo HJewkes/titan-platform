@@ -1,5 +1,12 @@
 # @titan-design/active-work
 
+## 0.29.1
+
+### Patch Changes
+
+- Updated dependencies [a24b050]
+  - @titan-design/session-analytics@0.19.0
+
 ## 0.29.0
 
 ### Minor Changes
