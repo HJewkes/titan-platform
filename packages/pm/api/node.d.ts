@@ -125,7 +125,6 @@ declare const FreezeEndConditionSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
 }, z.core.$strict>], "kind">;
 type FreezeEndCondition = z.infer<typeof FreezeEndConditionSchema>;
 declare const FreezeSchema: z.ZodObject<{
-    ended_on: z.ZodOptional<z.ZodString>;
     intent_ref: z.ZodString;
     quote_ref: z.ZodString;
     id: z.ZodString;

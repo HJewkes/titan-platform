@@ -4,6 +4,7 @@ import { UsageError } from '../errors.js';
 import { DueArg } from './_categories.js';
 import { QuietArg } from './_task-quiet.js';
 import { parseOwnerSteps, TaskPlanArgsShape } from './_task-plan-fields.js';
+import { PROVENANCE_ARG_KEYS, provenanceArgs, TaskProvenanceArgsShape, type ProvenanceField } from './_task-provenance.js';
 
 const EDITABLE_FIELDS = [
   'title',
@@ -35,6 +36,7 @@ export const ArgsSchema = z.object({
   area: z.string().min(1).optional(),
   due: DueArg,
   ...TaskPlanArgsShape,
+  ...TaskProvenanceArgsShape,
   force: z.boolean().optional(),
   quiet: QuietArg,
 });
@@ -80,6 +82,7 @@ export interface PatchEdit {
   removeDeps?: string[];
   addDeliverables?: string[];
   addOwnerSteps?: Task['owner_steps'];
+  provenance?: Partial<Pick<Task, ProvenanceField>>;
 }
 
 export type Edit = { kind: 'field'; field: EditableField; value: unknown } | PatchEdit;
@@ -136,6 +139,7 @@ function patchEdit(args: Args): Edit {
     addDeliverables: args.deliverable,
     addOwnerSteps: parseOwnerSteps(args.owner_step),
     fields: patchFields(args),
+    provenance: provenanceArgs(args),
   };
 }
 
@@ -154,6 +158,7 @@ const PATCH_KEYS = [
   'deliverable',
   'owner_step',
   ...PATCH_FIELDS,
+  ...PROVENANCE_ARG_KEYS,
 ] as const;
 
 export function parseEdit(args: Args): Edit {
@@ -162,7 +167,7 @@ export function parseEdit(args: Args): Edit {
   if (fieldForm && flagForm) {
     throw new UsageError(
       'Pass either <field> <value> or --append/--add-tag/--remove-tag/--parent/--dep/--remove-dep/' +
-        '--deliverable/--kind/--cos/--area/--due/--bet/--fold/--owner-step, not both',
+        '--deliverable/--kind/--cos/--area/--due/--bet/--fold/--owner-step or a provenance flag, not both',
     );
   }
   if (fieldForm) return fieldEdit(args);
@@ -170,6 +175,7 @@ export function parseEdit(args: Args): Edit {
   throw new UsageError(
     'Nothing to edit: pass <field> <value>, --append <text>, --add-tag <tag>, --remove-tag <tag>, ' +
       '--parent <id>, --dep <id>, --remove-dep <id>, --deliverable <id>, --kind, --cos, --area, ' +
-      '--due, --bet, --fold or --owner-step',
+      '--due, --bet, --fold, --owner-step, --class, --serves, --source, --source-ref, --from-pr, --from-task ' +
+      'or --blocked-on',
   );
 }

@@ -51,6 +51,7 @@ import taskDone from './task-done.js';
 import taskEdit from './task-edit.js';
 import taskNote from './task-note.js';
 import taskList from './task-list.js';
+import taskRankShow from './task-rank-show.js';
 import taskReorder from './task-reorder.js';
 import taskShow from './task-show.js';
 
@@ -183,6 +184,7 @@ const ALL_COMMANDS: AnyCommand[] = [
   taskEdit,
   taskNote,
   taskReorder,
+  taskRankShow,
   taskDelete,
   // sessions
   sessionList,

@@ -25,6 +25,8 @@ import {
 } from './_task-edit-parse.js';
 import { quietOption, TaskOrLineSchema, quietOr, type TaskOrLine } from './_task-quiet.js';
 import { TASK_PLAN_OPTIONS } from './_task-plan-fields.js';
+import { assertNotRelabel, assertProvenance, provenanceChange, TASK_PROVENANCE_OPTIONS } from './_task-provenance.js';
+import { dispatchCheck } from '../session-index/task-dispatched.js';
 
 interface TaskChange {
   changes: Partial<Task>;
@@ -112,6 +114,7 @@ export function patchChange(task: Task, edit: PatchEdit): TaskChange {
   const steps = newOwnerSteps(task, edit);
   if (steps.length > 0) changes.owner_steps = [...(task.owner_steps ?? []), ...steps];
   if (edit.append !== undefined) changes.notes = appendLine(task.notes, edit.append);
+  Object.assign(changes, provenanceChange(task, edit.provenance).changes);
   const tags = tagChange(current, edit);
   if (tags.tags !== undefined) changes.tags = tags.tags;
   notices.push(...tags.notices);
@@ -196,6 +199,7 @@ function editedLine(task: Task, edit: Edit): string {
   parts.push(...newDeliverables(task, edit).map((id) => `+deliverable ${id}`));
   parts.push(...newOwnerSteps(task, edit).map((step) => `+owner-step ${step.kind}`));
   parts.push(...newFields(task, edit).map(([key, value]) => `${key} ${value}`));
+  parts.push(...provenanceChange(task, edit.provenance).parts);
   return parts.length === 0 ? `${task.id} unchanged` : `${task.id} edited: ${parts.join(', ')}`;
 }
 
@@ -223,6 +227,10 @@ async function assertWritable(
 ): Promise<void> {
   assertPromotable(ctx, task, next);
   if (changes.bet !== undefined) await assertKnownBet(next);
+  if (changes.field_origin !== undefined) {
+    await assertNotRelabel(task, changes, dispatchCheck(slug));
+    await assertProvenance(getActiveRoot(), next);
+  }
   await assertCategories(getActiveRoot(), next, changedCategoryFields(changes));
   const added = edit.kind === 'patch' ? newDeliverables(task, edit) : [];
   if (added.length > 0) await assertKnownDeliverables(getActiveRoot(), added);
@@ -290,6 +298,7 @@ export default defineCommand<Args, TaskOrLine>({
       },
       ...CATEGORY_OPTIONS,
       ...TASK_PLAN_OPTIONS,
+      ...TASK_PROVENANCE_OPTIONS,
       force: {
         long: '--force',
         description: 'Let the field form replace notes, drop tags or replace a non-empty done_when',
