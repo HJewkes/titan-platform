@@ -1,5 +1,11 @@
 # @titan-design/active-work
 
+## 0.30.0
+
+### Minor Changes
+
+- ea59230: Withhold owner-only initiatives from every caller but the owner in the cross-initiative list verbs (TP-5453 P6b). The command context's `caller` is now `'owner' | 'agent'`, and only `'owner'` is served every initiative; a context no surface marked is restricted. The CLI names the owner when neither `AGENT_CHAT_NAME` nor `CLAUDECODE` is set, MCP names an agent, and the daemon's HTTP `/rpc` names the owner for the console and the factory. Commands enumerate initiatives only through `listSlugsForCaller`, which a structure test enforces: `task list`, `note list`, `source list` and `artifact list` with `--all-initiatives`, `inventory`, `list`, `audit`, `facet list`, `loop board`, the `open` picker and `open`/`prompt` slug-prefix errors drop every initiative `isAgentVisible` withholds and warn with a count only. `search` drops hits with no initiative and `precedent search` ignores `--include-unclaimed` for a non-owner. `inventory` rows gain `agent_visible`. `precedent extract` keeps an owner-only initiative's answers out of the decider ledger.
+
 ## 0.29.1
 
 ### Patch Changes
