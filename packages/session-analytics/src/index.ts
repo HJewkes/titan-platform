@@ -131,7 +131,7 @@ export { frictionDailyReport } from "./friction-daily.js";
 export { FRICTION_ASKER, frictionDeposit, frictionDepositId, renderFrictionMarkdown, renderLogTop, renderReportTop } from "./friction-render.js";
 export type { GenerationEnd, SeatGeneration, SeatGenerationsInput } from "./seat-generations.js";
 export { TELEPORT_COMPLETED_EVENT, seatGenerations, seatGenerationsSchema } from "./seat-generations.js";
-export { readAgentSessions, readCoverage } from "./cost-report-queries.js";
+export { readAgentNames, readAgentSessions, readCoverage } from "./cost-report-queries.js";
 export type {
   CompactionMark,
   ModelRequests,
@@ -234,3 +234,7 @@ export type { PhaseRun, PhaseWeek } from "./ticket-scorecard/phase-weeks.js";
 export { phaseWeeks } from "./ticket-scorecard/phase-weeks.js";
 export type { ScorecardRunLog } from "./ticket-scorecard/run-store.js";
 export { readPhaseWeeks, recordRun, upsertPhaseWeeks } from "./ticket-scorecard/run-store.js";
+export type { FactoryHealth, FactoryHealthInput, FiledTask, WakeCount } from "./ticket-scorecard/factory-health.js";
+export { factoryHealthSchema, factoryHealthWeeks, filerOf } from "./ticket-scorecard/factory-health.js";
+export { readFactoryHealth, upsertFactoryHealth } from "./ticket-scorecard/factory-health-store.js";
+export { firstDispatch } from "./ticket-scorecard/task-row-facts.js";

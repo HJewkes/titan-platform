@@ -54,6 +54,7 @@
   "deploy-watch-window.ts",
   "deploy-watch.ts",
   "deploy.ts",
+  "digest/factory-health.ts",
   "digest/gate-alarm.ts",
   "digest/keys.ts",
   "digest/model.ts",

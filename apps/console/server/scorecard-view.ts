@@ -2,7 +2,7 @@ import { existsSync, readdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
-import { isoWeek, readPhaseWeeks, readTaskRows, readWeekRows, type TaskRow, type WeekRow } from "@titan-design/session-analytics";
+import { isoWeek, readFactoryHealth, readPhaseWeeks, readTaskRows, readWeekRows, type FactoryHealth, type TaskRow, type WeekRow } from "@titan-design/session-analytics";
 import { expandHome } from "@titan-design/session-read";
 import type { Db } from "@titan-design/store-sqlite";
 import { openReadOnly } from "./broker.js";
@@ -51,7 +51,13 @@ function frozenFiles(weeksDir: string): { frozen: Set<string>; drift: Set<string
   return { frozen: new Set([...stems(".json")].filter((stem) => !stem.endsWith(".drift"))), drift };
 }
 
-function groupWeeks(cells: readonly WeekRow[], phases: ReturnType<typeof readPhaseWeeks>, weeksDir: string): ScorecardWeek[] {
+interface StoredWeeks {
+  cells: readonly WeekRow[];
+  phases: ReturnType<typeof readPhaseWeeks>;
+  health: readonly FactoryHealth[];
+}
+
+function groupWeeks({ cells, phases, health }: StoredWeeks, weeksDir: string): ScorecardWeek[] {
   const files = frozenFiles(weeksDir);
   const weeks = [...new Set([...cells.map((c) => c.isoWeek), ...phases.map((p) => p.isoWeek)])].sort().reverse();
   return weeks.map((week) => ({
@@ -60,12 +66,19 @@ function groupWeeks(cells: readonly WeekRow[], phases: ReturnType<typeof readPha
     drift: files.drift.has(week),
     cells: cells.filter((c) => c.isoWeek === week).map(({ dimension, key, metrics, redFlags }) => ({ dimension, key, metrics, redFlags })),
     phases: phases.filter((p) => p.isoWeek === week),
+    factoryHealth: health.find((h) => h.isoWeek === week) ?? null,
   }));
 }
 
+/** A store the job wrote before TP-5446 S18 has no group table yet; its weeks show the group as not measured. */
+function readHealth(db: Db): FactoryHealth[] {
+  const table = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'factory_health_week'").get();
+  return table === undefined ? [] : readFactoryHealth(db);
+}
+
 export function readScorecardWeeks({ storeFile }: ScorecardSource): z.infer<typeof weeksResult> {
-  const read = withStore(storeFile, (db) => ({ cells: readWeekRows(db), phases: readPhaseWeeks(db) }));
-  const weeks = read.value === null ? [] : groupWeeks(read.value.cells, read.value.phases, path.join(path.dirname(storeFile), "weeks"));
+  const read = withStore(storeFile, (db) => ({ cells: readWeekRows(db), phases: readPhaseWeeks(db), health: readHealth(db) }));
+  const weeks = read.value === null ? [] : groupWeeks(read.value, path.join(path.dirname(storeFile), "weeks"));
   return { store: read.store, weeks };
 }
 
@@ -100,7 +113,7 @@ export function scorecardCommands(source: ScorecardSource) {
   return {
     "scorecard.weeks": readCommand({
       name: "scorecard.weeks",
-      description: "The ticket scorecard's weekly cells (all, per initiative, per dispatcher), red flags, Shepherd phase medians, and which weeks are frozen or drifted",
+      description: "The ticket scorecard's weekly cells (all, per initiative, per dispatcher), red flags, Shepherd phase medians, the factory health group, and which weeks are frozen or drifted",
       args: z.object({}),
       result: weeksResult,
       run: async () => readScorecardWeeks(source),

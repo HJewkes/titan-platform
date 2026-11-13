@@ -20,6 +20,7 @@ import type { ScorecardWeek } from "../../server/scorecard-schema.js";
 import { useQuery } from "../data/rpc.js";
 import { replace } from "../router.js";
 import { Spinner } from "../shell/Loading.js";
+import { FactoryHealthSection } from "./ScorecardFactoryHealth.js";
 import { BreakdownSection, PhaseSection, WeekFigures } from "./ScorecardTables.js";
 import { AuditSetCard, InferredBadge, InferredReview, WeekTasks } from "./ScorecardTasks.js";
 import { allCell, flagText, hoursText, shareText, shortWeek, usdText } from "./scorecard-format.js";
@@ -56,6 +57,7 @@ export function ScorecardPage({ query }: { query?: string }): ReactNode {
       <BreakdownSection week={week} dimension="dispatcher" title="Dispatchers" empty="No dispatcher this week." />
       <BreakdownSection week={week} dimension="initiative" title="Initiatives" empty="No initiative this week." />
       <PhaseSection week={week} />
+      <FactoryHealthSection week={week} />
       <WeekTasks week={week.isoWeek} />
       <InferredReview />
       <AuditSetCard />

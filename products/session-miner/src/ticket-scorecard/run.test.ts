@@ -1,4 +1,4 @@
-import { readFileSync, rmSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { readPoolSnapshot, readTaskRows, readWeekRows, type TaskRow } from "@titan-design/session-analytics";
 import { openDatabase } from "@titan-design/store-sqlite";
@@ -58,7 +58,7 @@ describe("ticket-scorecard run", () => {
 
     expect(first).toMatchObject({ taskRowsChanged: 2, labels: { rows: 2, invalid: 0 } });
     expect(storeRows(world).get("AA-2")).toMatchObject({ classAtDispatch: "upkeep", provenance: { classAtDispatch: "inferred:census-test:theme" } });
-    expect(second).toMatchObject({ ok: true, taskRowsChanged: 0, weekRowsChanged: 0, phaseRowsChanged: 0, poolRowsWritten: 0, marksAdvanced: 0, frozen: [], drift: [] });
+    expect(second).toMatchObject({ ok: true, taskRowsChanged: 0, weekRowsChanged: 0, phaseRowsChanged: 0, healthRowsChanged: 0, poolRowsWritten: 0, marksAdvanced: 0, frozen: [], drift: [] });
     expect(world.dumpStore()).toBe(before);
   });
 
@@ -113,6 +113,34 @@ describe("ticket-scorecard run", () => {
     expect(readFileSync(frozenFile, "utf8")).toBe(frozen);
     const drift = JSON.parse(readFileSync(path.join(world.file("weeks"), "2026-W46.drift.json"), "utf8"));
     expect(drift.cells.find((c: { dimension: string }) => c.dimension === "all").metrics.merged).toBe(2);
+  });
+
+  it("the frozen week file carries the factory health group read from the stores", async () => {
+    world.task("AA-3");
+    world.spawn("AA-3", "2026-11-10T11:00:00.000Z", "seat-one", undefined, undefined, "sonnet");
+    world.refusal("2026-11-10T11:30:00.000Z");
+    world.gate("run-a/approve-merge", "2026-11-10T13:00:00.000Z");
+
+    await run(world.options(W47_MON));
+
+    const health = JSON.parse(readFileSync(path.join(world.file("weeks"), "2026-W46.json"), "utf8")).factoryHealth;
+    expect(health.fenceStops).toEqual({ dispatched: 3, spawnRefusals: 1, gateHolds: 1, refusalsPer100: 33.33, holdsPer100: 33.33, guardDenials: null });
+    expect(health.modelTiers.map((t: { model: string; dispatched: number }) => [t.model, t.dispatched])).toEqual([["sonnet", 1], ["unrecorded", 2]]);
+    expect(health.selfGenerated).toMatchObject({ mergedPrs: 1, closed: 1 });
+    expect(health.codeSize).toBeNull();
+  });
+
+  it("a week frozen before the factory health group existed does not read as drift", async () => {
+    await run(world.options(W47_MON));
+    const frozenFile = path.join(world.file("weeks"), "2026-W46.json");
+    const legacy = JSON.parse(readFileSync(frozenFile, "utf8"));
+    delete legacy.factoryHealth;
+    writeFileSync(frozenFile, `${JSON.stringify(legacy, null, 2)}\n`);
+
+    const second = await run(world.options(W47_TUE));
+
+    expect(second.drift).toEqual([]);
+    expect(JSON.parse(readFileSync(frozenFile, "utf8"))).toEqual(legacy);
   });
 
   it("missing store reads as not measured", async () => {
