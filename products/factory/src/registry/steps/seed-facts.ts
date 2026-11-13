@@ -25,7 +25,7 @@ export const seedFactSteps: readonly FactEntry[] = [
     materialInputs: [{ fact: "head:pushed", fields: ["head"] }],
     projection: ["outcome", "head"],
     idempotencyKey,
-    version: { bump: 1 },
+    version: { bump: 2 },
     body: "products/factory/src/shepherd/await-verdict.ts",
   }),
   defineStep({
