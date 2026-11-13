@@ -1,5 +1,15 @@
 # titan-console
 
+## 0.13.2
+
+### Patch Changes
+
+- 1f5ed48: The console reads rounds with the published review-schema 0.3 and drops its vendored copy. The approvals queue passes 0.3 rounds and feedback straight to owner-queue, which now reads 0.3 too, so a round or feedback that only 0.3 knows is no longer a gap (TP-3232). The queue hands owner-queue the review-schema manifest without the console's own `supersedes`, `planApprovals` and `kind`, which its strict parse refuses.
+- Updated dependencies [1f5ed48]
+- Updated dependencies [46ae5e5]
+  - @titan-design/owner-queue@0.7.0
+  - @titan-design/pm@0.7.0
+
 ## 0.13.1
 
 ### Patch Changes
