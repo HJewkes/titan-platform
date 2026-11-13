@@ -1,0 +1,52 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a scratch-dir review cleans up after its verdict",
+      "file": "packages/review-panel/src/reviewer-brief.ts",
+      "find": "`When your review is done and before you write your final message, remove your checkouts, head and base together",
+      "replace": "`After you write your verdict, remove your checkouts, head and base together",
+      "kills": [
+        "reviewer brief final message the brief asks for cleanup before the final message and for the full verdict in it, in a review in a scratch dir"
+      ]
+    },
+    {
+      "name": "a run-dir review cleans up after its verdict",
+      "file": "packages/review-panel/src/reviewer-brief.ts",
+      "find": "`When your review is done and before you write your final message, remove your checkouts with literal paths",
+      "replace": "`After you write your verdict, remove your checkouts with literal paths",
+      "kills": [
+        "reviewer brief final message the brief asks for cleanup before the final message and for the full verdict in it, in a review that starts in its run dir"
+      ]
+    },
+    {
+      "name": "the final-message line leaves out Attests and Follow-ups",
+      "file": "packages/review-panel/src/reviewer-brief.ts",
+      "find": "whole review and verdict, including any \\`${ATTESTS_HEADING}\\` and \\`${FOLLOW_UPS_HEADING}\\` lines; send",
+      "replace": "whole review and verdict; send",
+      "kills": [
+        "reviewer brief final message the brief asks for cleanup before the final message and for the full verdict in it, in a review in a scratch dir",
+        "reviewer brief final message the brief asks for cleanup before the final message and for the full verdict in it, in a review that starts in its run dir"
+      ]
+    },
+    {
+      "name": "the attest rule drops the final-message line",
+      "file": "packages/review-panel/src/reviewer-brief.ts",
+      "find": "rule.length === 0 ? [] : [...rule, ATTESTS_IN_FINAL_ONLY]",
+      "replace": "rule",
+      "kills": [
+        "reviewer brief final message the attest rule says only the final message's Attests line counts"
+      ]
+    },
+    {
+      "name": "the Attests line is read from every message, not the final one",
+      "file": "packages/review-panel/src/accept-verdict.ts",
+      "find": "...attestsField(final.text)",
+      "replace": "...attestsField(messages.map((message) => message.text).join(\"\\n\"))",
+      "kills": [
+        "reviewer brief final message a bare repeat after a full verdict with Attests attests nothing",
+        "reviewer brief final message a final message carrying the full verdict and Attests is read"
+      ]
+    }
+  ]
+}

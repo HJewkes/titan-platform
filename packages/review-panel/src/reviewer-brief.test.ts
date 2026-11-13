@@ -76,27 +76,6 @@ describe("reviewerBrief", () => {
     expect(brief).toContain(`\`rm -rf "${runDir}"\``);
   });
 
-  it.each([
-    ["a review in a scratch dir", reviewerBrief(target)],
-    ["a review that starts in its run dir", reviewerBrief({ ...target, sourceCheckout: "/srv/checkouts/demo" })],
-  ])("the brief asks for cleanup before the final message and for the full verdict in it, in %s", (_shape, brief) => {
-    const cleanup = brief.indexOf("rm -rf");
-    const sentence = brief.slice(brief.lastIndexOf("\n", cleanup), brief.indexOf("\n", cleanup));
-
-    expect(sentence).toContain("before you write your final message, remove your checkouts");
-    expect(sentence).toContain("Your final message is your whole review and verdict, including any `Attests:` and `Follow-ups:` lines; send no message after it.");
-    expect(brief).not.toContain("After you write your verdict, remove");
-  });
-
-  it("the attest rule says only the final message's Attests line counts", () => {
-    const claims = [{ step: "ci-wait", closure: "0123456789ab" }];
-
-    const brief = reviewerBrief({ ...target, attestClaims: claims });
-
-    expect(brief).toContain("`Attests: ci-wait@0123456789ab`, keeping only the steps you verified. Omit it otherwise; your MERGE still counts for the code.\nAn `Attests:` line counts only in your final message.");
-    expect(reviewerBrief(target)).not.toContain("counts only in your final message");
-  });
-
   it("quotes the run dir in the removal command when the root has a space, as it does on macOS", () => {
     const root = "/Volumes/x/Library/Application Support/titan-factory/checkouts/reviews";
 
