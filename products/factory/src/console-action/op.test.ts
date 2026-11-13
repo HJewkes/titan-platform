@@ -50,6 +50,19 @@ describe("actOnOp", () => {
     expect(outcome).toEqual(answer);
   });
 
+  // Kills: mapping a planning op onto authority-config, whose CFG-OR row denies the console every planning tap.
+  it.each<OwnerOp>([
+    { kind: "plan-bet-select", initiative: "alpha", week: "2026-W47", bets: ["alpha/B1"] },
+    { kind: "plan-outcome-edit", outcome: "alpha/faster-landing", to: { measure: "median hours" } },
+    { kind: "plan-freeze-set", initiative: "alpha", freeze: { action: "end", id: "alpha/F1" } },
+  ])("admits a $kind op as the owner's own verb, gated to owner-remote under HV-OR", async (op) => {
+    const answer: Outcome = { outcome: "already", ids: [] };
+
+    const outcome = await act(op, async () => answer);
+
+    expect(outcome).toEqual(answer);
+  });
+
   it("refuses with class an admitted op whose kind has no effect yet", async () => {
     const ledger = memoryLedger();
 

@@ -741,6 +741,9 @@ importers:
       '@titan-design/evidence':
         specifier: workspace:^
         version: link:../evidence
+      '@titan-design/pm':
+        specifier: workspace:^
+        version: link:../pm
       '@titan-design/review-schema':
         specifier: ^0.3.0
         version: 0.3.0(zod@4.5.4)
@@ -1648,6 +1651,9 @@ importers:
       '@titan-design/owner-queue':
         specifier: workspace:^
         version: link:../../packages/owner-queue
+      '@titan-design/pm':
+        specifier: workspace:^
+        version: link:../../packages/pm
       '@titan-design/png-delta':
         specifier: workspace:^
         version: link:../../packages/png-delta
