@@ -5,7 +5,7 @@ import type { Bet, Freeze, OutOfScope, Task } from "@titan-design/pm";
  * what order. Pure and deterministic; no model call. Back-pressure (PROPOSAL 2.3) is a later slice.
  */
 
-export const REFUSAL_CODES = [
+const REFUSAL_CODES = [
   "no-bet",
   "bet-not-selected",
   "no-done-when",
@@ -17,9 +17,9 @@ export const REFUSAL_CODES = [
   "unreadable",
 ] as const;
 
-export type RefusalCode = (typeof REFUSAL_CODES)[number];
+type RefusalCode = (typeof REFUSAL_CODES)[number];
 
-export interface Refusal {
+interface Refusal {
   code: RefusalCode;
   detail: string;
 }
@@ -33,7 +33,7 @@ export interface PlanView {
   outOfScope: readonly OutOfScope[];
 }
 
-export interface EligibleTask {
+interface EligibleTask {
   task: Task;
   bet: Bet;
 }
@@ -83,7 +83,7 @@ function planRefusals(task: Task, plan: PlanView): Refusal[] {
 }
 
 /** Every reason the task may not be dispatched under the plan, in rule order; empty when it may. */
-export function refusalsFor(task: Task, plan: PlanView): Refusal[] {
+function refusalsFor(task: Task, plan: PlanView): Refusal[] {
   const key = taskKey(plan.initiative, task);
   const bet = plan.bets.find((candidate) => candidate.id === task.bet);
   return [...betRefusals(task, key, bet), ...fieldRefusals(task), ...planRefusals(task, plan)];

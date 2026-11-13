@@ -13,7 +13,7 @@ type EligibilityCommands = {
   "plan.out-of-scope.list": { args: { initiative: string }; result: unknown[] };
 };
 
-export interface EligibilityQuery {
+interface EligibilityQuery {
   initiative: string;
   /** ISO week, `YYYY-Www`. */
   week: string;
