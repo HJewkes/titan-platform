@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { ATTESTATIONS_DIR, LEGACY_ATTESTATIONS_PATH, LOCK_PATH, readBaseAttestations, readPrNumber, resolveBase, runCheck } from "./step-closure-check.mjs";
+import { ATTESTATIONS_DIR, BUMPS_DIR, LEGACY_ATTESTATIONS_PATH, LOCK_PATH, readBaseAttestations, readPrNumber, resolveBase, runCheck } from "./step-closure-check.mjs";
 
 const lock = (closure) => JSON.stringify({ "ci-wait": { closure, schemaHash: "schema-1", bump: 0 } });
 const passing = () => ({ failures: [], notices: [] });
@@ -180,4 +180,50 @@ it("a base from before the per-PR files is read from its single file, so migrate
   expect(readBaseAttestations(git, "origin/main")).toEqual(old);
   const result = runCheck({ git, ...tree({ [LOCK_PATH]: lock("closure-1"), ...fileRows(old) }), check: passing, base: "origin/main", prNumber: 8 });
   expect(result).toEqual({ failures: [], notices: [] });
+});
+
+const bump = (step, pr) => ({ step, pr });
+/** The tree's or a ref's bump files, one per PR. */
+function bumpFiles(rows) {
+  const files = {};
+  for (const row of rows) files[`${BUMPS_DIR}/${row.pr}.json`] = JSON.stringify([...JSON.parse(files[`${BUMPS_DIR}/${row.pr}.json`] ?? "[]"), row]);
+  return files;
+}
+
+function checkBumps({ baseRows, headRows, prNumber }) {
+  const git = gitWithRefs({ "origin/main": bumpFiles(baseRows) });
+  return runCheck({ git, ...tree({ [LOCK_PATH]: lock("closure-1"), ...bumpFiles(headRows) }), check: passing, base: "origin/main", prNumber });
+}
+
+it("a PR's bump row passes after another PR's row for the same step lands", () => {
+  const result = checkBumps({ baseRows: [bump("ci-wait", 7)], headRows: [bump("ci-wait", 7), bump("ci-wait", 8)], prNumber: 8 });
+
+  expect(result.failures).toEqual([]);
+});
+
+it("an added bump row naming another PR fails", () => {
+  const result = checkBumps({ baseRows: [], headRows: [bump("ci-wait", 7)], prNumber: 8 });
+
+  expect(result.failures).toEqual(["ci-wait: an added bump row names PR 7, not this PR #8"]);
+});
+
+it("a removed bump row fails, so lowering the sum never passes as a version change", () => {
+  const result = checkBumps({ baseRows: [bump("ci-wait", 7)], headRows: [], prNumber: 8 });
+
+  expect(result.failures).toEqual(["ci-wait: the bump row of PR 7 was removed; bump rows are append-only"]);
+});
+
+it("a bump row naming no fact step fails", () => {
+  const result = checkBumps({ baseRows: [], headRows: [bump("no-such-step", 8)], prNumber: 8 });
+
+  expect(result.failures).toEqual([`${BUMPS_DIR}/8.json: no-such-step is not a fact step`]);
+});
+
+it("a bump row in a file named for another PR fails", () => {
+  const git = gitWithRefs({ "origin/main": {} });
+  const files = { [LOCK_PATH]: lock("closure-1"), [`${BUMPS_DIR}/9.json`]: JSON.stringify([bump("ci-wait", 8)]) };
+
+  const result = runCheck({ git, ...tree(files), check: passing, base: "origin/main", prNumber: 8 });
+
+  expect(result.failures).toEqual([`${BUMPS_DIR}/9.json: a row names PR 8; it belongs in 8.json`]);
 });
