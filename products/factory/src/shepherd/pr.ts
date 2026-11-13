@@ -7,6 +7,7 @@ import { codeRoute, land, newUpdateBound, type CiSnapshot, type LandOptions, typ
 import { awaitPrRoute, awaitPrStep } from "./await-pr.js";
 import { behindAt, onUpdated, reviewable } from "./behind.js";
 import { followingApprovals } from "./approval-carry.js";
+import { followingReleaseApproval } from "./release-gate-carry.js";
 import { setCarryOf } from "./approved-set-carry.js";
 import { classifyingFailures } from "./failure-class.js";
 import { carriedVerdict, carryRoutes } from "./carry-merge.js";
@@ -212,8 +213,8 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     capability: (name) => ctx.capability(name),
     expireGates: (reason, isStale) => ctx.expireGates(reason, isStale),
     seed: (stepId, fn) => ctx.seed(stepId, fn),
-    assisted: routingStuckBehind(run, () => run.lastCi?.headSha, askingOnlyOverMerge(run, recordingOverrides(followingApprovals(ctx, conflictCheckedGates(
-      packetTriggering(packetRunOf(run), shepherdSuperseding(run)), conflictCheck, leaveOnConflict), { ...setCarryOf(run, isVisualGate), reviewedMerge }),
+    assisted: routingStuckBehind(run, () => run.lastCi?.headSha, askingOnlyOverMerge(run, recordingOverrides(followingApprovals(ctx, followingReleaseApproval(run,conflictCheckedGates(
+      packetTriggering(packetRunOf(run), shepherdSuperseding(run)), conflictCheck, leaveOnConflict)), { ...setCarryOf(run, isVisualGate), reviewedMerge }),
       reviewedMerge, (override) => recordOverride(ctx, run.target, override)))),
     authorize: (stepId, request, options) => ctx.authorize(stepId, request, options),
     dispatch: async (stepId, template, options) => readDispatch(run, stepId, await ctx.dispatch(stepId, template, options)),
