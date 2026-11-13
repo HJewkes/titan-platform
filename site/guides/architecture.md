@@ -155,6 +155,7 @@ graph TD
   messaging --> rpcProtocol
   openaiAccount --> anthropicAccount
   ownerQueue --> evidence
+  ownerQueue --> pm
   pm --> locator
   queueMirror --> hitl
   queueMirror --> matrixBus
@@ -288,6 +289,7 @@ graph TD
   factory --> health
   factory --> hitl
   factory --> ownerQueue
+  factory --> pm
   factory --> pngDelta
   factory --> registry
   factory --> reviewPanel

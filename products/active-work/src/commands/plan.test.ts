@@ -10,6 +10,7 @@ import { listTools } from '../server/mcp.js';
 import { runCliInProcess } from '../test-support/cli-runner.js';
 import { parseJson } from '../test-support/parse-json.js';
 import { withTempActiveRoot, writeAgentVisibleBrief } from '../test-support/test-helpers.js';
+import { readPlanRecord, writePlanRecord } from '@titan-design/pm/node';
 import { planFreezeAdd, planOutcomeAdd, planOutOfScopeAdd } from './plan-add.js';
 import { planBetAdd, planBetList } from './plan-bet.js';
 import { planBetShow, planFreezeShow, planOutcomeList, planOutcomeShow, planOutOfScopeShow } from './plan-read.js';
@@ -79,7 +80,7 @@ describe('plan verbs round-trip', () => {
   it('freeze and out-of-scope add write numbered records that show reads back', async () => {
     await withTempActiveRoot(async (root) => {
       writeAgentVisibleBrief(root, 'alpha');
-      const freezeArgs = { initiative: 'alpha', tag: 'console', reason: 'Settling', set_by: 'owner' as const, ...intent };
+      const freezeArgs = { initiative: 'alpha', tag: 'console', reason: 'Settling', ...intent };
 
       const freeze = await planFreezeAdd.run({ ...freezeArgs, ends: 'measure:p50 minutes:decrease:20' }, ctx(root));
       const dated = await planFreezeAdd.run({ ...freezeArgs, ends: 'date:2026-12-01' }, ctx(root));
@@ -95,7 +96,7 @@ describe('plan verbs round-trip', () => {
   it('refuses a freeze end condition in no known form, and writes nothing', async () => {
     await withTempActiveRoot(async (root) => {
       writeAgentVisibleBrief(root, 'alpha');
-      const args = { initiative: 'alpha', tag: 'console', reason: 'Settling', set_by: 'owner' as const, ...intent };
+      const args = { initiative: 'alpha', tag: 'console', reason: 'Settling', ...intent };
 
       await expect(planFreezeAdd.run({ ...args, ends: 'soon' }, ctx(root))).rejects.toBeInstanceOf(UsageError);
       await expect(planFreezeAdd.run({ ...args, ends: 'date:later' }, ctx(root))).rejects.toBeInstanceOf(ValidationError);
@@ -177,6 +178,56 @@ describe('owner actions', () => {
     expect(tools.filter((tool) => /select|plan__outcome__edit/.test(tool))).toEqual([]);
     const cli = await runCliInProcess(['plan', 'bet', 'select', 'alpha/B1']);
     expect(cli.status).not.toBe(0);
+  });
+
+  // The console's owner ops (TP-5453 P3b) are the only writers of these fields; no surface here may take them.
+  it('no CLI, RPC or MCP verb takes a bet state, an outcome edit or a freeze end', () => {
+    const writers = registry.list().filter((cmd) => cmd.name.startsWith('plan.') && !/\.(show|list)$/.test(cmd.name));
+    const tools = listTools().map((tool) => tool.name);
+
+    const fields = writers.flatMap((cmd) => (cmd.args instanceof z.ZodObject ? Object.keys(cmd.args.shape) : []));
+    expect(writers.map((cmd) => cmd.name).sort()).toEqual(['plan.bet.add', 'plan.freeze.add', 'plan.out-of-scope.add', 'plan.outcome.add']);
+    expect(fields).not.toContain('state');
+    expect(fields).not.toContain('ended_on');
+    expect(tools.filter((tool) => tool.includes('plan__') && /select|edit|freeze__(set|end)/.test(tool))).toEqual([]);
+  });
+
+  it('plan freeze add --set-by owner is refused from the CLI and writes nothing', async () => {
+    await withTempActiveRoot(async (root) => {
+      writeAgentVisibleBrief(root, 'alpha');
+      const argv = ['--json', 'plan', 'freeze', 'add', 'alpha', '--tag', 'console', '--reason', 'Settling', '--ends', 'owner', '--set-by', 'owner', '--intent-ref', 'D12', '--quote-ref', 'msg:abc123'];
+
+      const res = await runCliInProcess(argv, { ACTIVE_ROOT: root });
+
+      expect(res.status).not.toBe(0);
+      expect(`${res.stdout}${res.stderr}`).toMatch(/set_by owner is refused here/);
+      await expect(fs.readdir(path.join(root, 'alpha/plan/freezes'))).rejects.toThrow();
+    });
+  });
+
+  it('plan.freeze.add over RPC refuses set_by owner, and records decider when none is claimed', async () => {
+    await withTempActiveRoot(async (root) => {
+      writeAgentVisibleBrief(root, 'alpha');
+      const args = { initiative: 'alpha', tag: 'console', reason: 'Settling', ends: 'owner', ...intent };
+
+      await expect(planFreezeAdd.run({ ...args, set_by: 'owner' }, ctx(root))).rejects.toBeInstanceOf(ValidationError);
+      const freeze = await planFreezeAdd.run(args, ctx(root));
+
+      expect(freeze).toMatchObject({ id: 'alpha/F1', set_by: 'decider' });
+    });
+  });
+
+  it('a bet the owner-op path selects through the shared plan store is what plan bet list --week returns', async () => {
+    await withTempActiveRoot(async (root) => {
+      await seedAlpha(root);
+      const proposed = await planBetAdd.run(betArgs, ctx(root));
+      await writePlanRecord(root, 'bet', { ...proposed, state: 'selected' });
+
+      const res = await runCliInProcess(['--json', 'plan', 'bet', 'list', '--initiative', 'alpha', '--week', '2026-W47'], { ACTIVE_ROOT: root });
+
+      expect(parseJson(res.stdout, z.object({ data: z.array(z.object({ id: z.string(), state: z.string() })) })).data).toEqual([{ ...proposed, state: 'selected' }].map(({ id, state }) => ({ id, state })));
+      expect(await readPlanRecord(root, 'bet', proposed.id)).toMatchObject({ state: 'selected' });
+    });
   });
 
   it('bet add ignores a state passed by the caller and writes proposed', async () => {

@@ -3,6 +3,7 @@
 import type { ServedCommands } from "../../src/data/rpc.js";
 import { AR_RUN_FIXTURE, AR_RUN_PRE_S3A, AR_RUN_PRE_S3A_SUMMARY, AR_RUN_SUMMARY } from "./autoresearch.js";
 import { TWIN_NOW } from "./clock.js";
+import { PLAN_ITEMS } from "./plan-ops.js";
 import { TWIN_VIDEO_EDITS, TWIN_VIDEO_PROPS } from "./video-props.js";
 import { listPage, listRow, type TasksArgs } from "../task-list.js";
 
@@ -121,6 +122,7 @@ const INBOX_ITEMS = [
   inboxItem("ask-6", { sources: [{ system: "agent-chat", ref: "msg-6" }], kind: "decide", lens: "blocking-agent", summary: "Which port should the depth probe listen on?", openedAt: at(40 * MINUTE), action: { kind: "answer-chat", msgId: "msg-6" } }),
   inboxItem("round-ship", { sources: [{ system: "round", ref: "ship-tile-r1" }], kind: "review", summary: "Ship tile frames", openedAt: at(5 * HOUR), evidence: "#/rounds/ship-tile-r1", action: { kind: "open-round", roundId: "ship-tile-r1" } }),
   inboxItem("task-or-9", { sources: [{ system: "active-work", ref: "orbit-relay/OR-9" }], kind: "decide", lens: "planning", section: "planning", summary: "Plan OR-9", evidence: "#/tasks/OR-9", action: { kind: "open", route: "#/tasks/OR-9" } }),
+  ...PLAN_ITEMS,
 ];
 
 type WatchRow = Served["shepherd.list"]["result"][number];

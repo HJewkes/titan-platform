@@ -12,6 +12,7 @@ import type { MERGE_WAITS, OwnerItem, OwnerOp, OwnerOpKind } from "@titan-design
 import { holdClassOf } from "./gate-strip.js";
 import type { InboxItem } from "./inbox-view.js";
 import type { ActionOutcome } from "./owner-action.js";
+import { isPlanOp, planMessageOf, planReadBackOf, postedPlanOp, type PlanReadBack } from "./inbox-plan-op.js";
 import type { OpPreview, ShepherdSource } from "./shepherd.js";
 
 export type OpAction = Extract<InboxItem["action"], { kind: "owner-op" }>;
@@ -20,7 +21,7 @@ type PrFacts = NonNullable<OpPreview["pr"]>;
 type AgentFacts = NonNullable<OpPreview["agent"]>;
 export type RetireOp = Extract<OwnerOp, { kind: "retire-agent" }>;
 
-export type OpReadBack = PrOpReadBack | AgentOpReadBack | PauseReadBack;
+export type OpReadBack = PrOpReadBack | AgentOpReadBack | PauseReadBack | PlanReadBack;
 
 interface Proposed {
   /** The authority row and verdict that let the console ask for this op, as the factory evaluated them, such as `MRG-OR: gate`. */
@@ -105,9 +106,10 @@ function factsOf(item: OwnerItem, pr: PrFacts & { head: string }, authority: str
 
 /** The read-back, or the reason there is nothing the console may do: the table denies the op, its target is gone, or the pause is not the deposit's. */
 export async function opReadBackOf(shepherd: ShepherdSource, item: OwnerItem, { op }: OpAction, waitFor?: MergeWait): Promise<OpReadBack | string> {
+  if (waitFor !== undefined && op.kind !== "merge-at-head") return `only a merge-at-head waits for the adversary loop, not a ${op.kind} op`;
+  if (isPlanOp(op)) return planOpReadBackOf(shepherd, item, op);
   const effect = EFFECT[op.kind];
   if (effect === undefined) return `a ${op.kind} op has no console tap yet`;
-  if (waitFor !== undefined && op.kind !== "merge-at-head") return `only a merge-at-head waits for the adversary loop, not a ${op.kind} op`;
   if (op.kind === "retire-agent") return op.force ? FORCE_AT_TERMINAL : (await retireReadOf(shepherd, op, proposalOf(item))).readBack;
   const preview = await shepherd.previewOp(op);
   const denied = deniedBy(op, preview);
@@ -119,6 +121,11 @@ export async function opReadBackOf(shepherd: ShepherdSource, item: OwnerItem, { 
   if (pr.head === undefined) return `${pr.repo}#${pr.pr} is ${pr.state} on GitHub, so there is nothing to act on`;
   const facts = factsOf(item, { ...pr, head: pr.head }, authority, effect(`${pr.repo}#${pr.pr} at ${short(pr.head)}`));
   return op.kind === "merge-at-head" ? mergeFacts(facts, waitFor) : facts;
+}
+
+async function planOpReadBackOf(shepherd: ShepherdSource, item: OwnerItem, op: Parameters<typeof planReadBackOf>[1]): Promise<OpReadBack | string> {
+  const preview = await shepherd.previewOp(op);
+  return deniedBy(op, preview) ?? planReadBackOf(item, op, preview.plan, authorityOf(preview));
 }
 
 /** A g10 hold changes what a merge tap means: the forced merge says it skips the hold, and only a held PR has a loop to wait for. */
@@ -183,12 +190,13 @@ function pauseReadBackOf(item: OwnerItem, op: PauseOp, pause: PauseFacts | undef
 
 /** The op the record posts: the deposit's target at the head the owner was shown, waiting for the loop only when the owner chose to. */
 export function postedOp(op: OwnerOp, readBack: OpReadBack): OwnerOp {
+  if (isPlanOp(op)) return "planOp" in readBack ? postedPlanOp(op, readBack) : op;
   if (!("headSha" in op && "pr" in op && "headSha" in readBack)) return op;
   if (op.kind !== "merge-at-head") return { ...op, headSha: readBack.headSha };
   return { kind: op.kind, repo: op.repo, pr: op.pr, headSha: readBack.headSha, ...(readBack.waitFor && { waitFor: readBack.waitFor }) };
 }
 
-type OpOutcome = Extract<ActionOutcome, { status: "accepted" | "approved" | "pr-closed" | "pause-cleared" | "retired" | "released" }>;
+type OpOutcome = Extract<ActionOutcome, { status: "accepted" | "approved" | "pr-closed" | "pause-cleared" | "retired" | "released" | "plan-applied" }>;
 
 /** What a typed owner op's, or a hold release's, landed effect did. */
 export function opMessageOf(outcome: OpOutcome): string {
@@ -205,6 +213,8 @@ export function opMessageOf(outcome: OpOutcome): string {
       return [`Retired ${outcome.name}`, ...outcome.caveats].join("; ");
     case "released":
       return outcome.stillHeld === null ? "Hold released" : `Hold released; the PR is still held: ${outcome.stillHeld}`;
+    case "plan-applied":
+      return planMessageOf(outcome.op, outcome.ids);
   }
 }
 

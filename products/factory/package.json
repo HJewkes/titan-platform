@@ -51,6 +51,7 @@
     "@titan-design/health": "workspace:^",
     "@titan-design/hitl": "workspace:^",
     "@titan-design/owner-queue": "workspace:^",
+    "@titan-design/pm": "workspace:^",
     "@titan-design/png-delta": "workspace:^",
     "@titan-design/registry": "workspace:^",
     "@titan-design/review-panel": "workspace:^",
