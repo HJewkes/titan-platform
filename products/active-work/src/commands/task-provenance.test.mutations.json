@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "filed_by ignores the broker's agent name",
+      "file": "products/active-work/src/commands/_task-provenance.ts",
+      "find": "env.AGENT_CHAT_NAME?.trim()",
+      "replace": "''",
+      "kills": ["task add records provenance filed_by comes from AGENT_CHAT_NAME not a flag"]
+    },
+    {
+      "name": "task_require is never enforced",
+      "file": "products/active-work/src/commands/_task-provenance.ts",
+      "find": "if (missing.length === 0) return;",
+      "replace": "return;",
+      "kills": ["task add records provenance add refuses a task without class when the brief requires it"]
+    },
+    {
+      "name": "a started task is not dispatched",
+      "file": "products/active-work/src/tasks/dispatched.ts",
+      "find": "task.started_at !== undefined ||",
+      "replace": "",
+      "kills": ["task edit guards relabels after dispatch class edit after dispatch is refused from the CLI"]
+    },
+    {
+      "name": "a spawn naming the qualified id is missed",
+      "file": "products/active-work/src/tasks/dispatched.ts",
+      "find": "get(id, `${slug}/${id}`)",
+      "replace": "get(id, id)",
+      "kills": ["task edit guards relabels after dispatch refuses source and serves once a spawn names the task, but still takes blocked_on"]
+    },
+    {
+      "name": "an unreadable spawn store lets the relabel through",
+      "file": "products/active-work/src/tasks/dispatched.ts",
+      "find": "return true;",
+      "replace": "return false;",
+      "kills": ["task edit guards relabels after dispatch treats an unreadable spawn store as dispatched"]
+    }
+  ]
+}

@@ -35,6 +35,15 @@ import {
   type TaskOrLine,
 } from './_task-quiet.js';
 import { warnRelatedTasks } from './_task-related.js';
+import {
+  assertProvenance,
+  assertRequiredFields,
+  filedBy,
+  filedOrigins,
+  provenanceArgs,
+  TASK_PROVENANCE_OPTIONS,
+  TaskProvenanceArgsShape,
+} from './_task-provenance.js';
 import { parseOwnerSteps, TASK_PLAN_OPTIONS, TaskPlanArgsShape } from './_task-plan-fields.js';
 
 const ArgsSchema = z.object({
@@ -55,6 +64,7 @@ const ArgsSchema = z.object({
   due: DueArg,
   draft: z.boolean().optional(),
   ...TaskPlanArgsShape,
+  ...TaskProvenanceArgsShape,
   quiet: QuietArg,
 });
 
@@ -85,8 +95,12 @@ function nextPriority(existing: Task[]): number {
   return max + 1;
 }
 
-function newTask(args: Args, id: string, priority: number): Task {
+function newTask(args: Args, id: string, priority: number, filer: string): Task {
+  const provenance = provenanceArgs(args);
   return {
+    ...provenance,
+    filed_by: filer,
+    field_origin: filedOrigins(undefined, Object.keys(provenance)),
     id,
     parent: args.parent,
     dep: args.dep,
@@ -148,6 +162,7 @@ export default defineCommand<Args, TaskOrLine>({
       },
       ...CATEGORY_OPTIONS,
       ...TASK_PLAN_OPTIONS,
+      ...TASK_PROVENANCE_OPTIONS,
       quiet: quietOption('PRJ-12 created'),
     },
   },
@@ -169,7 +184,9 @@ export default defineCommand<Args, TaskOrLine>({
       if (args.parent !== undefined || args.dep !== undefined) {
         await assertEdgeWrite({ slug: args.slug, id, parent: args.parent, dep: args.dep });
       }
-      const task = newTask(args, id, args.priority ?? nextPriority(existing));
+      const task = newTask(args, id, args.priority ?? nextPriority(existing), filedBy(process.env, ctx.caller));
+      assertRequiredFields(brief.frontmatter, task);
+      await assertProvenance(activeRoot, task);
       await assertCategories(activeRoot, task, changedCategoryFields(args));
       await assertKnownBet(task);
       const taskDir = path.join(getInitiativeDir(args.slug), 'tasks');
