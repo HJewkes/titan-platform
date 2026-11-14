@@ -73,7 +73,7 @@ export function NeedsYouRegion(): ReactNode {
 
 const TOP_BLOCKERS = 3;
 
-/** The inbox's blocking count, its rounds waiting over six hours, and its newest three; each opens the inbox, which holds the commands. */
+/** The inbox's blocking count, its rounds waiting over six hours, and its newest three; the count opens the inbox and each row opens its own item, where the commands are. */
 function InboxTop({ blockers, waiting, gaps }: { blockers: readonly InboxItem[]; waiting: number; gaps: number }): ReactNode {
   if (blockers.length === 0 && waiting === 0 && gaps === 0) return null;
   const openInbox = () => open({ view: "inbox" });
@@ -84,7 +84,7 @@ function InboxTop({ blockers, waiting, gaps }: { blockers: readonly InboxItem[];
           {`Inbox: ${blockers.length} blocking${waiting > 0 ? `, ${waiting} ${waiting === 1 ? "round" : "rounds"} waiting over 6 h` : ""}${gaps > 0 ? `, ${gaps} ${gaps === 1 ? "source" : "sources"} unreadable` : ""}`}
         </Link>
         {blockers.slice(0, TOP_BLOCKERS).map((item) => (
-          <ListItem key={item.id} onPress={openInbox} testID={`home-inbox-${item.id}`}>
+          <ListItem key={item.id} onPress={() => open({ view: "inbox", id: item.id })}testID={`home-inbox-${item.id}`}>
             <ListItemContent title={item.summary} subtitle={ageOf(item.openedAt)} />
             <ListItemTrailing>
               <Badge color={badgeOf(item).color} variant="subtle" size="sm">
