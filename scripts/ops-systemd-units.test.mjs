@@ -7,6 +7,35 @@ const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
 const unit = (name) => readFileSync(join(REPO, "ops", "systemd", name), "utf8");
 const line = (text, key) => text.match(new RegExp(`^${key}=(.*)$`, "m"))?.[1];
 
+describe("titan-dispatch-shadow units", () => {
+  const service = () => unit("titan-dispatch-shadow.service");
+  const timer = () => unit("titan-dispatch-shadow.timer");
+
+  it("runs only the shadow tick, with no path or flag after the verb", () => {
+    expect(line(service(), "ExecStart")).toMatch(/ dispatch shadow-tick$/);
+  });
+
+  it("is a five-minute oneshot that treats a held lock as success and reads the env file", () => {
+    expect(line(service(), "Type")).toBe("oneshot");
+    expect(line(service(), "TimeoutStartSec")).toBe("5min");
+    expect(line(service(), "SuccessExitStatus")).toBe("75");
+    expect(line(service(), "EnvironmentFile")).toBeDefined();
+  });
+
+  it("fires at :07 and :37 and does not replay missed ticks", () => {
+    expect(line(timer(), "OnCalendar")).toBe("*:07,37");
+    expect(line(timer(), "Persistent")).toBe("false");
+  });
+
+  it("carries no apply flag, spawn verb or spaced operator path", () => {
+    for (const text of [service(), timer()]) {
+      expect(text).not.toContain("--apply");
+      expect(text).not.toContain("spawn");
+      expect(text).not.toContain("Application Support");
+    }
+  });
+});
+
 describe("ticket-scorecard units", () => {
   it("structure test: unit names a dist bin that exists", () => {
     const execStart = line(unit("ticket-scorecard.service"), "ExecStart");
