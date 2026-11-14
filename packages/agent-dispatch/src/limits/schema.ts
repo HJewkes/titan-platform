@@ -132,4 +132,3 @@ export type SeatLimits = z.infer<typeof seatSchema>;
 export type LimitsOverride = z.infer<typeof overrideSchema>;
 export type Lift = z.infer<typeof liftSchema>;
 export type Grant = z.infer<typeof grantSchema>;
-export type TunableFields = { [K in keyof typeof tunableFields]?: number };

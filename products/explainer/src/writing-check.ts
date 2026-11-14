@@ -1,6 +1,9 @@
 import { MIN_REGISTER_WORDS, spokenText, type Band, type SpokenText } from "./lint-register.js";
 import { WRITING_BANDS, WRITING_MEASURES, type WritingMetric } from "./lint-writing.js";
 import { WRITING_BUCKETS, type BucketName, type WritingCheck } from "./writing-calibrate.js";
+import { textHallmarkRows } from "./lint-hallmarks.js";
+import { writingGateRows, type GateRow } from "./writing-gate.js";
+import { ownerStatus } from "./writing-gate-policy.js";
 import type { WritingStatus } from "./writing-status.js";
 
 const MAX_SPANS = 3;
@@ -72,6 +75,8 @@ export interface WritingReport {
   bucket: BucketName | null;
   humanReference: string;
   rows: WritingRow[];
+  /** The writing gate and hallmark rows of `doctrine/writing-gate.json` (TP-5721), apart from the calibrated rows. */
+  gate: GateRow[];
   verdict: { pass: boolean; gateFails: number; warnings: number; reportOnly: number; gatesUnmeasured: number };
 }
 
@@ -139,7 +144,7 @@ function rowVerdict(status: WritingStatus, value: number | null, band: Band): Ro
 function scoreRow([metric, dimension]: (typeof ROWS)[number], beats: readonly WritingBeat[], parsed: SpokenText, check: WritingCheck, bucket: BucketName | null): WritingRow {
   const value = WRITING_MEASURES[metric](parsed) ?? null;
   const band = WRITING_BANDS[metric];
-  const status: WritingStatus = bucket === null ? "report-only" : check.statusByBucket[metric][bucket];
+  const status: WritingStatus = bucket === null ? "report-only" : ownerStatus(metric, check.statusByBucket[metric][bucket]);
   const verdict = rowVerdict(status, value, band);
   const overCap = value !== null && value > band.max;
   const showSpans = verdict === "fail" && overCap && !SPANLESS.has(metric);
@@ -150,22 +155,27 @@ function scoreRow([metric, dimension]: (typeof ROWS)[number], beats: readonly Wr
   };
 }
 
-function tally(rows: readonly WritingRow[]): WritingReport["verdict"] {
-  const gateFails = rows.filter((row) => row.status === "gate" && row.verdict === "fail").length;
+/** Gate rows count with the calibrated ones: an error row is a gate, and an error the text cannot carry is unmeasured. */
+function tally(rows: readonly WritingRow[], gate: readonly GateRow[]): WritingReport["verdict"] {
+  const gateFails = rows.filter((row) => row.status === "gate" && row.verdict === "fail").length + gate.filter((row) => row.severity === "error" && !row.pass).length;
   return {
     pass: gateFails === 0,
     gateFails,
-    warnings: rows.filter((row) => row.status === "warning" && row.verdict === "fail").length,
-    reportOnly: rows.filter((row) => row.status === "report-only").length,
-    gatesUnmeasured: rows.filter((row) => row.status === "gate" && row.verdict === "unmeasured").length,
+    warnings: rows.filter((row) => row.status === "warning" && row.verdict === "fail").length + gate.filter((row) => row.severity === "warning" && !row.pass).length,
+    reportOnly: rows.filter((row) => row.status === "report-only").length + gate.filter((row) => row.severity === "report-only").length,
+    gatesUnmeasured: rows.filter((row) => row.status === "gate" && row.verdict === "unmeasured").length + gate.filter((row) => row.severity === "error" && row.value === null).length,
   };
 }
 
-/** Scores a script's beats against the status table at the script's own length. Under 150 words every row is report-only. */
+/**
+ * Scores a script's beats against the status table at the script's own length, and against the writing gate. Under
+ * 150 words every calibrated and gate row is report-only; the hallmark counts still apply.
+ */
 export function scoreWriting(beats: readonly WritingBeat[], check: WritingCheck): WritingReport {
   const parsed = spokenText(beats.map((beat) => beat.spoken));
   const words = parsed.words.length;
   const bucket = words < MIN_REGISTER_WORDS ? null : bucketFor(words);
   const rows = ROWS.map((row) => scoreRow(row, beats, parsed, check, bucket));
-  return { words, bucket, humanReference: HUMAN_REFERENCE, rows, verdict: tally(rows) };
+  const gate = [...writingGateRows(beats), ...textHallmarkRows(beats)];
+  return { words, bucket, humanReference: HUMAN_REFERENCE, rows, gate, verdict: tally(rows, gate) };
 }

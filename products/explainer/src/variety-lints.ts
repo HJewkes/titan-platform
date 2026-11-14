@@ -2,6 +2,7 @@ import type { L0Check, L0Result } from "./eval-l0.js";
 import { isStillMotion } from "./resolve-beat.js";
 import type { VisualLayer } from "./resolve-tables.js";
 import type { ScriptBeat } from "./script-schema.js";
+import { reportOnlyL0Row } from "./writing-gate-policy.js";
 
 /** One variety lint's verdict on one video. `beats` are the beats a fix would change; `hint` names them. */
 export interface VarietyRow {
@@ -49,6 +50,7 @@ interface Keyed {
 // The review's stock opening: "what can <repo> crib from <other repo>".
 const HOOK_FORMULA = /\bwhat\s+(?:can|should)\s+(?:\S+\s+){1,3}?crib\s+from\b/i;
 const CONNECTOR_STARTS = new Set(["so", "but", "then", "and", "now"]);
+const CONNECTOR_SHARE_ID = "variety:connector-share";
 const MAP_OPS = ["camera", "reveal", "edges", "focus", "message_in_flight", "cards", "annotations", "pins"] as const;
 
 const named = (ids: readonly string[]): string => ids.join(", ");
@@ -93,14 +95,17 @@ export function hookFormulaRow(beats: readonly ScriptVarietyBeat[]): VarietyRow 
   return { id: "variety:hook-formula", value: hit ? 1 : 0, threshold: 0, pass: !hit, beats: hit ? [first.id] : [], hint };
 }
 
-/** The share of beats whose first spoken word is a stock connector. */
+/**
+ * The share of beats whose first spoken word is a stock connector. Report-only by the owner's override in
+ * `doctrine/writing-gate.json`: repeated openers do not separate human from machine text (TP-5721).
+ */
 export function connectorShareRow(beats: readonly ScriptVarietyBeat[]): VarietyRow {
   const max = VARIETY_LIMITS.connectorMaxShare;
   const ids = beats.filter((beat) => CONNECTOR_STARTS.has(firstWord(beat.spoken))).map((beat) => beat.id);
   const share = ids.length / beats.length;
-  const pass = share <= max;
+  const pass = reportOnlyL0Row(CONNECTOR_SHARE_ID) || share <= max;
   const hint = `${ids.length} of ${beats.length} beats (${percent(share)}, at most ${percent(max)}) open on so, but, then, and or now${ids.length ? `: ${named(ids)}` : ""}`;
-  return { id: "variety:connector-share", value: share, threshold: max, pass, beats: pass ? [] : ids, hint };
+  return { id: CONNECTOR_SHARE_ID, value: share, threshold: max, pass, beats: pass ? [] : ids, hint };
 }
 
 const beatActions = ({ visual }: ScriptVarietyBeat): string[] => {
