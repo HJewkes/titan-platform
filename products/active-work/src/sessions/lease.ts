@@ -271,6 +271,8 @@ export interface LeaseSweepResult {
   pruned: number;
   /** Set when the sweep could not complete (e.g. the directory is unreadable). */
   error?: string;
+  /** The initiative whose lease directory failed, when the error is under one rather than the root. */
+  failedSlug?: string;
 }
 
 /**
@@ -305,7 +307,7 @@ export async function sweepAllLeases(
       before += names.filter((n) => n.endsWith('.json')).length;
       live += (await readLiveLeases({ activeRoot, slug, ...options })).length;
     } catch (err) {
-      return { live, pruned: Math.max(before - live, 0), error: (err as Error).message };
+      return { live, pruned: Math.max(before - live, 0), error: (err as Error).message, failedSlug: slug };
     }
   }
   return { live, pruned: Math.max(before - live, 0) };
