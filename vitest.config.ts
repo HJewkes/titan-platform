@@ -58,6 +58,7 @@ const sharedGraphNeedsIsolation = [
   "products/factory/src/bot-token-path.test.ts",
   "products/factory/src/deploy-cli-link.test.ts",
   "products/factory/src/eligibility/shadow/fence.test.ts",
+  "products/factory/src/eligibility/stop-signals.test.ts",
   "products/factory/src/host.ownership-lost.test.ts",
   "products/factory/src/remote-factory.test.ts",
   "products/factory/src/serve-loop-delay.test.ts",
