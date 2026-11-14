@@ -6,6 +6,9 @@ import { ownerValidateStamp, type OwnerValidateField, type OwnerValidateMode, ty
 import { latestTaskApproval } from "./owner-task-approval.js";
 import { TaskKeySchema, type PlanApprovals, type TaskApproval } from "./plan-approval.js";
 
+/** The merge evidence step takes the rule's decide and field through this module, beside the read that feeds them. */
+export { ownerValidateDecided, type OwnerValidateField } from "./g10-owner-validate.js";
+
 /** The slice of task-approval-round.ts's `TaskApprovalReads` this rule reads; a failed read throws. */
 interface OwnerValidateTaskReads {
   task(initiative: string, id: string): Promise<{ tags: string[]; doneWhen: string } | undefined>;
