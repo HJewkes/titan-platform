@@ -1,6 +1,8 @@
 import { prepareAuditRollup } from "./audit-rollup.js";
 import { SIGNAL_COPY_RANK } from "./audit-schema.js";
+import { RELATIONS } from "@titan-design/session-read";
 import type { SessionGraph } from "./graph.js";
+import { KIT } from "./schema.js";
 
 const BATCH = 400;
 
@@ -146,6 +148,18 @@ const RECONCILE_PR_CREATES = `
   ON CONFLICT (pr_ref) DO UPDATE SET title = COALESCE(pr.title, excluded.title), url = COALESCE(pr.url, excluded.url)`;
 
 /**
+ * pr --built_on--> branch (TP-80): only a create whose result named the PR and whose
+ * command named the head yields one, so a failed create, which has no result half, never does.
+ */
+const RECONCILE_BUILT_ON = `
+  INSERT INTO "${KIT.edge}" (source_ref, relation, target_ref, t_valid, attrs)
+  SELECT 'pr:' || repo || '#' || number, '${RELATIONS.BUILT_ON}', head_ref, created_at,
+    CASE WHEN base IS NULL THEN NULL ELSE json_object('base', base) END
+  FROM pr_create_observation
+  WHERE number IS NOT NULL AND repo IS NOT NULL AND head_ref IS NOT NULL AND created_at IS NOT NULL
+  ON CONFLICT (source_ref, relation, target_ref) WHERE t_expired IS NULL DO NOTHING`;
+
+/**
  * A subagent ends when its child session's last line does, not when the
  * dispatch's tool_result returns (most dispatches are async and return at
  * launch). Parentage comes from the dispatch that ran inside a child transcript.
@@ -158,6 +172,7 @@ const RECONCILE_SUBAGENTS = `
 export interface ReconcileCounts {
   prMerges: number;
   prCreates: number;
+  builtOn: number;
   subagents: number;
 }
 
@@ -166,6 +181,7 @@ export function reconcile(graph: SessionGraph): ReconcileCounts {
   return {
     prCreates: graph.db.prepare(RECONCILE_PR_CREATES).run().changes,
     prMerges: graph.db.prepare(RECONCILE_PR_MERGES).run().changes,
+    builtOn: graph.db.prepare(RECONCILE_BUILT_ON).run().changes,
     subagents: graph.db.prepare(RECONCILE_SUBAGENTS).run().changes,
   };
 }

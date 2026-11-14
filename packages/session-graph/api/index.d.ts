@@ -195,6 +195,7 @@ declare function rollupYielding(graph: SessionGraph, sessionIds: readonly string
 interface ReconcileCounts {
     prMerges: number;
     prCreates: number;
+    builtOn: number;
     subagents: number;
 }
 /** Whole-table reconciliations, run once at the end of a refresh pass after the rollup. */
