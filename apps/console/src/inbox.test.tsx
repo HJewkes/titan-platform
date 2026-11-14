@@ -606,3 +606,34 @@ describe("the round age nudge", () => {
     expect(screen.queryByTestId("inbox-nudges")).toBeNull();
   });
 });
+
+describe("the inbox page, who asked and what an answer unblocks", () => {
+  it("shows the asker, the initiative link and the unblocksNow line, and the initiative opens its page", async () => {
+    const row = item("who-1", { asker: "fixture-agent", initiative: "demo-init", unblocksNow: "Unblocks the demo lane" });
+    renderInbox(inboxAnswer({ items: [row] }));
+    const card = await screen.findByTestId("inbox-row-who-1");
+    expect(within(card).getByText("Asked by fixture-agent")).toBeTruthy();
+    expect(within(card).getByText("Unblocks now: Unblocks the demo lane")).toBeTruthy();
+    fireEvent.click(within(card).getByText("demo-init"));
+    expect(window.location.hash).toBe("#/initiatives/demo-init");
+  });
+
+  it("falls back to the seat when there is no asker", async () => {
+    renderInbox(inboxAnswer({ items: [item("who-2", { seat: "fixture-seat" })] }));
+    expect(within(await screen.findByTestId("inbox-row-who-2")).getByText("Asked by fixture-seat")).toBeTruthy();
+  });
+
+  it("shows no empty labels on an item that carries none of them", async () => {
+    renderInbox(inboxAnswer({ items: [item("who-3", {})] }));
+    const card = await screen.findByTestId("inbox-row-who-3");
+    expect(within(card).queryByText(/Asked by/)).toBeNull();
+    expect(within(card).queryByText(/Unblocks now/)).toBeNull();
+    expect(within(card).queryByText(/Blocks:/)).toBeNull();
+  });
+
+  it("shows what a hard-blocked item blocks", async () => {
+    const row = item("who-4", { blocker: { since: ago(HOUR), blocks: "lane console, TP-6158" } });
+    renderInbox(inboxAnswer({ items: [row] }));
+    expect(within(await screen.findByTestId("inbox-row-who-4")).getByText("Blocks: lane console, TP-6158")).toBeTruthy();
+  });
+});
