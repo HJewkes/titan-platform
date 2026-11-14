@@ -11,8 +11,8 @@ export const RUBRICS: WritingRubrics = {
 export const CANARY_LINE = "That is called the cassette.";
 export const FILLER = "The pump sends warm water through the copper pipe today.";
 
-export type Mark = { id: string; quote: string; why: string };
-export type Term = { term: string; first_mention: string; definition: string | null; motivation: string | null; used_after: boolean };
+type Mark = { id: string; quote: string; why: string };
+type Term ={ term: string; first_mention: string; definition: string | null; motivation: string | null; used_after: boolean };
 
 const reply = <T,>(call: JudgeCall<T>, output: unknown): JudgeReply<T> => ({ ok: true, output: call.schema.parse(output), usd: 0.1, tokensIn: 10, tokensOut: 5 });
 
