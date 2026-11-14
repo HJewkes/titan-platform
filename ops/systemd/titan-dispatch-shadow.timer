@@ -1,0 +1,10 @@
+[Unit]
+Description=Dispatcher shadow tick, every 30 minutes
+
+[Timer]
+OnCalendar=*:07,37
+# A missed tick is not replayed: a shadow row is a reading of now.
+Persistent=false
+
+[Install]
+WantedBy=timers.target
