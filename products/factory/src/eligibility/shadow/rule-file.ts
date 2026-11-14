@@ -20,12 +20,21 @@ const ShadowSchema = z.object({ enabled: z.boolean().default(false), dir: z.stri
 /** Keys later slices read (PLAN 5.4) are accepted now so the owner's full example file parses; this slice ignores them. */
 const PLANNED_KEYS = { bets: z.unknown().optional(), relax: z.unknown().optional(), intake: z.unknown().optional(), upkeep: z.unknown().optional(), stop: z.unknown().optional() };
 
+/** Whose spawns the shadow is scored against, and how a bare task id such as `TP-1` finds its initiative. */
+const CompareSchema = z
+  .object({
+    operator: z.string().min(1).default("tp-operator"),
+    prefixes: z.record(z.string().min(1), z.string().min(1)).default({ TP: "titan-platform" }),
+  })
+  .default({ operator: "tp-operator", prefixes: { TP: "titan-platform" } });
+
 const RuleFileSchema = z
   .object({
     schema: z.literal("titan-dispatcher/v1"),
     mode: z.literal("shadow"),
     shadow: ShadowSchema.default({ enabled: false }),
     lanes: z.array(LaneSchema).default([]),
+    compare: CompareSchema,
     ...PLANNED_KEYS,
   })
   .strict();
