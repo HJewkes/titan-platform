@@ -180,11 +180,7 @@ function withUnreadFacts(decision: GateDecision, evidence: DecidableEvidence | u
  * weakened CI-policy rows only when one approval of that gate covers the head (plan-approval-cover.ts, owner decision 551).
  */
 export function decideAutoMerge(
-  headSha: string,
-  evidence: DecidableEvidence | undefined,
-  visualPaths?: readonly string[],
-  visualBaselines?: VisualBaselines,
-  approved?: readonly PlanApproval[],
+  headSha: string, evidence: DecidableEvidence | undefined, visualPaths?: readonly string[], visualBaselines?: VisualBaselines, approved?: readonly PlanApproval[],
 ): GateDecision {
   const decision = decideOnFacts(headSha, evidence, { visualPaths, visualBaselines }, planHonour(approved));
   return withUnreadFacts(ownerValidateDecided(decision, evidence?.ownerValidate, approved, guardRule("owner-validate")), evidence);
@@ -370,7 +366,8 @@ export async function mergeEvidence(
   const authority = authorityLineOf(input.attest, kind);
   const read = { ...unknown, ...ciPolicy, ...visual, ...attest, ...oldPath, ...authority };
   const decidable: DecidableEvidence = { head: input.head, merge, record: input, mergeableState, ...read, ...grantWithheldField(input) };
-  const stamps = { ...authority, ...ownerTierStamp(reads.ownerTier, decidable), ...(await ownerValidateOf(reads, kind ?? {})) };
+  const ownerTier = { ...authority, ...ownerTierStamp(reads.ownerTier, decidable) };
+  const stamps = { ...ownerTier, ...(await ownerValidateOf(reads, kind ?? {})) };
   const decision = decideAutoMerge(input.head, { ...decidable, ...stamps }, input.visualPaths, input.visualBaselines);
   const visualPaths = input.visualPaths && { visualPaths: input.visualPaths };
   const ownerHold = kind?.ownerHold ?? kind?.unread;
