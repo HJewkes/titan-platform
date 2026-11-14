@@ -1,6 +1,5 @@
 import { execFile } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { depositItemId } from "@titan-design/owner-queue";
 import { readAnswer } from "@titan-design/owner-queue/spool";
@@ -20,12 +19,6 @@ export const shellConsoleRunner: ConsoleRunner = (args, stdin) =>
     });
     child.stdin?.end(stdin ?? "");
   });
-
-export function inboxDir(env: NodeJS.ProcessEnv = process.env): string {
-  if (env.TITAN_CONSOLE_INBOX_DIR) return env.TITAN_CONSOLE_INBOX_DIR;
-  const state = env.TITAN_CONSOLE_STATE ?? path.join(os.homedir(), ".local", "state", "titan-console");
-  return path.join(state, "inbox", "deposits");
-}
 
 export function readOwnerAnswer(dir: string): DailyDeps["readAnswer"] {
   return async (depositId) => (await readAnswer(dir, depositItemId("yt-scout", depositId)))?.text;
