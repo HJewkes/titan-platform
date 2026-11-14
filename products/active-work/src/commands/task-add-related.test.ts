@@ -288,6 +288,16 @@ describe('possible-dup tag', () => {
     expect(result.tags).toEqual(['possible-dup:RT-1']);
   });
 
+  it('single-character tokens do not count against a duplicate, as in the replay that tuned 0.9', async () => {
+    const write = vi.fn<TagWriter>(async () => {});
+    const title = `${neighbour.title} a b c`;
+    expect(jaccard(title, neighbour.title)).toBe(1);
+
+    const { result } = await tagging(title, write);
+
+    expect(result.tags).toEqual(['possible-dup:RT-1']);
+  });
+
   it('just under is not', async () => {
     const write = vi.fn<TagWriter>(async () => {});
 
