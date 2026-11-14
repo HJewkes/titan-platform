@@ -12,7 +12,7 @@ import { TEST_BRIEF } from "../test-support/brief.js";
 import { REPO } from "../test-support/land.js";
 import { CARRIED_MERGE_STEP } from "./diverged-merge.js";
 import { restartDivergedRuns } from "./diverged-sweep.js";
-import { answeredWhileParked, build, closeDeploys, closers, ctxOf, deploy, HEAD_A, HEAD_B, landPrompt, OWNER, parkedRuns, recorded, type Answered } from "./diverged-sweep.test-helpers.js";
+import { answeredWhileParked, build, closeDeploys, closers, ctxOf, deploy, HEAD_A, HEAD_B, landPrompt, OWNER, parkedRuns, recorded, type Answered } from "../test-support/diverged-sweep.js";
 
 afterEach(closeDeploys);
 

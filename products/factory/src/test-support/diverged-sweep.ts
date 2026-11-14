@@ -9,12 +9,12 @@ import { z } from "zod";
 import { defineWorkflow, type WorkflowDefinition } from "../definition.js";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes } from "../host.js";
 import { factoryContext } from "../registry.js";
-import { TEST_BRIEF } from "../test-support/brief.js";
-import { H1, REPO } from "../test-support/land.js";
-import { BRANCH, shepherdFixture, type ShepherdFixture } from "../test-support/shepherd.js";
-import { restartDivergedRuns } from "./diverged-sweep.js";
-import { OWNER_GATE_POLICY } from "./policy.js";
-import { SHEPHERD_WORKFLOW } from "./services.js";
+import { TEST_BRIEF } from "./brief.js";
+import { H1, REPO } from "./land.js";
+import { BRANCH, shepherdFixture, type ShepherdFixture } from "./shepherd.js";
+import { restartDivergedRuns } from "../shepherd/diverged-sweep.js";
+import { OWNER_GATE_POLICY } from "../shepherd/policy.js";
+import { SHEPHERD_WORKFLOW } from "../shepherd/services.js";
 
 const hosts: FactoryHost[] = [];
 export const closers: Array<() => Promise<void>> = [];

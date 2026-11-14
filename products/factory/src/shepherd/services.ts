@@ -1,11 +1,10 @@
 import type { AgentRow } from "@titan-design/agent-dispatch";
 import type { Logger } from "@titan-design/daemon";
-import type { GitHubPort } from "@titan-design/github";
+import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { GateRecord } from "@titan-design/hitl";
 import type { ReadTimer } from "./bounded.js";
 import type { FreezeStoreRef } from "./freeze.js";
 import type { GhGateway } from "./gh-gateway-port.js";
-import type { HeldCheck } from "./hold-timing.js";
 import type { MergeOrder, MergeOrderRules, OrderWaits, RunHolds } from "./merge-order.js";
 import type { PrFilesRead } from "./git-pr-files.js";
 import type { SeatBook } from "./seats.js";
@@ -22,7 +21,7 @@ export interface ShepherdServices extends SnapshotServices {
   store: ShepherdStoreRef;
   port: GitHubPort;
   /** The land loop's merge guard, which a merge outside land consults first; absent means such a merge never goes through (TP-5802). */
-  heldMerge?: HeldCheck;
+  heldMerge?: (repo: RepoSlug, pr: number, sha?: string) => Promise<string | undefined>;
   /** Read on every register, so a seat or deny change applies without a restart; an unreadable seat book refuses. */
   seats: () => SeatBook;
   /** Absent means no row reports a run waiting for its repo's merge train. */

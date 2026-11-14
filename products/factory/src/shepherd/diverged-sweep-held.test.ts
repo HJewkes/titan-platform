@@ -2,7 +2,7 @@ import { fakeSha } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
 import { REPO } from "../test-support/land.js";
 import { restartDivergedRuns } from "./diverged-sweep.js";
-import { answeredWhileParked, closeDeploys, ctxOf, HEAD_B, type Answered } from "./diverged-sweep.test-helpers.js";
+import { answeredWhileParked, closeDeploys, ctxOf, HEAD_B, type Answered } from "../test-support/diverged-sweep.js";
 
 afterEach(closeDeploys);
 
