@@ -2421,9 +2421,46 @@ The approve pick records a `task` row in `shepherd_plan_approval`, keyed by the 
 holding the done_when text itself, not a digest of it. No run
 claims it, so it covers every PR of the task, and only the console's owner-remote writes it. Code
 reads it only through `ownerTaskApproval` (`products/factory/src/shepherd/owner-task-approval.ts`),
-which reads none when the done_when differs in any word from the text the owner approved. Nothing at dispatch
-or merge reads it yet; S8b adds the check and the merge backstop. A refusal exits 65 and an
-unreachable active-work exits 69, each with no round printed.
+which reads none when the done_when differs in any word from the text the owner approved, and
+`latestTaskApproval` beside it, for the readers below that tell a changed done_when from no
+approval. A refusal exits 65 and an unreachable active-work exits 69, each with no round printed.
+
+**Refusing an unvalidated task (gate model S8b, TP-5411).** Before an implementer is spawned for a
+task, the dispatcher (a seat, the burndown tick, or later the planner) runs:
+
+```
+titan-factory shepherd task-approval check <initiative>/<ID>
+```
+
+It exits 0, printing `dispatchable: <key>`, when the task is not tagged `owner-validate` or the
+owner approved its current done_when. Otherwise it exits 3 and prints one refusal code:
+`no-approval`, `done-when-changed` (the approval binds an older done_when), or `task-unread`
+(active-work did not answer, or holds no such task). On exit 3, file the task's plan round
+instead. A key that is not `<initiative>/<ID>` exits 2 and reads nothing; an unreadable store exits
+69. The rule is `ownerValidateRefusal` in `g10-owner-validate.ts`, whose `g10-` prefix keeps it in
+the `merge-policy` table, so a change to it stops for the owner.
+
+The check is advisory; the merge backstop holds whether or not a dispatcher ran it. The evidence
+step reads the run's registered task from active-work and stamps
+`ownerValidate: { mode, task, tagged: true, doneWhen }` for a tagged task, or `tagged: "unread"`
+when the task cannot be read, the registered key is not the canonical `<initiative>/<ID>`, or the
+registration itself is unreadable. A run with no task, or an untagged one, is stamped nothing.
+Before each decision, `sh-policy` adds the owner's latest task approval for the registered task
+key to the run's approvals, and decide time runs the same rule against the stamp. Under `on` a
+refusal gates at the `owner-validate` row (class `deliberate`, decision class D19), and only the
+owner resolves it.
+
+`shepherd.gateReset.ownerValidate` switches it, and it is a live editable row:
+
+- `on` gates the merge on the row. An unread task gates too, so with active-work down every PR
+  whose run names a task stops for the owner (Q-S8b's fail-closed rule).
+- `shadow`, and an absent key, change no outcome: an allow's reason ends
+  `owner validate would gate: <why>`.
+- `off` stamps nothing.
+
+An approval recorded before the PR's review clears the row at its decide. An approve-merge gate
+already open is re-decided only by a new head or base, as with a drift, so the owner answers that
+gate as well, or the next push clears it.
 
 **Content drift.** A `ci-policy` approval holds only while every byte the PR merges matches its
 pin, so a policy plan carries the final content of every file in its PR, and the implementer

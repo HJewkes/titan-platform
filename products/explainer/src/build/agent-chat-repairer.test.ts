@@ -8,7 +8,6 @@ import { BEAT_WORKER_IDS, type RepairRequest } from "./beat-worker.js";
 import { claudePrintWorker } from "./claude-print-worker.js";
 import { FAKE_SESSION_ID, fakeAgentChat } from "./fake-agent-chat.test-helpers.js";
 import { buildLayerPacket } from "./layer-packet.js";
-import { BEAT_WORKERS } from "./worker-registry.js";
 
 // Synthetic: an invented parcel-desk beat, a fake agent-chat and a one-request transcript.
 let root: string;
@@ -77,14 +76,10 @@ describe("the agent-chat repair runner", () => {
   });
 });
 
-describe("the beat worker registry", () => {
-  it("holds exactly two runners, claude-print and agent-chat, and no fork runner", () => {
-    const ids = Object.keys(BEAT_WORKERS);
-
-    expect(ids.sort()).toEqual([...BEAT_WORKER_IDS].sort());
-    expect(ids).toHaveLength(2);
-    expect(BEAT_WORKERS["claude-print"]({ basePrompt: "base" }).builder.id).toBe("claude-print");
-    expect(BEAT_WORKERS["agent-chat"]({ agentChatBin: "/bin/false" }).id).toBe("agent-chat");
-    expect(claudePrintWorker).toBe(BEAT_WORKERS["claude-print"]);
+describe("the beat worker factories", () => {
+  it("build a claude-print builder and an agent-chat repairer under the ids the worker contract names", () => {
+    expect([...BEAT_WORKER_IDS].sort()).toEqual(["agent-chat", "claude-print"]);
+    expect(claudePrintWorker({ basePrompt: "base" }).builder.id).toBe("claude-print");
+    expect(agentChatRepairer({ agentChatBin: "/bin/false" }).id).toBe("agent-chat");
   });
 });

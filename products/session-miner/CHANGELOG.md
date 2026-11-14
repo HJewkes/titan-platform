@@ -1,5 +1,14 @@
 # @titan-design/session-miner
 
+## 0.11.9
+
+### Patch Changes
+
+- Updated dependencies [d025aac]
+- Updated dependencies [ce68429]
+  - @titan-design/pm@0.11.0
+  - @titan-design/owner-queue@0.8.2
+
 ## 0.11.8
 
 ### Patch Changes
