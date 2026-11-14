@@ -15,18 +15,18 @@ import { writeEventsDb, writeRounds, writeSpool } from "./disk.fixture.js";
 import { FIXTURE_EPOCH_MS } from "./random.fixture.js";
 import { factoryAnswer, factoryState, type FactoryState } from "./factory.fixture.js";
 
-export const DEFAULT_PERF_SEED = "titan-console-perf-1";
+const DEFAULT_PERF_SEED = "titan-console-perf-1";
 
 const BROKER_TOKEN = "perf-fixture-token";
 
 /** Upstream calls since the last reset, keyed `<upstream> <command or route>`: `active-work task.list`, `broker /api/history`. */
-export interface UpstreamCalls {
+interface UpstreamCalls {
   counts(): Record<string, number>;
   total(): number;
   reset(): void;
 }
 
-export interface PerfState {
+interface PerfState {
   activeWork: ActiveWorkState;
   factory: FactoryState;
   broker: BrokerState;

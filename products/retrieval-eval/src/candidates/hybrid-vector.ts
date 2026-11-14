@@ -51,7 +51,7 @@ export async function buildIndex(documents: NoteDocument[], embedder: Embedder):
   return index;
 }
 
-export interface HybridOptions {
+interface HybridOptions {
   activeRoot: string;
   /** The lexical half; the hybrid fuses against whatever this returns. */
   lexical: Candidate;

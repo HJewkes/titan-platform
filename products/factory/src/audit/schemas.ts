@@ -22,7 +22,7 @@ const TableSchema = z.object({
   jsonKeys: z.record(z.string(), z.array(z.string())).optional(),
 });
 
-export const StoreInventorySchema = z.object({
+const StoreInventorySchema = z.object({
   store: z.string(),
   kind: z.string(),
   error: z.string().optional(),
@@ -49,7 +49,7 @@ export const EmitterInventorySchema = z.object({
 
 export const PurposeSchema = z.object({ purpose: z.string(), users: z.array(z.string()), questions: z.array(QuestionSchema).min(1) });
 
-export const QuestionCheckSchema = z.object({ question: QuestionSchema, outputHash: z.string().optional(), error: z.string().optional() });
+const QuestionCheckSchema = z.object({ question: QuestionSchema, outputHash: z.string().optional(), error: z.string().optional() });
 export type QuestionCheck = z.infer<typeof QuestionCheckSchema>;
 export const QuestionChecksSchema = z.object({ checks: z.array(QuestionCheckSchema) });
 
@@ -58,7 +58,7 @@ export const ProposalSchema = z.object({ metrics: z.array(MetricSpecSchema).min(
 export const BaselineSchema = z.object({ value: z.number().nullable(), n: z.number().int().nonnegative(), error: z.string().optional() });
 export type Baseline = z.infer<typeof BaselineSchema>;
 
-export const SliceProposalSchema = z.object({
+const SliceProposalSchema = z.object({
   title: z.string(),
   done_when: z.string(),
   estimate: z.union([z.literal(1), z.literal(2), z.literal(3)]),

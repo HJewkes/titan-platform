@@ -1,7 +1,7 @@
 import type { RoutedStepInput } from "@titan-design/workflow";
 
-export const DEFAULT_JUMP_SLACK_MS = 60_000;
-export const DEFAULT_JUMP_GRACE_MS = 2 * 60_000;
+const DEFAULT_JUMP_SLACK_MS = 60_000;
+const DEFAULT_JUMP_GRACE_MS = 2 * 60_000;
 
 export interface DeadlineTiming {
   now: () => number;
