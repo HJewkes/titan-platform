@@ -17,7 +17,14 @@ function makeCtx(activeRoot: string): CommandContext {
  */
 async function writeSession(
   activeRoot: string,
-  fields: { session_id: string; started: string; ended: string; track?: string; body: string },
+  fields: {
+    session_id: string;
+    started: string;
+    ended: string;
+    track?: string;
+    ledger?: true;
+    body: string;
+  },
 ): Promise<void> {
   const { body, ...frontmatter } = fields;
   const sessionsDir = path.join(activeRoot, 'sample-initiative', 'sessions');
@@ -56,6 +63,23 @@ describe('session.list', () => {
         'newer',
         'fixture001',
       ]);
+    });
+  });
+
+  it('leaves loop ledger records out of the list (TP-1016)', async () => {
+    await withTempActiveRoot(async (activeRoot) => {
+      await writeSession(activeRoot, {
+        session_id: 'loop-ab12cd34',
+        started: '2026-05-12T08:00:00Z',
+        ended: '2026-05-12T08:00:00Z',
+        track: 'adhoc',
+        ledger: true,
+        body: 'Loop opened outside wrap: follow up\n',
+      });
+
+      const result = await sessionList.run({ slug: 'sample-initiative' }, makeCtx(activeRoot));
+
+      expect(result.sessions.map((s) => s.frontmatter.session_id)).toEqual(['fixture001']);
     });
   });
 
