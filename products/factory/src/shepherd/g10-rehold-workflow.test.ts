@@ -76,7 +76,7 @@ function releasedThenMoved(shape: "clean-merge-up" | "fix-push"): World {
   const roles = { g10: "bd-reviewer", standard: "reviewer" };
   const sleeping = async (_ms: number, signal: AbortSignal) => sleep(1, signal);
   const gitCache = { git: scriptedGit(shape), fs: { exists: () => true, mkdirp: () => undefined }, stateDir: () => "/synthetic/state" };
-  const base = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, now: () => 0, sleep: sleeping, review: { ...mergingReviewers(), roles } });
+  const base = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, now: () => 0, sleep: sleeping, review: { ...mergingReviewers(), roles }, ownerTier: "off" });
   const rehold = shepherdRoutes({ gitCache, port: githubPort(fake.wire), store: ref, now: () => 0, sleep: sleeping, agentChatBin: "agent-chat" }, { review: { ...mergingReviewers(), roles } }).find((route) => route.match === G10_REHOLD_STEP)!;
   const routes = Object.assign(base.map((route) => (route.match === G10_REHOLD_STEP ? rehold : route)), { database: base.database, shepherd: base.shepherd });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow({ review: reviewPhase, wake })], routes, gatePollMs: 5 });
