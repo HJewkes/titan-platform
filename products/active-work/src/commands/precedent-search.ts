@@ -27,6 +27,9 @@ const HitSchema = z.object({
   options: z.array(z.string()),
   recommended: z.string().nullable(),
   answer: z.string().nullable(),
+  /** The owner's typed note beside the picked option. */
+  free_text: z.string().nullable(),
+  answered_at: z.string().nullable(),
   outcome: z.string().nullable(),
   score: z.number(),
   /** Where the row came from, in a form a reader can follow back. */
@@ -60,6 +63,8 @@ function toHit(row: LedgerRow, score: number): z.infer<typeof HitSchema> {
     options: row.options.map((o) => o.label),
     recommended: row.recommended,
     answer: row.answer,
+    free_text: row.free_text,
+    answered_at: row.answered_at,
     outcome: row.outcome,
     score,
     citation: citationOf(row),
