@@ -67,6 +67,12 @@ describe("dispatcher rule file", () => {
     expect(() => loadRuleFile(ruleFile({ ...minimal, intake: { minSeverity: "trivial" } }))).toThrow(/minSeverity/);
   });
 
+  it("fills each absent stop threshold with its starting value, and refuses a zero cap", () => {
+    expect(loadRuleFile(ruleFile(minimal))?.rules.stop).toEqual({ taskFixRounds: 3, spendMultiple: 2, usdPerPoint: 8, betStoppedPrs: 3, betFollowupMultiple: 2, checkpointEvery: 5 });
+    expect(loadRuleFile(ruleFile({ ...minimal, stop: { taskFixRounds: 4 } }))?.rules.stop).toMatchObject({ taskFixRounds: 4, checkpointEvery: 5 });
+    expect(() => loadRuleFile(ruleFile({ ...minimal, stop: { checkpointEvery: 0 } }))).toThrow(/stop\.checkpointEvery/);
+  });
+
   it("sits beside the factory config.json by default", () => {
     expect(defaultRuleFilePath({ TITAN_FACTORY_CONFIG: "/etc/factory/config.json" })).toBe("/etc/factory/dispatcher.json");
     expect(defaultRuleFilePath({ XDG_CONFIG_HOME: "/xdg" })).toBe("/xdg/titan-factory/dispatcher.json");

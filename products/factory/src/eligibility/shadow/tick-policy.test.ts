@@ -127,7 +127,7 @@ describe("shadow tick selection policy", () => {
     const loaded = loadRuleFile(join(home.dir, "dispatcher.json"))!;
     const followUp = task(1, { source: "follow-up", severity: "high", source_ref: { from_pr: "acme/widgets#12", from_task: "AL-9" } });
     const verbs = partialFake<Verbs>({ io: { stdout: () => {}, stderr: () => {}, env: home.env }, deps: { workflows: [], routes: [], fetch: fakeRpc({ tasks: [followUp, task(2)], bets: [bet] }).fetch, laneSignals: async () => calm } });
-    const input = { loaded, verbs, now: new Date(NOW), wake: "w" };
+    const input = { loaded, verbs, now: new Date(NOW), wake: "w", providers: [] };
     const asked: string[][] = [];
 
     const stopped = await shadowTick({ ...input, ports: { stoppedPrs: async (prs) => (asked.push([...prs]), new Set(["acme/widgets#12"])) } });

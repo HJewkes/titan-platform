@@ -19,7 +19,7 @@ const ShadowSchema = z.object({ enabled: z.boolean().default(false), dir: z.stri
 });
 
 /** Keys later slices read (PLAN 5.4) are accepted now so the owner's full example file parses; nothing reads them yet. */
-const PLANNED_KEYS = { bets: z.unknown().optional(), upkeep: z.unknown().optional(), stop: z.unknown().optional() };
+const PLANNED_KEYS = { bets: z.unknown().optional(), upkeep: z.unknown().optional() };
 
 const INTAKE_DEFAULTS = { minSeverity: "medium", expireDays: 28 } as const;
 
@@ -27,6 +27,23 @@ const IntakeSchema = z
   .object({ minSeverity: z.enum(SEVERITIES).default(INTAKE_DEFAULTS.minSeverity), expireDays: z.number().int().positive().default(INTAKE_DEFAULTS.expireDays) })
   .strict()
   .default(INTAKE_DEFAULTS);
+
+const count = z.number().int().positive();
+const factor = z.number().positive();
+
+/** The stop rules' thresholds (TP-5755 PLAN 2.4); each key absent takes the operating model's starting value. */
+const StopSchema = z
+  .object({
+    taskFixRounds: count.default(3),
+    spendMultiple: factor.default(2),
+    usdPerPoint: factor.default(8),
+    betStoppedPrs: count.default(3),
+    betFollowupMultiple: factor.default(2),
+    checkpointEvery: count.default(5),
+  })
+  .strict();
+
+export type StopRules = z.infer<typeof StopSchema>;
 
 const RuleFileSchema = z
   .object({
@@ -37,6 +54,7 @@ const RuleFileSchema = z
     /** Strict checks the shadow waives while filers do not yet set the fields; each waived pass is labelled on its row. */
     relax: z.array(z.enum(RELAXATIONS)).default([]),
     intake: IntakeSchema,
+    stop: StopSchema.prefault({}),
     ...PLANNED_KEYS,
   })
   .strict();
