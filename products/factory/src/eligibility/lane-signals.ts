@@ -29,16 +29,21 @@ async function readDeploy(verbs: Verbs): Promise<DeployHealth> {
   return block;
 }
 
-/** The instant before which every lane merge is in the running build; undefined when nothing waits to deploy. */
-const deployCutoff = (deploy: DeployHealth, now: number): number | undefined => (deploy.behind > 0 ? now - (deploy.behindMinutes + ROUNDING_SLACK_MIN) * 60_000 : undefined);
+/** The instant before which every lane merge is in the running build, grace window or not; undefined when nothing waits to deploy. */
+export function deployCutoff(deploy: DeployHealth, now: number): number | undefined {
+  if (deploy.waitingSince !== undefined) return deploy.waitingSince - ROUNDING_SLACK_MIN * 60_000;
+  return deploy.behind > 0 ? now - (deploy.behindMinutes + ROUNDING_SLACK_MIN) * 60_000 : undefined;
+}
+
+export const countMergedSince = (rows: readonly { outcome?: { kind: string } | null | undefined; phaseSince: string }[], cutoff: number | undefined): number =>
+  rows.filter((row) => row.outcome?.kind === "merged" && cutoff !== undefined && Date.parse(row.phaseSince) >= cutoff).length;
 
 /** Lane PRs from Shepherd's watch rows: only lane runs still going, or finished since the cutoff, are loaded. */
 async function prCounts(host: FactoryHost, routes: FactoryRoutes, scope: LaneScope, cutoff: number | undefined): Promise<Pick<LaneSignals, "openPrs" | "mergedNotDeployed">> {
   if (!routes.shepherd) throw new Error("this host was opened without the shepherd routes");
   const since = cutoff === undefined ? undefined : new Date(cutoff).toISOString();
   const rows = await watchRows(host, routes.shepherd, (registration, status) => scope.inLane(registration.task) && (!runFinished(status) || (since !== undefined && registration.updatedAt >= since)));
-  const merged = rows.filter((row) => row.outcome?.kind === "merged" && cutoff !== undefined && Date.parse(row.phaseSince) >= cutoff);
-  return { openPrs: rows.filter((row) => !FINISHED_PHASES.has(row.phase)).length, mergedNotDeployed: merged.length };
+  return { openPrs: rows.filter((row) => !FINISHED_PHASES.has(row.phase)).length, mergedNotDeployed: countMergedSince(rows, cutoff) };
 }
 
 /** Every configured reviewer account, and how many the account-limit store holds exhausted now. */
