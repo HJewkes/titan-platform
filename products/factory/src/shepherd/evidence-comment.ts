@@ -72,6 +72,7 @@ const GUARD_RULE_WORDS: Record<string, string> = {
   "attest-deploy-skew": "the attestation read waits for main's registry commits to deploy",
   "old-path-untagged": "the pull request changes old-path code and its task carries no carve-out tag",
   "owner-tier": "the pull request changes a file on the owner's merge stop list",
+  "owner-validate": "the pull request's task needs the owner's task approval, or could not be read",
 };
 
 const LONG_PATH_LIST = 5;
