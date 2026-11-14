@@ -219,6 +219,7 @@ graph TD
   activeWork --> anthropicAccount
   activeWork --> appPaths
   activeWork --> clusterPkg
+  activeWork --> codeRead
   activeWork --> daemon
   activeWork --> decider
   activeWork --> locator
