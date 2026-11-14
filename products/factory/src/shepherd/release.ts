@@ -325,6 +325,8 @@ export function releaseGuard(registrations: () => ShepherdStore, now: () => numb
       const ready = release?.releaseReady;
       if (!release || release.pr === null || release.pr === pr || !ready) return undefined;
       if (now() - Date.parse(ready.at) > RELEASE_FREEZE_MS) return undefined;
+      // A held release cannot land first, so freezing the repo behind it only stalls every other merge until the freeze runs out.
+      if (registrations().heldReason(repo, release.pr, VERSION_PACKAGES_BRANCH, ready.head) !== undefined) return undefined;
       const live = await port.getPr(repo, release.pr);
       if (live.state !== "open" || live.headSha !== ready.head) return undefined;
       return `the Version Packages PR #${release.pr} is ready at ${ready.head} and lands first`;
