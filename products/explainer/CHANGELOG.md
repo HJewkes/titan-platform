@@ -1,5 +1,13 @@
 # @titan-design/explainer
 
+## 0.3.9
+
+### Patch Changes
+
+- 58034f4: Remove two exports only their own tests used: the explainer beat worker registry and active-work's forgetPreserved (TP-5794).
+- 7bb20b1: Delete the unused history miner and its test (TP-5816).
+- ff47a29: Stop exporting 81 symbols that only their own file uses.
+
 ## 0.3.8
 
 ### Patch Changes
