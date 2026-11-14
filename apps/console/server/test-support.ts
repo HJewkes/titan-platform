@@ -59,7 +59,7 @@ export async function closedPort(): Promise<number> {
   return daemon.port;
 }
 
-export interface FakeBrokerData {
+interface FakeBrokerData {
   token: string;
   sessions: unknown[];
   items: unknown[];

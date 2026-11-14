@@ -2,7 +2,7 @@ import path from 'node:path';
 import { refKind } from '@titan-design/store-sqlite';
 
 /**
- * The five workspace ref kinds, and the rule that every stored path is
+ * The six workspace ref kinds, and the rule that every stored path is
  * relative to the active root.
  *
  * `session` and `task` deliberately collide with the refs
@@ -18,6 +18,7 @@ export const noteRef = refKind('note');
 export const taskRef = refKind('task');
 export const sessionRef = refKind('session');
 export const sourceRef = refKind('source');
+export const planRef = refKind('plan');
 
 /**
  * Post-mortem finding F1, in one function. Brain stored absolute paths, the

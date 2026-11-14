@@ -26,7 +26,7 @@ export function directoryId(path: string): string {
   return path === "" ? REPO_ID : `${path}/`;
 }
 
-export function spanOf(node: ModelNode): Span | undefined {
+function spanOf(node: ModelNode): Span | undefined {
   const { startLine, endLine } = node.attrs;
   return typeof startLine === "number" && typeof endLine === "number" ? { startLine, endLine } : undefined;
 }

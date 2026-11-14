@@ -14,7 +14,7 @@ export function readGit(args) {
   }
 }
 
-export function runnerOf(env) {
+function runnerOf(env) {
   if (env.TITAN_TEST_TIMING_RUNNER) return env.TITAN_TEST_TIMING_RUNNER;
   return env.GITHUB_ACTIONS === "true" ? "gha" : "dev";
 }

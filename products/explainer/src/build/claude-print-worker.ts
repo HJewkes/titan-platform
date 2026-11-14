@@ -10,16 +10,16 @@ import { LayerBuildSchema, type BeatWorker, type BuilderRef, type LayerBuild } f
 
 /** The system prompt every claude-print build starts from; its sha is in every packet key. */
 export const CUSTOM_LAYER_PROMPT = path.join(DEFAULT_DOCTRINE_DIR, "builders", "custom-layer.md");
-export const CLAUDE_PRINT_LAYER_MODEL = "sonnet";
+const CLAUDE_PRINT_LAYER_MODEL = "sonnet";
 /** Bump when the call around the prompt or the checks after it change (schema, turns, budget, TP-4418 text check), so every layer is rebuilt. */
-export const CLAUDE_PRINT_WORKER_VERSION = "c3";
+const CLAUDE_PRINT_WORKER_VERSION = "c3";
 const MAX_BUDGET_USD = 0.5;
 
 /** What the model answers: the layer without spend, which the worker prices itself. */
 export const LayerOutputSchema = LayerBuildSchema.pick({ module: true, anchors: true, elements: true }).strict();
 export type LayerOutput = z.infer<typeof LayerOutputSchema>;
 
-export interface ClaudePrintWorkerDeps {
+interface ClaudePrintWorkerDeps {
   runAgent?: typeof runAgent;
   basePrompt?: string;
   cwd?: string;
@@ -30,7 +30,7 @@ export interface ClaudePrintWorkerDeps {
  * Spend priced from the per-model token counts at the price table, never from `total_cost_usd`, which a fork or resumed
  * session inflates with its parent's spend. A model the table lacks leaves the spend marked unknown.
  */
-export function priceUsage(usage: Pick<AgentUsage, "modelUsage"> | undefined, at: Date): StageUsage {
+function priceUsage(usage: Pick<AgentUsage, "modelUsage"> | undefined, at: Date): StageUsage {
   const models = Object.entries(usage?.modelUsage ?? {});
   const priced = models.map(([model, m]) => priceRequest({
     inputTokens: m.inputTokens, outputTokens: m.outputTokens, cacheReadTokens: m.cacheReadInputTokens, cacheCreationTokens: m.cacheCreationInputTokens,

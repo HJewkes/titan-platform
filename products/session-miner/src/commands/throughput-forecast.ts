@@ -53,10 +53,10 @@ export const throughputForecast = defineCommand<ForecastArgs, ThroughputForecast
   },
   async run(args, ctx) {
     const selector = toSelector(args);
-    const loaded = loadRows(ctx, args.cap);
+    const loaded = await loadRows(ctx, args.cap);
     const { table, inputs } = fitTable(loaded, args);
     const { initiativesRoot, throughputInitiatives } = ctx.config;
-    const selection = selectSetTasks(initiativesRoot, throughputInitiatives, selector);
+    const selection = await selectSetTasks(initiativesRoot, throughputInitiatives, selector);
     if (selection.tasks.length === 0) {
       throw new Error(`no open task selected (notFound ${selection.notFound.length}, skippedDone ${selection.skippedDone.length}); searched ${throughputInitiatives.join(",")} (TITAN_MINER_THROUGHPUT_INITIATIVES)`);
     }

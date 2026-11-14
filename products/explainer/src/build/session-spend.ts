@@ -2,7 +2,7 @@ import { priceRequest } from "@titan-design/agent-protocol/pricing";
 import { findClaudeSessionSource, summarizeSession, type SessionUsageSummary } from "@titan-design/session-read";
 import type { StageUsage } from "../workflow/records.js";
 
-export interface SessionRef {
+interface SessionRef {
   sessionId: string;
   /** The session's working directory, which names its transcript's project directory. */
   cwd: string;
@@ -21,7 +21,7 @@ function tokensOf({ tokens }: SessionUsageSummary) {
 }
 
 /** Prices a session's own requests at the price table; a model the table lacks, or an unreported count, marks the spend unknown. */
-export function priceSummaries(usage: readonly SessionUsageSummary[], at: Date): StageUsage {
+function priceSummaries(usage: readonly SessionUsageSummary[], at: Date): StageUsage {
   if (usage.length === 0) return UNKNOWN_SPEND;
   const unreported = usage.some(({ tokens }) => tokens.input === null || tokens.output === null);
   const counted = usage.map(tokensOf);

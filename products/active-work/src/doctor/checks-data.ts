@@ -2,7 +2,7 @@ import nodePath from 'node:path';
 import { ConfigError } from '../errors.js';
 import { getActiveRoot } from '../utils/paths.js';
 import { lintHashes } from '../lint/index.js';
-import { loadTasks } from '../lint/load-tasks.js';
+import { loadTasks } from '../bootstrap/load.js';
 import { loadNotesFromDir } from '../notes/note-file.js';
 import { NOTE_TITLE_MAX_LENGTH } from '../schemas/note.js';
 import { sweepAllLeases, type LeaseSweepResult } from '../sessions/lease.js';
@@ -16,6 +16,7 @@ import {
   type DanglingResolve,
   type MalformedSession,
 } from '../sessions/open-loops.js';
+import { RESERVED_MINER_KEYS } from '../commands/_miner-redact.js';
 import type { DoctorCheck, DoctorDeps } from './index.js';
 
 /** Each rejection kind has a different remedy, so each gets its own sentence. */
@@ -58,7 +59,7 @@ async function collectBadTaskRefs(
   initiativeDir: string,
   now: Date,
 ): Promise<string[]> {
-  const tasks = await loadTasks(initiativeDir);
+  const { tasks } = await loadTasks(initiativeDir);
   const taskIds = new Set(tasks.map((t) => t.id));
   const loops = await deriveOpenLoops(initiativeDir, { now, tasks });
   const bad: string[] = [];
@@ -265,3 +266,20 @@ export async function checkArtifactHashes(deps: DoctorDeps): Promise<DoctorCheck
   return artifactHashesCheck(drifted);
 }
 
+
+/** Initiatives created before `new` refused reserved miner keys; the miner would read them as its own buckets (TP-5782). */
+export async function checkReservedSlugs(deps: DoctorDeps): Promise<DoctorCheck> {
+  const activeRoot = deps.activeRoot ?? getActiveRoot();
+  const slugs = await listShownSlugs(activeRoot, deps.shown);
+  const reserved = slugs.filter((slug) => RESERVED_MINER_KEYS.has(slug));
+  if (reserved.length === 0) {
+    return { name: 'reserved-slugs', status: 'ok', detail: 'no initiative slug is a reserved miner key' };
+  }
+  return {
+    name: 'reserved-slugs',
+    status: 'warn',
+    detail:
+      'initiative slug is reserved as a miner report key ' +
+      `(rename the initiative directory): ${reserved.join(', ')}`,
+  };
+}

@@ -2,8 +2,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
+import type { ReviewerAgent } from "@titan-design/review-panel";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
+import { judgeAttestations, type Attestation } from "../registry/attest.js";
 import { REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
@@ -74,5 +76,62 @@ describe("a reviewer's declined attestation", () => {
 
     expect(wakes.map((wake) => wake.headSha)).toEqual([A]);
     expect(approveHead).toBe(B);
+  });
+});
+
+/** Synthetic reviewers shaped like a panel's: an independent correctness reviewer and a separate adversary. */
+const panelAgent = (name: string): ReviewerAgent => ({ name, agentId: `agent-${name}`, sessionId: `session-${name}`, presence: "live", spawnedBy: "human", predecessor: null });
+const correctnessReviewer = panelAgent("rev-1");
+const adversaryReviewer = panelAgent("adv-1");
+const CLOSURE12 = "a1b2c3d4e5f6";
+const claimOf = (step: string): Attestation => ({ step, closure: `${CLOSURE12}${"0".repeat(52)}`, pr: 1 });
+const tokens = (steps: readonly string[]): string[] => steps.map((step) => `${step}@${CLOSURE12}`);
+
+/** A MERGE at `headSha` whose evidence is what the judge makes of these claims, the correctness line attesting each and the adversary only `adversarySteps`. */
+function judgedMerge(headSha: string, claimed: readonly string[], adversarySteps: readonly string[]): Verdict {
+  const { unmet } = judgeAttestations({
+    claimed: claimed.map(claimOf),
+    head: headSha,
+    correctness: { reviewer: correctnessReviewer, attests: tokens(claimed), head: headSha, carried: false },
+    adversary: { reviewer: adversaryReviewer, attests: tokens(adversarySteps), head: headSha },
+    adversaryRequired: true,
+    independent: () => true,
+    separate: (a, b) => a.name !== b.name,
+  });
+  return { kind: "MERGE", headSha, evidence: { attest: { unmet: unmet.map(({ step, why }) => ({ step, why })) } } };
+}
+
+describe("an adversary's declined attestation (TP-5902)", () => {
+  it("an adversary MERGE with no Attests line, as on #3291, sends back once with a brief that names the adversary", async () => {
+    const { fake, wakes, approveHead } = await run("adversary-3291", (head) => (head === A ? judgedMerge(A, ["ci-wait"], []) : cleanMerge(head)));
+
+    expect(wakes.map((wake) => wake.headSha)).toEqual([A]);
+    const brief = await describeWake(githubPort(fake.wire), { kind: "review", repo: REPO, pr: 1, headSha: A, payload: wakes[0]!.payload }, fake.pr(1));
+    expect(brief.reason).toContain("the adversary did not attest that ci-wait");
+    expect(brief.reason).not.toContain("independent reviewer");
+    expect(approveHead).toBe(B);
+  });
+
+  it("an adversary that attests ci-wait and sh-await-verdict but not merge, as on #3465, sends back for merge alone", async () => {
+    const claimed = ["ci-wait", "sh-await-verdict", "merge"];
+    const { fake, wakes } = await run("adversary-3465", (head) => (head === A ? judgedMerge(A, claimed, ["ci-wait", "sh-await-verdict"]) : cleanMerge(head)));
+
+    expect(wakes.map((wake) => wake.headSha)).toEqual([A]);
+    const brief = await describeWake(githubPort(fake.wire), { kind: "review", repo: REPO, pr: 1, headSha: A, payload: wakes[0]!.payload }, fake.pr(1));
+    expect(brief.reason).toContain("the adversary did not attest that merge behave as before");
+  });
+
+  it("a declined adversary past the cap raises approve-merge", async () => {
+    const { wakes, approveHead } = await run("adversary-past-cap", (head) => unmetMerge(head, "adversary-declined"));
+
+    expect(wakes.map((wake) => wake.headSha)).toEqual([A]);
+    expect(approveHead).toBe(B);
+  });
+
+  it("no adversary verdict at all still raises approve-merge on adversary-missing", async () => {
+    const { wakes, approveHead } = await run("adversary-missing", (head) => unmetMerge(head, "adversary-missing"));
+
+    expect(wakes).toEqual([]);
+    expect(approveHead).toBe(A);
   });
 });

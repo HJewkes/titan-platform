@@ -4,7 +4,7 @@ import type { SnapshotRow } from "../types.js";
 export const ALIAS_BASE_ATTR = "aliasBase";
 
 /** Walks stop after this many snapshots, so a corrupt or enormous lineage cannot run away. */
-export const DEFAULT_MAX_HOPS = 10_000;
+const DEFAULT_MAX_HOPS = 10_000;
 
 export type LineageSnapshot = Pick<SnapshotRow, "id" | "commitHash" | "attrs">;
 

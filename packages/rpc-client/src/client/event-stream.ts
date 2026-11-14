@@ -2,7 +2,7 @@ import { SSE_EVENTS, type SseMessage } from "@titan-design/rpc-protocol";
 import type { EventHandlers, Subscription } from "./data-source.js";
 import { createSseParser } from "./sse-parser.js";
 
-export interface EventStreamOptions {
+interface EventStreamOptions {
   url: string;
   fetch: typeof fetch;
   handlers: EventHandlers;

@@ -77,7 +77,7 @@ export interface TelegramCallback {
 export type TelegramInbound = ({ kind: "text" } & TelegramTextUpdate) | TelegramCallback;
 
 /** Why an update yields nothing: an unknown shape, or a known one missing a field this package needs. */
-export type InboundReadResult =
+type InboundReadResult =
   | { ok: true; inbound: TelegramInbound }
   | { ok: false; reason: "malformed" | "not-text" };
 

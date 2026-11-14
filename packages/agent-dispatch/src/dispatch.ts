@@ -166,7 +166,7 @@ export interface AgentRecord {
   task?: string;
 }
 
-export function agentRecordArgs({ role, task }: AgentRecord): string[] {
+function agentRecordArgs({ role, task }: AgentRecord): string[] {
   if (task !== undefined && !TASK_ID_PATTERN.test(task)) throw new DispatchError(`invalid task id: '${task}'`);
   return [...(task === undefined ? [] : ["--task", task]), ...(role === undefined ? [] : ["--role", role])];
 }

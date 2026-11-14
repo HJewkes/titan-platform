@@ -5,7 +5,7 @@ export interface Quantiles {
   p90: number;
 }
 
-export interface WeightedValue {
+interface WeightedValue {
   value: number;
   weight: number;
 }

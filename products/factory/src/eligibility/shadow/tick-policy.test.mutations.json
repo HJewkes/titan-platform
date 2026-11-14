@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "any plan rpc failure falls back to the plan store",
+      "file": "products/factory/src/eligibility/active-work.ts",
+      "find": "    if (!unknownCommand(error)) throw error;\n",
+      "replace": "",
+      "kills": [
+        "shadow tick plan read a network failure on plan.* does not fall back: the lane fails closed and the tick exits 69"
+      ]
+    },
+    {
+      "name": "withheld lanes are judged like any other",
+      "file": "products/factory/src/eligibility/shadow/tick.ts",
+      "find": "  if (!agentLanes.read.has(lane.initiative)) return { rows: [ownerOnlyRow(base)], unread: false };\n",
+      "replace": "",
+      "kills": [
+        "shadow tick owner-only lanes a lane whose initiative active-work withholds from agents writes one refused row and reads none of its tasks",
+        "shadow tick owner-only lanes an initiative missing its verdict, as from an older daemon, is refused and none of its tasks is read"
+      ]
+    },
+    {
+      "name": "an unread inventory reads as showing every lane",
+      "file": "products/factory/src/eligibility/shadow/tick.ts",
+      "find": "  if (\"unread\" in agentLanes) return unreadRow(base, `active-work inventory: ${agentLanes.unread}`);\n",
+      "replace": "",
+      "kills": [
+        "shadow tick owner-only lanes an unread inventory fails every lane closed and exits unavailable"
+      ]
+    }
+  ]
+}

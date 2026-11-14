@@ -11,7 +11,7 @@ import { pushDigest, type PushDeps } from "./push.js";
 import type { Directories } from "./sources.js";
 import { errorMessage } from "../narrow.js";
 
-export interface DigestRun {
+interface DigestRun {
   sources: DigestSources;
   now: Date;
   slot: DigestSlot;
@@ -46,7 +46,7 @@ export function syncAlarmNote(dir: string, note: string | undefined): void {
   writeFileSync(join(dir, ALARM_NOTE_FILE), note);
 }
 
-export interface Delivery {
+interface Delivery {
   written: string[];
   warnings: string[];
 }

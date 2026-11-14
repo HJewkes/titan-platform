@@ -138,8 +138,6 @@ export async function initiativeIsAgentVisible(activeRoot: string, slug: string)
 }
 
 interface WireVisibility {
-  /** The brief alone, as before TP-5556; kept for older readers. */
-  agent_visible: boolean;
   /** The full verdict: true unless the brief and a readable charter both allow agents. */
   withheld_from_agents: boolean;
 }
@@ -148,9 +146,9 @@ interface WireVisibility {
 export async function wireVisibility(activeRoot: string, slugs: readonly string[]): Promise<Map<string, WireVisibility>> {
   const verdicts = await verdictsFor(activeRoot, slugs);
   return new Map(
-    verdicts.map(({ slug, brief, access }) => [
+    verdicts.map(({ slug, access }) => [
       slug,
-      { agent_visible: briefAllowsAgents(slug, brief), withheld_from_agents: access !== 'shown' },
+      { withheld_from_agents: access !== 'shown' },
     ]),
   );
 }

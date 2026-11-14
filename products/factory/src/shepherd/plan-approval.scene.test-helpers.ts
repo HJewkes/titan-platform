@@ -11,6 +11,8 @@ import { factoryRoutesFor } from "../workflows.js";
 import type { ReviewAccounts } from "./account-limit.js";
 import type { LowTierMode } from "./g10-low-tier.js";
 import type { OwnerTierMode } from "./owner-tier.js";
+import type { OwnerValidateMode } from "./g10-owner-validate.js";
+import type { TaskApprovalReads } from "./task-approval-round.js";
 import type { PlanApproval } from "./plan-approval.js";
 import type { RosterReader } from "./ports.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
@@ -20,6 +22,7 @@ import { reviewPhase } from "./review.js";
 import { DEFAULT_ADVERSARY_PROFILE } from "./review-panel-plan.js";
 import type { ReviewerRoles } from "./reviewer-roles.js";
 import { shepherdStoreRef, type ShepherdStoreRef } from "./store.js";
+import type { VisualGateMode } from "./visual-gate-config.js";
 
 /** The real shepherd-pr run the plan-approval scenes merge or gate, shared by the TP-4284 rows and the TP-4360 plan round. */
 export const REPO = "octo/planned";
@@ -76,6 +79,11 @@ export interface Row {
   lowTier?: LowTierMode;
   /** `shepherd.gateReset.ownerTier` for the run's routes; absent stands for an unset key, which the config reader reads as shadow. */
   ownerTier?: OwnerTierMode;
+  /** `shepherd.visualGate` for the run's routes; absent leaves it unset, which reads `owner`. */
+  visualGate?: VisualGateMode;
+  /** `shepherd.gateReset.ownerValidate` and the active-work task reads behind it; absent tasks stamp nothing. */
+  ownerValidate?: OwnerValidateMode;
+  tasks?: TaskApprovalReads;
   /** Lines every reviewer writes above its verdict block, such as an adversary's `Probes:` and `Authority:` lines. */
   aboveVerdict?: string;
   /** Plans the g10-adversary hold's adversary member and releases the hold on two MERGEs, as `twoMergeRelease: on` does. */
@@ -84,16 +92,25 @@ export interface Row {
 
 export type FakeGitHub = ReturnType<typeof fakeGitHub>;
 
+/** The row's `shepherd.gateReset` modes as the routes take them; an unset ownerTier stands for the config reader's shadow. */
+const gateResetModes = ({ lowTier, ownerTier, ownerValidate, visualGate }: Pick<Row, "lowTier" | "ownerTier" | "ownerValidate" | "visualGate">) => ({
+  ...(lowTier && { lowTierPolicy: lowTier }),
+  ownerTier: ownerTier ?? "shadow",
+  ...(ownerValidate && { ownerValidate }),
+  ...(visualGate && { visualGate }),
+});
+
 /** The run's reviewers and, when the hold's adversary member is planned, the roster its two-MERGE release reads to prove them separate. */
-function reviewWiring({ reviewerLines, aboveVerdict, roles, holdMember }: Row, clock: () => number) {
+function reviewWiring({ reviewerLines, aboveVerdict, roles, holdMember, tasks }: Row, clock: () => number) {
   const { roster, ...reviewers } = mergingReviewers(clock, reviewerLines, aboveVerdict);
   const adversary = holdMember && { holdMember: { profile: DEFAULT_ADVERSARY_PROFILE }, twoMergeRelease: "on" as const };
-  return { review: { ...reviewers, timeoutMs: 5 * MINUTE, ...(roles && { roles }), ...adversary }, ...(holdMember && { roster }) };
+  const ownerValidateTasks = tasks && { ownerValidateTasks: tasks };
+  return { review: { ...reviewers, timeoutMs: 5 * MINUTE, ...(roles && { roles }), ...adversary, ...ownerValidateTasks }, ...(holdMember && { roster }) };
 }
 
 /** One shepherd-pr run of the PR under an auto policy, reviewed MERGE with green checks, after `seed` sets the files and the row's approval is written. */
 export function plannedRun(row: Row, seed: (fake: FakeGitHub) => void) {
-  const { files, policy, approve, wire = (each) => each, seatReleased, held, lowTier, ownerTier } = row;
+  const { files, policy, approve, wire = (each) => each, seatReleased, held } = row;
   const fake = fakeGitHub();
   fake.addPr({ number: PR, headSha: HEAD, mergeSha: fakeSha("planned-merge") });
   fake.setRuns(HEAD, [successRun("validate", 1), successRun("dag-check", 2)]);
@@ -106,8 +123,7 @@ export function plannedRun(row: Row, seed: (fake: FakeGitHub) => void) {
     signal.throwIfAborted();
     await new Promise<void>((resolve) => setImmediate(resolve));
   };
-  const gates = { ...(lowTier && { lowTierPolicy: lowTier }), ownerTier: ownerTier ?? "shadow" };
-  const routes = factoryRoutesFor({ port: githubPort(wire(fake.wire)), store, now: () => clock, sleep: tick, ...reviewWiring(row, () => clock), ...gates });
+  const routes = factoryRoutesFor({ port: githubPort(wire(fake.wire)), store, now: () => clock, sleep: tick, ...reviewWiring(row, () => clock), ...gateResetModes(row) });
   const workflow = shepherdPrWorkflow({ review: reviewPhase, wake: async () => ({ kind: "unhandled", reason: "no fixer here" }) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [workflow], routes, gatePollMs: 5 });
   // Per test: under isolate:false this module loads once per worker, so a top-level afterEach would close only the first importing file's hosts.

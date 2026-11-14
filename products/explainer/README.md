@@ -289,7 +289,7 @@ the build's usage, and its session id is kept as `repairSessionId` on the build 
 still fails stays `needsRepair` (its error names the repair session), keeps its spend, and is not cached. Repairs are
 off unless the host passes a `layerRepairer`: no agent-chat binary on `PATH` or in `AGENT_CHAT_BIN` turns them on,
 because the installed `beat-builder` profile predates its TSX variant. They turn on by default after TP-2608 ships
-that profile. `BEAT_WORKERS` is the whole runner registry: `claude-print` and `agent-chat`, with no fork runner
+that profile. The only runners are `claude-print` and `agent-chat`, with no fork runner
 and no resumed session.
 
 **Custom layers on the page, and the text check** (TP-4418). The page draws a custom layer in the stage box between
@@ -697,6 +697,20 @@ so. Under 150 words every row is reported only. Exit 0, 1 when a gate row fails,
 Warning and report-only rows never change the exit code, and dropped rows print no value. It writes nothing unless
 `--bench` is given; then it freezes the script and appends one `writing:<row>` structure row per metric and a
 `writing-check` run record, with the table's sha in the `rules_sha` column.
+
+Below the calibrated rows it prints the writing gate, read from `doctrine/writing-gate.json` (TP-5721): the owner's
+policy file, where each row's threshold, severity (error, warning or report-only) and evidence live. `writing:short-register`
+errors when the sentence mean is under 12 words and under 3 % of sentences run past 30 words, both at once; each alone
+flags about a tenth of human scripts, so `writing:sentence-mean` and `writing:long-share` only warn, and long-share only
+reports under 600 words. `writing:first-person` and `writing:beat-length-cv` report only. The hallmark rows count the
+deterministic tells of machine-drafted explainer prose: the naming refrain (short "That is called X." lines; an error
+at three, a warning at two), a three-word opening frame repeated in a chapter, runs of very short sentences per
+1,000 words, a colon followed by a list of three, teaser and promise formulas, parallel recaps and label-first lines.
+An error row fails the verdict like a gate row, and a warning counts as a warning. Under 150 words every gate and
+hallmark row reports only. `eval l0` carries the same rows through `writingGateCheck` (Q-V16) and `hallmarkCheck`
+(Q-V17), plus `hallmark:named-before-defined` (Q-V18), which errors when a beat speaks a term a later beat declares in
+`new_terms`. The same file makes `phrases` (`register:phrases` too) and `variety:connector-share` report-only over
+whatever the calibrated table says, so a recalibration cannot undo the owner's call.
 
 A story spine (`spine/v1`, `parseSpine` in `src/spine-schema.ts`) is the planner's `spine.md`, read
 from its numbered tables: §3 journey, §4 architecture, §5 constraints, §6 item ledger and, optionally,

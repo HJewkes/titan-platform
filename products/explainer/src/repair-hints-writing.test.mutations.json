@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the naming hint quotes every sentence of its beats",
+      "file": "products/explainer/src/repair-hints-writing.ts",
+      "find": ".filter((s) => isNamingRefrain(s, maxWords))",
+      "replace": ".filter((s) => isNamingRefrain(s, maxWords) || s.words > 0)",
+      "kills": [
+        "the naming-refrain repair hint quotes the naming lines with their beats and none of the filler"
+      ]
+    }
+  ]
+}

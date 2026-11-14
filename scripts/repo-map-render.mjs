@@ -3,7 +3,7 @@
 // still shows its lines, and text is sized in screen px, not layout units.
 import { labelOverlaps, rectsIntersect } from "./repo-map-metrics.mjs";
 
-export const FRAME_WIDTH = 3000;
+const FRAME_WIDTH = 3000;
 // Labels are monospace, so a renderer and the layout agree on their width: 0.6 em a character.
 export const CHAR_WIDTH = 0.6;
 const SCREEN_FONT = 14;
@@ -47,7 +47,7 @@ ${body.join("\n")}
 `;
 }
 
-export function labelRect(box, body, fontSize, padding) {
+function labelRect(box, body, fontSize, padding) {
   const [x, y] = [box.x - box.width / 2 + padding, box.y - box.height / 2 + padding];
   return { x, y, width: body.length * CHAR_WIDTH * fontSize, height: fontSize };
 }

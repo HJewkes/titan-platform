@@ -104,3 +104,16 @@ export function verifyCitation(source: LineSource, citation: Citation, options: 
   if (!found) return reject(citation, "quote-mismatch", `quote not found in ${citation.path}:${citation.lineStart}-${citation.lineEnd}`);
   return { ok: true, citation };
 }
+
+const CITED_RANGE = /(?<![\w./-])((?:[\w.-]+\/)*[\w-][\w.-]*\.[A-Za-z]\w*):(\d+)(?:-(\d+))?/g;
+
+/** The `path:12` and `path:12-30` references in free text, in order of appearance. */
+export function citationsIn(text: string): LineRange[] {
+  return [...text.matchAll(CITED_RANGE)].map(([, path = "", start = "", end]) => ({ path, lineStart: Number(start), lineEnd: Number(end ?? start) }));
+}
+
+/** True when the range's path and lines exist in `source`; the reference carries no quote, so none is checked. */
+export function citationHolds(source: LineSource, range: LineRange): boolean {
+  const check = verifyCitation(source, { ...range, quote: "" });
+  return check.ok || check.reason === "quote-empty";
+}

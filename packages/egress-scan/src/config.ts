@@ -12,7 +12,7 @@ export class ConfigError extends Error {
   }
 }
 
-export interface LoadedTerms {
+interface LoadedTerms {
   readonly terms: readonly TermRule[];
   readonly loaded: boolean;
   readonly notices: readonly string[];
@@ -27,7 +27,7 @@ export function isCi(env: Env): boolean {
   return value !== undefined && value !== "" && value !== "false" && value !== "0";
 }
 
-export function termFilePath(env: Env): string | undefined {
+function termFilePath(env: Env): string | undefined {
   if (env.TITAN_EGRESS_TERMS) return env.TITAN_EGRESS_TERMS;
   const configHome = env.XDG_CONFIG_HOME || (env.HOME && path.join(env.HOME, ".config"));
   return configHome ? path.join(configHome, "titan-egress", "private-terms") : undefined;

@@ -8,9 +8,15 @@ import { scriptWith } from "./script-fixtures.test-helpers.js";
 import { parseWritingCheck, type BucketName } from "./writing-calibrate.js";
 import { scoreWriting, type WritingBeat } from "./writing-check.js";
 import type { WritingStatus } from "./writing-status.js";
+import { useReportOnlyGate } from "./writing-gate-fixtures.test-helpers.js";
+
+// The calibrated rows alone: the writing gate rows (TP-5721) have tests of their own in writing-gate.test.ts.
+useReportOnlyGate();
 
 const SHIPPED = readFileSync(new URL("../doctrine/writing-check.json", import.meta.url), "utf8");
 const BUCKETS: readonly BucketName[] = ["150-299", "300-599", "600-1199", "1200+", "full"];
+/** The writing gate's rows in every report: five gate rows and seven text hallmarks. */
+const GATE_ROWS = 12;
 const CLEAN_LINE = "The parser reads each record and hands it to the queue for the next worker.";
 
 /** The shipped table with one row's status forced at every length, so a recalibration cannot move these tests. */
@@ -178,7 +184,7 @@ describe("explainer eval writing", () => {
 
     const [header] = output().split("\n");
     expect(header).toContain("human reference: speech transcripts, not written scripts");
-    expect(output()).toContain("verdict: FAIL (1 gate row), 0 warnings, 12 report-only; exit 1");
+    expect(output()).toContain("verdict: FAIL (1 gate row), 0 warnings, 24 report-only; exit 1");
     expect(output()).toMatch(/lets\s+dropped$/m);
     expect(output()).toMatch(/adjacent-delta\s+0\.\d\d\s+0\.55-3\s/);
   });
@@ -213,7 +219,7 @@ describe("explainer eval writing", () => {
     await runEvalCli(["eval", "writing", failing(), "--format", "text", "--table", tableFile({ "neg-synthetic": "gate" }), "--bench", bench, "--config", "tour/writing"], { now: () => times.shift() ?? new Date(0) });
 
     const rows = readFileSync(join(bench, "evals/structure.tsv"), "utf8").trimEnd().split("\n").slice(1);
-    expect(rows).toHaveLength(WRITING_METRICS.length);
+    expect(rows).toHaveLength(WRITING_METRICS.length + GATE_ROWS);
     expect(rows).toContainEqual(expect.stringMatching(/\twriting:neg-synthetic\theuristic\terror\t[\d.]+\t2\.5\tfalse\tline-17$/));
     expect(JSON.parse(readFileSync(join(bench, "evals/runs.jsonl"), "utf8"))).toMatchObject({ config_id: "tour/writing", eval_id: "writing-check", usd: 0, wall_s: 2 });
   });

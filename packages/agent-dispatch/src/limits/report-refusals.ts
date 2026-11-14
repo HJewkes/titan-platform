@@ -26,7 +26,7 @@ export function firstRefusalPerTask(refusals: readonly LimitsRefusal[]): LimitsR
   });
 }
 
-export function tallyByKind(refusals: readonly LimitsRefusal[]): Record<string, number> {
+function tallyByKind(refusals: readonly LimitsRefusal[]): Record<string, number> {
   const tally: Record<string, number> = {};
   for (const r of refusals) tally[r.kind] = (tally[r.kind] ?? 0) + 1;
   return tally;
@@ -46,7 +46,7 @@ const pushNew = (list: string[], item: string | undefined): void => {
 };
 
 /** The PRs refusals of one kind name, most refusals first, then lowest PR number. */
-export function topBlockers(refusals: readonly LimitsRefusal[], prs: readonly LimitsPrStatus[]): RefusalBlocker[] {
+function topBlockers(refusals: readonly LimitsRefusal[], prs: readonly LimitsPrStatus[]): RefusalBlocker[] {
   const byPr = new Map<number, RefusalBlocker>();
   for (const r of refusals) {
     const ref = prOf(r);

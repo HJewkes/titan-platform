@@ -7,8 +7,8 @@ import { toPresence } from "./presence.js";
 import { createRosterReader, mutating } from "./roster.js";
 import type { CleanupAgents, CleanupTasks, RosterReader, TaskState } from "./ports.js";
 
-export const DEFAULT_AGENT_CHAT_TIMEOUT_MS = 30_000;
-export const DEFAULT_ACTIVE_WORK_PORT = 7400;
+const DEFAULT_AGENT_CHAT_TIMEOUT_MS = 30_000;
+const DEFAULT_ACTIVE_WORK_PORT = 7400;
 
 export interface AgentChatCalls {
   listAgents: typeof listAgents;

@@ -16,7 +16,7 @@ export const DEFAULT_EPISODE_ROLES: readonly string[] = ["coordinator", "worker:
 export const DEFAULT_NO_ACTION_CLASSES: readonly ActionClass[] = ["read-investigate", "text-only", "other"];
 
 /** agent-chat's own name on the notices it writes, such as the agent lifecycle notice. */
-export const BROKER_SENDER = "agent-chat";
+const BROKER_SENDER = "agent-chat";
 export const AGENT_LIFECYCLE = "agent_lifecycle";
 const UNNAMED = "unnamed";
 
@@ -83,7 +83,7 @@ export function episodeNames(rows: readonly AgentNameRow[]): EpisodeNames {
 }
 
 /** The lifecycle notice is session-read's `channel_system`; every other cause keeps its name. */
-export function episodeCause(cause: string): string {
+function episodeCause(cause: string): string {
   return cause === "channel_system" ? AGENT_LIFECYCLE : cause;
 }
 

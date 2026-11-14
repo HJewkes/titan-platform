@@ -1,8 +1,8 @@
 import type { FrictionDailyReport } from "./friction-daily.js";
 
-export const FRICTION_TOP_N = 5;
+const FRICTION_TOP_N = 5;
 export const FRICTION_ASKER = "friction-audit";
-export const FRICTION_KEY = "friction-daily";
+const FRICTION_KEY = "friction-daily";
 
 const counts = (record: Partial<Record<string, number>>) =>
   Object.entries(record).map(([key, n]) => `${key} ${n}`).join(", ");
@@ -42,7 +42,7 @@ function reportHeadline(report: FrictionDailyReport): string {
 const orNone = (lines: string[]) => (lines.length > 0 ? lines : ["none"]);
 
 /** Logs first, then agreement, then the reports; the context and the markdown summary share it. */
-export function renderFrictionBody(report: FrictionDailyReport): string[] {
+function renderFrictionBody(report: FrictionDailyReport): string[] {
   return [
     `Window ${report.window.since} to ${report.window.until}. Logs: ${report.logs.sessions} sessions of ${report.logs.agents} agents.`,
     "",

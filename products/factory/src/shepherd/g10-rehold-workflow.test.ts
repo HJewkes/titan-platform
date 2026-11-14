@@ -101,7 +101,7 @@ describe("a g10-adversary hold the seat released at one head, with the PR now at
     await vi.waitFor(() => expect(w.host.runtime.status(w.runId)?.currentStep).toBe("merge:0"), { timeout: 5_000 });
 
     expect(w.store.byRun(w.runId)?.holdReason).toContain(`from ${H1} to ${MOVED}`);
-    expect(w.store.eventsOf(w.runId).at(-1)).toMatchObject({ kind: "hold", actor: "shepherd", headSha: MOVED });
+    expect(w.store.eventsOf(w.runId).filter((event) => event.kind !== "merge-wait").at(-1)).toMatchObject({ kind: "hold", actor: "shepherd", headSha: MOVED });
     expect(stepIds(w)).toContain(G10_REHOLD_STEP);
     expect(w.fake.pr(1).merged).toBe(false);
   });
@@ -124,6 +124,6 @@ describe("a g10-adversary hold the seat released at one head, with the PR now at
     await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true), { timeout: 5_000 });
 
     expect(w.store.byRun(w.runId)?.held).toBe(false);
-    expect(w.store.eventsOf(w.runId).map((event) => event.kind)).toEqual(["hold", "release"]);
+    expect(w.store.eventsOf(w.runId).map((event) => event.kind).filter((kind) => kind !== "merge-wait")).toEqual(["hold", "release"]);
   });
 });

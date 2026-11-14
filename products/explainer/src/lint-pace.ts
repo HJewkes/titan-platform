@@ -10,13 +10,13 @@ export const MAX_NEW_ITEMS_PER_BEAT = 4;
 /** M2 applies to beats with at least this many new items. */
 export const DENSE_ITEM_COUNT = 4;
 /** M2: heard seconds a new item, about a label plus one defining clause at 180 wpm. */
-export const MIN_SECONDS_PER_ITEM = 2.0;
+const MIN_SECONDS_PER_ITEM = 2.0;
 /** M2 before TTS: spoken words a new item stand in for heard seconds. */
-export const MIN_WORDS_PER_ITEM = 4;
+const MIN_WORDS_PER_ITEM = 4;
 /** M4: seconds from the end of one dense beat to the start of the next. */
 export const MIN_DIGEST_GAP_S = 15;
 /** M7: new items a chapter minute. */
-export const MAX_NEW_ITEMS_PER_MINUTE = 20;
+const MAX_NEW_ITEMS_PER_MINUTE = 20;
 
 const isCount = (label: string): boolean => /^\d/.test(label.trim());
 
@@ -147,7 +147,7 @@ function unprojectable({ script, timing }: Parameters<L0Check>[0]): L0Result[] {
  * Q-E19: beats that put a new item on screen without declaring it in `new_terms`. Q-F8, Q-E4 and Q-W2 read
  * `new_terms`, which defaults to `[]`, so a script that leaves it empty passes them vacuously.
  */
-export function undeclaredTerms(script: ScriptV1, beats: readonly PaceBeat[]): string[] {
+function undeclaredTerms(script: ScriptV1, beats: readonly PaceBeat[]): string[] {
   const declared = new Map(script.beats.map((b) => [b.id, new Set(b.new_terms.map((t) => t.trim().toLowerCase()))]));
   return beats
     .filter((beat) => beat.newItems.some((i) => i.source !== "term" && !declared.get(beat.id)?.has(i.label.trim().toLowerCase())))

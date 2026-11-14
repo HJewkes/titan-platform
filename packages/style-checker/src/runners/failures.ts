@@ -28,7 +28,7 @@ export interface RunExpectations {
   allowEmptyStdout?: boolean;
 }
 
-export function classifyRun(tool: ToolName, run: ToolRunResult, expect: RunExpectations = {}): ToolRun {
+function classifyRun(tool: ToolName, run: ToolRunResult, expect: RunExpectations = {}): ToolRun {
   const fail = (kind: ToolFailure["kind"], message: string): ToolRun => ({
     ok: false,
     failure: { tool, kind, message: withStderr(message, run.stderr) },

@@ -93,7 +93,7 @@ rules:
     fields: [beats.spoken]
     related: [Q-V5, Q-V7, Q-V9]
     owner_support: none
-    note: "Tracking, one warning row a metric (TP-3810). Bands are human-creator P25 to P90 from the TP-3765 script-tells research and live in src/lint-register.ts, never in a prompt. A script under 150 spoken words reports values without warning. register:shortest-last (TP-4308) is reported only, against chance, until a beat-level human band exists. register:neg-synthetic and register:downtoners (TP-4321) cap at the human P90 of the TP-4306 register research. Each row's status (gate, warning, report-only or drop) lives in doctrine/writing-check.json per length bucket (TP-4662); a row that is report-only or dropped at the script's own bucket reports its value without warning, and the rewrite pass neither targets nor protects it for human-ness. Noun density has no row: on that corpus it flags the scripts the contractions and second-person floors already flag."
+    note: "Tracking, one warning row a metric (TP-3810). Bands are human-creator P25 to P90 from the TP-3765 script-tells research and live in src/lint-register.ts, never in a prompt. A script under 150 spoken words reports values without warning. register:shortest-last (TP-4308) is reported only, against chance, until a beat-level human band exists. register:neg-synthetic and register:downtoners (TP-4321) cap at the human P90 of the TP-4306 register research. Each row's status (gate, warning, report-only or drop) lives in doctrine/writing-check.json per length bucket (TP-4662); a row that is report-only or dropped at the script's own bucket reports its value without warning, and the rewrite pass neither targets nor protects it for human-ness. Noun density has no row: on that corpus it flags the scripts the contractions and second-person floors already flag. register:phrases is report-only at every length by the owner's override in doctrine/writing-gate.json (TP-5721): AI vocabulary lists do not separate human from machine text."
     l0:
       severity: warning
       status: implemented
@@ -126,6 +126,30 @@ rules:
     owner_support: for
     note: "Owner decision 2026-11-03 (TP-4697, TP-3864): a spoken id is a number the listener has to hold, and it crowds numbers-per-beat. The detector lives in src/spoken-ids.ts: an id lead (PR, pull request, ticket, TP, #) before a number, a task id in digits, a script id token, and any spelling of a numbered item the beat cites."
     l0: { severity: error, status: implemented, checks: ["Q-V15"], scope: chapter }
+  - id: Q-V16
+    rule: "The spoken register is not short: a script of 150 words or more does not have both a short sentence mean and almost no sentence over 30 words"
+    fields: [beats.spoken]
+    related: [Q-V9, Q-V11]
+    owner_support: none
+    note: "TP-5721. The thresholds and severity live in doctrine/writing-gate.json (short-register), from the writing lab's human whole-script bands; each measure alone flags about a tenth of human scripts, so only the conjunction fails. eval writing reports the two measures alone as warnings (sentence-mean, long-share)."
+    l0: { severity: error, status: implemented, checks: ["writing:short-register"] }
+  - id: Q-V17
+    rule: "No hallmark of machine-drafted explainer prose past its cap: the naming refrain, a repeated clause frame, staccato runs, colon tricolons, teaser and promise formulas, parallel recaps, label-first lines"
+    fields: [beats.spoken, beats.chapter]
+    related: [Q-V7, Q-V11]
+    owner_support: none
+    note: "TP-5721, one check id a hallmark. Each row's cap and severity (error, warning or report-only) lives in doctrine/writing-gate.json; the naming refrain is the error, warning at two. Under 150 spoken words every row reports only. The judged hallmarks (decorative simile, aphorism, assert-not-show, uniform shape) are eval writing --judge rows, not L0."
+    l0:
+      severity: error
+      status: implemented
+      checks: ["hallmark:naming-refrain", "hallmark:frame-refrain", "hallmark:staccato-run", "hallmark:colon-tricolon", "hallmark:teaser", "hallmark:parallel-recap", "hallmark:label-first"]
+  - id: Q-V18
+    rule: "No beat speaks a term that a later beat declares in new_terms"
+    fields: [beats.spoken, beats.new_terms]
+    related: [Q-E17, Q-E19]
+    owner_support: none
+    note: "TP-5721. Reads declared terms only and compares script positions, so a script that declares each term where it first speaks it cannot fail."
+    l0: { severity: error, status: implemented, checks: ["hallmark:named-before-defined"] }
 
   - id: Q-W1
     rule: 'Stake voiced before 15 %, by a named role or "you", with a number or artifact'

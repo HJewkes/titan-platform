@@ -34,7 +34,7 @@ function mergeRepeats(deltas: readonly IndexedDelta[]): Proposal[] {
   return [...byKey.values()];
 }
 
-export interface ResolvedProposals {
+interface ResolvedProposals {
   /** Restatements of a live principle in the batch's domain, as agreement from each cited row. */
   cites: CiteDelta[];
   added: string[];

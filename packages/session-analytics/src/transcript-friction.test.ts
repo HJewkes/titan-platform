@@ -17,6 +17,11 @@ const prompt = (minute: number) => JSON.stringify({ type: "user", timestamp: at(
 const summary = (signals: LogSignal[]) => signals.map((s) => [s.kind, s.cluster, Math.round(s.hours * 60)]);
 
 describe("friction in a worker's transcript", () => {
+  it("gates a non-error result worded 'was denied' in as a denial (the old gate dropped it)", () => {
+    const lines = [...bash(0, "git push", "Permission for this action was denied"), ...bash(5, "ls")];
+    expect(summary(transcriptSignals(lines, WINDOW)).map(([kind]) => kind)).toContain("denial");
+  });
+
   it("classes a classifier denial with Q5's classes and charges the time to the next move", () => {
     const lines = [
       ...bash(0, "gh pr merge 1", "Permission for this action was denied by the Claude Code auto mode classifier. Reason: [Merge Without Review]", { isError: true }),

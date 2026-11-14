@@ -15,7 +15,7 @@ function namesTask(afterMarker: string): boolean {
   return bare !== null && !PROSE_PREFIX.test(bare[0]);
 }
 
-export function needsTaskId(commentText: string): boolean {
+function needsTaskId(commentText: string): boolean {
   return [...commentText.matchAll(TODO_MARKER)].some((marker) => !namesTask(marker[1] ?? ""));
 }
 

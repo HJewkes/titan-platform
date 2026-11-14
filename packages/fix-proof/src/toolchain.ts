@@ -5,7 +5,7 @@ export const DEFAULT_BUILD = "pnpm build";
 /** The vitest invocation; the runner appends the JSON reporter flags and the selected test paths. */
 export const DEFAULT_COMMAND = "pnpm exec vitest run";
 
-export interface Toolchain {
+interface Toolchain {
   /** Null when the tree has no lockfile this runner knows how to install from. */
   install: string | null;
   build: string;

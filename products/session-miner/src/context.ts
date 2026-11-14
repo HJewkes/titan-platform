@@ -19,7 +19,7 @@ export interface MinerContext extends BaseContext {
   close(): void;
 }
 
-export interface MinerContextOptions {
+interface MinerContextOptions {
   format?: BaseContext["format"];
   reflector?: Reflector;
   surface?: "cli";

@@ -17,7 +17,7 @@ export interface ErrorSignature {
   byteOffset: number;
 }
 
-export interface SessionOutcome {
+interface SessionOutcome {
   status: "success" | "failure" | "mixed";
   prsMerged: number;
   prsAbandoned: number;

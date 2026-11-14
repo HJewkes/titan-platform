@@ -1,9 +1,9 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ActiveWork } from "./active-work.js";
-import { fixtureActiveWork } from "./fixtures.js";
+import { activeWorkClient, type ActiveWork } from "./active-work.js";
+import { ANSWERS_FILE, createDecisionLog, type DecisionAnswer, type DecisionItem } from "./decision-log.js";
 import { closedPort, startFakeDaemon } from "./test-support.js";
 import { resolveConfig } from "./config.js";
 import { createSources, fileUpstream, httpUpstream, humanOnlyFrom, probeUpstreams } from "./upstreams.js";
@@ -137,15 +137,71 @@ describe("the active-work reads createSources builds", () => {
   });
 });
 
-describe("the decision log's human-only reader", () => {
-  it("names the initiatives active-work flags human-only", async () => {
-    const humanOnly = await humanOnlyFrom(fixtureActiveWork())();
-    expect(humanOnly).toEqual({ known: true, initiatives: new Set(["garden-plan"]) });
+/** An active-work daemon over the wire whose inventory carries the given `withheld_from_agents`; undefined drops the field, as an older daemon would. */
+async function daemonWith(rows: Record<string, boolean | undefined>): Promise<{ activeWork: ActiveWork; close(): Promise<void> }> {
+  const stat = { files: 0, bytes: 0, newest_mtime: null };
+  const classes = { tasks: stat, sessions: stat, notes: stat, sources: stat, nested_sources: stat };
+  const initiatives = Object.entries(rows).map(([slug, withheld]) => ({
+    slug, human_only: false, ...(withheld === undefined ? {} : { withheld_from_agents: withheld }), total: stat, classes, nested_dirs: [],
+  }));
+  const daemon = await startFakeDaemon({ status: "ok" }, () => ({ initiatives, totals: {}, human_only_known: true }));
+  return { activeWork: activeWorkClient(daemon.port), close: () => daemon.close() };
+}
+
+describe("the decision log's visibility reader", () => {
+  const item = (initiative: string): DecisionItem => ({
+    id: `q-${initiative}`,
+    sources: [{ system: "deposit", ref: `fixture-asker/${initiative}` }],
+    kind: "decide",
+    door: "two-way",
+    summary: "Which way?",
+    options: [{ id: "a", label: "A" }, { id: "b", label: "B" }],
+    recommended: { optionId: "a", by: "fixture-agent" },
+    keys: [],
+    initiative,
+    personal: false,
+  });
+  const answered: DecisionAnswer = { optionId: "a", by: { class: "owner", id: "owner", channel: "console" }, at: "2026-03-04T10:00:00.000Z" };
+
+  async function ledgerAfter(activeWork: ActiveWork, initiative: string): Promise<string> {
+    const stateDir = path.join(dir, "state");
+    await createDecisionLog({ stateDir, decisionsFile: null, humanOnly: humanOnlyFrom(activeWork) }).record(item(initiative), answered);
+    return readFile(path.join(stateDir, ANSWERS_FILE), "utf8").catch(() => "");
+  }
+
+  async function withDaemon<T>(rows: Record<string, boolean | undefined>, run: (activeWork: ActiveWork) => Promise<T>): Promise<T> {
+    const { activeWork, close } = await daemonWith(rows);
+    try {
+      return await run(activeWork);
+    } finally {
+      await close();
+    }
+  }
+
+  it("keeps a withheld initiative out of answers.jsonl even when its brief is agent-visible", async () => {
+    await withDaemon({ "garden-plan": true, "kiln-tools": false }, async (activeWork) => {
+      expect(await ledgerAfter(activeWork, "garden-plan")).toBe("");
+      expect(await ledgerAfter(activeWork, "kiln-tools")).toContain("kiln-tools");
+    });
   });
 
-  it("reads as unknown when the charter is unread or active-work does not answer (fail closed)", async () => {
+  it("excludes every answer when the charter is unknown and every row is withheld", async () => {
+    await withDaemon({ "garden-plan": true, "kiln-tools": true }, async (activeWork) => {
+      expect(await ledgerAfter(activeWork, "kiln-tools")).toBe("");
+    });
+  });
+
+  it("excludes a row that carries no withheld field, and a slug the inventory never listed", async () => {
+    await withDaemon({ "kiln-tools": false, alpha: undefined }, async (activeWork) => {
+      expect(await ledgerAfter(activeWork, "alpha")).toBe("");
+      expect(await ledgerAfter(activeWork, "unlisted-slug")).toBe("");
+    });
+  });
+
+  it("reads as unknown when no row carries the field, or the daemon is down", async () => {
     const down: ActiveWork = { read: () => Promise.reject(new Error("connection refused")) };
-    expect(await humanOnlyFrom(fixtureActiveWork({ humanOnlyKnown: false }))()).toEqual({ known: false });
+
+    await withDaemon({ alpha: undefined }, async (activeWork) => expect(await humanOnlyFrom(activeWork)()).toEqual({ known: false }));
     expect(await humanOnlyFrom(down)()).toEqual({ known: false });
   });
 });

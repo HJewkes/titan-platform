@@ -80,7 +80,7 @@ export function classifyRename(
     : "move";
 }
 
-export function renameToAliases(
+function renameToAliases(
   repoRoot: string,
   pair: RenamePair,
 ): IdAlias[] {

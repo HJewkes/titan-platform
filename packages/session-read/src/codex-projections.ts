@@ -1,6 +1,6 @@
 import type { ResumeBoundary, SourceLineEvidence } from "./normalized.js";
 
-export interface PendingCodexProjection {
+interface PendingCodexProjection {
   role: "user" | "assistant";
   text: string;
   line: SourceLineEvidence;

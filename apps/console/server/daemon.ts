@@ -32,7 +32,7 @@ import { mountStoryRoutes } from "./story-origin.js";
 import { createSources } from "./upstreams.js";
 import { mountVideoMedia } from "./videos.js";
 
-export interface ConsoleDaemonOptions {
+interface ConsoleDaemonOptions {
   config: ConsoleConfig;
   /** A built app to serve at `/`; the dev server serves the app itself and leaves this out. */
   staticRoot?: string;

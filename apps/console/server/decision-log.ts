@@ -30,7 +30,8 @@ export type DecisionItem = Pick<
 > & { openedAt?: string };
 export type DecisionAnswer = Pick<OwnerAnswer, "optionId" | "optionIds" | "text" | "changeRequested" | "by" | "at">;
 type DecisionsClass = "one-way" | "a-b" | "policy";
-export type HumanOnly = { known: false } | { known: true; initiatives: ReadonlySet<string> };
+/** `initiatives` are the withheld slugs. `shown`, when given, is the allow list: a tagged initiative outside it is withheld too, so a slug the daemon never listed fails closed. */
+export type HumanOnly = { known: false } | { known: true; initiatives: ReadonlySet<string>; shown?: ReadonlySet<string> };
 
 const REASONS = ["personal", "human-only unknown", "human-only-initiative", "ledger write failed", "decisions write failed", "decisions file missing"] as const;
 type Reason = (typeof REASONS)[number];
@@ -152,6 +153,7 @@ async function exclusionReason(item: DecisionItem, answer: DecisionAnswer, human
   if (!known.known) return "human-only unknown";
   const options = (item.options ?? []).map(({ label }) => ({ label }));
   const subject = { initiative: item.initiative ?? null, header: item.category ?? null, question: item.summary, options, answer: ledgerAnswer(item, answer) };
+  if (known.shown && subject.initiative !== null && !known.shown.has(subject.initiative)) return "human-only-initiative";
   const verdict = isExcluded(subject, { humanOnlyInitiatives: [...known.initiatives], projectInitiatives: [], personalDataPatterns: [] });
   if (!verdict.excluded) return null;
   return verdict.reason === "human-only-initiative" ? "human-only-initiative" : "personal";

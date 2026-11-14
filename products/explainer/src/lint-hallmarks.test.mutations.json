@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the naming refrain errors from its first line",
+      "file": "products/explainer/doctrine/writing-gate.json",
+      "find": "\"errorAt\": 3",
+      "replace": "\"errorAt\": 1",
+      "kills": [
+        "hallmark:naming-refrain warns on two short naming lines"
+      ]
+    },
+    {
+      "name": "the naming refrain has no length limit",
+      "file": "products/explainer/src/lint-hallmarks.ts",
+      "find": "boolean => s.words <= maxWords && (",
+      "replace": "boolean => maxWords > 0 && (",
+      "kills": [
+        "hallmark:naming-refrain does not count a naming clause inside a working sentence"
+      ]
+    },
+    {
+      "name": "named-before-defined compares beat ids as strings",
+      "file": "products/explainer/src/lint-hallmarks.ts",
+      "find": "return first !== -1 && first < at ?",
+      "replace": "return first !== -1 && beats[first]!.id < beat.id ?",
+      "kills": [
+        "hallmark:named-before-defined errors when r9 speaks a term that r10 declares, naming the speaking beat",
+        "hallmark:named-before-defined passes when the declaring beat comes first"
+      ]
+    },
+    {
+      "name": "a colon after a digit opens a tricolon",
+      "file": "products/explainer/src/lint-hallmarks.ts",
+      "find": "new RegExp(`(?<!\\\\d):",
+      "replace": "new RegExp(`:",
+      "kills": [
+        "hallmark:colon-tricolon does not fire on a ratio written with a colon"
+      ]
+    },
+    {
+      "name": "the teaser needs a bare \"By the end\"",
+      "file": "products/explainer/src/lint-hallmarks.ts",
+      "find": "/\\bby the end(?: of (?:this|this video|the video|it))?,?",
+      "replace": "/\\bby the end,?",
+      "kills": [
+        "hallmark:teaser fires on By the end of this, you'll be able to fix any kettle."
+      ]
+    }
+  ]
+}

@@ -177,7 +177,8 @@ function inventory(humanOnlyKnown: boolean) {
     const tasks = TASKS.filter((task) => task.slug === slug).length;
     const classes = { initiatives: stat(1), tasks: stat(tasks), sessions: stat(counts.sessions), notes: stat(counts.notes), sources: stat(counts.sources), nested_sources: stat(counts.nested) };
     const files = 1 + tasks + counts.sessions + counts.notes + counts.sources + counts.nested;
-    return { slug, human_only: !humanOnlyKnown || PERSONAL.has(slug), total: stat(files, counts.newest), classes, nested_dirs: [] };
+    const humanOnly = !humanOnlyKnown || PERSONAL.has(slug);
+    return { slug, human_only: humanOnly, withheld_from_agents: humanOnly, total: stat(files, counts.newest), classes, nested_dirs: [] };
   });
   return { initiatives, totals: {}, human_only_known: humanOnlyKnown };
 }

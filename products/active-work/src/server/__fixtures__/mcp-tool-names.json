@@ -9,6 +9,7 @@
   "active__audit",
   "active__category__init",
   "active__category__list",
+  "active__context__brief",
   "active__context__graph",
   "active__context__related",
   "active__deliverable__add",
@@ -98,6 +99,7 @@
   "active__unfocus",
   "active__uninstall",
   "active__unpause",
+  "active__why",
   "active__worktree__set",
   "active__worktree__set-default",
   "active__wrap"

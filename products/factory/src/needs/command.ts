@@ -4,12 +4,14 @@ import type { NeedsSources } from "../context.js";
 import type { FactoryHost } from "../host.js";
 import { activeWorkOrigin } from "../shepherd/cleanup-ports.js";
 import { EXIT } from "../exit-codes.js";
+import { callerForShell } from "../caller.js";
 import { createActiveWorkSource } from "./active-work-source.js";
+import { inventoryAllowList } from "./agent-allow-list.js";
 import { agentChatSource } from "./agent-chat-source.js";
 import { localBrokerEndpoint } from "./agent-chat-endpoint.js";
 import { hitlGateSource, type GateReader } from "./hitl-source.js";
 import { keptSource, type KeepWindow } from "./kept-source.js";
-import { collectNeeds, renderNeeds } from "./merged.js";
+import { collectNeeds, renderNeeds, type NeedsView } from "./merged.js";
 import { createMorningSource, morningQueuesDir } from "./morning-source.js";
 
 interface NeedsIo {
@@ -57,9 +59,14 @@ export function keptNeedsSources(env: NodeJS.ProcessEnv, gates: GateReader, wind
   return ({ personal }) => ownerQueueSources(env, gates, { includePersonal: personal, activeWork: activeWorkFor(personal) });
 }
 
+/** A shell's needs view: the caller from its env, the allow list from the active-work daemon it would read tasks from. */
+export function shellNeedsView(env: NodeJS.ProcessEnv): NeedsView {
+  return { caller: callerForShell(env), allowed: inventoryAllowList(activeWorkOrigin(env)) };
+}
+
 /** Text for the owner, or the merged OwnerItem[] as JSON; a source that cannot be read still exits unavailable after the rest print. */
-export async function runNeeds(io: NeedsIo, sources: readonly QueueSource[], flags: { json: boolean }): Promise<number> {
-  const list = await collectNeeds(sources);
+export async function runNeeds(io: NeedsIo, sources: readonly QueueSource[], flags: { json: boolean }, view: NeedsView): Promise<number> {
+  const list = await collectNeeds(sources, view);
   io.stdout(flags.json ? `${JSON.stringify(list.items, null, 2)}\n` : `${renderNeeds(list)}\n`);
   for (const gap of list.gaps) io.stderr(`${gap}\n`);
   return list.gaps.length > 0 ? EXIT.UNAVAILABLE : EXIT.OK;
@@ -70,5 +77,5 @@ export function registerNeeds(program: Command, { io, withHost }: NeedsVerbs): v
     .command("needs")
     .description("everything waiting on the owner, merged across agent-chat, factory gates, Morning queues and needs-decision tasks; personal initiatives left out")
     .option("--json", "print the merged list as OwnerItem[]")
-    .action((opts: { json?: boolean }) => withHost((host) => runNeeds(io, ownerQueueSources(io.env, host.gates), { json: opts.json === true })));
+    .action((opts: { json?: boolean }) => withHost((host) => runNeeds(io, ownerQueueSources(io.env, host.gates), { json: opts.json === true }, shellNeedsView(io.env))));
 }

@@ -115,8 +115,8 @@ export {
   readWorkerReports,
   readWorkerSessions,
 } from "./events-db.js";
-export type { ErrorClass } from "./tool-error-class.js";
-export { ERROR_CLASSES, classifyError } from "./tool-error-class.js";
+export type { Denial, ErrorClass } from "./tool-error-class.js";
+export { ERROR_CLASSES, classifyError, denialOf } from "./tool-error-class.js";
 export type { FollowUpClass } from "./follow-up-class.js";
 export { FOLLOW_UP_CLASSES, classifyFollowUp } from "./follow-up-class.js";
 export type { FrictionCluster, FrictionLine, FrictionSource } from "./friction-lines.js";

@@ -75,11 +75,20 @@ describe("qualifyTask against a daemon older than task.keys", () => {
 
 describe("loadTaskIndex", () => {
   it("maps each initiative's task prefix and keeps only agent-visible initiatives as visible", async () => {
-    const fetch = taskIndexFetch(TASKS, [{ slug: "chan", task_prefix: "CC" }, { slug: "titan-platform", task_prefix: "TP", agent_visible: false }]);
+    const fetch = taskIndexFetch(TASKS, [{ slug: "chan", task_prefix: "CC" }, { slug: "titan-platform", task_prefix: "TP", withheld_from_agents: true }]);
 
     const { index, agentVisible } = await loadTaskIndex({ origin, fetch });
 
     expect(index.prefixes).toEqual([{ initiative: "chan", taskPrefix: "CC" }, { initiative: "titan-platform", taskPrefix: "TP" }]);
     expect([...agentVisible]).toEqual(["chan"]);
+  });
+
+  it("reads an initiative whose row carries no verdict as withheld", async () => {
+    const fetch: typeof globalThis.fetch = async () =>
+      new Response(JSON.stringify({ ok: true, data: { initiatives: [{ slug: "chan", task_prefix: "CC", ids: [] }, { slug: "open-lane", task_prefix: "OL", withheld_from_agents: false, ids: [] }] } }));
+
+    const { agentVisible } = await loadTaskIndex({ origin, fetch });
+
+    expect([...agentVisible]).toEqual(["open-lane"]);
   });
 });

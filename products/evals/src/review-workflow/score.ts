@@ -1,20 +1,13 @@
-import { verifyCitation, type LineSource } from "@titan-design/evidence";
+import { citationHolds, citationsIn, type LineSource } from "@titan-design/evidence";
 import type { ReviewOutcome } from "@titan-design/review-workflow";
 import { citesPath } from "../corpus/cited-paths.js";
 import type { ReplayExpected } from "./scenario.js";
-
-/** `path:12` or `path:12-30`, as review-panel's aggregate reads a finding's citations. */
-const CITATION = /(?<![\w./-])((?:[\w.-]+\/)*[\w-][\w.-]*\.[A-Za-z]\w*):(\d+)(?:-(\d+))?/g;
 
 /** The paths a FIX_FIRST's findings cite at lines that exist at the head; any other outcome cites none. */
 function verifiedCitedPaths(outcome: ReviewOutcome, source: LineSource): string[] {
   if (outcome.kind !== "FIX_FIRST") return [];
   const paths = outcome.verdict.findings.flatMap((finding) =>
-    [...finding.text.matchAll(CITATION)].flatMap(([, path = "", start = "", end]) => {
-      // Reviewers quote nothing, so reaching the quote step means the path and lines were confirmed.
-      const check = verifyCitation(source, { path, lineStart: Number(start), lineEnd: Number(end ?? start), quote: "" });
-      return check.ok || check.reason === "quote-empty" ? [path] : [];
-    }),
+    citationsIn(finding.text).filter((range) => citationHolds(source, range)).map((range) => range.path),
   );
   return [...new Set(paths)].sort();
 }

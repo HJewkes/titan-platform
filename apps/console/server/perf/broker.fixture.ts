@@ -9,7 +9,7 @@ const PRESENCE = ["working", "available", "blocked"] as const;
 const MINUTE_MS = 60_000;
 
 /** One conversation row, as agent-chat's events table holds it and as `/api/history` serves it. */
-export interface BrokerMessage {
+interface BrokerMessage {
   id: number;
   ts: number;
   kind: (typeof MESSAGE_KINDS)[number];

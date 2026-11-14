@@ -1,7 +1,7 @@
 import { generateTokensCss } from "@titan-design/react-ui/theme/tokens-css";
 
 /** One line of a built layer's source that paints with a colour token the theme does not define. */
-export interface TokenFinding {
+interface TokenFinding {
   line: number;
   token: string;
 }

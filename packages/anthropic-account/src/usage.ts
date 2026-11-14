@@ -51,7 +51,7 @@ const observedReadingSchema = usageReadingSchema.extend({
 });
 
 export type UsageWindow = z.infer<typeof windowSchema>;
-export type ScopedUsage = z.infer<typeof scopedSchema>;
+type ScopedUsage = z.infer<typeof scopedSchema>;
 export type UsageReading = z.infer<typeof usageReadingSchema>;
 /** A stored reading, with the prompt-cache stamp a status line writes beside its rate_limits. */
 export type ObservedReading = z.infer<typeof observedReadingSchema>;

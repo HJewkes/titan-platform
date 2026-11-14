@@ -23,8 +23,8 @@ function surface(report: ConfigReport, file: string): ReportedSurface | undefine
   return report.surfaces.find((each) => each.file === file);
 }
 
-async function report(): Promise<ConfigReport> {
-  return buildConfigReport(realReportPorts, { home, env: {}, platform: "darwin", host: "laptop-a", now: new Date("2026-03-02T12:00:00.000Z") });
+async function report(env: NodeJS.ProcessEnv = {}): Promise<ConfigReport> {
+  return buildConfigReport(realReportPorts, { home, env, platform: "darwin", host: "laptop-a", now: new Date("2026-03-02T12:00:00.000Z") });
 }
 
 async function cli(argv: string[], fetchImpl?: typeof fetch): Promise<{ code: number; out: string; err: string }> {
@@ -60,6 +60,15 @@ describe("titan config report", () => {
       sha256: createHash("sha256").update(AGENT_CHAT_CONFIG).digest("hex"),
     });
     expect(JSON.stringify(built)).not.toContain(BUDGET_VALUE);
+  });
+
+  it("lists accounts under CLAUDE_PROFILE_ROOT instead of ~/.claude-profiles when it is set", async () => {
+    await put("accounts/other/settings.json", "{}\n");
+
+    const built = await report({ CLAUDE_PROFILE_ROOT: join(home, "accounts") });
+
+    expect(surface(built, "~/accounts/other/settings.json")).toMatchObject({ kind: "claude-settings", present: true });
+    expect(surface(built, "~/.claude-profiles/work/settings.json")).toBeUndefined();
   });
 
   it("reports a secret file by presence, mode and mtime alone", async () => {

@@ -1,5 +1,12 @@
 # @titan-design/active-work
 
+## 0.31.1
+
+### Patch Changes
+
+- 58034f4: Remove two exports only their own tests used: the explainer beat worker registry and active-work's forgetPreserved (TP-5794).
+- 1a76364: Delete the unused rewriteOccurrences and isActiveWorkError helpers.
+
 ## 0.31.0
 
 ### Minor Changes

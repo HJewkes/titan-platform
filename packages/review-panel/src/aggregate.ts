@@ -1,4 +1,4 @@
-import { verifyCitation, type LineSource } from "@titan-design/evidence";
+import { citationHolds, citationsIn, type LineSource } from "@titan-design/evidence";
 import { needsTestsSeat, proofStanding, RESULT_PREFIX, VERDICTS } from "@titan-design/fix-proof";
 import type { AwaitVerdictResult } from "./accept-verdict.js";
 import { FINDINGS_SEPARATOR, MAX_FIX_FIRST_TEXT_CHARS, boundedFindings } from "./fix-first-findings.js";
@@ -43,7 +43,6 @@ interface Seat {
 const SHAPE_ORDER: readonly ReviewShape[] = ["correctness", "adversary", "tests", "visual", "perf"];
 const BAD_FIX_PROOF = new Set<string>(["vacuous", "no-tests", "error", "unproven", "refused"]);
 const KNOWN_FIX_PROOF = new Set<string>(VERDICTS);
-const CITATION = /(?<![\w./-])((?:[\w.-]+\/)*[\w-][\w.-]*\.[A-Za-z]\w*):(\d+)(?:-(\d+))?/g;
 const FINDING_START = /^\s*(?:[-*+]|\d+[.)])\s/;
 
 /** Results may come back from stored JSON, so a verdict counts only when it is exactly MERGE or FIX_FIRST at the head. */
@@ -134,15 +133,8 @@ function splitFindings(text: string): string[] {
 
 /** Verified when it cites at least one path:line and every citation exists at the head. */
 function verified(finding: string, source: LineSource): boolean {
-  const citations = [...finding.matchAll(CITATION)];
-  return (
-    citations.length > 0 &&
-    citations.every(([, path = "", start = "", end]) => {
-      // The reviewer quotes nothing, so a check that reaches the quote step has already confirmed the path and lines.
-      const check = verifyCitation(source, { path, lineStart: Number(start), lineEnd: Number(end ?? start), quote: "" });
-      return check.ok || check.reason === "quote-empty";
-    })
-  );
+  const citations = citationsIn(finding);
+  return citations.length > 0 && citations.every((range) => citationHolds(source, range));
 }
 
 function memberText(seat: Seat, source: LineSource): string {
@@ -153,7 +145,7 @@ function memberText(seat: Seat, source: LineSource): string {
 /** The bound keeps the newest text; when that cuts the first cited line, it leads the result so the fixer still has a location. */
 function boundMember(text: string, share: number): string {
   if (text.length <= share) return text;
-  const lead = text.split("\n").find((line) => new RegExp(CITATION.source).test(line))?.slice(0, Math.floor(share / 4));
+  const lead = text.split("\n").find((line) => citationsIn(line).length > 0)?.slice(0, Math.floor(share / 4));
   const tail = boundedFindings(text, share);
   if (lead === undefined || tail.includes(lead)) return tail;
   return `${lead}\n${boundedFindings(text, share - lead.length - 1)}`;

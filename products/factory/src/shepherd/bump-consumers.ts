@@ -239,5 +239,5 @@ function bumpBody(plan: ConsumerBumpPlan): string {
 async function registerOnce(host: FactoryHost, services: ShepherdServices, repo: RepoSlug, pr: number): Promise<{ registered?: string }> {
   const known = services.store.get().byPr(repo, pr);
   if (known && host.runtime.status(known.runId)?.status !== "failed") return {};
-  return { registered: (await registerConsumerBump({ warnings: [], format: "json", host, shepherd: services }, repo, pr)).runId };
+  return { registered: (await registerConsumerBump({ warnings: [], format: "json", host, caller: "agent", shepherd: services }, repo, pr)).runId };
 }

@@ -9,7 +9,7 @@ import { SurfaceRefused, type SurfaceOptions } from "./options.js";
 export const TMUX_SESSION = "fac";
 
 /** tmux answers a local socket at once; past this the server is wedged. */
-export const TMUX_TIMEOUT_MS = 10_000;
+const TMUX_TIMEOUT_MS = 10_000;
 
 const execFileAsync = promisify(execFile);
 

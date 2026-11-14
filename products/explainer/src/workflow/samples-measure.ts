@@ -36,7 +36,7 @@ export interface SampleRun {
   error?: string;
 }
 
-export interface SampleRequest {
+interface SampleRequest {
   stage: SampledStage;
   cases: readonly SampleCase[];
   /** The sample indices to run per case. */

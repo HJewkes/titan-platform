@@ -35,7 +35,7 @@ export const fixFirstCount = (ctx: Pick<WorkflowContext, "iteration">): number =
 /** Recorded once per fixer wake of any kind, so the run's repair budget survives a replay and a new head. */
 export const REPAIR_STEP = "sh-repair";
 /** The FIX_FIRST at which the fixer gets a structural brief instead of another patch round. */
-export const STRUCTURAL_FIX_FIRST = 2;
+const STRUCTURAL_FIX_FIRST = 2;
 export const LOG_TAIL_LINES = 150;
 /** The most CI log the wake carries across every failing job, headers included. */
 export const LOG_BUDGET_BYTES = 8 * 1024;
@@ -51,7 +51,7 @@ const DEAD_CHECK_FINDING = /^\s*(?:NEW|GROWN)\s{2,}\S/;
  * regenerating. The per-package reference pages and .codewatch/check.json are hand-edited, so they are not listed.
  */
 const REGISTRY_FILES: ReadonlySet<string> = new Set(["CAPABILITIES.md", "site/guides/capabilities.md", "site/reference/index.md", "site/.vitepress/reference-sidebar.json"]);
-export const isRegistry = (path: string): boolean => REGISTRY_FILES.has(path);
+const isRegistry = (path: string): boolean => REGISTRY_FILES.has(path);
 
 /** What a wake is about: the brief reads nothing else. */
 export interface WakeFacts {

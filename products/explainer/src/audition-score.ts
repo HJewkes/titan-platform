@@ -50,7 +50,7 @@ export function fitScore({ fit }: NarrativeStructure, map: MaterialMap): number 
 }
 
 /** A block that cites more anchor facts than its structure's `maxItems` cap. */
-export interface CapExcess {
+interface CapExcess {
   block: string;
   cap: number;
   cited: number;

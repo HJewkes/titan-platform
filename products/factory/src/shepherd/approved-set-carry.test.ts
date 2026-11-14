@@ -134,6 +134,14 @@ describe("a later head that commits exactly the accepted set", () => {
     expect(r.gates).toEqual([H2]);
   });
 
+  it("refuses with the not-an-ancestor reason and no merge decision when the red head is no ancestor of the head", async () => {
+    const r = rig({ heads: { [H2]: { ...EXACT, ancestor: false } } });
+
+    await r.ask("approve-merge", gate(H2));
+
+    expect(r.results.get(`sh-approval-carry:set:${H2}`)).toEqual({ carries: false, mode: "on", reason: `${H1} is not an ancestor of ${H2}` });
+  });
+
   it.each<[string, RigOptions, string]>([
     ["a gate that is not visual", { visual: false }, gate(H2)],
     ["a head without a reviewer MERGE", { reviewed: () => false }, gate(H2)],

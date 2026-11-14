@@ -375,4 +375,49 @@ declare function createRetrievalEngine(options: EngineOptions): RetrievalEngine;
 /** What a failed rerank reports itself as in `degraded`, alongside the retrievers' own entries. */
 declare const RERANK_STAGE = "rerank";
 
-export { BruteForceVectorIndex, type Candidate, type ContextBudget, ContextBudgetSchema, type ContextCandidate, type ContextEntry, type ContextPlan, type ContextResponse, type CrossEncoderOptions, type Degradation, type DropReason, type DroppedCandidate, type EngineOptions, type FtsRetrieverOptions, type FusedResult, type GatherOptions, type GatheredLists, type GraphRetrieverOptions, type Hit, type ListResponse, RERANK_STAGE, type RankedList, type Reranked, type Reranker, type RetrievalCallOptions, type RetrievalDropReason, type RetrievalDropped, type RetrievalEngine, type RetrievalRequest, RetrievalRequestSchema, type RetrievalResponse, type RetrieveOptions, type Retriever, type RrfOptions, type SearchOptions, type SearchResponse, TIERS_STAGE, type TierSource, type VectorIndex, type VectorMatch, type VectorRetrieverOptions, type WalkGraph, type WalkNeighbour, type WalkOptions, type WalkStep, applyDropoff, createRetrievalEngine, crossEncoderReranker, defaultHubDegree, defaultMatchExpression, estimateTokens, expandGraph, ftsRetriever, fuseByRRF, gatherFailOpen, graphRetriever, planContext, rerankCandidates, vectorRetriever, walkGraph };
+/**
+ * Distinctive terms of a text, keyed by the stored (lowercase) term. Each value
+ * is the first cased form seen, which is what `scoreTerm` should score: the
+ * identifier bonus reads camelCase, and lowercasing first would erase it.
+ */
+declare function extractTerms(text: string): Map<string, string>;
+/** IDF plus a length bonus plus an identifier bonus. Pass the cased form so camelCase earns its bonus. */
+declare function scoreTerm(term: string, docFrequency: number, totalDocs: number): number;
+
+/**
+ * Levenshtein distance over code points, after NFC normalisation, computed only
+ * within `maxDistance` of the diagonal. Returns the exact distance when it is at
+ * most `maxDistance`, and `maxDistance + 1` otherwise, stopping as soon as every
+ * cell of a row passes the band.
+ */
+declare function editDistance(a: string, b: string, maxDistance?: number): number;
+/** The distance a term of this length may be corrected across: 1 up to 4 characters, 2 up to 12, 3 beyond. */
+declare function maxEditDistance(termLength: number): number;
+
+interface VocabEntry {
+    /** Stored lowercase. */
+    term: string;
+    docFrequency: number;
+    score: number;
+}
+/** Where corrections come from. A store-backed table fits this shape, so correction itself needs no database. */
+interface VocabularySource {
+    has(term: string): boolean;
+    /** Terms whose length in code points is within [minLength, maxLength], highest score first, at most `limit`. */
+    candidates(minLength: number, maxLength: number, limit: number): readonly VocabEntry[];
+}
+/** An in-memory source over a fixed list of entries. */
+declare function vocabularyFromEntries(entries: readonly VocabEntry[]): VocabularySource;
+/**
+ * The closest known term within the length-scaled distance, ties to the higher
+ * score, then to the earlier term. Returns `term` unchanged when it is known or
+ * when nothing is close enough; a correction comes back in stored (lowercase) form.
+ */
+declare function findCorrection(term: string, source: VocabularySource): string;
+/** Correct each whitespace-separated word of 3 or more characters, the first 8 of them at most. */
+declare function correctQuery(query: string, source: VocabularySource): {
+    corrected: string;
+    didCorrect: boolean;
+};
+
+export { BruteForceVectorIndex, type Candidate, type ContextBudget, ContextBudgetSchema, type ContextCandidate, type ContextEntry, type ContextPlan, type ContextResponse, type CrossEncoderOptions, type Degradation, type DropReason, type DroppedCandidate, type EngineOptions, type FtsRetrieverOptions, type FusedResult, type GatherOptions, type GatheredLists, type GraphRetrieverOptions, type Hit, type ListResponse, RERANK_STAGE, type RankedList, type Reranked, type Reranker, type RetrievalCallOptions, type RetrievalDropReason, type RetrievalDropped, type RetrievalEngine, type RetrievalRequest, RetrievalRequestSchema, type RetrievalResponse, type RetrieveOptions, type Retriever, type RrfOptions, type SearchOptions, type SearchResponse, TIERS_STAGE, type TierSource, type VectorIndex, type VectorMatch, type VectorRetrieverOptions, type VocabEntry, type VocabularySource, type WalkGraph, type WalkNeighbour, type WalkOptions, type WalkStep, applyDropoff, correctQuery, createRetrievalEngine, crossEncoderReranker, defaultHubDegree, defaultMatchExpression, editDistance, estimateTokens, expandGraph, extractTerms, findCorrection, ftsRetriever, fuseByRRF, gatherFailOpen, graphRetriever, maxEditDistance, planContext, rerankCandidates, scoreTerm, vectorRetriever, vocabularyFromEntries, walkGraph };

@@ -1,0 +1,22 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the sheet basis applies even when the store holds a selected bet",
+      "file": "products/factory/src/eligibility/sheets/sheet-eligibility.ts",
+      "find": "  if (records.bets.length > 0) return undefined;\n",
+      "replace": "",
+      "kills": [
+        "shadow tick proposed-sheet basis one selected bet in the store keeps the selected basis and ignores the sheet",
+        "shadow tick proposed-sheet basis a broken sheet does not touch a lane the owner has selected bets for"
+      ]
+    },
+    {
+      "name": "the sheet week pin is ignored",
+      "file": "products/factory/src/eligibility/sheets/sheet-source.ts",
+      "find": "bets.sheetWeek ?? calendarWeek",
+      "replace": "calendarWeek",
+      "kills": ["shadow tick proposed-sheet basis sheets of a later week are unused in the calendar week before it, unless the rule file pins that week"]
+    }
+  ]
+}

@@ -22,7 +22,7 @@ export const VIEWER_QUESTIONS = [
 ] as const;
 
 /** A question about a component that cannot exist; the viewer must say the text does not answer it. */
-export const CANARY_QID = "canary";
+const CANARY_QID = "canary";
 const canaryQuestion = (nonce: string): string => `What does the component named ${nonce} do?`;
 
 const AnswersSchema = z.strictObject({
@@ -85,7 +85,7 @@ export const l2EvalVersion = (input: Pick<L2Input, "rubric" | "judge" | "answerK
 
 const node = (name: string): string => name.trim().toLowerCase();
 
-export function parseEdges(answer: string): ReferenceEdge[] {
+function parseEdges(answer: string): ReferenceEdge[] {
   return answer.split("\n").flatMap((line) => {
     const match = /^\s*[-*]?\s*(.+?)\s*->\s*(.+?)\s*(?::.*)?$/.exec(line);
     return match ? [{ from: node(match[1]!), to: node(match[2]!) }] : [];

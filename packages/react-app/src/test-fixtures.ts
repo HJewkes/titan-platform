@@ -14,7 +14,7 @@ import {
 } from "@titan-design/registry";
 import { liveSource, type DataSource } from "@titan-design/rpc-client";
 
-export interface Note {
+interface Note {
   id: string;
   text: string;
   tags: string[];
@@ -35,7 +35,7 @@ export function resetNotes(): void {
 
 const ListArgs = z.object({ tag: z.string().optional(), limit: z.number().optional() });
 
-export const commands = {
+const commands = {
   "note.list": defineCommand<z.infer<typeof ListArgs>, { ids: string[] }>({
     name: "note.list",
     description: "Note ids, optionally by tag and capped",
@@ -126,7 +126,7 @@ export async function startTestDaemon(registry: CommandRegistry): Promise<TestDa
   return daemon;
 }
 
-export interface RecordedCall {
+interface RecordedCall {
   name: string;
   args: unknown;
   signal: AbortSignal | undefined;
@@ -149,7 +149,7 @@ export function recordingSource(inner: DataSource): DataSource & { calls: Record
  * jsdom replaces `AbortSignal`, and Node's fetch refuses a foreign one. This fetch keeps the
  * abort semantics a browser has: the promise rejects with the reason and an open body is cancelled.
  */
-export const jsdomSafeFetch: typeof fetch = (input, init) => {
+const jsdomSafeFetch: typeof fetch = (input, init) => {
   const { signal, ...rest } = init ?? {};
   if (!signal) return fetch(input, rest);
   return new Promise<Response>((resolve, reject) => {

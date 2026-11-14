@@ -381,6 +381,9 @@ const { candidates, coverage } = await findSimilarCapability(store, snapshotId, 
   keyed by `embedder.model` and the SHA-256 of the text. They are not snapshot-scoped, so
   re-embedding unchanged text costs zero embed calls. `embedSnapshot` throws on a backend
   failure; `tryEmbedSnapshot` reports it.
+- **Stale vectors.** Rows under another model identity (a renamed model or a changed prefix
+  table) are never read. `embedSnapshot` reports them as `staleVectors`;
+  `pruneStaleSymbolVectors(store, embedder.model)` deletes them and returns `{ deleted, models }`.
 - **Query.** `vectorRetriever` over a `BruteForceVectorIndex` from `retrieval`. The query is
   embedded with role `query` and the symbol texts with role `document`; the embedder applies
   the matching prefix (`search_query: ` / `search_document: ` for nomic models).

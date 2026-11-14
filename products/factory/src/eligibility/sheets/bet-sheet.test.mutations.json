@@ -1,0 +1,22 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "cites are not checked against the digest",
+      "file": "products/factory/src/eligibility/sheets/bet-sheet.ts",
+      "find": "  if (front && ids) checkCites({ front, bets }, ids, errors);\n",
+      "replace": "",
+      "kills": [
+        "parseBetSheet refuses a bet citing an intent line its digest lacks, at the bet's line",
+        "parseBetSheet refuses a bet whose cites all point at another digest"
+      ]
+    },
+    {
+      "name": "duplicate orders are allowed",
+      "file": "products/factory/src/eligibility/sheets/bet-sheet.ts",
+      "find": "    if (seen.order.has(bet.order)) errors.push",
+      "replace": "    if (false) errors.push",
+      "kills": ["parseBetSheet refuses two bets with the same order"]
+    }
+  ]
+}

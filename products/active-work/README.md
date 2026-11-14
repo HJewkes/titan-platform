@@ -156,7 +156,9 @@ The most-used surface, grouped by purpose. Run `active-work <command> --help` fo
 | Discover | `active-work discover` | Scan gh / git / projects / Claude sessions for untracked work |
 | Discover | `active-work audit` | Cross-initiative health summary |
 | Discover | `active-work context graph <id> [--slug S]` | Trace every exact-ID reference to a task id, session, or loop ref |
+| Discover | `active-work why <path>:<line>[-<end>] [--cwd D]` | Blame the lines at HEAD and map each commit to its PR, tasks and sessions, with the rung that found each; owner-only rows are counted, not shown, for agents |
 | Discover | `active-work context related --for <text> [--initiative S]` | Rank notes, sources, tasks and session records against a text; empty rather than failing without an index |
+| Discover | `active-work context brief --for <text> [--initiative S] [--budget-bytes N]` | Render the related-context section of a spawn brief within a UTF-8 byte budget, agent view only |
 
 ## Configuration
 

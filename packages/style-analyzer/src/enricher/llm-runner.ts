@@ -6,13 +6,13 @@ export interface LlmJob<TKey> {
   maxTokens: number;
 }
 
-export interface LlmJobSuccess<TKey> {
+interface LlmJobSuccess<TKey> {
   key: TKey;
   content: string;
   tokensUsed: number;
 }
 
-export interface LlmJobFailure<TKey> {
+interface LlmJobFailure<TKey> {
   key: TKey;
   error: string;
 }
@@ -24,7 +24,7 @@ export interface LlmRunResult<TKey> {
   budgetExceeded: boolean;
 }
 
-export interface LlmRunnerConfig {
+interface LlmRunnerConfig {
   provider: LlmProvider;
   totalTokenBudget?: number;
 }

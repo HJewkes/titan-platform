@@ -54,6 +54,10 @@ type RangeCheck = {
 declare function verifyRange(source: LineSource, range: LineRange, options?: VerifyOptions): RangeCheck;
 /** Checks a citation's path, range, visibility and quote. Rejections carry a machine-readable reason. */
 declare function verifyCitation(source: LineSource, citation: Citation, options?: VerifyOptions): CitationCheck;
+/** The `path:12` and `path:12-30` references in free text, in order of appearance. */
+declare function citationsIn(text: string): LineRange[];
+/** True when the range's path and lines exist in `source`; the reference carries no quote, so none is checked. */
+declare function citationHolds(source: LineSource, range: LineRange): boolean;
 
 /** The commits an anchor resolves against. `head` and `base` are full 40-hex commit ids. */
 interface AnchorPins {
@@ -177,4 +181,4 @@ declare function scoreControls(expected: readonly LabeledAnswer[], answered: rea
 /** A deterministic generator of floats in [0, 1) from a string or number seed (mulberry32). */
 declare function seededRandom(seed: string | number): () => number;
 
-export { type Anchor, type AnchorCheck, type AnchorParse, type AnchorPins, type AnchorRejection, type Citation, type CitationCheck, type CitationRejection, type ControlScore, type DiffAnchor, type DiffEndpoint, type GroupOptions, type LabelScore, type LabeledAnswer, type LineRange, type LineSource, type Placement, type Planted, type RangeCheck, type RevisionAnchor, type RevisionSource, type ShownLines, type VerifyOptions, groupByOverlap, isAnchorForm, isFullSha, lineSourceFromTexts, parseAnchor, pickControls, placeControls, quoteFragments, quoteInRange, quoteInText, rangesOverlap, scoreControls, seededRandom, splitLines, verifyAnchorText, verifyCitation, verifyRange };
+export { type Anchor, type AnchorCheck, type AnchorParse, type AnchorPins, type AnchorRejection, type Citation, type CitationCheck, type CitationRejection, type ControlScore, type DiffAnchor, type DiffEndpoint, type GroupOptions, type LabelScore, type LabeledAnswer, type LineRange, type LineSource, type Placement, type Planted, type RangeCheck, type RevisionAnchor, type RevisionSource, type ShownLines, type VerifyOptions, citationHolds, citationsIn, groupByOverlap, isAnchorForm, isFullSha, lineSourceFromTexts, parseAnchor, pickControls, placeControls, quoteFragments, quoteInRange, quoteInText, rangesOverlap, scoreControls, seededRandom, splitLines, verifyAnchorText, verifyCitation, verifyRange };

@@ -6,8 +6,8 @@ export { isStoredKind } from "@titan-design/code-read/query";
 type Args<K extends keyof CodeReadCommandMap> = CodeReadCommandMap[K]["args"];
 
 /** A node page shows a short list, not a page of one; the search box shows a few candidates. */
-export const NODE_LIST_LIMIT = 10;
-export const SEARCH_LIMIT = 8;
+const NODE_LIST_LIMIT = 10;
+const SEARCH_LIMIT = 8;
 
 /** Children of a file or symbol are symbols, so the columns are symbol metrics. */
 export function childMetrics(kind: string): string[] {

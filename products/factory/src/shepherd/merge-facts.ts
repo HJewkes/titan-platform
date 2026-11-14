@@ -1,5 +1,5 @@
 import { DEFAULT_TABLE, evaluate, type AgentIdentity, type CarryFact, type CheckRunFact, type MergeFacts } from "@titan-design/authority";
-import { GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type PrFile, type PullRequest, type RepoSlug } from "@titan-design/github";
+import { GITHUB_ACTIONS_APP_ID, latestPerName, type CheckRun, type GitHubPort, type PrFile, type PullRequest, type RepoSlug } from "@titan-design/github";
 import type { CiPolicy, SourceTextLocator } from "@titan-design/session-read";
 import type { AttestJudgment, AttestVerdicts } from "./attest-evidence.js";
 import { attestGate, type AttestDecided } from "./attest-read.js";
@@ -13,6 +13,7 @@ import { grantWithheldField, withGrantWithheld, type GrantWithheldField } from "
 import { SKILL_REASON_PREFIX, VISUAL_REASON_PREFIX, evidenceComment, evidenceMarker } from "./evidence-comment.js";
 import type { PlanApproval } from "./plan-approval.js";
 import { planHonour, type PlanHonour } from "./plan-approval-cover.js";
+import { withoutEditRunSkips } from "./fix-proof-jobs.js";
 import { pinnedPaths } from "./pr-changed-paths.js";
 import { REVIEW_CHECK_NAME } from "./publish-review.js";
 import { skillPathsIn } from "./skill-paths.js";
@@ -24,6 +25,7 @@ import { riskFactsOf, riskTier } from "./risk-tier.js";
 import { lowTierPolicyTouch } from "./g10-low-tier.js";
 import type { KindRead } from "./registered-kind.js";
 import { authorityLineOf, ownerTierGate, ownerTierNoted, ownerTierStamp, type OwnerTierField, type OwnerTierWiring } from "./owner-tier.js";
+import { ownerValidateDecided, ownerValidateOf, type OwnerValidateField, type OwnerValidateWiring } from "./g10-owner-validate-read.js";
 import type { CarryResult } from "./tree-carry.js";
 import { evidenceRecord, type EvidenceRecord } from "./evidence-record.js";
 import { readVisualDelta, type VisualDelta, type VisualThreshold } from "./visual-delta-read.js";
@@ -42,12 +44,12 @@ export const MERGE_EVIDENCE_STEP = "sh-merge-evidence";
 
 /** The rules that let Shepherd merge without the owner; any other allow still gates. */
 export const MERGE_BY_REVIEWER_RULE = "MRG-AU-RV";
-export const MERGE_BY_CARRIED_VERDICT_RULE = "MRG-AU-RC";
+const MERGE_BY_CARRIED_VERDICT_RULE = "MRG-AU-RC";
 const MERGE_BY_REMERGED_VERDICT_RULE = "MRG-AU-RM";
 const AUTO_MERGE_RULES: readonly string[] = [MERGE_BY_REVIEWER_RULE, MERGE_BY_CARRIED_VERDICT_RULE, MERGE_BY_REMERGED_VERDICT_RULE];
 
 /** Authority pins no app, so Shepherd trusts check runs from GitHub Actions only. */
-export const ALLOWED_CHECK_APPS: readonly number[] = [GITHUB_ACTIONS_APP_ID];
+const ALLOWED_CHECK_APPS: readonly number[] = [GITHUB_ACTIONS_APP_ID];
 
 /** The check only the Shepherd App may satisfy; no App configured leaves it with no counting app, so a required one gates. */
 function reviewContextApps(reviewAppId: number | undefined): Record<string, number[]> {
@@ -102,7 +104,7 @@ export interface MergeEvidenceInput extends GrantWithheldField {
 }
 
 /** The facts observed at one head, and the record of what they decided there. */
-export interface MergeEvidence extends GrantWithheldField, OldPathField, OwnerTierField {
+export interface MergeEvidence extends GrantWithheldField, OldPathField, OwnerTierField, OwnerValidateField {
   head: string;
   merge: MergeFacts;
   record: EvidenceRecord;
@@ -127,7 +129,7 @@ export interface MergeEvidence extends GrantWithheldField, OldPathField, OwnerTi
 }
 
 /** Just what `decideAutoMerge` reads, so the evidence step can decide before its record exists. */
-export interface DecidableEvidence extends GrantWithheldField, OldPathField, OwnerTierField {
+export interface DecidableEvidence extends GrantWithheldField, OldPathField, OwnerTierField, OwnerValidateField {
   head: string;
   merge: MergeFacts;
   /** `headBlobs` is read only to check a weakened CI policy against an owner's plan approval. */
@@ -146,7 +148,7 @@ export interface DecidableEvidence extends GrantWithheldField, OldPathField, Own
 }
 
 /** Every row the merge guard gates on; the owner section words each one (why-asked.ts), as do the evidence comment and the decision class. */
-export const MERGE_GUARD_ROWS = ["no-facts", "head-mismatch", "files-unread", "skill-path", "visual-path", "required-checks-unknown", "merge-state-unsettled", "github-path", "ci-policy-weakened", "ci-policy-budget", "ci-policy-malformed", "attest-unmet", "attest-deploy-skew", "old-path-untagged", "owner-tier"] as const;
+export const MERGE_GUARD_ROWS = ["no-facts", "head-mismatch", "files-unread", "skill-path", "visual-path", "required-checks-unknown", "merge-state-unsettled", "github-path", "ci-policy-weakened", "ci-policy-budget", "ci-policy-malformed", "attest-unmet", "attest-deploy-skew", "old-path-untagged", "owner-tier", "owner-validate"] as const;
 export type MergeGuardRow = (typeof MERGE_GUARD_ROWS)[number];
 
 export function guardRule(rowId: MergeGuardRow): PolicyRule {
@@ -179,13 +181,10 @@ function withUnreadFacts(decision: GateDecision, evidence: DecidableEvidence | u
  * weakened CI-policy rows only when one approval of that gate covers the head (plan-approval-cover.ts, owner decision 551).
  */
 export function decideAutoMerge(
-  headSha: string,
-  evidence: DecidableEvidence | undefined,
-  visualPaths?: readonly string[],
-  visualBaselines?: VisualBaselines,
-  approved?: readonly PlanApproval[],
+  headSha: string, evidence: DecidableEvidence | undefined, visualPaths?: readonly string[], visualBaselines?: VisualBaselines, approved?: readonly PlanApproval[],
 ): GateDecision {
-  return withUnreadFacts(decideOnFacts(headSha, evidence, { visualPaths, visualBaselines }, planHonour(approved)), evidence);
+  const decision = decideOnFacts(headSha, evidence, { visualPaths, visualBaselines }, planHonour(approved));
+  return withUnreadFacts(ownerValidateDecided(decision, evidence?.ownerValidate, approved, guardRule("owner-validate")), evidence);
 }
 
 function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined, visual: VisualPolicy, honour: PlanHonour): GateDecision {
@@ -310,7 +309,7 @@ export async function collectMergeFacts(
   const pr = await settledPr(port, input.repo, input.pr, clock);
   const [required, runs, paths, frozen, bypassable] = await Promise.all([
     readRequiredChecks(port, input.repo, pr.baseRef),
-    port.latestCheckRuns(input.repo, input.head),
+    port.checkRuns(input.repo, input.head).then((all) => latestPerName(withoutEditRunSkips(all))),
     pinnedPaths(port, input, pr.headSha),
     isFrozen(input.repo, input.pr),
     reviewBypassable(port, input.repo, pr),
@@ -335,7 +334,7 @@ export async function collectMergeFacts(
 }
 
 /** What the evidence step reads beyond its input: the App `shepherd/review` counts from, the repo's `shepherd.visualThreshold`, the attestation judge and the old-path judge. */
-interface EvidenceReads extends OldPathWiring, OwnerTierWiring {
+interface EvidenceReads extends OldPathWiring, OwnerTierWiring, OwnerValidateWiring {
   reviewAppId?: number;
   threshold?: VisualThreshold;
   /** Raw `shepherd.visualTier` for the repo; absent records no tier. */
@@ -369,15 +368,16 @@ export async function mergeEvidence(
   const read = { ...unknown, ...ciPolicy, ...visual, ...attest, ...oldPath, ...authority };
   const decidable: DecidableEvidence = { head: input.head, merge, record: input, mergeableState, ...read, ...grantWithheldField(input) };
   const ownerTier = { ...authority, ...ownerTierStamp(reads.ownerTier, decidable) };
-  const decision = decideAutoMerge(input.head, { ...decidable, ...ownerTier }, input.visualPaths, input.visualBaselines);
+  const stamps = { ...ownerTier, ...(await ownerValidateOf(reads, kind ?? {})) };
+  const decision = decideAutoMerge(input.head, { ...decidable, ...stamps }, input.visualPaths, input.visualBaselines);
   const visualPaths = input.visualPaths && { visualPaths: input.visualPaths };
   const ownerHold = kind?.ownerHold ?? kind?.unread;
   const riskRead = { paths: merge.changedPaths, changedLines: observed.changedLines, unread: changedFilesUnread, ...ciPolicy, ...visualPaths, ownerHold, visualGate: reads.visualGate, ...authority };
   const risk = riskFactsOf(riskRead);
   const lowTier = risk.touches.includes("policy") ? { lowTier: lowTierPolicyTouch(riskRead) } : undefined;
   const visualChanged = visualChangedField(reads.visualGate, merge.changedPaths, input.visualPaths);
-  const tiers = { riskTier: riskTier(risk), ...lowTier, ...ownerTier };
+  const tiers = { riskTier: riskTier(risk), ...lowTier, ...stamps };
   const record = evidenceRecord(input, observed, decision, { ...ciPolicy, ...tiers, ...visual, ...visualChanged, ...(judged && { attest: judged }), ...oldPath });
   const comment = await port.upsertComment(input.repo, input.pr, evidenceMarker(input.head), evidenceComment(record));
-  return { head: input.head, merge, record, mergeableState, ...unknown, ...ciPolicy, ...visual, ...attest, ...oldPath, ...ownerTier, ...grantWithheldField(input), commentId: comment.id };
+  return { head: input.head, merge, record, mergeableState, ...unknown, ...ciPolicy, ...visual, ...attest, ...oldPath, ...stamps, ...grantWithheldField(input), commentId: comment.id };
 }

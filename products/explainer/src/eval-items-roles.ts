@@ -65,7 +65,7 @@ const ownerQuestionText: ItemText = (beat, item) =>
   `In ${beat}, "${item}" is a question put to the owner: does this beat or the rest of the chapter say what the owner is asked to decide?`;
 
 /** The items a route's beat is asked about, and the role's own question text; `text` is null for the plain question. */
-export interface RoleAsks {
+interface RoleAsks {
   items: readonly string[];
   text: ItemText | null;
 }

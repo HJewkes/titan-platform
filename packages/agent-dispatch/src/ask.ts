@@ -71,7 +71,7 @@ const answersPageSchema: z.ZodType<AnswersPage> = z.object({
   next: z.string().optional(),
 });
 
-export function buildAskArgs(req: AskRequest): string[] {
+function buildAskArgs(req: AskRequest): string[] {
   return [
     "ask",
     "--as",
@@ -84,7 +84,7 @@ export function buildAskArgs(req: AskRequest): string[] {
   ];
 }
 
-export function buildAnswersArgs(label: string, since?: string): string[] {
+function buildAnswersArgs(label: string, since?: string): string[] {
   return ["answers", label, ...(since === undefined ? [] : ["--since", since]), "--json"];
 }
 

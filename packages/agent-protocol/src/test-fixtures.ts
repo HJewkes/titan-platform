@@ -7,7 +7,7 @@ import {
   type ExecutionTransitionError,
 } from "./index.js";
 
-export const T0 = "2026-09-11T12:00:00.000Z";
+const T0 = "2026-09-11T12:00:00.000Z";
 export const T1 = "2026-09-11T12:01:00.000Z";
 export const T2 = "2026-09-11T12:02:00.000Z";
 export const T3 = "2026-09-11T12:03:00.000Z";
@@ -15,7 +15,7 @@ export const T4 = "2026-09-11T12:04:00.000Z";
 export const LEASE = "2026-09-11T13:00:00.000Z";
 export const fence = { supervisorId: "supervisor-a", generation: 1 };
 
-export type PrepareTransition = Extract<ExecutionTransition<string>, { kind: "prepare" }>;
+type PrepareTransition = Extract<ExecutionTransition<string>, { kind: "prepare" }>;
 
 export function prepare(overrides: Partial<PrepareTransition> = {}): PrepareTransition {
   return {

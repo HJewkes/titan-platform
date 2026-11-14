@@ -27,6 +27,10 @@ export { enrichPrs, NO_PR_OUTCOMES, prsNeedingOutcome } from "./outcomes.js";
 export type { ReviewerProfilePredicate, ReviewProjection, ReviewRoundOptions } from "./review-rounds.js";
 export { countRounds, isReviewerProfile, projectReviewRounds } from "./review-rounds.js";
 export { replaceEpisodes, type EpisodeRow } from "./episodes.js";
+export {
+  sessionsTouchingFiles, type SessionsTouchingFilesOptions, type SessionTaskInitiative, type SessionTouchingFiles, type TouchedFileQuery,
+} from "./files-touched.js";
+export { commitLineage, type CommitLineage, type CommitLinks, type LineageSession, type LineageTask, type SessionStep, type TaskStep } from "./commit-lineage.js";
 export { reconcilePrices, syncPrices, type LongPromptPrice, type PriceInput, type ReconcileResult, type SyncPricesOptions } from "./prices.js";
 
 export { indexSource, indexCodexSource, type NormalizedIndexResult, type SourceIndexPort, type SourceIndexResult } from "./normalized-index.js";

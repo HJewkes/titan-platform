@@ -1,0 +1,91 @@
+{
+  "schema": "writing-gate/v1",
+  "note": "TP-5721 and TP-5841. Thresholds and severities of the writing gate rows (eval l0 and eval writing) and the owner's report-only overrides. Bands are the writing lab's (sources/writing-lab-2026-11, WORKFLOW.md and DECOMPOSITION.md); human FPRs are the TP-5721 S1 calibration over the lab's creator-punctuated human scripts and talks. Severity is error, warning or report-only; a report-only row prints its value and never fails.",
+  "minWords": 150,
+  "longWords": 30,
+  "gate": {
+    "short-register": {
+      "severity": "error",
+      "meanBelow": 12,
+      "longShareBelow": 0.03,
+      "evidence": "Lab human whole scripts: mean p10 12.2, share over 30 words p10 0.031 (n=183). Each alone flags about a tenth of humans; the conjunction is the signal. S1 on the repo segmenter: human FPR 0.047 (n=190 creator-punctuated scripts and talks); rejected scripts 8.8 and 10.7 with no sentence over 30 words; E4 pieces 20.1 / 0.139 and 20.2 / 0.153."
+    },
+    "sentence-mean": {
+      "severity": "warning",
+      "floor": 12,
+      "evidence": "Human mean p10 12.2 (S1: 12.3, FPR 0.074); a rejected script sits at the 8th percentile of first-400 windows, too close to the tail for an error alone."
+    },
+    "long-share": {
+      "severity": "warning",
+      "floor": 0.03,
+      "minWords": 600,
+      "evidence": "Human share over 30 words p10 0.031 on whole scripts (S1: 0.038, FPR 0.074) but 0 on first-400 windows, so it reports only under 600 words."
+    },
+    "first-person": {
+      "severity": "report-only",
+      "evidence": "Briefed pieces sit far below the human first-person rate too, so a gate would fail the pieces the gate must pass."
+    },
+    "beat-length-cv": {
+      "severity": "report-only",
+      "evidence": "No human beat-level band exists."
+    }
+  },
+  "hallmarks": {
+    "naming-refrain": {
+      "severity": "error",
+      "warnAt": 2,
+      "errorAt": 3,
+      "maxWords": 12,
+      "evidence": "Short naming sentences (\"That is called X.\", \"That gas is the rise.\"). S1: 0 of 190 human texts reach 3, 6 reach 2 (warning FPR 0.031); rejected scripts 3 and 2; E4 pieces 0."
+    },
+    "frame-refrain": {
+      "severity": "warning",
+      "frameWords": 3,
+      "max": 2,
+      "evidence": "Hand counts on one rejected series; the lab finds repeated openers do not separate. S1 human FPR 0.347, overstated since plain text is one chapter; rejected scripts 2 and 1, so it stays a warning."
+    },
+    "staccato-run": {
+      "severity": "warning",
+      "maxWords": 6,
+      "runLength": 2,
+      "max": 6.2,
+      "evidence": "Runs of two or more sentences of at most 6 words, per 1,000 words; the cap is the S1 human p90 (6.17, FPR 0.10). Rejected scripts 5.2 and 4.5 sit under it, so no cap both flags them and keeps human FPR at 0.10: a warning."
+    },
+    "colon-tricolon": {
+      "severity": "warning",
+      "max": 0,
+      "evidence": "A colon followed by a list of three that ends the sentence. S1 any-hit human FPR 0.102, over the 0.05 an error needs: a warning. Rejected scripts 1 each; E4 s-bread 1."
+    },
+    "teaser": {
+      "severity": "warning",
+      "max": 0,
+      "evidence": "\"By the end of this, you'll be able to\" in 4 to 6 of 12 briefed pieces and 1 of 12 bare; \"N fixes change that\". S1 human FPR 0.051; bread r1 1."
+    },
+    "parallel-recap": {
+      "severity": "warning",
+      "run": 3,
+      "maxWords": 10,
+      "max": 0,
+      "evidence": "Three or more short sentences in a row in one beat opening on the same word. S1 human FPR 0.087."
+    },
+    "label-first": {
+      "severity": "warning",
+      "maxWords": 8,
+      "max": 0,
+      "evidence": "\"The fix is X.\" The lab judge found 0 of 2 planted cases, so this row is the only signal. S1 human FPR 0.020; bread r1 1."
+    },
+    "named-before-defined": {
+      "severity": "error",
+      "max": 0,
+      "evidence": "A term a beat declares in new_terms is spoken in an earlier beat. It reads declared terms only."
+    }
+  },
+  "overrides": {
+    "writing-check": {
+      "phrases": "report-only"
+    },
+    "l0": {
+      "variety:connector-share": "report-only"
+    }
+  }
+}

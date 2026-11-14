@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { readYaml, writeYaml } from '../utils/yaml-io.js';
-import { atomicWrite, withFileLock } from '../utils/fs-atomic.js';
+import { withFileLock } from '../utils/fs-atomic.js';
 import { getMinerRoot } from '../utils/paths.js';
 import {
   OccurrenceSchema,
@@ -98,19 +98,4 @@ export async function* readOccurrences(root: string = getMinerRoot()): AsyncGene
     if (line.trim().length === 0) continue;
     yield OccurrenceSchema.parse(JSON.parse(line));
   }
-}
-
-/**
- * Atomically overwrite `occurrences.jsonl` with `occurrences`, in order —
- * used by callers that rebuild the log wholesale (e.g. eviction/compaction),
- * as opposed to `appendOccurrence`'s incremental append.
- */
-export async function rewriteOccurrences(
-  occurrences: Occurrence[],
-  root: string = getMinerRoot(),
-): Promise<void> {
-  const parsed = occurrences.map((o) => OccurrenceSchema.parse(o));
-  await fs.mkdir(root, { recursive: true });
-  const body = parsed.map((o) => JSON.stringify(o)).join('\n');
-  await atomicWrite(occurrencesPath(root), parsed.length > 0 ? `${body}\n` : '');
 }

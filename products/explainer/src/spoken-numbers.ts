@@ -143,7 +143,7 @@ function remapCue(cue: string, oldWords: readonly string[], spelled: Spelled): s
 }
 
 /** Renames, in place, every cue field under `node`; the caller passes a copy it owns. */
-export function remapCuesInPlace(node: unknown, remap: (cue: string) => string): void {
+function remapCuesInPlace(node: unknown, remap: (cue: string) => string): void {
   if (node === null || typeof node !== "object") return;
   for (const [key, item] of Object.entries(node)) {
     if (CUE_KEYS.has(key) && typeof item === "string") Reflect.set(node, key, remap(item));

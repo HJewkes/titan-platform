@@ -163,7 +163,7 @@ function verdict(row: AdoptionRow): string {
   return row.flags.length > 0 ? row.flags.join(" ") : "none";
 }
 
-export function renderToolAdoptionText(data: ToolAdoptionReport): string {
+function renderToolAdoptionText(data: ToolAdoptionReport): string {
   const { totals, window } = data;
   const header = [
     `Tool adoption: flags and verbs against the pipelines they replace, ${window.since} to ${window.until}`,

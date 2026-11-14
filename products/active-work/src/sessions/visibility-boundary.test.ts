@@ -17,7 +17,7 @@ const VERDICT_BUILDERS = /\b(isAgentVisible|agentAccess|loadAgentVisibility|call
 const RAW_ENUMERATOR = /\blistInitiativeSlugs(OrEmpty)?\b/;
 const BRIEF_ONLY = /\b(briefAllowsAgents|initiativeIsAgentVisible)\b/;
 const CHARTER_READ = /\bloadHumanOnlyInitiatives\b/;
-const WIRE_FIELD = /\b(withheld_from_agents|agent_visible)\b/;
+const WIRE_FIELD = /\b(withheld_from_agents)\b/;
 const CALLER_READ = /\.caller\b/;
 const CALLER_WRITE = /\bcaller:\s*(?!CommandContext\b)\S/;
 const ROOT_READDIR = /readdir\((root|activeRoot|getActiveRoot\(\)|ctx\.activeRoot)[,)]/;
@@ -48,8 +48,8 @@ const CHARTER_READERS: Record<string, string> = {
 };
 
 const WIRE_EMITTERS: Record<string, string> = {
-  'commands/inventory.ts': 'emits withheld_from_agents and agent_visible for the factory and console',
-  'commands/task-keys.ts': 'emits agent_visible for the factory task-key resolver',
+  'commands/inventory.ts': 'emits withheld_from_agents for the factory and console',
+  'commands/task-keys.ts': 'emits withheld_from_agents for the factory task-key resolver',
 };
 
 const CALLER_READERS: Record<string, string> = {

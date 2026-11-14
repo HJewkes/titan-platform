@@ -121,6 +121,22 @@ describe("brokerAnswerer", () => {
     expect(outcome).toMatchObject({ status: "unreachable" });
   });
 
+  it("carries no token in the outcome when the transport error echoes it", async () => {
+    const throwing = (): Promise<Response> => Promise.reject(new Error(`connect failed with ${TOKEN}`));
+
+    const outcome = await brokerAnswerer({ port: 4711, tokenPath, fetch: throwing }).answer(MSG, "ship it");
+
+    expect(outcome).toEqual({ status: "unreachable", detail: "connect failed with [token]" });
+  });
+
+  it("carries no token in the outcome when the broker's reason echoes it", async () => {
+    const broker = await startBroker(json(200, { ok: false, reason: `bad ${TOKEN}` }));
+
+    const outcome = await brokerAnswerer({ port: broker.port, tokenPath }).answer(MSG, "ship it");
+
+    expect(outcome).toEqual({ status: "refused", reason: "bad [token]" });
+  });
+
   it("refuses a token file others can read, before anything is posted", async () => {
     const broker = await startBroker(json(200, { ok: true }));
     await chmod(tokenPath, 0o644);

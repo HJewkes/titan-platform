@@ -2,6 +2,7 @@ import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { step } from "../workflows/land.js";
 import type { ShepherdStore } from "./store.js";
+import { registeredTaskApproval } from "./g10-owner-validate-read.js";
 import { PlanApprovalSchema, type PlanApproval } from "./plan-approval.js";
 import { EffectivePolicySchema, stricterPolicy, type EffectivePolicy } from "./policy-schema.js";
 
@@ -18,10 +19,10 @@ interface PolicyRun {
   policyReads: number;
 }
 
-/** What the `sh-policy` step answers: the registration's policy, the reason the run is held for while it is, and the plan approvals the run claimed for its task. */
+/** What the `sh-policy` step answers: the registration's policy, the reason the run is held for while it is, the plan approvals the run claimed for its task, and the owner's task approval (TP-5411). */
 export function registrationPolicy(store: ShepherdStore, runId: string): { policy: EffectivePolicy | null; holdReason: string | null; approved?: PlanApproval[] } {
   const registration = store.byRun(runId);
-  const approved = registration ? store.planApprovals().forRun(runId, registration.task, registration.repo) : [];
+  const approved = registration ? [...store.planApprovals().forRun(runId, registration.task, registration.repo), ...registeredTaskApproval(store, registration.task)] : [];
   return { policy: registration?.policy ?? null, holdReason: registration?.held ? registration.holdReason : null, ...(approved.length > 0 && { approved }) };
 }
 

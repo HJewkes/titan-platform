@@ -8,7 +8,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 
 // The runs endpoint returns at most 1000 results per query, however many pages are read.
-export const RUN_LIST_CAP = 1000;
+const RUN_LIST_CAP = 1000;
 // Kept well above zero so a fetch already in flight elsewhere cannot push the account over the 5000/h REST limit.
 export const RATE_FLOOR = 200;
 export const BATCH = 100;

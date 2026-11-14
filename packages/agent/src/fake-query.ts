@@ -110,7 +110,7 @@ export function errorResult(subtype: string, errors: string[] = []): ErrorMessag
   return Object.assign(message, { subtype });
 }
 
-export interface FakeQueryOptions {
+interface FakeQueryOptions {
   /** Called after each message is yielded, so a test can abort mid-stream. */
   afterYield?: (index: number) => void;
   /** Stall after the last message until the run's own abort fires, like a wedged CLI. */
@@ -119,7 +119,7 @@ export interface FakeQueryOptions {
   throwAtEnd?: Error;
 }
 
-export interface FakeQuery {
+interface FakeQuery {
   run: NonNullable<AgentRunDeps["query"]>;
   /** Messages actually pulled from the generator, so a test can prove the run stopped early. */
   yielded: SDKMessage[];

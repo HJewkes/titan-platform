@@ -119,7 +119,7 @@ interface MutantInput {
 }
 
 /** Classifies one mutation's run against the baseline; anything missing or ambiguous classifies away from `killed`. */
-export function classifyMutant(input: MutantInput): MutantResult {
+function classifyMutant(input: MutantInput): MutantResult {
   const { spec, mutation, run } = input;
   const named = { spec: spec.path, name: mutation.name };
   if (!mutation.kills.every((kill) => passesOnceInBaseline(input.baseline, kill))) return { ...named, outcome: "baseline" };

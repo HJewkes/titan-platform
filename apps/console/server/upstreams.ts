@@ -29,9 +29,9 @@ import { videoCatalog } from "./videos.js";
 const OWNER_ACTIONS_DIR = "owner-actions";
 
 export const UPSTREAM_IDS = ["work", "agents", "sessions"] as const;
-export type UpstreamId = (typeof UPSTREAM_IDS)[number];
+type UpstreamId = (typeof UPSTREAM_IDS)[number];
 
-export interface ProbeResult {
+interface ProbeResult {
   reachable: boolean;
   detail: string;
 }
@@ -103,7 +103,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 ** rung).toFixed(rung === 0 ? 0 : 1)} ${units[rung]}`;
 }
 
-export function createUpstreams(config: ConsoleConfig): Upstream[] {
+function createUpstreams(config: ConsoleConfig): Upstream[] {
   return [
     httpUpstream("work", "active-work daemon", config.activeWorkPort),
     httpUpstream("agents", "agent-chat broker", config.agentChatPort),
@@ -115,12 +115,17 @@ export async function probeUpstreams(upstreams: readonly Upstream[]): Promise<Up
   return Promise.all(upstreams.map(async ({ id, label, target, probe }) => ({ id, label, target, ...(await probe()) })));
 }
 
-/** Active-work owns the charter read; an unreadable charter or a down daemon reads as unknown, which excludes every answer. */
+/** Active-work owns the visibility verdict (`withheld_from_agents`). A down daemon, or an inventory where no row carries the field, reads as unknown; a row without it counts as withheld. */
 export function humanOnlyFrom(activeWork: ActiveWork): () => Promise<HumanOnly> {
   return async () => {
     const inventory = await activeWork.read("inventory").catch(() => null);
-    if (inventory === null || !inventory.human_only_known) return { known: false };
-    return { known: true, initiatives: new Set(inventory.initiatives.filter((entry) => entry.human_only).map((entry) => entry.slug)) };
+    if (inventory === null || !inventory.initiatives.some((entry) => entry.withheld_from_agents !== undefined)) return { known: false };
+    const withheld = (entry: { withheld_from_agents?: boolean }) => entry.withheld_from_agents !== false;
+    return {
+      known: true,
+      initiatives: new Set(inventory.initiatives.filter(withheld).map((entry) => entry.slug)),
+      shown: new Set(inventory.initiatives.filter((entry) => !withheld(entry)).map((entry) => entry.slug)),
+    };
   };
 }
 

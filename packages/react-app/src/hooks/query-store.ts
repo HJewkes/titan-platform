@@ -16,7 +16,7 @@ export type QueryState<R = unknown> = QueryFetchState &
     | { status: "error"; data: R | undefined; error: RpcError }
   );
 
-export const LOADING: QueryState = Object.freeze({ status: "loading", data: undefined, error: undefined, isFetching: true });
+const LOADING: QueryState = Object.freeze({ status: "loading", data: undefined, error: undefined, isFetching: true });
 
 interface Entry {
   command: string;
@@ -37,7 +37,7 @@ export interface QueryStore {
   invalidate(commands?: readonly string[]): void;
 }
 
-export interface QueryStoreOptions {
+interface QueryStoreOptions {
   /** How long an unwatched query keeps its result for a later watcher; 0 drops it a tick after the last unwatch. */
   gcMs?: number;
   /** Told once per call that finishes without being superseded or aborted; a throwing observer cannot break a query. */

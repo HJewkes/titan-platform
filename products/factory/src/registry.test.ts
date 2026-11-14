@@ -32,7 +32,7 @@ function world(): { host: FactoryHost; fake: FakeGitHub; routes: FactoryRoutes }
 
 async function call(host: FactoryHost, name: string, args: unknown): Promise<{ ok: boolean; data?: unknown; code?: number }> {
   const registry = createFactoryRegistry();
-  const ctx: FactoryContext = { warnings: [], format: "json", host };
+  const ctx: FactoryContext = { warnings: [], format: "json", host, caller: "agent" };
   const { envelope } = await invokeCommand(registry.get(name)!, args, ctx);
   return envelope;
 }

@@ -5,7 +5,7 @@ import { hooksDir } from "./git.js";
 
 export const HOOK_MARKER = "# titan-egress-scan managed pre-push hook";
 
-export type InstallOutcome = "installed" | "updated" | "unchanged" | "skipped-in-ci" | "foreign-hook";
+type InstallOutcome = "installed" | "updated" | "unchanged" | "skipped-in-ci" | "foreign-hook";
 
 export interface InstallResult {
   readonly outcome: InstallOutcome;

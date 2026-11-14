@@ -25,7 +25,7 @@ export class TlsFileError extends Error {
   }
 }
 
-export interface TlsMaterial {
+interface TlsMaterial {
   cert: Buffer;
   key: Buffer;
 }

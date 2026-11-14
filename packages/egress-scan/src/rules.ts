@@ -60,7 +60,7 @@ function isPlaceholder(rawSegment: string): boolean {
 }
 
 /** Offset of the first home path that is not a placeholder, or -1. */
-export function homePathIndex(text: string): number {
+function homePathIndex(text: string): number {
   for (const match of text.matchAll(HOME_PATH)) {
     if (!isPlaceholder(match[1] ?? "")) return match.index;
   }

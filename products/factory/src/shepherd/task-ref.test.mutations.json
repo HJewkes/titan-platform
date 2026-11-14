@@ -11,7 +11,7 @@
     {
       "name": "owner-only initiatives count as visible",
       "file": "products/factory/src/shepherd/task-ref.ts",
-      "find": "initiatives.filter((item) => item.agent_visible).map(",
+      "find": "initiatives.filter((item) => item.withheld_from_agents === false).map(",
       "replace": "initiatives.map(",
       "kills": ["loadTaskIndex maps each initiative's task prefix and keeps only agent-visible initiatives as visible"]
     },

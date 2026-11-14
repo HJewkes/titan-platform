@@ -15,7 +15,7 @@ export interface TranscriptRow {
   transcriptExists: boolean;
 }
 
-export interface TranscriptReviewerReaderOptions {
+interface TranscriptReviewerReaderOptions {
   roster: () => Promise<readonly TranscriptRow[]>;
   /** Names the machine in every locator; defaults to the hostname, as session-miner does. */
   namespace?: string;

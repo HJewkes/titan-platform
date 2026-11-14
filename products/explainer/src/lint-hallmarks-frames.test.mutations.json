@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a lone short sentence is a staccato run",
+      "file": "products/explainer/src/lint-hallmarks.ts",
+      "find": "if (run.length >= rule.runLength) runs.push(run);",
+      "replace": "if (run.length >= 1) runs.push(run);",
+      "kills": [
+        "hallmark:staccato-run counts no run for a lone short sentence"
+      ]
+    },
+    {
+      "name": "a parallel recap needs four sentences",
+      "file": "products/explainer/src/lint-hallmarks-frames.ts",
+      "find": "if (run.length >= rule.run) runs.push(run);",
+      "replace": "if (run.length >= rule.run + 1) runs.push(run);",
+      "kills": [
+        "hallmark:parallel-recap fires on three short sentences in one beat that open on the same word"
+      ]
+    },
+    {
+      "name": "the frame refrain ignores chapters",
+      "file": "products/explainer/src/lint-hallmarks-frames.ts",
+      "find": "`${s.chapter}\\u0000${lead.join(\" \")}`",
+      "replace": "lead.join(\" \")",
+      "kills": [
+        "hallmark:frame-refrain does not fire when the three sentences sit in three chapters"
+      ]
+    },
+    {
+      "name": "label-first matches mid-sentence",
+      "file": "products/explainer/src/lint-hallmarks.ts",
+      "find": "const LABEL_FIRST = /^the",
+      "replace": "const LABEL_FIRST = /the",
+      "kills": [
+        "hallmark:label-first does not fire on a label phrase inside a sentence"
+      ]
+    }
+  ]
+}

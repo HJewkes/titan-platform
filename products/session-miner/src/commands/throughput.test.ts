@@ -87,7 +87,12 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-const ENV = () => ({ TITAN_MINER_INITIATIVES_ROOT: initiativesRoot, TITAN_MINER_THROUGHPUT_INITIATIVES: "alpha" });
+let allowlist = "alpha";
+beforeEach(() => {
+  allowlist = "alpha";
+});
+
+const ENV = () => ({ TITAN_MINER_INITIATIVES_ROOT: initiativesRoot, TITAN_MINER_THROUGHPUT_INITIATIVES: allowlist });
 
 async function cli(args: string[], root: string[] = ["--graph", graphFile]): Promise<{ code: number; stdout: string; stderr: string }> {
   let stdout = "";
@@ -108,6 +113,7 @@ interface TableData {
   watermark: { minerIndexedAt: string | null };
   rows: number;
   unparsed: { file: string }[];
+  missingInitiatives: string[];
   table: { classes: Record<string, { n: number }> };
 }
 
@@ -128,7 +134,30 @@ describe("titan-miner throughput table", () => {
   it("counts a malformed task file as unparsed instead of failing", async () => {
     const data = await json<TableData>(["throughput", "table"]);
 
-    expect(data.unparsed.map((u) => u.file)).toEqual([path.join("alpha", "tasks", "broken.yml")]);
+    expect(data.unparsed.map((u) => u.file)).toEqual(["alpha/tasks/broken.yml"]);
+  });
+
+  it("lists an allowlisted initiative with no tasks directory as missing", async () => {
+    allowlist = "alpha,ghost";
+
+    const data = await json<TableData>(["throughput", "table"]);
+
+    expect(data.missingInitiatives).toEqual(["ghost"]);
+    expect(data.rows).toBe(3);
+  });
+
+  it("reads a done task stored in a .yaml file", async () => {
+    writeFileSync(
+      path.join(initiativesRoot, "alpha", "tasks", "A-5.yaml"),
+      "id: A-5\ntitle: A-5\npriority: 1\nstatus: done\ncreated: 2026-08-01\nupdated: 2026-09-01\ndone_at: 2026-09-12T00:00:00Z\n",
+    );
+    const graph = openSessionGraph(graphFile);
+    addImplSession(graph.db, "A-5", "2026-09-11T09:00:00Z");
+    graph.db.close();
+
+    const data = await json<TableData>(["throughput", "table", "--min-n", "0"]);
+
+    expect(data.rows).toBe(4);
   });
 
   it("carries the miner watermark into the model hash", async () => {

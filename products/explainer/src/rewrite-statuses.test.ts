@@ -6,6 +6,7 @@ import { chapterRefusal, protectedRows } from "./rewrite-pass.js";
 import { lint, tour, type BeatSpec } from "./voice-flow-fixtures.test-helpers.js";
 import { parseWritingCheck } from "./writing-calibrate.js";
 import type { WritingStatus } from "./writing-status.js";
+import { usePreCalibrationStatuses } from "./writing-statuses-fixtures.test-helpers.js";
 
 // These tests read the shipped doctrine/writing-check.json: what the rewrite and Q-V11 do with each row's status.
 const SHIPPED = parseWritingCheck(readFileSync(new URL("../doctrine/writing-check.json", import.meta.url), "utf8"));
@@ -50,10 +51,11 @@ describe("Q-V11 rows follow the status table at the script's own length", () => 
 });
 
 describe("protectedRows", () => {
-  it("protects phrases, neg-synthetic and downtoners at 300-599 words and leaves lets and contractions out", () => {
+  it("protects neg-synthetic and downtoners at 300-599 words and leaves phrases, lets and contractions out", () => {
     const guarded = protectedRows(450);
 
-    expect([...guarded]).toEqual(expect.arrayContaining(["register:phrases", "register:neg-synthetic", "register:downtoners"]));
+    expect([...guarded]).toEqual(expect.arrayContaining(["register:neg-synthetic", "register:downtoners"]));
+    expect(guarded.has("register:phrases")).toBe(false);
     expect(guarded.has("register:lets")).toBe(false);
     expect(guarded.has("register:contractions")).toBe(false);
   });
@@ -80,6 +82,12 @@ describe("chapterRefusal with the shipped protections", () => {
 
     expect(refusal).toEqual({ why: "a protected row turned red", rows: ["register:neg-synthetic"] });
   });
+});
+
+// The owner made phrases report-only (doctrine/writing-gate.json), so a phrases row that fails needs the statuses
+// Q-V11 used before TP-4662, where it warns.
+describe("chapterRefusal under the pre-calibration statuses", () => {
+  usePreCalibrationStatuses();
 
   it("keeps a chapter that only cuts a stock phrase while the phrases row fails", () => {
     const before = [...filler(40), STOCK, STOCK, STOCK];

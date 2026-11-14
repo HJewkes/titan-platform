@@ -1,7 +1,10 @@
 import { errorClass } from "./error-class.js";
+import { latestOwnerTaskApproval } from "./owner-task-approval.js";
 import { ownerHoldOf } from "./risk-tier.js";
 import type { ShepherdStoreRef } from "./store.js";
 import type { VisualGateMode } from "./visual-gate-config.js";
+import { visualGateMode } from "./visual-gate-mode.js";
+import { visualGateFor, type TaskApprovalRead } from "./visual-signoff.js";
 
 /** What the merge evidence reads from the run's registration. */
 export interface KindRead {
@@ -26,4 +29,20 @@ export function registeredKind(store: ShepherdStoreRef, runId: string, visualGat
   } catch (error) {
     return { unread: `the registered kind is unreadable: store unreadable: ${errorClass(error)}` };
   }
+}
+
+/** The run's task approval; a store that is not bound or fails reads as `unread`, which keeps the visual owner gate. */
+function runTaskApproval(store: ShepherdStoreRef, runId: string): TaskApprovalRead {
+  try {
+    const bound = store.get();
+    const task = bound.byRun(runId)?.task;
+    return task === undefined ? undefined : latestOwnerTaskApproval(bound, task);
+  } catch {
+    return "unread";
+  }
+}
+
+/** `shepherd.visualGate` for one run (TP-5411 S8c): under `async`, a task the owner approved with visual sign-off still decides visual as `owner`. */
+export function runVisualGate(store: ShepherdStoreRef, runId: string, configured: VisualGateMode | undefined): VisualGateMode | undefined {
+  return visualGateMode(configured) === "owner" ? configured : visualGateFor(configured, runTaskApproval(store, runId));
 }

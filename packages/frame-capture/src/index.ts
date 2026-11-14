@@ -15,6 +15,7 @@ export {
   type Viewport,
 } from './capture.js'
 export { captureFrames, type FramesOptions, type FramesResult } from './frames.js'
+export { stills, type StillsOptions } from './stills.js'
 export { mixAudio, startEncoder, type Encoder, type MixSegment } from './encode.js'
 export {
   changedPixels,

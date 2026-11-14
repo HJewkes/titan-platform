@@ -20,7 +20,7 @@ function buildSha(): string {
 }
 
 export default defineConfig({
-  entry: ["src/index.ts", "src/bin.ts", "src/chore-main.ts", "src/registry/closure-main.ts"],
+  entry: ["src/index.ts", "src/bin.ts", "src/chore-main.ts", "src/registry/closure-main.ts", "src/shepherd/reviewer-reader.ts"],
   format: ["esm"],
   // The root devDependency; bundling it would add megabytes for the one closure CI script that uses it.
   external: ["typescript"],

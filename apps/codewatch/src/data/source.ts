@@ -7,7 +7,7 @@ import { datasetSource, isReportDataset } from "./dataset.js";
 const resolvers = new WeakMap<object, QueryResolver>();
 
 /** Answers any call a snapshot did not record from its dataset, through code-read's own queries. */
-export const resolveFromDataset: SnapshotResolver = (command, args, dataset) => {
+const resolveFromDataset: SnapshotResolver = (command, args, dataset) => {
   if (!isReportDataset(dataset)) return errorEnvelope("This snapshot carries no code-report dataset", EXIT.UNAVAILABLE);
   let resolve = resolvers.get(dataset);
   if (!resolve) resolvers.set(dataset, (resolve = createQueryResolver(datasetSource(dataset))));

@@ -11,6 +11,7 @@ import { callerOf, parsePort, parsePositiveInt, parseTarget, statusArgs, statusR
 import { localEnvelope, postRpc, unansweredMessage } from "./cli-shepherd-rpc.js";
 import { registerShepherdFollowUps } from "./cli-shepherd-follow-ups.js";
 import { registerShepherdPlanRound } from "./cli-shepherd-plan-round.js";
+import { registerShepherdTaskApproval } from "./cli-shepherd-task-approval.js";
 import { registerShepherdWait } from "./cli-shepherd-wait.js";
 import { registerShepherdWatch } from "./cli-shepherd-watch.js";
 import { registerShepherdStats } from "./cli-stats.js";
@@ -69,6 +70,7 @@ export function registerShepherd(program: Command, verbs: Verbs): void {
   registerShepherdWatch(verb, verbs, runShepherd);
   registerOwnerRelease(shepherd, verbs);
   registerShepherdPlanRound(shepherd, verbs);
+  registerShepherdTaskApproval(shepherd, verbs);
   registerRefVerbs(verb, verbs);
 }
 

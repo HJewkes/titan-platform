@@ -20,7 +20,7 @@ export interface SyncResponse {
 
 export type SyncRequest = (query: Record<string, string | undefined>, signal?: AbortSignal) => Promise<SyncResponse>;
 
-export function timelineEvents(res: SyncResponse): MatrixEvent[] {
+function timelineEvents(res: SyncResponse): MatrixEvent[] {
   return Object.entries(res.rooms?.join ?? {}).flatMap(([roomId, room]) =>
     (room.timeline?.events ?? []).map((event) => ({ ...event, room_id: roomId })),
   );

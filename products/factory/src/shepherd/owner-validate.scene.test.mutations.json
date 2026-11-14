@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the owner's task approval is not added to approved at decide time",
+      "file": "products/factory/src/shepherd/registration-policy.ts",
+      "find": ", ...registeredTaskApproval(store, registration.task)]",
+      "replace": "]",
+      "kills": [
+        "under ownerValidate on the same PR merges once the console task approval is recorded, with no further owner answer"
+      ]
+    },
+    {
+      "name": "decide skips the owner-validate row",
+      "file": "products/factory/src/shepherd/merge-facts.ts",
+      "find": "withUnreadFacts(ownerValidateDecided(decision, evidence?.ownerValidate, approved, guardRule(\"owner-validate\")), evidence)",
+      "replace": "withUnreadFacts(decision, evidence)",
+      "kills": [
+        "under ownerValidate on a reviewed green PR of an owner-validate task with no approval raises approve-merge on owner-validate"
+      ]
+    },
+    {
+      "name": "the evidence step stamps no task read",
+      "file": "products/factory/src/shepherd/merge-facts.ts",
+      "find": "const stamps = { ...ownerTier, ...(await ownerValidateOf(reads, kind ?? {})) };",
+      "replace": "const stamps = { ...ownerTier };",
+      "kills": [
+        "under ownerValidate on a reviewed green PR of an owner-validate task with no approval raises approve-merge on owner-validate"
+      ]
+    },
+    {
+      "name": "an unread task is stamped nothing",
+      "file": "products/factory/src/shepherd/g10-owner-validate.ts",
+      "find": "if (\"unread\" in read) return { ownerValidate: { mode: live, task, tagged: \"unread\", unread: read.unread } };",
+      "replace": "if (\"unread\" in read) return {};",
+      "kills": [
+        "under ownerValidate on a PR whose task cannot be read raises approve-merge on owner-validate"
+      ]
+    }
+  ]
+}

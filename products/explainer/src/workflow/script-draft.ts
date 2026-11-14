@@ -77,7 +77,7 @@ function laneLine(lane: CoverageManifest["lanes"][number], coverage: CoverageMan
 }
 
 /** Per lane, the threads a script names and the rollup fact that counts the rest, so Q-E21 is met in the draft. */
-export const coverageSection = (coverage: CoverageManifest): string =>
+const coverageSection = (coverage: CoverageManifest): string =>
   `## Coverage (coverage.json)
 
 Every merged PR of the day is named or counted under its lane. Name each thread below by what it did, citing its PR fact ids in the beat that names it; the PR numbers below go on screen, never in spoken. Count the rest of a lane in a "${LANES_CHAPTER}" chapter beat that cites the lane's rollup fact and says or shows the lane's merged total.

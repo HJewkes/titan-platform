@@ -14,7 +14,7 @@ export interface FrictionLine {
 }
 
 /** The contract caps the field at 200 characters; fallback lines are held to the same length. */
-export const FRICTION_MAX_CHARS = 200;
+const FRICTION_MAX_CHARS = 200;
 const FRICTION_LINE = /^Friction: (.+)$/;
 const CONCERNS_LINE = /^Concerns:\s*(.*)$/;
 const BULLET = /^\s*(?:[-*]|\d+[.)])\s+(.+)$/;

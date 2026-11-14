@@ -29,7 +29,7 @@ export function emptyResult(exitCode: number | null, extra: Partial<RunnerResult
   return { diagnostics: [], exitCode, failures: [], skippedRules: [], warnings: [], ...extra };
 }
 
-export function missingToolWarning(spec: PythonToolSpec): string {
+function missingToolWarning(spec: PythonToolSpec): string {
   const note = spec.installNote ? ` (${spec.installNote})` : "";
   return `${spec.tool} not found; install with \`${spec.install}\`${note}`;
 }

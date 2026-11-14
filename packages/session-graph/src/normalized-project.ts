@@ -21,7 +21,7 @@ export function insertObservation(graph: SessionGraph, transcriptId: number, o: 
   );
 }
 
-export interface ObservationText { field: string; text: string; locator: SourceTextLocator }
+interface ObservationText { field: string; text: string; locator: SourceTextLocator }
 export function observationText(o: Observation): ObservationText[] {
   if (o.kind === "message" && o.role === "user") return o.content.map(p => ({ field: "prompt", text: stripInjected(p.text).slice(0, SPAN_TEXT_CAP), locator: p.locator })).filter(p => p.text);
   if (o.kind === "message") return o.content.map(p => ({ field: "assistant_response", text: p.text.slice(0, SPAN_TEXT_CAP), locator: p.locator }));

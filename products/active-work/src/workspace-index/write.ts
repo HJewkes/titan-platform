@@ -58,6 +58,11 @@ const TABLES: Record<WorkspaceClass, ClassTable> = {
     refColumn: 'source_ref',
     columns: ['initiative', 'title', 'kind', 'added'],
   },
+  plan: {
+    table: 'plan_record',
+    refColumn: 'plan_ref',
+    columns: ['initiative', 'kind', 'title'],
+  },
 };
 
 const CLASSES = Object.keys(TABLES) as WorkspaceClass[];

@@ -90,7 +90,7 @@ describe("planConsumerBumps", () => {
 describe("registerConsumerBump", () => {
   it("registers each bump under its own implementer and policyFor of its own consumer seat, which grants the fixer, and no forced owner-gate", async () => {
     const w = world();
-    const ctx = { warnings: [], format: "json" as const, host: w.host, shepherd: w.services };
+    const ctx = { warnings: [], format: "json" as const, host: w.host, caller: "agent" as const, shepherd: w.services };
     const { bumps } = await planConsumerBumps(w.services, w.registry);
 
     const policies = new Map<RepoSlug, unknown>();
@@ -109,7 +109,7 @@ describe("registerConsumerBump", () => {
   });
   it("refuses a fork head or a branch outside the bump prefix, whatever files it changes", async () => {
     const w = world();
-    const ctx = { warnings: [], format: "json" as const, host: w.host, shepherd: w.services };
+    const ctx = { warnings: [], format: "json" as const, host: w.host, caller: "agent" as const, shepherd: w.services };
     const fork = w.fakes.get(CONSUMER_A)!.addPr({ headSha: fakeSha("fork"), headRef: `${BUMP_BRANCH_PREFIX}0badc0de`, headRepo: "stranger/consumer-a" });
     w.fakes.get(CONSUMER_A)!.prFiles.set(fork.number, [{ path: "package.json", status: "modified" }]);
     const topic = bumpShapedPr(w, CONSUMER_A, "topic/package-bump");

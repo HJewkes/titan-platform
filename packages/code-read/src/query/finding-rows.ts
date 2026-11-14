@@ -5,7 +5,7 @@ import type { NodeRef } from "./schemas.js";
 import { toRef } from "./tree.js";
 
 export type FindingSort = "severity" | "excess" | "value" | "path" | "rule";
-export type SortOrder = "asc" | "desc";
+type SortOrder = "asc" | "desc";
 
 const SEVERITY_RANK: Record<string, number> = { error: 2, warning: 1, info: 0 };
 const CHECK_TOOL = "check";

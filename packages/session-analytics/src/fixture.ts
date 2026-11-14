@@ -77,7 +77,7 @@ export function insertRequest(db: Db, request: RequestFixture): void {
   ).run({ ...r, sidechain: r.isSidechain ? 1 : 0, requestId: r.requestId ?? `req-${offset}`, offset, creation, context: r.inputTokens + r.cacheReadTokens + creation });
 }
 
-export interface SessionFixture {
+interface SessionFixture {
   sessionId: string;
   cwd?: string | null;
   startType?: string | null;
@@ -91,7 +91,7 @@ export function insertSession(db: Db, session: SessionFixture): void {
   });
 }
 
-export interface OriginFixture {
+interface OriginFixture {
   sessionId: string;
   depth: number;
   profile?: string | null;
@@ -108,7 +108,7 @@ export function insertOrigin(db: Db, origin: OriginFixture): void {
   ).run({ profile: null, parentName: null, agentName: null, agentId: null, originKind: null, ...origin });
 }
 
-export interface InboundFixture {
+interface InboundFixture {
   sessionId: string;
   ts: string;
   cause: string;
@@ -130,7 +130,7 @@ export function insertInbound(db: Db, inbound: InboundFixture): void {
   ).run({ delivery: "turn_start", transcriptId: 1, fromName: null, msgId: null, ...inbound, broadcast: flag(inbound.broadcast), offset: nextOffset });
 }
 
-export interface SignalFixture {
+interface SignalFixture {
   sessionId: string;
   ts: string;
   signal: string;
@@ -147,7 +147,7 @@ export function insertSignal(db: Db, signal: SignalFixture): void {
   ).run({ transcriptId: 1, detail: null, toolUseId: null, ...signal, offset: offsetOf(signal.offset) });
 }
 
-export interface ToolCallFixture {
+interface ToolCallFixture {
   sessionId: string;
   ts: string;
   toolUseId: string;

@@ -112,6 +112,7 @@ describe('runDoctor', () => {
       'session-files',
       'task-refs',
       'note-titles',
+      'reserved-slugs',
       'artifact-hashes',
       'session-leases',
       'workspace-index',

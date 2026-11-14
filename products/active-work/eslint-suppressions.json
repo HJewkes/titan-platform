@@ -279,11 +279,6 @@
       "count": 1
     }
   },
-  "products/active-work/src/session-index/tasks.ts": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
   "products/active-work/src/session-index/watch-paths.ts": {
     "titan/max-function-lines": {
       "count": 1

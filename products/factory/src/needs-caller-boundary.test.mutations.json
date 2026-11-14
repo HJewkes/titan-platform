@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a needs reader re-adds its own deny-list helper",
+      "file": "products/factory/src/needs/rpc.ts",
+      "find": "import { ownerQueueSources } from \"./command.js\";\n",
+      "replace": "import { ownerQueueSources } from \"./command.js\";\nexport const hiddenSlugsForCaller = (slugs: string[], hidden: ReadonlySet<string>): string[] => slugs.filter((slug) => hidden.has(slug));\n",
+      "kills": [
+        "the needs caller boundary in the factory builds no visibility verdict of its own"
+      ]
+    },
+    {
+      "name": "the digest names the owner caller itself",
+      "file": "products/factory/src/digest/command.ts",
+      "find": "{ morningDir }), shellNeedsView(env)),",
+      "replace": "{ morningDir }), { caller: \"owner\" }),",
+      "kills": [
+        "the needs caller boundary in the factory never sets the owner caller outside the surface and shell resolvers"
+      ]
+    },
+    {
+      "name": "needs keeps a private owner check on the agent env",
+      "file": "products/factory/src/needs/command.ts",
+      "find": "shellNeedsView(io.env))));",
+      "replace": "shellNeedsView(io.env.CLAUDECODE ? io.env : {}))));",
+      "kills": [
+        "the needs caller boundary in the factory reads the agent env markers only in caller.ts and the named gates"
+      ]
+    },
+    {
+      "name": "owner-queue items regain an ownerOnly flag",
+      "file": "packages/owner-queue/src/schema.ts",
+      "find": "  initiative: z.string().optional(),\n",
+      "replace": "  initiative: z.string().optional(),\n  ownerOnly: z.boolean().optional(),\n",
+      "kills": [
+        "the needs caller boundary in the factory carries no ownerOnly flag on needs items"
+      ]
+    },
+    {
+      "name": "a needs reader filters on the caller itself",
+      "file": "products/factory/src/needs/rpc.ts",
+      "find": "  const list = await collectNeeds(sources, { caller: ctx.caller, personal, allowed: ctx.needsAllowed ?? liveAllowed() });",
+      "replace": "  const list = await collectNeeds(ctx.caller === \"agent\" ? sources.slice(1) : sources, { caller: ctx.caller, personal, allowed: ctx.needsAllowed ?? liveAllowed() });",
+      "kills": [
+        "the needs caller boundary in the factory decides on the caller only in the needs filter"
+      ]
+    }
+  ]
+}

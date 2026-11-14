@@ -32,6 +32,11 @@ describe("dispatcher rule file", () => {
     expect(() => loadRuleFile(ruleFile({ ...minimal, shadow: { enabled: true } }))).toThrow(/an enabled shadow needs a dir/);
   });
 
+  it("refuses a sheet bet source with no sheet dir, and a sheet week that is not an ISO week", () => {
+    expect(() => loadRuleFile(ruleFile({ ...minimal, bets: { source: "selected-then-sheet" } }))).toThrow(/a sheet bet source needs a sheetDir/);
+    expect(() => loadRuleFile(ruleFile({ ...minimal, bets: { source: "selected-then-sheet", sheetDir: "/s", sheetWeek: "2026-47" } }))).toThrow(/bets\.sheetWeek/);
+  });
+
   it("refuses an unplanned key, and names the file when it is not JSON", () => {
     expect(() => loadRuleFile(ruleFile({ ...minimal, dispatchLive: true }))).toThrow(/dispatchLive/);
     const broken = ruleFile("{ not json");
@@ -55,6 +60,30 @@ describe("dispatcher rule file", () => {
       { initiative: "alpha", tag: "lane-a" },
       { initiative: "beta", tag: null },
     ]);
+  });
+
+  it("relax defaults to none and intake to medium severity over 28 days, and a partial intake keeps the other default", () => {
+    expect(loadRuleFile(ruleFile(minimal))?.rules).toMatchObject({ relax: [], intake: { minSeverity: "medium", expireDays: 28 } });
+    expect(loadRuleFile(ruleFile({ ...minimal, intake: { expireDays: 14 } }))?.rules.intake).toEqual({ minSeverity: "medium", expireDays: 14 });
+  });
+
+  it("refuses a relax entry or a severity outside the closed sets", () => {
+    expect(() => loadRuleFile(ruleFile({ ...minimal, relax: ["no-done-when"] }))).toThrow(/relax/);
+    expect(() => loadRuleFile(ruleFile({ ...minimal, intake: { minSeverity: "trivial" } }))).toThrow(/minSeverity/);
+  });
+
+  it("fills each absent stop threshold with its starting value, and refuses a zero cap", () => {
+    expect(loadRuleFile(ruleFile(minimal))?.rules.stop).toEqual({ taskFixRounds: 3, spendMultiple: 2, usdPerPoint: 8, betStoppedPrs: 3, betFollowupMultiple: 2, checkpointEvery: 5 });
+    expect(loadRuleFile(ruleFile({ ...minimal, stop: { taskFixRounds: 4 } }))?.rules.stop).toMatchObject({ taskFixRounds: 4, checkpointEvery: 5 });
+    expect(() => loadRuleFile(ruleFile({ ...minimal, stop: { checkpointEvery: 0 } }))).toThrow(/stop\.checkpointEvery/);
+  });
+
+  it("reads a lane's ready-stock floor and coordinator, and refuses a zero floor or a coordinator that is no peer name", () => {
+    const lanes = [{ initiative: "alpha", tag: "lane-a", floor: 20, coordinator: "alpha-coord" }];
+
+    expect(loadRuleFile(ruleFile({ ...minimal, lanes }))?.rules.lanes).toEqual(lanes);
+    expect(() => loadRuleFile(ruleFile({ ...minimal, lanes: [{ initiative: "alpha", floor: 0 }] }))).toThrow(/lanes\.0\.floor/);
+    expect(() => loadRuleFile(ruleFile({ ...minimal, lanes: [{ initiative: "alpha", coordinator: "Alpha Coord" }] }))).toThrow(/must be an agent-chat peer name/);
   });
 
   it("sits beside the factory config.json by default", () => {

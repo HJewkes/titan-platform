@@ -13,12 +13,12 @@ import {
   readTimeouts,
 } from "./ci-capacity-timeouts.mjs";
 
-export const DEFAULT_REPOS = ["HJewkes/titan-design", "HJewkes/titan-platform", "HJewkes/agent-chat"];
+const DEFAULT_REPOS = ["HJewkes/titan-design", "HJewkes/titan-platform", "HJewkes/agent-chat"];
 // The Free plan's concurrent standard-job cap. The plan cannot be read through the API, so the report shows it as the
 // line the peaks are compared against, not as a fact about the account.
-export const DEFAULT_CAP = 20;
+const DEFAULT_CAP = 20;
 // Calls left to the rest of the machine: Shepherd and the coordinators spend the same per-user REST quota.
-export const DEFAULT_RATE_RESERVE = 1000;
+const DEFAULT_RATE_RESERVE = 1000;
 const WINDOW_DAYS = 7;
 const DAY_MS = 86_400_000;
 const MINUTE_MS = 60_000;

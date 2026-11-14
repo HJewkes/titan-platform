@@ -43,7 +43,7 @@ function scopeSegment(node: Node): string | null {
 }
 
 /** The dotted scope path enclosing `node`, collapsing consecutive anonymous segments. */
-export function scopeOf(node: Node): string {
+function scopeOf(node: Node): string {
   const segments = node
     .getAncestors()
     .map(scopeSegment)

@@ -25,8 +25,6 @@ const ClassesSchema = z.object(
 const InitiativeSchema = z.object({
   slug: z.string(),
   human_only: z.boolean(),
-  // The brief's `visibility` alone (TP-5453 P6b), for older readers; new readers use withheld_from_agents.
-  agent_visible: z.boolean(),
   // The full verdict, brief and charter together (TP-5556): true when agents may not read it,
   // and true for every row when the charter is unreadable. Readers treat a missing field as true.
   withheld_from_agents: z.boolean(),
@@ -62,7 +60,6 @@ export default defineCommand<Args, Result>({
     const wire = await wireVisibility(activeRoot, slugs);
     const initiatives = summarizeInventory(slugs, files, humanOnly.isHumanOnly).map((row) => ({
       ...row,
-      agent_visible: wire.get(row.slug)?.agent_visible ?? false,
       withheld_from_agents: wire.get(row.slug)?.withheld_from_agents ?? true,
     }));
     return {

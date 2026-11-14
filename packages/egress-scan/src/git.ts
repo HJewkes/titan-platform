@@ -4,20 +4,20 @@ import { ConfigError } from "./config.js";
 import { parseDiff, type IdentField, type ScanSource } from "./diff.js";
 
 /** A git command that failed. The message names the subcommand, never git's output. */
-export class GitError extends Error {
+class GitError extends Error {
   constructor(subcommand: string, status: number | null) {
     super(`git ${subcommand} failed (exit ${status ?? "signal"}); run it by hand to see git's error`);
     this.name = "GitError";
   }
 }
 
-export interface PushUpdate {
+interface PushUpdate {
   readonly localSha: string;
   readonly remoteSha: string;
 }
 
 /** One pre-push stdin line: the shas plus the local and remote ref names, which leave the machine too. */
-export interface PushLine extends PushUpdate {
+interface PushLine extends PushUpdate {
   readonly localRef: string;
   readonly remoteRef: string;
 }
@@ -66,7 +66,7 @@ const FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const REVISION = /^(?:[0-9a-f]{7,64}|[^-\s]\S*)$/;
 const REMOTE_NAME = /^[^-\s]\S*$/;
 
-export function isFullSha(value: string): boolean {
+function isFullSha(value: string): boolean {
   return FULL_SHA.test(value);
 }
 
@@ -101,7 +101,7 @@ function lines(text: string): string[] {
   return text.split("\n").filter((line) => line !== "");
 }
 
-export function isZeroSha(sha: string): boolean {
+function isZeroSha(sha: string): boolean {
   return /^0+$/.test(sha);
 }
 

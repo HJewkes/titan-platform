@@ -1,7 +1,7 @@
 import { mapItems, type MapItemFn, type MapResult, type WorkflowContext } from "@titan-design/workflow";
 import { gateSpend } from "./spend-gate.js";
 
-export interface WaveOptions<T> {
+interface WaveOptions<T> {
   key: (item: T) => string;
   concurrency: number;
   /** What the run may still spend; passed to both fan-outs. */
@@ -10,7 +10,7 @@ export interface WaveOptions<T> {
   priorCallUsd?: number;
 }
 
-export interface WaveResult<T> {
+interface WaveResult<T> {
   spentUsd: number;
   /** Calls that finished, failed ones included. */
   calls: number;

@@ -10,7 +10,7 @@ export const isoTime = z
   .string()
   .refine((value) => /^\d{4}-\d{2}-\d{2}/.test(value) && !Number.isNaN(Date.parse(value)), "expected an ISO date or timestamp");
 
-export const insightFilters = z.object({
+const insightFilters = z.object({
   session: z.array(z.string().min(1)).optional().describe("only these session ids"),
   agentPrefix: z.string().min(1).optional().describe("only sessions whose agent-chat name starts with this"),
   role: z.array(z.string().min(1)).optional().describe("only these report roles, as byRole names them"),
@@ -18,7 +18,7 @@ export const insightFilters = z.object({
   until: isoTime.optional().describe("ISO timestamp or date, exclusive"),
 });
 
-export type InsightFilters = z.infer<typeof insightFilters>;
+type InsightFilters = z.infer<typeof insightFilters>;
 
 const FILTER_FLAGS: Record<keyof InsightFilters, CliOption> = {
   session: { long: "--session", description: "session id (repeatable)" },
@@ -28,7 +28,7 @@ const FILTER_FLAGS: Record<keyof InsightFilters, CliOption> = {
   until: { long: "--until", description: "ISO timestamp or date, exclusive" },
 };
 
-export interface InsightAnswer<Data> {
+interface InsightAnswer<Data> {
   data: Data;
   /** The text rendering; it ends with the list-price caveat. */
   text: string;

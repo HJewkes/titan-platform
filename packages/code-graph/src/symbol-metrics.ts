@@ -7,7 +7,7 @@ import { symbolId } from "./extractors/ids.js";
 import type { GraphMetric } from "./types.js";
 
 /** Comment and shape counts of one function (TP-322); `passThrough` is 1 or 0. */
-export interface FunctionShapeStats extends CommentLineStats {
+interface FunctionShapeStats extends CommentLineStats {
   narratingComments: number;
   passThrough: number;
 }

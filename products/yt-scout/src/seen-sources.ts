@@ -74,7 +74,7 @@ function result(name: string, file: string, read: () => SeenRecord[]): SeenSourc
   return { name, path: file, present, records: present ? read() : [] };
 }
 
-export function readInventory(root: string): SeenSourceResult {
+function readInventory(root: string): SeenSourceResult {
   const file = path.join(root, SEEN_PATHS.inventory);
   return result("inventory", file, () =>
     withId(readJsonl(file)).map((r) => ({
@@ -89,7 +89,7 @@ export function readInventory(root: string): SeenSourceResult {
 }
 
 // all-scores.json is the merged set; a batch file can still hold a card it missed.
-export function readScores(root: string): SeenSourceResult {
+function readScores(root: string): SeenSourceResult {
   const dir = path.join(root, SEEN_PATHS.scores);
   return result("scores", dir, () => {
     const allFile = path.join(dir, "all-scores.json");
@@ -104,7 +104,7 @@ export function readScores(root: string): SeenSourceResult {
   });
 }
 
-export function readWatchLater(root: string): SeenSourceResult {
+function readWatchLater(root: string): SeenSourceResult {
   const file = path.join(root, SEEN_PATHS.watchLater);
   const factsDir = path.join(root, SEEN_PATHS.facts);
   return result("watch-later", file, () =>
@@ -138,7 +138,7 @@ function markdownFiles(dir: string): string[] {
     .sort();
 }
 
-export function readTranscripts(root: string): SeenSourceResult {
+function readTranscripts(root: string): SeenSourceResult {
   const dir = path.join(root, SEEN_PATHS.out);
   return result("out", dir, () =>
     markdownFiles(dir).flatMap((file) => {

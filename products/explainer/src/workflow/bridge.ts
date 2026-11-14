@@ -29,7 +29,7 @@ const PORTED_STAGES: Readonly<Record<string, string>> = {
 const PortedStagesSchema = z.object({ stages: z.record(z.string(), z.unknown()) });
 
 /** A bridge a profile names, kept once per host so a run in any data dir uses it without a per-run copy. */
-export interface NamedBridge {
+interface NamedBridge {
   /** The host's own explainer data dir, which holds `bridges/<name>.json`. */
   home: string;
   name: string;
@@ -48,7 +48,7 @@ export function readBridgeFile(dataDir: string, named?: NamedBridge): BridgeFile
   return BridgeFileSchema.parse(raw);
 }
 
-export interface RunBridgeChoice {
+interface RunBridgeChoice {
   /** Where a named bridge lives; the data dir by default. */
   home?: string | undefined;
   profile?: string | undefined;

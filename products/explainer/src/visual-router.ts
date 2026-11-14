@@ -10,7 +10,7 @@ const Id = z.string().min(1);
 const NotThisSchema = z.object({ when: z.string().min(1), use: Id }).strict();
 const RenderSchema = z.object({ component: Id, preset: Id.optional() }).strict();
 const ClosestSchema = z.object({ type: Id, component: Id, caveat: z.string().min(1).nullable() }).strict();
-export const VISUAL_STATUSES = ["have", "in-flight", "ng", "new", "template", "skip"] as const;
+const VISUAL_STATUSES = ["have", "in-flight", "ng", "new", "template", "skip"] as const;
 
 const PatternSchema = z
   .object({ id: Id, name: Id, trigger: z.string().min(1), primitives: z.array(z.string().min(1)), budget: z.string().min(1), nearestType: Id })

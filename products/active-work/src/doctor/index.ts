@@ -24,6 +24,7 @@ import {
   checkArtifactHashes,
   checkLeases,
   checkNoteTitles,
+  checkReservedSlugs,
   checkSessions,
   checkWorkspaceIndexRefs,
 } from './checks-data.js';
@@ -75,11 +76,12 @@ function checkInstall(deps: DoctorDeps): Promise<DoctorCheck[]> {
 
 /** Run all health checks and return a report. `ok` is false iff any check failed. */
 export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
-  const [installChecks, sessionChecks, noteTitles, artifactHashes, leases, workspaceIndex] =
+  const [installChecks, sessionChecks, noteTitles, reservedSlugs, artifactHashes, leases, workspaceIndex] =
     await Promise.all([
       checkInstall(deps),
       checkSessions(deps),
       checkNoteTitles(deps),
+      checkReservedSlugs(deps),
       checkArtifactHashes(deps),
       checkLeases(deps),
       checkWorkspaceIndexRefs(deps),
@@ -88,6 +90,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
     ...installChecks,
     ...sessionChecks,
     noteTitles,
+    reservedSlugs,
     artifactHashes,
     leases,
     workspaceIndex,

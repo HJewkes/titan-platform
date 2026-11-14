@@ -1,5 +1,5 @@
 /** One import in a chain: `importer` imports `imported` on the given lines. */
-export interface ImportLink {
+interface ImportLink {
   importer: string;
   imported: string;
   lines: number[];

@@ -69,7 +69,7 @@ export function importWeight(
  * this file (what usage counts key on). Namespace imports (`import * as ns`)
  * are not bindings of one export; `namespaceMemberUsage` attributes them.
  */
-export interface ImportBinding {
+interface ImportBinding {
   importedName: string;
   localName: string;
 }

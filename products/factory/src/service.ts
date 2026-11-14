@@ -32,7 +32,7 @@ export interface PlistOptions {
 }
 
 /** What `titan-factory serve` runs by bare name: gh for every GitHub call, the other two for dispatch steps. */
-export const SERVICE_BINARIES = ["gh", "agent-chat", "claude"] as const;
+const SERVICE_BINARIES = ["gh", "agent-chat", "claude"] as const;
 
 /** launchd starts a job with its four system directories only. node's directory is there for `#!/usr/bin/env node` bins such as agent-chat. */
 export function servicePath(which: (binary: string) => string | undefined, nodePath: string): ServicePath {

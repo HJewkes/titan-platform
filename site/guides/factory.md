@@ -164,8 +164,13 @@ stays out of the repo.
   step, or at `update-branch` when the PR is behind on a strict repo. A wake still resumes or
   messages the PR's own implementer, but never spawns a successor, and a red main never
   spawns a fixer. Clear the flag and the
-  held run merges on its next poll. Under the hold, the GitHub port itself refuses every
-  merge, branch update, empty-commit push and ref delete for the repo, whatever route asks.
+  held run merges on its next poll. Under the hold, the GitHub port Shepherd's routes use
+  refuses all ten branch and PR writes for the repo, whatever route asks: merge, branch
+  update, PR close, empty-commit push, ref delete, branch create, file commit, PR retarget,
+  merge into a branch and PR open. So the consumer bump and toolchain sweeps skip the repo
+  with a refusal note. Factory build is the one exception: it still creates its own branch
+  and opens its PR there, because an open PR is what the owner merges by hand, and the
+  Shepherd run it registers holds that PR's merge like any other.
   The flag fails closed: the serve process reads it at start and on every check, and only
   a config file that loads cleanly and leaves it off clears it. A file that is missing, half written or invalid
   keeps the repo advisory, but only if this serve process has already read the flag. A serve

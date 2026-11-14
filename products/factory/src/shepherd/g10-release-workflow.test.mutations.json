@@ -14,8 +14,8 @@
     {
       "name": "serve wires no recheck into the merge wait",
       "file": "products/factory/src/workflows-routes.ts",
-      "find": ", adversary.takeRehold, g10Recheck(holds))",
-      "replace": ", adversary.takeRehold)",
+      "find": "adversary.takeRehold, g10Recheck(holds), ",
+      "replace": "adversary.takeRehold, undefined, ",
       "kills": [
         "a g10-adversary run whose release step answered no before a deploy, waiting on the hold at merge (TP-3956) asks the release again under the next build, which releases the hold, and the PR merges",
         "a g10-adversary run whose release step answered no before a deploy, waiting on the hold at merge (TP-3956) asks once more when the next build still answers no, then waits held at merge without asking again"

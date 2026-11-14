@@ -10,7 +10,7 @@ function daemon(humanOnly: string[], known = true, ownerOnly: string[] = []) {
   const tasks = [decisionTask(1), { ...decisionTask(2), slug: "home" }];
   const fetch = async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
     calls.push({ url: String(url), body: JSON.parse(String(init?.body)) });
-    const inventory = { initiatives: ["demo", "home"].map((slug) => ({ slug, human_only: humanOnly.includes(slug), agent_visible: !ownerOnly.includes(slug) })), human_only_known: known };
+    const inventory = { initiatives: ["demo", "home"].map((slug) => ({ slug, human_only: humanOnly.includes(slug), withheld_from_agents: ownerOnly.includes(slug) })), human_only_known: known };
     const data = String(url).endsWith("/task.list") ? { tasks } : inventory;
     return new Response(JSON.stringify({ ok: true, data }));
   };

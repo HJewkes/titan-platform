@@ -18,6 +18,33 @@
       "kills": [
         "the active-work reads createSources builds refresh behind a write, since the write moved the tree"
       ]
+    },
+    {
+      "name": "a row without the field reads as shown",
+      "file": "apps/console/server/upstreams.ts",
+      "find": "entry.withheld_from_agents !== false",
+      "replace": "entry.withheld_from_agents === true",
+      "kills": [
+        "the decision log's visibility reader excludes a row that carries no withheld field, and a slug the inventory never listed"
+      ]
+    },
+    {
+      "name": "an unlisted slug is no longer withheld",
+      "file": "apps/console/server/decision-log.ts",
+      "find": "known.shown && subject.initiative !== null && !known.shown.has(subject.initiative)",
+      "replace": "false",
+      "kills": [
+        "the decision log's visibility reader excludes a row that carries no withheld field, and a slug the inventory never listed"
+      ]
+    },
+    {
+      "name": "a field-less inventory reads as known",
+      "file": "apps/console/server/upstreams.ts",
+      "find": "inventory === null || !inventory.initiatives.some((entry) => entry.withheld_from_agents !== undefined)",
+      "replace": "inventory === null",
+      "kills": [
+        "the decision log's visibility reader reads as unknown when no row carries the field, or the daemon is down"
+      ]
     }
   ]
 }

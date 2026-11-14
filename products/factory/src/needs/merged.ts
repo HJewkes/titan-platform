@@ -1,4 +1,6 @@
 import { mergeByKeys, type OwnerItem, type QueueSource } from "@titan-design/owner-queue";
+import type { Caller } from "../caller.js";
+import type { AgentAllowList } from "./agent-allow-list.js";
 import { tally } from "./counts.js";
 import { overlapReport, renderOverlapReport, type Overlap } from "./overlap.js";
 
@@ -13,26 +15,53 @@ export interface NeedsList {
   gaps: string[];
 }
 
+/** Who the list is for. The caller is required, so no reader gets a view by default. */
+export interface NeedsView {
+  caller: Caller;
+  /** The owner's own inbox lens: charter-personal initiatives too. */
+  personal?: boolean;
+  /** Read only for an agent; absent or unreadable, every initiative-tagged item is withheld. */
+  allowed?: AgentAllowList;
+}
+
+interface Visibility {
+  shows: (item: OwnerItem) => boolean;
+  gap?: string;
+}
+
+const firstLine = (error: unknown): string => (error instanceof Error ? error.message : String(error)).split("\n")[0]!;
+
 async function readSource(source: QueueSource): Promise<{ items: OwnerItem[]; gap?: string }> {
   try {
     return { items: await source.open() };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const line = message.split("\n")[0]!;
+    const line = firstLine(error);
     return { items: [], gap: line.startsWith(`${source.system}:`) ? line : `${source.system}: ${line}` };
   }
 }
 
-export async function collectNeeds(sources: readonly QueueSource[], { personal = false }: { personal?: boolean } = {}): Promise<NeedsList> {
-  const reads = await Promise.all(sources.map(readSource));
-  const open = reads.flatMap((read) => read.items).filter((item) => personal || !item.personal);
+/** Owner: everything. Agent: untagged items, and tagged ones only from an initiative the allow list names, whatever the source. */
+async function visibilityOf({ caller, allowed }: NeedsView): Promise<Visibility> {
+  if (caller === "owner") return { shows: () => true };
+  const shownFrom = (names: ReadonlySet<string>) => (item: OwnerItem) => item.initiative === undefined || names.has(item.initiative);
+  if (allowed === undefined) return { shows: shownFrom(new Set()) };
+  try {
+    return { shows: shownFrom(await allowed()) };
+  } catch (error) {
+    return { shows: shownFrom(new Set()), gap: `active-work inventory: ${firstLine(error)}; initiative items withheld` };
+  }
+}
+
+export async function collectNeeds(sources: readonly QueueSource[], view: NeedsView): Promise<NeedsList> {
+  const [reads, visibility] = await Promise.all([Promise.all(sources.map(readSource)), visibilityOf(view)]);
+  const open = reads.flatMap((read) => read.items).filter((item) => (view.personal === true || !item.personal) && visibility.shows(item));
   const counts: Record<string, number> = {};
   for (const item of open) counts[item.sources[0]!.system] = (counts[item.sources[0]!.system] ?? 0) + 1;
   return {
     items: mergeByKeys(open),
     counts,
     overlaps: overlapReport(open),
-    gaps: reads.flatMap((read) => (read.gap === undefined ? [] : [read.gap])),
+    gaps: [...reads, visibility].flatMap((read) => (read.gap === undefined ? [] : [read.gap])),
   };
 }
 

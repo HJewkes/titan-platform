@@ -22,7 +22,7 @@ export interface SampleSettings {
 }
 
 /** The word that names the run's own settings in place of a variant file. */
-export const CHAMPION = "champion";
+const CHAMPION = "champion";
 
 export function sampledStage(stage: CachedStage): SampledStage {
   if (!isSampledStage(stage)) throw new InvalidArgumentError(`--samples measures a model stage that writes a script: ${Object.keys(SAMPLED_STAGES).join(", ")}; got ${stage}`);

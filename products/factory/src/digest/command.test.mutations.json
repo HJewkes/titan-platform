@@ -2,39 +2,21 @@
   "v": 1,
   "mutations": [
     {
-      "name": "Seats never reads the broker roster",
-      "file": "products/factory/src/digest/collect.ts",
-      "find": "seats: roster ? seatLines(merged, roster, since) : []",
-      "replace": "seats: []",
+      "name": "an agent-chat-named shell reads as the owner's",
+      "file": "products/factory/src/caller.ts",
+      "find": "const AGENT_SHELL_VARS = [\"AGENT_CHAT_NAME\", \"AGENT_CHAT_AGENT_ID\", \"CLAUDECODE\"] as const;",
+      "replace": "const AGENT_SHELL_VARS = [\"AGENT_CHAT_AGENT_ID\", \"CLAUDECODE\"] as const;",
       "kills": [
-        "runDigestVerb lists coordinators from the broker roster and pools from pace.json (TP-4626)"
+        "runDigestVerb leaves a withheld initiative's ask out of an agent shell's dry run and keeps it for the owner (TP-5556)"
       ]
     },
     {
-      "name": "Spend never reads pace.json",
+      "name": "the digest reads needs as the owner",
       "file": "products/factory/src/digest/command.ts",
-      "find": "spend: () => readPacePools(pacePath(io.env)),",
-      "replace": "spend: () => [],",
+      "find": "{ morningDir }), shellNeedsView(env)),",
+      "replace": "{ morningDir }), { ...shellNeedsView(env), caller: \"owner\" as const }),",
       "kills": [
-        "runDigestVerb lists coordinators from the broker roster and pools from pace.json (TP-4626)"
-      ]
-    },
-    {
-      "name": "Seats reads only live roster rows",
-      "file": "products/factory/src/digest/flow-sources.ts",
-      "find": "[\"agent\", \"ls\", \"--json\", \"--include-retired\"]",
-      "replace": "[\"agent\", \"ls\", \"--json\"]",
-      "kills": [
-        "runDigestVerb counts spawns by a retired generation of a coordinator in Seats (TP-4628)"
-      ]
-    },
-    {
-      "name": "Merged drops Shepherd's runs",
-      "file": "products/factory/src/digest/collect.ts",
-      "find": "merged: shepherdMerged(rows, since),",
-      "replace": "merged: [],",
-      "kills": [
-        "runDigestVerb prints Shepherd's merges and the named agent-chat follow-ups, never running agent-chat digest (TP-4628)"
+        "runDigestVerb leaves a withheld initiative's ask out of an agent shell's dry run and keeps it for the owner (TP-5556)"
       ]
     }
   ]

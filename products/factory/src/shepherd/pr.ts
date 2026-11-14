@@ -115,7 +115,7 @@ interface ShepherdRun extends WakeRun, FixFirstTrail, VisualAcceptRun, FailedRou
  * Shepherd one PR to a merge: wait for the PR to exist, then land it round by round. A red head, a conflict, or a
  * review that sends the PR back wakes an agent first; an unhandled wake leaves the decision to a human.
  */
-export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams, phases: ShepherdPhases): Promise<LandOutcome> {
+async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams, phases: ShepherdPhases): Promise<LandOutcome> {
   const pr = params.pr ?? (await awaitPrStep(ctx, params.repo, params.branch));
   const run: ShepherdRun = {
     ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), merged: new Map() },
@@ -323,7 +323,7 @@ async function landed(ctx: WorkflowContext, run: ShepherdRun, merged: Extract<La
   return merged;
 }
 
-export interface ShepherdWiring {
+interface ShepherdWiring {
   /** Absent means the review steps answer `none` and the owner gate decides. */
   review?: ReviewWiring;
   /** Absent means `agent-chat agent park` through `deps.agentChatBin`. */

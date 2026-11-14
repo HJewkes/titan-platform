@@ -7,7 +7,7 @@ import type { StepRoute } from "@titan-design/workflow";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { seatTranscript, type SeatTranscript } from "../test-support/seat-transcript.js";
 import { holdSlotsMigration } from "./store-migrations.js";
-import { shepherdEventMigration } from "./events.js";
+import { gateCancelKindMigration, mergeWaitKindMigration, orderEventKindsMigration, orderWaitKindMigration, reclassMarkMigration, shepherdEventMigration } from "./events.js";
 import type { CarryResult } from "./tree-carry.js";
 import { MergeHeldError, heldCheck, holdSatisfier, holdingPort, openHeadRead, waitWhileHeld } from "./hold.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
@@ -631,5 +631,61 @@ describe("a hold whose named reviewer is read from its real transcript", () => {
     expect(r.store.byRun("run-1")?.holdSatisfied?.head).toBe(H1);
     expect(log).toHaveBeenCalledWith(expect.stringContaining("roster could not be read"));
     log.mockRestore();
+  });
+});
+
+describe("a merge step waiting on a hold", () => {
+  it("names each new reason it waits on once on the console, then ends the wait on release without merging", async () => {
+    const reasons = ["the Version Packages PR #1 is ready and lands first", "the Version Packages PR #1 is ready and lands first", "the repo is frozen", undefined];
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    let ran = false;
+    const route = partialFake<StepRoute>({ match: "merge", runner: { run: async () => ((ran = true), { ok: true as const, output: "{}" }) } });
+    const waiting = waitWhileHeld(route, async () => reasons.shift(), { sleep: async () => undefined, now: () => 0 }, async () => H1);
+
+    await waiting.runner.run(partialFake<RoutedStepInput>({ prompt: JSON.stringify({ repo: REPO, pr: 7, sha: H1 }), signal: new AbortController().signal, stepId: "merge", attempt: 0 }));
+
+    expect(warn.mock.calls.map(([line]) => line)).toEqual([
+      `shepherd: the merge of ${REPO}#7 waits: the Version Packages PR #1 is ready and lands first`,
+      `shepherd: the merge of ${REPO}#7 waits: the repo is frozen`,
+    ]);
+    expect(ran).toBe(false);
+    warn.mockRestore();
+  });
+
+  it("records each changed reason as a merge-wait timeline row, once per change", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const db = openDatabase(":memory:");
+    runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19), reclassMarkMigration(25), gateCancelKindMigration(39), orderEventKindsMigration(44), orderWaitKindMigration(45), mergeWaitKindMigration(53)]);
+    const store = new ShepherdStore(db, () => 0);
+    store.register({ repo: REPO, pr: 7, runId: "run-7", task: "demo/7", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+    const reasons = ["the repo is frozen", "the repo is frozen", "the Version Packages PR #1 is ready and lands first", undefined];
+    const route = partialFake<StepRoute>({ match: "merge", runner: { run: async () => ({ ok: true as const, output: "{}" }) } });
+    const noteWait = (_repo: string, _pr: number, reason: string, sha: string | undefined) => store.recordMergeWait("run-7", reason, "2026-01-01T00:00:00.000Z", sha);
+    const waiting = waitWhileHeld(route, async () => reasons.shift(), { sleep: async () => undefined, now: () => 0 }, async () => H1, undefined, undefined, undefined, noteWait);
+
+    await waiting.runner.run(partialFake<RoutedStepInput>({ prompt: JSON.stringify({ repo: REPO, pr: 7, sha: H1 }), signal: new AbortController().signal, stepId: "merge", attempt: 0 }));
+
+    const rows = store.eventsOf("run-7").filter((event) => event.kind === "merge-wait");
+    expect(rows.map(({ reason, headSha }) => ({ reason, headSha }))).toEqual([
+      { reason: "the repo is frozen", headSha: H1 },
+      { reason: "the Version Packages PR #1 is ready and lands first", headSha: H1 },
+    ]);
+  });
+
+  it("carries on to the merge when recording a merge wait throws", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const reasons = ["the repo is frozen", undefined];
+    let ran = false;
+    const route = partialFake<StepRoute>({ match: "merge", runner: { run: async () => { ran = true; return { ok: true as const, output: "{}" }; } } });
+    const noteWait = () => { throw new Error("SQLITE_BUSY"); };
+    const waiting = waitWhileHeld(route, async () => reasons.shift(), { sleep: async () => undefined, now: () => 0 }, async () => H1, undefined, undefined, undefined, noteWait);
+
+    const result = await waiting.runner.run(partialFake<RoutedStepInput>({ prompt: JSON.stringify({ repo: REPO, pr: 7, sha: H1 }), signal: new AbortController().signal, stepId: "merge", attempt: 0 }));
+
+    expect(result).toMatchObject({ ok: true });
+    expect(JSON.parse(String(readPath(result, "output"))).result).toMatchObject({ skipped: "held" });
+    expect(ran).toBe(false);
+    expect(warn.mock.calls.map(([line]) => line)).toContain(`shepherd: could not record the merge wait of ${REPO}#7: SQLITE_BUSY`);
+    warn.mockRestore();
   });
 });

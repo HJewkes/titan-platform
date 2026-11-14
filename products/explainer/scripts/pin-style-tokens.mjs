@@ -7,7 +7,7 @@ import { readFile, writeFile } from "node:fs/promises";
 
 const OUT = new URL("../doctrine/style-tokens.json", import.meta.url);
 
-export function tokenNames(css) {
+function tokenNames(css) {
   return [...new Set([...css.matchAll(/(?:^|[\s;{])--([a-zA-Z0-9-]+)\s*:/g)].map((match) => match[1]))].sort();
 }
 

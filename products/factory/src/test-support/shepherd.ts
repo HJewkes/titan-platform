@@ -78,7 +78,7 @@ export function shepherdFixture(options: FixtureOptions = {}): ShepherdFixture {
 const DEFAULT_SEATS: SeatBook = { seats: [{ name: "fixture-seat", remotes: [REPO, "example-org/example-repo", DRIFTED.toLowerCase()], paths: {}, grants: [] }], denied: [] };
 
 export async function callCommand<T>(host: FactoryHost, routes: FactoryRoutes, name: string, args: unknown): Promise<JsonEnvelope<T>> {
-  return (await inProcessCaller(createFactoryRegistry(), () => factoryContext(host, routes))(name, args)) as JsonEnvelope<T>;
+  return (await inProcessCaller(createFactoryRegistry(), () => factoryContext(host, routes, "agent"))(name, args)) as JsonEnvelope<T>;
 }
 
 export function shepherdRuns(host: FactoryHost): string[] {

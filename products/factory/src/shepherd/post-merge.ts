@@ -22,12 +22,12 @@ import { STACK_LAND_STEPS, restackLanded, stackLandRoutes } from "./stack-land.j
 import { unlessThawed } from "./thawed-main-gates.js";
 
 export const SH_MAIN_CI_TIMEOUT_MS = 60 * 60_000;
-export const SH_MAIN_CI_POLL_MS = 30_000;
+const SH_MAIN_CI_POLL_MS = 30_000;
 /** Extra full waits granted, one at a time, while a run at the merge sha is still queued or in progress: at most 4 hours in all. */
 const SH_MAIN_CI_RECHECKS = 3;
 
 /** Stages a merge may be followed by. This slice runs none of them; a non-empty list goes to the owner. */
-export const AFTER_STAGES = ["deploy", "release", "activation"] as const;
+const AFTER_STAGES = ["deploy", "release", "activation"] as const;
 
 export type AfterStage = (typeof AFTER_STAGES)[number];
 
@@ -52,7 +52,7 @@ export function afterStages(ctx: WorkflowContext): AfterStage[] {
   return raw === undefined ? [] : AfterStagesSchema.parse(JSON.parse(raw));
 }
 
-export const MainCiResult = z.looseObject({
+const MainCiResult = z.looseObject({
   verdict: z.enum(["green", "red", "none"]),
   mergeSha: z.string(),
   /** Set when the verdict was read on a newer main push whose run superseded the merge sha's cancelled one. */
@@ -67,9 +67,9 @@ export const MainCiResult = z.looseObject({
   warning: z.string().optional(),
 });
 
-export type MainCi = z.infer<typeof MainCiResult>;
+type MainCi = z.infer<typeof MainCiResult>;
 
-export interface MergedTarget {
+interface MergedTarget {
   repo: RepoSlug;
   pr: number;
   mergeSha: string;
@@ -185,7 +185,7 @@ export function postMergeRoutes(deps: ShepherdDeps, mainRed?: MainRedWiring): St
   ];
 }
 
-export interface Timing {
+interface Timing {
   now: () => number;
   sleep: (ms: number, signal: AbortSignal) => Promise<void>;
   pollMs: number;

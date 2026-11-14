@@ -75,7 +75,7 @@ export function handoffRef(services: ShepherdServices): HandoffRef {
       };
     },
     async register(request) {
-      const ctx: FactoryContext = { warnings: [], format: "json", host: hostOf(), shepherd: services };
+      const ctx: FactoryContext = { warnings: [], format: "json", host: hostOf(), caller: "agent", shepherd: services };
       const { runId, created } = await command.run(command.args.parse(request), ctx);
       return { runId, created };
     },

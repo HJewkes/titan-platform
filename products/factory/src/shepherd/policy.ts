@@ -38,7 +38,7 @@ const RequestedPolicySchema = RequestedPolicyFields.superRefine((request, ctx) =
   if (request.merge !== "owner-gate" && request.ownerGateReason !== undefined) ctx.addIssue({ code: "custom", path, message: "ownerGateReason applies only with merge owner-gate" });
 });
 
-export type RequestedPolicy = z.infer<typeof RequestedPolicySchema>;
+type RequestedPolicy = z.infer<typeof RequestedPolicySchema>;
 
 /** What a repo no seat lists resolves to: the owner gates every merge. */
 export const OWNER_GATE_POLICY: EffectivePolicy = { merge: "owner-gate", mergeMethod: "squash", fixer: false, seat: "none" };

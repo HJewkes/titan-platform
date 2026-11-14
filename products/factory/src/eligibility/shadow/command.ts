@@ -3,6 +3,10 @@ import type { Command } from "commander";
 import type { Verbs } from "../../cli-types.js";
 import { EXIT } from "../../exit-codes.js";
 import { errorMessage } from "../../narrow.js";
+import { registerSheetVerbs } from "../sheets/command.js";
+import { registerShadowCompare } from "./compare-command.js";
+import { refillLanes } from "./refill.js";
+import { liveRefillPorts, refillLine } from "./refill-ports.js";
 import { defaultRuleFilePath, loadRuleFile, type LoadedRules } from "./rule-file.js";
 import type { ShadowRow } from "./row.js";
 import { shadowTick } from "./tick.js";
@@ -22,6 +26,10 @@ async function tick(loaded: LoadedRules, dir: string, verbs: Verbs): Promise<num
   const wake = `${now.toISOString().slice(0, 19)}Z#${randomBytes(2).toString("hex")}`;
   const { rows, unreadLanes } = await shadowTick({ loaded, verbs, now, wake });
   verbs.io.stdout(summary(rows, wake, appendShadowRows(dir, now, rows)));
+  for (const outcome of await refillLanes({ rules: loaded.rules, dir, now, ports: liveRefillPorts(verbs) })) {
+    if (outcome.result === "failed") verbs.io.stderr(refillLine(outcome));
+    else verbs.io.stdout(refillLine(outcome));
+  }
   if (unreadLanes > 0) verbs.io.stderr(`error: ${unreadLanes} lane(s) could not be read from active-work; each wrote a signal-unreadable row\n`);
   return unreadLanes > 0 ? EXIT.UNAVAILABLE : EXIT.OK;
 }
@@ -54,4 +62,6 @@ export function registerShadowVerbs(dispatch: Command, verbs: Verbs): void {
     .description("one shadow wake: judge every lane in the dispatcher rule file and append would-dispatch and refused rows to the shadow dir; dispatches nothing")
     .option("--rule-file <path>", "the dispatcher rule file (default: dispatcher.json beside the factory config.json)")
     .action(async (opts: TickOptions) => verbs.setExit(await runShadowTick(opts, verbs)));
+  registerShadowCompare(dispatch, verbs);
+  registerSheetVerbs(dispatch, verbs);
 }

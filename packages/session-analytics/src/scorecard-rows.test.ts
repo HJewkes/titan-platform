@@ -11,18 +11,18 @@ const SINCE = "2026-10-03";
 const NOW = "2026-10-04T12:00:00Z";
 
 const EVENTS: readonly [number, string][] = [
-  [1790000000000, "Verdict: FIX_FIRST\nPR: o/old#9\nHead: 0"],
-  [1791050000000, "Verdict: FIX_FIRST\nPR: o/proj#1\nHead: a"],
-  [1791051000000, "Verdict: MERGE\nPR: o/proj#1\nHead: a2"],
-  [1791052000000, "Verdict: MERGE\nPR: o/proj#2\nHead: b"],
-  [1791053000000, "Verdict: MERGE\nPR: o/proj#7\nHead: c"],
-  [1791054000000, "Verdict: FIX_FIRST\nPR: o/proj#8\nHead: d"],
+  [1790000000000, "Verdict: FIX_FIRST\nPR: o/old#9\nHead: " + "0".repeat(40)],
+  [1791050000000, "Verdict: FIX_FIRST\nPR: o/proj#1\nHead: " + "a".repeat(40)],
+  [1791051000000, "Verdict: MERGE\nPR: o/proj#1\nHead: " + "a".repeat(39) + "2"],
+  [1791052000000, "Verdict: MERGE\nPR: o/proj#2\nHead: " + "b".repeat(40)],
+  [1791053000000, "Verdict: MERGE\nPR: o/proj#7\nHead: " + "c".repeat(40)],
+  [1791054000000, "Verdict: FIX_FIRST\nPR: o/proj#8\nHead: " + "d".repeat(40)],
   [1791055000000, "not a verdict"],
-  [1791056000000, "Verdict: WAIT\nPR: o/proj#3\nHead: e"],
-  [1791057000000, "Verdict: MERGE\nPR: o/proj#3\nHead: e"],
-  [1791058000000, "Verdict: WAIT\nPR: o/proj#4\nHead: f"],
-  [1791059000000, "Verdict: FIX_FIRST\nPR: o/proj#4\nHead: f"],
-  [1791060000000, "Verdict: WAIT\nPR: o/proj#5\nHead: g"],
+  [1791056000000, "Verdict: WAIT\nPR: o/proj#3\nHead: " + "e".repeat(40)],
+  [1791057000000, "Verdict: MERGE\nPR: o/proj#3\nHead: " + "e".repeat(40)],
+  [1791058000000, "Verdict: WAIT\nPR: o/proj#4\nHead: " + "f".repeat(40)],
+  [1791059000000, "Verdict: FIX_FIRST\nPR: o/proj#4\nHead: " + "f".repeat(40)],
+  [1791060000000, "Verdict: WAIT\nPR: o/proj#5\nHead: " + "9".repeat(40)],
 ];
 
 const LOGS: Record<string, readonly object[]> = {
@@ -96,6 +96,34 @@ describe("scorecard rows over the scorecard fixtures", () => {
     expect(text(rows({ eventsDb }).get("rework"))).toBe("50.0 percent (3 of 6)");
   });
 
+  describe("first-pass FIX_FIRST reads only verdict blocks the canonical parser accepts", () => {
+    const head = "a".repeat(40);
+    const block = (verdict: string, pr: string) => `Verdict: ${verdict}\nPR: ${pr}\nHead: ${head}`;
+    const rework = (bodies: readonly string[]) => {
+      const db = eventsWith(bodies.map((body) => ({ ts: 1791050000000, actor: "rv", body })));
+      const value = text(rows({ eventsDb: db }).get("rework"));
+      db.close();
+      return value;
+    };
+
+    it("does not count a verdict whose PR and Head lines sit inside a code fence", () => {
+      const fenced = `Verdict: FIX_FIRST\n\`\`\`\nPR: o/proj#1\nHead: ${head}\n\`\`\``;
+      expect(rework([fenced, block("MERGE", "o/proj#2")])).toBe("0.0 percent (0 of 1)");
+    });
+
+    it("does not count a body with two Verdict lines", () => {
+      expect(rework([`${block("FIX_FIRST", "o/proj#1")}\nVerdict: MERGE`, block("MERGE", "o/proj#2")])).toBe("0.0 percent (0 of 1)");
+    });
+
+    it("does not count a verdict with a short head", () => {
+      expect(rework(["Verdict: FIX_FIRST\nPR: o/proj#1\nHead: abc", block("MERGE", "o/proj#2")])).toBe("0.0 percent (0 of 1)");
+    });
+
+    it("counts one PR written in different case once", () => {
+      expect(rework([block("FIX_FIRST", "O/Proj#1"), block("MERGE", "o/proj#1")])).toBe("100.0 percent (1 of 1)");
+    });
+  });
+
   it("report the mechanical share as n/a while no FIX_FIRST carries a Class line", () => {
     expect(text(rows({ eventsDb }).get("mechanical"))).toBe("n/a (no Class line yet; 3 unclassified of 3 FIX_FIRST rounds)");
   });
@@ -128,18 +156,29 @@ describe("the mechanical first-blocker row with Class lines", () => {
     const fixFirst = (actor: string, pr: number, head: string, cls?: string) => ({
       ts: 1791050000000,
       actor,
-      body: `Verdict: FIX_FIRST\nPR: o/proj#${pr}\nHead: ${head}${cls ? `\nClass: ${cls}` : ""}`,
+      body: `Verdict: FIX_FIRST\nPR: o/proj#${pr}\nHead: ${head.repeat(40)}${cls ? `\nClass: ${cls}` : ""}`,
     });
     const db = eventsWith([
       fixFirst("rv", 10, "e", "rebase"),
       fixFirst("rv", 10, "e", "rebase"),
       fixFirst("rv2", 10, "e", "lint"),
       fixFirst("rv", 11, "f", "defect"),
-      fixFirst("rv", 12, "g", "test"),
-      fixFirst("rv", 13, "h"),
-      fixFirst("rv", 14, "i", "ci-red"),
+      fixFirst("rv", 12, "1", "test"),
+      fixFirst("rv", 13, "2"),
+      fixFirst("rv", 14, "3", "ci-red"),
     ]);
     expect(text(rows({ eventsDb: db }).get("mechanical"))).toBe("60.0 percent (3 of 5) of classified; 1 unclassified of 6 FIX_FIRST rounds");
+    db.close();
+  });
+
+  it("does not count a verdict the parser refuses", () => {
+    const body = (head: string) => `Verdict: FIX_FIRST\nPR: o/proj#20\nHead: ${head}\nClass: lint`;
+    const db = eventsWith([
+      { ts: 1791050000000, actor: "rv", body: body("abc") },
+      { ts: 1791050000000, actor: "rv", body: `${body("a".repeat(40))}\nVerdict: FIX_FIRST` },
+      { ts: 1791050000000, actor: "rv", body: body("b".repeat(40)) },
+    ]);
+    expect(text(rows({ eventsDb: db }).get("mechanical"))).toBe("100.0 percent (1 of 1) of classified; 0 unclassified of 1 FIX_FIRST rounds");
     db.close();
   });
 });

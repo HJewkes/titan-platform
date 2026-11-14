@@ -4,7 +4,7 @@ import { z } from "zod";
 /** The only modules a custom layer may import: React and the react-ui motion primitives the page provides. */
 export const LAYER_IMPORT_ALLOWLIST: readonly string[] = ["react", "react/jsx-runtime", "@titan-design/react-ui/motion"];
 
-export type CompileVerdict = { ok: true } | { ok: false; error: string };
+type CompileVerdict = { ok: true } | { ok: false; error: string };
 
 // Every import, static, dynamic or require, reaches onResolve; an allowed one stays external, any other is refused.
 const allowlistPlugin = (allowed: readonly string[]): Plugin => ({

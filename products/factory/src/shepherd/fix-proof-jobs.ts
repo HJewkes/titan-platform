@@ -1,4 +1,4 @@
-import { GITHUB_ACTIONS_APP_ID, type CheckRun, type PullRequest } from "@titan-design/github";
+import { GITHUB_ACTIONS_APP_ID, isConcluded, type CheckRun, type PullRequest } from "@titan-design/github";
 import { FIX_PROOF_CHECK } from "./fix-proof-harness.js";
 
 /** The judge sits behind `needs:` on these jobs, so GitHub creates it only after all of them have finished. */
@@ -24,6 +24,30 @@ export function fixProofSkippedAt(runs: readonly CheckRun[], headSha: string): b
   const jobs = runs.filter((run) => run.headSha === headSha && run.appId === GITHUB_ACTIONS_APP_ID && FIX_PROOF_JOBS.has(run.name));
   const named = new Set(jobs.map((run) => run.name));
   return named.size === FIX_PROOF_JOBS.size && jobs.every((run) => run.status === "completed" && run.conclusion === "skipped");
+}
+
+const sameJob = (a: CheckRun, b: CheckRun): boolean => a.name === b.name && a.headSha === b.headSha && a.appId === b.appId;
+
+/** Workflow runs at which every fix-proof job ran and skipped: what a title or body edit leaves behind (fix-proof.yml's `if:`). */
+function editRunIds(runs: readonly CheckRun[]): Set<number> {
+  const byWorkflowRun = new Map<number, CheckRun[]>();
+  for (const run of runs) {
+    if (run.workflowRunId === null || !FIX_PROOF_JOBS.has(run.name)) continue;
+    byWorkflowRun.set(run.workflowRunId, [...(byWorkflowRun.get(run.workflowRunId) ?? []), run]);
+  }
+  const allSkipped = ([, jobs]: [number, CheckRun[]]): boolean => new Set(jobs.map((run) => run.name)).size === FIX_PROOF_JOBS.size && jobs.every((run) => run.conclusion === "skipped");
+  return new Set([...byWorkflowRun].filter(allSkipped).map(([id]) => id));
+}
+
+/**
+ * Drops a fix-proof job's skip from an edit run only when an older concluded run of that job, at the same head and app,
+ * did run, so the newest-run rule reads the real result instead (TP-5903). A red real run stays red, and any other skip,
+ * including an edit run with no real run before it, is left to gate.
+ */
+export function withoutEditRunSkips(runs: readonly CheckRun[]): CheckRun[] {
+  const edits = editRunIds(runs);
+  const ranBefore = (skip: CheckRun): boolean => runs.some((run) => sameJob(run, skip) && run.id < skip.id && isConcluded(run) && run.conclusion !== "skipped");
+  return runs.filter((run) => run.workflowRunId === null || !edits.has(run.workflowRunId) || !ranBefore(run));
 }
 
 /** A required fix-proof job's skip, at an exempt head where the whole workflow skipped itself. */

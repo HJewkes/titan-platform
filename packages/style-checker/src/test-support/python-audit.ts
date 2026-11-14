@@ -5,7 +5,7 @@ import { heredoc } from "./fake-bin.js";
 import type { FakeBin } from "./fake-bin.js";
 
 // Output captured from the real tools; see fixtures/python-audit/README.md for versions and commands.
-export const CAPTURED = fileURLToPath(new URL("../../fixtures/python-audit", import.meta.url));
+const CAPTURED = fileURLToPath(new URL("../../fixtures/python-audit", import.meta.url));
 export const PROJECT = realpathSync(join(CAPTURED, "project"));
 export const LAYERED = realpathSync(join(CAPTURED, "layered"));
 
@@ -13,7 +13,7 @@ export function captured(name: string): string {
   return readFileSync(join(CAPTURED, name), "utf-8");
 }
 
-export interface Replay {
+interface Replay {
   stdout?: string;
   stderr?: string;
   exitCode: number;

@@ -58,6 +58,8 @@ const deliverable = z.object({
 const inventoryInitiative = z.object({
   slug: z.string(),
   human_only: z.boolean(),
+  /** Absent from an older daemon; readers treat absent as withheld. */
+  withheld_from_agents: z.boolean().optional(),
   total: stat,
   classes: z.object({ tasks: stat, sessions: stat, notes: stat, sources: stat, nested_sources: stat }),
 });

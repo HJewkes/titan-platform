@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a CLAUDECODE shell reads as the owner's",
+      "file": "products/factory/src/caller.ts",
+      "find": "const AGENT_SHELL_VARS = [\"AGENT_CHAT_NAME\", \"AGENT_CHAT_AGENT_ID\", \"CLAUDECODE\"] as const;",
+      "replace": "const AGENT_SHELL_VARS = [\"AGENT_CHAT_NAME\", \"AGENT_CHAT_AGENT_ID\"] as const;",
+      "kills": [
+        "needs --json in a shell (TP-5556) omits a withheld initiative's ask when CLAUDECODE is set and keeps it in a clean env"
+      ]
+    },
+    {
+      "name": "a shell's view reads no allow list",
+      "file": "products/factory/src/needs/command.ts",
+      "find": "  return { caller: callerForShell(env), allowed: inventoryAllowList(activeWorkOrigin(env)) };",
+      "replace": "  return { caller: callerForShell(env) };",
+      "kills": [
+        "needs --json in a shell (TP-5556) omits a withheld initiative's ask when CLAUDECODE is set and keeps it in a clean env"
+      ]
+    }
+  ]
+}

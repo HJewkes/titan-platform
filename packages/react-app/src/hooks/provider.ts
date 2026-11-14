@@ -3,7 +3,7 @@ import type { DataSource } from "@titan-design/rpc-client";
 import { createEventBus, type EventBus } from "./event-bus.js";
 import { createQueryStore, type QuerySettled, type QueryStore } from "./query-store.js";
 
-export interface RpcRuntime {
+interface RpcRuntime {
   queries: QueryStore;
   events: EventBus;
 }

@@ -50,7 +50,7 @@ export interface TagFactsOptions {
   budgetUsd?: number;
 }
 
-export interface TagBatch {
+interface TagBatch {
   key: string;
   facts: ExplainerFact[];
   control: TagControl;
@@ -132,7 +132,7 @@ function showFact(fact: ExplainerFact, excerpt: TagFactsOptions["excerpt"]): str
 }
 
 /** The batch's one-turn prompt; the control is shown like any other fact. */
-export function tagPrompt(batch: TagBatch, options: TagFactsOptions): string {
+function tagPrompt(batch: TagBatch, options: TagFactsOptions): string {
   const facts = batch.sequence.map((entry) => showFact(entry.kind === "item" ? entry.value : entry.value.fact, options.excerpt));
   return [
     ...taskLines(options.viewer),
@@ -144,7 +144,7 @@ export function tagPrompt(batch: TagBatch, options: TagFactsOptions): string {
 }
 
 /** Why the reply fails the batch's control, or null when the control carries its expected role. */
-export function controlFailure(batch: TagBatch, tags: readonly FactTag[]): string | null {
+function controlFailure(batch: TagBatch, tags: readonly FactTag[]): string | null {
   const { fact, expect } = batch.control;
   const answer = tags.find((tag) => tag.id === fact.id);
   if (!answer) return `control ${fact.id} was not tagged`;

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { makeTempHome, removeTempHome } from "../fixtures/temp-home.js";
-import { CONFIG_DIRS_ENV, PROFILE_ROOT_ENV, discoverProfiles } from "./profiles.js";
+import { CONFIG_DIRS_ENV, PROFILE_ROOT_ENV, discoverProfiles, profilesRoot } from "./profiles.js";
 
 let home: string;
 
@@ -92,5 +92,25 @@ describe("discoverProfiles", () => {
     expect(discoverProfiles({ home, env: { [CONFIG_DIRS_ENV]: "" } }).map((profile) => profile.label)).toEqual([
       "default",
     ]);
+  });
+});
+
+describe("profilesRoot", () => {
+  const home = "/home/example";
+
+  it("defaults to ~/.claude-profiles", () => {
+    expect(profilesRoot({}, home)).toBe(path.join(home, ".claude-profiles"));
+  });
+
+  it("honours an absolute override", () => {
+    expect(profilesRoot({ [PROFILE_ROOT_ENV]: "/srv/profiles" }, home)).toBe("/srv/profiles");
+  });
+
+  it("ignores an empty override", () => {
+    expect(profilesRoot({ [PROFILE_ROOT_ENV]: "" }, home)).toBe(path.join(home, ".claude-profiles"));
+  });
+
+  it("ignores a relative override rather than resolving it against an unknown cwd", () => {
+    expect(profilesRoot({ [PROFILE_ROOT_ENV]: "profiles" }, home)).toBe(path.join(home, ".claude-profiles"));
   });
 });

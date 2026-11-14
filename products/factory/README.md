@@ -539,6 +539,45 @@ systemctl --user daemon-reload
 systemctl --user enable --now titan-review-stats.timer
 ```
 
+## Dispatcher shadow
+
+`titan-factory dispatch shadow-tick` runs the dispatcher's eligibility and admission checks and writes shadow rows. It
+dispatches nothing and spawns nothing. The tick is inert unless the rule file sets `shadow.enabled: true`.
+
+The timer is `ops/systemd/titan-dispatch-shadow.{service,timer}`. It fires at :07 and :37 of each hour and reads the same
+env file as the owner-gates unit. The unit carries no path and no flag, because the tick reads its rule file from the
+default place, `~/.config/titan-factory/dispatcher.json`. For a one-off run, the verb takes `--rule-file <path>`. The shadow directory has a space in its path, so it lives in that
+file and never in the unit.
+
+Two owner-only steps install it:
+
+1. Write `~/.config/titan-factory/dispatcher.json` with `"shadow": {"enabled": true, "dir": "<shadow dir>"}`. This is the
+   shadow flag flip. Set it back to `false`, or delete the file, to turn shadow off.
+2. Link and enable the timer:
+
+```sh
+systemctl --user link ~/projects/titan-platform/ops/systemd/titan-dispatch-shadow.service ~/projects/titan-platform/ops/systemd/titan-dispatch-shadow.timer && systemctl --user enable --now titan-dispatch-shadow.timer
+```
+
+The tick needs the active-work daemon. Without it a lane cannot be read, so the tick writes a `refused` row with code
+`signal-unreadable` and exits 69.
+
+### Ready-stock floors
+
+A lane may set `floor`, its ready-stock floor, and `coordinator`, the agent-chat peer that refills it:
+
+```json
+"lanes": [{ "initiative": "<slug>", "tag": "<lane tag>", "floor": 20, "coordinator": "<peer name>" }]
+```
+
+After writing its rows, each tick counts a floored lane's dispatchable tasks by the work-supply census rule: an open task
+tagged `brief:ready` with no owner, needs-decision, parked or held, blocked, plan-first or superseded class
+(`src/eligibility/shadow/census.ts`). Under the floor, the tick sends one refill request naming the count and the floor
+to the lane's `coordinator`, or to `compare.operator` (default `tp-operator`) when the lane names none. It sends at most
+one per lane per UTC day, recorded in `<shadow dir>/refill/<YYYY-MM-DD>.jsonl`. A failed send is reported on stderr and
+not recorded, so the next tick tries again. The request goes over `shepherd.agentChatBin`; with none configured the tick
+reports the lane and sends nothing. Floors are absent by default, and a lane with no floor is never counted.
+
 ## Owner-queue sources
 
 `src/needs/` holds the factory's `QueueSource` adapters for `@titan-design/owner-queue`. Each
@@ -574,6 +613,22 @@ stderr and the command exits 69 after printing the rest.
 
 `titan-factory digest run` reads its "Needs you" section from this same list, minus `know`
 items, which are news and not asks.
+
+### Who sees which needs items
+
+Every needs read names its caller, `owner` or `agent`, and `src/caller.ts` resolves it once.
+Serve's HTTP route (the console) is the owner; MCP is an agent. The `needs` and `digest run`
+verbs are the owner only in a shell where none of `AGENT_CHAT_NAME`, `AGENT_CHAT_AGENT_ID` or
+`CLAUDECODE` is set, so the owner running them inside Claude Code gets the agent view, and so
+does `digest run --dry-run` in an agent shell.
+
+The owner gets every item. For an agent, `collectNeeds` drops every item whose `initiative` is
+not on the allow list it reads from active-work's `inventory`: the rows whose
+`withheld_from_agents` is `false`. That holds for every source (tasks, agent-chat asks whose
+meta names an initiative, Morning items, gates). Items with no initiative stay. A row without the
+field, a slug inventory does not list, and an unreachable daemon all withhold, and an unreachable
+daemon also adds a gap line. `needs-caller-boundary.test.ts` keeps the agent env reads in
+`caller.ts` and the caller decision in `needs/merged.ts`.
 
 ## Measurement audit
 

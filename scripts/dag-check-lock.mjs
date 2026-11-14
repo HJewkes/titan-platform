@@ -27,7 +27,7 @@ const ESTIMATE_MIN_LINES = 3;
 const BUSY_KEEP_LINES = 500;
 const DEFAULT_PARK_TTL_MS = 30 * 60 * 1000;
 // Long enough for a gate to start its dead:check after its dag:check releases, short enough not to stall the queue.
-export const HANDOFF_GRACE_MS = 15 * 1000;
+const HANDOFF_GRACE_MS = 15 * 1000;
 
 // A seeded dag:check indexer peaks near 2 GB RSS at its 2 GB heap cap; 8 GiB of RAM per slot keeps indexers to a quarter of it.
 const RAM_PER_SLOT = 8 * 1024 ** 3;
@@ -59,7 +59,7 @@ export function liveHolders(lockDir, slots) {
 }
 
 /** Takes the first free slot: its number, or null when every slot has a live holder. */
-export function tryAcquireSlot(lockDir, slots) {
+function tryAcquireSlot(lockDir, slots) {
   for (let slot = 0; slot < slots; slot++) {
     if (tryAcquire(slotDir(lockDir, slot)) === null) return slot;
   }
@@ -294,7 +294,7 @@ function appendBusy(lockDir, busy) {
   renameSync(tmp, file);
 }
 
-export function parkTtlMs(env = process.env) {
+function parkTtlMs(env = process.env) {
   const ttl = Number(env.DAG_CHECK_PARK_TTL_MS ?? DEFAULT_PARK_TTL_MS);
   return Number.isFinite(ttl) && ttl >= 0 ? ttl : DEFAULT_PARK_TTL_MS;
 }

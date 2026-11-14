@@ -1,4 +1,4 @@
-export interface Migration {
+interface Migration {
   from: string;
   to: string;
   migrate: (profile: Record<string, unknown>) => Record<string, unknown>;

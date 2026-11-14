@@ -17,14 +17,15 @@ async function scaffold(activeRoot: string, slug: string, text: string, files: R
 describe('task.keys', () => {
   it('lists each initiative for the owner with its task prefix, visibility and the ids of open and archived task files', async () => {
     await withEmptyActiveRoot(async (activeRoot) => {
+      writeCharter(activeRoot);
       await scaffold(activeRoot, 'alpha', brief('AL', 1, 'agent-visible'), { 'AL-2.yml': 'not: parsed', 'archive/AL-1.yml': '', 'notes.txt': '' });
       await scaffold(activeRoot, 'beta', brief('BE', 2));
 
       const result = await taskKeys.run({}, { activeRoot, warnings: [], format: 'json', caller: 'owner' });
 
-      expect(result.initiatives).toEqual([
-        { slug: 'alpha', task_prefix: 'AL', agent_visible: true, ids: ['AL-1', 'AL-2'] },
-        { slug: 'beta', task_prefix: 'BE', agent_visible: false, ids: [] },
+      expect(result.initiatives.filter((row) => row.slug !== 'claude-channels')).toEqual([
+        { slug: 'alpha', task_prefix: 'AL', withheld_from_agents: false, ids: ['AL-1', 'AL-2'] },
+        { slug: 'beta', task_prefix: 'BE', withheld_from_agents: true, ids: [] },
       ]);
     });
   });

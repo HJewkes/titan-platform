@@ -6,7 +6,7 @@ export const DEFAULT_MAX_STEP_DATA_BYTES = 65_536;
 
 const TRACE_KEY_PREFIX = "titan.trace.";
 
-export type ParsedStepOutput =
+type ParsedStepOutput =
   | { ok: true; data: Record<string, unknown> }
   | { ok: false; kind: StepOutputFailureKind; issues: string[] };
 

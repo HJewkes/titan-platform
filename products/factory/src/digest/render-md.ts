@@ -31,7 +31,7 @@ function busiestPool(spend: readonly PoolLine[]): PoolLine | undefined {
   return spend.filter((p) => !p.stale && p.sevenDay !== undefined).sort((a, b) => b.sevenDay! - a.sevenDay!)[0];
 }
 
-export function deterministicHeadline(d: RankedDigest): string {
+function deterministicHeadline(d: RankedDigest): string {
   const parts = [`${d.totals.needsYou} need you`, `${d.totals.merged} merged`, `${d.totals.stuck} stuck`];
   const pool = busiestPool(d.spend);
   if (pool) parts.push(`${pool.pool} pool ${percent(pool.sevenDay)} of week`);
