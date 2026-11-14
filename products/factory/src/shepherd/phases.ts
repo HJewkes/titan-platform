@@ -15,7 +15,7 @@ import type { CleanupPorts, ExitNoticePorts, RemoveDir, RosterReader, SpawnGate,
 import type { VisualGateMode } from "./visual-gate-config.js";
 
 /** Which PR, which head, and which land round a phase acts for. */
-export interface PhaseTarget {
+interface PhaseTarget {
   repo: RepoSlug;
   pr: number;
   round: number;

@@ -133,7 +133,7 @@ export class ReviewerGateRosterUnread extends ReviewerBrokerBusy {
  * The busy wait ran out with the broker still refusing; nobody was started, so the review never began. The message is
  * built here from the refusal's class and the budget alone, since it becomes a stored step reason.
  */
-export class ReviewerStillBusy extends Error {
+class ReviewerStillBusy extends Error {
   override readonly name = "ReviewerStillBusy";
 
   constructor(cause: ReviewerBrokerBusy, budgetMs: number) {
