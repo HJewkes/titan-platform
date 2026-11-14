@@ -20,7 +20,8 @@ interface EvidenceCheckRun {
 
 /**
  * What `allowEvidence` stores in `merge-policy`, whole. The PR comment carries the same record with `verdictLocator` reduced to a `LocatorReference`.
- * `ownerTier` is the owner stop-list mode read at this head and the rows it gates, or under shadow would gate (TP-5406).
+ * `ownerTier` is the owner stop-list mode read at this head and the rows it gates, or under shadow would gate (TP-5406);
+ * `authorityLine` is the adversary's Authority line that fed those rows, or `missing` (TP-5407).
  */
 export interface EvidenceRecord extends OwnerTierField {
   runId: string;
@@ -79,7 +80,7 @@ interface RecordObserved {
   headBlobs?: Record<string, string | null>;
 }
 
-type RecordFields = "ciPolicy" | "visualDelta" | "visualTier" | "visualChanged" | "visualGate" | "oldPath" | "lowTier" | "ownerTier";
+type RecordFields = "ciPolicy" | "visualDelta" | "visualTier" | "visualChanged" | "visualGate" | "oldPath" | "lowTier" | "ownerTier" | "authorityLine";
 type RecordExtras = Pick<EvidenceRecord, RecordFields> & { riskTier: RiskTier; attest?: AttestJudgment };
 
 /** A head that claims nothing records nothing; a meeter other than the accepted reviewer is the adversary member. */
@@ -118,7 +119,7 @@ export function evidenceRecord(
   input: RecordInput,
   { pr, merge, runs, ciPolicyChanges, headBlobs }: RecordObserved,
   decision: GateDecision,
-  { ciPolicy, riskTier, lowTier, ownerTier, attest, oldPath, ...visual }: RecordExtras,
+  { ciPolicy, riskTier, lowTier, ownerTier, authorityLine, attest, oldPath, ...visual }: RecordExtras,
 ): EvidenceRecord {
   return {
     runId: input.runId,
@@ -137,7 +138,7 @@ export function evidenceRecord(
     ...(ciPolicyChanges && { ciPolicyChanges }),
     ...(headBlobs && { headBlobs }),
     ...proofFields(input),
-    ...tierFields(riskTier, lowTier), ...(ownerTier && { ownerTier }),
+    ...tierFields(riskTier, lowTier), ...(ownerTier && { ownerTier }), ...(authorityLine && { authorityLine }),
     ...visualFields(visual),
     ...attestFields(attest, input.resolver),
     ...(oldPath && { oldPath }),

@@ -1,6 +1,6 @@
 import type { AgentIdentity } from "@titan-design/authority";
 import type { GitHubPort } from "@titan-design/github";
-import type { ReviewerAgent } from "@titan-design/review-panel";
+import type { AuthorityLine, ReviewerAgent } from "@titan-design/review-panel";
 import { judgeAttestations } from "../registry/attest.js";
 import { readClaims } from "./attest-read.js";
 import type { DeploySkew } from "./attest-skew.js";
@@ -11,11 +11,19 @@ import { separateLineages } from "./reviewer-lineage.js";
 import { clearReviewWait, noteReviewWait, transient, untilRosterRead, type BrokerDownTiming, type RosterNote } from "./review-wait.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
 
-/** The `Attests:` tokens of the accepted MERGE and, on a panel, the adversary member's own MERGE and whether the plan had one. */
+/**
+ * The `Attests:` tokens of the accepted MERGE and, on a panel, the adversary member's own MERGE and whether the plan had one.
+ * `authority` is that MERGE's `Authority:` line (TP-5407); absent where the member wrote none or was recorded before it was asked.
+ */
 export interface AttestVerdicts {
   attests: string[];
-  adversary?: { reviewer: AgentIdentity; head: string; attests: string[] };
+  adversary?: { reviewer: AgentIdentity; head: string; attests: string[]; authority?: AuthorityLine };
   adversaryPlanned?: true;
+}
+
+/** Whether the run owes an adversary MERGE: the panel planned one, or the registration's hold is a g10-adversary hold. */
+export function adversaryRequired(attest: AttestVerdicts | undefined, holdReason: string | null | undefined): boolean {
+  return attest?.adversaryPlanned === true || holdClassOf(holdReason) === G10_ADVERSARY_CLASS;
 }
 
 export interface AttestReaders {
@@ -138,7 +146,7 @@ export async function attestAtHead(port: GitHubPort, readers: AttestReaders, sub
     head: subject.head,
     correctness: { reviewer: rowOf(subject.resolver), attests: subject.attest?.attests ?? [], head: subject.verdict.head, carried: subject.verdict.head !== subject.head },
     ...(adversary && { adversary: { reviewer: rowOf(adversary.reviewer), attests: adversary.attests, head: adversary.head } }),
-    adversaryRequired: subject.attest?.adversaryPlanned === true || holdClassOf(registration.holdReason) === G10_ADVERSARY_CLASS,
+    adversaryRequired: adversaryRequired(subject.attest, registration.holdReason),
     independent: (agent) => independentOfRun(agent, registration, lineage, authors),
     separate: (a, b) => separateLineages(a, b, lineage.rows),
   });
