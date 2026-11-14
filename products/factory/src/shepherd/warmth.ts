@@ -6,7 +6,7 @@ export const WARM_MINUTES = 50;
 /** An ended agent holding this many context tokens or more is not resumed. */
 export const MAX_FILL = 200_000;
 /** How much of a transcript's end is read; the last request of a session sits well inside it. */
-export const TAIL_BYTES = 256 * 1024;
+const TAIL_BYTES = 256 * 1024;
 
 export interface Warmth {
   /** Epoch milliseconds of the newest event read. */

@@ -8,14 +8,14 @@ import { createFactoryRegistry, factoryContext } from "../registry.js";
 import { FACTORY_PORT } from "../serve.js";
 import { parseSinceOption, runDigestVerb, type DigestFlags, type DigestIo, type FactoryCall } from "./command.js";
 
-export interface DigestVerbs {
+interface DigestVerbs {
   io: DigestIo;
   withHost: (fn: (host: FactoryHost, routes: FactoryRoutes) => Promise<number> | number) => Promise<void>;
   setExit: (code: number) => void;
   dbPath: () => string;
 }
 
-export type FactoryRpc = (port: number, name: string, args: unknown) => Promise<JsonEnvelope<unknown>>;
+type FactoryRpc = (port: number, name: string, args: unknown) => Promise<JsonEnvelope<unknown>>;
 
 /** Reads Shepherd and the gates from titan-factory serve when one answers, else from the database here. */
 export function registerDigest(program: Command, verbs: DigestVerbs, rpc: FactoryRpc): void {

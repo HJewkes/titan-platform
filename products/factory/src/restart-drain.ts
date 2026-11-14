@@ -5,7 +5,7 @@ import { SHEPHERD_WORKFLOW } from "./shepherd/services.js";
 import { inDeploySkewWait } from "./shepherd/thaw-wait.js";
 
 /** `park` names a step whose route parks the run on restart; it outranks the step's Shepherd phase. */
-export type BusyPhase = "review" | "merging" | "park";
+type BusyPhase = "review" | "merging" | "park";
 
 /** A running run a restart would interrupt badly: mid-review, mid-merge, or in a park-routed step. */
 export interface BusyRun {
@@ -15,7 +15,7 @@ export interface BusyRun {
 }
 
 /** What the drain reads from the machine; tests pass a fake `/health` sequence and a fake clock. */
-export interface DrainPorts {
+interface DrainPorts {
   health: (port: number) => Promise<Record<string, unknown> | null>;
   sleep: (ms: number) => Promise<void>;
   now: () => number;
@@ -31,7 +31,7 @@ export interface DrainOptions {
 }
 
 /** `atRestart` is the last `/health` answer the drain read before letting the restart go, or null when serve was silent. */
-export type DrainOutcome = { proceed: true; atRestart: Record<string, unknown> | null } | { proceed: false; why: string };
+type DrainOutcome = { proceed: true; atRestart: Record<string, unknown> | null } | { proceed: false; why: string };
 
 export const DEFAULT_DRAIN_TIMEOUT_MS = 45 * 60_000;
 const DRAIN_POLL_MS = 5_000;
@@ -115,7 +115,7 @@ export function heldSkipped(runs: readonly WorkflowRun[], routeFor: RouteFor, is
 }
 
 /** A build from before the busy field has nothing to drain; the drain itself treats no answer as unknown. */
-export function readBusy(health: Record<string, unknown> | null): BusyRun[] {
+function readBusy(health: Record<string, unknown> | null): BusyRun[] {
   return Array.isArray(health?.busy) ? (health.busy as BusyRun[]) : [];
 }
 

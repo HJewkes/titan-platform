@@ -43,7 +43,7 @@ export interface ServiceIo {
   stderr: (text: string) => void;
 }
 
-export interface InstallOptions {
+interface InstallOptions {
   plist: PlistOptions;
   /** The port `/health` is polled on; the plist carries its own copy. */
   port: number;
