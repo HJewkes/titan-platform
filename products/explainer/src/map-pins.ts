@@ -13,7 +13,7 @@ import type { MapBeat } from "./map-state.js";
 import type { MapSegment, MapTimeline } from "./map-timeline.js";
 
 /** Why a pin has no box: graph-layout's drop reason, or `no-scene` for a beat with no scene to place in. */
-export type UnplacedReason = DroppedPill["reason"] | "no-scene";
+type UnplacedReason = DroppedPill["reason"] | "no-scene";
 
 /**
  * A pin as the painter draws it. A null `box` carries its `reason`, and the painter falls back to

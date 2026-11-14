@@ -19,7 +19,7 @@ export function formatSample(row) {
   return COLUMNS.map((c) => row[c] ?? "").join("\t");
 }
 
-export function parseSample(line) {
+function parseSample(line) {
   const cells = line.split("\t");
   const row = Object.fromEntries(COLUMNS.map((c, i) => [c, cells[i] ?? ""]));
   for (const c of NUMERIC) row[c] = row[c] === "" ? null : Number(row[c]);
@@ -34,7 +34,7 @@ export function parseSamples(text) {
 }
 
 /** `systemctl show` prints one key=value block per unit, separated by a blank line. */
-export function parseSystemctlShow(text) {
+function parseSystemctlShow(text) {
   const byUnit = new Map();
   for (const block of text.split(/\n\s*\n/)) {
     const props = Object.fromEntries(

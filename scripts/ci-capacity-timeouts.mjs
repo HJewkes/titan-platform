@@ -24,7 +24,7 @@ const WAITING_ON = /waiting on (.*)$/s;
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 /** The ci-wait timeout form of an error text and its wait length, or null when the row is some other failure. */
-export function matchTimeout(error) {
+function matchTimeout(error) {
   for (const { form, pattern } of FORMS) {
     const match = pattern.exec(error ?? "");
     if (match) return { form, windowMs: Number(match[1]) };
@@ -57,7 +57,7 @@ export function parseTimeout(row) {
 }
 
 /** The argv for sqlite3; the days are checked first because they are spliced into the SQL text. */
-export function timeoutQueryArgs(db, from, to) {
+function timeoutQueryArgs(db, from, to) {
   if (!ISO_DAY.test(from) || !ISO_DAY.test(to)) throw new Error(`days must be YYYY-MM-DD, got ${from}..${to}`);
   const end = new Date(Date.parse(`${to}T00:00:00Z`) + DAY_MS).toISOString();
   const sql =
@@ -79,7 +79,7 @@ export function readTimeouts(io, db, from, to) {
  * The queue and run intervals of a job, in epoch ms, with open ends closed at `endAt`. A job still unstarted when it
  * was read, or cancelled while queued, counts as queued to its end; skipped jobs never waited and give null.
  */
-export function jobIntervals(job, endAt) {
+function jobIntervals(job, endAt) {
   if (job.conclusion === "skipped") return null;
   const created = Date.parse(job.created_at);
   const completed = job.completed_at ? Date.parse(job.completed_at) : endAt;
@@ -132,7 +132,7 @@ export function attribute(event, jobs, thresholdMin = DEFAULT_QUEUE_THRESHOLD_MI
 }
 
 /** Non-skipped runs of `branch` created in the day before the wait began up to its end. */
-export function listBranchRuns(io, event) {
+function listBranchRuns(io, event) {
   const endAt = Date.parse(event.endAt);
   const from = new Date(endAt - event.windowMs - DAY_MS).toISOString();
   const created = `${from.slice(0, 19)}Z..${new Date(endAt).toISOString().slice(0, 19)}Z`;
