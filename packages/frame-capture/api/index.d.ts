@@ -146,6 +146,17 @@ interface FramesResult {
  */
 declare function captureFrames(options: FramesOptions, sink: Sink): Promise<FramesResult>;
 
+interface StillsOptions extends PageOptions {
+    url: string;
+    /** A browser to open the page in; without one, a browser is launched for the stills and closed after. */
+    browser?: Browser;
+}
+/**
+ * True-size PNG stills of one page at the given seconds: one page, no encode. Virtual time only moves forward, so
+ * the moments are taken in time order on one page and returned in the order they were asked for.
+ */
+declare function stills(options: StillsOptions, atS: readonly number[]): Promise<Buffer[]>;
+
 /** One voice clip in the mix: `wavPath(id)` names its file, and it is padded to `durationS`. */
 interface MixSegment {
     id: string;
@@ -225,4 +236,4 @@ declare function measureHalving<F>(frames: readonly F[], delta: FrameDelta<F>): 
  */
 declare function checkPops<F>(options: PopCheckOptions<F>): Promise<PopReport>;
 
-export { type CapturePage, type Encoder, FontLoadError, type FontState, type FrameDelta, type FramesOptions, type FramesResult, HALVING_RATIO, type HalvingMeasure, MIN_POP_CHANGE, type MixSegment, type PageOptions, type PopCheckOptions, type PopFinding, type PopReport, type RgbaFrame, type SeekFrame, TITAN_MOTION_GLOBAL, type TitanMotionApi, VIRTUAL_TIME_SCRIPT, type Viewport, type VirtualTimeApi, captureFrame, captureFrames, changedPixels, checkPops, isPop, launch, measureHalving, mixAudio, openCapturePage, screenshotFrame, settleFonts, startEncoder, withBrowser, withCapturePage };
+export { type CapturePage, type Encoder, FontLoadError, type FontState, type FrameDelta, type FramesOptions, type FramesResult, HALVING_RATIO, type HalvingMeasure, MIN_POP_CHANGE, type MixSegment, type PageOptions, type PopCheckOptions, type PopFinding, type PopReport, type RgbaFrame, type SeekFrame, type StillsOptions, TITAN_MOTION_GLOBAL, type TitanMotionApi, VIRTUAL_TIME_SCRIPT, type Viewport, type VirtualTimeApi, captureFrame, captureFrames, changedPixels, checkPops, isPop, launch, measureHalving, mixAudio, openCapturePage, screenshotFrame, settleFonts, startEncoder, stills, withBrowser, withCapturePage };
