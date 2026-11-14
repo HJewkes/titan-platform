@@ -53,7 +53,7 @@ const stubRoutes: StepRoute[] = [
   { match: "park-here", onRestart: "repeat", runner: { run: () => new Promise(() => undefined) } },
 ];
 
-export interface Deploy extends ShepherdFixture {
+interface Deploy extends ShepherdFixture {
   host: FactoryHost;
   routes: FactoryRoutes;
 }
@@ -81,7 +81,7 @@ export async function recorded(dbPath: string, prs: number[], base?: string): Pr
   return ids;
 }
 
-export interface Parked {
+interface Parked {
   next: Deploy;
   dbPath: string;
   oldRunIds: string[];

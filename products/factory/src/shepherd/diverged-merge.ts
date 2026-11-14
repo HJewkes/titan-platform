@@ -32,10 +32,10 @@ export interface DivergedHeld {
   reason: string;
 }
 
-export type CarriedMerge = { merged: DivergedMerge } | { held: DivergedHeld };
+type CarriedMerge = { merged: DivergedMerge } | { held: DivergedHeld };
 
 /** A host that wired no merge guard must not merge around one (TP-5802). */
-export const NO_MERGE_GUARD = "the land loop's merge guard is not wired";
+const NO_MERGE_GUARD = "the land loop's merge guard is not wired";
 
 interface OwnerMerge {
   gate: GateRecord;
