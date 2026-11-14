@@ -385,6 +385,56 @@ describe('precedent search', () => {
     });
   });
 
+  describe('owner free text', () => {
+    const NOTE = 'because the zebrafish pipeline is frozen';
+    const noteRows = () => [
+      v1Row('Cut the release now?', 'Wait a week', {
+        key: 'transcript:sess-v1:tu-note',
+        free_text: NOTE,
+        answered_at: '2026-08-01T09:05:00Z',
+      }),
+      v1Row('Publish the changelog too?', 'Wait a week', { key: 'transcript:sess-v1:tu-plain' }),
+    ];
+    const ownerCtx = (activeRoot: string) => ({
+      activeRoot,
+      warnings: [] as string[],
+      format: 'json' as const,
+      caller: 'owner' as const,
+    });
+
+    it('returns a row that matches the query only in its free_text', async () => {
+      await withTempActiveRoot(async (activeRoot) => {
+        writeV1(activeRoot, 'sample-initiative/sources/precedents.jsonl', noteRows());
+        const { rows } = await readLedgerRows(activeRoot);
+
+        const hits = await searchPrecedents(rows, 'zebrafish', { isVisible: () => true });
+
+        expect(hits.map((h) => h.row.key)).toEqual(['transcript:sess-v1:tu-note']);
+      });
+    });
+
+    it('carries free_text and answered_at in the hit JSON', async () => {
+      await withTempActiveRoot(async (activeRoot) => {
+        writeV1(activeRoot, 'sample-initiative/sources/precedents.jsonl', noteRows());
+
+        const result = await precedentSearch.run({ query: 'zebrafish' }, ownerCtx(activeRoot));
+
+        expect(result.hits[0]).toMatchObject({ free_text: NOTE, answered_at: '2026-08-01T09:05:00Z' });
+      });
+    });
+
+    it('ranks a row with null free_text as before', async () => {
+      await withTempActiveRoot(async (activeRoot) => {
+        writeV1(activeRoot, 'sample-initiative/sources/precedents.jsonl', noteRows());
+
+        const result = await precedentSearch.run({ query: 'changelog' }, ownerCtx(activeRoot));
+
+        expect(result.hits.map((h) => h.key)).toEqual(['transcript:sess-v1:tu-plain']);
+        expect(result.hits[0]).toMatchObject({ free_text: null, answered_at: null });
+      });
+    });
+  });
+
   it('serves unclaimed precedents to the owner when asked, but never to an agent', async () => {
     await withTempActiveRoot(async (activeRoot) => {
       await run(activeRoot);

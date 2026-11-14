@@ -43,7 +43,7 @@ function visibleRows(rows: LedgerRow[], options: PrecedentSearchOptions): Ledger
 
 function searchableText(row: LedgerRow): string {
   const options = row.options.map((o) => o.label).join(' / ');
-  return [row.header, row.question, options, row.answer].filter(Boolean).join('\n');
+  return [row.header, row.question, options, row.answer, row.free_text].filter(Boolean).join('\n');
 }
 
 function buildIndex(db: Db, rows: LedgerRow[]): SpanFtsTables {
