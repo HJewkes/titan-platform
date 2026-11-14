@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
+import { parseVerdict, prKey } from "./blocked-flow-merge.js";
 
 /** One line of a seat's `dispatch.jsonl`, with the seat taken from its directory and `at` in epoch ms. */
 export interface DispatchRecord {
@@ -120,10 +121,11 @@ function verdictRows(db: Db | null, prefix: string, since: number, now: number):
 function firstPassFixFirst(rows: readonly VerdictRow[]): string | null {
   const first = new Map<string, string>();
   for (const { body } of rows) {
-    const verdict = /^Verdict:\s*(\w+)/.exec(body)?.[1];
-    const pr = lineValue(body, "PR")?.toLowerCase();
+    const parsed = parseVerdict(body);
+    if (!parsed) continue;
+    const pr = prKey(parsed).toLowerCase();
     // WAIT means CI had not finished; the next verdict at that PR decides the first pass
-    if (verdict && pr && verdict !== "WAIT" && !first.has(pr)) first.set(pr, verdict);
+    if (parsed.verdict !== "WAIT" && !first.has(pr)) first.set(pr, parsed.verdict);
   }
   const fix = [...first.values()].filter((v) => v === "FIX_FIRST").length;
   return first.size ? pct(fix, first.size) : null;
