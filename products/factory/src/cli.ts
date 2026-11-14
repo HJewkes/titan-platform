@@ -39,12 +39,13 @@ import { factoryRoutes, factoryWorkflows } from "./workflows.js";
 import { sourcesReader } from "./github-sources/mode.js";
 import { webhookSecretPath } from "./ingress/paths.js";
 import { serveReconciler } from "./reconciler/bot-ports.js";
+import { configuredRefillSend } from "./refill-send-ports.js";
 
 export { EXIT };
 export { formatResume } from "./cli-host-verbs.js";
 
 const defaultIo: CliIo = { stdout: (t) => process.stdout.write(t), stderr: (t) => process.stderr.write(t), env: process.env };
-const defaultDeps: CliDeps = { workflows: factoryWorkflows, host: { registry: factoryRegistry }, routes: factoryRoutes, deployWatch: (env) => configuredDeployWatch(env, deployCheckoutFor(env)), deployPacer: (env) => configuredDeployPacer(env, deployCheckoutFor(env)), mainWatch: configuredMainWatch, fixerRetire: configuredFixerRetire, seatDigest: configuredSeatDigest, ciTimingFallback: () => (FACTORY_REPO === undefined ? undefined : ghCiTimingPorts(FACTORY_REPO)), gateNotify: configuredGateNotify, consoleAnswers: configuredConsoleAnswers, sources: (env, log) => sourcesReader(env, { log }), ingress: (env) => ({ secretPath: webhookSecretPath(env) }), reconciler: serveReconciler, configDeprecations, exitAfterServe: () => process.exit() };
+const defaultDeps: CliDeps = { workflows: factoryWorkflows, host: { registry: factoryRegistry }, routes: factoryRoutes, deployWatch: (env) => configuredDeployWatch(env, deployCheckoutFor(env)), deployPacer: (env) => configuredDeployPacer(env, deployCheckoutFor(env)), mainWatch: configuredMainWatch, fixerRetire: configuredFixerRetire, seatDigest: configuredSeatDigest, refillSend: configuredRefillSend, ciTimingFallback: () => (FACTORY_REPO === undefined ? undefined : ghCiTimingPorts(FACTORY_REPO)), gateNotify: configuredGateNotify, consoleAnswers: configuredConsoleAnswers, sources: (env, log) => sourcesReader(env, { log }), ingress: (env) => ({ secretPath: webhookSecretPath(env) }), reconciler: serveReconciler, configDeprecations, exitAfterServe: () => process.exit() };
 
 /** Parse argv and run one verb. Returns the exit code instead of exiting, so tests can call it. */
 export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDeps = defaultDeps): Promise<number> {

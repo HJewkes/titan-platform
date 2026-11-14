@@ -33,7 +33,8 @@ export interface JudgeInput {
   separate: (a: ReviewerAgent, b: ReviewerAgent) => boolean;
 }
 
-type UnmetReason = "no-meeter" | "meeter-is-author" | "adversary-missing" | "adversary-same-lineage" | "closure-mismatch" | "carried";
+/** `adversary-missing` is no adversary MERGE at all; `adversary-declined` is its MERGE at the head with no token for the step (TP-5902). */
+type UnmetReason = "no-meeter" | "meeter-is-author" | "adversary-missing" | "adversary-declined" | "adversary-same-lineage" | "closure-mismatch" | "carried";
 
 interface Met {
   step: string;
@@ -79,7 +80,7 @@ function adversaryShortfall(row: Attestation, input: JudgeInput): UnmetReason | 
   const { adversary, correctness } = input;
   if (adversary === undefined) return "adversary-missing";
   const shortfall = verdictShortfall(row, adversary, input);
-  if (shortfall === "no-meeter") return "adversary-missing";
+  if (shortfall === "no-meeter") return "adversary-declined";
   if (shortfall !== undefined) return shortfall;
   if (!correctness.reviewer || !adversary.reviewer || !input.separate(correctness.reviewer, adversary.reviewer)) return "adversary-same-lineage";
   return undefined;

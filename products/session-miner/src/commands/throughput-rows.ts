@@ -1,9 +1,7 @@
-import { readFileSync } from "node:fs";
-import { TaskSchema, type Task } from "@titan-design/pm";
+import type { Task } from "@titan-design/pm";
 import { readInitiativeTasks } from "@titan-design/pm/node";
 import type { ActualsTask, TaskActuals } from "@titan-design/session-analytics";
 import type { ThroughputRow } from "@titan-design/throughput";
-import { parse } from "yaml";
 
 const KIND_TAG = "kind:";
 
@@ -39,19 +37,6 @@ export async function loadDoneTasks(root: string, initiatives: readonly string[]
     }
   }
   return load;
-}
-
-/** The parsed task, or why it would not parse. */
-export function parseTask(file: string): Task | string {
-  let raw: unknown;
-  try {
-    raw = parse(readFileSync(file, "utf8"));
-  } catch (err) {
-    return `yaml: ${err instanceof Error ? err.message.split("\n")[0] : String(err)}`;
-  }
-  const result = TaskSchema.safeParse(raw);
-  if (result.success) return result.data;
-  return result.error.issues.map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`).join("; ");
 }
 
 function toDoneTask(task: Task, initiative: string, doneAt: string): DoneTask {

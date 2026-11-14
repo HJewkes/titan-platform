@@ -78,6 +78,14 @@ describe("dispatcher rule file", () => {
     expect(() => loadRuleFile(ruleFile({ ...minimal, stop: { checkpointEvery: 0 } }))).toThrow(/stop\.checkpointEvery/);
   });
 
+  it("reads a lane's ready-stock floor and coordinator, and refuses a zero floor or a coordinator that is no peer name", () => {
+    const lanes = [{ initiative: "alpha", tag: "lane-a", floor: 20, coordinator: "alpha-coord" }];
+
+    expect(loadRuleFile(ruleFile({ ...minimal, lanes }))?.rules.lanes).toEqual(lanes);
+    expect(() => loadRuleFile(ruleFile({ ...minimal, lanes: [{ initiative: "alpha", floor: 0 }] }))).toThrow(/lanes\.0\.floor/);
+    expect(() => loadRuleFile(ruleFile({ ...minimal, lanes: [{ initiative: "alpha", coordinator: "Alpha Coord" }] }))).toThrow(/must be an agent-chat peer name/);
+  });
+
   it("sits beside the factory config.json by default", () => {
     expect(defaultRuleFilePath({ TITAN_FACTORY_CONFIG: "/etc/factory/config.json" })).toBe("/etc/factory/dispatcher.json");
     expect(defaultRuleFilePath({ XDG_CONFIG_HOME: "/xdg" })).toBe("/xdg/titan-factory/dispatcher.json");
