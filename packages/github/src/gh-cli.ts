@@ -45,7 +45,7 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
  * Runs `call` over a `Rest` that speaks as the GitHub App, a different identity from the one the wire reads as.
  * `name` labels the refusal when the wire has no App token provider.
  */
-export type AppScope = <T>(name: string, call: (app: Rest) => Promise<T>) => Promise<T>;
+type AppScope = <T>(name: string, call: (app: Rest) => Promise<T>) => Promise<T>;
 
 /** Every wire method over one `Rest`, whichever transport implements it. */
 export function wireOver(api: Rest, asApp: AppScope): GitHubWire {

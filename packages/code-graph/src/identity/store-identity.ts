@@ -74,7 +74,7 @@ export function priorSnapshotForRef(
 }
 
 /** The commit a new snapshot is indexed at (default HEAD), in the checkout that can verify its history. */
-export interface AliasTarget {
+interface AliasTarget {
   repoRoot: string;
   commit?: string;
 }

@@ -18,7 +18,7 @@ export interface LogSignal {
 }
 
 /** A gap longer than this is a wait, whether a tool ran that long or nothing happened. */
-export const LONG_WAIT_MS = 5 * 60_000;
+const LONG_WAIT_MS = 5 * 60_000;
 /** An error's cost is the time to the worker's next move, held to this so a long pause after it is not all blamed on it. */
 const REACTION_CAP_MS = 10 * 60_000;
 const HOUR_MS = 3_600_000;

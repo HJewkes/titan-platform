@@ -21,7 +21,7 @@ export type Side = "base" | "head";
 /** The reports each side writes, as `<name>.report` in its out dir; the base runs twice so a flaky reproducer can be ruled out. */
 export const SIDE_REPORTS: Readonly<Record<Side, readonly string[]>> = { base: ["base", "base-rerun"], head: ["head"] };
 
-export const MAX_HEAD_RUNS = 5;
+const MAX_HEAD_RUNS = 5;
 
 /** The report names a side writes: the base's pair, or `head`, `head-2`, ... for each of the head's runs. */
 export function reportNames(side: Side, headRuns = 1): readonly string[] {

@@ -25,7 +25,7 @@ export function functionName(node: FunctionNode): string {
 }
 
 // Blank lines are excluded so spacing a function out for readability never pushes it over the limit.
-export function countNonBlankLines(lines: readonly string[], start: number, end: number): number {
+function countNonBlankLines(lines: readonly string[], start: number, end: number): number {
   let count = 0;
   for (let line = start; line <= end; line++) {
     if (lines[line - 1]?.trim() !== "") count++;

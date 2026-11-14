@@ -49,7 +49,7 @@ export interface SessionContext {
   episodes: StoredEpisode[];
 }
 
-export interface StoredEpisode {
+interface StoredEpisode {
   heuristic: string;
   openedBy: string;
 }
