@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the fallback runs even when rows carry the verdict field",
+      "file": "products/factory/src/eligibility/shadow/agent-lanes.ts",
+      "find": "rows.length > 0 && rows.every((row) => !(\"withheld_from_agents\" in row))",
+      "replace": "true",
+      "kills": [
+        "shadowAgentLanes keeps active-work's verdict and reads rpc when the rows carry the field, whatever the files say"
+      ]
+    },
+    {
+      "name": "an empty inventory answer falls back to the files",
+      "file": "products/factory/src/eligibility/shadow/agent-lanes.ts",
+      "find": "rows.length > 0 && rows.every(",
+      "replace": "rows.every(",
+      "kills": [
+        "shadowAgentLanes does not fall back on an empty answer"
+      ]
+    },
+    {
+      "name": "the fallback ignores the charter's human-only list",
+      "file": "products/factory/src/eligibility/shadow/agent-lanes.ts",
+      "find": "const listed = humanOnly === \"unknown\" ? \"unknown\" : humanOnly.has(slug);",
+      "replace": "const listed = humanOnly === \"unknown\" ? \"unknown\" : false;",
+      "kills": [
+        "shadowAgentLanes falls back to the files when no row carries the field, admitting a visible lane and withholding by brief and by charter"
+      ]
+    }
+  ]
+}
