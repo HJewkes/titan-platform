@@ -1,12 +1,9 @@
 import { createReadStream, existsSync, readdirSync, statSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { followUpSignals, transcriptSignals, type AgentLog, type WorkerSessionRecord } from "@titan-design/session-analytics";
 
 /** Each Claude profile keeps its transcripts at `<profile>/projects/<project>/<session id>.jsonl`. */
-export const defaultProfilesRoot = () => path.join(os.homedir(), ".claude-profiles");
-
 const subdirs = (dir: string) => readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => path.join(dir, d.name));
 
 /** Transcripts written to since `sinceMs`, by session id; an older file cannot hold a line in the window. */

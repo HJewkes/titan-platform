@@ -1,5 +1,4 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { UsageError } from './errors.js';
@@ -10,26 +9,11 @@ import {
   listProfiles,
   requireProfileDir,
 } from './launcher-profile.js';
-import { PROFILE_ROOT_ENV, profileRoot, resolveProfileDir } from './utils/profile-dir.js';
+import { PROFILE_ROOT_ENV } from '@titan-design/anthropic-account/node';
+import { resolveProfileDir } from './utils/profile-dir.js';
 
 const exists = () => true;
 const missing = () => false;
-
-describe('profileRoot', () => {
-  it('defaults to ~/.claude-profiles', () => {
-    expect(profileRoot({})).toBe(path.join(homedir(), '.claude-profiles'));
-  });
-
-  it('honours an absolute override', () => {
-    expect(profileRoot({ [PROFILE_ROOT_ENV]: '/tmp/profiles' })).toBe('/tmp/profiles');
-  });
-
-  it('ignores a relative override rather than resolving it against an unknown cwd', () => {
-    expect(profileRoot({ [PROFILE_ROOT_ENV]: 'profiles' })).toBe(
-      path.join(homedir(), '.claude-profiles'),
-    );
-  });
-});
 
 describe('resolveProfileDir', () => {
   it('joins the profile name onto the root', () => {

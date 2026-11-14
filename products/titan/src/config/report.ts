@@ -12,6 +12,7 @@ import { hostname } from "node:os";
 import { join, relative, sep } from "node:path";
 import type { Command } from "commander";
 import { z } from "zod";
+import { profilesRoot } from "@titan-design/anthropic-account/node";
 import { CLIENT_HEADER } from "@titan-design/daemon";
 
 const CONFIG_REPORT_SCHEMA = "titan-config-report/v1";
@@ -94,7 +95,7 @@ const claudeTargets = (dir: string): Target[] => [target("claude-settings", 14, 
 async function listedTargets(roots: Roots, ports: ReportPorts): Promise<Target[]> {
   const profilesDir = join(roots.agentChatDir, "profiles");
   const profiles = (await ports.list(profilesDir)).filter((name) => name.endsWith(".json")).sort();
-  const accountsDir = join(roots.home, ".claude-profiles");
+  const accountsDir = profilesRoot(process.env, roots.home);
   const accounts = await Promise.all((await ports.list(accountsDir)).sort().map(async (name) => ((await ports.stat(join(accountsDir, name)))?.isFile === false ? name : null)));
   return [
     ...profiles.map((name) => target("profile", 8, join(profilesDir, name))),

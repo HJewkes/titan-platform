@@ -1,3 +1,4 @@
+import { profilesRoot } from "@titan-design/anthropic-account/node";
 import path from "node:path";
 import { Command, CommanderError } from "commander";
 import {
@@ -22,7 +23,6 @@ import { DEFAULT_TOOL_ADOPTION_PORTS } from "./insights/tool-adoption.js";
 import { DEFAULT_TOOL_GAPS_PORTS } from "./insights/tool-gaps.js";
 import { DEFAULT_GAP_THRESHOLD, type GapThreshold } from "./tool-gap-weekly.js";
 import { activeWorkCli, notifyCommand, runToolGapWeekly } from "./tool-gap-weekly-run.js";
-import { defaultProfilesRoot } from "./friction-transcripts.js";
 import { defaultFrictionArchive, parseWindowMs, renderFrictionResult, runFrictionDaily, titanConsoleInbox, type ConsoleInboxPort } from "./friction-daily-run.js";
 import { attachReportIntake } from "./report-intake-run.js";
 import { attachTicketScorecard } from "./ticket-scorecard/cli.js";
@@ -202,7 +202,7 @@ function attachFrictionDaily(program: Command, io: CliIo, onExit: (code: number)
       const config = resolveConfig(configOverrides(program.opts()), io.env);
       const result = await runFrictionDaily({
         eventsDb: config.eventsDb,
-        profilesRoot: opts.profiles ?? defaultProfilesRoot(),
+        profilesRoot: opts.profiles ?? profilesRoot(),
         archiveDir: opts.archiveDir ?? defaultFrictionArchive(config.initiativesRoot),
         now: new Date(),
         windowMs,
