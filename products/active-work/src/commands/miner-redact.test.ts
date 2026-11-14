@@ -74,7 +74,7 @@ function outcomeReport() {
     requests: 8,
     requestsPerFinished: 8 / merged,
   });
-  return { byInitiative: [bucket(VISIBLE, 1), bucket(HIDDEN, 2)], bySeat: [bucket('seat-a', 1)], unmatchedAgents: [] as string[] };
+  return { byInitiative: [bucket(VISIBLE, 1), bucket(HIDDEN, 2)], bySeat: [bucket('seat-a', 1)], seatCostUsd: [] as { key: string; costUsd: number }[], unmatchedAgents: [] as string[] };
 }
 
 const keysAndCost = (rows: readonly { key: string; costUsd: number }[]) => rows.map((row) => [row.key, row.costUsd]);
@@ -161,6 +161,7 @@ describe('miner outcomes seat and agent names for a non-owner', () => {
       { ...report.bySeat[0], key: `${VISIBLE}-coord` },
       { ...report.bySeat[0], key: `${HIDDEN}er` },
     ];
+    report.seatCostUsd = [`${HIDDEN}-coord`, `${VISIBLE}-coord`, `${HIDDEN}-impl`].map((key) => ({ key, costUsd: 1 }));
     report.unmatchedAgents = [`${HIDDEN}-coord`, `${HIDDEN}-impl`, VISIBLE];
     const ctx = context(root, caller);
     return redactOutcomeReport(report, await minerKeys(ctx), await minerNames(ctx));
@@ -176,6 +177,10 @@ describe('miner outcomes seat and agent names for a non-owner', () => {
         [`${VISIBLE}-coord`, 2],
         [`${HIDDEN}er`, 2],
         [OWNER_ONLY_KEY, 2],
+      ]);
+      expect(redacted.seatCostUsd).toEqual([
+        { key: `${VISIBLE}-coord`, costUsd: 1 },
+        { key: OWNER_ONLY_KEY, costUsd: 2 },
       ]);
       expect(redacted.unmatchedAgents).toEqual([VISIBLE, OWNER_ONLY_KEY]);
     });

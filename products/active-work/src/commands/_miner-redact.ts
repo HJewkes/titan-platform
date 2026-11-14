@@ -88,7 +88,7 @@ const sumOutcome = (a: OutcomeBucket, b: OutcomeBucket): OutcomeBucket =>
     requests: a.requests + b.requests,
   });
 
-type OutcomeNames = { bySeat: OutcomeBucket[]; unmatchedAgents: string[] };
+type OutcomeNames = { bySeat: OutcomeBucket[]; seatCostUsd: { key: string; costUsd: number }[]; unmatchedAgents: string[] };
 
 /**
  * Seat and agent names are free-form, so one can carry an owner-only initiative slug (`<slug>-coord`).
@@ -105,6 +105,7 @@ export function redactOutcomeReport<T extends { byInitiative: OutcomeBucket[] } 
     ...report,
     byInitiative: fold(report.byInitiative, keyFor, sumOutcome),
     bySeat: fold(report.bySeat, nameFor, sumOutcome),
+    seatCostUsd: fold(report.seatCostUsd, nameFor, (a, b) => ({ key: a.key, costUsd: a.costUsd + b.costUsd })),
     unmatchedAgents: withheld ? [...unmatched.filter((name) => name !== OWNER_ONLY_KEY), OWNER_ONLY_KEY] : unmatched,
   };
 }
