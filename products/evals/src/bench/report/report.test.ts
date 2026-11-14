@@ -90,6 +90,17 @@ describe("complete blocks only", () => {
     expect(plantedTable?.rows.find((row) => row.arm === "O-med")?.primary).toMatchObject({ successes: 3, n: 3 });
   });
 
+  it("reads the implement scorer's nested score fields as the solved outcome", () => {
+    const nested = (solved: boolean) => ({ audit: { contaminated: false }, score: implement(solved) });
+    const jobs: JobSpec[] = [0, 1].flatMap((block) => ["O-med", "S-high"].map((arm) => ({ arm, block, stratum: { kind: "feature", size: "S" }, result: nested(arm === "O-med") })));
+
+    const report = buildReport({ runs: { i: writeRun("nested", "i", jobs) }, partial: false, targets: {} });
+
+    const rows = report.tracks.i?.tables[0]?.rows ?? [];
+    expect(rows.find((row) => row.arm === "O-med")?.primary).toMatchObject({ successes: 2, n: 2 });
+    expect(rows.find((row) => row.arm === "S-high")?.primary).toMatchObject({ successes: 0, n: 2 });
+  });
+
   it("drops a contaminated job's block from the paired tables and lists the job", () => {
     const jobs: JobSpec[] = [0, 1, 2].flatMap((block) =>
       ["O-med", "S-high"].map((arm) => ({ arm, block, stratum: { kind: "feature", size: "S" }, result: implement(true), ...(arm === "S-high" && block === 1 && { outcome: "contaminated" as const, result: implement(true) }) })),

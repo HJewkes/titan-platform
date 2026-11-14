@@ -78,13 +78,16 @@ function toCell(row: JobRow, result: Record<string, unknown> | undefined): Cell 
   };
 }
 
+/** The I scorer nests its fields as `{ audit, score }`; the tables read them flat, as R and P store theirs. */
+const flatResult = (result: Record<string, unknown>): Record<string, unknown> => (isRecord(result.score) ? { ...result, ...result.score } : result);
+
 /** Reads a run dir's three ledgers; a missing scores or judgments file reads as empty. */
 export function loadRun(track: Track, dir: string): RunData {
   const jobs = readJobRows(join(dir, "jobs.jsonl")).filter((row) => row.track === track);
   const scores = new Map<string, Record<string, unknown>>();
   for (const raw of jsonLines(join(dir, "scores.jsonl"))) {
     const row = ScoreRow.safeParse(raw);
-    if (row.success) scores.set(cellKey(row.data.arm, row.data.caseHash, row.data.attempt), row.data.result ?? {});
+    if (row.success) scores.set(cellKey(row.data.arm, row.data.caseHash, row.data.attempt), flatResult(row.data.result ?? {}));
   }
   const cells = latestJobs(jobs).map((row) => toCell(row, scores.get(cellKey(row.arm.id, row.caseHash, row.attempt))));
   return { track, dir, cells, jobs, judgments: jsonLines(join(dir, "judgments.jsonl")).filter(isRecord) };
