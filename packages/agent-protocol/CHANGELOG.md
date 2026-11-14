@@ -1,5 +1,11 @@
 # @titan-design/agent-protocol
 
+## 0.10.1
+
+### Patch Changes
+
+- b937077: Stop exporting file-local helpers that nothing imports (TP-5793).
+
 ## 0.10.0
 
 ### Minor Changes

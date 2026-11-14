@@ -1,5 +1,14 @@
 # @titan-design/react-app
 
+## 0.2.1
+
+### Patch Changes
+
+- b937077: Stop exporting file-local helpers that nothing imports (TP-5793).
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+- Updated dependencies [b937077]
+  - @titan-design/rpc-client@0.4.3
+
 ## 0.2.0
 
 ### Minor Changes

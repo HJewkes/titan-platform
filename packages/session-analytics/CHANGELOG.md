@@ -1,5 +1,26 @@
 # @titan-design/session-analytics
 
+## 0.20.0
+
+### Minor Changes
+
+- d3d1d5b: Add `denialOf`, the one classifier for Claude Code permission, auto-mode-classifier and permission-hook-deadline text (TP-5807). The friction gate, blocked-flow denials, the tool-errors insight and the reviewer smoke check now use it, so a non-error result worded "was denied" is counted as a denial.
+
+### Patch Changes
+
+- b937077: Stop exporting file-local helpers that nothing imports (TP-5793).
+- 1029d2e: The scorecard first-pass row now counts only verdict blocks parseVerdictBlock accepts, so fenced, duplicated, malformed and short-head verdicts no longer count.
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+- 62d9877: The mechanical first-blocker row counts only FIX_FIRST messages the verdict parser accepts (TP-5847).
+- Updated dependencies [b937077]
+- Updated dependencies [83ed2aa]
+- Updated dependencies [37bd17f]
+- Updated dependencies [3d19ff3]
+  - @titan-design/agent-protocol@0.10.1
+  - @titan-design/session-graph@0.19.1
+  - @titan-design/session-read@0.18.0
+  - @titan-design/review-panel@0.9.2
+
 ## 0.19.0
 
 ### Minor Changes

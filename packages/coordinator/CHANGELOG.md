@@ -1,5 +1,13 @@
 # @titan-design/coordinator
 
+## 0.7.4
+
+### Patch Changes
+
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+- Updated dependencies [3d19ff3]
+  - @titan-design/agent-dispatch@0.10.1
+
 ## 0.7.3
 
 ### Patch Changes

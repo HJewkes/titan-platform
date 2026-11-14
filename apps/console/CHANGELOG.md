@@ -1,5 +1,36 @@
 # titan-console
 
+## 0.14.7
+
+### Patch Changes
+
+- caf2e27: Answers to a chat_ask now post through the same broker client as verdicts, so a broker reason or transport error that echoes the UI token no longer carries it to the browser.
+- e5bc26e: Stop exporting file-local symbols in apps and products (TP-5821).
+- Updated dependencies [b937077]
+- Updated dependencies [17d1110]
+- Updated dependencies [1029d2e]
+- Updated dependencies [c759bad]
+- Updated dependencies [d3d1d5b]
+- Updated dependencies [e5d8d29]
+- Updated dependencies [83ed2aa]
+- Updated dependencies [3d19ff3]
+- Updated dependencies [62d9877]
+  - @titan-design/agent@0.7.1
+  - @titan-design/decider@0.7.1
+  - @titan-design/fix-proof@0.9.1
+  - @titan-design/react-app@0.2.1
+  - @titan-design/rpc-client@0.4.3
+  - @titan-design/session-analytics@0.20.0
+  - @titan-design/session-graph@0.19.1
+  - @titan-design/session-read@0.18.0
+  - @titan-design/pm@0.12.0
+  - @titan-design/daemon@0.10.0
+  - @titan-design/app-paths@0.2.0
+  - @titan-design/agent-dispatch@0.10.1
+  - @titan-design/coordinator@0.7.4
+  - @titan-design/github@0.13.1
+  - @titan-design/owner-queue@0.8.3
+
 ## 0.14.6
 
 ### Patch Changes

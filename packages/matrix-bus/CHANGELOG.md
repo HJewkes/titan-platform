@@ -1,5 +1,11 @@
 # @titan-design/matrix-bus
 
+## 0.2.3
+
+### Patch Changes
+
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+
 ## 0.2.2
 
 ### Patch Changes

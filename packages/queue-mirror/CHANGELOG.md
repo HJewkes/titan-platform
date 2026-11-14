@@ -1,5 +1,14 @@
 # @titan-design/queue-mirror
 
+## 0.4.8
+
+### Patch Changes
+
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+- Updated dependencies [3d19ff3]
+  - @titan-design/hitl@0.10.2
+  - @titan-design/matrix-bus@0.2.3
+
 ## 0.4.7
 
 ### Patch Changes

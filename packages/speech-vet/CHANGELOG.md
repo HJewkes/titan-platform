@@ -1,5 +1,12 @@
 # @titan-design/speech-vet
 
+## 0.1.2
+
+### Patch Changes
+
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+  - @titan-design/speech-tts@0.1.2
+
 ## 0.1.1
 
 ### Patch Changes

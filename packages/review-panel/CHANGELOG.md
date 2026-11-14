@@ -1,5 +1,19 @@
 # @titan-design/review-panel
 
+## 0.9.2
+
+### Patch Changes
+
+- 37bd17f: Export `citationsIn` and `citationHolds` from evidence; review-panel's aggregate and the evals replay score use them instead of their own copies of the `path:line` reader.
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+- Updated dependencies [b937077]
+- Updated dependencies [83ed2aa]
+- Updated dependencies [37bd17f]
+- Updated dependencies [3d19ff3]
+  - @titan-design/fix-proof@0.9.1
+  - @titan-design/session-read@0.18.0
+  - @titan-design/evidence@0.6.0
+
 ## 0.9.1
 
 ### Patch Changes

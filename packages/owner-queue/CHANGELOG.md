@@ -1,5 +1,15 @@
 # @titan-design/owner-queue
 
+## 0.8.3
+
+### Patch Changes
+
+- Updated dependencies [17d1110]
+- Updated dependencies [37bd17f]
+- Updated dependencies [3d19ff3]
+  - @titan-design/pm@0.12.0
+  - @titan-design/evidence@0.6.0
+
 ## 0.8.2
 
 ### Patch Changes

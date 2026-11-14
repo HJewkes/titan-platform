@@ -1,5 +1,16 @@
 # @titan-design/style-checker
 
+## 0.4.6
+
+### Patch Changes
+
+- b937077: Stop exporting file-local helpers that nothing imports (TP-5793).
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+- Updated dependencies [b937077]
+- Updated dependencies [3d19ff3]
+  - @titan-design/style-analyzer@0.1.8
+  - @titan-design/style-profile@0.4.3
+
 ## 0.4.5
 
 ### Patch Changes

@@ -1,5 +1,15 @@
 # @titan-design/daemon
 
+## 0.10.0
+
+### Minor Changes
+
+- c759bad: Export `touchedPaths`, the build-closure path rule (TP-5798), so the console self-updater and the factory deployer share one copy.
+
+### Patch Changes
+
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+
 ## 0.9.0
 
 ### Minor Changes

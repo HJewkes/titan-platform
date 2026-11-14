@@ -1,5 +1,40 @@
 # @titan-design/explainer
 
+## 0.4.0
+
+### Minor Changes
+
+- f4c4b05: Add the writing gate and hallmark rows (TP-5721). `eval l0` gains Q-V16 (`writing:short-register`, an error),
+  Q-V17 (one `hallmark:*` row per deterministic tell; the naming refrain is an error, the rest warnings) and Q-V18
+  (`hallmark:named-before-defined`, an error). `eval writing` prints the same rows below the calibrated ones, and an
+  error row fails its verdict. Thresholds and severities live in `doctrine/writing-gate.json`, which also makes
+  `phrases` and `variety:connector-share` report-only.
+
+### Patch Changes
+
+- e5d8d29: Export `consoleInboxDir` and `scorecardStorePath` from app-paths and use them in place of the per-product copies (TP-5809). The console inbox spool now expands a leading `~` in `TITAN_CONSOLE_STATE` in yt-scout, and the factory's eligibility check expands a `~` in `TITAN_SCORECARD_STORE`; the other resolutions are unchanged.
+- Updated dependencies [b937077]
+- Updated dependencies [17d1110]
+- Updated dependencies [e5d8d29]
+- Updated dependencies [83ed2aa]
+- Updated dependencies [37bd17f]
+- Updated dependencies [3d19ff3]
+  - @titan-design/agent@0.7.1
+  - @titan-design/agent-protocol@0.10.1
+  - @titan-design/code-graph@0.19.1
+  - @titan-design/code-read@0.3.6
+  - @titan-design/session-read@0.18.0
+  - @titan-design/workflow@0.15.1
+  - @titan-design/pm@0.12.0
+  - @titan-design/app-paths@0.2.0
+  - @titan-design/evidence@0.6.0
+  - @titan-design/agent-dispatch@0.10.1
+  - @titan-design/github@0.13.1
+  - @titan-design/hitl@0.10.2
+  - @titan-design/speech-vet@0.1.2
+  - @titan-design/owner-queue@0.8.3
+  - @titan-design/speech-tts@0.1.2
+
 ## 0.3.9
 
 ### Patch Changes

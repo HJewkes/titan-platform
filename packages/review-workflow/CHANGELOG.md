@@ -1,5 +1,19 @@
 # @titan-design/review-workflow
 
+## 0.1.3
+
+### Patch Changes
+
+- Updated dependencies [b937077]
+- Updated dependencies [37bd17f]
+- Updated dependencies [3d19ff3]
+  - @titan-design/fix-proof@0.9.1
+  - @titan-design/workflow@0.15.1
+  - @titan-design/evidence@0.6.0
+  - @titan-design/review-panel@0.9.2
+  - @titan-design/agent-dispatch@0.10.1
+  - @titan-design/github@0.13.1
+
 ## 0.1.2
 
 ### Patch Changes

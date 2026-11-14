@@ -1,5 +1,18 @@
 # @titan-design/retrieval-eval
 
+## 0.1.1
+
+### Patch Changes
+
+- e5bc26e: Stop exporting file-local symbols in apps and products (TP-5821).
+- Updated dependencies [b937077]
+- Updated dependencies [e5d8d29]
+- Updated dependencies [83ed2aa]
+- Updated dependencies [3d19ff3]
+  - @titan-design/session-read@0.18.0
+  - @titan-design/app-paths@0.2.0
+  - @titan-design/retrieval@0.4.1
+
 ## 0.1.0
 
 ### Minor Changes
