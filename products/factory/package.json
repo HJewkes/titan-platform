@@ -9,6 +9,9 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./shepherd/reviewer-reader": {
+      "import": "./dist/shepherd/reviewer-reader.js"
     }
   },
   "files": [
