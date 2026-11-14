@@ -10,6 +10,7 @@
  */
 import type { promises as fsp } from 'node:fs';
 import type { LeaseSweepResult } from '../sessions/lease.js';
+import type { Shown } from '../sessions/visibility.js';
 import type { DaemonProbe } from './probes.js';
 import {
   checkActiveRoot,
@@ -54,6 +55,11 @@ export interface DoctorDeps {
   supervisorActive?: () => Promise<{ kind: string; active: boolean; path?: string } | null>;
   /** Sweep session leases; defaults to the real `.sessions/` walk. */
   sweepLeases?: (activeRoot: string) => Promise<LeaseSweepResult>;
+  /**
+   * The initiatives the caller may see named; findings under any other are left out (TP-5556).
+   * Required, so no path into doctor can fall back to naming every initiative.
+   */
+  shown: Shown;
 }
 
 function checkInstall(deps: DoctorDeps): Promise<DoctorCheck[]> {
@@ -68,7 +74,7 @@ function checkInstall(deps: DoctorDeps): Promise<DoctorCheck[]> {
 }
 
 /** Run all health checks and return a report. `ok` is false iff any check failed. */
-export async function runDoctor(deps: DoctorDeps = {}): Promise<DoctorReport> {
+export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
   const [installChecks, sessionChecks, noteTitles, artifactHashes, leases, workspaceIndex] =
     await Promise.all([
       checkInstall(deps),
