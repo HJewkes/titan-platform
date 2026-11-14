@@ -145,4 +145,12 @@ describe("refusalKind", () => {
   it("reads the prefixed form the hook writes into toolUseResult", async () => {
     expect(refusalKind("Error: Permission to use Bash with command agent-chat agent ls --json has been denied.")).toBe("deny-list");
   });
+
+  it("reads a deny-list refusal of a command that spans several lines", () => {
+    expect(refusalKind("Error: Permission to use Bash with command gh-write <<'EOF'\nbody\nEOF has been denied.")).toBe("deny-list");
+  });
+
+  it("reads the was-denied wording as a deny-list refusal", () => {
+    expect(refusalKind("The call was denied")).toBe("deny-list");
+  });
 });
