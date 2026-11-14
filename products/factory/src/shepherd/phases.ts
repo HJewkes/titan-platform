@@ -1,6 +1,6 @@
 import type { AgentIdentity } from "@titan-design/authority";
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
-import type { OwnerBrief, ReviewShape } from "@titan-design/review-panel";
+import type { AuthorityLine, OwnerBrief, ReviewShape } from "@titan-design/review-panel";
 import type { WorkflowContext } from "@titan-design/workflow";
 import type { FixFirstEntry, FixRound } from "./fix-first-trail.js";
 import type { ReviewCause } from "./review-schemas.js";
@@ -80,6 +80,8 @@ export interface PanelMember {
   profile?: string;
   /** The `Attests:` tokens of the member's MERGE; absent attests nothing. */
   attests?: readonly string[];
+  /** The `Authority:` line of an adversary member's MERGE (TP-5407); absent on any other member, and on one recorded before it was asked. */
+  authority?: AuthorityLine;
 }
 
 /** Shepherd's own MERGE at `head` that a seat reviewer's WAIT, or a seat read that can clear, still held when the seat wait ran out. */
