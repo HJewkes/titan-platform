@@ -1,7 +1,6 @@
 import path from 'node:path';
 import { TaskSchema, type Task } from '../schemas/task.js';
-import { listInitiativeSlugsOrEmpty } from '../sessions/initiatives.js';
-import { visibilityFor, type Shown } from '../sessions/visibility.js';
+import { listShownSlugs, visibilityFor, type Shown } from '../sessions/visibility.js';
 import { readYaml } from '../utils/yaml-io.js';
 
 /**
@@ -31,7 +30,7 @@ function taskKeys(text: string): string[] {
 
 function ownsClauses(notes: string | undefined): string {
   if (notes === undefined) return '';
-  return Array.from(notes.matchAll(OWNS_CLAUSE), (match) => match[1] ?? '').join('\n');
+  return Array.from(notes.matchAll(OWNS_CLAUSE), (match) => match[1]).join('\n');
 }
 
 async function readTask(activeRoot: string, slug: string, key: string): Promise<Task | null> {
@@ -44,7 +43,7 @@ async function readTask(activeRoot: string, slug: string, key: string): Promise<
 
 /** The named initiative first, so a key two initiatives share resolves to the caller's. */
 async function shownSlugs(activeRoot: string, shown: Shown, initiative?: string): Promise<string[]> {
-  const slugs = (await listInitiativeSlugsOrEmpty(activeRoot)).filter((slug) => shown(slug));
+  const slugs = await listShownSlugs(activeRoot, shown).catch(() => []);
   if (initiative === undefined || !slugs.includes(initiative)) return slugs;
   return [initiative, ...slugs.filter((slug) => slug !== initiative)];
 }

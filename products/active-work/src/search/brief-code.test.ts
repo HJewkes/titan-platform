@@ -180,15 +180,16 @@ describe('context.brief with code neighbours', () => {
     code,
   });
 
-  it('shows neighbours and sessions for the named file inside the 2,000 ms deadline', async () => {
-    const started = performance.now();
+  it('shows neighbours and sessions for the named file before the 2,000 ms deadline', async () => {
+    const asked: number[] = [];
 
     const result = await runBrief(
       { for: `Change \`${A}\`.`, initiative: 'alpha' },
-      deps({ fetch: serving(neighbours([C], [B])) }),
+      deps({ fetch: serving(neighbours([C], [B])), sleep: clockAt(-1, asked) }),
     );
 
-    expect(performance.now() - started).toBeLessThan(2000);
+    expect(Math.max(...asked)).toBe(2000);
+    expect(result.degraded).toEqual([]);
     expect(result.text).toContain('## Code neighbours of the named files');
     expect(result.text).toContain(`- ${C} (imports) ${A}`);
     expect(result.text).toContain('## Recent sessions on the named files');

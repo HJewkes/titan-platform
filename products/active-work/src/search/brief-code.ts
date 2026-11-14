@@ -1,8 +1,9 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import type { CodeReadCommandMap } from '@titan-design/code-read';
+import { CONTRACT, type CodeReadCommandMap } from '@titan-design/code-read/query';
 import { CLIENT_HEADER } from '@titan-design/daemon';
+import { z } from 'zod';
 import { utf8Bytes, type BriefBlock } from './brief-block.js';
 import type { RelatedDegradation } from './related.js';
 
@@ -67,6 +68,12 @@ interface Neighbour {
 }
 type NeighborsResult = CodeReadCommandMap['node.neighbors']['result'];
 
+/** Checked, not cast: a stale codewatch on an older contract fails here and the brief falls back. */
+const NeighborsEnvelope = z.discriminatedUnion('ok', [
+  z.object({ ok: z.literal(true), data: CONTRACT['node.neighbors'].result }),
+  z.object({ ok: z.literal(false), error: z.string() }),
+]);
+
 function line(neighbour: Neighbour): string {
   return `- ${neighbour.path} (${neighbour.direction}) ${neighbour.named}`;
 }
@@ -79,7 +86,7 @@ async function askCodewatch(named: string, deps: CodeDeps, signal: AbortSignal):
     body: JSON.stringify(args),
     signal,
   });
-  const envelope = (await response.json()) as { ok: true; data: NeighborsResult } | { ok: false; error: string };
+  const envelope = NeighborsEnvelope.parse(await response.json());
   if (!envelope.ok) throw new Error(envelope.error);
   return envelope.data;
 }
@@ -116,7 +123,7 @@ async function resolveImport(repoRoot: string, from: string, specifier: string):
 /** Relative imports only: a package import is not a file in this checkout. */
 async function fromSource(named: string, repoRoot: string): Promise<Neighbour[]> {
   const source = await fs.readFile(path.join(repoRoot, named), 'utf8').catch(() => '');
-  const specifiers = [...new Set(Array.from(source.matchAll(RELATIVE_IMPORT), (match) => match[1] ?? ''))];
+  const specifiers = [...new Set(Array.from(source.matchAll(RELATIVE_IMPORT), (match) => match[1]))];
   const resolved = await Promise.all(specifiers.map((specifier) => resolveImport(repoRoot, named, specifier)));
   return resolved.flatMap((found) => (found === null ? [] : [{ path: found, direction: 'imported by' as const, named }]));
 }
