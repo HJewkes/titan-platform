@@ -488,7 +488,7 @@ interface HostSetup {
 function shepherdHost(fake: FakeGitHub, beforeLand: () => void = () => undefined, setup: HostSetup = {}): FactoryHost {
   const port = githubPort(fake.wire, { sleep: async () => undefined });
   let clock = 0;
-  const deps: ShepherdDeps = { gitCache: hostCarryPorts, port, store: setup.store ?? shepherdStoreRef(), now: () => clock, sleep: async (ms) => void (clock += ms), agentChatBin: "agent-chat" };
+  const deps: ShepherdDeps = { gitCache: hostCarryPorts, port, store: setup.store ?? shepherdStoreRef(), now: () => clock, sleep: async (ms) => void (clock += ms), agentChatBin: "agent-chat", ownerTier: "off" };
   const run = async (ctx: Parameters<typeof mergeVerdict>[0]) => {
     const reviews = new Map<string, Verdict>([[HEAD, await mergeVerdict(ctx, setup.request ?? input)]]);
     beforeLand();
@@ -1017,7 +1017,7 @@ describe("the attestation guard", () => {
   });
 
   it("an adversary-class head needs the adversary member's Attests line too", async () => {
-    const adversary = (attests: string[]) => byReviewer("rev-1", [TOKEN], { attest: { attests: [TOKEN], adversary: { reviewer: as("adv-1"), head: HEAD, attests }, adversaryPlanned: true } });
+    const adversary = (attests: string[]) => byReviewer("rev-1", [TOKEN], { attest: { attests: [TOKEN], adversary: { reviewer: as("adv-1"), head: HEAD, attests, authority: "unchanged" }, adversaryPlanned: true } });
 
     const silent = await judged(claiming(), adversary([]));
     const attested = await judged(claiming(), adversary([TOKEN]));

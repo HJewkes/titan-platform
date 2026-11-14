@@ -1,5 +1,5 @@
 import { compileGlobs } from "@titan-design/fix-proof";
-import { DEFAULT_CLASS_RULES } from "@titan-design/review-panel";
+import { DEFAULT_CLASS_RULES, type AuthorityLine } from "@titan-design/review-panel";
 import type { CiPolicy } from "@titan-design/session-read";
 import { HOLD_COMMAND_FILES, MERGE_POLICY_FILES, OWNER_ACTION_FILES, policyTablesOf, shepherdPathTouches, type PolicyTable } from "./g10-class-rules.js";
 import { OWNER_PACKET_FILES, adversaryTouches } from "./signoffs.js";
@@ -21,8 +21,17 @@ export interface RiskTier {
   reasons: string[];
 }
 
-/** The adversary's word on what an agent may now do (r7); absent until the reviewer brief asks for it. */
-export type AuthorityLine = "unchanged" | "tightened" | "widened";
+/**
+ * The adversary's word on what an agent may now do (r7, TP-5407), or `missing` when the run owed an adversary MERGE and none
+ * carried a line; undefined when no adversary was required, since such a run is never asked for one.
+ */
+export type AuthorityRead = AuthorityLine | "missing";
+
+/** Widened lets something do more than before; a missing line cannot say it did not, so both stop for the owner. */
+function authorityReason(read: AuthorityRead | undefined): string | undefined {
+  if (read === "widened") return "Authority widened";
+  return read === "missing" ? "Authority line missing" : undefined;
+}
 
 interface RiskFacts {
   /** Every changed path, a rename's old path included. */
@@ -32,7 +41,7 @@ interface RiskFacts {
   ownerPacket: readonly string[];
   skillPaths: readonly string[];
   ciPolicy?: CiPolicy;
-  authorityLine?: AuthorityLine;
+  authorityLine?: AuthorityRead;
   /** The changed files the run's visual policy names. */
   visual: readonly string[];
   /** Why the owner holds or gates the run itself, or undefined when nothing of the owner's does. */
@@ -110,21 +119,24 @@ export function ownerTierPolicyRows(tablesOf: ReadonlyMap<string, readonly Polic
   return [...named, ...tableRow("unnamed policy path", unnamedIn(tablesOf))];
 }
 
-/** What the owner-tier rows read at a head: its changed paths, and whether a CI change is a budget one a coordinator may accept. */
+/** What the owner-tier rows read at a head: its changed paths, whether a CI change is a budget one a coordinator may accept, and the adversary's Authority line. */
 interface OwnerTierRead {
   paths: readonly string[];
   /** Owner decision 552 (2), Q-S2a: a measured budget-class CI change keeps its coordinator path, so the CI row skips it. */
   ciBudget: boolean;
+  authorityLine?: AuthorityRead;
 }
 
 /**
- * The high-tier rows that stop for the owner at merge, each led by its table name. Visual, skill, unread files, the owner
- * packet, CI policy and owner holds are left out: visual by the task, the rest because each gates on its own row already.
+ * The high-tier rows that stop for the owner at merge, each led by its table name, then the adversary's widened or missing
+ * Authority line (TP-5407). Visual, skill, unread files, the owner packet, CI policy and owner holds are left out: visual by
+ * the task, the rest because each gates on its own row already.
  */
-export function ownerTierRows({ paths, ciBudget }: OwnerTierRead): string[] {
+export function ownerTierRows({ paths, ciBudget, authorityLine }: OwnerTierRead): string[] {
   const named = (label: string, globs: readonly string[]): string[] => tableRow(label, matching(paths, globs));
   const ci = ciBudget ? [] : named("CI workflow file", CI_PERSON_FILES);
-  return [...ownerTierPolicyRows(policyTablesAt(paths)), ...ci, ...named("publish file", PUBLISH_FILES), ...named("settings file", SETTINGS_FILES)];
+  const authority = authorityReason(authorityLine);
+  return [...ownerTierPolicyRows(policyTablesAt(paths)), ...ci, ...named("publish file", PUBLISH_FILES), ...named("settings file", SETTINGS_FILES), ...(authority ? [authority] : [])];
 }
 
 /** A failed read never lowers a tier: unread or empty file lists read as high, as the merge guard reads them visual. */
@@ -140,7 +152,7 @@ function highReasons(facts: RiskFacts): (string | undefined)[] {
     pathReason("publish file", matching(facts.paths, PUBLISH_FILES)),
     pathReason("settings file", matching(facts.paths, SETTINGS_FILES)),
     ciPolicyReason(facts.ciPolicy),
-    facts.authorityLine === "widened" ? "Authority widened" : undefined,
+    authorityReason(facts.authorityLine),
     visualGateMode(facts.visualGate) === "async" ? undefined : pathReason("visual", facts.visual),
     facts.ownerHold && `owner hold: ${facts.ownerHold}`,
   ];
@@ -178,13 +190,15 @@ interface RiskRead {
   visualPaths?: readonly string[];
   ownerHold: string | undefined;
   visualGate?: VisualGateMode;
+  authorityLine?: AuthorityRead;
 }
 
-export function riskFactsOf({ paths, changedLines, unread, ciPolicy, visualPaths, ownerHold, visualGate }: RiskRead): RiskFacts {
+export function riskFactsOf({ paths, changedLines, unread, ciPolicy, visualPaths, ownerHold, visualGate, authorityLine }: RiskRead): RiskFacts {
   const ownerPacket = paths.filter((path) => OWNER_PACKET_FILES.includes(folded(path)));
   const touches = shepherdPathTouches(paths.map((path) => ({ path })));
   const visual = visualPaths === undefined ? [] : visualMatches(paths, visualPaths);
-  return { paths, touches, ownerPacket, skillPaths: skillPathsIn(paths), ...(ciPolicy && { ciPolicy }), visual, ownerHold, changedLines, unread, ...(visualGate && { visualGate }) };
+  const read = { ...(ciPolicy && { ciPolicy }), ...(visualGate && { visualGate }), ...(authorityLine && { authorityLine }) };
+  return { paths, touches, ownerPacket, skillPaths: skillPathsIn(paths), visual, ownerHold, changedLines, unread, ...read };
 }
 
 const OWNER_GATE_RISK: readonly string[] = ["owner-asked", "gate-2-visual"];
