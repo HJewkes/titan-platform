@@ -29,9 +29,9 @@ import { videoCatalog } from "./videos.js";
 const OWNER_ACTIONS_DIR = "owner-actions";
 
 export const UPSTREAM_IDS = ["work", "agents", "sessions"] as const;
-export type UpstreamId = (typeof UPSTREAM_IDS)[number];
+type UpstreamId = (typeof UPSTREAM_IDS)[number];
 
-export interface ProbeResult {
+interface ProbeResult {
   reachable: boolean;
   detail: string;
 }
@@ -103,7 +103,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 ** rung).toFixed(rung === 0 ? 0 : 1)} ${units[rung]}`;
 }
 
-export function createUpstreams(config: ConsoleConfig): Upstream[] {
+function createUpstreams(config: ConsoleConfig): Upstream[] {
   return [
     httpUpstream("work", "active-work daemon", config.activeWorkPort),
     httpUpstream("agents", "agent-chat broker", config.agentChatPort),
