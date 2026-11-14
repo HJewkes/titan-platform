@@ -45,6 +45,21 @@ const StopSchema = z
 
 export type StopRules = z.infer<typeof StopSchema>;
 
+/** Whose spawns the shadow is scored against, and how a bare task id such as `TP-1` finds its initiative. */
+const CompareSchema = z
+  .object({
+    operator: z.string().min(1).default("tp-operator"),
+    prefixes: z.record(z.string().min(1), z.string().min(1)).default({ TP: "titan-platform" }),
+  })
+  .optional();
+
+type CompareSettings = Required<NonNullable<z.infer<typeof CompareSchema>>>;
+
+/** The compare keys with their defaults filled, so a rule file without a `compare` block scores against tp-operator. */
+export function compareSettings(rules: { compare?: z.infer<typeof CompareSchema> }): CompareSettings {
+  return { operator: rules.compare?.operator ?? "tp-operator", prefixes: rules.compare?.prefixes ?? { TP: "titan-platform" } };
+}
+
 const RuleFileSchema = z
   .object({
     schema: z.literal("titan-dispatcher/v1"),
@@ -55,6 +70,7 @@ const RuleFileSchema = z
     relax: z.array(z.enum(RELAXATIONS)).default([]),
     intake: IntakeSchema,
     stop: StopSchema.prefault({}),
+    compare: CompareSchema,
     ...PLANNED_KEYS,
   })
   .strict();

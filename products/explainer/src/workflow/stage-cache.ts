@@ -24,7 +24,7 @@ const StageRunRowSchema = z.object({
   status: z.enum(["running", "completed", "failed"]),
   record: z.string().nullable(),
 });
-export type StageRunRow = z.infer<typeof StageRunRowSchema>;
+type StageRunRow = z.infer<typeof StageRunRowSchema>;
 
 /** `explainer_stage_runs`: one row per stage key, naming the child run that holds (or is making) its outputs. */
 export class StageRunStore {

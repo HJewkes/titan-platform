@@ -24,7 +24,7 @@ const CLOSURE_MAIN = join(ROOT, "products/factory/dist/registry/closure-main.js"
 const DEFAULT_BASE = "origin/main";
 
 /** The base's committed lock, or undefined when the base has none yet. A base ref that does not exist throws. */
-export function readBaseLock(git, base) {
+function readBaseLock(git, base) {
   git(["rev-parse", "--verify", `${base}^{commit}`]);
   try {
     return JSON.parse(git(["show", `${base}:${LOCK_PATH}`]));
@@ -34,7 +34,7 @@ export function readBaseLock(git, base) {
 }
 
 /** The rows of each named `<pr>.json` in `dir`, with a failure for a name no PR file could have or a row naming another PR. */
-export function rowsOfFiles(names, read, dir = ATTESTATIONS_DIR) {
+function rowsOfFiles(names, read, dir = ATTESTATIONS_DIR) {
   const rows = [];
   const failures = [];
   for (const name of names) {
@@ -92,7 +92,7 @@ const sameRow = (a, b) => a.step === b.step && a.closure === b.closure && a.pr =
  * that PR's own head, fetched from GitHub's refs/pull/<pr>/head. Resolved from git, not the PR body, so it is the
  * same on every run; a commit of this branch's own that writes the file, or a fetch that fails, judges it foreign.
  */
-export function isStackedParent(git, base, pr, dir = ATTESTATIONS_DIR) {
+function isStackedParent(git, base, pr, dir = ATTESTATIONS_DIR) {
   const parentHead = `refs/closure-parent/${pr}`;
   try {
     git(["fetch", "--quiet", "--no-tags", "origin", `+refs/pull/${pr}/head:${parentHead}`]);
@@ -144,7 +144,7 @@ export function runCheck({ git, readFile, listDir, check, base, prNumber }) {
 }
 
 /** Whether HEAD is a merge commit with two parents, as GitHub builds refs/pull/<n>/merge; decided from git's structure alone. */
-export function isPullRequestMergeCommit(git, env) {
+function isPullRequestMergeCommit(git, env) {
   if (env.GITHUB_EVENT_NAME !== "pull_request") return false;
   try {
     return git(["rev-list", "--parents", "-n", "1", "HEAD"]).trim().split(" ").length === 3;
