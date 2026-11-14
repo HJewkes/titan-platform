@@ -3,7 +3,7 @@ import { count, fraction, jsonSchema, nonempty, objectFor, semver, specId, visib
 import type { SpecParseMode } from "./common.js";
 
 export const UNIT_SCHEMA_VERSION = "titan.unit/v1";
-export const ACCEPTANCE_LEVELS = [1, 2, 3, 4] as const;
+const ACCEPTANCE_LEVELS = [1, 2, 3, 4] as const;
 
 function objectiveSchema(mode: SpecParseMode) {
   const object = objectFor(mode);
