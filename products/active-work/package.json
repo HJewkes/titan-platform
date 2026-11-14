@@ -68,6 +68,7 @@
     "@titan-design/agent-protocol": "workspace:^",
     "@titan-design/app-paths": "workspace:^",
     "@titan-design/cluster": "workspace:^",
+    "@titan-design/code-read": "workspace:^",
     "@titan-design/daemon": "workspace:^",
     "@titan-design/decider": "workspace:^",
     "@titan-design/locator": "workspace:^",

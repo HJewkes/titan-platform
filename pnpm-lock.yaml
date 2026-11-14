@@ -1279,6 +1279,9 @@ importers:
       '@titan-design/cluster':
         specifier: workspace:^
         version: link:../../packages/cluster
+      '@titan-design/code-read':
+        specifier: workspace:^
+        version: link:../../packages/code-read
       '@titan-design/daemon':
         specifier: workspace:^
         version: link:../../packages/daemon
