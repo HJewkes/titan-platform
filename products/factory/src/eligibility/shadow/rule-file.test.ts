@@ -57,6 +57,16 @@ describe("dispatcher rule file", () => {
     ]);
   });
 
+  it("relax defaults to none and intake to medium severity over 28 days, and a partial intake keeps the other default", () => {
+    expect(loadRuleFile(ruleFile(minimal))?.rules).toMatchObject({ relax: [], intake: { minSeverity: "medium", expireDays: 28 } });
+    expect(loadRuleFile(ruleFile({ ...minimal, intake: { expireDays: 14 } }))?.rules.intake).toEqual({ minSeverity: "medium", expireDays: 14 });
+  });
+
+  it("refuses a relax entry or a severity outside the closed sets", () => {
+    expect(() => loadRuleFile(ruleFile({ ...minimal, relax: ["no-done-when"] }))).toThrow(/relax/);
+    expect(() => loadRuleFile(ruleFile({ ...minimal, intake: { minSeverity: "trivial" } }))).toThrow(/minSeverity/);
+  });
+
   it("fills each absent stop threshold with its starting value, and refuses a zero cap", () => {
     expect(loadRuleFile(ruleFile(minimal))?.rules.stop).toEqual({ taskFixRounds: 3, spendMultiple: 2, usdPerPoint: 8, betStoppedPrs: 3, betFollowupMultiple: 2, checkpointEvery: 5 });
     expect(loadRuleFile(ruleFile({ ...minimal, stop: { taskFixRounds: 4 } }))?.rules.stop).toMatchObject({ taskFixRounds: 4, checkpointEvery: 5 });
