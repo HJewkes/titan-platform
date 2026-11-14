@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { scorecardStorePath } from "@titan-design/app-paths";
 import { expandHome } from "@titan-design/session-read";
 import type { Command } from "commander";
 import type { MinerConfig } from "../config.js";
@@ -23,17 +24,8 @@ interface RunFlags {
   factoryDb?: string;
 }
 
-function dataHome(env: NodeJS.ProcessEnv): string {
-  return env.XDG_DATA_HOME ?? path.join(os.homedir(), ".local", "share");
-}
-
 function stateHome(env: NodeJS.ProcessEnv): string {
   return env.XDG_STATE_HOME ?? path.join(os.homedir(), ".local", "state");
-}
-
-/** The scorecard's own store: `--store`, else `TITAN_SCORECARD_STORE`, else `~/.local/share/titan-scorecard/scorecard.sqlite3`. */
-function defaultStoreFile(env: NodeJS.ProcessEnv): string {
-  return expandHome(env.TITAN_SCORECARD_STORE ?? path.join(dataHome(env), "titan-scorecard", "scorecard.sqlite3"));
 }
 
 function scorecardPaths(config: MinerConfig, flags: RunFlags, env: NodeJS.ProcessEnv): ScorecardPaths {
@@ -50,7 +42,7 @@ function scorecardPaths(config: MinerConfig, flags: RunFlags, env: NodeJS.Proces
 }
 
 function runOptions(config: MinerConfig, flags: RunFlags, env: NodeJS.ProcessEnv): ScorecardRunOptions {
-  const store = expandHome(flags.store ?? defaultStoreFile(env));
+  const store = expandHome(flags.store ?? scorecardStorePath({ env }));
   const dryRun = flags.dryRun === true;
   return {
     paths: scorecardPaths(config, flags, env),
