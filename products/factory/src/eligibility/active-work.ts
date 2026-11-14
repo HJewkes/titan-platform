@@ -114,10 +114,17 @@ function parseTasks(rows: readonly unknown[]): { tasks: Task[]; unreadable: Refu
   return { tasks, unreadable };
 }
 
-const LaneTaskRow = z.object({ id: z.string(), created: z.string(), done_at: z.string().nullish(), status: z.string().optional(), source: z.string().optional(), owner_steps: z.array(z.object({ kind: z.string() })).optional() });
+const LaneTaskRow = z.object({
+  id: z.string(),
+  created: z.string(),
+  done_at: z.string().nullish(),
+  status: z.string().optional(),
+  source: z.string().optional(),
+  owner_steps: z.array(z.object({ kind: z.string() })).optional(),
+});
 
 /** What the lane's flow and the landed rules read from one task row. */
-export interface LaneTaskRead extends LaneTask {
+interface LaneTaskRead extends LaneTask {
   key: string;
   status: string | undefined;
   source: string | undefined;
@@ -125,11 +132,25 @@ export interface LaneTaskRead extends LaneTask {
 }
 
 /** Every task of the lane, open or done, keyed `initiative/ID`; a row without an id or created date is left out of the flow. */
-export async function readLaneTasks(options: LiveSourceOptions, lane: { initiative: string; tag?: string }): Promise<{ keys: Set<string>; tasks: LaneTaskRead[] }> {
+export async function readLaneTasks(
+  options: LiveSourceOptions,
+  lane: { initiative: string; tag?: string },
+): Promise<{ keys: Set<string>; tasks: LaneTaskRead[] }> {
   const client = createRpcClient<EligibilityCommands>(liveSource(options));
   const { tasks: rows } = await client.call("task.list", { slug: lane.initiative, status: "all", ...(lane.tag !== undefined && { tag: lane.tag }) });
   const parsed = rows.flatMap((row) => LaneTaskRow.safeParse(row).data ?? []);
-  return { keys: new Set(parsed.map((row) => `${lane.initiative}/${row.id}`)), tasks: parsed.map((row) => ({ key: `${lane.initiative}/${row.id}`, created: row.created, doneAt: row.done_at ?? null, status: row.status, source: row.source, ownerSteps: row.owner_steps ?? [] })) };
+  const keys = new Set(parsed.map((row) => `${lane.initiative}/${row.id}`));
+  return {
+    keys,
+    tasks: parsed.map((row) => ({
+      key: `${lane.initiative}/${row.id}`,
+      created: row.created,
+      doneAt: row.done_at ?? null,
+      status: row.status,
+      source: row.source,
+      ownerSteps: row.owner_steps ?? [],
+    })),
+  };
 }
 
 /** The open tasks of one initiative (or one lane of it), judged against the week's plan over active-work's loopback rpc. Reads only. */
