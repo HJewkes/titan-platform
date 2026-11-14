@@ -1,5 +1,5 @@
 import { fromFloat32Buffer, normalize, toFloat32Buffer, type Embedder } from "@titan-design/embed";
-import { CacheBlobTable } from "@titan-design/store-sqlite";
+import { CacheBlobTable, type CacheModelRows } from "@titan-design/store-sqlite";
 import { KIT } from "../schema.js";
 import type { CodeGraphStore } from "../store.js";
 import { hashEmbedText } from "./corpus.js";
@@ -71,6 +71,36 @@ export async function embedTextsCached(
     for (const r of rows) byHash.set(r.textHash, r.vector);
   }
   return { byHash, newHashes: new Set(missing.keys()) };
+}
+
+function staleModels(cache: CacheBlobTable, currentModel: string): CacheModelRows[] {
+  return cache.models(SYMBOL_EMBEDDING_NAMESPACE).filter((m) => m.model !== currentModel);
+}
+
+/** Symbol vectors stored under any model identity other than `currentModel`: nothing reads them for that model. */
+export function countStaleSymbolVectors(store: CodeGraphStore, currentModel: string): number {
+  return staleModels(symbolVectorCache(store), currentModel).reduce((n, m) => n + m.rows, 0);
+}
+
+export interface PruneStaleResult {
+  /** Rows removed across every stale model. */
+  deleted: number;
+  /** The stale model identities and how many rows each held. */
+  models: CacheModelRows[];
+}
+
+/**
+ * Delete symbol vectors cached under every model identity except `currentModel`, such as
+ * rows left by a renamed model or a changed prefix table. Other namespaces are untouched.
+ * Not run by `embedSnapshot`, since a caller may alternate between two embedders on purpose.
+ */
+export function pruneStaleSymbolVectors(store: CodeGraphStore, currentModel: string): PruneStaleResult {
+  const cache = symbolVectorCache(store);
+  const models = staleModels(cache, currentModel);
+  const deleted = store.db.transaction(() =>
+    models.reduce((n, m) => n + cache.delete(SYMBOL_EMBEDDING_NAMESPACE, m.model), 0),
+  )();
+  return { deleted, models };
 }
 
 async function embedBatch(
