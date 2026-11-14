@@ -3,6 +3,7 @@ import type { Command } from "commander";
 import type { Verbs } from "../../cli-types.js";
 import { EXIT } from "../../exit-codes.js";
 import { errorMessage } from "../../narrow.js";
+import { registerShadowCompare } from "./compare-command.js";
 import { defaultRuleFilePath, loadRuleFile, type LoadedRules } from "./rule-file.js";
 import type { ShadowRow } from "./row.js";
 import { shadowTick } from "./tick.js";
@@ -54,4 +55,5 @@ export function registerShadowVerbs(dispatch: Command, verbs: Verbs): void {
     .description("one shadow wake: judge every lane in the dispatcher rule file and append would-dispatch and refused rows to the shadow dir; dispatches nothing")
     .option("--rule-file <path>", "the dispatcher rule file (default: dispatcher.json beside the factory config.json)")
     .action(async (opts: TickOptions) => verbs.setExit(await runShadowTick(opts, verbs)));
+  registerShadowCompare(dispatch, verbs);
 }
