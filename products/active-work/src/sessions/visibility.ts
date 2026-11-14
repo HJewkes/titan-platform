@@ -105,7 +105,11 @@ export async function listSlugsForCaller(
   activeRoot: string,
   ctx: Pick<CommandContext, 'caller' | 'warnings'>,
 ): Promise<string[]> {
-  const shown = await visibilityFor({ ...ctx, activeRoot });
+  return listShownSlugs(activeRoot, await visibilityFor({ ...ctx, activeRoot }));
+}
+
+/** The initiatives on disk that a verdict already loaded serves, for readers handed a `Shown`. */
+export async function listShownSlugs(activeRoot: string, shown: Shown): Promise<string[]> {
   return (await listInitiativeSlugs(activeRoot)).filter((slug) => shown(slug));
 }
 
