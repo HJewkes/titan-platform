@@ -85,6 +85,16 @@ function ownerFreeze(op: FreezeSet & { freeze: { action: "set" } }, id: string):
   return { id, initiative: op.initiative, tag, selector, reason, end_condition, set_by: "owner", intent_ref, quote_ref };
 }
 
+/**
+ * The ledger's done line lands after the write and a concurrent post has none yet, so the replay check also reads the store
+ * under the lock: a freeze carrying this tap's owner quote and content is the tap's own earlier write, whatever its end date.
+ */
+function sameTap(written: Freeze, wanted: Freeze): boolean {
+  const canon = (freeze: Freeze): string =>
+    JSON.stringify(Object.entries(freeze).filter(([key, value]) => key !== "ended_on" && value !== undefined).sort(([a], [b]) => a.localeCompare(b)));
+  return canon(written) === canon(wanted);
+}
+
 /** Sets a new freeze as the owner's, or ends a standing one on today's date; a freeze is never deleted. */
 export async function setFreeze(actionId: string, { op }: OpRead, deps: PlanOpDeps): Promise<Outcome> {
   if (op.kind !== "plan-freeze-set") return refused("record", `plan-freeze-set cannot run a ${op.kind} op`);
@@ -94,7 +104,10 @@ export async function setFreeze(actionId: string, { op }: OpRead, deps: PlanOpDe
   if (before !== undefined) return { outcome: "already", ids: before };
   const set = { ...op, freeze: op.freeze };
   return underLock(activeRoot, op.initiative, async () => {
-    const id = nextPlanId(op.initiative, "F", await loadPlanRecords(activeRoot, op.initiative, "freeze"));
+    const standing = await loadPlanRecords(activeRoot, op.initiative, "freeze");
+    const written = standing.find((each) => sameTap(each, ownerFreeze(set, each.id)));
+    if (written !== undefined) return { outcome: "already", ids: [written.id] };
+    const id = nextPlanId(op.initiative, "F", standing);
     await writePlanRecord(activeRoot, "freeze", ownerFreeze(set, id));
     return applied(op, [id]);
   });

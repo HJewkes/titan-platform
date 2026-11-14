@@ -120,6 +120,19 @@ describe("the planning ops on the console's owner-op path", () => {
     expect(ended).toEqual({ outcome: "plan-applied", op: "plan-freeze-set", ids: ["alpha/F1"] });
   });
 
+  it("writes one freeze when one action is posted concurrently or replayed after a crash before its done line", async () => {
+    const w = await world();
+    const set: OwnerOp = { kind: "plan-freeze-set", initiative: "alpha", freeze: { action: "set", tag: "upkeep", reason: "Upkeep waits for the landing bet", end_condition: { kind: "owner" }, intent_ref: "D13", quote_ref: "msg:0f9e8d" } };
+    const run = () => setFreeze("act-1", { op: set, confirmEvent: CONFIRM }, w);
+
+    const concurrent = await Promise.all([run(), run(), run()]);
+    const afterCrash = await run();
+
+    expect(concurrent.filter((each) => each.outcome === "plan-applied")).toHaveLength(1);
+    expect(afterCrash).toEqual({ outcome: "already", ids: ["alpha/F1"] });
+    expect(await loadPlanRecords(w.activeRoot, "alpha", "freeze")).toHaveLength(1);
+  });
+
   it("refuses ending a freeze of another initiative than the op names", async () => {
     const w = await world();
 
