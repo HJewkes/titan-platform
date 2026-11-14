@@ -27,7 +27,7 @@ const CommitSchema = z.object({
 
 const ResultSchema = z.object({ commits: z.array(CommitSchema) });
 
-export default defineCommand({
+export default defineCommand<z.infer<typeof ArgsSchema>, z.infer<typeof ResultSchema>>({
   name: 'why',
   description: 'Map the lines of a file to the commits, PRs, tasks and sessions behind them (git blame at HEAD)',
   args: ArgsSchema,

@@ -18,7 +18,7 @@ interface WhyTarget {
   end: number;
 }
 
-export interface WhyCommit {
+interface WhyCommit {
   sha: string;
   subject: string;
   /** The blamed lines this commit last changed, as `a` or `a-b` runs. */
