@@ -106,8 +106,9 @@ describe("scorecard rows over the scorecard fixtures", () => {
       return value;
     };
 
-    it("does not count a verdict inside a code fence", () => {
-      expect(rework([`\`\`\`\n${block("FIX_FIRST", "o/proj#1")}\n\`\`\``, block("MERGE", "o/proj#2")])).toBe("0.0 percent (0 of 1)");
+    it("does not count a verdict whose PR and Head lines sit inside a code fence", () => {
+      const fenced = `Verdict: FIX_FIRST\n\`\`\`\nPR: o/proj#1\nHead: ${head}\n\`\`\``;
+      expect(rework([fenced, block("MERGE", "o/proj#2")])).toBe("0.0 percent (0 of 1)");
     });
 
     it("does not count a body with two Verdict lines", () => {
