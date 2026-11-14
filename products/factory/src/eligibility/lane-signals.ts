@@ -40,8 +40,6 @@ type MergeRow = { task: string; outcome?: { kind: string } | null | undefined; p
 export const mergedSince = (rows: readonly MergeRow[], cutoff: number | undefined): MergeRow[] =>
   rows.filter((row) => row.outcome?.kind === "merged" && cutoff !== undefined && Date.parse(row.phaseSince) >= cutoff);
 
-export const countMergedSince = (rows: readonly MergeRow[], cutoff: number | undefined): number => mergedSince(rows, cutoff).length;
-
 /** Lane PRs from Shepherd's watch rows: only lane runs still going, or finished since the cutoff, are loaded. */
 type PrCounts = Pick<LaneSignals, "openPrs" | "mergedNotDeployed" | "mergedNotDeployedTasks">;
 
