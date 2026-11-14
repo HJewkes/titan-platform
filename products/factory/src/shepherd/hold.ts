@@ -24,7 +24,7 @@ type OpenHeadRead = (repo: RepoSlug, pr: number) => Promise<string | undefined>;
 /** Reads the hold's named reviewer at `sha` and records the newest verdict there: MERGE satisfies the hold, FIX_FIRST withdraws it. */
 export type HoldSatisfier = (repo: RepoSlug, pr: number, sha: string, baseRef: string) => Promise<void>;
 
-export interface HoldSatisfierDeps {
+interface HoldSatisfierDeps {
   store: () => ShepherdStore;
   roster: () => Promise<readonly ReviewerAgent[]>;
   /** Every generation, retired ones included, that proves the reviewer independent; absent means `roster` stands for it. */

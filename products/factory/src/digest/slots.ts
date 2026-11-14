@@ -15,7 +15,7 @@ function localTime(at: Date, timeZone: string): LocalTime {
   return { date: `${part("year")}-${part("month")}-${part("day")}`, hour: Number(part("hour")), minute: Number(part("minute")) };
 }
 
-export interface SlotWindow {
+interface SlotWindow {
   slot: DigestSlot;
   /** Minutes back to the previous slot, which is where this digest's window starts. */
   windowMinutes: number;

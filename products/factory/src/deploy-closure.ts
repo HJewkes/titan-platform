@@ -5,7 +5,7 @@ import { readPath } from "./narrow.js";
 
 export const FACTORY_PACKAGE = "@titan-design/factory";
 /** Root files every workspace build reads; a lockfile change for an unrelated package over-triggers, which a drain makes harmless. */
-export const ROOT_BUILD_INPUTS: readonly string[] = ["pnpm-lock.yaml", "package.json", "pnpm-workspace.yaml", ".npmrc"];
+const ROOT_BUILD_INPUTS: readonly string[] = ["pnpm-lock.yaml", "package.json", "pnpm-workspace.yaml", ".npmrc"];
 const ROOT_TSCONFIG = /^tsconfig[^/]*\.json$/;
 const DEP_FIELDS = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"] as const;
 /** Stands in for the changed paths when git could not list them, so an unknown diff deploys. */
@@ -13,7 +13,7 @@ export const UNKNOWN_DIFF = "<unknown diff>";
 /** Files inside a closure package that the build never compiles into dist. */
 const NON_RUNTIME = /(\.(test|spec)\.[cm]?tsx?|\.md)$/;
 
-export interface WorkspacePackage {
+interface WorkspacePackage {
   /** Relative to the checkout root, with forward slashes. */
   dir: string;
   name: string;
@@ -104,7 +104,7 @@ export function versionOnlyManifestChange(before: string | undefined, after: str
 }
 
 /** Packages in the factory closure whose install script compiles a native addon; setupEnv's ignore_scripts skips that compile. */
-export const NATIVE_BUILD_PACKAGES: readonly string[] = ["better-sqlite3"];
+const NATIVE_BUILD_PACKAGES: readonly string[] = ["better-sqlite3"];
 const LOCK_KEY = /^ {2}'?(@?[^@\s']+)@([^:(\s']+)/;
 
 /** Every version of `name` that pnpm-lock.yaml keys, sorted; empty when the lockfile is missing. */
