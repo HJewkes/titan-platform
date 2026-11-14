@@ -85,7 +85,7 @@ const speaks = (spoken: string, term: string): boolean =>
   new RegExp(`(?<![A-Za-z0-9])${escape(term)}(?![A-Za-z0-9])`, "i").test(spokenText([spoken]).text);
 
 /** A term a beat declares in new_terms after an earlier beat already speaks it. */
-export interface EarlyTerm {
+interface EarlyTerm {
   term: string;
   spokenIn: string;
   declaredIn: string;
