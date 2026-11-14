@@ -9,6 +9,8 @@ import type { CaseType, ReviewCaseBody } from "./cases.js";
 
 /** `path:12` or `path:12-30`, the form review-panel's aggregate and `scoreReplay` read a finding's citations in. */
 const CITATION = /(?<![\w./-])((?:[\w.-]+\/)*[\w-][\w.-]*\.[A-Za-z]\w*):(\d+)(?:-(\d+))?/g;
+/** A file name in a finding, with or without a line; a bare `dir/file.ts` still names the file. */
+const PATH_MENTION = /(?<![\w./-])((?:[\w.-]+\/)*[\w-][\w.-]*\.[A-Za-z]\w*)(?![\w-])/g;
 /** How far a cited line may sit from a planted line and still name it. */
 const PLANTED_LINE_SLACK = 3;
 
@@ -24,8 +26,12 @@ interface ReviewResult {
   /** The final message held no well-formed block naming this case's PR and head. */
   contract: boolean;
   contractReason?: string;
-  /** Defect and planted cases only. */
+  /** Defect and planted cases only; strict: FIX_FIRST plus a verified citation on a gold path (planted: near its line). */
   caught: boolean | null;
+  /** Defect and planted cases only: FIX_FIRST and a finding names a gold path that exists at the head, with or without a line. */
+  caughtPath: boolean | null;
+  /** Defect and planted cases only: the verdict is FIX_FIRST. */
+  caughtVerdict: boolean | null;
   /** Clean cases only. */
   falseAlarm: boolean | null;
   /** A FIX_FIRST's citations that resolve at the head; the false-alarm judge reads them. */
@@ -71,11 +77,18 @@ function namesGold(body: ReviewCaseBody, cited: readonly Cited[]): boolean {
   return cited.some((entry) => body.gold.some((gold) => citesPath(entry.path, gold.path) && (gold.line === undefined || nearLine(entry, gold.line))));
 }
 
+/** A finding mentions a gold path that exists at the head; the line, if any, is not checked. */
+function mentionsGoldPath(body: ReviewCaseBody, findings: string, source: LineSource): boolean {
+  const mentioned = [...findings.matchAll(PATH_MENTION)].map(([, path = ""]) => path);
+  return body.gold.some((gold) => source.lines(gold.path) !== undefined && mentioned.some((path) => citesPath(path, gold.path)));
+}
+
 const targetOf = (body: ReviewCaseBody) => ({ repo: body.repo, pr: body.pr, head: body.head });
 
 function contractFailure(body: ReviewCaseBody, reason: string): ReviewResult {
-  const applies = body.caseType === "clean";
-  return { caseType: body.caseType, verdict: null, contract: true, contractReason: reason, caught: applies ? null : false, falseAlarm: applies ? false : null, cited: [] };
+  const clean = body.caseType === "clean";
+  const level = clean ? null : false;
+  return { caseType: body.caseType, verdict: null, contract: true, contractReason: reason, caught: level, caughtPath: level, caughtVerdict: level, falseAlarm: clean ? false : null, cited: [] };
 }
 
 /**
@@ -89,9 +102,14 @@ export function scoreReview(body: ReviewCaseBody, message: string | undefined, b
   const target = targetOf(body);
   if (block.repo !== target.repo || block.pr !== target.pr || block.head !== target.head) return contractFailure(body, "wrong_target");
   const fixFirst = block.verdict === "FIX_FIRST";
-  const cited = fixFirst ? verifiedCitations(findingsText(text), headLineSource(`${bundleDir}/head`)) : [];
+  const source = headLineSource(`${bundleDir}/head`);
+  const findings = findingsText(text);
+  const cited = fixFirst ? verifiedCitations(findings, source) : [];
   const clean = body.caseType === "clean";
-  return { caseType: body.caseType, verdict: block.verdict, contract: false, caught: clean ? null : fixFirst && namesGold(body, cited), falseAlarm: clean ? fixFirst : null, cited };
+  const caught = clean ? null : fixFirst && namesGold(body, cited);
+  const caughtPath = clean ? null : fixFirst && mentionsGoldPath(body, findings, source);
+  const caughtVerdict = clean ? null : fixFirst;
+  return { caseType: body.caseType, verdict: block.verdict, contract: false, caught, caughtPath, caughtVerdict, falseAlarm: clean ? fixFirst : null, cited };
 }
 
 const TranscriptLineSchema = z.looseObject({

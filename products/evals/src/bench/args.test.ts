@@ -96,3 +96,9 @@ describe("the run's settings file", () => {
     });
   });
 });
+
+describe("TRACK_TOOLS", () => {
+  it("does not allow rg on track r, which the bench hosts lack", () => {
+    expect(TRACK_TOOLS.r.allowed).not.toContain("Bash(rg:*)");
+  });
+});

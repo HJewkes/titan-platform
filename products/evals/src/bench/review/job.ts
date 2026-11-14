@@ -39,7 +39,7 @@ async function plantInto(bundleDir: string, plant: Plant): Promise<void> {
 }
 
 /** Head, base and diff with no `.git`; a commit the local clone lacks fails the job as infra, and nothing is fetched. */
-async function writeBundle(benchCase: ReviewCase, bundleDir: string, gitFor: ReviewPluginOptions["gitFor"]): Promise<void> {
+export async function writeBundle(benchCase: ReviewCase, bundleDir: string, gitFor: ReviewPluginOptions["gitFor"]): Promise<void> {
   if (benchCase.tree !== undefined) {
     cpSync(benchCase.tree, bundleDir, { recursive: true });
     return;

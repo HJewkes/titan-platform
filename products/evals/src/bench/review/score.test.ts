@@ -61,6 +61,39 @@ describe("scoreReview on a real-defect case", () => {
   });
 });
 
+describe("scoreReview catch levels", () => {
+  const defect = caseOf("defect", [{ path: "src/gold.ts" }]);
+
+  it("counts a gold path named without a line as a path and verdict catch, not a strict one", () => {
+    const result = scoreReview(defect, `1. src/gold.ts drops the error.\n\n${block("FIX_FIRST")}`, bundle);
+    expect(result).toMatchObject({ caughtVerdict: true, caughtPath: true, caught: false });
+  });
+
+  it("counts a FIX_FIRST citing only a non-gold path as a verdict catch alone", () => {
+    const result = scoreReview(defect, `1. src/other.ts:12 drops the error.\n\n${block("FIX_FIRST")}`, bundle);
+    expect(result).toMatchObject({ caughtVerdict: true, caughtPath: false, caught: false });
+  });
+
+  it("counts a verified gold citation at all three levels", () => {
+    expect(scoreReview(defect, `src/gold.ts:12 is wrong.\n${block("FIX_FIRST")}`, bundle)).toMatchObject({ caughtVerdict: true, caughtPath: true, caught: true });
+  });
+
+  it("does not count a path catch when the gold path is absent at the head", () => {
+    const missing = caseOf("defect", [{ path: "src/gone.ts" }]);
+    expect(scoreReview(missing, `src/gone.ts is wrong.\n${block("FIX_FIRST")}`, bundle)).toMatchObject({ caughtVerdict: true, caughtPath: false });
+  });
+
+  it("scores all three levels false on a contract failure and on a MERGE", () => {
+    expect(scoreReview(defect, undefined, bundle)).toMatchObject({ caughtVerdict: false, caughtPath: false, caught: false });
+    expect(scoreReview(defect, `src/gold.ts:12\n${block("MERGE")}`, bundle)).toMatchObject({ caughtVerdict: false, caughtPath: false, caught: false });
+  });
+
+  it("leaves all three levels null on a clean case", () => {
+    const clean = caseOf("clean");
+    expect(scoreReview(clean, `src/gold.ts:12\n${block("FIX_FIRST")}`, bundle)).toMatchObject({ caughtVerdict: null, caughtPath: null, caught: null, falseAlarm: true });
+  });
+});
+
 describe("scoreReview on a planted case", () => {
   const planted = caseOf("planted", [{ path: "src/gold.ts", line: 10 }]);
 

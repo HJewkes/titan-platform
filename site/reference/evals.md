@@ -169,6 +169,9 @@ rejects the candidate.
   samples real-defect, planted and clean review cases into a stratified `queue.jsonl`. Then
   `bench run --track r --cases <dir>` reviews each case's bundle with the live reviewer brief and scores its verdict
   block and citations.
+- `titan-evals bench rescore --track r --run <run dir> --cases <dir> --repo-root name=path` re-scores a run's saved
+  final messages at three catch levels (`caughtVerdict`, `caughtPath`, strict `caught`) and rewrites `scores.jsonl`,
+  with no model calls.
 
 ## When to reach for it
 

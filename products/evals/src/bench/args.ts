@@ -23,9 +23,11 @@ export const DENIED_TOOLS = [
 ] as const;
 
 const READ_ONLY_TOOLS = ["Read", "Grep", "Glob", "Bash(ls:*)", "Bash(cat:*)", "Bash(rg:*)", "Bash(git diff:*)"];
+/** Track r omits `rg`: the hosts that run the bench do not have it. */
+const REVIEW_READ_ONLY_TOOLS = ["Read", "Grep", "Glob", "Bash(ls:*)", "Bash(cat:*)", "Bash(git diff:*)"];
 
 export const TRACK_TOOLS: Record<Track, { allowed: readonly string[]; denied: readonly string[] }> = {
-  r: { allowed: READ_ONLY_TOOLS, denied: [...DENIED_TOOLS, "Write", "Edit", "NotebookEdit"] },
+  r: { allowed: REVIEW_READ_ONLY_TOOLS, denied: [...DENIED_TOOLS, "Write", "Edit", "NotebookEdit"] },
   i: { allowed: ["Bash", "Read", "Edit", "Write", "Glob", "Grep"], denied: DENIED_TOOLS },
   p: { allowed: READ_ONLY_TOOLS, denied: [...DENIED_TOOLS, "Write", "Edit", "NotebookEdit"] },
 };
