@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { parseVerdictBlock, visibleLines } from "@titan-design/session-read";
 import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import { parseVerdict, prKey } from "./blocked-flow-merge.js";
@@ -99,8 +100,13 @@ function median(values: readonly number[]): number {
   return sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
 
-function lineValue(body: string, label: string): string | null {
-  return new RegExp(`^${label}:\\s*(\\S+)`, "m").exec(body)?.[1] ?? null;
+/** The first visible `Class:` word of a message the verdict parser accepted as FIX_FIRST; null when it names none. */
+function classLine(body: string): string | null {
+  for (const line of visibleLines(body)) {
+    const word = /^Class:\s*(\S+)/.exec(line ?? "")?.[1];
+    if (word) return word;
+  }
+  return null;
 }
 
 const verdictRowsSchema = z.array(z.object({ actor: z.string(), body: z.string(), ts: z.number() }));
@@ -135,8 +141,10 @@ function firstPassFixFirst(rows: readonly VerdictRow[]): string | null {
 function mechanicalFirstBlocker(rows: readonly VerdictRow[]): string | null {
   const rounds = new Map<string, string | null>();
   for (const { actor, body } of rows) {
-    const key = JSON.stringify([actor, lineValue(body, "PR"), lineValue(body, "Head")]);
-    if (!rounds.has(key)) rounds.set(key, lineValue(body, "Class"));
+    const block = parseVerdictBlock(body);
+    if (!block.ok || block.verdict !== "FIX_FIRST") continue;
+    const key = JSON.stringify([actor, `${block.repo}#${block.pr}`, block.head]);
+    if (!rounds.has(key)) rounds.set(key, classLine(body));
   }
   if (!rounds.size) return null;
   const classes = [...rounds.values()].filter((c): c is string => !!c);
