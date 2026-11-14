@@ -510,8 +510,8 @@ You are storing anything in SQLite and want an edge graph, a contentless FTS5 in
 Key exports:
 
 - `open`: `SchemaTooNewError`, `assertSchemaVersion`, `hasColumn`, `hasTable`, `nowIso`, `openDatabase`, `quoteIdent`
-- `migrations`: `MigrationIdentityError`, `appliedVersions`, `runMigrations`
-- `ref`: `isRef`, `parseRef`
+- `migrations`: `MigrationDriftError`, `MigrationIdentityError`, `appliedVersions`, `runMigrations`
+- `ref`: `isRef`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/store-sqlite)
 
 <a id="cap-test-kit"></a>
