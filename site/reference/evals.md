@@ -172,6 +172,8 @@ rejects the candidate.
 - `titan-evals bench rescore --track r --run <run dir> --cases <dir> --repo-root name=path` re-scores a run's saved
   final messages at three catch levels (`caughtVerdict`, `caughtPath`, strict `caught`) and rewrites `scores.jsonl`,
   with no model calls.
+- `titan-evals bench judge review-fa-controls --cases <dir> --repo-root name=path --out <controls.json>` writes the false-alarm
+  controls; `bench judge review-fa --run <run dir> --cases <dir> --repo-root name=path --controls <controls.json>` then judges each false alarm.
 
 ## When to reach for it
 
