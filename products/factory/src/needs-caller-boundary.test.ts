@@ -33,9 +33,14 @@ const OWNER_ONLY_NAMERS: Record<string, string> = {
 };
 
 const WIRE_READERS: Record<string, string> = {
+  "eligibility/shadow/agent-lanes.ts": "the read-only shadow tick: falls back only when no inventory row carries the field; serves no needs item",
   "eligibility/shadow/tick.test-helpers.ts": "a fake active-work daemon that serves the field to tests; reads no verdict",
   "needs/agent-allow-list.ts": "reads withheld_from_agents, the one verdict the needs filter applies",
   "shepherd/task-ref.ts": "resolves a registration's task key from task-keys; returns no needs item",
+};
+
+const VERDICT_REBUILDERS: Record<string, string> = {
+  "eligibility/shadow/agent-lanes.ts": "rebuilds a lane verdict through pm agentAccess only for a daemon that sends none, to judge read-only shadow lanes; serves no needs item",
 };
 
 const CALLER_DECIDERS: Record<string, string> = {
@@ -78,8 +83,8 @@ describe("the needs caller boundary in the factory", () => {
     expect(matching(FACTORY, CALLER_COMPARE)).toEqual(Object.keys(CALLER_DECIDERS).sort());
   });
 
-  it("builds no visibility verdict of its own", () => {
-    expect(matching(FACTORY, VERDICT_BUILDERS)).toEqual([]);
+  it("builds no visibility verdict of its own outside the named shadow fallback", () => {
+    expect(matching(FACTORY, VERDICT_BUILDERS)).toEqual(Object.keys(VERDICT_REBUILDERS).sort());
   });
 
   it("reads the wire visibility fields only where the reason is named", () => {
