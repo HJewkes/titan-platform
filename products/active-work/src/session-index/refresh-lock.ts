@@ -6,7 +6,7 @@ import { isObjectLike } from '@titan-design/rpc-protocol/narrow';
 import lockfile from 'proper-lockfile';
 import { z } from 'zod';
 import { defaultGraphPath } from './graph.js';
-import { atomicWrite } from '../utils/fs-atomic.js';
+import { atomicWrite, releaseUnlessCompromised, watchCompromise } from '../utils/fs-atomic.js';
 import { isLockContention } from './scheduler.js';
 
 export const LOCK_STALE_MS = 60_000;
@@ -40,6 +40,8 @@ export interface RefreshLockOptions {
   /** Ends the wait for the lock; the call then rejects with the abort reason, holding nothing. */
   signal?: AbortSignal;
 }
+
+const SINGLE_ATTEMPT = { realpath: false, stale: LOCK_STALE_MS, retries: 0 } as const;
 
 /** 120 retries backing off from 200 ms by 1.5x to 2 s: about 4 minutes in all. */
 const BLOCKING_RETRIES = 120;
@@ -89,12 +91,13 @@ export async function readRefreshLockHolder(
 async function acquireRefreshLock(
   target: string,
   options: RefreshLockOptions,
+  onCompromised: (err: Error) => void,
 ): Promise<() => Promise<void>> {
   const retries = options.retries ?? BLOCKING_RETRIES;
   options.signal?.throwIfAborted();
   for (let attempt = 0; ; attempt += 1) {
     try {
-      return await lockfile.lock(target, { realpath: false, stale: LOCK_STALE_MS, retries: 0 });
+      return await lockfile.lock(target, { ...SINGLE_ATTEMPT, onCompromised });
     } catch (err) {
       if (!isLockContention(err)) throw err;
       if (attempt >= retries) {
@@ -126,7 +129,8 @@ export async function withRefreshLock<T>(
   const target = refreshLockPath();
   await fs.mkdir(path.dirname(target), { recursive: true });
   await fs.writeFile(target, '', { flag: 'a' });
-  const release = await acquireRefreshLock(target, options);
+  const watch = watchCompromise(target);
+  const release = await acquireRefreshLock(target, options, watch.onCompromised);
   try {
     const holder: RefreshLockHolder = {
       pid: process.pid,
@@ -134,9 +138,9 @@ export async function withRefreshLock<T>(
       startedAt: new Date().toISOString(),
     };
     await atomicWrite(refreshLockHolderPath(), JSON.stringify(holder));
-    return await fn();
+    return await watch.guard(fn());
   } finally {
     await fs.rm(refreshLockHolderPath(), { force: true });
-    await release();
+    await releaseUnlessCompromised(release, watch);
   }
 }
