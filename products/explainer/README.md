@@ -687,7 +687,7 @@ durations, ch2 shows 20 items over 39.1 s, 30.7 a minute. On the pipeline-explai
 1 only when an error row (Q-E7 or Q-E11) fails. A warning row is recorded as failing but never changes
 the exit code.
 
-`explainer eval writing <script> [--format v1|spike|text] [--json] [--table <file>] [--bench <dir> --config <id>]`
+`explainer eval writing <script> [--format v1|spike|text] [--json] [--table <file>] [--bench <dir> --config <id>] [--judge <config>]`
 scores a script at $0 against `doctrine/writing-check.json`, reading each row's status at the script's own length
 bucket. `--format text` takes one beat per line. Rows print by dimension with value, band, human standing, status,
 verdict and up to 3 offending spans. Human standing is a percentile: the share of held-out human windows at that length
@@ -711,6 +711,26 @@ hallmark row reports only. `eval l0` carries the same rows through `writingGateC
 (Q-V17), plus `hallmark:named-before-defined` (Q-V18), which errors when a beat speaks a term a later beat declares in
 `new_terms`. The same file makes `phrases` (`register:phrases` too) and `variety:connector-share` report-only over
 whatever the calibrated table says, so a recalibration cannot undo the owner's call.
+
+`--judge <config>` adds the rows a model measures (TP-5721 S5); it is the only part of `eval writing` that spends.
+The config is the judge config every judged eval reads (`JudgeConfigSchema`) plus an optional `extractor_model`;
+`fixtures/writing-gate/judge.example.json` names opus for the hallmark judge and sonnet for the term extractor, the
+writing lab's validated pair. Two calls run through `createJudgeHarness`: with `claude-print` the credential is the
+Claude Code CLI's own keychain login on the host (the account in `CLAUDE_CONFIG_DIR`, `ANTHROPIC_API_KEY` stripped),
+each capped by `max_budget_usd`. The hallmark judge (`rubrics/writing-hallmark-judge.md` over
+`rubrics/writing-hallmark-checklist.json`) quotes every passage it marks; the term extractor
+(`rubrics/writing-terms-extract.md`) lists the technical terms the piece introduces. A mark counts only when its quote
+is found in the text and its item is on the checklist, and a term only when the text says it; the rest are dropped and
+counted. A synthetic naming-refrain paragraph is put after the piece as a canary: its marks never count, and a run in
+which the judge marks none of it is untrusted. `writing:hallmark-marks` is distinct marked passages per 1,000 words,
+an error over 28 and a warning over 20, a margin of more than 5 from both the rejected scripts and the human controls
+in the S5 acceptance runs; `writing:words-per-term` is words over verified terms, a warning under 60 with one term
+always allowed, kept at warning level because a human control fell inside the rejected range, until a larger human
+calibration exists; `writing:terms-first-400` reports the terms in the first 400 words. The thresholds and their
+evidence are in the `judged` block of `doctrine/writing-gate.json`. A failed call or an untrusted run leaves both rows
+unmeasured, and an unmeasured row fails at its severity, so an unmeasured hallmark row fails the verdict. The report carries `judged` (trust, canary marks, dropped counts, terms,
+spend and `eval_version`, which hashes the three rubrics, both models and the canary). `--bench` with `--judge` is
+refused for now. Expect a few tens of cents of subscription usage per script.
 
 A story spine (`spine/v1`, `parseSpine` in `src/spine-schema.ts`) is the planner's `spine.md`, read
 from its numbered tables: §3 journey, §4 architecture, §5 constraints, §6 item ledger and, optionally,

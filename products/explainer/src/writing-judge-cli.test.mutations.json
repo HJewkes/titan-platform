@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the judged rows never reach the verdict",
+      "file": "products/explainer/src/writing-check-cli.ts",
+      "find": "parseWritingCheck(tableBytes.toString(\"utf8\")), judged?.rows ?? [])",
+      "replace": "parseWritingCheck(tableBytes.toString(\"utf8\")), [])",
+      "kills": [
+        "explainer eval writing --judge exits 1 when the canary goes unmarked: the hallmark gate is unmeasured and words per term warns",
+        "explainer eval writing --judge passes a trusted run with the judged rows in the report and its spend"
+      ]
+    }
+  ]
+}

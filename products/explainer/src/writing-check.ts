@@ -169,13 +169,14 @@ function tally(rows: readonly WritingRow[], gate: readonly GateRow[]): WritingRe
 
 /**
  * Scores a script's beats against the status table at the script's own length, and against the writing gate. Under
- * 150 words every calibrated and gate row is report-only; the hallmark counts still apply.
+ * 150 words every calibrated and gate row is report-only; the hallmark counts still apply. `judged` holds the rows a
+ * model measured (`eval writing --judge`), which count in the verdict like any gate row.
  */
-export function scoreWriting(beats: readonly WritingBeat[], check: WritingCheck): WritingReport {
+export function scoreWriting(beats: readonly WritingBeat[], check: WritingCheck, judged: readonly GateRow[] = []): WritingReport {
   const parsed = spokenText(beats.map((beat) => beat.spoken));
   const words = parsed.words.length;
   const bucket = words < MIN_REGISTER_WORDS ? null : bucketFor(words);
   const rows = ROWS.map((row) => scoreRow(row, beats, parsed, check, bucket));
-  const gate = [...writingGateRows(beats), ...textHallmarkRows(beats)];
+  const gate = [...writingGateRows(beats), ...textHallmarkRows(beats), ...judged];
   return { words, bucket, humanReference: HUMAN_REFERENCE, rows, gate, verdict: tally(rows, gate) };
 }
