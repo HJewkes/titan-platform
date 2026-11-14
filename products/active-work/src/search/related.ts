@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { planContext, type ContextPlan, type DropReason } from '@titan-design/retrieval';
+import { planContext, type ContextPlan, type Degradation, type DropReason } from '@titan-design/retrieval';
 import { NoteReadIfSchema } from '../schemas/note.js';
 import { defaultGraphPath, openGraph, type WorkspaceGraph } from '../session-index/graph.js';
 import { SEARCH_CLASSES } from './classes.js';
@@ -8,6 +8,7 @@ import { deriveQuery, type DerivedQuery } from './derive-query.js';
 import { graphTermStatistics } from './document-frequency.js';
 import { searchWorkspace } from './index.js';
 import type { ResolvedHit } from './resolve.js';
+import { visibilityFor } from '../sessions/visibility.js';
 import { readRawFrontmatter } from '../utils/gray-matter-io.js';
 import { getActiveRoot } from '../utils/paths.js';
 import { toAbsolute } from '../workspace-index/refs.js';
@@ -248,6 +249,8 @@ async function rankedHits(
 ): Promise<{ hits: RelatedHit[]; degraded: RelatedDegradation[] }> {
   const exclude = new Set(input.exclude ?? []);
   const result = await searchWorkspace(query.expression, {
+    // Related context is pasted into sessions no surface marked as the owner's, so it gets an agent's view.
+    visible: await visibilityFor({ activeRoot, warnings: [] }),
     graph,
     rawExpression: true,
     limit: limit + exclude.size,
@@ -259,14 +262,11 @@ async function rankedHits(
     .filter((hit) => !exclude.has(hit.ref) && servedByRelated(hit))
     .slice(0, limit)
     .map(toRelatedHit);
-  return {
-    hits: await withReadIf(kept, activeRoot),
-    degraded: result.degraded.map(({ retriever, reason, message }) => ({
-      source: retriever,
-      reason,
-      message,
-    })),
-  };
+  return { hits: await withReadIf(kept, activeRoot), degraded: result.degraded.map(toRelatedDegradation) };
+}
+
+function toRelatedDegradation({ retriever, reason, message }: Degradation): RelatedDegradation {
+  return { source: retriever, reason, message };
 }
 
 async function searchOpenIndex(

@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, cpSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, cpSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 // Namespace import, not `{ homedir }`: `sandbox-home.ts` redirects home by
 // REPLACING `os.homedir`, and a named import binds the original function, which
 // under the threads pool does not track a runtime `$HOME` write. Every src file
@@ -6,6 +6,8 @@ import { mkdtempSync, mkdirSync, cpSync, realpathSync, rmSync, writeFileSync } f
 import os from 'node:os';
 import { basename, join, dirname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { charterPath } from '../sessions/charter.js';
+import { writeCharter } from './visibility.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -107,8 +109,12 @@ export function lookup<T>(table: Record<string, T>, key: string): T | undefined 
   return table[key];
 }
 
-/** A minimal agent-visible brief, so a fixture's foreign initiative is served (TP-5453 P6). */
+/**
+ * A minimal agent-visible brief, so a fixture's foreign initiative is served (TP-5453 P6). Agents
+ * are served nothing without a readable charter (TP-5556), so it writes an empty one if none exists.
+ */
 export function writeAgentVisibleBrief(activeRoot: string, slug: string): void {
+  if (!existsSync(charterPath(activeRoot))) writeCharter(activeRoot);
   mkdirSync(join(activeRoot, slug), { recursive: true });
   writeFileSync(join(activeRoot, slug, 'brief.md'), '---\nvisibility: agent-visible\n---\n');
 }

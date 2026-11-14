@@ -3,6 +3,7 @@ import path from 'node:path';
 import { describe, it, expect } from 'vitest';
 import contextGraph from './context-graph.js';
 import { withTempActiveRoot, withEmptyActiveRoot } from '../test-support/test-helpers.js';
+import { writeCharter } from '../test-support/visibility.js';
 import type { CommandContext } from '../registry/index.js';
 
 function makeCtx(activeRoot: string): CommandContext {
@@ -173,8 +174,9 @@ describe('context.graph', () => {
     });
   });
 
-  it('scans every initiative when no slug is given', async () => {
+  it('scans every initiative an unmarked caller may list when no slug is given', async () => {
     await withTempActiveRoot(async (activeRoot) => {
+      writeCharter(activeRoot);
       const result = await run(activeRoot, 'SI-1');
       expect(result.initiatives_scanned).toEqual([SLUG]);
     });
