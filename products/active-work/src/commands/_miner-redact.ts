@@ -1,6 +1,6 @@
 import type { CostBucket, CostReport, OutcomeBucket } from '@titan-design/session-analytics';
 import type { CommandContext } from '../registry/types.js';
-import { visibilityFor } from '../sessions/visibility.js';
+import { visibilityFor, withheldSlugs } from '../sessions/visibility.js';
 
 /**
  * Miner spend reports key buckets by initiative name. A non-owner caller gets every initiative not
@@ -88,8 +88,25 @@ const sumOutcome = (a: OutcomeBucket, b: OutcomeBucket): OutcomeBucket =>
     requests: a.requests + b.requests,
   });
 
-export function redactOutcomeReport<T extends { byInitiative: OutcomeBucket[] }>(report: T, keyFor: MinerKey): T {
-  return { ...report, byInitiative: fold(report.byInitiative, keyFor, sumOutcome) };
+type OutcomeNames = { bySeat: OutcomeBucket[]; unmatchedAgents: string[] };
+
+/**
+ * Seat and agent names are free-form, so one can carry an owner-only initiative slug (`<slug>-coord`).
+ * A name holding a withheld slug as a whole hyphen-delimited token run is served as the owner-only key.
+ */
+export function redactOutcomeReport<T extends { byInitiative: OutcomeBucket[] } & OutcomeNames>(
+  report: T,
+  keyFor: MinerKey,
+  nameFor: MinerKey,
+): T {
+  const unmatched = [...new Set(report.unmatchedAgents.map(nameFor))];
+  const withheld = unmatched.includes(OWNER_ONLY_KEY);
+  return {
+    ...report,
+    byInitiative: fold(report.byInitiative, keyFor, sumOutcome),
+    bySeat: fold(report.bySeat, nameFor, sumOutcome),
+    unmatchedAgents: withheld ? [...unmatched.filter((name) => name !== OWNER_ONLY_KEY), OWNER_ONLY_KEY] : unmatched,
+  };
 }
 
 /**
@@ -105,4 +122,17 @@ export async function minerKeys(ctx: Pick<CommandContext, 'activeRoot' | 'caller
     if (NON_INITIATIVE_KEYS.has(key) || key.startsWith(REPO_PREFIX)) return key;
     return shown(slugOf(key)) ? key : OWNER_ONLY_KEY;
   };
+}
+
+const hasSlugTokens = (name: string, slug: string): boolean =>
+  name.split(/[^A-Za-z0-9-]+/).some((word) => `-${word}-`.includes(`-${slug}-`));
+
+/**
+ * The name a seat or agent is served under. `withheldSlugs` lists only initiatives on disk now, so a
+ * slug that has left the root cannot be matched here; the owner, shown everything, has none withheld.
+ */
+export async function minerNames(ctx: Pick<CommandContext, 'activeRoot' | 'caller' | 'warnings'>): Promise<MinerKey> {
+  const shown = await visibilityFor(ctx);
+  const withheld = (await withheldSlugs(ctx.activeRoot)).filter((slug) => !shown(slug));
+  return (name) => (withheld.some((slug) => hasSlugTokens(name, slug)) ? OWNER_ONLY_KEY : name);
 }

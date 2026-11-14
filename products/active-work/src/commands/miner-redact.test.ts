@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { CommandContext } from '../registry/types.js';
 import { withEmptyActiveRoot } from '../test-support/test-helpers.js';
 import { writeCharter } from '../test-support/visibility.js';
-import { minerKeys, OWNER_ONLY_KEY, redactCostReport, redactOutcomeReport } from './_miner-redact.js';
+import { minerKeys, minerNames, OWNER_ONLY_KEY, redactCostReport, redactOutcomeReport } from './_miner-redact.js';
 
 /**
  * Miner cost and outcomes name no initiative withheld from agents to a non-owner caller, and leave
@@ -74,7 +74,7 @@ function outcomeReport() {
     requests: 8,
     requestsPerFinished: 8 / merged,
   });
-  return { byInitiative: [bucket(VISIBLE, 1), bucket(HIDDEN, 2)] };
+  return { byInitiative: [bucket(VISIBLE, 1), bucket(HIDDEN, 2)], bySeat: [bucket('seat-a', 1)], unmatchedAgents: [] as string[] };
 }
 
 const keysAndCost = (rows: readonly { key: string; costUsd: number }[]) => rows.map((row) => [row.key, row.costUsd]);
@@ -102,7 +102,7 @@ describe('miner cost and outcomes for a non-owner (census row 18)', () => {
       const report = outcomeReport();
       report.byInitiative.push({ ...report.byInitiative[1], key: 'archived-plans', merged: 6, usdPerMerged: 4 / 6 });
 
-      const redacted = redactOutcomeReport(report, await minerKeys(context(root)));
+      const redacted = redactOutcomeReport(report, await minerKeys(context(root)), await minerNames(context(root)));
 
       expect(redacted.byInitiative.map((bucket) => [bucket.key, bucket.usdPerMerged])).toEqual([
         [VISIBLE, 4],
@@ -149,6 +149,46 @@ describe('miner cost and outcomes for a non-owner (census row 18)', () => {
         ['other', 3],
         [`other:${VISIBLE}`, 3],
       ]);
+    });
+  });
+});
+
+describe('miner outcomes seat and agent names for a non-owner', () => {
+  const redact = async (root: string, caller: CommandContext['caller']) => {
+    const report = outcomeReport();
+    report.bySeat = [
+      { ...report.bySeat[0], key: `${HIDDEN}-coord` },
+      { ...report.bySeat[0], key: `${VISIBLE}-coord` },
+      { ...report.bySeat[0], key: `${HIDDEN}er` },
+    ];
+    report.unmatchedAgents = [`${HIDDEN}-coord`, `${HIDDEN}-impl`, VISIBLE];
+    const ctx = context(root, caller);
+    return redactOutcomeReport(report, await minerKeys(ctx), await minerNames(ctx));
+  };
+
+  it('folds a seat and an agent named after an owner-only slug and keeps the rest', async () => {
+    await withEmptyActiveRoot(async (root) => {
+      seed(root);
+
+      const redacted = await redact(root, 'agent');
+
+      expect(redacted.bySeat.map((b) => [b.key, b.assignments])).toEqual([
+        [`${VISIBLE}-coord`, 2],
+        [`${HIDDEN}er`, 2],
+        [OWNER_ONLY_KEY, 2],
+      ]);
+      expect(redacted.unmatchedAgents).toEqual([VISIBLE, OWNER_ONLY_KEY]);
+    });
+  });
+
+  it('leaves the owner every seat and agent name', async () => {
+    await withEmptyActiveRoot(async (root) => {
+      seed(root);
+
+      const redacted = await redact(root, 'owner');
+
+      expect(redacted.bySeat.map((b) => b.key)).toEqual([`${HIDDEN}-coord`, `${VISIBLE}-coord`, `${HIDDEN}er`]);
+      expect(redacted.unmatchedAgents).toEqual([`${HIDDEN}-coord`, `${HIDDEN}-impl`, VISIBLE]);
     });
   });
 });
