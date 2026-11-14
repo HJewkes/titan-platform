@@ -95,7 +95,7 @@ function doneWhenText(value: unknown): string | null {
   return null;
 }
 
-const TaskYml = z.object({ title: z.coerce.string().optional(), done_when: z.unknown(), estimate: z.unknown() });
+const TaskYml = z.object({ title: z.coerce.string().optional(), done_when: z.unknown().optional(), estimate: z.unknown().optional() });
 
 function readTask(tasksDir: string, id: string): TaskFile | undefined {
   const file = join(tasksDir, `${id}.yml`);
