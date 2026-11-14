@@ -89,7 +89,8 @@ export function loadTasks(dir: string): Map<string, TaskRecord> {
     const task = parsed.data;
     const doneWhen = text(task.done_when).trim();
     const estimate = typeof task.estimate === "number" ? task.estimate : null;
-    tasks.set(task.id, { id: task.id, title: text(task.title), doneWhen: doneWhen === "" ? null : doneWhen, status: text(task.status), created: text(task.created), estimate, notes: text(task.notes) });
+    const record = { id: task.id, title: text(task.title), doneWhen: doneWhen === "" ? null : doneWhen, status: text(task.status), created: text(task.created) };
+    tasks.set(task.id, { ...record, estimate, notes: text(task.notes) });
   }
   return tasks;
 }
