@@ -6,6 +6,12 @@ import { runDoctor, type DoctorDeps, type DoctorCheck } from './doctor/index.js'
 import * as paths from './utils/paths.js';
 import { NOTE_TITLE_MAX_LENGTH } from './schemas/note.js';
 import { recordArtifactHash } from './utils/artifact-hash.js';
+import { visibilityFor, type Shown } from './sessions/visibility.js';
+
+/** The owner's verdict: these checks are about install health, not about who may see what. */
+function ownerShown(activeRoot: string): Promise<Shown> {
+  return visibilityFor({ activeRoot, caller: 'owner', warnings: [] });
+}
 
 function statusOf(checks: DoctorCheck[], name: string): string {
   return checks.find((c) => c.name === name)!.status;
@@ -28,6 +34,7 @@ describe('runDoctor', () => {
   let base: string;
   let activeRoot: string;
   let homeDir: string;
+  let shown: Shown;
 
   beforeEach(async () => {
     base = mkdtempSync(path.join(tmpdir(), 'aw-doctor-'));
@@ -35,6 +42,7 @@ describe('runDoctor', () => {
     homeDir = path.join(base, 'home');
     await fs.mkdir(activeRoot, { recursive: true });
     await fs.writeFile(path.join(activeRoot, '.schema-version'), '1\n', 'utf8');
+    shown = await ownerShown(activeRoot);
   });
 
   afterEach(() => rmSync(base, { recursive: true, force: true }));
@@ -54,6 +62,7 @@ describe('runDoctor', () => {
         version: '0.1.0',
       }),
       supervisorActive: async () => ({ kind: 'launchd', active: true }),
+      shown,
     };
   }
 
@@ -572,11 +581,13 @@ describe('runDoctor', () => {
 describe('runDoctor default daemon probe', () => {
   let stateRoot: string;
   let activeRoot: string;
+  let shown: Shown;
 
   beforeEach(async () => {
     stateRoot = mkdtempSync(path.join(tmpdir(), 'aw-doctor-state-'));
     activeRoot = mkdtempSync(path.join(tmpdir(), 'aw-doctor-active-'));
     await fs.writeFile(path.join(activeRoot, '.schema-version'), '1\n', 'utf8');
+    shown = await ownerShown(activeRoot);
     vi.spyOn(paths, 'getStateRoot').mockReturnValue(stateRoot);
     delete process.env.AW_PORT;
   });
@@ -596,6 +607,7 @@ describe('runDoctor default daemon probe', () => {
       homeDir: stateRoot,
       nodeVersion: 'v22.4.0',
       supervisorActive: async () => null,
+      shown,
     };
   }
 

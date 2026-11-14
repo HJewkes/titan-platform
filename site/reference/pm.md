@@ -409,6 +409,21 @@ registries included; only the `./node` plan store touches disk. It does not chec
 does not choose the area ids; those come from `$tiers` and the products outside this repo. It has no task numbering, and it
 knows a task's initiative only by its id prefix (`EC` for `EC-1`).
 
+## Intent digests
+
+`parseIntentDigest(text)` reads a `titan-intent-digest/v1` file: front matter (`schema`, `slug`,
+`initiative`, `built_from`), then exactly six sections (Standing direction, Reasons, Ruled out,
+Taste, Open questions, Superseded). Each bullet reads
+`- I<n> <YYYY-MM-DD> "<quote>" (quote: <ref>)[ superseded-by: I<m>]`. The line id is
+`<slug>/I<n>`, checked with the planning `intent_ref` and `quote_ref` grammars. The quote ends at
+the last `" (quote:` on the line, so it may hold double quotes.
+
+It is strict, with no best-effort read. It returns `{ ok: true, slug, initiative, builtFrom, lines }`
+(each line has `id`, `date`, `quote`, `ref`, `section`, optional `supersededBy`) or
+`{ ok: false, errors }`, each error with its 1-based `line`. A missing quote, date or ref, a
+non-ISO date, an unknown, duplicate or missing section, a duplicate id and a `superseded-by`
+naming an id not in the file are all errors. It does no I/O.
+
 ## Actuals and claims
 
 A task may carry an optional `actual` block, the measured outcome written back when the task is

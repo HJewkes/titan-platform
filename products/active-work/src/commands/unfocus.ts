@@ -6,7 +6,7 @@ import { writeFrontmatter } from '../utils/gray-matter-io.js';
 import { today } from '../utils/today.js';
 import { NotFoundError, UsageError } from '../errors.js';
 import { defineCommand } from '../registry/index.js';
-import { loadAllBriefs, sortSlugs } from './_focus-helpers.js';
+import { loadAllBriefs, movesForCaller, sortSlugs } from './_focus-helpers.js';
 
 const ArgsSchema = z.object({
   slug: z.string().min(1),
@@ -35,7 +35,7 @@ export default defineCommand<Args, Result>({
     positional: ['slug'],
     usage: 'active-work unfocus <slug>',
   },
-  async run({ slug }) {
+  async run({ slug }, ctx) {
     const briefs = await loadAllBriefs();
     const target = briefs.find((b) => b.slug === slug);
     if (!target) {
@@ -90,7 +90,7 @@ export default defineCommand<Args, Result>({
       }
     });
 
-    return { slug, renumbered: renumberOps };
+    return { slug, renumbered: await movesForCaller(renumberOps, ctx) };
   },
 });
 
