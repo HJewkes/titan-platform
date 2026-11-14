@@ -91,6 +91,7 @@ import sourceRead from './source-read.js';
 
 // Worktree / cross-initiative reads
 import audit from './audit.js';
+import contextBrief from './context-brief.js';
 import contextGraph from './context-graph.js';
 import contextRelated from './context-related.js';
 import inventory from './inventory.js';
@@ -224,6 +225,7 @@ const ALL_COMMANDS: AnyCommand[] = [
   list,
   contextGraph,
   contextRelated,
+  contextBrief,
   search,
   inventory,
   precedentExtract,
