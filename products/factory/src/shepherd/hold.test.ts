@@ -7,7 +7,7 @@ import type { StepRoute } from "@titan-design/workflow";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { seatTranscript, type SeatTranscript } from "../test-support/seat-transcript.js";
 import { holdSlotsMigration } from "./store-migrations.js";
-import { shepherdEventMigration } from "./events.js";
+import { gateCancelKindMigration, mergeWaitKindMigration, orderEventKindsMigration, orderWaitKindMigration, reclassMarkMigration, shepherdEventMigration } from "./events.js";
 import type { CarryResult } from "./tree-carry.js";
 import { MergeHeldError, heldCheck, holdSatisfier, holdingPort, openHeadRead, waitWhileHeld } from "./hold.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
@@ -635,7 +635,7 @@ describe("a hold whose named reviewer is read from its real transcript", () => {
 });
 
 describe("a merge step waiting on a hold", () => {
-  it("names each new reason it waits on once on the console, then merges on release", async () => {
+  it("names each new reason it waits on once on the console, then ends the wait on release without merging", async () => {
     const reasons = ["the Version Packages PR #1 is ready and lands first", "the Version Packages PR #1 is ready and lands first", "the repo is frozen", undefined];
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     let ran = false;
@@ -650,5 +650,25 @@ describe("a merge step waiting on a hold", () => {
     ]);
     expect(ran).toBe(false);
     warn.mockRestore();
+  });
+
+  it("records each changed reason as a merge-wait timeline row, once per change", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const db = openDatabase(":memory:");
+    runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19), reclassMarkMigration(25), gateCancelKindMigration(39), orderEventKindsMigration(44), orderWaitKindMigration(45), mergeWaitKindMigration(53)]);
+    const store = new ShepherdStore(db, () => 0);
+    store.register({ repo: REPO, pr: 7, runId: "run-7", task: "demo/7", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+    const reasons = ["the repo is frozen", "the repo is frozen", "the Version Packages PR #1 is ready and lands first", undefined];
+    const route = partialFake<StepRoute>({ match: "merge", runner: { run: async () => ({ ok: true as const, output: "{}" }) } });
+    const noteWait = (repo: string, pr: number, reason: string, sha: string | undefined) => store.noteMergeWait(repo, pr, reason, "2026-01-01T00:00:00.000Z", sha);
+    const waiting = waitWhileHeld(route, async () => reasons.shift(), { sleep: async () => undefined, now: () => 0 }, async () => H1, undefined, undefined, undefined, noteWait);
+
+    await waiting.runner.run(partialFake<RoutedStepInput>({ prompt: JSON.stringify({ repo: REPO, pr: 7, sha: H1 }), signal: new AbortController().signal, stepId: "merge", attempt: 0 }));
+
+    const rows = store.eventsOf("run-7").filter((event) => event.kind === "merge-wait");
+    expect(rows.map(({ reason, headSha }) => ({ reason, headSha }))).toEqual([
+      { reason: "the repo is frozen", headSha: H1 },
+      { reason: "the Version Packages PR #1 is ready and lands first", headSha: H1 },
+    ]);
   });
 });
