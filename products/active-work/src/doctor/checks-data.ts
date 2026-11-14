@@ -2,11 +2,11 @@ import nodePath from 'node:path';
 import { ConfigError } from '../errors.js';
 import { getActiveRoot } from '../utils/paths.js';
 import { lintHashes } from '../lint/index.js';
-import { listInitiativeSlugs } from '../sessions/initiatives.js';
 import { loadTasks } from '../lint/load-tasks.js';
 import { loadNotesFromDir } from '../notes/note-file.js';
 import { NOTE_TITLE_MAX_LENGTH } from '../schemas/note.js';
-import { sweepAllLeases } from '../sessions/lease.js';
+import { sweepAllLeases, type LeaseSweepResult } from '../sessions/lease.js';
+import { listShownSlugs, type Shown } from '../sessions/visibility.js';
 import { openGraph, type WorkspaceGraph } from '../session-index/graph.js';
 import { checkWorkspaceIndex, type WorkspaceIndexHealth } from '../workspace-index/doctor.js';
 import {
@@ -91,7 +91,7 @@ function sessionFilesCheck(malformed: string[]): DoctorCheck {
  */
 export async function checkSessions(deps: DoctorDeps): Promise<DoctorCheck[]> {
   const activeRoot = deps.activeRoot ?? getActiveRoot();
-  const slugs = await listInitiativeSlugs(activeRoot);
+  const slugs = await listShownSlugs(activeRoot, deps.shown);
   const byKind = new Map<DanglingKind, string[]>();
   const malformed: string[] = [];
   const badTaskRefs: string[] = [];
@@ -144,7 +144,7 @@ function noteTitlesCheck(entries: string[]): DoctorCheck {
 /** Notes whose stored title exceeds the write-time bound. */
 export async function checkNoteTitles(deps: DoctorDeps): Promise<DoctorCheck> {
   const activeRoot = deps.activeRoot ?? getActiveRoot();
-  const slugs = await listInitiativeSlugs(activeRoot);
+  const slugs = await listShownSlugs(activeRoot, deps.shown);
   const overlong: string[] = [];
   for (const slug of slugs) {
     const { notes } = await loadNotesFromDir(nodePath.join(activeRoot, slug));
@@ -175,10 +175,26 @@ export async function checkLeases(deps: DoctorDeps): Promise<DoctorCheck> {
     return {
       name: 'session-leases',
       status: 'warn',
-      detail: `could not sweep ${nodePath.join(activeRoot, '.sessions')} (${result.error}) — stale leases will keep warning every bootstrap`,
+      detail: `${describeSweepFailure(activeRoot, result, deps.shown)} — stale leases will keep warning every bootstrap`,
     };
   }
   return { name: 'session-leases', status: 'ok', detail: counts };
+}
+
+/**
+ * An fs error message carries the failing path, so under an initiative the caller may not see,
+ * the failure is reported as a count and the message is dropped (TP-5747).
+ */
+function describeSweepFailure(activeRoot: string, result: LeaseSweepResult, shown: Shown): string {
+  if (result.failedSlug !== undefined && !shown(result.failedSlug)) {
+    return 'could not sweep the leases of 1 initiative hidden from this caller';
+  }
+  return `could not sweep ${nodePath.join(activeRoot, '.sessions')} (${result.error})`;
+}
+
+/** An indexed path is relative to the active root, so its first segment is the initiative it sits in. */
+function pathShown(shown: Shown): (relativePath: string) => boolean {
+  return (relativePath) => shown(relativePath.split('/')[0] ?? null);
 }
 
 function artifactHashesCheck(drifted: string[]): DoctorCheck {
@@ -231,7 +247,7 @@ export async function checkWorkspaceIndexRefs(deps: DoctorDeps): Promise<DoctorC
     return workspaceIndexCheck(null);
   }
   try {
-    return workspaceIndexCheck(await checkWorkspaceIndex(graph, activeRoot));
+    return workspaceIndexCheck(await checkWorkspaceIndex(graph, activeRoot, pathShown(deps.shown)));
   } finally {
     graph.db.close();
   }
@@ -240,7 +256,7 @@ export async function checkWorkspaceIndexRefs(deps: DoctorDeps): Promise<DoctorC
 /** Structured artifacts (tasks/*.yml, artifacts.yml, brief.md) whose content no longer matches the last CLI write (AW-66). */
 export async function checkArtifactHashes(deps: DoctorDeps): Promise<DoctorCheck> {
   const activeRoot = deps.activeRoot ?? getActiveRoot();
-  const slugs = await listInitiativeSlugs(activeRoot);
+  const slugs = await listShownSlugs(activeRoot, deps.shown);
   const drifted: string[] = [];
   for (const slug of slugs) {
     const findings = await lintHashes(slug, nodePath.join(activeRoot, slug));
