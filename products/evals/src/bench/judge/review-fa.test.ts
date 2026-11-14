@@ -10,7 +10,7 @@ const source: FaSource = {
 };
 
 const job = (armId: string, model: string, caseId: string, sessionId: string) => ({ arm: { id: armId, model, effort: "high" }, caseId, attempt: 1, sessionId });
-const score = (armId: string, caseId: string, caseType: string, falseAlarm: boolean, blocking: object[]) => ({ arm: armId, caseId, attempt: 1, result: { caseType, falseAlarm, verdict: "FIX_FIRST", blocking } });
+const score = (armId: string, caseId: string, caseType: string, falseAlarm: boolean, cited: object[]) => ({ arm: armId, caseId, attempt: 1, result: { caseType, falseAlarm, verdict: "FIX_FIRST", cited } });
 const cite = { path: "src/math.ts", lineStart: 2, lineEnd: 2 };
 
 describe("falseAlarmItems", () => {
@@ -33,6 +33,19 @@ describe("falseAlarmItems", () => {
     expect(prompts).toHaveLength(2);
     for (const prompt of prompts) for (const leak of ["S-high", "sonnet", "claude-", "$"]) expect(prompt).not.toContain(leak);
     expect(prompts[0]).toContain("src/math.ts:2-2");
+  });
+
+  it("makes one whole-review item for a false alarm that cites nothing", () => {
+    const items = falseAlarmItems([score("S-high", "case-1", "clean", true, [])], jobs, source);
+    expect(items.map((entry) => entry.item.key)).toEqual(["S-high:case-1:0"]);
+    const [question] = items[0]?.item.questions ?? [];
+    expect(question?.criteria[0]?.ask).toContain("Is any blocking finding in this review a real defect at this head?");
+    expect(question?.texts.review).toContain("add() subtracts");
+  });
+
+  it("ignores a legacy blocking field: only result.cited names the findings", () => {
+    const legacy = { arm: "S-high", caseId: "case-1", attempt: 1, result: { caseType: "clean", falseAlarm: true, blocking: [cite] } };
+    expect(falseAlarmItems([legacy], jobs, source).map((entry) => entry.item.questions[0]?.texts["cited-lines"])).toEqual([expect.stringContaining("cites no verifiable line")]);
   });
 
   it("refuses a false alarm whose job row is missing", () => {
