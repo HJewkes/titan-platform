@@ -11,7 +11,7 @@ Environment="PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
 EnvironmentFile=%h/.config/titan-factory/owner-gates.env
 # No path or flag: the tick reads its rule file from the default place.
 ExecStart=/usr/bin/node %h/.local/share/titan-factory/deploy/titan-platform/products/factory/dist/bin.js dispatch shadow-tick
-# 75 is "another run holds the lock": nothing happened and the next tick retries.
+# The tick takes no lock today. 75 is reserved as the repo's "busy, retry next tick" code, in case it gains one.
 SuccessExitStatus=75
 TimeoutStartSec=5min
 Nice=10

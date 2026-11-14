@@ -15,7 +15,7 @@ describe("titan-dispatch-shadow units", () => {
     expect(line(service(), "ExecStart")).toMatch(/ dispatch shadow-tick$/);
   });
 
-  it("is a five-minute oneshot that treats a held lock as success and reads the env file", () => {
+  it("is a five-minute oneshot that treats the busy code 75 as success and reads the env file", () => {
     expect(line(service(), "Type")).toBe("oneshot");
     expect(line(service(), "TimeoutStartSec")).toBe("5min");
     expect(line(service(), "SuccessExitStatus")).toBe("75");

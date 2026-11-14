@@ -559,8 +559,8 @@ Two owner-only steps install it:
 systemctl --user link ~/projects/titan-platform/ops/systemd/titan-dispatch-shadow.service ~/projects/titan-platform/ops/systemd/titan-dispatch-shadow.timer && systemctl --user enable --now titan-dispatch-shadow.timer
 ```
 
-The tick needs the active-work daemon. Without it the tick exits 69 and writes a `wake` row with `unread`.
-
+The tick needs the active-work daemon. Without it a lane cannot be read, so the tick writes a `refused` row with code
+`signal-unreadable` and exits 69.
 ## Owner-queue sources
 
 `src/needs/` holds the factory's `QueueSource` adapters for `@titan-design/owner-queue`. Each
