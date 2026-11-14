@@ -694,8 +694,11 @@ declare function indexSource(graph: SessionGraph, source: SessionSourceDescripto
 declare function indexCodexSource(graph: SessionGraph, source: SessionSourceDescriptor): Promise<NormalizedIndexResult>;
 
 declare function isInjectedCause(cause: WakeCause): boolean;
-/** A line nobody typed: an injected cause, or a headless `sdk` prompt unless the caller keeps those. */
-declare function isUntypedPrompt(inbound: Pick<Inbound, "cause" | "promptSource">, indexSdkPrompts?: boolean): boolean;
+/**
+ * A line nobody typed: an injected cause, or a headless `sdk` prompt unless the caller keeps those.
+ * Older transcripts carry no `promptSource`; their session's `sdk-cli` entrypoint stands in for it.
+ */
+declare function isUntypedPrompt(inbound: Pick<Inbound, "cause" | "promptSource">, indexSdkPrompts?: boolean, sessionEntrypoint?: string | null): boolean;
 /** Prompt text with every injected block removed; empty when nothing the human wrote is left. */
 declare function stripInjected(text: string): string;
 

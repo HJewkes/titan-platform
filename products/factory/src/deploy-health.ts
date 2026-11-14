@@ -43,6 +43,8 @@ export interface DeployHealth {
   behind: number;
   /** Minutes since the oldest ask (or origin/main commit, once git is read) that has not landed; 0 when none is waiting. */
   behindMinutes: number;
+  /** When the oldest ask (or origin/main commit, once git is read) the running build lacks was made, in epoch ms, grace or not; unset when none is waiting. */
+  waitingSince?: number;
   /** Set from git by serve's watch while no deploy is queued, else by `shepherd status`: commits on origin/main older than the grace that the running build lacks, asked for or not. */
   originLag?: { merges: number; minutes: number; asked: number };
   consecutiveRefusals: number;
@@ -180,11 +182,11 @@ export function targetsToProve(entries: readonly LogEntry[], runningSha: string)
   return [...new Set(uncoveredAsks(entries, askedAt, landings).map((entry) => entry.target))];
 }
 
-function waiting(uncovered: readonly Ask[], now: number): Pick<DeployHealth, "behind" | "behindMinutes"> {
+function waiting(uncovered: readonly Ask[], now: number): Pick<DeployHealth, "behind" | "behindMinutes" | "waitingSince"> {
   if (uncovered.length === 0) return { behind: 0, behindMinutes: 0 };
   const asks = uncovered.map((entry) => Date.parse(entry.at));
   const behind = asks.filter((at) => now - at >= DEPLOY_GRACE_MS).length;
-  return { behind, behindMinutes: Math.max(0, Math.floor((now - Math.min(...asks)) / 60_000)) };
+  return { behind, behindMinutes: Math.max(0, Math.floor((now - Math.min(...asks)) / 60_000)), waitingSince: Math.min(...asks) };
 }
 
 /**
@@ -219,7 +221,9 @@ export function withGitBehind(health: DeployHealth, git: GitBehind, now: number)
   const minutes = merges === 0 ? 0 : Math.max(0, Math.floor((now - Math.min(...aged)) / 60_000));
   const causes = [...health.causes, ...gitCauses(merges, pastLimit(health, minutes, now), minutes, health.runningSha)];
   const originLag = { merges, minutes, asked: health.behind };
-  return { ...health, behind: Math.max(health.behind, merges), behindMinutes: Math.max(health.behindMinutes, minutes), originLag, alarm: causes.length > 0, causes };
+  const waitingSince = Math.min(...git.commitTimes, ...(health.waitingSince === undefined ? [] : [health.waitingSince]));
+  const lag = { behind: Math.max(health.behind, merges), behindMinutes: Math.max(health.behindMinutes, minutes), originLag };
+  return { ...health, ...(Number.isFinite(waitingSince) && { waitingSince }), ...lag, alarm: causes.length > 0, causes };
 }
 
 function gitCauses(merges: number, minutesPast: boolean, minutes: number, runningSha: string): string[] {

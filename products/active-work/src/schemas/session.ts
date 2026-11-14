@@ -111,6 +111,9 @@ export const SessionFrontmatterSchema = z
     // Written only by `session recover` (TP-1711): the record was rebuilt from
     // the transcript of a session that ended without a wrap, not written by it.
     generated: z.literal(true).optional(),
+    // Written by `loop open` and `loop resolve` (TP-1016): the record only
+    // carries a ledger entry, so session views must not read it as a session.
+    ledger: z.literal(true).optional(),
     // The transcript a generated record was read from.
     transcript: z.string().min(1).optional(),
   })

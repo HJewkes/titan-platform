@@ -48,10 +48,14 @@ function describe(err: unknown): string {
  * the way `loadSessionsFromDir` returns `malformed`; callers that only need the
  * tasks take `.tasks` and ignore them.
  */
-export async function loadTasks(initiativeDir: string): Promise<LoadedTasks> {
+export async function loadTasks(
+  initiativeDir: string,
+  options: { archive?: boolean } = {},
+): Promise<LoadedTasks> {
   const { tasks, unparsed } = await readInitiativeTasks(
     path.dirname(initiativeDir),
     path.basename(initiativeDir),
+    options,
   );
   return {
     tasks: tasks.map((row) => row.task),

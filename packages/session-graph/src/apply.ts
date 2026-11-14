@@ -75,7 +75,8 @@ function* deltaSteps(graph: SessionGraph, transcriptId: number, delta: Transcrip
   for (const key of LINKED_KEYS) {
     for (const rows of slices<unknown>(delta[key])) yield () => applyLinkedRows(graph, transcriptId, { ...NO_LINKED_ROWS, [key]: rows });
   }
-  const injectedLines = new Set(delta.inbound.filter(i => isUntypedPrompt(i, source.indexSdkPrompts ?? false)).map(i => i.byteOffset));
+  const entrypoints = new Map(delta.sessions.map(s => [s.sessionId, s.startType]));
+  const injectedLines = new Set(delta.inbound.filter(i => isUntypedPrompt(i, source.indexSdkPrompts ?? false, entrypoints.get(i.sessionId) ?? null)).map(i => i.byteOffset));
   for (const spans of slices(delta.spans)) yield () => applySpans(graph, transcriptId, spans, injectedLines);
   yield () => {
     applyReviewVerdicts(db, transcriptId, delta);
