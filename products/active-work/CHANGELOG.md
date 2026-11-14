@@ -1,5 +1,21 @@
 # @titan-design/active-work
 
+## 0.31.0
+
+### Minor Changes
+
+- d025aac: Decide initiative visibility once (TP-5556). `sessions/visibility.ts` is the only loader: `visibilityFor` hands readers a branded `Shown` allow list, so the charter's human-only list now narrows agent reads too, and an unreadable charter or root shows agents nothing. `inventory` rows gain `withheld_from_agents`, `migrate` refuses every caller but the owner, and the owner is now served every initiative by context graph, plan lists and precedent search.
+
+### Patch Changes
+
+- 2226cfb: `miner cost` and `miner outcomes` fold every initiative withheld from agents into one `owner-only` bucket for a non-owner caller, with rates recomputed over the folded sums, and collapse an `other:<dir>` key to `other` unless the dir is a shown initiative. `active-work new` refuses the slugs `unknown`, `other` and `owner-only`, which the miner uses as report keys (TP-5556, TP-5748, TP-5749, TP-5750).
+- 44c3988: `doctor`, `focus` and `unfocus` name no initiative withheld from an agent caller. Doctor's checks
+  run over the caller's verdict, a lease sweep failure under a withheld initiative is reported as a
+  count without its path, and renumbering moves are filtered through the same verdict (TP-5556 S2b).
+- Updated dependencies [d025aac]
+- Updated dependencies [ce68429]
+  - @titan-design/pm@0.11.0
+
 ## 0.30.0
 
 ### Minor Changes
