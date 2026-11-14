@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { z } from "zod";
 import type { Runner, RunResult } from "../dispatch/runner.js";
 
 /*
@@ -20,6 +21,15 @@ function assertRead(bin: string, args: readonly string[]): void {
   if (write !== undefined) throw new Error(`the shadow's gh reader makes no write, so it refuses ${write}`);
 }
 
+/** What execFileSync's error carries about a gh that exited non-zero or was killed. */
+const ExecFailure = z.looseObject({ status: z.number().nullish(), stdout: z.string().optional(), stderr: z.string().optional(), signal: z.string().nullish() });
+
+function failedRun(error: unknown): RunResult {
+  const failed = ExecFailure.safeParse(error).data ?? {};
+  const result: RunResult = { status: failed.status ?? 1, stdout: failed.stdout ?? "", stderr: failed.stderr ?? "" };
+  return failed.signal === "SIGTERM" ? { ...result, timedOut: true } : result;
+}
+
 /**
  * `readPrFiles` passes its repo as the runner's `cwd` and leaves `{owner}/{repo}` for gh to fill; with no clone of the
  * repo at hand, a slug there names the repo through GH_REPO instead.
@@ -28,12 +38,10 @@ export const ghApiRead: Runner = (bin, args, cwd) => {
   assertRead(bin, args);
   const slug = cwd !== undefined && REPO_SLUG.test(cwd);
   const env = slug ? { ...process.env, GH_REPO: cwd } : process.env;
+  const where = !slug && cwd !== undefined ? { cwd } : {};
   try {
-    const stdout = execFileSync(bin, args, { encoding: "utf8", env, timeout: GH_TIMEOUT_MS, maxBuffer: MAX_OUTPUT_BYTES, stdio: ["ignore", "pipe", "pipe"], ...(!slug && cwd !== undefined && { cwd }) });
-    return { status: 0, stdout };
+    return { status: 0, stdout: execFileSync(bin, args, { encoding: "utf8", env, timeout: GH_TIMEOUT_MS, maxBuffer: MAX_OUTPUT_BYTES, stdio: ["ignore", "pipe", "pipe"], ...where }) };
   } catch (error) {
-    const failed = error as { status?: number | null; stdout?: string; stderr?: string; signal?: string | null };
-    const result: RunResult = { status: failed.status ?? 1, stdout: failed.stdout ?? "", stderr: failed.stderr ?? "" };
-    return failed.signal === "SIGTERM" ? { ...result, timedOut: true } : result;
+    return failedRun(error);
   }
 };
