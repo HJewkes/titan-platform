@@ -28,6 +28,24 @@
       "kills": [
         "miner cost and outcomes for a non-owner (census row 18) recomputes an outcome bucket rate over the folded sums"
       ]
+    },
+    {
+      "name": "a seat named after an owner-only slug keeps its name",
+      "file": "products/active-work/src/commands/_miner-redact.ts",
+      "find": "  return (name) => (withheld.some((slug) => hasSlugTokens(name, slug)) ? OWNER_ONLY_KEY : name);",
+      "replace": "  return (name) => name;",
+      "kills": [
+        "miner outcomes seat and agent names for a non-owner folds a seat and an agent named after an owner-only slug and keeps the rest"
+      ]
+    },
+    {
+      "name": "a name merely containing a slug as a substring is folded",
+      "file": "products/active-work/src/commands/_miner-redact.ts",
+      "find": "`-${word}-`.includes(`-${slug}-`)",
+      "replace": "word.includes(slug)",
+      "kills": [
+        "miner outcomes seat and agent names for a non-owner folds a seat and an agent named after an owner-only slug and keeps the rest"
+      ]
     }
   ]
 }

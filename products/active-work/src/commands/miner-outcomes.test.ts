@@ -102,9 +102,9 @@ async function seedGraph(root: string): Promise<void> {
   graph.db.close();
 }
 
-function seedLogs(root: string, initiative?: string): string {
+function seedLogs(root: string, initiative?: string, seat = 'seat-a'): string {
   const logs = path.join(root, 'logs');
-  mkdirSync(path.join(logs, 'seat-a'), { recursive: true });
+  mkdirSync(path.join(logs, seat), { recursive: true });
   const row = (ts: string, outcome: string) =>
     JSON.stringify({ ts, agent: 'impl-1', task: 'T-1', kind: 'feature', outcome, ...(initiative && { initiative }) });
   const lines = [
@@ -112,7 +112,7 @@ function seedLogs(root: string, initiative?: string): string {
     '{not json',
     row('2026-09-01T08:00:00Z', 'merged'),
   ];
-  writeFileSync(path.join(logs, 'seat-a', 'dispatch.jsonl'), lines.join('\n') + '\n', 'utf8');
+  writeFileSync(path.join(logs, seat, 'dispatch.jsonl'), lines.join('\n') + '\n', 'utf8');
   return logs;
 }
 
@@ -229,6 +229,22 @@ describe('miner outcomes for a non-owner (TP-5556 S2a)', () => {
       expect(JSON.stringify(agent)).not.toContain(OWNER_ONLY_SLUG);
       expect(agent.byInitiative.map((bucket) => bucket.key)).toEqual(['owner-only']);
       expect(owner.byInitiative.map((bucket) => bucket.key)).toEqual([OWNER_ONLY_SLUG]);
+    });
+  });
+
+  it('serves a seat named after an owner-only slug as owner-only everywhere to an agent', async () => {
+    await withEmptyActiveRoot(async (root) => {
+      await seedGraph(root);
+      seedOwnerOnlyInitiative(root);
+      const logs = seedLogs(root, undefined, `${OWNER_ONLY_SLUG}-coord`);
+
+      const agent = await minerOutcomes.run({ logs }, { ...ctx('human'), activeRoot: root, caller: 'agent' });
+      const owner = await minerOutcomes.run({ logs }, { ...ctx(), activeRoot: root, caller: 'owner' });
+
+      expect(JSON.stringify(agent)).not.toContain(OWNER_ONLY_SLUG);
+      expect(stderrText()).not.toContain(OWNER_ONLY_SLUG);
+      expect(agent.bySeat.map((bucket) => bucket.key)).toEqual(['owner-only']);
+      expect(owner.bySeat.map((bucket) => bucket.key)).toEqual([`${OWNER_ONLY_SLUG}-coord`]);
     });
   });
 });

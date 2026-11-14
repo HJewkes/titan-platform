@@ -125,4 +125,20 @@ describe("dispatch eligibility rules", () => {
 
     expect(result.eligible.map((entry) => entry.task.id)).toEqual(["AL-5", "AL-3", "AL-2", "AL-1", "AL-4"]);
   });
+
+  it("without a policy, fields only a policy reads change nothing: the output is byte-equal to the same tasks without them", () => {
+    const policyFields: Partial<Task> = { source: "sweep", severity: "low", serves: "alpha/other", blocked_on: "owner", created: "2026-01-01" };
+    const tasks = [task(1), task(2, { bet: undefined }), task(3, { fold: undefined, owner_steps: undefined }), task(4)];
+    const retired = { outcomes: [{ id: "alpha/faster-landing", initiative: "alpha", statement: "Land", measure: "lead time", state: "retired" as const }] };
+
+    const today = evaluateEligibility(tasks, plan());
+    const withFields = evaluateEligibility(
+      tasks.map((entry) => ({ ...entry, ...policyFields })),
+      plan(retired),
+    );
+
+    const printed = (result: typeof today) => JSON.stringify({ eligible: result.eligible.map((entry) => ({ ...entry, task: entry.task.id })), refused: result.refused });
+    expect(printed(withFields)).toBe(printed(today));
+    expect(printed(today)).toBe('{"eligible":[{"task":"AL-1","bet":{"id":"alpha/B1","initiative":"alpha","week":"2026-W47","outcome":"alpha/faster-landing","order":1,"prediction":{"metric":"lead time","direction":"decrease","baseline":4,"expected":2,"read_by":"2026-11-30"},"state":"selected","tasks":["alpha/AL-1","alpha/AL-2","alpha/AL-3"]}}],"refused":[{"id":"AL-2","refusals":[{"code":"no-bet","detail":"names no bet"}]},{"id":"AL-3","refusals":[{"code":"no-owner-steps","detail":"owner_steps is absent"},{"code":"no-fold","detail":"fold is not set"}]},{"id":"AL-4","refusals":[{"code":"not-in-bet","detail":"alpha/B1 does not list alpha/AL-4"}]}]}');
+  });
 });
