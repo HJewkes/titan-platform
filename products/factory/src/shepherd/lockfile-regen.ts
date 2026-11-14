@@ -95,7 +95,7 @@ function writeTree(dir: string, files: Readonly<Record<string, string>>): void {
 }
 
 /** setupEnv is the install allowlist; this also drops tokens it lets through and points npm's user config at an empty file, so ~/.npmrc lends no credential. */
-function scrubbedEnv(dir: string): NodeJS.ProcessEnv {
+export function scrubbedEnv(dir: string): NodeJS.ProcessEnv {
   const userconfig = join(dir, ".lockfile-regen-userconfig");
   writeFileSync(userconfig, "");
   const env = Object.fromEntries(Object.entries(setupEnv(process.env)).filter(([key]) => !TOKEN_ENV.includes(key) && !CREDENTIAL_ENV.test(key)));
