@@ -15,6 +15,15 @@ describe("titan-dispatch-shadow units", () => {
     expect(line(service(), "ExecStart")).toMatch(/ dispatch shadow-tick$/);
   });
 
+  it("structure test: the factory CLI registers the verb the unit runs, under dispatch", () => {
+    const eligibility = join(REPO, "products", "factory", "src", "eligibility");
+    const verbSource = readFileSync(join(eligibility, "shadow", "command.ts"), "utf8");
+    const dispatchSource = readFileSync(join(eligibility, "command.ts"), "utf8");
+
+    expect(verbSource).toMatch(/\.command\("shadow-tick"\)/);
+    expect(dispatchSource).toMatch(/registerShadowVerbs\(dispatch,/);
+  });
+
   it("is a five-minute oneshot that treats the busy code 75 as success and reads the env file", () => {
     expect(line(service(), "Type")).toBe("oneshot");
     expect(line(service(), "TimeoutStartSec")).toBe("5min");

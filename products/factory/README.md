@@ -546,7 +546,7 @@ dispatches nothing and spawns nothing. The tick is inert unless the rule file se
 
 The timer is `ops/systemd/titan-dispatch-shadow.{service,timer}`. It fires at :07 and :37 of each hour and reads the same
 env file as the owner-gates unit. The unit carries no path and no flag, because the tick reads its rule file from the
-default place, `~/.config/titan-factory/dispatcher.json`. The shadow directory has a space in its path, so it lives in that
+default place, `~/.config/titan-factory/dispatcher.json`. For a one-off run, the verb takes `--rule-file <path>`. The shadow directory has a space in its path, so it lives in that
 file and never in the unit.
 
 Two owner-only steps install it:
