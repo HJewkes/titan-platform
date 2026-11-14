@@ -192,6 +192,7 @@ export async function shadowTick(input: TickInput): Promise<TickResult> {
   const agentLanes = rules.lanes.length === 0 ? { read: new Set<string>() } : await readAgentLanes(ports, rules.lanes);
   const judged: LaneJudged[] = [];
   for (const lane of rules.lanes) judged.push(await laneRows(lane, input, at, ports, agentLanes));
-  const wake: ShadowRow = { v: 1, kind: "wake", wake: input.wake, at, build: buildSha(), rule_hash: hash, lanes: rules.lanes.length, ...wakePlanRead(judged.map((lane) => lane.planRead)), ...("via" in agentLanes && { visibility_read: agentLanes.via }) };
+  const reads = { ...wakePlanRead(judged.map((lane) => lane.planRead)), ...("via" in agentLanes && { visibility_read: agentLanes.via }) };
+  const wake: ShadowRow = { v: 1, kind: "wake", wake: input.wake, at, build: buildSha(), rule_hash: hash, lanes: rules.lanes.length, ...reads };
   return { rows: [wake, ...judged.flatMap((lane) => lane.rows)], unreadLanes: judged.filter((lane) => lane.unread).length };
 }

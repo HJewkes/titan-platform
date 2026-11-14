@@ -12,7 +12,7 @@ import { z } from "zod";
  */
 
 /** The lane initiatives an agent may see, and whether the daemon or the initiative files said so. */
-export interface VisibleLanes {
+interface VisibleLanes {
   lanes: ReadonlySet<string>;
   read: "rpc" | "file";
 }

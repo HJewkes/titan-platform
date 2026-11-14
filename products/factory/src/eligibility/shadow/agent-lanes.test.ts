@@ -11,10 +11,10 @@ const ORIGIN = "http://127.0.0.1:1";
 const LANES = ["alpha", "beta", "gamma"];
 
 function inventoryFetch(rows: Row[] | Error): typeof fetch {
-  return (async () => {
+  return async () => {
     if (rows instanceof Error) return new Response(JSON.stringify({ ok: false, error: rows.message, code: 70 }), { status: 500 });
     return new Response(JSON.stringify({ ok: true, data: { initiatives: rows } }));
-  }) as typeof fetch;
+  };
 }
 
 function brief(root: string, slug: string, visibility: string): void {
