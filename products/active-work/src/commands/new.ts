@@ -9,6 +9,7 @@ import { today } from '../utils/today.js';
 import { validateSlug, derivePrefix } from '../utils/slug.js';
 import { ValidationError } from '../errors.js';
 import { defineCommand } from '../registry/index.js';
+import { RESERVED_MINER_KEYS } from './_miner-redact.js';
 
 const ArgsSchema = z.object({
   slug: z.string().min(1),
@@ -59,6 +60,16 @@ async function computeNextRank(activeRoot: string): Promise<number> {
   return max + 1;
 }
 
+function assertNewSlug(slug: string): void {
+  const slugCheck = validateSlug(slug);
+  if (!slugCheck.ok) {
+    throw new ValidationError(`Invalid slug "${slug}": ${slugCheck.error}`);
+  }
+  if (RESERVED_MINER_KEYS.has(slug)) {
+    throw new ValidationError(`Invalid slug "${slug}": reserved as a miner report key`);
+  }
+}
+
 export default defineCommand({
   name: 'new',
   description: 'Scaffold a new initiative directory.',
@@ -76,10 +87,7 @@ export default defineCommand({
       'active-work new <slug> --title <title> [--ship-target <t>] [--owner <o>] [--worktree <path>]',
   },
   async run(args, ctx) {
-    const slugCheck = validateSlug(args.slug);
-    if (!slugCheck.ok) {
-      throw new ValidationError(`Invalid slug "${args.slug}": ${slugCheck.error}`);
-    }
+    assertNewSlug(args.slug);
 
     const dir = path.join(ctx.activeRoot, args.slug);
     if (await dirExists(dir)) {

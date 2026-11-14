@@ -273,6 +273,7 @@
   "packages/pm/src/graph.ts",
   "packages/pm/src/ids.ts",
   "packages/pm/src/index.ts",
+  "packages/pm/src/intent-digest.ts",
   "packages/pm/src/planning.ts",
   "packages/pm/src/provenance.ts",
   "packages/pm/src/review-folder.ts",

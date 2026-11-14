@@ -13,6 +13,7 @@ deliverable registry, and `summaryRecommendations`, `prioritizedTopics`,
 `isAgentVisible` and `InitiativeVisibilitySchema` for an initiative brief's `visibility`, and
 `resolveTaskKey` for the canonical `<initiative>/<TASK-ID>` task key, and
 `OutcomeSchema`, `BetSchema`, `FreezeSchema` and `OutOfScopeSchema` for planning records, and
+`parseIntentDigest` for the strict `titan-intent-digest/v1` owner-intent digest, and
 `TaskRequireSchema` for a brief's `task_require` list of the task provenance fields (`class`,
 `serves`, `source` and the rest, typed in `src/provenance.ts`) new tasks must carry. The root entry is pure code: no fs, process or network. The `./node`
 subpath holds the planning-record file store (`readPlanRecord`, `loadPlanRecords`,
