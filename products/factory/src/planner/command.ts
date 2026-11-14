@@ -5,7 +5,7 @@ import { withdrawMatching } from "@titan-design/owner-queue/withdraw";
 import type { Command } from "commander";
 import type { Verbs } from "../cli-types.js";
 import { factoryStateDir } from "../config.js";
-import { ownerInboxDir } from "../deploy-watch-ports.js";
+import { consoleInboxDir } from "@titan-design/app-paths";
 import { PLANNER_ALARM_ASKER, PLANNER_ALARM_KEYS } from "./alarm.js";
 import { loadPlannerConfig } from "./config.js";
 import { runProcess, type PlannerRun } from "./inputs.js";
@@ -24,7 +24,7 @@ export interface PlannerDeps {
 
 /** The owner inbox spool the titan console reads, which `titan-console inbox file -` feeds too. */
 function inboxAlarm(env: NodeJS.ProcessEnv): PlannerAlarmPort {
-  const inbox = ownerInboxDir(env);
+  const inbox = consoleInboxDir({ env });
   const match = { asker: PLANNER_ALARM_ASKER, actor: PLANNER_ALARM_ASKER, keys: PLANNER_ALARM_KEYS, reason: "resolved" };
   return {
     file: async (deposit) => void (await writeDeposit(inbox, deposit)),

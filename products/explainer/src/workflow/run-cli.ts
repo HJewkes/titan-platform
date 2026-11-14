@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { appDirs } from "@titan-design/app-paths";
+import { appDirs, consoleInboxDir } from "@titan-design/app-paths";
 import { Command, CommanderError, InvalidArgumentError, Option } from "commander";
 import { JudgeConfigSchema } from "../eval-harness.js";
 import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
 import { DEFAULT_BUDGET_USD, DEFAULT_SCRIPT_MODEL, resumeVideo, runVideo, writeReport, type RunHost, type RunOutcome } from "./host.js";
-import { ownerInboxDir, REFLECTION_MODES, type ReflectionConfig, type ReflectionMode } from "../reflection-export.js";
+import { REFLECTION_MODES, type ReflectionConfig, type ReflectionMode } from "../reflection-export.js";
 import { STAGES, type StageName } from "./records.js";
 import { compareReports, renderCompare } from "./report.js";
 import { CLI_FACT_ADAPTERS, gatherFacts, gatherRequest, type GatherDeps, type GatherFlags, type GatherRequest } from "./run-gather.js";
@@ -181,7 +181,7 @@ async function runAction(flags: RunFlags, deps: RunCliDeps, io: Io): Promise<num
 }
 
 function reflectionFor(flags: RunFlags): ReflectionConfig {
-  return { mode: flags.reflection, asker: flags.asker, spoolDir: ownerInboxDir(process.env), ...(flags.retroDir ? { retroDir: path.resolve(flags.retroDir) } : {}) };
+  return { mode: flags.reflection, asker: flags.asker, spoolDir: consoleInboxDir({ env: process.env }), ...(flags.retroDir ? { retroDir: path.resolve(flags.retroDir) } : {}) };
 }
 
 function threshold(text: string): number {

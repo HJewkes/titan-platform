@@ -73,9 +73,9 @@ interface LoadedRows {
 type RowJoins = Pick<TaskActualsOptions, "prDiffs" | "shepherdRuns">;
 
 /** Reads the graph strictly read-only, even the miner's own index: `ctx.graph()` would migrate and reprice it. */
-export function loadRows(ctx: MinerContext, capMinutes: number | undefined, joins: RowJoins = {}): LoadedRows {
+export async function loadRows(ctx: MinerContext, capMinutes: number | undefined, joins: RowJoins = {}): Promise<LoadedRows> {
   const { initiativesRoot, throughputInitiatives: initiatives, dbPath } = ctx.config;
-  const load = loadDoneTasks(initiativesRoot, initiatives);
+  const load = await loadDoneTasks(initiativesRoot, initiatives);
   for (const initiative of load.missing) ctx.warnings.push(`initiative ${initiative} has no tasks directory under ${initiativesRoot}`);
   const graph = openSessionGraph(dbPath, { readonly: true });
   try {
@@ -111,7 +111,7 @@ export const throughputTable = defineCommand<TableArgs, ThroughputTableResult | 
   result: z.union([z.custom<ThroughputTableResult>(), z.string()]),
   cli: { options: FIT_OPTIONS },
   async run(args, ctx) {
-    const { table, inputs } = fitTable(loadRows(ctx, args.cap), args);
+    const { table, inputs } = fitTable(await loadRows(ctx, args.cap), args);
     return ctx.format === "human" ? [renderInputs(inputs), ...renderClasses(table)].join("\n") : { ...inputs, table };
   },
 });
@@ -131,7 +131,7 @@ export const throughputBacktest = defineCommand<BacktestArgs, ThroughputBacktest
     },
   },
   async run(args, ctx) {
-    const loaded = loadRows(ctx, args.cap);
+    const loaded = await loadRows(ctx, args.cap);
     const { table, inputs } = fitTable(loaded, args);
     const horizonDays = args.horizon ?? DEFAULT_HORIZON_DAYS;
     const origins = args.origin ?? weeklyOrigins(table.watermark.newestDoneAt, horizonDays, args.weeks ?? DEFAULT_WEEKS);

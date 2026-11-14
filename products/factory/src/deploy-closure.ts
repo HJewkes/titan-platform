@@ -1,17 +1,13 @@
+import { touchedPaths as sharedTouchedPaths } from "@titan-design/daemon";
 import { isDeepStrictEqual } from "node:util";
 import { parse } from "yaml";
 import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { readPath } from "./narrow.js";
 
 export const FACTORY_PACKAGE = "@titan-design/factory";
-/** Root files every workspace build reads; a lockfile change for an unrelated package over-triggers, which a drain makes harmless. */
-const ROOT_BUILD_INPUTS: readonly string[] = ["pnpm-lock.yaml", "package.json", "pnpm-workspace.yaml", ".npmrc"];
-const ROOT_TSCONFIG = /^tsconfig[^/]*\.json$/;
 const DEP_FIELDS = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"] as const;
 /** Stands in for the changed paths when git could not list them, so an unknown diff deploys. */
 export const UNKNOWN_DIFF = "<unknown diff>";
-/** Files inside a closure package that the build never compiles into dist. */
-const NON_RUNTIME = /(\.(test|spec)\.[cm]?tsx?|\.md)$/;
 
 interface WorkspacePackage {
   /** Relative to the checkout root, with forward slashes. */
@@ -70,14 +66,10 @@ export function closureDirs(packages: readonly WorkspacePackage[], root: string 
   return [...seen].map((name) => byName.get(name)!.dir).sort();
 }
 
-function isRootInput(path: string): boolean {
-  return ROOT_BUILD_INPUTS.includes(path) || ROOT_TSCONFIG.test(path);
-}
-
 /** The changed paths a factory build reads; `undefined` means git could not list them, which counts as touched. */
 export function touchedPaths(changed: readonly string[] | undefined, closure: readonly string[]): string[] {
   if (changed === undefined) return [UNKNOWN_DIFF];
-  return changed.filter((path) => isRootInput(path) || (!NON_RUNTIME.test(path) && closure.some((dir) => path.startsWith(`${dir}/`))));
+  return sharedTouchedPaths(changed, closure);
 }
 
 /** Whether a change would make the deployer build; an unread closure counts every change, so a lag is never hidden. */

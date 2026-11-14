@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   assertNoPrivate,
   defaultPolicy,
@@ -15,17 +15,19 @@ import {
 
 /** A synthetic active-work root: two engineering initiatives and two fictional private ones. */
 function writeRoot(root: string): void {
-  const initiative = (slug: string, tasks: string[]) => {
+  const initiative = (slug: string, tasks: string[], brief = "---\nvisibility: agent-visible\n---\n") => {
     mkdirSync(join(root, slug, "tasks", "archive"), { recursive: true });
-    writeFileSync(join(root, slug, "brief.md"), `# ${slug}\n`);
+    writeFileSync(join(root, slug, "brief.md"), brief);
     for (const task of tasks) writeFileSync(join(root, slug, "tasks", `${task}.yml`), `id: ${task}\n`);
   };
   initiative("titan-platform", ["TP-1"]);
   initiative("relay", ["R-1"]);
   initiative("titan-design", ["TD-7"]);
-  initiative("garden-plans", ["GDN-3"]);
-  initiative("book-club", ["BKC-9", "TP-4"]);
+  initiative("garden-plans", ["GDN-3"], "# garden-plans\n");
+  initiative("book-club", ["BKC-9", "TP-4"], "# book-club\n");
   mkdirSync(join(root, "not-an-initiative"));
+  mkdirSync(join(root, "claude-channels", "sources", "autonomy"), { recursive: true });
+  writeFileSync(join(root, "claude-channels", "sources", "autonomy", "charter.md"), "---\nhuman_only_initiatives: []\n---\n");
 }
 
 describe("private exclusion", () => {
@@ -44,24 +46,63 @@ describe("private exclusion", () => {
     expect(readPrivateMarkers(root, policy.initiatives)).toEqual({ slugs: ["book-club", "garden-plans"], prefixes: ["BKC", "GDN"] });
   });
 
-  it("allows an initiative only when isAgentVisible serves its brief", () => {
-    const scratch = mkdtempSync(join(tmpdir(), "exclusion-visibility-"));
+  describe("agent access verdict", () => {
+    const visible = "---\nvisibility: agent-visible\n---\n";
+    let scratch: string;
+
     const brief = (slug: string, text: string) => {
       mkdirSync(join(scratch, slug), { recursive: true });
       writeFileSync(join(scratch, slug, "brief.md"), text);
     };
-    brief("alpha", "---\ntitle: Alpha\nvisibility: agent-visible\n---\n");
-    brief("private-notes", "---\ntitle: Private notes\n---\n");
-    brief("broken", "---\nvisibility: [agent-visible\n---\n");
-    brief("marked-private", "---\nvisibility: owner-only\n---\n");
-    try {
+    const charter = (text: string) => {
+      const dir = join(scratch, "claude-channels", "sources", "autonomy");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "charter.md"), text);
+    };
+
+    beforeEach(() => {
+      scratch = mkdtempSync(join(tmpdir(), "exclusion-visibility-"));
+    });
+    afterEach(() => rmSync(scratch, { recursive: true, force: true }));
+
+    it("allows an initiative only when its brief says agent-visible and the charter does not list it", () => {
+      charter("---\nhuman_only_initiatives: []\n---\n");
+      brief("alpha", "---\ntitle: Alpha\nvisibility: agent-visible\n---\n");
+      brief("private-notes", "---\ntitle: Private notes\n---\n");
+      brief("broken", "---\nvisibility: [agent-visible\n---\n");
+      brief("marked-private", "---\nvisibility: owner-only\n---\n");
+      brief("no-frontmatter", "visibility: agent-visible\n");
+
       const scratchPolicy = defaultPolicy(scratch);
 
       expect(scratchPolicy.initiatives).toEqual(["alpha"]);
-      expect(scratchPolicy.markers.slugs).toEqual(["broken", "marked-private", "private-notes"]);
-    } finally {
-      rmSync(scratch, { recursive: true, force: true });
-    }
+      expect(scratchPolicy.markers.slugs).toEqual(["broken", "marked-private", "no-frontmatter", "private-notes"]);
+    });
+
+    it("excludes a human-only initiative whose brief says agent-visible", () => {
+      charter("---\nhuman_only_initiatives: [hush]\n---\n");
+      brief("hush", visible);
+      brief("open", visible);
+
+      const scratchPolicy = defaultPolicy(scratch);
+
+      expect(scratchPolicy.initiatives).toEqual(["open"]);
+      expect(scratchPolicy.markers.slugs).toEqual(["hush"]);
+    });
+
+    it.each([
+      ["missing", undefined],
+      ["malformed", "---\nhuman_only_initiatives: nope\n---\n"],
+      ["unparsable", "---\nhuman_only_initiatives: [a\n---\n"],
+    ])("excludes every initiative when the charter is %s", (_name, text) => {
+      if (text !== undefined) charter(text);
+      brief("open", visible);
+
+      const scratchPolicy = defaultPolicy(scratch);
+
+      expect(scratchPolicy.initiatives).toEqual([]);
+      expect(scratchPolicy.markers.slugs).toEqual(["open"]);
+    });
   });
 
   it("self-test: the clean case passes and all four planted private cases are rejected", () => {

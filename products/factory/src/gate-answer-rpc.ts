@@ -11,7 +11,7 @@ import { MAX_SET_FILES, afterDigest, keptImages, setPacketOf, type AfterDigest }
 import { configPath, loadConfig } from "./config.js";
 import { stepOf } from "./coordinator-evidence.js";
 import { stepIdMatches } from "./definition.js";
-import { ownerInboxDir } from "./deploy-watch-ports.js";
+import { consoleInboxDir } from "@titan-design/app-paths";
 import { checkAnswer, type AcceptFiles, type AnswerPayload, type AnswerRequest } from "./gate-answer-check.js";
 import { repeatedResolution } from "./gate-resolve.js";
 import type { FactoryHost } from "./host.js";
@@ -82,7 +82,7 @@ export function configuredConsoleAnswers(env: NodeJS.ProcessEnv): ConsoleAnswers
   const shepherd = loadConfig(configPath(env)).shepherd;
   const configured = shepherd?.consoleAnswers;
   if (configured === undefined) return undefined;
-  const inbox = ownerInboxDir(env);
+  const inbox = consoleInboxDir({ env });
   const tellOwner: TellOwner = async (deposit) => void (await writeDeposit(inbox, deposit));
   return { ...configured, tellOwner, ...(shepherd?.agentChatBin !== undefined && { agentChatBin: shepherd.agentChatBin }) };
 }

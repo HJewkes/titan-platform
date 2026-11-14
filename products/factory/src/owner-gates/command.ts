@@ -3,7 +3,7 @@ import { openDatabase } from "@titan-design/store-sqlite";
 import type { Command } from "commander";
 import type { Verbs } from "../cli-types.js";
 import { configPath, loadConfig } from "../config.js";
-import { ownerInboxDir } from "../deploy-watch-ports.js";
+import { consoleInboxDir } from "@titan-design/app-paths";
 import { parseSinceOption } from "../digest/command.js";
 import { readAllGates } from "../shepherd/owner-friction-read.js";
 import { loadSeatBook } from "../shepherd/seats.js";
@@ -37,7 +37,7 @@ function readReport(verbs: Verbs, opts: ReportOpts, now: number): OwnerGatesRepo
 
 /** One card per class proposed for demotion; a held class gets none. */
 async function depositCards(verbs: Verbs, report: OwnerGatesReport, week: string): Promise<string[]> {
-  const inbox = ownerInboxDir(verbs.io.env);
+  const inbox = consoleInboxDir({ env: verbs.io.env });
   const lines: string[] = [];
   for (const flag of report.flagged.filter((candidate) => candidate.held.length === 0)) {
     const { file, created } = await writeDeposit(inbox, demotionDeposit(flag, week));

@@ -2,7 +2,7 @@ import nodePath from 'node:path';
 import { ConfigError } from '../errors.js';
 import { getActiveRoot } from '../utils/paths.js';
 import { lintHashes } from '../lint/index.js';
-import { loadTasks } from '../lint/load-tasks.js';
+import { loadTasks } from '../bootstrap/load.js';
 import { loadNotesFromDir } from '../notes/note-file.js';
 import { NOTE_TITLE_MAX_LENGTH } from '../schemas/note.js';
 import { sweepAllLeases, type LeaseSweepResult } from '../sessions/lease.js';
@@ -59,7 +59,7 @@ async function collectBadTaskRefs(
   initiativeDir: string,
   now: Date,
 ): Promise<string[]> {
-  const tasks = await loadTasks(initiativeDir);
+  const { tasks } = await loadTasks(initiativeDir);
   const taskIds = new Set(tasks.map((t) => t.id));
   const loops = await deriveOpenLoops(initiativeDir, { now, tasks });
   const bad: string[] = [];

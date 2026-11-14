@@ -10,7 +10,8 @@ import { enabledRules, fakeRpc, readRows, selectedBet, shadowHome, shadowTickCli
 /*
  * The shadow dispatcher may never spawn, message or start an agent (TP-5755 PLAN 4, row S2). Three proofs: no file of the
  * dispatcher's decision path imports a launch path, a full enabled tick calls no child process and no agent-chat runner,
- * and the row kind has no `dispatched` member to write.
+ * and the row kind has no `dispatched` member to write. The one outward message, a lane's ready-stock refill request, goes
+ * through the CLI's injected `refillSend`, so no fenced file imports how it is sent.
  */
 
 const childProcess = vi.hoisted(() => ({ calls: [] as string[] }));

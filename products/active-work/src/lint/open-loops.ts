@@ -1,6 +1,6 @@
 import path from 'node:path';
+import { readInitiativeTasks } from '@titan-design/pm/node';
 import { deriveOpenLoops } from '../sessions/open-loops.js';
-import { loadTasks } from './load-tasks.js';
 import { DEFAULT_LIMITS, type LintFinding, type LintLimits } from './types.js';
 
 /**
@@ -37,7 +37,12 @@ export async function lintOpenLoops(
   limits: LintLimits = DEFAULT_LIMITS,
   now: Date = new Date(),
 ): Promise<LintFinding[]> {
-  const tasks = await loadTasks(initiativeDir);
+  // lint sits below bootstrap, so it reads through pm directly; malformed files are skipped.
+  const { tasks: rows } = await readInitiativeTasks(
+    path.dirname(initiativeDir),
+    path.basename(initiativeDir),
+  );
+  const tasks = rows.map((row) => row.task);
   const loops = await deriveOpenLoops(initiativeDir, { now, tasks });
 
   return loops

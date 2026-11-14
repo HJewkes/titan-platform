@@ -234,6 +234,7 @@ function countRows(graph: WorkspaceGraph): Record<WorkspaceClass, number> {
     task: count('workspace_task'),
     session: count('session_record'),
     source: count('source'),
+    plan: count('plan_record'),
   };
 }
 

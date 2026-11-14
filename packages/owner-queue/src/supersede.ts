@@ -1,7 +1,7 @@
+import { parsePrKey } from "./keys.js";
 import type { ItemStatus, OwnerItem } from "./schema.js";
 
 const FULL_SHA = /^[0-9a-f]{40}$/;
-const PINNED_PR_KEY = /^pr:([\w.-]+\/[\w.-]+#\d+)@([0-9a-f]{40})$/;
 
 /** Statuses whose item or answer would still count at the PR's live head. */
 const SUPERSEDABLE: ReadonlySet<ItemStatus> = new Set(["open", "answered", "decided"]);
@@ -34,18 +34,13 @@ interface PinnedPr {
 
 function pinnedPrs(item: OwnerItem): PinnedPr[] {
   return item.keys.flatMap((key) => {
-    const match = PINNED_PR_KEY.exec(key.trim().toLowerCase());
-    return match ? [{ pr: match[1]!, sha: match[2]! }] : [];
+    const parsed = parsePrKey(key);
+    return parsed?.sha ? [{ pr: parsed.pr, sha: parsed.sha }] : [];
   });
 }
 
 function prRefs(item: OwnerItem): string[] {
-  return item.keys.flatMap((key) => {
-    const normal = key.trim().toLowerCase();
-    if (!normal.startsWith("pr:")) return [];
-    const at = normal.lastIndexOf("@");
-    return [at < 0 ? normal.slice(3) : normal.slice(3, at)];
-  });
+  return item.keys.flatMap((key) => parsePrKey(key)?.pr ?? []);
 }
 
 function givenHeads(heads: Readonly<Record<string, string>> | undefined): Map<string, string> {

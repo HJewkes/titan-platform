@@ -1,3 +1,4 @@
+import { parsePrKey } from "./keys.js";
 import type { OwnerItem } from "./schema.js";
 
 export const STALE_RULES = ["pr-merged", "head-moved", "task-done", "asker-retired"] as const;
@@ -7,7 +8,6 @@ export type StaleRule = (typeof STALE_RULES)[number];
 export const PARKED = "parked";
 
 const FULL_SHA = /^[0-9a-f]{40}$/;
-const PINNED_PR_KEY = /^pr:([\w.-]+\/[\w.-]+#\d+)@([0-9a-f]{40})$/;
 
 /**
  * Source facts read by the caller, as of one moment. A missing entry is no fact, and no
@@ -36,8 +36,8 @@ interface PinnedPr {
 
 function pinnedPrs(item: OwnerItem): PinnedPr[] {
   return item.keys.flatMap((key) => {
-    const match = PINNED_PR_KEY.exec(key.toLowerCase());
-    return match ? [{ pr: match[1]!, sha: match[2]! }] : [];
+    const parsed = parsePrKey(key);
+    return parsed?.sha ? [{ pr: parsed.pr, sha: parsed.sha }] : [];
   });
 }
 
@@ -46,12 +46,7 @@ function prFacts(evidence: StaleEvidence): Map<string, { state: string; head?: s
 }
 
 function prRefs(item: OwnerItem): string[] {
-  return item.keys.flatMap((key) => {
-    const normal = key.toLowerCase();
-    if (!normal.startsWith("pr:")) return [];
-    const at = normal.lastIndexOf("@");
-    return [at < 0 ? normal.slice(3) : normal.slice(3, at)];
-  });
+  return item.keys.flatMap((key) => parsePrKey(key)?.pr ?? []);
 }
 
 function merged(item: OwnerItem, evidence: StaleEvidence): StaleLabel | null {

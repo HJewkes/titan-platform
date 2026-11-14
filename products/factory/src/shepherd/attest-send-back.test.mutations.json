@@ -22,10 +22,20 @@
     {
       "name": "any unmet row sends back, an author meeter included",
       "file": "products/factory/src/shepherd/attest-send-back.ts",
-      "find": "why === NO_MEETER && ",
-      "replace": "",
+      "find": "declined.every((row): row is DeclinedStep => row.by !== undefined && STEP_NAME.test(row.step))",
+      "replace": "declined.every((row): row is DeclinedStep => STEP_NAME.test(row.step))",
       "kills": [
-        "a reviewer's declined attestation attest-unmet meeter-is-author still raises approve-merge"
+        "a reviewer's declined attestation attest-unmet meeter-is-author still raises approve-merge",
+        "an adversary's declined attestation (TP-5902) no adversary verdict at all still raises approve-merge on adversary-missing"
+      ]
+    },
+    {
+      "name": "an adversary's decline keeps the owner gate, as before TP-5902",
+      "file": "products/factory/src/shepherd/attest-send-back.ts",
+      "find": ", [\"adversary-declined\", \"adversary\"]]",
+      "replace": "]",
+      "kills": [
+        "an adversary's declined attestation (TP-5902) an adversary MERGE with no Attests line, as on #3291, sends back once with a brief that names the adversary"
       ]
     },
     {

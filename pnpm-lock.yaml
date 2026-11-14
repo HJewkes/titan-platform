@@ -1273,6 +1273,9 @@ importers:
       '@titan-design/agent-protocol':
         specifier: workspace:^
         version: link:../../packages/agent-protocol
+      '@titan-design/anthropic-account':
+        specifier: workspace:^
+        version: link:../../packages/anthropic-account
       '@titan-design/app-paths':
         specifier: workspace:^
         version: link:../../packages/app-paths
@@ -1609,6 +1612,9 @@ importers:
       '@titan-design/agent-dispatch':
         specifier: workspace:^
         version: link:../../packages/agent-dispatch
+      '@titan-design/anthropic-account':
+        specifier: workspace:^
+        version: link:../../packages/anthropic-account
       '@titan-design/app-paths':
         specifier: workspace:^
         version: link:../../packages/app-paths
@@ -1754,6 +1760,9 @@ importers:
 
   products/session-miner:
     dependencies:
+      '@titan-design/anthropic-account':
+        specifier: workspace:^
+        version: link:../../packages/anthropic-account
       '@titan-design/app-paths':
         specifier: workspace:^
         version: link:../../packages/app-paths
@@ -1823,6 +1832,9 @@ importers:
 
   products/titan:
     dependencies:
+      '@titan-design/anthropic-account':
+        specifier: workspace:^
+        version: link:../../packages/anthropic-account
       '@titan-design/daemon':
         specifier: workspace:^
         version: link:../../packages/daemon

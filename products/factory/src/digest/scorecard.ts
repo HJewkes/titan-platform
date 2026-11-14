@@ -2,6 +2,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
+import { scorecardStorePath } from "@titan-design/app-paths";
 import { factoryHealthSchema, isoWeek, readWeekRows, type FactoryHealth } from "@titan-design/session-analytics";
 import { openDatabase } from "@titan-design/store-sqlite";
 import { factoryHealthLine } from "./factory-health.js";
@@ -14,8 +15,7 @@ export interface ScorecardPaths {
 
 /** `TITAN_SCORECARD_STORE`, else `$XDG_DATA_HOME/titan-scorecard/scorecard.sqlite3`, as session-miner's job resolves it. */
 export function scorecardPaths(env: NodeJS.ProcessEnv, home: string = os.homedir()): ScorecardPaths {
-  const raw = env.TITAN_SCORECARD_STORE ?? path.join(env.XDG_DATA_HOME ?? path.join(home, ".local", "share"), "titan-scorecard", "scorecard.sqlite3");
-  const storeFile = raw.startsWith("~/") ? path.join(home, raw.slice(2)) : raw;
+  const storeFile = scorecardStorePath({ env, home });
   return { storeFile, weeksDir: path.join(path.dirname(storeFile), "weeks") };
 }
 

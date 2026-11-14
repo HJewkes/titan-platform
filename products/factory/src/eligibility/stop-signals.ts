@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { scorecardStorePath } from "@titan-design/app-paths";
 import { TaskSchema, type Task } from "@titan-design/pm";
 import { createRpcClient, liveSource } from "@titan-design/rpc-client";
 import { readTaskRows } from "@titan-design/session-analytics";
@@ -84,14 +84,9 @@ async function readInitiativeTasks({ verbs, initiative }: StopQuery): Promise<Ta
   return tasks.flatMap((row) => TaskSchema.safeParse(row).data ?? []);
 }
 
-/** The ticket scorecard's store, where session-miner writes it: `TITAN_SCORECARD_STORE`, else under the XDG data home. */
-function scorecardStore(env: NodeJS.ProcessEnv): string {
-  return env.TITAN_SCORECARD_STORE ?? join(env.XDG_DATA_HOME ?? join(homedir(), ".local", "share"), "titan-scorecard", "scorecard.sqlite3");
-}
-
 /** Spend per task from the scorecard, opened read-only; any failure reads as unread so it never holds. */
 export function readScorecardSpend(env: NodeJS.ProcessEnv): SpendRead {
-  const file = scorecardStore(env);
+  const file = scorecardStorePath({ env });
   if (!existsSync(file)) return { ok: false, why: "no ticket-scorecard store" };
   try {
     const db = openDatabase(file, { readonly: true });

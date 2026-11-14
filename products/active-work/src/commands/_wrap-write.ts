@@ -5,7 +5,7 @@ import type { WorkerRecord } from '../schemas/worker-record.js';
 import { writeSessionFile } from '../sessions/session-file.js';
 import { findDanglingResolves, type DanglingKind } from '../sessions/open-loops.js';
 import { writeNoteFile } from '../notes/note-file.js';
-import { loadTasks } from '../lint/load-tasks.js';
+import { loadTasks } from '../bootstrap/load.js';
 import { recordUnrecorded, sweepInitiative, type SweepResult } from '../wrap/sweep.js';
 import { readRawFrontmatter, writeFrontmatter } from '../utils/gray-matter-io.js';
 import { today } from '../utils/today.js';
@@ -19,7 +19,7 @@ import type { Args, Filed, Ledger, NoteInput, RejectedResolve } from './_wrap-ar
  */
 export async function verifyTaskIds(initiativeDir: string, ids: string[]): Promise<void> {
   if (ids.length === 0) return;
-  const known = new Set((await loadTasks(initiativeDir)).map((task) => task.id));
+  const known = new Set((await loadTasks(initiativeDir)).tasks.map((task) => task.id));
   const unknown = ids.filter((id) => !known.has(id));
   if (unknown.length === 0) return;
   throw new ValidationError(

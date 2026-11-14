@@ -77,8 +77,8 @@ const existingRows = () => ({
 const schemaObjects = () => read('SELECT name, sql FROM sqlite_master ORDER BY type, name');
 
 describe('migration 1003: workspace span tables', () => {
-  it('is the top of the chain', () => {
-    expect(SCHEMA_VERSION).toBe(1003);
+  it('is followed only by the plan record table', () => {
+    expect(SCHEMA_VERSION).toBe(1004);
   });
 
   it('upgrades a 1002 graph to contentless-delete workspace tables and keeps every existing row', () => {

@@ -1,7 +1,7 @@
+import { parsePrKey } from "./keys.js";
 import type { OwnerItem, SourceRef } from "./schema.js";
 
 const PR_KEY = /^pr:[\w.-]+\/[\w.-]+#\d+@[0-9a-f]{40}$/;
-const FULL_SHA = /^[0-9a-f]{40}$/;
 const ID_KEY = /^(task|gate|run):\S+$/;
 
 /** GitHub owner, repo and sha compare case-insensitively; task, gate and run ids are exact. */
@@ -24,10 +24,9 @@ interface Group {
 
 function headsOf(keys: readonly string[]): Map<string, string | null> {
   const heads = new Map<string, string | null>();
-  for (const key of keys.map(canonical).filter((each) => each.startsWith("pr:"))) {
-    const at = key.lastIndexOf("@");
-    const pr = at < 0 ? key : key.slice(0, at);
-    const sha = at >= 0 && FULL_SHA.test(key.slice(at + 1)) ? key.slice(at + 1) : null;
+  for (const parsed of keys.map(parsePrKey)) {
+    if (parsed === null) continue;
+    const { pr, sha } = parsed;
     heads.set(pr, heads.has(pr) && heads.get(pr) !== sha ? null : sha);
   }
   return heads;

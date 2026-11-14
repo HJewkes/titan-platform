@@ -36,6 +36,7 @@ const ROW_SOURCES: { table: string; refColumn: string; title: string }[] = [
   { table: 'source', refColumn: 'source_ref', title: 'title' },
   { table: 'initiative', refColumn: 'initiative_ref', title: 'title' },
   { table: 'session_record', refColumn: 'session_ref', title: 'session_id' },
+  { table: 'plan_record', refColumn: 'plan_ref', title: 'title' },
 ];
 
 interface RowFacts {

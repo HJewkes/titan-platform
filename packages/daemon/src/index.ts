@@ -58,3 +58,4 @@ export type { ContainedFile } from "./contained-file.js";
 export { containedFile } from "./contained-file.js";
 export type { FileResponseOptions } from "./file-response.js";
 export { fileResponse } from "./file-response.js";
+export { touchedPaths } from "./build-closure.js";
