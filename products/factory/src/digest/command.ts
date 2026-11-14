@@ -8,7 +8,7 @@ import type { GateSummary } from "../context.js";
 import type { WatchRow } from "../shepherd/view-schema.js";
 import type { DigestSources, GateFact } from "./collect.js";
 import type { GateReader } from "../needs/hitl-source.js";
-import { activeWorkOrigin } from "../shepherd/cleanup-ports.js";
+import { activeWorkOrigin } from "../shepherd/active-work-origin.js";
 import { activeWorkTaskDates, agentChatSpans } from "./flow-sources.js";
 import { readFriction } from "./friction.js";
 import { pacePath, readPacePools } from "./pace.js";
