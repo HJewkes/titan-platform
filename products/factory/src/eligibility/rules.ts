@@ -1,4 +1,5 @@
-import type { Bet, Freeze, OutOfScope, Task } from "@titan-design/pm";
+import type { Bet, Freeze, OutOfScope, Outcome, Task } from "@titan-design/pm";
+import { policyRefusals, type PolicyCode, type Relaxation, type SelectionPolicy } from "./intake.js";
 
 /*
  * The selection policy (operating model PROPOSAL 2.2, TP-5453 P4): which open tasks the dispatcher may take, and in
@@ -15,7 +16,8 @@ type RefusalCode =
   | "no-fold"
   | "frozen"
   | "out-of-scope"
-  | "unreadable";
+  | "unreadable"
+  | PolicyCode;
 
 interface Refusal {
   code: RefusalCode;
@@ -29,11 +31,16 @@ export interface PlanView {
   /** Freezes still in force; `freezeActive` in active-work.ts decides which ones are. */
   freezes: readonly Freeze[];
   outOfScope: readonly OutOfScope[];
+  /** The initiative's success statements; read only when a policy judges `outcome-retired`. */
+  outcomes?: readonly Outcome[];
 }
 
 interface EligibleTask {
   task: Task;
   bet: Bet;
+  /** Set only on a pass the policy's relax list allowed: the relaxations used and the strict verdict's codes. */
+  relaxed?: Relaxation[];
+  strictCodes?: RefusalCode[];
 }
 
 export interface RefusedTask {
@@ -103,15 +110,45 @@ function dispatchOrder(a: EligibleTask, b: EligibleTask): number {
   );
 }
 
-/** Splits candidate tasks into the eligible ones, in dispatch order, and the refused ones with every reason. */
-export function evaluateEligibility(tasks: readonly Task[], plan: PlanView): Eligibility {
+interface Verdict {
+  bet: Bet | undefined;
+  refusals: Refusal[];
+  relaxed: Relaxation[];
+  strict: Refusal[];
+}
+
+/** The refusal code each relaxation waives. */
+const WAIVES: Record<Relaxation, RefusalCode> = { "bet-field": "no-bet", "no-fold": "no-fold", "no-owner-steps": "no-owner-steps" };
+
+function strictVerdict(task: Task, plan: PlanView): Verdict {
+  const bet = plan.bets.find((candidate) => candidate.id === task.bet);
+  const refusals = refusalsFor(task, bet, plan);
+  return { bet, refusals, relaxed: [], strict: refusals };
+}
+
+/** The strict verdict with the relax list's waivers applied, then the policy's own refusals against the resolved bet. */
+function policyVerdict(task: Task, plan: PlanView, policy: SelectionPolicy): Verdict {
+  const strict = strictVerdict(task, plan);
+  const key = taskKey(plan.initiative, task);
+  const listed = task.bet === undefined && policy.relax.includes("bet-field") ? plan.bets.find((bet) => bet.tasks?.includes(key)) : undefined;
+  const relaxed = policy.relax.filter((entry) => strict.refusals.some((refusal) => refusal.code === WAIVES[entry]) && (entry !== "bet-field" || listed !== undefined));
+  const waived = new Set(relaxed.map((entry) => WAIVES[entry]));
+  const bet = strict.bet ?? listed;
+  const refusals = [...strict.refusals.filter((refusal) => !waived.has(refusal.code)), ...policyRefusals(task, bet, plan.outcomes ?? [], policy)];
+  return { bet, refusals, relaxed, strict: strict.refusals };
+}
+
+const relaxedFields = (verdict: Verdict): Pick<EligibleTask, "relaxed" | "strictCodes"> =>
+  verdict.relaxed.length === 0 ? {} : { relaxed: verdict.relaxed, strictCodes: verdict.strict.map((refusal) => refusal.code) };
+
+/** Splits candidate tasks into the eligible ones, in dispatch order, and the refused ones with every reason; without a policy only the strict rules apply. */
+export function evaluateEligibility(tasks: readonly Task[], plan: PlanView, policy?: SelectionPolicy): Eligibility {
   const eligible: EligibleTask[] = [];
   const refused: RefusedTask[] = [];
   for (const task of tasks) {
-    const bet = plan.bets.find((candidate) => candidate.id === task.bet);
-    const refusals = refusalsFor(task, bet, plan);
-    if (refusals.length === 0 && bet !== undefined) eligible.push({ task, bet });
-    else refused.push({ id: task.id, refusals });
+    const verdict = policy === undefined ? strictVerdict(task, plan) : policyVerdict(task, plan, policy);
+    if (verdict.refusals.length === 0 && verdict.bet !== undefined) eligible.push({ task, bet: verdict.bet, ...relaxedFields(verdict) });
+    else refused.push({ id: task.id, refusals: verdict.refusals });
   }
   return { eligible: eligible.sort(dispatchOrder), refused };
 }

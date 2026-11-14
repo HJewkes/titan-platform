@@ -23,7 +23,7 @@ function store(tasks: readonly string[]): string {
 
 const INDEX = taskIndexFetch(
   [{ id: "T-1", slug: "demo" }, { id: "S-1", slug: "private-lane" }],
-  [{ slug: "demo", task_prefix: "T" }, { slug: "private-lane", task_prefix: "S", agent_visible: false }],
+  [{ slug: "demo", task_prefix: "T" }, { slug: "private-lane", task_prefix: "S", withheld_from_agents: true }],
 );
 
 async function report(dbPath: string, fetch = INDEX) {

@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { z } from "zod";
 import { configPath } from "../../config.js";
 import { errorMessage } from "../../narrow.js";
+import { RELAXATIONS, SEVERITIES } from "../intake.js";
 
 /*
  * The dispatcher rule file (`titan-dispatcher/v1`, TP-5755 PLAN 5.4): owner-held policy as data, outside the repo.
@@ -17,8 +18,15 @@ const ShadowSchema = z.object({ enabled: z.boolean().default(false), dir: z.stri
   path: ["dir"],
 });
 
-/** Keys later slices read (PLAN 5.4) are accepted now so the owner's full example file parses; this slice ignores them. */
-const PLANNED_KEYS = { bets: z.unknown().optional(), relax: z.unknown().optional(), intake: z.unknown().optional(), upkeep: z.unknown().optional() };
+/** Keys later slices read (PLAN 5.4) are accepted now so the owner's full example file parses; nothing reads them yet. */
+const PLANNED_KEYS = { bets: z.unknown().optional() };
+
+const INTAKE_DEFAULTS = { minSeverity: "medium", expireDays: 28 } as const;
+
+const IntakeSchema = z
+  .object({ minSeverity: z.enum(SEVERITIES).default(INTAKE_DEFAULTS.minSeverity), expireDays: z.number().int().positive().default(INTAKE_DEFAULTS.expireDays) })
+  .strict()
+  .default(INTAKE_DEFAULTS);
 
 const count = z.number().int().positive();
 const factor = z.number().positive();
@@ -36,6 +44,17 @@ const StopSchema = z
   .strict();
 
 export type StopRules = z.infer<typeof StopSchema>;
+
+/** The upkeep cap (TP-5755 PLAN 2.2); `factoryOutcomes` names the outcomes whose untagged tasks count as upkeep. */
+const UpkeepSchema = z
+  .object({
+    capShare: z.number().gt(0).max(1).default(0.25),
+    windowDays: count.default(7),
+    factoryOutcomes: z.array(z.string().min(1)).default([]),
+  })
+  .strict();
+
+export type UpkeepRules = z.infer<typeof UpkeepSchema>;
 
 /** Whose spawns the shadow is scored against, and how a bare task id such as `TP-1` finds its initiative. */
 const CompareSchema = z
@@ -58,7 +77,11 @@ const RuleFileSchema = z
     mode: z.literal("shadow"),
     shadow: ShadowSchema.default({ enabled: false }),
     lanes: z.array(LaneSchema).default([]),
+    /** Strict checks the shadow waives while filers do not yet set the fields; each waived pass is labelled on its row. */
+    relax: z.array(z.enum(RELAXATIONS)).default([]),
+    intake: IntakeSchema,
     stop: StopSchema.prefault({}),
+    upkeep: UpkeepSchema.prefault({}),
     compare: CompareSchema,
     ...PLANNED_KEYS,
   })
