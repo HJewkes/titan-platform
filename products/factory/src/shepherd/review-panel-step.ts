@@ -11,7 +11,7 @@ import type { AttestVerdicts } from "./attest-evidence.js";
 import { classRulesFor, intentPlan, panelFacts, panelPolicyFor, withoutPlan, type HoldMember, type IntentPlan, type PanelMode } from "./review-panel-plan.js";
 import { isAdversaryHold } from "./hold-slots.js";
 import { CORRECT_VERDICT_STEP, correctOnce } from "./correct-verdict.js";
-import { Awaited, Dispatched } from "./review-schemas.js";
+import { AuthoritySchema, Awaited, Dispatched } from "./review-schemas.js";
 import { fileFollowUpsAt } from "./follow-ups-step.js";
 import { freshReviewerBase } from "./cleanup.js";
 import { MAX_NOT_STARTED_REVIEWS, REVIEW_STEP } from "./review-steps.js";
@@ -161,7 +161,7 @@ async function dispatchMembers(ctx: WorkflowContext, intent: PanelIntent, base: 
 function memberResultOf(awaited: AwaitedResult): MemberResult["result"] {
   if (awaited.kind !== "verdict") return { kind: "none", ...(typeof awaited.reason === "string" && { reason: awaited.reason }) };
   const verdict = { kind: "verdict" as const, head: awaited.head, locator: awaited.locator, reviewer: awaited.reviewer };
-  if (awaited.verdict === "MERGE") return { ...verdict, verdict: "MERGE", ...(awaited.attests && { attests: awaited.attests }) };
+  if (awaited.verdict === "MERGE") return { ...verdict, verdict: "MERGE", ...(awaited.attests && { attests: awaited.attests }), ...(awaited.authority && { authority: awaited.authority }) };
   const closer = awaited.closer === "yes" || awaited.closer === "no" ? awaited.closer : undefined;
   return { ...verdict, verdict: "FIX_FIRST", text: awaited.text ?? "", ...(closer !== undefined && { closer }) };
 }
@@ -302,6 +302,7 @@ const MemberVerdict = z.looseObject({
   verdict: z.enum(["MERGE", "FIX_FIRST"]).optional(),
   head: z.string().optional(),
   attests: z.array(z.string()).optional(),
+  authority: AuthoritySchema,
 });
 
 /**
@@ -312,9 +313,10 @@ export function panelMerge(verdict: PanelVerdict, results: readonly { shape: Mem
   const members = results.flatMap(({ shape, result }) => {
     const read = MemberVerdict.safeParse(result);
     if (!read.success) return [];
-    const { reviewer, locator, verdict: said, head, attests } = read.data;
+    const { reviewer, locator, verdict: said, head, attests, authority } = read.data;
     const profile = profiles[shape];
-    return [{ shape, ...reviewer, locator, ...(said !== undefined && { verdict: said }), ...(head !== undefined && { head }), ...(profile !== undefined && { profile }), ...(attests && { attests }) }];
+    const lines = { ...(attests && { attests }), ...(authority && { authority }) };
+    return [{ shape, ...reviewer, locator, ...(said !== undefined && { verdict: said }), ...(head !== undefined && { head }), ...(profile !== undefined && { profile }), ...lines }];
   });
   return { satisfiesG10: verdict.satisfiesG10, degraded: verdict.degraded, members };
 }
@@ -344,10 +346,11 @@ export async function panelReview(ctx: WorkflowContext, intent: PanelIntent, bas
   return decided.kind === "MERGE" && verdict.outcome === "MERGE" ? { ...decided, panel: merged } : decided;
 }
 
-/** The adversary member's MERGE as the evidence step judges its `Attests:` line, and whether the plan had an adversary at all. */
+/** The adversary member's MERGE as the evidence step judges its `Attests:` and `Authority:` lines, and whether the plan had an adversary at all. */
 function adversaryAttest(intent: PanelIntent, merged: PanelMerge): Omit<AttestVerdicts, "attests"> {
   const member = merged.members.find((m) => m.shape === "adversary" && m.verdict === "MERGE" && m.head !== undefined);
   const planned = intent.plan.members.some((m) => m.shape === "adversary");
-  const adversary = member?.head === undefined ? undefined : { reviewer: { agentId: member.agentId, sessionId: member.sessionId }, head: member.head, attests: [...(member.attests ?? [])] };
+  const said = member?.authority && { authority: member.authority };
+  const adversary = member?.head === undefined ? undefined : { reviewer: { agentId: member.agentId, sessionId: member.sessionId }, head: member.head, attests: [...(member.attests ?? [])], ...said };
   return { ...(adversary && { adversary }), ...(planned && { adversaryPlanned: true as const }) };
 }

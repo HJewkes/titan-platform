@@ -58,7 +58,7 @@ async function heldUnreadAtRegistration(files: PrFile[]): Promise<World> {
   const port: GitHubPort = { ...real, listPrFiles: (repo, pr) => (failing-- > 0 ? Promise.reject(new Error("rate limited")) : real.listPrFiles(repo, pr)) };
   const wake: ShepherdPhases["wake"] = async () => ({ kind: "unhandled", reason: "no fixer in this test" });
   const ref = shepherdStoreRef();
-  const routes = factoryRoutesFor({ port, store: ref, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), review: { ...mergingReviewers(), roles: { g10: "bd-reviewer", standard: "reviewer" } } });
+  const routes = factoryRoutesFor({ port, store: ref, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), review: { ...mergingReviewers(), roles: { g10: "bd-reviewer", standard: "reviewer" } }, ownerTier: "off" });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow({ review: reviewPhase, wake })], routes, gatePollMs: 5 });
   hosts.push(host);
   fake.addPr({ headSha: H1, mergeSha: fakeSha("test-merge") });
