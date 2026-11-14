@@ -33,7 +33,7 @@ const ACTIVE_WORK_CWD = 'active-work:';
 /** Repo-relative paths only: a path after a `/`, `~` or `://` is absolute or a URL and is skipped. */
 const NAMED_FILE = /(?<![\w./~-])(?:[\w.-]+\/)+[\w-][\w.-]*\.[A-Za-z0-9]+(?![\w/])/g;
 
-export interface BriefSessionsInput {
+interface BriefSessionsInput {
   text: string;
   activeRoot: string;
   now: Date;
