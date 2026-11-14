@@ -10,8 +10,8 @@ interface RowLane {
 
 export type Stage = "eligibility" | "admission" | "upkeep" | "intake" | "stop";
 
-/** Which bets the lane was judged against; later slices add the phase-2 sheet basis. */
-type Basis = "selected";
+/** Which bets the lane was judged against: the owner's selected ones, or its phase-2 sheet's proposed ones while none is selected. */
+type Basis = "selected" | "proposed-sheet";
 
 interface WakeRow {
   v: 1;
@@ -40,6 +40,8 @@ interface LaneRowBase {
   lane: RowLane;
   week: string;
   basis: Basis;
+  /** On a proposed-sheet row when the rule file pins the sheets' week, which may differ from the calendar `week`. */
+  sheet_week?: string;
 }
 
 export interface WouldDispatchRow extends LaneRowBase, RelaxedFields {

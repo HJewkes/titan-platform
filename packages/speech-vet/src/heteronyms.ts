@@ -67,7 +67,7 @@ function statusOf(reading: string, target: string): { declared: string | null; s
 }
 
 /** A heteronym occurrence's finding, with the table word it belongs to and its index among the tokens. */
-export interface HeteronymOccurrence {
+interface HeteronymOccurrence {
   tokenIndex: number;
   tableWord: string;
   finding: ReadingFinding;

@@ -31,8 +31,8 @@ export interface AdversaryHoldContext {
   lastReport?: string;
 }
 
-export const HOLD_CONTEXT_START = "HOLD-CONTEXT";
-export const HOLD_CONTEXT_END = "END-HOLD-CONTEXT";
+const HOLD_CONTEXT_START = "HOLD-CONTEXT";
+const HOLD_CONTEXT_END = "END-HOLD-CONTEXT";
 const MARKERS: ReadonlySet<string> = new Set([HOLD_CONTEXT_START, HOLD_CONTEXT_END].map((marker) => marker.toLowerCase()));
 
 const contextEntries = ({ holdReason, matchedFiles, doneWhen, lastReport }: AdversaryHoldContext): string[] => [
