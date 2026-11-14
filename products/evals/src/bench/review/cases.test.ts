@@ -65,8 +65,10 @@ const pool = (caseType: CaseType, size: number): { id: string; caseType: CaseTyp
 
 describe("stratifiedQueue", () => {
   const queue = stratifiedQueue([...pool("defect", 60), ...pool("planted", 40), ...pool("clean", 60)], "bench-2026-11");
-  const typesIn = (blocks: readonly { caseType: CaseType }[]): Record<CaseType, number> =>
-    Object.fromEntries(CASE_TYPES.map((type) => [type, blocks.filter((block) => block.caseType === type).length])) as Record<CaseType, number>;
+  const typesIn = (blocks: readonly { caseType: CaseType }[]): Record<CaseType, number> => {
+    const of = (type: CaseType): number => blocks.filter((block) => block.caseType === type).length;
+    return { defect: of("defect"), planted: of("planted"), clean: of("clean") };
+  };
 
   it("holds every case type in every run of 10 blocks", () => {
     expect(queue).toHaveLength(160);

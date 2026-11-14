@@ -1,43 +1,35 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import type { ControlKind } from "../../review-pr/controls.js";
+import { CONTROL_KINDS } from "../../review-pr/controls.js";
 import { hashCanonical, sha256Hex } from "../../hash.js";
 import type { BenchCase } from "../runner.js";
 
 export const CASE_TYPES = ["defect", "planted", "clean"] as const;
 export type CaseType = (typeof CASE_TYPES)[number];
 
-export interface GoldDefect {
-  path: string;
-  /** Planted defects only: the 1-based head line the plant rewrote or deleted. */
-  line?: number;
-}
-
 /** A defect planted at job time into one head file, so the case file carries the mutation and no tree. */
-export interface Plant {
-  kind: ControlKind;
-  path: string;
-  line: number;
-  text: string;
-}
+const PlantSchema = z.strictObject({ kind: z.enum(CONTROL_KINDS), path: z.string().min(1), line: z.number().int().positive(), text: z.string() });
+export type Plant = z.infer<typeof PlantSchema>;
 
-export interface ReviewCaseBody {
-  id: string;
-  caseType: CaseType;
-  kind: string;
-  repo: string;
-  pr: number;
-  head: string;
-  base: string;
-  split: string;
-  gold: GoldDefect[];
+const ReviewCaseBodySchema = z.strictObject({
+  id: z.string().min(1),
+  caseType: z.enum(CASE_TYPES),
+  kind: z.string(),
+  repo: z.string(),
+  pr: z.number().int(),
+  head: z.string(),
+  base: z.string(),
+  split: z.string(),
+  /** `line` is set for planted defects only: the 1-based head line the plant rewrote or deleted. */
+  gold: z.array(z.strictObject({ path: z.string(), line: z.number().int().optional() })),
   /** An existing control: a directory already holding `head`, `base` and `diff.patch`. */
-  tree?: string;
-  plant?: Plant;
+  tree: z.string().optional(),
+  plant: PlantSchema.optional(),
   /** The clean case a planted one was built on, so its head is never sampled as clean too. */
-  plantedOn?: string;
-}
+  plantedOn: z.string().optional(),
+});
+export type ReviewCaseBody = z.infer<typeof ReviewCaseBodySchema>;
 
 export type ReviewCase = ReviewCaseBody & BenchCase & { stratum: { kind: string; caseType: CaseType } };
 
@@ -154,5 +146,5 @@ export function loadReviewQueue(dir: string): ReviewCase[] {
   return readFileSync(path, "utf8")
     .split("\n")
     .filter((line) => line.trim() !== "")
-    .map((line) => benchCaseOf(JSON.parse(line) as ReviewCaseBody));
+    .map((line) => benchCaseOf(ReviewCaseBodySchema.parse(JSON.parse(line))));
 }

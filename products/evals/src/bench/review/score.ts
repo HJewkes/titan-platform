@@ -3,6 +3,7 @@ import { resolve, sep } from "node:path";
 import { splitLines, verifyCitation, type LineSource } from "@titan-design/evidence";
 import { findingsText } from "@titan-design/review-panel";
 import { parseVerdictBlock } from "@titan-design/session-read";
+import { z } from "zod";
 import { citesPath } from "../../corpus/cited-paths.js";
 import type { CaseType, ReviewCaseBody } from "./cases.js";
 
@@ -93,11 +94,17 @@ export function scoreReview(body: ReviewCaseBody, message: string | undefined, b
   return { caseType: body.caseType, verdict: block.verdict, contract: false, caught: clean ? null : fixFirst && namesGold(body, cited), falseAlarm: clean ? fixFirst : null, cited };
 }
 
+const TranscriptLineSchema = z.looseObject({
+  type: z.string().optional(),
+  message: z.looseObject({ id: z.string().optional(), content: z.unknown() }).optional(),
+});
+
 /** The text of the transcript's last assistant message that says anything, joined across its content lines. */
 export function finalMessage(transcriptText: string): string | undefined {
   const lines = transcriptText.split("\n").flatMap((line) => {
     try {
-      return [JSON.parse(line) as { type?: string; message?: { id?: string; content?: unknown } }];
+      const parsed = TranscriptLineSchema.safeParse(JSON.parse(line));
+      return parsed.success ? [parsed.data] : [];
     } catch {
       return [];
     }
