@@ -1,0 +1,47 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an advisory repo's branch can be created",
+      "file": "products/factory/src/shepherd/advisory.ts",
+      "find": "(refuse(repo, \"creates a branch\"), ",
+      "replace": "(",
+      "kills": ["advisoryPort refuses ensureBranch for an advisory repo before GitHub sees it"]
+    },
+    {
+      "name": "a file can be committed to an advisory repo",
+      "file": "products/factory/src/shepherd/advisory.ts",
+      "find": "(refuse(repo, \"commits a file\"), ",
+      "replace": "(",
+      "kills": ["advisoryPort refuses putFile for an advisory repo before GitHub sees it"]
+    },
+    {
+      "name": "an advisory repo's PR can be retargeted",
+      "file": "products/factory/src/shepherd/advisory.ts",
+      "find": "(refuse(repo, \"retargets a PR\"), ",
+      "replace": "(",
+      "kills": ["advisoryPort refuses setPrBase for an advisory repo before GitHub sees it"]
+    },
+    {
+      "name": "a commit can be merged into an advisory repo's branch",
+      "file": "products/factory/src/shepherd/advisory.ts",
+      "find": "(refuse(repo, \"merges into a branch\"), ",
+      "replace": "(",
+      "kills": ["advisoryPort refuses mergeIntoBranch for an advisory repo before GitHub sees it"]
+    },
+    {
+      "name": "a PR can be opened on an advisory repo",
+      "file": "products/factory/src/shepherd/advisory.ts",
+      "find": "(refuse(repo, \"opens a PR\"), ",
+      "replace": "(",
+      "kills": ["advisoryPort refuses openPr for an advisory repo before GitHub sees it"]
+    },
+    {
+      "name": "the refusal checks the flag of no repo",
+      "file": "products/factory/src/shepherd/advisory.ts",
+      "find": "    if (isAdvisory(repo)) throw new AdvisoryRefused(",
+      "replace": "    if (false) throw new AdvisoryRefused(",
+      "kills": ["advisoryPort refuses merge for an advisory repo before GitHub sees it"]
+    }
+  ]
+}
