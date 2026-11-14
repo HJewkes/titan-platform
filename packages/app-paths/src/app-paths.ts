@@ -100,3 +100,22 @@ export function activeWorkRoot(opts: PathOptions = {}): string {
 export function activeWorkGraphPath(opts: PathOptions = {}): string {
   return path.join(activeWorkRoot(opts), ".miner", "graph.sqlite3");
 }
+
+/** The titan console's state directory: `TITAN_CONSOLE_STATE`, else `~/.local/state/titan-console`. */
+function consoleStateDir(env: Resolved["env"], home: string): string {
+  return expandTilde(env.TITAN_CONSOLE_STATE ?? "~/.local/state/titan-console", home);
+}
+
+/** The deposit spool the titan console reads: `TITAN_CONSOLE_INBOX_DIR`, else `inbox/deposits` under the console state directory. Tilde-expanded, not resolved. */
+export function consoleInboxDir(opts: PathOptions = {}): string {
+  const { env, home } = resolveOptions(opts);
+  if (env.TITAN_CONSOLE_INBOX_DIR) return expandTilde(env.TITAN_CONSOLE_INBOX_DIR, home);
+  return path.join(consoleStateDir(env, home), "inbox", "deposits");
+}
+
+/** The ticket scorecard's store: `TITAN_SCORECARD_STORE`, else `$XDG_DATA_HOME/titan-scorecard/scorecard.sqlite3`. Tilde-expanded, not resolved. */
+export function scorecardStorePath(opts: PathOptions = {}): string {
+  const { env, home } = resolveOptions(opts);
+  const dataHome = env.XDG_DATA_HOME ?? path.join(home, ".local", "share");
+  return expandTilde(env.TITAN_SCORECARD_STORE ?? path.join(dataHome, "titan-scorecard", "scorecard.sqlite3"), home);
+}

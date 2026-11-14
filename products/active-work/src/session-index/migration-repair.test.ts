@@ -104,6 +104,7 @@ describe('openGraph on a graph with colliding migration numbers', () => {
       { version: 1001, name: 'workspace index tables' },
       { version: 1002, name: 'preserved rows' },
       { version: 1003, name: 'workspace span tables' },
+      { version: 1004, name: 'plan record table' },
     ]);
     expect(hasTable('conversation')).toBe(true);
   });
@@ -116,7 +117,7 @@ describe('openGraph on a graph with colliding migration numbers', () => {
 
     expect(migrationRows()).toEqual(fresh);
     expect(fresh.map((r) => r.version)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 1001, 1002, 1003,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 1001, 1002, 1003, 1004,
     ]);
   });
 
