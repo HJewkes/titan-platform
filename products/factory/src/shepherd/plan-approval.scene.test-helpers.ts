@@ -1,3 +1,4 @@
+import type { AgentRow } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, successRun, type GitHubWire, type PrFile } from "@titan-design/github";
 import type { ReviewerAgent, ReviewerDispatch, ReviewerMessage } from "@titan-design/review-panel";
 import type { SourceTextLocator } from "@titan-design/session-read";
@@ -11,10 +12,12 @@ import type { ReviewAccounts } from "./account-limit.js";
 import type { LowTierMode } from "./g10-low-tier.js";
 import type { OwnerTierMode } from "./owner-tier.js";
 import type { PlanApproval } from "./plan-approval.js";
+import type { RosterReader } from "./ports.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import type { EffectivePolicy } from "./policy-schema.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { reviewPhase } from "./review.js";
+import { DEFAULT_ADVERSARY_PROFILE } from "./review-panel-plan.js";
 import type { ReviewerRoles } from "./reviewer-roles.js";
 import { shepherdStoreRef, type ShepherdStoreRef } from "./store.js";
 
@@ -36,8 +39,8 @@ const locatorIn = (nativeId: string): SourceTextLocator => ({
   selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] },
 });
 
-/** Every spawn lands as a reviewer that says MERGE at the head it was asked about, with `extra` lines after the head. */
-function mergingReviewers(clock: () => number, extra: string) {
+/** Every spawn lands as a reviewer that says MERGE at the head it was asked about, with `above` lines before the block and `extra` lines after the head. */
+function mergingReviewers(clock: () => number, extra: string, above = "") {
   const agents: ReviewerAgent[] = [];
   const dispatch: ReviewerDispatch = {
     roster: async () => [...agents],
@@ -47,11 +50,13 @@ function mergingReviewers(clock: () => number, extra: string) {
     },
   };
   const read = async (input: { repo: string; pr: number; head: string; reviewerAgentId: string; reviewerSessionId: string }): Promise<ReviewerMessage[]> => {
-    const text = `Verdict: MERGE\nPR: ${input.repo}#${input.pr}\nHead: ${input.head}\n${extra}`;
+    const text = `${above}Verdict: MERGE\nPR: ${input.repo}#${input.pr}\nHead: ${input.head}\n${extra}`;
     return [{ agentId: input.reviewerAgentId, sessionId: input.reviewerSessionId, writtenAt: clock() + 1, text, locator: locatorIn(input.reviewerSessionId) }];
   };
   const accounts: ReviewAccounts = { dirs: ["/accounts/review"], dispatchUnder: () => dispatch, alert: async () => undefined };
-  return { reader: { read }, dispatch, accounts };
+  const rows = (): AgentRow[] => agents.map((agent) => ({ ...agent, state: agent.presence, status: "finished", profile: "", surface: "headless", cwd: "/work", generation: 1 }));
+  const roster: RosterReader = { read: async () => ({ kind: "known", rows: rows() }), rows: async () => rows(), invalidate: () => undefined };
+  return { reader: { read }, dispatch, accounts, roster };
 }
 
 export interface Row {
@@ -71,12 +76,24 @@ export interface Row {
   lowTier?: LowTierMode;
   /** `shepherd.gateReset.ownerTier` for the run's routes; absent stands for an unset key, which the config reader reads as shadow. */
   ownerTier?: OwnerTierMode;
+  /** Lines every reviewer writes above its verdict block, such as an adversary's `Probes:` and `Authority:` lines. */
+  aboveVerdict?: string;
+  /** Plans the g10-adversary hold's adversary member and releases the hold on two MERGEs, as `twoMergeRelease: on` does. */
+  holdMember?: true;
 }
 
 export type FakeGitHub = ReturnType<typeof fakeGitHub>;
 
+/** The run's reviewers and, when the hold's adversary member is planned, the roster its two-MERGE release reads to prove them separate. */
+function reviewWiring({ reviewerLines, aboveVerdict, roles, holdMember }: Row, clock: () => number) {
+  const { roster, ...reviewers } = mergingReviewers(clock, reviewerLines, aboveVerdict);
+  const adversary = holdMember && { holdMember: { profile: DEFAULT_ADVERSARY_PROFILE }, twoMergeRelease: "on" as const };
+  return { review: { ...reviewers, timeoutMs: 5 * MINUTE, ...(roles && { roles }), ...adversary }, ...(holdMember && { roster }) };
+}
+
 /** One shepherd-pr run of the PR under an auto policy, reviewed MERGE with green checks, after `seed` sets the files and the row's approval is written. */
-export function plannedRun({ files, policy, reviewerLines, approve, wire = (each) => each, seatReleased, held, roles, lowTier, ownerTier }: Row, seed: (fake: FakeGitHub) => void) {
+export function plannedRun(row: Row, seed: (fake: FakeGitHub) => void) {
+  const { files, policy, approve, wire = (each) => each, seatReleased, held, lowTier, ownerTier } = row;
   const fake = fakeGitHub();
   fake.addPr({ number: PR, headSha: HEAD, mergeSha: fakeSha("planned-merge") });
   fake.setRuns(HEAD, [successRun("validate", 1), successRun("dag-check", 2)]);
@@ -89,8 +106,8 @@ export function plannedRun({ files, policy, reviewerLines, approve, wire = (each
     signal.throwIfAborted();
     await new Promise<void>((resolve) => setImmediate(resolve));
   };
-  const review = { ...mergingReviewers(() => clock, reviewerLines), timeoutMs: 5 * MINUTE, ...(roles && { roles }) };
-  const routes = factoryRoutesFor({ port: githubPort(wire(fake.wire)), store, now: () => clock, sleep: tick, review, ...(lowTier && { lowTierPolicy: lowTier }), ownerTier: ownerTier ?? "shadow" });
+  const gates = { ...(lowTier && { lowTierPolicy: lowTier }), ownerTier: ownerTier ?? "shadow" };
+  const routes = factoryRoutesFor({ port: githubPort(wire(fake.wire)), store, now: () => clock, sleep: tick, ...reviewWiring(row, () => clock), ...gates });
   const workflow = shepherdPrWorkflow({ review: reviewPhase, wake: async () => ({ kind: "unhandled", reason: "no fixer here" }) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [workflow], routes, gatePollMs: 5 });
   // Per test: under isolate:false this module loads once per worker, so a top-level afterEach would close only the first importing file's hosts.

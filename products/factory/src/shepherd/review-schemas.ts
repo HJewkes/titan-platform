@@ -30,7 +30,13 @@ export const CiPolicySchema = z
   .optional()
   .catch(() => CI_POLICY_MALFORMED);
 
-const CiPolicyLineSchema = z.strictObject({ side: z.enum(["-", "+"]), n: z.number().int().min(1), text: z.string() });
+/**
+ * An adversary MERGE's Authority line as review-panel accepted it (TP-5407). Any other stored value reads as absent, which
+ * the evidence step takes as `missing` wherever an adversary was required, so a bad record keeps the owner gate.
+ */
+export const AuthoritySchema = z.enum(["unchanged", "tightened", "widened"]).optional().catch(undefined);
+
+const CiPolicyLineSchema =z.strictObject({ side: z.enum(["-", "+"]), n: z.number().int().min(1), text: z.string() });
 
 /** The D21 card's lines as stored; any other shape, a pre-redesign record's included, reads as none, so the card falls back to the diff link and the gate stands. */
 export const CiPolicyChangesSchema = z
@@ -128,7 +134,7 @@ export const MergeEvidenceSchema = z.looseObject({
   attestVerdicts: z
     .looseObject({
       attests: z.array(z.string()),
-      adversary: z.looseObject({ reviewer: Identity, head: z.string(), attests: z.array(z.string()) }).optional(),
+      adversary: z.looseObject({ reviewer: Identity, head: z.string(), attests: z.array(z.string()), authority: AuthoritySchema }).optional(),
       adversaryPlanned: z.literal(true).optional(),
     })
     .optional(),
@@ -151,7 +157,7 @@ const Dispatched = z.discriminatedUnion("kind", [
 ]);
 /** A verdict carries its owner brief, or null when the reviewer wrote none; a brief never changes the verdict. */
 const Awaited = z.discriminatedUnion("kind", [
-  z.looseObject({ kind: z.literal("verdict"), verdict: z.enum(["MERGE", "FIX_FIRST"]), head: z.string(), locator: LocatorSchema, reviewer: Identity, text: z.string().optional(), ownerBrief: OwnerBriefSchema.nullable().optional(), ciPolicy: CiPolicySchema, attests: z.array(z.string()).optional() }),
+  z.looseObject({ kind: z.literal("verdict"), verdict: z.enum(["MERGE", "FIX_FIRST"]), head: z.string(), locator: LocatorSchema, reviewer: Identity, text: z.string().optional(), ownerBrief: OwnerBriefSchema.nullable().optional(), ciPolicy: CiPolicySchema, attests: z.array(z.string()).optional(), authority: AuthoritySchema }),
   z.looseObject({ kind: z.literal("none") }),
 ]);
 /** What sh-review-stop read: no machine stop during the round, or the stop and whether it lifted before the wait's ceiling. */
