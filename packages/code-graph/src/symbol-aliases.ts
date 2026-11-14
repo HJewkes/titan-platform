@@ -4,7 +4,7 @@ import { symbolId } from "./extractors/ids.js";
 import type { IdAlias } from "./types.js";
 
 /** The first index version whose symbol ids carry the enclosing scopes (`f.ts#Job.run`, TP-182). */
-export const QUALIFIED_SYMBOLS_SINCE = "0.14.0";
+const QUALIFIED_SYMBOLS_SINCE = "0.14.0";
 
 function versionParts(version: string): number[] | null {
   const m = /^(\d+)\.(\d+)\.(\d+)/.exec(version);

@@ -3,7 +3,7 @@ import { registerCodeReadCommands, type LiveSource } from "@titan-design/code-re
 import { createRegistry, type BaseContext, type CommandRegistry } from "@titan-design/registry";
 import { DB_PATH, REPO_ROOT, RULES_PATH } from "./paths.js";
 
-export interface ReportRegistry {
+interface ReportRegistry {
   registry: CommandRegistry<BaseContext>;
   source: LiveSource;
 }

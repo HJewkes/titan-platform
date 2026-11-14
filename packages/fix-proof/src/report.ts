@@ -18,7 +18,7 @@ export interface FileRun {
   tests: Map<string, TestRun>;
 }
 
-export type ReadReport = { ok: true; files: Map<string, FileRun> } | { ok: false; error: string };
+type ReadReport = { ok: true; files: Map<string, FileRun> } | { ok: false; error: string };
 
 type UnknownRecord = Record<string, unknown>;
 

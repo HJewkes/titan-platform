@@ -1,7 +1,7 @@
 import type { CodeReadCommandMap } from "@titan-design/code-read/query";
 
 type NodeMetric = CodeReadCommandMap["node.get"]["result"]["metrics"][number];
-export type Direction = NodeMetric["direction"];
+type Direction = NodeMetric["direction"];
 
 export function formatNumber(value: number | null | undefined): string {
   if (value === null || value === undefined) return "n/a";
