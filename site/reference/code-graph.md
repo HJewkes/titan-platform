@@ -213,6 +213,12 @@ with role `document` and the query with role `query`, so a default nomic embedde
 hash of the prefix table, so vectors made under two prefix configurations never share a
 `blob_cache` key. Python symbols carry no signature yet, so they are not searchable.
 
+**Vectors from a retired model identity are reported, then pruned on request.** A changed
+model or prefix table leaves the old rows unread. `embedSnapshot` reports their count as
+`staleVectors`, and `pruneStaleSymbolVectors(store, embedder.model)` deletes every symbol
+vector stored under another model, returning `{ deleted, models }`. `embedSnapshot` never
+prunes on its own, because a caller may alternate between two embedders on purpose.
+
 ## Graph analyses
 
 Dead-code and growth-risk metrics land at index time, beside the source metrics, and carry

@@ -37,6 +37,35 @@ describe("CacheBlobTable", () => {
     expect(compute).toHaveBeenCalledTimes(1);
   });
 
+  it("deletes every row under one namespace and model and leaves the others", () => {
+    const cache = setup();
+    cache.put({ namespace: "embedding", model: "old", text: "a" }, "1");
+    cache.put({ namespace: "embedding", model: "old", text: "b" }, "2");
+    cache.put({ namespace: "embedding", model: "new", text: "a" }, "3");
+    cache.put({ namespace: "summary", model: "old", text: "a" }, "4");
+
+    expect(cache.delete("embedding", "old")).toBe(2);
+
+    expect(cache.count("embedding", "old")).toBe(0);
+    expect(cache.count("embedding", "new")).toBe(1);
+    expect(cache.count("summary", "old")).toBe(1);
+    expect(cache.delete("embedding", "old")).toBe(0);
+  });
+
+  it("lists the models holding rows in a namespace with their row counts", () => {
+    const cache = setup();
+    cache.put({ namespace: "embedding", model: "m2", text: "a" }, "1");
+    cache.put({ namespace: "embedding", model: "m1", text: "a" }, "1");
+    cache.put({ namespace: "embedding", model: "m1", text: "b" }, "1");
+    cache.put({ namespace: "summary", model: "m3", text: "a" }, "1");
+
+    expect(cache.models("embedding")).toEqual([
+      { model: "m1", rows: 2 },
+      { model: "m2", rows: 1 },
+    ]);
+    expect(cache.models("absent")).toEqual([]);
+  });
+
   it("requires text or a content hash", () => {
     const cache = setup();
     expect(() => cache.get({ namespace: "n", model: "m" })).toThrow(/text or contentHash/);

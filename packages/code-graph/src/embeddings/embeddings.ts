@@ -1,7 +1,7 @@
 import type { Embedder } from "@titan-design/embed";
 import { BruteForceVectorIndex, vectorRetriever } from "@titan-design/retrieval";
 import type { CodeGraphStore } from "../store.js";
-import { embedTextsCached, loadVectorsByHash } from "./cache.js";
+import { countStaleSymbolVectors, embedTextsCached, loadVectorsByHash } from "./cache.js";
 import { listEmbeddableSymbols } from "./corpus.js";
 import type {
   EmbedAttempt,
@@ -31,6 +31,7 @@ export async function embedSnapshot(
     embedded: symbols.length,
     newlyEmbedded: newHashes.size,
     reused: symbols.filter((s) => !newHashes.has(s.textHash)).length,
+    staleVectors: countStaleSymbolVectors(store, embedder.model),
   };
 }
 
