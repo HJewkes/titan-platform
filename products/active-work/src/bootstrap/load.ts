@@ -1,7 +1,6 @@
-import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { readInitiativeTasks } from '@titan-design/pm/node';
 import { BriefFrontmatterSchema, type BriefFrontmatter } from '../schemas/brief.js';
-import { TaskSchema, type Task } from '../schemas/task.js';
 import { ArtifactsSchema, type Artifacts } from '../schemas/artifacts.js';
 import {
   loadSessionsFromDir,
@@ -11,7 +10,7 @@ import {
 import { readYaml } from '../utils/yaml-io.js';
 import { NotFoundError } from '../errors.js';
 import { readMarkdownWithSchema } from '../utils/markdown-schema.js';
-import type { LoadedTasks, MalformedTask } from './prompt.js';
+import type { LoadedTasks } from './prompt.js';
 
 /**
  * Order sessions newest first, breaking `ended` ties on `started` so a long
@@ -41,33 +40,23 @@ function describe(err: unknown): string {
 }
 
 /**
- * Read every task file under `initiativeDir/tasks`.
+ * Read every task file under `initiativeDir/tasks`, through the pm reader.
  *
  * A file that would not parse is *not* the same as a task that does not exist:
  * dropping it silently shrinks the open list, so the next session works a stale
  * top task and never learns why. Malformed entries travel back to the caller
- * the way `loadSessionsFromDir` returns `malformed`.
+ * the way `loadSessionsFromDir` returns `malformed`; callers that only need the
+ * tasks take `.tasks` and ignore them.
  */
 export async function loadTasks(initiativeDir: string): Promise<LoadedTasks> {
-  const tasksDir = path.join(initiativeDir, 'tasks');
-  let entries: string[];
-  try {
-    entries = await fs.readdir(tasksDir);
-  } catch {
-    return { tasks: [], malformed: [] };
-  }
-  const ymlFiles = entries.filter((n) => n.endsWith('.yml') || n.endsWith('.yaml'));
-  const tasks: Task[] = [];
-  const malformed: MalformedTask[] = [];
-  for (const filename of ymlFiles) {
-    const fullPath = path.join(tasksDir, filename);
-    try {
-      tasks.push(await readYaml(fullPath, TaskSchema));
-    } catch (err) {
-      malformed.push({ file: filename, reason: describe(err) });
-    }
-  }
-  return { tasks, malformed };
+  const { tasks, unparsed } = await readInitiativeTasks(
+    path.dirname(initiativeDir),
+    path.basename(initiativeDir),
+  );
+  return {
+    tasks: tasks.map((row) => row.task),
+    malformed: unparsed.map(({ file, reason }) => ({ file: path.posix.basename(file), reason })),
+  };
 }
 
 interface LoadedArtifacts {
