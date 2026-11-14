@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { graphNoteRelevance } from '../bootstrap/rank-notes.js';
 import { DF_CAP_FLOOR } from './derive-query.js';
 import { searchWorkspace } from './index.js';
+import { ownerShown, writeCharter } from '../test-support/visibility.js';
 import { relatedContext, withinBudget, type RelatedInput } from './related.js';
 import { openGraph, type WorkspaceGraph } from '../session-index/graph.js';
 import { demoteToLegacy, refreshInto, removeFile, scaffold, writeFile } from '../test-support/workspace-index/fixture.js';
@@ -29,6 +30,7 @@ beforeEach(async () => {
   root = path.join(dir, 'active');
   dbPath = path.join(dir, 'graph.sqlite3');
   scaffold(root);
+  writeCharter(root);
   (await refreshInto(dbPath, root)).db.close();
 });
 
@@ -88,7 +90,7 @@ describe('relatedContext', () => {
     const archive = 'beta/sources/handoff-archive-2026-07.md';
     writeFile(root, archive, '# Handoff archive\n\nThe zeppelin rollout stalled twice.\n');
     const graph = await refreshInto(dbPath, root);
-    const searched = await searchWorkspace('zeppelin', { graph, activeRoot: root });
+    const searched = await searchWorkspace('zeppelin', { graph, activeRoot: root, visible: await ownerShown(root) });
     graph.db.close();
 
     const result = await related({ text: 'zeppelin rollout', classes: ['sources'] });

@@ -25,7 +25,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import precedentSearch from '../commands/precedent-search.js';
 import { extractPrecedents, type ExtractResult } from './extract.js';
 import { ledgerPath, readLedgerRows } from './ledger.js';
-import { loadAgentVisibility } from '../sessions/visibility.js';
+import { visibilityFor } from '../sessions/visibility.js';
 import { searchPrecedents } from './search.js';
 import { openGraph } from '../session-index/graph.js';
 import { runRefresh } from '../session-index/refresh.js';
@@ -395,7 +395,7 @@ describe('precedent search', () => {
       const forOwner = await precedentSearch.run(args, { activeRoot, warnings: [], format: 'json', caller: 'owner' });
 
       expect(forAgent.hits).toEqual([]);
-      expect(agentCtx.warnings).toHaveLength(1);
+      expect(agentCtx.warnings).toContain('include_unclaimed is served only to the owner: unclaimed precedents name no initiative');
       expect(forOwner.hits[0]?.question).toBe(MERGE_Q);
     });
   });
@@ -479,11 +479,11 @@ describe('human-only initiatives', () => {
       const rows = await ledgerRows(activeRoot);
 
       const open = await searchPrecedents(rows, MERGE_QUERY, {
-        isVisible: await loadAgentVisibility(activeRoot),
+        isVisible: await visibilityFor({ activeRoot, caller: 'agent', warnings: [] }),
       });
       markOwnerOnly(activeRoot);
       const ownerOnly = await searchPrecedents(rows, MERGE_QUERY, {
-        isVisible: await loadAgentVisibility(activeRoot),
+        isVisible: await visibilityFor({ activeRoot, caller: 'agent', warnings: [] }),
         includeUnclaimed: true,
       });
 

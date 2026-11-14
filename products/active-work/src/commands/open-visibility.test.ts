@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { CommandContext } from '../registry/types.js';
 import { withEmptyActiveRoot } from '../test-support/test-helpers.js';
+import { CHARTER_INITIATIVE, writeCharter } from '../test-support/visibility.js';
 import open from './open.js';
 
 /**
@@ -25,6 +26,7 @@ function writeBrief(root: string, slug: string, prefix: string, visibility: stri
 }
 
 function seed(root: string): void {
+  writeCharter(root);
   writeBrief(root, VISIBLE, 'AL', 'visibility: agent-visible\n');
   writeBrief(root, HIDDEN, 'PN', '');
 }
@@ -46,7 +48,7 @@ describe('open across initiatives', () => {
       const forOwner = await open.run(open.args.parse({ pick: true }), context(root, 'owner'));
 
       expect(pickerSlugs(forAgent)).toEqual([VISIBLE]);
-      expect(pickerSlugs(forOwner)).toEqual([VISIBLE, HIDDEN]);
+      expect(pickerSlugs(forOwner)).toEqual([VISIBLE, CHARTER_INITIATIVE, HIDDEN]);
     });
   });
 
