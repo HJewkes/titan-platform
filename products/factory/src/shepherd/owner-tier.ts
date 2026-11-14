@@ -4,7 +4,9 @@ import type { CiPolicy } from "@titan-design/session-read";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
 import type { CiPolicyClass } from "./ci-policy-class.js";
 import { budgetAt } from "./ci-policy-guard.js";
-import { ownerTierRows } from "./risk-tier.js";
+import { adversaryRequired, type AttestVerdicts } from "./attest-evidence.js";
+import type { KindRead } from "./registered-kind.js";
+import { ownerTierRows, type AuthorityRead } from "./risk-tier.js";
 
 /** `shepherd.gateReset.ownerTier` (TP-5406): absent means `shadow`, which records the rows and changes no outcome (Q-S2c). */
 export type OwnerTierMode = "off" | "shadow" | "on";
@@ -18,6 +20,8 @@ interface OwnerTierStamp {
 export interface OwnerTierField {
   /** Read back unvalidated from a stored record, so decide time parses the mode itself. */
   ownerTier?: OwnerTierStamp;
+  /** The adversary's Authority line at this head (TP-5407), stamped so decide time reads the value the evidence step read; absent where no adversary was required. */
+  authorityLine?: AuthorityRead;
 }
 
 export interface OwnerTierWiring {
@@ -34,8 +38,29 @@ interface OwnerTierEvidence extends OwnerTierField {
 
 const OWNER_TIER_REASON_PREFIX = "owner tier: ";
 
+const AUTHORITY_READS: readonly unknown[] = ["unchanged", "tightened", "widened", "missing"] satisfies AuthorityRead[];
+const isAuthorityRead = (value: unknown): value is AuthorityRead => AUTHORITY_READS.includes(value);
+
+/** A stored stamp is unvalidated: any value but a known one reads as `missing`, so a corrupt record keeps the owner gate. */
+function stampedAuthority(stamp: unknown): AuthorityRead | undefined {
+  if (stamp === undefined) return undefined;
+  return isAuthorityRead(stamp) ? stamp : "missing";
+}
+
 /** Recomputed from the head's own facts, so a stored record decides the same way at the same head. */
-const rowsAt = (evidence: OwnerTierEvidence): string[] => ownerTierRows({ paths: evidence.merge.changedPaths, ciBudget: budgetAt(evidence, evidence.head) !== undefined });
+const rowsAt = (evidence: OwnerTierEvidence): string[] => {
+  const authorityLine = stampedAuthority(evidence.authorityLine);
+  return ownerTierRows({ paths: evidence.merge.changedPaths, ciBudget: budgetAt(evidence, evidence.head) !== undefined, ...(authorityLine && { authorityLine }) });
+};
+
+/**
+ * The adversary's Authority line the evidence step stamps: its value when an adversary was required, `missing` when none
+ * carried one or the registration that says whether one was required could not be read, and undefined otherwise.
+ */
+export function authorityLineOf(attest: AttestVerdicts | undefined, registration: Pick<KindRead, "holdReason" | "unread"> | undefined): { authorityLine?: AuthorityRead } {
+  const required = registration?.unread !== undefined || adversaryRequired(attest, registration?.holdReason);
+  return required ? { authorityLine: attest?.adversary?.authority ?? "missing" } : {};
+}
 
 /** A route that lost its wiring passes `undefined`, so that fails closed as `on` rather than quietly reading `shadow`. */
 export function ownerTierStamp(mode: OwnerTierMode | undefined, evidence: OwnerTierEvidence): OwnerTierField {
