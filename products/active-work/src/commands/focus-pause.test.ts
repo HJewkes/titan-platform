@@ -12,7 +12,7 @@ import { UsageError, NotFoundError } from '../errors.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
 
 function ctx(activeRoot: string): CommandContext {
-  return { activeRoot, warnings: [], format: 'json' };
+  return { activeRoot, warnings: [], format: 'json', caller: 'owner' };
 }
 
 interface SeedOptions {
