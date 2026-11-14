@@ -114,8 +114,21 @@ function systemBuildPorts(given: ProductionBuildPorts): BuildSurfacePorts {
     extract: claudePrintExtract,
     shepherd: rpcShepherd(given.rpc, given.github),
     tasks: activeWorkFixTasks({ origin: activeWorkOrigin(process.env) }),
-    taskKey: async (task) => (await qualifyTask(task, { origin: activeWorkOrigin(process.env) })).key,
+    taskKey: (task) => qualifiedTaskKey(task, { env: process.env, warn: (line) => void process.stderr.write(`${line}\n`) }),
   };
+}
+
+interface TaskKeyOptions {
+  env: NodeJS.ProcessEnv;
+  warn: (line: string) => void;
+  fetch?: typeof globalThis.fetch;
+}
+
+/** The canonical key, or the key as given with a warning when no complete task index answered. */
+export async function qualifiedTaskKey(task: string, { env, warn, fetch }: TaskKeyOptions): Promise<string> {
+  const checked = await qualifyTask(task, { origin: activeWorkOrigin(env), ...(fetch && { fetch }) });
+  if (!checked.verified) warn(`warning: ${checked.warning}`);
+  return checked.key;
 }
 
 interface FactoryAgentWiring {
