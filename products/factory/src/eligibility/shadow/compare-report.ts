@@ -8,7 +8,7 @@ import type { CompareReport } from "./compare.js";
 const pct = (rate: number | null): string => (rate === null ? "n/a" : `${Math.round(rate * 100)}%`);
 
 /** Top reason codes behind operator-only picks, most frequent first, ties by code. */
-export function topReasonCodes(report: CompareReport, limit = 5): [string, number][] {
+function topReasonCodes(report: CompareReport, limit = 5): [string, number][] {
   const counts = new Map<string, number>();
   for (const entry of report.operatorOnly) for (const code of entry.codes.length > 0 ? entry.codes : [entry.shadowVerdict]) counts.set(code, (counts.get(code) ?? 0) + 1);
   return [...counts.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, limit);
@@ -24,7 +24,9 @@ function headline(report: CompareReport): string {
 
 function operatorLine(report: CompareReport): string {
   const { counts, source } = report.operator;
-  return `- Operator \`${report.operator.seat}\`: ${counts.found} spawns found (${counts.withTask} with meta.task, ${counts.withoutTask} without), ${counts.excludedByRole} excluded by role, ${counts.unresolved} unresolved, ${counts.outOfScope} outside the lanes; ${report.operator.spawns} picks (${source.eventsDb} events, ${source.ledger} ledger).`;
+  const found = `${counts.found} spawns found (${counts.withTask} with meta.task, ${counts.withoutTask} without)`;
+  const dropped = `${counts.excludedByRole} excluded by role, ${counts.unresolved} unresolved, ${counts.outOfScope} outside the lanes`;
+  return `- Operator \`${report.operator.seat}\`: ${found}, ${dropped}; ${report.operator.spawns} picks (${source.eventsDb} events, ${source.ledger} ledger).`;
 }
 
 function laneLines(report: CompareReport): string[] {

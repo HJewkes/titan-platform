@@ -30,7 +30,7 @@ const ShadowRowIn = z.looseObject({
 
 export type ShadowRowRead = z.infer<typeof ShadowRowIn>;
 
-export interface ShadowDayRead {
+interface ShadowDayRead {
   rows: ShadowRowRead[];
   /** Lines that were not JSON or lacked `kind`, `wake` or `at`; counted so a damaged file is visible. */
   badLines: number;

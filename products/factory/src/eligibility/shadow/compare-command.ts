@@ -8,7 +8,7 @@ import { firstPicks, scopedSpawns, type PickScope } from "./compare-picks.js";
 import { agentChatHome, openEventsDb, readLedgerPicks, readOperatorSpawns, readShadowDays } from "./compare-read.js";
 import { renderSection, upsertSection } from "./compare-report.js";
 import { compareDay, laneKey, type CompareReport } from "./compare.js";
-import { defaultRuleFilePath, loadRuleFile, type RuleFile } from "./rule-file.js";
+import { compareSettings, defaultRuleFilePath, loadRuleFile, type RuleFile } from "./rule-file.js";
 
 /*
  * `dispatch shadow-compare` (TP-5755 S9): scores one day of shadow rows against the operator's real spawns. It writes
@@ -37,14 +37,16 @@ function readEvents(file: string, seat: string, from: number, to: number) {
 function buildReport(rules: RuleFile, dir: string, day: string, files: { eventsDb: string; ledger: string }): CompareReport {
   const from = Date.parse(`${day}T00:00:00Z`);
   const to = from + DAY_MS;
-  const scope: PickScope = { initiatives: new Set(rules.lanes.map((lane) => lane.initiative)), prefixes: rules.compare.prefixes };
-  const spawns = readEvents(files.eventsDb, rules.compare.operator, from - DAY_MS, to + DAY_MS);
+  const { operator, prefixes } = compareSettings(rules);
+  const scope: PickScope = { initiatives: new Set(rules.lanes.map((lane) => lane.initiative)), prefixes };
+  const spawns = readEvents(files.eventsDb, operator, from - DAY_MS, to + DAY_MS);
   const nearby = scopedSpawns(spawns, scope).picks;
   const { counts } = scopedSpawns(spawns.filter((spawn) => spawn.ts >= from && spawn.ts < to), scope);
-  const picks = firstPicks(nearby, readLedgerPicks(files.ledger, rules.compare.operator), from, to, scope);
+  const picks = firstPicks(nearby, readLedgerPicks(files.ledger, operator), from, to, scope);
   const shadow = readShadowDays(dir, day);
   const lanes = rules.lanes.map((lane) => laneKey(lane));
-  return compareDay({ day, lanes, seat: rules.compare.operator, dayRows: shadow.day.rows, priorRows: shadow.prior.rows, badLines: shadow.day.badLines, picks, nearbyPicks: nearby, counts });
+  const rows = { dayRows: shadow.day.rows, priorRows: shadow.prior.rows, badLines: shadow.day.badLines };
+  return compareDay({ day, lanes, seat: operator, ...rows, picks, nearbyPicks: nearby, counts });
 }
 
 function writeOutputs(dir: string, report: CompareReport): string {
@@ -60,7 +62,9 @@ function writeOutputs(dir: string, report: CompareReport): string {
 function summary(report: CompareReport, json: string): string {
   const { counts } = report.operator;
   const rate = report.agreement.rate === null ? "n/a" : `${Math.round(report.agreement.rate * 100)}%`;
-  return `shadow-compare ${report.day}: ${report.wakes} wakes (${report.unreadableWakes} unreadable), operator spawns ${counts.found} (${counts.withTask} with meta.task, ${counts.withoutTask} without, ${counts.excludedByRole} excluded by role), picks ${report.operator.spawns}, agreement ${rate}, shadow-only ${report.shadowOnly.length}, operator-only ${report.operatorOnly.length} -> ${json}\n`;
+  const spawns = `operator spawns ${counts.found} (${counts.withTask} with meta.task, ${counts.withoutTask} without, ${counts.excludedByRole} excluded by role)`;
+  const outcome = `picks ${report.operator.spawns}, agreement ${rate}, shadow-only ${report.shadowOnly.length}, operator-only ${report.operatorOnly.length}`;
+  return `shadow-compare ${report.day}: ${report.wakes} wakes (${report.unreadableWakes} unreadable), ${spawns}, ${outcome} -> ${json}\n`;
 }
 
 async function runShadowCompare(opts: CompareOptions, verbs: Verbs): Promise<number> {

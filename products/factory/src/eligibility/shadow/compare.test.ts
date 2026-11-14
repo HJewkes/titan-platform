@@ -18,7 +18,7 @@ const LANE = { initiative: "zeta", tag: "lane-a" };
 const SCOPE: PickScope = { initiatives: new Set(["zeta"]), prefixes: { ZZ: "zeta" } };
 const at = (hhmm: string, day = DAY): number => Date.parse(`${day}T${hhmm}:00Z`);
 
-type Judged = Omit<ShadowRowRead, "wake" | "at">;
+type Judged = Partial<ShadowRowRead> & { kind: string };
 
 function wake(id: string, when: number, rows: Judged[]): ShadowRowRead[] {
   const iso = new Date(when).toISOString();

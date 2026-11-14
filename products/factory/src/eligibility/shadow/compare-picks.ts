@@ -32,7 +32,7 @@ export interface PickCounts {
   outOfScope: number;
 }
 
-export function taskIdFromName(name: string | null): string | null {
+function taskIdFromName(name: string | null): string | null {
   const match = name === null ? null : TASK_IN_NAME.exec(name);
   return match === null ? null : `${match[1]!.toUpperCase()}-${match[2]!}`;
 }

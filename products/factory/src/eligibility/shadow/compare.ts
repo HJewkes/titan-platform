@@ -10,7 +10,7 @@ import type { ShadowRowRead } from "./compare-read.js";
 
 const DAY_MS = 86_400_000;
 
-export const AGREEMENT_DEFINITION =
+const AGREEMENT_DEFINITION =
   "operator spawn's task in the top K of the latest shadow wake before it, K = distinct operator first-dispatches that day (mirrors scorecard rulePlacement)";
 
 interface Wake {
@@ -20,7 +20,7 @@ interface Wake {
   unreadable: boolean;
 }
 
-export interface OperatorOnly {
+interface OperatorOnly {
   task: string;
   spawnedAt: string;
   shadowVerdict: "refused" | "absent" | "would-dispatch";
@@ -29,14 +29,14 @@ export interface OperatorOnly {
   rank?: number;
 }
 
-export interface ShadowOnly {
+interface ShadowOnly {
   task: string;
   firstPicked: string;
   bet: string | null;
   basis: string | null;
 }
 
-export interface LaneNumbers {
+interface LaneNumbers {
   lane: string;
   n: number;
   inTopK: number;
@@ -58,7 +58,7 @@ export interface CompareReport {
   perLane: LaneNumbers[];
 }
 
-export interface CompareInput {
+interface CompareInput {
   day: string;
   lanes: string[];
   seat: string;
@@ -171,6 +171,7 @@ export function compareDay(input: CompareInput): CompareReport {
   const judged = dayWakes.length > 0 && unreadableWakes < dayWakes.length;
   const hits = placed.filter((entry) => entry.inTopK).length;
   const ledger = input.picks.filter((pick) => pick.source === "ledger").length;
+  const rankPctMedian = median(placed.flatMap((entry) => entry.rankPct ?? []));
   return {
     day: input.day,
     lanes: input.lanes,
@@ -178,7 +179,7 @@ export function compareDay(input: CompareInput): CompareReport {
     unreadableWakes,
     badLines: input.badLines,
     operator: { seat: input.seat, spawns: input.picks.length, source: { eventsDb: input.picks.length - ledger, ledger }, counts: input.counts },
-    agreement: { inTopK: hits, of: placed.length, rate: judged ? rate(hits, placed.length) : null, k: input.picks.length, rankPctMedian: median(placed.flatMap((entry) => entry.rankPct ?? [])), definition: AGREEMENT_DEFINITION },
+    agreement: { inTopK: hits, of: placed.length, rate: judged ? rate(hits, placed.length) : null, k: input.picks.length, rankPctMedian, definition: AGREEMENT_DEFINITION },
     shadowOnly: shadowOnly(input.dayRows, input.nearbyPicks),
     operatorOnly: placed.filter((entry) => !entry.inTopK).map((entry) => verdictAt(entry.wake, entry.pick)),
     strictVsRelaxed: strictVsRelaxed(input.dayRows),
