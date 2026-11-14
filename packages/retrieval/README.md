@@ -61,6 +61,26 @@ locked index lowers recall; it never breaks search.
 
 `minScore` and `dropoff` (cut at the largest relative score drop) trim the fused list.
 
+## Vocabulary correction
+
+Pure functions for fixing a misspelled query against the terms an index has seen.
+
+- `extractTerms(text)` returns a `Map` from stored (lowercase) term to the first cased form
+  seen. It keeps terms of 3 to 40 characters and drops stop words, pure numbers and
+  hex strings of 7 or more characters that contain a digit.
+- `scoreTerm(cased, docFrequency, totalDocs)` is IDF plus a length bonus plus 0.5 for an
+  identifier (`snake_case`, `kebab-case`, `camelCase`). Pass the cased form, or camelCase
+  loses its bonus.
+- `editDistance(a, b, maxDistance?)` is Levenshtein over NFC code points, banded: past
+  `maxDistance` it stops and returns `maxDistance + 1`.
+- `findCorrection(term, source)` keeps a known term. Otherwise it fetches candidates within
+  `maxEditDistance(length)` (1 up to 4 characters, 2 up to 12, 3 beyond) and takes the
+  closest, ties to the higher score, then the earlier term.
+- `correctQuery(query, source)` corrects the first 8 words of 3 or more characters.
+
+The `VocabularySource` (`has`, `candidates(minLength, maxLength, limit)`) is injected, so
+correction needs no database. `vocabularyFromEntries(entries)` is an in-memory source.
+
 ## Reranking
 
 `crossEncoderReranker()` runs `Xenova/ms-marco-MiniLM-L-6-v2` in-process through
