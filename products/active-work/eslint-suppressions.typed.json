@@ -313,7 +313,7 @@
   },
   "products/active-work/src/session-index/tasks.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
+      "count": 3
     }
   },
   "products/active-work/src/sessions/lease.ts": {
