@@ -27,7 +27,7 @@ export function briefClasses(classes: readonly SearchClass[] = SEARCH_CLASSES): 
   return classes.map((cls) => cls.name).filter((name) => !NOT_BRIEFED.has(name));
 }
 
-export interface BriefRef {
+interface BriefRef {
   ref: string;
   source: 'workspace';
 }
@@ -38,7 +38,7 @@ export interface BriefBlock {
   bytes: number;
 }
 
-export interface BriefBlockInput {
+interface BriefBlockInput {
   hits: RelatedHit[];
   degraded: RelatedDegradation[];
   initiative?: string;
