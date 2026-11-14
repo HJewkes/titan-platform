@@ -35,7 +35,7 @@ export interface AwSource {
   mtime: string;
 }
 
-export interface AwArtifacts {
+interface AwArtifacts {
   slug: string;
   artifacts: { branches: { repo: string; name: string }[]; worktrees: { path: string; repo: string; branch: string }[] };
 }

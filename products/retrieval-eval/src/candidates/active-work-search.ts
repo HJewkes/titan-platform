@@ -23,7 +23,7 @@ interface SearchHit {
   excerpt?: string;
 }
 
-export interface ActiveWorkSearchOptions {
+interface ActiveWorkSearchOptions {
   activeRoot: string;
   binary?: string;
   /** Per-query ceiling; a hung subprocess must not stall a 600-query run. */
