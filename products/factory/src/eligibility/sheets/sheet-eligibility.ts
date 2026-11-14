@@ -98,7 +98,12 @@ interface SheetReadContext {
  * Undefined when the store holds a selected bet this week, so the caller keeps the selected basis; otherwise the lane
  * judged against `sheetBets`, which is asked only then, so a broken sheet cannot matter to a lane the owner has selected for.
  */
-export async function readSheetEligibility(source: LiveSourceOptions, query: SheetQuery, context: SheetReadContext, sheetBets: () => readonly Bet[]): Promise<{ result: Eligibility; planRead: "rpc" | "file" } | undefined> {
+export async function readSheetEligibility(
+  source: LiveSourceOptions,
+  query: SheetQuery,
+  context: SheetReadContext,
+  sheetBets: () => readonly Bet[],
+): Promise<{ result: Eligibility; planRead: "rpc" | "file" } | undefined> {
   const client = createRpcClient<PlanCommands>(liveSource(source));
   const listArgs = { slug: query.initiative, status: "open" as const, ...(query.tag !== undefined && { tag: query.tag }) };
   const [{ tasks: rows }, { records, planRead }] = await Promise.all([client.call("task.list", listArgs), planRecords(client, query, context.activeRoot)]);

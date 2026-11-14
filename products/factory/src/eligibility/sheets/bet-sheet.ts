@@ -1,6 +1,6 @@
 import { parseIntentDigest } from "@titan-design/pm";
 import { parse as parseYaml, YAMLError } from "yaml";
-import type { z } from "zod";
+import { z } from "zod";
 import { BetBlockSchema, FrontMatterSchema, OutcomeBlockSchema, type BetBlock, type OutcomeBlock, type SheetFrontMatter } from "./bet-sheet-schema.js";
 
 /*
@@ -8,7 +8,7 @@ import { BetBlockSchema, FrontMatterSchema, OutcomeBlockSchema, type BetBlock, t
  * proposed order. Pure; strict about every block, and blind to the prose between blocks, which is for the owner.
  */
 
-export interface SheetError {
+interface SheetError {
   line: number;
   message: string;
 }
@@ -38,7 +38,7 @@ export interface SheetScope {
 export type BetSheetResult = { ok: true; sheet: BetSheet } | { ok: false; errors: SheetError[]; scope: SheetScope };
 
 /** The text of `<digestDir>/<name>.md`, or undefined when there is none. */
-export type DigestText = (name: string) => string | undefined;
+type DigestText = (name: string) => string | undefined;
 
 interface Block {
   key: string;
@@ -74,9 +74,12 @@ function issueErrors(issues: readonly z.core.$ZodIssue[], rows: readonly string[
   return issues.map((issue) => ({ line: lineOf(rows, firstLine, issue.path), message: `${[prefix, ...issue.path.map(String)].filter(Boolean).join(".")}: ${issue.message}` }));
 }
 
+const YamlMap = z.record(z.string(), z.unknown());
+
 function frontScope(value: unknown): SheetScope {
-  if (typeof value !== "object" || value === null) return {};
-  const { initiative, lane, week } = value as Record<string, unknown>;
+  const map = YamlMap.safeParse(value).data;
+  if (map === undefined) return {};
+  const { initiative, lane, week } = map;
   return { ...(typeof initiative === "string" && { initiative }), ...((typeof lane === "string" || lane === null) && { lane }), ...(typeof week === "string" && { week }) };
 }
 
@@ -100,12 +103,13 @@ function parseFront(rows: readonly string[], errors: SheetError[]): { front?: Sh
 function blockOf(rows: string[], line: number, errors: SheetError[]): Block | undefined {
   const value = yamlValue(rows.join("\n"), line + 1, errors);
   if (value === undefined) return undefined;
-  const keys = typeof value === "object" && value !== null && !Array.isArray(value) ? Object.keys(value) : [];
+  const map = YamlMap.safeParse(value).data ?? {};
+  const keys = Object.keys(map);
   if (keys.length !== 1 || (keys[0] !== "outcome" && keys[0] !== "bet")) {
     errors.push({ line, message: "a yaml block holds exactly one top-level key, `outcome` or `bet`" });
     return undefined;
   }
-  return { key: keys[0], value: (value as Record<string, unknown>)[keys[0]], line, rows };
+  return { key: keys[0], value: map[keys[0]], line, rows };
 }
 
 /** Every fenced block after the front matter; a fence that is not `yaml` or never closes is an error. */

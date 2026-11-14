@@ -38,7 +38,7 @@ type ImportCommands = {
 
 export type ImportCall = { command: "plan.outcome.add"; args: OutcomeArgs } | { command: "plan.bet.add"; args: BetArgs };
 
-export interface ImportPlan {
+interface ImportPlan {
   calls: ImportCall[];
   /** Bets the daemon would refuse as written; a plan with any is not applied. */
   problems: string[];

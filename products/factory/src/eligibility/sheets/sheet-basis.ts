@@ -38,7 +38,7 @@ function failureDetail(file: string, errors: readonly { line: number; message: s
 export function sheetBasis(sheets: readonly SheetFile[], lane: LaneWeek): SheetBasis {
   const failed = sheets.find(({ result }) => !result.ok && mayCover(result.scope, lane));
   if (failed !== undefined && !failed.result.ok) return { kind: "unread", detail: failureDetail(failed.file, failed.result.errors) };
-  const matching = sheets.flatMap(({ file, result }) => (result.ok && mayCover({ initiative: result.sheet.front.initiative, lane: result.sheet.front.lane, week: result.sheet.front.week }, lane) ? [{ file, sheet: result.sheet }] : []));
+  const matching = sheets.flatMap(({ file, result }) => (result.ok && mayCover(result.sheet.front, lane) ? [{ file, sheet: result.sheet }] : []));
   if (matching.length > 1) return { kind: "unread", detail: `bet sheets ${matching.map((entry) => entry.file).join(", ")} all name this lane and week` };
   const [only] = matching;
   return only === undefined ? { kind: "none" } : { kind: "sheet", file: only.file, bets: only.sheet.bets.map((bet) => asBet(only.sheet, bet)) };

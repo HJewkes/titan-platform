@@ -6,7 +6,7 @@ import { z } from "zod";
  * `state`: the importer's daemon assigns the id, and a sheet only ever proposes.
  */
 
-export const BET_SHEET_SCHEMA = "titan-bet-sheet/v1";
+const BET_SHEET_SCHEMA = "titan-bet-sheet/v1";
 
 const { shape: bet } = BetSchema;
 const { shape: outcome } = OutcomeSchema;

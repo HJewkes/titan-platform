@@ -173,20 +173,20 @@ const sheetUnreadRow = (base: LaneBase, detail: string): RefusedRow => ({ ...bas
 const sheetBase = (base: LaneBase, sheets: SheetSource | undefined): LaneBase => ({ ...base, basis: "proposed-sheet", ...(sheets?.pinnedWeek !== undefined && { sheet_week: sheets.pinnedWeek }) });
 
 async function laneRows(lane: ShadowLane, input: TickInput, at: string, ports: TickPorts, agentLanes: AgentLanes, sheets?: SheetSource): Promise<LaneJudged> {
-  const selectedBase: LaneBase = { v: 1, wake: input.wake, at, lane: { initiative: lane.initiative, tag: lane.tag }, week: isoWeek(input.now.getTime()), basis: "selected" };
-  if ("unread" in agentLanes) return unreadRow(selectedBase, `active-work inventory: ${agentLanes.unread}`);
-  if (!agentLanes.read.has(lane.initiative)) return { rows: [ownerOnlyRow(selectedBase)], unread: false };
+  const base: LaneBase = { v: 1, wake: input.wake, at, lane: { initiative: lane.initiative, tag: lane.tag }, week: isoWeek(input.now.getTime()), basis: "selected" };
+  if ("unread" in agentLanes) return unreadRow(base, `active-work inventory: ${agentLanes.unread}`);
+  if (!agentLanes.read.has(lane.initiative)) return { rows: [ownerOnlyRow(base)], unread: false };
   let read: LaneRead;
   try {
     read = await readLane(lane, input, ports, sheets);
   } catch (error) {
-    if (error instanceof SheetUnread) return { rows: [sheetUnreadRow(sheetBase(selectedBase, sheets), error.message)], unread: false };
-    return unreadRow(selectedBase, `active-work: ${errorMessage(error)}`);
+    if (error instanceof SheetUnread) return { rows: [sheetUnreadRow(sheetBase(base, sheets), error.message)], unread: false };
+    return unreadRow(base, `active-work: ${errorMessage(error)}`);
   }
-  const base = read.basis === "proposed-sheet" ? sheetBase(selectedBase, sheets) : selectedBase;
+  const rowBase = read.basis === "proposed-sheet" ? sheetBase(base, sheets) : base;
   const extra = await providerHolds(input.providers ?? HOLD_PROVIDERS, lane, input, read.result.eligible);
-  const rows: ShadowRow[] = [...eligibilityRows(base, read.result), ...candidateRows(base, read, extra)];
-  if (read.admission.decision === "hold" && read.result.eligible.length === 0) rows.push(laneHoldRow(base, read.admission));
+  const rows: ShadowRow[] = [...eligibilityRows(rowBase, read.result), ...candidateRows(rowBase, read, extra)];
+  if (read.admission.decision === "hold" && read.result.eligible.length === 0) rows.push(laneHoldRow(rowBase, read.admission));
   return { rows, unread: false, planRead: read.planRead };
 }
 
