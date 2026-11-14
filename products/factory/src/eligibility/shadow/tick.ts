@@ -149,11 +149,12 @@ const ownerOnlyRow = (base: LaneBase): RefusedRow => ({
 });
 
 /** active-work's agent allow list, or why it could not be read; an unread list shows no lane. */
-type AgentLanes = { read: ReadonlySet<string> } | { unread: string };
+type AgentLanes = { read: ReadonlySet<string>; via?: "rpc" | "file" } | { unread: string };
 
-async function readAgentLanes(ports: TickPorts): Promise<AgentLanes> {
+async function readAgentLanes(ports: TickPorts, lanes: readonly ShadowLane[]): Promise<AgentLanes> {
   try {
-    return { read: await ports.agentLanes() };
+    const { lanes: visible, read } = await ports.agentLanes(lanes.map((lane) => lane.initiative));
+    return { read: visible, via: read };
   } catch (error) {
     return { unread: errorMessage(error) };
   }
@@ -188,9 +189,9 @@ export async function shadowTick(input: TickInput): Promise<TickResult> {
   const at = input.now.toISOString();
   const { rules, hash } = input.loaded;
   const ports = tickPorts(input.verbs, input.ports);
-  const agentLanes = rules.lanes.length === 0 ? { read: new Set<string>() } : await readAgentLanes(ports);
+  const agentLanes = rules.lanes.length === 0 ? { read: new Set<string>() } : await readAgentLanes(ports, rules.lanes);
   const judged: LaneJudged[] = [];
   for (const lane of rules.lanes) judged.push(await laneRows(lane, input, at, ports, agentLanes));
-  const wake: ShadowRow = { v: 1, kind: "wake", wake: input.wake, at, build: buildSha(), rule_hash: hash, lanes: rules.lanes.length, ...wakePlanRead(judged.map((lane) => lane.planRead)) };
+  const wake: ShadowRow = { v: 1, kind: "wake", wake: input.wake, at, build: buildSha(), rule_hash: hash, lanes: rules.lanes.length, ...wakePlanRead(judged.map((lane) => lane.planRead)), ...("via" in agentLanes && { visibility_read: agentLanes.via }) };
   return { rows: [wake, ...judged.flatMap((lane) => lane.rows)], unreadLanes: judged.filter((lane) => lane.unread).length };
 }

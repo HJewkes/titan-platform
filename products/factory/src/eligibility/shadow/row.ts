@@ -23,6 +23,8 @@ interface WakeRow {
   lanes: number;
   /** "file" when any lane's plan came from the plan store because the daemon has no `plan.*` rpc; absent when no plan was read. */
   plan_read?: "rpc" | "file";
+  /** "file" when lane visibility was rebuilt from the initiative files because the daemon's inventory has no verdict field. */
+  visibility_read?: "rpc" | "file";
 }
 
 /** Set on a candidate whose pass needed the rule file's relax list, beside the codes the strict rules gave it. */
