@@ -13,7 +13,7 @@ const ArgsSchema = z.object({}).strict();
 const InitiativeKeysSchema = z.object({
   slug: z.string(),
   task_prefix: z.string(),
-  agent_visible: z.boolean(),
+  withheld_from_agents: z.boolean(),
   /** Every task file's id, open or archived: a key names a task if its file exists. */
   ids: z.array(z.string()),
 });
@@ -40,7 +40,7 @@ async function taskIds(activeRoot: string, slug: string): Promise<string[]> {
 export default defineCommand<z.infer<typeof ArgsSchema>, Result>({
   name: 'task.keys',
   description:
-    "Every initiative's task prefix, agent visibility and task ids (open and archived), read from file names: the index a task key resolves against",
+    "Every initiative's task prefix, withheld-from-agents verdict and task ids (open and archived), read from file names: the index a task key resolves against",
   args: ArgsSchema,
   result: ResultSchema,
   cli: { usage: 'task keys' },
@@ -55,7 +55,7 @@ export default defineCommand<z.infer<typeof ArgsSchema>, Result>({
       entries.map(async ({ slug, frontmatter }) => ({
         slug,
         task_prefix: frontmatter.task_prefix,
-        agent_visible: wire.get(slug)?.agent_visible ?? false,
+        withheld_from_agents: wire.get(slug)?.withheld_from_agents ?? true,
         ids: await taskIds(activeRoot, slug),
       })),
     );

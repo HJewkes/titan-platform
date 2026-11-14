@@ -7,7 +7,7 @@ const SUMMARY_CAP = 160;
 const SUMMARY_KEYS = ["command", "pattern", "description", "query", "url", "prompt"] as const;
 const PATH_KEYS = ["file_path", "notebook_path", "path"] as const;
 
-export interface CappedText {
+interface CappedText {
   text: string;
   truncated: boolean;
 }
@@ -16,7 +16,7 @@ export function capText(text: string, cap: number): CappedText {
   return text.length <= cap ? { text, truncated: false } : { text: text.slice(0, cap), truncated: true };
 }
 
-export function isSidechain(observation: NormalizedSessionObservation): boolean {
+function isSidechain(observation: NormalizedSessionObservation): boolean {
   return observation.nativeExtensions?.some((entry) => entry.name === "isSidechain" && entry.value === true) ?? false;
 }
 

@@ -15,7 +15,7 @@ describe("the agent allow list from inventory (TP-5556)", () => {
   });
 
   it("withholds a row an older daemon sends without the field", async () => {
-    const allowed = inventoryAllowList("http://127.0.0.1:1", inventoryFetch([{ slug: "kiln-tools", human_only: false, agent_visible: true }]));
+    const allowed = inventoryAllowList("http://127.0.0.1:1", inventoryFetch([{ slug: "kiln-tools", human_only: false }]));
 
     expect([...(await allowed())]).toEqual([]);
   });

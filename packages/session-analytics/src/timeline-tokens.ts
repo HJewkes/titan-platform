@@ -9,7 +9,7 @@ import { capText } from "./timeline-turns.js";
 type Snapshot = Extract<UsageMeasurement, { kind: "snapshot" }>;
 
 /** One deduplicated API request, before the cumulative pass. */
-export interface TokenRequest {
+interface TokenRequest {
   atMs: number | null;
   turnIndex: number | null;
   model: string | null;

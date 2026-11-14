@@ -23,7 +23,7 @@ const GIT_ENV = { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: o
 // Without it every fixture index type-checks the default libs, about half a second per repo.
 const NO_LIB_TSCONFIG = fileURLToPath(new URL("./test-fixtures.tsconfig.json", import.meta.url));
 
-export const FIXTURE_FILES: Record<string, string> = {
+const FIXTURE_FILES: Record<string, string> = {
   "src/math.ts": "export function add(a: number, b: number): number {\n  return a + b;\n}\n",
   "src/index.ts": 'import { add } from "./math.js";\n\nexport const total = add(1, 2);\n',
   "src/util/strings.ts": "export function shout(s: string): string {\n  if (!s) return s;\n  return s.toUpperCase();\n}\n",
@@ -54,7 +54,7 @@ export async function makeFixtureRepo(): Promise<FixtureRepo> {
 }
 
 /** Nested directories, two `run` methods in different classes, an empty file, and a test file, for hierarchy tests. */
-export const HIERARCHY_FILES: Record<string, string> = {
+const HIERARCHY_FILES: Record<string, string> = {
   "src/jobs/runner.ts": [
     "export class Job {",
     "  run(n: number): number {",

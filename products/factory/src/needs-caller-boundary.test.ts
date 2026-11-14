@@ -16,7 +16,7 @@ const OWNER_QUEUE_SRC = join(SRC, "..", "..", "..", "packages", "owner-queue", "
 const AGENT_ENV = /\b(AGENT_CHAT_NAME|AGENT_CHAT_AGENT_ID|CLAUDECODE)\b/;
 const OWNER_ONLY = /\bownerOnly\b/;
 const VERDICT_BUILDERS = /\b(isAgentVisible|agentAccess|hiddenSlugs\w*|ownerOnlySlugs|withheldSlugs)\b/;
-const WIRE_FIELD = /\b(withheld_from_agents|agent_visible)\b/;
+const WIRE_FIELD = /\b(withheld_from_agents)\b/;
 const CALLER_FORGE = /\bcaller\s*[:=]\s*["'`]owner["'`]|\bfactoryContext\([^;]*?["'`]owner["'`]/;
 const CALLER_COMPARE = /\bcaller\s*[!=]==/;
 
@@ -33,6 +33,7 @@ const OWNER_ONLY_NAMERS: Record<string, string> = {
 };
 
 const WIRE_READERS: Record<string, string> = {
+  "eligibility/shadow/tick.test-helpers.ts": "a fake active-work daemon that serves the field to tests; reads no verdict",
   "needs/agent-allow-list.ts": "reads withheld_from_agents, the one verdict the needs filter applies",
   "shepherd/task-ref.ts": "resolves a registration's task key from task-keys; returns no needs item",
 };

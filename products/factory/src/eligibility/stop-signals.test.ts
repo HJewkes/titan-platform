@@ -104,7 +104,8 @@ describe("stop rows in a shadow tick", () => {
     const stopsFile = join(root, "state", "stops.json");
     writeFileSync(stopsFile, JSON.stringify(marks));
     const stop = { taskFixRounds: 3, spendMultiple: 2, usdPerPoint: 8, betStoppedPrs: 3, betFollowupMultiple: 2, checkpointEvery: 5 };
-    return { loaded: { rules: { schema: "titan-dispatcher/v1", mode: "shadow", shadow: { enabled: true, dir: join(root, "shadow") }, lanes: [{ initiative: "alpha", tag: "lane-a" }], stop }, hash: "sha256:0" }, stopsFile };
+    const upkeep = { capShare: 0.25, windowDays: 7, factoryOutcomes: [] };
+    return { loaded: { rules: { schema: "titan-dispatcher/v1", mode: "shadow", shadow: { enabled: true, dir: join(root, "shadow") }, lanes: [{ initiative: "alpha", tag: "lane-a" }], relax: [], intake: { minSeverity: "medium", expireDays: 28 }, stop, upkeep }, hash: "sha256:0" }, stopsFile };
   }
 
   it("a tick reads the marks file and never writes it, and the module exports no writer", async () => {
@@ -115,7 +116,7 @@ describe("stop rows in a shadow tick", () => {
     const rpc = fakeRpc({ tasks: [task(1), task(2)], bets: [selectedBet(1, 1, ["alpha/AL-1", "alpha/AL-2", "alpha/AL-3"])] });
     fsCalls.writes.length = 0;
 
-    const { rows } = await shadowTick({ loaded, verbs: verbs(rpc.fetch, {}), now: new Date(NOW), wake: "w", providers: [stopProvider(read)] });
+    const { rows } = await shadowTick({ loaded, verbs: verbs(rpc.fetch, {}), now: new Date(NOW), wake: "w", providers: [stopProvider(read)], ports: { agentLanes: async () => new Set(["alpha"]) } });
 
     const held = rows.filter((row): row is RefusedRow => row.kind === "refused" && row.stage === "stop");
     expect(held.map((row) => [row.task, row.codes, row.next, row.would_ask, row.numbers])).toEqual([

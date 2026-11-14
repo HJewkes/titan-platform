@@ -250,7 +250,7 @@ function implementTaskCommand(onResult: (code: number) => void): Command {
   return new Command("implement-task").description("The implement-task unit's private case builder").addCommand(exportCases).exitOverride();
 }
 
-export function buildProgram(onResult: (code: number) => void = () => undefined): Command {
+function buildProgram(onResult: (code: number) => void = () => undefined): Command {
   return new Command("titan-evals")
     .description("Eval registry for units of work: specs, content hashes, and (in later slices) trials and scorecards")
     .addCommand(validateCommand(onResult))

@@ -27,7 +27,7 @@ export interface BrokerReader {
   queue(): Promise<BrokerEvent[]>;
 }
 
-export interface BrokerReaderOptions {
+interface BrokerReaderOptions {
   port: number;
   /** agent-chat's 0600 `ui.token`, re-read on every call so a rotated token needs no restart; refused if group or others have any access. */
   tokenPath: string;

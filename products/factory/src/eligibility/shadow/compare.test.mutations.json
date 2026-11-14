@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "judge a spawn against the earliest wake instead of the latest before it",
+      "file": "products/factory/src/eligibility/shadow/compare.ts",
+      "find": "return wakes.filter((wake) => wake.at <= at).at(-1);",
+      "replace": "return wakes.filter((wake) => wake.at <= at).at(0);",
+      "kills": [
+        "compareDay agreement uses the latest wake before the spawn, so a re-rank between wakes changes the verdict"
+      ]
+    },
+    {
+      "name": "count review and fix-round spawns as picks",
+      "file": "products/factory/src/eligibility/shadow/compare-picks.ts",
+      "find": "const isPickRole = (spawn: SpawnRead): boolean => spawn.role === null || !NON_PICK_ROLE.test(spawn.role);",
+      "replace": "const isPickRole = (spawn: SpawnRead): boolean => true;",
+      "kills": [
+        "operator picks counts each task once per day at its first spawn, and leaves review, fix-round and planner spawns out"
+      ]
+    }
+  ]
+}
