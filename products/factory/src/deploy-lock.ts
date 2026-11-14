@@ -1,4 +1,7 @@
+import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { isProcessAlive } from "@titan-design/daemon";
+import { errorCode } from "@titan-design/rpc-protocol/narrow";
 
 export const deployLockPath = (stateDir: string): string => join(stateDir, "deploy.lock");
 
@@ -48,4 +51,37 @@ export function releaseLock(ports: LockPorts, lock: string): void {
 export function runningDeployer(ports: Pick<LockPorts, "readFile" | "isAlive">, stateDir: string): number | undefined {
   const pid = Number(ports.readFile(deployLockPath(stateDir))?.trim());
   return Number.isInteger(pid) && pid > 0 && ports.isAlive(pid) ? pid : undefined;
+}
+
+function createExclusive(path: string, text: string): boolean {
+  try {
+    writeFileSync(path, text, { flag: "wx" });
+    return true;
+  } catch (err) {
+    if (errorCode(err) === "EEXIST") return false;
+    throw err;
+  }
+}
+
+function rename(from: string, to: string): boolean {
+  try {
+    renameSync(from, to);
+    return true;
+  } catch (err) {
+    if (errorCode(err) === "ENOENT") return false;
+    throw err;
+  }
+}
+
+function readIfPresent(path: string): string | undefined {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
+/** What `takeLock` needs, on the real filesystem and process table. */
+export function systemLockPorts(): LockPorts {
+  return { pid: process.pid, readFile: readIfPresent, remove: (path) => rmSync(path, { force: true }), createExclusive, rename, isAlive: isProcessAlive };
 }
