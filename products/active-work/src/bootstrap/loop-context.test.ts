@@ -104,7 +104,7 @@ describe('relatedForLoops', () => {
     expect(calls[0]).toMatchObject({
       text: 'loop s#a',
       initiative: 'alpha',
-      classes: ['notes', 'sources', 'tasks', 'sessions'],
+      classes: ['notes', 'sources', 'tasks', 'sessions', 'plans'],
     });
   });
 
