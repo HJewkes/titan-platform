@@ -153,6 +153,15 @@ describe("unreadable days", () => {
   });
 });
 
+describe("unjudged picks", () => {
+  it("picks that all came before the first wake give no rate, and the section says the shadow could not judge them", () => {
+    const report = score(wake("w1", at("12:00"), [would(1, 1)]), [spawn(at("08:00"), { task: "ZZ-1" }), spawn(at("09:00"), { task: "ZZ-2" })]);
+
+    expect(report.agreement).toMatchObject({ rate: null, unjudged: 2, of: 2 });
+    expect(renderSection(report)).toContain("Agreement n/a (0 of 2 operator picks in the shadow's top 2). 2 of 2 picks came before any wake or at an unreadable one");
+  });
+});
+
 describe("COMPARE.md section", () => {
   it("re-running a day replaces its section instead of adding a second", () => {
     const report = score(wake("w1", at("09:00"), [would(1, 1)]), [spawn(at("09:10"), { task: "ZZ-4" })]);

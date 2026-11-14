@@ -51,7 +51,7 @@ export interface CompareReport {
   unreadableWakes: number;
   badLines: number;
   operator: { seat: string; spawns: number; source: { eventsDb: number; ledger: number }; counts: PickCounts };
-  agreement: { inTopK: number; of: number; rate: number | null; k: number; rankPctMedian: number | null; definition: string };
+  agreement: { inTopK: number; of: number; rate: number | null; unjudged: number; k: number; rankPctMedian: number | null; definition: string };
   shadowOnly: ShadowOnly[];
   operatorOnly: OperatorOnly[];
   strictVsRelaxed: { wouldDispatchStrict: number; wouldDispatchRelaxed: number };
@@ -168,10 +168,12 @@ export function compareDay(input: CompareInput): CompareReport {
   const dayWakes = groupWakes(input.dayRows);
   const placed = place(input.picks, groupWakes([...input.priorRows, ...input.dayRows]), input.lanes);
   const unreadableWakes = dayWakes.filter((wake) => wake.unreadable).length;
-  const judged = dayWakes.length > 0 && unreadableWakes < dayWakes.length;
+  const unjudged = placed.filter((entry) => entry.wake === undefined || entry.wake.unreadable).length;
   const hits = placed.filter((entry) => entry.inTopK).length;
   const ledger = input.picks.filter((pick) => pick.source === "ledger").length;
   const rankPctMedian = median(placed.flatMap((entry) => entry.rankPct ?? []));
+  // A rate is a judgement only when some pick met a readable wake; picks before any wake or during an outage are not.
+  const agreementRate = unjudged < placed.length ? rate(hits, placed.length) : null;
   return {
     day: input.day,
     lanes: input.lanes,
@@ -179,7 +181,7 @@ export function compareDay(input: CompareInput): CompareReport {
     unreadableWakes,
     badLines: input.badLines,
     operator: { seat: input.seat, spawns: input.picks.length, source: { eventsDb: input.picks.length - ledger, ledger }, counts: input.counts },
-    agreement: { inTopK: hits, of: placed.length, rate: judged ? rate(hits, placed.length) : null, k: input.picks.length, rankPctMedian, definition: AGREEMENT_DEFINITION },
+    agreement: { inTopK: hits, of: placed.length, rate: agreementRate, unjudged, k: input.picks.length, rankPctMedian, definition: AGREEMENT_DEFINITION },
     shadowOnly: shadowOnly(input.dayRows, input.nearbyPicks),
     operatorOnly: placed.filter((entry) => !entry.inTopK).map((entry) => verdictAt(entry.wake, entry.pick)),
     strictVsRelaxed: strictVsRelaxed(input.dayRows),

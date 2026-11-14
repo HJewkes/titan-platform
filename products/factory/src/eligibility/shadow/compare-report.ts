@@ -17,9 +17,10 @@ function topReasonCodes(report: CompareReport, limit = 5): [string, number][] {
 function headline(report: CompareReport): string {
   if (report.wakes === 0) return "No shadow wakes on this day: nothing to compare.";
   if (report.unreadableWakes === report.wakes) return `Shadow could not read the plan store on ${report.unreadableWakes} of ${report.wakes} wakes: no agreement is reported, because the shadow judged nothing.`;
-  const { inTopK, of, k } = report.agreement;
+  const { inTopK, of, k, unjudged } = report.agreement;
   const unread = report.unreadableWakes > 0 ? ` Shadow could not read the plan store on ${report.unreadableWakes} of ${report.wakes} wakes.` : "";
-  return `Agreement ${pct(report.agreement.rate)} (${inTopK} of ${of} operator picks in the shadow's top ${k}).${unread}`;
+  const blind = unjudged > 0 ? ` ${unjudged} of ${of} picks came before any wake or at an unreadable one, so the shadow could not judge them.` : "";
+  return `Agreement ${pct(report.agreement.rate)} (${inTopK} of ${of} operator picks in the shadow's top ${k}).${unread}${blind}`;
 }
 
 function operatorLine(report: CompareReport): string {
