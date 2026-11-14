@@ -12,7 +12,7 @@ export interface TagRef {
   date: string;
 }
 
-export interface IndexedRef extends TagRef {
+interface IndexedRef extends TagRef {
   snapshotId: number;
   files: number;
   nodes: number;
@@ -80,7 +80,7 @@ function rootsAt(repo: string): string[] {
   return INDEXED_DIRS.map((dir) => path.join(repo, dir)).filter((dir) => existsSync(dir));
 }
 
-export interface IndexRefsOptions {
+interface IndexRefsOptions {
   repo: string;
   refs: readonly TagRef[];
   /**

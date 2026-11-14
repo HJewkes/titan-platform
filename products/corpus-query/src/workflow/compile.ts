@@ -22,7 +22,7 @@ You have no tools and cannot read the corpus.
 
 Reply with the JSON object the schema asks for and nothing else.`;
 
-export const COMPILE_STEP = "compile";
+const COMPILE_STEP = "compile";
 
 /** What the compile run leaves on disk: the spec, and the call's usage for the cost report. */
 export interface CompileRecord {
@@ -30,7 +30,7 @@ export interface CompileRecord {
   usage: UsageEntry[];
 }
 
-export function compileMessage(question: string, rules: string | undefined): string {
+function compileMessage(question: string, rules: string | undefined): string {
   return rules === undefined ? `Question: ${question}` : `Question: ${question}\n\nOwner rulings:\n${rules}`;
 }
 

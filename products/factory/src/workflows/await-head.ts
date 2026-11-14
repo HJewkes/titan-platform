@@ -35,7 +35,7 @@ export interface AwaitHeadTarget {
  * How the wait ended: `exited` when the fixer ended with the head unchanged and the PR open, `green` when the unchanged
  * head's required checks all passed, `baseRed` when the unchanged head's failing checks are now judged the base's red.
  */
-export interface AwaitHeadOutcome {
+interface AwaitHeadOutcome {
   pr: PullRequest;
   exited: boolean;
   green?: true;
