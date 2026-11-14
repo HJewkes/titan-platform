@@ -4,7 +4,7 @@
     {
       "name": "miner outcomes serves the unredacted report",
       "file": "products/active-work/src/commands/miner-outcomes.ts",
-      "find": "      const report = redactOutcomeReport(full, await minerKeys(ctx));",
+      "find": "      const report = redactOutcomeReport(full, await minerKeys(ctx), await minerNames(ctx));",
       "replace": "      const report = full;",
       "kills": [
         "miner outcomes for a non-owner (TP-5556 S2a) serves an owner-only initiative as owner-only to an agent and by name to the owner"
