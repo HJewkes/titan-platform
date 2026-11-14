@@ -18,6 +18,7 @@ import minerOutcomes from './miner-outcomes.js';
 import type { CommandContext } from '../registry/types.js';
 import { defaultGraphPath, openGraph } from '../session-index/graph.js';
 import { withEmptyActiveRoot } from '../test-support/test-helpers.js';
+import { writeCharter } from '../test-support/visibility.js';
 
 /**
  * `miner outcomes` over a hand-built graph holding one spawned worker named
@@ -101,11 +102,11 @@ async function seedGraph(root: string): Promise<void> {
   graph.db.close();
 }
 
-function seedLogs(root: string): string {
+function seedLogs(root: string, initiative?: string): string {
   const logs = path.join(root, 'logs');
   mkdirSync(path.join(logs, 'seat-a'), { recursive: true });
   const row = (ts: string, outcome: string) =>
-    JSON.stringify({ ts, agent: 'impl-1', task: 'T-1', kind: 'feature', outcome });
+    JSON.stringify({ ts, agent: 'impl-1', task: 'T-1', kind: 'feature', outcome, ...(initiative && { initiative }) });
   const lines = [
     row('2026-09-01T07:00:00Z', 'dispatched'),
     '{not json',
@@ -202,6 +203,32 @@ describe('miner outcomes', () => {
       });
 
       chmodSync(defaultGraphPath(), 0o644);
+    });
+  });
+});
+
+const OWNER_ONLY_SLUG = 'private-notes';
+
+/** A readable charter, and a brief for the slug that declares nothing, so it is owner-only. */
+function seedOwnerOnlyInitiative(root: string): void {
+  writeCharter(root);
+  mkdirSync(path.join(root, OWNER_ONLY_SLUG), { recursive: true });
+  writeFileSync(path.join(root, OWNER_ONLY_SLUG, 'brief.md'), '---\ntitle: Notes\n---\n', 'utf8');
+}
+
+describe('miner outcomes for a non-owner (TP-5556 S2a)', () => {
+  it('serves an owner-only initiative as owner-only to an agent and by name to the owner', async () => {
+    await withEmptyActiveRoot(async (root) => {
+      await seedGraph(root);
+      seedOwnerOnlyInitiative(root);
+      const logs = seedLogs(root, OWNER_ONLY_SLUG);
+
+      const agent = await minerOutcomes.run({ logs }, { ...ctx(), activeRoot: root, caller: 'agent' });
+      const owner = await minerOutcomes.run({ logs }, { ...ctx(), activeRoot: root, caller: 'owner' });
+
+      expect(JSON.stringify(agent)).not.toContain(OWNER_ONLY_SLUG);
+      expect(agent.byInitiative.map((bucket) => bucket.key)).toEqual(['owner-only']);
+      expect(owner.byInitiative.map((bucket) => bucket.key)).toEqual([OWNER_ONLY_SLUG]);
     });
   });
 });

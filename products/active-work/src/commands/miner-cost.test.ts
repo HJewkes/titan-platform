@@ -18,6 +18,7 @@ import minerCost from './miner-cost.js';
 import type { CommandContext } from '../registry/types.js';
 import { defaultGraphPath, openGraph, openGraphReadOnly } from '../session-index/graph.js';
 import { withEmptyActiveRoot } from '../test-support/test-helpers.js';
+import { writeCharter } from '../test-support/visibility.js';
 
 /**
  * `miner cost` over a hand-built graph: three sessions spanning every
@@ -179,6 +180,36 @@ function ctx(format: 'human' | 'json' = 'json'): CommandContext {
   return { activeRoot: '', warnings: [], format };
 }
 
+const OWNER_ONLY_SLUG = 'private-notes';
+
+/**
+ * One session run inside an initiative's folder, keyed `active-work:<slug>`, under a root whose
+ * charter is readable and whose brief for that slug declares nothing, so it is owner-only.
+ */
+async function seedOwnerOnlySession(root: string): Promise<void> {
+  writeCharter(root);
+  mkdirSync(path.join(root, OWNER_ONLY_SLUG), { recursive: true });
+  writeFileSync(path.join(root, OWNER_ONLY_SLUG, 'brief.md'), '---\ntitle: Notes\n---\n', 'utf8');
+  const cwd = path.join(root, 'work', 'active-work', OWNER_ONLY_SLUG);
+  const lines = [
+    userPrompt('sess-private', cwd, 'p1', '2026-09-01T00:00:00Z', 'prompt'),
+    assistant('sess-private', cwd, '2026-09-01T00:00:05Z', 'req-p1', 'claude-sonnet-5', {
+      input_tokens: 1000,
+      output_tokens: 100,
+      cache_read_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+    }),
+  ];
+  const absolutePath = path.join(root, 'private.jsonl');
+  writeFileSync(absolutePath, lines.map((l) => JSON.stringify(l)).join('\n') + '\n', 'utf8');
+  const transcript = { projectDir: 'private', absolutePath, displayPath: '~/demo/private.jsonl', subagentId: null, account: null };
+  const graph = openGraph(defaultGraphPath());
+  await refreshCorpus(graph, [transcript], { resolveOrigins: () => ({ origins: {} }) });
+  rollupSessions(graph, allSessionIds(graph));
+  syncPrices(graph, PRICE_TABLE, { tableVersion: PRICE_TABLE_VERSION });
+  graph.db.close();
+}
+
 beforeEach(() => {
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 });
@@ -302,6 +333,21 @@ describe('miner cost', () => {
         .join('');
       expect(text).toContain('3 transcripts indexed');
       expect(text).toContain(LIST_PRICE_CAVEAT);
+    });
+  });
+});
+
+describe('miner cost for a non-owner (TP-5556 S2a)', () => {
+  it('serves an owner-only initiative as owner-only to an agent and by name to the owner', async () => {
+    await withEmptyActiveRoot(async (root) => {
+      await seedOwnerOnlySession(root);
+
+      const agent = await minerCost.run({}, { ...ctx(), activeRoot: root, caller: 'agent' });
+      const owner = await minerCost.run({}, { ...ctx(), activeRoot: root, caller: 'owner' });
+
+      expect(JSON.stringify(agent)).not.toContain(OWNER_ONLY_SLUG);
+      expect(agent.byInitiative.map((bucket) => bucket.key)).toEqual(['owner-only']);
+      expect(owner.byInitiative.map((bucket) => bucket.key)).toEqual([`active-work:${OWNER_ONLY_SLUG}`]);
     });
   });
 });
