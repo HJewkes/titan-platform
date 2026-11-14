@@ -138,10 +138,20 @@ describe('inventory', () => {
 
       const res = await inventoryCmd.run({}, ctx());
 
-      expect(res.initiatives.map((row) => [row.slug, row.agent_visible, row.withheld_from_agents])).toEqual([
-        ['alpha', true, true],
-        ['garden', false, true],
+      expect(res.initiatives.map((row) => [row.slug, row.withheld_from_agents])).toEqual([
+        ['alpha', true],
+        ['garden', true],
       ]);
+    });
+  });
+
+  it('emits no agent_visible field on any row', async () => {
+    await withEmptyActiveRoot(async (root) => {
+      await seedGarden(root);
+
+      const res = await inventoryCmd.run({}, ctx());
+
+      expect(res.initiatives.every((row) => !('agent_visible' in row))).toBe(true);
     });
   });
 
