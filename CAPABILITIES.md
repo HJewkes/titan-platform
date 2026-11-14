@@ -347,10 +347,8 @@ A model returns cited evidence (file and line claims) and code must verify the c
 Key exports:
 
 - `line-source`: `lineSourceFromTexts`, `splitLines`
-- `citation`: `quoteFragments`, `quoteInRange`, `quoteInText`, `verifyCitation`, `verifyRange`
+- `citation`: `citationHolds`, `citationsIn`, `quoteFragments`, `quoteInRange`, `quoteInText`, `verifyCitation`, `verifyRange`
 - `anchor`: `isAnchorForm`, `isFullSha`, `parseAnchor`
-- `anchor-check`: `verifyAnchorText`
-- `overlap`: `groupByOverlap`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/evidence)
 
 <a id="cap-fix-proof"></a>
