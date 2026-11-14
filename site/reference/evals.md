@@ -154,6 +154,18 @@ nothing and takes no wall time, so sessions stand for cost and no latency is rep
 Seed cases are a floor on both tracks: a missed blocking seed or a falsely blocked passing seed
 rejects the candidate.
 
+## Model-routing bench
+
+- `titan-evals bench run --track r|i|p --cases <dir> --out <run dir>` runs one headless `claude -p` job per
+  (case, arm), one block at a time. A block is one case under every arm, in a seeded shuffled order. At most 6 jobs
+  run at once (`--max-inflight`).
+  - Each job starts from `env -i`. Its PATH is an allowlist of tools, and its own HOME replaces the operator's.
+  - Each job runs under a dead-end proxy, `--safe-mode`, and the run's own `bench-settings.json` deny list.
+  - Rows go to `jobs.jsonl` (`titan.bench-job/v1`) and `scores.jsonl`. A restart skips finished keys and re-runs an
+    `infra` job once.
+  - Dispatch pauses under machine pressure. It stops, writing `STOPPED`, at seven-day account use ≥ 92 %.
+  - Track plugins implement `prepare`, `score` and `cleanup`.
+
 ## When to reach for it
 
 You need a stable identity for "this workflow configuration on this suite", or you want to
