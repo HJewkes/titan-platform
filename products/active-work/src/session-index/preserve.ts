@@ -125,15 +125,6 @@ function parseJsonColumn<S extends z.ZodType>(text: string, schema: S): z.output
   }
 }
 
-/** Stop preserving a row — for one recovered by mistake, or superseded by a real source. */
-export function forgetPreserved(graph: WorkspaceGraph, table: string, key: string): boolean {
-  return (
-    graph.db
-      .prepare('DELETE FROM preserved_row WHERE table_name = ? AND row_key = ?')
-      .run(table, key).changes > 0
-  );
-}
-
 /**
  * Sessions no transcript on disk can produce any more.
  *
