@@ -20,7 +20,7 @@ import { readPath } from "../narrow.js";
 export const VERSION_PACKAGES_BRANCH = "changeset-release/main";
 /** The registration's implementer: no agent writes this PR, so a wake for it is never handled. */
 export const RELEASE_IMPLEMENTER = "changesets";
-export const RELEASE_PREFLIGHT_STEP = "sh-release-preflight";
+const RELEASE_PREFLIGHT_STEP = "sh-release-preflight";
 export const RELEASE_STEPS: readonly StepDeclaration[] = [
   { id: RELEASE_PREFLIGHT_STEP, kind: "dispatch" },
   { id: RELEASE_FOLLOW_STEP, kind: "dispatch" },
@@ -89,7 +89,7 @@ export function isReleaseFile(file: PrFile): boolean {
   return written && (CHANGELOG_FILE.test(file.path) || CATALOG_FILES.has(file.path));
 }
 
-export interface ReleaseTarget {
+interface ReleaseTarget {
   repo: RepoSlug;
   pr: number;
   head: string;

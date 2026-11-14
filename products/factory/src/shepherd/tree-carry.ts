@@ -41,7 +41,7 @@ export interface CacheHandle {
 const Sha = z.string().regex(HEAD, "must be 40 lowercase hex characters");
 export const BranchName = z.string().regex(/^[A-Za-z0-9._/-]+$/).refine((name) => !name.startsWith("-") && !name.includes(".."), "must be a plain branch name");
 const CarryInputSchema = z.object({ repo: z.string().refine(isRepoKey, "must be owner/repo"), baseRef: BranchName, fromHead: Sha, head: Sha });
-export const CarryResultSchema = z.object({ equal: z.boolean(), base: z.string().optional(), firstParent: z.string().optional(), headTree: z.string().optional(), mergeTree: z.string().optional(), patchEqual: z.boolean().optional(), reason: z.string().optional() });
+const CarryResultSchema = z.object({ equal: z.boolean(), base: z.string().optional(), firstParent: z.string().optional(), headTree: z.string().optional(), mergeTree: z.string().optional(), patchEqual: z.boolean().optional(), reason: z.string().optional() });
 
 /** Fails the probe with a reason; never leaves `carry`. */
 /** A git command that exited non-zero; only the subcommand and exit code are kept, since stderr can echo a remote URL or credential. */
