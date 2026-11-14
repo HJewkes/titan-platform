@@ -31,18 +31,18 @@ insert into hitl_gate values
  ('r7/approve-merge','resolved','2026-10-03T07:00:00.000Z');`;
 
 const EVENTS: readonly [number, string][] = [
-  [1790000000000, "Verdict: FIX_FIRST\nPR: o/old#9\nHead: 0"],
-  [1791050000000, "Verdict: FIX_FIRST\nPR: o/proj#1\nHead: a"],
-  [1791051000000, "Verdict: MERGE\nPR: o/proj#1\nHead: a2"],
-  [1791052000000, "Verdict: MERGE\nPR: o/proj#2\nHead: b"],
-  [1791053000000, "Verdict: MERGE\nPR: o/proj#7\nHead: c"],
-  [1791054000000, "Verdict: FIX_FIRST\nPR: o/proj#8\nHead: d"],
+  [1790000000000, "Verdict: FIX_FIRST\nPR: o/old#9\nHead: " + "0".repeat(40)],
+  [1791050000000, "Verdict: FIX_FIRST\nPR: o/proj#1\nHead: " + "a".repeat(40)],
+  [1791051000000, "Verdict: MERGE\nPR: o/proj#1\nHead: " + "a".repeat(39) + "2"],
+  [1791052000000, "Verdict: MERGE\nPR: o/proj#2\nHead: " + "b".repeat(40)],
+  [1791053000000, "Verdict: MERGE\nPR: o/proj#7\nHead: " + "c".repeat(40)],
+  [1791054000000, "Verdict: FIX_FIRST\nPR: o/proj#8\nHead: " + "d".repeat(40)],
   [1791055000000, "not a verdict"],
-  [1791056000000, "Verdict: WAIT\nPR: o/proj#3\nHead: e"],
-  [1791057000000, "Verdict: MERGE\nPR: o/proj#3\nHead: e"],
-  [1791058000000, "Verdict: WAIT\nPR: o/proj#4\nHead: f"],
-  [1791059000000, "Verdict: FIX_FIRST\nPR: o/proj#4\nHead: f"],
-  [1791060000000, "Verdict: WAIT\nPR: o/proj#5\nHead: g"],
+  [1791056000000, "Verdict: WAIT\nPR: o/proj#3\nHead: " + "e".repeat(40)],
+  [1791057000000, "Verdict: MERGE\nPR: o/proj#3\nHead: " + "e".repeat(40)],
+  [1791058000000, "Verdict: WAIT\nPR: o/proj#4\nHead: " + "f".repeat(40)],
+  [1791059000000, "Verdict: FIX_FIRST\nPR: o/proj#4\nHead: " + "f".repeat(40)],
+  [1791060000000, "Verdict: WAIT\nPR: o/proj#5\nHead: " + "9".repeat(40)],
 ];
 
 const LOGS: Record<string, readonly object[]> = {
