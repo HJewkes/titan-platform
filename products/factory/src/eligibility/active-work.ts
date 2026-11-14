@@ -127,10 +127,19 @@ export async function readLaneTasks(options: LiveSourceOptions, lane: { initiati
 /** The open tasks of one initiative (or one lane of it), judged against the week's plan over active-work's loopback rpc. Reads only. */
 export async function readEligibility(options: LiveSourceOptions, query: EligibilityQuery): Promise<Eligibility> {
   const client = createRpcClient<EligibilityCommands>(liveSource(options));
+  const [{ tasks: rows }, plan] = await Promise.all([readOpenTasks(client, query), readPlan(client, query)]);
+  return judge(rows, plan, async () => undefined);
+}
+
+function readOpenTasks(client: Client, query: EligibilityQuery): Promise<Rows> {
   const listArgs = { slug: query.initiative, status: "open" as const, ...(query.tag !== undefined && { tag: query.tag }) };
-  const [{ tasks: rows }, plan] = await Promise.all([client.call("task.list", listArgs), readPlan(client, query)]);
+  return client.call("task.list", listArgs);
+}
+
+/** A row that does not parse as a task is refused as unreadable, never dropped. */
+async function judge(rows: readonly unknown[], plan: PlanView, policyFor: (tasks: readonly Task[]) => Promise<SelectionPolicy | undefined>): Promise<Eligibility> {
   const { tasks, unreadable } = parseTasks(rows);
-  const result = evaluateEligibility(tasks, plan);
+  const result = evaluateEligibility(tasks, plan, await policyFor(tasks));
   return { eligible: result.eligible, refused: [...result.refused, ...unreadable] };
 }
 
@@ -143,9 +152,6 @@ interface ShadowReadContext {
 /** As `readEligibility`, under a policy and with the plan-read fallback; the shadow tick's reader only. */
 export async function readShadowEligibility(options: LiveSourceOptions, query: EligibilityQuery, context: ShadowReadContext): Promise<{ result: Eligibility; planRead: PlanReadSource }> {
   const client = createRpcClient<EligibilityCommands>(liveSource(options));
-  const listArgs = { slug: query.initiative, status: "open" as const, ...(query.tag !== undefined && { tag: query.tag }) };
-  const [{ tasks: rows }, { plan, planRead }] = await Promise.all([client.call("task.list", listArgs), shadowPlan(client, query, context.activeRoot)]);
-  const { tasks, unreadable } = parseTasks(rows);
-  const result = evaluateEligibility(tasks, plan, await context.policyFor(tasks));
-  return { result: { eligible: result.eligible, refused: [...result.refused, ...unreadable] }, planRead };
+  const [{ tasks: rows }, { plan, planRead }] = await Promise.all([readOpenTasks(client, query), shadowPlan(client, query, context.activeRoot)]);
+  return { result: await judge(rows, plan, context.policyFor), planRead };
 }
