@@ -61,6 +61,8 @@ export interface ParsedPrKey {
   pr: string;
   /** The full 40-hex head the key pins, lower-cased; null for no head, a short sha or a malformed ref. */
   sha: string | null;
+  /** The text after `@`, lower-cased, or null when the key names no head. Unlike `sha`, it keeps a head that cannot be read, so a caller that must not settle on an unknown head can tell it from no head. */
+  head: string | null;
 }
 
 /**
@@ -73,8 +75,8 @@ export function parsePrKey(key: string): ParsedPrKey | null {
   if (!normal.startsWith("pr:")) return null;
   const at = normal.lastIndexOf("@");
   const pr = at < 0 ? normal.slice(3) : normal.slice(3, at);
-  const head = at < 0 ? "" : normal.slice(at + 1);
-  return { pr, sha: PR_REF.test(pr) && FULL_SHA.test(head) ? head : null };
+  const head = at < 0 ? null : normal.slice(at + 1);
+  return { pr, head, sha: head !== null && PR_REF.test(pr) && FULL_SHA.test(head) ? head : null };
 }
 
 /** The relation kind of a key, or null for a merge key or anything else. */

@@ -557,6 +557,8 @@ interface ParsedPrKey {
     pr: string;
     /** The full 40-hex head the key pins, lower-cased; null for no head, a short sha or a malformed ref. */
     sha: string | null;
+    /** The text after `@`, lower-cased, or null when the key names no head. Unlike `sha`, it keeps a head that cannot be read, so a caller that must not settle on an unknown head can tell it from no head. */
+    head: string | null;
 }
 /**
  * The one reading of a `pr:` key: trimmed and lower-cased, since GitHub names and shas compare

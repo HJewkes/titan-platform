@@ -51,7 +51,7 @@ function sharedKeys(item: OwnerItem, answer: Answered): Match {
 function prHeads(keys: readonly string[]): Map<string, string | null> {
   const heads = new Map<string, string | null>();
   for (const parsed of keys.map(parsePrKey)) {
-    if (parsed !== null) heads.set(parsed.pr, parsed.sha);
+    if (parsed !== null) heads.set(parsed.pr, parsed.head);
   }
   return heads;
 }

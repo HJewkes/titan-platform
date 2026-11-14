@@ -47,24 +47,24 @@ describe("prKey", () => {
 
 describe("parsePrKey", () => {
   it("reads a full-sha key as a pin", () => {
-    expect(parsePrKey(`pr:o/r#1@${SHA_A}`)).toEqual({ pr: "o/r#1", sha: SHA_A });
+    expect(parsePrKey(`pr:o/r#1@${SHA_A}`)).toEqual({ pr: "o/r#1", sha: SHA_A, head: SHA_A });
   });
 
   it("reads a key with no head, or a short sha, as unpinned", () => {
-    expect(parsePrKey("pr:o/r#1")).toEqual({ pr: "o/r#1", sha: null });
-    expect(parsePrKey("pr:o/r#1@abc1234")).toEqual({ pr: "o/r#1", sha: null });
+    expect(parsePrKey("pr:o/r#1")).toEqual({ pr: "o/r#1", sha: null, head: null });
+    expect(parsePrKey("pr:o/r#1@abc1234")).toEqual({ pr: "o/r#1", sha: null, head: "abc1234" });
   });
 
   it("trims padded keys", () => {
-    expect(parsePrKey(`  pr:o/r#1@${SHA_A}\n`)).toEqual({ pr: "o/r#1", sha: SHA_A });
+    expect(parsePrKey(`  pr:o/r#1@${SHA_A}\n`)).toEqual({ pr: "o/r#1", sha: SHA_A, head: SHA_A });
   });
 
   it("lower-cases mixed-case keys, prefix included", () => {
-    expect(parsePrKey(`PR:Owner/Repo#1@${SHA_A.toUpperCase()}`)).toEqual({ pr: "owner/repo#1", sha: SHA_A });
+    expect(parsePrKey(`PR:Owner/Repo#1@${SHA_A.toUpperCase()}`)).toEqual({ pr: "owner/repo#1", sha: SHA_A, head: SHA_A });
   });
 
   it("does not pin a malformed ref", () => {
-    expect(parsePrKey(`pr:nonsense@${SHA_A}`)).toEqual({ pr: "nonsense", sha: null });
+    expect(parsePrKey(`pr:nonsense@${SHA_A}`)).toEqual({ pr: "nonsense", sha: null, head: SHA_A });
   });
 
   it("is null for keys that are not PR keys", () => {

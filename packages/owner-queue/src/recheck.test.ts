@@ -88,13 +88,21 @@ describe("recheck", () => {
     expect(result.dropped.map((drop) => drop.item.id)).toEqual(["b"]);
   });
 
-  it("settles an item when the heads differ only in case, padding or a short sha", () => {
+  it("settles an item when the heads differ only in case or padding", () => {
     const item = open("b", { keys: [ASK, ` PR:Org-A/Repo-1#12@${SHA_A.toUpperCase()}`] });
     const sameHead = answer("a", AFTER, [ASK, `pr:org-a/repo-1#12@${SHA_A}`]);
-    const shortHead = answer("c", AFTER, [ASK, `pr:org-a/repo-1#12@${SHA_B.slice(0, 7)}`]);
 
     expect(recheck([item], [sameHead]).dropped.map((drop) => drop.item.id)).toEqual(["b"]);
-    expect(recheck([item], [shortHead]).dropped.map((drop) => drop.item.id)).toEqual(["b"]);
+  });
+
+  it("keeps an item open when the answer names another head by a short sha", () => {
+    const item = open("b", { keys: [ASK, prKey("org-a/repo-1", 12, SHA_A)] });
+    const shortHead = answer("c", AFTER, [ASK, `pr:org-a/repo-1#12@${SHA_B.slice(0, 7)}`]);
+
+    const result = recheck([item], [shortHead]);
+
+    expect(result.dropped).toEqual([]);
+    expect(result.open).toEqual([item]);
   });
 
   it("flags an older answer that differs from the recommendation as a conflict", () => {
