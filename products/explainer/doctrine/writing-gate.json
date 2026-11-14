@@ -83,15 +83,15 @@
   "judged": {
     "hallmark-marks": {
       "severity": "error",
-      "warnAbove": 13.3,
-      "errorAbove": 20,
-      "evidence": "Distinct marked passages per 1,000 words, from the lab hallmark judge (opus) with verbatim-quote checks. Human p90 13.3, human max 21.1 (n=51); rejected scripts 41.2 and 36.2; E4 pieces 2.1 and 1.2; briefed control mean 8.6, max 16.8. Judge precision 0.96, recall 46/49 on planted cases. Human FPR about 1/51."
+      "warnAbove": 20,
+      "errorAbove": 28,
+      "evidence": "Distinct marked passages per 1,000 words, from the lab hallmark judge (opus) with verbatim-quote checks. Lab: human p90 13.3, human max 21.1 (n=51); rejected scripts 41.2 and 36.2; E4 pieces 2.1 and 1.2; judge precision 0.96, recall 46/49 on planted cases. S5 acceptance, two judged runs each: rejected scripts 33.5 to 41.2; E4 pieces 0.6 to 2.1; five human controls 4.7 to 22.1 (n=5, one control moved 18.5 to 22.1 between runs). The error line at 28 sits 5.9 above the highest control and 5.5 below the lowest rejected value; the warning line at 20 sits above the lab human max but under one control run."
     },
     "words-per-term": {
-      "severity": "error",
+      "severity": "warning",
       "floor": 60,
       "allowTerms": 1,
-      "evidence": "Words per new technical term, from the lab term extractor (sonnet). Human p10 / p50 / p90 = 87 / 167 / 374 (n=60); rejected scripts 48.5 and 44.2 (3rd percentile); E4 pieces 160 and 243. Run-to-run median difference 13%. One term is always allowed."
+      "evidence": "Words per new technical term, from the lab term extractor (sonnet). Lab: human p10 / p50 / p90 = 87 / 167 / 374 (n=60); rejected scripts 48.5 and 44.2 (3rd percentile); E4 pieces 160 and 243; run-to-run median difference 13%. S5 acceptance: rejected scripts 43.1 to 55.4, but one of five human controls sat at 49.9 on both runs, inside the rejected range, so there is no clean margin for an error. A warning, and report-level, until a larger human calibration exists. One term is always allowed."
     },
     "terms-first-400": {
       "severity": "report-only",

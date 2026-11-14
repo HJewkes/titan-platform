@@ -16,7 +16,7 @@
       "find": "const trusted = failures.length === 0 && canaryMarks > 0;",
       "replace": "const trusted = failures.length === 0;",
       "kills": [
-        "writing judge trust is untrusted when the canary is unmarked, which leaves both gated rows unmeasured and failing"
+        "writing judge trust is untrusted when the canary is unmarked, which leaves both judged rows unmeasured and failing"
       ]
     },
     {
@@ -44,7 +44,7 @@
       "replace": "const fails = value !== null && (",
       "kills": [
         "writing judge trust maps a failed call to unmeasured rows that fail, never to a pass",
-        "writing judge trust is untrusted when the canary is unmarked, which leaves both gated rows unmeasured and failing"
+        "writing judge trust is untrusted when the canary is unmarked, which leaves both judged rows unmeasured and failing"
       ]
     }
   ]

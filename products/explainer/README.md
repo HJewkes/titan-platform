@@ -723,10 +723,12 @@ each capped by `max_budget_usd`. The hallmark judge (`rubrics/writing-hallmark-j
 is found in the text and its item is on the checklist, and a term only when the text says it; the rest are dropped and
 counted. A synthetic naming-refrain paragraph is put after the piece as a canary: its marks never count, and a run in
 which the judge marks none of it is untrusted. `writing:hallmark-marks` is distinct marked passages per 1,000 words,
-an error over 20 and a warning over 13.3; `writing:words-per-term` is words over verified terms, an error under 60
-with one term always allowed; `writing:terms-first-400` reports the terms in the first 400 words. The thresholds are in
-the `judged` block of `doctrine/writing-gate.json`. A failed call or an untrusted run leaves both gated rows unmeasured,
-and an unmeasured gated row fails the verdict. The report carries `judged` (trust, canary marks, dropped counts, terms,
+an error over 28 and a warning over 20, a margin of more than 5 from both the rejected scripts and the human controls
+in the S5 acceptance runs; `writing:words-per-term` is words over verified terms, a warning under 60 with one term
+always allowed, kept at warning level because a human control fell inside the rejected range, until a larger human
+calibration exists; `writing:terms-first-400` reports the terms in the first 400 words. The thresholds and their
+evidence are in the `judged` block of `doctrine/writing-gate.json`. A failed call or an untrusted run leaves both rows
+unmeasured, and an unmeasured row fails at its severity, so an unmeasured hallmark row fails the verdict. The report carries `judged` (trust, canary marks, dropped counts, terms,
 spend and `eval_version`, which hashes the three rubrics, both models and the canary). `--bench` with `--judge` is
 refused for now. Expect a few tens of cents of subscription usage per script.
 

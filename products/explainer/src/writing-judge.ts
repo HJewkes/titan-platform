@@ -105,7 +105,7 @@ interface Measured {
   terms: PlacedTerm[] | null;
 }
 
-/** Marked passages per 1,000 words: at most 20 fails, past the warning line warns, and an unmeasured rate fails. */
+/** Marked passages per 1,000 words: past the error line fails at the row's severity, past the warning line warns, and an unmeasured rate fails. */
 function marksRow({ words, marks }: Measured, rule: JudgedPolicy["judged"]["hallmark-marks"], beatAt: (offset: number) => string): GateRow {
   const passages = marks === null ? null : [...new Map(marks.map((m) => [`${m.start}:${m.end}`, m])).values()].sort((a, b) => a.start - b.start);
   const value = passages === null ? null : (1000 * passages.length) / Math.max(words, 1);
@@ -144,7 +144,8 @@ async function askBoth(input: WritingJudgeInput, rubrics: WritingRubrics, text: 
 
 /**
  * One hallmark-judge call (with the canary after the piece) and one term-extractor call. Quotes are verified against
- * the piece; a failed call or an unmarked canary leaves both gated rows unmeasured, which fails them.
+ * the piece; a failed call or an unmarked canary leaves the marks and words-per-term rows unmeasured, which fails them at
+ * their severity.
  */
 export async function runWritingJudge(input: WritingJudgeInput): Promise<WritingJudgeResult> {
   const rubrics = input.rubrics ?? shippedRubrics();

@@ -69,9 +69,9 @@ describe("explainer eval writing --judge", () => {
     });
   });
 
-  it("exits 1 when the canary goes unmarked, with both gated rows unmeasured", async () => {
+  it("exits 1 when the canary goes unmarked: the hallmark gate is unmeasured and words per term warns", async () => {
     expect(await run(false)).toBe(1);
-    expect(report()).toMatchObject({ judged: { trusted: false }, verdict: { gatesUnmeasured: 2 } });
+    expect(report()).toMatchObject({ judged: { trusted: false }, verdict: { gateFails: 1, gatesUnmeasured: 1, warnings: 1 } });
   });
 
   it("refuses --bench with --judge before any model call", async () => {
