@@ -19,13 +19,15 @@ interface Recorded {
   args: Record<string, unknown>;
 }
 
-function recordingRpc(mode: "served" | "unknown" = "served") {
+function recordingRpc(mode: "served" | "unknown" = "served", existing: { outcomes?: unknown[]; bets?: unknown[] } = {}) {
   const calls: Recorded[] = [];
   const fetch = (async (url, init) => {
     const command = String(url).split("/rpc/")[1]!;
     if (!ALLOWED.some((allowed) => allowed.test(command))) throw new Error(`the importer may not call ${command}`);
     calls.push({ command, args: z.record(z.string(), z.unknown()).parse(JSON.parse(String(init?.body))) });
     if (mode === "unknown") return new Response(JSON.stringify({ ok: false, error: `Unknown command: ${command}`, code: 64 }), { status: 404 });
+    if (command === "plan.outcome.list") return new Response(JSON.stringify({ ok: true, data: existing.outcomes ?? [] }));
+    if (command === "plan.bet.list") return new Response(JSON.stringify({ ok: true, data: (existing.bets ?? []).filter((bet) => z.object({ state: z.string() }).parse(bet).state === z.object({ state: z.string() }).parse(JSON.parse(String(init?.body))).state) }));
     return new Response(JSON.stringify({ ok: true, data: {} }));
   }) as typeof globalThis.fetch;
   return { fetch, calls };
@@ -101,11 +103,41 @@ describe("dispatch sheets import", () => {
     const { code } = await sheetsCli(home, ["import", "--apply", "--dir", home.sheetDir], rpc.fetch);
 
     expect(code).toBe(EXIT.OK);
-    expect(rpc.calls).toEqual([
+    expect(rpc.calls.filter((call) => call.command.endsWith(".add"))).toEqual([
       { command: "plan.outcome.add", args: { initiative: "alpha", slug: "phone-first", statement: "The page answers from a phone", measure: "terminal scripts per week", intent_ref: "web/I1", quote_ref: "msg:aaa111" } },
       { command: "plan.bet.add", args: expect.objectContaining({ outcome: "alpha/phone-first", week: "2026-W47", order: 1, task: ["alpha/AL-1", "alpha/AL-2"], metric: "list_p50_s", baseline: 8.4 }) },
       { command: "plan.bet.add", args: expect.objectContaining({ order: 2, task: [] }) },
     ]);
+  });
+
+  it("--apply on an already-imported sheet skips the outcome and every bet and writes nothing", async () => {
+    const home = sheetHome();
+    const existing = {
+      outcomes: [{ id: "alpha/phone-first" }],
+      bets: [
+        { outcome: "alpha/phone-first", week: "2026-W47", order: 1, state: "proposed" },
+        { outcome: "alpha/phone-first", week: "2026-W47", order: 2, state: "selected" },
+      ],
+    };
+    const rpc = recordingRpc("served", existing);
+
+    const { code, stdout } = await sheetsCli(home, ["import", "--apply", "--dir", home.sheetDir], rpc.fetch);
+
+    expect(code).toBe(EXIT.OK);
+    expect(rpc.calls.filter((call) => call.command.endsWith(".add"))).toEqual([]);
+    expect(stdout).toContain("imported 0 record(s)");
+    expect(stdout).toContain("skipped 3 existing");
+  });
+
+  it("--apply on a partly-imported sheet writes only the missing bet", async () => {
+    const home = sheetHome();
+    const rpc = recordingRpc("served", { outcomes: [{ id: "alpha/phone-first" }], bets: [{ outcome: "alpha/phone-first", week: "2026-W47", order: 1, state: "proposed" }] });
+
+    const { code } = await sheetsCli(home, ["import", "--apply", "--dir", home.sheetDir], rpc.fetch);
+
+    expect(code).toBe(EXIT.OK);
+    const adds = rpc.calls.filter((call) => call.command.endsWith(".add"));
+    expect(adds).toEqual([{ command: "plan.bet.add", args: expect.objectContaining({ order: 2 }) }]);
   });
 
   it("--apply against a daemon without the plan commands exits unavailable and writes no plan file itself", async () => {
@@ -116,7 +148,7 @@ describe("dispatch sheets import", () => {
 
     expect(code).toBe(EXIT.UNAVAILABLE);
     expect(stderr).toContain("active-work has no plan.outcome.add command");
-    expect(rpc.calls.map((call) => call.command)).toEqual(["plan.outcome.add"]);
+    expect(rpc.calls.map((call) => call.command).filter((command) => command.endsWith(".add"))).toEqual([]);
     expect(existsSync(home.activeRoot)).toBe(false);
   });
 

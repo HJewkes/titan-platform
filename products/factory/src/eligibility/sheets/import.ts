@@ -1,4 +1,5 @@
 import { createRpcClient, liveSource, RpcError, type LiveSourceOptions } from "@titan-design/rpc-client";
+import { z } from "zod";
 import type { BetSheet, SheetBet } from "./bet-sheet.js";
 
 /*
@@ -73,16 +74,58 @@ export class PlanCommandsMissing extends Error {}
 
 const unknownCommand = (error: unknown): boolean => error instanceof RpcError && error.message.startsWith("Unknown command");
 
-/** Runs each call in order over active-work's rpc, stopping at the first failure. */
-export async function applyImport(source: LiveSourceOptions, calls: readonly ImportCall[]): Promise<void> {
-  const client = createRpcClient<ImportCommands>(liveSource(source));
+type ListCommands = {
+  "plan.outcome.list": { args: { initiative: string }; result: unknown };
+  "plan.bet.list": { args: { initiative: string; week: string; state: "proposed" | "selected" }; result: unknown };
+};
+
+/** Reads before writing so a re-run, or a run after a partial one, adds only what the plan store lacks. */
+async function existingKeys(client: ReturnType<typeof createRpcClient<ImportCommands & ListCommands>>, calls: readonly ImportCall[]): Promise<Set<string>> {
+  const keys = new Set<string>();
+  const outcomeInitiatives = new Set<string>();
+  const betWeeks = new Map<string, { initiative: string; week: string }>();
   for (const call of calls) {
-    try {
-      if (call.command === "plan.outcome.add") await client.call("plan.outcome.add", call.args);
-      else await client.call("plan.bet.add", call.args);
-    } catch (error) {
-      if (unknownCommand(error)) throw new PlanCommandsMissing(`active-work has no ${call.command} command; update and restart the active-work daemon, then import again`);
-      throw error;
+    if (call.command === "plan.outcome.add") outcomeInitiatives.add(call.args.initiative);
+    else betWeeks.set(`${call.args.initiative} ${call.args.week}`, { initiative: call.args.initiative, week: call.args.week });
+  }
+  for (const initiative of outcomeInitiatives) {
+    const rows = z.array(z.object({ id: z.string() })).parse(await client.call("plan.outcome.list", { initiative }));
+    for (const row of rows) keys.add(`outcome ${row.id}`);
+  }
+  for (const { initiative, week } of betWeeks.values()) {
+    for (const state of ["proposed", "selected"] as const) {
+      const rows = z.array(z.object({ outcome: z.string(), order: z.number() })).parse(await client.call("plan.bet.list", { initiative, week, state }));
+      for (const row of rows) keys.add(`bet ${week} ${row.outcome} ${row.order}`);
     }
   }
+  return keys;
+}
+
+function callKey(call: ImportCall): string {
+  if (call.command === "plan.outcome.add") return `outcome ${call.args.initiative}/${call.args.slug}`;
+  return `bet ${call.args.week} ${call.args.outcome} ${call.args.order}`;
+}
+
+export interface ImportOutcome {
+  written: number;
+  skipped: number;
+}
+
+/** Runs each call the plan store does not already hold, in order, stopping at the first failure. */
+export async function applyImport(source: LiveSourceOptions, calls: readonly ImportCall[]): Promise<ImportOutcome> {
+  const client = createRpcClient<ImportCommands & ListCommands>(liveSource(source));
+  let written = 0;
+  try {
+    const existing = await existingKeys(client, calls);
+    for (const call of calls) {
+      if (existing.has(callKey(call))) continue;
+      if (call.command === "plan.outcome.add") await client.call("plan.outcome.add", call.args);
+      else await client.call("plan.bet.add", call.args);
+      written += 1;
+    }
+  } catch (error) {
+    if (unknownCommand(error)) throw new PlanCommandsMissing(`active-work has no ${calls[written]?.command ?? "plan.outcome.add"} command; update and restart the active-work daemon, then import again`);
+    throw error;
+  }
+  return { written, skipped: calls.length - written };
 }
