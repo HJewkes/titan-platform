@@ -4,9 +4,9 @@ import { engineeringInitiativeOf } from "../../private/exclusion.js";
 import { scrubBrief } from "./brief.js";
 import type { CorpusSources, MainMerge, NumstatLine, Registration, TaskFile } from "./sources.js";
 
-const KINDS = ["correctness", "feature", "refactor"] as const;
-const SIZES = ["S", "M"] as const;
-const PKG_GROUPS = ["factory", "explainer", "console", "other"] as const;
+export const KINDS = ["correctness", "feature", "refactor"] as const;
+export const SIZES = ["S", "M"] as const;
+export const PKG_GROUPS = ["factory", "explainer", "console", "other"] as const;
 const MAX_CHANGED_LINES = 600;
 
 type Kind = (typeof KINDS)[number];
@@ -42,7 +42,7 @@ interface CorpusOptions {
 }
 
 const TEST_FILE = /\.test\./;
-const NOT_SOURCE = /\.test\.|\.md$|\.changeset\/|CHANGELOG|\.json$/;
+export const NOT_SOURCE = /\.test\.|\.md$|\.changeset\/|CHANGELOG|\.json$/;
 const PKG_GROUP_OF: Readonly<Record<string, PkgGroup>> = { "products/factory": "factory", "products/explainer": "explainer", "apps/console": "console" };
 
 /** The task's own estimate when it has one; changed lines stand in for a task that was never estimated. */
@@ -51,7 +51,7 @@ export function sizeOf(estimate: number | null, changedLines: number): Size {
   return changedLines <= 150 ? "S" : changedLines <= 400 ? "M" : "L";
 }
 
-const pkgOf = (path: string): string | undefined => (/^(packages|products|apps)\//.test(path) ? path.split("/").slice(0, 2).join("/") : undefined);
+export const pkgOf = (path: string): string | undefined => (/^(packages|products|apps)\//.test(path) ? path.split("/").slice(0, 2).join("/") : undefined);
 const linesOf = (lines: readonly NumstatLine[]): number => lines.reduce((sum, line) => sum + (line.changed ?? 0), 0);
 
 interface DiffFacts {
@@ -159,18 +159,20 @@ export async function buildCorpus(sources: CorpusSources, options: CorpusOptions
   return corpus;
 }
 
+type Stratified = Pick<ImplementCandidate, "kind" | "size" | "pkgGroup">;
+
 const strataOrder = (): string[] => PKG_GROUPS.flatMap((pkg) => SIZES.flatMap((size) => KINDS.map((kind) => `${kind}/${size}/${pkg}`)));
 
 /**
  * Seeded order within each kind x size x package stratum, then one from each stratum per round. Kind varies fastest,
  * so the first few candidates already span every kind.
  */
-export function stratifiedQueue(candidates: readonly ImplementCandidate[], seed: string): ImplementCandidate[] {
-  const draw = (candidate: ImplementCandidate): string => sha256Hex(`${seed}\0${candidate.row.case_id}`);
+export function stratifiedQueue<T extends Stratified>(candidates: readonly T[], seed: string, idOf: (candidate: T) => string): T[] {
+  const draw = (candidate: T): string => sha256Hex(`${seed}\0${idOf(candidate)}`);
   const strata = strataOrder().map((key) =>
     candidates.filter((candidate) => `${candidate.kind}/${candidate.size}/${candidate.pkgGroup}` === key).sort((a, b) => draw(a).localeCompare(draw(b))),
   );
-  const queue: ImplementCandidate[] = [];
+  const queue: T[] = [];
   const rounds = Math.max(0, ...strata.map((stratum) => stratum.length));
   for (let round = 0; round < rounds; round += 1) {
     for (const stratum of strata) {

@@ -6,7 +6,8 @@ import { defaultArms, parseArms, TRACKS, type Track } from "./arms.js";
 import { createGuard, machineReaders } from "./guard.js";
 import { prepareRunBin, spawnLauncher } from "./job.js";
 import { meterJob } from "./meter.js";
-import { promptPlugin, loadPromptCases } from "./prompt-track.js";
+import { implementTrack, loadImplementQueue } from "./implement/job.js";
+import { loadPlanCases, planTrack } from "./plan/job.js";
 import { loadReviewQueue } from "./review/cases.js";
 import { reviewPlugin } from "./review/job.js";
 import { cloneGitFor, collectRepoRoot } from "./review/repos.js";
@@ -25,6 +26,7 @@ interface RunFlags {
   accountProfile: string;
   osSandbox?: boolean;
   repoRoot?: Record<string, string>;
+  prepared?: string;
 }
 
 const positiveInt = (value: string): number => {
@@ -35,13 +37,23 @@ const positiveInt = (value: string): number => {
 
 type SharedOptions = Omit<RunOptions<BenchCase>, "plugin" | "cases">;
 
-/** Each track brings its own case loader and plugin; tracks without one yet run literal prompts. */
+function preparedRootOf(flags: RunFlags): string {
+  if (flags.prepared === undefined) throw new Error("track i needs --prepared, the dir of prepared bases");
+  return resolve(flags.prepared);
+}
+
+/** Each track brings its own case loader and plugin; every one runs under the shared meter and guards. */
 function runTrack(flags: RunFlags, shared: SharedOptions): ReturnType<typeof runBench> {
   if (flags.track === "r") {
     const plugin = reviewPlugin({ gitFor: cloneGitFor(flags.repoRoot ?? {}), runDir: shared.outDir });
     return runBench({ ...shared, plugin, cases: loadReviewQueue(flags.cases) });
   }
-  return runBench({ ...shared, plugin: promptPlugin(flags.track), cases: loadPromptCases(flags.cases) });
+  if (flags.track === "i") {
+    const plugin = implementTrack({ casesDir: resolve(flags.cases), preparedRoot: preparedRootOf(flags), runDir: shared.outDir, operatorHome: shared.operatorHome });
+    return runBench({ ...shared, plugin, cases: loadImplementQueue(flags.cases, flags.seed) });
+  }
+  const casesDir = resolve(flags.cases);
+  return runBench({ ...shared, plugin: planTrack({ casesDir, runDir: shared.outDir }), cases: loadPlanCases(casesDir) });
 }
 
 async function runFlags(flags: RunFlags): Promise<boolean> {
@@ -83,6 +95,7 @@ export function runCommand(onResult: (code: number) => void): Command {
     .option("--account-profile <label>", "the anthropic-account profile whose seven-day use stops the run", "agents")
     .option("--os-sandbox", "run each job's Bash under claude's bubblewrap sandbox; needs unprivileged user namespaces")
     .option("--repo-root <name=path>", "track r: a local clone to bundle commits from, per repo name; repeatable", collectRepoRoot)
+    .option("--prepared <dir>", "track i: the prepared bases, one <case id> dir each")
     .exitOverride()
     .action(async (flags: RunFlags) => {
       try {

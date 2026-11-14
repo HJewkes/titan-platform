@@ -100,11 +100,13 @@ const candidate = (id: string, kind: ImplementCandidate["kind"], size: Implement
   return { row, taskId: "TP-1", kind, size, pkg: "packages/x", pkgGroup: "other", mergedAt: "2026-10-06", changedLines: 1, nonTestLines: 1 };
 };
 
+const caseIdOf = (entry: ImplementCandidate): string => entry.row.case_id;
+
 describe("stratified queue", () => {
   it("takes one candidate from each stratum per round before a second from any", () => {
     const pool = [candidate("c1", "correctness"), candidate("c2", "correctness"), candidate("c3", "correctness"), candidate("f1", "feature"), candidate("r1", "refactor", "M")];
 
-    const kinds = stratifiedQueue(pool, "seed").map((entry) => `${entry.kind}/${entry.size}`);
+    const kinds = stratifiedQueue(pool, "seed", caseIdOf).map((entry) => `${entry.kind}/${entry.size}`);
 
     expect(kinds.slice(0, 3)).toEqual(["correctness/S", "feature/S", "refactor/M"]);
     expect(kinds).toHaveLength(5);
@@ -112,7 +114,7 @@ describe("stratified queue", () => {
 
   it("keeps one order for a seed and reshuffles a stratum for another", () => {
     const pool = Array.from({ length: 12 }, (_, index) => candidate(`c${index}`, "correctness"));
-    const order = (seed: string) => stratifiedQueue(pool, seed).map((entry) => entry.row.case_id);
+    const order = (seed: string) => stratifiedQueue(pool, seed, caseIdOf).map((entry) => entry.row.case_id);
 
     expect(order("a")).toEqual(order("a"));
     expect(order("a")).not.toEqual(order("b"));

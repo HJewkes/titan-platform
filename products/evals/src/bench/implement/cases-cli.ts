@@ -166,7 +166,7 @@ async function run(flags: CasesFlags, log: (line: string) => void): Promise<void
   const tasksDir = flags.tasksDir ?? join(flags.activeWorkRoot, "titan-platform", "tasks");
   const sources = liveSources({ factoryDb: flags.factoryDb, repoSlug: flags.repoSlug, tasksDir, repoDir: flags.repoDir, mainRef: flags.mainRef });
   const corpus = await buildCorpus(sources, { mergedSince: flags.mergedSince, repo: flags.repoSlug.slice(flags.repoSlug.indexOf("/") + 1) });
-  const queue = stratifiedQueue(corpus.eligible, flags.seed);
+  const queue = stratifiedQueue(corpus.eligible, flags.seed, (candidate) => candidate.row.case_id);
   writeQueue(flags.out, corpus, queue);
   log(JSON.stringify(countsOf(corpus)));
   if (flags.dryRun) return;

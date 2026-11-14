@@ -1,6 +1,10 @@
 import { Command } from "commander";
 import { casesCommand } from "./cli-cases.js";
 import { registerJudge } from "./cli-judge.js";
+import { registerJudgePlan } from "./cli-judge-plan.js";
+import { registerOracle } from "./cli-oracle.js";
+import { registerPlanCases } from "./cli-plan-cases.js";
+import { registerReport } from "./cli-report.js";
 import { rescoreCommand } from "./cli-rescore.js";
 import { runCommand } from "./cli-run.js";
 
@@ -12,5 +16,6 @@ export function benchCommand(onResult: (code: number) => void): Command {
     .addCommand(casesCommand(onResult))
     .addCommand(rescoreCommand(onResult))
     .exitOverride();
-  return registerJudge(program, onResult);
+  for (const register of [registerJudge, registerJudgePlan, registerPlanCases, registerOracle, registerReport]) register(program, onResult);
+  return program;
 }
