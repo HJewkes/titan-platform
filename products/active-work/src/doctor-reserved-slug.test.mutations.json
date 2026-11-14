@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "doctor ignores reserved slugs",
+      "file": "products/active-work/src/doctor/checks-data.ts",
+      "find": "  const reserved = slugs.filter((slug) => RESERVED_MINER_KEYS.has(slug));",
+      "replace": "  const reserved = slugs.filter((slug) => RESERVED_MINER_KEYS.has(`${slug}-`));",
+      "kills": [
+        "names an initiative called other, with the rename remedy, for the owner"
+      ]
+    },
+    {
+      "name": "doctor scans withheld initiatives",
+      "file": "products/active-work/src/doctor/checks-data.ts",
+      "find": "  const slugs = await listShownSlugs(activeRoot, deps.shown);\n  const reserved",
+      "replace": "  const slugs = await listShownSlugs(activeRoot, () => true);\n  const reserved",
+      "kills": [
+        "leaves out a reserved-slug initiative withheld from the caller"
+      ]
+    }
+  ]
+}
