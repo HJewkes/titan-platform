@@ -13,7 +13,7 @@ import { findMergedPrLoops } from '../sessions/loop-pr-state.js';
 import { resolveLedgerPaths } from '../sessions/ledger-file.js';
 import { LoopSourceSchema, readLedgerLoops, sessionSourceOf } from '../session-index/loop-board.js';
 import type { LedgerLoop } from '../schemas/loop-ledger.js';
-import { loadTasks } from '../lint/load-tasks.js';
+import { loadTasks } from '../bootstrap/load.js';
 import type { Task } from '../schemas/task.js';
 import { assertValidSlug } from '../utils/slug.js';
 import { defineCommand } from '../registry/index.js';
@@ -187,7 +187,7 @@ export default defineCommand<Args, Result>({
   async run(args, ctx) {
     assertValidSlug(args.slug);
     const initiativeDir = path.join(ctx.activeRoot, args.slug);
-    const [loaded, tasks] = await Promise.all([
+    const [loaded, { tasks }] = await Promise.all([
       loadSessionsFromDir(initiativeDir),
       loadTasks(initiativeDir),
     ]);

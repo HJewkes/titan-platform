@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { exportReflection, ownerInboxDir, type ReflectionConfig, type ReflectionScript } from "./reflection-export.js";
+import { exportReflection, type ReflectionConfig, type ReflectionScript } from "./reflection-export.js";
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
@@ -117,14 +117,5 @@ describe("exportReflection", () => {
 
     expect(result.filed).toBe("none");
     expect(result.notes[0]).toContain("reflection not filed");
-  });
-});
-
-describe("ownerInboxDir", () => {
-  it("prefers the explicit inbox variable over the state directory", () => {
-    const home = path.join(tmpdir(), "fake-home");
-
-    expect(ownerInboxDir({ TITAN_CONSOLE_INBOX_DIR: "~/inbox", TITAN_CONSOLE_STATE: "~/state" }, home)).toBe(path.join(home, "inbox"));
-    expect(ownerInboxDir({}, home)).toBe(path.join(home, ".local/state/titan-console/inbox/deposits"));
   });
 });

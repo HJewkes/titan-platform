@@ -1,9 +1,7 @@
 import { existsSync, readdirSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import { isoWeek, readFactoryHealth, readPhaseWeeks, readTaskRows, readWeekRows, type FactoryHealth, type TaskRow, type WeekRow } from "@titan-design/session-analytics";
-import { expandHome } from "@titan-design/session-read";
 import type { Db } from "@titan-design/store-sqlite";
 import { openReadOnly } from "./broker.js";
 import { readCommand } from "./owner-guard.js";
@@ -17,12 +15,6 @@ export interface ScorecardSource {
 export interface ScorecardConfig {
   /** The ticket scorecard store, read-only; absent in a hand-built config, the `scorecard.*` reads are not served. */
   scorecardStore?: string;
-}
-
-/** The store the job writes: `TITAN_SCORECARD_STORE`, else `$XDG_DATA_HOME/titan-scorecard/scorecard.sqlite3`, as session-miner resolves it. */
-export function scorecardStoreFrom(env: NodeJS.ProcessEnv, home: string = os.homedir()): string {
-  const dataHome = env.XDG_DATA_HOME ?? path.join(home, ".local", "share");
-  return expandHome(env.TITAN_SCORECARD_STORE ?? path.join(dataHome, "titan-scorecard", "scorecard.sqlite3"), home);
 }
 
 const TASKS_SHOWN = 25;
