@@ -18,7 +18,7 @@ const ShadowSchema = z.object({ enabled: z.boolean().default(false), dir: z.stri
 });
 
 /** Keys later slices read (PLAN 5.4) are accepted now so the owner's full example file parses; this slice ignores them. */
-const PLANNED_KEYS = { bets: z.unknown().optional(), relax: z.unknown().optional(), intake: z.unknown().optional(), upkeep: z.unknown().optional() };
+const PLANNED_KEYS = { bets: z.unknown().optional(), relax: z.unknown().optional(), intake: z.unknown().optional() };
 
 const count = z.number().int().positive();
 const factor = z.number().positive();
@@ -37,6 +37,17 @@ const StopSchema = z
 
 export type StopRules = z.infer<typeof StopSchema>;
 
+/** The upkeep cap (TP-5755 PLAN 2.2); `factoryOutcomes` names the outcomes whose untagged tasks count as upkeep. */
+const UpkeepSchema = z
+  .object({
+    capShare: z.number().gt(0).max(1).default(0.25),
+    windowDays: count.default(7),
+    factoryOutcomes: z.array(z.string().min(1)).default([]),
+  })
+  .strict();
+
+export type UpkeepRules = z.infer<typeof UpkeepSchema>;
+
 const RuleFileSchema = z
   .object({
     schema: z.literal("titan-dispatcher/v1"),
@@ -44,6 +55,7 @@ const RuleFileSchema = z
     shadow: ShadowSchema.default({ enabled: false }),
     lanes: z.array(LaneSchema).default([]),
     stop: StopSchema.prefault({}),
+    upkeep: UpkeepSchema.prefault({}),
     ...PLANNED_KEYS,
   })
   .strict();

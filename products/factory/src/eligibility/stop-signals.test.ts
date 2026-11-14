@@ -104,7 +104,8 @@ describe("stop rows in a shadow tick", () => {
     const stopsFile = join(root, "state", "stops.json");
     writeFileSync(stopsFile, JSON.stringify(marks));
     const stop = { taskFixRounds: 3, spendMultiple: 2, usdPerPoint: 8, betStoppedPrs: 3, betFollowupMultiple: 2, checkpointEvery: 5 };
-    return { loaded: { rules: { schema: "titan-dispatcher/v1", mode: "shadow", shadow: { enabled: true, dir: join(root, "shadow") }, lanes: [{ initiative: "alpha", tag: "lane-a" }], stop }, hash: "sha256:0" }, stopsFile };
+    const upkeep = { capShare: 0.25, windowDays: 7, factoryOutcomes: [] };
+    return { loaded: { rules: { schema: "titan-dispatcher/v1", mode: "shadow", shadow: { enabled: true, dir: join(root, "shadow") }, lanes: [{ initiative: "alpha", tag: "lane-a" }], stop, upkeep }, hash: "sha256:0" }, stopsFile };
   }
 
   it("a tick reads the marks file and never writes it, and the module exports no writer", async () => {
