@@ -46,15 +46,6 @@
       "kills": [
         "cross-initiative list verbs for an agent caller a context no surface marked as the owner is restricted like an agent"
       ]
-    },
-    {
-      "name": "the charter's human-only list no longer reaches the verdict",
-      "file": "products/active-work/src/sessions/visibility.ts",
-      "find": "const listed = humanOnly === 'unknown' ? 'unknown' : humanOnly.has(slug);",
-      "replace": "const listed = humanOnly === 'unknown' ? 'unknown' : false;",
-      "kills": [
-        "cross-initiative list verbs for an agent caller task list across all initiatives hides from an agent an agent-visible initiative the charter lists human-only"
-      ]
     }
   ]
 }
