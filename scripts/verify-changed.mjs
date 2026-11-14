@@ -93,7 +93,7 @@ export function relatedTestArgs(changed) {
  * types through dist. Inside a member only type inputs count; a path outside every member goes to testScope as is,
  * so one it does not know asks for a full run.
  */
-export function lintTypesScope(changed, workspace) {
+function lintTypesScope(changed, workspace) {
   if (changed.some((path) => LINT_TYPES_INPUTS.includes(path))) return { mode: "full" };
   const inMember = (path) => workspace.some((member) => path.startsWith(member.dir));
   const inputs = changed.filter((path) => !inMember(path) || SOURCE_EXT.test(path) || TYPE_INPUT.test(path));
@@ -135,7 +135,7 @@ const FLAKE_LABEL = "flake repeat";
 const NO_FLAKE_CLASSES = { repeats: 1, classes: [] };
 
 /** The repeat-guard step, or null when no changed file is in a flake class (TP-4657). */
-export function flakeRepeatStep(changed, flakeClasses, hasTimeout) {
+function flakeRepeatStep(changed, flakeClasses, hasTimeout) {
   const targets = flakeTargets(changed, flakeClasses.classes);
   if (targets.length === 0) return null;
   const vitest = ["pnpm", "exec", "vitest", "run"];
