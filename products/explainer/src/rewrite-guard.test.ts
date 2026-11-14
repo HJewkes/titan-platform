@@ -218,6 +218,18 @@ describe("guardBeat", () => {
     expect(rules(beatWith({}, LISTED), after)).not.toContain("list-lost");
   });
 
+  it("does not call a list item lost when labels carry the noun of a verb-led first item", () => {
+    const before = beatWith({}, "On a failure the triager picks restart, retry, or skip. It logs the choice. The ledger keeps it.");
+    const after = { spoken: "On a failure the triager makes a choice and logs it. The ledger keeps it.", labelsAdded: ["Restart", "Retry", "Skip"] };
+    expect(rules(before, after)).not.toContain("list-lost");
+  });
+
+  it("still calls a verb-led list item lost when its noun is in no label", () => {
+    const before = beatWith({}, "On a failure the triager picks restart, retry, or skip. It logs the choice. The ledger keeps it.");
+    const after = { spoken: "On a failure the triager makes a choice and logs it. The ledger keeps it.", labelsAdded: ["Retry", "Skip"] };
+    expect(rules(before, after)).toContain("list-lost");
+  });
+
   it("does not count a new term as spoken when only a longer word holds it", () => {
     const before = beatWith({ new_terms: ["led"] }, "The led shows each scan. It retries 3 times. It stays small.");
     const after = { spoken: "The ledger shows each scan and retries 3 times. It stays small.", labelsAdded: [] };
