@@ -8,7 +8,7 @@ import { writeDeposit } from "@titan-design/owner-queue/spool";
 import type { JsonEnvelope } from "@titan-design/registry";
 import { z } from "zod";
 import { agentChatImplementerRunner, type ImplementerRunner } from "../agent-chat-implementer.js";
-import { ownerInboxDir } from "../deploy-watch-ports.js";
+import { consoleInboxDir } from "@titan-design/app-paths";
 import { agentChatAgents } from "../shepherd/agents.js";
 import { activeWorkFixTasks, activeWorkOrigin } from "../shepherd/cleanup-ports.js";
 import { postRpc } from "../cli-shepherd-rpc.js";
@@ -130,7 +130,7 @@ interface FactoryAgentWiring {
 export function factoryBuildPorts(wiring: FactoryAgentWiring): BuildSurfacePorts {
   const { agentChatBin, agentChatConfigDir, roster, spawnGate } = wiring;
   const agents = agentChatAgents(agentChatBin, { roster, gate: spawnGate, ...(agentChatConfigDir !== undefined && { configDir: agentChatConfigDir }) });
-  const inbox = ownerInboxDir(process.env);
+  const inbox = consoleInboxDir({ env: process.env });
   const implementer = agentChatImplementerRunner({ agents, tellOwner: async (deposit) => void (await writeDeposit(inbox, deposit)) });
   return systemBuildPorts({ github: wiring.port, implementer, rpc: loopbackRpc });
 }

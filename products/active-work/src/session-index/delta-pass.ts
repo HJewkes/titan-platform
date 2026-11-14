@@ -1,5 +1,6 @@
 import {
   discoverTranscripts,
+  transcriptFromPath,
   type DiscoveredTranscript,
   type TranscriptRoot,
 } from '@titan-design/session-read';
@@ -12,7 +13,6 @@ import {
 } from '@titan-design/session-graph';
 import type { WorkspaceGraph } from './graph.js';
 import type { DrainedDirtySet } from './dirty-set.js';
-import { transcriptFromPath } from './transcript-path.js';
 import { taskResolver } from './tasks.js';
 import { snapshotOffsets } from './episodes.js';
 import { clearDocumentFrequency } from '../search/document-frequency.js';
