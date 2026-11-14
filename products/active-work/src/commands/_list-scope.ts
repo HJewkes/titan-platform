@@ -1,4 +1,4 @@
-import { HumanOnlyUnreadableError, loadHumanOnlyInitiatives } from '../decider/human-only.js';
+import { HumanOnlyUnreadableError, loadHumanOnlyInitiatives } from '../sessions/charter.js';
 import { UsageError } from '../errors.js';
 import type { CommandContext } from '../registry/types.js';
 import { listSlugsForCaller } from '../sessions/visibility.js';

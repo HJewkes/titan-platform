@@ -7,7 +7,7 @@ import { getActiveRoot, expandTilde } from '../utils/paths.js';
 import { readRegisteredWorktrees, type RegisteredWorktree } from '../utils/registered-worktrees.js';
 import { readFrontmatter } from '../utils/gray-matter-io.js';
 import { defineCommand, type CommandContext } from '../registry/index.js';
-import { callerVisibility, noteHiddenInitiatives } from '../sessions/visibility.js';
+import { visibilityFor } from '../sessions/visibility.js';
 
 const argsSchema = z.object({}).strict();
 
@@ -90,19 +90,17 @@ async function scanInitiatives(activeRoot: string): Promise<ScanResult> {
   return { entries, errors };
 }
 
-/** The scan a caller may see: for a non-owner, owner-only initiatives and their parse errors drop out, counted once. */
+/** The scan a caller may see: for a non-owner, withheld initiatives and their parse errors drop out. */
 export async function scanInitiativesForCaller(
   activeRoot: string,
   ctx: Pick<CommandContext, 'caller' | 'warnings'>,
 ): Promise<ScanResult> {
   const [scan, visible] = await Promise.all([
     scanInitiatives(activeRoot),
-    callerVisibility(activeRoot, ctx.caller),
+    visibilityFor({ ...ctx, activeRoot }),
   ]);
   const entries = scan.entries.filter((entry) => visible(entry.slug));
   const errors = scan.errors.filter((error) => visible(error.slug));
-  const hidden = scan.entries.length + scan.errors.length - entries.length - errors.length;
-  noteHiddenInitiatives(ctx.warnings, hidden);
   return { entries, errors };
 }
 

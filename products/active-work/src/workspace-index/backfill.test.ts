@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
 import { searchWorkspace } from '../search/index.js';
+import { ownerShown } from '../test-support/visibility.js';
 import { hasLegacyWorkspaceSpans } from '../search/workspace-spans.js';
 import { runRefresh } from '../session-index/refresh.js';
 import { openGraph, type WorkspaceGraph } from '../session-index/graph.js';
@@ -94,7 +95,7 @@ async function interruptedBackfill(): Promise<void> {
 }
 
 const search = async (): Promise<string> =>
-  JSON.stringify((await searchWorkspace(QUERY, { graph, activeRoot: root })).hits);
+  JSON.stringify((await searchWorkspace(QUERY, { graph, activeRoot: root, visible: await ownerShown(root) })).hits);
 
 const spanRows = (table: string, where = '1'): unknown[] =>
   graph.db.prepare(`SELECT * FROM ${table} WHERE ${where} ORDER BY span_id`).all();
@@ -119,7 +120,7 @@ describe('workspace span backfill', () => {
 
     const summary = await refreshWorkspace(graph, { activeRoot: root });
     const backfilled = locators();
-    const hits = await searchWorkspace(QUERY, { graph, activeRoot: root });
+    const hits = await searchWorkspace(QUERY, { graph, activeRoot: root, visible: await ownerShown(root) });
     graph.db.close();
     graph = openGraph(path.join(dir, 'fresh.sqlite3'));
     await refreshWorkspace(graph, { activeRoot: root });

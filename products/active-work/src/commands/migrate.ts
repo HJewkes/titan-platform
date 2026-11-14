@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { defineCommand } from '../registry/index.js';
 import { UsageError } from '../errors.js';
+import { requireOwner } from '../sessions/visibility.js';
 import { CURRENT_VERSION } from '../migrations/index.js';
 import { applyV2ToV3, planV2ToV3 } from '../migrations/v2-to-v3-open-loops.js';
 import { readSchemaVersion, writeSchemaVersion } from '../schemas/state.js';
@@ -141,6 +142,7 @@ export default defineCommand<Args, Result>({
     usage: 'active-work migrate --dry-run | --apply',
   },
   async run(args, ctx) {
+    requireOwner(ctx, 'migrate');
     if (args.apply !== true) {
       const plan = await planV2ToV3(ctx.activeRoot);
       const result = describe(plan, false);

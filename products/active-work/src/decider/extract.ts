@@ -9,10 +9,11 @@ import {
 } from '@titan-design/decider';
 import { toAbsolutePath } from '@titan-design/session-read';
 import { resolveSlugFromCwd } from '../sessions/initiatives.js';
-import { ownerOnlySlugs } from '../sessions/visibility.js';
+import { withheldSlugs } from '../sessions/visibility.js';
 import { agentChatHome } from '../session-index/origin-agent-chat-read.js';
 import { defaultGraphPath, openGraphReadOnly } from '../session-index/graph.js';
-import { exclusionPolicy, loadHumanOnlyInitiatives } from './human-only.js';
+import { loadHumanOnlyInitiatives } from '../sessions/charter.js';
+import { exclusionPolicy } from './human-only.js';
 import { ledgerPath, openLedger, v1PrecedentSource } from './ledger.js';
 import { queueSource } from './queue-source.js';
 
@@ -64,15 +65,15 @@ function askTranscripts(graphPath: string): () => Promise<TranscriptFile[]> {
 /**
  * Index the human's answers into the decider ledger. The charter is read first
  * and an unreadable one stops the run before anything is written. The ledger feeds
- * agents, so an owner-only initiative's answers stay out of it as well (TP-5453 P6b).
+ * agents, so every initiative withheld from agents keeps its answers out (TP-5453 P6b, TP-5556).
  */
 export async function extractPrecedents(options: ExtractOptions): Promise<ExtractResult> {
   const { activeRoot } = options;
-  const [humanOnly, ownerOnly] = await Promise.all([
+  const [humanOnly, withheld] = await Promise.all([
     loadHumanOnlyInitiatives(activeRoot),
-    ownerOnlySlugs(activeRoot),
+    withheldSlugs(activeRoot),
   ]);
-  const policy = exclusionPolicy(new Set([...humanOnly, ...ownerOnly]));
+  const policy = exclusionPolicy(new Set([...humanOnly, ...withheld]));
   const resolveInitiative = cachedResolver(activeRoot);
   const sources = [
     v1PrecedentSource(activeRoot),

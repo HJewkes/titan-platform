@@ -12,8 +12,8 @@ import {
   type PlanRecords,
 } from '@titan-design/pm/node';
 import { LockTimeoutError, NotFoundError, ValidationError } from '../errors.js';
-import { loadAgentVisibility } from '../sessions/visibility.js';
-import { listInitiativeSlugsOrEmpty } from '../sessions/initiatives.js';
+import type { CommandContext } from '../registry/types.js';
+import { listSlugsForCaller } from '../sessions/visibility.js';
 
 /*
  * Planning records (TP-5453 P3) live in pm's plan store, which every plan writer shares; this adapter maps its
@@ -47,11 +47,13 @@ export function loadPlanRecords<K extends PlanKind>(activeRoot: string, initiati
   return loadStoredRecords(activeRoot, initiative, kind);
 }
 
-/** Records of one kind across every initiative an agent may read; owner-only initiatives are skipped. */
-export async function loadVisiblePlanRecords<K extends PlanKind>(activeRoot: string, kind: K): Promise<PlanRecords[K][]> {
-  const isVisible = await loadAgentVisibility(activeRoot);
-  const slugs = (await listInitiativeSlugsOrEmpty(activeRoot)).filter((slug) => isVisible(slug));
-  const perSlug = await Promise.all(slugs.map((slug) => loadStoredRecords(activeRoot, slug, kind)));
+/** Records of one kind across every initiative this caller may list. */
+export async function loadVisiblePlanRecords<K extends PlanKind>(
+  ctx: Pick<CommandContext, 'activeRoot' | 'caller' | 'warnings'>,
+  kind: K,
+): Promise<PlanRecords[K][]> {
+  const slugs = await listSlugsForCaller(ctx.activeRoot, ctx);
+  const perSlug = await Promise.all(slugs.map((slug) => loadStoredRecords(ctx.activeRoot, slug, kind)));
   return perSlug.flat();
 }
 

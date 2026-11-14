@@ -21,7 +21,7 @@ import { loopLabel } from './render-notes-loops.js';
 import { renderArtifactsBody } from './render-artifacts.js';
 import { defaultLiveStatusFetcher } from './live-status.js';
 import { retrievalDegradations, shownNoteRefs } from './hits.js';
-import { loadAgentVisibility } from '../sessions/visibility.js';
+import { visibilityFor } from '../sessions/visibility.js';
 import type { BootstrapView, ResolvedBootstrapInput } from './sections.js';
 import type { BootstrapInput, BootstrapTimings, SiblingSession } from './prompt.js';
 
@@ -141,7 +141,8 @@ async function rankForSession(
     slug,
     subject,
     ...(noteRelevance ? { relevance: noteRelevance } : {}),
-    isVisible: await loadAgentVisibility(input.activeRoot),
+    // The launched session is no surface's owner, so its notes get an agent's view.
+    isVisible: await visibilityFor({ activeRoot: input.activeRoot, warnings: [] }),
   });
   timings.rank_notes = input.clock() - rankStart;
   return { subject, noteRanking };

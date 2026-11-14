@@ -11,6 +11,7 @@ import { openGraph } from '../session-index/graph.js';
 import { refreshWorkspace } from '../workspace-index/refresh.js';
 import { installFreshness } from './session-index-watch.js';
 import { createWorkspaceFreshness, type WorkspaceFreshness } from './workspace-freshness.js';
+import { writeCharter } from '../test-support/visibility.js';
 
 let dir: string;
 let root: string;
@@ -39,6 +40,7 @@ beforeEach(async () => {
   dir = mkdtempSync(path.join(os.tmpdir(), 'aw-workspace-freshness-'));
   root = path.join(dir, 'active');
   dbPath = path.join(dir, 'graph.sqlite3');
+  writeCharter(root);
   writeFile(
     'alpha/brief.md',
     '---\nschema_version: 5\ntitle: alpha initiative\nupdated: 2026-09-01\nstate: backburner\ntask_prefix: AL\nvisibility: agent-visible\n---\n\nThe alpha initiative.\n',
