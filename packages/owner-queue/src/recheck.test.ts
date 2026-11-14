@@ -88,6 +88,15 @@ describe("recheck", () => {
     expect(result.dropped.map((drop) => drop.item.id)).toEqual(["b"]);
   });
 
+  it("settles an item when the heads differ only in case, padding or a short sha", () => {
+    const item = open("b", { keys: [ASK, ` PR:Org-A/Repo-1#12@${SHA_A.toUpperCase()}`] });
+    const sameHead = answer("a", AFTER, [ASK, `pr:org-a/repo-1#12@${SHA_A}`]);
+    const shortHead = answer("c", AFTER, [ASK, `pr:org-a/repo-1#12@${SHA_B.slice(0, 7)}`]);
+
+    expect(recheck([item], [sameHead]).dropped.map((drop) => drop.item.id)).toEqual(["b"]);
+    expect(recheck([item], [shortHead]).dropped.map((drop) => drop.item.id)).toEqual(["b"]);
+  });
+
   it("flags an older answer that differs from the recommendation as a conflict", () => {
     const result = recheck([open("b")], [answer("a", BEFORE, [ASK], { optionId: "blue" })]);
 

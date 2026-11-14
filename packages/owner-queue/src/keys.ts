@@ -53,6 +53,30 @@ export function prKey(repo: string, pr: number, headSha: string): string {
   return `pr:${repo.trim()}#${pr}@${headSha.trim()}`.toLowerCase();
 }
 
+const PR_REF = /^[\w.-]+\/[\w.-]+#\d+$/;
+const FULL_SHA = /^[0-9a-f]{40}$/;
+
+export interface ParsedPrKey {
+  /** Lower-cased `owner/repo#number`, or whatever text follows `pr:` when it is not that shape. */
+  pr: string;
+  /** The full 40-hex head the key pins, lower-cased; null for no head, a short sha or a malformed ref. */
+  sha: string | null;
+}
+
+/**
+ * The one reading of a `pr:` key: trimmed and lower-cased, since GitHub names and shas compare
+ * case-insensitively. Only a well-formed ref at a full head sha pins; a short sha pins nothing.
+ * Null for any key that is not a `pr:` key.
+ */
+export function parsePrKey(key: string): ParsedPrKey | null {
+  const normal = key.trim().toLowerCase();
+  if (!normal.startsWith("pr:")) return null;
+  const at = normal.lastIndexOf("@");
+  const pr = at < 0 ? normal.slice(3) : normal.slice(3, at);
+  const head = at < 0 ? "" : normal.slice(at + 1);
+  return { pr, sha: PR_REF.test(pr) && FULL_SHA.test(head) ? head : null };
+}
+
 /** The relation kind of a key, or null for a merge key or anything else. */
 export function relationKind(key: string): RelationKeyKind | null {
   const parts = splitKey(key);

@@ -1,4 +1,4 @@
-import { relationKind } from "./keys.js";
+import { parsePrKey, relationKind } from "./keys.js";
 import type { OwnerAnswer, OwnerItem } from "./schema.js";
 
 export type RecheckFlagKind = "conflict" | "reasked" | "related-answer";
@@ -50,9 +50,8 @@ function sharedKeys(item: OwnerItem, answer: Answered): Match {
 /** PR ref to the head it is pinned at, or null when unpinned. */
 function prHeads(keys: readonly string[]): Map<string, string | null> {
   const heads = new Map<string, string | null>();
-  for (const key of keys.map((each) => each.toLowerCase()).filter((each) => each.startsWith("pr:"))) {
-    const at = key.lastIndexOf("@");
-    heads.set(at < 0 ? key : key.slice(0, at), at < 0 ? null : key.slice(at + 1));
+  for (const parsed of keys.map(parsePrKey)) {
+    if (parsed !== null) heads.set(parsed.pr, parsed.sha);
   }
   return heads;
 }

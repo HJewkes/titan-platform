@@ -552,6 +552,18 @@ declare function topicKey(name: string): string;
 declare function alarmKey(source: string): string;
 /** A PR key pinned to its head, in the canonical form `mergeByKeys` compares. */
 declare function prKey(repo: string, pr: number, headSha: string): string;
+interface ParsedPrKey {
+    /** Lower-cased `owner/repo#number`, or whatever text follows `pr:` when it is not that shape. */
+    pr: string;
+    /** The full 40-hex head the key pins, lower-cased; null for no head, a short sha or a malformed ref. */
+    sha: string | null;
+}
+/**
+ * The one reading of a `pr:` key: trimmed and lower-cased, since GitHub names and shas compare
+ * case-insensitively. Only a well-formed ref at a full head sha pins; a short sha pins nothing.
+ * Null for any key that is not a `pr:` key.
+ */
+declare function parsePrKey(key: string): ParsedPrKey | null;
 /** The relation kind of a key, or null for a merge key or anything else. */
 declare function relationKind(key: string): RelationKeyKind | null;
 
@@ -773,7 +785,7 @@ interface StaleLabel {
  */
 declare function staleLabel(item: OwnerItem, evidence: StaleEvidence): StaleLabel | null;
 
-export { type AnsweredContext, Audience, CARD_RULES, type CardRule, type CiPolicyPlanScope, type ClosedStatus, type ConsolidateInput, type FeedbackInput, type Flow, type FlowGroup, HOLD_CLASSES, type HeldItem, INFLUENCE_RULES, type InfluenceContext, type InfluenceEdge, type InfluenceRule, ItemStatus, MERGE_WAITS, OwnerAnswer, OwnerItem, type OwnerOp, type OwnerOpKind, type OwnerRound, type OwnerRoundOptions, type OwnerRounds, PARKED, PROMPT_LINE_BREAK, type PathPlanScope, type PlanApproval, type PlanAsk, type PlanGate, type PlanGateScope, type PlanRound, type PlanRoundInput, type Principle, type PromptLineOptions, type QueueSource, RELATION_KEY_KINDS, ROUND_ANSWERER, type Recheck, type RecheckCite, type RecheckDrop, type RecheckFlag, type RecheckFlagKind, type RelationKeyKind, type ResolveResult, type RoundItemsContext, type RoundQuestionBinding, STALE_RULES, type ShipBlock, type ShipBlockReason, type SkipReason, type SourceEvent, SourceRef, type StackedItem, type StaleEvidence, type StaleLabel, type StaleRule, type Superseded, type TaskPlanScope, type WithdrawnItem, alarmKey, answeredFromFeedback, askKey, audienceOf, buildOwnerRounds, buildPlanRound, cardLint, collapseRepeats, componentKey, consolidate, forAudience, fromRoundQuestions, influenceEdges, isMergeKey, mergeByKeys, opKeys, ownerCardSchema, ownerOpSchema, prKey, promptLine, rank, recheck, relationKind, roundAskKey, roundItemId, stackContext, staleLabel, supersede, tokenKey, topicKey };
+export { type AnsweredContext, Audience, CARD_RULES, type CardRule, type CiPolicyPlanScope, type ClosedStatus, type ConsolidateInput, type FeedbackInput, type Flow, type FlowGroup, HOLD_CLASSES, type HeldItem, INFLUENCE_RULES, type InfluenceContext, type InfluenceEdge, type InfluenceRule, ItemStatus, MERGE_WAITS, OwnerAnswer, OwnerItem, type OwnerOp, type OwnerOpKind, type OwnerRound, type OwnerRoundOptions, type OwnerRounds, PARKED, PROMPT_LINE_BREAK, type PathPlanScope, type PlanApproval, type PlanAsk, type PlanGate, type PlanGateScope, type PlanRound, type PlanRoundInput, type Principle, type PromptLineOptions, type QueueSource, RELATION_KEY_KINDS, ROUND_ANSWERER, type Recheck, type RecheckCite, type RecheckDrop, type RecheckFlag, type RecheckFlagKind, type RelationKeyKind, type ResolveResult, type RoundItemsContext, type RoundQuestionBinding, STALE_RULES, type ShipBlock, type ShipBlockReason, type SkipReason, type SourceEvent, SourceRef, type StackedItem, type StaleEvidence, type StaleLabel, type StaleRule, type Superseded, type TaskPlanScope, type WithdrawnItem, alarmKey, answeredFromFeedback, askKey, audienceOf, buildOwnerRounds, buildPlanRound, cardLint, collapseRepeats, componentKey, consolidate, forAudience, fromRoundQuestions, influenceEdges, isMergeKey, mergeByKeys, opKeys, ownerCardSchema, ownerOpSchema, parsePrKey, prKey, promptLine, rank, recheck, relationKind, roundAskKey, roundItemId, stackContext, staleLabel, supersede, tokenKey, topicKey };
 
 // ./dist/deposit.d.ts
 import { z } from 'zod';
