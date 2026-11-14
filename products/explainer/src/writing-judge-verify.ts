@@ -2,12 +2,12 @@ import { MIN_QUOTE_WORDS } from "./eval-evidence.js";
 import { spokenText } from "./lint-register.js";
 
 /** A judge mark or extracted term, as the model gave it. */
-export interface RawMark {
+interface RawMark {
   id: string;
   quote: string;
 }
 
-export interface RawTerm {
+interface RawTerm {
   term: string;
 }
 
@@ -35,7 +35,7 @@ const escape = (token: string): string => token.replace(/[.*+?^${}()|[\]\\]/g, "
  * Where a quote sits in the piece, tolerant of case, spacing, quote-mark style and edge punctuation only, as the
  * writing lab's `locate` is: the bands were measured with it, so a stricter match would move them.
  */
-export function locateQuote(text: string, quote: string): { start: number; end: number } | null {
+function locateQuote(text: string, quote: string): { start: number; end: number } | null {
   const tokens = fold(quote.replace(QUOTE_EDGE, "")).split(/\s+/).filter(Boolean);
   if (tokens.length < MIN_QUOTE_WORDS) return null;
   const match = new RegExp(tokens.map(escape).join("\\s+"), "i").exec(fold(text));

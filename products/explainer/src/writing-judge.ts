@@ -53,7 +53,7 @@ const TermsSchema = z.object({
   terms: z.array(z.object({ term: z.string(), first_mention: z.string(), definition: z.string().nullable(), motivation: z.string().nullable(), used_after: z.boolean() })),
 });
 
-export interface WritingJudgeInput {
+interface WritingJudgeInput {
   beats: readonly { id: string; spoken: string }[];
   config: WritingJudgeConfig;
   harnessFor: (config: JudgeConfig) => JudgeHarness;
