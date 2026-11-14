@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "free slots ignore merged-not-deployed PRs",
+      "file": "products/factory/src/eligibility/shadow/tick.ts",
+      "find": "return Math.max(0, limits.laneOpenPrs - signals.openPrs - (signals.mergedNotDeployed ?? 0));",
+      "replace": "return Math.max(0, limits.laneOpenPrs - signals.openPrs);",
+      "kills": [
+        "dispatch shadow-tick counts merged-not-deployed PRs against the free slots, refusing the task past them"
+      ]
+    },
+    {
+      "name": "an empty held lane writes no row",
+      "file": "products/factory/src/eligibility/shadow/tick.ts",
+      "find": "if (read.admission.decision === \"hold\" && read.result.eligible.length === 0) rows.push(laneHoldRow(base, read.admission));",
+      "replace": "",
+      "kills": [
+        "dispatch shadow-tick a held lane with no candidate still writes one refused row with a null task"
+      ]
+    }
+  ]
+}
