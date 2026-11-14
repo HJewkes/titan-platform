@@ -25,7 +25,7 @@ interface SheetsFlags {
   columns: number;
 }
 
-export interface SheetsCliDeps {
+interface SheetsCliDeps {
   ffmpeg?: FfmpegExec;
   out?: (text: string) => void;
   err?: (text: string) => void;

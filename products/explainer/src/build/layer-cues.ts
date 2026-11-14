@@ -1,7 +1,7 @@
 import type { LayerPacket } from "./layer-packet.js";
 
 /** One cue word a layer never reads through `useCue`, with the targets it times. */
-export interface UntimedCue {
+interface UntimedCue {
   cue: string;
   targets: string[];
 }

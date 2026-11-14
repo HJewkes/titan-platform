@@ -87,14 +87,14 @@ const SheetsParamsSchema = z.strictObject({ take: z.string().min(1).optional(), 
 const RenderParamsSchema = z.strictObject({ workers: z.number().int().positive().optional(), twoRun: z.boolean().optional(), noQa: z.boolean().optional() });
 
 /** A video and every run of it, oldest first: the sidecar lists them, so a new linked run re-keys the sheets stage. */
-export const VideoRefSchema = z.object({ id: z.string(), runIds: z.array(z.string()) });
+const VideoRefSchema = z.object({ id: z.string(), runIds: z.array(z.string()) });
 export type VideoRef = z.infer<typeof VideoRefSchema>;
 
 /** The voice a run with no profile speaks in: the bridge's voice at Kokoro's natural rate. */
 export const DEFAULT_VOICE = { id: "af_heart", rate: 1 } as const;
 
 /** What a stage body runs with: the run's settings with the variant's params laid over them. */
-export const StageConfigSchema = z.object({
+const StageConfigSchema = z.object({
   variant: z.object({ name: z.string(), sha: z.string() }).optional(),
   /** The gather stage's request: its adapter and everything that adapter reads. */
   gather: GatherRequestSchema.optional(),
@@ -219,7 +219,7 @@ function settingsConfig(stage: CachedStage, settings: RunSettings, params: Varia
   return renderConfig(settings, params);
 }
 
-export interface SpecRequest {
+interface SpecRequest {
   stage: CachedStage;
   artifacts: Readonly<Record<string, string>>;
   settings: RunSettings;
@@ -242,7 +242,7 @@ interface StyleChoice {
 }
 
 /** The render variant param that picks a style pack (plan §A.2): the pack is a render setting, never a TTS one. */
-export const STYLE_PACK_PARAM = "stylePack";
+const STYLE_PACK_PARAM = "stylePack";
 
 /** Lifts the style pack out of a render variant's params: its CSS goes to the page and its content hash into the config. */
 function styleConfig(stage: CachedStage, params: Variant["params"], packs: () => ReadonlyMap<string, StylePack>): { params: Variant["params"]; style?: StyleChoice } {
