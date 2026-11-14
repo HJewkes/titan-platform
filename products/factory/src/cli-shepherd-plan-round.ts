@@ -6,7 +6,8 @@ import { parsePositiveInt } from "./cli-options.js";
 import type { CliIo, Verbs } from "./cli-types.js";
 import { configPath, loadConfig } from "./config.js";
 import { runCommand, type CommandResult } from "./run-command.js";
-import { parseNameStatus, verifyPlan } from "./shepherd/plan-round-verify.js";
+import { parseNameStatus } from "./shepherd/git-pr-files.js";
+import { verifyPlan } from "./shepherd/plan-round-verify.js";
 import { planRound, PlanRoundRefused, readPlanBlock, type GitRead } from "./shepherd/plan-round.js";
 import { loadSeatBook, lookupSeat } from "./shepherd/seats.js";
 import { activeWorkOrigin } from "./shepherd/cleanup-ports.js";
@@ -36,7 +37,8 @@ export function checkoutGit(checkout: string, run: Run = runCommand): GitRead {
   const diffNames = async (base: string, ref: string): Promise<string[]> => {
     const diff = await git("diff", "--name-status", "-M", "-z", `${base}...${ref}`);
     if (diff?.code !== 0) throw new Error(`git diff ${base}...${ref} failed: ${diff?.stderr.trim() ?? "git is not on PATH"}`);
-    return parseNameStatus(diff.stdout);
+    // A rename or copy changes both of its paths, and the drift guard reads both.
+    return parseNameStatus(diff.stdout).flatMap((entry) => (entry.previousPath === undefined ? [entry.path] : [entry.previousPath, entry.path]));
   };
   return { show, blob, commit, diffNames };
 }
