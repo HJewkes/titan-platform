@@ -36,9 +36,11 @@ import { seatCheckout } from "./shepherd/seat-checkout.js";
 import { startServeIngress, type ServeIngressOptions } from "./serve-ingress.js";
 import type { IngressListener, IngressStatus } from "./ingress/listen.js";
 import type { FactoryHost, FactoryHostOptions } from "./host.js";
+import { callerForSurface } from "./caller.js";
 import type { FactoryContext, NeedsSources } from "./context.js";
 import { loadOwnerKeys, type OwnerKeys } from "./owner-keys.js";
 import { startStandingAnswerSweep } from "./owner-ops/standing-answers.js";
+import type { AgentAllowList } from "./needs/agent-allow-list.js";
 import { keptNeedsSources } from "./needs/command.js";
 import { createFactoryRegistry, factoryContext } from "./registry.js";
 import { mountServeRoutes, type ConsoleAnswersServeOptions } from "./serve-routes.js";
@@ -125,6 +127,8 @@ export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweep
   bot?: () => BotIdentity;
   /** Replaces the live owner-queue adapters behind needs.list and needs.count; tests inject it. */
   needsSources?: NeedsSources;
+  /** Replaces the live inventory read behind an agent's needs view; tests inject it. */
+  needsAllowed?: AgentAllowList;
   /** Replaces the /health probe that tells a live factory from a refused start; tests inject it. */
   probe?: HealthProbe;
   /** Replaces `SHUTDOWN_SWEEP_GRACE_MS`; tests shorten it. */
@@ -271,7 +275,7 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
   const needsSources = options.needsSources ?? keptNeedsSources(process.env, host.gates);
   return {
     registry: createFactoryRegistry(log),
-    createContext: () => factoryContext(host, options.routes, proofs.aud, needsSources),
+    createContext: (surface) => factoryContext(host, options.routes, callerForSurface(surface), { aud: proofs.aud, needsSources, ...(options.needsAllowed && { needsAllowed: options.needsAllowed }) }),
     version: FACTORY_VERSION,
     stateDir: stateDirOf(options),
     port: options.port ?? FACTORY_PORT,

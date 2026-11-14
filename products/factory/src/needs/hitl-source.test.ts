@@ -107,7 +107,7 @@ describe("hitlGateSource owner cards", () => {
   });
 
   it("renders the class, door, on-silence line and each option's consequence in needs", async () => {
-    const text = renderNeeds(await collectNeeds([hitlGateSource({ gates: cardedGates() })]));
+    const text = renderNeeds(await collectNeeds([hitlGateSource({ gates: cardedGates() })], { caller: "owner" }));
 
     expect(text).toContain("    class D19 · one-way · on silence: wait");
     expect(text).toContain("    irreversible: A merge lands on the base branch and can only be undone by a revert.");

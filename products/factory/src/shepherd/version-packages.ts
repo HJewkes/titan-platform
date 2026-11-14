@@ -81,7 +81,7 @@ async function registerOnce(host: FactoryHost, services: ShepherdServices, repo:
   const known = services.store.get().byPr(repo, pr.number);
   const run = known && host.runtime.status(known.runId);
   if (known && run?.status !== "failed" && !(run && stoppedBehind(run, pr.headSha))) return undefined;
-  return (await registerVersionPackages({ warnings: [], format: "json", host, shepherd: services }, repo, pr.number)).runId;
+  return (await registerVersionPackages({ warnings: [], format: "json", host, caller: "agent", shepherd: services }, repo, pr.number)).runId;
 }
 
 /** Stops a pushed head can clear; an owner abandon is not one, so a new release head never overrides it. */

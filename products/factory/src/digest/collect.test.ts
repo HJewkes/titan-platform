@@ -140,7 +140,7 @@ describe("collectDigest with the merged owner list", () => {
 
   it("reads needsYou from the merged list, asks only (no news), not the separate gate, queue and chat reads", async () => {
     const [first, second] = await sources10_05();
-    const list = await collectNeeds([first!, second!]);
+    const list = await collectNeeds([first!, second!], { caller: "owner" });
     const sources = fakeSources({ gates: async () => [gateFact()], needs: async () => list });
 
     const model = await collectDigest({ sources, now: NOW, windowMinutes: 360, slot: SLOT });
@@ -197,7 +197,7 @@ describe("collectDigest with the merged owner list", () => {
 
   it("lists factory gates first, then Morning items, tasks and broker asks, whatever order the sources read in", async () => {
     const [chat, hitl, morning, tasks] = await sources10_05();
-    const list = await collectNeeds([chat!, tasks!, morning!, hitl!]);
+    const list = await collectNeeds([chat!, tasks!, morning!, hitl!], { caller: "owner" });
 
     const model = await collectDigest({ sources: fakeSources({ needs: async () => list }), now: NOW, windowMinutes: 360, slot: SLOT });
 
