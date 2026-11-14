@@ -5,6 +5,7 @@ import { migrateSpike } from "./migrate.js";
 import { parseScript } from "./script-load.js";
 import { parseWritingCheck } from "./writing-calibrate.js";
 import { scoreWriting, type WritingBeat, type WritingReport, type WritingRow } from "./writing-check.js";
+import type { GateRow } from "./writing-gate.js";
 import { formatWritingReport } from "./writing-check-format.js";
 
 const EXIT = { OK: 0, FAILURE: 1, USAGE: 2 } as const;
@@ -45,11 +46,20 @@ function structureRow(row: WritingRow, ids: { config: string; script: string; ta
   };
 }
 
+function gateStructureRow(row: GateRow, ids: { config: string; script: string; table: string }): StructureRow {
+  return {
+    config_id: ids.config, script_sha: ids.script, rules_sha: ids.table,
+    check_id: row.id, mode: "heuristic", severity: row.severity === "error" ? "error" : "warning",
+    value: row.value ?? 0, threshold: row.threshold, pass: row.pass, detail_beats: row.beats,
+  };
+}
+
 /** Records the run the way `eval l0` does; `tableSha` stands in the rules_sha column, so rows from different tables never mix. */
 function recordBench(dir: string, config: string, raw: unknown, report: WritingReport, table: { sha: string; started: Date; finished: Date }): void {
   const bench = benchLayout(dir);
   const script = freezeScript(bench, raw, null);
-  appendTsv(bench.structure, STRUCTURE_COLUMNS, report.rows.map((row) => structureRow(row, { config, script, table: table.sha })));
+  const ids = { config, script, table: table.sha };
+  appendTsv(bench.structure, STRUCTURE_COLUMNS, [...report.rows.map((row) => structureRow(row, ids)), ...report.gate.map((row) => gateStructureRow(row, ids))]);
   appendRun(bench, deterministicRun({ configId: config, scriptSha: script, parentSha: null, rulesSha: table.sha, evalId: WRITING_EVAL_ID, started: table.started, finished: table.finished }));
 }
 

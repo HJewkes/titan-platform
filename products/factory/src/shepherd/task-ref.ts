@@ -7,7 +7,8 @@ import { archivedTasks } from "./task-archive.js";
 interface InitiativeKeys {
   slug: string;
   task_prefix: string;
-  agent_visible: boolean;
+  /** Missing reads as withheld: an older daemon sends no verdict. */
+  withheld_from_agents?: boolean;
   ids: string[];
 }
 
@@ -46,7 +47,7 @@ function keysLookup(initiatives: readonly InitiativeKeys[]): TaskIndexLookup {
   const tasks = initiatives.flatMap(({ slug, ids }) => ids.map((id) => ({ id, initiative: slug })));
   return {
     index: { tasks, prefixes: initiatives.map(({ slug, task_prefix }) => ({ initiative: slug, taskPrefix: task_prefix })) },
-    agentVisible: new Set(initiatives.filter((item) => item.agent_visible).map((item) => item.slug)),
+    agentVisible: new Set(initiatives.filter((item) => item.withheld_from_agents === false).map((item) => item.slug)),
     complete: true,
   };
 }

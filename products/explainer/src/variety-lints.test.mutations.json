@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "connector-share warns again",
+      "file": "products/explainer/src/variety-lints.ts",
+      "find": "const pass = reportOnlyL0Row(CONNECTOR_SHARE_ID) || share <= max;",
+      "replace": "const pass = share <= max;",
+      "kills": [
+        "script variety lints reports 60 % connector openers without warning, keeping the share and naming them in the hint"
+      ]
+    }
+  ]
+}
