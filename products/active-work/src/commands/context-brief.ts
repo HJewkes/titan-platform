@@ -15,6 +15,7 @@ import {
   renderBriefBlock,
   type BriefBlock,
 } from '../search/brief-block.js';
+import { briefSessions, withSessions, type BriefSessions } from '../search/brief-sessions.js';
 import { fileHitLog, HIT_TRIGGERS, servedHitEntries, type HitLogWriter } from '../search/hit-log.js';
 import type { RelatedDegradation, RelatedResult } from '../search/related.js';
 import type { EnsureFresh } from '../session-index/freshness.js';
@@ -47,6 +48,7 @@ interface BriefDeps {
   hitLog?: HitLogWriter;
   dbPath?: string;
   ensureFresh?: EnsureFresh;
+  now?: Date;
 }
 
 async function logServed(
@@ -61,6 +63,15 @@ async function logServed(
   return hitLog(servedHitEntries(related.hits.filter((hit) => served.has(hit.ref)), context));
 }
 
+function sessionsFor(args: Args, deps: BriefDeps): Promise<BriefSessions> {
+  return briefSessions({
+    text: args.for,
+    activeRoot: deps.activeRoot,
+    now: deps.now ?? new Date(),
+    ...(deps.dbPath !== undefined ? { dbPath: deps.dbPath } : {}),
+  });
+}
+
 /** The command's body, with the index and hit log injectable so tests never touch the live ones. */
 export async function runBrief(args: Args, deps: BriefDeps): Promise<BriefResult> {
   const related = await runRelated(
@@ -72,15 +83,18 @@ export async function runBrief(args: Args, deps: BriefDeps): Promise<BriefResult
     },
     deps,
   );
-  const block = renderBriefBlock({
+  const budgetBytes = args.budgetBytes ?? BRIEF_DEFAULT_BYTES;
+  const workspace = renderBriefBlock({
     hits: related.hits,
     degraded: related.degraded,
     activeRoot: deps.activeRoot,
-    budgetBytes: args.budgetBytes ?? BRIEF_DEFAULT_BYTES,
+    budgetBytes,
     ...(args.initiative !== undefined ? { initiative: args.initiative } : {}),
   });
+  const sessions = await sessionsFor(args, deps);
+  const block = withSessions(workspace, sessions, budgetBytes);
   const failure = await logServed(args, related, block, deps.hitLog ?? fileHitLog());
-  const degraded = [...related.degraded];
+  const degraded = [...related.degraded, ...sessions.degraded];
   if (failure !== null) degraded.push({ source: 'hit-log', reason: 'error', message: failure });
   return { ...block, degraded };
 }

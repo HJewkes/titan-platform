@@ -201,6 +201,30 @@ passes, and `summary.reviews` reports `resolved` (this pass) and `unresolved` (s
 checked. Once the resolver has answered for a PR, its `merged_at` is the forge's and a later
 pass never overwrites it with a sighting time.
 
+## Sessions that touched files
+
+`sessionsTouchingFiles(graph, { files, since, limit })` lists the sessions with a live
+`touched` edge to any of the files, newest first, capped at `limit` (default 10). Each file is
+a repo-relative `path`, with an optional `repo`. With no repo, the path matches in every repo.
+The lookup goes through the `file` table, so the edge scan is limited to the matching refs.
+
+```ts
+import { openSessionGraph, sessionsTouchingFiles } from "@titan-design/session-graph";
+
+const graph = openSessionGraph(graphPath, { readonly: true });
+const since = new Date(Date.now() - 14 * 86_400_000).toISOString();
+const rows = sessionsTouchingFiles(graph, { files: [{ path: "src/app.ts" }], since, limit: 4 });
+// [{ sessionId, touchedAt, cwd, title, fileRefs, tasks: [{ initiative, edges }] }]
+```
+
+- **Touch time.** An edge keeps a session's *first* touch of a file, so `touchedAt` is the
+  latest of those first touches across the named files. A session that first touched a file
+  20 days ago and came back to it yesterday still dates from 20 days ago.
+- **Visibility is the caller's job.** Each row carries `cwd` and the initiatives its `ran`
+  task edges name, so a product can decide what a reader may see. The package filters
+  nothing. active-work's `context.brief` maps each row to an initiative and keeps only
+  initiatives its agent view shows.
+
 ## Tables
 
 **Kit tables:** `transcript` (watermark), `edge` (bi-temporal, `session:… touched file:…`),
