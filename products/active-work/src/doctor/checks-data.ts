@@ -16,6 +16,7 @@ import {
   type DanglingResolve,
   type MalformedSession,
 } from '../sessions/open-loops.js';
+import { RESERVED_MINER_KEYS } from '../commands/_miner-redact.js';
 import type { DoctorCheck, DoctorDeps } from './index.js';
 
 /** Each rejection kind has a different remedy, so each gets its own sentence. */
@@ -265,3 +266,20 @@ export async function checkArtifactHashes(deps: DoctorDeps): Promise<DoctorCheck
   return artifactHashesCheck(drifted);
 }
 
+
+/** Initiatives created before `new` refused reserved miner keys; the miner would read them as its own buckets (TP-5782). */
+export async function checkReservedSlugs(deps: DoctorDeps): Promise<DoctorCheck> {
+  const activeRoot = deps.activeRoot ?? getActiveRoot();
+  const slugs = await listShownSlugs(activeRoot, deps.shown);
+  const reserved = slugs.filter((slug) => RESERVED_MINER_KEYS.has(slug));
+  if (reserved.length === 0) {
+    return { name: 'reserved-slugs', status: 'ok', detail: 'no initiative slug is a reserved miner key' };
+  }
+  return {
+    name: 'reserved-slugs',
+    status: 'warn',
+    detail:
+      'initiative slug is reserved as a miner report key ' +
+      `(rename the initiative directory): ${reserved.join(', ')}`,
+  };
+}
