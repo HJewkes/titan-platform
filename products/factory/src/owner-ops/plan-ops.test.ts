@@ -85,6 +85,22 @@ describe("the planning ops on the console's owner-op path", () => {
     expect(await w.tap({ kind: "plan-bet-select", initiative: "beta", week: "2026-W47", bets: ["beta/B1"] })).toEqual({ outcome: "gone", reason: "Initiative not found: beta" });
   });
 
+  it("refuses a bet select that names a bet of another initiative, and its preview shows nothing of that bet", async () => {
+    const w = await world();
+    mkdirSync(join(w.activeRoot, "beta"));
+    const foreign = bet(1, { id: "beta/B1", initiative: "beta" });
+    await Promise.all([bet(1), foreign].map((each) => writePlanRecord(w.activeRoot, "bet", each)));
+    const op: OwnerOp = { kind: "plan-bet-select", initiative: "alpha", week: "2026-W47", bets: ["alpha/B1", "beta/B1"] };
+
+    const result = await w.tap(op);
+    const preview = await planPreview(op, w.activeRoot);
+
+    expect(result).toEqual({ outcome: "refused", reason: "mismatch", detail: "beta/B1 is not a bet of alpha" });
+    expect((await readPlanRecord(w.activeRoot, "bet", "beta/B1"))?.state).toBe("proposed");
+    expect((await readPlanRecord(w.activeRoot, "bet", "alpha/B1"))?.state).toBe("proposed");
+    expect(preview).toEqual({ bets: [{ id: "alpha/B1", bet: bet(1), outcome }, { id: "beta/B1", bet: null, outcome: null }] });
+  });
+
   it("round-trips an outcome edit: the preview reads the before, the tap writes the after, a replay is already", async () => {
     const w = await world();
     const to = { statement: "A reviewed change lands within four hours" };
