@@ -1,0 +1,18 @@
+# Dispatcher shadow tick: writes shadow rows and dispatches nothing. Inert unless the rule file sets shadow.enabled: true (TP-5766).
+# Install steps: products/factory/README.md, "Dispatcher shadow".
+[Unit]
+Description=Titan factory: dispatcher shadow tick
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment="PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
+# Sets ACTIVE_ROOT and TITAN_FACTORY_DB; the same file the owner-gates unit reads.
+EnvironmentFile=%h/.config/titan-factory/owner-gates.env
+# No path or flag: the tick reads its rule file from the default place.
+ExecStart=/usr/bin/node %h/.local/share/titan-factory/deploy/titan-platform/products/factory/dist/bin.js dispatch shadow-tick
+# The tick takes no lock today. 75 is reserved as the repo's "busy, retry next tick" code, in case it gains one.
+SuccessExitStatus=75
+TimeoutStartSec=5min
+Nice=10
+IOSchedulingClass=idle

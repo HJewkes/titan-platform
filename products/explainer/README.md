@@ -289,7 +289,7 @@ the build's usage, and its session id is kept as `repairSessionId` on the build 
 still fails stays `needsRepair` (its error names the repair session), keeps its spend, and is not cached. Repairs are
 off unless the host passes a `layerRepairer`: no agent-chat binary on `PATH` or in `AGENT_CHAT_BIN` turns them on,
 because the installed `beat-builder` profile predates its TSX variant. They turn on by default after TP-2608 ships
-that profile. `BEAT_WORKERS` is the whole runner registry: `claude-print` and `agent-chat`, with no fork runner
+that profile. The only runners are `claude-print` and `agent-chat`, with no fork runner
 and no resumed session.
 
 **Custom layers on the page, and the text check** (TP-4418). The page draws a custom layer in the stage box between
