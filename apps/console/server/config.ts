@@ -1,7 +1,7 @@
 import { BlockList, isIP } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { activeWorkGraphPath, activeWorkRoot } from "@titan-design/app-paths";
+import { activeWorkGraphPath, activeWorkRoot, consoleInboxDir, scorecardStorePath } from "@titan-design/app-paths";
 import { isLoopbackHost } from "@titan-design/daemon";
 import { expandHome } from "@titan-design/session-read";
 import { blockerHoursFrom, type BlockerConfig } from "./blocker-hours.js";
@@ -12,7 +12,7 @@ import { coordinatorFilePath } from "./config-store/materialize.js";
 import { coordinatorRootsFrom, type CoordinatorRoots } from "./config-surfaces/coordinator.js";
 import { hostSurfaceRootsFrom, type HostSurfaceRoots } from "./config-surfaces/host.js";
 import { coordinatorDayFrom, type CoordinatorDayConfig } from "./coord-day.js";
-import { scorecardStoreFrom, type ScorecardConfig } from "./scorecard-view.js";
+import type { ScorecardConfig } from "./scorecard-view.js";
 
 /** Off 7400, which the active-work daemon and `titan-miner serve` both default to. */
 export const DEFAULT_CONSOLE_PORT = 7500;
@@ -183,9 +183,9 @@ function lanOptionsFrom(env: NodeJS.ProcessEnv, home: string, stateDir: string, 
 /** The dirs other processes write and the console reads from or files into. */
 function dataDirsFrom(env: NodeJS.ProcessEnv, home: string, platform: NodeJS.Platform, stateDir: string): Pick<ConsoleConfig, "inboxDir" | "roundsDir" | "reviewsDir" | "storybooksDir" | "scorecardStore"> {
   return {
-    scorecardStore: scorecardStoreFrom(env, home),
+    scorecardStore: scorecardStorePath({ env, home }),
     storybooksDir: path.join(stateDir, "storybooks"),
-    inboxDir: expandHome(env.TITAN_CONSOLE_INBOX_DIR || path.join(stateDir, "inbox", "deposits"), home),
+    inboxDir: consoleInboxDir({ env, home }),
     roundsDir: expandHome(env.TITAN_CONSOLE_ROUNDS_DIR || path.join(stateDir, "rounds"), home),
     reviewsDir: expandHome(env.TITAN_CONSOLE_REVIEWS_DIR || path.join(activeWorkRoot({ env, home, platform }), ...REVIEWS_UNDER_ROOT), home),
   };

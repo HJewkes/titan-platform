@@ -1,6 +1,7 @@
+import { consoleInboxDir } from "@titan-design/app-paths";
 import type { Command } from "commander";
 import { runDaily, type ConsoleRunner } from "./daily.js";
-import { inboxDir, readOwnerAnswer, shellConsoleRunner, sourceCardLoaders } from "./daily-sources.js";
+import { readOwnerAnswer, shellConsoleRunner, sourceCardLoaders } from "./daily-sources.js";
 import { casesDir, configPath, dbPath, rowsDir } from "./paths.js";
 import { getVideo, openScoutDb } from "./store.js";
 import { loadWatchlist } from "./watchlist.js";
@@ -18,7 +19,7 @@ export function addDailyCommand(program: Command, write: (line: string) => void,
         const out = await runDaily({
           runner,
           ...loaders,
-          readAnswer: readOwnerAnswer(inboxDir()),
+          readAnswer: readOwnerAnswer(consoleInboxDir()),
           casesDir: casesDir(),
           rowsDir: rowsDir(),
           stateDir: path.dirname(dbPath()),
