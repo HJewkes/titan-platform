@@ -10,8 +10,8 @@ export {
   openDatabase,
   quoteIdent,
 } from "./open.js";
-export type { Migration } from "./migrations.js";
-export { MigrationIdentityError, appliedVersions, runMigrations } from "./migrations.js";
+export type { Migration, RunMigrationsOptions } from "./migrations.js";
+export { MigrationDriftError, MigrationIdentityError, appliedVersions, runMigrations } from "./migrations.js";
 export type { ParsedRef } from "./ref.js";
 export { isRef, parseRef, ref, refKind } from "./ref.js";
 export type { KitSelection } from "./kit.js";

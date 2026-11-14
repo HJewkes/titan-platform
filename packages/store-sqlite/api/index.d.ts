@@ -51,7 +51,18 @@ interface Migration {
     /** Positive, unique, applied in ascending order. */
     version: number;
     name?: string;
+    /**
+     * The text that pins what this migration does, usually the SQL `up` runs. Its hash is
+     * recorded when the migration applies, and a later run whose definition hashes
+     * differently reports drift. The source of `up` is not hashed: a rebuild can rename
+     * identifiers in it without changing what it does.
+     */
+    definition?: string;
     up: (db: Db) => void;
+}
+interface RunMigrationsOptions {
+    /** What an edited, already-applied migration does: throw (the default) or emit a process warning and go on. */
+    onDrift?: "error" | "warn";
 }
 declare class MigrationIdentityError extends Error {
     readonly version: number;
@@ -59,13 +70,25 @@ declare class MigrationIdentityError extends Error {
     readonly declaredName: string;
     constructor(version: number, recordedName: string, declaredName: string);
 }
+/**
+ * Thrown when an applied migration's definition no longer hashes to what was recorded:
+ * someone edited a shipped migration, so databases that already ran it differ from new ones.
+ *
+ * Adapted from beads (MIT), `internal/storage/schema/content_skew.go`.
+ */
+declare class MigrationDriftError extends Error {
+    readonly version: number;
+    readonly recordedHash: string;
+    readonly declaredHash: string;
+    constructor(version: number, recordedHash: string, declaredHash: string);
+}
 declare function appliedVersions(db: Db): number[];
 /**
  * Apply every migration not yet recorded in the migration table, each in its own
  * transaction so a failure leaves the database at the last good version.
  * Returns the versions applied this call.
  */
-declare function runMigrations(db: Db, migrations: readonly Migration[]): number[];
+declare function runMigrations(db: Db, migrations: readonly Migration[], options?: RunMigrationsOptions): number[];
 
 /**
  * The cross-domain identity grammar: `<kind>:<id>`, where `kind` is a short
@@ -411,4 +434,4 @@ declare class WatermarkTable {
     list(): WatermarkRow[];
 }
 
-export { type CacheBlobOptions, CacheBlobTable, type CacheHit, type CacheKey, type Db, type EdgeInput, type EdgeRow, EdgeTable, type EdgeTableOptions, type EntityInput, type EntityRow, EntityTable, type KitSelection, MIGRATION_TABLE_NAME, type Migration, MigrationIdentityError, type OpenOptions, type ParsedRef, SQL_NOW, SchemaTooNewError, type SpanFtsOptions, SpanFtsTables, type SpanHit, type SpanInput, type SpanScope, type TableName, type WatermarkAdvance, type WatermarkOptions, type WatermarkRow, type WatermarkStatus, WatermarkTable, appliedVersions, assertSchemaVersion, cacheBlobTableDdl, contentHashOf, edgeTableDdl, entitySnapTableDdl, entityTableDdl, hasColumn, hasTable, isRef, kitDdl, kitMigration, nowIso, openDatabase, parseRef, quoteIdent, ref, refKind, runMigrations, snapshotTableDdl, spanFtsTablesDdl, watermarkTableDdl };
+export { type CacheBlobOptions, CacheBlobTable, type CacheHit, type CacheKey, type Db, type EdgeInput, type EdgeRow, EdgeTable, type EdgeTableOptions, type EntityInput, type EntityRow, EntityTable, type KitSelection, MIGRATION_TABLE_NAME, type Migration, MigrationDriftError, MigrationIdentityError, type OpenOptions, type ParsedRef, type RunMigrationsOptions, SQL_NOW, SchemaTooNewError, type SpanFtsOptions, SpanFtsTables, type SpanHit, type SpanInput, type SpanScope, type TableName, type WatermarkAdvance, type WatermarkOptions, type WatermarkRow, type WatermarkStatus, WatermarkTable, appliedVersions, assertSchemaVersion, cacheBlobTableDdl, contentHashOf, edgeTableDdl, entitySnapTableDdl, entityTableDdl, hasColumn, hasTable, isRef, kitDdl, kitMigration, nowIso, openDatabase, parseRef, quoteIdent, ref, refKind, runMigrations, snapshotTableDdl, spanFtsTablesDdl, watermarkTableDdl };

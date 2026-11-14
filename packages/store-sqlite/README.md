@@ -57,6 +57,20 @@ When an already-applied version's recorded name differs from the declared one,
 version number, so neither believes in a schema it never applied. A migration with no
 declared name, or a row recorded before names were kept, is never compared.
 
+### Flagging an edited migration
+
+A migration may declare `definition`, the text that pins what it does (usually the SQL its
+`up` runs). Its SHA-256 is recorded in `_migration.hash` when the migration applies. When an
+already-applied version's definition later hashes differently, someone edited a shipped
+migration, so databases that ran the old one differ from new ones. `runMigrations` then
+throws `MigrationDriftError` (carrying `version`, `recordedHash`, and `declaredHash`), or,
+with `runMigrations(db, migrations, { onDrift: "warn" })`, emits it as a process warning
+and carries on. The source of `up` is never hashed, because a rebuild can rename
+identifiers in it without changing what it does. A migration with no `definition` is never
+compared. A row recorded before hashes were kept is unknown rather than drifted: the
+current definition's hash is backfilled, and an older `_migration` table gains the `hash`
+column on the next run.
+
 ## The primitives
 
 Every factory takes an optional `name` so a store can host several instances or keep a

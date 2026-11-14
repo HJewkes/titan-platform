@@ -43,8 +43,10 @@ describe("migration drift", () => {
     }
 
     expect(before).toMatch(/^[0-9a-f]{64}$/);
+    expect(caught).toBeInstanceOf(MigrationDriftError);
     expect(caught).toMatchObject({ name: "MigrationDriftError", version: 1, recordedHash: before });
-    expect((caught as MigrationDriftError).declaredHash).not.toBe(before);
+    expect(caught).not.toMatchObject({ declaredHash: before });
+    expect(caught).toHaveProperty("declaredHash", expect.stringMatching(/^[0-9a-f]{64}$/));
   });
 
   it("warns instead of throwing when the caller asks for warnings, and keeps going", () => {
