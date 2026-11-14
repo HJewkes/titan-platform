@@ -660,7 +660,7 @@ describe("a merge step waiting on a hold", () => {
     store.register({ repo: REPO, pr: 7, runId: "run-7", task: "demo/7", implementer: "impl-a", policy: OWNER_GATE_POLICY });
     const reasons = ["the repo is frozen", "the repo is frozen", "the Version Packages PR #1 is ready and lands first", undefined];
     const route = partialFake<StepRoute>({ match: "merge", runner: { run: async () => ({ ok: true as const, output: "{}" }) } });
-    const noteWait = (repo: string, pr: number, reason: string, sha: string | undefined) => store.noteMergeWait(repo, pr, reason, "2026-01-01T00:00:00.000Z", sha);
+    const noteWait = (_repo: string, _pr: number, reason: string, sha: string | undefined) => store.recordMergeWait("run-7", reason, "2026-01-01T00:00:00.000Z", sha);
     const waiting = waitWhileHeld(route, async () => reasons.shift(), { sleep: async () => undefined, now: () => 0 }, async () => H1, undefined, undefined, undefined, noteWait);
 
     await waiting.runner.run(partialFake<RoutedStepInput>({ prompt: JSON.stringify({ repo: REPO, pr: 7, sha: H1 }), signal: new AbortController().signal, stepId: "merge", attempt: 0 }));

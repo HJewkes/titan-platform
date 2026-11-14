@@ -187,7 +187,7 @@ type ReviewAsked = (repo: RepoSlug, pr: number, sha: string) => boolean;
 export type TakeRehold = (repo: RepoSlug, pr: number) => boolean;
 
 /** Records a new reason the merge waits on as a timeline row. */
-export type NoteWait = (repo: RepoSlug, pr: number, reason: string, sha: string | undefined) => void;
+type NoteWait = (repo: RepoSlug, pr: number, reason: string, sha: string | undefined) => void;
 
 interface HoldReads {
   held: HeldCheck;
