@@ -1,7 +1,7 @@
-export type FontRule = "@font-face" | "font import" | "font url" | "remote font host" | "font family";
+type FontRule = "@font-face" | "font import" | "font url" | "remote font host" | "font family";
 
 /** One line of a built layer's source that loads or names a font the theme does not provide. */
-export interface FontFinding {
+interface FontFinding {
   line: number;
   rule: FontRule;
   text: string;

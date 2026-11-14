@@ -1,5 +1,5 @@
 /** One element of a built layer that renders text and whose opacity is animated, computed or set below 1. */
-export interface FadeFinding {
+interface FadeFinding {
   line: number;
   /** The element's `id` when it has one, else its tag name. */
   element: string;
