@@ -9,6 +9,7 @@ import {
 import { defaultGraphPath } from '../session-index/graph.js';
 import { visibilityFor, type Shown } from '../sessions/visibility.js';
 import { utf8Bytes, type BriefBlock } from './brief-block.js';
+import { namedFiles } from './brief-task-files.js';
 import type { RelatedDegradation } from './related.js';
 
 /**
@@ -25,13 +26,9 @@ const WINDOW_DAYS = 14;
 const DAY_MS = 86_400_000;
 const TITLE_MAX = 60;
 const ID_CHARS = 8;
-const NAMED_FILES_MAX = 20;
 const HEADING = '## Recent sessions on the named files\n\n';
 const SECTION_GAP = '\n\n';
 const ACTIVE_WORK_CWD = 'active-work:';
-
-/** Repo-relative paths only: a path after a `/`, `~` or `://` is absolute or a URL and is skipped. */
-const NAMED_FILE = /(?<![\w./~-])(?:[\w.-]+\/)+[\w-][\w.-]*\.[A-Za-z0-9]+(?![\w/])/g;
 
 interface BriefSessionsInput {
   text: string;
@@ -43,11 +40,6 @@ interface BriefSessionsInput {
 export interface BriefSessions {
   lines: string[];
   degraded: RelatedDegradation[];
-}
-
-function namedFiles(text: string): TouchedFileQuery[] {
-  const paths = new Set(Array.from(text.matchAll(NAMED_FILE), (match) => match[0]));
-  return [...paths].slice(0, NAMED_FILES_MAX).map((filePath) => ({ path: filePath }));
 }
 
 /** A task edge names the initiative outright; otherwise only a cwd inside the active root does. */
@@ -82,7 +74,7 @@ function readVisible(input: BriefSessionsInput, files: TouchedFileQuery[], shown
 
 /** Always the agent view: `/rpc` runs every caller as the owner, so no caller is consulted. */
 export async function briefSessions(input: BriefSessionsInput): Promise<BriefSessions> {
-  const files = namedFiles(input.text);
+  const files: TouchedFileQuery[] = namedFiles(input.text).map((filePath) => ({ path: filePath }));
   if (files.length === 0) return { lines: [], degraded: [] };
   const dbPath = input.dbPath ?? defaultGraphPath();
   if (!existsSync(dbPath)) {

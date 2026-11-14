@@ -2,6 +2,7 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writ
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { z } from "zod";
+import { ScriptSchema } from "../script-schema.js";
 import type { Timeline } from "../composition/timeline.js";
 import type { QaGate } from "../qa/gate-profile.js";
 import { qaCoreReport, type QaConfig } from "../qa/qa-core.js";
@@ -10,14 +11,16 @@ import { leadLineBeats } from "../qa/qa-lead-lines.js";
 import type { TimingProfile } from "../qa/timing-gates.js";
 import { sha256, type ArtifactStore } from "../workflow/artifacts.js";
 import type { ModelStageInput } from "../workflow/model-stages.js";
-import { NO_USAGE, type Check, type StageOutcome } from "../workflow/records.js";
+import { NO_USAGE, stepUsageRow, type Check, type StageOutcome, type StepUsageRow } from "../workflow/records.js";
 import { StageFailure } from "../workflow/stage-failure.js";
 import { renameWordsBeats } from "./beat-ids.js";
+import { layoutChapters, type Chapter } from "./chapters.js";
 import { compileTimeline, writeTimeline } from "./compile-timeline.js";
 import { defaultCompositionPage, servePage, treeSha, type BuiltPage } from "./composition-page.js";
 import { stageCustomLayers, withCustomLayers, type PageLayer } from "./custom-layers.js";
 import { QaRefused, refusalCause, type EncodedQa } from "./qa-gate.js";
 import { renderBoard } from "./render-board.js";
+import { renderManifestJson, VoiceBlockSchema, type RenderManifest } from "./render-manifest.js";
 import { renderVideo, RenderWordsSchema, type RenderInput, type RenderResult, type RenderWords } from "./render-video.js";
 
 /** What the render stage drives: the built composition page and the capture; tests pass fakes, so no Chromium runs. */
@@ -45,6 +48,8 @@ interface RenderConfig {
   timing?: TimingProfile;
   /** Where capture spills frames; `renderSpillDir` of the data dir in a run. */
   spillDir?: string;
+  /** The run's StepUsage rows for the stages before render, from their records; render appends its own. */
+  steps?: readonly StepUsageRow[];
 }
 
 interface RenderStageInput extends Omit<ModelStageInput, "store"> {
@@ -83,6 +88,7 @@ interface Prepared {
   pageDir: string;
   pageSha: string;
   audio: { words: RenderWords; wavDir: string };
+  chapters: Chapter[];
   notes: string[];
 }
 
@@ -117,6 +123,13 @@ async function pageLayers(input: RenderStageInput, custom: ReadonlyMap<string, s
   return { layers, notes: [`${layers.size} custom layers drawn`] };
 }
 
+/** The script's chapters over the timeline: each storyboard beat back to its script beat, and that beat to its chapter. */
+function timelineChapters(input: RenderStageInput, timeline: Timeline, ids: ReadonlyMap<string, string>): Chapter[] {
+  const script = ScriptSchema.parse(json(input, "script"));
+  const chapterOf = new Map(script.beats.map((beat) => [ids.get(beat.id), beat.chapter]));
+  return layoutChapters(script.chapters, timeline.beats.map((beat) => ({ chapter: chapterOf.get(beat.id), startS: beat.startS, durationS: beat.durationS })));
+}
+
 async function prepare(input: RenderStageInput, config: RenderConfig, engine: RenderEngine, scratch: string): Promise<Prepared> {
   const { board, extras, ids, custom } = renderBoard(input);
   const words = renameWordsBeats(json(input, "words"), ids);
@@ -124,7 +137,24 @@ async function prepare(input: RenderStageInput, config: RenderConfig, engine: Re
   stagedPage(await engine.page(), config.styleCss, pageDir);
   const { layers, notes } = await pageLayers(input, custom, scratch, pageDir);
   const timeline = withCustomLayers(compileTimeline(board, words, { extras, custom: new Set(custom.values()) }), layers);
-  return { timeline, pageDir, pageSha: treeSha(pageDir), audio: { words: RenderWordsSchema.parse(words), wavDir: linkedWavs(input, ids, scratch) }, notes };
+  const audio = { words: RenderWordsSchema.parse(words), wavDir: linkedWavs(input, ids, scratch) };
+  return { timeline, pageDir, pageSha: treeSha(pageDir), audio, chapters: timelineChapters(input, timeline, ids), notes };
+}
+
+/** tts's voice block, when the run voiced its beats. */
+function voiceBlock(input: RenderStageInput): RenderManifest["voice"] {
+  if (input.artifacts.voice === undefined) return undefined;
+  const { provider, engine, id, rate, source } = z.looseObject(VoiceBlockSchema.shape).parse(json(input, "voice"));
+  return { provider, engine, id, rate, source };
+}
+
+/** Rewrites the manifest renderVideo wrote with the stage's sidecars; render's own row is timed on the injected clock. */
+function withSidecars(input: RenderStageInput, config: RenderConfig, run: Prepared, result: RenderResult, wallMs: number): RenderResult {
+  const voice = voiceBlock(input);
+  const steps = [...(config.steps ?? []), stepUsageRow({ stage: "render", wallMs, usage: NO_USAGE })];
+  const data: RenderManifest = { ...result.data, chapters: run.chapters, ...(voice ? { voice } : {}), steps };
+  writeFileSync(result.manifest, renderManifestJson(data));
+  return { ...result, data };
 }
 
 async function renderOnce(run: Prepared, config: RenderConfig, engine: RenderEngine, outDir: string, encoded?: EncodedQa): Promise<RenderResult> {
@@ -179,13 +209,15 @@ function keptRefusal(input: RenderStageInput, refusal: QaRefused): StageFailure 
  * storyboard, compiled with the voiced words to `timeline.json`, rendered on the composition page behind the QA gate,
  * and refused after encode when any of the qa stage's gate rows fails on qa's own report of the MP4. Outputs keep the names export and sheets read (`mp4`, `vtt`) beside `render-manifest`, `timeline` and the `page` tree.
  */
-export async function runRenderStage(input: RenderStageInput, config: RenderConfig, engine: RenderEngine, qa: QaEngine): Promise<StageOutcome> {
+export async function runRenderStage(input: RenderStageInput, config: RenderConfig, engine: RenderEngine, qa: QaEngine, now: () => Date = () => new Date()): Promise<StageOutcome> {
+  const startedAt = now().getTime();
   const scratch = mkdtempSync(path.join(tmpdir(), "explainer-render-"));
   try {
     const run = await prepare(input, config, engine, scratch);
     const outDir = path.join(scratch, "out");
-    const result = await renderOnce(run, config, engine, outDir, encodedQa(input, config, qa, outDir));
-    const twoRun = config.twoRun ? [twoRunCheck(result, await renderOnce(run, config, engine, path.join(scratch, "again")), config.workers)] : [];
+    const rendered = await renderOnce(run, config, engine, outDir, encodedQa(input, config, qa, outDir));
+    const twoRun = config.twoRun ? [twoRunCheck(rendered, await renderOnce(run, config, engine, path.join(scratch, "again")), config.workers)] : [];
+    const result = withSidecars(input, config, run, rendered, now().getTime() - startedAt);
     const checks = [...(result.qaChecks ?? []).map(qaCheck), ...twoRun];
     const { frames, durationS, draft, qaGate } = result.data;
     const notes = [`${frames} frames, ${durationS} s at ${config.workers} workers${draft ? ", DRAFT" : ""}, qa ${qaGate}`, ...run.notes];
