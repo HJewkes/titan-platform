@@ -16,6 +16,7 @@ import { writeSessionFile } from '../sessions/session-file.js';
 import { readFrontmatter } from '../utils/gray-matter-io.js';
 import type { CommandContext } from '../registry/index.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
+import { writeCharter } from '../test-support/visibility.js';
 
 const SLUG = 'sample-initiative';
 const BAD_SLUGS = ['..', '.', 'a/b', 'Bad Slug', '../outside'];
@@ -129,6 +130,7 @@ describe('loop.open', () => {
 
   it('files a handoff loop the board lists with its source and owning seat', async () => {
     await withTempActiveRoot(async (root) => {
+      writeCharter(root);
       const opened = await open(root, { id: 'loop-a', origin: 'handoff', seat: 'seat-k' });
 
       const board = await loopBoardCmd.run(loopBoardCmd.args.parse({}), makeCtx(root));

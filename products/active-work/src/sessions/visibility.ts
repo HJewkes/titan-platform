@@ -1,14 +1,39 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { isAgentVisible } from '@titan-design/pm';
+import { agentAccess, isAgentVisible, type AgentAccess } from '@titan-design/pm';
+import { loadHumanOnlyInitiatives } from './charter.js';
+import { UsageError } from '../errors.js';
 import type { CommandContext } from '../registry/types.js';
 import { parseFrontmatter } from '../utils/gray-matter-io.js';
-import { listInitiativeSlugs, listInitiativeSlugsOrEmpty } from './initiatives.js';
+import { listInitiativeSlugs } from './initiatives.js';
 
 /**
- * Agent-facing readers ask here, never the charter, whether an initiative may be served
- * (TP-5453 P6). The brief's own `visibility` decides; `isAgentVisible` fails closed.
+ * The only module that decides which initiatives an agent may read (TP-5556). It joins the
+ * brief and the charter through `agentAccess` and hands readers a `Shown`, which only this
+ * module can build, so no reader can widen or rebuild the verdict for itself.
+ * `visibility-boundary.test.ts` holds every other file to that.
  */
+
+const SHOWN_BRAND: unique symbol = Symbol('Shown');
+
+/** Whether a row tied to this initiative (or to none, `null`) may be served to the caller. */
+export type Shown = ((initiative: string | null) => boolean) & { readonly [SHOWN_BRAND]: true };
+
+function brand(test: (initiative: string | null) => boolean): Shown {
+  return Object.assign(test, { [SHOWN_BRAND]: true as const });
+}
+
+const SERVE_ALL = brand(() => true);
+const SERVE_NONE = brand(() => false);
+
+type VisibilityContext = Pick<CommandContext, 'activeRoot' | 'caller' | 'warnings'>;
+type HumanOnly = ReadonlySet<string> | 'unknown';
+
+interface Verdict {
+  slug: string;
+  brief: unknown;
+  access: AgentAccess;
+}
 
 /** The brief's front matter, or null when the file is missing or will not parse. */
 async function readBriefFrontmatter(activeRoot: string, slug: string): Promise<unknown> {
@@ -19,74 +44,109 @@ async function readBriefFrontmatter(activeRoot: string, slug: string): Promise<u
   }
 }
 
-export async function initiativeIsAgentVisible(activeRoot: string, slug: string): Promise<boolean> {
-  return isAgentVisible({ slug, brief: await readBriefFrontmatter(activeRoot, slug) });
+async function readHumanOnly(activeRoot: string): Promise<HumanOnly> {
+  try {
+    return await loadHumanOnlyInitiatives(activeRoot);
+  } catch {
+    return 'unknown';
+  }
 }
 
-/** Rows tied to no initiative (null) stay servable; an initiative with no directory does not. */
-export type AgentVisibility = (initiative: string | null) => boolean;
-
-async function slugsByVisibility(activeRoot: string): Promise<{ visible: string[]; ownerOnly: string[] }> {
-  const slugs = await listInitiativeSlugsOrEmpty(activeRoot);
-  const verdicts = await Promise.all(slugs.map((slug) => initiativeIsAgentVisible(activeRoot, slug)));
-  return {
-    visible: slugs.filter((_, i) => verdicts[i]),
-    ownerOnly: slugs.filter((_, i) => !verdicts[i]),
-  };
+async function verdictsFor(activeRoot: string, slugs: readonly string[]): Promise<Verdict[]> {
+  const humanOnly = await readHumanOnly(activeRoot);
+  return Promise.all(
+    slugs.map(async (slug) => {
+      const brief = await readBriefFrontmatter(activeRoot, slug);
+      const listed = humanOnly === 'unknown' ? 'unknown' : humanOnly.has(slug);
+      return { slug, brief, access: agentAccess({ slug, brief, humanOnly: listed }) };
+    }),
+  );
 }
 
-export async function loadAgentVisibility(activeRoot: string): Promise<AgentVisibility> {
-  const visible = new Set((await slugsByVisibility(activeRoot)).visible);
-  return (initiative) => initiative === null || visible.has(initiative);
-}
-
-/** Every initiative isAgentVisible withholds, for writers that must keep its rows out of agent-read stores. */
-export async function ownerOnlySlugs(activeRoot: string): Promise<string[]> {
-  return (await slugsByVisibility(activeRoot)).ownerOnly;
-}
-
-const SERVE_ALL: AgentVisibility = () => true;
-
-/**
- * Only a caller the surface names the owner is served every initiative (TP-5453 P6b); an agent,
- * or a context no surface marked, is restricted. A row with no initiative fails closed for a
- * restricted caller, since nothing says whose it is.
- */
-export async function callerVisibility(
-  activeRoot: string,
-  caller: CommandContext['caller'],
-): Promise<AgentVisibility> {
-  if (caller === 'owner') return SERVE_ALL;
-  const visible = await loadAgentVisibility(activeRoot);
-  return (initiative) => initiative !== null && visible(initiative);
+/** Null when the root cannot be listed: then nothing is known to be shown. */
+async function liveVerdicts(activeRoot: string): Promise<Verdict[] | null> {
+  try {
+    return await verdictsFor(activeRoot, await listInitiativeSlugs(activeRoot));
+  } catch {
+    return null;
+  }
 }
 
 /** Reports what was withheld as a count, never by name. */
-export function noteHiddenInitiatives(warnings: string[], hidden: number): void {
+function noteHiddenInitiatives(warnings: string[], hidden: number): void {
   if (hidden === 0) return;
   const noun = hidden === 1 ? 'initiative' : 'initiatives';
-  warnings.push(`${hidden} owner-only ${noun} hidden from a non-owner caller`);
+  const warning = `${hidden} owner-only ${noun} hidden from a non-owner caller`;
+  if (!warnings.includes(warning)) warnings.push(warning);
 }
 
-/** The slugs this caller may list; a non-owner loses the owner-only ones and is told how many. */
-async function slugsForCaller(
-  activeRoot: string,
-  slugs: readonly string[],
-  ctx: Pick<CommandContext, 'caller' | 'warnings'>,
-): Promise<string[]> {
-  const visible = await callerVisibility(activeRoot, ctx.caller);
-  const kept = slugs.filter((slug) => visible(slug));
-  noteHiddenInitiatives(ctx.warnings, slugs.length - kept.length);
-  return kept;
+/**
+ * What this caller may be served. The owner gets everything. Any other caller, an unmarked one
+ * included, gets an allow list of initiatives on disk now whose verdict is `shown`, so a null
+ * initiative, a name from history and every name under an unreadable root are withheld.
+ */
+export async function visibilityFor(ctx: VisibilityContext): Promise<Shown> {
+  if (ctx.caller === 'owner') return SERVE_ALL;
+  const verdicts = await liveVerdicts(ctx.activeRoot);
+  if (verdicts === null) {
+    ctx.warnings.push('the active root could not be read; every initiative is hidden from a non-owner caller');
+    return SERVE_NONE;
+  }
+  const shown = new Set(verdicts.filter((verdict) => verdict.access === 'shown').map((verdict) => verdict.slug));
+  noteHiddenInitiatives(ctx.warnings, verdicts.length - shown.size);
+  return brand((initiative) => initiative !== null && shown.has(initiative));
 }
 
 /**
  * Every initiative this caller may list. Commands enumerate initiatives only through here, so a
- * new verb inherits the filter; `slug-enumeration.test.ts` holds them to it.
+ * new verb inherits the filter; `visibility-boundary.test.ts` holds them to it.
  */
 export async function listSlugsForCaller(
   activeRoot: string,
   ctx: Pick<CommandContext, 'caller' | 'warnings'>,
 ): Promise<string[]> {
-  return slugsForCaller(activeRoot, await listInitiativeSlugs(activeRoot), ctx);
+  const shown = await visibilityFor({ ...ctx, activeRoot });
+  return (await listInitiativeSlugs(activeRoot)).filter((slug) => shown(slug));
+}
+
+/** Refuses every caller but the owner, an unmarked one included. */
+export function requireOwner(ctx: Pick<CommandContext, 'caller'>, verb: string): void {
+  if (ctx.caller !== 'owner') throw new UsageError(`${verb} is for the owner only; run it from the owner's own terminal`);
+}
+
+/** Every initiative withheld from agents, for writers that must keep its rows out of agent-read stores. */
+export async function withheldSlugs(activeRoot: string): Promise<string[]> {
+  const verdicts = (await liveVerdicts(activeRoot)) ?? [];
+  return verdicts.filter((verdict) => verdict.access === 'withheld').map((verdict) => verdict.slug);
+}
+
+/**
+ * The brief alone, for the workspace-index writer and the field back-fill. It withholds no more
+ * than `visibilityFor` does, and everything that reads the index filters again through `Shown`,
+ * so the charter's narrowing still reaches agents.
+ */
+export function briefAllowsAgents(slug: string, brief: unknown): boolean {
+  return isAgentVisible({ slug, brief });
+}
+
+export async function initiativeIsAgentVisible(activeRoot: string, slug: string): Promise<boolean> {
+  return briefAllowsAgents(slug, await readBriefFrontmatter(activeRoot, slug));
+}
+
+interface WireVisibility {
+  /** The brief alone, as before TP-5556; kept for older readers. */
+  agent_visible: boolean;
+  /** The full verdict: true unless the brief and a readable charter both allow agents. */
+  withheld_from_agents: boolean;
+}
+
+/** The per-initiative flags wire emitters put on their rows, whoever the caller is. */
+export async function wireVisibility(activeRoot: string, slugs: readonly string[]): Promise<Map<string, WireVisibility>> {
+  const verdicts = await verdictsFor(activeRoot, slugs);
+  return new Map(
+    verdicts.map(({ slug, brief, access }) => [
+      slug,
+      { agent_visible: briefAllowsAgents(slug, brief), withheld_from_agents: access !== 'shown' },
+    ]),
+  );
 }
