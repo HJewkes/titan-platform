@@ -242,8 +242,8 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
             },
           }),
       facetLimit: options.facetLimit,
-      present,
       yieldPoint,
+      present,
     });
     if (summary.indexed + summary.rewound > 0) clearDocumentFrequency(graph.db.name);
     phases.corpus = lap();
