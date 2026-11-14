@@ -508,6 +508,7 @@
   "shepherd/visual-gate.ts",
   "shepherd/visual-packet-trigger-adapter.ts",
   "shepherd/visual-packet-trigger.ts",
+  "shepherd/visual-signoff.ts",
   "shepherd/visual-threshold-config.ts",
   "shepherd/visual-threshold-gate.ts",
   "shepherd/visual-threshold.ts",
