@@ -6,6 +6,7 @@ import { EXIT, defineCommand } from "@titan-design/registry";
 import { z } from "zod";
 import { configPath, factoryStateDir, loadConfig } from "../config.js";
 import type { FactoryContext } from "../context.js";
+import { releaseLock, systemLockPorts, takeLock, type LockPorts } from "../deploy-lock.js";
 import { coded } from "./register-args.js";
 import { systemDeliveryExec, type DeliveryExec } from "./visual-delivery.js";
 import { readRounds } from "./round-ship-sweep.js";
@@ -13,6 +14,7 @@ import { sweepFeedbackNotes, type NoteTask, type NotesPorts, type NotesResult } 
 
 const Args = z.object({ initiative: z.string().min(1) });
 const LEDGER = "visual-feedback-notes.json";
+const LOCK = "visual-feedback-notes.lock";
 const ENOENT = "ENOENT";
 
 const readOrUndefined = (file: string): Promise<string | undefined> =>
@@ -39,15 +41,51 @@ async function addTask(exec: DeliveryExec, task: NoteTask): Promise<void> {
   if (result.status !== 0) throw new Error(`active-work task add exit ${result.status}: ${result.stderr.trim().split("\n")[0] ?? ""}`);
 }
 
+const reasonOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+
+/**
+ * The key is recorded before `task add` runs, so a failed ledger write files nothing and no write follows a filed task.
+ * A failed add takes the key back; if that write fails too the note stays held, and the error says so.
+ */
+async function claimThenAdd(ledger: string, exec: DeliveryExec, task: NoteTask): Promise<void> {
+  const before = await readLedger(ledger);
+  await writeLedger(ledger, [...before, task.key]);
+  try {
+    await addTask(exec, task);
+  } catch (error) {
+    await writeLedger(ledger, before).catch((undo: unknown) => {
+      throw new Error(`${reasonOf(error)}; ${task.key} stays in ${ledger} unfiled: ${reasonOf(undo)}`);
+    });
+    throw error;
+  }
+}
+
 function portsOf(roundsDir: string, ledger: string, exec: DeliveryExec): NotesPorts {
   return {
     rounds: async () => (await readRounds(roundsDir)).sort((a, b) => a.id.localeCompare(b.id)),
     filed: async () => new Set(await readLedger(ledger)),
-    file: async (task) => {
-      await addTask(exec, task);
-      await writeLedger(ledger, [...(await readLedger(ledger)), task.key]);
-    },
+    file: (task) => claimThenAdd(ledger, exec, task),
   };
+}
+
+interface LedgerSweep {
+  roundsDir: string;
+  stateDir: string;
+  exec: DeliveryExec;
+  lock: LockPorts;
+}
+
+/** One sweep at a time per state dir: the ledger is read once per sweep, so a second sweep would file the same notes. */
+export async function sweepWithLedger(sweep: LedgerSweep, initiative: string): Promise<NotesResult> {
+  await mkdir(sweep.stateDir, { recursive: true, mode: 0o700 });
+  const lock = join(sweep.stateDir, LOCK);
+  const busy = takeLock(sweep.lock, lock, "visual-feedback-notes sweep");
+  if (busy !== undefined) throw coded(busy, EXIT.TEMPFAIL);
+  try {
+    return await sweepFeedbackNotes(portsOf(sweep.roundsDir, join(sweep.stateDir, LEDGER), sweep.exec), initiative);
+  } finally {
+    releaseLock(sweep.lock, lock);
+  }
 }
 
 export const visualFeedbackNotesCommand = defineCommand<z.infer<typeof Args>, NotesResult, FactoryContext>({
@@ -58,7 +96,7 @@ export const visualFeedbackNotesCommand = defineCommand<z.infer<typeof Args>, No
   run: async ({ initiative }) => {
     const delivery = loadConfig(configPath(process.env)).shepherd?.visualDelivery;
     if (delivery?.roundsDir === undefined) throw coded("visual-feedback-notes needs shepherd.visualDelivery.roundsDir", EXIT.UNAVAILABLE);
-    const ledger = join(factoryStateDir(process.env), LEDGER);
-    return sweepFeedbackNotes(portsOf(delivery.roundsDir, ledger, systemDeliveryExec(delivery.roundsDir)), initiative);
+    const sweep = { roundsDir: delivery.roundsDir, stateDir: factoryStateDir(process.env), exec: systemDeliveryExec(delivery.roundsDir), lock: systemLockPorts() };
+    return sweepWithLedger(sweep, initiative);
   },
 });

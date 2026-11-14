@@ -195,6 +195,24 @@ passes, and `summary.reviews` reports `resolved` (this pass) and `unresolved` (s
 checked. Once the resolver has answered for a PR, its `merged_at` is the forge's and a later
 pass never overwrites it with a sighting time.
 
+## Commit lineage
+
+`commitLineage(graph, links)` walks one commit to the work behind it. The caller reads the
+commit message and passes its `(#n)` PR number, the checkout's repo name, any
+`Agent-Session:` trailer values and the task ids on its `Refs:` line. Each row carries the rung
+that found it, and the first rung wins:
+
+| Rung | Finds | Through |
+|---|---|---|
+| `trailer` | session | the commit's own `Agent-Session:` trailer |
+| `pr-subject` | session | a live `linked` edge to a `pr` row with that number and repo name |
+| `refs` | task | the `Refs:` line the squash message writes |
+| `session-ran` | task | a `ran` edge from a session found above |
+| `pr-task` | session | a `ran` edge to one of those tasks |
+
+Sessions carry their cwd and task initiatives; which of them a caller may see is the caller's
+policy, as with `sessionsTouchingFiles`.
+
 ## Tables
 
 Kit tables: `transcript` (watermark), `edge` (bi-temporal, `session:… touched file:…`),

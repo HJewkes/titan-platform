@@ -1450,6 +1450,9 @@ reads the answered `feedback` rounds in `shepherd.visualDelivery.roundsDir` and 
 active-work task per non-blank note, from the round's PR and frame. The initiative is the
 prefix of the PR's task, else `--initiative`. A ledger of round id and note index in the
 factory state dir makes a re-run file nothing already filed; an unanswered round files nothing.
+A sweep holds `visual-feedback-notes.lock` in the state dir, so a second one started meanwhile
+exits 75. A note's key is written to the ledger before its task is added and removed again if
+the add fails, so a failed ledger write never files a note twice.
 
 ### Visual tiers {#visual-tiers}
 
