@@ -147,7 +147,16 @@ export function holdingPort(port: GitHubPort, holds: () => HoldLookup, freeze?: 
 export const AFTER_HOLD = { done: false, skipped: "held", mergeSha: "" };
 
 /** Wraps the `merge` route so a held PR waits for release, abort-safe, instead of failing on the port's refusal. */
-export function waitWhileHeld(route: StepRoute, held: HeldCheck, timing: HoldTiming, headNow: OpenHeadRead, reviewAsked?: ReviewAsked, reheld?: TakeRehold, recheck?: TakeRecheck): StepRoute {
+export function waitWhileHeld(
+  route: StepRoute,
+  held: HeldCheck,
+  timing: HoldTiming,
+  headNow: OpenHeadRead,
+  reviewAsked?: ReviewAsked,
+  reheld?: TakeRehold,
+  recheck?: TakeRecheck,
+  noteWait?: NoteWait,
+): StepRoute {
   const afterHold = codeRoute(route.match, timing.now ?? Date.now, async () => AFTER_HOLD);
   return {
     ...route,
@@ -155,7 +164,7 @@ export function waitWhileHeld(route: StepRoute, held: HeldCheck, timing: HoldTim
       run: async (input) => {
         let waited: boolean;
         try {
-          waited = await untilReleased({ held, headNow, reviewAsked, reheld, recheck }, JSON.parse(input.prompt) as MergeTarget, input.signal, timing);
+          waited = await untilReleased({ held, headNow, reviewAsked, reheld, recheck, noteWait }, JSON.parse(input.prompt) as MergeTarget, input.signal, timing);
         } catch (error) {
           return failedStep(route.match, error);
         }
@@ -177,12 +186,16 @@ type ReviewAsked = (repo: RepoSlug, pr: number, sha: string) => boolean;
 /** True once after the merge guard itself re-held the PR, which no CI read of the run has seen yet. */
 export type TakeRehold = (repo: RepoSlug, pr: number) => boolean;
 
+/** Records a new reason the merge waits on as a timeline row. */
+type NoteWait = (repo: RepoSlug, pr: number, reason: string, sha: string | undefined) => void;
+
 interface HoldReads {
   held: HeldCheck;
   headNow: OpenHeadRead;
   reviewAsked?: ReviewAsked;
   reheld?: TakeRehold;
   recheck?: TakeRecheck;
+  noteWait?: NoteWait;
 }
 
 /**
@@ -192,15 +205,18 @@ interface HoldReads {
  * with no merge too, so the run reads CI again and reviews that head. So does a re-hold the merge guard just placed: the
  * run's next CI read reports it and tells the seat. So does a g10 release due a fresh ask at `sha`: the CI read asks it.
  */
-async function untilReleased({ held, headNow, reviewAsked, reheld, recheck }: HoldReads, target: MergeTarget, signal: AbortSignal, timing: HoldTiming): Promise<boolean> {
+async function untilReleased({ held, headNow, reviewAsked, reheld, recheck, noteWait }: HoldReads, target: MergeTarget, signal: AbortSignal, timing: HoldTiming): Promise<boolean> {
   let told: string | undefined;
   for (let waited = false; ; waited = true) {
     signal.throwIfAborted();
     if (target.sha !== undefined && reviewAsked?.(target.repo, target.pr, target.sha)) return true;
     const reason = await held(target.repo, target.pr, target.sha);
     if (reason === undefined) return waited;
-    // The merge step shows only as running, so the console is where a long wait names what it waits on.
-    if (reason !== told) console.warn(`shepherd: the merge of ${target.repo}#${target.pr} waits: ${reason}`);
+    // The merge step shows only as running, so the console and the timeline are where a long wait names what it waits on.
+    if (reason !== told) {
+      console.warn(`shepherd: the merge of ${target.repo}#${target.pr} waits: ${reason}`);
+      noteWait?.(target.repo, target.pr, reason, target.sha);
+    }
     told = reason;
     if (reheld?.(target.repo, target.pr)) return true;
     if (target.sha !== undefined && recheck?.(target.repo, target.pr, target.sha)) return true;

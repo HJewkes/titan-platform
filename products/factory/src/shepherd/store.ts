@@ -240,9 +240,7 @@ export class ShepherdStore implements HoldLookup {
   readonly parkedHold = (runId: string): SlotHold | null => readSlots(this.db, runId).parked;
 
   /** Records a probe's proof that a head is a clean merge-up; a repeat changes nothing. */
-  vouch(runId: string, proof: Vouch): void {
-    recordVouch(this.db, runId, proof, this.stamp());
-  }
+  vouch(runId: string, proof: Vouch): void { recordVouch(this.db, runId, proof, this.stamp()); }
 
   /** `fromHead` and every head recorded as a clean merge-up of it onto `baseRef` for the run. */
   vouchedLine(runId: string, fromHead: string, baseRef: string): Set<string> {
@@ -277,6 +275,9 @@ export class ShepherdStore implements HoldLookup {
   recordGateCancel(runId: string, reason: string, at: string): void {
     if (this.byRun(runId)) this.record(runId, "gate-cancel", reason, at, {});
   }
+
+  /** Logs a reason the run's merge step started waiting on, so `shepherd timeline` shows it. */
+  recordMergeWait(runId: string, reason: string, at: string, headSha: string | undefined): void { this.record(runId, "merge-wait", reason, at, { headSha }); }
 
   private record(runId: string, kind: EventKind, reason: string | null, at: string, by: EventContext): void {
     const registration = this.byRun(runId)!;

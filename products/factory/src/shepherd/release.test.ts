@@ -240,6 +240,15 @@ describe("releaseGuard", () => {
 
     expect([freezing, await reason(OTHER)]).toEqual([`the Version Packages PR #1 is ready at ${HEAD} and lands first`, undefined]);
   });
+
+  it("still freezes other merges when the Version Packages PR's hold is satisfied at the ready head", async () => {
+    const { store, reason } = scene();
+    store.setReleaseReady("run-vp", HEAD);
+    store.hold("run-vp", "g10-adversary: security touch", "reviewer-a");
+    store.satisfyHold("run-vp", "reviewer-a", HEAD, { agentId: "agent-a", sessionId: "session-a", locator: {} });
+
+    expect(await reason(OTHER)).toBe(`the Version Packages PR #1 is ready at ${HEAD} and lands first`);
+  });
 });
 
 describe("npmRegistry", () => {
