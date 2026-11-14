@@ -1,5 +1,9 @@
 import { classifyDeniedAction, denialOf } from "../packages/session-analytics/dist/index.js";
-import { parseVerdictBlock } from "../packages/session-read/dist/index.js";
+import { claudeSourceFromPath, parseVerdictBlock, readSessionObservations } from "../packages/session-read/dist/index.js";
+import { finishedTurnMessages } from "../products/factory/dist/shepherd/reviewer-reader.js";
+
+const REVIEWER_ID = "smoke-reviewer";
+const NAMESPACE = "smoke";
 
 /**
  * The three ways a reviewer's tool call is refused rather than run. An ordinary non-zero exit
@@ -19,29 +23,6 @@ function resultText(content) {
   return content.map((part) => (typeof part?.text === "string" ? part.text : "")).join("\n");
 }
 
-function parseRecord(line) {
-  try {
-    return JSON.parse(line);
-  } catch {
-    return null;
-  }
-}
-
-/** Shepherd reads both assistant text and chat_send `text` inputs as a reviewer's verdict (reviewer-reader.ts). */
-function writtenMessage(part) {
-  if (part.type === "text" && typeof part.text === "string") return { via: "text", text: part.text };
-  if (part.type === "tool_use" && part.name?.endsWith("chat_send") && typeof part.input?.text === "string") return { via: "chat_send", text: part.input.text };
-  return null;
-}
-
-/** Only user and assistant records are conversation; summaries, system notes and snapshots are bookkeeping. */
-function blocksOf(record) {
-  if (record?.type !== "user" && record?.type !== "assistant") return [];
-  const content = record.message?.content;
-  if (typeof content === "string") return [{ type: "text", text: content }];
-  return Array.isArray(content) ? content.filter((part) => part && typeof part === "object") : [];
-}
-
 function namesTarget(block, target) {
   return block.repo === target.repo && block.pr === target.pr && block.head === target.head;
 }
@@ -54,42 +35,38 @@ function verdictIn(message, target) {
   return { verdict: block.ok ? block.verdict : "WAIT", via: message.via };
 }
 
+/** Shepherd reads assistant text and chat_send `text` inputs alike; only the input locator tells them apart. */
+const viaOf = (message) => (message.locator.selector.path.includes("input") ? "chat_send" : "text");
+
 /**
- * Mirrors Shepherd's `finishedTurnMessages` (reviewer-reader.ts): its messages count only when the
- * conversation ends on assistant text, so any later part (a tool call such as the post-verdict
- * `rm -rf`, a chat_send, a tool result, thinking or a user message) leaves `finished` false.
- * Claude Code transcripts never carry copied history (session-read sets `historyOrigin` null), so there is none to skip.
+ * Reads the transcript through Shepherd's own `finishedTurnMessages`, so what counts as a delivered turn is
+ * decided there. Only tool calls and the failed results this smoke reports on are collected locally.
  */
-function scan(lines) {
+async function scan(transcriptPath) {
+  const turn = finishedTurnMessages(REVIEWER_ID);
   const calls = new Map();
-  const written = [];
   const results = [];
-  let finished = false;
-  for (const line of lines) {
-    const record = parseRecord(line);
-    for (const part of blocksOf(record)) {
-      if (part.type === "tool_use") calls.set(part.id, { tool: part.name, input: part.input });
-      if (part.type === "tool_result" && part.is_error === true) results.push(part);
-      const message = record.type === "assistant" ? writtenMessage(part) : null;
-      if (message) written.push(message);
-      finished = message?.via === "text";
-    }
+  for await (const observation of readSessionObservations(claudeSourceFromPath(transcriptPath, NAMESPACE))) {
+    turn.add(observation);
+    if (observation.kind === "tool_call") calls.set(observation.call.nativeId, { tool: observation.name, input: observation.input });
+    if (observation.kind === "tool_result" && observation.isError === true) results.push(observation);
   }
-  return { calls, written: finished ? written : [], finished, results };
+  const written = turn.result().map((message) => ({ via: viaOf(message), text: message.text }));
+  return { calls, written, finished: written.length > 0, results };
 }
 
 function failedCall(result, calls) {
-  const call = calls.get(result.tool_use_id) ?? { tool: "unknown", input: null };
-  const text = resultText(result.content);
+  const call = calls.get(result.call.nativeId) ?? { tool: "unknown", input: null };
+  const text = resultText(result.output);
   return { tool: call.tool, action: classifyDeniedAction(call.tool, call.input), text: text.slice(0, 300), kind: refusalKind(text) };
 }
 
 /**
- * Reads a reviewer transcript (JSONL lines) for the verdict it delivered on `target` and every
+ * Reads a reviewer transcript file for the verdict it delivered on `target` and every
  * tool call that was refused or prompted. `ok` is the smoke's pass condition.
  */
-export function checkReviewerTranscript(lines, target) {
-  const { calls, written, finished, results } = scan(lines);
+export async function checkReviewerTranscript(transcriptPath, target) {
+  const { calls, written, finished, results } = await scan(transcriptPath);
   const verdict = written.map((message) => verdictIn(message, target)).filter(Boolean).at(-1) ?? null;
   const failed = results.map((result) => failedCall(result, calls));
   const refusals = failed.filter((call) => call.kind !== null);
