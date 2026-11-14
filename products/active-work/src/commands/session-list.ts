@@ -129,6 +129,7 @@ export default defineCommand({
       const fullPath = path.join(sessionsDir, filename);
       try {
         const { frontmatter, body } = await readSession(fullPath);
+        if (frontmatter.ledger === true) continue;
         const input: RollupInput = {
           sessionId: frontmatter.session_id,
           ended: frontmatter.ended,

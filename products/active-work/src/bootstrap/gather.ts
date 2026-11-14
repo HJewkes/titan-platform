@@ -180,7 +180,8 @@ async function loopsForSession(
 }
 
 /** With no canonical session recorded, fall back to the newest of any track (AW-42). */
-function narrativeOf(sessions: LoadedInitiative['sessions']['sessions'], now: Date) {
+function narrativeOf(allSessions: LoadedInitiative['sessions']['sessions'], now: Date) {
+  const sessions = allSessions.filter((s) => s.frontmatter.ledger !== true);
   const latestCanonical = sessions.find((s) => s.frontmatter.track === 'canonical');
   const narrativeSession = latestCanonical ?? sessions.at(0);
   return {

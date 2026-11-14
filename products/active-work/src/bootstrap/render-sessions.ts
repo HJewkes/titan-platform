@@ -45,6 +45,7 @@ export function selectParallelSessions(
   return sessions.filter(
     (s) =>
       s !== narrativeSession &&
+      s.frontmatter.ledger !== true &&
       s.frontmatter.track !== 'canonical' &&
       new Date(s.frontmatter.ended).getTime() > cutoff,
   );
