@@ -156,18 +156,29 @@ describe("the mechanical first-blocker row with Class lines", () => {
     const fixFirst = (actor: string, pr: number, head: string, cls?: string) => ({
       ts: 1791050000000,
       actor,
-      body: `Verdict: FIX_FIRST\nPR: o/proj#${pr}\nHead: ${head}${cls ? `\nClass: ${cls}` : ""}`,
+      body: `Verdict: FIX_FIRST\nPR: o/proj#${pr}\nHead: ${head.repeat(40)}${cls ? `\nClass: ${cls}` : ""}`,
     });
     const db = eventsWith([
       fixFirst("rv", 10, "e", "rebase"),
       fixFirst("rv", 10, "e", "rebase"),
       fixFirst("rv2", 10, "e", "lint"),
       fixFirst("rv", 11, "f", "defect"),
-      fixFirst("rv", 12, "g", "test"),
-      fixFirst("rv", 13, "h"),
-      fixFirst("rv", 14, "i", "ci-red"),
+      fixFirst("rv", 12, "1", "test"),
+      fixFirst("rv", 13, "2"),
+      fixFirst("rv", 14, "3", "ci-red"),
     ]);
     expect(text(rows({ eventsDb: db }).get("mechanical"))).toBe("60.0 percent (3 of 5) of classified; 1 unclassified of 6 FIX_FIRST rounds");
+    db.close();
+  });
+
+  it("does not count a verdict the parser refuses", () => {
+    const body = (head: string) => `Verdict: FIX_FIRST\nPR: o/proj#20\nHead: ${head}\nClass: lint`;
+    const db = eventsWith([
+      { ts: 1791050000000, actor: "rv", body: body("abc") },
+      { ts: 1791050000000, actor: "rv", body: `${body("a".repeat(40))}\nVerdict: FIX_FIRST` },
+      { ts: 1791050000000, actor: "rv", body: body("b".repeat(40)) },
+    ]);
+    expect(text(rows({ eventsDb: db }).get("mechanical"))).toBe("100.0 percent (1 of 1) of classified; 0 unclassified of 1 FIX_FIRST rounds");
     db.close();
   });
 });

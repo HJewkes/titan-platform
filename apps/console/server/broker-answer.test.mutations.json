@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "leave the transport error unscrubbed",
+      "file": "apps/console/server/broker-post.ts",
+      "find": "{ ...outcome, detail: scrub(outcome.detail) }",
+      "replace": "outcome",
+      "kills": ["brokerAnswerer carries no token in the outcome when the transport error echoes it"]
+    },
+    {
+      "name": "post the answer on another channel",
+      "file": "apps/console/server/broker-answer.ts",
+      "find": "channel: \"dashboard\"",
+      "replace": "channel: \"console\"",
+      "kills": ["brokerAnswerer posts the answer on channel dashboard with the token and reads ok as answered"]
+    }
+  ]
+}
