@@ -1,6 +1,6 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import path from "node:path";
+import { readFileSync } from "node:fs";
 import { TaskSchema, type Task } from "@titan-design/pm";
+import { readInitiativeTasks } from "@titan-design/pm/node";
 import type { ActualsTask, TaskActuals } from "@titan-design/session-analytics";
 import type { ThroughputRow } from "@titan-design/throughput";
 import { parse } from "yaml";
@@ -27,20 +27,15 @@ interface DoneTaskLoad {
   missing: string[];
 }
 
-/** Done tasks from `<root>/<initiative>/tasks/*.yml` for each allowlisted initiative. A bad file is counted, never fatal. */
-export function loadDoneTasks(root: string, initiatives: readonly string[]): DoneTaskLoad {
+/** Done tasks from `<root>/<initiative>/tasks/` for each allowlisted initiative. A bad file is counted, never fatal. */
+export async function loadDoneTasks(root: string, initiatives: readonly string[]): Promise<DoneTaskLoad> {
   const load: DoneTaskLoad = { tasks: [], unparsed: [], missing: [] };
   for (const initiative of initiatives) {
-    const dir = path.join(root, initiative, "tasks");
-    if (!existsSync(dir)) {
-      load.missing.push(initiative);
-      continue;
-    }
-    for (const name of readdirSync(dir).filter((file) => file.endsWith(".yml")).sort()) {
-      const file = path.join(initiative, "tasks", name);
-      const task = parseTask(path.join(dir, name));
-      if (typeof task === "string") load.unparsed.push({ file, reason: task });
-      else if (task.status === "done" && task.done_at) load.tasks.push(toDoneTask(task, initiative, task.done_at));
+    const read = await readInitiativeTasks(root, initiative);
+    if (read.missing) load.missing.push(initiative);
+    load.unparsed.push(...read.unparsed.map(({ file, reason }) => ({ file, reason })));
+    for (const { task } of read.tasks) {
+      if (task.status === "done" && task.done_at) load.tasks.push(toDoneTask(task, initiative, task.done_at));
     }
   }
   return load;

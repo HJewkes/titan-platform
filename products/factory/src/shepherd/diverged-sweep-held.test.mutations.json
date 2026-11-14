@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the carried merge skips the land loop's merge guard",
+      "file": "products/factory/src/shepherd/diverged-merge.ts",
+      "find": "  if (reason !== undefined) return { held: { runId: run.id, gateId: merge.gate.id, reason } };\n",
+      "replace": "",
+      "kills": [
+        "restartDivergedRuns consults the land loop's merge guard before an owner-answer merge (TP-5802) merges nothing for a PR of a frozen repo and keeps the run parked with the freeze on its timeline",
+        "restartDivergedRuns consults the land loop's merge guard before an owner-answer merge (TP-5802) merges nothing for a held PR, then merges once the hold is released"
+      ]
+    },
+    {
+      "name": "the services carry no merge guard, so the sweep merges around it",
+      "file": "products/factory/src/workflows-routes.ts",
+      "find": "heldMerge: heldCheck(deps.port, holds, guard, satisfy), ",
+      "replace": "",
+      "kills": [
+        "restartDivergedRuns consults the land loop's merge guard before an owner-answer merge (TP-5802) merges nothing for a PR of a frozen repo and keeps the run parked with the freeze on its timeline"
+      ]
+    },
+    {
+      "name": "a host with no merge guard merges on the owner's answer",
+      "file": "products/factory/src/shepherd/diverged-merge.ts",
+      "find": " : NO_MERGE_GUARD;",
+      "replace": " : undefined;",
+      "kills": [
+        "restartDivergedRuns consults the land loop's merge guard before an owner-answer merge (TP-5802) merges nothing on a host that wired no merge guard"
+      ]
+    },
+    {
+      "name": "the held reason never reaches the run's timeline",
+      "file": "products/factory/src/shepherd/diverged-merge.ts",
+      "find": "  if (reason !== undefined) noteHeld(",
+      "replace": "  if (reason === \"never\") noteHeld(",
+      "kills": [
+        "restartDivergedRuns consults the land loop's merge guard before an owner-answer merge (TP-5802) merges nothing for a held PR, then merges once the hold is released"
+      ]
+    },
+    {
+      "name": "each sweep adds the same held reason to the timeline again",
+      "file": "products/factory/src/shepherd/diverged-merge.ts",
+      "find": "  if (waits.at(-1)?.reason !== reason) store.recordMergeWait(",
+      "replace": "  store.recordMergeWait(",
+      "kills": [
+        "restartDivergedRuns consults the land loop's merge guard before an owner-answer merge (TP-5802) merges nothing for a PR of a frozen repo and keeps the run parked with the freeze on its timeline"
+      ]
+    }
+  ]
+}

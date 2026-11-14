@@ -9,7 +9,8 @@ import { checkBase, mergeOnAllowedBase } from "../workflows/land-base.js";
 import { readCi } from "../workflows/land-ci.js";
 import { taskIdOf } from "../workflows/land-merge-message.js";
 import { landGateBase, landGateHead } from "./approval-carry.js";
-import type { Registration } from "./store.js";
+import type { ShepherdServices } from "./services.js";
+import type { Registration, ShepherdStore } from "./store.js";
 
 /** The step row a parked run gets once the sweep merged it on the owner's answer, so its timeline shows why it merged. */
 export const CARRIED_MERGE_STEP = "sh-carried-merge";
@@ -23,6 +24,18 @@ export interface DivergedMerge {
   headSha: string;
   mergeSha: string;
 }
+
+/** A run the sweep left parked because the land loop's merge guard names a reason; the next sweep tries again. */
+export interface DivergedHeld {
+  runId: string;
+  gateId: string;
+  reason: string;
+}
+
+type CarriedMerge = { merged: DivergedMerge } | { held: DivergedHeld };
+
+/** A host that wired no merge guard must not merge around one (TP-5802). */
+const NO_MERGE_GUARD = "the land loop's merge guard is not wired";
 
 interface OwnerMerge {
   gate: GateRecord;
@@ -74,21 +87,37 @@ async function landableBase(port: GitHubPort, known: Registration, merge: OwnerM
   return base.allowed && base.base === ci.baseRef && base.base === named ? base.base : undefined;
 }
 
+/** Logs the reason on the run's timeline once: a sweep runs each lease, and the same reason again adds no row. */
+function noteHeld(store: ShepherdStore, runId: string, reason: string, head: string, now: number): void {
+  const waits = store.eventsOf(runId).filter((event) => event.kind === "merge-wait");
+  if (waits.at(-1)?.reason !== reason) store.recordMergeWait(runId, reason, new Date(now).toISOString(), head);
+}
+
+/** The reason the land loop's merge guard (hold, freeze, release, g10 adversary, merge order) gives now, if any. */
+async function heldReason(services: ShepherdServices, known: Registration, merge: OwnerMerge): Promise<string | undefined> {
+  const reason = services.heldMerge ? await services.heldMerge(known.repo, known.pr!, merge.headSha) : NO_MERGE_GUARD;
+  if (reason !== undefined) noteHeld(services.store.get(), known.runId, reason, merge.headSha, services.now?.() ?? Date.now());
+  return reason;
+}
+
 /**
  * Merges a replay-diverged run's PR at the head the owner approved while it was parked, as its own land would have,
- * and ends the run with a step row naming the answer. Undefined leaves the sweep to restart it as before: no unread
- * owner merge, a head that moved since, or a precondition that fails now.
+ * and ends the run with a step row naming the answer. A PR the land loop's merge guard holds stays parked with its
+ * reason on the timeline. Undefined leaves the sweep to restart it as before: no unread owner merge, a head that moved
+ * since, or a precondition that fails now.
  */
-export async function mergeOnOwnerAnswer(host: FactoryHost, port: GitHubPort, known: Registration, run: WorkflowRun): Promise<DivergedMerge | undefined> {
+export async function mergeOnOwnerAnswer(host: FactoryHost, services: ShepherdServices, known: Registration, run: WorkflowRun): Promise<CarriedMerge | undefined> {
   const merge = unreadOwnerMerge(host, run);
   if (merge === undefined) return undefined;
-  const base = await landableBase(port, known, merge);
+  const base = await landableBase(services.port, known, merge);
   if (base === undefined) return undefined;
+  const reason = await heldReason(services, known, merge);
+  if (reason !== undefined) return { held: { runId: run.id, gateId: merge.gate.id, reason } };
   const target = { repo: known.repo, pr: known.pr!, sha: merge.headSha, method: known.policy.mergeMethod, taskIds: taskIdOf(known.task), base };
-  const merged = await mergeOnAllowedBase(port, target);
+  const merged = await mergeOnAllowedBase(services.port, target);
   if (!merged.done) return undefined;
   const carried = { runId: run.id, gateId: merge.gate.id, headSha: merge.headSha, mergeSha: merged.mergeSha };
   host.runtime.cancel(run.id, `replay diverged; merged at ${merge.headSha} on the owner's answer to ${merge.gate.id}`, { abandon: true });
   host.runtime.annotate(run.id, CARRIED_MERGE_STEP, { ...carried, base, resolvedBy: merge.gate.resolvedBy });
-  return carried;
+  return { merged: carried };
 }
