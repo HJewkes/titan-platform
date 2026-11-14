@@ -1,5 +1,23 @@
 # @titan-design/factory
 
+## 0.28.0
+
+### Minor Changes
+
+- f55f84a: Under `shepherd.visualGate: async`, a run whose task the owner approved with visual sign-off still decides visual as `owner`; an unreadable approval store does too (TP-5411 S8c).
+- 7984521: Needs reads now name their caller and filter by initiative in one place (TP-5556 S3). `collectNeeds` and `factoryContext` take a required `caller` (`owner` | `agent`) from `caller.ts`: serve's HTTP route is the owner and MCP an agent, and the `needs` and `digest run` verbs are the owner only when none of `AGENT_CHAT_NAME`, `AGENT_CHAT_AGENT_ID` or `CLAUDECODE` is set, so `digest run --dry-run` in an agent shell no longer prints owner-only asks. For an agent, every needs item whose initiative is not on active-work inventory's `withheld_from_agents: false` allow list is dropped, whatever its source (tasks, agent-chat asks, Morning items); untagged items stay, and an unreachable inventory withholds every tagged item and adds a gap line. `runNeeds` takes a `NeedsView` as its fourth argument.
+- 943ad9d: Add `titan-factory dispatch shadow-tick [--rule-file <path>]` (TP-5760, TP-5755 S2). It reads the dispatcher rule file (`titan-dispatcher/v1`, default `dispatcher.json` beside the factory `config.json`; `mode` admits only `shadow`). With the file absent or `shadow.enabled` not true it prints `dispatcher shadow disabled` and writes nothing. Enabled, it judges each configured lane with the same eligibility and back-pressure `dispatch eligible` uses and appends one wake row, would-dispatch rows up to the lane's free slots, and a refused row per refused or held task to `<shadow.dir>/<UTC date>.jsonl`. It dispatches nothing; a fence test proves no launch path is imported or called.
+- be7a99f: `dispatch shadow-tick` judges the stop rules: `task-fix-cap` (with `next: planner-once` or `park`), `task-spend-cap`, `bet-parked` (with `would_ask`), `bet-followups` and `programme-checkpoint`, as `stage: "stop"` rows. The rule file's `stop` thresholds take their starting values when absent. Stop marks are read from `state/stops.json` beside the shadow dir and never written.
+- fbaf5e6: Add `titan-factory dispatch shadow-compare --day <YYYY-MM-DD>`: scores one day of dispatcher shadow rows against the operator seat's real spawns (read-only from the agent-chat events database, plus dispatch-ledger lane claims) and writes `compare/<day>.json` and the day's `COMPARE.md` section. The rule file gains optional `compare.operator` and `compare.prefixes` keys.
+
+### Patch Changes
+
+- ba90ff4: Document the dispatcher shadow tick and its systemd timer units.
+- e58686b: Add the `owner-validate` merge guard row and the `shepherd task-approval check <initiative>/<ID>` verb (TP-5411, gate model S8b). A task tagged `owner-validate` is dispatchable, and its PRs merge, only under the owner's console task approval of its current done_when; a task that cannot be read from active-work is refused too. The check exits 0 when the task may be dispatched and 3 with `no-approval`, `done-when-changed` or `task-unread` otherwise. The live switch `shepherd.gateReset.ownerValidate` (off, shadow, on; absent means shadow) is a new editable factory row; under shadow the merge evidence records the would-gate and no outcome changes.
+- 889a810: Stop exporting factory symbols nothing outside their own file uses, and drop their dead-export baseline entries. No behaviour change (TP-5792).
+- Updated dependencies [e58686b]
+  - @titan-design/coordinator@0.7.3
+
 ## 0.27.9
 
 ### Patch Changes

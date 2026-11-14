@@ -9,7 +9,7 @@ import type { ResolvedModule } from "./eslint-plugins.js";
 import type { EslintFlatConfigEntry } from "../generators/eslint.js";
 import type { SkippedRule, ToolFailure } from "../orchestrator/types.js";
 
-export type EslintConfigModule =
+type EslintConfigModule =
   | { ok: true; source: string; ruleCount: number; skippedRules: SkippedRule[] }
   | { ok: false; failure: ToolFailure };
 

@@ -3,7 +3,7 @@ import { symbolId } from "./ids.js";
 import { inRepoFileId, resolveRelativeAbs } from "./module-resolution.js";
 
 /** Context the re-export walk needs: the ts-morph project and the repo root. */
-export interface ReExportCtx {
+interface ReExportCtx {
   project: Project;
   repoRoot: string;
 }

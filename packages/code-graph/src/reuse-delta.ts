@@ -66,7 +66,7 @@ function isRelative(specifier: string): boolean {
  * current file set, or null when nothing matches — the id-space equivalent of the
  * extractor's filesystem walk, so it yields the same target for the same inputs.
  */
-export function resolveRelativeId(
+function resolveRelativeId(
   srcFileId: string,
   specifier: string,
   fileIds: ReadonlySet<string>,
