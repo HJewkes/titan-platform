@@ -57,6 +57,16 @@ describe("dispatcher rule file", () => {
     ]);
   });
 
+  it("relax defaults to none and intake to medium severity over 28 days, and a partial intake keeps the other default", () => {
+    expect(loadRuleFile(ruleFile(minimal))?.rules).toMatchObject({ relax: [], intake: { minSeverity: "medium", expireDays: 28 } });
+    expect(loadRuleFile(ruleFile({ ...minimal, intake: { expireDays: 14 } }))?.rules.intake).toEqual({ minSeverity: "medium", expireDays: 14 });
+  });
+
+  it("refuses a relax entry or a severity outside the closed sets", () => {
+    expect(() => loadRuleFile(ruleFile({ ...minimal, relax: ["no-done-when"] }))).toThrow(/relax/);
+    expect(() => loadRuleFile(ruleFile({ ...minimal, intake: { minSeverity: "trivial" } }))).toThrow(/minSeverity/);
+  });
+
   it("sits beside the factory config.json by default", () => {
     expect(defaultRuleFilePath({ TITAN_FACTORY_CONFIG: "/etc/factory/config.json" })).toBe("/etc/factory/dispatcher.json");
     expect(defaultRuleFilePath({ XDG_CONFIG_HOME: "/xdg" })).toBe("/xdg/titan-factory/dispatcher.json");

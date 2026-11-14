@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -20,19 +20,30 @@ export function task(n: number, fields: Body = {}): Body {
   return { ...base, done_when: "A test shows it.", bet: "alpha/B1", fold: "independent", owner_steps: [], slug: "alpha", tags: ["lane-a"], ...fields };
 }
 
+interface FakeWorkspace {
+  tasks: Body[];
+  bets: Body[];
+  outcomes?: Body[];
+  /** "unknown" answers every `plan.*` the way a daemon built before them does. */
+  plan?: "served" | "unknown";
+}
+
+function answer(ws: FakeWorkspace, command: string, body: Body): unknown {
+  if (command === "task.list") return { tasks: ws.tasks.filter((row) => body.tag === undefined || (Array.isArray(row.tags) && row.tags.includes(body.tag))) };
+  if (command === "plan.bet.list") return ws.bets.filter((bet) => bet.week === body.week);
+  if (command === "plan.outcome.list") return ws.outcomes ?? [];
+  if (command === "plan.freeze.list" || command === "plan.out-of-scope.list") return [];
+  throw new Error(`unexpected ${command}`);
+}
+
 /** An active-work daemon that answers only the read commands the eligibility reader calls. */
-export function fakeRpc(ws: { tasks: Body[]; bets: Body[] }): { fetch: typeof globalThis.fetch; commands: string[] } {
+export function fakeRpc(ws: FakeWorkspace): { fetch: typeof globalThis.fetch; commands: string[] } {
   const commands: string[] = [];
-  const answer = (command: string, body: Body): unknown => {
-    if (command === "task.list") return { tasks: ws.tasks.filter((row) => body.tag === undefined || (Array.isArray(row.tags) && row.tags.includes(body.tag))) };
-    if (command === "plan.bet.list") return ws.bets.filter((bet) => bet.week === body.week);
-    if (command === "plan.freeze.list" || command === "plan.out-of-scope.list") return [];
-    throw new Error(`unexpected ${command}`);
-  };
   const fetch = (async (url, init) => {
     const command = String(url).split("/rpc/")[1]!;
     commands.push(command);
-    return new Response(JSON.stringify({ ok: true, data: answer(command, z.record(z.string(), z.unknown()).parse(JSON.parse(String(init?.body)))) }));
+    if (ws.plan === "unknown" && command.startsWith("plan.")) return new Response(JSON.stringify({ ok: false, error: `Unknown command: ${command}`, code: 64 }), { status: 404 });
+    return new Response(JSON.stringify({ ok: true, data: answer(ws, command, z.record(z.string(), z.unknown()).parse(JSON.parse(String(init?.body)))) }));
   }) as typeof globalThis.fetch;
   return { fetch, commands };
 }
@@ -42,16 +53,33 @@ export const calm: LaneSignals = { openPrs: 0, mergedNotDeployed: 0, ownerQueue:
 interface Home {
   dir: string;
   shadowDir: string;
+  activeRoot: string;
   env: NodeJS.ProcessEnv;
 }
 
-/** A factory config dir with `dispatcher.json` beside `config.json`; `rules` undefined leaves the rule file absent. */
+/** An initiative brief under the active-work root, with the given front matter. */
+export function writeBrief(activeRoot: string, slug: string, frontMatter: string): void {
+  mkdirSync(join(activeRoot, slug), { recursive: true });
+  writeFileSync(join(activeRoot, slug, "brief.md"), `---\n${frontMatter}\n---\n# ${slug}\n`);
+}
+
+/** A charter listing the given initiatives human-only. */
+export function writeCharter(activeRoot: string, humanOnly: string[]): void {
+  const dir = join(activeRoot, "claude-channels", "sources", "autonomy");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "charter.md"), `---\nhuman_only_initiatives: ${JSON.stringify(humanOnly)}\n---\n`);
+}
+
+/** A factory config dir with `dispatcher.json` beside `config.json`, and an active-work root where `alpha` is agent-visible; `rules` undefined leaves the rule file absent. */
 export function shadowHome(rules?: Body): Home {
   const dir = mkdtempSync(join(tmpdir(), "shadow-tick-"));
   const shadowDir = join(dir, "shadow");
+  const activeRoot = join(dir, "active");
   writeFileSync(join(dir, "config.json"), "{}");
+  writeBrief(activeRoot, "alpha", "visibility: agent-visible");
+  writeCharter(activeRoot, []);
   if (rules !== undefined) writeFileSync(join(dir, "dispatcher.json"), JSON.stringify(rules));
-  return { dir, shadowDir, env: { TITAN_FACTORY_CONFIG: join(dir, "config.json") } };
+  return { dir, shadowDir, activeRoot, env: { TITAN_FACTORY_CONFIG: join(dir, "config.json"), ACTIVE_ROOT: activeRoot } };
 }
 
 export function enabledRules(home: { shadowDir: string } | string, extra: Body = {}): Body {

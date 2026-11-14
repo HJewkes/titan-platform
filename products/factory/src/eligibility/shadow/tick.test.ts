@@ -162,7 +162,7 @@ describe("dispatch shadow-tick", () => {
 });
 
 describe("shadowTick hold providers", () => {
-  const loaded = (dir: string): LoadedRules => ({ rules: { schema: "titan-dispatcher/v1", mode: "shadow", shadow: { enabled: true, dir }, lanes: [{ initiative: "alpha", tag: "lane-a" }] }, hash: "sha256:0" });
+  const loaded = (dir: string): LoadedRules => ({ rules: { schema: "titan-dispatcher/v1", mode: "shadow", shadow: { enabled: true, dir }, lanes: [{ initiative: "alpha", tag: "lane-a" }], relax: [], intake: { minSeverity: "medium", expireDays: 28 } }, hash: "sha256:0" });
   const verbs = (fetch: typeof globalThis.fetch, env: NodeJS.ProcessEnv) => partialFake<Verbs>({ io: { stdout: () => {}, stderr: () => {}, env }, deps: { workflows: [], routes: [], fetch, laneSignals: async () => calm } });
 
   it("a provider hold keeps its task back at the provider's stage, and a throwing provider holds every task", async () => {

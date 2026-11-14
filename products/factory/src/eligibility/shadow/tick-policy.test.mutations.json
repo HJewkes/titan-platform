@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "any plan rpc failure falls back to the plan store",
+      "file": "products/factory/src/eligibility/active-work.ts",
+      "find": "    if (!unknownCommand(error)) throw error;\n",
+      "replace": "",
+      "kills": [
+        "shadow tick plan read a network failure on plan.* does not fall back: the lane fails closed and the tick exits 69"
+      ]
+    },
+    {
+      "name": "owner-only lanes are judged like any other",
+      "file": "products/factory/src/eligibility/shadow/tick.ts",
+      "find": "  if ((await ports.access(lane.initiative)) !== \"shown\") return { rows: [ownerOnlyRow(base)], unread: false };\n",
+      "replace": "",
+      "kills": [
+        "shadow tick owner-only lanes a lane whose initiative is not agent-visible writes one refused row and reads none of its tasks",
+        "shadow tick owner-only lanes an initiative the charter lists human-only is refused even with an agent-visible brief"
+      ]
+    }
+  ]
+}

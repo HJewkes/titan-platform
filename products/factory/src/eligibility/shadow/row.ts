@@ -21,6 +21,14 @@ interface WakeRow {
   build: string;
   rule_hash: string;
   lanes: number;
+  /** "file" when any lane's plan came from the plan store because the daemon has no `plan.*` rpc; absent when no plan was read. */
+  plan_read?: "rpc" | "file";
+}
+
+/** Set on a candidate whose pass needed the rule file's relax list, beside the codes the strict rules gave it. */
+interface RelaxedFields {
+  relaxed?: string[];
+  strict_codes?: string[];
 }
 
 interface LaneRowBase {
@@ -32,7 +40,7 @@ interface LaneRowBase {
   basis: Basis;
 }
 
-export interface WouldDispatchRow extends LaneRowBase {
+export interface WouldDispatchRow extends LaneRowBase, RelaxedFields {
   kind: "would-dispatch";
   task: string;
   bet: string;
@@ -42,7 +50,7 @@ export interface WouldDispatchRow extends LaneRowBase {
   class: string | null;
 }
 
-export interface RefusedRow extends LaneRowBase {
+export interface RefusedRow extends LaneRowBase, RelaxedFields {
   kind: "refused";
   /** Null for a lane-level hold with no candidate task, so an empty held lane still shows. */
   task: string | null;
