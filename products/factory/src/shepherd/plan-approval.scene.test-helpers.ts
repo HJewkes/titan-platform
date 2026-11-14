@@ -22,6 +22,7 @@ import { reviewPhase } from "./review.js";
 import { DEFAULT_ADVERSARY_PROFILE } from "./review-panel-plan.js";
 import type { ReviewerRoles } from "./reviewer-roles.js";
 import { shepherdStoreRef, type ShepherdStoreRef } from "./store.js";
+import type { VisualGateMode } from "./visual-gate-config.js";
 
 /** The real shepherd-pr run the plan-approval scenes merge or gate, shared by the TP-4284 rows and the TP-4360 plan round. */
 export const REPO = "octo/planned";
@@ -78,6 +79,8 @@ export interface Row {
   lowTier?: LowTierMode;
   /** `shepherd.gateReset.ownerTier` for the run's routes; absent stands for an unset key, which the config reader reads as shadow. */
   ownerTier?: OwnerTierMode;
+  /** `shepherd.visualGate` for the run's routes; absent leaves it unset, which reads `owner`. */
+  visualGate?: VisualGateMode;
   /** `shepherd.gateReset.ownerValidate` and the active-work task reads behind it; absent tasks stamp nothing. */
   ownerValidate?: OwnerValidateMode;
   tasks?: TaskApprovalReads;
@@ -90,10 +93,11 @@ export interface Row {
 export type FakeGitHub = ReturnType<typeof fakeGitHub>;
 
 /** The row's `shepherd.gateReset` modes as the routes take them; an unset ownerTier stands for the config reader's shadow. */
-const gateResetModes = ({ lowTier, ownerTier, ownerValidate }: Pick<Row, "lowTier" | "ownerTier" | "ownerValidate">) => ({
+const gateResetModes = ({ lowTier, ownerTier, ownerValidate, visualGate }: Pick<Row, "lowTier" | "ownerTier" | "ownerValidate" | "visualGate">) => ({
   ...(lowTier && { lowTierPolicy: lowTier }),
   ownerTier: ownerTier ?? "shadow",
   ...(ownerValidate && { ownerValidate }),
+  ...(visualGate && { visualGate }),
 });
 
 /** The run's reviewers and, when the hold's adversary member is planned, the roster its two-MERGE release reads to prove them separate. */

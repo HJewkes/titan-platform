@@ -20,6 +20,7 @@ import { checkoutRootOf, dropCheckout, holdContextOf, memberDispatch, thenDropCh
 import { Intended, ReviewCauseSchema } from "./review-schemas.js";
 import { MERGE_EVIDENCE_STEPS } from "./merge-evidence-gate.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput, type OldPathWiring } from "./merge-facts.js";
+import { runVisualGate } from "./registered-kind.js";
 import type { OwnerValidateTasksWiring } from "./g10-owner-validate-read.js";
 import type { ShepherdDeps, ShepherdPhases } from "./phases.js";
 import { PUBLISH_REVIEW_STEPS, publishReviewRoute } from "./publish-review.js";
@@ -92,14 +93,14 @@ export { BUSY_FIRST_WAIT_MS, BUSY_LONGEST_WAIT_MS, DEFAULT_BUSY_WAIT_MS, Reviewe
 export { DEFAULT_DETACH_GRACE_MS, DEFAULT_EXIT_GRACE_MS, awaitVerdict, parseAwaitVerdictInput } from "./await-verdict.js";
 export { FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS, acceptVerdict } from "@titan-design/review-panel";
 
-export type ReviewInput = z.infer<typeof ReviewInputSchema>;
+type ReviewInput = z.infer<typeof ReviewInputSchema>;
 
 /** Which reviewer a head gets, recorded first so a repeat reads the same name and `at`; only a message written after `at` can be the verdict. */
 export type ReviewIntent = z.infer<typeof ReviewIntentSchema>;
 /** `refused` is the failure class of a dispatch the broker or port refused outright, which no retry at once can fix; `fixer` is preflight's refusal. */
 type NoReview = { kind: "none"; reason: string; exhausted?: string; refused?: string; fixer?: { fingerprint: string; failure: string } };
 export type ReviewIntentResult = ({ kind: "intent" } & ReviewIntent & Partial<PanelOnPlan>) | NoReview | NotStarted;
-export type ReviewDispatchInput = z.infer<typeof ReviewDispatchInputSchema>;
+type ReviewDispatchInput = z.infer<typeof ReviewDispatchInputSchema>;
 export type ReviewDispatchResult = ({ kind: "dispatched"; agentId: string; sessionId: string; startedAt: number; codewatch?: CodewatchEvidence } & ReviewIntent & BusyWaits & { profile?: string }) | NoReview | NotStarted;
 
 /** The package's accepted verdict, plus the seat disagreement only Shepherd records. */
@@ -319,7 +320,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     codeRoute(LATE_VERDICT_STEP, deps.now, (raw: unknown, signal, clock) => seatVetoed(wiring, (late: unknown, lateSignal) => lateVerdict(deps, wiring, parseAwaitVerdictInput(late), lateSignal, clock.firstStartedAtMs), deps.now, seatWait, ownerIn(deps.store))(raw, signal)),
     repeatAwareRoute(CORRECT_VERDICT_STEP, deps.now, brokerStep(deps, wiring, CorrectVerdictInputSchema, correctReviewer)),
     codeRoute(SEAT_RECHECK_STEP, deps.now, seatVetoed(wiring, async (raw: unknown) => heldMerge(raw), deps.now, seatWait, ownerIn(deps.store))),
-    codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput, signal: AbortSignal) => mergeEvidence(deps.port, input, wiring?.isFrozen ?? noFreezeStoreUntilTp523, registeredKind(deps.store, input.runId, deps.visualGate), { sleep: (ms) => deps.sleep(ms, signal) }, { reviewAppId: wiring?.reviewAppId, visualGate: deps.visualGate, threshold: wiring?.visualThreshold?.(input.repo), tier: wiring?.visualTier?.(input.repo), ownerTier: deps.ownerTier, ownerValidate: deps.ownerValidate, ownerValidateTasks: wiring?.ownerValidateTasks, oldPath: wiring?.oldPath,attest: attestJudge(deps.port, deps.store, wiring ?? {}, { timing: { ...brokerTiming(deps), brokerDownWaitMs: wiring?.brokerDownWaitMs ?? DEFAULT_BROKER_DOWN_WAIT_MS }, budgetMs: wiring?.sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, signal }) })),
+    codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput, signal: AbortSignal) => { const visualGate = runVisualGate(deps.store, input.runId, deps.visualGate); return mergeEvidence(deps.port, input, wiring?.isFrozen ?? noFreezeStoreUntilTp523, registeredKind(deps.store, input.runId, visualGate), { sleep: (ms) => deps.sleep(ms, signal) }, { reviewAppId: wiring?.reviewAppId, visualGate, threshold: wiring?.visualThreshold?.(input.repo), tier: wiring?.visualTier?.(input.repo), ownerTier: deps.ownerTier, ownerValidate: deps.ownerValidate, ownerValidateTasks: wiring?.ownerValidateTasks, oldPath: wiring?.oldPath, attest: attestJudge(deps.port, deps.store, wiring ?? {}, { timing: { ...brokerTiming(deps), brokerDownWaitMs: wiring?.brokerDownWaitMs ?? DEFAULT_BROKER_DOWN_WAIT_MS }, budgetMs: wiring?.sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, signal }) }); }),
     carryRoute(deps.now, { ports: deps.gitCache, ...wiring?.carry }),
     ownDiffRoute(deps.now, deps.port, { ports: deps.gitCache, ...wiring?.carry }),
     publishReviewRoute(deps),

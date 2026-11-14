@@ -476,7 +476,7 @@ what is on main today; the rows marked *planned* are decided but not built.
 | Low-tier policy touch | `lowTierPolicyTouch` in `g10-low-tier.ts` (named policy tables only, never a file in the classifier's own import closure) | Ships in shadow: stays `g10-adversary` and names the low tier. Under `shepherd.gateReset.lowTierPolicy: on`, an owner config edit, `g10-review`: one opus `MERGE` at the head releases the hold |
 | Over 400 changed lines, or a store migration | line count, path table | `g10-review`: one opus `MERGE` releases the hold |
 | `owner-gate` seat policy, visual path under `visualGate: owner`, or `gate-2-visual` | registration, seat policy | the owner's `approve-merge` answer |
-| Unknown class: unread or empty file list, unlisted path table | the read failed or no table matches | the owner's `approve-merge` answer |
+| Unknown class: unread or empty file list, unlisted path table | the read failed or no table matches | the owner's `approve-merge` answer. An unread list (an API error twice, or a list past GitHub's cap) gets two things: the `files-unread` owner gate at merge, and a `g10-adversary: changed files unread at registration` hold placed at registration, so the seat reviews it as well. An empty list gates on `files-unread` alone; registration places no hold for it |
 
 **What still raises an owner gate.** The `owner-gate` policy and a hold that names the owner.
 One-way items: money, external accounts, deletion and publishing a new package. A visual path

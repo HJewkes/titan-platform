@@ -3,10 +3,10 @@ import { PROBE_PENDING } from "./build-info.js";
 import { cachedProbe, type CachedProbe } from "./cached-probe.js";
 import { redactForEvidence } from "./redact.js";
 
-export const GITHUB_PROBE_TTL_MS = 60_000;
-export const GITHUB_PROBE_TIMEOUT_MS = 10_000;
+const GITHUB_PROBE_TTL_MS = 60_000;
+const GITHUB_PROBE_TIMEOUT_MS = 10_000;
 
-export interface GithubHealthOptions {
+interface GithubHealthOptions {
   exec?: GhExec;
   now?: () => number;
   ttlMs?: number;

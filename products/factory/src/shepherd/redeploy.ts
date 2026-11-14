@@ -14,11 +14,11 @@ export type { DeployerPorts };
 export const REDEPLOY_STEP = "sh-redeploy";
 export const REDEPLOY_LOG = "redeploy.log";
 
-export const RedeployResult = z.looseObject({ spawned: z.boolean(), queued: z.boolean().optional(), pid: z.number().optional(), log: z.string().optional(), detail: z.string() });
+const RedeployResult = z.looseObject({ spawned: z.boolean(), queued: z.boolean().optional(), pid: z.number().optional(), log: z.string().optional(), detail: z.string() });
 
 export type Redeploy = z.infer<typeof RedeployResult>;
 
-export interface RedeployInput {
+interface RedeployInput {
   repo: RepoSlug;
   pr: number;
   mergeSha: string;
@@ -85,7 +85,7 @@ function appendQuietly(ports: DeployerPorts, path: string, text: string): void {
   }
 }
 
-export interface DeployerOptions {
+interface DeployerOptions {
   /** The factory bin the deployer runs as `service deploy`. */
   bin: string;
   /** Holds the deployer's log. */

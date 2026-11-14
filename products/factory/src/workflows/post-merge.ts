@@ -17,13 +17,13 @@ export type { ChoreExec, ChoreOptions, ChoreResult };
 export const TAIL_CHARS = 2_000;
 export const NO_COMMAND = "no post-merge command";
 
-export interface PostMergeInput {
+interface PostMergeInput {
   repo: RepoSlug;
   pr: number;
   mergeSha: string | null;
 }
 
-export const PostMergeResult = z.union([
+const PostMergeResult = z.union([
   z.looseObject({ skipped: z.literal(NO_COMMAND) }),
   z.looseObject({ exitCode: z.number().nullable(), signal: z.string().nullable(), timedOut: z.boolean(), stdoutTail: z.string(), stderrTail: z.string() }),
 ]);
