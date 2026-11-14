@@ -11,7 +11,7 @@ const CORE_COVERAGE = 0.8;
 /** A budget stop leaves one partly dispatched block, so missing a single case never demotes an arm, at any n. */
 const STOP_SLACK = 1;
 
-export const usable = (cell: Cell): boolean => USABLE.has(cell.outcome);
+const usable = (cell: Cell): boolean => USABLE.has(cell.outcome);
 
 interface Exclusion {
   arm: string;

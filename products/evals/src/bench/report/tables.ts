@@ -35,7 +35,7 @@ interface ArmRow {
   byStratum: Record<string, RateCell | null>;
 }
 
-export interface Comparison {
+interface Comparison {
   table: string;
   arm: string;
   production: string;
@@ -65,7 +65,7 @@ export function armCells(ctx: TrackContext, arm: string, include: (cell: Cell) =
   });
 }
 
-export const stratumLabel = (cell: Cell, keys: readonly string[]): string => keys.map((key) => `${key}=${cell.stratum[key] ?? "?"}`).join(",");
+const stratumLabel = (cell: Cell, keys: readonly string[]): string => keys.map((key) => `${key}=${cell.stratum[key] ?? "?"}`).join(",");
 
 function byStratum(cells: readonly Cell[], spec: TableSpec): Record<string, RateCell | null> {
   const groups = new Map<string, Cell[]>();
@@ -81,7 +81,7 @@ function armRow(ctx: TrackContext, spec: TableSpec, arm: string): ArmRow {
 }
 
 /** Paired per-case scores of arm and production on the arm's paired cases, dropping cases either side does not score. */
-export function pairedScores(ctx: TrackContext, arm: string, metric: Metric, include: (cell: Cell) => boolean): { arm: number[]; production: number[] } {
+function pairedScores(ctx: TrackContext, arm: string, metric: Metric, include: (cell: Cell) => boolean): { arm: number[]; production: number[] } {
   const production = ctx.index.get(ctx.blocks.production);
   const pairs = armCells(ctx, arm, include).flatMap((cell) => {
     const twin = production?.get(cell.caseHash);

@@ -4,7 +4,7 @@ export const DASH = "—";
 
 export const pct = (value: number | null): string => (value === null ? DASH : `${(value * 100).toFixed(0)}%`);
 
-export const signedPts = (value: number | null): string => (value === null ? DASH : `${value >= 0 ? "+" : ""}${(value * 100).toFixed(0)}`);
+const signedPts = (value: number | null): string => (value === null ? DASH : `${value >= 0 ? "+" : ""}${(value * 100).toFixed(0)}`);
 
 export const usd = (value: number | null): string => (value === null ? DASH : `$${value.toFixed(3)}`);
 

@@ -12,7 +12,7 @@ import { reviewCatch, reviewTrack } from "./track-r.js";
 
 const REPORT_SCHEMA = "titan.bench-report/v1";
 
-export interface ReportOptions {
+interface ReportOptions {
   runs: Partial<Record<Track, string>>;
   partial: boolean;
   targets: Partial<Record<Track, number>>;

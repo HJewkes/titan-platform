@@ -4,7 +4,7 @@ import type { Cell, RunData } from "./load.js";
 import { applyHolm, armCost, buildTable, type ArmCost, type Metric, type Table, type TableSpec, type TrackContext } from "./tables.js";
 
 /** The production arm of every track (section 9): the comparisons and the routing evidence are against it. */
-export const PRODUCTION_ARM = "O-med";
+const PRODUCTION_ARM = "O-med";
 
 export interface TrackReport<E = unknown> {
   track: Track;

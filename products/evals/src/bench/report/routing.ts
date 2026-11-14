@@ -9,14 +9,14 @@ export const MAX_ROUTING_HALF_WIDTH = 0.25;
 /** Non-inferiority margins against the best arm, on each track's primary per-case score. */
 export const ROUTING_MARGIN = { review: 0.05, implement: 0.1, plan: 0.1 } as const;
 export const TOO_THIN = "too thin, keep production";
-export const NOT_MEASURED = "not measured";
+const NOT_MEASURED = "not measured";
 const NO_RUN = "no run";
 /** I measures S and M non-test-only tasks only (section 1, "Excluded by budget"). */
 const UNMEASURED_SIZES: ReadonlySet<string> = new Set(["L"]);
 const UNMEASURED_KINDS: ReadonlySet<string> = new Set(["test-only"]);
 const KINDS = ["correctness", "feature", "refactor", "security", "test-only"];
 const SIZES = ["S", "M", "L"];
-export const ANY_SIZE = "any";
+const ANY_SIZE = "any";
 
 interface RoutingPick {
   text: string;
@@ -65,7 +65,7 @@ function meanUsd(ctx: TrackContext, arm: string): number {
 }
 
 /** The cheapest arm whose CI against the best arm stays inside the margin, with its evidence against production. */
-export function routeCell(routed: RoutedTrack, inCell: (cell: Cell) => boolean, label: string): RoutingPick {
+function routeCell(routed: RoutedTrack, inCell: (cell: Cell) => boolean, label: string): RoutingPick {
   const matrix = scoreMatrix(routed, inCell);
   const production = routed.ctx.blocks.production;
   const productionScores = matrix.get(production) ?? [];
