@@ -8,19 +8,27 @@ interface TaskApprovalSource {
 }
 
 /**
+ * The owner's latest approval of `taskKey`, whatever done_when it bound, for a caller that tells a changed done_when from
+ * no approval (g10-owner-validate.ts). A key that is not `<initiative>/<ID>` is refused, never resolved.
+ */
+export function latestTaskApproval(source: TaskApprovalSource, taskKey: string): TaskApproval | undefined {
+  if (!TaskKeySchema.safeParse(taskKey).success) throw new PlanApprovalRefused(`a task approval is keyed by <initiative>/<ID>; ${JSON.stringify(taskKey)} is not one`);
+  return source.planApprovals().forTask(taskKey);
+}
+
+/**
  * The owner's approval of `taskKey` for the done_when it holds now; undefined when there is none, or when the done_when
- * differs in any word from the text the owner read. A key that is not `<initiative>/<ID>` is refused, never resolved.
+ * differs in any word from the text the owner read.
  */
 export function ownerTaskApproval(source: TaskApprovalSource, taskKey: string, doneWhen: string): TaskApproval | undefined {
-  if (!TaskKeySchema.safeParse(taskKey).success) throw new PlanApprovalRefused(`a task approval is keyed by <initiative>/<ID>; ${JSON.stringify(taskKey)} is not one`);
-  const approval = source.planApprovals().forTask(taskKey);
+  const approval = latestTaskApproval(source, taskKey);
   return approval?.scope.doneWhen === collapsedDoneWhen(doneWhen) ? approval : undefined;
 }
 
 /**
- * The owner's latest approval of `taskKey`, whatever done_when it was given for. Only the visual sign-off flag reads it,
- * and that flag only adds an owner gate, so a stale approval can ask the owner more, never less.
+ * `latestTaskApproval` for the visual sign-off flag, which only adds an owner gate, so a stale approval asks the owner more,
+ * never less. A run registered under a key that is not `<initiative>/<ID>` has no task approval, so it reads as none.
  */
 export function latestOwnerTaskApproval(source: TaskApprovalSource, taskKey: string): TaskApproval | undefined {
-  return TaskKeySchema.safeParse(taskKey).success ? source.planApprovals().forTask(taskKey) : undefined;
+  return TaskKeySchema.safeParse(taskKey).success ? latestTaskApproval(source, taskKey) : undefined;
 }
