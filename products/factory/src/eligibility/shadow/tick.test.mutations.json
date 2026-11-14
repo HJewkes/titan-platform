@@ -13,7 +13,7 @@
     {
       "name": "an empty held lane writes no row",
       "file": "products/factory/src/eligibility/shadow/tick.ts",
-      "find": "if (read.admission.decision === \"hold\" && read.result.eligible.length === 0) rows.push(laneHoldRow(base, read.admission));",
+      "find": "if (read.admission.decision === \"hold\" && read.result.eligible.length === 0) rows.push(laneHoldRow(rowBase, read.admission));",
       "replace": "",
       "kills": [
         "dispatch shadow-tick a held lane with no candidate still writes one refused row with a null task"

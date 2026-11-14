@@ -69,7 +69,7 @@ export function buildClaudePrintArgs(config: AgentRunConfig<unknown>): string[] 
 }
 
 /** With --json-schema the CLI can need a second turn to emit the structured answer, so a schema run gets at least 2. */
-export function claudePrintMaxTurns(config: AgentRunConfig<unknown>): number {
+function claudePrintMaxTurns(config: AgentRunConfig<unknown>): number {
   return config.outputSchema ? Math.max(config.maxTurns, 2) : config.maxTurns;
 }
 

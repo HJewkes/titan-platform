@@ -8,13 +8,13 @@ export const DECIDER_MODES = ["off", "shadow", "auto"] as const;
 export type DeciderMode = (typeof DECIDER_MODES)[number];
 
 /** Higher is more restrictive; folded policy rows keep the highest. */
-export const MODE_RESTRICTIVENESS: Readonly<Record<DeciderMode, number>> = {
+const MODE_RESTRICTIVENESS: Readonly<Record<DeciderMode, number>> = {
   auto: 0,
   shadow: 1,
   off: 2,
 };
 
-export function strictestMode(a: DeciderMode, b: DeciderMode): DeciderMode {
+function strictestMode(a: DeciderMode, b: DeciderMode): DeciderMode {
   return MODE_RESTRICTIVENESS[b] > MODE_RESTRICTIVENESS[a] ? b : a;
 }
 

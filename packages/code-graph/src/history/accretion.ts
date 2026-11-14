@@ -72,7 +72,7 @@ export function taskIdsIn(subject: string, pattern: RegExp): string[] {
 }
 
 /** Commits from `git log -p -U0`, newest first, each with its files' paths and hunks. */
-export function parsePatchLog(text: string): RawCommit[] {
+function parsePatchLog(text: string): RawCommit[] {
   const commits: RawCommit[] = [];
   let file: RawFileDiff | null = null;
   let pendingContent = 0;
@@ -121,7 +121,7 @@ function stripPrefix(p: string, prefix: string): string | null {
  * Walk newest to oldest, carrying each commit's new-side lines forward through every later commit's
  * hunks on the same file (following renames), so all edits land in HEAD's line numbering.
  */
-export function carryToHead(commits: readonly RawCommit[], pattern: RegExp): FileEdit[] {
+function carryToHead(commits: readonly RawCommit[], pattern: RegExp): FileEdit[] {
   const laterHunks = new Map<string, Hunk[][]>();
   const headPathOf = new Map<string, string>();
   const out: FileEdit[] = [];
