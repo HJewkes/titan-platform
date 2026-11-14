@@ -96,6 +96,7 @@ import contextGraph from './context-graph.js';
 import contextRelated from './context-related.js';
 import inventory from './inventory.js';
 import search from './search.js';
+import why from './why.js';
 import precedentExtract from './precedent-extract.js';
 import precedentSearch from './precedent-search.js';
 import list from './list.js';
@@ -227,6 +228,7 @@ const ALL_COMMANDS: AnyCommand[] = [
   contextRelated,
   contextBrief,
   search,
+  why,
   inventory,
   precedentExtract,
   precedentSearch,

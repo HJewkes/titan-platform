@@ -75,7 +75,7 @@ function readTouches(graph: SessionGraph, refs: readonly string[], options: Sess
   });
 }
 
-function readTaskInitiatives(graph: SessionGraph, sessionIds: readonly string[]): Map<string, SessionTaskInitiative[]> {
+export function readTaskInitiatives(graph: SessionGraph, sessionIds: readonly string[]): Map<string, SessionTaskInitiative[]> {
   const sql = `
     SELECT substr(e.source_ref, ${SESSION_PREFIX.length + 1}) AS sessionId, t.initiative AS initiative, COUNT(*) AS edges
     FROM "${KIT.edge}" e JOIN task t ON t.task_ref = e.target_ref

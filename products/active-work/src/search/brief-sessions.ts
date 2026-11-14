@@ -43,7 +43,7 @@ export interface BriefSessions {
 }
 
 /** A task edge names the initiative outright; otherwise only a cwd inside the active root does. */
-function initiativeOf(row: SessionTouchingFiles): string | null {
+export function initiativeOf(row: Pick<SessionTouchingFiles, 'tasks' | 'cwd'>): string | null {
   const key = sessionInitiative(row.tasks, row.cwd);
   if (row.tasks.length > 0) return key;
   return key.startsWith(ACTIVE_WORK_CWD) ? key.slice(ACTIVE_WORK_CWD.length) : null;

@@ -99,6 +99,7 @@
   "active__unfocus",
   "active__uninstall",
   "active__unpause",
+  "active__why",
   "active__worktree__set",
   "active__worktree__set-default",
   "active__wrap"
