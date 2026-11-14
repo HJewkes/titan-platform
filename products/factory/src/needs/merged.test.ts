@@ -7,7 +7,7 @@ import { failingSource, sources10_05 } from "../test-support/needs-10-05.js";
 
 describe("collectNeeds on the synthetic 10-05 queue", () => {
   it("shows 36 gates, 88 Morning items, 145 tasks and the broker items by kind", async () => {
-    const list = await collectNeeds(await sources10_05());
+    const list = await collectNeeds(await sources10_05(), { caller: "owner" });
 
     const [summary] = renderNeeds(list).split("\n");
 
@@ -15,7 +15,7 @@ describe("collectNeeds on the synthetic 10-05 queue", () => {
   });
 
   it("merges each duplicate into one item and names what it was merged from", async () => {
-    const list = await collectNeeds(await sources10_05());
+    const list = await collectNeeds(await sources10_05(), { caller: "owner" });
     const text = renderNeeds(list);
 
     expect(list.items).toHaveLength(36 + 88 + 145 + 19 - 5);
@@ -28,7 +28,7 @@ describe("collectNeeds on the synthetic 10-05 queue", () => {
     const personal = decisionTaskItem({ ...decisionTask(1), slug: "diary" }, true);
     const open = decisionTaskItem(decisionTask(2), false);
 
-    const list = await collectNeeds(await sources10_05([personal, open]));
+    const list = await collectNeeds(await sources10_05([personal, open]), { caller: "owner" });
 
     expect(list.items.map((item) => item.id)).not.toContain(personal.id);
     expect(list.items.map((item) => item.id)).toContain(open.id);
@@ -36,14 +36,14 @@ describe("collectNeeds on the synthetic 10-05 queue", () => {
   });
 
   it("turns a source that cannot be read into a gap and keeps the others", async () => {
-    const list = await collectNeeds([...(await sources10_05()).slice(1), failingSource("agent-chat", "connect ECONNREFUSED\nmore")]);
+    const list = await collectNeeds([...(await sources10_05()).slice(1), failingSource("agent-chat", "connect ECONNREFUSED\nmore")], { caller: "owner" });
 
     expect(list.gaps).toEqual(["agent-chat: connect ECONNREFUSED"]);
     expect(list.items).toHaveLength(36 + 88 + 145 - 5);
   });
 
   it("holds only schema-valid OwnerItems", async () => {
-    const list = await collectNeeds(await sources10_05());
+    const list = await collectNeeds(await sources10_05(), { caller: "owner" });
 
     for (const item of list.items) expect(() => ownerItemSchema.parse(item)).not.toThrow();
     expect(TASK_COUNT).toBe(145);

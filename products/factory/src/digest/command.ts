@@ -2,7 +2,7 @@ import type { JsonEnvelope } from "@titan-design/registry";
 import { InvalidArgumentError } from "commander";
 import { configPath, loadConfig } from "../config.js";
 import type { GateRecord } from "@titan-design/hitl";
-import { ownerQueueSources } from "../needs/command.js";
+import { ownerQueueSources, shellNeedsView } from "../needs/command.js";
 import { collectNeeds } from "../needs/merged.js";
 import type { GateSummary } from "../context.js";
 import type { WatchRow } from "../shepherd/view-schema.js";
@@ -99,7 +99,7 @@ function factorySources(call: FactoryCall, env: NodeJS.ProcessEnv, morningDir: s
   return {
     rows: () => data<WatchRow[]>("shepherd.list", { state: "all" }),
     gates: async () => (await pendingGates()).map(gateFact),
-    needs: async () => collectNeeds(ownerQueueSources(env, pendingGateReader(await pendingGates()), { morningDir })),
+    needs: async () => collectNeeds(ownerQueueSources(env, pendingGateReader(await pendingGates()), { morningDir }), shellNeedsView(env)),
   };
 }
 

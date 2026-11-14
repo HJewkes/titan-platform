@@ -9,6 +9,7 @@ import { parsePort } from "../cli-options.js";
 import { postRpc, unansweredMessage } from "../cli-shepherd-rpc.js";
 import { EXIT } from "../exit-codes.js";
 import { untilSettledOrGated, type DriveOutcome, type FactoryHost } from "../host.js";
+import { callerForShell } from "../caller.js";
 import { createFactoryRegistry, factoryContext } from "../registry.js";
 import { FACTORY_PORT } from "../serve.js";
 import { probeServe } from "../serve-probe.js";
@@ -46,7 +47,7 @@ async function inProcess(verbs: Verbs, name: string, args: object, after?: After
   let envelope: JsonEnvelope<unknown> = { ok: false, error: `${name} did not run`, code: RPC_EXIT.SOFTWARE };
   await verbs.withHost((host, routes) =>
     shuttingDownOnSignal(host.runtime, async () => {
-      envelope = await inProcessCaller(createFactoryRegistry(), () => factoryContext(host, routes))(name, args);
+      envelope = await inProcessCaller(createFactoryRegistry(), () => factoryContext(host, routes, callerForShell(verbs.io.env)))(name, args);
       if (envelope.ok && after) await after(envelope.data, host);
       return EXIT.OK;
     }),
