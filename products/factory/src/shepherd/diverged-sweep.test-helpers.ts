@@ -75,7 +75,8 @@ export async function recorded(dbPath: string, prs: number[], base?: string): Pr
   const ids = prs.map((pr) => first.host.runtime.start(SHEPHERD_WORKFLOW, { repo: REPO, pr: String(pr), branch: branchOf(pr), policy: JSON.stringify(OWNER_GATE_POLICY), task: "demo/T-1" }));
   for (const id of ids) await vi.waitFor(() => expect(first.host.runtime.status(id)?.stepResults).toHaveProperty(["ci-wait:0"]));
   const store = first.routes.shepherd!.store.get();
-  prs.forEach((pr, i) => store.register({ repo: REPO, pr, task: "demo/T-1", implementer: "impl-a", kind: "feature", branch: branchOf(pr), runId: ids[i]!, policy: OWNER_GATE_POLICY, ...(base !== undefined && { base }) }));
+  const facts = { repo: REPO, task: "demo/T-1", implementer: "impl-a", kind: "feature" as const, policy: OWNER_GATE_POLICY, ...(base !== undefined && { base }) };
+  prs.forEach((pr, i) => store.register({ ...facts, pr, branch: branchOf(pr), runId: ids[i]! }));
   first.host.close();
   return ids;
 }
