@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { TimelineBeat } from "../../timeline.js";
 import { StageContext } from "./stageFit.js";
 import { fadeUp } from "./video.js";
+import { shortRef } from "../../../label-text.js";
 
 type Chip = NonNullable<TimelineBeat["chips"]>[number];
 type Chapter = NonNullable<TimelineBeat["chapter"]>;
@@ -21,9 +22,6 @@ interface SourceRef {
 
 /** The words the source line shows: the shortened first source, then "+N" for the other sources. */
 export const chipText = (line: SourceRef) => (line.more ? `${line.text} +${line.more}` : line.text);
-
-/** Drops `repo@sha:` and directory prefixes, so `tp@a1b8cdeb:products/x/wake.ts:35` reads `wake.ts:35`. */
-const shortRef = (ref: string) => ref.replace(/^[\w-]+@[0-9a-f]+:/, "").replace(/(?:[\w.~-]+\/)+/g, "");
 
 /** The beat's first source, shortened, and how many more sources its chips cite; over the budget throws, never clips. */
 export function sourceLine(chips: readonly Chip[]): SourceRef | undefined {

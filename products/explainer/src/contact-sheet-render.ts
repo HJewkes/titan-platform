@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { chapterSheets, type SheetCell } from "./contact-sheet.js";
 import { sha256 } from "./workflow/artifacts.js";
+import { drawable } from "./label-text.js";
 
 /**
  * Draws the sheets ffmpeg-side: one still per cell with its label in a strip under the frame (a label drawn on the
@@ -40,9 +41,6 @@ export interface SheetSet {
 }
 
 const QUIET = ["-hide_banner", "-loglevel", "error", "-y"];
-
-// drawtext reads quotes, colons, backslashes and percents as syntax; beat ids never need them.
-const drawable = (label: string) => label.replace(/[^A-Za-z0-9 ._/-]/g, "_");
 
 function cellArgs(video: string, cell: SheetCell, out: string, width: number): string[] {
   const strip = `pad=iw:ih+${LABEL_STRIP_PX}:0:0:color=0x111111`;
