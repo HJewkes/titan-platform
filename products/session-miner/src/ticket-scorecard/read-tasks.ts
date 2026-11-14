@@ -1,8 +1,7 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import path from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 import { BUILT_IN_STATUSES, categoriesPath, parseCategoryRegistry, type Task } from "@titan-design/pm";
+import { readInitiativeTasks } from "@titan-design/pm/node";
 import { parse } from "yaml";
-import { parseTask } from "../commands/throughput-rows.js";
 
 /** Shepherd and reviewers tag a follow-up `follow-up:<parent id>` when they file it; the tag is an exact key, read as data. */
 const FOLLOW_UP_TAG = "follow-up:";
@@ -39,14 +38,6 @@ function taskKey(initiative: string, id: string): string {
   return `${initiative}/${id}`;
 }
 
-function taskFiles(root: string, initiative: string): string[] | null {
-  const dir = path.join(root, initiative, "tasks");
-  if (!existsSync(dir)) return null;
-  const archive = path.join(dir, "archive");
-  const inDir = (d: string) => readdirSync(d).filter((f) => f.endsWith(".yml")).sort().map((f) => path.join(d, f));
-  return [...inDir(dir), ...(existsSync(archive) ? inDir(archive) : [])];
-}
-
 function factsOf(task: Task, initiative: string, mtimeMs: number): TaskFacts {
   const followUpOf = (task.tags ?? []).filter((t) => t.startsWith(FOLLOW_UP_TAG)).map((t) => t.slice(FOLLOW_UP_TAG.length)).filter(Boolean);
   return {
@@ -66,23 +57,19 @@ function factsOf(task: Task, initiative: string, mtimeMs: number): TaskFacts {
 }
 
 /** Every task file under `<root>/<initiative>/tasks/`, `archive/` included. A file that will not parse is counted, never fatal. */
-export function loadTasks(root: string, initiatives: readonly string[]): TaskLoad {
+export async function loadTasks(root: string, initiatives: readonly string[]): Promise<TaskLoad> {
   const load: TaskLoad = { tasks: new Map(), byId: new Map(), unparsed: 0, missing: [], maxMtimeMs: 0 };
   for (const initiative of initiatives) {
-    const files = taskFiles(root, initiative);
-    if (files === null) {
+    const read = await readInitiativeTasks(root, initiative, { archive: true });
+    if (read.missing) {
       load.missing.push(initiative);
       continue;
     }
-    for (const file of files) {
-      const mtimeMs = Math.floor(statSync(file).mtimeMs);
+    load.unparsed += read.unparsed.length;
+    for (const row of read.tasks) {
+      const mtimeMs = Math.floor(row.mtimeMs);
       load.maxMtimeMs = Math.max(load.maxMtimeMs, mtimeMs);
-      const task = parseTask(file);
-      if (typeof task === "string") {
-        load.unparsed += 1;
-        continue;
-      }
-      const facts = factsOf(task, initiative, mtimeMs);
+      const facts = factsOf(row.task, initiative, mtimeMs);
       if (!load.tasks.has(facts.key)) load.tasks.set(facts.key, facts);
       load.byId.set(facts.id, facts.key);
     }
