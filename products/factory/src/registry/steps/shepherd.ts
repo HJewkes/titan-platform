@@ -49,6 +49,7 @@ export const shepherdSteps = [
   step("sh-release-follow", "dispatch", "software", effect("external", `${WRITE}: files a fix task when the release job failed`)),
   step("sh-stack-children", "dispatch", "software", effect("item", `${RECORD}: the stacked children listed after the parent landed`)),
   step("sh-restack", "dispatch", "software", effect("pr", `${WRITE}: pushes a child's restack and retargets its base`)),
+  step("sh-lock-regen", "dispatch", "software", effect("pr", `${WRITE}: merges the base into the head, regenerates closure.lock.json on the merged tree and pushes`)),
   step("sh-main-ci", "dispatch", "software", READ_EFFECT),
   step("sh-redeploy", "dispatch", "software", irreversible("external", `${WRITE}: starts a service deploy`)),
   step("sh-unfreeze", "dispatch", "software", effect("item", `${WRITE}: releases the repo freeze`)),

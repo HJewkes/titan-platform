@@ -44,6 +44,14 @@
       "reason": "Shepherd's restack: fast-forwards a stacked child PR's own head branch after its parent lands, read back after the push; never the default branch; each restack is a recorded step outcome"
     },
     {
+      "path": "products/factory/src/shepherd/lock-regen.ts",
+      "text": "--porcelain",
+      "kind": "wrapper",
+      "mergePath": "lock-regen",
+      "logs": true,
+      "reason": "Shepherd's closure.lock.json regeneration (TP-5732): fast-forwards a same-repo PR's own head branch to main merged in with the lock rebuilt, read back after the push; never the default branch; each attempt is a recorded sh-lock-regen step outcome"
+    },
+    {
       "path": "packages/autoresearch/src/test-support/fake-ports.ts",
       "kind": "detector",
       "reason": "test double: pushes to a temp bare remote"

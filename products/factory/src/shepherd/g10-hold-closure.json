@@ -304,6 +304,7 @@
   "shepherd/leave-land.ts",
   "shepherd/leftover-bump.ts",
   "shepherd/lineage.ts",
+  "shepherd/lock-regen.ts",
   "shepherd/lockfile-regen.ts",
   "shepherd/machine-linux.ts",
   "shepherd/machine-stop.ts",

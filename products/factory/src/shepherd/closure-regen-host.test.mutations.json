@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the build gets the network",
+      "file": "products/factory/src/shepherd/closure-sandbox.ts",
+      "find": "{ label: \"build\", net: false,",
+      "replace": "{ label: \"build\", net: true,",
+      "kills": [
+        "the host's closure.lock.json regeneration runs every branch command inside a sandbox with no network past the install and none of the host's environment"
+      ]
+    },
+    {
+      "name": "the sandbox inherits the host's environment",
+      "file": "products/factory/src/shepherd/closure-sandbox.ts",
+      "find": "  const env = [\"--clearenv\", ",
+      "replace": "  const env = [",
+      "kills": [
+        "the host's closure.lock.json regeneration runs every branch command inside a sandbox with no network past the install and none of the host's environment"
+      ]
+    },
+    {
+      "name": "a failed sandbox step is ignored",
+      "file": "products/factory/src/shepherd/closure-regen-host.ts",
+      "find": "    if (result.code !== 0) throw new ClosureRegenFailure(`${step.label} exited ${result.code}`);\n",
+      "replace": "",
+      "kills": [
+        "the host's closure.lock.json regeneration stops at a failed build, names only the step, and still removes the scratch tree"
+      ]
+    },
+    {
+      "name": "a lock linked out of the scratch tree is read",
+      "file": "products/factory/src/shepherd/closure-sandbox.ts",
+      "find": "  if (!path.startsWith(`${root}${sep}`)) throw refusal(\"resolves outside the scratch tree\");\n",
+      "replace": "",
+      "kills": [
+        "the host's closure.lock.json regeneration refuses a lock the sandbox linked to a file outside the scratch tree"
+      ]
+    },
+    {
+      "name": "the tree swaps the lock without a private index",
+      "file": "products/factory/src/shepherd/closure-regen-host.ts",
+      "find": ", GIT_INDEX_FILE: join(root, \"index\")",
+      "replace": "",
+      "kills": [
+        "the host's closure.lock.json regeneration writes the merge's tree with only the lock's blob swapped, through a private index"
+      ]
+    }
+  ]
+}

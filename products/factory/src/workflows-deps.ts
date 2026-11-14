@@ -25,6 +25,7 @@ import { type TickPacing } from "./tick-pacing.js";
 import type { ThawAlertPorts, VisualDeliveryWatch } from "./shepherd/services.js";
 import type { VisualThreshold } from "./shepherd/visual-delta-read.js";
 import type { PostMergeHost } from "./workflows/post-merge-adapter.js";
+import type { ClosureRegen } from "./shepherd/lock-regen.js";
 import type { DiagnosisPorts, ReplanPorts, VisualPacketPorts } from "./shepherd/spawn-ports.js";
 import type { CleanupPorts, ExitNoticePorts, RosterReader, SpawnGate, SuiteRules, TaskClose } from "./shepherd/ports.js";
 
@@ -80,6 +81,8 @@ export interface FactoryRouteDeps extends Omit<LandPrDeps, "gitCache" | keyof Po
   advisory?: IsAdvisory;
   /** Repos whose stacked children Shepherd restacks after its own merge; defaults to none. */
   stackRestack?: StackRestackOn;
+  /** Rebuilds closure.lock.json on a merged tree; absent means a scratch checkout of Shepherd's git cache. */
+  closureRegen?: ClosureRegen;
   /** Serve's GitHub gateway for `shepherd.ghRead` and `shepherd.ghBudget`; absent means those refuse as unavailable. */
   gateway?: GhGateway;
   /** `on` lets a g10 hold gate only the merge, so a held run repairs as usual; absent means `off`. A getter is read per check. */

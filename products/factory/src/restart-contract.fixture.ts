@@ -64,6 +64,7 @@ export const PARKING_STEPS: Readonly<Record<string, string>> = {
   "sh-release-follow": `${WRITE}: files a fix task when the release job failed`,
   "sh-stack-children": `${RECORD}: the stacked children listed after the parent landed`,
   "sh-restack": `${WRITE}: pushes a child's restack and retargets its base`,
+  "sh-lock-regen": `${WRITE}: merges the base into the head, regenerates closure.lock.json on the merged tree and pushes`,
   "sh-redeploy": `${WRITE}: starts a service deploy`,
   "sh-unfreeze": `${WRITE}: releases the repo freeze`,
   "sh-freeze": `${WRITE}: freezes the repo on a red main`,

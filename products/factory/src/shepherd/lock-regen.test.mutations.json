@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the conflict round never tries the regeneration",
+      "file": "products/factory/src/shepherd/retarget-conflict.ts",
+      "find": "  if (await lockRegenerated(run.ctx, { ...run.target, headSha })) return resolvedConflict(run, Promise.resolve(undefined));\n",
+      "replace": "",
+      "kills": [
+        "Shepherd regenerates closure.lock.json when it is the only conflict (TP-5732) merges main, regenerates the lock on the merged tree and pushes, with no fixer wake"
+      ]
+    },
+    {
+      "name": "a conflict that includes the lock counts as lock-only",
+      "file": "products/factory/src/shepherd/lock-regen.ts",
+      "find": "if (merged.files.length !== 1 || merged.files[0] !== CLOSURE_LOCK_PATH)",
+      "replace": "if (merged.files[0] !== CLOSURE_LOCK_PATH)",
+      "kills": [
+        "Shepherd regenerates closure.lock.json when it is the only conflict (TP-5732) wakes the fixer when another file conflicts beside the lock, and pushes nothing"
+      ]
+    },
+    {
+      "name": "a failed regeneration pushes the unresolved merge",
+      "file": "products/factory/src/shepherd/lock-regen.ts",
+      "find": "signal).catch((error: unknown) => new Declined(failureReason(error)));",
+      "replace": "signal).catch(() => merged.tree);",
+      "kills": [
+        "Shepherd regenerates closure.lock.json when it is the only conflict (TP-5732) wakes the fixer when the regeneration fails, and pushes nothing"
+      ]
+    },
+    {
+      "name": "a regenerated tree that changes other files is pushed",
+      "file": "products/factory/src/shepherd/lock-regen.ts",
+      "find": "  if (changed.length !== 1 || changed[0] !== CLOSURE_LOCK_PATH) return declined(\"the regenerated tree changes more than closure.lock.json\", facts);\n",
+      "replace": "",
+      "kills": [
+        "Shepherd regenerates closure.lock.json when it is the only conflict (TP-5732) wakes the fixer when the regenerated tree changes a file beside the lock, and pushes nothing"
+      ]
+    },
+    {
+      "name": "the default branch is pushed to when it is the head branch",
+      "file": "products/factory/src/shepherd/lock-regen.ts",
+      "find": "  if (pr.headRef.toLowerCase() === defaultBranch.toLowerCase()) return \"the head branch is the default branch\";\n",
+      "replace": "",
+      "kills": [
+        "Shepherd regenerates closure.lock.json when it is the only conflict (TP-5732) never pushes to the default branch when it is the PR's head branch"
+      ]
+    }
+  ]
+}

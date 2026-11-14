@@ -149,6 +149,8 @@ export interface ShepherdDeps {
   advisory?: (repo: string) => boolean;
   /** Reads a head's changed files from Shepherd's git cache; absent means the serve process's cached reader. */
   prFiles?: PrFilesRead;
+  /** Rebuilds closure.lock.json on a merged tree (TP-5732); absent means a scratch checkout of Shepherd's git cache. */
+  closureRegen?: (at: { gitDir: string; commit: string }, signal?: AbortSignal) => Promise<string>;
   /** Repos whose stacked children Shepherd restacks after its own merge; absent means none. */
   stackRestack?: (repo: RepoSlug) => boolean;
   /** `on` repairs a run held only under a g10 class while the hold keeps gating its merge; absent means `off`. */
