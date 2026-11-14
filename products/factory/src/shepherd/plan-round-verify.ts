@@ -10,18 +10,6 @@ interface VerifyTarget {
   base: string;
 }
 
-/** `git diff --name-status -M -z`: a rename or copy entry carries two paths, and the guard reads both as changed. */
-export function parseNameStatus(output: string): string[] {
-  const tokens = output.split("\0");
-  const paths: string[] = [];
-  for (let i = 0; i < tokens.length && tokens[i] !== ""; ) {
-    const width = /^[RC]/.test(tokens[i]!) ? 2 : 1;
-    paths.push(...tokens.slice(i + 1, i + 1 + width));
-    i += 1 + width;
-  }
-  return paths;
-}
-
 const short = (blob: string): string => blob.slice(0, 12);
 
 async function pinDrift({ path, blob }: CiPolicyScope["files"][number], git: GitRead, head: string, ref: string): Promise<string | undefined> {
