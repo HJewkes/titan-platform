@@ -2,7 +2,7 @@
   "v": 1,
   "mutations": [
     {
-      "name": "the page drops hold-release from the taps it takes, so a g10 hold shows Run on terminal",
+      "name": "the page drops hold-release from its console taps",
       "file": "apps/console/src/pages/InboxPage.tsx",
       "find": "\"owner-release\", \"hold-release\", \"owner-op\"",
       "replace": "\"owner-release\", \"owner-op\"",
