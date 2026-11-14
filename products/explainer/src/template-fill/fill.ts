@@ -92,14 +92,20 @@ function ownDerivation(beat: ScriptBeat, row: ResolvedRow, ref: BeatSlotRef, sco
 }
 
 /**
- * The layer the beat's spec is tried with: its own derivation, or the pinned entry in its place. A pin replaces slots
- * only: the script's cues still time the beat, so the derived reveals stay, and `keptReveals` drops those whose target
- * the pinned slots no longer hold.
+ * A derivation with the pinned entry in place of its slots. A pin replaces slots only: the script's cues still time
+ * the beat and its fields still decide the page hints, so the derived reveals and hints stay (render, pinned by
+ * resolve's `generated-slots`, then draws and gates the lead line qa reads off the unpinned fill), and `keptReveals`
+ * drops reveals whose target the pinned slots no longer hold.
  */
+function pinnedOver(derived: Derived | undefined, pinned: Record<string, unknown>): Derived {
+  return { slots: pinned, reveals: derived?.reveals ?? [], ...(derived?.hints === undefined ? {} : { hints: derived.hints }) };
+}
+
+/** The layer the beat's spec is tried with: its own derivation, or the pinned entry in its place. */
 function triedLayer(beat: ScriptBeat, own: Derivation, pinned: unknown): Derivation {
   if (pinned === undefined) return own;
   if (!isRecord(pinned)) return { reason: `the slots pin's entry for ${beat.id} is not an object` };
-  return { slots: pinned, reveals: isDerived(own) ? own.reveals : [] };
+  return pinnedOver(isDerived(own) ? own : undefined, pinned);
 }
 
 interface Attempt {
@@ -117,7 +123,7 @@ interface Attempt {
 function fallbackFor(beat: ScriptBeat, scope: BeatScope, { own, tried, problems, pinned }: Attempt): Underived {
   const to = (isDerived(own) ? undefined : own.fallback) ?? { spec: LIST, derived: deriveList(beat, scope) };
   const reason = !isDerived(own) ? own.reason : isDerived(tried) ? problems : tried.reason;
-  const derived = isRecord(pinned) ? { slots: pinned, reveals: to.derived.reveals } : to.derived;
+  const derived = isRecord(pinned) ? pinnedOver(to.derived, pinned) : to.derived;
   return { reason, fallback: { spec: to.spec, derived } };
 }
 
