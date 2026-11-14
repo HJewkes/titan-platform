@@ -141,7 +141,7 @@ const DERIVED_WORKING_ON = 'unregistered session in '
  * provisional registration sends; a readopt carries that text on under whatever name the
  * session later chose, so the text alone says nothing about a later name.
  */
-export const derivedName = (row: JournalRow, firstName: boolean): boolean =>
+const derivedName = (row: JournalRow, firstName: boolean): boolean =>
   row.meta.provisional === undefined
     ? firstName && (row.body ?? '').startsWith(DERIVED_WORKING_ON)
     : row.meta.provisional === 'true'

@@ -5,7 +5,7 @@ export interface Backoff {
   maxMs: number;
 }
 
-export interface SuperviseOptions {
+interface SuperviseOptions {
   signal: AbortSignal;
   backoff: Backoff;
   sleep: (ms: number, signal: AbortSignal) => Promise<void>;

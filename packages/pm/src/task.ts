@@ -23,14 +23,14 @@ const ISO_DATETIME_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\
 const isValidIsoDatetime = (value: string): boolean =>
   ISO_DATETIME_REGEX.test(value) && isValidIsoDate(value.slice(0, 10)) && !Number.isNaN(new Date(value).getTime());
 
-export const isoDatetime = z
+const isoDatetime = z
   .string()
   .refine(isValidIsoDatetime, { message: "Must be a valid ISO-8601 datetime, e.g. 2026-10-08T14:03:22Z" });
 
 // active-work writes full datetimes now, and its older task files still carry a bare date.
-export const isoDateOrDatetime = z.union([isoDate, isoDatetime]);
+const isoDateOrDatetime = z.union([isoDate, isoDatetime]);
 
-export const isoDateOrDatetimeOrNull = z.union([isoDateOrDatetime, z.null()]);
+const isoDateOrDatetimeOrNull = z.union([isoDateOrDatetime, z.null()]);
 
 const taskId = z.string().regex(TASK_ID_REGEX, {
   message: "id must match /^[A-Z][A-Z0-9]*-\\d+$/ (e.g. EC-1)",
@@ -56,7 +56,7 @@ const nonNegative = z.number().nonnegative();
 // deliverable.test.ts greps these sources for.
 const contextAtFirstDeliverable = nonNegative.optional();
 
-export const ActualSchema = z.object({
+const ActualSchema = z.object({
   agentHours: nonNegative.optional(),
   reviewAgentHours: nonNegative.optional(),
   usd: nonNegative.optional(),
@@ -67,7 +67,7 @@ export const ActualSchema = z.object({
   model: z.string().min(1).optional(),
 });
 
-export const ClaimedHoursSchema = z.object({
+const ClaimedHoursSchema = z.object({
   hours: nonNegative,
   by: z.string().min(1),
   at: isoDatetime,

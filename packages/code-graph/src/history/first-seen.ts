@@ -42,7 +42,7 @@ export function loadFirstSeenResult(options: FirstSeenOptions): HistoryLoad<Map<
 }
 
 /** (commit epoch, touched path) rows from `%H%x09%ct` headers followed by `--name-only` paths. */
-export function parseFirstSeenLog(text: string): { epoch: number; gitPath: string }[] {
+function parseFirstSeenLog(text: string): { epoch: number; gitPath: string }[] {
   const out: { epoch: number; gitPath: string }[] = [];
   let epoch = 0;
   for (const rawLine of text.split("\n")) {

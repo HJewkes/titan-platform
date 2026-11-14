@@ -21,7 +21,7 @@ export interface VultureOptions extends AuditOptions {
 }
 
 /** Rule suffix from vulture's wording: "unused function 'x'" is unused-function; every other finding is unreachable code. */
-export function vultureKind(text: string): string {
+function vultureKind(text: string): string {
   const unused = /^unused (\w+)/.exec(text);
   return unused ? `unused-${unused[1]}` : "unreachable";
 }
@@ -61,7 +61,7 @@ function parseStderr(stderr: string): ToolFailure[] {
   return [...failures, ...unrecognisedStderr("vulture", unknown)];
 }
 
-export function parseVultureOutput({ stdout, stderr }: ToolOutput): ParsedOutput {
+function parseVultureOutput({ stdout, stderr }: ToolOutput): ParsedOutput {
   return { diagnostics: parseStdout(stdout), failures: parseStderr(stderr) };
 }
 

@@ -2,7 +2,7 @@
  * Synthetic inputs with the verdicts agent-chat's own `checkDecision` and `unlockTableRow`
  * (`src/broker/decisions.ts` on main) returned for them. Regenerate from agent-chat, never by hand.
  */
-export interface UnlockParityCase {
+interface UnlockParityCase {
   question: string;
   answer: string;
   category: string;

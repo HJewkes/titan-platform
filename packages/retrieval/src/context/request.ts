@@ -71,7 +71,7 @@ export interface ContextResponse {
 
 export type RetrievalResponse = ListResponse | ContextResponse;
 
-export interface LoadedCandidates {
+interface LoadedCandidates {
   candidates: ContextCandidate[];
   dropped: RetrievalDropped[];
   degradation?: Degradation;

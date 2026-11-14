@@ -4,7 +4,7 @@ import { rateLimitMarker } from "./rate-limit-marker.js";
 import { redact, redactStreams } from "./redact.js";
 import { transportOfGhOutput, transportOfStatus } from "./transport.js";
 
-export interface HttpResponse {
+interface HttpResponse {
   status: number;
   /** Lower-cased names. */
   headers: ReadonlyMap<string, string>;

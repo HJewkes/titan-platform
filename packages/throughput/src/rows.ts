@@ -44,7 +44,7 @@ export interface TaskClassFacts {
 
 export type SizeBand = "<=1" | "2" | "3" | ">=4" | "none";
 
-export const UNTAGGED = "untagged";
+const UNTAGGED = "untagged";
 
 // The estimate field is used in points in practice, so it is only an ordinal band here.
 export function sizeBand(estimate: number | null | undefined): SizeBand {
