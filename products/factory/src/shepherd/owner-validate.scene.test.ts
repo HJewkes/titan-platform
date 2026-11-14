@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { evidenceMarker } from "./evidence-comment.js";
 import type { OwnerValidateMode } from "./g10-owner-validate.js";
-import { AUTO, byConsole, gatedAt, HEAD, merged, modified, PR, plannedRun } from "./plan-approval.scene.test-helpers.js";
+import { AUTO, byConsole, gatedAt, HEAD, merged, modified, PR, plannedRun, type Row } from "./plan-approval.scene.test-helpers.js";
 import type { TaskApprovalReads } from "./task-approval-round.js";
 
 /**
@@ -22,7 +22,7 @@ const DOWN: TaskApprovalReads = {
 
 const taskApproval = byConsole({ gate: "task", scope: { doneWhen: DONE_WHEN, reason: "new-direction", visualSignoff: false }, round: "round-1" });
 
-const run = (tasks: TaskApprovalReads, ownerValidate: OwnerValidateMode, approve = () => undefined as void) =>
+const run = (tasks: TaskApprovalReads, ownerValidate: OwnerValidateMode, approve: Row["approve"] = () => undefined) =>
   plannedRun({ files: FILES, policy: AUTO, reviewerLines: "", approve, ownerValidate, tasks }, () => undefined);
 
 function postedEvidence(scene: ReturnType<typeof run>): unknown {

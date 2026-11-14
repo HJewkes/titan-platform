@@ -4,7 +4,7 @@ import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
 import { collapsedDoneWhen, type PlanApproval, type TaskApproval } from "./plan-approval.js";
 
-export const OWNER_VALIDATE_TAG = "owner-validate";
+const OWNER_VALIDATE_TAG = "owner-validate";
 
 /** `shepherd.gateReset.ownerValidate`: absent means `shadow`, which records the would-gate and changes no outcome. */
 export type OwnerValidateMode = "off" | "shadow" | "on";
@@ -12,7 +12,7 @@ export type OwnerValidateMode = "off" | "shadow" | "on";
 /** A task as active-work answered it, or why it could not be read: the daemon down, or a key that resolves to no task. */
 export type OwnerValidateTask = { tags: readonly string[]; doneWhen: string } | { unread: string };
 
-export type OwnerValidateRefusal = "no-approval" | "done-when-changed" | "task-unread";
+type OwnerValidateRefusal ="no-approval" | "done-when-changed" | "task-unread";
 
 /** Undefined when the task may be worked: untagged, or approved by the owner for the done_when it holds now. */
 export function ownerValidateRefusal(task: OwnerValidateTask, approval: TaskApproval | undefined): OwnerValidateRefusal | undefined {

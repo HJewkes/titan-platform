@@ -2435,10 +2435,10 @@ the `merge-policy` table, so a change to it stops for the owner.
 The check is advisory; the merge backstop holds whether or not a dispatcher ran it. The evidence
 step reads the run's registered task from active-work and stamps
 `ownerValidate: { mode, task, tagged: true, doneWhen }` for a tagged task, or `tagged: "unread"`
-when the task cannot be read or the registration itself is unreadable. A run with no task, or an
-untagged one, is stamped nothing. Before each decision, `sh-policy` adds the owner's latest task
-approval for the registered task (a bare TP, CC or TD id resolved as the old-path guard resolves
-it) to the run's approvals, and decide time runs the same rule against the stamp. Under `on` a
+when the task cannot be read, the registered key is not the canonical `<initiative>/<ID>`, or the
+registration itself is unreadable. A run with no task, or an untagged one, is stamped nothing.
+Before each decision, `sh-policy` adds the owner's latest task approval for the registered task
+key to the run's approvals, and decide time runs the same rule against the stamp. Under `on` a
 refusal gates at the `owner-validate` row (class `deliberate`, decision class D19), and only the
 owner resolves it.
 
