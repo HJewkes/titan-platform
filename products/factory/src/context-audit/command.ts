@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { InvalidArgumentError, type Command } from "commander";
+import { profilesRoot } from "@titan-design/anthropic-account/node";
 import type { Verbs } from "../cli-types.js";
 import { EXIT } from "../exit-codes.js";
 import { assertRule, buildReport, formatReport, type AuditedSession } from "./report.js";
@@ -46,7 +47,7 @@ function contextAudit(opts: ContextAuditOpts, { io, setExit }: Verbs, now: () =>
     io.stderr("error: --assert-rule takes exactly two values: <marker> <roles>, roles comma-separated\n");
     return setExit(EXIT.USAGE);
   }
-  const root = opts.root ?? path.join(io.env.HOME || homedir(), ".claude-profiles");
+  const root = opts.root ?? profilesRoot(io.env, io.env.HOME || homedir());
   const since = now() - opts.days * DAY_MS;
   const report = buildReport(readSessions(root, since), since);
   if (!opts.assertRule) return io.stdout(formatReport(report, opts.days));

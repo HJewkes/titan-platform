@@ -12,6 +12,7 @@ import { hostname } from "node:os";
 import { join, relative, sep } from "node:path";
 import type { Command } from "commander";
 import { z } from "zod";
+import { profilesRoot } from "@titan-design/anthropic-account/node";
 import { CLIENT_HEADER } from "@titan-design/daemon";
 
 const CONFIG_REPORT_SCHEMA = "titan-config-report/v1";
@@ -72,6 +73,7 @@ interface Roots {
   home: string;
   agentChatDir: string;
   configHome: string;
+  profilesDir: string;
 }
 
 const target = (kind: string, inventory: number, path: string, secret = false): Target => ({ kind, inventory, path, secret });
@@ -94,7 +96,7 @@ const claudeTargets = (dir: string): Target[] => [target("claude-settings", 14, 
 async function listedTargets(roots: Roots, ports: ReportPorts): Promise<Target[]> {
   const profilesDir = join(roots.agentChatDir, "profiles");
   const profiles = (await ports.list(profilesDir)).filter((name) => name.endsWith(".json")).sort();
-  const accountsDir = join(roots.home, ".claude-profiles");
+  const accountsDir = roots.profilesDir;
   const accounts = await Promise.all((await ports.list(accountsDir)).sort().map(async (name) => ((await ports.stat(join(accountsDir, name)))?.isFile === false ? name : null)));
   return [
     ...profiles.map((name) => target("profile", 8, join(profilesDir, name))),
@@ -139,6 +141,7 @@ export async function buildConfigReport(ports: ReportPorts, options: ReportOptio
     home: options.home,
     agentChatDir: options.env.AGENT_CHAT_HOME ?? join(options.home, ".agent-chat"),
     configHome: options.env.XDG_CONFIG_HOME ?? join(options.home, ".config"),
+    profilesDir: profilesRoot(options.env, options.home),
   };
   const targets = [...fixedTargets(roots), ...(await listedTargets(roots, ports))];
   const surfaces = await Promise.all(targets.map((each) => surfaceOf(each, ports, options.home)));

@@ -4,7 +4,7 @@ import path from 'node:path';
 import type * as ChildProcessModule from 'node:child_process';
 import { describe, expect, it, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import { EXIT, NotFoundError } from './errors.js';
-import { PROFILE_ROOT_ENV } from './utils/profile-dir.js';
+import { PROFILE_ROOT_ENV } from '@titan-design/anthropic-account/node';
 
 import { helpText, main, type AwDeps } from './aw.js';
 import { openSlugOrInit } from './launcher-open.js';

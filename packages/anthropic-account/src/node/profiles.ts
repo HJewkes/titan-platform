@@ -44,6 +44,14 @@ function fromEnv(value: string): AccountProfile[] {
     .map(profileFor);
 }
 
+// The one place the profiles root is resolved. A relative override is ignored rather than
+// resolved against an unknown cwd.
+export function profilesRoot(env: Readonly<Record<string, string | undefined>> = process.env, home: string = os.homedir()): string {
+  const configured = env[PROFILE_ROOT_ENV];
+  if (configured && path.isAbsolute(configured)) return configured;
+  return path.join(home, PROFILES_DIR_NAME);
+}
+
 // `~/.claude` and every directory under `~/.claude-profiles` (or a non-empty
 // CLAUDE_PROFILE_ROOT), in that order. A non-empty CLAUDE_CONFIG_DIRS replaces the scan and
 // is taken as given.
@@ -54,6 +62,6 @@ export function discoverProfiles(options: DiscoverOptions = {}): AccountProfile[
   const home = options.home ?? os.homedir();
   const defaultDir = path.join(home, DEFAULT_DIR_NAME);
   const dirs = isRealDir(defaultDir) ? [defaultDir] : [];
-  const root = env[PROFILE_ROOT_ENV] || path.join(home, PROFILES_DIR_NAME);
+  const root = profilesRoot(env, home);
   return dirs.concat(profileDirs(root)).map(profileFor);
 }

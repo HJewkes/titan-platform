@@ -2,7 +2,7 @@ export { readAccounts } from "./accounts.js";
 export type { ReadAccountsOptions } from "./accounts.js";
 export { accountIdentity } from "./identity.js";
 export type { ReadText } from "./identity.js";
-export { CONFIG_DIRS_ENV, PROFILE_ROOT_ENV, discoverProfiles } from "./profiles.js";
+export { CONFIG_DIRS_ENV, PROFILE_ROOT_ENV, discoverProfiles, profilesRoot } from "./profiles.js";
 export type { DiscoverOptions } from "./profiles.js";
 export { CREDENTIALS_FILE, MAX_CREDENTIALS_BYTES, readLoginState } from "./login.js";
 export type { ReadLoginOptions } from "./login.js";
