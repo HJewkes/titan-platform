@@ -25,7 +25,7 @@ export interface Authority {
 }
 
 /** What an authorize step records; replay returns or throws from it and never asks the table again. */
-export type AuthorityOutcome =
+type AuthorityOutcome =
   | { verdict: "allow"; ruleId: string }
   | { verdict: "deny"; ruleId: string | null; reason: string }
   | { verdict: "approved"; ruleId: string; gateId: string; resolvedBy: GateResolver }
@@ -151,12 +151,12 @@ export function decide(authority: Authority, request: AuthorizeRequest): Decisio
   return evaluate(authority.table, { ...rest, actor: authority.actor, tainted: tainted ?? false });
 }
 
-export function decisionOutcome(decision: Exclude<Decision, GateDecision>): AuthorityOutcome {
+function decisionOutcome(decision: Exclude<Decision, GateDecision>): AuthorityOutcome {
   if (decision.verdict === "allow") return { verdict: "allow", ruleId: decision.ruleId };
   return { verdict: "deny", ruleId: decision.ruleId, reason: decision.reason };
 }
 
-export function authorityGateInput(
+function authorityGateInput(
   gateId: string,
   decision: GateDecision,
   authority: Authority,
@@ -184,7 +184,7 @@ function answerSchema(subject: Record<string, string>): JsonSchema {
 }
 
 /** Reads the settled gate against the rule it was opened under, never the current table, so a table edit cannot flip it. */
-export function gateOutcome(gate: GateRecord | undefined, gateId: string, request: AuthorizeRequest, actor: ActorClass): AuthorityOutcome {
+function gateOutcome(gate: GateRecord | undefined, gateId: string, request: AuthorizeRequest, actor: ActorClass): AuthorityOutcome {
   const rule = gate?.rule;
   if (!rule) return { verdict: "refused", ruleId: "unbound", gateId, reason: "the gate carries no authority rule" };
   const refused = (reason: string): AuthorityOutcome => ({ verdict: "refused", ruleId: rule.ruleId, gateId, reason });

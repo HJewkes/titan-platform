@@ -56,7 +56,7 @@ export interface FrictionDailyReport {
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const hours = (ms: number) => round2(ms / 3_600_000);
 
-export function frictionRows(reports: readonly WorkerReportRecord[]): FrictionRow[] {
+function frictionRows(reports: readonly WorkerReportRecord[]): FrictionRow[] {
   return reports.map(({ body, ...report }) => ({
     ...report,
     agentHours: report.spawnedAt === null ? null : hours(Date.parse(report.at) - Date.parse(report.spawnedAt)),
@@ -65,7 +65,7 @@ export function frictionRows(reports: readonly WorkerReportRecord[]): FrictionRo
 }
 
 /** Clusters ranked by reports, then agent-hours, then name, so a tie always breaks the same way; scope notes are left out. */
-export function reportSide(rows: readonly FrictionRow[]): ReportSide {
+function reportSide(rows: readonly FrictionRow[]): ReportSide {
   const friction = (r: FrictionRow) => r.lines.filter((l) => !NON_FRICTION.has(l.cluster));
   const field = rows.filter((r) => r.lines.some((l) => l.source === "friction")).length;
   const fallback = rows.filter((r) => r.lines.length > 0).length - field;

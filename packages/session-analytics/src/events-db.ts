@@ -113,7 +113,7 @@ export interface WorkerReportRecord {
   body: string;
 }
 
-export const WORKER_REPORTS_SQL = [
+const WORKER_REPORTS_SQL = [
   `SELECT m.id AS eventId, m.ts, m.actor AS agent, coalesce(m.target, '') AS coordinator, m.body,`,
   `(SELECT max(s.ts) FROM events s WHERE s.kind = 'agent_spawned' AND s.target = m.actor AND s.ts <= m.ts) AS spawnedTs`,
   `FROM events m WHERE m.kind = 'message' AND m.body LIKE 'Status:%' AND m.ts >= @since AND m.ts < @until ORDER BY m.id`,
@@ -136,7 +136,7 @@ export interface WorkerSessionRecord {
 }
 
 /** Spawn and resume rows only, so the kind index carries it; coordinators are told apart in code, since a correlated subquery over a coordinator's events is slow. */
-export const WORKER_SESSIONS_SQL = [
+const WORKER_SESSIONS_SQL = [
   `SELECT kind, actor, target AS agent, ${metaField("session_id")} AS sessionId, ${metaField("profile")} AS profile FROM events`,
   `WHERE kind IN ('agent_spawned', 'agent_resumed') AND target IS NOT NULL AND ts < @until ORDER BY id`,
 ].join(" ");
@@ -159,7 +159,7 @@ export function readWorkerSessions(db: Db, until: string): WorkerSessionRecord[]
   return [...sessions].map(([sessionId, agent]) => ({ agent, sessionId }));
 }
 
-export const SPAWNER_MESSAGES_SQL = [
+const SPAWNER_MESSAGES_SQL = [
   `SELECT m.ts, m.target AS agent, coalesce(m.body, '') AS body FROM events m`,
   `WHERE m.kind = 'message' AND m.target IS NOT NULL AND m.ts >= @since AND m.ts < @until`,
   `AND m.actor = (SELECT s.actor FROM events s WHERE s.kind = 'agent_spawned' AND s.target = m.target AND s.ts <= m.ts ORDER BY s.id DESC LIMIT 1) ORDER BY m.id`,

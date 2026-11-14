@@ -36,7 +36,7 @@ function parseBytes(bytes: Buffer): CredentialsRead {
 }
 
 // Unexpected filesystem errors are thrown unredacted; the caller redacts.
-export function readCredentialsFile(configDir: string, uid: number): CredentialsRead {
+function readCredentialsFile(configDir: string, uid: number): CredentialsRead {
   const file = path.join(configDir, CREDENTIALS_FILE);
   const read = readGatedFile(file, { maxBytes: MAX_CREDENTIALS_BYTES, ownerUid: uid });
   if (read.status === "missing") return read;

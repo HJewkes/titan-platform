@@ -45,7 +45,7 @@ export interface GitShimFixture {
 
 type ScriptRun = SpawnSyncReturns<string>;
 
-export interface GitShimHarness {
+interface GitShimHarness {
   scratch: string;
   realGit: string;
   git: (cwd: string, ...args: string[]) => string;
