@@ -1,4 +1,4 @@
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { usePreCalibrationStatuses } from "../writing-statuses-fixtures.test-helpers.js";
 import { cpSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -169,5 +169,57 @@ describe("explainer run --from gather --type daily-overview", () => {
     expect(cli.calls.map((argv) => argv.slice(0, 3).join(" "))).toContain("active-work miner cost");
     expect(writer.prompts[0]).toContain("## Coverage (coverage.json)");
     expect(writer.prompts[0]).toMatch(/^- .+ merged, counted by lane\/[a-z-]+\/rollup; name: /m);
+  });
+});
+
+describe("explainer run --day relative to the UTC clock", () => {
+  async function dryRun(day: string): Promise<{ code: number; out: string; err: string }> {
+    fx = fixture();
+    cpSync(path.join(DAILY_FIXTURE, "snapshots"), path.join(fx.dataDir, "task-snapshots"), { recursive: true });
+    const out: string[] = [];
+    const err: string[] = [];
+    const gather = { gh: fakeGh(), listTasks: async () => fixtureTasks(), cli: fakeCli() };
+    const argv = ["run", "--facts-from", "gatherDaily", "--day", day, "--repo", REPO, "--transcripts", path.join(DAILY_FIXTURE, "transcripts"), "--initiative", "demo",
+      "--type", "daily-overview", "--dry-run", "--data-dir", fx.dataDir];
+    const code = await runRunCli(argv, { host: fakeHost(fx, fakeBriefModels(fakeScriptModel(overGoalWalk())), fakeRender()), gather, out: (t) => out.push(t), err: (t) => err.push(t) });
+    return { code, out: out.join(""), err: err.join("") };
+  }
+
+  const atFirstMinutes = async (body: () => Promise<void>): Promise<void> => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-14T00:20:00Z"));
+    try { await body(); } finally { vi.useRealTimers(); }
+  };
+
+  it("gathers the previous UTC date for --day yesterday", async () => {
+    await atFirstMinutes(async () => {
+      const result = await dryRun("yesterday");
+      expect(result.out).toContain("daily-overview 2026-11-13");
+      expect(result.err).not.toContain("not closed");
+    });
+  });
+
+  it("notes once that the current UTC day's window is not closed", async () => {
+    await atFirstMinutes(async () => {
+      const result = await dryRun("2026-11-14");
+      expect(result.err.match(/not closed/g)).toHaveLength(1);
+    });
+  });
+
+  it("prints no open-day note for a closed day", async () => {
+    await atFirstMinutes(async () => {
+      expect((await dryRun("2026-11-13")).err).not.toContain("not closed");
+    });
+  });
+
+  it("exits 2 with the usage message for --day tomorrow", async () => {
+    await atFirstMinutes(async () => {
+      const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+      try {
+        const result = await dryRun("tomorrow");
+        expect(result.code).toBe(2);
+        expect(stderr.mock.calls.join("")).toContain("--day takes YYYY-MM-DD or yesterday");
+      } finally { stderr.mockRestore(); }
+    });
   });
 });
