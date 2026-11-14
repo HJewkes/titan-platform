@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a PR counts whole as upkeep when any path is, as a class tag would",
+      "file": "products/factory/src/eligibility/upkeep.ts",
+      "find": "return files.filter((file) => testOnlyPr || matchesAny(file, paths.upkeep)).length;",
+      "replace": "return testOnlyPr || files.some((file) => matchesAny(file, paths.upkeep)) ? files.length : 0;",
+      "kills": [
+        "upkeep share by changed paths a factory-only, a console and a mixed PR give the share of upkeep files among all files changed"
+      ]
+    },
+    {
+      "name": "the cap holds only past the cap, not at it",
+      "file": "products/factory/src/eligibility/upkeep.ts",
+      "find": "if (share.share < rules.capShare) return [];",
+      "replace": "if (share.share <= rules.capShare) return [];",
+      "kills": [
+        "upkeep share by changed paths a share of exactly the cap holds, and one just under it does not"
+      ]
+    },
+    {
+      "name": "test files count as upkeep beside product code",
+      "file": "products/factory/src/eligibility/upkeep.ts",
+      "find": "const testOnlyPr = files.length > 0 && files.every((file) => matchesAny(file, paths.testOnly));",
+      "replace": "const testOnlyPr = files.some((file) => matchesAny(file, paths.testOnly));",
+      "kills": [
+        "test-only PR rule test files are upkeep in a PR that changed only tests, and product beside the code they test"
+      ]
+    }
+  ]
+}

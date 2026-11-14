@@ -1,6 +1,7 @@
 import type { Verbs } from "../../cli-types.js";
 import type { Eligibility } from "../rules.js";
 import { stopHolds } from "../stop-signals.js";
+import { upkeepCapHolds } from "../upkeep-signals.js";
 import type { RuleFile, ShadowLane } from "./rule-file.js";
 import type { RefusedRow, Stage } from "./row.js";
 
@@ -27,4 +28,4 @@ export interface TaskHold {
 export type HoldProvider = (ctx: ProviderContext) => Promise<{ holds: TaskHold[] }>;
 
 /** Run in order after the lane's admission; each later slice appends one entry here and touches nothing else. */
-export const HOLD_PROVIDERS: readonly HoldProvider[] = [stopHolds];
+export const HOLD_PROVIDERS: readonly HoldProvider[] = [upkeepCapHolds, stopHolds];
