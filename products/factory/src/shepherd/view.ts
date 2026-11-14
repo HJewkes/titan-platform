@@ -70,7 +70,7 @@ function phaseSince(run: WorkflowRun, steps: readonly StepResult[], phase: Phase
   return previous?.completedAt ?? run.startedAt;
 }
 
-export interface RowInput {
+interface RowInput {
   registration: Registration;
   run: WorkflowRun;
   /** The gate the run waits on now; its step is read from the gate id, because the run's current step can name an older step. */

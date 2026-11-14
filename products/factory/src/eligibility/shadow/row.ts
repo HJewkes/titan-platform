@@ -51,6 +51,10 @@ export interface RefusedRow extends LaneRowBase {
   details?: string[];
   rank?: number;
   numbers?: Record<string, number>;
+  /** A task stopped by its fix rounds: a planner looks once, and after that look the task parks. */
+  next?: "planner-once" | "park";
+  /** The bet's one owner question; shadow only records that it would be asked and files nothing. */
+  would_ask?: true;
 }
 
 export type ShadowRow = WakeRow | WouldDispatchRow | RefusedRow;

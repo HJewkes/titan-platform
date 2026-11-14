@@ -2,6 +2,8 @@ import { ITEM_KINDS, LENSES, type OwnerItem } from "@titan-design/owner-queue";
 import { defineCommand } from "@titan-design/registry";
 import { z } from "zod";
 import type { FactoryContext, NeedsSources } from "../context.js";
+import { activeWorkOrigin } from "../shepherd/cleanup-ports.js";
+import { inventoryAllowList, type AgentAllowList } from "./agent-allow-list.js";
 import { ownerQueueSources } from "./command.js";
 import { collectNeeds } from "./merged.js";
 
@@ -36,6 +38,7 @@ interface NeedsCountResult {
 }
 
 const liveSources = (ctx: FactoryContext): NeedsSources => ({ personal }) => ownerQueueSources(process.env, ctx.host.gates, { includePersonal: personal });
+const liveAllowed = (): AgentAllowList => inventoryAllowList(activeWorkOrigin(process.env));
 
 function matches(item: OwnerItem, filter: NeedsFilter): boolean {
   return (filter.kind === undefined || item.kind === filter.kind)
@@ -45,7 +48,8 @@ function matches(item: OwnerItem, filter: NeedsFilter): boolean {
 
 async function readNeeds(filter: NeedsFilter, ctx: FactoryContext): Promise<NeedsListResult> {
   const personal = filter.personal === true;
-  const list = await collectNeeds(await (ctx.needsSources ?? liveSources(ctx))({ personal }), { personal });
+  const sources = await (ctx.needsSources ?? liveSources(ctx))({ personal });
+  const list = await collectNeeds(sources, { caller: ctx.caller, personal, allowed: ctx.needsAllowed ?? liveAllowed() });
   return { items: list.items.filter((item) => matches(item, filter)), gaps: list.gaps };
 }
 

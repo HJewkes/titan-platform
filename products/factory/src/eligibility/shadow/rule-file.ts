@@ -18,7 +18,24 @@ const ShadowSchema = z.object({ enabled: z.boolean().default(false), dir: z.stri
 });
 
 /** Keys later slices read (PLAN 5.4) are accepted now so the owner's full example file parses; this slice ignores them. */
-const PLANNED_KEYS = { bets: z.unknown().optional(), relax: z.unknown().optional(), intake: z.unknown().optional(), upkeep: z.unknown().optional(), stop: z.unknown().optional() };
+const PLANNED_KEYS = { bets: z.unknown().optional(), relax: z.unknown().optional(), intake: z.unknown().optional(), upkeep: z.unknown().optional() };
+
+const count = z.number().int().positive();
+const factor = z.number().positive();
+
+/** The stop rules' thresholds (TP-5755 PLAN 2.4); each key absent takes the operating model's starting value. */
+const StopSchema = z
+  .object({
+    taskFixRounds: count.default(3),
+    spendMultiple: factor.default(2),
+    usdPerPoint: factor.default(8),
+    betStoppedPrs: count.default(3),
+    betFollowupMultiple: factor.default(2),
+    checkpointEvery: count.default(5),
+  })
+  .strict();
+
+export type StopRules = z.infer<typeof StopSchema>;
 
 /** Whose spawns the shadow is scored against, and how a bare task id such as `TP-1` finds its initiative. */
 const CompareSchema = z
@@ -41,6 +58,7 @@ const RuleFileSchema = z
     mode: z.literal("shadow"),
     shadow: ShadowSchema.default({ enabled: false }),
     lanes: z.array(LaneSchema).default([]),
+    stop: StopSchema.prefault({}),
     compare: CompareSchema,
     ...PLANNED_KEYS,
   })
