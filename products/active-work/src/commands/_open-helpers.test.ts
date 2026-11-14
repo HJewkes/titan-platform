@@ -21,8 +21,8 @@ async function failure(root: string, input: string): Promise<NotFoundError> {
     () => null,
     (e: unknown) => e,
   );
-  expect(error).toBeInstanceOf(NotFoundError);
-  return error as NotFoundError;
+  if (!(error instanceof NotFoundError)) throw new Error('expected a NotFoundError');
+  return error;
 }
 
 describe('resolveSlug when nothing matches by prefix', () => {
