@@ -155,6 +155,8 @@ export interface ShepherdDeps {
   lowTierPolicy?: "off" | "shadow" | "on";
   /** `shepherd.gateReset.ownerTier` (TP-5406): whether an owner-tier row gates the merge; the config reader turns an absent key into `shadow`, and unwired reads `on`. */
   ownerTier?: "off" | "shadow" | "on";
+  /** `shepherd.gateReset.ownerValidate` (TP-5411): whether a task tagged owner-validate, or unread, gates the merge without the owner's task approval; unwired reads `on`. */
+  ownerValidate?: "off" | "shadow" | "on";
   /** `on` lets a vacuous fix-proof on a test-only PR with a tests-only diff proceed to review; absent means `off`. */
   noReproProceed?: "off" | "on";
   /** `record-fact` sends a NO_REPRO on a diff with no source path on to review, recorded on the run (TP-4275); absent means `keep-owner`. */
