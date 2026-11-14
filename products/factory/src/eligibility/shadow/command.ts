@@ -3,6 +3,7 @@ import type { Command } from "commander";
 import type { Verbs } from "../../cli-types.js";
 import { EXIT } from "../../exit-codes.js";
 import { errorMessage } from "../../narrow.js";
+import { registerSheetVerbs } from "../sheets/command.js";
 import { registerShadowCompare } from "./compare-command.js";
 import { defaultRuleFilePath, loadRuleFile, type LoadedRules } from "./rule-file.js";
 import type { ShadowRow } from "./row.js";
@@ -56,4 +57,5 @@ export function registerShadowVerbs(dispatch: Command, verbs: Verbs): void {
     .option("--rule-file <path>", "the dispatcher rule file (default: dispatcher.json beside the factory config.json)")
     .action(async (opts: TickOptions) => verbs.setExit(await runShadowTick(opts, verbs)));
   registerShadowCompare(dispatch, verbs);
+  registerSheetVerbs(dispatch, verbs);
 }
