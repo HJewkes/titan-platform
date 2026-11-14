@@ -220,6 +220,10 @@ type SessionEvent = (EventBase & {
     number: number | null;
     repo: string | null;
     url: string | null;
+    /** The head branch the command half names; null on the result half. */
+    headRef: string | null;
+    /** The `--base` the command half names; null on the result half. */
+    base: string | null;
 }) | (EventBase & {
     kind: "review_verdict";
     toolUseId: string;
@@ -514,6 +518,12 @@ declare const RELATIONS: {
     readonly PRODUCED: "produced";
     /** session --edited_by_human--> file: an `edited_text_file` attachment. */
     readonly EDITED_BY_HUMAN: "edited_by_human";
+    /**
+     * pr --built_on--> branch: the head branch a `gh pr create` opened the PR from,
+     * re-derived (TP-80) by joining the command's `--head`/`-H` (or the checked-out
+     * branch) to the result's PR number on the tool-use id; `attrs.base` holds `--base`.
+     */
+    readonly BUILT_ON: "built_on";
 };
 type Relation = (typeof RELATIONS)[keyof typeof RELATIONS];
 /** Refs derive from transcript content alone, never from a database id, so they are stable across rebuilds. */

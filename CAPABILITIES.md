@@ -127,7 +127,6 @@ under its task instead of inside a product. Edit the list in `scripts/capabiliti
 | TP-171 | `registry` | Six exports agent-chat needs: JSON Schema io and override, invalid-args formatter, CLI value names, variadic positionals, option defaults |
 | TP-246 | `registry` | No byte-budget head and tail truncator for tool output |
 | TP-194 | `store-sqlite` | No driver-neutral SQLite seam; packages call better-sqlite3 directly |
-| TP-220 | `store-sqlite` | `CacheBlobTable` has no delete, eviction or TTL |
 | TP-283 | `store-postgres` | No Postgres store package |
 | TP-285 | `scheduler` | No engine-neutral scheduler or outbox |
 | TP-240 | `md-chunk` | No byte-range markdown and JSON chunker for embeddings |

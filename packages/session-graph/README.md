@@ -60,8 +60,10 @@ off by default and ignored when `readonly` is set. See migration 9.
    verbatim line, or goes if no copy holds one. Only that copy's search spans are dropped.
 4. `resolveOrigins` runs if the caller passed a `resolveOrigins` resolver. See migration 5.
 5. `reconcile` folds cross-transcript observations: `gh pr merge` sightings onto PRs,
-   complete `gh pr create` sightings into new PR rows, subagent end times and parentage
-   from child sessions.
+   complete `gh pr create` sightings into new PR rows and `pr --built_on--> branch` edges
+   (the head from `--head`/`-H`, or the checked-out branch; `--base` in the edge's
+   `attrs`), subagent end times and parentage from child sessions. A create whose result
+   never named a PR writes no edge.
 6. `enrichPrs` runs if the caller passed a `resolvePrs` resolver. See below.
 7. `projectReviewRounds` resolves chat verdicts and writes review rounds. See below.
 8. `enrichTasks` runs if the caller passed a `resolveTasks` resolver, once over the whole

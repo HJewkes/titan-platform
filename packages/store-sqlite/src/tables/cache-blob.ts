@@ -49,10 +49,18 @@ function hashFor(key: CacheKey): string {
   throw new Error("cache key needs text or contentHash");
 }
 
+/** One model's footprint in a namespace, as `models()` lists it. */
+export interface CacheModelRows {
+  model: string;
+  rows: number;
+}
+
 export class CacheBlobTable {
   private readonly getStmt;
   private readonly putStmt;
   private readonly countStmt;
+  private readonly deleteStmt;
+  private readonly modelsStmt;
 
   constructor(db: Db, { name = "cache_blob" }: CacheBlobOptions = {}) {
     const t = quoteIdent(name);
@@ -62,6 +70,10 @@ export class CacheBlobTable {
        ON CONFLICT (namespace, model, content_hash) DO NOTHING`,
     );
     this.countStmt = db.prepare<[string, string], { n: number }>(`SELECT count(*) AS n FROM ${t} WHERE namespace = ? AND model = ?`);
+    this.deleteStmt = db.prepare<[string, string]>(`DELETE FROM ${t} WHERE namespace = ? AND model = ?`);
+    this.modelsStmt = db.prepare<[string], CacheModelRows>(
+      `SELECT model, count(*) AS rows FROM ${t} WHERE namespace = ? GROUP BY model ORDER BY model`,
+    );
   }
 
   get(key: CacheKey): CacheHit | undefined {
@@ -88,5 +100,15 @@ export class CacheBlobTable {
 
   count(namespace: string, model: string): number {
     return this.countStmt.get(namespace, model)?.n ?? 0;
+  }
+
+  /** Drop every row stored under `(namespace, model)`, such as vectors from a retired model. Returns the rows deleted. */
+  delete(namespace: string, model: string): number {
+    return this.deleteStmt.run(namespace, model).changes;
+  }
+
+  /** The models holding rows in `namespace`, sorted by name, so a caller can find identities it no longer uses. */
+  models(namespace: string): CacheModelRows[] {
+    return this.modelsStmt.all(namespace);
   }
 }

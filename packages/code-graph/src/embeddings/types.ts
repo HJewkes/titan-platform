@@ -23,6 +23,8 @@ export interface EmbedSnapshotResult extends EmbedCoverage {
   newlyEmbedded: number;
   /** Symbols whose vector was already stored (content-addressed cache hits). */
   reused: number;
+  /** Symbol vectors cached under other model identities; `pruneStaleSymbolVectors` deletes them. */
+  staleVectors: number;
 }
 
 /** Outcome of the non-fatal indexing pass: a down backend is reported, never thrown. */

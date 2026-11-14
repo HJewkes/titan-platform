@@ -57,5 +57,5 @@ function recordPrCreateResult(reader: LineReader, ctx: LineContext, message: Jso
   const repo = /^https:\/\/github\.com\/([^/\s]+\/[^/\s]+)\/pull\/\d+/.exec(url ?? "")?.[1];
   const toolUseId = resultToolUseId(message);
   if (!toolUseId || !repo || number <= 0) return;
-  reader.emit({ ...reader.base(ctx), kind: "pr_create", toolUseId, title: null, number, repo, url });
+  reader.emit({ ...reader.base(ctx), kind: "pr_create", toolUseId, title: null, number, repo, url, headRef: null, base: null });
 }

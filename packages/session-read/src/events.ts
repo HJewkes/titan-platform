@@ -43,7 +43,18 @@ export type SessionEvent =
   | (EventBase & { kind: "file_checkpoint"; filePath: string; backupFileName: string; version: number; backupTime: string })
   | (EventBase & { kind: "pr"; prRef: string; number: number; repo: string; title: string | null; url: string | null })
   | (EventBase & { kind: "pr_merge"; number: number; repoHint: string | null })
-  | (EventBase & { kind: "pr_create"; toolUseId: string; title: string | null; number: number | null; repo: string | null; url: string | null })
+  | (EventBase & {
+      kind: "pr_create";
+      toolUseId: string;
+      title: string | null;
+      number: number | null;
+      repo: string | null;
+      url: string | null;
+      /** The head branch the command half names; null on the result half. */
+      headRef: string | null;
+      /** The `--base` the command half names; null on the result half. */
+      base: string | null;
+    })
   | (EventBase & {
       kind: "review_verdict";
       toolUseId: string;

@@ -112,7 +112,7 @@ column on the next run.
 | `edgeTableDdl` | `EdgeTable`: `assert`, `expire`, `supersede`, `current`, `from`, `to` | the cross-domain graph. Interval bi-temporal rows; relation names are free strings; corrections expire rather than delete |
 | `entityTableDdl` | `EntityTable`: `upsert`, `get`, `expire`, `listByKind` | facts that change one at a time (memory, sessions) and only need their latest state. Current-state rows with soft expiry, not interval bi-temporal |
 | `snapshotTableDdl` + `entitySnapTableDdl` | none yet | a whole population re-indexed together (a code graph) |
-| `cacheBlobTableDdl` | `CacheBlobTable`: `get`, `put`, `getOrCompute`, `count` | embeddings and summaries: pure functions of text, stored once, keyed by `(namespace, model, content_hash)` |
+| `cacheBlobTableDdl` | `CacheBlobTable`: `get`, `put`, `getOrCompute`, `count`, `delete(namespace, model)`, `models(namespace)` | embeddings and summaries: pure functions of text, stored once, keyed by `(namespace, model, content_hash)` |
 | `spanFtsTablesDdl` | `SpanFtsTables`: `index`, `search(query, limit?, scope?)`, `purgeOwner`, `orphanRatio`, `clearIndex` | full-text search where the text lives elsewhere. `SpanScope` narrows a search to one class of owner |
 | `watermarkTableDdl` | `WatermarkTable`: `ensure`, `advance`, `rewind`, `markStatus`, `list` | incremental ingest of append-mostly sources. Call `ensure` first |
 

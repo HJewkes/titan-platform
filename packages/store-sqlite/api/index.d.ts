@@ -251,10 +251,17 @@ interface CacheHit {
     value: Buffer;
     meta: Record<string, unknown> | null;
 }
+/** One model's footprint in a namespace, as `models()` lists it. */
+interface CacheModelRows {
+    model: string;
+    rows: number;
+}
 declare class CacheBlobTable {
     private readonly getStmt;
     private readonly putStmt;
     private readonly countStmt;
+    private readonly deleteStmt;
+    private readonly modelsStmt;
     constructor(db: Db, { name }?: CacheBlobOptions);
     get(key: CacheKey): CacheHit | undefined;
     /** Store once; a second put for the same key is a no-op. Returns true when written. */
@@ -262,6 +269,10 @@ declare class CacheBlobTable {
     /** Get, or compute and store. The compute runs only on a miss. */
     getOrCompute(key: CacheKey, compute: () => Buffer | string, meta?: Record<string, unknown>): Buffer;
     count(namespace: string, model: string): number;
+    /** Drop every row stored under `(namespace, model)`, such as vectors from a retired model. Returns the rows deleted. */
+    delete(namespace: string, model: string): number;
+    /** The models holding rows in `namespace`, sorted by name, so a caller can find identities it no longer uses. */
+    models(namespace: string): CacheModelRows[];
 }
 
 /**
@@ -434,4 +445,4 @@ declare class WatermarkTable {
     list(): WatermarkRow[];
 }
 
-export { type CacheBlobOptions, CacheBlobTable, type CacheHit, type CacheKey, type Db, type EdgeInput, type EdgeRow, EdgeTable, type EdgeTableOptions, type EntityInput, type EntityRow, EntityTable, type KitSelection, MIGRATION_TABLE_NAME, type Migration, MigrationDriftError, MigrationIdentityError, type OpenOptions, type ParsedRef, type RunMigrationsOptions, SQL_NOW, SchemaTooNewError, type SpanFtsOptions, SpanFtsTables, type SpanHit, type SpanInput, type SpanScope, type TableName, type WatermarkAdvance, type WatermarkOptions, type WatermarkRow, type WatermarkStatus, WatermarkTable, appliedVersions, assertSchemaVersion, cacheBlobTableDdl, contentHashOf, edgeTableDdl, entitySnapTableDdl, entityTableDdl, hasColumn, hasTable, isRef, kitDdl, kitMigration, nowIso, openDatabase, parseRef, quoteIdent, ref, refKind, runMigrations, snapshotTableDdl, spanFtsTablesDdl, watermarkTableDdl };
+export { type CacheBlobOptions, CacheBlobTable, type CacheHit, type CacheKey, type CacheModelRows, type Db, type EdgeInput, type EdgeRow, EdgeTable, type EdgeTableOptions, type EntityInput, type EntityRow, EntityTable, type KitSelection, MIGRATION_TABLE_NAME, type Migration, MigrationDriftError, MigrationIdentityError, type OpenOptions, type ParsedRef, type RunMigrationsOptions, SQL_NOW, SchemaTooNewError, type SpanFtsOptions, SpanFtsTables, type SpanHit, type SpanInput, type SpanScope, type TableName, type WatermarkAdvance, type WatermarkOptions, type WatermarkRow, type WatermarkStatus, WatermarkTable, appliedVersions, assertSchemaVersion, cacheBlobTableDdl, contentHashOf, edgeTableDdl, entitySnapTableDdl, entityTableDdl, hasColumn, hasTable, isRef, kitDdl, kitMigration, nowIso, openDatabase, parseRef, quoteIdent, ref, refKind, runMigrations, snapshotTableDdl, spanFtsTablesDdl, watermarkTableDdl };

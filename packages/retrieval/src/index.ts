@@ -19,3 +19,7 @@ export type { ContextBudget, ContextCandidate, ContextEntry, ContextPlan, DropRe
 export { estimateTokens, planContext } from "./context/plan.js";
 export type { ContextResponse, ListResponse, RetrievalCallOptions, RetrievalDropReason, RetrievalDropped, RetrievalRequest, RetrievalResponse, TierSource } from "./context/request.js";
 export { ContextBudgetSchema, RetrievalRequestSchema, TIERS_STAGE } from "./context/request.js";
+export { extractTerms, scoreTerm } from "./vocabulary/terms.js";
+export { editDistance, maxEditDistance } from "./vocabulary/edit-distance.js";
+export type { VocabEntry, VocabularySource } from "./vocabulary/correct.js";
+export { correctQuery, findCorrection, vocabularyFromEntries } from "./vocabulary/correct.js";
