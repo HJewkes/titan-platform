@@ -9,16 +9,16 @@ export const estimateTokens = (text: string): number => Math.ceil(text.length / 
 
 const TEST_PATH = [/\.(test|spec)\.[^/]+$/, /(^|\/)(__tests__|__fixtures__|__snapshots__|test|tests|fixtures)\//, /(^|\/)test-fixtures?\.[^/]+$/];
 
-export const isTestPath = (path: string): boolean => TEST_PATH.some((pattern) => pattern.test(path));
+const isTestPath = (path: string): boolean => TEST_PATH.some((pattern) => pattern.test(path));
 
 /** Splits a unified diff into per-file chunks and keeps the ones whose new path is not a test file. */
-export function nonTestDiff(diff: string): string {
+function nonTestDiff(diff: string): string {
   const chunks = diff.split(/^(?=diff --git )/m).filter((chunk) => chunk.startsWith("diff --git "));
   return chunks.filter((chunk) => !isTestPath(/^diff --git a\/.* b\/(.*)$/m.exec(chunk)?.[1] ?? "")).join("");
 }
 
 /** Cuts at a line boundary so the whole text, marker included, stays within the token cap. */
-export function cutToTokens(text: string, maxTokens: number): string {
+function cutToTokens(text: string, maxTokens: number): string {
   if (estimateTokens(text) <= maxTokens) return text;
   const marker = "\n[reference cut here: the rest of the merged diff is over the size cap]\n";
   const room = maxTokens * CHARS_PER_TOKEN - marker.length;

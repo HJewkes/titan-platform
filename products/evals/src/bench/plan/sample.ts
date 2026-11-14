@@ -4,7 +4,7 @@ import { briefLeaks, drawOrder, type PlanCase } from "./cases.js";
  * Smooth weighted round robin: each step takes the list furthest behind its share, so every prefix of the result
  * holds each list in close to its weight (12:8 puts 6 and 4 in the first 10).
  */
-export function interleave<T>(lists: readonly (readonly T[])[]): T[] {
+function interleave<T>(lists: readonly (readonly T[])[]): T[] {
   const total = lists.reduce((sum, list) => sum + list.length, 0);
   const taken = lists.map(() => 0);
   const out: T[] = [];

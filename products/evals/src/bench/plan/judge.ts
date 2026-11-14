@@ -101,7 +101,7 @@ export function planPairItems(plans: ReadonlyMap<string, ReadonlyMap<string, Sto
 const renderTests = (tests: unknown): string => (Array.isArray(tests) ? tests.map((test) => (typeof test === "string" ? test : JSON.stringify(test))).join("; ") : JSON.stringify(tests ?? "none"));
 
 /** A plan rebuilt from its slice block alone, so a control's two sides differ only in which slices they hold. */
-export function renderSlices(slices: readonly PlanSlice[]): string {
+function renderSlices(slices: readonly PlanSlice[]): string {
   const lines = slices.map((slice, index) => {
     const estimate = JSON.stringify(slice.estimate ?? null);
     return `${index + 1}. ${slice.title}\n   owns: ${slice.owns.join(", ")}\n   estimate: ${estimate}\n   tests: ${renderTests(slice.tests)}`;

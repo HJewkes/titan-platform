@@ -143,7 +143,7 @@ const LINK_IN_TEXT = /(?:split from|slice of|parent:?|part of)\s+(TP-\d+)/gi;
 const TITLE_PREFIX = /^(TP-\d+)\b/;
 
 /** A child names its parent by a `TP-N …` title prefix or a split-from / slice-of / part-of note. */
-export function childrenByParent(tasks: ReadonlyMap<string, TaskRecord>): Map<string, Set<string>> {
+function childrenByParent(tasks: ReadonlyMap<string, TaskRecord>): Map<string, Set<string>> {
   const children = new Map<string, Set<string>>();
   const link = (parent: string | undefined, child: string) => {
     if (parent === undefined || parent === child || !tasks.has(parent)) return;
@@ -237,7 +237,7 @@ export function singlePool(tasks: ReadonlyMap<string, TaskRecord>, landings: Rea
 const BRIEF_LEAK = /#\d{3,}|\b[0-9a-f]{7,40}\b|closed by Shepherd|Follow-up TP-/;
 
 /** The arm sees only the title and `done_when`; either may have been edited after the merge to name the answer. */
-export function briefOf(planCase: Pick<PlanCase, "title" | "doneWhen">): string {
+function briefOf(planCase: Pick<PlanCase, "title" | "doneWhen">): string {
   return `${planCase.title}\n${planCase.doneWhen}`;
 }
 

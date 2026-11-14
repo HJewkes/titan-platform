@@ -7,7 +7,7 @@ import { scorePlan } from "./score.js";
 
 /** Read-only: the planner may look around the base tree and its one commit, never edit it. */
 export const PLAN_TOOLS = ["Read", "Grep", "Glob", "Bash(ls:*)", "Bash(cat:*)", "Bash(grep:*)", "Bash(git log:*)", "Bash(git diff:*)"] as const;
-export const PLAN_TIMEOUT_SECS = 1200;
+const PLAN_TIMEOUT_SECS = 1200;
 
 const SLICES_SHAPE = '{"slices":[{"title":"…","owns":["<file glob>"],"estimate":<points>,"tests":["<test file>: <scenario>"]}]}';
 
