@@ -74,7 +74,7 @@ function parseFrontMatter(rows: string[], errors: IntentDigestError[]): { values
 function parseBullet(raw: string, number: number, slug: string, section: IntentSection, errors: IntentDigestError[]) {
   const match = BULLET.exec(raw);
   if (!match) return void errors.push({ line: number, message: whyBulletFails(raw) });
-  const [, n, date, quote, ref, superseded] = match as unknown as [string, string, string, string, string, string?];
+  const [, n = "", date = "", quote = "", ref = "", superseded] = match;
   const id = `${slug}/I${n}`;
   const problems: string[] = [];
   if (!isRealDate(date)) problems.push(`date must be a real YYYY-MM-DD, got "${date}"`);
@@ -103,7 +103,7 @@ function parseBody(rows: string[], from: number, slug: string, errors: IntentDig
     const heading = /^## (.*)$/.exec(raw);
     if (heading) {
       const name = heading[1]!.trim();
-      section = (INTENT_SECTIONS as readonly string[]).includes(name) ? (name as IntentSection) : undefined;
+      section = INTENT_SECTIONS.find((known) => known === name);
       if (!section) errors.push({ line: i + 1, message: `unknown section "${name}"` });
       else if (seenSections.has(name)) errors.push({ line: i + 1, message: `duplicate section "${name}"` });
       seenSections.add(name);

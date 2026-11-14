@@ -503,7 +503,37 @@ type CategorizedTask = Pick<Task, "id" | "status" | "kind" | "cos" | "area" | "d
  */
 declare function checkCategories(task: CategorizedTask, registry: CategoryRegistry | null): CategoryError[];
 
-export { type AreaEntry, BUILT_IN_STATUSES, type BetLookup, type CategorizedTask, type CategoryAxis, type CategoryError, type CategoryRegistry, CategoryRegistrySchema, type ClaimRow, type CriticalPathOptions, type CriticalPathResult, type CrossInitiativeParentWarning, DELIVERABLE_ID_REGEX, DELIVERABLE_STATUSES, DISPOSITION_KINDS, type Deliverable, type DeliverableEntry, DeliverableSchema, type DeliverableStatus, type DispositionCheck, type DispositionKind, type DispositionRow, DispositionRowSchema, type EdgeChange, type EdgeCheck, type EdgeError, type EdgeField, type Edges, type ExternalDep, type InitiativeBriefRef, type InitiativePrefix, type InitiativeVisibility, InitiativeVisibilitySchema, type ReviewItem, type ReviewPin, type RunCost, type StatusEntry, TOPIC_PRIORITIES, TOPIC_VERDICTS, type Task, type TaskFloat, type TaskKeyEntry, type TaskKeyIndex, type TaskKeyRefusal, type TaskKeyResolution, type TaskRequire, TaskRequireSchema, TaskSchema, type TaskTreeNode, type TopicPriority, type TopicRow, type TopicVerdict, betProblem, categoriesPath, checkCategories, checkDispositions, checkEdges, criticalPath, deliverablePath, deliverablesDir, isAgentVisible, parseCategoryRegistry, parseClaimsAudit, parseDeliverableRegistry, parseDispositions, parseTopicsJudged, prioritizedTopics, readEdges, readReviewPin, readTsv, resolveTaskKey, sumRunCost, summaryRecommendations, taskTree };
+declare const INTENT_DIGEST_SCHEMA = "titan-intent-digest/v1";
+declare const INTENT_SECTIONS: readonly ["Standing direction", "Reasons", "Ruled out", "Taste", "Open questions", "Superseded"];
+type IntentSection = (typeof INTENT_SECTIONS)[number];
+interface IntentLine {
+    /** `<slug>/I<n>`, the owner-intent id other records cite. */
+    id: string;
+    date: string;
+    quote: string;
+    /** The reference to the exact quote, for example `msg:3f2a91`. */
+    ref: string;
+    section: IntentSection;
+    supersededBy?: string;
+}
+interface IntentDigestError {
+    line: number;
+    message: string;
+}
+type IntentDigestResult = {
+    ok: true;
+    slug: string;
+    initiative: string;
+    builtFrom: string;
+    lines: IntentLine[];
+} | {
+    ok: false;
+    errors: IntentDigestError[];
+};
+/** Parses a `titan-intent-digest/v1` file. Strict: any malformed bullet fails the whole digest, never a partial read. */
+declare function parseIntentDigest(text: string): IntentDigestResult;
+
+export { type AreaEntry, BUILT_IN_STATUSES, type BetLookup, type CategorizedTask, type CategoryAxis, type CategoryError, type CategoryRegistry, CategoryRegistrySchema, type ClaimRow, type CriticalPathOptions, type CriticalPathResult, type CrossInitiativeParentWarning, DELIVERABLE_ID_REGEX, DELIVERABLE_STATUSES, DISPOSITION_KINDS, type Deliverable, type DeliverableEntry, DeliverableSchema, type DeliverableStatus, type DispositionCheck, type DispositionKind, type DispositionRow, DispositionRowSchema, type EdgeChange, type EdgeCheck, type EdgeError, type EdgeField, type Edges, type ExternalDep, INTENT_DIGEST_SCHEMA, INTENT_SECTIONS, type InitiativeBriefRef, type InitiativePrefix, type InitiativeVisibility, InitiativeVisibilitySchema, type IntentDigestError, type IntentDigestResult, type IntentLine, type IntentSection, type ReviewItem, type ReviewPin, type RunCost, type StatusEntry, TOPIC_PRIORITIES, TOPIC_VERDICTS, type Task, type TaskFloat, type TaskKeyEntry, type TaskKeyIndex, type TaskKeyRefusal, type TaskKeyResolution, type TaskRequire, TaskRequireSchema, TaskSchema, type TaskTreeNode, type TopicPriority, type TopicRow, type TopicVerdict, betProblem, categoriesPath, checkCategories, checkDispositions, checkEdges, criticalPath, deliverablePath, deliverablesDir, isAgentVisible, parseCategoryRegistry, parseClaimsAudit, parseDeliverableRegistry, parseDispositions, parseIntentDigest, parseTopicsJudged, prioritizedTopics, readEdges, readReviewPin, readTsv, resolveTaskKey, sumRunCost, summaryRecommendations, taskTree };
 
 // ./dist/planning.d.ts
 import { z } from 'zod';

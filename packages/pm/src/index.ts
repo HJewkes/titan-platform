@@ -70,3 +70,5 @@ export type {
   CategoryRegistry,
   StatusEntry,
 } from "./categories.js";
+export { INTENT_DIGEST_SCHEMA, INTENT_SECTIONS, parseIntentDigest } from "./intent-digest.js";
+export type { IntentDigestError, IntentDigestResult, IntentLine, IntentSection } from "./intent-digest.js";
