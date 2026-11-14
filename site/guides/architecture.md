@@ -218,6 +218,7 @@ graph TD
   activeWork --> agentProtocol
   activeWork --> appPaths
   activeWork --> clusterPkg
+  activeWork --> codeRead
   activeWork --> daemon
   activeWork --> decider
   activeWork --> locator
