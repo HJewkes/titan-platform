@@ -1,0 +1,30 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a done task still holds its slot",
+      "file": "products/factory/src/eligibility/landed.ts",
+      "find": "task.status === \"open\" &&\n",
+      "replace": "true &&\n",
+      "kills": [
+        "merged-not-switched-on frees the slot when the same task is done"
+      ]
+    },
+    {
+      "name": "a sitting counts as a switch-on step",
+      "file": "products/factory/src/eligibility/landed.ts",
+      "find": "  \"credential\",\n",
+      "replace": "  \"credential\",\n  \"sitting\",\n",
+      "kills": [
+        "merged-not-switched-on does not count a task whose only owner step is a sitting"
+      ]
+    },
+    {
+      "name": "filing pause also refuses owner-source tasks",
+      "file": "products/factory/src/eligibility/landed.ts",
+      "find": "AGENT_FILED.has(task.source) &&",
+      "replace": "true &&",
+      "kills": ["filing-paused never refuses an owner-source task"]
+    }
+  ]
+}
