@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { agentAccess, isAgentVisible, type AgentAccess } from '@titan-design/pm';
-import { loadHumanOnlyInitiatives } from '../decider/human-only.js';
+import { loadHumanOnlyInitiatives } from './charter.js';
 import { UsageError } from '../errors.js';
 import type { CommandContext } from '../registry/types.js';
 import { parseFrontmatter } from '../utils/gray-matter-io.js';
@@ -133,7 +133,7 @@ export async function initiativeIsAgentVisible(activeRoot: string, slug: string)
   return briefAllowsAgents(slug, await readBriefFrontmatter(activeRoot, slug));
 }
 
-export interface WireVisibility {
+interface WireVisibility {
   /** The brief alone, as before TP-5556; kept for older readers. */
   agent_visible: boolean;
   /** The full verdict: true unless the brief and a readable charter both allow agents. */

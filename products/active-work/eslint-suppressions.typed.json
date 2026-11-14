@@ -173,11 +173,6 @@
       "count": 1
     }
   },
-  "products/active-work/src/decider/human-only.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/active-work/src/decider/queue-source.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1

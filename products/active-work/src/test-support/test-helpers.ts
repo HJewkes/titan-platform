@@ -6,7 +6,7 @@ import { existsSync, mkdtempSync, mkdirSync, cpSync, realpathSync, rmSync, write
 import os from 'node:os';
 import { basename, join, dirname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { charterPath } from '../decider/human-only.js';
+import { charterPath } from '../sessions/charter.js';
 import { writeCharter } from './visibility.js';
 
 const __filename = fileURLToPath(import.meta.url);

@@ -43,7 +43,7 @@ const BRIEF_ONLY_WRITERS: Record<string, string> = {
 };
 
 const CHARTER_READERS: Record<string, string> = {
-  'decider/human-only.ts': 'defines the charter read',
+  'sessions/charter.ts': 'defines the charter read',
   'commands/_list-scope.ts': 'sets the human_only export flag on rows already filtered through Shown',
   'decider/extract.ts': 'excludes human-only answers from the precedent ledger it writes',
 };

@@ -12,7 +12,8 @@ import { resolveSlugFromCwd } from '../sessions/initiatives.js';
 import { withheldSlugs } from '../sessions/visibility.js';
 import { agentChatHome } from '../session-index/origin-agent-chat-read.js';
 import { defaultGraphPath, openGraphReadOnly } from '../session-index/graph.js';
-import { exclusionPolicy, loadHumanOnlyInitiatives } from './human-only.js';
+import { loadHumanOnlyInitiatives } from '../sessions/charter.js';
+import { exclusionPolicy } from './human-only.js';
 import { ledgerPath, openLedger, v1PrecedentSource } from './ledger.js';
 import { queueSource } from './queue-source.js';
 

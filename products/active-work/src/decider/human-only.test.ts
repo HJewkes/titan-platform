@@ -9,7 +9,7 @@ import {
   charterPath,
   HumanOnlyUnreadableError,
   loadHumanOnlyInitiatives,
-} from './human-only.js';
+} from '../sessions/charter.js';
 import { withEmptyActiveRoot } from '../test-support/test-helpers.js';
 
 const MARKER = 'MARKER-7f3a';

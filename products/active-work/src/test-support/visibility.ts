@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { charterPath } from '../decider/human-only.js';
+import { charterPath } from '../sessions/charter.js';
 import { visibilityFor, type Shown } from '../sessions/visibility.js';
 
 export const CHARTER_INITIATIVE = 'claude-channels';
