@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import lockfile from 'proper-lockfile';
-import { LockTimeoutError } from '../errors.js';
+import { LockCompromisedError, LockTimeoutError } from '../errors.js';
 
 /**
  * Write `content` to `targetPath` atomically.
@@ -44,11 +44,62 @@ interface FileLockOptions {
   timeoutMs?: number;
 }
 
-async function acquireLock(lockTarget: string, timeoutMs: number): Promise<() => Promise<void>> {
+/**
+ * proper-lockfile's default for a compromised lock is to throw from its refresh
+ * timer, which kills the process. Instead the compromise rejects `guard`'s race,
+ * so the holder's operation fails with an error it can report.
+ */
+interface CompromiseWatch {
+  onCompromised: (err: Error) => void;
+  /** Settles like `run`, or rejects with `LockCompromisedError` if the lock is lost first. */
+  guard: <T>(run: Promise<T>) => Promise<T>;
+  readonly compromised: boolean;
+}
+
+export function watchCompromise(lockTarget: string): CompromiseWatch {
+  let lost = false;
+  let fail!: (err: LockCompromisedError) => void;
+  const failed = new Promise<never>((_, reject) => (fail = reject));
+  failed.catch(() => {});
+  return {
+    onCompromised: (err) => {
+      lost = true;
+      fail(
+        new LockCompromisedError(
+          `Lost the lock on ${lockTarget} while holding it: ${err.message}. The operation was abandoned; retry it.`,
+          { cause: err },
+        ),
+      );
+    },
+    guard: (run) => Promise.race([run, failed]),
+    get compromised() {
+      return lost;
+    },
+  };
+}
+
+/** A compromised lock is already gone, so releasing it fails; the compromise error is the one to surface. */
+export async function releaseUnlessCompromised(
+  release: () => Promise<void>,
+  watch: CompromiseWatch,
+): Promise<void> {
+  try {
+    await release();
+  } catch (err) {
+    if (!watch.compromised) throw err;
+  }
+}
+
+async function acquireLock(
+  lockTarget: string,
+  timeoutMs: number,
+  onCompromised: (err: Error) => void,
+): Promise<() => Promise<void>> {
   try {
     return await lockfile.lock(lockTarget, {
       realpath: false,
       stale: LOCK_STALE_MS,
+      onCompromised,
       retries: {
         retries: Math.ceil(timeoutMs / RETRY_MIN_MS),
         factor: 1.2,
@@ -80,10 +131,15 @@ export async function withFileLock<T>(
   options: FileLockOptions = {},
 ): Promise<T> {
   await fs.mkdir(path.dirname(lockTarget), { recursive: true });
-  const release = await acquireLock(lockTarget, options.timeoutMs ?? LOCK_TIMEOUT_MS);
+  const watch = watchCompromise(lockTarget);
+  const release = await acquireLock(
+    lockTarget,
+    options.timeoutMs ?? LOCK_TIMEOUT_MS,
+    watch.onCompromised,
+  );
   try {
-    return await fn();
+    return await watch.guard(fn());
   } finally {
-    await release();
+    await releaseUnlessCompromised(release, watch);
   }
 }

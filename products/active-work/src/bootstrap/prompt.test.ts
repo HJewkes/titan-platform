@@ -39,6 +39,7 @@ interface SessionFixture {
   next_steps?: NextStepFixture[];
   resolves?: ResolveFixture[];
   no_loops?: true;
+  ledger?: true;
 }
 
 function nextStepLines(steps: NextStepFixture[]): string[] {
@@ -80,6 +81,7 @@ async function writeSession(activeRoot: string, session: SessionFixture): Promis
     `ended: ${session.ended}`,
     `track: ${session.track}`,
     ...(session.no_loops ? ['no_loops: true'] : []),
+    ...(session.ledger ? ['ledger: true'] : []),
     ...nextStepLines(session.next_steps ?? []),
     ...resolveLines(session.resolves ?? []),
     '---',
@@ -789,6 +791,39 @@ describe('assembleBootstrap', () => {
       );
       expect(prompt).toContain('- 2026-05-11 (sidecar, side001) — - Folded in a discovered branch');
       expect(prompt).not.toContain('Second line stays hidden');
+    });
+  });
+
+  it('keeps a real session as the narrative when a newer loop ledger record exists (TP-1016)', async () => {
+    await withTempActiveRoot(async (activeRoot) => {
+      await fs.rm(path.join(activeRoot, SAMPLE_SLUG, 'sessions', '2026-05-10-1430-fixture001.md'));
+      await writeSession(activeRoot, {
+        session_id: 'real-adhoc',
+        started: '2026-05-09T09:00:00Z',
+        ended: '2026-05-09T10:00:00Z',
+        track: 'adhoc',
+        body: '- Real work before the loop\n',
+      });
+      await writeSession(activeRoot, {
+        session_id: 'loop-ab12cd34',
+        started: '2026-05-11T09:00:00Z',
+        ended: '2026-05-11T09:00:00Z',
+        track: 'adhoc',
+        ledger: true,
+        body: 'Loop opened outside wrap: follow up\n',
+        next_steps: [{ id: 's1', text: 'follow up', kind: 'prose' }],
+      });
+
+      const { prompt, metadata } = await assembleBootstrap({
+        activeRoot,
+        slug: SAMPLE_SLUG,
+        now: FIXTURE_NOW,
+        ...offlineOpts,
+      });
+
+      expect(metadata.last_session?.filename).toBe('2026-05-09-0900-real-adhoc.md');
+      expect(prompt).not.toContain('# Parallel sessions');
+      expect(prompt).not.toContain('Loop opened outside wrap');
     });
   });
 
