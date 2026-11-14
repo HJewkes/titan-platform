@@ -19,7 +19,7 @@ const ShadowSchema = z.object({ enabled: z.boolean().default(false), dir: z.stri
 });
 
 /** Keys later slices read (PLAN 5.4) are accepted now so the owner's full example file parses; nothing reads them yet. */
-const PLANNED_KEYS = { bets: z.unknown().optional(), upkeep: z.unknown().optional() };
+const PLANNED_KEYS = { upkeep: z.unknown().optional() };
 
 const INTAKE_DEFAULTS = { minSeverity: "medium", expireDays: 28 } as const;
 
@@ -27,6 +27,20 @@ const IntakeSchema = z
   .object({ minSeverity: z.enum(SEVERITIES).default(INTAKE_DEFAULTS.minSeverity), expireDays: z.number().int().positive().default(INTAKE_DEFAULTS.expireDays) })
   .strict()
   .default(INTAKE_DEFAULTS);
+
+/**
+ * Which bets a lane is judged against: the owner's selected ones, or, while none is selected for the week, the lane's
+ * proposed bet sheet. `sheetWeek` pins the sheets' week when they were written for a later week than the run starts in.
+ */
+const BetsSchema = z
+  .object({
+    source: z.enum(["selected", "selected-then-sheet"]).default("selected"),
+    sheetDir: z.string().min(1).optional(),
+    digestDir: z.string().min(1).optional(),
+    sheetWeek: z.string().regex(/^\d{4}-W(0[1-9]|[1-4]\d|5[0-3])$/, { message: "must be an ISO week such as 2026-W47" }).optional(),
+  })
+  .strict()
+  .refine((bets) => bets.source === "selected" || bets.sheetDir !== undefined, { message: "a sheet bet source needs a sheetDir", path: ["sheetDir"] });
 
 const count = z.number().int().positive();
 const factor = z.number().positive();
@@ -71,6 +85,8 @@ const RuleFileSchema = z
     intake: IntakeSchema,
     stop: StopSchema.prefault({}),
     compare: CompareSchema,
+    /** Absent means the selected basis alone. */
+    bets: BetsSchema.optional(),
     ...PLANNED_KEYS,
   })
   .strict();
