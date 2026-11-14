@@ -2,7 +2,7 @@ import type { TimelineMinuteBucket, TimelineGap, TimelineToolCall, TimelineTurn,
 
 const MINUTE_MS = 60_000;
 
-export interface BucketInput {
+interface BucketInput {
   turns: readonly TimelineTurn[];
   calls: readonly TimelineToolCall[];
   points: readonly TimelineTokenPoint[];
