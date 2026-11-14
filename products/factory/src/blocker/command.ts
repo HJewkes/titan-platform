@@ -4,7 +4,7 @@ import { withdrawMatching } from "@titan-design/owner-queue/withdraw";
 import { EXIT } from "@titan-design/registry";
 import type { Command } from "commander";
 import type { Verbs } from "../cli-types.js";
-import { ownerInboxDir } from "../deploy-watch-ports.js";
+import { consoleInboxDir } from "@titan-design/app-paths";
 import { parseSinceOption } from "../digest/command.js";
 import { configuredInboxLink } from "./link.js";
 import { blockerDeposit, blockerItemId, blockerKey, MAX_OPEN_PER_ASKER, openBlockers, openDeposits, type BlockerRaise } from "./deposit.js";
@@ -30,7 +30,7 @@ function toRaise({ as, since, key, expires, ...rest }: RaiseOpts, now: number): 
 
 /** A repeat raise of an open blocker keeps its first `since`; one that was cleared or answered must take a new slug. */
 async function raiseAction(verbs: Verbs, opts: RaiseOpts, now: number): Promise<void> {
-  const dir = ownerInboxDir(verbs.io.env);
+  const dir = consoleInboxDir({ env: verbs.io.env });
   const deposit = blockerDeposit(toRaise(opts, now));
   try {
     fromDeposit(deposit, new Date(now));
@@ -60,7 +60,7 @@ async function reportRaise(verbs: Verbs, json: boolean | undefined, id: string, 
 async function clearAction(verbs: Verbs, opts: ClearOpts): Promise<void> {
   let cleared: OwnerItem[];
   try {
-    cleared = await withdrawMatching(ownerInboxDir(verbs.io.env), { asker: opts.as, actor: opts.actor, keys: [blockerKey(opts.as, opts.slug)], reason: opts.reason });
+    cleared = await withdrawMatching(consoleInboxDir({ env: verbs.io.env }), { asker: opts.as, actor: opts.actor, keys: [blockerKey(opts.as, opts.slug)], reason: opts.reason });
   } catch (error) {
     return refuse(verbs, message(error));
   }
@@ -72,7 +72,7 @@ async function clearAction(verbs: Verbs, opts: ClearOpts): Promise<void> {
 const ageOf = (since: string, now: number): string => `${Math.floor((now - Date.parse(since)) / 3_600_000)}h`;
 
 async function listAction(verbs: Verbs, opts: ListOpts, now: number): Promise<void> {
-  const blockers = openBlockers(await openDeposits(ownerInboxDir(verbs.io.env)), new Date(now)).filter((item) => opts.as === undefined || item.asker === opts.as);
+  const blockers = openBlockers(await openDeposits(consoleInboxDir({ env: verbs.io.env })), new Date(now)).filter((item) => opts.as === undefined || item.asker === opts.as);
   const rows = blockers.map(({ id, asker, summary, blocker }) => ({ id, asker, summary, since: blocker!.since, blocks: blocker!.blocks }));
   if (opts.json) return verbs.io.stdout(`${JSON.stringify(rows, null, 2)}\n`);
   verbs.io.stdout(rows.map((row) => `${ageOf(row.since, now)}\t${row.asker}\t${row.blocks}\t${row.id}\n`).join(""));

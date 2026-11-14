@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { transcriptFromPath } from './transcript-path.js';
+import { transcriptFromPath } from './discover.js';
 
 const roots = [
   { root: '/srv/demo/.claude/projects', account: 'default' },

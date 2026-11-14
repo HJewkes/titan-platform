@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import path from "node:path";
 import { writeDeposit } from "@titan-design/owner-queue/spool";
 import { plainText } from "@titan-design/speech-vet";
@@ -64,13 +63,6 @@ function reflectionMarkdown(proposals: readonly Proposal[], day: string): string
 /** Keyed by video and script, so a re-run of an unchanged script reuses the same deposit name. */
 const reflectionDepositId = (videoId: string, scriptSha: string): string =>
   `reflection-${createHash("sha256").update(JSON.stringify([videoId, scriptSha])).digest("hex").slice(0, 24)}`;
-
-/** The deposit spool the titan console reads, as the factory resolves it. */
-export function ownerInboxDir(env: NodeJS.ProcessEnv, home: string = homedir()): string {
-  const expand = (value: string): string => (value.startsWith("~/") ? path.join(home, value.slice(2)) : value);
-  if (env.TITAN_CONSOLE_INBOX_DIR) return expand(env.TITAN_CONSOLE_INBOX_DIR);
-  return path.join(expand(env.TITAN_CONSOLE_STATE ?? "~/.local/state/titan-console"), "inbox", "deposits");
-}
 
 async function fileDeposit(config: ReflectionConfig, run: ReflectionRun & { day: string }, markdown: string): Promise<ReflectionResult["filed"]> {
   const result = await writeDeposit(config.spoolDir, {
