@@ -40,7 +40,7 @@ export interface RegistrationInput extends RegistrationFactsInput {
   registrant?: string;
 }
 
-export type RegistrationUpdate = Pick<RegistrationInput, "task" | "implementer" | "reviewer" | "policy" | "kind" | "slice" | "registrant"> & RegistrationFactsInput & Partial<KindMove>;
+type RegistrationUpdate = Pick<RegistrationInput, "task" | "implementer" | "reviewer" | "policy" | "kind" | "slice" | "registrant"> & RegistrationFactsInput & Partial<KindMove>;
 
 export interface Registration extends RegistrationFacts {
   repo: RepoSlug;

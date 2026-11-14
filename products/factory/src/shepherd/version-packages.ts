@@ -16,7 +16,7 @@ export const START_CI_AFTER_MS = 2 * 60_000;
 
 export const START_CI_MESSAGE = "Start CI for the Version Packages PR\n\nShepherd pushed this empty commit: a push by the changesets action starts no workflow until the GitHub App (TP-447) pushes instead.";
 
-export interface ReleaseSweepNote {
+interface ReleaseSweepNote {
   repo: RepoSlug;
   /** Absent when the Version Packages PR could not be looked up; `error` says why. */
   pr?: number;

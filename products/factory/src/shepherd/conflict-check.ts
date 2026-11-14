@@ -8,13 +8,13 @@ import { LeaveLand } from "./leave-land.js";
 import type { ShepherdDeps } from "./phases.js";
 import { gateHead } from "./stale-gates.js";
 
-export const CONFLICT_CHECK_STEP = "sh-conflict-check";
+const CONFLICT_CHECK_STEP = "sh-conflict-check";
 export const CONFLICT_CHECK_STEPS: readonly StepDeclaration[] = [{ id: CONFLICT_CHECK_STEP, kind: "dispatch" }];
 
 /** How long a check waits for GitHub to settle mergeability before it reads the state as no conflict. */
-export const CONFLICT_SETTLE_MS = 2 * 60_000;
+const CONFLICT_SETTLE_MS = 2 * 60_000;
 
-export interface ConflictCheckInput {
+interface ConflictCheckInput {
   repo: RepoSlug;
   pr: number;
   headSha: string;
