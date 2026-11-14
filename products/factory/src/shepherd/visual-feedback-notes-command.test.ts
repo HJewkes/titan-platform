@@ -42,7 +42,7 @@ function activeWork(gate: Promise<void> = Promise.resolve(), status = 0) {
   const exec: DeliveryExec = async (argv) => {
     await gate;
     if (status === 0) added.push(argv[argv.indexOf("--title") + 1]!);
-    return { status, stdout: "", stderr: status === 0 ? "" : "boom" } as Awaited<ReturnType<DeliveryExec>>;
+    return { status, stdout: "", stderr: status === 0 ? "" : "boom" };
   };
   return { exec, added };
 }
