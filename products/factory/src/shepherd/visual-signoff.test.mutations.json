@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the visual sign-off flag is ignored",
+      "file": "products/factory/src/shepherd/visual-signoff.ts",
+      "find": "if (approval === \"unread\" || approval?.scope.visualSignoff === true) return \"owner\";",
+      "replace": "if (approval === \"unread\") return \"owner\";",
+      "kills": [
+        "the visual sign-off flag on a task approval under async a task approved with visual sign-off keeps the visual owner gate"
+      ]
+    },
+    {
+      "name": "the run uses the configured mode",
+      "file": "products/factory/src/shepherd/registered-kind.ts",
+      "find": "? configured : visualGateFor(configured, runTaskApproval(store, runId));",
+      "replace": "? configured : configured;",
+      "kills": [
+        "the visual sign-off flag on a task approval under async a task approved with visual sign-off keeps the visual owner gate",
+        "the visual sign-off flag on a task approval under async an unreadable approval store keeps the visual owner gate"
+      ]
+    },
+    {
+      "name": "an unreadable approval store reads as the configured mode",
+      "file": "products/factory/src/shepherd/registered-kind.ts",
+      "find": "    return \"unread\";\n",
+      "replace": "    return undefined;\n",
+      "kills": [
+        "the visual sign-off flag on a task approval under async an unreadable approval store keeps the visual owner gate"
+      ]
+    },
+    {
+      "name": "any task approval keeps the visual owner gate",
+      "file": "products/factory/src/shepherd/visual-signoff.ts",
+      "find": "  return configured;\n}",
+      "replace": "  return approval === undefined ? configured : \"owner\";\n}",
+      "kills": [
+        "the visual sign-off flag on a task approval under async a task approved without it merges visual on reviews"
+      ]
+    }
+  ]
+}

@@ -52,7 +52,6 @@ const sharedGraphNeedsIsolation = [
   "apps/console/server/owner-guard.test.ts",
   "apps/console/server/round-frames.test.ts",
   "apps/console/server/rounds.test.ts",
-  "products/explainer/src/collect/history.test.ts",
   "products/explainer/src/yaml-dir.test.ts",
   "products/factory/src/bot-identity.test.ts",
   "products/factory/src/bot-token-path.test.ts",
