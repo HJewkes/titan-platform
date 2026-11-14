@@ -4,100 +4,15 @@ import { join } from "node:path";
 import { fakeSha, successRun } from "@titan-design/github";
 import { silentLogger } from "@titan-design/daemon";
 import type { GateResolver } from "@titan-design/hitl";
-import { WorkflowRuntime, type StepRoute } from "@titan-design/workflow";
+import { WorkflowRuntime } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { defineWorkflow, type WorkflowDefinition } from "../definition.js";
-import { openFactoryHost, type FactoryHost, type FactoryRoutes } from "../host.js";
 import { startFactoryServer } from "../serve.js";
-import { factoryContext } from "../registry.js";
-import { TEST_BRIEF } from "../test-support/brief.js";
-import { H1, REPO } from "../test-support/land.js";
-import { BRANCH, shepherdFixture, type ShepherdFixture } from "../test-support/shepherd.js";
 import { CARRIED_MERGE_STEP } from "./diverged-merge.js";
 import { restartDivergedRuns } from "./diverged-sweep.js";
-import { OWNER_GATE_POLICY } from "./policy.js";
-import { SHEPHERD_WORKFLOW } from "./services.js";
+import { answeredWhileParked, build, closeDeploys, closers, ctxOf, deploy, HEAD_A, HEAD_B, landPrompt, OWNER, parkedRuns, recorded, type Answered } from "./diverged-sweep.test-helpers.js";
 
-const hosts: FactoryHost[] = [];
-const closers: Array<() => Promise<void>> = [];
-afterEach(async () => {
-  hosts.splice(0).forEach((host) => host.close());
-  await Promise.all(closers.splice(0).map((close) => close()));
-});
-
-const HEAD_B = H1;
-const HEAD_A = fakeSha("head-a");
-const STEPS = [
-  { id: "ci-wait", kind: "dispatch" },
-  { id: "park-here", kind: "dispatch" },
-  { id: "extra-ask", kind: "assisted" },
-] as const;
-
-/** Build N reads CI then waits; build N+1 asks a question before the recorded ci-wait. */
-function build(asksFirst: boolean): WorkflowDefinition {
-  return defineWorkflow({
-    name: SHEPHERD_WORKFLOW,
-    steps: STEPS,
-    run: async (ctx) => {
-      if (asksFirst) {
-        const brief = { summary: "A question the old build never asked.", evidenceRef: "$ gh pr view 1" };
-        await ctx.assisted("extra-ask", "Ask?", { schema: z.object({ ok: z.literal(true) }), brief });
-      }
-      await ctx.dispatch("ci-wait", "ci-wait");
-      await ctx.dispatch("park-here", "park-here");
-    },
-  });
-}
-
-const stubRoutes: StepRoute[] = [
-  { match: "ci-wait", onRestart: "repeat", runner: { run: () => Promise.resolve({ ok: true, output: JSON.stringify({ result: { headSha: HEAD_A } }) }) } },
-  { match: "park-here", onRestart: "repeat", runner: { run: () => new Promise(() => undefined) } },
-];
-
-interface Deploy extends ShepherdFixture {
-  host: FactoryHost;
-  routes: FactoryRoutes;
-}
-
-function deploy(dbPath: string, definition: WorkflowDefinition): Deploy {
-  const fixture = shepherdFixture();
-  const routes = Object.assign([...stubRoutes], { shepherd: fixture.routes.shepherd, database: fixture.routes.database, bindHost: fixture.routes.bindHost }) as FactoryRoutes;
-  const host = openFactoryHost({ dbPath, workflows: [definition], routes, gatePollMs: 5 });
-  hosts.push(host);
-  return { ...fixture, routes, host };
-}
-
-const branchOf = (pr: number): string => `${BRANCH}-${pr}`;
-const ctxOf = (next: Deploy) => factoryContext(next.host, next.routes, "agent");
-
-/** Registered runs recorded on build N, one per pull request number; nothing adopts them yet. */
-async function recorded(dbPath: string, prs: number[], base?: string): Promise<string[]> {
-  const first = deploy(dbPath, build(false));
-  const ids = prs.map((pr) => first.host.runtime.start(SHEPHERD_WORKFLOW, { repo: REPO, pr: String(pr), branch: branchOf(pr), policy: JSON.stringify(OWNER_GATE_POLICY), task: "demo/T-1" }));
-  for (const id of ids) await vi.waitFor(() => expect(first.host.runtime.status(id)?.stepResults).toHaveProperty(["ci-wait:0"]));
-  const store = first.routes.shepherd!.store.get();
-  prs.forEach((pr, i) => store.register({ repo: REPO, pr, task: "demo/T-1", implementer: "impl-a", kind: "feature", branch: branchOf(pr), runId: ids[i]!, policy: OWNER_GATE_POLICY, ...(base !== undefined && { base }) }));
-  first.host.close();
-  return ids;
-}
-
-interface Parked {
-  next: Deploy;
-  dbPath: string;
-  oldRunIds: string[];
-}
-
-/** Registered runs parked by strictReplay when build N+1 adopts them. */
-async function parkedRuns(prs: number[] = [1], prState: "open" | "closed" = "open", base?: string): Promise<Parked> {
-  const dbPath = join(mkdtempSync(join(tmpdir(), "tp2697b-")), "factory.db");
-  const oldRunIds = await recorded(dbPath, prs, base);
-  const next = deploy(dbPath, build(true));
-  prs.forEach((pr) => next.fake.addPr({ headSha: HEAD_B, headRef: branchOf(pr), state: prState }));
-  await next.host.adopt();
-  for (const id of oldRunIds) await next.host.runtime.wait(id);
-  return { next, dbPath, oldRunIds };
-}
+afterEach(closeDeploys);
 
 describe("restartDivergedRuns", () => {
   it("restarts a diverged run at its registration, carrying task, implementer, kind, hold and last read head", async () => {
@@ -137,7 +52,7 @@ describe("restartDivergedRuns", () => {
 
     const again = await restartDivergedRuns(ctxOf(next));
 
-    expect(again).toEqual({ restarted: [], ended: [], closed: [], kept: [], merged: [], errors: [] });
+    expect(again).toEqual({ restarted: [], ended: [], closed: [], kept: [], merged: [], held: [], errors: [] });
   });
 
   it("cancels a diverged run whose pull request closed and starts no new run", async () => {
@@ -162,7 +77,7 @@ describe("restartDivergedRuns", () => {
     expect(sweep.ended).toEqual([{ runId, reason: "replay diverged; PR closed" }]);
     expect(next.host.runtime.status(runId)).toMatchObject({ status: "cancelled", error: "replay diverged; PR closed", activeSteps: {} });
     expect(adopted).not.toContain(runId);
-    expect(await restartDivergedRuns(ctxOf(next))).toEqual({ restarted: [], ended: [], closed: [], kept: [], merged: [], errors: [] });
+    expect(await restartDivergedRuns(ctxOf(next))).toEqual({ restarted: [], ended: [], closed: [], kept: [], merged: [], held: [], errors: [] });
   });
 
   it("ends the superseded run of an open PR with a step in flight as cancelled in the same sweep", async () => {
@@ -197,7 +112,7 @@ describe("restartDivergedRuns", () => {
 
     const sweep = await restartDivergedRuns(ctxOf(next));
 
-    expect(sweep).toEqual({ restarted: [], ended: [], closed: [], kept: [], merged: [], errors: [] });
+    expect(sweep).toEqual({ restarted: [], ended: [], closed: [], kept: [], merged: [], held: [], errors: [] });
   });
 
   it("leaves a diverged branch-only registration alone", async () => {
@@ -207,29 +122,10 @@ describe("restartDivergedRuns", () => {
 
     const sweep = await restartDivergedRuns(ctxOf(next));
 
-    expect(sweep).toEqual({ restarted: [], ended: [], closed: [], kept: [], merged: [], errors: [] });
+    expect(sweep).toEqual({ restarted: [], ended: [], closed: [], kept: [], merged: [], held: [], errors: [] });
     expect(next.host.runtime.status(oldRunIds[0]!)?.status).toBe("recovery_required");
   });
 });
-
-const OWNER: GateResolver = { class: "owner-terminal", id: "owner", channel: "factory-cli" };
-const landPrompt = (head: string, base = "main", table = "authority"): string => `Merge PR #1 in ${REPO} at head ${head} into ${base}? CI is green. Policy ${table}/MRG-OW: owner gate`;
-
-interface Answered extends Parked {
-  runId: string;
-  gateId: string;
-}
-
-/** A diverged run the sweep kept for its land gate, then answered by `resolver` while it stays parked. */
-async function answeredWhileParked(payload: Record<string, unknown> | undefined, prompt = landPrompt(HEAD_B), resolver = OWNER): Promise<Answered> {
-  const parked = await parkedRuns();
-  const runId = parked.oldRunIds[0]!;
-  const gateId = `${runId}/approve-merge`;
-  parked.next.host.gates.create({ id: gateId, prompt, ...TEST_BRIEF });
-  expect((await restartDivergedRuns(ctxOf(parked.next))).kept).toEqual([{ runId, gateId }]);
-  if (payload) parked.next.host.runtime.signal(runId, "approve-merge", payload, resolver);
-  return { ...parked, runId, gateId };
-}
 
 /** The sweep restarted the parked run as before, merged nothing, and the new run asks again. */
 async function restartedAndAsking({ next, runId }: Answered, sweep: Awaited<ReturnType<typeof restartDivergedRuns>>): Promise<void> {
@@ -253,7 +149,7 @@ describe("restartDivergedRuns on an owner answer given while the run was parked 
     expect(next.fake.merges).toHaveLength(1);
     expect(next.fake.pr(1)).toMatchObject({ merged: true });
     expect(next.host.runtime.status(runId)).toMatchObject({ status: "cancelled", stepResults: { [CARRIED_MERGE_STEP]: { data: { gateId, headSha: HEAD_B, base: "main", resolvedBy: OWNER } } } });
-    expect(again).toEqual({ restarted: [], ended: [], closed: [], kept: [], merged: [], errors: [] });
+    expect(again).toEqual({ restarted: [], ended: [], closed: [], kept: [], merged: [], held: [], errors: [] });
   });
 
   it("A moved head restarts and asks again, never sending a merge for the head the owner approved", async () => {
@@ -387,7 +283,7 @@ describe("restartDivergedRuns reclassification", () => {
 
     const sweep = await restartDivergedRuns(ctxOf(next), () => true);
 
-    expect(sweep).toEqual({ restarted: [], ended: [], closed: [], kept: [], merged: [], errors: [] });
+    expect(sweep).toEqual({ restarted: [], ended: [], closed: [], kept: [], merged: [], held: [], errors: [] });
     expect(next.host.runtime.status(oldRunIds[0]!)?.status).toBe("recovery_required");
   });
 });
