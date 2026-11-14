@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { defineCommand, type CommandContext } from '../registry/index.js';
 import { readLedgerRows } from '../decider/ledger.js';
 import { isUnclaimed, searchPrecedents } from '../decider/search.js';
-import { loadAgentVisibility } from '../sessions/visibility.js';
+import { visibilityFor } from '../sessions/visibility.js';
 import { getActiveRoot } from '../utils/paths.js';
 
 const ArgsSchema = z.object({
@@ -97,7 +97,7 @@ export default defineCommand<Args, Result>({
   },
   async run(args, ctx) {
     const activeRoot = getActiveRoot();
-    const isVisible = await loadAgentVisibility(activeRoot);
+    const isVisible = await visibilityFor({ ...ctx, activeRoot });
     const includeUnclaimed = unclaimedFor(args.include_unclaimed, ctx);
     const { rows, malformed } = await readLedgerRows(activeRoot);
     const hits = await searchPrecedents(rows, args.query, {

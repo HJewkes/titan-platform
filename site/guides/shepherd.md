@@ -2315,6 +2315,14 @@ measured budget-class CI change, the one a coordinator may accept under the `ci-
 row (owner decision 552 (2)), skips the CI workflow row. The row has no stamped rule, so the
 coordinator delegate never resolves it: only the owner does.
 
+The adversary's `Authority:` line joins the row (gate model S3b, TP-5407). When the run owes an
+adversary `MERGE`, because the panel planned an adversary or the registration holds a
+`g10-adversary` hold, the evidence step stamps `authorityLine` with the adversary's value, or
+`missing` when no adversary `MERGE` carried one or the registration could not be read. `widened`
+adds the row `Authority widened` and `missing` adds `Authority line missing`; `unchanged` and
+`tightened` add nothing. A run that owes no adversary stamps nothing, since it is never asked for
+the line. Decide time reads the stamp, and a stamped value it does not know reads as `missing`.
+
 `shepherd.gateReset.ownerTier` switches it, and it is a live editable row:
 
 - `on` gates the merge on the row.

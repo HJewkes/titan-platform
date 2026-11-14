@@ -5,10 +5,11 @@ import { describe, expect, it } from 'vitest';
 import { indexTranscript } from '@titan-design/session-graph';
 import type { CommandContext } from '../registry/types.js';
 import { defaultGraphPath, openGraph } from '../session-index/graph.js';
-import { callerVisibility } from '../sessions/visibility.js';
+import { visibilityFor } from '../sessions/visibility.js';
 import { SNAPSHOT, TREE } from '../test-support/fixtures/loop-ledger.js';
 import { FIXTURE_LINES, renderTranscript } from '../test-support/session-index/fixture.js';
 import { withEmptyActiveRoot } from '../test-support/test-helpers.js';
+import { writeCharter } from '../test-support/visibility.js';
 import artifactList from './artifact-list.js';
 import audit from './audit.js';
 import facetAdd from './facet-add.js';
@@ -25,11 +26,12 @@ import taskList from './task-list.js';
  * The cross-initiative list verbs withhold owner-only initiatives from an agent caller and
  * leave the owner's plain terminal and the daemon's RPC as they were (TP-5453 P6b).
  * `alpha` declares itself agent-visible; `private-notes` declares nothing, so it is owner-only.
+ * The charter's own initiative is owner-only too, so an agent's hidden count includes it.
  */
 
 const VISIBLE = 'alpha';
 const HIDDEN = 'private-notes';
-const HIDDEN_WARNING = '1 owner-only initiative hidden from a non-owner caller';
+const HIDDEN_WARNING = '2 owner-only initiatives hidden from a non-owner caller';
 
 function writeFile(root: string, relativePath: string, contents: string): void {
   const target = path.join(root, ...relativePath.split('/'));
@@ -57,7 +59,8 @@ function writeInitiative(root: string, slug: string, prefix: string, visibility:
   writeFile(root, `${slug}/artifacts.yml`, 'branches: []\nstashes: []\nworktrees: []\n');
 }
 
-function seed(root: string): void {
+function seed(root: string, humanOnly: readonly string[] = []): void {
+  writeCharter(root, humanOnly);
   writeInitiative(root, VISIBLE, 'AL', 'visibility: agent-visible\n');
   writeInitiative(root, HIDDEN, 'PN', '');
 }
@@ -100,6 +103,19 @@ describe('cross-initiative list verbs for an agent caller', () => {
 
       expect(slugsOf(tasks)).toEqual([VISIBLE]);
       expect(ctx.warnings).toEqual([HIDDEN_WARNING]);
+    });
+  });
+
+  it('task list across all initiatives hides from an agent an agent-visible initiative the charter lists human-only', async () => {
+    await withEmptyActiveRoot(async (root) => {
+      seed(root, ['garden-plan']);
+      writeInitiative(root, 'garden-plan', 'GP', 'visibility: agent-visible\n');
+
+      const forAgent = await taskList.run({ all_initiatives: true }, agent(root));
+      const forOwner = await taskList.run({ all_initiatives: true }, owner(root));
+
+      expect(slugsOf(forAgent.tasks)).toEqual([VISIBLE]);
+      expect(slugsOf(forOwner.tasks)).toEqual([VISIBLE, 'garden-plan', HIDDEN]);
     });
   });
 
@@ -177,9 +193,10 @@ describe('cross-initiative list verbs for an agent caller', () => {
 
       const result = await inventory.run({}, owner(root));
 
-      expect(result.initiatives.map((row) => [row.slug, row.agent_visible])).toEqual([
-        [VISIBLE, true],
-        [HIDDEN, false],
+      const rows = result.initiatives.filter((row) => row.slug === VISIBLE || row.slug === HIDDEN);
+      expect(rows.map((row) => [row.slug, row.agent_visible, row.withheld_from_agents])).toEqual([
+        [VISIBLE, true, false],
+        [HIDDEN, false, true],
       ]);
     });
   });
@@ -220,12 +237,13 @@ describe('cross-initiative list verbs for an agent caller', () => {
 
       expect(slugsOf(result.initiatives)).toEqual([VISIBLE]);
       expect(result.parse_errors).toEqual([]);
-      expect(ctx.warnings).toEqual(['2 owner-only initiatives hidden from a non-owner caller']);
+      expect(ctx.warnings).toEqual(['3 owner-only initiatives hidden from a non-owner caller']);
     });
   });
 
   it('loop board hides owner-only loops and their tree-node ids from an agent', async () => {
     await withEmptyActiveRoot(async (root) => {
+      writeCharter(root);
       writeInitiative(root, 'sample-initiative', 'SI', 'visibility: agent-visible\n');
       writeInitiative(root, 'other-initiative', 'OI', '');
       writeFile(root, 'titan-platform/sources/open-loops.yml', SNAPSHOT);
@@ -258,8 +276,8 @@ describe('cross-initiative list verbs for an agent caller', () => {
     await withEmptyActiveRoot(async (root) => {
       seed(root);
 
-      const forAgent = await callerVisibility(root, 'agent');
-      const forOwner = await callerVisibility(root, 'owner');
+      const forAgent = await visibilityFor(agent(root));
+      const forOwner = await visibilityFor(owner(root));
 
       expect([forAgent(null), forAgent(VISIBLE), forAgent(HIDDEN)]).toEqual([false, true, false]);
       expect([forOwner(null), forOwner(HIDDEN)]).toEqual([true, true]);

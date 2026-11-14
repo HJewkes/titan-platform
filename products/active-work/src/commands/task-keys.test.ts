@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import taskKeys from './task-keys.js';
 import { withEmptyActiveRoot } from '../test-support/test-helpers.js';
+import { writeCharter } from '../test-support/visibility.js';
 
 const brief = (prefix: string, rank: number, visibility?: string): string =>
   `---\nschema_version: 4\ntitle: Demo ${prefix}\nupdated: '2026-11-01'\nstate: focused\nrank: ${rank}\ntask_prefix: ${prefix}\n${visibility ? `visibility: ${visibility}\n` : ''}---\n# Demo\n`;
@@ -30,6 +31,7 @@ describe('task.keys', () => {
 
   it('hides owner-only initiatives from an agent and says how many', async () => {
     await withEmptyActiveRoot(async (activeRoot) => {
+      writeCharter(activeRoot);
       await scaffold(activeRoot, 'alpha', brief('AL', 1, 'agent-visible'), { 'AL-1.yml': '' });
       await scaffold(activeRoot, 'beta', brief('BE', 2), { 'BE-1.yml': '' });
       const warnings: string[] = [];

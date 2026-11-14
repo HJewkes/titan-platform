@@ -22,8 +22,8 @@
     {
       "name": "every hold class requires the adversary's attestation",
       "file": "products/factory/src/shepherd/attest-evidence.ts",
-      "find": "|| holdClassOf(registration.holdReason) === G10_ADVERSARY_CLASS,",
-      "replace": "|| true,",
+      "find": "|| holdClassOf(holdReason) === G10_ADVERSARY_CLASS;",
+      "replace": "|| true;",
       "kills": [
         "the merge evidence of a low-tier policy touch a low-tier run's claimed row is met by the correctness MERGE alone"
       ]
@@ -31,8 +31,8 @@
     {
       "name": "no hold class requires the adversary's attestation",
       "file": "products/factory/src/shepherd/attest-evidence.ts",
-      "find": "|| holdClassOf(registration.holdReason) === G10_ADVERSARY_CLASS,",
-      "replace": "|| false,",
+      "find": "|| holdClassOf(holdReason) === G10_ADVERSARY_CLASS;",
+      "replace": "|| false;",
       "kills": [
         "the merge evidence of a low-tier policy touch the same claim under an adversary hold still wants the adversary"
       ]

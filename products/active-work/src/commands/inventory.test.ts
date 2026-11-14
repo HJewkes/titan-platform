@@ -131,6 +131,33 @@ describe('inventory', () => {
     });
   });
 
+  it('withholds every row from agents when the charter is unreadable, agent-visible briefs included', async () => {
+    await withEmptyActiveRoot(async (root) => {
+      await seedGarden(root);
+      await put(root, 'alpha/brief.md', '---\nvisibility: agent-visible\n---\n');
+
+      const res = await inventoryCmd.run({}, ctx());
+
+      expect(res.initiatives.map((row) => [row.slug, row.agent_visible, row.withheld_from_agents])).toEqual([
+        ['alpha', true, true],
+        ['garden', false, true],
+      ]);
+    });
+  });
+
+  it('withholds a human-only row from agents even when its brief is agent-visible', async () => {
+    await withEmptyActiveRoot(async (root) => {
+      await writeCharter(root, ['garden-plan']);
+      await put(root, 'alpha/brief.md', '---\nvisibility: agent-visible\n---\n');
+      await put(root, 'garden-plan/brief.md', '---\nvisibility: agent-visible\n---\n');
+
+      const res = await inventoryCmd.run({}, ctx());
+      const withheld = (slug: string) => res.initiatives.find((row) => row.slug === slug)?.withheld_from_agents;
+
+      expect([withheld('alpha'), withheld('garden-plan')]).toEqual([false, true]);
+    });
+  });
+
   it('marks nested sources as unindexed and every other file as indexed', async () => {
     await withEmptyActiveRoot(async (root) => {
       await seedGarden(root);
