@@ -194,9 +194,9 @@ describe('cross-initiative list verbs for an agent caller', () => {
       const result = await inventory.run({}, owner(root));
 
       const rows = result.initiatives.filter((row) => row.slug === VISIBLE || row.slug === HIDDEN);
-      expect(rows.map((row) => [row.slug, row.agent_visible, row.withheld_from_agents])).toEqual([
-        [VISIBLE, true, false],
-        [HIDDEN, false, true],
+      expect(rows.map((row) => [row.slug, row.withheld_from_agents])).toEqual([
+        [VISIBLE, false],
+        [HIDDEN, true],
       ]);
     });
   });
