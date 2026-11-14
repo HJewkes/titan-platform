@@ -31,7 +31,7 @@ export function adoptedReviewer(registration: Registration | undefined): string 
   return holdClass !== undefined && OWN_REVIEW_HOLDS.has(holdClass) ? undefined : externalReviewer(registration);
 }
 
-export interface ExternalVerdictInput {
+interface ExternalVerdictInput {
   repo: string;
   pr: number;
   head: string;
@@ -142,7 +142,7 @@ async function readReviewer(reader: SeatReader, target: ReviewTarget, rows: read
  * `clear` lets the MERGE stand; a FIX_FIRST sends the head back; a `none` with a reason is a read that failed, or a seat WAIT
  * (`wait`, naming the `seat`), and blocks the head too. `retry` marks a failed read that may succeed if asked again.
  */
-export type SeatCheck = Extract<AwaitVerdictResult, { verdict: "FIX_FIRST" }> | { kind: "none"; reason: string; wait?: true; retry?: true; seat?: string } | { kind: "clear"; merged?: string };
+type SeatCheck = Extract<AwaitVerdictResult, { verdict: "FIX_FIRST" }> | { kind: "none"; reason: string; wait?: true; retry?: true; seat?: string } | { kind: "clear"; merged?: string };
 
 const retryIf = (clears: boolean) => (clears ? { retry: true as const } : {});
 
