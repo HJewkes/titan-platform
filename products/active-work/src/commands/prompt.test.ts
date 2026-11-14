@@ -6,6 +6,7 @@ import promptCommand from './prompt.js';
 import { NotFoundError } from '../errors.js';
 import type { CommandContext } from '../registry/index.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
+import { writeCharter } from '../test-support/visibility.js';
 
 function makeCtx(activeRoot: string, cwd?: string): CommandContext {
   return { activeRoot, warnings: [], format: 'json', cwd };
@@ -25,6 +26,7 @@ describe('prompt command', () => {
 
   it('resolves a unique prefix', async () => {
     await withTempActiveRoot(async (activeRoot) => {
+      writeCharter(activeRoot);
       const out = await promptCommand.run({ slug: 'sample', offline: true }, makeCtx(activeRoot));
       expect(out).toContain('Sample Initiative');
     });

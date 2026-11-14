@@ -127,6 +127,16 @@ interface InitiativeBriefRef {
  * brief, or a visibility value outside the closed set, is owner-only.
  */
 declare function isAgentVisible(initiative: InitiativeBriefRef): boolean;
+type AgentAccess = "shown" | "withheld";
+interface AgentAccessInput extends InitiativeBriefRef {
+    /** Whether the charter lists the initiative human-only; `unknown` when the charter could not be read. */
+    humanOnly: boolean | "unknown";
+}
+/**
+ * The one verdict on whether agents may read an initiative. The brief and the charter must
+ * both allow it; an unknown charter withholds everything, so neither source can fail open.
+ */
+declare function agentAccess(input: AgentAccessInput): AgentAccess;
 
 /** One task as the active-work task index lists it: its id and the initiative whose `tasks/` folder holds its file. */
 interface TaskKeyEntry {
@@ -533,7 +543,7 @@ type IntentDigestResult = {
 /** Parses a `titan-intent-digest/v1` file. Strict: any malformed bullet fails the whole digest, never a partial read. */
 declare function parseIntentDigest(text: string): IntentDigestResult;
 
-export { type AreaEntry, BUILT_IN_STATUSES, type BetLookup, type CategorizedTask, type CategoryAxis, type CategoryError, type CategoryRegistry, CategoryRegistrySchema, type ClaimRow, type CriticalPathOptions, type CriticalPathResult, type CrossInitiativeParentWarning, DELIVERABLE_ID_REGEX, DELIVERABLE_STATUSES, DISPOSITION_KINDS, type Deliverable, type DeliverableEntry, DeliverableSchema, type DeliverableStatus, type DispositionCheck, type DispositionKind, type DispositionRow, DispositionRowSchema, type EdgeChange, type EdgeCheck, type EdgeError, type EdgeField, type Edges, type ExternalDep, INTENT_DIGEST_SCHEMA, INTENT_SECTIONS, type InitiativeBriefRef, type InitiativePrefix, type InitiativeVisibility, InitiativeVisibilitySchema, type IntentDigestError, type IntentDigestResult, type IntentLine, type IntentSection, type ReviewItem, type ReviewPin, type RunCost, type StatusEntry, TOPIC_PRIORITIES, TOPIC_VERDICTS, type Task, type TaskFloat, type TaskKeyEntry, type TaskKeyIndex, type TaskKeyRefusal, type TaskKeyResolution, type TaskRequire, TaskRequireSchema, TaskSchema, type TaskTreeNode, type TopicPriority, type TopicRow, type TopicVerdict, betProblem, categoriesPath, checkCategories, checkDispositions, checkEdges, criticalPath, deliverablePath, deliverablesDir, isAgentVisible, parseCategoryRegistry, parseClaimsAudit, parseDeliverableRegistry, parseDispositions, parseIntentDigest, parseTopicsJudged, prioritizedTopics, readEdges, readReviewPin, readTsv, resolveTaskKey, sumRunCost, summaryRecommendations, taskTree };
+export { type AgentAccess, type AgentAccessInput, type AreaEntry, BUILT_IN_STATUSES, type BetLookup, type CategorizedTask, type CategoryAxis, type CategoryError, type CategoryRegistry, CategoryRegistrySchema, type ClaimRow, type CriticalPathOptions, type CriticalPathResult, type CrossInitiativeParentWarning, DELIVERABLE_ID_REGEX, DELIVERABLE_STATUSES, DISPOSITION_KINDS, type Deliverable, type DeliverableEntry, DeliverableSchema, type DeliverableStatus, type DispositionCheck, type DispositionKind, type DispositionRow, DispositionRowSchema, type EdgeChange, type EdgeCheck, type EdgeError, type EdgeField, type Edges, type ExternalDep, INTENT_DIGEST_SCHEMA, INTENT_SECTIONS, type InitiativeBriefRef, type InitiativePrefix, type InitiativeVisibility, InitiativeVisibilitySchema, type IntentDigestError, type IntentDigestResult, type IntentLine, type IntentSection, type ReviewItem, type ReviewPin, type RunCost, type StatusEntry, TOPIC_PRIORITIES, TOPIC_VERDICTS, type Task, type TaskFloat, type TaskKeyEntry, type TaskKeyIndex, type TaskKeyRefusal, type TaskKeyResolution, type TaskRequire, TaskRequireSchema, TaskSchema, type TaskTreeNode, type TopicPriority, type TopicRow, type TopicVerdict, agentAccess, betProblem, categoriesPath, checkCategories, checkDispositions, checkEdges, criticalPath, deliverablePath, deliverablesDir, isAgentVisible, parseCategoryRegistry, parseClaimsAudit, parseDeliverableRegistry, parseDispositions, parseIntentDigest, parseTopicsJudged, prioritizedTopics, readEdges, readReviewPin, readTsv, resolveTaskKey, sumRunCost, summaryRecommendations, taskTree };
 
 // ./dist/planning.d.ts
 import { z } from 'zod';

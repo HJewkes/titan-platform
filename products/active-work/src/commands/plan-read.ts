@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { defineCommand } from '../registry/index.js';
+import { defineCommand, type CommandContext } from '../registry/index.js';
 import {
   assertInitiativeExists,
   loadPlanRecord,
@@ -19,15 +19,15 @@ const ShowArgsSchema = z.object({ id: z.string().min(1) });
 
 const ListArgsSchema = z.object({ initiative: z.string().min(1).optional() });
 
-/** One initiative's records when named, else every agent-visible initiative's. */
+/** One initiative's records when named, else those of every initiative the caller may list. */
 export async function listPlanRecords<K extends PlanKind>(
-  activeRoot: string,
+  ctx: CommandContext,
   kind: K,
   initiative?: string,
 ): Promise<PlanRecords[K][]> {
-  if (initiative === undefined) return loadVisiblePlanRecords(activeRoot, kind);
-  await assertInitiativeExists(activeRoot, initiative);
-  return loadPlanRecords(activeRoot, initiative, kind);
+  if (initiative === undefined) return loadVisiblePlanRecords(ctx, kind);
+  await assertInitiativeExists(ctx.activeRoot, initiative);
+  return loadPlanRecords(ctx.activeRoot, initiative, kind);
 }
 
 function showCommand<K extends PlanKind>(kind: K, example: string) {
@@ -50,7 +50,7 @@ function listCommand<K extends PlanKind>(kind: K) {
     cli: {
       options: { initiative: { long: '--initiative', description: 'Initiative slug; omit to list across initiatives' } },
     },
-    run: async (args, ctx) => listPlanRecords(ctx.activeRoot, kind, args.initiative),
+    run: async (args, ctx) => listPlanRecords(ctx, kind, args.initiative),
   });
 }
 

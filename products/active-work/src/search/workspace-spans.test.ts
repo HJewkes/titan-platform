@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { graphNoteRelevance } from '../bootstrap/rank-notes.js';
 import type { WorkspaceGraph } from '../session-index/graph.js';
 import { searchWorkspace } from './index.js';
+import { ownerShown } from '../test-support/visibility.js';
 import {
   hasLegacyWorkspaceSpans,
   workspaceSpanReader,
@@ -41,7 +42,7 @@ afterEach(() => {
 });
 
 const hitPaths = async () =>
-  (await searchWorkspace('Prose a search should find', { graph, activeRoot: root })).hits.map(
+  (await searchWorkspace('Prose a search should find', { graph, activeRoot: root, visible: await ownerShown(root) })).hits.map(
     (hit) => [hit.ref, hit.path, hit.excerpt],
   );
 
@@ -108,7 +109,7 @@ describe('workspace readers across a cutover', () => {
       'decoywordonly',
     );
 
-    expect((await searchWorkspace('decoywordonly', { graph, activeRoot: root })).hits).toEqual([]);
+    expect((await searchWorkspace('decoywordonly', { graph, activeRoot: root, visible: await ownerShown(root) })).hits).toEqual([]);
   });
 
   it('note relevance finds the same notes in either table', () => {

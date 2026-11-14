@@ -102,7 +102,7 @@ export const planBetList = defineCommand({
     },
   },
   run: async (args, ctx) => {
-    const bets = await listPlanRecords(ctx.activeRoot, 'bet', args.initiative);
+    const bets = await listPlanRecords(ctx, 'bet', args.initiative);
     const shown = bets.filter((bet) => bet.state === args.state && (args.week === undefined || bet.week === args.week));
     return shown.sort(byWeekThenOrder);
   },
