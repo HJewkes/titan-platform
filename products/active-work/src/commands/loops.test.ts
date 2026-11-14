@@ -105,6 +105,19 @@ describe('loops trigger marking', () => {
     });
   });
 
+  it('keeps the task-done trigger once the done task file moves to tasks/archive/', async () => {
+    await withTempActiveRoot(async (root) => {
+      const tasksDir = path.join(root, SLUG, 'tasks');
+      await fs.mkdir(path.join(tasksDir, 'archive'), { recursive: true });
+      await fs.rename(path.join(tasksDir, 'SI-2.yml'), path.join(tasksDir, 'archive', 'SI-2.yml'));
+      await openLoops(root, [{ id: 'after-archived-task', kind: 'task', ref: 'SI-2' }]);
+
+      const { byId } = await list(root);
+
+      expect(byId.get('after-archived-task')?.trigger_met).toEqual(['task-done']);
+    });
+  });
+
   it('marks a pr loop whose PR GitHub reports merged', async () => {
     await withTempActiveRoot(async (root) => {
       const gh = ghWithStates({ 'acme/widgets#57': 'MERGED', 'acme/widgets#58': 'OPEN' });

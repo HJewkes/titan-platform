@@ -189,7 +189,7 @@ export default defineCommand<Args, Result>({
     const initiativeDir = path.join(ctx.activeRoot, args.slug);
     const [loaded, { tasks }] = await Promise.all([
       loadSessionsFromDir(initiativeDir),
-      loadTasks(initiativeDir),
+      loadTasks(initiativeDir, { archive: true }),
     ]);
     const context = {
       initiativeDir,
