@@ -363,6 +363,22 @@ await withPlanLock(root, "alpha", async () => {
 });
 ```
 
+### The task reader (`@titan-design/pm/node`)
+
+`readInitiativeTasks(root, slug, { archive })` is the one reader for an initiative's task files.
+It reads `<root>/<slug>/tasks/*.yml` and `*.yaml` in filename order and validates each with
+`TaskSchema`. With `archive: true` it appends `tasks/archive/` rows after every live row, each
+flagged `archived`. It resolves to `{ tasks, unparsed, missing }`:
+
+| Field | Holds |
+|---|---|
+| `tasks` | `{ initiative, file, archived, mtimeMs, task }` per file that parsed; `file` is relative to `root` (`alpha/tasks/AL-1.yml`) |
+| `unparsed` | `{ initiative, file, reason }` per file that failed YAML (`yaml: ...`) or the schema (`priority: ...`); never thrown |
+| `missing` | `true` when `tasks/` does not exist; any other directory error throws |
+
+It reads only the slug it is given and makes no visibility decision. Repeated ids are all
+returned, so a caller keeps its own policy for a repeat within or across initiatives.
+
 ## Task provenance
 
 `TaskSchema` carries where a task came from and why it closed, so the ticket scorecard reads
@@ -405,7 +421,7 @@ brief may require it.
 ## What it deliberately does not do
 
 The root entry reads no files, parses no YAML and writes nothing, the category and deliverable
-registries included; only the `./node` plan store touches disk. It does not check that a task's `deliverables` ids exist. It
+registries included; only the `./node` plan store and task reader touch disk. It does not check that a task's `deliverables` ids exist. It
 does not choose the area ids; those come from `$tiers` and the products outside this repo. It has no task numbering, and it
 knows a task's initiative only by its id prefix (`EC` for `EC-1`).
 
