@@ -193,7 +193,7 @@ export function baselineGrowth(baseline, baseBaseline, allowedPaths = []) {
 /** Adopted paths in head that the base does not list: the only paths whose growth this run forgives. */
 export const newlyAdopted = (headPaths, basePaths) => headPaths.filter((dir) => !basePaths.includes(dir));
 
-export function formatGrowth(growth, baseRef) {
+function formatGrowth(growth, baseRef) {
   const lines = growth.map((id) => `  GROWN  ${id}`);
   lines.push(`${growth.length} baseline entr${growth.length === 1 ? "y" : "ies"} added over ${baseRef} — failed. The baseline only shrinks; fix the export instead.`);
   return lines.join("\n");
@@ -225,7 +225,7 @@ function readBaseline() {
 
 const parseAdopted = (text) => JSON.parse(text).adoptedPaths ?? [];
 
-export function readAdoptedPaths(cwd = ROOT) {
+function readAdoptedPaths(cwd = ROOT) {
   const file = path.join(cwd, ADOPTED_PATH);
   return existsSync(file) ? parseAdopted(readFileSync(file, "utf8")) : [];
 }
