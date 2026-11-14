@@ -18,7 +18,8 @@ import {
   type PackageRegistry,
   type ReleasePreflight,
 } from "./release.js";
-import { ShepherdStore, holdReviewerMigration, shepherdMigration, sliceMigration } from "./store.js";
+import { shepherdEventMigration } from "./events.js";
+import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, shepherdMigration, sliceMigration } from "./store.js";
 
 const REPO = "octo/demo";
 const HEAD = fakeSha("version-packages-head");
@@ -191,7 +192,7 @@ describe("releaseGuard", () => {
     const fake = versionPackagesPr();
     fake.addPr({ headSha: fakeSha("other-head") });
     const db = openDatabase(":memory:");
-    runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9)]);
+    runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19)]);
     let clock = Date.parse("2026-01-01T00:00:00Z");
     const store = new ShepherdStore(db, () => clock);
     store.register({ repo: REPO, pr: 1, branch: VERSION_PACKAGES_BRANCH, runId: "run-vp", task: "demo/version-packages", implementer: "changesets", policy: AUTO });
@@ -229,6 +230,15 @@ describe("releaseGuard", () => {
     stale.advance(RELEASE_FREEZE_MS + 1);
 
     expect([await merged.reason(OTHER), await moved.reason(OTHER), await stale.reason(OTHER)]).toEqual([undefined, undefined, undefined]);
+  });
+
+  it("lets other merges go when the ready Version Packages PR is itself held and so cannot land first", async () => {
+    const { store, reason } = scene();
+    store.setReleaseReady("run-vp", HEAD);
+    const freezing = await reason(OTHER);
+    store.hold("run-vp", "g10-adversary: security touch");
+
+    expect([freezing, await reason(OTHER)]).toEqual([`the Version Packages PR #1 is ready at ${HEAD} and lands first`, undefined]);
   });
 });
 
