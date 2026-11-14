@@ -153,6 +153,15 @@ export async function readLaneTasks(
   };
 }
 
+const CensusRow = z.object({ tags: z.array(z.string()).optional(), notes: z.string().optional() });
+
+/** The lane's open tasks, with only the fields the ready-stock census reads. */
+export async function readLaneCensusRows(options: LiveSourceOptions, lane: { initiative: string; tag?: string }): Promise<z.infer<typeof CensusRow>[]> {
+  const client = createRpcClient<EligibilityCommands>(liveSource(options));
+  const { tasks: rows } = await client.call("task.list", { slug: lane.initiative, status: "open", ...(lane.tag !== undefined && { tag: lane.tag }) });
+  return rows.flatMap((row) => CensusRow.safeParse(row).data ?? []);
+}
+
 /** The open tasks of one initiative (or one lane of it), judged against the week's plan over active-work's loopback rpc. Reads only. */
 export async function readEligibility(options: LiveSourceOptions, query: EligibilityQuery): Promise<Eligibility> {
   const client = createRpcClient<EligibilityCommands>(liveSource(options));
