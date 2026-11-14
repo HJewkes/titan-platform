@@ -561,6 +561,7 @@ systemctl --user link ~/projects/titan-platform/ops/systemd/titan-dispatch-shado
 
 The tick needs the active-work daemon. Without it a lane cannot be read, so the tick writes a `refused` row with code
 `signal-unreadable` and exits 69.
+
 ## Owner-queue sources
 
 `src/needs/` holds the factory's `QueueSource` adapters for `@titan-design/owner-queue`. Each
