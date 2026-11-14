@@ -575,6 +575,22 @@ stderr and the command exits 69 after printing the rest.
 `titan-factory digest run` reads its "Needs you" section from this same list, minus `know`
 items, which are news and not asks.
 
+### Who sees which needs items
+
+Every needs read names its caller, `owner` or `agent`, and `src/caller.ts` resolves it once.
+Serve's HTTP route (the console) is the owner; MCP is an agent. The `needs` and `digest run`
+verbs are the owner only in a shell where none of `AGENT_CHAT_NAME`, `AGENT_CHAT_AGENT_ID` or
+`CLAUDECODE` is set, so the owner running them inside Claude Code gets the agent view, and so
+does `digest run --dry-run` in an agent shell.
+
+The owner gets every item. For an agent, `collectNeeds` drops every item whose `initiative` is
+not on the allow list it reads from active-work's `inventory`: the rows whose
+`withheld_from_agents` is `false`. That holds for every source (tasks, agent-chat asks whose
+meta names an initiative, Morning items, gates). Items with no initiative stay. A row without the
+field, a slug inventory does not list, and an unreachable daemon all withhold, and an unreachable
+daemon also adds a gap line. `needs-caller-boundary.test.ts` keeps the agent env reads in
+`caller.ts` and the caller decision in `needs/merged.ts`.
+
 ## Measurement audit
 
 `measurement-audit` (`src/audit/`) audits what one system records and what it should. Its input is the
