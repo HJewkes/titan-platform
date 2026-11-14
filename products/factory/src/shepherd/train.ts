@@ -98,7 +98,7 @@ export function mergeTrainRef(now: () => number): MergeTrainRef {
   };
 }
 
-export interface TrainDeps {
+interface TrainDeps {
   train: MergeTrainRef;
   port: GitHubPort;
   /** Why a PR's merge must wait; a holder whose merge waits gives the train up, so a hold or a freeze never wedges the repo. */

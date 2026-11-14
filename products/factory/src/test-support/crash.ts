@@ -3,10 +3,10 @@ import { openFactoryHost, type FactoryHost } from "../host.js";
 import type { StepRoute } from "@titan-design/workflow";
 
 /** Short enough to keep tests fast, long enough that the renewal timer (lease / 3) fires during a test. */
-export const CRASH_LEASE_MS = 3_000;
+const CRASH_LEASE_MS = 3_000;
 const T0 = Date.parse("2026-01-01T00:00:00.000Z");
 
-export interface CrashOptions {
+interface CrashOptions {
   dbPath: string;
   workflows: readonly WorkflowDefinition[];
   routes: readonly StepRoute[];
@@ -14,7 +14,7 @@ export interface CrashOptions {
   hangAt: string;
 }
 
-export interface Crash {
+interface Crash {
   /** The host that "died": its clock is frozen and it never releases its lease. */
   crashed: FactoryHost;
   /** Resolves once the crashing host has entered the `hangAt` step. */
