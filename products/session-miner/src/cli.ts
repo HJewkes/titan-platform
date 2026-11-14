@@ -1,5 +1,5 @@
-import { profilesRoot } from "@titan-design/anthropic-account/node";
 import path from "node:path";
+import { profilesRoot } from "@titan-design/anthropic-account/node";
 import { Command, CommanderError } from "commander";
 import {
   EXIT,
