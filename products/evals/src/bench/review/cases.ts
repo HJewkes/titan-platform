@@ -48,7 +48,7 @@ type CaseV1 = z.infer<typeof CaseV1Schema>;
 const CorpusKindSchema = z.looseObject({ runId: z.string(), head: z.string(), kind: z.string().nullable().optional() });
 
 /** `runId@head` to the PR kind the corpus registered; a null kind reads `unknown`. */
-export function corpusKinds(corpusText: string): Map<string, string> {
+function corpusKinds(corpusText: string): Map<string, string> {
   const kinds = new Map<string, string>();
   for (const line of corpusText.split("\n")) {
     if (line.trim() === "") continue;

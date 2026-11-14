@@ -10,15 +10,15 @@ import type { CaseType, ReviewCaseBody } from "./cases.js";
 /** `path:12` or `path:12-30`, the form review-panel's aggregate and `scoreReplay` read a finding's citations in. */
 const CITATION = /(?<![\w./-])((?:[\w.-]+\/)*[\w-][\w.-]*\.[A-Za-z]\w*):(\d+)(?:-(\d+))?/g;
 /** How far a cited line may sit from a planted line and still name it. */
-export const PLANTED_LINE_SLACK = 3;
+const PLANTED_LINE_SLACK = 3;
 
-export interface Cited {
+interface Cited {
   path: string;
   lineStart: number;
   lineEnd: number;
 }
 
-export interface ReviewResult {
+interface ReviewResult {
   caseType: CaseType;
   verdict: "MERGE" | "FIX_FIRST" | null;
   /** The final message held no well-formed block naming this case's PR and head. */
@@ -33,7 +33,7 @@ export interface ReviewResult {
 }
 
 /** File text at the bundle's head, refusing any path that climbs out of it. */
-export function headLineSource(headDir: string): LineSource {
+function headLineSource(headDir: string): LineSource {
   const root = resolve(headDir);
   return {
     lines(path) {

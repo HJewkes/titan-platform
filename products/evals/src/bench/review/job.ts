@@ -12,7 +12,7 @@ import { finalMessage, scoreReview } from "./score.js";
 const run = promisify(execFile);
 
 /** Read-only tools only; `rg` is not listed because the hosts that run the bench do not have it. */
-export const REVIEW_TOOLS = ["Read", "Grep", "Glob", "Bash(ls:*)", "Bash(cat:*)", "Bash(grep:*)", "Bash(git diff:*)"] as const;
+const REVIEW_TOOLS = ["Read", "Grep", "Glob", "Bash(ls:*)", "Bash(cat:*)", "Bash(grep:*)", "Bash(git diff:*)"] as const;
 
 interface ReviewPluginOptions {
   gitFor(repo: string): BundleGit | undefined;
@@ -39,7 +39,7 @@ async function plantInto(bundleDir: string, plant: Plant): Promise<void> {
 }
 
 /** Head, base and diff with no `.git`; a commit the local clone lacks fails the job as infra, and nothing is fetched. */
-export async function writeBundle(benchCase: ReviewCase, bundleDir: string, gitFor: ReviewPluginOptions["gitFor"]): Promise<void> {
+async function writeBundle(benchCase: ReviewCase, bundleDir: string, gitFor: ReviewPluginOptions["gitFor"]): Promise<void> {
   if (benchCase.tree !== undefined) {
     cpSync(benchCase.tree, bundleDir, { recursive: true });
     return;

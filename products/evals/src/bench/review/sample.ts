@@ -6,7 +6,7 @@ import { repoName } from "./repos.js";
 
 type GitFor = (repo: string) => BundleGit | undefined;
 
-export interface SampleOptions {
+interface SampleOptions {
   bodies: readonly ReviewCaseBody[];
   gitFor: GitFor;
   seed: string;
@@ -14,7 +14,7 @@ export interface SampleOptions {
   counts: Record<CaseType, number>;
 }
 
-export interface SampleManifest {
+interface SampleManifest {
   schema: "titan.bench-r-cases/v1";
   seed: string;
   counts: Record<CaseType, number>;

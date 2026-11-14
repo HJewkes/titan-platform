@@ -166,8 +166,9 @@ rejects the candidate.
   - Dispatch pauses under machine pressure. It stops, writing `STOPPED`, at seven-day account use ≥ 92 %.
   - Track plugins implement `prepare`, `score` and `cleanup`.
 - `titan-evals bench cases --track r --source <cases-v1 dir> --corpus <corpus.jsonl> --out <dir> --repo-root name=path`
-  samples real-defect, planted and clean review cases into a stratified `queue.jsonl`. `bench run --track r --cases
-  <dir>` then reviews each case's bundle with the live reviewer brief and scores its verdict block and citations.
+  samples real-defect, planted and clean review cases into a stratified `queue.jsonl`. Then
+  `bench run --track r --cases <dir>` reviews each case's bundle with the live reviewer brief and scores its verdict
+  block and citations.
 
 ## When to reach for it
 
