@@ -95,8 +95,10 @@ describe("size band", () => {
   });
 });
 
-const candidate = (id: string, kind: ImplementCandidate["kind"], size: ImplementCandidate["size"] = "S"): ImplementCandidate =>
-  ({ row: { case_id: id }, kind, size, pkgGroup: "other" }) as ImplementCandidate;
+const candidate = (id: string, kind: ImplementCandidate["kind"], size: ImplementCandidate["size"] = "S"): ImplementCandidate => {
+  const row = { case_id: id, repo: "demo", pr_number: 1, base_commit: sha(1), merge_commit: sha(2), class: kind, n_tasks: 1, task_ids: [], task: null, title: "", brief_text: null, follow_up_fixes: [] };
+  return { row, taskId: "TP-1", kind, size, pkg: "packages/x", pkgGroup: "other", mergedAt: "2026-10-06", changedLines: 1, nonTestLines: 1 };
+};
 
 describe("stratified queue", () => {
   it("takes one candidate from each stratum per round before a second from any", () => {

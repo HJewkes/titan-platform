@@ -2,6 +2,7 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renam
 import { join, resolve } from "node:path";
 import { activeWorkRoot } from "@titan-design/app-paths";
 import { Command, InvalidArgumentError } from "commander";
+import { z } from "zod";
 import { exportImplementTaskCases } from "../../implement-task/export.js";
 import { defaultPolicy, type ExclusionPolicy } from "../../private/exclusion.js";
 import { buildCorpus, stratifiedQueue, type Corpus, type ImplementCandidate } from "./corpus.js";
@@ -65,8 +66,11 @@ function screenedIds(out: string): Set<string> {
   const file = join(out, "cases.jsonl");
   if (!existsSync(file)) return new Set();
   const lines = readFileSync(file, "utf8").split("\n").filter((line) => line.trim() !== "");
-  return new Set(lines.map((line) => (JSON.parse(line) as { candidate: string }).candidate));
+  return new Set(lines.map((line) => ScreenedRow.parse(JSON.parse(line)).candidate));
 }
+
+const ScreenedRow = z.object({ candidate: z.string() });
+const WrittenCase = z.object({ expected: z.object({ hiddenTests: z.array(z.object({ path: z.string() })) }) });
 
 interface Exported {
   id?: string;
@@ -78,7 +82,7 @@ function moveCase(exportDir: string, out: string): Exported {
   const [file] = readdirSync(join(exportDir, "cases"));
   if (file === undefined) return { reason: "export-wrote-no-case", hiddenTests: [] };
   const id = file.replace(/\.json$/, "");
-  const body = JSON.parse(readFileSync(join(exportDir, "cases", file), "utf8")) as { expected: { hiddenTests: { path: string }[] } };
+  const body = WrittenCase.parse(JSON.parse(readFileSync(join(exportDir, "cases", file), "utf8")));
   for (const dir of ["trees", "hidden"]) {
     mkdirSync(join(out, dir), { recursive: true });
     rmSync(join(out, dir, id), { recursive: true, force: true });
@@ -93,7 +97,8 @@ async function exportOne(candidate: ImplementCandidate, work: string, context: C
   writeFileSync(corpus, `${JSON.stringify(candidate.row)}\n`);
   const exportDir = join(work, "export");
   const { flags, policy, log } = context;
-  const manifest = await exportImplementTaskCases({ corpus, outDir: exportDir, policy, cloneFor: () => flags.repoDir, classes: [candidate.kind], perClass: 1, seed: flags.seed, laterFixSource: "none", log });
+  const screenOptions = { classes: [candidate.kind], perClass: 1, seed: flags.seed, laterFixSource: "none" as const, log };
+  const manifest = await exportImplementTaskCases({ corpus, outDir: exportDir, policy, cloneFor: () => flags.repoDir, ...screenOptions });
   if (manifest.counts[candidate.kind]?.kept === 1) return moveCase(exportDir, flags.out);
   const reason = manifest.dropped[0]?.reason ?? Object.keys({ ...manifest.skipped, ...manifest.excluded })[0] ?? "not-selected";
   return { reason, hiddenTests: [] };
@@ -150,14 +155,19 @@ function caseRow(candidate: ImplementCandidate, result: Awaited<ReturnType<typeo
   };
 }
 
+function writeQueue(out: string, corpus: Corpus, queue: readonly ImplementCandidate[]): void {
+  mkdirSync(out, { recursive: true });
+  writeFileSync(join(out, "eligibility.json"), `${JSON.stringify({ ...countsOf(corpus), skippedPrs: corpus.skipped }, null, 2)}\n`);
+  const lines = queue.map(({ row, kind, size, pkgGroup }) => `${JSON.stringify({ candidate: row.case_id, kind, size, pkgGroup })}\n`);
+  writeFileSync(join(out, "queue.jsonl"), lines.join(""));
+}
+
 async function run(flags: CasesFlags, log: (line: string) => void): Promise<void> {
   const tasksDir = flags.tasksDir ?? join(flags.activeWorkRoot, "titan-platform", "tasks");
   const sources = liveSources({ factoryDb: flags.factoryDb, repoSlug: flags.repoSlug, tasksDir, repoDir: flags.repoDir, mainRef: flags.mainRef });
   const corpus = await buildCorpus(sources, { mergedSince: flags.mergedSince, repo: flags.repoSlug.slice(flags.repoSlug.indexOf("/") + 1) });
   const queue = stratifiedQueue(corpus.eligible, flags.seed);
-  mkdirSync(flags.out, { recursive: true });
-  writeFileSync(join(flags.out, "eligibility.json"), `${JSON.stringify({ ...countsOf(corpus), skippedPrs: corpus.skipped }, null, 2)}\n`);
-  writeFileSync(join(flags.out, "queue.jsonl"), queue.map((candidate) => JSON.stringify({ candidate: candidate.row.case_id, kind: candidate.kind, size: candidate.size, pkgGroup: candidate.pkgGroup })).join("\n") + "\n");
+  writeQueue(flags.out, corpus, queue);
   log(JSON.stringify(countsOf(corpus)));
   if (flags.dryRun) return;
   const done = screenedIds(flags.out);

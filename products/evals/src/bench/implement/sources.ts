@@ -95,15 +95,17 @@ function doneWhenText(value: unknown): string | null {
   return null;
 }
 
+const TaskYml = z.object({ title: z.coerce.string().optional(), done_when: z.unknown(), estimate: z.unknown() });
+
 function readTask(tasksDir: string, id: string): TaskFile | undefined {
   const file = join(tasksDir, `${id}.yml`);
   if (!existsSync(file)) return undefined;
-  const parsed = (YAML.parse(readFileSync(file, "utf8")) ?? {}) as Record<string, unknown>;
+  const parsed = TaskYml.parse(YAML.parse(readFileSync(file, "utf8")) ?? {});
   const estimate = Number(parsed.estimate);
-  return { title: String(parsed.title ?? ""), doneWhen: doneWhenText(parsed.done_when), estimate: parsed.estimate == null || !Number.isFinite(estimate) ? null : estimate };
+  return { title: parsed.title ?? "", doneWhen: doneWhenText(parsed.done_when), estimate: parsed.estimate == null || !Number.isFinite(estimate) ? null : estimate };
 }
 
-export interface SourceOptions {
+interface SourceOptions {
   factoryDb: string;
   repoSlug: string;
   tasksDir: string;

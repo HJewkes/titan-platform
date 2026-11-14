@@ -4,7 +4,7 @@ import { engineeringInitiativeOf } from "../../private/exclusion.js";
 import { scrubBrief } from "./brief.js";
 import type { CorpusSources, MainMerge, NumstatLine, Registration, TaskFile } from "./sources.js";
 
-export const KINDS = ["correctness", "feature", "refactor"] as const;
+const KINDS = ["correctness", "feature", "refactor"] as const;
 const SIZES = ["S", "M"] as const;
 const PKG_GROUPS = ["factory", "explainer", "console", "other"] as const;
 const MAX_CHANGED_LINES = 600;
@@ -35,7 +35,7 @@ export interface Corpus {
   skipped: Skipped[];
 }
 
-export interface CorpusOptions {
+interface CorpusOptions {
   /** ISO date; a PR merged before it is left out. */
   mergedSince: string;
   repo: string;
@@ -68,9 +68,9 @@ function diffFacts(numstat: readonly NumstatLine[]): DiffFacts {
 }
 
 /** Row checks that need no git call. */
-function rowSkip(merge: MainMerge, kind: string, task: TaskFile, options: CorpusOptions): string | undefined {
+function rowSkip(merge: MainMerge, kindSkip: string | undefined, task: TaskFile, options: CorpusOptions): string | undefined {
   if (merge.mergedAt.slice(0, 10) < options.mergedSince) return "merged-before-window";
-  if (!(KINDS as readonly string[]).includes(kind)) return `kind-${kind}`;
+  if (kindSkip !== undefined) return kindSkip;
   if (task.doneWhen === null) return "no-done-when";
   return undefined;
 }
@@ -120,8 +120,9 @@ function corpusRow(joined: Joined, brief: string, repo: string): CorpusV3Row {
 
 async function candidateOf(joined: Joined, sources: CorpusSources, options: CorpusOptions): Promise<ImplementCandidate | string> {
   const { merge, registration, task } = joined;
-  const early = rowSkip(merge, registration.kind, task, options);
-  if (early !== undefined) return early;
+  const kind = KINDS.find((known) => known === registration.kind);
+  const early = rowSkip(merge, kind === undefined ? `kind-${registration.kind}` : undefined, task, options);
+  if (early !== undefined || kind === undefined) return early ?? "kind-unknown";
   const numstat = await sources.numstat(merge);
   const facts = diffFacts(numstat);
   const size = sizeOf(task.estimate, facts.changedLines);
@@ -131,8 +132,8 @@ async function candidateOf(joined: Joined, sources: CorpusSources, options: Corp
   const scrubbed = scrubBrief({ title: task.title, doneWhen: task.doneWhen ?? "" }, { pr: merge.pr, mergeSha: merge.sha });
   if (!scrubbed.ok) return scrubbed.reason;
   const pkg = facts.pkgs[0] ?? "";
-  const kind = registration.kind as Kind;
-  return { row: corpusRow(joined, scrubbed.brief, options.repo), taskId: joined.taskId, kind, size, pkg, pkgGroup: PKG_GROUP_OF[pkg] ?? "other", mergedAt: merge.mergedAt, ...facts };
+  const lines = { changedLines: facts.changedLines, nonTestLines: facts.nonTestLines };
+  return { row: corpusRow(joined, scrubbed.brief, options.repo), taskId: joined.taskId, kind, size, pkg, pkgGroup: PKG_GROUP_OF[pkg] ?? "other", mergedAt: merge.mergedAt, ...lines };
 }
 
 /** The latest registration per PR: a re-registration carries the kind Shepherd last ran it under. */
