@@ -138,7 +138,7 @@ interface LaneJudged {
   planRead?: LaneRead["planRead"];
 }
 
-/** An owner-only initiative is refused before any of its tasks is read, so not even a task key of it reaches a row. */
+/** An initiative active-work withholds from agents is refused before any of its tasks is read, so not even a task key of it reaches a row. */
 const ownerOnlyRow = (base: LaneBase): RefusedRow => ({
   ...base,
   kind: "refused",
@@ -148,14 +148,31 @@ const ownerOnlyRow = (base: LaneBase): RefusedRow => ({
   details: ["the initiative is not agent-visible"],
 });
 
-async function laneRows(lane: ShadowLane, input: TickInput, at: string, ports: TickPorts): Promise<LaneJudged> {
+/** active-work's agent allow list, or why it could not be read; an unread list shows no lane. */
+type AgentLanes = { read: ReadonlySet<string> } | { unread: string };
+
+async function readAgentLanes(ports: TickPorts): Promise<AgentLanes> {
+  try {
+    return { read: await ports.agentLanes() };
+  } catch (error) {
+    return { unread: errorMessage(error) };
+  }
+}
+
+const unreadRow = (base: LaneBase, detail: string): LaneJudged => {
+  const row: RefusedRow = { ...base, kind: "refused", task: null, stage: "admission", codes: ["signal-unreadable"], details: [detail] };
+  return { rows: [row], unread: true };
+};
+
+async function laneRows(lane: ShadowLane, input: TickInput, at: string, ports: TickPorts, agentLanes: AgentLanes): Promise<LaneJudged> {
   const base: LaneBase = { v: 1, wake: input.wake, at, lane: { initiative: lane.initiative, tag: lane.tag }, week: isoWeek(input.now.getTime()), basis: "selected" };
-  if ((await ports.access(lane.initiative)) !== "shown") return { rows: [ownerOnlyRow(base)], unread: false };
+  if ("unread" in agentLanes) return unreadRow(base, `active-work inventory: ${agentLanes.unread}`);
+  if (!agentLanes.read.has(lane.initiative)) return { rows: [ownerOnlyRow(base)], unread: false };
   let read: LaneRead;
   try {
     read = await readLane(lane, input, ports);
   } catch (error) {
-    return { rows: [{ ...base, kind: "refused", task: null, stage: "admission", codes: ["signal-unreadable"], details: [`active-work: ${errorMessage(error)}`] }], unread: true };
+    return unreadRow(base, `active-work: ${errorMessage(error)}`);
   }
   const extra = await providerHolds(input.providers ?? HOLD_PROVIDERS, lane, input, read.result.eligible);
   const rows: ShadowRow[] = [...eligibilityRows(base, read.result), ...candidateRows(base, read, extra)];
@@ -171,8 +188,9 @@ export async function shadowTick(input: TickInput): Promise<TickResult> {
   const at = input.now.toISOString();
   const { rules, hash } = input.loaded;
   const ports = tickPorts(input.verbs, input.ports);
+  const agentLanes = rules.lanes.length === 0 ? { read: new Set<string>() } : await readAgentLanes(ports);
   const judged: LaneJudged[] = [];
-  for (const lane of rules.lanes) judged.push(await laneRows(lane, input, at, ports));
+  for (const lane of rules.lanes) judged.push(await laneRows(lane, input, at, ports, agentLanes));
   const wake: ShadowRow = { v: 1, kind: "wake", wake: input.wake, at, build: buildSha(), rule_hash: hash, lanes: rules.lanes.length, ...wakePlanRead(judged.map((lane) => lane.planRead)) };
   return { rows: [wake, ...judged.flatMap((lane) => lane.rows)], unreadLanes: judged.filter((lane) => lane.unread).length };
 }

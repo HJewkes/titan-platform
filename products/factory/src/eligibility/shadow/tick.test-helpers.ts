@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -26,9 +26,12 @@ interface FakeWorkspace {
   outcomes?: Body[];
   /** "unknown" answers every `plan.*` the way a daemon built before them does. */
   plan?: "served" | "unknown";
+  /** `inventory` rows; absent, `alpha` alone is shown to agents. */
+  inventory?: Body[];
 }
 
 function answer(ws: FakeWorkspace, command: string, body: Body): unknown {
+  if (command === "inventory") return { initiatives: ws.inventory ?? [{ slug: "alpha", withheld_from_agents: false }] };
   if (command === "task.list") return { tasks: ws.tasks.filter((row) => body.tag === undefined || (Array.isArray(row.tags) && row.tags.includes(body.tag))) };
   if (command === "plan.bet.list") return ws.bets.filter((bet) => bet.week === body.week);
   if (command === "plan.outcome.list") return ws.outcomes ?? [];
@@ -57,27 +60,12 @@ interface Home {
   env: NodeJS.ProcessEnv;
 }
 
-/** An initiative brief under the active-work root, with the given front matter. */
-export function writeBrief(activeRoot: string, slug: string, frontMatter: string): void {
-  mkdirSync(join(activeRoot, slug), { recursive: true });
-  writeFileSync(join(activeRoot, slug, "brief.md"), `---\n${frontMatter}\n---\n# ${slug}\n`);
-}
-
-/** A charter listing the given initiatives human-only. */
-export function writeCharter(activeRoot: string, humanOnly: string[]): void {
-  const dir = join(activeRoot, "claude-channels", "sources", "autonomy");
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, "charter.md"), `---\nhuman_only_initiatives: ${JSON.stringify(humanOnly)}\n---\n`);
-}
-
-/** A factory config dir with `dispatcher.json` beside `config.json`, and an active-work root where `alpha` is agent-visible; `rules` undefined leaves the rule file absent. */
+/** A factory config dir with `dispatcher.json` beside `config.json`, and an empty active-work root; `rules` undefined leaves the rule file absent. */
 export function shadowHome(rules?: Body): Home {
   const dir = mkdtempSync(join(tmpdir(), "shadow-tick-"));
   const shadowDir = join(dir, "shadow");
   const activeRoot = join(dir, "active");
   writeFileSync(join(dir, "config.json"), "{}");
-  writeBrief(activeRoot, "alpha", "visibility: agent-visible");
-  writeCharter(activeRoot, []);
   if (rules !== undefined) writeFileSync(join(dir, "dispatcher.json"), JSON.stringify(rules));
   return { dir, shadowDir, activeRoot, env: { TITAN_FACTORY_CONFIG: join(dir, "config.json"), ACTIVE_ROOT: activeRoot } };
 }

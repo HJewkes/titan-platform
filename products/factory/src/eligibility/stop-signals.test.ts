@@ -115,7 +115,7 @@ describe("stop rows in a shadow tick", () => {
     const rpc = fakeRpc({ tasks: [task(1), task(2)], bets: [selectedBet(1, 1, ["alpha/AL-1", "alpha/AL-2", "alpha/AL-3"])] });
     fsCalls.writes.length = 0;
 
-    const { rows } = await shadowTick({ loaded, verbs: verbs(rpc.fetch, {}), now: new Date(NOW), wake: "w", providers: [stopProvider(read)], ports: { access: async () => "shown" } });
+    const { rows } = await shadowTick({ loaded, verbs: verbs(rpc.fetch, {}), now: new Date(NOW), wake: "w", providers: [stopProvider(read)], ports: { agentLanes: async () => new Set(["alpha"]) } });
 
     const held = rows.filter((row): row is RefusedRow => row.kind === "refused" && row.stage === "stop");
     expect(held.map((row) => [row.task, row.codes, row.next, row.would_ask, row.numbers])).toEqual([

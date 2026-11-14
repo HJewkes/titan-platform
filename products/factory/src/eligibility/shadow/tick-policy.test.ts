@@ -8,7 +8,7 @@ import { EXIT } from "../../cli.js";
 import type { Verbs } from "../../cli-types.js";
 import { loadRuleFile } from "./rule-file.js";
 import { shadowTick } from "./tick.js";
-import { calm, enabledRules, fakeRpc, readRows, selectedBet, shadowHome, shadowTickCli, task, writeBrief, writeCharter } from "./tick.test-helpers.js";
+import { calm, enabledRules, fakeRpc, readRows, selectedBet, shadowHome, shadowTickCli, task } from "./tick.test-helpers.js";
 
 /*
  * The tick under the rule file's selection policy (TP-5755 S3): the relax list, the plan-read fallback for a daemon
@@ -85,10 +85,10 @@ describe("shadow tick plan read", () => {
 });
 
 describe("shadow tick owner-only lanes", () => {
-  it("a lane whose initiative is not agent-visible writes one refused row and reads none of its tasks", async () => {
+  it("a lane whose initiative active-work withholds from agents writes one refused row and reads none of its tasks", async () => {
     const home = homeWith({ lanes: [{ initiative: "private-notes", tag: null }, { initiative: "alpha", tag: "lane-a" }] });
-    writeBrief(home.activeRoot, "private-notes", "status: active");
-    const rpc = fakeRpc({ tasks: [task(1)], bets: [bet] });
+    const inventory = [{ slug: "alpha", withheld_from_agents: false }, { slug: "private-notes", withheld_from_agents: true }];
+    const rpc = fakeRpc({ tasks: [task(1)], bets: [bet], inventory });
 
     await shadowTickCli(home, rpc.fetch);
 
@@ -98,14 +98,25 @@ describe("shadow tick owner-only lanes", () => {
     expect(rpc.commands.filter((command) => command === "task.list")).toHaveLength(2);
   });
 
-  it("an initiative the charter lists human-only is refused even with an agent-visible brief", async () => {
+  it("an initiative missing its verdict, as from an older daemon, is refused and none of its tasks is read", async () => {
     const home = homeWith();
-    writeCharter(home.activeRoot, ["alpha"]);
-    const rpc = fakeRpc({ tasks: [task(1)], bets: [bet] });
+    const rpc = fakeRpc({ tasks: [task(1)], bets: [bet], inventory: [{ slug: "alpha" }] });
 
     await shadowTickCli(home, rpc.fetch);
 
     expect(rowsOf(home).slice(1).map((row) => row.codes)).toEqual([["owner-only-initiative"]]);
+    expect(rpc.commands).toEqual(["inventory"]);
+  });
+
+  it("an unread inventory fails every lane closed and exits unavailable", async () => {
+    const home = homeWith();
+    const rpc = fakeRpc({ tasks: [task(1)], bets: [bet] });
+    const failing = (async (url, init) => (String(url).endsWith("/rpc/inventory") ? Promise.reject(new Error("daemon down")) : rpc.fetch(url, init))) as typeof globalThis.fetch;
+
+    const { code } = await shadowTickCli(home, failing);
+
+    expect(code).toBe(EXIT.UNAVAILABLE);
+    expect(rowsOf(home).slice(1)).toEqual([expect.objectContaining({ task: null, codes: ["signal-unreadable"] })]);
     expect(rpc.commands).toEqual([]);
   });
 });
