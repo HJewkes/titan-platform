@@ -10,6 +10,7 @@ import { meaningfulTerms, orExpression } from './terms.js';
 import { workspaceSpanReader } from './workspace-spans.js';
 import { openGraph } from '../session-index/graph.js';
 import { refreshInto, scaffold } from '../test-support/workspace-index/fixture.js';
+import { writeCharter } from '../test-support/visibility.js';
 
 /**
  * A latency guard for class-scoped search on a transcript-heavy graph (TP-1960).
@@ -102,6 +103,7 @@ beforeAll(async () => {
   root = path.join(dir, 'active');
   dbPath = path.join(dir, 'graph.sqlite3');
   scaffold(root);
+  writeCharter(root);
   (await refreshInto(dbPath, root)).db.close();
   seedTranscripts();
 }, 120_000);

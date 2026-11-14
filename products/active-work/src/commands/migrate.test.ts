@@ -10,6 +10,7 @@ const ctxFor = (activeRoot: string): CommandContext => ({
   activeRoot,
   warnings: [],
   format: 'json',
+  caller: 'owner',
 });
 
 async function scaffold(root: string, slug: string): Promise<void> {
@@ -106,6 +107,18 @@ describe('active-work migrate', () => {
         .catch((e: Error) => e);
       expect(err?.message).toContain('active-work setup');
       expect(err?.message).not.toMatch(/automatically/);
+    });
+  });
+
+  it.each([
+    ['an agent', 'agent' as const],
+    ['a caller no surface marked', undefined],
+  ])('refuses %s, even for a dry run', async (_who, caller) => {
+    await withEmptyActiveRoot(async (root) => {
+      await scaffold(root, 'alpha');
+      const ctx: CommandContext = { activeRoot: root, warnings: [], format: 'json', ...(caller ? { caller } : {}) };
+
+      await expect(migrate.run({ dry_run: true }, ctx)).rejects.toThrow(/for the owner only/);
     });
   });
 });

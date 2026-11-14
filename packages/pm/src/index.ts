@@ -1,6 +1,6 @@
 export { DELIVERABLE_ID_REGEX, TaskSchema } from "./task.js";
-export { InitiativeVisibilitySchema, isAgentVisible } from "./visibility.js";
-export type { InitiativeBriefRef, InitiativeVisibility } from "./visibility.js";
+export { InitiativeVisibilitySchema, agentAccess, isAgentVisible } from "./visibility.js";
+export type { AgentAccess, AgentAccessInput, InitiativeBriefRef, InitiativeVisibility } from "./visibility.js";
 export type { Task } from "./task.js";
 export { resolveTaskKey } from "./task-key.js";
 export type { InitiativePrefix, TaskKeyEntry, TaskKeyIndex, TaskKeyRefusal, TaskKeyResolution } from "./task-key.js";

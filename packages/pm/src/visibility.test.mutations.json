@@ -24,6 +24,23 @@
       "find": "if (declared !== undefined) return declared === \"agent-visible\";",
       "replace": "if (declared === \"agent-visible\") return true;",
       "kills": ["isAgentVisible lets an explicit owner-only brief override the transitional list"]
+    },
+    {
+      "name": "an unreadable charter lets agent-visible briefs through",
+      "file": "packages/pm/src/visibility.ts",
+      "find": "return input.humanOnly === false && isAgentVisible(input)",
+      "replace": "return input.humanOnly !== true && isAgentVisible(input)",
+      "kills": ["agentAccess reads an agent-visible brief under an unreadable charter as withheld"]
+    },
+    {
+      "name": "the charter's human-only list is ignored",
+      "file": "packages/pm/src/visibility.ts",
+      "find": "return input.humanOnly === false && isAgentVisible(input)",
+      "replace": "return isAgentVisible(input)",
+      "kills": [
+        "agentAccess reads an agent-visible brief the charter lists human-only as withheld",
+        "agentAccess reads a transitional initiative the charter lists human-only as withheld"
+      ]
     }
   ]
 }

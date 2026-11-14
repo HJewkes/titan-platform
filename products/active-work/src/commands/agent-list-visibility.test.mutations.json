@@ -13,8 +13,8 @@
     {
       "name": "search lets an agent keep unclaimed transcript hits",
       "file": "products/active-work/src/commands/search.ts",
-      "find": "const visible = ctx.caller !== 'owner' ? await callerVisibility(getActiveRoot(), ctx.caller) : undefined;",
-      "replace": "const visible = undefined;",
+      "find": "const visible = await visibilityFor({ ...ctx, activeRoot: getActiveRoot() });",
+      "replace": "const visible = await visibilityFor({ ...ctx, caller: 'owner', activeRoot: getActiveRoot() });",
       "kills": [
         "cross-initiative list verbs for an agent caller search gives an agent no transcript hit that names no initiative, and the owner keeps it"
       ]
@@ -41,10 +41,19 @@
     {
       "name": "a context no surface marked is served as the owner",
       "file": "products/active-work/src/sessions/visibility.ts",
-      "find": "  if (caller === 'owner') return SERVE_ALL;",
-      "replace": "  if (caller !== 'agent') return SERVE_ALL;",
+      "find": "  if (ctx.caller === 'owner') return SERVE_ALL;",
+      "replace": "  if (ctx.caller !== 'agent') return SERVE_ALL;",
       "kills": [
         "cross-initiative list verbs for an agent caller a context no surface marked as the owner is restricted like an agent"
+      ]
+    },
+    {
+      "name": "the charter's human-only list no longer reaches the verdict",
+      "file": "products/active-work/src/sessions/visibility.ts",
+      "find": "const listed = humanOnly === 'unknown' ? 'unknown' : humanOnly.has(slug);",
+      "replace": "const listed = humanOnly === 'unknown' ? 'unknown' : false;",
+      "kills": [
+        "cross-initiative list verbs for an agent caller task list across all initiatives hides from an agent an agent-visible initiative the charter lists human-only"
       ]
     }
   ]

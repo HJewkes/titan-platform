@@ -1,8 +1,8 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { isAgentVisible } from '@titan-design/pm';
 import { z } from 'zod';
 import { defineCommand } from '../registry/index.js';
+import { wireVisibility } from '../sessions/visibility.js';
 import { getActiveRoot } from '../utils/paths.js';
 import { scanInitiativesForCaller } from './audit.js';
 
@@ -47,11 +47,15 @@ export default defineCommand<z.infer<typeof ArgsSchema>, Result>({
   async run(_args, ctx) {
     const activeRoot = getActiveRoot();
     const { entries } = await scanInitiativesForCaller(activeRoot, ctx);
+    const wire = await wireVisibility(
+      activeRoot,
+      entries.map((entry) => entry.slug),
+    );
     const initiatives = await Promise.all(
       entries.map(async ({ slug, frontmatter }) => ({
         slug,
         task_prefix: frontmatter.task_prefix,
-        agent_visible: isAgentVisible({ slug, brief: frontmatter }),
+        agent_visible: wire.get(slug)?.agent_visible ?? false,
         ids: await taskIds(activeRoot, slug),
       })),
     );
