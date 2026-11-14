@@ -133,6 +133,18 @@ describe("the planning ops on the console's owner-op path", () => {
     expect(await loadPlanRecords(w.activeRoot, "alpha", "freeze")).toHaveLength(1);
   });
 
+  it("sets a standing freeze again when a new tap repeats the content of one the owner has ended", async () => {
+    const w = await world();
+    const set: OwnerOp = { kind: "plan-freeze-set", initiative: "alpha", freeze: { action: "set", tag: "upkeep", reason: "Upkeep waits for the landing bet", end_condition: { kind: "owner" }, intent_ref: "D13", quote_ref: "msg:0f9e8d" } };
+
+    await w.tap(set, "act-1");
+    await w.tap({ kind: "plan-freeze-set", initiative: "alpha", freeze: { action: "end", id: "alpha/F1" } }, "act-2");
+    const again = await w.tap(set, "act-3");
+
+    expect(again).toEqual({ outcome: "plan-applied", op: "plan-freeze-set", ids: ["alpha/F2"] });
+    expect((await loadPlanRecords(w.activeRoot, "alpha", "freeze")).filter((each) => each.ended_on === undefined).map((each) => each.id)).toEqual(["alpha/F2"]);
+  });
+
   it("refuses ending a freeze of another initiative than the op names", async () => {
     const w = await world();
 

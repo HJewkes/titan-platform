@@ -87,7 +87,8 @@ function ownerFreeze(op: FreezeSet & { freeze: { action: "set" } }, id: string):
 
 /**
  * The ledger's done line lands after the write and a concurrent post has none yet, so the replay check also reads the store
- * under the lock: a freeze carrying this tap's owner quote and content is the tap's own earlier write, whatever its end date.
+ * under the lock: a standing freeze carrying this tap's owner quote and content is the tap's own earlier write. An ended one
+ * is not, so a fresh tap repeating its content sets a new freeze rather than reporting a freeze that is no longer in force.
  */
 function sameTap(written: Freeze, wanted: Freeze): boolean {
   const canon = (f: Freeze): string => JSON.stringify([f.initiative, f.tag, f.selector, f.reason, f.end_condition, f.set_by, f.intent_ref, f.quote_ref]);
@@ -104,7 +105,7 @@ export async function setFreeze(actionId: string, { op }: OpRead, deps: PlanOpDe
   const set = { ...op, freeze: op.freeze };
   return underLock(activeRoot, op.initiative, async () => {
     const standing = await loadPlanRecords(activeRoot, op.initiative, "freeze");
-    const written = standing.find((each) => sameTap(each, ownerFreeze(set, each.id)));
+    const written = standing.find((each) => each.ended_on === undefined && sameTap(each, ownerFreeze(set, each.id)));
     if (written !== undefined) return { outcome: "already", ids: [written.id] };
     const id = nextPlanId(op.initiative, "F", standing);
     await writePlanRecord(activeRoot, "freeze", ownerFreeze(set, id));
