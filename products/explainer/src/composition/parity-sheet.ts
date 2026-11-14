@@ -4,6 +4,7 @@ import { captureFrame, withBrowser, withCapturePage } from "@titan-design/frame-
 import type { Browser } from "playwright-core";
 import { decodeArgs, spawnFfmpeg, FRAMEDIFF_HEIGHT, FRAMEDIFF_WIDTH } from "@titan-design/render-qa";
 import { DEFAULT_CELL_WIDTH, LABEL_STRIP_PX, tileArgs, type FfmpegExec } from "../contact-sheet-render.js";
+import { drawable } from "../label-text.js";
 import { servePage } from "../render/composition-page.js";
 import { runFfmpeg } from "../render/ffmpeg.js";
 import { HOOK_ENVELOPE_S } from "./beats/stage/video-timing.js";
@@ -82,8 +83,6 @@ async function grayPixels(png: string): Promise<Uint8Array> {
   if (gray.length !== FRAMEDIFF_WIDTH * FRAMEDIFF_HEIGHT) throw new Error(`${png}: decoded ${gray.length} grey bytes, not one frame`);
   return gray;
 }
-
-const drawable = (label: string) => label.replace(/[^A-Za-z0-9 ._/-]/g, "_");
 
 function labelArgs(png: string, label: string, out: string): string[] {
   const strip = `pad=iw:ih+${LABEL_STRIP_PX}:0:0:color=0x111111`;
