@@ -69,3 +69,19 @@ describe("shepherd follow-ups", () => {
     expect(stderr).toContain("DM-1");
   });
 });
+
+describe("shepherd follow-ups with an unverifiable task key", () => {
+  it("warns on stderr that the key is not verified and still files the follow-ups", async () => {
+    const aw = fakeActiveWork([parent]);
+    const taskKeysDown = (async (url, init) => {
+      if (String(url).includes("/rpc/task.keys")) throw new TypeError("connection refused");
+      return aw.fetch(url, init);
+    }) as typeof fetch;
+
+    const { code, stderr, stdout } = await verb(BLOCK, taskKeysDown);
+
+    expect(code).toBe(EXIT.OK);
+    expect(stderr).toContain("not verified");
+    expect(JSON.parse(stdout).filed).toHaveLength(2);
+  });
+});
