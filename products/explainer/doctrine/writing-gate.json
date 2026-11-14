@@ -80,6 +80,25 @@
       "evidence": "A term a beat declares in new_terms is spoken in an earlier beat. It reads declared terms only."
     }
   },
+  "judged": {
+    "hallmark-marks": {
+      "severity": "error",
+      "warnAbove": 13.3,
+      "errorAbove": 20,
+      "evidence": "Distinct marked passages per 1,000 words, from the lab hallmark judge (opus) with verbatim-quote checks. Human p90 13.3, human max 21.1 (n=51); rejected scripts 41.2 and 36.2; E4 pieces 2.1 and 1.2; briefed control mean 8.6, max 16.8. Judge precision 0.96, recall 46/49 on planted cases. Human FPR about 1/51."
+    },
+    "words-per-term": {
+      "severity": "error",
+      "floor": 60,
+      "allowTerms": 1,
+      "evidence": "Words per new technical term, from the lab term extractor (sonnet). Human p10 / p50 / p90 = 87 / 167 / 374 (n=60); rejected scripts 48.5 and 44.2 (3rd percentile); E4 pieces 160 and 243. Run-to-run median difference 13%. One term is always allowed."
+    },
+    "terms-first-400": {
+      "severity": "report-only",
+      "window": 400,
+      "evidence": "New terms in the first 400 words; human median 2. A length-proof diagnostic of the same failure."
+    }
+  },
   "overrides": {
     "writing-check": {
       "phrases": "report-only"

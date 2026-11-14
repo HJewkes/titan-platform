@@ -1,0 +1,6 @@
+{
+  "provider": "claude-print",
+  "model": "claude-opus-5-5",
+  "extractor_model": "claude-sonnet-5-5",
+  "max_budget_usd": 0.5
+}
