@@ -1,5 +1,13 @@
 # titan-console
 
+## 0.14.6
+
+### Patch Changes
+
+- da5039b: The decision log reads `withheld_from_agents` from the active-work inventory instead of combining the charter's human-only flag itself. A row without the field, a slug the inventory never listed, and a down daemon all keep the answer out of `answers.jsonl` (TP-5556).
+- Updated dependencies [e58686b]
+  - @titan-design/coordinator@0.7.3
+
 ## 0.14.5
 
 ### Patch Changes
