@@ -7,6 +7,7 @@ import Database from 'better-sqlite3';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { runDoctor } from '../doctor/index.js';
+import { visibilityFor } from '../sessions/visibility.js';
 import { ConfigError } from '../errors.js';
 import { selectOne } from '../test-support/session-index/query.js';
 import {
@@ -106,6 +107,7 @@ describe('opening a graph written by a newer active-work', () => {
         activeRoot: root,
         probeDaemon: async () => ({ running: false, healthy: false }),
         supervisorActive: async () => null,
+        shown: await visibilityFor({ activeRoot: root, caller: 'owner', warnings: [] }),
       });
 
       const check = report.checks.find((c) => c.name === 'workspace-index');

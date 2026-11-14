@@ -120,7 +120,7 @@ describe('relative paths', () => {
   it('resolves every stored path back to a file that opens', async () => {
     const { checkWorkspaceIndex } = await import('./doctor.js');
 
-    expect(await checkWorkspaceIndex(graph, root)).toEqual({
+    expect(await checkWorkspaceIndex(graph, root, () => true)).toEqual({
       checked: expect.any(Number),
       missing: [],
     });

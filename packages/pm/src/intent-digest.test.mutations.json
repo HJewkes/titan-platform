@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an empty quote is accepted",
+      "file": "packages/pm/src/intent-digest.ts",
+      "find": "if (quote.length === 0) problems",
+      "replace": "if (false) problems",
+      "kills": ["refuses a bullet with an empty quote, naming its line"]
+    }
+  ]
+}
