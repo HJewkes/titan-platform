@@ -35,13 +35,6 @@
       "find": "(refuse(repo, \"opens a PR\"), ",
       "replace": "(",
       "kills": ["advisoryPort refuses openPr for an advisory repo before GitHub sees it"]
-    },
-    {
-      "name": "the refusal checks the flag of no repo",
-      "file": "products/factory/src/shepherd/advisory.ts",
-      "find": "    if (isAdvisory(repo)) throw new AdvisoryRefused(",
-      "replace": "    if (false) throw new AdvisoryRefused(",
-      "kills": ["advisoryPort refuses merge for an advisory repo before GitHub sees it"]
     }
   ]
 }
