@@ -1,6 +1,7 @@
 import { isSlots, PAGE_KINDS, slotEach as each, slotList as list, slotText as text, type DrawnBeat, type Slots } from "./drawn-beats.js";
 import type { ScreenText } from "./qa/narration-facts.js";
 import type { FilledBeat } from "./template-fill/fill.js";
+import { shortRef } from "./label-text.js";
 
 /**
  * The one script-time model of what qa's probe reads off a drawn beat (TP-4470): each text the page draws, with the tag
@@ -66,8 +67,6 @@ function stageTexts({ ref, slots: s }: FilledBeat, chapter: string): DrawnText[]
     default: return undefined;
   }
 }
-
-const shortRef = (ref: string): string => ref.replace(/^[\w-]+@[0-9a-f]+:/, "").replace(/(?:[\w.~-]+\/)+/g, "");
 
 /** Chrome.tsx's bands: the headline, the first source cut short, and the chapter line; a page kind draws none. */
 function chromeTexts({ filled, headline, chapter }: DrawnBeat): DrawnText[] {
