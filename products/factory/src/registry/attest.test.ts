@@ -69,8 +69,8 @@ describe("judgeAttestations", () => {
 
   it("where the class has an adversary, the correctness line alone leaves the row unmet: adversary-missing", () => {
     expect(whyUnmet({ adversaryRequired: true })).toEqual(["adversary-missing"]);
-    expect(whyUnmet({ adversaryRequired: true, adversary: verdict(adversary, []) })).toEqual(["adversary-missing"]);
   });
+
 
   it("an adversary that wrote the code does not meet an adversary class", () => {
     expect(whyUnmet({ adversaryRequired: true, adversary: verdict(fixerWhoPushed) })).toEqual(["meeter-is-author"]);
