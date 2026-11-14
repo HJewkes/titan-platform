@@ -12,6 +12,7 @@ import { FocusBadge, FocusNotice, FocusTarget, holdsFocus, InboxFocusProvider, u
 import { NudgeSection } from "./InboxNudges.js";
 import { PLANNING_READ, PlanningSection } from "./InboxPlanning.js";
 import { isPlanOpKind, OP_VERB } from "./inbox-op-verbs.js";
+import { RowProvenance } from "./InboxProvenance.js";
 import { InboxReadBack, type InboxReady } from "./InboxReadBack.js";
 import { ShipLineageLine } from "./ShipLineage.js";
 import { TapSheet, type TapCommands, type TapConfirmChoice } from "./TapSheet.js";
@@ -266,32 +267,6 @@ function InboxRow({ item }: { item: InboxItem }): ReactNode {
         </VStack>
       </CardContent>
     </Card>
-  );
-}
-
-/** Who asked, for which initiative, and what the answer frees; each shows only when the item carries it. */
-function RowProvenance({ item }: { item: InboxItem }): ReactNode {
-  const asker = item.asker ?? item.seat;
-  if (asker === undefined && item.initiative === undefined && item.unblocksNow === undefined && item.blocker === undefined) return null;
-  return (
-    <VStack gap={1}>
-      {asker !== undefined || item.initiative !== undefined ? (
-        <HStack gap={2} align="center" wrap>
-          {asker !== undefined ? <Typography variant="caption" color="secondary">{`Asked by ${asker}`}</Typography> : null}
-          {item.initiative !== undefined ? <InitiativeLink slug={item.initiative} /> : null}
-        </HStack>
-      ) : null}
-      {item.unblocksNow !== undefined ? <Typography variant="caption">{`Unblocks now: ${item.unblocksNow}`}</Typography> : null}
-      {item.blocker !== undefined ? <Typography variant="caption" color="secondary">{`Blocks: ${item.blocker.blocks}`}</Typography> : null}
-    </VStack>
-  );
-}
-
-function InitiativeLink({ slug }: { slug: string }): ReactNode {
-  return (
-    <Link color="primary" className={PHONE_TAP_ID_LINK} onPress={() => open(parseRoute(`#/initiatives/${encodeURIComponent(slug)}`))}>
-      {slug}
-    </Link>
   );
 }
 
