@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the regeneration runs with the host's credentials",
+      "file": "products/factory/src/shepherd/closure-regen-host.ts",
+      "find": "  const env = scrubbedEnv(dir);\n",
+      "replace": "  const env = process.env;\n",
+      "kills": [
+        "the host's closure.lock.json regeneration rebuilds the lock in a worktree of the merge with no token in its env, and answers the staged tree"
+      ]
+    },
+    {
+      "name": "a failed command is ignored",
+      "file": "products/factory/src/shepherd/closure-regen-host.ts",
+      "find": "    if (result.code !== 0) throw new ClosureRegenFailure(label, result.code);\n",
+      "replace": "",
+      "kills": [
+        "the host's closure.lock.json regeneration stops at a failed build, names only the command, and still removes the worktree"
+      ]
+    },
+    {
+      "name": "the worktree is left behind",
+      "file": "products/factory/src/shepherd/closure-regen-host.ts",
+      "find": "      await git(gitDir, [\"worktree\", \"remove\", \"--force\", dir]);\n",
+      "replace": "",
+      "kills": [
+        "the host's closure.lock.json regeneration rebuilds the lock in a worktree of the merge with no token in its env, and answers the staged tree",
+        "the host's closure.lock.json regeneration stops at a failed build, names only the command, and still removes the worktree"
+      ]
+    }
+  ]
+}

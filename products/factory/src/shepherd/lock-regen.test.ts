@@ -5,7 +5,7 @@ import { H1, REPO } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import type { GitResult, GitCachePorts } from "./carry-cache-ports.js";
-import { CLOSURE_LOCK_PATH, type ClosureRegen } from "./lock-regen.js";
+import { CLOSURE_LOCK_PATH, ClosureRegenFailure, type ClosureRegen } from "./lock-regen.js";
 import type { ShepherdPhases, WakeRequest } from "./phases.js";
 import type { EffectivePolicy } from "./policy-schema.js";
 import { shepherdPrWorkflow } from "./pr.js";
@@ -79,7 +79,7 @@ type World = ReturnType<typeof lockConflictWorld>;
 const regenOutputs = (world: World): unknown[] =>
   Object.entries(world.host.runtime.status(world.runId)!.stepResults).filter(([id]) => id.startsWith("sh-lock-regen")).map(([, result]) => (result.data as { result?: unknown } | undefined)?.result);
 
-const atGate = (world: World): string | undefined => world.host.runtime.status(world.runId)?.currentStep;
+const atGate = (world: World): string | null | undefined => world.host.runtime.status(world.runId)?.currentStep;
 
 describe("Shepherd regenerates closure.lock.json when it is the only conflict (TP-5732)", () => {
   it("merges main, regenerates the lock on the merged tree and pushes, with no fixer wake", async () => {
@@ -107,14 +107,14 @@ describe("Shepherd regenerates closure.lock.json when it is the only conflict (T
   });
 
   it("wakes the fixer when the regeneration fails, and pushes nothing", async () => {
-    const regen = vi.fn<ClosureRegen>(async () => Promise.reject(new Error("closure regen: run build exited 1")));
+    const regen = vi.fn<ClosureRegen>(async () => Promise.reject(new ClosureRegenFailure("build", 1)));
 
     const world = lockConflictWorld([CLOSURE_LOCK_PATH], regen);
 
     await vi.waitFor(() => expect(atGate(world)).toMatch(/^approve-merge/));
     expect(world.wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["conflict", H1]]);
     expect(world.pushes).toEqual([]);
-    expect(regenOutputs(world)).toEqual([expect.objectContaining({ outcome: "declined" })]);
+    expect(regenOutputs(world)).toEqual([expect.objectContaining({ outcome: "declined", reason: "closure regen: build exited 1", conflicted: [CLOSURE_LOCK_PATH] })]);
   });
 
   it("leaves a PR that never changed the lock to the fixer without reading the git cache", async () => {

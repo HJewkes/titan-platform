@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the conflict round never tries the regeneration",
+      "file": "products/factory/src/shepherd/retarget-conflict.ts",
+      "find": "  if (await lockRegenerated(run.ctx, { ...run.target, headSha })) return resolvedConflict(run, Promise.resolve(undefined));\n",
+      "replace": "",
+      "kills": [
+        "Shepherd regenerates closure.lock.json when it is the only conflict (TP-5732) merges main, regenerates the lock on the merged tree and pushes, with no fixer wake"
+      ]
+    },
+    {
+      "name": "a conflict that includes the lock counts as lock-only",
+      "file": "products/factory/src/shepherd/lock-regen.ts",
+      "find": "if (merged.files.length !== 1 || merged.files[0] !== CLOSURE_LOCK_PATH)",
+      "replace": "if (merged.files[0] !== CLOSURE_LOCK_PATH)",
+      "kills": [
+        "Shepherd regenerates closure.lock.json when it is the only conflict (TP-5732) wakes the fixer when another file conflicts beside the lock, and pushes nothing"
+      ]
+    },
+    {
+      "name": "a failed regeneration pushes the unresolved merge",
+      "file": "products/factory/src/shepherd/lock-regen.ts",
+      "find": "signal).catch((error: unknown) => new Declined(failureReason(error)));",
+      "replace": "signal).catch(() => merged.tree);",
+      "kills": [
+        "Shepherd regenerates closure.lock.json when it is the only conflict (TP-5732) wakes the fixer when the regeneration fails, and pushes nothing"
+      ]
+    },
+    {
+      "name": "the regeneration runs on the head instead of the merged tree",
+      "file": "products/factory/src/shepherd/lock-regen.ts",
+      "find": "regen({ gitDir: dir, commit: unresolved }, signal)",
+      "replace": "regen({ gitDir: dir, commit: input.headSha }, signal)",
+      "kills": [
+        "Shepherd regenerates closure.lock.json when it is the only conflict (TP-5732) merges main, regenerates the lock on the merged tree and pushes, with no fixer wake"
+      ]
+    },
+    {
+      "name": "a PR that never changed the lock reaches the git cache",
+      "file": "products/factory/src/shepherd/lock-regen.ts",
+      "find": "  if (!files.some((file) => file.path === CLOSURE_LOCK_PATH)) return declined(\"the pull request does not change closure.lock.json\");\n",
+      "replace": "",
+      "kills": [
+        "Shepherd regenerates closure.lock.json when it is the only conflict (TP-5732) leaves a PR that never changed the lock to the fixer without reading the git cache"
+      ]
+    }
+  ]
+}

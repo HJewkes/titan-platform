@@ -16,6 +16,14 @@ const SUBJECT = "Merge main and regenerate closure.lock.json";
 /** Rebuilds the lock in a checkout of `commit` from the cache at `gitDir`; resolves to the tree with the regenerated lock. */
 export type ClosureRegen = (at: { gitDir: string; commit: string }, signal?: AbortSignal) => Promise<string>;
 
+/** A regeneration command that exited non-zero; its message names only the command and the exit code. */
+export class ClosureRegenFailure extends Error {
+  constructor(label: string, code: number) {
+    super(`closure regen: ${label} exited ${code}`);
+    this.name = "ClosureRegenFailure";
+  }
+}
+
 export interface LockRegenDeps {
   port: GitHubPort;
   ports: GitCachePorts;
@@ -44,6 +52,11 @@ interface Remote extends CacheHandle {
   pr: PullRequest;
 }
 
+class Declined {
+  constructor(readonly reason: string) {}
+}
+
+const failureReason = (error: unknown): string => (error instanceof ClosureRegenFailure ? error.message : reasonOf(error));
 const declined = (reason: string, extra: Partial<LockRegenResult> = {}): LockRegenResult => ({ outcome: "declined", reason, ...extra });
 const headRef = (remote: Remote): string => `refs/heads/${remote.pr.headRef}`;
 
@@ -86,7 +99,8 @@ async function mergeAndPush(remote: Remote, regen: ClosureRegen, signal?: AbortS
   if (merged.files.length !== 1 || merged.files[0] !== CLOSURE_LOCK_PATH) return declined("a file other than closure.lock.json conflicts", facts);
   const parents = ["-p", input.headSha, "-p", tip];
   const unresolved = await must(git, dir, ["commit-tree", merged.tree, ...parents, "-m", SUBJECT]);
-  const tree = await regen({ gitDir: dir, commit: unresolved }, signal);
+  const tree = await regen({ gitDir: dir, commit: unresolved }, signal).catch((error: unknown) => new Declined(failureReason(error)));
+  if (tree instanceof Declined) return declined(tree.reason, facts);
   const commit = await must(git, dir, ["commit-tree", tree, ...parents, "-m", SUBJECT]);
   const refused = await pushFastForward(remote, commit);
   return refused === undefined ? { outcome: "pushed", reason: `merged ${pr.baseRef} at ${tip} and regenerated closure.lock.json`, newHead: commit, ...facts } : declined(refused, facts);
@@ -106,7 +120,7 @@ async function attempt(deps: LockRegenDeps, input: LockRegenInput, signal?: Abor
 
 /** Every failure declines with a fixed-vocabulary reason, since the result is a stored step output that can reach a public PR. */
 function regenerateLock(deps: LockRegenDeps, input: LockRegenInput, signal: AbortSignal): Promise<LockRegenResult> {
-  return attempt(deps, input, signal).catch((error: unknown) => declined(reasonOf(error)));
+  return attempt(deps, input, signal).catch((error: unknown) => declined(failureReason(error)));
 }
 
 export function lockRegenRoute(now: () => number, deps: LockRegenDeps): StepRoute {
