@@ -366,7 +366,8 @@ export async function mergeEvidence(
   const oldPath = await oldPathOf(reads.oldPath, input.repo, observed.prFiles, kind ?? {});
   const visual = { ...(await visualDeltaOf(port, input, observed, reads.threshold)), ...tier, ...visualGateField(reads.visualGate) };
   const authority = authorityLineOf(input.attest, kind);
-  const decidable: DecidableEvidence = { head: input.head, merge, record: input, mergeableState, ...unknown, ...ciPolicy, ...visual, ...attest, ...oldPath, ...authority, ...grantWithheldField(input) };
+  const read = { ...unknown, ...ciPolicy, ...visual, ...attest, ...oldPath, ...authority };
+  const decidable: DecidableEvidence = { head: input.head, merge, record: input, mergeableState, ...read, ...grantWithheldField(input) };
   const ownerTier = { ...authority, ...ownerTierStamp(reads.ownerTier, decidable) };
   const decision = decideAutoMerge(input.head, { ...decidable, ...ownerTier }, input.visualPaths, input.visualBaselines);
   const visualPaths = input.visualPaths && { visualPaths: input.visualPaths };

@@ -84,8 +84,16 @@ export interface Row {
 
 export type FakeGitHub = ReturnType<typeof fakeGitHub>;
 
+/** The run's reviewers and, when the hold's adversary member is planned, the roster its two-MERGE release reads to prove them separate. */
+function reviewWiring({ reviewerLines, aboveVerdict, roles, holdMember }: Row, clock: () => number) {
+  const { roster, ...reviewers } = mergingReviewers(clock, reviewerLines, aboveVerdict);
+  const adversary = holdMember && { holdMember: { profile: DEFAULT_ADVERSARY_PROFILE }, twoMergeRelease: "on" as const };
+  return { review: { ...reviewers, timeoutMs: 5 * MINUTE, ...(roles && { roles }), ...adversary }, ...(holdMember && { roster }) };
+}
+
 /** One shepherd-pr run of the PR under an auto policy, reviewed MERGE with green checks, after `seed` sets the files and the row's approval is written. */
-export function plannedRun({ files, policy, reviewerLines, approve, wire = (each) => each, seatReleased, held, roles, lowTier, ownerTier, aboveVerdict, holdMember }: Row, seed: (fake: FakeGitHub) => void) {
+export function plannedRun(row: Row, seed: (fake: FakeGitHub) => void) {
+  const { files, policy, approve, wire = (each) => each, seatReleased, held, lowTier, ownerTier } = row;
   const fake = fakeGitHub();
   fake.addPr({ number: PR, headSha: HEAD, mergeSha: fakeSha("planned-merge") });
   fake.setRuns(HEAD, [successRun("validate", 1), successRun("dag-check", 2)]);
@@ -98,10 +106,8 @@ export function plannedRun({ files, policy, reviewerLines, approve, wire = (each
     signal.throwIfAborted();
     await new Promise<void>((resolve) => setImmediate(resolve));
   };
-  const { roster, ...reviewers } = mergingReviewers(() => clock, reviewerLines, aboveVerdict);
-  const adversary = holdMember && { holdMember: { profile: DEFAULT_ADVERSARY_PROFILE }, twoMergeRelease: "on" as const };
-  const review = { ...reviewers, timeoutMs: 5 * MINUTE, ...(roles && { roles }), ...adversary };
-  const routes = factoryRoutesFor({ port: githubPort(wire(fake.wire)), store, now: () => clock, sleep: tick, review, ...(lowTier && { lowTierPolicy: lowTier }), ownerTier: ownerTier ?? "shadow", ...(holdMember && { roster }) });
+  const gates = { ...(lowTier && { lowTierPolicy: lowTier }), ownerTier: ownerTier ?? "shadow" };
+  const routes = factoryRoutesFor({ port: githubPort(wire(fake.wire)), store, now: () => clock, sleep: tick, ...reviewWiring(row, () => clock), ...gates });
   const workflow = shepherdPrWorkflow({ review: reviewPhase, wake: async () => ({ kind: "unhandled", reason: "no fixer here" }) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [workflow], routes, gatePollMs: 5 });
   // Per test: under isolate:false this module loads once per worker, so a top-level afterEach would close only the first importing file's hosts.

@@ -315,7 +315,8 @@ export function panelMerge(verdict: PanelVerdict, results: readonly { shape: Mem
     if (!read.success) return [];
     const { reviewer, locator, verdict: said, head, attests, authority } = read.data;
     const profile = profiles[shape];
-    return [{ shape, ...reviewer, locator, ...(said !== undefined && { verdict: said }), ...(head !== undefined && { head }), ...(profile !== undefined && { profile }), ...(attests && { attests }), ...(authority && { authority }) }];
+    const lines = { ...(attests && { attests }), ...(authority && { authority }) };
+    return [{ shape, ...reviewer, locator, ...(said !== undefined && { verdict: said }), ...(head !== undefined && { head }), ...(profile !== undefined && { profile }), ...lines }];
   });
   return { satisfiesG10: verdict.satisfiesG10, degraded: verdict.degraded, members };
 }

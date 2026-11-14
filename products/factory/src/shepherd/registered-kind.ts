@@ -21,7 +21,8 @@ export function registeredKind(store: ShepherdStoreRef, runId: string, visualGat
     const registration = store.get().byRun(runId);
     const ownerHold = ownerHoldOf(registration, visualGate);
     const holdReason = registration?.holdReason ?? undefined;
-    return { ...(registration?.kind !== undefined && { kind: registration.kind }), ...(registration && { task: registration.task }), ...(ownerHold !== undefined && { ownerHold }), ...(holdReason !== undefined && { holdReason }) };
+    const holds = { ...(ownerHold !== undefined && { ownerHold }), ...(holdReason !== undefined && { holdReason }) };
+    return { ...(registration?.kind !== undefined && { kind: registration.kind }), ...(registration && { task: registration.task }), ...holds };
   } catch (error) {
     return { unread: `the registered kind is unreadable: store unreadable: ${errorClass(error)}` };
   }
