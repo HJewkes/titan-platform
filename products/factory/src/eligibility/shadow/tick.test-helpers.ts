@@ -24,7 +24,7 @@ export function task(n: number, fields: Body = {}): Body {
 export function fakeRpc(ws: { tasks: Body[]; bets: Body[] }): { fetch: typeof globalThis.fetch; commands: string[] } {
   const commands: string[] = [];
   const answer = (command: string, body: Body): unknown => {
-    if (command === "task.list") return { tasks: ws.tasks.filter((row) => body.tag === undefined || (row.tags as string[]).includes(String(body.tag))) };
+    if (command === "task.list") return { tasks: ws.tasks.filter((row) => body.tag === undefined || (Array.isArray(row.tags) && row.tags.includes(body.tag))) };
     if (command === "plan.bet.list") return ws.bets.filter((bet) => bet.week === body.week);
     if (command === "plan.freeze.list" || command === "plan.out-of-scope.list") return [];
     throw new Error(`unexpected ${command}`);
@@ -39,7 +39,7 @@ export function fakeRpc(ws: { tasks: Body[]; bets: Body[] }): { fetch: typeof gl
 
 export const calm: LaneSignals = { openPrs: 0, mergedNotDeployed: 0, ownerQueue: 0, reviewers: { accounts: 1, exhausted: 0 }, deployStall: [], redMain: [], unread: {} };
 
-export interface Home {
+interface Home {
   dir: string;
   shadowDir: string;
   env: NodeJS.ProcessEnv;
@@ -72,5 +72,5 @@ export function readRows(shadowDir: string): { file: string; rows: Body[] }[] {
   if (!existsSync(shadowDir)) return [];
   return readdirSync(shadowDir)
     .sort()
-    .map((file) => ({ file, rows: readFileSync(join(shadowDir, file), "utf8").trimEnd().split("\n").map((line) => JSON.parse(line) as Body) }));
+    .map((file) => ({ file, rows: readFileSync(join(shadowDir, file), "utf8").trimEnd().split("\n").map((line) => z.record(z.string(), z.unknown()).parse(JSON.parse(line))) }));
 }

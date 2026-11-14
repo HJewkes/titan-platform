@@ -44,6 +44,8 @@ type LaneBase = Omit<RefusedRow, "kind" | "task" | "stage" | "codes">;
 
 type Eligible = Eligibility["eligible"][number];
 
+const mergeNumbers = (all: readonly Record<string, number>[]): Record<string, number> => all.reduce<Record<string, number>>((merged, numbers) => ({ ...merged, ...numbers }), {});
+
 async function readLane(lane: ShadowLane, verbs: Verbs, now: Date): Promise<LaneRead> {
   const source = { origin: activeWorkOrigin(verbs.io.env), ...(verbs.deps.fetch && { fetch: verbs.deps.fetch }) };
   const scope = { initiative: lane.initiative, ...(lane.tag !== null && { tag: lane.tag }) };
@@ -78,14 +80,14 @@ async function providerHolds(providers: readonly HoldProvider[], lane: ShadowLan
 function admissionHold(admission: Admission, entry: Eligible, key: string): TaskHold | undefined {
   const holds = holdsFor(admission, entry.task.owner_steps);
   if (holds.length === 0) return undefined;
-  const numbers = Object.assign({}, ...holds.map((hold) => hold.numbers)) as Record<string, number>;
+  const numbers = mergeNumbers(holds.map((hold) => hold.numbers));
   return { task: key, stage: "admission", codes: [...new Set(holds.map((hold) => hold.code))], details: holds.map((hold) => hold.detail), numbers };
 }
 
 /** One row per held task: the first stage that held it, with every code from every stage. */
 function heldRow(base: LaneBase, key: string, rank: number, holds: TaskHold[]): RefusedRow {
   const details = holds.flatMap((hold) => hold.details ?? []);
-  const numbers = Object.assign({}, ...holds.map((hold) => hold.numbers ?? {})) as Record<string, number>;
+  const numbers = mergeNumbers(holds.map((hold) => hold.numbers ?? {}));
   const row: RefusedRow = { ...base, kind: "refused", task: key, stage: holds[0]!.stage, rank, codes: [...new Set(holds.flatMap((hold) => hold.codes))] };
   return { ...row, ...(details.length > 0 && { details }), ...(Object.keys(numbers).length > 0 && { numbers }) };
 }
@@ -118,7 +120,7 @@ function candidateRows(base: LaneBase, read: LaneRead, extra: TaskHold[]): Shado
 
 function laneHoldRow(base: LaneBase, admission: Admission): RefusedRow {
   const holds = admission.holds.filter((hold) => hold.scope === "lane");
-  const numbers = Object.assign({}, ...holds.map((hold) => hold.numbers)) as Record<string, number>;
+  const numbers = mergeNumbers(holds.map((hold) => hold.numbers));
   return { ...base, kind: "refused", task: null, stage: "admission", codes: [...new Set(holds.map((hold) => hold.code))], details: holds.map((hold) => hold.detail), numbers };
 }
 

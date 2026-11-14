@@ -18,7 +18,7 @@ const childProcess = vi.hoisted(() => ({ calls: [] as string[] }));
 vi.mock("node:child_process", async (original) => {
   const real = await original<typeof ChildProcess>();
   const recorded = Object.fromEntries(
-    Object.entries(real).map(([name, value]) => [name, typeof value === "function" ? (...args: unknown[]) => (childProcess.calls.push(name), (value as (...a: unknown[]) => unknown)(...args)) : value]),
+    Object.entries(real).map(([name, value]: [string, unknown]) => [name, typeof value === "function" ? (...args: unknown[]): unknown => (childProcess.calls.push(name), Reflect.apply(value, real, args)) : value]),
   );
   return { ...recorded, default: recorded };
 });
