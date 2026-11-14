@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { runCommand } from "../deploy-ports.js";
 import type { CommandResult } from "../run-command.js";
 import { scrubbedEnv } from "./lockfile-regen.js";
-import { CLOSURE_LOCK_PATH, ClosureRegenFailure, type ClosureRegen, type LockRegenDeps } from "./lock-regen.js";
+import type { StepRoute } from "@titan-design/workflow";
+import { CLOSURE_LOCK_PATH, ClosureRegenFailure, lockRegenRoute, type ClosureRegen, type LockRegenDeps } from "./lock-regen.js";
 import type { ShepherdDeps } from "./phases.js";
 import { must, type Git } from "./tree-carry.js";
 
@@ -52,7 +53,9 @@ export function scratchClosureRegen(git: Git, run: Run = runCommand): ClosureReg
   };
 }
 
-export function lockRegenDeps(deps: Pick<ShepherdDeps, "port" | "gitCache" | "advisory" | "closureRegen">): LockRegenDeps {
+/** The lock regeneration a conflict tries before its fixer wake (TP-5732), over Shepherd's own git cache. */
+export function hostLockRegenRoute(deps: Pick<ShepherdDeps, "port" | "gitCache" | "advisory" | "closureRegen" | "now">): StepRoute {
   const regen = deps.closureRegen ?? scratchClosureRegen(deps.gitCache.git);
-  return { port: deps.port, ports: deps.gitCache, regen, ...(deps.advisory && { advisory: deps.advisory }) };
+  const regenDeps: LockRegenDeps = { port: deps.port, ports: deps.gitCache, regen, ...(deps.advisory && { advisory: deps.advisory }) };
+  return lockRegenRoute(deps.now, regenDeps);
 }

@@ -18,6 +18,7 @@ import { HOLDING_KINDS } from "./held-wake.js";
 import { messagePredecessor, noticeSpawner } from "./wake-notice.js";
 import { wakeAgent } from "./wake-loop.js";
 import { WakeInputSchema, unhandled, type ImplementerAgents, type WakeInput, type WakeStepResult, type WakeTask, type WakeWiring } from "./wake-types.js";
+import { hostLockRegenRoute } from "./closure-regen-host.js";
 
 export type { ImplementerAgents, WakeInput, WakeStepResult, WakeWiring } from "./wake-types.js";
 
@@ -103,4 +104,5 @@ export const wakeRoutes = (deps: ShepherdDeps, wiring: WakeWiring = {}): readonl
   codeRoute(REPAIR_STEP, deps.now, async (input: object) => input),
   codeRoute(FIX_PROOF_WAKE_STEP, deps.now, async (input: object) => input),
   ...fixerExitRoutes(deps.port, deps.now, deps.exitNotice),
+  hostLockRegenRoute(deps),
 ];

@@ -50,8 +50,6 @@ import { expireOrder } from "./merge-order-expiry.js";
 import { conflictRound, isConflict, noteRetarget } from "./retarget-conflict.js";
 import { staleBaseOf, staleBaseRoute, type StaleBaseRun } from "./stale-base.js";
 import { mergeMainFirst, mergeMainRoute } from "./merge-main.js";
-import { lockRegenDeps } from "./closure-regen-host.js";
-import { lockRegenRoute } from "./lock-regen.js";
 import { staleGreenCheck, staleGreenRoute } from "./stale-green.js";
 import { endOrderRound, releasedUnlessWoken, releaseOrder, releaseUnlandable, retakeOrder, unreserved } from "./merge-order-steps.js";
 import { ciFailedRoute, routingStuckBehind, seatNoticeRoute, unhandledSendBack, unsettledMergeNotice } from "./gate-route.js";
@@ -351,7 +349,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     ...releaseRoutes(deps, wiring.registry ?? npmRegistry(), wiring.versions ?? npmVersionRegistry(), wiring.mainRed?.tasks),
     ...postMergeRoutes(deps, wiring.mainRed),
     observeRoute(deps.port, deps.now, deps.snapshot),
-    conflictCheckRoute(deps), conflictBaseRoute(deps), staleBaseRoute(deps), mergeMainRoute(deps), staleGreenRoute(deps), lockRegenRoute(deps.now, lockRegenDeps(deps)),
+    conflictCheckRoute(deps), conflictBaseRoute(deps), staleBaseRoute(deps), mergeMainRoute(deps), staleGreenRoute(deps),
     seatNoticeRoute(deps.now, deps.exitNotice, deps.sleep),
     ...freezeHoldRoutes(deps, wiring.mainRed?.freezes),
     ...g10ReleaseRoutes(deps, () => wiring.review?.twoMergeRelease),
