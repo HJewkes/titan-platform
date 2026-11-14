@@ -57,7 +57,7 @@
   },
   "products/active-work/src/commands/context-graph.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
+      "count": 1
     }
   },
   "products/active-work/src/commands/hooks-agent-chat-complete.ts": {
@@ -169,11 +169,6 @@
     }
   },
   "products/active-work/src/dashboard/utils/api.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/decider/human-only.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }

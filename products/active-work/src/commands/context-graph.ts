@@ -10,14 +10,14 @@
  * by topic") is deliberately NOT here — it is a separate, fuzzy concern and
  * bundling it would make these results non-deterministic.
  */
-import { promises as fs, type Dirent } from 'node:fs';
+import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { defineCommand } from '../registry/index.js';
 import { TaskSchema } from '../schemas/task.js';
 import { SessionFrontmatterSchema } from '../schemas/session.js';
 import { ArtifactsSchema, type Artifacts } from '../schemas/artifacts.js';
-import { loadAgentVisibility } from '../sessions/visibility.js';
+import { listSlugsForCaller } from '../sessions/visibility.js';
 import { getActiveRoot, getInitiativeDir } from '../utils/paths.js';
 import { readYaml } from '../utils/yaml-io.js';
 import { readFrontmatter } from '../utils/gray-matter-io.js';
@@ -97,28 +97,6 @@ function snippet(text: string): string {
   return trimmed.length > MAX_SNIPPET ? `${trimmed.slice(0, MAX_SNIPPET)}…` : trimmed;
 }
 
-/**
- * The cross-initiative scan skips owner-only initiatives (TP-5453 P6). A named `--slug`
- * reads that initiative by path as before, so a session inside it keeps its own data.
- */
-async function visibleSlugs(): Promise<string[]> {
-  const isVisible = await loadAgentVisibility(getActiveRoot());
-  return (await listSlugs()).filter((slug) => isVisible(slug));
-}
-
-async function listSlugs(): Promise<string[]> {
-  let entries: Dirent[];
-  try {
-    entries = await fs.readdir(getActiveRoot(), { withFileTypes: true });
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
-    throw err;
-  }
-  return entries
-    .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
-    .map((e) => e.name)
-    .sort();
-}
 
 async function listFiles(dir: string, ext: string): Promise<string[]> {
   try {
@@ -304,9 +282,10 @@ export default defineCommand<Args, Result>({
     },
     usage: 'context graph <id> [--slug SLUG]',
   },
-  async run(args) {
+  async run(args, ctx) {
     const match = buildMatcher(args.id);
-    const slugs = args.slug ? [args.slug] : await visibleSlugs();
+    // A named --slug reads that initiative by path, so a session inside it keeps its own data.
+    const slugs = args.slug ? [args.slug] : await listSlugsForCaller(getActiveRoot(), ctx);
 
     const scan: Scan = { references: [], errors: [], subject: null };
     for (const slug of slugs) {

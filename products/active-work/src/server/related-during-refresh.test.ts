@@ -10,6 +10,7 @@ import { openGraph, type WorkspaceGraph } from '../session-index/graph.js';
 import { runRefresh, type RefreshOptions } from '../session-index/refresh.js';
 import { renderTranscript } from '../test-support/session-index/fixture.js';
 import { scaffold } from '../test-support/workspace-index/fixture.js';
+import { writeCharter } from '../test-support/visibility.js';
 
 const STALE_SESSIONS = 10;
 
@@ -41,6 +42,7 @@ beforeEach(() => {
   dbPath = path.join(dir, 'graph.sqlite3');
   mkdirSync(path.join(corpus, 'demo'), { recursive: true });
   scaffold(activeRoot);
+  writeCharter(activeRoot);
   graph = openGraph(dbPath);
   vi.stubEnv('AGENT_CHAT_HOME', path.join(dir, 'agent-chat'));
   vi.stubEnv('AW_INDEX_MIN_INTERVAL_MS', '1');

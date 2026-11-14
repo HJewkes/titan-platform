@@ -2,14 +2,14 @@ import { z } from 'zod';
 import { resolveLedgerPaths } from '../sessions/ledger-file.js';
 import { LoopBoardSchema, loadBoard, type LoopBoard } from '../session-index/loop-board.js';
 import { defineCommand } from '../registry/index.js';
-import { callerVisibility, type AgentVisibility } from '../sessions/visibility.js';
+import { visibilityFor, type Shown } from '../sessions/visibility.js';
 
 const ArgsSchema = z.object({});
 
 type Args = z.infer<typeof ArgsSchema>;
 
 /** An agent sees no loop of an owner-only initiative, nor its id on a tree node; only the count (TP-5453 P6b). */
-function boardFor(board: LoopBoard, visible: AgentVisibility): LoopBoard {
+function boardFor(board: LoopBoard, visible: Shown): LoopBoard {
   const loops = board.loops.filter((loop) => visible(loop.initiative));
   const hidden = board.loops.length - loops.length;
   if (hidden === 0) return board;
@@ -36,7 +36,7 @@ export default defineCommand<Args, LoopBoard>({
     const paths = await resolveLedgerPaths(ctx.activeRoot);
     const [board, visible] = await Promise.all([
       loadBoard(ctx.activeRoot, paths, new Date()),
-      callerVisibility(ctx.activeRoot, ctx.caller),
+      visibilityFor(ctx),
     ]);
     return boardFor(board, visible);
   },
