@@ -31,7 +31,7 @@ interface Sources {
 export async function openSources(paths: ScorecardPaths, perRun: PerRunSource): Promise<Sources> {
   const factory = openReadOnly(paths.factoryDb);
   const records = factory === null ? null : await perRun(paths.factoryDb);
-  const tasks = loadTasks(paths.initiativesRoot, paths.initiatives);
+  const tasks = await loadTasks(paths.initiativesRoot, paths.initiatives);
   return {
     events: openReadOnly(paths.eventsDb),
     factory,
