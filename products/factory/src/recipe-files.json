@@ -21,6 +21,7 @@
   "shepherd/freeze-hold.ts",
   "shepherd/main-rerun.ts",
   "shepherd/merge-evidence-gate.ts",
+  "shepherd/lock-regen.ts",
   "shepherd/merge-main.ts",
   "shepherd/merge-order-steps.ts",
   "shepherd/merge-settle.ts",

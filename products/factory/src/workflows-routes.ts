@@ -43,6 +43,7 @@ import { buildSurfaceRoutes, factoryBuildPorts } from "./build-surface/index.js"
 import { portReads } from "./workflows/pr-snapshot.js";
 import type { ShepherdServices } from "./shepherd/services.js";
 import type { FactoryRouteDeps } from "./workflows-deps.js";
+import { hostLockRegenRoute } from "./shepherd/closure-regen-host.js";
 
 const NO_SEATS: SeatBook = { seats: [], denied: [] };
 
@@ -81,7 +82,7 @@ export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
     return route.match === "merge" ? waitWhileHeld(rideTrain(route, { train, port: deps.port, held, timing, now: deps.now }), held, timing, openHeadRead(deps.port, deps.snapshot), (repo, pr, sha) => reviewPendingAt(holds().byPr(repo, pr), sha), adversary.takeRehold, g10Recheck(holds)) : route;
   });
   const review = deps.review && withHoldAdversary({ ...deps.review, isFrozen: deps.isFrozen ?? recheckedFrozen(deps.port, () => freeze.get(), holds, deps.now) }, deps.review);
-  const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, versions: deps.versions, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
+  const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, versions: deps.versions, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } }).concat(hostLockRegenRoute(shepherdDeps));
   const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train, accountLimits, shadow.shadow, order) };
   const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train, freeze, snapshot: deps.snapshot, pacing: deps.pacing, now: shepherdDeps.now, prFiles: deps.prFiles, gateway: deps.gateway, ...(deps.spawnGate && { reviewSlots: deps.spawnGate.reviewSlots }), ...(deps.visualDelivery && { visualDelivery: deps.visualDelivery }), ...(deps.thawAlert && { thawAlert: deps.thawAlert }), mergeOrder: { order: () => order.get(), holds, rules: orderRules, waits: orderWaits, now: shepherdDeps.now }, ...(deps.roster && { roster: deps.roster }), ...(deps.exitNotice?.hubSeat && { hubSeat: deps.exitNotice.hubSeat }), visualThreshold: deps.visualThreshold ?? deps.review?.visualThreshold, lowTierPolicy: () => current(deps.lowTierPolicy) };
   return Object.assign([...retryingGhServerErrors([...land, ...withMergeWake(shepherd, deps.mergeWake)], { sleep: pause, now: shepherdDeps.now }), trainLeaveRoute(train, shepherdDeps.now), ...mergeOrderRoutes({ order: () => order.get(), holds, rules: orderRules, port: deps.port, train, timing, now: shepherdDeps.now }), orderExpiryRoute({ order: () => order.get(), rules: orderRules, now: shepherdDeps.now }), redeployRoute(shepherdDeps.now, deps.redeploy), ...auditRoutes(deps.audit ?? systemAuditPorts(ownCheckout())), ...buildSurfaceRoutes(factoryBuildPorts({ ...deps, agentChatBin: shepherdDeps.agentChatBin }))], { database, shepherd: services });

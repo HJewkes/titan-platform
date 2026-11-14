@@ -7,7 +7,6 @@ import type { ReviewCause } from "./review-schemas.js";
 import type { AccountLimitStoreRef } from "./account-store.js";
 import type { ShepherdStoreRef } from "./store.js";
 import type { GitCachePorts } from "./carry-cache-ports.js";
-import type { ClosureRegen } from "./lock-regen.js";
 import type { PrFilesRead } from "./git-pr-files.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import type { PushWatch } from "./push-signal.js";
@@ -151,7 +150,7 @@ export interface ShepherdDeps {
   /** Reads a head's changed files from Shepherd's git cache; absent means the serve process's cached reader. */
   prFiles?: PrFilesRead;
   /** Rebuilds closure.lock.json on a merged tree (TP-5732); absent means a scratch checkout of Shepherd's git cache. */
-  closureRegen?: ClosureRegen;
+  closureRegen?: (at: { gitDir: string; commit: string }, signal?: AbortSignal) => Promise<string>;
   /** Repos whose stacked children Shepherd restacks after its own merge; absent means none. */
   stackRestack?: (repo: RepoSlug) => boolean;
   /** `on` repairs a run held only under a g10 class while the hold keeps gating its merge; absent means `off`. */
