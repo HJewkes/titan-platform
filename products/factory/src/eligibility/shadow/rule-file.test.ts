@@ -1,0 +1,64 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { defaultRuleFilePath, loadRuleFile } from "./rule-file.js";
+
+function ruleFile(body: unknown): string {
+  const path = join(mkdtempSync(join(tmpdir(), "rule-file-")), "dispatcher.json");
+  writeFileSync(path, typeof body === "string" ? body : JSON.stringify(body));
+  return path;
+}
+
+const minimal = { schema: "titan-dispatcher/v1", mode: "shadow" };
+
+describe("dispatcher rule file", () => {
+  it("an absent file loads as nothing", () => {
+    expect(loadRuleFile(join(tmpdir(), "no-such-dir-for-rule-file", "dispatcher.json"))).toBeUndefined();
+  });
+
+  it("a minimal file takes shadow off and no lanes, and names its hash", () => {
+    const loaded = loadRuleFile(ruleFile(minimal));
+
+    expect(loaded?.rules).toMatchObject({ shadow: { enabled: false }, lanes: [] });
+    expect(loaded?.hash).toMatch(/^sha256:[0-9a-f]{64}$/);
+  });
+
+  it("refuses any mode but shadow, so no value expresses live dispatch", () => {
+    expect(() => loadRuleFile(ruleFile({ ...minimal, mode: "live" }))).toThrow(/mode/);
+  });
+
+  it("refuses an enabled shadow with no dir", () => {
+    expect(() => loadRuleFile(ruleFile({ ...minimal, shadow: { enabled: true } }))).toThrow(/an enabled shadow needs a dir/);
+  });
+
+  it("refuses an unplanned key, and names the file when it is not JSON", () => {
+    expect(() => loadRuleFile(ruleFile({ ...minimal, dispatchLive: true }))).toThrow(/dispatchLive/);
+    const broken = ruleFile("{ not json");
+
+    expect(() => loadRuleFile(broken)).toThrow(broken);
+  });
+
+  it("parses the plan's full example, keys of later slices included, with a lane tag defaulting to null", () => {
+    const example = {
+      ...minimal,
+      shadow: { enabled: false, dir: "/var/tmp/shadow" },
+      lanes: [{ initiative: "alpha", tag: "lane-a" }, { initiative: "beta" }],
+      bets: { source: "selected-then-sheet", sheetDir: "/var/tmp/bets" },
+      relax: ["bet-field", "no-fold", "no-owner-steps"],
+      intake: { minSeverity: "medium", expireDays: 28 },
+      upkeep: { capShare: 0.25, windowDays: 7 },
+      stop: { taskFixRounds: 3, spendMultiple: 2, usdPerPoint: 8, betStoppedPrs: 3, betFollowupMultiple: 2, checkpointEvery: 5 },
+    };
+
+    expect(loadRuleFile(ruleFile(example))?.rules.lanes).toEqual([
+      { initiative: "alpha", tag: "lane-a" },
+      { initiative: "beta", tag: null },
+    ]);
+  });
+
+  it("sits beside the factory config.json by default", () => {
+    expect(defaultRuleFilePath({ TITAN_FACTORY_CONFIG: "/etc/factory/config.json" })).toBe("/etc/factory/dispatcher.json");
+    expect(defaultRuleFilePath({ XDG_CONFIG_HOME: "/xdg" })).toBe("/xdg/titan-factory/dispatcher.json");
+  });
+});

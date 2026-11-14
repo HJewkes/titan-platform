@@ -10,6 +10,7 @@ import { admitLane, DEFAULT_LIMITS, filingFlow, holdsFor, type Admission, type B
 import { laneComponents } from "./lane-components.js";
 import { liveLaneSignals } from "./lane-signals.js";
 import type { Eligibility } from "./rules.js";
+import { registerShadowVerbs } from "./shadow/command.js";
 
 interface EligibleOptions {
   initiative: string;
@@ -37,7 +38,7 @@ interface LaneReport {
 const ISO_WEEK = /^\d{4}-W(0[1-9]|[1-4]\d|5[0-3])$/;
 
 /** Each absent `shepherd.backPressure` key takes the owner's starting value. */
-function limitsOf(config: FactoryConfig): BackPressureLimits {
+export function limitsOf(config: FactoryConfig): BackPressureLimits {
   const set = config.shepherd?.backPressure ?? {};
   return { laneOpenPrs: set.laneOpenPrs ?? DEFAULT_LIMITS.laneOpenPrs, ownerQueue: set.ownerQueue ?? DEFAULT_LIMITS.ownerQueue, inflowWeeks: set.inflowWeeks ?? DEFAULT_LIMITS.inflowWeeks };
 }
@@ -149,4 +150,5 @@ export function registerDispatch(program: Command, verbs: Verbs): void {
     .option("--tag <tag>", "only tasks carrying this tag (a lane, such as console)")
     .option("--json", "print { admission, week, eligible, refused, counts } as JSON")
     .action(async (opts: EligibleOptions) => verbs.setExit(await run(opts, verbs)));
+  registerShadowVerbs(dispatch, verbs);
 }
