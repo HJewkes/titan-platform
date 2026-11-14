@@ -1,13 +1,13 @@
 import { readFile } from "node:fs/promises";
 import { priceRequest } from "@titan-design/session-analytics";
 
-export interface MeterArm {
+interface MeterArm {
   id: string;
   model: string;
   effort: string;
 }
 
-export interface ModelTokens {
+interface ModelTokens {
   input: number;
   output: number;
   cacheRead: number;
@@ -15,7 +15,7 @@ export interface ModelTokens {
   cacheWrite1h: number;
 }
 
-export interface MeterResult {
+interface MeterResult {
   tokens: Record<string, ModelTokens>;
   listUsd: number | null;
   effortSeen: string[];
@@ -25,7 +25,7 @@ export interface MeterResult {
   outcome: "ok" | "arm-mismatch";
 }
 
-export interface MeterInput {
+interface MeterInput {
   transcriptPath: string;
   arm: MeterArm;
   cliResult?: unknown;
@@ -41,8 +41,9 @@ interface Request {
 }
 
 type Json = Record<string, unknown>;
+const TOKEN_KEYS = ["input", "output", "cacheRead", "cacheWrite5m", "cacheWrite1h"] as const;
 
-const asObject = (value: unknown): Json | undefined => (value && typeof value === "object" ? (value as Json) : undefined);
+const asObject = (value: unknown): Json | undefined => (typeof value === "object" && value !== null ? Object.fromEntries(Object.entries(value)) : undefined);
 const num = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) ? value : 0);
 
 function parseLines(text: string): Json[] {
@@ -97,7 +98,7 @@ function sumByModel(requests: Request[]): Record<string, ModelTokens> {
   const byModel: Record<string, ModelTokens> = {};
   for (const { model, tokens } of requests) {
     const sum = (byModel[model] ??= { input: 0, output: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 });
-    for (const key of Object.keys(sum) as (keyof ModelTokens)[]) sum[key] += tokens[key];
+    for (const key of TOKEN_KEYS) sum[key] += tokens[key];
   }
   return byModel;
 }
