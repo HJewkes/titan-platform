@@ -7,7 +7,7 @@ const NOW = Date.parse("2026-10-07T12:00:00Z");
 const minutesAgo = (minutes: number): number => NOW - minutes * 60_000;
 const quiet = deployHealth({ entries: [], runningSha: RUNNING, now: NOW });
 
-const merged = (minutes: number) => ({ outcome: { kind: "merged" }, phaseSince: new Date(minutesAgo(minutes)).toISOString() });
+const merged = (minutes: number) => ({ task: "alpha/AL-1", outcome: { kind: "merged" }, phaseSince: new Date(minutesAgo(minutes)).toISOString() });
 
 /** What serve reports when origin/main holds a commit the running build lacks, as of `now`. */
 const lacking = (...commitMinutes: number[]): DeployHealth => withGitBehind(quiet, { commitTimes: commitMinutes.map(minutesAgo) }, NOW);
