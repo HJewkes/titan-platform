@@ -216,6 +216,7 @@ graph TD
   workflow --> storeSqlite
   activeWork --> agentDispatch
   activeWork --> agentProtocol
+  activeWork --> anthropicAccount
   activeWork --> appPaths
   activeWork --> clusterPkg
   activeWork --> daemon
@@ -275,6 +276,7 @@ graph TD
   explainer --> workflow
   factory --> agent
   factory --> agentDispatch
+  factory --> anthropicAccount
   factory --> appPaths
   factory --> authority
   factory --> autoresearch
@@ -309,6 +311,7 @@ graph TD
   retrievalEval --> rpcProtocol
   retrievalEval --> sessionRead
   retrievalEval --> storeSqlite
+  sessionMiner --> anthropicAccount
   sessionMiner --> appPaths
   sessionMiner --> clusterPkg
   sessionMiner --> daemon
@@ -328,6 +331,7 @@ graph TD
   sessionMiner --> storeSqlite
   sessionMiner --> throughput
   sessionMiner --> workflow
+  titan --> anthropicAccount
   titan --> daemon
   titan --> health
   ytScout --> agent
@@ -421,7 +425,7 @@ The usage guides are under [Guides](/guides/#running-the-products).
 
 ## What a product actually looks like
 
-The session miner composes <!-- generated:miner-count start -->nineteen<!-- generated:miner-count end --> packages and is roughly a thousand lines of its own code.
+The session miner composes <!-- generated:miner-count start -->twenty<!-- generated:miner-count end --> packages and is roughly a thousand lines of its own code.
 Its structure generalises: one context type, one registry, one binding of the daemon, and a
 set of commands.
 
