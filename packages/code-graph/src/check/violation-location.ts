@@ -3,7 +3,7 @@ import type { CheckViolation } from "./types.js";
 
 export const CODE_GRAPH_TOOL = "code-graph";
 
-export type ViolationLocation = Pick<CheckViolation, "path" | "lineStart" | "lineEnd" | "symbol">;
+type ViolationLocation = Pick<CheckViolation, "path" | "lineStart" | "lineEnd" | "symbol">;
 
 /** Where a node lives in the source: a symbol points at its parent file and its own line span. */
 export function locateNode(node: GraphNode): ViolationLocation {

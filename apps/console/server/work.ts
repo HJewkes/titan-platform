@@ -70,7 +70,7 @@ export const initiativeResult = z.object({
 });
 
 export type Portfolio = z.infer<typeof portfolioResult>;
-export type InitiativeDetail = z.infer<typeof initiativeResult>;
+type InitiativeDetail = z.infer<typeof initiativeResult>;
 type InitiativeHead = z.infer<typeof initiativeHead>;
 type PortfolioRow = z.infer<typeof portfolioRow>;
 

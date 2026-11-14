@@ -97,7 +97,7 @@ const RECOMPUTE_USAGE = `
 
 const STEPS = [REQUEST_ORDER, REQUEST_WAKE, INBOUND_QUEUED, COMPACTION_MID_LOOP, TURN_WAKE, CLEAR_USAGE, RECOMPUTE_USAGE] as const;
 
-export type AuditRollup = (sessionIdsJson: string) => void;
+type AuditRollup = (sessionIdsJson: string) => void;
 
 /** Prepare the audit recomputes once; the caller runs them per batch inside its own transaction. */
 export function prepareAuditRollup(db: Db): AuditRollup {

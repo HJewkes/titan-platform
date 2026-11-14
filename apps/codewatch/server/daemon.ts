@@ -4,7 +4,7 @@ import { consoleLogger, mountStaticApp, startDaemon, type DaemonHandle } from "@
 import { DAEMON_PORT } from "./paths.js";
 import { createContext, createReportRegistry } from "./registry.js";
 
-export interface ReportDaemonOptions {
+interface ReportDaemonOptions {
   /** A built app to serve at `/`; the dev server serves the app itself and leaves this out. */
   staticRoot?: string;
 }

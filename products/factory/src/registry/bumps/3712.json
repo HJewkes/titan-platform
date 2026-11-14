@@ -1,0 +1,5 @@
+[
+  { "step": "ci-wait", "pr": 3712 },
+  { "step": "merge", "pr": 3712 },
+  { "step": "sh-await-verdict", "pr": 3712 }
+]
