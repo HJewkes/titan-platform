@@ -32,6 +32,11 @@ describe("dispatcher rule file", () => {
     expect(() => loadRuleFile(ruleFile({ ...minimal, shadow: { enabled: true } }))).toThrow(/an enabled shadow needs a dir/);
   });
 
+  it("refuses a sheet bet source with no sheet dir, and a sheet week that is not an ISO week", () => {
+    expect(() => loadRuleFile(ruleFile({ ...minimal, bets: { source: "selected-then-sheet" } }))).toThrow(/a sheet bet source needs a sheetDir/);
+    expect(() => loadRuleFile(ruleFile({ ...minimal, bets: { source: "selected-then-sheet", sheetDir: "/s", sheetWeek: "2026-47" } }))).toThrow(/bets\.sheetWeek/);
+  });
+
   it("refuses an unplanned key, and names the file when it is not JSON", () => {
     expect(() => loadRuleFile(ruleFile({ ...minimal, dispatchLive: true }))).toThrow(/dispatchLive/);
     const broken = ruleFile("{ not json");
