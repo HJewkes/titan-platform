@@ -16,10 +16,10 @@ const SUBJECT = "Merge main and regenerate closure.lock.json";
 /** Rebuilds the lock in a checkout of `commit` from the cache at `gitDir`; resolves to the tree with the regenerated lock. */
 export type ClosureRegen = (at: { gitDir: string; commit: string }, signal?: AbortSignal) => Promise<string>;
 
-/** A regeneration command that exited non-zero; its message names only the command and the exit code. */
+/** A regeneration that failed; its message names only the command and its exit code, or a fixed refusal, never output. */
 export class ClosureRegenFailure extends Error {
-  constructor(label: string, code: number) {
-    super(`closure regen: ${label} exited ${code}`);
+  constructor(what: string) {
+    super(`closure regen: ${what}`);
     this.name = "ClosureRegenFailure";
   }
 }
@@ -101,6 +101,8 @@ async function mergeAndPush(remote: Remote, regen: ClosureRegen, signal?: AbortS
   const unresolved = await must(git, dir, ["commit-tree", merged.tree, ...parents, "-m", SUBJECT]);
   const tree = await regen({ gitDir: dir, commit: unresolved }, signal).catch((error: unknown) => new Declined(failureReason(error)));
   if (tree instanceof Declined) return declined(tree.reason, facts);
+  const changed = (await must(git, dir, ["diff-tree", "-r", "--no-renames", "--name-only", merged.tree, tree])).split("\n").filter(Boolean);
+  if (changed.length !== 1 || changed[0] !== CLOSURE_LOCK_PATH) return declined("the regenerated tree changes more than closure.lock.json", facts);
   const commit = await must(git, dir, ["commit-tree", tree, ...parents, "-m", SUBJECT]);
   const refused = await pushFastForward(remote, commit);
   return refused === undefined ? { outcome: "pushed", reason: `merged ${pr.baseRef} at ${tip} and regenerated closure.lock.json`, newHead: commit, ...facts } : declined(refused, facts);

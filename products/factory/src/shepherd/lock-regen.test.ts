@@ -26,13 +26,14 @@ afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 const ok = (stdout = ""): GitResult => ({ code: 0, stdout, stderr: "" });
 
 /** A bare cache whose text merge of the head onto main conflicts in `conflicted`; a push moves the fake PR's head. */
-function fakeCache(fake: FakeGitHub, conflicted: readonly string[]) {
+function fakeCache(fake: FakeGitHub, conflicted: readonly string[], regenChanged: readonly string[]) {
   let remoteHead = H1;
   const pushes: string[] = [];
   const git = async (_dir: string, args: readonly string[]): Promise<GitResult> => {
     const [command] = args;
     if (command === "-c") return { code: 1, stdout: [TEXT_TREE, ...conflicted].join("\n"), stderr: "" };
     if (command === "rev-parse") return ok(TIP);
+    if (command === "diff-tree") return ok(regenChanged.join("\n"));
     if (command === "commit-tree") return ok(args[1] === TEXT_TREE ? UNRESOLVED : MERGED);
     if (command === "ls-remote") return ok(`${remoteHead}\trefs/heads/topic-1`);
     if (command === "push") {
@@ -48,12 +49,12 @@ function fakeCache(fake: FakeGitHub, conflicted: readonly string[]) {
 }
 
 /** A dirty PR that changed the lock; a fixer wake pushes a clean head, so either path ends at a mergeable head. */
-function lockConflictWorld(conflicted: readonly string[], regen: ClosureRegen, changed = CLOSURE_LOCK_PATH) {
+function lockConflictWorld(conflicted: readonly string[], regen: ClosureRegen, changed = CLOSURE_LOCK_PATH, regenChanged = [CLOSURE_LOCK_PATH]) {
   const fake = fakeGitHub({ baseSha: TIP });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   fake.addPr({ headSha: H1, headRepo: REPO, mergeableState: "dirty" });
   fake.prFiles.set(1, [{ path: changed, status: "modified" }]);
-  const cache = fakeCache(fake, conflicted);
+  const cache = fakeCache(fake, conflicted, regenChanged);
   const wakes: WakeRequest[] = [];
   const phases: ShepherdPhases = {
     wake: async (_ctx, request) => {
@@ -107,7 +108,7 @@ describe("Shepherd regenerates closure.lock.json when it is the only conflict (T
   });
 
   it("wakes the fixer when the regeneration fails, and pushes nothing", async () => {
-    const regen = vi.fn<ClosureRegen>(async () => Promise.reject(new ClosureRegenFailure("build", 1)));
+    const regen = vi.fn<ClosureRegen>(async () => Promise.reject(new ClosureRegenFailure("build exited 1")));
 
     const world = lockConflictWorld([CLOSURE_LOCK_PATH], regen);
 
@@ -115,6 +116,17 @@ describe("Shepherd regenerates closure.lock.json when it is the only conflict (T
     expect(world.wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["conflict", H1]]);
     expect(world.pushes).toEqual([]);
     expect(regenOutputs(world)).toEqual([expect.objectContaining({ outcome: "declined", reason: "closure regen: build exited 1", conflicted: [CLOSURE_LOCK_PATH] })]);
+  });
+
+  it("wakes the fixer when the regenerated tree changes a file beside the lock, and pushes nothing", async () => {
+    const regen = vi.fn<ClosureRegen>(async () => REGEN_TREE);
+
+    const world = lockConflictWorld([CLOSURE_LOCK_PATH], regen, CLOSURE_LOCK_PATH, [CLOSURE_LOCK_PATH, OTHER]);
+
+    await vi.waitFor(() => expect(atGate(world)).toMatch(/^approve-merge/));
+    expect(world.wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["conflict", H1]]);
+    expect(world.pushes).toEqual([]);
+    expect(regenOutputs(world)).toEqual([expect.objectContaining({ outcome: "declined", reason: "the regenerated tree changes more than closure.lock.json" })]);
   });
 
   it("leaves a PR that never changed the lock to the fixer without reading the git cache", async () => {
