@@ -94,10 +94,6 @@ export class LockTimeoutError extends ActiveWorkError {
   }
 }
 
-export function isActiveWorkError(err: unknown): err is ActiveWorkError {
-  return err instanceof ActiveWorkError;
-}
-
 export function formatError(err: unknown): { message: string; code: number } {
   if (err instanceof ActiveWorkError) {
     return { message: err.message, code: err.code };
