@@ -83,10 +83,11 @@ export async function shadowTickCli(home: Home, fetch: typeof globalThis.fetch, 
   return { code, ...out };
 }
 
-/** Every row the shadow dir holds, file by file in name order. */
+/** Every row of the shadow dir's day files, file by file in name order. */
 export function readRows(shadowDir: string): { file: string; rows: Body[] }[] {
   if (!existsSync(shadowDir)) return [];
   return readdirSync(shadowDir)
+    .filter((file) => file.endsWith(".jsonl"))
     .sort()
     .map((file) => ({ file, rows: readFileSync(join(shadowDir, file), "utf8").trimEnd().split("\n").map((line) => z.record(z.string(), z.unknown()).parse(JSON.parse(line))) }));
 }

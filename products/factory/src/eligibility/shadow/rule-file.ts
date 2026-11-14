@@ -11,7 +11,16 @@ import { RELAXATIONS, SEVERITIES } from "../intake.js";
  * `mode` admits only "shadow", so no value of this file can express live dispatch.
  */
 
-const LaneSchema = z.object({ initiative: z.string().min(1), tag: z.string().min(1).nullable().default(null) });
+/**
+ * `floor` is the lane's ready-stock floor (TP-5964): below it, each tick asks `coordinator` (or the compare operator) for a
+ * refill, once a day. Absent means the lane is never counted.
+ */
+const LaneSchema = z.object({
+  initiative: z.string().min(1),
+  tag: z.string().min(1).nullable().default(null),
+  floor: z.number().int().positive().optional(),
+  coordinator: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/, { message: "must be an agent-chat peer name" }).optional(),
+});
 
 const ShadowSchema = z.object({ enabled: z.boolean().default(false), dir: z.string().min(1).optional() }).refine((shadow) => !shadow.enabled || shadow.dir !== undefined, {
   message: "an enabled shadow needs a dir",

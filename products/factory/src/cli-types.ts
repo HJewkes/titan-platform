@@ -70,6 +70,8 @@ export interface CliDeps {
   /** The serve verb's seat digest; absent, or undefined for an env, means serve sends none. */
   seatDigest?: (env: NodeJS.ProcessEnv) => SeatDigestPorts | undefined;
   ciTimingFallback?: (env: NodeJS.ProcessEnv) => CiTimingFallbackPorts | undefined;
+  /** How the shadow tick sends a ready-stock refill request; absent, or undefined for an env, means it reports the lane and sends none. */
+  refillSend?: (env: NodeJS.ProcessEnv) => ((to: string, text: string) => Promise<void>) | undefined;
   /** The serve verb's gate notifier; absent, or undefined for an env, means serve posts no gate to agent-chat. */
   gateNotify?: (env: NodeJS.ProcessEnv) => GateNotifyOptions | undefined;
   /** The serve verb's console Ship route; absent, or undefined for an env, means serve does not mount it. */
