@@ -42,7 +42,7 @@ export function pickJudges(armModels: readonly string[]): JudgeChoice {
   return { judge, second };
 }
 
-export interface Criterion {
+interface Criterion {
   id: string;
   ask: string;
 }
@@ -59,12 +59,12 @@ export interface JudgeQuestion {
   relabel?: Readonly<Record<string, string>>;
 }
 
-export interface JudgeRequest {
+interface JudgeRequest {
   prompt: string;
   schema: ZodType<unknown>;
 }
 
-export type JudgeCall =
+type JudgeCall =
   | { ok: true; answer: unknown; costUsd: number; sessionId: string; effortSeen: string[] | null }
   | { ok: false; reason: string; costUsd: number };
 
@@ -90,14 +90,14 @@ export function judgeRequest(question: JudgeQuestion): JudgeRequest {
   return { prompt: renderPrompt(question), schema: answerSchema(question.labels) };
 }
 
-export interface CheckedCriterion {
+interface CheckedCriterion {
   id: string;
   verdict: string;
   cites: string;
   evidence: string;
 }
 
-export interface CheckedAnswer {
+interface CheckedAnswer {
   criteria: CheckedCriterion[];
   judgeErrors: number;
   /** The decisive criterion's verdict in canonical labels; null when it was dropped. */
@@ -122,7 +122,7 @@ export function checkAnswer(question: JudgeQuestion, answer: unknown): CheckedAn
   return { criteria: kept, judgeErrors: question.criteria.length - kept.length, outcome: decisive?.verdict ?? null };
 }
 
-export interface ClaudePrintJudgeOptions {
+interface ClaudePrintJudgeOptions {
   /** The claude profile the judge logs in with; from an option or CLAUDE_CONFIG_DIR, never a fixed path. */
   configDir: string;
   /** An empty directory the judge runs in; its transcript lands under the profile's project dir for it. */

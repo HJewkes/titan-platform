@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { Command, CommanderError } from "commander";
+import { z } from "zod";
 import { planBatches, readItemRows, runBatch, secondJudgeAgreement } from "./judge/batch.js";
 import { claudePrintJudge } from "./judge/core.js";
 import { falseAlarmItems, parseFaControls, type FaSource } from "./judge/review-fa.js";
@@ -21,10 +22,12 @@ function readJsonl(path: string): unknown[] {
     .map((line) => JSON.parse(line) as unknown);
 }
 
+const CliResult = z.looseObject({ result: z.string() });
+
 /** A job's final message is the `result` of its saved CLI output; a bundle is `<bundles>/<caseId>/{head,diff.patch}`. */
 function dirSource(runDir: string, bundlesDir: string): FaSource {
   return {
-    review: (sessionId) => String((JSON.parse(readFileSync(join(runDir, "results", `${sessionId}.json`), "utf8")) as { result?: unknown }).result ?? ""),
+    review: (sessionId) => CliResult.parse(JSON.parse(readFileSync(join(runDir, "results", `${sessionId}.json`), "utf8"))).result,
     diff: (caseId) => readFileSync(join(bundlesDir, caseId, "diff.patch"), "utf8"),
     headLines: (caseId, path) => readFileSync(join(bundlesDir, caseId, "head", path), "utf8").split("\n"),
   };

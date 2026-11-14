@@ -80,10 +80,9 @@ describe("claudePrintJudge", () => {
     runAgent.mockResolvedValue({ ok: true, output: { criteria: [] }, sessionId: "s1", usage: { totalCostUsd: 0.02 } });
     const judge = claudePrintJudge({ configDir: "/srv/x/profile", cwd: "/srv/x/missing-cwd", baseEnv: { PATH: "/usr/bin" }, run: runAgent });
     const call = await judge({ model: SONNET, effort: "high" }, judgeRequest(question));
-    const [config, deps] = runAgent.mock.calls[0] as [Record<string, unknown>, { env: Record<string, string> }];
-    expect(config).toMatchObject({ harness: "claude-print", model: SONNET, cwd: "/srv/x/missing-cwd" });
-    expect(config.tools).toBeUndefined();
-    expect(deps.env).toEqual({ PATH: "/usr/bin", CLAUDE_CONFIG_DIR: "/srv/x/profile", CLAUDE_CODE_EFFORT_LEVEL: "high" });
+    const env = { PATH: "/usr/bin", CLAUDE_CONFIG_DIR: "/srv/x/profile", CLAUDE_CODE_EFFORT_LEVEL: "high" };
+    expect(runAgent).toHaveBeenCalledWith(expect.objectContaining({ harness: "claude-print", model: SONNET, cwd: "/srv/x/missing-cwd" }), { env });
+    expect(runAgent).toHaveBeenCalledWith(expect.not.objectContaining({ tools: expect.anything() }), { env });
     expect(call).toEqual({ ok: true, answer: { criteria: [] }, costUsd: 0.02, sessionId: "s1", effortSeen: null });
   });
 

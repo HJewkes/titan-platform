@@ -1,13 +1,14 @@
 import { existsSync, readFileSync } from "node:fs";
 import { pickControls, placeControls, scoreControls, seededRandom } from "@titan-design/evidence";
+import { z } from "zod";
 import { sha256Hex } from "../../hash.js";
 import { appendJsonl } from "../ledger.js";
 import { checkAnswer, judgeRequest, type JudgeChoice, type JudgeFn, type JudgeQuestion, type JudgeSpec } from "./core.js";
 
-export const JUDGMENT_SCHEMA = "titan.bench-judgment/v1";
+const JUDGMENT_SCHEMA = "titan.bench-judgment/v1";
 export const TIE = "tie";
 export const UNJUDGED = "unjudged";
-export const MAX_BATCH_ITEMS = 10;
+const MAX_BATCH_ITEMS = 10;
 const MAX_INFLIGHT = 4;
 const SECOND_SHARE = 0.2;
 
@@ -29,14 +30,14 @@ export interface BatchPlan extends JudgeChoice {
   controlCount: 1 | 2;
 }
 
-export interface BatchDeps {
+interface BatchDeps {
   judge: JudgeFn;
   ledgerPath: string;
 }
 
-export type ItemOutcome = string | null;
+type ItemOutcome = string | null;
 
-export interface BatchResult {
+interface BatchResult {
   batchId: string;
   outcome: "passed" | "void";
   items: { key: string; outcome: ItemOutcome; second: ItemOutcome | undefined }[];
@@ -60,7 +61,7 @@ function limiter(max: number): Limit {
 }
 
 /** A pairwise verdict counts only when both orders agree; any dropped order leaves the item without an outcome. */
-export function combineOrders(outcomes: readonly ItemOutcome[]): ItemOutcome {
+function combineOrders(outcomes: readonly ItemOutcome[]): ItemOutcome {
   const [first] = outcomes;
   if (first === undefined || outcomes.some((outcome) => outcome === null)) return null;
   return outcomes.every((outcome) => outcome === first) ? first : TIE;
@@ -168,28 +169,35 @@ export function planBatches(track: string, planned: readonly PlannedItem[], cont
   });
 }
 
-export interface JudgmentItemRow {
-  kind: "item";
-  key: string;
-  outcome: ItemOutcome;
-  second?: ItemOutcome;
+const ItemRow = z.looseObject({
+  schema: z.literal(JUDGMENT_SCHEMA),
+  kind: z.literal("item"),
+  key: z.string(),
+  outcome: z.string().nullable(),
+  second: z.string().nullable().optional(),
+});
+type JudgmentItemRow = z.infer<typeof ItemRow>;
+
+function parseLine(line: string): unknown {
+  try {
+    return JSON.parse(line);
+  } catch {
+    return undefined;
+  }
 }
 
+/** Terminal item rows, judged or unjudged; their keys are what a resumed run skips. */
 export function readItemRows(ledgerPath: string): JudgmentItemRow[] {
   if (!existsSync(ledgerPath)) return [];
   return readFileSync(ledgerPath, "utf8")
     .split("\n")
     .flatMap((line) => {
-      try {
-        const row = JSON.parse(line) as { schema?: unknown; kind?: unknown };
-        return row.schema === JUDGMENT_SCHEMA && row.kind === "item" ? [row as JudgmentItemRow] : [];
-      } catch {
-        return [];
-      }
+      const row = ItemRow.safeParse(parseLine(line));
+      return row.success ? [row.data] : [];
     });
 }
 
-export interface Agreement {
+interface Agreement {
   n: number;
   raw: number | null;
   kappa: number | null;

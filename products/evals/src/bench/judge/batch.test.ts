@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { agreement, planBatches, readItemRows, runBatch, secondJudged, TIE, UNJUDGED, type BatchPlan, type JudgeControl, type JudgeItem } from "./batch.js";
 import type { JudgeFn, JudgeQuestion, JudgeSpec } from "./core.js";
 
@@ -59,7 +60,8 @@ const plan = (items: JudgeItem[], pool: JudgeControl[] = [control("a", "real"), 
   controlCount: 2,
 });
 
-const rows = () => readFileSync(ledgerPath, "utf8").trim().split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
+const Row = z.record(z.string(), z.unknown());
+const rows = () => readFileSync(ledgerPath, "utf8").trim().split("\n").map((line) => Row.parse(JSON.parse(line)));
 
 describe("runBatch controls", () => {
   it("passes a batch whose controls all score correct, on the first attempt", async () => {

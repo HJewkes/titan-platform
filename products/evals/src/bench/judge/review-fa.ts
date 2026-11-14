@@ -6,7 +6,7 @@ export const REAL = "real";
 export const NOT_REAL = "not-real";
 
 /** One blocking finding with what the judge may see of it: the review, the diff and the lines it cites. */
-export interface FaFinding {
+interface FaFinding {
   key: string;
   review: string;
   path: string;
@@ -22,7 +22,7 @@ const INSTRUCTIONS = [
   "A finding is real when the defect it describes exists in the code at this head; a plausible-sounding claim the code does not bear out is not real.",
 ].join(" ");
 
-export function faQuestion(finding: FaFinding): JudgeQuestion {
+function faQuestion(finding: FaFinding): JudgeQuestion {
   const where = `${finding.path}:${finding.lineStart}-${finding.lineEnd}`;
   return {
     instructions: `${INSTRUCTIONS}\n\nThe finding under judgment is the blocking finding in the review that cites ${where}.`,
@@ -33,7 +33,7 @@ export function faQuestion(finding: FaFinding): JudgeQuestion {
   };
 }
 
-export const faItem = (finding: FaFinding): JudgeItem => ({ key: finding.key, questions: [faQuestion(finding)] });
+const faItem = (finding: FaFinding): JudgeItem => ({ key: finding.key, questions: [faQuestion(finding)] });
 
 const ControlSchema = z.strictObject({
   key: z.string().min(1),
