@@ -185,7 +185,7 @@ export const deterministicRun = (run: DeterministicRun): RunRecord => ({
 });
 
 /** What a judged (L1, L2) run record is built from: a deterministic run plus the judge, its version and spend. */
-export interface JudgedRun extends DeterministicRun {
+interface JudgedRun extends DeterministicRun {
   evalVersion: string;
   judge: string;
   run: number;

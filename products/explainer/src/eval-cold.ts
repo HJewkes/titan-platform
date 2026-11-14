@@ -15,12 +15,12 @@ export const COLD_EVAL_ID = "L1-cold";
 /** The viewer's whole memory of earlier chapters; anything longer would let the transcript leak forward. */
 export const MAX_SUMMARY_LINES = 3;
 /** Viewer runs that name the spoken terms they cannot define; as with odd-one-out picks, two of three must agree. */
-export const TERM_RUNS = 3;
-export const TERM_QUORUM = 2;
+const TERM_RUNS = 3;
+const TERM_QUORUM = 2;
 export const COLD_TERMS_EVAL_ID = "L1-cold-terms";
 export const COLD_TERMS_RUBRIC = "l1-cold-terms.md";
 /** The rubric for spoken-term questions, asked in a call of their own so their stricter bar cannot reach item labels. */
-export const COLD_SPOKEN_RUBRIC = "l1-cold-spoken.md";
+const COLD_SPOKEN_RUBRIC = "l1-cold-spoken.md";
 
 export interface ColdChapterBeats {
   chapter: string;

@@ -1,5 +1,5 @@
 /** What of a built layer the cue check reads: its source and the element ids it declares. */
-export interface LayerElements {
+interface LayerElements {
   module: string;
   elements: readonly string[];
 }

@@ -29,7 +29,7 @@ export const TIER_LABELS = {
  * Published `@titan-design/*` packages that do not live in this workspace. They still
  * belong in the reference, so they are declared here rather than discovered.
  */
-export const EXTERNAL = [
+const EXTERNAL = [
   {
     dir: "react-ui",
     tier: "ui",
