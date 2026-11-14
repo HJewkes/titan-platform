@@ -1,4 +1,5 @@
-import { createRpcClient, liveSource, RpcError, type LiveSourceOptions } from "@titan-design/rpc-client";
+import { createRpcClient, liveSource, RpcError, type LiveSourceOptions, type RpcClient } from "@titan-design/rpc-client";
+import { BetSchema } from "@titan-design/pm";
 import { z } from "zod";
 import type { BetSheet, SheetBet } from "./bet-sheet.js";
 
@@ -74,13 +75,20 @@ export class PlanCommandsMissing extends Error {}
 
 const unknownCommand = (error: unknown): boolean => error instanceof RpcError && error.message.startsWith("Unknown command");
 
+type BetState = z.infer<typeof BetSchema>["state"];
+
+/** Every state, so a bet the owner dropped or finished is not added back as a fresh proposal. */
+const BET_STATES: readonly BetState[] = BetSchema.shape.state.options;
+
 type ListCommands = {
   "plan.outcome.list": { args: { initiative: string }; result: unknown };
-  "plan.bet.list": { args: { initiative: string; week: string; state: "proposed" | "selected" }; result: unknown };
+  "plan.bet.list": { args: { initiative: string; week: string; state: BetState }; result: unknown };
 };
 
+type Client = RpcClient<ImportCommands & ListCommands>;
+
 /** Reads before writing so a re-run, or a run after a partial one, adds only what the plan store lacks. */
-async function existingKeys(client: ReturnType<typeof createRpcClient<ImportCommands & ListCommands>>, calls: readonly ImportCall[]): Promise<Set<string>> {
+async function existingKeys(client: Client, calls: readonly ImportCall[], inFlight: { command: string }): Promise<Set<string>> {
   const keys = new Set<string>();
   const outcomeInitiatives = new Set<string>();
   const betWeeks = new Map<string, { initiative: string; week: string }>();
@@ -89,11 +97,13 @@ async function existingKeys(client: ReturnType<typeof createRpcClient<ImportComm
     else betWeeks.set(`${call.args.initiative} ${call.args.week}`, { initiative: call.args.initiative, week: call.args.week });
   }
   for (const initiative of outcomeInitiatives) {
+    inFlight.command = "plan.outcome.list";
     const rows = z.array(z.object({ id: z.string() })).parse(await client.call("plan.outcome.list", { initiative }));
     for (const row of rows) keys.add(`outcome ${row.id}`);
   }
   for (const { initiative, week } of betWeeks.values()) {
-    for (const state of ["proposed", "selected"] as const) {
+    for (const state of BET_STATES) {
+      inFlight.command = "plan.bet.list";
       const rows = z.array(z.object({ outcome: z.string(), order: z.number() })).parse(await client.call("plan.bet.list", { initiative, week, state }));
       for (const row of rows) keys.add(`bet ${week} ${row.outcome} ${row.order}`);
     }
@@ -114,17 +124,19 @@ export interface ImportOutcome {
 /** Runs each call the plan store does not already hold, in order, stopping at the first failure. */
 export async function applyImport(source: LiveSourceOptions, calls: readonly ImportCall[]): Promise<ImportOutcome> {
   const client = createRpcClient<ImportCommands & ListCommands>(liveSource(source));
+  const inFlight = { command: "plan.outcome.list" };
   let written = 0;
   try {
-    const existing = await existingKeys(client, calls);
+    const existing = await existingKeys(client, calls, inFlight);
     for (const call of calls) {
       if (existing.has(callKey(call))) continue;
+      inFlight.command = call.command;
       if (call.command === "plan.outcome.add") await client.call("plan.outcome.add", call.args);
       else await client.call("plan.bet.add", call.args);
       written += 1;
     }
   } catch (error) {
-    if (unknownCommand(error)) throw new PlanCommandsMissing(`active-work has no ${calls[written]?.command ?? "plan.outcome.add"} command; update and restart the active-work daemon, then import again`);
+    if (unknownCommand(error)) throw new PlanCommandsMissing(`active-work has no ${inFlight.command} command; update and restart the active-work daemon, then import again`);
     throw error;
   }
   return { written, skipped: calls.length - written };

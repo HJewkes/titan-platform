@@ -129,6 +129,20 @@ describe("dispatch sheets import", () => {
     expect(stdout).toContain("skipped 3 existing");
   });
 
+  it("--apply does not add back a bet the owner dropped or finished", async () => {
+    const home = sheetHome();
+    const bets = [
+      { outcome: "alpha/phone-first", week: "2026-W47", order: 1, state: "dropped" },
+      { outcome: "alpha/phone-first", week: "2026-W47", order: 2, state: "done" },
+    ];
+    const rpc = recordingRpc("served", { outcomes: [{ id: "alpha/phone-first" }], bets });
+
+    const { code } = await sheetsCli(home, ["import", "--apply", "--dir", home.sheetDir], rpc.fetch);
+
+    expect(code).toBe(EXIT.OK);
+    expect(rpc.calls.filter((call) => call.command.endsWith(".add"))).toEqual([]);
+  });
+
   it("--apply on a partly-imported sheet writes only the missing bet", async () => {
     const home = sheetHome();
     const rpc = recordingRpc("served", { outcomes: [{ id: "alpha/phone-first" }], bets: [{ outcome: "alpha/phone-first", week: "2026-W47", order: 1, state: "proposed" }] });
@@ -147,9 +161,23 @@ describe("dispatch sheets import", () => {
     const { code, stderr } = await sheetsCli(home, ["import", "--apply", "--dir", home.sheetDir], rpc.fetch);
 
     expect(code).toBe(EXIT.UNAVAILABLE);
-    expect(stderr).toContain("active-work has no plan.outcome.add command");
+    expect(stderr).toContain("active-work has no plan.outcome.list command");
     expect(rpc.calls.map((call) => call.command).filter((command) => command.endsWith(".add"))).toEqual([]);
     expect(existsSync(home.activeRoot)).toBe(false);
+  });
+
+  it("names the command that was unknown, not the first call of the plan", async () => {
+    const home = sheetHome();
+    const rpc = recordingRpc("served", { outcomes: [{ id: "alpha/phone-first" }] });
+    const fetch: typeof globalThis.fetch = async (url, init) => {
+      if (!String(url).endsWith("/plan.bet.add")) return rpc.fetch(url, init);
+      return new Response(JSON.stringify({ ok: false, error: "Unknown command: plan.bet.add", code: 64 }), { status: 404 });
+    };
+
+    const { code, stderr } = await sheetsCli(home, ["import", "--apply", "--dir", home.sheetDir], fetch);
+
+    expect(code).toBe(EXIT.UNAVAILABLE);
+    expect(stderr).toContain("active-work has no plan.bet.add command");
   });
 
   it("refuses to import a bet whose baseline is still unknown, and calls nothing", async () => {
