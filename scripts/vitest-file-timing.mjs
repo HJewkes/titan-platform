@@ -13,7 +13,7 @@ const PHASES = [
   ["test", "testMs"],
 ];
 
-export function timingRow(testModule) {
+function timingRow(testModule) {
   const diagnostic = testModule.diagnostic();
   const [collectMs, setupMs, testMs] = [diagnostic.collectDuration, diagnostic.setupDuration, diagnostic.duration].map(Math.round);
   return {
@@ -30,7 +30,7 @@ export function timingRow(testModule) {
   };
 }
 
-export function slowestBy(rows, key, count = TOP) {
+function slowestBy(rows, key, count = TOP) {
   return [...rows].sort((a, b) => b[key] - a[key]).slice(0, count);
 }
 
