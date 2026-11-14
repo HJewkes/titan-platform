@@ -1,7 +1,7 @@
 import { emitAssistantContextBlocks } from "./audit-context.js";
 import { emitRequest, emitToolCalls } from "./audit-line.js";
 import { bashSignals, emitSignals, toolUseSignals } from "./audit-signal.js";
-import { commandCwd, parseGitIntent, parsePrCreateTitle, parseTaskIntents, type GitIntent } from "./bash-parse.js";
+import { commandCwd, parseGitIntent, parsePrCreateBranches, parsePrCreateTitle, parseTaskIntents, type GitIntent } from "./bash-parse.js";
 import type { LineContext, LineReader } from "./line-reader.js";
 import { RELATIONS, agentRef, branchRef, repoForCwd, sessionRef, taskRef } from "./refs.js";
 import { parseReviewVerdicts } from "./review-verdict.js";
@@ -71,15 +71,29 @@ function readBash(reader: LineReader, ctx: LineContext, block: Json, input: Json
   if (!raw) return;
   const git = parseGitIntent(raw);
   // A git verb is attributed to the directory it runs in, which `cd` or `git -C` can move.
-  if (git) recordGitIntent(reader, ctx, git, repoForCwd(commandCwd(raw, ctx.cwd)));
+  const cwd = commandCwd(raw, ctx.cwd);
+  const repo = repoForCwd(cwd);
+  if (git) recordGitIntent(reader, ctx, git, repo);
   emitSignals(reader, ctx, block, blockIndex, bashSignals(raw, git));
-  const title = parsePrCreateTitle(raw);
   const toolUseId = str(block, "id");
-  if (title && toolUseId) reader.emit({ ...reader.base(ctx), kind: "pr_create", toolUseId, title, number: null, repo: null, url: null });
+  if (toolUseId) recordPrCreateCall(reader, ctx, raw, toolUseId, { repo, sameDir: cwd === ctx.cwd });
   for (const task of parseTaskIntents(raw)) {
     reader.emit({ ...reader.base(ctx), kind: "task", taskRef: taskRef(task.taskId), taskId: task.taskId, status: task.status });
     reader.edge(ctx, sessionRef(ctx.sessionId), RELATIONS.RAN, taskRef(task.taskId));
   }
+}
+
+/**
+ * The command half of a `gh pr create`. The line's `gitBranch` is the checked-out
+ * branch of the session's own directory, so it stands in for a missing `--head`
+ * only when the command runs there.
+ */
+function recordPrCreateCall(reader: LineReader, ctx: LineContext, raw: string, toolUseId: string, at: { repo: string | null; sameDir: boolean }): void {
+  const title = parsePrCreateTitle(raw);
+  const branches = parsePrCreateBranches(raw, at.sameDir ? ctx.gitBranch : null);
+  const headRef = branches?.head ? branchRef(at.repo, branches.head) : null;
+  if (!title && !headRef) return;
+  reader.emit({ ...reader.base(ctx), kind: "pr_create", toolUseId, title, number: null, repo: null, url: null, headRef, base: branches?.base ?? null });
 }
 
 function recordGitIntent(reader: LineReader, ctx: LineContext, git: GitIntent, repo: string | null): void {

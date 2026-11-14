@@ -220,6 +220,36 @@ export function parseGitIntent(raw: string): GitIntent | null {
   };
 }
 
+const RE_PR_CREATE = /^gh\s+pr\s+create\b/;
+const RE_PR_HEAD_FLAG = new RegExp('\\s(?:--head|-H)(?:=|\\s+)' + BRANCH);
+const RE_PR_HEAD_STATED = /\s(?:--head|-H)(?:=|\s|$)/;
+const RE_PR_BASE_FLAG = new RegExp('\\s(?:--base|-B)(?:=|\\s+)' + BRANCH);
+const RE_MOVES_HEAD = /^git\s+(?:-C\s+\S+\s+)?(?:checkout|switch)\b/;
+
+export interface PrCreateBranches {
+  /** The branch the PR is opened from; null when the command does not pin it down. */
+  head: string | null;
+  base: string | null;
+}
+
+/**
+ * The head and base branches a `gh pr create` names (TP-80). With no
+ * `--head`/`-H`, gh opens the PR from the checked-out branch, which is
+ * `currentBranch` only while nothing in the same command switches it; a
+ * `--head` that is not a plain branch (`owner:branch`) yields no head rather
+ * than falling back.
+ */
+export function parsePrCreateBranches(raw: string, currentBranch: string | null): PrCreateBranches | null {
+  if (!raw.includes('gh ')) return null;
+  const commands = gitCommands(raw);
+  const create = commands.find((command) => RE_PR_CREATE.test(command));
+  if (!create) return null;
+  const base = baseOrNull(RE_PR_BASE_FLAG.exec(create)?.[1]);
+  if (RE_PR_HEAD_STATED.test(create)) return { head: baseOrNull(RE_PR_HEAD_FLAG.exec(create)?.[1]), base };
+  const switched = commands.some((command) => RE_MOVES_HEAD.test(command));
+  return { head: switched ? null : baseOrNull(currentBranch ?? undefined), base };
+}
+
 /**
  * The `--title` of a `gh pr create`, which is the only place a PR title is
  * stated (AW-104).
