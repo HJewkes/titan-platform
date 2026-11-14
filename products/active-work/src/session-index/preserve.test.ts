@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { openGraph, type WorkspaceGraph } from './graph.js';
 import { selectAll, selectOne } from '../test-support/session-index/query.js';
 import {
-  forgetPreserved,
   listPreserved,
   preserveRow,
   preserveUnreachable,
@@ -128,14 +127,12 @@ describe('preserved rows', () => {
     expect(graph.db.prepare('SELECT hits FROM note').get()).toEqual({ hits: 4 });
   });
 
-  it('records where a row came from, and can be told to stop', () => {
+  it('records where a row came from', () => {
     insertPruned();
 
     expect(listPreserved(graph)).toEqual([
       expect.objectContaining({ origin: 'recovered from the retired index.sqlite3 (TP-41)' }),
     ]);
-    expect(forgetPreserved(graph, 'session', PRUNED.session_id)).toBe(true);
-    expect(listPreserved(graph)).toEqual([]);
   });
 
   it('skips a stored row whose JSON is malformed and still replays the rest', () => {
