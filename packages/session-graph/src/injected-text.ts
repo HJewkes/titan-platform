@@ -16,9 +16,13 @@ export function isInjectedCause(cause: WakeCause): boolean {
   return INJECTED_CAUSES.has(cause);
 }
 
-/** A line nobody typed: an injected cause, or a headless `sdk` prompt unless the caller keeps those. */
-export function isUntypedPrompt(inbound: Pick<Inbound, "cause" | "promptSource">, indexSdkPrompts = false): boolean {
-  return isInjectedCause(inbound.cause) || (!indexSdkPrompts && inbound.promptSource === "sdk");
+/**
+ * A line nobody typed: an injected cause, or a headless `sdk` prompt unless the caller keeps those.
+ * Older transcripts carry no `promptSource`; their session's `sdk-cli` entrypoint stands in for it.
+ */
+export function isUntypedPrompt(inbound: Pick<Inbound, "cause" | "promptSource">, indexSdkPrompts = false, sessionEntrypoint: string | null = null): boolean {
+  const headless = inbound.promptSource === "sdk" || (inbound.promptSource === null && sessionEntrypoint === "sdk-cli");
+  return isInjectedCause(inbound.cause) || (!indexSdkPrompts && headless);
 }
 
 /** session-read's closed markers (system reminders, channel messages, task notifications) plus host echoes it does not list. */
