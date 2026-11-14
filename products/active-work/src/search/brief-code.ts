@@ -14,7 +14,7 @@ import type { RelatedDegradation } from './related.js';
  * dependencies and only the importers go missing.
  */
 
-export const CODE_DEADLINE_MS = 800;
+const CODE_DEADLINE_MS = 800;
 /** Leaves the rest of the section's time for reading the checkout when codewatch stays silent. */
 const CODEWATCH_DEADLINE_MS = 500;
 /** Codewatch's `CODE_REPORT_PORT`; a product reaches another product over loopback, never by import. */
