@@ -150,6 +150,7 @@ const DOMAIN_DDL = `
 export const WORKSPACE_MIGRATION_VERSION = 1001;
 export const PRESERVE_MIGRATION_VERSION = 1002;
 export const WORKSPACE_SPANS_MIGRATION_VERSION = 1003;
+const PLAN_MIGRATION_VERSION = 1004;
 
 /**
  * The kit indexes `search_span` on `owner_ref` alone, and its UNIQUE index
@@ -217,10 +218,27 @@ const WORKSPACE_SPANS_MIGRATION: Migration = {
   },
 };
 
+/** Planning records (TP-5453 P10): outcomes, bets and intent digests, one row per file. */
+const PLAN_MIGRATION: Migration = {
+  version: PLAN_MIGRATION_VERSION,
+  name: 'plan record table',
+  up: (db) =>
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS plan_record (
+        path        TEXT PRIMARY KEY,
+        plan_ref    TEXT NOT NULL UNIQUE,
+        initiative  TEXT NOT NULL,
+        kind        TEXT NOT NULL,
+        title       TEXT
+      );
+    `),
+};
+
 /** The full chain the graph file is migrated to: the package's, then active-work's. */
 export const MIGRATIONS: Migration[] = [
   ...SESSION_GRAPH_MIGRATIONS,
   ...WORKSPACE_MIGRATIONS,
   PRESERVE_MIGRATION,
   WORKSPACE_SPANS_MIGRATION,
+  PLAN_MIGRATION,
 ];
