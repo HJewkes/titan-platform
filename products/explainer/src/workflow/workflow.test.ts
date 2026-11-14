@@ -509,8 +509,11 @@ describe("run report", () => {
     const { report } = result;
     const rewrite = row(result, "rewrite");
     // One clock read for the body's start and one each for its end and the checks step's end; export has no checks step.
-    expect(report.rows.filter((r) => r.status !== "not run").map((r) => r.wallMs)).toEqual([...Array(8).fill(2000), 1000]);
-    expect(report.totals.wallMs).toBe(17000);
+    // Render reads it twice more to time its own StepUsage row in the manifest.
+    const ran = report.rows.filter((r) => r.status !== "not run");
+    expect(ran).toHaveLength(9);
+    expect(ran.map((r) => [r.stage, r.wallMs])).toEqual(ran.map((r) => [r.stage, r.stage === "export" ? 1000 : r.stage === "render" ? 4000 : 2000]));
+    expect(report.totals.wallMs).toBe(19000);
     expect(row(result, "script")).toMatchObject({ usd: 0.05, inputTokens: 1000, outputTokens: 500, cacheReadTokens: 200, calls: 1 });
     expect(rewrite.usd).toBeGreaterThan(0);
     expect(row(result, "eval")).toMatchObject({ usd: 0.01, calls: 1 });

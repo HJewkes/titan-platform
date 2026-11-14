@@ -20,7 +20,7 @@ import { timingProfile, TimingProfileSchema, type TimingProfile } from "../qa/ti
 import { auditionConfig, profileRef } from "./audition-stage.js";
 import { GatherRequestSchema, type GatherRequest } from "./run-gather.js";
 import type { BridgeFile } from "./bridge.js";
-import { CACHED_STAGES, type CachedStage, type StageName } from "./records.js";
+import { CACHED_STAGES, StepUsageRowSchema, type CachedStage, type StageName, type StepUsageRow } from "./records.js";
 import { loadStageBumps, stageVersions } from "../stage-bumps.js";
 
 /**
@@ -55,7 +55,7 @@ const STAGE_INPUTS: Record<CachedStage, readonly string[]> = {
 /** Artifacts a stage reads when a pin or an earlier stage supplies them; absent, they stay out of its key. */
 const OPTIONAL_INPUTS: Partial<Record<CachedStage, readonly string[]>> = {
   script: ["coverage", "seed-draft"], rewrite: ["facts", "coverage"], eval: ["facts", "coverage"], resolve: ["code", "slots", "layout", "chapter-links", "facts", "custom-layers"],
-  render: ["code", "slots", "generated-slots", "custom-layers"], qa: ["visual", "code", "slots", "vtt"], sheets: ["render-manifest", "resolved", "slots", "qa", "visual"],
+  render: ["code", "slots", "generated-slots", "custom-layers", "voice"], qa: ["visual", "code", "slots", "vtt"], sheets: ["render-manifest", "resolved", "slots", "qa", "visual"],
 };
 
 /** A stage variant file: settings for one stage, whose content hash goes into the stage key. */
@@ -136,6 +136,8 @@ export const StageSpecSchema = z.object({
   sample: z.number().int().nonnegative(),
   /** Bounds a model call inside the stage; not part of the key. */
   remainingUsd: z.number(),
+  /** The earlier stages' StepUsage rows, which render copies into its manifest; not part of the key. */
+  steps: z.array(StepUsageRowSchema).optional(),
 });
 export type StageSpec = z.infer<typeof StageSpecSchema>;
 
@@ -231,6 +233,8 @@ interface SpecRequest {
   stylePacks?: () => ReadonlyMap<string, StylePack>;
   /** The beat worker's builder, which only the resolve stage's key carries; absent, custom beats stay unbuilt. */
   builder?: BuilderRef;
+  /** The earlier stages' StepUsage rows; only render reads them. */
+  steps?: readonly StepUsageRow[];
 }
 
 let shipped: ReadonlyMap<string, StylePack> | undefined;
@@ -276,5 +280,6 @@ export function stageSpec(request: SpecRequest): StageSpec {
     ...(stage === "resolve" && request.builder ? { builder: request.builder } : {}),
   };
   const keyed = { stage, inputs, config, sample: request.sample };
-  return { ...keyed, key: stageKey(keyed), remainingUsd: request.remainingUsd };
+  const steps = stage === "render" && request.steps ? { steps: [...request.steps] } : {};
+  return { ...keyed, key: stageKey(keyed), remainingUsd: request.remainingUsd, ...steps };
 }
