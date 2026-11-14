@@ -47,6 +47,7 @@ const GUARD_ROWS: Readonly<Record<MergeGuardRow, Row>> = {
   "attest-deploy-skew": { gateClass: "accidental", words: "main has registry commits the running Shepherd build lacks, so its attestation read waits for the deploy rather than judge the claims (transient deploy skew)" },
   "old-path-untagged": { gateClass: "deliberate", words: "it changes old-path code frozen since M1b exit, and its task carries no superseded-at or survives carve-out tag" },
   "owner-tier": { gateClass: "deliberate", words: "it changes a file on your merge stop list: Shepherd's merge, hold or gate-resolve rules, CI workflows, publish or settings" },
+  "owner-validate": { gateClass: "deliberate", words: "its task is tagged owner-validate, or could not be read, and you have not approved the task's current done_when in the console; that one approval clears every PR of the task" },
 };
 
 /** The gate rows of `release.ts` and the factory's catch-all default, keyed `table/row`. */
