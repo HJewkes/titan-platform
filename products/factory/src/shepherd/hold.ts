@@ -215,13 +215,22 @@ async function untilReleased({ held, headNow, reviewAsked, reheld, recheck, note
     // The merge step shows only as running, so the console and the timeline are where a long wait names what it waits on.
     if (reason !== told) {
       console.warn(`shepherd: the merge of ${target.repo}#${target.pr} waits: ${reason}`);
-      noteWait?.(target.repo, target.pr, reason, target.sha);
+      logMergeWait(noteWait, target, reason);
     }
     told = reason;
     if (reheld?.(target.repo, target.pr)) return true;
     if (target.sha !== undefined && recheck?.(target.repo, target.pr, target.sha)) return true;
     if (await movedPast(headNow, target)) return true;
     await timing.sleep(timing.pollMs ?? HOLD_POLL_MS, signal);
+  }
+}
+
+/** The timeline row is a courtesy: a store error (SQLITE_BUSY) must not fail a held merge. */
+function logMergeWait(noteWait: NoteWait | undefined, target: MergeTarget, reason: string): void {
+  try {
+    noteWait?.(target.repo, target.pr, reason, target.sha);
+  } catch (error) {
+    console.warn(`shepherd: could not record the merge wait of ${target.repo}#${target.pr}: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 

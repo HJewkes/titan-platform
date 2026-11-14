@@ -671,4 +671,21 @@ describe("a merge step waiting on a hold", () => {
       { reason: "the Version Packages PR #1 is ready and lands first", headSha: H1 },
     ]);
   });
+
+  it("carries on to the merge when recording a merge wait throws", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const reasons = ["the repo is frozen", undefined];
+    let ran = false;
+    const route = partialFake<StepRoute>({ match: "merge", runner: { run: async () => { ran = true; return { ok: true as const, output: "{}" }; } } });
+    const noteWait = () => { throw new Error("SQLITE_BUSY"); };
+    const waiting = waitWhileHeld(route, async () => reasons.shift(), { sleep: async () => undefined, now: () => 0 }, async () => H1, undefined, undefined, undefined, noteWait);
+
+    const result = await waiting.runner.run(partialFake<RoutedStepInput>({ prompt: JSON.stringify({ repo: REPO, pr: 7, sha: H1 }), signal: new AbortController().signal, stepId: "merge", attempt: 0 }));
+
+    expect(result).toMatchObject({ ok: true });
+    expect(JSON.parse(String(readPath(result, "output"))).result).toMatchObject({ skipped: "held" });
+    expect(ran).toBe(false);
+    expect(warn.mock.calls.map(([line]) => line)).toContain(`shepherd: could not record the merge wait of ${REPO}#7: SQLITE_BUSY`);
+    warn.mockRestore();
+  });
 });
