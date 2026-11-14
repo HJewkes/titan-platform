@@ -90,8 +90,7 @@ function ownerFreeze(op: FreezeSet & { freeze: { action: "set" } }, id: string):
  * under the lock: a freeze carrying this tap's owner quote and content is the tap's own earlier write, whatever its end date.
  */
 function sameTap(written: Freeze, wanted: Freeze): boolean {
-  const canon = (freeze: Freeze): string =>
-    JSON.stringify(Object.entries(freeze).filter(([key, value]) => key !== "ended_on" && value !== undefined).sort(([a], [b]) => a.localeCompare(b)));
+  const canon = (f: Freeze): string => JSON.stringify([f.initiative, f.tag, f.selector, f.reason, f.end_condition, f.set_by, f.intent_ref, f.quote_ref]);
   return canon(written) === canon(wanted);
 }
 
