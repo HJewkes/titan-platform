@@ -7,7 +7,7 @@ import type { EvalBeat } from "./eval-view.js";
 export const L1_EVAL_ID = "L1-judge";
 export const BEAT_DIMS = ["B1", "B2", "B3", "B4", "B5", "B6"] as const;
 export const SCRIPT_DIMS = ["J1", "J2", "J3", "J4", "J5", "J6", "J7"] as const;
-export type BeatDim = (typeof BEAT_DIMS)[number];
+type BeatDim = (typeof BEAT_DIMS)[number];
 
 /** A known-bad beat slipped into every judged batch; a judge that passes one is not trusted. */
 export interface Canary {

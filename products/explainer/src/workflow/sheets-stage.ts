@@ -55,7 +55,7 @@ export interface SheetsConfig {
   video?: { id: string; runIds: string[] };
 }
 
-export interface SheetsInput extends Omit<ModelStageInput, "store"> {
+interface SheetsInput extends Omit<ModelStageInput, "store"> {
   store: Pick<ArtifactStore, "readText" | "putText" | "putFile" | "path">;
 }
 

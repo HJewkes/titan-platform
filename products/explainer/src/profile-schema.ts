@@ -88,10 +88,10 @@ const VoiceBandSchema = z
  * already needs an owner ask per publish, so public is the opt-in.
  */
 export const AUDIENCE_KINDS = ["public", "assigned"] as const;
-export type AudienceKind = (typeof AUDIENCE_KINDS)[number];
+type AudienceKind = (typeof AUDIENCE_KINDS)[number];
 
 const RuntimeSchema = z.object({ targetS: Seconds, minS: Seconds, maxS: Seconds, splitAboveS: Seconds }).strict();
-export type RuntimeBand = z.infer<typeof RuntimeSchema>;
+type RuntimeBand = z.infer<typeof RuntimeSchema>;
 
 /**
  * The band a profile with no `runtime` of its own runs in (owner decision 551): a public video is at most 6 min and

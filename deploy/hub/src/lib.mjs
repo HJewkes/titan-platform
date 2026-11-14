@@ -38,7 +38,7 @@ export function asClient(asToken, userId) {
   });
 }
 
-export async function rawRequest(method, path, { token, body, query } = {}) {
+async function rawRequest(method, path, { token, body, query } = {}) {
   const url = new URL(path, env.HS_URL);
   for (const [k, v] of Object.entries(query ?? {})) url.searchParams.set(k, v);
   const res = await fetch(url, {

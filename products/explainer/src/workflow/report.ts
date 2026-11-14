@@ -102,7 +102,7 @@ function totals(rows: readonly ReportRow[]): RunReport["totals"] {
   };
 }
 
-export interface ReportInput {
+interface ReportInput {
   run: WorkflowRun;
   from: StageName;
   to: StageName;
