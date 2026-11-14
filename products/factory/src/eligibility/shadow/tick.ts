@@ -89,7 +89,9 @@ function heldRow(base: LaneBase, key: string, rank: number, holds: TaskHold[]): 
   const details = holds.flatMap((hold) => hold.details ?? []);
   const numbers = mergeNumbers(holds.map((hold) => hold.numbers ?? {}));
   const row: RefusedRow = { ...base, kind: "refused", task: key, stage: holds[0]!.stage, rank, codes: [...new Set(holds.flatMap((hold) => hold.codes))] };
-  return { ...row, ...(details.length > 0 && { details }), ...(Object.keys(numbers).length > 0 && { numbers }) };
+  const next = holds.find((hold) => hold.next !== undefined)?.next;
+  const ask = holds.some((hold) => hold.would_ask === true);
+  return { ...row, ...(details.length > 0 && { details }), ...(Object.keys(numbers).length > 0 && { numbers }), ...(next && { next }), ...(ask && { would_ask: true }) };
 }
 
 function eligibilityRows(base: LaneBase, result: Eligibility): RefusedRow[] {
