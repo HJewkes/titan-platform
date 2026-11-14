@@ -32,8 +32,8 @@
     {
       "name": "new accepts a reserved miner key",
       "file": "products/active-work/src/commands/new.ts",
-      "find": "    if (RESERVED_MINER_KEYS.has(args.slug)) {",
-      "replace": "    if (RESERVED_MINER_KEYS.has(`${args.slug}-`)) {",
+      "find": "  if (RESERVED_MINER_KEYS.has(slug)) {",
+      "replace": "  if (RESERVED_MINER_KEYS.has(`${slug}-`)) {",
       "kills": [
         "new refuses the reserved miner key unknown as a slug"
       ]
