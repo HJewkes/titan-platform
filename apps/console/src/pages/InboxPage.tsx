@@ -100,7 +100,12 @@ function verbOf(action: InboxAction): string {
 const isNavigation = (action: InboxAction): boolean => action.kind === "open" || action.kind === "open-round";
 
 /** The writes the page taps through `inbox.act`; `answer-chat` waits on a sheet that takes the answer's text. */
-const CONSOLE_TAPS: ReadonlySet<InboxAction["kind"]> = new Set(["resolve-gate", "owner-release", "owner-op", "approve-chat"]);
+const CONSOLE_TAPS: ReadonlySet<InboxAction["kind"]> = new Set(["resolve-gate", "owner-release", "hold-release", "owner-op", "approve-chat"]);
+
+/** The server acts on a hold-release only for a g10 class (isG10Release); any other class stays a terminal command. */
+const G10_CLASSES: ReadonlySet<string> = new Set(["g10-review", "g10-adversary"]);
+
+const isConsoleTap = (action: InboxAction): boolean => CONSOLE_TAPS.has(action.kind) && (action.kind !== "hold-release" || G10_CLASSES.has(action.holdClass));
 
 /** A permission prompt is answered Allow or Deny and an endorsement Endorse; the verdict goes to the act alone, never with text. */
 function verdictChoicesOf({ readBack }: InboxReady): readonly TapConfirmChoice[] {
@@ -253,6 +258,7 @@ function InboxRow({ item }: { item: InboxItem }): ReactNode {
             {recommendation !== undefined ? <Pill variant="subtle" size="xs">{`Recommend: ${recommendation}`}</Pill> : null}
             {item.hold !== undefined ? <Typography variant="caption" color="secondary">{item.hold.reason}</Typography> : null}
           </HStack>
+          <RowProvenance item={item} />
           {item.evidence !== undefined ? <EvidenceLink evidence={item.evidence} /> : null}
           <MergeLineage item={item} />
           {item.gates !== undefined ? <GateStripView strip={item.gates} /> : null}
@@ -263,10 +269,36 @@ function InboxRow({ item }: { item: InboxItem }): ReactNode {
   );
 }
 
+/** Who asked, for which initiative, and what the answer frees; each shows only when the item carries it. */
+function RowProvenance({ item }: { item: InboxItem }): ReactNode {
+  const asker = item.asker ?? item.seat;
+  if (asker === undefined && item.initiative === undefined && item.unblocksNow === undefined && item.blocker === undefined) return null;
+  return (
+    <VStack gap={1}>
+      {asker !== undefined || item.initiative !== undefined ? (
+        <HStack gap={2} align="center" wrap>
+          {asker !== undefined ? <Typography variant="caption" color="secondary">{`Asked by ${asker}`}</Typography> : null}
+          {item.initiative !== undefined ? <InitiativeLink slug={item.initiative} /> : null}
+        </HStack>
+      ) : null}
+      {item.unblocksNow !== undefined ? <Typography variant="caption">{`Unblocks now: ${item.unblocksNow}`}</Typography> : null}
+      {item.blocker !== undefined ? <Typography variant="caption" color="secondary">{`Blocks: ${item.blocker.blocks}`}</Typography> : null}
+    </VStack>
+  );
+}
+
+function InitiativeLink({ slug }: { slug: string }): ReactNode {
+  return (
+    <Link color="primary" className={PHONE_TAP_ID_LINK} onPress={() => open(parseRoute(`#/initiatives/${encodeURIComponent(slug)}`))}>
+      {slug}
+    </Link>
+  );
+}
+
 function RowAction({ item }: { item: InboxItem }): ReactNode {
   const live = useAnswerSource() !== null;
   if (isNavigation(item.action)) return null;
-  if (!CONSOLE_TAPS.has(item.action.kind)) return <TerminalAction item={item} reason={laterReason(item.action)} />;
+  if (!isConsoleTap(item.action)) return <TerminalAction item={item} reason={laterReason(item.action)} />;
   if (!live) return <TerminalAction item={item} reason="This page is a snapshot: act from the live console, or run it on the terminal." />;
   const forced = pastHoldVerb(item);
   return forced === undefined ? <GateActions item={item} /> : <HeldMergeActions item={item} forced={forced} />;

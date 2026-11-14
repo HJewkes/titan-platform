@@ -606,3 +606,67 @@ describe("the round age nudge", () => {
     expect(screen.queryByTestId("inbox-nudges")).toBeNull();
   });
 });
+
+describe("the inbox page, a g10 hold-release row", () => {
+  const g10Row = (holdClass: string): Record<string, unknown> =>
+    item("g10-1", {
+      summary: "Merge example/repo#20",
+      hold: { class: holdClass, reason: `${holdClass}: waiting` },
+      action: { kind: "hold-release", repo: "example/repo", pr: 20, headSha: HEAD, holdClass },
+    });
+
+  it.each(["g10-review", "g10-adversary"])("offers Release hold and no terminal run on a %s hold, and a released act shows success", async (holdClass) => {
+    const row = g10Row(holdClass);
+    const released = () => Promise.resolve(successEnvelope({ actionId: CONFIRM, outcome: { status: "released" }, message: "Hold released" }));
+    const calls = renderInbox(inboxAnswer({ items: [row] }), { "inbox.prepare": () => Promise.resolve(ready({ itemId: "g10-1", action: row.action })), "inbox.act": released });
+    const card = await screen.findByTestId("inbox-row-g10-1");
+    expect(within(card).queryByText("Run on terminal")).toBeNull();
+    fireEvent.click(within(card).getByText("Release hold"));
+    await findTapSheet("inbox-confirm");
+    await tapConfirm();
+    const outcome = screen.getByTestId("inbox-confirm-outcome");
+    expect(outcome.textContent).toContain("Hold released");
+    expect(outcome.className).toContain("success");
+    expect(named(calls, "inbox.prepare").map((call) => call.args)).toEqual([{ itemId: "g10-1" }]);
+    expect(named(calls, "inbox.act").map((call) => call.args)).toEqual([{ itemId: "g10-1", confirm: CONFIRM }]);
+  });
+
+  it("keeps Run on terminal and the release command on a manual hold", async () => {
+    renderInbox(inboxAnswer({ items: [g10Row("manual")] }), { "inbox.prepare": () => Promise.resolve(ready()) });
+    const card = await screen.findByTestId("inbox-row-g10-1");
+    expect(within(card).queryByText("Release hold")).toBeNull();
+    fireEvent.click(within(card).getByText("Run on terminal"));
+    expect(within(card).getByText(`titan-factory shepherd release example/repo#20 --head ${HEAD} --class manual`)).toBeTruthy();
+  });
+});
+
+describe("the inbox page, who asked and what an answer unblocks", () => {
+  it("shows the asker, the initiative link and the unblocksNow line, and the initiative opens its page", async () => {
+    const row = item("who-1", { asker: "fixture-agent", initiative: "demo-init", unblocksNow: "Unblocks the demo lane" });
+    renderInbox(inboxAnswer({ items: [row] }));
+    const card = await screen.findByTestId("inbox-row-who-1");
+    expect(within(card).getByText("Asked by fixture-agent")).toBeTruthy();
+    expect(within(card).getByText("Unblocks now: Unblocks the demo lane")).toBeTruthy();
+    fireEvent.click(within(card).getByText("demo-init"));
+    expect(window.location.hash).toBe("#/initiatives/demo-init");
+  });
+
+  it("falls back to the seat when there is no asker", async () => {
+    renderInbox(inboxAnswer({ items: [item("who-2", { seat: "fixture-seat" })] }));
+    expect(within(await screen.findByTestId("inbox-row-who-2")).getByText("Asked by fixture-seat")).toBeTruthy();
+  });
+
+  it("shows no empty labels on an item that carries none of them", async () => {
+    renderInbox(inboxAnswer({ items: [item("who-3", {})] }));
+    const card = await screen.findByTestId("inbox-row-who-3");
+    expect(within(card).queryByText(/Asked by/)).toBeNull();
+    expect(within(card).queryByText(/Unblocks now/)).toBeNull();
+    expect(within(card).queryByText(/Blocks:/)).toBeNull();
+  });
+
+  it("shows what a hard-blocked item blocks", async () => {
+    const row = item("who-4", { blocker: { since: ago(HOUR), blocks: "lane console, TP-6158" } });
+    renderInbox(inboxAnswer({ items: [row] }));
+    expect(within(await screen.findByTestId("inbox-row-who-4")).getByText("Blocks: lane console, TP-6158")).toBeTruthy();
+  });
+});
