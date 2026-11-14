@@ -58,6 +58,8 @@ export const SEARCH_CLASSES: SearchClass[] = [
   { name: 'initiatives', scope: { ownerPrefix: 'initiative:' }, weight: 1.15, share: 0.2 },
   { name: 'sources', scope: { ownerPrefix: 'source:' }, weight: 1.1, share: 0.3 },
   { name: 'tasks', scope: { ownerPrefix: 'task:' }, weight: 1.0, share: 0.3 },
+  // Outcomes, bets and the owner's intent lines: a bet, its outcome and its intent lines must fit one default page together.
+  { name: 'plans', scope: { ownerPrefix: 'plan:' }, weight: 1.0, share: 0.5 },
   // Narrative restatements of the notes, written by the session that wrote
   // them: the workspace's own duplicate content, so low on both counts.
   {
