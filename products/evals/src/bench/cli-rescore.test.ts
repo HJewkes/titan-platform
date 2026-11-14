@@ -47,7 +47,7 @@ describe("bench rescore", () => {
 
     const count = await rescoreRun({ track: "r", run: runDir, cases: casesDir });
 
-    const rows = readFileSync(join(runDir, "scores.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
+    const rows = readFileSync(join(runDir, "scores.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line) as unknown);
     expect(count).toBe(1);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ arm: "S-med", caseId: "widgets-defect", attempt: 1, outcome: "ok", result: { caughtVerdict: true, caughtPath: true, caught: false } });

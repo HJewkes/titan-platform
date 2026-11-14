@@ -49,7 +49,8 @@ function implementArgv(command: Command): string[] {
   let root = command;
   while (root.parent !== null) root = root.parent;
   // commander keeps the root's argv as `rawArgs` but does not type it; the implement parser needs flags verbatim.
-  const raw = (root as Command & { rawArgs: string[] }).rawArgs;
+  const rawArgs: unknown = Reflect.get(root, "rawArgs");
+  const raw = Array.isArray(rawArgs) ? rawArgs.map(String) : [];
   const rest = raw.slice(raw.indexOf("cases") + 1);
   const at = rest.findIndex((arg) => arg === "--track" || arg.startsWith("--track="));
   return at < 0 ? rest : rest.filter((_arg, index) => index !== at && !(rest[at] === "--track" && index === at + 1));
