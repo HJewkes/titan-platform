@@ -1,8 +1,10 @@
 import { formatResultLine } from "@titan-design/fix-proof";
 import { fakeGitHub, fakeSha, githubPort } from "@titan-design/github";
 import { DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, planPanel, type PanelPlan, type PanelVerdict, type ReviewShape, type ReviewerAgent } from "@titan-design/review-panel";
+import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
-import { aggregatePanel, panelFindingsText, panelMerge, panelReviewerNames, proofPlanFields } from "./review-panel-step.js";
+import type { StepResult, WorkflowContext } from "@titan-design/workflow";
+import { aggregatePanel, awaitMember, panelFindingsText, panelMerge, panelReviewerNames, proofPlanFields } from "./review-panel-step.js";
 import { isOwnReviewer } from "./cleanup.js";
 import { defectClassSection } from "./wake-brief.js";
 
@@ -133,5 +135,54 @@ describe("proofPlanFields for a head proceeding on its NO_REPRO", () => {
     const ciRead = { kind: "workflow-ci" as const, proved: false, head: HEAD, mergeBase: fakeSha("plan-base"), base: [], atHead: [], reason: "unproved" };
 
     expect(proofPlanFields(ciRead, HEAD, { unverified: "no-repro-non-source", reason: "unproved" })).toEqual({ testOnlyProof: true });
+  });
+});
+
+describe("awaitMember's correction turn", () => {
+  const target = { repo: REPO, pr: 1, head: HEAD };
+  const awaiting = { ...target, shape: "tests" as const, reviewerAgentId: "agent-tests", reviewerSessionId: "session-tests", dispatchedAt: 1 };
+  const malformed = { kind: "none", malformed: { refusal: "ci_policy_malformed", writtenAt: 5, quotes: ["CI policy: unchanged"] } };
+  const merged = { kind: "verdict", verdict: "MERGE", head: HEAD, locator: { sourceId: "tests" }, reviewer: reviewer("tests") };
+
+  /** A context whose steps answer from `answers` by step id, recording the ids asked in order. */
+  function scripted(answers: Record<string, object>) {
+    const asked: string[] = [];
+    const ctx = partialFake<WorkflowContext>({ dispatch: async <T extends Record<string, unknown>>(stepId: string) => (asked.push(stepId), partialFake<StepResult<T>>({ data: JSON.parse(JSON.stringify({ result: answers[stepId] })) })) });
+    return { ctx, asked };
+  }
+  const first = `sh-await-verdict:${HEAD}:tests`;
+  const correct = `sh-correct-verdict:${HEAD}:tests`;
+  const reply = `${first}:corrected`;
+
+  it("asks a tests member once more after a ci_policy_malformed reply, and counts the corrected MERGE", async () => {
+    const { ctx, asked } = scripted({ [first]: malformed, [correct]: { kind: "asked", startedAt: 6 }, [reply]: merged });
+
+    const awaited = await awaitMember(ctx, target, "tests", awaiting);
+
+    expect(asked).toEqual([first, correct, reply]);
+    expect(awaited).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+  });
+
+  it("leaves a tests member no-verdict when its corrected reply is malformed again", async () => {
+    const { ctx, asked } = scripted({ [first]: malformed, [correct]: { kind: "asked", startedAt: 6 }, [reply]: { ...malformed, malformed: { refusal: "ci_policy_malformed", writtenAt: 9 } } });
+
+    const awaited = await awaitMember(ctx, target, "tests", awaiting);
+
+    expect(asked).toEqual([first, correct, reply]);
+    expect(awaited).toEqual({ kind: "none", reason: "the reviewer's verdict did not parse after one correction (ci_policy_malformed)" });
+  });
+
+  it("gives a tests member a verdict after one correction when its first message carried a CI-policy line with prose", async () => {
+    const { ctx } = scripted({ [first]: malformed, [correct]: { kind: "asked", startedAt: 6 }, [reply]: { ...merged, attests: [] } });
+
+    expect(await awaitMember(ctx, target, "tests", awaiting)).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+  });
+
+  it("does not correct a perf member", async () => {
+    const { ctx, asked } = scripted({ [`sh-await-verdict:${HEAD}:perf`]: malformed });
+
+    await awaitMember(ctx, target, "perf", { ...awaiting, shape: "perf" });
+
+    expect(asked).toEqual([`sh-await-verdict:${HEAD}:perf`]);
   });
 });
