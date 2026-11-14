@@ -6,6 +6,7 @@ import { gitChildEnv, setupEnv } from "@titan-design/worktree";
 import { errorCode } from "@titan-design/rpc-protocol/narrow";
 import { openDatabase } from "@titan-design/store-sqlite";
 import { resolveDbPath } from "./config.js";
+import type { LockPorts } from "./deploy-lock.js";
 import { deployRecordPath, parseDeployRecord, type DeployPorts, type DeployRecord } from "./deploy.js";
 import { z } from "zod";
 import { deployWindowPath } from "./deploy-output.js";
@@ -148,9 +149,14 @@ function readIfPresent(path: string): string | undefined {
   }
 }
 
+/** What `takeLock` needs, on the real filesystem and process table. */
+export function systemLockPorts(): LockPorts {
+  return { pid: process.pid, readFile: readIfPresent, remove: (path) => rmSync(path, { force: true }), createExclusive, rename, isAlive: isProcessAlive };
+}
+
 /** Only the deploy lock and the pause files: serve's console clear needs no checkout, git or pnpm. */
 export function systemPauseClearPorts(): PauseClearPorts {
-  return { pid: process.pid, exists: existsSync, readFile: readIfPresent, remove: (path) => rmSync(path, { force: true }), createExclusive, rename, isAlive: isProcessAlive };
+  return { ...systemLockPorts(), exists: existsSync };
 }
 
 /** The origin URL of `checkout`, the canonical remote a deploy clone defaults to; undefined when it has none. */

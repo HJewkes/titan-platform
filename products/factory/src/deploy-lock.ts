@@ -19,24 +19,24 @@ function lockPid(ports: LockPorts, path: string): number | undefined {
   return Number.isInteger(pid) && pid > 0 ? pid : undefined;
 }
 
-/** Undefined when this process now holds `lock`, else why not; a lock whose pid is gone is stale and is taken over. */
-export function takeLock(ports: LockPorts, lock: string): string | undefined {
+/** Undefined when this process now holds `lock`, else why not; a lock whose pid is gone is stale and is taken over. `what` names the holder's job. */
+export function takeLock(ports: LockPorts, lock: string, what = "deploy"): string | undefined {
   const mine = String(ports.pid);
   if (ports.createExclusive(lock, mine)) return undefined;
   const holder = lockPid(ports, lock);
-  if (holder !== undefined && ports.isAlive(holder)) return `another deploy is running (pid ${holder} holds ${lock})`;
-  return stealStale(ports, lock, holder) ?? (ports.createExclusive(lock, mine) ? undefined : `another deploy took ${lock} first`);
+  if (holder !== undefined && ports.isAlive(holder)) return `another ${what} is running (pid ${holder} holds ${lock})`;
+  return stealStale(ports, lock, holder, what) ?? (ports.createExclusive(lock, mine) ? undefined : `another ${what} took ${lock} first`);
 }
 
 /** Only one stealer's rename succeeds; one that moved a fresh lock instead of the stale one puts it back and stands down. */
-function stealStale(ports: LockPorts, lock: string, stale: number | undefined): string | undefined {
+function stealStale(ports: LockPorts, lock: string, stale: number | undefined, what: string): string | undefined {
   const claimed = `${lock}.${ports.pid}.stale`;
-  if (!ports.rename(lock, claimed)) return `another deploy took ${lock} first`;
+  if (!ports.rename(lock, claimed)) return `another ${what} took ${lock} first`;
   const moved = lockPid(ports, claimed);
   ports.remove(claimed);
   if (moved === stale) return undefined;
   if (moved !== undefined) ports.createExclusive(lock, String(moved));
-  return `another deploy took ${lock} first`;
+  return `another ${what} took ${lock} first`;
 }
 
 /** Removes `lock` only while it still names this process, so a lock another deployer took over survives. */
