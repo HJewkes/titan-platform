@@ -16,3 +16,11 @@ export function ownerTaskApproval(source: TaskApprovalSource, taskKey: string, d
   const approval = source.planApprovals().forTask(taskKey);
   return approval?.scope.doneWhen === collapsedDoneWhen(doneWhen) ? approval : undefined;
 }
+
+/**
+ * The owner's latest approval of `taskKey`, whatever done_when it was given for. Only the visual sign-off flag reads it,
+ * and that flag only adds an owner gate, so a stale approval can ask the owner more, never less.
+ */
+export function latestOwnerTaskApproval(source: TaskApprovalSource, taskKey: string): TaskApproval | undefined {
+  return TaskKeySchema.safeParse(taskKey).success ? source.planApprovals().forTask(taskKey) : undefined;
+}

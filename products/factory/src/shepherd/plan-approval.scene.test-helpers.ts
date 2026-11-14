@@ -20,6 +20,7 @@ import { reviewPhase } from "./review.js";
 import { DEFAULT_ADVERSARY_PROFILE } from "./review-panel-plan.js";
 import type { ReviewerRoles } from "./reviewer-roles.js";
 import { shepherdStoreRef, type ShepherdStoreRef } from "./store.js";
+import type { VisualGateMode } from "./visual-gate-config.js";
 
 /** The real shepherd-pr run the plan-approval scenes merge or gate, shared by the TP-4284 rows and the TP-4360 plan round. */
 export const REPO = "octo/planned";
@@ -76,6 +77,8 @@ export interface Row {
   lowTier?: LowTierMode;
   /** `shepherd.gateReset.ownerTier` for the run's routes; absent stands for an unset key, which the config reader reads as shadow. */
   ownerTier?: OwnerTierMode;
+  /** `shepherd.visualGate` for the run's routes; absent leaves it unset, which reads `owner`. */
+  visualGate?: VisualGateMode;
   /** Lines every reviewer writes above its verdict block, such as an adversary's `Probes:` and `Authority:` lines. */
   aboveVerdict?: string;
   /** Plans the g10-adversary hold's adversary member and releases the hold on two MERGEs, as `twoMergeRelease: on` does. */
@@ -93,7 +96,7 @@ function reviewWiring({ reviewerLines, aboveVerdict, roles, holdMember }: Row, c
 
 /** One shepherd-pr run of the PR under an auto policy, reviewed MERGE with green checks, after `seed` sets the files and the row's approval is written. */
 export function plannedRun(row: Row, seed: (fake: FakeGitHub) => void) {
-  const { files, policy, approve, wire = (each) => each, seatReleased, held, lowTier, ownerTier } = row;
+  const { files, policy, approve, wire = (each) => each, seatReleased, held, lowTier, ownerTier, visualGate } = row;
   const fake = fakeGitHub();
   fake.addPr({ number: PR, headSha: HEAD, mergeSha: fakeSha("planned-merge") });
   fake.setRuns(HEAD, [successRun("validate", 1), successRun("dag-check", 2)]);
@@ -106,7 +109,7 @@ export function plannedRun(row: Row, seed: (fake: FakeGitHub) => void) {
     signal.throwIfAborted();
     await new Promise<void>((resolve) => setImmediate(resolve));
   };
-  const gates = { ...(lowTier && { lowTierPolicy: lowTier }), ownerTier: ownerTier ?? "shadow" };
+  const gates = { ...(lowTier && { lowTierPolicy: lowTier }), ownerTier: ownerTier ?? "shadow", ...(visualGate && { visualGate }) };
   const routes = factoryRoutesFor({ port: githubPort(wire(fake.wire)), store, now: () => clock, sleep: tick, ...reviewWiring(row, () => clock), ...gates });
   const workflow = shepherdPrWorkflow({ review: reviewPhase, wake: async () => ({ kind: "unhandled", reason: "no fixer here" }) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [workflow], routes, gatePollMs: 5 });
