@@ -84,7 +84,8 @@ async function runBody(spec: StageSpec, input: ModelStageInput, deps: BodyDeps):
 function runRenderBody({ config, steps }: StageSpec, input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
   if (!config.render) throw new Error("render stage spec has no render settings");
   const settings = {
-    ...config.render, spillDir: renderSpillDir(deps.dataDir), ...(config.profile ? { profile: config.profile.type } : {}), ...(deps.qaTiming ? { timing: deps.qaTiming } : {}), ...(steps ? { steps } : {}),
+    ...config.render, spillDir: renderSpillDir(deps.dataDir), ...(config.profile ? { profile: config.profile.type } : {}),
+    ...(deps.qaTiming ? { timing: deps.qaTiming } : {}), ...(steps ? { steps } : {}),
   };
   return runRenderStage({ ...input, store: deps.store }, settings, deps.renderEngine ?? defaultRenderEngine(), deps.qaEngine ?? chromiumQaEngine(deps.media), deps.now);
 }
