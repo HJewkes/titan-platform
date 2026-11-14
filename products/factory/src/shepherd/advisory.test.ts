@@ -66,6 +66,11 @@ function recordingPort(fake: FakeGitHub, writes: string[]): GitHubPort {
     closePr: async (...args) => (writes.push("closePr"), port.closePr(...args)),
     pushEmptyCommit: async (...args) => (writes.push("pushEmptyCommit"), port.pushEmptyCommit(...args)),
     deleteRef: async (...args) => (writes.push("deleteRef"), port.deleteRef(...args)),
+    ensureBranch: async (...args) => (writes.push("ensureBranch"), port.ensureBranch(...args)),
+    putFile: async (...args) => (writes.push("putFile"), port.putFile(...args)),
+    setPrBase: async (...args) => (writes.push("setPrBase"), port.setPrBase(...args)),
+    mergeIntoBranch: async (...args) => (writes.push("mergeIntoBranch"), port.mergeIntoBranch(...args)),
+    openPr: async (...args) => (writes.push("openPr"), port.openPr(...args)),
     checkRuns: async (slug, sha) => (sha === MERGE_SHA && fake.setRuns(sha, [successRun("validate", 9), successRun("dag-check", 10)]), port.checkRuns(slug, sha)),
   };
 }
@@ -303,16 +308,28 @@ describe("advisoryGuard", () => {
   });
 });
 
+/** Every branch and PR write on the port, each with one call that would reach GitHub. */
+const BRANCH_WRITES: [string, (port: GitHubPort) => Promise<unknown>][] = [
+  ["merge", (port) => port.merge(REPO, 1, H1, "squash")],
+  ["updateBranch", (port) => port.updateBranch(REPO, 1, H1)],
+  ["closePr", (port) => port.closePr(REPO, 1)],
+  ["pushEmptyCommit", (port) => port.pushEmptyCommit(REPO, "topic", H1, "retrigger")],
+  ["deleteRef", (port) => port.deleteRef(REPO, { branch: "topic", repo: REPO })],
+  ["ensureBranch", (port) => port.ensureBranch(REPO, "topic", H1)],
+  ["putFile", (port) => port.putFile(REPO, { path: "docs/a.md", branch: "topic", content: "x", message: "m", expectedBlobSha: null })],
+  ["setPrBase", (port) => port.setPrBase(REPO, 1, "release")],
+  ["mergeIntoBranch", (port) => port.mergeIntoBranch(REPO, { branch: "topic", head: H1 })],
+  ["openPr", (port) => port.openPr(REPO, { head: "topic", base: "main", title: "t", body: "b" })],
+];
+
 describe("advisoryPort", () => {
-  it("refuses merge, updateBranch, closePr, pushEmptyCommit and deleteRef for an advisory repo, before GitHub sees them", async () => {
+  it.each(BRANCH_WRITES)("refuses %s for an advisory repo before GitHub sees it", async (_name, write) => {
     const writes: string[] = [];
     const port = advisoryPort(recordingPort(fakeGitHub(), writes), (repo) => repo === REPO);
 
-    await expect(port.merge(REPO, 1, H1, "squash")).rejects.toThrow(AdvisoryRefused);
-    await expect(port.updateBranch(REPO, 1, H1)).rejects.toThrow(AdvisoryRefused);
-    await expect(port.closePr(REPO, 1)).rejects.toThrow(AdvisoryRefused);
-    await expect(port.pushEmptyCommit(REPO, "topic", H1, "retrigger")).rejects.toThrow(AdvisoryRefused);
-    await expect(port.deleteRef(REPO, { branch: "topic", repo: REPO })).rejects.toThrow(AdvisoryRefused);
+    const attempt = write(port);
+
+    await expect(attempt).rejects.toThrow(AdvisoryRefused);
     expect(writes).toEqual([]);
   });
 
@@ -320,8 +337,22 @@ describe("advisoryPort", () => {
     const writes: string[] = [];
     const port = advisoryPort(recordingPort(fakeGitHub(), writes), () => false);
 
-    await Promise.allSettled([port.merge(REPO, 1, H1, "squash"), port.updateBranch(REPO, 1, H1), port.closePr(REPO, 1), port.pushEmptyCommit(REPO, "topic", H1, "retrigger"), port.deleteRef(REPO, { branch: "topic", repo: REPO })]);
+    await Promise.allSettled(BRANCH_WRITES.map(([, write]) => write(port)));
 
-    expect(writes).toEqual(["merge", "updateBranch", "closePr", "pushEmptyCommit", "deleteRef"]);
+    expect(writes).toEqual(BRANCH_WRITES.map(([name]) => name));
+  });
+});
+
+describe("factory build on an advisory repo", () => {
+  it("creates its own branch and opens its PR for the owner to merge", async () => {
+    const writes: string[] = [];
+    const routes = factoryRoutesFor({ port: recordingPort(fakeGitHub(), writes), store: shepherdStoreRef(), now: () => 0, sleep, advisory: (repo) => repo === REPO });
+    const step = (match: string, input: object) => routes.find((route) => route.match === match)!.runner.run({ runId: "build-1", workflowName: "build-surface", stepId: match, iteration: 0, attempt: 1, requestKey: `build-1/${match}`, prompt: JSON.stringify(input), signal: new AbortController().signal });
+
+    const branch = await step("bs-branch", { repo: REPO, branch: "factory/slice-1", base: "main", evidenceDir: "/nowhere/{head}", cwd: "/nowhere" });
+    const pr = await step("bs-pr", { repo: REPO, branch: "factory/slice-1", base: "main", title: "Slice 1", body: "b" });
+
+    expect([branch.ok, pr.ok]).toEqual([true, true]);
+    expect(writes).toEqual(["ensureBranch", "openPr"]);
   });
 });
