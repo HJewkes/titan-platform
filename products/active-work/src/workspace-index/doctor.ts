@@ -24,6 +24,7 @@ const INDEXED_REFS = `
   UNION ALL SELECT task_ref,    path FROM workspace_task
   UNION ALL SELECT session_ref, path FROM session_record
   UNION ALL SELECT source_ref,  path FROM source
+  UNION ALL SELECT plan_ref,    path FROM plan_record
   ORDER BY path
 `;
 
