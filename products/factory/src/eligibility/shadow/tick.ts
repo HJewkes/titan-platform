@@ -68,8 +68,9 @@ function freeSlots({ admission, signals, limits }: LaneRead): number {
 }
 
 /** A provider that cannot answer holds every eligible task, so an outage never reads as permission. */
-async function providerHolds(providers: readonly HoldProvider[], lane: ShadowLane, input: TickInput, eligible: Eligible[]): Promise<TaskHold[]> {
-  const ctx = { lane, week: isoWeek(input.now.getTime()), rules: input.loaded.rules, eligible, verbs: input.verbs };
+async function providerHolds(providers: readonly HoldProvider[], lane: ShadowLane, input: TickInput, read: LaneRead): Promise<TaskHold[]> {
+  const { eligible } = read.result;
+  const ctx = { lane, week: isoWeek(input.now.getTime()), rules: input.loaded.rules, eligible, verbs: input.verbs, now: input.now.getTime(), signals: read.signals, limits: read.limits };
   const holds: TaskHold[] = [];
   for (const provider of providers) {
     try {
@@ -174,7 +175,7 @@ async function laneRows(lane: ShadowLane, input: TickInput, at: string, ports: T
   } catch (error) {
     return unreadRow(base, `active-work: ${errorMessage(error)}`);
   }
-  const extra = await providerHolds(input.providers ?? HOLD_PROVIDERS, lane, input, read.result.eligible);
+  const extra = await providerHolds(input.providers ?? HOLD_PROVIDERS, lane, input, read);
   const rows: ShadowRow[] = [...eligibilityRows(base, read.result), ...candidateRows(base, read, extra)];
   if (read.admission.decision === "hold" && read.result.eligible.length === 0) rows.push(laneHoldRow(base, read.admission));
   return { rows, unread: false, planRead: read.planRead };
