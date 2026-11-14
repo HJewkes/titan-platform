@@ -193,10 +193,15 @@ interface HoldReads {
  * run's next CI read reports it and tells the seat. So does a g10 release due a fresh ask at `sha`: the CI read asks it.
  */
 async function untilReleased({ held, headNow, reviewAsked, reheld, recheck }: HoldReads, target: MergeTarget, signal: AbortSignal, timing: HoldTiming): Promise<boolean> {
+  let told: string | undefined;
   for (let waited = false; ; waited = true) {
     signal.throwIfAborted();
     if (target.sha !== undefined && reviewAsked?.(target.repo, target.pr, target.sha)) return true;
-    if ((await held(target.repo, target.pr, target.sha)) === undefined) return waited;
+    const reason = await held(target.repo, target.pr, target.sha);
+    if (reason === undefined) return waited;
+    // The merge step shows only as running, so the console is where a long wait names what it waits on.
+    if (reason !== told) console.warn(`shepherd: the merge of ${target.repo}#${target.pr} waits: ${reason}`);
+    told = reason;
     if (reheld?.(target.repo, target.pr)) return true;
     if (target.sha !== undefined && recheck?.(target.repo, target.pr, target.sha)) return true;
     if (await movedPast(headNow, target)) return true;
