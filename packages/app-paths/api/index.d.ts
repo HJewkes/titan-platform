@@ -25,5 +25,9 @@ declare function appDataRoot(app: AppSpec, opts?: PathOptions): string;
 declare function activeWorkRoot(opts?: PathOptions): string;
 /** active-work's session graph database: `<root>/.miner/graph.sqlite3`. */
 declare function activeWorkGraphPath(opts?: PathOptions): string;
+/** The deposit spool the titan console reads: `TITAN_CONSOLE_INBOX_DIR`, else `inbox/deposits` under the console state directory. Tilde-expanded, not resolved. */
+declare function consoleInboxDir(opts?: PathOptions): string;
+/** The ticket scorecard's store: `TITAN_SCORECARD_STORE`, else `$XDG_DATA_HOME/titan-scorecard/scorecard.sqlite3`. Tilde-expanded, not resolved. */
+declare function scorecardStorePath(opts?: PathOptions): string;
 
-export { ACTIVE_WORK, type AppDirs, type AppSpec, type PathOptions, activeWorkGraphPath, activeWorkRoot, appDataRoot, appDirs };
+export { ACTIVE_WORK, type AppDirs, type AppSpec, type PathOptions, activeWorkGraphPath, activeWorkRoot, appDataRoot, appDirs, consoleInboxDir, scorecardStorePath };
