@@ -1,19 +1,16 @@
-import { classifyDeniedAction } from "../packages/session-analytics/dist/index.js";
+import { classifyDeniedAction, denialOf } from "../packages/session-analytics/dist/index.js";
 import { parseVerdictBlock } from "../packages/session-read/dist/index.js";
 
 /**
  * The three ways a reviewer's tool call is refused rather than run. An ordinary non-zero exit
  * is an error the reviewer can work around, so it is reported apart and never fails the smoke.
  */
-const REFUSALS = [
-  ["deny-list", /^(?:Error: )?Permission to use \S+ .*has been denied/s],
-  ["hook-deadline", /permission-hook deadline/],
-  ["classifier", /denied by the Claude Code auto mode classifier/],
-];
+const REFUSAL_KINDS = { permission: "deny-list", classifier: "classifier", "hook-deadline": "hook-deadline" };
 
 /** Which refusal a tool_result's text is, or null for any other result. */
 export function refusalKind(text) {
-  return REFUSALS.find(([, pattern]) => pattern.test(text))?.[0] ?? null;
+  const denial = denialOf(text);
+  return denial === null ? null : REFUSAL_KINDS[denial.kind];
 }
 
 function resultText(content) {

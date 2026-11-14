@@ -1,7 +1,10 @@
+const CLASSIFIER_DENIAL = /classifier\. Reason/i;
+const PERMISSION_DENIAL = /Permission to use .* (has been )?denied|permission.*denied by|was denied/i;
+
 /** The self-improve extractor's error classes in match order: first hit wins, so a classifier denial is never "permission-denied". */
 const CLASS_PATTERNS = [
-  ["classifier-denial", /classifier\. Reason/i],
-  ["permission-denied", /Permission to use .* (has been )?denied|permission.*denied by|was denied/i],
+  ["classifier-denial", CLASSIFIER_DENIAL],
+  ["permission-denied", PERMISSION_DENIAL],
   ["user-rejected", /doesn't want to proceed|user rejected|The user doesn't want/i],
   ["sleep-block", /Blocked: sleep|sleep .* is blocked/i],
   ["wrong-tool-name", /No such tool available/i],
@@ -28,4 +31,24 @@ export type ErrorClass = (typeof ERROR_CLASSES)[number];
 /** Insights Q5's classifier for a tool result's text. */
 export function classifyError(text: string): ErrorClass {
   return CLASS_PATTERNS.find(([, pattern]) => pattern.test(text))?.[0] ?? "other";
+}
+
+export interface Denial {
+  kind: "classifier" | "permission" | "hook-deadline";
+  /** The classifier's bracketed reason, when the text carries one. */
+  reason?: string;
+}
+
+const CLASSIFIER_REFUSAL = /denied by the Claude Code auto mode classifier/;
+const CLASSIFIER_REASON = /classifier\. Reason: \[([^\]]+)\]/;
+const HOOK_DEADLINE = /permission-hook deadline/;
+
+/** The one reading of Claude Code's refusal text: classifier denial, permission deny-list, or permission-hook deadline; null for any other text. */
+export function denialOf(text: string): Denial | null {
+  if (CLASSIFIER_DENIAL.test(text) || CLASSIFIER_REFUSAL.test(text)) {
+    const reason = CLASSIFIER_REASON.exec(text)?.[1];
+    return reason === undefined ? { kind: "classifier" } : { kind: "classifier", reason };
+  }
+  if (PERMISSION_DENIAL.test(text)) return { kind: "permission" };
+  return HOOK_DEADLINE.test(text) ? { kind: "hook-deadline" } : null;
 }
