@@ -77,14 +77,16 @@ async function runBody(spec: StageSpec, input: ModelStageInput, deps: BodyDeps):
   if (stage === "tts") return runTtsBody(config, input, deps);
   if (stage === "sheets") return runSheetsBody(config, input, deps);
   if (stage === "qa") return runQaBody(config, input, deps);
-  return runRenderBody(config, input, deps);
+  return runRenderBody(spec, input, deps);
 }
 
 /** Render runs qa's gate rows after encode on the qa stage's engine, type and timing, so it refuses what qa would fail. */
-function runRenderBody(config: StageSpec["config"], input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
+function runRenderBody({ config, steps }: StageSpec, input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
   if (!config.render) throw new Error("render stage spec has no render settings");
-  const settings = { ...config.render, spillDir: renderSpillDir(deps.dataDir), ...(config.profile ? { profile: config.profile.type } : {}), ...(deps.qaTiming ? { timing: deps.qaTiming } : {}) };
-  return runRenderStage({ ...input, store: deps.store }, settings, deps.renderEngine ?? defaultRenderEngine(), deps.qaEngine ?? chromiumQaEngine(deps.media));
+  const settings = {
+    ...config.render, spillDir: renderSpillDir(deps.dataDir), ...(config.profile ? { profile: config.profile.type } : {}), ...(deps.qaTiming ? { timing: deps.qaTiming } : {}), ...(steps ? { steps } : {}),
+  };
+  return runRenderStage({ ...input, store: deps.store }, settings, deps.renderEngine ?? defaultRenderEngine(), deps.qaEngine ?? chromiumQaEngine(deps.media), deps.now);
 }
 
 function runScriptBody(config: StageSpec["config"], input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
