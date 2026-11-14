@@ -1,0 +1,142 @@
+import { existsSync, readFileSync } from "node:fs";
+import { resolve, sep } from "node:path";
+import { splitLines, verifyCitation, type LineSource } from "@titan-design/evidence";
+import { findingsText } from "@titan-design/review-panel";
+import { parseVerdictBlock } from "@titan-design/session-read";
+import { z } from "zod";
+import { citesPath } from "../../corpus/cited-paths.js";
+import type { CaseType, ReviewCaseBody } from "./cases.js";
+
+/** `path:12` or `path:12-30`, the form review-panel's aggregate and `scoreReplay` read a finding's citations in. */
+const CITATION = /(?<![\w./-])((?:[\w.-]+\/)*[\w-][\w.-]*\.[A-Za-z]\w*):(\d+)(?:-(\d+))?/g;
+/** A file name in a finding, with or without a line; a bare `dir/file.ts` still names the file. */
+const PATH_MENTION = /(?<![\w./-])((?:[\w.-]+\/)*[\w-][\w.-]*\.[A-Za-z]\w*)(?![\w-])/g;
+/** How far a cited line may sit from a planted line and still name it. */
+const PLANTED_LINE_SLACK = 3;
+
+interface Cited {
+  path: string;
+  lineStart: number;
+  lineEnd: number;
+}
+
+interface ReviewResult {
+  caseType: CaseType;
+  verdict: "MERGE" | "FIX_FIRST" | null;
+  /** The final message held no well-formed block naming this case's PR and head. */
+  contract: boolean;
+  contractReason?: string;
+  /** Defect and planted cases only; strict: FIX_FIRST plus a verified citation on a gold path (planted: near its line). */
+  caught: boolean | null;
+  /** Defect and planted cases only: FIX_FIRST and a finding names a gold path that exists at the head, with or without a line. */
+  caughtPath: boolean | null;
+  /** Defect and planted cases only: the verdict is FIX_FIRST. */
+  caughtVerdict: boolean | null;
+  /** Clean cases only. */
+  falseAlarm: boolean | null;
+  /** A FIX_FIRST's citations that resolve at the head; the false-alarm judge reads them. */
+  cited: Cited[];
+}
+
+/** File text at the bundle's head, refusing any path that climbs out of it. */
+function headLineSource(headDir: string): LineSource {
+  const root = resolve(headDir);
+  return {
+    lines(path) {
+      const full = resolve(root, path);
+      if (!full.startsWith(root + sep) || !existsSync(full)) return undefined;
+      try {
+        return splitLines(readFileSync(full, "utf8"));
+      } catch {
+        return undefined;
+      }
+    },
+  };
+}
+
+/** Reviewers reading a bundle may cite `head/src/x.ts:4` or the bundle's absolute path; both name `src/x.ts`. */
+function repoRelative(message: string, bundleDir: string): string {
+  const absolute = `${bundleDir.replace(/\/+$/, "")}/`;
+  return message.split(`${absolute}head/`).join("").split(absolute).join("").replace(/(?<![\w./-])head\//g, "");
+}
+
+function verifiedCitations(findings: string, source: LineSource): Cited[] {
+  const found = [...findings.matchAll(CITATION)].flatMap(([, path = "", start = "", end]) => {
+    const cited = { path, lineStart: Number(start), lineEnd: Number(end ?? start) };
+    // Reviewers quote nothing, so reaching the quote step means the path and lines were confirmed.
+    const check = verifyCitation(source, { ...cited, quote: "" });
+    return check.ok || check.reason === "quote-empty" ? [cited] : [];
+  });
+  return [...new Map(found.map((cited) => [`${cited.path}:${cited.lineStart}-${cited.lineEnd}`, cited])).values()];
+}
+
+const nearLine = (cited: Cited, line: number): boolean => line >= cited.lineStart - PLANTED_LINE_SLACK && line <= cited.lineEnd + PLANTED_LINE_SLACK;
+
+/** A verified citation that names a gold path, and for a planted defect also lands within the slack of its line. */
+function namesGold(body: ReviewCaseBody, cited: readonly Cited[]): boolean {
+  return cited.some((entry) => body.gold.some((gold) => citesPath(entry.path, gold.path) && (gold.line === undefined || nearLine(entry, gold.line))));
+}
+
+/** A finding mentions a gold path that exists at the head; the line, if any, is not checked. */
+function mentionsGoldPath(body: ReviewCaseBody, findings: string, source: LineSource): boolean {
+  const mentioned = [...findings.matchAll(PATH_MENTION)].map(([, path = ""]) => path);
+  return body.gold.some((gold) => source.lines(gold.path) !== undefined && mentioned.some((path) => citesPath(path, gold.path)));
+}
+
+const targetOf = (body: ReviewCaseBody) => ({ repo: body.repo, pr: body.pr, head: body.head });
+
+function contractFailure(body: ReviewCaseBody, reason: string): ReviewResult {
+  const clean = body.caseType === "clean";
+  const level = clean ? null : false;
+  return { caseType: body.caseType, verdict: null, contract: true, contractReason: reason, caught: level, caughtPath: level, caughtVerdict: level, falseAlarm: clean ? false : null, cited: [] };
+}
+
+/**
+ * Scores one review's final message. No block, a malformed one, a WAIT or a block naming another target is a contract
+ * failure, never a catch and never a false alarm.
+ */
+export function scoreReview(body: ReviewCaseBody, message: string | undefined, bundleDir: string): ReviewResult {
+  const text = repoRelative(message ?? "", bundleDir);
+  const block = parseVerdictBlock(text);
+  if (!block.ok) return contractFailure(body, block.reason);
+  const target = targetOf(body);
+  if (block.repo !== target.repo || block.pr !== target.pr || block.head !== target.head) return contractFailure(body, "wrong_target");
+  const fixFirst = block.verdict === "FIX_FIRST";
+  const source = headLineSource(`${bundleDir}/head`);
+  const findings = findingsText(text);
+  const cited = fixFirst ? verifiedCitations(findings, source) : [];
+  const clean = body.caseType === "clean";
+  const caught = clean ? null : fixFirst && namesGold(body, cited);
+  const caughtPath = clean ? null : fixFirst && mentionsGoldPath(body, findings, source);
+  const caughtVerdict = clean ? null : fixFirst;
+  return { caseType: body.caseType, verdict: block.verdict, contract: false, caught, caughtPath, caughtVerdict, falseAlarm: clean ? fixFirst : null, cited };
+}
+
+const TranscriptLineSchema = z.looseObject({
+  type: z.string().optional(),
+  message: z.looseObject({ id: z.string().optional(), content: z.unknown() }).optional(),
+});
+
+/** The text of the transcript's last assistant message that says anything, joined across its content lines. */
+export function finalMessage(transcriptText: string): string | undefined {
+  const lines = transcriptText.split("\n").flatMap((line) => {
+    try {
+      const parsed = TranscriptLineSchema.safeParse(JSON.parse(line));
+      return parsed.success ? [parsed.data] : [];
+    } catch {
+      return [];
+    }
+  });
+  const texts = lines.filter((line) => line.type === "assistant").map((line) => ({ id: line.message?.id, text: textOf(line.message?.content) }));
+  const last = texts.filter((entry) => entry.text !== "").at(-1);
+  if (last === undefined) return undefined;
+  if (last.id === undefined) return last.text;
+  return texts.filter((entry) => entry.id === last.id && entry.text !== "").map((entry) => entry.text).join("\n");
+}
+
+function textOf(content: unknown): string {
+  if (!Array.isArray(content)) return typeof content === "string" ? content : "";
+  return content
+    .flatMap((block: unknown) => (typeof block === "object" && block !== null && "type" in block && block.type === "text" && "text" in block && typeof block.text === "string" ? [block.text] : []))
+    .join("\n");
+}

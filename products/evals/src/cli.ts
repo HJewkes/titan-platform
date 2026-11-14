@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { Command, CommanderError, InvalidArgumentError, Option } from "commander";
 import { z } from "zod";
+import { benchCommand } from "./bench/cli.js";
 import { buildCorpus, labelHistogram, type CorpusRow } from "./corpus/index.js";
 import { historyCommand } from "./history/command.js";
 import { defaultPolicy, selfTest } from "./private/exclusion.js";
@@ -258,6 +259,7 @@ export function buildProgram(onResult: (code: number) => void = () => undefined)
     .addCommand(historyCommand(onResult))
     .addCommand(reviewPrCommand(onResult))
     .addCommand(implementTaskCommand(onResult))
+    .addCommand(benchCommand(onResult))
     .exitOverride()
     .showHelpAfterError();
 }
