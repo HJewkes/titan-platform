@@ -19,7 +19,7 @@ const ShadowSchema = z.object({ enabled: z.boolean().default(false), dir: z.stri
 });
 
 /** Keys later slices read (PLAN 5.4) are accepted now so the owner's full example file parses; nothing reads them yet. */
-const PLANNED_KEYS = { bets: z.unknown().optional(), upkeep: z.unknown().optional() };
+const PLANNED_KEYS = { bets: z.unknown().optional() };
 
 const INTAKE_DEFAULTS = { minSeverity: "medium", expireDays: 28 } as const;
 
@@ -44,6 +44,17 @@ const StopSchema = z
   .strict();
 
 export type StopRules = z.infer<typeof StopSchema>;
+
+/** The upkeep cap (TP-5755 PLAN 2.2); `factoryOutcomes` names the outcomes whose untagged tasks count as upkeep. */
+const UpkeepSchema = z
+  .object({
+    capShare: z.number().gt(0).max(1).default(0.25),
+    windowDays: count.default(7),
+    factoryOutcomes: z.array(z.string().min(1)).default([]),
+  })
+  .strict();
+
+export type UpkeepRules = z.infer<typeof UpkeepSchema>;
 
 /** Whose spawns the shadow is scored against, and how a bare task id such as `TP-1` finds its initiative. */
 const CompareSchema = z
@@ -70,6 +81,7 @@ const RuleFileSchema = z
     relax: z.array(z.enum(RELAXATIONS)).default([]),
     intake: IntakeSchema,
     stop: StopSchema.prefault({}),
+    upkeep: UpkeepSchema.prefault({}),
     compare: CompareSchema,
     ...PLANNED_KEYS,
   })

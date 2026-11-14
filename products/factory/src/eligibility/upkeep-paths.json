@@ -1,0 +1,4 @@
+{
+  "upkeep": ["products/factory/**", "packages/tool-guard/**", "packages/egress-scan/**", ".github/**", "scripts/**", ".codewatch/**"],
+  "testOnly": ["**/*.test.ts"]
+}
