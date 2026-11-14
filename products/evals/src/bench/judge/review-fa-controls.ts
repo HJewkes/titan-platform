@@ -5,7 +5,7 @@ import { seededOrder, type ReviewCase } from "../review/cases.js";
 import { REAL, NOT_REAL, citedLines } from "./review-fa.js";
 
 /** One control in the shape `parseFaControls` reads. */
-export interface FaControlJson {
+interface FaControlJson {
   key: string;
   expected: typeof REAL | typeof NOT_REAL;
   review: string;
