@@ -633,3 +633,22 @@ describe("a hold whose named reviewer is read from its real transcript", () => {
     log.mockRestore();
   });
 });
+
+describe("a merge step waiting on a hold", () => {
+  it("names each new reason it waits on once on the console, then merges on release", async () => {
+    const reasons = ["the Version Packages PR #1 is ready and lands first", "the Version Packages PR #1 is ready and lands first", "the repo is frozen", undefined];
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    let ran = false;
+    const route = partialFake<StepRoute>({ match: "merge", runner: { run: async () => ((ran = true), { ok: true as const, output: "{}" }) } });
+    const waiting = waitWhileHeld(route, async () => reasons.shift(), { sleep: async () => undefined, now: () => 0 }, async () => H1);
+
+    await waiting.runner.run(partialFake<RoutedStepInput>({ prompt: JSON.stringify({ repo: REPO, pr: 7, sha: H1 }), signal: new AbortController().signal, stepId: "merge", attempt: 0 }));
+
+    expect(warn.mock.calls.map(([line]) => line)).toEqual([
+      `shepherd: the merge of ${REPO}#7 waits: the Version Packages PR #1 is ready and lands first`,
+      `shepherd: the merge of ${REPO}#7 waits: the repo is frozen`,
+    ]);
+    expect(ran).toBe(false);
+    warn.mockRestore();
+  });
+});
