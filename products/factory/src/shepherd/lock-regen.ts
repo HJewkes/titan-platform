@@ -75,7 +75,7 @@ async function pushFastForward(remote: Remote, commit: string): Promise<string |
 }
 
 /** Merges the base tip into the head as text; only a merge whose one conflict is the lock is regenerated, built and pushed. */
-async function mergeAndPush(remote: Remote, regen: ClosureRegen): Promise<LockRegenResult> {
+async function mergeAndPush(remote: Remote, regen: ClosureRegen, signal?: AbortSignal): Promise<LockRegenResult> {
   const { git, dir, url, input, pr } = remote;
   await ensureCache(remote);
   await must(git, dir, ["fetch", "--no-tags", "--no-write-fetch-head", "--quiet", url, input.headSha, `+refs/heads/${pr.baseRef}:${remoteBase(pr.baseRef)}`]);
@@ -86,14 +86,14 @@ async function mergeAndPush(remote: Remote, regen: ClosureRegen): Promise<LockRe
   if (merged.files.length !== 1 || merged.files[0] !== CLOSURE_LOCK_PATH) return declined("a file other than closure.lock.json conflicts", facts);
   const parents = ["-p", input.headSha, "-p", tip];
   const unresolved = await must(git, dir, ["commit-tree", merged.tree, ...parents, "-m", SUBJECT]);
-  const tree = await regen({ gitDir: dir, commit: unresolved });
+  const tree = await regen({ gitDir: dir, commit: unresolved }, signal);
   const commit = await must(git, dir, ["commit-tree", tree, ...parents, "-m", SUBJECT]);
   const refused = await pushFastForward(remote, commit);
   return refused === undefined ? { outcome: "pushed", reason: `merged ${pr.baseRef} at ${tip} and regenerated closure.lock.json`, newHead: commit, ...facts } : declined(refused, facts);
 }
 
 /** A PR that never touched the lock cannot conflict on it, so only such a PR reaches the git cache. */
-async function attempt(deps: LockRegenDeps, input: LockRegenInput): Promise<LockRegenResult> {
+async function attempt(deps: LockRegenDeps, input: LockRegenInput, signal?: AbortSignal): Promise<LockRegenResult> {
   if (deps.advisory?.(input.repo)) return declined(`${input.repo} is advisory`);
   const files = await deps.port.listPrFiles(input.repo, input.pr);
   if (!files.some((file) => file.path === CLOSURE_LOCK_PATH)) return declined("the pull request does not change closure.lock.json");
@@ -101,16 +101,16 @@ async function attempt(deps: LockRegenDeps, input: LockRegenInput): Promise<Lock
   const miss = prMiss(pr, input);
   if (miss !== undefined) return declined(miss);
   const remote: Remote = { ...cacheFor(input.repo, { ports: deps.ports, ...(deps.remote && { remote: deps.remote }) }), input, pr };
-  return serialized(remote.dir, () => mergeAndPush(remote, deps.regen));
+  return serialized(remote.dir, () => mergeAndPush(remote, deps.regen, signal));
 }
 
 /** Every failure declines with a fixed-vocabulary reason, since the result is a stored step output that can reach a public PR. */
-export function regenerateLock(deps: LockRegenDeps, input: LockRegenInput): Promise<LockRegenResult> {
-  return attempt(deps, input).catch((error: unknown) => declined(reasonOf(error)));
+function regenerateLock(deps: LockRegenDeps, input: LockRegenInput, signal: AbortSignal): Promise<LockRegenResult> {
+  return attempt(deps, input, signal).catch((error: unknown) => declined(reasonOf(error)));
 }
 
 export function lockRegenRoute(now: () => number, deps: LockRegenDeps): StepRoute {
-  return codeRoute(LOCK_REGEN_STEP, now, (input: LockRegenInput) => regenerateLock(deps, LockRegenInput.parse(input)));
+  return codeRoute(LOCK_REGEN_STEP, now, (input: LockRegenInput, signal) => regenerateLock(deps, LockRegenInput.parse(input), signal));
 }
 
 /**
