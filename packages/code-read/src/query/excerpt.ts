@@ -14,7 +14,7 @@ interface Window {
 }
 
 /** The flagged lines plus `context` either side, clipped to the file; a whole-node finding starts at line 1. */
-export function excerptWindow(ranges: readonly Span[], context: number, lineCount: number): Window {
+function excerptWindow(ranges: readonly Span[], context: number, lineCount: number): Window {
   const from = ranges.length === 0 ? 1 : Math.max(1, Math.min(...ranges.map((r) => r.startLine)) - context);
   const wanted = ranges.length === 0 ? lineCount : Math.min(lineCount, Math.max(...ranges.map((r) => r.endLine)) + context);
   const to = Math.min(wanted, from + EXCERPT_LINE_CAP - 1);

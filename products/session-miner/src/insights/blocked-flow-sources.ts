@@ -56,7 +56,7 @@ export function readPullSnapshot(file: string): PullState[] {
 }
 
 /** Splits a repeatable `seat=path` flag value. */
-export function seatPath(spec: string): { seat: string; file: string } {
+function seatPath(spec: string): { seat: string; file: string } {
   const at = spec.indexOf("=");
   if (at <= 0 || at === spec.length - 1) throw Object.assign(new Error(`expected <seat>=<path>, got "${spec}"`), { code: EXIT.DATAERR });
   return { seat: spec.slice(0, at), file: spec.slice(at + 1) };

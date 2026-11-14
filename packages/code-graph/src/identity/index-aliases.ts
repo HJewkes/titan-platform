@@ -4,7 +4,7 @@ import type { CodeGraphStore } from "../store.js";
 import type { GraphNode, IdAlias } from "../types.js";
 import { aliasBaseFor, aliasTargetCommit } from "./store-identity.js";
 
-export interface AliasBridgeInput {
+interface AliasBridgeInput {
   rootDir: string;
   idRoot: string;
   ref: string;
@@ -14,7 +14,7 @@ export interface AliasBridgeInput {
 }
 
 /** The snapshot a new snapshot's aliases start from, and the aliases themselves. */
-export interface AliasBridge {
+interface AliasBridge {
   baseSnapshotId: number | null;
   aliases: IdAlias[];
 }
@@ -33,7 +33,7 @@ function symbolIdsOf(store: CodeGraphStore, snapshotId: number, fileId: string):
  * `b.ts#Job.run`. Only symbols present on both sides get one; a symbol renamed
  * inside the moved file is not followed.
  */
-export function movedSymbolAliases(
+function movedSymbolAliases(
   store: CodeGraphStore,
   baseSnapshotId: number,
   fileAliases: readonly IdAlias[],
