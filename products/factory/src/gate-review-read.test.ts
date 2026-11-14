@@ -149,5 +149,5 @@ describe("reviewGates", () => {
 
 async function invokeReview(w: World) {
   const command = createFactoryRegistry().get("factory.gates-review")!;
-  return invokeCommand(command, {}, { warnings: [], format: "json", host: w.host, aud: "basement" });
+  return invokeCommand(command, {}, { warnings: [], format: "json", host: w.host, caller: "agent", aud: "basement" });
 }
