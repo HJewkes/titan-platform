@@ -24,7 +24,6 @@ const ROOT_READDIR = /readdir\((root|activeRoot|getActiveRoot\(\)|ctx\.activeRoo
 
 const RAW_ENUMERATORS: Record<string, string> = {
   'sessions/initiatives.ts': 'defines the listers',
-  'doctor/checks-data.ts': 'owner health checks; re-pointed through Shown in TP-5556 S2b',
   'tasks/edge-index.ts': 'builds the dependency index that task commands resolve named ids against',
   'lint/index.ts': 'lints every brief; audit and doctor filter what they print',
   'workspace-index/inventory.ts': 'counts files for the inventory cache; inventory rows come from listSlugsForCaller',
