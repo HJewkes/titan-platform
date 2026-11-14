@@ -24,7 +24,7 @@ interface CompareOptions {
 
 const DAY_MS = 86_400_000;
 
-function readEvents(file: string, seat: string, from: number, to: number) {
+function readSpawnWindow(file: string, seat: string, from: number, to: number) {
   if (!existsSync(file)) throw new Error(`events database ${file} not found`);
   const db = openEventsDb(file);
   try {
@@ -39,7 +39,7 @@ function buildReport(rules: RuleFile, dir: string, day: string, files: { eventsD
   const to = from + DAY_MS;
   const { operator, prefixes } = compareSettings(rules);
   const scope: PickScope = { initiatives: new Set(rules.lanes.map((lane) => lane.initiative)), prefixes };
-  const spawns = readEvents(files.eventsDb, operator, from - DAY_MS, to + DAY_MS);
+  const spawns = readSpawnWindow(files.eventsDb, operator, from - DAY_MS, to + DAY_MS);
   const nearby = scopedSpawns(spawns, scope).picks;
   const { counts } = scopedSpawns(spawns.filter((spawn) => spawn.ts >= from && spawn.ts < to), scope);
   const picks = firstPicks(nearby, readLedgerPicks(files.ledger, operator), from, to, scope);
