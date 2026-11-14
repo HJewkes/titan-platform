@@ -16,6 +16,10 @@ describe("denialOf", () => {
     expect(denialOf("The call was denied")).toEqual({ kind: "permission" });
   });
 
+  it("reads a deny-list refusal of a multi-line command", () => {
+    expect(denialOf("Permission to use Bash with command a <<'EOF'\nb\nEOF has been denied.")).toEqual({ kind: "permission" });
+  });
+
   it("reads the permission-hook deadline", () => {
     expect(denialOf("permission-hook deadline exceeded")).toEqual({ kind: "hook-deadline" });
   });

@@ -1,5 +1,5 @@
 const CLASSIFIER_DENIAL = /classifier\. Reason/i;
-const PERMISSION_DENIAL = /Permission to use .* (has been )?denied|permission.*denied by|was denied/i;
+const PERMISSION_DENIAL = /Permission to use .* (has been )?denied|permission.*denied by|was denied/is;
 
 /** The self-improve extractor's error classes in match order: first hit wins, so a classifier denial is never "permission-denied". */
 const CLASS_PATTERNS = [
