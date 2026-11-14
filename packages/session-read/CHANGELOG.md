@@ -1,5 +1,19 @@
 # @titan-design/session-read
 
+## 0.18.0
+
+### Minor Changes
+
+- 83ed2aa: Export `transcriptFromPath` from session-read, beside `discoverTranscripts`; active-work's copy is removed.
+
+### Patch Changes
+
+- b937077: Stop exporting file-local helpers that nothing imports (TP-5793).
+- Updated dependencies [b937077]
+- Updated dependencies [3d19ff3]
+  - @titan-design/agent-protocol@0.10.1
+  - @titan-design/anthropic-account@0.4.2
+
 ## 0.17.0
 
 ### Minor Changes

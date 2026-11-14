@@ -1,5 +1,11 @@
 # @titan-design/evidence
 
+## 0.6.0
+
+### Minor Changes
+
+- 37bd17f: Export `citationsIn` and `citationHolds` from evidence; review-panel's aggregate and the evals replay score use them instead of their own copies of the `path:line` reader.
+
 ## 0.5.0
 
 ### Minor Changes

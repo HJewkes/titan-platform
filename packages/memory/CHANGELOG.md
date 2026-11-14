@@ -1,5 +1,13 @@
 # @titan-design/memory
 
+## 0.3.2
+
+### Patch Changes
+
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+- Updated dependencies [3d19ff3]
+  - @titan-design/retrieval@0.4.1
+
 ## 0.3.1
 
 ### Patch Changes

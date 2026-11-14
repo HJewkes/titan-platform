@@ -1,5 +1,15 @@
 # @titan-design/session-graph
 
+## 0.19.1
+
+### Patch Changes
+
+- b937077: Stop exporting file-local helpers that nothing imports (TP-5793).
+- Updated dependencies [b937077]
+- Updated dependencies [83ed2aa]
+  - @titan-design/agent-protocol@0.10.1
+  - @titan-design/session-read@0.18.0
+
 ## 0.19.0
 
 ### Minor Changes

@@ -1,5 +1,13 @@
 # @titan-design/titan
 
+## 0.5.1
+
+### Patch Changes
+
+- Updated dependencies [c759bad]
+- Updated dependencies [3d19ff3]
+  - @titan-design/daemon@0.10.0
+
 ## 0.5.0
 
 ### Minor Changes

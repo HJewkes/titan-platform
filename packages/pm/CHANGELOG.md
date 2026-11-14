@@ -1,5 +1,15 @@
 # @titan-design/pm
 
+## 0.12.0
+
+### Minor Changes
+
+- 17d1110: `@titan-design/pm/node` adds `readInitiativeTasks(activeRoot, slug, { archive })`, the one reader for an initiative's task files. It returns parsed rows in filename order (live, then archive on request), unparsable files with a reason instead of throwing, and `missing` when the initiative has no `tasks/` folder.
+
+### Patch Changes
+
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+
 ## 0.11.0
 
 ### Minor Changes

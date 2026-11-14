@@ -1,5 +1,11 @@
 # @titan-design/agent-dispatch
 
+## 0.10.1
+
+### Patch Changes
+
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+
 ## 0.10.0
 
 ### Minor Changes

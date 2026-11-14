@@ -1,5 +1,11 @@
 # @titan-design/github
 
+## 0.13.1
+
+### Patch Changes
+
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+
 ## 0.13.0
 
 ### Minor Changes

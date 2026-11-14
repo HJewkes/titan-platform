@@ -1,5 +1,17 @@
 # @titan-design/decider
 
+## 0.7.1
+
+### Patch Changes
+
+- b937077: Stop exporting file-local helpers that nothing imports (TP-5793).
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+- Updated dependencies [b937077]
+- Updated dependencies [83ed2aa]
+- Updated dependencies [3d19ff3]
+  - @titan-design/session-read@0.18.0
+  - @titan-design/memory@0.3.2
+
 ## 0.7.0
 
 ### Minor Changes

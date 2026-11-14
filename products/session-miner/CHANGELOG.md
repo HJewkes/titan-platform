@@ -1,5 +1,37 @@
 # @titan-design/session-miner
 
+## 0.11.10
+
+### Patch Changes
+
+- 9155bdb: Read ticket-scorecard task files, archive included, through `@titan-design/pm/node`. The scorecard now also reads `.yaml` task files, and a file that fails to parse no longer counts toward the newest-mtime watermark.
+- 081ab7e: Read throughput task files through `@titan-design/pm/node`'s `readInitiativeTasks`. Throughput now also reads `.yaml` task files, and a task file that cannot be read is reported as `read: ...` in `unparsed`.
+- d3d1d5b: Add `denialOf`, the one classifier for Claude Code permission, auto-mode-classifier and permission-hook-deadline text (TP-5807). The friction gate, blocked-flow denials, the tool-errors insight and the reviewer smoke check now use it, so a non-error result worded "was denied" is counted as a denial.
+- e5d8d29: Export `consoleInboxDir` and `scorecardStorePath` from app-paths and use them in place of the per-product copies (TP-5809). The console inbox spool now expands a leading `~` in `TITAN_CONSOLE_STATE` in yt-scout, and the factory's eligibility check expands a `~` in `TITAN_SCORECARD_STORE`; the other resolutions are unchanged.
+- e5bc26e: Stop exporting file-local symbols in apps and products (TP-5821).
+- Updated dependencies [b937077]
+- Updated dependencies [17d1110]
+- Updated dependencies [1029d2e]
+- Updated dependencies [c759bad]
+- Updated dependencies [d3d1d5b]
+- Updated dependencies [e5d8d29]
+- Updated dependencies [83ed2aa]
+- Updated dependencies [3d19ff3]
+- Updated dependencies [62d9877]
+  - @titan-design/session-analytics@0.20.0
+  - @titan-design/session-graph@0.19.1
+  - @titan-design/session-read@0.18.0
+  - @titan-design/workflow@0.15.1
+  - @titan-design/pm@0.12.0
+  - @titan-design/daemon@0.10.0
+  - @titan-design/app-paths@0.2.0
+  - @titan-design/github@0.13.1
+  - @titan-design/hitl@0.10.2
+  - @titan-design/memory@0.3.2
+  - @titan-design/retrieval@0.4.1
+  - @titan-design/throughput@0.3.3
+  - @titan-design/owner-queue@0.8.3
+
 ## 0.11.9
 
 ### Patch Changes

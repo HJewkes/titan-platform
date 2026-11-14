@@ -1,5 +1,58 @@
 # @titan-design/factory
 
+## 0.29.0
+
+### Minor Changes
+
+- e12a413: Ship Shepherd's reviewer reader as the `@titan-design/factory/shepherd/reviewer-reader` subpath export, so `pnpm smoke:reviewer` reads transcripts through the real `finishedTurnMessages` instead of a hand-written mirror (TP-5808).
+- c28e4aa: Complete the shadow dispatcher's selection policy (TP-5761, TP-5755 S3). The rule file's `relax` (`bet-field`, `no-fold`, `no-owner-steps`) and `intake` (`minSeverity`, default `medium`; `expireDays`, default 28) keys are now schema fields. `dispatch shadow-tick` judges each lane under that policy: agent-filed work below the minimum severity, filed from a PR whose Shepherd run stopped, or unpromoted past the expiry is refused, as is a task serving another outcome than its bet's, a bet whose outcome is retired, and a task with `blocked_on`. Incidents are never refused by intake. A relaxed pass carries `relaxed` and the strict `strict_codes` on its row. When the active-work daemon answers `plan.*` with Unknown command, the tick reads the plan store's files instead and the wake row says `plan_read: "file"`; any other plan read failure still fails the lane closed. A lane whose initiative active-work withholds from agents (its `inventory` `withheld_from_agents` verdict) writes one `owner-only-initiative` row and reads none of its tasks; an unread inventory fails every lane closed. `dispatch eligible` output is unchanged.
+- 1ecdcd7: Add the dispatcher shadow's upkeep cap (TP-5755 S4): the share of upkeep files among all files the lane's PRs changed in the last `upkeep.windowDays` (7), classed by the checked-in `eligibility/upkeep-paths.json`. At `upkeep.capShare` (0.25) or more, `upkeep-cap` holds tasks tagged `class: upkeep` and untagged tasks whose bet serves one of `upkeep.factoryOutcomes`; product tasks are never held. Changed paths come from `gh api` reads cached in `<shadow.dir>/../cache/pr-files.json`; an unread share holds upkeep tasks.
+- ba41fe3: Read phase-2 bet sheets in the shadow dispatcher (TP-5765, TP-5755 S7). `dispatch sheets check` parses each `titan-bet-sheet/v1` file in the sheet dir (front matter, one `outcome` block, `bet` blocks in proposed order), checks each bet's cites against its intent digest, and prints one line per sheet, exiting non-zero on any error. `dispatch sheets import --dry-run` prints the `plan.outcome.add` and `plan.bet.add` calls a sheet would make; `--apply` makes them over active-work rpc, which write a draft outcome and proposed bets only, and exits 69 when the daemon has no plan commands. The rule file's new `bets` key (`source`: `selected` or `selected-then-sheet`, `sheetDir`, `digestDir`, `sheetWeek`) lets `dispatch shadow-tick` judge a lane with no selected bet this week against its sheet's proposed bets, labelled `basis: "proposed-sheet"` (and `sheet_week` when the week is pinned). A sheet that does not parse refuses its lane with one `sheet-unreadable` row.
+- 8622e6d: Add the landed rules to the shadow dispatcher (TP-5763, TP-5755 S5). A lane task whose PR merged but whose task is still open with a `restart`, `config`, `release`, `publish` or `credential` owner step now counts as `merged-not-switched-on` against the lane's open-PR limit, beside the open and merged-not-deployed counts; a `sitting`-only step does not, and a done task frees its slot. When the lane's filing flow is paused, an agent-filed task created in a paused week is refused as `filing-paused`; an owner-filed task never is. Rows carry `numbers: {open, mergedNotDeployed, mergedNotSwitchedOn, limit}`. `dispatch eligible` output is unchanged.
+
+### Patch Changes
+
+- fffd80d: An adversary MERGE at the head that names no `Attests:` token for a claimed step now reads `adversary-declined`, not `adversary-missing`, and gets the one implementer send-back a correctness decline gets, with a brief naming the adversary. No adversary verdict at all still gates the owner on `adversary-missing` (TP-5902).
+- 83085b6: Parse the plan-round drift diff with the shared git-pr-files parser instead of a second copy (TP-5799).
+- 281f4c0: Route the diverged-run sweep's owner-answer merge through the land loop's merge guard, so a frozen, released, g10-held or out-of-order PR stays parked with its reason on the run timeline.
+- d4d1325: Add tests pinning the approved-set carry refusals.
+- e5d8d29: Export `consoleInboxDir` and `scorecardStorePath` from app-paths and use them in place of the per-product copies (TP-5809). The console inbox spool now expands a leading `~` in `TITAN_CONSOLE_STATE` in yt-scout, and the factory's eligibility check expands a `~` in `TITAN_SCORECARD_STORE`; the other resolutions are unchanged.
+- e5bc26e: Stop exporting file-local symbols in apps and products (TP-5821).
+- d25e61e: Stop emitting `agent_visible` from `inventory` and `task.keys` (TP-5830). Every reader now takes the `withheld_from_agents` verdict, and `task.keys` rows carry it; the shepherd's task-ref reads a missing verdict as withheld.
+- b0da47b: `dispatch shadow-tick` rebuilds lane visibility from the initiative brief and the charter, through pm's `agentAccess`, when every row of the active-work daemon's `inventory` answer lacks `withheld_from_agents` (an older daemon), instead of refusing every lane as owner-only (TP-5868). An unreadable brief or charter withholds; a mixed, empty or failed answer still fails closed. The wake row carries `visibility_read: "rpc" | "file"`.
+- 92a09f1: Record each changed merge-wait reason as a `merge-wait` Shepherd event, so `shepherd timeline` shows what a merge waits on (TP-5881).
+- 8e1e9b8: Recording a merge-wait timeline row is best-effort (TP-5888): a store error such as SQLITE_BUSY is logged with the PR and no longer fails a held merge step.
+- f9f8cf2: Give the tests review member the same one correction turn as the adversary when its verdict is malformed (TP-5904).
+- 7b1d6c4: Shepherd no longer freezes a repo's other merges behind a ready Version Packages PR that is itself held, since a held release cannot land first. A merge step that waits on a hold now names its reason on the console, once for each new reason.
+- Updated dependencies [b937077]
+- Updated dependencies [17d1110]
+- Updated dependencies [1029d2e]
+- Updated dependencies [c759bad]
+- Updated dependencies [d3d1d5b]
+- Updated dependencies [e5d8d29]
+- Updated dependencies [83ed2aa]
+- Updated dependencies [37bd17f]
+- Updated dependencies [3d19ff3]
+- Updated dependencies [62d9877]
+  - @titan-design/agent@0.7.1
+  - @titan-design/code-graph@0.19.1
+  - @titan-design/fix-proof@0.9.1
+  - @titan-design/rpc-client@0.4.3
+  - @titan-design/session-analytics@0.20.0
+  - @titan-design/session-read@0.18.0
+  - @titan-design/workflow@0.15.1
+  - @titan-design/pm@0.12.0
+  - @titan-design/daemon@0.10.0
+  - @titan-design/app-paths@0.2.0
+  - @titan-design/evidence@0.6.0
+  - @titan-design/review-panel@0.9.2
+  - @titan-design/agent-dispatch@0.10.1
+  - @titan-design/coordinator@0.7.4
+  - @titan-design/github@0.13.1
+  - @titan-design/hitl@0.10.2
+  - @titan-design/owner-queue@0.8.3
+  - @titan-design/review-workflow@0.1.3
+
 ## 0.28.0
 
 ### Minor Changes

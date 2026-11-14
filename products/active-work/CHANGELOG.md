@@ -1,5 +1,48 @@
 # @titan-design/active-work
 
+## 0.32.0
+
+### Minor Changes
+
+- 6a7cb21: Index planning records as a `plans` workspace class (TP-5453 P10). Outcomes, bets and intent digests under an initiative's `plan/` folder get spans in the workspace index, so `context related` returns a bet's outcome and intent lines. Owner-only initiatives index none of them. Adds migration 1004 (`plan_record`).
+- 55ff5ba: Add `context.brief` (TP-5453 P11a-1). It renders the related-context section of a spawn brief as finished
+  text within a UTF-8 byte budget (default 2600, max 4000): at most three workspace ids, ranked with the agent's
+  view whoever calls, over every registered workspace class except transcripts and initiative briefs. A missing
+  index gives empty text and a `degraded` entry. With `trigger` set, the rendered refs are logged as served in
+  the same call.
+- d25e61e: Stop emitting `agent_visible` from `inventory` and `task.keys` (TP-5830). Every reader now takes the `withheld_from_agents` verdict, and `task.keys` rows carry it; the shepherd's task-ref reads a missing verdict as withheld.
+
+### Patch Changes
+
+- 7c47a3c: `miner outcomes` folds a seat or agent name that holds an owner-only initiative slug into the `owner-only` bucket for a non-owner caller (TP-5773). Only initiatives on disk now are matched.
+- c74e78b: Doctor reports initiatives whose slug is a reserved miner key, with the rename remedy (TP-5782).
+- bb466f1: Read initiative task files through `@titan-design/pm/node`'s `readInitiativeTasks`. The lint-only task loader is gone; lint, doctor, loops, wrap and the loop board share bootstrap's `loadTasks`. Tasks now come back sorted by file name, and an unreadable `tasks/` directory throws instead of reading as empty.
+- 10204b9: The session index reads each initiative's task files through `@titan-design/pm/node` `readInitiativeTasks` instead of its own walker.
+- 3969bdb: Read `.schema-version` through one reader: `readSchemaVersion` now delegates to `readRawSchemaVersion` and applies the zero rule once (TP-5810).
+- 83ed2aa: Export `transcriptFromPath` from session-read, beside `discoverTranscripts`; active-work's copy is removed.
+- e5bc26e: Stop exporting file-local symbols in apps and products (TP-5821).
+- 4819abe: The duplicate tagger scores titles with the same `jaccard` the 0.9 threshold was tuned with.
+- Updated dependencies [b937077]
+- Updated dependencies [17d1110]
+- Updated dependencies [1029d2e]
+- Updated dependencies [c759bad]
+- Updated dependencies [d3d1d5b]
+- Updated dependencies [e5d8d29]
+- Updated dependencies [83ed2aa]
+- Updated dependencies [3d19ff3]
+- Updated dependencies [62d9877]
+  - @titan-design/agent-protocol@0.10.1
+  - @titan-design/decider@0.7.1
+  - @titan-design/session-analytics@0.20.0
+  - @titan-design/session-graph@0.19.1
+  - @titan-design/session-read@0.18.0
+  - @titan-design/pm@0.12.0
+  - @titan-design/daemon@0.10.0
+  - @titan-design/app-paths@0.2.0
+  - @titan-design/agent-dispatch@0.10.1
+  - @titan-design/memory@0.3.2
+  - @titan-design/retrieval@0.4.1
+
 ## 0.31.1
 
 ### Patch Changes

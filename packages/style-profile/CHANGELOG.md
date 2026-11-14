@@ -1,5 +1,11 @@
 # @titan-design/style-profile
 
+## 0.4.3
+
+### Patch Changes
+
+- b937077: Stop exporting file-local helpers that nothing imports (TP-5793).
+
 ## 0.4.2
 
 ### Patch Changes

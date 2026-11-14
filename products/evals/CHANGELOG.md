@@ -1,5 +1,31 @@
 # @titan-design/evals
 
+## 0.6.9
+
+### Patch Changes
+
+- 96e6f29: Private-case exclusion decides which initiatives agents may read through pm's `agentAccess`, the brief plus the charter's human-only list, instead of its own brief parser. A human-only initiative whose brief says agent-visible is excluded, and an unreadable brief or charter excludes (TP-5800).
+- Updated dependencies [b937077]
+- Updated dependencies [17d1110]
+- Updated dependencies [1029d2e]
+- Updated dependencies [d3d1d5b]
+- Updated dependencies [e5d8d29]
+- Updated dependencies [83ed2aa]
+- Updated dependencies [37bd17f]
+- Updated dependencies [3d19ff3]
+- Updated dependencies [62d9877]
+  - @titan-design/agent@0.7.1
+  - @titan-design/fix-proof@0.9.1
+  - @titan-design/session-analytics@0.20.0
+  - @titan-design/session-read@0.18.0
+  - @titan-design/workflow@0.15.1
+  - @titan-design/pm@0.12.0
+  - @titan-design/app-paths@0.2.0
+  - @titan-design/evidence@0.6.0
+  - @titan-design/review-panel@0.9.2
+  - @titan-design/hitl@0.10.2
+  - @titan-design/review-workflow@0.1.3
+
 ## 0.6.8
 
 ### Patch Changes
