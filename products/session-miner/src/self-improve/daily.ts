@@ -12,7 +12,7 @@ export const SUMMARY_FILE = "summary.json";
 /** The shell runner's layout: the family prompt, a separator line, then the chunk. */
 const TEMPLATE = "{{SI_PROMPT}}\n\nINPUT FOLLOWS.\n\n{{SI_CHUNK}}";
 
-export interface ChunkFile {
+interface ChunkFile {
   family: string;
   /** The file name without `.txt`; written on every row as `_chunk`. */
   name: string;

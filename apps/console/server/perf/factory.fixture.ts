@@ -7,8 +7,8 @@ import { draw, isoAt, pad, WORDS, type Draw } from "./random.fixture.js";
 
 export const FACTORY_SIZES = { needs: 600, activeRuns: 300, finishedRuns: 2000, autoresearchRuns: 20 } as const;
 /** Runs merged inside the coordinator day the coord budget rows read (`BUDGET_DAY`), as a busy day has them. */
-export const MERGED_ON_BUDGET_DAY = 80;
-export const BUDGET_DAY = "2031-01-01";
+const MERGED_ON_BUDGET_DAY = 80;
+const BUDGET_DAY = "2031-01-01";
 
 const NEED_SOURCES = [
   { system: "agent-chat", id: "chat" },
@@ -136,7 +136,7 @@ function autoresearchRun(random: Draw, index: number): ArRunSummary {
 }
 
 /** Every other fixture time is after the real clock, so one gate is dated in its past for `blockers.banner` to list. */
-export const OLD_GATE_SINCE = "2001-01-01T00:00:00.000Z";
+const OLD_GATE_SINCE = "2001-01-01T00:00:00.000Z";
 
 function withOldOwnerGate(rows: WatchRow[]): WatchRow[] {
   const first = rows.findIndex((row) => row.pendingGate !== null);

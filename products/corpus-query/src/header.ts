@@ -1,4 +1,4 @@
-export interface ParsedHeader {
+interface ParsedHeader {
   fields: Record<string, string>;
   /** Character index where the body begins: just past the header block, at the blank line that ends it. */
   bodyStart: number;

@@ -25,7 +25,7 @@ type MakeDeps = (onRow: DetectDeps["onRow"], ytDlpBin: string) => DetectDeps;
 /** Exit code for a watch list that fails to parse or validate. */
 export const EXIT_CONFIG = 1;
 
-export function describeWatchlist(w: Watchlist, today: string): string {
+function describeWatchlist(w: Watchlist, today: string): string {
   const trial = w.sources.filter((s) => isOnTrial(s, today));
   const expired = w.sources.filter((s) => s.trial_until !== undefined && !isOnTrial(s, today));
   const parts = [`${w.sources.length} sources`, `${trial.length} on trial`];
@@ -143,7 +143,7 @@ interface ScoreOptions {
 }
 
 /** Exit code for a score call that produced no card. */
-export const EXIT_SCORE = 2;
+const EXIT_SCORE = 2;
 
 function frontMatterTitle(file: string): string | undefined {
   return /^title:\s*"?(.*?)"?\s*$/m.exec(readFileSync(file, "utf8").split("\n---\n")[0] ?? "")?.[1];

@@ -57,14 +57,14 @@ export interface SetupDeps {
   supervisorActive?: () => Promise<{ kind: string; active: boolean } | null>;
 }
 
-export interface StepOk {
+interface StepOk {
   ok: true;
   name: string;
   done: boolean;
   message: string;
 }
 
-export interface StepErr {
+interface StepErr {
   ok: false;
   name: string;
   error: string;

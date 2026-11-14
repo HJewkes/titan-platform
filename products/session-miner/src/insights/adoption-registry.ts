@@ -19,7 +19,7 @@ interface OpportunityShape {
   note?: string;
 }
 
-export interface ShippedOpportunity extends OpportunityShape {
+interface ShippedOpportunity extends OpportunityShape {
   status: "shipped";
   /** The task that shipped the new form. */
   task: string;
@@ -29,7 +29,7 @@ export interface ShippedOpportunity extends OpportunityShape {
   shipped: string;
 }
 
-export interface BaselineOpportunity extends OpportunityShape {
+interface BaselineOpportunity extends OpportunityShape {
   status: "baseline";
   /** The task filed to build the new form, null until one is filed. */
   task: string | null;

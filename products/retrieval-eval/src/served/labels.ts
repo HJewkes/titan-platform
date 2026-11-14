@@ -37,8 +37,8 @@ export function labelRef(ref: ServedRef, block: ServedBlock, wrapRecord?: string
 }
 
 /** The classes a base rate is computed for; a task id is a substring of too much to be fair. */
-export const BASE_RATE_CLASSES = ["source", "note"] as const satisfies readonly RefClass[];
-export type BaseRateClass = (typeof BASE_RATE_CLASSES)[number];
+const BASE_RATE_CLASSES = ["source", "note"] as const satisfies readonly RefClass[];
+type BaseRateClass = (typeof BASE_RATE_CLASSES)[number];
 
 const CLASS_DIR: Record<BaseRateClass, readonly string[]> = { source: LAYOUT.sources, note: LAYOUT.notes };
 
