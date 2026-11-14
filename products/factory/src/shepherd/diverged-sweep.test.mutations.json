@@ -4,8 +4,8 @@
     {
       "name": "the sweep restarts a run the owner approved while it was parked",
       "file": "products/factory/src/shepherd/diverged-sweep.ts",
-      "find": "  if (merged !== undefined) {\n    sweep.merged.push(merged);\n    return;\n  }\n",
-      "replace": "",
+      "find": "    else sweep.held.push(carried.held);\n    return;\n  }\n",
+      "replace": "    else sweep.held.push(carried.held);\n  }\n",
       "kills": [
         "restartDivergedRuns on an owner answer given while the run was parked (TP-3918) A resolved merge on a kept diverged run with an unchanged head merges once"
       ]
