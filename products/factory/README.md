@@ -562,6 +562,22 @@ systemctl --user link ~/projects/titan-platform/ops/systemd/titan-dispatch-shado
 The tick needs the active-work daemon. Without it a lane cannot be read, so the tick writes a `refused` row with code
 `signal-unreadable` and exits 69.
 
+### Ready-stock floors
+
+A lane may set `floor`, its ready-stock floor, and `coordinator`, the agent-chat peer that refills it:
+
+```json
+"lanes": [{ "initiative": "<slug>", "tag": "<lane tag>", "floor": 20, "coordinator": "<peer name>" }]
+```
+
+After writing its rows, each tick counts a floored lane's dispatchable tasks by the work-supply census rule: an open task
+tagged `brief:ready` with no owner, needs-decision, parked or held, blocked, plan-first or superseded class
+(`src/eligibility/shadow/census.ts`). Under the floor, the tick sends one refill request naming the count and the floor
+to the lane's `coordinator`, or to `compare.operator` (default `tp-operator`) when the lane names none. It sends at most
+one per lane per UTC day, recorded in `<shadow dir>/refill/<YYYY-MM-DD>.jsonl`. A failed send is reported on stderr and
+not recorded, so the next tick tries again. The request goes over `shepherd.agentChatBin`; with none configured the tick
+reports the lane and sends nothing. Floors are absent by default, and a lane with no floor is never counted.
+
 ## Owner-queue sources
 
 `src/needs/` holds the factory's `QueueSource` adapters for `@titan-design/owner-queue`. Each
