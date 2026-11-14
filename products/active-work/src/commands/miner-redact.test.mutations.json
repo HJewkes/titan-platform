@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a withheld initiative keeps its name",
+      "file": "products/active-work/src/commands/_miner-redact.ts",
+      "find": "    return shown(slugOf(key)) ? key : OWNER_ONLY_KEY;",
+      "replace": "    return key;",
+      "kills": [
+        "miner cost and outcomes for a non-owner (census row 18) folds owner-only initiatives into one unnamed bucket and keeps the totals",
+        "miner cost and outcomes for a non-owner (census row 18) folds an archived owner-only initiative, which is no longer in the root"
+      ]
+    },
+    {
+      "name": "an other: key keeps an owner-only basename",
+      "file": "products/active-work/src/commands/_miner-redact.ts",
+      "find": "    if (key.startsWith(OTHER_PREFIX)) return shown(key.slice(OTHER_PREFIX.length)) ? key : OTHER_KEY;",
+      "replace": "    if (key.startsWith(OTHER_PREFIX)) return key;",
+      "kills": [
+        "miner cost and outcomes for a non-owner (census row 18) shows an other: key whose basename is an owner-only slug only as other"
+      ]
+    },
+    {
+      "name": "folded outcome buckets keep the first bucket's rate",
+      "file": "products/active-work/src/commands/_miner-redact.ts",
+      "find": "const sumOutcome = (a: OutcomeBucket, b: OutcomeBucket): OutcomeBucket =>\n  withRates({",
+      "replace": "const sumOutcome = (a: OutcomeBucket, b: OutcomeBucket): OutcomeBucket =>\n  ({",
+      "kills": [
+        "miner cost and outcomes for a non-owner (census row 18) recomputes an outcome bucket rate over the folded sums"
+      ]
+    },
+    {
+      "name": "new accepts a reserved miner key",
+      "file": "products/active-work/src/commands/new.ts",
+      "find": "    if (RESERVED_MINER_KEYS.has(args.slug)) {",
+      "replace": "    if (RESERVED_MINER_KEYS.has(`${args.slug}-`)) {",
+      "kills": [
+        "new refuses the reserved miner key unknown as a slug"
+      ]
+    }
+  ]
+}

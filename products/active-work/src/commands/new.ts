@@ -9,6 +9,7 @@ import { today } from '../utils/today.js';
 import { validateSlug, derivePrefix } from '../utils/slug.js';
 import { ValidationError } from '../errors.js';
 import { defineCommand } from '../registry/index.js';
+import { RESERVED_MINER_KEYS } from './_miner-redact.js';
 
 const ArgsSchema = z.object({
   slug: z.string().min(1),
@@ -79,6 +80,9 @@ export default defineCommand({
     const slugCheck = validateSlug(args.slug);
     if (!slugCheck.ok) {
       throw new ValidationError(`Invalid slug "${args.slug}": ${slugCheck.error}`);
+    }
+    if (RESERVED_MINER_KEYS.has(args.slug)) {
+      throw new ValidationError(`Invalid slug "${args.slug}": reserved as a miner report key`);
     }
 
     const dir = path.join(ctx.activeRoot, args.slug);
