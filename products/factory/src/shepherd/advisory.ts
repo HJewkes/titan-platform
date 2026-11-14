@@ -95,7 +95,10 @@ export function advisoryUpdates(route: StepRoute, isAdvisory: IsAdvisory, timing
   };
 }
 
-/** The fail-closed backstop under the guard: no merge, branch update, push or ref delete for an advisory repo reaches GitHub by any route. */
+/**
+ * The fail-closed backstop under the guard: none of the port's ten branch and PR writes for an advisory repo reaches
+ * GitHub by any route, so a sweep that would create a branch, commit a file or open a PR there gets a refusal instead.
+ */
 export function advisoryPort(port: GitHubPort, isAdvisory: IsAdvisory): GitHubPort {
   const refuse = (repo: RepoSlug, write: string): void => {
     if (isAdvisory(repo)) throw new AdvisoryRefused(`${repo} is advisory: Shepherd never ${write}`);
@@ -107,5 +110,10 @@ export function advisoryPort(port: GitHubPort, isAdvisory: IsAdvisory): GitHubPo
     closePr: async (repo, ...rest) => (refuse(repo, "closes a PR"), port.closePr(repo, ...rest)),
     pushEmptyCommit: async (repo, ...rest) => (refuse(repo, "pushes"), port.pushEmptyCommit(repo, ...rest)),
     deleteRef: async (repo, ...rest) => (refuse(repo, "deletes a ref"), port.deleteRef(repo, ...rest)),
+    ensureBranch: async (repo, ...rest) => (refuse(repo, "creates a branch"), port.ensureBranch(repo, ...rest)),
+    putFile: async (repo, ...rest) => (refuse(repo, "commits a file"), port.putFile(repo, ...rest)),
+    setPrBase: async (repo, ...rest) => (refuse(repo, "retargets a PR"), port.setPrBase(repo, ...rest)),
+    mergeIntoBranch: async (repo, ...rest) => (refuse(repo, "merges into a branch"), port.mergeIntoBranch(repo, ...rest)),
+    openPr: async (repo, ...rest) => (refuse(repo, "opens a PR"), port.openPr(repo, ...rest)),
   };
 }
