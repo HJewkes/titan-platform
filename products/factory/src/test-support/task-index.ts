@@ -2,7 +2,7 @@
 interface FakeInitiative {
   slug: string;
   task_prefix: string;
-  agent_visible?: boolean;
+  withheld_from_agents?: boolean;
 }
 
 interface FakeTaskRow {
@@ -19,7 +19,7 @@ const initiativesOf = (tasks: readonly FakeTaskRow[]): FakeInitiative[] =>
 
 /** The answer to `task.keys`: each initiative with its tasks' ids, agent-visible unless it says otherwise. */
 export function taskKeysAnswer(tasks: readonly FakeTaskRow[], initiatives: readonly FakeInitiative[]) {
-  return { initiatives: initiatives.map((item) => ({ ...item, agent_visible: item.agent_visible ?? true, ids: tasks.filter((task) => task.slug === item.slug).map((task) => task.id) })) };
+  return { initiatives: initiatives.map((item) => ({ ...item, withheld_from_agents: item.withheld_from_agents ?? false, ids: tasks.filter((task) => task.slug === item.slug).map((task) => task.id) })) };
 }
 
 /** An active-work daemon over `fetch` that answers only `task.keys`. */
