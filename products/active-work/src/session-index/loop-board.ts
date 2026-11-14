@@ -10,7 +10,7 @@ import path from 'node:path';
 import YAML from 'yaml';
 import { z } from 'zod';
 import { listInitiativeSlugsOrEmpty } from '../sessions/initiatives.js';
-import { loadTasks } from '../lint/load-tasks.js';
+import { loadTasks } from '../bootstrap/load.js';
 import {
   LOOP_STATUSES,
   LedgerLoopSchema,
@@ -321,7 +321,7 @@ async function loadTree(paths: LedgerPaths, warnings: string[]): Promise<BoardIn
 
 async function loadSessionSet(activeRoot: string, slug: string, now: Date): Promise<SessionLoopSet> {
   const dir = path.join(activeRoot, slug);
-  const [loaded, tasks] = await Promise.all([loadSessionsFromDir(dir), loadTasks(dir)]);
+  const [loaded, { tasks }] = await Promise.all([loadSessionsFromDir(dir), loadTasks(dir)]);
   return {
     initiative: slug,
     loops: deriveOpenLoopsFrom(loaded, { now, tasks }),
