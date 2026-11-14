@@ -46,7 +46,7 @@ export const RELATED_CONTEXT_CANDIDATES = 20;
 type RelatedMode = 'list' | 'context';
 
 /** Workspace classes only. Transcripts are the raw form of what the notes distil. */
-export const RELATED_DEFAULT_CLASSES = ['notes', 'sources', 'tasks', 'sessions'];
+export const RELATED_DEFAULT_CLASSES = ['notes', 'sources', 'tasks', 'sessions', 'plans'];
 
 export type RelatedHit = Pick<
   ResolvedHit,
