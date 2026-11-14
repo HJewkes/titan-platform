@@ -21,7 +21,10 @@ export interface PlanOpDeps {
   now: () => number;
 }
 
-const applied = (op: OwnerOp, ids: string[]): Outcome => ({ outcome: "plan-applied", op: op.kind, ids });
+/** The initiative an id belongs to; an id with no slash belongs to none, so it matches no initiative. */
+export const initiativeOf = (id: string): string => (id.includes("/") ? id.slice(0, id.indexOf("/")) : "");
+
+const applied =(op: OwnerOp, ids: string[]): Outcome => ({ outcome: "plan-applied", op: op.kind, ids });
 
 /** The plan store's refusals as outcomes: a missing initiative is gone, a busy lock passes, an invalid record never will. */
 async function underLock(activeRoot: string, initiative: string, fn: () => Promise<Outcome>): Promise<Outcome> {
@@ -44,6 +47,8 @@ function betProblem(op: BetSelect, id: string, bet: Bet | null): string | undefi
 /** Selects every named bet, or none: one bet missing, of another week, or dropped or done refuses the whole tap. */
 export async function selectBets(_actionId: string, { op }: OpRead, deps: PlanOpDeps): Promise<Outcome> {
   if (op.kind !== "plan-bet-select") return refused("record", `plan-bet-select cannot run a ${op.kind} op`);
+  const foreign = op.bets.find((id) => initiativeOf(id) !== op.initiative);
+  if (foreign !== undefined) return refused("mismatch", `${foreign} is not a bet of ${op.initiative}`);
   return underLock(deps.activeRoot, op.initiative, async () => {
     const bets = await Promise.all(op.bets.map((id) => readPlanRecord(deps.activeRoot, "bet", id)));
     const problem = op.bets.map((id, index) => betProblem(op, id, bets[index] ?? null)).find((each) => each !== undefined);
@@ -54,8 +59,6 @@ export async function selectBets(_actionId: string, { op }: OpRead, deps: PlanOp
     return applied(op, op.bets);
   });
 }
-
-const initiativeOf = (id: string): string => id.slice(0, id.indexOf("/"));
 
 /** Replaces the statement, the measure or both, only while the outcome still reads as the owner was shown it. */
 export async function editOutcome(_actionId: string, { op }: OpRead, deps: PlanOpDeps): Promise<Outcome> {
