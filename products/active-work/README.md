@@ -157,6 +157,7 @@ The most-used surface, grouped by purpose. Run `active-work <command> --help` fo
 | Discover | `active-work audit` | Cross-initiative health summary |
 | Discover | `active-work context graph <id> [--slug S]` | Trace every exact-ID reference to a task id, session, or loop ref |
 | Discover | `active-work context related --for <text> [--initiative S]` | Rank notes, sources, tasks and session records against a text; empty rather than failing without an index |
+| Discover | `active-work context brief --for <text> [--initiative S] [--budget-bytes N]` | Render the related-context section of a spawn brief within a UTF-8 byte budget, agent view only |
 
 ## Configuration
 
