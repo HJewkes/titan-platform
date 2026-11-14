@@ -307,11 +307,11 @@ interface FreezeRegistration {
   pr?: number | null;
 }
 
-export interface RegistrationTasks {
+interface RegistrationTasks {
   byPr(repo: RepoSlug, pr: number): FreezeRegistration | undefined;
 }
 
-export interface FreezeGuardDeps {
+interface FreezeGuardDeps {
   freezes: () => FreezeStore;
   registrations: () => RegistrationTasks;
   now?: () => number;

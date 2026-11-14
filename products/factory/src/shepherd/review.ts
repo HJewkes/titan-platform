@@ -93,14 +93,14 @@ export { BUSY_FIRST_WAIT_MS, BUSY_LONGEST_WAIT_MS, DEFAULT_BUSY_WAIT_MS, Reviewe
 export { DEFAULT_DETACH_GRACE_MS, DEFAULT_EXIT_GRACE_MS, awaitVerdict, parseAwaitVerdictInput } from "./await-verdict.js";
 export { FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS, acceptVerdict } from "@titan-design/review-panel";
 
-export type ReviewInput = z.infer<typeof ReviewInputSchema>;
+type ReviewInput = z.infer<typeof ReviewInputSchema>;
 
 /** Which reviewer a head gets, recorded first so a repeat reads the same name and `at`; only a message written after `at` can be the verdict. */
 export type ReviewIntent = z.infer<typeof ReviewIntentSchema>;
 /** `refused` is the failure class of a dispatch the broker or port refused outright, which no retry at once can fix; `fixer` is preflight's refusal. */
 type NoReview = { kind: "none"; reason: string; exhausted?: string; refused?: string; fixer?: { fingerprint: string; failure: string } };
 export type ReviewIntentResult = ({ kind: "intent" } & ReviewIntent & Partial<PanelOnPlan>) | NoReview | NotStarted;
-export type ReviewDispatchInput = z.infer<typeof ReviewDispatchInputSchema>;
+type ReviewDispatchInput = z.infer<typeof ReviewDispatchInputSchema>;
 export type ReviewDispatchResult = ({ kind: "dispatched"; agentId: string; sessionId: string; startedAt: number; codewatch?: CodewatchEvidence } & ReviewIntent & BusyWaits & { profile?: string }) | NoReview | NotStarted;
 
 /** The package's accepted verdict, plus the seat disagreement only Shepherd records. */

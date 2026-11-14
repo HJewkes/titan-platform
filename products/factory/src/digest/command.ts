@@ -34,7 +34,7 @@ export interface DigestFlags {
   full?: boolean;
 }
 
-export interface DigestDeps {
+interface DigestDeps {
   /** The factory store, read for owner friction; without it the digest leaves that section out. */
   dbPath?: string;
   exec?: Exec;
