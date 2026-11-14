@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { posix } from "node:path";
 import { z } from "zod";
-import { commandName, gitSubcommand, shellScript, shellSegments, SHELLS, substitutions, unwrap } from "./shell-words.js";
+import { commandName, gitSubcommand, shellScript, shellSegments, SHELLS, substitutions, unwrap, withoutHeredocData } from "./shell-words.js";
 
 /** Where a job may look: its own workspace and HOME. The operator's home is named so a finding says whose it was. */
 export interface AuditRoots {
@@ -94,9 +94,10 @@ function pathRule(path: string, roots: AuditRoots): AuditRule | undefined {
 type Hit = { rule: AuditRule; detail: string };
 
 function bashHits(command: string, roots: AuditRoots): Hit[] {
-  const denied = deniedIn(command);
-  const proxy = PROXY_OVERRIDES.some((pattern) => pattern.test(command));
-  const paths = wordsOf(command).flatMap((word) => {
+  const scanned = withoutHeredocData(command);
+  const denied = deniedIn(scanned);
+  const proxy = PROXY_OVERRIDES.some((pattern) => pattern.test(scanned));
+  const paths = wordsOf(scanned).flatMap((word) => {
     const path = pathOfWord(word, roots);
     const rule = path === undefined ? undefined : pathRule(path, roots);
     return rule === undefined ? [] : [{ rule, detail: `${path ?? ""} in: ${command}` }];

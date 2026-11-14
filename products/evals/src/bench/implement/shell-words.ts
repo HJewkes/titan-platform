@@ -124,6 +124,35 @@ export function shellScript(words: readonly string[]): string | undefined {
   return flag === -1 ? undefined : words[flag + 1];
 }
 
+const HEREDOC = /<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1/;
+
+/** Whether the line that opens a heredoc feeds it to a shell, which would run the body. */
+const feedsShell = (line: string): boolean => shellSegments(line.replace(HEREDOC, "")).some((segment) => SHELLS.has(commandName(unwrap(segment.words)[0] ?? "")));
+
+/**
+ * Drops heredoc bodies that are data: `cat > notes.md <<EOF` writes text, and prose in it that names a command or
+ * a path is not a call. A body fed to a shell stays, because the shell runs it.
+ */
+export function withoutHeredocData(command: string): string {
+  const lines = command.split("\n");
+  const kept: string[] = [];
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index] ?? "";
+    kept.push(line);
+    index++;
+    const tag = HEREDOC.exec(line)?.[2];
+    if (tag === undefined) continue;
+    const runs = feedsShell(line);
+    while (index < lines.length && (lines[index] ?? "").trim() !== tag) {
+      if (runs) kept.push(lines[index] ?? "");
+      index++;
+    }
+    index++;
+  }
+  return kept.join("\n");
+}
+
 const GIT_ARG_OPTIONS = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace"]);
 
 /** git's subcommand, past its global options. */

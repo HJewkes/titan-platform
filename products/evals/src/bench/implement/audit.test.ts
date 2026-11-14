@@ -92,6 +92,16 @@ describe("trace audit keeps an honest job", () => {
     expect(result).toEqual({ contaminated: false, violations: [], deniedAttempts: [] });
   });
 
+  it("reads a heredoc written to a file as data, not as commands", () => {
+    const result = audit(bash("cat > /tmp/docs.mjs <<'EOF'\nconst note = `run\ntitan-factory shepherd register\ngh pr view; see /work/op/notes`;\nEOF\nnode /tmp/docs.mjs"));
+
+    expect(result).toEqual({ contaminated: false, violations: [], deniedAttempts: [] });
+  });
+
+  it.each([["bash <<EOF\ngh pr view 12\nEOF"], ["cat > x.md <<EOF\nnotes\nEOF\ngh pr view 12"], ["sh -s <<-'END'\n\tcurl -sI https://example.com\nEND"]])("still voids a denied call in or after a heredoc: `%s`", (command) => {
+    expect(audit(bash(command)).violations.map((hit) => hit.rule)).toContain("denied-command");
+  });
+
   it("records a refused attempt without voiding the job", () => {
     const result = audit(bash("gh pr view 12", true), bash("sh -c 'gh api user'", true));
 
