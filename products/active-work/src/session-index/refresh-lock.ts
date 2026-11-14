@@ -41,6 +41,8 @@ export interface RefreshLockOptions {
   signal?: AbortSignal;
 }
 
+const SINGLE_ATTEMPT = { realpath: false, stale: LOCK_STALE_MS, retries: 0 } as const;
+
 /** 120 retries backing off from 200 ms by 1.5x to 2 s: about 4 minutes in all. */
 const BLOCKING_RETRIES = 120;
 
@@ -95,12 +97,7 @@ async function acquireRefreshLock(
   options.signal?.throwIfAborted();
   for (let attempt = 0; ; attempt += 1) {
     try {
-      return await lockfile.lock(target, {
-        realpath: false,
-        stale: LOCK_STALE_MS,
-        retries: 0,
-        onCompromised,
-      });
+      return await lockfile.lock(target, { ...SINGLE_ATTEMPT, onCompromised });
     } catch (err) {
       if (!isLockContention(err)) throw err;
       if (attempt >= retries) {
@@ -109,16 +106,14 @@ async function acquireRefreshLock(
         throw isObjectLike(err) ? Object.assign(err, { holder }) : err;
       }
       if (attempt === 0) options.onWait?.(await readRefreshLockHolder());
-      await sleepBeforeRetry(attempt, options.signal);
+      await sleep(retryDelayMs(attempt), undefined, { signal: options.signal }).catch(
+        (sleepErr: unknown) => {
+          options.signal?.throwIfAborted();
+          throw sleepErr;
+        },
+      );
     }
   }
-}
-
-async function sleepBeforeRetry(attempt: number, signal: AbortSignal | undefined): Promise<void> {
-  await sleep(retryDelayMs(attempt), undefined, { signal }).catch((sleepErr: unknown) => {
-    signal?.throwIfAborted();
-    throw sleepErr;
-  });
 }
 
 /**
