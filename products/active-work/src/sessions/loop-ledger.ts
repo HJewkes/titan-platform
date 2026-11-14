@@ -61,6 +61,7 @@ async function writeEntry(
     started: stamp,
     ended: stamp,
     track: 'adhoc',
+    ledger: true,
     body,
     ...ledger,
   });
