@@ -161,6 +161,31 @@ describe("TaskSchema", () => {
   });
 });
 
+describe("TaskSchema moved pointers", () => {
+  it("keeps moved_to and moved_from rather than stripping them", () => {
+    const task = TaskSchema.parse({ ...validBase, moved_to: "other-initiative/TP-1", moved_from: "alpha/EC-2" });
+    expect(task).toMatchObject({ moved_to: "other-initiative/TP-1", moved_from: "alpha/EC-2" });
+  });
+
+  it.each(["TP-1", "Alpha/TP-1", "alpha/tp-1", "alpha/TP-", "alpha/TP-1/x"])("rejects malformed moved_to %s", (value) => {
+    expect(TaskSchema.safeParse({ ...validBase, moved_to: value }).success).toBe(false);
+  });
+
+  it("rejects a malformed moved_from", () => {
+    expect(TaskSchema.safeParse({ ...validBase, moved_from: "TP-1" }).success).toBe(false);
+  });
+
+  it("parses a task written before the moved fields existed", () => {
+    const task = TaskSchema.parse(validBase);
+    expect(task.moved_to).toBeUndefined();
+    expect(task.moved_from).toBeUndefined();
+  });
+
+  it("accepts done_reason moved", () => {
+    expect(TaskSchema.safeParse({ ...validBase, done_reason: "moved" }).success).toBe(true);
+  });
+});
+
 describe("TaskSchema datetime-tolerant dates", () => {
   it("parses a date-only task and a datetime task", () => {
     expect(TaskSchema.safeParse(validBase).success).toBe(true);
