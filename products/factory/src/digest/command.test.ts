@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { NOW, watchRow } from "../test-support/digest.js";
+import { needsDaemon } from "../test-support/needs-daemon.js";
 import { parseSince, runDigestVerb, type FactoryCall } from "./command.js";
 import { AGENT_CHAT_FOLLOW_UPS } from "./collect.js";
 import type { Exec } from "./sources.js";
@@ -35,6 +36,26 @@ function capture(env: NodeJS.ProcessEnv) {
 }
 
 describe("runDigestVerb", () => {
+  it("leaves a withheld initiative's ask out of an agent shell's dry run and keeps it for the owner (TP-5556)", async () => {
+    const { env } = workspace();
+    const daemon = await needsDaemon();
+    const dryRun = async (shell: NodeJS.ProcessEnv): Promise<string> => {
+      const { out, io } = capture({ ...env, ...shell, AW_PORT: String(daemon.port) });
+      await runDigestVerb(io, call, { dryRun: true }, { exec: noAgentChat, now: NOW });
+      return out.join("");
+    };
+    try {
+      const agent = await dryRun({ AGENT_CHAT_NAME: "worker-1" });
+      const owner = await dryRun({});
+
+      expect(agent).not.toContain("PP-7");
+      expect(agent).toContain("AL-1");
+      expect(owner).toContain("PP-7: Choose the private storage plan");
+    } finally {
+      await daemon.close();
+    }
+  });
+
   it("writes the slot's markdown to the digest dir and the iCloud dir", async () => {
     const { root, env } = workspace();
     const { out, io } = capture(env);

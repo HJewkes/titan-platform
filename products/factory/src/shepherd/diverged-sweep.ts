@@ -131,7 +131,7 @@ function keepRestarts(services: ShepherdServices, restarted: readonly DivergedRe
 /** Runs at the head of each adoption, so a deploy that changed the call sequence strands none of the runs it parked; a failure here never keeps the adopt step from running. */
 export async function restartDivergedLogged(host: FactoryHost, services: ShepherdServices, log: Logger, closing: () => boolean = () => false): Promise<void> {
   try {
-    const { restarted, ended, closed, kept, merged, errors } = await restartDivergedRuns({ host, shepherd: services, warnings: [], format: "json" }, closing);
+    const { restarted, ended, closed, kept, merged, errors } = await restartDivergedRuns({ host, caller: "agent", shepherd: services, warnings: [], format: "json" }, closing);
     closedAtLastSweep.set(services, new Set(closed));
     keepRestarts(services, restarted);
     for (const run of restarted) log.info({ ...run }, "restarted a replay-diverged run");

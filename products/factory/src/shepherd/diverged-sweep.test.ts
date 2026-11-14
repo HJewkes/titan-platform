@@ -69,7 +69,7 @@ function deploy(dbPath: string, definition: WorkflowDefinition): Deploy {
 }
 
 const branchOf = (pr: number): string => `${BRANCH}-${pr}`;
-const ctxOf = (next: Deploy) => factoryContext(next.host, next.routes);
+const ctxOf = (next: Deploy) => factoryContext(next.host, next.routes, "agent");
 
 /** Registered runs recorded on build N, one per pull request number; nothing adopts them yet. */
 async function recorded(dbPath: string, prs: number[], base?: string): Promise<string[]> {
