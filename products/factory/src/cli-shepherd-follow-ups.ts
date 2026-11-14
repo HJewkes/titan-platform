@@ -29,7 +29,9 @@ function targetOf(ref: string, opts: FollowUpsArgs): { repo: string; pr: number 
 }
 
 async function qualified(task: string, verbs: Verbs): Promise<{ initiative: string; parent: string }> {
-  const { key: full } = await qualifyTask(task, { origin: activeWorkOrigin(verbs.io.env), activeRoot: activeWorkRoot({ env: verbs.io.env }), ...(verbs.deps.fetch && { fetch: verbs.deps.fetch }) });
+  const checked = await qualifyTask(task, { origin: activeWorkOrigin(verbs.io.env), activeRoot: activeWorkRoot({ env: verbs.io.env }), ...(verbs.deps.fetch && { fetch: verbs.deps.fetch }) });
+  if (!checked.verified) verbs.io.stderr(`warning: ${checked.warning}\n`);
+  const full = checked.key;
   const at = full.indexOf("/");
   if (at <= 0 || at === full.length - 1) throw new UsageError("--task must be <initiative>/<ID>");
   return { initiative: full.slice(0, at), parent: full.slice(at + 1) };
