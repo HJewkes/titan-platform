@@ -16,7 +16,7 @@ const INVENTORY = {
   human_only_known: true,
 };
 
-export interface NeedsDaemon {
+interface NeedsDaemon {
   port: number;
   close: () => Promise<void>;
 }
