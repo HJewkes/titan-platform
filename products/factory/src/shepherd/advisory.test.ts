@@ -342,3 +342,17 @@ describe("advisoryPort", () => {
     expect(writes).toEqual(BRANCH_WRITES.map(([name]) => name));
   });
 });
+
+describe("factory build on an advisory repo", () => {
+  it("creates its own branch and opens its PR for the owner to merge", async () => {
+    const writes: string[] = [];
+    const routes = factoryRoutesFor({ port: recordingPort(fakeGitHub(), writes), store: shepherdStoreRef(), now: () => 0, sleep, advisory: (repo) => repo === REPO });
+    const step = (match: string, input: object) => routes.find((route) => route.match === match)!.runner.run({ runId: "build-1", workflowName: "build-surface", stepId: match, iteration: 0, attempt: 1, requestKey: `build-1/${match}`, prompt: JSON.stringify(input), signal: new AbortController().signal });
+
+    const branch = await step("bs-branch", { repo: REPO, branch: "factory/slice-1", base: "main", evidenceDir: "/nowhere/{head}", cwd: "/nowhere" });
+    const pr = await step("bs-pr", { repo: REPO, branch: "factory/slice-1", base: "main", title: "Slice 1", body: "b" });
+
+    expect([branch.ok, pr.ok]).toEqual([true, true]);
+    expect(writes).toEqual(["ensureBranch", "openPr"]);
+  });
+});

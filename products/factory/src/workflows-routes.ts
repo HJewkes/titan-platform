@@ -55,7 +55,9 @@ export const SHEPHERD_MIGRATIONS: readonly Migration[] = [shepherdMigration(4), 
  * PR never reaches the port's merge, whichever workflow lands it; an unbound store refuses the merge. A shepherd-pr
  * merge then waits for its repo's train, so a held PR never holds the train while it waits, and a run gives the train
  * up before it waits on a retarget. An advisory repo's merge and update wait held, and its port refuses every write
- * to a branch, whichever route reaches it.
+ * to a branch, whichever Shepherd route reaches it. Factory build alone keeps the unguarded port: it only creates its
+ * own branch and opens a PR, which on an advisory repo is the output the owner merges by hand, and the Shepherd run it
+ * registers still holds that PR's merge.
  */
 export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
   const isAdvisory = given.advisory ?? (() => false);
@@ -85,7 +87,7 @@ export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
   const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, versions: deps.versions, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
   const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train, accountLimits, shadow.shadow, order) };
   const services: ShepherdServices = { store: deps.store, port: deps.port, heldMerge: heldCheck(deps.port, holds, guard, satisfy), seats: deps.seats ?? (() => NO_SEATS), train, freeze, snapshot: deps.snapshot, pacing: deps.pacing, now: shepherdDeps.now, prFiles: deps.prFiles, gateway: deps.gateway, ...(deps.spawnGate && { reviewSlots: deps.spawnGate.reviewSlots }), ...(deps.visualDelivery && { visualDelivery: deps.visualDelivery }), ...(deps.thawAlert && { thawAlert: deps.thawAlert }), mergeOrder: { order: () => order.get(), holds, rules: orderRules, waits: orderWaits, now: shepherdDeps.now }, ...(deps.roster && { roster: deps.roster }), ...(deps.exitNotice?.hubSeat && { hubSeat: deps.exitNotice.hubSeat }), visualThreshold: deps.visualThreshold ?? deps.review?.visualThreshold, lowTierPolicy: () => current(deps.lowTierPolicy) };
-  return Object.assign([...retryingGhServerErrors([...land, ...withMergeWake(shepherd, deps.mergeWake)], { sleep: pause, now: shepherdDeps.now }), trainLeaveRoute(train, shepherdDeps.now), ...mergeOrderRoutes({ order: () => order.get(), holds, rules: orderRules, port: deps.port, train, timing, now: shepherdDeps.now }), orderExpiryRoute({ order: () => order.get(), rules: orderRules, now: shepherdDeps.now }), redeployRoute(shepherdDeps.now, deps.redeploy), ...auditRoutes(deps.audit ?? systemAuditPorts(ownCheckout())), ...buildSurfaceRoutes(factoryBuildPorts({ ...deps, agentChatBin: shepherdDeps.agentChatBin }))], { database, shepherd: services });
+  return Object.assign([...retryingGhServerErrors([...land, ...withMergeWake(shepherd, deps.mergeWake)], { sleep: pause, now: shepherdDeps.now }), trainLeaveRoute(train, shepherdDeps.now), ...mergeOrderRoutes({ order: () => order.get(), holds, rules: orderRules, port: deps.port, train, timing, now: shepherdDeps.now }), orderExpiryRoute({ order: () => order.get(), rules: orderRules, now: shepherdDeps.now }), redeployRoute(shepherdDeps.now, deps.redeploy), ...auditRoutes(deps.audit ?? systemAuditPorts(ownCheckout())), ...buildSurfaceRoutes(factoryBuildPorts({ ...deps, port: given.port, agentChatBin: shepherdDeps.agentChatBin }))], { database, shepherd: services });
 }
 
 /** Logs a merge wait on the PR's run; a PR with no run logs nothing. */
