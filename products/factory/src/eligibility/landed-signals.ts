@@ -14,7 +14,7 @@ import { landedRuleHolds, type LandedHold, type LandedTask } from "./landed.js";
  * from the factory's own store. Read-only, like every shadow signal.
  */
 
-export interface LandedFacts {
+interface LandedFacts {
   laneTasks: readonly LandedTask[];
   mergedTasks: ReadonlySet<string>;
 }
@@ -28,7 +28,7 @@ interface LandedContext {
   limits: BackPressureLimits;
 }
 
-export type LandedRead = (query: {
+type LandedRead = (query: {
   lane: LandedContext["lane"];
   verbs: Verbs;
 }) => Promise<LandedFacts>;
@@ -59,7 +59,7 @@ async function mergedTaskKeys(
   return merged;
 }
 
-export const liveLandedFacts: LandedRead = async ({ lane, verbs }) => {
+const liveLandedFacts: LandedRead = async ({ lane, verbs }) => {
   const source = {
     origin: activeWorkOrigin(verbs.io.env),
     ...(verbs.deps.fetch && { fetch: verbs.deps.fetch }),

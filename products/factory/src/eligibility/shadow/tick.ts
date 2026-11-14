@@ -5,23 +5,13 @@ import { errorMessage } from "../../narrow.js";
 import { activeWorkOrigin } from "../../shepherd/cleanup-ports.js";
 import { isoWeek } from "../../shepherd/stats.js";
 import { readLaneTasks, readShadowEligibility } from "../active-work.js";
-import {
-  admitLane,
-  holdsFor,
-  type Admission,
-  type BackPressureLimits,
-  type LaneSignals,
-} from "../back-pressure.js";
+import { admitLane, holdsFor, type Admission, type BackPressureLimits, type LaneSignals } from "../back-pressure.js";
 import { limitsOf } from "../command.js";
 import { laneComponents } from "../lane-components.js";
 import { liveLaneSignals } from "../lane-signals.js";
 import type { Eligibility } from "../rules.js";
 import { policyFor, tickPorts, type TickPorts } from "./tick-ports.js";
-import {
-  HOLD_PROVIDERS,
-  type HoldProvider,
-  type TaskHold,
-} from "./providers.js";
+import { HOLD_PROVIDERS, type HoldProvider, type TaskHold } from "./providers.js";
 import type { LoadedRules, ShadowLane } from "./rule-file.js";
 import type { RefusedRow, ShadowRow, WouldDispatchRow } from "./row.js";
 
@@ -57,148 +47,57 @@ type LaneBase = Omit<RefusedRow, "kind" | "task" | "stage" | "codes">;
 
 type Eligible = Eligibility["eligible"][number];
 
-const mergeNumbers = (
-  all: readonly Record<string, number>[]
-): Record<string, number> =>
-  all.reduce<Record<string, number>>(
-    (merged, numbers) => ({ ...merged, ...numbers }),
-    {}
-  );
+const mergeNumbers = (all: readonly Record<string, number>[]): Record<string, number> => all.reduce<Record<string, number>>((merged, numbers) => ({ ...merged, ...numbers }), {});
 
-async function readLane(
-  lane: ShadowLane,
-  input: TickInput,
-  ports: TickPorts
-): Promise<LaneRead> {
+async function readLane(lane: ShadowLane, input: TickInput, ports: TickPorts): Promise<LaneRead> {
   const { verbs, now } = input;
-  const source = {
-    origin: activeWorkOrigin(verbs.io.env),
-    ...(verbs.deps.fetch && { fetch: verbs.deps.fetch }),
-  };
-  const scope = {
-    initiative: lane.initiative,
-    ...(lane.tag !== null && { tag: lane.tag }),
-  };
-  const query = {
-    ...scope,
-    week: isoWeek(now.getTime()),
-    today: now.toISOString().slice(0, 10),
-  };
-  const context = {
-    activeRoot: ports.activeRoot,
-    policyFor: policyFor(input.loaded.rules, query.today, ports.stoppedPrs),
-  };
-  const [{ result, planRead }, laneTasks] = await Promise.all([
-    readShadowEligibility(source, query, context),
-    readLaneTasks(source, scope),
-  ]);
+  const source = { origin: activeWorkOrigin(verbs.io.env), ...(verbs.deps.fetch && { fetch: verbs.deps.fetch }) };
+  const scope = { initiative: lane.initiative, ...(lane.tag !== null && { tag: lane.tag }) };
+  const query = { ...scope, week: isoWeek(now.getTime()), today: now.toISOString().slice(0, 10) };
+  const context = { activeRoot: ports.activeRoot, policyFor: policyFor(input.loaded.rules, query.today, ports.stoppedPrs) };
+  const [{ result, planRead }, laneTasks] = await Promise.all([readShadowEligibility(source, query, context), readLaneTasks(source, scope)]);
   const limits = limitsOf(loadConfig(configPath(verbs.io.env)));
-  const signals = await (verbs.deps.laneSignals ?? liveLaneSignals(verbs))({
-    inLane: (key) => laneTasks.keys.has(key),
-  });
-  return {
-    result,
-    admission: admitLane(signals, limits, laneComponents(scope)),
-    signals,
-    limits,
-    planRead,
-  };
+  const signals = await (verbs.deps.laneSignals ?? liveLaneSignals(verbs))({ inLane: (key) => laneTasks.keys.has(key) });
+  return { result, admission: admitLane(signals, limits, laneComponents(scope)), signals, limits, planRead };
 }
 
 /** Slots left under the lane's PR limit; a held lane has none, and an unread count reads as none. */
 function freeSlots({ admission, signals, limits }: LaneRead): number {
   if (admission.decision === "hold" || signals.openPrs === undefined) return 0;
-  return Math.max(
-    0,
-    limits.laneOpenPrs - signals.openPrs - (signals.mergedNotDeployed ?? 0)
-  );
+  return Math.max(0, limits.laneOpenPrs - signals.openPrs - (signals.mergedNotDeployed ?? 0));
 }
 
 /** A provider that cannot answer holds every eligible task, so an outage never reads as permission. */
-async function providerHolds(
-  providers: readonly HoldProvider[],
-  lane: ShadowLane,
-  input: TickInput,
-  read: LaneRead
-): Promise<TaskHold[]> {
-  const eligible = read.result.eligible;
-  const { signals, limits } = read;
-  const ctx = {
-    lane,
-    week: isoWeek(input.now.getTime()),
-    rules: input.loaded.rules,
-    eligible,
-    verbs: input.verbs,
-    now: input.now.getTime(),
-    signals,
-    limits,
-  };
+async function providerHolds(providers: readonly HoldProvider[], lane: ShadowLane, input: TickInput, read: LaneRead): Promise<TaskHold[]> {
+  const { eligible } = read.result;
+  const ctx = { lane, week: isoWeek(input.now.getTime()), rules: input.loaded.rules, eligible, verbs: input.verbs, now: input.now.getTime(), signals: read.signals, limits: read.limits };
   const holds: TaskHold[] = [];
   for (const provider of providers) {
     try {
       holds.push(...(await provider(ctx)).holds);
     } catch (error) {
-      const detail = `hold provider ${
-        provider.name || "(anonymous)"
-      }: ${errorMessage(error)}`;
-      holds.push(
-        ...eligible.map(
-          (entry): TaskHold => ({
-            task: `${lane.initiative}/${entry.task.id}`,
-            stage: "admission",
-            codes: ["signal-unreadable"],
-            details: [detail],
-          })
-        )
-      );
+      const detail = `hold provider ${provider.name || "(anonymous)"}: ${errorMessage(error)}`;
+      holds.push(...eligible.map((entry): TaskHold => ({ task: `${lane.initiative}/${entry.task.id}`, stage: "admission", codes: ["signal-unreadable"], details: [detail] })));
     }
   }
   return holds;
 }
 
-function admissionHold(
-  admission: Admission,
-  entry: Eligible,
-  key: string
-): TaskHold | undefined {
+function admissionHold(admission: Admission, entry: Eligible, key: string): TaskHold | undefined {
   const holds = holdsFor(admission, entry.task.owner_steps);
   if (holds.length === 0) return undefined;
   const numbers = mergeNumbers(holds.map((hold) => hold.numbers));
-  return {
-    task: key,
-    stage: "admission",
-    codes: [...new Set(holds.map((hold) => hold.code))],
-    details: holds.map((hold) => hold.detail),
-    numbers,
-  };
+  return { task: key, stage: "admission", codes: [...new Set(holds.map((hold) => hold.code))], details: holds.map((hold) => hold.detail), numbers };
 }
 
 /** One row per held task: the first stage that held it, with every code from every stage. */
-function heldRow(
-  base: LaneBase,
-  key: string,
-  rank: number,
-  holds: TaskHold[]
-): RefusedRow {
+function heldRow(base: LaneBase, key: string, rank: number, holds: TaskHold[]): RefusedRow {
   const details = holds.flatMap((hold) => hold.details ?? []);
   const numbers = mergeNumbers(holds.map((hold) => hold.numbers ?? {}));
-  const row: RefusedRow = {
-    ...base,
-    kind: "refused",
-    task: key,
-    stage: holds[0]!.stage,
-    rank,
-    codes: [...new Set(holds.flatMap((hold) => hold.codes))],
-  };
+  const row: RefusedRow = { ...base, kind: "refused", task: key, stage: holds[0]!.stage, rank, codes: [...new Set(holds.flatMap((hold) => hold.codes))] };
   const next = holds.find((hold) => hold.next !== undefined)?.next;
   const ask = holds.some((hold) => hold.would_ask === true);
-  return {
-    ...row,
-    ...(details.length > 0 && { details }),
-    ...(Object.keys(numbers).length > 0 && { numbers }),
-    ...(next && { next }),
-    ...(ask && { would_ask: true }),
-  };
+  return { ...row, ...(details.length > 0 && { details }), ...(Object.keys(numbers).length > 0 && { numbers }), ...(next && { next }), ...(ask && { would_ask: true }) };
 }
 
 function eligibilityRows(base: LaneBase, result: Eligibility): RefusedRow[] {
@@ -212,54 +111,18 @@ function eligibilityRows(base: LaneBase, result: Eligibility): RefusedRow[] {
   }));
 }
 
-function candidateRows(
-  base: LaneBase,
-  read: LaneRead,
-  extra: TaskHold[]
-): ShadowRow[] {
+function candidateRows(base: LaneBase, read: LaneRead, extra: TaskHold[]): ShadowRow[] {
   const free = freeSlots(read);
-  const numbers = {
-    open: read.signals.openPrs ?? 0,
-    mergedNotDeployed: read.signals.mergedNotDeployed ?? 0,
-    limit: read.limits.laneOpenPrs,
-    free,
-  };
+  const numbers = { open: read.signals.openPrs ?? 0, mergedNotDeployed: read.signals.mergedNotDeployed ?? 0, limit: read.limits.laneOpenPrs, free };
   let slot = 0;
   return read.result.eligible.map((entry, at): ShadowRow => {
     const key = `${base.lane.initiative}/${entry.task.id}`;
-    const relaxed =
-      entry.relaxed === undefined
-        ? {}
-        : { relaxed: entry.relaxed, strict_codes: entry.strictCodes ?? [] };
-    const holds = [
-      admissionHold(read.admission, entry, key),
-      ...extra.filter((hold) => hold.task === key),
-    ].filter((hold) => hold !== undefined);
-    if (holds.length > 0)
-      return { ...heldRow(base, key, at + 1, holds), ...relaxed };
-    if (slot >= free)
-      return {
-        ...base,
-        kind: "refused",
-        task: key,
-        stage: "admission",
-        rank: at + 1,
-        codes: ["lane-open-prs"],
-        numbers,
-        ...relaxed,
-      };
+    const relaxed = entry.relaxed === undefined ? {} : { relaxed: entry.relaxed, strict_codes: entry.strictCodes ?? [] };
+    const holds = [admissionHold(read.admission, entry, key), ...extra.filter((hold) => hold.task === key)].filter((hold) => hold !== undefined);
+    if (holds.length > 0) return { ...heldRow(base, key, at + 1, holds), ...relaxed };
+    if (slot >= free) return { ...base, kind: "refused", task: key, stage: "admission", rank: at + 1, codes: ["lane-open-prs"], numbers, ...relaxed };
     slot += 1;
-    const row: WouldDispatchRow = {
-      ...base,
-      kind: "would-dispatch",
-      task: key,
-      bet: entry.bet.id,
-      rank: at + 1,
-      slot,
-      free,
-      class: entry.task.class ?? null,
-      ...relaxed,
-    };
+    const row: WouldDispatchRow = { ...base, kind: "would-dispatch", task: key, bet: entry.bet.id, rank: at + 1, slot, free, class: entry.task.class ?? null, ...relaxed };
     return row;
   });
 }
@@ -267,15 +130,7 @@ function candidateRows(
 function laneHoldRow(base: LaneBase, admission: Admission): RefusedRow {
   const holds = admission.holds.filter((hold) => hold.scope === "lane");
   const numbers = mergeNumbers(holds.map((hold) => hold.numbers));
-  return {
-    ...base,
-    kind: "refused",
-    task: null,
-    stage: "admission",
-    codes: [...new Set(holds.map((hold) => hold.code))],
-    details: holds.map((hold) => hold.detail),
-    numbers,
-  };
+  return { ...base, kind: "refused", task: null, stage: "admission", codes: [...new Set(holds.map((hold) => hold.code))], details: holds.map((hold) => hold.detail), numbers };
 }
 
 interface LaneJudged {
@@ -306,90 +161,37 @@ async function readAgentLanes(ports: TickPorts): Promise<AgentLanes> {
 }
 
 const unreadRow = (base: LaneBase, detail: string): LaneJudged => {
-  const row: RefusedRow = {
-    ...base,
-    kind: "refused",
-    task: null,
-    stage: "admission",
-    codes: ["signal-unreadable"],
-    details: [detail],
-  };
+  const row: RefusedRow = { ...base, kind: "refused", task: null, stage: "admission", codes: ["signal-unreadable"], details: [detail] };
   return { rows: [row], unread: true };
 };
 
-async function laneRows(
-  lane: ShadowLane,
-  input: TickInput,
-  at: string,
-  ports: TickPorts,
-  agentLanes: AgentLanes
-): Promise<LaneJudged> {
-  const base: LaneBase = {
-    v: 1,
-    wake: input.wake,
-    at,
-    lane: { initiative: lane.initiative, tag: lane.tag },
-    week: isoWeek(input.now.getTime()),
-    basis: "selected",
-  };
-  if ("unread" in agentLanes)
-    return unreadRow(base, `active-work inventory: ${agentLanes.unread}`);
-  if (!agentLanes.read.has(lane.initiative))
-    return { rows: [ownerOnlyRow(base)], unread: false };
+async function laneRows(lane: ShadowLane, input: TickInput, at: string, ports: TickPorts, agentLanes: AgentLanes): Promise<LaneJudged> {
+  const base: LaneBase = { v: 1, wake: input.wake, at, lane: { initiative: lane.initiative, tag: lane.tag }, week: isoWeek(input.now.getTime()), basis: "selected" };
+  if ("unread" in agentLanes) return unreadRow(base, `active-work inventory: ${agentLanes.unread}`);
+  if (!agentLanes.read.has(lane.initiative)) return { rows: [ownerOnlyRow(base)], unread: false };
   let read: LaneRead;
   try {
     read = await readLane(lane, input, ports);
   } catch (error) {
     return unreadRow(base, `active-work: ${errorMessage(error)}`);
   }
-  const extra = await providerHolds(
-    input.providers ?? HOLD_PROVIDERS,
-    lane,
-    input,
-    read
-  );
-  const rows: ShadowRow[] = [
-    ...eligibilityRows(base, read.result),
-    ...candidateRows(base, read, extra),
-  ];
-  if (read.admission.decision === "hold" && read.result.eligible.length === 0)
-    rows.push(laneHoldRow(base, read.admission));
+  const extra = await providerHolds(input.providers ?? HOLD_PROVIDERS, lane, input, read);
+  const rows: ShadowRow[] = [...eligibilityRows(base, read.result), ...candidateRows(base, read, extra)];
+  if (read.admission.decision === "hold" && read.result.eligible.length === 0) rows.push(laneHoldRow(base, read.admission));
   return { rows, unread: false, planRead: read.planRead };
 }
 
-const wakePlanRead = (
-  reads: readonly LaneJudged["planRead"][]
-): { plan_read?: "rpc" | "file" } =>
-  reads.includes("file")
-    ? { plan_read: "file" }
-    : reads.includes("rpc")
-    ? { plan_read: "rpc" }
-    : {};
+const wakePlanRead = (reads: readonly LaneJudged["planRead"][]): { plan_read?: "rpc" | "file" } =>
+  reads.includes("file") ? { plan_read: "file" } : reads.includes("rpc") ? { plan_read: "rpc" } : {};
 
 /** Every row of one wake, the wake row first; reads only and writes nothing. */
 export async function shadowTick(input: TickInput): Promise<TickResult> {
   const at = input.now.toISOString();
   const { rules, hash } = input.loaded;
   const ports = tickPorts(input.verbs, input.ports);
-  const agentLanes =
-    rules.lanes.length === 0
-      ? { read: new Set<string>() }
-      : await readAgentLanes(ports);
+  const agentLanes = rules.lanes.length === 0 ? { read: new Set<string>() } : await readAgentLanes(ports);
   const judged: LaneJudged[] = [];
-  for (const lane of rules.lanes)
-    judged.push(await laneRows(lane, input, at, ports, agentLanes));
-  const wake: ShadowRow = {
-    v: 1,
-    kind: "wake",
-    wake: input.wake,
-    at,
-    build: buildSha(),
-    rule_hash: hash,
-    lanes: rules.lanes.length,
-    ...wakePlanRead(judged.map((lane) => lane.planRead)),
-  };
-  return {
-    rows: [wake, ...judged.flatMap((lane) => lane.rows)],
-    unreadLanes: judged.filter((lane) => lane.unread).length,
-  };
+  for (const lane of rules.lanes) judged.push(await laneRows(lane, input, at, ports, agentLanes));
+  const wake: ShadowRow = { v: 1, kind: "wake", wake: input.wake, at, build: buildSha(), rule_hash: hash, lanes: rules.lanes.length, ...wakePlanRead(judged.map((lane) => lane.planRead)) };
+  return { rows: [wake, ...judged.flatMap((lane) => lane.rows)], unreadLanes: judged.filter((lane) => lane.unread).length };
 }

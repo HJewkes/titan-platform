@@ -105,38 +105,19 @@ function switchOnHolds(input: LandedInput): LandedHold[] {
     }));
 }
 
+/** Keys of the agent-filed tasks created in one of the paused weeks. */
+function agentFiledIn(tasks: readonly LandedTask[], weeks: ReadonlySet<string>): Set<string> {
+  const filed = tasks.filter((task) => task.source !== undefined && AGENT_FILED.has(task.source) && weeks.has(isoWeek(Date.parse(task.created))));
+  return new Set(filed.map((task) => task.key));
+}
+
 function filingHolds(input: LandedInput): LandedHold[] {
-  const filing = filingFlow(
-    input.laneTasks,
-    input.now,
-    input.limits.inflowWeeks
-  );
+  const filing = filingFlow(input.laneTasks, input.now, input.limits.inflowWeeks);
   if (!filing.paused) return [];
-  const weeks = new Set(filing.weeks.map((week) => week.week));
-  const filedWhilePaused = new Set(
-    input.laneTasks
-      .filter(
-        (task) =>
-          task.source !== undefined &&
-          AGENT_FILED.has(task.source) &&
-          weeks.has(isoWeek(Date.parse(task.created)))
-      )
-      .map((task) => task.key)
-  );
+  const filed = agentFiledIn(input.laneTasks, new Set(filing.weeks.map((week) => week.week)));
   const detail = `filing is paused: inflow exceeded outflow in each of the last ${input.limits.inflowWeeks} weeks, and this agent-filed task was created in one of them`;
-  return input.eligible.flatMap((entry) => {
-    const task = `${input.initiative}/${entry.task.id}`;
-    return filedWhilePaused.has(task)
-      ? [
-          {
-            task,
-            stage: "admission" as const,
-            codes: ["filing-paused" as const],
-            details: [detail],
-          },
-        ]
-      : [];
-  });
+  const keys = input.eligible.map((entry) => `${input.initiative}/${entry.task.id}`);
+  return keys.filter((task) => filed.has(task)).map((task) => ({ task, stage: "admission", codes: ["filing-paused"], details: [detail] }));
 }
 
 export function landedRuleHolds(input: LandedInput): LandedHold[] {

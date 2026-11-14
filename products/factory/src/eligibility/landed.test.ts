@@ -1,3 +1,5 @@
+import { partialFake } from "@titan-design/test-kit";
+import type { Verbs } from "../cli-types.js";
 import { TaskSchema } from "@titan-design/pm";
 import { describe, expect, it } from "vitest";
 import type { LaneSignals } from "./back-pressure.js";
@@ -189,7 +191,7 @@ describe("filing-paused", () => {
 });
 
 describe("landed provider", () => {
-  const verbs = {} as never;
+  const verbs = partialFake<Verbs>({});
   const lane = { initiative: "alpha", tag: null };
 
   it("holds through the read port and reads nothing for an empty lane", async () => {

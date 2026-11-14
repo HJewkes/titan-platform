@@ -30,9 +30,7 @@ export interface TaskHold {
   would_ask?: true;
 }
 
-export type HoldProvider = (
-  ctx: ProviderContext
-) => Promise<{ holds: TaskHold[] }>;
+export type HoldProvider = (ctx: ProviderContext) => Promise<{ holds: TaskHold[] }>;
 
 /** Run in order after the lane's admission; each later slice appends one entry here and touches nothing else. */
 export const HOLD_PROVIDERS: readonly HoldProvider[] = [stopHolds, landedHolds];
