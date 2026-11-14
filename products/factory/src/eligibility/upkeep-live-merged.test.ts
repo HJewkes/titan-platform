@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { partialFake } from "@titan-design/test-kit";
 import type { WorkflowRun } from "@titan-design/workflow";
 import { WorkflowRunStore } from "@titan-design/workflow";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Verbs } from "../cli-types.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { ShepherdStore } from "../shepherd/store.js";
@@ -21,7 +21,16 @@ const REPO = "acme/app";
 const POLICY = { merge: "auto", mergeMethod: "squash", fixer: false, seat: "synthetic-seat" } as const;
 
 const hosts: FactoryHost[] = [];
-afterEach(() => hosts.splice(0).forEach((host) => host.close()));
+// upkeepCapHolds reads the wall clock for its window, so the date is pinned to NOW.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date(NOW));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  hosts.splice(0).forEach((host) => host.close());
+});
 
 function runOf(id: string, state: { merged: boolean; at: string }): WorkflowRun {
   const stepResults: WorkflowRun["stepResults"] = state.merged
