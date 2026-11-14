@@ -43,7 +43,7 @@ async function readTask(activeRoot: string, slug: string, key: string): Promise<
 
 /** The named initiative first, so a key two initiatives share resolves to the caller's. */
 async function shownSlugs(activeRoot: string, shown: Shown, initiative?: string): Promise<string[]> {
-  const slugs = await listShownSlugs(activeRoot, shown).catch(() => []);
+  const slugs = await listShownSlugs(activeRoot, shown).catch((): string[] => []);
   if (initiative === undefined || !slugs.includes(initiative)) return slugs;
   return [initiative, ...slugs.filter((slug) => slug !== initiative)];
 }
