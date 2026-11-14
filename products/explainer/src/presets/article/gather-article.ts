@@ -41,7 +41,7 @@ function figureFact(figure: ExtractedFigure, label: string, ref: string): Articl
   return ArticleFactSchema.parse({ id: `figure/${figure.id}`, kind: "figure", text: figure.caption, figure: figure.data, source: { label, ref: `${ref}:${figure.line}` } });
 }
 
-/** The validateDecisions pattern: every proposed claim is checked against the text, and a failing one is kept as a rejection with its reason. */
+/** Every proposed claim is checked against the text, and a failing one is kept as a rejection with its reason. */
 export function checkClaims(claims: readonly unknown[], text: string, maxWords = QUOTE_MAX_WORDS): { accepted: ArticleClaim[]; rejected: RejectedClaim[] } {
   const accepted: ArticleClaim[] = [];
   const rejected: RejectedClaim[] = [];
