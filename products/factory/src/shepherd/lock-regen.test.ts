@@ -49,10 +49,10 @@ function fakeCache(fake: FakeGitHub, conflicted: readonly string[], regenChanged
 }
 
 /** A dirty PR that changed the lock; a fixer wake pushes a clean head, so either path ends at a mergeable head. */
-function lockConflictWorld(conflicted: readonly string[], regen: ClosureRegen, changed = CLOSURE_LOCK_PATH, regenChanged = [CLOSURE_LOCK_PATH]) {
+function lockConflictWorld(conflicted: readonly string[], regen: ClosureRegen, changed = CLOSURE_LOCK_PATH, regenChanged = [CLOSURE_LOCK_PATH], headRef = "topic-1") {
   const fake = fakeGitHub({ baseSha: TIP });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
-  fake.addPr({ headSha: H1, headRepo: REPO, mergeableState: "dirty" });
+  fake.addPr({ headSha: H1, headRepo: REPO, headRef, mergeableState: "dirty" });
   fake.prFiles.set(1, [{ path: changed, status: "modified" }]);
   const cache = fakeCache(fake, conflicted, regenChanged);
   const wakes: WakeRequest[] = [];
@@ -127,6 +127,17 @@ describe("Shepherd regenerates closure.lock.json when it is the only conflict (T
     expect(world.wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["conflict", H1]]);
     expect(world.pushes).toEqual([]);
     expect(regenOutputs(world)).toEqual([expect.objectContaining({ outcome: "declined", reason: "the regenerated tree changes more than closure.lock.json" })]);
+  });
+
+  it("never pushes to the default branch when it is the PR's head branch", async () => {
+    const regen = vi.fn<ClosureRegen>(async () => REGEN_TREE);
+
+    const world = lockConflictWorld([CLOSURE_LOCK_PATH], regen, CLOSURE_LOCK_PATH, [CLOSURE_LOCK_PATH], "main");
+
+    await vi.waitFor(() => expect(atGate(world)).toMatch(/^approve-merge/));
+    expect(regen).not.toHaveBeenCalled();
+    expect(world.pushes).toEqual([]);
+    expect(regenOutputs(world)).toEqual([expect.objectContaining({ outcome: "declined", reason: "the head branch is the default branch" })]);
   });
 
   it("leaves a PR that never changed the lock to the fixer without reading the git cache", async () => {

@@ -60,11 +60,15 @@ const failureReason = (error: unknown): string => (error instanceof ClosureRegen
 const declined = (reason: string, extra: Partial<LockRegenResult> = {}): LockRegenResult => ({ outcome: "declined", reason, ...extra });
 const headRef = (remote: Remote): string => `refs/heads/${remote.pr.headRef}`;
 
-/** Why the PR's branch is not Shepherd's to push to now, or undefined when it is. */
-function prMiss(pr: PullRequest, input: LockRegenInput): string | undefined {
+/**
+ * Why the PR's branch is not Shepherd's to push to now, or undefined when it is. Every field here is the PR's own, so
+ * each is held to a source the PR does not control: the requested head, the repo, and its default branch from GitHub.
+ */
+function prMiss(pr: PullRequest, input: LockRegenInput, defaultBranch: string): string | undefined {
   if (pr.state !== "open") return "the pull request is not open";
   if (pr.headSha !== input.headSha) return `the head is ${pr.headSha}, not ${input.headSha}`;
   if (pr.headRepo?.toLowerCase() !== input.repo.toLowerCase()) return "the head is on a fork";
+  if (pr.headRef.toLowerCase() === defaultBranch.toLowerCase()) return "the head branch is the default branch";
   return BranchName.safeParse(pr.headRef).success ? undefined : "the head branch name is not a plain branch name";
 }
 
@@ -108,13 +112,13 @@ async function mergeAndPush(remote: Remote, regen: ClosureRegen, signal?: AbortS
   return refused === undefined ? { outcome: "pushed", reason: `merged ${pr.baseRef} at ${tip} and regenerated closure.lock.json`, newHead: commit, ...facts } : declined(refused, facts);
 }
 
-/** A PR that never touched the lock cannot conflict on it, so only such a PR reaches the git cache. */
+/** A PR that never touched the lock cannot conflict on it, so only such a PR reaches the git cache. A failed read declines. */
 async function attempt(deps: LockRegenDeps, input: LockRegenInput, signal?: AbortSignal): Promise<LockRegenResult> {
   if (deps.advisory?.(input.repo)) return declined(`${input.repo} is advisory`);
   const files = await deps.port.listPrFiles(input.repo, input.pr);
   if (!files.some((file) => file.path === CLOSURE_LOCK_PATH)) return declined("the pull request does not change closure.lock.json");
-  const pr = await deps.port.getPr(input.repo, input.pr);
-  const miss = prMiss(pr, input);
+  const [pr, defaultBranch] = await Promise.all([deps.port.getPr(input.repo, input.pr), deps.port.defaultBranch(input.repo)]);
+  const miss = prMiss(pr, input, defaultBranch);
   if (miss !== undefined) return declined(miss);
   const remote: Remote = { ...cacheFor(input.repo, { ports: deps.ports, ...(deps.remote && { remote: deps.remote }) }), input, pr };
   return serialized(remote.dir, () => mergeAndPush(remote, deps.regen, signal));
