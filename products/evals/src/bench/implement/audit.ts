@@ -8,6 +8,8 @@ export interface AuditRoots {
   workspace: string;
   jobHome: string;
   operatorHome: string;
+  /** Dirs the harness itself puts on the job's PATH (its command shims); reading them reaches no operator state. */
+  toolDirs?: readonly string[];
 }
 
 type AuditRule = "denied-command" | "proxy-override" | "operator-path" | "outside-path";
@@ -40,7 +42,11 @@ const EXACT_ALLOWED = new Set(["/dev/null"]);
 /** A word such as sed's `/start/,/end/p` starts with `/` too; only a top-level dir that exists makes it a path. */
 const TOP_LEVEL_DIRS = ["bin", "boot", "dev", "etc", "home", "lib", "lib64", "media", "mnt", "opt", "proc", "root", "run", "sbin", "srv", "sys", "tmp", "usr", "var", "Users", "Volumes", "private", "nix", "snap", "work"];
 
+/** `command -v gh` asks whether a name resolves and runs nothing. */
+const isLookup = (words: readonly string[]): boolean => commandName(words[0] ?? "") === "command" && /^-[vV]$/.test(words[1] ?? "");
+
 function deniedCommand(words: readonly string[], depth: number): string | undefined {
+  if (isLookup(words)) return undefined;
   const command = unwrap(words);
   const name = commandName(command[0] ?? "");
   if (SHELLS.has(name) || name === "eval") {
@@ -87,7 +93,7 @@ function pathOfWord(word: string, roots: AuditRoots): string | undefined {
 const within = (path: string, root: string): boolean => path === root || path.startsWith(`${root.replace(/\/+$/, "")}/`);
 
 function pathRule(path: string, roots: AuditRoots): AuditRule | undefined {
-  if (EXACT_ALLOWED.has(path) || [roots.workspace, roots.jobHome, ...SYSTEM_ROOTS].some((root) => within(path, root))) return undefined;
+  if (EXACT_ALLOWED.has(path) || [roots.workspace, roots.jobHome, ...(roots.toolDirs ?? []), ...SYSTEM_ROOTS].some((root) => within(path, root))) return undefined;
   return within(path, roots.operatorHome) ? "operator-path" : "outside-path";
 }
 

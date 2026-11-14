@@ -148,7 +148,7 @@ async function scoreJob(state: TrackState, job: JobRow, benchCase: ImplementCase
   const { options } = state;
   const message = existsSync(job.transcript) ? finalMessage(readFileSync(job.transcript, "utf8")) : undefined;
   saveArtifact(options.runDir, `${job.sessionId}.md`, message ?? "");
-  const auditRoots = { workspace: prepared.cwd, jobHome: join(dirname(prepared.cwd), "home"), operatorHome: options.operatorHome ?? homedir() };
+  const auditRoots = { workspace: prepared.cwd, jobHome: join(dirname(prepared.cwd), "home"), operatorHome: options.operatorHome ?? homedir(), toolDirs: [join(options.runDir, "bin")] };
   const audit = auditJob(job.transcript, auditRoots);
   if (audit?.contaminated === true) return { result: { audit } satisfies ImplementScore, outcome: "contaminated" };
   const rootSha = state.roots.get(prepared.cwd);

@@ -98,6 +98,20 @@ describe("trace audit keeps an honest job", () => {
     expect(result).toEqual({ contaminated: false, violations: [], deniedAttempts: [] });
   });
 
+  it("allows a name lookup of a denied tool and a read of the harness's own shim dir", () => {
+    const shimRoots = { ...roots, toolDirs: ["/work/op/run/bin"] };
+    const result = auditTranscript(transcript([bash("(command -v gh || echo 'gh: not installed'); cat /work/op/run/bin/timeout | head")]), shimRoots);
+
+    expect(result).toEqual({ contaminated: false, violations: [], deniedAttempts: [] });
+  });
+
+  it("still voids a wrapped run of a denied tool and a read beside the shim dir", () => {
+    const shimRoots = { ...roots, toolDirs: ["/work/op/run/bin"] };
+    const result = auditTranscript(transcript([bash("command gh pr view 12"), bash("ls /work/op/run")]), shimRoots);
+
+    expect(result.violations.map((hit) => hit.rule)).toEqual(["denied-command", "operator-path"]);
+  });
+
   it.each([["bash <<EOF\ngh pr view 12\nEOF"], ["cat > x.md <<EOF\nnotes\nEOF\ngh pr view 12"], ["sh -s <<-'END'\n\tcurl -sI https://example.com\nEND"]])("still voids a denied call in or after a heredoc: `%s`", (command) => {
     expect(audit(bash(command)).violations.map((hit) => hit.rule)).toContain("denied-command");
   });
