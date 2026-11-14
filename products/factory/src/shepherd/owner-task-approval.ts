@@ -24,3 +24,11 @@ export function ownerTaskApproval(source: TaskApprovalSource, taskKey: string, d
   const approval = latestTaskApproval(source, taskKey);
   return approval?.scope.doneWhen === collapsedDoneWhen(doneWhen) ? approval : undefined;
 }
+
+/**
+ * `latestTaskApproval` for the visual sign-off flag, which only adds an owner gate, so a stale approval asks the owner more,
+ * never less. A run registered under a key that is not `<initiative>/<ID>` has no task approval, so it reads as none.
+ */
+export function latestOwnerTaskApproval(source: TaskApprovalSource, taskKey: string): TaskApproval | undefined {
+  return TaskKeySchema.safeParse(taskKey).success ? latestTaskApproval(source, taskKey) : undefined;
+}
