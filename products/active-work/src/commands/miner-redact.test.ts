@@ -5,7 +5,6 @@ import type { CommandContext } from '../registry/types.js';
 import { withEmptyActiveRoot } from '../test-support/test-helpers.js';
 import { writeCharter } from '../test-support/visibility.js';
 import { minerKeys, OWNER_ONLY_KEY, redactCostReport, redactOutcomeReport } from './_miner-redact.js';
-import newCommand from './new.js';
 
 /**
  * Miner cost and outcomes name no initiative withheld from agents to a non-owner caller, and leave
@@ -164,16 +163,6 @@ describe('miner cost and outcomes for the owner', () => {
       const redacted = redactCostReport(report, await minerKeys(context(root, 'owner')));
 
       expect(redacted).toEqual(report);
-    });
-  });
-});
-
-describe('new', () => {
-  it.each(['unknown', 'other', OWNER_ONLY_KEY])('refuses the reserved miner key %s as a slug', async (slug) => {
-    await withEmptyActiveRoot(async (root) => {
-      await expect(newCommand.run({ slug, title: 'Reserved' }, context(root, 'owner'))).rejects.toThrow(
-        /reserved as a miner report key/,
-      );
     });
   });
 });

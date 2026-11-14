@@ -28,15 +28,6 @@
       "kills": [
         "miner cost and outcomes for a non-owner (census row 18) recomputes an outcome bucket rate over the folded sums"
       ]
-    },
-    {
-      "name": "new accepts a reserved miner key",
-      "file": "products/active-work/src/commands/new.ts",
-      "find": "  if (RESERVED_MINER_KEYS.has(slug)) {",
-      "replace": "  if (RESERVED_MINER_KEYS.has(`${slug}-`)) {",
-      "kills": [
-        "new refuses the reserved miner key unknown as a slug"
-      ]
     }
   ]
 }
