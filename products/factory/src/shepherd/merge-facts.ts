@@ -370,16 +370,16 @@ export async function mergeEvidence(
   const visual = { ...(await visualDeltaOf(port, input, observed, reads.threshold)), ...tier, ...visualGateField(reads.visualGate) };
   const decidable: DecidableEvidence = { head: input.head, merge, record: input, mergeableState, ...unknown, ...ciPolicy, ...visual, ...attest, ...oldPath, ...grantWithheldField(input) };
   const ownerTier = ownerTierStamp(reads.ownerTier, decidable);
-  const ownerValidate = await ownerValidateOf(reads, kind ?? {});
-  const decision = decideAutoMerge(input.head, { ...decidable, ...ownerTier, ...ownerValidate }, input.visualPaths, input.visualBaselines);
+  const stamps = { ...ownerTier, ...(await ownerValidateOf(reads, kind ?? {})) };
+  const decision = decideAutoMerge(input.head, { ...decidable, ...stamps }, input.visualPaths, input.visualBaselines);
   const visualPaths = input.visualPaths && { visualPaths: input.visualPaths };
   const ownerHold = kind?.ownerHold ?? kind?.unread;
   const riskRead = { paths: merge.changedPaths, changedLines: observed.changedLines, unread: changedFilesUnread, ...ciPolicy, ...visualPaths, ownerHold, visualGate: reads.visualGate };
   const risk = riskFactsOf(riskRead);
   const lowTier = risk.touches.includes("policy") ? { lowTier: lowTierPolicyTouch(riskRead) } : undefined;
   const visualChanged = visualChangedField(reads.visualGate, merge.changedPaths, input.visualPaths);
-  const tiers = { riskTier: riskTier(risk), ...lowTier, ...ownerTier, ...ownerValidate };
+  const tiers = { riskTier: riskTier(risk), ...lowTier, ...stamps };
   const record = evidenceRecord(input, observed, decision, { ...ciPolicy, ...tiers, ...visual, ...visualChanged, ...(judged && { attest: judged }), ...oldPath });
   const comment = await port.upsertComment(input.repo, input.pr, evidenceMarker(input.head), evidenceComment(record));
-  return { head: input.head, merge, record, mergeableState, ...unknown, ...ciPolicy, ...visual, ...attest, ...oldPath, ...ownerTier, ...ownerValidate, ...grantWithheldField(input), commentId: comment.id };
+  return { head: input.head, merge, record, mergeableState, ...unknown, ...ciPolicy, ...visual, ...attest, ...oldPath, ...stamps, ...grantWithheldField(input), commentId: comment.id };
 }

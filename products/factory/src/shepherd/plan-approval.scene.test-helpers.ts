@@ -80,8 +80,15 @@ export interface Row {
 
 export type FakeGitHub = ReturnType<typeof fakeGitHub>;
 
+/** The row's `shepherd.gateReset` modes as the routes take them; an unset ownerTier stands for the config reader's shadow. */
+const gateResetModes = ({ lowTier, ownerTier, ownerValidate }: Pick<Row, "lowTier" | "ownerTier" | "ownerValidate">) => ({
+  ...(lowTier && { lowTierPolicy: lowTier }),
+  ownerTier: ownerTier ?? "shadow",
+  ...(ownerValidate && { ownerValidate }),
+});
+
 /** One shepherd-pr run of the PR under an auto policy, reviewed MERGE with green checks, after `seed` sets the files and the row's approval is written. */
-export function plannedRun({ files, policy, reviewerLines, approve, wire = (each) => each, seatReleased, held, roles, lowTier, ownerTier, ownerValidate, tasks }: Row, seed: (fake: FakeGitHub) => void) {
+export function plannedRun({ files, policy, reviewerLines, approve, wire = (each) => each, seatReleased, held, roles, ...modes }: Row, seed: (fake: FakeGitHub) => void) {
   const fake = fakeGitHub();
   fake.addPr({ number: PR, headSha: HEAD, mergeSha: fakeSha("planned-merge") });
   fake.setRuns(HEAD, [successRun("validate", 1), successRun("dag-check", 2)]);
@@ -94,9 +101,8 @@ export function plannedRun({ files, policy, reviewerLines, approve, wire = (each
     signal.throwIfAborted();
     await new Promise<void>((resolve) => setImmediate(resolve));
   };
-  const review = { ...mergingReviewers(() => clock, reviewerLines), timeoutMs: 5 * MINUTE, ...(roles && { roles }), ...(tasks && { ownerValidateTasks: tasks }) };
-  const modes = { ...(lowTier && { lowTierPolicy: lowTier }), ownerTier: ownerTier ?? "shadow", ...(ownerValidate && { ownerValidate }) };
-  const routes = factoryRoutesFor({ port: githubPort(wire(fake.wire)), store, now: () => clock, sleep: tick, review, ...modes });
+  const review = { ...mergingReviewers(() => clock, reviewerLines), timeoutMs: 5 * MINUTE, ...(roles && { roles }), ...(modes.tasks && { ownerValidateTasks: modes.tasks }) };
+  const routes = factoryRoutesFor({ port: githubPort(wire(fake.wire)), store, now: () => clock, sleep: tick, review, ...gateResetModes(modes) });
   const workflow = shepherdPrWorkflow({ review: reviewPhase, wake: async () => ({ kind: "unhandled", reason: "no fixer here" }) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [workflow], routes, gatePollMs: 5 });
   // Per test: under isolate:false this module loads once per worker, so a top-level afterEach would close only the first importing file's hosts.

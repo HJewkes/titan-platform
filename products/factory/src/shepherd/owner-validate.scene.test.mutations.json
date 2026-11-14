@@ -22,8 +22,8 @@
     {
       "name": "the evidence step stamps no task read",
       "file": "products/factory/src/shepherd/merge-facts.ts",
-      "find": "const ownerValidate = await ownerValidateOf(reads, kind ?? {});",
-      "replace": "const ownerValidate = {};",
+      "find": "const stamps = { ...ownerTier, ...(await ownerValidateOf(reads, kind ?? {})) };",
+      "replace": "const stamps = { ...ownerTier };",
       "kills": [
         "under ownerValidate on a reviewed green PR of an owner-validate task with no approval raises approve-merge on owner-validate"
       ]
