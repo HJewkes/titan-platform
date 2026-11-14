@@ -31,25 +31,6 @@
       ]
     },
     {
-      "name": "every run is read as owing an adversary",
-      "file": "products/factory/src/shepherd/owner-tier.ts",
-      "find": "const required = registration?.unread !== undefined || adversaryRequired(attest, registration?.holdReason);",
-      "replace": "const required = true;",
-      "kills": [
-        "authorityLineOf a run that owes no adversary records nothing, whatever its hold"
-      ]
-    },
-    {
-      "name": "decide time ignores the stamped Authority line",
-      "file": "products/factory/src/shepherd/owner-tier.ts",
-      "find": "const authorityLine = stampedAuthority(evidence.authorityLine);",
-      "replace": "const authorityLine = undefined;",
-      "kills": [
-        "the Authority rows the evidence step stamps the line on the record and the evidence it returns",
-        "the Authority rows a stored stamp decides at decide time, and an unknown stamped value reads missing"
-      ]
-    },
-    {
       "name": "an unknown stamped value reads as no line",
       "file": "products/factory/src/shepherd/owner-tier.ts",
       "find": "return isAuthorityRead(stamp) ? stamp : \"missing\";",

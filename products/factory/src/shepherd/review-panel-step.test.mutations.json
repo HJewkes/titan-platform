@@ -14,8 +14,8 @@
     {
       "name": "panelMerge drops a member's Attests tokens",
       "file": "products/factory/src/shepherd/review-panel-step.ts",
-      "find": "...(profile !== undefined && { profile }), ...(attests && { attests }) }];",
-      "replace": "...(profile !== undefined && { profile }) }];",
+      "find": "...(profile !== undefined && { profile }), ...(attests && { attests }), ...(authority && { authority }) }];",
+      "replace": "...(profile !== undefined && { profile }), ...(authority && { authority }) }];",
       "kills": [
         "the sh-review-panel step records the adversary member's Attests tokens on its MERGE, so the merge guard can judge them"
       ]
