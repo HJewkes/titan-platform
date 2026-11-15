@@ -19,8 +19,9 @@ not mean retrieval surfaced everything the agent should have known.
 
 ```sh
 retrieval-eval mine --out pairs.jsonl            # query/label pairs, both arms, to JSONL
-retrieval-eval run pairs.jsonl                   # score every candidate and query variant
+retrieval-eval run pairs.jsonl                   # score every candidate and query variant (downloads bge-small)
 retrieval-eval run pairs.jsonl --embedder ollama # hybrid over Ollama nomic-embed-text instead of hash
+retrieval-eval run pairs.jsonl --embedder local  # hybrid-fts-vector over local bge-small instead of hash
 retrieval-eval uptake --since 2026-09-01         # recall-tool calls vs filesystem search
 retrieval-eval served --since 2026-09-16         # what rendered blocks served, and whether it was used
 ```
@@ -77,9 +78,15 @@ activity in an earlier session, so a re-run over a closed window gives the same 
 | `active-work-search` | The shipped per-class RRF search, as a subprocess against the installed binary |
 | `notes-fts` | The notes-only span search the bootstrap runs, mirroring `rank-notes.ts` |
 | `hybrid-fts-vector` | `notes-fts` fused by RRF with a `HashEmbedder` vector index |
+| `hybrid-bge-small` | `notes-fts` fused by RRF (k=60) with a local `Xenova/bge-small-en-v1.5` vector index |
 
 `hybrid-fts-vector` runs with no model and no network by default. `--embedder ollama` swaps
 in Ollama's `nomic-embed-text` at `127.0.0.1:11434`; it fails if Ollama is not running.
+`--embedder local` swaps in the same bge-small model that `hybrid-bge-small` uses.
+
+`hybrid-bge-small` is in the default `--candidates` list, so a plain `run` downloads the model
+from Hugging Face on first use and embeds every note on the CPU before the first query. For an
+offline run, pass `--candidates date-order-notes,active-work-search,notes-fts,hybrid-fts-vector`.
 
 ## Query derivation
 

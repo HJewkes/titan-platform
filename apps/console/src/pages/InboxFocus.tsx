@@ -12,6 +12,9 @@ export const InboxFocusProvider = InboxFocusContext.Provider;
 
 export const useIsFocused = (itemId: string): boolean => useContext(InboxFocusContext) === itemId;
 
+/** The id the page was linked to, if any. */
+export const useFocusId = (): string | undefined => useContext(InboxFocusContext);
+
 /** Whether the linked item is one of `items`, so a section holding it opens without a tap. */
 export const holdsFocus = (items: readonly { id: string }[], focusId: string | undefined): boolean => focusId !== undefined && items.some((item) => item.id === focusId);
 

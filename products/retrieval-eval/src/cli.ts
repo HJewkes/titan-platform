@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { activeWorkGraphPath, activeWorkRoot, appDirs, type PathOptions } from "@titan-design/app-paths";
-import { instantiateEmbedder } from "@titan-design/embed";
+import { instantiateEmbedder, LocalEmbedder, type Embedder } from "@titan-design/embed";
 import { Command } from "commander";
 import { activeWorkSearch } from "./candidates/active-work-search.js";
 import type { Candidate } from "./candidates/candidate.js";
@@ -91,18 +91,26 @@ async function buildCandidates(names: readonly string[], common: CommonOptions):
   if (names.includes("notes-fts")) candidates.push(notesFts({ graphPath: common.graph, activeRoot: common.activeRoot }));
   if (names.includes("hybrid-fts-vector")) {
     const lexical = notesFts({ graphPath: common.graph, activeRoot: common.activeRoot });
-    const embedder = hybridEmbedder(common.embedder);
+    const embedder = hybridEmbedder(parseChoice("--embedder", common.embedder, EMBEDDERS));
     candidates.push(await hybridVector({ activeRoot: common.activeRoot, lexical, embedder }));
+  }
+  if (names.includes("hybrid-bge-small")) {
+    const lexical = notesFts({ graphPath: common.graph, activeRoot: common.activeRoot });
+    const embedder = hybridEmbedder("local");
+    candidates.push(await hybridVector({ activeRoot: common.activeRoot, lexical, embedder, name: "hybrid-bge-small" }));
   }
   return candidates;
 }
 
-function hybridEmbedder(backend: string) {
-  if (backend === "hash" || backend === "ollama") return instantiateEmbedder({ backend });
-  throw new Error(`--embedder must be hash or ollama, got ${backend}`);
+const EMBEDDERS = ["hash", "ollama", "local"] as const;
+const BGE_SMALL_MODEL = "Xenova/bge-small-en-v1.5";
+
+function hybridEmbedder(backend: (typeof EMBEDDERS)[number]): Embedder {
+  if (backend === "local") return new LocalEmbedder({ model: BGE_SMALL_MODEL });
+  return instantiateEmbedder({ backend });
 }
 
-const ALL_CANDIDATES = ["date-order-notes", "active-work-search", "notes-fts", "hybrid-fts-vector"] as const;
+const ALL_CANDIDATES = ["date-order-notes", "active-work-search", "notes-fts", "hybrid-fts-vector", "hybrid-bge-small"] as const;
 
 function loadPairs(target: string): { pairs: EvalPair[]; stamp?: SetStamp } {
   if (isSetDir(target)) return loadSet(target);
@@ -139,13 +147,14 @@ function runCommand(paths: PathOptions): Command {
     .argument("<pairs>", "JSONL produced by `mine`, or a directory written by `freeze`")
     .option("--candidates <list>", "comma-separated", ALL_CANDIDATES.join(","))
     .option("--variants <list>", "comma-separated query derivations", QUERY_VARIANTS.join(","))
-    .option("--embedder <backend>", "hybrid-fts-vector's embedder: hash | ollama", "hash")
+    .option("--embedder <backend>", "hybrid-fts-vector's embedder: hash | ollama | local", "hash")
     .option("--json", "emit rows as JSON instead of a table")
     .option("--active-root <dir>", "active-work root", activeWorkRoot(paths))
     .option("--graph <file>", "session graph, read-only", activeWorkGraphPath(paths))
     .action(async (pairsFile, options) => {
       const names = parseChoices("--candidates", String(options.candidates), ALL_CANDIDATES);
       const variants = parseChoices("--variants", String(options.variants), QUERY_VARIANTS);
+      parseChoice("--embedder", String(options.embedder), EMBEDDERS);
       const { pairs, stamp } = loadPairs(pairsFile);
       const candidates = await buildCandidates(names, options);
       try {
