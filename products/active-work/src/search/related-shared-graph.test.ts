@@ -55,7 +55,8 @@ describe('relatedContext with a passed graph', () => {
         dbPath: path.join(dir, 'absent.sqlite3'),
       });
 
-      expect(result.degraded).toEqual([]);
+      // The fixture has no decision ledger, so only that source may degrade; the graph must not.
+      expect(result.degraded.filter((d) => d.source !== 'decisions')).toEqual([]);
       expect(result.hits.length).toBeGreaterThan(0);
     } finally {
       graph.db.close();
