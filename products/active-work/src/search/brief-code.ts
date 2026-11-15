@@ -57,6 +57,8 @@ export interface CodeDeps {
 
 export interface BriefCode {
   lines: string[];
+  /** The file each line names, in line order. */
+  refs: string[];
   degraded: RelatedDegradation[];
 }
 
@@ -156,18 +158,21 @@ async function gather(files: readonly string[], deps: CodeDeps): Promise<BriefCo
   );
   const neighbours = answers.flatMap((answer, i) => (typeof answer === 'string' ? (fallback[i] ?? []) : answer));
   const named = new Set(files);
-  const lines = [...new Set(neighbours.filter((entry) => !named.has(entry.path)).map(line))].slice(0, CODE_LINES);
-  return { lines, degraded: misses.length === 0 ? [] : [noSnapshot(misses[0] ?? '')] };
+  const byLine = new Map(neighbours.filter((entry) => !named.has(entry.path)).map((entry) => [line(entry), entry.path]));
+  const shown = [...byLine].slice(0, CODE_LINES);
+  const lines = shown.map(([text]) => text);
+  const refs = shown.map(([, file]) => file);
+  return { lines, refs, degraded: misses.length === 0 ? [] : [noSnapshot(misses[0] ?? '')] };
 }
 
 /** Never rejects and never runs past {@link CODE_DEADLINE_MS} on the injected clock. */
 export function briefCode(files: readonly string[], deps: CodeDeps = {}): Promise<BriefCode> {
-  if (files.length === 0) return Promise.resolve({ lines: [], degraded: [] });
+  if (files.length === 0) return Promise.resolve({ lines: [], refs: [], degraded: [] });
   return withDeadline(
     () => gather(files, deps),
     CODE_DEADLINE_MS,
     deps.sleep ?? defaultSleep,
-    () => ({ lines: [], degraded: [{ source: 'code', reason: 'timeout', message: `over ${CODE_DEADLINE_MS} ms` }] }),
+    () => ({ lines: [], refs: [], degraded: [{ source: 'code', reason: 'timeout', message: `over ${CODE_DEADLINE_MS} ms` }] }),
   );
 }
 
@@ -185,5 +190,6 @@ export function withCode(block: BriefBlock, code: BriefCode, budgetBytes: number
   }
   if (fitted.length === 0) return block;
   const text = `${block.text}${gap}${HEADING}${fitted.join('\n')}`;
-  return { ...block, text, bytes: utf8Bytes(text) };
+  const refs = code.refs.slice(0, fitted.length).map((ref) => ({ ref, source: 'code' as const }));
+  return { ...block, text, refs: [...block.refs, ...refs], bytes: utf8Bytes(text) };
 }

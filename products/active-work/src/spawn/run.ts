@@ -88,32 +88,32 @@ async function readBrief(source: BriefSource, deps: SpawnDeps): Promise<string> 
   return readFileSync(resolve(deps.cwd, source.path), 'utf8');
 }
 
+const TASK_CONTEXT_HEADING = '## Retrieved context';
+
 const defaultContextBrief: NonNullable<SpawnDeps['contextBrief']> = (args) =>
   runBrief(args, { activeRoot: getActiveRoot() });
 
-/** Every ref in the block is a workspace hit today; the section is the ref's own source. */
+/** Each rendered ref once, under the section (workspace, code or sessions) it was rendered in. */
 async function logServedRefs(task: string, query: string, block: TaskBrief, deps: SpawnDeps): Promise<void> {
   const ts = nowIso();
   const slug = task.split('/')[0] ?? '';
   const sections = [...new Set(block.refs.map((entry) => entry.source))];
-  const entries = sections.flatMap((section) =>
-    servedHitEntries(
-      block.refs
-        .filter((entry) => entry.source === section)
-        .map((entry) => ({ ref: entry.ref, byteOffset: null, byteLength: null })),
-      { ts, slug, trigger: 'spawn', query, task, section },
-    ),
-  );
+  const entries = sections.flatMap((section) => {
+    const refs = new Set(block.refs.filter((entry) => entry.source === section).map((entry) => entry.ref));
+    const hits = [...refs].map((ref) => ({ ref, byteOffset: null, byteLength: null }));
+    return servedHitEntries(hits, { ts, slug, trigger: 'spawn', query, task, section });
+  });
   const failure = await (deps.hitLog ?? fileHitLog())(entries);
   if (failure !== null) deps.stderr(`context.brief hit log failed: ${failure}\n`);
 }
 
 /** The brief with the task's context block appended; unchanged, with one stderr line, when the block is unavailable. */
 async function withTaskContext(brief: string, task: string, deps: SpawnDeps): Promise<string> {
-  const initiative = task.split('/')[0] ?? '';
+  const [initiative = '', id = ''] = task.split('/');
   let block: TaskBrief;
   try {
-    block = await (deps.contextBrief ?? defaultContextBrief)({ for: brief, initiative });
+    // The key rides in the text because context.brief reads a task's done_when and owned files from keys it finds there.
+    block = await (deps.contextBrief ?? defaultContextBrief)({ for: `${brief}\n\n${id}`, initiative });
   } catch (err) {
     deps.stderr(`context.brief skipped: ${err instanceof Error ? err.message : String(err)}\n`);
     return brief;
@@ -124,7 +124,7 @@ async function withTaskContext(brief: string, task: string, deps: SpawnDeps): Pr
     return brief;
   }
   await logServedRefs(task, brief, block, deps);
-  return `${brief}\n\n${block.text}\n`;
+  return `${brief}\n\n${TASK_CONTEXT_HEADING}\n\n${block.text}\n`;
 }
 
 /** Prints agent-chat's lines verbatim; a refusal prints its text (with the account readings) and returns 1. */

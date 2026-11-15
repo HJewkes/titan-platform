@@ -42,7 +42,7 @@ const DegradedSchema = z.object({ source: z.string(), reason: z.string(), messag
 
 const ResultSchema = z.object({
   text: z.string(),
-  refs: z.array(z.object({ ref: z.string(), source: z.literal('workspace') })),
+  refs: z.array(z.object({ ref: z.string(), source: z.enum(['workspace', 'code', 'sessions']) })),
   bytes: z.number(),
   // Why the text is short or empty. Never an error: a caller renders what it got.
   degraded: z.array(DegradedSchema),
@@ -115,8 +115,8 @@ function gatherSources(args: Args, deps: BriefDeps): Promise<[Workspace, BriefCo
     withDeadline(work, BRIEF_DEADLINE_MS, sleep, late);
   return Promise.all([
     bounded(() => workspaceFor(args, deps), () => ({ hits: [], degraded: [lateSource('workspace')] })),
-    bounded(() => codeFor(args, deps), () => ({ lines: [], degraded: [lateSource('code')] })),
-    bounded(() => sessionsFor(args, deps), () => ({ lines: [], degraded: [lateSource('sessions')] })),
+    bounded(() => codeFor(args, deps), () => ({ lines: [], refs: [], degraded: [lateSource('code')] })),
+    bounded(() => sessionsFor(args, deps), () => ({ lines: [], refs: [], degraded: [lateSource('sessions')] })),
   ]);
 }
 

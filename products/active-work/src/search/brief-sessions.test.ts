@@ -86,7 +86,7 @@ describe('briefSessions', () => {
   it('reads nothing when the assignment names no file', async () => {
     const result = await briefSessions({ text: 'No paths here.', activeRoot: root, now: NOW, dbPath });
 
-    expect(result).toEqual({ lines: [], degraded: [] });
+    expect(result).toEqual({ lines: [], refs: [], degraded: [] });
   });
 
   it('a missing graph is a degraded source, not an error', async () => {
@@ -105,7 +105,8 @@ describe('withSessions', () => {
   it('keeps the section inside its byte share however long the titles are', () => {
     const long = `- 12345678 2026-10-19 ${'é'.repeat(60)}`;
 
-    const block = withSessions(empty, { lines: Array.from({ length: 4 }, () => long), degraded: [] }, 2600);
+    const lines = Array.from({ length: 4 }, () => long);
+    const block = withSessions(empty, { lines, refs: lines.map(() => 'sess-1'), degraded: [] }, 2600);
 
     expect(block.bytes).toBeLessThanOrEqual(500);
     expect(block.bytes).toBe(utf8Bytes(block.text));
@@ -115,7 +116,8 @@ describe('withSessions', () => {
   it('never passes the whole budget', () => {
     const workspace = { text: 'x'.repeat(2550), refs: [], bytes: 2550 };
 
-    const block = withSessions(workspace, { lines: ['- 12345678 2026-10-19 A session'], degraded: [] }, 2600);
+    const sessions = { lines: ['- 12345678 2026-10-19 A session'], refs: ['12345678-full-id'], degraded: [] };
+    const block = withSessions(workspace, sessions, 2600);
 
     expect(block).toEqual(workspace);
   });

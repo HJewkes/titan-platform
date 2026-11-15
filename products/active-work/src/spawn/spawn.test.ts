@@ -175,6 +175,9 @@ describe('active-work spawn --task', () => {
     refs: [
       { ref: 'synthetic/notes/a.md', source: 'workspace' as const },
       { ref: 'synthetic/notes/b.md', source: 'workspace' as const },
+      { ref: 'packages/demo/src/a.ts', source: 'code' as const },
+      { ref: 'packages/demo/src/a.ts', source: 'code' as const },
+      { ref: 'sess-full-id', source: 'sessions' as const },
     ],
     bytes: BLOCK.length,
     degraded: [],
@@ -195,12 +198,52 @@ describe('active-work spawn --task', () => {
 
     await spawnCli(bin, TASK_ARGS, 'Synthetic brief', { contextBrief: async () => served, hitLog });
 
-    expect(recordedStdin()).toBe(`Synthetic brief\n\n${BLOCK}\n`);
+    expect(recordedStdin()).toBe(`Synthetic brief\n\n## Retrieved context\n\n${BLOCK}\n`);
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject([
       { trigger: 'spawn', task: 'synthetic/TP-1', section: 'workspace', ref: 'synthetic/notes/a.md', rank: 1 },
       { trigger: 'spawn', task: 'synthetic/TP-1', section: 'workspace', ref: 'synthetic/notes/b.md', rank: 2 },
+      { trigger: 'spawn', task: 'synthetic/TP-1', section: 'code', ref: 'packages/demo/src/a.ts', rank: 1 },
+      { trigger: 'spawn', task: 'synthetic/TP-1', section: 'sessions', ref: 'sess-full-id', rank: 1 },
     ]);
+    expect(calls[0]).toHaveLength(4);
+  });
+
+  it('hands the task key to context.brief even when the brief never names it', async () => {
+    const bin = fakeAgentChat('Spawned synthetic-coord');
+    const asked: { for: string; initiative: string }[] = [];
+
+    await spawnCli(bin, TASK_ARGS, 'Synthetic brief', {
+      contextBrief: async (args) => {
+        asked.push(args);
+        return served;
+      },
+      hitLog: async () => null,
+    });
+
+    expect(asked).toHaveLength(1);
+    expect(asked[0]?.for).toContain('TP-1');
+    expect(asked[0]?.initiative).toBe('synthetic');
+  });
+
+  it('sends the brief unchanged and names the reason when context.brief throws', async () => {
+    const bin = fakeAgentChat('Spawned synthetic-coord');
+
+    const run = await spawnCli(bin, TASK_ARGS, 'Synthetic brief', {
+      contextBrief: async () => {
+        throw new Error('index unavailable');
+      },
+    });
+
+    expect(recordedStdin()).toBe('Synthetic brief');
+    expect(run.stderr).toBe('context.brief skipped: index unavailable\n');
+  });
+
+  it('refuses a --task that is not <initiative>/<ID>', async () => {
+    const bin = fakeAgentChat('Spawned synthetic-coord');
+    const args = ['synthetic-coord', 'synthetic-coordinator', '--brief-stdin', '--task', 'TP-1'];
+
+    await expect(spawnCli(bin, args)).rejects.toThrow(/--task must be/);
   });
 
   it('sends the brief unchanged and names the reason on stderr when context.brief degrades', async () => {

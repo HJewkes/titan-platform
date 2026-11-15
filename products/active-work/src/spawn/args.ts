@@ -25,6 +25,12 @@ function briefSource(flags: SpawnFlags): BriefSource {
   throw new UsageError('a brief is required: pass --brief-file <path> or --brief-stdin');
 }
 
+function taskKey(flags: SpawnFlags): string | undefined {
+  if (flags.task === undefined) return undefined;
+  if (!/^[^/\s]+\/[^/\s]+$/.test(flags.task)) throw new UsageError('--task must be <initiative>/<ID>, e.g. my-initiative/TP-1');
+  return flags.task;
+}
+
 function toPlan(name: string, profile: string, flags: SpawnFlags, shellCwd: string): SpawnPlan {
   return {
     name,
@@ -36,7 +42,7 @@ function toPlan(name: string, profile: string, flags: SpawnFlags, shellCwd: stri
     briefing: flags.briefing,
     surface: flags.surface,
     remoteControl: flags.remoteControl === true ? true : undefined,
-    task: flags.task,
+    task: taskKey(flags),
   };
 }
 

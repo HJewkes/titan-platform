@@ -82,7 +82,11 @@ describe('briefCode', () => {
 
     const result = await briefCode([A], { fetch: serving(neighbours([C], [B]), asked), sleep: neverDue });
 
-    expect(result).toEqual({ lines: [`- ${B} (imported by) ${A}`, `- ${C} (imports) ${A}`], degraded: [] });
+    expect(result).toEqual({
+      lines: [`- ${B} (imported by) ${A}`, `- ${C} (imports) ${A}`],
+      refs: [B, C],
+      degraded: [],
+    });
     expect(asked[0]).toContain('/rpc/node.neighbors');
     expect(asked[0]).toContain('"edge_kinds":["imports"]');
   });
@@ -115,7 +119,11 @@ describe('briefCode', () => {
     const result = await briefCode([A], { fetch: hanging, sleep: clockAt(800, asked), repoRoot: repo });
 
     expect(Math.max(...asked)).toBe(800);
-    expect(result).toEqual({ lines: [], degraded: [expect.objectContaining({ source: 'code', reason: 'timeout' })] });
+    expect(result).toEqual({
+      lines: [],
+      refs: [],
+      degraded: [expect.objectContaining({ source: 'code', reason: 'timeout' })],
+    });
   });
 
   it('asks nothing when no file is named', async () => {
@@ -123,7 +131,7 @@ describe('briefCode', () => {
 
     const result = await briefCode([], { fetch: serving(neighbours([], []), asked) });
 
-    expect(result).toEqual({ lines: [], degraded: [] });
+    expect(result).toEqual({ lines: [], refs: [], degraded: [] });
     expect(asked).toEqual([]);
   });
 });
@@ -134,7 +142,8 @@ describe('withCode', () => {
   it('keeps the section inside its byte share however long the paths are', () => {
     const long = `- packages/${'é'.repeat(120)}.ts (imports) ${A}`;
 
-    const block = withCode(empty, { lines: Array.from({ length: 6 }, () => long), degraded: [] }, 2600);
+    const lines = Array.from({ length: 6 }, () => long);
+    const block = withCode(empty, { lines, refs: lines.map(() => B), degraded: [] }, 2600);
 
     expect(block.bytes).toBeLessThanOrEqual(800);
     expect(block.bytes).toBe(utf8Bytes(block.text));
@@ -144,7 +153,8 @@ describe('withCode', () => {
   it('never passes the whole budget', () => {
     const workspace = { text: 'x'.repeat(2550), refs: [], bytes: 2550 };
 
-    expect(withCode(workspace, { lines: [`- ${B} (imported by) ${A}`], degraded: [] }, 2600)).toEqual(workspace);
+    const code = { lines: [`- ${B} (imported by) ${A}`], refs: [B], degraded: [] };
+    expect(withCode(workspace, code, 2600)).toEqual(workspace);
   });
 });
 
