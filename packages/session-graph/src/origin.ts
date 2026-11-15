@@ -56,6 +56,8 @@ export interface ResolvedOrigin {
   routeFacts?: string | null;
   routeCandidate?: string | null;
   routeCandidateWanted?: string | null;
+  /** The launcher's execution ledger phase for this session: its outcome once terminal. */
+  executionPhase?: string | null;
 }
 
 /** Stored when a task-aware resolver found no id, so the row is not offered again. */
@@ -117,7 +119,7 @@ const camel = (column: string): string => column.replace(/_(\w)/g, (_, c: string
 const ORIGIN_COLUMNS = [
   "origin_system", "agent_id", "agent_name", "parent_name", "parent_session_id", "profile", "model_alias", "surface", "isolation", "depth",
   "origin_kind", "config_dir", "spawn_cwd", "spawned_at", "brief_chars", "brief_excerpt", "brief_path", "launch_args", "resolved_at",
-  "experiment_id", "experiment_arm", "predecessor", "followup_kinds",
+  "experiment_id", "experiment_arm", "predecessor", "followup_kinds", "execution_phase",
   ...ORIGIN_ROUTE_COLUMNS,
 ] as const;
 
@@ -130,12 +132,12 @@ const UPSERT_ORIGIN = `
   INSERT INTO session_origin (session_id, origin_system, agent_id, agent_name, parent_name, parent_session_id,
     profile, model_alias, surface, isolation, depth, origin_kind, config_dir, spawn_cwd, spawned_at,
     brief_chars, brief_excerpt, brief_path, launch_args, task_ids, task_source, resolved_at,
-    experiment_id, experiment_arm, predecessor, followup_kinds,
+    experiment_id, experiment_arm, predecessor, followup_kinds, execution_phase,
     ${ORIGIN_ROUTE_COLUMNS.join(", ")})
   VALUES (@sessionId, @originSystem, @agentId, @agentName, @parentName, @parentSessionId,
     @profile, @modelAlias, @surface, @isolation, @depth, @originKind, @configDir, @spawnCwd, @spawnedAt,
     @briefChars, @briefExcerpt, @briefPath, @launchArgs, @taskIds, @taskSource, @resolvedAt,
-    @experimentId, @experimentArm, @predecessor, @followupKinds,
+    @experimentId, @experimentArm, @predecessor, @followupKinds, @executionPhase,
     ${ORIGIN_ROUTE_COLUMNS.map((c) => `@${camel(c)}`).join(", ")})
   ON CONFLICT (session_id) DO UPDATE SET ${ORIGIN_COLUMNS.map((c) => `${c} = excluded.${c}`).join(", ")},
     ${TASK_LINK_UPDATE}`;
@@ -202,6 +204,7 @@ function originRow(sessionId: string, o: ResolvedOrigin, resolvedAt: string): Re
     briefPath: o.briefPath ?? null, launchArgs: o.launchArgs ?? null,
     experimentId: o.experimentId ?? null, experimentArm: o.experimentArm ?? null, predecessor: o.predecessor ?? null,
     followupKinds: o.followupKinds ? JSON.stringify(o.followupKinds) : null,
+    executionPhase: o.executionPhase ?? null,
     ...routeColumns(o),
     ...taskLinkColumns(o),
   };
