@@ -25,6 +25,7 @@ import { riskFactsOf, riskTier } from "./risk-tier.js";
 import { lowTierPolicyTouch } from "./g10-low-tier.js";
 import type { KindRead } from "./registered-kind.js";
 import { authorityLineOf, ownerTierGate, ownerTierNoted, ownerTierStamp, type OwnerTierField, type OwnerTierWiring } from "./owner-tier.js";
+import { withLaterGates } from "./owner-tier-next.js";
 import { ownerValidateDecided, ownerValidateOf, type OwnerValidateField, type OwnerValidateWiring } from "./g10-owner-validate-read.js";
 import type { CarryResult } from "./tree-carry.js";
 import { evidenceRecord, type EvidenceRecord } from "./evidence-record.js";
@@ -193,7 +194,7 @@ function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined,
     return { outcome: "gate", rule: guardRule("head-mismatch"), reason: `merge facts were collected at ${evidence.head}, not ${headSha}` };
   }
   const pathGate = changedFilesGate(evidence, visual, honour) ?? ownerTierGate(evidence, guardRule("owner-tier"));
-  if (pathGate) return pathGate;
+  if (pathGate) return withLaterGates(pathGate, evidence, honour, headSha);
   const policyGate = ciPolicyGate(evidence, honour, headSha);
   if (policyGate && policyGate.rule.rowId !== "ci-policy-budget") return policyGate;
   const decision = ownerTierNoted(decideAfterPolicy(headSha, evidence, visual, honour), evidence);
