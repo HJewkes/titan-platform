@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { checkAreas, loadAreas } from "./areas.mjs";
+import { classProblems, loadRuleClasses, renderRegistry } from "./checks-registry.mjs";
 import { metricsCoverageGaps } from "./metrics-check.mjs";
 import {
   checkAgentsMatchesClaude,
@@ -402,6 +403,17 @@ describe("TP-3412 the token path counts as a read", () => {
     writeFileSync(join(root, "products/factory/src/sneaky.ts"), "export {};\n");
     writeFileSync(join(root, "products/factory/src/pathy.ts"), "import { BOT_TOKEN_PATH } from \"./bot-token-path.js\";\n");
     expect(checkBotTokenReaders(root)).toEqual([expect.stringContaining("products/factory/src/pathy.ts")]);
+  });
+});
+
+describe("TP-6483 every rule names the class keys it covers", () => {
+  it("every titan/*, structure and check.json rule names class keys from the vocabulary", async () => {
+    expect(classProblems(await loadRuleClasses(REPO))).toEqual([]);
+  });
+
+  it("checks-registry.json is up to date", async () => {
+    const committed = readFileSync(join(REPO, "checks-registry.json"), "utf8");
+    expect(committed, "Run `pnpm checks:registry` and commit checks-registry.json.").toBe(renderRegistry(await loadRuleClasses(REPO)));
   });
 });
 
