@@ -134,6 +134,44 @@ describe("the owner-tier merge guard", () => {
     const budget: DecidableEvidence = { ...evidence, ciPolicy: { kind: "weakened", keys: ["other"] }, ciPolicyClass: { kind: "budget", measurement: "https://example.test/run/1" } };
     expect(decideAutoMerge(HEAD, budget).rule.rowId).toBe("ci-policy-budget");
     const weakening: DecidableEvidence = { ...budget, ciPolicyClass: { kind: "weakening", why: "a required check is removed" } };
-    expect(decideAutoMerge(HEAD, weakening)).toMatchObject({ rule: { rowId: "owner-tier" }, reason: "owner tier: CI workflow file .github/workflows/ci.yml" });
+    expect(decideAutoMerge(HEAD, weakening)).toMatchObject({ rule: { rowId: "owner-tier" } });
+    expect(decideAutoMerge(HEAD, weakening).reason).toMatch(/^owner tier: CI workflow file \.github\/workflows\/ci\.yml; then ci-policy-weakened: /);
+  });
+});
+
+describe("an owner-tier gate names the rows that gate after it", () => {
+  const POLICY_FILE = "products/factory/src/shepherd/g10-release.ts";
+  const OWNER_REASON = `owner tier: merge-policy ${POLICY_FILE}`;
+
+  it("names the unmet attestation, the old-path freeze and the unread required checks, and owner-tier still wins", async () => {
+    const evidence = await evidenceFor([POLICY_FILE], "on");
+    const blocked: DecidableEvidence = {
+      ...evidence,
+      attest: { unmet: [{ step: "deploy-proof", why: "no attestation at the head" }] },
+      oldPath: { status: "untagged", touches: [POLICY_FILE], reason: "touches a frozen path", active: true, kind: "feature", task: "demo/T-1" },
+      requiredChecksUnknown: "branch protection was not readable",
+    };
+
+    const decision = decideAutoMerge(HEAD, blocked);
+
+    expect(decision.rule.rowId).toBe("owner-tier");
+    expect(decision.reason).toContain(`${OWNER_REASON}; then attest-unmet: attestation unmet: deploy-proof: no attestation at the head`);
+    expect(decision.reason).toContain("; then old-path-untagged: touches a frozen path");
+    expect(decision.reason).toContain("; then required-checks-unknown: branch protection was not readable");
+  });
+
+  it("names a CI-policy row that would gate", async () => {
+    const evidence = await evidenceFor([POLICY_FILE], "on");
+
+    const decision = decideAutoMerge(HEAD, { ...evidence, ciPolicy: { kind: "malformed" } });
+
+    expect(decision.rule.rowId).toBe("owner-tier");
+    expect(decision.reason).toMatch(new RegExp(`^${OWNER_REASON}; then ci-policy-malformed: `));
+  });
+
+  it("names nothing more when no later row would gate", async () => {
+    const evidence = await evidenceFor([POLICY_FILE], "on");
+
+    expect(decideAutoMerge(HEAD, evidence).reason).toBe(OWNER_REASON);
   });
 });
