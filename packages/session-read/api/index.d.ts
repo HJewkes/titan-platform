@@ -1058,6 +1058,12 @@ interface RecoveredMessage {
     text: string;
     at: string | null;
 }
+interface RecoveredCompactions {
+    /** Every compaction in the transcript, whether or not it carried summary text. */
+    count: number;
+    /** At most the last three summaries, oldest first; a compaction with no summary text is counted but not listed. */
+    lastSummaries: string[];
+}
 interface SessionRecovery {
     conversation: ConversationIdentity;
     startedAt: string | null;
@@ -1071,6 +1077,7 @@ interface SessionRecovery {
     /** In call order; the cap keeps the most recent. */
     chatSends: CappedList<RecoveredMessageTarget>;
     agentSpawns: CappedList<RecoveredMessageTarget>;
+    compactions: RecoveredCompactions;
     /** The last owner-typed messages, oldest first; tool results and injected blocks are excluded. */
     ownerMessages: RecoveredMessage[];
     lastAssistantMessage: RecoveredMessage | null;
@@ -1091,9 +1098,13 @@ declare class RecoveryFacts {
     private readonly git;
     private readonly chatSends;
     private readonly agentSpawns;
+    private compactionCount;
+    private boundaryAwaitingSummary;
+    private readonly compactionSummaries;
     constructor(root: string);
     add(observation: NormalizedSessionObservation): void;
-    result(): Pick<SessionRecovery, "agentName" | "filesWritten" | "activeWorkCalls" | "gitCommands" | "chatSends" | "agentSpawns">;
+    result(): Pick<SessionRecovery, "agentName" | "filesWritten" | "activeWorkCalls" | "gitCommands" | "chatSends" | "agentSpawns" | "compactions">;
+    private addCompaction;
     private addFile;
     private addCommand;
     private addChat;

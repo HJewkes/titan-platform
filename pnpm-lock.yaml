@@ -1543,6 +1543,9 @@ importers:
       '@titan-design/app-paths':
         specifier: workspace:^
         version: link:../../packages/app-paths
+      '@titan-design/autoresearch':
+        specifier: workspace:^
+        version: link:../../packages/autoresearch
       '@titan-design/code-graph':
         specifier: workspace:^
         version: link:../../packages/code-graph
@@ -1628,9 +1631,6 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
     devDependencies:
-      '@titan-design/autoresearch':
-        specifier: workspace:^
-        version: link:../../packages/autoresearch
       '@titan-design/test-kit':
         specifier: workspace:*
         version: link:../../packages/test-kit

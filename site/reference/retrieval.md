@@ -201,6 +201,20 @@ A failed tier load never rejects the request: all failures together add one degr
 Tier loads run concurrently and only for the ranked `limit` results, never for the
 overfetched candidates. A missing `tierSource` throws `TypeError` before any retriever runs.
 
+## Recovery steps
+
+`recovery: RecoveryStep[]` runs when fusion comes back empty and at least one retriever
+answered. A step is `{ name, run(query, { signal }) }` and returns a rewritten query, or
+`null` to pass to the next step. The engine re-runs the same retrievers and fusion on the
+rewrite, and the first step whose rewrite has hits wins: the response then carries
+`recovered: { step, query }`.
+
+- `recoveryTimeoutMs` (default 250) is a per-step deadline. A step that throws or times out
+  adds a `recovery:<name>` entry to `degraded` and the engine moves on.
+- `recoveryTrigger(lists)` replaces the empty test. It still never runs when every retriever failed.
+- `search(query, { recover: false })` skips the steps for one query.
+- Each step's time, rewrite plus re-search, appears in `timingsMs` as `recovery:<name>`.
+
 ## Gotchas
 
 **A graph-only hit has no locator.** It was reached by expansion, not by matching text. Do

@@ -13,6 +13,7 @@ interface SpawnFlags {
   briefing?: string;
   surface?: string;
   remoteControl?: boolean;
+  task?: string;
 }
 
 function briefSource(flags: SpawnFlags): BriefSource {
@@ -22,6 +23,12 @@ function briefSource(flags: SpawnFlags): BriefSource {
   if (flags.briefFile !== undefined) return { kind: 'file', path: flags.briefFile };
   if (flags.briefStdin === true) return { kind: 'stdin' };
   throw new UsageError('a brief is required: pass --brief-file <path> or --brief-stdin');
+}
+
+function taskKey(flags: SpawnFlags): string | undefined {
+  if (flags.task === undefined) return undefined;
+  if (!/^[^/\s]+\/[^/\s]+$/.test(flags.task)) throw new UsageError('--task must be <initiative>/<ID>, e.g. my-initiative/TP-1');
+  return flags.task;
 }
 
 function toPlan(name: string, profile: string, flags: SpawnFlags, shellCwd: string): SpawnPlan {
@@ -35,6 +42,7 @@ function toPlan(name: string, profile: string, flags: SpawnFlags, shellCwd: stri
     briefing: flags.briefing,
     surface: flags.surface,
     remoteControl: flags.remoteControl === true ? true : undefined,
+    task: taskKey(flags),
   };
 }
 
@@ -58,6 +66,7 @@ export function attachSpawnCommand(program: Command, deps: SpawnDeps): void {
     .option('--cwd <dir>', 'directory the agent starts in (default: this shell)')
     .option('--briefing <slug>', 'active-work slug whose orientation prefixes the brief')
     .option('--surface <surface>', "override the profile's surface")
+    .option('--task <initiative/ID>', "append this task's context.brief block to the brief and log the refs served")
     .option('--remote-control', 'enable Remote Control for the agent')
     .action(async (name: string, profile: string, flags: SpawnFlags) => {
       const code = await runSpawn(toPlan(name, profile, flags, deps.cwd), deps);

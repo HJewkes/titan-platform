@@ -31,6 +31,7 @@ import deliverableList from './deliverable-list.js';
 // Plan records (TP-5453 P3)
 import { planFreezeAdd, planOutcomeAdd, planOutOfScopeAdd } from './plan-add.js';
 import { planBetAdd, planBetList } from './plan-bet.js';
+import { planSeed } from './plan-seed.js';
 import {
   planBetShow,
   planFreezeList,
@@ -181,6 +182,7 @@ const ALL_COMMANDS: AnyCommand[] = [
   planOutOfScopeAdd,
   planOutOfScopeShow,
   planOutOfScopeList,
+  planSeed,
   // tasks
   taskAdd,
   taskApply,

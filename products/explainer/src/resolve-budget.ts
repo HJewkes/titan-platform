@@ -25,9 +25,15 @@ const row = (scope: BudgetRow["scope"], id: string, words: number, seconds: numb
   scope, id, words, seconds, wordsPerS, cap: Math.floor(seconds * wordsPerS + 1e-9),
 });
 
-/** One beat's spoken words against its planned slot at its beat type's band cap (doctrine `speech-bands.yaml`). */
-export function beatBudget(beat: Pick<ScriptBeat, "id" | "spoken" | "plannedS">, band: SpeechBand, bands: SpeechBands): BudgetRow {
-  return row("beat", beat.id, wordsOf(beat.spoken).length, beat.plannedS, bands[band].wordsPerS);
+/** The band's rate at the profile's voice speed, the rate tts-stage voices at; rounded so float noise stays out of the prompt. */
+export const voicedRate = (wordsPerS: number, voiceRate: number): number => Math.round(wordsPerS * voiceRate * 1e6) / 1e6;
+
+/**
+ * One beat's spoken words against its planned slot at its beat type's band cap (doctrine `speech-bands.yaml`), scaled
+ * by the profile's voice rate.
+ */
+export function beatBudget(beat: Pick<ScriptBeat, "id" | "spoken" | "plannedS">, band: SpeechBand, bands: SpeechBands, voiceRate = 1): BudgetRow {
+  return row("beat", beat.id, wordsOf(beat.spoken).length, beat.plannedS, voicedRate(bands[band].wordsPerS, voiceRate));
 }
 
 /** The fastest rate any beat type the block allows may speak at; undefined when the registry knows none of them. */
@@ -55,7 +61,8 @@ export function blockBudgets(
     const rate = blockRate(block, specs, bands);
     const inBlock = beats.filter((beat) => beat.chapter === block.id);
     if (rate === undefined || inBlock.length === 0) return [];
-    return [row("block", block.id, inBlock.reduce((sum, beat) => sum + wordsOf(beat.spoken).length, 0), block.seconds[1], rate)];
+    const words = inBlock.reduce((sum, beat) => sum + wordsOf(beat.spoken).length, 0);
+    return [row("block", block.id, words, block.seconds[1], voicedRate(rate, profile.voice.rate))];
   });
   return { rows, unplaced };
 }
@@ -72,10 +79,11 @@ export function scriptBudgets(
 ): BlockBudgets {
   const bandOf = new Map(resolved.map((beat) => [beat.id, beat.band]));
   const bands = loadSpeechBands();
-  const blocks = blockBudgets(script.beats, profileFor(loadProfiles(), script.profile), specs, bands);
+  const profile = profileFor(loadProfiles(), script.profile);
+  const blocks = blockBudgets(script.beats, profile, specs, bands);
   const beatRows = script.beats.flatMap((beat) => {
     const band = bandOf.get(beat.id);
-    return band ? [beatBudget(beat, band, bands)] : [];
+    return band ? [beatBudget(beat, band, bands, profile.voice.rate)] : [];
   });
   return { rows: [...beatRows, ...blocks.rows], unplaced: blocks.unplaced };
 }
