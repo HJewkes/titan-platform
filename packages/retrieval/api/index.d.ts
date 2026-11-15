@@ -283,8 +283,8 @@ declare const ContextBudgetSchema: z.ZodObject<{
     defaultTiers: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>;
     maxTier: z.ZodOptional<z.ZodNumber>;
     order: z.ZodOptional<z.ZodEnum<{
-        score: "score";
         edges: "edges";
+        score: "score";
     }>>;
 }, z.core.$strict>;
 /** One request shape for both modes, discriminated on `mode`. */
@@ -301,8 +301,8 @@ declare const RetrievalRequestSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
         defaultTiers: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>;
         maxTier: z.ZodOptional<z.ZodNumber>;
         order: z.ZodOptional<z.ZodEnum<{
-            score: "score";
             edges: "edges";
+            score: "score";
         }>>;
     }, z.core.$strict>;
     query: z.ZodString;
