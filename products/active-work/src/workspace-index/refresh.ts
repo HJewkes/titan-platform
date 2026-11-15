@@ -1,10 +1,9 @@
-import { promises as fs } from 'node:fs';
 import { z } from 'zod';
 import type { WorkspaceGraph } from '../session-index/graph.js';
 import { getActiveRoot } from '../utils/paths.js';
-import { parseFrontmatter } from '../utils/gray-matter-io.js';
 import { flipWorkspaceSpans, pendingBackfillSources } from './backfill.js';
 import { rebuildEdges, type EdgeCounts, type NoteFacts } from './edges.js';
+import { collectMentionTexts, readBody } from './mention-texts.js';
 import { readRecord, type WorkspaceRecord } from './read.js';
 import { scanWorkspace, type WorkspaceClass, type WorkspaceFile } from './scan.js';
 import { clearDocumentFrequency } from '../search/document-frequency.js';
@@ -28,6 +27,8 @@ export interface WorkspaceRefreshSummary {
   malformed: { path: string; reason: string }[];
   rows: Record<WorkspaceClass, number>;
   edges: EdgeCounts;
+  /** Source bodies over 256 KB, left out of the mentions pass. */
+  oversizedSources: number;
   /**
    * Fraction of `search_fts` rows with no span behind them. `workspace_fts`
    * deletes its rows with its spans, so this measures the transcript table,
@@ -216,15 +217,6 @@ function parseTags(stored: string | null): string[] {
   }
 }
 
-/** The body, not the file: frontmatter is metadata, and `mentions` is defined over prose. */
-async function readBody(absolutePath: string): Promise<string> {
-  try {
-    return parseFrontmatter(await fs.readFile(absolutePath, 'utf8')).content;
-  } catch {
-    return '';
-  }
-}
-
 function countRows(graph: WorkspaceGraph): Record<WorkspaceClass, number> {
   const count = (table: string): number =>
     graph.db.prepare<[], { n: number }>(`SELECT COUNT(*) AS n FROM "${table}"`).get()?.n ?? 0;
@@ -299,7 +291,8 @@ export async function refreshWorkspace(
   const legacySpansRetired = flipWorkspaceSpans(graph);
   writer.spansChanged += legacySpansRetired;
   if (writer.spansChanged > 0) clearDocumentFrequency(graph.db.name);
-  const edges = rebuildEdges(graph, await collectNoteFacts(activeRoot, graph));
+  const { texts, oversizedSources } = await collectMentionTexts(activeRoot, graph);
+  const edges = rebuildEdges(graph, await collectNoteFacts(activeRoot, graph), texts);
   return {
     files: files.length,
     indexed,
@@ -308,6 +301,7 @@ export async function refreshWorkspace(
     malformed,
     rows: countRows(graph),
     edges,
+    oversizedSources,
     orphanRatio: graph.spans.orphanRatio(),
     legacySpansRetired,
   };
