@@ -6,6 +6,7 @@ const DAY_MS = 86_400_000;
 const DEFAULT_STALE_DAYS = 30;
 const SKILL_MATCH = 0.25;
 const COORDINATION = /\b(coordinators?|seats?|charters?|dispatch(?:es|ed|ing)?|spawn(?:s|ed|ing)?|teleport(?:s|ed|ing)?|pool|merge authority)\b/i;
+const CONFIG = /\b(settings?|permissions?|hooks?|env(?:ironment)? vars?|environment variables?)\b/i;
 
 export interface ProposeOptions {
   now: Date;
@@ -52,12 +53,15 @@ export function proposeDestination(group: FactGroup, skills: readonly SkillSumma
   if (skill) return { destination: `skill:${skill.name}`, reason: `topic matches skill "${skill.name}" (Jaccard ${skill.score.toFixed(2)})` };
   const text = group.facts.map(({ fact }) => `${fact.name} ${fact.description} ${fact.body}`).join("\n");
   if (allOf(facts, ["feedback"]) && COORDINATION.test(text)) return { destination: "charter", reason: "feedback about coordination belongs in the charter" };
-  const guidance = allOf(facts, ["feedback", "user"]);
-  if (guidance && projects.length >= 2) return { destination: "claude-md:global", reason: `guidance repeated across ${projects.length} projects` };
   const staleDays = options.staleDays ?? DEFAULT_STALE_DAYS;
   if (allOf(facts, ["project"]) && isStale(facts, options.now.getTime() - staleDays * DAY_MS)) {
     return { destination: "delete", reason: `project facts not modified in ${staleDays} days` };
   }
+  // A group spanning several projects goes to the alphabetically first one's reference data.
+  if (allOf(facts, ["reference"]) && projects[0] !== undefined) return { destination: `reference:${projects[0]}`, reason: `reference facts belong in ${projects[0]}'s reference data` };
+  if (CONFIG.test(text)) return { destination: "config", reason: "names a setting, permission, hook or environment variable, so it belongs in config" };
+  const guidance = allOf(facts, ["feedback", "user"]);
+  if (guidance && projects.length >= 2) return { destination: "claude-md:global", reason: `guidance repeated across ${projects.length} projects` };
   if (guidance && projects[0] !== undefined) return { destination: `claude-md:${projects[0]}`, reason: `guidance from one project, ${projects[0]}` };
   return { destination: `new-skill:${slug(group.label)}`, reason: "no existing skill or instruction file fits" };
 }
