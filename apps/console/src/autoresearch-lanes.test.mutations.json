@@ -9,6 +9,15 @@
       "kills": [
         "the lanes board's clock never refetches a running run on a timer, leaving that to the factory's relayed frames"
       ]
+    },
+    {
+      "name": "an external link also opens its URL from its press, so one click opens two tabs",
+      "file": "apps/console/src/pages/SessionFormat.tsx",
+      "find": "isExternal className={className}>",
+      "replace": "isExternal className={className} onPress={() => window.open(url, \"_blank\", \"noopener\")}>",
+      "kills": [
+        "the autoresearch lanes board links each end of a kept idea's ratchet move to its commit when the target names its repository"
+      ]
     }
   ]
 }
