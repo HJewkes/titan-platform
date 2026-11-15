@@ -23,7 +23,7 @@
       "name": "the check counts every beat's words instead of declared terms",
       "file": "products/explainer/src/lint-term-motivation.ts",
       "find": "beat.new_terms.flatMap(",
-      "replace": "(beat.new_terms.length > 0 ? beat.new_terms : [\"matcher\"]).flatMap(",
+      "replace": "(beat.new_terms.length > 0 ? beat.new_terms : [\"rewrote\"]).flatMap(",
       "kills": [
         "hallmark:motivated-before-named counts terms named before their chapter has motivated them ignores a word the script never declares"
       ]
