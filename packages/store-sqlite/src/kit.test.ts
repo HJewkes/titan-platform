@@ -30,6 +30,20 @@ describe("kit selection", () => {
     }
   });
 
+  it("creates the trigram twin only when spanFtsTrigram is selected", () => {
+    const withTwin = openDatabase(":memory:");
+    withTwin.exec(kitDdl({ spanFts: "notes", spanFtsTrigram: true }));
+    expect(hasTable(withTwin, "notes_tri")).toBe(true);
+
+    const without = openDatabase(":memory:");
+    without.exec(kitDdl({ spanFts: "notes" }));
+    expect(hasTable(without, "notes_tri")).toBe(false);
+  });
+
+  it("rejects a trigram twin with no span FTS tables to attach to", () => {
+    expect(() => kitDdl({ spanFtsTrigram: true })).toThrow(/spanFtsTrigram needs spanFts/);
+  });
+
   it("rejects unsafe table names", () => {
     expect(() => kitDdl({ edge: "bad name; DROP TABLE x" })).toThrow(/invalid SQL identifier/);
   });

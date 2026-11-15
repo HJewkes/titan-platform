@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the cache blob migration is left off the chain",
+      "file": "products/active-work/src/workspace-index/schema.ts",
+      "find": "  PLAN_MIGRATION,\n  CACHE_BLOB_MIGRATION,\n];",
+      "replace": "  PLAN_MIGRATION,\n];",
+      "kills": [
+        "the workspace migration chain is followed only by the plan record and cache blob tables",
+        "the workspace migration chain creates an empty cache_blob table on a fresh graph"
+      ]
+    }
+  ]
+}
