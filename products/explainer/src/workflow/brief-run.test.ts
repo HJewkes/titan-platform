@@ -14,9 +14,9 @@ let fx: Fixture;
 /** A synthetic clone: each file at a head reads as one line naming both. */
 const fakeClone: ReadAt = async (_clone, head, file) => `export const at = "${file}@${head.slice(0, 7)}";\n`;
 
-function sweep(options: { view?: typeof VIEW; models?: ReturnType<typeof fakeBriefModels>; through?: BriefStop } = {}) {
+function sweep(options: { view?: typeof VIEW; models?: ReturnType<typeof fakeBriefModels>; through?: BriefStop; render?: ReturnType<typeof fakeRender> } = {}) {
   const models = options.models ?? fakeBriefModels();
-  const host = fakeHost(fx, models, fakeRender(), { gather: { prGh: fakeGh(options.view), callEdges: fakeEdges(), readAt: fakeClone } });
+  const host = fakeHost(fx, models, options.render ?? fakeRender(), { gather: { prGh: fakeGh(options.view), callEdges: fakeEdges(), readAt: fakeClone } });
   const waiting = { owner: [gate()], seat: [] };
   return runPrVideoTrigger({ dataDir: fx.dataDir, readWaiting: async () => waiting, start: briefRunStart(host, (repo) => (repo === REPO ? "/clone/widgets" : undefined), options.through) });
 }
@@ -25,8 +25,9 @@ const runJson = (dir: string) => JSON.parse(readFileSync(path.join(dir, "run.jso
 const ran = (run: { stages: { stage: string; status: string }[] }): string[] => run.stages.filter((s) => s.status !== "not run").map((s) => s.stage);
 
 describe("the decision brief's stage list", () => {
-  it("stops at the script stage at most, before any stage that spends again or needs the renderer", () => {
-    expect(STAGES.slice(0, STAGES.indexOf(BRIEF_LAST_STAGE) + 1)).toEqual(["gather", "audition", "script"]);
+  it("runs to the export stage at most, and stops at the audition by default", () => {
+    expect(BRIEF_LAST_STAGE).toBe("export");
+    expect(BRIEF_STOPS).toEqual(["audition", "script", "export"]);
     expect(BRIEF_STOPS.at(-1)).toBe(BRIEF_LAST_STAGE);
   });
 });
@@ -56,6 +57,28 @@ describe("a triggered decision-brief run", () => {
 
     expect(row?.outcome, run.error).toBe("started");
     expect(ran(run)).toEqual(["gather", "audition", "script"]);
+  });
+
+  it("opted in through export, runs every stage from gather to export and lists them all completed", async () => {
+    fx = fixture();
+
+    const [row] = await sweep({ through: "export" });
+    const run = runJson(row!.dir);
+
+    expect(row?.outcome, run.error).toBe("started");
+    expect(run.stages.map((s: { stage: string }) => s.stage)).toEqual([...STAGES]);
+    expect(run.stages.map((s: { status: string }) => s.status)).toEqual(STAGES.map(() => "ran"));
+    expect(run.status).toBe("completed");
+  });
+
+  it("refuses and names render as the failed stage when the render fails", async () => {
+    fx = fixture();
+
+    const [row] = await sweep({ through: "export", render: fakeRender({ fails: true }) });
+    const run = runJson(row!.dir);
+
+    expect(row?.outcome).toBe("refused");
+    expect(run.stages.find((s: { status: string }) => s.status === "failed")?.stage).toBe("render");
   });
 
   it("hands the script model the audition pick as its story spine", async () => {
