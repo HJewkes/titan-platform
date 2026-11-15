@@ -14,6 +14,7 @@ import { PLANNING_READ, PlanningSection } from "./InboxPlanning.js";
 import { isPlanOpKind, OP_VERB } from "./inbox-op-verbs.js";
 import { DerivedSection } from "./InboxDerived.js";
 import { RowProvenance } from "./InboxProvenance.js";
+import { InboxAnswerSheet } from "./InboxAnswerSheet.js";
 import { InboxReadBack, type InboxReady } from "./InboxReadBack.js";
 import { ShipLineageLine } from "./ShipLineage.js";
 import { TapSheet, type TapCommands, type TapConfirmChoice } from "./TapSheet.js";
@@ -100,8 +101,8 @@ function verbOf(action: InboxAction): string {
 /** Navigation stays a link; a write the console does not take yet is shown as its terminal command. */
 const isNavigation = (action: InboxAction): boolean => action.kind === "open" || action.kind === "open-round";
 
-/** The writes the page taps through `inbox.act`; `answer-chat` waits on a sheet that takes the answer's text. */
-const CONSOLE_TAPS: ReadonlySet<InboxAction["kind"]> = new Set(["resolve-gate", "owner-release", "hold-release", "owner-op", "answer-deposit", "approve-chat"]);
+/** The writes the page taps through `inbox.act`; `answer-chat` opens its own sheet, which takes the answer's text. */
+const CONSOLE_TAPS: ReadonlySet<InboxAction["kind"]> = new Set(["resolve-gate", "owner-release", "hold-release", "owner-op", "answer-deposit", "approve-chat", "answer-chat"]);
 
 /** The server acts on a hold-release only for a g10 class (isG10Release); any other class stays a terminal command. */
 const isConsoleTap = (action: InboxAction): boolean => CONSOLE_TAPS.has(action.kind) && (action.kind !== "hold-release" || ["g10-review", "g10-adversary"].includes(action.holdClass));
@@ -278,12 +279,24 @@ function ConsoleAction({ item, verb, choice = {} }: { item: InboxItem; verb: str
         <ButtonText>{verb}</ButtonText>
       </Button>
       {command !== undefined && canCopy() && suffix === undefined ? <CopyButton command={command} /> : null}
-      {confirming && item.action.kind === "answer-deposit" ? <DepositAnswerSheet item={item} verb={verb} command={command} onClose={() => setConfirming(false)} /> : null}
-      {confirming && item.action.kind !== "answer-deposit" ? (
-        <TapSheet<InboxReady> commands={inboxTap(item.id, choice)} verb={verb} reading={readingOf(item.action)} command={command} renderReadBack={(prepared) => <ReadBackWithLineage item={item} prepared={prepared} />} choicesOf={verdictChoicesOf} testID="inbox-confirm" onClose={() => setConfirming(false)} />
-      ) : null}
+      {confirming ? <ConfirmSheet item={item} verb={verb} choice={choice} command={command} onClose={() => setConfirming(false)} /> : null}
     </HStack>
   );
+}
+
+interface ConfirmSheetProps {
+  item: InboxItem;
+  verb: string;
+  choice: TapChoice;
+  command: string | undefined;
+  onClose: () => void;
+}
+
+function ConfirmSheet({ item, verb, choice, command, onClose }: ConfirmSheetProps): ReactNode {
+  if (item.action.kind === "answer-deposit") return <DepositAnswerSheet item={item} verb={verb} command={command} onClose={onClose} />;
+  const commands = inboxTap(item.id, choice);
+  if (item.action.kind === "answer-chat") return <InboxAnswerSheet commands={commands} command={command} onClose={onClose} />;
+  return <TapSheet<InboxReady> commands={commands} verb={verb} reading={readingOf(item.action)} command={command} renderReadBack={(prepared) => <ReadBackWithLineage item={item} prepared={prepared} />} choicesOf={verdictChoicesOf} testID="inbox-confirm" onClose={onClose} />;
 }
 
 /** A deposit is answered with one of its offered options or with free text; each is its own confirming tap, and the text is sent only by Send answer. */
