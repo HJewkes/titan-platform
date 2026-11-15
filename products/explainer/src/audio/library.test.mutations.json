@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a non-allowlisted licence passes the refusal",
+      "file": "products/explainer/src/audio/ledger-schema.ts",
+      "find": "if ((ALLOWED_LICENCES as readonly string[]).includes(licence)) return undefined;",
+      "replace": "if (!licence.includes(\"NC\")) return undefined;",
+      "kills": [
+        "importAudio refuses a CC-BY-4.0 import, naming the licence"
+      ]
+    },
+    {
+      "name": "a re-import of a known sha is not deduplicated",
+      "file": "products/explainer/src/audio/library.ts",
+      "find": "  if (same) return same;",
+      "replace": "  if (same) return undefined;",
+      "kills": [
+        "importAudio adds no ledger line when the same file is imported again"
+      ]
+    },
+    {
+      "name": "the WAV keeps the input sample rate",
+      "file": "products/explainer/src/audio/library.ts",
+      "find": "\"-ar\", String(LIBRARY_SAMPLE_RATE),",
+      "replace": "",
+      "kills": [
+        "importAudio records a 1 kHz 2 s tone's sha, duration and loudness and writes wav/<sha>.wav at 48 kHz"
+      ]
+    }
+  ]
+}
