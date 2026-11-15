@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
 
-export const DailySourcesSchema = z
+const DailySourcesSchema = z
   .object({
     schema: z.literal("daily-sources/v1"),
     repos: z.array(z.string().regex(/^[^/\s]+\/[^/\s]+$/, "expected owner/name")),
@@ -11,7 +11,7 @@ export const DailySourcesSchema = z
   })
   .strict();
 
-export interface DailySources {
+interface DailySources {
   repos: string[];
   decisions?: string;
 }
