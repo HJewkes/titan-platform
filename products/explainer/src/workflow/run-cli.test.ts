@@ -60,6 +60,17 @@ describe("explainer run CLI", () => {
     expect(err.join("")).toMatch(/continue with: explainer run resume \S+/);
   });
 
+  it("names the failed stage and its failed gate when a red eval check fails the run", async () => {
+    fx = fixture();
+    const { run, err } = cli(fakeHost(fx, fakeScriptModel(), fakeRender(), { evalChecks: [l0Check(false)] }));
+
+    const code = await run("--spine", fx.spine, "--facts", fx.facts);
+
+    expect(code).toBe(1);
+    expect(err.join("")).toMatch(/failed at stage \w+\n {2}[\w-]+: .*\nrecord: runs\/\S+\/failed\/\w+\.json\n/);
+    expect(err.join("")).toContain("continue with: explainer run resume");
+  });
+
   it("exits 2 on an unknown stage or a runaway cap", async () => {
     fx = fixture();
     const { run } = cli(fakeHost(fx, fakeScriptModel(), fakeRender()));
