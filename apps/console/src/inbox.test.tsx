@@ -320,9 +320,8 @@ describe("the inbox page, acting from the console", () => {
     expect(within(await screen.findByTestId("inbox-row-gate-1")).getByText("Approve merge")).toBeTruthy();
     expect(within(screen.getByTestId("inbox-row-held-1")).getByText("Release hold")).toBeTruthy();
     const ask = screen.getByTestId("inbox-row-ask-1");
-    expect(within(ask).queryByText("Answer")).toBeNull();
-    fireEvent.click(within(ask).getByText("Run on terminal"));
-    expect(within(ask).getByText("Answer from the console comes later; run it on the terminal for now.")).toBeTruthy();
+    expect(within(ask).getByText("Answer")).toBeTruthy();
+    expect(within(ask).queryByText("Run on terminal")).toBeNull();
   });
 
   it("labels an sh-sent-back tap as a wait for a new head, never as a merge", async () => {
