@@ -71,6 +71,12 @@ jobs:
       # A sidecar whose find no longer occurs in its target would make fix-proof refuse a later, unrelated PR (TP-4439).
       - name: Check mutation sidecar finds against their targets
         run: pnpm sidecar:finds
+      # A kill that names no test in its sidecar's test file proves nothing; the audit lists the sidecars of test files this PR changed (TP-6476).
+      - name: Check mutation sidecar kills name a test the change touches
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: pnpm sidecar:kills --base "origin/$BASE_REF"
       - run: pnpm typecheck
         env:
           TURBO_TELEMETRY_DISABLED: 1
