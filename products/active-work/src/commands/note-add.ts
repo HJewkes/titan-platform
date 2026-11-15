@@ -7,12 +7,14 @@ import {
   NoteKindSchema,
   NoteReadIfSchema,
 } from '../schemas/note.js';
-import { writeNoteFile } from '../notes/note-file.js';
+import { jaccard } from '@titan-design/memory';
+import { loadNotesFromDir, writeNoteFile } from '../notes/note-file.js';
 import { getInitiativeDir, getLockPath } from '../utils/paths.js';
 import { withFileLock } from '../utils/fs-atomic.js';
 import { today } from '../utils/today.js';
 import { NotFoundError } from '../errors.js';
-import { defineCommand } from '../registry/index.js';
+import { defineCommand, type CommandContext } from '../registry/index.js';
+import { warn } from './_categories.js';
 
 const ArgsSchema = z
   .object({
@@ -54,7 +56,34 @@ const ResultSchema = z.object({
   kind: NoteKindSchema,
   title: z.string(),
   read_if: z.string().optional(),
+  possible_dup: z.string().optional(),
 });
+
+// Same threshold and measure as task add's duplicate flag (_task-related.ts).
+const POSSIBLE_DUP_THRESHOLD = 0.9;
+
+/** The filename of the best-matching existing note at or above the threshold. */
+async function findPossibleDup(initiativeDir: string, title: string): Promise<string | undefined> {
+  const { notes } = await loadNotesFromDir(initiativeDir);
+  let best: { filename: string; score: number } | undefined;
+  for (const note of notes) {
+    const score = jaccard(title, note.frontmatter.title);
+    if (score >= POSSIBLE_DUP_THRESHOLD && (best === undefined || score > best.score)) {
+      best = { filename: note.filename, score };
+    }
+  }
+  return best?.filename;
+}
+
+async function warnPossibleDup(
+  ctx: CommandContext,
+  initiativeDir: string,
+  title: string,
+): Promise<string | undefined> {
+  const dup = await findPossibleDup(initiativeDir, title);
+  if (dup !== undefined) warn(ctx, `possible duplicate of existing note: ${dup}`);
+  return dup;
+}
 
 type Args = z.infer<typeof ArgsSchema>;
 type Result = z.infer<typeof ResultSchema>;
@@ -92,7 +121,7 @@ export default defineCommand<Args, Result>({
     usage:
       'active-work note add <slug> --kind <process|gotcha|fyi|decision> --title <text> (--body <text> | --body-file <path>) [--tags a --tags b] [--read-if <condition>]',
   },
-  async run(args) {
+  async run(args, ctx) {
     const initiativeDir = getInitiativeDir(args.slug);
     try {
       await fs.access(path.join(initiativeDir, 'brief.md'));
@@ -110,12 +139,14 @@ export default defineCommand<Args, Result>({
     };
 
     return withFileLock(getLockPath(args.slug), async () => {
+      const dup = await warnPossibleDup(ctx, initiativeDir, args.title);
       const written = await writeNoteFile(initiativeDir, frontmatter, body);
       return {
         ...written,
         kind: args.kind,
         title: args.title,
         ...(args.read_if !== undefined ? { read_if: args.read_if } : {}),
+        ...(dup !== undefined ? { possible_dup: dup } : {}),
       };
     });
   },
