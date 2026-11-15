@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a generated-only remerge carries without the freshness context being required",
+      "file": "products/factory/src/shepherd/remerge-carry.ts",
+      "find": "if (!required.includes(context)) return refuse(",
+      "replace": "if (required.length < 0) return refuse(",
+      "kills": [
+        "remerge does not carry a generated-only merge when the freshness context is not required"
+      ]
+    }
+  ]
+}
