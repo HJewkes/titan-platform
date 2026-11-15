@@ -5,7 +5,7 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { MAX_MUTATION_NAME, MAX_MUTATIONS } from "../packages/fix-proof/dist/index.js";
-import { findProblems, specProblem, testFileOf, testNamesOf, unmatchedKills } from "./mutation-kills-audit.mjs";
+import { findProblems, sidecarsOfChanged, specProblem, testFileOf, testNamesOf, unmatchedKills } from "./mutation-kills-audit.mjs";
 
 const report = (...fullNames) => ({ testResults: [{ name: "/repo/src/a.test.ts", assertionResults: fullNames.map((fullName) => ({ fullName, status: "passed" })) }] });
 const sidecar = (...kills) => ({ v: 1, mutations: [{ name: "flip", file: "src/a.ts", find: "x", replace: "y", kills }] });
@@ -153,6 +153,18 @@ describe("the sidecar:kills run", () => {
 
     expect(status).toBe(0);
     expect(lines).toContain("1 sidecars, 0 problems");
+  });
+});
+
+describe("sidecarsOfChanged", () => {
+  const exists = (path) => path === "src/a.test.mutations.json";
+
+  it("skips a changed test file that has no sidecar, since sidecars are optional", () => {
+    expect(sidecarsOfChanged(["src/b.test.ts", "README.md"], exists)).toEqual([]);
+  });
+
+  it("names the sidecar beside each changed test file that has one", () => {
+    expect(sidecarsOfChanged(["src/a.test.mjs", "src/b.test.tsx"], exists)).toEqual(["src/a.test.mutations.json"]);
   });
 });
 
