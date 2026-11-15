@@ -1,9 +1,11 @@
-import { checkEdges, readEdges, type EdgeError } from '@titan-design/pm';
-import { ValidationError } from '../errors.js';
-import { listInitiativeSlugs } from '../sessions/initiatives.js';
-import type { Task } from '../schemas/task.js';
-import { getActiveRoot } from '../utils/paths.js';
-import { loadExistingTasks } from '../utils/task-seq.js';
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import { checkEdges, readEdges, type EdgeError } from "@titan-design/pm";
+import { ValidationError } from "../errors.js";
+import { listInitiativeSlugs } from "../sessions/initiatives.js";
+import type { Task } from "../schemas/task.js";
+import { getActiveRoot, getInitiativeDir } from "../utils/paths.js";
+import { loadExistingTasks } from "../utils/task-seq.js";
 
 /**
  * Every task under the active root, plus the initiatives each id is filed in. Ids resolve by
@@ -12,6 +14,8 @@ import { loadExistingTasks } from '../utils/task-seq.js';
 export interface EdgeIndex {
   entries: { slug: string; task: Task }[];
   homes: Map<string, string[]>;
+  /** Ids with a file under some initiative's tasks/archive/; they resolve but carry no edges. */
+  archived: ReadonlySet<string>;
 }
 
 /** A proposed edge write on one task. An omitted field keeps the task's current edges. */
@@ -22,8 +26,11 @@ interface EdgeWrite {
   dep?: string[];
 }
 
-export function buildEdgeIndex(bySlug: ReadonlyMap<string, readonly Task[]>): EdgeIndex {
-  const entries: EdgeIndex['entries'] = [];
+export function buildEdgeIndex(
+  bySlug: ReadonlyMap<string, readonly Task[]>,
+  archived: ReadonlySet<string> = new Set()
+): EdgeIndex {
+  const entries: EdgeIndex["entries"] = [];
   const homes = new Map<string, string[]>();
   for (const [slug, slugTasks] of bySlug) {
     for (const task of slugTasks) {
@@ -31,7 +38,22 @@ export function buildEdgeIndex(bySlug: ReadonlyMap<string, readonly Task[]>): Ed
       homes.set(task.id, [...(homes.get(task.id) ?? []), slug]);
     }
   }
-  return { entries, homes };
+  return { entries, homes, archived };
+}
+
+/** Archived ids by file name alone: an archived file may be malformed and must not block a write. */
+async function archivedIds(slug: string): Promise<string[]> {
+  try {
+    const names = await fs.readdir(
+      path.join(getInitiativeDir(slug), "tasks", "archive")
+    );
+    return names
+      .filter((name) => name.endsWith(".yml"))
+      .map((name) => name.slice(0, -4));
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw err;
+  }
 }
 
 async function loadInitiativeTasks(slug: string): Promise<Task[]> {
@@ -41,17 +63,19 @@ async function loadInitiativeTasks(slug: string): Promise<Task[]> {
     const reason = err instanceof Error ? err.message : String(err);
     throw new ValidationError(
       `The edge check reads every task under the active root, and a task file in ${slug} ` +
-        `cannot be read. Fix that file and retry. ${reason}`,
+        `cannot be read. Fix that file and retry. ${reason}`
     );
   }
 }
 
 export async function loadEdgeIndex(): Promise<EdgeIndex> {
   const bySlug = new Map<string, Task[]>();
+  const archived = new Set<string>();
   for (const slug of await listInitiativeSlugs(getActiveRoot())) {
     bySlug.set(slug, await loadInitiativeTasks(slug));
+    for (const id of await archivedIds(slug)) archived.add(id);
   }
-  return buildEdgeIndex(bySlug);
+  return buildEdgeIndex(bySlug, archived);
 }
 
 /**
@@ -67,45 +91,70 @@ function graphFor(index: EdgeIndex, write: EdgeWrite): Task[] {
 /** The ids the write adds: its parent and any dep the task does not already have. */
 function namedIds(graph: readonly Task[], write: EdgeWrite): Set<string> {
   const current = graph.find((task) => task.id === write.id);
-  const currentDeps = new Set(current === undefined ? [] : readEdges(current).dep);
+  const currentDeps = new Set(
+    current === undefined ? [] : readEdges(current).dep
+  );
   const addedDeps = (write.dep ?? []).filter((ref) => !currentDeps.has(ref));
-  return new Set([...(write.parent === undefined ? [] : [write.parent]), ...addedDeps]);
+  return new Set([
+    ...(write.parent === undefined ? [] : [write.parent]),
+    ...addedDeps,
+  ]);
 }
 
-function placementErrors(index: EdgeIndex, write: EdgeWrite, named: Set<string>): string[] {
+function placementErrors(
+  index: EdgeIndex,
+  write: EdgeWrite,
+  named: Set<string>
+): string[] {
   const errors: string[] = [];
   for (const ref of named) {
     const homes = index.homes.get(ref) ?? [];
     if (homes.length < 2) continue;
-    errors.push(`${ref} is filed in more than one initiative: ${homes.join(', ')}`);
+    errors.push(
+      `${ref} is filed in more than one initiative: ${homes.join(", ")}`
+    );
   }
-  const parentHomes = write.parent === undefined ? [] : (index.homes.get(write.parent) ?? []);
+  const parentHomes =
+    write.parent === undefined ? [] : index.homes.get(write.parent) ?? [];
   if (parentHomes.length === 1 && parentHomes[0] !== write.slug) {
-    errors.push(`parent ${write.parent} is in ${parentHomes[0]}, not ${write.slug}`);
+    errors.push(
+      `parent ${write.parent} is in ${parentHomes[0]}, not ${write.slug}`
+    );
   }
   return errors;
 }
 
 const cycleKey = (error: EdgeError): string =>
-  error.kind === 'cycle' ? `${error.field}:${error.ids.join(',')}` : '';
+  error.kind === "cycle" ? `${error.field}:${error.ids.join(",")}` : "";
 
 /** Graph errors the write is responsible for: an unknown id it names, or a cycle it closes. */
 function writeGraphErrors(
+  index: EdgeIndex,
   graph: readonly Task[],
   write: EdgeWrite,
-  named: Set<string>,
+  named: Set<string>
 ): EdgeError[] {
   if (named.size === 0) return [];
-  const before = new Set(checkEdges(graph, { id: write.id }).errors.map(cycleKey));
-  const { errors } = checkEdges(graph, { id: write.id, parent: write.parent, dep: write.dep });
+  const before = new Set(
+    checkEdges(graph, { id: write.id }).errors.map(cycleKey)
+  );
+  const { errors } = checkEdges(graph, {
+    id: write.id,
+    parent: write.parent,
+    dep: write.dep,
+  });
   return errors.filter((e) =>
-    e.kind === 'unknown-id' ? named.has(e.ref) : !before.has(cycleKey(e)),
+    e.kind === "unknown-id"
+      ? named.has(e.ref) && !index.archived.has(e.ref)
+      : !before.has(cycleKey(e))
   );
 }
 
 function describeEdgeError(error: EdgeError): string {
-  if (error.kind === 'unknown-id') return `${error.field} ${error.ref} is not a known task id`;
-  return `${error.field} cycle: ${[...error.ids, error.ids[0]].join(' -> ')}`;
+  if (error.kind === "unknown-id") {
+    return `${error.field} ${error.ref} is not a known task id (no live or archived task file in any initiative)`;
+  }
+  return `${error.field} cycle: ${[...error.ids, error.ids[0]].join(" -> ")}`;
 }
 
 /**
@@ -116,13 +165,18 @@ function describeEdgeError(error: EdgeError): string {
 export function edgeWriteErrors(index: EdgeIndex, write: EdgeWrite): string[] {
   const graph = graphFor(index, write);
   const named = namedIds(graph, write);
-  const graphErrors = writeGraphErrors(graph, write, named);
-  return [...placementErrors(index, write, named), ...graphErrors.map(describeEdgeError)];
+  const graphErrors = writeGraphErrors(index, graph, write, named);
+  return [
+    ...placementErrors(index, write, named),
+    ...graphErrors.map(describeEdgeError),
+  ];
 }
 
 /** Throws a ValidationError naming every offending id when the write would break the edge graph. */
 export async function assertEdgeWrite(write: EdgeWrite): Promise<void> {
   const errors = edgeWriteErrors(await loadEdgeIndex(), write);
   if (errors.length === 0) return;
-  throw new ValidationError(`Refusing to write ${write.id}: ${errors.join('; ')}`);
+  throw new ValidationError(
+    `Refusing to write ${write.id}: ${errors.join("; ")}`
+  );
 }
