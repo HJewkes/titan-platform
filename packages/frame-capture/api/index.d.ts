@@ -53,6 +53,8 @@ interface Viewport {
 interface PageOptions extends Viewport {
     /** Load every declared FontFace before frame 0. Off only to measure what it prevents. */
     preloadFonts?: boolean;
+    /** Leave pixels the page does not paint at alpha 0 instead of Chromium's white default. */
+    transparent?: boolean;
 }
 interface FontState {
     family: string;
@@ -168,8 +170,11 @@ interface Encoder {
     write(png: Buffer): Promise<void>;
     finish(): Promise<void>;
 }
-/** One ffmpeg reading PNGs on stdin, muxing mix.wav, writing H.264 + AAC with no run-specific metadata. */
-declare function startEncoder(out: string, fps: number, audio: string): Encoder;
+/**
+ * One ffmpeg reading PNGs on stdin, muxing mix.wav, writing H.264 + AAC with no run-specific metadata.
+ * With `plate`, an mp4 under the frames, the PNGs are composited over it, so transparent pixels show the plate.
+ */
+declare function startEncoder(out: string, fps: number, audio: string, plate?: string): Encoder;
 
 /*!
  * The halving test is adapted from anatomy, https://github.com/wheresryan22/anatomy,
