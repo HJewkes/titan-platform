@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "pan speed read in layout units, not frame widths",
+      "file": "products/explainer/src/camera-motion.ts",
+      "find": "[((bx - ax) / width) * hz,",
+      "replace": "[(bx - ax) * hz,",
+      "kills": [
+        "camera-path velocity passes a one-second move across one frame width"
+      ]
+    },
+    {
+      "name": "jerk read as acceleration",
+      "file": "products/explainer/src/camera-motion.ts",
+      "find": "const j = a.slice(1).map((ai, i) => sub(ai, a[i]!, hz));",
+      "replace": "const j = a;",
+      "kills": [
+        "camera-path jerk flags the hard start of a linear move, which the eased move hides"
+      ]
+    },
+    {
+      "name": "key boxes may sit in the caption strip",
+      "file": "products/explainer/src/camera-path.ts",
+      "find": ".every(seen(key.box, captionTop))",
+      "replace": ".every(seen(key.box, 1))",
+      "kills": [
+        "camera-path key boxes flags a key box that sits in the caption strip"
+      ]
+    },
+    {
+      "name": "a reveal is checked only at its beat's start",
+      "file": "products/explainer/src/camera-path.ts",
+      "find": "windowTimes(reveal.fromS, reveal.atS, hz).some(",
+      "replace": "[reveal.fromS].some(",
+      "kills": [
+        "camera-path reveals flags a reveal the camera holds whole in frame before its cue"
+      ]
+    },
+    {
+      "name": "the camera-path rows are not registered at L0",
+      "file": "products/explainer/src/eval-l0.ts",
+      "find": "  cameraPathCheck,\n",
+      "replace": "",
+      "kills": [
+        "camera-path rows at L0 reports all four rows for a run with a camera track"
+      ]
+    }
+  ]
+}

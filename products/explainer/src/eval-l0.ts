@@ -28,6 +28,7 @@ import { cueGapCheck, fillFloorCheck, heldCountCheck } from "./lint-cadence.js";
 import { stillStretchCheck } from "./lint-still.js";
 import { hallmarkCheck } from "./lint-hallmarks.js";
 import { writingGateCheck } from "./writing-gate.js";
+import { cameraPathCheck, type CameraPathInput } from "./camera-path.js";
 import type { SpineV1 } from "./spine-schema.js";
 import type { ScriptTiming } from "./timing.js";
 
@@ -42,6 +43,8 @@ export interface L0Input {
   timing?: ScriptTiming;
   /** The script's story spine; the ledger lints read its item ledger. */
   spine?: SpineV1;
+  /** The resolved camera track and the layout boxes it frames; without one the camera-path rows are skipped. */
+  camera?: CameraPathInput;
 }
 
 /** A deterministic check over a script. It reports every rule it owns, passing or not, so a pass is a row too. */
@@ -78,11 +81,14 @@ export const L0_CHECKS: readonly L0Check[] = [
   headingWordsCheck, firstMotionCheck,
   stillStretchCheck,
   writingGateCheck, hallmarkCheck,
+  cameraPathCheck,
 ];
 
 /** Every check's rows, less the rows of a rule scoped away from the script (`structures` or `except_profiles` in rules.yaml). */
-export function runL0(script: ScriptV1, layout?: MapLayout, checks: readonly L0Check[] = L0_CHECKS, timing?: ScriptTiming, spine?: SpineV1): L0Result[] {
-  const input: L0Input = { script, view: deriveEvalView(script, layout), ...(layout ? { layout } : {}), ...(timing ? { timing } : {}), ...(spine ? { spine } : {}) };
+export function runL0(script: ScriptV1, layout?: MapLayout, checks: readonly L0Check[] = L0_CHECKS, timing?: ScriptTiming, spine?: SpineV1, camera?: CameraPathInput): L0Result[] {
+  const input: L0Input = {
+    script, view: deriveEvalView(script, layout), ...(layout ? { layout } : {}), ...(timing ? { timing } : {}), ...(spine ? { spine } : {}), ...(camera ? { camera } : {}),
+  };
   const outside = checksScopedAway(shippedRuleRegistry(), script);
   return checks.flatMap((check) => check(input)).filter((result) => !outside.has(result.check_id));
 }

@@ -1,0 +1,27 @@
+# Camera-path QA (TP-5887): the L0 rows read off a resolved camera track, with no render.
+#
+# The track is a list of camera moves (layout-space boxes, each reached over `durS` from wherever the camera is
+# when the move starts). Speeds are screen-relative: a pan in frame widths, a zoom in natural-log width, so the
+# same move reads the same at any zoom.
+#
+# Every row starts as a warning. No in-repo explainer fixture carries layout geometry, so no fixture can show an
+# error line with zero false positives; and the pipeline-explainer's "fit every station, then reveal each" beat
+# trips reveal-early by construction (a fit box contains every box it fits).
+schema: explainer.camera-path/v1
+# 4x the 30 fps render, so a spike between two frames is still sampled.
+sampleHz: 120
+# The renderer's easing between camera keys. titan-design's camera layer has not set one yet; this is the model's
+# guess, and the jerk limit assumes it: smootherstep keeps acceleration continuous, so only a real kink spikes.
+easing: smootherstep
+# The top of the caption strip as a fraction of the frame's height; matches CAPTION_KEEP_OUT in camera.ts.
+captionTop: 0.83
+rows:
+  # Peak screen-relative speed, frame widths a second. A 1 s smootherstep move across one frame width peaks at 1.875.
+  velocity: { severity: warning, max: 2 }
+  # Peak jerk, frame widths a second cubed, sampled at sampleHz. A 1 s smootherstep move across one frame width peaks
+  # at 60; a hard start (linear easing, an interrupted move) reads in the thousands.
+  jerk: { severity: warning, max: 100 }
+  # A key box leaving the frame or dipping into the caption strip at any sample of its window.
+  key-in-frame: { severity: warning }
+  # A reveal object whole in frame at any sample of its beat before its reveal cue.
+  reveal-early: { severity: warning }

@@ -16,6 +16,18 @@ export {
 export { L0_CHECKS, l0HardPass, mapLintCheck, runL0, type L0Check, type L0Input, type L0Result } from "./eval-l0.js";
 export { L0_EVAL_ID, runEvalCli, type EvalCliDeps } from "./eval-cli.js";
 export {
+  cameraPathCheck,
+  cameraPathFromMap,
+  cameraPathRows,
+  loadCameraPathDoctrine,
+  type CameraPathDoctrine,
+  type CameraPathInput,
+  type CameraPathResolvers,
+  type KeyWindow,
+  type RevealCue,
+} from "./camera-path.js";
+export { EASING_NAMES, cameraMotion, cameraTrack, type CameraKey, type Easing, type MotionSample } from "./camera-motion.js";
+export {
   calibrate,
   LabelsSchema,
   ownerRecall,

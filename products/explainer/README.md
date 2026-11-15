@@ -100,6 +100,14 @@ last was. `map-pins.ts` places each segment's pins at build time with graph-layo
 `camera.ts` computes each beat's `camera/<beat>.json` station: a 16:9 box around the beat's
 focus boxes that keeps them above the 83 % caption line.
 
+`camera-path.ts` checks the motion between stations without a render (TP-5887). It samples a
+resolved camera track (`cameraPathFromMap` builds one from a compiled map track) and reports four
+L0 rows: `camera:velocity` and `camera:jerk` (peak screen-relative speed and jerk against their
+limits), `camera:key-in-frame` (a focused box leaving the frame or dipping into the caption strip
+during its window) and `camera:reveal-early` (a reveal object whole in frame before its cue).
+Limits, severities, the easing model and the sample rate live in `doctrine/qa/camera-path.yaml`;
+every row is a warning, and `runL0` emits them only when given a camera track.
+
 `script-schema.ts` parses `script/v1`, a two-track script: per beat, a narration track
 (`spoken`, `why`, `fact_ids`) and a visual track whose `map_state` is the map track's schema
 unchanged. Every cue must be a word the beat speaks. The optional profile fields (`visual.layer`,
