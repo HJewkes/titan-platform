@@ -129,6 +129,8 @@ export type { AgentLog, Agreement, AgreementRow, AgreementSummary, LogClusterRow
 export type { FrictionClusterRow, FrictionDailyReport, FrictionRow, LogSide, ReportSide } from "./friction-daily.js";
 export { frictionDailyReport } from "./friction-daily.js";
 export { FRICTION_ASKER, frictionDeposit, frictionDepositId, renderFrictionMarkdown, renderLogTop, renderReportTop } from "./friction-render.js";
+export type { ChainLink, ChainLinkKind, PredecessorChainInput } from "./predecessor-chain.js";
+export { predecessorChain } from "./predecessor-chain.js";
 export type { GenerationEnd, SeatGeneration, SeatGenerationsInput } from "./seat-generations.js";
 export { TELEPORT_COMPLETED_EVENT, seatGenerations, seatGenerationsSchema } from "./seat-generations.js";
 export { readAgentNames, readAgentSessions, readCoverage } from "./cost-report-queries.js";

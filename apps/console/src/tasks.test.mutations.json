@@ -29,21 +29,21 @@
       ]
     },
     {
-      "name": "a later page replaces the rows already shown",
-      "file": "apps/console/src/pages/TasksPage.tsx",
-      "find": "const rows = [...shown, ...page.tasks];",
-      "replace": "const rows = [...page.tasks];",
+      "name": "a degraded deliverable registry shows no warning",
+      "file": "apps/console/src/pages/TaskDetailPage.tsx",
+      "find": "{deliverablesDegraded !== null ? <Alert",
+      "replace": "{deliverablesDegraded === null ? <Alert",
       "kills": [
-        "the tasks list shows the first 50 rows, titles each stage with every match, and loads the rest on the cursor"
+        "a task's detail warns when the deliverable registry is degraded"
       ]
     },
     {
-      "name": "the first page shows no skeleton while it loads",
-      "file": "apps/console/src/pages/TasksPage.tsx",
-      "find": "if (tasks.status === \"loading\") return <TasksSkeleton />;",
-      "replace": "if (tasks.status === \"loading\") return null;",
+      "name": "a failed roster read reads as no agent on the task",
+      "file": "apps/console/src/pages/TaskDetailPage.tsx",
+      "find": "if (roster.data === undefined) return <Alert status=\"warning\" size=\"compact\" message={`Agents are unavailable: ${roster.error.message}`} />;",
+      "replace": "if (roster.data === undefined) return <Typography variant=\"caption\" color=\"secondary\">No live agent on this task</Typography>;",
       "kills": [
-        "the tasks list shows loading, empty and failed states"
+        "a task's detail warns when the agent roster cannot be read"
       ]
     }
   ]

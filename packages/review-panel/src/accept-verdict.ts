@@ -1,6 +1,7 @@
 import { parseVerdictBlock, refusedLines, type CiPolicy, type SourceTextLocator } from "@titan-design/session-read";
 import { authorityLine, hasProbesLine, type AuthorityLine } from "./briefs/adversary.js";
 import { attestTokens } from "./briefs/attest.js";
+import { checkCandidatesFields, type CheckCandidate, type CheckCandidatesWarning } from "./check-candidates.js";
 import { mergeCiPolicy } from "./ci-policy-prose.js";
 import { DEPTH_FLOOR_REASON } from "./depth-floor.js";
 import { fixFirstFindings } from "./fix-first-findings.js";
@@ -21,6 +22,10 @@ export interface AcceptedVerdict {
   followUps?: FollowUp[];
   /** Why the reviewer's Follow-ups block was dropped whole; the verdict still counts. */
   followUpsWarning?: FollowUpsWarning;
+  /** Findings the reviewer thinks a check could have caught, on MERGE and FIX_FIRST alike; never read by the verdict. */
+  checkCandidates?: CheckCandidate[];
+  /** Why the reviewer's Check-candidates block was dropped whole; the verdict still counts. */
+  checkCandidatesWarning?: CheckCandidatesWarning;
   /** The profile the accepted message's author was spawned with; absent when neither the dispatch nor the roster says. */
   reviewerProfile?: string;
 }
@@ -97,6 +102,7 @@ export function acceptVerdict(input: AwaitVerdictInput, messages: readonly Revie
   if (input.shape === "adversary" && block.verdict === "MERGE" && (authority === undefined || authority === "malformed")) return malformedNone("authority_missing", final.writtenAt);
   const ciPolicy = block.verdict === "MERGE" ? mergeCiPolicy(block.ciPolicy, final.text, block.lineOffset) : undefined;
   if (ciPolicy === "ci_policy_prose" || ciPolicy === "ci_policy_malformed") return malformedNone(ciPolicy, final.writtenAt, final.text);
-  const accepted: AcceptedVerdict = { kind: "verdict", head: block.head, locator: final.locator, reviewer: { agentId: final.agentId, sessionId: final.sessionId }, ownerBrief: parseOwnerBrief(final.text), ...followUpsFields(final.text) };
+  const reviewerNotes = { ownerBrief: parseOwnerBrief(final.text), ...followUpsFields(final.text), ...checkCandidatesFields(final.text) };
+  const accepted: AcceptedVerdict = { kind: "verdict", head: block.head, locator: final.locator, reviewer: { agentId: final.agentId, sessionId: final.sessionId }, ...reviewerNotes };
   return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE", ...(ciPolicy && { ciPolicy }), ...attestsField(final.text), ...(authority && authority !== "malformed" && { authority }) } : { ...accepted, verdict: "FIX_FIRST", text: fixFirstFindings(input, messages.filter((message) => fromDispatch(input, message)), final.text), ...(block.closer && { closer: block.closer }) };
 }

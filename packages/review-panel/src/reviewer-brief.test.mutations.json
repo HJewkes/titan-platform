@@ -39,6 +39,15 @@
       "kills": [
         "reviewerBrief a non-source head sent on without a base-failing test is told to judge its tests, deletions and workflow edits, not to show one fail on the base"
       ]
+    },
+    {
+      "name": "the brief drops the nit policy line",
+      "file": "packages/review-panel/src/reviewer-brief.ts",
+      "find": "    NIT_POLICY_RULE,\n    ...convergenceLines",
+      "replace": "    ...convergenceLines",
+      "kills": [
+        "reviewerBrief Follow-ups rule the brief carries the nit policy line in a first review, ahead of the follow-ups it bars them from"
+      ]
     }
   ]
 }

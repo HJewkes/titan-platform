@@ -60,3 +60,51 @@ describe('openCapturePage and captureFrame', { timeout: BROWSER_TIMEOUT_MS }, ()
     assert.ok(fonts.some((f) => f.family === 'MissingFace' && f.status !== 'loaded'), JSON.stringify(fonts))
   })
 })
+
+const RECT_VIEWPORT = VIEWPORT
+const PROBES: [number, number][] = [[600, 300], [0, 359], [639, 0], [1, 1]]
+
+/** Alpha at (x, y) of a PNG, read back through a canvas in the browser. */
+async function alphaAt(png: Buffer, points: readonly [number, number][]): Promise<number[]> {
+  const page = await browser.newPage()
+  try {
+    return await page.evaluate(
+      async ({ data, at }) => {
+        const bitmap = await createImageBitmap(await (await fetch(`data:image/png;base64,${data}`)).blob())
+        const context = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d')
+        if (!context) throw new Error('no 2d context')
+        context.drawImage(bitmap, 0, 0)
+        return at.map(([x, y]) => context.getImageData(x, y, 1, 1).data[3] ?? -1)
+      },
+      { data: png.toString('base64'), at: points },
+    )
+  } finally {
+    await page.close()
+  }
+}
+
+describe('transparent capture', { timeout: BROWSER_TIMEOUT_MS }, () => {
+  async function shotOfRect(transparent: boolean | undefined): Promise<Buffer> {
+    const { page } = await openCapturePage(browser, served.url('rect'), { ...RECT_VIEWPORT, transparent })
+    try {
+      return await captureFrame(page, 0)
+    } finally {
+      await page.context().close()
+    }
+  }
+
+  // Mutation: openCapturePage stops overriding the default background, so unpainted pixels come back opaque white.
+  test('with transparent set, pixels the page does not paint have alpha 0 and the painted rect has 255', async () => {
+    const shot = await shotOfRect(true)
+    const alphas = await alphaAt(shot, PROBES)
+
+    assert.deepEqual(alphas, [0, 0, 0, 255])
+  })
+
+  // Mutation: the override applies even without the flag, so an opaque capture loses its white background.
+  test('without transparent, every pixel has alpha 255', async () => {
+    const alphas = await alphaAt(await shotOfRect(undefined), PROBES)
+
+    assert.deepEqual(alphas, [255, 255, 255, 255])
+  })
+})
