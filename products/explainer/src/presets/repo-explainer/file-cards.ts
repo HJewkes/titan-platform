@@ -5,14 +5,14 @@ import { diag, type GatherDiagnostic } from "./diagnostics.js";
 const FILE_LEVEL = 3;
 const CARD_METRICS = ["loc", "fan_in", "fan_out"] as const;
 
-export interface FileCardMetric {
+interface FileCardMetric {
   name: string;
   value: number | null;
   percentile: number | null;
   delta?: number | null;
 }
 
-export interface FileCard {
+interface FileCard {
   id: string;
   kind: "file";
   anchor: string;
