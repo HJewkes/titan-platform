@@ -205,6 +205,29 @@ declare function defaultHubDegree(degrees: Iterable<number>): number;
  */
 declare function walkGraph(graph: WalkGraph, seeds: string[], options?: WalkOptions): WalkStep[];
 
+/** One node of a summary tree. Level 0 is a leaf; higher levels summarise the leaves in `leafIds`. */
+interface SummaryNode {
+    id: string;
+    level: number;
+    parentId: string | null;
+    leafIds: string[];
+    text: string;
+}
+interface CollapsedTreeOptions {
+    nodes: SummaryNode[];
+    /** Ranks node ids by node text; build it over the same texts as `nodes`. */
+    inner: Retriever;
+    /** Drop every node above level 0, for the ablation against the full tree. */
+    leavesOnly?: boolean;
+    name?: string;
+}
+/**
+ * Collapsed-tree retrieval: every node of every level competes in one ranking,
+ * so a broad query can land on a summary and a detail query on a leaf. Each hit
+ * carries `level` and `leafIds`; cite the leaves, never the summary text.
+ */
+declare function collapsedTreeRetriever(options: CollapsedTreeOptions): Retriever;
+
 /** Scores query/candidate pairs; higher is more relevant. Cross-encoders live here. */
 interface Reranker {
     readonly model: string;
@@ -492,4 +515,4 @@ declare function correctQuery(query: string, source: VocabularySource): {
     didCorrect: boolean;
 };
 
-export { BruteForceVectorIndex, type Candidate, type ContextBudget, ContextBudgetSchema, type ContextCandidate, type ContextEntry, type ContextPlan, type ContextResponse, type CrossEncoderOptions, DF_CAP_FLOOR, type Degradation, type DerivedQuery, type DocumentFrequency, type DropReason, type DroppedCandidate, type EngineOptions, type FtsRetrieverOptions, type FusedResult, type GatherOptions, type GatheredLists, type GraphRetrieverOptions, type Hit, type ListResponse, RERANK_STAGE, type RankedList, type RecoveryStep, type Reranked, type Reranker, type RetrievalCallOptions, type RetrievalDropReason, type RetrievalDropped, type RetrievalEngine, type RetrievalRequest, RetrievalRequestSchema, type RetrievalResponse, type RetrieveOptions, type Retriever, type RrfOptions, type SearchOptions, type SearchResponse, TIERS_STAGE, type TierSource, type VectorIndex, type VectorMatch, type VectorRetrieverOptions, type VocabEntry, type VocabularySource, type WalkGraph, type WalkNeighbour, type WalkOptions, type WalkStep, applyDropoff, correctQuery, createRetrievalEngine, crossEncoderReranker, defaultHubDegree, defaultMatchExpression, deriveQuery, documentFrequencyCap, editDistance, estimateTokens, expandGraph, extractTerms, findCorrection, ftsRetriever, fuseByRRF, gatherFailOpen, graphRetriever, maxEditDistance, meaningfulTerms, orExpression, planContext, rerankCandidates, scoreTerm, selectTerms, vectorRetriever, vocabularyFromEntries, walkGraph };
+export { BruteForceVectorIndex, type Candidate, type CollapsedTreeOptions, type ContextBudget, ContextBudgetSchema, type ContextCandidate, type ContextEntry, type ContextPlan, type ContextResponse, type CrossEncoderOptions, DF_CAP_FLOOR, type Degradation, type DerivedQuery, type DocumentFrequency, type DropReason, type DroppedCandidate, type EngineOptions, type FtsRetrieverOptions, type FusedResult, type GatherOptions, type GatheredLists, type GraphRetrieverOptions, type Hit, type ListResponse, RERANK_STAGE, type RankedList, type RecoveryStep, type Reranked, type Reranker, type RetrievalCallOptions, type RetrievalDropReason, type RetrievalDropped, type RetrievalEngine, type RetrievalRequest, RetrievalRequestSchema, type RetrievalResponse, type RetrieveOptions, type Retriever, type RrfOptions, type SearchOptions, type SearchResponse, type SummaryNode, TIERS_STAGE, type TierSource, type VectorIndex, type VectorMatch, type VectorRetrieverOptions, type VocabEntry, type VocabularySource, type WalkGraph, type WalkNeighbour, type WalkOptions, type WalkStep, applyDropoff, collapsedTreeRetriever, correctQuery, createRetrievalEngine, crossEncoderReranker, defaultHubDegree, defaultMatchExpression, deriveQuery, documentFrequencyCap, editDistance, estimateTokens, expandGraph, extractTerms, findCorrection, ftsRetriever, fuseByRRF, gatherFailOpen, graphRetriever, maxEditDistance, meaningfulTerms, orExpression, planContext, rerankCandidates, scoreTerm, selectTerms, vectorRetriever, vocabularyFromEntries, walkGraph };
