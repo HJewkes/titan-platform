@@ -259,6 +259,7 @@ graph TD
   explainer --> agentDispatch
   explainer --> agentProtocol
   explainer --> appPaths
+  explainer --> autoresearch
   explainer --> codeGraph
   explainer --> codeRead
   explainer --> evidence
