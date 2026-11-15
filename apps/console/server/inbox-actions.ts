@@ -50,8 +50,7 @@ const VERDICT = z.enum(VERDICTS).optional();
 
 type InboxAction = InboxItem["action"];
 type ChatAction = Extract<InboxAction, { kind: "answer-chat" }>;
-type DepositAction = Extract<InboxAction, { kind: "answer-deposit" }>;
-type ConsoleAction = PostedAction | ChatAction | DepositAction | ApproveChatAction | G10Action | OpAction;
+type ConsoleAction = PostedAction | ChatAction | Extract<InboxAction, { kind: "answer-deposit" }> | ApproveChatAction | G10Action | OpAction;
 type Outcome = ActionOutcome | Unreachable | AnswerOutcome | VerdictOutcome;
 
 export interface InboxActionOptions {
