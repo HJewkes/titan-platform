@@ -20,3 +20,20 @@ describe("recommended", () => {
     expect(Object.keys(plugin.rules ?? {})).toEqual(expect.arrayContaining(["max-line-length", "no-wall-clock-motion", "recipe-step-in-loop"]));
   });
 });
+
+const field = (value: unknown, key: string): unknown =>
+  typeof value === "object" && value !== null && key in value ? Object.getOwnPropertyDescriptor(value, key)?.value : undefined;
+
+function namesClasses(rule: unknown): boolean {
+  const classes = field(field(field(rule, "meta"), "docs"), "classes");
+  return Array.isArray(classes) && classes.length > 0 && classes.every((key) => typeof key === "string" && key.length > 0);
+}
+
+describe("rule classes", () => {
+  it("every rule names at least one class", () => {
+    const unclassed = Object.entries(plugin.rules ?? {})
+      .filter(([, rule]) => !namesClasses(rule))
+      .map(([name]) => name);
+    expect(unclassed).toEqual([]);
+  });
+});

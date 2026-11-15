@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { gitIn, seedRepo, withHistory } from "@titan-design/test-kit/git";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { hostCarryPorts } from "./carry-cache-adapter.js";
-import { generatedPathsFor, remerge, remergeFact, type RemergeResult } from "./remerge-carry.js";
+import { freshnessContextFor, generatedPathsFor, remerge, remergeFact, type RemergeResult, type RequiredContextsReader } from "./remerge-carry.js";
 
 const REPO = "acme/widgets";
 const GENERATED = ["CAPABILITIES.md", "site/generated/**"];
@@ -68,8 +68,11 @@ function mergeMain(): string {
   return git("rev-parse", "HEAD");
 }
 
-const probe = (fromHead: string, head: string, remote = origin): Promise<RemergeResult> =>
-  remerge({ repo: REPO, baseRef: "main", fromHead, head, generated: GENERATED }, { ports: hostCarryPorts, stateDir, remote: () => remote });
+const FRESHNESS = "validate";
+const requiring = (...contexts: string[]): RequiredContextsReader => async () => contexts;
+
+const probe = (fromHead: string, head: string, remote = origin, requiredContexts = requiring(FRESHNESS)): Promise<RemergeResult> =>
+  remerge({ repo: REPO, baseRef: "main", fromHead, head, generated: GENERATED, freshnessContext: FRESHNESS }, { ports: hostCarryPorts, stateDir, remote: () => remote, requiredContexts });
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "remerge-carry-"));
@@ -106,11 +109,45 @@ describe("remerge", { timeout: 30_000 }, () => {
     expect(await probe(reviewed, head)).toMatchObject({ carries: true, rule: "remerge-generated-only", paths: ["site/generated/widgets.md"] });
   });
 
+  it("does not carry a generated-only merge when the freshness context is not required", async () => {
+    const reviewed = conflictingOn("CAPABILITIES.md");
+    const head = resolveMerge({ "CAPABILITIES.md": "regenerated\n" });
+
+    const result = await probe(reviewed, head, origin, requiring("lint"));
+
+    expect(result).toMatchObject({ carries: false, reason: expect.stringContaining("validate") });
+  });
+
+  it("does not carry a generated-only merge when the required checks cannot be read", async () => {
+    const reviewed = conflictingOn("CAPABILITIES.md");
+    const head = resolveMerge({ "CAPABILITIES.md": "regenerated\n" });
+
+    const result = await probe(reviewed, head, origin, async () => undefined);
+
+    expect(result).toMatchObject({ carries: false, reason: expect.stringContaining("cannot be read") });
+  });
+
+  it("does not carry a generated-only merge in a repo that declares no freshness context", async () => {
+    const reviewed = conflictingOn("CAPABILITIES.md");
+    const head = resolveMerge({ "CAPABILITIES.md": "regenerated\n" });
+
+    const result = await remerge({ repo: REPO, baseRef: "main", fromHead: reviewed, head, generated: GENERATED }, { ports: hostCarryPorts, stateDir, remote: () => origin, requiredContexts: requiring(FRESHNESS) });
+
+    expect(result).toMatchObject({ carries: false, reason: expect.stringContaining("declares no freshness context") });
+  });
+
+  it("carries an empty remerge without reading the required checks", async () => {
+    const { h1 } = reviewedHead();
+    const h2 = mergeMain();
+
+    expect(await probe(h1, h2, origin, async () => undefined)).toMatchObject({ carries: true, rule: "remerge-empty" });
+  });
+
   it.each(["site/reference/widgets.md", ".codewatch/check.json"])("does not carry a titan-platform merge that resolved hand-written %s", async (file) => {
     const reviewed = conflictingOn(file);
     const head = resolveMerge({ [file]: "resolved\n" });
 
-    const result = await remerge({ repo: REPO, baseRef: "main", fromHead: reviewed, head, generated: generatedPathsFor("HJewkes/titan-platform") }, { ports: hostCarryPorts, stateDir, remote: () => origin });
+    const result = await remerge({ repo: REPO, baseRef: "main", fromHead: reviewed, head, generated: generatedPathsFor("HJewkes/titan-platform"), freshnessContext: FRESHNESS }, { ports: hostCarryPorts, stateDir, remote: () => origin, requiredContexts: requiring(FRESHNESS) });
 
     expect(result).toMatchObject({ carries: false, paths: [file], generatedPaths: [] });
   });
@@ -195,6 +232,16 @@ describe("remerge", { timeout: 30_000 }, () => {
 
     expect(result.carries).toBe(false);
     expect(existsSync(join(stateDir, "git-cache"))).toBe(false);
+  });
+});
+
+describe("freshnessContextFor", () => {
+  it("names validate for titan-platform, whatever the repo's case", () => {
+    expect(freshnessContextFor("HJewkes/titan-platform")).toBe("validate");
+  });
+
+  it("names nothing for a repo it does not list", () => {
+    expect(freshnessContextFor(REPO)).toBeUndefined();
   });
 });
 

@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
-import { activeWorkGraphPath, activeWorkRoot, type PathOptions } from "@titan-design/app-paths";
+import path from "node:path";
+import { activeWorkGraphPath, activeWorkRoot, appDirs, type PathOptions } from "@titan-design/app-paths";
 import { instantiateEmbedder } from "@titan-design/embed";
 import { Command } from "commander";
 import { activeWorkSearch } from "./candidates/active-work-search.js";
@@ -10,17 +11,20 @@ import { notesFts } from "./candidates/notes-fts.js";
 import { readHead, transcriptFiles } from "./corpus/transcripts.js";
 import { mineBootstrapArm } from "./mine/bootstrap-arm.js";
 import { mineSpawnArm } from "./mine/spawn-arm.js";
-import { formatPairs, parsePairs } from "./pairs.js";
+import { formatPairs, parsePairs, type EvalPair } from "./pairs.js";
 import { QUERY_VARIANTS } from "./query/variants.js";
-import { formatRows, runEval } from "./run.js";
+import { formatRows, runEval, type RunRow } from "./run.js";
+import { freezeSet, isSetDir, loadSet, type SetStamp } from "./set.js";
 import { formatServed } from "./served/format.js";
 import { buildReport, collectServed } from "./served/report.js";
 import { snapshot } from "./snapshot.js";
 import { countUptake } from "./uptake.js";
+import { isoWeekWindow, writeWeekly } from "./weekly.js";
 
 /**
- * Four verbs: mine the pairs, score the candidates on them, count whether
- * anyone used a recall tool at all, and label what the renderers actually served.
+ * Five verbs: mine the pairs, score the candidates on them, count whether
+ * anyone used a recall tool at all, label what the renderers actually served,
+ * and record one dated row of the last two per week.
  */
 
 interface CommonOptions {
@@ -100,10 +104,39 @@ function hybridEmbedder(backend: string) {
 
 const ALL_CANDIDATES = ["date-order-notes", "active-work-search", "notes-fts", "hybrid-fts-vector"] as const;
 
+function loadPairs(target: string): { pairs: EvalPair[]; stamp?: SetStamp } {
+  if (isSetDir(target)) return loadSet(target);
+  return { pairs: parsePairs(readFileSync(target, "utf8")) };
+}
+
+function printRows(rows: RunRow[], stamp: SetStamp | undefined, json: boolean): void {
+  if (json) {
+    console.log(JSON.stringify(stamp ? rows.map((row) => ({ ...row, set: stamp })) : rows, null, 2));
+    return;
+  }
+  if (stamp) process.stderr.write(`set ${stamp.id} (${stamp.pairs} pairs)\n`);
+  console.log(formatRows(rows));
+}
+
+function freezeCommand(paths: PathOptions): Command {
+  return new Command("freeze")
+    .description("Pin a mined pair file as a set: deduplicated, sorted, with a hash-named manifest")
+    .argument("<pairs>", "JSONL produced by `mine`")
+    .requiredOption("--out <dir>", "directory to write pairs.jsonl and manifest.json into")
+    .option("--graph <file>", "session graph, read-only", activeWorkGraphPath(paths))
+    .action(async (pairsFile, options) => {
+      const files = await transcriptFiles();
+      const heads = await Promise.all(files.map((file) => readHead(file)));
+      const stamps = heads.map((head) => head.startedAt ?? "");
+      const manifest = freezeSet(readFileSync(pairsFile, "utf8"), options.out, snapshot(files, options.graph, stamps));
+      console.log(JSON.stringify({ id: manifest.id, pairCounts: manifest.pairCounts }));
+    });
+}
+
 function runCommand(paths: PathOptions): Command {
   return new Command("run")
-    .description("Score candidate retrievers over a mined pair file")
-    .argument("<pairs>", "JSONL produced by `mine`")
+    .description("Score candidate retrievers over a mined pair file or a frozen set directory")
+    .argument("<pairs>", "JSONL produced by `mine`, or a directory written by `freeze`")
     .option("--candidates <list>", "comma-separated", ALL_CANDIDATES.join(","))
     .option("--variants <list>", "comma-separated query derivations", QUERY_VARIANTS.join(","))
     .option("--embedder <backend>", "hybrid-fts-vector's embedder: hash | ollama", "hash")
@@ -113,7 +146,7 @@ function runCommand(paths: PathOptions): Command {
     .action(async (pairsFile, options) => {
       const names = parseChoices("--candidates", String(options.candidates), ALL_CANDIDATES);
       const variants = parseChoices("--variants", String(options.variants), QUERY_VARIANTS);
-      const pairs = parsePairs(readFileSync(pairsFile, "utf8"));
+      const { pairs, stamp } = loadPairs(pairsFile);
       const candidates = await buildCandidates(names, options);
       try {
         const rows = await runEval({
@@ -123,7 +156,7 @@ function runCommand(paths: PathOptions): Command {
           onProgress: (done, total) => process.stderr.write(`\r${done}/${total} cells`),
         });
         process.stderr.write("\n");
-        console.log(options.json ? JSON.stringify(rows, null, 2) : formatRows(rows));
+        printRows(rows, stamp, Boolean(options.json));
       } finally {
         for (const candidate of candidates) candidate.close();
       }
@@ -156,14 +189,30 @@ function servedCommand(paths: PathOptions): Command {
     });
 }
 
+function weeklyCommand(paths: PathOptions): Command {
+  return new Command("weekly")
+    .description("Write one measurement row for an ISO week: served opened ratios and recall-tool uptake")
+    .requiredOption("--week <YYYY-Www>", "ISO week, Monday to Monday in UTC")
+    .option("--out <file>", "weekly series JSONL", path.join(appDirs("retrieval-eval", paths).data, "weekly.jsonl"))
+    .option("--active-root <dir>", "active-work root, read-only", activeWorkRoot(paths))
+    .action(async (options) => {
+      isoWeekWindow(options.week);
+      const files = await transcriptFiles();
+      const row = await writeWeekly({ week: options.week, out: options.out, files, activeRoot: options.activeRoot });
+      console.log(JSON.stringify(row));
+    });
+}
+
 /** `paths` overrides where the --active-root and --graph defaults read env, home and platform from. */
 export function buildCli(paths: PathOptions = {}): Command {
   return new Command("retrieval-eval")
     .description("Transcript-mined retrieval eval harness (TP-84)")
     .addCommand(mineCommand(paths))
+    .addCommand(freezeCommand(paths))
     .addCommand(runCommand(paths))
     .addCommand(uptakeCommand())
-    .addCommand(servedCommand(paths));
+    .addCommand(servedCommand(paths))
+    .addCommand(weeklyCommand(paths));
 }
 
 export async function runCli(argv: string[]): Promise<number> {
