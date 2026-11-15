@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
 import searchCommand from '../commands/search.js';
 import type { CommandContext } from '../registry/types.js';
@@ -11,14 +12,20 @@ import * as paths from '../utils/paths.js';
 const LOG = 'search-queries.jsonl';
 
 function context(activeRoot: string, caller?: 'owner' | 'agent'): CommandContext {
-  return { activeRoot, caller } as CommandContext;
+  return { activeRoot, warnings: [], format: 'json', caller };
 }
 
-function readLines(dir: string): Array<Record<string, unknown>> {
-  return readFileSync(path.join(dir, LOG), 'utf8')
-    .trim()
-    .split('\n')
-    .map((line) => JSON.parse(line) as Record<string, unknown>);
+const LineSchema = z.object({
+  ts: z.string(),
+  query: z.string(),
+  hits: z.number(),
+  degraded: z.number(),
+  caller: z.string(),
+});
+
+function readLine(dir: string): z.infer<typeof LineSchema> {
+  const first = readFileSync(path.join(dir, LOG), 'utf8').trim().split('\n')[0];
+  return LineSchema.parse(JSON.parse(first));
 }
 
 describe('search query log', () => {
@@ -39,14 +46,12 @@ describe('search query log', () => {
       const result = await searchCommand.run({ query: 'zzzunmatchable' }, context(root, 'agent'));
 
       expect(result.hits).toHaveLength(0);
-      const [line] = readLines(stateDir);
-      expect(line).toMatchObject({
+      expect(readLine(stateDir)).toMatchObject({
         query: 'zzzunmatchable',
         hits: 0,
         degraded: result.degraded.length,
         caller: 'agent',
       });
-      expect(typeof line?.ts).toBe('string');
     });
   });
 
@@ -59,9 +64,9 @@ describe('search query log', () => {
       );
       const result = await searchCommand.run({ query: 'zebra' }, context(root, 'owner'));
 
-      const [line] = readLines(stateDir);
-      expect(line?.hits).toBe(result.hits.length);
-      expect(line?.caller).toBe('owner');
+      const line = readLine(stateDir);
+      expect(line.hits).toBe(result.hits.length);
+      expect(line.caller).toBe('owner');
     });
   });
 

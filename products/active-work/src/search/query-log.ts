@@ -6,7 +6,7 @@ import { getStateRoot } from '../utils/paths.js';
  * One JSON line per search run, so a query that found nothing is countable.
  * `recovered` is reserved for the later recovery step; the search itself never sets it.
  */
-export interface SearchQueryRecord {
+interface SearchQueryRecord {
   ts: string;
   query: string;
   hits: number;
