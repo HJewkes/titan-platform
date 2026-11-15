@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import { Alert, HStack, Link, Section, SectionContent, SectionHeader, Typography, VStack } from "@titan-design/react-ui";
 import { Skeleton } from "../shell/Loading.js";
 import { useQuery, type ServedCommands } from "../data/rpc.js";
-import { openExternal } from "./homeLinks.js";
 import { PHONE_TAP_LINK } from "./phone.js";
 
 type ShippedResult = ServedCommands["coord.shipped"]["result"];
@@ -97,7 +96,7 @@ function PrList({ prs }: { prs: readonly PrRef[] }): ReactNode {
     <VStack gap={1} className="min-w-0">
       {prs.map((pr) => (
         <HStack key={`${pr.repo}#${pr.number}`} gap={2} align="center" className="min-w-0 flex-wrap">
-          <Link color="primary" href={pr.url} isExternal className={`${PHONE_TAP_LINK} break-all`} onPress={() => openExternal(pr.url)} testID={`coord-shipped-pr-${pr.repo}#${pr.number}`}>
+          <Link color="primary" href={pr.url} isExternal className={`${PHONE_TAP_LINK} break-all`} testID={`coord-shipped-pr-${pr.repo}#${pr.number}`}>
             {`${pr.repo}#${pr.number}`}
           </Link>
           <Typography variant="caption" color="secondary" className="break-words">

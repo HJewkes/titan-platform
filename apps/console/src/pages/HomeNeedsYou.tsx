@@ -101,7 +101,7 @@ function InboxTop({ blockers, waiting, gaps }: { blockers: readonly InboxItem[];
 function QueueUnreadable({ message, url }: { message: string; url: string }): ReactNode {
   return (
     <Alert status="warning" message={`The agent-chat queue is unreadable: ${message}.`}>
-      <Link color="primary" href={url} isExternal onPress={() => openExternal(url)}>
+      <Link color="primary" href={url} isExternal>
         Open agent-chat
       </Link>
     </Alert>
