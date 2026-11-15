@@ -1,8 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
-import { BridgeFileSchema, readBridgeFile } from "./bridge.js";
+import { BridgeFileSchema, readBridgeFile, runBridgeFile } from "./bridge.js";
 import { resumeVideo, runVideo } from "./host.js";
+import type { GatherRequest } from "./run-gather.js";
 import { cloneFixture, dropSeeds, fakeRender, fakeHost, fakeScriptModel, fixture, seededRun, type Fixture } from "./run-fakes.test-helpers.js";
 import { fakeQa, heldOverlap } from "../qa/qa-fakes.test-helpers.js";
 
@@ -93,6 +94,62 @@ describe("--theater", () => {
     expect(resumed.status, resumed.error).toBe("completed");
     expect(existsSync(path.join(scratch, "demo.mp4"))).toBe(true);
     expect(existsSync(path.join(fx.theater, "demo.mp4"))).toBe(false);
+  });
+});
+
+describe("{day} in the bridge's theater dir", () => {
+  const dailyGather = (day: string): GatherRequest => ({ adapter: "gatherDaily", type: "repo-tour", day, repos: [], transcripts: [], initiative: "demo" });
+
+  /** The fixture's bridge.json with `{day}` in its theater dir; returns the unexpanded root. */
+  function dayBridge(fixture: Fixture): string {
+    const root = path.join(fixture.dataDir, "..", "daily-theater");
+    const file = path.join(fixture.dataDir, "bridge.json");
+    const bridge = BridgeFileSchema.parse(JSON.parse(readFileSync(file, "utf8")));
+    writeFileSync(file, JSON.stringify({ ...bridge, theater: { ...bridge.theater, dir: path.join(root, "{day}") } }));
+    return root;
+  }
+
+  it("exports a gatherDaily run into the folder named for its gather day", async () => {
+    const pins = await tts();
+    const root = dayBridge(fx!);
+
+    const result = await runVideo({ from: "render", pins, gather: dailyGather("2026-11-13") }, fakeHost(fx!, fakeScriptModel(), fakeRender()));
+
+    expect(result.status, result.error).toBe("completed");
+    expect(existsSync(path.join(root, "2026-11-13", "demo.mp4"))).toBe(true);
+  });
+
+  it("keeps the first day's video when a second day exports", async () => {
+    const pins = await tts();
+    const root = dayBridge(fx!);
+
+    await runVideo({ from: "render", pins, gather: dailyGather("2026-11-13") }, fakeHost(fx!, fakeScriptModel(), fakeRender()));
+    const second = await runVideo({ from: "render", pins, gather: dailyGather("2026-11-14") }, fakeHost(fx!, fakeScriptModel(), fakeRender()));
+
+    expect(second.status, second.error).toBe("completed");
+    expect(existsSync(path.join(root, "2026-11-13", "demo.mp4"))).toBe(true);
+    expect(existsSync(path.join(root, "2026-11-14", "demo.mp4"))).toBe(true);
+  });
+
+  it("lets --theater win over the {day} folder", async () => {
+    const pins = await tts();
+    const root = dayBridge(fx!);
+    const scratch = path.join(fx!.dataDir, "..", "scratch-theater");
+
+    const result = await runVideo({ from: "render", pins, theater: scratch, gather: dailyGather("2026-11-13") }, fakeHost(fx!, fakeScriptModel(), fakeRender()));
+
+    expect(result.status, result.error).toBe("completed");
+    expect(existsSync(path.join(scratch, "demo.mp4"))).toBe(true);
+    expect(existsSync(path.join(root, "2026-11-13"))).toBe(false);
+  });
+
+  it("refuses a {day} bridge for a run with no gather day, naming --theater", () => {
+    fx = fixture();
+    dayBridge(fx);
+
+    const run = () => runBridgeFile(fx!.dataDir, {});
+
+    expect(run).toThrow(/no gather day.*--theater/);
   });
 });
 
