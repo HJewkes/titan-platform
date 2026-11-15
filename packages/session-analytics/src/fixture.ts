@@ -99,13 +99,14 @@ interface OriginFixture {
   agentName?: string | null;
   agentId?: string | null;
   originKind?: string | null;
+  predecessor?: string | null;
 }
 
 export function insertOrigin(db: Db, origin: OriginFixture): void {
   db.prepare(
-    `INSERT INTO session_origin (session_id, origin_system, depth, profile, parent_name, agent_name, agent_id, origin_kind, resolved_at)
-     VALUES (@sessionId, 'agent-chat', @depth, @profile, @parentName, @agentName, @agentId, @originKind, '2026-09-01T00:00:00Z')`,
-  ).run({ profile: null, parentName: null, agentName: null, agentId: null, originKind: null, ...origin });
+    `INSERT INTO session_origin (session_id, origin_system, depth, profile, parent_name, agent_name, agent_id, origin_kind, predecessor, resolved_at)
+     VALUES (@sessionId, 'agent-chat', @depth, @profile, @parentName, @agentName, @agentId, @originKind, @predecessor, '2026-09-01T00:00:00Z')`,
+  ).run({ profile: null, parentName: null, agentName: null, agentId: null, originKind: null, predecessor: null, ...origin });
 }
 
 interface InboundFixture {
