@@ -53,6 +53,13 @@ export function prKey(repo: string, pr: number, headSha: string): string {
   return `pr:${repo.trim()}#${pr}@${headSha.trim()}`.toLowerCase();
 }
 
+/** The key a start-session op carries, so two deposits asking to start the same session are one item. */
+export function sessionKey(name: string): string {
+  const trimmed = name.trim();
+  if (trimmed === "") throw new Error("session key needs a name");
+  return `session:${trimmed}`;
+}
+
 const PR_REF = /^[\w.-]+\/[\w.-]+#\d+$/;
 const FULL_SHA = /^[0-9a-f]{40}$/;
 
