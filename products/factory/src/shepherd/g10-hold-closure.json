@@ -347,6 +347,8 @@
   "shepherd/owner-friction.ts",
   "shepherd/owner-hold-rows.ts",
   "shepherd/owner-kept.ts",
+  "shepherd/owner-meter-command.ts",
+  "shepherd/owner-meter.ts",
   "shepherd/owner-section.ts",
   "shepherd/owner-send-back.ts",
   "shepherd/owner-task-approval.ts",

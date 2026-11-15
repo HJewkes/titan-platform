@@ -44,6 +44,7 @@ import { visualWeekCommand } from "./visual-week-command.js";
 import { visualFeedbackCommand } from "./visual-feedback-command.js";
 import { visualFeedbackNotesCommand } from "./visual-feedback-notes-command.js";
 import { watchCommand } from "./watch-command.js";
+import { ownerMeterCommand } from "./owner-meter-command.js";
 import { timelineEntries, type PrTimeline } from "./view.js";
 import type { WatchRow } from "./view-schema.js";
 import { LIST_FILTER, mapRows, rowOf, runFinished, waitingFilter, watchRows, withOrder } from "./watch-rows.js";
@@ -375,6 +376,7 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.visual-week-feedback": visualFeedbackCommand,
   "shepherd.visual-feedback-notes": visualFeedbackNotesCommand,
   "shepherd.brief": briefCommand,
+  "shepherd.ownerMeter": ownerMeterCommand,
 };
 
 export type ShepherdCommandName = keyof typeof SHEPHERD_COMMAND_MAP;
