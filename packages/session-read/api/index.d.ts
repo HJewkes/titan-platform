@@ -1099,6 +1099,7 @@ declare class RecoveryFacts {
     private readonly chatSends;
     private readonly agentSpawns;
     private compactionCount;
+    private boundaryAwaitingSummary;
     private readonly compactionSummaries;
     constructor(root: string);
     add(observation: NormalizedSessionObservation): void;
