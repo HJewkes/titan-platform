@@ -8,6 +8,7 @@ import { DEFAULT_BUDGET_USD, DEFAULT_SCRIPT_MODEL, resumeVideo, runVideo, writeR
 import { REFLECTION_MODES, type ReflectionConfig, type ReflectionMode } from "../reflection-export.js";
 import { STAGES, type StageName } from "./records.js";
 import { compareReports, renderCompare } from "./report.js";
+import { failureLines } from "./run-failure.js";
 import { CLI_FACT_ADAPTERS, gatherFacts, gatherRequest, type GatherDeps, type GatherFlags, type GatherRequest } from "./run-gather.js";
 
 const EXIT = { OK: 0, FAILED: 1, USAGE: 2 } as const;
@@ -118,6 +119,7 @@ function summary(result: RunOutcome, io: Io, deps: RunCliDeps): number {
   io.out(`run ${result.runId}: ${result.status}; $${t.usd.toFixed(4)} over ${t.calls} model calls; ${(result.report.runWallMs / 1000).toFixed(1)} s\n`);
   io.out(`report: ${result.reportPath}\n`);
   if (result.error) io.err(`${result.error}\n`);
+  if (result.status !== "completed") for (const line of failureLines(result.report)) io.err(`${line}\n`);
   if (result.status !== "completed") io.err(`continue with: explainer run resume ${result.runId}\n`);
   return result.status === "completed" ? EXIT.OK : EXIT.FAILED;
 }
