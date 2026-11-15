@@ -18,7 +18,7 @@ export interface GateRow {
 }
 
 /** One quoted sentence and the beat it sits in. */
-export interface GateSpan {
+interface GateSpan {
   beat: string;
   text: string;
 }
