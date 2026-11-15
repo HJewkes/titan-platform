@@ -8,6 +8,8 @@ import { ciTableLines, CI_REVIEWER_TEST_RULE, type CiCheckRow } from "./briefs/c
 import { OWNER_PICK_CONTRADICTED } from "./fix-first-findings.js";
 import { DEFECT_CLASS_HEADING, EARLIER_FINDINGS_HEADING, earlierFindingLines, type EarlierFinding } from "./briefs/earlier-findings.js";
 import { FOLLOW_UPS_HEADING, MAX_FOLLOW_UPS } from "./follow-ups.js";
+import { CHECK_CANDIDATES_HEADING } from "./check-candidates.js";
+import { checkCandidatesLines } from "./briefs/check-candidates.js";
 import { CLASS_TAG, IMPORTANT_TAG, scopeLines, scopedDiffLine, shellSafe, usableScope, type ReviewScope } from "./briefs/scoped-rereview.js";
 
 type RepoSlug = string;
@@ -47,6 +49,7 @@ export const CI_POLICY_RULE =
 
 export { DEFECT_CLASS_HEADING, EARLIER_FINDINGS_END, EARLIER_FINDINGS_HEADING, EARLIER_FINDINGS_START, type EarlierFinding } from "./briefs/earlier-findings.js";
 export { CI_REVIEWER_TEST_RULE, MAX_CI_CHECK_ROWS, type CiCheckRow } from "./briefs/ci.js";
+export { CHECK_CANDIDATES_RULE } from "./briefs/check-candidates.js";
 
 /** Everything a reviewer brief may carry; it has no field for task or implementer text, so none can reach the prompt. */
 export interface ReviewerBriefInput extends WorkflowCiInput {
@@ -222,7 +225,7 @@ function checkoutLines(runDir: string, { repo, pr, head, sourceCheckout }: Revie
 const HANDS_OFF = "Do not push, merge, comment or edit anything.";
 
 /** Labels are read from the final message only, so a reviewer that cleans up after its verdict and repeats a bare block loses its Attests line. */
-const FINAL_MESSAGE_IS_REVIEW = `Your final message is your whole review and verdict, including any \`${ATTESTS_HEADING}\` and \`${FOLLOW_UPS_HEADING}\` lines; send no message after it.`;
+const FINAL_MESSAGE_IS_REVIEW = `Your final message is your whole review and verdict, including any \`${ATTESTS_HEADING}\`, \`${FOLLOW_UPS_HEADING}\` and \`${CHECK_CANDIDATES_HEADING}\` lines; send no message after it.`;
 
 const ATTESTS_IN_FINAL_ONLY = `An \`${ATTESTS_HEADING}\` line counts only in your final message.`;
 
@@ -267,6 +270,7 @@ function verdictRuleLines(input: ReviewerBriefInput, scope: ReviewScope | undefi
     ...recurringLines(fixFirstCount(input), input.earlierFindings ?? [], scope),
     ...convergenceLines(input.convergence),
     FOLLOW_UPS_RULE,
+    ...checkCandidatesLines(),
   ];
 }
 
