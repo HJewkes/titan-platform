@@ -1,4 +1,4 @@
-import { kitDdl, spanFtsTablesDdl, type Migration } from '@titan-design/store-sqlite';
+import { cacheBlobTableDdl, kitDdl, spanFtsTablesDdl, type Migration } from '@titan-design/store-sqlite';
 import { MIGRATIONS as SESSION_GRAPH_MIGRATIONS } from '@titan-design/session-graph';
 
 /**
@@ -151,6 +151,7 @@ export const WORKSPACE_MIGRATION_VERSION = 1001;
 export const PRESERVE_MIGRATION_VERSION = 1002;
 export const WORKSPACE_SPANS_MIGRATION_VERSION = 1003;
 const PLAN_MIGRATION_VERSION = 1004;
+const CACHE_BLOB_MIGRATION_VERSION = 1005;
 
 /**
  * The kit indexes `search_span` on `owner_ref` alone, and its UNIQUE index
@@ -234,6 +235,13 @@ const PLAN_MIGRATION: Migration = {
     `),
 };
 
+/** Content-addressed bytes of ingested sources (TP-6338). */
+const CACHE_BLOB_MIGRATION: Migration = {
+  version: CACHE_BLOB_MIGRATION_VERSION,
+  name: 'cache blob table',
+  up: (db) => db.exec(cacheBlobTableDdl()),
+};
+
 /** The full chain the graph file is migrated to: the package's, then active-work's. */
 export const MIGRATIONS: Migration[] = [
   ...SESSION_GRAPH_MIGRATIONS,
@@ -241,4 +249,5 @@ export const MIGRATIONS: Migration[] = [
   PRESERVE_MIGRATION,
   WORKSPACE_SPANS_MIGRATION,
   PLAN_MIGRATION,
+  CACHE_BLOB_MIGRATION,
 ];

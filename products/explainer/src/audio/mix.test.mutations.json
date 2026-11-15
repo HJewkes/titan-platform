@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the loop is one sample short",
+      "file": "products/explainer/src/audio/mix.ts",
+      "find": "const out = new Float32Array(lengthSamples);\n  for (let start = 0",
+      "replace": "const out = new Float32Array(lengthSamples - 1);\n  for (let start = 0",
+      "kills": [
+        "loopBed loops a bed shorter than the video to the exact length"
+      ]
+    },
+    {
+      "name": "the loop seam does not fade in",
+      "file": "products/explainer/src/audio/mix.ts",
+      "find": "const inGain = copy > 0 && j < fade ? j / fade : 1;",
+      "replace": "const inGain = 1;",
+      "kills": [
+        "loopBed keeps a constant bed constant across the 2 s crossfade seams"
+      ]
+    },
+    {
+      "name": "the fade out is too short",
+      "file": "products/explainer/src/audio/mix.ts",
+      "find": "(samples.length - i) / fadeOut",
+      "replace": "(samples.length - i) / (fadeOut / 2)",
+      "kills": [
+        "fadeEnds is full level until 3 s from the end and halfway at 1.5 s from the end"
+      ]
+    },
+    {
+      "name": "clips lay at the beat start of zero",
+      "file": "products/explainer/src/audio/mix.ts",
+      "find": "const offset = Math.round(clip.startS * MIX_RATE);",
+      "replace": "const offset = 0;",
+      "kills": [
+        "layClips places a 24 kHz clip at its start second, resampled to 48 kHz"
+      ]
+    },
+    {
+      "name": "clips are not resampled",
+      "file": "products/explainer/src/audio/mix.ts",
+      "find": "audio.sampleRate === MIX_RATE ? audio.samples",
+      "replace": "true ? audio.samples",
+      "kills": [
+        "layClips places a 24 kHz clip at its start second, resampled to 48 kHz"
+      ]
+    }
+  ]
+}
