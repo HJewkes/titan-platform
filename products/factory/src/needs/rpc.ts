@@ -2,7 +2,7 @@ import { ITEM_KINDS, LENSES, type OwnerItem } from "@titan-design/owner-queue";
 import { defineCommand } from "@titan-design/registry";
 import { z } from "zod";
 import type { FactoryContext, NeedsSources } from "../context.js";
-import { activeWorkOrigin } from "../shepherd/cleanup-ports.js";
+import { activeWorkOrigin } from "../shepherd/active-work-origin.js";
 import { inventoryAllowList, type AgentAllowList } from "./agent-allow-list.js";
 import { ownerQueueSources } from "./command.js";
 import { collectNeeds } from "./merged.js";

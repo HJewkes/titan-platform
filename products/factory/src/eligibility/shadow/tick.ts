@@ -2,7 +2,7 @@ import { buildSha } from "../../build-info.js";
 import type { Verbs } from "../../cli-types.js";
 import { configPath, loadConfig } from "../../config.js";
 import { errorMessage } from "../../narrow.js";
-import { activeWorkOrigin } from "../../shepherd/cleanup-ports.js";
+import { activeWorkOrigin } from "../../shepherd/active-work-origin.js";
 import { isoWeek } from "../../shepherd/stats.js";
 import { readLaneTasks } from "../active-work.js";
 import { admitLane, holdsFor, type Admission, type BackPressureLimits, type LaneSignals } from "../back-pressure.js";
