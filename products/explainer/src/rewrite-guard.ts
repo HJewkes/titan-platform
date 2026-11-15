@@ -1,6 +1,7 @@
 import { guardRewrite, type GuardOptions } from "@titan-design/speech-vet";
 import { contentTerms, sentencesOf } from "./lint-text.js";
 import { DEVICE_METRICS, deviceSpans, endsOnShortest, numberSpans, spokenText, type TextSpan } from "./lint-register.js";
+import { hallmarkRejections } from "./rewrite-guard-hallmarks.js";
 import { unspokenFieldNumbers } from "./lint-screen.js";
 import { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, overlongSentence, type SpeechVerdict } from "./lint-voice.js";
 import { numberRanges } from "./rewrite-spans.js";
@@ -23,6 +24,7 @@ export type BeatRejectionRule =
   | "number-vague"
   | "device-added"
   | "closer-added"
+  | "hallmark-added"
   | "list-lost"
   | "list-emptied"
   | "cue-lost"
@@ -397,6 +399,7 @@ export function guardBeat(before: ScriptBeat, after: BeatRewrite, opts: BeatGuar
     ...vagueRejections(before.spoken, after),
     ...deviceRejections(before.spoken, after),
     ...closerRejections(before.spoken, after),
+    ...hallmarkRejections(before.spoken, after.spoken),
     ...listRejections(lists, after),
     ...emptiedListRejections(lists, after),
     ...cueRejections(before, after),
