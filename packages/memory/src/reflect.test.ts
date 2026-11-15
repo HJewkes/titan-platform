@@ -61,6 +61,35 @@ describe("reflectSession", () => {
     expect(store.list()).toHaveLength(4);
   });
 
+  describe("bullets sent to the reflector", () => {
+    const sentBullets = async (diary: string, options: { maxBullets?: number } = {}) => {
+      const inputs: ReflectInput[] = [];
+      await reflectSession({ store }, { sessionRef: "session:s2", diary }, async (input) => {
+        inputs.push(input);
+        return [];
+      }, options);
+      return inputs[0]?.bullets.map((b) => b.content);
+    };
+
+    it("sends only the bullet that shares words with the diary", async () => {
+      store.add({ content: "Pin the npm major in release jobs" });
+      store.add({ content: "Prefer small commits" });
+      store.add({ content: "Name branches by type" });
+      expect(await sentBullets("fixing the release workflow")).toEqual(["Pin the npm major in release jobs"]);
+    });
+
+    it("keeps the higher-scoring bullet when maxBullets is 1", async () => {
+      store.add({ content: "Run the release check" });
+      store.add({ content: "Run the release check before the npm release" });
+      expect(await sentBullets("npm release", { maxBullets: 1 })).toEqual(["Run the release check before the npm release"]);
+    });
+
+    it("sends an empty list when the diary matches nothing", async () => {
+      store.add({ content: "Pin the npm major in release jobs" });
+      expect(await sentBullets("zebra quartz")).toEqual([]);
+    });
+  });
+
   it("surfaces rejected output instead of throwing", async () => {
     const result = await reflectSession({ store }, { sessionRef: "session:s1", diary: "" }, async () => "garbage");
     expect(result.rejected).toEqual([{ iteration: 1, index: -1, reason: "reflector did not return an array" }]);

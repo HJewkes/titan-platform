@@ -367,6 +367,27 @@ describe('note.list', () => {
     },
   );
 
+  it('pages across initiatives with limit and cursor, newest first, each note once', async () => {
+    await withEmptyActiveRoot(async (root) => {
+      await writeNoteIn(root, 'alpha', '2026-01-01-a.md', noteFixture('fyi', 'A', '2026-01-01'));
+      await writeNoteIn(root, 'alpha', '2026-04-01-d.md', noteFixture('fyi', 'D', '2026-04-01'));
+      await writeNoteIn(root, 'beta', '2026-02-01-b.md', noteFixture('fyi', 'B', '2026-02-01'));
+      await writeNoteIn(root, 'gamma', '2026-03-01-c.md', noteFixture('fyi', 'C', '2026-03-01'));
+      await writeNoteIn(root, 'gamma', '2026-05-01-e.md', noteFixture('fyi', 'E', '2026-05-01'));
+
+      const first = await noteListCmd.run({ all_initiatives: true, limit: 2 }, ctx);
+      expect(first).toMatchObject({ total: 5, truncated: true });
+      const titles = first.notes.map((n) => n.title);
+      let cursor = first.next_cursor;
+      while (cursor) {
+        const page = await noteListCmd.run({ all_initiatives: true, limit: 2, cursor }, ctx);
+        titles.push(...page.notes.map((n) => n.title));
+        cursor = page.next_cursor;
+      }
+      expect(titles).toEqual(['E', 'D', 'C', 'B', 'A']);
+    });
+  });
+
   it('flags errors rows from the human-only initiative only', async () => {
     await withEmptyActiveRoot(async (root) => {
       await writeNoteIn(root, 'alpha', '2026-01-06-bad.md', '---\nkind: mystery\n---\nnope\n');
