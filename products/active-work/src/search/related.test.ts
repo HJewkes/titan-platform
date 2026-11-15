@@ -355,3 +355,48 @@ describe('relatedContext in context mode', () => {
     ]);
   });
 });
+
+describe('relatedContext with tasks named in the query', () => {
+  const taskRefs = (hits: { ref: string }[]) => hits.filter((hit) => hit.ref.startsWith('task:')).map((hit) => hit.ref);
+
+  beforeEach(async () => {
+    writeFile(root, 'alpha/tasks/AL-12.yml', 'id: AL-12\ntitle: Extend the indexer\npriority: 1\ndone_when: the indexer converges\nstatus: open\ncreated: 2026-09-01\nupdated: 2026-09-02\ndone_at: null\n');
+    writeFile(
+      root,
+      'alpha/sources/notes/2026-09-03-al-12-lesson.md',
+      '---\nkind: process\ntitle: Indexer lesson\ncreated: 2026-09-03\n---\n\nThe indexer converges, see AL-12.\n',
+    );
+    (await refreshInto(dbPath, root)).db.close();
+  });
+
+  it('drops a task the text names and backfills the slot from further down', async () => {
+    const unnamed = await related({ text: 'indexer converges', limit: 3 });
+    expect(taskRefs(unnamed.hits)).toContain('task:AL-12');
+    expect(unnamed.hits).toHaveLength(3);
+
+    const named = await related({ text: 'indexer converges (al-12)', limit: 3 });
+
+    expect(named.hits.map((hit) => hit.ref)).not.toContain('task:AL-12');
+    expect(named.hits).toHaveLength(3);
+  });
+
+  it('keeps a task whose id only prefixes the one in the text', async () => {
+    const result = await related({ text: 'indexer converges AL-1', limit: 6 });
+
+    expect(result.hits.map((hit) => hit.ref)).toContain('task:AL-12');
+    expect(result.hits.map((hit) => hit.ref)).not.toContain('task:AL-1');
+  });
+
+  it('keeps a note that mentions the named task', async () => {
+    const result = await related({ text: 'indexer converges AL-12', limit: 6 });
+
+    expect(result.hits.map((hit) => hit.ref)).toContain('note:alpha/2026-09-03-al-12-lesson.md');
+  });
+
+  it('context mode has no named task among its entries', async () => {
+    const result = await related({ text: 'indexer converges AL-12', mode: 'context', tokens: 2000 });
+
+    expect(result.entries!.length).toBeGreaterThan(0);
+    expect(result.entries!.map((entry) => entry.ref)).not.toContain('task:AL-12');
+  });
+});
