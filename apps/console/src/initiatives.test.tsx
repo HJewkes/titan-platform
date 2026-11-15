@@ -102,6 +102,28 @@ describe("an initiative's detail", () => {
     expect(screen.getByText("1 nested file under sources/ is counted here and not listed.")).toBeTruthy();
   });
 
+  it("opens the filtered Tasks page from the Tasks tab, naming the full open count when capped", async () => {
+    const capped = await recorded();
+    capped.calls[snapshotKey("work.initiative", { slug: "orbit-relay" })] = successEnvelope(await readInitiative(fixtureActiveWork(), "orbit-relay", { taskLimit: 2 }));
+    renderConsole("#/initiatives/orbit-relay", capped, { inApp: true });
+    fireEvent.click(await screen.findByRole("link", { name: "Open in Tasks (3)" }));
+    await waitFor(() => expect(window.location.hash).toBe("#/tasks?initiative=orbit-relay"));
+  });
+
+  it("opens a note's knowledge record from its title", async () => {
+    renderConsole("#/initiatives/orbit-relay", await recorded(), { inApp: true });
+    fireEvent.click(await screen.findByText("Notes (2)"));
+    fireEvent.click(await screen.findByRole("link", { name: "Cap the backoff at thirty seconds" }));
+    await waitFor(() => expect(decodeURIComponent(window.location.hash)).toMatch(/^#\/knowledge\/note:orbit-relay\//));
+  });
+
+  it("opens a source's knowledge record from its title", async () => {
+    renderConsole("#/initiatives/orbit-relay", await recorded(), { inApp: true });
+    fireEvent.click(await screen.findByText("Sources (2)"));
+    fireEvent.click(await screen.findByRole("link", { name: "Handshake rewrite" }));
+    await waitFor(() => expect(decodeURIComponent(window.location.hash)).toBe("#/knowledge/source:orbit-relay/pr-41-handshake.md"));
+  });
+
   it("flags a personal initiative", async () => {
     renderConsole("#/initiatives/garden-plan", await recorded());
     expect(await screen.findByText("personal")).toBeTruthy();
