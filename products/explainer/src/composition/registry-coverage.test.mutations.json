@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the scorecard kind is dropped from the registry",
+      "file": "products/explainer/src/composition/registry.tsx",
+      "find": "  scorecard: defineBeat(BEAT_SLOTS.scorecard, ScorecardKindBeat, { stage: true }),\n",
+      "replace": "",
+      "kills": [
+        "profile coverage fence every spec type a shipped profile can put on the page is registered or on NOT_DRAWN"
+      ]
+    },
+    {
+      "name": "the metrics-panel kind is dropped from the registry",
+      "file": "products/explainer/src/composition/registry.tsx",
+      "find": "  \"metrics-panel\": defineBeat(BEAT_SLOTS[\"metrics-panel\"], MetricsPanelKindBeat, { stage: true }),\n",
+      "replace": "",
+      "kills": [
+        "profile coverage fence every spec type a shipped profile can put on the page is registered or on NOT_DRAWN"
+      ]
+    }
+  ]
+}
