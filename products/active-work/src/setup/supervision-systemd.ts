@@ -10,7 +10,7 @@ import { promises as fsp } from 'node:fs';
 import nodePath from 'node:path';
 import { spawn as nodeSpawn } from 'node:child_process';
 import os from 'node:os';
-import { execArg, noSpecifiers } from '@titan-design/daemon/service';
+import { renderSystemdUserService } from '@titan-design/service-supervisor';
 import { errorCode } from '@titan-design/rpc-protocol/narrow';
 import { errorText, toError } from './errors.js';
 import { linuxDaemonPath } from './supervision-shared.js';
@@ -75,34 +75,18 @@ export function renderUnit(opts: UnitOptions): string {
   if (opts.port !== undefined) {
     args.push('--port', String(opts.port));
   }
-  // ExecStart must use absolute paths; systemd also expands % and $ inside it.
-  const execStart = [node, opts.cliEntry, ...args].map(execArg).join(' ');
-  return [
-    '[Unit]',
-    'Description=active-work HTTP daemon (MCP + REST + dashboard)',
-    'After=network.target',
-    '',
-    '[Service]',
-    'Type=simple',
-    `ExecStart=${execStart}`,
-    'Restart=always',
-    'RestartSec=5',
-    'Environment=NODE_ENV=production',
-    quoteEnv('PATH', linuxDaemonPath(node, opts.homeDir)),
-    ...(opts.activeRoot ? [quoteEnv('ACTIVE_ROOT', opts.activeRoot)] : []),
-    `StandardOutput=append:${noSpecifiers(nodePath.join(logDir, 'daemon.out.log'))}`,
-    `StandardError=append:${noSpecifiers(nodePath.join(logDir, 'daemon.err.log'))}`,
-    '',
-    '[Install]',
-    'WantedBy=default.target',
-    '',
-  ].join('\n');
-}
-
-/** `Environment="KEY=value"`; `%` is a unit specifier, so it is doubled. */
-function quoteEnv(key: string, value: string): string {
-  const escaped = value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/%/g, '%%');
-  return `Environment="${key}=${escaped}"`;
+  return renderSystemdUserService({
+    label: 'dev.hjewkes.active-work',
+    description: 'active-work HTTP daemon (MCP + REST + dashboard)',
+    argv: [node, opts.cliEntry, ...args],
+    environment: {
+      NODE_ENV: 'production',
+      PATH: linuxDaemonPath(node, opts.homeDir),
+      ...(opts.activeRoot ? { ACTIVE_ROOT: opts.activeRoot } : {}),
+    },
+    stdoutPath: nodePath.join(logDir, 'daemon.out.log'),
+    stderrPath: nodePath.join(logDir, 'daemon.err.log'),
+  });
 }
 
 /** Spawn a process and capture its exit code + stderr. */

@@ -58,6 +58,7 @@ graph TD
     registry["registry"]
     retrieval["retrieval"]
     rpcClient["rpc-client"]
+    serviceSupervisor["service-supervisor"]
     speechG2p["speech-g2p"]
     speechStt["speech-stt"]
     speechTts["speech-tts"]
@@ -179,6 +180,7 @@ graph TD
   reviewWorkflow --> reviewPanel
   reviewWorkflow --> workflow
   rpcClient --> rpcProtocol
+  serviceSupervisor --> daemon
   sessionAnalytics --> agentProtocol
   sessionAnalytics --> reviewPanel
   sessionAnalytics --> rpcProtocol
@@ -229,6 +231,7 @@ graph TD
   activeWork --> registry
   activeWork --> retrieval
   activeWork --> rpcProtocol
+  activeWork --> serviceSupervisor
   activeWork --> sessionAnalytics
   activeWork --> sessionGraph
   activeWork --> sessionRead

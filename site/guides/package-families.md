@@ -26,6 +26,8 @@ config, cache and log directories, and active-work's data root.
   tool list, and an HTTP route.
 - [`daemon`](/reference/daemon): hosts a registry on a loopback port with `/rpc`, `/mcp`,
   SSE events, a health route, and a pid file.
+- [`service-supervisor`](/reference/service-supervisor): renders a systemd user unit or a
+  launchd plist for a long-running job, with the escaping each format needs.
 - [`health`](/reference/health): the health/v1 report a health route answers with, a
   reader that also takes legacy `ok` payloads, and the sample row a probe stores.
 
