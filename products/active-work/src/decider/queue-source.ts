@@ -89,7 +89,7 @@ function initiativeForTask(activeRoot: string, slugs: string[], task: unknown): 
   const owners = slugs.filter((slug) =>
     existsSync(path.join(activeRoot, slug, 'tasks', `${task}.yml`)),
   );
-  return owners.length === 1 ? owners[0] : null;
+  return owners.length === 1 ? (owners.at(0) ?? null) : null;
 }
 
 async function resolveAsk(

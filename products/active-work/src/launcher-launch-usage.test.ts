@@ -42,6 +42,6 @@ describe('spawnClaude usage record', () => {
       .map((l): { command: string; duration_ms: number; args: { slug: string } } => JSON.parse(l));
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatchObject({ command: 'aw.launch', args: { slug: 'sample-initiative' } });
-    expect(lines[0].duration_ms).toBeGreaterThanOrEqual(before);
+    expect(lines.at(0)?.duration_ms).toBeGreaterThanOrEqual(before);
   });
 });
