@@ -17,7 +17,7 @@ const QUERY_TERMS = 12;
  * How common a term is in the corpus. Only its order matters, so a capped count
  * is fine, but it must be a count of matches: distinct owners among the top N
  * matching spans misranks common words as rare when their best spans sit in a
- * few long transcripts (measured 2026-09-16; see `document-frequency.ts`).
+ * few long transcripts (measured 2026-09-16).
  */
 export type DocumentFrequency = (term: string) => number;
 
