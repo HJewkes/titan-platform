@@ -168,6 +168,58 @@ describe('task.show', () => {
     });
   });
 
+  describe('archived and misfiled ids', () => {
+    async function archive(root: string, slug: string, id: string): Promise<void> {
+      const live = path.join(root, slug, 'tasks', `${id}.yml`);
+      const dir = path.join(root, slug, 'tasks', 'archive');
+      await fs.mkdir(dir, { recursive: true });
+      await fs.rename(live, path.join(dir, `${id}.yml`));
+    }
+
+    it('shows an archived task in compact text with an archived line', async () => {
+      await withTempActiveRoot(async (root) => {
+        await archive(root, SLUG, 'SI-2');
+
+        const out = await taskShow.run({ slug: SLUG, id: 'SI-2' }, ctx(root, 'human'));
+
+        expect(out).toContain('id: SI-2\n');
+        expect(out).toContain('archived: yes\n');
+      });
+    });
+
+    it('returns an archived task as JSON', async () => {
+      await withTempActiveRoot(async (root) => {
+        await archive(root, SLUG, 'SI-2');
+
+        const task = await taskShow.run({ slug: SLUG, id: 'SI-2' }, ctx(root));
+
+        expect(task).toMatchObject({ id: 'SI-2', status: 'done' });
+      });
+    });
+
+    it('does not print an archived line for a live task', async () => {
+      await withTempActiveRoot(async (root) => {
+        const out = await taskShow.run({ slug: SLUG, id: 'SI-1' }, ctx(root, 'human'));
+        expect(out).not.toContain('archived:');
+      });
+    });
+
+    it('names the initiative that files an id missing from the one asked', async () => {
+      await withTempActiveRoot(async (root) => {
+        await fs.mkdir(path.join(root, 'other', 'tasks'), { recursive: true });
+        await fs.copyFile(
+          path.join(root, SLUG, 'tasks', 'SI-1.yml'),
+          path.join(root, 'other', 'tasks', 'SI-1.yml'),
+        );
+        await fs.rm(path.join(root, SLUG, 'tasks', 'SI-1.yml'));
+
+        await expect(taskShow.run({ slug: SLUG, id: 'SI-1' }, ctx(root))).rejects.toThrow(
+          'task SI-1 not found in sample-initiative; filed in other (task show other SI-1)',
+        );
+      });
+    });
+  });
+
   it('treats an id that is not a task id as not found rather than a path', async () => {
     await withTempActiveRoot(async (root) => {
       await expect(taskShow.run({ slug: SLUG, id: '../brief' }, ctx(root))).rejects.toThrow(

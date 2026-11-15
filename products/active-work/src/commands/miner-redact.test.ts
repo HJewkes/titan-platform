@@ -100,7 +100,9 @@ describe('miner cost and outcomes for a non-owner (census row 18)', () => {
     await withEmptyActiveRoot(async (root) => {
       seed(root);
       const report = outcomeReport();
-      report.byInitiative.push({ ...report.byInitiative[1], key: 'archived-plans', merged: 6, usdPerMerged: 4 / 6 });
+      const template = report.byInitiative.at(1);
+      if (template === undefined) throw new Error('outcomeReport has no second initiative bucket');
+      report.byInitiative.push({ ...template, key: 'archived-plans', merged: 6, usdPerMerged: 4 / 6 });
 
       const redacted = redactOutcomeReport(report, await minerKeys(context(root)), await minerNames(context(root)));
 
@@ -156,10 +158,12 @@ describe('miner cost and outcomes for a non-owner (census row 18)', () => {
 describe('miner outcomes seat and agent names for a non-owner', () => {
   const redact = async (root: string, caller: CommandContext['caller']) => {
     const report = outcomeReport();
+    const seat = report.bySeat.at(0);
+    if (seat === undefined) throw new Error('outcomeReport has no seat bucket');
     report.bySeat = [
-      { ...report.bySeat[0], key: `${HIDDEN}-coord` },
-      { ...report.bySeat[0], key: `${VISIBLE}-coord` },
-      { ...report.bySeat[0], key: `${HIDDEN}er` },
+      { ...seat, key: `${HIDDEN}-coord` },
+      { ...seat, key: `${VISIBLE}-coord` },
+      { ...seat, key: `${HIDDEN}er` },
     ];
     report.seatCostUsd = [`${HIDDEN}-coord`, `${VISIBLE}-coord`, `${HIDDEN}-impl`].map((key) => ({ key, costUsd: 1 }));
     report.unmatchedAgents = [`${HIDDEN}-coord`, `${HIDDEN}-impl`, VISIBLE];

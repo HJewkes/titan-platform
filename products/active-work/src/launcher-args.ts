@@ -109,11 +109,11 @@ export function extractProfileFlag(args: string[]): ProfileFlag {
   let profile: string | undefined;
   let missingValue = false;
   for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
+    const arg = args.at(i) ?? '';
     if (arg.startsWith(`${PROFILE_FLAG}=`)) {
       profile = arg.slice(PROFILE_FLAG.length + 1);
     } else if (arg === PROFILE_FLAG) {
-      profile = args[++i];
+      profile = args.at(++i);
     } else {
       rest.push(arg);
       continue;

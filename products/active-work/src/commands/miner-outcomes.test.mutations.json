@@ -9,6 +9,13 @@
       "kills": [
         "miner outcomes for a non-owner (TP-5556 S2a) serves an owner-only initiative as owner-only to an agent and by name to the owner"
       ]
+    },
+    {
+      "name": "miner outcomes drops the skipped counts",
+      "file": "products/active-work/src/commands/miner-outcomes.ts",
+      "find": "      const full = { ...costPerOutcome(db, assignments, window), skipped };",
+      "replace": "      const full = { ...costPerOutcome(db, assignments, window), skipped: { badLines: 0, noAgent: 0 } };",
+      "kills": ["miner outcomes json format returns a costPerOutcome report with one merge and the skipped counts"]
     }
   ]
 }

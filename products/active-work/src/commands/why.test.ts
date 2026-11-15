@@ -104,8 +104,8 @@ describe('why', () => {
 
     expect(commits).toHaveLength(1);
     expect(commits[0]).toMatchObject({ subject: 'Fix x (#42)', lines: ['12'], prNumber: 42, prRefs: ['pr:acme/demo#42'] });
-    expect(commits[0].tasks).toEqual([{ taskId: 'AL-1', initiative: 'alpha', step: 'refs' }]);
-    expect(commits[0].sessions.map((s) => [s.sessionId, s.step])).toEqual([
+    expect(commits.at(0)?.tasks).toEqual([{ taskId: 'AL-1', initiative: 'alpha', step: 'refs' }]);
+    expect(commits.at(0)?.sessions.map((s) => [s.sessionId, s.step])).toEqual([
       ['impl-session', 'pr-subject'],
       ['later-session', 'pr-task'],
       ['peer-session', 'pr-task'],
@@ -115,23 +115,23 @@ describe('why', () => {
   it('keeps a session in an owner-only initiative from an agent and counts it hidden', async () => {
     const { commits } = await whyCommand.run({ target: 'a.ts:12' }, ctx('agent'));
 
-    expect(commits[0].sessions.map((s) => s.sessionId)).not.toContain('hidden-session');
-    expect(commits[0].tasks.map((t) => t.taskId)).not.toContain('HW-1');
-    expect(commits[0].hidden).toBe(2);
+    expect(commits.at(0)?.sessions.map((s) => s.sessionId)).not.toContain('hidden-session');
+    expect(commits.at(0)?.tasks.map((t) => t.taskId)).not.toContain('HW-1');
+    expect(commits.at(0)?.hidden).toBe(2);
   });
 
   it('serves the owner the owner-only session too', async () => {
     const { commits } = await whyCommand.run({ target: 'a.ts:12' }, ctx('owner'));
 
-    expect(commits[0].sessions).toContainEqual({ sessionId: 'hidden-session', step: 'pr-subject', title: 'title hidden-session', initiative: HIDDEN });
-    expect(commits[0].hidden).toBe(0);
+    expect(commits.at(0)?.sessions).toContainEqual({ sessionId: 'hidden-session', step: 'pr-subject', title: 'title hidden-session', initiative: HIDDEN });
+    expect(commits.at(0)?.hidden).toBe(0);
   });
 
   it('reads an Agent-Session trailer before the PR', async () => {
     const { commits } = await whyCommand.run({ target: 'a.ts:15' }, ctx('agent'));
 
     expect(commits[0]).toMatchObject({ subject: 'Trace a line (#44)', prNumber: 44 });
-    expect(commits[0].sessions).toEqual([{ sessionId: 'trailer-session', step: 'trailer', title: 'title trailer-session', initiative: 'alpha' }]);
+    expect(commits.at(0)?.sessions).toEqual([{ sessionId: 'trailer-session', step: 'trailer', title: 'title trailer-session', initiative: 'alpha' }]);
   });
 
   it('splits a range across the commits that last changed each line', async () => {

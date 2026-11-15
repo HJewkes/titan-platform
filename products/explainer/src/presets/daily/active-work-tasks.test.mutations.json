@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the envelope is not unwrapped",
+      "file": "products/explainer/src/presets/daily/active-work-tasks.ts",
+      "find": "const ListSchema = z.union([\n  z.object({ data: BareListSchema }).transform((envelope) => envelope.data),\n  BareListSchema,\n]);",
+      "replace": "const ListSchema = BareListSchema;",
+      "kills": ["parseTaskList reads the --json envelope"]
+    },
+    {
+      "name": "a bare object is refused",
+      "file": "products/explainer/src/presets/daily/active-work-tasks.ts",
+      "find": "  BareListSchema,\n]);",
+      "replace": "]);",
+      "kills": ["parseTaskList reads a bare tasks object"]
+    },
+    {
+      "name": "a malformed task is kept",
+      "file": "products/explainer/src/presets/daily/active-work-tasks.ts",
+      "find": "return parsed.success ? [parsed.data] : [];",
+      "replace": "return [parsed.data as SnapshotTask];",
+      "kills": ["parseTaskList drops a malformed task and keeps the rest"]
+    }
+  ]
+}

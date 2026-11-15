@@ -113,7 +113,7 @@ column on the next run.
 | `entityTableDdl` | `EntityTable`: `upsert`, `get`, `expire`, `listByKind` | facts that change one at a time (memory, sessions) and only need their latest state. Current-state rows with soft expiry, not interval bi-temporal |
 | `snapshotTableDdl` + `entitySnapTableDdl` | none yet | a whole population re-indexed together (a code graph) |
 | `cacheBlobTableDdl` | `CacheBlobTable`: `get`, `put`, `getOrCompute`, `count`, `delete(namespace, model)`, `models(namespace)` | embeddings and summaries: pure functions of text, stored once, keyed by `(namespace, model, content_hash)` |
-| `spanFtsTablesDdl` | `SpanFtsTables`: `index`, `search(query, limit?, scope?)`, `purgeOwner`, `orphanRatio`, `clearIndex` | full-text search where the text lives elsewhere. `SpanScope` narrows a search to one class of owner |
+| `spanFtsTablesDdl` | `SpanFtsTables`: `index`, `search(query, limit?, scope?)`, `purgeOwner`, `orphanRatio`, `clearIndex` | full-text search where the text lives elsewhere. `SpanScope` narrows a search to one class of owner. Opt in to a trigram twin (`trigram: true`, or the `spanFtsTrigram` kit key) for `searchTrigram` substring matches |
 | `watermarkTableDdl` | `WatermarkTable`: `ensure`, `advance`, `rewind`, `markStatus`, `list` | incremental ingest of append-mostly sources. Call `ensure` first |
 
 ## Refs
@@ -148,6 +148,15 @@ with it (`"note:"`; an empty string means every owner). `fields` keeps spans who
 listed; an empty array matches nothing. The two apply together, both, not either: when two
 kinds of owner share a prefix, a prefix alone lets all of them through, and only `fields`
 separates them.
+
+**The trigram twin is opt-in, per table and per span.** `spanFtsTablesDdl({ trigram: true })`
+(kit: `spanFtsTrigram: true` beside `spanFts`) adds the contentless `<name>_tri` table, and
+the `SpanFtsTables` must be built with the same option. A span gets a twin row only when
+indexed with `index(span, text, { trigram: true })`. `searchTrigram(expression, limit?,
+scope?)` mirrors `search` and joins through the span table, so purged owners stay hidden.
+FTS5 trigram matching needs at least three characters per term; quote the term
+(`'"Retriever"'`) to match it as a substring. `clearIndex` empties both tables, and
+`orphanRatio` reports the worse of the two.
 
 **`WatermarkTable`: `ensure` comes first.** `advance`, `rewind` and `markStatus` only update
 an existing row. They return `true` when a row matched, and `false`, writing nothing, for a

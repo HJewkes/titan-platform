@@ -23,8 +23,8 @@ export async function readMarkdownWithSchema<T>(
   let frontmatterText = '';
   let body = raw;
   if (match) {
-    frontmatterText = match[1];
-    body = match[2];
+    frontmatterText = match.at(1) ?? '';
+    body = match.at(2) ?? '';
   }
   const parsed = frontmatterText ? YAML.parse(frontmatterText) : {};
   const result = schema.safeParse(parsed);

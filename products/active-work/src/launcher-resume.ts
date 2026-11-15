@@ -67,8 +67,8 @@ function parseResumeArgs(argv: string[]): ResumeArgs | null {
   const { profile, rest: tail, missingValue } = extractProfileFlag(argv.slice(3));
   const remoteControl = !tail.some((a) => NO_RC_FLAGS.includes(a));
   const rest = tail.filter((a) => !NO_RC_FLAGS.includes(a));
-  const [sessionId] = rest;
-  if (missingValue || rest.length !== 1 || sessionId.startsWith('-')) {
+  const sessionId = rest.at(0);
+  if (missingValue || rest.length !== 1 || sessionId === undefined || sessionId.startsWith('-')) {
     return null;
   }
   return { sessionId, remoteControl, profile };

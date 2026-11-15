@@ -85,10 +85,11 @@ function rankHits(
   results: { id: string; score: number }[],
   initiative: string | undefined,
 ): PrecedentHit[] {
-  const hits = results.map((result) => {
-    const row = pool[Number(result.id.slice(OWNER_PREFIX.length))];
+  const hits = results.flatMap((result) => {
+    const row = pool.at(Number(result.id.slice(OWNER_PREFIX.length)));
+    if (row === undefined) return [];
     const boost = initiative !== undefined && row.initiative === initiative;
-    return { score: result.score + (boost ? AFFINITY_BOOST : 0), row };
+    return [{ score: result.score + (boost ? AFFINITY_BOOST : 0), row }];
   });
   return hits.sort((a, b) => b.score - a.score);
 }
