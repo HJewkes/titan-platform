@@ -372,6 +372,9 @@ interface ReviewScope {
 /** Any doubt means a full review: a scope that fails here, or has no open finding to check, leaves the brief unscoped. */
 declare function usableScope(scope: ReviewScope | undefined, openFindings: number): scope is ReviewScope;
 
+/** One shared vocabulary is what lets Shepherd count a class across PRs; reviewer free text gave a new phrasing almost every time. */
+declare const CHECK_CANDIDATES_RULE: string;
+
 type RepoSlug = string;
 /** The most of a reviewer's OWNER-BRIEF block that is read; a longer block is malformed rather than cut. */
 declare const MAX_OWNER_BRIEF_CHARS = 2000;
@@ -435,8 +438,6 @@ declare function validOwnerPicks(picks: readonly OwnerPick[]): OwnerPick[];
 declare const CONVERGENCE_HEADING = "Convergence:";
 /** Lets a reviewer defer a nit to a task instead of a FIX_FIRST round; the template's placeholders never parse as an item. */
 declare const FOLLOW_UPS_RULE: string;
-/** One shared vocabulary is what lets Shepherd count a class across PRs; reviewer free text gave a new phrasing almost every time. */
-declare const CHECK_CANDIDATES_RULE: string;
 /** The closing block is a template with a placeholder verdict, so the brief itself never parses as a verdict. */
 declare function reviewerBrief(input: ReviewerBriefInput): string;
 /** The most a correction prompt may hold, owner block included; raised from 1500 for the CI-policy exactness sentence, then from 1600 for the adversary's Probes sentence. */
