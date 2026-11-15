@@ -43,7 +43,7 @@ const ResultSchema = z.object({
 });
 type Result = z.infer<typeof ResultSchema>;
 
-function citationOf(row: LedgerRow): string {
+export function citationOf(row: LedgerRow): string {
   if (row.source !== 'transcript') return row.key;
   const session = row.locator?.sessionId ?? row.session_id ?? '?';
   const toolUse = row.locator?.toolUseId ?? row.tool_use_id ?? '?';
