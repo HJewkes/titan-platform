@@ -13,8 +13,8 @@
     {
       "name": "migration 1003 left off the chain",
       "file": "products/active-work/src/workspace-index/schema.ts",
-      "find": "  WORKSPACE_SPANS_MIGRATION,\n  PLAN_MIGRATION,\n];",
-      "replace": "  PLAN_MIGRATION,\n];",
+      "find": "  WORKSPACE_SPANS_MIGRATION,\n  PLAN_MIGRATION,\n  CACHE_BLOB_MIGRATION,\n];",
+      "replace": "  PLAN_MIGRATION,\n  CACHE_BLOB_MIGRATION,\n];",
       "kills": [
         "migration 1003: workspace span tables upgrades a 1002 graph to contentless-delete workspace tables and keeps every existing row"
       ]
