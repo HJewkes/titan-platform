@@ -353,11 +353,7 @@ const lastLine = (refusal: MalformedRefusal): string =>
 const probesReminder = (refusal: MalformedRefusal): string[] =>
   refusal === "probes_missing" ? [`Above the verdict lines add \`${PROBES_HEADING} <input> -> <what the code did>; ...\` for each probe you ran.`] : [];
 
-/**
- * A prose line led by Authority reads malformed by design, so the reviewer is told to reword that line, not to add one it
- * already has. The rule rides in the quote heading, which costs room only when a line is quoted: the owner-gated prompt
- * at the longest target was 37 characters under the cap before it.
- */
+/** Prose led by Authority reads malformed by design; the reword rule rides here, costing room only when a line is quoted. */
 const AUTHORITY_QUOTES_HEADING = "Reword each line below so it does not start with Authority:";
 
 const authorityReminder = (refusal: MalformedRefusal): string[] =>
