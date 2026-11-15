@@ -125,7 +125,7 @@ describe("the run's snapshots and syncs", () => {
     for (const link of links) {
       expect(link?.getAttribute("target")).toBe("_blank");
       expect(link?.getAttribute("rel")).toContain("noopener");
-      fireEvent.click(link as HTMLElement);
+      if (link) fireEvent.click(link);
     }
     expect(opened).not.toHaveBeenCalled();
     expect(first.textContent).toContain("kept");

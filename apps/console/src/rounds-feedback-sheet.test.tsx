@@ -60,7 +60,7 @@ describe("a post-merge feedback sheet on #/rounds (TP-5458)", () => {
     expect(link?.getAttribute("href")).toMatch(/^https:\/\//);
     expect(link?.getAttribute("target")).toBe("_blank");
     expect(link?.getAttribute("rel")).toContain("noopener");
-    fireEvent.click(link as HTMLElement);
+    if (link) fireEvent.click(link);
     expect(opened).not.toHaveBeenCalled();
     expect(screen.getByTestId("round-feedback-files-example-org/example-design#44").textContent).toContain("src/tokens/color.json");
     expect(screen.getByText("task EX-101")).toBeTruthy();

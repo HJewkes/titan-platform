@@ -57,7 +57,7 @@ describe("what shipped on the coordinator page", () => {
     expect(link?.getAttribute("href")).toBe(DOCK.url);
     expect(link?.getAttribute("target")).toBe("_blank");
     expect(link?.getAttribute("rel")).toContain("noopener");
-    fireEvent.click(link as HTMLElement);
+    if (link) fireEvent.click(link);
     expect(opened).not.toHaveBeenCalled();
     expect(within(screen.getByTestId("coord-shipped-unsummarized-harbor")).getByTestId("coord-shipped-pr-harbor/quay#9")).toBeTruthy();
     expect(screen.queryByTestId("coord-shipped-unbuilt")).toBeNull();

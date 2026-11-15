@@ -70,7 +70,7 @@ describe("the coordinator page", () => {
     expect(link?.getAttribute("href")).toBe("https://github.com/harbor/dock/pull/7");
     expect(link?.getAttribute("target")).toBe("_blank");
     expect(link?.getAttribute("rel")).toContain("noopener");
-    fireEvent.click(link as HTMLElement);
+    if (link) fireEvent.click(link);
     expect(opened).not.toHaveBeenCalled();
     expect(within(card).getByText("Build the dock index")).toBeTruthy();
     expect(within(screen.getByTestId("coord-card-unattributed")).getByTestId("coord-pr-harbor/quay#9")).toBeTruthy();
