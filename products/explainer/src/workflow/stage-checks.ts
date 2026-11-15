@@ -177,6 +177,13 @@ function cueResolution(input: CheckInput): Verdict {
  * gates inside its body, before the reported-only judge spends; render reports its two-run check from its body,
  * which is the step that rendered twice.
  */
+/** The checks a stage's body emits itself, outside STAGE_CHECKS: what the eval suites may read besides the table. */
+export const STAGE_BODY_CHECKS: Partial<Record<CachedStage, readonly string[]>> = {
+  script: ["script-schema", "l0-repair"],
+  eval: ["l0", "pace"],
+  render: ["two-run"],
+};
+
 export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
   gather: [],
   audition: [],

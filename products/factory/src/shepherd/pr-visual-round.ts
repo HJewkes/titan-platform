@@ -13,9 +13,16 @@ const CAVEAT = "unattested producer output; not used for the tier";
 
 const nothing = (reason: string): RoundVisuals => ({ line: `pr-visual: no before and after shown, ${reason} (${CAVEAT})`, variantKeys: [] });
 
-function lineOf(evidence: Extract<PrVisualEvidence, { measured: true }>): string {
-  const changed = evidence.shots.filter((shot) => "sizesDiffer" in shot || shot.changedPixels > 0).length;
-  return `pr-visual: ${evidence.shots.length} shots, ${changed} changed, ${evidence.missing.length} missing (${CAVEAT})`;
+type Measured = Extract<PrVisualEvidence, { measured: true }>;
+
+const isChanged = (shot: Measured["shots"][number]): boolean => "sizesDiffer" in shot || shot.changedPixels > 0;
+
+function lineOf(evidence: Measured): string {
+  const total = evidence.shots.length;
+  const changed = evidence.shots.filter(isChanged).length;
+  const missing = evidence.missing.length;
+  if (total > 0 && changed === 0) return `pr-visual: ${total} shots, all shots were unchanged and none are shown, ${missing} missing (${CAVEAT})`;
+  return `pr-visual: ${total} shots, ${changed} changed, ${total - changed} unchanged not shown, ${missing} missing (${CAVEAT})`;
 }
 
 type Target = { repo: string; pr: number; head: string };
@@ -28,11 +35,12 @@ function incomplete(manifest: Manifest, { pr, head }: Target): string | undefine
   return manifest.shots.length === 0 ? "the artifact lists no shots" : undefined;
 }
 
-/** Copies each pair under names Shepherd chose, never the artifact's, and writes the manifest `pairVisuals` reads. */
-async function writePairs(zip: ZipReader, manifest: Manifest, folder: string): Promise<string[]> {
+/** Copies each changed pair under names Shepherd chose, never the artifact's, and writes the manifest `pairVisuals` reads. */
+async function writePairs(zip: ZipReader, manifest: Manifest, changed: readonly boolean[], folder: string): Promise<string[]> {
   await mkdir(folder, { recursive: true });
   const shots: { story: string; width: string; before: string; after: string }[] = [];
   for (const [index, shot] of manifest.shots.entries()) {
+    if (!changed[index]) continue;
     const names = { before: `${index}-${shot.story}@${shot.width}-before.png`, after: `${index}-${shot.story}@${shot.width}-after.png` };
     for (const side of ["before", "after"] as const) {
       const bytes = zip.read(shot[side] ?? "");
@@ -55,7 +63,8 @@ async function roundVisualsOf(gh: PrVisualGh, target: Target, roundDir: string):
   if (typeof manifest === "string") return nothing(manifest);
   const reason = incomplete(manifest, target);
   if (reason !== undefined) return nothing(reason);
-  return { line: lineOf(evidence), variantKeys: await writePairs(zip, manifest, join(roundDir, `pr-${target.pr}`)) };
+  const changed = evidence.shots.map(isChanged);
+  return { line: lineOf(evidence), variantKeys: await writePairs(zip, manifest, changed, join(roundDir, `pr-${target.pr}`)) };
 }
 
 /** The PR's pr-visual pairs written under `<roundDir>/pr-<n>/`, or a stated reason none are shown; never an after-only set, never a throw. */
