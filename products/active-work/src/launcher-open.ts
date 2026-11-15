@@ -98,6 +98,18 @@ async function recordOpenUsage(opened: OpenedWithMetadata): Promise<void> {
   });
 }
 
+/** Counts from process start, so node start and imports are included in the time to spawn. */
+async function recordLaunchUsage(slug: string, toSpawnMs: number): Promise<void> {
+  await appendUsage({
+    ts: new Date().toISOString(),
+    command: 'aw.launch',
+    args: { slug },
+    duration_ms: toSpawnMs,
+    success: true,
+    exit_code: 0,
+  });
+}
+
 /**
  * Open `slug`; when nothing matches and someone is at the terminal, offer to
  * scaffold it and open an init session instead (TP-356).
@@ -201,7 +213,7 @@ const CLAUDE_MISSING =
   'error: `claude` not found on PATH. Install Claude Code, ' +
   'or run `active-work open <slug>` to print the prompt.\n';
 
-export function spawnClaude(
+export async function spawnClaude(
   opened: OpenSuccess,
   cwd: string,
   { remoteControl, profile }: LaunchOptions,
@@ -213,6 +225,7 @@ export function spawnClaude(
     (dir) => existsSync(dir),
   );
   if (warning) process.stderr.write(color.yellow(`warning: ${warning}\n`));
+  await recordLaunchUsage(opened.slug, performance.now());
   const claudeArgs = buildClaudeArgs(opened.prompt, opened.channels, { remoteControl });
   const child = spawn('claude', claudeArgs, {
     cwd,
