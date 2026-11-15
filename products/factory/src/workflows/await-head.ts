@@ -29,6 +29,8 @@ export interface AwaitHeadTarget {
   failing?: string[];
   /** The run has made its main-fixed merge-ups, so the `inheritedRed` hook weighs the red as the run's own hold would. */
   mainFixedSpent?: boolean;
+  /** Set for a wake after a review's findings, whose head is reviewable, so an ask there ends the wait; a red head's land round never takes an ask, and ending would re-wake the fixer each round. */
+  untilAsked?: boolean;
 }
 
 /**
@@ -53,9 +55,9 @@ export interface AwaitHeadTiming {
   snapshot?: Pick<PrSnapshot, "invalidate" | "getPr" | "checkRuns">;
   /** Told of each transient read failure, so a wait stuck on one is visible while it runs. */
   onReadError?: (message: string) => void;
-  /** Built once per wait, so the checker can keep its own memo of the base it last weighed; true means the head's red is the base's. */
-  /** Whether an untaken review ask stands at the head; read only while the head is unchanged, and it ends the wait so the next land round takes the ask. */
+  /** Whether an untaken review ask stands at the head; read only while the head is unchanged and the target has `untilAsked`. */
   reviewAsked?: (repo: RepoSlug, pr: number, head: string) => boolean;
+  /** Built once per wait, so the checker can keep its own memo of the base it last weighed; true means the head's red is the base's. */
   inheritedRed?: (target: AwaitHeadTarget) => (pr: PullRequest, signal: AbortSignal) => Promise<boolean>;
 }
 
@@ -158,7 +160,7 @@ export async function awaitHeadOrExit(port: GitHubPort, target: AwaitHeadTarget,
       sinceGreen = 0;
       if (await greenAtHead(port, target, pr, timing)) return { pr, exited: false, green: true };
     }
-    if (pr && timing.reviewAsked?.(target.repo, target.pr, target.headSha)) return { pr, exited: false, asked: true };
+    if (pr && target.untilAsked === true && timing.reviewAsked?.(target.repo, target.pr, target.headSha)) return { pr, exited: false, asked: true };
     if (pr && baseRed && (await baseRed.check(pr, signal))) return { pr, exited: false, baseRed: true };
     if (pr && target.agent !== undefined && (await timing.agentExited?.(target.agent, signal))) {
       // Re-read after the exit is seen, so a push made just before it is not mistaken for no push.
