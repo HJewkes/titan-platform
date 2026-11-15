@@ -10,6 +10,7 @@ import { HeldBeat } from "./beats/held.js";
 import { HookBeat } from "./beats/hook.js";
 import { FactFlashBeat, ListKindBeat, VerdictCardBeat } from "./beats/list-kinds.js";
 import { ButtonBeat, OutroKindBeat } from "./beats/OutroBeat.js";
+import { ProofKindBeat } from "./beats/ProofBeat.js";
 import { StatKindBeat } from "./beats/StatBeat.js";
 import { MetricsPanelKindBeat, ScorecardKindBeat } from "./beats/ScorecardTable.js";
 import { ClaimCardBeat } from "./beats/TitleBeat.js";
@@ -66,6 +67,7 @@ const BEATS: Readonly<Record<string, BeatDefinition>> = {
   chart: defineBeat(BEAT_SLOTS.chart, ChartKindBeat, { stage: true }),
   compare: defineBeat(BEAT_SLOTS.compare, CompareKindBeat, { stage: true }),
   "arch-map": defineBeat(BEAT_SLOTS.map, ArchMapKindBeat, { stage: true }),
+  proof: defineBeat(BEAT_SLOTS.proof, ProofKindBeat, { stage: true }),
   "metrics-panel": defineBeat(BEAT_SLOTS["metrics-panel"], MetricsPanelKindBeat, { stage: true }),
   scorecard: defineBeat(BEAT_SLOTS.scorecard, ScorecardKindBeat, { stage: true }),
   catalogue: defineBeat(CatalogueSlots, CatalogueBeat),

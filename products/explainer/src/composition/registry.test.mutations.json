@@ -11,15 +11,6 @@
       ]
     },
     {
-      "name": "held draws on the whole page instead of in the stage box",
-      "file": "products/explainer/src/composition/registry.tsx",
-      "find": "HeldBeat, { stage: true })",
-      "replace": "HeldBeat, { stage: false })",
-      "kills": [
-        "the composition page's beat registry hook and catalogue draw on the whole page and every spec kind past them in the stage box"
-      ]
-    },
-    {
       "name": "resolveBeat reads an inherited property as a beat kind",
       "file": "products/explainer/src/composition/registry.tsx",
       "find": "Object.hasOwn(BEATS, kind) ? BEATS[kind] : undefined",

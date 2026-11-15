@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "oldest first",
+      "file": "products/active-work/src/bootstrap/render-decisions.ts",
+      "find": ".sort((a, b) => askedMs(b) - askedMs(a));",
+      "replace": ".sort((a, b) => askedMs(a) - askedMs(b));",
+      "kills": ["renderRecentDecisions renders three rows newest first"]
+    },
+    {
+      "name": "other initiatives included",
+      "file": "products/active-work/src/bootstrap/render-decisions.ts",
+      "find": "row.initiative === slug && ",
+      "replace": "",
+      "kills": ["renderRecentDecisions excludes a row older than the window and a row of another initiative"]
+    },
+    {
+      "name": "window ignored",
+      "file": "products/active-work/src/bootstrap/render-decisions.ts",
+      "find": " && askedMs(row) >= since",
+      "replace": "",
+      "kills": ["renderRecentDecisions excludes a row older than the window and a row of another initiative"]
+    },
+    {
+      "name": "line cap raised",
+      "file": "products/active-work/src/bootstrap/render-decisions.ts",
+      "find": "const MAX_LINES = 3;",
+      "replace": "const MAX_LINES = 4;",
+      "kills": ["renderRecentDecisions keeps at most three lines"]
+    },
+    {
+      "name": "answer cap dropped",
+      "file": "products/active-work/src/bootstrap/render-decisions.ts",
+      "find": "const ANSWER_MAX = 60;",
+      "replace": "const ANSWER_MAX = 600;",
+      "kills": ["renderRecentDecisions truncates long questions to 90 and answers to 60 characters"]
+    }
+  ]
+}

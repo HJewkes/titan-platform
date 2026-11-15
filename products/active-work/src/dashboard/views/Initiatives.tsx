@@ -29,72 +29,85 @@ export function InitiativesView({ refreshToken }: ViewProps): React.JSX.Element 
     <div style={{ display: 'flex', flexDirection: 'column', gap: sp[12] }}>
       <h1 style={{ margin: 0, fontSize: 22, color: palette.textPrimary }}>Initiatives</h1>
       {data.sections.map((section) => (
-        <section
-          key={section.heading}
-          style={{ display: 'flex', flexDirection: 'column', gap: sp[6] }}
-        >
-          <h2
-            style={{
-              margin: 0,
-              fontSize: 12,
-              fontWeight: 600,
-              color: palette.textTertiary,
-              textTransform: 'uppercase',
-              letterSpacing: 0.6,
-            }}
-          >
-            {section.heading} ({section.items.length})
-          </h2>
-          {section.items.length === 0 ? (
-            <p style={{ margin: 0, color: palette.textTertiary, fontSize: 13 }}>
-              No initiatives in this state.
-            </p>
-          ) : (
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-                gap: sp[6],
-              }}
-            >
-              {section.items.map((item) => (
-                <InitiativeCard key={item.slug} item={item} />
-              ))}
-            </div>
-          )}
-        </section>
+        <InitiativeSection key={section.heading} section={section} />
       ))}
-      {data.parse_errors.length > 0 && (
-        <section
-          style={{
-            border: `1px solid ${palette.red}55`,
-            background: `${palette.red}11`,
-            borderRadius: 8,
-            padding: sp[8],
-          }}
-        >
-          <h2 style={{ margin: 0, fontSize: 13, color: palette.red }}>
-            Parse errors ({data.parse_errors.length})
-          </h2>
-          <ul
-            style={{
-              margin: `${sp[5]}px 0 0`,
-              paddingLeft: sp[12],
-              color: palette.textSecondary,
-              fontSize: 12,
-            }}
-          >
-            {data.parse_errors.map((e) => (
-              <li key={e.slug}>
-                <code>{e.slug}</code>: {e.error}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      {data.parse_errors.length > 0 && <ParseErrors errors={data.parse_errors} />}
     </div>
   );
 }
+
+function InitiativeSection({
+  section,
+}: {
+  section: InitiativesResult['sections'][number];
+}): React.JSX.Element {
+  return (
+    <section style={{ display: 'flex', flexDirection: 'column', gap: sp[6] }}>
+      <h2 style={sectionHeadingStyle}>
+        {section.heading} ({section.items.length})
+      </h2>
+      {section.items.length === 0 ? (
+        <p style={{ margin: 0, color: palette.textTertiary, fontSize: 13 }}>
+          No initiatives in this state.
+        </p>
+      ) : (
+        <div style={cardGridStyle}>
+          {section.items.map((item) => (
+            <InitiativeCard key={item.slug} item={item} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+const sectionHeadingStyle: React.CSSProperties = {
+  margin: 0,
+  fontSize: 12,
+  fontWeight: 600,
+  color: palette.textTertiary,
+  textTransform: 'uppercase',
+  letterSpacing: 0.6,
+};
+
+const cardGridStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+  gap: sp[6],
+};
+
+function ParseErrors({
+  errors,
+}: {
+  errors: InitiativesResult['parse_errors'];
+}): React.JSX.Element {
+  return (
+    <section style={parseErrorsStyle}>
+      <h2 style={{ margin: 0, fontSize: 13, color: palette.red }}>Parse errors ({errors.length})</h2>
+      <ul style={parseErrorListStyle}>
+        {errors.map((e) => (
+          <li key={e.slug}>
+            <code>{e.slug}</code>: {e.error}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+const parseErrorsStyle: React.CSSProperties = {
+  border: `1px solid ${palette.red}55`,
+  background: `${palette.red}11`,
+  borderRadius: 8,
+  padding: sp[8],
+};
+
+const parseErrorListStyle: React.CSSProperties = {
+  margin: `${sp[5]}px 0 0`,
+  paddingLeft: sp[12],
+  color: palette.textSecondary,
+  fontSize: 12,
+};
 
 function LoadingBlock(): React.JSX.Element {
   return <div style={{ color: palette.textTertiary, fontSize: 13 }}>Loading…</div>;
