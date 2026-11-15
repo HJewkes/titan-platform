@@ -20,8 +20,9 @@ describe("qa stage photosensitive flash", () => {
     ["general", { general: FLASHING, red: CLEAN }, "general 5/s over 3 at 0.50-2.00 s; red 0/s (synthetic)"],
     ["red", { general: CLEAN, red: FLASHING }, "general 0/s; red 5/s over 3 at 0.50-2.00 s (synthetic)"],
   ])("fails the stage on a %s flash above three a second", async (_kind, kinds, detail) => {
-    const { checks } = await harness.run({ flash: { method: "synthetic", ...kinds } });
+    const { report, checks } = await harness.run({ flash: { method: "synthetic", ...kinds } });
 
+    expect(report.pass).toBe(false);
     expect(checks["photosensitive-flash"]).toEqual({ name: "photosensitive-flash", gate: true, pass: false, detail });
     expect(failedGates(Object.values(checks)).map((check) => check.name)).toEqual(["photosensitive-flash"]);
   });
