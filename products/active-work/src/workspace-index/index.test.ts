@@ -218,7 +218,8 @@ describe('FTS spans', () => {
 
   it('resolves a span locator back to the exact bytes of the file', async () => {
     const { readFileSync } = await import('node:fs');
-    const hit = graph.workspaceSpans.search('"The indexer was written"')[0];
+    const hit = graph.workspaceSpans.search('"The indexer was written"').at(0);
+    if (hit === undefined) throw new Error('the span search found no hit');
     const relative = z
       .object({ source_key: z.string() })
       .parse(

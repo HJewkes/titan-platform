@@ -49,4 +49,8 @@ export * from "./presets/article/index.js";
 export * from "./sim/index.js";
 export * from "./render-exports.js";
 export * from "./template-fill-exports.js";
+export { ALLOWED_LICENCES, LedgerEntrySchema, type LedgerEntry } from "./audio/ledger-schema.js";
+export { importAudio, ImportRefused, readLedger, type ImportRequest, type ImportResult } from "./audio/library.js";
+export { generateBed, generateSfx, SFX_NAMES, type Generated, type SfxName } from "./audio/procedural.js";
+export { runAudioCli } from "./audio-cli.js";
 export * from "./audio-mix-exports.js";

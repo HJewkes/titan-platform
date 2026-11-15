@@ -42,8 +42,9 @@ async function writeJsonl(spec: JsonlSpec): Promise<string> {
 describe('sessions command', () => {
   it('exports CLI metadata with limit and include-active options', () => {
     expect(sessions.name).toBe('sessions');
-    expect(sessions.cli?.options?.limit.long).toBe('--limit');
-    expect(sessions.cli?.options?.include_active.long).toBe('--include-active');
+    const options = new Map(Object.entries(sessions.cli?.options ?? {}));
+    expect(options.get('limit')?.long).toBe('--limit');
+    expect(options.get('include_active')?.long).toBe('--include-active');
   });
 
   it('returns sessions sorted by mtime desc and extracts cwd', async () => {
@@ -69,9 +70,9 @@ describe('sessions command', () => {
     await withEmptyActiveRoot(async () => {
       const result = await runSessions({});
       expect(result.sessions.map((s) => s.session_id)).toEqual(['bbb-new', 'aaa-old']);
-      expect(result.sessions[0].cwd).toBe('/Users/alice/bar');
-      expect(result.sessions[1].cwd).toBe('/Users/alice/foo');
-      expect(result.sessions[0].ended).toBe('2026-04-01T00:00:00.000Z');
+      expect(result.sessions.at(0)?.cwd).toBe('/Users/alice/bar');
+      expect(result.sessions.at(1)?.cwd).toBe('/Users/alice/foo');
+      expect(result.sessions.at(0)?.ended).toBe('2026-04-01T00:00:00.000Z');
     });
   });
 
@@ -135,8 +136,8 @@ describe('sessions command', () => {
       const result = await runSessions({ limit: 2 });
       expect(result.sessions).toHaveLength(2);
       // newest first
-      expect(result.sessions[0].session_id).toBe('s-4');
-      expect(result.sessions[1].session_id).toBe('s-3');
+      expect(result.sessions.at(0)?.session_id).toBe('s-4');
+      expect(result.sessions.at(1)?.session_id).toBe('s-3');
     });
   });
 
@@ -161,8 +162,8 @@ describe('sessions command', () => {
 
     await withEmptyActiveRoot(async () => {
       const result = await runSessions({});
-      expect(result.sessions[0].summary).toMatch(/continued from a previous conversation/);
-      expect(result.sessions[0].summary).not.toMatch(/original ask/);
+      expect(result.sessions.at(0)?.summary).toMatch(/continued from a previous conversation/);
+      expect(result.sessions.at(0)?.summary).not.toMatch(/original ask/);
     });
   });
 
@@ -178,7 +179,7 @@ describe('sessions command', () => {
 
     await withEmptyActiveRoot(async () => {
       const result = await runSessions({});
-      expect(result.sessions[0].summary).toBe('kick off the work please');
+      expect(result.sessions.at(0)?.summary).toBe('kick off the work please');
     });
   });
 
@@ -195,7 +196,7 @@ describe('sessions command', () => {
 
     await withEmptyActiveRoot(async () => {
       const result = await runSessions({});
-      expect(result.sessions[0].summary).toHaveLength(150);
+      expect(result.sessions.at(0)?.summary).toHaveLength(150);
     });
   });
 

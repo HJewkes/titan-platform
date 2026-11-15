@@ -94,7 +94,8 @@ async function maxOnDiskTaskNumber(initiativeDir: string, prefix: string): Promi
     }
     for (const name of names) {
       const m = re.exec(name);
-      if (m) max = Math.max(max, Number.parseInt(m[1], 10));
+      const digits = m?.at(1);
+      if (digits !== undefined) max = Math.max(max, Number.parseInt(digits, 10));
     }
   }
   return max;

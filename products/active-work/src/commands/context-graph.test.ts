@@ -170,7 +170,7 @@ describe('context.graph', () => {
 
       expect(result.subject).toBeNull();
       expect(result.references).toHaveLength(1);
-      expect(result.references[0].field).toBe('notes');
+      expect(result.references.at(0)?.field).toBe('notes');
     });
   });
 
@@ -209,7 +209,7 @@ describe('context.graph', () => {
 
       expect(result.subject).not.toBeNull();
       expect(result.errors).toHaveLength(1);
-      expect(result.errors[0].file).toBe(path.join('tasks', 'broken.yml'));
+      expect(result.errors.at(0)?.file).toBe(path.join('tasks', 'broken.yml'));
     });
   });
 });
