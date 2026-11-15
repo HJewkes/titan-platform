@@ -5,6 +5,7 @@ import { CatalogueBeat, CatalogueSlots } from "./beats/catalogue.js";
 import { ArchMapKindBeat } from "./beats/ArchMapBeat.js";
 import { ChartKindBeat } from "./beats/ChartBeat.js";
 import { CompareKindBeat } from "./beats/CompareBeat.js";
+import { FindingCardBeat } from "./beats/finding-card.js";
 import { HeldBeat } from "./beats/held.js";
 import { HookBeat } from "./beats/hook.js";
 import { FactFlashBeat, ListKindBeat, VerdictCardBeat } from "./beats/list-kinds.js";
@@ -59,6 +60,7 @@ const BEATS: Readonly<Record<string, BeatDefinition>> = {
   "claim-card": defineBeat(BEAT_SLOTS["claim-card"], ClaimCardBeat, { stage: true, headline: false }),
   button: defineBeat(BEAT_SLOTS.button, ButtonBeat, { stage: true, headline: false }),
   outro: defineBeat(BEAT_SLOTS.outro, OutroKindBeat, { stage: true, headline: false }),
+  "finding-card": defineBeat(BEAT_SLOTS["finding-card"], FindingCardBeat, { stage: true }),
   stat: defineBeat(BEAT_SLOTS.stat, StatKindBeat, { stage: true }),
   chart: defineBeat(BEAT_SLOTS.chart, ChartKindBeat, { stage: true }),
   compare: defineBeat(BEAT_SLOTS.compare, CompareKindBeat, { stage: true }),
