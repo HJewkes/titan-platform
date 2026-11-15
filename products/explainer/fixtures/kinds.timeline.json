@@ -1,5 +1,5 @@
 {
-  "durationS": 89.25,
+  "durationS": 92.25,
   "beats": [
     {
       "id": "opening",
@@ -73,9 +73,22 @@
       }
     },
     {
+      "id": "checks",
+      "kind": "proof",
+      "startS": 7.5,
+      "durationS": 3,
+      "slots": {
+        "command": "pnpm test",
+        "checks": [
+          { "id": "checks-1", "name": "parcel-sort", "base": "fail", "head": "pass" },
+          { "id": "checks-2", "name": "label-print", "base": "pass", "head": "pass" }
+        ]
+      }
+    },
+    {
       "id": "metrics",
       "kind": "metrics-panel",
-      "startS": 7.5,
+      "startS": 10.5,
       "durationS": 3,
       "slots": {
         "rows": [
@@ -91,7 +104,7 @@
     {
       "id": "scorecard",
       "kind": "scorecard",
-      "startS": 10.5,
+      "startS": 13.5,
       "durationS": 3,
       "slots": {
         "rows": [
@@ -107,7 +120,7 @@
     {
       "id": "beat-01",
       "kind": "verdict-card",
-      "startS": 13.5,
+      "startS": 16.5,
       "durationS": 6.6,
       "cues": {
         "clean": 3.35,
@@ -157,7 +170,7 @@
     {
       "id": "beat-02",
       "kind": "list",
-      "startS": 20.1,
+      "startS": 23.1,
       "durationS": 7.3,
       "cues": {
         "matcher": 1.95,
@@ -216,7 +229,7 @@
     {
       "id": "beat-03",
       "kind": "list",
-      "startS": 27.400000000000002,
+      "startS": 30.400000000000002,
       "durationS": 4.85,
       "cues": {
         "night": 1.6
@@ -269,7 +282,7 @@
     {
       "id": "beat-04",
       "kind": "stat",
-      "startS": 32.25,
+      "startS": 35.25,
       "durationS": 6.25,
       "cues": {
         "3": 4.05,
@@ -322,7 +335,7 @@
     {
       "id": "beat-05",
       "kind": "chart",
-      "startS": 38.5,
+      "startS": 41.5,
       "durationS": 5.2,
       "cues": {
         "router": 0.9
@@ -365,7 +378,7 @@
     {
       "id": "beat-06",
       "kind": "chart",
-      "startS": 43.7,
+      "startS": 46.7,
       "durationS": 7.3,
       "cues": {
         "three": 1.95,
@@ -439,7 +452,7 @@
     {
       "id": "beat-07",
       "kind": "fact-flash",
-      "startS": 51,
+      "startS": 54,
       "durationS": 5.9,
       "cues": {
         "renamed": 2.3,
@@ -481,7 +494,7 @@
     {
       "id": "beat-08",
       "kind": "compare",
-      "startS": 56.9,
+      "startS": 59.9,
       "durationS": 7.65,
       "cues": {
         "shared": 1.25,
@@ -541,7 +554,7 @@
     {
       "id": "beat-09",
       "kind": "arch-map",
-      "startS": 64.55,
+      "startS": 67.55,
       "durationS": 5.9,
       "cues": {
         "intake": 1.25,
@@ -617,7 +630,7 @@
     {
       "id": "beat-10",
       "kind": "claim-card",
-      "startS": 70.45,
+      "startS": 73.45,
       "durationS": 5.55,
       "slots": {
         "claim": "Small lanes ship faster than one big queue",
@@ -649,7 +662,7 @@
     {
       "id": "beat-11",
       "kind": "button",
-      "startS": 76,
+      "startS": 79,
       "durationS": 3.8,
       "slots": {
         "line": "Read the digest",
@@ -673,7 +686,7 @@
     {
       "id": "beat-12",
       "kind": "outro",
-      "startS": 79.8,
+      "startS": 82.8,
       "durationS": 3.45,
       "slots": {
         "line": "That is the day"
@@ -696,7 +709,7 @@
     {
       "id": "findings",
       "kind": "finding-card",
-      "startS": 83.25,
+      "startS": 86.25,
       "durationS": 6,
       "slots": {
         "findings": [
