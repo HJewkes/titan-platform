@@ -149,7 +149,7 @@ rules:
     related: [Q-E17, Q-E19]
     owner_support: none
     note: "TP-5721. Reads declared terms only and compares script positions, so a script that declares each term where it first speaks it cannot fail."
-    l0: { severity: error, status: implemented, checks: ["hallmark:named-before-defined"] }
+    l0: { severity: error, status: implemented, checks: ["hallmark:named-before-defined", "hallmark:motivated-before-named"] }
   - id: Q-V19
     rule: "A term a beat declares in new_terms is spoken in that beat, shown in its labels or chips, and cued within 1.0 s of its first spoken word"
     fields: [beats.spoken, beats.new_terms, beats.visual.labels, beats.visual.chips, beats.visual.cues]

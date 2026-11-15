@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the threshold no longer separates early from late terms",
+      "file": "products/explainer/src/lint-term-motivation.ts",
+      "find": "seconds < rule.minS",
+      "replace": "seconds >= 0",
+      "kills": [
+        "hallmark:motivated-before-named counts terms named before their chapter has motivated them does not count a term first said after 25 s of build-up"
+      ]
+    },
+    {
+      "name": "time is measured from the script start instead of the chapter start",
+      "file": "products/explainer/src/lint-term-motivation.ts",
+      "find": "* beat.plannedS - chapterStart;",
+      "replace": "* beat.plannedS;",
+      "kills": [
+        "hallmark:motivated-before-named counts terms named before their chapter has motivated them counts a term named in its chapter's first sentence"
+      ]
+    },
+    {
+      "name": "the check counts every beat's words instead of declared terms",
+      "file": "products/explainer/src/lint-term-motivation.ts",
+      "find": "beat.new_terms.flatMap(",
+      "replace": "(beat.new_terms.length > 0 ? beat.new_terms : [\"matcher\"]).flatMap(",
+      "kills": [
+        "hallmark:motivated-before-named counts terms named before their chapter has motivated them ignores a word the script never declares"
+      ]
+    }
+  ]
+}
