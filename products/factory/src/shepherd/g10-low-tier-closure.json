@@ -406,6 +406,7 @@
   "packages/store-sqlite/src/tables/cache-blob.ts",
   "packages/store-sqlite/src/tables/edge.ts",
   "packages/store-sqlite/src/tables/entity.ts",
+  "packages/store-sqlite/src/tables/span-fts-twin.ts",
   "packages/store-sqlite/src/tables/span-fts.ts",
   "packages/store-sqlite/src/tables/watermark.ts",
   "packages/workflow/src/authorize.ts",

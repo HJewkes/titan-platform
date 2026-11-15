@@ -53,3 +53,4 @@ export { ALLOWED_LICENCES, LedgerEntrySchema, type LedgerEntry } from "./audio/l
 export { importAudio, ImportRefused, readLedger, type ImportRequest, type ImportResult } from "./audio/library.js";
 export { generateBed, generateSfx, SFX_NAMES, type Generated, type SfxName } from "./audio/procedural.js";
 export { runAudioCli } from "./audio-cli.js";
+export * from "./audio-mix-exports.js";

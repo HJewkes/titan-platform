@@ -19,6 +19,8 @@ labels mined from transcripts, so a retrieval change can be measured.
 [`app-paths`](/reference/app-paths) decides where those files live: an app's per-user data,
 config, cache and log directories, and active-work's data root.
 [`test-timing`](/reference/test-timing) keeps vitest per-file timing records in a SQLite corpus.
+[`text-ingest`](/reference/text-ingest) cleans a transcript deterministically before it is
+indexed, and keeps the byte ranges of what it kept and removed.
 
 ## Command surfaces
 
