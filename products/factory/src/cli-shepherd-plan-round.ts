@@ -10,7 +10,7 @@ import { parseNameStatus } from "./shepherd/git-pr-files.js";
 import { verifyPlan } from "./shepherd/plan-round-verify.js";
 import { planRound, PlanRoundRefused, readPlanBlock, type GitRead } from "./shepherd/plan-round.js";
 import { loadSeatBook, lookupSeat } from "./shepherd/seats.js";
-import { activeWorkOrigin } from "./shepherd/cleanup-ports.js";
+import { activeWorkOrigin } from "./shepherd/active-work-origin.js";
 import { activeWorkTaskForApproval, taskApprovalRound, type TaskApprovalReads } from "./shepherd/task-approval-round.js";
 
 type Run = (file: string, args: readonly string[]) => Promise<CommandResult | undefined>;

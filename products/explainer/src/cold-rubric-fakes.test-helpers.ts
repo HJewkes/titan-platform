@@ -36,6 +36,7 @@ const DEFECTS: Record<ColdRubricDim, (beats: readonly RubricBeat[], hooks: reado
   J10: (beats, hooks) => /\b(open source|is popular|package manager)\b/i.test(spoken(beats)) || beats.some((b) => hooks.includes(b.spoken)),
   J11: (beats) => /\b(various|in general|many ways|everything)\b/i.test(spoken(beats)),
   J12: (beats) => beats.flatMap((b) => b.screen).filter((s) => /stock photo|meme|plain bullet/.test(s)).length >= 2,
+  J13: (beats) => beats.filter((b) => /\b(the lesson is|reminds us|the moral is)\b/i.test(b.spoken)).length >= 2,
 };
 
 const quoteOf = (beat: RubricBeat) => ({ beat: beat.id, quote: beat.spoken.split(" ").slice(0, 3).join(" ") });

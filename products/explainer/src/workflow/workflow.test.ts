@@ -269,7 +269,7 @@ describe("the cold rubric on every run", () => {
     const evalRow = row(result, "eval");
     expect(host.rubric.calls).toHaveLength(1);
     expect(evalRow.outputs["cold-rubric"]).toMatch(/^[0-9a-f]{64}$/);
-    expect(evalRow.notes[0]).toMatch(/^cold rubric \(reported only\): J8 \d, J9 \d, J10 \d, J11 \d, J12 \d; canary held$/);
+    expect(evalRow.notes[0]).toMatch(/^cold rubric \(reported only\): J8 \d, J9 \d, J10 \d, J11 \d, J12 \d, J13 \d; canary held$/);
     expect(evalRow.checks).toBe("2 pass, 0 gate fail, 0 reported fail");
   });
 
