@@ -346,7 +346,7 @@ describe('stepInstallSkill', () => {
 describe('stepRegisterMcp', () => {
   it('prints fallback instructions when `claude` is missing (ENOENT)', async () => {
     const fakeSpawn = vi.fn(() => {
-      const handlers: Record<string, ((arg?: unknown) => void)[]> = {};
+      const handlers: Record<string, ((arg?: unknown) => void)[] | undefined> = {};
       const child = {
         stderr: { on: () => undefined },
         on: (event: string, cb: (arg?: unknown) => void) => {
@@ -356,7 +356,7 @@ describe('stepRegisterMcp', () => {
       };
       queueMicrotask(() => {
         const err = Object.assign(new Error('not found'), { code: 'ENOENT' });
-        handlers.error.forEach((cb) => cb(err));
+        handlers.error?.forEach((cb) => cb(err));
       });
       return asChild(child);
     });
@@ -373,7 +373,7 @@ describe('stepRegisterMcp', () => {
 
   it('marks done when `claude mcp add` exits 0', async () => {
     const fakeSpawn = vi.fn(() => {
-      const handlers: Record<string, ((arg?: unknown) => void)[]> = {};
+      const handlers: Record<string, ((arg?: unknown) => void)[] | undefined> = {};
       const child = {
         stderr: { on: () => undefined },
         on: (event: string, cb: (arg?: unknown) => void) => {
@@ -382,7 +382,7 @@ describe('stepRegisterMcp', () => {
         },
       };
       queueMicrotask(() => {
-        handlers.close.forEach((cb) => cb(0));
+        handlers.close?.forEach((cb) => cb(0));
       });
       return asChild(child);
     });
@@ -479,7 +479,7 @@ describe('stepSupervision', () => {
     const calls: string[][] = [];
     const spawn = vi.fn((cmd: string, args: string[]) => {
       calls.push([cmd, ...args]);
-      const handlers: Record<string, ((arg?: unknown) => void)[]> = {};
+      const handlers: Record<string, ((arg?: unknown) => void)[] | undefined> = {};
       const child = {
         stderr: { on: () => undefined },
         on: (event: string, cb: (arg?: unknown) => void) => {
@@ -489,7 +489,7 @@ describe('stepSupervision', () => {
       };
       queueMicrotask(() => {
         const code = args.includes('bootout') ? 3 : 0;
-        handlers.close.forEach((cb) => cb(code));
+        handlers.close?.forEach((cb) => cb(code));
       });
       return asChild(child);
     });
@@ -538,7 +538,7 @@ describe('stepSupervision', () => {
     setPlatform('linux');
     const { paths, cleanup } = makeTempPaths();
     const spawn = vi.fn((cmd: string, args: string[]) => {
-      const handlers: Record<string, ((arg?: unknown) => void)[]> = {};
+      const handlers: Record<string, ((arg?: unknown) => void)[] | undefined> = {};
       const child = {
         stderr: {
           on: (event: string, cb: (chunk: Buffer | string) => void) => {
@@ -554,7 +554,7 @@ describe('stepSupervision', () => {
       queueMicrotask(() => {
         // daemon-reload succeeds; enable fails as it would with no user bus.
         const code = args.includes('enable') ? 1 : 0;
-        handlers.close.forEach((cb) => cb(code));
+        handlers.close?.forEach((cb) => cb(code));
       });
       return asChild(child);
     });
@@ -597,7 +597,7 @@ describe('stepStartDaemon (linux supervision detection)', () => {
     setPlatform('linux');
     const fakeSpawn = vi.fn((cmd: string, args: string[]) => {
       void cmd;
-      const handlers: Record<string, ((arg?: unknown) => void)[]> = {};
+      const handlers: Record<string, ((arg?: unknown) => void)[] | undefined> = {};
       const child = {
         stderr: { on: () => undefined },
         on: (event: string, cb: (arg?: unknown) => void) => {
@@ -608,9 +608,9 @@ describe('stepStartDaemon (linux supervision detection)', () => {
       queueMicrotask(() => {
         // Only the is-active probe is expected; reply 0 to signal active.
         if (args.includes('is-active')) {
-          handlers.close.forEach((cb) => cb(0));
+          handlers.close?.forEach((cb) => cb(0));
         } else {
-          handlers.close.forEach((cb) => cb(0));
+          handlers.close?.forEach((cb) => cb(0));
         }
       });
       return asChild(child);

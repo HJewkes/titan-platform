@@ -62,6 +62,7 @@ graph TD
     speechStt["speech-stt"]
     speechTts["speech-tts"]
     testTiming["test-timing"]
+    textIngest["text-ingest"]
     worktree["worktree"]
   end
   subgraph T2["Tier 2 · domain"]
@@ -259,6 +260,7 @@ graph TD
   explainer --> agentDispatch
   explainer --> agentProtocol
   explainer --> appPaths
+  explainer --> autoresearch
   explainer --> codeGraph
   explainer --> codeRead
   explainer --> evidence
@@ -310,6 +312,7 @@ graph TD
   fleetPanel --> rpcProtocol
   retrievalEval --> appPaths
   retrievalEval --> embed
+  retrievalEval --> evidence
   retrievalEval --> retrieval
   retrievalEval --> rpcProtocol
   retrievalEval --> sessionRead
@@ -371,7 +374,7 @@ Same-tier edges such as `daemon --> registry`, `agent --> agent-lifecycle` and
 `session-graph --> session-read` are legal when they remain acyclic.
 
 <!-- generated:arch-leaves start -->
-`agent-protocol`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `evidence`, `fix-proof`, `locator`, `owner-proof`, `png-delta`, `rpc-protocol`, `seat-spec`, `store-sqlite`, `test-kit`, `frame-capture`, `github`, `worktree`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
+`agent-protocol`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `evidence`, `fix-proof`, `locator`, `owner-proof`, `png-delta`, `rpc-protocol`, `seat-spec`, `store-sqlite`, `test-kit`, `frame-capture`, `github`, `text-ingest`, `worktree`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
 <!-- generated:arch-leaves end -->
 
 The [package families](/guides/package-families) guide groups the same packages by job.

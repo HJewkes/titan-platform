@@ -1243,6 +1243,8 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
+  packages/text-ingest: {}
+
   packages/throughput:
     dependencies:
       '@titan-design/evidence':
@@ -1543,6 +1545,9 @@ importers:
       '@titan-design/app-paths':
         specifier: workspace:^
         version: link:../../packages/app-paths
+      '@titan-design/autoresearch':
+        specifier: workspace:^
+        version: link:../../packages/autoresearch
       '@titan-design/code-graph':
         specifier: workspace:^
         version: link:../../packages/code-graph
@@ -1628,9 +1633,6 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
     devDependencies:
-      '@titan-design/autoresearch':
-        specifier: workspace:^
-        version: link:../../packages/autoresearch
       '@titan-design/test-kit':
         specifier: workspace:*
         version: link:../../packages/test-kit
@@ -1794,6 +1796,9 @@ importers:
       '@titan-design/embed':
         specifier: workspace:^
         version: link:../../packages/embed
+      '@titan-design/evidence':
+        specifier: workspace:^
+        version: link:../../packages/evidence
       '@titan-design/retrieval':
         specifier: workspace:^
         version: link:../../packages/retrieval

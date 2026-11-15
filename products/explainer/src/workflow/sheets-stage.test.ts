@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -7,8 +8,9 @@ import { ConsoleSidecarSchema } from "../video-meta-mirror.test-helpers.js";
 import { ArtifactStore } from "./artifacts.js";
 import { BridgeFileSchema } from "./bridge.js";
 import { openState, runOneStage, runVideo } from "./host.js";
-import { cloneFixture, dropSeeds, fakeRender, fakeHost, fakeMedia, fakeScriptModel, fixture, seededRun, type Fixture } from "./run-fakes.test-helpers.js";
-import { ffmpegMedia } from "./sheets-stage.js";
+import { cloneFixture, dropSeeds, fakeFfmpeg, fakeRender, fakeHost, fakeMedia, fakeScriptModel, fixture, seededRun, type Fixture } from "./run-fakes.test-helpers.js";
+import { ffmpegMedia, runSheetsStage } from "./sheets-stage.js";
+import { soloScript } from "../template-fill/fill-fixtures.test-helpers.js";
 
 let fx: Fixture | undefined;
 afterEach(() => fx?.cleanup());
@@ -49,7 +51,7 @@ describe("the sheets stage in a run", () => {
 
     expect(result.status, result.error).toBe("completed");
     const { sidecar, poster, fingerprint } = row(result, "sheets").outputs;
-    expect(Object.keys(row(result, "sheets").outputs).sort()).toEqual(["fingerprint", "poster", "sidecar"]);
+    expect(Object.keys(row(result, "sheets").outputs).sort()).toEqual(["contact-sheets", "fingerprint", "poster", "sidecar"]);
     expect(media.frames).toEqual([60]);
     expect(sidecarOf(sidecar!)).toMatchObject({ posterAtS: 60, poster: "demo-poster.jpg", explainer: { videoId: result.runId, runIds: [result.runId], scriptSha: row(result, "rewrite").outputs.script } });
     expect(FingerprintShape.parse(JSON.parse(artifact(fingerprint!))).beats.length).toBeGreaterThan(0);
@@ -115,7 +117,61 @@ describe("explainer stage sheets", () => {
   });
 });
 
-const hasFfmpeg = spawnSync("ffmpeg", ["-version"]).status === 0 && spawnSync("ffprobe", ["-version"]).status === 0;
+const CONTACT_TIMELINE = {
+  durationS: 10,
+  beats: [
+    { id: "intro", kind: "title", startS: 0, durationS: 4, slots: {}, chapter: { n: 1, of: 2, label: "Opening" } },
+    { id: "body", kind: "list", startS: 4, durationS: 6, slots: {}, reveals: [{ target: "row-1", atS: 1 }], chapter: { n: 2, of: 2, label: "The Body" } },
+  ],
+};
+const BODY_MARKS = [{ t: 5.5, beat: "body", kind: "settled" }];
+const TreeShape = z.object({ entries: z.array(z.object({ path: z.string(), sha: z.string() })) });
+const CellsShape = z.object({ cells: z.array(z.object({ beat: z.string(), rule: z.string() })) });
+
+/** The stage on its own with a fake ffmpeg, the render's timeline and, when asked, the render's page marks. */
+async function contactSheetsRun(withMarks: boolean) {
+  const root = mkdtempSync(path.join(tmpdir(), "explainer-sheets-test-"));
+  try {
+    const from = { runId: "sheets-test", stage: "sheets" };
+    const store = new ArtifactStore(root, openState(root));
+    const video = path.join(root, "video.mp4");
+    writeFileSync(video, "video");
+    const put = (value: unknown, kind: string) => store.putText(JSON.stringify(value), kind, from);
+    const artifacts: Record<string, string> = {
+      mp4: store.putFile(video, "mp4", from), script: put(soloScript({ beat: "list", labels: ["tick Two lanes"] }), "script"),
+      timeline: put(CONTACT_TIMELINE, "timeline"), ...(withMarks ? { marks: put(BODY_MARKS, "marks") } : {}),
+    };
+    const outcome = await runSheetsStage({ artifacts, store, from, remainingUsd: 0 }, { status: "review", stem: "demo" }, fakeMedia(10), fakeFfmpeg);
+    const tree = TreeShape.parse(JSON.parse(store.readText(outcome.outputs["contact-sheets"]!)));
+    const cells = CellsShape.parse(JSON.parse(store.readText(tree.entries.find((entry) => entry.path === "cells.json")!.sha))).cells;
+    return { paths: tree.entries.map((entry) => entry.path), cells };
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+describe("the sheets stage's contact sheets", () => {
+  it("cuts a beat the render's marks cover by those marks", async () => {
+    const { cells } = await contactSheetsRun(true);
+
+    expect(cells.filter((cell) => cell.beat === "body").map((cell) => cell.rule)).toEqual(["marks"]);
+    expect(cells.filter((cell) => cell.beat === "intro").map((cell) => cell.rule)).toEqual(["hero"]);
+  });
+
+  it("cuts every beat by the section 2.2 rules when the render published no marks", async () => {
+    const { cells } = await contactSheetsRun(false);
+
+    expect(cells.map((cell) => [cell.beat, cell.rule])).toEqual([["intro", "hero"], ["body", "build"]]);
+  });
+
+  it("stores one sheet per chapter in the tree", async () => {
+    const { paths } = await contactSheetsRun(false);
+
+    expect(paths.filter((entry) => /^sheet-.*\.png$/.test(entry)).sort()).toEqual(["sheet-opening.png", "sheet-the-body.png"]);
+  });
+});
+
+const hasFfmpeg =spawnSync("ffmpeg", ["-version"]).status === 0 && spawnSync("ffprobe", ["-version"]).status === 0;
 
 describe.skipIf(!hasFfmpeg)("the sheets stage on a real video", () => {
   it("probes an ffmpeg-made video and grabs a 480 px poster 30 % in", async () => {

@@ -61,8 +61,8 @@ describe('listSources', () => {
         'b-untitled.md': 'just prose, no heading\n',
       });
       const sources = await listSources(dir);
-      expect(sources[0].title).toBe('Real Title');
-      expect(sources[1].title).toBe('b-untitled');
+      expect(sources.at(0)?.title).toBe('Real Title');
+      expect(sources.at(1)?.title).toBe('b-untitled');
     });
   });
 

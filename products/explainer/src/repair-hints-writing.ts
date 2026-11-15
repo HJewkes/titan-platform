@@ -39,4 +39,6 @@ export const WRITING_HINTS: Readonly<Record<string, Hint>> = {
   "hallmark:label-first": (_script, row) =>
     `${named(row)} announce a label ("The fix is X.") before the reasoning; lead with what happens, and let the name land inside that sentence`,
   "hallmark:named-before-defined": namedBeforeDefinedHint,
+  "hallmark:motivated-before-named": (_script, row) =>
+    `${row.value} declared terms are first spoken before ${writingGatePolicy().hallmarks["motivated-before-named"].minS} s of their chapter have passed (${named(row)}); open the chapter with the problem the term answers, and let the name land after it`,
 };

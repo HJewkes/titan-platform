@@ -141,7 +141,8 @@ function ledgerLoop(row: LedgerLoop, now: Date): BoardLoop {
 }
 
 function issueText(error: z.ZodError): string {
-  const issue = error.issues[0];
+  const issue = error.issues.at(0);
+  if (issue === undefined) return '(row): invalid';
   return `${issue.path.join('.') || '(row)'}: ${issue.message}`;
 }
 

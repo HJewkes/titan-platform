@@ -71,17 +71,17 @@ import { z } from 'zod';
 declare const DELIVERABLE_ID_REGEX: RegExp;
 declare const TaskSchema: z.ZodObject<{
     field_origin: z.ZodOptional<z.ZodRecord<z.ZodEnum<{
-        class: "class";
-        source: "source";
-        rank: "rank";
-        done_reason: "done_reason";
-        blocked_on: "blocked_on";
-        serves: "serves";
-        source_ref: "source_ref";
-        filed_by: "filed_by";
         bet: "bet";
+        blocked_on: "blocked_on";
+        class: "class";
+        done_reason: "done_reason";
+        filed_by: "filed_by";
         fold: "fold";
         owner_steps: "owner_steps";
+        rank: "rank";
+        serves: "serves";
+        source: "source";
+        source_ref: "source_ref";
     }> & z.core.$partial, z.ZodString>>;
     class: z.ZodOptional<z.ZodEnum<{
         product: "product";
@@ -89,14 +89,14 @@ declare const TaskSchema: z.ZodObject<{
     }>>;
     serves: z.ZodOptional<z.ZodUnion<readonly [z.ZodLiteral<"none">, z.ZodString]>>;
     source: z.ZodOptional<z.ZodEnum<{
-        owner: "owner";
-        plan: "plan";
-        "follow-up": "follow-up";
-        review: "review";
-        sweep: "sweep";
         audit: "audit";
         coordinator: "coordinator";
+        "follow-up": "follow-up";
         incident: "incident";
+        owner: "owner";
+        plan: "plan";
+        review: "review";
+        sweep: "sweep";
     }>>;
     source_ref: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodObject<{
         from_pr: z.ZodString;
@@ -111,29 +111,29 @@ declare const TaskSchema: z.ZodObject<{
         p3: "p3";
     }>>;
     done_reason: z.ZodOptional<z.ZodEnum<{
-        shipped: "shipped";
-        superseded: "superseded";
         duplicate: "duplicate";
         moot: "moot";
-        "wont-do": "wont-do";
         moved: "moved";
+        shipped: "shipped";
+        superseded: "superseded";
+        "wont-do": "wont-do";
     }>>;
     blocked_on: z.ZodOptional<z.ZodEnum<{
-        owner: "owner";
         decision: "decision";
-        task: "task";
         external: "external";
+        owner: "owner";
+        task: "task";
     }>>;
     bet: z.ZodOptional<z.ZodString>;
     fold: z.ZodOptional<z.ZodUnion<readonly [z.ZodLiteral<"independent">, z.ZodString]>>;
     owner_steps: z.ZodOptional<z.ZodArray<z.ZodObject<{
         kind: z.ZodEnum<{
+            config: "config";
+            credential: "credential";
+            publish: "publish";
             release: "release";
             restart: "restart";
-            credential: "credential";
             sitting: "sitting";
-            config: "config";
-            publish: "publish";
         }>;
         note: z.ZodString;
     }, z.core.$strict>>>;
@@ -146,8 +146,8 @@ declare const TaskSchema: z.ZodObject<{
     severity: z.ZodOptional<z.ZodEnum<{
         critical: "critical";
         high: "high";
-        medium: "medium";
         low: "low";
+        medium: "medium";
     }>>;
     estimate: z.ZodOptional<z.ZodNumber>;
     done_when: z.ZodOptional<z.ZodString>;
@@ -195,8 +195,8 @@ declare const OutcomeSchema: z.ZodObject<{
     statement: z.ZodString;
     measure: z.ZodString;
     state: z.ZodEnum<{
-        draft: "draft";
         active: "active";
+        draft: "draft";
         retired: "retired";
     }>;
     owner_intent: z.ZodOptional<z.ZodObject<{
@@ -209,8 +209,8 @@ type Outcome = z.infer<typeof OutcomeSchema>;
 declare const PredictionSchema: z.ZodObject<{
     metric: z.ZodString;
     direction: z.ZodEnum<{
-        increase: "increase";
         decrease: "decrease";
+        increase: "increase";
     }>;
     baseline: z.ZodNumber;
     expected: z.ZodNumber;
@@ -228,18 +228,18 @@ declare const BetSchema: z.ZodObject<{
     prediction: z.ZodObject<{
         metric: z.ZodString;
         direction: z.ZodEnum<{
-            increase: "increase";
             decrease: "decrease";
+            increase: "increase";
         }>;
         baseline: z.ZodNumber;
         expected: z.ZodNumber;
         read_by: z.ZodString;
     }, z.core.$strict>;
     state: z.ZodEnum<{
+        done: "done";
+        dropped: "dropped";
         proposed: "proposed";
         selected: "selected";
-        dropped: "dropped";
-        done: "done";
     }>;
     cites: z.ZodOptional<z.ZodArray<z.ZodObject<{
         intent_ref: z.ZodString;
@@ -257,8 +257,8 @@ declare const FreezeEndConditionSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     kind: z.ZodLiteral<"measure">;
     metric: z.ZodString;
     direction: z.ZodEnum<{
-        increase: "increase";
         decrease: "decrease";
+        increase: "increase";
     }>;
     threshold: z.ZodNumber;
 }, z.core.$strict>, z.ZodObject<{
@@ -284,16 +284,16 @@ declare const FreezeSchema: z.ZodObject<{
         kind: z.ZodLiteral<"measure">;
         metric: z.ZodString;
         direction: z.ZodEnum<{
-            increase: "increase";
             decrease: "decrease";
+            increase: "increase";
         }>;
         threshold: z.ZodNumber;
     }, z.core.$strict>, z.ZodObject<{
         kind: z.ZodLiteral<"owner">;
     }, z.core.$strict>], "kind">;
     set_by: z.ZodEnum<{
-        owner: "owner";
         decider: "decider";
+        owner: "owner";
     }>;
 }, z.core.$strict>;
 type Freeze = z.infer<typeof FreezeSchema>;

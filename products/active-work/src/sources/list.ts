@@ -111,7 +111,8 @@ export function extractSourceReferences(body: string): string[] {
   const matches = body.matchAll(/sources\/([A-Za-z0-9._/-]+\.md)/g);
   const seen = new Set<string>();
   for (const match of matches) {
-    seen.add(match[1]);
+    const ref = match.at(1);
+    if (ref !== undefined) seen.add(ref);
   }
   return [...seen].sort();
 }

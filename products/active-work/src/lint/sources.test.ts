@@ -35,8 +35,8 @@ describe('lintSources', () => {
       const findings = await lintSources(SLUG, dir);
       expect(findings).toHaveLength(1);
       expect(findings[0]).toMatchObject({ level: 'warn', slug: SLUG, file: 'brief.md' });
-      expect(findings[0].message).toContain('sources/deepdive-forgotten.md');
-      expect(findings[0].message).toContain('active-work source list');
+      expect(findings.at(0)?.message).toContain('sources/deepdive-forgotten.md');
+      expect(findings.at(0)?.message).toContain('active-work source list');
     });
   });
 
@@ -49,7 +49,7 @@ describe('lintSources', () => {
       );
       const findings = await lintSources(SLUG, dir);
       expect(findings).toHaveLength(1);
-      expect(findings[0].message).toContain('references sources/gone.md, which does not exist');
+      expect(findings.at(0)?.message).toContain('references sources/gone.md, which does not exist');
     });
   });
 

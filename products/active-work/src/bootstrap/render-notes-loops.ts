@@ -162,12 +162,12 @@ function renderOpenLoops(
     return `# Open loops${note}\n${renderNoOpenLoops(newestSession)}`;
   }
   const total = loops.length;
-  const oldest = loops[0].openedAt.slice(0, 10);
+  const oldest = loops[0]?.openedAt.slice(0, 10) ?? '';
   loops = loops.slice(0, OPEN_LOOPS_LIMIT);
   const labels = loops.map(loopLabel);
   const labelWidth = Math.max(...labels.map((l) => l.length));
   const lines = loops.map((loop, i) => {
-    const label = labels[i].padEnd(labelWidth);
+    const label = (labels.at(i) ?? '').padEnd(labelWidth);
     const from = loop.openedAt.slice(0, 10);
     const see = (related.hits.get(loop.ref) ?? []).map((hit) => renderSeeLine(hit, related.slug));
     return [`- ${label}   (from ${from}, ref ${loop.ref})`, ...see].join('\n');

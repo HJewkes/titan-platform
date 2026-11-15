@@ -42,6 +42,8 @@ export interface SpawnSource {
   /** Messages carrying a follow-up kind, oldest first. */
   followUps(): FollowUp[];
   plan(agentId: string): LaunchPlan | null;
+  /** Execution ledger phase by session id; omitted by a launcher with no ledger. */
+  executionPhases?(): Map<string, string>;
 }
 
 export type OpenDatabase = (file: string, options: Database.Options) => Database.Database;
@@ -67,7 +69,42 @@ export function eventsDbSource(
     events: () => readLifecycleEvents(path.join(home, 'events.db'), open),
     followUps: () => readFollowUps(path.join(home, 'events.db'), open),
     plan: (agentId) => readPlan(path.join(home, 'agents', agentId, 'plan.json')),
+    executionPhases: () => readExecutionPhases(path.join(home, 'events.db'), open),
   };
+}
+
+interface LedgerRow {
+  session: string;
+  phase: string;
+}
+
+/**
+ * The `agent_execution` ledger table in `events.db`, keyed by the native conversation
+ * id its record carries, which is the Claude session id. A missing file or table is
+ * an agent-chat that predates the ledger, so it reads as no phases. The latest update
+ * wins when a session has several executions.
+ */
+function readExecutionPhases(file: string, open: OpenDatabase): Map<string, string> {
+  const phases = new Map<string, string>();
+  if (!existsSync(file)) return phases;
+  const db = open(file, { readonly: true, fileMustExist: true });
+  try {
+    const rows = db
+      .prepare<[], LedgerRow>(
+        `SELECT json_extract(record, '$.execution.conversation.nativeId') AS session, phase
+         FROM agent_execution
+         WHERE json_extract(record, '$.execution.conversation.nativeId') IS NOT NULL
+         ORDER BY updated_at, revision`,
+      )
+      .all();
+    for (const row of rows) phases.set(row.session, row.phase);
+    return phases;
+  } catch (error) {
+    if (error instanceof Error && /no such table/.test(error.message)) return new Map();
+    throw error;
+  } finally {
+    db.close();
+  }
 }
 
 function readLifecycleEvents(file: string, open: OpenDatabase): LifecycleEvent[] {
