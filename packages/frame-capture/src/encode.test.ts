@@ -65,6 +65,32 @@ describe('startEncoder', () => {
     assert.equal(args.at(-1), 'out.mp4')
   })
 
+  // Mutation: the plate is dropped from the inputs, or the overlay output is not the mapped video.
+  test('with a plate, ffmpeg takes it as an input and overlays the PNGs on it into the mapped video, audio still mapped', () => {
+    startEncoder('out.mp4', 30, 'mix.wav', 'plate.mp4')
+
+    const { args } = lastSpawn()
+    const inputs = args.flatMap((arg, i) => (arg === '-i' ? [args[i + 1]] : []))
+    assert.deepEqual(inputs, ['-', 'mix.wav', 'plate.mp4'])
+    const filter = args[args.indexOf('-filter_complex') + 1] ?? ''
+    assert.match(filter, /\[2:v\]\[0:v\]overlay[^;]*\[v\]$/)
+    const maps = args.flatMap((arg, i) => (arg === '-map' ? [args[i + 1]] : []))
+    assert.deepEqual(maps, ['[v]', '1:a'])
+  })
+
+  // Mutation: the plate arguments leak into the plain encode.
+  test('without a plate the argument list has no filter and maps the PNG pipe', () => {
+    startEncoder('out.mp4', 30, 'mix.wav')
+
+    const { args } = lastSpawn()
+    assert.ok(!args.includes('-filter_complex'))
+    assert.deepEqual(args.slice(args.indexOf('-i')), [
+      '-i', '-', '-i', 'mix.wav', '-map', '0:v', '-map', '1:a',
+      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '18', '-c:a', 'aac', '-shortest',
+      '-map_metadata', '-1', '-fflags', '+bitexact', '-flags:v', '+bitexact', '-flags:a', '+bitexact', 'out.mp4',
+    ])
+  })
+
   // Mutation: write resolves without waiting for 'drain' when stdin is full, or drops the frame.
   test('frames written past the stdin buffer all reach ffmpeg in order', async () => {
     const encoder = startEncoder('out.mp4', 30, 'mix.wav')
