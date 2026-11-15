@@ -7,7 +7,7 @@ import path from "node:path";
 import type { ConversationIdentity } from "@titan-design/agent-protocol";
 import { commandHeads } from "./command-heads.js";
 import { findInjectedMarker } from "./injected-markers.js";
-import type { NormalizedSessionObservation, NormalizedToolCallObservation, SessionSourceDescriptor } from "./normalized.js";
+import type { NormalizedCompactionObservation, NormalizedSessionObservation, NormalizedToolCallObservation, SessionSourceDescriptor } from "./normalized.js";
 import { readRecentSessionTurns } from "./recent-session-turns.js";
 import type { RecentSessionTurn } from "./recent-types.js";
 import { oneLine, truncate } from "./recent-values.js";
@@ -19,6 +19,7 @@ import { toolFamily } from "./tool-family.js";
 export const RECOVERY_MESSAGE_CHARS = 2000;
 export const RECOVERY_FIRST_LINE_CHARS = 200;
 export const RECOVERY_OWNER_MESSAGES = 5;
+export const RECOVERY_COMPACTION_SUMMARIES = 3;
 export const RECOVERY_LIST_CAP = 50;
 /** How far back the owner and assistant messages are looked for; earlier ones are outside the window. */
 export const RECOVERY_TAIL_BYTES = 4 * 1024 * 1024;
@@ -49,6 +50,13 @@ export interface RecoveredMessage {
   at: string | null;
 }
 
+export interface RecoveredCompactions {
+  /** Every compaction in the transcript, whether or not it carried summary text. */
+  count: number;
+  /** At most the last three summaries, oldest first; a compaction with no summary text is counted but not listed. */
+  lastSummaries: string[];
+}
+
 export interface SessionRecovery {
   conversation: ConversationIdentity;
   startedAt: string | null;
@@ -62,6 +70,7 @@ export interface SessionRecovery {
   /** In call order; the cap keeps the most recent. */
   chatSends: CappedList<RecoveredMessageTarget>;
   agentSpawns: CappedList<RecoveredMessageTarget>;
+  compactions: RecoveredCompactions;
   /** The last owner-typed messages, oldest first; tool results and injected blocks are excluded. */
   ownerMessages: RecoveredMessage[];
   lastAssistantMessage: RecoveredMessage | null;
@@ -112,24 +121,41 @@ export class RecoveryFacts {
   private readonly git = new Map<string, RecoveredCommand>();
   private readonly chatSends: RecoveredMessageTarget[] = [];
   private readonly agentSpawns: RecoveredMessageTarget[] = [];
+  private compactionCount = 0;
+  private boundaryAwaitingSummary = false;
+  private readonly compactionSummaries: string[] = [];
 
   constructor(private readonly root: string) {
     if (!path.isAbsolute(root)) throw new TypeError("recovery root must be an absolute path");
   }
 
   add(observation: NormalizedSessionObservation): void {
-    if (observation.historyOrigin || observation.kind !== "tool_call") return;
+    if (observation.historyOrigin) return;
+    if (observation.kind === "compaction") return this.addCompaction(observation);
+    if (observation.kind !== "tool_call") return;
+    this.boundaryAwaitingSummary = false;
     const input = asObject(observation.input);
     if (WRITE_TOOLS.has(observation.name)) this.addFile(field(input, "file_path") ?? field(input, "notebook_path"));
     else if (observation.name === "Bash") this.addCommand(field(input, "command"), observation.timestamp);
     else if (toolFamily(observation.name).family === "mcp_agentchat") this.addChat(observation, input);
   }
 
-  result(): Pick<SessionRecovery, "agentName" | "filesWritten" | "activeWorkCalls" | "gitCommands" | "chatSends" | "agentSpawns"> {
-    return { agentName: this.agentName, filesWritten: capped([...this.files]),
+  result(): Pick<SessionRecovery, "agentName" | "filesWritten" | "activeWorkCalls" | "gitCommands" | "chatSends" | "agentSpawns" | "compactions"> {
+    return { agentName: this.agentName, compactions: { count: this.compactionCount,
+        lastSummaries: this.compactionSummaries.slice(-RECOVERY_COMPACTION_SUMMARIES) }, filesWritten: capped([...this.files]),
       activeWorkCalls: capped([...this.activeWork.values()].map(entry => ({ ...entry }))),
       gitCommands: capped([...this.git.values()].map(entry => ({ ...entry }))),
       chatSends: latest(this.chatSends), agentSpawns: latest(this.agentSpawns) };
+  }
+
+  private addCompaction(observation: NormalizedCompactionObservation): void {
+    const summary = observation.nativeExtensions?.find(extension => extension.name === "compactionSummary")?.value;
+    const text = typeof summary === "string" && summary.trim() !== "" ? summary : null;
+    // One real compaction writes a boundary row and then its summary row; the summary completes the boundary.
+    const completesBoundary = text !== null && this.boundaryAwaitingSummary;
+    if (!completesBoundary) this.compactionCount++;
+    this.boundaryAwaitingSummary = text === null;
+    if (text !== null) this.compactionSummaries.push(text);
   }
 
   private addFile(filePath: string | null): void {

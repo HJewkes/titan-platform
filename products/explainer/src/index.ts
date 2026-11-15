@@ -44,6 +44,7 @@ export * from "./workflow/index.js";
 export * from "./presets/daily/index.js";
 export { AaFloorSchema, floorSection, measureAaFloor, readFloor, writeFloorNotes, type AaFloor } from "./aa-floor.js";
 export { runAaFloorCli } from "./aa-floor-cli.js";
+export { CRITIQUE_PASSES, CritiqueReplySchema, critiqueScore, type CritiqueReply, type CritiqueResult } from "./sheet-critique.js";
 export * from "./presets/article/index.js";
 export * from "./sim/index.js";
 export * from "./render-exports.js";
