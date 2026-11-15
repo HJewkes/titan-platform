@@ -24,6 +24,8 @@ const ArgsSchema = z.object({
   status: StatusFilter.optional(),
   id: z.string().min(1).optional(),
   search: z.string().min(1).optional(),
+  due_before: z.string().min(1).optional(),
+  sort: z.enum(['priority', 'due']).optional(),
 });
 
 type Args = z.infer<typeof ArgsSchema>;
@@ -143,6 +145,24 @@ function statusMatcher(status: string, closed: ReadonlySet<string>): (t: Task) =
   return (t) => t.status === status;
 }
 
+function parseDueBefore(raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined;
+  if (!TaskSchema.shape.due.safeParse(raw).success) {
+    throw new UsageError(`Invalid --due-before date: ${raw} (expected YYYY-MM-DD)`);
+  }
+  return raw;
+}
+
+// Undated tasks sort after every dated one; priority breaks ties.
+function compareByDue(a: Task, b: Task): number {
+  if (a.due !== b.due) {
+    if (!a.due) return 1;
+    if (!b.due) return -1;
+    return a.due < b.due ? -1 : 1;
+  }
+  return a.priority - b.priority;
+}
+
 async function buildFilter(args: Args): Promise<(t: Task) => boolean> {
   const ids = parseIds(args.id);
   // Asking for ids by name should not hide them because they are already done.
@@ -152,7 +172,9 @@ async function buildFilter(args: Args): Promise<(t: Task) => boolean> {
   const closed = status === 'closed' ? await closedStatusIds(activeRoot) : new Set<string>();
   const matchesStatus = statusMatcher(status, closed);
   const needle = args.search?.toLowerCase();
+  const dueBefore = parseDueBefore(args.due_before);
   return (t) => {
+    if (dueBefore && (!t.due || t.due > dueBefore)) return false;
     if (!matchesStatus(t)) return false;
     if (args.tag && !(t.tags ?? []).includes(args.tag)) return false;
     if (args.severity && t.severity !== args.severity) return false;
@@ -184,10 +206,22 @@ export default defineCommand<Args, Result>({
         description:
           'open (default; all with --id), any status in the category registry, closed (every closed status), or all',
       },
-      id: { long: '--id', description: 'Keep only these comma-separated ids, e.g. TP-1,TP-2' },
+      id: {
+        long: '--id',
+        description: 'Keep only these comma-separated ids, e.g. TP-1,TP-2',
+      },
       search: {
         long: '--search',
         description: 'Case-insensitive substring match on title or id',
+      },
+      due_before: {
+        long: '--due-before',
+        description: 'Keep only tasks due on or before this date (YYYY-MM-DD); drops undated tasks',
+      },
+      sort: {
+        long: '--sort',
+        description:
+          'priority (default) or due (earliest first, undated last, priority breaks ties)',
       },
     },
   },
@@ -210,7 +244,7 @@ export default defineCommand<Args, Result>({
     for (const listing of listings) {
       for (const task of await loadListing(listing, keep)) tasks.push(task);
     }
-    tasks.sort((a, b) => a.priority - b.priority);
+    tasks.sort(args.sort === 'due' ? compareByDue : (a, b) => a.priority - b.priority);
     return { tasks };
   },
 });

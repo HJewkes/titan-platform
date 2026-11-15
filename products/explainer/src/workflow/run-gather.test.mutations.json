@@ -9,6 +9,24 @@
       "kills": [
         "explainer run --from gather gathers again when the --lanes file changes, and hits the cache when it does not"
       ]
+    },
+    {
+      "name": "sources file repos ignored when --repo is empty",
+      "file": "products/explainer/src/workflow/run-gather.ts",
+      "find": ": (sources?.repos ?? []);",
+      "replace": ": [];",
+      "kills": [
+        "explainer run --facts-from gatherDaily with the data dir's daily/sources.yaml gathers the repos it names when --repo is empty"
+      ]
+    },
+    {
+      "name": "sources file decisions path ignored",
+      "file": "products/explainer/src/workflow/run-gather.ts",
+      "find": "const decisionsFile = flags.decisions ?? sources?.decisions;",
+      "replace": "const decisionsFile = flags.decisions;",
+      "kills": [
+        "explainer run --facts-from gatherDaily with the data dir's daily/sources.yaml keys the run on the sha of the decisions file the sources name"
+      ]
     }
   ]
 }
