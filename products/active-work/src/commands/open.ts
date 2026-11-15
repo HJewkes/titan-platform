@@ -150,14 +150,15 @@ async function collectInitiatives(
   activeRoot: string,
   ctx: Pick<CommandContext, 'caller' | 'warnings'>,
 ): Promise<InitiativeSummary[]> {
-  const slugs = await listSlugsForCaller(activeRoot, ctx);
-  const summaries: InitiativeSummary[] = [];
-  for (const slug of slugs) {
-    const summary = await loadInitiativeSummary(activeRoot, slug);
-    if (summary) summaries.push(summary);
+  try {
+    const slugs = await listSlugsForCaller(activeRoot, ctx);
+    const loaded = await Promise.all(slugs.map((slug) => loadInitiativeSummary(activeRoot, slug)));
+    return loaded.filter((s): s is InitiativeSummary => s !== null).sort(compareInitiatives);
+  } catch {
+    // A non-owner caller's visibility check may already have said so.
+    if (!ctx.warnings.some((w) => w.includes('root could not be read'))) ctx.warnings.push('the active root could not be read');
+    return [];
   }
-  summaries.sort(compareInitiatives);
-  return summaries;
 }
 
 /**
