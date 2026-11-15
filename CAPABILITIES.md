@@ -827,7 +827,7 @@ Key exports:
 - `retrievers/vector`: `BruteForceVectorIndex`, `vectorRetriever`
 - `retrievers/graph`: `expandGraph`, `graphRetriever`
 - `retrievers/walk`: `defaultHubDegree`, `walkGraph`
-- `rerank`: `crossEncoderReranker`
+- `retrievers/tree`: `collapsedTreeRetriever`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/retrieval)
 
 <a id="cap-rpc-client"></a>
