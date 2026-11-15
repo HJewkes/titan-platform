@@ -6,6 +6,7 @@ import { TaskSchema, type Task } from '../schemas/task.js';
 import { getActiveRoot, getInitiativeDir, getLockPath } from '../utils/paths.js';
 import { withFileLock } from '../utils/fs-atomic.js';
 import { readYaml, writeYaml } from '../utils/yaml-io.js';
+import { formatIssues } from '../utils/schema-issues.js';
 import { nowIso, today } from '../utils/today.js';
 import { NotFoundError, UsageError, ValidationError } from '../errors.js';
 import { assertEdgeWrite } from '../tasks/edge-index.js';
@@ -279,7 +280,7 @@ async function editLocked(args: Args, ctx: CommandContext, edit: Edit): Promise<
   const parsed = TaskSchema.safeParse({ ...next, updated: date });
   if (!parsed.success) {
     const target = args.field ?? Object.keys(changes).join(', ');
-    throw new ValidationError(`Invalid value for ${target}: ${parsed.error.message}`);
+    throw new ValidationError(`Invalid value for ${target}: ${formatIssues(parsed.error)}`);
   }
   await writeYaml(file, parsed.data, TaskSchema);
   return quietOr(args.quiet, ctx, parsed.data, line);

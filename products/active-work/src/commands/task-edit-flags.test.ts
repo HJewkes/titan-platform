@@ -365,7 +365,9 @@ describe('task.edit call shape', () => {
       const partial = 'id: SI-7\nnotes: keep me\n';
       await fs.writeFile(taskFile(root), partial);
 
-      await expect(edit(root, { add_tag: 'delta' })).rejects.toThrow(/Schema validation failed/);
+      await expect(edit(root, { add_tag: 'delta' })).rejects.toThrow(
+        /Schema validation failed.*title:/,
+      );
 
       expect(await fs.readFile(taskFile(root), 'utf8')).toBe(partial);
     });

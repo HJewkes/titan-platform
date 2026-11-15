@@ -28,6 +28,21 @@ describe("buildSidecar", () => {
     });
   });
 
+  it("stamps a daily-overview video's day subject, title, alias and series from the run's day, whatever the script id says", () => {
+    const script = { ...tour(), id: "daily-overview-goal-walk", profile: "daily-overview" };
+
+    const sidecar = buildSidecar(input({ script, profile: "daily-overview", day: "2026-11-13" }));
+
+    expect(sidecar).toMatchObject({ title: "Daily 2026-11-13", alias: "daily-2026-11-13", purpose: "daily", series: "daily-overview", subject: { kind: "day", id: "2026-11-13" } });
+  });
+
+  it("leaves a repo-review video unchanged when the run has a day", () => {
+    const withDay = buildSidecar(input({ day: "2026-11-13" }));
+
+    expect(withDay).toEqual(buildSidecar(input()));
+    expect(withDay.alias).toBeUndefined();
+  });
+
   it("rounds the poster time to a tenth of a second", () => {
     const sidecar = buildSidecar(input({ durationS: 123.45 }));
 
