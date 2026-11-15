@@ -23,6 +23,7 @@ function baseArgs(overrides: Record<string, unknown> = {}) {
     no_loops: true,
     no_notes: true,
     no_tasks: true,
+    no_reports: true,
     ...overrides,
   });
 }

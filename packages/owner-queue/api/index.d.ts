@@ -18,22 +18,22 @@ declare const ownerCardSchema: zod.ZodObject<{
     id: zod.ZodString;
     sources: zod.ZodArray<zod.ZodObject<{
         system: zod.ZodEnum<{
+            "active-work": "active-work";
             "agent-chat": "agent-chat";
+            deposit: "deposit";
             hitl: "hitl";
             morning: "morning";
-            "active-work": "active-work";
-            round: "round";
             plan: "plan";
-            deposit: "deposit";
+            round: "round";
         }>;
         ref: zod.ZodString;
     }, zod_v4_core.$strip>>;
     kind: zod.ZodEnum<{
-        decide: "decide";
         approve: "approve";
+        decide: "decide";
         do: "do";
-        review: "review";
         know: "know";
+        review: "review";
     }>;
     door: zod.ZodEnum<{
         "one-way": "one-way";
@@ -152,8 +152,8 @@ declare const ownerCardSchema: zod.ZodObject<{
                 kind: zod.ZodLiteral<"measure">;
                 metric: zod.ZodString;
                 direction: zod.ZodEnum<{
-                    increase: "increase";
                     decrease: "decrease";
+                    increase: "increase";
                 }>;
                 threshold: zod.ZodNumber;
             }, zod_v4_core.$strict>, zod.ZodObject<{
@@ -190,9 +190,9 @@ declare const ownerCardSchema: zod.ZodObject<{
     lens: zod.ZodEnum<{
         "blocking-agent": "blocking-agent";
         "blocking-merge": "blocking-merge";
-        stuck: "stuck";
-        planning: "planning";
         fyi: "fyi";
+        planning: "planning";
+        stuck: "stuck";
     }>;
     stuckKind: zod.ZodOptional<zod.ZodString>;
     unblocks: zod.ZodArray<zod.ZodString>;
@@ -202,14 +202,14 @@ declare const ownerCardSchema: zod.ZodObject<{
         blocks: zod.ZodString;
     }, zod_v4_core.$strict>>;
     audience: zod.ZodOptional<zod.ZodEnum<{
-        owner: "owner";
         operator: "operator";
+        owner: "owner";
     }>>;
     route: zod.ZodOptional<zod.ZodObject<{
         target: zod.ZodEnum<{
+            decider: "decider";
             "owner-now": "owner-now";
             "owner-queue": "owner-queue";
-            decider: "decider";
         }>;
         reason: zod.ZodString;
         shadow: zod.ZodBoolean;
@@ -222,11 +222,11 @@ declare const ownerCardSchema: zod.ZodObject<{
     openedAt: zod.ZodISODateTime;
     expiresAt: zod.ZodOptional<zod.ZodISODateTime>;
     status: zod.ZodEnum<{
-        open: "open";
         answered: "answered";
         decided: "decided";
         expired: "expired";
         "gone-elsewhere": "gone-elsewhere";
+        open: "open";
         withdrawn: "withdrawn";
     }>;
     answer: zod.ZodOptional<zod.ZodObject<{
@@ -342,8 +342,8 @@ declare const ownerOpSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
             kind: z.ZodLiteral<"measure">;
             metric: z.ZodString;
             direction: z.ZodEnum<{
-                increase: "increase";
                 decrease: "decrease";
+                increase: "increase";
             }>;
             threshold: z.ZodNumber;
         }, z.core.$strict>, z.ZodObject<{
@@ -826,11 +826,11 @@ declare const ownerItemDepositSchema: z.ZodObject<{
     depositId: z.ZodString;
     asker: z.ZodString;
     kind: z.ZodEnum<{
-        decide: "decide";
         approve: "approve";
+        decide: "decide";
         do: "do";
-        review: "review";
         know: "know";
+        review: "review";
     }>;
     door: z.ZodEnum<{
         "one-way": "one-way";
@@ -947,8 +947,8 @@ declare const ownerItemDepositSchema: z.ZodObject<{
                 kind: z.ZodLiteral<"measure">;
                 metric: z.ZodString;
                 direction: z.ZodEnum<{
-                    increase: "increase";
                     decrease: "decrease";
+                    increase: "increase";
                 }>;
                 threshold: z.ZodNumber;
             }, z.core.$strict>, z.ZodObject<{
@@ -988,8 +988,8 @@ declare const ownerItemDepositSchema: z.ZodObject<{
         blocks: z.ZodString;
     }, z.core.$strict>>;
     audience: z.ZodOptional<z.ZodEnum<{
-        owner: "owner";
         operator: "operator";
+        owner: "owner";
     }>>;
     expiresAt: z.ZodOptional<z.ZodISODateTime>;
 }, z.core.$strict>;
@@ -1034,13 +1034,13 @@ declare const onSilenceSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
 }, z.core.$strict>], "action">;
 declare const sourceRefSchema: z.ZodObject<{
     system: z.ZodEnum<{
+        "active-work": "active-work";
         "agent-chat": "agent-chat";
+        deposit: "deposit";
         hitl: "hitl";
         morning: "morning";
-        "active-work": "active-work";
-        round: "round";
         plan: "plan";
-        deposit: "deposit";
+        round: "round";
     }>;
     ref: z.ZodString;
 }, z.core.$strip>;
@@ -1074,22 +1074,22 @@ declare const ownerItemSchema: z.ZodObject<{
     id: z.ZodString;
     sources: z.ZodArray<z.ZodObject<{
         system: z.ZodEnum<{
+            "active-work": "active-work";
             "agent-chat": "agent-chat";
+            deposit: "deposit";
             hitl: "hitl";
             morning: "morning";
-            "active-work": "active-work";
-            round: "round";
             plan: "plan";
-            deposit: "deposit";
+            round: "round";
         }>;
         ref: z.ZodString;
     }, z.core.$strip>>;
     kind: z.ZodEnum<{
-        decide: "decide";
         approve: "approve";
+        decide: "decide";
         do: "do";
-        review: "review";
         know: "know";
+        review: "review";
     }>;
     door: z.ZodEnum<{
         "one-way": "one-way";
@@ -1208,8 +1208,8 @@ declare const ownerItemSchema: z.ZodObject<{
                 kind: z.ZodLiteral<"measure">;
                 metric: z.ZodString;
                 direction: z.ZodEnum<{
-                    increase: "increase";
                     decrease: "decrease";
+                    increase: "increase";
                 }>;
                 threshold: z.ZodNumber;
             }, z.core.$strict>, z.ZodObject<{
@@ -1246,9 +1246,9 @@ declare const ownerItemSchema: z.ZodObject<{
     lens: z.ZodEnum<{
         "blocking-agent": "blocking-agent";
         "blocking-merge": "blocking-merge";
-        stuck: "stuck";
-        planning: "planning";
         fyi: "fyi";
+        planning: "planning";
+        stuck: "stuck";
     }>;
     stuckKind: z.ZodOptional<z.ZodString>;
     unblocks: z.ZodArray<z.ZodString>;
@@ -1258,14 +1258,14 @@ declare const ownerItemSchema: z.ZodObject<{
         blocks: z.ZodString;
     }, z.core.$strict>>;
     audience: z.ZodOptional<z.ZodEnum<{
-        owner: "owner";
         operator: "operator";
+        owner: "owner";
     }>>;
     route: z.ZodOptional<z.ZodObject<{
         target: z.ZodEnum<{
+            decider: "decider";
             "owner-now": "owner-now";
             "owner-queue": "owner-queue";
-            decider: "decider";
         }>;
         reason: z.ZodString;
         shadow: z.ZodBoolean;
@@ -1278,11 +1278,11 @@ declare const ownerItemSchema: z.ZodObject<{
     openedAt: z.ZodISODateTime;
     expiresAt: z.ZodOptional<z.ZodISODateTime>;
     status: z.ZodEnum<{
-        open: "open";
         answered: "answered";
         decided: "decided";
         expired: "expired";
         "gone-elsewhere": "gone-elsewhere";
+        open: "open";
         withdrawn: "withdrawn";
     }>;
     answer: z.ZodOptional<z.ZodObject<{
