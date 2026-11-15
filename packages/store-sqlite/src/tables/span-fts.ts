@@ -44,14 +44,11 @@ function names(name: string): { span: string; fts: string; tri: string } {
   return { span: quoteIdent(`${name}_span`), fts: quoteIdent(`${name}_fts`), tri: quoteIdent(`${name}_tri`) };
 }
 
-function contentlessDeleteClause(contentlessDelete: boolean): string {
-  return contentlessDelete ? ", contentless_delete=1" : "";
-}
-
 export function spanFtsTablesDdl({ name = "search", contentlessDelete = false, trigram = false }: SpanFtsOptions = {}): string {
   const { span, fts, tri } = names(name);
+  const twinDeleteOption = contentlessDelete ? ", contentless_delete=1" : "";
   const twin = trigram
-    ? `CREATE VIRTUAL TABLE IF NOT EXISTS ${tri} USING fts5(text, content='', tokenize='trigram'${contentlessDeleteClause(contentlessDelete)});`
+    ? `CREATE VIRTUAL TABLE IF NOT EXISTS ${tri} USING fts5(text, content='', tokenize='trigram'${twinDeleteOption});`
     : "";
   return `
     CREATE TABLE IF NOT EXISTS ${span} (
@@ -64,7 +61,7 @@ export function spanFtsTablesDdl({ name = "search", contentlessDelete = false, t
       UNIQUE (owner_ref, field, source_id, byte_offset)
     );
     CREATE INDEX IF NOT EXISTS ${quoteIdent(`idx_${name}_span_owner`)} ON ${span}(owner_ref);
-    CREATE VIRTUAL TABLE IF NOT EXISTS ${fts} USING fts5(text, content=''${contentlessDeleteClause(contentlessDelete)});
+    CREATE VIRTUAL TABLE IF NOT EXISTS ${fts} USING fts5(text, content=''${contentlessDelete ? ", contentless_delete=1" : ""});
     ${twin}
   `;
 }
@@ -197,17 +194,13 @@ export class SpanFtsTables {
     const deleteSourceFts = db.prepare(`DELETE FROM ${fts} WHERE rowid IN (SELECT span_id FROM ${span} WHERE source_id = ?)`);
     // FTS rows go first: once the spans are gone there is no way to find their rowids.
     this.purgeOwnerTxn = db.transaction((ownerRef: string): number => {
-      if (contentlessDelete) {
-        deleteOwnerFts.run(ownerRef);
-        twin?.deleteOwner.run(ownerRef);
-      }
+      if (contentlessDelete) deleteOwnerFts.run(ownerRef);
+      if (contentlessDelete) twin?.deleteOwner.run(ownerRef);
       return this.deleteSpansStmt.run(ownerRef).changes;
     });
     this.purgeSourceTxn = db.transaction((sourceId: number): number => {
-      if (contentlessDelete) {
-        deleteSourceFts.run(sourceId);
-        twin?.deleteSource.run(sourceId);
-      }
+      if (contentlessDelete) deleteSourceFts.run(sourceId);
+      if (contentlessDelete) twin?.deleteSource.run(sourceId);
       return this.deleteSourceSpansStmt.run(sourceId).changes;
     });
     this.countSpans = db.prepare<[], { n: number }>(`SELECT count(*) AS n FROM ${span}`);
