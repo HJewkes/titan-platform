@@ -50,12 +50,13 @@ describe('yaml round-trip', () => {
     const target = path.join(dir, 'priority.yml');
     await fs.writeFile(target, 'priority: high\n');
 
-    const err = await readYaml(target, z.object({ priority: z.number() })).catch(
-      (e: unknown) => e as Error,
+    const message = await readYaml(target, z.object({ priority: z.number() })).then(
+      () => '',
+      (e: unknown) => (e instanceof Error ? e.message : ''),
     );
 
-    expect((err as Error).message).toContain('priority:');
-    expect((err as Error).message).not.toContain('[{');
+    expect(message).toContain('priority:');
+    expect(message).not.toContain('[{');
   });
 
   it('reports parse errors with the file path', async () => {
