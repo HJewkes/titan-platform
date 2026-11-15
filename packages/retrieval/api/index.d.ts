@@ -385,6 +385,48 @@ declare function createRetrievalEngine(options: EngineOptions): RetrievalEngine;
 /** What a failed rerank reports itself as in `degraded`, alongside the retrievers' own entries. */
 declare const RERANK_STAGE = "rerank";
 
+/** Distinct meaningful tokens, in first-seen order. */
+declare function meaningfulTerms(text: string): string[];
+/**
+ * Quote each term and OR them.
+ *
+ * Quoting is what keeps a hyphen from reading as FTS5's NOT: `"tp-84"` is the
+ * phrase `tp 84`, which is how the tokenizer indexed it.
+ */
+declare function orExpression(terms: string[]): string;
+
+/**
+ * How common a term is in the corpus. Only its order matters, so a capped count
+ * is fine, but it must be a count of matches: distinct owners among the top N
+ * matching spans misranks common words as rare when their best spans sit in a
+ * few long transcripts (measured 2026-09-16).
+ */
+type DocumentFrequency = (term: string) => number;
+interface DerivedQuery {
+    /** Rarest terms first, then every task id the text names. */
+    terms: string[];
+    /** FTS5 MATCH expression; empty when no term survived. */
+    expression: string;
+}
+/** Below this many spans per term nothing is slow, so a small graph keeps every term. */
+declare const DF_CAP_FLOOR = 2000;
+/** The most spans a query term may match, for a corpus of `spans` spans. */
+declare function documentFrequencyCap(spans: number): number;
+interface TermSelection {
+    /** Most terms to keep. */
+    limit?: number;
+    /** Drop terms matching more spans than this, unless fewer than `MIN_TERMS` would remain. */
+    maxDf?: number;
+}
+/**
+ * The rarest terms under the frequency cap, at most `limit` of them.
+ *
+ * When every term is common, the `MIN_TERMS` rarest are kept regardless: a
+ * slower query beats an empty one, and the rarest common words still rank.
+ */
+declare function selectTerms(terms: string[], df: DocumentFrequency, { limit, maxDf }?: TermSelection): string[];
+declare function deriveQuery(text: string, df: DocumentFrequency, { limit, maxDf }?: TermSelection): DerivedQuery;
+
 /**
  * Distinctive terms of a text, keyed by the stored (lowercase) term. Each value
  * is the first cased form seen, which is what `scoreTerm` should score: the
@@ -430,4 +472,4 @@ declare function correctQuery(query: string, source: VocabularySource): {
     didCorrect: boolean;
 };
 
-export { BruteForceVectorIndex, type Candidate, type ContextBudget, ContextBudgetSchema, type ContextCandidate, type ContextEntry, type ContextPlan, type ContextResponse, type CrossEncoderOptions, type Degradation, type DropReason, type DroppedCandidate, type EngineOptions, type FtsRetrieverOptions, type FusedResult, type GatherOptions, type GatheredLists, type GraphRetrieverOptions, type Hit, type ListResponse, RERANK_STAGE, type RankedList, type Reranked, type Reranker, type RetrievalCallOptions, type RetrievalDropReason, type RetrievalDropped, type RetrievalEngine, type RetrievalRequest, RetrievalRequestSchema, type RetrievalResponse, type RetrieveOptions, type Retriever, type RrfOptions, type SearchOptions, type SearchResponse, TIERS_STAGE, type TierSource, type VectorIndex, type VectorMatch, type VectorRetrieverOptions, type VocabEntry, type VocabularySource, type WalkGraph, type WalkNeighbour, type WalkOptions, type WalkStep, applyDropoff, correctQuery, createRetrievalEngine, crossEncoderReranker, defaultHubDegree, defaultMatchExpression, editDistance, estimateTokens, expandGraph, extractTerms, findCorrection, ftsRetriever, fuseByRRF, gatherFailOpen, graphRetriever, maxEditDistance, planContext, rerankCandidates, scoreTerm, vectorRetriever, vocabularyFromEntries, walkGraph };
+export { BruteForceVectorIndex, type Candidate, type ContextBudget, ContextBudgetSchema, type ContextCandidate, type ContextEntry, type ContextPlan, type ContextResponse, type CrossEncoderOptions, DF_CAP_FLOOR, type Degradation, type DerivedQuery, type DocumentFrequency, type DropReason, type DroppedCandidate, type EngineOptions, type FtsRetrieverOptions, type FusedResult, type GatherOptions, type GatheredLists, type GraphRetrieverOptions, type Hit, type ListResponse, RERANK_STAGE, type RankedList, type Reranked, type Reranker, type RetrievalCallOptions, type RetrievalDropReason, type RetrievalDropped, type RetrievalEngine, type RetrievalRequest, RetrievalRequestSchema, type RetrievalResponse, type RetrieveOptions, type Retriever, type RrfOptions, type SearchOptions, type SearchResponse, TIERS_STAGE, type TierSource, type VectorIndex, type VectorMatch, type VectorRetrieverOptions, type VocabEntry, type VocabularySource, type WalkGraph, type WalkNeighbour, type WalkOptions, type WalkStep, applyDropoff, correctQuery, createRetrievalEngine, crossEncoderReranker, defaultHubDegree, defaultMatchExpression, deriveQuery, documentFrequencyCap, editDistance, estimateTokens, expandGraph, extractTerms, findCorrection, ftsRetriever, fuseByRRF, gatherFailOpen, graphRetriever, maxEditDistance, meaningfulTerms, orExpression, planContext, rerankCandidates, scoreTerm, selectTerms, vectorRetriever, vocabularyFromEntries, walkGraph };
