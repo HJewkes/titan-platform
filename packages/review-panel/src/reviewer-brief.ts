@@ -164,7 +164,7 @@ function convergenceLines(convergence: boolean | undefined): string[] {
   return [
     "",
     "This is a convergence review. This PR's FIX_FIRST rounds did not converge, and Shepherd wakes no further fixer for it. Judge whether this head can merge as it is.",
-    `Whatever your verdict, before the verdict lines add a section that starts with a line \`${CONVERGENCE_HEADING}\`, with one line per finding still open, from the earlier rounds or your own: \`- Important: <item>\`, \`- Nit: <item>\` or \`- Pre-existing: <item>\`.`,
+    `Whatever your verdict, before the verdict lines add a section that starts with a line \`${CONVERGENCE_HEADING}\`, with one line per finding still open, from the earlier rounds or your own: \`- Important: <item>\`, \`- Nit: <item>\` or \`- Pre-existing: <item>\`. This section lists the Nit and Pre-existing items the rule above leaves out of the rest of your review.`,
     "Important is a defect this PR adds or leaves unfixed that would make merging it wrong. Nit is style, polish, or a re-roll of a point an earlier round already answered. Pre-existing was on the base before this PR.",
     `In the same section, add a line \`${DEFECT_CLASS_HEADING} <class>\` naming the bug class the rounds kept finding.`,
     "Give MERGE when no Important finding remains, whatever Nits or Pre-existing items are left. Give FIX_FIRST only for an Important finding; it sends the task to its planner to redesign or split.",
@@ -174,7 +174,13 @@ function convergenceLines(convergence: boolean | undefined): string[] {
 /** Lets a reviewer defer a nit to a task instead of a FIX_FIRST round; the template's placeholders never parse as an item. */
 export const FOLLOW_UPS_RULE =
   `Optionally, for work that should not hold this PR, add before the verdict lines a section that starts with a line \`${FOLLOW_UPS_HEADING}\`, then one line per proposed task, at most ${MAX_FOLLOW_UPS}: ` +
-  "`- <title> | <done_when> | <low, medium or high>`. Follow-ups never block MERGE and are filed as tasks for later; anything blocking goes in your review as FIX_FIRST, never here. Write no section when you have none.";
+  "`- <title> | <done_when> | <low, medium or high>`. Follow-ups never block MERGE and are filed as tasks for later; anything blocking goes in your review as FIX_FIRST, never here. " +
+  "Never propose a low-severity cosmetic follow-up. Write no section when you have none.";
+
+/** An audit of review text found about a sixth of it was nits and noise, and nit follow-ups were filed as tasks nobody needed (TP-6471). */
+export const NIT_POLICY_RULE =
+  "Leave out cosmetic notes, notes on behaviour that was already on the base before this PR, and notes on a gap the PR description already states, unless one would mislead a reader of the code. " +
+  "Do not file any of them as a follow-up.";
 
 /** A run handed earlier findings is a re-review even when its count lags them. */
 const fixFirstCount = (input: ReviewerBriefInput): number => Math.max(input.fixFirsts ?? 0, input.earlierFindings?.length ?? 0);
@@ -265,6 +271,7 @@ function verdictRuleLines(input: ReviewerBriefInput, scope: ReviewScope | undefi
     ...attestLines(input.attestClaims ?? []),
     `For FIX_FIRST, list every blocking item, then add a section that starts with a line \`${DEFECT_CLASS_HEADING}\` naming the defect class the items share and the boundary where one fix covers it.`,
     ...recurringLines(fixFirstCount(input), input.earlierFindings ?? [], scope),
+    NIT_POLICY_RULE,
     ...convergenceLines(input.convergence),
     FOLLOW_UPS_RULE,
   ];

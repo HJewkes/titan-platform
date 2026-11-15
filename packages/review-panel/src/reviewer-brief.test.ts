@@ -13,6 +13,7 @@ import {
   MAX_CI_CHECK_ROWS,
   MAX_CORRECTION_PROMPT_CHARS,
   MAX_OWNER_PICKS,
+  NIT_POLICY_RULE,
   type MalformedRefusal,
   REFUSAL_SENTENCES,
   correctionPrompt,
@@ -442,6 +443,14 @@ describe("reviewerBrief convergence review", () => {
     expect(parseVerdictBlock(brief).ok).toBe(false);
   });
 
+  it("keeps listing Nit and Pre-existing items in the convergence section after the nit policy", () => {
+    const brief = reviewerBrief({ ...input, earlierFindings: earlier, convergence: true });
+
+    const exception = brief.indexOf("This section lists the Nit and Pre-existing items the rule above leaves out");
+    expect(brief.indexOf(NIT_POLICY_RULE)).toBeGreaterThan(-1);
+    expect(exception).toBeGreaterThan(brief.indexOf(NIT_POLICY_RULE));
+  });
+
   it("leaves an ordinary re-review without the convergence section", () => {
     expect(reviewerBrief({ ...input, earlierFindings: earlier })).not.toContain(CONVERGENCE_HEADING);
   });
@@ -541,6 +550,23 @@ describe("reviewerBrief Follow-ups rule", () => {
     expect(FOLLOW_UPS_RULE).toContain("never block MERGE");
     expect(brief.indexOf(FOLLOW_UPS_RULE)).toBeGreaterThan(-1);
     expect(brief.indexOf(FOLLOW_UPS_RULE)).toBeLessThan(brief.indexOf("Verdict: <MERGE or FIX_FIRST>"));
+  });
+
+  it.each([
+    ["a first review", reviewerBrief(target)],
+    ["a re-review", reviewerBrief({ ...target, fixFirsts: 2 })],
+    ["an owner-gated review", reviewerBrief({ ...target, ownerBrief: true })],
+  ])("the brief carries the nit policy line in %s, ahead of the follow-ups it bars them from", (_scenario, brief) => {
+    expect(NIT_POLICY_RULE).toMatch(/cosmetic/);
+    expect(NIT_POLICY_RULE).toMatch(/before this PR/);
+    expect(NIT_POLICY_RULE).toMatch(/already states/);
+    expect(NIT_POLICY_RULE).toMatch(/mislead a reader/);
+    expect(brief.indexOf(NIT_POLICY_RULE)).toBeGreaterThan(-1);
+    expect(brief.indexOf(NIT_POLICY_RULE)).toBeLessThan(brief.indexOf(FOLLOW_UPS_RULE));
+  });
+
+  it("bars a low-severity cosmetic follow-up", () => {
+    expect(FOLLOW_UPS_RULE).toContain("Never propose a low-severity cosmetic follow-up");
   });
 });
 
