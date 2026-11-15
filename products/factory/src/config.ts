@@ -267,6 +267,7 @@ export const FactoryConfigSchema = z.object({
        * or when no other open PR is registered with that task and the body has no `Last slice: no`; else it notes the merge.
        */
       taskClose: z.enum(["keep", "last-slice-only"]).optional(),
+      checkCandidates: z.enum(["off", "record", "propose"]).optional(), // Reviewers' check candidates (TP-6482): absent means record; propose only records until B5.
       visualGate: VisualGateSchema.optional(),
       /**
        * Mounts `POST /gates/answer-ship`, which resolves an approve-merge gate as owner-remote from a console Ship answer
@@ -328,6 +329,8 @@ export const FactoryConfigSchema = z.object({
 });
 
 export type FactoryConfig = z.infer<typeof FactoryConfigSchema>;
+
+export const checkCandidatesMode = (config: FactoryConfig): "off" | "record" | "propose" => config.shepherd?.checkCandidates ?? "record";
 
 export interface ConfigSources {
   env: NodeJS.ProcessEnv;

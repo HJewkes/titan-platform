@@ -20,6 +20,15 @@
       ]
     },
     {
+      "name": "budget schema drops the order option",
+      "file": "packages/retrieval/src/context/request.ts",
+      "find": "  order: z.enum([\"score\", \"edges\"]).optional(),\n",
+      "replace": "",
+      "kills": [
+        "RetrievalRequestSchema accepts the edges and score orders and rejects an unknown one"
+      ]
+    },
+    {
       "name": "budget schema strips unknown keys",
       "file": "packages/retrieval/src/context/request.ts",
       "find": "export const ContextBudgetSchema = z.strictObject(",
