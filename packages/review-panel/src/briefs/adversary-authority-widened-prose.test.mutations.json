@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "Authority-led prose that names a widening gives no reading",
+      "file": "packages/review-panel/src/briefs/adversary.ts",
+      "find": "  if (rest.includes(WIDENED) && !isLabel(label, value)) return proseWidening(rest);\n",
+      "replace": "",
+      "kills": [
+        "authorityLine prose that starts with Authority and states a widening a bold worded label that starts with widened reads widened over an unchanged line",
+        "authorityLine prose that starts with Authority and states a widening a widening later in the lead reads malformed, never unchanged"
+      ]
+    },
+    {
+      "name": "prose that starts with widened reads malformed instead of widened",
+      "file": "packages/review-panel/src/briefs/adversary.ts",
+      "find": "(rest.startsWith(WIDENED) ? WIDENED : \"malformed\")",
+      "replace": "\"malformed\"",
+      "kills": [
+        "authorityLine prose that starts with Authority and states a widening a plain sentence that starts with widened reads widened over an unchanged line"
+      ]
+    },
+    {
+      "name": "only prose that starts with widened is caught",
+      "file": "packages/review-panel/src/briefs/adversary.ts",
+      "find": "if (rest.includes(WIDENED) && !isLabel",
+      "replace": "if (rest.startsWith(WIDENED) && !isLabel",
+      "kills": [
+        "authorityLine prose that starts with Authority and states a widening a widening later in the lead reads malformed, never unchanged"
+      ]
+    }
+  ]
+}

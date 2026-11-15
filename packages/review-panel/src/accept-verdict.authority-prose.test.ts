@@ -51,4 +51,16 @@ describe("acceptVerdict on an adversary MERGE with prose that starts with the wo
 
     expect(readMalformed(acceptVerdict(adversary, [said(reply)]))).toEqual({ refusal: "authority_missing", writtenAt: WRITTEN_AT, quotes: ["**Authority:** unchanged, I think"] });
   });
+
+  it.each([
+    "**Authority widened:** the lander can now merge without review",
+    "**Authority widened.** The new route skips the guard.",
+    "Authority widened by letting the bot merge.",
+    "Authority is widened: bot merges",
+    "Authority widened — see above",
+  ])("a widening stated in prose, %s, beside an unchanged line is never a MERGE reading unchanged", (prose) => {
+    const result = acceptVerdict(adversary, [said(`${prose}\n\n${probes}\nAuthority: unchanged\n\n${merge}`)]);
+
+    expect(result).not.toMatchObject({ kind: "verdict", verdict: "MERGE", authority: "unchanged" });
+  });
 });

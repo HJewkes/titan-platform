@@ -91,10 +91,17 @@ const valueReadsWidened = (value: string | undefined): boolean => value !== unde
 const isLabel = (label: string, value: string | undefined): boolean => value !== undefined && labelledLineRest(label, AUTHORITY_HEADING) === "";
 
 /**
+ * An Authority-led prose line that names a widening is never no reading, or `Authority widened: ...` beside
+ * `Authority: unchanged` would merge as unchanged: one that starts with it states it, any other is refused as unreadable.
+ */
+const proseWidening = (rest: string): AuthorityLine | "malformed" => (rest.startsWith(WIDENED) ? WIDENED : "malformed");
+
+/**
  * One raw line's reading, or undefined when it carries no Authority label. A line that starts with the word Authority
  * through session-read's `labelledLineRest` fold is a label only when a colon follows it after decoration, so prose such
- * as `**Authority gate.** ...` is no reading (TP-6608). A widening is never read away: a line whose rest, or whose text
- * after its first colon, folds to exactly `widened` reads widened however it is decorated or worded. Unchanged and
+ * as `**Authority gate.** ...` is no reading (TP-6608), unless it names a widening (see `proseWidening`). A widening is
+ * never read away: a line whose rest, or whose text after its first colon, folds to exactly `widened` reads widened
+ * however it is decorated or worded. Unchanged and
  * tightened count only on a plain `Authority: <value>` line, as CI-policy's unchanged counts only when canonical. Any
  * other label reads malformed.
  */
@@ -103,6 +110,7 @@ function authorityReading(raw: string): AuthorityLine | "malformed" | undefined 
   if (rest === undefined) return undefined;
   const { label, value } = splitAtColon(raw);
   if (rest === WIDENED || valueReadsWidened(value)) return WIDENED;
+  if (rest.includes(WIDENED) && !isLabel(label, value)) return proseWidening(rest);
   if (!isLabel(label, value)) return undefined;
   const line = raw.trim();
   const plainValue = line.startsWith(AUTHORITY_HEADING) ? line.slice(AUTHORITY_HEADING.length).trim() : undefined;
