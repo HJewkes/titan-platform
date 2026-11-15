@@ -14,6 +14,7 @@ import { gateStripCommands, gateStripReader, holdClassOf, type GateStrip, type G
 import type { AgentRosterSnapshot } from "@titan-design/chat-protocol/agents";
 import { foldCoveredGates, gateHeadOf, liveAgentNames, markAged, onePerPr, oneRowPerRound, pinOf, sectionOf, type InboxSection, type Placed } from "./inbox-blocking.js";
 import { blockedAgentRows, byDerivedOrder, failedRunRows, stalledRunRows, type DerivedRow } from "./inbox-derived.js";
+import { inboxContextCommand } from "./inbox-context.js";
 import { readCommand } from "./owner-guard.js";
 import { missedNoticeRows } from "./round-notice-gaps.js";
 import { roundNudges, type RoundNudge } from "./round-nudge.js";
@@ -383,5 +384,6 @@ export function inboxViewCommands(sources: InboxSources, cache: InboxReadCache =
       result: z.custom<InboxView>(),
       run: (args) => readInboxView(sources, strips, cache, args),
     }),
+    "inbox.context": inboxContextCommand(sources, cache),
   };
 }
