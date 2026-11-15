@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { hydrateRoot, type Root } from "react-dom/client";
 
-export type RecoverableErrorHandler = (error: unknown) => void;
+type RecoverableErrorHandler = (error: unknown) => void;
 
 /**
  * Adopts prerendered markup. react-native-web's AppRegistry hydrate takes no options and would route a mismatch to

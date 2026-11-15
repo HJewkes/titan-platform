@@ -4,7 +4,7 @@ import { App, type Route } from "./App.js";
 
 export { ROUTES } from "./App.js";
 
-export interface Rendered {
+interface Rendered {
   /** The markup for the root element. */
   html: string;
   /** Tags for `<head>`: the react-native-web stylesheet the render produced. */

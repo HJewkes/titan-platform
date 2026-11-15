@@ -1,7 +1,7 @@
 /** The path GitHub Pages serves the site under; vite.config.ts sets the same `base`. */
-export const BASE = "/titan-platform/";
+const BASE = "/titan-platform/";
 
-export interface NavLink {
+interface NavLink {
   text: string;
   link: string;
 }
