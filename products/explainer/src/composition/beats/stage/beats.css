@@ -39,6 +39,14 @@
   color: var(--color-text-primary);
   font-family: var(--font-family-body);
 }
+/* A plate beat shows what is composited behind the frames: its frame, the chrome-band spread and, while it is shown, the page root paint nothing. */
+.beat-frame[data-plate], .xp-stage .beat-frame[data-plate] {
+  background: transparent;
+  box-shadow: none;
+}
+:root:has(.beat-frame[data-plate][style*="visibility: visible"]), body:has(.beat-frame[data-plate][style*="visibility: visible"]) {
+  background: transparent;
+}
 /* The shared grid: one centred content box that every top-level block stretches to. */
 .beat-frame > * {
   box-sizing: border-box;
