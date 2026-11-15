@@ -18,9 +18,10 @@ import { OWNER } from "../test-support/resolver.js";
 import type { ShepherdDeps, WakeOutcome, WakeRequest } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import type { EffectivePolicy } from "./policy-schema.js";
+import { shepherdEventMigration } from "./events.js";
 import { spendRepair } from "./repair.js";
 import { MAX_REPAIRS } from "./route-table.js";
-import { lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
+import { holdReviewerMigration, holdSatisfiedMigration, reviewRequestMigration, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
 import { TURN_START_MS } from "./turn-check.js";
 import { LOG_BUDGET_BYTES, tailBytes } from "./wake-brief.js";
 import { recordFixFirst } from "./routed.js";
@@ -1027,8 +1028,7 @@ describe("wakePhase", () => {
   const hosts: FactoryHost[] = [];
   afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
-  async function runPhase(agents: ImplementerAgents, fake: FakeGitHub, readWarmth: (path: string) => Promise<Warmth | undefined> = async () => warmAt(1), kind: WakeRequest["kind"] = "review") {
-    const store = shepherdStoreRef();
+  async function runPhase(agents: ImplementerAgents, fake: FakeGitHub, readWarmth: (path: string) => Promise<Warmth | undefined> = async () => warmAt(1), kind: WakeRequest["kind"] = "review", store = shepherdStoreRef()) {
     let clock = T0;
     const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "/opt/bin/agent-chat" };
     const outcomes: WakeOutcome[] = [];
@@ -1038,7 +1038,7 @@ describe("wakePhase", () => {
       if (kind === "review") await recordFixFirst(ctx, { repo: REPO, pr: 1, headSha: H1 });
       outcomes.push(await wakePhase(ctx, request));
     };
-    const routes = Object.assign([...wakeRoutes(deps, { agents, readWarmth, checkoutFor: () => MAIN_CHECKOUT })], { database: { extraMigrations: [shepherdMigration(4), lineageMigration(5), sliceMigration(8)], bind: store.bind } });
+    const routes = Object.assign([...wakeRoutes(deps, { agents, readWarmth, checkoutFor: () => MAIN_CHECKOUT })], { database: { extraMigrations: [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), reviewRequestMigration(18)], bind: store.bind } });
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [defineWorkflow({ name: "wake-test", steps: WAKE_STEPS, run })], routes, gatePollMs: 5 });
     hosts.push(host);
     const runId = host.runtime.start("wake-test");
@@ -1060,6 +1060,21 @@ describe("wakePhase", () => {
 
     expect(outcome).toEqual({ kind: "woken", agent: "impl-a", sessionId: "s-impl-a" });
     expect(stepIds).toEqual(["sh-wake-fix-first", "sh-wake-implementer:0", "sh-await-new-head:0"]);
+  });
+
+  it("ends the wait as a same-head wake when shepherd review asks at the waited head", async () => {
+    const fake = fakeGitHub({ repo: REPO });
+    fake.addPr({ headSha: H1 });
+    const agents = fakeAgents([row("impl-a")]);
+    const resume = agents.resume;
+    agents.resume = async (...args) => (await resume(...args), void (agents.rows[0]!.presence = "live"));
+    const store = shepherdStoreRef();
+    let reads = 0;
+    fake.onGetPr = () => void (agents.asked.length > 0 && ++reads === 6 && store.get().requestReview(store.get().byPr(REPO, 1)!.runId, H1));
+
+    const { outcome } = await runPhase(agents, fake, async () => ({ lastEventAt: T0 + 1, fill: 1 }), "review", store);
+
+    expect(outcome).toEqual({ kind: "woken", agent: "impl-a", sessionId: "s-impl-a", sameHead: true });
   });
 
   it("is unhandled with the exit named when the resumed agent exits and the head is unchanged, with no second ask", async () => {

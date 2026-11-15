@@ -50,7 +50,7 @@ export interface SkillSummary {
   description: string;
 }
 
-export type MemoryDestination = `skill:${string}` | `new-skill:${string}` | "charter" | `claude-md:${string}` | "delete";
+export type MemoryDestination = `skill:${string}` | `new-skill:${string}` | "charter" | "config" | `reference:${string}` | `claude-md:${string}` | "delete";
 
 export interface DestinationProposal {
   destination: MemoryDestination;
