@@ -397,11 +397,11 @@ declare const costReportSchema: z.ZodObject<{
     }, z.core.$strip>;
     byTokenClass: z.ZodArray<z.ZodObject<{
         tokenClass: z.ZodEnum<{
-            output: "output";
-            input: "input";
             cache_read: "cache_read";
-            cache_write_5m: "cache_write_5m";
             cache_write_1h: "cache_write_1h";
+            cache_write_5m: "cache_write_5m";
+            input: "input";
+            output: "output";
         }>;
         tokens: z.ZodNumber;
         costUsd: z.ZodNumber;
@@ -441,18 +441,18 @@ declare const costReportSchema: z.ZodObject<{
     }, z.core.$strip>>;
     mechanicalShare: z.ZodObject<{
         classes: z.ZodArray<z.ZodEnum<{
-            "journal-write": "journal-write";
-            "pr-ci-check": "pr-ci-check";
-            merge: "merge";
-            dispatch: "dispatch";
-            retire: "retire";
-            "task-state": "task-state";
             "budget-status": "budget-status";
-            scorer: "scorer";
+            dispatch: "dispatch";
+            "journal-write": "journal-write";
+            merge: "merge";
             message: "message";
-            "read-investigate": "read-investigate";
-            "text-only": "text-only";
             other: "other";
+            "pr-ci-check": "pr-ci-check";
+            "read-investigate": "read-investigate";
+            retire: "retire";
+            scorer: "scorer";
+            "task-state": "task-state";
+            "text-only": "text-only";
         }>>;
         costUsd: z.ZodNumber;
         share: z.ZodNumber;
@@ -512,11 +512,11 @@ declare const costReportSchema: z.ZodObject<{
                 noActionEpisodes: z.ZodNumber;
                 noActionCostUsd: z.ZodNumber;
                 key: z.ZodEnum<{
-                    broadcast: "broadcast";
-                    seat: "seat";
                     agent: "agent";
+                    broadcast: "broadcast";
                     broker: "broker";
                     none: "none";
+                    seat: "seat";
                 }>;
             }, z.core.$strip>>;
             episodes: z.ZodNumber;
@@ -534,11 +534,11 @@ declare const costReportSchema: z.ZodObject<{
             noActionCostUsd: z.ZodNumber;
             from: z.ZodString;
             fromKind: z.ZodEnum<{
-                broadcast: "broadcast";
-                seat: "seat";
                 agent: "agent";
+                broadcast: "broadcast";
                 broker: "broker";
                 none: "none";
+                seat: "seat";
             }>;
             to: z.ZodString;
         }, z.core.$strip>>;
@@ -549,18 +549,18 @@ declare const costReportSchema: z.ZodObject<{
         noActionCostUsd: z.ZodNumber;
         roles: z.ZodArray<z.ZodString>;
         noActionClasses: z.ZodArray<z.ZodEnum<{
-            "journal-write": "journal-write";
-            "pr-ci-check": "pr-ci-check";
-            merge: "merge";
-            dispatch: "dispatch";
-            retire: "retire";
-            "task-state": "task-state";
             "budget-status": "budget-status";
-            scorer: "scorer";
+            dispatch: "dispatch";
+            "journal-write": "journal-write";
+            merge: "merge";
             message: "message";
-            "read-investigate": "read-investigate";
-            "text-only": "text-only";
             other: "other";
+            "pr-ci-check": "pr-ci-check";
+            "read-investigate": "read-investigate";
+            retire: "retire";
+            scorer: "scorer";
+            "task-state": "task-state";
+            "text-only": "text-only";
         }>>;
     }, z.core.$strip>;
     handoffThreshold: z.ZodObject<{
@@ -750,11 +750,11 @@ declare const causeSchema: z.ZodObject<{
         noActionEpisodes: z.ZodNumber;
         noActionCostUsd: z.ZodNumber;
         key: z.ZodEnum<{
-            broadcast: "broadcast";
-            seat: "seat";
             agent: "agent";
+            broadcast: "broadcast";
             broker: "broker";
             none: "none";
+            seat: "seat";
         }>;
     }, z.core.$strip>>;
     episodes: z.ZodNumber;
@@ -772,11 +772,11 @@ declare const pairSchema: z.ZodObject<{
     noActionCostUsd: z.ZodNumber;
     from: z.ZodString;
     fromKind: z.ZodEnum<{
-        broadcast: "broadcast";
-        seat: "seat";
         agent: "agent";
+        broadcast: "broadcast";
         broker: "broker";
         none: "none";
+        seat: "seat";
     }>;
     to: z.ZodString;
 }, z.core.$strip>;
@@ -796,11 +796,11 @@ declare const wakeEpisodesSchema: z.ZodObject<{
             noActionEpisodes: z.ZodNumber;
             noActionCostUsd: z.ZodNumber;
             key: z.ZodEnum<{
-                broadcast: "broadcast";
-                seat: "seat";
                 agent: "agent";
+                broadcast: "broadcast";
                 broker: "broker";
                 none: "none";
+                seat: "seat";
             }>;
         }, z.core.$strip>>;
         episodes: z.ZodNumber;
@@ -818,11 +818,11 @@ declare const wakeEpisodesSchema: z.ZodObject<{
         noActionCostUsd: z.ZodNumber;
         from: z.ZodString;
         fromKind: z.ZodEnum<{
-            broadcast: "broadcast";
-            seat: "seat";
             agent: "agent";
+            broadcast: "broadcast";
             broker: "broker";
             none: "none";
+            seat: "seat";
         }>;
         to: z.ZodString;
     }, z.core.$strip>>;
@@ -833,18 +833,18 @@ declare const wakeEpisodesSchema: z.ZodObject<{
     noActionCostUsd: z.ZodNumber;
     roles: z.ZodArray<z.ZodString>;
     noActionClasses: z.ZodArray<z.ZodEnum<{
-        "journal-write": "journal-write";
-        "pr-ci-check": "pr-ci-check";
-        merge: "merge";
-        dispatch: "dispatch";
-        retire: "retire";
-        "task-state": "task-state";
         "budget-status": "budget-status";
-        scorer: "scorer";
+        dispatch: "dispatch";
+        "journal-write": "journal-write";
+        merge: "merge";
         message: "message";
-        "read-investigate": "read-investigate";
-        "text-only": "text-only";
         other: "other";
+        "pr-ci-check": "pr-ci-check";
+        "read-investigate": "read-investigate";
+        retire: "retire";
+        scorer: "scorer";
+        "task-state": "task-state";
+        "text-only": "text-only";
     }>>;
 }, z.core.$strip>;
 type WakeEpisodes = z.infer<typeof wakeEpisodesSchema>;
@@ -1093,8 +1093,8 @@ declare const cacheTtlWhatIfSchema: z.ZodObject<{
     byGapCause: z.ZodArray<z.ZodObject<{
         cause: z.ZodEnum<{
             "ci-wait": "ci-wait";
-            "other-bash": "other-bash";
             "end-of-turn": "end-of-turn";
+            "other-bash": "other-bash";
         }>;
         rebuilds: z.ZodNumber;
         rebuildTokens: z.ZodNumber;
@@ -1306,20 +1306,20 @@ declare const blockedFlowSchema: z.ZodObject<{
     }, z.core.$strip>;
     splitAt: z.ZodOptional<z.ZodString>;
     sources: z.ZodRecord<z.ZodEnum<{
-        verdicts: "verdicts";
-        pulls: "pulls";
         denials: "denials";
         journals: "journals";
+        pulls: "pulls";
+        verdicts: "verdicts";
     }>, z.ZodObject<{
         command: z.ZodString;
         field: z.ZodString;
     }, z.core.$strip>>;
     verdictToMerge: z.ZodObject<{
         cites: z.ZodArray<z.ZodEnum<{
-            verdicts: "verdicts";
-            pulls: "pulls";
             denials: "denials";
             journals: "journals";
+            pulls: "pulls";
+            verdicts: "verdicts";
         }>>;
         rows: z.ZodArray<z.ZodObject<{
             repo: z.ZodString;
@@ -1364,19 +1364,19 @@ declare const blockedFlowSchema: z.ZodObject<{
     }, z.core.$strip>;
     refusedVerdicts: z.ZodObject<{
         cites: z.ZodArray<z.ZodEnum<{
-            verdicts: "verdicts";
-            pulls: "pulls";
             denials: "denials";
             journals: "journals";
+            pulls: "pulls";
+            verdicts: "verdicts";
         }>>;
         count: z.ZodNumber;
     }, z.core.$strip>;
     openHoldingMerge: z.ZodObject<{
         cites: z.ZodArray<z.ZodEnum<{
-            verdicts: "verdicts";
-            pulls: "pulls";
             denials: "denials";
             journals: "journals";
+            pulls: "pulls";
+            verdicts: "verdicts";
         }>>;
         prMinutes: z.ZodNumber;
         rows: z.ZodArray<z.ZodObject<{
@@ -1391,10 +1391,10 @@ declare const blockedFlowSchema: z.ZodObject<{
     }, z.core.$strip>;
     denials: z.ZodObject<{
         cites: z.ZodArray<z.ZodEnum<{
-            verdicts: "verdicts";
-            pulls: "pulls";
             denials: "denials";
             journals: "journals";
+            pulls: "pulls";
+            verdicts: "verdicts";
         }>>;
         total: z.ZodNumber;
         rows: z.ZodArray<z.ZodObject<{
@@ -1406,10 +1406,10 @@ declare const blockedFlowSchema: z.ZodObject<{
     }, z.core.$strip>;
     idleSlots: z.ZodObject<{
         cites: z.ZodArray<z.ZodEnum<{
-            verdicts: "verdicts";
-            pulls: "pulls";
             denials: "denials";
             journals: "journals";
+            pulls: "pulls";
+            verdicts: "verdicts";
         }>>;
         holdMaxMin: z.ZodNumber;
         total: z.ZodNumber;
@@ -1595,10 +1595,10 @@ declare const livenessSchema: z.ZodObject<{
     }, z.core.$strip>;
     sources: z.ZodRecord<z.ZodEnum<{
         exits: "exits";
+        prompts: "prompts";
         registrations: "registrations";
         routes: "routes";
         spawns: "spawns";
-        prompts: "prompts";
     }>, z.ZodObject<{
         command: z.ZodString;
         field: z.ZodString;
@@ -1606,10 +1606,10 @@ declare const livenessSchema: z.ZodObject<{
     darkSeats: z.ZodObject<{
         cites: z.ZodArray<z.ZodEnum<{
             exits: "exits";
+            prompts: "prompts";
             registrations: "registrations";
             routes: "routes";
             spawns: "spawns";
-            prompts: "prompts";
         }>>;
         withTeleport: z.ZodNumber;
         withoutTeleport: z.ZodNumber;
@@ -1629,10 +1629,10 @@ declare const livenessSchema: z.ZodObject<{
     routeFailures: z.ZodObject<{
         cites: z.ZodArray<z.ZodEnum<{
             exits: "exits";
+            prompts: "prompts";
             registrations: "registrations";
             routes: "routes";
             spawns: "spawns";
-            prompts: "prompts";
         }>>;
         failed: z.ZodNumber;
         partial: z.ZodNumber;
@@ -1650,10 +1650,10 @@ declare const livenessSchema: z.ZodObject<{
     unreportedExits: z.ZodObject<{
         cites: z.ZodArray<z.ZodEnum<{
             exits: "exits";
+            prompts: "prompts";
             registrations: "registrations";
             routes: "routes";
             spawns: "spawns";
-            prompts: "prompts";
         }>>;
         total: z.ZodNumber;
         rows: z.ZodArray<z.ZodObject<{
@@ -1673,10 +1673,10 @@ declare const livenessSchema: z.ZodObject<{
     stalePrompts: z.ZodObject<{
         cites: z.ZodArray<z.ZodEnum<{
             exits: "exits";
+            prompts: "prompts";
             registrations: "registrations";
             routes: "routes";
             spawns: "spawns";
-            prompts: "prompts";
         }>>;
         rows: z.ZodArray<z.ZodObject<{
             agent: z.ZodString;
@@ -2049,10 +2049,10 @@ declare const seatGenerationsSchema: z.ZodArray<z.ZodObject<{
     start: z.ZodNullable<z.ZodString>;
     end: z.ZodNullable<z.ZodString>;
     endedBy: z.ZodEnum<{
+        exit: "exit";
         handoff: "handoff";
         open: "open";
         teleport: "teleport";
-        exit: "exit";
     }>;
 }, z.core.$strip>>;
 /** The seat's generations in start order: committed handoffs, completed teleports and exits end one; spawns and handoffs start one. */
@@ -2736,12 +2736,12 @@ declare const coordDutyTableSchema: z.ZodObject<{
     duties: z.ZodArray<z.ZodObject<{
         duty: z.ZodString;
         kind: z.ZodEnum<{
-            other: "other";
-            handoff: "handoff";
             det: "det";
-            judge: "judge";
             half: "half";
+            handoff: "handoff";
             incident: "incident";
+            judge: "judge";
+            other: "other";
         }>;
         group: z.ZodString;
         calls: z.ZodNumber;

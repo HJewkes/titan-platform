@@ -76,6 +76,7 @@ describe('handleOnComplete', () => {
     expect(args).toContain('--no-loops');
     expect(args).toContain('--no-notes');
     expect(args).toContain('--no-tasks');
+    expect(args).toContain('--no-reports');
     const bodyIndex = args.indexOf('--body');
     expect(args[bodyIndex + 1]).toContain('scout');
     expect(args[bodyIndex + 1]).toContain('code 0');
