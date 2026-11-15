@@ -79,7 +79,7 @@ const loop = z.object({
   opened_at: z.string(),
 });
 
-const note = z.object({ id: z.string(), slug: z.string(), filename: z.string(), kind: z.string(), title: z.string(), created: z.string(), mtime: z.string().nullable() });
+const note = z.object({ id: z.string(), slug: z.string(), filename: z.string(), kind: z.string(), title: z.string(), created: z.string(), mtime: z.string().nullable(), tags: z.array(z.string()).optional() });
 
 const source = z.object({ id: z.string(), slug: z.string(), filename: z.string(), type: z.string(), title: z.string(), mtime: z.string().nullable() });
 
