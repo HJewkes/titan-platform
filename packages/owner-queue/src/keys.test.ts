@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { askKey, componentKey, parsePrKey, prKey, relationKind, roundAskKey, tokenKey, topicKey } from "./keys.js";
+import { askKey, componentKey, parsePrKey, prKey, relationKind, roundAskKey, sessionKey, tokenKey, topicKey } from "./keys.js";
 import { isMergeKey } from "./merge.js";
 import { SHA_A } from "./test-fixtures.js";
 
@@ -42,6 +42,24 @@ describe("prKey", () => {
     expect(key).toBe(`pr:owner/repo#12@${SHA_A}`);
     expect(isMergeKey(key)).toBe(true);
     expect(relationKind(key)).toBeNull();
+  });
+});
+
+describe("sessionKey", () => {
+  it("names the session so two deposits starting it merge", () => {
+    const key = sessionKey("research-lead");
+
+    expect(key).toBe("session:research-lead");
+    expect(isMergeKey(key)).toBe(true);
+    expect(relationKind(key)).toBeNull();
+  });
+
+  it("trims padding so one session never splits into two keys", () => {
+    expect(sessionKey("  research-lead\n")).toBe(sessionKey("research-lead"));
+  });
+
+  it("refuses a blank name", () => {
+    expect(() => sessionKey("   ")).toThrow(/session key needs a name/);
   });
 });
 

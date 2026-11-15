@@ -2,9 +2,9 @@ import { parsePrKey } from "./keys.js";
 import type { OwnerItem, SourceRef } from "./schema.js";
 
 const PR_KEY = /^pr:[\w.-]+\/[\w.-]+#\d+@[0-9a-f]{40}$/;
-const ID_KEY = /^(task|gate|run):\S+$/;
+const ID_KEY = /^(task|gate|run|session):\S+$/;
 
-/** GitHub owner, repo and sha compare case-insensitively; task, gate and run ids are exact. */
+/** GitHub owner, repo and sha compare case-insensitively; task, gate, run and session ids are exact. */
 function canonical(key: string): string {
   return /^pr:/i.test(key) ? key.toLowerCase() : key;
 }

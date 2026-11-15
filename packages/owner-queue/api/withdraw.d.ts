@@ -269,6 +269,17 @@ declare const ownerItemSchema: z.ZodObject<{
             action: z.ZodLiteral<"end">;
             id: z.ZodString;
         }, z.core.$strict>], "action">;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"start-session">;
+        name: z.ZodString;
+        profile: z.ZodString;
+        host: z.ZodString;
+        account: z.ZodUnion<readonly [z.ZodLiteral<"least-used">, z.ZodString]>;
+        cwd: z.ZodString;
+        surface: z.ZodString;
+        remoteControl: z.ZodBoolean;
+        briefPath: z.ZodString;
+        briefSha256: z.ZodOptional<z.ZodString>;
     }, z.core.$strict>], "kind">>;
     evidenceRef: z.ZodOptional<z.ZodString>;
     anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;

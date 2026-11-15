@@ -9,6 +9,15 @@
       "kills": [
         "ownerOpSchema accepts a merge-at-head op"
       ]
+    },
+    {
+      "name": "a start-session op admits keys the schema never named",
+      "file": "packages/owner-queue/src/op.ts",
+      "find": "const startSession = z.strictObject({",
+      "replace": "const startSession = z.object({",
+      "kills": [
+        "a start-session op refuses an extra key"
+      ]
     }
   ]
 }

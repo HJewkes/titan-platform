@@ -16,6 +16,7 @@ const OP_ACTIONS: Readonly<Record<OwnerOpKind, ActionClass>> = Object.freeze({
   "plan-bet-select": "human-verb",
   "plan-outcome-edit": "human-verb",
   "plan-freeze-set": "human-verb",
+  "start-session": "spawn",
 });
 
 /** The console's tap as the table sees it: always owner-remote, never tainted, whatever the depositing agent was. */
