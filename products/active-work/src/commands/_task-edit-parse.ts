@@ -19,7 +19,12 @@ const EDITABLE_FIELDS = [
 
 export type EditableField = (typeof EDITABLE_FIELDS)[number];
 
+const CLEAR_FIELDS = ['due', 'kind', 'cos', 'area', 'parent', 'bet'] as const;
+
+export type ClearField = (typeof CLEAR_FIELDS)[number];
+
 export const ArgsSchema = z.object({
+  clear: z.array(z.enum(CLEAR_FIELDS)).optional(),
   slug: z.string().min(1),
   id: z.string().min(1),
   field: z.string().min(1).optional(),
@@ -78,6 +83,7 @@ export interface PatchEdit {
   addTag?: string;
   removeTag?: string;
   parent?: string;
+  clear?: ClearField[];
   addDeps?: string[];
   removeDeps?: string[];
   addDeliverables?: string[];
@@ -128,8 +134,13 @@ function patchEdit(args: Args): Edit {
   if (overlap.length > 0) {
     throw new UsageError(`--dep and --remove-dep name the same id: ${overlap.join(', ')}`);
   }
+  const clash = (args.clear ?? []).filter((key) => args[key] !== undefined);
+  if (clash.length > 0) {
+    throw new UsageError(`--clear and --${clash.join(', --')} name the same field`);
+  }
   return {
     kind: 'patch',
+    clear: args.clear,
     append,
     addTag,
     removeTag,
@@ -149,6 +160,7 @@ function patchFields(args: Args): PatchEdit['fields'] {
 }
 
 const PATCH_KEYS = [
+  'clear',
   'append',
   'add_tag',
   'remove_tag',
