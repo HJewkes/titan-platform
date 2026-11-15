@@ -27,34 +27,34 @@ type StackedOn = z.infer<typeof StackedOnSchema>;
 declare const ClaimSchema: z.ZodObject<{
     stalledReason: z.ZodOptional<z.ZodString>;
     stalledClass: z.ZodOptional<z.ZodEnum<{
-        stalled: "stalled";
         failed: "failed";
         "gate-trip": "gate-trip";
+        stalled: "stalled";
     }>>;
     stallCode: z.ZodOptional<z.ZodEnum<{
-        "spawn-never-landed": "spawn-never-landed";
-        "shepherd-ended": "shepherd-ended";
-        "planner-refused": "planner-refused";
-        "retry-spent": "retry-spent";
         budget: "budget";
-        "outside-owns": "outside-owns";
-        "no-repo": "no-repo";
-        "phase-timeout": "phase-timeout";
         "dirty-uncommitted": "dirty-uncommitted";
         "lease-expired": "lease-expired";
         "no-progress": "no-progress";
+        "no-repo": "no-repo";
+        "outside-owns": "outside-owns";
+        "phase-timeout": "phase-timeout";
+        "planner-refused": "planner-refused";
+        "retry-spent": "retry-spent";
+        "shepherd-ended": "shepherd-ended";
+        "spawn-never-landed": "spawn-never-landed";
     }>>;
     stalledAt: z.ZodOptional<z.ZodString>;
     stale: z.ZodOptional<z.ZodObject<{
         class: z.ZodEnum<{
-            "retry-spent": "retry-spent";
-            "outside-owns": "outside-owns";
-            "nothing-to-do": "nothing-to-do";
-            "date-blocked": "date-blocked";
-            "pr-closed": "pr-closed";
             blocked: "blocked";
-            timeout: "timeout";
+            "date-blocked": "date-blocked";
+            "nothing-to-do": "nothing-to-do";
             other: "other";
+            "outside-owns": "outside-owns";
+            "pr-closed": "pr-closed";
+            "retry-spent": "retry-spent";
+            timeout: "timeout";
         }>;
         proposed: z.ZodString;
         since: z.ZodString;
@@ -62,17 +62,17 @@ declare const ClaimSchema: z.ZodObject<{
     }, z.core.$strip>>;
     respawn: z.ZodOptional<z.ZodObject<{
         code: z.ZodEnum<{
-            "spawn-never-landed": "spawn-never-landed";
-            "shepherd-ended": "shepherd-ended";
-            "planner-refused": "planner-refused";
-            "retry-spent": "retry-spent";
             budget: "budget";
-            "outside-owns": "outside-owns";
-            "no-repo": "no-repo";
-            "phase-timeout": "phase-timeout";
             "dirty-uncommitted": "dirty-uncommitted";
             "lease-expired": "lease-expired";
             "no-progress": "no-progress";
+            "no-repo": "no-repo";
+            "outside-owns": "outside-owns";
+            "phase-timeout": "phase-timeout";
+            "planner-refused": "planner-refused";
+            "retry-spent": "retry-spent";
+            "shepherd-ended": "shepherd-ended";
+            "spawn-never-landed": "spawn-never-landed";
         }>;
         occurrence: z.ZodString;
     }, z.core.$strip>>;
@@ -86,23 +86,23 @@ declare const ClaimSchema: z.ZodObject<{
     finding: z.ZodOptional<z.ZodObject<{
         kind: z.ZodLiteral<"stalled-after-claim">;
         reason: z.ZodEnum<{
-            silent: "silent";
             idle: "idle";
-            "slow-tool": "slow-tool";
             lease: "lease";
+            silent: "silent";
+            "slow-tool": "slow-tool";
         }>;
         code: z.ZodOptional<z.ZodEnum<{
-            "spawn-never-landed": "spawn-never-landed";
-            "shepherd-ended": "shepherd-ended";
-            "planner-refused": "planner-refused";
-            "retry-spent": "retry-spent";
             budget: "budget";
-            "outside-owns": "outside-owns";
-            "no-repo": "no-repo";
-            "phase-timeout": "phase-timeout";
             "dirty-uncommitted": "dirty-uncommitted";
             "lease-expired": "lease-expired";
             "no-progress": "no-progress";
+            "no-repo": "no-repo";
+            "outside-owns": "outside-owns";
+            "phase-timeout": "phase-timeout";
+            "planner-refused": "planner-refused";
+            "retry-spent": "retry-spent";
+            "shepherd-ended": "shepherd-ended";
+            "spawn-never-landed": "spawn-never-landed";
         }>>;
         since: z.ZodString;
         openedAt: z.ZodString;
@@ -130,11 +130,11 @@ declare const ClaimSchema: z.ZodObject<{
         occurrence: z.ZodString;
         since: z.ZodString;
         outcome: z.ZodEnum<{
-            waiting: "waiting";
-            started: "started";
-            refused: "refused";
             ended: "ended";
             fallback: "fallback";
+            refused: "refused";
+            started: "started";
+            waiting: "waiting";
         }>;
         name: z.ZodOptional<z.ZodString>;
         startedAt: z.ZodOptional<z.ZodString>;
@@ -145,15 +145,15 @@ declare const ClaimSchema: z.ZodObject<{
     agentId: z.ZodOptional<z.ZodString>;
     spawnedAt: z.ZodString;
     phase: z.ZodEnum<{
-        queued: "queued";
-        spawning: "spawning";
-        planning: "planning";
+        "awaiting-merge": "awaiting-merge";
+        done: "done";
         implementing: "implementing";
         parked: "parked";
+        planning: "planning";
+        queued: "queued";
         reviewing: "reviewing";
-        "awaiting-merge": "awaiting-merge";
         shepherding: "shepherding";
-        done: "done";
+        spawning: "spawning";
     }>;
     phaseAt: z.ZodString;
     slice: z.ZodOptional<z.ZodString>;
@@ -171,13 +171,13 @@ declare const ClaimSchema: z.ZodObject<{
     contracts: z.ZodOptional<z.ZodArray<z.ZodObject<{
         scope: z.ZodString;
         op: z.ZodEnum<{
-            replace: "replace";
-            remove: "remove";
-            rename: "rename";
-            migrate: "migrate";
             add: "add";
             extend: "extend";
+            migrate: "migrate";
             modify: "modify";
+            remove: "remove";
+            rename: "rename";
+            replace: "replace";
         }>;
     }, z.core.$strip>>>;
     overlapsAccepted: z.ZodOptional<z.ZodArray<z.ZodObject<{
@@ -188,8 +188,8 @@ declare const ClaimSchema: z.ZodObject<{
     agentName: z.ZodOptional<z.ZodString>;
     spawned: z.ZodOptional<z.ZodArray<z.ZodString>>;
     nextPhase: z.ZodOptional<z.ZodEnum<{
-        planning: "planning";
         implementing: "implementing";
+        planning: "planning";
         reviewing: "reviewing";
     }>>;
     briefer: z.ZodOptional<z.ZodBoolean>;
@@ -258,17 +258,17 @@ declare const LadderRecordSchema: z.ZodObject<{
     releases: z.ZodOptional<z.ZodNumber>;
     branch: z.ZodOptional<z.ZodString>;
     code: z.ZodOptional<z.ZodEnum<{
-        "spawn-never-landed": "spawn-never-landed";
-        "shepherd-ended": "shepherd-ended";
-        "planner-refused": "planner-refused";
-        "retry-spent": "retry-spent";
         budget: "budget";
-        "outside-owns": "outside-owns";
-        "no-repo": "no-repo";
-        "phase-timeout": "phase-timeout";
         "dirty-uncommitted": "dirty-uncommitted";
         "lease-expired": "lease-expired";
         "no-progress": "no-progress";
+        "no-repo": "no-repo";
+        "outside-owns": "outside-owns";
+        "phase-timeout": "phase-timeout";
+        "planner-refused": "planner-refused";
+        "retry-spent": "retry-spent";
+        "shepherd-ended": "shepherd-ended";
+        "spawn-never-landed": "spawn-never-landed";
     }>>;
     reason: z.ZodOptional<z.ZodString>;
     seat: z.ZodOptional<z.ZodString>;
@@ -296,34 +296,34 @@ declare const LedgerSchema: z.ZodObject<{
     claims: z.ZodArray<z.ZodObject<{
         stalledReason: z.ZodOptional<z.ZodString>;
         stalledClass: z.ZodOptional<z.ZodEnum<{
-            stalled: "stalled";
             failed: "failed";
             "gate-trip": "gate-trip";
+            stalled: "stalled";
         }>>;
         stallCode: z.ZodOptional<z.ZodEnum<{
-            "spawn-never-landed": "spawn-never-landed";
-            "shepherd-ended": "shepherd-ended";
-            "planner-refused": "planner-refused";
-            "retry-spent": "retry-spent";
             budget: "budget";
-            "outside-owns": "outside-owns";
-            "no-repo": "no-repo";
-            "phase-timeout": "phase-timeout";
             "dirty-uncommitted": "dirty-uncommitted";
             "lease-expired": "lease-expired";
             "no-progress": "no-progress";
+            "no-repo": "no-repo";
+            "outside-owns": "outside-owns";
+            "phase-timeout": "phase-timeout";
+            "planner-refused": "planner-refused";
+            "retry-spent": "retry-spent";
+            "shepherd-ended": "shepherd-ended";
+            "spawn-never-landed": "spawn-never-landed";
         }>>;
         stalledAt: z.ZodOptional<z.ZodString>;
         stale: z.ZodOptional<z.ZodObject<{
             class: z.ZodEnum<{
-                "retry-spent": "retry-spent";
-                "outside-owns": "outside-owns";
-                "nothing-to-do": "nothing-to-do";
-                "date-blocked": "date-blocked";
-                "pr-closed": "pr-closed";
                 blocked: "blocked";
-                timeout: "timeout";
+                "date-blocked": "date-blocked";
+                "nothing-to-do": "nothing-to-do";
                 other: "other";
+                "outside-owns": "outside-owns";
+                "pr-closed": "pr-closed";
+                "retry-spent": "retry-spent";
+                timeout: "timeout";
             }>;
             proposed: z.ZodString;
             since: z.ZodString;
@@ -331,17 +331,17 @@ declare const LedgerSchema: z.ZodObject<{
         }, z.core.$strip>>;
         respawn: z.ZodOptional<z.ZodObject<{
             code: z.ZodEnum<{
-                "spawn-never-landed": "spawn-never-landed";
-                "shepherd-ended": "shepherd-ended";
-                "planner-refused": "planner-refused";
-                "retry-spent": "retry-spent";
                 budget: "budget";
-                "outside-owns": "outside-owns";
-                "no-repo": "no-repo";
-                "phase-timeout": "phase-timeout";
                 "dirty-uncommitted": "dirty-uncommitted";
                 "lease-expired": "lease-expired";
                 "no-progress": "no-progress";
+                "no-repo": "no-repo";
+                "outside-owns": "outside-owns";
+                "phase-timeout": "phase-timeout";
+                "planner-refused": "planner-refused";
+                "retry-spent": "retry-spent";
+                "shepherd-ended": "shepherd-ended";
+                "spawn-never-landed": "spawn-never-landed";
             }>;
             occurrence: z.ZodString;
         }, z.core.$strip>>;
@@ -355,23 +355,23 @@ declare const LedgerSchema: z.ZodObject<{
         finding: z.ZodOptional<z.ZodObject<{
             kind: z.ZodLiteral<"stalled-after-claim">;
             reason: z.ZodEnum<{
-                silent: "silent";
                 idle: "idle";
-                "slow-tool": "slow-tool";
                 lease: "lease";
+                silent: "silent";
+                "slow-tool": "slow-tool";
             }>;
             code: z.ZodOptional<z.ZodEnum<{
-                "spawn-never-landed": "spawn-never-landed";
-                "shepherd-ended": "shepherd-ended";
-                "planner-refused": "planner-refused";
-                "retry-spent": "retry-spent";
                 budget: "budget";
-                "outside-owns": "outside-owns";
-                "no-repo": "no-repo";
-                "phase-timeout": "phase-timeout";
                 "dirty-uncommitted": "dirty-uncommitted";
                 "lease-expired": "lease-expired";
                 "no-progress": "no-progress";
+                "no-repo": "no-repo";
+                "outside-owns": "outside-owns";
+                "phase-timeout": "phase-timeout";
+                "planner-refused": "planner-refused";
+                "retry-spent": "retry-spent";
+                "shepherd-ended": "shepherd-ended";
+                "spawn-never-landed": "spawn-never-landed";
             }>>;
             since: z.ZodString;
             openedAt: z.ZodString;
@@ -399,11 +399,11 @@ declare const LedgerSchema: z.ZodObject<{
             occurrence: z.ZodString;
             since: z.ZodString;
             outcome: z.ZodEnum<{
-                waiting: "waiting";
-                started: "started";
-                refused: "refused";
                 ended: "ended";
                 fallback: "fallback";
+                refused: "refused";
+                started: "started";
+                waiting: "waiting";
             }>;
             name: z.ZodOptional<z.ZodString>;
             startedAt: z.ZodOptional<z.ZodString>;
@@ -414,15 +414,15 @@ declare const LedgerSchema: z.ZodObject<{
         agentId: z.ZodOptional<z.ZodString>;
         spawnedAt: z.ZodString;
         phase: z.ZodEnum<{
-            queued: "queued";
-            spawning: "spawning";
-            planning: "planning";
+            "awaiting-merge": "awaiting-merge";
+            done: "done";
             implementing: "implementing";
             parked: "parked";
+            planning: "planning";
+            queued: "queued";
             reviewing: "reviewing";
-            "awaiting-merge": "awaiting-merge";
             shepherding: "shepherding";
-            done: "done";
+            spawning: "spawning";
         }>;
         phaseAt: z.ZodString;
         slice: z.ZodOptional<z.ZodString>;
@@ -440,13 +440,13 @@ declare const LedgerSchema: z.ZodObject<{
         contracts: z.ZodOptional<z.ZodArray<z.ZodObject<{
             scope: z.ZodString;
             op: z.ZodEnum<{
-                replace: "replace";
-                remove: "remove";
-                rename: "rename";
-                migrate: "migrate";
                 add: "add";
                 extend: "extend";
+                migrate: "migrate";
                 modify: "modify";
+                remove: "remove";
+                rename: "rename";
+                replace: "replace";
             }>;
         }, z.core.$strip>>>;
         overlapsAccepted: z.ZodOptional<z.ZodArray<z.ZodObject<{
@@ -457,8 +457,8 @@ declare const LedgerSchema: z.ZodObject<{
         agentName: z.ZodOptional<z.ZodString>;
         spawned: z.ZodOptional<z.ZodArray<z.ZodString>>;
         nextPhase: z.ZodOptional<z.ZodEnum<{
-            planning: "planning";
             implementing: "implementing";
+            planning: "planning";
             reviewing: "reviewing";
         }>>;
         briefer: z.ZodOptional<z.ZodBoolean>;
@@ -529,17 +529,17 @@ declare const LedgerSchema: z.ZodObject<{
         releases: z.ZodOptional<z.ZodNumber>;
         branch: z.ZodOptional<z.ZodString>;
         code: z.ZodOptional<z.ZodEnum<{
-            "spawn-never-landed": "spawn-never-landed";
-            "shepherd-ended": "shepherd-ended";
-            "planner-refused": "planner-refused";
-            "retry-spent": "retry-spent";
             budget: "budget";
-            "outside-owns": "outside-owns";
-            "no-repo": "no-repo";
-            "phase-timeout": "phase-timeout";
             "dirty-uncommitted": "dirty-uncommitted";
             "lease-expired": "lease-expired";
             "no-progress": "no-progress";
+            "no-repo": "no-repo";
+            "outside-owns": "outside-owns";
+            "phase-timeout": "phase-timeout";
+            "planner-refused": "planner-refused";
+            "retry-spent": "retry-spent";
+            "shepherd-ended": "shepherd-ended";
+            "spawn-never-landed": "spawn-never-landed";
         }>>;
         reason: z.ZodOptional<z.ZodString>;
         seat: z.ZodOptional<z.ZodString>;
@@ -588,13 +588,13 @@ declare const DESTRUCTIVE_OPS: readonly ContractOp[];
 declare const ContractSchema: z.ZodObject<{
     scope: z.ZodString;
     op: z.ZodEnum<{
-        replace: "replace";
-        remove: "remove";
-        rename: "rename";
-        migrate: "migrate";
         add: "add";
         extend: "extend";
+        migrate: "migrate";
         modify: "modify";
+        remove: "remove";
+        rename: "rename";
+        replace: "replace";
     }>;
 }, z.core.$strip>;
 type Contract = z.infer<typeof ContractSchema>;
