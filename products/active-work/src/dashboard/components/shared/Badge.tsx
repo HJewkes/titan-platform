@@ -35,50 +35,48 @@ export function Badge({
   size = 'md',
 }: BadgeProps): React.JSX.Element {
   const preset = SIZE_PRESETS[size];
-  const dotSize = 6;
 
   return (
     <View
       style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        borderWidth: 1,
-        borderRadius: 99,
-        flexShrink: 0,
-        alignSelf: 'flex-start',
+        ...PILL_STYLE,
         backgroundColor: hexToRgba(color, bgOpacity),
         borderColor: hexToRgba(color, borderOpacity),
         paddingHorizontal: preset.paddingH,
         paddingVertical: preset.paddingV,
       }}
     >
-      {dot && (
-        <View
-          style={{
-            width: dotSize,
-            height: dotSize,
-            borderRadius: dotSize / 2,
-            backgroundColor: color,
-            flexShrink: 0,
-          }}
-        />
-      )}
-      <Text
-        style={{
-          fontFamily: typography.body,
-          fontWeight: '600',
-          textTransform: 'uppercase',
-          letterSpacing: 0.4,
-          color,
-          fontSize: preset.fontSize,
-        }}
-      >
-        {label}
-      </Text>
+      {dot && <View style={{ ...DOT_STYLE, backgroundColor: color }} />}
+      <Text style={{ ...LABEL_STYLE, color, fontSize: preset.fontSize }}>{label}</Text>
     </View>
   );
 }
+
+const DOT_SIZE = 6;
+
+const PILL_STYLE = {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 4,
+  borderWidth: 1,
+  borderRadius: 99,
+  flexShrink: 0,
+  alignSelf: 'flex-start',
+} as const;
+
+const DOT_STYLE = {
+  width: DOT_SIZE,
+  height: DOT_SIZE,
+  borderRadius: DOT_SIZE / 2,
+  flexShrink: 0,
+} as const;
+
+const LABEL_STYLE = {
+  fontFamily: typography.body,
+  fontWeight: '600',
+  textTransform: 'uppercase',
+  letterSpacing: 0.4,
+} as const;
 
 /**
  * Convert a hex color string to an rgba() string with the given opacity.
