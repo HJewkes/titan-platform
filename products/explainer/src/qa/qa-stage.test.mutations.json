@@ -21,6 +21,16 @@
       ]
     },
     {
+      "name": "qa stores no occupancy output",
+      "file": "products/explainer/src/qa/qa-stage.ts",
+      "find": "outputs.occupancy = ",
+      "replace": "void ",
+      "kills": [
+        "qa stage occupancy output stores an occupancy/v1 document with one table per settled beat",
+        "qa stage occupancy output stores an empty tables list when no moment settled"
+      ]
+    },
+    {
       "name": "qa runs late-fill over lead-line beats too",
       "file": "products/explainer/src/qa/qa-stage.ts",
       "find": "lead: leadLineBeats(input), ",
