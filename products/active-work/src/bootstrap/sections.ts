@@ -14,6 +14,7 @@ import { truncateLines } from './load.js';
 import {
   malformedTaskNote,
   renderAbandonedLoops,
+  renderArchivedIds,
   renderClosingInstruction,
   renderDurableNotes,
   renderFacetedLoops,
@@ -143,11 +144,7 @@ function recentlyDone({ input, recentlyDone: rendered }: BootstrapView): string 
 }
 
 function archived({ input }: BootstrapView): string | null {
-  const ids = input.archivedTaskIds;
-  if (!ids || ids.length === 0) return null;
-  return `# Archived (housekeeping)\nMoved ${
-    ids.length
-  } stale done task(s) to tasks/archive/: ${ids.join(', ')}`;
+  return renderArchivedIds(input.archivedTaskIds);
 }
 
 function openArtifacts(view: BootstrapView): string | null {
@@ -177,7 +174,7 @@ const SECTION_BUILDERS: readonly SectionBuilder[] = [
   briefExcerpt,
   (v) => (v.input.facet ? renderFacetSection(v.input.facet) : null),
   openLoops,
-  (v) => renderAbandonedLoops(v.resolvedLoops, v.input.recentlyDoneDays),
+  (v) => renderAbandonedLoops(v.resolvedLoops, v.input.recentlyDoneDays, v.input.slug),
   lastSession,
   (v) => renderParallelSessions(selectParallelSessions(v.sessions, v.narrativeSession)),
   topTasks,

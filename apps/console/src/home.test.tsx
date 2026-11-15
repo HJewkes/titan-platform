@@ -199,8 +199,12 @@ describe("the home page, degraded", () => {
     expect(await screen.findByText("The agent-chat queue is unreadable: agent-chat broker not answering on port 7600: connect ECONNREFUSED.")).toBeTruthy();
     expect(screen.getByText("OR-7 Route beacons")).toBeTruthy();
     expect(screen.queryByText("Nothing needs you")).toBeNull();
-    fireEvent.click(screen.getByRole("link", { name: /Open agent-chat/ }));
-    expect(opened).toHaveBeenCalledWith("http://127.0.0.1:7600/ui#queue", "_blank", "noopener");
+    const link = screen.getByRole("link", { name: /Open agent-chat/ });
+    expect(link.getAttribute("href")).toBe("http://127.0.0.1:7600/ui#queue");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toContain("noopener");
+    fireEvent.click(link);
+    expect(opened).not.toHaveBeenCalled();
   });
 
   it("leaves an unreachable upstream's counts blank and lists it as needing the owner", async () => {
