@@ -37,10 +37,10 @@ describe("the weekly batch with pr-visual pairs (TP-4761 C3)", () => {
     const batch = await batchWith(dir, ghForPr7());
 
     const section = batch.sections!.find((item) => item.questionIds[0] === "pr-7")!;
-    expect(section.context).toBe("pr-visual: 2 shots, 1 changed, 1 missing (unattested producer output; not used for the tier)");
-    expect(section.variantKeys).toHaveLength(4);
+    expect(section.context).toBe("pr-visual: 2 shots, 1 changed, 1 unchanged not shown, 1 missing (unattested producer output; not used for the tier)");
+    expect(section.variantKeys).toHaveLength(2);
     const paired = await pairVisuals(dir, 7, headOf(7));
-    expect(paired).toMatchObject({ base: BASE, pairs: [{ story: "button--s0", width: "1280" }, { story: "button--s1", width: "1280" }] });
+    expect(paired).toMatchObject({ base: BASE, pairs: [{ story: "button--s0", width: "1280" }] });
     expect(await readFile(section.variantKeys[1]!)).toEqual(png(120));
   });
 

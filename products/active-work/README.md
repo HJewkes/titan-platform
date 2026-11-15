@@ -180,7 +180,7 @@ The active root itself is not in this file — it follows the XDG spec and can b
 
 ### Timing an `open`
 
-`active-work open` and `aw` put per-phase wall time in the result's `metadata.timings_ms` (`load`, `archive`, `live_status`, `rank_notes`, `loop_retrieval`, `loop_queries`, `total`, in milliseconds; `live_status` is how long the gh/git lookup took, which overlaps the phases after it). The numbers are never part of the prompt text. Set `AW_TIMING=1` to also print them as one line on stderr, e.g. `AW_TIMING=1 aw my-initiative`.
+`active-work open` and `aw` put per-phase wall time in the result's `metadata.timings_ms` (`load`, `archive`, `live_status`, `rank_notes`, `loop_retrieval`, `loop_queries`, `total`, in milliseconds; `live_status` is how long the gh/git lookup took, which overlaps the phases after it). The numbers are never part of the prompt text. Set `AW_TIMING=1` to also print them as one line on stderr, e.g. `AW_TIMING=1 aw my-initiative`. `aw` also appends an `aw.open` line (with those timings) and an `aw.launch` line to `usage.jsonl` in the state directory; `aw.launch`'s `duration_ms` is the time from process start to just before `claude` is spawned.
 
 ### Using `active-work` from Claude Code via MCP
 

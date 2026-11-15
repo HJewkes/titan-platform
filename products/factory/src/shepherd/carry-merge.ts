@@ -18,7 +18,7 @@ import { FIX_CARRY_STEP, fixCarryRoute } from "./fix-carry.js";
 import { REVIEW_SCOPE_STEP, reviewScopeRoute } from "./review-scope.js";
 import { OWN_MERGE_UP_STEP, ownMergeUpRoute } from "./own-merge-up.js";
 import { MERGE_UP_STEP, mergeUpRoute, recordMergeUp, treeCarries } from "./merge-up-carry.js";
-import { REMERGE_STEP, remergeRoute, remergeStep, type CarryRule, type RemergeResult } from "./remerge-carry.js";
+import { REMERGE_STEP, remergeRoute, remergeStep, requiredContextsOf, type CarryRule, type RemergeResult } from "./remerge-carry.js";
 import { carryStep, type CarryInput, type CarryResult } from "./tree-carry.js";
 import { SET_CARRY_STEP, setCarryRoute } from "./approved-set-carry.js";
 import { CARRYING_KINDS } from "./carry-kinds.js";
@@ -310,7 +310,7 @@ export function carryRoutes(deps: Pick<ShepherdDeps, "port" | "store" | "now" | 
     carryScopeRoute(deps),
     carrySeatRoute(deps, wiring),
     carryClaimsRoute(deps),
-    remergeRoute(deps.now, carry),
+    remergeRoute(deps.now, { ...carry, requiredContexts: requiredContextsOf(deps.port) }),
     fixCarryRoute(deps.now, carry),
     reviewScopeRoute(deps.now, carry),
     ownMergeUpRoute(deps.now, carry),

@@ -945,6 +945,8 @@ causes, checked in this order (`products/factory/src/shepherd/view.ts`):
    when it recorded none.
 2. `MAX_NOT_STARTED_REVIEWS` (3) review dispatches in a row started no reviewer, because the
    broker kept refusing. The reason reads `3 review dispatches in a row started no reviewer`.
+   The run bounds this itself too: from the third dispatch at one head that starts no reviewer,
+   it takes the `no-reviewer` hold and alerts the seat instead of retrying (TP-5386).
 3. The run has sat in one phase past its `PHASE_STALL_LIMIT_MS` limit. The reason reads, for
    example, `75 min in ci, over the 60 min limit`.
 
