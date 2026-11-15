@@ -122,7 +122,15 @@ export const BEAT_SLOTS = {
   "kanban-flow": z.object({ columns: z.array(Node).min(2).max(6), cards: z.array(z.object({ id: Id, title: Label, from: Id, to: Id }).strict()).min(1).max(12) }).strict(),
   gantt: z
     .object({
-      tasks: z.array(z.object({ id: Id, label: Label, start: Day, end: Day, lane: Label.optional() }).strict()).min(1).max(12),
+      tasks: z
+        .array(
+          z
+            .object({ id: Id, label: Label, start: Day, end: Day, lane: Label.optional() })
+            .strict()
+            .refine((task) => task.end >= task.start, "a gantt task must not end before it starts"),
+        )
+        .min(1)
+        .max(12),
       milestones: z.array(z.object({ id: Id, label: Label, at: Day }).strict()).default([]),
     })
     .strict(),
