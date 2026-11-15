@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { formatResultLine, type Verdict } from "@titan-design/fix-proof";
 import { parseVerdictBlock } from "@titan-design/session-read";
+import { CHECK_CLASSES } from "./check-candidates.js";
 import { BLOCK_LINE, CI_UNREAD_LINE, FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS } from "./fix-first-findings.js";
 import {
+  CHECK_CANDIDATES_RULE,
   CI_POLICY_EXACT,
   CI_REVIEWER_TEST_RULE,
   CI_POLICY_RULE,
@@ -19,6 +21,7 @@ import {
   reviewCheckoutName,
   reviewerBrief,
 } from "./reviewer-brief.js";
+import { NIT_POLICY_EXEMPTION, NIT_POLICY_RULE } from "./briefs/nit-policy.js";
 
 // A Record forces every MalformedRefusal to appear, so a new refusal cannot skip the correction-prompt tests.
 const REFUSAL_SET: Record<MalformedRefusal, true> = {
@@ -442,6 +445,14 @@ describe("reviewerBrief convergence review", () => {
     expect(parseVerdictBlock(brief).ok).toBe(false);
   });
 
+  it("keeps listing Nit and Pre-existing items in the convergence section after the nit policy", () => {
+    const brief = reviewerBrief({ ...input, earlierFindings: earlier, convergence: true });
+
+    const exception = brief.indexOf("This section lists the Nit and Pre-existing items the rule above leaves out");
+    expect(brief.indexOf(NIT_POLICY_RULE)).toBeGreaterThan(-1);
+    expect(exception).toBeGreaterThan(brief.indexOf(NIT_POLICY_RULE));
+  });
+
   it("leaves an ordinary re-review without the convergence section", () => {
     expect(reviewerBrief({ ...input, earlierFindings: earlier })).not.toContain(CONVERGENCE_HEADING);
   });
@@ -541,6 +552,62 @@ describe("reviewerBrief Follow-ups rule", () => {
     expect(FOLLOW_UPS_RULE).toContain("never block MERGE");
     expect(brief.indexOf(FOLLOW_UPS_RULE)).toBeGreaterThan(-1);
     expect(brief.indexOf(FOLLOW_UPS_RULE)).toBeLessThan(brief.indexOf("Verdict: <MERGE or FIX_FIRST>"));
+  });
+
+  it.each([
+    ["a first review", reviewerBrief(target)],
+    ["a re-review", reviewerBrief({ ...target, fixFirsts: 2 })],
+    ["an owner-gated review", reviewerBrief({ ...target, ownerBrief: true })],
+  ])("the brief carries the nit policy line in %s, ahead of the follow-ups it bars them from", (_scenario, brief) => {
+    expect(NIT_POLICY_RULE).toMatch(/cosmetic/);
+    expect(NIT_POLICY_RULE).toMatch(/before this PR/);
+    expect(NIT_POLICY_RULE).toMatch(/already states/);
+    expect(NIT_POLICY_RULE).toMatch(/mislead a reader/);
+    expect(brief.indexOf(NIT_POLICY_RULE)).toBeGreaterThan(-1);
+    expect(brief.indexOf(NIT_POLICY_RULE)).toBeLessThan(brief.indexOf(FOLLOW_UPS_RULE));
+  });
+
+  it.each([
+    ["a first review", reviewerBrief(target)],
+    ["a convergence review", reviewerBrief({ ...target, fixFirsts: 3, convergence: true })],
+  ])("keeps blocking items, unmet done-when and relied-on pre-existing defects outside the nit policy in %s", (_scenario, brief) => {
+    expect(NIT_POLICY_RULE).toMatch(/^Of the notes that would not block,/);
+    expect(NIT_POLICY_EXEMPTION).toContain("never covers a blocking item");
+    expect(NIT_POLICY_EXEMPTION).toContain("leaves the task's done-when unmet");
+    expect(NIT_POLICY_EXEMPTION).toContain("pre-existing defect this PR now relies on");
+    expect(NIT_POLICY_EXEMPTION).toContain("whatever the PR description says");
+    expect(brief.indexOf(NIT_POLICY_EXEMPTION)).toBeGreaterThan(brief.indexOf("Of the notes that would not block"));
+  });
+
+  it("lets a non-cosmetic stated gap still be filed as a follow-up", () => {
+    expect(NIT_POLICY_RULE).toContain("File no cosmetic note as a follow-up; a stated gap that is not cosmetic may still be one.");
+    expect(NIT_POLICY_RULE).not.toContain("Do not file any of them");
+  });
+
+  it("bars a low-severity cosmetic follow-up", () => {
+    expect(FOLLOW_UPS_RULE).toContain("Never propose a low-severity cosmetic follow-up");
+  });
+});
+
+describe("reviewerBrief Check-candidates rule", () => {
+  const target = { repo: "octo/demo", pr: 7, head: "0123456789abcdef0123456789abcdef01234567", checkoutRoot: "/reviews" };
+  const brief = reviewerBrief(target);
+
+  it("asks for the block before the verdict lines and says it never changes the verdict", () => {
+    expect(CHECK_CANDIDATES_RULE).toContain("`Check-candidates:`");
+    expect(CHECK_CANDIDATES_RULE).toContain("never changes your verdict");
+    expect(brief.indexOf(CHECK_CANDIDATES_RULE)).toBeGreaterThan(-1);
+    expect(brief.indexOf(CHECK_CANDIDATES_RULE)).toBeLessThan(brief.indexOf("Verdict: <MERGE or FIX_FIRST>"));
+  });
+
+  it("lists every CHECK_CLASSES key once", () => {
+    for (const { key } of CHECK_CLASSES) expect(brief.split(`\`${key}\``), key).toHaveLength(2);
+  });
+
+  it("prints each key on the line of its default route", () => {
+    const routeLine = (route: string): string => brief.split("\n").find((line) => line.startsWith(`- ${route}: `)) ?? "";
+
+    for (const { key, route } of CHECK_CLASSES) expect(routeLine(route), key).toContain(`\`${key}\``);
   });
 });
 
