@@ -11,7 +11,9 @@ import { contrastReport } from "./contrast-check.js";
 import { cueGate, type CueGateResult } from "./cue-gate.js";
 import { CONTRAST, type QaGate } from "./gate-profile.js";
 import type { QaEngine } from "./qa-engine.js";
-import { measuredFindings } from "./qa-measured.js";
+import type { Stage } from "../anchor-grid.js";
+import type { OccupancyTable } from "../occupancy-table.js";
+import { measuredFindings, settledOccupancy } from "./qa-measured.js";
 import { speechRateReport } from "./speech-rate.js";
 import { narrationFactsReport } from "./narration-facts.js";
 import { INLINE_MAX_BYTES, mediaScanByBeat, qaReport, type QaReport } from "./qa-report.js";
@@ -49,6 +51,12 @@ interface QaSources {
 
 type Measured = Pick<QaReport, "sweep" | "framediff" | "probe" | "measured" | "timing" | "mediaScan" | "captions" | "narrationFacts" | "flash" | "contrast" | "speechRate">;
 
+/** The stage the page was inspected at and one table per settled moment, as `occupancy.json` stores them. */
+interface Occupancy {
+  stage: Stage;
+  tables: OccupancyTable[];
+}
+
 /** What the timing gates read of the script: the beats it declares held, by `heldS` or the held speech band. */
 const HeldScriptSchema = z.object({ beats: z.array(z.object({ id: z.string(), band: z.string().optional(), heldS: z.number().optional() })) });
 
@@ -83,7 +91,7 @@ function measuredBeats(words: ReturnType<typeof readTiming>) {
 }
 
 /** The MP4's frame change and the probe, inline or by sha, and the page-measured findings they give. */
-async function measure(sources: QaSources, engine: QaEngine, timeline: QaTimeline, inspection: CueGateResult, config: QaConfig): Promise<Measured> {
+async function measure(sources: QaSources, engine: QaEngine, timeline: QaTimeline, inspection: CueGateResult, config: QaConfig): Promise<Measured & { occupancy: Occupancy }> {
   const diffs = await engine.frameDiffs(sources.mp4);
   const options = { ...DEFAULT_OPTIONS, ...config.inspect };
   const { sampled: moments, probed } = inspection;
@@ -93,11 +101,13 @@ async function measure(sources: QaSources, engine: QaEngine, timeline: QaTimelin
   const words = readTiming(renameWordsBeats(sources.words, ids));
   const cited = citedIdsByBeat(sources, ids);
   const timing = timingReport({ timeline, words, held: heldBeats(sources, ids), diffs, fps: RENDER_FPS, probed, profile: config.timing ?? timingProfile() });
+  const stage = { width: options.W, height: options.H };
   return {
+    occupancy: { stage, tables: settledOccupancy({ timeline, moments, probed, stage }) },
     sweep: config.sweep !== false,
     framediff: framediff === undefined ? { fps: RENDER_FPS, shares: diffs } : { fps: RENDER_FPS, artifact: framediff },
     probe: probe === undefined ? { moments: probed } : { artifact: probe },
-    measured: measuredFindings({ timeline, moments, probed, diffs, fps: RENDER_FPS, stage: { width: options.W, height: options.H } }),
+    measured: measuredFindings({ timeline, moments, probed, diffs, fps: RENDER_FPS, stage }),
     timing,
     mediaScan: mediaScanByBeat(await engine.mediaScan(sources.mp4), timeline),
     captions: captionReport(sources.vtt, sources.words),
@@ -115,12 +125,18 @@ async function measure(sources: QaSources, engine: QaEngine, timeline: QaTimelin
  * render's verdict on an MP4 is the qa stage's.
  */
 export async function qaCoreReport(sources: QaSources, engine: QaEngine, config: QaConfig): Promise<QaReport> {
+  return (await qaCoreRun(sources, engine, config)).report;
+}
+
+/** The report with the settled-moment occupancy tables its measured checks anchored on, which qa.json does not carry. */
+export async function qaCoreRun(sources: QaSources, engine: QaEngine, config: QaConfig): Promise<{ report: QaReport; occupancy: Occupancy }> {
   const timeline = timelineFromArtifact(sources.timeline);
   const inspection = await cueGate(engine, sources.pageUrl, timeline, config, { lead: sources.lead, cropDir: sources.cropDir, sweep: config.sweep !== false, probe: true });
-  const measured = await measure(sources, engine, timeline, inspection, config);
+  const { occupancy, ...measured } = await measure(sources, engine, timeline, inspection, config);
   const mp4 = { durationS: await engine.durationS(sources.mp4), timelineS: timelineS(timeline), frameS: 1 / RENDER_FPS };
-  return qaReport(inspection.held, {
+  const report = qaReport(inspection.held, {
     profile: config.profile ?? null, gateProfileSha: config.sha, gate: config.gate, timeline: "timeline", moments: inspection.moments, mp4, ...measured,
     notes: [`${timeline.beats.length} beats from timeline`],
   });
+  return { report, occupancy };
 }

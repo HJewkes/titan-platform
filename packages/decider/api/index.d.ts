@@ -380,11 +380,15 @@ declare class LedgerStore {
     readonly db: Db;
     private readonly insertStmt;
     private readonly getStmt;
+    private readonly revisionCountStmt;
     private readonly watermarks;
     constructor(db: Db);
     /** Writes rows whose key is new and returns how many it wrote; a known key is left untouched. */
     append(rows: readonly LedgerRowWire[]): number;
     private insert;
+    private insertRow;
+    private revisionCount;
+    /** The current row for a key; for an edited note that is its newest revision. The suffix lives only in the table key, so a row's own `key` stays stable for readers. */
     get(key: string): LedgerRow | undefined;
     rows(filter?: LedgerRowFilter): LedgerRow[];
     /** Rows inserted after `since`, in insertion order; rowid only grows because the ledger never deletes. */

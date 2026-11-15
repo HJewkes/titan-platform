@@ -249,6 +249,8 @@ interface ContextBudget {
     defaultQuota?: number;
     defaultTiers?: Record<string, number>;
     maxTier?: number;
+    /** `edges` puts the best hits at both ends of the entries; default `score` keeps rank order. */
+    order?: "score" | "edges";
     estimateTokens?: (text: string) => number;
 }
 interface ContextEntry {
@@ -280,6 +282,10 @@ declare const ContextBudgetSchema: z.ZodObject<{
     defaultQuota: z.ZodOptional<z.ZodNumber>;
     defaultTiers: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>;
     maxTier: z.ZodOptional<z.ZodNumber>;
+    order: z.ZodOptional<z.ZodEnum<{
+        score: "score";
+        edges: "edges";
+    }>>;
 }, z.core.$strict>;
 /** One request shape for both modes, discriminated on `mode`. */
 declare const RetrievalRequestSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
@@ -294,6 +300,10 @@ declare const RetrievalRequestSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
         defaultQuota: z.ZodOptional<z.ZodNumber>;
         defaultTiers: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>;
         maxTier: z.ZodOptional<z.ZodNumber>;
+        order: z.ZodOptional<z.ZodEnum<{
+            score: "score";
+            edges: "edges";
+        }>>;
     }, z.core.$strict>;
     query: z.ZodString;
     limit: z.ZodOptional<z.ZodNumber>;

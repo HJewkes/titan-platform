@@ -22,6 +22,15 @@ describe("RetrievalRequestSchema", () => {
     expect(RetrievalRequestSchema.safeParse({ mode: "context", query: "q", budget }).success).toBe(false);
   });
 
+  it("accepts the edges and score orders and rejects an unknown one", () => {
+    const parse = (order: unknown) =>
+      RetrievalRequestSchema.safeParse({ mode: "context", query: "q", budget: { tokens: 10, order } }).success;
+
+    expect(parse("edges")).toBe(true);
+    expect(parse("score")).toBe(true);
+    expect(parse("middle")).toBe(false);
+  });
+
   it("rejects an estimator or any unknown key inside the budget", () => {
     const parse = (budget: unknown) => RetrievalRequestSchema.safeParse({ mode: "context", query: "q", budget }).success;
 

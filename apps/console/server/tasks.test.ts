@@ -20,10 +20,10 @@ const TASKS = [
   task("orbit-relay", "OR-1", { severity: "high", notes: "Handshake retry.", done_when: "A dropped handshake retries with backoff." }),
   task("orbit-relay", "OR-2", { tags: ["dep:OR-5"] }),
   task("orbit-relay", "OR-3"),
-  task("orbit-relay", "OR-4", { notes: "Depends on OR-9 (done)." }),
+  task("orbit-relay", "OR-4", { notes: "Depends on OR-9 (done).", tags: ["human-action"] }),
   task("orbit-relay", "OR-5", { tags: ["parent:OR-6"] }),
   task("orbit-relay", "OR-6", { severity: "high", notes: "Epic for the relay." }),
-  task("orbit-relay", "OR-7"),
+  task("orbit-relay", "OR-7", { owner_steps: [{ kind: "release", note: "Publish the relay build" }, { kind: "credential", note: "Rotate the relay key" }] }),
   // A migrated task: edges and deliverables are fields, and its tags are for retrieval only.
   task("orbit-relay", "OR-8", { parent: "OR-6", dep: ["OR-5"], deliverables: ["relay-v1", "relay-ghost"], tags: ["origin:relay"] }),
   task("orbit-relay", "OR-9", { status: "done", done_at: "2031-02-01" }),
@@ -181,7 +181,17 @@ describe("work.tasks", () => {
   it("sends a row only the fields the board renders", async () => {
     const { data } = await invoke<TasksResult>("work.tasks", {});
     const keys = new Set(data.tasks.flatMap((row) => Object.keys(row)));
-    expect(keys).toEqual(new Set(["slug", "id", "title", "severity", "stage", "stageReason", "stageGuessed"]));
+    expect(keys).toEqual(new Set(["slug", "id", "title", "severity", "stage", "stageReason", "stageGuessed", "owner_steps", "ownerTagged"]));
+  });
+
+  it("carries a task's owner_steps and its human-action tag to the row, and lists only those tasks for ownerOnly", async () => {
+    const { data } = await invoke<TasksResult>("work.tasks", { ownerOnly: true });
+    expect(data.tasks.map((row) => row.id)).toEqual(["OR-4", "OR-7"]);
+    expect(data.tasks.find((row) => row.id === "OR-7")?.owner_steps).toEqual([
+      { kind: "release", note: "Publish the relay build" },
+      { kind: "credential", note: "Rotate the relay key" },
+    ]);
+    expect(data.tasks.find((row) => row.id === "OR-4")?.ownerTagged).toBe(true);
   });
 
   it("only ever uses the shared stage vocabulary", async () => {
