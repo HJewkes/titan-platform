@@ -9,7 +9,7 @@
 import { z } from "zod";
 import type { OwnerItem, OwnerOp, OwnerOpKind } from "@titan-design/owner-queue";
 import { readRoster, type AgentsSource } from "./agents.js";
-import { readFlow, type ApprovalsSources } from "./approvals.js";
+import { liveHeads, readFlow, type ApprovalsSources } from "./approvals.js";
 import { gateStripCommands, gateStripReader, holdClassOf, type GateStrip, type GateStripReader } from "./gate-strip.js";
 import type { AgentRosterSnapshot } from "@titan-design/chat-protocol/agents";
 import { foldCoveredGates, gateHeadOf, liveAgentNames, markAged, onePerPr, oneRowPerRound, pinOf, sectionOf, type InboxSection, type Placed } from "./inbox-blocking.js";
@@ -327,9 +327,10 @@ interface OwnerQueueRead {
 
 /** The roster names the live askers a deposit or chat item waits on; unread, every such item reads as non-blocking. */
 async function readOwnerQueue({ shepherd, agents, now = Date.now, ...sources }: InboxSources, reads: ShownReads = {}): Promise<OwnerQueueRead> {
+  const liveRead = readOrGap("shepherd", () => shepherd.list("active"), []);
   const [approvals, live, roster] = await Promise.all([
-    readFlow(sources),
-    readOrGap("shepherd", () => shepherd.list("active"), []),
+    readFlow(sources, liveRead.then((read) => liveHeads(read.value))),
+    liveRead,
     agents === undefined ? undefined : readOrGap("agents", () => readRoster(agents), undefined),
   ]);
   const liveAgents = roster?.value === undefined ? undefined : liveAgentNames(roster.value);
