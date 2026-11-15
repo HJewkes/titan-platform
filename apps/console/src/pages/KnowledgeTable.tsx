@@ -46,13 +46,18 @@ function KnowledgeCard({ record }: { record: KnowledgeRow }): ReactNode {
 
 function KindPills({ record }: { record: KnowledgeRow }): ReactNode {
   return (
-    <HStack gap={1}>
+    <HStack gap={1} wrap>
       <Pill variant="subtle" size="xs">
         {record.kind}
       </Pill>
       <Pill variant="subtle" size="xs">
         {record.type}
       </Pill>
+      {(record.tags ?? []).map((tag) => (
+        <Pill key={tag} variant="outline" size="xs">
+          {tag}
+        </Pill>
+      ))}
     </HStack>
   );
 }

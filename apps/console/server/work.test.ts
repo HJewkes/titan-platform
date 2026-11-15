@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { EXIT } from "@titan-design/registry";
 import { snapshotKey } from "@titan-design/rpc-client";
+import { z } from "zod";
 import { activeWorkClient } from "./active-work.js";
 import { brokerReader } from "./broker.js";
 import { fixtureActiveWork, fixtureAnswer, type FixtureOptions } from "./fixtures.js";
@@ -167,6 +168,21 @@ describe("the knowledge reads", () => {
       "note:garden-plan/2031-01-19-seed-list.md",
     ]);
     expect(records[1]).toMatchObject({ kind: "note", slug: "lantern-docs", type: "plan", changed: "2031-02-28" });
+  });
+
+  it("carries a note's tags and omits them for an untagged note", async () => {
+    const noteList = z.object({ notes: z.array(z.object({ filename: z.string() }).passthrough()) });
+    daemon = await startFakeDaemon({ ok: true }, (command, args) => {
+      const answer = fixtureAnswer(command, args);
+      if (command !== "note.list") return answer;
+      const { notes } = noteList.parse(answer);
+      return { notes: notes.map((note) => (note.filename === "2031-03-03-backoff-ceiling.md" ? { ...note, tags: ["retry", "backoff"] } : note)), errors: [] };
+    });
+    const { records } = await readNotes(activeWorkClient(daemon.port));
+    const byRef = new Map(records.map((row) => [row.ref, row]));
+    expect(byRef.get("note:orbit-relay/2031-03-03-backoff-ceiling.md")?.tags).toEqual(["retry", "backoff"]);
+    expect(byRef.get("note:orbit-relay/2031-02-27-station-clock-skew.md")).not.toHaveProperty("tags");
+    expect(byRef.get("source:orbit-relay/pr-41-handshake.md")).not.toHaveProperty("tags");
   });
 
   it("leaves personal records out when personal initiatives are excluded", async () => {
