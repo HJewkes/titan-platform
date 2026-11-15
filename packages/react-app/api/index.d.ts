@@ -65,6 +65,11 @@ interface RpcHooks<M extends CommandMap> {
 /** Binds the hooks to a product's command map; the hooks themselves are untyped underneath. */
 declare function createRpcHooks<M extends CommandMap>(): RpcHooks<M>;
 
+/** A hand-typed hash can hold a lone `%`; keep the raw text rather than throw during render. */
+declare function safeDecode(text: string): string;
+/** Re-renders on every `hashchange` with the route `parse` reads from the current hash. */
+declare function useHashRoute<Route>(parse: (hash: string) => Route): Route;
+
 /** The element an exported page carries its snapshot in. */
 declare const SNAPSHOT_ELEMENT_ID = "titan-snapshot";
 /**
@@ -84,4 +89,4 @@ interface PageSourceOptions {
 /** A static source over the embedded snapshot when the page has one, otherwise a live one. */
 declare function pageDataSource(options?: PageSourceOptions): DataSource;
 
-export { type InvalidateOnOptions, type PageSourceOptions, type QueryArgs, type QueryResult, type QuerySettled, type QueryStatus, type RpcHooks, RpcProvider, type RpcProviderProps, SNAPSHOT_ELEMENT_ID, createRpcHooks, embedSnapshot, pageDataSource, readEmbeddedSnapshot };
+export { type InvalidateOnOptions, type PageSourceOptions, type QueryArgs, type QueryResult, type QuerySettled, type QueryStatus, type RpcHooks, RpcProvider, type RpcProviderProps, SNAPSHOT_ELEMENT_ID, createRpcHooks, embedSnapshot, pageDataSource, readEmbeddedSnapshot, safeDecode, useHashRoute };

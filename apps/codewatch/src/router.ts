@@ -1,5 +1,5 @@
 import { FindingSort } from "@titan-design/code-read/query";
-import { useSyncExternalStore } from "react";
+import { safeDecode, useHashRoute } from "@titan-design/react-app";
 import type { SortKey } from "./data/calls.js";
 
 export const FILTER_KEYS = ["rule", "severity", "kind", "provenance"] as const;
@@ -25,15 +25,6 @@ export type Route =
   | { page: "node"; id: string }
   | { page: "finding"; id: string }
   | { page: "compare" };
-
-/** A hand-typed hash can hold a lone `%`; keep the raw text rather than throw during render. */
-function safeDecode(text: string): string {
-  try {
-    return decodeURIComponent(text);
-  } catch {
-    return text;
-  }
-}
 
 /** Hash routes, because a page opened from disk has no server to answer a pushed path. */
 export function parseRoute(hash: string): Route {
@@ -78,13 +69,6 @@ function prioritiesSearch(query: PrioritiesQuery): string {
 export const nodeHref = (id: string): string => href({ page: "node", id });
 export const findingHref = (id: string): string => href({ page: "finding", id });
 
-function subscribe(onChange: () => void): () => void {
-  window.addEventListener("hashchange", onChange);
-  return () => window.removeEventListener("hashchange", onChange);
-}
-
-const readHash = (): string => window.location.hash;
-
 export function useRoute(): Route {
-  return parseRoute(useSyncExternalStore(subscribe, readHash, readHash));
+  return useHashRoute(parseRoute);
 }

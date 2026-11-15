@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "safeDecode throws on a lone percent",
+      "file": "packages/react-app/src/hooks/hash-route.ts",
+      "find": "  } catch {\n    return text;\n  }",
+      "replace": "  } catch {\n    throw new Error(text);\n  }",
+      "kills": ["safeDecode keeps a lone percent raw instead of throwing"]
+    },
+    {
+      "name": "hook never subscribes to hashchange",
+      "file": "packages/react-app/src/hooks/hash-route.ts",
+      "find": "window.addEventListener(\"hashchange\", onChange);",
+      "replace": "",
+      "kills": ["useHashRoute re-renders with the parsed route when the hash changes"]
+    },
+    {
+      "name": "hook never unsubscribes",
+      "file": "packages/react-app/src/hooks/hash-route.ts",
+      "find": "return () => window.removeEventListener(\"hashchange\", onChange);",
+      "replace": "return () => undefined;",
+      "kills": ["useHashRoute stops listening once unmounted"]
+    }
+  ]
+}
