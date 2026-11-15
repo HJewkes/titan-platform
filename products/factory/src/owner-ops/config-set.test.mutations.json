@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "factory-config-set skips the expectFrom comparison and overwrites a hand edit",
+      "file": "products/factory/src/owner-ops/config-set.ts",
+      "find": "  if (!isDeepStrictEqual(current, op.expectFrom)) return { outcome: \"moved\", currentValue: current ?? null };\n",
+      "replace": "",
+      "kills": ["factory-config-set answers moved on a hand edit after prepare and leaves the bytes unchanged"]
+    },
+    {
+      "name": "factory-config-set writes a result that fails FactoryConfigSchema",
+      "file": "products/factory/src/owner-ops/config-set.ts",
+      "find": "    parseConfig(file.path, text);\n",
+      "replace": "",
+      "kills": ["factory-config-set leaves the file byte-identical and writes no backup when the result fails FactoryConfigSchema"]
+    },
+    {
+      "name": "factory-config-set keeps no backup of the old bytes",
+      "file": "products/factory/src/owner-ops/config-set.ts",
+      "find": "  if (change.disk.bytes !== null) await writeDurably(",
+      "replace": "  if (change.disk.bytes === null) await writeDurably(",
+      "kills": ["factory-config-set writes the backup, the revision line and the new file, and the ref reads the new value"]
+    },
+    {
+      "name": "factory-config-set ignores its own done row on a replay",
+      "file": "products/factory/src/owner-ops/config-set.ts",
+      "find": "  if ((await deps.ledger.read(actionId)).some(setByThis)) return",
+      "replace": "  if (false) return",
+      "kills": ["factory-config-set answers already on a replay whose ledger has done, and writes nothing more"]
+    },
+    {
+      "name": "factory-config-set leaves its temp file behind when the rename throws",
+      "file": "products/factory/src/owner-ops/config-set.ts",
+      "find": "  } catch (error) {\n    await rm(temp, { force: true });\n    throw error;\n  }\n",
+      "replace": "  } catch (error) {\n    throw error;\n  }\n",
+      "kills": ["factory-config-set leaves the old file whole when the write throws between the temp file and the rename"]
+    }
+  ]
+}
