@@ -30,7 +30,7 @@ export {
   type Rect,
   type SceneRect,
 } from "./place-pills.js";
-export { packageOf } from "./package-of.js";
+export { packageOf, packageRootOf } from "./package-of.js";
 export { COMPOUND_LAYOUT_OPTIONS, ELK_LAYOUT_OPTIONS, FOCUS_LAYOUT_OPTIONS } from "./layout-options.js";
 export type {
   CompoundLayoutResult,
