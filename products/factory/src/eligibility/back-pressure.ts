@@ -24,6 +24,8 @@ export interface LaneSignals {
   openPrs?: number;
   /** Lane PRs whose run merged no earlier than the oldest commit the running factory build lacks. */
   mergedNotDeployed?: number;
+  /** The `initiative/ID` keys behind `mergedNotDeployed`, so a rule counting the same merge elsewhere can skip it. */
+  mergedNotDeployedTasks?: readonly string[];
   /** Shepherd gates waiting on the owner, as `titan-factory shepherd waiting` lists them; not the `needs` inbox. */
   ownerQueue?: number;
   reviewers?: { accounts: number; exhausted: number };
