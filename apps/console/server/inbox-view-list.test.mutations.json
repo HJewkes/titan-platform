@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a deposit with no op is left on the terminal",
+      "file": "apps/console/server/inbox-view.ts",
+      "find": "if (op === undefined) return { action: { kind: \"answer-deposit\" } };",
+      "replace": "if (op === undefined) return { action: terminal(\"a deposit is agent-written\", item.command) };",
+      "kills": [
+        "inbox.list on a fixture factory, every source kind returns every source kind with its action, blocking first and newest first"
+      ]
+    },
+    {
+      "name": "the inbox lists the oldest blocking item first",
+      "file": "apps/console/server/inbox-view.ts",
+      "find": "const opened = Date.parse(b.openedAt) - Date.parse(a.openedAt);",
+      "replace": "const opened = Date.parse(a.openedAt) - Date.parse(b.openedAt);",
+      "kills": [
+        "inbox.list on a fixture factory, every source kind returns every source kind with its action, blocking first and newest first"
+      ]
+    }
+  ]
+}

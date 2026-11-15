@@ -36,6 +36,10 @@ export interface HitLogEntry {
   /** The winning span's byte range in the hit's file; null when the hit carries no span. */
   byteOffset: number | null;
   byteLength: number | null;
+  /** The task the hit was served for, as `<initiative>/<ID>`; set by a spawn brief. */
+  task?: string;
+  /** The brief section the hit rendered in. */
+  section?: string;
 }
 
 /** Resolves to an error message when the append failed, null when it did not. */
@@ -72,6 +76,8 @@ interface ServedContext {
   slug: string;
   trigger: HitTrigger;
   query: string;
+  task?: string;
+  section?: string;
 }
 
 /** One entry per served hit, ranked in the order served. */

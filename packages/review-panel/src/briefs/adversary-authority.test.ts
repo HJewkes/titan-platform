@@ -45,7 +45,7 @@ describe("authorityLine", () => {
     expect(authorityLine("**Authority:** unchanged\nAuthority: tightened")).toBe("malformed");
   });
 
-  it("a word that only starts with Authority is not a label", () => {
-    expect(authorityLine("Authority_check: done\nAuthority: unchanged")).toBe("unchanged");
+  it("a word that only starts with Authority is still a label, read malformed", () => {
+    expect(authorityLine("Authority_check: done\nAuthority: unchanged")).toBe("malformed");
   });
 });
