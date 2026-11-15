@@ -3,6 +3,7 @@ import type { AuditionSlot } from "./audition-pool.js";
 import type { MaterialFact } from "./material-facts.js";
 import type { MaterialMap } from "./material-map.js";
 import type { TypeProfile } from "./profile-schema.js";
+import { outlineIssues } from "./outline-gate.js";
 import type { NarrativeStructure } from "./structure-schema.js";
 
 /** One block of a sampled spine: the question it opens, the facts that answer it, its length and its lead beat. */
@@ -105,6 +106,7 @@ function spineIssues(ctx: SampleContext, spine: SpineCandidate, slot: AuditionSl
   const unknown = [spine.hook.fact, ...spine.blocks.flatMap((b) => b.facts)].filter((id) => !known.has(id));
   if (unknown.length) issues.push(`${at}: unknown fact ids ${[...new Set(unknown)].join(", ")}`);
   if (!spine.blocks.some((b) => b.id === spine.payoff)) issues.push(`${at}.payoff: ${spine.payoff} is not a block id`);
+  issues.push(...outlineIssues(spine, ctx.profile).map((issue) => `${at}: ${issue}`));
   return issues;
 }
 
