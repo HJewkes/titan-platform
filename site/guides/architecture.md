@@ -311,6 +311,7 @@ graph TD
   fleetPanel --> rpcProtocol
   retrievalEval --> appPaths
   retrievalEval --> embed
+  retrievalEval --> evidence
   retrievalEval --> retrieval
   retrievalEval --> rpcProtocol
   retrievalEval --> sessionRead
