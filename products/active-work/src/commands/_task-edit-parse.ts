@@ -19,7 +19,7 @@ const EDITABLE_FIELDS = [
 
 export type EditableField = (typeof EDITABLE_FIELDS)[number];
 
-export const CLEAR_FIELDS = ['due', 'kind', 'cos', 'area', 'parent', 'bet'] as const;
+const CLEAR_FIELDS = ['due', 'kind', 'cos', 'area', 'parent', 'bet'] as const;
 
 export type ClearField = (typeof CLEAR_FIELDS)[number];
 
