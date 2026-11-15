@@ -29,7 +29,7 @@ export function briefClasses(classes: readonly SearchClass[] = SEARCH_CLASSES): 
 
 interface BriefRef {
   ref: string;
-  source: 'workspace';
+  source: 'workspace' | 'code' | 'sessions';
 }
 
 export interface BriefBlock {
