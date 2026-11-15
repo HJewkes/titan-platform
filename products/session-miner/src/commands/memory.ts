@@ -2,11 +2,12 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { DEFAULT_GROUP_THRESHOLD, type MemoryFactType, type ParseFailure } from "@titan-design/memory";
 import { defineCommand, EXIT } from "@titan-design/registry";
-import { expandHome } from "@titan-design/session-read";
+import { claudeTranscriptRoots, expandHome } from "@titan-design/session-read";
 import { z } from "zod";
 import type { MinerContext } from "../context.js";
 import { scanMemory, type MemoryScan } from "../memory/discover.js";
 import { checkIndex, type IndexCheck } from "../memory/index-check.js";
+import { instructionFacts, scanInstructions } from "../memory/instructions.js";
 import { buildMemoryReport, writeMemoryReport, type MemoryReport } from "../memory/report.js";
 import { defaultSkillsRoots, readSkills } from "../memory/skills.js";
 
@@ -43,6 +44,7 @@ interface MemoryReportResult {
   decisions: string;
   files: number;
   skillsIndexed: number;
+  instructionSections: number;
   groups: number;
   singletons: number;
   largestGroup: number;
@@ -93,7 +95,7 @@ function summarizeScan(scan: MemoryScan): MemoryScanResult {
 }
 
 // Group stats and paths only: fact text never leaves the machine through MCP or HTTP.
-function summarizeReport(scan: MemoryScan, report: MemoryReport, skillsIndexed: number): Omit<MemoryReportResult, "dir" | "report" | "decisions"> {
+function summarizeReport(scan: MemoryScan, report: MemoryReport, skillsIndexed: number): Omit<MemoryReportResult, "dir" | "report" | "decisions" | "instructionSections"> {
   const sizes = report.groups.map((group) => group.facts.length);
   return {
     reportId: report.reportId,
@@ -142,9 +144,10 @@ export const memoryReport = defineCommand<z.infer<typeof ReportArgs>, MemoryRepo
   async run(args, ctx) {
     refuseOffCli([...(args.skillsRoot.length > 0 ? ["--skills-root"] : []), ...(args.out ? ["--out"] : [])], ctx);
     const scan = scanMemory();
+    const instructions = instructionFacts(scanInstructions(claudeTranscriptRoots()));
     const skills = readSkills(args.skillsRoot.length > 0 ? args.skillsRoot.map((root) => expandHome(root)) : defaultSkillsRoots());
-    const report = buildMemoryReport(scan.facts, skills, new Date(), args.groupThreshold);
+    const report = buildMemoryReport([...scan.facts, ...instructions], skills, new Date(), args.groupThreshold);
     const written = writeMemoryReport(args.out ? expandHome(args.out) : path.join(ctx.config.stateDir, "memory-miner"), report);
-    return { ...summarizeReport(scan, report, skills.length), ...written };
+    return { ...summarizeReport(scan, report, skills.length), instructionSections: instructions.length, ...written };
   },
 });

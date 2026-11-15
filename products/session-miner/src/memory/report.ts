@@ -63,9 +63,15 @@ export function buildMemoryReport(facts: readonly ParsedFact[], skills: readonly
   return { reportId: reportIdFor(facts, now), groups: groups.map((group, index) => toReportGroup(group, index, skills, now)) };
 }
 
+/** A CLAUDE.md section enters the report as a fact whose source is a CLAUDE.md file. */
+function isInstructionSection(fact: ParsedFact): boolean {
+  return path.basename(fact.ref.path) === "CLAUDE.md";
+}
+
 function renderFact(fact: ParsedFact): string {
   const body = fact.body.split("\n").map((line) => `> ${line}`).join("\n");
-  return `#### ${fact.name} (${fact.type})\n\n${fact.description}\n\n${body}\n`;
+  const label = isInstructionSection(fact) ? "instruction section" : fact.type;
+  return `#### ${fact.name} (${label})\n\n${fact.description}\n\n${body}\n`;
 }
 
 function renderGroup(group: ReportGroup): string {

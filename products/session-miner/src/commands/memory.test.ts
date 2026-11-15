@@ -1,4 +1,4 @@
-import { mkdirSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { EXIT, invokeCommand } from "@titan-design/registry";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -109,6 +109,28 @@ describe("memory report", () => {
     const { envelope } = await invokeCommand(memoryReport, { skillsRoot: [path.join(temp.home, "nowhere")], out }, context("cli"));
 
     expect(envelope).toMatchObject({ data: { dir: expect.stringContaining(out), skillsIndexed: 0 } });
+  });
+
+  it("lists and counts the sections of a global CLAUDE.md and never proposes deleting it", async () => {
+    const claudeMd = path.join(temp.home, ".claude", "CLAUDE.md");
+    writeFileSync(claudeMd, `## Voice\n\nKeep answers short. ${SENTINEL}\n\n## Commits\n\nUse imperative subjects.\n`);
+    const old = new Date(Date.now() - 400 * 86_400_000);
+    utimesSync(claudeMd, old, old);
+
+    const { envelope } = await invokeCommand(memoryReport, {}, context());
+
+    expect(envelope).toMatchObject({ ok: true, data: { files: 3, instructionSections: 2, groups: 4 } });
+    expect(envelope).not.toMatchObject({ data: { byDestination: { delete: expect.anything() } } });
+    expect(JSON.stringify(envelope)).not.toContain(SENTINEL);
+    const reports = path.join(temp.home, "state", "memory-miner");
+    const [reportId = ""] = readdirSync(reports);
+    expect(readFileSync(path.join(reports, reportId, "report.md"), "utf8")).toContain("#### Voice (instruction section)");
+  });
+
+  it("reports zero instruction sections when no CLAUDE.md exists", async () => {
+    const { envelope } = await invokeCommand(memoryReport, {}, context());
+
+    expect(envelope).toMatchObject({ ok: true, data: { instructionSections: 0 } });
   });
 
   it("proposes delete for a project fact whose old mtime is its only date", async () => {
