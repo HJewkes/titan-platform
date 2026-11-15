@@ -7,7 +7,7 @@ import { z } from "zod";
  * aggregate reads it to propose checks, and a MERGE after FIX_FIRSTs confirms the rows of the answered rounds.
  */
 const MemberSchema = z.object({ shape: z.string(), agentId: z.string(), verdict: z.enum(["MERGE", "FIX_FIRST"]) });
-export type CandidateMember = z.infer<typeof MemberSchema>;
+type CandidateMember = z.infer<typeof MemberSchema>;
 
 /** One reviewer's line of a `Check-candidates:` block at one head. */
 export interface CandidateInput {
@@ -23,7 +23,7 @@ export interface CandidateInput {
   locator: string;
 }
 
-export interface CheckCandidate {
+interface CheckCandidate {
   runId: string;
   repo: string;
   pr: number;
