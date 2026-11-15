@@ -36,6 +36,7 @@
     "@huggingface/transformers": "^3.0.0",
     "@titan-design/app-paths": "workspace:*",
     "@titan-design/embed": "workspace:^",
+    "@titan-design/evidence": "workspace:^",
     "@titan-design/retrieval": "workspace:^",
     "@titan-design/rpc-protocol": "workspace:^",
     "@titan-design/session-read": "workspace:^",

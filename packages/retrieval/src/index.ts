@@ -11,6 +11,8 @@ export type { GraphRetrieverOptions } from "./retrievers/graph.js";
 export { expandGraph, graphRetriever } from "./retrievers/graph.js";
 export type { WalkGraph, WalkNeighbour, WalkOptions, WalkStep } from "./retrievers/walk.js";
 export { defaultHubDegree, walkGraph } from "./retrievers/walk.js";
+export type { CollapsedTreeOptions, SummaryNode } from "./retrievers/tree.js";
+export { collapsedTreeRetriever } from "./retrievers/tree.js";
 export type { Candidate, CrossEncoderOptions, Reranked, Reranker } from "./rerank.js";
 export { crossEncoderReranker, rerankCandidates } from "./rerank.js";
 export type { EngineOptions, RecoveryStep, RetrievalEngine, SearchOptions, SearchResponse } from "./engine.js";
