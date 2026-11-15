@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the cache is never consulted, so every note is re-read",
+      "file": "products/active-work/src/workspace-index/refresh.ts",
+      "find": "if (!source.full && file && hit &&",
+      "replace": "if (false && file && hit &&",
+      "kills": [
+        "refreshWorkspace note body cache reads no note body when only a task file changed",
+        "refreshWorkspace note body cache re-reads exactly the one note that was edited"
+      ]
+    },
+    {
+      "name": "a hit ignores the file's mtime",
+      "file": "products/active-work/src/workspace-index/refresh.ts",
+      "find": "hit.mtime === file.mtime && hit.size === file.size",
+      "replace": "hit.size === file.size",
+      "kills": [
+        "refreshWorkspace note body cache produces the same edges as a fresh full refresh after an edit"
+      ]
+    },
+    {
+      "name": "a hit ignores the file's size and mtime",
+      "file": "products/active-work/src/workspace-index/refresh.ts",
+      "find": "hit.mtime === file.mtime && hit.size === file.size",
+      "replace": "true",
+      "kills": [
+        "refreshWorkspace note body cache produces the same edges as a fresh full refresh after an edit"
+      ]
+    }
+  ]
+}
