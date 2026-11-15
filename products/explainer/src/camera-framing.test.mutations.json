@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "key rows ignore the caption keep-out line",
+      "file": "products/explainer/src/camera-framing.ts",
+      "find": "!within(projectBox(key.box, s.camera), CAPTION_KEEP_OUT)",
+      "replace": "!within(projectBox(key.box, s.camera), 1)",
+      "kills": [
+        "camera framing key boxes fails a key that dips into the caption band at its sample time"
+      ]
+    },
+    {
+      "name": "key rows check samples outside the key's window",
+      "file": "products/explainer/src/camera-framing.ts",
+      "find": "s.t >= key.fromS && s.t <= key.toS && ",
+      "replace": "",
+      "kills": [
+        "camera framing key boxes ignores samples outside the key's window"
+      ]
+    },
+    {
+      "name": "a key past the left edge goes unreported",
+      "file": "products/explainer/src/camera-framing.ts",
+      "find": "box.x >= 0 && box.y >= 0",
+      "replace": "box.y >= 0",
+      "kills": [
+        "camera framing key boxes fails a key pushed past the frame's left edge"
+      ]
+    },
+    {
+      "name": "reveal rows flag samples at or after the cue",
+      "file": "products/explainer/src/camera-framing.ts",
+      "find": "s.t < reveal.atS",
+      "replace": "s.t <= reveal.atS + 10",
+      "kills": [
+        "camera framing reveals passes a reveal object that stays off-frame until its cue"
+      ]
+    },
+    {
+      "name": "a partly framed reveal object counts as seen",
+      "file": "products/explainer/src/camera-framing.ts",
+      "find": "s.t < reveal.atS && within(projectBox(reveal.box, s.camera), 1)",
+      "replace": "s.t < reveal.atS && projectBox(reveal.box, s.camera).x < 1",
+      "kills": [
+        "camera framing reveals passes a reveal object only partly in frame before its cue"
+      ]
+    }
+  ]
+}
