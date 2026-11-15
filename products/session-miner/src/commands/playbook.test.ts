@@ -219,3 +219,27 @@ describe("CLI option clarity", () => {
     expect((await cli(["playbook", "reflect", "s1", "--dry-run"])).code).toBe(64);
   });
 });
+
+describe("playbook.status staleness", () => {
+  type Status = { stale: number; staleOldest: Array<BulletView & { lastEvidenceAt: string }> };
+  const DAY_MS = 86_400_000;
+
+  it("counts a bullet silent for 200 days and skips fresh and pinned ones", async () => {
+    const store = ctx.playbook();
+    const old = store.add({ content: "Rerun the suite before blaming the test" });
+    store.recordFeedback(old.id, "helpful", { at: new Date(Date.now() - 200 * DAY_MS).toISOString() });
+    store.add({ content: "Pin the npm major in release jobs" });
+    const pinned = store.add({ content: "Never edit generated files", pinned: true });
+    store.recordFeedback(pinned.id, "helpful", { at: new Date(Date.now() - 200 * DAY_MS).toISOString() });
+
+    const st = await run<Record<string, never>, Status>(playbookStatus, {});
+    expect(st.envelope.data!.stale).toBe(1);
+    expect(st.envelope.data!.staleOldest.map((b) => b.id)).toEqual([old.id]);
+    expect(st.envelope.data!.staleOldest[0]!.lastEvidenceAt).toBeTypeOf("string");
+  });
+
+  it("reports no stale rules for an empty playbook", async () => {
+    const st = await run<Record<string, never>, Status>(playbookStatus, {});
+    expect(st.envelope.data).toMatchObject({ stale: 0, staleOldest: [] });
+  });
+});
