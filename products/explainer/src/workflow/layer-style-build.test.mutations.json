@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the build notes never carry the style tells",
+      "file": "products/explainer/src/workflow/layer-build.ts",
+      "find": "builtNote(built), ...styleNotes(built)]",
+      "replace": "builtNote(built)]",
+      "kills": [
+        "the style tells note on custom-layer builds notes a layer's decorative gradients and glows in the build notes and still builds it"
+      ]
+    }
+  ]
+}
