@@ -1,5 +1,5 @@
-import type { Rule } from "eslint";
 import type { SourceLocation } from "estree";
+import type { TitanRule } from "./titan-rule.js";
 
 // typescript-estree nodes are not in ESTree's types, so the rule reads the few fields it needs structurally.
 type Annotation = { type: string; typeName?: { type: string; name?: string } };
@@ -27,10 +27,13 @@ function assertionChain(outermost: AssertionLike): AssertionLike[] {
   return chain;
 }
 
-export const noChainedTypeAssertions: Rule.RuleModule = {
+export const noChainedTypeAssertions: TitanRule = {
   meta: {
     type: "problem",
-    docs: { description: "Disallow a type assertion applied to another type assertion, such as `x as unknown as T`" },
+    docs: {
+      description: "Disallow a type assertion applied to another type assertion, such as `x as unknown as T`",
+      classes: ["hand-written-schema-drift", "wrong-signature"],
+    },
     schema: [],
     messages: {
       chained:

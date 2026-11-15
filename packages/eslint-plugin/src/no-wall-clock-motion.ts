@@ -1,5 +1,5 @@
-import type { Rule } from "eslint";
 import type { CallExpression, Node } from "estree";
+import type { TitanRule } from "./titan-rule.js";
 
 export const DEFAULT_MOTION_PATHS: readonly string[] = ["/ui/beats/", "/motion/"];
 
@@ -46,10 +46,10 @@ function configuredPaths(option: unknown): readonly string[] {
   return Array.isArray(paths) ? paths.filter((path): path is string => typeof path === "string") : DEFAULT_MOTION_PATHS;
 }
 
-export const noWallClockMotion: Rule.RuleModule = {
+export const noWallClockMotion: TitanRule = {
   meta: {
     type: "problem",
-    docs: { description: "Disallow wall-clock time and unseeded randomness in beat and motion code" },
+    docs: { description: "Disallow wall-clock time and unseeded randomness in beat and motion code", classes: ["real-clock-in-test"] },
     schema: [
       {
         type: "object",

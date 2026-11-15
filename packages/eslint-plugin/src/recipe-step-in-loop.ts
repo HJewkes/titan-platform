@@ -1,5 +1,6 @@
 import type { Rule } from "eslint";
 import type { CallExpression } from "estree";
+import type { TitanRule } from "./titan-rule.js";
 
 const STEP_OPS = new Set(["dispatch", "seed", "assisted", "authorize"]);
 const STEP_WRAPPERS = new Set(["step", "codeStep"]);
@@ -84,10 +85,10 @@ function inLoop(node: Node): boolean {
  * Residual: a helper declared outside the loop that holds the step op and is called in it is not seen, because the rule reads one function at a time.
  * The runtime orphan trap (TP-3108 S5) covers that case.
  */
-export const recipeStepInLoop: Rule.RuleModule = {
+export const recipeStepInLoop: TitanRule = {
   meta: {
     type: "problem",
-    docs: { description: "Disallow a recipe step op called in a loop outside all(...)" },
+    docs: { description: "Disallow a recipe step op called in a loop outside all(...)", classes: ["multi-step-sequence-bug"] },
     schema: [],
     messages: {
       stepInLoop:
