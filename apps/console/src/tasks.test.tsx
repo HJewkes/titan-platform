@@ -275,6 +275,40 @@ describe("a task's detail", () => {
     expect(await screen.findByText("Session links are unavailable: No session graph at the configured path")).toBeTruthy();
   });
 
+  it("links the parent, each dependency and each open child to its task page, with the child's status", async () => {
+    const related: TaskDetail = {
+      ...DETAIL,
+      task: { ...DETAIL.task, parent: "OR-10", dep: ["OR-11"] },
+      children: [{ id: "OR-12", title: "Child work", status: "open" }],
+    };
+    for (const id of ["OR-10", "OR-11", "OR-12"]) {
+      renderConsole("#/tasks/OR-1", recorded(TASKS, related), { inApp: true });
+      const panel = await screen.findByTestId("related-panel");
+      expect(within(panel).getByText("open")).toBeTruthy();
+      fireEvent.click(within(panel).getByText(new RegExp(`^${id}`)));
+      await waitFor(() => expect(window.location.hash).toBe(`#/tasks/${id}`));
+      cleanup();
+    }
+  });
+
+  it("names a deliverable's record title, or says it has no record", async () => {
+    const record = { id: "D-1", title: "Handshake guide", status: "active" as const, target: null, owner_seat: "docs", tags: [], tasks: { open: 1, done: 0 } };
+    renderConsole("#/tasks/OR-1", recorded(TASKS, { ...DETAIL, deliverables: [{ id: "D-1", record }, { id: "D-2", record: null }] }));
+    const panel = await screen.findByTestId("related-panel");
+    expect(within(panel).getByText("D-1 Handshake guide")).toBeTruthy();
+    expect(within(panel).getByText("D-2 no record")).toBeTruthy();
+  });
+
+  it("warns when the deliverable registry is degraded", async () => {
+    renderConsole("#/tasks/OR-1", recorded(TASKS, { ...DETAIL, deliverablesDegraded: "daemon too old" }));
+    expect(await screen.findByText("Deliverables are unavailable: daemon too old")).toBeTruthy();
+  });
+
+  it("says when a task has no related tasks", async () => {
+    renderConsole("#/tasks/OR-1", recorded());
+    expect(await screen.findByText("No related tasks")).toBeTruthy();
+  });
+
   it("warns when pull request state is unavailable", async () => {
     renderConsole("#/tasks/OR-1", recorded(TASKS, { ...DETAIL, evidence: { repos: [], degraded: ["GitHub unreachable"] } }));
     expect(await screen.findByText("Pull request state is unavailable: GitHub unreachable.")).toBeTruthy();
