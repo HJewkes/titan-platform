@@ -123,6 +123,12 @@ describe("runCli enum options", () => {
   it("rejects an unknown run --candidates and names the allowed candidates", async () => {
     const { code, message } = await failure(["run", "pairs.jsonl", "--candidates", "bogus"]);
     expect(code).toBe(1);
-    expect(message).toContain("date-order-notes, active-work-search, notes-fts, hybrid-fts-vector");
+    expect(message).toContain("date-order-notes, active-work-search, notes-fts, hybrid-fts-vector, hybrid-bge-small");
+  });
+
+  it("rejects an unknown run --embedder and names the allowed backends", async () => {
+    const { code, message } = await failure(["run", "pairs.jsonl", "--candidates", "hybrid-fts-vector", "--embedder", "bogus"]);
+    expect(code).toBe(1);
+    expect(message).toContain("--embedder must be one of hash, ollama, local, got bogus");
   });
 });
