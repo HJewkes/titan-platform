@@ -1,5 +1,6 @@
 import { BrokerUnavailableError, DispatchTimeoutError, type AgentRow } from "@titan-design/agent-dispatch";
 import type { ShepherdDeps } from "./phases.js";
+import { DEFAULT_HOLD_WAIT_MS } from "./review-wait.js";
 import { SpawnDeferred } from "./spawn-gate.js";
 
 const DEFAULT_POLL_MS = 30_000;
@@ -9,9 +10,9 @@ export const WAKE_ASK_MS = 5 * 60_000;
 
 /**
  * How long a wake waits out the spawn gate alone. A deferral means the machine is busy, which passes, so it waits longer
- * than an ask that may never land: a 5-minute bound gave up on a resume while memory ran low and left the run with no fixer (TP-3238).
+ * than an ask that may never land, and as long as a review the same gate queues: a 5-minute bound gave up on a resume while memory ran low and left the run with no fixer (TP-3238).
  */
-export const WAKE_DEFER_MS = 30 * 60_000;
+export const WAKE_DEFER_MS = DEFAULT_HOLD_WAIT_MS;
 
 /** Waited out: nothing was asked of the broker, or what was asked is checked on the next roster read. */
 const brokerDown = (error: unknown): boolean => error instanceof BrokerUnavailableError || error instanceof DispatchTimeoutError;
