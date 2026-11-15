@@ -52,6 +52,9 @@
     "codewatch/product-isolation:apps/codewatch->apps/console": [
       "other:import-boundary"
     ],
+    "codewatch/product-isolation:apps/codewatch->apps/docs": [
+      "other:import-boundary"
+    ],
     "codewatch/product-isolation:apps/codewatch->products/active-work": [
       "other:import-boundary"
     ],
@@ -85,6 +88,9 @@
     "codewatch/product-isolation:apps/console->apps/codewatch": [
       "other:import-boundary"
     ],
+    "codewatch/product-isolation:apps/console->apps/docs": [
+      "other:import-boundary"
+    ],
     "codewatch/product-isolation:apps/console->products/active-work": [
       "other:import-boundary"
     ],
@@ -115,10 +121,49 @@
     "codewatch/product-isolation:apps/console->products/yt-scout": [
       "other:import-boundary"
     ],
+    "codewatch/product-isolation:apps/docs->apps/codewatch": [
+      "other:import-boundary"
+    ],
+    "codewatch/product-isolation:apps/docs->apps/console": [
+      "other:import-boundary"
+    ],
+    "codewatch/product-isolation:apps/docs->products/active-work": [
+      "other:import-boundary"
+    ],
+    "codewatch/product-isolation:apps/docs->products/corpus-query": [
+      "other:import-boundary"
+    ],
+    "codewatch/product-isolation:apps/docs->products/evals": [
+      "other:import-boundary"
+    ],
+    "codewatch/product-isolation:apps/docs->products/explainer": [
+      "other:import-boundary"
+    ],
+    "codewatch/product-isolation:apps/docs->products/factory": [
+      "other:import-boundary"
+    ],
+    "codewatch/product-isolation:apps/docs->products/fleet-panel": [
+      "other:import-boundary"
+    ],
+    "codewatch/product-isolation:apps/docs->products/retrieval-eval": [
+      "other:import-boundary"
+    ],
+    "codewatch/product-isolation:apps/docs->products/session-miner": [
+      "other:import-boundary"
+    ],
+    "codewatch/product-isolation:apps/docs->products/titan": [
+      "other:import-boundary"
+    ],
+    "codewatch/product-isolation:apps/docs->products/yt-scout": [
+      "other:import-boundary"
+    ],
     "codewatch/product-isolation:products/active-work->apps/codewatch": [
       "other:import-boundary"
     ],
     "codewatch/product-isolation:products/active-work->apps/console": [
+      "other:import-boundary"
+    ],
+    "codewatch/product-isolation:products/active-work->apps/docs": [
       "other:import-boundary"
     ],
     "codewatch/product-isolation:products/active-work->products/corpus-query": [
@@ -154,6 +199,9 @@
     "codewatch/product-isolation:products/corpus-query->apps/console": [
       "other:import-boundary"
     ],
+    "codewatch/product-isolation:products/corpus-query->apps/docs": [
+      "other:import-boundary"
+    ],
     "codewatch/product-isolation:products/corpus-query->products/active-work": [
       "other:import-boundary"
     ],
@@ -185,6 +233,9 @@
       "other:import-boundary"
     ],
     "codewatch/product-isolation:products/evals->apps/console": [
+      "other:import-boundary"
+    ],
+    "codewatch/product-isolation:products/evals->apps/docs": [
       "other:import-boundary"
     ],
     "codewatch/product-isolation:products/evals->products/active-work": [
@@ -220,6 +271,9 @@
     "codewatch/product-isolation:products/explainer->apps/console": [
       "other:import-boundary"
     ],
+    "codewatch/product-isolation:products/explainer->apps/docs": [
+      "other:import-boundary"
+    ],
     "codewatch/product-isolation:products/explainer->products/active-work": [
       "other:import-boundary"
     ],
@@ -251,6 +305,9 @@
       "other:import-boundary"
     ],
     "codewatch/product-isolation:products/factory->apps/console": [
+      "other:import-boundary"
+    ],
+    "codewatch/product-isolation:products/factory->apps/docs": [
       "other:import-boundary"
     ],
     "codewatch/product-isolation:products/factory->products/active-work": [
@@ -286,6 +343,9 @@
     "codewatch/product-isolation:products/fleet-panel->apps/console": [
       "other:import-boundary"
     ],
+    "codewatch/product-isolation:products/fleet-panel->apps/docs": [
+      "other:import-boundary"
+    ],
     "codewatch/product-isolation:products/fleet-panel->products/active-work": [
       "other:import-boundary"
     ],
@@ -317,6 +377,9 @@
       "other:import-boundary"
     ],
     "codewatch/product-isolation:products/retrieval-eval->apps/console": [
+      "other:import-boundary"
+    ],
+    "codewatch/product-isolation:products/retrieval-eval->apps/docs": [
       "other:import-boundary"
     ],
     "codewatch/product-isolation:products/retrieval-eval->products/active-work": [
@@ -352,6 +415,9 @@
     "codewatch/product-isolation:products/session-miner->apps/console": [
       "other:import-boundary"
     ],
+    "codewatch/product-isolation:products/session-miner->apps/docs": [
+      "other:import-boundary"
+    ],
     "codewatch/product-isolation:products/session-miner->products/active-work": [
       "other:import-boundary"
     ],
@@ -385,6 +451,9 @@
     "codewatch/product-isolation:products/titan->apps/console": [
       "other:import-boundary"
     ],
+    "codewatch/product-isolation:products/titan->apps/docs": [
+      "other:import-boundary"
+    ],
     "codewatch/product-isolation:products/titan->products/active-work": [
       "other:import-boundary"
     ],
@@ -416,6 +485,9 @@
       "other:import-boundary"
     ],
     "codewatch/product-isolation:products/yt-scout->apps/console": [
+      "other:import-boundary"
+    ],
+    "codewatch/product-isolation:products/yt-scout->apps/docs": [
       "other:import-boundary"
     ],
     "codewatch/product-isolation:products/yt-scout->products/active-work": [
