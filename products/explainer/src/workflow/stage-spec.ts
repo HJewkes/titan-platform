@@ -87,7 +87,7 @@ const SheetsParamsSchema = z.strictObject({ take: z.string().min(1).optional(), 
 const RenderParamsSchema = z.strictObject({ workers: z.number().int().positive().optional(), twoRun: z.boolean().optional(), noQa: z.boolean().optional() });
 
 /** A video and every run of it, oldest first: the sidecar lists them, so a new linked run re-keys the sheets stage. */
-const VideoRefSchema = z.object({ id: z.string(), runIds: z.array(z.string()) });
+const VideoRefSchema = z.object({ id: z.string(), runIds: z.array(z.string()), position: z.number().int().positive().optional() });
 export type VideoRef = z.infer<typeof VideoRefSchema>;
 
 /** The voice a run with no profile speaks in: the bridge's voice at Kokoro's natural rate. */
@@ -113,7 +113,7 @@ const StageConfigSchema = z.object({
   /** The render variant's style pack, by content hash, so an edit to the pack's file misses the cache. */
   stylePack: z.object({ id: z.string(), sha: z.string() }).optional(),
   /** The sheets stage's sidecar take and status, the theater stem its poster is named after, and the structure registry by hash. */
-  sheets: z.object({ take: z.string(), status: z.enum(SIDECAR_STATUSES), stem: z.string(), structures: z.string() }).optional(),
+  sheets: z.object({ take: z.string().optional(), day: z.string().optional(), status: z.enum(SIDECAR_STATUSES), stem: z.string(), structures: z.string() }).optional(),
   video: VideoRefSchema.optional(),
   /** The qa stage's gate profile for the run's type, by content hash, whether it sweeps at 2 Hz, and the type's timing thresholds. */
   qa: z.object({ sha: z.string(), gate: z.array(z.string()), inspect: QaInspectSchema, sweep: z.boolean().optional(), timing: TimingProfileSchema.optional() }).optional(),
@@ -172,7 +172,11 @@ function bandRates(): Record<SpeechBand, number> {
 }
 
 function sheetsConfig(settings: RunSettings, params: z.infer<typeof SheetsParamsSchema>, bridge: () => BridgeFile): StageConfig {
-  const sheets = { take: params.take ?? "v1", status: params.status ?? "review", stem: bridge().theater.stem, structures: registrySha(loadStructures()) };
+  const day = settings.gather && "day" in settings.gather ? settings.gather.day : undefined;
+  const sheets = {
+    ...(params.take ? { take: params.take } : {}), ...(day ? { day } : {}),
+    status: params.status ?? "review", stem: bridge().theater.stem, structures: registrySha(loadStructures()),
+  };
   return { sheets, ...(settings.profile ? { profile: profileRef(settings.profile) } : {}), ...(settings.video ? { video: settings.video() } : {}) };
 }
 
