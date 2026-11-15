@@ -1615,7 +1615,7 @@ When the review index has no snapshot at the pin, the fresh index covers only th
 For a PR video, `gatherPr` writes the pr-overview profile's `facts.jsonl` from the PR diff, its reviews and comments (through `gh`) and the code-graph calls between changed files at the head commit, with stable content-derived ids and coded refusals (`PR_GATHER_CODES`).
 `explainer pr trigger` (`runPrVideoTrigger`, `autoBriefTargets`) starts a decision-brief run (the `gather` stage, then the audition;
 with `--through script`, the script too, on the spine the audition writes from its pick, `pickSpine`, as pr-overview's `spine: { from: audition-pick }` declares)
-only for PRs Shepherd holds at the owner's visual gate (`visual-gate2`) on a head still current right before the start, with `--dry-run`, and
+for PRs Shepherd holds at the owner's visual gate (`visual-gate2`) and, with a repeatable `--visual-path <glob>`, for every open non-draft PR whose changed files (read through `gh pr diff --name-only`) match a glob (brief trigger `visual-path`), each on a head still current right before the start, with `--dry-run`, and
 `explainer pr gather` runs it on request.
 For the daily briefing, `gatherDaily` reads one UTC day into a `digest.json` and a `facts.md` whose ids come from their sources
 (PRs through `gh pr list`, sessions through `session-read`,
