@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the rewrite writing check gates the stage",
+      "file": "products/explainer/src/workflow/stage-checks.ts",
+      "find": "{ name: \"writing\", gate: false,",
+      "replace": "{ name: \"writing\", gate: true,",
+      "kills": [
+        "rewrite stage writing check reports a short-register script as failing, names the row, and fails no gate"
+      ]
+    },
+    {
+      "name": "the writing check detail drops the failing row ids",
+      "file": "products/explainer/src/workflow/stage-checks.ts",
+      "find": "failing rows: ${failing.join(\", \") || \"none\"}",
+      "replace": "failing rows: none",
+      "kills": [
+        "rewrite stage writing check reports a short-register script as failing, names the row, and fails no gate"
+      ]
+    }
+  ]
+}
