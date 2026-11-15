@@ -8,7 +8,8 @@ import { ciTableLines, CI_REVIEWER_TEST_RULE, type CiCheckRow } from "./briefs/c
 import { OWNER_PICK_CONTRADICTED } from "./fix-first-findings.js";
 import { DEFECT_CLASS_HEADING, EARLIER_FINDINGS_HEADING, earlierFindingLines, type EarlierFinding } from "./briefs/earlier-findings.js";
 import { FOLLOW_UPS_HEADING, MAX_FOLLOW_UPS } from "./follow-ups.js";
-import { CHECK_CANDIDATES_HEADING, CHECK_CLASSES, CHECK_ROUTES, MAX_CHECK_CANDIDATES, MAX_CHECK_SKETCH_CHARS } from "./check-candidates.js";
+import { CHECK_CANDIDATES_HEADING } from "./check-candidates.js";
+import { checkCandidatesLines } from "./briefs/check-candidates.js";
 import { CLASS_TAG, IMPORTANT_TAG, scopeLines, scopedDiffLine, shellSafe, usableScope, type ReviewScope } from "./briefs/scoped-rereview.js";
 
 type RepoSlug = string;
@@ -48,6 +49,7 @@ export const CI_POLICY_RULE =
 
 export { DEFECT_CLASS_HEADING, EARLIER_FINDINGS_END, EARLIER_FINDINGS_HEADING, EARLIER_FINDINGS_START, type EarlierFinding } from "./briefs/earlier-findings.js";
 export { CI_REVIEWER_TEST_RULE, MAX_CI_CHECK_ROWS, type CiCheckRow } from "./briefs/ci.js";
+export { CHECK_CANDIDATES_RULE } from "./briefs/check-candidates.js";
 
 /** Everything a reviewer brief may carry; it has no field for task or implementer text, so none can reach the prompt. */
 export interface ReviewerBriefInput extends WorkflowCiInput {
@@ -177,21 +179,6 @@ export const FOLLOW_UPS_RULE =
   `Optionally, for work that should not hold this PR, add before the verdict lines a section that starts with a line \`${FOLLOW_UPS_HEADING}\`, then one line per proposed task, at most ${MAX_FOLLOW_UPS}: ` +
   "`- <title> | <done_when> | <low, medium or high>`. Follow-ups never block MERGE and are filed as tasks for later; anything blocking goes in your review as FIX_FIRST, never here. Write no section when you have none.";
 
-/** One shared vocabulary is what lets Shepherd count a class across PRs; reviewer free text gave a new phrasing almost every time. */
-export const CHECK_CANDIDATES_RULE =
-  `Optionally, for each finding a deterministic check could have caught, add before the verdict lines a section that starts with a line \`${CHECK_CANDIDATES_HEADING}\`, then one line per finding, at most ${MAX_CHECK_CANDIDATES}: ` +
-  `\`- <class key> | <route> | <rule sketch, ${MAX_CHECK_SKETCH_CHARS} characters or fewer>\`. Route is one of ${CHECK_ROUTES.join(", ")}. ` +
-  "Take the class key from the list below and the route it is listed under, unless the finding plainly needs another route; coin a short kebab-case key only when none fits. " +
-  "Write no line for a one-off bug or a class listed under none. The block never changes your verdict. Write no section when you have none. Class keys by default route:";
-
-/** One line per route that has standard keys; `docs` has none, since the audit gave its findings coined keys. */
-function checkClassLines(): string[] {
-  return [...CHECK_ROUTES, "none" as const].flatMap((route) => {
-    const keys = CHECK_CLASSES.filter((entry) => entry.route === route).map((entry) => `\`${entry.key}\``);
-    return keys.length === 0 ? [] : [`- ${route}: ${keys.join(", ")}`];
-  });
-}
-
 /** A run handed earlier findings is a re-review even when its count lags them. */
 const fixFirstCount = (input: ReviewerBriefInput): number => Math.max(input.fixFirsts ?? 0, input.earlierFindings?.length ?? 0);
 
@@ -283,8 +270,7 @@ function verdictRuleLines(input: ReviewerBriefInput, scope: ReviewScope | undefi
     ...recurringLines(fixFirstCount(input), input.earlierFindings ?? [], scope),
     ...convergenceLines(input.convergence),
     FOLLOW_UPS_RULE,
-    CHECK_CANDIDATES_RULE,
-    ...checkClassLines(),
+    ...checkCandidatesLines(),
   ];
 }
 
