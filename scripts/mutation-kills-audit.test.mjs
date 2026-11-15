@@ -1,11 +1,11 @@
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { MAX_MUTATION_NAME, MAX_MUTATIONS } from "../packages/fix-proof/dist/index.js";
-import { findProblems, specProblem, testFileOf, testNamesOf, unmatchedKills } from "./mutation-kills-audit.mjs";
+import { findProblems, sidecarsOfChanged, specProblem, testFileOf, testNamesOf, unmatchedKills } from "./mutation-kills-audit.mjs";
 
 const report = (...fullNames) => ({ testResults: [{ name: "/repo/src/a.test.ts", assertionResults: fullNames.map((fullName) => ({ fullName, status: "passed" })) }] });
 const sidecar = (...kills) => ({ v: 1, mutations: [{ name: "flip", file: "src/a.ts", find: "x", replace: "y", kills }] });
@@ -120,6 +120,51 @@ describe("the --finds run and the mutation cap", () => {
     const { lines } = runFinds(MAX_MUTATIONS);
 
     expect(lines.filter((line) => line.includes("must hold"))).toEqual([]);
+  });
+});
+
+describe("the sidecar:kills run", () => {
+  // The fixture sits under scripts/ because the audit runs vitest on the paired test file, and only the repo's own
+  // config includes it; the directory is removed after each run.
+  const runKills = (kill) => {
+    const dir = mkdtempSync(join(fileURLToPath(new URL(".", import.meta.url)), "kills-fixture-"));
+    try {
+      writeFileSync(join(dir, "a.mjs"), "export const x = 1;\n");
+      writeFileSync(join(dir, "a.test.mjs"), 'import { it } from "vitest";\nit("adds", () => {});\n');
+      const mutation = { name: "flip", file: relative(process.cwd(), join(dir, "a.mjs")), find: "x = 1", replace: "x = 2", kills: [kill] };
+      const path = join(dir, "a.test.mutations.json");
+      writeFileSync(path, JSON.stringify({ v: 1, mutations: [mutation] }));
+      const run = spawnSync("pnpm", ["run", "--silent", "sidecar:kills", path], { encoding: "utf8" });
+      return { status: run.status, lines: run.stdout.split("\n"), path };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  it("exits non-zero for a kill that names no test", () => {
+    const { status, lines, path } = runKills("no such test");
+
+    expect(status).toBe(1);
+    expect(lines).toContain(`${path}: mutation "flip" kills "no such test", which names no test`);
+  });
+
+  it("exits zero when every kill names a test", () => {
+    const { status, lines } = runKills("adds");
+
+    expect(status).toBe(0);
+    expect(lines).toContain("1 sidecars, 0 problems");
+  });
+});
+
+describe("sidecarsOfChanged", () => {
+  const exists = (path) => path === "src/a.test.mutations.json";
+
+  it("skips a changed test file that has no sidecar, since sidecars are optional", () => {
+    expect(sidecarsOfChanged(["src/b.test.ts", "README.md"], exists)).toEqual([]);
+  });
+
+  it("names the sidecar beside each changed test file that has one", () => {
+    expect(sidecarsOfChanged(["src/a.test.mjs", "src/b.test.tsx"], exists)).toEqual(["src/a.test.mutations.json"]);
   });
 });
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseIntentDigest } from "./intent-digest.js";
 
-const HEAD = ["---", "schema: titan-intent-digest/v1", "slug: demo", "initiative: sample", "built_from: invented rows", "---"];
+const HEAD = ["---", "schema: titan-intent-digest/v1", "slug: demo", "initiative: demo", "built_from: invented rows", "---"];
 const SECTIONS = ["Standing direction", "Reasons", "Ruled out", "Taste", "Open questions", "Superseded"];
 
 /** Builds a digest whose given section holds the given bullet lines; every other section is empty. */
@@ -23,7 +23,7 @@ describe("parseIntentDigest", () => {
     expect(result).toEqual({
       ok: true,
       slug: "demo",
-      initiative: "sample",
+      initiative: "demo",
       builtFrom: "invented rows",
       lines: [
         { id: "demo/I3", date: "2026-01-03", quote: "invented quote 3", ref: "msg:abc3", section: "Standing direction" },
@@ -84,6 +84,32 @@ describe("parseIntentDigest", () => {
     const messages = errorsOf(text).map((e) => e.message);
     expect(messages).toContain('missing section "Taste"');
     expect(messages.some((m) => m.startsWith("schema must be"))).toBe(true);
+  });
+
+  it.each(["Demo", "my_slug", "-demo", "demo-", "de mo", "demo/x"])("refuses the slug %s that is not a lowercase slug", (slug) => {
+    const text = digest().replace("slug: demo", `slug: ${slug}`).replace("initiative: demo", `initiative: ${slug}`);
+    const errors = errorsOf(text);
+    expect(errors.some((e) => e.line === 3 && e.message.includes("lowercase slug"))).toBe(true);
+  });
+
+  it("refuses a slug that differs from the initiative, naming the slug line", () => {
+    const errors = errorsOf(digest().replace("initiative: demo", "initiative: other"));
+    expect(errors).toContainEqual({ line: 3, message: 'slug "demo" must equal initiative "other"' });
+  });
+
+  it("refuses a digest whose slug field is dropped", () => {
+    const errors = errorsOf(digest().replace("slug: demo\n", ""));
+    expect(errors.map((e) => e.message)).toContain("front matter is missing slug");
+  });
+
+  it("refuses a repeated slug key, naming the repeat's line", () => {
+    const errors = errorsOf(digest().replace("slug: demo", "slug: demo\nslug: demo"));
+    expect(errors).toContainEqual({ line: 4, message: "front matter repeats slug" });
+  });
+
+  it("refuses an unknown front matter key, naming its line", () => {
+    const errors = errorsOf(digest().replace("slug: demo", "slug: demo\nowner: someone"));
+    expect(errors).toContainEqual({ line: 4, message: "unknown front matter key owner" });
   });
 
   it("accepts a digest whose sections are all empty", () => {

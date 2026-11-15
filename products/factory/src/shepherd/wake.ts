@@ -14,6 +14,7 @@ import { bumpFacts, isConsumerBumpRun } from "./bump-fixer.js";
 import type { Registration } from "./store.js";
 import { FIX_FIRST_STEP, REPAIR_STEP, describeWake, isRefName, withMergeBaseException } from "./wake-brief.js";
 import { exitedOn } from "./wake-roster.js";
+import { reviewPendingAt } from "./review-request.js";
 import { HOLDING_KINDS } from "./held-wake.js";
 import { messagePredecessor, noticeSpawner } from "./wake-notice.js";
 import { wakeAgent } from "./wake-loop.js";
@@ -95,10 +96,12 @@ function heldOnlyIfHolding(kind: WakeInput["kind"], result: WakeStepResult): Wak
   return result.kind === "unhandled" && result.held !== undefined && !HOLDING_KINDS.has(kind) ? unhandled(result.reason) : result;
 }
 
+const askedAt = (deps: ShepherdDeps) => (repo: string, pr: number, head: string): boolean => reviewPendingAt(deps.store.get().byPr(repo, pr), head);
+
 /** A malformed input fails the step; the await step reads and never writes, so each repeats safely after a crash. */
 export const wakeRoutes = (deps: ShepherdDeps, wiring: WakeWiring = {}): readonly StepRoute[] => [
   codeRoute(WAKE_STEP, deps.now, async (raw: unknown, signal) => wakeImplementer(deps, wiring, WakeInputSchema.parse(raw), signal)),
-  awaitNewHeadRoute({ ...deps, agentExited: exitedOn(agentsFor(deps, wiring), noteFixerLimit(deps)) }, AWAIT_NEW_HEAD_STEP),
+  awaitNewHeadRoute({ ...deps, agentExited: exitedOn(agentsFor(deps, wiring), noteFixerLimit(deps)), reviewAsked: askedAt(deps) }, AWAIT_NEW_HEAD_STEP),
   codeRoute(FIX_FIRST_STEP, deps.now, async (input: object) => input),
   codeRoute(REPAIR_STEP, deps.now, async (input: object) => input),
   codeRoute(FIX_PROOF_WAKE_STEP, deps.now, async (input: object) => input),
