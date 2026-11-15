@@ -44,6 +44,13 @@ export interface NoteFacts {
   body: string;
 }
 
+/** Prose owned by a source or a task, scanned for mentions but never tagged. */
+export interface MentionText {
+  ref: string;
+  initiative: string;
+  body: string;
+}
+
 export interface EdgeCounts {
   holds: number;
   mentions: number;
@@ -80,12 +87,16 @@ interface CurrentEdge extends DerivedEdge {
  * write is a diff. Deleting and re-asserting every row each pass grew
  * `edge_id` with no workspace change, so an unchanged corpus now writes no row.
  */
-export function rebuildEdges(graph: WorkspaceGraph, notes: readonly NoteFacts[]): EdgeCounts {
+export function rebuildEdges(
+  graph: WorkspaceGraph,
+  notes: readonly NoteFacts[],
+  otherTexts: readonly MentionText[] = [],
+): EdgeCounts {
   return graph.db.transaction(() => {
     const wanted = new Map<string, DerivedEdge>();
     for (const edge of [
       ...wantedHolds(graph),
-      ...wantedMentions(graph, notes),
+      ...wantedMentions(graph, [...notes, ...otherTexts]),
       ...wantedSharesTag(notes),
     ]) {
       wanted.set(edgeKey(edge), edge);
@@ -157,7 +168,7 @@ function wantedHolds(graph: WorkspaceGraph): DerivedEdge[] {
  * this incrementally would let a full rebuild and an incremental sequence
  * disagree, which is the one property this index has to guarantee.
  */
-function wantedMentions(graph: WorkspaceGraph, notes: readonly NoteFacts[]): DerivedEdge[] {
+function wantedMentions(graph: WorkspaceGraph, notes: readonly MentionText[]): DerivedEdge[] {
   const index = buildRefIndex(graph);
   const edges: DerivedEdge[] = [];
   for (const note of notes) {

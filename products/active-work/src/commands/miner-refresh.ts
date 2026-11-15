@@ -38,6 +38,7 @@ const WorkspaceSchema = z.object({
     source: z.number(),
   }),
   edges: z.object({ holds: z.number(), mentions: z.number(), sharesTag: z.number() }),
+  oversizedSources: z.number(),
   orphanRatio: z.number(),
   legacySpansRetired: z.number(),
 });
