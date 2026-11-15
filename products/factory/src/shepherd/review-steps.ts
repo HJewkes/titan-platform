@@ -13,7 +13,7 @@ const isHeadReview = (stepId: string): boolean => {
   return name === REVIEW_STEP && member === undefined;
 };
 
-/** Review dispatches since the last one that started a reviewer; the run never counts these, so only the view does. */
+/** Review dispatches since the last one that started a reviewer; the run bounds them per head by its dispatch count (not-reviewed.ts). */
 export function notStartedStreak(steps: readonly StepResult[]): number {
   const reviews = steps.filter((result) => isHeadReview(result.stepId));
   return reviews.reduce((streak, result) => (wasNotStarted(result) ? streak + 1 : 0), 0);
