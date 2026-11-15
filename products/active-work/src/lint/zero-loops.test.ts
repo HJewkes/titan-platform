@@ -60,7 +60,7 @@ describe('lintZeroLoops', () => {
       slug: 'slug',
       file: `sessions/${stem}.md`,
     });
-    expect(findings[0].message).toContain('no_loops: true');
+    expect(findings.at(0)?.message).toContain('no_loops: true');
   });
 
   it('is silent when no_loops: true marks the empty ledger', async () => {

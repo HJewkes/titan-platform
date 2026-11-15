@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { BriefFrontmatterSchema } from '../schemas/brief.js';
+import type { SessionReport } from '../schemas/session.js';
 import type { WorkerRecord } from '../schemas/worker-record.js';
 import { writeSessionFile } from '../sessions/session-file.js';
 import { findDanglingResolves, type DanglingKind } from '../sessions/open-loops.js';
@@ -37,6 +38,18 @@ async function stampBriefUpdated(briefPath: string): Promise<string> {
   return updated;
 }
 
+/** The frontmatter fields that record a deliberate answer: `no_*` assertions and reports. */
+function assertionMarkers(
+  args: Args,
+  reports: SessionReport[],
+): { no_loops?: true; no_reports?: true; reports?: SessionReport[] } {
+  return {
+    ...(args.no_loops === true ? { no_loops: true as const } : {}),
+    ...(reports.length > 0 ? { reports } : {}),
+    ...(args.no_reports === true ? { no_reports: true as const } : {}),
+  };
+}
+
 /**
  * Write the session file, then bump `brief.updated`. If the brief write fails
  * the session file is removed again, so a wrap is all-or-nothing rather than
@@ -48,6 +61,7 @@ export async function writeWrap(
   body: string,
   ledger: Ledger,
   worker: WorkerRecord | undefined,
+  reports: SessionReport[],
 ): Promise<{ path: string; filename: string; updated: string }> {
   const session = await writeSessionFile({
     slug: args.slug,
@@ -58,7 +72,7 @@ export async function writeWrap(
     body,
     next_steps: ledger.next_steps,
     resolves: ledger.resolves,
-    ...(args.no_loops === true ? { no_loops: true as const } : {}),
+    ...assertionMarkers(args, reports),
     ...(args.parent_session_id ? { parent_session_id: args.parent_session_id } : {}),
     ...(worker === undefined ? {} : { worker }),
   });

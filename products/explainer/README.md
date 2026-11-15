@@ -655,15 +655,19 @@ nothing. Refusals (`PR_GATHER_CODES`, no `facts.jsonl`): `E-PR-REF`, `E-PR-READ`
 (no task id in the title, body or branch: the profile's `linked-task` precondition), `E-CALLGRAPH` (the clone cannot
 index the head) and `E-NO-CLONE`. `W-NO-FINDINGS` and `W-NO-EDGES` warn and still gather.
 
-`explainer pr trigger [--dry-run] [--clone <owner/repo=dir>]... [--port <n>] [--through audition|script] [--json] [--data-dir <dir>]` is the only
+`explainer pr trigger [--dry-run] [--clone <owner/repo=dir>]... [--port <n>] [--visual-path <glob>]... [--through audition|script] [--json] [--data-dir <dir>]` is the only
 automatic path (owner answer Q6). It reads `titan-factory shepherd waiting --json` and starts a decision-brief run
-only for an owner gate whose hold class is `visual-gate2`, on a head the gate still names (`autoBriefTargets`).
+for an owner gate whose hold class is `visual-gate2`, on a head the gate still names (`autoBriefTargets`).
+With `--visual-path` (repeatable; `**` crosses directories, `*` and `?` stay in one segment) it also reads the open PRs from
+`titan-factory shepherd prs --json` and each one's changed files from `gh pr diff --name-only`, once per sweep, and starts
+every non-draft PR at its current head with a changed file matching a glob, owner gate or not; its `brief.json` records
+trigger `visual-path`. A PR whose files cannot be read is skipped. A PR found by both routes starts once.
 Every other PR, seat gates and other owner holds included, is on request only. A start writes
 `<data-dir>/pr-briefs/<owner>--<repo>--<N>--<head12>/brief.json` (profile `pr-overview`, cut `decision-brief`), then
 runs an `explainer-video` run from `gather` to `audition` (`briefRunStart`). `--through script` opts in to the script as well, planned on the spine the audition writes from its pick, at about $1 more a head; it is off by default while most champion scripts still fail L0 (TP-4095), so most such runs would pay to end `refused`: the gather stage writes `facts.jsonl` and
 `gather.json` into the same directory, and `run.json` names the run, its status and each stage's status. A directory
 that already holds `brief.json` is `already`, so a repeated sweep starts each head once. Right before each start the
-sweep reads the gates again, and a head no longer current there is `moved`. `--dry-run` prints `would-start` rows and writes nothing. Nothing schedules the sweep:
+sweep reads the gates (or, for a `--visual-path` PR, Shepherd's PR list) again and compares heads only, and a head no longer current there is `moved`. `--dry-run` prints `would-start` rows and writes nothing. Nothing schedules the sweep:
 run it by hand, or from whatever the owner wires. Exit 0, or 1 when a start was refused.
 
 `explainer eval pace <script.json> [--format spike|v1] [--timing <words.json>] [--config <id>]
@@ -1130,3 +1134,30 @@ which writes `<stem>.mp4` (stem from the `beats.json` name), `captions.vtt` and 
   the render and write `qa.json`. `--no-qa` skips the gate and the manifest records `qaGate: "skipped"`.
 
 The `render` stage of `explainer run` takes the same path from script and resolved (above). TP-2993 writes the full first-video guide.
+
+### Audio library
+
+`explainer audio` keeps a local library of licensed background beds (`bgm`) and sound effects (`sfx`) for the
+mix stage. The repo ships code and synthetic test tones only, never a music or SFX file. The library lives at
+`<dataDir>/audio-library/`; `--audio-library <dir>` or `EXPLAINER_AUDIO_LIBRARY` moves it.
+
+- `originals/<sha256>.<ext>` keeps each file as received, for provenance.
+- `wav/<sha256>.wav` is that file normalised once at import by ffmpeg (through `runFfmpeg`) to 48 kHz mono PCM16,
+  so the mix only reads WAV. The name is the original's sha.
+- `ledger.jsonl` holds one `explainer.audio-ledger/v1` entry per asset (`LedgerEntrySchema`): id, kind, both shas,
+  source, licence, creator, title, retrieval time, duration, integrated LUFS from ffmpeg `ebur128`, sample peak,
+  tags, a bed's loop points, an SFX's `anchorS` (where its hit lands) and a generated asset's generator, seed and
+  params. It is append-only; re-importing a file the ledger already holds is a no-op.
+
+Import accepts only `generated-own` and `CC0-1.0` (`ALLOWED_LICENCES`); CC BY waits on the attribution policy
+(TP-3991 Q2). It refuses any other licence by name, an id already used by another file, and a silent file.
+
+- `explainer audio import <file> --id <id> --kind bgm|sfx --licence <id> --source-kind <kind> --source-name <name>
+  [--source-url] [--creator] [--title] [--tags a,b] [--anchor-s <s>] [--loop]` adds one file.
+- `explainer audio gen --kind bgm --seed <n> [--duration-s <s>]` or `--kind sfx --name click|pop|whoosh|chime|riser
+  --seed <n>` makes a clip with the procedural generator and imports it as `generated-own`. A bed is a seeded
+  four-chord pad of additive sines that loops cleanly; each SFX records its `anchorS`. One seed always makes the
+  same file.
+- `explainer audio list` prints id, kind, licence, seconds, integrated LUFS and tags.
+
+ffmpeg must be on `PATH` for import and gen.

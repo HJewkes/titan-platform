@@ -112,6 +112,34 @@ describe("explainer pr trigger", () => {
     expect(out.join("")).toMatch(/^refused /);
   });
 
+  it("--visual-path --dry-run lists open PRs touching a glob from a fake Shepherd and a fake gh, and writes nothing", async () => {
+    const dir = await scratch();
+    const head = (n: number) => String(n).repeat(40).slice(0, 40);
+    const prs = [11, 12, 13].map((number) => ({ repo: REPO, number, headSha: head(number % 10), state: "open", draft: number === 13 }));
+    const files: Record<string, string> = { "11": "src/ui/panel.tsx\nREADME.md\n", "12": "src/core/engine.ts\n", "13": "src/ui/draft.tsx\n" };
+    const gh = async (args: readonly string[]) => files[args[2]!] ?? "";
+    const { run, out } = cli({ gh, readWaiting: async () => ({ owner: [], seat: [] }), readPrs: async () => prs });
+
+    const code = await run("trigger", "--dry-run", "--data-dir", dir, "--visual-path", "src/ui/**", "--visual-path", "**/*.css");
+
+    expect(code).toBe(0);
+    expect(out.join("")).toMatch(new RegExp(`^would-start ${REPO}#11 ${head(1).slice(0, 12)} `));
+    expect(out.join("").trim().split("\n")).toHaveLength(1);
+    expect(await readdir(dir)).toEqual([]);
+  });
+
+  it("reads no PR list without --visual-path", async () => {
+    const { run, out } = cli({
+      readWaiting: async () => ({ owner: [], seat: [] }),
+      readPrs: async () => {
+        throw new Error("must not read prs");
+      },
+    });
+
+    expect(await run("trigger", "--data-dir", await scratch(), "--dry-run")).toBe(0);
+    expect(out.join("")).toBe("no PR is held at the visual gate\n");
+  });
+
   it("says so when no PR waits at the visual gate", async () => {
     const { run, out } = cli({ readWaiting: async () => ({ owner: [], seat: [] }) });
 

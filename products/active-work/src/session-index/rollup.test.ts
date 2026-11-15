@@ -89,9 +89,9 @@ describe('rollupSessions', () => {
       started_at: '2026-07-01T00:00:04Z',
       ended_at: '2026-07-01T00:00:18Z',
     });
-    expect(turns[0].duration_ms).toBe(14_000);
+    expect(turns[0]?.duration_ms).toBe(14_000);
     // Eight `tool_decision` facts land inside the first turn.
-    expect(turns[0].tool_call_count).toBe(8);
+    expect(turns[0]?.tool_call_count).toBe(8);
     // p2 is the last line: it closes on itself, with no elapsed time.
     expect(turns[1]).toMatchObject({ ended_at: '2026-07-01T00:00:19Z', duration_ms: 0 });
   });
@@ -101,8 +101,8 @@ describe('rollupSessions', () => {
 
     // 04→05 after the prompt, plus 08→09 after the tool_result. The other
     // assistant lines follow assistant lines and contribute nothing.
-    expect(turns[0].thinking_ms).toBe(2000);
-    expect(turns[1].thinking_ms).toBe(0);
+    expect(turns[0]?.thinking_ms).toBe(2000);
+    expect(turns[1]?.thinking_ms).toBe(0);
   });
 
   it('matches a one-pass build when facts arrive across chunk boundaries', async () => {

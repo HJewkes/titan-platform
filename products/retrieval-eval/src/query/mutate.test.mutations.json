@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "drop-letter keeps every letter",
+      "file": "products/retrieval-eval/src/query/mutate.ts",
+      "find": "letters.filter((_, i) => i !== hash % letters.length)",
+      "replace": "letters.filter(() => true)",
+      "kills": ["mutateTerm drops exactly one letter"]
+    },
+    {
+      "name": "swap-pair never swaps",
+      "file": "products/retrieval-eval/src/query/mutate.ts",
+      "find": "    if (letters[i] === letters[i + 1]) continue;",
+      "replace": "    continue;",
+      "kills": ["mutateTerm swaps one adjacent pair and keeps the letters"]
+    },
+    {
+      "name": "short terms are mutated",
+      "file": "products/retrieval-eval/src/query/mutate.ts",
+      "find": "const MIN_MUTABLE_LENGTH = 4;",
+      "replace": "const MIN_MUTABLE_LENGTH = 2;",
+      "kills": ["mutateQuery leaves a term under 4 characters unchanged and counts it skipped"]
+    },
+    {
+      "name": "the first term is mutated instead of the rarest",
+      "file": "products/retrieval-eval/src/query/mutate.ts",
+      "find": "< (df.get(rarest[0].toLowerCase()) ?? 0)",
+      "replace": "< -1",
+      "kills": ["mutateQuery mutates the rarest term only"]
+    }
+  ]
+}

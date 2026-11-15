@@ -68,10 +68,10 @@ describe('active-work migrate', () => {
       expect(result.applied).toBe(false);
       const alpha = result.initiatives.find((i) => i.slug === 'alpha')!;
       expect(alpha.sessions).toHaveLength(1);
-      expect(alpha.sessions[0].kind).toBe('open');
-      expect(alpha.sessions[0].action).toBe('write');
-      expect(alpha.sessions[0].loops).toBe(1);
-      expect(alpha.sessions[0].ended).toBe('2026-05-12T09:00:00Z');
+      expect(alpha.sessions.at(0)?.kind).toBe('open');
+      expect(alpha.sessions.at(0)?.action).toBe('write');
+      expect(alpha.sessions.at(0)?.loops).toBe(1);
+      expect(alpha.sessions.at(0)?.ended).toBe('2026-05-12T09:00:00Z');
       expect(alpha.task_seq_backfill).toBe(3);
       expect(alpha.handoff).toBe('archive-and-remove');
       expect(result.uncovered).toEqual(['uncovered-one']);

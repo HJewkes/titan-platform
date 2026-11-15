@@ -130,8 +130,8 @@ declare function checkLimits(parsed: ParsedLimits, options: CheckOptions): Limit
 
 declare const roleName: z.ZodEnum<{
     implementers: "implementers";
-    reviewers: "reviewers";
     planners: "planners";
+    reviewers: "reviewers";
 }>;
 declare const limitsBindingSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     kind: z.ZodLiteral<"lever">;
@@ -199,10 +199,10 @@ declare const blockerSchema: z.ZodObject<{
     slices: z.ZodArray<z.ZodString>;
     files: z.ZodArray<z.ZodString>;
     status: z.ZodEnum<{
-        unknown: "unknown";
-        stalled: "stalled";
-        registered: "registered";
         "not-ours": "not-ours";
+        registered: "registered";
+        stalled: "stalled";
+        unknown: "unknown";
     }>;
 }, z.core.$strict>;
 declare const refusalKindSchema: z.ZodObject<{
@@ -214,10 +214,10 @@ declare const refusalKindSchema: z.ZodObject<{
         slices: z.ZodArray<z.ZodString>;
         files: z.ZodArray<z.ZodString>;
         status: z.ZodEnum<{
-            unknown: "unknown";
-            stalled: "stalled";
-            registered: "registered";
             "not-ours": "not-ours";
+            registered: "registered";
+            stalled: "stalled";
+            unknown: "unknown";
         }>;
     }, z.core.$strict>>;
 }, z.core.$strict>;
@@ -266,8 +266,8 @@ declare const seatReportSchema: z.ZodObject<{
     }, z.core.$strict>], "kind">;
     roles: z.ZodRecord<z.ZodEnum<{
         implementers: "implementers";
-        reviewers: "reviewers";
         planners: "planners";
+        reviewers: "reviewers";
     }>, z.ZodObject<{
         cap: z.ZodNumber;
         used: z.ZodNumber;
@@ -312,10 +312,10 @@ declare const seatReportSchema: z.ZodObject<{
             slices: z.ZodArray<z.ZodString>;
             files: z.ZodArray<z.ZodString>;
             status: z.ZodEnum<{
-                unknown: "unknown";
-                stalled: "stalled";
-                registered: "registered";
                 "not-ours": "not-ours";
+                registered: "registered";
+                stalled: "stalled";
+                unknown: "unknown";
             }>;
         }, z.core.$strict>>;
     }, z.core.$strict>>;
@@ -388,8 +388,8 @@ declare const limitsReportSchema: z.ZodObject<{
         }, z.core.$strict>], "kind">;
         roles: z.ZodRecord<z.ZodEnum<{
             implementers: "implementers";
-            reviewers: "reviewers";
             planners: "planners";
+            reviewers: "reviewers";
         }>, z.ZodObject<{
             cap: z.ZodNumber;
             used: z.ZodNumber;
@@ -434,10 +434,10 @@ declare const limitsReportSchema: z.ZodObject<{
                 slices: z.ZodArray<z.ZodString>;
                 files: z.ZodArray<z.ZodString>;
                 status: z.ZodEnum<{
-                    unknown: "unknown";
-                    stalled: "stalled";
-                    registered: "registered";
                     "not-ours": "not-ours";
+                    registered: "registered";
+                    stalled: "stalled";
+                    unknown: "unknown";
                 }>;
             }, z.core.$strict>>;
         }, z.core.$strict>>;
@@ -729,8 +729,8 @@ declare const seatSchema: z.ZodObject<{
     hand_reserve: z.ZodOptional<z.ZodNumber>;
     brief_gate: z.ZodOptional<z.ZodEnum<{
         off: "off";
-        shadow: "shadow";
         on: "on";
+        shadow: "shadow";
     }>>;
 }, z.core.$strict>;
 /** Host-wide agent and worktree slots. Each field is optional so the product's own default stands when unset. */
@@ -754,8 +754,8 @@ declare const PACE_MODES: readonly ["off", "shadow", "on"];
 declare const paceSchema: z.ZodObject<{
     mode: z.ZodEnum<{
         off: "off";
-        shadow: "shadow";
         on: "on";
+        shadow: "shadow";
     }>;
     buffer_points: z.ZodOptional<z.ZodNumber>;
     finish_hours_before_reset: z.ZodOptional<z.ZodNumber>;
@@ -841,8 +841,8 @@ declare const limitsSchema: z.ZodObject<{
         hand_reserve: z.ZodOptional<z.ZodNumber>;
         brief_gate: z.ZodOptional<z.ZodEnum<{
             off: "off";
-            shadow: "shadow";
             on: "on";
+            shadow: "shadow";
         }>>;
     }, z.core.$strict>>>;
     overrides: z.ZodOptional<z.ZodArray<z.ZodObject<{
@@ -877,8 +877,8 @@ declare const limitsSchema: z.ZodObject<{
     pace: z.ZodOptional<z.ZodObject<{
         mode: z.ZodEnum<{
             off: "off";
-            shadow: "shadow";
             on: "on";
+            shadow: "shadow";
         }>;
         buffer_points: z.ZodOptional<z.ZodNumber>;
         finish_hours_before_reset: z.ZodOptional<z.ZodNumber>;

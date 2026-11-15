@@ -8,28 +8,28 @@ declare const ExampleSchema: z.ZodObject<{
 }, z.core.$strip>;
 declare const StabilitySchema: z.ZodEnum<{
     high: "high";
-    medium: "medium";
     low: "low";
+    medium: "medium";
 }>;
 declare const FixabilitySchema: z.ZodEnum<{
-    safe: "safe";
     "maybe-incorrect": "maybe-incorrect";
-    "requires-input": "requires-input";
     "not-fixable": "not-fixable";
+    "requires-input": "requires-input";
+    safe: "safe";
 }>;
 declare const StyleRuleSchema: z.ZodObject<{
     convention: z.ZodUnion<readonly [z.ZodString, z.ZodNumber, z.ZodBoolean, z.ZodArray<z.ZodString>]>;
     confidence: z.ZodNumber;
     stability: z.ZodOptional<z.ZodEnum<{
         high: "high";
-        medium: "medium";
         low: "low";
+        medium: "medium";
     }>>;
     fixability: z.ZodOptional<z.ZodEnum<{
-        safe: "safe";
         "maybe-incorrect": "maybe-incorrect";
-        "requires-input": "requires-input";
         "not-fixable": "not-fixable";
+        "requires-input": "requires-input";
+        safe: "safe";
     }>>;
     description: z.ZodOptional<z.ZodString>;
     examples: z.ZodOptional<z.ZodArray<z.ZodObject<{
@@ -65,14 +65,14 @@ declare const ProfileSchema: z.ZodObject<{
         confidence: z.ZodNumber;
         stability: z.ZodOptional<z.ZodEnum<{
             high: "high";
-            medium: "medium";
             low: "low";
+            medium: "medium";
         }>>;
         fixability: z.ZodOptional<z.ZodEnum<{
-            safe: "safe";
             "maybe-incorrect": "maybe-incorrect";
-            "requires-input": "requires-input";
             "not-fixable": "not-fixable";
+            "requires-input": "requires-input";
+            safe: "safe";
         }>>;
         description: z.ZodOptional<z.ZodString>;
         examples: z.ZodOptional<z.ZodArray<z.ZodObject<{
@@ -87,14 +87,14 @@ declare const ProfileSchema: z.ZodObject<{
         confidence: z.ZodNumber;
         stability: z.ZodOptional<z.ZodEnum<{
             high: "high";
-            medium: "medium";
             low: "low";
+            medium: "medium";
         }>>;
         fixability: z.ZodOptional<z.ZodEnum<{
-            safe: "safe";
             "maybe-incorrect": "maybe-incorrect";
-            "requires-input": "requires-input";
             "not-fixable": "not-fixable";
+            "requires-input": "requires-input";
+            safe: "safe";
         }>>;
         description: z.ZodOptional<z.ZodString>;
         examples: z.ZodOptional<z.ZodArray<z.ZodObject<{
@@ -109,14 +109,14 @@ declare const ProfileSchema: z.ZodObject<{
         confidence: z.ZodNumber;
         stability: z.ZodOptional<z.ZodEnum<{
             high: "high";
-            medium: "medium";
             low: "low";
+            medium: "medium";
         }>>;
         fixability: z.ZodOptional<z.ZodEnum<{
-            safe: "safe";
             "maybe-incorrect": "maybe-incorrect";
-            "requires-input": "requires-input";
             "not-fixable": "not-fixable";
+            "requires-input": "requires-input";
+            safe: "safe";
         }>>;
         description: z.ZodOptional<z.ZodString>;
         examples: z.ZodOptional<z.ZodArray<z.ZodObject<{
@@ -131,14 +131,14 @@ declare const ProfileSchema: z.ZodObject<{
         confidence: z.ZodNumber;
         stability: z.ZodOptional<z.ZodEnum<{
             high: "high";
-            medium: "medium";
             low: "low";
+            medium: "medium";
         }>>;
         fixability: z.ZodOptional<z.ZodEnum<{
-            safe: "safe";
             "maybe-incorrect": "maybe-incorrect";
-            "requires-input": "requires-input";
             "not-fixable": "not-fixable";
+            "requires-input": "requires-input";
+            safe: "safe";
         }>>;
         description: z.ZodOptional<z.ZodString>;
         examples: z.ZodOptional<z.ZodArray<z.ZodObject<{
@@ -153,14 +153,14 @@ declare const ProfileSchema: z.ZodObject<{
         confidence: z.ZodNumber;
         stability: z.ZodOptional<z.ZodEnum<{
             high: "high";
-            medium: "medium";
             low: "low";
+            medium: "medium";
         }>>;
         fixability: z.ZodOptional<z.ZodEnum<{
-            safe: "safe";
             "maybe-incorrect": "maybe-incorrect";
-            "requires-input": "requires-input";
             "not-fixable": "not-fixable";
+            "requires-input": "requires-input";
+            safe: "safe";
         }>>;
         description: z.ZodOptional<z.ZodString>;
         examples: z.ZodOptional<z.ZodArray<z.ZodObject<{
@@ -175,14 +175,14 @@ declare const ProfileSchema: z.ZodObject<{
         confidence: z.ZodNumber;
         stability: z.ZodOptional<z.ZodEnum<{
             high: "high";
-            medium: "medium";
             low: "low";
+            medium: "medium";
         }>>;
         fixability: z.ZodOptional<z.ZodEnum<{
-            safe: "safe";
             "maybe-incorrect": "maybe-incorrect";
-            "requires-input": "requires-input";
             "not-fixable": "not-fixable";
+            "requires-input": "requires-input";
+            safe: "safe";
         }>>;
         description: z.ZodOptional<z.ZodString>;
         examples: z.ZodOptional<z.ZodArray<z.ZodObject<{
@@ -215,14 +215,14 @@ declare const ProfileSchema: z.ZodObject<{
             confidence: z.ZodNumber;
             stability: z.ZodOptional<z.ZodEnum<{
                 high: "high";
-                medium: "medium";
                 low: "low";
+                medium: "medium";
             }>>;
             fixability: z.ZodOptional<z.ZodEnum<{
-                safe: "safe";
                 "maybe-incorrect": "maybe-incorrect";
-                "requires-input": "requires-input";
                 "not-fixable": "not-fixable";
+                "requires-input": "requires-input";
+                safe: "safe";
             }>>;
             description: z.ZodOptional<z.ZodString>;
             examples: z.ZodOptional<z.ZodArray<z.ZodObject<{
@@ -237,14 +237,14 @@ declare const ProfileSchema: z.ZodObject<{
             confidence: z.ZodNumber;
             stability: z.ZodOptional<z.ZodEnum<{
                 high: "high";
-                medium: "medium";
                 low: "low";
+                medium: "medium";
             }>>;
             fixability: z.ZodOptional<z.ZodEnum<{
-                safe: "safe";
                 "maybe-incorrect": "maybe-incorrect";
-                "requires-input": "requires-input";
                 "not-fixable": "not-fixable";
+                "requires-input": "requires-input";
+                safe: "safe";
             }>>;
             description: z.ZodOptional<z.ZodString>;
             examples: z.ZodOptional<z.ZodArray<z.ZodObject<{
@@ -259,14 +259,14 @@ declare const ProfileSchema: z.ZodObject<{
             confidence: z.ZodNumber;
             stability: z.ZodOptional<z.ZodEnum<{
                 high: "high";
-                medium: "medium";
                 low: "low";
+                medium: "medium";
             }>>;
             fixability: z.ZodOptional<z.ZodEnum<{
-                safe: "safe";
                 "maybe-incorrect": "maybe-incorrect";
-                "requires-input": "requires-input";
                 "not-fixable": "not-fixable";
+                "requires-input": "requires-input";
+                safe: "safe";
             }>>;
             description: z.ZodOptional<z.ZodString>;
             examples: z.ZodOptional<z.ZodArray<z.ZodObject<{
@@ -281,14 +281,14 @@ declare const ProfileSchema: z.ZodObject<{
             confidence: z.ZodNumber;
             stability: z.ZodOptional<z.ZodEnum<{
                 high: "high";
-                medium: "medium";
                 low: "low";
+                medium: "medium";
             }>>;
             fixability: z.ZodOptional<z.ZodEnum<{
-                safe: "safe";
                 "maybe-incorrect": "maybe-incorrect";
-                "requires-input": "requires-input";
                 "not-fixable": "not-fixable";
+                "requires-input": "requires-input";
+                safe: "safe";
             }>>;
             description: z.ZodOptional<z.ZodString>;
             examples: z.ZodOptional<z.ZodArray<z.ZodObject<{
@@ -303,14 +303,14 @@ declare const ProfileSchema: z.ZodObject<{
             confidence: z.ZodNumber;
             stability: z.ZodOptional<z.ZodEnum<{
                 high: "high";
-                medium: "medium";
                 low: "low";
+                medium: "medium";
             }>>;
             fixability: z.ZodOptional<z.ZodEnum<{
-                safe: "safe";
                 "maybe-incorrect": "maybe-incorrect";
-                "requires-input": "requires-input";
                 "not-fixable": "not-fixable";
+                "requires-input": "requires-input";
+                safe: "safe";
             }>>;
             description: z.ZodOptional<z.ZodString>;
             examples: z.ZodOptional<z.ZodArray<z.ZodObject<{
@@ -325,14 +325,14 @@ declare const ProfileSchema: z.ZodObject<{
             confidence: z.ZodNumber;
             stability: z.ZodOptional<z.ZodEnum<{
                 high: "high";
-                medium: "medium";
                 low: "low";
+                medium: "medium";
             }>>;
             fixability: z.ZodOptional<z.ZodEnum<{
-                safe: "safe";
                 "maybe-incorrect": "maybe-incorrect";
-                "requires-input": "requires-input";
                 "not-fixable": "not-fixable";
+                "requires-input": "requires-input";
+                safe: "safe";
             }>>;
             description: z.ZodOptional<z.ZodString>;
             examples: z.ZodOptional<z.ZodArray<z.ZodObject<{

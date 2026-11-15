@@ -1,7 +1,8 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { lintAll, lintSlug } from './index.js';
+import { loadTaskIndex } from './edges.js';
 import { recordArtifactHash } from '../utils/artifact-hash.js';
 import { withEmptyActiveRoot, withTempActiveRoot } from '../test-support/test-helpers.js';
 
@@ -111,6 +112,18 @@ describe('lintAll', () => {
       expect(bySlug.get('alpha')).toBeUndefined();
       expect(bySlug.get('beta')).toBe(2);
       expect(bySlug.get('gamma')).toBeUndefined();
+    });
+  });
+
+  it('loads the cross-initiative task index once for all slugs', async () => {
+    await withEmptyActiveRoot(async (root) => {
+      await scaffoldInitiative(root, 'alpha', { briefBodyLines: 1, notesLines: 1 });
+      await scaffoldInitiative(root, 'beta', { briefBodyLines: 1, notesLines: 1 });
+      const countingLoader = vi.fn(loadTaskIndex);
+
+      await lintAll({ activeRoot: root, loadTaskIndex: countingLoader });
+
+      expect(countingLoader).toHaveBeenCalledTimes(1);
     });
   });
 

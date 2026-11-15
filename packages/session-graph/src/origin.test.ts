@@ -5,6 +5,7 @@ import type { DiscoveredTranscript } from "@titan-design/session-read";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ORIGIN_MIGRATION_NAME, ORIGIN_TABLES } from "./origin-schema.js";
+import { ORIGIN_EXECUTION_MIGRATION_NAME } from "./origin-execution-schema.js";
 import { ORIGIN_TASK_LINK_MIGRATION_NAME } from "./origin-task-link-schema.js";
 import { openSessionGraph, resetIndex, type SessionGraph } from "./graph.js";
 import { NO_ORIGINS, NO_TASK_LINK, resolveOrigins, sessionsNeedingOrigin, type OriginResolution, type OriginResolver, type ResolvedOrigin } from "./origin.js";
@@ -84,7 +85,7 @@ describe("migration 5", () => {
     first.db.close();
     const second = openSessionGraph(file);
 
-    expect(migrationsAfterFirst.map((r) => r.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 1001, 1002]);
+    expect(migrationsAfterFirst.map((r) => r.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 1001, 1002]);
     expect(migrationsAfterFirst.find((r) => r.version === 5)?.name).toBe("origin, episodes, prices");
     expect(ORIGIN_MIGRATION_NAME).toBe("origin, episodes, prices");
     expect(migrationRows(second.db)).toEqual(migrationsAfterFirst);
@@ -395,6 +396,61 @@ describe("request_dedup", () => {
       { transcript_id: 2, request_id: "req-fan", ts: "2026-09-01T00:00:04Z" },
       { transcript_id: 2, request_id: "req-solo", ts: "2026-09-01T00:00:06Z" },
     ]);
+  });
+});
+
+describe("origin execution phase", () => {
+  const phaseOf = (g: SessionGraph) => g.db.prepare("SELECT execution_phase FROM session_origin WHERE session_id = 'worker'").get();
+
+  it("is written from a resolution and cleared by a later one without it", async () => {
+    const g = openSessionGraph(":memory:");
+    g.db.prepare("INSERT INTO session (session_id, cwd) VALUES ('worker', '/scratch')").run();
+
+    await resolveOrigins(g, () => ({ origins: { worker: { originSystem: "agent-chat", taskIds: [], executionPhase: "succeeded" } } }));
+    const stored = phaseOf(g);
+    g.db.prepare("UPDATE session SET ended_at = '2999-01-01T00:00:00Z'").run();
+    await resolveOrigins(g, () => ({ origins: { worker: { originSystem: "agent-chat", taskIds: [] } } }));
+
+    expect(stored).toEqual({ execution_phase: "succeeded" });
+    expect(phaseOf(g)).toEqual({ execution_phase: null });
+    g.db.close();
+  });
+
+  it("is refreshed from the ledger after the transcript stopped growing, until it is terminal", async () => {
+    const g = openSessionGraph(":memory:");
+    g.db.prepare("INSERT INTO session (session_id, cwd) VALUES ('worker', '/scratch')").run();
+    const resolveAs = (executionPhase: string) =>
+      resolveOrigins(g, () => ({ origins: { worker: { originSystem: "agent-chat", taskIds: [], executionPhase } } }));
+
+    await resolveAs("running");
+    const offeredWhileRunning = sessionsNeedingOrigin(g);
+    await resolveAs("succeeded");
+    const offeredWhenTerminal = sessionsNeedingOrigin(g);
+
+    expect(offeredWhileRunning).toEqual(["worker"]);
+    expect(phaseOf(g)).toEqual({ execution_phase: "succeeded" });
+    expect(offeredWhenTerminal).toEqual([]);
+    g.db.close();
+  });
+
+  it("is added by a named migration that applies twice as a no-op, keeping rows", () => {
+    const file = path.join(dir, "execution.sqlite3");
+    const old = openDatabase(file);
+    runMigrations(old, MIGRATIONS.slice(0, 16));
+    old.exec("INSERT INTO session (session_id, cwd) VALUES ('kept', '/scratch')");
+    old.exec("INSERT INTO session_origin (session_id, origin_system, resolved_at) VALUES ('kept', 'agent-chat', '2026-01-01T00:00:00Z')");
+    old.close();
+
+    openSessionGraph(file).db.close();
+    const g = openSessionGraph(file);
+    const columns = g.db.prepare("SELECT name FROM pragma_table_info('session_origin')").pluck().all();
+    const applied = g.db.prepare("SELECT name FROM _migration WHERE name = ?").pluck().all(ORIGIN_EXECUTION_MIGRATION_NAME);
+    const kept = g.db.prepare("SELECT execution_phase FROM session_origin WHERE session_id = 'kept'").get();
+
+    expect(columns).toContain("execution_phase");
+    expect(applied).toEqual([ORIGIN_EXECUTION_MIGRATION_NAME]);
+    expect(kept).toEqual({ execution_phase: null });
+    g.db.close();
   });
 });
 

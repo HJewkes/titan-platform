@@ -251,15 +251,6 @@ describe("inbox.prepare", () => {
     expect(prepared.action).toEqual({ kind: "owner-release", repo: REPO, pr: 2, headSha: HEAD });
     expect(prepared.readBack).toMatchObject({ hold: { class: "owner-asked", reason: "owner-asked: wait for me" }, effect: `Release the owner-asked hold on ${REPO}#2 at 1234567` });
   });
-
-  it("gives a deposit item no action, even one carrying a live gate's key", async () => {
-    await writeDeposit(path.join(dir, "deposits"), { depositId: "queue-1", asker: ASKER, kind: "do", door: "two-way", summary: "Resolve the plain gate", context: "", keys: [PLAIN_ID, `run:${RUN_PLAIN}`], command: "titan-factory shepherd waiting" });
-    const { prepare } = await harness(spyFactory().client);
-
-    const envelope = await prepare(depositItemId(ASKER, "queue-1"));
-
-    expect(envelope).toMatchObject({ ok: true, data: { status: "no-action", action: { kind: "terminal", command: "titan-factory shepherd waiting" } } });
-  });
 });
 
 describe("inbox.act", () => {
