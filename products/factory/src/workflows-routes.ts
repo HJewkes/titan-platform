@@ -20,6 +20,7 @@ import { orderExpiryRoute } from "./shepherd/merge-order-expiry.js";
 import { mergeOrderRoutes } from "./shepherd/merge-order-steps.js";
 import { fileRules, mergeOrderMigration, mergeOrderRef, type OrderWaits } from "./shepherd/merge-order.js";
 import { watchListMigration } from "./shepherd/watch-list.js";
+import { checkCandidatesMigration } from "./shepherd/check-candidates-store.js";
 import { gateEvidenceMigration } from "./shepherd/lan-gates.js";
 import { mergeBaseExceptionMigration } from "./shepherd/merge-base-exception.js";
 import { shepherdRoutes } from "./shepherd/pr.js";
@@ -48,7 +49,7 @@ import type { FactoryRouteDeps } from "./workflows-deps.js";
 const NO_SEATS: SeatBook = { seats: [], denied: [] };
 
 /** The shepherd tenant's versions follow the host's 1-3; the host's own later migrations take numbers above these. */
-export const SHEPHERD_MIGRATIONS: readonly Migration[] = [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), trainMigration(10), holdSatisfiedMigration(11), freezeCancelOnlyMigration(12), shepherdEventMigration(16), accountLimitMigration(17), reviewRequestMigration(18), holdSlotsMigration(19), parkSettledMigration(21), ownerHoldMigration(22), freezeFixPrMigration(23), registrationFactsMigration(24), reclassMarkMigration(25), trainShadowMigration(26), repairStopMigration(31), proofWaiverMigration(32), repoFreezeMigration(33), registrantMigration(38), gateCancelKindMigration(39), mergeOrderMigration(40), watchListMigration(41), mergeBaseExceptionMigration(42), lastSliceMigration(43), orderEventKindsMigration(44), orderWaitKindMigration(45), planApprovalMigration(46), gateEvidenceMigration(48), revertsMigration(51), mergeWaitKindMigration(53)];
+export const SHEPHERD_MIGRATIONS: readonly Migration[] = [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), trainMigration(10), holdSatisfiedMigration(11), freezeCancelOnlyMigration(12), shepherdEventMigration(16), accountLimitMigration(17), reviewRequestMigration(18), holdSlotsMigration(19), parkSettledMigration(21), ownerHoldMigration(22), freezeFixPrMigration(23), registrationFactsMigration(24), reclassMarkMigration(25), trainShadowMigration(26), repairStopMigration(31), proofWaiverMigration(32), repoFreezeMigration(33), registrantMigration(38), gateCancelKindMigration(39), mergeOrderMigration(40), watchListMigration(41), mergeBaseExceptionMigration(42), lastSliceMigration(43), orderEventKindsMigration(44), orderWaitKindMigration(45), planApprovalMigration(46), gateEvidenceMigration(48), revertsMigration(51), mergeWaitKindMigration(53), checkCandidatesMigration(54)];
 
 /**
  * Routes for every dispatch step of `factoryWorkflows`, each match once. Every merge goes through the hold, so a held

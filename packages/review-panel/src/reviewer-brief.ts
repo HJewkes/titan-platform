@@ -8,6 +8,9 @@ import { ciTableLines, CI_REVIEWER_TEST_RULE, type CiCheckRow } from "./briefs/c
 import { OWNER_PICK_CONTRADICTED } from "./fix-first-findings.js";
 import { DEFECT_CLASS_HEADING, EARLIER_FINDINGS_HEADING, earlierFindingLines, type EarlierFinding } from "./briefs/earlier-findings.js";
 import { FOLLOW_UPS_HEADING, MAX_FOLLOW_UPS } from "./follow-ups.js";
+import { CHECK_CANDIDATES_HEADING } from "./check-candidates.js";
+import { checkCandidatesLines } from "./briefs/check-candidates.js";
+import { NIT_POLICY_RULE } from "./briefs/nit-policy.js";
 import { CLASS_TAG, IMPORTANT_TAG, scopeLines, scopedDiffLine, shellSafe, usableScope, type ReviewScope } from "./briefs/scoped-rereview.js";
 
 type RepoSlug = string;
@@ -47,6 +50,7 @@ export const CI_POLICY_RULE =
 
 export { DEFECT_CLASS_HEADING, EARLIER_FINDINGS_END, EARLIER_FINDINGS_HEADING, EARLIER_FINDINGS_START, type EarlierFinding } from "./briefs/earlier-findings.js";
 export { CI_REVIEWER_TEST_RULE, MAX_CI_CHECK_ROWS, type CiCheckRow } from "./briefs/ci.js";
+export { CHECK_CANDIDATES_RULE } from "./briefs/check-candidates.js";
 
 /** Everything a reviewer brief may carry; it has no field for task or implementer text, so none can reach the prompt. */
 export interface ReviewerBriefInput extends WorkflowCiInput {
@@ -164,7 +168,7 @@ function convergenceLines(convergence: boolean | undefined): string[] {
   return [
     "",
     "This is a convergence review. This PR's FIX_FIRST rounds did not converge, and Shepherd wakes no further fixer for it. Judge whether this head can merge as it is.",
-    `Whatever your verdict, before the verdict lines add a section that starts with a line \`${CONVERGENCE_HEADING}\`, with one line per finding still open, from the earlier rounds or your own: \`- Important: <item>\`, \`- Nit: <item>\` or \`- Pre-existing: <item>\`.`,
+    `Whatever your verdict, before the verdict lines add a section that starts with a line \`${CONVERGENCE_HEADING}\`, with one line per finding still open, from the earlier rounds or your own: \`- Important: <item>\`, \`- Nit: <item>\` or \`- Pre-existing: <item>\`. This section lists the Nit and Pre-existing items the rule above leaves out of the rest of your review.`,
     "Important is a defect this PR adds or leaves unfixed that would make merging it wrong. Nit is style, polish, or a re-roll of a point an earlier round already answered. Pre-existing was on the base before this PR.",
     `In the same section, add a line \`${DEFECT_CLASS_HEADING} <class>\` naming the bug class the rounds kept finding.`,
     "Give MERGE when no Important finding remains, whatever Nits or Pre-existing items are left. Give FIX_FIRST only for an Important finding; it sends the task to its planner to redesign or split.",
@@ -174,7 +178,8 @@ function convergenceLines(convergence: boolean | undefined): string[] {
 /** Lets a reviewer defer a nit to a task instead of a FIX_FIRST round; the template's placeholders never parse as an item. */
 export const FOLLOW_UPS_RULE =
   `Optionally, for work that should not hold this PR, add before the verdict lines a section that starts with a line \`${FOLLOW_UPS_HEADING}\`, then one line per proposed task, at most ${MAX_FOLLOW_UPS}: ` +
-  "`- <title> | <done_when> | <low, medium or high>`. Follow-ups never block MERGE and are filed as tasks for later; anything blocking goes in your review as FIX_FIRST, never here. Write no section when you have none.";
+  "`- <title> | <done_when> | <low, medium or high>`. Follow-ups never block MERGE and are filed as tasks for later; anything blocking goes in your review as FIX_FIRST, never here. " +
+  "Never propose a low-severity cosmetic follow-up. Write no section when you have none.";
 
 /** A run handed earlier findings is a re-review even when its count lags them. */
 const fixFirstCount = (input: ReviewerBriefInput): number => Math.max(input.fixFirsts ?? 0, input.earlierFindings?.length ?? 0);
@@ -222,7 +227,7 @@ function checkoutLines(runDir: string, { repo, pr, head, sourceCheckout }: Revie
 const HANDS_OFF = "Do not push, merge, comment or edit anything.";
 
 /** Labels are read from the final message only, so a reviewer that cleans up after its verdict and repeats a bare block loses its Attests line. */
-const FINAL_MESSAGE_IS_REVIEW = `Your final message is your whole review and verdict, including any \`${ATTESTS_HEADING}\` and \`${FOLLOW_UPS_HEADING}\` lines; send no message after it.`;
+const FINAL_MESSAGE_IS_REVIEW = `Your final message is your whole review and verdict, including any \`${ATTESTS_HEADING}\`, \`${FOLLOW_UPS_HEADING}\` and \`${CHECK_CANDIDATES_HEADING}\` lines; send no message after it.`;
 
 const ATTESTS_IN_FINAL_ONLY = `An \`${ATTESTS_HEADING}\` line counts only in your final message.`;
 
@@ -265,8 +270,10 @@ function verdictRuleLines(input: ReviewerBriefInput, scope: ReviewScope | undefi
     ...attestLines(input.attestClaims ?? []),
     `For FIX_FIRST, list every blocking item, then add a section that starts with a line \`${DEFECT_CLASS_HEADING}\` naming the defect class the items share and the boundary where one fix covers it.`,
     ...recurringLines(fixFirstCount(input), input.earlierFindings ?? [], scope),
+    NIT_POLICY_RULE,
     ...convergenceLines(input.convergence),
     FOLLOW_UPS_RULE,
+    ...checkCandidatesLines(),
   ];
 }
 

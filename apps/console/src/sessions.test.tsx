@@ -209,8 +209,12 @@ describe("a session's detail", () => {
     const opened = vi.spyOn(window, "open").mockReturnValue(null);
     renderConsole(`#/sessions/${NEWEST}`, recorded());
     fireEvent.click(await screen.findByText("Files (2)"));
-    fireEvent.click(within(await screen.findByTestId("touched-src/handshake.ts")).getByRole("link"));
-    expect(opened).toHaveBeenCalledWith("http://127.0.0.1:7700/#/node/src%2Fhandshake.ts", "_blank", "noopener");
+    const link = within(await screen.findByTestId("touched-src/handshake.ts")).getByRole("link");
+    expect(link.getAttribute("href")).toBe("http://127.0.0.1:7700/#/node/src%2Fhandshake.ts");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toContain("noopener");
+    fireEvent.click(link);
+    expect(opened).not.toHaveBeenCalled();
     expect(cells("touched-src/handshake.ts")).toEqual(["src/handshake.ts ↗", "readwrite", "3"]);
     expect(within(screen.getByTestId("touched-/scratch/notes.txt")).queryByRole("link")).toBeNull();
     expect(cells("touched-/scratch/notes.txt")).toEqual(["/scratch/notes.txt", "read", "1"]);

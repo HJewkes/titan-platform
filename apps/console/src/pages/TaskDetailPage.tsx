@@ -5,6 +5,7 @@ import { EXIT } from "@titan-design/registry";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
+import { StatePill } from "./AgentParts.js";
 import { GuessedCaption, RefLink, TaskStageBadge } from "./TaskParts.js";
 
 type Detail = ConsoleCommands["work.task"]["result"];
@@ -24,20 +25,38 @@ export function TaskDetailPage({ id }: { id: string }): ReactNode {
       </VStack>
     );
   }
+  return <Loaded id={id} detail={detail.data} />;
+}
+
+function Loaded({ id, detail }: { id: string; detail: Detail }): ReactNode {
   return (
     <VStack gap={4}>
       <Trail id={id} />
-      <Header task={detail.data.task} />
-      <Panel title="Pull requests">
-        <PullRequests detail={detail.data} />
+      <Header task={detail.task} />
+      <Panel title="Related">
+        <Related detail={detail} />
       </Panel>
+      <Panel title="Pull requests">
+        <PullRequests detail={detail} />
+      </Panel>
+      <Panel title="Agents">
+        <Agents id={id} />
+      </Panel>
+      <Records id={id} detail={detail} />
+    </VStack>
+  );
+}
+
+function Records({ id, detail }: { id: string; detail: Detail }): ReactNode {
+  return (
+    <>
       <Panel title="Mentions">
         <Mentions id={id} />
       </Panel>
       <Panel title="Linked sessions">
-        <Sessions detail={detail.data} />
+        <Sessions detail={detail} />
       </Panel>
-    </VStack>
+    </>
   );
 }
 
@@ -88,6 +107,30 @@ function Field({ label, text }: { label: string; text: string }): ReactNode {
     <VStack gap={1}>
       <Typography variant="subtitle2">{label}</Typography>
       <Typography variant="body1">{text}</Typography>
+    </VStack>
+  );
+}
+
+function Related({ detail }: { detail: Detail }): ReactNode {
+  const { task, children, deliverables, deliverablesDegraded } = detail;
+  const empty = task.parent === null && task.dep.length === 0 && children.length === 0 && deliverables.length === 0 && deliverablesDegraded === null;
+  if (empty) return <Typography variant="body1">No related tasks</Typography>;
+  return (
+    <VStack gap={2} testID="related-panel">
+      {task.parent !== null ? <DataRow label="Parent" value={<RefLink refText={`task:${task.parent}`} label={task.parent} />} /> : null}
+      {task.dep.map((dep) => (
+        <DataRow key={dep} label="Depends on" value={<RefLink refText={`task:${dep}`} label={dep} />} />
+      ))}
+      {children.map((child) => (
+        <HStack key={child.id} gap={2} align="center" wrap>
+          <RefLink refText={`task:${child.id}`} label={`${child.id} ${child.title}`} />
+          <Badge variant="subtle" size="sm">{child.status}</Badge>
+        </HStack>
+      ))}
+      {deliverablesDegraded !== null ? <Alert status="warning" size="compact" message={`Deliverables are unavailable: ${deliverablesDegraded}`} /> : null}
+      {deliverables.map((entry) => (
+        <Typography key={entry.id} variant="body1">{`${entry.id} ${entry.record?.title ?? "no record"}`}</Typography>
+      ))}
     </VStack>
   );
 }
@@ -144,7 +187,25 @@ function BranchRow({ branch }: { branch: Branch }): ReactNode {
   );
 }
 
-const TASK_FILE = /^tasks\/(.+)\.yml$/;
+function Agents({ id }: { id: string }): ReactNode {
+  const roster = useQuery("agents.roster");
+  if (roster.status === "loading") return <Spinner size="sm" label="Loading agents" />;
+  if (roster.data === undefined) return <Alert status="warning" size="compact" message={`Agents are unavailable: ${roster.error.message}`} />;
+  const working = roster.data.agents.filter((agent) => agent.taskId === id);
+  if (working.length === 0) return <Typography variant="caption" color="secondary">No live agent on this task</Typography>;
+  return (
+    <VStack gap={2} testID="task-agents">
+      {working.map((agent) => (
+        <HStack key={agent.id} gap={2} align="center" wrap>
+          <RefLink refText={`agent:${agent.name}`} label={agent.name} />
+          <StatePill state={agent.state} />
+        </HStack>
+      ))}
+    </VStack>
+  );
+}
+
+const TASK_FILE =/^tasks\/(.+)\.yml$/;
 
 /** A mention in another task's file names that task; session and artifact mentions have no page yet. */
 function mentionRef(mention: Mention): string | undefined {

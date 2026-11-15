@@ -4,6 +4,7 @@ import type { ZodType } from 'zod';
 import { classifyStructuredArtifact, recordArtifactHash } from './artifact-hash.js';
 import { atomicWrite } from './fs-atomic.js';
 import { coerceDates } from './coerce-dates.js';
+import { formatIssues } from './schema-issues.js';
 
 /**
  * Read and parse a YAML file, validating its contents against `schema`.
@@ -24,7 +25,7 @@ export async function readYaml<T>(filePath: string, schema: ZodType<T>): Promise
   const coerced = coerceDates(parsed);
   const result = schema.safeParse(coerced);
   if (!result.success) {
-    throw new Error(`Schema validation failed for ${filePath}: ${result.error.message}`);
+    throw new Error(`Schema validation failed for ${filePath}: ${formatIssues(result.error)}`);
   }
   return result.data;
 }
@@ -38,7 +39,7 @@ export async function readYaml<T>(filePath: string, schema: ZodType<T>): Promise
 export async function writeYaml<T>(filePath: string, data: T, schema: ZodType<T>): Promise<void> {
   const result = schema.safeParse(data);
   if (!result.success) {
-    throw new Error(`Schema validation failed for ${filePath}: ${result.error.message}`);
+    throw new Error(`Schema validation failed for ${filePath}: ${formatIssues(result.error)}`);
   }
   const yaml = YAML.stringify(result.data);
   await atomicWrite(filePath, yaml);
