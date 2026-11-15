@@ -475,3 +475,41 @@ describe('open command — sibling session leases (CC-9)', () => {
     });
   });
 });
+
+describe('open command — unreadable active root', () => {
+  async function withRegularFileRoot(run: (root: string) => Promise<void>): Promise<void> {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'aw-open-notdir-'));
+    const root = path.join(dir, 'root-is-a-file');
+    await fs.writeFile(root, 'not a directory');
+    try {
+      await run(root);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  it.each(['owner', 'agent'] as const)(
+    'returns an empty picker with one warning when the root is a file (%s)',
+    async (caller) => {
+      await withRegularFileRoot(async (root) => {
+        const ctx = { ...makeCtx(root), caller };
+        const picker = asPicker(await openCommand.run({}, ctx));
+        expect(picker.initiatives).toEqual([]);
+        expect(ctx.warnings).toHaveLength(1);
+        expect(ctx.warnings[0]).toMatch(/could not be read/);
+      });
+    },
+  );
+
+  it('returns an empty picker without a warning when the root is missing', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'aw-open-missing-'));
+    try {
+      const ctx = makeCtx(path.join(dir, 'absent'));
+      const picker = asPicker(await openCommand.run({}, ctx));
+      expect(picker.initiatives).toEqual([]);
+      expect(ctx.warnings).toEqual([]);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+});

@@ -4,7 +4,7 @@ export const DIGEST = [
   "---",
   "schema: titan-intent-digest/v1",
   "slug: web",
-  "initiative: alpha",
+  "initiative: web",
   "built_from: synthetic rows",
   "---",
   "## Standing direction",
