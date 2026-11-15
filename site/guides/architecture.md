@@ -186,6 +186,7 @@ graph TD
   sessionAnalytics --> sessionRead
   sessionAnalytics --> storeSqlite
   sessionGraph --> agentProtocol
+  sessionGraph --> clusterPkg
   sessionGraph --> locator
   sessionGraph --> sessionRead
   sessionGraph --> storeSqlite
@@ -314,7 +315,6 @@ graph TD
   retrievalEval --> storeSqlite
   sessionMiner --> anthropicAccount
   sessionMiner --> appPaths
-  sessionMiner --> clusterPkg
   sessionMiner --> daemon
   sessionMiner --> embed
   sessionMiner --> github
@@ -426,7 +426,7 @@ The usage guides are under [Guides](/guides/#running-the-products).
 
 ## What a product actually looks like
 
-The session miner composes <!-- generated:miner-count start -->twenty<!-- generated:miner-count end --> packages and is roughly a thousand lines of its own code.
+The session miner composes <!-- generated:miner-count start -->nineteen<!-- generated:miner-count end --> packages and is roughly a thousand lines of its own code.
 Its structure generalises: one context type, one registry, one binding of the daemon, and a
 set of commands.
 
