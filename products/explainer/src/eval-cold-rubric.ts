@@ -7,7 +7,7 @@ import type { PaceBeat } from "./pace-items.js";
 import type { ScriptV1 } from "./script-schema.js";
 
 export const COLD_RUBRIC_EVAL_ID = "L1-cold-rubric";
-export const COLD_RUBRIC_DIMS = ["J8", "J9", "J10", "J11", "J12"] as const;
+export const COLD_RUBRIC_DIMS = ["J8", "J9", "J10", "J11", "J12", "J13"] as const;
 export type ColdRubricDim = (typeof COLD_RUBRIC_DIMS)[number];
 /** A canary scored above this on its row was not caught by the judge. */
 export const CANARY_MAX_SCORE = 2;
@@ -91,6 +91,15 @@ export const COLD_RUBRIC_CANARIES: readonly ColdRubricCanary[] = [
       { spoken: "The desk server checks each scan before the ledger.", screen: ["stock photo of a handshake"] },
       { spoken: "It refuses a label whose parcel was never scanned.", screen: ["a meme in a different font and palette"] },
       { spoken: "Refused labels go back to the courier.", screen: ["seven lines of plain bullet text"] },
+    ],
+  },
+  {
+    dim: "J13",
+    key: "written-register",
+    beats: [
+      { spoken: "Reliability is the foundation of trust, and the lesson is that consistency always wins.", screen: ["reliability"] },
+      { spoken: "Visibility enables accountability, which reminds us that transparency matters.", screen: ["visibility"] },
+      { spoken: "Simplicity reduces complexity, and the moral is that restraint is a virtue.", screen: ["simplicity"] },
     ],
   },
 ];
@@ -181,7 +190,7 @@ function canaryResult(placed: Placed, reply: RubricReply): CanaryResult {
   return { canary: placed.canary.key, dim: placed.canary.dim, got, pass: score !== null && score <= CANARY_MAX_SCORE };
 }
 
-/** One call: the subject and a canary video, scored on J8 to J12 with verbatim quotes. */
+/** One call: the subject and a canary video, scored on J8 to J13 with verbatim quotes. */
 export async function runColdRubric(input: ColdRubricInput): Promise<ColdRubricResult> {
   const placed = placeCanary(input);
   const reply: RubricReply = await input.harness({ prompt: rubricPrompt(input, placed), schema: ReplySchema });

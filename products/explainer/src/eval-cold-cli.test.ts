@@ -187,7 +187,7 @@ describe("explainer eval cold: the reported J8 to J12 rows", () => {
 
     expect(rubricRows().map((r) => [r.run, r.dim, r.score, r.evidence])).toEqual(
       // The fixture opens on what the desk does, with no stake, so the fake judge marks motivation down.
-      ["1", "2"].flatMap((run) => ["J8", "J9", "J10", "J11", "J12"].map((dim) => [run, dim, dim === "J8" ? "1" : "4", "c1-1:The desk scans,"])),
+      ["1", "2"].flatMap((run) => ["J8", "J9", "J10", "J11", "J12", "J13"].map((dim) => [run, dim, dim === "J8" ? "1" : "4", "c1-1:The desk scans,"])),
     );
     expect(evalRows("canaries.tsv").filter((r) => r.eval_id === "L1-cold-rubric").map((r) => r.pass)).toEqual(["true", "true"]);
     expect(allRecords().filter((r) => r.eval_id === "L1-cold-rubric").map((r) => r.run)).toEqual([1, 2]);

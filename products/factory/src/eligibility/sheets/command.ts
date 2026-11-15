@@ -2,7 +2,7 @@ import type { Command } from "commander";
 import type { Verbs } from "../../cli-types.js";
 import { EXIT } from "../../exit-codes.js";
 import { errorMessage } from "../../narrow.js";
-import { activeWorkOrigin } from "../../shepherd/cleanup-ports.js";
+import { activeWorkOrigin } from "../../shepherd/active-work-origin.js";
 import { defaultRuleFilePath, loadRuleFile } from "../shadow/rule-file.js";
 import { applyImport, importPlan, PlanCommandsMissing, type ImportCall, type ImportOutcome } from "./import.js";
 import { defaultDigestDir, readSheetDir, type SheetFile } from "./sheet-dir.js";
