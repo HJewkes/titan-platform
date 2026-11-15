@@ -86,6 +86,7 @@ export {
   CHECK_ROUTES,
   MAX_CHECK_CANDIDATES,
   MAX_CHECK_SKETCH_CHARS,
+  checkCandidatesFields,
   parseCheckCandidates,
 } from "./check-candidates.js";
 export type { CheckCandidate, CheckCandidatesWarning, CheckClassRoute, CheckRoute, ParsedCheckCandidates } from "./check-candidates.js";
