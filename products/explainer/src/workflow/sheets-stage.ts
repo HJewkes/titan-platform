@@ -45,14 +45,17 @@ export function ffmpegMedia(exec: BridgeExec = spawnExec): MediaExec {
 }
 
 export interface SheetsConfig {
-  take: string;
+  /** An explicit take; absent, `v<n>` for the run's position among the video's runs. */
+  take?: string;
+  /** The day the run's gather covers. */
+  day?: string;
   status: SidecarStatus;
   /** The theater stem the poster file is named after. */
   stem: string;
   /** The run's profile id; absent, the script's own. */
   profile?: string;
   /** The video and every run of it; absent, the child run is the video's only run. */
-  video?: { id: string; runIds: string[] };
+  video?: { id: string; runIds: string[]; position?: number };
 }
 
 interface SheetsInput extends Omit<ModelStageInput, "store"> {
@@ -107,8 +110,9 @@ export async function runSheetsStage(input: SheetsInput, config: SheetsConfig, m
   const poster = await grabPoster(input, media, mp4, posterAt(durationS));
   const video = config.video ?? { id: input.from.runId, runIds: [input.from.runId] };
   const profile = config.profile ?? script.profile;
+  const take = config.take ?? `v${video.position ?? video.runIds.length}`;
   const sidecar = buildSidecar({
-    script, profile, durationS, stem: config.stem, take: config.take, status: config.status,
+    script, profile, durationS, stem: config.stem, take, status: config.status, ...(config.day ? { day: config.day } : {}),
     explainer: { videoId: video.id, runIds: video.runIds, profile, scriptSha, fingerprint: carried },
   });
   const outputs = {

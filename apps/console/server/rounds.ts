@@ -12,7 +12,7 @@
  * `round-withdraw.ts` put a `withdrawn.json` there instead; an answer outranks a withdrawal.
  */
 import { createHash } from "node:crypto";
-import { constants } from "node:fs";
+import { constants, type Dirent } from "node:fs";
 import { lstat, open, readdir, type FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
@@ -35,6 +35,8 @@ export interface RoundsSource {
   lineage?: LineageReader;
   /** Absent, no round carries a `live` field; the daemon wires the console's Storybook store. */
   live?: LiveReader;
+  /** Tests lower the cap; the daemon leaves it at the default. */
+  maxRounds?: number;
 }
 
 export const MAX_ROUND_BYTES = 1024 * 1024;
@@ -213,20 +215,40 @@ async function listedRound(dir: string, id: string): Promise<RoundSummary> {
   return withdrawal === null ? summary : { ...summary, withdrawnReason: withdrawal.reason };
 }
 
+const roundIds = (entries: readonly Dirent[]): string[] => entries.filter((entry) => entry.isDirectory() && ROUND_ID.test(entry.name)).map((entry) => entry.name).sort();
+
+const dirAge = async (dir: string, id: string): Promise<number> => (await lstat(path.join(dir, id)).catch(() => null))?.mtimeMs ?? 0;
+
+/**
+ * Status comes before the cap so an open round, which someone waits on, is never cut; only sent and
+ * withdrawn rounds are, oldest directory first. The open rounds alone may exceed the cap.
+ */
+async function idsWithinCap(dir: string, ids: string[], cap: number): Promise<{ ids: string[]; cut: number }> {
+  if (ids.length <= cap) return { ids, cut: 0 };
+  const statuses = await Promise.all(ids.map((id) => statusOf(path.join(dir, id))));
+  const open = ids.filter((_, index) => statuses[index] === "open");
+  const closed = ids.filter((_, index) => statuses[index] !== "open");
+  const room = Math.max(0, cap - open.length);
+  if (closed.length <= room) return { ids, cut: 0 };
+  const aged = await Promise.all(closed.map(async (id) => ({ id, age: await dirAge(dir, id) })));
+  const kept = aged.sort((a, b) => b.age - a.age || a.id.localeCompare(b.id)).slice(0, room).map(({ id }) => id);
+  return { ids: [...open, ...kept].sort(), cut: closed.length - room };
+}
+
 const newestFirst =(a: RoundSummary, b: RoundSummary): number => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || a.id.localeCompare(b.id);
 
 /**
  * A missing rounds dir is no rounds yet; a symlinked round directory is skipped, as `isDirectory` is false for it.
  * The dir is returned so an empty page can say where rounds are read from.
  */
-export async function listRounds({ dir }: RoundsSource): Promise<{ rounds: RoundSummary[]; truncated: boolean; dir: string }> {
+export async function listRounds({ dir, maxRounds = MAX_ROUNDS }: RoundsSource): Promise<{ rounds: RoundSummary[]; truncated: boolean; dir: string }> {
   const entries = await readdir(dir, { withFileTypes: true }).catch((error: unknown) => {
     if (errnoOf(error) === "ENOENT") return [];
     throw failure("the rounds dir could not be read", EXIT.UNAVAILABLE);
   });
-  const ids = entries.filter((entry) => entry.isDirectory() && ROUND_ID.test(entry.name)).map((entry) => entry.name).sort();
-  const rounds = await Promise.all(ids.slice(0, MAX_ROUNDS).map((id) => listedRound(dir, id)));
-  return { rounds: rounds.sort(newestFirst), truncated: ids.length > MAX_ROUNDS, dir };
+  const { ids, cut } = await idsWithinCap(dir, roundIds(entries), maxRounds);
+  const rounds = await Promise.all(ids.map((id) => listedRound(dir, id)));
+  return { rounds: rounds.sort(newestFirst), truncated: cut > 0, dir };
 }
 
 export async function getRound(source: RoundsSource, id: string, { remote = false }: { remote?: boolean } = {}): Promise<RoundDetail> {
@@ -332,16 +354,16 @@ async function queueRound(dir: string, id: string): Promise<{ round?: QueueRound
  * Every valid round with its feedback, for the owner queue. Nothing here throws: an invalid round, an
  * unreadable feedback file or the dir itself becomes a gap line. A missing dir is no rounds and no gap.
  */
-export async function readQueueRounds({ dir }: RoundsSource): Promise<{ rounds: QueueRound[]; gaps: string[] }> {
+export async function readQueueRounds({ dir, maxRounds = MAX_ROUNDS }: RoundsSource): Promise<{ rounds: QueueRound[]; gaps: string[] }> {
   let entries;
   try {
     entries = await readdir(dir, { withFileTypes: true });
   } catch (error) {
     return { rounds: [], gaps: errnoOf(error) === "ENOENT" ? [] : ["the rounds dir could not be read"] };
   }
-  const ids = entries.filter((entry) => entry.isDirectory() && ROUND_ID.test(entry.name)).map((entry) => entry.name).sort();
-  const read = await Promise.all(ids.slice(0, MAX_ROUNDS).map((id) => queueRound(dir, id)));
+  const { ids, cut } = await idsWithinCap(dir, roundIds(entries), maxRounds);
+  const read = await Promise.all(ids.map((id) => queueRound(dir, id)));
   const gaps = read.flatMap(({ gap }) => (gap === undefined ? [] : [gap]));
-  if (ids.length > MAX_ROUNDS) gaps.push(`only the first ${MAX_ROUNDS} of ${ids.length} rounds were read`);
+  if (cut > 0) gaps.push(`${cut} sent or withdrawn rounds were not read; only ${maxRounds} rounds are read unless more are open`);
   return { rounds: read.flatMap(({ round }) => (round === undefined ? [] : [round])), gaps };
 }
