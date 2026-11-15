@@ -20,7 +20,7 @@ import { prsCommand } from "./prs-command.js";
 import { kindMove, testOnlyHint } from "./register-kind.js";
 import type { KindMove } from "./task-kind.js";
 import { PrArg, RegisterArgs, RepoArg, coded, headBranch, policyFor, refuseKindMove, sliceAfter } from "./register-args.js";
-import { endSuperseded, isDivergedEnd, isReplayDiverged, restartFor } from "./restart.js";
+import { cancelSupersededGates, pendingGateIds, endSuperseded, isDivergedEnd, isReplayDiverged, restartFor } from "./restart.js";
 import { lastReadHead } from "./last-read-head.js";
 import { sizeFlagFor, type SliceFlag } from "./size-flag.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
@@ -125,7 +125,11 @@ export async function restartRegistered(ctx: FactoryContext, store: ShepherdStor
     }
     return refresh(store, winner, args, policy, move);
   }
-  if (isReplayDiverged(previousRun)) endSuperseded(ctx.host, previousRunId, runId);
+  if (isReplayDiverged(previousRun)) {
+    const pending = pendingGateIds(ctx.host, previousRunId);
+    endSuperseded(ctx.host, previousRunId, runId);
+    cancelSupersededGates(ctx.host, store, pending, runId, new Date(servicesOf(ctx).now?.() ?? Date.now()).toISOString());
+  }
   return { ...refresh(store, store.byRun(runId)!, seeded, policy, move), created: true, previousRunId, ...restart };
 }
 
