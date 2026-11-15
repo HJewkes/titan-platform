@@ -6,7 +6,7 @@ import { bodyBeats } from "./lint-text.js";
 import { loadProfiles, profileFor, type ProfileSet } from "./profile-load.js";
 import type { TypeProfile } from "./profile-schema.js";
 import { resolveBeat, type ResolvedBeat } from "./resolve-beat.js";
-import { overBudget, scriptBudgets, type BudgetRow } from "./resolve-budget.js";
+import { overBudget, scriptBudgets, voicedRate, type BudgetRow } from "./resolve-budget.js";
 import type { ScriptV1 } from "./script-schema.js";
 import { loadSpeechBands } from "./speech-bands.js";
 import { draftFillFaults } from "./script-fill.js";
@@ -227,9 +227,9 @@ function labelRules(profile: TypeProfile): string {
 export function budgetSection(leads: readonly LeadBeat[], profile: string): string {
   const bands = loadSpeechBands();
   const table = Object.entries(bands).map(([band, { wordsPerS }]) => `${band} ${wordsPerS}`).join(", ");
-  const lines = leads.map((lead) => capLine(lead, bands[lead.spec.speech.band].wordsPerS));
   const set = loadProfiles();
   const type = profileFor(set, profile);
+  const lines = leads.map((lead) => capLine(lead, voicedRate(bands[lead.spec.speech.band].wordsPerS, type.voice.rate)));
   const { runtime } = type;
   return `## Word caps, runtime and beats
 
