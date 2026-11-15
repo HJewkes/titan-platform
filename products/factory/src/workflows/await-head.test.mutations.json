@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the wait ignores a review ask at the waited head",
+      "file": "products/factory/src/workflows/await-head.ts",
+      "find": "if (pr && target.untilAsked === true && timing.reviewAsked?.(target.repo, target.pr, target.headSha)) return",
+      "replace": "if (false && pr && target.untilAsked === true && timing.reviewAsked?.(target.repo, target.pr, target.headSha)) return",
+      "kills": [
+        "ends asked at the unchanged head once an untaken ask stands there"
+      ]
+    }
+  ]
+}
