@@ -88,6 +88,9 @@ await port.dismissReview("o/r", pr.number, id, "a newer head is not reviewed"); 
 
 fake.forcePushes.set(pr.number, [{ before: "<replaced head sha>", after: pr.headSha }]);
 await port.listForcePushes("o/r", pr.number); // [{ before, after }], oldest first; more than 100 throws ForcePushesTruncated
+
+fake.outcomes.set(pr.number, { state: "merged", mergedAt: "2026-03-02T10:00:00Z", closedAt: "2026-03-02T10:00:00Z", reviews: [{ state: "APPROVED", submittedAt: "2026-03-02T09:30:00Z" }], commitDates: ["2026-03-01T08:00:00Z"], truncated: false });
+await port.readPrOutcome("o/r", pr.number); // the same shape back, from one GraphQL call on a real wire
 ```
 
 Squash commit messages come from `formatSquashMessage`, or from the `titan-squash-message`
@@ -193,10 +196,11 @@ and exit 2.
 
 ## What it deliberately does not do
 
-- No `gh pr view`, and no GraphQL but for `listReviewComments`, `listForcePushes` and
-  `readBackstopSnapshot`. Every call is `gh api`; only those post to `graphql`, because GitHub
-  reports a review thread's resolved state and a force-push's replaced head nowhere in REST,
-  and the backstop needs many PRs' rollups in one request.
+- No `gh pr view`, and no GraphQL but for `listReviewComments`, `listForcePushes`,
+  `readPrOutcome` and `readBackstopSnapshot`. Every call is `gh api`; only those post to
+  `graphql`, because GitHub reports a review thread's resolved state and a force-push's replaced
+  head nowhere in REST, `readPrOutcome` takes a PR's close time, review times and commit dates
+  in one request where REST needs three, and the backstop needs many PRs' rollups in one request.
 - No token handling. It runs on the caller's existing `gh` login.
 - No polling, timeouts or retry policy outside `ciWait`. Every other read leaves when to read
   again to the caller. The rate budget only paces calls; it never drops one.
@@ -250,6 +254,10 @@ and exit 2.
 - `listForcePushes` reads one GraphQL page of `FORCE_PUSHES_CAP` (100) head force-pushes and
   throws `ForcePushesTruncated` when GitHub says there are more. Treat that as "cannot decide",
   never as the whole list. `before` is null when GitHub no longer has the replaced commit.
+- `readPrOutcome` reads the first 100 reviews and 100 commits and sets `truncated` when either
+  has more, so a lead-time reader that needs the last commit must check it. `submittedAt` is
+  null for a pending review and a commit date is null when GitHub reports none. An answer of the
+  wrong shape throws `PrOutcomeMalformed`; a PR GitHub cannot resolve throws GraphQL's message.
 - GitHub silently caps compare at 300 files and 250 commits. `compareFiles` sets `truncated`
   when `files` reaches 300 or fewer commits came back than `total_commits`. When `truncated`
   is true, `files` may be missing paths: read `listPrFiles` instead, or treat the result as
