@@ -21,6 +21,7 @@ import { ACTIONS_OFF, type InboxActionOptions } from "./inbox-actions.js";
 import { movedMessage, opMessageOf, retireReadOf, type AgentOpReadBack, type RetireOp } from "./inbox-op.js";
 import type { ActionOutcome, Unreachable } from "./owner-action.js";
 import { ownerWriteCommand, readCommand } from "./owner-guard.js";
+import { refusalMessageOf } from "./refusal-message.js";
 import type { ShepherdSource } from "./shepherd.js";
 import { CONFIRM, CONFIRM_TTL_MS, digestOf, preparedStore, recordOnce, refuse, settleOutcome, writeRecord, type Prepared, type PreparedStore } from "./owner-tap.js";
 
@@ -112,7 +113,7 @@ function messageOf(outcome: Outcome, name: string): string {
     case "gone":
       return `Nothing to retire: ${outcome.reason}`;
     case "refused":
-      return `Not retired (${outcome.reason})${outcome.detail === undefined ? "" : `: ${outcome.detail}`}`;
+      return refusalMessageOf(outcome.reason, outcome.detail);
     case "off":
       return `The factory's console-action route is not mounted; run agent-chat agent retire ${name} on the terminal`;
     case "unreachable":
