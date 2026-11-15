@@ -36,6 +36,8 @@ const TimelineBeatSchema = z
     hints: HintsSchema.optional(),
     headline: z.string().min(1).optional(),
     chapter: ChapterSchema.optional(),
+    /** A plate beat leaves its stage background transparent, so what is composited behind the frames shows through. */
+    plate: z.literal(true).optional(),
     /** A custom layer draws this beat from `module`, an ESM URL relative to the page, instead of its kind's view. */
     layer: z.literal("custom").optional(),
     module: z.string().min(1).optional(),
