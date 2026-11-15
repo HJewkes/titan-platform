@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a cluster of two counts as recurring",
+      "file": "products/session-miner/src/playbook/replay.ts",
+      "find": "const MIN_CLUSTER_OCCURRENCES = 3;",
+      "replace": "const MIN_CLUSTER_OCCURRENCES = 2;",
+      "kills": ["replayPlaybook excludes a cluster with only two occurrences"]
+    },
+    {
+      "name": "occurrences before the window start are kept",
+      "file": "products/session-miner/src/playbook/replay.ts",
+      "find": "o.ts >= input.window.from && o.ts < input.window.to",
+      "replace": "o.ts < input.window.to",
+      "kills": ["replayPlaybook excludes occurrences outside the window, which can drop a cluster below three"]
+    },
+    {
+      "name": "recall ignores k and returns ten",
+      "file": "products/session-miner/src/playbook/replay.ts",
+      "find": "limit: input.k,",
+      "replace": "limit: 10,",
+      "kills": ["replayPlaybook serves only bullets that rank within the top k"]
+    },
+    {
+      "name": "any recalled bullet counts as the cluster's own",
+      "file": "products/session-miner/src/playbook/replay.ts",
+      "find": "return result.bullets.some((b) => b.id === bulletId(event.templateId));",
+      "replace": "return result.bullets.length > 0;",
+      "kills": ["replayPlaybook serves only bullets that rank within the top k"]
+    },
+    {
+      "name": "the baseline counts every occurrence as a first sighting",
+      "file": "products/session-miner/src/playbook/replay.ts",
+      "find": "const repeats = inWindow.length - byTemplate.size;",
+      "replace": "const repeats = 0;",
+      "kills": ["replayPlaybook reports the share of in-window occurrences that repeat an earlier one as the baseline"]
+    }
+  ]
+}
