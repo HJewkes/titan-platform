@@ -46,6 +46,18 @@ describe('yaml round-trip', () => {
     await expect(readYaml(target, Schema)).rejects.toThrow(/Schema validation failed/);
   });
 
+  it('names the offending field instead of printing issue JSON', async () => {
+    const target = path.join(dir, 'priority.yml');
+    await fs.writeFile(target, 'priority: high\n');
+
+    const err = await readYaml(target, z.object({ priority: z.number() })).catch(
+      (e: unknown) => e as Error,
+    );
+
+    expect((err as Error).message).toContain('priority:');
+    expect((err as Error).message).not.toContain('[{');
+  });
+
   it('reports parse errors with the file path', async () => {
     const target = path.join(dir, 'broken.yml');
     await fs.writeFile(target, 'title: : :\n  - bad\n');
