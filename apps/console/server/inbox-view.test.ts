@@ -288,6 +288,18 @@ describe("inbox.list on a fixture factory", () => {
     expect(list.items.filter((each) => each.sources[0]!.system === "hitl").map((each) => each.action.kind)).toEqual(["terminal", "terminal", "terminal", "terminal"]);
   });
 
+  it("drops a deposit pinned to an old head of a PR Shepherd watches at a newer one", async () => {
+    const pinned = (depositId: string, sha: string) =>
+      writeDeposit(path.join(dir, "state", "inbox", "deposits"), { depositId, asker: ASKER, kind: "decide", door: "two-way", summary: `Deposit ${depositId}?`, context: "", keys: [`pr:${REPO}#1@${sha}`] });
+    await pinned("stale", "a".repeat(40));
+    await pinned("current", HEAD);
+
+    const list = await listInbox(await serveFactory(fixtureFactory));
+
+    expect(byId(list, depositItemId(ASKER, "stale"))).toBeUndefined();
+    expect(byId(list, depositItemId(ASKER, "current"))).toBeDefined();
+  });
+
   it("lists the console's own deposits and rounds with a gap line per dead leg when the factory is down", async () => {
     await writeShipRound("ship-r1", new Date("2026-10-10T01:00:00.000Z"));
     const depositId = await writeImpostorDeposit();
