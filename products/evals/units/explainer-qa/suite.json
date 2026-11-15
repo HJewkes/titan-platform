@@ -5,7 +5,7 @@
     "version": "1.0.0"
   },
   "id": "explainer-qa-checks",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "cases": [
     "187ae159e76727ab4eb366974633a11e49e09b365a93072ce8cd3cfee29aea1e",
     "70e633159936be7a860397a727f0c671b938df88cc66a2678ef547be8b5b95f5",
@@ -18,7 +18,7 @@
   ],
   "checks": [
     {
-      "id": "qa",
+      "id": "held-errors",
       "family": "deterministic",
       "role": "required",
       "scope": "qa/",
@@ -32,7 +32,7 @@
           "--json"
         ],
         "in": "input.inputs",
-        "verdict": "checks[name=qa]",
+        "verdict": "checks[name=held-errors]",
         "gate": true
       }
     },

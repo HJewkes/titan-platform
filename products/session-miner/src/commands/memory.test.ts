@@ -49,6 +49,28 @@ describe("memory scan", () => {
     expect(ctx.graph).not.toHaveBeenCalled();
     expect(ctx.playbook).not.toHaveBeenCalled();
   });
+
+  it("reports a dangling pointer and an unindexed file without fact text", async () => {
+    const dir = writeMemory(path.join(temp.home, ".claude"), "p4", {
+      "MEMORY.md": "- [Gone](gone.md) — deleted\n- [Kept](kept.md) — here\n",
+      "kept.md": fact("kept", "Kept fact", `Body. ${SENTINEL}`),
+      "orphan.md": fact("orphan", "Orphan fact", "Nobody points here."),
+    });
+
+    const { envelope } = await invokeCommand(memoryScan, {}, context());
+
+    expect(envelope).toMatchObject({
+      data: {
+        index: {
+          checked: 2, dangling: 1, unindexed: 2, unloaded: 0,
+          findings: expect.arrayContaining([
+            { index: path.join(dir, "MEMORY.md"), dangling: [{ file: "gone.md", line: 1 }], unindexed: [path.join(dir, "orphan.md")], unloaded: [] },
+          ]),
+        },
+      },
+    });
+    expect(JSON.stringify(envelope)).not.toContain(SENTINEL);
+  });
 });
 
 describe("memory report", () => {
