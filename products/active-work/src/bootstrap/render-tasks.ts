@@ -29,9 +29,32 @@ export function formatTimeSince(from: Date, now: Date): string {
   return base;
 }
 
-export function compareTasksByPriority(a: Task, b: Task): number {
+const DUE_SOON_DAYS = 7;
+
+function utcDate(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+function compareTasksByPriority(a: Task, b: Task): number {
   if (a.priority !== b.priority) return a.priority - b.priority;
   return a.id.localeCompare(b.id);
+}
+
+/**
+ * Overdue and due-within-a-week tasks come first, earliest due first, because a
+ * dated commitment is worse missed than a higher-priority task that can wait.
+ * Dates are plain YYYY-MM-DD, so string comparison is date comparison.
+ */
+export function compareTasksForBootstrap(now: Date): (a: Task, b: Task) => number {
+  const horizon = utcDate(now.getTime() + DUE_SOON_DAYS * MS_PER_DAY);
+  const lifted = (t: Task): t is Task & { due: string } => t.due !== undefined && t.due <= horizon;
+  return (a, b) => {
+    const aLifted = lifted(a);
+    const bLifted = lifted(b);
+    if (aLifted && bLifted && a.due !== b.due) return a.due < b.due ? -1 : 1;
+    if (aLifted !== bLifted) return aLifted ? -1 : 1;
+    return compareTasksByPriority(a, b);
+  };
 }
 
 function nonBlankLines(text: string | undefined): string[] {
@@ -93,10 +116,11 @@ function renderTaskSummary(task: Task, slug: string): string | undefined {
   return undefined;
 }
 
-function renderTaskLine(idx: number, task: Task, slug: string): string {
+function renderTaskLine(idx: number, task: Task, slug: string, now: Date): string {
   const meta: string[] = [`priority ${task.priority}`];
   if (task.severity) meta.push(`severity ${task.severity}`);
   if (task.estimate !== undefined) meta.push(`est ${task.estimate}`);
+  if (task.due) meta.push(task.due < utcDate(now.getTime()) ? `due ${task.due}, overdue` : `due ${task.due}`);
   let line = `${idx}. [${task.id}] (${meta.join(', ')}) ${task.title}`;
   const summary = renderTaskSummary(task, slug);
   if (summary) line += `\n   ${summary}`;
@@ -107,14 +131,17 @@ export function renderTopTasks(
   tasks: Task[],
   topN: number,
   slug: string,
+  now: Date,
   facetTags?: string[],
 ): { body: string; count: number } {
-  const openTasks = tasks.filter((t) => t.status === 'open' && !isDraft(t)).sort(compareTasksByPriority);
+  const openTasks = tasks
+    .filter((t) => t.status === 'open' && !isDraft(t))
+    .sort(compareTasksForBootstrap(now));
   if (openTasks.length === 0) {
     return { body: '_No open tasks._', count: 0 };
   }
   const selection = selectFacetTasks(openTasks, facetTags);
-  const lines = selection.tasks.slice(0, topN).map((task, i) => renderTaskLine(i + 1, task, slug));
+  const lines = selection.tasks.slice(0, topN).map((task, i) => renderTaskLine(i + 1, task, slug, now));
   const facetNote = facetTags ? renderFacetTaskNote(selection, facetTags, slug) : null;
   if (facetNote) lines.push(facetNote);
   return { body: lines.join('\n'), count: openTasks.length };
