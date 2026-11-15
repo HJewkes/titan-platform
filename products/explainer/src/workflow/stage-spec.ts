@@ -37,7 +37,7 @@ const BASE_STAGE_VERSIONS: Record<CachedStage, string> = {
   tts: "p6d",
   render: "m10c18",
   qa: "x11g",
-  sheets: "x11",
+  sheets: "x10",
 };
 
 /**
