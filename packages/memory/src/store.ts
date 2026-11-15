@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { BLOCKED_KIND, BULLET_KIND, DEFAULT_MEMORY_TABLES, SUPERSEDES, type MemoryTables } from "./schema.js";
 import { DEFAULT_HALF_LIFE_DAYS } from "./scoring.js";
-import { BULLET_KINDS, BULLET_SCOPES, BULLET_SOURCES, BULLET_STATES, BULLET_TYPES, MATURITIES, type Bullet, type FeedbackEvent, type FeedbackType, type NewBullet } from "./types.js";
+import { BULLET_KINDS, BULLET_SCOPES, BULLET_SOURCES, BULLET_STATES, BULLET_TYPES, MATURITIES, ProvenanceSchema, type Bullet, type FeedbackEvent, type FeedbackType, type NewBullet } from "./types.js";
 
 const MEMORY_REF_KIND = "memory";
 export const bulletRef = refKind(MEMORY_REF_KIND);
@@ -52,7 +52,7 @@ const bulletAttrs = z.looseObject({
   deprecatedAt: z.string().nullable(),
   deprecationReason: z.string().nullable(),
   halfLifeDays: z.number(),
-  sourceSessions: z.array(z.object({ sessionRef: z.string(), byteOffset: z.number().optional() })),
+  sourceSessions: z.array(ProvenanceSchema),
   reasoning: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),

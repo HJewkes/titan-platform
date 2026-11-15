@@ -66,7 +66,7 @@ function ledgerKeys(events: readonly FeedbackEvent[]): string[] {
 /** The view a decider and the rendered docs share: confidence is maturity plus decayed score. */
 export function toPrinciple(bullet: ScoredBullet, events: readonly FeedbackEvent[]): Principle {
   const helpful = events.filter((e) => e.type === "helpful");
-  const cited = bullet.sourceSessions.map((s) => ledgerKeyOf(s.sessionRef)).filter((key): key is string => key !== null);
+  const cited = bullet.sourceSessions.map((s) => ledgerKeyOf("sessionRef" in s ? s.sessionRef : null)).filter((key): key is string => key !== null);
   return {
     id: bullet.id,
     domain: bullet.category,

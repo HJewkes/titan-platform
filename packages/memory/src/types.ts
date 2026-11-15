@@ -20,11 +20,16 @@ export type BulletState = (typeof BULLET_STATES)[number];
 export type Maturity = (typeof MATURITIES)[number];
 export type FeedbackType = "helpful" | "harmful";
 
-/** Where a bullet's evidence lives: a session ref plus a byte offset into its transcript. */
-export interface Provenance {
-  sessionRef: string;
-  byteOffset?: number;
-}
+/** A note ref names a markdown file inside a note set: `note:<slug>/<file>.md`. */
+const NOTE_REF = /^note:[^/\s]+\/[^/\s]+\.md$/;
+
+export const ProvenanceSchema = z.union([
+  z.object({ sessionRef: z.string(), byteOffset: z.number().optional() }),
+  z.object({ noteRef: z.string().regex(NOTE_REF, "noteRef must look like note:<slug>/<file>.md") }),
+]);
+
+/** Where a bullet's evidence lives: a session transcript (ref plus byte offset) or a note. */
+export type Provenance = z.infer<typeof ProvenanceSchema>;
 
 export interface Bullet {
   id: string;

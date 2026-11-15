@@ -25,6 +25,17 @@ describe("curate", () => {
     expect(store.get(report.added[0]!)).toMatchObject({ content: "Run pnpm lint before pushing", category: "workflow", tags: ["ci"], sourceSessions: [PROVENANCE] });
   });
 
+  it("records a note ref as the provenance of a bullet it adds", () => {
+    const provenance = { noteRef: "note:demo-notes/first-note.md" };
+    const report = curate(store, [{ type: "add", content: "Prefer small pull requests" }], { provenance });
+    expect(store.get(report.added[0]!)?.sourceSessions).toEqual([provenance]);
+  });
+
+  it("refuses a malformed note ref", () => {
+    expect(() => curate(store, [{ type: "add", content: "Prefer small pull requests" }], { provenance: { noteRef: "note:bad" } })).toThrow();
+    expect(store.list()).toEqual([]);
+  });
+
   it("collapses duplicate adds within a batch", () => {
     const report = curate(store, [
       { type: "add", content: "Use pnpm" },
