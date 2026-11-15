@@ -349,6 +349,7 @@
   "shepherd/owner-section.ts",
   "shepherd/owner-send-back.ts",
   "shepherd/owner-task-approval.ts",
+  "shepherd/owner-tier-next.ts",
   "shepherd/package-sweeps.ts",
   "shepherd/park-retry.ts",
   "shepherd/park-settled.ts",

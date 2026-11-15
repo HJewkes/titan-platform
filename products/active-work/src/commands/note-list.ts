@@ -10,6 +10,7 @@ const ArgsSchema = z.object({
   slug: z.string().min(1).optional(),
   all_initiatives: z.boolean().optional(),
   kind: NoteKindSchema.optional(),
+  tag: z.array(z.string().min(1)).optional(),
 });
 
 const NoteEntrySchema = z.object({
@@ -70,11 +71,16 @@ async function toEntry(slug: string, note: LoadedNote, humanOnly: boolean): Prom
 
 async function listForSlug(
   slug: string,
-  kind: Args['kind'],
+  filter: Pick<Args, 'kind' | 'tag'>,
   humanOnly: boolean,
 ): Promise<SlugListing> {
   const { notes, malformed } = await loadNotesFromDir(getInitiativeDir(slug));
-  const selected = kind ? notes.filter((note) => note.frontmatter.kind === kind) : notes;
+  const wanted = filter.tag ?? [];
+  const selected = notes.filter(
+    (note) =>
+      (!filter.kind || note.frontmatter.kind === filter.kind) &&
+      wanted.every((tag) => note.frontmatter.tags?.includes(tag)),
+  );
   return {
     notes: await Promise.all(selected.map((note) => toEntry(slug, note, humanOnly))),
     errors: malformed.map((entry) => ({
@@ -108,9 +114,13 @@ export default defineCommand<Args, Result>({
         long: '--kind',
         description: 'Only notes of this kind: process | gotcha | fyi | decision | plan',
       },
+      tag: {
+        long: '--tag',
+        description: 'Only notes carrying this tag. Repeat the flag to require every tag',
+      },
     },
     usage:
-      'active-work note list <slug>|--all-initiatives [--kind process|gotcha|fyi|decision|plan]',
+      'active-work note list <slug>|--all-initiatives [--kind process|gotcha|fyi|decision|plan] [--tag a --tag b]',
   },
   async run(args, ctx) {
     const [slugs, humanOnly] = await Promise.all([
@@ -118,7 +128,7 @@ export default defineCommand<Args, Result>({
       humanOnlyPredicate(getActiveRoot(), ctx.warnings),
     ]);
     const perSlug = await Promise.all(
-      slugs.map((slug) => listForSlug(slug, args.kind, humanOnly.isHumanOnly(slug))),
+      slugs.map((slug) => listForSlug(slug, { kind: args.kind, tag: args.tag }, humanOnly.isHumanOnly(slug))),
     );
     const notes = perSlug.flatMap((r) => r.notes);
     return {
