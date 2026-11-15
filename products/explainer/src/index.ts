@@ -35,6 +35,7 @@ export * from "./doctrine-exports.js";
 export * from "./presets/pr-overview/index.js";
 export * from "./rewrite-exports.js";
 export * from "./occupancy-exports.js";
+export { cameraMotionRows, type CameraMotionLimits, type CameraMotionRow, type CameraSample, type ShakeWindow } from "./camera-motion.js";
 export * from "./emphasis-exports.js";
 export * from "./audition-exports.js";
 export { POSTER_FRACTION, POSTER_WIDTH, SIDECAR_STATUSES, VIDEO_META_SCHEMA, buildSidecar, classify, posterAt, type ExplainerBlock, type VideoSidecar } from "./video-sidecar.js";
