@@ -95,6 +95,7 @@ Before adding code:
 | [`yt-scout`](#cap-yt-scout) | product | You are working on the owner's scheduled AI-video scout (Y-15): the YouTube watch list (`WatchlistSchema`, `loadWatchlist`, line-numbered `WatchlistError`), the `videos` state table (`openScoutDb`, `VIDEO_STATES`) and the one-off seen-set import (`importSeen`), behind the `titan-yt-scout` CLI. |
 | [`codewatch`](#cap-codewatch) | product | You want codewatch's layered code report, or a reference app that consumes react-app and code-read. |
 | [`titan-console`](#cap-console) | product | You want a view over active-work, the agent-chat broker or the session graph: add it here as a route and a command, not as a new app or a new daemon. |
+| [`titan-docs`](#cap-docs) | product | You want a titan-platform docs page rendered with react-ui: add it here as a route. |
 
 ## Proven runtime paths
 
@@ -1813,6 +1814,20 @@ Tier product, private, `apps/console`. The titan console: one read-only loopback
 **Use this when:**
 
 You want a view over active-work, the agent-chat broker or the session graph: add it here as a route and a command, not as a new app or a new daemon. It is also the reference for a react-ui `AppShell` app served by one loopback daemon.
+
+Key exports:
+
+No library entry point.
+
+<a id="cap-docs"></a>
+
+### `titan-docs`
+
+Tier product, private, `apps/docs`. The titan-platform docs site on react-ui, prerendered to static HTML and hydrated in the browser
+
+**Use this when:**
+
+You want a titan-platform docs page rendered with react-ui: add it here as a route. It is also the reference for prerendering a react-ui app to static HTML and hydrating it without a mismatch.
 
 Key exports:
 
