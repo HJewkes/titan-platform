@@ -3,6 +3,7 @@ import { SIGNAL_COPY_RANK } from "./audit-schema.js";
 import { RELATIONS } from "@titan-design/session-read";
 import type { SessionGraph } from "./graph.js";
 import { KIT } from "./schema.js";
+import { prepareSessionCostRollup } from "./session-cost-schema.js";
 
 const BATCH = 400;
 
@@ -89,6 +90,7 @@ export function rollupSessions(graph: SessionGraph, sessionIds: readonly string[
   const renumber = graph.db.prepare(RENUMBER_TURNS);
   const recount = graph.db.prepare(RECOUNT_SHARED_SESSIONS);
   const audit = prepareAuditRollup(graph.db);
+  const sessionCost = prepareSessionCostRollup(graph.db);
   return graph.db.transaction(() => {
     let updated = 0;
     for (let i = 0; i < unique.length; i += BATCH) {
@@ -97,6 +99,7 @@ export function rollupSessions(graph: SessionGraph, sessionIds: readonly string[
       updated += aggregate.run({ sessionIds: batch }).changes;
       recount.run({ sessionIds: batch, minCopies: 2 });
       audit(batch);
+      sessionCost(batch);
     }
     return updated;
   })();
