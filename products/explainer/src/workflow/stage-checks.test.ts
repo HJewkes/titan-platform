@@ -247,7 +247,7 @@ describe("running a stage's checks", () => {
         "picture-change:gate", "picture-change-warn:reported", "static-window:gate", "cue-onset:gate", "reading-hold:gate",
         "headline-label-words:gate", "narration-shared-run:gate", "words-per-frame:gate", "direction-gates:reported",
         "black-frames:reported", "silence-2s:reported", "frozen-frames:reported",
-        "captions-complete:reported", "captions-words:reported", "captions-lines:reported", "captions-cps:reported", "captions-onset:reported", "narration-facts:gate", "photosensitive-flash:gate",
+        "captions-complete:reported", "captions-words:reported", "captions-lines:reported", "captions-cps:reported", "captions-onset:reported", "speech-rate-overall:reported", "speech-rate-beats:reported", "narration-facts:gate", "photosensitive-flash:gate",
         "text-contrast:gate", "chart-mark-contrast:gate"], sheets: [],
     });
   });
