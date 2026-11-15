@@ -45,6 +45,7 @@ type Defaulted =
   | 'init'
   | 'detectSiblings'
   | 'siblingProbe'
+  | 'decisionRows'
   | 'hitLog'
   | 'clock';
 
@@ -77,6 +78,7 @@ export interface BootstrapView {
   topTaskTitle: string | undefined;
   topTasks: RenderedCount;
   recentlyDone: RenderedCount<string | null>;
+  recentDecisions: string | null;
   notes: LoadedNotes;
   noteRanking: NoteRanking;
   artifactsError: string | undefined;
@@ -179,6 +181,7 @@ const SECTION_BUILDERS: readonly SectionBuilder[] = [
   (v) => renderParallelSessions(selectParallelSessions(v.sessions, v.narrativeSession)),
   topTasks,
   recentlyDone,
+  (v) => v.recentDecisions,
   archived,
   (v) => renderDurableNotes(v.notes, v.noteRanking, v.input.slug),
   (v) => renderForeignNotes(v.noteRanking),
