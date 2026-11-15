@@ -113,6 +113,7 @@ function accessFrom(read: CredentialsRead, now: number): { token: string } | Pol
   const state = loginStateFromCredentials(read.credentials, now);
   if (state.status === "missing") return fail("missing");
   if (state.status === "refused") return refused(state.reason);
+  if (state.status === "logged-out") return fail("expired");
   if (needsRefresh(state, now, EXPIRY_MARGIN_MS)) return fail("expired");
   const token = tokenOf(read.credentials);
   return token === null ? refused("malformed") : { token };
