@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the Q-W4 hint does not quote the unspoken user_value text",
+      "file": "products/explainer/src/repair-hints-why.ts",
+      "find": "speak \"${b.user_value?.text}\" in ${b.id}",
+      "replace": "speak it in ${b.id}",
+      "kills": [
+        "the Q-W4 hint quotes the unspoken user_value text and the beat to say it in, and that edit passes the check"
+      ]
+    }
+  ]
+}

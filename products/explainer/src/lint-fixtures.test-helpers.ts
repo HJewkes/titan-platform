@@ -45,13 +45,13 @@ const GOOD_BEATS = [
     fact_ids: ["F3"],
     visual: { assertion: "Ours checks before printing", job: "alternatives-vs-ours" },
   }),
-  beat("b5", "ch2", "WHAT", "Without it, parcel P-7 would print a label for a shelf that is gone.", {
+  beat("b5", "ch2", "WHAT", "Without it, parcel P-7 would print a label for a shelf that is gone, and you never reprint a label.", {
     fact_ids: ["F4"],
     why: why("F4"),
     user_value: value("F4"),
     new_terms: ["desk server"],
   }),
-  beat("b6", "ch3", "HOW", "The desk server reads parcel P-7 from the ledger. A label never prints without a ledger row.", {
+  beat("b6", "ch3", "HOW", "The desk server reads parcel P-7 from the ledger. A label never prints without a ledger row, so you never reprint a label.", {
     fact_ids: ["F5"],
     why: why("F5"),
     user_value: value("F5"),
@@ -65,7 +65,7 @@ const GOOD_BEATS = [
     fact_ids: ["F6"],
     design_history: { tried: "a batch path", failed_because: "double prints", changed_to: "one check", source_sha: "a1b2c3d" },
   }),
-  beat("b9", "ch4", "CAVEAT", "This view skips customs holds.", { fact_ids: ["F7"], user_value: value("F7") }),
+  beat("b9", "ch4", "CAVEAT", "This view skips customs holds, and you never reprint a label.", { fact_ids: ["F7"], user_value: value("F7") }),
   beat("b10", "ch5", "CLOSE", "So parcel P-7 never got its wrong label."),
 ];
 

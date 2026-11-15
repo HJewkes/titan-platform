@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "Q-W4 counts a user value the beat cites but never speaks",
+      "file": "products/explainer/src/lint-why.ts",
+      "find": "if (beats.some(speaksValue)) return [];",
+      "replace": "if (beats.some(carriesValue)) return [];",
+      "kills": [
+        "Q-W4 needs the user value spoken fails a chapter whose beat cites user_value fact_ids but never says the text, naming that beat"
+      ]
+    }
+  ]
+}
