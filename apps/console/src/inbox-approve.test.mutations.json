@@ -18,8 +18,8 @@
     {
       "name": "approve-chat is left on the terminal",
       "file": "apps/console/src/pages/InboxPage.tsx",
-      "find": "\"owner-op\", \"approve-chat\"]",
-      "replace": "\"owner-op\"]",
+      "find": "\"owner-op\", \"approve-chat\", \"answer-chat\"]",
+      "replace": "\"owner-op\", \"answer-chat\"]",
       "kills": ["the inbox page, answering an agent's prompt from the console offers an approve-chat item as a console tap, not a terminal command"]
     }
   ]
