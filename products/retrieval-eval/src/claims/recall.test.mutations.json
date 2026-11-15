@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "claim recall counts an uncheckable quote as present",
+      "file": "products/retrieval-eval/src/claims/recall.ts",
+      "find": "const checked = verdicts.filter((verdict) => verdict !== null);",
+      "replace": "const checked = verdicts.map((verdict) => verdict === true);",
+      "kills": [
+        "claimRecall excludes a quote too short to check and counts it"
+      ]
+    },
+    {
+      "name": "claim recall ignores the budget",
+      "file": "products/retrieval-eval/src/claims/recall.ts",
+      "find": "budget: { tokens: budget } }",
+      "replace": "budget: { tokens: budget * 100 } }",
+      "kills": [
+        "claimRecall scores 0.5 when the budget only fits the first claim's chunk",
+        "claimRecall keeps every arm's used tokens at or under the budget"
+      ]
+    },
+    {
+      "name": "claim recall only checks the first claim",
+      "file": "products/retrieval-eval/src/claims/recall.ts",
+      "find": "const verdicts = question.claims.map(",
+      "replace": "const verdicts = question.claims.slice(0, 1).map(",
+      "kills": [
+        "claimRecall scores 0.5 when the budget only fits the first claim's chunk"
+      ]
+    }
+  ]
+}
