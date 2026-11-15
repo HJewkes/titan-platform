@@ -85,6 +85,16 @@ describe("renderRewritePrompt", () => {
     expect(prompt).not.toMatch(/the one that matters/i);
   });
 
+  it("quotes each cut sentence verbatim and says to delete or fold it, never reword it", () => {
+    const cuts = ["That little whistle is called the vent note.", "By the end of this, you'll be able to fix any kettle."];
+    const cutting: RegisterEditPlan = { round: 1, directives: [{ beat: "w2", chapter: "ch2", cuts }] };
+
+    const prompt = renderRewritePrompt(chapter, chapterBeats, cutting);
+
+    expect(prompt).toContain(`- Cuts: delete each of ${cuts.map((cut) => `"${cut}"`).join(", ")}, or fold what it says into a neighbouring sentence; never reword it.`);
+    expect(findPromptLeaks(prompt, loadDoctrine(), loadRuleRegistry())).toEqual([]);
+  });
+
   it("names the cue word a collapsing list holds as the item that stays in the line", () => {
     const cuedList: RegisterEditPlan = { round: 1, directives: [{ beat: "w2", chapter: "ch2", triads: ["the desk, the row and the label."] }] };
 
