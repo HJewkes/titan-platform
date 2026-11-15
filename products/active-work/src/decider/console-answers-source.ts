@@ -33,10 +33,15 @@ function completeLength(bytes: Buffer, start: number): number {
   return bytes.lastIndexOf(0x0a) + 1 || start;
 }
 
+/** The row is kept as written, the console's extra keys included; the schema only vouches for it. */
+function isLedgerRowWire(value: unknown): value is LedgerRowWire {
+  return LedgerRowSchema.safeParse(value).success;
+}
+
 function parseRow(line: string): LedgerRowWire | null {
   try {
     const wire: unknown = JSON.parse(line);
-    return LedgerRowSchema.safeParse(wire).success ? (wire as LedgerRowWire) : null;
+    return isLedgerRowWire(wire) ? wire : null;
   } catch {
     return null;
   }
