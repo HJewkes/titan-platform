@@ -37,6 +37,15 @@
         "authorityLine a bulleted widened line before a plain unchanged line reads widened",
         "authorityLine a decorated widened line alone reads widened"
       ]
+    },
+    {
+      "name": "a label glued to an identifier is skipped as a code name",
+      "file": "packages/review-panel/src/briefs/adversary.ts",
+      "find": "if (!foldLabelledLine(raw).startsWith(AUTHORITY_LABEL)) return undefined;",
+      "replace": "if (labelledLineRest(raw, AUTHORITY_HEADING, WIDENED) === undefined) return undefined;",
+      "kills": [
+        "authorityLine a word that only starts with Authority is still a label, read malformed"
+      ]
     }
   ]
 }

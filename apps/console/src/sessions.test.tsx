@@ -190,19 +190,22 @@ describe("a session's detail", () => {
     for (const text of ["orbit-builder", "OR-12", "1h 05m", "model-a", "250K", "$3.40", "feat/handshake-retry", "example/orbit#41 ↗"]) expect(screen.getByText(text)).toBeTruthy();
   });
 
-  it("opens the first turn of the conversation and keeps the rest collapsed", async () => {
+  it("lists the turns in order and starts with the first turn's tool calls open", async () => {
     renderConsole(`#/sessions/${NEWEST}`, recorded());
-    expect(await screen.findByText("Backoff now doubles up to thirty seconds.")).toBeTruthy();
+    const first = await screen.findByText("Backoff now doubles up to thirty seconds.");
+    const second = screen.getByText("Added a retry test.");
+    expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText("Read")).toBeTruthy();
-    expect(screen.queryByText("Added a retry test.")).toBeNull();
-    fireEvent.click(screen.getByText("Turn 2"));
-    expect(await screen.findByText("Added a retry test.")).toBeTruthy();
+    expect(screen.queryByText("Edit")).toBeNull();
+    fireEvent.click(within(screen.getAllByRole("article")[1]!).getByRole("button", { name: /^Tool calls/ }));
+    expect(await screen.findByText("Edit")).toBeTruthy();
   });
 
-  it("opens the turn a deep link names", async () => {
+  it("starts the turn a deep link names expanded", async () => {
     renderConsole(`#/sessions/${NEWEST}?turn=1`, recorded());
-    expect(await screen.findByText("Added a retry test.")).toBeTruthy();
-    expect(screen.queryByText("Backoff now doubles up to thirty seconds.")).toBeNull();
+    expect(await screen.findByText("Edit")).toBeTruthy();
+    expect(screen.queryByText("Read")).toBeNull();
+    expect(screen.getByText("Backoff now doubles up to thirty seconds.")).toBeTruthy();
   });
 
   it("links a touched file to its codewatch node and leaves an unmapped one as text", async () => {
