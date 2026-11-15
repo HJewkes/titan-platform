@@ -1,3 +1,4 @@
+import { Pill, type PillTone } from "@titan-design/react-ui";
 import type { z } from "zod";
 import type { BEAT_SLOTS } from "../../beat-slots.js";
 import type { BeatViewProps } from "../registry.js";
@@ -28,10 +29,22 @@ export function ListKindBeat({ slots, reveal, hints }: BeatViewProps<Slots<"list
   return <ListFrame heading={slots.title ?? ""} items={items} {...yieldsAt(hints.headingYields === true, items)} />;
 }
 
-/** verdict-card: the verdict is the heading from the start, its reasons neutral rows on their cues. */
+const CALL_TONES: Record<string, PillTone> = { ship: "success", fix: "warning", avoid: "error" };
+
+const callTone = (call: string): PillTone => CALL_TONES[call.trim().split(/\s+/)[0]?.toLowerCase() ?? ""] ?? "neutral";
+
+/** The fill writes the verdict as "<call>: <reason>"; the chip carries the call, so the heading keeps the reason. */
+const withoutCallPrefix = (verdict: string, call: string): string => {
+  const prefix = `${call}: `;
+  return verdict.toLowerCase().startsWith(prefix.toLowerCase()) ? verdict.slice(prefix.length) : verdict;
+};
+
+/** verdict-card: the verdict is the heading from the start with its call as a toned chip, its reasons neutral rows on their cues. */
 export function VerdictCardBeat({ slots, reveal, hints }: BeatViewProps<Slots<"verdict-card">>) {
   const items = slots.reasons.map((reason) => ({ id: reason.id, text: reason.text, mark: "neutral" as const, atS: landing(reveal, reason.id) }));
-  return <ListFrame heading={slots.verdict} items={items} leadLine={hints.qaLeadLine === true} />;
+  const { call } = slots;
+  const chip = call ? <span data-verdict-call={callTone(call)}><Pill tone={callTone(call)} size="lg">{call}</Pill></span> : undefined;
+  return <ListFrame heading={call ? withoutCallPrefix(slots.verdict, call) : slots.verdict} items={items} leadLine={hints.qaLeadLine === true} headingAdornment={chip} />;
 }
 
 /** fact-flash: each fact a dot row on its word, under the chapter label. */

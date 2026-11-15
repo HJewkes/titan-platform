@@ -164,6 +164,8 @@
   color: var(--color-brand-primary);
   font-size: var(--beat-caption);
 }
+/* The Pill sizes its own text from the app ramp, below the video's type floor. */
+[data-verdict-call] * { font-size: var(--beat-floor) !important; }
 .ex-map-edge-inferred { stroke-dasharray: 16 12; }
 .ex-bars { display: flex; flex-direction: column; gap: 14px; width: 100%; margin: 0; padding: 0; list-style: none; }
 .ex-bar-row { display: grid; grid-template-columns: 340px 1fr 220px; align-items: center; gap: 28px; height: 64px; font-size: var(--beat-label); }

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useBeatTime } from "@titan-design/react-ui/motion";
 import { litBox, useLit } from "./stage/emphasis.js";
 import { rise } from "./stage/entrance.js";
@@ -37,6 +38,8 @@ interface ListFrameProps {
   headingYieldsAtS?: number;
   /** The heading stands alone by design before the first row (a verdict), which QA's late-fill must not flag. */
   leadLine?: boolean;
+  /** A chip drawn beside the heading, such as a verdict's call. */
+  headingAdornment?: ReactNode;
 }
 
 const TICK_DELAY_S = 0.15;
@@ -69,12 +72,13 @@ function yieldingHeading(t: number, yieldsAtS: number) {
 }
 
 /** Rows tick in on their cues under a heading, and light when a later cue names them again. */
-export function ListFrame({ heading, items, headingYieldsAtS, leadLine = false }: ListFrameProps) {
+export function ListFrame({ heading, items, headingYieldsAtS, leadLine = false, headingAdornment }: ListFrameProps) {
   const { t } = useBeatTime();
   const style = headingYieldsAtS === undefined ? fadeUp(t, 0) : yieldingHeading(t, headingYieldsAtS);
+  const title = <h2 className="ex-headline" data-list-heading="" {...(leadLine ? { "data-qa-lead-line": "" } : {})} style={style}>{heading}</h2>;
   return (
     <>
-      <h2 className="ex-headline" data-list-heading="" {...(leadLine ? { "data-qa-lead-line": "" } : {})} style={style}>{heading}</h2>
+      {headingAdornment ? <div style={{ display: "flex", alignItems: "center", gap: 16, ...fadeUp(t, 0) }}>{title}{headingAdornment}</div> : title}
       <ul className="ex-list">
         {items.map((item) => <ListRow key={item.id} item={item} t={t} />)}
       </ul>
