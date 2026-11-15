@@ -699,6 +699,58 @@ describe('route decision on the spawn row (CC-1666)', () => {
   });
 });
 
+describe('execution phase from the agent_execution ledger (TP-6308)', () => {
+  // The columns of agent-lifecycle's executionLedgerDdl that the reader touches.
+  const LEDGER_DDL = `CREATE TABLE agent_execution (
+    execution_id TEXT PRIMARY KEY, request_key TEXT NOT NULL UNIQUE, phase TEXT NOT NULL,
+    revision INTEGER NOT NULL, owner_generation INTEGER NOT NULL, prepared_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL, record TEXT NOT NULL)`;
+
+  function writeLedger(rows: { id: string; phase: string; session: string | null }[]): void {
+    const db = new Database(path.join(home, 'events.db'));
+    db.exec(LEDGER_DDL);
+    const insert = db.prepare(
+      "INSERT INTO agent_execution VALUES (?, ?, ?, 1, 0, '2026-09-23T10:00:00Z', '2026-09-23T10:00:00Z', ?)",
+    );
+    for (const row of rows) {
+      const conversation = row.session
+        ? { harness: 'claude', namespace: 'ns', nativeId: row.session }
+        : undefined;
+      insert.run(row.id, `key-${row.id}`, row.phase, JSON.stringify({ execution: { executionId: row.id, conversation } }));
+    }
+    db.close();
+  }
+
+  const spawned = (): Row[] => [
+    ...adoptedCoordinator('coord', 'aaaa1111'),
+    ...spawnedWorker('coord', 'aaaa1111'),
+  ];
+
+  it.each(['succeeded', 'cancelled', 'failed'])('maps a %s execution to the session', (phase) => {
+    writeEvents(spawned());
+    writeLedger([{ id: 'e1', phase, session: WORKER_SESSION }]);
+
+    expect(resolve().origins[WORKER_SESSION].executionPhase).toBe(phase);
+  });
+
+  it('leaves a session with no execution row null', () => {
+    writeEvents(spawned());
+    writeLedger([{ id: 'e1', phase: 'succeeded', session: 'other-session' }]);
+
+    expect(resolve().origins[WORKER_SESSION].executionPhase).toBeNull();
+  });
+
+  it('leaves the phase null when the events file has no ledger table', () => {
+    writeEvents(spawned());
+
+    expect(resolve().origins[WORKER_SESSION].executionPhase).toBeNull();
+  });
+
+  it('leaves the phase null when there is no events file at all', () => {
+    expect(eventsDbSource(home).executionPhases?.()).toEqual(new Map());
+  });
+});
+
 describe('a locked events.db (TP-4479)', () => {
   it('opens the locked events.db with the short busy timeout and fails the origin pass', async () => {
     writeEvents([]);
