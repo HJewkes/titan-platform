@@ -5,7 +5,11 @@ import { join } from "node:path";
 import { z } from "zod";
 import { SnapshotTaskSchema, type SnapshotTask } from "./task-snapshot.js";
 
-const ListSchema = z.object({ tasks: z.array(z.unknown()) });
+const BareListSchema = z.object({ tasks: z.array(z.unknown()) });
+const ListSchema = z.union([
+  z.object({ data: BareListSchema }).transform((envelope) => envelope.data),
+  BareListSchema,
+]);
 
 /** Keeps the tasks the snapshot schema accepts; a malformed task file drops that task, not the day. */
 export function parseTaskList(text: string): SnapshotTask[] {
@@ -24,7 +28,7 @@ function runToFile(argv: readonly string[], fd: number): Promise<void> {
 }
 
 /**
- * `active-work task list <initiative> --status all`, read-only. Stdout goes to a file, not a pipe: the CLI exits
+ * `active-work --json task list <initiative> --status all`, read-only. Stdout goes to a file, not a pipe: the CLI exits
  * before a large pipe drains, which cuts a multi-megabyte task list mid-JSON.
  */
 export async function activeWorkTasks(initiative: string): Promise<SnapshotTask[]> {
@@ -33,7 +37,7 @@ export async function activeWorkTasks(initiative: string): Promise<SnapshotTask[
     const file = join(dir, "tasks.json");
     const handle = await open(file, "w");
     try {
-      await runToFile(["active-work", "task", "list", initiative, "--status", "all"], handle.fd);
+      await runToFile(["active-work", "--json", "task", "list", initiative, "--status", "all"], handle.fd);
     } finally {
       await handle.close();
     }
