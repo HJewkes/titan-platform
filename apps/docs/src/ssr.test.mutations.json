@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "nav links drop the site base",
+      "file": "apps/docs/src/site-config.ts",
+      "find": "return `${BASE}${path.replace(/^\\//, \"\")}`;",
+      "replace": "return path;",
+      "kills": ["the server render of the docs root renders every nav entry as a real link under the site base"]
+    },
+    {
+      "name": "a nav entry renders without an href",
+      "file": "apps/docs/src/DocsNav.tsx",
+      "find": "<Link key={item.link} href={withBase(item.link)} className=\"px-3 py-1.5\">",
+      "replace": "<Link key={item.link} className=\"px-3 py-1.5\">",
+      "kills": ["the server render of the docs root renders every nav entry as a real link under the site base"]
+    },
+    {
+      "name": "the top bar loses the docs wordmark",
+      "file": "apps/docs/src/DocsShell.tsx",
+      "find": "wordmark: \"TITAN PLATFORM\",",
+      "replace": "wordmark: \"\",",
+      "kills": ["the server render of the docs root carries the top bar as the banner landmark"]
+    },
+    {
+      "name": "the head carries no react-native-web sheet",
+      "file": "apps/docs/src/entry-server.tsx",
+      "find": "return { html, head: `<style id=\"${sheet.id}\">${sheet.textContent}</style>` };",
+      "replace": "return { html, head: \"\" };",
+      "kills": ["the server render of the docs root puts the react-native-web atomic rules in a head style tag"]
+    }
+  ]
+}
