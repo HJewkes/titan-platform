@@ -17,14 +17,17 @@ const STAGE_BADGES: Record<TaskStage, { label: string; color: BadgeColor }> = {
   done: { label: "Done", color: "success" },
 };
 
-export const stageLabel = (stage: TaskStage): string => STAGE_BADGES[stage].label;
+/** A stage the console does not know (newer server, untrusted input) shows its raw text on a neutral pill. */
+const badgeFor = (stage: TaskStage): { label: string; color: BadgeColor } => STAGE_BADGES[stage] ?? { label: String(stage), color: "default" };
+
+export const stageLabel = (stage: TaskStage): string => badgeFor(stage).label;
 
 /**
  * Stands in for react-ui's `TaskStagePill`, which only the unreleased react-ui 0.22.0 exports.
  * Once the console pins that release, this function becomes `<TaskStagePill stage={stage} />`.
  */
 export function TaskStageBadge({ stage }: { stage: TaskStage }): ReactNode {
-  const { label, color } = STAGE_BADGES[stage];
+  const { label, color } = badgeFor(stage);
   return (
     <Badge variant="subtle" size="sm" color={color}>
       {label}
