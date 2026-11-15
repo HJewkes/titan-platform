@@ -1,11 +1,11 @@
 import { UsageError } from '../errors.js';
 
-export interface PageRequest {
+interface PageRequest {
   limit?: number;
   cursor?: string;
 }
 
-export interface Page<T> {
+interface Page<T> {
   items: T[];
   total: number;
   truncated: boolean;
