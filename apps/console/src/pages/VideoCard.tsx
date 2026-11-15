@@ -4,7 +4,7 @@ import { open } from "../router.js";
 import { PHONE_TAP_LINK } from "./phone.js";
 
 /** The video's cover, served beside the video by the daemon. */
-export function VideoPoster({ id }: { id: string }): ReactNode {
+function VideoPoster({ id }: { id: string }): ReactNode {
   return <img src={`/media/videos/${encodeURIComponent(id)}/poster`} alt="" loading="lazy" className="block h-auto w-full max-w-sm rounded bg-black" data-testid="home-video-poster" />;
 }
 
