@@ -65,48 +65,53 @@ export const WorktreeEntrySchema = z.object({
   default: z.boolean().optional(),
 });
 
+function checkWorktreeEntry(
+  entry: z.infer<typeof WorktreeEntrySchema>,
+  i: number,
+  names: Set<string>,
+  ctx: z.RefinementCtx,
+): void {
+  if (entry.name !== undefined) {
+    if (names.has(entry.name)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['worktrees', i, 'name'],
+        message: `duplicate worktree name: ${entry.name}`,
+      });
+    }
+    names.add(entry.name);
+  }
+  if (entry.default === true && entry.name === undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['worktrees', i, 'default'],
+      message: 'default requires a named worktree',
+    });
+  }
+}
+
+// Both invariants used to be free: names were object keys in the brief, and
+// only one entry could carry `default` because the writer rebuilt the map.
+// In a flat list they have to be enforced.
+function checkWorktrees(worktrees: z.infer<typeof WorktreeEntrySchema>[], ctx: z.RefinementCtx): void {
+  const names = new Set<string>();
+  worktrees.forEach((entry, i) => checkWorktreeEntry(entry, i, names, ctx));
+  if (worktrees.filter((entry) => entry.default === true).length > 1) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['worktrees'],
+      message: 'at most one worktree may be default',
+    });
+  }
+}
+
 export const ArtifactsSchema = z
   .object({
     branches: z.array(BranchEntrySchema).default([]),
     stashes: z.array(StashEntrySchema).default([]),
     worktrees: z.array(WorktreeEntrySchema).default([]),
   })
-  .superRefine((value, ctx) => {
-    // Both invariants used to be free: names were object keys in the brief, and
-    // only one entry could carry `default` because the writer rebuilt the map.
-    // In a flat list they have to be enforced.
-    const names = new Set<string>();
-    let defaults = 0;
-    value.worktrees.forEach((entry, i) => {
-      if (entry.name !== undefined) {
-        if (names.has(entry.name)) {
-          ctx.addIssue({
-            code: 'custom',
-            path: ['worktrees', i, 'name'],
-            message: `duplicate worktree name: ${entry.name}`,
-          });
-        }
-        names.add(entry.name);
-      }
-      if (entry.default === true) {
-        defaults += 1;
-        if (entry.name === undefined) {
-          ctx.addIssue({
-            code: 'custom',
-            path: ['worktrees', i, 'default'],
-            message: 'default requires a named worktree',
-          });
-        }
-      }
-    });
-    if (defaults > 1) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['worktrees'],
-        message: 'at most one worktree may be default',
-      });
-    }
-  });
+  .superRefine((value, ctx) => checkWorktrees(value.worktrees, ctx));
 
 export type BranchEntry = z.infer<typeof BranchEntrySchema>;
 export type StashEntry = z.infer<typeof StashEntrySchema>;
