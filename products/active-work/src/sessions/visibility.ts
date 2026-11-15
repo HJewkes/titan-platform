@@ -108,6 +108,24 @@ export async function listSlugsForCaller(
   return listShownSlugs(activeRoot, await visibilityFor({ ...ctx, activeRoot }));
 }
 
+/**
+ * A context that reads every initiative, for a command that only counts or names the rows the real
+ * caller may see (the caller's own `Shown` still decides what it reveals). Its warnings are its own.
+ */
+export function unrestrictedScan(ctx: CommandContext): CommandContext {
+  return { ...ctx, caller: 'owner', warnings: [] };
+}
+
+/** Splits rows by initiative into those the caller may see and a count of those it may not. */
+export async function splitByShown<T extends { slug: string }>(
+  ctx: CommandContext,
+  rows: readonly T[],
+): Promise<{ shown: T[]; hidden: number }> {
+  const verdict = await visibilityFor({ activeRoot: ctx.activeRoot, caller: ctx.caller, warnings: [] });
+  const shown = rows.filter((row) => verdict(row.slug));
+  return { shown, hidden: rows.length - shown.length };
+}
+
 /** The initiatives on disk that a verdict already loaded serves, for readers handed a `Shown`. */
 export async function listShownSlugs(activeRoot: string, shown: Shown): Promise<string[]> {
   return (await listInitiativeSlugs(activeRoot)).filter((slug) => shown(slug));

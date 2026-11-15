@@ -4,15 +4,15 @@
     {
       "name": "a dependent with another open dep is listed",
       "file": "products/active-work/src/commands/task-done.ts",
-      "find": "if ((await openDeps(task, lookup)).length > 0) continue;",
-      "replace": "",
+      "find": "if ((await openDeps(task, lookup)).length === 0) ready.push(task);",
+      "replace": "ready.push(task);",
       "kills": ["task.done reports what it unblocks leaves out a dependent that still has another open dep"]
     },
     {
       "name": "hidden initiatives are named",
       "file": "products/active-work/src/commands/task-done.ts",
-      "find": "if (shown(task.slug)) result.named.push(task.id);",
-      "replace": "if (true) result.named.push(task.id);",
+      "find": "return { named: shown.map((task) => task.id), hidden };",
+      "replace": "return { named: ready.map((task) => task.id), hidden: 0 };",
       "kills": ["task.done reports what it unblocks counts a dependent in an owner-only initiative for an agent caller"]
     },
     {

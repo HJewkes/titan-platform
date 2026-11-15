@@ -2,7 +2,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import { readEdges } from '@titan-design/pm';
 import { defineCommand, type CommandContext } from '../registry/index.js';
-import { visibilityFor } from '../sessions/visibility.js';
+import { splitByShown, unrestrictedScan } from '../sessions/visibility.js';
 import { createDepFinder, openDeps } from '../tasks/blockers.js';
 import { closedStatusIds } from './_categories.js';
 import taskList from './task-list.js';
@@ -47,18 +47,15 @@ interface Unblocked {
  */
 async function findUnblocked(done: Task, ctx: CommandContext): Promise<Unblocked> {
   const activeRoot = getActiveRoot();
-  const everything = { ...ctx, caller: 'owner' as const, warnings: [] };
-  const { tasks } = await taskList.run({ all_initiatives: true, status: 'open' }, everything);
-  const shown = await visibilityFor({ activeRoot, caller: ctx.caller, warnings: [] });
+  const { tasks } = await taskList.run({ all_initiatives: true, status: 'open' }, unrestrictedScan(ctx));
   const lookup = { closed: await closedStatusIds(activeRoot), find: createDepFinder(activeRoot) };
-  const result: Unblocked = { named: [], hidden: 0 };
+  const ready: Array<Task & { slug: string }> = [];
   for (const task of tasks) {
     if (task.id === done.id || !readEdges(task).dep.includes(done.id)) continue;
-    if ((await openDeps(task, lookup)).length > 0) continue;
-    if (shown(task.slug)) result.named.push(task.id);
-    else result.hidden += 1;
+    if ((await openDeps(task, lookup)).length === 0) ready.push(task);
   }
-  return result;
+  const { shown, hidden } = await splitByShown(ctx, ready);
+  return { named: shown.map((task) => task.id), hidden };
 }
 
 function describeUnblocked({ named, hidden }: Unblocked): string {
