@@ -3,6 +3,7 @@ import { GITHUB_ACTIONS_APP_ID } from "./readiness.js";
 import { PR_COMMITS_CAP, PR_FILES_CAP } from "./port-types.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
 import { FORCE_PUSHES_CAP, type ForcePush } from "./force-pushes.js";
+import { fakePrOutcome } from "./fake-pr-outcome.js";
 import type { OpenPrRequest } from "./pr-list.js";
 import type { CheckRun, GitHubWire, LoggedCommit, MergeMethod, PrFile, PullRequest, PutFileRequest } from "./port-types.js";
 import type { FakeEffects, FakeFaultyRead, FakeGitHub } from "./fake-types.js";
@@ -89,6 +90,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     reviews: new Map(),
     appLogin: "fake-app[bot]",
     forcePushes: new Map(),
+    outcomes: new Map(),
     addPr(fields) {
       const number = prs.size + 1;
       const pr: PullRequest = {
@@ -189,6 +191,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     },
     listReviewComments: async (_repo, number) => record("listReviewComments", (fake.reviewComments.get(number) ?? []).map((comment) => ({ ...comment }))),
     listForcePushes: async (_repo, number) => record("listForcePushes", listForcePushes(fake, number)),
+    getPrOutcome: async (_repo, number) => record("getPrOutcome", fakePrOutcome(fake, number, (one) => mustPr(prs, one))),
     ...fakeReviewWire(() => fake, (number) => mustPr(prs, number).number, record, () => 7000 + ++counter),
   };
   const fake: FakeGitHub = Object.assign(state, { wire, gitExec: fakeLsRemote(prs, () => read("lsRemote", () => undefined)) });
