@@ -2,8 +2,8 @@
  * `inbox.list`: the owner's one inbox, read only. It takes `approvals.flow`'s merged order, joins each factory gate to its
  * live Shepherd row by run id, and gives every item the one action a tap would take, or the terminal command and why the
  * console offers none. A write action's target comes from a system of record, never from a deposit: a hitl gate joined to a
- * live row that is not replay-diverged, or a deposit's typed `op`. A deposit is agent-written, so its op only
- * names the target: a gate or hold op maps onto that live row's own action, and an op on `CONSOLE_OPS` becomes `owner-op`,
+ * live row that is not replay-diverged, or a deposit's typed `op`. A deposit with no op is a plain question, answered in
+ * the spool beside it. A deposit is agent-written, so its op only names the target: a gate or hold op maps onto that live row's own action, and an op on `CONSOLE_OPS` becomes `owner-op`,
  * whose read-back `inbox.prepare` takes from the factory's preview. Nothing here writes.
  */
 import { z } from "zod";
@@ -33,6 +33,7 @@ type InboxAction =
   | { kind: "owner-op"; op: OwnerOp }
   | { kind: "answer-chat"; msgId: string }
   | { kind: "approve-chat"; msgId: string }
+  | { kind: "answer-deposit" }
   | { kind: "open-round"; roundId: string }
   | { kind: "open"; route: string }
   | { kind: "terminal"; command?: string; reason: string };
@@ -212,7 +213,7 @@ function gateOpDerived(item: OwnerItem, op: Extract<OwnerOp, { kind: "resolve-ga
 /** A deposit's op names a target; the action comes from the live row, or for an allowlisted kind from the factory's preview at the tap. */
 function depositDerived(item: OwnerItem, row: WatchRow | undefined): Derived {
   const { op } = item;
-  if (op === undefined) return { action: terminal("a deposit is agent-written, so the console offers it no write; run its command", item.command) };
+  if (op === undefined) return { action: { kind: "answer-deposit" } };
   if (op.kind === "resolve-gate") return gateOpDerived(item, op, row);
   if (op.kind === "release-hold") return { action: holdOpAction(item, op, row) };
   if (CONSOLE_OPS.has(op.kind)) return { action: { kind: "owner-op", op }, ...mergeHold(op, row) };

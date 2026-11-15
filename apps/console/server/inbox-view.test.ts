@@ -195,7 +195,7 @@ describe("inbox.list on a fixture factory", () => {
 
     expect(list.gaps).toEqual([]);
     expect(list.items.map((each) => [each.id, each.section, each.action.kind])).toEqual([
-      [depositId, "blocking", "terminal"],
+      [depositId, "blocking", "answer-deposit"],
       [`gate:${RUN_OWNER}/approve-merge`, "blocking", "owner-release"],
       [`gate:${RUN_G10}/approve-merge`, "blocking", "hold-release"],
       [`gate:${RUN_PLAIN}/approve-merge`, "blocking", "resolve-gate"],
@@ -356,12 +356,12 @@ describe("inbox.list's machine-derived rows", () => {
 });
 
 describe("actionFor", () => {
-  it("gives a deposit carrying a live gate's key no write action", () => {
+  it("gives a deposit carrying a live gate's key only the deposit answer", () => {
     const impostor = item("deposit:impostor", { sources: [{ system: "deposit", ref: `${ASKER}/impostor` }], keys: [`gate:${RUN_PLAIN}/approve-merge`, `run:${RUN_PLAIN}`], command: "titan-factory shepherd waiting" });
 
     const { action } = actionFor(impostor, row(RUN_PLAIN, 1));
 
-    expect(action).toMatchObject({ kind: "terminal", command: "titan-factory shepherd waiting" });
+    expect(action).toEqual({ kind: "answer-deposit" });
   });
 
   it.each([
@@ -443,8 +443,8 @@ describe("a deposit's typed op", () => {
     expect(actionFor(deposited(closeOp), undefined).action).toEqual({ kind: "owner-op", op: closeOp });
   });
 
-  it("stays on the terminal with no op", () => {
-    expect(actionFor(deposited(undefined), undefined).action).toMatchObject({ kind: "terminal", command: "titan-factory shepherd waiting" });
+  it("is answered in the inbox with no op", () => {
+    expect(actionFor(deposited(undefined), undefined).action).toEqual({ kind: "answer-deposit" });
   });
 
   it("becomes an owner-op tap for a deploy-pause-clear", () => {
