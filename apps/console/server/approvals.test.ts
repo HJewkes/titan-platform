@@ -262,6 +262,49 @@ describe("approvals.flow", () => {
     expect(result.flow.held).toEqual([]);
   });
 
+  describe("live Shepherd heads", () => {
+    const LIVE_PR = "example/repo#7";
+
+    async function depositAt(depositId: string, sha: string): Promise<void> {
+      await writeDeposit(path.join(root, "deposits"), deposit(depositId, { keys: [`pr:${LIVE_PR}@${sha}`] }));
+    }
+
+    it("withdraws a deposit pinned to an old head as new-head with the live sha", async () => {
+      await depositAt("old", SHA_A);
+
+      const result = await readFlow(sources(undefined), { [LIVE_PR]: SHA_B });
+
+      expect(result.flow.order).toEqual([]);
+      expect(result.flow.withdrawn).toMatchObject([{ item: { id: depositItemId(ASKER, "old") }, reason: `new-head:${SHA_B}` }]);
+    });
+
+    it("keeps a deposit pinned to the live head", async () => {
+      await depositAt("current", SHA_B);
+
+      const result = await readFlow(sources(undefined), { [LIVE_PR]: SHA_B });
+
+      expect(ids(result.flow.order)).toEqual([depositItemId(ASKER, "current")]);
+      expect(result.flow.withdrawn).toEqual([]);
+    });
+
+    it("supersedes nothing when no head is given for the PR", async () => {
+      await depositAt("old", SHA_A);
+
+      const result = await readFlow(sources(undefined), {});
+
+      expect(ids(result.flow.order)).toEqual([depositItemId(ASKER, "old")]);
+    });
+
+    it("leaves the flow as it was when the heads read fails", async () => {
+      await depositAt("old", SHA_A);
+
+      const result = await readFlow(sources(undefined), Promise.reject(new Error("shepherd down")));
+
+      expect(ids(result.flow.order)).toEqual([depositItemId(ASKER, "old")]);
+      expect(result.flow.withdrawn).toEqual([]);
+    });
+  });
+
   it("consolidates 500 live-sized asks within the default timeout", async () => {
     const many = Array.from({ length: 500 }, (_, n) => item(`ask-${n}`, { keys: [`topic:t${n % 40}`] }));
 
