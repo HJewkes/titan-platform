@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TASK_ID_REGEX } from "./ids.js";
+import { SLUG, TASK_ID_REGEX } from "./ids.js";
 import { sourceRefProblem, taskProvenanceFields } from "./provenance.js";
 
 const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -43,7 +43,14 @@ export const deliverableId = z.string().regex(DELIVERABLE_ID_REGEX, {
   message: "deliverable id must match /^[A-Za-z][A-Za-z0-9-]*$/ (e.g. console-v1)",
 });
 
-const isUnique = (ids: string[]): boolean => new Set(ids).size === ids.length;
+// A task key names a task across initiatives: `<initiative-slug>/<ID>`.
+const TASK_KEY_REGEX = new RegExp(`^${SLUG}/${TASK_ID_REGEX.source.slice(1)}`);
+
+const movedKey = z.string().regex(TASK_KEY_REGEX, {
+  message: "must be a task key <initiative-slug>/<ID> (e.g. alpha/EC-1)",
+});
+
+const isUnique =(ids: string[]): boolean => new Set(ids).size === ids.length;
 
 const uniqueTaskIds = z.array(taskId).refine(isUnique, { message: "dep ids must be unique" });
 
@@ -98,6 +105,8 @@ export const TaskSchema = z.object({
   done_at: isoDateOrDatetimeOrNull,
   actual: ActualSchema.optional(),
   claimedHours: z.array(ClaimedHoursSchema).optional(),
+  moved_to: movedKey.optional(),
+  moved_from: movedKey.optional(),
   ...taskProvenanceFields,
 }).superRefine((task, ctx) => {
   const problem = sourceRefProblem(task);

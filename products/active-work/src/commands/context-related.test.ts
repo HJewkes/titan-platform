@@ -193,6 +193,22 @@ describe('context.related in context mode', () => {
     expect(shallow.entries!.every((entry) => entry.tier === 0)).toBe(true);
   });
 
+  it('a note with read_if shows the condition in its entry text', async () => {
+    writeFile(
+      root,
+      'alpha/sources/notes/2026-09-02-alpha-lesson.md',
+      '---\nkind: process\ntitle: The alpha lesson\ncreated: 2026-09-02\nread_if: migrating the sample store\n---\n\nThe alpha lesson body.\n',
+    );
+
+    const result = await runRelated(
+      { for: 'the alpha lesson', initiative: 'alpha', mode: 'context', tokens: 2000 },
+      { activeRoot: root, dbPath, hitLog: recorder().writer },
+    );
+
+    const entry = result.entries!.find((e) => e.ref === 'note:alpha/2026-09-02-alpha-lesson.md');
+    expect(entry?.text).toContain('(read if: migrating the sample store)');
+  });
+
   it('the command result schema keeps the context fields', async () => {
     const result = await runRelated(
       { for: 'the alpha lesson', initiative: 'alpha', mode: 'context', tokens: 2000 },
