@@ -407,6 +407,8 @@ interface ReflectSessionInput {
 interface ReflectOptions extends Omit<CurateOptions, "provenance"> {
     maxIterations?: number;
     maxDeltas?: number;
+    /** Most playbook bullets sent to the reflector per iteration; only bullets matching the diary are sent. */
+    maxBullets?: number;
 }
 interface RejectedDelta {
     iteration: number;
