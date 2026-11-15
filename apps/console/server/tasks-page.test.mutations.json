@@ -13,8 +13,8 @@
     {
       "name": "a list row carries notes and deliverables again",
       "file": "apps/console/server/tasks.ts",
-      "find": ".map((task) => listRow(stagedRow(task, evidence)));",
-      "replace": ".map((task) => ({ ...task, ...listRow(stagedRow(task, evidence)) }));",
+      "find": ".map((task) => listRow({ ...stagedRow(task, evidence), ...ownerTagOf(task.tags) }));",
+      "replace": ".map((task) => ({ ...task, ...listRow({ ...stagedRow(task, evidence), ...ownerTagOf(task.tags) }) }));",
       "kills": [
         "work.tasks over a workspace of thousands of open tasks answers the default read with 50 rows under 100 KB, counting every open task",
         "work.tasks over a workspace of thousands of open tasks answers the selected initiative's open tasks only, under the same budget"

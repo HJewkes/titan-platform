@@ -17,6 +17,7 @@ import type { RoundDecisionLog } from "./decision-log.js";
 import { graphCommands } from "./graph.js";
 import { inboxCommands, type InboxSource } from "./inbox.js";
 import { inboxActionCommands, type InboxActionOptions } from "./inbox-actions.js";
+import { prTapCommands } from "./pr-tap.js";
 import { retireTapCommands } from "./retire-tap.js";
 import { inboxViewCommands, type InboxSources } from "./inbox-view.js";
 import type { Invalidation } from "./invalidation.js";
@@ -36,6 +37,7 @@ import { roundsSubmitCommands, submitPipeline } from "./rounds-submit.js";
 import { sessionsCommands, type SessionsSource } from "./sessions.js";
 import { shepherdCommands, type ShepherdSource } from "./shepherd.js";
 import { shippedCommands, type ShippedOptions } from "./shipped.js";
+import { taskDoneCommand } from "./task-done.js";
 import { tasksCommands } from "./tasks.js";
 import { UPSTREAM_IDS, probeUpstreams, type Upstream } from "./upstreams.js";
 import { summarizeNotes, videoNotesCommands } from "./video-notes.js";
@@ -75,7 +77,7 @@ export interface ConsoleSources {
   listeners?: RoundListeners;
   /** Optional so test sources need not build one; absent, `config.surfaces` answers one gap for this host's files. */
   hostSurfaces?: HostSurfaceRoots;
-  /** Optional so test sources need not build one; absent, `inbox.prepare`, `inbox.act`, `taps.prepare` and `taps.act` answer that inbox actions are off. */
+  /** Optional so test sources need not build one; absent, `inbox.prepare`, `inbox.act`, `taps.*` and `prTaps.*` answer that inbox actions are off. */
   inboxActions?: Omit<InboxActionOptions, "decisionLog">;
   /** Optional so test sources need not build one; absent, `config.report` and `config.hosts` are not served. */
   hostReports?: HostReportsSource;
@@ -135,6 +137,7 @@ function ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decision
     ...inboxViewCommands(sources, cache),
     ...inboxActionCommands(cached, actions, cache.invalidate),
     ...retireTapCommands({ agents, shepherd }, actions, cache.invalidate),
+    ...prTapCommands(shepherd, actions, cache.invalidate),
   };
 }
 
@@ -162,6 +165,7 @@ function workCommands(activeWork: ActiveWork, work: WorkOptions | undefined) {
       run: async (_args, ctx: ConsoleContext) => ({ ...(await readLoopBoard(activeWork, work)), tierWritesOff: ownerWriteRefusal(ctx) }),
     }),
     "work.loop-tier": ownerWriteCommand({ ...loopTierCommand(activeWork), ownerWrite: true }),
+    "work.task-done": ownerWriteCommand({ ...taskDoneCommand(activeWork), ownerWrite: true }),
   };
 }
 

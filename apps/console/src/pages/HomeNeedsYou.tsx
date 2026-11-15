@@ -28,7 +28,16 @@ const firstLine = (text: string): string => {
   return line.length > TITLE_LIMIT ? `${line.slice(0, TITLE_LIMIT - 1)}…` : line;
 };
 
-function needsOf(queue: readonly QueueItem[], tasks: readonly TaskRow[], upstreams: readonly Upstream[], url: string): Need[] {
+/** One row per owner step, or one titled row for a human-tagged task that lists none; a task with neither yields nothing. */
+function ownerStepNeeds(task: TaskRow): Need[] {
+  const open = () => followRef(`task:${task.id}`);
+  const steps = task.owner_steps ?? [];
+  if (steps.length > 0) return steps.map((step, index): Need => ({ key: `owner-${task.id}-${index}`, title: `${step.kind}: ${step.note}`, subtitle: `${task.id} ${task.title} · ${task.slug}`, badge: "owner", color: "info", onPress: open }));
+  if (task.ownerTagged !== true) return [];
+  return [{ key: `owner-${task.id}`, title: `${task.id} ${task.title}`, subtitle: task.slug, badge: "owner", color: "info", onPress: open }];
+}
+
+function needsOf(queue: readonly QueueItem[], tasks: readonly TaskRow[], upstreams: readonly Upstream[], url: string, ownerTasks: readonly TaskRow[]): Need[] {
   const asked = queue.map((item): Need => ({ key: `queue-${item.msgId}`, title: firstLine(item.text), subtitle: `${item.kind} from ${item.asker}`, badge: "queue", color: "info", onPress: () => openExternal(url) }));
   const blocked = tasks
     .filter((task) => task.stage === "blocked")
@@ -43,7 +52,7 @@ function needsOf(queue: readonly QueueItem[], tasks: readonly TaskRow[], upstrea
       color: "error",
       ...(isWebTarget(upstream.target) ? { onPress: () => openExternal(upstream.target) } : {}),
     }));
-  return [...asked, ...blocked, ...down];
+  return [...asked, ...ownerTasks.flatMap(ownerStepNeeds), ...blocked, ...down];
 }
 
 /** The inbox's top blockers, open queue items, blocked tasks and unreachable upstreams; every row links out, none answers anything. */
@@ -51,21 +60,23 @@ export function NeedsYouRegion(): ReactNode {
   const health = useQuery("upstreams.health");
   const queue = useQuery("agents.queue");
   const tasks = useQuery("work.tasks", { stage: "blocked" });
+  const owner = useQuery("work.tasks", { ownerOnly: true, limit: 200 });
   const inbox = useQuery("inbox.list");
-  if ([health, queue, tasks, inbox].some((query) => query.status === "loading")) return <Spinner size="sm" label="Loading needs-you" />;
+  if ([health, queue, tasks, owner, inbox].some((query) => query.status === "loading")) return <Spinner size="sm" label="Loading needs-you" />;
   const url = queueUrl(health.data?.upstreams.find((upstream) => upstream.id === "agents")?.target);
-  const needs = needsOf(queue.data?.items ?? [], tasks.data?.tasks ?? [], health.data?.upstreams ?? [], url);
+  const needs = needsOf(queue.data?.items ?? [], tasks.data?.tasks ?? [], health.data?.upstreams ?? [], url, owner.data?.tasks ?? []);
   const blockers = (inbox.data?.items ?? []).filter((item) => item.section === "blocking");
   // A snapshot exported before TP-4044 carries no nudges.
   const { nudges: waiting = [] } = inbox.data ?? {};
   // A failed read leaves its rows unknown, so the list may not claim nothing needs the owner; the Upstreams region reports a health failure.
-  const failed = [health, queue, tasks, inbox].some((query) => query.status === "error") || (inbox.data?.gaps.length ?? 0) > 0;
+  const failed = [health, queue, tasks, owner, inbox].some((query) => query.status === "error") || (inbox.data?.gaps.length ?? 0) > 0;
   return (
     <VStack gap={3}>
       {inbox.status === "error" ? <Alert status="warning" message={`Could not load the inbox: ${inbox.error.message}`} /> : null}
       {inbox.data !== undefined ? <InboxTop blockers={blockers} waiting={waiting.length} gaps={inbox.data.gaps.length} /> : null}
       {queue.status === "error" ? <QueueUnreadable message={queue.error.message} url={url} /> : null}
       {tasks.status === "error" ? <Alert status="warning" message={`Could not load blocked tasks: ${tasks.error.message}`} /> : null}
+      {owner.status === "error" ? <Alert status="warning" message={`Could not load owner-only steps: ${owner.error.message}`} /> : null}
       {needs.length > 0 ? <NeedList needs={needs} /> : failed || blockers.length > 0 || waiting.length > 0 ? null : <EmptyState title="Nothing needs you" description="No open queue items, blocked tasks or unreachable upstreams." />}
     </VStack>
   );
