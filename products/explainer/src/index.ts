@@ -49,3 +49,4 @@ export * from "./presets/article/index.js";
 export * from "./sim/index.js";
 export * from "./render-exports.js";
 export * from "./template-fill-exports.js";
+export * from "./audio-mix-exports.js";
