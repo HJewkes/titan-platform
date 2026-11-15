@@ -71,8 +71,9 @@ describe("actOnOp", () => {
       cwd: "/srv/work/example", surface: "tmux", remoteControl: false, briefPath: "/srv/briefs/research.md", briefSha256: "c".repeat(64),
     };
 
-    const outcome = await actOnOp("act-1", { op, confirmEvent: CONFIRM }, { effects: OP_EFFECTS, ledger, now: () => 0 }, CONTEXT as never);
+    const outcome = await actOnOp("act-1", { op, confirmEvent: CONFIRM }, { effects: {}, ledger, now: () => 0 }, CONTEXT);
 
+    expect(OP_EFFECTS).not.toHaveProperty("start-session");
     expect(outcome).toMatchObject({ outcome: "refused", reason: "class", detail: "a start-session op has no factory effect" });
     expect(ledger.entries).toEqual([]);
   });

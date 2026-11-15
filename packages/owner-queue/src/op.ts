@@ -29,7 +29,12 @@ const absPath = z
   .max(512)
   .regex(/^(\/|~\/)/, "an absolute path, starting / or ~/")
   .refine((path) => !path.includes(".."), "a path with no ..")
-  .refine((path) => !/[\u0000-\u001f\u007f]/.test(path), "a path with no control characters");
+  .refine((path) => ![...path].some(isControl), "a path with no control characters");
+
+function isControl(char: string): boolean {
+  const code = char.charCodeAt(0);
+  return code < 0x20 || code === 0x7f;
+}
 /**
  * A session the owner starts from the console. The deposit only proposes it: the console pins the concrete account and
  * `briefSha256` into the record it writes, and the factory and broker refuse a record still naming `least-used` or no sha.

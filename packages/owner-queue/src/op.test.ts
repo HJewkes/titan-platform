@@ -135,6 +135,10 @@ describe("a start-session op", () => {
     expect(ownerOpSchema.safeParse({ ...START_SESSION, cwd: "/srv/work/../../etc" }).success).toBe(false);
   });
 
+  it("refuses a brief path carrying a control character", () => {
+    expect(ownerOpSchema.safeParse({ ...START_SESSION, briefPath: "/srv/briefs/research.md\nrm -rf ~" }).success).toBe(false);
+  });
+
   it("refuses a 63-hex brief sha256", () => {
     expect(ownerOpSchema.safeParse({ ...START_SESSION, briefSha256: "c".repeat(63) }).success).toBe(false);
   });
