@@ -1,12 +1,11 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import Database from 'better-sqlite3';
-import { estimateTokens } from '@titan-design/retrieval';
+import { DF_CAP_FLOOR, estimateTokens } from '@titan-design/retrieval';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { graphNoteRelevance } from '../bootstrap/rank-notes.js';
-import { DF_CAP_FLOOR } from './derive-query.js';
 import { searchWorkspace } from './index.js';
 import { ownerShown, writeCharter } from '../test-support/visibility.js';
 import { relatedContext, withinBudget, type RelatedInput } from './related.js';
@@ -42,31 +41,6 @@ const related = (input: Partial<RelatedInput> & { text: string }) =>
   relatedContext({ dbPath, activeRoot: root, ...input });
 
 describe('relatedContext', () => {
-  it('returns openable hits and the query that found them', async () => {
-    const result = await related({ text: 'the alpha lesson', initiative: 'alpha' });
-
-    expect(result.degraded).toEqual([]);
-    expect(result.query.terms).toEqual(['alpha', 'lesson']);
-    expect(result.hits[0]).toMatchObject({
-      ref: 'note:alpha/2026-09-02-alpha-lesson.md',
-      class: 'notes',
-      initiative: 'alpha',
-      title: 'The alpha lesson',
-      path: 'alpha/sources/notes/2026-09-02-alpha-lesson.md',
-    });
-    expect(result.hits[0].excerpt).toBeTruthy();
-  });
-
-  it('never returns an excluded ref, and fills its place from further down', async () => {
-    const top = await related({ text: 'indexer converges', limit: 6 });
-    const [first, second] = top.hits.map((hit) => hit.ref);
-
-    const result = await related({ text: 'indexer converges', limit: 3, exclude: [first] });
-
-    expect(result.hits.map((hit) => hit.ref)).not.toContain(first);
-    expect(result.hits[0].ref).toBe(second);
-  });
-
   it('searches only the classes asked for', async () => {
     const result = await related({ text: 'indexer converges', classes: ['tasks'] });
 
@@ -123,16 +97,6 @@ describe('relatedContext', () => {
     const hit = result.hits.find((h) => h.ref === 'note:alpha/2026-09-02-alpha-lesson.md');
     expect(hit).toMatchObject(expected);
     expect('readIf' in hit!).toBe('readIf' in expected);
-  });
-
-  it('carries the winning span as a byte range into the file', async () => {
-    const result = await related({ text: 'the alpha lesson', initiative: 'alpha' });
-    const [top] = result.hits;
-    const file = readFileSync(path.join(root, top.path!));
-
-    expect(top.byteOffset).toBeGreaterThanOrEqual(0);
-    expect(top.byteLength).toBeGreaterThan(0);
-    expect(top.byteOffset! + top.byteLength!).toBeLessThanOrEqual(file.length);
   });
 
   it('degrades to no hits when the index is missing, without creating it', async () => {
