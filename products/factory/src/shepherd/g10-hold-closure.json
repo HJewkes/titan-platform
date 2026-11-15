@@ -282,6 +282,7 @@
   "shepherd/gate-evidence.ts",
   "shepherd/gate-route.ts",
   "shepherd/gates.ts",
+  "shepherd/generated-freshness.json",
   "shepherd/generated-paths.json",
   "shepherd/gh-failure-class.ts",
   "shepherd/gh-gateway-port.ts",

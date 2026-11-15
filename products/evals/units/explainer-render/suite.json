@@ -5,7 +5,7 @@
     "version": "1.0.0"
   },
   "id": "explainer-render-checks",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "cases": [
     "00d6766cc2c860b35de99968749ce9f94e7a22656567eb5ef780da05e8a53355",
     "0621bdb2a83df99cb02f4c9774b04695e92121fce320e02237bb15ababf75133",
@@ -18,7 +18,7 @@
   ],
   "checks": [
     {
-      "id": "render-gate",
+      "id": "duration-agreement",
       "family": "deterministic",
       "role": "required",
       "scope": "render/",
@@ -32,7 +32,7 @@
           "--json"
         ],
         "in": "input.inputs",
-        "verdict": "checks[name=render-gate]",
+        "verdict": "checks[name=duration-agreement]",
         "gate": true
       }
     },
