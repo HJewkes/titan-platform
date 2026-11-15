@@ -74,7 +74,7 @@ const idLine = (ids: readonly string[]): string =>
   `- Ids: this beat says ${quoted(ids)}. Cut each one and say in its place, in a few words, what that change or task did, so the line stays about as long; the screen shows the id, so put none in labels_added and add no number.`;
 
 function directiveLines(beat: PromptBeat, directive: BeatDirective, round: RegisterEditPlan["round"]): string[] {
-  const { numbers, triads, phrases, ids, shape, refused } = directive;
+  const { numbers, triads, phrases, ids, cuts, shape, refused } = directive;
   return [
     ...refusalLines(refused ?? []),
     ...(shape ? [shapeLine(shape)] : []),
@@ -89,6 +89,7 @@ function directiveLines(beat: PromptBeat, directive: BeatDirective, round: Regis
       : []),
     ...(phrases ? [`- Stock phrases: ${quoted(phrases)}. Say what each one means in plain words of your own.`] : []),
     ...(ids ? [idLine(ids)] : []),
+    ...(cuts ? [`- Cuts: delete each of ${quoted(cuts)}, or fold what it says into a neighbouring sentence; never reword it.`] : []),
     ...(round > 1 ? ["- Change only what the lines above name; keep the rest of the beat as written."] : []),
   ];
 }

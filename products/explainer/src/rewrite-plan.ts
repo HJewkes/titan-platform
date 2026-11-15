@@ -1,4 +1,5 @@
 import type { L0Result } from "./eval-l0.js";
+import { hallmarkHits } from "./lint-hallmarks.js";
 import { MAX_SPOKEN_NUMBERS_PER_BEAT, REGISTER_BANDS, numberSpans, phraseSpans, spokenText, triadSpans } from "./lint-register.js";
 import { MAX_VETTED_SENTENCE_WORDS } from "./lint-voice.js";
 import type { BeatRejectionRule } from "./rewrite-guard.js";
@@ -42,6 +43,8 @@ export interface BeatDirective {
   triads?: string[];
   /** The over-represented phrases the beat speaks, in order, while the phrases row fails and warns at this length. */
   phrases?: string[];
+  /** Sentences a failing hallmark row flags in the beat, verbatim: delete each, or fold its content into a neighbour. */
+  cuts?: string[];
   /** The PR, task or script ids the beat says aloud, each once; a daily says none (TP-4697). */
   ids?: string[];
   /** Planned sentence lengths in words, shortest first. */
@@ -211,6 +214,24 @@ function planStillShort(beats: readonly PlanBeat[], cap: number): ShapeCandidate
   return { shapes, projected: project(shapes.flatMap((shape, i) => shape ?? sentenceLengths(beats[i]!))) };
 }
 
+/**
+ * The flagged sentences per beat, from the sentence-level hallmark rows that fail. A passing row lists nothing, so a
+ * script under the row's threshold keeps its sentences; a cue-bearing sentence is listed too, since folding keeps its cue.
+ */
+function cutsByBeat(beats: readonly PlanBeat[], rows: readonly L0Result[]): Map<string, string[]> {
+  const failed = new Set(rows.filter((row) => !row.pass && row.check_id.startsWith("hallmark:")).map((row) => row.check_id));
+  const cuts = new Map<string, string[]>();
+  for (const hit of hallmarkHits(beats)) {
+    if (failed.has(hit.row)) cuts.set(hit.beat, [...(cuts.get(hit.beat) ?? []), hit.text]);
+  }
+  return cuts;
+}
+
+const cutsFor = (cuts: ReadonlyMap<string, string[]>, beat: string): Pick<BeatDirective, "cuts"> => {
+  const own = cuts.get(beat);
+  return own ? { cuts: own } : {};
+};
+
 const isRound = (n: number): n is RewriteRound => n === 1 || n === MAX_REWRITE_ROUNDS;
 
 const shapeFailing = (rows: readonly L0Result[]): boolean =>
@@ -257,9 +278,10 @@ export function planRegisterEdits(script: { beats: readonly PlanBeat[] }, rows: 
   if (!isRound(round)) throw new RangeError(`rewrite round ${round} is outside 1..${MAX_REWRITE_ROUNDS}`);
   const shape = shapeFailing(rows) ? (round === 1 ? planShape(script.beats, cap) : planStillShort(script.beats, cap)) : undefined;
   const aimed = phrasesAimed(script.beats, rows);
+  const cuts = cutsByBeat(script.beats, rows);
   const directives = script.beats.flatMap((beat, i): BeatDirective[] => {
     const planned = shape?.shapes[i];
-    const directive = { ...spanDirectives(beat, rows), ...(planned ? { shape: planned } : {}), ...phrasesFor(beat, aimed), ...idsFor(beat) };
+    const directive = { ...spanDirectives(beat, rows), ...cutsFor(cuts, beat.id), ...(planned ? { shape: planned } : {}), ...phrasesFor(beat, aimed), ...idsFor(beat) };
     if (Object.keys(directive).length === 0) return [];
     return [{ beat: beat.id, chapter: beat.chapter, ...directive, ...refusedFor(beat.id, refused) }];
   });
