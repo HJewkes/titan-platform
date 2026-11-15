@@ -18,6 +18,7 @@ import { failedGates, runJudgedChecks, runStageChecks, type CheckJudge } from ".
 import { StageSpecSchema, type StageSpec } from "./stage-spec.js";
 import { kokoroEngine } from "./tts-engine.js";
 import { runTtsStage, type TtsEngine } from "./tts-stage.js";
+import type { FfmpegExec } from "../contact-sheet-render.js";
 import { ffmpegMedia, runSheetsStage, type MediaExec } from "./sheets-stage.js";
 import { chromiumQaEngine, type QaEngine } from "../qa/qa-engine.js";
 import { runQaStage } from "../qa/qa-stage.js";
@@ -38,6 +39,8 @@ interface BodyDeps {
   gather?: GatherDeps;
   /** The sheets stage's ffprobe and ffmpeg; the host's own by default. */
   media?: MediaExec;
+  /** The sheets stage's contact-sheet ffmpeg; the host's own by default. */
+  ffmpeg?: FfmpegExec;
   /** The qa stage's browser and ffprobe; real Chromium and the host's ffprobe by default. */
   qaEngine?: QaEngine;
   /** The render stage's page build and capture; the composition page and Chromium by default. */
@@ -112,7 +115,7 @@ function runSheetsBody(config: StageSpec["config"], input: ModelStageInput, deps
   if (!config.sheets) throw new Error("sheets stage spec has no sidecar settings");
   const { take, day, status, stem } = config.sheets;
   const settings = { status, stem, ...(take ? { take } : {}), ...(day ? { day } : {}), ...(config.profile ? { profile: config.profile.type } : {}), ...(config.video ? { video: config.video } : {}) };
-  return runSheetsStage({ ...input, store: deps.store }, settings, deps.media ?? ffmpegMedia());
+  return runSheetsStage({ ...input, store: deps.store }, settings, deps.media ?? ffmpegMedia(), deps.ffmpeg);
 }
 
 function runQaBody(config: StageSpec["config"], input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
