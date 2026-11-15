@@ -19,6 +19,9 @@ export type { ContextBudget, ContextCandidate, ContextEntry, ContextPlan, DropRe
 export { estimateTokens, planContext } from "./context/plan.js";
 export type { ContextResponse, ListResponse, RetrievalCallOptions, RetrievalDropReason, RetrievalDropped, RetrievalRequest, RetrievalResponse, TierSource } from "./context/request.js";
 export { ContextBudgetSchema, RetrievalRequestSchema, TIERS_STAGE } from "./context/request.js";
+export { meaningfulTerms, orExpression } from "./query/terms.js";
+export type { DerivedQuery, DocumentFrequency } from "./query/derive-query.js";
+export { DF_CAP_FLOOR, deriveQuery, documentFrequencyCap, selectTerms } from "./query/derive-query.js";
 export { extractTerms, scoreTerm } from "./vocabulary/terms.js";
 export { editDistance, maxEditDistance } from "./vocabulary/edit-distance.js";
 export type { VocabEntry, VocabularySource } from "./vocabulary/correct.js";

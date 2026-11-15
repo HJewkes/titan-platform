@@ -1,5 +1,18 @@
 import { describe, it, expect } from "vitest";
-import { packageOf } from "./package-of.js";
+import { packageOf, packageRootOf } from "./package-of.js";
+
+describe("packageRootOf", () => {
+  it("returns the directory holding each kind of package", () => {
+    expect(packageRootOf("packages/graph/src/a.ts")).toBe("packages/graph");
+    expect(packageRootOf("products/alpha/src/a.ts")).toBe("products/alpha");
+    expect(packageRootOf("apps/graph/c.ts")).toBe("apps/graph");
+  });
+
+  it("returns the first path segment for a top-level directory or root file", () => {
+    expect(packageRootOf("tools/build.ts")).toBe("tools");
+    expect(packageRootOf("root.ts")).toBe("root.ts");
+  });
+});
 
 describe("packageOf", () => {
   it("names a packages/ file by its package directory", () => {
