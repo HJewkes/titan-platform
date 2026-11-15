@@ -394,3 +394,50 @@ describe('task.edit over MCP', () => {
     });
   });
 });
+
+describe('task.edit --clear', () => {
+  it('removes the due key from the YAML', async () => {
+    await withTempActiveRoot(async (root) => {
+      await seedTask(root, { due: '2030-01-01' });
+      await edit(root, { clear: ['due'] });
+      const raw = await fs.readFile(taskFile(root), 'utf8');
+      expect(YAML.parse(raw)).not.toHaveProperty('due');
+      expect((await readTask(root)).updated).not.toBe('2026-01-03');
+    });
+  });
+
+  it('removes the parent edge', async () => {
+    await withTempActiveRoot(async (root) => {
+      await seedTask(root, { parent: 'SI-1' });
+      await edit(root, { clear: ['parent'] });
+      expect(YAML.parse(await fs.readFile(taskFile(root), 'utf8'))).not.toHaveProperty('parent');
+    });
+  });
+
+  it('refuses to clear due on a cos fixed task', async () => {
+    await withTempActiveRoot(async (root) => {
+      await seedTask(root, { cos: 'fixed', due: '2030-01-01' });
+      await expect(edit(root, { clear: ['due'] })).rejects.toThrow('cos fixed needs a due date');
+      expect((await readTask(root)).due).toBe('2030-01-01');
+    });
+  });
+
+  it('refuses --clear due together with --due', async () => {
+    await withTempActiveRoot(async (root) => {
+      await seedTask(root, { due: '2030-01-01' });
+      await expect(edit(root, { clear: ['due'], due: '2030-01-01' })).rejects.toBeInstanceOf(
+        UsageError,
+      );
+    });
+  });
+
+  it('reports unchanged when the field is already absent', async () => {
+    await withTempActiveRoot(async (root) => {
+      await seedTask(root);
+      const context = ctx(root);
+      const result = await edit(root, { clear: ['due'] }, context);
+      expect(result.updated).toBe('2026-01-03');
+      expect(context.warnings).toEqual(['due already absent, nothing cleared']);
+    });
+  });
+});

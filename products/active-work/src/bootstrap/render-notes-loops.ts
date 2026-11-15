@@ -21,6 +21,11 @@ import type { MalformedTask } from './prompt.js';
  */
 export const DURABLE_NOTES_LIMIT = 12;
 
+const OPEN_LOOPS_LIMIT = 12;
+const ABANDONED_LOOPS_LIMIT = 8;
+const ARCHIVED_IDS_LIMIT = 10;
+const MALFORMED_TASKS_LIMIT = 5;
+
 function renderNoteLine(note: LoadedNote): string {
   const { kind, title, created, read_if: readIf } = note.frontmatter;
   return `- [${kind}] ${title} (${created})${readIfSuffix(readIf)}`;
@@ -102,8 +107,10 @@ function malformedNote(malformed: MalformedSession[]): string {
  */
 export function malformedTaskNote(malformed: MalformedTask[]): string {
   if (malformed.length === 0) return '';
-  const files = malformed.map((m) => m.file).join(', ');
-  return ` — ${malformed.length} task file(s) unreadable (${files}); run \`active-work doctor\``;
+  const overflow = malformed.length - MALFORMED_TASKS_LIMIT;
+  const names = malformed.slice(0, MALFORMED_TASKS_LIMIT).map((m) => m.file);
+  if (overflow > 0) names.push(`+${overflow} more`);
+  return ` — ${malformed.length} task file(s) unreadable (${names.join(', ')}); run \`active-work doctor\``;
 }
 
 /**
@@ -154,6 +161,9 @@ function renderOpenLoops(
   if (loops.length === 0) {
     return `# Open loops${note}\n${renderNoOpenLoops(newestSession)}`;
   }
+  const total = loops.length;
+  const oldest = loops[0].ageDays;
+  loops = loops.slice(0, OPEN_LOOPS_LIMIT);
   const labels = loops.map(loopLabel);
   const ageWidth = Math.max(...loops.map((l) => String(l.ageDays).length));
   const labelWidth = Math.max(...labels.map((l) => l.length));
@@ -164,8 +174,10 @@ function renderOpenLoops(
     const see = (related.hits.get(loop.ref) ?? []).map((hit) => renderSeeLine(hit, related.slug));
     return [`- ${age} ${label}   (from ${from}, ref ${loop.ref})`, ...see].join('\n');
   });
-  const oldest = loops[0].ageDays;
-  return `# Open loops (${loops.length} hanging, oldest ${oldest}d)${note}\n${lines.join('\n')}`;
+  if (total > loops.length) {
+    lines.push(`(+${total - loops.length} more — \`active-work loops ${related.slug}\`)`);
+  }
+  return `# Open loops (${total} hanging, oldest ${oldest}d)${note}\n${lines.join('\n')}`;
 }
 
 /** `renderOpenLoops`, plus a pointer to the loops a facet hid. */
@@ -241,14 +253,31 @@ export function renderClosingInstruction(openLoops: OpenLoop[]): string {
  * decision not to do something, and a future session that cannot see it will
  * propose the abandoned thing again.
  */
-export function renderAbandonedLoops(resolved: ResolvedLoop[], windowDays: number): string | null {
+export function renderAbandonedLoops(
+  resolved: ResolvedLoop[],
+  windowDays: number,
+  slug: string,
+): string | null {
   const abandoned = resolved.filter(
     (loop) => loop.outcome === 'abandoned' && loop.ageDays <= windowDays,
   );
   if (abandoned.length === 0) return null;
-  const lines = abandoned.map((loop) => {
+  const lines = abandoned.slice(0, ABANDONED_LOOPS_LIMIT).map((loop) => {
     const head = `- ${loop.text} (dropped ${loop.closedAt.slice(0, 10)})`;
     return loop.note ? `${head}\n  why: ${loop.note}` : head;
   });
+  const overflow = abandoned.length - ABANDONED_LOOPS_LIMIT;
+  if (overflow > 0) {
+    lines.push(`(+${overflow} more — \`active-work loops ${slug} --state abandoned\`)`);
+  }
   return `# Abandoned in the last ${windowDays} days (${abandoned.length})\n${lines.join('\n')}`;
+}
+
+/** Archived ids are housekeeping, so the list is cut; the count stays true. */
+export function renderArchivedIds(ids: string[] | undefined): string | null {
+  if (!ids || ids.length === 0) return null;
+  const shown = ids.slice(0, ARCHIVED_IDS_LIMIT).join(', ');
+  const overflow = ids.length - ARCHIVED_IDS_LIMIT;
+  const tail = overflow > 0 ? `, +${overflow} more` : '';
+  return `# Archived (housekeeping)\nMoved ${ids.length} stale done task(s) to tasks/archive/: ${shown}${tail}`;
 }

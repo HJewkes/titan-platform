@@ -1045,6 +1045,7 @@ Two keys under `shepherd` in the config file turn the review phase on. Both are 
 | `shepherd.review.minFreeInodesPct` | Optional, default 15. The spawn gate defers a reviewer while that filesystem's free inodes are under this percent of its total, or under twice the inodes the last measured checkout took, whichever is more. A filesystem with no fixed inode table has no inode floor |
 | `shepherd.review.maxConcurrent` | Optional, default 3. The spawn gate defers a reviewer while this many reviewers run |
 | `shepherd.taskClose` | Optional, `keep` (default) or `last-slice-only`, read live. When a merged PR closes its `--task`; see `sh-cleanup` above |
+| `shepherd.checkCandidates` | Optional, `off`, `record` (default) or `propose`. Whether the reviewers' check candidates are kept in the `check_candidates` table (`src/shepherd/check-candidates-store.ts`): one row per repo, PR, head and class key, with each member's own verdict. `propose` records as `record` does; filing check-proposal tasks from the rows is not built yet. Any other value fails the load |
 | `shepherd.fixer.configDir` | Optional. The Claude config directory of the fixer a red main spawns; absent means agent-chat's default. Same rules as `review.configDir`. A red main's fixer and a fix-round successor start here (or on `review.configDir` when absent) and moves through `review.fallbackConfigDirs` while the account is out of usage |
 
 The load fails, with `invalid config <path>: <reason>`, on any of these:

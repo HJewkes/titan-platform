@@ -14,6 +14,7 @@ export { applyAudit } from "./audit-apply.js";
 export { AUDIT_FACET, backfillFacets, DEFAULT_FACET_LIMIT, type BackfillOptions, type BackfillSummary } from "./facet.js";
 export { applyDelta, type DeltaSource } from "./apply.js";
 export { purgeTranscript } from "./purge.js";
+export { DRAIN_SCREENED_MIGRATION, DRAIN_TEMPLATE_MIGRATION, ingestDrain, listTemplates, type DrainSummary, type TemplateRow } from "./drain.js";
 export type { ReconcileCounts } from "./rollup.js";
 export { reconcile, rollupSessions, rollupYielding } from "./rollup.js";
 export type { IndexOptions, RefreshOptions, RefreshSummary, TranscriptOutcome } from "./refresh.js";

@@ -183,6 +183,34 @@ interface DeltaSource {
  */
 declare function purgeTranscript(graph: SessionGraph, transcriptId: number): string[];
 
+/**
+ * Drain's tables live in the 2000 band, above session-graph's own migrations and below
+ * nothing else of this package's: a product layering them on its graph composes them with
+ * its own versions. Templates and occurrences hold ids and locators only, never blob text.
+ */
+declare const DRAIN_TEMPLATE_MIGRATION: Migration;
+declare const DRAIN_SCREENED_MIGRATION: Migration;
+interface DrainSummary {
+    candidates: number;
+    screened: number;
+    clustered: number;
+    newTemplates: number;
+    templates: number;
+    unreadable: number;
+}
+interface TemplateRow {
+    templateId: string;
+    maskedSignature: string;
+    occurrenceCount: number;
+    createdAt: string;
+}
+/** Cluster tool-result error facts not yet handled into recurring failure templates. */
+declare function ingestDrain(graph: SessionGraph, options?: {
+    limit?: number;
+}): Promise<DrainSummary>;
+/** Recurring failure templates, most frequent first. */
+declare function listTemplates(graph: SessionGraph, limit: number): TemplateRow[];
+
 /** Recompute turn aggregates, shared-session counters and the audit rollup for the given sessions in one transaction. */
 declare function rollupSessions(graph: SessionGraph, sessionIds: readonly string[]): number;
 /**
@@ -784,4 +812,4 @@ declare function ensureNormalizedSchema(db: Db): void;
 /** Ambiguity is explicit; workspace session bodies remain in their original namespace. */
 declare function resolveConversationAlias(db: Db, legacyRef: string): string | null;
 
-export { AUDIT_DDL, AUDIT_FACET, AUDIT_MIGRATION_NAME, AUDIT_TABLES, type BackfillOptions, type BackfillSummary, type CommitLineage, type CommitLinks, type ConversationSummary, DEFAULT_FACET_LIMIT, DERIVED_TABLES, DOMAIN_DDL, type DeltaSource, EPISODE_TABLE, type EpisodeRow, type ExternalEvent, FACET_TABLE, INBOUND_BROADCAST_MIGRATION_NAME, type IndexOptions, type IndexedSpan, KIT, type LineageSession, type LineageTask, type LongPromptPrice, MIGRATIONS, NORMALIZED_TABLES, NO_ENRICHMENT, NO_ORIGINS, NO_PR_OUTCOMES, NO_TASK_LINK, type NormalizedConversationDetail, type NormalizedErrorFact, type NormalizedIndexResult, type NormalizedTurn, type NormalizedUsageOptions, type NormalizedUsageSummary, ORIGIN_DDL, ORIGIN_EXPERIMENT_MIGRATION_NAME, ORIGIN_MIGRATION_NAME, ORIGIN_ROUTE_MIGRATION_NAME, ORIGIN_TABLES, ORIGIN_TASK_LINK_MIGRATION_NAME, ORIGIN_VIEWS, type OpenSessionGraphOptions, type OriginEnrichment, type OriginResolution, type OriginResolver, PRICE_LONG_PROMPT_MIGRATION_NAME, type PrDue, type PrEnrichment, type PrKey, type PrOutcomeBand, type PrResolution, type PrResolver, type PriceInput, REVIEW_DDL, REVIEW_TABLE, REVIEW_VERDICT_MIGRATION_NAME, type ReadIndexedTextOptions, type ReconcileCounts, type ReconcileResult, type RefreshOptions, type RefreshSummary, type ResolvedOrigin, type ResolvedPr, type ResolvedReview, type ResolvedTask, type ReviewProjection, type ReviewRoundOptions, type ReviewerProfilePredicate, SIGNAL_COPY_RANK, type SessionGraph, SessionGraphNotMigratedError, type SessionStep, type SessionTaskInitiative, type SessionTouchingFiles, type SessionsTouchingFilesOptions, type SourceIndexPort, type SourceIndexResult, type SyncPricesOptions, type TaskEnrichment, type TaskLinkSource, type TaskResolution, type TaskResolver, type TaskStep, type TouchedFileQuery, type TranscriptOutcome, allSessionIds, allTaskIds, applyAudit, applyDelta, backfillFacets, commitLineage, countNormalizedEvents, countNormalizedSessions, countRounds, derivedTables, enrichPrs, enrichTasks, ensureNormalizedSchema, hasNormalizedTables, indexCodexSource, indexSource, indexTranscript, isInjectedCause, isReviewerProfile, isUntypedPrompt, normalizedConversationDetail, normalizedErrorFacts, normalizedSessions, normalizedSourcePath, normalizedUsage, openSessionGraph, projectReviewRounds, prsNeedingOutcome, purgeTranscript, readIndexedText, reconcile, reconcilePrices, refreshCorpus, replaceEpisodes, resetIndex, resolveConversationAlias, resolveOrigins, rollupSessions, rollupYielding, sessionsNeedingOrigin, sessionsTouchingFiles, stripInjected, syncPrices };
+export { AUDIT_DDL, AUDIT_FACET, AUDIT_MIGRATION_NAME, AUDIT_TABLES, type BackfillOptions, type BackfillSummary, type CommitLineage, type CommitLinks, type ConversationSummary, DEFAULT_FACET_LIMIT, DERIVED_TABLES, DOMAIN_DDL, DRAIN_SCREENED_MIGRATION, DRAIN_TEMPLATE_MIGRATION, type DeltaSource, type DrainSummary, EPISODE_TABLE, type EpisodeRow, type ExternalEvent, FACET_TABLE, INBOUND_BROADCAST_MIGRATION_NAME, type IndexOptions, type IndexedSpan, KIT, type LineageSession, type LineageTask, type LongPromptPrice, MIGRATIONS, NORMALIZED_TABLES, NO_ENRICHMENT, NO_ORIGINS, NO_PR_OUTCOMES, NO_TASK_LINK, type NormalizedConversationDetail, type NormalizedErrorFact, type NormalizedIndexResult, type NormalizedTurn, type NormalizedUsageOptions, type NormalizedUsageSummary, ORIGIN_DDL, ORIGIN_EXPERIMENT_MIGRATION_NAME, ORIGIN_MIGRATION_NAME, ORIGIN_ROUTE_MIGRATION_NAME, ORIGIN_TABLES, ORIGIN_TASK_LINK_MIGRATION_NAME, ORIGIN_VIEWS, type OpenSessionGraphOptions, type OriginEnrichment, type OriginResolution, type OriginResolver, PRICE_LONG_PROMPT_MIGRATION_NAME, type PrDue, type PrEnrichment, type PrKey, type PrOutcomeBand, type PrResolution, type PrResolver, type PriceInput, REVIEW_DDL, REVIEW_TABLE, REVIEW_VERDICT_MIGRATION_NAME, type ReadIndexedTextOptions, type ReconcileCounts, type ReconcileResult, type RefreshOptions, type RefreshSummary, type ResolvedOrigin, type ResolvedPr, type ResolvedReview, type ResolvedTask, type ReviewProjection, type ReviewRoundOptions, type ReviewerProfilePredicate, SIGNAL_COPY_RANK, type SessionGraph, SessionGraphNotMigratedError, type SessionStep, type SessionTaskInitiative, type SessionTouchingFiles, type SessionsTouchingFilesOptions, type SourceIndexPort, type SourceIndexResult, type SyncPricesOptions, type TaskEnrichment, type TaskLinkSource, type TaskResolution, type TaskResolver, type TaskStep, type TemplateRow, type TouchedFileQuery, type TranscriptOutcome, allSessionIds, allTaskIds, applyAudit, applyDelta, backfillFacets, commitLineage, countNormalizedEvents, countNormalizedSessions, countRounds, derivedTables, enrichPrs, enrichTasks, ensureNormalizedSchema, hasNormalizedTables, indexCodexSource, indexSource, indexTranscript, ingestDrain, isInjectedCause, isReviewerProfile, isUntypedPrompt, listTemplates, normalizedConversationDetail, normalizedErrorFacts, normalizedSessions, normalizedSourcePath, normalizedUsage, openSessionGraph, projectReviewRounds, prsNeedingOutcome, purgeTranscript, readIndexedText, reconcile, reconcilePrices, refreshCorpus, replaceEpisodes, resetIndex, resolveConversationAlias, resolveOrigins, rollupSessions, rollupYielding, sessionsNeedingOrigin, sessionsTouchingFiles, stripInjected, syncPrices };

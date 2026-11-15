@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { EXIT, invokeCommand } from "@titan-design/registry";
 import { openSessionGraph, type SessionGraph } from "@titan-design/session-graph";
 import { clearRepoCache } from "@titan-design/session-read";
-import { sessionsCommands, type SessionsListResult, type SessionsSource, type SessionTimelineResult } from "./sessions.js";
+import { sessionsCommands, sessionsForTask, type SessionsListResult, type SessionsSource, type SessionTimelineResult } from "./sessions.js";
 
 const FINISHED = "0a1b2c3d-0000-4000-8000-000000000001";
 const OLDER = "0a1b2c3d-0000-4000-8000-000000000002";
@@ -305,5 +305,48 @@ describe("sessions.timeline touched files", () => {
     const files = await touchedFiles([{ tool: "Read", file: live }, live]);
 
     expect(files.map((file) => file.nodeId)).toEqual(["packages/core/index.ts"]);
+  });
+});
+
+describe("task links through ran edges", () => {
+  async function seedRan(edges: { sessionId: string; taskId: string; expired?: boolean }[]): Promise<void> {
+    await seedGraph();
+    const graph = openSessionGraph(graphPath);
+    try {
+      for (const { sessionId, taskId, expired } of edges) {
+        graph.edges.assert({ sourceRef: `session:${sessionId}`, relation: "ran", targetRef: `task:${taskId}` });
+        if (expired) graph.edges.expire(`session:${sessionId}`, "ran", `task:${taskId}`);
+      }
+    } finally {
+      graph.db.close();
+    }
+  }
+
+  const forTask = async (taskId: string) => (await sessionsForTask(source(), taskId, 50)).sessions.map((s) => s.sessionId);
+
+  it("finds a session linked to the task only by a ran edge", async () => {
+    await seedRan([{ sessionId: OLDER, taskId: "XY-2" }]);
+
+    expect(await forTask("XY-2")).toEqual([OLDER]);
+  });
+
+  it("ignores an expired ran edge", async () => {
+    await seedRan([{ sessionId: OLDER, taskId: "XY-2", expired: true }]);
+
+    expect(await forTask("XY-2")).toEqual([]);
+  });
+
+  it("lists a session with both an origin id and a ran edge once, newest first", async () => {
+    await seedRan([{ sessionId: FINISHED, taskId: "XY-1" }, { sessionId: OLDER, taskId: "XY-1" }]);
+
+    expect(await forTask("XY-1")).toEqual([FINISHED, OLDER]);
+  });
+
+  it("adds an edge-only task to the sessions.list row taskIds", async () => {
+    await seedRan([{ sessionId: FINISHED, taskId: "XY-2" }]);
+
+    const row = (await list()).sessions.find((s) => s.sessionId === FINISHED);
+
+    expect(row?.taskIds).toEqual(["XY-1", "XY-2"]);
   });
 });
