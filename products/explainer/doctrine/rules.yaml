@@ -186,7 +186,7 @@ rules:
     l0: { severity: error, status: implemented, checks: ["Q-W4"], scope: chapter }
     judge: { layer: L1, status: pending, owner: SQ7 }
   - id: Q-W5
-    rule: 'Promise has "you" and a capability verb; no "tour of", no chapter count'
+    rule: 'Promise states, in "you" terms, the question the video settles; no "By the end" opener, no "be able to", no "tour of", no chapter count'
     fields: [video.promise]
     aliases: [TC18, R11]
     owner_support: none
