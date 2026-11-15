@@ -20,15 +20,6 @@
       ]
     },
     {
-      "name": "every beat type gets the story rate",
-      "file": "products/explainer/src/resolve-budget.ts",
-      "find": "bands[band].wordsPerS)",
-      "replace": "bands.story.wordsPerS)",
-      "kills": [
-        "word budget caps each beat type at its own band rate: 25 words in 10 s fit a concept beat but not a code beat"
-      ]
-    },
-    {
       "name": "a block takes its slowest beat type's rate",
       "file": "products/explainer/src/resolve-budget.ts",
       "find": "Math.max(...rates)",
@@ -40,10 +31,19 @@
     {
       "name": "a block is capped at its shortest airtime",
       "file": "products/explainer/src/resolve-budget.ts",
-      "find": "block.seconds[1], rate)",
-      "replace": "block.seconds[0], rate)",
+      "find": "block.seconds[1], voicedRate",
+      "replace": "block.seconds[0], voicedRate",
       "kills": [
         "word budget caps a profile block at its longest airtime, at the fastest rate its beat types allow"
+      ]
+    },
+    {
+      "name": "a beat ignores the voice rate",
+      "file": "products/explainer/src/resolve-budget.ts",
+      "find": "voicedRate(bands[band].wordsPerS, voiceRate)",
+      "replace": "bands[band].wordsPerS",
+      "kills": [
+        "word budget scales a beat's cap by the voice rate: a rate-1.15 voice fits words a rate-1 voice cannot"
       ]
     }
   ]
