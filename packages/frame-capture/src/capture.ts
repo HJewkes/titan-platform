@@ -17,6 +17,8 @@ export interface Viewport {
 export interface PageOptions extends Viewport {
   /** Load every declared FontFace before frame 0. Off only to measure what it prevents. */
   preloadFonts?: boolean
+  /** Leave pixels the page does not paint at alpha 0 instead of Chromium's white default. */
+  transparent?: boolean
 }
 
 export interface FontState {
@@ -159,6 +161,7 @@ async function loadCapturePage(context: BrowserContext, url: string, options: Pa
   page.on('pageerror', (e) => errors.push(e))
   const failedFonts = watchFontRequests(page)
   await page.goto(url, { waitUntil: 'load' })
+  if (options.transparent) await makeBackgroundTransparent(page)
   const duration = await waitForMotionApi(page, errors)
   const fonts = await settleFonts(page, options.preloadFonts ?? true)
   // Anchors the animations the page started while loading at virtual 0, so a chunk that jumps ahead agrees with a sweep.
@@ -190,6 +193,12 @@ function cdpSession(page: Page): Promise<CDPSession> {
     sessions.set(page, session)
   }
   return session
+}
+
+/** Chromium paints white under a page that paints nothing; screenshots keep alpha only where this override is clear. */
+async function makeBackgroundTransparent(page: Page): Promise<void> {
+  const session = await cdpSession(page)
+  await session.send('Emulation.setDefaultBackgroundColorOverride', { color: { r: 0, g: 0, b: 0, a: 0 } })
 }
 
 /** An immediate second ask hit the same busy compositor in CI (TP-4615); a short wait lets it drain. */
