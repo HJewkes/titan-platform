@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the known kinds are listed without their separating commas",
+      "file": "products/explainer/src/composition/registry.tsx",
+      "find": "Object.keys(BEATS).join(\", \")",
+      "replace": "Object.keys(BEATS).join(\" \")",
+      "kills": [
+        "the composition page's known kinds an unknown kind throws and names the kinds it knows"
+      ]
+    }
+  ]
+}

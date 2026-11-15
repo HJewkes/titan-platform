@@ -363,17 +363,37 @@ interface EngineOptions {
     reranker?: Reranker;
     /** Text for the reranker to read per result; required when a reranker is set. */
     textFor?: (result: FusedResult) => Promise<string> | string;
+    /** Tried in order when fusion comes back empty after at least one retriever answered. */
+    recovery?: RecoveryStep[];
+    /** Per-step deadline for `recovery`. */
+    recoveryTimeoutMs?: number;
+    /** Replaces the "fused list is empty" test; still never runs when every retriever failed. */
+    recoveryTrigger?: (lists: RankedList[]) => boolean;
+}
+/** Rewrites a query that found nothing; `null` passes to the next step. The engine re-runs the retrievers on the rewrite. */
+interface RecoveryStep {
+    name: string;
+    run(query: string, context: {
+        signal: AbortSignal;
+    }): Promise<string | null> | string | null;
 }
 interface SearchOptions {
     limit?: number;
     signal?: AbortSignal;
     /** Skip the reranker for this query. */
     rerank?: boolean;
+    /** Pass `false` to skip the engine's recovery steps for this query. */
+    recover?: boolean;
 }
 interface SearchResponse {
     results: FusedResult[];
     degraded: Degradation[];
     timingsMs: Record<string, number>;
+    /** Set when a recovery step's rewrite produced these results instead of the original query. */
+    recovered?: {
+        step: string;
+        query: string;
+    };
 }
 interface RetrievalEngine {
     search(query: string, options?: SearchOptions): Promise<SearchResponse>;
@@ -472,4 +492,4 @@ declare function correctQuery(query: string, source: VocabularySource): {
     didCorrect: boolean;
 };
 
-export { BruteForceVectorIndex, type Candidate, type ContextBudget, ContextBudgetSchema, type ContextCandidate, type ContextEntry, type ContextPlan, type ContextResponse, type CrossEncoderOptions, DF_CAP_FLOOR, type Degradation, type DerivedQuery, type DocumentFrequency, type DropReason, type DroppedCandidate, type EngineOptions, type FtsRetrieverOptions, type FusedResult, type GatherOptions, type GatheredLists, type GraphRetrieverOptions, type Hit, type ListResponse, RERANK_STAGE, type RankedList, type Reranked, type Reranker, type RetrievalCallOptions, type RetrievalDropReason, type RetrievalDropped, type RetrievalEngine, type RetrievalRequest, RetrievalRequestSchema, type RetrievalResponse, type RetrieveOptions, type Retriever, type RrfOptions, type SearchOptions, type SearchResponse, TIERS_STAGE, type TierSource, type VectorIndex, type VectorMatch, type VectorRetrieverOptions, type VocabEntry, type VocabularySource, type WalkGraph, type WalkNeighbour, type WalkOptions, type WalkStep, applyDropoff, correctQuery, createRetrievalEngine, crossEncoderReranker, defaultHubDegree, defaultMatchExpression, deriveQuery, documentFrequencyCap, editDistance, estimateTokens, expandGraph, extractTerms, findCorrection, ftsRetriever, fuseByRRF, gatherFailOpen, graphRetriever, maxEditDistance, meaningfulTerms, orExpression, planContext, rerankCandidates, scoreTerm, selectTerms, vectorRetriever, vocabularyFromEntries, walkGraph };
+export { BruteForceVectorIndex, type Candidate, type ContextBudget, ContextBudgetSchema, type ContextCandidate, type ContextEntry, type ContextPlan, type ContextResponse, type CrossEncoderOptions, DF_CAP_FLOOR, type Degradation, type DerivedQuery, type DocumentFrequency, type DropReason, type DroppedCandidate, type EngineOptions, type FtsRetrieverOptions, type FusedResult, type GatherOptions, type GatheredLists, type GraphRetrieverOptions, type Hit, type ListResponse, RERANK_STAGE, type RankedList, type RecoveryStep, type Reranked, type Reranker, type RetrievalCallOptions, type RetrievalDropReason, type RetrievalDropped, type RetrievalEngine, type RetrievalRequest, RetrievalRequestSchema, type RetrievalResponse, type RetrieveOptions, type Retriever, type RrfOptions, type SearchOptions, type SearchResponse, TIERS_STAGE, type TierSource, type VectorIndex, type VectorMatch, type VectorRetrieverOptions, type VocabEntry, type VocabularySource, type WalkGraph, type WalkNeighbour, type WalkOptions, type WalkStep, applyDropoff, correctQuery, createRetrievalEngine, crossEncoderReranker, defaultHubDegree, defaultMatchExpression, deriveQuery, documentFrequencyCap, editDistance, estimateTokens, expandGraph, extractTerms, findCorrection, ftsRetriever, fuseByRRF, gatherFailOpen, graphRetriever, maxEditDistance, meaningfulTerms, orExpression, planContext, rerankCandidates, scoreTerm, selectTerms, vectorRetriever, vocabularyFromEntries, walkGraph };
