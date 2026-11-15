@@ -39,7 +39,6 @@ const NOT_DRAWN: Readonly<Record<string, string>> = {
   "change-group": "TP-4277 (P4b) ports ListBeat",
   "finding-card": "TP-4277 (P4b) ports ListBeat",
   "reading-list": "TP-4277 (P4b) ports ListBeat",
-  proof: "TP-4277 (P4b) ports ChecklistBeat",
   "context-map": "TP-4277 (P4c) ports MapBeat",
   "info-flow": "TP-4277 (P4c) ports MapBeat",
   "request-walk": "TP-4277 (P4c) ports MapBeat",
@@ -71,7 +70,7 @@ const shippedPageKinds = (): Map<string, Set<string>> =>
 
 describe("the composition page's beat registry", () => {
   test("an unknown kind throws and names the kinds it knows", () => {
-    assert.throws(() => resolveBeat("hologram"), /^Error: unknown beat kind "hologram"; known kinds: hook, held, list, verdict-card, fact-flash, claim-card, button, outro, stat, chart, compare, arch-map, catalogue$/);
+    assert.throws(() => resolveBeat("hologram"), /^Error: unknown beat kind "hologram"; known kinds: hook, held, list, verdict-card, fact-flash, claim-card, button, outro, stat, chart, compare, arch-map, proof, catalogue$/);
   });
 
   test("an inherited property name is not a beat kind", () => {

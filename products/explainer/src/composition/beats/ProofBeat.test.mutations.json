@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a check rests at head before its cue",
+      "file": "products/explainer/src/composition/beats/ProofBeat.tsx",
+      "find": "state={moving ? head : base}",
+      "replace": "state={head}",
+      "kills": [
+        "a proof beat's check rows a check that fails at base is unmet before its cue and met once its move has run"
+      ]
+    },
+    {
+      "name": "a pass is drawn unmet",
+      "file": "products/explainer/src/composition/beats/ProofBeat.tsx",
+      "find": "outcome === \"pass\" ? \"met\" : \"unmet\"",
+      "replace": "\"unmet\"",
+      "kills": [
+        "a proof beat's check rows a check that passes at base and head is met at every sampled t"
+      ]
+    },
+    {
+      "name": "the command line is dropped",
+      "file": "products/explainer/src/composition/beats/ProofBeat.tsx",
+      "find": "{slots.command && <code className=\"beat-proof-command\">{slots.command}</code>}",
+      "replace": "",
+      "kills": [
+        "a proof beat's check rows shows the command line when one is present"
+      ]
+    }
+  ]
+}
