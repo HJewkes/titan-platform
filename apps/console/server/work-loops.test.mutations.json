@@ -31,7 +31,7 @@
     {
       "name": "the active-work cache drops the write",
       "file": "apps/console/server/active-work-cache.ts",
-      "find": "  return through;\n}",
+      "find": "  return { read, write };\n}",
       "replace": "  return { read };\n}",
       "kills": [
         "work.loop-tier reaches loop.tier through the cached active-work source the host builds"

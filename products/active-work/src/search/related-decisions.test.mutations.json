@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an excluded decision is served",
+      "file": "products/active-work/src/search/related-decisions.ts",
+      "find": ".filter((hit) => !exclude.has(hit.ref));",
+      "replace": ";",
+      "kills": ["relatedContext decisions class never returns an excluded decision"]
+    },
+    {
+      "name": "every initiative's decisions are visible",
+      "file": "products/active-work/src/search/related-decisions.ts",
+      "find": "isVisible: visible,",
+      "replace": "isVisible: () => true,",
+      "kills": ["relatedContext decisions class withholds a row from an owner-only initiative"]
+    },
+    {
+      "name": "a missing ledger is silent",
+      "file": "products/active-work/src/search/related-decisions.ts",
+      "find": "if (rows.length === 0 && !existsSync(ledgerPath(activeRoot))) {",
+      "replace": "if (rows.length === 0 && existsSync(ledgerPath(activeRoot))) {",
+      "kills": ["relatedContext decisions class reports a missing ledger as degraded while other classes still return"]
+    },
+    {
+      "name": "the excerpt drops the answer",
+      "file": "products/active-work/src/search/related-decisions.ts",
+      "find": "`${row.question} -> ${row.answer}`",
+      "replace": "row.question",
+      "kills": ["relatedContext decisions class returns a ledger row beside a note hit"]
+    },
+    {
+      "name": "handoff archives are served",
+      "file": "products/active-work/src/search/related-filters.ts",
+      "find": "!NOT_SERVED_BY_RELATED.test(hit.path)",
+      "replace": "true",
+      "kills": ["relatedContext decisions class drops a handoff archive from related while keeping decisions"]
+    }
+  ]
+}

@@ -7,13 +7,13 @@ import { runVideo, type RunHost } from "./host.js";
 import type { StageName } from "./records.js";
 
 /**
- * The furthest a decision brief may run: gather, the audition, and the script on the spine pr-overview's audition
- * writes from its pick. Past the script each stage spends again, and tts and render need the bridge's renderer.
+ * The furthest a decision brief may run: every stage from gather to the export, so a brief can reach the theater.
+ * Each stage past the audition spends again, which is why the default stop stays at the audition.
  */
-export const BRIEF_LAST_STAGE: StageName = "script";
+export const BRIEF_LAST_STAGE: StageName = "export";
 
 /** The stages a brief may stop at, up to `BRIEF_LAST_STAGE`. */
-export const BRIEF_STOPS = ["audition", "script"] as const satisfies readonly StageName[];
+export const BRIEF_STOPS = ["audition", "script", "export"] as const satisfies readonly StageName[];
 export type BriefStop = (typeof BRIEF_STOPS)[number];
 
 /** The audition alone by default: the script is opt-in while most champion scripts still fail L0 (TP-4095). */
