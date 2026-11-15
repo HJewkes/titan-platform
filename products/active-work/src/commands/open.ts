@@ -150,7 +150,17 @@ async function collectInitiatives(
   activeRoot: string,
   ctx: Pick<CommandContext, 'caller' | 'warnings'>,
 ): Promise<InitiativeSummary[]> {
-  const slugs = await listSlugsForCaller(activeRoot, ctx);
+  let slugs: string[];
+  try {
+    slugs = await listSlugsForCaller(activeRoot, ctx);
+  } catch {
+    // The picker is the fallback surface; an unreadable root should degrade it, not crash it.
+    // A non-owner caller's visibility check has already said so.
+    if (!ctx.warnings.some((warning) => warning.includes('active root could not be read'))) {
+      ctx.warnings.push('the active root could not be read');
+    }
+    return [];
+  }
   const summaries: InitiativeSummary[] = [];
   for (const slug of slugs) {
     const summary = await loadInitiativeSummary(activeRoot, slug);
