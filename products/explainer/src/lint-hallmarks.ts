@@ -49,6 +49,31 @@ export function hallmarkSentences(beats: readonly HallmarkBeat[]): HallmarkSente
   });
 }
 
+const isColonTricolon = (s: HallmarkSentence): boolean => COLON_TRICOLON.test(s.text);
+const isTeaser = (s: HallmarkSentence): boolean => TEASERS.some((teaser) => teaser.test(s.text));
+const isLabelFirst = (s: HallmarkSentence, maxWords: number): boolean => s.words <= maxWords && LABEL_FIRST.test(s.text);
+
+/** One sentence a sentence-level hallmark row flags, with the beat that speaks it. */
+interface HallmarkHit {
+  beat: string;
+  text: string;
+  row: string;
+}
+
+/** Every sentence the naming-refrain, teaser, label-first and colon-tricolon rows flag, in script order. */
+export function hallmarkHits(beats: readonly HallmarkBeat[], policy: WritingGatePolicy = writingGatePolicy()): HallmarkHit[] {
+  const rules = policy.hallmarks;
+  const matchers: [string, (s: HallmarkSentence) => boolean][] = [
+    ["hallmark:naming-refrain", (s) => isNamingRefrain(s, rules["naming-refrain"].maxWords)],
+    ["hallmark:colon-tricolon", isColonTricolon],
+    ["hallmark:teaser", isTeaser],
+    ["hallmark:label-first", (s) => isLabelFirst(s, rules["label-first"].maxWords)],
+  ];
+  return hallmarkSentences(beats).flatMap((s) =>
+    matchers.flatMap(([row, matches]) => (matches(s) ? [{ beat: s.beat, text: s.text, row }] : [])),
+  );
+}
+
 const beatsOf = (sentences: readonly HallmarkSentence[]): string[] => sentences.map((sentence) => sentence.beat);
 
 /** A short sentence whose main clause names a thing: "That is called X.", "We call this X.", "That gas is the rise." */
@@ -119,10 +144,10 @@ function hallmarkRowsOf(sentences: readonly HallmarkSentence[], words: number, r
     namingRefrainRow(sentences, rules["naming-refrain"]),
     frameRefrainRow(sentences, rules["frame-refrain"]),
     staccatoRow(sentences, words, rules["staccato-run"]),
-    patternRow("hallmark:colon-tricolon", sentences, (s) => COLON_TRICOLON.test(s.text), rules["colon-tricolon"]),
-    patternRow("hallmark:teaser", sentences, (s) => TEASERS.some((teaser) => teaser.test(s.text)), rules.teaser),
+    patternRow("hallmark:colon-tricolon", sentences, isColonTricolon, rules["colon-tricolon"]),
+    patternRow("hallmark:teaser", sentences, isTeaser, rules.teaser),
     parallelRecapRow(sentences, rules["parallel-recap"]),
-    patternRow("hallmark:label-first", sentences, (s) => s.words <= rules["label-first"].maxWords && LABEL_FIRST.test(s.text), rules["label-first"]),
+    patternRow("hallmark:label-first", sentences, (s) => isLabelFirst(s, rules["label-first"].maxWords), rules["label-first"]),
   ];
 }
 

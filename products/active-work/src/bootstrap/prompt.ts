@@ -1,3 +1,4 @@
+import type { LedgerRow } from '@titan-design/decider';
 import type { Task } from '../schemas/task.js';
 import type { BranchEntry } from '../schemas/artifacts.js';
 import type { LoadedSession } from '../sessions/open-loops.js';
@@ -31,6 +32,10 @@ export type LiveStatusFetcher = (branches: BranchEntry[]) => Promise<LiveBranchS
 /** Re-exported so callers can type a sibling list without reaching into `sessions/`. */
 export type SiblingSession = LiveSibling;
 export type { SiblingProbe };
+
+type DecisionRowsReader = (
+  activeRoot: string,
+) => Promise<{ rows: LedgerRow[]; malformed: number }>;
 
 export interface BootstrapInput {
   /** Active root directory. Used to resolve the initiative dir. */
@@ -107,6 +112,11 @@ export interface BootstrapInput {
    * live graph. One that throws or finds nothing renders the loops as before.
    */
   loopRetriever?: LoopRetriever;
+  /**
+   * Optional ledger reader (DI) for the recent owner answers. Defaults to `readLedgerRows`.
+   * One that throws leaves the section out and adds a `retrieval_degraded` line.
+   */
+  decisionRows?: DecisionRowsReader;
   /** Optional hit log (DI). Defaults to `retrieval-hits.jsonl` in the state dir. */
   hitLog?: HitLogWriter;
   /** Facet alias the session opened through; scopes tasks and loops to its tags (TP-326). */

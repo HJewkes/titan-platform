@@ -27,10 +27,10 @@ const FRONTMATTER_END = /^---[ \t]*\r?$/;
 export function bodyByteOffset(raw: string): number {
   if (!FRONTMATTER_FENCE.test(raw)) return 0;
   const lines = raw.split('\n');
-  let consumed = lines[0].length + 1;
-  for (let i = 1; i < lines.length; i++) {
-    consumed += lines[i].length + 1;
-    if (FRONTMATTER_END.test(lines[i])) return Buffer.byteLength(raw.slice(0, consumed), 'utf8');
+  let consumed = (lines.at(0) ?? '').length + 1;
+  for (const line of lines.slice(1)) {
+    consumed += line.length + 1;
+    if (FRONTMATTER_END.test(line)) return Buffer.byteLength(raw.slice(0, consumed), 'utf8');
   }
   return 0;
 }

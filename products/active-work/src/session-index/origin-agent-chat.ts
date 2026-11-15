@@ -50,10 +50,14 @@ export function resolveFromSource(
 ): OriginResolution {
   const wanted = new Set(sessionIds);
   const index = buildIndex(source.events(), source.followUps());
+  const phases = source.executionPhases?.() ?? new Map<string, string>();
   const origins: Record<string, ResolvedOrigin> = {};
   for (const spawn of index.spawns) {
     if (wanted.has(spawn.sessionId)) {
-      origins[spawn.sessionId] = toOrigin(spawn, index, source, isKnown);
+      origins[spawn.sessionId] = {
+        ...toOrigin(spawn, index, source, isKnown),
+        executionPhase: phases.get(spawn.sessionId) ?? null,
+      };
     }
   }
   const externalEvents = index.events

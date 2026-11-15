@@ -166,6 +166,10 @@
         "link": "/reference/test-timing"
       },
       {
+        "text": "text-ingest",
+        "link": "/reference/text-ingest"
+      },
+      {
         "text": "worktree",
         "link": "/reference/worktree"
       }

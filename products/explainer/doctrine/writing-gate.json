@@ -78,6 +78,12 @@
       "severity": "error",
       "max": 0,
       "evidence": "A term a beat declares in new_terms is spoken in an earlier beat. It reads declared terms only."
+    },
+    "motivated-before-named": {
+      "severity": "report-only",
+      "max": 0,
+      "minS": 20,
+      "evidence": "Counts declared terms first spoken before 20 planned seconds of their chapter. TP-5721 notes: graduate-ml names 21 of 24 terms at 0 s, while 3B1B waits at least about 34 s. Owner intent I9 asks for the why before the how."
     }
   },
   "overrides": {

@@ -132,6 +132,7 @@ describe('hooks agent-chat-complete with worker facts', () => {
       'kind',
       'next_steps',
       'no_loops',
+      'no_reports',
       'resolves',
       'session_id',
       'started',

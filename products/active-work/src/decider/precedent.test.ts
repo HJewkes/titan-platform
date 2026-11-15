@@ -413,7 +413,7 @@ describe('precedent search', () => {
         isVisible: () => true,
       });
 
-      expect(hits[0].row.locator?.toolUseId).toBe('tu-merge');
+      expect(hits.at(0)?.row.locator?.toolUseId).toBe('tu-merge');
       expect(tasteOnly).toEqual([]);
     });
   });
@@ -497,7 +497,7 @@ describe('precedent search', () => {
       expect(summary(result, 'transcript').written).toBe(2);
       expect(rows.every((r) => r.unclaimed)).toBe(true);
       expect(hidden).toEqual([]);
-      expect(shown[0].row.question).toBe(MERGE_Q);
+      expect(shown.at(0)?.row.question).toBe(MERGE_Q);
     });
   });
 });
