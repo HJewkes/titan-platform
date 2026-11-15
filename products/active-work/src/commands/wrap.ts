@@ -5,6 +5,7 @@ import { withFileLock } from '../utils/fs-atomic.js';
 import type { SessionReport } from '../schemas/session.js';
 import type { WorkerRecord } from '../schemas/worker-record.js';
 import { NotFoundError } from '../errors.js';
+import { promotionCandidates } from '../search/promotion-candidates.js';
 import { defineCommand, type CommandContext } from '../registry/index.js';
 import {
   ArgsSchema,
@@ -87,6 +88,16 @@ async function fileNotesAndSweep(
   }
 }
 
+async function reportPromotionCandidates(ctx: CommandContext): Promise<Result['promotion_candidates']> {
+  const candidates = await promotionCandidates();
+  for (const c of candidates) {
+    ctx.warnings.push(
+      `${c.ref} has surfaced in ${c.renders} sessions across ${c.initiatives} initiatives; consider note promote`,
+    );
+  }
+  return candidates;
+}
+
 async function wrapLocked(args: Args, ctx: CommandContext, paths: WrapPaths): Promise<Result> {
   const { initiativeDir, ledger, taskIds } = paths;
   await verifyTaskIds(initiativeDir, taskIds);
@@ -103,7 +114,9 @@ async function wrapLocked(args: Args, ctx: CommandContext, paths: WrapPaths): Pr
   if (rejected.length > 0) {
     ctx.warnings.push(rejectionReport(written.path, rejected, total));
   }
+  const promotion_candidates = await reportPromotionCandidates(ctx);
   return {
+    promotion_candidates,
     path: written.path,
     filename: written.filename,
     ready_to_end: rejected.length === 0,
@@ -125,7 +138,9 @@ export default defineCommand<Args, Result>({
     'durable notes (--notes or --no-notes), and tasks created this session (--tasks-filed or ' +
     '--no-tasks), and reports received (--reports or --no-reports). Writes the session file and its ledger, files the notes under ' +
     'sources/notes/, records any worktrees, branches and stashes the initiative had not ' +
-    "written down, stamps the brief's updated date, and returns a receipt of what was filed.",
+    "written down, stamps the brief's updated date, and returns a receipt of what was filed, " +
+    'plus promotion_candidates: notes the search hit log shows surfacing in 3 or more renders ' +
+    'across 2 or more initiatives. Resetting the hit log clears the candidates.',
   args: ArgsSchema,
   result: ResultSchema,
   cli: {
