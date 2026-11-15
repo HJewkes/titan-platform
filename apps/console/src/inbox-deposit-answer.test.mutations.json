@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an answer-deposit row is left on the terminal",
+      "file": "apps/console/src/pages/InboxPage.tsx",
+      "find": "\"owner-op\", \"answer-deposit\", \"approve-chat\"",
+      "replace": "\"owner-op\", \"approve-chat\"",
+      "kills": [
+        "the inbox page, answering a plain deposit shows Answer on the row, not Run on terminal"
+      ]
+    }
+  ]
+}

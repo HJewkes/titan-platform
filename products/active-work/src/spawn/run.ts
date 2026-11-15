@@ -2,6 +2,10 @@ import { accessSync, constants, readFileSync, statSync } from 'node:fs';
 import { delimiter, isAbsolute, join, resolve } from 'node:path';
 import { DispatchError, spawnAsCaller } from '@titan-design/agent-dispatch';
 import { ConfigError, EXIT } from '../errors.js';
+import { runBrief } from '../commands/context-brief.js';
+import { fileHitLog, servedHitEntries, type HitLogWriter } from '../search/hit-log.js';
+import { nowIso } from '../utils/today.js';
+import { getActiveRoot } from '../utils/paths.js';
 
 export type BriefSource = { kind: 'file'; path: string } | { kind: 'stdin' };
 
@@ -18,6 +22,7 @@ export interface SpawnPlan {
   briefing?: string;
   surface?: string;
   remoteControl?: true;
+  task?: string;
 }
 
 export interface SpawnDeps {
@@ -27,6 +32,15 @@ export interface SpawnDeps {
   stdout: (text: string) => void;
   stderr: (text: string) => void;
   exit: (code: number) => Promise<void>;
+  /** Injectable so tests never touch the live index; defaults to the context.brief body. */
+  contextBrief?: (args: { for: string; initiative: string }) => Promise<TaskBrief>;
+  hitLog?: HitLogWriter;
+}
+
+interface TaskBrief {
+  text: string;
+  refs: { ref: string; source: string }[];
+  degraded: { source: string; reason: string }[];
 }
 
 async function readAll(stream: NodeJS.ReadableStream): Promise<string> {
@@ -74,10 +88,50 @@ async function readBrief(source: BriefSource, deps: SpawnDeps): Promise<string> 
   return readFileSync(resolve(deps.cwd, source.path), 'utf8');
 }
 
+const TASK_CONTEXT_HEADING = '## Retrieved context';
+
+const defaultContextBrief: NonNullable<SpawnDeps['contextBrief']> = (args) =>
+  runBrief(args, { activeRoot: getActiveRoot() });
+
+/** Each rendered ref once, under the section (workspace, code or sessions) it was rendered in. */
+async function logServedRefs(task: string, query: string, block: TaskBrief, deps: SpawnDeps): Promise<void> {
+  const ts = nowIso();
+  const slug = task.split('/')[0] ?? '';
+  const sections = [...new Set(block.refs.map((entry) => entry.source))];
+  const entries = sections.flatMap((section) => {
+    const refs = new Set(block.refs.filter((entry) => entry.source === section).map((entry) => entry.ref));
+    const hits = [...refs].map((ref) => ({ ref, byteOffset: null, byteLength: null }));
+    return servedHitEntries(hits, { ts, slug, trigger: 'spawn', query, task, section });
+  });
+  const failure = await (deps.hitLog ?? fileHitLog())(entries);
+  if (failure !== null) deps.stderr(`context.brief hit log failed: ${failure}\n`);
+}
+
+/** The brief with the task's context block appended; unchanged, with one stderr line, when the block is unavailable. */
+async function withTaskContext(brief: string, task: string, deps: SpawnDeps): Promise<string> {
+  const [initiative = '', id = ''] = task.split('/');
+  let block: TaskBrief;
+  try {
+    // The key rides in the text because context.brief reads a task's done_when and owned files from keys it finds there.
+    block = await (deps.contextBrief ?? defaultContextBrief)({ for: `${brief}\n\n${id}`, initiative });
+  } catch (err) {
+    deps.stderr(`context.brief skipped: ${err instanceof Error ? err.message : String(err)}\n`);
+    return brief;
+  }
+  if (block.text === '') {
+    const why = block.degraded.map((entry) => `${entry.source} ${entry.reason}`).join(', ') || 'nothing ranked';
+    deps.stderr(`context.brief skipped: ${why}\n`);
+    return brief;
+  }
+  await logServedRefs(task, brief, block, deps);
+  return `${brief}\n\n${TASK_CONTEXT_HEADING}\n\n${block.text}\n`;
+}
+
 /** Prints agent-chat's lines verbatim; a refusal prints its text (with the account readings) and returns 1. */
 export async function runSpawn(plan: SpawnPlan, deps: SpawnDeps): Promise<number> {
   const agentChatBinPath = findAgentChat(deps.env);
-  const brief = await readBrief(plan.brief, deps);
+  const read = await readBrief(plan.brief, deps);
+  const brief = plan.task === undefined ? read : await withTaskContext(read, plan.task, deps);
   try {
     const result = await spawnAsCaller(
       {
