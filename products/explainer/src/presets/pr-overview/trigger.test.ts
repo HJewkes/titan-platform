@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { gate, HEAD, REPO } from "./pr-fakes.test-helpers.js";
-import { autoBriefTargets, runPrVideoTrigger, shepherdWaiting, type BriefTarget, type StartBrief } from "./trigger.js";
+import { autoBriefTargets, briefDir, prChangedFiles, runPrVideoTrigger, shepherdWaiting, writeBrief, type BriefTarget, type StartBrief } from "./trigger.js";
 
 const temps: string[] = [];
 afterEach(async () => {
@@ -105,6 +105,121 @@ describe("runPrVideoTrigger head re-check", () => {
 
     expect(rows.map((r) => r.outcome)).toEqual(["moved"]);
     expect(start.started).toEqual([]);
+  });
+});
+
+const OTHER_HEAD = "c".repeat(40);
+const prRow = (overrides: Record<string, unknown> = {}) => ({ repo: REPO, number: 11, headSha: OTHER_HEAD, state: "open", draft: false, ...overrides });
+
+function visualSweep(prs: unknown[], files: Record<number, string[]>, owner: ReturnType<typeof gate>[] = []) {
+  const start = recordingStart();
+  const run = async (extra: { dryRun?: boolean; dir?: string } = {}) =>
+    runPrVideoTrigger({
+      dataDir: extra.dir ?? (await dataDir()),
+      readWaiting: async () => waiting(owner),
+      readPrs: async () => prs,
+      readFiles: async (ref) => files[ref.number] ?? [],
+      visualPaths: ["products/*/src/ui/**", "**/*.css"],
+      start,
+      ...(extra.dryRun ? { dryRun: true } : {}),
+    });
+  return { start, run };
+}
+
+describe("runPrVideoTrigger --visual-path", () => {
+  it("targets an open PR with no owner gate whose changed file matches a visual glob", async () => {
+    const { start, run } = visualSweep([prRow()], { 11: ["products/app/src/ui/panel.tsx"] });
+
+    const rows = await run();
+
+    expect(rows.map((r) => [r.pr, r.head, r.outcome])).toEqual([[`${REPO}#11`, OTHER_HEAD, "started"]]);
+    expect(start.started.map((t) => t.number)).toEqual([11]);
+  });
+
+  it("matches a glob with a leading ** against a root-level file", async () => {
+    const { run } = visualSweep([prRow()], { 11: ["theme.css"] });
+
+    expect((await run()).map((r) => r.outcome)).toEqual(["started"]);
+  });
+
+  it("skips a PR whose changed files all miss the globs", async () => {
+    const { start, run } = visualSweep([prRow()], { 11: ["products/app/src/core/engine.ts", "README.md"] });
+
+    expect(await run()).toEqual([]);
+    expect(start.started).toEqual([]);
+  });
+
+  it("skips a draft PR and a merged PR even when they touch a visual path", async () => {
+    const { run } = visualSweep([prRow({ draft: true }), prRow({ number: 12, state: "merged" })], { 11: ["a.css"], 12: ["a.css"] });
+
+    expect(await run()).toEqual([]);
+  });
+
+  it("skips a PR row with no head", async () => {
+    const { run } = visualSweep([prRow({ headSha: null })], { 11: ["a.css"] });
+
+    expect(await run()).toEqual([]);
+  });
+
+  it("reports a head already briefed as already and starts nothing", async () => {
+    const dir = await dataDir();
+    await writeBrief(briefDir(dir, { repo: REPO, number: 11, head: OTHER_HEAD }), { repo: REPO, number: 11, head: OTHER_HEAD, gateId: "visual-path" });
+    const again = visualSweep([prRow()], { 11: ["a.css"] });
+
+    const rows = await again.run({ dir });
+
+    expect(rows.map((r) => r.outcome)).toEqual(["already"]);
+    expect(again.start.started).toEqual([]);
+  });
+
+  it("starts a PR found by both the owner gate and the visual path once", async () => {
+    const { start, run } = visualSweep([prRow({ number: 7, headSha: HEAD })], { 7: ["a.css"] }, [gate()]);
+
+    const rows = await run();
+
+    expect(rows.map((r) => [r.pr, r.outcome])).toEqual([[`${REPO}#7`, "started"]]);
+    expect(start.started).toHaveLength(1);
+  });
+
+  it("reads no PR list and no files when no --visual-path is given", async () => {
+    const start = recordingStart();
+    const rows = await runPrVideoTrigger({
+      dataDir: await dataDir(),
+      readWaiting: async () => waiting([]),
+      readPrs: async () => {
+        throw new Error("must not read prs");
+      },
+      start,
+    });
+
+    expect(rows).toEqual([]);
+  });
+
+  it("skips a PR whose head moved between the sweep's read and its start", async () => {
+    const start = recordingStart();
+    const reads = [[prRow()], [prRow({ headSha: "d".repeat(40) })]];
+
+    const rows = await runPrVideoTrigger({
+      dataDir: await dataDir(),
+      readWaiting: async () => waiting([]),
+      readPrs: async () => reads.shift(),
+      readFiles: async () => ["a.css"],
+      visualPaths: ["**/*.css"],
+      start,
+    });
+
+    expect(rows.map((r) => r.outcome)).toEqual(["moved"]);
+    expect(start.started).toEqual([]);
+  });
+});
+
+describe("prChangedFiles", () => {
+  it("lists a PR's changed file names through gh pr diff --name-only", async () => {
+    const calls: string[][] = [];
+    const gh = async (args: readonly string[]) => (calls.push([...args]), "a.css\nsrc/b.ts\n");
+
+    expect(await prChangedFiles({ repo: REPO, number: 11 }, gh)).toEqual(["a.css", "src/b.ts"]);
+    expect(calls).toEqual([["pr", "diff", "11", "--repo", REPO, "--name-only"]]);
   });
 });
 
