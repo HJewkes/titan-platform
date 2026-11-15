@@ -71,7 +71,18 @@ describe("runArResults", () => {
     expect(outcome.stopped).toMatch(/spend cap/);
   });
 
-  it("reports usd 0 for a cached repeat", async () => {
+  it("stops a second arm before a run the first arm's dearest run says would pass the cap", async () => {
+    const one = { ...request, cases: cases.slice(0, 1), repeats: 1, maxUsd: 1 };
+    const armA = await runArResults(one, env(async () => record("d0", 0.7)));
+
+    const armB = await runArResults({ ...one, prior: armA }, env(async () => record("d1", 0.7)));
+
+    expect(armA.lines).toHaveLength(1);
+    expect(armB.lines).toEqual([]);
+    expect(armB.stopped).toMatch(/spend cap: \$0\.7000 spent/);
+  });
+
+  it("reports usd 0 for a cached repeat",async () => {
     const outcome = await runArResults({ ...request, cases: cases.slice(0, 1), repeats: 1 }, env(async () => record("d0", 0.5, true)));
 
     expect(outcome.lines[0]?.usd).toBe(0);

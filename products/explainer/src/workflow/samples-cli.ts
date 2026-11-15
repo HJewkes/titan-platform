@@ -107,10 +107,13 @@ async function runArAb(flags: AbFlags, host: RunHost, out: (text: string) => voi
         db.close();
       }
     };
-    const spent = outcomes.reduce((sum, outcome) => sum + outcome.spentUsd, 0);
+    const prior = {
+      spentUsd: outcomes.reduce((sum, outcome) => sum + outcome.spentUsd, 0),
+      dearestUsd: Math.max(0, ...outcomes.map((outcome) => outcome.dearestUsd)),
+    };
     const first = arm === "b" && a === b ? flags.samples : 0;
-    const cap = flags.maxUsd === undefined ? {} : { maxUsd: flags.maxUsd - spent };
-    const outcome = await runArResults({ cases, repeats: flags.samples, first, rung: "script", ...cap }, { ...base, grade });
+    const cap = flags.maxUsd === undefined ? {} : { maxUsd: flags.maxUsd };
+    const outcome = await runArResults({ cases, repeats: flags.samples, first, rung: "script", prior, ...cap }, { ...base, grade });
     for (const line of outcome.lines) out(`${JSON.stringify({ ...line, repeat: `${arm}-${line.repeat}` })}\n`);
     for (const failure of outcome.failed) err(`ab: ${failure}\n`);
     if (outcome.stopped) err(`ab: stopped: ${outcome.stopped}\n`);

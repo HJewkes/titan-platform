@@ -30,6 +30,8 @@ interface ArRequest {
   rung: string;
   /** Stops before a run the dearest run so far says would take the total spend past it. */
   maxUsd?: number;
+  /** What an earlier arm under the same cap already spent and its dearest run; both count toward the cap and the estimate. */
+  prior?: Pick<ArOutcome, "spentUsd" | "dearestUsd">;
 }
 
 export interface ArOutcome {
@@ -37,6 +39,7 @@ export interface ArOutcome {
   /** One message per run that made no script, so no line. */
   failed: string[];
   spentUsd: number;
+  dearestUsd: number;
   stopped?: string;
 }
 
@@ -84,17 +87,18 @@ async function lineFor(request: ArRequest, env: ArEnv, c: SampleCase, repeat: nu
 
 /** Runs the script stage per case and repeat, repeat-major, and maps each script to one ar-result/v2 line. */
 export async function runArResults(request: ArRequest, env: ArEnv): Promise<ArOutcome> {
-  const outcome: ArOutcome = { lines: [], failed: [], spentUsd: 0 };
-  let dearest = 0;
+  const outcome: ArOutcome = { lines: [], failed: [], spentUsd: 0, dearestUsd: 0 };
   const first = request.first ?? 0;
   for (let repeat = first; repeat < first + request.repeats; repeat++) {
     for (const c of request.cases) {
-      if (request.maxUsd !== undefined && outcome.spentUsd + dearest > request.maxUsd) {
-        return { ...outcome, stopped: `spend cap: $${outcome.spentUsd.toFixed(4)} spent, the next run (est. $${dearest.toFixed(4)}) would pass $${request.maxUsd}` };
+      const spent = (request.prior?.spentUsd ?? 0) + outcome.spentUsd;
+      const dearest = Math.max(request.prior?.dearestUsd ?? 0, outcome.dearestUsd);
+      if (request.maxUsd !== undefined && spent + dearest > request.maxUsd) {
+        return { ...outcome, stopped: `spend cap: $${spent.toFixed(4)} spent, the next run (est. $${dearest.toFixed(4)}) would pass $${request.maxUsd}` };
       }
       const { line, usd, error } = await lineFor(request, env, c, repeat);
       outcome.spentUsd += usd;
-      dearest = Math.max(dearest, usd);
+      outcome.dearestUsd = Math.max(outcome.dearestUsd, usd);
       if (line) outcome.lines.push(line);
       else outcome.failed.push(`${c.name} r${repeat + 1}: ${error}`);
     }
