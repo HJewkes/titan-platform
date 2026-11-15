@@ -34,6 +34,7 @@ import { movedMessage, opMessageOf, opReadBackOf, postedOp, type MergeWait, type
 import { CONSOLE_DECISION_IDS, readInbox, type ConsoleDecision, type InboxItem, type InboxSources } from "./inbox-view.js";
 import type { ActionOutcome, OwnerActionClient, Unreachable } from "./owner-action.js";
 import { ownerWriteCommand, readCommand } from "./owner-guard.js";
+import { refusalMessageOf } from "./refusal-message.js";
 import { gateReadBack, prBaseOf, type PostedAction, type PrReadBack } from "./inbox-pr-readback.js";
 import { CONFIRM, CONFIRM_TTL_MS, digestOf, preparedStore, readSettled, recordOnce, refuse, settleOutcome, writeRecord, type Prepared, type PreparedStore } from "./owner-tap.js";
 
@@ -252,7 +253,7 @@ function messageOf(outcome: Outcome, record: ActionRecord): string {
     case "gone":
       return `Nothing to act on: ${outcome.reason}`;
     case "refused":
-      return `Refused (${outcome.reason})${"detail" in outcome && outcome.detail !== undefined ? `: ${outcome.detail}` : ""}`;
+      return refusalMessageOf(outcome.reason, "detail" in outcome ? outcome.detail : undefined);
     case "unreachable":
       return `The factory could not be reached, try again: ${outcome.detail}`;
   }
