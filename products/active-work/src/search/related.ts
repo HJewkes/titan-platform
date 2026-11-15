@@ -174,6 +174,26 @@ function servedByRelated(hit: ResolvedHit): boolean {
   return hit.class !== 'sources' || hit.path === null || !NOT_SERVED_BY_RELATED.test(hit.path);
 }
 
+function escapeRegex(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * A task the query already names adds nothing the caller does not have, and
+ * would spend one of the few slots. Same token bounds as `context.graph`, so
+ * `AL-1` does not name `AL-12`.
+ */
+function namesTask(text: string, hit: ResolvedHit): boolean {
+  if (hit.class !== 'tasks' || !hit.ref.startsWith('task:')) return false;
+  const id = hit.ref.slice('task:'.length);
+  return new RegExp(`(?<![A-Za-z0-9])${escapeRegex(id)}(?![A-Za-z0-9])`, 'i').test(text);
+}
+
+/** Headroom for named tasks the filter may remove, so the slot backfills. */
+function namedIdCount(text: string): number {
+  return new Set(text.match(/(?<![A-Za-z0-9])[A-Za-z][A-Za-z0-9]*-\d+(?![A-Za-z0-9])/g)).size;
+}
+
 function openIndex(dbPath: string): WorkspaceGraph | RelatedDegradation {
   // Opening creates the file, and nothing on this path may write to the graph.
   if (!existsSync(dbPath)) {
@@ -253,13 +273,13 @@ async function rankedHits(
     visible: await visibilityFor({ activeRoot, warnings: [] }),
     graph,
     rawExpression: true,
-    limit: limit + exclude.size,
+    limit: limit + exclude.size + namedIdCount(input.text),
     classes: input.classes ?? RELATED_DEFAULT_CLASSES,
     ...(input.initiative !== undefined ? { initiative: input.initiative } : {}),
     ...(input.activeRoot !== undefined ? { activeRoot: input.activeRoot } : {}),
   });
   const kept = result.hits
-    .filter((hit) => !exclude.has(hit.ref) && servedByRelated(hit))
+    .filter((hit) => !exclude.has(hit.ref) && servedByRelated(hit) && !namesTask(input.text, hit))
     .slice(0, limit)
     .map(toRelatedHit);
   return { hits: await withReadIf(kept, activeRoot), degraded: result.degraded.map(toRelatedDegradation) };

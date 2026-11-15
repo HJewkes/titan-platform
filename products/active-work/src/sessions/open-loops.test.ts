@@ -658,6 +658,39 @@ describe('loadSessionsFromDir', () => {
     expect(sessions).toEqual([]);
     expect(malformed).toEqual([{ file: 'broken.md', reason: 'no frontmatter block' }]);
   });
+
+  it('returns 40 shuffled-mtime files filename-ascending with malformed in filename order', async () => {
+    const dir = path.join(initiativeDir, 'sessions');
+    const stems: string[] = [];
+    for (let i = 0; i < 40; i++) {
+      const day = String((i % 28) + 1).padStart(2, '0');
+      const month = i < 28 ? '08' : '09';
+      const stem = `2026-${month}-${day}-s${i}`;
+      stems.push(stem);
+      if (i === 30 || i === 7) {
+        await fs.writeFile(path.join(dir, `${stem}.md`), 'no frontmatter here\n', 'utf8');
+      } else {
+        await writeSession({ session_id: `s${i}`, ended: `2026-${month}-${day}T10:00:00Z`, file: stem });
+      }
+    }
+    const base = Date.now() / 1000;
+    for (const [i, stem] of stems.entries()) {
+      const mtime = base - ((i * 17) % 40) * 60;
+      await fs.utimes(path.join(dir, `${stem}.md`), mtime, mtime);
+    }
+
+    const { sessions, malformed } = await loadSessionsFromDir(initiativeDir);
+
+    expect(sessions.map((s) => s.sessionFile)).toEqual(
+      stems.filter((_, i) => i !== 7 && i !== 30),
+    );
+    expect(malformed.map((m) => m.file)).toEqual([`${stems[7]}.md`, `${stems[30]}.md`]);
+  });
+
+  it('returns empty when the sessions directory is missing', async () => {
+    rmSync(path.join(initiativeDir, 'sessions'), { recursive: true, force: true });
+    expect(await loadSessionsFromDir(initiativeDir)).toEqual({ sessions: [], malformed: [] });
+  });
 });
 
 describe('deriveResolvedLoops', () => {

@@ -11,7 +11,7 @@ import type { Verbs } from "../cli-types.js";
 import { stepIdMatches } from "../definition.js";
 import { EXIT } from "../exit-codes.js";
 import { errorMessage } from "../narrow.js";
-import { activeWorkOrigin } from "../shepherd/cleanup-ports.js";
+import { activeWorkOrigin } from "../shepherd/active-work-origin.js";
 import { ShepherdStore, type Registration } from "../shepherd/store.js";
 import { watchRow } from "../shepherd/view.js";
 import { AWAIT_NEW_HEAD_STEP } from "../shepherd/wake.js";

@@ -113,6 +113,12 @@ export function consoleInboxDir(opts: PathOptions = {}): string {
   return path.join(consoleStateDir(env, home), "inbox", "deposits");
 }
 
+/** The ledger of owner answers the titan console writes: `answers.jsonl` under the console state directory. Tilde-expanded, not resolved. */
+export function consoleAnswersPath(opts: PathOptions = {}): string {
+  const { env, home } = resolveOptions(opts);
+  return path.join(consoleStateDir(env, home), "answers.jsonl");
+}
+
 /** The ticket scorecard's store: `TITAN_SCORECARD_STORE`, else `$XDG_DATA_HOME/titan-scorecard/scorecard.sqlite3`. Tilde-expanded, not resolved. */
 export function scorecardStorePath(opts: PathOptions = {}): string {
   const { env, home } = resolveOptions(opts);
