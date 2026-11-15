@@ -239,11 +239,6 @@
       "count": 1
     }
   },
-  "products/active-work/src/server/daemon.ts": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
   "products/active-work/src/server/dashboard-routes.ts": {
     "titan/max-function-lines": {
       "count": 1
