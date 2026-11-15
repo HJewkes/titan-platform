@@ -55,6 +55,8 @@ export interface RunCliDeps {
   gather?: GatherDeps;
   out?: (text: string) => void;
   err?: (text: string) => void;
+  /** Sees the outcome of a `run` that reached its stages, so a wrapping command can read the run id, status and spend. */
+  onOutcome?: (outcome: RunOutcome) => void;
 }
 
 type Io = Required<Pick<RunCliDeps, "out" | "err">>;
@@ -110,7 +112,8 @@ export const dataDirOption = () => new Option("--data-dir <dir>", "run state, ar
 export const hostFor = (flags: { dataDir?: string }, deps: RunCliDeps): RunHost =>
   ({ bridgeHome: appDirs("explainer").data, ...deps.host, dataDir: flags.dataDir ?? appDirs("explainer").data });
 
-function summary(result: RunOutcome, io: Io): number {
+function summary(result: RunOutcome, io: Io, deps: RunCliDeps): number {
+  deps.onOutcome?.(result);
   const t = result.report.totals;
   io.out(`run ${result.runId}: ${result.status}; $${t.usd.toFixed(4)} over ${t.calls} model calls; ${(result.report.runWallMs / 1000).toFixed(1)} s\n`);
   io.out(`report: ${result.reportPath}\n`);
@@ -182,7 +185,7 @@ async function runAction(flags: RunFlags, deps: RunCliDeps, io: Io): Promise<num
     ...(flags.profile ? { profile: flags.profile } : {}), ...(gather ? { gather } : {}), ...(flags.theater ? { theater: path.resolve(flags.theater) } : {}),
     ...(flags.edit ? { edit: flags.edit } : {}),
   }, withListener({ ...hostFor(flags, deps), ...(deps.gather ? { gather: deps.gather } : {}), reflection: deps.host?.reflection ?? reflectionFor(flags) }, flags));
-  return summary(result, io);
+  return summary(result, io, deps);
 }
 
 function reflectionFor(flags: RunFlags): ReflectionConfig {
@@ -255,7 +258,7 @@ function resumeCommand(deps: RunCliDeps, io: Io, onResult: (code: number) => voi
     .option("--budget-usd <usd>", "a new spend cap for the resumed run", budget)
     .exitOverride()
     .action(async (runId: string, flags: { dataDir?: string; budgetUsd?: number }) => {
-      onResult(summary(await resumeVideo(runId, hostFor(flags, deps), flags.budgetUsd === undefined ? {} : { budgetUsd: flags.budgetUsd }), io));
+      onResult(summary(await resumeVideo(runId, hostFor(flags, deps), flags.budgetUsd === undefined ? {} : { budgetUsd: flags.budgetUsd }), io, deps));
     });
 }
 
