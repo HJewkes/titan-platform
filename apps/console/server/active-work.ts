@@ -28,6 +28,8 @@ const task = z.object({
   severity: z.enum(["critical", "high", "medium", "low"]).optional(),
   estimate: z.number().optional(),
   tags: z.array(z.string()).optional(),
+  /** Steps only the owner can take (`@titan-design/pm` owner_steps); `kind` stays a string so a new kind does not fail the read. */
+  owner_steps: z.array(z.object({ kind: z.string(), note: z.string() })).optional(),
   // Edge and deliverable fields arrive from active-work 0.23 on; an older daemon carries edges as tags only.
   parent: z.string().optional(),
   dep: z.array(z.string()).optional(),
@@ -118,15 +120,20 @@ const READS = {
   "loop.board": loopBoard,
 };
 
+const taskWritten = z.object({ id: z.string(), status: z.enum(TASK_STATUSES) });
+
 /** The active-work writes the console may call, kept apart so `READS` stays write-free. Only owner-write commands call them. */
 const WRITES = {
   "loop.tier": loopTierWire,
+  /** `task.done` and `task.edit` answer the whole task; the console keeps its id and status. `task.edit` is called for status only. */
+  "task.done": taskWritten,
+  "task.edit": taskWritten,
 };
 
 export type ReadName = keyof typeof READS;
 export type ReadResult<K extends ReadName> = z.infer<(typeof READS)[K]>;
-type WriteName = keyof typeof WRITES;
-type WriteResult<K extends WriteName> = z.infer<(typeof WRITES)[K]>;
+export type WriteName = keyof typeof WRITES;
+export type WriteResult<K extends WriteName> = z.infer<(typeof WRITES)[K]>;
 export type WireInitiative = z.infer<typeof initiativeItem>;
 export type WireTask = z.infer<typeof task>;
 export type WireDeliverable = z.infer<typeof deliverable>;
@@ -136,7 +143,8 @@ export interface ActiveWork {
   /** Rejects with an error that carries a sysexits `code` when the daemon is down, refuses, or answers another shape. */
   read<K extends ReadName>(command: K, args?: Record<string, unknown>): Promise<ReadResult<K>>;
   /** Rejects as `read` does. Absent on a read-only source, such as a test's; a write through it is then unavailable. */
-  write?<K extends WriteName>(command: K, args: Record<string, unknown>): Promise<WriteResult<K>>;
+  write?(command: "loop.tier", args: Record<string, unknown>): Promise<WriteResult<"loop.tier">>;
+  write?(command: "task.done" | "task.edit", args: Record<string, unknown>): Promise<WriteResult<"task.done">>;
 }
 
 const READ_TIMEOUT_MS = 10_000;
@@ -167,10 +175,14 @@ export function activeWorkClient(port: number, timeoutMs: number = READ_TIMEOUT_
       if (!parsed.success) throw unexpectedShape(`active-work ${command}`);
       return parsed.data as ReadResult<typeof command>;
     },
-    async write(command, args) {
-      const parsed = WRITES[command].safeParse(await dataOf(command, args));
-      if (!parsed.success) throw unexpectedShape(`active-work ${command}`);
-      return parsed.data;
-    },
+    write,
   };
+
+  async function write(command: "loop.tier", args: Record<string, unknown>): Promise<WriteResult<"loop.tier">>;
+  async function write(command: "task.done" | "task.edit", args: Record<string, unknown>): Promise<WriteResult<"task.done">>;
+  async function write(command: WriteName, args: Record<string, unknown>): Promise<WriteResult<WriteName>> {
+    const parsed = WRITES[command].safeParse(await dataOf(command, args));
+    if (!parsed.success) throw unexpectedShape(`active-work ${command}`);
+    return parsed.data;
+  }
 }

@@ -56,14 +56,24 @@ function limitsHint(script: ScriptV1, row: Parameters<Hint>[1]): string {
   return parts.join("; ");
 }
 
+/** Q-W4: a beat that cites a user value without speaking it gets the text to say; a chapter with none gets a value to add. */
+function valueHint(script: ScriptV1, row: Parameters<Hint>[1]): string {
+  const unspoken = namedBeats(script, row).filter((b) => b.user_value?.fact_ids.length);
+  const spokenIds = new Set(unspoken.map((b) => b.id));
+  // A row may name a chapter id when the chapter has no body beat; those ids stay in the bare list.
+  const bare = row.detail_beats.filter((id) => !spokenIds.has(id));
+  const parts = unspoken.map((b) => `${b.id} cites user_value.fact_ids but never says its text; speak "${b.user_value?.text}" in ${b.id}`);
+  if (bare.length) parts.push(`chapters ${listed(namedChapters(script, { ...row, detail_beats: bare }))} have no beat with user_value.fact_ids; add user_value { text, fact_ids } to ${listed(bare)}, citing a fact that shows the value, and say the text in that beat`);
+  return parts.join("; ");
+}
+
 /** The why, value and thread rules: Q-W1 to Q-W10, Q-F12 and Q-F13. */
 export const WHY_HINTS: Readonly<Record<string, Hint>> = {
   "Q-W1": stakeHint,
   "Q-W2": whyForTermsHint,
   "Q-W3": (script, row) =>
     `${listed(row.detail_beats)} open their chapter (${listed(namedChapters(script, row))}) with no why: give that beat why.fact_ids, open its first sentence on "so that", "which means", "lets you" or "so you", or make the chapter question start with "Why" or "How come"`,
-  "Q-W4": (script, row) =>
-    `chapters ${listed(namedChapters(script, row))} have no beat with user_value.fact_ids; add user_value { text, fact_ids } to ${listed(row.detail_beats)}, citing a fact that shows the value`,
+  "Q-W4": valueHint,
   "Q-W5": promiseHint,
   "Q-W6": invariantHint,
   "Q-W8": fenceHint,
