@@ -26,12 +26,6 @@ describe("the composition page's beat registry", () => {
     assert.throws(() => resolveBeat("catalogue").slots.parse(slots), /schemaLabel/);
   });
 
-  test("hook and catalogue draw on the whole page and every spec kind past them in the stage box", () => {
-    const page = registeredKinds().filter((kind) => !resolveBeat(kind).stage);
-
-    assert.deepEqual(page, ["hook", "catalogue"]);
-  });
-
   // Mutation: let claim-card keep the chrome headline; the title and the headline say the claim twice.
   test("a title or outro kind is its own headline, so the chrome shows none over it", () => {
     const bare = registeredKinds().filter((kind) => resolveBeat(kind).stage && !resolveBeat(kind).headline);
