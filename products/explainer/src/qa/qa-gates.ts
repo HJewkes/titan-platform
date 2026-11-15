@@ -2,7 +2,7 @@ import type { Check } from "../workflow/records.js";
 import { CAPTIONS_GATE, CONTRAST_GATE, FLASH_GATE, NARRATION_FACTS_GATE } from "./gate-profile.js";
 import {
   captionVerdict, chartMarkContrastVerdict, directionVerdict, flashVerdict, heldErrorsVerdict, measuredVerdict, mediaScanVerdict, mp4DurationVerdict, narrationFactsVerdict,
-  textContrastVerdict, timingVerdict, timingWarnVerdict,
+  speechRateBeatsVerdict, speechRateOverallVerdict, textContrastVerdict, timingVerdict, timingWarnVerdict,
 } from "./qa-checks.js";
 
 interface QaGateInput {
@@ -43,6 +43,8 @@ export const QA_GATE_ROWS: readonly QaGateRow[] = [
   { name: "captions-lines", gate: CAPTIONS_GATE, reads: ["qa"], run: captionVerdict("lines") },
   { name: "captions-cps", gate: CAPTIONS_GATE, reads: ["qa"], run: captionVerdict("cps") },
   { name: "captions-onset", gate: CAPTIONS_GATE, reads: ["qa"], run: captionVerdict("onset") },
+  { name: "speech-rate-overall", gate: false, reads: ["qa"], run: speechRateOverallVerdict },
+  { name: "speech-rate-beats", gate: false, reads: ["qa"], run: speechRateBeatsVerdict },
   { name: "narration-facts", gate: NARRATION_FACTS_GATE, reads: ["qa"], run: narrationFactsVerdict },
   { name: "photosensitive-flash", gate: FLASH_GATE, reads: ["qa"], run: flashVerdict },
   { name: "text-contrast", gate: CONTRAST_GATE, reads: ["qa"], run: textContrastVerdict },

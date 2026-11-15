@@ -75,18 +75,28 @@ function noteTail(notes: string): string[] {
   return lines.slice(-NOTE_TAIL_LINES);
 }
 
+const COMPACT_KEYS: (keyof Task)[] = [
+  'id',
+  'title',
+  'status',
+  'priority',
+  'severity',
+  'estimate',
+  'due',
+  'kind',
+  'cos',
+  'area',
+  'parent',
+  'dep',
+  'bet',
+  'tags',
+  'done_when',
+  'done_at',
+  'done_reason',
+];
+
 function renderCompact(task: Task): string {
-  const keys: (keyof Task)[] = [
-    'id',
-    'title',
-    'status',
-    'severity',
-    'estimate',
-    'tags',
-    'done_when',
-  ];
-  const lines = keys
-    .filter((key) => task[key] !== undefined)
+  const lines = COMPACT_KEYS.filter((key) => task[key] !== undefined && task[key] !== null)
     .map((key) => `${key}: ${formatValue(task[key])}`);
   if (task.notes) {
     lines.push(
