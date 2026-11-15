@@ -37,6 +37,7 @@ export type IntentDigestResult =
 const BULLET = /^- I(\d+) (\S+) "(.*)" \(quote: (\S+)\)(?: superseded-by: I(\d+))?$/;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const FRONT_KEYS = ["schema", "slug", "initiative", "built_from"] as const;
+const LOWERCASE_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 const isRealDate = (value: string): boolean =>
   ISO_DATE.test(value) && new Date(`${value}T00:00:00Z`).toISOString().startsWith(value);
@@ -57,18 +58,35 @@ function parseFrontMatter(rows: string[], errors: IntentDigestError[]): { values
     errors.push({ line: 1, message: "digest must open with a `---` front matter block" });
     return { values, next: 0 };
   }
+  const keyLines: Record<string, number> = {};
   let i = 1;
   for (; i < rows.length && rows[i]!.trim() !== "---"; i++) {
     const match = /^([a-z_]+):\s*(.*)$/.exec(rows[i]!);
-    if (match) values[match[1]!] = match[2]!.trim();
-    else errors.push({ line: i + 1, message: "front matter line must be `key: value`" });
+    if (!match) errors.push({ line: i + 1, message: "front matter line must be `key: value`" });
+    else if (!(FRONT_KEYS as readonly string[]).includes(match[1]!)) {
+      errors.push({ line: i + 1, message: `unknown front matter key ${match[1]}` });
+    } else if (match[1]! in keyLines) errors.push({ line: i + 1, message: `front matter repeats ${match[1]}` });
+    else {
+      values[match[1]!] = match[2]!.trim();
+      keyLines[match[1]!] = i + 1;
+    }
   }
   if (i >= rows.length) errors.push({ line: rows.length, message: "front matter block is never closed" });
   for (const key of FRONT_KEYS) if (!values[key]) errors.push({ line: 1, message: `front matter is missing ${key}` });
   if (values.schema && values.schema !== INTENT_DIGEST_SCHEMA) {
     errors.push({ line: 2, message: `schema must be ${INTENT_DIGEST_SCHEMA}, got ${values.schema}` });
   }
+  checkSlug(values, keyLines.slug ?? 1, errors);
   return { values, next: i + 1 };
+}
+
+function checkSlug(values: Record<string, string>, line: number, errors: IntentDigestError[]): void {
+  const { slug, initiative } = values;
+  if (!slug) return;
+  if (!LOWERCASE_SLUG.test(slug)) errors.push({ line, message: `slug "${slug}" must be a lowercase slug` });
+  else if (initiative && slug !== initiative) {
+    errors.push({ line, message: `slug "${slug}" must equal initiative "${initiative}"` });
+  }
 }
 
 function parseBullet(raw: string, number: number, slug: string, section: IntentSection, errors: IntentDigestError[]) {
