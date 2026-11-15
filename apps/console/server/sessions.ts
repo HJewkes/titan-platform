@@ -7,7 +7,7 @@ import { SessionTimelineAccumulator, priceRequest, type SessionTimeline } from "
 import { SessionGraphNotMigratedError, openSessionGraph, type SessionGraph } from "@titan-design/session-graph";
 import {
   RELATIONS, claudeSourceFromPath, claudeTranscriptRoots, expandHome, fileRef, findClaudeSessionSource, parseFileRef, readSessionObservations,
-  sessionRef, toRepoRelative, type SessionSourceDescriptor, type TranscriptRoot,
+  sessionRef, taskRef, toRepoRelative, type SessionSourceDescriptor, type TranscriptRoot,
 } from "@titan-design/session-read";
 import { DEFAULT_CODEWATCH_URL } from "./config.js";
 import { readCommand } from "./owner-guard.js";
@@ -207,13 +207,15 @@ export interface TaskSessions {
   degraded: Degraded | null;
 }
 
-/** Sessions whose `session_origin.task_ids` names the task, newest first. */
+/** Sessions whose `session_origin.task_ids` or a live `ran` edge names the task, newest first. */
 export async function sessionsForTask(source: SessionsSource, taskId: string, limit: number): Promise<TaskSessions> {
   const read = await readGraph(source.graphPath, (graph) => {
     // json_each raises on malformed JSON, so a bad row is skipped rather than failing the query.
-    const sql = `${ROW_SELECT} WHERE CASE WHEN json_valid(o.task_ids) THEN EXISTS (SELECT 1 FROM json_each(o.task_ids) WHERE value = ?) ELSE 0 END
+    const sql = `${ROW_SELECT} WHERE (CASE WHEN json_valid(o.task_ids) THEN EXISTS (SELECT 1 FROM json_each(o.task_ids) WHERE value = ?) ELSE 0 END
+                   OR EXISTS (SELECT 1 FROM edge e WHERE e.source_ref = 'session:' || s.session_id AND e.relation = ? AND e.target_ref = ? AND e.t_expired IS NULL))
                  ORDER BY s.started_at DESC LIMIT ?`;
-    return withDetail(graph, graph.db.prepare(sql).all(taskId, limit) as RawRow[], source.now ?? Date.now);
+    const rows = graph.db.prepare(sql).all(taskId, RELATIONS.RAN, taskRef(taskId), limit) as RawRow[];
+    return withDetail(graph, rows, source.now ?? Date.now);
   });
   return read.ok ? { sessions: read.value, degraded: null } : { sessions: [], degraded: read.degraded };
 }
@@ -243,8 +245,10 @@ function withDetail(graph: SessionGraph, rows: readonly RawRow[], now: () => num
   const pricedAt = new Date(now()).toISOString();
   return rows.map((row) => {
     const models = usage.filter((u) => u.session_id === row.session_id).map((u) => priced(u, row.started_at ?? pricedAt));
-    const prs = graph.edges.from(sessionRef(row.session_id)).filter((edge) => edge.relation === RELATIONS.LINKED).map((edge) => edge.targetRef);
-    return toSessionRow(row, models, prs);
+    const edges = graph.edges.from(sessionRef(row.session_id));
+    const prs = edges.filter((edge) => edge.relation === RELATIONS.LINKED).map((edge) => edge.targetRef);
+    const ranTasks = edges.filter((edge) => edge.relation === RELATIONS.RAN && edge.targetRef.startsWith(TASK_PREFIX)).map((edge) => edge.targetRef.slice(TASK_PREFIX.length));
+    return toSessionRow(row, models, prs, ranTasks);
   });
 }
 
@@ -259,7 +263,9 @@ function priced(usage: RawUsage, at: string): ModelUsage {
   return { model: usage.model, ...tokens, requests: usage.request_count, costUsd, priced: hasPrice };
 }
 
-function toSessionRow(row: RawRow, usage: ModelUsage[], prs: string[]): SessionRow {
+const TASK_PREFIX = taskRef("");
+
+function toSessionRow(row: RawRow, usage: ModelUsage[], prs: string[], ranTasks: string[]): SessionRow {
   return {
     sessionId: row.session_id,
     title: row.ai_title,
@@ -271,7 +277,7 @@ function toSessionRow(row: RawRow, usage: ModelUsage[], prs: string[]): SessionR
     transcript: row.source_key === null ? null : { path: row.source_key, status: row.status ?? "ok" },
     agentName: row.agent_name,
     parentSessionId: row.parent_session_id,
-    taskIds: parseTaskIds(row.task_ids),
+    taskIds: [...new Set([...parseTaskIds(row.task_ids), ...ranTasks])],
     prs,
     usage,
     costUsd: usage.reduce((sum, model) => sum + model.costUsd, 0),
