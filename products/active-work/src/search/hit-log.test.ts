@@ -40,4 +40,22 @@ describe('servedHitEntries', () => {
     expect(first.queryHash).toMatch(/^[0-9a-f]{16}$/);
     expect(second.queryHash).toBe(first.queryHash);
   });
+
+  it('carries task and section when given', () => {
+    const [entry] = servedHitEntries([hit], {
+      ...context,
+      query: 'q',
+      task: 'alpha/TP-1',
+      section: 'workspace',
+    });
+
+    expect(entry).toMatchObject({ task: 'alpha/TP-1', section: 'workspace' });
+  });
+
+  it('leaves task and section out when not given', () => {
+    const [entry] = servedHitEntries([hit], { ...context, query: 'q' });
+
+    expect(Object.keys(entry as object)).not.toContain('task');
+    expect(Object.keys(entry as object)).not.toContain('section');
+  });
 });
