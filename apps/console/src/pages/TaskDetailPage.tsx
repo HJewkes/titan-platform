@@ -1,9 +1,10 @@
-import type { ReactNode } from "react";
-import { Alert, Badge, BreadcrumbItem, Breadcrumbs, Card, CardContent, DataRow, DateTime, HStack, Link, Typography, VStack } from "@titan-design/react-ui";
+import { useState, type ReactNode } from "react";
+import { Alert, Badge, BreadcrumbItem, Breadcrumbs, Button, ButtonText, Card, CardContent, DataRow, DateTime, HStack, Link, Typography, VStack } from "@titan-design/react-ui";
 import { Spinner } from "../shell/Loading.js";
 import { EXIT } from "@titan-design/registry";
 import type { ConsoleCommands } from "../../server/commands.js";
-import { useQuery } from "../data/rpc.js";
+import { useInvalidate, useQuery } from "../data/rpc.js";
+import { useAnswerSource } from "../data/submit.js";
 import { open } from "../router.js";
 import { StatePill } from "./AgentParts.js";
 import { GuessedCaption, RefLink, TaskStageBadge } from "./TaskParts.js";
@@ -98,7 +99,35 @@ function Header({ task }: { task: Detail["task"] }): ReactNode {
       <DataRow label="Updated" value={task.updated} />
       {task.doneWhen ? <Field label="Done when" text={task.doneWhen} /> : null}
       {task.notes ? <Field label="Notes" text={task.notes} /> : null}
+      <DoneControl slug={task.slug} id={task.id} open={task.status === "open"} />
     </Panel>
+  );
+}
+
+/** Mark done on an open task, then Undo until the page is left; each write is followed by a fresh read of the task. */
+function DoneControl({ slug, id, open: isOpen }: { slug: string; id: string; open: boolean }): ReactNode {
+  const source = useAnswerSource();
+  const invalidate = useInvalidate();
+  const [justDone, setJustDone] = useState(false);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const send = async (undo: boolean): Promise<void> => {
+    if (source === null) return;
+    setRefusal(null);
+    const envelope = await source.call("work.task-done", { slug, id, ...(undo ? { undo } : {}) });
+    if (!envelope.ok) return setRefusal(envelope.error);
+    setJustDone(!undo);
+    invalidate(["work.task"]);
+  };
+  if (source === null || (!isOpen && !justDone)) return null;
+  return (
+    <VStack gap={2}>
+      {justDone ? (
+        <Button size="sm" variant="outline" onPress={() => void send(true)}><ButtonText>Undo</ButtonText></Button>
+      ) : (
+        <Button size="sm" onPress={() => void send(false)}><ButtonText>Mark done</ButtonText></Button>
+      )}
+      {refusal !== null ? <Alert status="warning" size="compact" message={`The task was not changed: ${refusal}`} /> : null}
+    </VStack>
   );
 }
 
