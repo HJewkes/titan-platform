@@ -20,9 +20,9 @@
       ]
     },
     {
-      "name": "the final-message line leaves out Attests and Follow-ups",
+      "name": "the final-message line leaves out Attests, Follow-ups and Check-candidates",
       "file": "packages/review-panel/src/reviewer-brief.ts",
-      "find": "whole review and verdict, including any \\`${ATTESTS_HEADING}\\` and \\`${FOLLOW_UPS_HEADING}\\` lines; send",
+      "find": "whole review and verdict, including any \\`${ATTESTS_HEADING}\\`, \\`${FOLLOW_UPS_HEADING}\\` and \\`${CHECK_CANDIDATES_HEADING}\\` lines; send",
       "replace": "whole review and verdict; send",
       "kills": [
         "reviewer brief final message the brief asks for cleanup before the final message and for the full verdict in it, in a review in a scratch dir",
