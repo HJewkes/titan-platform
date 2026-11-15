@@ -18,6 +18,8 @@ import {
   renderRecentlyDone,
   renderTopTasks,
 } from './render-tasks.js';
+import { readLedgerRows } from '../decider/ledger.js';
+import { renderRecentDecisions } from './render-decisions.js';
 import { loopLabel } from './render-notes-loops.js';
 import { renderArtifactsBody } from './render-artifacts.js';
 import { defaultLiveStatusFetcher } from './live-status.js';
@@ -43,6 +45,7 @@ export function withDefaults(input: BootstrapInput): ResolvedBootstrapInput {
     init: input.init ?? false,
     detectSiblings: input.detectSiblings ?? true,
     siblingProbe: input.siblingProbe ?? readLiveLeases,
+    decisionRows: input.decisionRows ?? readLedgerRows,
     hitLog: input.hitLog ?? fileHitLog(),
     clock: input.clock ?? (() => performance.now()),
   };
@@ -244,6 +247,23 @@ async function retrieveForSession(
   }
 }
 
+interface RecentDecisions {
+  section: string | null;
+  degraded: string[];
+}
+
+/** Fails open: an unreadable ledger leaves the section out and says so. */
+async function recentDecisionsFor(input: ResolvedBootstrapInput): Promise<RecentDecisions> {
+  try {
+    const { rows } = await input.decisionRows(input.activeRoot);
+    const section = renderRecentDecisions(rows, input.slug, input.recentlyDoneDays, input.now);
+    return { section, degraded: [] };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { section: null, degraded: [`decisions: error (${message})`] };
+  }
+}
+
 /** With no canonical session recorded, fall back to the newest of any track (AW-42). */
 function narrativeOf(allSessions: LoadedInitiative['sessions']['sessions'], now: Date) {
   const sessions = allSessions.filter((s) => s.frontmatter.ledger !== true);
@@ -293,15 +313,17 @@ export async function gatherBootstrap(input: ResolvedBootstrapInput): Promise<Ga
   const topTask = topTaskOf(loaded.tasks.tasks, input.facet?.tags, input.now);
   const { ranked, loops } = await retrieveForSession(input, loaded, topTask, timings);
   const artifactsError = loaded.artifacts.error;
+  const decisions = await recentDecisionsFor(input);
   return {
     ...loadedFields(input, loaded),
+    recentDecisions: decisions.section,
     input,
     initiativeDir,
     openLoopCount: loops.openLoops.length,
     shownLoops: loops.selection.loops,
     hiddenLoops: loops.selection.hidden,
     loopContext: loops.loopContext,
-    retrievalDegraded: loops.retrievalDegraded,
+    retrievalDegraded: [...loops.retrievalDegraded, ...decisions.degraded],
     siblings,
     topTaskTitle: topTask?.title,
     noteRanking: ranked.noteRanking,

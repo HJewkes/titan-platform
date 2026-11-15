@@ -165,6 +165,19 @@
   padding: 0;
   list-style: none;
 }
+.beat-proof {
+  display: flex;
+  flex-direction: column;
+  gap: var(--beat-gap);
+}
+.beat-proof-command {
+  font-family: var(--font-family-mono);
+  font-size: var(--beat-body);
+  color: var(--color-text-secondary);
+}
+.beat-proof-name {
+  flex: 1;
+}
 .beat-check-item {
   display: flex;
   align-items: center;
