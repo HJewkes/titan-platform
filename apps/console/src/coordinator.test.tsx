@@ -65,7 +65,13 @@ describe("the coordinator page", () => {
     const card = await screen.findByTestId("coord-card-harbor-coord");
     expect(within(card).getByText("seat harbor-coord")).toBeTruthy();
     expect(within(card).getByText("3 agents run · 1 live now · $2.50")).toBeTruthy();
-    expect(within(card).getByTestId("coord-pr-harbor/dock#7")).toBeTruthy();
+    const opened = vi.spyOn(window, "open").mockReturnValue(null);
+    const link = within(card).getByTestId("coord-pr-harbor/dock#7").closest("a");
+    expect(link?.getAttribute("href")).toBe("https://github.com/harbor/dock/pull/7");
+    expect(link?.getAttribute("target")).toBe("_blank");
+    expect(link?.getAttribute("rel")).toContain("noopener");
+    if (link) fireEvent.click(link);
+    expect(opened).not.toHaveBeenCalled();
     expect(within(card).getByText("Build the dock index")).toBeTruthy();
     expect(within(screen.getByTestId("coord-card-unattributed")).getByTestId("coord-pr-harbor/quay#9")).toBeTruthy();
     expect(within(card).queryByTestId("coord-pr-harbor/quay#9")).toBeNull();
