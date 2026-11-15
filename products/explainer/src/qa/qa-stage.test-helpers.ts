@@ -26,6 +26,8 @@ interface QaRun {
   config?: Partial<QaConfig>;
   /** Inputs added to the stage's own, given those. */
   extra?: (inputs: Record<string, string>) => Record<string, string>;
+  /** Swaps the fake engine for one built on it, as a page whose probe measured nothing would. */
+  wrap?: (engine: QaEngine) => QaEngine;
 }
 
 /** The fake engine as the tests read it: every time it inspected and probed. */
@@ -61,11 +63,11 @@ export function qaStageHarness() {
     db.close();
     rmSync(root, { recursive: true, force: true });
   });
-  async function run(options: FakeQaOptions, { timeline = TIMELINE, config = {}, extra = () => ({}) }: QaRun = {}) {
+  async function run(options: FakeQaOptions, { timeline = TIMELINE, config = {}, extra = () => ({}), wrap = (e) => e }: QaRun = {}) {
     const base = stageInputs(root, store, timeline);
     const inputs = { ...base, ...extra(base) };
     const engine: SampledEngine = fakeQa(options);
-    const outcome = await runQaStage({ artifacts: inputs, store: store, from: FROM, remainingUsd: 0 }, { ...CONFIG, ...config }, engine);
+    const outcome = await runQaStage({ artifacts: inputs, store: store, from: FROM, remainingUsd: 0 }, { ...CONFIG, ...config }, wrap(engine));
     const report = QaReportSchema.parse(JSON.parse(store.readText(outcome.outputs.qa!)));
     const { checks } = runStageChecks("qa", { artifacts: { ...inputs, ...outcome.outputs }, store: store, l0Checks: [] });
     return { outcome, report, engine, checks: Object.fromEntries(checks.map((check) => [check.name, check])) };
