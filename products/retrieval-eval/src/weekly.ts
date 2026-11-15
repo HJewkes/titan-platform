@@ -14,19 +14,19 @@ import { countUptake } from "./uptake.js";
  * the other verbs print one-off snapshots.
  */
 
-export interface TriggerRow {
+interface TriggerRow {
   served: number;
   opened: number;
   ratio: number;
 }
 
-export interface WeeklyRow {
+interface WeeklyRow {
   week: string;
   triggers: Record<Trigger, TriggerRow>;
   recallSessionShare: number;
 }
 
-export interface WeeklyOptions {
+interface WeeklyOptions {
   week: string;
   out: string;
   files: string[];
@@ -35,7 +35,6 @@ export interface WeeklyOptions {
 
 const WEEK_FORMAT = /^(\d{4})-W(\d{2})$/;
 const DAY_MS = 86_400_000;
-const TRIGGERS: Trigger[] = ["bootstrap", "spawn"];
 
 function malformed(week: string): Error {
   return new Error(`--week must look like YYYY-Www with a week that exists in that ISO year, got ${week}`);
@@ -59,7 +58,7 @@ export function isoWeekWindow(week: string): Required<Window> {
   return { since: new Date(since).toISOString(), until: new Date(since + 7 * DAY_MS).toISOString() };
 }
 
-export async function measureWeek(options: Omit<WeeklyOptions, "out">): Promise<WeeklyRow> {
+async function measureWeek(options: Omit<WeeklyOptions, "out">): Promise<WeeklyRow> {
   const window = isoWeekWindow(options.week);
   const served = buildReport(await collectServed(options.files, options.activeRoot, window), window, options.files.length);
   const uptake = await countUptake(options.files, window);
