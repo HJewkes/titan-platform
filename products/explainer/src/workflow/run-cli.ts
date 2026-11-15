@@ -9,6 +9,7 @@ import { REFLECTION_MODES, type ReflectionConfig, type ReflectionMode } from "..
 import { STAGES, type StageName } from "./records.js";
 import { compareReports, renderCompare } from "./report.js";
 import { failureLines } from "./run-failure.js";
+import { foldVideoReport } from "./video-report.js";
 import { CLI_FACT_ADAPTERS, gatherFacts, gatherRequest, type GatherDeps, type GatherFlags, type GatherRequest } from "./run-gather.js";
 
 const EXIT = { OK: 0, FAILED: 1, USAGE: 2 } as const;
@@ -236,14 +237,21 @@ function runCommand(deps: RunCliDeps, io: Io, onResult: (code: number) => void):
 
 function reportCommand(deps: RunCliDeps, io: Io, onResult: (code: number) => void): Command {
   return new Command("report")
-    .description("Fold a run's stage records into run-report.md and run-report.json in its run directory")
-    .argument("<runId>")
+    .description("Fold a run's stage records into run-report.md and run-report.json in its run directory, or with --video every run of a video into one cost report")
+    .argument("[runId]")
     .addOption(dataDirOption())
     .option("--json", "print the report JSON instead of the markdown")
     .option("--compare <runId>", "also print each stage's spend and wall time delta, cache hits and changed output shas against this run")
+    .option("--video <videoId>", "fold every run of this video into one cost report by run, stage and step, printed as JSON; writes no file")
     .exitOverride()
-    .action((runId: string, flags: { dataDir?: string; json?: boolean; compare?: string }) => {
+    .action((runId: string | undefined, flags: { dataDir?: string; json?: boolean; compare?: string; video?: string }) => {
       const host = hostFor(flags, deps);
+      if (flags.video !== undefined) {
+        if (runId !== undefined || flags.compare !== undefined) throw new InvalidArgumentError("--video takes no <runId> and no --compare");
+        io.out(`${JSON.stringify(foldVideoReport(flags.video, host), null, 2)}\n`);
+        return onResult(EXIT.OK);
+      }
+      if (runId === undefined) throw new InvalidArgumentError("report needs a <runId> or --video <videoId>");
       const { report, reportPath } = writeReport(runId, host);
       const other = flags.compare ? writeReport(flags.compare, host).report : undefined;
       if (flags.json) io.out(`${JSON.stringify(other ? { ...report, compare: compareReports(other, report) } : report, null, 2)}\n`);

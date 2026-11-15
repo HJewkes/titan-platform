@@ -6,6 +6,7 @@ import { byText } from "./elk-graph.js";
 import { labelBoxSizing, type LabelMetrics } from "./label-boxes.js";
 import { COMPOUND_LAYOUT_OPTIONS } from "./layout-options.js";
 import { packageOf, packageRootOf } from "./package-of.js";
+import { CONTEXT_LEVEL, planContext, SYS_ID, type RepoMapContext } from "./repo-map-context.js";
 import { routeOf } from "./route.js";
 import type { MapBox, MapEdge, MapEdgeSource, MapLayout, MapLevel, MapNode } from "./repo-map-types.js";
 import type { CompoundLayoutResult, GraphInput, NodeSize, Point } from "./types.js";
@@ -26,6 +27,8 @@ export interface RepoMapOptions {
    * list labels the container import arrows "imports only"; leaving it out draws neither.
    */
   protocolEdges?: readonly ProtocolEdge[];
+  /** Adds a level-0 context: a `sys` box around every package, with these actors and externals outside it. */
+  context?: RepoMapContext;
 }
 
 const PACKAGE = 1;
@@ -36,6 +39,8 @@ const LEVELS: readonly MapLevel[] = [
   { id: DIRECTORY, name: "components" },
   { id: FILE, name: "code" },
 ];
+
+const CONTEXT_LEVEL_DEF: MapLevel = { id: CONTEXT_LEVEL, name: "context" };
 
 interface Box {
   id: string;
@@ -218,6 +223,18 @@ function assertDistinctIds(leaves: readonly Box[], groups: Map<string, Box>): vo
   if (clash) throw new Error(`repo-map: file ${clash.id} has the same id as a group box`);
 }
 
+/** Nest every box under the `sys` group and add the level-0 actors, externals and arrows. */
+function withContext(plan: MapPlan, context: RepoMapContext): MapPlan {
+  const nest = (b: Box): Box => ({ ...b, chain: [SYS_ID, ...b.chain] });
+  const groups = new Map([...plan.groups].map(([id, b]) => [id, nest(b)]));
+  const packageIds = new Set([...groups.values()].filter((g) => g.kind === "package").map((g) => g.id));
+  const { system, outsiders, edges } = planContext(context, packageIds);
+  groups.set(SYS_ID, system);
+  const leaves = [...plan.leaves.map(nest), ...outsiders];
+  assertDistinctIds(leaves, groups);
+  return { leaves, groups, edges: [...plan.edges, ...edges] };
+}
+
 function labelSizes(boxes: Iterable<Box>, metrics: LabelMetrics): Map<string, NodeSize> {
   return labelBoxSizing(new Map([...boxes].map((b) => [b.id, b.label])), metrics);
 }
@@ -281,7 +298,8 @@ function planSha(plan: MapPlan, label: LabelMetrics, layoutOptions: Record<strin
  */
 export async function emitRepoMap(input: GraphInput, options: RepoMapOptions = {}): Promise<MapLayout> {
   const { maxFilesPerBox = 6, label = MAP_LABEL_METRICS, layoutOptions = COMPOUND_LAYOUT_OPTIONS } = options;
-  const plan = planRepoMap(input, Math.max(2, maxFilesPerBox), options.protocolEdges);
+  const base = planRepoMap(input, Math.max(2, maxFilesPerBox), options.protocolEdges);
+  const plan = options.context ? withContext(base, options.context) : base;
   const chains = new Map(plan.leaves.map((l) => [l.id, l.chain]));
   const laid = await computeCompoundLayoutStrict(
     { snapshotId: input.snapshotId, nodes: plan.leaves.map(asGraphNode), edges: plan.edges.map(asGraphEdge) },
@@ -295,7 +313,7 @@ export async function emitRepoMap(input: GraphInput, options: RepoMapOptions = {
   const nodes = toMapNodes(laid, plan);
   const sha = planSha(plan, label, layoutOptions);
   const edges = toMapEdges(laid, plan);
-  return { version: "repo-map/v1", ...extent(nodes), levels: LEVELS, nodes, edges, flows: [], cards: [], sha };
+  return { version: "repo-map/v1", ...extent(nodes), levels: options.context ? [CONTEXT_LEVEL_DEF, ...LEVELS] : LEVELS, nodes, edges, flows: [], cards: [], sha };
 }
 
 function asGraphNode(b: Box): GraphNode {
