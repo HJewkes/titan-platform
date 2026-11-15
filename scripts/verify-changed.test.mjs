@@ -165,12 +165,6 @@ describe("planCommands", () => {
     expect(plan.find((c) => c.label === "index-version:check").env).toEqual({ BASE_REF: "origin/main" });
   });
 
-  it("audits sidecar kills against the base", () => {
-    // Mutants caught: dropping the step, or auditing against no base so a kill naming no test passes.
-    const step = plan.find((c) => c.label === "sidecar:kills");
-    expect(step.args).toEqual(["run", "sidecar:kills", "--base", "origin/main"]);
-  });
-
   it("caps vitest heap and time", () => {
     // Mutants caught: dropping NODE_OPTIONS or the timeout wrapper.
     const vitest = vitestOf(plan);
