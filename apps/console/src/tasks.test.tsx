@@ -65,6 +65,16 @@ const ARTIFACTS: TaskArtifacts = {
   degraded: [],
 };
 
+type Roster = ConsoleCommands["agents.roster"]["result"];
+
+const rosterAgent = (name: string, taskId: string): Roster["agents"][number] => ({
+  id: `${name}@1`, idSource: "nameAtRegisteredAt", name, agentId: null, state: "working", stateSource: "presence", origin: "spawned",
+  workingOn: null, cwd: null, gitBranch: null, seat: null, surface: null, profile: null, taskId, spawnedBy: null, claudeSessionId: null,
+  registeredAt: 1_000, spawnedAt: null, lastEventAt: 9_000, idleMs: 0, dnd: false, provisional: false, tags: [], costUsd: null, costSource: null,
+});
+
+const rosterOf = (agents: Roster["agents"]): Roster => ({ agents, brokerUptimeMs: 1_000, reconnecting: false, history: { events: 1, limit: 1000, oldestAt: 1_000 }, generatedAt: Date.parse("2031-03-05T00:00:00.000Z") });
+
 function snapshotOf(calls: Snapshot["calls"]): Snapshot {
   return { format: SNAPSHOT_FORMAT, createdAt: "2031-03-05T00:00:00.000Z", calls };
 }
@@ -273,6 +283,29 @@ describe("a task's detail", () => {
     cleanup();
     renderConsole("#/tasks/OR-1", recorded(TASKS, { ...DETAIL, sessions: [], sessionsDegraded: { reason: "graph-missing", detail: "No session graph at the configured path" } }));
     expect(await screen.findByText("Session links are unavailable: No session graph at the configured path")).toBeTruthy();
+  });
+
+  it("lists the agents working the task, each linking to its agent page", async () => {
+    const roster = rosterOf([rosterAgent("impl-a", "OR-1"), rosterAgent("impl-b", "OR-2")]);
+    renderConsole("#/tasks/OR-1", recorded(TASKS, DETAIL, { ...deferred(), [snapshotKey("agents.roster", {})]: successEnvelope(roster) }), { inApp: true });
+    const section = await screen.findByTestId("task-agents");
+    expect(await within(section).findByText("impl-a")).toBeTruthy();
+    expect(within(section).queryByText("impl-b")).toBeNull();
+    expect(within(section).getByText("working")).toBeTruthy();
+    fireEvent.click(within(section).getByText("impl-a"));
+    await waitFor(() => expect(window.location.hash).toBe("#/agents/impl-a"));
+  });
+
+  it("says when no agent works the task", async () => {
+    const roster = rosterOf([rosterAgent("impl-b", "OR-2")]);
+    renderConsole("#/tasks/OR-1", recorded(TASKS, DETAIL, { ...deferred(), [snapshotKey("agents.roster", {})]: successEnvelope(roster) }));
+    expect(await screen.findByText("No live agent on this task")).toBeTruthy();
+  });
+
+  it("warns when the agent roster cannot be read", async () => {
+    renderConsole("#/tasks/OR-1", recorded(TASKS, DETAIL, { ...deferred(), [snapshotKey("agents.roster", {})]: errorEnvelope("broker down", 69) }));
+    expect(await screen.findByText(/^Agents are unavailable: broker down/)).toBeTruthy();
+    expect(screen.queryByText("No live agent on this task")).toBeNull();
   });
 
   it("warns when pull request state is unavailable", async () => {
