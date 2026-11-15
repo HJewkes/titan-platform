@@ -1,7 +1,7 @@
 import type { OwnerOp } from "@titan-design/owner-queue";
 import { describe, expect, it, vi } from "vitest";
 import type { LedgerEntry, OwnerOpsLedger } from "../owner-ops/ledger.js";
-import { actOnOp, type OpEffect } from "./op.js";
+import { actOnOp, OP_EFFECTS, type OpEffect } from "./op.js";
 import type { Outcome } from "./outcome.js";
 
 const REPO = "example-org/example-repo";
@@ -61,6 +61,21 @@ describe("actOnOp", () => {
     const outcome = await act(op, async () => answer);
 
     expect(outcome).toEqual(answer);
+  });
+
+  // Kills: mapping start-session onto a class the table denies owner-remote, or wiring an effect before the broker checks the record.
+  it("admits a start-session op under SPN-OR but refuses it with class while it has no factory effect, logging nothing", async () => {
+    const ledger = memoryLedger();
+    const op: OwnerOp = {
+      kind: "start-session", name: "research-lead", profile: "researcher", host: "build-box", account: "work-2",
+      cwd: "/srv/work/example", surface: "tmux", remoteControl: false, briefPath: "/srv/briefs/research.md", briefSha256: "c".repeat(64),
+    };
+
+    const outcome = await actOnOp("act-1", { op, confirmEvent: CONFIRM }, { effects: {}, ledger, now: () => 0 }, CONTEXT);
+
+    expect(OP_EFFECTS).not.toHaveProperty("start-session");
+    expect(outcome).toMatchObject({ outcome: "refused", reason: "class", detail: "a start-session op has no factory effect" });
+    expect(ledger.entries).toEqual([]);
   });
 
   it("refuses with class an admitted op whose kind has no effect yet", async () => {
