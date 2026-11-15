@@ -9,6 +9,7 @@ import { missingCueElements, missingElementsHint } from "../build/layer-elements
 import { buildLayerPacket, type BuiltLayerPacket, type LayerPacket } from "../build/layer-packet.js";
 import { fadedTextFindings, fadeHint } from "../build/layer-fade.js";
 import { fontFindings, fontHint } from "../build/layer-fonts.js";
+import { styleTellNote, styleTells } from "../build/layer-style-tells.js";
 import { tokenHint, undefinedTokenFindings } from "../build/layer-tokens.js";
 import { formatLayerRow, layerTextHint, type LayerTextCheck } from "../build/layer-text.js";
 import { layerTreeFiles, writeLayerTree, type BuiltLayer } from "../build/layer-tree.js";
@@ -306,6 +307,10 @@ function builtNote(built: readonly (BuiltLayer & { cached?: true })[]): string {
   return `${built.length} custom layers built${cached > 0 ? ` (${cached} from the build cache)` : ""}`;
 }
 
+/** Decorative gradients and glows are reported per layer, never gated. */
+const styleNotes = (built: readonly BuiltLayer[]): string[] =>
+  built.flatMap(({ beatId, build }) => styleTellNote(beatId, styleTells(build.module)) ?? []);
+
 /** The sources of every layer that was built, stored as a tree; none when nothing was built. */
 function storeSources(deps: LayerRouteDeps, runId: string, builder: BuilderRef, layers: readonly BuiltLayer[]): Record<string, string> {
   if (layers.length === 0) return {};
@@ -329,7 +334,7 @@ function treeRoute(deps: LayerRouteDeps): StepRoute {
     const dir = path.join(runPaths(deps.dataDir, step.runId).runDir, CUSTOM_LAYERS);
     writeLayerTree(dir, layerTreeFiles(spec.config.builder!, built));
     const sha = deps.store.putTree(dir, CUSTOM_LAYERS, { runId: step.runId, stage: STAGE });
-    return { result: { ...record, outputs: { ...record.outputs, [CUSTOM_LAYERS]: sha }, notes: [...record.notes, builtNote(built)] } };
+    return { result: { ...record, outputs: { ...record.outputs, [CUSTOM_LAYERS]: sha }, notes: [...record.notes, builtNote(built), ...styleNotes(built)] } };
   });
 }
 

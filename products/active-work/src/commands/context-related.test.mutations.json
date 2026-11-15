@@ -9,6 +9,13 @@
       "kills": ["context.related in context mode a spawn trigger logs placed entries only, ranked in rendered order"]
     },
     {
+      "name": "the served log drops the tier of a placed entry",
+      "file": "products/active-work/src/commands/context-related.ts",
+      "find": "return { ...hit, ...(tier !== undefined ? { tier } : {}) };",
+      "replace": "return { ...hit };",
+      "kills": ["context.related in context mode a spawn trigger logs each placed hit with the tier and class it was served at"]
+    },
+    {
       "name": "maxTier is not forwarded",
       "file": "products/active-work/src/commands/context-related.ts",
       "find": "    ...(args.maxTier !== undefined ? { maxTier: args.maxTier } : {}),\n",
