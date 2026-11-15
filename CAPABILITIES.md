@@ -57,6 +57,7 @@ Before adding code:
 | [`speech-stt`](#cap-speech-stt) | 1 | You compare a script with what a recogniser heard, or port Python that calls `difflib`: a CPython-parity `SequenceMatcher` and `roundHalfEven` (Python's `round`), `align` to time script words from a transcript, `diff` and `normalize` to score a take, the `Word` and `Transcript` schemas, and a pure TS `resample` (24 kHz to 16 kHz without ffmpeg). |
 | [`speech-tts`](#cap-speech-tts) | 1 | You need speech audio and the engine must differ per deployment: an in-process model, a GPU box behind a command or ssh, or a hosted HTTP API. |
 | [`test-timing`](#cap-test-timing) | 1 | You keep vitest per-file timing over many runs: `timingArtifactSchema` validates the `titan.test-timing/v1` record a reporter writes (unknown keys refused) and `parseTimingArtifact` reads one (unknown keys kept). |
+| [`text-ingest`](#cap-text-ingest) | 1 | You need to clean a transcript before indexing it (drop um, uh, you know, immediate repeats, caller-supplied sponsor segments and near-duplicate paragraphs) and still point every surviving byte at its original position in the source. |
 | [`worktree`](#cap-worktree) | 1 | You give each headless agent its own git worktree and branch under a per-repository budget, and must never lose its commits: allocation adopts a crashed agent's branch, release and park refuse a tree with uncommitted or unpushed work, and a sweep finds trees nobody released. |
 | [`autoresearch`](#cap-autoresearch) | 2 | An agent loop should propose changes to a system, measure each against a frozen evaluator, and keep only those that beat the best by more than run-to-run noise, with the metric, guards and gates read from the target's own config. |
 | [`code-graph`](#cap-code-graph) | 2 | A tool reasons about code structure (layering checks, dead code, impact analysis, metrics, findings) over TypeScript, TSX or Python. |
@@ -827,7 +828,7 @@ Key exports:
 - `retrievers/vector`: `BruteForceVectorIndex`, `vectorRetriever`
 - `retrievers/graph`: `expandGraph`, `graphRetriever`
 - `retrievers/walk`: `defaultHubDegree`, `walkGraph`
-- `rerank`: `crossEncoderReranker`
+- `retrievers/tree`: `collapsedTreeRetriever`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/retrieval)
 
 <a id="cap-rpc-client"></a>
@@ -921,6 +922,20 @@ Key exports:
 - `archive`: `archiveRaw`, `fileSafeId`
 - `ingest`: `ghRunFetched`, `ingestGhArtifact`, `ingestRecord`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/test-timing)
+
+<a id="cap-text-ingest"></a>
+
+### [`text-ingest`](https://hjewkes.github.io/titan-platform/reference/text-ingest)
+
+Tier 1, `@titan-design/text-ingest@0.0.0`. 
+
+**Use this when:**
+
+You need to clean a transcript before indexing it (drop um, uh, you know, immediate repeats, caller-supplied sponsor segments and near-duplicate paragraphs) and still point every surviving byte at its original position in the source. For the byte-range pointer itself use `locator`; for ranking what was indexed use `retrieval`.
+
+Key exports:
+
+- `clean`: `cleanTranscript`, `ByteRange`, `CleanOptions`, `CleanResult`, `RemovalKind`, `RemovedSpan`
 
 <a id="cap-worktree"></a>
 
@@ -1615,7 +1630,7 @@ When the review index has no snapshot at the pin, the fresh index covers only th
 For a PR video, `gatherPr` writes the pr-overview profile's `facts.jsonl` from the PR diff, its reviews and comments (through `gh`) and the code-graph calls between changed files at the head commit, with stable content-derived ids and coded refusals (`PR_GATHER_CODES`).
 `explainer pr trigger` (`runPrVideoTrigger`, `autoBriefTargets`) starts a decision-brief run (the `gather` stage, then the audition;
 with `--through script`, the script too, on the spine the audition writes from its pick, `pickSpine`, as pr-overview's `spine: { from: audition-pick }` declares)
-only for PRs Shepherd holds at the owner's visual gate (`visual-gate2`) on a head still current right before the start, with `--dry-run`, and
+for PRs Shepherd holds at the owner's visual gate (`visual-gate2`) and, with a repeatable `--visual-path <glob>`, for every open non-draft PR whose changed files (read through `gh pr diff --name-only`) match a glob (brief trigger `visual-path`), each on a head still current right before the start, with `--dry-run`, and
 `explainer pr gather` runs it on request.
 For the daily briefing, `gatherDaily` reads one UTC day into a `digest.json` and a `facts.md` whose ids come from their sources
 (PRs through `gh pr list`, sessions through `session-read`,
