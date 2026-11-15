@@ -81,6 +81,17 @@ describe("custom-layer builds in explainer.resolve", () => {
     expect(record.usage).toMatchObject({ usd: 0.02, calls: 2 });
   });
 
+  it("notes a layer's decorative gradients and glows in the build notes and still builds it", async () => {
+    fx = fixture();
+    const decorated = () => "export const Layer = () => <div style={{ background: \"linear-gradient(red, blue), conic-gradient(red, blue)\", boxShadow: \"0 0 20px red\" }}>x</div>;\n";
+    const { worker } = countingWorker(() => false, BUILDER, decorated);
+
+    const record = await runOneStage({ stage: "resolve", inputs: inputs([["b1", "WHAT", CUSTOM]]) }, host(worker));
+
+    expect(record.notes).toContain("b1 uses 2 gradients and 1 glow effect: decorative styling, kept as built");
+    expect(treeFiles(record.outputs[CUSTOM_LAYERS]!)).toEqual(["b1.tsx", "layers.json"]);
+  });
+
   it("runs zero items for a script with no custom beats, and stores no tree", async () => {
     fx = fixture();
     const { calls, worker } = countingWorker();
