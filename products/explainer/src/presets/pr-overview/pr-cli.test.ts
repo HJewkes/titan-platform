@@ -91,7 +91,13 @@ describe("explainer pr trigger", () => {
     expect(await stagesRun("--through", "script")).toEqual(["gather", "audition", "script"]);
   });
 
-  it("refuses a --through stage past the script", async () => {
+  it("accepts --through export on a dry run", async () => {
+    const { run } = cli({ readWaiting: async () => ({ owner: [gate()], seat: [] }) });
+
+    expect(await run("trigger", "--data-dir", await scratch(), "--clone", `${REPO}=/clone/widgets`, "--through", "export", "--dry-run")).toBe(0);
+  });
+
+  it("refuses a --through stage between the script and the export", async () => {
     const { run } = cli({ readWaiting: async () => ({ owner: [gate()], seat: [] }) });
 
     expect(await run("trigger", "--data-dir", await scratch(), "--through", "tts")).toBe(2);
