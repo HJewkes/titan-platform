@@ -165,6 +165,7 @@ export async function handleOnComplete(
     '--no-loops',
     '--no-notes',
     '--no-tasks',
+    '--no-reports',
   ]);
   if (code !== 0) {
     throw new Error(`active-work wrap failed for agentId ${agentId} (exit ${code}): ${stderr}`);

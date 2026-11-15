@@ -96,6 +96,7 @@ async function wrapCanonical(activeRoot: string, ended: string): Promise<void> {
       no_loops: true,
       no_notes: true,
       no_tasks: true,
+      no_reports: true,
     }),
     makeCtx(activeRoot),
   );
