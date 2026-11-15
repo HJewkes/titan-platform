@@ -4,9 +4,9 @@ import { Migration, Db } from '@titan-design/store-sqlite';
 /** health/v1 follows draft-inadarei-api-health-check, an open format, so other readers can consume it unchanged. */
 declare const HEALTH_STATUSES: readonly ["pass", "warn", "fail"];
 declare const healthStatusSchema: z.ZodEnum<{
+    fail: "fail";
     pass: "pass";
     warn: "warn";
-    fail: "fail";
 }>;
 type HealthStatus = z.infer<typeof healthStatusSchema>;
 declare function worstStatus(statuses: Iterable<HealthStatus>): HealthStatus;
@@ -18,9 +18,9 @@ declare const healthCheckSchema: z.ZodObject<{
     output: z.ZodOptional<z.ZodString>;
     time: z.ZodOptional<z.ZodString>;
     status: z.ZodEnum<{
+        fail: "fail";
         pass: "pass";
         warn: "warn";
-        fail: "fail";
     }>;
 }, z.core.$loose>;
 type HealthCheck = z.infer<typeof healthCheckSchema>;
@@ -34,9 +34,9 @@ declare const healthReportSchema: z.ZodObject<{
     uptime_ms: z.ZodOptional<z.ZodNumber>;
     port: z.ZodOptional<z.ZodNumber>;
     status: z.ZodEnum<{
+        fail: "fail";
         pass: "pass";
         warn: "warn";
-        fail: "fail";
     }>;
     checks: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodArray<z.ZodObject<{
         componentId: z.ZodOptional<z.ZodString>;
@@ -46,9 +46,9 @@ declare const healthReportSchema: z.ZodObject<{
         output: z.ZodOptional<z.ZodString>;
         time: z.ZodOptional<z.ZodString>;
         status: z.ZodEnum<{
+            fail: "fail";
             pass: "pass";
             warn: "warn";
-            fail: "fail";
         }>;
     }, z.core.$loose>>>>;
 }, z.core.$loose>;
@@ -63,9 +63,9 @@ declare const healthReportReadSchema: z.ZodObject<{
     uptime_ms: z.ZodOptional<z.ZodNumber>;
     port: z.ZodOptional<z.ZodNumber>;
     status: z.ZodEnum<{
+        fail: "fail";
         pass: "pass";
         warn: "warn";
-        fail: "fail";
     }>;
     checks: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodArray<z.ZodObject<{
         componentId: z.ZodOptional<z.ZodString>;
@@ -75,9 +75,9 @@ declare const healthReportReadSchema: z.ZodObject<{
         output: z.ZodOptional<z.ZodString>;
         time: z.ZodOptional<z.ZodString>;
         status: z.ZodPreprocess<z.ZodEnum<{
+            fail: "fail";
             pass: "pass";
             warn: "warn";
-            fail: "fail";
         }>, unknown>;
     }, z.core.$loose>>>>;
 }, z.core.$loose>;
@@ -101,10 +101,10 @@ declare function parseHealthReport(payload: unknown): HealthReportRead;
 /** `unknown` is a probe that could not decide, such as an error inside the probe itself; it is never up. */
 declare const SAMPLE_STATUSES: readonly ["pass", "warn", "fail", "unknown"];
 declare const sampleStatusSchema: z.ZodEnum<{
-    pass: "pass";
-    warn: "warn";
     fail: "fail";
+    pass: "pass";
     unknown: "unknown";
+    warn: "warn";
 }>;
 type SampleStatus = z.infer<typeof sampleStatusSchema>;
 /** One stored probe result. Strict, because it is the write schema of an append-only store. */
@@ -113,10 +113,10 @@ declare const healthSampleSchema: z.ZodObject<{
     target: z.ZodString;
     kind: z.ZodString;
     status: z.ZodEnum<{
-        pass: "pass";
-        warn: "warn";
         fail: "fail";
+        pass: "pass";
         unknown: "unknown";
+        warn: "warn";
     }>;
     latencyMs: z.ZodOptional<z.ZodNumber>;
     observed: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;

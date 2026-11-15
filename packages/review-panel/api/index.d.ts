@@ -527,9 +527,9 @@ declare const FollowUpSchema: z.ZodObject<{
     title: z.ZodString;
     doneWhen: z.ZodString;
     severity: z.ZodEnum<{
+        high: "high";
         low: "low";
         medium: "medium";
-        high: "high";
     }>;
 }, z.core.$strict>;
 type FollowUp = z.infer<typeof FollowUpSchema>;
@@ -558,8 +558,8 @@ declare const OwnerBriefSchema: z.ZodObject<{
     pros: z.ZodArray<z.ZodString>;
     cons: z.ZodArray<z.ZodString>;
     doorType: z.ZodEnum<{
-        "two-way": "two-way";
         "one-way": "one-way";
+        "two-way": "two-way";
     }>;
 }, z.core.$strict>;
 type OwnerBrief = z.infer<typeof OwnerBriefSchema>;

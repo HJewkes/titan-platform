@@ -31,70 +31,70 @@ declare const SurfaceNameSchema: z.ZodEnum<{
     "tmux-window": "tmux-window";
 }>;
 declare const IsolationNameSchema: z.ZodEnum<{
-    none: "none";
-    worktree: "worktree";
     "file-ownership": "file-ownership";
+    none: "none";
     "toolset-limited": "toolset-limited";
+    worktree: "worktree";
 }>;
 declare const SubscribableKindSchema: z.ZodEnum<{
-    registered: "registered";
-    deregistered: "deregistered";
-    agent_spawned: "agent_spawned";
     agent_attached: "agent_attached";
     agent_detached: "agent_detached";
-    agent_resumed: "agent_resumed";
     agent_exited: "agent_exited";
+    agent_resumed: "agent_resumed";
     agent_retired: "agent_retired";
     agent_spawn_refused: "agent_spawn_refused";
+    agent_spawned: "agent_spawned";
+    deregistered: "deregistered";
+    registered: "registered";
 }>;
 declare const WakeSourceSchema: z.ZodEnum<{
-    watchdog: "watchdog";
-    shepherd: "shepherd";
     console: "console";
+    shepherd: "shepherd";
+    watchdog: "watchdog";
 }>;
 declare const LauncherSchema: z.ZodEnum<{
-    shepherd: "shepherd";
     "seat-watchdog": "seat-watchdog";
+    shepherd: "shepherd";
 }>;
 declare const AgentLifecycleSchema: z.ZodEnum<{
-    spawning: "spawning";
-    live: "live";
     detached: "detached";
     exited: "exited";
+    live: "live";
     retired: "retired";
+    spawning: "spawning";
 }>;
 declare const AgentOriginSchema: z.ZodEnum<{
-    spawned: "spawned";
     adopted: "adopted";
+    spawned: "spawned";
 }>;
 declare const SpawnRefusalCodeSchema: z.ZodEnum<{
-    surface_refused: "surface_refused";
-    spawn_rate_limit: "spawn_rate_limit";
-    machine_headless_limit: "machine_headless_limit";
-    machine_memory_floor: "machine_memory_floor";
-    seat_budget_stop: "seat_budget_stop";
-    seat_spawn_overlap: "seat_spawn_overlap";
-    seat_hand_reserve: "seat_hand_reserve";
-    seat_spawn_unprefixed: "seat_spawn_unprefixed";
-    reviewer_account_limit: "reviewer_account_limit";
+    account_exhausted: "account_exhausted";
     broker_draining: "broker_draining";
     harness_unsupported: "harness_unsupported";
-    account_exhausted: "account_exhausted";
+    machine_headless_limit: "machine_headless_limit";
+    machine_memory_floor: "machine_memory_floor";
+    reviewer_account_limit: "reviewer_account_limit";
+    seat_budget_stop: "seat_budget_stop";
+    seat_hand_reserve: "seat_hand_reserve";
+    seat_spawn_overlap: "seat_spawn_overlap";
+    seat_spawn_unprefixed: "seat_spawn_unprefixed";
+    spawn_rate_limit: "spawn_rate_limit";
+    surface_refused: "surface_refused";
 }>;
 declare const SurfaceLifetimeSchema: z.ZodEnum<{
     "close-on-exit": "close-on-exit";
     keep: "keep";
 }>;
 declare const EffortLevelSchema: z.ZodEnum<{
-    low: "low";
-    medium: "medium";
     high: "high";
-    xhigh: "xhigh";
+    low: "low";
     max: "max";
+    medium: "medium";
+    xhigh: "xhigh";
 }>;
 declare const CacheTtlSchema: z.ZodEnum<{
-    "5m": "5m";
     "1h": "1h";
+    "5m": "5m";
 }>;
 declare const PushPolicySchema: z.ZodEnum<{
     "no-rewrite": "no-rewrite";
@@ -109,9 +109,9 @@ declare const HarnessSchema: z.ZodEnum<{
     codex: "codex";
 }>;
 declare const SettingSourceSchema: z.ZodEnum<{
-    user: "user";
-    project: "project";
     local: "local";
+    project: "project";
+    user: "user";
 }>;
 declare const ReturnContractSchema: z.ZodEnum<{
     implementer: "implementer";
@@ -164,17 +164,17 @@ declare function buildRequestSchemas(mode: WireParseMode): {
         }>>;
         message: z.ZodOptional<z.ZodString>;
         source: z.ZodOptional<z.ZodEnum<{
-            watchdog: "watchdog";
-            shepherd: "shepherd";
             console: "console";
+            shepherd: "shepherd";
+            watchdog: "watchdog";
         }>>;
         remoteControl: z.ZodOptional<z.ZodBoolean>;
         nonce: z.ZodOptional<z.ZodString>;
         host: z.ZodOptional<z.ZodString>;
         callerAgent: z.ZodOptional<z.ZodString>;
         launchedBy: z.ZodOptional<z.ZodEnum<{
-            shepherd: "shepherd";
             "seat-watchdog": "seat-watchdog";
+            shepherd: "shepherd";
         }>>;
         launchReason: z.ZodOptional<z.ZodString>;
         rid: z.ZodOptional<z.ZodNumber>;
@@ -215,15 +215,15 @@ declare function buildRequestSchemas(mode: WireParseMode): {
             spawnedBy: z.ZodLiteral<"self">;
         }, z.core.$strict>]>;
         kinds: z.ZodArray<z.ZodEnum<{
-            registered: "registered";
-            deregistered: "deregistered";
-            agent_spawned: "agent_spawned";
             agent_attached: "agent_attached";
             agent_detached: "agent_detached";
-            agent_resumed: "agent_resumed";
             agent_exited: "agent_exited";
+            agent_resumed: "agent_resumed";
             agent_retired: "agent_retired";
             agent_spawn_refused: "agent_spawn_refused";
+            agent_spawned: "agent_spawned";
+            deregistered: "deregistered";
+            registered: "registered";
         }>>;
     }, z.core.$strict>;
     experiment: z.ZodObject<{
@@ -255,15 +255,15 @@ declare function buildRequestSchemas(mode: WireParseMode): {
                 spawnedBy: z.ZodLiteral<"self">;
             }, z.core.$strict>]>;
             kinds: z.ZodArray<z.ZodEnum<{
-                registered: "registered";
-                deregistered: "deregistered";
-                agent_spawned: "agent_spawned";
                 agent_attached: "agent_attached";
                 agent_detached: "agent_detached";
-                agent_resumed: "agent_resumed";
                 agent_exited: "agent_exited";
+                agent_resumed: "agent_resumed";
                 agent_retired: "agent_retired";
                 agent_spawn_refused: "agent_spawn_refused";
+                agent_spawned: "agent_spawned";
+                deregistered: "deregistered";
+                registered: "registered";
             }>>;
         }, z.core.$strict>>>;
         predecessor: z.ZodOptional<z.ZodString>;
@@ -274,8 +274,8 @@ declare function buildRequestSchemas(mode: WireParseMode): {
         returnContract: z.ZodOptional<z.ZodLiteral<"none">>;
         tier: z.ZodOptional<z.ZodNumber>;
         spawnedAs: z.ZodOptional<z.ZodEnum<{
-            shepherd: "shepherd";
             burndown: "burndown";
+            shepherd: "shepherd";
         }>>;
         lineageFrom: z.ZodOptional<z.ZodString>;
         task: z.ZodOptional<z.ZodString>;
@@ -289,10 +289,10 @@ declare function buildRequestSchemas(mode: WireParseMode): {
         resumeSession: z.ZodOptional<z.ZodString>;
         cwd: z.ZodOptional<z.ZodString>;
         isolation: z.ZodOptional<z.ZodEnum<{
-            none: "none";
-            worktree: "worktree";
             "file-ownership": "file-ownership";
+            none: "none";
             "toolset-limited": "toolset-limited";
+            worktree: "worktree";
         }>>;
         surface: z.ZodOptional<z.ZodEnum<{
             headless: "headless";
@@ -315,8 +315,8 @@ declare function buildRequestSchemas(mode: WireParseMode): {
         callerHome: z.ZodOptional<z.ZodString>;
         callerAgent: z.ZodOptional<z.ZodString>;
         launchedBy: z.ZodOptional<z.ZodEnum<{
-            shepherd: "shepherd";
             "seat-watchdog": "seat-watchdog";
+            shepherd: "shepherd";
         }>>;
         launchReason: z.ZodOptional<z.ZodString>;
         rid: z.ZodOptional<z.ZodNumber>;
@@ -341,15 +341,15 @@ declare const SpawnRequestSchema: z.ZodObject<{
             spawnedBy: z.ZodLiteral<"self">;
         }, z.core.$strict>]>;
         kinds: z.ZodArray<z.ZodEnum<{
-            registered: "registered";
-            deregistered: "deregistered";
-            agent_spawned: "agent_spawned";
             agent_attached: "agent_attached";
             agent_detached: "agent_detached";
-            agent_resumed: "agent_resumed";
             agent_exited: "agent_exited";
+            agent_resumed: "agent_resumed";
             agent_retired: "agent_retired";
             agent_spawn_refused: "agent_spawn_refused";
+            agent_spawned: "agent_spawned";
+            deregistered: "deregistered";
+            registered: "registered";
         }>>;
     }, z.core.$strict>>>;
     predecessor: z.ZodOptional<z.ZodString>;
@@ -360,8 +360,8 @@ declare const SpawnRequestSchema: z.ZodObject<{
     returnContract: z.ZodOptional<z.ZodLiteral<"none">>;
     tier: z.ZodOptional<z.ZodNumber>;
     spawnedAs: z.ZodOptional<z.ZodEnum<{
-        shepherd: "shepherd";
         burndown: "burndown";
+        shepherd: "shepherd";
     }>>;
     lineageFrom: z.ZodOptional<z.ZodString>;
     task: z.ZodOptional<z.ZodString>;
@@ -375,10 +375,10 @@ declare const SpawnRequestSchema: z.ZodObject<{
     resumeSession: z.ZodOptional<z.ZodString>;
     cwd: z.ZodOptional<z.ZodString>;
     isolation: z.ZodOptional<z.ZodEnum<{
-        none: "none";
-        worktree: "worktree";
         "file-ownership": "file-ownership";
+        none: "none";
         "toolset-limited": "toolset-limited";
+        worktree: "worktree";
     }>>;
     surface: z.ZodOptional<z.ZodEnum<{
         headless: "headless";
@@ -401,8 +401,8 @@ declare const SpawnRequestSchema: z.ZodObject<{
     callerHome: z.ZodOptional<z.ZodString>;
     callerAgent: z.ZodOptional<z.ZodString>;
     launchedBy: z.ZodOptional<z.ZodEnum<{
-        shepherd: "shepherd";
         "seat-watchdog": "seat-watchdog";
+        shepherd: "shepherd";
     }>>;
     launchReason: z.ZodOptional<z.ZodString>;
     rid: z.ZodOptional<z.ZodNumber>;
@@ -419,17 +419,17 @@ declare const ResumeRequestSchema: z.ZodObject<{
     }>>;
     message: z.ZodOptional<z.ZodString>;
     source: z.ZodOptional<z.ZodEnum<{
-        watchdog: "watchdog";
-        shepherd: "shepherd";
         console: "console";
+        shepherd: "shepherd";
+        watchdog: "watchdog";
     }>>;
     remoteControl: z.ZodOptional<z.ZodBoolean>;
     nonce: z.ZodOptional<z.ZodString>;
     host: z.ZodOptional<z.ZodString>;
     callerAgent: z.ZodOptional<z.ZodString>;
     launchedBy: z.ZodOptional<z.ZodEnum<{
-        shepherd: "shepherd";
         "seat-watchdog": "seat-watchdog";
+        shepherd: "shepherd";
     }>>;
     launchReason: z.ZodOptional<z.ZodString>;
     rid: z.ZodOptional<z.ZodNumber>;
@@ -470,15 +470,15 @@ declare const SubscriptionSchema: z.ZodObject<{
         spawnedBy: z.ZodLiteral<"self">;
     }, z.core.$strict>]>;
     kinds: z.ZodArray<z.ZodEnum<{
-        registered: "registered";
-        deregistered: "deregistered";
-        agent_spawned: "agent_spawned";
         agent_attached: "agent_attached";
         agent_detached: "agent_detached";
-        agent_resumed: "agent_resumed";
         agent_exited: "agent_exited";
+        agent_resumed: "agent_resumed";
         agent_retired: "agent_retired";
         agent_spawn_refused: "agent_spawn_refused";
+        agent_spawned: "agent_spawned";
+        deregistered: "deregistered";
+        registered: "registered";
     }>>;
 }, z.core.$strict>;
 declare const ExperimentArmSchema: z.ZodObject<{
@@ -517,10 +517,10 @@ declare function buildResultSchemas(mode: WireParseMode): {
         allowedTools: z.ZodArray<z.ZodString>;
         disallowedTools: z.ZodOptional<z.ZodArray<z.ZodString>>;
         isolation: z.ZodEnum<{
-            none: "none";
-            worktree: "worktree";
             "file-ownership": "file-ownership";
+            none: "none";
             "toolset-limited": "toolset-limited";
+            worktree: "worktree";
         }>;
         surface: z.ZodEnum<{
             headless: "headless";
@@ -543,15 +543,15 @@ declare function buildResultSchemas(mode: WireParseMode): {
             reviewer: "reviewer";
         }>, z.ZodLiteral<"none">]>>;
         effort: z.ZodOptional<z.ZodEnum<{
-            low: "low";
-            medium: "medium";
             high: "high";
-            xhigh: "xhigh";
+            low: "low";
             max: "max";
+            medium: "medium";
+            xhigh: "xhigh";
         }>>;
         cacheTtl: z.ZodOptional<z.ZodEnum<{
-            "5m": "5m";
             "1h": "1h";
+            "5m": "5m";
         }>>;
         pushPolicy: z.ZodOptional<z.ZodEnum<{
             "no-rewrite": "no-rewrite";
@@ -560,9 +560,9 @@ declare function buildResultSchemas(mode: WireParseMode): {
         promptPrelude: z.ZodString;
         strictMcpConfig: z.ZodOptional<z.ZodBoolean>;
         settingSources: z.ZodOptional<z.ZodArray<z.ZodEnum<{
-            user: "user";
-            project: "project";
             local: "local";
+            project: "project";
+            user: "user";
         }>>>;
         disableSlashCommands: z.ZodOptional<z.ZodBoolean>;
     }, z.core.$strict>;
@@ -580,10 +580,10 @@ declare function buildResultSchemas(mode: WireParseMode): {
         allowedTools: z.ZodArray<z.ZodString>;
         disallowedTools: z.ZodOptional<z.ZodArray<z.ZodString>>;
         isolation: z.ZodEnum<{
-            none: "none";
-            worktree: "worktree";
             "file-ownership": "file-ownership";
+            none: "none";
             "toolset-limited": "toolset-limited";
+            worktree: "worktree";
         }>;
         surface: z.ZodEnum<{
             headless: "headless";
@@ -606,15 +606,15 @@ declare function buildResultSchemas(mode: WireParseMode): {
             reviewer: "reviewer";
         }>, z.ZodLiteral<"none">]>>;
         effort: z.ZodOptional<z.ZodEnum<{
-            low: "low";
-            medium: "medium";
             high: "high";
-            xhigh: "xhigh";
+            low: "low";
             max: "max";
+            medium: "medium";
+            xhigh: "xhigh";
         }>>;
         cacheTtl: z.ZodOptional<z.ZodEnum<{
-            "5m": "5m";
             "1h": "1h";
+            "5m": "5m";
         }>>;
         pushPolicy: z.ZodOptional<z.ZodEnum<{
             "no-rewrite": "no-rewrite";
@@ -623,9 +623,9 @@ declare function buildResultSchemas(mode: WireParseMode): {
         promptPrelude: z.ZodString;
         strictMcpConfig: z.ZodOptional<z.ZodBoolean>;
         settingSources: z.ZodOptional<z.ZodArray<z.ZodEnum<{
-            user: "user";
-            project: "project";
             local: "local";
+            project: "project";
+            user: "user";
         }>>>;
         disableSlashCommands: z.ZodOptional<z.ZodBoolean>;
     }, z.core.$strict>;
@@ -647,10 +647,10 @@ declare function buildResultSchemas(mode: WireParseMode): {
             allowedTools: z.ZodArray<z.ZodString>;
             disallowedTools: z.ZodOptional<z.ZodArray<z.ZodString>>;
             isolation: z.ZodEnum<{
-                none: "none";
-                worktree: "worktree";
                 "file-ownership": "file-ownership";
+                none: "none";
                 "toolset-limited": "toolset-limited";
+                worktree: "worktree";
             }>;
             surface: z.ZodEnum<{
                 headless: "headless";
@@ -673,15 +673,15 @@ declare function buildResultSchemas(mode: WireParseMode): {
                 reviewer: "reviewer";
             }>, z.ZodLiteral<"none">]>>;
             effort: z.ZodOptional<z.ZodEnum<{
-                low: "low";
-                medium: "medium";
                 high: "high";
-                xhigh: "xhigh";
+                low: "low";
                 max: "max";
+                medium: "medium";
+                xhigh: "xhigh";
             }>>;
             cacheTtl: z.ZodOptional<z.ZodEnum<{
-                "5m": "5m";
                 "1h": "1h";
+                "5m": "5m";
             }>>;
             pushPolicy: z.ZodOptional<z.ZodEnum<{
                 "no-rewrite": "no-rewrite";
@@ -690,9 +690,9 @@ declare function buildResultSchemas(mode: WireParseMode): {
             promptPrelude: z.ZodString;
             strictMcpConfig: z.ZodOptional<z.ZodBoolean>;
             settingSources: z.ZodOptional<z.ZodArray<z.ZodEnum<{
-                user: "user";
-                project: "project";
                 local: "local";
+                project: "project";
+                user: "user";
             }>>>;
             disableSlashCommands: z.ZodOptional<z.ZodBoolean>;
         }, z.core.$strict>;
@@ -718,15 +718,15 @@ declare function buildResultSchemas(mode: WireParseMode): {
                 spawnedBy: z.ZodLiteral<"self">;
             }, z.core.$strict>]>;
             kinds: z.ZodArray<z.ZodEnum<{
-                registered: "registered";
-                deregistered: "deregistered";
-                agent_spawned: "agent_spawned";
                 agent_attached: "agent_attached";
                 agent_detached: "agent_detached";
-                agent_resumed: "agent_resumed";
                 agent_exited: "agent_exited";
+                agent_resumed: "agent_resumed";
                 agent_retired: "agent_retired";
                 agent_spawn_refused: "agent_spawn_refused";
+                agent_spawned: "agent_spawned";
+                deregistered: "deregistered";
+                registered: "registered";
             }>>;
         }, z.core.$strict>>>;
         remoteControl: z.ZodOptional<z.ZodBoolean>;
@@ -746,18 +746,18 @@ declare function buildResultSchemas(mode: WireParseMode): {
         name: z.ZodOptional<z.ZodString>;
         reason: z.ZodOptional<z.ZodString>;
         code: z.ZodOptional<z.ZodEnum<{
-            surface_refused: "surface_refused";
-            spawn_rate_limit: "spawn_rate_limit";
-            machine_headless_limit: "machine_headless_limit";
-            machine_memory_floor: "machine_memory_floor";
-            seat_budget_stop: "seat_budget_stop";
-            seat_spawn_overlap: "seat_spawn_overlap";
-            seat_hand_reserve: "seat_hand_reserve";
-            seat_spawn_unprefixed: "seat_spawn_unprefixed";
-            reviewer_account_limit: "reviewer_account_limit";
+            account_exhausted: "account_exhausted";
             broker_draining: "broker_draining";
             harness_unsupported: "harness_unsupported";
-            account_exhausted: "account_exhausted";
+            machine_headless_limit: "machine_headless_limit";
+            machine_memory_floor: "machine_memory_floor";
+            reviewer_account_limit: "reviewer_account_limit";
+            seat_budget_stop: "seat_budget_stop";
+            seat_hand_reserve: "seat_hand_reserve";
+            seat_spawn_overlap: "seat_spawn_overlap";
+            seat_spawn_unprefixed: "seat_spawn_unprefixed";
+            spawn_rate_limit: "spawn_rate_limit";
+            surface_refused: "surface_refused";
         }>>;
         retryable: z.ZodOptional<z.ZodBoolean>;
         retryAfterMs: z.ZodOptional<z.ZodNumber>;
@@ -791,10 +791,10 @@ declare function buildResultSchemas(mode: WireParseMode): {
                 allowedTools: z.ZodArray<z.ZodString>;
                 disallowedTools: z.ZodOptional<z.ZodArray<z.ZodString>>;
                 isolation: z.ZodEnum<{
-                    none: "none";
-                    worktree: "worktree";
                     "file-ownership": "file-ownership";
+                    none: "none";
                     "toolset-limited": "toolset-limited";
+                    worktree: "worktree";
                 }>;
                 surface: z.ZodEnum<{
                     headless: "headless";
@@ -817,15 +817,15 @@ declare function buildResultSchemas(mode: WireParseMode): {
                     reviewer: "reviewer";
                 }>, z.ZodLiteral<"none">]>>;
                 effort: z.ZodOptional<z.ZodEnum<{
-                    low: "low";
-                    medium: "medium";
                     high: "high";
-                    xhigh: "xhigh";
+                    low: "low";
                     max: "max";
+                    medium: "medium";
+                    xhigh: "xhigh";
                 }>>;
                 cacheTtl: z.ZodOptional<z.ZodEnum<{
-                    "5m": "5m";
                     "1h": "1h";
+                    "5m": "5m";
                 }>>;
                 pushPolicy: z.ZodOptional<z.ZodEnum<{
                     "no-rewrite": "no-rewrite";
@@ -834,9 +834,9 @@ declare function buildResultSchemas(mode: WireParseMode): {
                 promptPrelude: z.ZodString;
                 strictMcpConfig: z.ZodOptional<z.ZodBoolean>;
                 settingSources: z.ZodOptional<z.ZodArray<z.ZodEnum<{
-                    user: "user";
-                    project: "project";
                     local: "local";
+                    project: "project";
+                    user: "user";
                 }>>>;
                 disableSlashCommands: z.ZodOptional<z.ZodBoolean>;
             }, z.core.$strict>;
@@ -862,15 +862,15 @@ declare function buildResultSchemas(mode: WireParseMode): {
                     spawnedBy: z.ZodLiteral<"self">;
                 }, z.core.$strict>]>;
                 kinds: z.ZodArray<z.ZodEnum<{
-                    registered: "registered";
-                    deregistered: "deregistered";
-                    agent_spawned: "agent_spawned";
                     agent_attached: "agent_attached";
                     agent_detached: "agent_detached";
-                    agent_resumed: "agent_resumed";
                     agent_exited: "agent_exited";
+                    agent_resumed: "agent_resumed";
                     agent_retired: "agent_retired";
                     agent_spawn_refused: "agent_spawn_refused";
+                    agent_spawned: "agent_spawned";
+                    deregistered: "deregistered";
+                    registered: "registered";
                 }>>;
             }, z.core.$strict>>>;
             remoteControl: z.ZodOptional<z.ZodBoolean>;
@@ -913,20 +913,20 @@ declare function buildResultSchemas(mode: WireParseMode): {
         name: z.ZodString;
         profile: z.ZodString;
         state: z.ZodEnum<{
-            spawning: "spawning";
-            live: "live";
             detached: "detached";
             exited: "exited";
+            live: "live";
             retired: "retired";
+            spawning: "spawning";
         }>;
         origin: z.ZodEnum<{
-            spawned: "spawned";
             adopted: "adopted";
+            spawned: "spawned";
         }>;
         spawnedBy: z.ZodString;
         launchedBy: z.ZodOptional<z.ZodEnum<{
-            shepherd: "shepherd";
             "seat-watchdog": "seat-watchdog";
+            shepherd: "shepherd";
         }>>;
         spawnedAt: z.ZodNumber;
         brief: z.ZodOptional<z.ZodString>;
@@ -950,18 +950,18 @@ declare function buildResultSchemas(mode: WireParseMode): {
         name: z.ZodOptional<z.ZodString>;
         reason: z.ZodOptional<z.ZodString>;
         code: z.ZodOptional<z.ZodEnum<{
-            surface_refused: "surface_refused";
-            spawn_rate_limit: "spawn_rate_limit";
-            machine_headless_limit: "machine_headless_limit";
-            machine_memory_floor: "machine_memory_floor";
-            seat_budget_stop: "seat_budget_stop";
-            seat_spawn_overlap: "seat_spawn_overlap";
-            seat_hand_reserve: "seat_hand_reserve";
-            seat_spawn_unprefixed: "seat_spawn_unprefixed";
-            reviewer_account_limit: "reviewer_account_limit";
+            account_exhausted: "account_exhausted";
             broker_draining: "broker_draining";
             harness_unsupported: "harness_unsupported";
-            account_exhausted: "account_exhausted";
+            machine_headless_limit: "machine_headless_limit";
+            machine_memory_floor: "machine_memory_floor";
+            reviewer_account_limit: "reviewer_account_limit";
+            seat_budget_stop: "seat_budget_stop";
+            seat_hand_reserve: "seat_hand_reserve";
+            seat_spawn_overlap: "seat_spawn_overlap";
+            seat_spawn_unprefixed: "seat_spawn_unprefixed";
+            spawn_rate_limit: "spawn_rate_limit";
+            surface_refused: "surface_refused";
         }>>;
         retryable: z.ZodOptional<z.ZodBoolean>;
         retryAfterMs: z.ZodOptional<z.ZodNumber>;
@@ -995,10 +995,10 @@ declare function buildResultSchemas(mode: WireParseMode): {
                 allowedTools: z.ZodArray<z.ZodString>;
                 disallowedTools: z.ZodOptional<z.ZodArray<z.ZodString>>;
                 isolation: z.ZodEnum<{
-                    none: "none";
-                    worktree: "worktree";
                     "file-ownership": "file-ownership";
+                    none: "none";
                     "toolset-limited": "toolset-limited";
+                    worktree: "worktree";
                 }>;
                 surface: z.ZodEnum<{
                     headless: "headless";
@@ -1021,15 +1021,15 @@ declare function buildResultSchemas(mode: WireParseMode): {
                     reviewer: "reviewer";
                 }>, z.ZodLiteral<"none">]>>;
                 effort: z.ZodOptional<z.ZodEnum<{
-                    low: "low";
-                    medium: "medium";
                     high: "high";
-                    xhigh: "xhigh";
+                    low: "low";
                     max: "max";
+                    medium: "medium";
+                    xhigh: "xhigh";
                 }>>;
                 cacheTtl: z.ZodOptional<z.ZodEnum<{
-                    "5m": "5m";
                     "1h": "1h";
+                    "5m": "5m";
                 }>>;
                 pushPolicy: z.ZodOptional<z.ZodEnum<{
                     "no-rewrite": "no-rewrite";
@@ -1038,9 +1038,9 @@ declare function buildResultSchemas(mode: WireParseMode): {
                 promptPrelude: z.ZodString;
                 strictMcpConfig: z.ZodOptional<z.ZodBoolean>;
                 settingSources: z.ZodOptional<z.ZodArray<z.ZodEnum<{
-                    user: "user";
-                    project: "project";
                     local: "local";
+                    project: "project";
+                    user: "user";
                 }>>>;
                 disableSlashCommands: z.ZodOptional<z.ZodBoolean>;
             }, z.core.$strict>;
@@ -1066,15 +1066,15 @@ declare function buildResultSchemas(mode: WireParseMode): {
                     spawnedBy: z.ZodLiteral<"self">;
                 }, z.core.$strict>]>;
                 kinds: z.ZodArray<z.ZodEnum<{
-                    registered: "registered";
-                    deregistered: "deregistered";
-                    agent_spawned: "agent_spawned";
                     agent_attached: "agent_attached";
                     agent_detached: "agent_detached";
-                    agent_resumed: "agent_resumed";
                     agent_exited: "agent_exited";
+                    agent_resumed: "agent_resumed";
                     agent_retired: "agent_retired";
                     agent_spawn_refused: "agent_spawn_refused";
+                    agent_spawned: "agent_spawned";
+                    deregistered: "deregistered";
+                    registered: "registered";
                 }>>;
             }, z.core.$strict>>>;
             remoteControl: z.ZodOptional<z.ZodBoolean>;
@@ -1121,20 +1121,20 @@ declare function buildResultSchemas(mode: WireParseMode): {
             name: z.ZodString;
             profile: z.ZodString;
             state: z.ZodEnum<{
-                spawning: "spawning";
-                live: "live";
                 detached: "detached";
                 exited: "exited";
+                live: "live";
                 retired: "retired";
+                spawning: "spawning";
             }>;
             origin: z.ZodEnum<{
-                spawned: "spawned";
                 adopted: "adopted";
+                spawned: "spawned";
             }>;
             spawnedBy: z.ZodString;
             launchedBy: z.ZodOptional<z.ZodEnum<{
-                shepherd: "shepherd";
                 "seat-watchdog": "seat-watchdog";
+                shepherd: "shepherd";
             }>>;
             spawnedAt: z.ZodNumber;
             brief: z.ZodOptional<z.ZodString>;
@@ -1191,10 +1191,10 @@ declare const AgentProfileSchema: z.ZodObject<{
     allowedTools: z.ZodArray<z.ZodString>;
     disallowedTools: z.ZodOptional<z.ZodArray<z.ZodString>>;
     isolation: z.ZodEnum<{
-        none: "none";
-        worktree: "worktree";
         "file-ownership": "file-ownership";
+        none: "none";
         "toolset-limited": "toolset-limited";
+        worktree: "worktree";
     }>;
     surface: z.ZodEnum<{
         headless: "headless";
@@ -1217,15 +1217,15 @@ declare const AgentProfileSchema: z.ZodObject<{
         reviewer: "reviewer";
     }>, z.ZodLiteral<"none">]>>;
     effort: z.ZodOptional<z.ZodEnum<{
-        low: "low";
-        medium: "medium";
         high: "high";
-        xhigh: "xhigh";
+        low: "low";
         max: "max";
+        medium: "medium";
+        xhigh: "xhigh";
     }>>;
     cacheTtl: z.ZodOptional<z.ZodEnum<{
-        "5m": "5m";
         "1h": "1h";
+        "5m": "5m";
     }>>;
     pushPolicy: z.ZodOptional<z.ZodEnum<{
         "no-rewrite": "no-rewrite";
@@ -1234,9 +1234,9 @@ declare const AgentProfileSchema: z.ZodObject<{
     promptPrelude: z.ZodString;
     strictMcpConfig: z.ZodOptional<z.ZodBoolean>;
     settingSources: z.ZodOptional<z.ZodArray<z.ZodEnum<{
-        user: "user";
-        project: "project";
         local: "local";
+        project: "project";
+        user: "user";
     }>>>;
     disableSlashCommands: z.ZodOptional<z.ZodBoolean>;
 }, z.core.$strict>;
@@ -1255,10 +1255,10 @@ declare const RemoteProfileSchema: z.ZodObject<{
     allowedTools: z.ZodArray<z.ZodString>;
     disallowedTools: z.ZodOptional<z.ZodArray<z.ZodString>>;
     isolation: z.ZodEnum<{
-        none: "none";
-        worktree: "worktree";
         "file-ownership": "file-ownership";
+        none: "none";
         "toolset-limited": "toolset-limited";
+        worktree: "worktree";
     }>;
     surface: z.ZodEnum<{
         headless: "headless";
@@ -1281,15 +1281,15 @@ declare const RemoteProfileSchema: z.ZodObject<{
         reviewer: "reviewer";
     }>, z.ZodLiteral<"none">]>>;
     effort: z.ZodOptional<z.ZodEnum<{
-        low: "low";
-        medium: "medium";
         high: "high";
-        xhigh: "xhigh";
+        low: "low";
         max: "max";
+        medium: "medium";
+        xhigh: "xhigh";
     }>>;
     cacheTtl: z.ZodOptional<z.ZodEnum<{
-        "5m": "5m";
         "1h": "1h";
+        "5m": "5m";
     }>>;
     pushPolicy: z.ZodOptional<z.ZodEnum<{
         "no-rewrite": "no-rewrite";
@@ -1298,9 +1298,9 @@ declare const RemoteProfileSchema: z.ZodObject<{
     promptPrelude: z.ZodString;
     strictMcpConfig: z.ZodOptional<z.ZodBoolean>;
     settingSources: z.ZodOptional<z.ZodArray<z.ZodEnum<{
-        user: "user";
-        project: "project";
         local: "local";
+        project: "project";
+        user: "user";
     }>>>;
     disableSlashCommands: z.ZodOptional<z.ZodBoolean>;
 }, z.core.$strict>;
@@ -1322,10 +1322,10 @@ declare const RemoteLaunchSchema: z.ZodObject<{
         allowedTools: z.ZodArray<z.ZodString>;
         disallowedTools: z.ZodOptional<z.ZodArray<z.ZodString>>;
         isolation: z.ZodEnum<{
-            none: "none";
-            worktree: "worktree";
             "file-ownership": "file-ownership";
+            none: "none";
             "toolset-limited": "toolset-limited";
+            worktree: "worktree";
         }>;
         surface: z.ZodEnum<{
             headless: "headless";
@@ -1348,15 +1348,15 @@ declare const RemoteLaunchSchema: z.ZodObject<{
             reviewer: "reviewer";
         }>, z.ZodLiteral<"none">]>>;
         effort: z.ZodOptional<z.ZodEnum<{
-            low: "low";
-            medium: "medium";
             high: "high";
-            xhigh: "xhigh";
+            low: "low";
             max: "max";
+            medium: "medium";
+            xhigh: "xhigh";
         }>>;
         cacheTtl: z.ZodOptional<z.ZodEnum<{
-            "5m": "5m";
             "1h": "1h";
+            "5m": "5m";
         }>>;
         pushPolicy: z.ZodOptional<z.ZodEnum<{
             "no-rewrite": "no-rewrite";
@@ -1365,9 +1365,9 @@ declare const RemoteLaunchSchema: z.ZodObject<{
         promptPrelude: z.ZodString;
         strictMcpConfig: z.ZodOptional<z.ZodBoolean>;
         settingSources: z.ZodOptional<z.ZodArray<z.ZodEnum<{
-            user: "user";
-            project: "project";
             local: "local";
+            project: "project";
+            user: "user";
         }>>>;
         disableSlashCommands: z.ZodOptional<z.ZodBoolean>;
     }, z.core.$strict>;
@@ -1393,15 +1393,15 @@ declare const RemoteLaunchSchema: z.ZodObject<{
             spawnedBy: z.ZodLiteral<"self">;
         }, z.core.$strict>]>;
         kinds: z.ZodArray<z.ZodEnum<{
-            registered: "registered";
-            deregistered: "deregistered";
-            agent_spawned: "agent_spawned";
             agent_attached: "agent_attached";
             agent_detached: "agent_detached";
-            agent_resumed: "agent_resumed";
             agent_exited: "agent_exited";
+            agent_resumed: "agent_resumed";
             agent_retired: "agent_retired";
             agent_spawn_refused: "agent_spawn_refused";
+            agent_spawned: "agent_spawned";
+            deregistered: "deregistered";
+            registered: "registered";
         }>>;
     }, z.core.$strict>>>;
     remoteControl: z.ZodOptional<z.ZodBoolean>;
@@ -1421,18 +1421,18 @@ declare const SpawnResultFieldsSchema: z.ZodObject<{
     name: z.ZodOptional<z.ZodString>;
     reason: z.ZodOptional<z.ZodString>;
     code: z.ZodOptional<z.ZodEnum<{
-        surface_refused: "surface_refused";
-        spawn_rate_limit: "spawn_rate_limit";
-        machine_headless_limit: "machine_headless_limit";
-        machine_memory_floor: "machine_memory_floor";
-        seat_budget_stop: "seat_budget_stop";
-        seat_spawn_overlap: "seat_spawn_overlap";
-        seat_hand_reserve: "seat_hand_reserve";
-        seat_spawn_unprefixed: "seat_spawn_unprefixed";
-        reviewer_account_limit: "reviewer_account_limit";
+        account_exhausted: "account_exhausted";
         broker_draining: "broker_draining";
         harness_unsupported: "harness_unsupported";
-        account_exhausted: "account_exhausted";
+        machine_headless_limit: "machine_headless_limit";
+        machine_memory_floor: "machine_memory_floor";
+        reviewer_account_limit: "reviewer_account_limit";
+        seat_budget_stop: "seat_budget_stop";
+        seat_hand_reserve: "seat_hand_reserve";
+        seat_spawn_overlap: "seat_spawn_overlap";
+        seat_spawn_unprefixed: "seat_spawn_unprefixed";
+        spawn_rate_limit: "spawn_rate_limit";
+        surface_refused: "surface_refused";
     }>>;
     retryable: z.ZodOptional<z.ZodBoolean>;
     retryAfterMs: z.ZodOptional<z.ZodNumber>;
@@ -1466,10 +1466,10 @@ declare const SpawnResultFieldsSchema: z.ZodObject<{
             allowedTools: z.ZodArray<z.ZodString>;
             disallowedTools: z.ZodOptional<z.ZodArray<z.ZodString>>;
             isolation: z.ZodEnum<{
-                none: "none";
-                worktree: "worktree";
                 "file-ownership": "file-ownership";
+                none: "none";
                 "toolset-limited": "toolset-limited";
+                worktree: "worktree";
             }>;
             surface: z.ZodEnum<{
                 headless: "headless";
@@ -1492,15 +1492,15 @@ declare const SpawnResultFieldsSchema: z.ZodObject<{
                 reviewer: "reviewer";
             }>, z.ZodLiteral<"none">]>>;
             effort: z.ZodOptional<z.ZodEnum<{
-                low: "low";
-                medium: "medium";
                 high: "high";
-                xhigh: "xhigh";
+                low: "low";
                 max: "max";
+                medium: "medium";
+                xhigh: "xhigh";
             }>>;
             cacheTtl: z.ZodOptional<z.ZodEnum<{
-                "5m": "5m";
                 "1h": "1h";
+                "5m": "5m";
             }>>;
             pushPolicy: z.ZodOptional<z.ZodEnum<{
                 "no-rewrite": "no-rewrite";
@@ -1509,9 +1509,9 @@ declare const SpawnResultFieldsSchema: z.ZodObject<{
             promptPrelude: z.ZodString;
             strictMcpConfig: z.ZodOptional<z.ZodBoolean>;
             settingSources: z.ZodOptional<z.ZodArray<z.ZodEnum<{
-                user: "user";
-                project: "project";
                 local: "local";
+                project: "project";
+                user: "user";
             }>>>;
             disableSlashCommands: z.ZodOptional<z.ZodBoolean>;
         }, z.core.$strict>;
@@ -1537,15 +1537,15 @@ declare const SpawnResultFieldsSchema: z.ZodObject<{
                 spawnedBy: z.ZodLiteral<"self">;
             }, z.core.$strict>]>;
             kinds: z.ZodArray<z.ZodEnum<{
-                registered: "registered";
-                deregistered: "deregistered";
-                agent_spawned: "agent_spawned";
                 agent_attached: "agent_attached";
                 agent_detached: "agent_detached";
-                agent_resumed: "agent_resumed";
                 agent_exited: "agent_exited";
+                agent_resumed: "agent_resumed";
                 agent_retired: "agent_retired";
                 agent_spawn_refused: "agent_spawn_refused";
+                agent_spawned: "agent_spawned";
+                deregistered: "deregistered";
+                registered: "registered";
             }>>;
         }, z.core.$strict>>>;
         remoteControl: z.ZodOptional<z.ZodBoolean>;
@@ -1589,20 +1589,20 @@ declare const AgentRecordSchema: z.ZodObject<{
     name: z.ZodString;
     profile: z.ZodString;
     state: z.ZodEnum<{
-        spawning: "spawning";
-        live: "live";
         detached: "detached";
         exited: "exited";
+        live: "live";
         retired: "retired";
+        spawning: "spawning";
     }>;
     origin: z.ZodEnum<{
-        spawned: "spawned";
         adopted: "adopted";
+        spawned: "spawned";
     }>;
     spawnedBy: z.ZodString;
     launchedBy: z.ZodOptional<z.ZodEnum<{
-        shepherd: "shepherd";
         "seat-watchdog": "seat-watchdog";
+        shepherd: "shepherd";
     }>>;
     spawnedAt: z.ZodNumber;
     brief: z.ZodOptional<z.ZodString>;
@@ -1627,18 +1627,18 @@ declare const SpawnResultSchema: z.ZodObject<{
     name: z.ZodOptional<z.ZodString>;
     reason: z.ZodOptional<z.ZodString>;
     code: z.ZodOptional<z.ZodEnum<{
-        surface_refused: "surface_refused";
-        spawn_rate_limit: "spawn_rate_limit";
-        machine_headless_limit: "machine_headless_limit";
-        machine_memory_floor: "machine_memory_floor";
-        seat_budget_stop: "seat_budget_stop";
-        seat_spawn_overlap: "seat_spawn_overlap";
-        seat_hand_reserve: "seat_hand_reserve";
-        seat_spawn_unprefixed: "seat_spawn_unprefixed";
-        reviewer_account_limit: "reviewer_account_limit";
+        account_exhausted: "account_exhausted";
         broker_draining: "broker_draining";
         harness_unsupported: "harness_unsupported";
-        account_exhausted: "account_exhausted";
+        machine_headless_limit: "machine_headless_limit";
+        machine_memory_floor: "machine_memory_floor";
+        reviewer_account_limit: "reviewer_account_limit";
+        seat_budget_stop: "seat_budget_stop";
+        seat_hand_reserve: "seat_hand_reserve";
+        seat_spawn_overlap: "seat_spawn_overlap";
+        seat_spawn_unprefixed: "seat_spawn_unprefixed";
+        spawn_rate_limit: "spawn_rate_limit";
+        surface_refused: "surface_refused";
     }>>;
     retryable: z.ZodOptional<z.ZodBoolean>;
     retryAfterMs: z.ZodOptional<z.ZodNumber>;
@@ -1672,10 +1672,10 @@ declare const SpawnResultSchema: z.ZodObject<{
             allowedTools: z.ZodArray<z.ZodString>;
             disallowedTools: z.ZodOptional<z.ZodArray<z.ZodString>>;
             isolation: z.ZodEnum<{
-                none: "none";
-                worktree: "worktree";
                 "file-ownership": "file-ownership";
+                none: "none";
                 "toolset-limited": "toolset-limited";
+                worktree: "worktree";
             }>;
             surface: z.ZodEnum<{
                 headless: "headless";
@@ -1698,15 +1698,15 @@ declare const SpawnResultSchema: z.ZodObject<{
                 reviewer: "reviewer";
             }>, z.ZodLiteral<"none">]>>;
             effort: z.ZodOptional<z.ZodEnum<{
-                low: "low";
-                medium: "medium";
                 high: "high";
-                xhigh: "xhigh";
+                low: "low";
                 max: "max";
+                medium: "medium";
+                xhigh: "xhigh";
             }>>;
             cacheTtl: z.ZodOptional<z.ZodEnum<{
-                "5m": "5m";
                 "1h": "1h";
+                "5m": "5m";
             }>>;
             pushPolicy: z.ZodOptional<z.ZodEnum<{
                 "no-rewrite": "no-rewrite";
@@ -1715,9 +1715,9 @@ declare const SpawnResultSchema: z.ZodObject<{
             promptPrelude: z.ZodString;
             strictMcpConfig: z.ZodOptional<z.ZodBoolean>;
             settingSources: z.ZodOptional<z.ZodArray<z.ZodEnum<{
-                user: "user";
-                project: "project";
                 local: "local";
+                project: "project";
+                user: "user";
             }>>>;
             disableSlashCommands: z.ZodOptional<z.ZodBoolean>;
         }, z.core.$strict>;
@@ -1743,15 +1743,15 @@ declare const SpawnResultSchema: z.ZodObject<{
                 spawnedBy: z.ZodLiteral<"self">;
             }, z.core.$strict>]>;
             kinds: z.ZodArray<z.ZodEnum<{
-                registered: "registered";
-                deregistered: "deregistered";
-                agent_spawned: "agent_spawned";
                 agent_attached: "agent_attached";
                 agent_detached: "agent_detached";
-                agent_resumed: "agent_resumed";
                 agent_exited: "agent_exited";
+                agent_resumed: "agent_resumed";
                 agent_retired: "agent_retired";
                 agent_spawn_refused: "agent_spawn_refused";
+                agent_spawned: "agent_spawned";
+                deregistered: "deregistered";
+                registered: "registered";
             }>>;
         }, z.core.$strict>>>;
         remoteControl: z.ZodOptional<z.ZodBoolean>;
@@ -1798,20 +1798,20 @@ declare const AgentListResultSchema: z.ZodObject<{
         name: z.ZodString;
         profile: z.ZodString;
         state: z.ZodEnum<{
-            spawning: "spawning";
-            live: "live";
             detached: "detached";
             exited: "exited";
+            live: "live";
             retired: "retired";
+            spawning: "spawning";
         }>;
         origin: z.ZodEnum<{
-            spawned: "spawned";
             adopted: "adopted";
+            spawned: "spawned";
         }>;
         spawnedBy: z.ZodString;
         launchedBy: z.ZodOptional<z.ZodEnum<{
-            shepherd: "shepherd";
             "seat-watchdog": "seat-watchdog";
+            shepherd: "shepherd";
         }>>;
         spawnedAt: z.ZodNumber;
         brief: z.ZodOptional<z.ZodString>;
@@ -1892,10 +1892,10 @@ declare const AgentSpawnArgsSchema: z.ZodObject<{
         "tmux-window": "tmux-window";
     }>>;
     isolation: z.ZodOptional<z.ZodEnum<{
-        none: "none";
-        worktree: "worktree";
         "file-ownership": "file-ownership";
+        none: "none";
         "toolset-limited": "toolset-limited";
+        worktree: "worktree";
     }>>;
     cwd: z.ZodOptional<z.ZodString>;
     worktree: z.ZodOptional<z.ZodString>;

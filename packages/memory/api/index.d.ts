@@ -102,17 +102,17 @@ declare const addDelta: z.ZodObject<{
     category: z.ZodDefault<z.ZodString>;
     tags: z.ZodDefault<z.ZodArray<z.ZodString>>;
     scope: z.ZodDefault<z.ZodEnum<{
-        global: "global";
-        workspace: "workspace";
-        language: "language";
         framework: "framework";
+        global: "global";
+        language: "language";
         task: "task";
+        workspace: "workspace";
     }>>;
     kind: z.ZodDefault<z.ZodEnum<{
+        anti_pattern: "anti_pattern";
         project_convention: "project_convention";
         stack_pattern: "stack_pattern";
         workflow_rule: "workflow_rule";
-        anti_pattern: "anti_pattern";
     }>>;
     isNegative: z.ZodDefault<z.ZodBoolean>;
     reasoning: z.ZodOptional<z.ZodString>;
@@ -123,17 +123,17 @@ declare const PlaybookDeltaSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     category: z.ZodDefault<z.ZodString>;
     tags: z.ZodDefault<z.ZodArray<z.ZodString>>;
     scope: z.ZodDefault<z.ZodEnum<{
-        global: "global";
-        workspace: "workspace";
-        language: "language";
         framework: "framework";
+        global: "global";
+        language: "language";
         task: "task";
+        workspace: "workspace";
     }>>;
     kind: z.ZodDefault<z.ZodEnum<{
+        anti_pattern: "anti_pattern";
         project_convention: "project_convention";
         stack_pattern: "stack_pattern";
         workflow_rule: "workflow_rule";
-        anti_pattern: "anti_pattern";
     }>>;
     isNegative: z.ZodDefault<z.ZodBoolean>;
     reasoning: z.ZodOptional<z.ZodString>;
