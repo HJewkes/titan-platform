@@ -1,5 +1,5 @@
 {
-  "durationS": 83.25,
+  "durationS": 89.25,
   "beats": [
     {
       "id": "opening",
@@ -692,6 +692,43 @@
         "of": 5,
         "label": "Ask"
       }
+    },
+    {
+      "id": "findings",
+      "kind": "finding-card",
+      "startS": 83.25,
+      "durationS": 6,
+      "slots": {
+        "findings": [
+          {
+            "id": "findings-1",
+            "title": "Night queue backs up after ten",
+            "severity": "high",
+            "status": "open",
+            "round": 2
+          },
+          {
+            "id": "findings-2",
+            "title": "Cache warm-up skips one lane",
+            "severity": "medium",
+            "status": "fixed"
+          },
+          {
+            "id": "findings-3",
+            "title": "Lane names differ across pages",
+            "severity": "low",
+            "status": "waived",
+            "round": 1
+          }
+        ]
+      },
+      "reveals": [
+        { "target": "findings-1", "atS": 1.2 },
+        { "target": "findings-2", "atS": 2.6 }
+      ],
+      "chips": [],
+      "hints": {},
+      "headline": "Three findings from the floor review"
     }
   ]
 }

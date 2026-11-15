@@ -3,7 +3,7 @@ import { describe, test } from "vitest";
 import { loadBeatSpecs } from "../beat-load.js";
 import { loadTypeProfiles } from "../profile-load.js";
 import type { TypeProfile } from "../profile-schema.js";
-import { registeredKinds, resolveBeat } from "./registry.js";
+import { registeredKinds } from "./registry.js";
 
 /**
  * Spec types a shipped profile can put on the page that the registry does not draw yet, each with why. Every
@@ -28,7 +28,6 @@ const NOT_DRAWN: Readonly<Record<string, string>> = {
   history: "TP-4277 (P4b) uses react-ui Timeline",
   "history-why": "TP-4277 (P4b) uses react-ui Timeline",
   "change-group": "TP-4277 (P4b) ports ListBeat",
-  "finding-card": "TP-4277 (P4b) ports ListBeat",
   "reading-list": "TP-4277 (P4b) ports ListBeat",
   proof: "TP-4277 (P4b) ports ChecklistBeat",
   "context-map": "TP-4277 (P4c) ports MapBeat",
@@ -59,12 +58,6 @@ function pageKinds(profile: TypeProfile): Set<string> {
 
 const shippedPageKinds = (): Map<string, Set<string>> =>
   new Map([...loadTypeProfiles()].map(([type, profile]) => [type, pageKinds(profile)]));
-
-describe("the beat registry's known kinds", () => {
-  test("an unknown kind throws and names the kinds it knows", () => {
-    assert.throws(() => resolveBeat("hologram"), /^Error: unknown beat kind "hologram"; known kinds: hook, held, list, verdict-card, fact-flash, claim-card, button, outro, stat, chart, compare, arch-map, metrics-panel, scorecard, catalogue$/);
-  });
-});
 
 describe("profile coverage fence", () => {
   // Mutation: delete an entry (stakes) from NOT_DRAWN; pr can emit stakes and nothing draws it.

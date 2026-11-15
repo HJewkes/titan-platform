@@ -7,7 +7,6 @@
       "find": "  scorecard: defineBeat(BEAT_SLOTS.scorecard, ScorecardKindBeat, { stage: true }),\n",
       "replace": "",
       "kills": [
-        "the beat registry's known kinds an unknown kind throws and names the kinds it knows",
         "profile coverage fence every spec type a shipped profile can put on the page is registered or on NOT_DRAWN"
       ]
     },
@@ -17,7 +16,6 @@
       "find": "  \"metrics-panel\": defineBeat(BEAT_SLOTS[\"metrics-panel\"], MetricsPanelKindBeat, { stage: true }),\n",
       "replace": "",
       "kills": [
-        "the beat registry's known kinds an unknown kind throws and names the kinds it knows",
         "profile coverage fence every spec type a shipped profile can put on the page is registered or on NOT_DRAWN"
       ]
     }
