@@ -1,9 +1,12 @@
 {
-  "$comment": "Architectural fitness rules for titan-platform, run by codewatch's `graph check` (scripts/dag-check-self.mjs). The package-layers rule IS the platform DAG: a package may import only packages in the same tier or a lower one. `$tiers` is the source of truth (edited by scripts/new-package.mjs); `layers` is derived from it by dropping empty tiers, because codewatch rejects empty layers.",
+  "$comment": "Architectural fitness rules for titan-platform, run by codewatch's `graph check` (scripts/dag-check-self.mjs). The package-layers rule IS the platform DAG: a package may import only packages in the same tier or a lower one. `$tiers` is the source of truth (edited by scripts/new-package.mjs); `layers` is derived from it by dropping empty tiers, because codewatch rejects empty layers. Every rule's `$classes` names the review-finding class keys it covers; scripts/checks-registry.mjs collects them into checks-registry.json.",
   "rules": [
     {
       "id": "package-layers",
       "type": "layered-deps",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$tiers": {
         "0": [
           "packages/store-sqlite",
@@ -186,6 +189,9 @@
     {
       "id": "product-isolation:products/session-miner->products/retrieval-eval",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/session-miner/**",
       "to": "products/retrieval-eval/**"
@@ -193,6 +199,9 @@
     {
       "id": "product-isolation:products/session-miner->apps/codewatch",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/session-miner/**",
       "to": "apps/codewatch/**"
@@ -200,6 +209,9 @@
     {
       "id": "product-isolation:products/session-miner->products/factory",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/session-miner/**",
       "to": "products/factory/**"
@@ -207,6 +219,9 @@
     {
       "id": "product-isolation:products/session-miner->products/evals",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/session-miner/**",
       "to": "products/evals/**"
@@ -214,6 +229,9 @@
     {
       "id": "product-isolation:products/session-miner->apps/console",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/session-miner/**",
       "to": "apps/console/**"
@@ -221,6 +239,9 @@
     {
       "id": "product-isolation:products/session-miner->products/titan",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/session-miner/**",
       "to": "products/titan/**"
@@ -228,6 +249,9 @@
     {
       "id": "product-isolation:products/session-miner->products/explainer",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/session-miner/**",
       "to": "products/explainer/**"
@@ -235,6 +259,9 @@
     {
       "id": "product-isolation:products/session-miner->products/active-work",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/session-miner/**",
       "to": "products/active-work/**"
@@ -242,6 +269,9 @@
     {
       "id": "product-isolation:products/session-miner->products/corpus-query",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/session-miner/**",
       "to": "products/corpus-query/**"
@@ -249,6 +279,9 @@
     {
       "id": "product-isolation:products/session-miner->products/yt-scout",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/session-miner/**",
       "to": "products/yt-scout/**"
@@ -256,6 +289,9 @@
     {
       "id": "product-isolation:products/session-miner->products/fleet-panel",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/session-miner/**",
       "to": "products/fleet-panel/**"
@@ -263,6 +299,9 @@
     {
       "id": "product-isolation:products/retrieval-eval->products/session-miner",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/retrieval-eval/**",
       "to": "products/session-miner/**"
@@ -270,6 +309,9 @@
     {
       "id": "product-isolation:products/retrieval-eval->apps/codewatch",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/retrieval-eval/**",
       "to": "apps/codewatch/**"
@@ -277,6 +319,9 @@
     {
       "id": "product-isolation:products/retrieval-eval->products/factory",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/retrieval-eval/**",
       "to": "products/factory/**"
@@ -284,6 +329,9 @@
     {
       "id": "product-isolation:products/retrieval-eval->products/evals",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/retrieval-eval/**",
       "to": "products/evals/**"
@@ -291,6 +339,9 @@
     {
       "id": "product-isolation:products/retrieval-eval->apps/console",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/retrieval-eval/**",
       "to": "apps/console/**"
@@ -298,6 +349,9 @@
     {
       "id": "product-isolation:products/retrieval-eval->products/titan",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/retrieval-eval/**",
       "to": "products/titan/**"
@@ -305,6 +359,9 @@
     {
       "id": "product-isolation:products/retrieval-eval->products/explainer",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/retrieval-eval/**",
       "to": "products/explainer/**"
@@ -312,6 +369,9 @@
     {
       "id": "product-isolation:products/retrieval-eval->products/active-work",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/retrieval-eval/**",
       "to": "products/active-work/**"
@@ -319,6 +379,9 @@
     {
       "id": "product-isolation:products/retrieval-eval->products/corpus-query",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/retrieval-eval/**",
       "to": "products/corpus-query/**"
@@ -326,6 +389,9 @@
     {
       "id": "product-isolation:products/retrieval-eval->products/yt-scout",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/retrieval-eval/**",
       "to": "products/yt-scout/**"
@@ -333,6 +399,9 @@
     {
       "id": "product-isolation:products/retrieval-eval->products/fleet-panel",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/retrieval-eval/**",
       "to": "products/fleet-panel/**"
@@ -340,6 +409,9 @@
     {
       "id": "product-isolation:apps/codewatch->products/session-miner",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "apps/codewatch/**",
       "to": "products/session-miner/**"
@@ -347,6 +419,9 @@
     {
       "id": "product-isolation:apps/codewatch->products/retrieval-eval",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "apps/codewatch/**",
       "to": "products/retrieval-eval/**"
@@ -354,6 +429,9 @@
     {
       "id": "product-isolation:apps/codewatch->products/factory",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "apps/codewatch/**",
       "to": "products/factory/**"
@@ -361,6 +439,9 @@
     {
       "id": "product-isolation:apps/codewatch->products/evals",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "apps/codewatch/**",
       "to": "products/evals/**"
@@ -368,6 +449,9 @@
     {
       "id": "product-isolation:apps/codewatch->apps/console",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "apps/codewatch/**",
       "to": "apps/console/**"
@@ -375,6 +459,9 @@
     {
       "id": "product-isolation:apps/codewatch->products/titan",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "apps/codewatch/**",
       "to": "products/titan/**"
@@ -382,6 +469,9 @@
     {
       "id": "product-isolation:apps/codewatch->products/explainer",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "apps/codewatch/**",
       "to": "products/explainer/**"
@@ -389,6 +479,9 @@
     {
       "id": "product-isolation:apps/codewatch->products/active-work",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "apps/codewatch/**",
       "to": "products/active-work/**"
@@ -396,6 +489,9 @@
     {
       "id": "product-isolation:apps/codewatch->products/corpus-query",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "apps/codewatch/**",
       "to": "products/corpus-query/**"
@@ -403,6 +499,9 @@
     {
       "id": "product-isolation:apps/codewatch->products/yt-scout",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "apps/codewatch/**",
       "to": "products/yt-scout/**"
@@ -410,6 +509,9 @@
     {
       "id": "product-isolation:apps/codewatch->products/fleet-panel",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "apps/codewatch/**",
       "to": "products/fleet-panel/**"
@@ -417,6 +519,9 @@
     {
       "id": "product-isolation:products/factory->products/session-miner",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/factory/**",
       "to": "products/session-miner/**"
@@ -424,6 +529,9 @@
     {
       "id": "product-isolation:products/factory->products/retrieval-eval",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/factory/**",
       "to": "products/retrieval-eval/**"
@@ -431,6 +539,9 @@
     {
       "id": "product-isolation:products/factory->apps/codewatch",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/factory/**",
       "to": "apps/codewatch/**"
@@ -438,6 +549,9 @@
     {
       "id": "product-isolation:products/factory->products/evals",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/factory/**",
       "to": "products/evals/**"
@@ -445,6 +559,9 @@
     {
       "id": "product-isolation:products/factory->apps/console",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/factory/**",
       "to": "apps/console/**"
@@ -452,6 +569,9 @@
     {
       "id": "product-isolation:products/factory->products/titan",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/factory/**",
       "to": "products/titan/**"
@@ -459,6 +579,9 @@
     {
       "id": "product-isolation:products/factory->products/explainer",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/factory/**",
       "to": "products/explainer/**"
@@ -466,6 +589,9 @@
     {
       "id": "product-isolation:products/factory->products/active-work",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/factory/**",
       "to": "products/active-work/**"
@@ -473,6 +599,9 @@
     {
       "id": "product-isolation:products/factory->products/corpus-query",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/factory/**",
       "to": "products/corpus-query/**"
@@ -480,6 +609,9 @@
     {
       "id": "product-isolation:products/factory->products/yt-scout",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/factory/**",
       "to": "products/yt-scout/**"
@@ -487,6 +619,9 @@
     {
       "id": "product-isolation:products/factory->products/fleet-panel",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/factory/**",
       "to": "products/fleet-panel/**"
@@ -494,6 +629,9 @@
     {
       "id": "product-isolation:products/evals->products/session-miner",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/evals/**",
       "to": "products/session-miner/**"
@@ -501,6 +639,9 @@
     {
       "id": "product-isolation:products/evals->products/retrieval-eval",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/evals/**",
       "to": "products/retrieval-eval/**"
@@ -508,6 +649,9 @@
     {
       "id": "product-isolation:products/evals->apps/codewatch",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/evals/**",
       "to": "apps/codewatch/**"
@@ -515,6 +659,9 @@
     {
       "id": "product-isolation:products/evals->products/factory",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/evals/**",
       "to": "products/factory/**"
@@ -522,6 +669,9 @@
     {
       "id": "product-isolation:products/evals->apps/console",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/evals/**",
       "to": "apps/console/**"
@@ -529,6 +679,9 @@
     {
       "id": "product-isolation:products/evals->products/titan",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/evals/**",
       "to": "products/titan/**"
@@ -536,6 +689,9 @@
     {
       "id": "product-isolation:products/evals->products/explainer",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/evals/**",
       "to": "products/explainer/**"
@@ -543,6 +699,9 @@
     {
       "id": "product-isolation:products/evals->products/active-work",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/evals/**",
       "to": "products/active-work/**"
@@ -550,6 +709,9 @@
     {
       "id": "product-isolation:products/evals->products/corpus-query",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/evals/**",
       "to": "products/corpus-query/**"
@@ -557,6 +719,9 @@
     {
       "id": "product-isolation:products/evals->products/yt-scout",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/evals/**",
       "to": "products/yt-scout/**"
@@ -564,6 +729,9 @@
     {
       "id": "product-isolation:products/evals->products/fleet-panel",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/evals/**",
       "to": "products/fleet-panel/**"
@@ -571,6 +739,9 @@
     {
       "id": "product-isolation:apps/console->products/session-miner",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "apps/console/**",
       "to": "products/session-miner/**"
@@ -578,6 +749,9 @@
     {
       "id": "product-isolation:apps/console->products/retrieval-eval",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "apps/console/**",
       "to": "products/retrieval-eval/**"
@@ -585,6 +759,9 @@
     {
       "id": "product-isolation:apps/console->apps/codewatch",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "apps/console/**",
       "to": "apps/codewatch/**"
@@ -592,6 +769,9 @@
     {
       "id": "product-isolation:apps/console->products/factory",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "apps/console/**",
       "to": "products/factory/**"
@@ -599,6 +779,9 @@
     {
       "id": "product-isolation:apps/console->products/evals",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "apps/console/**",
       "to": "products/evals/**"
@@ -606,6 +789,9 @@
     {
       "id": "product-isolation:apps/console->products/titan",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "apps/console/**",
       "to": "products/titan/**"
@@ -613,6 +799,9 @@
     {
       "id": "product-isolation:apps/console->products/explainer",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "apps/console/**",
       "to": "products/explainer/**"
@@ -620,6 +809,9 @@
     {
       "id": "product-isolation:apps/console->products/active-work",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "apps/console/**",
       "to": "products/active-work/**"
@@ -627,6 +819,9 @@
     {
       "id": "product-isolation:apps/console->products/corpus-query",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "apps/console/**",
       "to": "products/corpus-query/**"
@@ -634,6 +829,9 @@
     {
       "id": "product-isolation:apps/console->products/yt-scout",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "apps/console/**",
       "to": "products/yt-scout/**"
@@ -641,6 +839,9 @@
     {
       "id": "product-isolation:apps/console->products/fleet-panel",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "apps/console/**",
       "to": "products/fleet-panel/**"
@@ -648,6 +849,9 @@
     {
       "id": "product-isolation:products/titan->products/session-miner",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/titan/**",
       "to": "products/session-miner/**"
@@ -655,6 +859,9 @@
     {
       "id": "product-isolation:products/titan->products/retrieval-eval",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/titan/**",
       "to": "products/retrieval-eval/**"
@@ -662,6 +869,9 @@
     {
       "id": "product-isolation:products/titan->apps/codewatch",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/titan/**",
       "to": "apps/codewatch/**"
@@ -669,6 +879,9 @@
     {
       "id": "product-isolation:products/titan->products/factory",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/titan/**",
       "to": "products/factory/**"
@@ -676,6 +889,9 @@
     {
       "id": "product-isolation:products/titan->products/evals",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/titan/**",
       "to": "products/evals/**"
@@ -683,6 +899,9 @@
     {
       "id": "product-isolation:products/titan->apps/console",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/titan/**",
       "to": "apps/console/**"
@@ -690,6 +909,9 @@
     {
       "id": "product-isolation:products/titan->products/explainer",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/titan/**",
       "to": "products/explainer/**"
@@ -697,6 +919,9 @@
     {
       "id": "product-isolation:products/titan->products/active-work",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/titan/**",
       "to": "products/active-work/**"
@@ -704,6 +929,9 @@
     {
       "id": "product-isolation:products/titan->products/corpus-query",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/titan/**",
       "to": "products/corpus-query/**"
@@ -711,6 +939,9 @@
     {
       "id": "product-isolation:products/titan->products/yt-scout",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/titan/**",
       "to": "products/yt-scout/**"
@@ -718,6 +949,9 @@
     {
       "id": "product-isolation:products/titan->products/fleet-panel",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/titan/**",
       "to": "products/fleet-panel/**"
@@ -725,6 +959,9 @@
     {
       "id": "product-isolation:products/explainer->products/session-miner",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/explainer/**",
       "to": "products/session-miner/**"
@@ -732,6 +969,9 @@
     {
       "id": "product-isolation:products/explainer->products/retrieval-eval",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/explainer/**",
       "to": "products/retrieval-eval/**"
@@ -739,6 +979,9 @@
     {
       "id": "product-isolation:products/explainer->apps/codewatch",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/explainer/**",
       "to": "apps/codewatch/**"
@@ -746,6 +989,9 @@
     {
       "id": "product-isolation:products/explainer->products/factory",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/explainer/**",
       "to": "products/factory/**"
@@ -753,6 +999,9 @@
     {
       "id": "product-isolation:products/explainer->products/evals",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/explainer/**",
       "to": "products/evals/**"
@@ -760,6 +1009,9 @@
     {
       "id": "product-isolation:products/explainer->apps/console",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/explainer/**",
       "to": "apps/console/**"
@@ -767,6 +1019,9 @@
     {
       "id": "product-isolation:products/explainer->products/titan",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/explainer/**",
       "to": "products/titan/**"
@@ -774,6 +1029,9 @@
     {
       "id": "product-isolation:products/explainer->products/active-work",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/explainer/**",
       "to": "products/active-work/**"
@@ -781,6 +1039,9 @@
     {
       "id": "product-isolation:products/explainer->products/corpus-query",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/explainer/**",
       "to": "products/corpus-query/**"
@@ -788,6 +1049,9 @@
     {
       "id": "product-isolation:products/explainer->products/yt-scout",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/explainer/**",
       "to": "products/yt-scout/**"
@@ -795,6 +1059,9 @@
     {
       "id": "product-isolation:products/explainer->products/fleet-panel",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/explainer/**",
       "to": "products/fleet-panel/**"
@@ -802,6 +1069,9 @@
     {
       "id": "product-isolation:products/active-work->products/session-miner",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/active-work/**",
       "to": "products/session-miner/**"
@@ -809,6 +1079,9 @@
     {
       "id": "product-isolation:products/active-work->products/retrieval-eval",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/active-work/**",
       "to": "products/retrieval-eval/**"
@@ -816,6 +1089,9 @@
     {
       "id": "product-isolation:products/active-work->apps/codewatch",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/active-work/**",
       "to": "apps/codewatch/**"
@@ -823,6 +1099,9 @@
     {
       "id": "product-isolation:products/active-work->products/factory",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/active-work/**",
       "to": "products/factory/**"
@@ -830,6 +1109,9 @@
     {
       "id": "product-isolation:products/active-work->products/evals",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/active-work/**",
       "to": "products/evals/**"
@@ -837,6 +1119,9 @@
     {
       "id": "product-isolation:products/active-work->apps/console",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/active-work/**",
       "to": "apps/console/**"
@@ -844,6 +1129,9 @@
     {
       "id": "product-isolation:products/active-work->products/titan",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/active-work/**",
       "to": "products/titan/**"
@@ -851,6 +1139,9 @@
     {
       "id": "product-isolation:products/active-work->products/explainer",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/active-work/**",
       "to": "products/explainer/**"
@@ -858,6 +1149,9 @@
     {
       "id": "product-isolation:products/active-work->products/corpus-query",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/active-work/**",
       "to": "products/corpus-query/**"
@@ -865,6 +1159,9 @@
     {
       "id": "product-isolation:products/active-work->products/yt-scout",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/active-work/**",
       "to": "products/yt-scout/**"
@@ -872,6 +1169,9 @@
     {
       "id": "product-isolation:products/active-work->products/fleet-panel",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/active-work/**",
       "to": "products/fleet-panel/**"
@@ -879,6 +1179,9 @@
     {
       "id": "product-isolation:products/corpus-query->products/session-miner",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/corpus-query/**",
       "to": "products/session-miner/**"
@@ -886,6 +1189,9 @@
     {
       "id": "product-isolation:products/corpus-query->products/retrieval-eval",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/corpus-query/**",
       "to": "products/retrieval-eval/**"
@@ -893,6 +1199,9 @@
     {
       "id": "product-isolation:products/corpus-query->apps/codewatch",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/corpus-query/**",
       "to": "apps/codewatch/**"
@@ -900,6 +1209,9 @@
     {
       "id": "product-isolation:products/corpus-query->products/factory",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/corpus-query/**",
       "to": "products/factory/**"
@@ -907,6 +1219,9 @@
     {
       "id": "product-isolation:products/corpus-query->products/evals",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/corpus-query/**",
       "to": "products/evals/**"
@@ -914,6 +1229,9 @@
     {
       "id": "product-isolation:products/corpus-query->apps/console",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/corpus-query/**",
       "to": "apps/console/**"
@@ -921,6 +1239,9 @@
     {
       "id": "product-isolation:products/corpus-query->products/titan",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/corpus-query/**",
       "to": "products/titan/**"
@@ -928,6 +1249,9 @@
     {
       "id": "product-isolation:products/corpus-query->products/explainer",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/corpus-query/**",
       "to": "products/explainer/**"
@@ -935,6 +1259,9 @@
     {
       "id": "product-isolation:products/corpus-query->products/active-work",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/corpus-query/**",
       "to": "products/active-work/**"
@@ -942,6 +1269,9 @@
     {
       "id": "product-isolation:products/corpus-query->products/yt-scout",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/corpus-query/**",
       "to": "products/yt-scout/**"
@@ -949,6 +1279,9 @@
     {
       "id": "product-isolation:products/corpus-query->products/fleet-panel",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/corpus-query/**",
       "to": "products/fleet-panel/**"
@@ -956,6 +1289,9 @@
     {
       "id": "product-isolation:products/yt-scout->products/session-miner",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/yt-scout/**",
       "to": "products/session-miner/**"
@@ -963,6 +1299,9 @@
     {
       "id": "product-isolation:products/yt-scout->products/retrieval-eval",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/yt-scout/**",
       "to": "products/retrieval-eval/**"
@@ -970,6 +1309,9 @@
     {
       "id": "product-isolation:products/yt-scout->apps/codewatch",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/yt-scout/**",
       "to": "apps/codewatch/**"
@@ -977,6 +1319,9 @@
     {
       "id": "product-isolation:products/yt-scout->products/factory",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/yt-scout/**",
       "to": "products/factory/**"
@@ -984,6 +1329,9 @@
     {
       "id": "product-isolation:products/yt-scout->products/evals",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/yt-scout/**",
       "to": "products/evals/**"
@@ -991,6 +1339,9 @@
     {
       "id": "product-isolation:products/yt-scout->apps/console",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/yt-scout/**",
       "to": "apps/console/**"
@@ -998,6 +1349,9 @@
     {
       "id": "product-isolation:products/yt-scout->products/titan",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/yt-scout/**",
       "to": "products/titan/**"
@@ -1005,6 +1359,9 @@
     {
       "id": "product-isolation:products/yt-scout->products/explainer",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/yt-scout/**",
       "to": "products/explainer/**"
@@ -1012,6 +1369,9 @@
     {
       "id": "product-isolation:products/yt-scout->products/active-work",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/yt-scout/**",
       "to": "products/active-work/**"
@@ -1019,6 +1379,9 @@
     {
       "id": "product-isolation:products/yt-scout->products/corpus-query",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/yt-scout/**",
       "to": "products/corpus-query/**"
@@ -1026,6 +1389,9 @@
     {
       "id": "product-isolation:products/yt-scout->products/fleet-panel",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/yt-scout/**",
       "to": "products/fleet-panel/**"
@@ -1033,6 +1399,9 @@
     {
       "id": "product-isolation:products/fleet-panel->products/session-miner",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/fleet-panel/**",
       "to": "products/session-miner/**"
@@ -1040,6 +1409,9 @@
     {
       "id": "product-isolation:products/fleet-panel->products/retrieval-eval",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/fleet-panel/**",
       "to": "products/retrieval-eval/**"
@@ -1047,6 +1419,9 @@
     {
       "id": "product-isolation:products/fleet-panel->apps/codewatch",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/fleet-panel/**",
       "to": "apps/codewatch/**"
@@ -1054,6 +1429,9 @@
     {
       "id": "product-isolation:products/fleet-panel->products/factory",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/fleet-panel/**",
       "to": "products/factory/**"
@@ -1061,6 +1439,9 @@
     {
       "id": "product-isolation:products/fleet-panel->products/evals",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/fleet-panel/**",
       "to": "products/evals/**"
@@ -1068,6 +1449,9 @@
     {
       "id": "product-isolation:products/fleet-panel->apps/console",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/fleet-panel/**",
       "to": "apps/console/**"
@@ -1075,6 +1459,9 @@
     {
       "id": "product-isolation:products/fleet-panel->products/titan",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/fleet-panel/**",
       "to": "products/titan/**"
@@ -1082,6 +1469,9 @@
     {
       "id": "product-isolation:products/fleet-panel->products/explainer",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/fleet-panel/**",
       "to": "products/explainer/**"
@@ -1089,6 +1479,9 @@
     {
       "id": "product-isolation:products/fleet-panel->products/active-work",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/fleet-panel/**",
       "to": "products/active-work/**"
@@ -1096,6 +1489,9 @@
     {
       "id": "product-isolation:products/fleet-panel->products/corpus-query",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/fleet-panel/**",
       "to": "products/corpus-query/**"
@@ -1103,6 +1499,9 @@
     {
       "id": "product-isolation:products/fleet-panel->products/yt-scout",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/fleet-panel/**",
       "to": "products/yt-scout/**"
@@ -1110,6 +1509,9 @@
     {
       "id": "code-graph-history-seam",
       "type": "layered-deps",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "packages/code-graph/src/history imports nothing from the rest of code-graph, so a later extraction into @titan-design/git-history is a directory move. The rest of code-graph may import history.",
       "layers": [
         [
@@ -1123,6 +1525,9 @@
     {
       "id": "active-work-layers",
       "type": "layered-deps",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "products/active-work in four layers, lowest first: L0 base (errors, version, utils, schemas, registry), L1 store, L2 indexes and services, L3 surfaces (the rest of src). A layer imports only its own or a lower one, so the store layer can later move into a package as a directory (TP-3542 plan, D1). Colocated tests may reach across layers.",
       "excludeRoles": [
         "test",
@@ -1163,6 +1568,9 @@
     {
       "id": "code-graph-catalogue-pure",
       "type": "layered-deps",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "The metric catalogue imports only its own directory and types.ts, so a browser-safe subpath can re-export it without pulling in ts-morph, tree-sitter, or SQLite.",
       "layers": [
         [
@@ -1177,6 +1585,9 @@
     {
       "id": "code-graph-catalogue-no-node",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Node builtins would break the catalogue in a browser.",
       "from": "packages/code-graph/src/catalogue/**",
       "to": "node:**"
@@ -1184,6 +1595,9 @@
     {
       "id": "rpc-client-browser-no-node",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "rpc-client's main entry ships to browsers; only src/node (exportSnapshot) may use Node builtins.",
       "from": "packages/rpc-client/src/client/**",
       "to": "node:**"
@@ -1191,6 +1605,9 @@
     {
       "id": "react-app-browser-no-node",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "react-app's main entry ships to browsers; only src/vite (the build preset) may use Node builtins.",
       "from": "packages/react-app/src/hooks/**",
       "to": "node:**"
@@ -1198,6 +1615,9 @@
     {
       "id": "react-app-browser-no-vite",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Vite is an optional peer for the ./vite entry; the hooks must load without it. The leading ** anchors the match so npm:vitest in tests stays allowed.",
       "from": "packages/react-app/src/hooks/**",
       "to": "**npm:vite"
@@ -1205,6 +1625,9 @@
     {
       "id": "no-titan-design-library-imports",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "No library in titan-platform imports one from titan-design or the reverse; only products cross that line (site/guides/where-code-goes.md). Only products and apps may import @titan-design/react-ui.",
       "from": "packages/**",
       "to": "npm:@titan-design/react-ui"
@@ -1212,6 +1635,9 @@
     {
       "id": "no-titan-design-library-imports:beats",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "No library in titan-platform imports one from titan-design or the reverse; only products cross that line (site/guides/where-code-goes.md). Only products and apps may import @titan-design/beats.",
       "from": "packages/**",
       "to": "npm:@titan-design/beats"
@@ -1219,6 +1645,9 @@
     {
       "id": "video-mechanism-no-react:frame-capture",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "The video mechanism packages (frame-capture, render-qa, graph-layout, speech-*) run without React: pixels live in titan-design, and these hold engines with no pixels. One rule per package because codewatch globs have no braces; a glob that matches nothing, as render-qa does until it exists, is accepted.",
       "from": "packages/frame-capture/src/**",
       "to": "npm:react*"
@@ -1226,6 +1655,9 @@
     {
       "id": "video-mechanism-no-react:render-qa",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "The video mechanism packages (frame-capture, render-qa, graph-layout, speech-*) run without React: pixels live in titan-design, and these hold engines with no pixels. One rule per package because codewatch globs have no braces; a glob that matches nothing, as render-qa does until it exists, is accepted.",
       "from": "packages/render-qa/src/**",
       "to": "npm:react*"
@@ -1233,6 +1665,9 @@
     {
       "id": "video-mechanism-no-react:graph-layout",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "The video mechanism packages (frame-capture, render-qa, graph-layout, speech-*) run without React: pixels live in titan-design, and these hold engines with no pixels. One rule per package because codewatch globs have no braces; a glob that matches nothing, as render-qa does until it exists, is accepted.",
       "from": "packages/graph-layout/src/**",
       "to": "npm:react*"
@@ -1240,6 +1675,9 @@
     {
       "id": "video-mechanism-no-react:speech-*",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "The video mechanism packages (frame-capture, render-qa, graph-layout, speech-*) run without React: pixels live in titan-design, and these hold engines with no pixels. One rule per package because codewatch globs have no braces; a glob that matches nothing, as render-qa does until it exists, is accepted.",
       "from": "packages/speech-*/src/**",
       "to": "npm:react*"
@@ -1247,6 +1685,9 @@
     {
       "id": "codewatch-browser-no-node",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "apps/codewatch/src ships to the browser, including as a file opened from disk; only server/ may use Node builtins.",
       "from": "apps/codewatch/src/**",
       "to": "node:**"
@@ -1254,6 +1695,9 @@
     {
       "id": "console-browser-no-node",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "apps/console/src ships to the browser, including as a file opened from disk; only server/ may use Node builtins.",
       "from": "apps/console/src/**",
       "to": "node:**"
@@ -1261,6 +1705,9 @@
     {
       "id": "codewatch-browser-no-code-graph",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "code-graph's root pulls in ts-morph, tree-sitter, and SQLite; the browser reads code-read's ./query and the exported dataset instead.",
       "from": "apps/codewatch/src/**",
       "to": "packages/code-graph/**"
@@ -1268,6 +1715,9 @@
     {
       "id": "code-read-query-pure",
       "type": "layered-deps",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "code-read's ./query subpath imports only its own directory, so the browser bundle never reaches the SQLite loader or the registry wiring.",
       "layers": [
         [
@@ -1281,6 +1731,9 @@
     {
       "id": "code-read-query-no-node",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "Node builtins would break ./query in a browser.",
       "from": "packages/code-read/src/query/**",
       "to": "node:**"
@@ -1288,6 +1741,9 @@
     {
       "id": "code-read-query-no-code-graph",
       "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
       "$comment": "code-graph's root pulls in ts-morph, tree-sitter, and SQLite; ./query receives the catalogue through buildReadModel instead. The one exception is the browser-safe @titan-design/code-graph/analysis subpath.",
       "from": "packages/code-read/src/query/**",
       "to": "packages/code-graph/**",
@@ -1298,6 +1754,9 @@
     {
       "id": "max-file-loc",
       "type": "metric-max",
+      "$classes": [
+        "complexity"
+      ],
       "metric": "loc",
       "kind": "file",
       "max": 350,
@@ -1309,6 +1768,9 @@
     {
       "id": "max-cyclomatic-per-function",
       "type": "metric-max",
+      "$classes": [
+        "complexity"
+      ],
       "metric": "cyclomatic_max",
       "kind": "file",
       "max": 30,
@@ -1320,6 +1782,9 @@
     {
       "id": "max-nesting-depth",
       "type": "metric-max",
+      "$classes": [
+        "complexity"
+      ],
       "metric": "max_nesting_depth",
       "kind": "file",
       "max": 5,
