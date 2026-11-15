@@ -79,6 +79,11 @@ Three ship, and your own object satisfying that shape is a first-class citizen.
 - **`graphRetriever(edges, seededBy)`** — takes another retriever's top results as seeds and
   walks the edge table by hop, optionally restricted to relations or to outbound direction.
   `expandGraph` is the walk on its own.
+- **`collapsedTreeRetriever({ nodes, inner, leavesOnly? })`** — ranks every node of a summary
+  tree (`SummaryNode`: `{ id, level, parentId, leafIds, text }`) in one list through an
+  `inner` retriever built over the node text, so a broad query can match a level-1 summary
+  and a detail query a leaf. Each hit's payload carries `level` and `leafIds`; cite the
+  leaves, never the summary. `leavesOnly` drops every node above level 0, for the ablation.
 
 ## Fusion
 

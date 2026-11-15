@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { defineCommand } from '../registry/index.js';
 import { searchWorkspace } from '../search/index.js';
+import { appendSearchQuery } from '../search/query-log.js';
 import { visibilityFor } from '../sessions/visibility.js';
 import { getActiveRoot } from '../utils/paths.js';
 
@@ -57,6 +58,13 @@ export default defineCommand<Args, Result>({
       limit: args.limit,
       initiative: args.initiative,
       visible,
+    });
+    await appendSearchQuery({
+      ts: new Date().toISOString(),
+      query: args.query,
+      hits: hits.length,
+      degraded: degraded.length,
+      callerKind: ctx.caller ?? 'unknown',
     });
     return {
       query: args.query,
