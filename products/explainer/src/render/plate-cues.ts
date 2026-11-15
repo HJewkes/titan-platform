@@ -7,13 +7,13 @@ export const PLATE_TOLERANCE_S = 1 / 30;
 // A log entry exactly one frame off must pass despite binary rounding in the subtraction.
 const FLOAT_SLACK_S = 1e-9;
 
-export interface PlateCues {
+interface PlateCues {
   schema: "explainer.plate-cues/v1";
   beats: { id: string; startS: number; durationS: number; cues: Record<string, number> }[];
 }
 
 export const PlateLogSchema = z.array(z.object({ beat: z.string(), cue: z.string(), atS: z.number() }));
-export type PlateLog = z.infer<typeof PlateLogSchema>;
+type PlateLog = z.infer<typeof PlateLogSchema>;
 
 /** Each beat's cues as absolute seconds on the video clock: the beat start plus the beat-local second render uses. */
 export function plateCues(timeline: Timeline): PlateCues {

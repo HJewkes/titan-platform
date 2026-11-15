@@ -12,7 +12,7 @@ interface PlateCuesFlags {
   check?: string;
 }
 
-export interface PlateCuesCliDeps {
+interface PlateCuesCliDeps {
   out?: (text: string) => void;
   err?: (text: string) => void;
 }
