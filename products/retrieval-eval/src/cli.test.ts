@@ -51,6 +51,16 @@ describe("runCli enum options", () => {
     expect(message).toContain("heading-lead, top-df");
   });
 
+  it("lists the weekly verb", () => {
+    expect(buildCli().commands.map((c) => c.name())).toContain("weekly");
+  });
+
+  it("rejects a malformed weekly --week", async () => {
+    const { code, message } = await failure(["weekly", "--week", "2026-46"]);
+    expect(code).toBe(1);
+    expect(message).toContain("--week must look like YYYY-Www");
+  });
+
   it("rejects an unknown run --candidates and names the allowed candidates", async () => {
     const { code, message } = await failure(["run", "pairs.jsonl", "--candidates", "bogus"]);
     expect(code).toBe(1);
