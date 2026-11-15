@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { graphNoteRelevance } from '../bootstrap/rank-notes.js';
 import { searchWorkspace } from './index.js';
 import { ownerShown, writeCharter } from '../test-support/visibility.js';
+import { writeUnrelatedPrecedent } from '../test-support/related-fixture.js';
 import { relatedContext, withinBudget, type RelatedInput } from './related.js';
 import { openGraph, type WorkspaceGraph } from '../session-index/graph.js';
 import { demoteToLegacy, refreshInto, removeFile, scaffold, writeFile } from '../test-support/workspace-index/fixture.js';
@@ -30,6 +31,7 @@ beforeEach(async () => {
   dbPath = path.join(dir, 'graph.sqlite3');
   scaffold(root);
   writeCharter(root);
+  writeUnrelatedPrecedent(root);
   (await refreshInto(dbPath, root)).db.close();
 });
 
