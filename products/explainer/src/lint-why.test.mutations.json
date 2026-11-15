@@ -45,6 +45,15 @@
       "kills": [
         "why, value and thread lints no new facts in the last tenth passes a new fact in a beat that starts before 90 percent"
       ]
+    },
+    {
+      "name": "the promise rule lets a By the end teaser through",
+      "file": "products/explainer/src/lint-why.ts",
+      "find": "|| TEASER_PROMISE.test(promise) ",
+      "replace": "",
+      "kills": [
+        "why, value and thread lints fails a promise with a By the end opener"
+      ]
     }
   ]
 }

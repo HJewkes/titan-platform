@@ -153,6 +153,8 @@ describe("why, value and thread lints", () => {
     ["no you", "The desk catches a bad label before it prints."],
     ["a tour", "You get a tour of parcel-desk."],
     ["a chapter count", "You will see it in five short chapters."],
+    ["a By the end opener", "By the end you’ll spot a bad label before it prints."],
+    ["a be-able-to promise", "You'll be able to catch a bad label before it prints."],
   ])("fails a promise with %s", (_case, promise) => {
     const good = goodScript();
     const script = { ...good, video: { ...good.video, promise } };
@@ -160,7 +162,7 @@ describe("why, value and thread lints", () => {
     expect(rowFor(script, "Q-W5")?.pass).toBe(false);
   });
 
-  it.each([["You'll be able to catch a bad label before it prints."], ["By the end you’ll spot a bad label before it prints."]])(
+  it.each([["You’ll see why a bad label never prints."], ["Does the desk catch a bad label before you ever see it print?"]])(
     "passes a promise whose you carries a contraction: %s",
     (promise) => {
       const good = goodScript();
