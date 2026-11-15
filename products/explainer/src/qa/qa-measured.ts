@@ -51,11 +51,17 @@ function fillFindings(settled: readonly ProbedMoment[], stage: Stage): QaFinding
 export const layerLayouts = (timeline: QaTimeline): BeatLayout[] =>
   timeline.beats.flatMap((beat) => (beat.layer === "custom" && beat.anchors ? [{ beat: beat.id, layer: beat.layer, anchors: beat.anchors }] : []));
 
+const settledProbes = (input: Pick<MeasuredInput, "moments" | "probed">): ProbedMoment[] => input.probed.filter((_, i) => input.moments[i]?.kind === "end");
+
 /** One occupancy table per settled moment, keyed by the probe's element names, which the findings name too. */
 function occupancy(timeline: QaTimeline, settled: readonly ProbedMoment[], stage: Stage): OccupancyTable[] {
   const marks = settled.map((m) => ({ beat: m.beat, t: m.t, elements: contentBoxes(m).map((box) => ({ id: box.element, box: box.box })) }));
   return buildOccupancy({ stage, layouts: layerLayouts(timeline), marks });
 }
+
+/** The tables `measuredFindings` anchors on, one per settled probed moment, for the stage to store as `occupancy.json`. */
+export const settledOccupancy = (input: Pick<MeasuredInput, "timeline" | "moments" | "probed" | "stage">): OccupancyTable[] =>
+  occupancy(input.timeline, settledProbes(input), input.stage);
 
 /** A finding on a custom-layer beat that names no element of its own is the layer's, so it reports the layer's anchors. */
 function layerOwned(timeline: QaTimeline, findings: readonly QaFinding[]): QaFinding[] {
@@ -70,14 +76,14 @@ function layerOwned(timeline: QaTimeline, findings: readonly QaFinding[]): QaFin
  */
 export function measuredFindings(input: MeasuredInput): MeasuredFinding[] {
   const settledMoments = input.moments.filter((moment) => moment.kind === "end");
-  const settled = input.probed.filter((_, i) => input.moments[i]?.kind === "end");
+  const settled = settledProbes(input);
   const findings = [
     ...motionFindings(input.timeline, settledMoments, input.diffs, input.fps),
     ...clippedText(settled.flatMap(measuredTexts)),
     ...fillFindings(settled, input.stage),
     ...emptyStageRuns(input.probed.map(stageMoment), { x: 0, y: 0, ...input.stage }),
   ];
-  return anchorFindings(layerOwned(input.timeline, findings), occupancy(input.timeline, settled, input.stage), input.stage).map((anchored, i) => {
+  return anchorFindings(layerOwned(input.timeline, findings), settledOccupancy(input), input.stage).map((anchored, i) => {
     const { t } = findings[i]!;
     return { code: anchored.code, severity: anchored.severity, beat: anchored.beat, ...(t === undefined ? {} : { t }), anchors: anchored.anchors, message: anchored.message };
   });
