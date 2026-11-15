@@ -7,6 +7,7 @@ import { depositItemId, type OwnerItemDeposit } from "@titan-design/owner-queue"
 import { readAnswer, writeDeposit } from "@titan-design/owner-queue/spool";
 import { withdrawDeposit } from "@titan-design/owner-queue/withdraw";
 import { EXIT, invokeCommand, type JsonEnvelope } from "@titan-design/registry";
+import { z } from "zod";
 import { factoryNeeds } from "./factory.js";
 import { inboxActionCommands, type PrepareResult } from "./inbox-actions.js";
 import { readInbox } from "./inbox-view.js";
@@ -74,7 +75,9 @@ async function harness() {
 
 type Ready = Extract<PrepareResult, { status: "ready" }>;
 
-const readyOf = (envelope: JsonEnvelope<unknown>): Ready => (envelope.ok ? (envelope.data as Ready) : expect.fail(envelope.error));
+const readyEnvelope = z.object({ ok: z.literal(true), data: z.custom<Ready>((data) => z.object({ status: z.literal("ready") }).safeParse(data).success) });
+
+const readyOf = (envelope: JsonEnvelope<unknown>): Ready => readyEnvelope.parse(envelope).data;
 
 describe("answering a plain deposit from the inbox", () => {
   it("offers the answer tap, not the terminal, with the question, options and recommended pick read back", async () => {

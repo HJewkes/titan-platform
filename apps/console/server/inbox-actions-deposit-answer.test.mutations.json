@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a deposit with no op is left on the terminal",
+      "file": "apps/console/server/inbox-view.ts",
+      "find": "if (op === undefined) return { action: { kind: \"answer-deposit\" } };",
+      "replace": "if (op === undefined) return { action: terminal(\"a deposit is agent-written\", item.command) };",
+      "kills": [
+        "answering a plain deposit from the inbox offers the answer tap, not the terminal, with the question, options and recommended pick read back"
+      ]
+    },
+    {
+      "name": "a replayed deposit answer overwrites nothing but reports it as new",
+      "file": "apps/console/server/inbox-actions.ts",
+      "find": "return { status: created ? \"answered\" : \"already\" };",
+      "replace": "return { status: \"answered\" };",
+      "kills": [
+        "answering a plain deposit from the inbox answers already and writes nothing new when the same confirm is replayed"
+      ]
+    }
+  ]
+}

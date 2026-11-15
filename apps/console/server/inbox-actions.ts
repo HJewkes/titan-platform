@@ -17,9 +17,7 @@
  * An `owner-op` tap (a deposit's typed op on `CONSOLE_OPS`) reads its read-back from the factory's `owner-op.preview`
  * (`inbox-op.ts`) and writes a record naming the `op`, never an `action`, so the factory reads it as an op record.
  *
- * An `answer-deposit` tap (a deposit with no op) takes one offered option or free text and files it with `writeAnswer`
- * beside the deposit, as `{ class: owner-remote, channel: console:inbox }`; nothing is posted, and a replay finds the answer filed.
- *
+ * An `answer-deposit` tap (a deposit with no op) files one offered option or free text with `writeAnswer`; nothing is posted.
  * The inbox acts on `resolve-gate`, `owner-release`, `owner-op`, `answer-chat`, `answer-deposit`, `approve-chat` and a g10 `hold-release`; every other action
  * has no console action.
  */
@@ -70,8 +68,6 @@ export interface InboxActionOptions {
   now?: () => number;
 }
 
-type DepositReadBack = Omit<ChatReadBack, "msgId">;
-
 type ChatReadBack = {
   msgId: string;
   title: string;
@@ -81,6 +77,7 @@ type ChatReadBack = {
   recommended?: string;
   effect: string;
 };
+type DepositReadBack = Omit<ChatReadBack, "msgId">;
 
 type G10ReadBack = Omit<PrReadBack, "gateId"> & G10Signal;
 
@@ -230,11 +227,10 @@ function textFor(action: ConsoleAction, text: string | undefined): string | unde
 
 /** A deposit answer is one offered option or free text, never both and never neither; no other tap takes an option. */
 function optionFor(action: ConsoleAction, item: InboxItem, tap: Tap, text: string | undefined): string | undefined {
-  const { optionId } = tap;
-  if (action.kind !== "answer-deposit") return optionId === undefined ? undefined : refuse("only an answer to a deposit takes an option");
-  if ((optionId === undefined) === (text === undefined)) return refuse("answer a deposit with one option or with text");
-  if (optionId !== undefined && !item.options?.some((option) => option.id === optionId)) return refuse(`${optionId} is not one of the deposit's options`);
-  return optionId;
+  if (action.kind !== "answer-deposit") return tap.optionId === undefined ? undefined : refuse("only an answer to a deposit takes an option");
+  if ((tap.optionId === undefined) === (text === undefined)) return refuse("answer a deposit with one option or with text");
+  if (tap.optionId !== undefined && !item.options?.some((option) => option.id === tap.optionId)) return refuse(`${tap.optionId} is not one of the deposit's options`);
+  return tap.optionId;
 }
 
 /** A resolved sent-back gate merged nothing, so its tap must not read as a merge. */
@@ -307,8 +303,7 @@ async function releaseOnce(ctx: ActContext, file: string, confirm: string, actio
 /** The answer is written once from the record, so a replay finds the first one in place and answers already. */
 async function fileDepositAnswer(ctx: ActContext, record: Exclude<ActionRecord, OpRecord>): Promise<Outcome> {
   const { text, optionId, item } = record;
-  const answer = { ...(optionId !== undefined && { optionId }), ...(text !== undefined && { text }), by: ACTOR, at: new Date(ctx.now()).toISOString() };
-  const { created } = await writeAnswer(ctx.sources.inbox.dir, item.id, answer);
+  const { created } = await writeAnswer(ctx.sources.inbox.dir, item.id, { ...(optionId !== undefined && { optionId }), ...(text !== undefined && { text }), by: ACTOR, at: new Date(ctx.now()).toISOString() });
   return { status: created ? "answered" : "already" };
 }
 

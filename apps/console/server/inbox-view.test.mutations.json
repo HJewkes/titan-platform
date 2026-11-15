@@ -11,12 +11,14 @@
       ]
     },
     {
-      "name": "a factory-config-set deposit gets a console tap before its effect lands",
+      "name": "a deposit with no op is left on the terminal",
       "file": "apps/console/server/inbox-view.ts",
-      "find": "new Set([\"merge-at-head\", \"retire-agent\", \"close-pr\", \"deploy-pause-clear\", \"plan-bet-select\", \"plan-outcome-edit\", \"plan-freeze-set\"]);",
-      "replace": "new Set([\"merge-at-head\", \"retire-agent\", \"close-pr\", \"deploy-pause-clear\", \"plan-bet-select\", \"plan-outcome-edit\", \"plan-freeze-set\", \"factory-config-set\"]);",
+      "find": "if (op === undefined) return { action: { kind: \"answer-deposit\" } };",
+      "replace": "if (op === undefined) return { action: terminal(\"a deposit is agent-written\", item.command) };",
       "kills": [
-        "a deposit's typed op stays on the terminal for a kind with no console tap yet"
+        "inbox.list on a fixture factory returns every source kind with its action, blocking first and newest first",
+        "actionFor gives a deposit carrying a live gate's key only the deposit answer",
+        "a deposit's typed op is answered in the inbox with no op"
       ]
     },
     {
