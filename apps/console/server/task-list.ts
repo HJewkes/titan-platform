@@ -12,6 +12,9 @@ export interface TaskListRow {
   stageReason: string;
   /** True for the default rule: nothing was found either way, so the stage is not a verified state. */
   stageGuessed: boolean;
+  owner_steps?: { kind: string; note: string }[];
+  /** True when the task carries the human-action or human-only tag; the tags themselves stay off the row. */
+  ownerTagged?: true;
 }
 
 /** Filtered here, not in the browser, so a page holds only rows the filters match and the counts cover every match. */
@@ -21,6 +24,8 @@ export const tasksArgs = z.object({
   severity: z.string().min(1).optional(),
   /** Matched case-insensitively against the id and title. */
   q: z.string().optional(),
+  /** Only tasks with owner_steps or the human-action or human-only tag. */
+  ownerOnly: z.boolean().optional(),
   limit: z.number().int().min(1).max(200).optional(),
   /** A previous page's `nextCursor`. */
   cursor: z.string().regex(/^\d+$/).optional(),
@@ -43,9 +48,26 @@ export interface TaskListPage {
 const LIMIT = 50;
 
 /** Drops every field the board does not render, such as tags, edges and the stage rule. */
-export function listRow({ slug, id, title, severity, stage, stageReason, stageGuessed }: TaskListRow): TaskListRow {
-  return { slug, id, title, ...(severity !== undefined ? { severity } : {}), stage, stageReason, stageGuessed };
+export function listRow({ slug, id, title, severity, stage, stageReason, stageGuessed, owner_steps, ownerTagged }: TaskListRow): TaskListRow {
+  return {
+    slug,
+    id,
+    title,
+    ...(severity !== undefined ? { severity } : {}),
+    stage,
+    stageReason,
+    stageGuessed,
+    ...(owner_steps !== undefined ? { owner_steps } : {}),
+    ...(ownerTagged ? { ownerTagged } : {}),
+  };
 }
+
+const OWNER_TAGS: ReadonlySet<string> = new Set(["human-action", "human-only"]);
+
+/** The tag half of the owner-step test; the steps themselves ride on the row. */
+export const ownerTagOf = (tags: readonly string[] | undefined): { ownerTagged?: true } => (tags?.some((tag) => OWNER_TAGS.has(tag)) ? { ownerTagged: true } : {});
+
+const needsOwner = (row: TaskListRow): boolean => (row.owner_steps?.length ?? 0) > 0 || row.ownerTagged === true;
 
 /** The cursor is an offset into the matching rows, so a task that changes stage between pages can repeat or be skipped once. */
 export function listPage(rows: readonly TaskListRow[], args: TasksArgs): TaskListPage {
@@ -58,9 +80,10 @@ export function listPage(rows: readonly TaskListRow[], args: TasksArgs): TaskLis
   return { tasks, nextCursor: end < matched.length ? String(end) : null, counts, initiatives: [...new Set(rows.map((row) => row.slug))].sort() };
 }
 
-function matches({ stage, initiative, severity, q }: TasksArgs): (row: TaskListRow) => boolean {
+function matches({ stage, initiative, severity, q, ownerOnly }: TasksArgs): (row: TaskListRow) => boolean {
   const text = q?.toLowerCase();
   return (row) =>
+    (!ownerOnly || needsOwner(row)) &&
     (!stage || row.stage === stage) &&
     (!initiative || row.slug === initiative) &&
     (!severity || row.severity === severity) &&
