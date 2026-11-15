@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Alert, Badge, BadgeText, Card, CardContent, HStack, Section, SectionContent, SectionHeader, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, Badge, BadgeText, Card, CardContent, CardStat, HStack, Section, SectionContent, SectionHeader, Typography, VStack } from "@titan-design/react-ui";
 import { Spinner } from "../shell/Loading.js";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
@@ -54,7 +54,6 @@ function UpstreamsRegion(): ReactNode {
   );
 }
 
-// StatCard is unreleased in react-ui ^0.20, so a Card stands in for each tile.
 function UpstreamCard({ upstream }: { upstream: Upstream }): ReactNode {
   const onPress = isWebTarget(upstream.target) ? () => openExternal(upstream.target) : undefined;
   return (
@@ -114,16 +113,5 @@ function sessionsToday(list: SessionsList | undefined): string | undefined {
 }
 
 function CountTile({ label, value }: { label: string; value: string }): ReactNode {
-  return (
-    <Card variant="outline" testID={`count-${label}`}>
-      <CardContent>
-        <VStack gap={1}>
-          <Typography variant="microLabel" color="secondary">
-            {label}
-          </Typography>
-          <Typography variant="h3">{value}</Typography>
-        </VStack>
-      </CardContent>
-    </Card>
-  );
+  return <CardStat variant="outline" label={label} value={value} metricProps={{ labelPosition: "above" }} testID={`count-${label}`} />;
 }

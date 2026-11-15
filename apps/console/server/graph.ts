@@ -199,12 +199,21 @@ function graphReads(graph: SessionGraph): GraphReads {
                                      AND t_expired IS NULL AND target_ref NOT LIKE 'agent:%'`);
   const inbound = graph.db.prepare(`SELECT COUNT(*) AS n FROM edge WHERE target_ref = ? AND relation IN (${placeholders(inboundKinds)})
                                     AND t_expired IS NULL AND source_ref NOT LIKE 'agent:%'`);
-  const title = graph.db.prepare("SELECT ai_title FROM session WHERE session_id = ?");
+  const titles = {
+    session: graph.db.prepare("SELECT ai_title AS title FROM session WHERE session_id = ?"),
+    task: graph.db.prepare("SELECT title FROM task WHERE task_ref = ?"),
+    pr: graph.db.prepare("SELECT title FROM pr WHERE pr_ref = ?"),
+  };
   const count = (statement: typeof outbound, ref: string, kinds: readonly string[]) => (statement.get(ref, ...kinds) as { n: number }).n;
   return {
     links: (ref) => [...storedLinks(graph, ref), ...ranAs.links(ref)],
     degree: (ref) => count(outbound, ref, STORED_KINDS) + count(inbound, ref, inboundKinds) + ranAs.links(ref).length,
-    title: (ref) => (kindOf(ref) === "session" ? ((title.get(tailOf(ref)) as { ai_title: string | null } | undefined)?.ai_title ?? null) : null),
+    title(ref) {
+      const kind = kindOf(ref);
+      if (kind !== "session" && kind !== "task" && kind !== "pr") return null;
+      const key = kind === "session" ? tailOf(ref) : ref;
+      return (titles[kind].get(key) as { title: string | null } | undefined)?.title || null;
+    },
   };
 }
 
