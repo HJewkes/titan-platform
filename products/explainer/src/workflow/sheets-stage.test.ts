@@ -65,6 +65,18 @@ describe("the sheets stage in a run", () => {
     expect(repair.status, repair.error).toBe("completed");
     expect(sidecarOf(row(repair, "sheets").outputs.sidecar!).explainer).toMatchObject({ videoId: first.runId, runIds: [first.runId, repair.runId] });
   });
+
+  it("writes take v3 for the third run of a video", async () => {
+    const first = await copiedRun();
+    const host = fakeHost(fx!, fakeScriptModel(), fakeRender());
+
+    const second = await runVideo({ from: "sheets", base: first.runId }, host);
+    const third = await runVideo({ from: "sheets", base: first.runId }, host);
+
+    expect(sidecarOf(row(first, "sheets").outputs.sidecar!).take).toBe("v1");
+    expect(sidecarOf(row(second, "sheets").outputs.sidecar!).take).toBe("v2");
+    expect(sidecarOf(row(third, "sheets").outputs.sidecar!).take).toBe("v3");
+  });
 });
 
 describe("explainer stage sheets", () => {
