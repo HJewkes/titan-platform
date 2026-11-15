@@ -35,7 +35,6 @@
   "dependencies": {
     "@titan-design/anthropic-account": "workspace:^",
     "@titan-design/app-paths": "workspace:^",
-    "@titan-design/cluster": "workspace:^",
     "@titan-design/daemon": "workspace:^",
     "@titan-design/embed": "workspace:^",
     "@titan-design/github": "workspace:^",

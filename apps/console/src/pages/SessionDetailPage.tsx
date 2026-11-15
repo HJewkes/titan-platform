@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Alert, BreadcrumbItem, Breadcrumbs, Card, CardContent, DataRow, DateTime, Tab, TabList, Tabs, Typography, VStack } from "@titan-design/react-ui";
+import { LoadError } from "../shell/LoadError.js";
 import { Spinner } from "../shell/Loading.js";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
@@ -21,7 +22,7 @@ const NOT_INDEXED = "This session is not in the session graph yet, so its agent,
 export function SessionDetailPage({ sessionId, query }: { sessionId: string; query: string | undefined }): ReactNode {
   const result = useQuery("sessions.timeline", { sessionId });
   if (result.status === "loading") return <Spinner size="sm" label="Loading session" />;
-  const body = result.data === undefined ? <LoadFailure sessionId={sessionId} code={result.error?.code} message={result.error?.message} /> : <Loaded result={result.data} query={query} />;
+  const body = result.data === undefined ? <LoadFailure sessionId={sessionId} code={result.error?.code} message={result.error?.message} onRetry={result.refetch} /> : <Loaded result={result.data} query={query} />;
   return (
     <VStack gap={4}>
       <Trail sessionId={sessionId} />
@@ -30,9 +31,9 @@ export function SessionDetailPage({ sessionId, query }: { sessionId: string; que
   );
 }
 
-function LoadFailure({ sessionId, code, message }: { sessionId: string; code: number | undefined; message: string | undefined }): ReactNode {
+function LoadFailure({ sessionId, code, message, onRetry }: { sessionId: string; code: number | undefined; message: string | undefined; onRetry: () => void }): ReactNode {
   if (code === NOT_FOUND) return <Alert status="warning" message={`No session ${sessionId} in the session graph or on disk.`} />;
-  return <Alert status="error" message={`Could not load session ${sessionId}: ${message ?? "no answer"}`} />;
+  return <LoadError message={`Could not load session ${sessionId}: ${message ?? "no answer"}`} onRetry={onRetry} />;
 }
 
 function Loaded({ result, query }: { result: TimelineResult; query: string | undefined }): ReactNode {
