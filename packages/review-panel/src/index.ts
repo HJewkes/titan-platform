@@ -26,6 +26,7 @@ export {
 } from "./plan.js";
 export type { ClassRoles, Headroom, PanelPolicy, ShapeRule } from "./plan.js";
 export {
+  CHECK_CANDIDATES_RULE,
   CI_POLICY_RULE,
   CI_REVIEWER_TEST_RULE,
   CONVERGENCE_HEADING,
@@ -78,6 +79,17 @@ export {
   parseFollowUps,
 } from "./follow-ups.js";
 export type { FollowUp, FollowUpsWarning, ParsedFollowUps } from "./follow-ups.js";
+export {
+  CHECK_CANDIDATES_HEADING,
+  CHECK_CANDIDATES_WARNINGS,
+  CHECK_CLASSES,
+  CHECK_ROUTES,
+  MAX_CHECK_CANDIDATES,
+  MAX_CHECK_SKETCH_CHARS,
+  checkCandidatesFields,
+  parseCheckCandidates,
+} from "./check-candidates.js";
+export type { CheckCandidate, CheckCandidatesWarning, CheckClassRoute, CheckRoute, ParsedCheckCandidates } from "./check-candidates.js";
 export { namesPr, namesTarget } from "./verdict-target.js";
 export { aggregate, fixProofNeedsTests } from "./aggregate.js";
 export type { AggregateInput, MemberResult } from "./aggregate.js";

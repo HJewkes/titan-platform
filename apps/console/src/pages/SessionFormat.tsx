@@ -58,10 +58,9 @@ function RefLink({ refText }: { refText: string }): ReactNode {
   return <Typography variant="body2">{label}</Typography>;
 }
 
-/** react-ui 0.20's `Link` renders no anchor and ignores `href` until TD-P1, so the press opens the URL itself. */
 export function ExternalLink({ url, className, children }: { url: string; className?: string | undefined; children: string }): ReactNode {
   return (
-    <Link color="primary" href={url} isExternal className={className} onPress={() => window.open(url, "_blank", "noopener")}>
+    <Link color="primary" href={url} isExternal className={className}>
       {children}
     </Link>
   );

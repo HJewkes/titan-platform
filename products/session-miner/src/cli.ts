@@ -1,6 +1,7 @@
 import path from "node:path";
 import { profilesRoot } from "@titan-design/anthropic-account/node";
-import { Command, CommanderError } from "commander";
+import { createEmbedder } from "@titan-design/embed";
+import { Command, CommanderError, Option } from "commander";
 import {
   EXIT,
   collectCliArgs,
@@ -50,6 +51,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
   program.option("--codex-home <dir>", "also index Codex sessions and archives (TITAN_MINER_CODEX_HOME)");
   program.option("--namespace <name>", "stable host/account corpus identity (TITAN_MINER_NAMESPACE)");
   program.option("--graph <file>", "read another owner's session graph, read-only, such as active-work's (TITAN_MINER_GRAPH)");
+  program.addOption(new Option("--embedder <backend>", "blend vector similarity into playbook recall").choices(["hash", "local", "ollama"]));
   program.hook("preAction", () => {
     try {
       resolveConfig(configOverrides(program.opts<RootOptions>()), io.env);
@@ -90,7 +92,8 @@ function attach(program: Command, cmd: AnyCommand<MinerContext>, registry: Comma
     const rawOpts = handlerArgs[cmd.cli?.positional?.length ?? 0];
     const opts = isObjectLike(rawOpts) ? rawOpts : {};
     const root = program.opts<RootOptions & { json?: boolean }>();
-    const ctx = createMinerContext(resolveConfig(configOverrides(root), io.env), { format: root.json ? "json" : "human", surface: "cli" });
+    const embedder = root.embedder ? await createEmbedder({ backend: root.embedder }) : undefined;
+    const ctx = createMinerContext(resolveConfig(configOverrides(root), io.env), { format: root.json ? "json" : "human", surface: "cli", embedder });
     try {
       const { envelope, exitCode } = await invokeCommand(cmd, collectCliArgs(cmd, positionals, opts), ctx, { invalidArgsCode: EXIT.USAGE });
       emit(io, envelope, ctx.format);
@@ -107,6 +110,7 @@ interface RootOptions {
   codexHome?: string;
   namespace?: string;
   graph?: string;
+  embedder?: "hash" | "local" | "ollama";
 }
 
 function configOverrides(root: RootOptions): ConfigOverrides {

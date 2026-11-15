@@ -5,6 +5,7 @@ import { DataTable, type DataTableColumn } from '../components/shared/DataTable.
 import { StateBadge } from '../components/StateBadge.js';
 import { Toast } from '../components/Toast.js';
 import { fetchTasks, markTaskDone, reorderTask, undoTaskDone } from '../utils/api.js';
+import { restoreInPriorityOrder } from '../utils/task-order.js';
 import type { TaskItem, ViewProps } from '../types.js';
 
 interface PendingUndo {
@@ -68,7 +69,7 @@ export function TasksView({ refreshToken }: ViewProps): React.JSX.Element {
     const { task } = pendingUndo;
     setPendingUndo(null);
     undoTaskDone(task.slug, task.id)
-      .then(() => setTasks((prev) => [...(prev ?? []), task]))
+      .then(() => setTasks((prev) => restoreInPriorityOrder(prev ?? [], task)))
       .catch((e: Error) => setErr(e.message));
   }
 

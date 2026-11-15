@@ -13,11 +13,13 @@ import { PHONE_TAP, usePhoneInputSize } from "./phone.js";
 type KnowledgeRow = ConsoleCommands["work.notes"]["result"]["records"][number];
 
 const TABS = ["browse", "search", "graph"] as const;
-type FilterKey = "initiative" | "kind" | "since";
+type FilterKey = "initiative" | "kind" | "since" | "tag" | "type";
 const KIND_OPTIONS: SelectOption[] = [
   { value: "note", label: "Notes only" },
   { value: "source", label: "Sources only" },
 ];
+const NOTE_KINDS = ["decision", "gotcha", "process", "fyi", "plan"];
+const asOption = (value: string): SelectOption => ({ value, label: value });
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** `#/knowledge` lists, searches and graphs `?ref=`; `#/knowledge/<ref>` reads one record or graphs it. */
@@ -58,7 +60,15 @@ function matches(record: KnowledgeRow, params: URLSearchParams): boolean {
   const initiative = params.get("initiative");
   const kind = params.get("kind");
   const since = params.get("since");
-  return (!initiative || record.slug === initiative) && (!kind || record.kind === kind) && (!since || (record.changed ?? "") >= since);
+  const tag = params.get("tag");
+  const noteKind = params.get("type");
+  return (
+    (!initiative || record.slug === initiative) &&
+    (!kind || record.kind === kind) &&
+    (!since || (record.changed ?? "") >= since) &&
+    (!tag || (record.tags ?? []).includes(tag)) &&
+    (!noteKind || (record.kind === "note" && record.type === noteKind))
+  );
 }
 
 function Browse({ params }: { params: URLSearchParams }): ReactNode {
@@ -70,7 +80,7 @@ function Browse({ params }: { params: URLSearchParams }): ReactNode {
   const shown = records.filter((record) => matches(record, params));
   return (
     <VStack gap={4}>
-      <Filters params={params} slugs={[...new Set(records.map((record) => record.slug))].sort()} />
+      <Filters params={params} slugs={[...new Set(records.map((record) => record.slug))].sort()} tags={[...new Set(records.flatMap((record) => record.tags ?? []))].sort()} />
       {shown.length > 0 ? (
         <KnowledgeTable records={shown} />
       ) : (
@@ -80,7 +90,7 @@ function Browse({ params }: { params: URLSearchParams }): ReactNode {
   );
 }
 
-function Filters({ params, slugs }: { params: URLSearchParams; slugs: readonly string[] }): ReactNode {
+function Filters({ params, slugs, tags }: { params: URLSearchParams; slugs: readonly string[]; tags: readonly string[] }): ReactNode {
   return (
     <HStack gap={3} align="center" wrap>
       <Select
@@ -91,6 +101,8 @@ function Filters({ params, slugs }: { params: URLSearchParams; slugs: readonly s
         className="w-56"
       />
       <Select placeholder="Notes and sources" value={params.get("kind")} options={KIND_OPTIONS} onChange={(value) => setFilter(params, "kind", value)} className="w-48" />
+      <Select placeholder="Any tag" value={params.get("tag")} options={tags.map(asOption)} onChange={(value) => setFilter(params, "tag", value)} className="w-44" />
+      <Select placeholder="Any note kind" value={params.get("type")} options={NOTE_KINDS.map(asOption)} onChange={(value) => setFilter(params, "type", value)} className="w-44" />
       <SinceInput key={params.get("since") ?? ""} params={params} />
     </HStack>
   );

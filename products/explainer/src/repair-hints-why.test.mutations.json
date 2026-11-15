@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the promise hint asks for you'll know again",
+      "file": "products/explainer/src/repair-hints-why.ts",
+      "find": "must state, in \"you\" terms, the question the video settles (for example \"Why does a bad label never reach you at the desk?\"); do not open",
+      "replace": "must say \"you\" and a verb (you'll know, you can tell); do not open",
+      "kills": [
+        "the promise repair hint asks for the question the video settles, in you terms, and never for you'll know"
+      ]
+    }
+  ]
+}

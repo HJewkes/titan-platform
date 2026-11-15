@@ -407,6 +407,8 @@ interface ReflectSessionInput {
 interface ReflectOptions extends Omit<CurateOptions, "provenance"> {
     maxIterations?: number;
     maxDeltas?: number;
+    /** Most playbook bullets sent to the reflector per iteration; only bullets matching the diary are sent. */
+    maxBullets?: number;
 }
 interface RejectedDelta {
     iteration: number;
@@ -476,7 +478,7 @@ interface SkillSummary {
     name: string;
     description: string;
 }
-type MemoryDestination = `skill:${string}` | `new-skill:${string}` | "charter" | `claude-md:${string}` | "delete";
+type MemoryDestination = `skill:${string}` | `new-skill:${string}` | "charter" | "config" | `reference:${string}` | `claude-md:${string}` | "delete";
 interface DestinationProposal {
     destination: MemoryDestination;
     reason: string;

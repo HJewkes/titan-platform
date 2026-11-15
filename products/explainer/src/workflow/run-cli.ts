@@ -8,6 +8,7 @@ import { DEFAULT_BUDGET_USD, DEFAULT_SCRIPT_MODEL, resumeVideo, runVideo, writeR
 import { REFLECTION_MODES, type ReflectionConfig, type ReflectionMode } from "../reflection-export.js";
 import { STAGES, type StageName } from "./records.js";
 import { compareReports, renderCompare } from "./report.js";
+import { failureLines } from "./run-failure.js";
 import { CLI_FACT_ADAPTERS, gatherFacts, gatherRequest, type GatherDeps, type GatherFlags, type GatherRequest } from "./run-gather.js";
 
 const EXIT = { OK: 0, FAILED: 1, USAGE: 2 } as const;
@@ -118,6 +119,7 @@ function summary(result: RunOutcome, io: Io, deps: RunCliDeps): number {
   io.out(`run ${result.runId}: ${result.status}; $${t.usd.toFixed(4)} over ${t.calls} model calls; ${(result.report.runWallMs / 1000).toFixed(1)} s\n`);
   io.out(`report: ${result.reportPath}\n`);
   if (result.error) io.err(`${result.error}\n`);
+  if (result.status !== "completed") for (const line of failureLines(result.report)) io.err(`${line}\n`);
   if (result.status !== "completed") io.err(`continue with: explainer run resume ${result.runId}\n`);
   return result.status === "completed" ? EXIT.OK : EXIT.FAILED;
 }
@@ -160,11 +162,11 @@ function addGatherOptions(command: Command): Command {
     .addOption(new Option("--facts-from <adapter>", "gather the facts pack with the type's facts adapter instead of --facts; as the gather stage with --from gather").choices(CLI_FACT_ADAPTERS).conflicts("facts"))
     .option("--type <type>", "the video type whose profile lists the --facts-from adapter (daily-overview for gatherDaily, paper-summary for gatherArticle)")
     .option("--day <date>", "the UTC day gatherDaily covers, and the day a gather directory is named for, YYYY-MM-DD or yesterday (default: today)", isDay)
-    .option("--repo <owner/name>", "a repo whose PRs gatherDaily reads (repeatable)", collect, [])
+    .option("--repo <owner/name>", "a repo whose PRs gatherDaily reads (repeatable; default: the repos in <data dir>/daily/sources.yaml)", collect, [])
     .option("--transcripts <dir>", "a Claude Code transcript root for gatherDaily (repeatable; default: every local profile)", collect, [])
     .option("--initiative <slug>", "the active-work initiative gatherDaily snapshots, read-only", "titan-platform")
     .option("--lanes <file>", "the lanes rule file gatherDaily places merged PRs with (default: daily/lanes.yaml under the data dir, else the doctrine default)")
-    .option("--decisions <file>", "the owner's decisions log; gatherDaily turns its entries stamped inside the day into decision facts")
+    .option("--decisions <file>", "the owner's decisions log; gatherDaily turns its entries stamped inside the day into decision facts (default: the decisions path in <data dir>/daily/sources.yaml)")
     .option("--article <path>", "the article or paper as markdown, for gatherArticle")
     .option("--claims <path>", "a JSON array of proposed claims, each with its verbatim quote, for gatherArticle")
     .option("--label <text>", "the source chip's label for gatherArticle (default: the article's file name)")

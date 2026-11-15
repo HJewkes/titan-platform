@@ -100,6 +100,10 @@ candidate's default tier, then a cap of twice the mean share per entry, then dee
 best hits with whatever budget is left. The rules are in
 [the reference page](https://hjewkes.github.io/titan-platform/reference/retrieval).
 
+Entries come back in score order. Set `budget.order: "edges"` to put the best hits at both
+ends of the list, where a model attends most: rank 1 first, rank 2 last, rank 3 second, and so
+on, so the weakest land mid-list. Which entries are kept does not change.
+
 `engine.retrieve(request, { tierSource, categoryOf, estimateTokens, signal })` runs the same
 ranking as `search` and plans the result:
 
