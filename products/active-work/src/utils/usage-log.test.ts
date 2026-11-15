@@ -37,6 +37,14 @@ describe('appendUsage', () => {
     );
   });
 
+  it('round-trips timings_ms', async () => {
+    const timings_ms = { load: 1.5, total: 9 };
+    await appendUsage({ ts: 't', command: 'aw.open', success: true, exit_code: 0, timings_ms });
+
+    const raw = await fs.readFile(path.join(tempDir, 'usage.jsonl'), 'utf8');
+    expect(JSON.parse(raw).timings_ms).toEqual(timings_ms);
+  });
+
   it('appends multiple lines in order', async () => {
     await appendUsage({ ts: 't1', command: 'a', success: true, exit_code: 0 });
     await appendUsage({ ts: 't2', command: 'b', success: false, exit_code: 64 });
