@@ -10,6 +10,7 @@ import { PRICE_LONG_PROMPT_MIGRATION_NAME, applyPriceLongPrompt } from "./price-
 import { ECHO_STATE_MIGRATION_NAME, ECHO_STATE_TABLE, applyEchoStateSchema } from "./echo-state-schema.js";
 import { ORIGIN_ROUTE_MIGRATION_NAME, applyOriginRouteSchema } from "./origin-route-schema.js";
 import { PR_HEAD_MIGRATION_NAME, applyPrHeadSchema } from "./pr-head-schema.js";
+import { SESSION_COST_MIGRATION_NAME, SESSION_COST_TABLE, applySessionCostSchema } from "./session-cost-schema.js";
 import { NORMALIZED_DDL, backfillClaudeAliases } from "./normalized-schema.js";
 import { SQL_NOW, hasTable, kitMigration, type Db, type Migration } from "@titan-design/store-sqlite";
 
@@ -168,6 +169,7 @@ const ALWAYS_DERIVED = [
   ...ORIGIN_TABLES,
   EPISODE_TABLE,
   "session_model_usage",
+  SESSION_COST_TABLE,
   "session",
   "fact",
   "pr",
@@ -212,4 +214,5 @@ export const MIGRATIONS: Migration[] = [
   { version: 14, name: ECHO_STATE_MIGRATION_NAME, up: applyEchoStateSchema },
   { version: 15, name: ORIGIN_ROUTE_MIGRATION_NAME, up: applyOriginRouteSchema },
   { version: 16, name: PR_HEAD_MIGRATION_NAME, up: applyPrHeadSchema },
+  { version: 18, name: SESSION_COST_MIGRATION_NAME, up: applySessionCostSchema },
 ];

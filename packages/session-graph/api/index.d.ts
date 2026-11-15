@@ -54,7 +54,7 @@ declare const DOMAIN_DDL = "\n  CREATE TABLE IF NOT EXISTS fact (\n    fact_id  
 declare const NORMALIZED_TABLES: readonly ["normalized_span", "normalized_event", "normalized_source"];
 /** Derived tables present in this database; the opt-in normalized ones come first so they clear first. */
 declare function derivedTables(db: Db): string[];
-declare const DERIVED_TABLES: readonly ["normalized_span", "normalized_event", "normalized_source", "search_span", "edge", "turn", "permission_phase", "human_edit", "file_checkpoint", "subagent", "request", "tool_call", "inbound", "context_block", "compaction", "queue_op", "session_signal", "cost_state_observation", "transcript_facet", "echo_state", "session_origin", "session_external_event", "episode", "session_model_usage", "session", "fact", "pr", "pr_merge_observation", "pr_create_observation", "pr_review", "branch", "file", "task"];
+declare const DERIVED_TABLES: readonly ["normalized_span", "normalized_event", "normalized_source", "search_span", "edge", "turn", "permission_phase", "human_edit", "file_checkpoint", "subagent", "request", "tool_call", "inbound", "context_block", "compaction", "queue_op", "session_signal", "cost_state_observation", "transcript_facet", "echo_state", "session_origin", "session_external_event", "episode", "session_model_usage", "session_cost", "session", "fact", "pr", "pr_merge_observation", "pr_create_observation", "pr_review", "branch", "file", "task"];
 declare const MIGRATIONS: Migration[];
 
 /** Recorded in `_migration`; store-sqlite refuses a database whose applied name differs, so never rename it. */

@@ -1,4 +1,5 @@
 import type { SessionGraph } from "./graph.js";
+import { rebuildSessionCost } from "./session-cost-schema.js";
 
 /** USD per million tokens for one model prefix from one date. Shaped so session-analytics' `PRICE_TABLE` passes straight through. */
 export interface PriceInput {
@@ -55,6 +56,7 @@ export function syncPrices(graph: SessionGraph, rows: readonly PriceInput[], opt
     for (const r of rows) {
       insert.run(...priceValues(r, options.tableVersion, source));
     }
+    rebuildSessionCost(graph.db);
   })();
   return rows.length;
 }
@@ -97,6 +99,7 @@ export function reconcilePrices(graph: SessionGraph, rows: readonly PriceInput[]
       else result.added++;
     }
     if (source !== null) result.pruned = pruneAbsent(graph, rows, source, options.tableVersion);
+    if (result.added + result.updated + result.pruned > 0) rebuildSessionCost(graph.db);
   })();
   return result;
 }

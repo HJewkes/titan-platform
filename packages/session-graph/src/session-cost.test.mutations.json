@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the rollup never writes session_cost",
+      "file": "packages/session-graph/src/rollup.ts",
+      "find": "      sessionCost(batch);\n",
+      "replace": "",
+      "kills": [
+        "session_cost matches the request_cost sums for every session after a rollup"
+      ]
+    },
+    {
+      "name": "a delta pass clears every session's row",
+      "file": "packages/session-graph/src/session-cost-schema.ts",
+      "find": "\"DELETE FROM session_cost WHERE session_id IN (SELECT value FROM json_each(@sessionIds))\"",
+      "replace": "\"DELETE FROM session_cost\"",
+      "kills": [
+        "session_cost leaves another session's row unchanged when a delta pass touches one session"
+      ]
+    },
+    {
+      "name": "fan-out copies of a request are all counted",
+      "file": "packages/session-graph/src/session-cost-schema.ts",
+      "find": "WHERE copy_rank = 1 AND session_id IN",
+      "replace": "WHERE session_id IN",
+      "kills": [
+        "session_cost counts a request copied across two transcripts once"
+      ]
+    },
+    {
+      "name": "unpriced requests are never counted",
+      "file": "packages/session-graph/src/session-cost-schema.ts",
+      "find": "COALESCE(SUM(NOT priced), 0)",
+      "replace": "0",
+      "kills": [
+        "session_cost counts a request without a price as unpriced at zero cost"
+      ]
+    },
+    {
+      "name": "replacing the price table leaves session_cost stale",
+      "file": "packages/session-graph/src/prices.ts",
+      "find": "    rebuildSessionCost(graph.db);\n  })();\n  return rows.length;",
+      "replace": "  })();\n  return rows.length;",
+      "kills": [
+        "session_cost re-derives every row when the price table is replaced"
+      ]
+    }
+  ]
+}
