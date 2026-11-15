@@ -31,12 +31,12 @@ declare const LedgerRowSchema: z.ZodPipe<z.ZodObject<{
     key: z.ZodString;
     v: z.ZodDefault<z.ZodUnion<readonly [z.ZodLiteral<1>, z.ZodLiteral<2>]>>;
     source: z.ZodEnum<{
-        transcript: "transcript";
-        note: "note";
-        queue: "queue";
         decided: "decided";
         endorse: "endorse";
         morning: "morning";
+        note: "note";
+        queue: "queue";
+        transcript: "transcript";
     }>;
     asked_at: z.ZodNullable<z.ZodString>;
     answered_at: z.ZodDefault<z.ZodNullable<z.ZodString>>;
@@ -63,21 +63,21 @@ declare const LedgerRowSchema: z.ZodPipe<z.ZodObject<{
     recommended: z.ZodNullable<z.ZodString>;
     answer: z.ZodNullable<z.ZodString>;
     pick_type: z.ZodOptional<z.ZodEnum<{
-        recommended: "recommended";
-        other_option: "other_option";
         free_text: "free_text";
+        none: "none";
+        other_option: "other_option";
+        recommended: "recommended";
         rejected: "rejected";
         unparsed: "unparsed";
-        none: "none";
     }>>;
     free_text: z.ZodDefault<z.ZodNullable<z.ZodString>>;
     outcome: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
-        none: "none";
         accept: "accept";
         amend: "amend";
+        bulk: "bulk";
+        none: "none";
         other: "other";
         redirect: "redirect";
-        bulk: "bulk";
     }>>>;
     covers: z.ZodDefault<z.ZodNullable<z.ZodNumber>>;
     bulk_from: z.ZodDefault<z.ZodNullable<z.ZodObject<{
@@ -88,10 +88,10 @@ declare const LedgerRowSchema: z.ZodPipe<z.ZodObject<{
         covers: z.ZodNullable<z.ZodNumber>;
     }, z.core.$strip>>>;
     answered_by: z.ZodDefault<z.ZodEnum<{
-        "owner-terminal": "owner-terminal";
-        "owner-remote": "owner-remote";
         decider: "decider";
         overrule: "overrule";
+        "owner-remote": "owner-remote";
+        "owner-terminal": "owner-terminal";
     }>>;
     route: z.ZodDefault<z.ZodNullable<z.ZodEnum<{
         decider: "decider";
@@ -854,9 +854,9 @@ type DeciderMode = (typeof DECIDER_MODES)[number];
 declare const CategoryPolicySchema: z.ZodObject<{
     category: z.ZodString;
     mode: z.ZodDefault<z.ZodEnum<{
+        auto: "auto";
         off: "off";
         shadow: "shadow";
-        auto: "auto";
     }>>;
     minConfidence: z.ZodDefault<z.ZodNumber>;
     windowDays: z.ZodDefault<z.ZodNumber>;
@@ -869,9 +869,9 @@ declare const RoutingPolicySchema: z.ZodObject<{
     categories: z.ZodDefault<z.ZodArray<z.ZodObject<{
         category: z.ZodString;
         mode: z.ZodDefault<z.ZodEnum<{
+            auto: "auto";
             off: "off";
             shadow: "shadow";
-            auto: "auto";
         }>>;
         minConfidence: z.ZodDefault<z.ZodNumber>;
         windowDays: z.ZodDefault<z.ZodNumber>;

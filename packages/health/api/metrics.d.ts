@@ -15,11 +15,11 @@ declare const metricsEntrySchema: z.ZodObject<{
     stores: z.ZodArray<z.ZodObject<{
         id: z.ZodString;
         kind: z.ZodEnum<{
-            sqlite: "sqlite";
+            cli: "cli";
+            http: "http";
             jsonl: "jsonl";
             log: "log";
-            http: "http";
-            cli: "cli";
+            sqlite: "sqlite";
         }>;
         path: z.ZodOptional<z.ZodString>;
         url: z.ZodOptional<z.ZodString>;
@@ -30,36 +30,36 @@ declare const metricsEntrySchema: z.ZodObject<{
         id: z.ZodString;
         family: z.ZodEnum<{
             availability: "availability";
-            flow: "flow";
-            quality: "quality";
-            "owner-load": "owner-load";
-            cost: "cost";
             business: "business";
+            cost: "cost";
+            flow: "flow";
+            "owner-load": "owner-load";
+            quality: "quality";
         }>;
         title: z.ZodString;
         definition: z.ZodString;
         unit: z.ZodEnum<{
             count: "count";
-            ratio: "ratio";
-            minutes: "minutes";
             hours: "hours";
-            usd: "usd";
+            minutes: "minutes";
+            ratio: "ratio";
             tokens: "tokens";
+            usd: "usd";
         }>;
         source: z.ZodObject<{
             anchor: z.ZodString;
             store: z.ZodString;
             captured: z.ZodEnum<{
-                Y: "Y";
-                P: "P";
                 N: "N";
+                P: "P";
+                Y: "Y";
             }>;
             gapSlice: z.ZodOptional<z.ZodString>;
         }, z.core.$strip>;
         query: z.ZodOptional<z.ZodObject<{
             kind: z.ZodEnum<{
-                http: "http";
                 cli: "cli";
+                http: "http";
                 sql: "sql";
             }>;
             store: z.ZodString;
@@ -68,9 +68,9 @@ declare const metricsEntrySchema: z.ZodObject<{
             group: z.ZodOptional<z.ZodArray<z.ZodString>>;
         }, z.core.$strip>>;
         cadence: z.ZodEnum<{
-            "1m": "1m";
-            "1h": "1h";
             "1d": "1d";
+            "1h": "1h";
+            "1m": "1m";
             "1w": "1w";
         }>;
         slo: z.ZodOptional<z.ZodObject<{
@@ -83,8 +83,8 @@ declare const metricsEntrySchema: z.ZodObject<{
             }>;
             window: z.ZodEnum<{
                 "1d": "1d";
-                "7d": "7d";
                 "28d": "28d";
+                "7d": "7d";
             }>;
             alert: z.ZodObject<{
                 threshold: z.ZodNumber;
@@ -92,11 +92,11 @@ declare const metricsEntrySchema: z.ZodObject<{
             }, z.core.$strip>;
         }, z.core.$strip>>;
         surfaces: z.ZodArray<z.ZodEnum<{
-            status: "status";
-            stats: "stats";
-            health: "health";
             dashboard: "dashboard";
             digest: "digest";
+            health: "health";
+            stats: "stats";
+            status: "status";
         }>>;
         answers: z.ZodArray<z.ZodNumber>;
     }, z.core.$strip>>;
@@ -120,11 +120,11 @@ declare const metricsEntryReadSchema: z.ZodObject<{
     stores: z.ZodArray<z.ZodObject<{
         id: z.ZodString;
         kind: z.ZodEnum<{
-            sqlite: "sqlite";
+            cli: "cli";
+            http: "http";
             jsonl: "jsonl";
             log: "log";
-            http: "http";
-            cli: "cli";
+            sqlite: "sqlite";
         }>;
         path: z.ZodOptional<z.ZodString>;
         url: z.ZodOptional<z.ZodString>;
@@ -135,36 +135,36 @@ declare const metricsEntryReadSchema: z.ZodObject<{
         id: z.ZodString;
         family: z.ZodEnum<{
             availability: "availability";
-            flow: "flow";
-            quality: "quality";
-            "owner-load": "owner-load";
-            cost: "cost";
             business: "business";
+            cost: "cost";
+            flow: "flow";
+            "owner-load": "owner-load";
+            quality: "quality";
         }>;
         title: z.ZodString;
         definition: z.ZodString;
         unit: z.ZodEnum<{
             count: "count";
-            ratio: "ratio";
-            minutes: "minutes";
             hours: "hours";
-            usd: "usd";
+            minutes: "minutes";
+            ratio: "ratio";
             tokens: "tokens";
+            usd: "usd";
         }>;
         source: z.ZodObject<{
             anchor: z.ZodString;
             store: z.ZodString;
             captured: z.ZodEnum<{
-                Y: "Y";
-                P: "P";
                 N: "N";
+                P: "P";
+                Y: "Y";
             }>;
             gapSlice: z.ZodOptional<z.ZodString>;
         }, z.core.$strip>;
         query: z.ZodOptional<z.ZodObject<{
             kind: z.ZodEnum<{
-                http: "http";
                 cli: "cli";
+                http: "http";
                 sql: "sql";
             }>;
             store: z.ZodString;
@@ -173,9 +173,9 @@ declare const metricsEntryReadSchema: z.ZodObject<{
             group: z.ZodOptional<z.ZodArray<z.ZodString>>;
         }, z.core.$strip>>;
         cadence: z.ZodEnum<{
-            "1m": "1m";
-            "1h": "1h";
             "1d": "1d";
+            "1h": "1h";
+            "1m": "1m";
             "1w": "1w";
         }>;
         slo: z.ZodOptional<z.ZodObject<{
@@ -188,8 +188,8 @@ declare const metricsEntryReadSchema: z.ZodObject<{
             }>;
             window: z.ZodEnum<{
                 "1d": "1d";
-                "7d": "7d";
                 "28d": "28d";
+                "7d": "7d";
             }>;
             alert: z.ZodObject<{
                 threshold: z.ZodNumber;
@@ -197,11 +197,11 @@ declare const metricsEntryReadSchema: z.ZodObject<{
             }, z.core.$strip>;
         }, z.core.$strip>>;
         surfaces: z.ZodArray<z.ZodEnum<{
-            status: "status";
-            stats: "stats";
-            health: "health";
             dashboard: "dashboard";
             digest: "digest";
+            health: "health";
+            stats: "stats";
+            status: "status";
         }>>;
         answers: z.ZodArray<z.ZodNumber>;
     }, z.core.$strip>>;
@@ -233,11 +233,11 @@ declare const measurementAuditSchema: z.ZodObject<{
         stores: z.ZodArray<z.ZodObject<{
             id: z.ZodString;
             kind: z.ZodEnum<{
-                sqlite: "sqlite";
+                cli: "cli";
+                http: "http";
                 jsonl: "jsonl";
                 log: "log";
-                http: "http";
-                cli: "cli";
+                sqlite: "sqlite";
             }>;
             path: z.ZodOptional<z.ZodString>;
             url: z.ZodOptional<z.ZodString>;
@@ -246,9 +246,9 @@ declare const measurementAuditSchema: z.ZodObject<{
         }, z.core.$strip>>;
         surfaces: z.ZodArray<z.ZodObject<{
             kind: z.ZodEnum<{
+                cli: "cli";
                 digest: "digest";
                 http: "http";
-                cli: "cli";
                 view: "view";
             }>;
             ref: z.ZodString;
@@ -270,9 +270,9 @@ declare const measurementAuditSchema: z.ZodObject<{
         id: z.ZodNumber;
         text: z.ZodString;
         answerable: z.ZodEnum<{
-            yes: "yes";
-            partly: "partly";
             no: "no";
+            partly: "partly";
+            yes: "yes";
         }>;
         command: z.ZodOptional<z.ZodString>;
     }, z.core.$strip>>;
@@ -285,36 +285,36 @@ declare const measurementAuditSchema: z.ZodObject<{
         id: z.ZodString;
         family: z.ZodEnum<{
             availability: "availability";
-            flow: "flow";
-            quality: "quality";
-            "owner-load": "owner-load";
-            cost: "cost";
             business: "business";
+            cost: "cost";
+            flow: "flow";
+            "owner-load": "owner-load";
+            quality: "quality";
         }>;
         title: z.ZodString;
         definition: z.ZodString;
         unit: z.ZodEnum<{
             count: "count";
-            ratio: "ratio";
-            minutes: "minutes";
             hours: "hours";
-            usd: "usd";
+            minutes: "minutes";
+            ratio: "ratio";
             tokens: "tokens";
+            usd: "usd";
         }>;
         source: z.ZodObject<{
             anchor: z.ZodString;
             store: z.ZodString;
             captured: z.ZodEnum<{
-                Y: "Y";
-                P: "P";
                 N: "N";
+                P: "P";
+                Y: "Y";
             }>;
             gapSlice: z.ZodOptional<z.ZodString>;
         }, z.core.$strip>;
         query: z.ZodOptional<z.ZodObject<{
             kind: z.ZodEnum<{
-                http: "http";
                 cli: "cli";
+                http: "http";
                 sql: "sql";
             }>;
             store: z.ZodString;
@@ -323,9 +323,9 @@ declare const measurementAuditSchema: z.ZodObject<{
             group: z.ZodOptional<z.ZodArray<z.ZodString>>;
         }, z.core.$strip>>;
         cadence: z.ZodEnum<{
-            "1m": "1m";
-            "1h": "1h";
             "1d": "1d";
+            "1h": "1h";
+            "1m": "1m";
             "1w": "1w";
         }>;
         slo: z.ZodOptional<z.ZodObject<{
@@ -338,8 +338,8 @@ declare const measurementAuditSchema: z.ZodObject<{
             }>;
             window: z.ZodEnum<{
                 "1d": "1d";
-                "7d": "7d";
                 "28d": "28d";
+                "7d": "7d";
             }>;
             alert: z.ZodObject<{
                 threshold: z.ZodNumber;
@@ -347,11 +347,11 @@ declare const measurementAuditSchema: z.ZodObject<{
             }, z.core.$strip>;
         }, z.core.$strip>>;
         surfaces: z.ZodArray<z.ZodEnum<{
-            status: "status";
-            stats: "stats";
-            health: "health";
             dashboard: "dashboard";
             digest: "digest";
+            health: "health";
+            stats: "stats";
+            status: "status";
         }>>;
         answers: z.ZodArray<z.ZodNumber>;
     }, z.core.$strip>>;
@@ -396,11 +396,11 @@ declare const measurementAuditReadSchema: z.ZodObject<{
         stores: z.ZodArray<z.ZodObject<{
             id: z.ZodString;
             kind: z.ZodEnum<{
-                sqlite: "sqlite";
+                cli: "cli";
+                http: "http";
                 jsonl: "jsonl";
                 log: "log";
-                http: "http";
-                cli: "cli";
+                sqlite: "sqlite";
             }>;
             path: z.ZodOptional<z.ZodString>;
             url: z.ZodOptional<z.ZodString>;
@@ -409,9 +409,9 @@ declare const measurementAuditReadSchema: z.ZodObject<{
         }, z.core.$strip>>;
         surfaces: z.ZodArray<z.ZodObject<{
             kind: z.ZodEnum<{
+                cli: "cli";
                 digest: "digest";
                 http: "http";
-                cli: "cli";
                 view: "view";
             }>;
             ref: z.ZodString;
@@ -433,9 +433,9 @@ declare const measurementAuditReadSchema: z.ZodObject<{
         id: z.ZodNumber;
         text: z.ZodString;
         answerable: z.ZodEnum<{
-            yes: "yes";
-            partly: "partly";
             no: "no";
+            partly: "partly";
+            yes: "yes";
         }>;
         command: z.ZodOptional<z.ZodString>;
     }, z.core.$strip>>;
@@ -448,36 +448,36 @@ declare const measurementAuditReadSchema: z.ZodObject<{
         id: z.ZodString;
         family: z.ZodEnum<{
             availability: "availability";
-            flow: "flow";
-            quality: "quality";
-            "owner-load": "owner-load";
-            cost: "cost";
             business: "business";
+            cost: "cost";
+            flow: "flow";
+            "owner-load": "owner-load";
+            quality: "quality";
         }>;
         title: z.ZodString;
         definition: z.ZodString;
         unit: z.ZodEnum<{
             count: "count";
-            ratio: "ratio";
-            minutes: "minutes";
             hours: "hours";
-            usd: "usd";
+            minutes: "minutes";
+            ratio: "ratio";
             tokens: "tokens";
+            usd: "usd";
         }>;
         source: z.ZodObject<{
             anchor: z.ZodString;
             store: z.ZodString;
             captured: z.ZodEnum<{
-                Y: "Y";
-                P: "P";
                 N: "N";
+                P: "P";
+                Y: "Y";
             }>;
             gapSlice: z.ZodOptional<z.ZodString>;
         }, z.core.$strip>;
         query: z.ZodOptional<z.ZodObject<{
             kind: z.ZodEnum<{
-                http: "http";
                 cli: "cli";
+                http: "http";
                 sql: "sql";
             }>;
             store: z.ZodString;
@@ -486,9 +486,9 @@ declare const measurementAuditReadSchema: z.ZodObject<{
             group: z.ZodOptional<z.ZodArray<z.ZodString>>;
         }, z.core.$strip>>;
         cadence: z.ZodEnum<{
-            "1m": "1m";
-            "1h": "1h";
             "1d": "1d";
+            "1h": "1h";
+            "1m": "1m";
             "1w": "1w";
         }>;
         slo: z.ZodOptional<z.ZodObject<{
@@ -501,8 +501,8 @@ declare const measurementAuditReadSchema: z.ZodObject<{
             }>;
             window: z.ZodEnum<{
                 "1d": "1d";
-                "7d": "7d";
                 "28d": "28d";
+                "7d": "7d";
             }>;
             alert: z.ZodObject<{
                 threshold: z.ZodNumber;
@@ -510,11 +510,11 @@ declare const measurementAuditReadSchema: z.ZodObject<{
             }, z.core.$strip>;
         }, z.core.$strip>>;
         surfaces: z.ZodArray<z.ZodEnum<{
-            status: "status";
-            stats: "stats";
-            health: "health";
             dashboard: "dashboard";
             digest: "digest";
+            health: "health";
+            stats: "stats";
+            status: "status";
         }>>;
         answers: z.ZodArray<z.ZodNumber>;
     }, z.core.$strip>>;

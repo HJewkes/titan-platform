@@ -7,7 +7,16 @@
       "find": "return beat.durationS - fade - SETTLED_BEFORE_END_S;",
       "replace": "return beat.durationS - fade;",
       "kills": [
-        "cuts one cell per beat inside that beat's window, labelled with its kind"
+        "the bridged-vs-in-process pair sheet cuts one cell per beat inside that beat's window, labelled with its kind"
+      ]
+    },
+    {
+      "name": "the pair tiles are numbered from zero",
+      "file": "products/explainer/src/composition/pair-sheet.ts",
+      "find": "String(i + 1).padStart(2, \"0\")",
+      "replace": "String(i).padStart(2, \"0\")",
+      "kills": [
+        "the bridged-vs-in-process pair sheet writes one side-by-side tile per beat, bridged left and in-process right, with its SSIM"
       ]
     }
   ]

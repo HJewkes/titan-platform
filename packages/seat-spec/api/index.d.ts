@@ -10,16 +10,16 @@ declare const seatSchema: z.ZodObject<{
     profile: z.ZodString;
     configDir: z.ZodString;
     permissionMode: z.ZodEnum<{
+        acceptEdits: "acceptEdits";
         auto: "auto";
         default: "default";
-        acceptEdits: "acceptEdits";
         plan: "plan";
     }>;
     surface: z.ZodEnum<{
-        "tmux-window": "tmux-window";
         "iterm-pane": "iterm-pane";
         "iterm-tab": "iterm-tab";
         "iterm-window": "iterm-window";
+        "tmux-window": "tmux-window";
     }>;
     remoteControl: z.ZodBoolean;
     cwd: z.ZodString;
