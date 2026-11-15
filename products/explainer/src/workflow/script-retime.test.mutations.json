@@ -7,7 +7,7 @@
       "find": "const RETIME_MAX_S = 2;",
       "replace": "const RETIME_MAX_S = 20;",
       "kills": [
-        "the script stage's word-budget re-time leaves a beat 8 words over, which needs 3 more seconds, as it came, so the gate still fails"
+        "the script stage's word-budget re-time leaves a beat 9 words over, which needs 3 more seconds, as it came, so the gate still fails"
       ]
     },
     {
