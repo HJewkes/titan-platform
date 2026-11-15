@@ -30,7 +30,7 @@ function hitLogEntries(input: RenderedHits, ts: string): HitLogEntry[] {
       ts,
       slug,
       trigger: 'bootstrap-loop' as const,
-      query: input.labels[i],
+      query: input.labels.at(i) ?? loop.ref,
       ref: hit.ref,
       rank: hit.rank,
       byteOffset: hit.byteOffset,

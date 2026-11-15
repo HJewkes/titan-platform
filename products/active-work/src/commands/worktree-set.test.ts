@@ -100,7 +100,7 @@ describe('worktree.set', () => {
       });
       expect(result.default).toBe(false);
       const wt = await readWorktrees(activeRoot, 'multi');
-      expect(wt.main.default).toBe(true);
+      expect(new Map(Object.entries(wt)).get('main')?.default).toBe(true);
       expect(wt.spike).toEqual({ path: '~/code/multi/spike' });
     });
   });
@@ -116,8 +116,9 @@ describe('worktree.set', () => {
       });
       expect(result.default).toBe(true);
       const wt = await readWorktrees(activeRoot, 'promote');
-      expect(wt.spike.default).toBe(true);
-      expect(wt.main.default).toBeUndefined();
+      const byName = new Map(Object.entries(wt));
+      expect(byName.get('spike')?.default).toBe(true);
+      expect(byName.get('main')?.default).toBeUndefined();
     });
   });
 
@@ -131,7 +132,7 @@ describe('worktree.set', () => {
       expect(result.default).toBe(true);
       const wt = await readWorktrees(activeRoot, 'update');
       expect(wt.main).toEqual({ path: '~/code/update/new', default: true });
-      expect(wt.spike.default).toBeUndefined();
+      expect(new Map(Object.entries(wt)).get('spike')?.default).toBeUndefined();
     });
   });
 

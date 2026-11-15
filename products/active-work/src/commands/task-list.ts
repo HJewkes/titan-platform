@@ -105,8 +105,9 @@ async function loadListing(
   );
   const tasks: TaskWithSlug[] = [];
   entries.forEach((entry, i) => {
-    if (!entry) return;
-    current.set(listing.files[i], entry);
+    const file = listing.files.at(i);
+    if (!entry || file === undefined) return;
+    current.set(file, entry);
     if (keep(entry.task)) tasks.push({ ...entry.task, slug: listing.slug });
   });
   parsedByDir.set(listing.dir, current);
