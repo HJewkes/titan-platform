@@ -91,4 +91,24 @@ describe("replayPlaybook", () => {
 
     expect(result.baselineRepeatRate).toBe(2 / 4);
   });
+
+  describe("when one session holds several occurrences of a template", () => {
+    const later = (o: DrainOccurrence, hour: number): DrainOccurrence => ({ ...o, ts: o.ts.replace("T10", `T${hour}`) });
+    const retries = (sessionId: string, day: number): DrainOccurrence[] => [10, 11, 12].map((h) => later(occ("t1", sessionId, day, SIGNATURE), h));
+
+    it("does not treat a retry loop in a single session as a recurring cluster", async () => {
+      const result = await replayPlaybook({ occurrences: retries("only", 3), openingQueries: new Map(), window: WINDOW, k: 3 });
+
+      expect(result.clusters).toBe(0);
+    });
+
+    it("counts each later session once and skips repeats in the seed's own session", async () => {
+      const occurrences = [...retries("t1-s3", 3), ...retries("t1-s5", 5), occ("t1", "t1-s9", 9, SIGNATURE)];
+      const q = "registry fetch socket hangup";
+      const result = await replayPlaybook({ occurrences, openingQueries: queries({ "t1-s3": q, "t1-s5": q, "t1-s9": q }), window: WINDOW, k: 3 });
+
+      expect(result.rows).toEqual([{ templateId: "t1", occurrences: 3, laterOccurrences: 2, servedBefore: 2 }]);
+      expect(result.baselineRepeatRate).toBe(2 / 3);
+    });
+  });
 });

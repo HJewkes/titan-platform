@@ -50,7 +50,7 @@ const MIN_CLUSTER_OCCURRENCES = 3;
  * occurrences after its seed.
  */
 export async function replayPlaybook(input: ReplayInput): Promise<ReplayResult> {
-  const inWindow = input.occurrences.filter((o) => o.ts >= input.window.from && o.ts < input.window.to).sort(byTime);
+  const inWindow = firstPerSession(input.occurrences.filter((o) => o.ts >= input.window.from && o.ts < input.window.to).sort(byTime));
   const byTemplate = groupByTemplate(inWindow);
   const eligible = [...byTemplate].filter(([, list]) => list.length >= MIN_CLUSTER_OCCURRENCES);
   const rows = await replayClusters(eligible, input);
@@ -100,8 +100,23 @@ async function isServed(store: PlaybookStore, event: DrainOccurrence, input: Rep
 
 function groupByTemplate(sorted: readonly DrainOccurrence[]): Map<string, DrainOccurrence[]> {
   const groups = new Map<string, DrainOccurrence[]>();
-  for (const o of sorted) groups.set(o.templateId, [...(groups.get(o.templateId) ?? []), o]);
+  for (const o of sorted) {
+    const group = groups.get(o.templateId);
+    if (group) group.push(o);
+    else groups.set(o.templateId, [o]);
+  }
   return groups;
+}
+
+/** A session that retries into the same error many times is one occurrence of it: only the first can precede a later session's opening. */
+function firstPerSession(sorted: readonly DrainOccurrence[]): DrainOccurrence[] {
+  const seen = new Set<string>();
+  return sorted.filter((o) => {
+    const key = JSON.stringify([o.templateId, o.sessionId]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function bulletId(templateId: string): string {
