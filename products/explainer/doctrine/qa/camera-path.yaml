@@ -19,7 +19,7 @@ rows:
   # Peak screen-relative speed, frame widths a second. A 1 s smootherstep move across one frame width peaks at 1.875.
   velocity: { severity: warning, max: 2 }
   # Peak jerk, frame widths a second cubed, sampled at sampleHz. A 1 s smootherstep move across one frame width peaks
-  # at 60; a hard start (linear easing, an interrupted move) reads in the thousands.
+  # at 60 in theory, 56 as sampled; a hard start (linear easing, an interrupted move) reads in the thousands.
   jerk: { severity: warning, max: 100 }
   # A key box leaving the frame or dipping into the caption strip at any sample of its window.
   key-in-frame: { severity: warning }
