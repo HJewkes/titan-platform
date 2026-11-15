@@ -90,6 +90,29 @@ describe("merged-not-switched-on", () => {
     ]);
   });
 
+  it("counts a task awaiting deploy once, as merged-not-deployed", () => {
+    const result = holds({
+      laneTasks: [
+        laneTask(1, { ownerSteps: restart }),
+        laneTask(2, { ownerSteps: restart }),
+      ],
+      merged: [1, 2],
+      eligible: [8, 9],
+      signals: {
+        ...SIGNALS,
+        openPrs: 0,
+        mergedNotDeployed: 1,
+        mergedNotDeployedTasks: ["alpha/AL-1"],
+      },
+    });
+
+    expect(result.map((hold) => hold.task)).toEqual(["alpha/AL-9"]);
+    expect(result[0]?.numbers).toMatchObject({
+      mergedNotDeployed: 1,
+      mergedNotSwitchedOn: 1,
+    });
+  });
+
   it("frees the slot when the same task is done", () => {
     expect(
       holds({
