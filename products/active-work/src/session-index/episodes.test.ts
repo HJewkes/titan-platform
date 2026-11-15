@@ -33,7 +33,11 @@ afterEach(() => {
 });
 
 /** One prompt and one billed request; `entrypoint` marks a headless run when set. */
-function exchange(sessionId: string, ts: string, entrypoint?: string): Record<string, unknown>[] {
+function exchange(
+  sessionId: string,
+  ts: string,
+  entrypoint?: string,
+): [Record<string, unknown>, Record<string, unknown>] {
   const common = { sessionId, cwd: dir, ...(entrypoint ? { entrypoint } : {}) };
   const requestId = `req-${sessionId}-${ts}`;
   return [
@@ -240,8 +244,7 @@ describe('episode refresh', () => {
   it('a pass that does not sweep skips a moved session with no request past its episodes', async () => {
     writeSession('sess-a', '2026-07-01T00:00:00Z');
     await refresh();
-    const prompt = exchange('sess-a', '2026-07-01T02:00:00Z').at(0);
-    if (prompt === undefined) throw new Error('exchange yielded no prompt line');
+    const [prompt] = exchange('sess-a', '2026-07-01T02:00:00Z');
     appendFileSync(transcriptPath('sess-a'), renderTranscript([prompt]));
 
     const summary = await refresh({ episodeSweep: false });
