@@ -463,6 +463,7 @@
   "products/factory/src/shepherd/await-verdict.ts",
   "products/factory/src/shepherd/carry-cache-adapter.ts",
   "products/factory/src/shepherd/carry-cache-ports.ts",
+  "products/factory/src/shepherd/check-candidates-store.ts",
   "products/factory/src/shepherd/ci-norun.ts",
   "products/factory/src/shepherd/ci-policy-changes.ts",
   "products/factory/src/shepherd/ci-timeout-entry.ts",
