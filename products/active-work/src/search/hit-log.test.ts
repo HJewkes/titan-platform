@@ -27,8 +27,8 @@ describe('servedHitEntries', () => {
 
     const [entry] = servedHitEntries([hit], { ...context, query });
 
-    expect(entry!.query).toHaveLength(500);
-    expect(entry!.queryHash).toBe(createHash('sha256').update(query).digest('hex').slice(0, 16));
+    expect(entry.query).toHaveLength(500);
+    expect(entry.queryHash).toBe(createHash('sha256').update(query).digest('hex').slice(0, 16));
   });
 
   it('logs the same hash for two calls with the same text', () => {
@@ -37,7 +37,7 @@ describe('servedHitEntries', () => {
     const [first] = servedHitEntries([hit], { ...context, query });
     const [second] = servedHitEntries([hit], { ...context, query });
 
-    expect(first!.queryHash).toMatch(/^[0-9a-f]{16}$/);
-    expect(second!.queryHash).toBe(first!.queryHash);
+    expect(first.queryHash).toMatch(/^[0-9a-f]{16}$/);
+    expect(second.queryHash).toBe(first.queryHash);
   });
 });
