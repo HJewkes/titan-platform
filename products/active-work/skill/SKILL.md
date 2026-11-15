@@ -80,12 +80,13 @@ Then sweep your own session for everything durable and file it:
 | Prior loops this session closed | `--resolves` with `outcome: done` |
 | A thread you're deliberately dropping | `--resolves` with `outcome: abandoned` **and a note saying why** — the note is required, and it surfaces in the bootstrap for 14 days so nobody proposes the dropped thing again |
 | Anything actionable | `active-work task add` before wrapping, then `--tasks-filed` |
+| Reports this session received (a sources path or a message id) | `--reports '[{"ref":"<path or msg id>","answer":"<task id, seat name or none>"}]'` |
 | Process improvements, gotchas, "avoid this next time", non-actionable FYIs | `--notes` (lands in `sources/notes/`, indexed in every future bootstrap) |
 | Uncommitted work, unpushed branches, stashes, worktree state | recorded automatically by `wrap`; add `holding` context if the bare fact isn't enough |
 
 Write `--next-steps` text that does **not** restate the task or PR the loop targets — put the id in the step's `ref` field and let the text open with the action. The bootstrap prefixes the ref itself, so text of "AW-28 drain the miner backlog" filed against `ref: AW-28` renders as "AW-28 AW-28 drain the miner backlog" in every future session (AW-71).
 
-Every category needs an **explicit** answer. Omitting a flag is an error, not a shortcut — the assert-nothing forms (`--no-loops`, `--no-notes`, `--no-tasks`) exist so that "there was nothing here" is a claim you make deliberately rather than by forgetting. Use them only when they are actually true.
+Every category needs an **explicit** answer. Omitting a flag is an error, not a shortcut — the assert-nothing forms (`--no-loops`, `--no-notes`, `--no-tasks`, `--no-reports`) exist so that "there was nothing here" is a claim you make deliberately rather than by forgetting. Use them only when they are actually true.
 
 `--facts <json>` is for recording a spawned worker, and `hooks agent-chat-complete` is what passes it. You do not pass it yourself. It stamps `kind: worker` and stores the object as the record's `worker` block. The object holds `facts`, the `WorkerFacts` from `@titan-design/agent-protocol/worker-facts` (agent, profile, spawner, exit, plus taskId, report, pr, tokens and costUsd when known). It can also hold `resolves`, the task ids the report names as closed, done or merged. A worker with no `facts.report` must carry `outcome: "exited-no-report"` and may carry `last_action`; a worker with a report must not carry an outcome. `authored` is optional (`continuations`, `open_questions`, `next_why`) and capped at 1,500 characters.
 
