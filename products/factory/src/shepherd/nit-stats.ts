@@ -4,7 +4,7 @@ import { z } from "zod";
 import { parseIsoMs } from "../time-iso.js";
 import { inRange, isoWeek, payloadOf, stepName, type StatsRange } from "./stats.js";
 
-export interface NitRow {
+interface NitRow {
   /** An ISO week such as `2026-W46`, or `before` / `after` for the nit policy's cutoff. */
   label: string;
   /** Verdicts whose text the ledger kept: a FIX_FIRST's findings; a MERGE's text lives with the reviewer, not here. */
@@ -17,7 +17,7 @@ export interface NitRow {
   cosmeticFollowUps: number;
 }
 
-export interface NitStats {
+interface NitStats {
   weeks: NitRow[];
   policy: NitRow[];
 }
