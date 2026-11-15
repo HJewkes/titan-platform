@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { DAILY_FIXTURE, DAY, fakeCli, fakeGh, fixtureTasks, REPO } from "../presets/daily/daily-fakes.test-helpers.js";
 import { fakeAuditionModel } from "../audition-fakes.test-helpers.js";
 import { DEFAULT_LANES_FILE } from "../lanes-schema.js";
+import { sha256 } from "./artifacts.js";
+import { gatherRequest } from "./run-gather.js";
 import { runRunCli } from "./run-cli.js";
 import { fakeRender, fakeHost, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
 
@@ -71,6 +73,59 @@ describe("explainer run --facts-from gatherDaily", () => {
     expect(out.join("")).toContain("gathered");
     expect(facts).toContain("| lane/solo/rollup | solo lane · rollup · Solo: 2 merged");
     expect(facts).not.toContain("lane/factory/rollup");
+  });
+
+  describe("with the data dir's daily/sources.yaml", () => {
+    const NO_REPO = DAILY.filter((_, i) => DAILY[i] !== "--repo" && DAILY[i - 1] !== "--repo");
+    const keepSources = (text: string) => {
+      mkdirSync(path.join(fx.dataDir, "daily"), { recursive: true });
+      writeFileSync(path.join(fx.dataDir, "daily", "sources.yaml"), text);
+      cpSync(path.join(DAILY_FIXTURE, "snapshots"), path.join(fx.dataDir, "task-snapshots"), { recursive: true });
+    };
+    const planned = (dry: string[]) => readFileSync(path.join(fx.dataDir, "gather", "daily-overview", DAY, "facts.md"), "utf8") + dry.join("");
+
+    it("gathers the repos it names when --repo is empty", async () => {
+      fx = fixture();
+      keepSources(`schema: daily-sources/v1\nrepos:\n  - ${REPO}\n`);
+      const { run, out, err } = cli();
+
+      const code = await run(...NO_REPO, "--type", "daily-overview", "--dry-run");
+
+      expect(code, err.join("")).toBe(0);
+      expect(planned(out)).toContain("pr/");
+    });
+
+    it("lets --repo override the file's repos", async () => {
+      fx = fixture();
+      keepSources("schema: daily-sources/v1\nrepos:\n  - acme/unused\n");
+      const { run, err } = cli();
+
+      const code = await run(...DAILY, "--type", "daily-overview", "--dry-run");
+
+      expect(code, err.join("")).toBe(0);
+    });
+
+    it("refuses a daily with no --repo and no sources file, naming both fixes", async () => {
+      fx = fixture();
+      const { run, err } = cli();
+
+      const code = await run(...NO_REPO, "--type", "daily-overview", "--dry-run");
+
+      expect(code).not.toBe(0);
+      expect(err.join("")).toContain("--repo");
+      expect(err.join("")).toContain("daily/sources.yaml");
+    });
+
+    it("keys the run on the sha of the decisions file the sources name", async () => {
+      fx = fixture();
+      const decisions = path.join(fx.dataDir, "decisions.md");
+      writeFileSync(decisions, "501. Owner 2026-03-11 ~09:1xZ: \"Open the desk at seven\".\n");
+      keepSources(`schema: daily-sources/v1\nrepos:\n  - ${REPO}\ndecisions: ${decisions}\n`);
+
+      const request = gatherRequest({ factsFrom: "gatherDaily", type: "daily-overview", day: DAY, repo: [], transcripts: [], initiative: "demo" }, fx.dataDir);
+
+      expect(request).toMatchObject({ repos: [REPO], decisions, decisionsSha: sha256(readFileSync(decisions, "utf8")) });
+    });
   });
 
   it("refuses a type whose profile does not take facts from gatherDaily", async () => {
