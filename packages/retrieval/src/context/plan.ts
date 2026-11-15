@@ -14,6 +14,8 @@ export interface ContextBudget {
   defaultQuota?: number;
   defaultTiers?: Record<string, number>;
   maxTier?: number;
+  /** `edges` puts the best hits at both ends of the entries; default `score` keeps rank order. */
+  order?: "score" | "edges";
   estimateTokens?: (text: string) => number;
 }
 
@@ -45,6 +47,7 @@ export function estimateTokens(text: string): number {
 
 interface Resolved {
   tokens: number;
+  order: "score" | "edges";
   quotaOf(category: string): number;
   defaultTierOf(c: ContextCandidate): number;
   ceilingOf(c: ContextCandidate): number;
@@ -88,6 +91,7 @@ function resolveBudget(budget: ContextBudget): Resolved {
   const ceilingOf = (c: ContextCandidate): number => Math.min(c.tiers.length - 1, budget.maxTier ?? Infinity);
   return {
     tokens: budget.tokens,
+    order: budget.order ?? "score",
     quotaOf: (category) => lookup(budget.quotas, category) ?? defaultQuota,
     defaultTierOf: (c) => Math.min(lookup(budget.defaultTiers, c.category) ?? 0, ceilingOf(c)),
     ceilingOf,
@@ -204,7 +208,15 @@ function toPlan(kept: Working[], dropped: DroppedCandidate[], r: Resolved): Cont
     }),
   );
   const usedTokens = entries.reduce((sum, e) => sum + e.tokens, 0);
-  return { entries, dropped, usedTokens, budgetTokens: r.tokens };
+  return { entries: r.order === "edges" ? edgesFirst(entries) : entries, dropped, usedTokens, budgetTokens: r.tokens };
+}
+
+/** Rank 1 first, rank 2 last, rank 3 second, and so on: the weakest hits land mid-list. */
+function edgesFirst<T>(ranked: readonly T[]): T[] {
+  const front: T[] = [];
+  const back: T[] = [];
+  ranked.forEach((item, i) => (i % 2 === 0 ? front : back).push(item));
+  return [...front, ...back.reverse()];
 }
 
 export function planContext(candidates: readonly ContextCandidate[], budget: ContextBudget): ContextPlan {
