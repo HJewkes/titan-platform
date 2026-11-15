@@ -44,7 +44,10 @@ const blocker = (id: string, summary: string, openedAt: string) => ({
 });
 const inbox = (items: unknown[], gaps: string[] = []) => ok({ items, gaps, fyiCount: 0, readAt: new Date(NOW).toISOString(), derived: [] });
 
-type Answers = Partial<Record<"health" | "portfolio" | "tasks" | "queue" | "roster" | "sessions" | "inbox", JsonEnvelope<unknown>>>;
+const ownerTask = (id: string, title: string, fields: Record<string, unknown> = {}) => ({ ...task(id, title, "ready", "No blockers"), ...fields });
+const ownerRows = (...tasks: unknown[]) => ok({ fetchedAt: "", evidence: { repos: [], degraded: [] }, tasks });
+
+type Answers = Partial<Record<"health" | "portfolio" | "tasks" | "owner" | "queue" | "roster" | "sessions" | "inbox", JsonEnvelope<unknown>>>;
 
 const ok = (data: unknown): JsonEnvelope<unknown> => successEnvelope(data);
 
@@ -60,6 +63,7 @@ function homeSnapshot(answers: Answers = {}): Snapshot {
         ok({ fetchedAt: "", personalKnown: true, parseErrors: [], initiatives: [initiative("orbit-relay", "Orbit relay", 3, ago(2 * HOUR)), initiative("kiln-tools", "Kiln tools", 4, ago(72 * HOUR))] }),
       [snapshotKey("work.tasks", { stage: "blocked" })]:
         answers.tasks ?? ok({ fetchedAt: "", evidence: { repos: [], degraded: [] }, tasks: [task("OR-7", "Route beacons", "blocked", "Waits on OR-3"), task("OR-8", "Tune relays", "ready", "No blockers")] }),
+      [snapshotKey("work.tasks", { ownerOnly: true, limit: 200 })]: answers.owner ?? ownerRows(),
       [snapshotKey("agents.queue", {})]: answers.queue ?? ok({ items: [question("m-1", "Ship the relay today?\nMore context", "relay-worker")], hidden: { "notice:exit": 9 }, open: 10, generatedAt: NOW }),
       [snapshotKey("agents.roster", {})]: answers.roster ?? ok({ agents: [agent("relay-worker", "presence"), agent("old-worker", "history")], brokerUptimeMs: HOUR, reconnecting: false, generatedAt: NOW }),
       [snapshotKey("sessions.list", { limit: 200 })]:
@@ -180,6 +184,37 @@ describe("the home page", () => {
     renderHome(homeSnapshot({ ...quiet(), inbox: inbox([], ["factory: connect ECONNREFUSED"]) }));
     expect(await screen.findByText("Inbox: 0 blocking, 1 source unreadable")).toBeTruthy();
     expect(screen.queryByText("Nothing needs you")).toBeNull();
+  });
+});
+
+describe("the home page's owner-only steps", () => {
+  const steps = [
+    { kind: "release", note: "Publish the relay build" },
+    { kind: "credential", note: "Rotate the relay key" },
+  ];
+
+  it("shows each owner step of a task with its kind, note and initiative", async () => {
+    renderHome(homeSnapshot({ owner: ownerRows(ownerTask("OR-20", "Ship relay", { owner_steps: steps })) }));
+    expect(await screen.findByText("release: Publish the relay build")).toBeTruthy();
+    expect(screen.getByText("credential: Rotate the relay key")).toBeTruthy();
+    expect(screen.getAllByText(/OR-20 Ship relay · orbit-relay/).length).toBeGreaterThan(0);
+  });
+
+  it("shows the title of a human-action task that lists no steps", async () => {
+    renderHome(homeSnapshot({ owner: ownerRows(ownerTask("OR-21", "Sign the relay charter", { ownerTagged: true })) }));
+    expect(await screen.findByText("OR-21 Sign the relay charter")).toBeTruthy();
+  });
+
+  it("leaves out a task with neither steps nor an owner tag", async () => {
+    renderHome(homeSnapshot({ owner: ownerRows(ownerTask("OR-22", "Plain chore")) }));
+    await screen.findByText("OR-7 Route beacons");
+    expect(screen.queryByText(/OR-22/)).toBeNull();
+  });
+
+  it("opens the task page from a step row", async () => {
+    renderHome(homeSnapshot({ owner: ownerRows(ownerTask("OR-20", "Ship relay", { owner_steps: steps })) }), { inApp: true });
+    fireEvent.click(await screen.findByText("release: Publish the relay build"));
+    await waitFor(() => expect(window.location.hash).toBe("#/tasks/OR-20"));
   });
 });
 
