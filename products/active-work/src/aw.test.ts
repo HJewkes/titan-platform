@@ -7,6 +7,7 @@ import { EXIT, NotFoundError } from './errors.js';
 import { PROFILE_ROOT_ENV } from '@titan-design/anthropic-account/node';
 
 import { helpText, main, type AwDeps } from './aw.js';
+import { BUILD_VERSION } from './version.js';
 import { openSlugOrInit } from './launcher-open.js';
 import resumeCommand from './commands/resume.js';
 
@@ -50,6 +51,21 @@ describe('openSlugOrInit (TP-356 reviewer nit)', () => {
       );
       return true;
     });
+  });
+});
+
+describe('aw --version', () => {
+  it.each(['--version', '-V'])('prints the running build version for %s', async (flag) => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const deps = fakeDeps();
+
+    await main(['node', 'aw', flag], deps);
+
+    const printed = stdout.mock.calls.map((c) => String(c[0])).join('');
+    stdout.mockRestore();
+    expect(printed).toBe(`${BUILD_VERSION}\n`);
+    expect(printed).not.toBe('0.1.0\n');
+    expect(deps.exit).toHaveBeenCalledWith(EXIT.OK);
   });
 });
 

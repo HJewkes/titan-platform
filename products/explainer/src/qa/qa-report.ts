@@ -4,9 +4,9 @@ import { CaptionReportSchema } from "./caption-check.js";
 import { FlashReportSchema } from "./flash-scan.js";
 import { ContrastReportSchema } from "./contrast-check.js";
 import { NarrationFactsReportSchema } from "./narration-facts.js";
+import { qaGateChecks } from "./qa-gates.js";
 import type { QaTimeline } from "./qa-timeline.js";
 import { SpeechRateReportSchema } from "./speech-rate.js";
-import { TIMING_GATES } from "./timing-gates.js";
 
 const RectSchema = z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() });
 
@@ -64,9 +64,6 @@ const MediaIntervalSchema = z.object({ startS: z.number(), endS: z.number(), bea
 const MediaScanSchema = z.object({ black: z.array(MediaIntervalSchema), silence: z.array(MediaIntervalSchema), freeze: z.array(MediaIntervalSchema) });
 export type MediaScanReport = z.infer<typeof MediaScanSchema>;
 
-/** The measured codes that fail the stage; `stage-empty` is reported only. */
-const MEASURED_GATES: readonly string[] = ["motion-happened", "clipped-text", "content-fill"];
-
 /** Past this many bytes a series goes to its own artifact and qa.json keeps the sha, so qa.json stays small to read. */
 export const INLINE_MAX_BYTES = 64 * 1024;
 
@@ -116,12 +113,13 @@ const finding = (held: HeldFinding & { crop?: string }): QaFinding => ({
 
 type QaReportBase = Omit<QaReport, "schema" | "pass" | "errorCounts" | "infoCounts" | "errors" | "info">;
 
+/** `pass` is the qa gate rows' verdict over the report itself, so qa.json and the stage's checks cannot disagree about what gates. */
 export function qaReport(held: Held, base: QaReportBase): QaReport {
-  const gated = base.measured.some((finding) => MEASURED_GATES.includes(finding.code)) || base.timing.gates.some((gate) => TIMING_GATES.includes(gate.id) && !gate.pass);
-  return {
-    schema: "explainer.qa/v1", ...(base.speechRate === undefined ? {} : { speechRate: base.speechRate }), pass: held.errors.length === 0 && !gated, ...base,
+  const draft: QaReport = {
+    schema: "explainer.qa/v1", ...(base.speechRate === undefined ? {} : { speechRate: base.speechRate }), pass: false, ...base,
     errorCounts: countByKind(held.errors), infoCounts: countByKind(held.info), errors: held.errors.map(finding), info: held.info.map(finding),
   };
+  return { ...draft, pass: qaGateChecks(JSON.stringify(draft)).every((check) => check.gate !== true || check.pass) };
 }
 
 const beatsDuring = (timeline: QaTimeline) => ({ startS, endS }: MediaInterval) => ({
