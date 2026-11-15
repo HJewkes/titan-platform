@@ -93,6 +93,19 @@ describe("proposeDestination", () => {
     expect(proposeDestination(group, [], { now: NOW }).destination).toBe("new-skill:api-docs-live");
   });
 
+  it("still deletes a stale project fact that mentions a setting", () => {
+    const group = onlyGroup(fact("settings-page", { description: "Sprint goal: ship the settings page", type: "project", modified: "2026-01-01" }));
+    expect(proposeDestination(group, [], { now: NOW }).destination).toBe("delete");
+  });
+
+  it("sends a reference group spanning two projects to the first project's reference data", () => {
+    const group = onlyGroup(
+      fact("api-docs", { description: "API docs live on the wiki", type: "reference", project: "p2" }),
+      fact("api-docs", { description: "API docs live on the wiki", type: "reference", project: "p1" }),
+    );
+    expect(proposeDestination(group, [], { now: NOW }).destination).toBe("reference:p1");
+  });
+
   it("prefers a matching skill over config and reference destinations", () => {
     const skills = [{ name: "permissions", description: "permission settings mode" }];
     const group = onlyGroup(fact("perm-mode", { description: "Permission settings mode", project: "p1" }));
