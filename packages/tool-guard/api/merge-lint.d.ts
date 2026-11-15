@@ -20,8 +20,8 @@ declare function findHits(text: string): ShapeHit[];
 declare const RulesSchema: z.ZodObject<{
     $schema: z.ZodLiteral<"merge-lint/1">;
     level: z.ZodEnum<{
-        warn: "warn";
         error: "error";
+        warn: "warn";
     }>;
     scan: z.ZodObject<{
         include: z.ZodArray<z.ZodString>;
