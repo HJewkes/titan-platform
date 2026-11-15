@@ -710,8 +710,9 @@ Key exports:
 - `write-read-back`: `WriteRetriesExhaustedError`
 - `file-bytes`: `BlobTooLargeError`
 - `force-pushes`: `ForcePushesTruncated`
+- `pr-outcome`: `PrOutcomeMalformed`
 - `backstop-read`: `BackstopTruncated`, `graphqlPoints`, `readBackstopSnapshot`, `snapshotRequests`
-- `checks`: `isConcluded`, `isPassing`
+- `checks`: `isConcluded`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
 
 <a id="cap-health"></a>
@@ -1266,7 +1267,8 @@ Key exports:
 - `facet`: `backfillFacets`
 - `apply`: `applyDelta`
 - `purge`: `purgeTranscript`
-- `rollup`: `reconcile`, `rollupSessions`, `rollupYielding`
+- `drain`: `ingestDrain`, `listTemplates`
+- `rollup`: `reconcile`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-graph)
 
 <a id="cap-session-read"></a>
