@@ -402,6 +402,7 @@ describe('end-to-end: full lifecycle through the registry', () => {
         no_loops: true,
         no_notes: true,
         no_tasks: true,
+        no_reports: true,
       },
       activeRoot,
     );
@@ -431,6 +432,7 @@ describe('end-to-end: full lifecycle through the registry', () => {
         no_loops: true,
         no_notes: true,
         no_tasks: true,
+        no_reports: true,
       },
       activeRoot,
     );

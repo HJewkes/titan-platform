@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { getLockPath } from '../utils/paths.js';
 import { withFileLock } from '../utils/fs-atomic.js';
+import type { SessionReport } from '../schemas/session.js';
 import type { WorkerRecord } from '../schemas/worker-record.js';
 import { NotFoundError } from '../errors.js';
 import { defineCommand, type CommandContext } from '../registry/index.js';
@@ -9,6 +10,7 @@ import {
   ArgsSchema,
   NextStepsSchema,
   NotesSchema,
+  ReportsSchema,
   ResolvesSchema,
   ResultSchema,
   TaskIdsSchema,
@@ -35,6 +37,7 @@ interface WrapInput {
   ledger: Ledger;
   notes: NoteInput[];
   taskIds: string[];
+  reports: SessionReport[];
   worker: WorkerRecord | undefined;
   body: string;
 }
@@ -54,10 +57,11 @@ async function parseInput(args: Args): Promise<WrapInput> {
   };
   const notes = parseLedger(args.notes, NotesSchema, 'notes');
   const taskIds = parseLedger(args.tasks_filed, TaskIdsSchema, 'tasks-filed');
+  const reports = parseLedger(args.reports, ReportsSchema, 'reports');
   const worker = parseFacts(args.facts);
-  requireAnswers(args, ledger, notes, taskIds);
+  requireAnswers(args, ledger, notes, taskIds, reports);
   const body = args.body ?? (await fs.readFile(args.body_file!, 'utf8'));
-  return { ledger, notes, taskIds, worker, body };
+  return { ledger, notes, taskIds, reports, worker, body };
 }
 
 interface WrapPaths extends WrapInput {
@@ -86,7 +90,7 @@ async function fileNotesAndSweep(
 async function wrapLocked(args: Args, ctx: CommandContext, paths: WrapPaths): Promise<Result> {
   const { initiativeDir, ledger, taskIds } = paths;
   await verifyTaskIds(initiativeDir, taskIds);
-  const written = await writeWrap(args, paths.briefPath, paths.body, ledger, paths.worker);
+  const written = await writeWrap(args, paths.briefPath, paths.body, ledger, paths.worker, paths.reports);
   const { notePaths, recorded } = await fileNotesAndSweep(args, ctx, paths, written);
   const total = ledger.resolves.length;
   const rejected = await rejectedResolves(initiativeDir, written.filename);
@@ -119,7 +123,7 @@ export default defineCommand<Args, Result>({
     'category the session can leave behind needs an explicit answer, and omitting one is ' +
     'an error rather than a default — open loops (--next-steps / --resolves, or --no-loops), ' +
     'durable notes (--notes or --no-notes), and tasks created this session (--tasks-filed or ' +
-    '--no-tasks). Writes the session file and its ledger, files the notes under ' +
+    '--no-tasks), and reports received (--reports or --no-reports). Writes the session file and its ledger, files the notes under ' +
     'sources/notes/, records any worktrees, branches and stashes the initiative had not ' +
     "written down, stamps the brief's updated date, and returns a receipt of what was filed.",
   args: ArgsSchema,
@@ -195,6 +199,16 @@ export default defineCommand<Args, Result>({
         description:
           'Assert that this session filed no tasks. Mutually exclusive with --tasks-filed.',
       },
+      reports: {
+        long: '--reports',
+        description:
+          'JSON array answering each report this session received: [{"ref":"<sources path or msg id>","answer":"<task id, seat name or none>"}].',
+      },
+      no_reports: {
+        long: '--no-reports',
+        description:
+          'Assert that this session received no reports. Mutually exclusive with --reports.',
+      },
       facts: {
         long: '--facts',
         description:
@@ -205,7 +219,7 @@ export default defineCommand<Args, Result>({
       },
     },
     usage:
-      'active-work wrap <slug> --session-id <id> --started <iso> --ended <iso> [--track canonical|sidecar|adhoc] (--body <text> | --body-file <path>) (--next-steps <json> | --resolves <json> | --no-loops) (--notes <json> | --no-notes) (--tasks-filed <json> | --no-tasks) [--facts <json>]',
+      'active-work wrap <slug> --session-id <id> --started <iso> --ended <iso> [--track canonical|sidecar|adhoc] (--body <text> | --body-file <path>) (--next-steps <json> | --resolves <json> | --no-loops) (--notes <json> | --no-notes) (--tasks-filed <json> | --no-tasks) (--reports <json> | --no-reports) [--facts <json>]',
   },
   async run(args, ctx) {
     const initiativeDir = path.join(ctx.activeRoot, args.slug);
