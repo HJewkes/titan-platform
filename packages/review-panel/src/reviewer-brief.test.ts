@@ -13,6 +13,7 @@ import {
   MAX_CI_CHECK_ROWS,
   MAX_CORRECTION_PROMPT_CHARS,
   MAX_OWNER_PICKS,
+  NIT_POLICY_EXEMPTION,
   NIT_POLICY_RULE,
   type MalformedRefusal,
   REFUSAL_SENTENCES,
@@ -563,6 +564,23 @@ describe("reviewerBrief Follow-ups rule", () => {
     expect(NIT_POLICY_RULE).toMatch(/mislead a reader/);
     expect(brief.indexOf(NIT_POLICY_RULE)).toBeGreaterThan(-1);
     expect(brief.indexOf(NIT_POLICY_RULE)).toBeLessThan(brief.indexOf(FOLLOW_UPS_RULE));
+  });
+
+  it.each([
+    ["a first review", reviewerBrief(target)],
+    ["a convergence review", reviewerBrief({ ...target, fixFirsts: 3, convergence: true })],
+  ])("keeps blocking items, unmet done-when and relied-on pre-existing defects outside the nit policy in %s", (_scenario, brief) => {
+    expect(NIT_POLICY_RULE).toMatch(/^Of the notes that would not block,/);
+    expect(NIT_POLICY_EXEMPTION).toContain("never covers a blocking item");
+    expect(NIT_POLICY_EXEMPTION).toContain("leaves the task's done-when unmet");
+    expect(NIT_POLICY_EXEMPTION).toContain("pre-existing defect this PR now relies on");
+    expect(NIT_POLICY_EXEMPTION).toContain("whatever the PR description says");
+    expect(brief.indexOf(NIT_POLICY_EXEMPTION)).toBeGreaterThan(brief.indexOf("Of the notes that would not block"));
+  });
+
+  it("lets a non-cosmetic stated gap still be filed as a follow-up", () => {
+    expect(NIT_POLICY_RULE).toContain("File no cosmetic note as a follow-up; a stated gap that is not cosmetic may still be one.");
+    expect(NIT_POLICY_RULE).not.toContain("Do not file any of them");
   });
 
   it("bars a low-severity cosmetic follow-up", () => {
