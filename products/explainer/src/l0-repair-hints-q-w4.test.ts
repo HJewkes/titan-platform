@@ -25,4 +25,15 @@ describe("the Q-W4 hint", () => {
     expect(hint).toContain("b9");
     expect(q4(edited).pass).toBe(true);
   });
+
+  // Mutation: resolving detail ids only as beats leaves a chapter-id row with no instruction.
+  it("still says to add a user_value when the row names a chapter that has only a question beat", () => {
+    const script = withBeat(goodScript(), "b5", { function: "LEARNER_Q", user_value: undefined, why: undefined, new_terms: [] });
+    const row = q4(script);
+
+    const hint = repairHint(row, script);
+
+    expect(row.detail_beats).toEqual(["ch2"]);
+    expect(hint).toContain("add user_value { text, fact_ids } to ch2");
+  });
 });
