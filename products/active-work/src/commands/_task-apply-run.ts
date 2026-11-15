@@ -19,7 +19,16 @@ import { promotionProblem } from './_draft-promotion.js';
 import type { CommandContext } from '../registry/index.js';
 import { patchChange } from './task-edit.js';
 import type { PatchEdit } from './_task-edit-parse.js';
-import { isEdgeOp, type ApplyOp, type EdgeOp, type PlanEntry } from './_task-apply-plan.js';
+import {
+  isEdgeOp,
+  isSetOp,
+  setFieldOf,
+  type ApplyOp,
+  type EdgeOp,
+  type PlanEntry,
+  type SetOp,
+} from './_task-apply-plan.js';
+import { changedSetFields, valueProblem, type ValueChecks } from './_task-apply-values.js';
 
 type ApplyOutcome = 'applied' | 'unchanged' | 'missing' | 'failed';
 
@@ -41,7 +50,7 @@ function hasLine(notes: string | undefined, line: string): boolean {
   return (notes ?? '').split('\n').includes(line);
 }
 
-function patchFor(op: Exclude<ApplyOp, EdgeOp | { op: 'done' }>): PatchEdit {
+function patchFor(op: Exclude<ApplyOp, EdgeOp | SetOp | { op: 'done' }>): PatchEdit {
   if (op.op === 'add_tag') return { kind: 'patch', addTag: op.value };
   if (op.op === 'remove_tag') return { kind: 'patch', removeTag: op.value };
   return { kind: 'patch', append: op.value };
@@ -71,11 +80,18 @@ function applyEdgeOp(task: Task, op: EdgeOp, edges: EdgeIndex | undefined): Step
   return { task: { ...task, dep }, changed: true };
 }
 
+function applySetOp(task: Task, op: SetOp): Stepped {
+  const field = setFieldOf(op);
+  if (task[field] === op.value) return { task, changed: false };
+  return { task: { ...task, [field]: op.value }, changed: true };
+}
+
 function applyOp(task: Task, op: ApplyOp, edges: EdgeIndex | undefined): Stepped {
   if (op.op === 'done') {
     if (task.status === 'done') return { task, changed: false };
     return { task: { ...task, status: 'done', done_at: nowIso() }, changed: true };
   }
+  if (isSetOp(op)) return applySetOp(task, op);
   if (isEdgeOp(op)) return applyEdgeOp(task, op, edges);
   if (op.op === 'append' && hasLine(task.notes, op.value)) return { task, changed: false };
   const { changes } = patchChange(task, patchFor(op));
@@ -117,24 +133,36 @@ function recordTask(edges: EdgeIndex | undefined, slug: string, task: Task): voi
   if (entry !== undefined) entry.task = task;
 }
 
+function applyOps(
+  task: Task,
+  ops: readonly ApplyOp[],
+  edges: EdgeIndex | undefined,
+): { next: Task; changedOps: ApplyOp[] } {
+  let next = task;
+  const changedOps: ApplyOp[] = [];
+  for (const op of ops) {
+    const step = applyOp(next, op, edges);
+    next = step.task;
+    if (step.changed) changedOps.push(op);
+  }
+  return { next, changedOps };
+}
+
 /**
  * Apply one plan line to the in-memory task. On a schema failure or a refused edge the task
  * is left as it was, so the line fails alone and the rest of the plan still applies.
  */
-function applyEntry(
+async function applyEntry(
   task: Task,
   entry: PlanEntry,
   run: ApplyContext,
-): { task: Task; line: LineResult } {
+): Promise<{ task: Task; line: LineResult }> {
   const { date, edges } = run;
-  let next = task;
-  const changes: string[] = [];
-  for (const op of entry.ops) {
-    const step = applyOp(next, op, edges);
-    next = step.task;
-    if (step.changed) changes.push(describeOp(op));
-  }
+  const { next, changedOps } = applyOps(task, entry.ops, edges);
+  const changes = changedOps.map(describeOp);
   if (changes.length === 0) return { task, line: result(entry, 'unchanged') };
+  const badValue = await valueProblem(next, changedSetFields(changedOps), run.values);
+  if (badValue !== undefined) return { task, line: failed(entry, badValue) };
   const unpromotable = promotionProblem(run.caller, task, next);
   if (unpromotable !== undefined) return { task, line: failed(entry, unpromotable) };
   const refused = edgeErrors(edges, entry.slug, task, next);
@@ -172,6 +200,7 @@ interface ApplyContext {
   date: string;
   dryRun: boolean;
   edges?: EdgeIndex;
+  values?: ValueChecks;
   caller?: CommandContext['caller'];
   io: TaskApplyIo;
 }
@@ -202,7 +231,7 @@ async function applyTask(
   let task = original;
   const lines: LineResult[] = [];
   for (const entry of entries) {
-    const step = applyEntry(task, entry, run);
+    const step = await applyEntry(task, entry, run);
     task = step.task;
     lines.push(step.line);
   }
