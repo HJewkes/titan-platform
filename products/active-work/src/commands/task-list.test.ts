@@ -167,3 +167,48 @@ describe('task.list --sort due', () => {
     });
   });
 });
+
+async function seedOtherTask(root: string, id: string, status: string): Promise<void> {
+  const dir = path.join(root, 'other-initiative', 'tasks');
+  await fs.mkdir(dir, { recursive: true });
+  const raw = await fs.readFile(path.join(root, SLUG, 'tasks', 'SI-1.yml'), 'utf8');
+  await fs.writeFile(
+    path.join(dir, `${id}.yml`),
+    raw.replace(/^id: .*$/m, `id: ${id}`).replace(/^status: .*$/m, `status: ${status}`),
+  );
+}
+
+async function setDep(root: string, id: string, dep: string): Promise<void> {
+  const file = path.join(root, SLUG, 'tasks', `${id}.yml`);
+  const raw = await fs.readFile(file, 'utf8');
+  await fs.writeFile(file, raw.replace(/^status: .*$/m, (m) => `${m}\ndep: [${dep}]`));
+}
+
+describe('task.list --unblocked', () => {
+  it('with a single slug, resolves a dep that lives in another initiative', async () => {
+    await withTempActiveRoot(async (root) => {
+      await seedOtherTask(root, 'OT-1', 'open');
+      await seedOtherTask(root, 'OT-2', 'done');
+      await setDep(root, 'SI-1', 'OT-1');
+      await setDep(root, 'SI-2', 'OT-2');
+
+      expect(await listIds(root, { unblocked: true })).toEqual(['SI-2']);
+      expect(await listIds(root, {})).toEqual(['SI-1', 'SI-2']);
+    });
+  });
+
+  it('with --all-initiatives, keeps a task whose dep is closed and drops one with an unknown dep', async () => {
+    await withTempActiveRoot(async (root) => {
+      await seedOtherTask(root, 'OT-2', 'done');
+      await setDep(root, 'SI-1', 'OT-2');
+      await setDep(root, 'SI-2', 'ZZ-9');
+
+      const { tasks } = await taskList.run(
+        { all_initiatives: true, unblocked: true },
+        { ...ctx(root), caller: 'owner' },
+      );
+
+      expect(tasks.map((t) => `${t.slug}/${t.id}`)).toEqual([`${SLUG}/SI-1`]);
+    });
+  });
+});
