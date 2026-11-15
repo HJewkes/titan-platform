@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "archived deps count as open",
+      "file": "products/active-work/src/tasks/blockers.ts",
+      "find": "if (!record || (!record.archived && !lookup.closed.has(record.status))) open.push(id);",
+      "replace": "if (!record || !lookup.closed.has(record.status)) open.push(id);",
+      "kills": ["openDeps counts an archived dep as closed whatever its status says"]
+    },
+    {
+      "name": "unknown ids count as closed",
+      "file": "products/active-work/src/tasks/blockers.ts",
+      "find": "if (!record || (!record.archived",
+      "replace": "if (record && (!record.archived",
+      "kills": ["openDeps counts an unknown id as open"]
+    },
+    {
+      "name": "only the first initiative is searched",
+      "file": "products/active-work/src/tasks/blockers.ts",
+      "find": "found = dirs.then((list) => locate(list, id));",
+      "replace": "found = dirs.then((list) => locate(list.slice(0, 1), id));",
+      "kills": ["openDeps resolves a dep that lives in another initiative"]
+    }
+  ]
+}

@@ -35,6 +35,7 @@ export const SHEPHERD_PORT_ACCESS = {
   "shepherd.visual-week-feedback": "write",
   "shepherd.visual-feedback-notes": "write",
   "shepherd.brief": "read",
+  "shepherd.ownerMeter": "read",
 } as const satisfies Record<ShepherdCommandName, PortAccess>;
 
 const isList = (args: object): boolean => "action" in args && args.action === "list";
