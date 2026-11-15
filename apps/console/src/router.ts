@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { safeDecode, useHashRoute } from "@titan-design/react-app";
 import { VIEW_KEYS, type ViewKey } from "./view-keys.js";
 
 export { VIEW_KEYS, type ViewKey };
@@ -9,15 +9,6 @@ export interface Route {
   id?: string;
   /** The text after `?`, kept whole so deep links such as `?task=` and `?tab=graph` reach the page. */
   query?: string;
-}
-
-/** A hand-typed hash can hold a lone `%`; keep the raw text rather than throw during render. */
-function safeDecode(text: string): string {
-  try {
-    return decodeURIComponent(text);
-  } catch {
-    return text;
-  }
 }
 
 /** Hash routes, because a page opened from disk has no server to answer a pushed path. */
@@ -52,13 +43,6 @@ export function replace(route: Route): void {
   window.location.replace(href(route));
 }
 
-function subscribe(onChange: () => void): () => void {
-  window.addEventListener("hashchange", onChange);
-  return () => window.removeEventListener("hashchange", onChange);
-}
-
-const readHash = (): string => window.location.hash;
-
 export function useRoute(): Route {
-  return parseRoute(useSyncExternalStore(subscribe, readHash, readHash));
+  return useHashRoute(parseRoute);
 }
