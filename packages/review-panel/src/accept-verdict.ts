@@ -102,8 +102,9 @@ export function acceptVerdict(input: AwaitVerdictInput, messages: readonly Revie
   if (!block.ok) return { kind: "none", reason: "wait" };
   if (final.investigativeCalls === 0) return { kind: "none", reason: DEPTH_FLOOR_REASON };
   if (input.shape === "adversary" && !hasProbesLine(final.text)) return malformedNone("probes_missing", final.writtenAt);
-  const authority = input.shape === "adversary" && block.verdict === "MERGE" ? authorityLine(final.text) : undefined;
-  if (input.shape === "adversary" && block.verdict === "MERGE" && (authority === undefined || authority === "malformed")) return malformedNone("authority_missing", final.writtenAt, final.text);
+  const adversaryMerge = input.shape === "adversary" && block.verdict === "MERGE";
+  const authority = adversaryMerge ? authorityLine(final.text) : undefined;
+  if (adversaryMerge && (authority === undefined || authority === "malformed")) return malformedNone("authority_missing", final.writtenAt, final.text);
   const ciPolicy = block.verdict === "MERGE" ? mergeCiPolicy(block.ciPolicy, final.text, block.lineOffset) : undefined;
   if (ciPolicy === "ci_policy_prose" || ciPolicy === "ci_policy_malformed") return malformedNone(ciPolicy, final.writtenAt, final.text);
   const reviewerNotes = { ownerBrief: parseOwnerBrief(final.text), ...followUpsFields(final.text), ...checkCandidatesFields(final.text) };
