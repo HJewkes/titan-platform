@@ -53,7 +53,7 @@ describe("the bridged-vs-in-process pair sheet", () => {
 
     const stacks = ffmpeg.calls.filter((args) => args.includes("hstack=inputs=2"));
     expect(stacks).toHaveLength(KINDS.beats.length);
-    expect(stacks[3]!.filter((a) => a.endsWith(".png")).map((a) => path.relative(dir, a))).toEqual(["bridged/cells/003.png", "in-process/cells/003.png", "pairs/pair-04-beat-01.png"]);
+    expect(stacks[3]!.filter((a) => a.endsWith(".png")).map((a) => path.relative(dir, a))).toEqual(["bridged/cells/003.png", "in-process/cells/003.png", "pairs/pair-04-metrics.png"]);
     const report = z.array(z.object({ beat: z.string(), ssim: z.number() })).parse(JSON.parse(readFileSync(path.join(dir, "ssim.json"), "utf8")));
     expect(report.map((r) => r.beat)).toEqual(KINDS.beats.map((b) => b.id));
     expect(pairs.every((p) => p.ssim === 0.9)).toBe(true);

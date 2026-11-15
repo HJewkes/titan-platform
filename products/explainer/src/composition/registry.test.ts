@@ -17,7 +17,6 @@ const SHOWCASE_KINDS = new Set(["catalogue"]);
  * TP-4276 slice removes the kinds it ports; an entry the registry now draws fails the fence, so the list only shrinks.
  */
 const NOT_DRAWN: Readonly<Record<string, string>> = {
-  "metrics-panel": "pin-only, falls back to list; ScorecardTable port is TP-4277",
   "kanban-flow": "pin-only, falls back to list; no component anywhere yet (design first, TP-4277)",
   stakes: "TP-4277 (P4a) ports StatBeat for it",
   "issue-pin": "TP-4277 (P4a) draws the list form; falls back to list without pins",
@@ -35,7 +34,6 @@ const NOT_DRAWN: Readonly<Record<string, string>> = {
   schema: "TP-4277 (P4b) uses react-ui SchemaCard",
   history: "TP-4277 (P4b) uses react-ui Timeline",
   "history-why": "TP-4277 (P4b) uses react-ui Timeline",
-  scorecard: "TP-4277 (P4b) ports ScorecardTable",
   "change-group": "TP-4277 (P4b) ports ListBeat",
   "finding-card": "TP-4277 (P4b) ports ListBeat",
   "reading-list": "TP-4277 (P4b) ports ListBeat",
@@ -71,7 +69,7 @@ const shippedPageKinds = (): Map<string, Set<string>> =>
 
 describe("the composition page's beat registry", () => {
   test("an unknown kind throws and names the kinds it knows", () => {
-    assert.throws(() => resolveBeat("hologram"), /^Error: unknown beat kind "hologram"; known kinds: hook, held, list, verdict-card, fact-flash, claim-card, button, outro, stat, chart, compare, arch-map, catalogue$/);
+    assert.throws(() => resolveBeat("hologram"), /^Error: unknown beat kind "hologram"; known kinds: hook, held, list, verdict-card, fact-flash, claim-card, button, outro, stat, chart, compare, arch-map, metrics-panel, scorecard, catalogue$/);
   });
 
   test("an inherited property name is not a beat kind", () => {

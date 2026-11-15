@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a metrics row always draws a target cell",
+      "file": "products/explainer/src/composition/beats/ScorecardTable.tsx",
+      "find": "{row.target !== undefined && <td className=\"beat-table-target\">{row.target}</td>}",
+      "replace": "<td className=\"beat-table-target\">{row.target}</td>",
+      "kills": [
+        "a metrics panel drawn as a table draws no target cell for a row with no target"
+      ]
+    },
+    {
+      "name": "a scorecard row drops its reason",
+      "file": "products/explainer/src/composition/beats/ScorecardTable.tsx",
+      "find": "{row.reason !== undefined && <td className=\"beat-table-reason\">{row.reason}</td>}",
+      "replace": "",
+      "kills": [
+        "a scorecard drawn as a table shows a row's reason beside its call"
+      ]
+    },
+    {
+      "name": "a row is shown before its reveal",
+      "file": "products/explainer/src/composition/beats/ScorecardTable.tsx",
+      "find": "<TableRow key={row.id} id={row.id} atS={reveal(row.id) ?? i * ROW_EACH_S}>\n            <th scope=\"row\" className=\"beat-table-label\">{row.measure}</th>",
+      "replace": "<TableRow key={row.id} id={row.id} atS={0}>\n            <th scope=\"row\" className=\"beat-table-label\">{row.measure}</th>",
+      "kills": [
+        "a metrics panel drawn as a table hides a row just before its reveal and shows it after, under seekClock"
+      ]
+    },
+    {
+      "name": "a row loses its reveal id",
+      "file": "products/explainer/src/composition/beats/ScorecardTable.tsx",
+      "find": "data-reveal={id} ",
+      "replace": "",
+      "kills": [
+        "a metrics panel drawn as a table draws one row per slot row, each carrying its reveal id"
+      ]
+    }
+  ]
+}

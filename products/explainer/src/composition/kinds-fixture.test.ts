@@ -5,7 +5,7 @@ import { kindsTimeline } from "./page.test-helpers.js";
 import { registeredKinds } from "./registry.js";
 
 /** The fixture's hand-written beats: the two page kinds and held, which no daily script fills. */
-const HAND_WRITTEN = ["opening", "pause", "showcase"];
+const HAND_WRITTEN = ["opening", "pause", "showcase", "metrics", "scorecard"];
 
 describe("fixtures/kinds.timeline.json", () => {
   test("its daily beats are what the template fill makes of the synthetic daily script", () => {
