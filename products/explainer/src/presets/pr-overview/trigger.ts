@@ -113,16 +113,31 @@ export async function prChangedFiles(ref: PrRef, gh: GhRun): Promise<string[]> {
   return out.split("\n").filter((line) => line.length > 0);
 }
 
-/** Every non-draft open PR at its current head with a changed file under a visual glob; PRs with no head are skipped. */
+type OpenPr = PrRef & { head: string };
+
+/** Non-draft open PRs with a head, from Shepherd's snapshot alone. */
+async function openPrs(readPrs: () => Promise<unknown>): Promise<OpenPr[]> {
+  const rows = PrRowsSchema.parse(await readPrs()).filter((row) => row.state === "open" && !row.draft && row.headSha !== null);
+  return rows.map((row) => ({ repo: row.repo, number: row.number, head: row.headSha! }));
+}
+
+/** A PR whose files cannot be read is skipped, so one failing `gh` call does not end the sweep. */
+async function touchesVisualPath(readFiles: (ref: PrRef) => Promise<string[]>, patterns: RegExp[], pr: OpenPr): Promise<boolean> {
+  try {
+    return (await readFiles(pr)).some((file) => matchesAny(patterns, file));
+  } catch {
+    return false;
+  }
+}
+
+/** Every non-draft open PR at its current head with a changed file under a visual glob; each PR's files are read once. */
 async function visualPathTargets(options: TriggerOptions): Promise<BriefTarget[]> {
   const { visualPaths, readPrs, readFiles } = options;
   if (!visualPaths?.length || !readPrs || !readFiles) return [];
   const patterns = visualPaths.map(globToRegExp);
-  const open = PrRowsSchema.parse(await readPrs()).filter((row) => row.state === "open" && !row.draft && row.headSha !== null);
   const targets: BriefTarget[] = [];
-  for (const row of open) {
-    const files = await readFiles({ repo: row.repo, number: row.number });
-    if (files.some((file) => matchesAny(patterns, file))) targets.push({ repo: row.repo, number: row.number, head: row.headSha!, gateId: VISUAL_PATH_TRIGGER });
+  for (const pr of await openPrs(readPrs)) {
+    if (await touchesVisualPath(readFiles, patterns, pr)) targets.push({ repo: pr.repo, number: pr.number, head: pr.head, gateId: VISUAL_PATH_TRIGGER });
   }
   return targets;
 }
@@ -156,9 +171,14 @@ export interface TriggerRow {
 
 const sameHead = (a: BriefTarget) => (b: BriefTarget): boolean => a.repo === b.repo && a.number === b.number && a.head === b.head;
 
-/** Re-read right before a gather: an earlier brief in the sweep can take minutes, and the head can move meanwhile. */
+/**
+ * Re-read right before a gather: an earlier brief in the sweep can take minutes, and the head can move meanwhile.
+ * Only heads are compared; a head fixes the changed files, so no file is read again.
+ */
 async function stillCurrent(options: TriggerOptions, target: BriefTarget): Promise<boolean> {
-  return (await sweepTargets(options)).some(sameHead(target));
+  if (target.gateId !== VISUAL_PATH_TRIGGER) return autoBriefTargets(WaitingSchema.parse(await options.readWaiting())).some(sameHead(target));
+  const open = options.readPrs ? await openPrs(options.readPrs) : [];
+  return open.some((pr) => sameHead(target)({ ...pr, gateId: target.gateId }));
 }
 
 /** One sweep: picks the visual-gate PRs and, with `visualPaths`, the open PRs touching them, and starts a brief for each head not yet briefed. */

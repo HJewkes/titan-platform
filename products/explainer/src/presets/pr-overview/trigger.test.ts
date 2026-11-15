@@ -213,6 +213,43 @@ describe("runPrVideoTrigger --visual-path", () => {
   });
 });
 
+describe("runPrVideoTrigger --visual-path cost and failure containment", () => {
+  it("reads each PR's changed files once per sweep, not again before each start", async () => {
+    const start = recordingStart();
+    const reads: number[] = [];
+
+    await runPrVideoTrigger({
+      dataDir: await dataDir(),
+      readWaiting: async () => waiting([]),
+      readPrs: async () => [prRow(), prRow({ number: 12 }), prRow({ number: 13 })],
+      readFiles: async (ref) => (reads.push(ref.number), ref.number === 13 ? ["src/core.ts"] : ["a.css"]),
+      visualPaths: ["**/*.css"],
+      start,
+    });
+
+    expect(reads.sort()).toEqual([11, 12, 13]);
+    expect(start.started.map((t) => t.number)).toEqual([11, 12]);
+  });
+
+  it("skips a PR whose changed files cannot be read and still starts the others, owner-gate PRs included", async () => {
+    const start = recordingStart();
+
+    const rows = await runPrVideoTrigger({
+      dataDir: await dataDir(),
+      readWaiting: async () => waiting([gate()]),
+      readPrs: async () => [prRow({ number: 12 }), prRow()],
+      readFiles: async (ref) => {
+        if (ref.number === 12) throw new Error("gh: rate limited");
+        return ["a.css"];
+      },
+      visualPaths: ["**/*.css"],
+      start,
+    });
+
+    expect(rows.map((r) => [r.pr, r.outcome])).toEqual([[`${REPO}#7`, "started"], [`${REPO}#11`, "started"]]);
+  });
+});
+
 describe("prChangedFiles", () => {
   it("lists a PR's changed file names through gh pr diff --name-only", async () => {
     const calls: string[][] = [];
