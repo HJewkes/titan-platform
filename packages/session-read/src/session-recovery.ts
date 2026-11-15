@@ -122,6 +122,7 @@ export class RecoveryFacts {
   private readonly chatSends: RecoveredMessageTarget[] = [];
   private readonly agentSpawns: RecoveredMessageTarget[] = [];
   private compactionCount = 0;
+  private boundaryAwaitingSummary = false;
   private readonly compactionSummaries: string[] = [];
 
   constructor(private readonly root: string) {
@@ -132,6 +133,7 @@ export class RecoveryFacts {
     if (observation.historyOrigin) return;
     if (observation.kind === "compaction") return this.addCompaction(observation);
     if (observation.kind !== "tool_call") return;
+    this.boundaryAwaitingSummary = false;
     const input = asObject(observation.input);
     if (WRITE_TOOLS.has(observation.name)) this.addFile(field(input, "file_path") ?? field(input, "notebook_path"));
     else if (observation.name === "Bash") this.addCommand(field(input, "command"), observation.timestamp);
@@ -147,9 +149,13 @@ export class RecoveryFacts {
   }
 
   private addCompaction(observation: NormalizedCompactionObservation): void {
-    this.compactionCount++;
     const summary = observation.nativeExtensions?.find(extension => extension.name === "compactionSummary")?.value;
-    if (typeof summary === "string" && summary.trim()) this.compactionSummaries.push(summary);
+    const text = typeof summary === "string" && summary.trim() !== "" ? summary : null;
+    // One real compaction writes a boundary row and then its summary row; the summary completes the boundary.
+    const completesBoundary = text !== null && this.boundaryAwaitingSummary;
+    if (!completesBoundary) this.compactionCount++;
+    this.boundaryAwaitingSummary = text === null;
+    if (text !== null) this.compactionSummaries.push(text);
   }
 
   private addFile(filePath: string | null): void {

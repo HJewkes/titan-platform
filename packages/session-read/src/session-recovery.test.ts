@@ -120,6 +120,16 @@ describe("recovering compactions", () => {
     expect(result.compactions).toEqual({ count: 1, lastSummaries: [] });
   });
 
+  it("counts one compaction once when its boundary row is followed by its summary row", async () => {
+    const result = await recoverRows([boundaryRow(), summaryRow(1)]);
+    expect(result.compactions).toEqual({ count: 1, lastSummaries: ["Summary number 1."] });
+  });
+
+  it("counts a second compaction after a paired boundary and summary", async () => {
+    const result = await recoverRows([boundaryRow(), summaryRow(1), boundaryRow(), summaryRow(2)]);
+    expect(result.compactions).toEqual({ count: 2, lastSummaries: ["Summary number 1.", "Summary number 2."] });
+  });
+
   it("skips compactions copied in from a parent conversation", () => {
     const facts = new RecoveryFacts(RECOVERY_ROOT);
     facts.add(compaction("Inherited summary.", { ...conversation, nativeId: "parent" }));
