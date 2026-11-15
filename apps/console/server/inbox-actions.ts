@@ -78,9 +78,7 @@ type ChatReadBack = {
   effect: string;
 };
 type DepositReadBack = Omit<ChatReadBack, "msgId">;
-
 type G10ReadBack = Omit<PrReadBack, "gateId"> & G10Signal;
-
 type ReadBack = PrReadBack | G10ReadBack | ChatReadBack | DepositReadBack | ApproveChatReadBack | OpReadBack;
 
 export type PrepareResult =
