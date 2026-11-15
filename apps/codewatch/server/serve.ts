@@ -1,7 +1,8 @@
 // Serves the built single-file app through mountStaticApp next to the read API: `pnpm --filter codewatch serve`.
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { closeOnSignal, startReportDaemon } from "./daemon.js";
+import { closeOnSignal } from "@titan-design/daemon";
+import { startReportDaemon } from "./daemon.js";
 import { DIST_DIR } from "./paths.js";
 
 const page = path.join(DIST_DIR, "index.html");

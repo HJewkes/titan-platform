@@ -51,6 +51,7 @@ export type { RemoteTlsOptions } from "./tls-files.js";
 export { TlsFileError } from "./tls-files.js";
 export type { ContentOriginOptions, DaemonHandle, RemoteListenerOptions, StartDaemonOptions } from "./daemon.js";
 export { DaemonAlreadyRunningError, DaemonPortInUseError, runDaemonUntilSignal, startDaemon } from "./daemon.js";
+export { closeOnSignal } from "./close-on-signal.js";
 export { systemdListenFd } from "./systemd-socket.js";
 export type { StaticAppOptions } from "./static-app.js";
 export { mountStaticApp } from "./static-app.js";

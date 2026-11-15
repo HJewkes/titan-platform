@@ -151,15 +151,6 @@ function lanListener(config: ConsoleConfig): RemoteListenerOptions | null {
   return { host: config.lanHost, tokenFile: config.lanTokenPath, allowedHosts: config.lanNames, tls: config.lanTls, signInHint: SIGN_IN_HINT };
 }
 
-/** Closes on SIGINT or SIGTERM, then runs `onClose` so a caller can stop what it started beside the daemon. */
-export function closeOnSignal(handle: DaemonHandle, onClose: () => Promise<void> = async () => {}): void {
-  const stop = (): void => {
-    void onClose().finally(() => handle.close());
-  };
-  process.once("SIGINT", stop);
-  process.once("SIGTERM", stop);
-}
-
 /** The HTTPS address a browser dials: the first LAN name, which the certificate covers, else the bound IP. */
 export function lanOrigin(config: ConsoleConfig, port: number): string {
   const name = config.lanNames[0] ?? (config.lanHost && isIPv6(config.lanHost) ? `[${config.lanHost}]` : config.lanHost);

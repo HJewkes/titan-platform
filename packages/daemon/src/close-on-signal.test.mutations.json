@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the handle closes before onClose finishes",
+      "file": "packages/daemon/src/close-on-signal.ts",
+      "find": "void onClose()\n      .catch(() => undefined)\n      .finally(() => handle.close());",
+      "replace": "void handle.close();\n    void onClose();",
+      "kills": ["closeOnSignal runs onClose then closes the handle once on SIGTERM"]
+    },
+    {
+      "name": "a rejecting onClose skips the handle close",
+      "file": "packages/daemon/src/close-on-signal.ts",
+      "find": "      .catch(() => undefined)\n      .finally(() => handle.close());",
+      "replace": "      .then(() => handle.close());",
+      "kills": ["closeOnSignal closes the handle when onClose rejects"]
+    },
+    {
+      "name": "SIGINT is not listened for",
+      "file": "packages/daemon/src/close-on-signal.ts",
+      "find": "  signals.once(\"SIGINT\", stop);\n",
+      "replace": "",
+      "kills": ["closeOnSignal closes the handle when onClose rejects"]
+    }
+  ]
+}

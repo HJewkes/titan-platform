@@ -1,6 +1,7 @@
 // One process for development: the report daemon, and Vite's dev server proxying /rpc to it: `pnpm --filter codewatch dev`.
+import { closeOnSignal } from "@titan-design/daemon";
 import { createServer } from "vite";
-import { closeOnSignal, startReportDaemon } from "./daemon.js";
+import { startReportDaemon } from "./daemon.js";
 import { APP_DIR } from "./paths.js";
 
 const handle = await startReportDaemon();

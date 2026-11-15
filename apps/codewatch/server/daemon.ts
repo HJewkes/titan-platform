@@ -25,12 +25,3 @@ export async function startReportDaemon(options: ReportDaemonOptions = {}): Prom
     logger: consoleLogger,
   });
 }
-
-/** Closes on SIGINT or SIGTERM, then runs `onClose` so a caller can stop what it started beside the daemon. */
-export function closeOnSignal(handle: DaemonHandle, onClose: () => Promise<void> = async () => {}): void {
-  const stop = (): void => {
-    void onClose().finally(() => handle.close());
-  };
-  process.once("SIGINT", stop);
-  process.once("SIGTERM", stop);
-}

@@ -65,6 +65,10 @@ await handle.close(); // stops the watcher, closes the socket, releases the pid 
 takes the same options, starts, waits for SIGTERM/SIGINT, then closes. Neither calls
 `process.exit` — the caller decides how the process terminates.
 
+A caller that already holds a handle uses `closeOnSignal(handle, onClose?)`: on SIGINT or
+SIGTERM it runs `onClose` (to stop what it started beside the daemon, such as a dev server),
+then closes the handle, even when `onClose` rejects.
+
 ## Surfaces
 
 | Route | Behaviour |
