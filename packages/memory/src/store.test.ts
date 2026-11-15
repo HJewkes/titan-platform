@@ -22,6 +22,12 @@ describe("PlaybookStore", () => {
 
   afterEach(() => db.close());
 
+  it("round-trips session and note provenance", () => {
+    const sourceSessions = [{ sessionRef: "session:s1", byteOffset: 12 }, { noteRef: "note:demo-notes/first-note.md" }];
+    const added = store.add({ content: "Prefer small pull requests", sourceSessions });
+    expect(store.get(added.id)?.sourceSessions).toEqual(sourceSessions);
+  });
+
   it("skips a row with corrupt attrs and still lists the good bullets", () => {
     const first = store.add({ content: "Run the linter before committing" });
     const second = store.add({ content: "Pin dependency versions" });
