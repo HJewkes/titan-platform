@@ -11,6 +11,7 @@ import { withTempActiveRoot } from '../test-support/test-helpers.js';
 import { today } from '../utils/today.js';
 import { setGitRunner, resetRunners, type CommandRunner } from '../utils/git-gh.js';
 import { expandTilde } from '../utils/paths.js';
+import { ValidationError } from '../errors.js';
 import type { CommandContext } from '../registry/index.js';
 
 function makeCtx(activeRoot: string): CommandContext {
@@ -80,6 +81,7 @@ function baseArgs(overrides: Record<string, unknown> = {}) {
     body: 'what happened\n',
     no_notes: true,
     no_tasks: true,
+    no_reports: true,
     ...overrides,
   });
 }
@@ -471,6 +473,7 @@ describe('wrap', () => {
             no_loops: true,
             no_notes: true,
             no_tasks: true,
+            no_reports: true,
           }),
           makeCtx(activeRoot),
         );
@@ -701,6 +704,88 @@ describe('wrap', () => {
             makeCtx(activeRoot),
           ),
         ).rejects.toThrow(/--no-tasks asserts/);
+      });
+    });
+  });
+
+  describe('--reports / --no-reports', () => {
+    const REPORTS = [
+      { ref: 'sources/notes/2026-05-12-finding.md', answer: 'SI-1' },
+      { ref: 'msg-0042', answer: 'none' },
+    ];
+
+    async function onlySessionFrontmatter(activeRoot: string, filename: string) {
+      const raw = await fs.readFile(path.join(activeRoot, SLUG, 'sessions', filename), 'utf8');
+      return z.record(z.string(), z.unknown()).parse(YAML.parse(raw.split('---')[1] ?? ''));
+    }
+
+    it('refuses without either flag, without naming --no-reports', async () => {
+      await withTempActiveRoot(async (activeRoot) => {
+        const args = () =>
+          baseArgs({ no_reports: undefined, no_loops: true, session_id: 'sess-noreports' });
+
+        await expect(wrap.run(args(), makeCtx(activeRoot))).rejects.toThrow(/reports.*--reports/s);
+        await expect(wrap.run(args(), makeCtx(activeRoot))).rejects.toThrow(
+          expect.objectContaining({ message: expect.not.stringContaining('--no-reports') }),
+        );
+      });
+    });
+
+    it('refuses --no-reports alongside --reports', async () => {
+      await withTempActiveRoot(async (activeRoot) => {
+        await expect(
+          wrap.run(
+            baseArgs({ session_id: 'sess-bothreports', no_loops: true, reports: REPORTS }),
+            makeCtx(activeRoot),
+          ),
+        ).rejects.toThrow(/--no-reports asserts/);
+      });
+    });
+
+    it('records no_reports: true in the session file', async () => {
+      await withTempActiveRoot(async (activeRoot) => {
+        const result = await wrap.run(
+          baseArgs({ session_id: 'sess-nr', no_loops: true }),
+          makeCtx(activeRoot),
+        );
+        const fm = await onlySessionFrontmatter(activeRoot, result.filename);
+        expect(fm['no_reports']).toBe(true);
+        expect(fm['reports']).toBeUndefined();
+      });
+    });
+
+    it('records the --reports array in the session file', async () => {
+      await withTempActiveRoot(async (activeRoot) => {
+        const result = await wrap.run(
+          baseArgs({
+            session_id: 'sess-r',
+            no_loops: true,
+            no_reports: undefined,
+            reports: JSON.stringify(REPORTS),
+          }),
+          makeCtx(activeRoot),
+        );
+        const fm = await onlySessionFrontmatter(activeRoot, result.filename);
+        expect(fm['reports']).toEqual(REPORTS);
+        expect(fm['no_reports']).toBeUndefined();
+      });
+    });
+
+    it('rejects a malformed --reports array as a ValidationError', async () => {
+      await withTempActiveRoot(async (activeRoot) => {
+        const run = (reports: string) =>
+          wrap.run(
+            baseArgs({
+              session_id: 'sess-badreports',
+              no_loops: true,
+              no_reports: undefined,
+              reports,
+            }),
+            makeCtx(activeRoot),
+          );
+
+        await expect(run('not json')).rejects.toBeInstanceOf(ValidationError);
+        await expect(run('[{"ref":"msg-1"}]')).rejects.toBeInstanceOf(ValidationError);
       });
     });
   });
