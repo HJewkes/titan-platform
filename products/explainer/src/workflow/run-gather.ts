@@ -8,6 +8,7 @@ import { z } from "zod";
 import { lanesFileFor, loadLanes } from "../lanes-schema.js";
 import { gatherArticle, writeArticleGather } from "../presets/article/gather-article.js";
 import { activeWorkTasks } from "../presets/daily/active-work-tasks.js";
+import { loadDailySources } from "../presets/daily/daily-sources.js";
 import { gatherDaily, writeDailyGather } from "../presets/daily/gather-daily.js";
 import { execCli, type CliRun } from "../presets/daily/stats-source.js";
 import type { SnapshotTask } from "../presets/daily/task-snapshot.js";
@@ -160,8 +161,12 @@ function articleRequest(flags: GatherFlags, type: string, day: string): DayGathe
 
 function dailyRequest(flags: GatherFlags, type: string, day: string, dataDir: string): DayGatherRequest {
   const lanes = path.resolve(flags.lanes ?? lanesFileFor(dataDir));
-  const decisions = flags.decisions ? { decisions: path.resolve(flags.decisions), decisionsSha: shaOf(flags.decisions) } : {};
-  return { adapter: "gatherDaily", type, day, repos: flags.repo, transcripts: flags.transcripts, initiative: flags.initiative, lanes, lanesSha: shaOf(lanes), ...decisions };
+  const sources = loadDailySources(dataDir);
+  const repos = flags.repo.length > 0 ? flags.repo : (sources?.repos ?? []);
+  if (repos.length === 0) throw new Error(`the daily has no repos to read: pass --repo <owner/name>, or list them in ${path.join(dataDir, "daily", "sources.yaml")}`);
+  const decisionsFile = flags.decisions ?? sources?.decisions;
+  const decisions = decisionsFile ? { decisions: path.resolve(decisionsFile), decisionsSha: shaOf(decisionsFile) } : {};
+  return { adapter: "gatherDaily", type, day, repos, transcripts: flags.transcripts, initiative: flags.initiative, lanes, lanesSha: shaOf(lanes), ...decisions };
 }
 
 /**
