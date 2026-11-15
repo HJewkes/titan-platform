@@ -19,7 +19,7 @@ describe('relatedContext', () => {
       title: 'The alpha lesson',
       path: 'alpha/sources/notes/2026-09-02-alpha-lesson.md',
     });
-    expect(result.hits[0]?.excerpt).toBeTruthy();
+    expect(result.hits.at(0)?.excerpt).toBeTruthy();
   });
 
   it('never returns an excluded ref, and fills its place from further down', async () => {
@@ -29,12 +29,12 @@ describe('relatedContext', () => {
     const result = await fixture.related({ text: 'indexer converges', limit: 3, exclude: first ? [first] : [] });
 
     expect(result.hits.map((hit) => hit.ref)).not.toContain(first);
-    expect(result.hits[0]?.ref).toBe(second);
+    expect(result.hits.at(0)?.ref).toBe(second);
   });
 
   it('carries the winning span as a byte range into the file', async () => {
     const result = await fixture.related({ text: 'the alpha lesson', initiative: 'alpha' });
-    const top = result.hits[0];
+    const top = result.hits.at(0);
     const file = readFileSync(path.join(fixture.root(), top?.path ?? ''));
 
     expect(top?.byteOffset).toBeGreaterThanOrEqual(0);

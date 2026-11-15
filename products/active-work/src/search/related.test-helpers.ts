@@ -7,7 +7,7 @@ import { refreshInto, scaffold } from '../test-support/workspace-index/fixture.j
 import { writeCharter } from '../test-support/visibility.js';
 import { relatedContext, type RelatedInput } from './related.js';
 
-export interface RelatedFixture {
+interface RelatedFixture {
   root(): string;
   related(input: Partial<RelatedInput> & { text: string }): ReturnType<typeof relatedContext>;
 }
