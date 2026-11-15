@@ -39,6 +39,8 @@ interface BriefSessionsInput {
 
 export interface BriefSessions {
   lines: string[];
+  /** The full session id each line names, in line order. */
+  refs: string[];
   degraded: RelatedDegradation[];
 }
 
@@ -59,14 +61,18 @@ function sessionLine(row: SessionTouchingFiles): string {
   return `- ${row.sessionId.slice(0, ID_CHARS)} ${row.touchedAt.slice(0, 10)} ${title}`;
 }
 
-function readVisible(input: BriefSessionsInput, files: TouchedFileQuery[], shown: Shown): string[] {
+function readVisible(
+  input: BriefSessionsInput,
+  files: TouchedFileQuery[],
+  shown: Shown,
+): Pick<BriefSessions, 'lines' | 'refs'> {
   const graph = openSessionGraph(input.dbPath ?? defaultGraphPath(), { readonly: true });
   try {
     const since = new Date(input.now.getTime() - WINDOW_DAYS * DAY_MS).toISOString();
-    return sessionsTouchingFiles(graph, { files, since, limit: SESSION_CANDIDATES })
+    const rows = sessionsTouchingFiles(graph, { files, since, limit: SESSION_CANDIDATES })
       .filter((row) => shown(initiativeOf(row)))
-      .slice(0, SESSION_LINES)
-      .map(sessionLine);
+      .slice(0, SESSION_LINES);
+    return { lines: rows.map(sessionLine), refs: rows.map((row) => row.sessionId) };
   } finally {
     graph.db.close();
   }
@@ -75,17 +81,18 @@ function readVisible(input: BriefSessionsInput, files: TouchedFileQuery[], shown
 /** Always the agent view: `/rpc` runs every caller as the owner, so no caller is consulted. */
 export async function briefSessions(input: BriefSessionsInput): Promise<BriefSessions> {
   const files: TouchedFileQuery[] = namedFiles(input.text).map((filePath) => ({ path: filePath }));
-  if (files.length === 0) return { lines: [], degraded: [] };
+  if (files.length === 0) return { lines: [], refs: [], degraded: [] };
   const dbPath = input.dbPath ?? defaultGraphPath();
   if (!existsSync(dbPath)) {
-    return { lines: [], degraded: [{ source: 'sessions', reason: 'missing', message: `no index at ${dbPath}` }] };
+    const missing = { source: 'sessions', reason: 'missing', message: `no index at ${dbPath}` };
+    return { lines: [], refs: [], degraded: [missing] };
   }
   const shown = await visibilityFor({ activeRoot: input.activeRoot, warnings: [] });
   try {
-    return { lines: readVisible({ ...input, dbPath }, files, shown), degraded: [] };
+    return { ...readVisible({ ...input, dbPath }, files, shown), degraded: [] };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return { lines: [], degraded: [{ source: 'sessions', reason: 'error', message }] };
+    return { lines: [], refs: [], degraded: [{ source: 'sessions', reason: 'error', message }] };
   }
 }
 
@@ -103,5 +110,6 @@ export function withSessions(block: BriefBlock, sessions: BriefSessions, budgetB
   }
   if (fitted.length === 0) return block;
   const text = `${block.text}${gap}${HEADING}${fitted.join('\n')}`;
-  return { ...block, text, bytes: utf8Bytes(text) };
+  const refs = sessions.refs.slice(0, fitted.length).map((ref) => ({ ref, source: 'sessions' as const }));
+  return { ...block, text, refs: [...block.refs, ...refs], bytes: utf8Bytes(text) };
 }
