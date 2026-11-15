@@ -110,11 +110,11 @@ export const playbookReflect = defineCommand<z.infer<typeof ReflectArgs>, Reflec
   },
 });
 
-export interface StaleBulletView extends BulletView {
+interface StaleBulletView extends BulletView {
   lastEvidenceAt: string;
 }
 
-export interface StatusResponse {
+interface StatusResponse {
   total: number;
   byMaturity: Record<string, number>;
   blocked: number;
