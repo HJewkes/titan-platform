@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the dropped-file marker is never rendered",
+      "file": "products/active-work/src/sessions/resume-block.ts",
+      "find": "return files.dropped > 0 ? [...rows, `…and ${files.dropped} more`] : rows;",
+      "replace": "return rows;",
+      "kills": ["renderResumeBlock marks a truncated files list with the count of dropped files"]
+    },
+    {
+      "name": "an empty field drops its none line",
+      "file": "products/active-work/src/sessions/resume-block.ts",
+      "find": "return rows.length === 0 ? [`- ${label}: ${NONE}`] : [`- ${label}:`, ...rows.map((r) => `  - ${r}`)];",
+      "replace": "return rows.length === 0 ? [] : [`- ${label}:`, ...rows.map((r) => `  - ${r}`)];",
+      "kills": ["renderResumeBlock keeps every field label with an explicit none line when the input is empty"]
+    },
+    {
+      "name": "summaries render newest first",
+      "file": "products/active-work/src/sessions/resume-block.ts",
+      "find": "return summaries.map((s) => s.replace(/\\s*\\r?\\n\\s*/g, ' ').trim());",
+      "replace": "return summaries.map((s) => s.replace(/\\s*\\r?\\n\\s*/g, ' ').trim()).reverse();",
+      "kills": ["renderResumeBlock renders summaries oldest first"]
+    },
+    {
+      "name": "the branch moves ahead of the compaction count",
+      "file": "products/active-work/src/sessions/resume-block.ts",
+      "find": "    ...scalar('Compactions', input.compactionCount > 0 ? String(input.compactionCount) : null),\n    ...list('Last compaction summaries', summaryRows(input.compactionSummaries)),\n    ...scalar('Branch', input.branch),",
+      "replace": "    ...scalar('Branch', input.branch),\n    ...scalar('Compactions', input.compactionCount > 0 ? String(input.compactionCount) : null),\n    ...list('Last compaction summaries', summaryRows(input.compactionSummaries)),",
+      "kills": ["renderResumeBlock lists fields in a fixed order"]
+    }
+  ]
+}
