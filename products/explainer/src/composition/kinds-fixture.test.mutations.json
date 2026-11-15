@@ -27,6 +27,15 @@
       "kills": [
         "fixtures/kinds.timeline.json its daily beats are what the template fill makes of the synthetic daily script"
       ]
+    },
+    {
+      "name": "a verdict card's reasons stop marking the lead line the fill hands the page",
+      "file": "products/explainer/src/template-fill/derive-rows.ts",
+      "find": "reveals: itemReveals(beat, \"reasons\", reasons.length), hints: { qaLeadLine: true } };",
+      "replace": "reveals: itemReveals(beat, \"reasons\", reasons.length), hints: {} };",
+      "kills": [
+        "fixtures/kinds.timeline.json its daily beats are what the template fill makes of the synthetic daily script"
+      ]
     }
   ]
 }

@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "steps run even when every retriever failed",
+      "file": "packages/retrieval/src/engine.ts",
+      "find": "first.gathered.lists.length === 0) return false",
+      "replace": "false) return false",
+      "kills": [
+        "recovery steps never calls a step when every retriever failed"
+      ]
+    },
+    {
+      "name": "recover false ignored",
+      "file": "packages/retrieval/src/engine.ts",
+      "find": "searchOptions.recover === false ? undefined",
+      "replace": "false ? undefined",
+      "kills": [
+        "recovery steps skips the steps when the call passes recover: false"
+      ]
+    },
+    {
+      "name": "a step with no hits wins anyway",
+      "file": "packages/retrieval/src/engine.ts",
+      "find": "if (found.fused.length > 0) Object.assign",
+      "replace": "if (true) Object.assign",
+      "kills": [
+        "recovery steps moves past a step whose rewrite finds nothing"
+      ]
+    },
+    {
+      "name": "step errors reported as timeouts",
+      "file": "packages/retrieval/src/engine.ts",
+      "find": "reason: timedOut ? \"timeout\" : \"error\", message } };\n  } finally {\n    clearTimeout(timer);",
+      "replace": "reason: \"timeout\", message } };\n  } finally {\n    clearTimeout(timer);",
+      "kills": [
+        "recovery steps degrades a throwing step as recovery:<name> and moves on"
+      ]
+    },
+    {
+      "name": "trigger ignored",
+      "file": "packages/retrieval/src/engine.ts",
+      "find": "options.recoveryTrigger ? options.recoveryTrigger(first.gathered.lists) : first.fused.length === 0",
+      "replace": "first.fused.length === 0",
+      "kills": [
+        "recovery steps lets trigger replace the empty test"
+      ]
+    }
+  ]
+}

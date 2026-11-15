@@ -36,6 +36,25 @@ describe("word budget", () => {
     expect(budgetVerdict([beatBudget({ id: "b1", spoken: wordsLong(12), plannedS: 5 }, "code", bands)]).pass).toBe(false);
   });
 
+  it("scales a beat's cap by the voice rate: a rate-1.15 voice fits words a rate-1 voice cannot", () => {
+    const beat = { id: "b1", spoken: wordsLong(31), plannedS: 10 };
+
+    const fast = beatBudget(beat, "concept", bands, 1.15);
+
+    expect(fast.cap).toBe(Math.floor(10 * 2.8 * 1.15));
+    expect(budgetVerdict([fast]).pass).toBe(true);
+    expect(budgetVerdict([beatBudget(beat, "concept", bands)]).pass).toBe(false);
+    expect(beatBudget(beat, "concept", bands, 1)).toEqual(beatBudget(beat, "concept", bands));
+  });
+
+  it("scales a block's cap by the voice rate", () => {
+    const beats = [{ chapter: "purpose", spoken: wordsLong(10) }];
+    const fast = { ...tour, voice: { ...tour.voice, rate: 1.15 } };
+
+    expect(blockBudgets(beats, fast, specs, bands).rows[0]).toMatchObject({ cap: Math.floor(75 * 2.8 * 1.15) });
+    expect(blockBudgets(beats, tour, specs, bands).rows[0]).toMatchObject({ cap: 210 });
+  });
+
   it("caps a profile block at its longest airtime, at the fastest rate its beat types allow", () => {
     // repo-tour's cold-open runs at most 40 s and allows hook (story, 3.2 w/s): 128 words.
     const beats = [{ chapter: "cold-open", spoken: wordsLong(70) }, { chapter: "cold-open", spoken: wordsLong(60) }, { chapter: "purpose", spoken: wordsLong(10) }];

@@ -19,6 +19,15 @@
         "the beat registry's kinds an unknown kind throws and names the kinds it knows",
         "the beat registry's kinds hook and catalogue draw on the whole page and every spec kind past them in the stage box"
       ]
+    },
+    {
+      "name": "the known kinds are listed without their separating commas",
+      "file": "products/explainer/src/composition/registry.tsx",
+      "find": "Object.keys(BEATS).join(\", \")",
+      "replace": "Object.keys(BEATS).join(\" \")",
+      "kills": [
+        "the beat registry's kinds an unknown kind throws and names the kinds it knows"
+      ]
     }
   ]
 }
