@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { resolveConfig } from "../config.js";
 import { createMinerContext, type MinerContext } from "../context.js";
 import { playbookAdd } from "./playbook.js";
@@ -21,8 +22,10 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-const show = (id: string) =>
-  invokeCommand(playbookShow, { id }, ctx) as Promise<{ envelope: { ok: boolean; data?: PlaybookShowResponse }; exitCode: number }>;
+async function show(id: string): Promise<{ envelope: { data?: PlaybookShowResponse }; exitCode: number }> {
+  const { envelope, exitCode } = await invokeCommand(playbookShow, { id }, ctx);
+  return { envelope: { data: envelope.ok ? z.custom<PlaybookShowResponse>().parse(envelope.data) : undefined }, exitCode };
+}
 
 describe("playbook.show", () => {
   it("shows a rule added with session provenance and its two feedback events", async () => {
