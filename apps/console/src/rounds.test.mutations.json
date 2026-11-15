@@ -31,8 +31,8 @@
     {
       "name": "an empty group shows the loud empty-state heading",
       "file": "apps/console/src/pages/RoundsPage.tsx",
-      "find": "{rounds.length === 0 ? <EmptyLine text={empty} /> :",
-      "replace": "{rounds.length === 0 ? <EmptyState title={empty} /> :",
+      "find": "rounds.length === 0 ? <EmptyLine text={empty} /> :",
+      "replace": "rounds.length === 0 ? <EmptyState title={empty} /> :",
       "kills": [
         "the rounds list shows an empty group as one muted line, not an empty-state heading"
       ]
