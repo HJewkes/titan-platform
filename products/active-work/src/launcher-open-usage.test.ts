@@ -9,12 +9,18 @@ import * as paths from './utils/paths.js';
 
 const TIMING_KEYS = ['load', 'live_status', 'rank_notes', 'loop_retrieval', 'loop_queries', 'total'];
 
-async function usageLines(stateDir: string): Promise<Record<string, unknown>[]> {
+interface UsageLine {
+  command?: string;
+  duration_ms?: number;
+  timings_ms?: Record<string, number>;
+}
+
+async function usageLines(stateDir: string): Promise<UsageLine[]> {
   const raw = await fs.readFile(path.join(stateDir, 'usage.jsonl'), 'utf8').catch(() => '');
   return raw
     .split('\n')
     .filter(Boolean)
-    .map((line) => JSON.parse(line) as Record<string, unknown>)
+    .map((line): UsageLine => JSON.parse(line))
     .filter((rec) => rec.command === 'aw.open');
 }
 
@@ -45,8 +51,7 @@ describe('runOpen usage record', () => {
         args: { slug: 'sample-initiative', resolved_from: 'slug' },
       });
       expect(rec.duration_ms).toBeGreaterThanOrEqual(0);
-      const timings = rec.timings_ms as Record<string, number>;
-      for (const key of TIMING_KEYS) expect(timings[key]).toBeGreaterThanOrEqual(0);
+      for (const key of TIMING_KEYS) expect(rec.timings_ms?.[key]).toBeGreaterThanOrEqual(0);
     });
   });
 
