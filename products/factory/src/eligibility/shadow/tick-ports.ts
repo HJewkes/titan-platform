@@ -1,7 +1,7 @@
 import type { Task } from "@titan-design/pm";
 import { activeWorkRoot } from "@titan-design/app-paths";
 import type { Verbs } from "../../cli-types.js";
-import { activeWorkOrigin } from "../../shepherd/cleanup-ports.js";
+import { activeWorkOrigin } from "../../shepherd/active-work-origin.js";
 import type { SelectionPolicy } from "../intake.js";
 import { citedPrs, liveStoppedPrs, type StoppedPrRead } from "../intake-signals.js";
 import { shadowAgentLanes, type AgentLanesRead } from "./agent-lanes.js";

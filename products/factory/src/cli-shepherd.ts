@@ -24,7 +24,7 @@ import { parsePrRef } from "./registry.js";
 import { FACTORY_PORT } from "./serve.js";
 import { reviewSlotsOf, reviewSlotsSummary } from "./review-slots-health.js";
 import { probeServe } from "./serve-probe.js";
-import { activeWorkOrigin } from "./shepherd/cleanup-ports.js";
+import { activeWorkOrigin } from "./shepherd/active-work-origin.js";
 import { SHEPHERD_COMMAND_MAP, type ShepherdCommandName } from "./shepherd/commands.js";
 import { formatShepherd, lastEntries, type TimelineView } from "./shepherd/format.js";
 import { writesPort } from "./shepherd/port-access.js";

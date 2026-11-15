@@ -42,6 +42,9 @@ const USAGE = `usage: titan-console                    serve the console
        titan-console link gate <run>/<step>
                                         print the https link to a gate, only if an https request to it
                                         answers 200 or 401; exit 1 otherwise
+       titan-console inbox answer <item-id> --as <asker> [--json]
+                                        print the owner's answer to a deposit --as filed, with who
+                                        answered and when; exits 75 "not answered yet" with no answer
        titan-console inbox withdraw <item-id> --reason <obsolete|resolved|superseded:<id>> --as <asker> --actor <seat> [--json]
                                         withdraw a deposit --as filed; no answer is written, and the
                                         spool's withdrawals.jsonl logs asker, --actor, when and why;
