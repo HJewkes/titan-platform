@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { indexPaths, openCodeGraph, type CodeGraphStore } from "@titan-design/code-graph";
 import { CONTRACT, createLiveSource, packagesStats, type LiveSource } from "@titan-design/code-read";
-import { emitRepoMap, type MapLayout } from "@titan-design/graph-layout";
+import { emitRepoMap, packageOf, type MapLayout } from "@titan-design/graph-layout";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { statCards } from "./stat-cards.js";
 
@@ -11,6 +11,8 @@ const PIN = "3333333333333333333333333333333333333333";
 const FILES: Record<string, string> = {
   "products/tool/src/main.ts": 'import { lib } from "../../../packages/lib/src/lib.js";\nexport const main = () => lib();\n',
   "products/tool/src/extra.ts": 'import { main } from "./main.js";\nexport const extra = () => main();\n',
+  "tools/build.ts": 'import { step } from "./step.js";\nexport const build = () => step();\n',
+  "tools/step.ts": "export const step = () => 1;\n",
   "packages/lib/src/lib.ts": "export const lib = () => 1;\n",
   "packages/lib/src/other.ts": 'import { lib } from "./lib.js";\nexport const other = () => lib();\n',
 };
@@ -27,7 +29,7 @@ function graph() {
 }
 
 function statsRow(root: string) {
-  const args = CONTRACT["packages.stats"].args.parse({ snapshot: snapshotId, packages: ["packages/lib", "products/tool"] });
+  const args = CONTRACT["packages.stats"].args.parse({ snapshot: snapshotId, packages: ["packages/lib", "products/tool", "tools"] });
   return packagesStats(source, args).packages.find((row) => row.id === root)!;
 }
 
@@ -53,7 +55,7 @@ describe("statCards", () => {
   it("anchors every card to a pkg: node id in the map", () => {
     const { cards } = statCards(source, snapshotId, map);
 
-    expect(cards.length).toBe(2);
+    expect(cards.length).toBe(3);
     const pkgIds = new Set(map.nodes.filter((n) => n.id.startsWith("pkg:")).map((n) => n.id));
     for (const card of cards) expect(pkgIds.has(card.anchor)).toBe(true);
   });
@@ -86,14 +88,22 @@ describe("statCards", () => {
     expect(tool.data.outgoingEdges).toBeGreaterThan(0);
   });
 
-  it("gives a package with no map box a diagnostic and no card", () => {
-    // A nested id: its root packages/scripts/x reads back as package `scripts`, which has no box.
-    const lib = map.nodes.find((n) => n.id === "pkg:lib")!;
-    const nested: MapLayout = { ...map, nodes: [...map.nodes, { ...lib, id: "pkg:scripts/x" }] };
+  it("reads a top-level directory box from its own root, not packages/<name>", () => {
+    const { cards } = statCards(source, snapshotId, map);
 
-    const { cards, diagnostics } = statCards(source, snapshotId, nested);
+    const tools = cards.find((c) => c.anchor === "pkg:tools")!;
+    expect(tools.id).toBe("card:tools");
+    expect(tools.data.fileCount).toBe(2);
+    expect(tools.data.internalEdges).toBe(statsRow("tools").internalEdges);
+    expect(tools.data.internalEdges).toBe(1);
+  });
 
-    expect(cards.map((c) => c.anchor).sort()).toEqual(["pkg:lib", "pkg:products/tool"]);
-    expect(diagnostics.map((d) => [d.code, d.selector])).toEqual([["W-CARD-PRUNED", "pkg:scripts"]]);
+  it("gives a package box with no file on the map a diagnostic and no card", () => {
+    const hollow: MapLayout = { ...map, nodes: map.nodes.filter((n) => n.kind !== "file" || packageOf(n.id) !== "lib") };
+
+    const { cards, diagnostics } = statCards(source, snapshotId, hollow);
+
+    expect(cards.map((c) => c.anchor).sort()).toEqual(["pkg:products/tool", "pkg:tools"]);
+    expect(diagnostics.map((d) => [d.code, d.selector])).toEqual([["W-CARD-PRUNED", "pkg:lib"]]);
   });
 });
