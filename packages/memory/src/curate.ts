@@ -1,7 +1,7 @@
 import { applyMaturity, scorePlaybook, type MaturityChange } from "./playbook.js";
 import type { BlockedPattern, PlaybookStore } from "./store.js";
 import { contentKey, isNegated, jaccard, normalizeContent } from "./text.js";
-import { PlaybookDeltaSchema, type AddDelta, type Bullet, type ParsedDelta, type PlaybookDelta, type Provenance, type ScoredBullet } from "./types.js";
+import { PlaybookDeltaSchema, ProvenanceSchema, type AddDelta, type Bullet, type ParsedDelta, type PlaybookDelta, type Provenance, type ScoredBullet } from "./types.js";
 
 export interface InversionOptions {
   /** Decayed harmful mass a rule needs before it can flip into an anti-pattern. */
@@ -71,7 +71,7 @@ function makeContext(store: PlaybookStore, options: CurateOptions): Ctx {
     store,
     report: { added: [], reinforced: [], penalized: [], deprecated: [], inverted: [], blocked: [], skipped: [], conflicts: [], maturityChanges: [] },
     now: options.now ?? (() => new Date()),
-    provenance: options.provenance ? [options.provenance] : [],
+    provenance: options.provenance ? [ProvenanceSchema.parse(options.provenance)] : [],
     nearDup: options.nearDupThreshold ?? 0.85,
     conflict: options.conflictThreshold ?? 0.5,
     inversion: { minHarmful: options.inversion?.minHarmful ?? 3, harmfulToHelpfulRatio: options.inversion?.harmfulToHelpfulRatio ?? 2 },
@@ -140,8 +140,14 @@ function applyFeedback(ctx: Ctx, delta: Extract<ParsedDelta,{ type: "helpful" | 
     ctx.report.skipped.push({ delta, reason: `bullet already voted ${delta.type} in this batch` });
     return;
   }
-  ctx.store.recordFeedback(delta.bulletId, delta.type, { sessionRef: ctx.provenance[0]?.sessionRef, reason: delta.reason });
+  ctx.store.recordFeedback(delta.bulletId, delta.type, { sessionRef: feedbackSessionRef(ctx), reason: delta.reason });
   (delta.type === "helpful" ? ctx.report.reinforced : ctx.report.penalized).push(delta.bulletId);
+}
+
+/** Feedback rows key on a session; a note-sourced batch has none to record. */
+function feedbackSessionRef(ctx: Ctx): string | undefined {
+  const first = ctx.provenance[0];
+  return first && "sessionRef" in first ? first.sessionRef : undefined;
 }
 
 /** Whatever the reason or source (explicit feedback or an add folding in), a bullet gets one vote of each kind per batch. */
@@ -205,7 +211,7 @@ function inherit(bullet: Bullet): Pick<Bullet, "category" | "tags" | "scope" | "
 }
 
 function reinforce(ctx: Ctx, id: string, reason: string): void {
-  ctx.store.recordFeedback(id, "helpful", { sessionRef: ctx.provenance[0]?.sessionRef, reason });
+  ctx.store.recordFeedback(id, "helpful", { sessionRef: feedbackSessionRef(ctx), reason });
   ctx.report.reinforced.push(id);
 }
 

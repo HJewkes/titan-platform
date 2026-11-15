@@ -37,6 +37,7 @@ import { roundsSubmitCommands, submitPipeline } from "./rounds-submit.js";
 import { sessionsCommands, type SessionsSource } from "./sessions.js";
 import { shepherdCommands, type ShepherdSource } from "./shepherd.js";
 import { shippedCommands, type ShippedOptions } from "./shipped.js";
+import { taskDoneCommand } from "./task-done.js";
 import { tasksCommands } from "./tasks.js";
 import { UPSTREAM_IDS, probeUpstreams, type Upstream } from "./upstreams.js";
 import { summarizeNotes, videoNotesCommands } from "./video-notes.js";
@@ -164,6 +165,7 @@ function workCommands(activeWork: ActiveWork, work: WorkOptions | undefined) {
       run: async (_args, ctx: ConsoleContext) => ({ ...(await readLoopBoard(activeWork, work)), tierWritesOff: ownerWriteRefusal(ctx) }),
     }),
     "work.loop-tier": ownerWriteCommand({ ...loopTierCommand(activeWork), ownerWrite: true }),
+    "work.task-done": ownerWriteCommand({ ...taskDoneCommand(activeWork), ownerWrite: true }),
   };
 }
 
