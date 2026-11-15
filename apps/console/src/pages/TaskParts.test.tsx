@@ -1,12 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
-import type { TaskStage } from "../../server/task-stage.js";
 import { stageLabel, TaskStageBadge } from "./TaskParts.js";
 
 afterEach(cleanup);
 
-const unknownStage = "triaged" as TaskStage;
+const unknownStage = "triaged";
 
 describe("an unknown task stage", () => {
   it("renders its raw text as a pill instead of throwing", () => {
