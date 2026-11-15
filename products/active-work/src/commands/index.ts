@@ -99,6 +99,7 @@ import search from './search.js';
 import why from './why.js';
 import precedentExtract from './precedent-extract.js';
 import precedentSearch from './precedent-search.js';
+import precedentShow from './precedent-show.js';
 import list from './list.js';
 import worktreeSet from './worktree-set.js';
 import worktreeSetDefault from './worktree-set-default.js';
@@ -232,6 +233,7 @@ const ALL_COMMANDS: AnyCommand[] = [
   inventory,
   precedentExtract,
   precedentSearch,
+  precedentShow,
   // discover / triage
   discover,
   fold,
