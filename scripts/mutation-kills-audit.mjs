@@ -127,10 +127,17 @@ function trackedSidecars() {
   return git("ls-files", "*.test.mutations.json").split("\n").filter(Boolean);
 }
 
-/** The sidecar path beside each test file changed since `base`, whether or not it exists yet. */
+/** The sidecar beside each changed test file that has one; a test file without a sidecar is not audited, as fix-proof treats it. */
+export function sidecarsOfChanged(changed, exists) {
+  return changed
+    .filter((path) => /\.test\.(ts|tsx|mjs)$/.test(path))
+    .map((path) => `${path.replace(/\.(ts|tsx|mjs)$/, "")}${SUFFIX}`)
+    .filter(exists);
+}
+
+/** Renames count, so a renamed and edited test file is audited under its new name. */
 function changedSidecars(base) {
-  const changed = git("diff", "--name-only", "--diff-filter=AM", `${base}...HEAD`).split("\n");
-  return changed.filter((path) => /\.test\.(ts|tsx|mjs)$/.test(path)).map((path) => `${path.replace(/\.(ts|tsx|mjs)$/, "")}${SUFFIX}`);
+  return sidecarsOfChanged(git("diff", "--name-only", "--diff-filter=AMR", `${base}...HEAD`).split("\n"), existsSync);
 }
 
 function main(argv) {

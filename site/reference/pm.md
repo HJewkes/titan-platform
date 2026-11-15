@@ -438,7 +438,8 @@ It is strict, with no best-effort read. It returns `{ ok: true, slug, initiative
 (each line has `id`, `date`, `quote`, `ref`, `section`, optional `supersededBy`) or
 `{ ok: false, errors }`, each error with its 1-based `line`. A missing quote, date or ref, a
 non-ISO date, an unknown, duplicate or missing section, a duplicate id and a `superseded-by`
-naming an id not in the file are all errors. It does no I/O.
+naming an id not in the file are all errors, as are a slug that is not a lowercase slug or differs from
+`initiative`, and a repeated or unknown front matter key. It does no I/O.
 
 ## Actuals and claims
 
