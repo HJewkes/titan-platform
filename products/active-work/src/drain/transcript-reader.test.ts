@@ -75,8 +75,8 @@ describe('runDrainIngest', () => {
 
     const templates = await loadTemplates(root);
     expect(templates).toHaveLength(1);
-    expect(templates[0].toolType).toBe('Bash');
-    expect(templates[0].occurrenceCount).toBe(2);
+    expect(templates[0]?.toolType).toBe('Bash');
+    expect(templates[0]?.occurrenceCount).toBe(2);
   });
 
   it('screens successful output with no failure shape instead of clustering it', async () => {
@@ -102,9 +102,9 @@ describe('runDrainIngest', () => {
     for await (const occurrence of readOccurrences(root)) occurrences.push(occurrence);
     expect(occurrences).toHaveLength(1);
 
-    const [transcriptIndex, byteOffset, byteLength] = occurrences[0].locator;
+    const [transcriptIndex = -1, byteOffset, byteLength] = occurrences[0]?.locator ?? [];
     const state = await loadReaderState(root);
-    expect(state.transcripts[transcriptIndex].path).toContain('a.jsonl');
+    expect(state.transcripts[transcriptIndex]?.path).toContain('a.jsonl');
     expect(byteOffset).toBeGreaterThan(0);
     expect(byteLength).toBeGreaterThan(0);
   });
@@ -149,7 +149,7 @@ describe('runDrainIngest', () => {
     await ingest();
     const templates = await loadTemplates(root);
     expect(templates).toHaveLength(1);
-    expect(templates[0].toolType).toBe('Bash');
+    expect(templates[0]?.toolType).toBe('Bash');
   });
 
   it('counts malformed lines instead of aborting the transcript', async () => {

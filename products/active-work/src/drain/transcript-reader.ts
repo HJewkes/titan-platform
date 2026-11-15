@@ -242,7 +242,11 @@ export async function runDrainIngest(
 
   for (const transcript of visiting) {
     const transcriptIndex = transcriptIndexFor(state, transcript.displayPath);
-    const entry = state.transcripts[transcriptIndex];
+    const entry = state.transcripts.at(transcriptIndex);
+    if (entry === undefined) {
+      counters.errors.push(`${transcript.displayPath}: no reader state entry`);
+      continue;
+    }
     try {
       // `full` is expressed as a zeroed watermark rather than as a flag the
       // resume point knows about: the package's contract is "given this entry,
