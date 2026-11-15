@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { useRelatedFixture } from './related.test-helpers.js';
+import { useRelatedFixture } from '../test-support/related-fixture.js';
 
 const fixture = useRelatedFixture();
 
