@@ -30,6 +30,7 @@
       //   static-clock   the same markup with no motion API; a test sets its text
       //   throws         like clock, but from `?fail-at=<s>` on, a seek empties the stage and reports an
       //                  uncaught error, as a framework does when a render throws and unmounts the tree
+      //   rect           one opaque red square on an unpainted body
       //   missing-font   like clock, but declares a face whose file does not exist
       //   throws-at-load publishes the API, empties the stage and throws while loading; later seeks do nothing
       //   drift          like clock, plus boxes and labels on fractional, rotating transforms that move with t
@@ -68,6 +69,12 @@
         else smoothed.x += (target - smoothed.x) * 0.5
         label.textContent = `beat ${beat}`
         label.style.transform = `translate(${smoothed.x}px, ${40 + beat * 7.3}px) rotate(${smoothed.x / 23.1}deg)`
+      }
+
+      // `rect` paints one opaque 4x4 square at the origin and nothing else, so the rest is the browser's default background.
+      if (page === 'rect') {
+        document.body.style.background = 'none'
+        stage.style.cssText = 'position: absolute; left: 0; top: 0; width: 4px; height: 4px; background: #f00'
       }
 
       if (page === 'missing-font') {

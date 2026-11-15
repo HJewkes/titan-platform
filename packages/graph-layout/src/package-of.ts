@@ -12,6 +12,15 @@ export function packageOf(id: string): string {
   return m?.[1] ?? m?.[2] ?? id.split("/")[0] ?? id;
 }
 
+/**
+ * The repo-relative directory of the package {@link packageOf} names for this file: `packages/<name>`,
+ * `products/<name>` or `apps/<name>`, else the first path segment (the file itself when it sits at the root).
+ */
+export function packageRootOf(id: string): string {
+  const pkg = packageOf(id);
+  return id.startsWith(`packages/${pkg}/`) ? `packages/${pkg}` : pkg;
+}
+
 interface WeightedPair {
   srcId: string;
   dstId: string;

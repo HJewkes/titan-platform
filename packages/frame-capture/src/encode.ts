@@ -27,11 +27,17 @@ export interface Encoder {
   finish(): Promise<void>
 }
 
-function encoderArgs(out: string, fps: number, audio: string): string[] {
+/** Input 2 is the plate: it is the base layer and the PNG frames (input 0) go over it. */
+function plateArgs(plate: string | undefined): string[] {
+  if (plate === undefined) return ['-map', '0:v', '-map', '1:a']
+  return ['-i', plate, '-filter_complex', '[2:v][0:v]overlay=format=auto[v]', '-map', '[v]', '-map', '1:a']
+}
+
+function encoderArgs(out: string, fps: number, audio: string, plate: string | undefined): string[] {
   return [
     '-f', 'image2pipe', '-framerate', String(fps), '-c:v', 'png', '-i', '-',
     '-i', audio,
-    '-map', '0:v', '-map', '1:a',
+    ...plateArgs(plate),
     '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '18',
     '-c:a', 'aac', '-shortest',
     '-map_metadata', '-1', '-fflags', '+bitexact', '-flags:v', '+bitexact', '-flags:a', '+bitexact',
@@ -39,9 +45,12 @@ function encoderArgs(out: string, fps: number, audio: string): string[] {
   ]
 }
 
-/** One ffmpeg reading PNGs on stdin, muxing mix.wav, writing H.264 + AAC with no run-specific metadata. */
-export function startEncoder(out: string, fps: number, audio: string): Encoder {
-  const ffmpeg = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...encoderArgs(out, fps, audio)], {
+/**
+ * One ffmpeg reading PNGs on stdin, muxing mix.wav, writing H.264 + AAC with no run-specific metadata.
+ * With `plate`, an mp4 under the frames, the PNGs are composited over it, so transparent pixels show the plate.
+ */
+export function startEncoder(out: string, fps: number, audio: string, plate?: string): Encoder {
+  const ffmpeg = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...encoderArgs(out, fps, audio, plate)], {
     stdio: ['pipe', 'inherit', 'inherit'],
   })
   // An ffmpeg that dies mid-encode surfaces first as EPIPE on stdin; the exit reason from 'close' is the useful error.

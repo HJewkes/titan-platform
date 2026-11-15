@@ -39,7 +39,22 @@ export const LEDGER_MIGRATIONS: Migration[] = [
         ${watermarkTableDdl({ name: WATERMARK_TABLE })}
       `),
   },
+  {
+    version: 3001,
+    name: "decider ledger revision rows",
+    up: (db) =>
+      db.exec(`
+        ALTER TABLE ledger_row ADD COLUMN base_key TEXT;
+        CREATE INDEX IF NOT EXISTS ledger_row_base_key ON ledger_row (base_key);
+      `),
+  },
 ];
+
+/** The sources whose rows are edited in place upstream, so a changed answer is a new revision rather than a duplicate. */
+const REVISABLE_SOURCES: ReadonlySet<string> = new Set(["note"]);
+
+/** The newest row of a key: the original, or its latest revision. */
+const LATEST_SQL = "SELECT row_json FROM ledger_row WHERE key = @key OR base_key = @key ORDER BY rowid DESC LIMIT 1";
 
 /** A row with its insertion sequence: the order rows reached the ledger, whatever their evidence time. */
 export interface LedgerEntry {
@@ -63,16 +78,18 @@ function cursorKey(source: string, cursor: string): string {
 export class LedgerStore {
   private readonly insertStmt;
   private readonly getStmt;
+  private readonly revisionCountStmt;
   private readonly watermarks;
 
   constructor(readonly db: Db) {
     runMigrations(db, LEDGER_MIGRATIONS);
     this.insertStmt = db.prepare(
-      `INSERT INTO ledger_row (key, source, initiative, category, outcome, asked_at, unclaimed, row_json)
-       VALUES (@key, @source, @initiative, @category, @outcome, @asked_at, @unclaimed, @row_json)
+      `INSERT INTO ledger_row (key, base_key, source, initiative, category, outcome, asked_at, unclaimed, row_json)
+       VALUES (@key, @base_key, @source, @initiative, @category, @outcome, @asked_at, @unclaimed, @row_json)
        ON CONFLICT (key) DO NOTHING`,
     );
-    this.getStmt = db.prepare("SELECT row_json FROM ledger_row WHERE key = ?");
+    this.getStmt = db.prepare(LATEST_SQL);
+    this.revisionCountStmt = db.prepare("SELECT COUNT(*) AS n FROM ledger_row WHERE base_key = ?");
     this.watermarks = new WatermarkTable(db, { name: WATERMARK_TABLE });
   }
 
@@ -83,20 +100,33 @@ export class LedgerStore {
 
   private insert(wire: LedgerRowWire): number {
     const row = LedgerRowSchema.parse(wire);
-    const { key, source, initiative, category, outcome, asked_at } = row;
-    const params = { key, source, initiative, category, outcome, asked_at };
+    const latest = REVISABLE_SOURCES.has(row.source) ? this.get(row.key) : undefined;
+    if (latest === undefined) return this.insertRow(row, row.key, null);
+    if (latest.answer === row.answer && latest.question === row.question) return 0;
+    return this.insertRow(row, `${row.key}@${this.revisionCount(row.key) + 1}`, row.key);
+  }
+
+  private insertRow(row: LedgerRow, key: string, baseKey: string | null): number {
+    const { source, initiative, category, outcome, asked_at } = row;
+    const params = { key, base_key: baseKey, source, initiative, category, outcome, asked_at };
     return this.insertStmt.run({ ...params, unclaimed: row.unclaimed ? 1 : 0, row_json: JSON.stringify(row) }).changes;
   }
 
+  private revisionCount(baseKey: string): number {
+    return CountSchema.parse(this.revisionCountStmt.get(baseKey)).n;
+  }
+
+  /** The current row for a key; for an edited note that is its newest revision. The suffix lives only in the table key, so a row's own `key` stays stable for readers. */
   get(key: string): LedgerRow | undefined {
-    const found = RowJsonSchema.optional().parse(this.getStmt.get(key));
+    const found = RowJsonSchema.optional().parse(this.getStmt.get({ key }));
     return found === undefined ? undefined : LedgerRowSchema.parse(JSON.parse(found.row_json));
   }
 
   rows(filter: LedgerRowFilter = {}): LedgerRow[] {
-    const sql = `SELECT row_json FROM ledger_row
-          WHERE (@source IS NULL OR source = @source) AND (@initiative IS NULL OR initiative = @initiative)
-          ORDER BY asked_at, key`;
+    const sql = `SELECT row_json FROM ledger_row r
+          WHERE (@source IS NULL OR r.source = @source) AND (@initiative IS NULL OR r.initiative = @initiative)
+            AND NOT EXISTS (SELECT 1 FROM ledger_row n WHERE n.base_key = COALESCE(r.base_key, r.key) AND n.rowid > r.rowid)
+          ORDER BY r.asked_at, r.key`;
     const found = RowJsonSchema.array().parse(
       this.db.prepare(sql).all({ source: filter.source ?? null, initiative: filter.initiative ?? null }),
     );
