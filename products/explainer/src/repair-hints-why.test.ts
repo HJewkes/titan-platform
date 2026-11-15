@@ -16,4 +16,16 @@ describe("the promise repair hint", () => {
     expect(hint).toContain('"By the end"');
     expect(hint).not.toContain("you'll know");
   });
+
+  it("offers an example promise that passes Q-W5 itself", () => {
+    const good = goodScript();
+    const bad = { ...good, video: { ...good.video, promise: "By the end you’ll spot a bad label." } };
+    const row = whyCheck({ script: bad, view: deriveEvalView(bad) }).find((r) => r.check_id === "Q-W5")!;
+    const example = /for example "([^"]+)"/.exec(repairHint(row, bad) ?? "")?.[1] ?? "";
+
+    const script = { ...good, video: { ...good.video, promise: example } };
+
+    expect(example).not.toBe("");
+    expect(whyCheck({ script, view: deriveEvalView(script) }).find((r) => r.check_id === "Q-W5")?.pass).toBe(true);
+  });
 });

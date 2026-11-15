@@ -25,7 +25,7 @@ function whyForTermsHint(script: ScriptV1, row: Parameters<Hint>[1]): string {
 }
 
 function promiseHint(script: ScriptV1, row: Parameters<Hint>[1]): string {
-  const parts = row.value > row.detail_beats.length ? [`video.promise "${script.video.promise}" must state, in "you" terms, the question the video settles (for example "Why does a bad label never reach you?"); do not open with "By the end" or say "be able to", and use no "tour of" and no chapter count`] : [];
+  const parts = row.value > row.detail_beats.length ? [`video.promise "${script.video.promise}" must state, in "you" terms, the question the video settles (for example "Why does a bad label never reach you at the desk?"); do not open with "By the end" or say "be able to", and use no "tour of" and no chapter count`] : [];
   if (row.detail_beats.length) parts.push(`PROMISE beats ${listed(row.detail_beats)} say "tour of" or a chapter count; drop it`);
   return parts.join("; ");
 }

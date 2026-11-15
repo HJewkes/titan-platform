@@ -163,7 +163,7 @@ describe("why, value and thread lints", () => {
   });
 
   it.each([["You’ll see why a bad label never prints."], ["Does the desk catch a bad label before you ever see it print?"]])(
-    "passes a promise whose you carries a contraction: %s",
+    "passes a promise with you and a verb, in a contraction or a question: %s",
     (promise) => {
       const good = goodScript();
       const script = { ...good, video: { ...good.video, promise } };
