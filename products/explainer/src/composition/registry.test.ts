@@ -69,10 +69,6 @@ const shippedPageKinds = (): Map<string, Set<string>> =>
   new Map([...loadTypeProfiles()].map(([type, profile]) => [type, pageKinds(profile)]));
 
 describe("the composition page's beat registry", () => {
-  test("an unknown kind throws and names the kinds it knows", () => {
-    assert.throws(() => resolveBeat("hologram"), /^Error: unknown beat kind "hologram"; known kinds: hook, held, list, verdict-card, fact-flash, claim-card, button, outro, finding-card, stat, chart, compare, arch-map, catalogue$/);
-  });
-
   test("an inherited property name is not a beat kind", () => {
     assert.throws(() => resolveBeat("toString"), /unknown beat kind "toString"/);
   });

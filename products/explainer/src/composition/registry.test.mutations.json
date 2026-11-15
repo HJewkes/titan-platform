@@ -7,7 +7,7 @@
       "find": "held: defineBeat(BEAT_SLOTS.held, HeldBeat",
       "replace": "held: defineBeat(BEAT_SLOTS.held.partial(), HeldBeat",
       "kills": [
-        "each registered spec type parses with the slots schema its spec's ref names"
+        "registry keys against the doctrine beat specs each registered spec type parses with the slots schema its spec's ref names"
       ]
     },
     {
@@ -16,7 +16,7 @@
       "find": "HeldBeat, { stage: true })",
       "replace": "HeldBeat, { stage: false })",
       "kills": [
-        "hook and catalogue draw on the whole page and every spec kind past them in the stage box"
+        "the composition page's beat registry hook and catalogue draw on the whole page and every spec kind past them in the stage box"
       ]
     },
     {
@@ -25,7 +25,7 @@
       "find": "Object.hasOwn(BEATS, kind) ? BEATS[kind] : undefined",
       "replace": "BEATS[kind]",
       "kills": [
-        "an inherited property name is not a beat kind"
+        "the composition page's beat registry an inherited property name is not a beat kind"
       ]
     },
     {
@@ -34,7 +34,7 @@
       "find": "every((r) => r.atS <= b.durationS + 1e-9)",
       "replace": "every((r) => r.atS >= 0)",
       "kills": [
-        "a reveal past its beat's end is rejected"
+        "timeline.json on the page a reveal past its beat's end is rejected"
       ]
     },
     {
@@ -43,7 +43,7 @@
       "find": "refine((c) => c.n <= c.of,",
       "replace": "refine((c) => c.n > 0,",
       "kills": [
-        "a chapter numbered past its count is rejected"
+        "timeline.json on the page a chapter numbered past its count is rejected"
       ]
     }
   ]
