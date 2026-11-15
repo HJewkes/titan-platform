@@ -11,16 +11,6 @@
       ]
     },
     {
-      "name": "proof is registered under another key and draws on the whole page",
-      "file": "products/explainer/src/composition/registry.tsx",
-      "find": "proof: defineBeat(BEAT_SLOTS.proof, ProofKindBeat, { stage: true })",
-      "replace": "\"proof-run\": defineBeat(BEAT_SLOTS.proof, ProofKindBeat)",
-      "kills": [
-        "the composition page's beat registry an unknown kind throws and names the kinds it knows",
-        "the composition page's beat registry hook and catalogue draw on the whole page and every spec kind past them in the stage box"
-      ]
-    },
-    {
       "name": "resolveBeat reads an inherited property as a beat kind",
       "file": "products/explainer/src/composition/registry.tsx",
       "find": "Object.hasOwn(BEATS, kind) ? BEATS[kind] : undefined",

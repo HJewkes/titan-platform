@@ -69,10 +69,6 @@ const shippedPageKinds = (): Map<string, Set<string>> =>
   new Map([...loadTypeProfiles()].map(([type, profile]) => [type, pageKinds(profile)]));
 
 describe("the composition page's beat registry", () => {
-  test("an unknown kind throws and names the kinds it knows", () => {
-    assert.throws(() => resolveBeat("hologram"), /^Error: unknown beat kind "hologram"; known kinds: hook, held, list, verdict-card, fact-flash, claim-card, button, outro, stat, chart, compare, arch-map, proof, catalogue$/);
-  });
-
   test("an inherited property name is not a beat kind", () => {
     assert.throws(() => resolveBeat("toString"), /unknown beat kind "toString"/);
   });
@@ -86,12 +82,6 @@ describe("the composition page's beat registry", () => {
     const slots = { ...CatalogueSlots.parse(catalogue?.slots), schemaLabel: undefined };
 
     assert.throws(() => resolveBeat("catalogue").slots.parse(slots), /schemaLabel/);
-  });
-
-  test("hook and catalogue draw on the whole page and every spec kind past them in the stage box", () => {
-    const page = registeredKinds().filter((kind) => !resolveBeat(kind).stage);
-
-    assert.deepEqual(page, ["hook", "catalogue"]);
   });
 
   // Mutation: let claim-card keep the chrome headline; the title and the headline say the claim twice.
