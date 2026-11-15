@@ -122,6 +122,10 @@ export interface RelatedInput {
   render?: (hit: RelatedHit) => string;
   dbPath?: string;
   activeRoot?: string;
+  /** An already-open graph, left open; a caller running many queries opens it once. */
+  graph?: WorkspaceGraph;
+  /** An already-computed agent visibility verdict, reused instead of rereading every brief. */
+  visible?: Shown;
 }
 
 const EMPTY_QUERY: DerivedQuery = { terms: [], expression: '' };
@@ -283,7 +287,7 @@ async function gatherHits(
   activeRoot: string,
 ): Promise<{ hits: RelatedHit[]; degraded: RelatedDegradation[] }> {
   // Related context is pasted into sessions no surface marked as the owner's, so it gets an agent's view.
-  const visible = await visibilityFor({ activeRoot, warnings: [] });
+  const visible = input.visible ?? (await visibilityFor({ activeRoot, warnings: [] }));
   const decisions = wantsDecisions(input)
     ? await decisionHits({
         query,
@@ -346,7 +350,8 @@ async function relatedOrDegraded(input: RelatedInput): Promise<RelatedResult> {
   if (input.text.trim().length === 0) {
     return degradedResult(EMPTY_QUERY, { source: 'query', reason: 'empty', message: 'no text' });
   }
-  const opened = openIndex(input.dbPath ?? defaultGraphPath());
+  const borrowed = input.graph !== undefined;
+  const opened = input.graph ?? openIndex(input.dbPath ?? defaultGraphPath());
   if (!('db' in opened)) return degradedResult(EMPTY_QUERY, opened);
   try {
     return await relatedFromIndex(opened, input);
@@ -357,7 +362,7 @@ async function relatedOrDegraded(input: RelatedInput): Promise<RelatedResult> {
       message: describe(err),
     });
   } finally {
-    opened.db.close();
+    if (!borrowed) opened.db.close();
   }
 }
 
