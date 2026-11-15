@@ -7,7 +7,16 @@
       "find": "\"work.loop-tier\": ownerWriteCommand({ ...loopTierCommand(activeWork), ownerWrite: true }),",
       "replace": "\"work.loop-tier\": readCommand(loopTierCommand(activeWork)),",
       "kills": [
-        "classes fail closed classes every console command at its definition: inbox.deposit and config.report deposits, rounds.answer-rec, rounds.reveal, rounds.submit, inbox.act, prTaps.act, taps.act, videos.edit, videos.note and work.loop-tier owner-writes, the rest reads"
+        "classes fail closed classes every console command at its definition: inbox.deposit and config.report deposits, rounds.answer-rec, rounds.reveal, rounds.submit, inbox.act, prTaps.act, taps.act, videos.edit, videos.note, work.loop-tier and work.task-done owner-writes, the rest reads"
+      ]
+    },
+    {
+      "name": "work.task-done is registered as a read",
+      "file": "apps/console/server/commands.ts",
+      "find": "\"work.task-done\": ownerWriteCommand({ ...taskDoneCommand(activeWork), ownerWrite: true }),",
+      "replace": "\"work.task-done\": readCommand(taskDoneCommand(activeWork)),",
+      "kills": [
+        "classes fail closed classes every console command at its definition: inbox.deposit and config.report deposits, rounds.answer-rec, rounds.reveal, rounds.submit, inbox.act, prTaps.act, taps.act, videos.edit, videos.note, work.loop-tier and work.task-done owner-writes, the rest reads"
       ]
     }
   ]
