@@ -6,6 +6,14 @@ import { Page, Browser } from 'playwright-core';
  * `TitanMotionApi` (react-ui `/motion`, `MotionProvider` on a `seekClock`), but any page that sets
  * the global can be captured.
  */
+declare const MARK_KINDS: readonly ["settled", "step", "before", "transform-start", "transform-end", "hero"];
+type MarkKind = (typeof MARK_KINDS)[number];
+/** A moment worth looking at: `t` seconds into beat number `beat`. */
+interface PageMark {
+    t: number;
+    beat: number;
+    kind: MarkKind;
+}
 interface TitanMotionApi {
     /** Shows the frame at `t` seconds. It must commit synchronously: the capture screenshots after `ready()`. */
     seek(t: number): void;
@@ -13,6 +21,8 @@ interface TitanMotionApi {
     ready(): Promise<void>;
     /** The timeline length in seconds; the capture renders `duration * fps` frames unless told otherwise. */
     readonly duration: number;
+    /** The moments the page marks, read once after the API appears; a page without it has no marks. */
+    marks?(): PageMark[];
 }
 /** The global the page publishes `TitanMotionApi` under. */
 declare const TITAN_MOTION_GLOBAL = "__titanMotion";
@@ -85,6 +95,8 @@ interface CapturePage {
     /** `__titanMotion.duration` in seconds. */
     duration: number;
     fonts: FontState[];
+    /** `__titanMotion.marks()`, validated and sorted by t; empty when the page has none. */
+    marks: PageMark[];
     /** Every uncaught page error, collected from before navigation; empty when the open succeeds. */
     errors: readonly Error[];
 }
@@ -137,6 +149,8 @@ interface FramesResult {
     /** `__titanMotion.duration`: the page's own idea of the timeline length. */
     pageDurationS: number;
     fonts: CapturePage['fonts'];
+    /** `__titanMotion.marks()`, sorted by t; empty when the page publishes none. */
+    marks: CapturePage['marks'];
 }
 /**
  * One browser per chunk, not one page per chunk in a shared browser: screenshots encode in the browser
@@ -241,4 +255,4 @@ declare function measureHalving<F>(frames: readonly F[], delta: FrameDelta<F>): 
  */
 declare function checkPops<F>(options: PopCheckOptions<F>): Promise<PopReport>;
 
-export { type CapturePage, type Encoder, FontLoadError, type FontState, type FrameDelta, type FramesOptions, type FramesResult, HALVING_RATIO, type HalvingMeasure, MIN_POP_CHANGE, type MixSegment, type PageOptions, type PopCheckOptions, type PopFinding, type PopReport, type RgbaFrame, type SeekFrame, type StillsOptions, TITAN_MOTION_GLOBAL, type TitanMotionApi, VIRTUAL_TIME_SCRIPT, type Viewport, type VirtualTimeApi, captureFrame, captureFrames, changedPixels, checkPops, isPop, launch, measureHalving, mixAudio, openCapturePage, screenshotFrame, settleFonts, startEncoder, stills, withBrowser, withCapturePage };
+export { type CapturePage, type Encoder, FontLoadError, type FontState, type FrameDelta, type FramesOptions, type FramesResult, HALVING_RATIO, type HalvingMeasure, MIN_POP_CHANGE, type MarkKind, type MixSegment, type PageMark, type PageOptions, type PopCheckOptions, type PopFinding, type PopReport, type RgbaFrame, type SeekFrame, type StillsOptions, TITAN_MOTION_GLOBAL, type TitanMotionApi, VIRTUAL_TIME_SCRIPT, type Viewport, type VirtualTimeApi, captureFrame, captureFrames, changedPixels, checkPops, isPop, launch, measureHalving, mixAudio, openCapturePage, screenshotFrame, settleFonts, startEncoder, stills, withBrowser, withCapturePage };
