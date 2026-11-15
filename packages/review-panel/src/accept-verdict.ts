@@ -102,6 +102,7 @@ export function acceptVerdict(input: AwaitVerdictInput, messages: readonly Revie
   if (input.shape === "adversary" && block.verdict === "MERGE" && (authority === undefined || authority === "malformed")) return malformedNone("authority_missing", final.writtenAt);
   const ciPolicy = block.verdict === "MERGE" ? mergeCiPolicy(block.ciPolicy, final.text, block.lineOffset) : undefined;
   if (ciPolicy === "ci_policy_prose" || ciPolicy === "ci_policy_malformed") return malformedNone(ciPolicy, final.writtenAt, final.text);
-  const accepted: AcceptedVerdict = { kind: "verdict", head: block.head, locator: final.locator, reviewer: { agentId: final.agentId, sessionId: final.sessionId }, ownerBrief: parseOwnerBrief(final.text), ...followUpsFields(final.text), ...checkCandidatesFields(final.text) };
+  const reviewerNotes = { ownerBrief: parseOwnerBrief(final.text), ...followUpsFields(final.text), ...checkCandidatesFields(final.text) };
+  const accepted: AcceptedVerdict = { kind: "verdict", head: block.head, locator: final.locator, reviewer: { agentId: final.agentId, sessionId: final.sessionId }, ...reviewerNotes };
   return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE", ...(ciPolicy && { ciPolicy }), ...attestsField(final.text), ...(authority && authority !== "malformed" && { authority }) } : { ...accepted, verdict: "FIX_FIRST", text: fixFirstFindings(input, messages.filter((message) => fromDispatch(input, message)), final.text), ...(block.closer && { closer: block.closer }) };
 }
