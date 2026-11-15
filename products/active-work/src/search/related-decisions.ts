@@ -1,10 +1,10 @@
 import { existsSync } from 'node:fs';
 import type { LedgerRow } from '@titan-design/decider';
+import type { DerivedQuery } from '@titan-design/retrieval';
 import { ledgerPath, readLedgerRows } from '../decider/ledger.js';
 import { searchPrecedents } from '../decider/search.js';
 import type { Shown } from '../sessions/visibility.js';
 import { DECISIONS_CLASS } from './classes.js';
-import type { DerivedQuery } from './derive-query.js';
 import type { RelatedDegradation, RelatedHit } from './related.js';
 
 /**
