@@ -25,10 +25,14 @@ function abandoned(n: number): ResolvedLoop {
   return {
     ref: `ref-${n}`,
     text: `dropped ${n}`,
+    kind: 'prose',
     outcome: 'abandoned',
+    sessionFile: `s${n}`,
+    closedBy: `c${n}`,
+    openedAt: '2026-09-10T00:00:00Z',
     closedAt: '2026-10-01T00:00:00Z',
     ageDays: 1,
-  } as ResolvedLoop;
+  };
 }
 
 const range = (n: number) => Array.from({ length: n }, (_, i) => i + 1);
