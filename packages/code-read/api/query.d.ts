@@ -31,8 +31,8 @@ declare const CONTRACT: {
             indexVersions: z.ZodArray<z.ZodString>;
             capabilities: z.ZodObject<{
                 findings: z.ZodEnum<{
-                    none: "none";
                     "check-rules": "check-rules";
+                    none: "none";
                     store: "store";
                 }>;
                 verdicts: z.ZodBoolean;
@@ -47,8 +47,8 @@ declare const CONTRACT: {
                 sourceAtCommit: z.ZodBoolean;
                 excerpts: z.ZodEnum<{
                     any: "any";
-                    none: "none";
                     flagged: "flagged";
+                    none: "none";
                 }>;
             }, z.core.$strip>;
             metrics: z.ZodArray<z.ZodObject<{
@@ -56,10 +56,10 @@ declare const CONTRACT: {
                 unit: z.ZodNullable<z.ZodString>;
                 appliesTo: z.ZodArray<z.ZodString>;
                 rollup: z.ZodEnum<{
-                    sum: "sum";
                     max: "max";
                     mean: "mean";
                     none: "none";
+                    sum: "sum";
                 }>;
                 direction: z.ZodEnum<{
                     "higher-worse": "higher-worse";
@@ -67,15 +67,15 @@ declare const CONTRACT: {
                     neutral: "neutral";
                 }>;
                 absent: z.ZodEnum<{
-                    zero: "zero";
                     exclude: "exclude";
+                    zero: "zero";
                 }>;
                 window: z.ZodOptional<z.ZodString>;
                 description: z.ZodString;
                 provenance: z.ZodObject<{
                     kind: z.ZodEnum<{
-                        measured: "measured";
                         derived: "derived";
+                        measured: "measured";
                         model: "model";
                     }>;
                     source: z.ZodString;
@@ -148,10 +148,10 @@ declare const CONTRACT: {
             baseline: z.ZodOptional<z.ZodUnion<readonly [z.ZodNumber, z.ZodString]>>;
             metrics: z.ZodDefault<z.ZodArray<z.ZodString>>;
             lenses: z.ZodDefault<z.ZodArray<z.ZodEnum<{
-                score: "score";
-                exports: "exports";
                 centrality: "centrality";
                 coupling: "coupling";
+                exports: "exports";
+                score: "score";
                 tests: "tests";
             }>>>;
             window: z.ZodDefault<z.ZodString>;
@@ -192,10 +192,10 @@ declare const CONTRACT: {
                     neutral: "neutral";
                 }>;
                 rollup: z.ZodEnum<{
-                    sum: "sum";
                     max: "max";
                     mean: "mean";
                     none: "none";
+                    sum: "sum";
                 }>;
                 value: z.ZodNullable<z.ZodNumber>;
                 missing: z.ZodOptional<z.ZodString>;
@@ -216,8 +216,8 @@ declare const CONTRACT: {
                 }, z.core.$strip>>>>;
                 score: z.ZodOptional<z.ZodNullable<z.ZodObject<{
                     grain: z.ZodEnum<{
-                        symbol: "symbol";
                         file: "file";
+                        symbol: "symbol";
                     }>;
                     window: z.ZodString;
                     score: z.ZodNumber;
@@ -305,24 +305,24 @@ declare const CONTRACT: {
             severity: z.ZodDefault<z.ZodArray<z.ZodString>>;
             tool: z.ZodDefault<z.ZodArray<z.ZodString>>;
             provenance: z.ZodDefault<z.ZodArray<z.ZodEnum<{
-                measured: "measured";
                 derived: "derived";
+                measured: "measured";
                 model: "model";
             }>>>;
             kind: z.ZodDefault<z.ZodArray<z.ZodString>>;
             status: z.ZodDefault<z.ZodArray<z.ZodEnum<{
-                new: "new";
                 carryover: "carryover";
+                improved: "improved";
+                new: "new";
                 resolved: "resolved";
                 worsened: "worsened";
-                improved: "improved";
             }>>>;
             sort: z.ZodDefault<z.ZodEnum<{
+                excess: "excess";
+                path: "path";
+                rule: "rule";
                 severity: "severity";
                 value: "value";
-                path: "path";
-                excess: "excess";
-                rule: "rule";
             }>>;
             order: z.ZodDefault<z.ZodEnum<{
                 asc: "asc";
@@ -368,17 +368,17 @@ declare const CONTRACT: {
                 threshold: z.ZodOptional<z.ZodNumber>;
                 excess: z.ZodNullable<z.ZodNumber>;
                 status: z.ZodOptional<z.ZodEnum<{
-                    new: "new";
                     carryover: "carryover";
+                    improved: "improved";
+                    new: "new";
                     resolved: "resolved";
                     worsened: "worsened";
-                    improved: "improved";
                 }>>;
                 message: z.ZodString;
                 provenance: z.ZodObject<{
                     kind: z.ZodEnum<{
-                        measured: "measured";
                         derived: "derived";
+                        measured: "measured";
                         model: "model";
                     }>;
                     source: z.ZodString;
@@ -436,17 +436,17 @@ declare const CONTRACT: {
                 threshold: z.ZodOptional<z.ZodNumber>;
                 excess: z.ZodNullable<z.ZodNumber>;
                 status: z.ZodOptional<z.ZodEnum<{
-                    new: "new";
                     carryover: "carryover";
+                    improved: "improved";
+                    new: "new";
                     resolved: "resolved";
                     worsened: "worsened";
-                    improved: "improved";
                 }>>;
                 message: z.ZodString;
                 provenance: z.ZodObject<{
                     kind: z.ZodEnum<{
-                        measured: "measured";
                         derived: "derived";
+                        measured: "measured";
                         model: "model";
                     }>;
                     source: z.ZodString;
@@ -475,8 +475,8 @@ declare const CONTRACT: {
                 contentHash: z.ZodString;
                 origin: z.ZodEnum<{
                     commit: "commit";
-                    worktree: "worktree";
                     export: "export";
+                    worktree: "worktree";
                 }>;
                 highlights: z.ZodArray<z.ZodObject<{
                     startLine: z.ZodNumber;
@@ -520,17 +520,17 @@ declare const CONTRACT: {
                 threshold: z.ZodOptional<z.ZodNumber>;
                 excess: z.ZodNullable<z.ZodNumber>;
                 status: z.ZodOptional<z.ZodEnum<{
-                    new: "new";
                     carryover: "carryover";
+                    improved: "improved";
+                    new: "new";
                     resolved: "resolved";
                     worsened: "worsened";
-                    improved: "improved";
                 }>>;
                 message: z.ZodString;
                 provenance: z.ZodObject<{
                     kind: z.ZodEnum<{
-                        measured: "measured";
                         derived: "derived";
+                        measured: "measured";
                         model: "model";
                     }>;
                     source: z.ZodString;
@@ -548,9 +548,9 @@ declare const CONTRACT: {
             snapshot: z.ZodOptional<z.ZodUnion<readonly [z.ZodNumber, z.ZodString]>>;
             id: z.ZodString;
             direction: z.ZodDefault<z.ZodEnum<{
-                out: "out";
-                in: "in";
                 both: "both";
+                in: "in";
+                out: "out";
             }>>;
             edge_kinds: z.ZodDefault<z.ZodArray<z.ZodString>>;
             metrics: z.ZodDefault<z.ZodArray<z.ZodString>>;
@@ -613,8 +613,8 @@ declare const CONTRACT: {
             snapshot: z.ZodOptional<z.ZodUnion<readonly [z.ZodNumber, z.ZodString]>>;
             baseline: z.ZodOptional<z.ZodUnion<readonly [z.ZodNumber, z.ZodString]>>;
             grain: z.ZodDefault<z.ZodEnum<{
-                symbol: "symbol";
                 file: "file";
+                symbol: "symbol";
             }>>;
             window: z.ZodDefault<z.ZodString>;
             cutoff: z.ZodOptional<z.ZodNumber>;
@@ -696,10 +696,10 @@ declare const CONTRACT: {
             }, z.core.$strip>;
             signals: z.ZodArray<z.ZodObject<{
                 key: z.ZodEnum<{
-                    findings: "findings";
                     complexity: "complexity";
-                    hotspots: "hotspots";
+                    findings: "findings";
                     "hidden-coupling": "hidden-coupling";
+                    hotspots: "hotspots";
                 }>;
                 label: z.ZodString;
                 penalty: z.ZodNumber;
@@ -737,9 +737,9 @@ declare const CONTRACT: {
                 complexity: z.ZodNumber;
                 recency: z.ZodNumber;
                 reasons: z.ZodArray<z.ZodEnum<{
+                    "churn-complexity": "churn-complexity";
                     findings: "findings";
                     "over-cutoff": "over-cutoff";
-                    "churn-complexity": "churn-complexity";
                 }>>;
             }, z.core.$strip>>;
             baselineSnapshotId: z.ZodOptional<z.ZodNumber>;
@@ -826,17 +826,17 @@ declare const CONTRACT: {
                     threshold: z.ZodOptional<z.ZodNumber>;
                     excess: z.ZodNullable<z.ZodNumber>;
                     status: z.ZodOptional<z.ZodEnum<{
-                        new: "new";
                         carryover: "carryover";
+                        improved: "improved";
+                        new: "new";
                         resolved: "resolved";
                         worsened: "worsened";
-                        improved: "improved";
                     }>>;
                     message: z.ZodString;
                     provenance: z.ZodObject<{
                         kind: z.ZodEnum<{
-                            measured: "measured";
                             derived: "derived";
+                            measured: "measured";
                             model: "model";
                         }>;
                         source: z.ZodString;
@@ -879,17 +879,17 @@ declare const CONTRACT: {
                         threshold: z.ZodOptional<z.ZodNumber>;
                         excess: z.ZodNullable<z.ZodNumber>;
                         status: z.ZodOptional<z.ZodEnum<{
-                            new: "new";
                             carryover: "carryover";
+                            improved: "improved";
+                            new: "new";
                             resolved: "resolved";
                             worsened: "worsened";
-                            improved: "improved";
                         }>>;
                         message: z.ZodString;
                         provenance: z.ZodObject<{
                             kind: z.ZodEnum<{
-                                measured: "measured";
                                 derived: "derived";
+                                measured: "measured";
                                 model: "model";
                             }>;
                             source: z.ZodString;
@@ -935,17 +935,17 @@ declare const CONTRACT: {
                         threshold: z.ZodOptional<z.ZodNumber>;
                         excess: z.ZodNullable<z.ZodNumber>;
                         status: z.ZodOptional<z.ZodEnum<{
-                            new: "new";
                             carryover: "carryover";
+                            improved: "improved";
+                            new: "new";
                             resolved: "resolved";
                             worsened: "worsened";
-                            improved: "improved";
                         }>>;
                         message: z.ZodString;
                         provenance: z.ZodObject<{
                             kind: z.ZodEnum<{
-                                measured: "measured";
                                 derived: "derived";
+                                measured: "measured";
                                 model: "model";
                             }>;
                             source: z.ZodString;
@@ -990,17 +990,17 @@ declare const CONTRACT: {
                     threshold: z.ZodOptional<z.ZodNumber>;
                     excess: z.ZodNullable<z.ZodNumber>;
                     status: z.ZodOptional<z.ZodEnum<{
-                        new: "new";
                         carryover: "carryover";
+                        improved: "improved";
+                        new: "new";
                         resolved: "resolved";
                         worsened: "worsened";
-                        improved: "improved";
                     }>>;
                     message: z.ZodString;
                     provenance: z.ZodObject<{
                         kind: z.ZodEnum<{
-                            measured: "measured";
                             derived: "derived";
+                            measured: "measured";
                             model: "model";
                         }>;
                         source: z.ZodString;
@@ -1126,17 +1126,17 @@ declare const CONTRACT: {
                     threshold: z.ZodOptional<z.ZodNumber>;
                     excess: z.ZodNullable<z.ZodNumber>;
                     status: z.ZodOptional<z.ZodEnum<{
-                        new: "new";
                         carryover: "carryover";
+                        improved: "improved";
+                        new: "new";
                         resolved: "resolved";
                         worsened: "worsened";
-                        improved: "improved";
                     }>>;
                     message: z.ZodString;
                     provenance: z.ZodObject<{
                         kind: z.ZodEnum<{
-                            measured: "measured";
                             derived: "derived";
+                            measured: "measured";
                             model: "model";
                         }>;
                         source: z.ZodString;
@@ -1197,8 +1197,8 @@ declare const CONTRACT: {
         readonly result: z.ZodObject<{
             snapshotId: z.ZodNumber;
             packagesFrom: z.ZodEnum<{
-                none: "none";
                 args: "args";
+                none: "none";
                 tiers: "tiers";
             }>;
             modularity: z.ZodNumber;
@@ -1234,9 +1234,9 @@ declare const CONTRACT: {
                 edges: z.ZodNumber;
                 intensity: z.ZodNumber;
                 flag: z.ZodEnum<{
+                    moderate: "moderate";
                     none: "none";
                     tight: "tight";
-                    moderate: "moderate";
                 }>;
             }, z.core.$strip>>;
         }, z.core.$strip>;
@@ -1280,8 +1280,8 @@ declare const ExportRow: z.ZodObject<{
 /** The hotspot score at the node's grain, with the factors it multiplies; the factors are absent at a score of 0. */
 declare const ScoreBreakdown: z.ZodObject<{
     grain: z.ZodEnum<{
-        symbol: "symbol";
         file: "file";
+        symbol: "symbol";
     }>;
     window: z.ZodString;
     score: z.ZodNumber;
@@ -1329,10 +1329,10 @@ declare const LinkedTests: z.ZodObject<{
     coEditMeasured: z.ZodBoolean;
 }, z.core.$strip>;
 declare const NodeLens: z.ZodEnum<{
-    score: "score";
-    exports: "exports";
     centrality: "centrality";
     coupling: "coupling";
+    exports: "exports";
+    score: "score";
     tests: "tests";
 }>;
 type NodeLens = z.infer<typeof NodeLens>;
@@ -1347,8 +1347,8 @@ declare const NodeLenses: z.ZodObject<{
     }, z.core.$strip>>>>;
     score: z.ZodOptional<z.ZodNullable<z.ZodObject<{
         grain: z.ZodEnum<{
-            symbol: "symbol";
             file: "file";
+            symbol: "symbol";
         }>;
         window: z.ZodString;
         score: z.ZodNumber;
@@ -1402,11 +1402,11 @@ declare const FINDINGS_PAGE_MAX = 500;
 /** Most lines one excerpt carries, whatever the flagged range and context ask for. */
 declare const EXCERPT_LINE_CAP = 80;
 declare const FindingSort: z.ZodEnum<{
+    excess: "excess";
+    path: "path";
+    rule: "rule";
     severity: "severity";
     value: "value";
-    path: "path";
-    excess: "excess";
-    rule: "rule";
 }>;
 declare const Finding: z.ZodObject<{
     id: z.ZodString;
@@ -1443,17 +1443,17 @@ declare const Finding: z.ZodObject<{
     threshold: z.ZodOptional<z.ZodNumber>;
     excess: z.ZodNullable<z.ZodNumber>;
     status: z.ZodOptional<z.ZodEnum<{
-        new: "new";
         carryover: "carryover";
+        improved: "improved";
+        new: "new";
         resolved: "resolved";
         worsened: "worsened";
-        improved: "improved";
     }>>;
     message: z.ZodString;
     provenance: z.ZodObject<{
         kind: z.ZodEnum<{
-            measured: "measured";
             derived: "derived";
+            measured: "measured";
             model: "model";
         }>;
         source: z.ZodString;
@@ -1462,11 +1462,11 @@ declare const Finding: z.ZodObject<{
 }, z.core.$strip>;
 type Finding = z.infer<typeof Finding>;
 declare const FindingStatus: z.ZodEnum<{
-    new: "new";
     carryover: "carryover";
+    improved: "improved";
+    new: "new";
     resolved: "resolved";
     worsened: "worsened";
-    improved: "improved";
 }>;
 type FindingStatus = z.infer<typeof FindingStatus>;
 declare const SourceExcerpt: z.ZodObject<{
@@ -1477,8 +1477,8 @@ declare const SourceExcerpt: z.ZodObject<{
     contentHash: z.ZodString;
     origin: z.ZodEnum<{
         commit: "commit";
-        worktree: "worktree";
         export: "export";
+        worktree: "worktree";
     }>;
     highlights: z.ZodArray<z.ZodObject<{
         startLine: z.ZodNumber;
@@ -1526,10 +1526,10 @@ declare const OVERVIEW_ROWS_MAX = 50;
 /** One named signal of where attention is due, with the points the caller's weights give it. */
 declare const AttentionSignal: z.ZodObject<{
     key: z.ZodEnum<{
-        findings: "findings";
         complexity: "complexity";
-        hotspots: "hotspots";
+        findings: "findings";
         "hidden-coupling": "hidden-coupling";
+        hotspots: "hotspots";
     }>;
     label: z.ZodString;
     penalty: z.ZodNumber;
@@ -1554,9 +1554,9 @@ declare const LookFirstRow: z.ZodObject<{
     complexity: z.ZodNumber;
     recency: z.ZodNumber;
     reasons: z.ZodArray<z.ZodEnum<{
+        "churn-complexity": "churn-complexity";
         findings: "findings";
         "over-cutoff": "over-cutoff";
-        "churn-complexity": "churn-complexity";
     }>>;
 }, z.core.$strip>;
 type LookFirstRow = z.infer<typeof LookFirstRow>;
@@ -1631,17 +1631,17 @@ declare const PathImpact: z.ZodDiscriminatedUnion<[z.ZodObject<{
         threshold: z.ZodOptional<z.ZodNumber>;
         excess: z.ZodNullable<z.ZodNumber>;
         status: z.ZodOptional<z.ZodEnum<{
-            new: "new";
             carryover: "carryover";
+            improved: "improved";
+            new: "new";
             resolved: "resolved";
             worsened: "worsened";
-            improved: "improved";
         }>>;
         message: z.ZodString;
         provenance: z.ZodObject<{
             kind: z.ZodEnum<{
-                measured: "measured";
                 derived: "derived";
+                measured: "measured";
                 model: "model";
             }>;
             source: z.ZodString;
@@ -1761,9 +1761,9 @@ declare const CrossEdge: z.ZodObject<{
     edges: z.ZodNumber;
     intensity: z.ZodNumber;
     flag: z.ZodEnum<{
+        moderate: "moderate";
         none: "none";
         tight: "tight";
-        moderate: "moderate";
     }>;
 }, z.core.$strip>;
 type CrossEdge = z.infer<typeof CrossEdge>;
@@ -1838,17 +1838,17 @@ declare const FindingChange: z.ZodObject<{
         threshold: z.ZodOptional<z.ZodNumber>;
         excess: z.ZodNullable<z.ZodNumber>;
         status: z.ZodOptional<z.ZodEnum<{
-            new: "new";
             carryover: "carryover";
+            improved: "improved";
+            new: "new";
             resolved: "resolved";
             worsened: "worsened";
-            improved: "improved";
         }>>;
         message: z.ZodString;
         provenance: z.ZodObject<{
             kind: z.ZodEnum<{
-                measured: "measured";
                 derived: "derived";
+                measured: "measured";
                 model: "model";
             }>;
             source: z.ZodString;
@@ -1916,15 +1916,15 @@ type Missing = (typeof MISSING_REASONS)[number];
 /** An open string on the wire, so an older reader survives a new reason; `MISSING_REASONS` lists today's. */
 declare const MissingReason: z.ZodString;
 declare const ProvenanceKind: z.ZodEnum<{
-    measured: "measured";
     derived: "derived";
+    measured: "measured";
     model: "model";
 }>;
 type ProvenanceKind = z.infer<typeof ProvenanceKind>;
 declare const Provenance: z.ZodObject<{
     kind: z.ZodEnum<{
-        measured: "measured";
         derived: "derived";
+        measured: "measured";
         model: "model";
     }>;
     source: z.ZodString;
@@ -1944,10 +1944,10 @@ declare const MetricDescriptor: z.ZodObject<{
     unit: z.ZodNullable<z.ZodString>;
     appliesTo: z.ZodArray<z.ZodString>;
     rollup: z.ZodEnum<{
-        sum: "sum";
         max: "max";
         mean: "mean";
         none: "none";
+        sum: "sum";
     }>;
     direction: z.ZodEnum<{
         "higher-worse": "higher-worse";
@@ -1955,15 +1955,15 @@ declare const MetricDescriptor: z.ZodObject<{
         neutral: "neutral";
     }>;
     absent: z.ZodEnum<{
-        zero: "zero";
         exclude: "exclude";
+        zero: "zero";
     }>;
     window: z.ZodOptional<z.ZodString>;
     description: z.ZodString;
     provenance: z.ZodObject<{
         kind: z.ZodEnum<{
-            measured: "measured";
             derived: "derived";
+            measured: "measured";
             model: "model";
         }>;
         source: z.ZodString;
@@ -1979,8 +1979,8 @@ declare const RuleSummary: z.ZodObject<{
 type RuleSummary = z.infer<typeof RuleSummary>;
 declare const Capabilities: z.ZodObject<{
     findings: z.ZodEnum<{
-        none: "none";
         "check-rules": "check-rules";
+        none: "none";
         store: "store";
     }>;
     verdicts: z.ZodBoolean;
@@ -1995,8 +1995,8 @@ declare const Capabilities: z.ZodObject<{
     sourceAtCommit: z.ZodBoolean;
     excerpts: z.ZodEnum<{
         any: "any";
-        none: "none";
         flagged: "flagged";
+        none: "none";
     }>;
 }, z.core.$strip>;
 type Capabilities = z.infer<typeof Capabilities>;
