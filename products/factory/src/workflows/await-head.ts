@@ -40,6 +40,7 @@ interface AwaitHeadOutcome {
   exited: boolean;
   green?: true;
   baseRed?: true;
+  asked?: true;
 }
 
 export interface AwaitHeadTiming {
@@ -53,6 +54,8 @@ export interface AwaitHeadTiming {
   /** Told of each transient read failure, so a wait stuck on one is visible while it runs. */
   onReadError?: (message: string) => void;
   /** Built once per wait, so the checker can keep its own memo of the base it last weighed; true means the head's red is the base's. */
+  /** Whether an untaken review ask stands at the head; read only while the head is unchanged, and it ends the wait so the next land round takes the ask. */
+  reviewAsked?: (repo: RepoSlug, pr: number, head: string) => boolean;
   inheritedRed?: (target: AwaitHeadTarget) => (pr: PullRequest, signal: AbortSignal) => Promise<boolean>;
 }
 
@@ -136,7 +139,8 @@ function baseRedWatch(target: AwaitHeadTarget, timing: AwaitHeadTiming): BaseRed
 
 /**
  * Like `awaitNewHead`, but also ends when the fixer exits with the head unchanged, with `untilGreen` when that head
- * turns green, or with `failing` and an `inheritedRed` hook when the base turns out to own that head's red.
+ * turns green, with `failing` and an `inheritedRed` hook when the base turns out to own that head's red, or with a `reviewAsked` hook
+ * when a review is asked at that head.
  */
 export async function awaitHeadOrExit(port: GitHubPort, target: AwaitHeadTarget, signal: AbortSignal, timing: AwaitHeadTiming = {}): Promise<AwaitHeadOutcome> {
   const pause = timing.sleep ?? sleep;
@@ -154,6 +158,7 @@ export async function awaitHeadOrExit(port: GitHubPort, target: AwaitHeadTarget,
       sinceGreen = 0;
       if (await greenAtHead(port, target, pr, timing)) return { pr, exited: false, green: true };
     }
+    if (pr && timing.reviewAsked?.(target.repo, target.pr, target.headSha)) return { pr, exited: false, asked: true };
     if (pr && baseRed && (await baseRed.check(pr, signal))) return { pr, exited: false, baseRed: true };
     if (pr && target.agent !== undefined && (await timing.agentExited?.(target.agent, signal))) {
       // Re-read after the exit is seen, so a push made just before it is not mistaken for no push.
@@ -175,6 +180,7 @@ export const AwaitHeadResult = z.looseObject({
   green: z.boolean().optional(),
   why: z.string().optional(),
   baseRed: z.boolean().optional(),
+  asked: z.boolean().optional(),
 });
 
 export interface AwaitHeadDeps extends AwaitHeadTiming {
@@ -189,10 +195,10 @@ export interface AwaitHeadDeps extends AwaitHeadTiming {
  */
 export function awaitNewHeadRoute(deps: AwaitHeadDeps, match = "await-new-head"): StepRoute {
   return codeRoute(match, deps.now ?? Date.now, async (target: AwaitHeadTarget, signal) => {
-    const { pr, exited, green, baseRed } = await awaitHeadOrExit(deps.port, target, signal, deps);
+    const { pr, exited, green, baseRed, asked } = await awaitHeadOrExit(deps.port, target, signal, deps);
     deps.snapshot?.invalidate(target.repo);
     const why = green && { why: `every required check passed at ${target.headSha} with no new head, on a rerun or a run that outlived a cancelled one` };
-    const ended = { ...(exited && { exited }), ...(green && { green }), ...why, ...(baseRed && { baseRed }) };
+    const ended = { ...(exited && { exited }), ...(green && { green }), ...why, ...(baseRed && { baseRed }), ...(asked && { asked }) };
     return { headSha: pr.headSha, state: pr.state, merged: pr.merged, ...ended };
   });
 }

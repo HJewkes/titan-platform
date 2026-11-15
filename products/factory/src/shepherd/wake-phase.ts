@@ -63,7 +63,7 @@ export async function awaitFixerHead(ctx: WorkflowContext, request: WakeRequest,
   const target = { repo: request.repo, pr: request.pr, headSha: request.headSha, agent: woke.agent, ...(request.kind === "ci-red" && { untilGreen: true }) };
   const head = await step(ctx, `${AWAIT_NEW_HEAD_STEP}:${request.round}`, target, AwaitHeadResult);
   const woken = { kind: "woken" as const, agent: woke.agent, ...(woke.sessionId !== undefined && { sessionId: woke.sessionId }) };
-  if (head.green) return { ...woken, sameHead: true };
+  if (head.green || head.asked) return { ...woken, sameHead: true };
   if (head.exited) return { kind: "unhandled", exited: true, reason: `${woke.agent} exited without pushing a new head past ${request.headSha}`, wake: woke };
   if (head.headSha === request.headSha) return { kind: "unhandled", reason: `${request.repo}#${request.pr} closed at head ${request.headSha} before a new head` };
   return woken;
