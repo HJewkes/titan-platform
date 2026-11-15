@@ -12,6 +12,7 @@ import { readHead, transcriptFiles } from "./corpus/transcripts.js";
 import { mineBootstrapArm } from "./mine/bootstrap-arm.js";
 import { mineSpawnArm } from "./mine/spawn-arm.js";
 import { formatPairs, parsePairs, type EvalPair } from "./pairs.js";
+import { MUTATIONS } from "./query/mutate.js";
 import { QUERY_VARIANTS } from "./query/variants.js";
 import { formatRows, runEval, type RunRow } from "./run.js";
 import { freezeSet, isSetDir, loadSet, type SetStamp } from "./set.js";
@@ -141,20 +142,27 @@ function freezeCommand(paths: PathOptions): Command {
     });
 }
 
+function parseRunChoices(options: Record<string, unknown>) {
+  const names = parseChoices("--candidates", String(options.candidates), ALL_CANDIDATES);
+  const variants = parseChoices("--variants", String(options.variants), QUERY_VARIANTS);
+  const mutations = parseChoices("--mutations", String(options.mutations), MUTATIONS);
+  parseChoice("--embedder", String(options.embedder), EMBEDDERS);
+  return { names, variants, mutations };
+}
+
 function runCommand(paths: PathOptions): Command {
   return new Command("run")
     .description("Score candidate retrievers over a mined pair file or a frozen set directory")
     .argument("<pairs>", "JSONL produced by `mine`, or a directory written by `freeze`")
     .option("--candidates <list>", "comma-separated", ALL_CANDIDATES.join(","))
     .option("--variants <list>", "comma-separated query derivations", QUERY_VARIANTS.join(","))
+    .option("--mutations <list>", "comma-separated typo mutations of the rarest query term", "none")
     .option("--embedder <backend>", "hybrid-fts-vector's embedder: hash | ollama | local", "hash")
     .option("--json", "emit rows as JSON instead of a table")
     .option("--active-root <dir>", "active-work root", activeWorkRoot(paths))
     .option("--graph <file>", "session graph, read-only", activeWorkGraphPath(paths))
     .action(async (pairsFile, options) => {
-      const names = parseChoices("--candidates", String(options.candidates), ALL_CANDIDATES);
-      const variants = parseChoices("--variants", String(options.variants), QUERY_VARIANTS);
-      parseChoice("--embedder", String(options.embedder), EMBEDDERS);
+      const { names, variants, mutations } = parseRunChoices(options);
       const { pairs, stamp } = loadPairs(pairsFile);
       const candidates = await buildCandidates(names, options);
       try {
@@ -162,6 +170,7 @@ function runCommand(paths: PathOptions): Command {
           pairs,
           candidates,
           variants,
+          mutations,
           onProgress: (done, total) => process.stderr.write(`\r${done}/${total} cells`),
         });
         process.stderr.write("\n");
