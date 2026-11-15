@@ -1,7 +1,7 @@
 import { lstatSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { contentKey, type ParsedFact } from "@titan-design/memory";
-import type { TranscriptRoot } from "@titan-design/session-read";
+import { claudeProjectSlug, type TranscriptRoot } from "@titan-design/session-read";
 
 const CLAUDE_MD = "CLAUDE.md";
 const GLOBAL_PROJECT = "global";
@@ -64,12 +64,12 @@ function splitSections(text: string): { heading: string; body: string }[] {
 }
 
 /**
- * A transcript folder name is the project path with every `/` and `.` turned into `-`, so a
- * name with dashes is ambiguous; the decode keeps whichever reading names a real directory.
+ * A transcript folder name is the project path with every non-alphanumeric character turned
+ * into `-` (`claudeProjectSlug`), so a name with dashes is ambiguous; the decode keeps whichever reading names a real directory.
  */
 function decodeFrom(base: string, encoded: string): string | undefined {
   for (const entry of listDir(base)) {
-    const name = entry.replace(/[/.]/g, "-");
+    const name = claudeProjectSlug(entry);
     const child = path.join(base, entry);
     if (encoded === name && isRealDir(child)) return child;
     if (encoded.startsWith(`${name}-`) && isRealDir(child)) {

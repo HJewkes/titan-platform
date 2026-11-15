@@ -1,5 +1,6 @@
 import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { claudeProjectSlug } from "@titan-design/session-read";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { useTempHome, type TempHome } from "./home.fixture.js";
 import { instructionFacts, scanInstructions } from "./instructions.js";
@@ -33,6 +34,15 @@ describe("scanInstructions", () => {
     expect(sections.map((section) => section.heading)).toEqual(["Testing", "Git", "Style"]);
     expect(sections[0]).toMatchObject({ account: "default", project: projectFolder, path: path.join(projectDir, "CLAUDE.md"), body: "Run tests." });
     expect(sections[1]?.body).toBe("Small commits.\n\n```\n## not a heading\n```");
+  });
+
+  it("finds a project CLAUDE.md whose path has an underscore and a space", () => {
+    const odd = path.join(temp.home, "my_work", "a b");
+    mkdirSync(odd, { recursive: true });
+    writeFileSync(path.join(odd, "CLAUDE.md"), "## Odd\n\nBody.\n");
+    mkdirSync(path.join(configDir, "projects", claudeProjectSlug(odd)), { recursive: true });
+
+    expect(scanInstructions(roots()).map((section) => section.heading)).toEqual(["Odd"]);
   });
 
   it("reads the global CLAUDE.md beside the projects dir as project global", () => {
