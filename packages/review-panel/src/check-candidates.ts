@@ -98,3 +98,9 @@ export function parseCheckCandidates(text: string): ParsedCheckCandidates {
   }
   return { items };
 }
+
+/** The fields an accepted verdict carries: both absent when the reviewer named no candidate and wrote nothing malformed. */
+export function checkCandidatesFields(text: string): { checkCandidates?: CheckCandidate[]; checkCandidatesWarning?: CheckCandidatesWarning } {
+  const { items, warning } = parseCheckCandidates(text);
+  return { ...(items.length > 0 && { checkCandidates: items }), ...(warning && { checkCandidatesWarning: warning }) };
+}
