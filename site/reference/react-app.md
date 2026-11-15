@@ -72,6 +72,7 @@ await writeFile("report.html", embedSnapshot(await readFile("dist/index.html", "
 | --- | --- | --- |
 | `RpcProvider({ source, gcMs?, onSettle? })` | main | Holds the query cache and one shared event stream for its subtree; `gcMs` keeps an unwatched query's result that long (default 0); `onSettle({ command, ms, ok, fromCache })` observes each finished call, never its arguments |
 | `createRpcHooks<M>()` | main | `useQuery`, `useEvents`, `useInvalidate`, and `useInvalidateOn`, typed from `M` |
+| `useHashRoute(parse)` and `safeDecode(text)` | main | `useHashRoute` re-renders on `hashchange` with `parse(window.location.hash)`; `safeDecode` is `decodeURIComponent` that keeps a text holding a lone `%` raw |
 | `pageDataSource(options?)` | main | `staticSource` over the embedded snapshot if the page has one, otherwise `liveSource` |
 | `embedSnapshot(html, snapshot)` and `readEmbeddedSnapshot(doc?)` | main | Write and read `<script type="application/json" id="titan-snapshot">` |
 | `titanApp({ daemonUrl?, singleFile? })` | `./vite` | The dev and preview proxy plus `vite-plugin-singlefile` |

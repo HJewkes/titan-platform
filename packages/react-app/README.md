@@ -12,7 +12,7 @@ it (the `no-titan-design-library-imports` rule in `.codewatch/check.json`).
 
 | Entry | Runs in | Holds |
 | --- | --- | --- |
-| `@titan-design/react-app` | the browser | `RpcProvider`, `createRpcHooks`, snapshot embedding |
+| `@titan-design/react-app` | the browser | `RpcProvider`, `createRpcHooks`, `useHashRoute`, snapshot embedding |
 | `@titan-design/react-app/vite` | Node, at build time | `titanApp()`, the dev proxy |
 
 React 18 or 19 is a peer. Vite 6, 7, or 8 is an optional peer, needed only for `./vite`.
