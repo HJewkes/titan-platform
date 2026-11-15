@@ -11,6 +11,17 @@
       ]
     },
     {
+      "name": "acceptVerdict drops the reviewer's Check-candidates fields",
+      "file": "packages/review-panel/src/accept-verdict.ts",
+      "find": ", ...checkCandidatesFields(final.text) };",
+      "replace": " };",
+      "kills": [
+        "acceptVerdict check candidates a MERGE carries its check candidates",
+        "acceptVerdict check candidates a FIX_FIRST carries its check candidates",
+        "acceptVerdict check candidates a dropped block carries its warning and no items"
+      ]
+    },
+    {
       "name": "a FIX_FIRST carries the Attests line too",
       "file": "packages/review-panel/src/accept-verdict.ts",
       "find": "verdict: \"FIX_FIRST\", text:",
