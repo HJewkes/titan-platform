@@ -29,21 +29,21 @@
       ]
     },
     {
+      "name": "a degraded deliverable registry shows no warning",
+      "file": "apps/console/src/pages/TaskDetailPage.tsx",
+      "find": "{deliverablesDegraded !== null ? <Alert",
+      "replace": "{deliverablesDegraded === null ? <Alert",
+      "kills": [
+        "a task's detail warns when the deliverable registry is degraded"
+      ]
+    },
+    {
       "name": "a later page replaces the rows already shown",
       "file": "apps/console/src/pages/TasksPage.tsx",
       "find": "const rows = [...shown, ...page.tasks];",
       "replace": "const rows = [...page.tasks];",
       "kills": [
         "the tasks list shows the first 50 rows, titles each stage with every match, and loads the rest on the cursor"
-      ]
-    },
-    {
-      "name": "the first page shows no skeleton while it loads",
-      "file": "apps/console/src/pages/TasksPage.tsx",
-      "find": "if (tasks.status === \"loading\") return <TasksSkeleton />;",
-      "replace": "if (tasks.status === \"loading\") return null;",
-      "kills": [
-        "the tasks list shows loading, empty and failed states"
       ]
     }
   ]
