@@ -23,6 +23,7 @@ import { BUILD_VERSION } from '../version.js';
 import { resolveDaemonPort } from './lifecycle.js';
 import { getLogger } from './logger.js';
 import { mcpOptions } from './mcp.js';
+import { startPrecedentWatch } from './precedent-watch.js';
 import {
   startSessionIndexWatch,
   type SessionIndexWatchOptions,
@@ -154,23 +155,35 @@ export async function runDaemon(options: RunDaemonOptions = {}): Promise<void> {
   });
 
   indexWatch = startSessionIndexWatch(log, deps.watch);
+  const precedentWatch = startPrecedentWatch(log);
 
-  await new Promise<void>((resolve) => {
+  await untilSignalled(log, async () => {
+    await precedentWatch?.close();
+    await closeIndexWatch(indexWatch, log);
+    await closeHandle(handle, log);
+  });
+}
+
+async function closeHandle(handle: DaemonHandle, log: Logger): Promise<void> {
+  try {
+    await handle.close();
+  } catch (err) {
+    log.error({ err }, 'error closing daemon');
+  }
+}
+
+/** Resolves once SIGTERM or SIGINT has run `close` to completion. */
+function untilSignalled(log: Logger, close: () => Promise<void>): Promise<void> {
+  return new Promise<void>((resolve) => {
     let shuttingDown = false;
     const shutdown = (signal: NodeJS.Signals): void => {
       if (shuttingDown) return;
       shuttingDown = true;
       log.info({ signal }, 'shutting down');
-      void (async () => {
-        await closeIndexWatch(indexWatch, log);
-        try {
-          await handle.close();
-        } catch (err) {
-          log.error({ err }, 'error closing daemon');
-        }
+      void close().then(() => {
         log.info({}, 'stopped');
         resolve();
-      })();
+      });
     };
 
     process.once('SIGTERM', shutdown);
