@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the act skips the digest check, so a changed read-back still posts",
+      "file": "apps/console/server/pr-tap.ts",
+      "find": " || tapDigest(prepared.key, readBack, prepared.readAt) !== confirm",
+      "replace": "",
+      "kills": [
+        "prTaps.act on a PR page refuses the confirm when the title changed between prepare and act"
+      ]
+    },
+    {
+      "name": "a head that moved past the page's is read back as ready",
+      "file": "apps/console/server/pr-tap.ts",
+      "find": "typeof readBack === \"string\" || readBack.headSha === tapTarget.headSha",
+      "replace": "true",
+      "kills": [
+        "prTaps.prepare on a PR page answers no-action for a head that moved past the one the page showed"
+      ]
+    },
+    {
+      "name": "the prepare runs with inbox actions off",
+      "file": "apps/console/server/pr-tap.ts",
+      "find": "        assertOn(options);\n        return prepare(",
+      "replace": "        return prepare(",
+      "kills": [
+        "prTaps.prepare on a PR page answers that inbox actions are off when they are"
+      ]
+    },
+    {
+      "name": "an accepted merge drops its land run message",
+      "file": "apps/console/server/pr-tap.ts",
+      "find": "    case \"accepted\":\n    case \"pr-closed\":",
+      "replace": "    case \"pr-closed\":",
+      "kills": [
+        "prTaps.act on a PR page writes a merge record pinned to the previewed head once and shows the accepted land run"
+      ]
+    },
+    {
+      "name": "a replay reads as a fresh close",
+      "file": "apps/console/server/pr-tap.ts",
+      "find": "      return \"Already done by this confirmation\";",
+      "replace": "      return \"PR closed\";",
+      "kills": [
+        "prTaps.act on a PR page reposts the identical record bytes on a replayed confirm and shows already"
+      ]
+    }
+  ]
+}
