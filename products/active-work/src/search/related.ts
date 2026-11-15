@@ -8,7 +8,7 @@ import { deriveQuery, type DerivedQuery } from './derive-query.js';
 import { graphTermStatistics } from './document-frequency.js';
 import { searchWorkspace } from './index.js';
 import type { ResolvedHit } from './resolve.js';
-import { visibilityFor } from '../sessions/visibility.js';
+import { visibilityFor, type Shown } from '../sessions/visibility.js';
 import { readRawFrontmatter } from '../utils/gray-matter-io.js';
 import { getActiveRoot } from '../utils/paths.js';
 import { toAbsolute } from '../workspace-index/refs.js';
@@ -105,6 +105,10 @@ export interface RelatedInput {
   render?: (hit: RelatedHit) => string;
   dbPath?: string;
   activeRoot?: string;
+  /** An already-open graph, left open; a caller running many queries opens it once. */
+  graph?: WorkspaceGraph;
+  /** An already-computed agent visibility verdict, reused instead of rereading every brief. */
+  visible?: Shown;
 }
 
 const EMPTY_QUERY: DerivedQuery = { terms: [], expression: '' };
@@ -270,7 +274,7 @@ async function rankedHits(
   const exclude = new Set(input.exclude ?? []);
   const result = await searchWorkspace(query.expression, {
     // Related context is pasted into sessions no surface marked as the owner's, so it gets an agent's view.
-    visible: await visibilityFor({ activeRoot, warnings: [] }),
+    visible: input.visible ?? (await visibilityFor({ activeRoot, warnings: [] })),
     graph,
     rawExpression: true,
     limit: limit + exclude.size + namedIdCount(input.text),
@@ -331,7 +335,8 @@ async function relatedOrDegraded(input: RelatedInput): Promise<RelatedResult> {
   if (input.text.trim().length === 0) {
     return degradedResult(EMPTY_QUERY, { source: 'query', reason: 'empty', message: 'no text' });
   }
-  const opened = openIndex(input.dbPath ?? defaultGraphPath());
+  const borrowed = input.graph !== undefined;
+  const opened = input.graph ?? openIndex(input.dbPath ?? defaultGraphPath());
   if (!('db' in opened)) return degradedResult(EMPTY_QUERY, opened);
   try {
     return await relatedFromIndex(opened, input);
@@ -342,7 +347,7 @@ async function relatedOrDegraded(input: RelatedInput): Promise<RelatedResult> {
       message: describe(err),
     });
   } finally {
-    opened.db.close();
+    if (!borrowed) opened.db.close();
   }
 }
 

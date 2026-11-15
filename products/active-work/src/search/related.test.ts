@@ -41,6 +41,39 @@ afterEach(() => {
 const related = (input: Partial<RelatedInput> & { text: string }) =>
   relatedContext({ dbPath, activeRoot: root, ...input });
 
+describe('relatedContext with a passed graph', () => {
+  it('leaves the passed graph open and answers as it would from the path', async () => {
+    const graph = openGraph(dbPath);
+    try {
+      const viaPath = await related({ text: 'the alpha lesson', initiative: 'alpha' });
+
+      const viaGraph = await related({ text: 'the alpha lesson', initiative: 'alpha', graph });
+
+      expect(graph.db.open).toBe(true);
+      expect(viaGraph.hits).toEqual(viaPath.hits);
+    } finally {
+      graph.db.close();
+    }
+  });
+
+  it('reads a passed graph even when the path names no file', async () => {
+    const graph = openGraph(dbPath);
+    try {
+      const result = await related({
+        text: 'the alpha lesson',
+        initiative: 'alpha',
+        graph,
+        dbPath: path.join(dir, 'absent.sqlite3'),
+      });
+
+      expect(result.degraded).toEqual([]);
+      expect(result.hits.length).toBeGreaterThan(0);
+    } finally {
+      graph.db.close();
+    }
+  });
+});
+
 describe('relatedContext', () => {
   it('returns openable hits and the query that found them', async () => {
     const result = await related({ text: 'the alpha lesson', initiative: 'alpha' });
