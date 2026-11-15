@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "archived copy ignored",
+      "file": "products/active-work/src/tasks/locate.ts",
+      "find": "return archived ? { task: archived, archived: true } : undefined;",
+      "replace": "return undefined;",
+      "kills": ["locateTask falls back to the archived copy with archived true"]
+    },
+    {
+      "name": "live task flagged archived",
+      "file": "products/active-work/src/tasks/locate.ts",
+      "find": "if (live) return { task: live, archived: false };",
+      "replace": "if (live) return { task: live, archived: true };",
+      "kills": ["locateTask returns a live task with archived false"]
+    },
+    {
+      "name": "homes skip archived files",
+      "file": "products/active-work/src/tasks/locate.ts",
+      "find": "(await hasFile(path.join(tasksDir, 'archive', `${id}.yml`)))",
+      "replace": "false",
+      "kills": ["homesOf lists every initiative holding the id live or archived"]
+    }
+  ]
+}
