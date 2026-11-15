@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -59,12 +60,15 @@ describe('context.related', () => {
         slug: 'alpha',
         trigger: 'spawn',
         query: text,
+        queryHash: createHash('sha256').update(text).digest('hex').slice(0, 16),
+        class: hit.class,
         ref: hit.ref,
         rank: i + 1,
         byteOffset: hit.byteOffset,
         byteLength: hit.byteLength,
       })),
     );
+    expect(log.entries.some((entry) => 'tier' in entry)).toBe(false);
     expect(log.entries.every((entry) => typeof entry.byteOffset === 'number')).toBe(true);
     expect(log.entries.every((entry) => (entry.byteLength ?? 0) > 0)).toBe(true);
   });
@@ -170,6 +174,26 @@ describe('context.related in context mode', () => {
     expect(log.entries.map((entry) => entry.rank)).toEqual(placed.map((_, i) => i + 1));
     const droppedRefs = result.dropped!.map((drop) => drop.ref);
     expect(log.entries.some((entry) => droppedRefs.includes(entry.ref))).toBe(false);
+  });
+
+  it('a spawn trigger logs each placed hit with the tier and class it was served at', async () => {
+    const log = recorder();
+
+    const result = await runRelated(
+      {
+        for: 'the alpha lesson',
+        initiative: 'alpha',
+        trigger: 'spawn',
+        mode: 'context',
+        tokens: 2000,
+      },
+      { activeRoot: root, dbPath, hitLog: log.writer },
+    );
+
+    expect(result.entries!.length).toBeGreaterThan(0);
+    expect(log.entries.map((entry) => [entry.ref, entry.tier, entry.class])).toEqual(
+      result.entries!.map((entry) => [entry.ref, entry.tier, entry.class]),
+    );
   });
 
   it('maxTier caps every entry', async () => {

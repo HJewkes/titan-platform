@@ -101,7 +101,12 @@ async function logServed(args: Args, result: RelatedResult, hitLog: HitLogWriter
     trigger: args.trigger,
     query: args.for,
   };
-  const failure = await hitLog(servedHitEntries(result.hits, context));
+  const tiers = new Map((result.entries ?? []).map((entry) => [entry.ref, entry.tier]));
+  const served = result.hits.map((hit) => {
+    const tier = tiers.get(hit.ref);
+    return { ...hit, ...(tier !== undefined ? { tier } : {}) };
+  });
+  const failure = await hitLog(servedHitEntries(served, context));
   if (failure !== null)
     result.degraded.push({ source: 'hit-log', reason: 'error', message: failure });
 }

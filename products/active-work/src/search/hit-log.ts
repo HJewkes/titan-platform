@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { getStateRoot } from '../utils/paths.js';
@@ -13,15 +14,23 @@ import { getStateRoot } from '../utils/paths.js';
 
 export const HIT_TRIGGERS = ['bootstrap-loop', 'bootstrap-foreign', 'spawn'] as const;
 
+const MAX_LOGGED_QUERY = 500;
+
 type HitTrigger = (typeof HIT_TRIGGERS)[number];
 
 export interface HitLogEntry {
   ts: string;
   slug: string;
   trigger: HitTrigger;
-  /** The text the hit was retrieved for. */
+  /** The text the hit was retrieved for, capped at MAX_LOGGED_QUERY characters. */
   query: string;
+  /** First 16 hex characters of the sha256 of the full, uncapped query. */
+  queryHash?: string;
   ref: string;
+  /** The search class the hit came from. */
+  class?: string;
+  /** Context mode only: the tier the hit was served at. */
+  tier?: number;
   /** 1-based, within the list the hit was rendered in. */
   rank: number;
   /** The winning span's byte range in the hit's file; null when the hit carries no span. */
@@ -52,6 +61,8 @@ export function fileHitLog(file: string = hitLogPath()): HitLogWriter {
 
 interface ServedHit {
   ref: string;
+  class?: string;
+  tier?: number;
   byteOffset: number | null;
   byteLength: number | null;
 }
@@ -65,8 +76,14 @@ interface ServedContext {
 
 /** One entry per served hit, ranked in the order served. */
 export function servedHitEntries(hits: ServedHit[], context: ServedContext): HitLogEntry[] {
+  const query = context.query.slice(0, MAX_LOGGED_QUERY);
+  const queryHash = createHash('sha256').update(context.query).digest('hex').slice(0, 16);
   return hits.map((hit, i) => ({
     ...context,
+    query,
+    queryHash,
+    ...(hit.class !== undefined ? { class: hit.class } : {}),
+    ...(hit.tier !== undefined ? { tier: hit.tier } : {}),
     ref: hit.ref,
     rank: i + 1,
     byteOffset: hit.byteOffset,
