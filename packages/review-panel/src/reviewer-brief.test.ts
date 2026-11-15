@@ -15,14 +15,13 @@ import {
   MAX_CI_CHECK_ROWS,
   MAX_CORRECTION_PROMPT_CHARS,
   MAX_OWNER_PICKS,
-  NIT_POLICY_EXEMPTION,
-  NIT_POLICY_RULE,
   type MalformedRefusal,
   REFUSAL_SENTENCES,
   correctionPrompt,
   reviewCheckoutName,
   reviewerBrief,
 } from "./reviewer-brief.js";
+import { NIT_POLICY_EXEMPTION, NIT_POLICY_RULE } from "./briefs/nit-policy.js";
 
 // A Record forces every MalformedRefusal to appear, so a new refusal cannot skip the correction-prompt tests.
 const REFUSAL_SET: Record<MalformedRefusal, true> = {

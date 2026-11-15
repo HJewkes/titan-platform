@@ -10,6 +10,7 @@ import { DEFECT_CLASS_HEADING, EARLIER_FINDINGS_HEADING, earlierFindingLines, ty
 import { FOLLOW_UPS_HEADING, MAX_FOLLOW_UPS } from "./follow-ups.js";
 import { CHECK_CANDIDATES_HEADING } from "./check-candidates.js";
 import { checkCandidatesLines } from "./briefs/check-candidates.js";
+import { NIT_POLICY_RULE } from "./briefs/nit-policy.js";
 import { CLASS_TAG, IMPORTANT_TAG, scopeLines, scopedDiffLine, shellSafe, usableScope, type ReviewScope } from "./briefs/scoped-rereview.js";
 
 type RepoSlug = string;
@@ -179,15 +180,6 @@ export const FOLLOW_UPS_RULE =
   `Optionally, for work that should not hold this PR, add before the verdict lines a section that starts with a line \`${FOLLOW_UPS_HEADING}\`, then one line per proposed task, at most ${MAX_FOLLOW_UPS}: ` +
   "`- <title> | <done_when> | <low, medium or high>`. Follow-ups never block MERGE and are filed as tasks for later; anything blocking goes in your review as FIX_FIRST, never here. " +
   "Never propose a low-severity cosmetic follow-up. Write no section when you have none.";
-
-/** The PR description is author text, so it must never be able to make a blocking finding disappear. */
-export const NIT_POLICY_EXEMPTION =
-  "This never covers a blocking item: a stated gap that leaves the task's done-when unmet, or a pre-existing defect this PR now relies on, is still blocking whatever the PR description says.";
-
-/** An audit of review text found about a sixth of it was nits and noise, and nit follow-ups were filed as tasks nobody needed (TP-6471). */
-export const NIT_POLICY_RULE =
-  "Of the notes that would not block, leave out cosmetic ones, ones on behaviour that was already on the base before this PR, and ones on a gap the PR description already states, unless one would mislead a reader of the code. " +
-  `File no cosmetic note as a follow-up; a stated gap that is not cosmetic may still be one. ${NIT_POLICY_EXEMPTION}`;
 
 /** A run handed earlier findings is a re-review even when its count lags them. */
 const fixFirstCount = (input: ReviewerBriefInput): number => Math.max(input.fixFirsts ?? 0, input.earlierFindings?.length ?? 0);
