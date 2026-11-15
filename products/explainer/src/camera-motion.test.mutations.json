@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the velocity limit never trips",
+      "file": "products/explainer/src/camera-motion.ts",
+      "find": "spikeTimes(track, 1, limits.velocity, shakes)",
+      "replace": "spikeTimes(track, 1, Infinity, shakes)",
+      "kills": [
+        "cameraMotionRows fails velocity at the sample where the camera teleports"
+      ]
+    },
+    {
+      "name": "the jerk limit never trips",
+      "file": "products/explainer/src/camera-motion.ts",
+      "find": "spikeTimes(track, 3, limits.jerk, shakes)",
+      "replace": "spikeTimes(track, 3, Infinity, shakes)",
+      "kills": [
+        "cameraMotionRows fails jerk for an abrupt start and stop that stays under the velocity limit"
+      ]
+    }
+  ]
+}
