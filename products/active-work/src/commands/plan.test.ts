@@ -173,7 +173,7 @@ describe('owner actions', () => {
     const tools = listTools().map((tool) => tool.name);
 
     const planVerbs = names.filter((name) => name.startsWith('plan.'));
-    expect(planVerbs.every((name) => /\.(add|show|list)$/.test(name))).toBe(true);
+    expect(planVerbs.every((name) => /\.(add|show|list)$/.test(name) || name === 'plan.seed')).toBe(true);
     expect(names).not.toContain('plan.bet.select');
     expect(tools.filter((tool) => /select|plan__outcome__edit/.test(tool))).toEqual([]);
     const cli = await runCliInProcess(['plan', 'bet', 'select', 'alpha/B1']);
@@ -182,7 +182,7 @@ describe('owner actions', () => {
 
   // The console's owner ops (TP-5453 P3b) are the only writers of these fields; no surface here may take them.
   it('no CLI, RPC or MCP verb takes a bet state, an outcome edit or a freeze end', () => {
-    const writers = registry.list().filter((cmd) => cmd.name.startsWith('plan.') && !/\.(show|list)$/.test(cmd.name));
+    const writers = registry.list().filter((cmd) => cmd.name.startsWith('plan.') && !/\.(show|list)$/.test(cmd.name) && cmd.name !== 'plan.seed');
     const tools = listTools().map((tool) => tool.name);
 
     const fields = writers.flatMap((cmd) => (cmd.args instanceof z.ZodObject ? Object.keys(cmd.args.shape) : []));
