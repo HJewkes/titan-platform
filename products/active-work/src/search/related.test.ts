@@ -25,12 +25,31 @@ let dir: string;
 let root: string;
 let dbPath: string;
 
+const unrelatedPrecedent = {
+  key: 'transcript:sess-garden:tu-garden',
+  source: 'transcript',
+  asked_at: '2026-08-01T09:00:00Z',
+  session_id: 'sess-garden',
+  tool_use_id: 'tu-garden',
+  initiative: 'alpha',
+  class: 'other',
+  header: 'Garden',
+  question: 'Water the ferns?',
+  options: ['Yes (Recommended)', 'No'],
+  recommended: 'Yes (Recommended)',
+  answer: 'No',
+  pick_type: 'other_option',
+  free_text: null,
+};
+
 beforeEach(async () => {
   dir = mkdtempSync(path.join(os.tmpdir(), 'aw-related-'));
   root = path.join(dir, 'active');
   dbPath = path.join(dir, 'graph.sqlite3');
   scaffold(root);
   writeCharter(root);
+  // A workspace with no ledger reports it as degraded; these cases are about the other classes.
+  writeFile(root, 'alpha/sources/precedents.jsonl', `${JSON.stringify(unrelatedPrecedent)}\n`);
   (await refreshInto(dbPath, root)).db.close();
 });
 
@@ -43,7 +62,7 @@ const related = (input: Partial<RelatedInput> & { text: string }) =>
 
 describe('relatedContext', () => {
   it('returns openable hits and the query that found them', async () => {
-    const result = await related({ text: 'the alpha lesson', initiative: 'alpha', classes: ['notes', 'tasks'] });
+    const result = await related({ text: 'the alpha lesson', initiative: 'alpha' });
 
     expect(result.degraded).toEqual([]);
     expect(result.query.terms).toEqual(['alpha', 'lesson']);
