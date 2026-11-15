@@ -393,7 +393,7 @@ describe('sweepInitiative upstream semantics', () => {
     await withTempActiveRoot(async (root) => {
       const res = await sweepOne(root, { path: SAMPLE_REPO, branch: 'feat/unknown' });
       expect(res.unpushed).toHaveLength(1);
-      expect(res.unpushed[0].no_upstream).toBe(true);
+      expect(res.unpushed[0]?.no_upstream).toBe(true);
     });
   });
 

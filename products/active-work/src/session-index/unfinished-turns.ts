@@ -40,7 +40,7 @@ async function unfinishedSessions(
     for (const turn of page) sessions.add(turn.session_id);
     const promptIds = JSON.stringify(page.map((turn) => turn.prompt_id));
     for (const row of owners.all(promptIds)) sessions.add(row.session_id);
-    cursor = page[page.length - 1].rowid;
+    cursor = page[page.length - 1]?.rowid ?? cursor;
     await yieldPoint();
   }
 }

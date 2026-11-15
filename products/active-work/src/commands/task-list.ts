@@ -10,6 +10,7 @@ import { UsageError } from '../errors.js';
 import { listSlugsForCaller } from '../sessions/visibility.js';
 import { createDepFinder, openDeps } from '../tasks/blockers.js';
 import { closedStatusIds, loadCategoryRegistry } from './_categories.js';
+import { renderTaskList } from './_task-list-render.js';
 
 // No schema default: buildFilter picks it, because the default depends on --id. The values a root
 // accepts depend on its category registry, so run() checks them, not the schema.
@@ -267,6 +268,10 @@ export default defineCommand<Args, Result>({
     }
     const listed = args.unblocked ? await withoutOpenDeps(tasks) : tasks;
     listed.sort(args.sort === 'due' ? compareByDue : (a, b) => a.priority - b.priority);
+    // Result stays the object type so the ~30 in-process callers keep destructuring `{ tasks }`; only the
+    // CLI's human mode (never MCP or HTTP, which pass 'json') gets text, which program.ts prints raw.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- text cannot satisfy the object-typed Result
+    if (ctx.format === 'human') return renderTaskList(listed) as never;
     return { tasks: listed };
   },
 });
