@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { formatResultLine, type Verdict } from "@titan-design/fix-proof";
 import { parseVerdictBlock } from "@titan-design/session-read";
+import { CHECK_CLASSES } from "./check-candidates.js";
 import { BLOCK_LINE, CI_UNREAD_LINE, FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS } from "./fix-first-findings.js";
 import {
+  CHECK_CANDIDATES_RULE,
   CI_POLICY_EXACT,
   CI_REVIEWER_TEST_RULE,
   CI_POLICY_RULE,
@@ -541,6 +543,28 @@ describe("reviewerBrief Follow-ups rule", () => {
     expect(FOLLOW_UPS_RULE).toContain("never block MERGE");
     expect(brief.indexOf(FOLLOW_UPS_RULE)).toBeGreaterThan(-1);
     expect(brief.indexOf(FOLLOW_UPS_RULE)).toBeLessThan(brief.indexOf("Verdict: <MERGE or FIX_FIRST>"));
+  });
+});
+
+describe("reviewerBrief Check-candidates rule", () => {
+  const target = { repo: "octo/demo", pr: 7, head: "0123456789abcdef0123456789abcdef01234567", checkoutRoot: "/reviews" };
+  const brief = reviewerBrief(target);
+
+  it("asks for the block before the verdict lines and says it never changes the verdict", () => {
+    expect(CHECK_CANDIDATES_RULE).toContain("`Check-candidates:`");
+    expect(CHECK_CANDIDATES_RULE).toContain("never changes your verdict");
+    expect(brief.indexOf(CHECK_CANDIDATES_RULE)).toBeGreaterThan(-1);
+    expect(brief.indexOf(CHECK_CANDIDATES_RULE)).toBeLessThan(brief.indexOf("Verdict: <MERGE or FIX_FIRST>"));
+  });
+
+  it("lists every CHECK_CLASSES key once", () => {
+    for (const { key } of CHECK_CLASSES) expect(brief.split(`\`${key}\``), key).toHaveLength(2);
+  });
+
+  it("prints each key on the line of its default route", () => {
+    const routeLine = (route: string): string => brief.split("\n").find((line) => line.startsWith(`- ${route}: `)) ?? "";
+
+    for (const { key, route } of CHECK_CLASSES) expect(routeLine(route), key).toContain(`\`${key}\``);
   });
 });
 

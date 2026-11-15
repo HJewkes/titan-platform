@@ -30,7 +30,7 @@ describe("reviewer brief final message", () => {
     const sentence = brief.slice(brief.lastIndexOf("\n", cleanup), brief.indexOf("\n", cleanup));
 
     expect(sentence).toContain("before you write your final message, remove your checkouts");
-    expect(sentence).toContain("Your final message is your whole review and verdict, including any `Attests:` and `Follow-ups:` lines; send no message after it.");
+    expect(sentence).toContain("Your final message is your whole review and verdict, including any `Attests:`, `Follow-ups:` and `Check-candidates:` lines; send no message after it.");
     expect(brief).not.toContain("After you write your verdict, remove");
   });
 
