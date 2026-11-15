@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { EXIT, invokeCommand } from "@titan-design/registry";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -87,5 +87,15 @@ describe("memory report", () => {
     const { envelope } = await invokeCommand(memoryReport, { skillsRoot: [path.join(temp.home, "nowhere")], out }, context("cli"));
 
     expect(envelope).toMatchObject({ data: { dir: expect.stringContaining(out), skillsIndexed: 0 } });
+  });
+
+  it("proposes delete for a project fact whose old mtime is its only date", async () => {
+    const dir = writeMemory(path.join(temp.home, ".claude"), "p3", { "sprint.md": fact("sprint", "Quarterly zebra migration milestone", "Ship it.", "project") });
+    const old = new Date(Date.now() - 400 * 86_400_000);
+    utimesSync(path.join(dir, "sprint.md"), old, old);
+
+    const { envelope } = await invokeCommand(memoryReport, {}, context());
+
+    expect(envelope).toMatchObject({ ok: true, data: { byDestination: { delete: 1 } } });
   });
 });

@@ -52,6 +52,14 @@ describe("the sessions list on a phone", () => {
     expect(within(card).getByText("40m · 250K tokens · $3.40")).toBeTruthy();
   });
 
+  it("shows the session's title on its card", async () => {
+    onPhone();
+    renderPage(SNAPSHOT, "#/sessions");
+
+    const card = await screen.findByTestId(`session-card-${NEWEST}`);
+    expect(within(card).getByText("Retry a dropped handshake").className).toContain("break-words");
+  });
+
   it("gives the session, agent and task links a 44px tap target, and the short agent and task links 44px of width", async () => {
     onPhone();
     renderPage(SNAPSHOT, "#/sessions");

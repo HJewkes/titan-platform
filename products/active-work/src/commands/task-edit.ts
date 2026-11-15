@@ -226,7 +226,7 @@ async function assertWritable(
   slug: string,
 ): Promise<void> {
   assertPromotable(ctx, task, next);
-  if (changes.bet !== undefined) await assertKnownBet(next);
+  if (changes.bet !== undefined) await assertKnownBet(next, undefined, slug);
   if (changes.field_origin !== undefined) {
     await assertNotRelabel(task, changes, dispatchCheck(slug));
     await assertProvenance(getActiveRoot(), next);
