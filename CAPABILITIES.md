@@ -212,7 +212,7 @@ You need an app's per-user data, config, cache or log directory (`appDirs`, the 
 
 Key exports:
 
-- `app-paths`: `ACTIVE_WORK`, `activeWorkGraphPath`, `activeWorkRoot`, `appDataRoot`, `appDirs`, `consoleInboxDir`, `scorecardStorePath`, `AppDirs`, `AppSpec`, `PathOptions`
+- `app-paths`: `ACTIVE_WORK`, `activeWorkGraphPath`, `activeWorkRoot`, `appDataRoot`, `appDirs`, `consoleAnswersPath`, `consoleInboxDir`, `scorecardStorePath`, `AppDirs`, `AppSpec`, `PathOptions`
 
 <a id="cap-authority"></a>
 
