@@ -8,7 +8,6 @@ import {
   type SiblingSession,
 } from './prompt.js';
 import { formatTimeSince, recentlyDoneTasks } from './render-tasks.js';
-import { formatElapsedShort } from './render-sessions.js';
 import newCommand from '../commands/new.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
 
@@ -901,11 +900,13 @@ describe('assembleBootstrap open loops', () => {
         ...offlineOpts,
       });
 
-      expect(prompt).toContain('# Open loops (2 hanging, oldest 15d)');
-      expect(prompt).toContain('[15d] SQLite index blocked on eval harness');
-      expect(prompt).toContain('[ 1d] PR #57 awaiting review');
+      expect(prompt).toContain('# Open loops (2 hanging, oldest from 2026-04-27)');
+      expect(prompt).toContain('- SQLite index blocked on eval harness');
+      expect(prompt).toContain('- PR #57 awaiting review');
       expect(prompt).toContain('(from 2026-04-27, ref 2026-04-27-0900-loop-old#s1)');
-      expect(prompt.indexOf('[15d]')).toBeLessThan(prompt.indexOf('[ 1d]'));
+      expect(prompt.indexOf('SQLite index blocked')).toBeLessThan(
+        prompt.indexOf('PR #57 awaiting review'),
+      );
       expect(metadata.open_loop_count).toBe(2);
     });
   });
@@ -936,8 +937,8 @@ describe('assembleBootstrap open loops', () => {
         ...offlineOpts,
       });
 
-      expect(prompt).toContain('[1d] SI-1 Drain the miner backlog');
-      expect(prompt).toContain('[1d] PR #3 (agent-chat) is open');
+      expect(prompt).toContain('- SI-1 Drain the miner backlog');
+      expect(prompt).toContain('- PR #3 (agent-chat) is open');
       expect(prompt).not.toContain('SI-1 SI-1');
       expect(prompt).not.toContain('github.com/HJewkes/agent-chat/pull/3 PR #3');
     });
@@ -963,7 +964,7 @@ describe('assembleBootstrap open loops', () => {
         ...offlineOpts,
       });
 
-      expect(prompt).toContain('[1d] SI-1 SI-2 is done, so unblock this');
+      expect(prompt).toContain('- SI-1 SI-2 is done, so unblock this');
     });
   });
 
@@ -992,7 +993,7 @@ describe('assembleBootstrap open loops', () => {
         ...offlineOpts,
       });
 
-      expect(prompt).toContain('[1d] PR #3 awaiting review');
+      expect(prompt).toContain('- PR #3 awaiting review');
     });
   });
 
@@ -1397,7 +1398,7 @@ describe('sibling-session detection (CC-9)', () => {
         ...offlineOpts,
       });
       expect(prompt).toContain('/Users/dev/code/sample');
-      expect(prompt).toContain('12m ago');
+      expect(prompt).toContain('started at 2026-05-12T15:48:00Z');
       expect(prompt).toContain('active-work wrap --track adhoc');
       // The top task is named so the ownership question is answerable.
       expect(prompt).toContain('First sample task');
@@ -1570,25 +1571,5 @@ describe('sibling-session detection (CC-9)', () => {
       expect(prompt).toContain('/Users/dev/code/sample');
       expect(prompt).toContain('/Users/dev/code/other-checkout');
     });
-  });
-});
-
-describe('formatElapsedShort', () => {
-  const now = new Date('2026-05-12T12:00:00Z');
-
-  it('reports sub-minute ages as "just started"', () => {
-    expect(formatElapsedShort(new Date('2026-05-12T11:59:30Z'), now)).toBe('just started');
-  });
-
-  it('reports minutes under an hour', () => {
-    expect(formatElapsedShort(new Date('2026-05-12T11:23:00Z'), now)).toBe('37m ago');
-  });
-
-  it('reports whole hours without a minutes remainder', () => {
-    expect(formatElapsedShort(new Date('2026-05-12T10:00:00Z'), now)).toBe('2h ago');
-  });
-
-  it('reports hours and minutes together', () => {
-    expect(formatElapsedShort(new Date('2026-05-12T09:35:00Z'), now)).toBe('2h 25m ago');
   });
 });
