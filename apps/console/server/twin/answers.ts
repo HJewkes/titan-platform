@@ -344,6 +344,7 @@ export const HAND_ANSWERS: readonly TwinCall[] = [
     gaps: [],
     readAt: new Date(TWIN_NOW).toISOString(),
   }),
+  answer("videos.resolve", { subject: new Date(TWIN_NOW).toISOString().slice(0, 10) }, { found: true, id: VIDEO.id }),
   answer("videos.list", {}, { videos: [...FEED_VIDEOS], truncated: false, gaps: [] }),
   answer("videos.notes", { videoId: VIDEO.id }, { video: VIDEO.id, notes: [VIDEO_NOTE], verdict: null, gaps: [] }),
   answer("videos.props", { videoId: VIDEO.id }, TWIN_VIDEO_PROPS),
