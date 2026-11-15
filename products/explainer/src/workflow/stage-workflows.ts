@@ -110,8 +110,8 @@ function runTtsBody(config: StageSpec["config"], input: ModelStageInput, deps: B
 
 function runSheetsBody(config: StageSpec["config"], input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
   if (!config.sheets) throw new Error("sheets stage spec has no sidecar settings");
-  const { take, status, stem } = config.sheets;
-  const settings = { take, status, stem, ...(config.profile ? { profile: config.profile.type } : {}), ...(config.video ? { video: config.video } : {}) };
+  const { take, day, status, stem } = config.sheets;
+  const settings = { status, stem, ...(take ? { take } : {}), ...(day ? { day } : {}), ...(config.profile ? { profile: config.profile.type } : {}), ...(config.video ? { video: config.video } : {}) };
   return runSheetsStage({ ...input, store: deps.store }, settings, deps.media ?? ffmpegMedia());
 }
 
