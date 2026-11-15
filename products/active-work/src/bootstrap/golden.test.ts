@@ -216,7 +216,7 @@ describe('bootstrap golden output', () => {
           "# Why we're doing this",
           "# Sample Initiative",
           "# Open loops",
-          "# Last session (2026-05-10, fixture001) — 2 days ago",
+          "# Last session (2026-05-10, fixture001) — ended 2026-05-10T16:00:00Z",
           "# Tasks (top 5 open by priority)",
           "# Recently done (last 14 days)",
           "# Open artifacts",
@@ -240,7 +240,7 @@ describe('bootstrap golden output', () => {
         # Open loops
         Nothing hanging — the 2026-05-10 session asserted the ledger is clear.
 
-        # Last session (2026-05-10, fixture001) — 2 days ago
+        # Last session (2026-05-10, fixture001) — ended 2026-05-10T16:00:00Z
 
         - Set up the sample initiative fixture
         - Sketched SI-1 and SI-2
@@ -263,7 +263,7 @@ describe('bootstrap golden output', () => {
         # Context
         - Today: <today>
         - Bootstrap: <now>
-        - Time since last session: 2 days ago
+        - Last session ended: 2026-05-10T16:00:00Z
 
         Work the top task unless redirected. Update tasks via \`active-work task done\` and close the session out via \`active-work wrap\` when wrapping up — it records the session, files the loops you leave open, and stamps the brief in one step.
         "
@@ -301,9 +301,9 @@ describe('bootstrap golden output', () => {
           "# Why we're doing this",
           "# Sample Initiative",
           "# Facet: sample-docs",
-          "# Open loops (2 hanging, oldest 1d)",
+          "# Open loops (2 hanging, oldest from 2026-05-11)",
           "# Abandoned in the last 14 days (1)",
-          "# Last session (2026-05-11, closer1) — 1 day ago",
+          "# Last session (2026-05-11, closer1) — ended 2026-05-11T16:00:00Z",
           "# Parallel sessions since then",
           "# Tasks (top 5 open by priority)",
           "# Recently done (last 14 days)",
@@ -318,11 +318,11 @@ describe('bootstrap golden output', () => {
         "Starting a session on \`sample-initiative\` (Sample Initiative), scoped to facet \`sample-docs\`.
 
         # Another session may already be live on this initiative
-        - started 12m ago in \`/tmp/example/sample\` — launched via \`aw\`, process still running (pid 4321).
+        - started at 2026-05-12T15:48:00Z in \`/tmp/example/sample\` — launched via \`aw\`, process still running (pid 4321).
         Before starting the top task ("First sample task"), ask the user which session owns it. If this is the second session, take distinct scope and record it with \`active-work wrap --track adhoc\` — not \`canonical\`, which would bury the other session's mainline thread in the next bootstrap.
 
         # Initiative state: paused
-        Paused since 2026-05-01 (11 days ago).
+        Paused since 2026-05-01.
         Restart trigger: after the release
         This initiative is \`paused\`, not \`focused\` — confirm with the user before treating its tasks as current work.
 
@@ -342,16 +342,16 @@ describe('bootstrap golden output', () => {
 
         _Tasks and loops below are filtered to the tags [example]._
 
-        # Open loops (2 hanging, oldest 1d)
-        - [1d] SI-1 Mint note refs       (from 2026-05-11, ref 2026-05-11-0900-closer1#s1)
+        # Open loops (2 hanging, oldest from 2026-05-11)
+        - SI-1 Mint note refs       (from 2026-05-11, ref 2026-05-11-0900-closer1#s1)
             see: [from \`example-app\`] note:example-app/2026-04-02-evals.md "Eval harness notes"
-        - [1d] Decide the eval harness   (from 2026-05-11, ref 2026-05-11-0900-closer1#s2)
+        - Decide the eval harness   (from 2026-05-11, ref 2026-05-11-0900-closer1#s2)
 
         # Abandoned in the last 14 days (1)
         - Rewrite the picker (dropped 2026-05-11)
           why: too many dependencies
 
-        # Last session (2026-05-11, closer1) — 1 day ago
+        # Last session (2026-05-11, closer1) — ended 2026-05-11T16:00:00Z
 
         - Closed the picker thread
 
@@ -385,7 +385,7 @@ describe('bootstrap golden output', () => {
         # Context
         - Today: <today>
         - Bootstrap: <now>
-        - Time since last session: 1 day ago
+        - Last session ended: 2026-05-11T16:00:00Z
 
         Start with the open loops: 2 are still hanging from prior sessions, and unfinished threads take precedence over the backlog. Work them first, citing each one by the \`ref\` printed under "Open loops", and pass every loop you settle to \`active-work wrap --resolves\` with outcome \`done\` or \`abandoned\` — deciding not to do a loop still closes it. Once the loops are handled, or if the user redirects, work the top task by priority. Update tasks via \`active-work task done\` and close the session out via \`active-work wrap\` when wrapping up — it records the session, files the loops you leave open, and stamps the brief in one step.
         "
@@ -406,6 +406,23 @@ describe('bootstrap golden output', () => {
           "time_since_last_session_human": "1 day ago",
         }
       `);
+    });
+  });
+
+  it('renders the same prompt whether now is an hour or a day later', async () => {
+    await withTempActiveRoot(async (root) => {
+      await pauseBrief(root);
+      await writeSessions(root);
+      await writeTasksAndNotes(root);
+      writeAgentVisibleBrief(root, 'example-app');
+      const at = (offsetMs: number) => ({ ...fullInput(root), now: new Date(NOW.getTime() + offsetMs) });
+
+      const base = await assembleBootstrap(at(0));
+      const anHourLater = await assembleBootstrap(at(60 * 60 * 1000));
+      const aDayLater = await assembleBootstrap(at(24 * 60 * 60 * 1000));
+
+      expect(withoutClock(anHourLater.prompt)).toBe(withoutClock(base.prompt));
+      expect(withoutClock(aDayLater.prompt)).toBe(withoutClock(base.prompt));
     });
   });
 });

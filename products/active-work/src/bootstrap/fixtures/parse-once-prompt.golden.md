@@ -14,7 +14,7 @@ implementations need to read from a real-shaped directory tree.
 # Open loops
 Nothing hanging — the 2026-05-10 session asserted the ledger is clear.
 
-# Last session (2026-05-10, fixture001) — 2 days ago
+# Last session (2026-05-10, fixture001) — ended 2026-05-10T16:00:00Z
 
 - Set up the sample initiative fixture
 - Sketched SI-1 and SI-2
@@ -40,6 +40,6 @@ Worktrees (registered):
 # Context
 - Today: <DATE>
 - Bootstrap: <TS>
-- Time since last session: 2 days ago
+- Last session ended: 2026-05-10T16:00:00Z
 
 Work the top task unless redirected. Update tasks via `active-work task done` and close the session out via `active-work wrap` when wrapping up — it records the session, files the loops you leave open, and stamps the brief in one step.

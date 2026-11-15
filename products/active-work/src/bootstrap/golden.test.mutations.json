@@ -18,6 +18,15 @@
       "kills": [
         "bootstrap golden output renders every optional section in order for a fully loaded initiative"
       ]
+    },
+    {
+      "name": "context line reports the bootstrap clock instead of the last session end",
+      "file": "products/active-work/src/bootstrap/sections.ts",
+      "find": "`- Last session ended: ${narrativeSession.frontmatter.ended}`",
+      "replace": "`- Last session ended: ${bootstrapAt}`",
+      "kills": [
+        "bootstrap golden output renders the same prompt whether now is an hour or a day later"
+      ]
     }
   ]
 }

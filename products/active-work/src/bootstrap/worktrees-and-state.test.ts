@@ -211,7 +211,7 @@ describe('bootstrap initiative state', () => {
       });
 
       expect(prompt).toContain('# Initiative state: paused');
-      expect(prompt).toContain('Paused since 2026-06-28 (30 days ago');
+      expect(prompt).toContain('Paused since 2026-06-28.');
       expect(prompt).toContain('Restart trigger: when the upstream API ships');
       expect(prompt).toContain('confirm with the user before treating its tasks as current work');
     });
