@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "superseding a diverged run records no gate-cancel event on the new run",
+      "file": "products/factory/src/shepherd/restart.ts",
+      "find": "if (host.gates.get(gate.id)?.status === \"cancelled\") store.recordGateCancel(newRunId, reason, at);",
+      "replace": "",
+      "kills": [
+        "shepherd.register on a replay-diverged run records one gate-cancel event on the new run for the superseded run's pending gate"
+      ]
+    }
+  ]
+}
