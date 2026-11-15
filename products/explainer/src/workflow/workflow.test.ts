@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { failingRubric, fakeRubricJudge, throwingRubric } from "../cold-rubric-fakes.test-helpers.js";
 import type { L0Check } from "../eval-l0.js";
+import { JudgeConfigSchema } from "../eval-harness.js";
 import { flowCheck } from "../lint-flow.js";
 import { choppy } from "../rewrite-fixtures.test-helpers.js";
 import { ArtifactStore, sha256 } from "./artifacts.js";
@@ -530,5 +531,45 @@ describe("run report", () => {
     expect(md).toContain(`mp4 ${row(result, "render").outputs.mp4!.slice(0, 12)}`);
     expect(md).toContain("qa PASS: 0 held errors");
     expect(existsSync(result.reportPath.replace(/\.md$/, ".json"))).toBe(true);
+  });
+});
+
+describe("the judge differs from the script model", () => {
+  const sonnetJudge = JudgeConfigSchema.parse({ provider: "claude-print", model: "sonnet" });
+  const codexJudge = JudgeConfigSchema.parse({ provider: "codex", model: "gpt-x" });
+
+  it("refuses a sonnet script model with a sonnet judge before any stage runs, naming both", async () => {
+    fx = fixture();
+    const model = fakeScriptModel();
+
+    await expect(runVideo({ spine: fx.spine, facts: fx.facts, scriptModel: "sonnet", judge: sonnetJudge }, fakeHost(fx, model, fakeRender()))).rejects.toThrow(/script model "sonnet".*judge "sonnet"/);
+    expect(model.prompts).toHaveLength(0);
+  });
+
+  it("passes on the defaults alone", async () => {
+    fx = fixture();
+
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), fakeRender()));
+
+    expect(result.status).toBe("completed");
+  });
+
+  it("passes a codex judge with a sonnet writer", async () => {
+    fx = fixture();
+
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts, scriptModel: "sonnet", judge: codexJudge }, fakeHost(fx, fakeScriptModel(), fakeRender()));
+
+    expect(result.status).toBe("completed");
+  });
+
+  it("keeps the plan's distinct judge when a stopped run resumes", async () => {
+    fx = fixture();
+    const model = fakeScriptModel(undefined, { usd: 0.05 });
+    const render = fakeRender();
+    const stopped = await runVideo({ spine: fx.spine, facts: fx.facts, judge: codexJudge, budgetUsd: 0.05 }, fakeHost(fx, model, render));
+
+    const resumed = await resumeVideo(stopped.runId, fakeHost(fx, model, render), { budgetUsd: 5 });
+
+    expect(resumed.status, resumed.error).toBe("completed");
   });
 });
