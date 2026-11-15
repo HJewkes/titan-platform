@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "archived ids are reported as unknown",
+      "file": "products/active-work/src/lint/edges.ts",
+      "find": "if (error.kind === 'unknown-id' && index.archivedIds.has(error.ref)) continue;",
+      "replace": "if (error.kind === 'unknown-id' && index.archivedIds.has('')) continue;",
+      "kills": ["lintEdges does not report a dep on an archived task in another initiative"]
+    },
+    {
+      "name": "every slug reports the cycle",
+      "file": "products/active-work/src/lint/edges.ts",
+      "find": "if (ids[0] !== id) return null;",
+      "replace": "if (ids[0] === '') return null;",
+      "kills": ["lintEdges reports a two-initiative dep cycle once, naming its ids in order"]
+    },
+    {
+      "name": "unknown parent is not reported",
+      "file": "products/active-work/src/lint/edges.ts",
+      "find": "return `task ${id} ${error.field} ${error.ref} is not a known task id`;",
+      "replace": "return error.field === 'parent' ? null : `task ${id} ${error.field} ${error.ref} is not a known task id`;",
+      "kills": ["lintEdges reports an unknown parent id"]
+    }
+  ]
+}
