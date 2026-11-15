@@ -25,17 +25,24 @@ export function TaskDetailPage({ id }: { id: string }): ReactNode {
       </VStack>
     );
   }
+  return <Loaded id={id} detail={detail.data} />;
+}
+
+function Loaded({ id, detail }: { id: string; detail: Detail }): ReactNode {
   return (
     <VStack gap={4}>
       <Trail id={id} />
-      <Header task={detail.data.task} />
+      <Header task={detail.task} />
+      <Panel title="Related">
+        <Related detail={detail} />
+      </Panel>
       <Panel title="Pull requests">
-        <PullRequests detail={detail.data} />
+        <PullRequests detail={detail} />
       </Panel>
       <Panel title="Agents">
         <Agents id={id} />
       </Panel>
-      <Records id={id} detail={detail.data} />
+      <Records id={id} detail={detail} />
     </VStack>
   );
 }
@@ -100,6 +107,30 @@ function Field({ label, text }: { label: string; text: string }): ReactNode {
     <VStack gap={1}>
       <Typography variant="subtitle2">{label}</Typography>
       <Typography variant="body1">{text}</Typography>
+    </VStack>
+  );
+}
+
+function Related({ detail }: { detail: Detail }): ReactNode {
+  const { task, children, deliverables, deliverablesDegraded } = detail;
+  const empty = task.parent === null && task.dep.length === 0 && children.length === 0 && deliverables.length === 0 && deliverablesDegraded === null;
+  if (empty) return <Typography variant="body1">No related tasks</Typography>;
+  return (
+    <VStack gap={2} testID="related-panel">
+      {task.parent !== null ? <DataRow label="Parent" value={<RefLink refText={`task:${task.parent}`} label={task.parent} />} /> : null}
+      {task.dep.map((dep) => (
+        <DataRow key={dep} label="Depends on" value={<RefLink refText={`task:${dep}`} label={dep} />} />
+      ))}
+      {children.map((child) => (
+        <HStack key={child.id} gap={2} align="center" wrap>
+          <RefLink refText={`task:${child.id}`} label={`${child.id} ${child.title}`} />
+          <Badge variant="subtle" size="sm">{child.status}</Badge>
+        </HStack>
+      ))}
+      {deliverablesDegraded !== null ? <Alert status="warning" size="compact" message={`Deliverables are unavailable: ${deliverablesDegraded}`} /> : null}
+      {deliverables.map((entry) => (
+        <Typography key={entry.id} variant="body1">{`${entry.id} ${entry.record?.title ?? "no record"}`}</Typography>
+      ))}
     </VStack>
   );
 }
