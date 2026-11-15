@@ -1431,8 +1431,8 @@ A React front end is served by a daemon or shipped as an offline report and need
 Key exports:
 
 - `hooks/provider`: `RpcProviderProps`, `RpcProvider`
-- `hooks/hooks`: `InvalidateOnOptions`, `QueryArgs`, `QueryResult`, `RpcHooks`, `createRpcHooks`
-- `hooks/query-store`: `QuerySettled`
+- `hooks/hooks`: `InvalidateOnOptions`, `QueryArgs`, `QueryResult`, `createRpcHooks`
+- `hooks/hash-route`: `safeDecode`, `useHashRoute`
 - `hooks/embedded-snapshot`: `SNAPSHOT_ELEMENT_ID`, `embedSnapshot`, `pageDataSource`, `readEmbeddedSnapshot`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/react-app)
 
