@@ -129,6 +129,9 @@ export const bandDistance = (rows: readonly L0Result[]): number => targetRows(ro
 export const protectedRows = (words: number): Set<string> =>
   new Set([...humanSignalRowsAt(words)].map((row) => `register:${row}`).filter((id) => !TARGETS.has(id)));
 
+/** Hallmark rows warn on a machine-sounding pattern; a rewrite must not introduce one. A report-only row passes by construction, so it never flips. */
+const HALLMARK_PREFIX = "hallmark:";
+
 export interface ChapterRefusal {
   why: "more target rows fail" | "the distance to band did not fall" | "more error rows fail" | "a protected row turned red";
   rows?: string[];
@@ -144,7 +147,7 @@ export function chapterRefusal(before: readonly L0Result[], after: readonly L0Re
   if (failingTargets(after) > failingTargets(before)) return { why: "more target rows fail", rows: turnedRed(before, after, (row) => TARGETS.has(row.check_id)) };
   if (bandDistance(after) > bandDistance(before) || (bandDistance(after) === bandDistance(before) && idBeats(after) >= idBeats(before))) return { why: "the distance to band did not fall" };
   if (failingErrors(after) > failingErrors(before)) return { why: "more error rows fail", rows: turnedRed(before, after, (row) => row.severity === "error") };
-  const flipped = turnedRed(before, after, (row) => protectedIds.has(row.check_id));
+  const flipped = turnedRed(before, after, (row) => protectedIds.has(row.check_id) || row.check_id.startsWith(HALLMARK_PREFIX));
   return flipped.length > 0 ? { why: "a protected row turned red", rows: flipped } : undefined;
 }
 

@@ -349,6 +349,22 @@ describe("chapterRefusal", () => {
     expect(chapterRefusal(before, after([closer, row("register:contractions", 9, 10.79, false)]), guarded)).toEqual({ why: "a protected row turned red", rows: ["register:contractions"] });
   });
 
+  it("names a hallmark row that was green and turns red, though it is not in the guarded set", () => {
+    const withHallmark = [...before, row("hallmark:staccato-run", 0, 0, true)];
+    const flipped = withHallmark.map((r) => (r.check_id === closer.check_id ? closer : r.check_id === "hallmark:staccato-run" ? row("hallmark:staccato-run", 2, 0, false) : r));
+    expect(chapterRefusal(withHallmark, flipped, guarded)).toEqual({ why: "a protected row turned red", rows: ["hallmark:staccato-run"] });
+  });
+
+  it("lets a hallmark row that was already red stay red", () => {
+    const redBefore = [...before, row("hallmark:staccato-run", 2, 0, false)];
+    expect(chapterRefusal(redBefore, redBefore.map((r) => (r.check_id === closer.check_id ? closer : r)), guarded)).toBeUndefined();
+  });
+
+  it("never refuses a report-only hallmark row, which passes by construction", () => {
+    const reportOnly = [...before, row("hallmark:parallel-recap", 3, 0, true)];
+    expect(chapterRefusal(reportOnly, reportOnly.map((r) => (r.check_id === closer.check_id ? closer : r)), guarded)).toBeUndefined();
+  });
+
   it("lets a protected row that was already red stay red", () => {
     const red = row("register:contractions", 4, 10.79, false);
     const redBefore = before.map((r) => (r.check_id === red.check_id ? red : r));
