@@ -512,11 +512,11 @@ declare const costReportSchema: z.ZodObject<{
                 noActionEpisodes: z.ZodNumber;
                 noActionCostUsd: z.ZodNumber;
                 key: z.ZodEnum<{
-                    none: "none";
                     broadcast: "broadcast";
                     seat: "seat";
                     agent: "agent";
                     broker: "broker";
+                    none: "none";
                 }>;
             }, z.core.$strip>>;
             episodes: z.ZodNumber;
@@ -534,11 +534,11 @@ declare const costReportSchema: z.ZodObject<{
             noActionCostUsd: z.ZodNumber;
             from: z.ZodString;
             fromKind: z.ZodEnum<{
-                none: "none";
                 broadcast: "broadcast";
                 seat: "seat";
                 agent: "agent";
                 broker: "broker";
+                none: "none";
             }>;
             to: z.ZodString;
         }, z.core.$strip>>;
@@ -750,11 +750,11 @@ declare const causeSchema: z.ZodObject<{
         noActionEpisodes: z.ZodNumber;
         noActionCostUsd: z.ZodNumber;
         key: z.ZodEnum<{
-            none: "none";
             broadcast: "broadcast";
             seat: "seat";
             agent: "agent";
             broker: "broker";
+            none: "none";
         }>;
     }, z.core.$strip>>;
     episodes: z.ZodNumber;
@@ -772,11 +772,11 @@ declare const pairSchema: z.ZodObject<{
     noActionCostUsd: z.ZodNumber;
     from: z.ZodString;
     fromKind: z.ZodEnum<{
-        none: "none";
         broadcast: "broadcast";
         seat: "seat";
         agent: "agent";
         broker: "broker";
+        none: "none";
     }>;
     to: z.ZodString;
 }, z.core.$strip>;
@@ -796,11 +796,11 @@ declare const wakeEpisodesSchema: z.ZodObject<{
             noActionEpisodes: z.ZodNumber;
             noActionCostUsd: z.ZodNumber;
             key: z.ZodEnum<{
-                none: "none";
                 broadcast: "broadcast";
                 seat: "seat";
                 agent: "agent";
                 broker: "broker";
+                none: "none";
             }>;
         }, z.core.$strip>>;
         episodes: z.ZodNumber;
@@ -818,11 +818,11 @@ declare const wakeEpisodesSchema: z.ZodObject<{
         noActionCostUsd: z.ZodNumber;
         from: z.ZodString;
         fromKind: z.ZodEnum<{
-            none: "none";
             broadcast: "broadcast";
             seat: "seat";
             agent: "agent";
             broker: "broker";
+            none: "none";
         }>;
         to: z.ZodString;
     }, z.core.$strip>>;
