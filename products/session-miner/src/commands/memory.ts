@@ -1,3 +1,4 @@
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { DEFAULT_GROUP_THRESHOLD, type MemoryFactType, type ParseFailure } from "@titan-design/memory";
 import { defineCommand, EXIT } from "@titan-design/registry";
@@ -5,6 +6,7 @@ import { expandHome } from "@titan-design/session-read";
 import { z } from "zod";
 import type { MinerContext } from "../context.js";
 import { scanMemory, type MemoryScan } from "../memory/discover.js";
+import { checkIndex, type IndexCheck } from "../memory/index-check.js";
 import { buildMemoryReport, writeMemoryReport, type MemoryReport } from "../memory/report.js";
 import { defaultSkillsRoots, readSkills } from "../memory/skills.js";
 
@@ -13,9 +15,22 @@ interface Unparsed {
   error: string;
 }
 
+interface IndexFinding extends IndexCheck {
+  index: string;
+}
+
+interface IndexSummary {
+  checked: number;
+  dangling: number;
+  unindexed: number;
+  unloaded: number;
+  findings: IndexFinding[];
+}
+
 interface MemoryScanResult {
   files: number;
   indexes: number;
+  index: IndexSummary;
   byAccount: Record<string, number>;
   byType: Partial<Record<MemoryFactType, number>>;
   unparsed: Unparsed[];
@@ -43,10 +58,34 @@ function tally(keys: readonly string[]): Record<string, number> {
 
 const unparsedOf = (failures: readonly ParseFailure[]): Unparsed[] => failures.map(({ ref, error }) => ({ path: ref.path, error }));
 
+function checkIndexFile(indexPath: string): IndexFinding | undefined {
+  try {
+    const dir = path.dirname(indexPath);
+    const check = checkIndex(readFileSync(indexPath, "utf8"), readdirSync(dir).filter((name) => name.endsWith(".md")));
+    return { index: indexPath, ...check, unindexed: check.unindexed.map((name) => path.join(dir, name)) };
+  } catch {
+    return undefined;
+  }
+}
+
+// Paths and line numbers only: an index's prose never leaves the machine.
+function summarizeIndexes(indexes: readonly string[]): IndexSummary {
+  const findings = indexes.map(checkIndexFile).filter((finding): finding is IndexFinding => finding !== undefined);
+  const sum = (pick: (finding: IndexFinding) => number): number => findings.reduce((total, finding) => total + pick(finding), 0);
+  return {
+    checked: findings.length,
+    dangling: sum((finding) => finding.dangling.length),
+    unindexed: sum((finding) => finding.unindexed.length),
+    unloaded: sum((finding) => finding.unloaded.length),
+    findings: findings.filter((finding) => finding.dangling.length + finding.unindexed.length + finding.unloaded.length > 0),
+  };
+}
+
 function summarizeScan(scan: MemoryScan): MemoryScanResult {
   return {
     files: scan.facts.length + scan.unparsed.length,
     indexes: scan.indexes.length,
+    index: summarizeIndexes(scan.indexes),
     byAccount: tally([...scan.facts, ...scan.unparsed].map(({ ref }) => ref.account)),
     byType: tally(scan.facts.map((fact) => fact.type)),
     unparsed: unparsedOf(scan.unparsed),

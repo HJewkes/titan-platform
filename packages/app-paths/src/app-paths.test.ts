@@ -1,7 +1,7 @@
 import path from "node:path";
 import envPaths from "env-paths";
 import { describe, expect, it } from "vitest";
-import { ACTIVE_WORK, activeWorkGraphPath, activeWorkRoot, appDataRoot, appDirs, consoleInboxDir, scorecardStorePath } from "./index.js";
+import { ACTIVE_WORK, activeWorkGraphPath, activeWorkRoot, appDataRoot, appDirs, consoleAnswersPath, consoleInboxDir, scorecardStorePath } from "./index.js";
 
 const home = path.join(path.sep, "home", "user");
 
@@ -98,6 +98,18 @@ describe("consoleInboxDir", () => {
 
   it("leaves an absolute override as given", () => {
     expect(inboxFor({ TITAN_CONSOLE_INBOX_DIR: path.join(path.sep, "srv", "spool") })).toBe(path.join(path.sep, "srv", "spool"));
+  });
+});
+
+describe("consoleAnswersPath", () => {
+  const answersFor = (env: Record<string, string>) => consoleAnswersPath({ env, home });
+
+  it("defaults to answers.jsonl under the console state directory", () => {
+    expect(answersFor({})).toBe(path.join(home, ".local", "state", "titan-console", "answers.jsonl"));
+  });
+
+  it("follows a tilde TITAN_CONSOLE_STATE", () => {
+    expect(answersFor({ TITAN_CONSOLE_STATE: "~/state" })).toBe(path.join(home, "state", "answers.jsonl"));
   });
 });
 

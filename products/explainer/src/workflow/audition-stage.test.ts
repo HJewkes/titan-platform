@@ -188,7 +188,7 @@ describe("audition sampling, scoring and pick", () => {
     expect(record.pick.chapters).toEqual(pick.spine.blocks.map((b: { id: string }) => ({ chapter: b.id, block: b.id })));
     for (const c of record.candidates) {
       expect(c.skipped.map((s: { dim: string }) => s.dim)).toEqual(["J12"]);
-      expect(c.rubric.dims.map((d: { dim: string }) => d.dim)).toEqual(["J8", "J9", "J10", "J11"]);
+      expect(c.rubric.dims.map((d: { dim: string }) => d.dim)).toEqual(["J8", "J9", "J10", "J11", "J13"]);
     }
     expect(readFileSync(result.reportPath, "utf8")).toContain("J12 skipped: the storyboard shows a quotable visual on 1 beat");
     expect(record.rules).toMatchObject({ coverage: expect.stringMatching(/covers tags are not scored/), reHook: expect.stringMatching(/own band/) });
