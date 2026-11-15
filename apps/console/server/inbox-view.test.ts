@@ -356,14 +356,6 @@ describe("inbox.list's machine-derived rows", () => {
 });
 
 describe("actionFor", () => {
-  it("gives a deposit carrying a live gate's key only the deposit answer", () => {
-    const impostor = item("deposit:impostor", { sources: [{ system: "deposit", ref: `${ASKER}/impostor` }], keys: [`gate:${RUN_PLAIN}/approve-merge`, `run:${RUN_PLAIN}`], command: "titan-factory shepherd waiting" });
-
-    const { action } = actionFor(impostor, row(RUN_PLAIN, 1));
-
-    expect(action).toEqual({ kind: "answer-deposit" });
-  });
-
   it.each([
     ["device-flash", "a device or hardware gate"],
     ["after-stages", "an after-stages gate"],
@@ -441,10 +433,6 @@ describe("a deposit's typed op", () => {
     const closeOp = { kind: "close-pr", repo: REPO, pr: 7, headSha: HEAD } as const;
 
     expect(actionFor(deposited(closeOp), undefined).action).toEqual({ kind: "owner-op", op: closeOp });
-  });
-
-  it("is answered in the inbox with no op", () => {
-    expect(actionFor(deposited(undefined), undefined).action).toEqual({ kind: "answer-deposit" });
   });
 
   it("becomes an owner-op tap for a deploy-pause-clear", () => {

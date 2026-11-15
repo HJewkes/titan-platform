@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a deposit with no op is left on the terminal",
+      "file": "apps/console/server/inbox-view.ts",
+      "find": "if (op === undefined) return { action: { kind: \"answer-deposit\" } };",
+      "replace": "if (op === undefined) return { action: terminal(\"a deposit is agent-written\", item.command) };",
+      "kills": [
+        "actionFor on a plain deposit is answered in the inbox with no op",
+        "actionFor on a plain deposit gives a deposit carrying a live gate's key only the deposit answer"
+      ]
+    }
+  ]
+}
