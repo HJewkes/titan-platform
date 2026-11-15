@@ -3,6 +3,36 @@ import { NOTE_READ_IF_MAX_LENGTH, NoteFrontmatterSchema } from './note.js';
 
 const base = { kind: 'gotcha', title: 'Sample lesson', created: '2026-03-04' } as const;
 
+describe('note frontmatter provenance stamps', () => {
+  it('accepts session, agent and an ISO created_at', () => {
+    const result = NoteFrontmatterSchema.parse({
+      ...base,
+      session: 'sess-1',
+      agent: 'sample-agent',
+      created_at: '2026-03-04T10:11:12.345Z',
+    });
+
+    expect(result.session).toBe('sess-1');
+    expect(result.agent).toBe('sample-agent');
+    expect(result.created_at).toBe('2026-03-04T10:11:12.345Z');
+  });
+
+  it('loads a note filed before the stamps existed', () => {
+    const result = NoteFrontmatterSchema.parse(base);
+
+    expect(result.session).toBeUndefined();
+    expect(result.agent).toBeUndefined();
+    expect(result.created_at).toBeUndefined();
+  });
+
+  it.each(['2026-03-04', 'yesterday', '2026-03-04 10:11:12'])(
+    'rejects created_at %s that is not an ISO timestamp',
+    (created_at) => {
+      expect(NoteFrontmatterSchema.safeParse({ ...base, created_at }).success).toBe(false);
+    },
+  );
+});
+
 describe('note frontmatter read_if', () => {
   it.each([
     { scenario: 'absent', input: {}, expected: undefined },

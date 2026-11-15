@@ -30,6 +30,7 @@ const ArgsSchema = z
     body_file: z.string().optional(),
     tags: z.array(z.string().min(1)).optional(),
     read_if: NoteReadIfSchema.optional(),
+    session: z.string().min(1).optional(),
   })
   .superRefine((value, ctx) => {
     const hasBody = value.body !== undefined;
@@ -58,6 +59,16 @@ const ResultSchema = z.object({
   read_if: z.string().optional(),
   possible_dup: z.string().optional(),
 });
+
+/** An ISO timestamp in the local zone, so its date part agrees with `today()`. */
+function localIso(now: Date): string {
+  const offsetMin = -now.getTimezoneOffset();
+  const local = new Date(now.getTime() + offsetMin * 60_000).toISOString().slice(0, -1);
+  const abs = Math.abs(offsetMin);
+  const hh = String(Math.floor(abs / 60)).padStart(2, '0');
+  const mm = String(abs % 60).padStart(2, '0');
+  return `${local}${offsetMin < 0 ? '-' : '+'}${hh}:${mm}`;
+}
 
 // Same threshold and measure as task add's duplicate flag (_task-related.ts).
 const POSSIBLE_DUP_THRESHOLD = 0.9;
@@ -88,6 +99,21 @@ async function warnPossibleDup(
 type Args = z.infer<typeof ArgsSchema>;
 type Result = z.infer<typeof ResultSchema>;
 
+// A daemon or MCP-over-HTTP caller's environment is the daemon's, so it names no agent.
+function buildFrontmatter(args: Args, ctx: CommandContext) {
+  const agent = ctx.remote ? undefined : process.env.AGENT_CHAT_NAME || undefined;
+  return {
+    kind: args.kind,
+    title: args.title,
+    created: today(),
+    created_at: localIso(new Date()),
+    ...(args.session !== undefined ? { session: args.session } : {}),
+    ...(agent !== undefined ? { agent } : {}),
+    ...(args.tags && args.tags.length > 0 ? { tags: args.tags } : {}),
+    ...(args.read_if !== undefined ? { read_if: args.read_if } : {}),
+  };
+}
+
 export default defineCommand<Args, Result>({
   name: 'note.add',
   description:
@@ -117,9 +143,10 @@ export default defineCommand<Args, Result>({
         long: '--read-if',
         description: `One-line condition, at most ${NOTE_READ_IF_MAX_LENGTH} chars, for when a session should read this note; shown beside it in the bootstrap`,
       },
+      session: { long: '--session', description: 'Session id to stamp on the note' },
     },
     usage:
-      'active-work note add <slug> --kind <process|gotcha|fyi|decision> --title <text> (--body <text> | --body-file <path>) [--tags a --tags b] [--read-if <condition>]',
+      'active-work note add <slug> --kind <process|gotcha|fyi|decision> --title <text> (--body <text> | --body-file <path>) [--tags a --tags b] [--read-if <condition>] [--session <id>]',
   },
   async run(args, ctx) {
     const initiativeDir = getInitiativeDir(args.slug);
@@ -130,13 +157,7 @@ export default defineCommand<Args, Result>({
     }
 
     const body = args.body ?? (await fs.readFile(args.body_file!, 'utf8'));
-    const frontmatter = {
-      kind: args.kind,
-      title: args.title,
-      created: today(),
-      ...(args.tags && args.tags.length > 0 ? { tags: args.tags } : {}),
-      ...(args.read_if !== undefined ? { read_if: args.read_if } : {}),
-    };
+    const frontmatter = buildFrontmatter(args, ctx);
 
     return withFileLock(getLockPath(args.slug), async () => {
       const dup = await warnPossibleDup(ctx, initiativeDir, args.title);
