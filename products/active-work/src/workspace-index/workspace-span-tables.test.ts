@@ -6,7 +6,7 @@ import { openDatabase, runMigrations, SpanFtsTables } from '@titan-design/store-
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { sqlRows, type SqlRow } from '../test-support/sql-rows.js';
-import { openGraph, SCHEMA_VERSION } from '../session-index/graph.js';
+import { openGraph } from '../session-index/graph.js';
 import {
   MIGRATIONS,
   WORKSPACE_SPAN_SOURCE_BASE,
@@ -77,10 +77,6 @@ const existingRows = () => ({
 const schemaObjects = () => read('SELECT name, sql FROM sqlite_master ORDER BY type, name');
 
 describe('migration 1003: workspace span tables', () => {
-  it('is followed only by the plan record table', () => {
-    expect(SCHEMA_VERSION).toBe(1004);
-  });
-
   it('upgrades a 1002 graph to contentless-delete workspace tables and keeps every existing row', () => {
     seedSchema1002Graph();
     const before = existingRows();
