@@ -1,3 +1,4 @@
+import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
 import type { ShepherdDeps } from "./phases.js";
 import { SpawnDeferred } from "./spawn-gate.js";
@@ -7,7 +8,7 @@ const HOUR = 60 * 60_000;
 
 function clocked() {
   const clock = { now: 0 };
-  const deps = { now: () => clock.now, sleep: async (ms: number) => void (clock.now += ms), pollMs: 30_000 } as unknown as ShepherdDeps;
+  const deps = partialFake<ShepherdDeps>({ now: () => clock.now, sleep: async (ms: number) => void (clock.now += ms), pollMs: 30_000 });
   return { clock, deps };
 }
 
