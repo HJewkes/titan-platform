@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the anchor is added instead of subtracted",
+      "file": "products/explainer/src/audio/place.ts",
+      "find": "resolve(r.beatId, r.cue) - r.anchorS",
+      "replace": "resolve(r.beatId, r.cue) + r.anchorS",
+      "kills": [
+        "placeSfx lands an sfx at beat start plus the cue word start minus the anchor"
+      ]
+    },
+    {
+      "name": "close hits are all kept",
+      "file": "products/explainer/src/audio/place.ts",
+      "find": "hit.atS - last.atS < MIN_HIT_SPACING_S",
+      "replace": "hit.atS - last.atS < 0",
+      "kills": [
+        "placeSfx keeps the first of two hits closer than 0.25 s and warns"
+      ]
+    },
+    {
+      "name": "hits exactly at the spacing are dropped",
+      "file": "products/explainer/src/audio/place.ts",
+      "find": "hit.atS - last.atS < MIN_HIT_SPACING_S",
+      "replace": "hit.atS - last.atS <= MIN_HIT_SPACING_S",
+      "kills": [
+        "placeSfx keeps two hits exactly 0.25 s apart"
+      ]
+    },
+    {
+      "name": "hits stay in request order",
+      "file": "products/explainer/src/audio/place.ts",
+      "find": ".sort((a, b) => a.atS - b.atS);",
+      "replace": ";",
+      "kills": [
+        "placeSfx orders hits by time regardless of request order"
+      ]
+    }
+  ]
+}

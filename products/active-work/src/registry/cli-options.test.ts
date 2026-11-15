@@ -47,6 +47,11 @@ describe('readCommanderOption', () => {
       expect(read({ notes: '[]' }, '--notes')).toBe('[]');
     });
 
+    it('reads --no-reports off the negated positive key and ignores it for --reports', () => {
+      expect(read({ reports: false }, '--no-reports')).toBe(true);
+      expect(read({ reports: false }, '--reports')).toBeUndefined();
+    });
+
     it('is undefined when absent', () => {
       expect(read({}, '--body')).toBeUndefined();
     });
