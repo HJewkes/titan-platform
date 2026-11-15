@@ -33,6 +33,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@huggingface/transformers": "^3.0.0",
     "@titan-design/app-paths": "workspace:*",
     "@titan-design/embed": "workspace:^",
     "@titan-design/retrieval": "workspace:^",
