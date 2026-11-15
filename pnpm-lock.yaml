@@ -1739,6 +1739,9 @@ importers:
 
   products/retrieval-eval:
     dependencies:
+      '@huggingface/transformers':
+        specifier: ^3.0.0
+        version: 3.8.1
       '@titan-design/app-paths':
         specifier: workspace:*
         version: link:../../packages/app-paths
