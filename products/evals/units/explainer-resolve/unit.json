@@ -1,0 +1,115 @@
+{
+  "schema": "titan.unit/v1",
+  "id": "explainer-resolve",
+  "version": "1.0.0",
+  "title": "Resolve a script into beat specs",
+  "description": "Bridged until its TypeScript port lands: resolve reads only the script and produces the resolved artifact; the checks step runs the resolve gate rows.",
+  "input": {
+    "type": "object",
+    "required": [
+      "inputs"
+    ],
+    "properties": {
+      "inputs": {
+        "type": "object",
+        "required": [
+          "script"
+        ],
+        "properties": {
+          "script": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "additionalProperties": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "files": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "output": {
+    "type": "object",
+    "required": [
+      "outputs",
+      "checks"
+    ],
+    "properties": {
+      "outputs": {
+        "type": "object",
+        "required": [
+          "resolved"
+        ],
+        "properties": {
+          "resolved": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "additionalProperties": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "checks": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "name",
+            "pass"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "pass": {
+              "type": "boolean"
+            },
+            "gate": {
+              "type": "boolean"
+            },
+            "detail": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  "objective": {
+    "constraints": [],
+    "noCriticalFailures": true,
+    "primary": {
+      "name": "wall_ms",
+      "direction": "minimize"
+    }
+  },
+  "acceptance": {
+    "levels": [
+      {
+        "level": 1,
+        "minCases": 10
+      },
+      {
+        "level": 2,
+        "successLowerBound": 0.7
+      },
+      {
+        "level": 3,
+        "successLowerBound": 0.85
+      },
+      {
+        "level": 4,
+        "holdDays": 14
+      }
+    ]
+  },
+  "visibility": "public"
+}
