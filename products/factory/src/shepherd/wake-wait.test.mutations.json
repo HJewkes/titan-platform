@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a wake waits out the spawn gate for 30 minutes, not as long as a queued review",
+      "file": "products/factory/src/shepherd/wake-wait.ts",
+      "find": "export const WAKE_DEFER_MS = DEFAULT_HOLD_WAIT_MS;",
+      "replace": "export const WAKE_DEFER_MS = 30 * 60_000;",
+      "kills": [
+        "a wake waiting out the spawn gate is admitted after the gate defers it for 2 hours"
+      ]
+    }
+  ]
+}
