@@ -4,8 +4,8 @@ import { dailyKindBeats } from "./kinds-fixture.test-helpers.js";
 import { kindsTimeline } from "./page.test-helpers.js";
 import { registeredKinds } from "./registry.js";
 
-/** The fixture's hand-written beats before the daily ones: the two page kinds and held, which no daily script fills. */
-const HAND_WRITTEN = ["opening", "pause", "showcase"];
+/** The fixture's hand-written beats before the daily ones: the two page kinds, held and the two table kinds, which no daily script fills. */
+const HAND_WRITTEN = ["opening", "pause", "showcase", "metrics", "scorecard"];
 /** Hand-written beats after the daily ones: finding-card, which the template fill cannot derive from labels. */
 const TRAILING = ["findings"];
 

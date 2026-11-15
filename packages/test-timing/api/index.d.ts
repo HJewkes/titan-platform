@@ -19,8 +19,8 @@ declare const timingArtifactSchema: z.ZodObject<{
         scope: z.ZodObject<{
             mode: z.ZodEnum<{
                 full: "full";
-                scoped: "scoped";
                 related: "related";
+                scoped: "scoped";
             }>;
             filters: z.ZodArray<z.ZodString>;
         }, z.core.$strip>;
@@ -37,9 +37,9 @@ declare const timingArtifactSchema: z.ZodObject<{
         }, z.core.$strip>>;
         wallMs: z.ZodNumber;
         exit: z.ZodNullable<z.ZodEnum<{
-            passed: "passed";
             failed: "failed";
             interrupted: "interrupted";
+            passed: "passed";
         }>>;
     }, z.core.$strip>;
     files: z.ZodArray<z.ZodObject<{
@@ -72,8 +72,8 @@ declare const timingArtifactReadSchema: z.ZodObject<{
         scope: z.ZodObject<{
             mode: z.ZodEnum<{
                 full: "full";
-                scoped: "scoped";
                 related: "related";
+                scoped: "scoped";
             }>;
             filters: z.ZodArray<z.ZodString>;
         }, z.core.$strip>;
@@ -90,9 +90,9 @@ declare const timingArtifactReadSchema: z.ZodObject<{
         }, z.core.$strip>>;
         wallMs: z.ZodNumber;
         exit: z.ZodNullable<z.ZodEnum<{
-            passed: "passed";
             failed: "failed";
             interrupted: "interrupted";
+            passed: "passed";
         }>>;
     }, z.core.$strip>;
     files: z.ZodArray<z.ZodObject<{
