@@ -129,7 +129,7 @@ function lastSession(view: BootstrapView): string {
   // so it is not mistaken for mainline continuity.
   const trackLabel = view.usedFallbackTrack ? ` (${session.frontmatter.track})` : '';
   const recovered = recoveredMarks(session.frontmatter);
-  return `# Last session${trackLabel}${recovered.label} (${ended}, ${session.frontmatter.session_id}) — ${view.timeSinceHuman}\n${recovered.transcriptLine}${excerpt}`;
+  return `# Last session${trackLabel}${recovered.label} (${ended}, ${session.frontmatter.session_id}) — ended ${session.frontmatter.ended}\n${recovered.transcriptLine}${excerpt}`;
 }
 
 function topTasks({ input, malformedTasks, topTasks: rendered }: BootstrapView): string {
@@ -155,9 +155,9 @@ function openArtifacts(view: BootstrapView): string | null {
   return view.artifactsBody ? `# Open artifacts\n${view.artifactsBody}` : null;
 }
 
-function context({ today, bootstrapAt, timeSinceHuman }: BootstrapView): string {
+function context({ today, bootstrapAt, narrativeSession }: BootstrapView): string {
   const lines = [`- Today: ${today}`, `- Bootstrap: ${bootstrapAt}`];
-  if (timeSinceHuman) lines.push(`- Time since last session: ${timeSinceHuman}`);
+  if (narrativeSession) lines.push(`- Last session ended: ${narrativeSession.frontmatter.ended}`);
   return `# Context\n${lines.join('\n')}`;
 }
 
@@ -169,8 +169,8 @@ function closing({ input, initiativeDir, shownLoops }: BootstrapView): string {
 /** One builder per prompt section, in prompt order; `null` omits the section. */
 const SECTION_BUILDERS: readonly SectionBuilder[] = [
   opening,
-  (v) => renderSiblingSessions(v.siblings, v.brief, v.topTaskTitle, v.input.now),
-  (v) => renderBriefState(v.brief, v.input.now),
+  (v) => renderSiblingSessions(v.siblings, v.brief, v.topTaskTitle),
+  (v) => renderBriefState(v.brief),
   briefExcerpt,
   (v) => (v.input.facet ? renderFacetSection(v.input.facet) : null),
   openLoops,
