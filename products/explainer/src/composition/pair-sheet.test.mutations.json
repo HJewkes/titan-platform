@@ -7,7 +7,16 @@
       "find": "return beat.durationS - fade - SETTLED_BEFORE_END_S;",
       "replace": "return beat.durationS - fade;",
       "kills": [
-        "cuts one cell per beat inside that beat's window, labelled with its kind"
+        "the bridged-vs-in-process pair sheet cuts one cell per beat inside that beat's window, labelled with its kind"
+      ]
+    },
+    {
+      "name": "a pair tile is named by its position alone, not its beat",
+      "file": "products/explainer/src/composition/pair-sheet.ts",
+      "find": "padStart(2, \"0\")}-${left.beat}.png",
+      "replace": "padStart(2, \"0\")}.png",
+      "kills": [
+        "the bridged-vs-in-process pair sheet writes one side-by-side tile per beat, bridged left and in-process right, with its SSIM"
       ]
     }
   ]
