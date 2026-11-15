@@ -18,7 +18,7 @@ function task(id: string, priority: number, due?: string): Task {
 }
 
 function ids(body: string): string[] {
-  return [...body.matchAll(/^\d+\. \[([^\]]+)\]/gm)].map((m) => m[1]);
+  return [...body.matchAll(/^\d+\. \[([^\]]+)\]/gm)].flatMap((m) => m.at(1) ?? []);
 }
 
 describe('renderTopTasks due dates', () => {

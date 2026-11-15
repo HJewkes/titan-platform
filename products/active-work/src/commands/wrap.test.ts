@@ -152,9 +152,9 @@ describe('wrap', () => {
         makeCtx(activeRoot),
       );
 
-      const [loop] = await deriveOpenLoops(path.join(activeRoot, SLUG), { now: new Date() });
+      const loop = (await deriveOpenLoops(path.join(activeRoot, SLUG), { now: new Date() })).at(0);
       expect(result.ready_to_end).toBe(true);
-      expect(loop.due).toBe(due);
+      expect(loop?.due).toBe(due);
     });
   });
 
@@ -860,16 +860,17 @@ describe('wrap', () => {
         const notesDir = path.join(activeRoot, SLUG, 'sources', 'notes');
         const files = await fs.readdir(notesDir);
         expect(files).toEqual([`${today()}-flock-is-per-initiative.md`]);
-        const frontmatter = await readFrontmatter(path.join(notesDir, files[0]));
+        const noteFile = files.at(0) ?? '';
+        const frontmatter = await readFrontmatter(path.join(notesDir, noteFile));
         expect(frontmatter).toMatchObject({
           kind: 'gotcha',
           title: 'flock is per-initiative',
           created: today(),
           tags: ['locking'],
         });
-        const raw = await fs.readFile(path.join(notesDir, files[0]), 'utf8');
+        const raw = await fs.readFile(path.join(notesDir, noteFile), 'utf8');
         expect(raw).toContain('Nesting a second lock');
-        expect(result.files_updated).toContain(path.join('sources', 'notes', files[0]));
+        expect(result.files_updated).toContain(path.join('sources', 'notes', noteFile));
       });
     });
 
@@ -917,7 +918,7 @@ describe('wrap', () => {
         }
         return GIT_WITH_WORK(
           bin,
-          args[1] === LINKED ? [args[0], sampleRepo(), ...args.slice(2)] : args,
+          args.at(1) === LINKED ? [args.at(0) ?? '', sampleRepo(), ...args.slice(2)] : args,
         );
       });
       await withTempActiveRoot(async (activeRoot) => {

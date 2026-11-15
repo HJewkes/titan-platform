@@ -114,9 +114,9 @@ describe('v2 -> v3 open-loops migration', () => {
         now: new Date('2026-06-11T09:00:00Z'),
       });
       expect(loops).toHaveLength(1);
-      expect(loops[0].ref).toBe(`${STEM}#n1`);
-      expect(loops[0].openedAt).toBe(ENDED);
-      expect(loops[0].ageDays).toBe(30);
+      expect(loops.at(0)?.ref).toBe(`${STEM}#n1`);
+      expect(loops.at(0)?.openedAt).toBe(ENDED);
+      expect(loops.at(0)?.ageDays).toBe(30);
     });
   });
 
@@ -233,7 +233,7 @@ describe('v2 -> v3 open-loops migration', () => {
       await writeProposal(root, [entry('alpha')]);
 
       const plan = await planV2ToV3(root);
-      expect(plan.initiatives[0].handoff).toBe('archive-exists');
+      expect(plan.initiatives.at(0)?.handoff).toBe('archive-exists');
 
       await v2ToV3OpenLoops.run(root);
       expect(await exists(path.join(root, 'alpha', 'handoff.md'))).toBe(true);
@@ -432,11 +432,11 @@ describe('brief field repairs', () => {
       await writeProposal(root, []);
 
       const plan = await planV2ToV3(root);
-      expect(plan.initiatives[0].brief!.repairs).toEqual([
+      expect(plan.initiatives.at(0)?.brief?.repairs).toEqual([
         "state 'active' (not in the enum) -> 'focused', rank 11",
       ]);
-      expect(plan.initiatives[0].brief!.taskSeq).toBe(7);
-      expect(plan.initiatives[0].briefBlocked).toBeUndefined();
+      expect(plan.initiatives.at(0)?.brief?.taskSeq).toBe(7);
+      expect(plan.initiatives.at(0)?.briefBlocked).toBeUndefined();
 
       await v2ToV3OpenLoops.run(root);
 
@@ -469,8 +469,8 @@ describe('brief field repairs', () => {
       await writeProposal(root, []);
 
       const plan = await planV2ToV3(root);
-      expect(plan.initiatives[0].brief).toBeNull();
-      expect(plan.initiatives[0].briefBlocked).toMatch(/brief\.md is invalid/);
+      expect(plan.initiatives.at(0)?.brief).toBeNull();
+      expect(plan.initiatives.at(0)?.briefBlocked).toMatch(/brief\.md is invalid/);
 
       await expect(v2ToV3OpenLoops.run(root)).resolves.toBeUndefined();
     });
@@ -513,7 +513,7 @@ describe('task_seq backfill', () => {
       await writeProposal(root, []);
 
       const plan = await planV2ToV3(root);
-      expect(plan.initiatives[0].brief).toBeNull();
+      expect(plan.initiatives.at(0)?.brief).toBeNull();
 
       await v2ToV3OpenLoops.run(root);
       expect(await fs.readFile(path.join(root, 'alpha', 'brief.md'), 'utf8')).not.toContain(
