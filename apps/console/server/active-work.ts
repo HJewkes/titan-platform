@@ -28,6 +28,8 @@ const task = z.object({
   severity: z.enum(["critical", "high", "medium", "low"]).optional(),
   estimate: z.number().optional(),
   tags: z.array(z.string()).optional(),
+  /** Steps only the owner can take (`@titan-design/pm` owner_steps); `kind` stays a string so a new kind does not fail the read. */
+  owner_steps: z.array(z.object({ kind: z.string(), note: z.string() })).optional(),
   // Edge and deliverable fields arrive from active-work 0.23 on; an older daemon carries edges as tags only.
   parent: z.string().optional(),
   dep: z.array(z.string()).optional(),
