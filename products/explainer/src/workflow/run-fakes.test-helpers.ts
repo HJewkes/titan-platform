@@ -17,6 +17,7 @@ import { FillError } from "../template-fill/fill.js";
 import { sha256 } from "./artifacts.js";
 import { z } from "zod";
 import { runVideo, type RunHost, type RunOutcome, type RunRequest } from "./host.js";
+import type { FfmpegExec } from "../contact-sheet-render.js";
 import type { MediaExec } from "./sheets-stage.js";
 import type { TtsEngine } from "./tts-stage.js";
 import { fakeQa } from "../qa/qa-fakes.test-helpers.js";
@@ -115,6 +116,13 @@ export function fakeMedia(durationS = FAKE_DURATION_S): MediaExec & { frames: nu
     },
   };
 }
+
+/** An ffmpeg that writes its last argument, the output file, and never runs a real one. */
+export const fakeFfmpeg: FfmpegExec = async (args) => {
+  const out = args.at(-1)!;
+  mkdirSync(path.dirname(out), { recursive: true });
+  writeFileSync(out, `fake:${args.join(" ")}`);
+};
 
 export interface FakeScriptModel {
   runnerFor: (options: AgentRunnerOptions) => { run: (input: StepRunInput) => Promise<StepRunOutcome> };
@@ -279,7 +287,7 @@ export function fakeHost(fx: Fixture, model: FakeScriptModel, render: FakeRender
   const now = () => new Date((tick += 1000));
   const harnessFor = () => routeRubric(rubric.harness, rewriter.harness);
   // No beat worker unless a test passes one: the default would spawn a real claude wherever one is installed.
-  const media = { media: fakeMedia(), qaEngine: fakeQa(), qaTiming: LAX_TIMING };
+  const media = { media: fakeMedia(), ffmpeg: fakeFfmpeg, qaEngine: fakeQa(), qaTiming: LAX_TIMING };
   // Nor a layer text check: the default renders each layer in Chromium.
   const layers = { beatWorker: null, layerTextCheck: null };
   const seams = { runnerFor: model.runnerFor, harnessFor, renderEngine: render.engine(fx), ttsEngine: fakeVoice().engine, ...media, evalChecks: [l0Check(true)], now, ...layers };
