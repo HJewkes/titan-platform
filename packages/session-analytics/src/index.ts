@@ -161,6 +161,8 @@ export type { ToolFamily } from "@titan-design/session-read";
 export { SESSION_TIMELINE_VERSION, TIMELINE_GAP_MIN_MS, TIMELINE_TEXT_CAP } from "./timeline-types.js";
 export type { SessionTimelineOptions } from "./timeline.js";
 export { SessionTimelineAccumulator, buildSessionTimeline } from "./timeline.js";
+export type { ImplementerCoverage, LinkCoverage, ReviewerCoverage } from "./link-coverage.js";
+export { linkCoverage } from "./link-coverage.js";
 export { countAtOrBefore } from "./count-at-or-before.js";
 export type { ReviewFillReport } from "./review-fill.js";
 export { reviewFillReport, reviewFillSchema } from "./review-fill.js";
