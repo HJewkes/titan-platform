@@ -37,9 +37,10 @@ describe("qa stage", () => {
     ["fails", 0.034, false],
     ["passes", 0.033, true],
   ])("%s mp4-duration when the MP4 runs %s s past its timeline", async (_, skewS, pass) => {
-    const { checks } = await runQa({ skewS });
+    const { report, checks } = await runQa({ skewS });
 
     expect(checks["mp4-duration"]).toMatchObject({ gate: true, pass });
+    expect(report.pass).toBe(pass);
   });
 });
 

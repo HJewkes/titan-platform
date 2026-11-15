@@ -5,6 +5,7 @@ import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { errorEnvelope, successEnvelope, type JsonEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
 import { renderPage } from "./render-page.test-helpers.js";
+import { parseRoute } from "./router.js";
 
 // Local noon, so "today" and "the last 24 hours" never straddle midnight whatever zone the test runs in.
 const NOW = new Date(2031, 2, 5, 12, 0, 0).getTime();
@@ -159,7 +160,20 @@ describe("the home page", () => {
     expect(await screen.findByText("Inbox: 4 blocking")).toBeTruthy();
     expect(screen.getAllByTestId(/^home-inbox-/).map((row) => row.getAttribute("data-testid"))).toEqual(["home-inbox-b-1", "home-inbox-b-2", "home-inbox-b-3"]);
     fireEvent.click(screen.getByText("Merge example/repo#2"));
+    await waitFor(() => expect(window.location.hash).toBe("#/inbox/b-2"));
+  });
+
+  it("opens the bare inbox from the blocking-count header link", async () => {
+    renderHome(homeSnapshot({ inbox: inbox([blocker("b-1", "Merge example/repo#1", ago(HOUR))]) }), { inApp: true });
+    fireEvent.click(await screen.findByText("Inbox: 1 blocking"));
     await waitFor(() => expect(window.location.hash).toBe("#/inbox"));
+  });
+
+  it("round-trips an item id holding a slash and a colon through the hash", async () => {
+    renderHome(homeSnapshot({ inbox: inbox([blocker("gate:run-1/approve-merge", "Approve the merge", ago(HOUR))]) }), { inApp: true });
+    fireEvent.click(await screen.findByText("Approve the merge"));
+    await waitFor(() => expect(window.location.hash).toMatch(/^#\/inbox\//));
+    expect(parseRoute(window.location.hash)).toMatchObject({ view: "inbox", id: "gate:run-1/approve-merge" });
   });
 
   it("never says nothing needs the owner while an inbox source is unreadable", async () => {
