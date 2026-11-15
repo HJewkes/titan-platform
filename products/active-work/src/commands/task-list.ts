@@ -8,6 +8,7 @@ import { mapConcurrent } from '../utils/map-concurrent.js';
 import { readYaml } from '../utils/yaml-io.js';
 import { UsageError } from '../errors.js';
 import { listSlugsForCaller } from '../sessions/visibility.js';
+import { createDepFinder, openDeps } from '../tasks/blockers.js';
 import { closedStatusIds, loadCategoryRegistry } from './_categories.js';
 
 // No schema default: buildFilter picks it, because the default depends on --id. The values a root
@@ -26,6 +27,7 @@ const ArgsSchema = z.object({
   search: z.string().min(1).optional(),
   due_before: z.string().min(1).optional(),
   sort: z.enum(['priority', 'due']).optional(),
+  unblocked: z.boolean().optional(),
 });
 
 type Args = z.infer<typeof ArgsSchema>;
@@ -163,6 +165,20 @@ function compareByDue(a: Task, b: Task): number {
   return a.priority - b.priority;
 }
 
+// Deps may live in initiatives outside the listed slugs, so they resolve against the whole root.
+async function withoutOpenDeps(tasks: TaskWithSlug[]): Promise<TaskWithSlug[]> {
+  const activeRoot = getActiveRoot();
+  const lookup = {
+    closed: await closedStatusIds(activeRoot),
+    find: createDepFinder(activeRoot),
+  };
+  const kept: TaskWithSlug[] = [];
+  for (const task of tasks) {
+    if ((await openDeps(task, lookup)).length === 0) kept.push(task);
+  }
+  return kept;
+}
+
 async function buildFilter(args: Args): Promise<(t: Task) => boolean> {
   const ids = parseIds(args.id);
   // Asking for ids by name should not hide them because they are already done.
@@ -218,6 +234,10 @@ export default defineCommand<Args, Result>({
         long: '--due-before',
         description: 'Keep only tasks due on or before this date (YYYY-MM-DD); drops undated tasks',
       },
+      unblocked: {
+        long: '--unblocked',
+        description: 'Keep only tasks whose every dep is closed, archived or done',
+      },
       sort: {
         long: '--sort',
         description:
@@ -244,7 +264,8 @@ export default defineCommand<Args, Result>({
     for (const listing of listings) {
       for (const task of await loadListing(listing, keep)) tasks.push(task);
     }
-    tasks.sort(args.sort === 'due' ? compareByDue : (a, b) => a.priority - b.priority);
-    return { tasks };
+    const listed = args.unblocked ? await withoutOpenDeps(tasks) : tasks;
+    listed.sort(args.sort === 'due' ? compareByDue : (a, b) => a.priority - b.priority);
+    return { tasks: listed };
   },
 });
