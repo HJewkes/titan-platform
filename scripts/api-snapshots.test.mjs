@@ -64,6 +64,25 @@ describe("normalizing a declaration file", () => {
   it("keeps a hyphenated module name that carries no hash", () => {
     expect(normalizeDts("export * from './change-coupling.js';\n")).toBe("export * from './change-coupling.js';\n");
   });
+
+  const zodEnum = (indent, keys) =>
+    [`${indent}kind: z.ZodEnum<{`, ...keys.map((k) => `${indent}    ${k}: ${k.startsWith('"') ? k : `"${k}"`};`), `${indent}}>;`].join("\n");
+
+  it("gives two builds that order a zod enum's members differently the same text", () => {
+    const first = `declare const s: z.ZodObject<{\n${zodEnum("    ", ["broadcast", "seat", "agent", "broker", "none"])}\n}>;\n`;
+    const second = `declare const s: z.ZodObject<{\n${zodEnum("    ", ["none", "broadcast", "seat", "agent", "broker"])}\n}>;\n`;
+    expect(normalizeDts(first)).toBe(normalizeDts(second));
+  });
+
+  it("orders a zod enum's members by name, quoted names included, at any depth", () => {
+    const text = `type T = {\n${zodEnum("        ", ["seat", '"text-only"', "agent"])}\n};\n`;
+    expect(normalizeDts(text)).toBe(`type T = {\n${zodEnum("        ", ["agent", "seat", '"text-only"'])}\n};\n`);
+  });
+
+  it("leaves the field order of an object type alone", () => {
+    const text = "interface Row {\n    seat: string;\n    agent: string;\n}\n";
+    expect(normalizeDts(text)).toBe(text);
+  });
 });
 
 describe("snapshotting the packages of a repository", () => {
