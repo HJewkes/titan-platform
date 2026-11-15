@@ -1,6 +1,7 @@
 import type { CreateCheckRunRequest } from "./check-run-create.js";
 import type { GitExec } from "./exec.js";
 import type { ForcePush } from "./force-pushes.js";
+import type { PrOutcome } from "./pr-outcome.js";
 import type { MergeIntoBranchResult } from "./merge-into-branch.js";
 import type { ReviewComment } from "./review-comment.js";
 import type { PullReview } from "./pull-reviews.js";
@@ -121,4 +122,6 @@ export interface FakeGitHub {
   appLogin: string;
   /** PR number to its head force-pushes, oldest first; unset means none. `listForcePushes` reads at most 100, like the GraphQL page. */
   forcePushes: Map<number, ForcePush[]>;
+  /** PR number to what `readPrOutcome` answers; unset reads the PR's own state with no reviews or commit dates, and a PR the fake lacks answers 404. */
+  outcomes: Map<number, PrOutcome>;
 }

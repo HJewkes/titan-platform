@@ -1,6 +1,7 @@
 import { sharedRateBudget, type RateBudget } from "./budget.js";
 import { redact, redactStreams } from "./redact.js";
 import { listForcePushes } from "./force-pushes.js";
+import { readPrOutcome } from "./pr-outcome.js";
 import { graphql } from "./graphql.js";
 import { checkRunBody } from "./check-run-create.js";
 import { GhError, execGh, type GhExec } from "./exec.js";
@@ -114,6 +115,7 @@ export function wireOver(api: Rest, asApp: AppScope): GitHubWire {
     createReview: (repo, number, request) => asApp("createReview", (app) => createReview(app, repo, number, request)),
     dismissReview: (repo, number, reviewId, message) => asApp("dismissReview", (app) => dismissReview(app, repo, number, reviewId, message)),
     listForcePushes: (repo, number) => listForcePushes(api, repo, number),
+    getPrOutcome: (repo, number) => readPrOutcome(api, repo, number),
   };
 }
 
