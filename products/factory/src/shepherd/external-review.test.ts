@@ -109,6 +109,15 @@ describe("acceptExternalVerdict", () => {
     expect(accepted).not.toHaveProperty("followUps");
   });
 
+  it("an external verdict carries its check candidates", () => {
+    const block = "Check-candidates:\n- Swallowed error | lint | A catch that drops the error reads as success";
+    const text = `Findings.\n\n${block}\n\nVerdict: FIX_FIRST\nPR: ${REPO}#4\nHead: ${HEAD}\n`;
+
+    const accepted = acceptExternalVerdict({ ...target, external: SEAT.name }, SEAT, [said(SEAT, text, 2)]);
+
+    expect(accepted).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST", checkCandidates: [{ classKey: "swallowed-error", route: "lint", sketch: "A catch that drops the error reads as success" }] });
+  });
+
   it("is no verdict when a WAIT strictly follows a MERGE at the same head", () => {
     const messages = [said(SEAT, verdictAt("MERGE"), 2), said(SEAT, verdictAt("WAIT"), 3)];
 

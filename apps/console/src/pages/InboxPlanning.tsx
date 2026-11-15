@@ -2,7 +2,8 @@ import { useState, type ReactNode } from "react";
 import { Alert, Button, ButtonText, Section, SectionContent, SectionHeader, VStack } from "@titan-design/react-ui";
 import { Spinner } from "../shell/Loading.js";
 import { useQuery } from "../data/rpc.js";
-import type { InboxItem } from "./InboxPage.js";
+import { holdsFocus, useFocusId } from "./InboxFocus.js";
+import { badgeOf, type InboxItem } from "./InboxPage.js";
 import { PHONE_TAP } from "./phone.js";
 
 /** `inbox.list` lists the planning items only when asked; the default read counts them (TP-4390). */
@@ -36,5 +37,41 @@ function PlanningRows({ renderRows }: Pick<PlanningProps, "renderRows">): ReactN
   const planning = useQuery("inbox.list", PLANNING_READ);
   if (planning.status === "loading") return <Spinner size="sm" label="Loading the planning items" />;
   if (planning.data === undefined) return <Alert status="error" message={`Could not load the planning items: ${planning.error.message}`} />;
-  return renderRows(planning.data.items.filter((item) => item.section === "planning"));
+  const groups = groupByAsker(planning.data.items.filter((item) => item.section === "planning"));
+  if (groups.length === 1) return renderRows(groups[0]!.items);
+  return (
+    <VStack gap={3}>
+      {groups.map((group) => <PlanningGroup key={group.name} group={group} renderRows={renderRows} />)}
+    </VStack>
+  );
+}
+
+interface AskerGroup {
+  name: string;
+  items: InboxItem[];
+}
+
+/** Largest group first; equal groups keep the order the server listed them in. */
+function groupByAsker(items: readonly InboxItem[]): AskerGroup[] {
+  const byName = new Map<string, AskerGroup>();
+  for (const item of items) {
+    const name = item.asker ?? item.seat ?? badgeOf(item).label;
+    const group = byName.get(name) ?? { name, items: [] };
+    group.items.push(item);
+    byName.set(name, group);
+  }
+  return [...byName.values()].sort((a, b) => b.items.length - a.items.length);
+}
+
+function PlanningGroup({ group, renderRows }: Pick<PlanningProps, "renderRows"> & { group: AskerGroup }): ReactNode {
+  const focusId = useFocusId();
+  const [isOpen, setOpen] = useState(holdsFocus(group.items, focusId));
+  return (
+    <VStack gap={2}>
+      <Button variant="ghost" size="sm" className={PHONE_TAP} testID={`inbox-planning-group-${group.name}`} onPress={() => setOpen(!isOpen)}>
+        <ButtonText>{`${group.name} (${group.items.length})`}</ButtonText>
+      </Button>
+      {isOpen ? renderRows(group.items) : null}
+    </VStack>
+  );
 }
