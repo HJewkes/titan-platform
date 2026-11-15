@@ -21,6 +21,24 @@ export class MissingDistError extends Error {
 // matching it would also strip real lowercase names such as `-handlers`.
 const HASHED = /-(?=[a-z]*[A-Z0-9_-])[A-Za-z0-9_-]{8}(?=\.(?:d\.[cm]?ts|[cm]?js)\b)/;
 const RELATIVE_FROM = /(\bfrom\s*|\bimport\s*)(["'])(\.{1,2}\/[^"']+)\2/g;
+// zod 4 types z.enum(list) as a mapped type over the list's union. tsc orders a union by type id, the order in which the
+// checker first met each literal, and the dts bundler checks modules in its async load order, so the members of one enum
+// come out in a different order from one build to the next (TP-6659). Member order means nothing in an object type.
+const ZOD_ENUM_MEMBERS = /(ZodEnum<\{\n)((?:[ \t]*(?:[\w$]+|"[^"\n]*"): "[^"\n]*";\n)+)(?=[ \t]*\}>)/g;
+
+function memberName(line) {
+  const [, quoted, bare] = /^\s*(?:"([^"]*)"|([\w$]+)):/.exec(line);
+  return quoted ?? bare;
+}
+
+function byMemberName(a, b) {
+  const [x, y] = [memberName(a), memberName(b)];
+  return x < y ? -1 : x > y ? 1 : 0;
+}
+
+function sortZodEnumMembers(text) {
+  return text.replace(ZOD_ENUM_MEMBERS, (_, open, body) => `${open}${body.split("\n").slice(0, -1).sort(byMemberName).join("\n")}\n`);
+}
 
 function typesOf(target) {
   if (typeof target === "string") return target.endsWith(".d.ts") ? target : null;
@@ -41,7 +59,7 @@ function stripHash(spec) {
 
 /** Text that changes only when the declared surface does. */
 export function normalizeDts(text) {
-  return `${text
+  return `${sortZodEnumMembers(text)
     .replace(RELATIVE_FROM, (_, kw, q, spec) => `${kw}${q}${stripHash(spec)}${q}`)
     .split("\n")
     .filter((line) => !line.startsWith("//# sourceMappingURL="))
