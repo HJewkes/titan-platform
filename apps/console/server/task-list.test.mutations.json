@@ -4,8 +4,8 @@
     {
       "name": "a list row carries the whole staged task again",
       "file": "apps/console/server/task-list.ts",
-      "find": "export function listRow({ slug, id, title, severity, stage, stageReason, stageGuessed }: TaskListRow): TaskListRow {\n  return { slug, id, title, ...(severity !== undefined ? { severity } : {}), stage, stageReason, stageGuessed };",
-      "replace": "export function listRow(row: TaskListRow): TaskListRow {\n  return row;",
+      "find": "export function listRow({ slug, id, title, severity, stage, stageReason, stageGuessed, owner_steps, ownerTagged }: TaskListRow): TaskListRow {\n  return {\n    slug,",
+      "replace": "export function listRow(row: TaskListRow): TaskListRow {\n  return row;\n  return {\n    slug,",
       "kills": [
         "a task list row keeps only what the board renders, whatever else the staged task carries"
       ]

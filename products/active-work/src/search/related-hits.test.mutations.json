@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an excluded ref is served anyway",
+      "file": "products/active-work/src/search/related.ts",
+      "find": "!exclude.has(hit.ref) && ",
+      "replace": "",
+      "kills": ["relatedContext never returns an excluded ref, and fills its place from further down"]
+    },
+    {
+      "name": "the hit drops its byte length",
+      "file": "products/active-work/src/search/related.ts",
+      "find": "return { ref, class: cls, initiative, title, path, excerpt, byteOffset, byteLength };",
+      "replace": "return { ref, class: cls, initiative, title, path, excerpt, byteOffset };",
+      "kills": ["relatedContext carries the winning span as a byte range into the file"]
+    },
+    {
+      "name": "the hit drops its excerpt",
+      "file": "products/active-work/src/search/related.ts",
+      "find": "return { ref, class: cls, initiative, title, path, excerpt, byteOffset, byteLength };",
+      "replace": "return { ref, class: cls, initiative, title, path, byteOffset, byteLength };",
+      "kills": ["relatedContext returns openable hits and the query that found them"]
+    }
+  ]
+}

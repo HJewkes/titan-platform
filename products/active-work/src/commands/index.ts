@@ -31,6 +31,7 @@ import deliverableList from './deliverable-list.js';
 // Plan records (TP-5453 P3)
 import { planFreezeAdd, planOutcomeAdd, planOutOfScopeAdd } from './plan-add.js';
 import { planBetAdd, planBetList } from './plan-bet.js';
+import { planSeed } from './plan-seed.js';
 import {
   planBetShow,
   planFreezeList,
@@ -132,6 +133,7 @@ import minerLiveness from './miner-liveness.js';
 import minerStatus from './miner-status.js';
 import minerCost from './miner-cost.js';
 import minerOutcomes from './miner-outcomes.js';
+import minerLedger from './miner-ledger.js';
 
 // agent-chat lifecycle hooks (AW-99)
 import hooksAgentChatSpawn from './hooks-agent-chat-spawn.js';
@@ -180,6 +182,7 @@ const ALL_COMMANDS: AnyCommand[] = [
   planOutOfScopeAdd,
   planOutOfScopeShow,
   planOutOfScopeList,
+  planSeed,
   // tasks
   taskAdd,
   taskApply,
@@ -258,6 +261,7 @@ const ALL_COMMANDS: AnyCommand[] = [
   minerStatus,
   minerCost,
   minerOutcomes,
+  minerLedger,
   // agent-chat lifecycle hooks (AW-99)
   hooksAgentChatSpawn,
   hooksAgentChatComplete,

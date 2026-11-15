@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the PRNG ignores its seed",
+      "file": "products/explainer/src/audio/procedural.ts",
+      "find": "let state = seed >>> 0;",
+      "replace": "let state = 0;",
+      "kills": [
+        "generateBed makes the same file from seed 7 twice and a different one from seed 8"
+      ]
+    },
+    {
+      "name": "the riser records an anchor its peak does not land on",
+      "file": "products/explainer/src/audio/procedural.ts",
+      "find": "durationS: 1.5, anchorS: 1.2,",
+      "replace": "durationS: 1.5, anchorS: 1.0,",
+      "kills": [
+        "generateSfx puts the riser peak within 10 ms of its anchorS"
+      ]
+    }
+  ]
+}

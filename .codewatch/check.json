@@ -51,7 +51,8 @@
           "packages/speech-stt",
           "packages/speech-g2p",
           "packages/test-timing",
-          "packages/egress-scan"
+          "packages/egress-scan",
+          "packages/text-ingest"
         ],
         "2": [
           "packages/session-read",
@@ -93,7 +94,8 @@
           "products/active-work",
           "products/corpus-query",
           "products/yt-scout",
-          "products/fleet-panel"
+          "products/fleet-panel",
+          "apps/docs"
         ]
       },
       "layers": [
@@ -140,7 +142,8 @@
           "packages/speech-stt",
           "packages/speech-g2p",
           "packages/test-timing",
-          "packages/egress-scan"
+          "packages/egress-scan",
+          "packages/text-ingest"
         ],
         [
           "packages/session-read",
@@ -182,7 +185,8 @@
           "products/active-work",
           "products/corpus-query",
           "products/yt-scout",
-          "products/fleet-panel"
+          "products/fleet-panel",
+          "apps/docs"
         ]
       ]
     },
@@ -297,6 +301,16 @@
       "to": "products/fleet-panel/**"
     },
     {
+      "id": "product-isolation:products/session-miner->apps/docs",
+      "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/session-miner/**",
+      "to": "apps/docs/**"
+    },
+    {
       "id": "product-isolation:products/retrieval-eval->products/session-miner",
       "type": "forbid-import",
       "$classes": [
@@ -405,6 +419,16 @@
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/retrieval-eval/**",
       "to": "products/fleet-panel/**"
+    },
+    {
+      "id": "product-isolation:products/retrieval-eval->apps/docs",
+      "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/retrieval-eval/**",
+      "to": "apps/docs/**"
     },
     {
       "id": "product-isolation:apps/codewatch->products/session-miner",
@@ -517,6 +541,16 @@
       "to": "products/fleet-panel/**"
     },
     {
+      "id": "product-isolation:apps/codewatch->apps/docs",
+      "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "apps/codewatch/**",
+      "to": "apps/docs/**"
+    },
+    {
       "id": "product-isolation:products/factory->products/session-miner",
       "type": "forbid-import",
       "$classes": [
@@ -625,6 +659,16 @@
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/factory/**",
       "to": "products/fleet-panel/**"
+    },
+    {
+      "id": "product-isolation:products/factory->apps/docs",
+      "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/factory/**",
+      "to": "apps/docs/**"
     },
     {
       "id": "product-isolation:products/evals->products/session-miner",
@@ -737,6 +781,16 @@
       "to": "products/fleet-panel/**"
     },
     {
+      "id": "product-isolation:products/evals->apps/docs",
+      "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/evals/**",
+      "to": "apps/docs/**"
+    },
+    {
       "id": "product-isolation:apps/console->products/session-miner",
       "type": "forbid-import",
       "$classes": [
@@ -845,6 +899,16 @@
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "apps/console/**",
       "to": "products/fleet-panel/**"
+    },
+    {
+      "id": "product-isolation:apps/console->apps/docs",
+      "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "apps/console/**",
+      "to": "apps/docs/**"
     },
     {
       "id": "product-isolation:products/titan->products/session-miner",
@@ -957,6 +1021,16 @@
       "to": "products/fleet-panel/**"
     },
     {
+      "id": "product-isolation:products/titan->apps/docs",
+      "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/titan/**",
+      "to": "apps/docs/**"
+    },
+    {
       "id": "product-isolation:products/explainer->products/session-miner",
       "type": "forbid-import",
       "$classes": [
@@ -1065,6 +1139,16 @@
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/explainer/**",
       "to": "products/fleet-panel/**"
+    },
+    {
+      "id": "product-isolation:products/explainer->apps/docs",
+      "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/explainer/**",
+      "to": "apps/docs/**"
     },
     {
       "id": "product-isolation:products/active-work->products/session-miner",
@@ -1177,6 +1261,16 @@
       "to": "products/fleet-panel/**"
     },
     {
+      "id": "product-isolation:products/active-work->apps/docs",
+      "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/active-work/**",
+      "to": "apps/docs/**"
+    },
+    {
       "id": "product-isolation:products/corpus-query->products/session-miner",
       "type": "forbid-import",
       "$classes": [
@@ -1285,6 +1379,16 @@
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/corpus-query/**",
       "to": "products/fleet-panel/**"
+    },
+    {
+      "id": "product-isolation:products/corpus-query->apps/docs",
+      "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/corpus-query/**",
+      "to": "apps/docs/**"
     },
     {
       "id": "product-isolation:products/yt-scout->products/session-miner",
@@ -1397,6 +1501,16 @@
       "to": "products/fleet-panel/**"
     },
     {
+      "id": "product-isolation:products/yt-scout->apps/docs",
+      "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/yt-scout/**",
+      "to": "apps/docs/**"
+    },
+    {
       "id": "product-isolation:products/fleet-panel->products/session-miner",
       "type": "forbid-import",
       "$classes": [
@@ -1505,6 +1619,136 @@
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/fleet-panel/**",
       "to": "products/yt-scout/**"
+    },
+    {
+      "id": "product-isolation:products/fleet-panel->apps/docs",
+      "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/fleet-panel/**",
+      "to": "apps/docs/**"
+    },
+    {
+      "id": "product-isolation:apps/docs->products/session-miner",
+      "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "apps/docs/**",
+      "to": "products/session-miner/**"
+    },
+    {
+      "id": "product-isolation:apps/docs->products/retrieval-eval",
+      "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "apps/docs/**",
+      "to": "products/retrieval-eval/**"
+    },
+    {
+      "id": "product-isolation:apps/docs->apps/codewatch",
+      "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "apps/docs/**",
+      "to": "apps/codewatch/**"
+    },
+    {
+      "id": "product-isolation:apps/docs->products/factory",
+      "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "apps/docs/**",
+      "to": "products/factory/**"
+    },
+    {
+      "id": "product-isolation:apps/docs->products/evals",
+      "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "apps/docs/**",
+      "to": "products/evals/**"
+    },
+    {
+      "id": "product-isolation:apps/docs->apps/console",
+      "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "apps/docs/**",
+      "to": "apps/console/**"
+    },
+    {
+      "id": "product-isolation:apps/docs->products/titan",
+      "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "apps/docs/**",
+      "to": "products/titan/**"
+    },
+    {
+      "id": "product-isolation:apps/docs->products/explainer",
+      "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "apps/docs/**",
+      "to": "products/explainer/**"
+    },
+    {
+      "id": "product-isolation:apps/docs->products/active-work",
+      "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "apps/docs/**",
+      "to": "products/active-work/**"
+    },
+    {
+      "id": "product-isolation:apps/docs->products/corpus-query",
+      "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "apps/docs/**",
+      "to": "products/corpus-query/**"
+    },
+    {
+      "id": "product-isolation:apps/docs->products/yt-scout",
+      "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "apps/docs/**",
+      "to": "products/yt-scout/**"
+    },
+    {
+      "id": "product-isolation:apps/docs->products/fleet-panel",
+      "type": "forbid-import",
+      "$classes": [
+        "other:import-boundary"
+      ],
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "apps/docs/**",
+      "to": "products/fleet-panel/**"
     },
     {
       "id": "code-graph-history-seam",

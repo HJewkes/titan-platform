@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "you know is no longer a filler",
+      "file": "packages/text-ingest/src/detectors.ts",
+      "find": "|you know)",
+      "replace": ")",
+      "kills": ["cleanTranscript removes um, uh and you know as filler spans"]
+    },
+    {
+      "name": "only single words count as repeats",
+      "file": "packages/text-ingest/src/detectors.ts",
+      "find": "for (let n = MAX_PHRASE_WORDS; n >= 1; n--)",
+      "replace": "for (let n = 1; n >= 1; n--)",
+      "kills": ["cleanTranscript removes an immediately repeated phrase"]
+    },
+    {
+      "name": "every later paragraph is a near-duplicate whatever the threshold",
+      "file": "packages/text-ingest/src/detectors.ts",
+      "find": "jaccard(prior, set) >= threshold",
+      "replace": "jaccard(prior, set) >= 0",
+      "kills": ["cleanTranscript keeps a near-duplicate paragraph when the threshold is above its similarity"]
+    },
+    {
+      "name": "caller cut ranges are tagged as fillers",
+      "file": "packages/text-ingest/src/clean.ts",
+      "find": "kind: \"sponsor-cut\" as const",
+      "replace": "kind: \"filler\" as const",
+      "kills": ["cleanTranscript removes a caller-supplied cut range as sponsor-cut"]
+    },
+    {
+      "name": "two-byte characters count as one byte",
+      "file": "packages/text-ingest/src/spans.ts",
+      "find": "else if (code < 0x800) width = 2;",
+      "replace": "else if (code < 0x800) width = 1;",
+      "kills": ["cleanTranscript reports byte offsets, not character offsets, for multibyte text"]
+    }
+  ]
+}

@@ -21,11 +21,14 @@ type BulletSource = (typeof BULLET_SOURCES)[number];
 type BulletState = (typeof BULLET_STATES)[number];
 type Maturity = (typeof MATURITIES)[number];
 type FeedbackType = "helpful" | "harmful";
-/** Where a bullet's evidence lives: a session ref plus a byte offset into its transcript. */
-interface Provenance {
-    sessionRef: string;
-    byteOffset?: number;
-}
+declare const ProvenanceSchema: z.ZodUnion<readonly [z.ZodObject<{
+    sessionRef: z.ZodString;
+    byteOffset: z.ZodOptional<z.ZodNumber>;
+}, z.core.$strip>, z.ZodObject<{
+    noteRef: z.ZodString;
+}, z.core.$strip>]>;
+/** Where a bullet's evidence lives: a session transcript (ref plus byte offset) or a note. */
+type Provenance = z.infer<typeof ProvenanceSchema>;
 interface Bullet {
     id: string;
     content: string;
@@ -99,17 +102,17 @@ declare const addDelta: z.ZodObject<{
     category: z.ZodDefault<z.ZodString>;
     tags: z.ZodDefault<z.ZodArray<z.ZodString>>;
     scope: z.ZodDefault<z.ZodEnum<{
-        global: "global";
-        workspace: "workspace";
-        language: "language";
         framework: "framework";
+        global: "global";
+        language: "language";
         task: "task";
+        workspace: "workspace";
     }>>;
     kind: z.ZodDefault<z.ZodEnum<{
+        anti_pattern: "anti_pattern";
         project_convention: "project_convention";
         stack_pattern: "stack_pattern";
         workflow_rule: "workflow_rule";
-        anti_pattern: "anti_pattern";
     }>>;
     isNegative: z.ZodDefault<z.ZodBoolean>;
     reasoning: z.ZodOptional<z.ZodString>;
@@ -120,17 +123,17 @@ declare const PlaybookDeltaSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     category: z.ZodDefault<z.ZodString>;
     tags: z.ZodDefault<z.ZodArray<z.ZodString>>;
     scope: z.ZodDefault<z.ZodEnum<{
-        global: "global";
-        workspace: "workspace";
-        language: "language";
         framework: "framework";
+        global: "global";
+        language: "language";
         task: "task";
+        workspace: "workspace";
     }>>;
     kind: z.ZodDefault<z.ZodEnum<{
+        anti_pattern: "anti_pattern";
         project_convention: "project_convention";
         stack_pattern: "stack_pattern";
         workflow_rule: "workflow_rule";
-        anti_pattern: "anti_pattern";
     }>>;
     isNegative: z.ZodDefault<z.ZodBoolean>;
     reasoning: z.ZodOptional<z.ZodString>;

@@ -59,6 +59,7 @@ const CALLER_READERS: Record<string, string> = {
   'commands/_task-apply-run.ts': 'applies the draft-promotion write gate to a batch',
   'commands/precedent-search.ts': 'only the owner may widen to precedents no initiative claims; rows go through Shown',
   'commands/precedent-show.ts': 'only the owner may open a precedent no initiative claims; rows go through Shown',
+  'commands/search.ts': 'records who searched in the query log: provenance',
   'commands/set.ts': 'owner-only fields refuse agent writes: a write gate',
   'commands/task-add.ts': 'agent-filed tasks must be drafts: a write gate',
   'commands/task-apply.ts': 'passes the caller to the draft-promotion write gate',

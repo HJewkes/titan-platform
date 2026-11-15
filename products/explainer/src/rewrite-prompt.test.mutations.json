@@ -36,6 +36,15 @@
       "kills": [
         "renderRewritePrompt renders a plain-words note for an added hallmark sentence"
       ]
+    },
+    {
+      "name": "the prompt drops the cuts line",
+      "file": "products/explainer/src/rewrite-prompt.ts",
+      "find": "    ...(cuts ? [`- Cuts: delete each of ${quoted(cuts)}, or fold what it says into a neighbouring sentence; never reword it.`] : []),\n",
+      "replace": "",
+      "kills": [
+        "renderRewritePrompt quotes each cut sentence verbatim and says to delete or fold it, never reword it"
+      ]
     }
   ]
 }

@@ -32,7 +32,7 @@ function makeFakeSpawn(
   const spawnFn = asSpawn((cmd: string, args: string[]) => {
     const call: SpawnCall = { cmd, args };
     calls.push(call);
-    const handlers: Record<string, ((arg?: unknown) => void)[]> = {};
+    const handlers: Record<string, ((arg?: unknown) => void)[] | undefined> = {};
     const child = {
       stderr: { on: () => undefined },
       on: (event: string, cb: (arg?: unknown) => void) => {
@@ -44,11 +44,11 @@ function makeFakeSpawn(
       if (opts.enoent?.(call)) {
         const err = new Error('not found') as NodeJS.ErrnoException;
         err.code = 'ENOENT';
-        handlers.error.forEach((cb) => cb(err));
+        handlers.error?.forEach((cb) => cb(err));
         return;
       }
       const code = opts.exitCodes?.(call) ?? 0;
-      handlers.close.forEach((cb) => cb(code));
+      handlers.close?.forEach((cb) => cb(code));
     });
     return child;
   });
