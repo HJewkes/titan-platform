@@ -151,7 +151,7 @@ describe("the home page", () => {
   it("issues only reads", async () => {
     const called = renderHome(homeSnapshot(), { inApp: true });
     await screen.findByText("OR-7 Route beacons");
-    expect(new Set(called)).toEqual(new Set(["upstreams.health", "work.portfolio", "work.tasks", "agents.queue", "agents.roster", "sessions.list", "inbox.list", "console.build", "blockers.banner"]));
+    expect(new Set(called)).toEqual(new Set(["upstreams.health", "work.portfolio", "work.tasks", "agents.queue", "agents.roster", "sessions.list", "inbox.list", "videos.resolve", "console.build", "blockers.banner"]));
   });
 
   it("shows the inbox's blocking count and its newest three, each opening the inbox", async () => {
@@ -215,5 +215,49 @@ describe("the home page, degraded", () => {
   it("says so when the health command fails", async () => {
     renderHome(homeSnapshot({ health: errorEnvelope("daemon down", 69) }));
     expect(await screen.findByText("Could not load upstream health: daemon down")).toBeTruthy();
+  });
+});
+
+describe("the home page's video of the day", () => {
+  const utcDay = (offsetDays: number): string => new Date(NOW + offsetDays * 24 * HOUR).toISOString().slice(0, 10);
+  const found = (id: string) => ok({ found: true, id });
+  const missed = ok({ found: false, reason: "No current video matches" });
+  const withVideos = (answers: Record<string, JsonEnvelope<unknown>>): Snapshot => {
+    const snapshot = homeSnapshot(quiet());
+    for (const [day, answer] of Object.entries(answers)) snapshot.calls[snapshotKey("videos.resolve", { subject: day })] = answer;
+    return snapshot;
+  };
+  const linkTarget = (): string => (fireEvent.click(screen.getByTestId("home-video-link")), window.location.hash);
+
+  it("links today's video to the theater", async () => {
+    renderHome(withVideos({ [utcDay(0)]: found("vid-today") }), { inApp: true });
+    await screen.findByTestId("home-video-link");
+    expect(linkTarget()).toBe("#/theater/vid-today");
+    expect(screen.getByTestId("home-video-poster").getAttribute("src")).toBe("/media/videos/vid-today/poster");
+  });
+
+  it("falls back to yesterday's video when today has none", async () => {
+    renderHome(withVideos({ [utcDay(0)]: missed, [utcDay(-1)]: found("vid-yesterday") }), { inApp: true });
+    await screen.findByTestId("home-video-link");
+    expect(linkTarget()).toBe("#/theater/vid-yesterday");
+  });
+
+  it("shows one empty line and asks nothing more when both days miss", async () => {
+    const called = renderHome(withVideos({ [utcDay(0)]: missed, [utcDay(-1)]: missed }), { inApp: true });
+    expect(await screen.findByText("No video for today yet.")).toBeTruthy();
+    expect(screen.queryByTestId("home-video-link")).toBeNull();
+    expect(called.filter((name) => name === "videos.resolve")).toHaveLength(2);
+  });
+
+  it("does not ask for yesterday when today is found", async () => {
+    const called = renderHome(withVideos({ [utcDay(0)]: found("vid-today") }), { inApp: true });
+    await screen.findByTestId("home-video-link");
+    expect(called.filter((name) => name === "videos.resolve")).toHaveLength(1);
+  });
+
+  it("shows an error alert and still renders the rest of Home when the resolve fails", async () => {
+    renderHome(withVideos({ [utcDay(0)]: errorEnvelope("catalog unreadable", 1) }), { inApp: true });
+    expect(await screen.findByText("Could not load today's video: catalog unreadable")).toBeTruthy();
+    expect(await screen.findByText("Nothing needs you")).toBeTruthy();
   });
 });
