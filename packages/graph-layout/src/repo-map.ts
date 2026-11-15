@@ -5,7 +5,7 @@ import { computeCompoundLayoutStrict } from "./compound-layout.js";
 import { byText } from "./elk-graph.js";
 import { labelBoxSizing, type LabelMetrics } from "./label-boxes.js";
 import { COMPOUND_LAYOUT_OPTIONS } from "./layout-options.js";
-import { packageOf } from "./package-of.js";
+import { packageOf, packageRootOf } from "./package-of.js";
 import { routeOf } from "./route.js";
 import type { MapBox, MapEdge, MapEdgeSource, MapLayout, MapLevel, MapNode } from "./repo-map-types.js";
 import type { CompoundLayoutResult, GraphInput, NodeSize, Point } from "./types.js";
@@ -75,10 +75,6 @@ const edgeId = (srcId: string, dstId: string): string => `${srcId}->${dstId}`;
 const IMPORTS_ONLY = "imports only";
 const lastSegment = (path: string): string => path.slice(path.lastIndexOf("/") + 1);
 
-function packageRoot(pkg: string, fileId: string): string {
-  return fileId.startsWith(`packages/${pkg}/`) ? `packages/${pkg}` : pkg;
-}
-
 function directoryLabel(dir: string, root: string): string {
   const rel = dir === root ? "" : dir.slice(root.length + 1);
   return rel.replace(/^src(?:\/|$)/, "") || lastSegment(root);
@@ -90,7 +86,7 @@ function groupChain(fileId: string, groups: Map<string, Box>): string[] {
   const chain = [packageId(pkg), directoryId(dir)];
   const kinds = [
     { level: PACKAGE, kind: "package", label: lastSegment(pkg) },
-    { level: DIRECTORY, kind: "directory", label: directoryLabel(dir, packageRoot(pkg, fileId)) },
+    { level: DIRECTORY, kind: "directory", label: directoryLabel(dir, packageRootOf(fileId)) },
   ];
   chain.forEach((id, depth) => {
     if (!groups.has(id)) groups.set(id, { id, chain: chain.slice(0, depth), ...kinds[depth]! });
