@@ -5,6 +5,7 @@ export { SCRIPT_CALL_USD, StageFailure, scriptPrompt, type HarnessFor, type Runn
 export { RunPlanSchema, SpendCapStop, VIDEO_WORKFLOW, VIDEO_WORKFLOW_VERSION, videoWorkflow, type RunPlan } from "./pipeline.js";
 export { CACHED_STAGES, RUN_INPUTS, STAGES, StageRecordSchema, type CachedStage, type Check, type StageName, type StageRecord, type StageUsage, type Stop } from "./records.js";
 export { buildReport, compareReports, renderCompare, renderReport, stageRecords, type CompareRow, type LinkedRun, type ReportRow, type RunReport, type StageStatus } from "./report.js";
+export { foldVideoReport, type StageSum, type StepSum, type VideoReport, type VideoRunRow, type VideoStageRow } from "./video-report.js";
 export { runPaths, type RunPaths } from "./run-dir.js";
 export { runRunCli, type RunCliDeps } from "./run-cli.js";
 export { ChildStageFailure, StageRunStore, runStageCached, stageRunsMigration } from "./stage-cache.js";

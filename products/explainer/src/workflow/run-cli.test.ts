@@ -1,6 +1,6 @@
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { usePreCalibrationStatuses } from "../writing-statuses-fixtures.test-helpers.js";
-import { cpSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { runRunCli } from "./run-cli.js";
 import { z } from "zod";
@@ -11,7 +11,8 @@ import type { ScriptV1 } from "../script-schema.js";
 import { StageRecordSchema } from "./records.js";
 import { runStageCli } from "./stage-cli.js";
 
-const ReportRowsSchema = z.object({ rows: z.array(z.object({ stage: z.string(), outputs: z.record(z.string(), z.string()) })) });
+const VideoReportSchema = z.object({ videoId: z.string(), runs: z.array(z.object({ runId: z.string(), usd: z.number() })), totals: z.object({ usd: z.number() }) });
+const ReportRowsSchema =z.object({ rows: z.array(z.object({ stage: z.string(), outputs: z.record(z.string(), z.string()) })) });
 import { cloneFixture, dropSeeds, fakeRender, fakeBriefModels, fakeHost, fakeScriptModel, fixture, l0Check, seededRun, type Fixture } from "./run-fakes.test-helpers.js";
 
 // The rewrite stage's tests need a choppy draft the rewrite acts on, whatever the shipped status table says (TP-4662).
@@ -48,6 +49,34 @@ describe("explainer run CLI", () => {
     expect(code).toBe(0);
     expect(reportCode).toBe(0);
     expect(out.join("")).toContain("| tts | ran | in-process |");
+  });
+
+  it("`run report --video` prints the video's folded cost report as JSON and writes no report file", async () => {
+    fx = fixture();
+    const { run, out } = cli(fakeHost(fx, fakeScriptModel(), fakeRender()));
+    await run("--spine", fx.spine, "--facts", fx.facts);
+    const runId = /^run (\S+): completed/.exec(out[0] ?? "")?.[1];
+    out.length = 0;
+    rmSync(path.join(fx.dataDir, "runs", runId!, "run-report.json"));
+
+    const code = await run("report", "--video", runId!, "--json");
+
+    const report = VideoReportSchema.parse(JSON.parse(out.join("")));
+    expect(code).toBe(0);
+    expect(report.videoId).toBe(runId);
+    expect(report.runs.map((r) => r.runId)).toEqual([runId]);
+    expect(report.totals.usd).toBeCloseTo(report.runs[0]!.usd, 10);
+    expect(existsSync(path.join(fx.dataDir, "runs", runId!, "run-report.json"))).toBe(false);
+  });
+
+  it("`run report --video` exits 2 on a video no run belongs to", async () => {
+    fx = fixture();
+    const { run, err } = cli(fakeHost(fx, fakeScriptModel(), fakeRender()));
+
+    const code = await run("report", "--video", "no-such-video", "--json");
+
+    expect(code).toBe(2);
+    expect(err.join("")).toContain("no explainer-video run belongs to video no-such-video");
   });
 
   it("exits 1 on a stopped run and prints how to resume it", async () => {

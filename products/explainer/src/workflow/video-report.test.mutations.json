@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a reused stage's child run is counted again",
+      "file": "products/explainer/src/workflow/video-report.ts",
+      "find": "status === \"reused\" || status === \"cached\" || !record.childRunId",
+      "replace": "!record.childRunId",
+      "kills": [
+        "foldVideoReport folds two runs where the second reuses the first's script: reused stage counts zero and sums equal the runs' own spend"
+      ]
+    },
+    {
+      "name": "a step's unpriced flag is dropped",
+      "file": "products/explainer/src/workflow/video-report.ts",
+      "find": "costUnknown: sum.costUnknown || result.usage.costUnknown === true",
+      "replace": "costUnknown: sum.costUnknown",
+      "kills": [
+        "foldVideoReport marks the run, the stage and the video total costUnknown when a step had no price"
+      ]
+    },
+    {
+      "name": "the video total ignores unpriced runs",
+      "file": "products/explainer/src/workflow/video-report.ts",
+      "find": "costUnknown: rows.some((r) => r.costUnknown) },",
+      "replace": "costUnknown: false },",
+      "kills": [
+        "foldVideoReport marks the run, the stage and the video total costUnknown when a step had no price"
+      ]
+    },
+    {
+      "name": "an empty video folds to an empty report instead of throwing",
+      "file": "products/explainer/src/workflow/video-report.ts",
+      "find": "if (runs.length === 0) throw new Error(`no ${VIDEO_WORKFLOW} run belongs to video ${videoId}`);",
+      "replace": "",
+      "kills": [
+        "foldVideoReport throws for a video id no run belongs to"
+      ]
+    },
+    {
+      "name": "a step's agent ids are not collected",
+      "file": "products/explainer/src/workflow/video-report.ts",
+      "find": "if (result.agentId) sum.agents.add(result.agentId);",
+      "replace": "",
+      "kills": [
+        "foldVideoReport folds two runs where the second reuses the first's script: reused stage counts zero and sums equal the runs' own spend"
+      ]
+    }
+  ]
+}
