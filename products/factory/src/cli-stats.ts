@@ -27,6 +27,7 @@ import { shepherdStats, type StatsRange, type StatsRow } from "./shepherd/stats.
 import { formatReviewShadow, reviewShadowStats } from "./shepherd/review-shadow-stats.js";
 import { claudeTranscripts, formatReviewCost, reviewCost } from "./shepherd/stats-cost.js";
 import { formatRedAfterMerge, redAfterMerge } from "./shepherd/stats-quality.js";
+import { formatNits, nitStats, NIT_POLICY_MERGED } from "./shepherd/nit-stats.js";
 import { shadowsIn } from "./shepherd/train-shadow.js";
 import { formatTrainShadow, trainShadowStats } from "./shepherd/train-shadow-stats.js";
 import { evaluateSlo, formatSlo, readRegistry } from "./shepherd/slo.js";
@@ -40,6 +41,7 @@ interface StatsOpts {
   json?: boolean;
   cost?: boolean;
   rereviews?: boolean;
+  nits?: boolean;
   reviewShadow?: boolean;
   failures?: boolean;
   slo?: boolean;
@@ -170,6 +172,11 @@ function sloReport(entry: MetricsEntryRead, db: ReturnType<typeof openDatabase>,
   return evaluateSlo(entry, base, { from: opts.from, to: opts.to }).then((results) => (opts.json ? `${JSON.stringify({ slo: results }, null, 2)}\n` : formatSlo(results)));
 }
 
+function nitsReport(runs: readonly WorkflowRun[], range: StatsRange, json: boolean | undefined): string {
+  const stats = nitStats(runs, Date.parse(NIT_POLICY_MERGED), range);
+  return json ? `${JSON.stringify({ nits: stats }, null, 2)}\n` : `${formatNits(stats).join("\n")}\n`;
+}
+
 function shadowReport(runs: readonly WorkflowRun[], range: StatsRange, json: boolean | undefined): string {
   const rows = reviewShadowStats(runs, range);
   return json ? `${JSON.stringify({ reviewShadow: rows }, null, 2)}\n` : formatReviewShadow(rows);
@@ -181,6 +188,7 @@ function statsReport(db: ReturnType<typeof openDatabase>, opts: StatsOpts, now: 
   const runs = shepherdRuns(db);
   const causes = reviewCauseStats(runs, range);
   if (opts.rereviews) return causesReport(causes, opts.json);
+  if (opts.nits) return nitsReport(runs, range, opts.json);
   if (opts.reviewShadow) return shadowReport(runs, range, opts.json);
   const rows = shepherdStats(runs, range);
   const friction = ownerFriction(readAllGates(db), now, range);
@@ -239,6 +247,7 @@ export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () =
     .option("--rows", "with --reviews --json: also print every review row")
     .option("--since-scoped <date>", "with --reviews: split fix rounds before and after this day, YYYY-MM-DD (UTC); default the first scoped round")
     .option("--rereviews", "print only the review dispatches per repo and ISO week, counted by why each was dispatched")
+    .option("--nits", "print only, per ISO week, the share of kept verdict text under Nit, Pre-existing or cosmetic headings and the low-severity cosmetic follow-ups filed, with before and after rows for the nit policy (TP-6471)")
     .option("--review-shadow", "print only review-workflow's shadow per repo and ISO week (review.workflow: shadow): heads, shadow rounds, would-actions, heads sent to the fixer by round 2, and heads it would have stopped that then merged")
     .option("--slo", "instead: each metric in metrics/shepherd.yml with its value over its SLO window (or --from/--to), its SLO, and pass or fail")
     .option("--registry <file>", "the titan.metrics/v1 entry --slo reads (default: this checkout's metrics/shepherd.yml)")
