@@ -3,6 +3,8 @@ import type { AggregateScore, PairScore } from "./metrics.js";
 import { aggregate, scorePair } from "./metrics.js";
 import type { Arm, EvalPair, LabelScope } from "./pairs.js";
 import { LABEL_SCOPES, scopePair } from "./pairs.js";
+import type { Mutation } from "./query/mutate.js";
+import { mutateQuery } from "./query/mutate.js";
 import type { QueryVariant } from "./query/variants.js";
 import { deriveQuery, documentFrequency } from "./query/variants.js";
 
@@ -16,16 +18,21 @@ export interface RunRow {
   arm: Arm;
   candidate: string;
   variant: QueryVariant;
+  /** Absent on an unmutated row, so a default run's output is unchanged. */
+  mutation?: Mutation;
   scope: LabelScope;
   score: AggregateScore;
   /** Queries the candidate threw on, counted rather than hidden. */
   errors: number;
+  /** Queries with no term long enough to mutate; present only on a mutated row. */
+  skipped?: number;
 }
 
 export interface RunOptions {
   pairs: EvalPair[];
   candidates: Candidate[];
   variants: QueryVariant[];
+  mutations?: Mutation[];
   ks?: number[];
   limit?: number;
   onProgress?: (done: number, total: number) => void;
@@ -37,13 +44,16 @@ export async function runEval(options: RunOptions): Promise<RunRow[]> {
   const df = documentFrequency(options.pairs.map((pair) => pair.query));
   const rows: RunRow[] = [];
   let done = 0;
-  const total = arms(options.pairs).length * options.candidates.length * options.variants.length;
+  const mutations = options.mutations ?? ["none"];
+  const total = arms(options.pairs).length * options.candidates.length * options.variants.length * mutations.length;
   for (const arm of arms(options.pairs)) {
     const armPairs = options.pairs.filter((pair) => pair.arm === arm);
     for (const candidate of options.candidates) {
       for (const variant of options.variants) {
-        rows.push(...(await scoreCell({ arm, armPairs, candidate, variant, df, ks, limit })));
-        options.onProgress?.(++done, total);
+        for (const mutation of mutations) {
+          rows.push(...(await scoreCell({ arm, armPairs, candidate, variant, mutation, df, ks, limit })));
+          options.onProgress?.(++done, total);
+        }
       }
     }
   }
@@ -59,6 +69,7 @@ interface ScoreOneInput {
   armPairs: EvalPair[];
   candidate: Candidate;
   variant: QueryVariant;
+  mutation: Mutation;
   df: Map<string, number>;
   ks: number[];
   limit: number;
@@ -68,8 +79,11 @@ interface ScoreOneInput {
 async function scoreCell(input: ScoreOneInput): Promise<RunRow[]> {
   const scores = new Map<LabelScope, PairScore[]>(LABEL_SCOPES.map((scope) => [scope, []]));
   let errors = 0;
+  let skipped = 0;
   for (const pair of input.armPairs) {
-    const query = deriveQuery(input.variant, pair.query, input.df);
+    const mutated = mutateQuery(deriveQuery(input.variant, pair.query, input.df), input.df, input.mutation, pair.id);
+    if (mutated.skipped) skipped++;
+    const query = mutated.query;
     const context = { arm: pair.arm, ...(pair.provenance.initiative ? { initiative: pair.provenance.initiative } : {}) };
     const hits = await safeSearch(input.candidate, query, input.limit, context);
     if (hits === undefined) {
@@ -85,6 +99,7 @@ async function scoreCell(input: ScoreOneInput): Promise<RunRow[]> {
     arm: input.arm,
     candidate: input.candidate.name,
     variant: input.variant,
+    ...(input.mutation === "none" ? {} : { mutation: input.mutation, skipped }),
     scope,
     score: aggregate(scores.get(scope)!, input.ks),
     errors,
@@ -109,7 +124,10 @@ async function safeSearch(candidate: Candidate, query: string, limit: number, co
 }
 
 export function formatRows(rows: RunRow[], ks: number[] = DEFAULT_KS): string {
-  const header = ["arm", "scope", "candidate", "variant", "pairs", ...ks.flatMap((k) => [`R@${k}`, `P@${k}`]), "MRR", `chars@${BUDGET_K}`, "err"];
+  const mutated = rows.some((row) => row.mutation !== undefined);
+  const metrics = ks.flatMap((k) => [`R@${k}`, `P@${k}`]);
+  const header = ["arm", "scope", "candidate", "variant", ...(mutated ? ["mutation"] : []), "pairs", ...metrics, "MRR"];
+  header.push(`chars@${BUDGET_K}`, "err", ...(mutated ? ["skipped"] : []));
   const lines = [header.join("\t")];
   for (const row of rows) {
     lines.push(
@@ -118,11 +136,13 @@ export function formatRows(rows: RunRow[], ks: number[] = DEFAULT_KS): string {
         row.scope,
         row.candidate,
         row.variant,
+        ...(mutated ? [row.mutation ?? "none"] : []),
         String(row.score.pairs),
         ...ks.flatMap((k) => [fixed(row.score.recallAt[k]), fixed(row.score.precisionAt[k])]),
         fixed(row.score.mrr),
         Math.round(row.score.meanInjectedChars).toString(),
         String(row.errors),
+        ...(mutated ? [String(row.skipped ?? 0)] : []),
       ].join("\t"),
     );
   }

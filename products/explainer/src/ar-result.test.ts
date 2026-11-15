@@ -106,7 +106,7 @@ describe("arResultFor", () => {
       }),
     );
 
-    expect(result.violations).toEqual({ l0_errors: 2, number_invented: 2, fact_outside_selection: 1, judge_canary_failed: 1 });
+    expect(result.violations).toEqual({ l0_error_rows: 2, number_invented: 2, fact_outside_selection: 1, judge_canary_failed: 1 });
     expect(result.gates["l0.pass"]).toBe(false);
     expect(arResultFor(input()).gates["l0.pass"]).toBe(true);
   });

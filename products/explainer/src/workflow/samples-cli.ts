@@ -1,9 +1,10 @@
 import { readFileSync } from "node:fs";
 import { Command, CommanderError, InvalidArgumentError, Option } from "commander";
 import { readFloor } from "../aa-floor.js";
-import { JudgeConfigSchema } from "../eval-harness.js";
+import { createJudgeHarness, JudgeConfigSchema, type JudgeConfig, type JudgeHarness } from "../eval-harness.js";
 import { measureTable, summarizeMeasure } from "../rewrite-measure.js";
 import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
+import { gradeScript, runArResults, type ArGrade, type ArOutcome } from "./ar-result.js";
 import { ArtifactStore } from "./artifacts.js";
 import { DEFAULT_BUDGET_USD, DEFAULT_SCRIPT_MODEL, openState, runOneStage, type RunHost } from "./host.js";
 import type { CachedStage } from "./records.js";
@@ -84,9 +85,52 @@ interface AbFlags extends SampleSettings {
   floor?: string;
   maxUsd?: number;
   json?: boolean;
+  arResult?: boolean;
+}
+
+/** Grades a script read from the artifact store. */
+const storedGrader = (host: RunHost, judge: JudgeConfig, harness: JudgeHarness) => (sha: string): Promise<ArGrade> => {
+  const db = openState(host.dataDir);
+  try {
+    return gradeScript(new ArtifactStore(host.dataDir, db).readText(sha), sha, judge, harness);
+  } finally {
+    db.close();
+  }
+};
+
+/** What the arms before this one spent and their dearest run, which the cap counts. */
+const priorOf = (outcomes: readonly ArOutcome[]): { spentUsd: number; dearestUsd: number } => ({
+  spentUsd: outcomes.reduce((sum, outcome) => sum + outcome.spentUsd, 0),
+  dearestUsd: Math.max(0, ...outcomes.map((outcome) => outcome.dearestUsd)),
+});
+
+/** One ar-result/v2 line per case and repeat for each arm, its repeat prefixed `a-` or `b-`; exit 0 when every run made its script. */
+async function runArAb(flags: AbFlags, host: RunHost, out: (text: string) => void, err: (text: string) => void): Promise<number> {
+  if (flags.stage !== "script") throw new InvalidArgumentError(`--ar-result scores the script stage; got ${flags.stage}`);
+  if (!flags.judge) throw new InvalidArgumentError("--ar-result needs --judge: the cold viewer is a judge call");
+  const judge = JudgeConfigSchema.parse(JSON.parse(readFileSync(flags.judge, "utf8")));
+  const harness = createJudgeHarness(judge);
+  const [a = CHAMPION, b = CHAMPION] = flags.variants;
+  const cases = loadCases(flags.cases, flags.split === "all" ? undefined : flags.split);
+  const outcomes: ArOutcome[] = [];
+  for (const [arm, variant] of [["a", a], ["b", b]] as const) {
+    const base = sampleEnv("script", flags, host, variant, err);
+    const grade = storedGrader(host, judge, harness);
+    const prior = priorOf(outcomes);
+    const first = arm === "b" && a === b ? flags.samples : 0;
+    const cap = flags.maxUsd === undefined ? {} : { maxUsd: flags.maxUsd };
+    const outcome = await runArResults({ cases, repeats: flags.samples, first, rung: "script", prior, ...cap }, { ...base, grade });
+    for (const line of outcome.lines) out(`${JSON.stringify({ ...line, repeat: `${arm}-${line.repeat}` })}\n`);
+    for (const failure of outcome.failed) err(`ab: ${failure}\n`);
+    if (outcome.stopped) err(`ab: stopped: ${outcome.stopped}\n`);
+    outcomes.push(outcome);
+    if (outcome.stopped) break;
+  }
+  return outcomes.some((outcome) => outcome.stopped || outcome.failed.length > 0) ? 1 : 0;
 }
 
 async function runAb(flags: AbFlags, host: RunHost, out: (text: string) => void, err: (text: string) => void): Promise<number> {
+  if (flags.arResult) return runArAb(flags, host, out, err);
   const stage = sampledStage(flags.stage);
   const [a = CHAMPION, b = CHAMPION] = flags.variants;
   const cases = loadCases(flags.cases, flags.split === "all" ? undefined : flags.split);
@@ -119,7 +163,8 @@ function abCommand(deps: RunCliDeps, out: (text: string) => void, err: (text: st
     .option("--split <split>", 'the case split to run, or "all"', "dev")
     .option("--samples <n>", "samples per case and arm", sampleCount, 3)
     .option("--floor <file>", "an A/A floor (aa-floor.json, or the unit directory holding it) whose σ judges the difference; default: the arms' own pooled σ")
-    .option("--json", "print the comparison, both summaries and every run as JSON"))
+    .option("--json", "print the comparison, both summaries and every run as JSON")
+    .option("--ar-result", "print one ar-result/v2 JSON line per case and repeat (script stage; needs --judge for the cold viewer) instead of the tables"))
     .exitOverride()
     .action(async (flags: AbFlags) => {
       if (flags.variants.length !== 2) throw new InvalidArgumentError(`--variants takes exactly two, A then B; got ${flags.variants.length}`);
