@@ -476,7 +476,7 @@ interface SkillSummary {
     name: string;
     description: string;
 }
-type MemoryDestination = `skill:${string}` | `new-skill:${string}` | "charter" | `claude-md:${string}` | "delete";
+type MemoryDestination = `skill:${string}` | `new-skill:${string}` | "charter" | "config" | `reference:${string}` | `claude-md:${string}` | "delete";
 interface DestinationProposal {
     destination: MemoryDestination;
     reason: string;
