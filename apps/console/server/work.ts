@@ -47,6 +47,7 @@ const taskRow = z.object({
   severity: severity.optional(),
   estimate: z.number().optional(),
   tags: z.array(z.string()).optional(),
+  owner_steps: z.array(z.object({ kind: z.string(), note: z.string() })).optional(),
   updated: z.string(),
 });
 
@@ -90,8 +91,8 @@ const TASK_LIMIT = 200;
 
 /** The list fields only: notes and done_when stay out of a page that shows a table. */
 export function taskRowOf(task: WireTask): z.infer<typeof taskRow> {
-  const { slug, id, title, priority, severity, estimate, tags, updated } = task;
-  return { slug, id, title, priority, ...(severity ? { severity } : {}), ...(estimate !== undefined ? { estimate } : {}), ...(tags ? { tags } : {}), updated };
+  const { slug, id, title, priority, severity, estimate, tags, owner_steps, updated } = task;
+  return { slug, id, title, priority, ...(severity ? { severity } : {}), ...(estimate !== undefined ? { estimate } : {}), ...(tags ? { tags } : {}), ...(owner_steps ? { owner_steps } : {}), updated };
 }
 
 /** Fails closed twice: when active-work could not say which initiatives are human-only, and when the inventory does not name this one. */
