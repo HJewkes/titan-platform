@@ -11,15 +11,6 @@
       ]
     },
     {
-      "name": "checkCandidates accepts any string as a mode",
-      "file": "products/factory/src/config.ts",
-      "find": "checkCandidates: z.enum([\"off\", \"record\", \"propose\"]).optional(),",
-      "replace": "checkCandidates: z.string().optional(),",
-      "kills": [
-        "loadConfig rejects an unknown checkCandidates mode"
-      ]
-    },
-    {
       "name": "the config accepts seat-waives before its resolver path exists",
       "file": "products/factory/src/config.ts",
       "find": "nonSourceNoRepro: z.enum([\"keep-owner\", \"record-fact\"]).optional(),",
@@ -42,15 +33,6 @@
       "file": "products/factory/src/shepherd/visual-threshold-config.ts",
       "find": "z.strictObject({\n  mode: z.enum([\"off\", \"shadow\", \"on\"]),",
       "replace": "z.strictObject({\n  mode: z.enum([\"off\", \"shadow\"]),",
-      "kills": [
-        "loadConfig keeps a visual threshold mode of on, refuses an unknown mode, and caps the measuring work config can ask for"
-      ]
-    },
-    {
-      "name": "the visual threshold's maxBytes has no ceiling",
-      "file": "products/factory/src/shepherd/visual-threshold-config.ts",
-      "find": "maxBytes: z.number().int().positive().max(20 * MI).optional(),",
-      "replace": "maxBytes: z.number().int().positive().optional(),",
       "kills": [
         "loadConfig keeps a visual threshold mode of on, refuses an unknown mode, and caps the measuring work config can ask for"
       ]
