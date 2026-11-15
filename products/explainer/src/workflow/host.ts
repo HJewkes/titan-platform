@@ -121,7 +121,8 @@ export interface RunOutcome {
 /** A high runaway backstop, not a per-video budget (owner answer Q3 A). */
 export const DEFAULT_BUDGET_USD = 20;
 export const DEFAULT_SCRIPT_MODEL = "sonnet";
-export const DEFAULT_JUDGE: JudgeConfig = JudgeConfigSchema.parse({ provider: "claude-print", model: "sonnet" });
+/** A judge from another model family than the script model: a model scoring its own writing favours it (PR-13 self-preference). */
+export const DEFAULT_JUDGE: JudgeConfig = JudgeConfigSchema.parse({ provider: "codex", model: "gpt-5.5" });
 const DEFAULT_LEASE_MS = 120_000;
 
 export function openState(dataDir: string): Db {
@@ -149,9 +150,12 @@ function buildPlan(request: RunRequest, db: Db, store: ArtifactStore, dataDir: s
   const gather = request.gather ?? basePlan?.gather;
   // A replay keeps its base run's video type, else tts falls back to the default voice and every beat stretches (TP-4622).
   const profile = request.profile ?? request.gather?.type ?? basePlan?.profile;
+  const scriptModel = request.scriptModel ?? DEFAULT_SCRIPT_MODEL;
+  const judge = request.judge ?? DEFAULT_JUDGE;
+  if (judge.model === scriptModel) throw new Error(`the judge must differ from the writer: script model "${scriptModel}" and judge "${judge.model}" are the same model`);
   const settings = {
-    budgetUsd: request.budgetUsd ?? DEFAULT_BUDGET_USD, scriptModel: request.scriptModel ?? DEFAULT_SCRIPT_MODEL,
-    judge: request.judge ?? DEFAULT_JUDGE, rounds: request.rounds ?? MAX_REWRITE_ROUNDS,
+    budgetUsd: request.budgetUsd ?? DEFAULT_BUDGET_USD, scriptModel,
+    judge, rounds: request.rounds ?? MAX_REWRITE_ROUNDS,
     variants: storeVariants(request, store), samples: request.samples ?? {}, ...(profile ? { profile } : {}),
     ...(gather ? { gather } : {}), ...(request.theater ? { theater: request.theater } : {}),
   };
