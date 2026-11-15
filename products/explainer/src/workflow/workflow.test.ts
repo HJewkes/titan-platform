@@ -461,7 +461,7 @@ describe("the render stage", () => {
     const { fx: seed, result } = await seededRun();
 
     expect(Object.keys(row(result, "render").outputs).sort()).toEqual(["mp4", "page", "render-manifest", "timeline", "vtt"]);
-    expect(row(result, "render")).toMatchObject({ checks: "27 pass, 0 gate fail, 1 reported fail" });
+    expect(row(result, "render")).toMatchObject({ checks: "28 pass, 0 gate fail, 2 reported fail" });
     expect(existsSync(path.join(seed.theater, "demo.mp4"))).toBe(true);
   });
 });
