@@ -8,7 +8,6 @@ import { createRosterReader, mutating } from "./roster.js";
 import type { CleanupAgents, CleanupTasks, RosterReader, TaskState } from "./ports.js";
 
 const DEFAULT_AGENT_CHAT_TIMEOUT_MS = 30_000;
-const DEFAULT_ACTIVE_WORK_PORT = 7400;
 
 export interface AgentChatCalls {
   listAgents: typeof listAgents;
@@ -39,12 +38,6 @@ type ActiveWorkCommands = {
   "task.edit": { args: { slug: string; id: string; field: "notes" | "done_when" | "status"; value: string; force?: boolean } | { slug: string; id: string; add_tag: string }; result: unknown };
   "task.done": { args: { slug: string; id: string }; result: unknown };
 };
-
-/** The active-work daemon's own port rule: `AW_PORT` when it parses, else 7400. */
-export function activeWorkOrigin(env: NodeJS.ProcessEnv): string {
-  const port = Number.parseInt(env.AW_PORT ?? "", 10);
-  return `http://127.0.0.1:${Number.isFinite(port) ? port : DEFAULT_ACTIVE_WORK_PORT}`;
-}
 
 /** Tasks over the active-work daemon's loopback rpc; it has no `task.show`, so a task's state is read from its initiative's list. */
 export function activeWorkTasks(options: { origin: string; fetch?: typeof fetch }): CleanupTasks {

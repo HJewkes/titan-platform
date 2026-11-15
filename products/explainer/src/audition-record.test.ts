@@ -43,7 +43,7 @@ describe("audition record", () => {
   it("a skipped row leaves the rubric instead of standing as a void score", () => {
     const skipped = skippedRows(rubricCandidate("c1", SPINE));
 
-    expect(withoutSkipped(RUBRIC, skipped)!.dims.map((d) => d.dim)).toEqual(["J8", "J9", "J10", "J11"]);
+    expect(withoutSkipped(RUBRIC, skipped)!.dims.map((d) => d.dim)).toEqual(["J8", "J9", "J10", "J11", "J13"]);
     expect(withoutSkipped(RUBRIC, [])).toEqual(RUBRIC);
     expect(withoutSkipped(null, skipped)).toBeNull();
   });
