@@ -1,4 +1,4 @@
-import type { ActiveWork, ReadName, ReadResult } from "./active-work.js";
+import type { ActiveWork, ReadName, ReadResult, WriteName, WriteResult } from "./active-work.js";
 import type { Invalidation } from "./invalidation.js";
 import { cachedReads, stableJson, type CacheTimes } from "./read-cache.js";
 
@@ -46,15 +46,14 @@ export function cachedActiveWork(inner: ActiveWork, invalidation?: Invalidation,
     return CACHED.has(command) ? cache.read({ command, args }) : inner.read(command, args);
   }
   if (inner.write === undefined) return { read };
-  const write = inner.write.bind(inner);
+  const innerWrite = inner.write.bind(inner);
   // A write moves the tree, so the next read must not be served the answer from before it.
-  const through: ActiveWork = {
-    read,
-    async write(command, args) {
-      const answer = await write(command, args);
-      cache.stale();
-      return answer;
-    },
-  };
-  return through;
+  async function write(command: "loop.tier", args: Record<string, unknown>): Promise<WriteResult<"loop.tier">>;
+  async function write(command: "task.done" | "task.edit", args: Record<string, unknown>): Promise<WriteResult<"task.done">>;
+  async function write(command: WriteName, args: Record<string, unknown>): Promise<WriteResult<WriteName>> {
+    const answer = command === "loop.tier" ? await innerWrite(command, args) : await innerWrite(command, args);
+    cache.stale();
+    return answer;
+  }
+  return { read, write };
 }
