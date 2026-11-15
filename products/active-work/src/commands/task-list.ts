@@ -1,29 +1,31 @@
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
-import { z } from 'zod';
-import { defineCommand } from '../registry/index.js';
-import { TaskSchema, type Task } from '../schemas/task.js';
-import { getActiveRoot, getInitiativeDir } from '../utils/paths.js';
-import { mapConcurrent } from '../utils/map-concurrent.js';
-import { readYaml } from '../utils/yaml-io.js';
-import { UsageError } from '../errors.js';
-import { listSlugsForCaller } from '../sessions/visibility.js';
-import { closedStatusIds, loadCategoryRegistry } from './_categories.js';
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import { z } from "zod";
+import { defineCommand } from "../registry/index.js";
+import { TaskSchema, type Task } from "../schemas/task.js";
+import { getActiveRoot, getInitiativeDir } from "../utils/paths.js";
+import { mapConcurrent } from "../utils/map-concurrent.js";
+import { readYaml } from "../utils/yaml-io.js";
+import { UsageError } from "../errors.js";
+import { listSlugsForCaller } from "../sessions/visibility.js";
+import { closedStatusIds, loadCategoryRegistry } from "./_categories.js";
 
 // No schema default: buildFilter picks it, because the default depends on --id. The values a root
 // accepts depend on its category registry, so run() checks them, not the schema.
 const StatusFilter = z.string().min(1);
 
-const BUILT_IN_STATUS_IDS = ['open', 'done'];
+const BUILT_IN_STATUS_IDS = ["open", "done"];
 
 const ArgsSchema = z.object({
   slug: z.string().min(1).optional(),
   all_initiatives: z.boolean().optional(),
   tag: z.string().optional(),
-  severity: z.enum(['critical', 'high', 'medium', 'low']).optional(),
+  severity: z.enum(["critical", "high", "medium", "low"]).optional(),
   status: StatusFilter.optional(),
   id: z.string().min(1).optional(),
   search: z.string().min(1).optional(),
+  due_before: z.string().min(1).optional(),
+  sort: z.enum(["priority", "due"]).optional(),
 });
 
 type Args = z.infer<typeof ArgsSchema>;
@@ -37,7 +39,7 @@ const ResultSchema = z.object({
 type Result = z.infer<typeof ResultSchema>;
 
 function isMissing(err: unknown): boolean {
-  return err instanceof Error && 'code' in err && err.code === 'ENOENT';
+  return err instanceof Error && "code" in err && err.code === "ENOENT";
 }
 
 interface CachedTask {
@@ -61,9 +63,9 @@ interface SlugListing {
 }
 
 async function listTaskFiles(slug: string): Promise<SlugListing> {
-  const dir = path.join(getInitiativeDir(slug), 'tasks');
+  const dir = path.join(getInitiativeDir(slug), "tasks");
   try {
-    const files = (await fs.readdir(dir)).filter((f) => f.endsWith('.yml'));
+    const files = (await fs.readdir(dir)).filter((f) => f.endsWith(".yml"));
     return { slug, dir, files };
   } catch (err) {
     if (!isMissing(err)) throw err;
@@ -74,7 +76,7 @@ async function listTaskFiles(slug: string): Promise<SlugListing> {
 
 async function loadCachedTask(
   filePath: string,
-  previous: CachedTask | undefined,
+  previous: CachedTask | undefined
 ): Promise<CachedTask | undefined> {
   let stat;
   try {
@@ -84,7 +86,11 @@ async function loadCachedTask(
     throw err;
   }
   const { mtimeMs, size, ino } = stat;
-  if (previous?.mtimeMs === mtimeMs && previous.size === size && previous.ino === ino) {
+  if (
+    previous?.mtimeMs === mtimeMs &&
+    previous.size === size &&
+    previous.ino === ino
+  ) {
     return previous;
   }
   return { mtimeMs, size, ino, task: await readYaml(filePath, TaskSchema) };
@@ -92,12 +98,12 @@ async function loadCachedTask(
 
 async function loadListing(
   listing: SlugListing,
-  keep: (t: Task) => boolean,
+  keep: (t: Task) => boolean
 ): Promise<TaskWithSlug[]> {
   const previous = parsedByDir.get(listing.dir);
   const current = new Map<string, CachedTask>();
   const entries = await mapConcurrent(listing.files, READ_CONCURRENCY, (file) =>
-    loadCachedTask(path.join(listing.dir, file), previous?.get(file)),
+    loadCachedTask(path.join(listing.dir, file), previous?.get(file))
   );
   const tasks: TaskWithSlug[] = [];
   entries.forEach((entry, i) => {
@@ -113,7 +119,8 @@ function forgetMissingInitiatives(listings: SlugListing[]): void {
   const listed = new Set(listings.map((l) => l.dir));
   const root = getActiveRoot();
   for (const dir of parsedByDir.keys()) {
-    if (path.dirname(path.dirname(dir)) === root && !listed.has(dir)) parsedByDir.delete(dir);
+    if (path.dirname(path.dirname(dir)) === root && !listed.has(dir))
+      parsedByDir.delete(dir);
   }
 }
 
@@ -121,73 +128,125 @@ function parseIds(raw: string | undefined): Set<string> | undefined {
   if (raw === undefined) return undefined;
   return new Set(
     raw
-      .split(',')
+      .split(",")
       .map((id) => id.trim())
-      .filter((id) => id.length > 0),
+      .filter((id) => id.length > 0)
   );
 }
 
-async function assertKnownStatus(activeRoot: string, status: string): Promise<void> {
-  if (status === 'all' || status === 'closed' || BUILT_IN_STATUS_IDS.includes(status)) return;
+async function assertKnownStatus(
+  activeRoot: string,
+  status: string
+): Promise<void> {
+  if (
+    status === "all" ||
+    status === "closed" ||
+    BUILT_IN_STATUS_IDS.includes(status)
+  )
+    return;
   const registry = await loadCategoryRegistry(activeRoot);
-  const allowed = registry ? registry.status.map((s) => s.id) : BUILT_IN_STATUS_IDS;
+  const allowed = registry
+    ? registry.status.map((s) => s.id)
+    : BUILT_IN_STATUS_IDS;
   if (allowed.includes(status)) return;
   throw new UsageError(
-    `Unknown status: ${status} (allowed: ${[...allowed, 'closed', 'all'].join(', ')})`,
+    `Unknown status: ${status} (allowed: ${[...allowed, "closed", "all"].join(
+      ", "
+    )})`
   );
 }
 
-function statusMatcher(status: string, closed: ReadonlySet<string>): (t: Task) => boolean {
-  if (status === 'all') return () => true;
-  if (status === 'closed') return (t) => closed.has(t.status);
+function statusMatcher(
+  status: string,
+  closed: ReadonlySet<string>
+): (t: Task) => boolean {
+  if (status === "all") return () => true;
+  if (status === "closed") return (t) => closed.has(t.status);
   return (t) => t.status === status;
+}
+
+function parseDueBefore(raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined;
+  if (!TaskSchema.shape.due.safeParse(raw).success) {
+    throw new UsageError(
+      `Invalid --due-before date: ${raw} (expected YYYY-MM-DD)`
+    );
+  }
+  return raw;
+}
+
+// Undated tasks sort after every dated one; priority breaks ties.
+function compareByDue(a: Task, b: Task): number {
+  if (a.due !== b.due) {
+    if (!a.due) return 1;
+    if (!b.due) return -1;
+    return a.due < b.due ? -1 : 1;
+  }
+  return a.priority - b.priority;
 }
 
 async function buildFilter(args: Args): Promise<(t: Task) => boolean> {
   const ids = parseIds(args.id);
   // Asking for ids by name should not hide them because they are already done.
-  const status = args.status ?? (ids ? 'all' : 'open');
+  const status = args.status ?? (ids ? "all" : "open");
   const activeRoot = getActiveRoot();
   await assertKnownStatus(activeRoot, status);
-  const closed = status === 'closed' ? await closedStatusIds(activeRoot) : new Set<string>();
+  const closed =
+    status === "closed" ? await closedStatusIds(activeRoot) : new Set<string>();
   const matchesStatus = statusMatcher(status, closed);
   const needle = args.search?.toLowerCase();
+  const dueBefore = parseDueBefore(args.due_before);
   return (t) => {
+    if (dueBefore && (!t.due || t.due > dueBefore)) return false;
     if (!matchesStatus(t)) return false;
     if (args.tag && !(t.tags ?? []).includes(args.tag)) return false;
     if (args.severity && t.severity !== args.severity) return false;
     if (ids && !ids.has(t.id)) return false;
-    if (needle && !`${t.id}\n${t.title}`.toLowerCase().includes(needle)) return false;
+    if (needle && !`${t.id}\n${t.title}`.toLowerCase().includes(needle))
+      return false;
     return true;
   };
 }
 
 export default defineCommand<Args, Result>({
-  name: 'task.list',
-  description: 'List tasks for an initiative or across all initiatives',
+  name: "task.list",
+  description: "List tasks for an initiative or across all initiatives",
   args: ArgsSchema,
   result: ResultSchema,
   cli: {
-    positional: ['slug'],
+    positional: ["slug"],
     options: {
       all_initiatives: {
-        long: '--all-initiatives',
-        description: 'Scan every initiative under the active root',
+        long: "--all-initiatives",
+        description: "Scan every initiative under the active root",
       },
-      tag: { long: '--tag', description: 'Filter by tag membership' },
+      tag: { long: "--tag", description: "Filter by tag membership" },
       severity: {
-        long: '--severity',
-        description: 'Filter by severity (critical|high|medium|low)',
+        long: "--severity",
+        description: "Filter by severity (critical|high|medium|low)",
       },
       status: {
-        long: '--status',
+        long: "--status",
         description:
-          'open (default; all with --id), any status in the category registry, closed (every closed status), or all',
+          "open (default; all with --id), any status in the category registry, closed (every closed status), or all",
       },
-      id: { long: '--id', description: 'Keep only these comma-separated ids, e.g. TP-1,TP-2' },
+      id: {
+        long: "--id",
+        description: "Keep only these comma-separated ids, e.g. TP-1,TP-2",
+      },
       search: {
-        long: '--search',
-        description: 'Case-insensitive substring match on title or id',
+        long: "--search",
+        description: "Case-insensitive substring match on title or id",
+      },
+      due_before: {
+        long: "--due-before",
+        description:
+          "Keep only tasks due on or before this date (YYYY-MM-DD); drops undated tasks",
+      },
+      sort: {
+        long: "--sort",
+        description:
+          "priority (default) or due (earliest first, undated last, priority breaks ties)",
       },
     },
   },
@@ -197,20 +256,29 @@ export default defineCommand<Args, Result>({
       ? await listSlugsForCaller(getActiveRoot(), ctx)
       : (() => {
           if (!args.slug) {
-            throw new UsageError('task.list requires --all-initiatives or a slug');
+            throw new UsageError(
+              "task.list requires --all-initiatives or a slug"
+            );
           }
           return [args.slug];
         })();
 
-    const listings = await mapConcurrent(slugs, READ_CONCURRENCY, listTaskFiles);
+    const listings = await mapConcurrent(
+      slugs,
+      READ_CONCURRENCY,
+      listTaskFiles
+    );
     // A non-owner's listing omits hidden initiatives that still exist, so only a full listing may evict.
-    if (args.all_initiatives && ctx.caller === 'owner') forgetMissingInitiatives(listings);
+    if (args.all_initiatives && ctx.caller === "owner")
+      forgetMissingInitiatives(listings);
 
     const tasks: TaskWithSlug[] = [];
     for (const listing of listings) {
       for (const task of await loadListing(listing, keep)) tasks.push(task);
     }
-    tasks.sort((a, b) => a.priority - b.priority);
+    tasks.sort(
+      args.sort === "due" ? compareByDue : (a, b) => a.priority - b.priority
+    );
     return { tasks };
   },
 });
