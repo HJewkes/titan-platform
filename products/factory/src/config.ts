@@ -212,6 +212,9 @@ const whole = (min: number, max: number) => z.number().int().min(min).max(max).o
 /** The limits `dispatch eligible` judges a lane by (TP-5453 P4b); an absent key means its starting value in eligibility/back-pressure.ts. */
 const BackPressureConfigSchema = z.strictObject({ laneOpenPrs: whole(1, 64), ownerQueue: whole(0, 1000), inflowWeeks: whole(1, 12) });
 
+const CHECK_CANDIDATES_MODES = ["off", "record", "propose"] as const;
+export type CheckCandidatesMode = (typeof CHECK_CANDIDATES_MODES)[number];
+
 /** Owner-specific bindings live here, outside the public repo; later slices add repos and device keys. */
 export const FactoryConfigSchema = z.object({
   dbPath: z.string().min(1).optional(),
@@ -267,6 +270,8 @@ export const FactoryConfigSchema = z.object({
        * or when no other open PR is registered with that task and the body has no `Last slice: no`; else it notes the merge.
        */
       taskClose: z.enum(["keep", "last-slice-only"]).optional(),
+      /** Whether reviewers' check candidates are kept (TP-6482); absent means `record`. `propose` records only, until B5 files proposals. */
+      checkCandidates: z.enum(CHECK_CANDIDATES_MODES).optional(),
       visualGate: VisualGateSchema.optional(),
       /**
        * Mounts `POST /gates/answer-ship`, which resolves an approve-merge gate as owner-remote from a console Ship answer
@@ -328,6 +333,10 @@ export const FactoryConfigSchema = z.object({
 });
 
 export type FactoryConfig = z.infer<typeof FactoryConfigSchema>;
+
+export function checkCandidatesMode(config: FactoryConfig): CheckCandidatesMode {
+  return config.shepherd?.checkCandidates ?? "record";
+}
 
 export interface ConfigSources {
   env: NodeJS.ProcessEnv;

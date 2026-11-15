@@ -6,6 +6,7 @@ import { proofWaiverTable, type ProofWaivers } from "./proof-waiver-table.js";
 import { claimPlanApprovals, planApprovalTable, repointPlanApprovals, type PlanApprovals } from "./plan-approval.js";
 import { mergeBaseExceptionTable, repointMergeBaseException, type MergeBaseExceptions } from "./merge-base-exception.js";
 import { watchListTable, type WatchList } from "./watch-list.js";
+import { checkCandidatesTable, type CheckCandidates } from "./check-candidates-store.js";
 import { gateEvidenceTable, holdPassedAt, type GateEvidence } from "./lan-gates.js";
 import { registrationOf } from "./registration-of.js";
 import { appendEvent, eventsFor, latestChangeId, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
@@ -261,6 +262,9 @@ export class ShepherdStore implements HoldLookup {
 
   /** The seats' watches on PRs, read by the seat digest; a watch gates nothing. */
   readonly watches = (): WatchList => watchListTable(this.db, () => this.stamp());
+
+  /** Reviewers' check candidates per head and class (TP-6482); data that gates nothing. */
+  readonly checkCandidates = (): CheckCandidates => checkCandidatesTable(this.db, () => this.stamp());
 
   /** What gates outside GitHub Actions concluded at each head; a `lan-gates` hold stands aside at a head where they are green (`lan-gates.ts`). */
   readonly gateEvidence = (): GateEvidence => gateEvidenceTable(this.db, () => this.stamp());
