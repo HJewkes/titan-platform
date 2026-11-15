@@ -8,7 +8,7 @@
 import { ContextBudgetSchema } from '@titan-design/retrieval';
 import { z } from 'zod';
 import { defineCommand } from '../registry/index.js';
-import { SEARCH_CLASSES } from '../search/classes.js';
+import { DECISIONS_CLASS, SEARCH_CLASSES } from '../search/classes.js';
 import {
   fileHitLog,
   HIT_TRIGGERS,
@@ -33,7 +33,7 @@ import {
 import { readerGate } from '../session-index/reader-gate.js';
 import { nowIso } from '../utils/today.js';
 
-const CLASS_NAMES = SEARCH_CLASSES.map((cls) => cls.name);
+const CLASS_NAMES = [...SEARCH_CLASSES, DECISIONS_CLASS].map((cls) => cls.name);
 
 const ArgsSchema = z.object({
   for: z.string(),
@@ -101,7 +101,12 @@ async function logServed(args: Args, result: RelatedResult, hitLog: HitLogWriter
     trigger: args.trigger,
     query: args.for,
   };
-  const failure = await hitLog(servedHitEntries(result.hits, context));
+  const tiers = new Map((result.entries ?? []).map((entry) => [entry.ref, entry.tier]));
+  const served = result.hits.map((hit) => {
+    const tier = tiers.get(hit.ref);
+    return { ...hit, ...(tier !== undefined ? { tier } : {}) };
+  });
+  const failure = await hitLog(servedHitEntries(served, context));
   if (failure !== null)
     result.degraded.push({ source: 'hit-log', reason: 'error', message: failure });
 }

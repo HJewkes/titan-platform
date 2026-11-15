@@ -1,8 +1,10 @@
 import { ERROR_KINDS } from "@titan-design/render-qa";
 import { describe, expect, it } from "vitest";
 import { JudgeConfigSchema } from "../eval-harness.js";
+import { OccupancyFileSchema } from "../occupancy-file.js";
 import { BridgeFileSchema } from "../workflow/bridge.js";
 import { stageSpec, type RunSettings } from "../workflow/stage-spec.js";
+import type { QaEngine } from "./qa-engine.js";
 import { OVERLAP, type FakeQaOptions } from "./qa-fakes.test-helpers.js";
 import { FROM, qaStageHarness } from "./qa-stage.test-helpers.js";
 
@@ -41,6 +43,28 @@ describe("qa stage", () => {
 
     expect(checks["mp4-duration"]).toMatchObject({ gate: true, pass });
     expect(report.pass).toBe(pass);
+  });
+});
+
+describe("qa stage occupancy output", () => {
+  it("stores an occupancy/v1 document with one table per settled beat", async () => {
+    const { outcome } = await runQa({});
+
+    const file = OccupancyFileSchema.parse(JSON.parse(harness.store().readText(outcome.outputs.occupancy!)));
+
+    expect(file.tables.map((table) => table.beat)).toEqual(["b1"]);
+    expect(file.stage).toEqual({ width: 1920, height: 1080 });
+  });
+
+  it("stores an empty tables list when no moment settled", async () => {
+    // render-qa samples a settled moment for every beat, so a run has none only when the probe measured nothing.
+    const blind = (engine: QaEngine): QaEngine => ({ ...engine, open: async (...args) => ({ ...(await engine.open(...args)), probe: async () => [] }) });
+
+    const { outcome } = await harness.run({}, { config: { sweep: false }, wrap: blind });
+
+    const file = OccupancyFileSchema.parse(JSON.parse(harness.store().readText(outcome.outputs.occupancy!)));
+
+    expect(file.tables).toEqual([]);
   });
 });
 
