@@ -130,6 +130,42 @@ describe("note source", () => {
     expect(store.count()).toBe(4);
   });
 
+  it("returns the edited answer from lookups after a decision note's body changes", async () => {
+    writeFixture();
+    await extract();
+    writeNote("widgets", "2026-01-01-queue.md", "kind: decision\ntitle: Approach for the widget refresh is a queue\ncreated: '2026-01-01'", "Cron is fine after all.");
+
+    const second = await extract();
+
+    expect(second).toMatchObject({ read: 1, written: 1 });
+    expect(store.get(noteKey("widgets", "2026-01-01-queue.md"))?.answer).toBe("Cron is fine after all.");
+    const answers = store.rows({ initiative: "widgets" }).map((r) => r.answer);
+    expect(answers).toContain("Cron is fine after all.");
+    expect(answers).not.toContain("Cron drifts; the queue retries.");
+  });
+
+  it("returns the original answer again when an edit is reverted", async () => {
+    const frontmatter = "kind: decision\ntitle: Approach for the widget refresh is a queue\ncreated: '2026-01-01'";
+    writeNote("widgets", "2026-01-01-queue.md", frontmatter, "Cron drifts; the queue retries.");
+    await extract();
+    writeNote("widgets", "2026-01-01-queue.md", frontmatter, "Cron is fine after all.");
+    await extract();
+    writeNote("widgets", "2026-01-01-queue.md", frontmatter, "Cron drifts; the queue retries.");
+
+    await extract();
+
+    expect(store.get(noteKey("widgets", "2026-01-01-queue.md"))?.answer).toBe("Cron drifts; the queue retries.");
+  });
+
+  it("supersedes the active-work v1 row when the note was edited since", async () => {
+    writeNote("widgets", "2026-01-01-queue.md", "kind: decision\ntitle: Approach for the widget refresh is a queue\ncreated: '2026-01-01'", "Cron is fine after all.");
+    store.append([activeWorkV1Row()]);
+
+    await extract();
+
+    expect(store.get(noteKey("widgets", "2026-01-01-queue.md"))?.answer).toBe("Cron is fine after all.");
+  });
+
   it("never writes a note from a human-only initiative, nor one that names a listed person", async () => {
     writeNote("garden-diary", "2026-01-01-beds.md", "kind: decision\ntitle: Raise the beds\ncreated: '2026-01-01'", "Do it in spring.");
     writeNote("widgets", "2026-01-02-ask.md", "kind: decision\ntitle: Who reviews widgets\ncreated: '2026-01-02'", "Ask Zorblat.");
