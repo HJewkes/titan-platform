@@ -3,7 +3,8 @@ import { loadBeatSpecs } from "./beat-load.js";
 import { resolveBeats } from "./resolve-beat.js";
 import { budgetVerdict, scriptBudgets } from "./resolve-budget.js";
 import { choppy } from "./rewrite-fixtures.test-helpers.js";
-import { draftBudgets, draftWordBudget } from "./script-budget.js";
+import { wordsLong } from "./resolve-fixtures.test-helpers.js";
+import { draftBudgets, draftWordBudget, retimeOverBudget, wordBudgetFaults } from "./script-budget.js";
 import type { ScriptV1 } from "./script-schema.js";
 import { spellSpokenNumbers } from "./spoken-numbers.js";
 import { shippedVisualRouter } from "./visual-router.js";
@@ -26,6 +27,21 @@ const resolveRows = (script: ScriptV1) => {
 const spell = (draft: ScriptV1): ScriptV1 => ({ ...draft, beats: draft.beats.map(spellSpokenNumbers) });
 
 const resolveVerdict = (draft: ScriptV1): { pass: boolean } => budgetVerdict(resolveRows(spell(draft)));
+
+describe("the re-time follows the profile's voice rate", () => {
+  const stats = (profile: string): ScriptV1 => {
+    const beats = ["a", "b", "c", "d"].map((id) => ({ ...choppy().beats[0]!, id, plannedS: 14, spoken: wordsLong(44) }));
+    return { ...choppy(), profile, beats };
+  };
+
+  it("gives a fast-voice beat fewer seconds than the same beat at rate 1", () => {
+    const fast = retimeOverBudget(stats("daily-overview"), wordBudgetFaults).draft.beats[0]!.plannedS;
+    const slow = retimeOverBudget(stats("repo-tour"), wordBudgetFaults).draft.beats[0]!.plannedS;
+
+    expect(slow).toBe(16);
+    expect(fast).toBeLessThan(slow);
+  });
+});
 
 describe("the script stage's word budget counts the words the voice reads", () => {
   it("fails a beat at its cap by raw tokens once its numbers are spelled, naming the spelled count", () => {
