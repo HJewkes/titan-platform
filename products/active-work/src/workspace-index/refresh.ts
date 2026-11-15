@@ -1,4 +1,3 @@
-import { promises as fs } from 'node:fs';
 import { z } from 'zod';
 import type { WorkspaceGraph } from '../session-index/graph.js';
 import { getActiveRoot } from '../utils/paths.js';
