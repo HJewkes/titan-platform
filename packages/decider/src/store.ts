@@ -109,15 +109,14 @@ export class LedgerStore {
   private insertRow(row: LedgerRow, key: string, baseKey: string | null): number {
     const { source, initiative, category, outcome, asked_at } = row;
     const params = { key, base_key: baseKey, source, initiative, category, outcome, asked_at };
-    const stored = JSON.stringify({ ...row, key });
-    return this.insertStmt.run({ ...params, unclaimed: row.unclaimed ? 1 : 0, row_json: stored }).changes;
+    return this.insertStmt.run({ ...params, unclaimed: row.unclaimed ? 1 : 0, row_json: JSON.stringify(row) }).changes;
   }
 
   private revisionCount(baseKey: string): number {
     return CountSchema.parse(this.revisionCountStmt.get(baseKey)).n;
   }
 
-  /** The current row for a key; for an edited note that is its newest revision, whose own key carries an `@n` suffix. */
+  /** The current row for a key; for an edited note that is its newest revision. The suffix lives only in the table key, so a row's own `key` stays stable for readers. */
   get(key: string): LedgerRow | undefined {
     const found = RowJsonSchema.optional().parse(this.getStmt.get({ key }));
     return found === undefined ? undefined : LedgerRowSchema.parse(JSON.parse(found.row_json));
