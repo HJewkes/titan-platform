@@ -105,13 +105,18 @@ export interface OriginEnrichment {
 
 export const NO_ORIGINS: OriginEnrichment = Object.freeze({ requested: 0, applied: 0, events: 0, failed: false });
 
+/** Execution phases a launcher's ledger moves out of; a stored one means the session's outcome is not yet known. */
+const IN_FLIGHT_PHASES = ["prepared", "dispatching", "running", "cancel_requested", "recovery_required"] as const;
+
 /**
  * A session whose transcript grew after its origin was resolved may have been retired or handed off since.
- * A null `task_source` means no task-aware resolver has answered for the row yet.
+ * A null `task_source` means no task-aware resolver has answered for the row yet. An in-flight
+ * `execution_phase` is offered again because the ledger reaches its terminal phase after the transcript's last write.
  */
 const SESSIONS_NEEDING_ORIGIN = `
   SELECT s.session_id FROM session s LEFT JOIN session_origin o ON o.session_id = s.session_id
   WHERE o.session_id IS NULL OR o.resolved_at < s.ended_at OR o.task_source IS NULL
+    OR o.execution_phase IN (${IN_FLIGHT_PHASES.map((p) => `'${p}'`).join(", ")})
   ORDER BY s.session_id`;
 
 const camel = (column: string): string => column.replace(/_(\w)/g, (_, c: string) => c.toUpperCase());

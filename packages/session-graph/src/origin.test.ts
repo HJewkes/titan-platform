@@ -416,6 +416,23 @@ describe("origin execution phase", () => {
     g.db.close();
   });
 
+  it("is refreshed from the ledger after the transcript stopped growing, until it is terminal", async () => {
+    const g = openSessionGraph(":memory:");
+    g.db.prepare("INSERT INTO session (session_id, cwd) VALUES ('worker', '/scratch')").run();
+    const resolveAs = (executionPhase: string) =>
+      resolveOrigins(g, () => ({ origins: { worker: { originSystem: "agent-chat", taskIds: [], executionPhase } } }));
+
+    await resolveAs("running");
+    const offeredWhileRunning = sessionsNeedingOrigin(g);
+    await resolveAs("succeeded");
+    const offeredWhenTerminal = sessionsNeedingOrigin(g);
+
+    expect(offeredWhileRunning).toEqual(["worker"]);
+    expect(phaseOf(g)).toEqual({ execution_phase: "succeeded" });
+    expect(offeredWhenTerminal).toEqual([]);
+    g.db.close();
+  });
+
   it("is added by a named migration that applies twice as a no-op, keeping rows", () => {
     const file = path.join(dir, "execution.sqlite3");
     const old = openDatabase(file);
