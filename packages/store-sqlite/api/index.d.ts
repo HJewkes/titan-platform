@@ -115,6 +115,8 @@ interface KitSelection {
     edge?: string | true;
     cacheBlob?: string | true;
     spanFts?: string | true;
+    /** Add the trigram twin to the `spanFts` tables; needs `spanFts`. */
+    spanFtsTrigram?: true;
     watermark?: string | true;
 }
 /** The DDL for a selection of kit tables, in dependency-safe order. Every statement is `IF NOT EXISTS`. */
@@ -292,8 +294,19 @@ interface SpanFtsOptions {
      * orphan behaviour stay as they were.
      */
     contentlessDelete?: boolean;
+    /**
+     * Also create `<name>_tri`, a contentless trigram twin of the FTS table, so
+     * `searchTrigram` can find a substring inside a token (`Retriever` in
+     * `pgTextRetriever`). Spans only get a twin row when indexed with
+     * `{ trigram: true }`. Default false: no twin table exists.
+     */
+    trigram?: boolean;
 }
-declare function spanFtsTablesDdl({ name, contentlessDelete }?: SpanFtsOptions): string;
+interface IndexOptions {
+    /** Also write the trigram twin row; needs the table's `trigram` option. */
+    trigram?: boolean;
+}
+declare function spanFtsTablesDdl({ name, contentlessDelete, trigram }?: SpanFtsOptions): string;
 interface SpanInput {
     /** The entity this text belongs to, e.g. `session:abc`. */
     ownerRef: string;
@@ -333,6 +346,7 @@ interface SpanScope {
 declare class SpanFtsTables {
     private readonly db;
     private readonly tableNames;
+    private readonly twin;
     private readonly insertSpan;
     private readonly findSpan;
     private readonly insertFts;
@@ -348,7 +362,7 @@ declare class SpanFtsTables {
     private readonly countSpans;
     private readonly countFts;
     private readonly indexTxn;
-    constructor(db: Db, { name, contentlessDelete }?: SpanFtsOptions);
+    constructor(db: Db, { name, contentlessDelete, trigram }?: SpanFtsOptions);
     /**
      * Index `text` for a span, storing only the locator. Returns the span id.
      *
@@ -356,7 +370,14 @@ declare class SpanFtsTables {
      * whose row `clearIndex` removed puts the row back, which is what makes
      * clear-then-re-stream a rebuild. Only the conflict path pays the rowid probe.
      */
-    index(span: SpanInput, text: string): number;
+    index(span: SpanInput, text: string, { trigram }?: IndexOptions): number;
+    /**
+     * Substring search over the trigram twin, joined through the span table like
+     * `search`. FTS5 trigram matches need at least three characters; a shorter
+     * term matches nothing. Only spans indexed with `{ trigram: true }` can hit.
+     */
+    searchTrigram(expression: string, limit?: number, scope?: SpanScope): SpanHit[];
+    private requireTwin;
     /**
      * FTS5 MATCH, joined through the span table so stranded FTS rows never surface.
      *
@@ -381,7 +402,10 @@ declare class SpanFtsTables {
     purgeOwner(ownerRef: string): number;
     /** Drop every span of one source (transcript or file), with the same FTS behaviour as `purgeOwner`. */
     purgeSource(sourceId: number): number;
-    /** Fraction of FTS rows with no span behind them; a high value means it is time to `clearIndex` and re-stream. */
+    /**
+     * Fraction of FTS rows with no span behind them; a high value means it is time to `clearIndex` and re-stream.
+     * With a trigram twin, the worse of the two tables' ratios.
+     */
     orphanRatio(): number;
     /**
      * Empty the FTS index, keeping every span row. Re-streaming each surviving
