@@ -28,6 +28,7 @@
     "dag:check:graph": "node scripts/package-cycles.mjs && node scripts/dag-check-self.mjs",
     "dead:check": "node scripts/dead-code-check.mjs",
     "new:package": "node scripts/new-package.mjs",
+    "checks:registry": "node scripts/checks-registry.mjs",
     "areas": "node scripts/areas.mjs",
     "metrics:check": "node scripts/metrics-check.mjs",
     "index-version:check": "node scripts/index-version-guard.mjs && node scripts/stage-version-guard.mjs",
