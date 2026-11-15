@@ -62,7 +62,7 @@ export function requiredContextsOf(port: GitHubPort): RequiredContextsReader {
   };
 }
 
-export type RemergeOptions = CarryOptions & { requiredContexts?: RequiredContextsReader };
+type RemergeOptions = CarryOptions & { requiredContexts?: RequiredContextsReader };
 
 const Sha = z.string().regex(HEAD, "must be 40 lowercase hex characters");
 const RemergeInputSchema = z.object({
