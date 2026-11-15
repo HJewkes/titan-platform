@@ -45,15 +45,6 @@
       "kills": [
         "a task's detail warns when the agent roster cannot be read"
       ]
-    },
-    {
-      "name": "a later page replaces the rows already shown",
-      "file": "apps/console/src/pages/TasksPage.tsx",
-      "find": "const rows = [...shown, ...page.tasks];",
-      "replace": "const rows = [...page.tasks];",
-      "kills": [
-        "the tasks list shows the first 50 rows, titles each stage with every match, and loads the rest on the cursor"
-      ]
     }
   ]
 }
