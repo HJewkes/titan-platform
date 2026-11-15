@@ -62,8 +62,16 @@ function describeUnblocked({ named, hidden }: Unblocked): string {
   return hidden > 0 ? [...named, `${hidden} hidden`].join(', ') : named.join(', ');
 }
 
+// Advisory, and it runs after the close is written: an unreadable task file anywhere in the root must not
+// fail a command whose write already happened. The reason stays generic so a path never names a hidden initiative.
 async function reportUnblocked(done: Task, ctx: CommandContext): Promise<string> {
-  const unblocked = await findUnblocked(done, ctx);
+  let unblocked: Unblocked;
+  try {
+    unblocked = await findUnblocked(done, ctx);
+  } catch {
+    ctx.warnings.push(`could not list what ${done.id} unblocks: a task file in the root could not be read`);
+    return '';
+  }
   if (unblocked.named.length + unblocked.hidden === 0) return '';
   const names = describeUnblocked(unblocked);
   ctx.warnings.push(`completing ${done.id} unblocks ${names}`);

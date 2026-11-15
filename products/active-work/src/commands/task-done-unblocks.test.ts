@@ -86,6 +86,19 @@ describe('task.done reports what it unblocks', () => {
     });
   });
 
+  it('still returns the closed task, with a warning, when another initiative holds a malformed task file', async () => {
+    await withTempActiveRoot(async (root) => {
+      mkdirSync(path.join(root, 'other-initiative', 'tasks'), { recursive: true });
+      writeFileSync(path.join(root, 'other-initiative', 'tasks', 'BAD-1.yml'), 'id: [unclosed\n', 'utf8');
+      const c = ctx(root);
+
+      const result = await taskDone.run({ slug: 'sample-initiative', id: 'SI-1' }, c);
+
+      expect(asTask(result)).toMatchObject({ id: 'SI-1', status: 'done' });
+      expect(c.warnings).toEqual([expect.stringContaining('could not list what SI-1 unblocks')]);
+    });
+  });
+
   it('appends the dependents to the quiet human line and keeps the task result shape', async () => {
     await withTempActiveRoot(async (root) => {
       writeTask(root, 'sample-initiative', 'SI-3', dep('SI-1'));

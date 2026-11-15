@@ -16,18 +16,18 @@
       "kills": ["task.done reports what it unblocks counts a dependent in an owner-only initiative for an agent caller"]
     },
     {
-      "name": "the scan stays inside the closed task's initiative",
-      "file": "products/active-work/src/commands/task-done.ts",
-      "find": "{ all_initiatives: true, status: 'open' }",
-      "replace": "{ slug: done.id.split('-')[0] === 'SI' ? 'sample-initiative' : 'none', status: 'open' }",
-      "kills": ["task.done reports what it unblocks names a dependent that lives in another initiative"]
-    },
-    {
       "name": "the warning is never pushed",
       "file": "products/active-work/src/commands/task-done.ts",
       "find": "ctx.warnings.push(`completing ${done.id} unblocks ${names}`);",
       "replace": "",
       "kills": ["task.done reports what it unblocks names a dependent whose only open dep was the completed task"]
+    },
+    {
+      "name": "a failed scan fails the close",
+      "file": "products/active-work/src/commands/task-done.ts",
+      "find": "  } catch {\n    ctx.warnings.push(`could not list what ${done.id} unblocks: a task file in the root could not be read`);\n    return '';\n  }",
+      "replace": "  } catch (err) {\n    throw err;\n  }",
+      "kills": ["task.done reports what it unblocks still returns the closed task, with a warning, when another initiative holds a malformed task file"]
     },
     {
       "name": "the quiet line drops the suffix",
