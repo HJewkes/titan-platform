@@ -163,6 +163,17 @@ declare const ownerCardSchema: zod.ZodObject<{
             action: zod.ZodLiteral<"end">;
             id: zod.ZodString;
         }, zod_v4_core.$strict>], "action">;
+    }, zod_v4_core.$strict>, zod.ZodObject<{
+        kind: zod.ZodLiteral<"start-session">;
+        name: zod.ZodString;
+        profile: zod.ZodString;
+        host: zod.ZodString;
+        account: zod.ZodUnion<readonly [zod.ZodLiteral<"least-used">, zod.ZodString]>;
+        cwd: zod.ZodString;
+        surface: zod.ZodString;
+        remoteControl: zod.ZodBoolean;
+        briefPath: zod.ZodString;
+        briefSha256: zod.ZodOptional<zod.ZodString>;
     }, zod_v4_core.$strict>], "kind">>;
     evidenceRef: zod.ZodOptional<zod.ZodString>;
     anchors: zod.ZodOptional<zod.ZodArray<zod.ZodString>>;
@@ -342,12 +353,23 @@ declare const ownerOpSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
         action: z.ZodLiteral<"end">;
         id: z.ZodString;
     }, z.core.$strict>], "action">;
+}, z.core.$strict>, z.ZodObject<{
+    kind: z.ZodLiteral<"start-session">;
+    name: z.ZodString;
+    profile: z.ZodString;
+    host: z.ZodString;
+    account: z.ZodUnion<readonly [z.ZodLiteral<"least-used">, z.ZodString]>;
+    cwd: z.ZodString;
+    surface: z.ZodString;
+    remoteControl: z.ZodBoolean;
+    briefPath: z.ZodString;
+    briefSha256: z.ZodOptional<z.ZodString>;
 }, z.core.$strict>], "kind">;
 type OwnerOp = z.infer<typeof ownerOpSchema>;
 type OwnerOpKind = OwnerOp["kind"];
 /**
- * The merge keys an op implies, so an op about a PR joins that PR's hitl item at the same head.
- * A gate op yields no `gate:` key: a deposit never claims to be the gate itself.
+ * The merge keys an op implies, so an op about a PR joins that PR's hitl item at the same head, and two
+ * deposits starting one session are one item. A gate op yields no `gate:` key: a deposit never claims to be the gate itself.
  */
 declare function opKeys(op: OwnerOp): string[];
 
@@ -552,6 +574,8 @@ declare function topicKey(name: string): string;
 declare function alarmKey(source: string): string;
 /** A PR key pinned to its head, in the canonical form `mergeByKeys` compares. */
 declare function prKey(repo: string, pr: number, headSha: string): string;
+/** The key a start-session op carries, so two deposits asking to start the same session are one item. */
+declare function sessionKey(name: string): string;
 interface ParsedPrKey {
     /** Lower-cased `owner/repo#number`, or whatever text follows `pr:` when it is not that shape. */
     pr: string;
@@ -787,7 +811,7 @@ interface StaleLabel {
  */
 declare function staleLabel(item: OwnerItem, evidence: StaleEvidence): StaleLabel | null;
 
-export { type AnsweredContext, Audience, CARD_RULES, type CardRule, type CiPolicyPlanScope, type ClosedStatus, type ConsolidateInput, type FeedbackInput, type Flow, type FlowGroup, HOLD_CLASSES, type HeldItem, INFLUENCE_RULES, type InfluenceContext, type InfluenceEdge, type InfluenceRule, ItemStatus, MERGE_WAITS, OwnerAnswer, OwnerItem, type OwnerOp, type OwnerOpKind, type OwnerRound, type OwnerRoundOptions, type OwnerRounds, PARKED, PROMPT_LINE_BREAK, type PathPlanScope, type PlanApproval, type PlanAsk, type PlanGate, type PlanGateScope, type PlanRound, type PlanRoundInput, type Principle, type PromptLineOptions, type QueueSource, RELATION_KEY_KINDS, ROUND_ANSWERER, type Recheck, type RecheckCite, type RecheckDrop, type RecheckFlag, type RecheckFlagKind, type RelationKeyKind, type ResolveResult, type RoundItemsContext, type RoundQuestionBinding, STALE_RULES, type ShipBlock, type ShipBlockReason, type SkipReason, type SourceEvent, SourceRef, type StackedItem, type StaleEvidence, type StaleLabel, type StaleRule, type Superseded, type TaskPlanScope, type WithdrawnItem, alarmKey, answeredFromFeedback, askKey, audienceOf, buildOwnerRounds, buildPlanRound, cardLint, collapseRepeats, componentKey, consolidate, forAudience, fromRoundQuestions, influenceEdges, isMergeKey, mergeByKeys, opKeys, ownerCardSchema, ownerOpSchema, parsePrKey, prKey, promptLine, rank, recheck, relationKind, roundAskKey, roundItemId, stackContext, staleLabel, supersede, tokenKey, topicKey };
+export { type AnsweredContext, Audience, CARD_RULES, type CardRule, type CiPolicyPlanScope, type ClosedStatus, type ConsolidateInput, type FeedbackInput, type Flow, type FlowGroup, HOLD_CLASSES, type HeldItem, INFLUENCE_RULES, type InfluenceContext, type InfluenceEdge, type InfluenceRule, ItemStatus, MERGE_WAITS, OwnerAnswer, OwnerItem, type OwnerOp, type OwnerOpKind, type OwnerRound, type OwnerRoundOptions, type OwnerRounds, PARKED, PROMPT_LINE_BREAK, type PathPlanScope, type PlanApproval, type PlanAsk, type PlanGate, type PlanGateScope, type PlanRound, type PlanRoundInput, type Principle, type PromptLineOptions, type QueueSource, RELATION_KEY_KINDS, ROUND_ANSWERER, type Recheck, type RecheckCite, type RecheckDrop, type RecheckFlag, type RecheckFlagKind, type RelationKeyKind, type ResolveResult, type RoundItemsContext, type RoundQuestionBinding, STALE_RULES, type ShipBlock, type ShipBlockReason, type SkipReason, type SourceEvent, SourceRef, type StackedItem, type StaleEvidence, type StaleLabel, type StaleRule, type Superseded, type TaskPlanScope, type WithdrawnItem, alarmKey, answeredFromFeedback, askKey, audienceOf, buildOwnerRounds, buildPlanRound, cardLint, collapseRepeats, componentKey, consolidate, forAudience, fromRoundQuestions, influenceEdges, isMergeKey, mergeByKeys, opKeys, ownerCardSchema, ownerOpSchema, parsePrKey, prKey, promptLine, rank, recheck, relationKind, roundAskKey, roundItemId, sessionKey, stackContext, staleLabel, supersede, tokenKey, topicKey };
 
 // ./dist/deposit.d.ts
 import { z } from 'zod';
@@ -934,6 +958,17 @@ declare const ownerItemDepositSchema: z.ZodObject<{
             action: z.ZodLiteral<"end">;
             id: z.ZodString;
         }, z.core.$strict>], "action">;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"start-session">;
+        name: z.ZodString;
+        profile: z.ZodString;
+        host: z.ZodString;
+        account: z.ZodUnion<readonly [z.ZodLiteral<"least-used">, z.ZodString]>;
+        cwd: z.ZodString;
+        surface: z.ZodString;
+        remoteControl: z.ZodBoolean;
+        briefPath: z.ZodString;
+        briefSha256: z.ZodOptional<z.ZodString>;
     }, z.core.$strict>], "kind">>;
     evidenceRef: z.ZodOptional<z.ZodString>;
     anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;
@@ -1184,6 +1219,17 @@ declare const ownerItemSchema: z.ZodObject<{
             action: z.ZodLiteral<"end">;
             id: z.ZodString;
         }, z.core.$strict>], "action">;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"start-session">;
+        name: z.ZodString;
+        profile: z.ZodString;
+        host: z.ZodString;
+        account: z.ZodUnion<readonly [z.ZodLiteral<"least-used">, z.ZodString]>;
+        cwd: z.ZodString;
+        surface: z.ZodString;
+        remoteControl: z.ZodBoolean;
+        briefPath: z.ZodString;
+        briefSha256: z.ZodOptional<z.ZodString>;
     }, z.core.$strict>], "kind">>;
     evidenceRef: z.ZodOptional<z.ZodString>;
     anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;
