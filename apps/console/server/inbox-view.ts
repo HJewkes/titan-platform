@@ -9,6 +9,8 @@
 import { z } from "zod";
 import type { OwnerItem, OwnerOp, OwnerOpKind } from "@titan-design/owner-queue";
 import { readRoster, type AgentsSource } from "./agents.js";
+import { EXIT } from "@titan-design/registry";
+import { failure } from "./active-work.js";
 import { readFlow, type ApprovalsSources } from "./approvals.js";
 import { gateStripCommands, gateStripReader, holdClassOf, type GateStrip, type GateStripReader } from "./gate-strip.js";
 import type { AgentRosterSnapshot } from "@titan-design/chat-protocol/agents";
@@ -371,6 +373,22 @@ async function readInboxView(sources: InboxSources, strips: GateStripReader, cac
   return { ...rest, ...viewRows(items, args), gaps: [...list.gaps, ...derived.gaps], derived: derived.value, nudges };
 }
 
+export interface InboxContext {
+  itemId: string;
+  context: string;
+  rationale?: string;
+  cite?: NonNullable<OwnerItem["recommended"]>["cite"];
+}
+
+/** The one place a row's dropped context and recommendation rationale are read back, through the list's own kept needs read. */
+async function readInboxContext(sources: InboxSources, cache: InboxReadCache, itemId: string): Promise<InboxContext> {
+  const { flow } = await readFlow({ ...sources, factory: cache.factory });
+  const item = flow.order.find((each) => each.id === itemId && each.status === "open");
+  if (item === undefined) throw failure(`No open inbox item "${itemId}"`, EXIT.NOINPUT);
+  const { rationale, cite } = item.recommended ?? {};
+  return { itemId, context: item.context, ...(rationale !== undefined && { rationale }), ...(cite !== undefined && { cite }) };
+}
+
 export function inboxViewCommands(sources: InboxSources, cache: InboxReadCache = inboxReadCache(sources)) {
   const strips = gateStripReader(sources.shepherd, sources.now);
   return {
@@ -382,6 +400,13 @@ export function inboxViewCommands(sources: InboxSources, cache: InboxReadCache =
       args: z.object({ planning: z.boolean().optional().describe("list the planning items too; left out unless true") }),
       result: z.custom<InboxView>(),
       run: (args) => readInboxView(sources, strips, cache, args),
+    }),
+    "inbox.context": readCommand({
+      name: "inbox.context",
+      description: "One open inbox item's full context and, when it carries a recommendation, that recommendation's rationale and cite; inbox.list leaves them out of every row. An id that is not open fails as no input",
+      args: z.object({ itemId: z.string().describe("the item's id, as inbox.list gives it") }),
+      result: z.custom<InboxContext>(),
+      run: (args) => readInboxContext(sources, cache, args.itemId),
     }),
   };
 }
