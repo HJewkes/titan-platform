@@ -25,12 +25,13 @@ const factIds = (prompt: string): string[] => {
 /** A valid spine per slot: every fact on the hook block, the payoff on the second block, likelihoods falling by slot. */
 function spinesFor(prompt: string, beatAt: (slot: number) => number) {
   const facts = factIds(prompt);
+  const targetS = Number(/\(about (\d+) s\)/.exec(prompt)![1]);
   return promptSlots(prompt).map((slot, i) => ({
     structure: slot.structure, system: slot.system, likelihood: Math.round((0.5 - i * 0.1) * 100) / 100,
-    sentence: `Take ${i + 1}: the desk refuses ghost labels.`, hook: { fact: facts[0]!, line: `Take ${i + 1}: a parcel that does not exist.` },
+    sentence: `Take ${i + 1}: the desk refuses ghost labels, but parcels still arrive, so the desk checks each one.`, hook: { fact: facts[0]!, line: `Take ${i + 1}: a parcel that does not exist.` },
     blocks: slot.blocks.map((block, b) => {
       const beat = block.beats[b === 0 ? 0 : beatAt(i) % block.beats.length] ?? "hook";
-      return { id: block.id, question: `What happens at ${block.id}?`, facts: b === 0 ? facts : [facts[0]!], seconds: 30, beat, covers: [] };
+      return { id: block.id, question: `What happens at ${block.id}?`, facts: b === 0 ? facts : [facts[0]!], seconds: Math.round(targetS / slot.blocks.length), beat, covers: [] };
     }),
     payoff: slot.blocks[1]!.id, signatureLayer: `layer ${i + 1}`, cuts: [],
   }));

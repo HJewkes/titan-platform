@@ -107,9 +107,17 @@ describe("the sessions list", () => {
   it("shows each session's agent, tasks, PR, duration, tokens and cost", async () => {
     renderConsole("#/sessions", recorded());
     await screen.findByTestId(`session-row-${NEWEST}`);
-    const [agent, tasks, pr, , duration, tokens, cost] = cells(`session-row-${NEWEST}`);
+    const [agent, , tasks, pr, , duration, tokens, cost] = cells(`session-row-${NEWEST}`);
     expect([agent, tasks, pr, duration, tokens, cost]).toEqual(["orbit-builder", "OR-12", "example/orbit#41 ↗", "1h 05m", "250K", "$3.40"]);
-    expect(cells(`session-row-${OLDER}`).slice(4)).toEqual(["45s", "250K", "$3.40"]);
+    expect(cells(`session-row-${OLDER}`).slice(5)).toEqual(["45s", "250K", "$3.40"]);
+  });
+
+  it("shows a titled session's title and a dash for an untitled one", async () => {
+    const untitled = row(OLDER, "2031-03-04T08:00:00.000Z", "2031-03-04T08:00:45.000Z", { title: null });
+    renderConsole("#/sessions", recorded(listWith({ ...FIRST_PAGE, sessions: [row(NEWEST, "2031-03-04T09:00:00.000Z", "2031-03-04T10:05:00.000Z"), untitled] })));
+    await screen.findByTestId(`session-row-${NEWEST}`);
+    expect(cells(`session-row-${NEWEST}`)[1]).toBe("Retry a dropped handshake");
+    expect(cells(`session-row-${OLDER}`)[1]).toBe("–");
   });
 
   it("says how fresh the index is", async () => {
@@ -121,7 +129,7 @@ describe("the sessions list", () => {
     renderConsole("#/sessions", recorded());
     fireEvent.click(await screen.findByText("Load more"));
     expect(await screen.findByTestId(`session-row-${OLDEST}`)).toBeTruthy();
-    expect(cells(`session-row-${OLDEST}`)[1]).toBe("OR-9OR-10");
+    expect(cells(`session-row-${OLDEST}`)[2]).toBe("OR-9OR-10");
     await waitFor(() => expect(screen.queryByText("Load more")).toBeNull());
   });
 

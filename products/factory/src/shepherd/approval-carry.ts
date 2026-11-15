@@ -69,7 +69,7 @@ interface Approved {
 /** A proof whose paths hold a repo skill, or that names no paths at all, would carry an approval onto a diff the owner has not seen. */
 const touchesSkill = (followed: Followed): boolean => followed.paths === undefined || skillPathsIn(followed.paths).length > 0;
 
-/** The merge-up probe first; a head it refuses may still be the approved head merged with the base plus a small fix. */
+/** The merge-up probe first; a head it refuses may still be Shepherd's own merge-up of the base (the fix probe's merge-up rule). */
 async function followProof(ctx: WorkflowContext, target: CarryTarget, baseRef: string, fromHead: string, head: string): Promise<Followed | undefined> {
   const remerge = await remergeStep(ctx, { repo: target.repo, baseRef, fromHead, head });
   if (remerge.carries && remerge.rule) return { rule: remerge.rule, proof: { headTree: remerge.headTree, mergeTree: remerge.remergeTree, paths: remerge.paths }, paths: remerge.paths };

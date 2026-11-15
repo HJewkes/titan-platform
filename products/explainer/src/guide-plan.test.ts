@@ -34,7 +34,7 @@ describe("guidePlan", () => {
     expect(guide).toContain("## Write it to be spoken");
     expect(guide).toContain("Contract as people talk");
     expect(guide).toContain("Put a short sentence beside a long one");
-    expect(guide).toContain("let some sentences run");
+    expect(guide).toContain("Let a sentence run as long as its step of reasoning runs");
     expect(guide).toContain('Talk to the viewer as "you"');
     expect(guide).toContain('never as "I"');
     expect(guidePlan("plan")).toContain("## Write it to be spoken");
@@ -54,6 +54,30 @@ describe("guidePlan", () => {
     expect(line).toContain('never say "some" or "many"');
     expect(line).not.toMatch(/\d/);
     expect(guidePlan("plan")).not.toContain("register-AV3");
+  });
+
+  it("appends the long-line and style-rules blocks to the script guide", () => {
+    const guide = guidePlan("script");
+
+    expect(guide).toContain("This will be read aloud by one narrator while pictures play.");
+    expect(guide).toContain("Earlier pieces from this workflow were rejected for reading as machine-written.");
+    expect(guide).toContain('Speak as "we", never "I"');
+  });
+
+  it("keeps the long-line and style-rules blocks out of the plan guide", () => {
+    const guide = guidePlan("plan");
+
+    expect(guide).not.toContain("This will be read aloud by one narrator while pictures play.");
+    expect(guide).not.toContain("Earlier pieces from this workflow were rejected for reading as machine-written.");
+  });
+
+  it("gives neither guide one-idea sentence advice or a 'be able to' phrase", () => {
+    for (const stage of ["plan", "script"] as const) {
+      const guide = guidePlan(stage);
+
+      expect(guide).not.toContain("one idea");
+      expect(guide).not.toContain("be able to");
+    }
   });
 
   it("states spoken register as direction, with none of the Q-V11 bands", () => {
