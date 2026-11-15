@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an authority_missing refusal quotes nothing",
+      "file": "packages/review-panel/src/accept-verdict.ts",
+      "find": "  if (refusal === \"authority_missing\") return malformedAuthorityLines(text);\n",
+      "replace": "",
+      "kills": [
+        "acceptVerdict on an adversary MERGE with prose that starts with the word Authority an authority_missing refusal quotes the line that read malformed"
+      ]
+    },
+    {
+      "name": "the reply text is not passed to the authority_missing refusal",
+      "file": "packages/review-panel/src/accept-verdict.ts",
+      "find": "malformedNone(\"authority_missing\", final.writtenAt, final.text)",
+      "replace": "malformedNone(\"authority_missing\", final.writtenAt)",
+      "kills": [
+        "acceptVerdict on an adversary MERGE with prose that starts with the word Authority an authority_missing refusal quotes the line that read malformed"
+      ]
+    }
+  ]
+}

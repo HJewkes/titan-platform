@@ -74,20 +74,39 @@ const WIDENED: AuthorityLine = "widened";
 /** Strictest first: a widening is never read away, and an unreadable line is never read as the safer value. */
 const STRICTNESS = ["widened", "malformed", "unchanged", "tightened"] as const;
 
+/** NFKC folds a full-width colon to this one. */
+const COLON = ":";
+
+/** The line split at its first colon, after NFKC; no colon leaves no value. */
+function splitAtColon(raw: string): { label: string; value?: string } {
+  const normalized = raw.normalize("NFKC");
+  const at = normalized.indexOf(COLON);
+  return at < 0 ? { label: normalized } : { label: normalized.slice(0, at), value: normalized.slice(at + 1) };
+}
+
+/** Read as if the value followed a plain label, so `Authority gate: widened` is caught by the same fold. */
+const valueReadsWidened = (value: string | undefined): boolean => value !== undefined && labelledLineRest(`${AUTHORITY_HEADING}${value}`, AUTHORITY_HEADING, WIDENED) === WIDENED;
+
+/** Only decoration, never a word, stands between the line start, the label and its colon. */
+const isLabel = (label: string, value: string | undefined): boolean => value !== undefined && labelledLineRest(label, AUTHORITY_HEADING) === "";
+
 /**
- * One raw line's reading, or undefined when it carries no Authority label. The label is found through session-read's
- * `labelledLineRest`, the fold the CI-policy line is read with, so a bullet, bold, quote, any case or a full-width colon
- * still labels the line. A rest that folds to exactly `widened` reads widened however it is decorated; unchanged and
+ * One raw line's reading, or undefined when it carries no Authority label. A line that starts with the word Authority
+ * through session-read's `labelledLineRest` fold is a label only when a colon follows it after decoration, so prose such
+ * as `**Authority gate.** ...` is no reading (TP-6608). A widening is never read away: a line whose rest, or whose text
+ * after its first colon, folds to exactly `widened` reads widened however it is decorated or worded. Unchanged and
  * tightened count only on a plain `Authority: <value>` line, as CI-policy's unchanged counts only when canonical. Any
- * other labelled line reads malformed.
+ * other label reads malformed.
  */
 function authorityReading(raw: string): AuthorityLine | "malformed" | undefined {
   const rest = labelledLineRest(raw, AUTHORITY_HEADING, WIDENED);
   if (rest === undefined) return undefined;
-  if (rest === WIDENED) return WIDENED;
+  const { label, value } = splitAtColon(raw);
+  if (rest === WIDENED || valueReadsWidened(value)) return WIDENED;
+  if (!isLabel(label, value)) return undefined;
   const line = raw.trim();
-  const value = line.startsWith(AUTHORITY_HEADING) ? line.slice(AUTHORITY_HEADING.length).trim() : undefined;
-  return SAFER_VALUES.find((known) => known === value) ?? "malformed";
+  const plainValue = line.startsWith(AUTHORITY_HEADING) ? line.slice(AUTHORITY_HEADING.length).trim() : undefined;
+  return SAFER_VALUES.find((known) => known === plainValue) ?? "malformed";
 }
 
 /**
@@ -97,4 +116,10 @@ function authorityReading(raw: string): AuthorityLine | "malformed" | undefined 
 export function authorityLine(text: string): AuthorityLine | "malformed" | undefined {
   const readings = text.split("\n").map(authorityReading);
   return STRICTNESS.find((reading) => readings.includes(reading));
+}
+
+/** The first line that reads malformed, trimmed, so an authority_missing correction shows the reviewer what to reword. */
+export function malformedAuthorityLines(text: string): string[] {
+  const line = text.split("\n").find((raw) => authorityReading(raw) === "malformed");
+  return line === undefined ? [] : [line.trim()];
 }

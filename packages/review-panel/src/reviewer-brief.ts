@@ -333,7 +333,7 @@ export const REFUSAL_SENTENCES: Record<MalformedRefusal, string> = {
   ci_policy_malformed: "its CI-policy line held more than the exact form",
   ci_policy_prose: "a prose line used the CI-policy label, or the exact line was not right after Head",
   probes_missing: "it had no Probes line above the Verdict line",
-  authority_missing: "it had no valid Authority line above the Verdict line",
+  authority_missing: "it had no Authority line holding exactly unchanged, tightened or widened",
   scope_untagged: `a blocking item cites only lines outside the fix's ranges and lacks \`${IMPORTANT_TAG}\` and a \`${CLASS_TAG}\` line`,
   repeated_finding: "a blocking item restates an earlier finding",
 };

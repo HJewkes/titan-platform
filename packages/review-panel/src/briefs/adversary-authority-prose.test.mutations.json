@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a line with no colon after its Authority label still reads as a label",
+      "file": "packages/review-panel/src/briefs/adversary.ts",
+      "find": "  if (!isLabel(label, value)) return undefined;\n",
+      "replace": "",
+      "kills": [
+        "authorityLine prose that starts with the word Authority a bold paragraph lead above a plain unchanged line reads unchanged",
+        "authorityLine prose that starts with the word Authority prose leads with no Authority line read undefined"
+      ]
+    },
+    {
+      "name": "a word between the label and its colon still reads as a label",
+      "file": "packages/review-panel/src/briefs/adversary.ts",
+      "find": "labelledLineRest(label, AUTHORITY_HEADING) === \"\"",
+      "replace": "labelledLineRest(label, AUTHORITY_HEADING) !== undefined",
+      "kills": [
+        "authorityLine prose that starts with the word Authority a paragraph with a colon later in the prose above a plain unchanged line reads unchanged"
+      ]
+    },
+    {
+      "name": "a worded label whose value is widened is no longer read widened",
+      "file": "packages/review-panel/src/briefs/adversary.ts",
+      "find": "if (rest === WIDENED || valueReadsWidened(value)) return WIDENED;",
+      "replace": "if (rest === WIDENED) return WIDENED;",
+      "kills": [
+        "authorityLine prose that starts with the word Authority a worded label widened line still reads widened over unchanged"
+      ]
+    },
+    {
+      "name": "the quoted line is one that reads widened, not malformed",
+      "file": "packages/review-panel/src/briefs/adversary.ts",
+      "find": "authorityReading(raw) === \"malformed\")",
+      "replace": "authorityReading(raw) === \"widened\")",
+      "kills": [
+        "malformedAuthorityLines names the first line that reads malformed, trimmed"
+      ]
+    }
+  ]
+}
