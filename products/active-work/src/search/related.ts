@@ -1,8 +1,5 @@
 import { existsSync } from 'node:fs';
-import type { LedgerRow } from '@titan-design/decider';
 import { planContext, type ContextPlan, type Degradation, type DropReason } from '@titan-design/retrieval';
-import { ledgerPath, readLedgerRows } from '../decider/ledger.js';
-import { searchPrecedents } from '../decider/search.js';
 import { NoteReadIfSchema } from '../schemas/note.js';
 import { defaultGraphPath, openGraph, type WorkspaceGraph } from '../session-index/graph.js';
 import { DECISIONS_CLASS, SEARCH_CLASSES } from './classes.js';
@@ -10,6 +7,8 @@ import { hitTiers } from './context-tiers.js';
 import { deriveQuery, type DerivedQuery } from './derive-query.js';
 import { graphTermStatistics } from './document-frequency.js';
 import { searchWorkspace } from './index.js';
+import { decisionHits } from './related-decisions.js';
+import { namedIdCount, namesTask, servedByRelated } from './related-filters.js';
 import type { ResolvedHit } from './resolve.js';
 import { visibilityFor, type Shown } from '../sessions/visibility.js';
 import { readRawFrontmatter } from '../utils/gray-matter-io.js';
@@ -175,37 +174,6 @@ async function withReadIf(hits: RelatedHit[], activeRoot: string): Promise<Relat
   );
 }
 
-/**
- * Handoff archives restate session records, which have their own class, and
- * were served 15 times and opened 0 times in the week to 2026-09-23 (TP-331).
- * `search` still finds them; only the unasked-for related block drops them.
- */
-const NOT_SERVED_BY_RELATED = /(^|\/)sources\/handoff-archive[^/]*\.md$/;
-
-function servedByRelated(hit: ResolvedHit): boolean {
-  return hit.class !== 'sources' || hit.path === null || !NOT_SERVED_BY_RELATED.test(hit.path);
-}
-
-function escapeRegex(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * A task the query already names adds nothing the caller does not have, and
- * would spend one of the few slots. Same token bounds as `context.graph`, so
- * `AL-1` does not name `AL-12`.
- */
-function namesTask(text: string, hit: ResolvedHit): boolean {
-  if (hit.class !== 'tasks' || !hit.ref.startsWith('task:')) return false;
-  const id = hit.ref.slice('task:'.length);
-  return new RegExp(`(?<![A-Za-z0-9])${escapeRegex(id)}(?![A-Za-z0-9])`, 'i').test(text);
-}
-
-/** Headroom for named tasks the filter may remove, so the slot backfills. */
-function namedIdCount(text: string): number {
-  return new Set(text.match(/(?<![A-Za-z0-9])[A-Za-z][A-Za-z0-9]*-\d+(?![A-Za-z0-9])/g)).size;
-}
-
 function openIndex(dbPath: string): WorkspaceGraph | RelatedDegradation {
   // Opening creates the file, and nothing on this path may write to the graph.
   if (!existsSync(dbPath)) {
@@ -272,49 +240,6 @@ async function planRelated(
   return placedFields(hits, plan);
 }
 
-function decisionHit(row: LedgerRow): RelatedHit {
-  const answered = row.answer === null ? row.question : `${row.question} -> ${row.answer}`;
-  return {
-    ref: `decision:${row.key}`,
-    class: DECISIONS_CLASS.name,
-    initiative: row.initiative,
-    title: row.header ?? row.question,
-    path: null,
-    excerpt: answered,
-    byteOffset: null,
-    byteLength: null,
-  };
-}
-
-/** A fresh workspace has no ledger yet, which is worth saying but not worth failing over. */
-async function decisionHits(
-  input: RelatedInput,
-  query: DerivedQuery,
-  visible: Shown,
-  activeRoot: string,
-  limit: number,
-): Promise<{ hits: RelatedHit[]; degraded: RelatedDegradation[] }> {
-  try {
-    const { rows } = await readLedgerRows(activeRoot);
-    if (rows.length === 0 && !existsSync(ledgerPath(activeRoot))) {
-      return {
-        hits: [],
-        degraded: [{ source: 'decisions', reason: 'missing', message: 'no decision ledger' }],
-      };
-    }
-    const exclude = new Set(input.exclude ?? []);
-    const ranked = await searchPrecedents(rows, query.terms.join(' '), {
-      isVisible: visible,
-      limit: limit + exclude.size,
-      ...(input.initiative !== undefined ? { initiative: input.initiative } : {}),
-    });
-    const hits = ranked.map(({ row }) => decisionHit(row)).filter((hit) => !exclude.has(hit.ref));
-    return { hits: hits.slice(0, limit), degraded: [] };
-  } catch (err) {
-    return { hits: [], degraded: [{ source: 'decisions', reason: 'error', message: describe(err) }] };
-  }
-}
-
 async function rankedHits(
   graph: WorkspaceGraph,
   input: RelatedInput,
@@ -344,6 +269,35 @@ function toRelatedDegradation({ retriever, reason, message }: Degradation): Rela
   return { source: retriever, reason, message };
 }
 
+async function gatherHits(
+  graph: WorkspaceGraph,
+  input: RelatedInput,
+  query: DerivedQuery,
+  limit: number,
+  activeRoot: string,
+): Promise<{ hits: RelatedHit[]; degraded: RelatedDegradation[] }> {
+  // Related context is pasted into sessions no surface marked as the owner's, so it gets an agent's view.
+  const visible = await visibilityFor({ activeRoot, warnings: [] });
+  const decisions = wantsDecisions(input)
+    ? await decisionHits({
+        query,
+        visible,
+        activeRoot,
+        limit: Math.max(1, Math.ceil(limit * DECISIONS_CLASS.share)),
+        ...(input.initiative !== undefined ? { initiative: input.initiative } : {}),
+        ...(input.exclude !== undefined ? { exclude: input.exclude } : {}),
+      })
+    : { hits: [], degraded: [] };
+  const workspace =
+    workspaceClasses(input).length === 0
+      ? { hits: [], degraded: [] }
+      : await rankedHits(graph, input, Math.max(1, limit - decisions.hits.length), query, activeRoot, visible);
+  return {
+    hits: [...workspace.hits, ...decisions.hits],
+    degraded: [...workspace.degraded, ...decisions.degraded],
+  };
+}
+
 async function searchOpenIndex(
   graph: WorkspaceGraph,
   input: RelatedInput,
@@ -352,17 +306,7 @@ async function searchOpenIndex(
   const context = input.mode === 'context';
   const limit = input.limit ?? (context ? RELATED_CONTEXT_CANDIDATES : RELATED_DEFAULT_LIMIT);
   const activeRoot = input.activeRoot ?? getActiveRoot();
-  // Related context is pasted into sessions no surface marked as the owner's, so it gets an agent's view.
-  const visible = await visibilityFor({ activeRoot, warnings: [] });
-  const decisions = wantsDecisions(input)
-    ? await decisionHits(input, query, visible, activeRoot, Math.max(1, Math.ceil(limit * DECISIONS_CLASS.share)))
-    : { hits: [], degraded: [] };
-  const workspace =
-    workspaceClasses(input).length === 0
-      ? { hits: [], degraded: [] }
-      : await rankedHits(graph, input, Math.max(1, limit - decisions.hits.length), query, activeRoot, visible);
-  const hits = [...workspace.hits, ...decisions.hits];
-  const degraded = [...workspace.degraded, ...decisions.degraded];
+  const { hits, degraded } = await gatherHits(graph, input, query, limit, activeRoot);
   if (context) return { ...(await planRelated(hits, input, activeRoot)), degraded, query };
   return {
     hits: withinBudget(hits, input.budget ?? RELATED_DEFAULT_BUDGET, input.render ?? defaultRender),
