@@ -9,6 +9,7 @@ import { runRenderCli } from "./render-cli.js";
 import { runRewriteCli } from "./rewrite-cli.js";
 import { runRunCli } from "./workflow/run-cli.js";
 import { runEditCli } from "./workflow/edit-cli.js";
+import { runRunsCli } from "./workflow/runs-cli.js";
 import { runPropsCli } from "./workflow/props-cli.js";
 import { runAbCli } from "./workflow/samples-cli.js";
 import { runStageCli } from "./workflow/stage-cli.js";
@@ -26,6 +27,7 @@ const SUBCOMMANDS = new Map<string | undefined, (argv: string[]) => Promise<numb
   ["render", runRenderCli],
   ["rewrite", runRewriteCli],
   ["run", runRunCli],
+  ["runs", runRunsCli],
   ["sheets", runSheetsCli],
   ["stage", runStageCli],
 ]);
