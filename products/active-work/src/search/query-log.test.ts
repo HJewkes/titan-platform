@@ -20,7 +20,7 @@ const LineSchema = z.object({
   query: z.string(),
   hits: z.number(),
   degraded: z.number(),
-  caller: z.string(),
+  callerKind: z.string(),
 });
 
 function readLine(dir: string): z.infer<typeof LineSchema> {
@@ -50,7 +50,7 @@ describe('search query log', () => {
         query: 'zzzunmatchable',
         hits: 0,
         degraded: result.degraded.length,
-        caller: 'agent',
+        callerKind: 'agent',
       });
     });
   });
@@ -66,7 +66,7 @@ describe('search query log', () => {
 
       const line = readLine(stateDir);
       expect(line.hits).toBe(result.hits.length);
-      expect(line.caller).toBe('owner');
+      expect(line.callerKind).toBe('owner');
     });
   });
 

@@ -11,7 +11,7 @@ interface SearchQueryRecord {
   query: string;
   hits: number;
   degraded: number;
-  caller: 'owner' | 'agent' | 'unknown';
+  callerKind: 'owner' | 'agent' | 'unknown';
   recovered?: boolean;
 }
 

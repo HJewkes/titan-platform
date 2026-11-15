@@ -64,7 +64,7 @@ export default defineCommand<Args, Result>({
       query: args.query,
       hits: hits.length,
       degraded: degraded.length,
-      caller: ctx.caller ?? 'unknown',
+      callerKind: ctx.caller ?? 'unknown',
     });
     return {
       query: args.query,
