@@ -245,11 +245,13 @@ const knowledgeRow = z.object({
   type: z.string(),
   /** A note whose file time is unknown falls back to its `created` date. */
   changed: z.string().nullable(),
+  /** A note's tags; absent for an untagged note and for every source. */
+  tags: z.array(z.string()).optional(),
 });
 
 const notesResult = z.object({ fetchedAt: z.string(), records: z.array(knowledgeRow) });
 
-const recordResult = knowledgeRow.omit({ type: true, changed: true }).extend({
+const recordResult = knowledgeRow.omit({ type: true, changed: true, tags: true }).extend({
   fetchedAt: z.string(),
   /** A note's kind; a source has none. */
   type: z.string().nullable(),
@@ -282,7 +284,7 @@ export async function keepsSlug(activeWork: ActiveWork, options: WorkOptions): P
 }
 
 function noteRow(note: ReadResult<"note.list">["notes"][number]): KnowledgeRow {
-  return { ref: `note:${note.slug}/${note.filename}`, kind: "note", slug: note.slug, file: note.filename, title: note.title, type: note.kind, changed: note.mtime ?? note.created };
+  return { ref: `note:${note.slug}/${note.filename}`, kind: "note", slug: note.slug, file: note.filename, title: note.title, type: note.kind, changed: note.mtime ?? note.created, ...(note.tags ? { tags: note.tags } : {}) };
 }
 
 function sourceRow(source: ReadResult<"source.list">["sources"][number]): KnowledgeRow {
