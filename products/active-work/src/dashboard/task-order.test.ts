@@ -3,7 +3,16 @@ import { restoreInPriorityOrder } from './utils/task-order.js';
 import type { TaskItem } from './types.js';
 
 function task(slug: string, id: string, priority: number): TaskItem {
-  return { id, slug, title: id, priority, status: 'open', created: '2026-01-01' } as TaskItem;
+  return {
+    id,
+    slug,
+    title: id,
+    priority,
+    status: 'open',
+    created: '2026-01-01',
+    updated: '2026-01-01',
+    done_at: null,
+  };
 }
 
 describe('restoreInPriorityOrder', () => {
