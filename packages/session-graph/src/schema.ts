@@ -214,5 +214,5 @@ export const MIGRATIONS: Migration[] = [
   { version: 14, name: ECHO_STATE_MIGRATION_NAME, up: applyEchoStateSchema },
   { version: 15, name: ORIGIN_ROUTE_MIGRATION_NAME, up: applyOriginRouteSchema },
   { version: 16, name: PR_HEAD_MIGRATION_NAME, up: applyPrHeadSchema },
-  { version: 17, name: SESSION_COST_MIGRATION_NAME, up: applySessionCostSchema },
+  { version: 18, name: SESSION_COST_MIGRATION_NAME, up: applySessionCostSchema },
 ];
