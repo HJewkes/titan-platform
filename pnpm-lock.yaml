@@ -1013,6 +1013,9 @@ importers:
       '@titan-design/agent-protocol':
         specifier: workspace:^
         version: link:../agent-protocol
+      '@titan-design/cluster':
+        specifier: workspace:^
+        version: link:../cluster
       '@titan-design/locator':
         specifier: workspace:^
         version: link:../locator
@@ -1775,9 +1778,6 @@ importers:
       '@titan-design/app-paths':
         specifier: workspace:^
         version: link:../../packages/app-paths
-      '@titan-design/cluster':
-        specifier: workspace:^
-        version: link:../../packages/cluster
       '@titan-design/daemon':
         specifier: workspace:^
         version: link:../../packages/daemon

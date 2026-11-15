@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { configPath, loadConfig, resolveDbPath } from "./config.js";
+import { checkCandidatesMode, configPath, loadConfig, resolveDbPath } from "./config.js";
 import { arConfigFixture } from "./test-support/autoresearch.js";
 
 const dirs: string[] = [];
@@ -300,6 +300,19 @@ describe("loadConfig", () => {
   it("leaves review.panel unset when the config names none, and rejects a misspelt mode", () => {
     expect(loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { profile: "rv" } } }))).shepherd?.review?.panel).toBeUndefined();
     expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { profile: "rv", panel: "shaddow" } } })))).toThrow(/panel/);
+  });
+
+  it("checkCandidates defaults to record", () => {
+    const load = (shepherd: object) => checkCandidatesMode(loadConfig(configPath(xdg({ shepherd }))));
+
+    expect(checkCandidatesMode({})).toBe("record");
+    expect(load({})).toBe("record");
+    expect(load({ checkCandidates: "off" })).toBe("off");
+    expect(load({ checkCandidates: "propose" })).toBe("propose");
+  });
+
+  it("rejects an unknown checkCandidates mode", () => {
+    expect(() => loadConfig(configPath(xdg({ shepherd: { checkCandidates: "shadow" } })))).toThrow(/checkCandidates/);
   });
 
   it("rejects a role table naming a class that does not exist", () => {
