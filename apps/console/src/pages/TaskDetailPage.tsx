@@ -5,6 +5,7 @@ import { EXIT } from "@titan-design/registry";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
+import { StatePill } from "./AgentParts.js";
 import { GuessedCaption, RefLink, TaskStageBadge } from "./TaskParts.js";
 
 type Detail = ConsoleCommands["work.task"]["result"];
@@ -38,13 +39,24 @@ function Loaded({ id, detail }: { id: string; detail: Detail }): ReactNode {
       <Panel title="Pull requests">
         <PullRequests detail={detail} />
       </Panel>
+      <Panel title="Agents">
+        <Agents id={id} />
+      </Panel>
+      <Records id={id} detail={detail} />
+    </VStack>
+  );
+}
+
+function Records({ id, detail }: { id: string; detail: Detail }): ReactNode {
+  return (
+    <>
       <Panel title="Mentions">
         <Mentions id={id} />
       </Panel>
       <Panel title="Linked sessions">
         <Sessions detail={detail} />
       </Panel>
-    </VStack>
+    </>
   );
 }
 
@@ -175,7 +187,25 @@ function BranchRow({ branch }: { branch: Branch }): ReactNode {
   );
 }
 
-const TASK_FILE = /^tasks\/(.+)\.yml$/;
+function Agents({ id }: { id: string }): ReactNode {
+  const roster = useQuery("agents.roster");
+  if (roster.status === "loading") return <Spinner size="sm" label="Loading agents" />;
+  if (roster.data === undefined) return <Alert status="warning" size="compact" message={`Agents are unavailable: ${roster.error.message}`} />;
+  const working = roster.data.agents.filter((agent) => agent.taskId === id);
+  if (working.length === 0) return <Typography variant="caption" color="secondary">No live agent on this task</Typography>;
+  return (
+    <VStack gap={2} testID="task-agents">
+      {working.map((agent) => (
+        <HStack key={agent.id} gap={2} align="center" wrap>
+          <RefLink refText={`agent:${agent.name}`} label={agent.name} />
+          <StatePill state={agent.state} />
+        </HStack>
+      ))}
+    </VStack>
+  );
+}
+
+const TASK_FILE =/^tasks\/(.+)\.yml$/;
 
 /** A mention in another task's file names that task; session and artifact mentions have no page yet. */
 function mentionRef(mention: Mention): string | undefined {
