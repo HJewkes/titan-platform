@@ -69,8 +69,8 @@ describe('occurrences.jsonl', () => {
     for await (const occ of readOccurrences(dir)) results.push(occ);
 
     expect(results).toHaveLength(2);
-    expect(results[0].sessionId).toBe('session-1');
-    expect(results[1].sessionId).toBe('session-2');
+    expect(results[0]?.sessionId).toBe('session-1');
+    expect(results[1]?.sessionId).toBe('session-2');
   });
 
   it('rejects an invalid occurrence before appending', async () => {

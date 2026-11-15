@@ -118,7 +118,7 @@ function spawnedWorker(
   parentId: string | null,
   ts = T0 + 1_000,
   name = 'worker-1',
-): Row[] {
+): [Row, Row] {
   const meta: Record<string, string> = {
     name,
     profile: 'implementer',
@@ -207,9 +207,9 @@ describe('agent-chat origin adapter', () => {
 
     const { origins } = resolve([WORKER_SESSION, legacySession, 'later-session']);
 
-    expect(origins[WORKER_SESSION].parentSessionId).toBe(COORD_SESSION);
-    expect(origins[legacySession].parentSessionId).toBe(COORD_SESSION);
-    expect(origins['later-session'].parentSessionId).toBeNull();
+    expect(origins[WORKER_SESSION]).toMatchObject({ parentSessionId: COORD_SESSION });
+    expect(origins[legacySession]).toMatchObject({ parentSessionId: COORD_SESSION });
+    expect(origins['later-session']).toMatchObject({ parentSessionId: null });
   });
 
   it('reads brief length and excerpt from plan.json', () => {
@@ -580,8 +580,8 @@ describe('experiment arm and follow-ups (CC-168)', () => {
 
     const { origins } = resolve();
 
-    expect(origins[WORKER_SESSION].followupKinds).toEqual({ fix: 2, rebase: 1 });
-    expect(origins[COORD_SESSION].followupKinds).toBeNull();
+    expect(origins[WORKER_SESSION]).toMatchObject({ followupKinds: { fix: 2, rebase: 1 } });
+    expect(origins[COORD_SESSION]).toMatchObject({ followupKinds: null });
   });
 
   it('a follow-up after a respawn under the same name counts toward the new session', () => {
@@ -598,8 +598,8 @@ describe('experiment arm and follow-ups (CC-168)', () => {
 
     const { origins } = resolve([WORKER_SESSION, laterSession]);
 
-    expect(origins[WORKER_SESSION].followupKinds).toEqual({ fix: 1 });
-    expect(origins[laterSession].followupKinds).toEqual({ review: 1 });
+    expect(origins[WORKER_SESSION]).toMatchObject({ followupKinds: { fix: 1 } });
+    expect(origins[laterSession]).toMatchObject({ followupKinds: { review: 1 } });
   });
 
   it('one query over session_origin gives the arm table for an experiment', async () => {
@@ -680,8 +680,12 @@ describe('route decision on the spawn row (CC-1666)', () => {
 
     const origin = resolve().origins[WORKER_SESSION];
 
-    expect(origin).toMatchObject({ routeMode: null, routeSource: null, routeFacts: null });
-    expect(origin.routeCandidateWanted).toBeNull();
+    expect(origin).toMatchObject({
+      routeMode: null,
+      routeSource: null,
+      routeFacts: null,
+      routeCandidateWanted: null,
+    });
   });
 
   it('ignores a malformed route value and keeps the valid ones', () => {

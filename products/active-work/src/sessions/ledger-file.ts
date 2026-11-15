@@ -59,7 +59,7 @@ export async function resolveLedgerPaths(
 function parseYamlDocument(text: string, label: string): Document {
   const doc = parseDocument(text);
   if (doc.errors.length > 0) {
-    throw new ValidationError(`Could not parse ${label}: ${doc.errors[0].message}`);
+    throw new ValidationError(`Could not parse ${label}: ${doc.errors[0]?.message}`);
   }
   return doc;
 }
@@ -259,7 +259,7 @@ function rankFor(rows: RankedRow[], targetId: string, tier: string, before?: str
   if (next === undefined) throw new ValidationError(`--before ${before} is not a loop in tier ${tier}`);
   if (next.rank === null) return last;
   const at = peers.indexOf(next);
-  const prev = at > 0 ? peers[at - 1].rank : null;
+  const prev = at > 0 ? (peers[at - 1]?.rank ?? null) : null;
   return prev === null ? next.rank - 1 : (prev + next.rank) / 2;
 }
 
