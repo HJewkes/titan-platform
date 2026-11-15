@@ -12,7 +12,7 @@ import { relatedForLoops } from './loop-context.js';
 import { selectFacetLoops, selectFacetTasks } from './facet.js';
 import { loadArtifacts, loadBrief, loadSessionsNewestFirst, loadTasks } from './load.js';
 import {
-  compareTasksByPriority,
+  compareTasksForBootstrap,
   formatTimeSince,
   renderRecentlyDone,
   renderTopTasks,
@@ -193,10 +193,10 @@ function narrativeOf(allSessions: LoadedInitiative['sessions']['sessions'], now:
   };
 }
 
-function topTaskOf(tasks: Task[], tags: string[] | undefined): Task | undefined {
+function topTaskOf(tasks: Task[], tags: string[] | undefined, now: Date): Task | undefined {
   const openSorted = tasks
     .filter((t) => t.status === 'open' && !isDraft(t))
-    .sort(compareTasksByPriority);
+    .sort(compareTasksForBootstrap(now));
   return selectFacetTasks(openSorted, tags).tasks[0];
 }
 
@@ -213,7 +213,7 @@ function loadedFields(input: ResolvedBootstrapInput, loaded: LoadedInitiative) {
     malformedTasks,
     resolvedLoops: deriveResolvedLoopsFrom(loaded.sessions, { now, tasks }),
     ...narrativeOf(sessions, now),
-    topTasks: renderTopTasks(tasks, input.topNTasks, slug, facet?.tags),
+    topTasks: renderTopTasks(tasks, input.topNTasks, slug, now, facet?.tags),
     recentlyDone: renderRecentlyDone(tasks, input.recentlyDoneDays, now, slug),
     notes: loaded.notes,
   };
@@ -225,7 +225,7 @@ export async function gatherBootstrap(input: ResolvedBootstrapInput): Promise<Ga
   const { initiativeDir, loaded } = await timedLoad(input, timings);
   const artifactsBodyPending = startArtifactsBody(input, loaded, timings);
   const siblings = await probeSiblings(input);
-  const topTask = topTaskOf(loaded.tasks.tasks, input.facet?.tags);
+  const topTask = topTaskOf(loaded.tasks.tasks, input.facet?.tags, input.now);
   const ranked = await rankForSession(input, loaded, topTask, timings);
   const loops = await loopsForSession(input, loaded, ranked, timings);
   const artifactsError = loaded.artifacts.error;
