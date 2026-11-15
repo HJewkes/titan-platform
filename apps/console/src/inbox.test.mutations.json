@@ -26,8 +26,8 @@
     {
       "name": "an answer-chat item is left on the terminal",
       "file": "apps/console/src/pages/InboxPage.tsx",
-      "find": "\"owner-op\", \"approve-chat\", \"answer-chat\"]",
-      "replace": "\"owner-op\", \"approve-chat\"]",
+      "find": "\"approve-chat\", \"answer-chat\"]",
+      "replace": "\"approve-chat\"]",
       "kills": [
         "the inbox page, acting from the console labels each console tap with its verb and leaves the rest on the terminal"
       ]
