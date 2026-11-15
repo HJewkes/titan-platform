@@ -90,6 +90,18 @@ Scores are small by construction — an id ranked first by one unweighted retrie
 `1/61 ≈ 0.0164`. Do not read them as probabilities; only the order and the relative gaps
 mean anything.
 
+## Deriving a query from prose
+
+For text nobody wrote as a query (a task title, a brief), `meaningfulTerms(text)` drops
+stop words and short tokens and keeps task ids such as `TP-84` whole. `orExpression(terms)`
+quotes each term and ORs them, so a hyphen cannot read as FTS5's NOT.
+
+`deriveQuery(text, df, { limit, maxDf })` picks the rarest terms by document frequency
+(`df` is injected, so it needs no index), never lets a commit hash win on rarity, and
+appends every task id. It returns `{ terms, expression }`. `selectTerms` is the selection on
+its own, and `documentFrequencyCap(spans)` is the per-term span cap (1% of the corpus,
+never below `DF_CAP_FLOOR`) that keeps a scoped query from scoring the whole corpus.
+
 ## Reranking
 
 `crossEncoderReranker()` runs `Xenova/ms-marco-MiniLM-L-6-v2` in-process through
