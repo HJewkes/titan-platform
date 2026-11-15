@@ -9,20 +9,20 @@ import type { Logger } from '@titan-design/daemon';
 import { extractPrecedents } from '../decider/extract.js';
 import { getActiveRoot } from '../utils/paths.js';
 
-export interface PrecedentExtractResult {
+interface PrecedentExtractResult {
   sources: ReadonlyArray<{ source: string; written: number; errors: readonly string[] }>;
 }
 
 export type PrecedentExtract = () => Promise<PrecedentExtractResult>;
 
-export interface PrecedentWatchOptions {
+interface PrecedentWatchOptions {
   extract?: PrecedentExtract;
   /** Overrides `AW_PRECEDENT_EXTRACT_MS`; 0 turns the watcher off. */
   intervalMs?: number;
   startDelayMs?: number;
 }
 
-export interface PrecedentWatcher {
+interface PrecedentWatcher {
   close(): Promise<void>;
 }
 
