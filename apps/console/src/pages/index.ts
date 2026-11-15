@@ -25,6 +25,7 @@ import { TaskDetailPage } from "./TaskDetailPage.js";
 import { TasksPage } from "./TasksPage.js";
 import { TheaterPage } from "./TheaterPage.js";
 import { TheaterPlayer } from "./TheaterPlayer.js";
+import { TheaterResolve, isResolvable } from "./TheaterResolve.js";
 import { TreePage } from "./TreePage.js";
 
 type PageComponent = (props: { route: Route }) => ReactNode;
@@ -49,7 +50,11 @@ const CoordinatorView: PageComponent = ({ route }) => createElement(CoordinatorP
 const ShepherdView: PageComponent = ({ route }) => (route.id ? createElement(ShepherdDetailPage, { id: route.id }) : createElement(ShepherdPage));
 const ScorecardView: PageComponent = ({ route }) => (route.id ? createElement(ScorecardTaskPage, { id: route.id }) : createElement(ScorecardPage, { query: route.query }));
 const TasksView: PageComponent = ({ route }) => (route.id ? createElement(TaskDetailPage, { id: route.id }) : createElement(TasksPage, { query: route.query }));
-const TheaterView: PageComponent = ({ route }) => (route.id ? createElement(TheaterPlayer, { id: route.id, query: route.query }) : createElement(TheaterPage, { query: route.query }));
+const TheaterView: PageComponent = ({ route }) => {
+  if (!route.id) return createElement(TheaterPage, { query: route.query });
+  const page = isResolvable(route.id, route.query) ?TheaterResolve : TheaterPlayer;
+  return createElement(page, { id: route.id, query: route.query });
+};
 
 const WIDE: Layout = { maxWidth: "wide" };
 const NARROW: Layout = { maxWidth: "narrow" };

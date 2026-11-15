@@ -146,6 +146,44 @@ describe("the theater list", () => {
   });
 });
 
+function withResolves(...resolves: [args: Record<string, string>, result: unknown][]): Snapshot {
+  const base = snapshotOf({ videos: VIDEOS, truncated: false, gaps: [] });
+  const added = resolves.map(([args, result]) => [snapshotKey("videos.resolve", args), successEnvelope(result)] as const);
+  return { ...base, calls: { ...base.calls, ...Object.fromEntries(added) } };
+}
+
+describe("a theater deep link by series or alias", () => {
+  it("opens the video that latest?series= resolves to", async () => {
+    renderConsole("#/theater/latest?series=daily-digest", withResolves([{ series: "daily-digest" }, { found: true, id: WITHOUT_CAPTIONS }]));
+    expect((await screen.findAllByText("kiln-sample.webm")).length).toBeGreaterThan(0);
+    expect(await screen.findByTestId("theater-video")).toBeTruthy();
+  });
+
+  it("opens the video an @alias names", async () => {
+    renderConsole("#/theater/@relay-intro", withResolves([{ alias: "relay-intro" }, { found: true, id: WITH_CAPTIONS }]));
+    const track = (await screen.findByTestId("theater-video")).querySelector("track");
+    expect(track?.getAttribute("src")).toBe(`/media/videos/${WITH_CAPTIONS}/captions`);
+  });
+
+  it("shows the reason when nothing matches", async () => {
+    renderConsole("#/theater/latest?series=nope", withResolves([{ series: "nope" }, { found: false, reason: "No current video matches" }]));
+    expect(await screen.findByText("No current video matches")).toBeTruthy();
+    expect(screen.queryByTestId("theater-video")).toBeNull();
+  });
+
+  it("opens a plain video id directly, with no resolve call", async () => {
+    renderConsole(`#/theater/${WITH_CAPTIONS}`);
+    expect(await screen.findByTestId("theater-video")).toBeTruthy();
+  });
+
+  it("keeps the start time from t= on a resolved link", async () => {
+    renderConsole("#/theater/latest?series=x&t=12", withResolves([{ series: "x" }, { found: true, id: WITH_CAPTIONS }]));
+    const element = await screen.findByTestId<HTMLVideoElement>("theater-video");
+    metadataLoaded(element);
+    expect(element.currentTime).toBe(12);
+  });
+});
+
 describe("a day section", () => {
   it("names the day, counts its videos and run time, and links its hidden clips", () => {
     const rows = VIDEOS.map((entry) => ({ video: entry, purpose: purposeOf(entry) }));
