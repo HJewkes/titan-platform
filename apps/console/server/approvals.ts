@@ -98,15 +98,33 @@ function stripHiddenPicks(flow: Flow): Flow {
 
 const countedFyi = (legs: readonly Leg[]): number => legs.reduce((sum, leg) => sum + (leg.fyiCount ?? 0), 0);
 
-export async function readFlow({ factory, rounds, inbox }: ApprovalsSources): Promise<ApprovalsFlow> {
-  const legs = await Promise.all([
-    guarded("factory", () => factoryLeg(factory)),
-    guarded("spool", () => spoolLeg(inbox)),
-    guarded("rounds", () => roundsLeg(rounds)),
+/** The live head of each PR Shepherd watches, keyed `<owner>/<repo>#<n>`; a row with no PR or head pins nothing. */
+export function liveHeads(rows: readonly { repo: string; pr: number | null; headSha: string | null }[]): Record<string, string> {
+  const heads: Record<string, string> = {};
+  for (const row of rows) if (row.pr !== null && row.headSha !== null) heads[`${row.repo}#${row.pr}`] = row.headSha;
+  return heads;
+}
+
+/** A failed heads read supersedes nothing, so the flow reads as it did before heads were given. */
+async function settledHeads(heads: LiveHeads): Promise<Record<string, string>> {
+  try {
+    return await heads;
+  } catch {
+    return {};
+  }
+}
+
+type LiveHeads = Record<string, string> | Promise<Record<string, string>>;
+
+/** `heads` may still be in flight: the legs read beside it, so the Shepherd read is never serialised behind them. */
+export async function readFlow({ factory, rounds, inbox }: ApprovalsSources, heads: LiveHeads = {}): Promise<ApprovalsFlow> {
+  const [legs, live] = await Promise.all([
+    Promise.all([guarded("factory", () => factoryLeg(factory)), guarded("spool", () => spoolLeg(inbox)), guarded("rounds", () => roundsLeg(rounds))]),
+    settledHeads(heads),
   ]);
   const open = legs.flatMap((leg) => leg.open);
   const asks = open.filter((item) => item.lens !== "fyi");
-  const consolidated = consolidate(asks, { answered: legs.flatMap((leg) => leg.answered) });
+  const consolidated = consolidate(asks, { answered: legs.flatMap((leg) => leg.answered), heads: live });
   const flow = { ...consolidated, withdrawn: [...consolidated.withdrawn, ...legs.flatMap((leg) => leg.withdrawn ?? [])] };
   return { flow: stripHiddenPicks(flow), gaps: legs.flatMap((leg) => leg.gaps), fyiCount: open.length - asks.length + countedFyi(legs), readAt: new Date().toISOString() };
 }
