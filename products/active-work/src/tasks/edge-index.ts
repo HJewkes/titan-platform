@@ -47,7 +47,7 @@ async function archivedIds(slug: string): Promise<string[]> {
     const names = await fs.readdir(path.join(getInitiativeDir(slug), 'tasks', 'archive'));
     return names.filter((name) => name.endsWith('.yml')).map((name) => name.slice(0, -4));
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    if (err instanceof Error && 'code' in err && err.code === 'ENOENT') return [];
     throw err;
   }
 }
