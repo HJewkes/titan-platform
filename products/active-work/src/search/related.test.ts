@@ -43,7 +43,7 @@ const related = (input: Partial<RelatedInput> & { text: string }) =>
 
 describe('relatedContext', () => {
   it('returns openable hits and the query that found them', async () => {
-    const result = await related({ text: 'the alpha lesson', initiative: 'alpha' });
+    const result = await related({ text: 'the alpha lesson', initiative: 'alpha', classes: ['notes', 'tasks'] });
 
     expect(result.degraded).toEqual([]);
     expect(result.query.terms).toEqual(['alpha', 'lesson']);
@@ -398,5 +398,78 @@ describe('relatedContext with tasks named in the query', () => {
 
     expect(result.entries!.length).toBeGreaterThan(0);
     expect(result.entries!.map((entry) => entry.ref)).not.toContain('task:AL-12');
+  });
+});
+
+describe('relatedContext decisions class', () => {
+  const OPEN_KEY = 'transcript:sess-open:tu-open';
+  const HIDDEN_KEY = 'transcript:sess-hidden:tu-hidden';
+
+  function v1Row(key: string, initiative: string, question: string) {
+    return {
+      key,
+      source: 'transcript',
+      asked_at: '2026-08-01T09:00:00Z',
+      session_id: 'sess',
+      tool_use_id: key,
+      initiative,
+      class: 'release_publish',
+      header: 'Lesson scope',
+      question,
+      options: ['Keep it (Recommended)', 'Drop it'],
+      recommended: 'Keep it (Recommended)',
+      answer: 'Drop it',
+      pick_type: 'other_option',
+      free_text: null,
+    };
+  }
+
+  function seedLedger(rows: ReturnType<typeof v1Row>[]): void {
+    const file = path.join(root, 'alpha', 'sources', 'precedents.jsonl');
+    writeFileSync(file, rows.map((row) => JSON.stringify(row)).join('\n') + '\n', 'utf8');
+  }
+
+  it('returns a ledger row beside a note hit', async () => {
+    seedLedger([v1Row(OPEN_KEY, 'alpha', 'Should the alpha lesson stay?')]);
+
+    const result = await related({ text: 'the alpha lesson', initiative: 'alpha' });
+
+    expect(result.hits.map((hit) => hit.class)).toEqual(expect.arrayContaining(['notes', 'decisions']));
+    expect(result.hits.find((hit) => hit.class === 'decisions')).toMatchObject({
+      ref: `decision:${OPEN_KEY}`,
+      title: 'Lesson scope',
+      excerpt: 'Should the alpha lesson stay? -> Drop it',
+      initiative: 'alpha',
+    });
+  });
+
+  it('withholds a row from an owner-only initiative', async () => {
+    writeCharter(root, ['beta']);
+    writeFileSync(
+      path.join(root, 'beta', 'sources', 'precedents.jsonl'),
+      JSON.stringify(v1Row(HIDDEN_KEY, 'beta', 'Should the alpha lesson stay?')) + '\n',
+      'utf8',
+    );
+    seedLedger([v1Row(OPEN_KEY, 'alpha', 'Unrelated question about gardens?')]);
+
+    const result = await related({ text: 'the alpha lesson', initiative: 'alpha' });
+
+    expect(result.hits.map((hit) => hit.ref)).not.toContain(`decision:${HIDDEN_KEY}`);
+  });
+
+  it('reports a missing ledger as degraded while other classes still return', async () => {
+    const result = await related({ text: 'the alpha lesson', initiative: 'alpha' });
+
+    expect(result.degraded).toEqual([expect.objectContaining({ source: 'decisions', reason: 'missing' })]);
+    expect(result.hits.some((hit) => hit.class === 'notes')).toBe(true);
+  });
+
+  it('leaves decisions out when only notes are asked for', async () => {
+    seedLedger([v1Row(OPEN_KEY, 'alpha', 'Should the alpha lesson stay?')]);
+
+    const result = await related({ text: 'the alpha lesson', initiative: 'alpha', classes: ['notes'] });
+
+    expect(result.hits.every((hit) => hit.class === 'notes')).toBe(true);
+    expect(result.degraded).toEqual([]);
   });
 });

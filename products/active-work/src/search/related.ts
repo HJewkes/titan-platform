@@ -1,14 +1,17 @@
 import { existsSync } from 'node:fs';
+import type { LedgerRow } from '@titan-design/decider';
 import { planContext, type ContextPlan, type Degradation, type DropReason } from '@titan-design/retrieval';
+import { ledgerPath, readLedgerRows } from '../decider/ledger.js';
+import { searchPrecedents } from '../decider/search.js';
 import { NoteReadIfSchema } from '../schemas/note.js';
 import { defaultGraphPath, openGraph, type WorkspaceGraph } from '../session-index/graph.js';
-import { SEARCH_CLASSES } from './classes.js';
+import { DECISIONS_CLASS, SEARCH_CLASSES } from './classes.js';
 import { hitTiers } from './context-tiers.js';
 import { deriveQuery, type DerivedQuery } from './derive-query.js';
 import { graphTermStatistics } from './document-frequency.js';
 import { searchWorkspace } from './index.js';
 import type { ResolvedHit } from './resolve.js';
-import { visibilityFor } from '../sessions/visibility.js';
+import { visibilityFor, type Shown } from '../sessions/visibility.js';
 import { readRawFrontmatter } from '../utils/gray-matter-io.js';
 import { getActiveRoot } from '../utils/paths.js';
 import { toAbsolute } from '../workspace-index/refs.js';
@@ -45,8 +48,17 @@ export const RELATED_DEFAULT_TOKENS = 375;
 export const RELATED_CONTEXT_CANDIDATES = 20;
 type RelatedMode = 'list' | 'context';
 
-/** Workspace classes only. Transcripts are the raw form of what the notes distil. */
-export const RELATED_DEFAULT_CLASSES = ['notes', 'sources', 'tasks', 'sessions', 'plans'];
+/** Workspace classes and the decision ledger. Transcripts are the raw form of what the notes distil. */
+export const RELATED_DEFAULT_CLASSES = ['notes', 'sources', 'tasks', 'sessions', 'plans', DECISIONS_CLASS.name];
+
+function wantsDecisions(input: RelatedInput): boolean {
+  return (input.classes ?? RELATED_DEFAULT_CLASSES).includes(DECISIONS_CLASS.name);
+}
+
+/** The ledger is not in the graph, so the workspace search must never be asked for it. */
+function workspaceClasses(input: RelatedInput): string[] {
+  return (input.classes ?? RELATED_DEFAULT_CLASSES).filter((name) => name !== DECISIONS_CLASS.name);
+}
 
 export type RelatedHit = Pick<
   ResolvedHit,
@@ -208,7 +220,7 @@ function openIndex(dbPath: string): WorkspaceGraph | RelatedDegradation {
 
 /** Each class's page share, read as its share of the token budget. */
 function sharesAsQuotas(): Record<string, number> {
-  return Object.fromEntries(SEARCH_CLASSES.map((cls) => [cls.name, cls.share]));
+  return Object.fromEntries([...SEARCH_CLASSES, DECISIONS_CLASS].map((cls) => [cls.name, cls.share]));
 }
 
 function requestedTokens(input: RelatedInput): number {
@@ -260,21 +272,64 @@ async function planRelated(
   return placedFields(hits, plan);
 }
 
+function decisionHit(row: LedgerRow): RelatedHit {
+  const answered = row.answer === null ? row.question : `${row.question} -> ${row.answer}`;
+  return {
+    ref: `decision:${row.key}`,
+    class: DECISIONS_CLASS.name,
+    initiative: row.initiative,
+    title: row.header ?? row.question,
+    path: null,
+    excerpt: answered,
+    byteOffset: null,
+    byteLength: null,
+  };
+}
+
+/** A fresh workspace has no ledger yet, which is worth saying but not worth failing over. */
+async function decisionHits(
+  input: RelatedInput,
+  query: DerivedQuery,
+  visible: Shown,
+  activeRoot: string,
+  limit: number,
+): Promise<{ hits: RelatedHit[]; degraded: RelatedDegradation[] }> {
+  try {
+    const { rows } = await readLedgerRows(activeRoot);
+    if (rows.length === 0 && !existsSync(ledgerPath(activeRoot))) {
+      return {
+        hits: [],
+        degraded: [{ source: 'decisions', reason: 'missing', message: 'no decision ledger' }],
+      };
+    }
+    const exclude = new Set(input.exclude ?? []);
+    const ranked = await searchPrecedents(rows, query.terms.join(' '), {
+      isVisible: visible,
+      limit: limit + exclude.size,
+      ...(input.initiative !== undefined ? { initiative: input.initiative } : {}),
+    });
+    const hits = ranked.map(({ row }) => decisionHit(row)).filter((hit) => !exclude.has(hit.ref));
+    return { hits: hits.slice(0, limit), degraded: [] };
+  } catch (err) {
+    return { hits: [], degraded: [{ source: 'decisions', reason: 'error', message: describe(err) }] };
+  }
+}
+
 async function rankedHits(
   graph: WorkspaceGraph,
   input: RelatedInput,
   limit: number,
   query: DerivedQuery,
   activeRoot: string,
+  visible: Shown,
 ): Promise<{ hits: RelatedHit[]; degraded: RelatedDegradation[] }> {
   const exclude = new Set(input.exclude ?? []);
   const result = await searchWorkspace(query.expression, {
-    // Related context is pasted into sessions no surface marked as the owner's, so it gets an agent's view.
-    visible: await visibilityFor({ activeRoot, warnings: [] }),
+    visible,
     graph,
     rawExpression: true,
     limit: limit + exclude.size + namedIdCount(input.text),
-    classes: input.classes ?? RELATED_DEFAULT_CLASSES,
+    classes: workspaceClasses(input),
     ...(input.initiative !== undefined ? { initiative: input.initiative } : {}),
     ...(input.activeRoot !== undefined ? { activeRoot: input.activeRoot } : {}),
   });
@@ -297,7 +352,17 @@ async function searchOpenIndex(
   const context = input.mode === 'context';
   const limit = input.limit ?? (context ? RELATED_CONTEXT_CANDIDATES : RELATED_DEFAULT_LIMIT);
   const activeRoot = input.activeRoot ?? getActiveRoot();
-  const { hits, degraded } = await rankedHits(graph, input, limit, query, activeRoot);
+  // Related context is pasted into sessions no surface marked as the owner's, so it gets an agent's view.
+  const visible = await visibilityFor({ activeRoot, warnings: [] });
+  const decisions = wantsDecisions(input)
+    ? await decisionHits(input, query, visible, activeRoot, Math.max(1, Math.ceil(limit * DECISIONS_CLASS.share)))
+    : { hits: [], degraded: [] };
+  const workspace =
+    workspaceClasses(input).length === 0
+      ? { hits: [], degraded: [] }
+      : await rankedHits(graph, input, Math.max(1, limit - decisions.hits.length), query, activeRoot, visible);
+  const hits = [...workspace.hits, ...decisions.hits];
+  const degraded = [...workspace.degraded, ...decisions.degraded];
   if (context) return { ...(await planRelated(hits, input, activeRoot)), degraded, query };
   return {
     hits: withinBudget(hits, input.budget ?? RELATED_DEFAULT_BUDGET, input.render ?? defaultRender),

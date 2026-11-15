@@ -76,6 +76,13 @@ export const SEARCH_CLASSES: SearchClass[] = [
   },
 ];
 
+/**
+ * Owner decisions come from the precedent ledger, not the workspace graph, so
+ * this is not a `SearchClass`: only related context ranks it, and `search`
+ * never queries it.
+ */
+export const DECISIONS_CLASS = { name: 'decisions', share: 0.2 };
+
 /** How many candidates a class may contribute for a page of `limit`. */
 export function capFor(cls: SearchClass, limit: number): number {
   return Math.max(1, Math.ceil(limit * cls.share));
