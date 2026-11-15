@@ -29,7 +29,6 @@ const NOT_DRAWN: Readonly<Record<string, string>> = {
   "history-why": "TP-4277 (P4b) uses react-ui Timeline",
   "change-group": "TP-4277 (P4b) ports ListBeat",
   "reading-list": "TP-4277 (P4b) ports ListBeat",
-  proof: "TP-4277 (P4b) ports ChecklistBeat",
   "context-map": "TP-4277 (P4c) ports MapBeat",
   "info-flow": "TP-4277 (P4c) ports MapBeat",
   "request-walk": "TP-4277 (P4c) ports MapBeat",

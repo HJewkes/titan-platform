@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { LedgerRowSchema } from '@titan-design/decider';
 import {
   assembleBootstrap,
   type LiveStatusFetcher,
@@ -1570,6 +1571,54 @@ describe('sibling-session detection (CC-9)', () => {
       expect(metadata.sibling_sessions).toBe(2);
       expect(prompt).toContain('/Users/dev/code/sample');
       expect(prompt).toContain('/Users/dev/code/other-checkout');
+    });
+  });
+
+  describe('recent owner answers (TP-6331)', () => {
+    const answered = LedgerRowSchema.parse({
+      key: 'k-answered',
+      source: 'queue',
+      asked_at: '2026-05-10T09:00:00Z',
+      initiative: SAMPLE_SLUG,
+      header: 'Pick a store',
+      question: 'Which store?',
+      options: [],
+      recommended: null,
+      answer: 'SQLite',
+    });
+
+    it('puts injected ledger rows in the prompt', async () => {
+      await withTempActiveRoot(async (activeRoot) => {
+        const { prompt } = await assembleBootstrap({
+          activeRoot,
+          slug: SAMPLE_SLUG,
+          now: FIXTURE_NOW,
+          decisionRows: async () => ({ rows: [answered], malformed: 0 }),
+          ...offlineOpts,
+        });
+
+        expect(prompt).toContain(
+          '# Recent owner answers\n- 2026-05-10 Q: Pick a store -> SQLite (precedent k-answered)',
+        );
+      });
+    });
+
+    it('still assembles the prompt and reports a throwing reader as degraded', async () => {
+      await withTempActiveRoot(async (activeRoot) => {
+        const { prompt, metadata } = await assembleBootstrap({
+          activeRoot,
+          slug: SAMPLE_SLUG,
+          now: FIXTURE_NOW,
+          decisionRows: async () => {
+            throw new Error('ledger unreadable');
+          },
+          ...offlineOpts,
+        });
+
+        expect(prompt).not.toContain('Recent owner answers');
+        expect(prompt).toContain('Sample Initiative');
+        expect(metadata.retrieval_degraded).toContain('decisions: error (ledger unreadable)');
+      });
     });
   });
 });
