@@ -105,6 +105,9 @@ type LoginState = {
 } | {
     status: "missing";
 } | {
+    status: "logged-out";
+    reason: string;
+} | {
     status: "refused";
     reason: RefusedReason;
 };
