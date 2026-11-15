@@ -299,6 +299,7 @@
   "packages/review-panel/src/briefs/check-candidates.ts",
   "packages/review-panel/src/briefs/ci.ts",
   "packages/review-panel/src/briefs/earlier-findings.ts",
+  "packages/review-panel/src/briefs/nit-policy.ts",
   "packages/review-panel/src/briefs/perf.ts",
   "packages/review-panel/src/briefs/quotes.ts",
   "packages/review-panel/src/briefs/scoped-rereview.ts",
