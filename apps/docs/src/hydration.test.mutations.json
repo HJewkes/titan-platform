@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "hydration drops the recoverable error handler",
+      "file": "apps/docs/src/hydrate.tsx",
+      "find": "return hydrateRoot(container, element, { onRecoverableError });",
+      "replace": "return hydrateRoot(container, element);",
+      "kills": ["hydrating the prerendered docs root reports a mismatch when the server rendered the clock an hour earlier"]
+    }
+  ]
+}

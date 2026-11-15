@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>titan-platform docs</title>
+    <link rel="icon" href="data:," />
+    <!-- Dark is the :root default; this runs before paint and outside the React root, so it cannot cause a hydration mismatch. -->
+    <script>
+      try {
+        const stored = localStorage.getItem("titan-docs-theme");
+        const light = stored ? stored === "light" : matchMedia("(prefers-color-scheme: light)").matches;
+        if (light) document.documentElement.classList.add("light");
+      } catch {}
+    </script>
+    <!--app-head-->
+  </head>
+  <body class="bg-surface-base text-text-primary">
+    <div id="root" class="flex min-h-screen"><!--app-html--></div>
+    <!--app-route-->
+    <script type="module" src="/src/entry-client.tsx"></script>
+  </body>
+</html>

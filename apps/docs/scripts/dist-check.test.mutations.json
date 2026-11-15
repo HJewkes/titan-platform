@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an unreplaced app-html placeholder passes",
+      "file": "apps/docs/scripts/dist-check.mjs",
+      "find": "const PLACEHOLDERS = [\"<!--app-head-->\", \"<!--app-html-->\", \"<!--app-route-->\"];",
+      "replace": "const PLACEHOLDERS = [\"<!--app-head-->\", \"<!--app-route-->\"];",
+      "kills": ["checking a prerendered site fails a page whose app markup was never replaced"]
+    },
+    {
+      "name": "a page without the react-native-web sheet passes",
+      "file": "apps/docs/scripts/dist-check.mjs",
+      "find": "if (!text.includes(RNW_STYLE)) problems.push",
+      "replace": "if (false) problems.push",
+      "kills": ["checking a prerendered site fails a page whose head placeholder was never replaced"]
+    },
+    {
+      "name": "a missing root page passes",
+      "file": "apps/docs/scripts/dist-check.mjs",
+      "find": "existsSync(join(siteDir, \"index.html\")) ? [] : [\"index.html is missing\"]",
+      "replace": "[]",
+      "kills": ["checking a prerendered site fails a site with no root page"]
+    },
+    {
+      "name": "only the root page is checked",
+      "file": "apps/docs/scripts/dist-check.mjs",
+      "find": ".filter((path) => path.endsWith(\".html\"))",
+      "replace": ".filter((path) => path === \"index.html\")",
+      "kills": ["checking a prerendered site fails a page whose app markup was never replaced"]
+    }
+  ]
+}
