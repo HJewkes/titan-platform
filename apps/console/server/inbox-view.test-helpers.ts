@@ -136,6 +136,44 @@ function config(world: World, factoryPort: number): ConsoleConfig {
   };
 }
 
+async function writeShipRound(world: World, id: string, at: Date): Promise<void> {
+  const question: Question = { id: "ship", kind: "pick-one", prompt: "Ship?", options: [...SHIP_OPTIONS], required: true, page: `${REPO}#5`, signsOff: "change", merge: { repo: REPO, pr: 5, headSha: HEAD, ship: ["Ship"] } };
+  const parts = [{ id: "change", label: "The change", proposed: "ship()", lang: "ts" }];
+  const sections = [{ id: "all", title: "All", deciding: "Whether it ships", changed: "The ship path", context: "Nothing else", parts, questionIds: ["ship"] }];
+  const round: ManifestInput = { schema: MANIFEST_SCHEMA_ID, unit: id, round: 1, storybookUrl: "http://127.0.0.1:6006", widths: [1280], variants: [], sections, questions: [question] };
+  const roundDir = path.join(world.dir, "state", "rounds", id);
+  await mkdir(roundDir, { recursive: true });
+  await writeFile(path.join(roundDir, "round.json"), JSON.stringify(round));
+  await utimes(path.join(roundDir, "round.json"), at, at);
+}
+
+/** The owner command queue files a gate it saw as a deposit; the deposit carries the gate's key, which must win it nothing. */
+async function writeImpostorDeposit(world: World): Promise<string> {
+  await writeDeposit(path.join(world.dir, "state", "inbox", "deposits"), {
+    depositId: "queue-1",
+    asker: ASKER,
+    kind: "do",
+    door: "two-way",
+    summary: "Resolve the plain gate",
+    context: "",
+    keys: [`gate:${RUN_PLAIN}/approve-merge`, `run:${RUN_PLAIN}`],
+    command: "titan-factory shepherd waiting",
+    unblocksNow: "the queue's next gate",
+  });
+  return depositItemId(ASKER, "queue-1");
+}
+
+async function listInbox(world: World, factoryPort: number, args: { planning?: boolean } = { planning: true }): Promise<InboxView> {
+  world.handle = await startConsoleDaemon({ config: config(world, factoryPort), logger: silentLogger });
+  const reply = await send("127.0.0.1", world.handle.port, "POST", "/rpc/inbox.list", { host: `127.0.0.1:${world.handle.port}`, "content-type": "application/json", "x-titan-client": "test" }, JSON.stringify(args));
+  return okEnvelope.parse(JSON.parse(reply.body)).data;
+}
+
+async function serveFactory(world: World, rpc: RpcAnswer): Promise<number> {
+  world.factory = await startFakeDaemon({ ok: true }, rpc);
+  return world.factory.port;
+}
+
 /**
  * Starts a temp dir and a fake broker before each test and closes them after, in `world`, and hands back the writers and
  * readers that work on it: the rounds and deposits the console reads, and the `inbox.list` call itself.
@@ -156,43 +194,10 @@ export function useInboxViewWorld(world: World) {
     await rm(world.dir, { recursive: true, force: true });
   });
 
-  async function writeShipRound(id: string, at: Date): Promise<void> {
-    const question: Question = { id: "ship", kind: "pick-one", prompt: "Ship?", options: [...SHIP_OPTIONS], required: true, page: `${REPO}#5`, signsOff: "change", merge: { repo: REPO, pr: 5, headSha: HEAD, ship: ["Ship"] } };
-    const parts = [{ id: "change", label: "The change", proposed: "ship()", lang: "ts" }];
-    const sections = [{ id: "all", title: "All", deciding: "Whether it ships", changed: "The ship path", context: "Nothing else", parts, questionIds: ["ship"] }];
-    const round: ManifestInput = { schema: MANIFEST_SCHEMA_ID, unit: id, round: 1, storybookUrl: "http://127.0.0.1:6006", widths: [1280], variants: [], sections, questions: [question] };
-    const roundDir = path.join(world.dir, "state", "rounds", id);
-    await mkdir(roundDir, { recursive: true });
-    await writeFile(path.join(roundDir, "round.json"), JSON.stringify(round));
-    await utimes(path.join(roundDir, "round.json"), at, at);
-  }
-
-  /** The owner command queue files a gate it saw as a deposit; the deposit carries the gate's key, which must win it nothing. */
-  async function writeImpostorDeposit(): Promise<string> {
-    await writeDeposit(path.join(world.dir, "state", "inbox", "deposits"), {
-      depositId: "queue-1",
-      asker: ASKER,
-      kind: "do",
-      door: "two-way",
-      summary: "Resolve the plain gate",
-      context: "",
-      keys: [`gate:${RUN_PLAIN}/approve-merge`, `run:${RUN_PLAIN}`],
-      command: "titan-factory shepherd waiting",
-      unblocksNow: "the queue's next gate",
-    });
-    return depositItemId(ASKER, "queue-1");
-  }
-
-  async function listInbox(factoryPort: number, args: { planning?: boolean } = { planning: true }): Promise<InboxView> {
-    world.handle = await startConsoleDaemon({ config: config(world, factoryPort), logger: silentLogger });
-    const reply = await send("127.0.0.1", world.handle.port, "POST", "/rpc/inbox.list", { host: `127.0.0.1:${world.handle.port}`, "content-type": "application/json", "x-titan-client": "test" }, JSON.stringify(args));
-    return okEnvelope.parse(JSON.parse(reply.body)).data;
-  }
-
-  async function serveFactory(rpc: RpcAnswer): Promise<number> {
-    world.factory = await startFakeDaemon({ ok: true }, rpc);
-    return world.factory.port;
-  }
-
-  return { writeShipRound, writeImpostorDeposit, listInbox, serveFactory };
+  return {
+    writeShipRound: (id: string, at: Date) => writeShipRound(world, id, at),
+    writeImpostorDeposit: () => writeImpostorDeposit(world),
+    listInbox: (factoryPort: number, args?: { planning?: boolean }) => listInbox(world, factoryPort, args),
+    serveFactory: (rpc: RpcAnswer) => serveFactory(world, rpc),
+  };
 }
