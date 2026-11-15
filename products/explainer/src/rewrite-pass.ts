@@ -139,12 +139,12 @@ const turnedRed = (before: readonly L0Result[], after: readonly L0Result[], ids:
   return after.filter((row) => !row.pass && passedBefore.has(row.check_id)).map((row) => row.check_id);
 };
 
-/** Why a chapter's rewrite must be reverted, judged against the script it lands on; undefined to keep it. Fewer beats saying an id at the same distance counts as progress. */
+/** Why a chapter's rewrite must be reverted, judged against the script it lands on; undefined to keep it. Every hallmark:* row is protected too (a report-only one passes by construction). Fewer beats saying an id at the same distance counts as progress. */
 export function chapterRefusal(before: readonly L0Result[], after: readonly L0Result[], protectedIds: ReadonlySet<string>): ChapterRefusal | undefined {
   if (failingTargets(after) > failingTargets(before)) return { why: "more target rows fail", rows: turnedRed(before, after, (row) => TARGETS.has(row.check_id)) };
   if (bandDistance(after) > bandDistance(before) || (bandDistance(after) === bandDistance(before) && idBeats(after) >= idBeats(before))) return { why: "the distance to band did not fall" };
   if (failingErrors(after) > failingErrors(before)) return { why: "more error rows fail", rows: turnedRed(before, after, (row) => row.severity === "error") };
-  const flipped = turnedRed(before, after, (row) => protectedIds.has(row.check_id));
+  const flipped = turnedRed(before, after, (row) => protectedIds.has(row.check_id) || row.check_id.startsWith("hallmark:"));
   return flipped.length > 0 ? { why: "a protected row turned red", rows: flipped } : undefined;
 }
 

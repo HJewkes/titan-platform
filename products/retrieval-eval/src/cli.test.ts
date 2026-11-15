@@ -78,6 +78,30 @@ describe("run over a frozen set", () => {
     for (const row of rows) expect(row).not.toHaveProperty("set");
   });
 
+  async function runTable(extra: string[]): Promise<string> {
+    const file = path.join(root, "pairs.jsonl");
+    writeFileSync(file, formatPairs(pairs));
+    const out = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const argv = ["run", file, "--candidates", "date-order-notes", "--variants", "heading-lead", "--active-root", root, ...extra];
+    expect(await runCli(argv)).toBe(0);
+    return String(out.mock.calls[0]?.[0]);
+  }
+
+  it("prints the same table for --mutations none as for the default run", async () => {
+    const plain = await runTable([]);
+    vi.restoreAllMocks();
+    expect(await runTable(["--mutations", "none"])).toBe(plain);
+    expect(plain).not.toContain("mutation");
+  });
+
+  it("adds a mutation column when a mutation is requested", async () => {
+    const table = await runTable(["--mutations", "none,drop-letter"]);
+    const lines = table.split("\n");
+    expect(lines[0]).toContain("mutation");
+    expect(lines.filter((line) => line.includes("\tdrop-letter\t")).length).toBeGreaterThan(0);
+  });
+
   it("exits 1 when the frozen pairs were edited", async () => {
     const dir = path.join(root, "set");
     freezeSet(formatPairs(pairs), dir, snap);
@@ -108,6 +132,12 @@ describe("runCli enum options", () => {
     const { code, message } = await failure(["run", "pairs.jsonl", "--variants", "bogus"]);
     expect(code).toBe(1);
     expect(message).toContain("heading-lead, top-df");
+  });
+
+  it("rejects an unknown run --mutations and names the allowed mutations", async () => {
+    const { code, message } = await failure(["run", "pairs.jsonl", "--mutations", "bogus"]);
+    expect(code).toBe(1);
+    expect(message).toContain("none, drop-letter, swap-pair, substring");
   });
 
   it("lists the weekly verb", () => {
