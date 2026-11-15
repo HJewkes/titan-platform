@@ -121,6 +121,29 @@ describe("shepherd.register on a replay-diverged run", () => {
     expect(again.registration).toMatchObject({ holdReason: "g10-review", holdReviewer: "rev", ownerHold: { reason: "owner-asked: wait for the owner" } });
   });
 
+  it("records one gate-cancel event on the new run for the superseded run's pending gate", async () => {
+    const { next, oldRunId } = await parkedRun();
+    const gateId = `${oldRunId}/approve-merge:0`;
+    next.host.gates.create({ id: gateId, prompt: "Merge?", summary: "Merge the PR.", evidenceRef: "$ git log -1" });
+
+    const again = await register(next);
+
+    const cancels = next.routes.shepherd!.store.get().eventsOf(again.runId).filter((event) => event.kind === "gate-cancel");
+    expect(cancels).toHaveLength(1);
+    expect(cancels[0]!.reason).toContain(oldRunId);
+    expect(cancels[0]!.reason).toContain("approve-merge");
+    expect(cancels[0]!.reason).toContain(again.runId);
+    expect(next.host.gates.get(gateId)?.status).toBe("cancelled");
+  });
+
+  it("records no gate-cancel event when the superseded run had no pending gate", async () => {
+    const { next } = await parkedRun();
+
+    const again = await register(next);
+
+    expect(next.routes.shepherd!.store.get().eventsOf(again.runId).filter((event) => event.kind === "gate-cancel")).toHaveLength(0);
+  });
+
   it("lets an explicit head win over the last read head", async () => {
     const { next, oldRunId } = await parkedRun();
 
