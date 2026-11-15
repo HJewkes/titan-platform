@@ -1,4 +1,4 @@
-import { cappedRow, type GateRow } from "./writing-gate.js";
+import { cappedRow, spansOf, type GateRow } from "./writing-gate.js";
 import type { WritingGatePolicy } from "./writing-gate-policy.js";
 
 const WORD = /[A-Za-z0-9]+(?:['’][A-Za-z]+)*/g;
@@ -35,7 +35,7 @@ export function frameRefrainRow(sentences: readonly HallmarkSentence[], rule: Ha
     return lead.length === rule.frameWords ? `${s.chapter}\u0000${lead.join(" ")}` : undefined;
   };
   const top = grouped(sentences, frameOf).sort((a, b) => b.length - a.length)[0] ?? [];
-  return cappedRow("hallmark:frame-refrain", top.length, rule, top.map((s) => s.beat));
+  return cappedRow("hallmark:frame-refrain", top.length, rule, top.map((s) => s.beat), spansOf(top));
 }
 
 /** Runs of `run` or more short sentences in a row inside one beat that open on the same word. */
@@ -58,5 +58,5 @@ function recapRuns(sentences: readonly HallmarkSentence[], rule: Hallmarks["para
 /** The parallel recap (TP-5721 #8): the count of such runs. */
 export function parallelRecapRow(sentences: readonly HallmarkSentence[], rule: Hallmarks["parallel-recap"]): GateRow {
   const runs = recapRuns(sentences, rule);
-  return cappedRow("hallmark:parallel-recap", runs.length, rule, runs.flat().map((s) => s.beat));
+  return cappedRow("hallmark:parallel-recap", runs.length, rule, runs.flat().map((s) => s.beat), spansOf(runs.flat()));
 }

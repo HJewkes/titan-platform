@@ -28,6 +28,8 @@ function verdictText(row: WritingRow): string {
   return row.verdict === "unmeasured" ? "n/a" : NONE;
 }
 
+const quoted = (spans: readonly { beat: string; text: string }[]): string => spans.map((span) => `"${span.text}" (${span.beat})`).join(", ");
+
 function rowLine(row: WritingRow, label: string): string {
   const head = label.padEnd(WIDTHS.dimension) + row.metric.padEnd(WIDTHS.metric);
   if (row.status === "drop") return `${head}${"".padEnd(WIDTHS.value + WIDTHS.band + WIDTHS.human)}${STATUS_LABEL.drop}`;
@@ -35,7 +37,7 @@ function rowLine(row: WritingRow, label: string): string {
     valueText(row).padEnd(WIDTHS.value), bandText(row.band).padEnd(WIDTHS.band), humanText(row.human).padEnd(WIDTHS.human),
     STATUS_LABEL[row.status].padEnd(WIDTHS.status), verdictText(row).padEnd(WIDTHS.verdict),
   ];
-  return `${head}${cells.join("")}${row.spans.map((span) => `"${span.text}" (${span.beat})`).join(", ")}`.trimEnd();
+  return `${head}${cells.join("")}${quoted(row.spans)}`.trimEnd();
 }
 
 const GATE_SEVERITY_LABEL: Record<GateSeverity, string> = { error: "GATE", warning: "warning", "report-only": "report" };
@@ -49,7 +51,8 @@ function gateLine(row: GateRow): string {
     row.id.padEnd(GATE_WIDTHS.id), value.padEnd(GATE_WIDTHS.value), String(row.threshold).padEnd(GATE_WIDTHS.threshold),
     GATE_SEVERITY_LABEL[row.severity].padEnd(WIDTHS.status), verdict.padEnd(WIDTHS.verdict),
   ];
-  return `${cells.join("")}${row.beats.join(", ")}`.trimEnd();
+  const named = row.spans.length > 0 ? quoted(row.spans) : row.beats.join(", ");
+  return `${cells.join("")}${named}`.trimEnd();
 }
 
 const plural = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? "" : "s"}`;
