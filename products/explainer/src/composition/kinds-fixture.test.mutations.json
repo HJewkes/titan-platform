@@ -7,7 +7,7 @@
       "find": "outro: defineBeat(BEAT_SLOTS.outro",
       "replace": "\"outro-card\": defineBeat(BEAT_SLOTS.outro",
       "kills": [
-        "it holds a beat of every registered kind, so the sheet shows each one"
+        "fixtures/kinds.timeline.json it holds a beat of every registered kind, so the sheet shows each one"
       ]
     },
     {
@@ -16,7 +16,16 @@
       "find": "compare: defineBeat(BEAT_SLOTS.compare",
       "replace": "\"compare-card\": defineBeat(BEAT_SLOTS.compare",
       "kills": [
-        "it holds a beat of every registered kind, so the sheet shows each one"
+        "fixtures/kinds.timeline.json it holds a beat of every registered kind, so the sheet shows each one"
+      ]
+    },
+    {
+      "name": "a verdict card's reasons stop marking the lead line the fill hands the page",
+      "file": "products/explainer/src/template-fill/derive-rows.ts",
+      "find": "reveals: itemReveals(beat, \"reasons\", reasons.length), hints: { qaLeadLine: true } };",
+      "replace": "reveals: itemReveals(beat, \"reasons\", reasons.length), hints: {} };",
+      "kills": [
+        "fixtures/kinds.timeline.json its daily beats are what the template fill makes of the synthetic daily script"
       ]
     }
   ]
