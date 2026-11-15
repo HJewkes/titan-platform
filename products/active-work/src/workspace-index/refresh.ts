@@ -5,6 +5,7 @@ import { getActiveRoot } from '../utils/paths.js';
 import { parseFrontmatter } from '../utils/gray-matter-io.js';
 import { flipWorkspaceSpans, pendingBackfillSources } from './backfill.js';
 import { rebuildEdges, type EdgeCounts, type NoteFacts } from './edges.js';
+import { collectMentionTexts } from './mention-texts.js';
 import { readRecord, type WorkspaceRecord } from './read.js';
 import { scanWorkspace, type WorkspaceClass, type WorkspaceFile } from './scan.js';
 import { clearDocumentFrequency } from '../search/document-frequency.js';
@@ -28,6 +29,8 @@ export interface WorkspaceRefreshSummary {
   malformed: { path: string; reason: string }[];
   rows: Record<WorkspaceClass, number>;
   edges: EdgeCounts;
+  /** Source bodies over 256 KB, left out of the mentions pass. */
+  oversizedSources: number;
   /**
    * Fraction of `search_fts` rows with no span behind them. `workspace_fts`
    * deletes its rows with its spans, so this measures the transcript table,
@@ -214,7 +217,7 @@ async function cachedBody(
     next.set(relativePath, hit);
     return hit.body;
   }
-  const body = await readBody(toAbsolute(activeRoot, relativePath), source.readNote);
+  const body = await readNoteBody(toAbsolute(activeRoot, relativePath), source.readNote);
   if (file && body !== null) next.set(relativePath, { mtime: file.mtime, size: file.size, body });
   return body ?? '';
 }
@@ -262,8 +265,8 @@ function parseTags(stored: string | null): string[] {
   }
 }
 
-/** The body, not the file: frontmatter is metadata, and `mentions` is defined over prose. */
-async function readBody(
+/** The body, not the file: frontmatter is metadata, and `mentions` is defined over prose. A failed read is null so it is never cached. */
+async function readNoteBody(
   absolutePath: string,
   readNote: (absolutePath: string) => Promise<string>,
 ): Promise<string | null> {
@@ -354,7 +357,8 @@ export async function refreshWorkspace(
     files: new Map(files.map((f) => [f.path, f])),
     full: options.full ?? false,
   };
-  const edges = rebuildEdges(graph, await collectNoteFacts(activeRoot, graph, source));
+  const { texts, oversizedSources } = await collectMentionTexts(activeRoot, graph);
+  const edges = rebuildEdges(graph, await collectNoteFacts(activeRoot, graph, source), texts);
   return {
     files: files.length,
     indexed,
@@ -363,6 +367,7 @@ export async function refreshWorkspace(
     malformed,
     rows: countRows(graph),
     edges,
+    oversizedSources,
     orphanRatio: graph.spans.orphanRatio(),
     legacySpansRetired,
   };
