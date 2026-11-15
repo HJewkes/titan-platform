@@ -37,7 +37,7 @@ export interface SpawnDeps {
   hitLog?: HitLogWriter;
 }
 
-export interface TaskBrief {
+interface TaskBrief {
   text: string;
   refs: { ref: string; source: string }[];
   degraded: { source: string; reason: string }[];
