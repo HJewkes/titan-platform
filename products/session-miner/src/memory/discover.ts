@@ -44,7 +44,10 @@ function memoryDirs({ root, account, host }: TranscriptRoot): { dir: string; ref
 
 function readFact(file: string, ref: MemorySourceRef): ParsedFact | ParseFailure {
   try {
-    return parseMemoryFile(readFileSync(file, "utf8"), ref);
+    const parsed = parseMemoryFile(readFileSync(file, "utf8"), ref);
+    // Real facts carry no modified stamp, so the file's mtime stands in or the stale-project rule never fires.
+    if (parsed.ok && parsed.modified === undefined) parsed.modified = lstatSync(file).mtime.toISOString();
+    return parsed;
   } catch (error) {
     return { ok: false, ref, error: `${file}: ${error instanceof Error ? error.message : String(error)}` };
   }
