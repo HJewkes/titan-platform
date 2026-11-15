@@ -135,7 +135,7 @@ async function assertFileable(
   assertRequiredFields(frontmatter, task);
   await assertProvenance(activeRoot, task);
   await assertCategories(activeRoot, task, changedCategoryFields(args));
-  await assertKnownBet(task);
+  await assertKnownBet(task, undefined, args.slug);
 }
 
 export default defineCommand<Args, TaskOrLine>({
