@@ -6,7 +6,7 @@ import { CLOSED_TASK_STATUSES, failure, type ActiveWork, type ReadResult, type W
 import { readCommand } from "./owner-guard.js";
 import { gitEvidenceReader, indexByTaskId, type EvidenceReader, type RepoEvidence } from "./repo-evidence.js";
 import { sessionsForTask, type SessionsSource, type TaskSessions } from "./sessions.js";
-import { listPage, listRow, tasksArgs, type TaskListPage, type TasksArgs } from "./task-list.js";
+import { listPage, listRow, ownerTagOf, tasksArgs, type TaskListPage, type TasksArgs } from "./task-list.js";
 import { deriveStage, taskIdsIn, type PrEvidence, type RefEvidence, type StageEvidence, type StageRule, type TaskStage } from "./task-stage.js";
 import { isPersonal, slugsForPrefix, taskRowOf, type WorkOptions } from "./work.js";
 
@@ -143,7 +143,7 @@ async function readTasks(source: TasksSource, reader: EvidenceReader, args: Task
     personalSlugs(source.activeWork, source.work),
   ]);
   const evidence = stageEvidence(list.tasks, repos);
-  const rows = list.tasks.filter((task) => keeps(personal)(task.slug)).map((task) => listRow(stagedRow(task, evidence)));
+  const rows = list.tasks.filter((task) => keeps(personal)(task.slug)).map((task) => listRow({ ...stagedRow(task, evidence), ...ownerTagOf(task.tags) }));
   return { fetchedAt: new Date().toISOString(), ...listPage(rows, args), evidence: summary(repos) };
 }
 
