@@ -1,9 +1,9 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { DF_CAP_FLOOR } from '@titan-design/retrieval';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { DF_CAP_FLOOR } from './derive-query.js';
 import {
   countMatches,
   ftsTokens,
