@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { graphNoteRelevance } from '../bootstrap/rank-notes.js';
 import { searchWorkspace } from './index.js';
 import { ownerShown, writeCharter } from '../test-support/visibility.js';
+import { writeUnrelatedPrecedent } from '../test-support/related-fixture.js';
 import { relatedContext, withinBudget, type RelatedInput } from './related.js';
 import { openGraph, type WorkspaceGraph } from '../session-index/graph.js';
 import { demoteToLegacy, refreshInto, removeFile, scaffold, writeFile } from '../test-support/workspace-index/fixture.js';
@@ -24,31 +25,13 @@ let dir: string;
 let root: string;
 let dbPath: string;
 
-const unrelatedPrecedent = {
-  key: 'transcript:sess-garden:tu-garden',
-  source: 'transcript',
-  asked_at: '2026-08-01T09:00:00Z',
-  session_id: 'sess-garden',
-  tool_use_id: 'tu-garden',
-  initiative: 'alpha',
-  class: 'other',
-  header: 'Garden',
-  question: 'Water the ferns?',
-  options: ['Yes (Recommended)', 'No'],
-  recommended: 'Yes (Recommended)',
-  answer: 'No',
-  pick_type: 'other_option',
-  free_text: null,
-};
-
 beforeEach(async () => {
   dir = mkdtempSync(path.join(os.tmpdir(), 'aw-related-'));
   root = path.join(dir, 'active');
   dbPath = path.join(dir, 'graph.sqlite3');
   scaffold(root);
   writeCharter(root);
-  // A workspace with no ledger reports it as degraded; these cases are about the other classes.
-  writeFile(root, 'alpha/sources/precedents.jsonl', `${JSON.stringify(unrelatedPrecedent)}\n`);
+  writeUnrelatedPrecedent(root);
   (await refreshInto(dbPath, root)).db.close();
 });
 
