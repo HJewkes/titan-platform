@@ -1,10 +1,16 @@
 import { existsSync } from 'node:fs';
-import { planContext, type ContextPlan, type Degradation, type DropReason } from '@titan-design/retrieval';
+import {
+  deriveQuery,
+  planContext,
+  type ContextPlan,
+  type Degradation,
+  type DerivedQuery,
+  type DropReason,
+} from '@titan-design/retrieval';
 import { NoteReadIfSchema } from '../schemas/note.js';
 import { defaultGraphPath, openGraph, type WorkspaceGraph } from '../session-index/graph.js';
 import { SEARCH_CLASSES } from './classes.js';
 import { hitTiers } from './context-tiers.js';
-import { deriveQuery, type DerivedQuery } from './derive-query.js';
 import { graphTermStatistics } from './document-frequency.js';
 import { searchWorkspace } from './index.js';
 import type { ResolvedHit } from './resolve.js';

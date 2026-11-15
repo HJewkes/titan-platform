@@ -1,8 +1,7 @@
+import { deriveQuery, meaningfulTerms } from '@titan-design/retrieval';
 import type { Task } from '../schemas/task.js';
 import { taskRef } from '../workspace-index/refs.js';
-import { deriveQuery } from './derive-query.js';
 import type { RelatedHit, RelatedInput, RelatedResult } from './related.js';
-import { meaningfulTerms } from './terms.js';
 
 /**
  * Task neighbours ranked from the tasks a caller already holds, with no index.

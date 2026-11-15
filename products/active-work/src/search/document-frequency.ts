@@ -1,6 +1,5 @@
+import { documentFrequencyCap, orExpression, type DocumentFrequency } from '@titan-design/retrieval';
 import type { WorkspaceGraph } from '../session-index/graph.js';
-import { documentFrequencyCap, type DocumentFrequency } from './derive-query.js';
-import { orExpression } from './terms.js';
 import { hasLegacyWorkspaceSpans } from './workspace-spans.js';
 
 /**

@@ -2,11 +2,10 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import os from 'node:os';
 import path from 'node:path';
 import Database from 'better-sqlite3';
-import { estimateTokens } from '@titan-design/retrieval';
+import { DF_CAP_FLOOR, estimateTokens } from '@titan-design/retrieval';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { graphNoteRelevance } from '../bootstrap/rank-notes.js';
-import { DF_CAP_FLOOR } from './derive-query.js';
 import { searchWorkspace } from './index.js';
 import { ownerShown, writeCharter } from '../test-support/visibility.js';
 import { relatedContext, withinBudget, type RelatedInput } from './related.js';

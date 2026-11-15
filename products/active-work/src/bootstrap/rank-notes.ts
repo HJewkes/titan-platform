@@ -1,10 +1,8 @@
-import { fuseByRRF } from '@titan-design/retrieval';
+import { fuseByRRF, meaningfulTerms, orExpression, selectTerms } from '@titan-design/retrieval';
 import type { LoadedNote } from '../notes/note-file.js';
 import type { SpanHit } from '@titan-design/store-sqlite';
 import { defaultGraphPath, openGraph, type WorkspaceGraph } from '../session-index/graph.js';
-import { selectTerms } from '../search/derive-query.js';
 import { graphTermStatistics } from '../search/document-frequency.js';
-import { meaningfulTerms, orExpression } from '../search/terms.js';
 import { workspaceSpanReader } from '../search/workspace-spans.js';
 
 /**

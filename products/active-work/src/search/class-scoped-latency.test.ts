@@ -2,11 +2,11 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
+import { meaningfulTerms, orExpression } from '@titan-design/retrieval';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { graphNoteRelevance } from '../bootstrap/rank-notes.js';
 import { relatedContext } from './related.js';
-import { meaningfulTerms, orExpression } from './terms.js';
 import { workspaceSpanReader } from './workspace-spans.js';
 import { openGraph } from '../session-index/graph.js';
 import { refreshInto, scaffold } from '../test-support/workspace-index/fixture.js';
