@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a dependent with another open dep is listed",
+      "file": "products/active-work/src/commands/task-done.ts",
+      "find": "if ((await openDeps(task, lookup)).length > 0) continue;",
+      "replace": "",
+      "kills": ["task.done reports what it unblocks leaves out a dependent that still has another open dep"]
+    },
+    {
+      "name": "hidden initiatives are named",
+      "file": "products/active-work/src/commands/task-done.ts",
+      "find": "if (shown(task.slug)) result.named.push(task.id);",
+      "replace": "if (true) result.named.push(task.id);",
+      "kills": ["task.done reports what it unblocks counts a dependent in an owner-only initiative for an agent caller"]
+    },
+    {
+      "name": "the scan stays inside the closed task's initiative",
+      "file": "products/active-work/src/commands/task-done.ts",
+      "find": "{ all_initiatives: true, status: 'open' }",
+      "replace": "{ slug: done.id.split('-')[0] === 'SI' ? 'sample-initiative' : 'none', status: 'open' }",
+      "kills": ["task.done reports what it unblocks names a dependent that lives in another initiative"]
+    },
+    {
+      "name": "the warning is never pushed",
+      "file": "products/active-work/src/commands/task-done.ts",
+      "find": "ctx.warnings.push(`completing ${done.id} unblocks ${names}`);",
+      "replace": "",
+      "kills": ["task.done reports what it unblocks names a dependent whose only open dep was the completed task"]
+    },
+    {
+      "name": "the quiet line drops the suffix",
+      "file": "products/active-work/src/commands/task-done.ts",
+      "find": "${updated.updated}${suffix}`",
+      "replace": "${updated.updated}`",
+      "kills": ["task.done reports what it unblocks appends the dependents to the quiet human line and keeps the task result shape"]
+    }
+  ]
+}
