@@ -5,7 +5,7 @@ export const INDEX_LOAD_LINE_LIMIT = 200;
 
 const MEMORY_INDEX = "MEMORY.md";
 
-export interface PointerRef {
+interface PointerRef {
   file: string;
   line: number;
 }
