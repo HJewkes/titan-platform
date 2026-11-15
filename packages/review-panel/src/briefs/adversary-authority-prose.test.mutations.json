@@ -4,7 +4,7 @@
     {
       "name": "a line with no colon after its Authority label still reads as a label",
       "file": "packages/review-panel/src/briefs/adversary.ts",
-      "find": "  if (!isLabel(label, value)) return undefined;\n",
+      "find": "  if (!isLabel(label, value)) return proseWidening(raw);\n",
       "replace": "",
       "kills": [
         "authorityLine prose that starts with the word Authority a bold paragraph lead above a plain unchanged line reads unchanged",

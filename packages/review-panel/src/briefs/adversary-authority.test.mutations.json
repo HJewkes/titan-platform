@@ -31,7 +31,7 @@
     {
       "name": "the label fold is removed for an exact Authority: prefix",
       "file": "packages/review-panel/src/briefs/adversary.ts",
-      "find": "labelledLineRest(raw, AUTHORITY_HEADING, WIDENED)",
+      "find": "labelledLineRest(raw, AUTHORITY_HEADING, WIDENING_PREFIX)",
       "replace": "(raw.trim().startsWith(AUTHORITY_HEADING) ? raw.trim().slice(AUTHORITY_HEADING.length).trim() : undefined)",
       "kills": [
         "authorityLine a bulleted widened line before a plain unchanged line reads widened",
