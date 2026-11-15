@@ -104,7 +104,7 @@ describe('bootstrap loop retrieval', () => {
       expect(prompt).toContain(
         '(from 2026-05-11, ref 2026-05-11-0900-loop-session#s1)\n' +
           '    see: note:sample-initiative/2026-05-01-refs.md "Refs are minted at write"\n' +
-          '- [1d] Decide the eval harness',
+          '- Decide the eval harness',
       );
     });
   });
