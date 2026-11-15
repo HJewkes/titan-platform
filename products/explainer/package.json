@@ -44,6 +44,7 @@
     "@titan-design/agent-dispatch": "workspace:^",
     "@titan-design/agent-protocol": "workspace:^",
     "@titan-design/app-paths": "workspace:^",
+    "@titan-design/autoresearch": "workspace:^",
     "@titan-design/code-graph": "workspace:^",
     "@titan-design/code-read": "workspace:^",
     "@titan-design/evidence": "workspace:^",
@@ -74,7 +75,6 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@titan-design/autoresearch": "workspace:^",
     "@titan-design/test-kit": "workspace:*",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

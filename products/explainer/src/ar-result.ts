@@ -52,7 +52,7 @@ export function arResultFor(input: ArResultInput): ArResult {
     },
     gates: { "l0.pass": l0Errors === 0 },
     violations: {
-      l0_errors: l0Errors,
+      l0_error_rows: l0Errors,
       number_invented: rejectionCount(report, "number-invented"),
       fact_outside_selection: rejectionCount(report, "fact-id"),
       judge_canary_failed: failedCanaries(input.cold, input.l1),
