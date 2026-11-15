@@ -4,7 +4,7 @@ import { activeWorkDocTasks } from "../doc/task-source.js";
 import type { FactoryContext } from "../context.js";
 import { readBriefFacts } from "./brief-inputs.js";
 import { BRIEF_FORMATS, renderBrief, type BriefOutput, type RenderPorts } from "./brief-render.js";
-import { activeWorkOrigin } from "./cleanup-ports.js";
+import { activeWorkOrigin } from "./active-work-origin.js";
 import { PrArg, RepoArg, coded } from "./register-args.js";
 
 const BriefArgs = z.object({ repo: RepoArg, pr: PrArg, format: z.enum(BRIEF_FORMATS).default("md"), images: z.string().min(1).optional() });

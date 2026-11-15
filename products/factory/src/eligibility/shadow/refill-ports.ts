@@ -1,5 +1,5 @@
 import type { Verbs } from "../../cli-types.js";
-import { activeWorkOrigin } from "../../shepherd/cleanup-ports.js";
+import { activeWorkOrigin } from "../../shepherd/active-work-origin.js";
 import { readLaneCensusRows } from "../active-work.js";
 import { censusDispatchable } from "./census.js";
 import type { RefillOutcome, RefillPorts } from "./refill.js";
