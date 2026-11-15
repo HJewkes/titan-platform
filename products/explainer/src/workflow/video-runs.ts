@@ -29,6 +29,8 @@ export function videoRef(runs: WorkflowRunStore, videoId: string): VideoRef {
 export function runVideoRef(runs: WorkflowRunStore, runId: string): VideoRef {
   const run = runs.get(runId);
   if (!run) throw new Error(`no ${VIDEO_WORKFLOW} run ${runId}`);
-  return videoRef(runs, videoIdOf(runs, run));
+  const ref = videoRef(runs, videoIdOf(runs, run));
+  const index = ref.runIds.indexOf(runId);
+  return index < 0 ? ref : { ...ref, position: index + 1 };
 }
 
