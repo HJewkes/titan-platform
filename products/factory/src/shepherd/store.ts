@@ -18,8 +18,7 @@ import { afterHold, isAdversaryHold, liftClass, liftTop, type HoldSlots, type Li
 import { isOwnerHold, liftOwnerHold, placeOwnerHold, recordOwnerAsked, type OwnerHold } from "./owner-hold-rows.js";
 import { writeRegistrant, writeRegistrationFacts, type RegistrationFacts, type RegistrationFactsInput } from "./registration-facts.js";
 import { RegistrationRefused, repeatedPolicy, type EffectivePolicy } from "./policy-schema.js";
-import { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
-import type { KindMove } from "./task-kind.js";
+import { TASK_KINDS, kindMoveRefusal, type KindMove, type TaskKind } from "./task-kind.js";
 
 export { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
 
@@ -244,9 +243,7 @@ export class ShepherdStore implements HoldLookup {
   vouch(runId: string, proof: Vouch): void { recordVouch(this.db, runId, proof, this.stamp()); }
 
   /** `fromHead` and every head recorded as a clean merge-up of it onto `baseRef` for the run. */
-  vouchedLine(runId: string, fromHead: string, baseRef: string): Set<string> {
-    return vouchedLine(this.db, runId, fromHead, baseRef);
-  }
+  vouchedLine(runId: string, fromHead: string, baseRef: string): Set<string> { return vouchedLine(this.db, runId, fromHead, baseRef); }
 
   /** The seat's stops on fixer dispatch; apart from holds, so a stop never gates or releases a merge. */
   readonly repairStops = (): RepairStopTable => repairStopTable(this.db, () => this.stamp());
