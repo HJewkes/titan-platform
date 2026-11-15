@@ -9,10 +9,12 @@ import {
 } from '@titan-design/retrieval';
 import { NoteReadIfSchema } from '../schemas/note.js';
 import { defaultGraphPath, openGraph, type WorkspaceGraph } from '../session-index/graph.js';
-import { SEARCH_CLASSES } from './classes.js';
+import { DECISIONS_CLASS, SEARCH_CLASSES } from './classes.js';
 import { hitTiers } from './context-tiers.js';
 import { graphTermStatistics } from './document-frequency.js';
 import { searchWorkspace } from './index.js';
+import { decisionHits } from './related-decisions.js';
+import { namedIdCount, namesTask, servedByRelated } from './related-filters.js';
 import type { ResolvedHit } from './resolve.js';
 import { visibilityFor, type Shown } from '../sessions/visibility.js';
 import { readRawFrontmatter } from '../utils/gray-matter-io.js';
@@ -51,8 +53,17 @@ export const RELATED_DEFAULT_TOKENS = 375;
 export const RELATED_CONTEXT_CANDIDATES = 20;
 type RelatedMode = 'list' | 'context';
 
-/** Workspace classes only. Transcripts are the raw form of what the notes distil. */
-export const RELATED_DEFAULT_CLASSES = ['notes', 'sources', 'tasks', 'sessions', 'plans'];
+/** Workspace classes and the decision ledger. Transcripts are the raw form of what the notes distil. */
+export const RELATED_DEFAULT_CLASSES = ['notes', 'sources', 'tasks', 'sessions', 'plans', DECISIONS_CLASS.name];
+
+function wantsDecisions(input: RelatedInput): boolean {
+  return (input.classes ?? RELATED_DEFAULT_CLASSES).includes(DECISIONS_CLASS.name);
+}
+
+/** The ledger is not in the graph, so the workspace search must never be asked for it. */
+function workspaceClasses(input: RelatedInput): string[] {
+  return (input.classes ?? RELATED_DEFAULT_CLASSES).filter((name) => name !== DECISIONS_CLASS.name);
+}
 
 export type RelatedHit = Pick<
   ResolvedHit,
@@ -173,37 +184,6 @@ async function withReadIf(hits: RelatedHit[], activeRoot: string): Promise<Relat
   );
 }
 
-/**
- * Handoff archives restate session records, which have their own class, and
- * were served 15 times and opened 0 times in the week to 2026-09-23 (TP-331).
- * `search` still finds them; only the unasked-for related block drops them.
- */
-const NOT_SERVED_BY_RELATED = /(^|\/)sources\/handoff-archive[^/]*\.md$/;
-
-function servedByRelated(hit: ResolvedHit): boolean {
-  return hit.class !== 'sources' || hit.path === null || !NOT_SERVED_BY_RELATED.test(hit.path);
-}
-
-function escapeRegex(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * A task the query already names adds nothing the caller does not have, and
- * would spend one of the few slots. Same token bounds as `context.graph`, so
- * `AL-1` does not name `AL-12`.
- */
-function namesTask(text: string, hit: ResolvedHit): boolean {
-  if (hit.class !== 'tasks' || !hit.ref.startsWith('task:')) return false;
-  const id = hit.ref.slice('task:'.length);
-  return new RegExp(`(?<![A-Za-z0-9])${escapeRegex(id)}(?![A-Za-z0-9])`, 'i').test(text);
-}
-
-/** Headroom for named tasks the filter may remove, so the slot backfills. */
-function namedIdCount(text: string): number {
-  return new Set(text.match(/(?<![A-Za-z0-9])[A-Za-z][A-Za-z0-9]*-\d+(?![A-Za-z0-9])/g)).size;
-}
-
 function openIndex(dbPath: string): WorkspaceGraph | RelatedDegradation {
   // Opening creates the file, and nothing on this path may write to the graph.
   if (!existsSync(dbPath)) {
@@ -218,7 +198,7 @@ function openIndex(dbPath: string): WorkspaceGraph | RelatedDegradation {
 
 /** Each class's page share, read as its share of the token budget. */
 function sharesAsQuotas(): Record<string, number> {
-  return Object.fromEntries(SEARCH_CLASSES.map((cls) => [cls.name, cls.share]));
+  return Object.fromEntries([...SEARCH_CLASSES, DECISIONS_CLASS].map((cls) => [cls.name, cls.share]));
 }
 
 function requestedTokens(input: RelatedInput): number {
@@ -276,15 +256,15 @@ async function rankedHits(
   limit: number,
   query: DerivedQuery,
   activeRoot: string,
+  visible: Shown,
 ): Promise<{ hits: RelatedHit[]; degraded: RelatedDegradation[] }> {
   const exclude = new Set(input.exclude ?? []);
   const result = await searchWorkspace(query.expression, {
-    // Related context is pasted into sessions no surface marked as the owner's, so it gets an agent's view.
-    visible: input.visible ?? (await visibilityFor({ activeRoot, warnings: [] })),
+    visible,
     graph,
     rawExpression: true,
     limit: limit + exclude.size + namedIdCount(input.text),
-    classes: input.classes ?? RELATED_DEFAULT_CLASSES,
+    classes: workspaceClasses(input),
     ...(input.initiative !== undefined ? { initiative: input.initiative } : {}),
     ...(input.activeRoot !== undefined ? { activeRoot: input.activeRoot } : {}),
   });
@@ -299,6 +279,35 @@ function toRelatedDegradation({ retriever, reason, message }: Degradation): Rela
   return { source: retriever, reason, message };
 }
 
+async function gatherHits(
+  graph: WorkspaceGraph,
+  input: RelatedInput,
+  query: DerivedQuery,
+  limit: number,
+  activeRoot: string,
+): Promise<{ hits: RelatedHit[]; degraded: RelatedDegradation[] }> {
+  // Related context is pasted into sessions no surface marked as the owner's, so it gets an agent's view.
+  const visible = input.visible ?? (await visibilityFor({ activeRoot, warnings: [] }));
+  const decisions = wantsDecisions(input)
+    ? await decisionHits({
+        query,
+        visible,
+        activeRoot,
+        limit: Math.max(1, Math.ceil(limit * DECISIONS_CLASS.share)),
+        ...(input.initiative !== undefined ? { initiative: input.initiative } : {}),
+        ...(input.exclude !== undefined ? { exclude: input.exclude } : {}),
+      })
+    : { hits: [], degraded: [] };
+  const workspace =
+    workspaceClasses(input).length === 0
+      ? { hits: [], degraded: [] }
+      : await rankedHits(graph, input, Math.max(1, limit - decisions.hits.length), query, activeRoot, visible);
+  return {
+    hits: [...workspace.hits, ...decisions.hits],
+    degraded: [...workspace.degraded, ...decisions.degraded],
+  };
+}
+
 async function searchOpenIndex(
   graph: WorkspaceGraph,
   input: RelatedInput,
@@ -307,7 +316,7 @@ async function searchOpenIndex(
   const context = input.mode === 'context';
   const limit = input.limit ?? (context ? RELATED_CONTEXT_CANDIDATES : RELATED_DEFAULT_LIMIT);
   const activeRoot = input.activeRoot ?? getActiveRoot();
-  const { hits, degraded } = await rankedHits(graph, input, limit, query, activeRoot);
+  const { hits, degraded } = await gatherHits(graph, input, query, limit, activeRoot);
   if (context) return { ...(await planRelated(hits, input, activeRoot)), degraded, query };
   return {
     hits: withinBudget(hits, input.budget ?? RELATED_DEFAULT_BUDGET, input.render ?? defaultRender),

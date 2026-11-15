@@ -50,7 +50,7 @@ const rowLine = (row: TriggerRow): string => `${row.outcome} ${row.pr} ${row.hea
 function triggerCommand(deps: PrCliDeps, io: Io, exit: { code: number }): Command {
   return new Command("trigger")
     .description("Start a decision-brief run (gather, then audition) for each PR held at the owner's visual gate (visual-gate2); no other PR auto-starts")
-    .addOption(new Option("--through <stage>", "the last stage each run takes; script spends about $1 more a head").choices(BRIEF_STOPS).default(BRIEF_DEFAULT_STOP))
+    .addOption(new Option("--through <stage>", "the last stage each run takes; script spends about $1 more a head, export runs tts and render too").choices(BRIEF_STOPS).default(BRIEF_DEFAULT_STOP))
     .option("--data-dir <dir>", "where pr-briefs/ is written (default: the per-user data dir)")
     .option("--clone <repo=dir>", "the clone to index for a repo (repeatable)", pairs("--clone", (_repo, dir) => dir), {})
     .option("--port <n>", "port titan-factory serve listens on", port)
