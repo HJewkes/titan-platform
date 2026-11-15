@@ -3,9 +3,9 @@ import { EXIT, defineCommand } from "@titan-design/registry";
 import { failure, type ActiveWork } from "./active-work.js";
 import type { ConsoleContext } from "./owner-guard.js";
 
-export const taskDoneArgs = z.object({ slug: z.string().min(1), id: z.string().min(1), undo: z.boolean().optional() });
+const taskDoneArgs = z.object({ slug: z.string().min(1), id: z.string().min(1), undo: z.boolean().optional() });
 
-export const taskDoneResult = z.object({ id: z.string(), status: z.enum(["open", "done", "wont-do", "icebox"]) });
+const taskDoneResult = z.object({ id: z.string(), status: z.enum(["open", "done", "wont-do", "icebox"]) });
 
 type TaskDoneArgs = z.infer<typeof taskDoneArgs>;
 
