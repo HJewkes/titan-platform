@@ -1,5 +1,5 @@
-import type { Rule } from "eslint";
 import type { CallExpression, Node } from "estree";
+import type { TitanRule } from "./titan-rule.js";
 
 const DEFAULT_INTERNAL_PREFIXES = ["@titan-design/"];
 const TEST_APIS = new Set(["vi", "jest"]);
@@ -38,10 +38,10 @@ function configuredPrefixes(option: unknown): readonly string[] {
   return Array.isArray(internalPrefixes) ? internalPrefixes.filter((p) => typeof p === "string") : DEFAULT_INTERNAL_PREFIXES;
 }
 
-export const noInternalModuleMock: Rule.RuleModule = {
+export const noInternalModuleMock: TitanRule = {
   meta: {
     type: "problem",
-    docs: { description: "Disallow mocking this repo's own modules; mock only external dependencies" },
+    docs: { description: "Disallow mocking this repo's own modules; mock only external dependencies", classes: ["test-checks-nothing"] },
     schema: [
       {
         type: "object",
