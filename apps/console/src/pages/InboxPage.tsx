@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Alert, Badge, BadgeText, Button, ButtonText, Card, CardContent, EmptyState, HStack, Link, Pill, Section, SectionContent, SectionHeader, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, Badge, BadgeText, Button, ButtonText, Card, CardContent, EmptyState, HStack, Input, Link, Pill, Section, SectionContent, SectionHeader, Typography, VStack } from "@titan-design/react-ui";
 import { Spinner } from "../shell/Loading.js";
 import type { ConsoleCommands } from "../../server/commands.js";
 import type { MergeWait } from "../../server/inbox-op.js";
@@ -73,6 +73,7 @@ const VERB: Record<InboxAction["kind"], string> = {
   "hold-release": "Release hold",
   "owner-op": "Confirm",
   "answer-chat": "Answer",
+  "answer-deposit": "Answer",
   "approve-chat": "Approve",
   "open-round": "Open round",
   open: "Open",
@@ -101,7 +102,7 @@ function verbOf(action: InboxAction): string {
 const isNavigation = (action: InboxAction): boolean => action.kind === "open" || action.kind === "open-round";
 
 /** The writes the page taps through `inbox.act`; `answer-chat` opens its own sheet, which takes the answer's text. */
-const CONSOLE_TAPS: ReadonlySet<InboxAction["kind"]> = new Set(["resolve-gate", "owner-release", "hold-release", "owner-op", "approve-chat", "answer-chat"]);
+const CONSOLE_TAPS: ReadonlySet<InboxAction["kind"]> = new Set(["resolve-gate", "owner-release", "hold-release", "owner-op", "answer-deposit", "approve-chat", "answer-chat"]);
 
 /** The server acts on a hold-release only for a g10 class (isG10Release); any other class stays a terminal command. */
 const isConsoleTap = (action: InboxAction): boolean => CONSOLE_TAPS.has(action.kind) && (action.kind !== "hold-release" || ["g10-review", "g10-adversary"].includes(action.holdClass));
@@ -292,9 +293,26 @@ interface ConfirmSheetProps {
 }
 
 function ConfirmSheet({ item, verb, choice, command, onClose }: ConfirmSheetProps): ReactNode {
+  if (item.action.kind === "answer-deposit") return <DepositAnswerSheet item={item} verb={verb} command={command} onClose={onClose} />;
   const commands = inboxTap(item.id, choice);
   if (item.action.kind === "answer-chat") return <InboxAnswerSheet commands={commands} command={command} onClose={onClose} />;
   return <TapSheet<InboxReady> commands={commands} verb={verb} reading={readingOf(item.action)} command={command} renderReadBack={(prepared) => <ReadBackWithLineage item={item} prepared={prepared} />} choicesOf={verdictChoicesOf} testID="inbox-confirm" onClose={onClose} />;
+}
+
+/** A deposit is answered with one of its offered options or with free text; each is its own confirming tap, and the text is sent only by Send answer. */
+function DepositAnswerSheet({ item, verb, command, onClose }: { item: InboxItem; verb: string; command: string | undefined; onClose: () => void }): ReactNode {
+  const [text, setText] = useState("");
+  const choicesOf = ({ readBack }: InboxReady): readonly TapConfirmChoice[] => [
+    ...("options" in readBack ? (readBack.options ?? []) : []).map(({ id, label }) => ({ id: `option-${id}`, label, color: "success" as const, args: { optionId: id } })),
+    { id: "text", label: "Send answer", color: "success", args: { text } },
+  ];
+  const renderReadBack = (prepared: InboxReady): ReactNode => (
+    <VStack gap={2}>
+      <InboxReadBack prepared={prepared} />
+      <Input multiline numberOfLines={3} label="Your answer" accessibilityLabel="Your answer" value={text} onChangeText={setText} />
+    </VStack>
+  );
+  return <TapSheet<InboxReady> commands={inboxTap(item.id, {})} verb={verb} reading={readingOf(item.action)} command={command} renderReadBack={renderReadBack} choicesOf={choicesOf} testID="inbox-confirm" onClose={onClose} />;
 }
 
 /** A merge gate always shows its lineage; one the server attached none to reads "lineage unknown", never blank. */
