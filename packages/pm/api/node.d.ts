@@ -116,6 +116,7 @@ declare const TaskSchema: z.ZodObject<{
         duplicate: "duplicate";
         moot: "moot";
         "wont-do": "wont-do";
+        moved: "moved";
     }>>;
     blocked_on: z.ZodOptional<z.ZodEnum<{
         owner: "owner";
@@ -176,6 +177,8 @@ declare const TaskSchema: z.ZodObject<{
         by: z.ZodString;
         at: z.ZodString;
     }, z.core.$strip>>>;
+    moved_to: z.ZodOptional<z.ZodString>;
+    moved_from: z.ZodOptional<z.ZodString>;
 }, z.core.$strip>;
 type Task = z.infer<typeof TaskSchema>;
 
