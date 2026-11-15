@@ -2,6 +2,15 @@
   "v": 1,
   "mutations": [
     {
+      "name": "a wake waits out the spawn gate for 30 minutes, not as long as a queued review",
+      "file": "products/factory/src/shepherd/wake-wait.ts",
+      "find": "export const WAKE_DEFER_MS = DEFAULT_HOLD_WAIT_MS;",
+      "replace": "export const WAKE_DEFER_MS = 30 * 60_000;",
+      "kills": [
+        "wakes the fixer when the spawn gate admits it after deferring every resume for 2 hours"
+      ]
+    },
+    {
       "name": "the fix-proof cap's owner reason drops its fix-proof did not reproduce wording",
       "file": "products/factory/src/shepherd/fix-proof-cap.ts",
       "find": "reason: `fix-proof did not reproduce: ${MAX_FIX_PROOF_WAKES}",
