@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Alert, Collapse, CollapseButton, CollapseContent, DateTime, EmptyState, HStack, Link, Pill, Section, SectionContent, SectionHeader, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Typography, VStack } from "@titan-design/react-ui";
+import { LoadError } from "../shell/LoadError.js";
 import { Spinner } from "../shell/Loading.js";
 import type { RoundSummary } from "../../server/rounds.js";
 import { useQuery } from "../data/rpc.js";
@@ -24,7 +25,7 @@ const SECTIONS: Record<RoundStatus, { title: string; subtitle: string; empty: st
 export function RoundsPage({ query }: { query?: string }): ReactNode {
   const list = useQuery("rounds.list");
   if (list.status === "loading") return <Spinner size="sm" label="Loading rounds" />;
-  if (list.data === undefined) return <Alert status="error" message={`Could not load rounds: ${list.error.message}`} />;
+  if (list.data === undefined) return <LoadError message={`Could not load rounds: ${list.error.message}`} onRetry={list.refetch} />;
   const { truncated, dir } = list.data;
   if (list.data.rounds.length === 0 && !truncated) return <NoRounds dir={dir} />;
   const set = setFromQuery(query);
