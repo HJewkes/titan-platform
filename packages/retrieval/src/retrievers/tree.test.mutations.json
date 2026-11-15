@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "leavesOnly keeps summaries",
+      "file": "packages/retrieval/src/retrievers/tree.ts",
+      "find": "(leavesOnly && node.level > 0)",
+      "replace": "(false && node.level > 0)",
+      "kills": [
+        "collapsedTreeRetriever never returns a summary when leavesOnly is set"
+      ]
+    },
+    {
+      "name": "payload omits leaf ids",
+      "file": "packages/retrieval/src/retrievers/tree.ts",
+      "find": "leafIds: node.leafIds, ",
+      "replace": "",
+      "kills": [
+        "collapsedTreeRetriever returns a level-1 summary with its leaf ids for a broad query",
+        "collapsedTreeRetriever returns a leaf for a detail query"
+      ]
+    },
+    {
+      "name": "leavesOnly does not overfetch",
+      "file": "packages/retrieval/src/retrievers/tree.ts",
+      "find": "limit: leavesOnly ? limit + summaryCount : limit",
+      "replace": "limit: limit",
+      "kills": [
+        "collapsedTreeRetriever never returns a summary when leavesOnly is set"
+      ]
+    }
+  ]
+}
