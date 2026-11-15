@@ -145,7 +145,7 @@ function buildPlan(request: RunRequest, db: Db, store: ArtifactStore, dataDir: s
   if (from === "gather" && !request.gather) throw new Error("a run from gather needs --facts-from <adapter>");
   const runs = new WorkflowRunStore(db);
   const pinned = request.pins !== undefined && Object.keys(request.pins).length > 0;
-  const base = request.base || (!startsFresh(from) && !pinned) ? findBase(runs, request.base, from) : undefined;
+  const base = request.base || (!startsFresh(from) && !pinned) ? findBase(runs, request.base, from, request.video) : undefined;
   const basePlan = base ? planOf(base) : undefined;
   const gather = request.gather ?? basePlan?.gather;
   // A replay keeps its base run's video type, else tts falls back to the default voice and every beat stretches (TP-4622).
