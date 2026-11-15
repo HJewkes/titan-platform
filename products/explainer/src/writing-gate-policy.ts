@@ -29,6 +29,7 @@ const WritingGatePolicySchema = z.object({
     "parallel-recap": capped({ run: z.number().int().min(2), maxWords: z.number().int().positive() }),
     "label-first": capped({ maxWords: z.number().int().positive() }),
     "named-before-defined": capped({}),
+    "motivated-before-named": capped({ minS: z.number().positive() }),
   }),
   overrides: z.object({
     "writing-check": z.record(z.string(), z.enum(["drop", "gate", "warning", "report-only"])),
