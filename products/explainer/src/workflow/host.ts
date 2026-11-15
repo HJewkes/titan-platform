@@ -224,7 +224,8 @@ const stageExtras = (host: RunHost): Pick<StageDeps, "stylePacks" | "reflection"
 export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
   const store = new ArtifactStore(host.dataDir, db);
   let bridgeFile: BridgeFile | undefined;
-  const bridge = () => (bridgeFile ??= runBridgeFile(host.dataDir, { home: host.bridgeHome, profile: plan?.profile, theater: plan?.theater }));
+  const gatherDay = plan?.gather && "day" in plan.gather ? plan.gather.day : undefined;
+  const bridge = () => (bridgeFile ??= runBridgeFile(host.dataDir, { home: host.bridgeHome, profile: plan?.profile, theater: plan?.theater, day: gatherDay }));
   const now = host.now ?? (() => new Date());
   const late: { runtime?: WorkflowRuntime } = {};
   const cache: CacheDeps = { db, dataDir: host.dataDir, now, runtime: () => late.runtime! };

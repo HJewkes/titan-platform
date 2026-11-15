@@ -5,7 +5,29 @@ import { afterEach, beforeEach } from 'vitest';
 
 import { relatedContext, type RelatedInput } from '../search/related.js';
 import { writeCharter } from './visibility.js';
-import { refreshInto, scaffold } from './workspace-index/fixture.js';
+import { refreshInto, scaffold, writeFile } from './workspace-index/fixture.js';
+
+const unrelatedPrecedent = {
+  key: 'transcript:sess-garden:tu-garden',
+  source: 'transcript',
+  asked_at: '2026-08-01T09:00:00Z',
+  session_id: 'sess-garden',
+  tool_use_id: 'tu-garden',
+  initiative: 'alpha',
+  class: 'other',
+  header: 'Garden',
+  question: 'Water the ferns?',
+  options: ['Yes (Recommended)', 'No'],
+  recommended: 'Yes (Recommended)',
+  answer: 'No',
+  pick_type: 'other_option',
+  free_text: null,
+};
+
+/** A workspace with no ledger reports it as degraded; this seeds one that matches no fixture query. */
+export function writeUnrelatedPrecedent(root: string): void {
+  writeFile(root, 'alpha/sources/precedents.jsonl', `${JSON.stringify(unrelatedPrecedent)}\n`);
+}
 
 interface RelatedFixture {
   root(): string;
@@ -24,6 +46,7 @@ export function useRelatedFixture(): RelatedFixture {
     dbPath = path.join(dir, 'graph.sqlite3');
     scaffold(root);
     writeCharter(root);
+    writeUnrelatedPrecedent(root);
     (await refreshInto(dbPath, root)).db.close();
   });
 
