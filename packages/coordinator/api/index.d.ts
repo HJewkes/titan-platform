@@ -3,18 +3,18 @@ import { Limits } from '@titan-design/agent-dispatch/limits';
 
 declare const HARD_STOP_CLASSES: readonly ["ruleset-write", "tag-move", "npm-publish", "broker-restart", "launchd-install", "dotfiles-merge", "config-edit", "force-push", "deploy", "spend-money", "third-party-message", "personal-data"];
 declare const hardStopClassSchema: z.ZodEnum<{
-    "ruleset-write": "ruleset-write";
-    "tag-move": "tag-move";
-    "npm-publish": "npm-publish";
     "broker-restart": "broker-restart";
-    "launchd-install": "launchd-install";
-    "dotfiles-merge": "dotfiles-merge";
     "config-edit": "config-edit";
-    "force-push": "force-push";
     deploy: "deploy";
-    "spend-money": "spend-money";
-    "third-party-message": "third-party-message";
+    "dotfiles-merge": "dotfiles-merge";
+    "force-push": "force-push";
+    "launchd-install": "launchd-install";
+    "npm-publish": "npm-publish";
     "personal-data": "personal-data";
+    "ruleset-write": "ruleset-write";
+    "spend-money": "spend-money";
+    "tag-move": "tag-move";
+    "third-party-message": "third-party-message";
 }>;
 declare const charterDefaultsSchema: z.ZodObject<{
     kind_weights: z.ZodRecord<z.ZodString, z.ZodNumber>;
@@ -61,18 +61,18 @@ declare const charterPolicySchema: z.ZodObject<{
     seats: z.ZodArray<z.ZodString>;
     hub: z.ZodString;
     hard_stops: z.ZodArray<z.ZodEnum<{
-        "ruleset-write": "ruleset-write";
-        "tag-move": "tag-move";
-        "npm-publish": "npm-publish";
         "broker-restart": "broker-restart";
-        "launchd-install": "launchd-install";
-        "dotfiles-merge": "dotfiles-merge";
         "config-edit": "config-edit";
-        "force-push": "force-push";
         deploy: "deploy";
-        "spend-money": "spend-money";
-        "third-party-message": "third-party-message";
+        "dotfiles-merge": "dotfiles-merge";
+        "force-push": "force-push";
+        "launchd-install": "launchd-install";
+        "npm-publish": "npm-publish";
         "personal-data": "personal-data";
+        "ruleset-write": "ruleset-write";
+        "spend-money": "spend-money";
+        "tag-move": "tag-move";
+        "third-party-message": "third-party-message";
     }>>;
     defaults: z.ZodObject<{
         kind_weights: z.ZodRecord<z.ZodString, z.ZodNumber>;
@@ -123,8 +123,8 @@ declare const charterPolicySchema: z.ZodObject<{
 }, z.core.$loose>;
 declare const charterPolicyErrorSchema: z.ZodObject<{
     code: z.ZodEnum<{
-        missing: "missing";
         invalid: "invalid";
+        missing: "missing";
     }>;
     path: z.ZodString;
     message: z.ZodString;
@@ -335,8 +335,8 @@ declare const AUTHORED_MAX_CHARS = 1500;
 declare const authoredContinuationSchema: z.ZodObject<{
     on: z.ZodEnum<{
         agent: "agent";
-        pr: "pr";
         msg: "msg";
+        pr: "pr";
         time: "time";
     }>;
     ref: z.ZodString;
@@ -356,8 +356,8 @@ declare const authoredBlockSchema: z.ZodObject<{
     continuations: z.ZodDefault<z.ZodArray<z.ZodObject<{
         on: z.ZodEnum<{
             agent: "agent";
-            pr: "pr";
             msg: "msg";
+            pr: "pr";
             time: "time";
         }>;
         ref: z.ZodString;
@@ -469,8 +469,8 @@ declare const coordinatorOwnerSchema: z.ZodObject<{
     digest_at: z.ZodOptional<z.ZodArray<z.ZodString>>;
     channels: z.ZodOptional<z.ZodArray<z.ZodEnum<{
         console: "console";
-        telegram: "telegram";
         matrix: "matrix";
+        telegram: "telegram";
     }>>>;
     decider: z.ZodOptional<z.ZodObject<{
         enabled: z.ZodBoolean;
@@ -562,18 +562,18 @@ declare const coordinatorSeatSchema: z.ZodObject<{
 }, z.core.$loose>;
 declare const coordinatorPolicySchema: z.ZodObject<{
     hard_stops: z.ZodArray<z.ZodEnum<{
-        "ruleset-write": "ruleset-write";
-        "tag-move": "tag-move";
-        "npm-publish": "npm-publish";
         "broker-restart": "broker-restart";
-        "launchd-install": "launchd-install";
-        "dotfiles-merge": "dotfiles-merge";
         "config-edit": "config-edit";
-        "force-push": "force-push";
         deploy: "deploy";
-        "spend-money": "spend-money";
-        "third-party-message": "third-party-message";
+        "dotfiles-merge": "dotfiles-merge";
+        "force-push": "force-push";
+        "launchd-install": "launchd-install";
+        "npm-publish": "npm-publish";
         "personal-data": "personal-data";
+        "ruleset-write": "ruleset-write";
+        "spend-money": "spend-money";
+        "tag-move": "tag-move";
+        "third-party-message": "third-party-message";
     }>>;
     hard_stop_repos: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodArray<z.ZodString>>>;
     human_only_tag: z.ZodOptional<z.ZodString>;
@@ -627,8 +627,8 @@ declare const coordinatorConfigSchema: z.ZodObject<{
         digest_at: z.ZodOptional<z.ZodArray<z.ZodString>>;
         channels: z.ZodOptional<z.ZodArray<z.ZodEnum<{
             console: "console";
-            telegram: "telegram";
             matrix: "matrix";
+            telegram: "telegram";
         }>>>;
         decider: z.ZodOptional<z.ZodObject<{
             enabled: z.ZodBoolean;
@@ -799,8 +799,8 @@ declare const coordinatorConfigSchema: z.ZodObject<{
             hand_reserve: z.ZodOptional<z.ZodNumber>;
             brief_gate: z.ZodOptional<z.ZodEnum<{
                 off: "off";
-                shadow: "shadow";
                 on: "on";
+                shadow: "shadow";
             }>>;
         }, z.core.$strict>>>;
         overrides: z.ZodOptional<z.ZodArray<z.ZodObject<{
@@ -835,8 +835,8 @@ declare const coordinatorConfigSchema: z.ZodObject<{
         pace: z.ZodOptional<z.ZodObject<{
             mode: z.ZodEnum<{
                 off: "off";
-                shadow: "shadow";
                 on: "on";
+                shadow: "shadow";
             }>;
             buffer_points: z.ZodOptional<z.ZodNumber>;
             finish_hours_before_reset: z.ZodOptional<z.ZodNumber>;
@@ -844,18 +844,18 @@ declare const coordinatorConfigSchema: z.ZodObject<{
     }, z.core.$strict>;
     policy: z.ZodObject<{
         hard_stops: z.ZodArray<z.ZodEnum<{
-            "ruleset-write": "ruleset-write";
-            "tag-move": "tag-move";
-            "npm-publish": "npm-publish";
             "broker-restart": "broker-restart";
-            "launchd-install": "launchd-install";
-            "dotfiles-merge": "dotfiles-merge";
             "config-edit": "config-edit";
-            "force-push": "force-push";
             deploy: "deploy";
-            "spend-money": "spend-money";
-            "third-party-message": "third-party-message";
+            "dotfiles-merge": "dotfiles-merge";
+            "force-push": "force-push";
+            "launchd-install": "launchd-install";
+            "npm-publish": "npm-publish";
             "personal-data": "personal-data";
+            "ruleset-write": "ruleset-write";
+            "spend-money": "spend-money";
+            "tag-move": "tag-move";
+            "third-party-message": "third-party-message";
         }>>;
         hard_stop_repos: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodArray<z.ZodString>>>;
         human_only_tag: z.ZodOptional<z.ZodString>;
@@ -903,8 +903,8 @@ declare const coordinatorConfigSchema: z.ZodObject<{
 }, z.core.$loose>;
 declare const coordinatorConfigErrorSchema: z.ZodObject<{
     code: z.ZodEnum<{
-        missing: "missing";
         invalid: "invalid";
+        missing: "missing";
         reference: "reference";
     }>;
     path: z.ZodString;
@@ -1068,30 +1068,30 @@ declare const riskContractSchema: z.ZodObject<{
     id: z.ZodString;
     programme: z.ZodOptional<z.ZodString>;
     kind: z.ZodEnum<{
-        policy: "policy";
-        security: "security";
         authority: "authority";
         migration: "migration";
+        policy: "policy";
+        security: "security";
     }>;
     rule: z.ZodString;
     delta: z.ZodEnum<{
-        "strictly-stricter": "strictly-stricter";
-        narrower: "narrower";
-        wider: "wider";
         mixed: "mixed";
+        narrower: "narrower";
+        "strictly-stricter": "strictly-stricter";
+        wider: "wider";
     }>;
     paths: z.ZodArray<z.ZodString>;
     requires: z.ZodArray<z.ZodEnum<{
-        "parse-budget": "parse-budget";
-        "guard-fuzz": "guard-fuzz";
         "allowed-rows-pinned": "allowed-rows-pinned";
         "fix-proof": "fix-proof";
+        "guard-fuzz": "guard-fuzz";
+        "parse-budget": "parse-budget";
     }>>;
     release: z.ZodEnum<{
-        seat: "seat";
-        shepherd: "shepherd";
         "owner-live": "owner-live";
+        seat: "seat";
         "seat-adversary": "seat-adversary";
+        shepherd: "shepherd";
     }>;
     ownerApproval: z.ZodOptional<z.ZodObject<{
         decision: z.ZodString;

@@ -12,6 +12,7 @@ import { FactFlashBeat, ListKindBeat, VerdictCardBeat } from "./beats/list-kinds
 import { ButtonBeat, OutroKindBeat } from "./beats/OutroBeat.js";
 import { ProofKindBeat } from "./beats/ProofBeat.js";
 import { StatKindBeat } from "./beats/StatBeat.js";
+import { MetricsPanelKindBeat, ScorecardKindBeat } from "./beats/ScorecardTable.js";
 import { ClaimCardBeat } from "./beats/TitleBeat.js";
 import { useReveal, type Reveal } from "./beats/stage/reveal.js";
 import type { TimelineBeat } from "./timeline.js";
@@ -67,6 +68,8 @@ const BEATS: Readonly<Record<string, BeatDefinition>> = {
   compare: defineBeat(BEAT_SLOTS.compare, CompareKindBeat, { stage: true }),
   "arch-map": defineBeat(BEAT_SLOTS.map, ArchMapKindBeat, { stage: true }),
   proof: defineBeat(BEAT_SLOTS.proof, ProofKindBeat, { stage: true }),
+  "metrics-panel": defineBeat(BEAT_SLOTS["metrics-panel"], MetricsPanelKindBeat, { stage: true }),
+  scorecard: defineBeat(BEAT_SLOTS.scorecard, ScorecardKindBeat, { stage: true }),
   catalogue: defineBeat(CatalogueSlots, CatalogueBeat),
 };
 

@@ -21,7 +21,7 @@ interface OwnerRow {
 }
 
 /** The body, not the file: frontmatter is metadata, and `mentions` is defined over prose. */
-export async function readBody(absolutePath: string): Promise<string> {
+async function readBody(absolutePath: string): Promise<string> {
   try {
     return parseFrontmatter(await fs.readFile(absolutePath, 'utf8')).content;
   } catch {

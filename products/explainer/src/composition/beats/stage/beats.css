@@ -127,6 +127,36 @@
 }
 .beat-stat-delta[data-state='problem'] { background: var(--color-status-error-vivid-subtle); color: var(--color-status-error-vivid); }
 .beat-stat-delta[data-state='neutral'] { background: var(--color-surface-raised); color: var(--color-text-secondary); }
+.beat-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 var(--beat-gap-sm);
+  font-size: var(--beat-body);
+}
+.beat-table-row > * {
+  padding: var(--beat-inset);
+  background: var(--color-surface-raised);
+  text-align: left;
+}
+.beat-table-row > :first-child {
+  border-radius: var(--beat-radius) 0 0 var(--beat-radius);
+}
+.beat-table-row > :last-child {
+  border-radius: 0 var(--beat-radius) var(--beat-radius) 0;
+}
+.beat-table-label {
+  color: var(--color-text-secondary);
+  font-weight: normal;
+}
+.beat-table-today,
+.beat-table-call {
+  font-family: var(--font-family-heading);
+  font-variant-numeric: tabular-nums;
+}
+.beat-table-target,
+.beat-table-reason {
+  color: var(--color-text-secondary);
+}
 .beat-checklist {
   display: flex;
   flex-direction: column;
