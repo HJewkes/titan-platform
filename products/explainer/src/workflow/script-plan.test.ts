@@ -180,8 +180,8 @@ describe("the script stage's plan retry", () => {
 
   it("re-times a draft whose only fault is a beat a word or two over its cap, with no plan retry", async () => {
     fx = fixture();
-    const draft = { ...plannedAt(12.5), beats: plannedAt(12.5).beats.map((beat) => (beat.id === "h1" ? { ...beat, plannedS: 9 } : beat)) };
-    expect(planFaults(draft)).toEqual(["h1 26/25 words (9 s at 2.8 w/s; 26 words need 10 s)"]);
+    const draft = { ...plannedAt(12.5), beats: plannedAt(12.5).beats.map((beat) => (beat.id === "h1" ? { ...beat, plannedS: 8 } : beat)) };
+    expect(planFaults(draft)).toEqual(["h1 26/24 words (8 s at 3.08 w/s; 26 words need 9 s)"]);
     const model = fakeScriptModel(draft, { asWritten: true });
 
     const result = await runVideo({ spine: fx.spine, facts: fx.facts, profile: "daily-overview", to: "script" }, fakeHost(fx, model, fakeRender()));

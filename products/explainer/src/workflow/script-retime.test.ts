@@ -35,8 +35,8 @@ const plannedOf = (draft: ScriptV1, id: string): number | undefined => draft.bea
 
 describe("the script stage's word-budget re-time", () => {
   it("raises a beat one word over its cap to the seconds its words need, and names it", () => {
-    const draft = daily(withBeat("reflection-1", { words: 51 }));
-    expect(draftWordBudget(draft).detail).toBe("over: reflection-1 51/50 words (18 s at 2.8 w/s; 51 words need 19 s)");
+    const draft = daily(withBeat("reflection-1", { words: 56 }));
+    expect(draftWordBudget(draft).detail).toBe("over: reflection-1 56/55 words (18 s at 3.08 w/s; 56 words need 19 s)");
 
     const { draft: retimed, moves } = retimeOverBudget(draft);
 
@@ -45,19 +45,19 @@ describe("the script stage's word-budget re-time", () => {
     expect(draftWordBudget(retimed).pass).toBe(true);
   });
 
-  it("leaves a beat 8 words over, which needs 3 more seconds, as it came, so the gate still fails", () => {
-    const draft = daily(withBeat("side-quests-1", { words: 33 }));
+  it("leaves a beat 9 words over, which needs 3 more seconds, as it came, so the gate still fails", () => {
+    const draft = daily(withBeat("side-quests-1", { words: 36 }));
 
     const { draft: retimed, moves } = retimeOverBudget(draft);
 
     expect(moves).toEqual([]);
     expect(retimed).toBe(draft);
-    expect(draftWordBudget(retimed).detail).toBe("over: side-quests-1 33/25 words (9 s at 2.8 w/s; 33 words need 12 s)");
+    expect(draftWordBudget(retimed).detail).toBe("over: side-quests-1 36/27 words (9 s at 3.08 w/s; 36 words need 12 s)");
   });
 
   // The close is exempt from Q-F8's band, so only the re-time's own 20 s bound holds it.
   it("does not raise a 19 s close that needs 21 s past the 20 s beat band", () => {
-    const draft = daily(withBeat("reflection-1", { plannedS: 19, words: 57, fn: "CLOSE" }));
+    const draft = daily(withBeat("reflection-1", { plannedS: 19, words: 62, fn: "CLOSE" }));
 
     const { draft: retimed, moves } = retimeOverBudget(draft);
 
@@ -72,7 +72,7 @@ describe("the script stage's word-budget re-time", () => {
     ["the word-budget faults a chapter reader passes", wordBudgetFaults],
   ])("refuses a re-time that would plan the draft past the profile's 240 s maximum, measured by %s", (_, faults) => {
     const padding = [20, 20, 20, 20, 20, 18].map((plannedS, i): Beat => ({ id: `aside-${i + 1}`, chapter: "aside", plannedS, words: 20 }));
-    const draft = daily(withBeat("reflection-1", { words: 51 }, [...BASE, ...padding]));
+    const draft = daily(withBeat("reflection-1", { words: 56 }, [...BASE, ...padding]));
     expect(draft.beats.reduce((sum, beat) => sum + beat.plannedS, 0)).toBe(240);
 
     const { moves } = retimeOverBudget(draft, faults);
@@ -82,7 +82,7 @@ describe("the script stage's word-budget re-time", () => {
 
   it("refuses a re-time that would plan a chapter past its block's longest airtime", () => {
     const second: Beat = { id: "side-quests-2", chapter: "side-quests", plannedS: 6, words: 10 };
-    const beats = withBeat("side-quests-1", { words: 26 }, [...BASE, second]);
+    const beats = withBeat("side-quests-1", { words: 28 }, [...BASE, second]);
 
     const { moves } = retimeOverBudget(daily(beats));
     const roomier = retimeOverBudget(daily(withBeat("side-quests-2", { plannedS: 5, words: 10 }, beats)));

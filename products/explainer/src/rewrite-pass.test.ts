@@ -174,9 +174,11 @@ describe("rewriteScript guard and revert", () => {
     expect(spokenOf(out, "k3")).toBe(BEATS.k3![1].after);
   });
 
-  // The goals block caps at 70 words (25 s at 2.8 w/s); ch4's three beats speak 68, and the compliant c1 and c2 add 6.
+  // The goals block caps at 77 words (25 s at 2.8 w/s x daily-overview's 1.1 voice); ch4's three beats speak 74 once c3
+  // carries a six-word aside, and the compliant c1 and c2 add 6.
   it("reverts the beats that grew a profile block past its cap, and not the one that shrank", async () => {
-    const draft = cuedChoppy();
+    const aside = " Nobody asked twice about it today.";
+    const draft = cuedChoppy({ c3: { spoken: BEATS.c3![1].before + aside } });
     const asBlock = (chapter: string): string => (chapter === "ch4" ? "goals" : chapter);
     const script: ScriptV1 = {
       ...draft,
@@ -184,7 +186,7 @@ describe("rewriteScript guard and revert", () => {
       chapters: draft.chapters.map((chapter) => ({ ...chapter, id: asBlock(chapter.id) })),
       beats: draft.beats.map((beat) => ({ ...beat, chapter: asBlock(beat.chapter) })),
     };
-    const shortC3 = BEATS.c3![1].before.replace("first, then", "then");
+    const shortC3 = (BEATS.c3![1].before + aside).replace("first, then", "then");
     const shrinksC3: Rewriter = (id, prompt) => (id === "c3" ? { id, spoken: shortC3, labels_added: [] } : compliant(id, prompt));
 
     const { script: out, report } = await rewrite(script, fakeRewriter(shrinksC3), { rounds: 1 });
