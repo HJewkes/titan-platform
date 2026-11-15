@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the page drops hold-release from its console taps",
+      "file": "apps/console/src/pages/InboxPage.tsx",
+      "find": "\"owner-release\", \"hold-release\", \"owner-op\"",
+      "replace": "\"owner-release\", \"owner-op\"",
+      "kills": [
+        "the inbox page, a g10 hold-release row offers Release hold and no terminal run on a g10-review hold, and a released act shows success"
+      ]
+    }
+  ]
+}
