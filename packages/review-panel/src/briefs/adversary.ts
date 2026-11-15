@@ -90,11 +90,23 @@ const valueReadsWidened = (value: string | undefined): boolean => value !== unde
 /** Only decoration, never a word, stands between the line start, the label and its colon. */
 const isLabel = (label: string, value: string | undefined): boolean => value !== undefined && labelledLineRest(label, AUTHORITY_HEADING) === "";
 
+/** Every spelling of a widening shares this folded prefix, so a label glued to one (`Authority-widens`) is not dropped as a code name. */
+const WIDENING_PREFIX = "wide";
+/** Any inflection, not one word, so `widens`, `widening` and `wider` are read with `widened`; `wide` alone (`repo-wide`) is not one. */
+const WIDENING_WORD = /^wide[nr]/;
+const WORD_BREAK = /[^a-z0-9]+/;
+
 /**
- * An Authority-led prose line that names a widening is never no reading, or `Authority widened: ...` beside
- * `Authority: unchanged` would merge as unchanged: one that starts with it states it, any other is refused as unreadable.
+ * An Authority-led prose line that names a widening in any inflection is never no reading, or `Authority widens: ...`
+ * beside `Authority: unchanged` would merge as unchanged: one whose first word after Authority is the widening states
+ * it, any other is refused as unreadable. Words, not the folded rest, so `wide network` is not read as `widen`.
  */
-const proseWidening = (rest: string): AuthorityLine | "malformed" => (rest.startsWith(WIDENED) ? WIDENED : "malformed");
+function proseWidening(raw: string): AuthorityLine | "malformed" | undefined {
+  const words = raw.normalize("NFKC").toLowerCase().split(WORD_BREAK);
+  const at = words.findIndex((word) => WIDENING_WORD.test(word));
+  if (at < 0) return undefined;
+  return words[at - 1] === "authority" ? WIDENED : "malformed";
+}
 
 /**
  * One raw line's reading, or undefined when it carries no Authority label. A line that starts with the word Authority
@@ -106,12 +118,11 @@ const proseWidening = (rest: string): AuthorityLine | "malformed" => (rest.start
  * other label reads malformed.
  */
 function authorityReading(raw: string): AuthorityLine | "malformed" | undefined {
-  const rest = labelledLineRest(raw, AUTHORITY_HEADING, WIDENED);
+  const rest = labelledLineRest(raw, AUTHORITY_HEADING, WIDENING_PREFIX);
   if (rest === undefined) return undefined;
   const { label, value } = splitAtColon(raw);
   if (rest === WIDENED || valueReadsWidened(value)) return WIDENED;
-  if (rest.includes(WIDENED) && !isLabel(label, value)) return proseWidening(rest);
-  if (!isLabel(label, value)) return undefined;
+  if (!isLabel(label, value)) return proseWidening(raw);
   const line = raw.trim();
   const plainValue = line.startsWith(AUTHORITY_HEADING) ? line.slice(AUTHORITY_HEADING.length).trim() : undefined;
   return SAFER_VALUES.find((known) => known === plainValue) ?? "malformed";

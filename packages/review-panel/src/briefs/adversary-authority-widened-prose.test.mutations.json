@@ -4,29 +4,49 @@
     {
       "name": "Authority-led prose that names a widening gives no reading",
       "file": "packages/review-panel/src/briefs/adversary.ts",
-      "find": "  if (rest.includes(WIDENED) && !isLabel(label, value)) return proseWidening(rest);\n",
-      "replace": "",
+      "find": "  if (at < 0) return undefined;\n  return words[at - 1] === \"authority\" ? WIDENED : \"malformed\";",
+      "replace": "  return undefined;",
       "kills": [
-        "authorityLine prose that starts with Authority and states a widening a bold worded label that starts with widened reads widened over an unchanged line",
-        "authorityLine prose that starts with Authority and states a widening a widening later in the lead reads malformed, never unchanged"
+        "authorityLine prose that starts with Authority and states a widening a bold worded label that starts with a widening reads widened over an unchanged line",
+        "authorityLine prose that starts with Authority and states a widening a widening later in the lead, Authority is widened: bot merges, reads malformed, never unchanged"
       ]
     },
     {
-      "name": "prose that starts with widened reads malformed instead of widened",
+      "name": "prose that starts with a widening reads malformed instead of widened",
       "file": "packages/review-panel/src/briefs/adversary.ts",
-      "find": "(rest.startsWith(WIDENED) ? WIDENED : \"malformed\")",
+      "find": "words[at - 1] === \"authority\" ? WIDENED : \"malformed\"",
       "replace": "\"malformed\"",
       "kills": [
-        "authorityLine prose that starts with Authority and states a widening a plain sentence that starts with widened reads widened over an unchanged line"
+        "authorityLine prose that starts with Authority and states a widening a plain sentence that starts with a widening reads widened over an unchanged line"
       ]
     },
     {
-      "name": "only prose that starts with widened is caught",
+      "name": "only the exact word widened is read as a widening",
       "file": "packages/review-panel/src/briefs/adversary.ts",
-      "find": "if (rest.includes(WIDENED) && !isLabel",
-      "replace": "if (rest.startsWith(WIDENED) && !isLabel",
+      "find": "const WIDENING_WORD = /^wide[nr]/;",
+      "replace": "const WIDENING_WORD = /^widened$/;",
       "kills": [
-        "authorityLine prose that starts with Authority and states a widening a widening later in the lead reads malformed, never unchanged"
+        "authorityLine prose that starts with Authority and states a widening a bold label in another inflection that starts with a widening reads widened over an unchanged line",
+        "authorityLine prose that starts with Authority and states a widening a comparative that starts with a widening reads widened over an unchanged line",
+        "authorityLine prose that starts with Authority and states a widening a widening later in the lead, Authority gate: widens, reads malformed, never unchanged"
+      ]
+    },
+    {
+      "name": "a label glued to a widening inflection is dropped as a code name",
+      "file": "packages/review-panel/src/briefs/adversary.ts",
+      "find": "labelledLineRest(raw, AUTHORITY_HEADING, WIDENING_PREFIX)",
+      "replace": "labelledLineRest(raw, AUTHORITY_HEADING, WIDENED)",
+      "kills": [
+        "authorityLine prose that starts with Authority and states a widening a label glued to the widening that starts with a widening reads widened over an unchanged line"
+      ]
+    },
+    {
+      "name": "the folded stem wide alone is read as a widening",
+      "file": "packages/review-panel/src/briefs/adversary.ts",
+      "find": "const WIDENING_WORD = /^wide[nr]/;",
+      "replace": "const WIDENING_WORD = /wide/;",
+      "kills": [
+        "authorityLine prose that starts with Authority and states a widening a lead with no widening, **Authority gate.** No repo-wide network change., still gives no reading"
       ]
     }
   ]

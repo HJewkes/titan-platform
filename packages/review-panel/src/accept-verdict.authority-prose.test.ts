@@ -58,6 +58,9 @@ describe("acceptVerdict on an adversary MERGE with prose that starts with the wo
     "Authority widened by letting the bot merge.",
     "Authority is widened: bot merges",
     "Authority widened — see above",
+    "**Authority widens:** the bot can now merge",
+    "**Authority widening.** The bot can now merge without review.",
+    "Authority gate: widens",
   ])("a widening stated in prose, %s, beside an unchanged line is never a MERGE reading unchanged", (prose) => {
     const result = acceptVerdict(adversary, [said(`${prose}\n\n${probes}\nAuthority: unchanged\n\n${merge}`)]);
 
