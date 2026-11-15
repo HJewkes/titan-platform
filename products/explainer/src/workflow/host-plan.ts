@@ -6,13 +6,21 @@ import type { RunRequest } from "./host.js";
 import { VIDEO_WORKFLOW } from "./pipeline.js";
 import { OPTIONAL_STAGES, RUN_INPUTS, STAGES, type StageName, type StageRecord } from "./records.js";
 import { stageRecords } from "./report.js";
-import { planOf } from "./video-runs.js";
+import { planOf, videoIdOf } from "./video-runs.js";
 
 
 
-function latestRun(store: WorkflowRunStore): WorkflowRun | undefined {
+/** True when the run completed every required stage before `from`, so a rerun can reuse them. */
+function hasStagesBefore(run: WorkflowRun, from: StageName): boolean {
+  const done = new Set(stageRecords(run).map((record) => record.stage));
+  return STAGES.slice(0, STAGES.indexOf(from)).every((stage) => done.has(stage) || OPTIONAL_STAGES.includes(stage));
+}
+
+function newestUsableRun(store: WorkflowRunStore, from: StageName, video: string | undefined): WorkflowRun | undefined {
   const runs = store.listByStatus(["completed", "failed", "cancelled"]).filter((run) => run.workflowName === VIDEO_WORKFLOW);
-  return runs.sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+  return runs
+    .filter((run) => (video === undefined || videoIdOf(store, run) === video) && hasStagesBefore(run, from))
+    .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
 }
 
 export function inputArtifacts(request: Pick<RunRequest, "spine" | "facts">, store: ArtifactStore): Record<string, string> {
@@ -58,8 +66,10 @@ export function neededInputs(from: StageName, to: StageName, profile: string | u
   return [...needed];
 }
 
-export function findBase(runs: WorkflowRunStore, id: string | undefined, from: StageName): WorkflowRun {
-  const base = id ? runs.get(id) : latestRun(runs);
+export function findBase(runs: WorkflowRunStore, id: string | undefined, from: StageName, video?: string): WorkflowRun {
+  const base = id ? runs.get(id) : newestUsableRun(runs, from, video);
   if (base?.workflowName === VIDEO_WORKFLOW) return base;
-  throw new Error(id ? `no ${VIDEO_WORKFLOW} run ${id}` : `no earlier ${VIDEO_WORKFLOW} run to start --from ${from} on; pass --base`);
+  if (id) throw new Error(`no ${VIDEO_WORKFLOW} run ${id}`);
+  const ofVideo = video ? ` of video ${video}` : "";
+  throw new Error(`no earlier ${VIDEO_WORKFLOW} run${ofVideo} has every stage before ${from} to start --from ${from} on; pass --base`);
 }
