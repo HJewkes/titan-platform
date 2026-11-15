@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
-import { activeWorkGraphPath, activeWorkRoot, type PathOptions } from "@titan-design/app-paths";
+import path from "node:path";
+import { activeWorkGraphPath, activeWorkRoot, appDirs, type PathOptions } from "@titan-design/app-paths";
 import { instantiateEmbedder } from "@titan-design/embed";
 import { Command } from "commander";
 import { activeWorkSearch } from "./candidates/active-work-search.js";
@@ -18,10 +19,12 @@ import { formatServed } from "./served/format.js";
 import { buildReport, collectServed } from "./served/report.js";
 import { snapshot } from "./snapshot.js";
 import { countUptake } from "./uptake.js";
+import { isoWeekWindow, writeWeekly } from "./weekly.js";
 
 /**
- * Four verbs: mine the pairs, score the candidates on them, count whether
- * anyone used a recall tool at all, and label what the renderers actually served.
+ * Five verbs: mine the pairs, score the candidates on them, count whether
+ * anyone used a recall tool at all, label what the renderers actually served,
+ * and record one dated row of the last two per week.
  */
 
 interface CommonOptions {
@@ -186,6 +189,20 @@ function servedCommand(paths: PathOptions): Command {
     });
 }
 
+function weeklyCommand(paths: PathOptions): Command {
+  return new Command("weekly")
+    .description("Write one measurement row for an ISO week: served opened ratios and recall-tool uptake")
+    .requiredOption("--week <YYYY-Www>", "ISO week, Monday to Monday in UTC")
+    .option("--out <file>", "weekly series JSONL", path.join(appDirs("retrieval-eval", paths).data, "weekly.jsonl"))
+    .option("--active-root <dir>", "active-work root, read-only", activeWorkRoot(paths))
+    .action(async (options) => {
+      isoWeekWindow(options.week);
+      const files = await transcriptFiles();
+      const row = await writeWeekly({ week: options.week, out: options.out, files, activeRoot: options.activeRoot });
+      console.log(JSON.stringify(row));
+    });
+}
+
 /** `paths` overrides where the --active-root and --graph defaults read env, home and platform from. */
 export function buildCli(paths: PathOptions = {}): Command {
   return new Command("retrieval-eval")
@@ -194,7 +211,8 @@ export function buildCli(paths: PathOptions = {}): Command {
     .addCommand(freezeCommand(paths))
     .addCommand(runCommand(paths))
     .addCommand(uptakeCommand())
-    .addCommand(servedCommand(paths));
+    .addCommand(servedCommand(paths))
+    .addCommand(weeklyCommand(paths));
 }
 
 export async function runCli(argv: string[]): Promise<number> {

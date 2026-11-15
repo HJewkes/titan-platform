@@ -1,5 +1,5 @@
-import type { Rule } from "eslint";
 import type { Comment } from "estree";
+import type { TitanRule } from "./titan-rule.js";
 import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 
 type ParserLike = {
@@ -118,10 +118,10 @@ function groupLineComments(comments: Comment[], isAlone: (comment: Comment) => b
   return groups;
 }
 
-export const noCommentedCode: Rule.RuleModule = {
+export const noCommentedCode: TitanRule = {
   meta: {
     type: "suggestion",
-    docs: { description: "Disallow comments that contain code" },
+    docs: { description: "Disallow comments that contain code", classes: ["stale-code-comment"] },
     schema: [],
     messages: {
       commentedCode: "This comment is code. Delete it; git history keeps it. If it explains why, rewrite it as a sentence.",

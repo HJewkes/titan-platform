@@ -34,7 +34,7 @@ function StageBeat({ beat, view, headline }: ViewProps) {
     <RevealContext value={revealFrom(beat.reveals ?? [])}>
       <EmphasisContext value={litFrom(beat.emphases ?? [])}>
         <Stage beat={beat.id}>
-          <StageFrame kind={beat.kind}>{view}</StageFrame>
+          <StageFrame kind={beat.kind} plate={beat.plate}>{view}</StageFrame>
         </Stage>
         <Chrome headline={headline ? beat.headline : undefined} chips={beat.chips ?? []} chapter={beat.chapter} />
       </EmphasisContext>
