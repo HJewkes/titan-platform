@@ -4,6 +4,7 @@ import { BetSchema } from "@titan-design/pm";
 import { writePlanRecord } from "@titan-design/pm/node";
 import { partialFake } from "@titan-design/test-kit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { EXIT } from "../../cli.js";
 import type { Verbs } from "../../cli-types.js";
 import { loadRuleFile } from "./rule-file.js";
@@ -85,10 +86,10 @@ describe("shadow tick plan read", () => {
 });
 
 /** `fetch` that records the slug of every `task.list` it forwards. */
-function slugRecording(fetch: typeof globalThis.fetch): { fetch: typeof globalThis.fetch; slugs: unknown[] } {
-  const slugs: unknown[] = [];
+function slugRecording(fetch: typeof globalThis.fetch): { fetch: typeof globalThis.fetch; slugs: string[] } {
+  const slugs: string[] = [];
   const recording: typeof globalThis.fetch = async (url, init) => {
-    if (String(url).endsWith("/rpc/task.list")) slugs.push((JSON.parse(String(init?.body)) as { slug?: unknown }).slug);
+    if (String(url).endsWith("/rpc/task.list")) slugs.push(z.object({ slug: z.string() }).parse(JSON.parse(String(init?.body))).slug);
     return fetch(url, init);
   };
   return { fetch: recording, slugs };
