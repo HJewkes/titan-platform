@@ -6,7 +6,18 @@
       "file": "packages/pm/src/planning.ts",
       "find": "z.string().min(1, { message: \"quote is empty\" })",
       "replace": "z.string()",
-      "kills": ["parseIntentDigest refuses a bullet with an empty quote, naming its line"]
+      "kills": [
+        "parseIntentDigest refuses a bullet with an empty quote, naming its line"
+      ]
+    },
+    {
+      "name": "superseded-by is dropped",
+      "file": "packages/pm/src/intent-digest.ts",
+      "find": "{ ...candidate, superseded_by: `${slug}/I${superseded}` }",
+      "replace": "candidate",
+      "kills": [
+        "parseIntentDigest records superseded-by as a full id"
+      ]
     }
   ]
 }
