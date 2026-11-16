@@ -110,10 +110,11 @@ export async function listSlugsForCaller(
 
 /**
  * A context that reads every initiative, for a command that only counts or names the rows the real
- * caller may see (the caller's own `Shown` still decides what it reveals). Its warnings are its own.
+ * caller may see (the caller's own `Shown` still decides what it reveals). Its warnings are its own,
+ * and it asks for rows, since a list command answers a human-format context with rendered text.
  */
 export function unrestrictedScan(ctx: CommandContext): CommandContext {
-  return { ...ctx, caller: 'owner', warnings: [] };
+  return { ...ctx, caller: 'owner', warnings: [], format: 'json' };
 }
 
 /** Splits rows by initiative into those the caller may see and a count of those it may not. */
