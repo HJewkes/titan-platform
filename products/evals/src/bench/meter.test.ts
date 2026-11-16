@@ -60,15 +60,18 @@ describe("meterJob", () => {
     expect(result.outcome).toBe("arm-mismatch");
   });
 
-  it("prices a model with no price row from the CLI cost", async () => {
+  it("prices Fable from the price table and agrees with the CLI cost", async () => {
+    const usage = { input_tokens: 2, output_tokens: 4, cache_read_input_tokens: 649, cache_creation_input_tokens: 2914, cache_creation: { ephemeral_5m_input_tokens: 2914, ephemeral_1h_input_tokens: 0 } };
     const cliResult = { modelUsage: { [FABLE.model]: { costUSD: 0.0294458 } } };
-    const result = await meter([request(FABLE.model, "high"), assistant("msg_1", FABLE.model)], FABLE, cliResult);
+    const result = await meter([request(FABLE.model, "high"), assistant("msg_1", FABLE.model, usage)], FABLE, cliResult);
     expect(result.listUsd).toBeCloseTo(0.0294458, 10);
     expect(result.cliMismatch).toBe(false);
   });
 
-  it("returns null list cost when neither the table nor the CLI can price the model", async () => {
-    const result = await meter([assistant("msg_1", FABLE.model)], FABLE);
+  it("returns null list cost for a model with no price row, even when the CLI reports a cost", async () => {
+    const model = "claude-unreleased-9";
+    const cliResult = { modelUsage: { [model]: { costUSD: 0.5 } } };
+    const result = await meter([assistant("msg_1", model)], { model, effort: "high" }, cliResult);
     expect(result.listUsd).toBeNull();
   });
 

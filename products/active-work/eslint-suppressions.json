@@ -1,9 +1,4 @@
 {
-  "products/active-work/src/bootstrap/archive-tasks.ts": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
   "products/active-work/src/commands/archive.ts": {
     "titan/max-function-lines": {
       "count": 1
