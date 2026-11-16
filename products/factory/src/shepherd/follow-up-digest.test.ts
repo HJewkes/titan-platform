@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { fileFollowUpDigest, followUpDigestPath, type DigestEntry } from "./follow-up-digest.js";
 
 const NOW = Date.parse("2026-11-15T12:00:00Z");
@@ -20,7 +21,8 @@ async function seed(rows: unknown[]): Promise<string> {
   return path;
 }
 
-const titles = async (path: string) => (await readFile(path, "utf8")).trim().split("\n").map((line) => (JSON.parse(line) as { title: string }).title);
+const Titled = z.object({ title: z.string() });
+const titles = async (path: string) => (await readFile(path, "utf8")).trim().split("\n").map((line) => Titled.parse(JSON.parse(line)).title);
 
 describe("the follow-up digest", () => {
   it("a write drops rows older than 4 weeks unless promoted to a task, and keeps the rest with the new row (TP-6714)", async () => {

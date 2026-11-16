@@ -25,7 +25,13 @@ const Where = { runId: z.string(), task: z.string().optional(), repo: z.string()
 const FollowUpsInput = z.looseObject({ ...Where, followUps: z.array(FollowUpSchema).optional(), followUpsWarning: Warning.optional() });
 type FollowUpsInput = z.infer<typeof FollowUpsInput>;
 const FiledSchema = z.object({ title: z.string(), id: z.string(), deduped: z.boolean() });
-const FollowUpsResult = z.looseObject({ filed: z.array(FiledSchema), digested: z.array(z.string()).optional(), warning: z.string().optional(), skipped: z.string().optional(), error: z.string().optional() });
+const FollowUpsResult = z.looseObject({
+  filed: z.array(FiledSchema),
+  digested: z.array(z.string()).optional(),
+  warning: z.string().optional(),
+  skipped: z.string().optional(),
+  error: z.string().optional(),
+});
 type FollowUpsResult = z.infer<typeof FollowUpsResult>;
 
 function errorOf(error: unknown): string {

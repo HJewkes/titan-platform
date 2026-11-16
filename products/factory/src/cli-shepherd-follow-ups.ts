@@ -56,7 +56,8 @@ async function run(ref: string, opts: FollowUpsArgs, verbs: Verbs): Promise<numb
   }
   const { items, warning } = parseFollowUps(opts.verdictFile === undefined ? await text(process.stdin) : await readFile(opts.verdictFile, "utf8"));
   try {
-    const result = (await prStopped(where, verbs)) ? { filed: [], digested: [], skipped: "stopped" } : await fileFollowUps(liveFollowUpSinks(io.env, verbs.deps.fetch), { ...where, head: opts.head, reviewer: opts.reviewer ?? "seat" }, items);
+    const at = { ...where, head: opts.head, reviewer: opts.reviewer ?? "seat" };
+    const result = (await prStopped(where, verbs)) ? { filed: [], digested: [], skipped: "stopped" } : await fileFollowUps(liveFollowUpSinks(io.env, verbs.deps.fetch), at, items);
     io.stdout(`${JSON.stringify({ ...result, ...(warning && { warning }) })}\n`);
     return EXIT.OK;
   } catch (error) {
