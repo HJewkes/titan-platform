@@ -58,18 +58,20 @@ function isCacheEntry(value: unknown): value is CacheEntry {
   return typeof id === 'string' && typeof status === 'string';
 }
 
+function isCurrentDoc(doc: unknown): doc is { key: string; entries: Record<string, unknown> } {
+  if (doc === null || typeof doc !== 'object' || !('key' in doc) || !('entries' in doc)) {
+    return false;
+  }
+  return doc.key === CACHE_KEY && doc.entries !== null && typeof doc.entries === 'object';
+}
+
 /** Read the sidecar; any failure yields an empty cache. */
 export async function loadTaskParseCache(cachePath: string): Promise<TaskParseCache> {
   const cache: TaskParseCache = new Map();
   try {
-    const doc = JSON.parse(await fsp.readFile(cachePath, 'utf8')) as {
-      key?: unknown;
-      entries?: unknown;
-    };
-    if (doc.key !== CACHE_KEY || doc.entries === null || typeof doc.entries !== 'object') {
-      return cache;
-    }
-    for (const [filename, entry] of Object.entries(doc.entries as Record<string, unknown>)) {
+    const doc: unknown = JSON.parse(await fsp.readFile(cachePath, 'utf8'));
+    if (!isCurrentDoc(doc)) return cache;
+    for (const [filename, entry] of Object.entries(doc.entries)) {
       if (isCacheEntry(entry)) cache.set(filename, entry);
     }
   } catch {
