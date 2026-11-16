@@ -1,28 +1,10 @@
 import { promises as fs, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-const reads = vi.hoisted(() => ({ inFlight: 0, peak: 0, files: [] as string[] }));
-
-vi.mock('../utils/yaml-io.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../utils/yaml-io.js')>();
-  return {
-    ...actual,
-    readYaml: async (...args: Parameters<typeof actual.readYaml>) => {
-      reads.files.push(path.basename(args[0]));
-      reads.inFlight++;
-      reads.peak = Math.max(reads.peak, reads.inFlight);
-      try {
-        return await actual.readYaml(...args);
-      } finally {
-        reads.inFlight--;
-      }
-    },
-  };
-});
-
-const { archiveStaleTasks } = await import('./archive-tasks.js');
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { readYaml } from '../utils/yaml-io.js';
+import { TaskSchema, type Task } from '../schemas/task.js';
+import { archiveStaleTasks } from './archive-tasks.js';
 
 const NOW = new Date('2026-07-01T00:00:00Z');
 const TASK_COUNT = 80;
@@ -40,35 +22,55 @@ function taskYaml(n: number): string {
   ].join('\n') + '\n';
 }
 
+/** The real reader, wrapped to record which files it read and how many reads overlapped. */
+function countingReader() {
+  const stats = { inFlight: 0, peak: 0, files: [] as string[] };
+  const readTask = async (fullPath: string): Promise<Task> => {
+    stats.files.push(path.basename(fullPath));
+    stats.inFlight++;
+    stats.peak = Math.max(stats.peak, stats.inFlight);
+    try {
+      return await readYaml(fullPath, TaskSchema);
+    } finally {
+      stats.inFlight--;
+    }
+  };
+  return { stats, readTask };
+}
+
 describe('archiveStaleTasks on a large task directory', () => {
   let base: string;
-  let tasksDir: string;
+  let initiativeDir: string;
 
   beforeEach(async () => {
     base = mkdtempSync(path.join(tmpdir(), 'aw-archive-reads-'));
-    tasksDir = path.join(base, 'sample', 'tasks');
+    initiativeDir = path.join(base, 'sample');
+    const tasksDir = path.join(initiativeDir, 'tasks');
     await fs.mkdir(tasksDir, { recursive: true });
     for (let n = 0; n < TASK_COUNT; n++) {
       await fs.writeFile(path.join(tasksDir, `T-${n}.yml`), taskYaml(n), 'utf8');
     }
     await fs.writeFile(path.join(tasksDir, 'bad.yml'), 'not: [valid task\n', 'utf8');
-    Object.assign(reads, { inFlight: 0, peak: 0, files: [] });
   });
 
   afterEach(() => rmSync(base, { recursive: true, force: true }));
 
   it('keeps several task reads in flight at once, but a bounded number', async () => {
-    await archiveStaleTasks(path.join(base, 'sample'), { retentionDays: 30, now: NOW });
+    const { stats, readTask } = countingReader();
 
-    expect(reads.peak).toBeGreaterThan(1);
-    expect(reads.peak).toBeLessThanOrEqual(32);
+    await archiveStaleTasks(initiativeDir, { retentionDays: 30, now: NOW, readTask });
+
+    expect(stats.peak).toBeGreaterThan(1);
+    expect(stats.peak).toBeLessThanOrEqual(32);
   });
 
   it('reads each task file exactly once and sorts every file into one result', async () => {
-    const result = await archiveStaleTasks(path.join(base, 'sample'), { retentionDays: 30, now: NOW });
+    const { stats, readTask } = countingReader();
+
+    const result = await archiveStaleTasks(initiativeDir, { retentionDays: 30, now: NOW, readTask });
 
     const expected = ['bad.yml', ...Array.from({ length: TASK_COUNT }, (_, n) => `T-${n}.yml`)];
-    expect([...reads.files].sort()).toEqual(expected.sort());
+    expect([...stats.files].sort()).toEqual(expected.sort());
     expect(result.archivedIds).toHaveLength(TASK_COUNT / 2);
     expect(result.tasks.map((t) => t.status)).toEqual(Array(TASK_COUNT / 2).fill('open'));
     expect(result.malformed.map((m) => m.file)).toEqual(['bad.yml']);

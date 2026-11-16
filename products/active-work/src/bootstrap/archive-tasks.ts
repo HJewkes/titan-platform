@@ -20,11 +20,17 @@ const MS_PER_DAY = 86_400_000;
 /** One read awaited at a time left the parser idle on every file's I/O round trip (TP-4660). */
 const TASK_READ_CONCURRENCY = 32;
 
+type TaskReader = (fullPath: string) => Promise<Task>;
+
+const readTaskFile: TaskReader = (fullPath) => readYaml(fullPath, TaskSchema);
+
 interface ArchiveStaleTasksOptions {
   /** Done tasks whose `done_at` is older than this many days are archived. */
   retentionDays: number;
   /** Reference time (injectable for tests). */
   now: Date;
+  /** Parses one task file; defaults to the schema-validating YAML reader. */
+  readTask?: TaskReader;
 }
 
 interface ArchiveStaleTasksResult extends LoadedTasks {
@@ -50,15 +56,25 @@ export async function archiveStaleTasks(
     return { archivedIds: [], tasks: [], malformed: [] };
   }
   const ymlFiles = entries.filter((n) => n.endsWith('.yml') || n.endsWith('.yaml'));
+  const readTask = opts.readTask ?? readTaskFile;
+  const parsed = await mapConcurrent(ymlFiles, TASK_READ_CONCURRENCY, (filename) =>
+    parseTaskFile(tasksDir, filename, readTask),
+  );
+  return sortParsed(parsed, tasksDir, opts);
+}
+
+type ParsedTaskFile = { task: Task; filename: string } | MalformedTask;
+
+async function sortParsed(
+  parsed: ParsedTaskFile[],
+  tasksDir: string,
+  opts: ArchiveStaleTasksOptions,
+): Promise<ArchiveStaleTasksResult> {
   const cutoffMs = opts.now.getTime() - opts.retentionDays * MS_PER_DAY;
   const archiveEnabled = opts.retentionDays > 0;
   const archived: string[] = [];
   const tasks: Task[] = [];
   const malformed: MalformedTask[] = [];
-
-  const parsed = await mapConcurrent(ymlFiles, TASK_READ_CONCURRENCY, (filename) =>
-    parseTaskFile(tasksDir, filename),
-  );
   for (const entry of parsed) {
     if ('reason' in entry) {
       malformed.push(entry);
@@ -78,9 +94,10 @@ export async function archiveStaleTasks(
 async function parseTaskFile(
   tasksDir: string,
   filename: string,
-): Promise<{ task: Task; filename: string } | MalformedTask> {
+  readTask: TaskReader,
+): Promise<ParsedTaskFile> {
   try {
-    return { task: await readYaml(path.join(tasksDir, filename), TaskSchema), filename };
+    return { task: await readTask(path.join(tasksDir, filename)), filename };
   } catch (err) {
     return { file: filename, reason: err instanceof Error ? err.message : String(err) };
   }
