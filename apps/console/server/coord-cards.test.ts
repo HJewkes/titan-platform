@@ -113,9 +113,12 @@ describe("coord.cards enrichment and failures", () => {
   it("titles are read for the cards' task ids only", async () => {
     seedEvents(path.join(dir, "events.db"), [spawn("coord-a", "impl-1", "5T08:00:00", { branch: "feat/one", task: "EX-1" }), spawn("coord-a", "impl-2", "5T09:00:00", { task: "EX-2" })]);
     const asked: Record<string, unknown>[] = [];
-    const recording: ActiveWork = {
-      read: ((_command: string, args: Record<string, unknown> = {}) => (asked.push(args), Promise.resolve({ tasks: [] }))) as ActiveWork["read"],
-    };
+    function record<K extends ReadName>(command: K, args?: Record<string, unknown>): Promise<ReadResult<K>>;
+    function record(_command?: string, args: Record<string, unknown> = {}): Promise<unknown> {
+      asked.push(args);
+      return Promise.resolve({ tasks: [] });
+    }
+    const recording: ActiveWork = { read: record };
 
     await read(source([merged(1, "feat/one", "EX-1")], recording));
 
