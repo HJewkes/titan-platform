@@ -51,12 +51,19 @@ function seedGraph(): void {
   touch(graph, 'hidden-cwd-session', daysAgo(1), { cwd: path.join(root, HIDDEN), title: 'Hidden folder' });
   touch(graph, 'no-initiative', daysAgo(1), { cwd: '/work/projects/demo', title: 'Nobody owns this' });
   touch(graph, 'alpha-old-session', daysAgo(20), { cwd: path.join(root, 'alpha'), title: 'Alpha long ago' });
+  touch(graph, 'mixed-session', daysAgo(1), { cwd: path.join(root, 'alpha'), title: 'Alpha and hidden' });
+  ranTask(graph, 'mixed-session', 'AL-2', 'alpha');
+  ranTask(graph, 'mixed-session', 'AL-3', 'alpha');
+  ranTask(graph, 'mixed-session', 'HW-2', HIDDEN);
+  touch(graph, 'unknown-session', daysAgo(1), { cwd: path.join(root, 'alpha'), title: 'Alpha and unknown' });
+  ranTask(graph, 'unknown-session', 'AL-4', 'alpha');
+  ranTask(graph, 'unknown-session', 'GW-1', 'gone-work');
   graph.db.close();
 }
 
-beforeEach(() => {
+function seedWorkspace(rootName: string): void {
   dir = mkdtempSync(path.join(os.tmpdir(), 'aw-brief-sessions-'));
-  root = path.join(dir, 'active-work');
+  root = path.join(dir, rootName);
   dbPath = path.join(dir, 'graph.sqlite3');
   scaffold(root);
   writeCharter(root);
@@ -66,6 +73,10 @@ beforeEach(() => {
     '---\nschema_version: 5\ntitle: hidden\nupdated: 2026-09-01\nstate: backburner\ntask_prefix: HW\n---\n\nBody.\n',
   );
   seedGraph();
+}
+
+beforeEach(() => {
+  seedWorkspace('active-work');
 });
 
 afterEach(() => {
@@ -81,6 +92,27 @@ describe('briefSessions', () => {
       `- alpha-cw ${daysAgo(2).slice(0, 10)} Alpha from its folder`,
       `- alpha-ta ${daysAgo(3).slice(0, 10)} Alpha by its task`,
     ]);
+  });
+
+  it('a session linked to a visible and an owner-only task is withheld', async () => {
+    const result = await briefSessions({ text: ASSIGNMENT, activeRoot: root, now: NOW, dbPath });
+
+    expect(result.refs).not.toContain('mixed-session');
+  });
+
+  it('a session linked to a task in an initiative of unknown visibility is withheld', async () => {
+    const result = await briefSessions({ text: ASSIGNMENT, activeRoot: root, now: NOW, dbPath });
+
+    expect(result.refs).not.toContain('unknown-session');
+  });
+
+  it('a session cwd under a non-default activeRoot maps to its initiative', async () => {
+    rmSync(dir, { recursive: true, force: true });
+    seedWorkspace('workspace-root');
+
+    const result = await briefSessions({ text: ASSIGNMENT, activeRoot: root, now: NOW, dbPath });
+
+    expect(result.refs).toEqual(['alpha-cwd-session', 'alpha-task-session']);
   });
 
   it('reads nothing when the assignment names no file', async () => {
