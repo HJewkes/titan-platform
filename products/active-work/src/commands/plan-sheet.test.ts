@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { Bet, Outcome } from '@titan-design/pm';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CommandContext } from '../registry/index.js';
 import { buildWeeklySheet } from '../plan/sheet.js';
 import { scorecardReadings } from '../plan/sheet-scorecard.js';
@@ -48,6 +48,16 @@ const generate = (root: string) =>
   planSheetGenerate.run({ initiative: 'console', week: '2026-W47', scorecard: path.join(root, 'no-store.sqlite3') }, ctx(root));
 
 const SECTIONS = ['## Statement', '## Moved', '## Not moved', '## Proposed bets', '## Proposed stops'];
+
+// Fakes only Date, so file I/O and locks keep their real timers; noon local time keeps the date clear of zone edges.
+function onDay(day: number): void {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(2026, 10, day, 12));
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('weekly sheet', () => {
   it('a generated console-lane sheet lists every section and every bet line cites an intent and a metric', async () => {
@@ -97,17 +107,19 @@ describe('weekly sheet', () => {
     });
   });
 
-  it('records the defaults only through the explicit step, after the deadline and once', async () => {
+  it('records the defaults only through the explicit step, after the deadline by the host clock, and once', async () => {
     await withTempActiveRoot(async (root) => {
       await seedLane(root);
       await generate(root);
       const args = { initiative: 'console', week: '2026-W47' };
 
       const shown = await planSheetShow.run({ initiative: 'console' }, ctx(root));
-      const early = planSheetApplyDefaults.run({ ...args, today: '2026-11-23' }, ctx(root));
+      onDay(23);
+      const early = planSheetApplyDefaults.run({ ...args, today: '2099-01-01' } as typeof args, ctx(root));
       await expect(early).rejects.toThrow(/open until 2026-11-23/);
-      const applied = await planSheetApplyDefaults.run({ ...args, today: '2026-11-24' }, ctx(root));
-      const again = planSheetApplyDefaults.run({ ...args, today: '2026-11-25' }, ctx(root));
+      onDay(24);
+      const applied = await planSheetApplyDefaults.run(args, ctx(root));
+      const again = planSheetApplyDefaults.run(args, ctx(root));
 
       expect(shown.decisions).toBeNull();
       expect(applied).toEqual({ ...args, decided_by: 'default', decided_on: '2026-11-24', decisions: shown.defaults });
@@ -116,9 +128,35 @@ describe('weekly sheet', () => {
     });
   });
 
+  it('generate refuses to replace a sheet whose decisions are recorded, leaving it unchanged', async () => {
+    await withTempActiveRoot(async (root) => {
+      await seedLane(root);
+      const first = await generate(root);
+      onDay(24);
+      await planSheetApplyDefaults.run({ initiative: 'console', week: '2026-W47' }, ctx(root));
+      await writePlanRecord(root, 'bet', bet(5, { week: '2026-W48', state: 'proposed' }));
+
+      await expect(generate(root)).rejects.toThrow(/already has decisions/);
+
+      await expect(fs.readFile(first.path, 'utf8')).resolves.toBe(first.markdown);
+    });
+  });
+
+  it('generate refuses an unknown initiative and creates no folder for it', async () => {
+    await withTempActiveRoot(async (root) => {
+      writeAgentVisibleBrief(root, 'console');
+
+      const run = planSheetGenerate.run({ initiative: 'consle', week: '2026-W47' }, ctx(root));
+
+      await expect(run).rejects.toThrow(/Initiative not found: consle/);
+      await expect(fs.access(path.join(root, 'consle'))).rejects.toThrow();
+    });
+  });
+
   it('names a missed bet as a proposed stop before any new bet, and reports scorecard moves', () => {
     const missed = { ...bet(1), prediction_check: 'missed' };
     const confirmed = { ...bet(2), prediction_check: 'confirmed' };
+    const missedDone = { ...bet(6, { state: 'done' }), prediction_check: 'missed' };
     const rows = [
       { isoWeek: '2026-W46', dimension: 'initiative' as const, key: 'console', metrics: { merged: 2, usd: 10 } },
       { isoWeek: '2026-W47', dimension: 'initiative' as const, key: 'console', metrics: { merged: 5, usd: 10 } },
@@ -128,7 +166,7 @@ describe('weekly sheet', () => {
       initiative: 'console',
       week: '2026-W47',
       outcomes: [outcome],
-      bets: [bet(3, { week: '2026-W48', state: 'proposed' }), confirmed, missed],
+      bets: [bet(3, { week: '2026-W48', state: 'proposed' }), confirmed, missed, missedDone],
       scorecard: scorecardReadings(rows, 'console', '2026-W47'),
     });
 
@@ -139,5 +177,7 @@ describe('weekly sheet', () => {
     expect(sheet.markdown.indexOf('console/B1 ·')).toBeLessThan(sheet.markdown.indexOf('console/B3 ·'));
     expect(sheet.markdown.split('## Proposed stops')[1]).toContain('- console/B1 ·');
     expect(sheet.defaults).toContainEqual({ bet: 'console/B1', action: 'stop' });
+    expect(sheet.defaults.map((entry) => entry.bet)).not.toContain('console/B6');
+    expect(sheet.markdown.split('## Proposed stops')[1]).not.toContain('console/B6');
   });
 });

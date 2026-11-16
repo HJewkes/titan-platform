@@ -73,15 +73,19 @@ interface Sorted {
   missed: Bet[];
   unread: Bet[];
   proposed: Bet[];
+  /** Missed bets still running; one already done has nothing left to stop. */
+  stops: Bet[];
 }
 
 function sortBets(input: SheetInput, nextWeek: string): Sorted {
   const byOrder = (a: Bet, b: Bet) => a.order - b.order;
   const running = input.bets.filter((bet) => bet.week === input.week && (bet.state === 'selected' || bet.state === 'done'));
   const withVerdict = (verdict: PredictionCheck) => running.filter((bet) => predictionCheckOf(bet) === verdict).sort(byOrder);
+  const missed = withVerdict('missed');
   return {
     confirmed: withVerdict('confirmed'),
-    missed: withVerdict('missed'),
+    missed,
+    stops: missed.filter((bet) => bet.state !== 'done'),
     unread: withVerdict('unread'),
     proposed: input.bets.filter((bet) => bet.week === nextWeek && bet.state === 'proposed').sort(byOrder),
   };
@@ -89,7 +93,7 @@ function sortBets(input: SheetInput, nextWeek: string): Sorted {
 
 function sheetDefaults(sorted: Sorted): SheetDefault[] {
   const proposed = sorted.proposed.map((bet): SheetDefault => ({ bet: bet.id, action: intentIds(bet).length > 0 ? 'select' : 'hold' }));
-  return [...proposed, ...sorted.missed.map((bet): SheetDefault => ({ bet: bet.id, action: 'stop' }))];
+  return [...proposed, ...sorted.stops.map((bet): SheetDefault => ({ bet: bet.id, action: 'stop' }))];
 }
 
 function sheetFlags(sorted: Sorted): SheetFlag[] {
@@ -110,7 +114,7 @@ function body(input: SheetInput, sorted: Sorted, defaults: readonly SheetDefault
     ...section('Moved', [...sorted.confirmed.map(check), ...measured.filter((r) => r.previous !== r.current).map(readingLine)]),
     ...section('Not moved', [...sorted.missed, ...sorted.unread].map(check).concat(measured.filter((r) => r.previous === r.current).map(readingLine))),
     ...section('Proposed bets', sorted.proposed.map((bet) => betLine(bet, action(bet)))),
-    ...section('Proposed stops', sorted.missed.map((bet) => betLine(bet, `missed · ${action(bet)}`))),
+    ...section('Proposed stops', sorted.stops.map((bet) => betLine(bet, `missed · ${action(bet)}`))),
   ];
 }
 

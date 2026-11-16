@@ -37,6 +37,13 @@ const SheetResultSchema = z.object({
   markdown: z.string(),
 });
 
+/** Once a sheet's decisions are recorded, neither a regenerated sheet nor a second answer may replace what they answered. */
+async function refuseAnswered(activeRoot: string, initiative: string, sheetWeek: string): Promise<void> {
+  if ((await readSheetDecisions(activeRoot, initiative, sheetWeek)) !== null) {
+    throw new ValidationError(`The ${initiative} ${sheetWeek} sheet already has decisions recorded`);
+  }
+}
+
 const GenerateArgsSchema = z.object({ initiative: text, week, scorecard: text.optional() });
 
 export const planSheetGenerate = defineCommand({
@@ -51,8 +58,10 @@ export const planSheetGenerate = defineCommand({
       scorecard: { long: '--scorecard', description: 'Ticket scorecard store (default: the scorecard store path)' },
     },
   },
-  run: async (args, ctx) =>
-    withPlanLock(ctx.activeRoot, args.initiative, async () => {
+  run: async (args, ctx) => {
+    await assertInitiativeExists(ctx.activeRoot, args.initiative);
+    return withPlanLock(ctx.activeRoot, args.initiative, async () => {
+      await refuseAnswered(ctx.activeRoot, args.initiative, args.week);
       const rows = readScorecardRows(args.scorecard ?? scorecardStorePath());
       const sheet = buildWeeklySheet({
         initiative: args.initiative,
@@ -63,7 +72,8 @@ export const planSheetGenerate = defineCommand({
       });
       const path = await writeSheet(ctx.activeRoot, args.initiative, args.week, sheet.markdown);
       return { ...sheet, path };
-    }),
+    });
+  },
 });
 
 const ShowArgsSchema = z.object({ initiative: text, week: week.optional() });
@@ -87,7 +97,8 @@ export const planSheetShow = defineCommand({
   },
 });
 
-const ApplyArgsSchema = z.object({ initiative: text, week, today: text.optional() });
+// No date argument: the deadline is judged against the host clock, so no caller can move an ignored sheet's deadline.
+const ApplyArgsSchema = z.object({ initiative: text, week });
 
 export const planSheetApplyDefaults = defineCommand({
   name: 'plan.sheet.apply-defaults',
@@ -98,17 +109,14 @@ export const planSheetApplyDefaults = defineCommand({
     positional: ['initiative'],
     options: {
       week: { long: '--week', description: 'ISO week of the sheet', required: true },
-      today: { long: '--today', description: 'Date to judge the deadline against, YYYY-MM-DD (default: today)' },
     },
   },
   run: async (args, ctx) =>
     withPlanLock(ctx.activeRoot, args.initiative, async () => {
       const sheet = await readSheet(ctx.activeRoot, args.initiative, args.week);
       if (sheet === null) throw new NotFoundError(`No weekly sheet for ${args.initiative} ${args.week}`);
-      if ((await readSheetDecisions(ctx.activeRoot, args.initiative, args.week)) !== null) {
-        throw new ValidationError(`The ${args.initiative} ${args.week} sheet already has decisions recorded`);
-      }
-      const day = args.today ?? today();
+      await refuseAnswered(ctx.activeRoot, args.initiative, args.week);
+      const day = today();
       if (day <= sheet.front.deadline) throw new ValidationError(`The sheet is open until ${sheet.front.deadline}; defaults apply after it`);
       const decisions: SheetDecisions = { initiative: args.initiative, week: args.week, decided_by: 'default', decided_on: day, decisions: sheet.front.defaults };
       await writeSheetDecisions(ctx.activeRoot, decisions);
