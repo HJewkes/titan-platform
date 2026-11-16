@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -133,6 +133,50 @@ describe('briefCode', () => {
 
     expect(result).toEqual({ lines: [], refs: [], degraded: [] });
     expect(asked).toEqual([]);
+  });
+});
+
+describe('briefCode scoped to the spawn repo', () => {
+  it('lists only neighbours that exist in the spawn repo when the snapshot spans two repos', async () => {
+    const foreign = 'packages/other/src/elsewhere.ts';
+
+    const result = await briefCode([A], { fetch: serving(neighbours([C, foreign], [B])), sleep: neverDue, repoRoot: repo });
+
+    expect(result.refs).toEqual([B, C]);
+  });
+
+  it('lists no neighbours when the named file is not in the spawn repo', async () => {
+    const result = await briefCode(['packages/other/src/a.ts'], { fetch: serving(neighbours([C], [B])), sleep: neverDue, repoRoot: repo });
+
+    expect(result.lines).toEqual([]);
+  });
+});
+
+describe('briefCode fallback path containment', () => {
+  const outside = () => path.join(dir, 'outside.ts');
+
+  beforeEach(() => {
+    writeFile(dir, 'outside.ts', "import { b } from './b.js';\n");
+  });
+
+  it('refuses a named ../ path', async () => {
+    const result = await briefCode(['../outside.ts'], { fetch: refusing, sleep: neverDue, repoRoot: repo });
+
+    expect(result.lines).toEqual([]);
+  });
+
+  it('refuses a named absolute path outside the repo', async () => {
+    const result = await briefCode([outside()], { fetch: refusing, sleep: neverDue, repoRoot: repo });
+
+    expect(result.lines).toEqual([]);
+  });
+
+  it('refuses a named symlink that escapes the repo', async () => {
+    symlinkSync(outside(), path.join(repo, 'packages/demo/src/link.ts'));
+
+    const result = await briefCode(['packages/demo/src/link.ts'], { fetch: refusing, sleep: neverDue, repoRoot: repo });
+
+    expect(result.lines).toEqual([]);
   });
 });
 
