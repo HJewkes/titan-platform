@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "persist writes nothing",
+      "file": "products/active-work/src/search/document-frequency.ts",
+      "find": "    writeStoredCounts(dbName, counts.stamp, counts.terms);",
+      "replace": "",
+      "kills": [
+        "document frequency persisted across processes reuses counts an earlier process persisted without querying the index"
+      ]
+    },
+    {
+      "name": "stored counts outlive a span write",
+      "file": "products/active-work/src/search/document-frequency-store.ts",
+      "find": "stored.stamp !== stamp || ",
+      "replace": "",
+      "kills": [
+        "document frequency persisted across processes recounts a term after spans are indexed since the counts were persisted"
+      ]
+    },
+    {
+      "name": "clearing leaves the stored counts",
+      "file": "products/active-work/src/search/document-frequency.ts",
+      "find": "  removeStoredCounts(dbName);\n}",
+      "replace": "}",
+      "kills": [
+        "document frequency persisted across processes recounts a term after a pass that purged spans clears the counts"
+      ]
+    },
+    {
+      "name": "stored values are trusted unchecked",
+      "file": "products/active-work/src/search/document-frequency-store.ts",
+      "find": "  return Object.values(value).every((n) => typeof n === 'number' && Number.isInteger(n) && n >= 0);",
+      "replace": "  return true;",
+      "kills": [
+        "document frequency persisted across processes falls back to live counts when the persisted file holds a non-count value"
+      ]
+    },
+    {
+      "name": "a corrupt store throws instead of falling back",
+      "file": "products/active-work/src/search/document-frequency-store.ts",
+      "find": "  } catch {\n    return new Map();\n  }",
+      "replace": "  } catch (err) {\n    throw err;\n  }",
+      "kills": [
+        "document frequency persisted across processes falls back to live counts when the persisted file is corrupt"
+      ]
+    }
+  ]
+}
