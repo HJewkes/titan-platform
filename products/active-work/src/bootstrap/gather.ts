@@ -11,7 +11,7 @@ import { today, nowIso } from '../utils/today.js';
 import { rankNotes, subjectOf, type NoteRanking } from './rank-notes.js';
 import { relatedForLoops } from './loop-context.js';
 import { selectFacetLoops, selectFacetTasks } from './facet.js';
-import { loadArtifacts, loadBrief, loadSessionsNewestFirst, loadTasks } from './load.js';
+import { loadArtifacts, loadBrief, type LoadedArtifacts, loadSessionsNewestFirst, loadTasks } from './load.js';
 import {
   compareTasksForBootstrap,
   formatTimeSince,
@@ -51,12 +51,16 @@ export function withDefaults(input: BootstrapInput): ResolvedBootstrapInput {
   };
 }
 
-async function loadInitiative(input: ResolvedBootstrapInput, initiativeDir: string) {
+async function loadInitiative(
+  input: ResolvedBootstrapInput,
+  initiativeDir: string,
+  artifactsPending: Promise<LoadedArtifacts>,
+) {
   const { frontmatter: brief, body: briefBody } = await loadBrief(initiativeDir, input.slug);
   const [sessions, tasks, artifacts, notes] = await Promise.all([
     loadSessionsNewestFirst(initiativeDir),
     input.loadedTasks ?? loadTasks(initiativeDir),
-    loadArtifacts(initiativeDir),
+    artifactsPending,
     loadNotesFromDir(initiativeDir),
   ]);
   return { brief, briefBody, sessions, tasks, artifacts, notes };
@@ -72,26 +76,34 @@ const ZERO_TIMINGS: BootstrapTimings = {
   loop_queries: 0,
 };
 
-async function timedLoad(input: ResolvedBootstrapInput, timings: BootstrapTimings) {
+async function timedLoad(
+  input: ResolvedBootstrapInput,
+  initiativeDir: string,
+  artifactsPending: Promise<LoadedArtifacts>,
+  timings: BootstrapTimings,
+) {
   const loadStart = input.clock();
-  const initiativeDir = path.join(input.activeRoot, input.slug);
-  const loaded = await loadInitiative(input, initiativeDir);
+  const loaded = await loadInitiative(input, initiativeDir, artifactsPending);
   timings.load = input.clock() - loadStart;
-  return { initiativeDir, loaded };
+  return loaded;
 }
 
 /**
- * Started before ranking so the gh/git round trips overlap note ranking and
- * loop retrieval. Never rejects, so nothing is left unhandled while it runs.
+ * Started as soon as artifacts.yml is read, before the task archive pass and
+ * the rest of the load finish, so the gh/git round trips overlap them, note
+ * ranking and loop retrieval. Never rejects, so nothing is left unhandled
+ * while it runs.
  */
-function startArtifactsBody(
+async function startArtifactsBody(
   input: ResolvedBootstrapInput,
-  loaded: LoadedInitiative,
+  artifactsPending: Promise<LoadedArtifacts>,
   timings: BootstrapTimings,
 ): Promise<string | null> {
   const liveStart = input.clock();
+  const { artifacts, error } = await artifactsPending;
+  if (error) return null;
   return renderArtifactsBody({
-    artifacts: loaded.artifacts.artifacts,
+    artifacts,
     slug: input.slug,
     includeLiveStatus: input.includeLiveStatus,
     fetcher: input.liveStatusFetcher ?? defaultLiveStatusFetcher,
@@ -304,11 +316,21 @@ function loadedFields(input: ResolvedBootstrapInput, loaded: LoadedInitiative) {
   };
 }
 
+/** Folds an archive pass still in flight into the input, once the caller's tasks are known. */
+async function withArchive(input: ResolvedBootstrapInput): Promise<ResolvedBootstrapInput> {
+  if (!input.pendingArchive) return input;
+  const { archivedIds, tasks, malformed } = await input.pendingArchive;
+  return { ...input, archivedTaskIds: archivedIds, loadedTasks: { tasks, malformed } };
+}
+
 /** The I/O phase, in the order the prompt has always been assembled in. */
-export async function gatherBootstrap(input: ResolvedBootstrapInput): Promise<GatheredView> {
+export async function gatherBootstrap(given: ResolvedBootstrapInput): Promise<GatheredView> {
   const timings: BootstrapTimings = { ...ZERO_TIMINGS };
-  const { initiativeDir, loaded } = await timedLoad(input, timings);
-  const artifactsBodyPending = startArtifactsBody(input, loaded, timings);
+  const initiativeDir = path.join(given.activeRoot, given.slug);
+  const artifactsPending = loadArtifacts(initiativeDir);
+  const artifactsBodyPending = startArtifactsBody(given, artifactsPending, timings);
+  const input = await withArchive(given);
+  const loaded = await timedLoad(input, initiativeDir, artifactsPending, timings);
   const siblings = await probeSiblings(input);
   const topTask = topTaskOf(loaded.tasks.tasks, input.facet?.tags, input.now);
   const { ranked, loops } = await retrieveForSession(input, loaded, topTask, timings);
