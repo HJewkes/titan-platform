@@ -68,6 +68,7 @@ import loopOpen from './loop-open.js';
 import loopResolve from './loop-resolve.js';
 import loopTier from './loop-tier.js';
 import loops from './loops.js';
+import digest from './digest.js';
 import facetAdd from './facet-add.js';
 import facetList from './facet-list.js';
 import preflight from './preflight.js';
@@ -209,6 +210,7 @@ const ALL_COMMANDS: AnyCommand[] = [
   sessionRecover,
   sessionsBrowser,
   loops,
+  digest,
   loopOpen,
   loopResolve,
   loopBoard,
