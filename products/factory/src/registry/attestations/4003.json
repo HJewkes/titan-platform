@@ -1,0 +1,5 @@
+[
+  { "step": "ci-wait", "closure": "4081131234342e62a8e3befb5530f42b9974b509a7f2998c3706a429da06622e", "pr": 4003 },
+  { "step": "merge", "closure": "0e0da2dc92ff3a3074075e60a09af4aa3435f72d04c387a45c762a409ab2a246", "pr": 4003 },
+  { "step": "sh-await-verdict", "closure": "1103bb4d6e7a3c17895a540e09f07c70726eaf86bba9e7ba79977d4a0d62bdda", "pr": 4003 }
+]
