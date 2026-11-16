@@ -116,12 +116,13 @@ async function blameCommits(run: CommandRunner, cwd: string, target: WhyTarget):
   return [...bySha].map(([sha, lines]) => ({ sha, lines: runs(lines), message: messages.get(sha) ?? '' }));
 }
 
-function servedLineage(graph: SessionGraph, commit: BlamedCommit, repoName: string | null, shown: Shown): WhyCommit {
+function servedLineage(graph: SessionGraph, commit: BlamedCommit, repoName: string | null, input: WhyInput): WhyCommit {
+  const { shown, activeRoot } = input;
   const { subject, ...links } = linksOf(commit.message, repoName);
   const lineage = commitLineage(graph, links);
   const tasks = lineage.tasks.filter((task) => shown(task.initiative));
   const sessions = lineage.sessions
-    .map((s) => ({ sessionId: s.sessionId, step: s.step, title: s.title, initiative: initiativeOf(s) }))
+    .map((s) => ({ sessionId: s.sessionId, step: s.step, title: s.title, initiative: initiativeOf(s, activeRoot) }))
     .filter((s) => shown(s.initiative));
   const hidden = lineage.tasks.length - tasks.length + lineage.sessions.length - sessions.length;
   return { sha: commit.sha, subject, lines: commit.lines, prNumber: links.prNumber, prRefs: lineage.prRefs, tasks, sessions, hidden };
@@ -131,6 +132,7 @@ interface WhyInput {
   target: WhyTarget;
   cwd: string;
   dbPath: string;
+  activeRoot: string;
   shown: Shown;
   run: CommandRunner;
 }
@@ -142,7 +144,7 @@ export async function why(input: WhyInput): Promise<WhyCommit[]> {
   if (!existsSync(input.dbPath)) return commits.map((commit) => noLineage(commit, repoName));
   const graph = openSessionGraph(input.dbPath, { readonly: true });
   try {
-    return commits.map((commit) => servedLineage(graph, commit, repoName, input.shown));
+    return commits.map((commit) => servedLineage(graph, commit, repoName, input));
   } finally {
     graph.db.close();
   }
