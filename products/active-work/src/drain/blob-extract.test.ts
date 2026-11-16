@@ -101,7 +101,7 @@ describe('extractBlobs', () => {
         ],
       },
     });
-    expect(extractBlobs(line, new Map())[0].toolType).toBe('generic');
+    expect(extractBlobs(line, new Map())[0]?.toolType).toBe('generic');
   });
 
   it('takes stdout and stderr from toolUseResult for a successful command', () => {
@@ -110,8 +110,8 @@ describe('extractBlobs', () => {
     });
     const blobs = extractBlobs(line, new Map([['toolu_1', 'Bash']]));
     expect(blobs).toHaveLength(1);
-    expect(blobs[0].toolType).toBe('Bash');
-    expect(blobs[0].rawText).toBe('built ok\nwarning: deprecated');
+    expect(blobs[0]?.toolType).toBe('Bash');
+    expect(blobs[0]?.rawText).toBe('built ok\nwarning: deprecated');
   });
 
   it('marks an is_error result eligible even with no recognizable failure shape', () => {
@@ -122,7 +122,7 @@ describe('extractBlobs', () => {
         ],
       },
     });
-    expect(extractBlobs(line, new Map())[0].eligible).toBe(true);
+    expect(extractBlobs(line, new Map())[0]?.eligible).toBe(true);
   });
 
   it('screens successful output with no failure shape, keeping the one that has it', () => {
@@ -130,13 +130,13 @@ describe('extractBlobs', () => {
       userLine({ toolUseResult: { stdout: 'src/a.ts\nsrc/b.ts', stderr: '' } }),
       new Map([['toolu_1', 'Bash']]),
     );
-    expect(plain[0].eligible).toBe(false);
+    expect(plain[0]?.eligible).toBe(false);
 
     const failing = extractBlobs(
       userLine({ toolUseResult: { stdout: 'running', stderr: 'TypeError: boom' } }),
       new Map([['toolu_1', 'Bash']]),
     );
-    expect(failing[0].eligible).toBe(true);
+    expect(failing[0]?.eligible).toBe(true);
   });
 
   it('prefers the error text over toolUseResult when the result is an error', () => {
@@ -153,7 +153,7 @@ describe('extractBlobs', () => {
         ],
       },
     });
-    expect(extractBlobs(line, new Map())[0].rawText).toBe('Permission denied');
+    expect(extractBlobs(line, new Map())[0]?.rawText).toBe('Permission denied');
   });
 
   it('skips results with no output to cluster', () => {
@@ -184,8 +184,8 @@ describe('extractBlobs', () => {
   it('consumes the tool_use_id so a later result cannot reuse a stale tool name', () => {
     const names = new Map([['toolu_1', 'Bash']]);
     const line = userLine({ toolUseResult: { stdout: 'out', stderr: '' } });
-    expect(extractBlobs(line, names)[0].toolType).toBe('Bash');
+    expect(extractBlobs(line, names)[0]?.toolType).toBe('Bash');
     expect(names.has('toolu_1')).toBe(false);
-    expect(extractBlobs(line, names)[0].toolType).toBe('generic');
+    expect(extractBlobs(line, names)[0]?.toolType).toBe('generic');
   });
 });

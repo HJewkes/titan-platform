@@ -156,8 +156,8 @@ describe('audit', () => {
 
       const result = await run(audit, {}, makeCtx(activeRoot));
       expect(result.worktree_conflicts).toHaveLength(1);
-      expect(result.worktree_conflicts[0].slugs).toEqual(['alpha', 'beta']);
-      expect(result.worktree_conflicts[0].path).toMatch(/shared-worktree$/);
+      expect(result.worktree_conflicts.at(0)?.slugs).toEqual(['alpha', 'beta']);
+      expect(result.worktree_conflicts.at(0)?.path).toMatch(/shared-worktree$/);
     });
   });
 
@@ -179,7 +179,7 @@ describe('audit', () => {
       const result = await run(audit, {}, makeCtx(activeRoot));
       expect(result.initiatives.map((i) => i.slug)).toEqual(['ok']);
       expect(result.parse_errors).toHaveLength(1);
-      expect(result.parse_errors[0].slug).toBe('broken');
+      expect(result.parse_errors.at(0)?.slug).toBe('broken');
     });
   });
 
@@ -269,7 +269,7 @@ describe('list', () => {
       await fs.writeFile(path.join(badDir, 'brief.md'), '---\nnot: valid\n---\n');
       const result = await run(list, {}, makeCtx(activeRoot));
       expect(result.parse_errors).toHaveLength(1);
-      expect(result.parse_errors[0].slug).toBe('broken');
+      expect(result.parse_errors.at(0)?.slug).toBe('broken');
       expect(result.sections.map((s) => s.heading)).toEqual([
         'Focused',
         'Backburner',

@@ -66,7 +66,7 @@ function seedIntent(lines: readonly IntentLine[]): Intent {
 }
 
 async function readyTasks(initiative: string, domain: string, ctx: CommandContext): Promise<Result['tasks']> {
-  const { tasks } = await taskList.run({ slug: initiative, tag: domain }, ctx);
+  const { tasks } = await taskList.run({ slug: initiative, tag: domain }, { ...ctx, format: 'json' });
   return tasks.flatMap((task) =>
     task.done_when === undefined
       ? []

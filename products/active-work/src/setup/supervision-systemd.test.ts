@@ -43,7 +43,7 @@ function makeFakeSpawn(
   const spawnFn = vi.fn((cmd: string, args: string[]) => {
     const call: SpawnCall = { cmd, args };
     calls.push(call);
-    const handlers: Record<string, ((arg?: unknown) => void)[]> = {};
+    const handlers: Record<string, ((arg?: unknown) => void)[] | undefined> = {};
     const child: FakeChild = {
       stderr: { on: () => undefined },
       on: (event, cb) => {
@@ -55,11 +55,11 @@ function makeFakeSpawn(
       if (opts.enoent?.(call)) {
         const err = new Error('not found') as NodeJS.ErrnoException;
         err.code = 'ENOENT';
-        handlers.error.forEach((cb) => cb(err));
+        handlers.error?.forEach((cb) => cb(err));
         return;
       }
       const code = opts.exitCodes?.(call) ?? 0;
-      handlers.close.forEach((cb) => cb(code));
+      handlers.close?.forEach((cb) => cb(code));
     });
     return child;
   });
@@ -237,8 +237,8 @@ describe('stepInstallSupervision', () => {
     }
     // daemon-reload, then enable-linger (username-agnostic), then enable --now.
     expect(calls[0]).toEqual({ cmd: 'systemctl', args: ['--user', 'daemon-reload'] });
-    expect(calls[1].cmd).toBe('loginctl');
-    expect(calls[1].args[0]).toBe('enable-linger');
+    expect(calls[1]?.cmd).toBe('loginctl');
+    expect(calls[1]?.args[0]).toBe('enable-linger');
     expect(calls[2]).toEqual({
       cmd: 'systemctl',
       args: ['--user', 'enable', '--now', UNIT_NAME],

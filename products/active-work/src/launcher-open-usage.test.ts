@@ -43,15 +43,15 @@ describe('runOpen usage record', () => {
 
       const lines = await usageLines(stateDir);
       expect(lines).toHaveLength(1);
-      const [rec] = lines;
+      const rec = lines.at(0);
       expect(rec).toMatchObject({
         command: 'aw.open',
         success: true,
         exit_code: 0,
         args: { slug: 'sample-initiative', resolved_from: 'slug' },
       });
-      expect(rec.duration_ms).toBeGreaterThanOrEqual(0);
-      for (const key of TIMING_KEYS) expect(rec.timings_ms?.[key]).toBeGreaterThanOrEqual(0);
+      expect(rec?.duration_ms).toBeGreaterThanOrEqual(0);
+      for (const key of TIMING_KEYS) expect(rec?.timings_ms?.[key]).toBeGreaterThanOrEqual(0);
     });
   });
 
