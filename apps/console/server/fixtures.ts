@@ -178,6 +178,12 @@ function showSheet(args: Args) {
   return { initiative: "orbit-relay", week: "2031-W10", next_week: "2031-W11", deadline: "2031-03-10", defaults: [], flags, markdown: SHEET_MARKDOWN, decisions: null };
 }
 
+/** The one-record reads: a note, a source file or the newest weekly sheet. */
+function readOne(command: "note.read" | "source.read" | "plan.sheet.show", args: Args) {
+  if (command === "note.read") return readNote(args);
+  return command === "source.read" ? readSource(args) : showSheet(args);
+}
+
 function readSource(args: Args) {
   const content = args.path === "brief.md" ? brief(args.slug) : sourceContent(args);
   return { path: args.path, content, truncated: false, bytes: content.length };
@@ -240,15 +246,13 @@ export function fixtureAnswer(command: string, args: Args, options: FixtureOptio
     case "note.list":
       return { notes: forSlug(NOTES, args), errors: [] };
     case "note.read":
-      return readNote(args);
+    case "source.read":
+    case "plan.sheet.show":
+      return readOne(command, args);
     case "source.list":
       return { sources: forSlug(SOURCES, args).filter((source) => args.nested || !source.nested), drift: [] };
-    case "source.read":
-      return readSource(args);
     case "search":
       return search(args);
-    case "plan.sheet.show":
-      return showSheet(args);
     case "loop.board":
     case "loop.tier":
       return loopAnswer(command, args);
