@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { drainScheduler, reactDomScheduler } from "./drain-scheduler.js";
+import { drainScheduler, reactDomScheduler } from "./scheduler-drain.test-helpers.js";
 
 const scheduler = reactDomScheduler();
 
