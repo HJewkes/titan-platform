@@ -1,7 +1,7 @@
 import type { L0Check } from "./eval-l0.js";
 import { frameRefrainRow, parallelRecapRow, type HallmarkSentence } from "./lint-hallmarks-frames.js";
 import { sentenceLengths, spokenText } from "./lint-register.js";
-import { cappedRow, gateL0Row, type GateRow } from "./writing-gate.js";
+import { cappedRow, gateL0Row, MAX_SPANS, spansOf, type GateRow } from "./writing-gate.js";
 import { writingGatePolicy, type GateSeverity, type WritingGatePolicy } from "./writing-gate-policy.js";
 
 /** A beat as the hallmark detectors read it; chapter and declared terms are optional, so plain text can be scored too. */
@@ -83,7 +83,9 @@ function namingRefrainRow(sentences: readonly HallmarkSentence[], rule: Hallmark
   const hits = sentences.filter((s) => isNamingRefrain(s, rule.maxWords));
   const failing = hits.length >= rule.warnAt && rule.severity !== "report-only";
   const severity: GateSeverity = failing && hits.length < rule.errorAt ? "warning" : rule.severity;
-  return { id: "hallmark:naming-refrain", value: hits.length, threshold: rule.errorAt, severity, pass: !failing, beats: failing ? [...new Set(beatsOf(hits))] : [] };
+  const beats = failing ? [...new Set(beatsOf(hits))] : [];
+  const spans = failing ? spansOf(hits).slice(0, MAX_SPANS) : [];
+  return { id: "hallmark:naming-refrain", value: hits.length, threshold: rule.errorAt, severity, pass: !failing, beats, spans };
 }
 
 /** Runs of consecutive short sentences, per 1,000 words; a lone short sentence is no run. */
@@ -97,12 +99,12 @@ function staccatoRow(sentences: readonly HallmarkSentence[], words: number, rule
       run = [];
     }
   }
-  return cappedRow("hallmark:staccato-run", (1000 * runs.length) / Math.max(words, 1), rule, runs.flat().map((s) => s.beat));
+  return cappedRow("hallmark:staccato-run", (1000 * runs.length) / Math.max(words, 1), rule, runs.flat().map((s) => s.beat), spansOf(runs.flat()));
 }
 
 function patternRow(id: string, sentences: readonly HallmarkSentence[], matches: (s: HallmarkSentence) => boolean, cap: { severity: GateSeverity; max: number }): GateRow {
   const hits = sentences.filter(matches);
-  return cappedRow(id, hits.length, cap, beatsOf(hits));
+  return cappedRow(id, hits.length, cap, beatsOf(hits), spansOf(hits));
 }
 
 const escape = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -136,7 +138,7 @@ function namedBeforeDefinedRow(beats: readonly HallmarkBeat[], rule: Hallmarks["
 export function textHallmarkRows(beats: readonly HallmarkBeat[], policy: WritingGatePolicy = writingGatePolicy()): GateRow[] {
   const words = spokenText(beats.map((beat) => beat.spoken)).words.length;
   const rows = hallmarkRowsOf(hallmarkSentences(beats), words, policy.hallmarks);
-  return words < policy.minWords ? rows.map((row) => ({ ...row, severity: "report-only", pass: true, beats: [] })) : rows;
+  return words < policy.minWords ? rows.map((row) => ({ ...row, severity: "report-only", pass: true, beats: [], spans: [] })) : rows;
 }
 
 function hallmarkRowsOf(sentences: readonly HallmarkSentence[], words: number, rules: Hallmarks): GateRow[] {
