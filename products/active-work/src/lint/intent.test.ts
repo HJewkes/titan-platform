@@ -7,6 +7,11 @@ import { lintIntent } from './intent.js';
 
 let initiativeDir: string;
 
+/** A copy of the record without one key, the way a hand-edited file would drop it. */
+function withoutKey<T extends object>(record: T, key: keyof T): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(record).filter(([name]) => name !== key));
+}
+
 const good = { id: 'alpha/I1', section: 'Taste', date: '2026-11-01', quote: 'Invented quote', ref: 'msg:abc1' };
 
 async function writeLine(name: string, record: object): Promise<void> {
@@ -31,8 +36,8 @@ describe('lintIntent', () => {
   });
 
   it('refuses a line without a quote and a line without a date, naming each file', async () => {
-    const { quote: _quote, ...noQuote } = good;
-    const { date: _date, ...noDate } = good;
+    const noQuote = withoutKey(good, 'quote');
+    const noDate = withoutKey(good, 'date');
     await writeLine('I2.yml', { ...noQuote, id: 'alpha/I2' });
     await writeLine('I3.yml', { ...noDate, id: 'alpha/I3' });
 

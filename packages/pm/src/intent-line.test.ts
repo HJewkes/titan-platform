@@ -9,6 +9,11 @@ const line = {
   ref: "msg:0a1b2c3d4e5f6a7b",
 };
 
+/** A copy of the record without one key, the way a hand-edited file would drop it. */
+function withoutKey<T extends object>(record: T, key: keyof T): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(record).filter(([name]) => name !== key));
+}
+
 function issuesOf(candidate: unknown): string[] {
   const result = IntentLineSchema.safeParse(candidate);
   if (result.success) throw new Error("expected the intent line to be refused");
@@ -24,7 +29,7 @@ describe("IntentLineSchema", () => {
   });
 
   it("refuses a line with no quote", () => {
-    const { quote: _quote, ...withoutQuote } = line;
+    const withoutQuote = withoutKey(line, "quote");
 
     expect(issuesOf(withoutQuote)).toEqual([expect.stringMatching(/^quote: /)]);
   });
@@ -35,7 +40,7 @@ describe("IntentLineSchema", () => {
   });
 
   it("refuses a line with no date or an impossible date", () => {
-    const { date: _date, ...withoutDate } = line;
+    const withoutDate = withoutKey(line, "date");
 
     expect(issuesOf(withoutDate)).toEqual([expect.stringMatching(/^date: /)]);
     expect(issuesOf({ ...line, date: "2026-02-31" })).toEqual([expect.stringMatching(/^date: .*YYYY-MM-DD/)]);
