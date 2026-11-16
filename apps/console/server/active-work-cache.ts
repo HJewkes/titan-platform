@@ -37,21 +37,23 @@ function isWholeTree({ command, args }: Call): boolean {
   return (command === "task.list" || command === "artifact.list") && args.all_initiatives === true;
 }
 
+function cacheWith(inner: ActiveWork, times: CacheTimes, invalidation: Invalidation | undefined, now: (() => number) | undefined) {
+  return cachedReads<Call, unknown>(({ command, args }) => inner.read(command, args), times, {
+    keyOf: ({ command, args }) => `${command} ${stableJson(args)}`,
+    maxKeys: MAX_KEYS,
+    ...(now !== undefined && { now }),
+    onRefreshed: () => invalidation?.refreshed("active-work"),
+  });
+}
+
 /**
  * Concurrent identical reads share one upstream call, and a recent answer is served while one refresh runs behind it.
  * An active-work frame marks every answer stale rather than dropping it: agents move the tree every few seconds, and a
  * whole-tree read takes longer than that, so a dropped answer was almost never replaced and every read waited upstream.
  */
 export function cachedActiveWork(inner: ActiveWork, invalidation?: Invalidation, now?: () => number): ActiveWork {
-  const cacheWith = (times: CacheTimes) =>
-    cachedReads<Call, unknown>(({ command, args }) => inner.read(command, args), times, {
-      keyOf: ({ command, args }) => `${command} ${stableJson(args)}`,
-      maxKeys: MAX_KEYS,
-      ...(now !== undefined && { now }),
-      onRefreshed: () => invalidation?.refreshed("active-work"),
-    });
-  const wholeTree = cacheWith(WHOLE_TREE_TIMES);
-  const scoped = cacheWith(ACTIVE_WORK_TIMES);
+  const wholeTree = cacheWith(inner, WHOLE_TREE_TIMES, invalidation, now);
+  const scoped = cacheWith(inner, ACTIVE_WORK_TIMES, invalidation, now);
   const stale = (): void => {
     wholeTree.stale();
     scoped.stale();

@@ -30,21 +30,21 @@
       ]
     },
     {
-      "name": "a non-string run id is kept",
-      "file": "apps/console/server/events-relay.ts",
-      "find": "return typeof runId === \"string\" && RUN_ID.test(runId) ? { runId } : {};",
-      "replace": "return runId !== undefined && RUN_ID.test(String(runId)) ? { runId: String(runId) } : {};",
-      "kills": [
-        "factoryIds drops a run id with spaces or slashes, a non-string run id, a frame with none, and data that is not an object"
-      ]
-    },
-    {
       "name": "the factory dial sends the broker token",
       "file": "apps/console/server/events-relay.ts",
       "find": "headers: async () => accept, pick: factoryIds",
       "replace": "headers: async () => ({ ...accept, [TOKEN_HEADER]: await readToken(config.agentChatTokenPath) }), pick: factoryIds",
       "kills": [
         "the factory relay source dials the factory's /events with no broker token and relays each frame as its run id alone"
+      ]
+    },
+    {
+      "name": "a reopen tells no one it reconnected",
+      "file": "apps/console/server/events-relay.ts",
+      "find": "  notify(\"onReconnected\", source, context);\n",
+      "replace": "",
+      "kills": [
+        "the events relay tells onReconnected the source of a reopen but not of the first open or a frame, and survives a throw"
       ]
     }
   ]
