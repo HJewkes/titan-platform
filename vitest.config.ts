@@ -24,6 +24,7 @@ const needsProcess = [
 // active-work's sandbox-home setup redirects os.homedir() to a temp dir per file, so a test that forgets to stub home
 // cannot touch the operator's files. Its own projects keep that setup off every other product's tests.
 const activeWorkTests = ["products/active-work/{src,scripts}/**/*.test.ts"];
+const consoleSetup = ["apps/console/src/test-support/vitest-setup.ts"];
 const activeWorkSetup = ["products/active-work/src/test-support/sandbox-home.ts"];
 // These assign process.env.HOME or spy on os.homedir() in-process.
 const activeWorkNeedsProcess = [
@@ -167,7 +168,15 @@ export default defineConfig({
       },
       {
         extends: true,
-        test: { name: "console", pool: "forks", execArgv: forksHeap, isolate: false, include: consoleTests, exclude: notShared },
+        test: {
+          name: "console",
+          pool: "forks",
+          execArgv: forksHeap,
+          isolate: false,
+          include: consoleTests,
+          exclude: notShared,
+          setupFiles: consoleSetup,
+        },
       },
       {
         extends: true,
