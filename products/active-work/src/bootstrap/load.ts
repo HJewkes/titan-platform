@@ -63,7 +63,7 @@ export async function loadTasks(
   };
 }
 
-interface LoadedArtifacts {
+export interface LoadedArtifacts {
   artifacts: Artifacts;
   /** Set only when `artifacts.yml` exists but could not be read or parsed. */
   error?: string;

@@ -67,6 +67,12 @@ export interface BootstrapInput {
    */
   archivedTaskIds?: string[];
   /**
+   * An archive pass the caller has started and not awaited. Its result stands in
+   * for `archivedTaskIds` and `loadedTasks`, so live branch status can start
+   * while the archive still runs.
+   */
+  pendingArchive?: Promise<{ archivedIds: string[] } & LoadedTasks>;
+  /**
    * Tasks the caller already parsed (minus any it archived). When supplied the
    * task directory is not read again.
    */
