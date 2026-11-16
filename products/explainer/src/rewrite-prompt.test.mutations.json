@@ -29,6 +29,15 @@
       ]
     },
     {
+      "name": "an added hallmark sentence loses its own refusal note",
+      "file": "products/explainer/src/rewrite-prompt.ts",
+      "find": "    \"hallmark-added\": \"it added a sentence that names a thing, opens with \\\"the fix is\\\", or promises what comes next; say the point in the sentences the original has\",\n",
+      "replace": "",
+      "kills": [
+        "renderRewritePrompt renders a plain-words note for an added hallmark sentence"
+      ]
+    },
+    {
       "name": "the prompt drops the cuts line",
       "file": "products/explainer/src/rewrite-prompt.ts",
       "find": "    ...(cuts ? [`- Cuts: delete each of ${quoted(cuts)}, or fold what it says into a neighbouring sentence; never reword it.`] : []),\n",
