@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a bet citing no intent line is not flagged",
+      "file": "products/active-work/src/plan/sheet.ts",
+      "find": "bets.filter((bet) => intentIds(bet).length === 0)",
+      "replace": "bets.filter(() => false)",
+      "kills": [
+        "weekly sheet flags a bet line that cites no intent line and defaults it to hold"
+      ]
+    },
+    {
+      "name": "an uncited proposed bet defaults to select",
+      "file": "products/active-work/src/plan/sheet.ts",
+      "find": "intentIds(bet).length > 0 ? 'select' : 'hold'",
+      "replace": "'select'",
+      "kills": [
+        "weekly sheet flags a bet line that cites no intent line and defaults it to hold"
+      ]
+    },
+    {
+      "name": "a bet with no check reads missed",
+      "file": "products/active-work/src/plan/sheet.ts",
+      "find": "stored === 'confirmed' || stored === 'missed' ? stored : 'unread'",
+      "replace": "stored === 'confirmed' || stored === 'missed' ? stored : 'missed'",
+      "kills": [
+        "weekly sheet with no prediction checks recorded every running bet reads unread"
+      ]
+    },
+    {
+      "name": "defaults apply before the deadline",
+      "file": "products/active-work/src/commands/plan-sheet.ts",
+      "find": "if (day <= sheet.front.deadline) throw",
+      "replace": "if (false) throw",
+      "kills": [
+        "weekly sheet records the defaults only through the explicit step, after the deadline and once"
+      ]
+    },
+    {
+      "name": "defaults overwrite recorded decisions",
+      "file": "products/active-work/src/commands/plan-sheet.ts",
+      "find": "if ((await readSheetDecisions(ctx.activeRoot, args.initiative, args.week)) !== null) {",
+      "replace": "if (false) {",
+      "kills": [
+        "weekly sheet records the defaults only through the explicit step, after the deadline and once"
+      ]
+    }
+  ]
+}
