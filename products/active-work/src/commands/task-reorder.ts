@@ -8,6 +8,7 @@ import { withFileLock } from '../utils/fs-atomic.js';
 import { readYaml, writeYaml } from '../utils/yaml-io.js';
 import { today } from '../utils/today.js';
 import { NotFoundError } from '../errors.js';
+import { closedStatusIds } from './_categories.js';
 
 const ArgsSchema = z.object({
   slug: z.string().min(1),
@@ -77,18 +78,21 @@ export default defineCommand<Args, Result>({
 
       const writes: Array<{ task: Task; file: string }> = [];
 
+      const closed = await closedStatusIds(getActiveRoot());
+      const openByPriority = new Map<number, Array<{ task: Task; file: string }>>();
       for (const entry of entries) {
-        if (entry.task.id === args.id) continue;
-        if (entry.task.priority >= newPriority) {
-          const before = entry.task.priority;
-          const after = before + 1;
-          const next: Task = {
-            ...entry.task,
-            priority: after,
-            updated: date,
-          };
+        if (entry.task.id === args.id || closed.has(entry.task.status)) continue;
+        const bucket = openByPriority.get(entry.task.priority) ?? [];
+        bucket.push(entry);
+        openByPriority.set(entry.task.priority, bucket);
+      }
+
+      // Walk upward from the target slot; the chain ends at the first priority no open task holds.
+      for (let slot = newPriority; openByPriority.has(slot); slot++) {
+        for (const entry of openByPriority.get(slot) ?? []) {
+          const next: Task = { ...entry.task, priority: slot + 1, updated: date };
           writes.push({ task: next, file: entry.file });
-          shifted.push({ id: entry.task.id, from: before, to: after });
+          shifted.push({ id: entry.task.id, from: slot, to: slot + 1 });
         }
       }
 
