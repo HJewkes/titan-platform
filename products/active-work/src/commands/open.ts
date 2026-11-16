@@ -234,10 +234,7 @@ async function bootstrapInitiative(
     now: new Date(),
   });
   let archiveMs = 0;
-  const timedArchive = archivePending.then((result) => {
-    archiveMs = clock() - archiveStart;
-    return result;
-  });
+  const timedArchive = archivePending.finally(() => (archiveMs = clock() - archiveStart));
   const detectSiblings = opts.detectSiblings !== false;
   const { facet } = opts;
   const about = sessionAbout(opts.about, facet);

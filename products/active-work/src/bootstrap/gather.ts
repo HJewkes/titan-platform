@@ -113,6 +113,11 @@ async function startArtifactsBody(
   });
 }
 
+function startLiveStatus(input: ResolvedBootstrapInput, initiativeDir: string, timings: BootstrapTimings) {
+  const artifactsPending = loadArtifacts(initiativeDir);
+  return { artifactsPending, artifactsBodyPending: startArtifactsBody(input, artifactsPending, timings) };
+}
+
 /**
  * Fails open like the live-status fetcher: a probe that throws (unreadable
  * lease dir, hostile permissions) degrades to "no siblings" rather than
@@ -327,14 +332,12 @@ async function withArchive(input: ResolvedBootstrapInput): Promise<ResolvedBoots
 export async function gatherBootstrap(given: ResolvedBootstrapInput): Promise<GatheredView> {
   const timings: BootstrapTimings = { ...ZERO_TIMINGS };
   const initiativeDir = path.join(given.activeRoot, given.slug);
-  const artifactsPending = loadArtifacts(initiativeDir);
-  const artifactsBodyPending = startArtifactsBody(given, artifactsPending, timings);
+  const { artifactsPending, artifactsBodyPending } = startLiveStatus(given, initiativeDir, timings);
   const input = await withArchive(given);
   const loaded = await timedLoad(input, initiativeDir, artifactsPending, timings);
   const siblings = await probeSiblings(input);
   const topTask = topTaskOf(loaded.tasks.tasks, input.facet?.tags, input.now);
   const { ranked, loops } = await retrieveForSession(input, loaded, topTask, timings);
-  const artifactsError = loaded.artifacts.error;
   const decisions = await recentDecisionsFor(input);
   return {
     ...loadedFields(input, loaded),
@@ -349,8 +352,8 @@ export async function gatherBootstrap(given: ResolvedBootstrapInput): Promise<Ga
     siblings,
     topTaskTitle: topTask?.title,
     noteRanking: ranked.noteRanking,
-    artifactsError,
-    artifactsBody: artifactsError ? null : await artifactsBodyPending,
+    artifactsError: loaded.artifacts.error,
+    artifactsBody: loaded.artifacts.error ? null : await artifactsBodyPending,
     bootstrapAt: nowIso(),
     today: today(),
     timings,
