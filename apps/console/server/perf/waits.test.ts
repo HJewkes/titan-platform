@@ -36,7 +36,7 @@ describe("ranking waits", () => {
 
     const [stats] = rankWaits(rows);
 
-    expect(stats).toMatchObject({ waits: 10, p50: 500, p95: 10_000, max: 10_000, budgetMs: 300, overBudget: 7 });
+    expect(stats).toMatchObject({ waits: 10, p50: 500, p95: 10_000, max: 10_000, budgetMs: 100, overBudget: 9 });
   });
 
   it("charges a wait to each command it was on, and one on none to the no-command bucket", () => {
@@ -107,7 +107,7 @@ describe("titan-console perf waits", () => {
 
     expect(text.split("\n")).toEqual([
       "owner waits, last 24h, most owner time first:",
-      "1. work.tasks: 12.0 s over 1 waits, p50 12000 ms, p95 12000 ms, 1 cold, 0 on a write, 1 over the 300 ms budget",
+      "1. work.tasks: 12.0 s over 1 waits, p50 12000 ms, p95 12000 ms, 1 cold, 0 on a write, 1 over the 100 ms budget",
       "2. inbox.list: 2.0 s over 1 waits, p50 2000 ms, p95 2000 ms, 0 cold, 0 on a write",
     ]);
   });
