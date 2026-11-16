@@ -404,8 +404,11 @@ describe.skipIf(process.platform !== "linux")("the console in LAN mode (127.0.0.
     const server = createServer((req, res) => {
       // The events relay dials /events on its own schedule; only the reads a request makes are under test.
       if (req.url === "/events") return void res.writeHead(404).end();
-      hosts.push(req.headers.host ?? "");
-      req.resume().on("end", () => {
+      let body = "";
+      req.on("data", (chunk: Buffer) => (body += chunk.toString()));
+      req.on("end", () => {
+        // The keep-warm primer reads needs.list and the finished runs at serve start, on its own schedule too.
+        if (req.url !== "/rpc/needs.list" && !body.includes('"finished"')) hosts.push(req.headers.host ?? "");
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true, data: [SHEPHERD_ROW] }));
       });

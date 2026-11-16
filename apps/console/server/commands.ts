@@ -62,6 +62,8 @@ export interface ConsoleSources {
   activeWork: ActiveWork;
   /** Optional so test sources need not build one; absent, relay frames drop no cached read. */
   invalidation?: Invalidation;
+  /** The inbox's kept reads, when the daemon primes them (TP-6703); absent, the commands build their own. */
+  inboxCache?: InboxReadCache;
   inbox: InboxSource;
   rounds: RoundsSource;
   shepherd: ShepherdSource;
@@ -201,9 +203,9 @@ function coordinatorReads(coordinator: CoordinatorSource | undefined, shipped: S
 }
 
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, videoNotify, explainerBin, work, coordinator, configStore, shipped, invalidation, blockerHours, scorecard }: ConsoleSources) {
+export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, inboxCache, videos, videoNotify, explainerBin, work, coordinator, configStore, shipped, invalidation, blockerHours, scorecard }: ConsoleSources) {
   const configReaders = surfaceReaders(coordinatorRoots, hostSurfaces);
-  const cache = inboxReadCache({ factory, rounds, inbox, shepherd, agents });
+  const cache = inboxCache ?? inboxReadCache({ factory, rounds, inbox, shepherd, agents });
   return {
     ...upstreamsCommands(upstreams),
     ...buildInfoCommands(),

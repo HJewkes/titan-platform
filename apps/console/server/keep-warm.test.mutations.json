@@ -1,0 +1,34 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "serve start primes no active-work read",
+      "file": "apps/console/server/keep-warm.ts",
+      "find": "prime: () => warm([\"active-work\", \"factory\"])",
+      "replace": "prime: () => warm([\"factory\"])",
+      "kills": [
+        "keepWarm serve start reads each whole-tree read once"
+      ]
+    },
+    {
+      "name": "a reconnect re-primes every source",
+      "file": "apps/console/server/keep-warm.ts",
+      "find": "reconnected: (source) => warm([source])",
+      "replace": "reconnected: () => warm([\"active-work\", \"factory\"])",
+      "kills": [
+        "keepWarm a reconnected factory re-primes needs.list and finished runs",
+        "keepWarm a reconnected active-work re-primes only the whole-tree reads"
+      ]
+    },
+    {
+      "name": "a reconnected factory skips the finished runs",
+      "file": "apps/console/server/keep-warm.ts",
+      "find": "factory: () => [inbox.factory?.list(), inbox.finished.read()],",
+      "replace": "factory: () => [inbox.factory?.list()],",
+      "kills": [
+        "keepWarm serve start reads each whole-tree read once",
+        "keepWarm a reconnected factory re-primes needs.list and finished runs"
+      ]
+    }
+  ]
+}
