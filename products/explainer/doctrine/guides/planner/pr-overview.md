@@ -150,4 +150,6 @@ What was tried, where it broke and why, the fix, and what shows it now holds. (v
 - **owner-FB2.1**: Keep a ledger of every item the video names, each with a kind and the beat that defines it, and define an item before using it.
 - **owner-FB4.1**: A list holds one kind of item.
 - **owner-FB6.1**: Seat each invariant in an architecture row that keeps it.
+- **talks-O1**: Write a one-sentence throughline before anything else and check every section against it. Cut a section you cannot tie to it, or move it to the companion doc.
+- **talks-O2**: Write the commander's intent: if the viewer remembers one thing, it is this. The takeaways section never introduces that one thing for the first time.
 - **talks-ST11**: Plan each visual beat's headline first, as a short claim the picture proves: who or what does something, never a topic label. Write the narration after it, to back that claim.
