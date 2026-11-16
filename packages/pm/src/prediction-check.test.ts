@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Bet } from "./planning.js";
 import { checkPrediction, orderBetsForSheet, type ScorecardWeekRow } from "./prediction-check.js";
 
-function bet(overrides: Partial<Bet> & { prediction?: Partial<Bet["prediction"]> } = {}): Bet {
+function bet(overrides: Partial<Omit<Bet, "prediction">> & { prediction?: Partial<Bet["prediction"]> } = {}): Bet {
   const { prediction, ...rest } = overrides;
   return {
     id: "alpha/B1",
