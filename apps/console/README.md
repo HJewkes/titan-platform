@@ -983,9 +983,9 @@ blocks. hitl gates carry no `pr:` key yet (TP-2053), so a gate sits in a topic g
 with the one action a tap takes, or the terminal command and why the console offers none. Beside them, `nudges`
 lists the rounds waiting over six hours (see "The round age nudge"). A write action's target
 comes only from a system of record: a hitl gate joined to a live Shepherd row, or a deposit's typed `op` (see "Owner
-inbox deposits"). A deposit with no `op` never gets one. While TP-3918 is open (a gate on a replay-diverged run is
-consumed with no merge), a gate whose row's stall reason reads "replay diverged" is read-only with "resolve from
-Morning (TP-3918)". So is every gate with no Shepherd row: a land run's gate and one a replaced diverged run left
+inbox deposits"). A deposit with no `op` never gets one. Because a gate on a replay-diverged run is
+consumed with no merge, a gate whose row's stall reason reads "replay diverged" is read-only with "resolve from the
+terminal with the command shown". So is every gate with no Shepherd row: a land run's gate and one a replaced diverged run left
 behind look the same in the item.
 
 The **Blocking** section holds only items whose answer unblocks running work, as one rule per source
