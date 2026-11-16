@@ -110,6 +110,20 @@ describe("coord.cards enrichment and failures", () => {
     expect(result.gaps).toEqual([expect.stringContaining("daemon down")]);
   });
 
+  it("titles are read for the cards' task ids only", async () => {
+    seedEvents(path.join(dir, "events.db"), [spawn("coord-a", "impl-1", "5T08:00:00", { branch: "feat/one", task: "EX-1" }), spawn("coord-a", "impl-2", "5T09:00:00", { task: "EX-2" })]);
+    const asked: Record<string, unknown>[] = [];
+    const recording: ActiveWork = {
+      read: ((_command: string, args: Record<string, unknown> = {}) => (asked.push(args), Promise.resolve({ tasks: [] }))) as ActiveWork["read"],
+    };
+
+    await read(source([merged(1, "feat/one", "EX-1")], recording));
+
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toMatchObject({ all_initiatives: true, id: "EX-1,EX-2" });
+    expect(asked[0]).not.toHaveProperty("status");
+  });
+
   it("counts live agents and sums exit costs, and tags a coordinator whose name has a seat file", async () => {
     const autonomy = path.join(dir, "autonomy");
     await mkdir(path.join(autonomy, "seats"), { recursive: true });

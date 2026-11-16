@@ -29,21 +29,21 @@
       ]
     },
     {
-      "name": "a spawn before the day counts as an agent run that day",
-      "file": "apps/console/server/coord-cards.ts",
-      "find": "if (spawn.at >= window.from && spawn.at < window.to) addSpawn",
-      "replace": "if (spawn.at < window.to) addSpawn",
-      "kills": [
-        "coord.cards attribution attributes a PR merged today to the coordinator that spawned its agent yesterday, without counting that agent today"
-      ]
-    },
-    {
       "name": "no coordinator is tagged with its seat",
       "file": "apps/console/server/coord-cards.ts",
       "find": "seat: seats.has(coordinator) ? coordinator : null",
       "replace": "seat: null",
       "kills": [
         "coord.cards enrichment and failures counts live agents and sums exit costs, and tags a coordinator whose name has a seat file"
+      ]
+    },
+    {
+      "name": "titles come from the whole task tree again",
+      "file": "apps/console/server/coord-cards.ts",
+      "find": "{ all_initiatives: true, id: ids.join(\",\") }",
+      "replace": "{ all_initiatives: true, status: \"all\" }",
+      "kills": [
+        "coord.cards enrichment and failures titles are read for the cards' task ids only"
       ]
     }
   ]

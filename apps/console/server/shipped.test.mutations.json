@@ -29,21 +29,21 @@
       ]
     },
     {
-      "name": "the digest file is written world-readable",
-      "file": "apps/console/server/shipped.ts",
-      "find": "const DIGEST_MODE = 0o600;",
-      "replace": "const DIGEST_MODE = 0o644;",
-      "kills": [
-        "writeDigest writes the file owner-only and leaves no temp file behind"
-      ]
-    },
-    {
       "name": "the read lists every run, not only the finished ones",
       "file": "apps/console/server/shipped.ts",
       "find": "shepherd.list(\"finished\")",
       "replace": "shepherd.list(\"all\")",
       "kills": [
         "coord.shipped read reports built:false with the merged list when no digest exists, and reads only Shepherd's own list and timeline"
+      ]
+    },
+    {
+      "name": "coord.shipped reads finished runs upstream instead of the inbox's kept read",
+      "file": "apps/console/server/commands.ts",
+      "find": "state === \"finished\" ? cache.finished.read() : shepherd.list(state)",
+      "replace": "shepherd.list(state)",
+      "kills": [
+        "coord.shipped beside the inbox coord.shipped serves the inbox's kept finished read"
       ]
     }
   ]
