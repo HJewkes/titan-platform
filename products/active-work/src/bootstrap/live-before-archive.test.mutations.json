@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "live status waits for the archive pass",
+      "file": "products/active-work/src/bootstrap/gather.ts",
+      "find": "  const artifactsPending = loadArtifacts(initiativeDir);",
+      "replace": "  const artifactsPending = (input.pendingArchive ?? Promise.resolve()).then(() => loadArtifacts(initiativeDir));",
+      "kills": ["bootstrap live status and archive overlap starts the live branch lookup before a pending archive pass completes"]
+    }
+  ]
+}
