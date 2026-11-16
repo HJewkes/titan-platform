@@ -1,5 +1,5 @@
 import { ZodType } from 'zod';
-import { f as Outcome, B as Bet, F as Freeze, O as OutOfScope, T as Task } from './planning.js';
+import { i as Outcome, B as Bet, F as Freeze, O as OutOfScope, I as IntentLine, T as Task } from './planning.js';
 
 type PlanStoreErrorKind = "invalid" | "not-found" | "lock-timeout";
 /** A plan-store refusal the host maps onto its own error kinds; `kind` says which. */
@@ -21,6 +21,7 @@ interface PlanRecords {
     bet: Bet;
     freeze: Freeze;
     "out-of-scope": OutOfScope;
+    intent: IntentLine;
 }
 type PlanKind = keyof PlanRecords;
 declare function planSchema<K extends PlanKind>(kind: K): ZodType<PlanRecords[K]>;
@@ -308,5 +309,23 @@ declare const OutOfScopeSchema: z.ZodObject<{
     statement: z.ZodString;
 }, z.core.$strict>;
 type OutOfScope = z.infer<typeof OutOfScopeSchema>;
+declare const INTENT_SECTIONS: readonly ["Standing direction", "Reasons", "Ruled out", "Taste", "Open questions", "Superseded"];
+type IntentSection = (typeof INTENT_SECTIONS)[number];
+declare const IntentLineSchema: z.ZodObject<{
+    id: z.ZodString;
+    section: z.ZodEnum<{
+        "Open questions": "Open questions";
+        Reasons: "Reasons";
+        "Ruled out": "Ruled out";
+        "Standing direction": "Standing direction";
+        Superseded: "Superseded";
+        Taste: "Taste";
+    }>;
+    date: z.ZodString;
+    quote: z.ZodString;
+    ref: z.ZodString;
+    superseded_by: z.ZodOptional<z.ZodString>;
+}, z.core.$strict>;
+type IntentLine = z.infer<typeof IntentLineSchema>;
 
-export { type Bet as B, DELIVERABLE_ID_REGEX as D, type Freeze as F, type OutOfScope as O, type Prediction as P, type Task as T, BetSchema as a, type FreezeEndCondition as b, FreezeEndConditionSchema as c, FreezeSchema as d, OutOfScopeSchema as e, type Outcome as f, OutcomeSchema as g, type OwnerIntentRef as h, OwnerIntentRefSchema as i, PredictionSchema as j, TaskSchema as k };
+export { type Bet as B, DELIVERABLE_ID_REGEX as D, type Freeze as F, type IntentLine as I, type OutOfScope as O, type Prediction as P, type Task as T, BetSchema as a, type FreezeEndCondition as b, FreezeEndConditionSchema as c, FreezeSchema as d, INTENT_SECTIONS as e, IntentLineSchema as f, type IntentSection as g, OutOfScopeSchema as h, type Outcome as i, OutcomeSchema as j, type OwnerIntentRef as k, OwnerIntentRefSchema as l, PredictionSchema as m, TaskSchema as n };
