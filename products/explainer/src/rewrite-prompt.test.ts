@@ -28,7 +28,7 @@ const plan = (round: 1 | 2): RegisterEditPlan => ({
 
 const EVERY_REFUSAL: RefusalRule[] = [
   "empty", "entity", "markup", "terms", "length", "number-lost", "number-invented", "range-split", "number-vague", "device-added",
-  "closer-added", "list-lost", "list-emptied", "cue-lost", "cue-order", "new-term", "fact-id", "sentence-cap", "missing",
+  "closer-added", "hallmark-added", "list-lost", "list-emptied", "cue-lost", "cue-order", "new-term", "fact-id", "sentence-cap", "missing",
 ];
 const refusedPlan = (refused: RefusalRule[]): RegisterEditPlan => ({
   round: 2,
@@ -129,6 +129,13 @@ describe("renderRewritePrompt", () => {
     expect(refusalNote("some-new-rule")).toBe("it changed what the beat says; stay closer to the original");
     expect(new Set([...notes, refusalNote("some-new-rule")]).size).toBe(EVERY_REFUSAL.length + 1);
     expect(notesIn(renderRewritePrompt(chapter, chapterBeats, refusedPlan(EVERY_REFUSAL)))).toHaveLength(EVERY_REFUSAL.length);
+  });
+
+  it("renders a plain-words note for an added hallmark sentence", () => {
+    expect(notesIn(renderRewritePrompt(chapter, chapterBeats, refusedPlan(["hallmark-added"])))).toEqual([
+      `- Your last version was not used: ${refusalNote("hallmark-added")}.`,
+    ]);
+    expect(refusalNote("hallmark-added")).toContain("names a thing");
   });
 
   it("names no rule id, code-enforced rule or band number in any refusal note", () => {
