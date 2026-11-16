@@ -1,5 +1,5 @@
 import { ZodType } from 'zod';
-import { f as Outcome, B as Bet, F as Freeze, O as OutOfScope, T as Task } from './planning.js';
+import { f as Outcome, B as Bet, F as Freeze, O as OutOfScope, T as Task, S as ScorecardWeekRow } from './prediction-check.js';
 
 type PlanStoreErrorKind = "invalid" | "not-found" | "lock-timeout";
 /** A plan-store refusal the host maps onto its own error kinds; `kind` says which. */
@@ -63,9 +63,12 @@ declare function readInitiativeTasks(activeRoot: string, slug: string, options?:
     archive?: boolean;
 }): Promise<InitiativeTasks>;
 
-export { type InitiativeTasks, type PlanKind, type PlanRecords, PlanStoreError, type PlanStoreErrorKind, type TaskFileRow, type UnparsedTaskFile, loadPlanRecords, nextPlanId, planLabel, planSchema, readInitiativeTasks, readPlanRecord, withPlanLock, writePlanRecord };
+/** Reads every bet of the initiative against the rows and stores the result on the bet; returns the bets as written. */
+declare function recordPredictionChecks(activeRoot: string, initiative: string, rows: readonly ScorecardWeekRow[]): Promise<Bet[]>;
 
-// ./dist/planning.d.ts
+export { type InitiativeTasks, type PlanKind, type PlanRecords, PlanStoreError, type PlanStoreErrorKind, type TaskFileRow, type UnparsedTaskFile, loadPlanRecords, nextPlanId, planLabel, planSchema, readInitiativeTasks, readPlanRecord, recordPredictionChecks, withPlanLock, writePlanRecord };
+
+// ./dist/prediction-check.d.ts
 import { z } from 'zod';
 
 declare const DELIVERABLE_ID_REGEX: RegExp;
@@ -235,6 +238,11 @@ declare const BetSchema: z.ZodObject<{
         expected: z.ZodNumber;
         read_by: z.ZodString;
     }, z.core.$strict>;
+    prediction_check: z.ZodOptional<z.ZodEnum<{
+        confirmed: "confirmed";
+        missed: "missed";
+        unread: "unread";
+    }>>;
     state: z.ZodEnum<{
         done: "done";
         dropped: "dropped";
@@ -309,4 +317,23 @@ declare const OutOfScopeSchema: z.ZodObject<{
 }, z.core.$strict>;
 type OutOfScope = z.infer<typeof OutOfScopeSchema>;
 
-export { type Bet as B, DELIVERABLE_ID_REGEX as D, type Freeze as F, type OutOfScope as O, type Prediction as P, type Task as T, BetSchema as a, type FreezeEndCondition as b, FreezeEndConditionSchema as c, FreezeSchema as d, OutOfScopeSchema as e, type Outcome as f, OutcomeSchema as g, type OwnerIntentRef as h, OwnerIntentRefSchema as i, PredictionSchema as j, TaskSchema as k };
+/** What the scorecard says about a bet's prediction: `unread` means no week row carried the metric. */
+declare const PREDICTION_CHECKS: readonly ["confirmed", "missed", "unread"];
+type PredictionCheck = (typeof PREDICTION_CHECKS)[number];
+/** The slice of a session-analytics `WeekRow` the check reads, so pm's pure root takes no dependency on it. */
+interface ScorecardWeekRow {
+    isoWeek: string;
+    dimension: string;
+    key: string;
+    metrics: Readonly<Record<string, number | null>>;
+}
+/** Reads the bet's prediction against its initiative's scorecard row for the bet's week. */
+declare function checkPrediction(bet: Bet, rows: readonly ScorecardWeekRow[]): PredictionCheck;
+interface SheetBet {
+    bet: Bet;
+    check?: PredictionCheck;
+}
+/** Bets grouped by initiative, a missed prediction ahead of every other bet in its group, then by `order`. */
+declare function orderBetsForSheet<T extends SheetBet>(entries: readonly T[]): T[];
+
+export { type Bet as B, DELIVERABLE_ID_REGEX as D, type Freeze as F, type OutOfScope as O, PREDICTION_CHECKS as P, type ScorecardWeekRow as S, type Task as T, BetSchema as a, type FreezeEndCondition as b, FreezeEndConditionSchema as c, FreezeSchema as d, OutOfScopeSchema as e, type Outcome as f, OutcomeSchema as g, type OwnerIntentRef as h, OwnerIntentRefSchema as i, type Prediction as j, type PredictionCheck as k, PredictionSchema as l, type SheetBet as m, TaskSchema as n, checkPrediction as o, orderBetsForSheet as p };
