@@ -6,13 +6,8 @@ import { ValidationError } from '../errors.js';
 import type { CommandContext } from '../registry/index.js';
 import { withTempActiveRoot, writeAgentVisibleBrief } from '../test-support/test-helpers.js';
 import { legacyOwnerMessagesPath, ownerMessagesPath } from '../plan/owner-messages.js';
-import {
-  planIntentAdd,
-  planIntentDigest,
-  planIntentImportMessages,
-  planIntentList,
-  planIntentShow,
-} from './plan-intent.js';
+import { planIntentAdd, planIntentDigest, planIntentImportMessages } from './plan-intent.js';
+import { planIntentList, planIntentShow } from './plan-read.js';
 
 const ctx = (activeRoot: string): CommandContext => ({ activeRoot, warnings: [], format: 'json' });
 

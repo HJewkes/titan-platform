@@ -173,7 +173,8 @@ describe('owner actions', () => {
     const tools = listTools().map((tool) => tool.name);
 
     const planVerbs = names.filter((name) => name.startsWith('plan.'));
-    expect(planVerbs.every((name) => /\.(add|show|list)$/.test(name) || name === 'plan.seed')).toBe(true);
+    const readOrIntentVerbs = ['plan.seed', 'plan.intent.digest', 'plan.intent.import-messages'];
+    expect(planVerbs.every((name) => /\.(add|show|list)$/.test(name) || readOrIntentVerbs.includes(name))).toBe(true);
     expect(names).not.toContain('plan.bet.select');
     expect(tools.filter((tool) => /select|plan__outcome__edit/.test(tool))).toEqual([]);
     const cli = await runCliInProcess(['plan', 'bet', 'select', 'alpha/B1']);
@@ -186,7 +187,15 @@ describe('owner actions', () => {
     const tools = listTools().map((tool) => tool.name);
 
     const fields = writers.flatMap((cmd) => (cmd.args instanceof z.ZodObject ? Object.keys(cmd.args.shape) : []));
-    expect(writers.map((cmd) => cmd.name).sort()).toEqual(['plan.bet.add', 'plan.freeze.add', 'plan.out-of-scope.add', 'plan.outcome.add']);
+    expect(writers.map((cmd) => cmd.name).sort()).toEqual([
+      'plan.bet.add',
+      'plan.freeze.add',
+      'plan.intent.add',
+      'plan.intent.digest',
+      'plan.intent.import-messages',
+      'plan.out-of-scope.add',
+      'plan.outcome.add',
+    ]);
     expect(fields).not.toContain('state');
     expect(fields).not.toContain('ended_on');
     expect(tools.filter((tool) => tool.includes('plan__') && /select|edit|freeze__(set|end)/.test(tool))).toEqual([]);

@@ -3,10 +3,10 @@
   "mutations": [
     {
       "name": "an empty quote is accepted",
-      "file": "packages/pm/src/intent-digest.ts",
-      "find": "if (quote.length === 0) problems",
-      "replace": "if (false) problems",
-      "kills": ["refuses a bullet with an empty quote, naming its line"]
+      "file": "packages/pm/src/planning.ts",
+      "find": "z.string().min(1, { message: \"quote is empty\" })",
+      "replace": "z.string()",
+      "kills": ["parseIntentDigest refuses a bullet with an empty quote, naming its line"]
     }
   ]
 }
