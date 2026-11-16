@@ -22,7 +22,7 @@ import { LAN_NEEDS_TLS, type ConsoleConfig } from "./config.js";
 import { announceRefreshed, relayUpstreams, startEventsRelay, type EventsRelay } from "./events-relay.js";
 import { INBOX_DEPOSIT, INBOX_DEPOSIT_BODY_LIMIT } from "./inbox.js";
 import { inboxReadCache } from "./inbox-rows.js";
-import { keepWarm, type KeepWarm } from "./keep-warm.js";
+import { keepWarm } from "./keep-warm.js";
 import { linkHost } from "./lan-cert.js";
 import { APP_VERSION } from "./paths.js";
 import type { ConsoleSources } from "./commands.js";
@@ -75,9 +75,7 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
   });
   Object.assign(ports, { console: handle.port, story: handle.contentPort ?? null });
   void sources.listeners?.sweep();
-  const warm = keepWarm({ activeWork: sources.activeWork, inbox: sources.inboxCache, logger });
-  void warm.prime();
-  const relay = relayEvents(handle.hub, sources, config, logger, warm);
+  const relay = relayEvents(handle.hub, sources, config, logger);
   return { ...handle, close: async () => closeAll([relay.close(), handle.close()], perf) };
 }
 
@@ -90,16 +88,20 @@ function perfCommandList(perf: PerfRecorder, commandNames: () => readonly string
   return Object.values(perfCommands(perf, commandNames));
 }
 
+type KeptSources = ConsoleSources & Required<Pick<ConsoleSources, "inboxCache">>;
+
 /** The inbox's kept reads, built here rather than in the registry so the keep-warm primer reads the same ones (TP-6703). */
-function withKeptInbox(sources: ConsoleSources): ConsoleSources & Required<Pick<ConsoleSources, "inboxCache">> {
+function withKeptInbox(sources: ConsoleSources): KeptSources {
   return { ...sources, inboxCache: inboxReadCache(sources) };
 }
 
 /**
  * Upstream frames reach the browser and mark the caches stale; a cache that has caught up says so to the browser too.
- * A reopened stream may mean a restarted upstream, so its kept reads are read again behind the page.
+ * The kept reads are primed now, and a reopened stream may mean a restarted upstream, so its kept reads are read again.
  */
-function relayEvents(hub: DaemonHandle["hub"], sources: ConsoleSources, config: ConsoleConfig, logger: Logger, warm: KeepWarm): EventsRelay {
+function relayEvents(hub: DaemonHandle["hub"], sources: KeptSources, config: ConsoleConfig, logger: Logger): EventsRelay {
+  const warm = keepWarm({ activeWork: sources.activeWork, inbox: sources.inboxCache, logger });
+  void warm.prime();
   sources.invalidation?.onRefreshed("active-work", () => announceRefreshed(hub, "active-work"));
   return startEventsRelay({
     hub,
