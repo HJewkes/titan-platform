@@ -40,6 +40,7 @@ const REFUSAL_NOTES: ReadonlyMap<string, string> = new Map(
     "number-vague":"a vague word stood in for a number; keep the number or cut the clause",
     "device-added": "it gained a colon, a semicolon, a tail, a \"let's\" or a \"no X\" the original did not have; say it as a plain sentence",
     "closer-added": "it ended on a new short summing-up line the original did not have; end where the point is made",
+    "hallmark-added": "it added a sentence that names a thing, opens with \"the fix is\", or promises what comes next; say the point in the sentences the original has",
     "list-lost": "an item of the list left the line without a label of its own; label every item",
     "list-emptied": "keep one item of the list in the line",
     "cue-lost": "a cue word was no longer spoken; say every cue word",

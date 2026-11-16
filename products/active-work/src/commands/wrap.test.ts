@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import * as paths from '../utils/paths.js';
 import YAML from 'yaml';
 import { z } from 'zod';
 import wrap from './wrap.js';
@@ -1055,6 +1056,46 @@ describe('wrap', () => {
 
       const filenames = results.map((r) => r.filename).sort();
       expect(filenames).toEqual(['2026-05-12-0900-race-1.md', '2026-05-12-0900-race.md']);
+    });
+  });
+
+  describe('promotion candidates', () => {
+    const hit = (slug: string, day: number): string =>
+      JSON.stringify({ ts: `2026-11-0${day}T00:00:00Z`, slug, ref: 'note:shared', rank: 1 }) + '\n';
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('returns a note surfaced in 3 renders across 2 initiatives and warns about it', async () => {
+      await withTempActiveRoot(async (activeRoot) => {
+        const stateRoot = await fs.mkdtemp(path.join(activeRoot, 'state-'));
+        await fs.writeFile(
+          path.join(stateRoot, 'retrieval-hits.jsonl'),
+          hit('alpha', 1) + hit('alpha', 2) + hit('beta', 3),
+        );
+        vi.spyOn(paths, 'getStateRoot').mockReturnValue(stateRoot);
+        const ctx = makeCtx(activeRoot);
+
+        const result = await wrap.run(baseArgs({ no_loops: true }), ctx);
+
+        expect(result.promotion_candidates).toEqual([
+          { ref: 'note:shared', renders: 3, initiatives: 2 },
+        ]);
+        expect(ctx.warnings).toContain(
+          'note:shared has surfaced in 3 sessions across 2 initiatives; consider note promote',
+        );
+      });
+    });
+
+    it('returns no candidates when the log is absent', async () => {
+      await withTempActiveRoot(async (activeRoot) => {
+        vi.spyOn(paths, 'getStateRoot').mockReturnValue(path.join(activeRoot, 'no-state'));
+
+        const result = await wrap.run(baseArgs({ no_loops: true }), makeCtx(activeRoot));
+
+        expect(result.promotion_candidates).toEqual([]);
+      });
     });
   });
 });
