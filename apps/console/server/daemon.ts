@@ -21,6 +21,8 @@ import { readBuildInfo } from "./build-info.js";
 import { LAN_NEEDS_TLS, type ConsoleConfig } from "./config.js";
 import { announceRefreshed, relayUpstreams, startEventsRelay, type EventsRelay } from "./events-relay.js";
 import { INBOX_DEPOSIT, INBOX_DEPOSIT_BODY_LIMIT } from "./inbox.js";
+import { inboxReadCache } from "./inbox-rows.js";
+import { keepWarm, type KeepWarm } from "./keep-warm.js";
 import { linkHost } from "./lan-cert.js";
 import { APP_VERSION } from "./paths.js";
 import type { ConsoleSources } from "./commands.js";
@@ -52,7 +54,7 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
   const logger = options.logger ?? consoleLogger;
   const ports = { console: config.port, story: config.storyPort ?? null };
   const perf = createPerfRecorder({ dir: path.join(config.stateDir, "perf") });
-  const sources = withStoryOrigin(createSources(config, logger, perf), config, ports);
+  const sources = withKeptInbox(withStoryOrigin(createSources(config, logger, perf), config, ports));
   const { upstreams } = sources;
   const build = readBuildInfo();
   const registry: CommandRegistry<ConsoleContext> = createConsoleRegistry(sources, [...(options.extraCommands ?? []), ...perfCommandList(perf, () => registry.list().map(({ name }) => name))]);
@@ -73,7 +75,9 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
   });
   Object.assign(ports, { console: handle.port, story: handle.contentPort ?? null });
   void sources.listeners?.sweep();
-  const relay = relayEvents(handle.hub, sources, config, logger);
+  const warm = keepWarm({ activeWork: sources.activeWork, inbox: sources.inboxCache, logger });
+  void warm.prime();
+  const relay = relayEvents(handle.hub, sources, config, logger, warm);
   return { ...handle, close: async () => closeAll([relay.close(), handle.close()], perf) };
 }
 
@@ -86,10 +90,24 @@ function perfCommandList(perf: PerfRecorder, commandNames: () => readonly string
   return Object.values(perfCommands(perf, commandNames));
 }
 
-/** Upstream frames reach the browser and mark the caches stale; a cache that has caught up says so to the browser too. */
-function relayEvents(hub: DaemonHandle["hub"], sources: ConsoleSources, config: ConsoleConfig, logger: Logger): EventsRelay {
+/** The inbox's kept reads, built here rather than in the registry so the keep-warm primer reads the same ones (TP-6703). */
+function withKeptInbox(sources: ConsoleSources): ConsoleSources & Required<Pick<ConsoleSources, "inboxCache">> {
+  return { ...sources, inboxCache: inboxReadCache(sources) };
+}
+
+/**
+ * Upstream frames reach the browser and mark the caches stale; a cache that has caught up says so to the browser too.
+ * A reopened stream may mean a restarted upstream, so its kept reads are read again behind the page.
+ */
+function relayEvents(hub: DaemonHandle["hub"], sources: ConsoleSources, config: ConsoleConfig, logger: Logger, warm: KeepWarm): EventsRelay {
   sources.invalidation?.onRefreshed("active-work", () => announceRefreshed(hub, "active-work"));
-  return startEventsRelay({ hub, upstreams: relayUpstreams(config), logger, onFrame: (source) => sources.invalidation?.emit(source) });
+  return startEventsRelay({
+    hub,
+    upstreams: relayUpstreams(config),
+    logger,
+    onFrame: (source) => sources.invalidation?.emit(source),
+    onReconnected: (source) => void warm.reconnected(source),
+  });
 }
 
 /** Media routes go ahead of the static app, whose `/*` would answer them with the page. */

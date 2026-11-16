@@ -116,4 +116,45 @@ describe("cachedActiveWork", () => {
 
     expect(announced).toBe(1);
   });
+
+  it("a whole-tree read idle past two minutes is served kept and refreshed behind", async () => {
+    const clock = { at: 0 };
+    const { client, calls } = fakeActiveWork();
+    const cached = cachedActiveWork(client, undefined, () => clock.at);
+    const first = await cached.read("task.list", { all_initiatives: true });
+    await cached.read("task.list", { slug: "a" });
+
+    clock.at = 25 * 60_000;
+    const kept = await cached.read("task.list", { all_initiatives: true });
+    await Promise.resolve();
+    const oneInitiative = await cached.read("task.list", { slug: "a" });
+
+    expect(kept).toBe(first);
+    expect(oneInitiative).toEqual({ call: 4 });
+    expect(calls.map(([command, args]) => [command, args])).toEqual([
+      ["task.list", { all_initiatives: true }],
+      ["task.list", { slug: "a" }],
+      ["task.list", { all_initiatives: true }],
+      ["task.list", { slug: "a" }],
+    ]);
+  });
+
+  it("a kept read whose refresh failed is not served past two minutes", async () => {
+    const clock = { at: 0 };
+    let calls = 0;
+    function read<K extends ReadName>(command: K, args?: Record<string, unknown>): Promise<ReadResult<K>>;
+    function read(): Promise<unknown> {
+      calls += 1;
+      return calls === 1 ? Promise.resolve({ inventory: "kept" }) : Promise.reject(new Error("active-work down"));
+    }
+    const cached = cachedActiveWork({ read }, undefined, () => clock.at);
+    await cached.read("inventory");
+
+    clock.at = 3 * 60_000;
+    expect(await cached.read("inventory")).toEqual({ inventory: "kept" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    await expect(cached.read("inventory")).rejects.toThrow("active-work down");
+    expect(calls).toBe(3);
+  });
 });

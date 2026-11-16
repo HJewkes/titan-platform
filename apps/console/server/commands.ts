@@ -21,7 +21,7 @@ import { prTapCommands } from "./pr-tap.js";
 import { retireTapCommands } from "./retire-tap.js";
 import { inboxViewCommands, type InboxSources } from "./inbox-view.js";
 import type { Invalidation } from "./invalidation.js";
-import { inboxReadCache } from "./inbox-rows.js";
+import { inboxReadCache, type InboxReadCache } from "./inbox-rows.js";
 import { ownerWriteCommand, ownerWriteRefusal, readCommand, type ConsoleContext } from "./owner-guard.js";
 import { roundFrameDeltaCommands } from "./round-frame-delta.js";
 import { roundFramesCommands } from "./round-frames.js";
@@ -62,6 +62,8 @@ export interface ConsoleSources {
   activeWork: ActiveWork;
   /** Optional so test sources need not build one; absent, relay frames drop no cached read. */
   invalidation?: Invalidation;
+  /** The inbox's kept reads, when the daemon primes them (TP-6703); absent, the commands build their own. */
+  inboxCache?: InboxReadCache;
   inbox: InboxSource;
   rounds: RoundsSource;
   shepherd: ShepherdSource;
@@ -116,7 +118,7 @@ function upstreamsCommands(upstreams: readonly Upstream[]) {
   };
 }
 
-type OwnerAnswerSources = Pick<ConsoleSources, "factory" | "rounds" | "inbox" | "shepherd" | "agents" | "decisionLog" | "listeners" | "inboxActions">;
+type OwnerAnswerSources = Pick<ConsoleSources, "factory" | "rounds" | "inbox" | "shepherd" | "agents" | "decisionLog" | "listeners" | "inboxActions" | "inboxCache">;
 
 /**
  * The owner's merged queue, as the raw Flow, as the inbox with its actions, and every write that answers it: the inbox
@@ -124,9 +126,9 @@ type OwnerAnswerSources = Pick<ConsoleSources, "factory" | "rounds" | "inbox" | 
  * approvals.flow and the taps share the kept factory read (TP-4754). A factory frame only marks it stale: frames come every
  * few seconds live, so dropping it on each one left every inbox read waiting on a cold needs.list.
  */
-function ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decisionLog, listeners, inboxActions }: OwnerAnswerSources, invalidation: Invalidation | undefined) {
+function ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decisionLog, listeners, inboxActions, inboxCache }: OwnerAnswerSources, invalidation: Invalidation | undefined) {
   const sources: InboxSources = { factory, rounds, inbox, shepherd, agents };
-  const cache = inboxReadCache(sources);
+  const cache = inboxCache ?? inboxReadCache(sources);
   invalidation?.on("factory", cache.stale);
   const cached = { ...sources, factory: cache.factory };
   const actions = { ...(inboxActions ?? ACTIONS_UNWIRED), ...(decisionLog && { decisionLog }) };
@@ -195,7 +197,7 @@ function coordinatorReads(coordinator: CoordinatorSource | undefined, shipped: S
 }
 
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, videoNotify, explainerBin, work, coordinator, configStore, shipped, invalidation, blockerHours, scorecard }: ConsoleSources) {
+export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, inboxCache, videos, videoNotify, explainerBin, work, coordinator, configStore, shipped, invalidation, blockerHours, scorecard }: ConsoleSources) {
   const configReaders = surfaceReaders(coordinatorRoots, hostSurfaces);
   return {
     ...upstreamsCommands(upstreams),
@@ -208,7 +210,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...knowledgeCommands(activeWork, work),
     ...inboxCommands(inbox),
     ...roundReads(rounds),
-    ...ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decisionLog, listeners, inboxActions }, invalidation),
+    ...ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decisionLog, listeners, inboxActions, inboxCache }, invalidation),
     ...shepherdCommands(shepherd),
     ...blockersCommands({ spoolDir: inbox.dir, shepherd, ...(blockerHours !== undefined && { thresholdHours: blockerHours }) }, invalidation),
     ...(autoresearch === undefined ? {} : autoresearchCommands(autoresearch)),

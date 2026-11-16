@@ -11,10 +11,13 @@ import type { FactoryNeeds } from "./approvals.js";
 import { cachedRead, cachedReads, type CacheTimes, type CachedRead } from "./read-cache.js";
 import type { LineageReader, ShipLineage } from "./ship-lineage.js";
 
-/** Long enough that a page and its taps share one needs read, short enough that a gate answered elsewhere leaves soon. */
-const INBOX_CACHE_TIMES: CacheTimes = { freshMs: 15_000, staleMs: 5 * 60_000 };
+/**
+ * Long enough that a page and its taps share one needs read, short enough that a gate answered elsewhere leaves soon.
+ * TP-6703: after an idle gap the kept read is served behind its refresh, until a refresh fails.
+ */
+const INBOX_CACHE_TIMES: CacheTimes = { freshMs: 15_000, staleMs: 5 * 60_000, keptMs: 30 * 60_000 };
 /** TP-4754: a merge row's lineage is a GitHub read per PR head, seconds on the live spool, so a row serves the kept one while it refreshes. */
-const LINEAGE_TIMES: CacheTimes = { freshMs: 60_000, staleMs: 10 * 60_000 };
+const LINEAGE_TIMES: CacheTimes = { freshMs: 60_000, staleMs: 10 * 60_000, keptMs: 30 * 60_000 };
 const LINEAGE_MAX_KEYS = 256;
 
 type Recommendation = NonNullable<OwnerItem["recommended"]>;
