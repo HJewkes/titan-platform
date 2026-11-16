@@ -118,7 +118,7 @@ function upstreamsCommands(upstreams: readonly Upstream[]) {
   };
 }
 
-type OwnerAnswerSources = Pick<ConsoleSources, "factory" | "rounds" | "inbox" | "shepherd" | "agents" | "decisionLog" | "listeners" | "inboxActions" | "inboxCache">;
+type OwnerAnswerSources = Pick<ConsoleSources, "factory" | "rounds" | "inbox" | "shepherd" | "agents" | "decisionLog" | "listeners" | "inboxActions">;
 
 /**
  * The owner's merged queue, as the raw Flow, as the inbox with its actions, and every write that answers it: the inbox
@@ -126,9 +126,8 @@ type OwnerAnswerSources = Pick<ConsoleSources, "factory" | "rounds" | "inbox" | 
  * approvals.flow and the taps share the kept factory read (TP-4754). A factory frame only marks it stale: frames come every
  * few seconds live, so dropping it on each one left every inbox read waiting on a cold needs.list.
  */
-function ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decisionLog, listeners, inboxActions, inboxCache }: OwnerAnswerSources, invalidation: Invalidation | undefined) {
+function ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decisionLog, listeners, inboxActions }: OwnerAnswerSources, cache: InboxReadCache, invalidation: Invalidation | undefined) {
   const sources: InboxSources = { factory, rounds, inbox, shepherd, agents };
-  const cache = inboxCache ?? inboxReadCache(sources);
   invalidation?.on("factory", cache.stale);
   const cached = { ...sources, factory: cache.factory };
   const actions = { ...(inboxActions ?? ACTIONS_UNWIRED), ...(decisionLog && { decisionLog }) };
@@ -188,17 +187,25 @@ function roundReads(rounds: RoundsSource) {
   };
 }
 
+/** Serves `list("finished")` from the inbox's kept read, so coord.cards and coord.shipped share its one 2.9 MB upstream read and its frame-driven staleness. */
+function keptFinished(shepherd: ShepherdSource, cache: InboxReadCache): ShepherdSource {
+  return { ...shepherd, list: (state) => (state === "finished" ? cache.finished.read() : shepherd.list(state)) };
+}
+
 /** The coordinator view's reads, each served only when its source is wired. */
-function coordinatorReads(coordinator: CoordinatorSource | undefined, shipped: ShippedOptions | undefined, shepherd: ShepherdSource) {
+function coordinatorReads(coordinator: CoordinatorSource | undefined, shipped: ShippedOptions | undefined, shepherd: ShepherdSource, cache: InboxReadCache) {
+  const kept = keptFinished(shepherd, cache);
+  const cards = coordinator?.cards;
   return {
-    ...(coordinator === undefined ? {} : coordinatorCommands(coordinator)),
-    ...(shipped === undefined ? {} : shippedCommands(shepherd, shipped)),
+    ...(coordinator === undefined ? {} : coordinatorCommands(cards === undefined ? coordinator : { ...coordinator, cards: { ...cards, shepherd: kept } })),
+    ...(shipped === undefined ? {} : shippedCommands(kept, shipped)),
   };
 }
 
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
 export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, inboxCache, videos, videoNotify, explainerBin, work, coordinator, configStore, shipped, invalidation, blockerHours, scorecard }: ConsoleSources) {
   const configReaders = surfaceReaders(coordinatorRoots, hostSurfaces);
+  const cache = inboxCache ?? inboxReadCache({ factory, rounds, inbox, shepherd, agents });
   return {
     ...upstreamsCommands(upstreams),
     ...buildInfoCommands(),
@@ -210,7 +217,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...knowledgeCommands(activeWork, work),
     ...inboxCommands(inbox),
     ...roundReads(rounds),
-    ...ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decisionLog, listeners, inboxActions, inboxCache }, invalidation),
+    ...ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decisionLog, listeners, inboxActions }, cache, invalidation),
     ...shepherdCommands(shepherd),
     ...blockersCommands({ spoolDir: inbox.dir, shepherd, ...(blockerHours !== undefined && { thresholdHours: blockerHours }) }, invalidation),
     ...(autoresearch === undefined ? {} : autoresearchCommands(autoresearch)),
@@ -222,7 +229,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...videoPropsCommands(videos, explainerBin),
     ...(reviews === undefined ? {} : reviewsCommands(reviews)),
     ...workCommands(activeWork, work),
-    ...coordinatorReads(coordinator, shipped, shepherd),
+    ...coordinatorReads(coordinator, shipped, shepherd, cache),
     ...(scorecard === undefined ? {} : scorecardCommands(scorecard)),
   };
 }

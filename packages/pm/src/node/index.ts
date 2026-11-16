@@ -5,3 +5,4 @@ export { loadPlanRecords, nextPlanId, planLabel, planSchema, readPlanRecord, wri
 export type { PlanKind, PlanRecords } from "./plan-store.js";
 export { readInitiativeTasks } from "./task-store.js";
 export type { InitiativeTasks, TaskFileRow, UnparsedTaskFile } from "./task-store.js";
+export { recordPredictionChecks } from "./prediction-record.js";
