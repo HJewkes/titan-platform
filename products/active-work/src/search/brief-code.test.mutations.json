@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "snapshot neighbours are not checked against the spawn repo",
+      "file": "products/active-work/src/search/brief-code.ts",
+      "find": "  return found.filter((_, i) => present[i] !== null);",
+      "replace": "  return found;",
+      "kills": ["briefCode scoped to the spawn repo lists only neighbours that exist in the spawn repo when the snapshot spans two repos"]
+    },
+    {
+      "name": "a named file missing from the spawn repo still gets neighbours",
+      "file": "products/active-work/src/search/brief-code.ts",
+      "find": "  if ((await realFileIn(repoRoot, named)) === null) return [];\n",
+      "replace": "",
+      "kills": ["briefCode scoped to the spawn repo lists no neighbours when the named file is not in the spawn repo"]
+    },
+    {
+      "name": "containment compares the link instead of its real path",
+      "file": "products/active-work/src/search/brief-code.ts",
+      "find": "fs.realpath(path.resolve(repoRoot, relative))",
+      "replace": "Promise.resolve(path.resolve(repoRoot, relative))",
+      "kills": ["briefCode fallback path containment refuses a named symlink that escapes the repo"]
+    }
+  ]
+}
