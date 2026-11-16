@@ -25,7 +25,7 @@ const SheetFrontSchema = z.object({
   flags: z.array(z.object({ bet: z.string(), problem: z.string() })),
 });
 
-export type SheetFront = z.infer<typeof SheetFrontSchema>;
+type SheetFront = z.infer<typeof SheetFrontSchema>;
 
 export const SheetDecisionsSchema = z.object({
   initiative: z.string(),
@@ -42,7 +42,7 @@ function sheetsDir(activeRoot: string, initiative: string): string {
   return path.join(activeRoot, initiative, 'plan', 'sheets');
 }
 
-export function sheetPath(activeRoot: string, initiative: string, week: string): string {
+function sheetPath(activeRoot: string, initiative: string, week: string): string {
   return path.join(sheetsDir(activeRoot, initiative), `${week}.md`);
 }
 

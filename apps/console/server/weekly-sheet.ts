@@ -14,7 +14,7 @@ const sheet = z.object({
   decidedOn: z.string().nullable(),
 });
 
-export const weeklySheetResult = z.object({ slug: z.string(), sheet: sheet.nullable() });
+const weeklySheetResult = z.object({ slug: z.string(), sheet: sheet.nullable() });
 
 function hasCode(error: unknown, code: number): boolean {
   return error instanceof Error && "code" in error && error.code === code;

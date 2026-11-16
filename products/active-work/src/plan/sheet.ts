@@ -7,10 +7,10 @@ import { shiftWeek, weekStart } from './iso-week.js';
  * states the default an ignored sheet records, and every bet line names the intent line and the metric it rests on.
  */
 
-export const WEEKLY_SHEET_SCHEMA = 'titan-weekly-sheet/v1';
+const WEEKLY_SHEET_SCHEMA = 'titan-weekly-sheet/v1';
 
 /** A prediction check as P17 (TP-6727) stores it on the bet as `prediction_check`. A bet with no check reads `unread`. */
-export type PredictionCheck = 'confirmed' | 'missed' | 'unread';
+type PredictionCheck = 'confirmed' | 'missed' | 'unread';
 
 /** The stored check, read through a guard until P17 adds `prediction_check` to the bet schema. */
 function predictionCheckOf(bet: Bet): PredictionCheck {
@@ -25,7 +25,7 @@ export interface ScorecardReading {
   current: number | null;
 }
 
-export interface SheetInput {
+interface SheetInput {
   initiative: string;
   week: string;
   outcomes: readonly Outcome[];
@@ -33,19 +33,13 @@ export interface SheetInput {
   scorecard: readonly ScorecardReading[];
 }
 
-export type SheetAction = 'select' | 'hold' | 'stop';
+type SheetAction = 'select' | 'hold' | 'stop';
 
-export interface SheetDefault {
-  bet: string;
-  action: SheetAction;
-}
+type SheetDefault = { bet: string; action: SheetAction };
 
-export interface SheetFlag {
-  bet: string;
-  problem: string;
-}
+type SheetFlag = { bet: string; problem: string };
 
-export interface WeeklySheet {
+interface WeeklySheet {
   initiative: string;
   week: string;
   next_week: string;
