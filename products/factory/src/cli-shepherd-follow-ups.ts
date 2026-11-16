@@ -7,10 +7,11 @@ import type { Verbs } from "./cli-types.js";
 import { EXIT } from "./exit-codes.js";
 import { errorMessage } from "./narrow.js";
 import { parsePrRef } from "./registry.js";
+import { liveStoppedPrs } from "./eligibility/intake-signals.js";
 import { activeWorkOrigin } from "./shepherd/active-work-origin.js";
-import { activeWorkFollowUpTasks } from "./shepherd/cleanup-ports.js";
 import { FixTaskRefused } from "./shepherd/main-red.js";
 import { fileFollowUps } from "./shepherd/follow-ups-file.js";
+import { liveFollowUpSinks } from "./shepherd/follow-up-sinks.js";
 import { HEAD } from "./shepherd/await-verdict.js";
 import { qualifyTask } from "./shepherd/task-ref.js";
 
@@ -37,6 +38,12 @@ async function qualified(task: string, verbs: Verbs): Promise<{ initiative: stri
   return { initiative: full.slice(0, at), parent: full.slice(at + 1) };
 }
 
+/** Nothing is filed from a PR whose Shepherd run stopped (TP-6714); a Shepherd that cannot be read throws, so nothing is filed then either. */
+async function prStopped(where: { repo: string; pr: number }, verbs: Verbs): Promise<boolean> {
+  const ref = `${where.repo}#${where.pr}`;
+  return (await (verbs.deps.stoppedPrs ?? liveStoppedPrs(verbs))(new Set([ref]))).has(ref);
+}
+
 /** Files a reviewer's Follow-ups block from a verdict the seat chose; the seat is the reader, so the verb does not check the block names this PR and head. */
 async function run(ref: string, opts: FollowUpsArgs, verbs: Verbs): Promise<number> {
   const { io } = verbs;
@@ -49,9 +56,8 @@ async function run(ref: string, opts: FollowUpsArgs, verbs: Verbs): Promise<numb
   }
   const { items, warning } = parseFollowUps(opts.verdictFile === undefined ? await text(process.stdin) : await readFile(opts.verdictFile, "utf8"));
   try {
-    const tasks = activeWorkFollowUpTasks({ origin: activeWorkOrigin(io.env), ...(verbs.deps.fetch && { fetch: verbs.deps.fetch }) });
-    const { filed } = await fileFollowUps(tasks, { ...where, head: opts.head, reviewer: opts.reviewer ?? "seat" }, items);
-    io.stdout(`${JSON.stringify({ filed, ...(warning && { warning }) })}\n`);
+    const result = (await prStopped(where, verbs)) ? { filed: [], digested: [], skipped: "stopped" } : await fileFollowUps(liveFollowUpSinks(io.env, verbs.deps.fetch), { ...where, head: opts.head, reviewer: opts.reviewer ?? "seat" }, items);
+    io.stdout(`${JSON.stringify({ ...result, ...(warning && { warning }) })}\n`);
     return EXIT.OK;
   } catch (error) {
     io.stderr(`error: ${errorMessage(error)}\n`);

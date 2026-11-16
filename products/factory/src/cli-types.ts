@@ -8,6 +8,7 @@ import type { DeployPorts } from "./deploy.js";
 import type { GitBehindProbe } from "./deploy-behind.js";
 import type { DeployWatch } from "./deploy-watch.js";
 import type { LaneSignalRead } from "./eligibility/back-pressure.js";
+import type { StoppedPrRead } from "./eligibility/intake-signals.js";
 import type { GateNotifyOptions } from "./gate-notify-sweep.js";
 import type { ConsoleAnswersOptions } from "./gate-answer-rpc.js";
 import type { SourcesReader } from "./github-sources/mode.js";
@@ -52,6 +53,8 @@ export interface CliDeps {
   cliLink?: CliLinkPorts;
   /** What `shepherd register` resolves a bare task ID through; defaults to the global fetch. */
   fetch?: typeof fetch;
+  /** What `shepherd follow-ups` reads whether the PR's Shepherd run stopped through; defaults to the factory's own store. */
+  stoppedPrs?: StoppedPrRead;
   /** What `dispatch eligible` reads a lane's back-pressure signals through; defaults to the factory's own stores and serve's /health. */
   laneSignals?: LaneSignalRead;
   /** How `shepherd register` reads a PR's head branch to infer a missing --task or --implementer; defaults to gh. */
