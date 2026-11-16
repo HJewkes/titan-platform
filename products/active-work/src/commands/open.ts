@@ -228,16 +228,11 @@ async function bootstrapInitiative(
   // not the brief's default worktree.
   const cwdHint = opts.cwdHintOverride ?? (await resolveCwdHint(activeRoot, slug));
   const archiveStart = clock();
-  // Not awaited here: live branch status starts inside assembleBootstrap while the archive runs.
-  const archivePending = archiveStaleTasks(path.join(activeRoot, slug), {
+  const { archivedIds: archivedTaskIds, tasks, malformed } = await archiveStaleTasks(path.join(activeRoot, slug), {
     retentionDays: ARCHIVE_DONE_AFTER_DAYS,
     now: new Date(),
   });
-  let archiveMs = 0;
-  const timedArchive = archivePending.then((result) => {
-    archiveMs = clock() - archiveStart;
-    return result;
-  });
+  const archiveMs = clock() - archiveStart;
   const detectSiblings = opts.detectSiblings !== false;
   const { facet } = opts;
   const about = sessionAbout(opts.about, facet);
@@ -245,7 +240,8 @@ async function bootstrapInitiative(
     activeRoot,
     slug,
     includeLiveStatus: !opts.offline,
-    pendingArchive: timedArchive,
+    archivedTaskIds,
+    loadedTasks: { tasks, malformed },
     adhoc: opts.adhoc,
     init: opts.init,
     ...(about !== undefined ? { about } : {}),

@@ -37,7 +37,7 @@ async function seedInitiative(root: string, slug: string): Promise<void> {
   await fs.mkdir(path.join(dir, 'sessions'), { recursive: true });
   await fs.writeFile(
     path.join(dir, 'brief.md'),
-    ['---', 'schema_version: 1', 'title: Sample', 'updated: 2026-05-12', 'state: focused', 'task_prefix: SM', '---', '', '# Sample', ''].join('\n'),
+    ['---', 'schema_version: 1', 'title: Sample', 'updated: 2026-05-12', 'state: backburner', 'task_prefix: SM', '---', '', '# Sample', ''].join('\n'),
   );
   await fs.writeFile(
     path.join(dir, 'artifacts.yml'),
