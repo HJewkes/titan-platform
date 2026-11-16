@@ -24,9 +24,9 @@ declare const brokerSession: z.ZodObject<{
     workingOn: z.ZodString;
     cwd: z.ZodString;
     status: z.ZodEnum<{
-        working: "working";
         available: "available";
         blocked: "blocked";
+        working: "working";
     }>;
     idleMs: z.ZodNumber;
     registeredAt: z.ZodNumber;
@@ -48,9 +48,9 @@ declare const brokerSessions: z.ZodObject<{
         workingOn: z.ZodString;
         cwd: z.ZodString;
         status: z.ZodEnum<{
-            working: "working";
             available: "available";
             blocked: "blocked";
+            working: "working";
         }>;
         idleMs: z.ZodNumber;
         registeredAt: z.ZodNumber;
@@ -82,19 +82,19 @@ declare const HISTORY_STATES: readonly ["spawning", "detached", "exited", "faile
 /** History states whose process may still be running; the rest are past. */
 declare const LIVE_HISTORY_STATES: readonly ["spawning", "detached"];
 declare const agentState: z.ZodEnum<{
-    working: "working";
     available: "available";
     blocked: "blocked";
-    spawning: "spawning";
     detached: "detached";
     exited: "exited";
     failed: "failed";
     retired: "retired";
+    spawning: "spawning";
+    working: "working";
 }>;
 type AgentState = z.infer<typeof agentState>;
 declare const agentStateSource: z.ZodEnum<{
-    presence: "presence";
     history: "history";
+    presence: "presence";
 }>;
 type AgentStateSource = z.infer<typeof agentStateSource>;
 /** `claudeSessionId` when Claude Code started the session, else `name@registeredAt` (spawn time for a history-only row). */
@@ -105,15 +105,15 @@ declare const agentIdSource: z.ZodEnum<{
 type AgentIdSource = z.infer<typeof agentIdSource>;
 /** `spawned` by the supervisor, `adopted` when a human-started session registered, `unknown` when no spawn row is in the window. */
 declare const agentOrigin: z.ZodEnum<{
-    unknown: "unknown";
-    spawned: "spawned";
     adopted: "adopted";
+    spawned: "spawned";
+    unknown: "unknown";
 }>;
 type AgentOrigin = z.infer<typeof agentOrigin>;
 /** `session-analytics` prices the transcript; `exit-report` is the cost the agent's own exit row carried. */
 declare const agentCostSource: z.ZodEnum<{
-    "session-analytics": "session-analytics";
     "exit-report": "exit-report";
+    "session-analytics": "session-analytics";
 }>;
 type AgentCostSource = z.infer<typeof agentCostSource>;
 declare const agentRosterEntry: z.ZodObject<{
@@ -125,23 +125,23 @@ declare const agentRosterEntry: z.ZodObject<{
     name: z.ZodString;
     agentId: z.ZodNullable<z.ZodString>;
     state: z.ZodEnum<{
-        working: "working";
         available: "available";
         blocked: "blocked";
-        spawning: "spawning";
         detached: "detached";
         exited: "exited";
         failed: "failed";
         retired: "retired";
+        spawning: "spawning";
+        working: "working";
     }>;
     stateSource: z.ZodEnum<{
-        presence: "presence";
         history: "history";
+        presence: "presence";
     }>;
     origin: z.ZodEnum<{
-        unknown: "unknown";
-        spawned: "spawned";
         adopted: "adopted";
+        spawned: "spawned";
+        unknown: "unknown";
     }>;
     workingOn: z.ZodNullable<z.ZodString>;
     cwd: z.ZodNullable<z.ZodString>;
@@ -161,8 +161,8 @@ declare const agentRosterEntry: z.ZodObject<{
     tags: z.ZodArray<z.ZodString>;
     costUsd: z.ZodNullable<z.ZodNumber>;
     costSource: z.ZodNullable<z.ZodEnum<{
-        "session-analytics": "session-analytics";
         "exit-report": "exit-report";
+        "session-analytics": "session-analytics";
     }>>;
 }, z.core.$strip>;
 type AgentRosterEntry = z.infer<typeof agentRosterEntry>;
@@ -183,23 +183,23 @@ declare const agentRosterSnapshot: z.ZodObject<{
         name: z.ZodString;
         agentId: z.ZodNullable<z.ZodString>;
         state: z.ZodEnum<{
-            working: "working";
             available: "available";
             blocked: "blocked";
-            spawning: "spawning";
             detached: "detached";
             exited: "exited";
             failed: "failed";
             retired: "retired";
+            spawning: "spawning";
+            working: "working";
         }>;
         stateSource: z.ZodEnum<{
-            presence: "presence";
             history: "history";
+            presence: "presence";
         }>;
         origin: z.ZodEnum<{
-            unknown: "unknown";
-            spawned: "spawned";
             adopted: "adopted";
+            spawned: "spawned";
+            unknown: "unknown";
         }>;
         workingOn: z.ZodNullable<z.ZodString>;
         cwd: z.ZodNullable<z.ZodString>;
@@ -219,8 +219,8 @@ declare const agentRosterSnapshot: z.ZodObject<{
         tags: z.ZodArray<z.ZodString>;
         costUsd: z.ZodNullable<z.ZodNumber>;
         costSource: z.ZodNullable<z.ZodEnum<{
-            "session-analytics": "session-analytics";
             "exit-report": "exit-report";
+            "session-analytics": "session-analytics";
         }>>;
     }, z.core.$strip>>;
     brokerUptimeMs: z.ZodNullable<z.ZodNumber>;
@@ -236,16 +236,16 @@ type AgentRosterSnapshot = z.infer<typeof agentRosterSnapshot>;
 declare const ACTIVITY_CATEGORIES: readonly ["message", "question", "notice", "thinking"];
 declare const agentActivityCategory: z.ZodEnum<{
     message: "message";
-    question: "question";
     notice: "notice";
+    question: "question";
     thinking: "thinking";
 }>;
 type ActivityCategory = z.infer<typeof agentActivityCategory>;
 declare const agentGraphNodeActivity: z.ZodObject<{
     category: z.ZodEnum<{
         message: "message";
-        question: "question";
         notice: "notice";
+        question: "question";
         thinking: "thinking";
     }>;
     at: z.ZodNumber;
@@ -261,8 +261,8 @@ declare const agentGraphNode: z.ZodObject<{
     activity: z.ZodNullable<z.ZodObject<{
         category: z.ZodEnum<{
             message: "message";
-            question: "question";
             notice: "notice";
+            question: "question";
             thinking: "thinking";
         }>;
         at: z.ZodNumber;
@@ -270,15 +270,15 @@ declare const agentGraphNode: z.ZodObject<{
 }, z.core.$strip>;
 type AgentGraphNode = z.infer<typeof agentGraphNode>;
 declare const agentGraphEdgeKind: z.ZodEnum<{
-    spawned: "spawned";
     message: "message";
+    spawned: "spawned";
 }>;
 type AgentGraphEdgeKind = z.infer<typeof agentGraphEdgeKind>;
 /** `from` and `to` are node ids. `spawned` points spawner to child; `message` points sender to recipient, one per ordered pair. */
 declare const agentGraphEdge: z.ZodObject<{
     kind: z.ZodEnum<{
-        spawned: "spawned";
         message: "message";
+        spawned: "spawned";
     }>;
     from: z.ZodString;
     to: z.ZodString;
@@ -297,8 +297,8 @@ declare const agentGraph: z.ZodObject<{
         activity: z.ZodNullable<z.ZodObject<{
             category: z.ZodEnum<{
                 message: "message";
-                question: "question";
                 notice: "notice";
+                question: "question";
                 thinking: "thinking";
             }>;
             at: z.ZodNumber;
@@ -306,8 +306,8 @@ declare const agentGraph: z.ZodObject<{
     }, z.core.$strip>>;
     edges: z.ZodArray<z.ZodObject<{
         kind: z.ZodEnum<{
-            spawned: "spawned";
             message: "message";
+            spawned: "spawned";
         }>;
         from: z.ZodString;
         to: z.ZodString;

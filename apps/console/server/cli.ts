@@ -11,6 +11,7 @@
 // store's shadow steps, and `self-update --apply` (run by the bootstrap a systemd timer starts) swaps in the served console.
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { closeOnSignal } from "@titan-design/daemon";
 import { resolveConfig, type ConsoleConfig } from "./config.js";
 import { inboxWithdrawArgs, inboxWithdrawCli } from "./cli-inbox.js";
 import { inboxLink, inboxLinkArgs } from "./cli-inbox-link.js";
@@ -25,7 +26,7 @@ import { subscriptionArgs, subscriptionCli } from "./cli-subscriptions.js";
 import { CONFIG_USAGE, configArgs, configCli } from "./config-store/cli.js";
 import type { ConfigStoreSource } from "./config-store/compare.js";
 import { coordinatorFilePath } from "./config-store/materialize.js";
-import { closeOnSignal, createLoginLink, lanOrigin, rotateLanToken, startConsoleDaemon } from "./daemon.js";
+import { createLoginLink, lanOrigin, rotateLanToken, startConsoleDaemon } from "./daemon.js";
 import { fileDeposit } from "./inbox.js";
 import { PAGE_FILE } from "./paths.js";
 import { SELF_UPDATE_USAGE, selfUpdateArgs, selfUpdateVerb } from "./self-update/cli.js";

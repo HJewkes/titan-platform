@@ -4,11 +4,12 @@ import path from "node:path";
 import type { ArtifactStore } from "../workflow/artifacts.js";
 import type { ModelStageInput } from "../workflow/model-stages.js";
 import type { StageOutcome } from "../workflow/records.js";
-import { qaCoreReport, type QaConfig } from "./qa-core.js";
+import { OccupancyFileSchema } from "../occupancy-file.js";
+import { qaCoreRun, type QaConfig } from "./qa-core.js";
 import type { QaEngine } from "./qa-engine.js";
 import { leadLineBeats } from "./qa-lead-lines.js";
 import { speechRateSummary } from "./speech-rate.js";
-import { qaSummary, type QaReport } from "./qa-report.js";
+import { qaSummary } from "./qa-report.js";
 import { serveTree } from "./serve-tree.js";
 
 export type { QaConfig } from "./qa-core.js";
@@ -39,7 +40,7 @@ function pageQuery(input: QaInput, dir: string): string {
 }
 
 /** qa's report core over the page tree served from `scratch`; large series become outputs. */
-async function servedReport(input: QaInput, engine: QaEngine, config: QaConfig, scratch: string, outputs: Record<string, string>): Promise<QaReport> {
+async function servedReport(input: QaInput, engine: QaEngine, config: QaConfig, scratch: string, outputs: Record<string, string>): ReturnType<typeof qaCoreRun> {
   const [mp4, timeline] = [input.store.path(need(input, "mp4")), json(input, need(input, "timeline"))];
   const tree = path.join(scratch, "page");
   const query = pageQuery(input, tree);
@@ -50,7 +51,7 @@ async function servedReport(input: QaInput, engine: QaEngine, config: QaConfig, 
       script: json(input, need(input, "script")), resolved: json(input, need(input, "resolved")), vtt: vttText(input), lead: leadLineBeats(input), cropDir: path.join(scratch, "crops"),
       put: (name: string, text: string) => (outputs[name] = input.store.putText(text, name, input.from)),
     };
-    return await qaCoreReport(sources, engine, config);
+    return await qaCoreRun(sources, engine, config);
   } finally {
     await served.close();
   }
@@ -66,8 +67,10 @@ export async function runQaStage(input: QaInput, config: QaConfig, engine: QaEng
   const scratch = mkdtempSync(path.join(tmpdir(), "explainer-qa-"));
   try {
     const outputs: Record<string, string> = {};
-    const report = await servedReport(input, engine, config, scratch, outputs);
+    const { report, occupancy } = await servedReport(input, engine, config, scratch, outputs);
     outputs.qa = input.store.putText(`${JSON.stringify(report, null, 1)}\n`, "qa", input.from);
+    const file = OccupancyFileSchema.parse({ schema: "occupancy/v1", ...occupancy });
+    outputs.occupancy = input.store.putText(`${JSON.stringify(file, null, 2)}\n`, "occupancy", input.from);
     if (report.errors.length > 0) outputs["qa-crops"] = input.store.putTree(path.join(scratch, "crops"), "qa-crops", input.from);
     return { outputs, notes: [...(report.speechRate === undefined ? [] : [speechRateSummary(report.speechRate)]), qaSummary(report), `${report.notes[0]}; mp4 ${report.mp4.durationS.toFixed(2)} s`] };
   } finally {

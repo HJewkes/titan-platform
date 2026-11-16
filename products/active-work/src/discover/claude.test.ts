@@ -57,7 +57,7 @@ describe('discoverClaudeSessions', () => {
     const result = await discoverClaudeSessions();
     expect(result.hits).toEqual([]);
     expect(result.errors).toHaveLength(1);
-    expect(result.errors[0].source).toBe('claude-session');
+    expect(result.errors[0]?.source).toBe('claude-session');
   });
 
   it('builds one hit per cwd with metadata and detail', async () => {
@@ -88,8 +88,8 @@ describe('discoverClaudeSessions', () => {
   it('omits the subject suffix when no message or summary exists', async () => {
     writeSession('p1', 's', [{ cwd: '/work/alpha' }]);
     const { hits } = await discoverClaudeSessions();
-    expect(hits[0].detail).toBe('1 session(s) at /work/alpha');
-    expect(hits[0].metadata?.subject).toBe('');
+    expect(hits[0]?.detail).toBe('1 session(s) at /work/alpha');
+    expect(hits[0]?.metadata?.subject).toBe('');
   });
 
   it('aggregates sessions across project dirs by cwd, newest wins', async () => {
@@ -120,7 +120,7 @@ describe('discoverClaudeSessions', () => {
     writeSession('p1', 'old', [{ cwd: '/w' }, userMsg('kept')], 1000);
     writeSession('p1', 'new', [{ cwd: '/w' }], 2000);
     const { hits } = await discoverClaudeSessions();
-    expect(hits[0].metadata).toMatchObject({
+    expect(hits[0]?.metadata).toMatchObject({
       lastSessionId: 'new',
       subject: 'kept',
     });
@@ -130,7 +130,7 @@ describe('discoverClaudeSessions', () => {
     writeSession('p1', 'new', [{ cwd: '/w' }], 2000);
     writeSession('p1', 'old', [{ cwd: '/w' }, userMsg('late subject')], 1000);
     const { hits } = await discoverClaudeSessions();
-    expect(hits[0].metadata).toMatchObject({
+    expect(hits[0]?.metadata).toMatchObject({
       lastSessionId: 'new',
       subject: 'late subject',
     });
@@ -140,7 +140,7 @@ describe('discoverClaudeSessions', () => {
     writeSession('p1', 'new', [{ cwd: '/w' }, userMsg('first')], 2000);
     writeSession('p1', 'old', [{ cwd: '/w' }, userMsg('second')], 1000);
     const { hits } = await discoverClaudeSessions();
-    expect(hits[0].metadata).toMatchObject({
+    expect(hits[0]?.metadata).toMatchObject({
       sessionCount: 2,
       subject: 'first',
     });
@@ -154,7 +154,7 @@ describe('discoverClaudeSessions', () => {
       { type: 'summary', summary: '  two  ' },
     ]);
     const { hits } = await discoverClaudeSessions();
-    expect(hits[0].metadata?.subject).toBe('[compaction] two');
+    expect(hits[0]?.metadata?.subject).toBe('[compaction] two');
   });
 
   it('takes the first non-empty text block from array content', async () => {
@@ -173,13 +173,13 @@ describe('discoverClaudeSessions', () => {
       userMsg('later'),
     ]);
     const { hits } = await discoverClaudeSessions();
-    expect(hits[0].metadata?.subject).toBe('block text');
+    expect(hits[0]?.metadata?.subject).toBe('block text');
   });
 
   it('truncates long subjects to 120 characters with an ellipsis', async () => {
     writeSession('p1', 's', [{ cwd: '/w' }, userMsg('x'.repeat(300))]);
     const { hits } = await discoverClaudeSessions();
-    expect(hits[0].metadata?.subject).toBe(`${'x'.repeat(119)}…`);
+    expect(hits[0]?.metadata?.subject).toBe(`${'x'.repeat(119)}…`);
   });
 
   it('uses the first non-empty cwd and skips malformed lines and non-objects', async () => {
@@ -223,7 +223,7 @@ describe('discoverClaudeSessions', () => {
       const { hits, errors } = await discoverClaudeSessions();
       expect(hits.map((h) => h.ref)).toEqual(['/w']);
       expect(errors).toHaveLength(1);
-      expect(errors[0].source).toBe('claude-session:broken.jsonl');
+      expect(errors[0]?.source).toBe('claude-session:broken.jsonl');
     }
   );
 });

@@ -4,6 +4,7 @@ export { focusPackage, packagesInSnapshot, type FocusOptions } from "./focus-pac
 export { computeLayout } from "./layout.js";
 export { computeCompoundLayout, computeCompoundLayoutStrict, type CompoundLayoutSpec } from "./compound-layout.js";
 export { ELK_VERSION, MAP_LABEL_METRICS, emitRepoMap, type RepoMapOptions } from "./repo-map.js";
+export type { ContextLink, ContextNode, RepoMapContext } from "./repo-map-context.js";
 export type {
   MapBox,
   MapCardRef,
@@ -30,7 +31,7 @@ export {
   type Rect,
   type SceneRect,
 } from "./place-pills.js";
-export { packageOf } from "./package-of.js";
+export { packageOf, packageRootOf } from "./package-of.js";
 export { COMPOUND_LAYOUT_OPTIONS, ELK_LAYOUT_OPTIONS, FOCUS_LAYOUT_OPTIONS } from "./layout-options.js";
 export type {
   CompoundLayoutResult,

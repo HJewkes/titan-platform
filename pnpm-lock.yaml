@@ -278,6 +278,49 @@ importers:
         specifier: ^8.0.3
         version: 8.3.0(@types/node@25.9.5)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1)
 
+  apps/docs:
+    dependencies:
+      '@titan-design/react-ui':
+        specifier: ^0.23.1
+        version: 0.23.1(tcpsdurwh2bjt32gdxfhihdeqe)
+      react:
+        specifier: ^19.3.0
+        version: 19.3.0
+      react-dom:
+        specifier: ^19.3.0
+        version: 19.3.0(react@19.3.0)
+      react-native-web:
+        specifier: ^0.21.0
+        version: 0.21.2(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+    devDependencies:
+      '@types/react':
+        specifier: ^19.3.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.3.0
+        version: 19.3.0(@types/react@19.3.0)
+      '@vitejs/plugin-react':
+        specifier: ^6.1.1
+        version: 6.1.1(vite@8.3.0(@types/node@25.9.5)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1))
+      autoprefixer:
+        specifier: ^10.6.1
+        version: 10.6.1(postcss@8.5.28)
+      jsdom:
+        specifier: ^30.1.0
+        version: 30.1.0
+      nativewind:
+        specifier: ^4.2.1
+        version: 4.2.7(react-native-reanimated@4.7.0(react-native-worklets@0.13.0(@babel/core@7.29.7)(@react-native/metro-config@0.87.1(@babel/core@7.29.7))(react-native@0.87.1(@babel/core@7.29.7)(@react-native/metro-config@0.87.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0))(react-native@0.87.1(@babel/core@7.29.7)(@react-native/metro-config@0.87.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0))(react-native-svg@15.15.5(react-native@0.87.1(@babel/core@7.29.7)(@react-native/metro-config@0.87.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0))(react-native@0.87.1(@babel/core@7.29.7)(@react-native/metro-config@0.87.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)(tailwindcss@3.4.19(tsx@4.23.13)(yaml@2.9.1))
+      postcss:
+        specifier: ^8.5.28
+        version: 8.5.28
+      tailwindcss:
+        specifier: ^3.4.17
+        version: 3.4.19(tsx@4.23.13)(yaml@2.9.1)
+      vite:
+        specifier: ^8.0.3
+        version: 8.3.0(@types/node@25.9.5)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1)
+
   deploy/hub:
     dependencies:
       '@titan-design/matrix-bus':
@@ -1206,6 +1249,8 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
+  packages/text-ingest: {}
+
   packages/throughput:
     dependencies:
       '@titan-design/evidence':
@@ -1509,6 +1554,9 @@ importers:
       '@titan-design/app-paths':
         specifier: workspace:^
         version: link:../../packages/app-paths
+      '@titan-design/autoresearch':
+        specifier: workspace:^
+        version: link:../../packages/autoresearch
       '@titan-design/code-graph':
         specifier: workspace:^
         version: link:../../packages/code-graph
@@ -1594,9 +1642,6 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
     devDependencies:
-      '@titan-design/autoresearch':
-        specifier: workspace:^
-        version: link:../../packages/autoresearch
       '@titan-design/test-kit':
         specifier: workspace:*
         version: link:../../packages/test-kit
@@ -1760,6 +1805,9 @@ importers:
       '@titan-design/embed':
         specifier: workspace:^
         version: link:../../packages/embed
+      '@titan-design/evidence':
+        specifier: workspace:^
+        version: link:../../packages/evidence
       '@titan-design/retrieval':
         specifier: workspace:^
         version: link:../../packages/retrieval

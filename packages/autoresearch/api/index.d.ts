@@ -12,8 +12,8 @@ declare const ProposalSchema: z.ZodObject<{
     expectedEffect: z.ZodObject<{
         metric: z.ZodString;
         direction: z.ZodEnum<{
-            up: "up";
             down: "down";
+            up: "up";
         }>;
         microSignal: z.ZodString;
     }, z.core.$strip>;
@@ -23,10 +23,10 @@ declare const ProposalSchema: z.ZodObject<{
     differsFrom: z.ZodOptional<z.ZodString>;
     priority: z.ZodDefault<z.ZodNumber>;
     source: z.ZodDefault<z.ZodEnum<{
-        planner: "planner";
-        owner: "owner";
-        requeue: "requeue";
         followup: "followup";
+        owner: "owner";
+        planner: "planner";
+        requeue: "requeue";
     }>>;
     parent: z.ZodOptional<z.ZodString>;
     evidence: z.ZodDefault<z.ZodArray<z.ZodString>>;
@@ -42,8 +42,8 @@ declare const IdeaSchema: z.ZodObject<{
     expectedEffect: z.ZodObject<{
         metric: z.ZodString;
         direction: z.ZodEnum<{
-            up: "up";
             down: "down";
+            up: "up";
         }>;
         microSignal: z.ZodString;
     }, z.core.$strip>;
@@ -53,10 +53,10 @@ declare const IdeaSchema: z.ZodObject<{
     differsFrom: z.ZodOptional<z.ZodString>;
     priority: z.ZodDefault<z.ZodNumber>;
     source: z.ZodDefault<z.ZodEnum<{
-        planner: "planner";
-        owner: "owner";
-        requeue: "requeue";
         followup: "followup";
+        owner: "owner";
+        planner: "planner";
+        requeue: "requeue";
     }>>;
     parent: z.ZodOptional<z.ZodString>;
     evidence: z.ZodDefault<z.ZodArray<z.ZodString>>;
@@ -77,8 +77,8 @@ declare const QueueOpsSchema: z.ZodObject<{
         expectedEffect: z.ZodObject<{
             metric: z.ZodString;
             direction: z.ZodEnum<{
-                up: "up";
                 down: "down";
+                up: "up";
             }>;
             microSignal: z.ZodString;
         }, z.core.$strip>;
@@ -88,10 +88,10 @@ declare const QueueOpsSchema: z.ZodObject<{
         differsFrom: z.ZodOptional<z.ZodString>;
         priority: z.ZodDefault<z.ZodNumber>;
         source: z.ZodDefault<z.ZodEnum<{
-            planner: "planner";
-            owner: "owner";
-            requeue: "requeue";
             followup: "followup";
+            owner: "owner";
+            planner: "planner";
+            requeue: "requeue";
         }>>;
         parent: z.ZodOptional<z.ZodString>;
         evidence: z.ZodDefault<z.ZodArray<z.ZodString>>;
@@ -160,8 +160,8 @@ declare const ImplementerSchema: z.ZodObject<{
     sessionId: z.ZodOptional<z.ZodString>;
     resumedFrom: z.ZodOptional<z.ZodString>;
     mode: z.ZodEnum<{
-        spawn: "spawn";
         resume: "resume";
+        spawn: "spawn";
     }>;
     account: z.ZodOptional<z.ZodString>;
 }, z.core.$strip>;
@@ -187,11 +187,11 @@ declare const OutcomeSchema: z.ZodObject<{
     }>;
     reason: z.ZodString;
     rungReached: z.ZodEnum<{
-        none: "none";
         L0: "L0";
         L1: "L1";
         L2: "L2";
         L3: "L3";
+        none: "none";
     }>;
     head: z.ZodOptional<z.ZodString>;
     branch: z.ZodOptional<z.ZodString>;
@@ -231,8 +231,8 @@ declare const OutcomeSchema: z.ZodObject<{
         sessionId: z.ZodOptional<z.ZodString>;
         resumedFrom: z.ZodOptional<z.ZodString>;
         mode: z.ZodEnum<{
-            spawn: "spawn";
             resume: "resume";
+            spawn: "spawn";
         }>;
         account: z.ZodOptional<z.ZodString>;
     }, z.core.$strip>>;
@@ -282,15 +282,15 @@ declare const MetricSpecSchema: z.ZodObject<{
     primary: z.ZodObject<{
         name: z.ZodString;
         direction: z.ZodEnum<{
-            min: "min";
             max: "max";
+            min: "min";
         }>;
     }, z.core.$strip>;
     guards: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnion<readonly [z.ZodNumber, z.ZodObject<{
         slack: z.ZodNumber;
         direction: z.ZodEnum<{
-            min: "min";
             max: "max";
+            min: "min";
         }>;
     }, z.core.$strip>]>>>;
     zeroTolerance: z.ZodDefault<z.ZodArray<z.ZodString>>;
@@ -313,15 +313,15 @@ declare const TargetSchema: z.ZodObject<{
         primary: z.ZodObject<{
             name: z.ZodString;
             direction: z.ZodEnum<{
-                min: "min";
                 max: "max";
+                min: "min";
             }>;
         }, z.core.$strip>;
         guards: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnion<readonly [z.ZodNumber, z.ZodObject<{
             slack: z.ZodNumber;
             direction: z.ZodEnum<{
-                min: "min";
                 max: "max";
+                min: "min";
             }>;
         }, z.core.$strip>]>>>;
         zeroTolerance: z.ZodDefault<z.ZodArray<z.ZodString>>;
@@ -534,15 +534,15 @@ declare const PinnedSchema: z.ZodObject<{
             primary: z.ZodObject<{
                 name: z.ZodString;
                 direction: z.ZodEnum<{
-                    min: "min";
                     max: "max";
+                    min: "min";
                 }>;
             }, z.core.$strip>;
             guards: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnion<readonly [z.ZodNumber, z.ZodObject<{
                 slack: z.ZodNumber;
                 direction: z.ZodEnum<{
-                    min: "min";
                     max: "max";
+                    min: "min";
                 }>;
             }, z.core.$strip>]>>>;
             zeroTolerance: z.ZodDefault<z.ZodArray<z.ZodString>>;
@@ -620,8 +620,8 @@ declare const ImplementedSchema: z.ZodObject<{
     sessionId: z.ZodOptional<z.ZodString>;
     resumedFrom: z.ZodOptional<z.ZodString>;
     mode: z.ZodEnum<{
-        spawn: "spawn";
         resume: "resume";
+        spawn: "spawn";
     }>;
     account: z.ZodOptional<z.ZodString>;
     head: z.ZodString;
@@ -647,8 +647,8 @@ declare const PlannerSchema: z.ZodObject<{
     agent: z.ZodString;
     sessionId: z.ZodOptional<z.ZodString>;
     mode: z.ZodOptional<z.ZodEnum<{
-        spawn: "spawn";
         resume: "resume";
+        spawn: "spawn";
     }>>;
     usage: z.ZodOptional<z.ZodObject<{
         usd: z.ZodNumber;
@@ -663,8 +663,8 @@ declare const PlannedSchema: z.ZodObject<{
     agent: z.ZodOptional<z.ZodString>;
     sessionId: z.ZodOptional<z.ZodOptional<z.ZodString>>;
     mode: z.ZodOptional<z.ZodOptional<z.ZodEnum<{
-        spawn: "spawn";
         resume: "resume";
+        spawn: "spawn";
     }>>>;
     usage: z.ZodOptional<z.ZodOptional<z.ZodObject<{
         usd: z.ZodNumber;
@@ -722,9 +722,9 @@ interface RunPin {
 }
 /** `ff` moves onto the round's first winner, `merge` onto a later winner merged on top of it, `sync` onto main merged in. */
 declare const RatchetKindSchema: z.ZodEnum<{
-    sync: "sync";
     ff: "ff";
     merge: "merge";
+    sync: "sync";
 }>;
 interface RatchetRequest extends RunPin {
     tree: string;
@@ -845,9 +845,9 @@ declare const RatchetMoveSchema: z.ZodObject<{
     from: z.ZodString;
     to: z.ZodString;
     kind: z.ZodEnum<{
-        sync: "sync";
         ff: "ff";
         merge: "merge";
+        sync: "sync";
     }>;
     ideaId: z.ZodOptional<z.ZodString>;
 }, z.core.$strip>;
@@ -878,9 +878,9 @@ declare const RoundSummarySchema: z.ZodObject<{
         from: z.ZodString;
         to: z.ZodString;
         kind: z.ZodEnum<{
-            sync: "sync";
             ff: "ff";
             merge: "merge";
+            sync: "sync";
         }>;
         ideaId: z.ZodOptional<z.ZodString>;
     }, z.core.$strip>>>;
@@ -925,8 +925,8 @@ declare const RoundSummarySchema: z.ZodObject<{
 type RoundSummary = z.infer<typeof RoundSummarySchema>;
 declare const StopReasonSchema: z.ZodEnum<{
     "ideas-evaluated": "ideas-evaluated";
-    "rounds-without-gain": "rounds-without-gain";
     "rounds-exhausted": "rounds-exhausted";
+    "rounds-without-gain": "rounds-without-gain";
 }>;
 type StopReason = z.infer<typeof StopReasonSchema>;
 declare const CadenceTriggerSchema: z.ZodEnum<{
@@ -1016,9 +1016,9 @@ interface SyncRequest extends RunPin {
  */
 declare const SyncResultSchema: z.ZodObject<{
     state: z.ZodEnum<{
+        closed: "closed";
         merged: "merged";
         open: "open";
-        closed: "closed";
     }>;
     merged: z.ZodOptional<z.ZodObject<{
         from: z.ZodString;
@@ -1041,8 +1041,8 @@ declare const InboxSchema: z.ZodObject<{
         expectedEffect: z.ZodObject<{
             metric: z.ZodString;
             direction: z.ZodEnum<{
-                up: "up";
                 down: "down";
+                up: "up";
             }>;
             microSignal: z.ZodString;
         }, z.core.$strip>;
@@ -1052,10 +1052,10 @@ declare const InboxSchema: z.ZodObject<{
         differsFrom: z.ZodOptional<z.ZodString>;
         priority: z.ZodDefault<z.ZodNumber>;
         source: z.ZodDefault<z.ZodEnum<{
-            planner: "planner";
-            owner: "owner";
-            requeue: "requeue";
             followup: "followup";
+            owner: "owner";
+            planner: "planner";
+            requeue: "requeue";
         }>>;
         parent: z.ZodOptional<z.ZodString>;
         evidence: z.ZodDefault<z.ZodArray<z.ZodString>>;
@@ -1082,8 +1082,8 @@ declare const RegistryRowSchema: z.ZodObject<{
     archives: z.ZodArray<z.ZodString>;
     stopReason: z.ZodEnum<{
         "ideas-evaluated": "ideas-evaluated";
-        "rounds-without-gain": "rounds-without-gain";
         "rounds-exhausted": "rounds-exhausted";
+        "rounds-without-gain": "rounds-without-gain";
     }>;
     provenance: z.ZodString;
 }, z.core.$strip>;

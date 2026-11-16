@@ -117,9 +117,11 @@ describe('resolveSessionLocation', () => {
   });
 
   it('resolves a session that lives under a profile root', async () => {
-    const configDirs = ['.claude', 'agents'].map((name) => path.join(projectsRoot, name));
-    const profileProject = path.join(configDirs[1], 'projects', '-Users-alice-agent');
-    await fs.mkdir(path.join(configDirs[0], 'projects'), { recursive: true });
+    const defaultDir = path.join(projectsRoot, '.claude');
+    const profileDir = path.join(projectsRoot, 'agents');
+    const configDirs = [defaultDir, profileDir];
+    const profileProject = path.join(profileDir, 'projects', '-Users-alice-agent');
+    await fs.mkdir(path.join(defaultDir, 'projects'), { recursive: true });
     await fs.mkdir(profileProject, { recursive: true });
     await fs.writeFile(
       path.join(profileProject, 'prof-ile-id.jsonl'),

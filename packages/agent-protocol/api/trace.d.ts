@@ -87,8 +87,8 @@ declare const loose: {
     }, z.core.$strict>, z.ZodObject<{
         kind: z.ZodLiteral<"snapshot">;
         scope: z.ZodEnum<{
-            turn: "turn";
             conversation: "conversation";
+            turn: "turn";
         }>;
         scopeId: z.ZodString;
         epoch: z.ZodString;
@@ -114,13 +114,13 @@ declare const loose: {
     run: z.ZodObject<{
         workflowName: z.ZodString;
         status: z.ZodEnum<{
-            running: "running";
-            paused: "paused";
+            cancelled: "cancelled";
             cancelling: "cancelling";
-            recovery_required: "recovery_required";
             completed: "completed";
             failed: "failed";
-            cancelled: "cancelled";
+            paused: "paused";
+            recovery_required: "recovery_required";
+            running: "running";
         }>;
         completedAt: z.ZodOptional<z.ZodNullable<z.ZodISODateTime>>;
         error: z.ZodOptional<z.ZodNullable<z.ZodString>>;
@@ -134,13 +134,13 @@ declare const loose: {
     } | {
         workflowName: z.ZodString;
         status: z.ZodEnum<{
-            running: "running";
-            paused: "paused";
+            cancelled: "cancelled";
             cancelling: "cancelling";
-            recovery_required: "recovery_required";
             completed: "completed";
             failed: "failed";
-            cancelled: "cancelled";
+            paused: "paused";
+            recovery_required: "recovery_required";
+            running: "running";
         }>;
         completedAt: z.ZodOptional<z.ZodNullable<z.ZodISODateTime>>;
         error: z.ZodOptional<z.ZodNullable<z.ZodString>>;
@@ -158,30 +158,30 @@ declare const loose: {
         iteration: z.ZodNumber;
         attempt: z.ZodNumber;
         stepKind: z.ZodEnum<{
-            dispatch: "dispatch";
-            seed: "seed";
             assisted: "assisted";
             authorize: "authorize";
+            dispatch: "dispatch";
+            seed: "seed";
         }>;
         executionId: z.ZodOptional<z.ZodString>;
         phase: z.ZodOptional<z.ZodEnum<{
-            running: "running";
-            recovery_required: "recovery_required";
-            failed: "failed";
-            cancelled: "cancelled";
-            prepared: "prepared";
-            dispatching: "dispatching";
             cancel_requested: "cancel_requested";
-            succeeded: "succeeded";
             cancellation_unknown: "cancellation_unknown";
+            cancelled: "cancelled";
+            dispatching: "dispatching";
             ended: "ended";
+            failed: "failed";
+            prepared: "prepared";
+            recovery_required: "recovery_required";
+            running: "running";
+            succeeded: "succeeded";
         }>>;
         outcome: z.ZodOptional<z.ZodEnum<{
-            recovery_required: "recovery_required";
-            failed: "failed";
-            cancelled: "cancelled";
-            succeeded: "succeeded";
             cancellation_unknown: "cancellation_unknown";
+            cancelled: "cancelled";
+            failed: "failed";
+            recovery_required: "recovery_required";
+            succeeded: "succeeded";
         }>>;
         retryable: z.ZodOptional<z.ZodBoolean>;
         error: z.ZodOptional<z.ZodString>;
@@ -198,10 +198,10 @@ declare const loose: {
         }, z.core.$strict>>;
         recovery: z.ZodOptional<z.ZodObject<{
             kind: z.ZodEnum<{
-                unknown: "unknown";
                 legacy_unrecoverable: "legacy_unrecoverable";
                 not_found: "not_found";
                 ownership_lost: "ownership_lost";
+                unknown: "unknown";
             }>;
             observedAt: z.ZodISODateTime;
         }, z.core.$strict>>;
@@ -217,30 +217,30 @@ declare const loose: {
         iteration: z.ZodNumber;
         attempt: z.ZodNumber;
         stepKind: z.ZodEnum<{
-            dispatch: "dispatch";
-            seed: "seed";
             assisted: "assisted";
             authorize: "authorize";
+            dispatch: "dispatch";
+            seed: "seed";
         }>;
         executionId: z.ZodOptional<z.ZodString>;
         phase: z.ZodOptional<z.ZodEnum<{
-            running: "running";
-            recovery_required: "recovery_required";
-            failed: "failed";
-            cancelled: "cancelled";
-            prepared: "prepared";
-            dispatching: "dispatching";
             cancel_requested: "cancel_requested";
-            succeeded: "succeeded";
             cancellation_unknown: "cancellation_unknown";
+            cancelled: "cancelled";
+            dispatching: "dispatching";
             ended: "ended";
+            failed: "failed";
+            prepared: "prepared";
+            recovery_required: "recovery_required";
+            running: "running";
+            succeeded: "succeeded";
         }>>;
         outcome: z.ZodOptional<z.ZodEnum<{
-            recovery_required: "recovery_required";
-            failed: "failed";
-            cancelled: "cancelled";
-            succeeded: "succeeded";
             cancellation_unknown: "cancellation_unknown";
+            cancelled: "cancelled";
+            failed: "failed";
+            recovery_required: "recovery_required";
+            succeeded: "succeeded";
         }>>;
         retryable: z.ZodOptional<z.ZodBoolean>;
         error: z.ZodOptional<z.ZodString>;
@@ -257,10 +257,10 @@ declare const loose: {
         }, z.core.$strict>>;
         recovery: z.ZodOptional<z.ZodObject<{
             kind: z.ZodEnum<{
-                unknown: "unknown";
                 legacy_unrecoverable: "legacy_unrecoverable";
                 not_found: "not_found";
                 ownership_lost: "ownership_lost";
+                unknown: "unknown";
             }>;
             observedAt: z.ZodISODateTime;
         }, z.core.$strict>>;
@@ -324,9 +324,9 @@ declare const loose: {
         }>;
         status: z.ZodOptional<z.ZodEnum<{
             cancelled: "cancelled";
+            expired: "expired";
             pending: "pending";
             resolved: "resolved";
-            expired: "expired";
         }>>;
         verdict: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
             allow: "allow";
@@ -356,9 +356,9 @@ declare const loose: {
         }>;
         status: z.ZodOptional<z.ZodEnum<{
             cancelled: "cancelled";
+            expired: "expired";
             pending: "pending";
             resolved: "resolved";
-            expired: "expired";
         }>>;
         verdict: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
             allow: "allow";
@@ -426,9 +426,9 @@ declare const loose: {
         closedAt: z.ZodOptional<z.ZodNullable<z.ZodISODateTime>>;
         reviewRounds: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
         checks: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
-            pending: "pending";
-            passing: "passing";
             failing: "failing";
+            passing: "passing";
+            pending: "pending";
         }>>>;
         repo: z.ZodString;
         span: z.ZodOptional<z.ZodObject<{
@@ -450,9 +450,9 @@ declare const loose: {
         closedAt: z.ZodOptional<z.ZodNullable<z.ZodISODateTime>>;
         reviewRounds: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
         checks: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
-            pending: "pending";
-            passing: "passing";
             failing: "failing";
+            passing: "passing";
+            pending: "pending";
         }>>>;
         repo: z.ZodString;
         span: z.ZodOptional<z.ZodObject<{
@@ -534,8 +534,8 @@ declare const loose: {
         }, z.core.$strict>, z.ZodObject<{
             kind: z.ZodLiteral<"snapshot">;
             scope: z.ZodEnum<{
-                turn: "turn";
                 conversation: "conversation";
+                turn: "turn";
             }>;
             scopeId: z.ZodString;
             epoch: z.ZodString;
@@ -594,8 +594,8 @@ declare const loose: {
         }, z.core.$strict>, z.ZodObject<{
             kind: z.ZodLiteral<"snapshot">;
             scope: z.ZodEnum<{
-                turn: "turn";
                 conversation: "conversation";
+                turn: "turn";
             }>;
             scopeId: z.ZodString;
             epoch: z.ZodString;
@@ -634,13 +634,13 @@ declare const loose: {
     record: z.ZodDiscriminatedUnion<[z.ZodObject<{
         workflowName: z.ZodString;
         status: z.ZodEnum<{
-            running: "running";
-            paused: "paused";
+            cancelled: "cancelled";
             cancelling: "cancelling";
-            recovery_required: "recovery_required";
             completed: "completed";
             failed: "failed";
-            cancelled: "cancelled";
+            paused: "paused";
+            recovery_required: "recovery_required";
+            running: "running";
         }>;
         completedAt: z.ZodOptional<z.ZodNullable<z.ZodISODateTime>>;
         error: z.ZodOptional<z.ZodNullable<z.ZodString>>;
@@ -654,13 +654,13 @@ declare const loose: {
     } | {
         workflowName: z.ZodString;
         status: z.ZodEnum<{
-            running: "running";
-            paused: "paused";
+            cancelled: "cancelled";
             cancelling: "cancelling";
-            recovery_required: "recovery_required";
             completed: "completed";
             failed: "failed";
-            cancelled: "cancelled";
+            paused: "paused";
+            recovery_required: "recovery_required";
+            running: "running";
         }>;
         completedAt: z.ZodOptional<z.ZodNullable<z.ZodISODateTime>>;
         error: z.ZodOptional<z.ZodNullable<z.ZodString>>;
@@ -677,30 +677,30 @@ declare const loose: {
         iteration: z.ZodNumber;
         attempt: z.ZodNumber;
         stepKind: z.ZodEnum<{
-            dispatch: "dispatch";
-            seed: "seed";
             assisted: "assisted";
             authorize: "authorize";
+            dispatch: "dispatch";
+            seed: "seed";
         }>;
         executionId: z.ZodOptional<z.ZodString>;
         phase: z.ZodOptional<z.ZodEnum<{
-            running: "running";
-            recovery_required: "recovery_required";
-            failed: "failed";
-            cancelled: "cancelled";
-            prepared: "prepared";
-            dispatching: "dispatching";
             cancel_requested: "cancel_requested";
-            succeeded: "succeeded";
             cancellation_unknown: "cancellation_unknown";
+            cancelled: "cancelled";
+            dispatching: "dispatching";
             ended: "ended";
+            failed: "failed";
+            prepared: "prepared";
+            recovery_required: "recovery_required";
+            running: "running";
+            succeeded: "succeeded";
         }>>;
         outcome: z.ZodOptional<z.ZodEnum<{
-            recovery_required: "recovery_required";
-            failed: "failed";
-            cancelled: "cancelled";
-            succeeded: "succeeded";
             cancellation_unknown: "cancellation_unknown";
+            cancelled: "cancelled";
+            failed: "failed";
+            recovery_required: "recovery_required";
+            succeeded: "succeeded";
         }>>;
         retryable: z.ZodOptional<z.ZodBoolean>;
         error: z.ZodOptional<z.ZodString>;
@@ -717,10 +717,10 @@ declare const loose: {
         }, z.core.$strict>>;
         recovery: z.ZodOptional<z.ZodObject<{
             kind: z.ZodEnum<{
-                unknown: "unknown";
                 legacy_unrecoverable: "legacy_unrecoverable";
                 not_found: "not_found";
                 ownership_lost: "ownership_lost";
+                unknown: "unknown";
             }>;
             observedAt: z.ZodISODateTime;
         }, z.core.$strict>>;
@@ -736,30 +736,30 @@ declare const loose: {
         iteration: z.ZodNumber;
         attempt: z.ZodNumber;
         stepKind: z.ZodEnum<{
-            dispatch: "dispatch";
-            seed: "seed";
             assisted: "assisted";
             authorize: "authorize";
+            dispatch: "dispatch";
+            seed: "seed";
         }>;
         executionId: z.ZodOptional<z.ZodString>;
         phase: z.ZodOptional<z.ZodEnum<{
-            running: "running";
-            recovery_required: "recovery_required";
-            failed: "failed";
-            cancelled: "cancelled";
-            prepared: "prepared";
-            dispatching: "dispatching";
             cancel_requested: "cancel_requested";
-            succeeded: "succeeded";
             cancellation_unknown: "cancellation_unknown";
+            cancelled: "cancelled";
+            dispatching: "dispatching";
             ended: "ended";
+            failed: "failed";
+            prepared: "prepared";
+            recovery_required: "recovery_required";
+            running: "running";
+            succeeded: "succeeded";
         }>>;
         outcome: z.ZodOptional<z.ZodEnum<{
-            recovery_required: "recovery_required";
-            failed: "failed";
-            cancelled: "cancelled";
-            succeeded: "succeeded";
             cancellation_unknown: "cancellation_unknown";
+            cancelled: "cancelled";
+            failed: "failed";
+            recovery_required: "recovery_required";
+            succeeded: "succeeded";
         }>>;
         retryable: z.ZodOptional<z.ZodBoolean>;
         error: z.ZodOptional<z.ZodString>;
@@ -776,10 +776,10 @@ declare const loose: {
         }, z.core.$strict>>;
         recovery: z.ZodOptional<z.ZodObject<{
             kind: z.ZodEnum<{
-                unknown: "unknown";
                 legacy_unrecoverable: "legacy_unrecoverable";
                 not_found: "not_found";
                 ownership_lost: "ownership_lost";
+                unknown: "unknown";
             }>;
             observedAt: z.ZodISODateTime;
         }, z.core.$strict>>;
@@ -841,9 +841,9 @@ declare const loose: {
         }>;
         status: z.ZodOptional<z.ZodEnum<{
             cancelled: "cancelled";
+            expired: "expired";
             pending: "pending";
             resolved: "resolved";
-            expired: "expired";
         }>>;
         verdict: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
             allow: "allow";
@@ -873,9 +873,9 @@ declare const loose: {
         }>;
         status: z.ZodOptional<z.ZodEnum<{
             cancelled: "cancelled";
+            expired: "expired";
             pending: "pending";
             resolved: "resolved";
-            expired: "expired";
         }>>;
         verdict: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
             allow: "allow";
@@ -942,9 +942,9 @@ declare const loose: {
         closedAt: z.ZodOptional<z.ZodNullable<z.ZodISODateTime>>;
         reviewRounds: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
         checks: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
-            pending: "pending";
-            passing: "passing";
             failing: "failing";
+            passing: "passing";
+            pending: "pending";
         }>>>;
         repo: z.ZodString;
         span: z.ZodOptional<z.ZodObject<{
@@ -966,9 +966,9 @@ declare const loose: {
         closedAt: z.ZodOptional<z.ZodNullable<z.ZodISODateTime>>;
         reviewRounds: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
         checks: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
-            pending: "pending";
-            passing: "passing";
             failing: "failing";
+            passing: "passing";
+            pending: "pending";
         }>>>;
         repo: z.ZodString;
         span: z.ZodOptional<z.ZodObject<{
@@ -1049,8 +1049,8 @@ declare const loose: {
         }, z.core.$strict>, z.ZodObject<{
             kind: z.ZodLiteral<"snapshot">;
             scope: z.ZodEnum<{
-                turn: "turn";
                 conversation: "conversation";
+                turn: "turn";
             }>;
             scopeId: z.ZodString;
             epoch: z.ZodString;
@@ -1109,8 +1109,8 @@ declare const loose: {
         }, z.core.$strict>, z.ZodObject<{
             kind: z.ZodLiteral<"snapshot">;
             scope: z.ZodEnum<{
-                turn: "turn";
                 conversation: "conversation";
+                turn: "turn";
             }>;
             scopeId: z.ZodString;
             epoch: z.ZodString;
@@ -1177,8 +1177,8 @@ declare const TraceUsageMeasurementSchema: z.ZodDiscriminatedUnion<[z.ZodObject<
 }, z.core.$strict>, z.ZodObject<{
     kind: z.ZodLiteral<"snapshot">;
     scope: z.ZodEnum<{
-        turn: "turn";
         conversation: "conversation";
+        turn: "turn";
     }>;
     scopeId: z.ZodString;
     epoch: z.ZodString;
@@ -1204,13 +1204,13 @@ declare const TraceUsageMeasurementSchema: z.ZodDiscriminatedUnion<[z.ZodObject<
 declare const TraceRunSchema: z.ZodObject<{
     workflowName: z.ZodString;
     status: z.ZodEnum<{
-        running: "running";
-        paused: "paused";
+        cancelled: "cancelled";
         cancelling: "cancelling";
-        recovery_required: "recovery_required";
         completed: "completed";
         failed: "failed";
-        cancelled: "cancelled";
+        paused: "paused";
+        recovery_required: "recovery_required";
+        running: "running";
     }>;
     completedAt: z.ZodOptional<z.ZodNullable<z.ZodISODateTime>>;
     error: z.ZodOptional<z.ZodNullable<z.ZodString>>;
@@ -1224,13 +1224,13 @@ declare const TraceRunSchema: z.ZodObject<{
 } | {
     workflowName: z.ZodString;
     status: z.ZodEnum<{
-        running: "running";
-        paused: "paused";
+        cancelled: "cancelled";
         cancelling: "cancelling";
-        recovery_required: "recovery_required";
         completed: "completed";
         failed: "failed";
-        cancelled: "cancelled";
+        paused: "paused";
+        recovery_required: "recovery_required";
+        running: "running";
     }>;
     completedAt: z.ZodOptional<z.ZodNullable<z.ZodISODateTime>>;
     error: z.ZodOptional<z.ZodNullable<z.ZodString>>;
@@ -1248,30 +1248,30 @@ declare const TraceAttemptSchema: z.ZodObject<{
     iteration: z.ZodNumber;
     attempt: z.ZodNumber;
     stepKind: z.ZodEnum<{
-        dispatch: "dispatch";
-        seed: "seed";
         assisted: "assisted";
         authorize: "authorize";
+        dispatch: "dispatch";
+        seed: "seed";
     }>;
     executionId: z.ZodOptional<z.ZodString>;
     phase: z.ZodOptional<z.ZodEnum<{
-        running: "running";
-        recovery_required: "recovery_required";
-        failed: "failed";
-        cancelled: "cancelled";
-        prepared: "prepared";
-        dispatching: "dispatching";
         cancel_requested: "cancel_requested";
-        succeeded: "succeeded";
         cancellation_unknown: "cancellation_unknown";
+        cancelled: "cancelled";
+        dispatching: "dispatching";
         ended: "ended";
+        failed: "failed";
+        prepared: "prepared";
+        recovery_required: "recovery_required";
+        running: "running";
+        succeeded: "succeeded";
     }>>;
     outcome: z.ZodOptional<z.ZodEnum<{
-        recovery_required: "recovery_required";
-        failed: "failed";
-        cancelled: "cancelled";
-        succeeded: "succeeded";
         cancellation_unknown: "cancellation_unknown";
+        cancelled: "cancelled";
+        failed: "failed";
+        recovery_required: "recovery_required";
+        succeeded: "succeeded";
     }>>;
     retryable: z.ZodOptional<z.ZodBoolean>;
     error: z.ZodOptional<z.ZodString>;
@@ -1288,10 +1288,10 @@ declare const TraceAttemptSchema: z.ZodObject<{
     }, z.core.$strict>>;
     recovery: z.ZodOptional<z.ZodObject<{
         kind: z.ZodEnum<{
-            unknown: "unknown";
             legacy_unrecoverable: "legacy_unrecoverable";
             not_found: "not_found";
             ownership_lost: "ownership_lost";
+            unknown: "unknown";
         }>;
         observedAt: z.ZodISODateTime;
     }, z.core.$strict>>;
@@ -1307,30 +1307,30 @@ declare const TraceAttemptSchema: z.ZodObject<{
     iteration: z.ZodNumber;
     attempt: z.ZodNumber;
     stepKind: z.ZodEnum<{
-        dispatch: "dispatch";
-        seed: "seed";
         assisted: "assisted";
         authorize: "authorize";
+        dispatch: "dispatch";
+        seed: "seed";
     }>;
     executionId: z.ZodOptional<z.ZodString>;
     phase: z.ZodOptional<z.ZodEnum<{
-        running: "running";
-        recovery_required: "recovery_required";
-        failed: "failed";
-        cancelled: "cancelled";
-        prepared: "prepared";
-        dispatching: "dispatching";
         cancel_requested: "cancel_requested";
-        succeeded: "succeeded";
         cancellation_unknown: "cancellation_unknown";
+        cancelled: "cancelled";
+        dispatching: "dispatching";
         ended: "ended";
+        failed: "failed";
+        prepared: "prepared";
+        recovery_required: "recovery_required";
+        running: "running";
+        succeeded: "succeeded";
     }>>;
     outcome: z.ZodOptional<z.ZodEnum<{
-        recovery_required: "recovery_required";
-        failed: "failed";
-        cancelled: "cancelled";
-        succeeded: "succeeded";
         cancellation_unknown: "cancellation_unknown";
+        cancelled: "cancelled";
+        failed: "failed";
+        recovery_required: "recovery_required";
+        succeeded: "succeeded";
     }>>;
     retryable: z.ZodOptional<z.ZodBoolean>;
     error: z.ZodOptional<z.ZodString>;
@@ -1347,10 +1347,10 @@ declare const TraceAttemptSchema: z.ZodObject<{
     }, z.core.$strict>>;
     recovery: z.ZodOptional<z.ZodObject<{
         kind: z.ZodEnum<{
-            unknown: "unknown";
             legacy_unrecoverable: "legacy_unrecoverable";
             not_found: "not_found";
             ownership_lost: "ownership_lost";
+            unknown: "unknown";
         }>;
         observedAt: z.ZodISODateTime;
     }, z.core.$strict>>;
@@ -1414,9 +1414,9 @@ declare const TraceGateSchema: z.ZodObject<{
     }>;
     status: z.ZodOptional<z.ZodEnum<{
         cancelled: "cancelled";
+        expired: "expired";
         pending: "pending";
         resolved: "resolved";
-        expired: "expired";
     }>>;
     verdict: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
         allow: "allow";
@@ -1446,9 +1446,9 @@ declare const TraceGateSchema: z.ZodObject<{
     }>;
     status: z.ZodOptional<z.ZodEnum<{
         cancelled: "cancelled";
+        expired: "expired";
         pending: "pending";
         resolved: "resolved";
-        expired: "expired";
     }>>;
     verdict: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
         allow: "allow";
@@ -1516,9 +1516,9 @@ declare const TraceArtifactSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     closedAt: z.ZodOptional<z.ZodNullable<z.ZodISODateTime>>;
     reviewRounds: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
     checks: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
-        pending: "pending";
-        passing: "passing";
         failing: "failing";
+        passing: "passing";
+        pending: "pending";
     }>>>;
     repo: z.ZodString;
     span: z.ZodOptional<z.ZodObject<{
@@ -1540,9 +1540,9 @@ declare const TraceArtifactSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     closedAt: z.ZodOptional<z.ZodNullable<z.ZodISODateTime>>;
     reviewRounds: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
     checks: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
-        pending: "pending";
-        passing: "passing";
         failing: "failing";
+        passing: "passing";
+        pending: "pending";
     }>>>;
     repo: z.ZodString;
     span: z.ZodOptional<z.ZodObject<{
@@ -1624,8 +1624,8 @@ declare const TraceCostSchema: z.ZodObject<{
     }, z.core.$strict>, z.ZodObject<{
         kind: z.ZodLiteral<"snapshot">;
         scope: z.ZodEnum<{
-            turn: "turn";
             conversation: "conversation";
+            turn: "turn";
         }>;
         scopeId: z.ZodString;
         epoch: z.ZodString;
@@ -1684,8 +1684,8 @@ declare const TraceCostSchema: z.ZodObject<{
     }, z.core.$strict>, z.ZodObject<{
         kind: z.ZodLiteral<"snapshot">;
         scope: z.ZodEnum<{
-            turn: "turn";
             conversation: "conversation";
+            turn: "turn";
         }>;
         scopeId: z.ZodString;
         epoch: z.ZodString;
@@ -1724,13 +1724,13 @@ declare const TraceCostSchema: z.ZodObject<{
 declare const TraceRecordSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     workflowName: z.ZodString;
     status: z.ZodEnum<{
-        running: "running";
-        paused: "paused";
+        cancelled: "cancelled";
         cancelling: "cancelling";
-        recovery_required: "recovery_required";
         completed: "completed";
         failed: "failed";
-        cancelled: "cancelled";
+        paused: "paused";
+        recovery_required: "recovery_required";
+        running: "running";
     }>;
     completedAt: z.ZodOptional<z.ZodNullable<z.ZodISODateTime>>;
     error: z.ZodOptional<z.ZodNullable<z.ZodString>>;
@@ -1744,13 +1744,13 @@ declare const TraceRecordSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
 } | {
     workflowName: z.ZodString;
     status: z.ZodEnum<{
-        running: "running";
-        paused: "paused";
+        cancelled: "cancelled";
         cancelling: "cancelling";
-        recovery_required: "recovery_required";
         completed: "completed";
         failed: "failed";
-        cancelled: "cancelled";
+        paused: "paused";
+        recovery_required: "recovery_required";
+        running: "running";
     }>;
     completedAt: z.ZodOptional<z.ZodNullable<z.ZodISODateTime>>;
     error: z.ZodOptional<z.ZodNullable<z.ZodString>>;
@@ -1767,30 +1767,30 @@ declare const TraceRecordSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     iteration: z.ZodNumber;
     attempt: z.ZodNumber;
     stepKind: z.ZodEnum<{
-        dispatch: "dispatch";
-        seed: "seed";
         assisted: "assisted";
         authorize: "authorize";
+        dispatch: "dispatch";
+        seed: "seed";
     }>;
     executionId: z.ZodOptional<z.ZodString>;
     phase: z.ZodOptional<z.ZodEnum<{
-        running: "running";
-        recovery_required: "recovery_required";
-        failed: "failed";
-        cancelled: "cancelled";
-        prepared: "prepared";
-        dispatching: "dispatching";
         cancel_requested: "cancel_requested";
-        succeeded: "succeeded";
         cancellation_unknown: "cancellation_unknown";
+        cancelled: "cancelled";
+        dispatching: "dispatching";
         ended: "ended";
+        failed: "failed";
+        prepared: "prepared";
+        recovery_required: "recovery_required";
+        running: "running";
+        succeeded: "succeeded";
     }>>;
     outcome: z.ZodOptional<z.ZodEnum<{
-        recovery_required: "recovery_required";
-        failed: "failed";
-        cancelled: "cancelled";
-        succeeded: "succeeded";
         cancellation_unknown: "cancellation_unknown";
+        cancelled: "cancelled";
+        failed: "failed";
+        recovery_required: "recovery_required";
+        succeeded: "succeeded";
     }>>;
     retryable: z.ZodOptional<z.ZodBoolean>;
     error: z.ZodOptional<z.ZodString>;
@@ -1807,10 +1807,10 @@ declare const TraceRecordSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     }, z.core.$strict>>;
     recovery: z.ZodOptional<z.ZodObject<{
         kind: z.ZodEnum<{
-            unknown: "unknown";
             legacy_unrecoverable: "legacy_unrecoverable";
             not_found: "not_found";
             ownership_lost: "ownership_lost";
+            unknown: "unknown";
         }>;
         observedAt: z.ZodISODateTime;
     }, z.core.$strict>>;
@@ -1826,30 +1826,30 @@ declare const TraceRecordSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     iteration: z.ZodNumber;
     attempt: z.ZodNumber;
     stepKind: z.ZodEnum<{
-        dispatch: "dispatch";
-        seed: "seed";
         assisted: "assisted";
         authorize: "authorize";
+        dispatch: "dispatch";
+        seed: "seed";
     }>;
     executionId: z.ZodOptional<z.ZodString>;
     phase: z.ZodOptional<z.ZodEnum<{
-        running: "running";
-        recovery_required: "recovery_required";
-        failed: "failed";
-        cancelled: "cancelled";
-        prepared: "prepared";
-        dispatching: "dispatching";
         cancel_requested: "cancel_requested";
-        succeeded: "succeeded";
         cancellation_unknown: "cancellation_unknown";
+        cancelled: "cancelled";
+        dispatching: "dispatching";
         ended: "ended";
+        failed: "failed";
+        prepared: "prepared";
+        recovery_required: "recovery_required";
+        running: "running";
+        succeeded: "succeeded";
     }>>;
     outcome: z.ZodOptional<z.ZodEnum<{
-        recovery_required: "recovery_required";
-        failed: "failed";
-        cancelled: "cancelled";
-        succeeded: "succeeded";
         cancellation_unknown: "cancellation_unknown";
+        cancelled: "cancelled";
+        failed: "failed";
+        recovery_required: "recovery_required";
+        succeeded: "succeeded";
     }>>;
     retryable: z.ZodOptional<z.ZodBoolean>;
     error: z.ZodOptional<z.ZodString>;
@@ -1866,10 +1866,10 @@ declare const TraceRecordSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     }, z.core.$strict>>;
     recovery: z.ZodOptional<z.ZodObject<{
         kind: z.ZodEnum<{
-            unknown: "unknown";
             legacy_unrecoverable: "legacy_unrecoverable";
             not_found: "not_found";
             ownership_lost: "ownership_lost";
+            unknown: "unknown";
         }>;
         observedAt: z.ZodISODateTime;
     }, z.core.$strict>>;
@@ -1931,9 +1931,9 @@ declare const TraceRecordSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     }>;
     status: z.ZodOptional<z.ZodEnum<{
         cancelled: "cancelled";
+        expired: "expired";
         pending: "pending";
         resolved: "resolved";
-        expired: "expired";
     }>>;
     verdict: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
         allow: "allow";
@@ -1963,9 +1963,9 @@ declare const TraceRecordSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     }>;
     status: z.ZodOptional<z.ZodEnum<{
         cancelled: "cancelled";
+        expired: "expired";
         pending: "pending";
         resolved: "resolved";
-        expired: "expired";
     }>>;
     verdict: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
         allow: "allow";
@@ -2032,9 +2032,9 @@ declare const TraceRecordSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     closedAt: z.ZodOptional<z.ZodNullable<z.ZodISODateTime>>;
     reviewRounds: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
     checks: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
-        pending: "pending";
-        passing: "passing";
         failing: "failing";
+        passing: "passing";
+        pending: "pending";
     }>>>;
     repo: z.ZodString;
     span: z.ZodOptional<z.ZodObject<{
@@ -2056,9 +2056,9 @@ declare const TraceRecordSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     closedAt: z.ZodOptional<z.ZodNullable<z.ZodISODateTime>>;
     reviewRounds: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
     checks: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
-        pending: "pending";
-        passing: "passing";
         failing: "failing";
+        passing: "passing";
+        pending: "pending";
     }>>>;
     repo: z.ZodString;
     span: z.ZodOptional<z.ZodObject<{
@@ -2139,8 +2139,8 @@ declare const TraceRecordSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     }, z.core.$strict>, z.ZodObject<{
         kind: z.ZodLiteral<"snapshot">;
         scope: z.ZodEnum<{
-            turn: "turn";
             conversation: "conversation";
+            turn: "turn";
         }>;
         scopeId: z.ZodString;
         epoch: z.ZodString;
@@ -2199,8 +2199,8 @@ declare const TraceRecordSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     }, z.core.$strict>, z.ZodObject<{
         kind: z.ZodLiteral<"snapshot">;
         scope: z.ZodEnum<{
-            turn: "turn";
             conversation: "conversation";
+            turn: "turn";
         }>;
         scopeId: z.ZodString;
         epoch: z.ZodString;
@@ -2240,12 +2240,12 @@ declare const TraceRecordSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
 declare const TraceEnvelopeSchema: z.ZodObject<{
     schema: z.ZodLiteral<"titan.trace/v1">;
     kind: z.ZodEnum<{
-        run: "run";
+        artifact: "artifact";
         attempt: "attempt";
         call: "call";
-        gate: "gate";
-        artifact: "artifact";
         cost: "cost";
+        gate: "gate";
+        run: "run";
     }>;
     id: z.ZodString;
     runId: z.ZodString;

@@ -9,10 +9,49 @@ import { validateSlug } from '../utils/slug.js';
 
 export type EdgeOp = { op: 'set_parent' | 'add_dep'; value: string };
 
+type SetStringOp = {
+  op: 'set_bet' | 'set_fold' | 'set_kind' | 'set_cos' | 'set_area' | 'set_due';
+  value: string;
+};
+
+export type SetOp = SetStringOp | { op: 'set_estimate'; value: number };
+
 export type ApplyOp =
   | { op: 'add_tag' | 'remove_tag' | 'append'; value: string }
   | EdgeOp
+  | SetOp
   | { op: 'done' };
+
+/** The task field each set op writes, and the schema that decides its value. */
+const SET_FIELDS = {
+  set_bet: { field: 'bet', schema: TaskSchema.shape.bet },
+  set_estimate: { field: 'estimate', schema: TaskSchema.shape.estimate },
+  set_fold: { field: 'fold', schema: TaskSchema.shape.fold },
+  set_kind: { field: 'kind', schema: TaskSchema.shape.kind },
+  set_cos: { field: 'cos', schema: TaskSchema.shape.cos },
+  set_area: { field: 'area', schema: TaskSchema.shape.area },
+  set_due: { field: 'due', schema: TaskSchema.shape.due },
+} as const;
+
+type SetOpName =keyof typeof SET_FIELDS;
+
+const VALID_OPS = [
+  'add_tag',
+  'remove_tag',
+  'append',
+  'set_parent',
+  'add_dep',
+  'done',
+  ...Object.keys(SET_FIELDS),
+];
+
+export function isSetOp(op: ApplyOp): op is SetOp {
+  return op.op in SET_FIELDS;
+}
+
+export function setFieldOf(op: SetOp): (typeof SET_FIELDS)[SetOpName]['field'] {
+  return SET_FIELDS[op.op].field;
+}
 
 export interface PlanEntry {
   index: number;
@@ -61,6 +100,23 @@ export function hasEdgeOps(entries: readonly PlanEntry[]): boolean {
   return entries.some((entry) => entry.error === undefined && entry.ops.some(isEdgeOp));
 }
 
+function parseSetValue(key: SetOpName, raw: unknown): SetOp {
+  const refused = (reason: string | undefined): Error =>
+    new Error(`${key} ${reason ?? 'needs a value'}: ${JSON.stringify(raw)}`);
+  if (key === 'set_estimate') {
+    const parsed = SET_FIELDS[key].schema.safeParse(raw);
+    if (!parsed.success || parsed.data === undefined) throw refused(parsed.error?.issues[0]?.message);
+    return { op: key, value: parsed.data };
+  }
+  const parsed = SET_FIELDS[key].schema.safeParse(raw);
+  if (!parsed.success || parsed.data === undefined) throw refused(parsed.error?.issues[0]?.message);
+  return { op: key, value: parsed.data };
+}
+
+function isSetOpName(key: string): key is SetOpName {
+  return Object.hasOwn(SET_FIELDS, key);
+}
+
 function parseOp(raw: unknown): ApplyOp {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error(`Each op must be an object: ${JSON.stringify(raw)}`);
@@ -76,7 +132,8 @@ function parseOp(raw: unknown): ApplyOp {
     if (value !== true) throw new Error('done takes only true');
     return { op: 'done' };
   }
-  throw new Error(`Unknown op: ${key}`);
+  if (isSetOpName(key)) return parseSetValue(key, value);
+  throw new Error(`Unknown op: ${key} (valid: ${VALID_OPS.join(', ')})`);
 }
 
 function stringField(record: Record<string, unknown>, key: string): string {
