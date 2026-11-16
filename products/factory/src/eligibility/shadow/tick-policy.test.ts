@@ -4,6 +4,7 @@ import { BetSchema } from "@titan-design/pm";
 import { writePlanRecord } from "@titan-design/pm/node";
 import { partialFake } from "@titan-design/test-kit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { EXIT } from "../../cli.js";
 import type { Verbs } from "../../cli-types.js";
 import { loadRuleFile } from "./rule-file.js";
@@ -84,26 +85,32 @@ describe("shadow tick plan read", () => {
   });
 });
 
+/** `fetch` that records the slug of every `task.list` it forwards. */
+function slugRecording(fetch: typeof globalThis.fetch): { fetch: typeof globalThis.fetch; slugs: string[] } {
+  const slugs: string[] = [];
+  const recording: typeof globalThis.fetch = async (url, init) => {
+    if (String(url).endsWith("/rpc/task.list")) slugs.push(z.object({ slug: z.string() }).parse(JSON.parse(String(init?.body))).slug);
+    return fetch(url, init);
+  };
+  return { fetch: recording, slugs };
+}
+
 describe("shadow tick owner-only lanes", () => {
   beforeEach(() => void vi.useFakeTimers({ toFake: ["Date"], now: Date.parse(NOW) }));
   afterEach(() => void vi.useRealTimers());
 
   it("a lane whose initiative active-work withholds from agents writes one refused row and reads none of its tasks", async () => {
-    const alphaLane = { initiative: "alpha", tag: "lane-a" };
+    const home = homeWith({ lanes: [{ initiative: "private-notes", tag: null }, { initiative: "alpha", tag: "lane-a" }] });
     const inventory = [{ slug: "alpha", withheld_from_agents: false }, { slug: "private-notes", withheld_from_agents: true }];
-    const taskLists = (rpc: ReturnType<typeof fakeRpc>) => rpc.commands.filter((command) => command === "task.list").length;
-    const home = homeWith({ lanes: [{ initiative: "private-notes", tag: null }, alphaLane] });
-    const rpc = fakeRpc({ tasks: [task(1)], bets: [bet], inventory });
-    const alphaOnly = fakeRpc({ tasks: [task(1)], bets: [bet], inventory });
+    const reads = slugRecording(fakeRpc({ tasks: [task(1)], bets: [bet], inventory }).fetch);
 
-    await shadowTickCli(home, rpc.fetch);
-    await shadowTickCli(homeWith({ lanes: [alphaLane] }), alphaOnly.fetch);
+    await shadowTickCli(home, reads.fetch);
 
     expect(rowsOf(home).filter((row) => JSON.stringify(row.lane ?? null).includes('"private-notes"'))).toEqual([
       expect.objectContaining({ kind: "refused", task: null, stage: "eligibility", codes: ["owner-only-initiative"] }),
     ]);
-    expect(taskLists(alphaOnly)).toBeGreaterThan(0);
-    expect(taskLists(rpc)).toBe(taskLists(alphaOnly));
+    expect(reads.slugs).not.toHaveLength(0);
+    expect(new Set(reads.slugs)).toEqual(new Set(["alpha"]));
   });
 
   it("an initiative missing its verdict, as from an older daemon, is refused and none of its tasks is read", async () => {

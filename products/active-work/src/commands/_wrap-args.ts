@@ -102,6 +102,14 @@ export const ResultSchema = z.object({
   updated: z.string(),
   /** Files this wrap touched, relative to the initiative directory. */
   files_updated: z.array(z.string()),
+  /** Notes the search hit log shows surfacing across several initiatives. */
+  promotion_candidates: z.array(
+    z.object({
+      ref: z.string(),
+      renders: z.number().int().positive(),
+      initiatives: z.number().int().positive(),
+    }),
+  ),
 });
 
 export type Args = z.infer<typeof ArgsSchema>;
