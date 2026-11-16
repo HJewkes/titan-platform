@@ -10,13 +10,13 @@ import { ValidationError } from '../errors.js';
  */
 
 /** The fields intent lines rely on; the extractor's other fields ride along untouched. */
-export const OwnerMessageSchema = z.looseObject({
+const OwnerMessageSchema = z.looseObject({
   id: z.string().regex(/^[A-Za-z0-9][\w.-]*$/, { message: 'message id must be a single token' }),
   ts: z.string().regex(/^\d{4}-\d{2}-\d{2}/, { message: 'ts must start with a YYYY-MM-DD date' }),
   text: z.string(),
 });
 
-export type OwnerMessage = z.infer<typeof OwnerMessageSchema>;
+type OwnerMessage = z.infer<typeof OwnerMessageSchema>;
 
 export function ownerMessagesPath(activeRoot: string): string {
   return path.join(activeRoot, 'factory', 'plan', 'owner-messages.jsonl');
