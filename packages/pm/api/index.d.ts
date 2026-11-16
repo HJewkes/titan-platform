@@ -1,5 +1,5 @@
-import { T as Task, I as IntentLine } from './planning.js';
-export { B as Bet, a as BetSchema, D as DELIVERABLE_ID_REGEX, F as Freeze, b as FreezeEndCondition, c as FreezeEndConditionSchema, d as FreezeSchema, e as INTENT_SECTIONS, f as IntentLineSchema, g as IntentSection, O as OutOfScope, h as OutOfScopeSchema, i as Outcome, j as OutcomeSchema, k as OwnerIntentRef, l as OwnerIntentRefSchema, P as Prediction, m as PredictionSchema, n as TaskSchema } from './planning.js';
+import { T as Task, I as IntentLine } from './prediction-check.js';
+export { B as Bet, a as BetSchema, D as DELIVERABLE_ID_REGEX, F as Freeze, b as FreezeEndCondition, c as FreezeEndConditionSchema, d as FreezeSchema, e as INTENT_SECTIONS, f as IntentLineSchema, g as IntentSection, O as OutOfScope, h as OutOfScopeSchema, i as Outcome, j as OutcomeSchema, k as OwnerIntentRef, l as OwnerIntentRefSchema, P as PREDICTION_CHECKS, m as Prediction, n as PredictionCheck, o as PredictionSchema, S as ScorecardWeekRow, p as SheetBet, q as TaskSchema, r as checkPrediction, s as orderBetsForSheet } from './prediction-check.js';
 import { z } from 'zod';
 
 declare const InitiativeVisibilitySchema: z.ZodEnum<{
@@ -423,7 +423,7 @@ declare function parseIntentDigest(text: string): IntentDigestResult;
 
 export { type AgentAccess, type AgentAccessInput, type AreaEntry, BUILT_IN_STATUSES, type BetLookup, type CategorizedTask, type CategoryAxis, type CategoryError, type CategoryRegistry, CategoryRegistrySchema, type ClaimRow, type CriticalPathOptions, type CriticalPathResult, type CrossInitiativeParentWarning, DELIVERABLE_STATUSES, DISPOSITION_KINDS, type Deliverable, type DeliverableEntry, DeliverableSchema, type DeliverableStatus, type DispositionCheck, type DispositionKind, type DispositionRow, DispositionRowSchema, type EdgeChange, type EdgeCheck, type EdgeError, type EdgeField, type Edges, type ExternalDep, INTENT_DIGEST_SCHEMA, type InitiativeBriefRef, type InitiativePrefix, type InitiativeVisibility, InitiativeVisibilitySchema, type IntentDigestError, type IntentDigestResult, IntentLine, type ReviewItem, type ReviewPin, type RunCost, type StatusEntry, TOPIC_PRIORITIES, TOPIC_VERDICTS, Task, type TaskFloat, type TaskKeyEntry, type TaskKeyIndex, type TaskKeyRefusal, type TaskKeyResolution, type TaskRequire, TaskRequireSchema, type TaskTreeNode, type TopicPriority, type TopicRow, type TopicVerdict, agentAccess, betProblem, categoriesPath, checkCategories, checkDispositions, checkEdges, criticalPath, deliverablePath, deliverablesDir, isAgentVisible, parseCategoryRegistry, parseClaimsAudit, parseDeliverableRegistry, parseDispositions, parseIntentDigest, parseTopicsJudged, prioritizedTopics, readEdges, readReviewPin, readTsv, resolveTaskKey, sumRunCost, summaryRecommendations, taskTree };
 
-// ./dist/planning.d.ts
+// ./dist/prediction-check.d.ts
 import { z } from 'zod';
 
 declare const DELIVERABLE_ID_REGEX: RegExp;
@@ -593,6 +593,11 @@ declare const BetSchema: z.ZodObject<{
         expected: z.ZodNumber;
         read_by: z.ZodString;
     }, z.core.$strict>;
+    prediction_check: z.ZodOptional<z.ZodEnum<{
+        confirmed: "confirmed";
+        missed: "missed";
+        unread: "unread";
+    }>>;
     state: z.ZodEnum<{
         done: "done";
         dropped: "dropped";
@@ -685,4 +690,23 @@ declare const IntentLineSchema: z.ZodObject<{
 }, z.core.$strict>;
 type IntentLine = z.infer<typeof IntentLineSchema>;
 
-export { type Bet as B, DELIVERABLE_ID_REGEX as D, type Freeze as F, type IntentLine as I, type OutOfScope as O, type Prediction as P, type Task as T, BetSchema as a, type FreezeEndCondition as b, FreezeEndConditionSchema as c, FreezeSchema as d, INTENT_SECTIONS as e, IntentLineSchema as f, type IntentSection as g, OutOfScopeSchema as h, type Outcome as i, OutcomeSchema as j, type OwnerIntentRef as k, OwnerIntentRefSchema as l, PredictionSchema as m, TaskSchema as n };
+/** What the scorecard says about a bet's prediction: `unread` means no week row carried the metric. */
+declare const PREDICTION_CHECKS: readonly ["confirmed", "missed", "unread"];
+type PredictionCheck = (typeof PREDICTION_CHECKS)[number];
+/** The slice of a session-analytics `WeekRow` the check reads, so pm's pure root takes no dependency on it. */
+interface ScorecardWeekRow {
+    isoWeek: string;
+    dimension: string;
+    key: string;
+    metrics: Readonly<Record<string, number | null>>;
+}
+/** Reads the bet's prediction against its initiative's scorecard row for the bet's week. */
+declare function checkPrediction(bet: Bet, rows: readonly ScorecardWeekRow[]): PredictionCheck;
+interface SheetBet {
+    bet: Bet;
+    check?: PredictionCheck;
+}
+/** Bets grouped by initiative, a missed prediction ahead of every other bet in its group, then by `order`. */
+declare function orderBetsForSheet<T extends SheetBet>(entries: readonly T[]): T[];
+
+export { type Bet as B, DELIVERABLE_ID_REGEX as D, type Freeze as F, type IntentLine as I, type OutOfScope as O, PREDICTION_CHECKS as P, type ScorecardWeekRow as S, type Task as T, BetSchema as a, type FreezeEndCondition as b, FreezeEndConditionSchema as c, FreezeSchema as d, INTENT_SECTIONS as e, IntentLineSchema as f, type IntentSection as g, OutOfScopeSchema as h, type Outcome as i, OutcomeSchema as j, type OwnerIntentRef as k, OwnerIntentRefSchema as l, type Prediction as m, type PredictionCheck as n, PredictionSchema as o, type SheetBet as p, TaskSchema as q, checkPrediction as r, orderBetsForSheet as s };
