@@ -50,11 +50,11 @@ describe('plan intent verbs', () => {
     await withTempActiveRoot(async (root) => {
       writeAgentVisibleBrief(root, 'alpha');
 
-      const noQuote = planIntentAdd.run({ initiative: 'alpha', section: 'Taste', date: '2026-11-01', ref: 'msg:a' }, ctx(root));
-      const noDate = planIntentAdd.run({ initiative: 'alpha', section: 'Taste', quote: 'Invented', ref: 'msg:a' }, ctx(root));
+      const noQuote = { initiative: 'alpha', section: 'Taste', date: '2026-11-01', ref: 'msg:a' };
+      const noDate = { initiative: 'alpha', section: 'Taste', quote: 'Invented', ref: 'msg:a' };
 
-      await expect(noQuote).rejects.toThrow(/quote/);
-      await expect(noDate).rejects.toThrow(/date/);
+      await expect(planIntentAdd.run(noQuote, ctx(root))).rejects.toThrow(/quote/);
+      await expect(planIntentAdd.run(noDate, ctx(root))).rejects.toThrow(/date/);
       await expect(planIntentList.run({ initiative: 'alpha' }, ctx(root))).resolves.toEqual([]);
     });
   });
@@ -66,10 +66,9 @@ describe('plan intent verbs', () => {
       const base = { initiative: 'alpha', section: 'Standing direction', message: queueMessage.id };
 
       const line = await planIntentAdd.run({ ...base, quote: 'keep the queue short' }, ctx(root));
-      const foreign = planIntentAdd.run({ ...base, quote: 'words never said' }, ctx(root));
 
       expect(line).toMatchObject({ date: '2026-11-02', quote: 'keep the queue short', ref: `msg:${queueMessage.id}` });
-      await expect(foreign).rejects.toBeInstanceOf(ValidationError);
+      await expect(planIntentAdd.run({ ...base, quote: 'words never said' }, ctx(root))).rejects.toBeInstanceOf(ValidationError);
     });
   });
 
