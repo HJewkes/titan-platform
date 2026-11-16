@@ -102,8 +102,18 @@ function fromSnapshot(named: string, result: NeighborsResult): Neighbour[] {
   ];
 }
 
-async function isFile(absolute: string): Promise<boolean> {
-  return fs.stat(absolute).then((stat) => stat.isFile(), () => false);
+/**
+ * The real path of `relative` when it names a file inside `repoRoot`, else null. Real paths on both
+ * sides, so `..`, an absolute path outside the checkout and a symlink out of it are all refused.
+ */
+async function realFileIn(repoRoot: string, relative: string): Promise<string | null> {
+  try {
+    const [root, file] = await Promise.all([fs.realpath(repoRoot), fs.realpath(path.resolve(repoRoot, relative))]);
+    const inside = file.startsWith(`${root}${path.sep}`);
+    return inside && (await fs.stat(file)).isFile() ? file : null;
+  } catch {
+    return null;
+  }
 }
 
 /** A `.js` specifier names the `.ts` source under NodeNext, so the source extensions are tried in its place. */
@@ -117,14 +127,15 @@ async function resolveImport(repoRoot: string, from: string, specifier: string):
   const target = path.posix.normalize(path.posix.join(path.posix.dirname(from), specifier));
   if (target.startsWith('../')) return null;
   for (const candidate of candidates(target)) {
-    if (await isFile(path.join(repoRoot, candidate))) return candidate;
+    if ((await realFileIn(repoRoot, candidate)) !== null) return candidate;
   }
   return null;
 }
 
 /** Relative imports only: a package import is not a file in this checkout. */
 async function fromSource(named: string, repoRoot: string): Promise<Neighbour[]> {
-  const source = await fs.readFile(path.join(repoRoot, named), 'utf8').catch(() => '');
+  const real = await realFileIn(repoRoot, named);
+  const source = real === null ? '' : await fs.readFile(real, 'utf8').catch(() => '');
   const specifiers = [...new Set(Array.from(source.matchAll(RELATIVE_IMPORT), (match) => match[1]))];
   const resolved = await Promise.all(specifiers.map((specifier) => resolveImport(repoRoot, named, specifier)));
   return resolved.flatMap((found) => (found === null ? [] : [{ path: found, direction: 'imported by' as const, named }]));
@@ -147,6 +158,18 @@ function neighboursOf(named: string, deps: CodeDeps): Promise<Neighbour[] | stri
   return withDeadline(ask, CODEWATCH_DEADLINE_MS, deps.sleep ?? defaultSleep, silent);
 }
 
+/**
+ * Codewatch's answer carries no repo key, so a snapshot of another repo can answer for a same-named
+ * path. Only a named file and neighbours that exist in the spawn's checkout are kept, and with no checkout
+ * to check against none are.
+ */
+async function inSpawnRepo(named: string, found: Neighbour[], repoRoot: string | undefined): Promise<Neighbour[]> {
+  if (repoRoot === undefined) return [];
+  if ((await realFileIn(repoRoot, named)) === null) return [];
+  const present = await Promise.all(found.map((entry) => realFileIn(repoRoot, entry.path)));
+  return found.filter((_, i) => present[i] !== null);
+}
+
 async function gather(files: readonly string[], deps: CodeDeps): Promise<BriefCode> {
   const asked = files.slice(0, FILES_ASKED);
   const answers = await Promise.all(asked.map((named) => neighboursOf(named, deps)));
@@ -156,7 +179,10 @@ async function gather(files: readonly string[], deps: CodeDeps): Promise<BriefCo
       typeof answers[i] !== 'string' || deps.repoRoot === undefined ? [] : fromSource(named, deps.repoRoot),
     ),
   );
-  const neighbours = answers.flatMap((answer, i) => (typeof answer === 'string' ? (fallback[i] ?? []) : answer));
+  const scoped = await Promise.all(
+    answers.map((answer, i) => (typeof answer === 'string' ? [] : inSpawnRepo(asked[i] ?? '', answer, deps.repoRoot))),
+  );
+  const neighbours = answers.flatMap((answer, i) => (typeof answer === 'string' ? (fallback[i] ?? []) : (scoped[i] ?? [])));
   const named = new Set(files);
   const byLine = new Map(neighbours.filter((entry) => !named.has(entry.path)).map((entry) => [line(entry), entry.path]));
   const shown = [...byLine].slice(0, CODE_LINES);
