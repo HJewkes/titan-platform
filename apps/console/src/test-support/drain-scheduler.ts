@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { setTimeout as sleep } from "node:timers/promises";
 
 interface SchedulerTask {
   readonly id: number;
@@ -10,6 +11,9 @@ interface Scheduler {
 }
 
 const MAX_DRAIN_PASSES = 50;
+// A drain that cannot finish (a scheduler whose host loop was captured from fake timers) must not hold afterAll to the
+// hook timeout; the file then ends as it did before the drain existed.
+const DRAIN_DEADLINE_MS = 2_000;
 
 // react-dom requires its own copy of scheduler; resolving from react-dom's path loads that same module instance, whose
 // queue is the one a commit's passive-effect flush waits in.
@@ -25,18 +29,30 @@ function runAfterQueuedTasks(scheduler: Scheduler): Promise<SchedulerTask> {
   });
 }
 
-/**
- * Runs every task React left in the scheduler, while the file's jsdom still exists. A commit made outside `act` hands
- * its passive-effect flush to the scheduler, whose callback reads `window.event`; under a full suite's load that task
- * can outlive the file and throw "window is not defined" from the next file's node environment (TP-6597, TP-4769).
- * A task that runs can queue more through promises, so passes repeat until one sees no task queued since the last.
- */
-export async function drainScheduler(scheduler: Scheduler = reactDomScheduler()): Promise<void> {
+async function drainUntilQuiet(scheduler: Scheduler): Promise<void> {
   let previous = await runAfterQueuedTasks(scheduler);
   for (let pass = 0; pass < MAX_DRAIN_PASSES; pass++) {
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    // node:timers, not the global a file may have faked, so a follow-up queued through a timer gets its turn.
+    await sleep(0);
     const next = await runAfterQueuedTasks(scheduler);
     if (next.id === previous.id + 1) return;
     previous = next;
+  }
+}
+
+/**
+ * Runs every task React left in the scheduler, while the file's jsdom still exists. A commit made outside `act` hands
+ * its passive-effect flush to the scheduler, whose callback reads `window.event`; under a full suite's load that task
+ * can outlive the file's jsdom and throw "window is not defined" (TP-6597, TP-4769). A task that runs can queue more
+ * through promises and timers, so passes repeat until one sees no task queued since the last.
+ */
+export async function drainScheduler(scheduler: Scheduler = reactDomScheduler()): Promise<void> {
+  const deadline = new AbortController();
+  // Aborting the deadline once the drain wins rejects its sleep; that rejection is the expected way it ends.
+  const expired = sleep(DRAIN_DEADLINE_MS, undefined, { signal: deadline.signal }).catch(() => undefined);
+  try {
+    await Promise.race([drainUntilQuiet(scheduler), expired]);
+  } finally {
+    deadline.abort();
   }
 }

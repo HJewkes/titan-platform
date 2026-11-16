@@ -54,4 +54,14 @@ describe("draining React's scheduler before jsdom teardown", () => {
 
     expect(ran).toEqual(["first", "second"]);
   });
+
+  it("a scheduler that never runs its queue releases the drain at the deadline", async () => {
+    let id = 0;
+    const stalled = { unstable_IdlePriority: 5, unstable_scheduleCallback: () => ({ id: id++ }) };
+    const startedAt = performance.now();
+
+    await drainScheduler(stalled);
+
+    expect(performance.now() - startedAt).toBeGreaterThanOrEqual(1_900);
+  });
 });
