@@ -85,17 +85,25 @@ describe("shadow tick plan read", () => {
 });
 
 describe("shadow tick owner-only lanes", () => {
+  beforeEach(() => void vi.useFakeTimers({ toFake: ["Date"], now: Date.parse(NOW) }));
+  afterEach(() => void vi.useRealTimers());
+
   it("a lane whose initiative active-work withholds from agents writes one refused row and reads none of its tasks", async () => {
-    const home = homeWith({ lanes: [{ initiative: "private-notes", tag: null }, { initiative: "alpha", tag: "lane-a" }] });
+    const alphaLane = { initiative: "alpha", tag: "lane-a" };
     const inventory = [{ slug: "alpha", withheld_from_agents: false }, { slug: "private-notes", withheld_from_agents: true }];
+    const taskLists = (rpc: ReturnType<typeof fakeRpc>) => rpc.commands.filter((command) => command === "task.list").length;
+    const home = homeWith({ lanes: [{ initiative: "private-notes", tag: null }, alphaLane] });
     const rpc = fakeRpc({ tasks: [task(1)], bets: [bet], inventory });
+    const alphaOnly = fakeRpc({ tasks: [task(1)], bets: [bet], inventory });
 
     await shadowTickCli(home, rpc.fetch);
+    await shadowTickCli(homeWith({ lanes: [alphaLane] }), alphaOnly.fetch);
 
     expect(rowsOf(home).filter((row) => JSON.stringify(row.lane ?? null).includes('"private-notes"'))).toEqual([
       expect.objectContaining({ kind: "refused", task: null, stage: "eligibility", codes: ["owner-only-initiative"] }),
     ]);
-    expect(rpc.commands.filter((command) => command === "task.list")).toHaveLength(2);
+    expect(taskLists(alphaOnly)).toBeGreaterThan(0);
+    expect(taskLists(rpc)).toBe(taskLists(alphaOnly));
   });
 
   it("an initiative missing its verdict, as from an older daemon, is refused and none of its tasks is read", async () => {
