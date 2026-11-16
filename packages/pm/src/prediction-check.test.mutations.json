@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a decrease prediction is read as an increase",
+      "file": "packages/pm/src/prediction-check.ts",
+      "find": "direction === \"increase\" ? reading >= expected : reading <= expected",
+      "replace": "direction === \"increase\" ? reading >= expected : reading >= expected",
+      "kills": ["checkPrediction confirms a decrease prediction when the week reads at or below expected", "checkPrediction misses a decrease prediction when the week reads above expected"]
+    },
+    {
+      "name": "an increase prediction is read as a decrease",
+      "file": "packages/pm/src/prediction-check.ts",
+      "find": "direction === \"increase\" ? reading >= expected",
+      "replace": "direction === \"increase\" ? reading <= expected",
+      "kills": ["checkPrediction misses an increase prediction when the week reads below expected"]
+    },
+    {
+      "name": "a null reading counts as measured",
+      "file": "packages/pm/src/prediction-check.ts",
+      "find": "if (reading === null) return \"unread\";",
+      "replace": "if (reading === undefined) return \"unread\";",
+      "kills": ["checkPrediction is unread when the metric is null because nothing was measured"]
+    },
+    {
+      "name": "the initiative key is not matched",
+      "file": "packages/pm/src/prediction-check.ts",
+      "find": " && r.key === bet.initiative",
+      "replace": "",
+      "kills": ["checkPrediction is unread when the only rows belong to another week or another initiative"]
+    },
+    {
+      "name": "a missed prediction no longer sorts first",
+      "file": "packages/pm/src/prediction-check.ts",
+      "find": "entry.check === \"missed\" ? 0 : 1",
+      "replace": "1",
+      "kills": ["orderBetsForSheet sorts a missed prediction before a new bet in the same area"]
+    }
+  ]
+}

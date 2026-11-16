@@ -2,6 +2,14 @@ import { mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { invokeCommand } from "@titan-design/registry";
+import { partialFake } from "@titan-design/test-kit";
+import type { AgentsSource } from "./agents.js";
+import type { BrokerReader } from "./broker.js";
+import { consoleCommands } from "./commands.js";
+import { resolveConfig } from "./config.js";
+import type { ConsoleContext } from "./owner-guard.js";
+import { createSources } from "./upstreams.js";
 import { dayWindow } from "./coord-day.js";
 import { mergedInWindow, mergeTimes, prSetHash, readShipped, writeDigest, type ShippedDigest } from "./shipped.js";
 import type { ShepherdSource } from "./shepherd.js";
@@ -169,5 +177,26 @@ describe("writeDigest", () => {
 
     expect((await stat(path.join(dir, "2031-03-05.json"))).mode & 0o777).toBe(0o600);
     expect(await readdir(dir)).toEqual(["2031-03-05.json"]);
+  });
+});
+
+describe("coord.shipped beside the inbox", () => {
+  it("coord.shipped serves the inbox's kept finished read", async () => {
+    const reads: string[] = [];
+    const shepherd = partialFake<ShepherdSource>({
+      list: (state) => (reads.push(state), Promise.resolve([])),
+      waiting: () => Promise.resolve({ owner: [], seat: [] }),
+    });
+    const broker = partialFake<BrokerReader>({ read: () => Promise.reject(new Error("no broker in this test")) });
+    const agents = partialFake<AgentsSource>({ broker, eventsDbPath: "", seatPrefixes: [] });
+    const context = { warnings: [], format: "json", surface: "http", auth: { credential: "session", issuedAt: 1_000, peerLocal: false }, ownerWrites: true } as ConsoleContext;
+    const served = consoleCommands({ ...createSources(resolveConfig({}, dir)), shepherd, agents, inbox: { dir: path.join(dir, "inbox") }, listeners: undefined, decisionLog: undefined, shipped: { dir } });
+    await invokeCommand(served["inbox.list"], {}, context);
+    const afterInbox = reads.filter((state) => state === "finished").length;
+
+    await invokeCommand(served["coord.shipped"]!, {}, context);
+
+    expect(afterInbox).toBe(1);
+    expect(reads.filter((state) => state === "finished")).toHaveLength(1);
   });
 });

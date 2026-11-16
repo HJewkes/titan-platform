@@ -15,6 +15,13 @@ import { readYaml } from '../utils/yaml-io.js';
 import { TaskSchema, type Task } from '../schemas/task.js';
 import { mapConcurrent } from '../utils/map-concurrent.js';
 import type { LoadedTasks, MalformedTask } from './prompt.js';
+import {
+  defaultTaskParseCachePath,
+  loadTaskParseCache,
+  saveTaskParseCache,
+  statStamp,
+  type TaskParseCache,
+} from './task-parse-cache.js';
 
 const MS_PER_DAY = 86_400_000;
 /** One read awaited at a time left the parser idle on every file's I/O round trip (TP-4660). */
@@ -31,6 +38,8 @@ interface ArchiveStaleTasksOptions {
   now: Date;
   /** Parses one task file; defaults to the schema-validating YAML reader. */
   readTask?: TaskReader;
+  /** Parsed-task sidecar; defaults under the state root, `null` parses every file. */
+  parseCachePath?: string | null;
 }
 
 interface ArchiveStaleTasksResult extends LoadedTasks {
@@ -57,10 +66,48 @@ export async function archiveStaleTasks(
   }
   const ymlFiles = entries.filter((n) => n.endsWith('.yml') || n.endsWith('.yaml'));
   const readTask = opts.readTask ?? readTaskFile;
+  const cachePath =
+    opts.parseCachePath === undefined ? defaultTaskParseCachePath(tasksDir) : opts.parseCachePath;
+  const cached: TaskParseCache = cachePath ? await loadTaskParseCache(cachePath) : new Map();
+  const fresh: TaskParseCache = new Map();
   const parsed = await mapConcurrent(ymlFiles, TASK_READ_CONCURRENCY, (filename) =>
-    parseTaskFile(tasksDir, filename, readTask),
+    parseOrReuse(tasksDir, filename, { readTask, cached, fresh }),
   );
-  return sortParsed(parsed, tasksDir, opts);
+  const result = await sortParsed(parsed, tasksDir, opts, (filename) => fresh.delete(filename));
+  if (cachePath && cacheChanged(cached, fresh)) await saveTaskParseCache(cachePath, fresh);
+  return result;
+}
+
+interface ParseContext {
+  readTask: TaskReader;
+  cached: TaskParseCache;
+  /** Entries for this run's files, which become the next sidecar. */
+  fresh: TaskParseCache;
+}
+
+/** The stamp is read before the file, so an edit racing this open leaves a stale stamp. */
+async function parseOrReuse(
+  tasksDir: string,
+  filename: string,
+  ctx: ParseContext,
+): Promise<ParsedTaskFile> {
+  const stamp = await statStamp(path.join(tasksDir, filename));
+  const hit = ctx.cached.get(filename);
+  if (stamp !== null && hit?.stamp === stamp) {
+    ctx.fresh.set(filename, hit);
+    return { task: hit.task, filename };
+  }
+  const entry = await parseTaskFile(tasksDir, filename, ctx.readTask);
+  if (stamp !== null && 'task' in entry) ctx.fresh.set(filename, { stamp, task: entry.task });
+  return entry;
+}
+
+function cacheChanged(cached: TaskParseCache, fresh: TaskParseCache): boolean {
+  if (cached.size !== fresh.size) return true;
+  for (const [filename, entry] of fresh) {
+    if (cached.get(filename) !== entry) return true;
+  }
+  return false;
 }
 
 type ParsedTaskFile = { task: Task; filename: string } | MalformedTask;
@@ -69,6 +116,7 @@ async function sortParsed(
   parsed: ParsedTaskFile[],
   tasksDir: string,
   opts: ArchiveStaleTasksOptions,
+  onArchived: (filename: string) => void,
 ): Promise<ArchiveStaleTasksResult> {
   const cutoffMs = opts.now.getTime() - opts.retentionDays * MS_PER_DAY;
   const archiveEnabled = opts.retentionDays > 0;
@@ -84,6 +132,7 @@ async function sortParsed(
     const fullPath = path.join(tasksDir, filename);
     if (archiveEnabled && (await archiveIfStale(task, fullPath, tasksDir, filename, cutoffMs))) {
       archived.push(task.id);
+      onArchived(filename);
     } else {
       tasks.push(task);
     }

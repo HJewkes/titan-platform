@@ -109,8 +109,9 @@ const uniqueTasks = (tasks: Card["tasks"]): Card["tasks"] => [...new Set(tasks.m
 /** Titles are enrichment: a failed task read leaves every card with its ids and adds a gap. */
 async function withTitles(activeWork: ActiveWork, cards: Card[], gaps: string[]): Promise<Card[]> {
   if (cards.every((entry) => entry.tasks.length === 0)) return cards;
+  const ids = [...new Set(cards.flatMap((entry) => entry.tasks.map(({ id }) => id)))].sort();
   const titles = await activeWork
-    .read("task.list", { all_initiatives: true, status: "all" })
+    .read("task.list", { all_initiatives: true, id: ids.join(",") })
     .then(({ tasks }) => new Map(tasks.map((task) => [task.id, task.title])))
     .catch((err: unknown) => (gaps.push(`active-work task titles: ${err instanceof Error ? err.message : String(err)}`), null));
   if (titles === null) return cards;

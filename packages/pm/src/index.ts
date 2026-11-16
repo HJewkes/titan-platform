@@ -84,3 +84,5 @@ export type {
 } from "./categories.js";
 export { INTENT_DIGEST_SCHEMA, parseIntentDigest } from "./intent-digest.js";
 export type { IntentDigestError, IntentDigestResult } from "./intent-digest.js";
+export { PREDICTION_CHECKS, checkPrediction, orderBetsForSheet } from "./prediction-check.js";
+export type { PredictionCheck, ScorecardWeekRow, SheetBet } from "./prediction-check.js";
