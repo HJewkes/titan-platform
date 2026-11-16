@@ -89,11 +89,11 @@ describe('weekly sheet', () => {
 
       const sheet = await generate(root);
 
-      const notMoved = sheet.markdown.split('## Not moved')[1]!.split('## Proposed bets')[0]!;
+      const notMoved = sheet.markdown.split('## Not moved')[1].split('## Proposed bets')[0];
       expect(notMoved).toContain('- console/B1 ·');
       expect(notMoved).toContain('- console/B2 ·');
       expect(notMoved.match(/· unread$/gm)).toHaveLength(2);
-      expect(sheet.markdown.split('## Moved')[1]!.split('## Not moved')[0]).toBe('\n- none\n\n');
+      expect(sheet.markdown.split('## Moved')[1].split('## Not moved')[0]).toBe('\n- none\n\n');
     });
   });
 
@@ -119,10 +119,9 @@ describe('weekly sheet', () => {
   it('names a missed bet as a proposed stop before any new bet, and reports scorecard moves', () => {
     const missed = { ...bet(1), prediction_check: 'missed' };
     const confirmed = { ...bet(2), prediction_check: 'confirmed' };
-    const metrics = (merged: number, usd: number) => ({ merged, usd }) as never;
     const rows = [
-      { isoWeek: '2026-W46', dimension: 'initiative' as const, key: 'console', metrics: metrics(2, 10), redFlags: [] },
-      { isoWeek: '2026-W47', dimension: 'initiative' as const, key: 'console', metrics: metrics(5, 10), redFlags: [] },
+      { isoWeek: '2026-W46', dimension: 'initiative' as const, key: 'console', metrics: { merged: 2, usd: 10 } },
+      { isoWeek: '2026-W47', dimension: 'initiative' as const, key: 'console', metrics: { merged: 5, usd: 10 } },
     ];
 
     const sheet = buildWeeklySheet({
@@ -133,7 +132,7 @@ describe('weekly sheet', () => {
       scorecard: scorecardReadings(rows, 'console', '2026-W47'),
     });
 
-    const [moved, notMoved] = [sheet.markdown.split('## Moved')[1]!.split('## Not moved')[0]!, sheet.markdown.split('## Not moved')[1]!];
+    const [moved, notMoved] = [sheet.markdown.split('## Moved')[1].split('## Not moved')[0], sheet.markdown.split('## Not moved')[1]];
     expect(moved).toContain('- console/B2 ·');
     expect(moved).toContain('- scorecard merged: 2 → 5');
     expect(notMoved.split('## Proposed bets')[0]).toContain('- scorecard usd: 10 → 10');
