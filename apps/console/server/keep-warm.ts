@@ -18,7 +18,7 @@ interface KeepWarmSources {
   logger: Pick<Logger, "warn">;
 }
 
-export interface KeepWarm {
+interface KeepWarm {
   /** Reads every kept whole-tree answer once; never rejects. */
   prime(): Promise<void>;
   /** The upstream's stream reopened, so it may have restarted and lost its own kept reads: read this source's again. */
