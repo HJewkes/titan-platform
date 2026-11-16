@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a multi-line quote is accepted",
+      "file": "packages/pm/src/planning.ts",
+      "find": ".regex(/^[^\\r\\n]*$/, { message: \"quote must be one line\" })",
+      "replace": "",
+      "kills": ["IntentLineSchema refuses a line whose quote is empty or spans lines"]
+    },
+    {
+      "name": "the date is free text",
+      "file": "packages/pm/src/planning.ts",
+      "find": "  section: z.enum(INTENT_SECTIONS),\n  date: isoDate,",
+      "replace": "  section: z.enum(INTENT_SECTIONS),\n  date: z.string(),",
+      "kills": ["IntentLineSchema refuses a line with no date or an impossible date"]
+    },
+    {
+      "name": "the quote is optional",
+      "file": "packages/pm/src/planning.ts",
+      "find": "{ message: \"quote must be one line\" }),",
+      "replace": "{ message: \"quote must be one line\" }).optional(),",
+      "kills": ["IntentLineSchema refuses a line with no quote"]
+    }
+  ]
+}

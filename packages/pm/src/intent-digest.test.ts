@@ -41,7 +41,7 @@ describe("parseIntentDigest", () => {
 
   it("records superseded-by as a full id", () => {
     const result = parseIntentDigest(digest({ "Standing direction": [good(1)], Superseded: [good(2, " superseded-by: I1")] }));
-    expect(result.ok && result.lines[1]?.supersededBy).toBe("demo/I1");
+    expect(result.ok && result.lines[1]?.superseded_by).toBe("demo/I1");
   });
 
   it.each([

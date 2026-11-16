@@ -4,6 +4,7 @@ import { getActiveRoot } from '../utils/paths.js';
 import { lintBrief } from './brief.js';
 import { lintEdges, loadTaskIndex, type TaskIndex } from './edges.js';
 import { lintHashes } from './hashes.js';
+import { lintIntent } from './intent.js';
 import { lintOpenLoops } from './open-loops.js';
 import { lintSources } from './sources.js';
 import { lintTasks } from './task.js';
@@ -43,16 +44,17 @@ export async function lintSlug(slug: string, options: LintOptions = {}): Promise
   const load = options.loadTaskIndex ?? loadTaskIndex;
   const taskIndex =
     options.taskIndex ?? (await load(activeRoot, await listInitiativeSlugs(activeRoot)));
-  const [brief, tasks, openLoops, zeroLoops, sources, hashes] = await Promise.all([
+  const [brief, tasks, openLoops, zeroLoops, sources, hashes, intent] = await Promise.all([
     lintBrief(slug, initiativeDir, limits),
     lintTasks(slug, initiativeDir, limits),
     lintOpenLoops(slug, initiativeDir, limits, now),
     lintZeroLoops(slug, initiativeDir),
     lintSources(slug, initiativeDir),
     lintHashes(slug, initiativeDir),
+    lintIntent(slug, initiativeDir),
   ]);
   const edges = lintEdges(slug, taskIndex);
-  return [...brief, ...tasks, ...edges, ...openLoops, ...zeroLoops, ...sources, ...hashes];
+  return [...brief, ...tasks, ...edges, ...openLoops, ...zeroLoops, ...sources, ...hashes, ...intent];
 }
 
 /**

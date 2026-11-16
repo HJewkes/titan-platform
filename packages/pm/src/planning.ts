@@ -144,3 +144,32 @@ export const OutOfScopeSchema = z
   .refine(belongsToInitiative, initiativePrefix);
 
 export type OutOfScope = z.infer<typeof OutOfScopeSchema>;
+
+export const INTENT_SECTIONS = [
+  "Standing direction",
+  "Reasons",
+  "Ruled out",
+  "Taste",
+  "Open questions",
+  "Superseded",
+] as const;
+
+export type IntentSection = (typeof INTENT_SECTIONS)[number];
+
+const intentLineId = scopedId("I\\d+", "alpha/I3");
+
+/*
+ * One dated, quoted line of the owner's intent, cited by bets and freezes as `<initiative>/I<n>`. The quote stays on
+ * one line because the digest format is one bullet per line.
+ */
+export const IntentLineSchema = z.strictObject({
+  id: intentLineId,
+  section: z.enum(INTENT_SECTIONS),
+  date: isoDate,
+  quote: z.string().min(1, { message: "quote is empty" }).regex(/^[^\r\n]*$/, { message: "quote must be one line" }),
+  /** The reference to the exact quote, for example `msg:3f2a91`. */
+  ref: quoteRef,
+  superseded_by: intentLineId.optional(),
+});
+
+export type IntentLine = z.infer<typeof IntentLineSchema>;

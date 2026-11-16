@@ -1,5 +1,5 @@
 import { promises as fs } from 'node:fs';
-import { parseIntentDigest, type IntentLine, type IntentSection } from '@titan-design/pm';
+import { IntentLineSchema, parseIntentDigest, type IntentLine, type IntentSection } from '@titan-design/pm';
 import { z } from 'zod';
 import { defineCommand, type CommandContext } from '../registry/index.js';
 import { ValidationError } from '../errors.js';
@@ -17,7 +17,7 @@ const ArgsSchema = z.object({
   digest: z.string().min(1),
 });
 
-const IntentLineSchema = z.object({ id: z.string(), date: z.string(), quote: z.string(), ref: z.string() });
+const SeededLineSchema = IntentLineSchema.pick({ id: true, date: true, quote: true, ref: true });
 
 const SEEDED_SECTIONS = [
   ['standing_direction', 'Standing direction'],
@@ -31,11 +31,11 @@ const ResultSchema = z.object({
   initiative: z.string(),
   domain: z.string(),
   intent: z.object({
-    standing_direction: z.array(IntentLineSchema),
-    reasons: z.array(IntentLineSchema),
-    ruled_out: z.array(IntentLineSchema),
-    taste: z.array(IntentLineSchema),
-    open_questions: z.array(IntentLineSchema),
+    standing_direction: z.array(SeededLineSchema),
+    reasons: z.array(SeededLineSchema),
+    ruled_out: z.array(SeededLineSchema),
+    taste: z.array(SeededLineSchema),
+    open_questions: z.array(SeededLineSchema),
   }),
   outcomes: z.array(z.object({ id: z.string(), statement: z.string(), measure: z.string().optional() })),
   tasks: z.array(z.object({ id: z.string(), title: z.string(), priority: z.number(), done_when: z.string() })),
@@ -53,7 +53,7 @@ async function readDigestLines(path: string): Promise<IntentLine[]> {
 }
 
 function seedIntent(lines: readonly IntentLine[]): Intent {
-  const live = lines.filter((line) => line.supersededBy === undefined);
+  const live = lines.filter((line) => line.superseded_by === undefined);
   const pick = (section: IntentSection) =>
     live.filter((line) => line.section === section).map(({ id, date, quote, ref }) => ({ id, date, quote, ref }));
   return {
