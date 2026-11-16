@@ -241,7 +241,7 @@ describe("actionFor", () => {
     const healthy = actionFor(gate(RUN_PLAIN, "2026-10-10T00:00:00.000Z"), row(RUN_PLAIN, 1)).action;
 
     expect(held).toEqual({ kind: "terminal", reason: DIVERGED_HOLD, command: `titan-factory gate resolve ${RUN_PLAIN} approve-merge --json '<payload>'` });
-    expect(DIVERGED_HOLD).toBe("resolve from Morning (TP-3918)");
+    expect(DIVERGED_HOLD).toBe("resolve from the console inbox gate item");
     expect(healthy.kind).toBe("resolve-gate");
   });
 

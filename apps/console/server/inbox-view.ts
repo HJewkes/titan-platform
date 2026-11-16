@@ -101,7 +101,7 @@ const CONSOLE_OPS: ReadonlySet<OwnerOpKind> = new Set(["merge-at-head", "retire-
  * reason. A rowless gate may be a land run's or one a diverged run left behind when it was replaced, and the item cannot
  * tell which, so every rowless gate is held to the Morning path until TP-3918 lands.
  */
-export const DIVERGED_HOLD = "resolve from Morning (TP-3918)";
+export const DIVERGED_HOLD = "resolve from the console inbox gate item";
 const REPLAY_DIVERGED = /^replay diverged/;
 
 /** Gate ids are `<runId>/<stepId>` or `<runId>/<stepId>:<n>`. */
