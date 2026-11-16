@@ -41,8 +41,8 @@
     {
       "name": "an active-work call is not bounded",
       "file": "products/factory/src/shepherd/follow-ups-step.ts",
-      "find": "    return { ...(await fileFollowUps(boundedTasks(tasks, signal, timeoutMs), where, items)), ...warning };\n",
-      "replace": "    return { ...(await fileFollowUps(tasks, where, items)), ...warning };\n",
+      "find": "{ tasks: boundedTasks(sinks.tasks, signal, timeoutMs), digest }",
+      "replace": "{ tasks: sinks.tasks, digest }",
       "kills": [
         "followUpsBody's bound an active-work call that never answers records an error once the bound passes"
       ]

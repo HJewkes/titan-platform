@@ -10,6 +10,7 @@ import { H1, REPO } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { activeWorkFollowUpTasks } from "./cleanup-ports.js";
+import type { DigestEntry } from "./follow-up-digest.js";
 import type { FollowUpTasks } from "./follow-ups-file.js";
 import { FOLLOW_UPS_STEP, fileFollowUpsAt, followUpsBody } from "./follow-ups-step.js";
 import type { ShepherdPhases, WakeRequest } from "./phases.js";
@@ -57,11 +58,13 @@ interface Options {
 
 /** One PR at H1, green CI, on an auto-merge policy; a wake records its request and hands the round back. */
 function world({ text, followUps, task = "demo/DM-1" }: Options) {
+  const digested: DigestEntry[] = [];
+  const digest = { append: async (_initiative: string, entries: readonly DigestEntry[]) => void digested.push(...entries) };
   const fake = fakeGitHub();
   const wakes: WakeRequest[] = [];
   const wake: ShepherdPhases["wake"] = async (_ctx, request) => (wakes.push(request), { kind: "unhandled", reason: "no fixer in this test" });
   const ref = shepherdStoreRef();
-  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), review: { ...reviewers(text), roles: { g10: "bd-reviewer", standard: "reviewer" }, ...(followUps && { followUps }) } });
+  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), review: { ...reviewers(text), roles: { g10: "bd-reviewer", standard: "reviewer" }, ...(followUps && { followUps: { tasks: followUps, digest } }) } });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow({ review: reviewPhase, wake })], routes, gatePollMs: 5 });
   hosts.push(host);
   fake.addPr({ headSha: H1, mergeSha: fakeSha("test-merge") });
@@ -71,7 +74,7 @@ function world({ text, followUps, task = "demo/DM-1" }: Options) {
   ref.get().register({ repo: REPO, pr: 1, runId, task: task || "demo/DM-1", implementer: "impl-a", policy: AUTO_POLICY, kind: "correctness" });
   const results = () => Object.values(host.runtime.status(runId)!.stepResults);
   const followUpsResult = () => results().find((result) => result.stepId.startsWith(`${FOLLOW_UPS_STEP}:`))?.data?.["result"];
-  return { wakes, merged: () => fake.pr(1).merged, stepIds: () => results().map((result) => result.stepId), followUpsResult };
+  return { wakes, digested, merged: () => fake.pr(1).merged, stepIds: () => results().map((result) => result.stepId), followUpsResult };
 }
 
 function awOver(tasks = [PARENT]) {
@@ -86,16 +89,18 @@ function after(ids: string[], prefix: string): string | undefined {
 const merges = (w: ReturnType<typeof world>) => vi.waitFor(() => expect(w.merged()).toBe(true), { timeout: 5_000 });
 
 describe("the sh-follow-ups step at a verdict", () => {
-  it("a MERGE carrying follow-ups merges and files each one, recording the ids in the sh-follow-ups step", async () => {
+  it("a MERGE carrying a medium and a low follow-up files the medium as a task and writes the low as a digest row, never a task (TP-6714)", async () => {
     const { aw, port } = awOver();
     const w = world({ text: (head) => mergeText(head, BLOCK), followUps: port });
 
     await merges(w);
 
     const filed = [...aw.tasks.values()].filter((task) => task.tags.includes("follow-up:DM-1"));
-    expect(filed.map((task) => task.title)).toEqual(["Cache the head lookup", "Name the retry bound"]);
-    expect(w.followUpsResult()).toEqual({ filed: filed.map((task) => ({ title: task.title, id: task.id, deduped: false })) });
+    expect(filed.map((task) => task.title)).toEqual(["Cache the head lookup"]);
+    expect(w.digested).toEqual([{ title: "Name the retry bound", severity: "low", done_when: "The bound is a named constant", from_pr: `${REPO}#1`, from_task: "DM-1", head: H1, reviewer: "agent-rv-octo-demo-1" }]);
+    expect(w.followUpsResult()).toEqual({ filed: [{ title: "Cache the head lookup", id: filed[0]!.id, deduped: false }], digested: ["Name the retry bound"] });
     expect(aw.tasks.get("DM-1")!.notes).toContain(filed[0]!.id);
+    expect(aw.tasks.get("DM-1")!.notes).not.toContain("Name the retry bound");
   });
 
   it("a malformed Follow-ups block files nothing, records its named warning, and the MERGE still merges", async () => {
@@ -154,7 +159,8 @@ describe("the sh-follow-ups step at a verdict", () => {
     await vi.waitFor(() => expect(w.wakes).toHaveLength(1), { timeout: 5_000 });
 
     expect(w.wakes[0]).toMatchObject({ kind: "review", headSha: H1 });
-    expect([...aw.tasks.values()].filter((task) => task.tags.includes("follow-up:DM-1"))).toHaveLength(2);
+    expect([...aw.tasks.values()].filter((task) => task.tags.includes("follow-up:DM-1"))).toHaveLength(1);
+    expect(w.digested).toHaveLength(1);
     expect(w.merged()).toBe(false);
   });
 
@@ -197,9 +203,9 @@ describe("fileFollowUpsAt on replay", () => {
 describe("followUpsBody's bound", () => {
   it("an active-work call that never answers records an error once the bound passes", async () => {
     const hung: FollowUpTasks = { openTasks: () => new Promise(() => undefined), classOf: async () => undefined, add: async () => "x", appendNote: async () => undefined };
-    const input = { runId: "run-1", task: "demo/DM-1", repo: REPO, pr: 1, head: H1, reviewer: "agent-r", followUps: [{ title: "Cache it", doneWhen: "Cached", severity: "low" as const }] };
+    const input = { runId: "run-1", task: "demo/DM-1", repo: REPO, pr: 1, head: H1, reviewer: "agent-r", followUps: [{ title: "Cache it", doneWhen: "Cached", severity: "medium" as const }] };
 
-    const result = await followUpsBody(hung, input, new AbortController().signal, 20);
+    const result = await followUpsBody({ tasks: hung, digest: { append: async () => undefined } }, input, new AbortController().signal, 20);
 
     expect(result).toEqual({ filed: [], error: expect.stringContaining("TimeoutError") });
   });
