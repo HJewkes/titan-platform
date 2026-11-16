@@ -173,7 +173,7 @@ describe('owner actions', () => {
     const tools = listTools().map((tool) => tool.name);
 
     const planVerbs = names.filter((name) => name.startsWith('plan.'));
-    const readOrIntentVerbs = ['plan.seed', 'plan.intent.digest', 'plan.intent.import-messages'];
+    const readOrIntentVerbs = ['plan.seed', 'plan.intent.digest', 'plan.intent.import-messages', 'plan.sheet.generate', 'plan.sheet.apply-defaults'];
     expect(planVerbs.every((name) => /\.(add|show|list)$/.test(name) || readOrIntentVerbs.includes(name))).toBe(true);
     expect(names).not.toContain('plan.bet.select');
     expect(tools.filter((tool) => /select|plan__outcome__edit/.test(tool))).toEqual([]);
@@ -195,6 +195,8 @@ describe('owner actions', () => {
       'plan.intent.import-messages',
       'plan.out-of-scope.add',
       'plan.outcome.add',
+      'plan.sheet.apply-defaults',
+      'plan.sheet.generate',
     ]);
     expect(fields).not.toContain('state');
     expect(fields).not.toContain('ended_on');
