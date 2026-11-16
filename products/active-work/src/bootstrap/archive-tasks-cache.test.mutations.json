@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a stamp match never reuses the cached task",
+      "file": "products/active-work/src/bootstrap/archive-tasks.ts",
+      "find": "  if (stamp !== null && hit?.stamp === stamp) {",
+      "replace": "  if (false) {",
+      "kills": ["archiveStaleTasks with a parse cache does not parse unchanged task files on a second open"]
+    },
+    {
+      "name": "the stamp ignores the file's content",
+      "file": "products/active-work/src/bootstrap/task-parse-cache.ts",
+      "find": "    return `${st.ino}:${st.size}:${st.mtimeMs}:${st.ctimeMs}`;",
+      "replace": "    return 'same';",
+      "kills": ["archiveStaleTasks with a parse cache parses an edited task file again and returns its new content"]
+    },
+    {
+      "name": "the stamp leaves out inode and ctime",
+      "file": "products/active-work/src/bootstrap/task-parse-cache.ts",
+      "find": "    return `${st.ino}:${st.size}:${st.mtimeMs}:${st.ctimeMs}`;",
+      "replace": "    return `${st.size}:${st.mtimeMs}`;",
+      "kills": ["archiveStaleTasks with a parse cache parses a replaced file of the same size and mtime again"]
+    },
+    {
+      "name": "an unreadable sidecar throws instead of reading as empty",
+      "file": "products/active-work/src/bootstrap/task-parse-cache.ts",
+      "find": "  } catch {\n    return new Map();\n  }",
+      "replace": "  } catch (err) {\n    throw err;\n  }",
+      "kills": ["archiveStaleTasks with a parse cache falls back to a full parse with identical results when the cache is corrupt"]
+    }
+  ]
+}
