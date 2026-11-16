@@ -65,8 +65,12 @@ describe('bootstrap timings_ms', () => {
     await withTempActiveRoot(async (root) => {
       const { metadata } = await assemble(root, steppingClock());
 
-      expect(metadata.timings_ms!.load).toBe(7);
-      expect(metadata.timings_ms!.rank_notes).toBe(7);
+      // Live status shares the clock and starts alongside the load, so its ticks can fall inside a span.
+      for (const phase of ['load', 'rank_notes'] as const) {
+        const span = metadata.timings_ms![phase];
+        expect(span).toBeGreaterThan(0);
+        expect(span % 7).toBe(0);
+      }
     });
   });
 });

@@ -48,6 +48,10 @@ function seedRepo(): void {
   commit(lines, 'Tweak another line (#43)');
   lines[14] = 'const line15 = "traced";';
   commit(lines, 'Trace a line (#44)\n\nAgent-Session: trailer-session');
+  lines[17] = 'const line18 = "mixed";';
+  commit(lines, 'Mixed work (#45)');
+  lines[18] = 'const line19 = "unknown";';
+  commit(lines, 'Unknown work (#46)');
 }
 
 function seedGraph(): void {
@@ -73,6 +77,15 @@ function seedGraph(): void {
   linked('later-session', 43);
   ran('later-session', 'AL-1', 'alpha');
   session('trailer-session', path.join(root, 'alpha'));
+  session('mixed-session', path.join(root, 'alpha'));
+  linked('mixed-session', 45);
+  ran('mixed-session', 'AL-2', 'alpha');
+  ran('mixed-session', 'AL-3', 'alpha');
+  ran('mixed-session', 'HW-2', HIDDEN);
+  session('unknown-session', path.join(root, 'alpha'));
+  linked('unknown-session', 46);
+  ran('unknown-session', 'AL-4', 'alpha');
+  ran('unknown-session', 'GW-1', 'gone-work');
   graph.db.close();
 }
 
@@ -117,6 +130,20 @@ describe('why', () => {
 
     expect(commits.at(0)?.sessions.map((s) => s.sessionId)).not.toContain('hidden-session');
     expect(commits.at(0)?.tasks.map((t) => t.taskId)).not.toContain('HW-1');
+    expect(commits.at(0)?.hidden).toBe(2);
+  });
+
+  it('keeps a session linked to a visible and an owner-only task from an agent', async () => {
+    const { commits } = await whyCommand.run({ target: 'a.ts:18' }, ctx('agent'));
+
+    expect(commits.at(0)?.sessions).toEqual([]);
+    expect(commits.at(0)?.hidden).toBe(2);
+  });
+
+  it('keeps a session linked to a task of unknown visibility from an agent', async () => {
+    const { commits } = await whyCommand.run({ target: 'a.ts:19' }, ctx('agent'));
+
+    expect(commits.at(0)?.sessions).toEqual([]);
     expect(commits.at(0)?.hidden).toBe(2);
   });
 

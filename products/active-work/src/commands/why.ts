@@ -45,7 +45,7 @@ export default defineCommand<z.infer<typeof ArgsSchema>, z.infer<typeof ResultSc
     const dbPath = defaultGraphPath();
     if (!existsSync(dbPath)) ctx.warnings.push(`no session graph at ${dbPath}; tasks and sessions are left out`);
     const shown = await visibilityFor(ctx);
-    const commits = await why({ target: parseWhyTarget(args.target), cwd, dbPath, shown, run: getGitRunner() });
+    const commits = await why({ target: parseWhyTarget(args.target), cwd, dbPath, activeRoot: ctx.activeRoot, shown, run: getGitRunner() });
     return { commits };
   },
 });

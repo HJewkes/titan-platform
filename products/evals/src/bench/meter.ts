@@ -113,8 +113,8 @@ function cliCostByModel(cliResult: unknown): Record<string, number> {
   return costs;
 }
 
-/** A model's list cost: the price table per request, or the CLI's figure when any request has no row. Null when neither can say. */
-function modelCost(requests: Request[], cliCost: number | undefined): number | null {
+/** A model's list cost from the price table, per request. Null when any request has no row: the CLI's figure is a cross-check only. */
+function modelCost(requests: Request[]): number | null {
   const priced = requests.map(({ tokens, at, model }) =>
     priceRequest(
       { inputTokens: tokens.input, outputTokens: tokens.output, cacheReadTokens: tokens.cacheRead, cacheCreation5mTokens: tokens.cacheWrite5m, cacheCreation1hTokens: tokens.cacheWrite1h },
@@ -123,14 +123,14 @@ function modelCost(requests: Request[], cliCost: number | undefined): number | n
     ),
   );
   if (priced.every((price) => price.priced)) return priced.reduce((sum, price) => sum + price.costUsd, 0);
-  return cliCost ?? null;
+  return null;
 }
 
-function listUsdOf(requests: Request[], cli: Record<string, number>): number | null {
+function listUsdOf(requests: Request[]): number | null {
   const models = [...new Set(requests.map((request) => request.model))];
   let total = 0;
   for (const model of models) {
-    const cost = modelCost(requests.filter((request) => request.model === model), cli[model]);
+    const cost = modelCost(requests.filter((request) => request.model === model));
     if (cost === null) return null;
     total += cost;
   }
@@ -160,7 +160,7 @@ export async function meterJob(input: MeterInput): Promise<MeterResult> {
   const lines = parseLines(await readFile(input.transcriptPath, "utf8"));
   const requests = distinctRequests(lines);
   const cli = cliCostByModel(input.cliResult);
-  const listUsd = listUsdOf(requests, cli);
+  const listUsd = listUsdOf(requests);
   const { effortSeen, modelSeen } = seenValues(lines);
   const matches = effortSeen.every((effort) => effort === input.arm.effort) && modelSeen.every((model) => model === input.arm.model);
   return {
