@@ -4,8 +4,9 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { openGraph, type WorkspaceGraph } from '../session-index/graph.js';
+import type * as FrequencyExports from './document-frequency.js';
 
-type FrequencyModule = typeof import('./document-frequency.js');
+type FrequencyModule = typeof FrequencyExports;
 
 let dir: string;
 let graph: WorkspaceGraph;
@@ -44,10 +45,10 @@ async function freshProcess(): Promise<FrequencyModule> {
 function spyIndexLookups(): string[] {
   const lookups: string[] = [];
   const prepare = graph.db.prepare.bind(graph.db);
-  vi.spyOn(graph.db, 'prepare').mockImplementation(((sql: string) => {
+  vi.spyOn(graph.db, 'prepare').mockImplementation((sql: string) => {
     if (/_vocab|MATCH/.test(sql)) lookups.push(sql);
     return prepare(sql);
-  }) as typeof graph.db.prepare);
+  });
   return lookups;
 }
 
@@ -104,8 +105,7 @@ describe('document frequency persisted across processes', () => {
 
   it('falls back to live counts when the persisted file holds a non-count value', async () => {
     const live = await countInEarlierProcess(['rare']);
-    const stored = JSON.parse(readFileSync(sidecar(), 'utf8')) as Record<string, unknown>;
-    writeFileSync(sidecar(), JSON.stringify({ ...stored, terms: { rare: 'many' } }));
+    writeFileSync(sidecar(), readFileSync(sidecar(), 'utf8').replace(/"rare":\d+/, '"rare":"many"'));
     const later = await freshProcess();
 
     expect(later.graphDocumentFrequency(graph)('rare')).toBe(live[0]);

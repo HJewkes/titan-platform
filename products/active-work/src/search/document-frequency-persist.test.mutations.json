@@ -13,7 +13,7 @@
     {
       "name": "stored counts outlive a span write",
       "file": "products/active-work/src/search/document-frequency-store.ts",
-      "find": "stored.stamp !== stamp || ",
+      "find": " && stored.stamp === stamp",
       "replace": "",
       "kills": [
         "document frequency persisted across processes recounts a term after spans are indexed since the counts were persisted"

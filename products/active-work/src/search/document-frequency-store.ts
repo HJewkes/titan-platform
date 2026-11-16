@@ -34,14 +34,17 @@ export function readStoredCounts(dbName: string, stamp: string): Map<string, num
   const file = storePath(dbName);
   if (!file) return new Map();
   try {
-    const stored = JSON.parse(fs.readFileSync(file, 'utf8')) as Partial<StoredCounts>;
-    if (stored.v !== STORE_VERSION || stored.stamp !== stamp || !isTermRecord(stored.terms)) {
-      return new Map();
-    }
-    return new Map(Object.entries(stored.terms));
+    const stored: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return isStoredCounts(stored) && stored.stamp === stamp ? new Map(Object.entries(stored.terms)) : new Map();
   } catch {
     return new Map();
   }
+}
+
+function isStoredCounts(value: unknown): value is StoredCounts {
+  if (typeof value !== 'object' || value === null) return false;
+  if (!('v' in value) || !('stamp' in value) || !('terms' in value)) return false;
+  return value.v === STORE_VERSION && typeof value.stamp === 'string' && isTermRecord(value.terms);
 }
 
 function isTermRecord(value: unknown): value is Record<string, number> {
