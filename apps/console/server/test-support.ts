@@ -70,6 +70,8 @@ interface FakeBrokerData {
 export interface FakeBroker extends FakeDaemon {
   /** Every request as `METHOD url`, so a test can prove a read never wrote. */
   requests: string[];
+  /** The length of each response body, in request order. */
+  responseBytes: number[];
 }
 
 function brokerBody(route: string | undefined, data: FakeBrokerData): unknown {
@@ -82,12 +84,15 @@ function brokerBody(route: string | undefined, data: FakeBrokerData): unknown {
 /** A loopback agent-chat broker: `/api/sessions`, `/api/history` and `/api/queue` behind the token header, 401 without it. */
 export async function startFakeBroker(data: FakeBrokerData): Promise<FakeBroker> {
   const requests: string[] = [];
+  const responseBytes: number[] = [];
   const server = createServer((req, res) => {
     requests.push(`${req.method} ${req.url}`);
     const authorized = req.headers["x-agent-chat-token"] === data.token;
     const body = brokerBody((req.url ?? "").split("?")[0], data);
     res.writeHead(!authorized ? 401 : body ? 200 : 404, { "content-type": "application/json" });
-    res.end(JSON.stringify(authorized && body ? body : { error: "nope" }));
+    const text = JSON.stringify(authorized && body ? body : { error: "nope" });
+    responseBytes.push(text.length);
+    res.end(text);
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   // A request abandoned mid-Promise.all leaves a keep-alive socket that would hold close() open.
@@ -95,7 +100,7 @@ export async function startFakeBroker(data: FakeBrokerData): Promise<FakeBroker>
     server.closeAllConnections();
     return closeServer(server);
   };
-  return { port: (server.address() as AddressInfo).port, close, requests };
+  return { port: (server.address() as AddressInfo).port, close, requests, responseBytes };
 }
 
 export interface Reply {

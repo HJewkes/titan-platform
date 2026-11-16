@@ -40,10 +40,10 @@ function readCommandNames(): string[] {
   return commands.filter((command) => "commandClass" in command && command.commandClass === "read").map((command) => command.name);
 }
 
-async function callCounted(rpc: InProcessCall, budget: RpcBudget): Promise<{ envelope: unknown; calls: Record<string, number>; total: number }> {
+async function callCounted(rpc: InProcessCall, budget: RpcBudget): Promise<{ envelope: unknown; calls: Record<string, number>; total: number; bytes: number }> {
   fixture.calls.reset();
   const envelope = await rpc(budget.rpc, budget.args);
-  return { envelope, calls: fixture.calls.counts(), total: fixture.calls.total() };
+  return { envelope, calls: fixture.calls.counts(), total: fixture.calls.total(), bytes: fixture.calls.bytes() };
 }
 
 /** One untimed warm-up, then the median of the timed runs. */
@@ -78,6 +78,7 @@ describe("console read budgets on the large-state fixture", () => {
     expect(cold.envelope, budget.fixtureGap ?? "a budgeted read must answer").toMatchObject({ ok: !budget.fixtureGap });
     expect(JSON.stringify(cold.envelope).length).toBeLessThanOrEqual(budget.maxBytes);
     expect(cold.total, JSON.stringify(cold.calls)).toBeLessThanOrEqual(budget.maxUpstreamCalls);
+    expect(cold.bytes, JSON.stringify(cold.calls)).toBeLessThanOrEqual(budget.maxUpstreamBytes);
     expect(warm.total, JSON.stringify(warm.calls)).toBeLessThanOrEqual(budget.maxUpstreamCallsWarm ?? budget.maxUpstreamCalls);
   });
 
@@ -86,6 +87,8 @@ describe("console read budgets on the large-state fixture", () => {
     const first = await medianMs(budget);
     const median = first <= budget.maxMs ? first : await medianMs(budget);
 
+    // Printed so the next re-baseline reads each row's median from the CI log: maxMs = ceil(4 x median) to 50 ms.
+    console.info(`bench median ${budget.rpc} ${median.toFixed(1)} ms (maxMs ${budget.maxMs})`);
     expect(median, `medians ${first.toFixed(1)} and ${median.toFixed(1)} ms`).toBeLessThanOrEqual(budget.maxMs);
   }, TIME_TEST_TIMEOUT_MS);
 });

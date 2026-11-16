@@ -33,7 +33,7 @@ export interface World {
   handle: DaemonHandle | undefined;
 }
 
-export const emptyWorld = (): World => ({ dir: "", factory: undefined, broker: { port: 0, close: async () => undefined, requests: [] }, handle: undefined });
+export const emptyWorld = (): World => ({ dir: "", factory: undefined, broker: { port: 0, close: async () => undefined, requests: [], responseBytes: [] }, handle: undefined });
 
 export function item(id: string, overrides: Partial<OwnerItem> = {}): OwnerItem {
   return {
