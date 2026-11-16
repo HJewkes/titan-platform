@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { BET_ID_REGEX, OUTCOME_ID_REGEX, SLUG, TASK_ID_REGEX } from "./ids.js";
+import { PREDICTION_CHECKS } from "./prediction-check.js";
 import { isoDate } from "./task.js";
 
 // Planning records live in an initiative's plan/ folder, so each id carries its initiative as a prefix.
@@ -85,6 +86,8 @@ export const BetSchema = z
     tasks: z.array(taskKey).optional(),
     selector: text.optional(),
     prediction: PredictionSchema,
+    /** Set by the prediction check; absent until the bet has been read against the scorecard. */
+    prediction_check: z.enum(PREDICTION_CHECKS).optional(),
     state: z.enum(BET_STATES),
     cites: z.array(OwnerIntentRefSchema).optional(),
   })
