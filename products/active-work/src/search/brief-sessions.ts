@@ -63,7 +63,7 @@ export function initiativeOf(row: SessionRow, activeRoot: string): string | null
 }
 
 /** Every initiative a task edge names must be shown: one owner-only edge withholds the whole row. */
-function sessionShown(row: SessionRow, activeRoot: string, shown: Shown): boolean {
+export function sessionShown(row: SessionRow, activeRoot: string, shown: Shown): boolean {
   if (row.tasks.length > 0) return row.tasks.every((task) => shown(task.initiative));
   return shown(cwdInitiative(row.cwd, activeRoot));
 }

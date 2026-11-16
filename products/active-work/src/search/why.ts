@@ -3,13 +3,14 @@ import { commitLineage, openSessionGraph, type CommitLinks, type SessionGraph } 
 import { repoForCwd } from '@titan-design/session-read';
 import { UsageError } from '../errors.js';
 import type { CommandRunner } from '../utils/git-gh.js';
-import { initiativeOf } from './brief-sessions.js';
+import { initiativeOf, sessionShown } from './brief-sessions.js';
 import type { Shown } from '../sessions/visibility.js';
 
 /**
  * `why <path>:<range>` (TP-2771): the commits `git blame` names for the lines at HEAD, and for each
  * the PR its squash subject ends with, the tasks behind it and the sessions that did the work. A
- * session or task is served only when the caller's `Shown` serves its initiative.
+ * task is served only when the caller's `Shown` serves its initiative, and a session only when it
+ * serves every initiative the session's task edges name.
  */
 
 interface WhyTarget {
@@ -122,8 +123,8 @@ function servedLineage(graph: SessionGraph, commit: BlamedCommit, repoName: stri
   const lineage = commitLineage(graph, links);
   const tasks = lineage.tasks.filter((task) => shown(task.initiative));
   const sessions = lineage.sessions
-    .map((s) => ({ sessionId: s.sessionId, step: s.step, title: s.title, initiative: initiativeOf(s, activeRoot) }))
-    .filter((s) => shown(s.initiative));
+    .filter((s) => sessionShown(s, activeRoot, shown))
+    .map((s) => ({ sessionId: s.sessionId, step: s.step, title: s.title, initiative: initiativeOf(s, activeRoot) }));
   const hidden = lineage.tasks.length - tasks.length + lineage.sessions.length - sessions.length;
   return { sha: commit.sha, subject, lines: commit.lines, prNumber: links.prNumber, prRefs: lineage.prRefs, tasks, sessions, hidden };
 }
