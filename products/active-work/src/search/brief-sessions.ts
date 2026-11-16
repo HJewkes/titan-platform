@@ -52,8 +52,8 @@ function cwdInitiative(cwd: string | null, activeRoot: string): string | null {
   if (!cwd) return null;
   const relative = path.relative(path.resolve(activeRoot), path.resolve(cwd));
   if (relative === '' || path.isAbsolute(relative)) return null;
-  const [first] = relative.split(path.sep);
-  return first === undefined || first === '..' ? null : first;
+  const first = relative.split(path.sep)[0];
+  return first === '..' ? null : first;
 }
 
 /** A task edge names the initiative outright; otherwise only a cwd inside the active root does. */
