@@ -143,6 +143,7 @@ function ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decision
 
 function workCommands(activeWork: ActiveWork, work: WorkOptions | undefined) {
   return {
+    ...weeklySheetCommands(activeWork, work),
     "work.portfolio": readCommand({
       name: "work.portfolio",
       description: "Every active-work initiative with its open-task rollup, note, source and session counts, newest activity and personal flag",
@@ -214,7 +215,6 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...tasksCommands({ activeWork, sessions, work }),
     ...graphCommands({ activeWork, sessions }),
     ...knowledgeCommands(activeWork, work),
-    ...weeklySheetCommands(activeWork, work),
     ...inboxCommands(inbox),
     ...roundReads(rounds),
     ...ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decisionLog, listeners, inboxActions }, cache, invalidation),
