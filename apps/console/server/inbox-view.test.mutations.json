@@ -39,12 +39,12 @@
       ]
     },
     {
-      "name": "a diverged gate's hold text points at a retired queue",
+      "name": "a diverged gate's hold text names no command",
       "file": "apps/console/server/inbox-view.ts",
-      "find": "\"resolve from the console inbox gate item\"",
-      "replace": "\"resolve from Morning\"",
+      "find": "\"resolve from the terminal with the command shown\"",
+      "replace": "\"resolve from the console\"",
       "kills": [
-        "actionFor holds a gate on a replay-diverged run to Morning while TP-3918 is open, and still taps a healthy one"
+        "actionFor holds a gate on a replay-diverged run to the terminal, and still taps a healthy one"
       ]
     }
   ]

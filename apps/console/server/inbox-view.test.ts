@@ -234,18 +234,18 @@ describe("actionFor", () => {
     expect(actionFor(approval, undefined).action).toEqual({ kind: "approve-chat", msgId: "msg-8" });
   });
 
-  it("holds a gate on a replay-diverged run to Morning while TP-3918 is open, and still taps a healthy one", () => {
+  it("holds a gate on a replay-diverged run to the terminal, and still taps a healthy one", () => {
     const diverged = { ...row(RUN_PLAIN, 1), stalled: { reason: "replay diverged: step sh-await-verdict:2 changed" } };
 
     const held = actionFor(gate(RUN_PLAIN, "2026-10-10T00:00:00.000Z"), diverged).action;
     const healthy = actionFor(gate(RUN_PLAIN, "2026-10-10T00:00:00.000Z"), row(RUN_PLAIN, 1)).action;
 
     expect(held).toEqual({ kind: "terminal", reason: DIVERGED_HOLD, command: `titan-factory gate resolve ${RUN_PLAIN} approve-merge --json '<payload>'` });
-    expect(DIVERGED_HOLD).toBe("resolve from the console inbox gate item");
+    expect(DIVERGED_HOLD).toBe("resolve from the terminal with the command shown");
     expect(healthy.kind).toBe("resolve-gate");
   });
 
-  it("holds every rowless gate to Morning, even a land run's whose prompt names its head, since the item cannot rule out a diverged run", () => {
+  it("holds every rowless gate to the terminal, even a land run's whose prompt names its head, since the item cannot rule out a diverged run", () => {
     const land = { ...gate(RUN_GONE, "2026-10-10T00:00:00.000Z"), context: `Merge PR #9 in ${REPO} at head ${HEAD}? CI is green. Policy land/default: owner gate` };
 
     expect(actionFor(land, undefined).action).toMatchObject({ kind: "terminal", reason: DIVERGED_HOLD });
@@ -279,7 +279,7 @@ describe("a deposit's typed op", () => {
     expect(action.kind === "terminal" && action.reason).toBe("a factory-config-set op has no console tap yet; run its command");
   });
 
-  it("holds a gate op with no live row to Morning, as a rowless hitl gate is", () => {
+  it("holds a gate op with no live row to the terminal, as a rowless hitl gate is", () => {
     const op = { kind: "resolve-gate", gateId: `${RUN_GONE}/approve-merge`, headSha: HEAD, decision: "merge" } as const;
 
     expect(actionFor(deposited(op), undefined).action).toMatchObject({ kind: "terminal", reason: DIVERGED_HOLD });
