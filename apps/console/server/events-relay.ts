@@ -69,6 +69,8 @@ interface RelayOptions {
   timing?: Partial<RelayTiming>;
   /** Called for each relayed frame, so a cache of what the upstream holds can drop its copy. A throw is logged, never fatal. */
   onFrame?: (source: RelaySource) => void;
+  /** Called after `onFrame` when an upstream's stream reopens, since the upstream may have restarted. A throw is logged, never fatal. */
+  onReconnected?: (source: RelaySource) => void;
   /** The clock that measures how long a stream stayed up. */
   now?: () => number;
 }
@@ -85,6 +87,7 @@ interface RelayContext {
   timing: RelayTiming;
   now: () => number;
   onFrame: (source: RelaySource) => void;
+  onReconnected: (source: RelaySource) => void;
 }
 
 /** One connection per upstream, redialled with capped backoff until closed; never throws. */
@@ -97,6 +100,7 @@ export function startEventsRelay(options: RelayOptions): EventsRelay {
     timing: { ...DEFAULT_RELAY_TIMING, ...options.timing },
     now: options.now ?? Date.now,
     onFrame: options.onFrame ?? (() => undefined),
+    onReconnected: options.onReconnected ?? (() => undefined),
   };
   const runs = options.upstreams.map((upstream) => keepRelaying(upstream, context, controller.signal));
   return {
@@ -241,14 +245,19 @@ function relayFrame(frame: SseMessage, upstream: RelayUpstream, context: RelayCo
 
 function announceReopen(source: RelaySource, context: RelayContext): void {
   notifyFrame(source, context);
+  notify("onReconnected", source, context);
   broadcast(context.hub, source, { kind: RECONNECTED_KIND });
 }
 
-function notifyFrame(source: RelaySource, { onFrame, logger }: RelayContext): void {
+function notifyFrame(source: RelaySource, context: RelayContext): void {
+  notify("onFrame", source, context);
+}
+
+function notify(hook: "onFrame" | "onReconnected", source: RelaySource, context: RelayContext): void {
   try {
-    onFrame(source);
+    context[hook](source);
   } catch (err) {
-    logger.warn({ source, err: err instanceof Error ? err.message : String(err) }, "events relay: onFrame threw");
+    context.logger.warn({ source, err: err instanceof Error ? err.message : String(err) }, `events relay: ${hook} threw`);
   }
 }
 

@@ -235,6 +235,32 @@ describe("the events relay", { timeout: 20_000 }, () => {
     expect(seen).toEqual(["agent-chat", "agent-chat", "agent-chat"]);
   });
 
+  it("tells onReconnected the source of a reopen but not of the first open or a frame, and survives a throw", async () => {
+    const broker = await fake(TOKEN);
+    const reopened: string[] = [];
+    relays.push(
+      startEventsRelay({
+        hub: { broadcast: () => undefined },
+        upstreams: [brokerAt(broker.port)],
+        logger: silentLogger,
+        timing: { baseDelayMs: 10, maxDelayMs: 40 },
+        onReconnected: (source) => {
+          reopened.push(source);
+          throw new Error("listener failed");
+        },
+      }),
+    );
+    await until(() => broker.openCount() === 1);
+    broker.write(brokerRow(7, "message"));
+
+    broker.drop();
+    await until(() => reopened.length === 1);
+    broker.drop();
+    await until(() => reopened.length === 2);
+
+    expect(reopened).toEqual(["agent-chat", "agent-chat"]);
+  });
+
   it("redials a dropped upstream and tells the browser once, so its pages refetch what the gap missed", async () => {
     const broker = await fake(TOKEN);
     const relayed = startRelay(brokerAt(broker.port));
