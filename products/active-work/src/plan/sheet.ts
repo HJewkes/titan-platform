@@ -1,4 +1,4 @@
-import type { Bet, Outcome } from '@titan-design/pm';
+import type { Bet, Outcome, PredictionCheck } from '@titan-design/pm';
 import { stringify } from 'yaml';
 import { shiftWeek, weekStart } from './iso-week.js';
 
@@ -9,13 +9,9 @@ import { shiftWeek, weekStart } from './iso-week.js';
 
 const WEEKLY_SHEET_SCHEMA = 'titan-weekly-sheet/v1';
 
-/** A prediction check as P17 (TP-6727) stores it on the bet as `prediction_check`. A bet with no check reads `unread`. */
-type PredictionCheck = 'confirmed' | 'missed' | 'unread';
-
-/** The stored check, read through a guard until P17 adds `prediction_check` to the bet schema. */
+/** The bet's P17 (TP-6727) prediction check; a bet with none recorded reads `unread`. */
 function predictionCheckOf(bet: Bet): PredictionCheck {
-  const stored: unknown = 'prediction_check' in bet ? bet.prediction_check : undefined;
-  return stored === 'confirmed' || stored === 'missed' ? stored : 'unread';
+  return bet.prediction_check ?? 'unread';
 }
 
 /** One scorecard figure for the initiative: last week's value against this week's; null when not measured. */

@@ -22,8 +22,8 @@
     {
       "name": "a bet with no check reads missed",
       "file": "products/active-work/src/plan/sheet.ts",
-      "find": "stored === 'confirmed' || stored === 'missed' ? stored : 'unread'",
-      "replace": "stored === 'confirmed' || stored === 'missed' ? stored : 'missed'",
+      "find": "return bet.prediction_check ?? 'unread';",
+      "replace": "return bet.prediction_check ?? 'missed';",
       "kills": [
         "weekly sheet with no prediction checks recorded every running bet reads unread"
       ]

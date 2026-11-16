@@ -154,9 +154,9 @@ describe('weekly sheet', () => {
   });
 
   it('names a missed bet as a proposed stop before any new bet, and reports scorecard moves', () => {
-    const missed = { ...bet(1), prediction_check: 'missed' };
-    const confirmed = { ...bet(2), prediction_check: 'confirmed' };
-    const missedDone = { ...bet(6, { state: 'done' }), prediction_check: 'missed' };
+    const missed = bet(1, { prediction_check: 'missed' });
+    const confirmed = bet(2, { prediction_check: 'confirmed' });
+    const missedDone = bet(6, { state: 'done', prediction_check: 'missed' });
     const rows = [
       { isoWeek: '2026-W46', dimension: 'initiative' as const, key: 'console', metrics: { merged: 2, usd: 10 } },
       { isoWeek: '2026-W47', dimension: 'initiative' as const, key: 'console', metrics: { merged: 5, usd: 10 } },
