@@ -32,6 +32,7 @@ import deliverableList from './deliverable-list.js';
 import { planFreezeAdd, planOutcomeAdd, planOutOfScopeAdd } from './plan-add.js';
 import { planBetAdd, planBetList } from './plan-bet.js';
 import { planIntentAdd, planIntentDigest, planIntentImportMessages } from './plan-intent.js';
+import { planSheetApplyDefaults, planSheetGenerate, planSheetShow } from './plan-sheet.js';
 import { planSeed } from './plan-seed.js';
 import {
   planBetShow,
@@ -191,6 +192,9 @@ const ALL_COMMANDS: AnyCommand[] = [
   planIntentList,
   planIntentDigest,
   planIntentImportMessages,
+  planSheetGenerate,
+  planSheetShow,
+  planSheetApplyDefaults,
   planSeed,
   // tasks
   taskAdd,

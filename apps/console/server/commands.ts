@@ -43,6 +43,7 @@ import { UPSTREAM_IDS, probeUpstreams, type Upstream } from "./upstreams.js";
 import { summarizeNotes, videoNotesCommands } from "./video-notes.js";
 import { videoPropsCommands } from "./video-props.js";
 import { videosCommands, type VideoCatalog } from "./videos.js";
+import { weeklySheetCommands } from "./weekly-sheet.js";
 import { initiativeResult, knowledgeCommands, portfolioResult, readInitiative, readPortfolio, type WorkOptions } from "./work.js";
 import { loopBoardResult, loopTierCommand, readLoopBoard } from "./work-loops.js";
 
@@ -144,6 +145,7 @@ function ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decision
 
 function workCommands(activeWork: ActiveWork, work: WorkOptions | undefined) {
   return {
+    ...weeklySheetCommands(activeWork, work),
     "work.portfolio": readCommand({
       name: "work.portfolio",
       description: "Every active-work initiative with its open-task rollup, note, source and session counts, newest activity and personal flag",

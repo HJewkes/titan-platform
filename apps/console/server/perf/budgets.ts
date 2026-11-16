@@ -91,6 +91,7 @@ export const RPC_BUDGETS: readonly RpcBudget[] = [
   row("work.portfolio", {}, { maxMs: 250, maxBytes: 20 * KB, maxUpstreamCalls: 48, maxUpstreamBytes: 1953 * KB }),
   row("work.record", { ref: "note:harbor-27/2031-01-01-nectar-021.md" }, { maxBytes: 2 * KB, maxUpstreamCalls: 1, maxUpstreamBytes: 2 * KB }),
   row("work.search", { q: "onyx" }, { maxBytes: 9 * KB, maxUpstreamCalls: 1, maxUpstreamBytes: 12 * KB }),
+  row("work.sheet", { slug: "amber-00" }, { maxBytes: 1 * KB }, "the large-state fixture holds no weekly sheet"),
   row("work.task", { id: "AA-1" }, { maxMs: 250, maxBytes: 1 * KB, maxUpstreamCalls: 4, maxUpstreamBytes: 1862 * KB }),
   row("work.taskArtifacts", { id: "AA-1", slug: "amber-00" }, { maxBytes: 1 * KB, maxUpstreamCalls: 1, maxUpstreamBytes: 1 * KB }),
   row("work.taskMentions", { id: "AA-1" }, { maxBytes: 1 * KB, maxUpstreamCalls: 1, maxUpstreamBytes: 1 * KB }),

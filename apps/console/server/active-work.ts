@@ -118,6 +118,15 @@ const READS = {
   "deliverable.list": z.array(deliverable),
   /** The platform-wide open-loops board; a daemon older than active-work 0.25 has no such command. */
   "loop.board": loopBoard,
+  /** An initiative's newest weekly sheet; EXIT.NOINPUT when it has none, or on a daemon without the command. */
+  "plan.sheet.show": z.object({
+    week: z.string(),
+    next_week: z.string(),
+    deadline: z.string(),
+    markdown: z.string(),
+    flags: z.array(z.object({ bet: z.string(), problem: z.string() })),
+    decisions: z.object({ decided_on: z.string() }).nullable(),
+  }),
 };
 
 const taskWritten = z.object({ id: z.string(), status: z.enum(TASK_STATUSES) });
