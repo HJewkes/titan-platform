@@ -6,7 +6,7 @@ import { useEvents, useInvalidate } from "./rpc.js";
 
 /** The reads each relayed source can change; a broker message never refetches active-work's reads. */
 const RELAY_INVALIDATES = {
-  "active-work": ["work.portfolio", "work.initiative", "work.tasks", "work.task", "work.taskMentions", "work.taskArtifacts", "graph.ego"],
+  "active-work": ["work.portfolio", "work.initiative", "work.sheet", "work.tasks", "work.task", "work.taskMentions", "work.taskArtifacts", "graph.ego"],
   "agent-chat": ["agents.roster", "agents.graph", "agents.messages", "agents.queue"],
   factory: ["autoresearch.runs", "autoresearch.run", "blockers.banner"],
 } as const satisfies Record<RelaySource, readonly CommandName<ConsoleCommands>[]>;

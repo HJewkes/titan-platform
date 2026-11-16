@@ -43,6 +43,7 @@ import { UPSTREAM_IDS, probeUpstreams, type Upstream } from "./upstreams.js";
 import { summarizeNotes, videoNotesCommands } from "./video-notes.js";
 import { videoPropsCommands } from "./video-props.js";
 import { videosCommands, type VideoCatalog } from "./videos.js";
+import { weeklySheetCommands } from "./weekly-sheet.js";
 import { initiativeResult, knowledgeCommands, portfolioResult, readInitiative, readPortfolio, type WorkOptions } from "./work.js";
 import { loopBoardResult, loopTierCommand, readLoopBoard } from "./work-loops.js";
 
@@ -206,6 +207,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...tasksCommands({ activeWork, sessions, work }),
     ...graphCommands({ activeWork, sessions }),
     ...knowledgeCommands(activeWork, work),
+    ...weeklySheetCommands(activeWork, work),
     ...inboxCommands(inbox),
     ...roundReads(rounds),
     ...ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decisionLog, listeners, inboxActions }, invalidation),

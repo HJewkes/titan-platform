@@ -61,6 +61,7 @@ const SHIP_TILE_FRAMES = [
 const RECORDED: readonly Pick<TwinCall, "command" | "args">[] = [
   recorded("work.portfolio", {}),
   recorded("work.initiative", { slug: "orbit-relay" }),
+  recorded("work.sheet", { slug: "orbit-relay" }),
   recorded("work.notes", {}),
   recorded("work.search", { q: "backoff" }),
   recorded("work.record", { ref: "note:orbit-relay/2031-03-03-backoff-ceiling.md" }),
