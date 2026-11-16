@@ -18,6 +18,24 @@
       "kills": [
         "console read budgets on the large-state fixture inbox.list answers within its bytes and upstream-call budgets"
       ]
+    },
+    {
+      "name": "coord.cards titles its cards from every task in any status",
+      "file": "apps/console/server/coord-cards.ts",
+      "find": ".read(\"task.list\", { all_initiatives: true, id: ids.join(\",\") })",
+      "replace": ".read(\"task.list\", { all_initiatives: true, status: \"all\" })",
+      "kills": [
+        "console read budgets on the large-state fixture coord.cards answers within its bytes and upstream-call budgets"
+      ]
+    },
+    {
+      "name": "work.tasks answers every open task in one page",
+      "file": "apps/console/server/task-list.ts",
+      "find": "const LIMIT = 50;",
+      "replace": "const LIMIT = 1_000_000;",
+      "kills": [
+        "console read budgets on the large-state fixture work.tasks answers within its bytes and upstream-call budgets"
+      ]
     }
   ]
 }
