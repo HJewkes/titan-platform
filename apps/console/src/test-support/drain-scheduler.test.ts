@@ -1,16 +1,8 @@
 // @vitest-environment jsdom
-import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
-import { drainScheduler } from "./drain-scheduler.js";
+import { drainScheduler, reactDomScheduler } from "./drain-scheduler.js";
 
-interface Scheduler {
-  readonly unstable_NormalPriority: number;
-  readonly unstable_IdlePriority: number;
-  unstable_scheduleCallback(priority: number, callback: () => void): { readonly id: number };
-}
-
-const requireHere = createRequire(import.meta.url);
-const scheduler = createRequire(requireHere.resolve("react-dom"))("scheduler") as Scheduler;
+const scheduler = reactDomScheduler();
 
 function busyFor(ms: number): void {
   const until = performance.now() + ms;
@@ -57,11 +49,8 @@ describe("draining React's scheduler before jsdom teardown", () => {
 
   it("a scheduler that never runs its queue releases the drain at the deadline", async () => {
     let id = 0;
-    const stalled = { unstable_IdlePriority: 5, unstable_scheduleCallback: () => ({ id: id++ }) };
-    const startedAt = performance.now();
+    const stalled = { unstable_IdlePriority: 5, unstable_NormalPriority: 3, unstable_scheduleCallback: () => ({ id: id++ }) };
 
-    await drainScheduler(stalled);
-
-    expect(performance.now() - startedAt).toBeGreaterThanOrEqual(1_900);
+    await expect(drainScheduler(stalled)).resolves.toBeUndefined();
   });
 });

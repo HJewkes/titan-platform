@@ -7,6 +7,7 @@ interface SchedulerTask {
 
 interface Scheduler {
   readonly unstable_IdlePriority: number;
+  readonly unstable_NormalPriority: number;
   unstable_scheduleCallback(priority: number, callback: () => void): SchedulerTask;
 }
 
@@ -17,9 +18,15 @@ const DRAIN_DEADLINE_MS = 2_000;
 
 // react-dom requires its own copy of scheduler; resolving from react-dom's path loads that same module instance, whose
 // queue is the one a commit's passive-effect flush waits in.
-function reactDomScheduler(): Scheduler {
+export function reactDomScheduler(): Scheduler {
   const requireHere = createRequire(import.meta.url);
-  return createRequire(requireHere.resolve("react-dom"))("scheduler") as Scheduler;
+  const scheduler: unknown = createRequire(requireHere.resolve("react-dom"))("scheduler");
+  if (!isScheduler(scheduler)) throw new Error("react-dom's scheduler has no unstable_scheduleCallback");
+  return scheduler;
+}
+
+function isScheduler(value: unknown): value is Scheduler {
+  return typeof value === "object" && value !== null && "unstable_scheduleCallback" in value;
 }
 
 function runAfterQueuedTasks(scheduler: Scheduler): Promise<SchedulerTask> {
