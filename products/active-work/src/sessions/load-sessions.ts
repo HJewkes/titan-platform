@@ -63,7 +63,7 @@ async function loadSession(fullPath: string, sessionFile: string): Promise<LoadR
   if (!match) return fail('no frontmatter block');
   let parsed: unknown;
   try {
-    parsed = YAML.parse(match[1]);
+    parsed = YAML.parse(match.at(1) ?? '');
   } catch (err) {
     return fail(`invalid YAML: ${describe(err)}`);
   }
@@ -71,7 +71,7 @@ async function loadSession(fullPath: string, sessionFile: string): Promise<LoadR
   if (!result.success) return fail(`invalid frontmatter: ${summarizeIssues(result.error)}`);
   return {
     ok: true,
-    session: toLoadedSession(sessionFile, result.data, match[2]),
+    session: toLoadedSession(sessionFile, result.data, match.at(2) ?? ''),
   };
 }
 

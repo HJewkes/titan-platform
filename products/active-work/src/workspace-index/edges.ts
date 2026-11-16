@@ -233,9 +233,9 @@ function qualifyingTagGroups(notes: readonly NoteFacts[]): NoteFacts[][] {
 function crossInitiativePairs(group: NoteFacts[]): [NoteFacts, NoteFacts][] {
   const sorted = [...group].sort((a, b) => a.ref.localeCompare(b.ref));
   const pairs: [NoteFacts, NoteFacts][] = [];
-  for (let i = 0; i < sorted.length; i++) {
-    for (let j = i + 1; j < sorted.length; j++) {
-      if (sorted[i].initiative !== sorted[j].initiative) pairs.push([sorted[i], sorted[j]]);
+  for (const [i, first] of sorted.entries()) {
+    for (const second of sorted.slice(i + 1)) {
+      if (first.initiative !== second.initiative) pairs.push([first, second]);
     }
   }
   return pairs;
