@@ -97,11 +97,11 @@ const OWNER_HOLD_CLASS = "owner-asked";
 /** The op kinds a deposit may hand the factory as an `owner-op` tap, as data: each kind joins once its factory effect lands. */
 const CONSOLE_OPS: ReadonlySet<OwnerOpKind> = new Set(["merge-at-head", "retire-agent", "close-pr", "deploy-pause-clear", "plan-bet-select", "plan-outcome-edit", "plan-freeze-set"]);
 /**
- * TP-3918: a gate on a replay-diverged run is consumed with no merge. A row-joined diverged run says so in its stall
+ * A gate on a replay-diverged run is consumed with no merge. A row-joined diverged run says so in its stall
  * reason. A rowless gate may be a land run's or one a diverged run left behind when it was replaced, and the item cannot
- * tell which, so every rowless gate is held to the Morning path until TP-3918 lands.
+ * tell which, so every rowless gate stays on the terminal: the console shows the gate's command and offers no tap.
  */
-export const DIVERGED_HOLD = "resolve from Morning (TP-3918)";
+export const DIVERGED_HOLD = "resolve from the terminal with the command shown";
 const REPLAY_DIVERGED = /^replay diverged/;
 
 /** Gate ids are `<runId>/<stepId>` or `<runId>/<stepId>:<n>`. */
