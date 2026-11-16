@@ -38,12 +38,18 @@
       //                  share per seek, so a frame depends on the frame seeked before it, and a beat lays the
       //                  label out at its target, so a beat's first frame depends on nothing before it
       // `?duration=nan` or `?duration=null` publishes a broken duration on any page.
+      // `?marks=ok|bad-t|bad-kind` adds a marks() to the API: ok lists three marks out of order, the others one bad mark.
       const query = new URLSearchParams(location.search)
       const page = query.get('page')
       const stage = document.getElementById('stage')
       const DURATIONS = { nan: NaN, null: null }
       const duration = query.has('duration') ? DURATIONS[query.get('duration')] : 3
-      const failAt = query.has('fail-at') ? Number(query.get('fail-at')) : Infinity
+      const MARKS = {
+        ok: [{ t: 1.25, beat: 1, kind: 'hero' }, { t: 0, beat: 0, kind: 'settled' }, { t: 0.5, beat: 1, kind: 'before' }],
+        'bad-t': [{ t: 0, beat: 1, kind: 'settled' }, { t: NaN, beat: 2, kind: 'step' }],
+        'bad-kind': [{ t: 0, beat: 3, kind: 'wobble' }],
+      }
+      const failAt =query.has('fail-at') ? Number(query.get('fail-at')) : Infinity
       const boxes = page === 'drift' ? Array.from({ length: 36 }, (_, i) => {
         const box = document.createElement('div')
         box.textContent = `box ${i}`
@@ -106,6 +112,7 @@
       if (page !== 'static-clock') {
         seek(0)
         window.__titanMotion = { seek, ready: () => document.fonts.ready.then(() => undefined), duration }
+        if (query.has('marks')) window.__titanMotion.marks = () => MARKS[query.get('marks')]
       }
 
       if (page === 'throws-at-load') {
