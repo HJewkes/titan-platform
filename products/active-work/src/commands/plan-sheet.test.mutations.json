@@ -11,12 +11,12 @@
       ]
     },
     {
-      "name": "an uncited proposed bet defaults to select",
-      "file": "products/active-work/src/plan/sheet.ts",
-      "find": "intentIds(bet).length > 0 ? 'select' : 'hold'",
-      "replace": "'select'",
+      "name": "a caller-supplied date moves the deadline",
+      "file": "products/active-work/src/commands/plan-sheet.ts",
+      "find": "      const day = today();",
+      "replace": "      const day = (args as { today?: string }).today ?? today();",
       "kills": [
-        "weekly sheet flags a bet line that cites no intent line and defaults it to hold"
+        "weekly sheet records the defaults only through the explicit step, after the deadline by the host clock, and once"
       ]
     },
     {
@@ -34,16 +34,17 @@
       "find": "if (day <= sheet.front.deadline) throw",
       "replace": "if (false) throw",
       "kills": [
-        "weekly sheet records the defaults only through the explicit step, after the deadline and once"
+        "weekly sheet records the defaults only through the explicit step, after the deadline by the host clock, and once"
       ]
     },
     {
-      "name": "defaults overwrite recorded decisions",
+      "name": "answered sheets are replaced or answered twice",
       "file": "products/active-work/src/commands/plan-sheet.ts",
-      "find": "if ((await readSheetDecisions(ctx.activeRoot, args.initiative, args.week)) !== null) {",
+      "find": "if ((await readSheetDecisions(activeRoot, initiative, sheetWeek)) !== null) {",
       "replace": "if (false) {",
       "kills": [
-        "weekly sheet records the defaults only through the explicit step, after the deadline and once"
+        "weekly sheet records the defaults only through the explicit step, after the deadline by the host clock, and once",
+        "weekly sheet generate refuses to replace a sheet whose decisions are recorded, leaving it unchanged"
       ]
     }
   ]
