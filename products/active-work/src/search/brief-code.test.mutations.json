@@ -9,6 +9,13 @@
       "kills": ["briefCode scoped to the spawn repo lists only neighbours that exist in the spawn repo when the snapshot spans two repos"]
     },
     {
+      "name": "no repoRoot passes the snapshot answer through unchecked",
+      "file": "products/active-work/src/search/brief-code.ts",
+      "find": "  if (repoRoot === undefined) return [];",
+      "replace": "  if (repoRoot === undefined) return found;",
+      "kills": ["briefCode scoped to the spawn repo lists no codewatch neighbours when the spawn has no repoRoot to check them against"]
+    },
+    {
       "name": "a named file missing from the spawn repo still gets neighbours",
       "file": "products/active-work/src/search/brief-code.ts",
       "find": "  if ((await realFileIn(repoRoot, named)) === null) return [];\n",

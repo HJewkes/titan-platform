@@ -160,10 +160,11 @@ function neighboursOf(named: string, deps: CodeDeps): Promise<Neighbour[] | stri
 
 /**
  * Codewatch's answer carries no repo key, so a snapshot of another repo can answer for a same-named
- * path. With the spawn's checkout known, only a named file and neighbours that exist there are kept.
+ * path. Only a named file and neighbours that exist in the spawn's checkout are kept, and with no checkout
+ * to check against none are.
  */
 async function inSpawnRepo(named: string, found: Neighbour[], repoRoot: string | undefined): Promise<Neighbour[]> {
-  if (repoRoot === undefined) return found;
+  if (repoRoot === undefined) return [];
   if ((await realFileIn(repoRoot, named)) === null) return [];
   const present = await Promise.all(found.map((entry) => realFileIn(repoRoot, entry.path)));
   return found.filter((_, i) => present[i] !== null);
