@@ -53,6 +53,7 @@ Before adding code:
 | [`registry`](#cap-registry) | 1 | You define a command once and want it served as a CLI, an MCP tool and an HTTP route. |
 | [`retrieval`](#cap-retrieval) | 1 | You need search over a store-sqlite corpus that fuses FTS, vectors and graph hops and keeps answering when one retriever is down. |
 | [`rpc-client`](#cap-rpc-client) | 1 | Browser or Node code calls a registry-backed daemon, live over HTTP and SSE or from a static snapshot export, with typed commands. |
+| [`service-supervisor`](#cap-service-supervisor) | 1 | You need the text of a systemd user unit or a launchd LaunchAgent plist for a long-running job (argv, environment, log files, restart policy). |
 | [`speech-g2p`](#cap-speech-g2p) | 1 | You turn English text into misaki 0.9.4 phoneme tokens without Python, for Kokoro or for vetting pronunciations: `misakiEnglish()` gives per-token phonemes, the joined string and a cache `version`, honours `[word](/phonemes/)` overrides, and `ttsTokens` hands them to speech-tts. |
 | [`speech-stt`](#cap-speech-stt) | 1 | You compare a script with what a recogniser heard, or port Python that calls `difflib`: a CPython-parity `SequenceMatcher` and `roundHalfEven` (Python's `round`), `align` to time script words from a transcript, `diff` and `normalize` to score a take, the `Word` and `Transcript` schemas, and a pure TS `resample` (24 kHz to 16 kHz without ffmpeg). |
 | [`speech-tts`](#cap-speech-tts) | 1 | You need speech audio and the engine must differ per deployment: an in-process model, a GPU box behind a command or ssh, or a hosted HTTP API. |
@@ -850,6 +851,20 @@ Key exports:
 - `client/canonical-key`: `canonicalArgs`, `snapshotKey`, `wireArgs`
 - `client/sse-parser`: `createSseParser`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/rpc-client)
+
+<a id="cap-service-supervisor"></a>
+
+### [`service-supervisor`](https://hjewkes.github.io/titan-platform/reference/service-supervisor)
+
+Tier 1, `@titan-design/service-supervisor@0.0.0`. Render systemd user units and launchd plists for a long-running job
+
+**Use this when:**
+
+You need the text of a systemd user unit or a launchd LaunchAgent plist for a long-running job (argv, environment, log files, restart policy). It renders and escapes; it never writes a file or runs `systemctl` or `launchctl`, so installing and starting the job stays with the caller. For the escaping helpers alone, or a PATH for the job, use `daemon/service`.
+
+Key exports:
+
+- `render`: `LaunchdProcessType`, `RestartPolicy`, `ServiceSpec`, `renderLaunchAgentPlist`, `renderSystemdUserService`
 
 <a id="cap-speech-g2p"></a>
 

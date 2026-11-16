@@ -266,7 +266,7 @@
   },
   "products/active-work/src/setup/supervision-launchd.ts": {
     "titan/max-function-lines": {
-      "count": 3
+      "count": 2
     }
   },
   "products/active-work/src/setup/supervision-systemd.ts": {

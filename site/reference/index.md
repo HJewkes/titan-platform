@@ -54,6 +54,7 @@ Reusable machinery over the primitives.
 | [`registry`](/reference/registry) | zod command registry projected to CLI, MCP, and HTTP surfaces | `rpc-protocol` |
 | [`retrieval`](/reference/retrieval) | FTS + vector + graph retrieval with RRF fusion, rerank cascade, and fail-open | `embed`, `store-sqlite` |
 | [`rpc-client`](/reference/rpc-client) | Browser-safe typed client for titan daemons, with live (HTTP + SSE) and static (snapshot file) data sources | `rpc-protocol` |
+| [`service-supervisor`](/reference/service-supervisor) | Render systemd user units and launchd plists for a long-running job | `daemon` |
 | [`speech-g2p`](/reference/speech-g2p) | English text to misaki phoneme tokens in pure TypeScript: lexicon G2P, spaCy-compatible tokenizer, compromise POS tagger | `rpc-protocol` |
 | [`speech-stt`](/reference/speech-stt) | Speech-recognition helpers: a transformers.js Whisper recogniser with an audio-hash cache, a wav2vec2 phone recogniser with CTC logits, a CPython-parity SequenceMatcher, script alignment, transcript diff, Word and Transcript schemas, and a resampler | `rpc-protocol` |
 | [`speech-tts`](/reference/speech-tts) | Swappable text-to-speech provider contract, registry and command/HTTP adapters | `app-paths`, `rpc-protocol` |
@@ -106,7 +107,7 @@ Thin compositions of the tiers. A linked product is published; the rest are priv
 
 | Package | What it does | Titan dependencies |
 | --- | --- | --- |
-| [`active-work`](/reference/active-work) | Durable workspace state for engineering work — CLI, MCP, and Claude skill for tracking initiatives across sessions | `agent-dispatch`, `agent-protocol`, `anthropic-account`, `app-paths`, `cluster`, `code-read`, `daemon`, `decider`, `locator`, `memory`, `pm`, `registry`, `retrieval`, `rpc-protocol`, `session-analytics`, `session-graph`, `session-read`, `store-sqlite` |
+| [`active-work`](/reference/active-work) | Durable workspace state for engineering work — CLI, MCP, and Claude skill for tracking initiatives across sessions | `agent-dispatch`, `agent-protocol`, `anthropic-account`, `app-paths`, `cluster`, `code-read`, `daemon`, `decider`, `locator`, `memory`, `pm`, `registry`, `retrieval`, `rpc-protocol`, `session-analytics`, `session-graph`, `service-supervisor`, `session-read`, `store-sqlite` |
 | `corpus-query` | Cheap one-line questions over a large local text corpus: deterministic index and retrieval, verified judge calls | `agent`, `agent-protocol`, `app-paths`, `evidence`, `hitl`, `store-sqlite`, `workflow` |
 | `evals` | Eval registry: spec schemas for units, variants, cases, suites, checks and scorecards, with canonical content hashing | `agent`, `app-paths`, `authority`, `evidence`, `fix-proof`, `health`, `hitl`, `pm`, `review-panel`, `review-workflow`, `session-analytics`, `session-read`, `store-sqlite`, `workflow` |
 | `explainer` | Explainer video pipeline: beats.json and digest.json schemas, packet builder, finding attribution | `agent`, `agent-dispatch`, `agent-protocol`, `app-paths`, `autoresearch`, `code-graph`, `code-read`, `evidence`, `frame-capture`, `github`, `graph-layout`, `hitl`, `owner-queue`, `pm`, `react-ui`, `render-qa`, `rpc-protocol`, `session-read`, `speech-g2p`, `speech-stt`, `speech-tts`, `speech-vet`, `store-sqlite`, `workflow` |

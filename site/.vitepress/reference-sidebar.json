@@ -150,6 +150,10 @@
         "link": "/reference/rpc-client"
       },
       {
+        "text": "service-supervisor",
+        "link": "/reference/service-supervisor"
+      },
+      {
         "text": "speech-g2p",
         "link": "/reference/speech-g2p"
       },
