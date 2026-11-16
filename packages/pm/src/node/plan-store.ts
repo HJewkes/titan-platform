@@ -3,8 +3,8 @@ import path from "node:path";
 import { atomicWrite } from "@titan-design/locator";
 import { parse, stringify } from "yaml";
 import type { ZodType } from "zod";
-import { BetSchema, FreezeSchema, OutcomeSchema, OutOfScopeSchema } from "../planning.js";
-import type { Bet, Freeze, OutOfScope, Outcome } from "../planning.js";
+import { BetSchema, FreezeSchema, IntentLineSchema, OutcomeSchema, OutOfScopeSchema } from "../planning.js";
+import type { Bet, Freeze, IntentLine, OutOfScope, Outcome } from "../planning.js";
 import { PlanStoreError } from "./plan-errors.js";
 
 /*
@@ -17,6 +17,7 @@ export interface PlanRecords {
   bet: Bet;
   freeze: Freeze;
   "out-of-scope": OutOfScope;
+  intent: IntentLine;
 }
 
 export type PlanKind = keyof PlanRecords;
@@ -32,6 +33,7 @@ const KINDS: { [K in PlanKind]: KindSpec<K> } = {
   bet: { dir: "bets", label: "Bet", schema: BetSchema },
   freeze: { dir: "freezes", label: "Freeze", schema: FreezeSchema },
   "out-of-scope": { dir: "out-of-scope", label: "Out-of-scope record", schema: OutOfScopeSchema },
+  intent: { dir: "intent", label: "Intent line", schema: IntentLineSchema },
 };
 
 export function planSchema<K extends PlanKind>(kind: K): ZodType<PlanRecords[K]> {

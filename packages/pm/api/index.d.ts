@@ -1,5 +1,5 @@
-import { T as Task } from './planning.js';
-export { B as Bet, a as BetSchema, D as DELIVERABLE_ID_REGEX, F as Freeze, b as FreezeEndCondition, c as FreezeEndConditionSchema, d as FreezeSchema, O as OutOfScope, e as OutOfScopeSchema, f as Outcome, g as OutcomeSchema, h as OwnerIntentRef, i as OwnerIntentRefSchema, P as Prediction, j as PredictionSchema, k as TaskSchema } from './planning.js';
+import { T as Task, I as IntentLine } from './planning.js';
+export { B as Bet, a as BetSchema, D as DELIVERABLE_ID_REGEX, F as Freeze, b as FreezeEndCondition, c as FreezeEndConditionSchema, d as FreezeSchema, e as INTENT_SECTIONS, f as IntentLineSchema, g as IntentSection, O as OutOfScope, h as OutOfScopeSchema, i as Outcome, j as OutcomeSchema, k as OwnerIntentRef, l as OwnerIntentRefSchema, P as Prediction, m as PredictionSchema, n as TaskSchema } from './planning.js';
 import { z } from 'zod';
 
 declare const InitiativeVisibilitySchema: z.ZodEnum<{
@@ -404,18 +404,6 @@ type CategorizedTask = Pick<Task, "id" | "status" | "kind" | "cos" | "area" | "d
 declare function checkCategories(task: CategorizedTask, registry: CategoryRegistry | null): CategoryError[];
 
 declare const INTENT_DIGEST_SCHEMA = "titan-intent-digest/v1";
-declare const INTENT_SECTIONS: readonly ["Standing direction", "Reasons", "Ruled out", "Taste", "Open questions", "Superseded"];
-type IntentSection = (typeof INTENT_SECTIONS)[number];
-interface IntentLine {
-    /** `<slug>/I<n>`, the owner-intent id other records cite. */
-    id: string;
-    date: string;
-    quote: string;
-    /** The reference to the exact quote, for example `msg:3f2a91`. */
-    ref: string;
-    section: IntentSection;
-    supersededBy?: string;
-}
 interface IntentDigestError {
     line: number;
     message: string;
@@ -433,7 +421,7 @@ type IntentDigestResult = {
 /** Parses a `titan-intent-digest/v1` file. Strict: any malformed bullet fails the whole digest, never a partial read. */
 declare function parseIntentDigest(text: string): IntentDigestResult;
 
-export { type AgentAccess, type AgentAccessInput, type AreaEntry, BUILT_IN_STATUSES, type BetLookup, type CategorizedTask, type CategoryAxis, type CategoryError, type CategoryRegistry, CategoryRegistrySchema, type ClaimRow, type CriticalPathOptions, type CriticalPathResult, type CrossInitiativeParentWarning, DELIVERABLE_STATUSES, DISPOSITION_KINDS, type Deliverable, type DeliverableEntry, DeliverableSchema, type DeliverableStatus, type DispositionCheck, type DispositionKind, type DispositionRow, DispositionRowSchema, type EdgeChange, type EdgeCheck, type EdgeError, type EdgeField, type Edges, type ExternalDep, INTENT_DIGEST_SCHEMA, INTENT_SECTIONS, type InitiativeBriefRef, type InitiativePrefix, type InitiativeVisibility, InitiativeVisibilitySchema, type IntentDigestError, type IntentDigestResult, type IntentLine, type IntentSection, type ReviewItem, type ReviewPin, type RunCost, type StatusEntry, TOPIC_PRIORITIES, TOPIC_VERDICTS, Task, type TaskFloat, type TaskKeyEntry, type TaskKeyIndex, type TaskKeyRefusal, type TaskKeyResolution, type TaskRequire, TaskRequireSchema, type TaskTreeNode, type TopicPriority, type TopicRow, type TopicVerdict, agentAccess, betProblem, categoriesPath, checkCategories, checkDispositions, checkEdges, criticalPath, deliverablePath, deliverablesDir, isAgentVisible, parseCategoryRegistry, parseClaimsAudit, parseDeliverableRegistry, parseDispositions, parseIntentDigest, parseTopicsJudged, prioritizedTopics, readEdges, readReviewPin, readTsv, resolveTaskKey, sumRunCost, summaryRecommendations, taskTree };
+export { type AgentAccess, type AgentAccessInput, type AreaEntry, BUILT_IN_STATUSES, type BetLookup, type CategorizedTask, type CategoryAxis, type CategoryError, type CategoryRegistry, CategoryRegistrySchema, type ClaimRow, type CriticalPathOptions, type CriticalPathResult, type CrossInitiativeParentWarning, DELIVERABLE_STATUSES, DISPOSITION_KINDS, type Deliverable, type DeliverableEntry, DeliverableSchema, type DeliverableStatus, type DispositionCheck, type DispositionKind, type DispositionRow, DispositionRowSchema, type EdgeChange, type EdgeCheck, type EdgeError, type EdgeField, type Edges, type ExternalDep, INTENT_DIGEST_SCHEMA, type InitiativeBriefRef, type InitiativePrefix, type InitiativeVisibility, InitiativeVisibilitySchema, type IntentDigestError, type IntentDigestResult, IntentLine, type ReviewItem, type ReviewPin, type RunCost, type StatusEntry, TOPIC_PRIORITIES, TOPIC_VERDICTS, Task, type TaskFloat, type TaskKeyEntry, type TaskKeyIndex, type TaskKeyRefusal, type TaskKeyResolution, type TaskRequire, TaskRequireSchema, type TaskTreeNode, type TopicPriority, type TopicRow, type TopicVerdict, agentAccess, betProblem, categoriesPath, checkCategories, checkDispositions, checkEdges, criticalPath, deliverablePath, deliverablesDir, isAgentVisible, parseCategoryRegistry, parseClaimsAudit, parseDeliverableRegistry, parseDispositions, parseIntentDigest, parseTopicsJudged, prioritizedTopics, readEdges, readReviewPin, readTsv, resolveTaskKey, sumRunCost, summaryRecommendations, taskTree };
 
 // ./dist/planning.d.ts
 import { z } from 'zod';
@@ -678,5 +666,23 @@ declare const OutOfScopeSchema: z.ZodObject<{
     statement: z.ZodString;
 }, z.core.$strict>;
 type OutOfScope = z.infer<typeof OutOfScopeSchema>;
+declare const INTENT_SECTIONS: readonly ["Standing direction", "Reasons", "Ruled out", "Taste", "Open questions", "Superseded"];
+type IntentSection = (typeof INTENT_SECTIONS)[number];
+declare const IntentLineSchema: z.ZodObject<{
+    id: z.ZodString;
+    section: z.ZodEnum<{
+        "Open questions": "Open questions";
+        Reasons: "Reasons";
+        "Ruled out": "Ruled out";
+        "Standing direction": "Standing direction";
+        Superseded: "Superseded";
+        Taste: "Taste";
+    }>;
+    date: z.ZodString;
+    quote: z.ZodString;
+    ref: z.ZodString;
+    superseded_by: z.ZodOptional<z.ZodString>;
+}, z.core.$strict>;
+type IntentLine = z.infer<typeof IntentLineSchema>;
 
-export { type Bet as B, DELIVERABLE_ID_REGEX as D, type Freeze as F, type OutOfScope as O, type Prediction as P, type Task as T, BetSchema as a, type FreezeEndCondition as b, FreezeEndConditionSchema as c, FreezeSchema as d, OutOfScopeSchema as e, type Outcome as f, OutcomeSchema as g, type OwnerIntentRef as h, OwnerIntentRefSchema as i, PredictionSchema as j, TaskSchema as k };
+export { type Bet as B, DELIVERABLE_ID_REGEX as D, type Freeze as F, type IntentLine as I, type OutOfScope as O, type Prediction as P, type Task as T, BetSchema as a, type FreezeEndCondition as b, FreezeEndConditionSchema as c, FreezeSchema as d, INTENT_SECTIONS as e, IntentLineSchema as f, type IntentSection as g, OutOfScopeSchema as h, type Outcome as i, OutcomeSchema as j, type OwnerIntentRef as k, OwnerIntentRefSchema as l, PredictionSchema as m, TaskSchema as n };

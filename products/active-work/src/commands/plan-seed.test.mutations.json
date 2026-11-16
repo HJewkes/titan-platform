@@ -4,7 +4,7 @@
     {
       "name": "superseded lines are kept",
       "file": "products/active-work/src/commands/plan-seed.ts",
-      "find": "line.supersededBy === undefined",
+      "find": "line.superseded_by === undefined",
       "replace": "true",
       "kills": ["plan.seed drops a superseded line and keeps its replacement with date and quote ref"]
     },
