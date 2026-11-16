@@ -32,7 +32,7 @@ describe('bootstrap live status and archive overlap', () => {
           setTimeout(() => reject(new Error('archive finished before live status started')), STARTUP_WAIT_MS);
         });
         await Promise.race([liveStarted, timeout]);
-        return { archivedIds: ['SI-1'], tasks: [], malformed: [] };
+        return { archivedIds: ['ZZ-99'], tasks: [], malformed: [] };
       })();
 
       const { prompt } = await assembleBootstrap({
@@ -44,7 +44,7 @@ describe('bootstrap live status and archive overlap', () => {
         pendingArchive: blockedArchive,
       });
 
-      expect(prompt).toContain('SI-1');
+      expect(prompt).toContain('ZZ-99');
     });
   });
 });
