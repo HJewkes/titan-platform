@@ -52,6 +52,28 @@ describe("land core", () => {
     expect(host.gates.get(gateId(runId, "approve-merge", 1))).toBeUndefined();
   });
 
+  it("asks again when a two-parent push with an edited tree lands on the approved head between the behind read and update-branch", async () => {
+    const scenario = landScenario();
+    const { fake } = scenario;
+    const forged = fakeSha("forged-merge");
+    const pushForged = () => {
+      fake.commits.set(forged, { sha: forged, parents: [H1, fake.refs.get("main") ?? ""], tree: fakeSha("tree:edited") });
+      fake.pushHead(1, forged);
+      fake.pr(1).behind = false;
+    };
+    const host = hostFor({ ...scenario, routes: beforeFirstRun(scenario.routes, "update-branch", pushForged) });
+    const runId = host.runtime.start("land-test");
+    await gateOpened(host, gateId(runId, "approve-merge"));
+
+    fake.pr(1).behind = true;
+    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
+    await gateOpened(host, gateId(runId, "approve-merge", 1));
+
+    expect(fake.pr(1).headSha).toBe(forged);
+    expect(fake.effects).toMatchObject({ updateBranch: 0, merge: 0 });
+    expect(host.gates.get(gateId(runId, "approve-merge", 1))?.prompt).toContain(forged);
+  });
+
   it("re-sends update-branch when the head has not moved and merges once the second write lands", async () => {
     const scenario = landScenario();
     swallowUpdates(scenario.fake, 1);
@@ -540,6 +562,22 @@ describe("readCi on a behind head in a non-strict repo", () => {
 });
 
 /** Rewrites the evidence record a matching code route writes, to stand in for a route that answers differently. */
+/** Runs `before` once, just before the first step `match` routes, as a push landing between two steps would. */
+function beforeFirstRun(routes: StepRoute[], match: string, before: () => void): StepRoute[] {
+  let pending = true;
+  return routes.map((route) => {
+    if (route.match !== match) return route;
+    const run: StepRoute["runner"]["run"] = async (input) => {
+      if (pending) {
+        pending = false;
+        before();
+      }
+      return route.runner.run(input);
+    };
+    return { ...route, runner: { ...route.runner, run } };
+  });
+}
+
 function rewriteRecords(routes: StepRoute[], match: string, edit: (record: Record<string, unknown>) => Record<string, unknown>): StepRoute[] {
   return routes.map((route) => {
     if (route.match !== match) return route;

@@ -106,6 +106,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     pushHead: (number, sha) => {
       mustPr(prs, number).headSha = sha;
     },
+    cleanMergeTree: async (baseParent, reviewed) => mergeTreeOf(baseParent, reviewed),
   };
   const record = <T>(name: string, value: T): T => (fake.calls.push(name), value);
   const read = <T>(name: FakeFaultyRead, answer: () => T): T => {
@@ -338,10 +339,13 @@ function updateBranch(fake: FakeGitHub, pr: PullRequest, expected: string, nextS
   landUpdate(fake, pr, nextSha);
 }
 
+const mergeTreeOf = (baseParent: string, reviewed: string): string => fakeSha(`tree:merge:${reviewed}:${baseParent}`);
+
 function landUpdate(fake: FakeGitHub, pr: PullRequest, nextSha: (tag: string) => string): void {
   fake.effects.updateBranch += 1;
   const merged = nextSha("update");
-  fake.commits.set(merged, { sha: merged, parents: [pr.headSha, fake.refs.get(pr.baseRef) ?? ""] });
+  const baseTip = fake.refs.get(pr.baseRef) ?? "";
+  fake.commits.set(merged, { sha: merged, parents: [pr.headSha, baseTip], tree: mergeTreeOf(baseTip, pr.headSha) });
   pr.headSha = merged;
   pr.behind = false;
 }
