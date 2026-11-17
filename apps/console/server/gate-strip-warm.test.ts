@@ -26,14 +26,14 @@ function trackedShepherd() {
   const calls: string[] = [];
   let inFlight = 0;
   const peak = { value: 0 };
-  const tracked = async <T>(name: string, answer: T): Promise<T> => {
+  async function tracked<T>(name: string, answer: T): Promise<T> {
     calls.push(name);
     inFlight++;
     peak.value = Math.max(peak.value, inFlight);
     await new Promise((resolve) => setTimeout(resolve, 1));
     inFlight--;
     return answer;
-  };
+  }
   const shepherd = partialFake<ShepherdSource>({
     timeline: (repo: string, pr: number) => tracked("timeline", { row: row(0), entries: [] as unknown[], repo, pr }),
     waiting: () => tracked("waiting", { owner: [], seat: [] }),
