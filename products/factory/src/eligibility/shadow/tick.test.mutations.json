@@ -20,11 +20,12 @@
       ]
     },
     {
-      "name": "the test home falls back to the run-wide factory db",
-      "file": "products/factory/src/eligibility/shadow/tick.test-helpers.ts",
-      "find": "ACTIVE_ROOT: activeRoot, ...stores }",
-      "replace": "ACTIVE_ROOT: activeRoot }",
+      "name": "the wake summary counts wake rows as would-dispatch",
+      "file": "products/factory/src/eligibility/shadow/command.ts",
+      "find": "${count(\"would-dispatch\")} would-dispatch",
+      "replace": "${count(\"wake\")} would-dispatch",
       "kills": [
+        "dispatch shadow-tick writes one wake row, would-dispatch rows in dispatch order up to the free slots, and a refused row per refused task",
         "dispatch shadow-tick a write lock on the run-wide default factory db leaves a test home's wake untouched (TP-6750)"
       ]
     }
