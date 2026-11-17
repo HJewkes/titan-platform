@@ -88,6 +88,52 @@ describe('plan intent verbs', () => {
   });
 });
 
+describe('plan intent lanes', () => {
+  const args = { section: 'Taste', quote: 'Invented taste', date: '2026-11-01', ref: 'msg:abc1' };
+
+  it('add --lane numbers lines <lane>/I<n> per lane under the initiative, apart from its own lines', async () => {
+    await withTempActiveRoot(async (root) => {
+      writeAgentVisibleBrief(root, 'alpha');
+
+      const first = await planIntentAdd.run({ ...args, initiative: 'alpha', lane: 'ui' }, ctx(root));
+      const second = await planIntentAdd.run({ ...args, initiative: 'alpha', lane: 'ui' }, ctx(root));
+      const other = await planIntentAdd.run({ ...args, initiative: 'alpha', lane: 'data' }, ctx(root));
+      const own = await planIntentAdd.run({ ...args, initiative: 'alpha' }, ctx(root));
+
+      expect([first.id, second.id, other.id, own.id]).toEqual(['ui/I1', 'ui/I2', 'data/I1', 'alpha/I1']);
+      await expect(fs.access(path.join(root, 'alpha/plan/intent/ui/I2.yml'))).resolves.toBeUndefined();
+      await expect(planIntentList.run({ initiative: 'alpha' }, ctx(root))).resolves.toEqual([own]);
+    });
+  });
+
+  it('digest --lane renders the lane as slug and the initiative as initiative, and parses', async () => {
+    await withTempActiveRoot(async (root) => {
+      writeAgentVisibleBrief(root, 'alpha');
+      await planIntentAdd.run({ ...args, initiative: 'alpha', lane: 'ui' }, ctx(root));
+      await planIntentAdd.run({ ...args, initiative: 'alpha' }, ctx(root));
+
+      const digest = await planIntentDigest.run({ initiative: 'alpha', lane: 'ui' }, ctx(root));
+
+      expect(digest.markdown).toContain('slug: ui\ninitiative: alpha\n');
+      expect(digest.lines.map((line) => line.id)).toEqual(['ui/I1']);
+    });
+  });
+
+  it('a lane equal to the initiative gives the same digest and files as no lane', async () => {
+    await withTempActiveRoot(async (root) => {
+      writeAgentVisibleBrief(root, 'alpha');
+      await planIntentAdd.run({ ...args, initiative: 'alpha', lane: 'alpha' }, ctx(root));
+
+      const plain = await planIntentDigest.run({ initiative: 'alpha' }, ctx(root));
+      const explicit = await planIntentDigest.run({ initiative: 'alpha', lane: 'alpha' }, ctx(root));
+
+      expect(explicit.markdown).toBe(plain.markdown);
+      expect(plain.markdown).toContain('slug: alpha\ninitiative: alpha\n');
+      await expect(fs.access(path.join(root, 'alpha/plan/intent/I1.yml'))).resolves.toBeUndefined();
+    });
+  });
+});
+
 describe('owner-message extract', () => {
   it('import writes the extract to factory/plan/owner-messages.jsonl, skipping ids already there', async () => {
     await withTempActiveRoot(async (root) => {

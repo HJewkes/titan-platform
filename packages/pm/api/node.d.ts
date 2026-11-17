@@ -32,6 +32,10 @@ declare function loadPlanRecords<K extends PlanKind>(activeRoot: string, initiat
 declare function readPlanRecord<K extends PlanKind>(activeRoot: string, kind: K, id: string): Promise<PlanRecords[K] | null>;
 /** Validates the record before any disk write, then writes it atomically to the file its id names. */
 declare function writePlanRecord<K extends PlanKind>(activeRoot: string, kind: K, record: PlanRecords[K]): Promise<PlanRecords[K]>;
+/** Every intent line of one lane, in filename order; a missing lane holds none. */
+declare function loadLaneIntentLines(activeRoot: string, initiative: string, lane: string): Promise<IntentLine[]>;
+/** Validates the line, then writes it atomically under its lane; the id's prefix must be the lane. */
+declare function writeLaneIntentLine(activeRoot: string, initiative: string, lane: string, line: IntentLine): Promise<IntentLine>;
 /** The next free `<initiative>/<letter><n>` id, one above the highest number in use. */
 declare function nextPlanId(initiative: string, letter: string, records: readonly {
     id: string;
@@ -67,7 +71,7 @@ declare function readInitiativeTasks(activeRoot: string, slug: string, options?:
 /** Reads every bet of the initiative against the rows and stores the result on the bet; returns the bets as written. */
 declare function recordPredictionChecks(activeRoot: string, initiative: string, rows: readonly ScorecardWeekRow[]): Promise<Bet[]>;
 
-export { type InitiativeTasks, type PlanKind, type PlanRecords, PlanStoreError, type PlanStoreErrorKind, type TaskFileRow, type UnparsedTaskFile, loadPlanRecords, nextPlanId, planLabel, planSchema, readInitiativeTasks, readPlanRecord, recordPredictionChecks, withPlanLock, writePlanRecord };
+export { type InitiativeTasks, type PlanKind, type PlanRecords, PlanStoreError, type PlanStoreErrorKind, type TaskFileRow, type UnparsedTaskFile, loadLaneIntentLines, loadPlanRecords, nextPlanId, planLabel, planSchema, readInitiativeTasks, readPlanRecord, recordPredictionChecks, withPlanLock, writeLaneIntentLine, writePlanRecord };
 
 // ./dist/prediction-check.d.ts
 import { z } from 'zod';

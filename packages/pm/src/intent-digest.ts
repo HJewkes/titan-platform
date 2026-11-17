@@ -62,9 +62,7 @@ function checkSlug(values: Record<string, string>, line: number, errors: IntentD
   const { slug, initiative } = values;
   if (!slug) return;
   if (!LOWERCASE_SLUG.test(slug)) errors.push({ line, message: `slug "${slug}" must be a lowercase slug` });
-  else if (initiative && slug !== initiative) {
-    errors.push({ line, message: `slug "${slug}" must equal initiative "${initiative}"` });
-  }
+  else if (initiative && !LOWERCASE_SLUG.test(initiative)) errors.push({ line, message: `initiative "${initiative}" must be a lowercase slug` });
 }
 
 function parseBullet(raw: string, number: number, slug: string, section: IntentSection, errors: IntentDigestError[]) {

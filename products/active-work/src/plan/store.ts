@@ -1,12 +1,14 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { BetLookup } from '@titan-design/pm';
+import type { BetLookup, IntentLine } from '@titan-design/pm';
 import {
+  loadLaneIntentLines,
   loadPlanRecords as loadStoredRecords,
   planLabel,
   PlanStoreError,
   readPlanRecord,
   withPlanLock as withStoreLock,
+  writeLaneIntentLine,
   writePlanRecord as writeStoredRecord,
   type PlanKind,
   type PlanRecords,
@@ -36,6 +38,12 @@ async function mapErrors<T>(run: () => Promise<T>): Promise<T> {
   } catch (err) {
     throw mapped(err);
   }
+}
+
+export { loadLaneIntentLines };
+
+export function writeLaneIntent(activeRoot: string, initiative: string, lane: string, line: IntentLine): Promise<IntentLine> {
+  return mapErrors(() => writeLaneIntentLine(activeRoot, initiative, lane, line));
 }
 
 export async function assertInitiativeExists(activeRoot: string, initiative: string): Promise<void> {

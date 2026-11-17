@@ -18,6 +18,24 @@
       "kills": [
         "parseIntentDigest records superseded-by as a full id"
       ]
+    },
+    {
+      "name": "a lane slug must equal its initiative",
+      "file": "packages/pm/src/intent-digest.ts",
+      "find": "else if (initiative && !LOWERCASE_SLUG.test(initiative))",
+      "replace": "else if (initiative && slug !== initiative)",
+      "kills": [
+        "parseIntentDigest accepts a lane slug that differs from its initiative"
+      ]
+    },
+    {
+      "name": "an initiative that is not a slug is accepted",
+      "file": "packages/pm/src/intent-digest.ts",
+      "find": "else if (initiative && !LOWERCASE_SLUG.test(initiative))",
+      "replace": "else if (false)",
+      "kills": [
+        "parseIntentDigest refuses an initiative that is not a lowercase slug, naming the slug line"
+      ]
     }
   ]
 }

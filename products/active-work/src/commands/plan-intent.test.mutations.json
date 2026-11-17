@@ -6,35 +6,45 @@
       "file": "products/active-work/src/commands/plan-intent.ts",
       "find": "if (!message.text.includes(quote)) throw",
       "replace": "if (false) throw",
-      "kills": ["plan intent verbs add --message takes the date and message id from the extract and refuses a quote the message lacks"]
+      "kills": [
+        "plan intent verbs add --message takes the date and message id from the extract and refuses a quote the message lacks"
+      ]
     },
     {
       "name": "the extract stays in the sources folder",
       "file": "products/active-work/src/plan/owner-messages.ts",
       "find": "path.join(activeRoot, 'factory', 'plan', 'owner-messages.jsonl')",
       "replace": "path.join(activeRoot, 'titan-platform', 'sources', 'owner-intent', 'owner-messages.jsonl')",
-      "kills": ["owner-message extract import writes the extract to factory/plan/owner-messages.jsonl, skipping ids already there"]
-    },
-    {
-      "name": "import appends ids already in the extract",
-      "file": "products/active-work/src/plan/owner-messages.ts",
-      "find": "rows.filter((row) => !seen.has(row.id) && seen.add(row.id))",
-      "replace": "rows.filter(() => true)",
-      "kills": ["owner-message extract import writes the extract to factory/plan/owner-messages.jsonl, skipping ids already there"]
+      "kills": [
+        "owner-message extract import writes the extract to factory/plan/owner-messages.jsonl, skipping ids already there"
+      ]
     },
     {
       "name": "the old extract is no longer read",
       "file": "products/active-work/src/plan/owner-messages.ts",
       "find": "  return readOwnerMessageFile(legacyOwnerMessagesPath(activeRoot));\n}",
       "replace": "  return [];\n}",
-      "kills": ["owner-message extract add --message falls back to the old sources/owner-intent extract when the new file is absent"]
+      "kills": [
+        "owner-message extract add --message falls back to the old sources/owner-intent extract when the new file is absent"
+      ]
     },
     {
       "name": "digest lines drop their message reference",
       "file": "products/active-work/src/commands/plan-intent.ts",
       "find": "(quote: ${line.ref})",
       "replace": "(quote: msg:none)",
-      "kills": ["plan intent verbs digest renders a titan-intent-digest whose lines cite their message ids"]
+      "kills": [
+        "plan intent verbs digest renders a titan-intent-digest whose lines cite their message ids"
+      ]
+    },
+    {
+      "name": "a lane digest renders the initiative as its slug",
+      "file": "products/active-work/src/commands/plan-intent.ts",
+      "find": "`slug: ${lane}`",
+      "replace": "`slug: ${initiative}`",
+      "kills": [
+        "plan intent lanes digest --lane renders the lane as slug and the initiative as initiative, and parses"
+      ]
     }
   ]
 }

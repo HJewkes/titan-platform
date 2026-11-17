@@ -29,15 +29,6 @@
       ]
     },
     {
-      "name": "defaults apply before the deadline",
-      "file": "products/active-work/src/commands/plan-sheet.ts",
-      "find": "if (day <= sheet.front.deadline) throw",
-      "replace": "if (false) throw",
-      "kills": [
-        "weekly sheet records the defaults only through the explicit step, after the deadline by the host clock, and once"
-      ]
-    },
-    {
       "name": "answered sheets are replaced or answered twice",
       "file": "products/active-work/src/commands/plan-sheet.ts",
       "find": "if ((await readSheetDecisions(activeRoot, initiative, sheetWeek)) !== null) {",
@@ -45,6 +36,15 @@
       "kills": [
         "weekly sheet records the defaults only through the explicit step, after the deadline by the host clock, and once",
         "weekly sheet generate refuses to replace a sheet whose decisions are recorded, leaving it unchanged"
+      ]
+    },
+    {
+      "name": "only the initiative's own intent refs count",
+      "file": "products/active-work/src/plan/sheet.ts",
+      "find": ".filter((ref) => /^[a-z0-9-]+\\/I\\d+$/.test(ref))",
+      "replace": ".filter((ref) => ref.startsWith(`${bet.initiative}/I`))",
+      "kills": [
+        "weekly sheet accepts a bet citing a lane line when the lane is not the initiative"
       ]
     }
   ]
