@@ -1,3 +1,4 @@
+import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
 import { gateStripReader } from "./gate-strip.js";
 import type { ShepherdSource } from "./shepherd.js";
@@ -33,11 +34,11 @@ function trackedShepherd() {
     inFlight--;
     return answer;
   };
-  const shepherd = {
+  const shepherd = partialFake<ShepherdSource>({
     timeline: (repo: string, pr: number) => tracked("timeline", { row: row(0), entries: [] as unknown[], repo, pr }),
     waiting: () => tracked("waiting", { owner: [], seat: [] }),
     checkRuns: () => tracked("checkRuns", { total_count: 0, check_runs: [] }),
-  } as unknown as ShepherdSource;
+  });
   return { shepherd, calls, peak };
 }
 
@@ -50,7 +51,7 @@ describe("gateStripReader.warm", () => {
     const afterWarm = [...calls];
     await reader.readMany([row(0)]);
 
-    expect(afterWarm.sort()).toEqual(["checkRuns", "timeline", "waiting"]);
+    expect([...afterWarm].sort()).toEqual(["checkRuns", "timeline", "waiting"]);
     expect(calls).toEqual(afterWarm);
   });
 
