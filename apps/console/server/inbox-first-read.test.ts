@@ -74,7 +74,10 @@ describe("the inbox's first read after a restart", () => {
   }, 3_000);
 
   it("leaves a perf row for each GitHub call a lineage makes, so a read waiting on them shows why", async () => {
-    const pull = { state: "open", merged: false, mergeSha: null, headSha: SHA, baseRef: "main", behindBy: 0 } as PullRequest;
+    const pull: PullRequest = {
+      number: 7, state: "open", merged: false, mergeSha: null, mergedAt: null, headRef: "feat/x", headSha: SHA, headRepo: "example/repo",
+      baseRef: "main", draft: false, mergeableState: "clean", behind: false, behindBy: 0, autoMerge: false,
+    };
     const port = partialFake<GitHubPort>({ getPr: () => Promise.resolve(pull), getHeadSha: () => Promise.resolve(BASE) });
     const rows: Array<{ name: string; outcome: string }> = [];
     const read = shipLineageReader({ github: port, recorder: { recordUpstream: ({ name, outcome }) => void rows.push({ name, outcome }) } });
