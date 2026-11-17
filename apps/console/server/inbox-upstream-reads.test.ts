@@ -15,7 +15,7 @@ import { consoleCommands } from "./commands.js";
 import { resolveConfig } from "./config.js";
 import { createInvalidation, type Invalidation } from "./invalidation.js";
 import { inboxReadCache } from "./inbox-rows.js";
-import type { WatchRow } from "./inbox-view.js";
+import { inboxViewCommands, warmShownRows, type WatchRow } from "./inbox-view.js";
 import type { ConsoleContext } from "./owner-guard.js";
 import type { ShepherdSource } from "./shepherd.js";
 import type { LineageReader, ShipLineage } from "./ship-lineage.js";
@@ -171,6 +171,32 @@ describe("inbox.list after an idle gap", () => {
 
     expect(first).toEqual([gate.id]);
     expect(second).toEqual([gate.id]);
+  }, 3_000);
+});
+
+describe("warmShownRows", () => {
+  it("keeps each shown merge row's lineage, so the first inbox read after it waits on no GitHub read", async () => {
+    const gate = { ...collapsedGate(), lens: "blocking-agent" as const };
+    const github = { hang: false, reads: 0 };
+    const lineage: LineageReader = () => {
+      github.reads += 1;
+      return github.hang ? new Promise(() => undefined) : Promise.resolve(KNOWN);
+    };
+    const shepherd = partialFake<ShepherdSource>({
+      list: (state) => Promise.resolve(state === "active" ? [liveRow()] : []),
+      waiting: () => Promise.resolve({ owner: [], seat: [] }),
+      timeline: () => Promise.resolve({ row: liveRow(), entries: [] }),
+      checkRuns: () => Promise.resolve({ total_count: 0, check_runs: [] }),
+    });
+    const sources = { factory: { list: () => Promise.resolve({ items: [gate], gaps: [] }) }, shepherd, rounds: { dir: path.join(root, "rounds"), lineage }, inbox: { dir: path.join(root, "inbox") } };
+    const cache = inboxReadCache(sources);
+    await warmShownRows(sources, cache);
+    github.hang = true;
+
+    const { envelope } = await invokeCommand(inboxViewCommands(sources, cache)["inbox.list"], {}, OWNER_CONTEXT);
+
+    expect(envelope).toMatchObject({ ok: true, data: { items: [{ id: gate.id, lineage: KNOWN }] } });
+    expect(github.reads).toBe(1);
   }, 3_000);
 });
 
