@@ -146,8 +146,9 @@ describe("importRound reads review-schema 0.3", () => {
 
 describe("importRound reads review-schema 0.3 feedback (TP-3272)", () => {
   it("imports a feedback.json whose answer rounds.submit marked recommendationSeen, with option notes", async () => {
+    await dropShipBinding();
     await editJson("feedback.json", (json) => {
-      json.answers = [{ questionId: "ship-cards", pick: "Ship", recommendationSeen: true, optionNotes: [{ option: "Don't ship", note: "Not this time." }] }];
+      json.answers = [{ questionId: "ship-cards", pick: "Keep", recommendationSeen: true, optionNotes: [{ option: "Rework", note: "Not this time." }] }];
     });
 
     expect(await runImport()).toMatchObject({ created: true, feedback: "copied" });
@@ -330,6 +331,26 @@ describe("importRound refuses a round or an answer file the console would not re
 
     await expect(runImport()).rejects.toMatchObject({ code: EXIT.DATAERR, message: expect.stringMatching(/answers another round\.json/) });
     expect(await entries()).toEqual([]);
+  });
+
+  it.each([
+    ["Ship", { pick: "Ship" }],
+    ["Don't ship", { pick: "Don't ship" }],
+    ["a revision request", { revisionRequested: true }],
+  ])("refuses a feedback.json answering the merge-bound question with %s, writing nothing a sweep could read as the owner's (TP-5990)", async (_name, answer) => {
+    await editJson("feedback.json", (json) => (json.answers = [{ questionId: "ship-cards", ...answer }]));
+
+    await expect(runImport()).rejects.toMatchObject({ code: EXIT.DATAERR, message: expect.stringMatching(/answers merge-bound question ship-cards/) });
+    expect(await entries()).toEqual([]);
+  });
+
+  it("refuses a merge-bound answer on a re-import into a round that has no feedback.json yet (TP-5990)", async () => {
+    await runImport();
+    await rm(path.join(roundsDir, ID, "feedback.json"));
+    await editJson("feedback.json", (json) => (json.answers = [{ questionId: "ship-cards", pick: "Ship" }]));
+
+    await expectRefused(/answers merge-bound question ship-cards/);
+    expect(await entries(path.join(roundsDir, ID))).not.toContain("feedback.json");
   });
 
   it("refuses a feedback.json that is not feedback@1, with the schema's reason", async () => {
