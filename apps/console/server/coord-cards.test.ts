@@ -110,6 +110,17 @@ describe("coord.cards enrichment and failures", () => {
     expect(result.gaps).toEqual([expect.stringContaining("daemon down")]);
   });
 
+  it("serves the cards without titles when the titles read is still running, so a busy active-work never holds coord.cards", async () => {
+    seedEvents(path.join(dir, "events.db"), [spawn("coord-a", "impl-1", "5T08:00:00", { branch: "feat/one", task: "EX-1" })]);
+    const busy = fakeActiveWork(() => new Promise(() => undefined));
+
+    const result = await read(source([merged(1, "feat/one", "EX-1")], busy));
+
+    expect(result.cards).toMatchObject([{ coordinator: "coord-a", tasks: [{ id: "EX-1" }] }]);
+    expect(result.cards[0]!.tasks[0]).not.toHaveProperty("title");
+    expect(result.gaps).toEqual([]);
+  }, 2_000);
+
   it("titles are read for the cards' task ids only", async () => {
     seedEvents(path.join(dir, "events.db"), [spawn("coord-a", "impl-1", "5T08:00:00", { branch: "feat/one", task: "EX-1" }), spawn("coord-a", "impl-2", "5T09:00:00", { task: "EX-2" })]);
     const asked: Record<string, unknown>[] = [];

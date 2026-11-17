@@ -27,6 +27,15 @@
       "kills": [
         "repository evidence serves evidence idle sixteen minutes kept, so the tasks page's first read after a gap waits on no git or GitHub"
       ]
+    },
+    {
+      "name": "git calls leave no perf row",
+      "file": "apps/console/server/repo-evidence.ts",
+      "find": "const git = timedGit(options.git ?? runGit, options.recorder);",
+      "replace": "const git = options.git ?? runGit;",
+      "kills": [
+        "repository evidence leaves an upstream row in the perf log for each git and GitHub call, named by command only"
+      ]
     }
   ]
 }

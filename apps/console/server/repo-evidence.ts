@@ -1,6 +1,8 @@
 import path from "node:path";
 import { ghCliWire, githubPort, type GitHubPort } from "@titan-design/github";
 import { findGitRoot, runGit, type GitRunner } from "@titan-design/worktree";
+import { timedCall } from "./perf/timed-call.js";
+import type { UpstreamObserver } from "./perf/timed-fetch.js";
 import { cachedReads, type CacheTimes } from "./read-cache.js";
 import { taskIdsIn, type PrEvidence, type RefEvidence } from "./task-stage.js";
 
@@ -25,6 +27,8 @@ interface GitEvidenceOptions {
   github?: Pick<GitHubPort, "listOpenPrs">;
   times?: CacheTimes;
   now?: () => number;
+  /** Each git and GitHub call leaves an upstream row in the perf log. */
+  recorder?: UpstreamObserver;
 }
 
 /**
@@ -40,8 +44,8 @@ const MAX_KEYS = 256;
  * way: a list read names every worktree path, and one `git rev-parse` spawn per path held each read up.
  */
 export function gitEvidenceReader(options: GitEvidenceOptions = {}): EvidenceReader {
-  const git = options.git ?? runGit;
-  const github = options.github ?? githubPort(ghCliWire());
+  const git = timedGit(options.git ?? runGit, options.recorder);
+  const github = timedGithub(options.github ?? githubPort(ghCliWire()), options.recorder);
   const times = options.times ?? EVIDENCE_TIMES;
   const keyed = { keyOf: (key: string) => key, maxKeys: MAX_KEYS, ...(options.now !== undefined && { now: options.now }) };
   const rootOf = cachedReads((repoPath: string) => findGitRoot(repoPath, git), times, keyed);
@@ -52,6 +56,14 @@ export function gitEvidenceReader(options: GitEvidenceOptions = {}): EvidenceRea
     return read.filter((entry): entry is RepoEvidence => entry !== null);
   };
 }
+
+/** Named by git subcommand only: a path or ref in the arguments never reaches the perf log. */
+const timedGit = (git: GitRunner, recorder: UpstreamObserver | undefined): GitRunner => (args, cwd) =>
+  timedCall(recorder, `git:${args[0] ?? ""}`, () => git(args, cwd), (out) => ({ bytes: Buffer.byteLength(out ?? ""), ok: out !== null }));
+
+const timedGithub = (github: Pick<GitHubPort, "listOpenPrs">, recorder: UpstreamObserver | undefined): Pick<GitHubPort, "listOpenPrs"> => ({
+  listOpenPrs: (slug) => timedCall(recorder, "github:listOpenPrs", () => github.listOpenPrs(slug), (prs) => ({ bytes: Buffer.byteLength(JSON.stringify(prs)), ok: true })),
+});
 
 async function readRepo(root: string, git: GitRunner, github: Pick<GitHubPort, "listOpenPrs">): Promise<RepoEvidence | null> {
   const base = (await git(["rev-parse", "--abbrev-ref", "origin/HEAD"], root)) ?? "origin/main";

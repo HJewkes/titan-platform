@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { RequestAuth } from "@titan-design/daemon";
 import type { OwnerItem } from "@titan-design/owner-queue";
@@ -141,6 +141,37 @@ describe("inbox.list's GitHub reads", () => {
     expect(shown).toEqual([]);
     expect(timelines).toEqual([7]);
   });
+});
+
+describe("inbox.list after an idle gap", () => {
+  it("a second read while the first read's refreshes still run is served the kept rows, as the first was", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(0);
+    const hang = { on: false };
+    const later = <T,>(value: T): Promise<T> => (hang.on ? new Promise(() => undefined) : Promise.resolve(value));
+    const gate = { ...collapsedGate(), lens: "blocking-agent" as const };
+    const factory: FactoryNeeds = { list: () => later({ items: [gate], gaps: [] }) };
+    const shepherd = partialFake<ShepherdSource>({
+      list: (state) => (state === "active" ? Promise.resolve([liveRow()]) : later([])),
+      waiting: () => later({ owner: [], seat: [] }),
+      timeline: () => later({ row: liveRow(), entries: [] }),
+      checkRuns: () => later({ total_count: 0, check_runs: [] }),
+    });
+    const broker = partialFake<BrokerReader>({ read: () => Promise.reject(new Error("no broker in this test")) });
+    const agents = partialFake<AgentsSource>({ broker, eventsDbPath: "", seatPrefixes: [] });
+    const wired = createSources(resolveConfig({}, root));
+    const served = consoleCommands({ ...wired, factory, shepherd, agents, inbox: { dir: path.join(root, "inbox") }, listeners: undefined, decisionLog: undefined });
+    await listIds(served, false);
+    vi.setSystemTime(16 * 60_000);
+    hang.on = true;
+
+    const first = await listIds(served, false);
+    const second = await listIds(served, false);
+    vi.useRealTimers();
+
+    expect(first).toEqual([gate.id]);
+    expect(second).toEqual([gate.id]);
+  }, 3_000);
 });
 
 describe("inboxReadCache", () => {

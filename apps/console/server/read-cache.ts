@@ -62,9 +62,14 @@ function refresh<T>(state: CacheState<T>, load: () => Promise<T>, now: () => num
   return run;
 }
 
-/** How long the kept value may still be served behind a refresh. */
-function servedMs(state: CacheState<unknown>, { staleMs, keptMs }: CacheTimes): number {
-  return keptMs === undefined || state.failed ? staleMs : Math.max(staleMs, keptMs);
+const keptWindow = ({ staleMs, keptMs }: CacheTimes): number => Math.max(staleMs, keptMs ?? staleMs);
+
+/**
+ * How long the kept value may still be served behind a refresh. TP-6747: once a refresh runs, the read that started it
+ * already waits on it, so a read that arrives meanwhile is served the kept value for the whole kept window, failed or not.
+ */
+function servedMs(state: CacheState<unknown>, times: CacheTimes): number {
+  return times.keptMs === undefined || (state.failed && state.running === undefined) ? times.staleMs : keptWindow(times);
 }
 
 /** `onRefreshed` is called when a refresh that a `stale` asked for lands, so a page served the old value can read again. */
