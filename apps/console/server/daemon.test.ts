@@ -398,6 +398,8 @@ describe.skipIf(process.platform !== "linux")("the console in LAN mode (127.0.0.
     expect(shell.body).not.toContain("console shell");
   });
 
+  const PRIMER_ACTIVE_READS = 2;
+
   /** A fake titan-factory on loopback that records each Shepherd read the console makes of it. */
   async function startFakeFactory(): Promise<{ hosts: string[]; primerRead: Promise<void> }> {
     const hosts: string[] = [];
@@ -410,10 +412,10 @@ describe.skipIf(process.platform !== "linux")("the console in LAN mode (127.0.0.
       let body = "";
       req.on("data", (chunk: Buffer) => (body += chunk.toString()));
       req.on("end", () => {
-        // The keep-warm primer reads needs.list, the finished runs, the active runs (the first such read) and each run's strip at serve start, on its own schedule too.
+        // The keep-warm primer reads needs.list, the finished runs, the active runs (for the strips and the shown rows: the first two such reads) and each run's strip at serve start, on its own schedule too.
         const isList = req.url === "/rpc/shepherd.list";
-        const primed = req.url !== "/rpc/shepherd.list" || body.includes('"finished"') || (body.includes('"active"') && activeReads++ === 0);
-        if (isList && body.includes('"active"') && activeReads === 1) primerSeen();
+        const primed = req.url !== "/rpc/shepherd.list" || body.includes('"finished"') || (body.includes('"active"') && activeReads++ < PRIMER_ACTIVE_READS);
+        if (isList && body.includes('"active"') && activeReads === PRIMER_ACTIVE_READS) primerSeen();
         if (!primed) hosts.push(req.headers.host ?? "");
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true, data: [SHEPHERD_ROW] }));
