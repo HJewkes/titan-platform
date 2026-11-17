@@ -1,10 +1,18 @@
 import type { Logger } from "@titan-design/daemon";
-import type { ActiveWork, ReadName } from "./active-work.js";
+import type { ActiveWork, ReadName, ReadResult } from "./active-work.js";
+import { settleBounded } from "./bounded.js";
 import type { RelaySource } from "./events-relay.js";
+import type { GateStripReader } from "./gate-strip.js";
+import type { ShepherdSource } from "./shepherd.js";
+
+/**
+ * TP-6748: the live active-work daemon is an old build that stalls under load, so the primer's fan-outs (one brief read per
+ * initiative, one strip per active PR) share this many upstream calls in flight.
+ */
+const MAX_IN_FLIGHT = 6;
 
 /** The whole-tree active-work reads the owner's work, tasks and inbox pages open with. */
 const WHOLE_TREE_READS: ReadonlyArray<readonly [ReadName, Record<string, unknown>]> = [
-  ["list", {}],
   ["inventory", {}],
   ["task.list", { all_initiatives: true }],
   ["artifact.list", { all_initiatives: true }],
@@ -14,7 +22,9 @@ interface KeepWarmSources {
   /** The cached client, so each read here fills the kept answer the pages are served. */
   activeWork: ActiveWork;
   /** The inbox's kept needs.list and finished runs, so each read here fills what `inbox.list` is served. */
-  inbox: { factory?: { list(): Promise<unknown> }; finished: { read(): Promise<unknown> } };
+  inbox: { factory?: { list(): Promise<unknown> }; finished: { read(): Promise<unknown> }; strips: Pick<GateStripReader, "warm"> };
+  /** The active runs whose gate strips the inbox opens with. */
+  shepherd: Pick<ShepherdSource, "list">;
   logger: Pick<Logger, "warn">;
 }
 
@@ -30,10 +40,20 @@ interface KeepWarm {
  * read them until the owner did. The daemon primes them at serve start and on each reconnect, never inside the registry, so
  * a test that builds the registry reads no more than it did. A factory read also warms the factory's own kept leg.
  */
-export function keepWarm({ activeWork, inbox, logger }: KeepWarmSources): KeepWarm {
+export function keepWarm({ activeWork, inbox, shepherd, logger }: KeepWarmSources): KeepWarm {
+  /** The portfolio reads every initiative's brief for its task prefix (TP-6746), so the primer reads each into the same kept answer. */
+  const briefs = async (list: ReadResult<"list">): Promise<void> => {
+    const slugs = list.sections.flatMap((section) => section.items.map((item) => item.slug));
+    const failed = await settleBounded(slugs, MAX_IN_FLIGHT, (slug) => activeWork.read("source.read", { slug, path: "brief.md" }));
+    if (failed > 0) throw new Error(`${failed} brief reads failed`);
+  };
+  const strips = async (): Promise<void> => inbox.strips.warm(await shepherd.list("active"), MAX_IN_FLIGHT);
   const readsOf: Record<RelaySource, () => Array<Promise<unknown> | undefined>> = {
-    "active-work": () => WHOLE_TREE_READS.map(([command, args]) => activeWork.read(command, args)),
-    factory: () => [inbox.factory?.list(), inbox.finished.read()],
+    "active-work": () => {
+      const list = activeWork.read("list", {});
+      return [list, list.then(briefs), ...WHOLE_TREE_READS.map(([command, args]): Promise<unknown> => activeWork.read(command, args))];
+    },
+    factory: () => [inbox.factory?.list(), inbox.finished.read(), strips()],
     "agent-chat": () => [],
   };
   const warm = async (sources: readonly RelaySource[]): Promise<void> => {

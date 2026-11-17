@@ -399,16 +399,22 @@ describe.skipIf(process.platform !== "linux")("the console in LAN mode (127.0.0.
   });
 
   /** A fake titan-factory on loopback that records each Shepherd read the console makes of it. */
-  async function startFakeFactory(): Promise<{ hosts: string[] }> {
+  async function startFakeFactory(): Promise<{ hosts: string[]; primerRead: Promise<void> }> {
     const hosts: string[] = [];
+    let primerSeen = (): void => undefined;
+    const primerRead = new Promise<void>((resolve) => (primerSeen = resolve));
+    let activeReads = 0;
     const server = createServer((req, res) => {
       // The events relay dials /events on its own schedule; only the reads a request makes are under test.
       if (req.url === "/events") return void res.writeHead(404).end();
       let body = "";
       req.on("data", (chunk: Buffer) => (body += chunk.toString()));
       req.on("end", () => {
-        // The keep-warm primer reads needs.list and the finished runs at serve start, on its own schedule too.
-        if (req.url !== "/rpc/needs.list" && !body.includes('"finished"')) hosts.push(req.headers.host ?? "");
+        // The keep-warm primer reads needs.list, the finished runs, the active runs (the first such read) and each run's strip at serve start, on its own schedule too.
+        const isList = req.url === "/rpc/shepherd.list";
+        const primed = req.url !== "/rpc/shepherd.list" || body.includes('"finished"') || (body.includes('"active"') && activeReads++ === 0);
+        if (isList && body.includes('"active"') && activeReads === 1) primerSeen();
+        if (!primed) hosts.push(req.headers.host ?? "");
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true, data: [SHEPHERD_ROW] }));
       });
@@ -418,12 +424,13 @@ describe.skipIf(process.platform !== "linux")("the console in LAN mode (127.0.0.
     if (address === null || typeof address === "string") throw new Error("fake factory bound no TCP port");
     config.factoryPort = address.port;
     onTestFinished(() => new Promise<void>((resolve) => server.close(() => resolve())));
-    return { hosts };
+    return { hosts, primerRead };
   }
 
   it("answers 401 to an unauthenticated LAN /rpc/shepherd.list and /rpc/rounds.list, and never calls the factory", async () => {
     const factory = await startFakeFactory();
     await startLan();
+    await factory.primerRead;
 
     const shepherd = await rpc("shepherd.list");
     const rounds = await rpc("rounds.list");
@@ -435,6 +442,7 @@ describe.skipIf(process.platform !== "linux")("the console in LAN mode (127.0.0.
   it("serves a signed-in LAN /rpc/shepherd.list from the factory, which sees only a loopback Host", async () => {
     const factory = await startFakeFactory();
     const credential = await signIn(await startLan());
+    await factory.primerRead;
 
     const reply = await rpc("shepherd.list", credential);
 

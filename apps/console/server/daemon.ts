@@ -100,7 +100,7 @@ function withKeptInbox(sources: ConsoleSources): KeptSources {
  * The kept reads are primed now, and a reopened stream may mean a restarted upstream, so its kept reads are read again.
  */
 function relayEvents(hub: DaemonHandle["hub"], sources: KeptSources, config: ConsoleConfig, logger: Logger): EventsRelay {
-  const warm = keepWarm({ activeWork: sources.activeWork, inbox: sources.inboxCache, logger });
+  const warm = keepWarm({ activeWork: sources.activeWork, inbox: sources.inboxCache, shepherd: sources.shepherd, logger });
   void warm.prime();
   sources.invalidation?.onRefreshed("active-work", () => announceRefreshed(hub, "active-work"));
   return startEventsRelay({
