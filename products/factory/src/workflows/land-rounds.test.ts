@@ -39,7 +39,7 @@ function roundsWorld(body: Body, options: RoundsOptions = {}) {
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, red(pr.headSha) ? "failure" : "success"), successRun("dag-check", 2)]);
   let clock = 0;
   spaceUpdates(fake, (ms) => void (clock += ms));
-  const routes = landRoutes({ port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms) });
+  const routes = landRoutes({ port: githubPort(fake.wire), mergeUpTree: () => fake.cleanMergeTree, now: () => clock, sleep: async (ms) => void (clock += ms) });
   const outcomes: LandOutcome[] = [];
   const workflow = defineWorkflow({ name: "land-rounds", steps: LAND_STEPS, run: (ctx) => body(ctx, fake, outcomes) });
   return { fake, outcomes, workflow, routes: options.routes?.(routes) ?? routes };
