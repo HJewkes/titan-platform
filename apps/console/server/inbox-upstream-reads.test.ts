@@ -59,6 +59,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.useRealTimers();
   await rm(root, { recursive: true, force: true });
 });
 
@@ -167,7 +168,6 @@ describe("inbox.list after an idle gap", () => {
 
     const first = await listIds(served, false);
     const second = await listIds(served, false);
-    vi.useRealTimers();
 
     expect(first).toEqual([gate.id]);
     expect(second).toEqual([gate.id]);
