@@ -150,12 +150,12 @@ function agentsOf(config: ConsoleConfig, recorder: UpstreamObserver | undefined)
 }
 
 /** The sources that read dirs on this machine, which other processes write. */
-function localDirSourcesOf(config: ConsoleConfig): Pick<ConsoleSources, "inbox" | "rounds" | "hostReports" | "videos" | "reviews"> {
+function localDirSourcesOf(config: ConsoleConfig, recorder: UpstreamObserver | undefined): Pick<ConsoleSources, "inbox" | "rounds" | "hostReports" | "videos" | "reviews"> {
   return {
     inbox: { dir: config.inboxDir, capExemptAskers: config.capExemptAskers ?? DEFAULT_CAP_EXEMPT_ASKERS },
     rounds: {
       dir: config.roundsDir,
-      lineage: shipLineageReader(),
+      lineage: shipLineageReader({ recorder }),
       ...(config.storybooksDir !== undefined && { live: storybookLiveReader(config.storybooksDir) }),
     },
     hostReports: { dir: path.join(config.stateDir, "config", "host-reports") },
@@ -192,7 +192,7 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
     evidence: gitEvidenceReader({ recorder }),
     agents: agentsOf(config, recorder),
     sessions: { graphPath: config.sessionGraphPath, codewatchUrl: config.codewatchUrl },
-    ...localDirSourcesOf(config),
+    ...localDirSourcesOf(config, recorder),
     shepherd,
     autoresearch: autoresearchReader(config.factoryPort, undefined, recorder),
     coordinatorRoots: config.coordinatorRoots,
