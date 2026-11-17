@@ -72,7 +72,7 @@ function openHost({ fake, ref, freeze, wakes, told }: Wiring, dbPath = ":memory:
   const phases: ShepherdPhases = { wake: async (_ctx, request) => (wakes.push(request), { kind: "unhandled", reason: "no agent in this test" }), review: async () => ({ kind: "none" }) };
   const exitNotice: ExitNoticePorts = { seatFor: () => undefined, lastReport: async () => undefined, send: async (seat, text) => void told.push(`${seat}: ${text}`) };
   let clock = 0;
-  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, freeze, exitNotice, now: () => clock, sleep: async (ms, signal) => ((clock += ms), sleep(1, signal)) });
+  const routes = factoryRoutesFor({ port: githubPort(fake.wire), mergeUpTree: () => fake.cleanMergeTree, store: ref, freeze, exitNotice, now: () => clock, sleep: async (ms, signal) => ((clock += ms), sleep(1, signal)) });
   const host = openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow(phases)], routes, gatePollMs: 5 });
   hosts.push(host);
   return host;

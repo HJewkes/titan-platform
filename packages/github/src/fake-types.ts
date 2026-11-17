@@ -1,3 +1,4 @@
+import type { CleanMergeTree } from "./approved-head-walk.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
 import type { GitExec } from "./exec.js";
 import type { ForcePush } from "./force-pushes.js";
@@ -54,6 +55,8 @@ export interface FakeGitHub {
   setRuns(sha: string, runs: CheckRun[]): void;
   /** A foreign push: moves the PR head without this run doing it. */
   pushHead(number: number, sha: string): void;
+  /** The tree a clean merge of `baseParent` into `reviewed` has: the tree of the merge commit the fake's update-branch makes. */
+  cleanMergeTree: CleanMergeTree;
   /** When set, update-branch answers HTTP 422 "merge conflict between base and head", as GitHub does when the base cannot merge in. */
   updateBranchConflict?: boolean;
   /** Faults the next update-branch calls throw, one per call; `lands` means the update happened before the answer was lost. */
