@@ -22,6 +22,7 @@ import { LAN_NEEDS_TLS, type ConsoleConfig } from "./config.js";
 import { announceRefreshed, relayUpstreams, startEventsRelay, type EventsRelay } from "./events-relay.js";
 import { INBOX_DEPOSIT, INBOX_DEPOSIT_BODY_LIMIT } from "./inbox.js";
 import { inboxReadCache } from "./inbox-rows.js";
+import { warmShownRows } from "./inbox-view.js";
 import { keepWarm } from "./keep-warm.js";
 import { linkHost } from "./lan-cert.js";
 import { APP_VERSION } from "./paths.js";
@@ -100,7 +101,8 @@ function withKeptInbox(sources: ConsoleSources): KeptSources {
  * The kept reads are primed now, and a reopened stream may mean a restarted upstream, so its kept reads are read again.
  */
 function relayEvents(hub: DaemonHandle["hub"], sources: KeptSources, config: ConsoleConfig, logger: Logger): EventsRelay {
-  const warm = keepWarm({ activeWork: sources.activeWork, inbox: sources.inboxCache, shepherd: sources.shepherd, logger });
+  const inbox = { ...sources.inboxCache, shown: () => warmShownRows(sources, sources.inboxCache) };
+  const warm = keepWarm({ activeWork: sources.activeWork, inbox, shepherd: sources.shepherd, ...(sources.evidence !== undefined && { evidence: sources.evidence }), logger });
   void warm.prime();
   sources.invalidation?.onRefreshed("active-work", () => announceRefreshed(hub, "active-work"));
   return startEventsRelay({

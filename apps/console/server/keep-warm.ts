@@ -3,7 +3,9 @@ import type { ActiveWork, ReadName, ReadResult } from "./active-work.js";
 import { settleBounded } from "./bounded.js";
 import type { RelaySource } from "./events-relay.js";
 import type { GateStripReader } from "./gate-strip.js";
+import type { EvidenceReader } from "./repo-evidence.js";
 import type { ShepherdSource } from "./shepherd.js";
+import { readEvidence } from "./tasks.js";
 
 /**
  * TP-6748: the live active-work daemon is an old build that stalls under load, so the primer's fan-outs (one brief read per
@@ -21,10 +23,15 @@ const WHOLE_TREE_READS: ReadonlyArray<readonly [ReadName, Record<string, unknown
 interface KeepWarmSources {
   /** The cached client, so each read here fills the kept answer the pages are served. */
   activeWork: ActiveWork;
-  /** The inbox's kept needs.list and finished runs, so each read here fills what `inbox.list` is served. */
-  inbox: { factory?: { list(): Promise<unknown> }; finished: { read(): Promise<unknown> }; strips: Pick<GateStripReader, "warm"> };
+  /**
+   * The inbox's kept needs.list and finished runs, so each read here fills what `inbox.list` is served; `shown` reads the
+   * rows the default view shows, which keeps each merge row's lineage (TP-6751).
+   */
+  inbox: { factory?: { list(): Promise<unknown> }; finished: { read(): Promise<unknown> }; strips: Pick<GateStripReader, "warm">; shown(): Promise<unknown> };
   /** The active runs whose gate strips the inbox opens with. */
   shepherd: Pick<ShepherdSource, "list">;
+  /** `work.tasks`' kept git and GitHub evidence for every repo the artifacts name (TP-6751); absent, none is primed. */
+  evidence?: EvidenceReader;
   logger: Pick<Logger, "warn">;
 }
 
@@ -40,7 +47,7 @@ interface KeepWarm {
  * read them until the owner did. The daemon primes them at serve start and on each reconnect, never inside the registry, so
  * a test that builds the registry reads no more than it did. A factory read also warms the factory's own kept leg.
  */
-export function keepWarm({ activeWork, inbox, shepherd, logger }: KeepWarmSources): KeepWarm {
+export function keepWarm({ activeWork, inbox, shepherd, evidence, logger }: KeepWarmSources): KeepWarm {
   /** The portfolio reads every initiative's brief for its task prefix (TP-6746), so the primer reads each into the same kept answer. */
   const briefs = async (list: ReadResult<"list">): Promise<void> => {
     const slugs = list.sections.flatMap((section) => section.items.map((item) => item.slug));
@@ -51,9 +58,10 @@ export function keepWarm({ activeWork, inbox, shepherd, logger }: KeepWarmSource
   const readsOf: Record<RelaySource, () => Array<Promise<unknown> | undefined>> = {
     "active-work": () => {
       const list = activeWork.read("list", {});
-      return [list, list.then(briefs), ...WHOLE_TREE_READS.map(([command, args]): Promise<unknown> => activeWork.read(command, args))];
+      const repos = evidence === undefined ? undefined : readEvidence(activeWork, evidence);
+      return [list, list.then(briefs), ...WHOLE_TREE_READS.map(([command, args]): Promise<unknown> => activeWork.read(command, args)), repos];
     },
-    factory: () => [inbox.factory?.list(), inbox.finished.read(), strips()],
+    factory: () => [inbox.factory?.list(), inbox.finished.read(), strips(), inbox.shown()],
     "agent-chat": () => [],
   };
   const warm = async (sources: readonly RelaySource[]): Promise<void> => {

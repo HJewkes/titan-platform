@@ -121,7 +121,7 @@ function deferredTaskCommands(source: TasksSource, branches: BranchStateReader) 
 }
 
 /** Repositories named by any initiative's artifacts; worktree paths resolve to the same clone. */
-async function readEvidence(activeWork: ActiveWork, reader: EvidenceReader): Promise<RepoEvidence[]> {
+export async function readEvidence(activeWork: ActiveWork, reader: EvidenceReader): Promise<RepoEvidence[]> {
   const { items } = await activeWork.read("artifact.list", { all_initiatives: true });
   return reader(items.flatMap(({ artifacts }) => [...artifacts.branches.map((branch) => branch.repo), ...artifacts.worktrees.map((tree) => tree.repo)]));
 }

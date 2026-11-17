@@ -364,11 +364,19 @@ async function readNudges({ rounds, now = Date.now }: InboxSources): Promise<Rou
 }
 
 /** The finished runs are read beside the queue rather than after it, since each read waits seconds on its upstream. */
+function cachedSources(sources: InboxSources, cache: InboxReadCache): InboxSources {
+  const rounds = { ...sources.rounds, ...(cache.lineage !== undefined && { lineage: cache.lineage }) };
+  return { ...sources, factory: cache.factory, rounds };
+}
+
+/** TP-6751: a shown merge row's lineage is two `gh` calls; read here by the primer, the first page after a restart waits on none. */
+export async function warmShownRows(sources: InboxSources, cache: InboxReadCache): Promise<void> {
+  await readOwnerQueue(cachedSources(sources, cache));
+}
+
 async function readInboxView(sources: InboxSources, strips: GateStripReader, cache: InboxReadCache, args: { planning?: boolean }): Promise<InboxView> {
   const finished = readOrGap("shepherd finished", () => cache.finished.read(), []);
-  const rounds = { ...sources.rounds, ...(cache.lineage !== undefined && { lineage: cache.lineage }) };
-  const cached = { ...sources, factory: cache.factory, rounds };
-  const [{ list, ...reads }, nudges] = await Promise.all([readOwnerQueue(cached, { strips, planning: args.planning === true }), readNudges(sources)]);
+  const [{ list, ...reads }, nudges] = await Promise.all([readOwnerQueue(cachedSources(sources, cache), { strips, planning: args.planning === true }), readNudges(sources)]);
   const derived = await readDerived(sources, reads, finished);
   const { items, ...rest } = list;
   return { ...rest, ...viewRows(items, args), gaps: [...list.gaps, ...derived.gaps], derived: derived.value, nudges };

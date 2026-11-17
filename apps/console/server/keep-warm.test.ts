@@ -29,6 +29,7 @@ function recorded(failing: readonly string[] = [], override?: (name: string) => 
     factory: { list: () => answer("needs.list") },
     finished: { read: () => answer("shepherd.list finished") },
     strips: { warm: (rows: readonly unknown[], limit: number) => answer("strips.warm", { rows, limit }).then(() => undefined) },
+    shown: () => answer("inbox.shown"),
   };
   const shepherd = { list: (scope: string) => answer("shepherd.list", scope).then(() => []) };
   return { reads, activeWork: { read }, inbox, shepherd, warned };
@@ -52,6 +53,7 @@ const INBOX: Array<[string, unknown]> = [
   ["needs.list", undefined],
   ["shepherd.list finished", undefined],
   ["shepherd.list", "active"],
+  ["inbox.shown", undefined],
   ["strips.warm", { rows: [], limit: 6 }],
 ];
 
@@ -138,7 +140,30 @@ describe("keepWarm", () => {
 
     await expect(primer(sources).prime()).resolves.toBeUndefined();
 
-    expect(sources.reads).toHaveLength(10);
+    expect(sources.reads).toHaveLength(11);
     expect(sources.warned).toHaveLength(1);
+  });
+
+  it("serve start reads the rows the inbox shows, so its merge rows' lineage is kept before the first page", async () => {
+    const sources = recorded();
+
+    await primer(sources).prime();
+
+    expect(sources.reads.map(([name]) => name)).toContain("inbox.shown");
+  });
+
+  it("serve start reads the task page's git and GitHub evidence for every repo the artifacts name", async () => {
+    const artifacts = { items: [{ artifacts: { branches: [{ repo: "/synthetic/alpha" }], worktrees: [{ repo: "/synthetic/beta" }] } }] };
+    const sources = recorded([], (name) => (name === "artifact.list" ? Promise.resolve(artifacts) : undefined));
+    const evidence: string[][] = [];
+
+    const reader = async (paths: readonly string[]) => {
+      evidence.push([...paths]);
+      return [];
+    };
+
+    await keepWarm({ activeWork: sources.activeWork, inbox: sources.inbox, shepherd: sources.shepherd, evidence: reader, logger: { warn: () => undefined } }).prime();
+
+    expect(evidence).toEqual([["/synthetic/alpha", "/synthetic/beta"]]);
   });
 });
