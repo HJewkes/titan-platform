@@ -11,11 +11,13 @@ interface Recorded {
 }
 
 /** Records every upstream read the primer makes; `failing` names reads that reject. */
-function recorded(failing: readonly string[] = []): Recorded {
+function recorded(failing: readonly string[] = [], override?: (name: string) => Promise<unknown> | undefined): Recorded {
   const reads: Array<[string, unknown]> = [];
   const answer = (name: string, args?: unknown): Promise<unknown> => {
     reads.push([name, args]);
     if (failing.includes(name)) return Promise.reject(new Error(`${name} down`));
+    const overridden = override?.(name);
+    if (overridden !== undefined) return overridden;
     return Promise.resolve(name === "list" ? { sections: [{ items: [{ slug: "alpha" }, { slug: "beta" }] }] } : {});
   };
   function read<K extends ReadName>(command: K, args?: Record<string, unknown>): Promise<ReadResult<K>>;
@@ -28,7 +30,7 @@ function recorded(failing: readonly string[] = []): Recorded {
     finished: { read: () => answer("shepherd.list finished") },
     strips: { warm: (rows: readonly unknown[], limit: number) => answer("strips.warm", { rows, limit }).then(() => undefined) },
   };
-  const shepherd = { list: (scope: string) => answer("shepherd.list", scope).then(() => [{ runId: "run-1" }] as never) };
+  const shepherd = { list: (scope: string) => answer("shepherd.list", scope).then(() => []) };
   return { reads, activeWork: { read }, inbox, shepherd, warned };
 }
 
@@ -50,7 +52,7 @@ const INBOX: Array<[string, unknown]> = [
   ["needs.list", undefined],
   ["shepherd.list finished", undefined],
   ["shepherd.list", "active"],
-  ["strips.warm", { rows: [{ runId: "run-1" }], limit: 6 }],
+  ["strips.warm", { rows: [], limit: 6 }],
 ];
 
 const sorted = (reads: Array<[string, unknown]>): string[] => reads.map((read) => JSON.stringify(read)).sort();
@@ -85,22 +87,19 @@ describe("keepWarm", () => {
   });
 
   it("the portfolio's brief reads never exceed six in flight", async () => {
-    const sources = recorded();
     let inFlight = 0;
     let peak = 0;
     const slugs = Array.from({ length: 20 }, (_, index) => ({ slug: `s${index}` }));
-    const inner = sources.activeWork.read;
-    const tracked = (command: ReadName, args?: Record<string, unknown>): Promise<unknown> => {
-      if (command === "list") return Promise.resolve({ sections: [{ items: slugs }] });
-      if (command !== "source.read") return inner(command, args);
+    const sources = recorded([], (name) => {
+      if (name === "list") return Promise.resolve({ sections: [{ items: slugs }] });
+      if (name !== "source.read") return undefined;
       inFlight++;
       peak = Math.max(peak, inFlight);
       return new Promise((resolve) => setTimeout(() => {
         inFlight--;
         resolve({});
       }, 1));
-    };
-    sources.activeWork.read = tracked as ActiveWork["read"];
+    });
 
     await primer(sources).reconnected("active-work");
 
