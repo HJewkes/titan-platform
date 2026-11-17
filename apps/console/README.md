@@ -731,7 +731,7 @@ round is never withdrawn. Every path below goes through `server/round-withdraw.t
 titan-console rounds withdraw <id> --reason <new-head[:<sha>]|closed|answered-elsewhere|superseded-by:<id>> [--json]
 titan-console rounds sweep                       # dry run: what would be withdrawn, and why; writes nothing
 titan-console rounds sweep --apply               # withdraws everything the dry run lists
-titan-console rounds sweep --decisions <path>    # also scan that decisions file (default TITAN_CONSOLE_DECISIONS_FILE)
+titan-console rounds sweep --decisions <path>    # also scan that decisions file (default TITAN_CONSOLE_DECISIONS_FILE, else <active-work root>/claude-channels/sources/autonomy/decisions.md if present)
 titan-console rounds sweep --json                # one line: {applied, superseded, decisions, gaps}
 ```
 
