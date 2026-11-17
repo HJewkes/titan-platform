@@ -60,14 +60,19 @@ interface Home {
   env: NodeJS.ProcessEnv;
 }
 
-/** A factory config dir with `dispatcher.json` beside `config.json`, and an empty active-work root; `rules` undefined leaves the rule file absent. */
+/**
+ * A factory config dir with `dispatcher.json` beside `config.json`, and an empty active-work root; `rules` undefined
+ * leaves the rule file absent. The factory db and scorecard store live in the dir too: the default paths are shared
+ * by every test file in a run, and a concurrent writer there locks the live hold providers into signal-unreadable.
+ */
 export function shadowHome(rules?: Body): Home {
   const dir = mkdtempSync(join(tmpdir(), "shadow-tick-"));
   const shadowDir = join(dir, "shadow");
   const activeRoot = join(dir, "active");
   writeFileSync(join(dir, "config.json"), "{}");
   if (rules !== undefined) writeFileSync(join(dir, "dispatcher.json"), JSON.stringify(rules));
-  return { dir, shadowDir, activeRoot, env: { TITAN_FACTORY_CONFIG: join(dir, "config.json"), ACTIVE_ROOT: activeRoot } };
+  const stores = { TITAN_FACTORY_DB: join(dir, "factory.sqlite3"), TITAN_SCORECARD_STORE: join(dir, "scorecard.sqlite3") };
+  return { dir, shadowDir, activeRoot, env: { TITAN_FACTORY_CONFIG: join(dir, "config.json"), ACTIVE_ROOT: activeRoot, ...stores } };
 }
 
 export function enabledRules(home: { shadowDir: string } | string, extra: Body = {}): Body {
