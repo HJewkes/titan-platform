@@ -5,7 +5,8 @@
  * writes nothing.
  *
  * `round.json` and `feedback.json` are judged by the same parsers the console reads them with, so an
- * import never lands a round the page would list as invalid. It refuses a round that breaks the builder rules
+ * import never lands a round the page would list as invalid. The sweeps read any answer here as the owner's, so a
+ * `feedback.json` answering a merge-bound question is refused: only `rounds.submit` answers a merge (TP-5990). It refuses a round that breaks the builder rules
  * (`round-rules.ts`), naming each rule. It also refuses a "Merge #N", "Ship" or "#N at <sha>"
  * offer with no agreeing merge binding (`round-merge-binding.ts`), which the page still lists, and a Ship round that is not
  * one clean main-vs-head package (`round-ship-package.ts`). `frames/frames.json` must name the
@@ -203,16 +204,17 @@ async function readSidecars(dir: string, index: FramesIndex | undefined, ships: 
   return sidecars;
 }
 
-async function readFeedbackFor(dir: string, binding: Binding): Promise<Buffer | null> {
+async function readFeedbackFor(dir: string, binding: Binding, mergeBound: readonly string[]): Promise<Buffer | null> {
   const bytes = await readTopFile(dir, FEEDBACK_FILE);
   if (bytes === null) return null;
   const read = parseFeedback(bytes.toString("utf8"));
   if (!read.ok) return refuse(read.reason);
-  const { unit, round, manifestSha256 } = read.feedback ?? refuse(`${FEEDBACK_FILE} is empty`);
+  const { unit, round, manifestSha256, answers } = read.feedback ?? refuse(`${FEEDBACK_FILE} is empty`);
   if (unit !== binding.unit || round !== binding.round || manifestSha256 !== binding.manifestSha256) {
     refuse(`${FEEDBACK_FILE} answers another round.json`);
   }
-  return bytes;
+  const merge = answers.find((answer) => mergeBound.includes(answer.questionId));
+  return merge ? refuse(`${FEEDBACK_FILE} answers merge-bound question ${merge.questionId}; only the owner's rounds.submit answers a merge`) : bytes;
 }
 
 async function readSource(dir: string): Promise<SourceRound> {
@@ -237,7 +239,8 @@ async function readSource(dir: string): Promise<SourceRound> {
   const misfit = storybook?.set ? buildSetProblems(parsed.manifest, storybook.builds) : [];
   if (misfit.length > 0) refuse(`${STORYBOOK_PATH}: ${misfit.join("; ")}`);
   const supersedes = parsed.manifest.supersedes ?? [];
-  return { dir, id, round, supersedes, roundBytes, index: read?.bytes ?? null, frames, sidecars, feedback: await readFeedbackFor(dir, binding), storybook };
+  const mergeBound = questions.flatMap((question) => ("merge" in question && question.merge ? [question.id] : []));
+  return { dir, id, round, supersedes, roundBytes, index: read?.bytes ?? null, frames, sidecars, feedback: await readFeedbackFor(dir, binding, mergeBound), storybook };
 }
 
 /** False when the file already exists; `wx` also refuses a symlink planted at the name. */

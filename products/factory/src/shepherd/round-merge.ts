@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
+import { ownerAtHeadRow } from "../coordinator-evidence.js";
 import type { PendingGate } from "../host.js";
 import { authorityGate, seatPolicyHead, visualPathHead } from "./head-moved.js";
 import { gateHead } from "./stale-gates.js";
@@ -140,9 +141,20 @@ function kindOf(gate: PendingGate): string {
   return policy ? `${policy[1]}/${policy[2]}` : "unrecognised";
 }
 
+/** A D21 row on any gate for the PR keeps the Ship off it, as every other remote merge path refuses (TP-5988). */
+function ownerAtHeadRefusal(gates: PendingGate[]): string | undefined {
+  for (const { gate } of gates) {
+    const row = ownerAtHeadRow(gate);
+    if (row !== undefined) return `${gate.id} is a ${row} gate, which no Ship answer gives`;
+  }
+  return undefined;
+}
+
 function decide(round: z.infer<typeof RoundManifest>, bound: Bound, feedback: RoundFeedback, gates: PendingGate[], runs: Map<string, WorkflowRun>): RoundMergeOutcome {
   const mine = gates.filter((gate) => targets(gate, bound));
   if (mine.length === 0) return { kind: "no-gate" };
+  const marked = ownerAtHeadRefusal(mine);
+  if (marked !== undefined) return { kind: "pending", reason: marked };
   const plain = mine.filter((gate) => answerable(gate, runs.get(gate.runId)));
   if (plain.length === 0) return { kind: "pending", reason: `the gate is a ${kindOf(mine[0]!)} gate; the round showed the render, not that decision` };
   const blocked = blockingQuestion(round, bound, feedback);
