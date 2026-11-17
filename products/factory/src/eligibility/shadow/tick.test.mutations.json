@@ -18,6 +18,15 @@
       "kills": [
         "dispatch shadow-tick a held lane with no candidate still writes one refused row with a null task"
       ]
+    },
+    {
+      "name": "the test home falls back to the run-wide factory db",
+      "file": "products/factory/src/eligibility/shadow/tick.test-helpers.ts",
+      "find": "ACTIVE_ROOT: activeRoot, ...stores }",
+      "replace": "ACTIVE_ROOT: activeRoot }",
+      "kills": [
+        "dispatch shadow-tick a write lock on the run-wide default factory db leaves a test home's wake untouched (TP-6750)"
+      ]
     }
   ]
 }
