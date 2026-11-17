@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
+import type { CleanMergeTree } from "@titan-design/github";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { CLOSURE_LOCK_DRIVER, type GitConfigEntry } from "../merge-drivers.js";
@@ -221,6 +222,26 @@ export async function localMergeTree(raw: unknown, options: CarryOptions): Promi
     return merged.code === 0 ? "clean" : "conflict";
   };
   return inCache(repo, options, merge, (reason) => `unread: ${reason}`);
+}
+
+/**
+ * The tree of git's clean merge of two commits in `repo`'s cache, fetched by sha, or null when they conflict; land's
+ * update-branch compares it with the tree of the head GitHub built (TP-6006). A failed fetch or merge-tree throws.
+ */
+export function cacheMergeUpTree(repo: string, options: CarryOptions): CleanMergeTree {
+  return async (baseParent, reviewed) => {
+    const shas = z.tuple([Sha, Sha]).parse([baseParent, reviewed]);
+    const cache = cacheFor(repo, options);
+    return serialized(cache.dir, async () => {
+      const { git, dir, url } = cache;
+      await ensureCache(cache, options.signal);
+      await must(git, dir, ["fetch", "--no-tags", "--no-write-fetch-head", "--quiet", url, ...shas], options.signal);
+      const merged = await git(dir, ["merge-tree", "--write-tree", "--no-messages", ...shas], options.signal);
+      if (merged.code === 1) return null;
+      if (merged.code !== 0) throw new CarryRefusal("merge-tree", merged.code);
+      return firstLine(merged.stdout);
+    });
+  };
 }
 
 export function carryRoute(now: () => number, options: Omit<CarryOptions, "signal">): StepRoute {
