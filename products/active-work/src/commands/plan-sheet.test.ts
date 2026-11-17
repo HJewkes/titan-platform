@@ -93,6 +93,21 @@ describe('weekly sheet', () => {
     });
   });
 
+  it('accepts a bet citing a lane line when the lane is not the initiative', async () => {
+    await withTempActiveRoot(async (root) => {
+      writeAgentVisibleBrief(root, 'alpha');
+      const laneOutcome: Outcome = { ...outcome, id: 'alpha/phone-first', initiative: 'alpha' };
+      await writePlanRecord(root, 'outcome', laneOutcome);
+      await writePlanRecord(root, 'bet', { ...bet(1), id: 'alpha/B1', initiative: 'alpha', outcome: laneOutcome.id, week: '2026-W48', state: 'proposed', cites: [{ intent_ref: 'ui/I1', quote_ref: 'msg:fake1' }] });
+
+      const sheet = await planSheetGenerate.run({ initiative: 'alpha', week: '2026-W47', scorecard: path.join(root, 'no-store.sqlite3') }, ctx(root));
+
+      expect(sheet.flags).toEqual([]);
+      expect(sheet.markdown).toContain('- alpha/B1 · intent: ui/I1');
+      expect(sheet.defaults).toEqual([{ bet: 'alpha/B1', action: 'select' }]);
+    });
+  });
+
   it('with no prediction checks recorded every running bet reads unread', async () => {
     await withTempActiveRoot(async (root) => {
       await seedLane(root);

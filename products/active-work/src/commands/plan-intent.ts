@@ -10,11 +10,12 @@ import {
   readOwnerMessageFile,
   readOwnerMessages,
 } from '../plan/owner-messages.js';
-import { assertInitiativeExists, loadPlanRecords, nextPlanId, withPlanLock, writePlanRecord } from '../plan/store.js';
+import { assertInitiativeExists, loadLaneIntentLines, loadPlanRecords, writeLaneIntent, nextPlanId, withPlanLock, writePlanRecord } from '../plan/store.js';
 
 /*
  * Intent lines (TP-5453 P9): the owner's words, dated and quoted, that bets and freezes cite as `<initiative>/I<n>`.
  * A line names the message it quotes, so `--message` takes the date and reference from the owner-message extract.
+ * `--lane` numbers lines `<lane>/I<n>` inside one initiative; without it the lane is the initiative itself.
  */
 
 const text = z.string().min(1);
@@ -26,6 +27,7 @@ const AddArgsSchema = z.object({
   date: text.optional(),
   ref: text.optional(),
   message: text.optional(),
+  lane: text.optional(),
 });
 
 type AddArgs = z.infer<typeof AddArgsSchema>;
@@ -40,6 +42,9 @@ async function quotedFromMessage(ctx: CommandContext, args: AddArgs, messageId: 
   if (!message.text.includes(quote)) throw new ValidationError(`The quote is not in owner message ${messageId}`);
   return { date: message.ts.slice(0, 10), quote, ref: `msg:${messageId}` };
 }
+
+const laneOf = (args: { initiative: string; lane?: string | undefined }): string => args.lane ?? args.initiative;
+const isOwnLane = (args: { initiative: string; lane?: string | undefined }): boolean => laneOf(args) === args.initiative;
 
 function validLine(candidate: object): IntentLine {
   const parsed = IntentLineSchema.safeParse(candidate);
@@ -61,14 +66,20 @@ export const planIntentAdd = defineCommand({
       quote: { long: '--quote', description: "The owner's exact words, on one line (default with --message: the whole message)" },
       date: { long: '--date', description: 'Date of the words, YYYY-MM-DD (without --message)' },
       ref: { long: '--ref', description: 'Reference to the exact quote, e.g. msg:abc123 (without --message)' },
+      lane: { long: '--lane', description: 'Number the line <lane>/I<n> and file it under this lane of the initiative (default: the initiative)' },
     },
   },
   run: async (args, ctx) => {
     const quoted = args.message === undefined ? args : await quotedFromMessage(ctx, args, args.message);
+    const lane = laneOf(args);
     return withPlanLock(ctx.activeRoot, args.initiative, async () => {
-      const id = nextPlanId(args.initiative, 'I', await loadPlanRecords(ctx.activeRoot, args.initiative, 'intent'));
+      const existing = isOwnLane(args)
+        ? await loadPlanRecords(ctx.activeRoot, args.initiative, 'intent')
+        : await loadLaneIntentLines(ctx.activeRoot, args.initiative, lane);
+      const id = nextPlanId(lane, 'I', existing);
       const line = validLine({ id, section: args.section, date: quoted.date, quote: quoted.quote, ref: quoted.ref });
-      return writePlanRecord(ctx.activeRoot, 'intent', line);
+      if (isOwnLane(args)) return writePlanRecord(ctx.activeRoot, 'intent', line);
+      return writeLaneIntent(ctx.activeRoot, args.initiative, lane, line);
     });
   },
 });
@@ -80,9 +91,9 @@ function renderBullet(line: IntentLine): string {
   return `- I${intentNumber(line.id)} ${line.date} "${line.quote}" (quote: ${line.ref})${superseded}`;
 }
 
-function renderDigest(initiative: string, lines: readonly IntentLine[]): string {
+function renderDigest(lane: string, initiative: string, lines: readonly IntentLine[]): string {
   const ordered = [...lines].sort((a, b) => intentNumber(a.id) - intentNumber(b.id));
-  const head = ['---', `schema: ${INTENT_DIGEST_SCHEMA}`, `slug: ${initiative}`, `initiative: ${initiative}`, 'built_from: plan/intent records', '---'];
+  const head = ['---', `schema: ${INTENT_DIGEST_SCHEMA}`, `slug: ${lane}`, `initiative: ${initiative}`, 'built_from: plan/intent records', '---'];
   const body = INTENT_SECTIONS.flatMap((section) => [
     `## ${section}`,
     ...ordered.filter((line) => line.section === section).map(renderBullet),
@@ -90,7 +101,7 @@ function renderDigest(initiative: string, lines: readonly IntentLine[]): string 
   return [...head, ...body, ''].join('\n');
 }
 
-const DigestArgsSchema = z.object({ initiative: text, out: text.optional() });
+const DigestArgsSchema = z.object({ initiative: text, out: text.optional(), lane: text.optional() });
 
 export const planIntentDigest = defineCommand({
   name: 'plan.intent.digest',
@@ -99,11 +110,17 @@ export const planIntentDigest = defineCommand({
   result: z.object({ initiative: z.string(), lines: z.array(IntentLineSchema), markdown: z.string() }),
   cli: {
     positional: ['initiative'],
-    options: { out: { long: '--out', description: 'Write the digest to this path as well' } },
+    options: {
+      out: { long: '--out', description: 'Write the digest to this path as well' },
+      lane: { long: '--lane', description: 'Render this lane of the initiative (default: the initiative)' },
+    },
   },
   run: async (args, ctx) => {
     await assertInitiativeExists(ctx.activeRoot, args.initiative);
-    const markdown = renderDigest(args.initiative, await loadPlanRecords(ctx.activeRoot, args.initiative, 'intent'));
+    const lines = isOwnLane(args)
+      ? await loadPlanRecords(ctx.activeRoot, args.initiative, 'intent')
+      : await loadLaneIntentLines(ctx.activeRoot, args.initiative, laneOf(args));
+    const markdown = renderDigest(laneOf(args), args.initiative, lines);
     const parsed = parseIntentDigest(markdown);
     if (!parsed.ok) throw new ValidationError(parsed.errors.map((error) => `line ${error.line}: ${error.message}`).join('\n'));
     if (args.out !== undefined) await atomicWrite(args.out, markdown);

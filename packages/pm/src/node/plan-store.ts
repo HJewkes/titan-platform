@@ -110,6 +110,39 @@ export async function writePlanRecord<K extends PlanKind>(activeRoot: string, ki
   return parsed.data;
 }
 
+/*
+ * A lane is a named run of intent lines inside one initiative (`<lane>/I<n>` under `<initiative>/plan/intent/<lane>/`).
+ * The subfolder keeps lane lines out of the initiative's own `loadPlanRecords(..., "intent")` listing.
+ */
+function laneDir(activeRoot: string, initiative: string, lane: string): string {
+  return path.join(planKindDir(activeRoot, initiative, "intent"), lane);
+}
+
+/** Every intent line of one lane, in filename order; a missing lane holds none. */
+export async function loadLaneIntentLines(activeRoot: string, initiative: string, lane: string): Promise<IntentLine[]> {
+  const dir = laneDir(activeRoot, initiative, lane);
+  let files: string[];
+  try {
+    files = (await fs.readdir(dir)).filter((file) => file.endsWith(".yml")).sort();
+  } catch (err) {
+    if (isMissingFile(err)) return [];
+    throw err;
+  }
+  return Promise.all(files.map((file) => readRecordFile(path.join(dir, file), IntentLineSchema)));
+}
+
+/** Validates the line, then writes it atomically under its lane; the id's prefix must be the lane. */
+export async function writeLaneIntentLine(activeRoot: string, initiative: string, lane: string, line: IntentLine): Promise<IntentLine> {
+  const parsed = IntentLineSchema.safeParse(line);
+  if (!parsed.success) throw new PlanStoreError("invalid", `Invalid intent line ${line.id}: ${parsed.error.message}`);
+  const parts = splitPlanId(line.id);
+  if (parts === null || parts.initiative !== lane) throw new PlanStoreError("invalid", `Intent line ${line.id} is not in lane ${lane}`);
+  const dir = laneDir(activeRoot, initiative, lane);
+  await fs.mkdir(dir, { recursive: true });
+  await atomicWrite(path.join(dir, `${parts.suffix}.yml`), stringify(parsed.data));
+  return parsed.data;
+}
+
 /** The next free `<initiative>/<letter><n>` id, one above the highest number in use. */
 export function nextPlanId(initiative: string, letter: string, records: readonly { id: string }[]): string {
   const pattern = new RegExp(`/${letter}(\\d+)$`);
