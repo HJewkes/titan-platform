@@ -27,8 +27,11 @@ interface GitEvidenceOptions {
   now?: () => number;
 }
 
-/** Ten minutes bounds how old served evidence can be while a slow `gh` refresh runs behind it. */
-const EVIDENCE_TIMES: CacheTimes = { freshMs: 60_000, staleMs: 600_000 };
+/**
+ * Ten minutes bounds how old served evidence can be while a slow `gh` refresh runs behind it. TP-6746: the task list it
+ * joins is kept 30 minutes, so the evidence is too, until a refresh fails.
+ */
+const EVIDENCE_TIMES: CacheTimes = { freshMs: 60_000, staleMs: 600_000, keptMs: 30 * 60_000 };
 const MAX_KEYS = 256;
 
 /**

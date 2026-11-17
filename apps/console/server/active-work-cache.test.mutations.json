@@ -36,7 +36,8 @@
       "find": "const WHOLE_TREE_TIMES: CacheTimes = { ...ACTIVE_WORK_TIMES, keptMs: 30 * 60_000 };",
       "replace": "const WHOLE_TREE_TIMES: CacheTimes = ACTIVE_WORK_TIMES;",
       "kills": [
-        "cachedActiveWork a whole-tree read idle past two minutes is served kept and refreshed behind"
+        "cachedActiveWork a whole-tree read idle past two minutes is served kept and refreshed behind",
+        "cachedActiveWork an initiative's brief idle sixteen minutes is served kept, so the portfolio's first read after a gap waits on no brief"
       ]
     },
     {

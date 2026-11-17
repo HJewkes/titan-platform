@@ -176,13 +176,28 @@ describe("gateStripReader", () => {
     expect(calls).toEqual(["waiting", "timeline", "checkRuns", "waiting", "checkRuns"]);
   });
 
-  it("waits for a fresh read once the kept one is past its stale limit", async () => {
+  it("serves a strip and the waiting read idle sixteen minutes kept, so the inbox's first read after a gap waits on neither", async () => {
+    let now = 0;
+    const { shepherd, calls } = countingShepherd();
+    const reader = gateStripReader(shepherd, () => now);
+    await reader.readMany([row()]);
+    shepherd.timeline = () => new Promise(() => undefined);
+    shepherd.waiting = () => new Promise(() => undefined);
+
+    now = 16 * 60_000;
+    const served = await reader.readMany([row()]);
+
+    expect(served.get(RUN)?.ci.factory).toEqual({ verdict: "green", headSha: HEAD, atHead: true });
+    expect(calls).toEqual(["waiting", "timeline", "checkRuns", "checkRuns"]);
+  });
+
+  it("waits for a fresh read once the kept one is past the kept window", async () => {
     let now = 0;
     const { shepherd, calls } = countingShepherd();
     const reader = gateStripReader(shepherd, () => now);
     await reader.readMany([row()]);
 
-    now = 5 * 60_000;
+    now = 30 * 60_000;
     await reader.readMany([row()]);
 
     expect(calls.filter((call) => call === "timeline")).toHaveLength(2);

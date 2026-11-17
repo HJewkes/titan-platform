@@ -139,6 +139,20 @@ describe("cachedActiveWork", () => {
     ]);
   });
 
+  it("an initiative's brief idle sixteen minutes is served kept, so the portfolio's first read after a gap waits on no brief", async () => {
+    const clock = { at: 0 };
+    const { client, calls } = fakeActiveWork();
+    const cached = cachedActiveWork(client, undefined, () => clock.at);
+    const first = await cached.read("source.read", { slug: "a", path: "brief.md" });
+
+    clock.at = 16 * 60_000;
+    const kept = await cached.read("source.read", { slug: "a", path: "brief.md" });
+    await Promise.resolve();
+
+    expect(kept).toBe(first);
+    expect(calls).toHaveLength(2);
+  });
+
   it("a kept read whose refresh failed is not served past two minutes", async () => {
     const clock = { at: 0 };
     let calls = 0;

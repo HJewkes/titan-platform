@@ -187,8 +187,9 @@ async function settle<T>(read: () => Promise<T>): Promise<StripRead<T>> {
 /**
  * Plan risk: at most one read per PR head per window, so a polled inbox or a round with many PRs costs little quota. Past
  * the window a kept read is served while one refresh runs behind it (TP-4754: live, a strip read takes about 2 s per PR).
+ * TP-6746: the inbox's other kept reads last 30 minutes, so a strip must too, or the first read after a gap waits on every PR.
  */
-const STRIP_TIMES: CacheTimes = { freshMs: 30_000, staleMs: 5 * 60_000 };
+const STRIP_TIMES: CacheTimes = { freshMs: 30_000, staleMs: 5 * 60_000, keptMs: 30 * 60_000 };
 const STRIP_MAX_KEYS = 256;
 
 export interface GateStripReader {
