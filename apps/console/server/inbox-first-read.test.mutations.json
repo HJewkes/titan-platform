@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the primer reads the shown rows past the kept lineage",
+      "file": "apps/console/server/inbox-view.ts",
+      "find": "await readOwnerQueue(cachedSources(sources, cache));",
+      "replace": "await readOwnerQueue(sources);",
+      "kills": [
+        "the inbox's first read after a restart waits on no GitHub read for a merge row's lineage once the primer read the shown rows"
+      ]
+    },
+    {
+      "name": "the lineage gh calls leave no perf row",
+      "file": "apps/console/server/ship-lineage.ts",
+      "find": "timedPort(options.github ?? githubPort(ghCliWire()), options.recorder)",
+      "replace": "timedPort(options.github ?? githubPort(ghCliWire()), undefined)",
+      "kills": [
+        "the inbox's first read after a restart leaves a perf row for each GitHub call a lineage makes, so a read waiting on them shows why"
+      ]
+    }
+  ]
+}

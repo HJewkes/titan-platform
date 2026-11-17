@@ -63,15 +63,6 @@ describe("a Ship round's lineage", () => {
 
     expect(port.getPr).toHaveBeenCalledTimes(2);
   });
-
-  it("leaves a perf row for each GitHub call, so a read waiting on them shows why", async () => {
-    const rows: Array<{ name: string; outcome: string }> = [];
-    const read = shipLineageReader({ github: github(pull()), recorder: { recordUpstream: ({ name, outcome }) => void rows.push({ name, outcome }) } });
-
-    await read(binding);
-
-    expect(rows).toEqual([{ name: "github:getPr", outcome: "ok" }, { name: "github:getHeadSha", outcome: "ok" }]);
-  });
 });
 
 describe("the Ship lineage cache", () => {

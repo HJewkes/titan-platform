@@ -369,10 +369,7 @@ function cachedSources(sources: InboxSources, cache: InboxReadCache): InboxSourc
   return { ...sources, factory: cache.factory, rounds };
 }
 
-/**
- * TP-6751: each merge row the inbox shows reads its lineage from GitHub (two `gh` calls per PR head), and nothing but the
- * page read them, so the first read after a restart waited on every one. The primer reads the shown rows once to keep them.
- */
+/** TP-6751: a shown merge row's lineage is two `gh` calls; read here by the primer, the first page after a restart waits on none. */
 export async function warmShownRows(sources: InboxSources, cache: InboxReadCache): Promise<void> {
   await readOwnerQueue(cachedSources(sources, cache));
 }
