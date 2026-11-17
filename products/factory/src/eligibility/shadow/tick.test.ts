@@ -1,10 +1,12 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { openDatabase } from "@titan-design/store-sqlite";
 import { partialFake } from "@titan-design/test-kit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EXIT } from "../../cli.js";
 import type { Verbs } from "../../cli-types.js";
+import { defaultDbPath } from "../../config.js";
 import type { HoldProvider } from "./providers.js";
 import type { LoadedRules } from "./rule-file.js";
 import { shadowTick } from "./tick.js";
@@ -56,6 +58,26 @@ describe("dispatch shadow-tick", () => {
       ["would-dispatch", "alpha/AL-2", 2],
     ]);
     expect(day?.rows[2]).toMatchObject({ lane: { initiative: "alpha", tag: "lane-a" }, week: "2026-W47", basis: "selected", bet: "alpha/B1", rank: 1, free: 2 });
+  });
+
+  it("a write lock on the run-wide default factory db leaves a test home's wake untouched (TP-6750)", async () => {
+    const shared = defaultDbPath({});
+    mkdirSync(dirname(shared), { recursive: true });
+    const db = openDatabase(shared);
+    db.exec("CREATE TABLE IF NOT EXISTS lock_probe (n)");
+    db.exec("BEGIN EXCLUSIVE");
+    db.exec("INSERT INTO lock_probe VALUES (1)");
+    const home = shadowHome();
+    writeFileSync(join(home.dir, "dispatcher.json"), JSON.stringify(enabledRules(home)));
+
+    try {
+      const { stdout } = await shadowTickCli(home, twoReady().fetch, { openPrs: 1 });
+
+      expect(stdout).toContain(": 2 would-dispatch, 1 refused -> ");
+    } finally {
+      db.exec("ROLLBACK");
+      db.close();
+    }
   });
 
   it("counts merged-not-deployed PRs against the free slots, refusing the task past them", async () => {
