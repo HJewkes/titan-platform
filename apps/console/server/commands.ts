@@ -38,6 +38,7 @@ import { sessionsCommands, type SessionsSource } from "./sessions.js";
 import { shepherdCommands, type ShepherdSource } from "./shepherd.js";
 import { shippedCommands, type ShippedOptions } from "./shipped.js";
 import { taskDoneCommand } from "./task-done.js";
+import type { EvidenceReader } from "./repo-evidence.js";
 import { tasksCommands } from "./tasks.js";
 import { UPSTREAM_IDS, probeUpstreams, type Upstream } from "./upstreams.js";
 import { summarizeNotes, videoNotesCommands } from "./video-notes.js";
@@ -61,6 +62,8 @@ export interface ConsoleSources {
   agents: AgentsSource;
   sessions: SessionsSource;
   activeWork: ActiveWork;
+  /** Absent, `work.tasks` builds its own git and GitHub reader, which logs no upstream rows. */
+  evidence?: EvidenceReader;
   /** Optional so test sources need not build one; absent, relay frames drop no cached read. */
   invalidation?: Invalidation;
   /** The inbox's kept reads, when the daemon primes them (TP-6703); absent, the commands build their own. */
@@ -205,7 +208,7 @@ function coordinatorReads(coordinator: CoordinatorSource | undefined, shipped: S
 }
 
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, inboxCache, videos, videoNotify, explainerBin, work, coordinator, configStore, shipped, invalidation, blockerHours, scorecard }: ConsoleSources) {
+export function consoleCommands({ upstreams, agents, sessions, activeWork, evidence, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, inboxCache, videos, videoNotify, explainerBin, work, coordinator, configStore, shipped, invalidation, blockerHours, scorecard }: ConsoleSources) {
   const configReaders = surfaceReaders(coordinatorRoots, hostSurfaces);
   const cache = inboxCache ?? inboxReadCache({ factory, rounds, inbox, shepherd, agents });
   return {
@@ -214,7 +217,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...configStoreCommands(configStore),
     ...agentsCommands(agents),
     ...sessionsCommands(sessions),
-    ...tasksCommands({ activeWork, sessions, work }),
+    ...tasksCommands({ activeWork, sessions, work, ...(evidence !== undefined && { evidence }) }),
     ...graphCommands({ activeWork, sessions }),
     ...knowledgeCommands(activeWork, work),
     ...inboxCommands(inbox),

@@ -78,6 +78,24 @@ describe("cachedRead", () => {
     expect(await cache.read()).toBe("after the write");
   });
 
+  it("serves the kept value to a read that arrives while a refresh after a failure runs, so only the read that started it waits", async () => {
+    const clock = { at: 0 };
+    const answers = [() => Promise.resolve("kept"), () => Promise.reject(new Error("upstream down")), () => new Promise<string>(() => undefined)];
+    let calls = 0;
+    const cache = cachedRead(() => answers[calls++]!(), { freshMs: 10, staleMs: 100, keptMs: 1_000 }, () => clock.at);
+    await cache.read();
+    clock.at = 500;
+    await cache.read();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const waiting = cache.read();
+    const arriving = await cache.read();
+
+    expect(arriving).toBe("kept");
+    expect(calls).toBe(3);
+    void waiting;
+  }, 2_000);
+
   it("keeps no failed read, so the next read tries the upstream again", async () => {
     let calls = 0;
     const cache = cachedRead(() => (++calls === 1 ? Promise.reject(new Error("upstream down")) : Promise.resolve("back")), TIMES, () => 0);

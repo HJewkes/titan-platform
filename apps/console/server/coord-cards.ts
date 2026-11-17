@@ -106,15 +106,33 @@ function groupCards({ window, spawns, runs, seats }: Grouping): { cards: Card[];
 
 const uniqueTasks = (tasks: Card["tasks"]): Card["tasks"] => [...new Set(tasks.map((task) => task.id))].sort().map((id) => ({ id }));
 
-/** Titles are enrichment: a failed task read leaves every card with its ids and adds a gap. */
+/**
+ * TP-6747: a merge since the last read changes the ids, so the titles read is a cold key. Live, behind active-work's own
+ * refreshes, it took 4.2 s and was the whole of `coord.cards`' wait. Past this the cards go without titles, and the read
+ * lands in active-work's kept cache for the next one.
+ */
+const TITLES_WAIT_MS = 300;
+const LATE = Symbol("late");
+
+function within<T>(read: Promise<T>, ms: number): Promise<T | typeof LATE> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<typeof LATE>((resolve) => {
+    timer = setTimeout(() => resolve(LATE), ms);
+  });
+  return Promise.race([read, late]).finally(() => clearTimeout(timer));
+}
+
+/** Titles are enrichment: a failed task read leaves every card with its ids and adds a gap; a slow one leaves the ids alone. */
 async function withTitles(activeWork: ActiveWork, cards: Card[], gaps: string[]): Promise<Card[]> {
   if (cards.every((entry) => entry.tasks.length === 0)) return cards;
   const ids = [...new Set(cards.flatMap((entry) => entry.tasks.map(({ id }) => id)))].sort();
-  const titles = await activeWork
+  const read = activeWork
     .read("task.list", { all_initiatives: true, id: ids.join(",") })
     .then(({ tasks }) => new Map(tasks.map((task) => [task.id, task.title])))
-    .catch((err: unknown) => (gaps.push(`active-work task titles: ${err instanceof Error ? err.message : String(err)}`), null));
-  if (titles === null) return cards;
+    .catch((err: unknown) => `active-work task titles: ${err instanceof Error ? err.message : String(err)}`);
+  const titles = await within(read, TITLES_WAIT_MS);
+  if (titles === LATE) return cards;
+  if (typeof titles === "string") return (gaps.push(titles), cards);
   return cards.map((entry) => ({ ...entry, tasks: entry.tasks.map(({ id }) => ({ id, ...(titles.has(id) && { title: titles.get(id)! }) })) }));
 }
 

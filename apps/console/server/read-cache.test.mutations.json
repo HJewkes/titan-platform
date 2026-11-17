@@ -39,12 +39,12 @@
       ]
     },
     {
-      "name": "a re-read key is not moved to the newest place",
+      "name": "a read that arrives during a refresh after a failure joins it",
       "file": "apps/console/server/read-cache.ts",
-      "find": "      entries.delete(key);\n      entries.set(key, entry);",
-      "replace": "      entries.set(key, entry);",
+      "find": "(state.failed && state.running === undefined)",
+      "replace": "state.failed",
       "kills": [
-        "cachedReads drops the least recently read key once more than maxKeys are kept"
+        "cachedRead serves the kept value to a read that arrives while a refresh after a failure runs, so only the read that started it waits"
       ]
     }
   ]
