@@ -32,8 +32,10 @@ interface Call {
   args: Record<string, unknown>;
 }
 
-function isWholeTree({ command, args }: Call): boolean {
+/** TP-6746: the portfolio reads every initiative's brief for its task prefix, so a cold brief is a fan-out of seconds. */
+function isKeptLong({ command, args }: Call): boolean {
   if (command === "list" || command === "inventory") return true;
+  if (command === "source.read") return args.path === "brief.md";
   return (command === "task.list" || command === "artifact.list") && args.all_initiatives === true;
 }
 
@@ -64,7 +66,7 @@ export function cachedActiveWork(inner: ActiveWork, invalidation?: Invalidation,
   function read(command: ReadName, args: Record<string, unknown> = {}): Promise<unknown> {
     if (!CACHED.has(command)) return inner.read(command, args);
     const call = { command, args };
-    return (isWholeTree(call) ? wholeTree : scoped).read(call);
+    return (isKeptLong(call) ? wholeTree : scoped).read(call);
   }
   if (inner.write === undefined) return { read };
   const innerWrite = inner.write.bind(inner);

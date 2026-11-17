@@ -122,6 +122,20 @@ describe("repository evidence", () => {
     await vi.waitFor(() => expect(fake.calls.filter((call) => call === "listOpenPrs")).toHaveLength(2));
   });
 
+  it("serves evidence idle sixteen minutes kept, so the tasks page's first read after a gap waits on no git or GitHub", async () => {
+    seedRepository();
+    const clock = { at: 0 };
+    const fake = fakeGitHub({ repo: "example/orbit" });
+    const read = gitEvidenceReader({ github: githubPort(fake.wire, { login: "t" }), now: () => clock.at });
+    const [first] = await read([clone]);
+
+    clock.at = 16 * 60_000;
+    const [served] = await read([clone]);
+
+    expect(served).toBe(first);
+    await vi.waitFor(() => expect(fake.calls.filter((call) => call === "listOpenPrs")).toHaveLength(2));
+  });
+
   it("marks pull requests unread when GitHub fails, and keeps the git evidence", async () => {
     seedRepository();
     const github = { listOpenPrs: async () => Promise.reject(new Error("offline")) };

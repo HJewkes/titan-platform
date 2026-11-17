@@ -13,10 +13,19 @@
     {
       "name": "expired evidence waits for git and GitHub again",
       "file": "apps/console/server/repo-evidence.ts",
-      "find": "const EVIDENCE_TIMES: CacheTimes = { freshMs: 60_000, staleMs: 600_000 };",
+      "find": "const EVIDENCE_TIMES: CacheTimes = { freshMs: 60_000, staleMs: 600_000, keptMs: 30 * 60_000 };",
       "replace": "const EVIDENCE_TIMES: CacheTimes = { freshMs: 60_000, staleMs: 60_000 };",
       "kills": [
         "repository evidence serves the last evidence once past the window, while one read refreshes it behind"
+      ]
+    },
+    {
+      "name": "evidence gets no kept window past ten minutes",
+      "file": "apps/console/server/repo-evidence.ts",
+      "find": "const EVIDENCE_TIMES: CacheTimes = { freshMs: 60_000, staleMs: 600_000, keptMs: 30 * 60_000 };",
+      "replace": "const EVIDENCE_TIMES: CacheTimes = { freshMs: 60_000, staleMs: 600_000 };",
+      "kills": [
+        "repository evidence serves evidence idle sixteen minutes kept, so the tasks page's first read after a gap waits on no git or GitHub"
       ]
     }
   ]
