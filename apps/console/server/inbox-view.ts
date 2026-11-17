@@ -10,7 +10,7 @@ import { z } from "zod";
 import type { OwnerItem, OwnerOp, OwnerOpKind } from "@titan-design/owner-queue";
 import { readRoster, type AgentsSource } from "./agents.js";
 import { liveHeads, readFlow, type ApprovalsSources } from "./approvals.js";
-import { gateStripCommands, gateStripReader, holdClassOf, type GateStrip, type GateStripReader } from "./gate-strip.js";
+import { gateStripCommands, holdClassOf, type GateStrip, type GateStripReader } from "./gate-strip.js";
 import type { AgentRosterSnapshot } from "@titan-design/chat-protocol/agents";
 import { foldCoveredGates, gateHeadOf, liveAgentNames, markAged, onePerPr, oneRowPerRound, pinOf, sectionOf, type InboxSection, type Placed } from "./inbox-blocking.js";
 import { blockedAgentRows, byDerivedOrder, failedRunRows, stalledRunRows, type DerivedRow } from "./inbox-derived.js";
@@ -375,7 +375,7 @@ async function readInboxView(sources: InboxSources, strips: GateStripReader, cac
 }
 
 export function inboxViewCommands(sources: InboxSources, cache: InboxReadCache = inboxReadCache(sources)) {
-  const strips = gateStripReader(sources.shepherd, sources.now);
+  const strips = cache.strips;
   return {
     ...gateStripCommands(sources.shepherd, strips),
     "inbox.list": readCommand({

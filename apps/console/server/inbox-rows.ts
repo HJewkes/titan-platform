@@ -8,6 +8,7 @@
 import type { OwnerItem } from "@titan-design/owner-queue";
 import type { InboxItem, InboxSources, WatchRow } from "./inbox-view.js";
 import type { FactoryNeeds } from "./approvals.js";
+import { gateStripReader, type GateStripReader } from "./gate-strip.js";
 import { cachedRead, cachedReads, type CacheTimes, type CachedRead } from "./read-cache.js";
 import type { LineageReader, ShipLineage } from "./ship-lineage.js";
 
@@ -45,6 +46,8 @@ export function viewRows(items: readonly InboxItem[], { planning = false }: { pl
 export interface InboxReadCache {
   factory?: FactoryNeeds;
   finished: CachedRead<WatchRow[]>;
+  /** The gate strips' kept reads, shared so the keep-warm primer fills what `inbox.list` serves (TP-6748). */
+  strips: GateStripReader;
   /** Absent when the rounds source wires no GitHub reader. */
   lineage?: LineageReader;
   /** `inbox.act` calls it after a write, so the page's next read shows the answered item gone. */
@@ -78,6 +81,7 @@ export function inboxReadCache({ factory, shepherd, rounds, now }: InboxSources,
   return {
     ...(needs !== undefined && { factory: { list: () => needs.read() } }),
     finished,
+    strips: gateStripReader(shepherd, now),
     ...(lineage !== undefined && { lineage }),
     invalidate: () => {
       needs?.invalidate();

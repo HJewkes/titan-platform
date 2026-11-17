@@ -7,6 +7,7 @@
 import { z } from "zod";
 import { readCommand } from "./owner-guard.js";
 import { mergesAt, mergesNeededFor, recordedVerdicts, type RecordedVerdict } from "./g10-hold.js";
+import { settleBounded } from "./bounded.js";
 import { cachedRead, cachedReads, type CacheTimes } from "./read-cache.js";
 import type { CheckRunsPage, ShepherdSource } from "./shepherd.js";
 
@@ -195,7 +196,12 @@ const STRIP_MAX_KEYS = 256;
 export interface GateStripReader {
   /** One strip per pinned row, keyed by run id; `shepherd.waiting` is read once for all of them. */
   readMany(rows: readonly WatchRow[]): Promise<Map<string, GateStrip>>;
+  /** TP-6748: fills the kept reads `readMany` serves from, with at most `maxInFlight` upstream calls at once; never rejects. */
+  warm(rows: readonly WatchRow[], maxInFlight: number): Promise<void>;
 }
+
+/** A PR's strip reads its timeline and check runs together, so each PR in flight is two upstream calls. */
+const CALLS_PER_PR = 2;
 
 type PrReads = Pick<StripInputs, "timeline" | "checkRuns">;
 
@@ -224,7 +230,11 @@ export function gateStripReader(shepherd: ShepherdSource, now: () => number = Da
     const [shared, reads] = await Promise.all([settle(() => waiting.read()), Promise.all(pinned.map(readPr))]);
     return new Map(pinned.map((row, index) => [row.runId, gateStrip({ row, waiting: shared, ...reads[index]! })]));
   }
-  return { readMany };
+  async function warm(rows: readonly WatchRow[], maxInFlight: number): Promise<void> {
+    await settle(() => waiting.read());
+    await settleBounded(rows.filter(isPinned), Math.max(1, Math.floor(maxInFlight / CALLS_PER_PR)), readPr);
+  }
+  return { readMany, warm };
 }
 
 /** `gates.strip`'s answer: the strip at the live head, or why there is none to show. */
