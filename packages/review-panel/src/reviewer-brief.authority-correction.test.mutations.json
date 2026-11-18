@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the authority quotes keep the CI-policy heading",
+      "file": "packages/review-panel/src/reviewer-brief.ts",
+      "find": "input.refusal === \"authority_missing\" ? [AUTHORITY_QUOTES_HEADING] : []",
+      "replace": "[]",
+      "kills": [
+        "correctionPrompt for an authority_missing refusal an authority_missing correction with a quote shows the quote and the reword line within 1700 chars",
+        "correctionPrompt for an authority_missing refusal heads the quoted lines without the CI-policy reword rule"
+      ]
+    },
+    {
+      "name": "the refusal sentence omits the prose-lead cause",
+      "file": "packages/review-panel/src/reviewer-brief.ts",
+      "find": ", or another line started with the word Authority\"",
+      "replace": "\"",
+      "kills": [
+        "correctionPrompt for an authority_missing refusal names a line starting with Authority as a cause of the refusal and asks for one Authority line"
+      ]
+    },
+    {
+      "name": "the reminder asks to add a line instead of keeping one",
+      "file": "packages/review-panel/src/reviewer-brief.ts",
+      "find": "Above the verdict lines keep one",
+      "replace": "Above the verdict lines add one",
+      "kills": [
+        "correctionPrompt for an authority_missing refusal names a line starting with Authority as a cause of the refusal and asks for one Authority line"
+      ]
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 import { parseVerdictBlock, refusedLines, type CiPolicy, type SourceTextLocator } from "@titan-design/session-read";
-import { authorityLine, hasProbesLine, type AuthorityLine } from "./briefs/adversary.js";
+import { authorityLine, hasProbesLine, malformedAuthorityLines, type AuthorityLine } from "./briefs/adversary.js";
 import { attestTokens } from "./briefs/attest.js";
 import { checkCandidatesFields, type CheckCandidate, type CheckCandidatesWarning } from "./check-candidates.js";
 import { mergeCiPolicy } from "./ci-policy-prose.js";
@@ -67,9 +67,13 @@ const attestsField = (text: string): { attests?: string[] } => {
 };
 
 type MalformedNone = { kind: "none"; malformed: Malformed };
-const malformedNone = (refusal: Malformed["refusal"], writtenAt: number, text = ""): MalformedNone => {
+const refusalQuotes = (refusal: Malformed["refusal"], text: string): string[] => {
+  if (refusal === "authority_missing") return malformedAuthorityLines(text);
   const quoted = refusal === "ci_policy_prose" ? "ci_policy_malformed" : refusal;
-  const quotes = quoted === "multiple_blocks" || quoted === "ci_policy_malformed" ? refusedLines(text, quoted) : [];
+  return quoted === "multiple_blocks" || quoted === "ci_policy_malformed" ? refusedLines(text, quoted) : [];
+};
+const malformedNone = (refusal: Malformed["refusal"], writtenAt: number, text = ""): MalformedNone => {
+  const quotes = refusalQuotes(refusal, text);
   return { kind: "none", malformed: { refusal, writtenAt, ...(quotes.length > 0 && { quotes }) } };
 };
 
@@ -98,8 +102,9 @@ export function acceptVerdict(input: AwaitVerdictInput, messages: readonly Revie
   if (!block.ok) return { kind: "none", reason: "wait" };
   if (final.investigativeCalls === 0) return { kind: "none", reason: DEPTH_FLOOR_REASON };
   if (input.shape === "adversary" && !hasProbesLine(final.text)) return malformedNone("probes_missing", final.writtenAt);
-  const authority = input.shape === "adversary" && block.verdict === "MERGE" ? authorityLine(final.text) : undefined;
-  if (input.shape === "adversary" && block.verdict === "MERGE" && (authority === undefined || authority === "malformed")) return malformedNone("authority_missing", final.writtenAt);
+  const adversaryMerge = input.shape === "adversary" && block.verdict === "MERGE";
+  const authority = adversaryMerge ? authorityLine(final.text) : undefined;
+  if (adversaryMerge && (authority === undefined || authority === "malformed")) return malformedNone("authority_missing", final.writtenAt, final.text);
   const ciPolicy = block.verdict === "MERGE" ? mergeCiPolicy(block.ciPolicy, final.text, block.lineOffset) : undefined;
   if (ciPolicy === "ci_policy_prose" || ciPolicy === "ci_policy_malformed") return malformedNone(ciPolicy, final.writtenAt, final.text);
   const reviewerNotes = { ownerBrief: parseOwnerBrief(final.text), ...followUpsFields(final.text), ...checkCandidatesFields(final.text) };
