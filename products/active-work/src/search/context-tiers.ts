@@ -33,7 +33,8 @@ async function readSpan(
 
 /** Renderings cheapest first: see-line, plus excerpt, plus span text when the span reads. */
 export async function hitTiers(hit: RelatedHit, activeRoot: string): Promise<string[]> {
-  const line = seeLine(hit);
+  const base = seeLine(hit);
+  const line = hit.readIf === undefined ? base : `${base} (read if: ${hit.readIf})`;
   const tiers = [line, hit.excerpt === null ? line : `${line}\n${hit.excerpt}`];
   if (hit.path === null || hit.byteOffset === null || hit.byteLength === null) return tiers;
   const file = path.isAbsolute(hit.path) ? hit.path : toAbsolute(activeRoot, hit.path);

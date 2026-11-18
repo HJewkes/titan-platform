@@ -15,7 +15,7 @@ import {
 } from '../utils/git-gh.js';
 import type { CommandContext } from '../registry/index.js';
 import { SNAPSHOT } from '../test-support/fixtures/loop-ledger.js';
-import { lookup, withTempActiveRoot } from '../test-support/test-helpers.js';
+import { lookup, withTempActiveRoot, writeAgentVisibleBrief } from '../test-support/test-helpers.js';
 
 const SLUG = 'sample-initiative';
 const OPENED = '2026-07-20T10:00:00Z';
@@ -102,6 +102,19 @@ describe('loops trigger marking', () => {
 
       expect(byId.get('after-done-task')?.trigger_met).toEqual(['task-done']);
       expect(byId.get('after-open-task')?.trigger_met).toBeUndefined();
+    });
+  });
+
+  it('keeps the task-done trigger once the done task file moves to tasks/archive/', async () => {
+    await withTempActiveRoot(async (root) => {
+      const tasksDir = path.join(root, SLUG, 'tasks');
+      await fs.mkdir(path.join(tasksDir, 'archive'), { recursive: true });
+      await fs.rename(path.join(tasksDir, 'SI-2.yml'), path.join(tasksDir, 'archive', 'SI-2.yml'));
+      await openLoops(root, [{ id: 'after-archived-task', kind: 'task', ref: 'SI-2' }]);
+
+      const { byId } = await list(root);
+
+      expect(byId.get('after-archived-task')?.trigger_met).toEqual(['task-done']);
     });
   });
 
@@ -268,6 +281,93 @@ describe('loops slug validation', () => {
       const run = loopsCmd.run(loopsCmd.args.parse({ slug }), makeCtx(root));
 
       await expect(run).rejects.toBeInstanceOf(UsageError);
+    });
+  });
+});
+
+const OTHER = 'other-initiative';
+const SECRET = 'secret-initiative';
+
+async function openLoopIn(root: string, slug: string, step: Omit<NextStep, 'text'>): Promise<void> {
+  await writeSessionFile({
+    slug,
+    activeRoot: root,
+    session_id: `sess-${slug}`,
+    started: OPENED,
+    ended: OPENED,
+    track: 'canonical',
+    body: 'narrative\n',
+    next_steps: [{ text: `do ${step.id}`, ...step }],
+  });
+}
+
+async function seedTwoInitiatives(root: string): Promise<void> {
+  writeAgentVisibleBrief(root, SLUG);
+  writeAgentVisibleBrief(root, OTHER);
+  await openLoopIn(root, SLUG, { id: 'first', kind: 'prose', due: PAST });
+  await openLoopIn(root, OTHER, { id: 'second', kind: 'prose', due: FAR_FUTURE });
+}
+
+async function listAll(ctx: CommandContext, overrides: Record<string, unknown> = {}) {
+  const args = loopsCmd.args.parse({ all_initiatives: true, offline: true, ...overrides });
+  return loopsCmd.run(args, ctx);
+}
+
+describe('loops --all-initiatives', () => {
+  it('merges every initiative\'s loops, each tagged with its slug', async () => {
+    await withTempActiveRoot(async (root) => {
+      await seedTwoInitiatives(root);
+
+      const result = await listAll({ ...makeCtx(root), caller: 'owner' });
+
+      const rows = result.open.map((loop) => [loop.slug, loop.ref.split('#')[1]]);
+      expect(rows).toEqual(expect.arrayContaining([[SLUG, 'first'], [OTHER, 'second']]));
+    });
+  });
+
+  it('keeps only trigger-met loops with --due', async () => {
+    await withTempActiveRoot(async (root) => {
+      await seedTwoInitiatives(root);
+
+      const result = await listAll({ ...makeCtx(root), caller: 'owner' }, { due: true });
+
+      expect(result.open.map((loop) => loop.slug)).toEqual([SLUG]);
+      expect(result.open[0]?.trigger_met).toEqual(['due']);
+    });
+  });
+
+  it('gives an agent no loop from an owner-only initiative', async () => {
+    await withTempActiveRoot(async (root) => {
+      await seedTwoInitiatives(root);
+      await openLoopIn(root, SECRET, { id: 'hidden', kind: 'prose', due: PAST });
+      await fs.writeFile(
+        path.join(root, SECRET, 'brief.md'),
+        '---\nvisibility: owner-only\n---\n',
+        'utf8',
+      );
+
+      const forAgent = await listAll({ ...makeCtx(root), caller: 'agent' });
+      const forOwner = await listAll({ ...makeCtx(root), caller: 'owner' });
+
+      expect(forAgent.open.map((loop) => loop.slug)).not.toContain(SECRET);
+      expect(forAgent.open.map((loop) => loop.slug)).toContain(SLUG);
+      expect(forOwner.open.map((loop) => loop.slug)).toContain(SECRET);
+    });
+  });
+
+  it('refuses a slug together with --all-initiatives', async () => {
+    await withTempActiveRoot(async (root) => {
+      const args = loopsCmd.args.parse({ slug: SLUG, all_initiatives: true });
+
+      await expect(loopsCmd.run(args, makeCtx(root))).rejects.toBeInstanceOf(UsageError);
+    });
+  });
+
+  it('refuses neither a slug nor --all-initiatives', async () => {
+    await withTempActiveRoot(async (root) => {
+      const args = loopsCmd.args.parse({});
+
+      await expect(loopsCmd.run(args, makeCtx(root))).rejects.toBeInstanceOf(UsageError);
     });
   });
 });

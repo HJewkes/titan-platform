@@ -149,7 +149,14 @@ rules:
     related: [Q-E17, Q-E19]
     owner_support: none
     note: "TP-5721. Reads declared terms only and compares script positions, so a script that declares each term where it first speaks it cannot fail."
-    l0: { severity: error, status: implemented, checks: ["hallmark:named-before-defined"] }
+    l0: { severity: error, status: implemented, checks: ["hallmark:named-before-defined", "hallmark:motivated-before-named"] }
+  - id: Q-V19
+    rule: "A term a beat declares in new_terms is spoken in that beat, shown in its labels or chips, and cued within 1.0 s of its first spoken word"
+    fields: [beats.spoken, beats.new_terms, beats.visual.labels, beats.visual.chips, beats.visual.cues]
+    related: [Q-V18, Q-E17]
+    owner_support: none
+    note: "TP-6244. The not-spoken-before-its-card half of term-earned is Q-V18. A cue's time is its word index over the beat's word count times plannedS; the warning names the declaring beat."
+    l0: { severity: warning, status: implemented, checks: ["Q-V19:term-spoken-shown"] }
 
   - id: Q-W1
     rule: 'Stake voiced before 15 %, by a named role or "you", with a number or artifact'
@@ -186,7 +193,7 @@ rules:
     l0: { severity: error, status: implemented, checks: ["Q-W4"], scope: chapter }
     judge: { layer: L1, status: pending, owner: SQ7 }
   - id: Q-W5
-    rule: 'Promise has "you" and a capability verb; no "tour of", no chapter count'
+    rule: 'Promise states, in "you" terms, the question the video settles; no "By the end" opener, no "be able to", no "tour of", no chapter count'
     fields: [video.promise]
     aliases: [TC18, R11]
     owner_support: none

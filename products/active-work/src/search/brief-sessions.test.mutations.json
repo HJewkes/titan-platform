@@ -1,0 +1,36 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "one shown edge is enough",
+      "file": "products/active-work/src/search/brief-sessions.ts",
+      "find": "return row.tasks.every((task) => shown(task.initiative));",
+      "replace": "return row.tasks.some((task) => shown(task.initiative));",
+      "kills": [
+        "briefSessions a session linked to a visible and an owner-only task is withheld",
+        "briefSessions a session linked to a task in an initiative of unknown visibility is withheld"
+      ]
+    },
+    {
+      "name": "the most-named edge decides",
+      "file": "products/active-work/src/search/brief-sessions.ts",
+      "find": "return row.tasks.every((task) => shown(task.initiative));",
+      "replace": "return shown(sessionInitiative(row.tasks, row.cwd));",
+      "kills": ["briefSessions a session linked to a visible and an owner-only task is withheld"]
+    },
+    {
+      "name": "the cwd matches an active-work folder name",
+      "file": "products/active-work/src/search/brief-sessions.ts",
+      "find": "const relative = path.relative(path.resolve(activeRoot), path.resolve(cwd));",
+      "replace": "const relative = /active-work\\/(.+)/.exec(cwd)?.[1] ?? '';",
+      "kills": ["briefSessions a session cwd under a non-default activeRoot maps to its initiative"]
+    },
+    {
+      "name": "a cwd never maps to an initiative",
+      "file": "products/active-work/src/search/brief-sessions.ts",
+      "find": "return shown(cwdInitiative(row.cwd, activeRoot));",
+      "replace": "return false;",
+      "kills": ["briefSessions a session cwd under a non-default activeRoot maps to its initiative"]
+    }
+  ]
+}

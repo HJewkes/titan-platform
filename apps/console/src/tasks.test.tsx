@@ -1,211 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
-import type { DataSource } from "@titan-design/rpc-client";
-import { EXIT, errorEnvelope, successEnvelope } from "@titan-design/registry";
-import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
-import type { ConsoleCommands } from "../server/commands.js";
-import { listPage, tasksArgs } from "../server/task-list.js";
-import { renderPage } from "./render-page.test-helpers.js";
+import { errorEnvelope, successEnvelope } from "@titan-design/registry";
+import { snapshotKey } from "@titan-design/rpc-client";
+import { DETAIL, SESSION, TASKS, type TaskDetail, deferred, heldSource, recorded, renderConsole, rosterAgent, rosterOf, snapshotOf } from "./tasks.test-helpers.js";
 
 afterEach(cleanup);
 
-type TasksResult = ConsoleCommands["work.tasks"]["result"];
-type TaskDetail = ConsoleCommands["work.task"]["result"];
-type TaskMentions = ConsoleCommands["work.taskMentions"]["result"];
-type TaskArtifacts = ConsoleCommands["work.taskArtifacts"]["result"];
-type Row = TasksResult["tasks"][number];
-
-// Synthetic rows in `work.tasks` shape; nothing here comes from a real workspace.
-const row = (id: string, fields: Partial<Row>): Row => ({
-  slug: "orbit-relay", id, title: `Task ${id}`, stage: "ready", stageReason: "No pull request, live branch, worktree, open dependency or hold found", stageGuessed: true, ...fields,
-});
-
-const ROWS = [
-  row("OR-1", { title: "Retry a dropped handshake", severity: "critical", stage: "review", stageReason: "PR example/orbit#41 is open (head pc-or-1-retry)", stageGuessed: false }),
-  row("OR-2", { title: "Report queue depth", severity: "high", stage: "blocked", stageReason: "Depends on OR-5 (open)", stageGuessed: false }),
-  row("OR-4", { title: "Document the routing table", severity: "low" }),
-  row("LD-3", { slug: "lantern-docs", title: "Merge the battery chapters", severity: "medium", stage: "in-progress", stageReason: "Worktree on branch pc-ld-3 in example/lantern", stageGuessed: false }),
-];
-
-const tasksOf = (rows: readonly Row[]): TasksResult => ({
-  fetchedAt: "2031-03-05T00:00:00.000Z",
-  evidence: { repos: ["example/orbit"], degraded: [] },
-  ...listPage(rows, {}),
-});
-
-const TASKS = tasksOf(ROWS);
-
-const SESSION = "0a1b2c3d-0000-4000-8000-0000000000aa";
-
-const DETAIL: TaskDetail = {
-  fetchedAt: "2031-03-05T00:00:00.000Z",
-  task: {
-    ...ROWS[0]!, priority: 1, updated: "2031-03-01", status: "open", stageRule: "open-pr", parent: null, dep: [], deliverables: [],
-    notes: "Backoff caps at thirty seconds.", doneWhen: "A dropped handshake retries with backoff.",
-  },
-  refs: [],
-  openPrs: [{ repo: "example/orbit", number: 41, headRef: "pc-or-1-retry" }],
-  sessions: [{
-    sessionId: SESSION, title: "Handshake retry run", startedAt: "2031-03-01T10:00:00Z", endedAt: null, cwd: null, gitBranch: null, turnCount: 3,
-    transcript: null, agentName: "impl-a", parentSessionId: null, taskIds: ["OR-1"], prs: [], usage: [], costUsd: 0,
-  }],
-  sessionsDegraded: null,
-  children: [],
-  deliverables: [],
-  deliverablesDegraded: null,
-  evidence: { repos: ["example/orbit"], degraded: [] },
-};
-
-const MENTIONS: TaskMentions = { mentions: [{ slug: "orbit-relay", source: "task", file: "tasks/OR-7.yml", field: "notes", text: "Follows OR-1" }], degraded: null };
-
-const ARTIFACTS: TaskArtifacts = {
-  branches: [{ repo: "orbit", name: "pc-or-1-retry", present: true, pr: { number: 41, state: "OPEN", title: "OR-1: Retry", url: "https://example.invalid/41", checks: "pass (3/3)" } }],
-  degraded: [],
-};
-
-function snapshotOf(calls: Snapshot["calls"]): Snapshot {
-  return { format: SNAPSHOT_FORMAT, createdAt: "2031-03-05T00:00:00.000Z", calls };
-}
-
-const deferred = (mentions: TaskMentions = MENTIONS, artifacts: TaskArtifacts = ARTIFACTS): Snapshot["calls"] => ({
-  [snapshotKey("work.taskMentions", { id: "OR-1" })]: successEnvelope(mentions),
-  [snapshotKey("work.taskArtifacts", { id: "OR-1", slug: "orbit-relay" })]: successEnvelope(artifacts),
-});
-
-/** Every row behind each recorded snapshot's unfiltered first page, which a filtered or later page is cut from. */
-const unfiltered = new WeakMap<Snapshot, { tasks: TasksResult; rows: readonly Row[] }>();
-
-function recorded(tasks: TasksResult = TASKS, detail: TaskDetail = DETAIL, later: Snapshot["calls"] = deferred(), rows: readonly Row[] = tasks.tasks): Snapshot {
-  const snapshot = snapshotOf({
-    ...later,
-    [snapshotKey("work.tasks", {})]: successEnvelope(tasks),
-    [snapshotKey("work.task", { id: "OR-1" })]: successEnvelope(detail),
-    [snapshotKey("work.task", { id: "OR-404" })]: errorEnvelope("No task OR-404 in any initiative", EXIT.NOINPUT),
-  });
-  unfiltered.set(snapshot, { tasks, rows });
-  return snapshot;
-}
-
-/** Answers a filtered or later `work.tasks` page from the recorded rows, through the server's own filter. */
-function snapshotSource(snapshot: Snapshot): DataSource {
-  const inner = pageDataSource({ doc: new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot), "text/html") });
-  return {
-    call: async (name, args, options) => {
-      const all = unfiltered.get(snapshot);
-      if (name !== "work.tasks" || all === undefined || Object.keys(args ?? {}).length === 0) return inner.call(name, args, options);
-      return successEnvelope({ ...all.tasks, ...listPage(all.rows, tasksArgs.parse(args)) });
-    },
-    subscribe: (handlers, options) => inner.subscribe(handlers, options),
-  };
-}
-
-/** Holds the deferred task reads until `release`, so a test sees what the page shows while they are still loading. */
-function heldSource(snapshot: Snapshot): { source: DataSource; held: string[]; release: () => void } {
-  const inner = snapshotSource(snapshot);
-  const held: string[] = [];
-  let release = (): void => undefined;
-  const gate = new Promise<void>((resolve) => (release = resolve));
-  const source: DataSource = {
-    call: async (name, args, options) => {
-      if (name.startsWith("work.task") && name !== "work.task") {
-        held.push(name);
-        await gate;
-      }
-      return inner.call(name, args, options);
-    },
-    subscribe: (handlers, options) => inner.subscribe(handlers, options),
-  };
-  return { source, held, release: () => release() };
-}
-
-function renderConsole(hash: string, snapshot: Snapshot | DataSource, { inApp = false } = {}): void {
-  renderPage("format" in snapshot ? snapshotSource(snapshot) : snapshot, hash, { inApp });
-}
-
-const group = (stage: string): HTMLElement => screen.getByTestId(`stage-group-${stage}`);
-const shownIds = (): string[] => screen.queryAllByTestId(/^task-row-/).map((element) => element.getAttribute("data-testid")!.slice("task-row-".length));
-
-describe("the tasks list", () => {
-  it("groups open tasks by stage in board order", async () => {
-    renderConsole("#/tasks", recorded());
-    await screen.findByTestId("stage-group-blocked");
-    expect(screen.getAllByTestId(/^stage-group-/).map((element) => element.getAttribute("data-testid"))).toEqual(["stage-group-blocked", "stage-group-ready", "stage-group-in-progress", "stage-group-review"]);
-    expect(within(group("review")).getByText("In review (1)")).toBeTruthy();
-    expect(within(group("blocked")).getByText("Depends on OR-5 (open)")).toBeTruthy();
-  });
-
-  it("captions a guessed stage and only that one", async () => {
-    renderConsole("#/tasks", recorded());
-    await screen.findByTestId("task-row-OR-4");
-    expect(within(screen.getByTestId("task-row-OR-4")).getByText("Stage guessed: no stage signal on this task")).toBeTruthy();
-    expect(screen.getAllByText("Stage guessed: no stage signal on this task")).toHaveLength(1);
-  });
-
-  it("applies stage, initiative, severity and text filters from the query string", async () => {
-    renderConsole("#/tasks?stage=in-progress&initiative=lantern-docs", recorded());
-    await screen.findByTestId("task-row-LD-3");
-    expect(shownIds()).toEqual(["LD-3"]);
-    cleanup();
-    renderConsole("#/tasks?severity=critical&q=handshake", recorded());
-    await screen.findByTestId("task-row-OR-1");
-    expect(shownIds()).toEqual(["OR-1"]);
-  });
-
-  it("keeps typed filter text in the query string", async () => {
-    renderConsole("#/tasks?stage=ready", recorded(), { inApp: true });
-    fireEvent.change(await screen.findByLabelText("Filter by id or title"), { target: { value: "routing" } });
-    await waitFor(() => expect(window.location.hash).toBe("#/tasks?stage=ready&q=routing"));
-    expect(shownIds()).toEqual(["OR-4"]);
-  });
-
-  it("offers to clear filters that match nothing", async () => {
-    renderConsole("#/tasks?q=nothing-like-this", recorded(), { inApp: true });
-    expect(await screen.findByText("No tasks match these filters")).toBeTruthy();
-    fireEvent.click(screen.getByText("Clear filters"));
-    await waitFor(() => expect(window.location.hash).toBe("#/tasks"));
-    expect(await screen.findByTestId("task-row-OR-1")).toBeTruthy();
-  });
-
-  it("opens a task's detail from its row", async () => {
-    renderConsole("#/tasks", recorded(), { inApp: true });
-    fireEvent.click(within(await screen.findByTestId("task-row-OR-1")).getByRole("link"));
-    await waitFor(() => expect(window.location.hash).toBe("#/tasks/OR-1"));
-    expect(await screen.findByText("A dropped handshake retries with backoff.")).toBeTruthy();
-  });
-
-  it("shows loading, empty and failed states", async () => {
-    renderConsole("#/tasks", recorded());
-    expect(screen.getByLabelText("Loading tasks")).toBeTruthy();
-    cleanup();
-    renderConsole("#/tasks", recorded(tasksOf([])));
-    expect(await screen.findByText("No open tasks")).toBeTruthy();
-    expect(screen.getByText("No initiative has an open task.")).toBeTruthy();
-    cleanup();
-    renderConsole("#/tasks", snapshotOf({}));
-    expect(await screen.findByText(/Could not load tasks/)).toBeTruthy();
-  });
-
-  it("shows the first 50 rows, titles each stage with every match, and loads the rest on the cursor", async () => {
-    const many = Array.from({ length: 60 }, (_, n) => row(`OR-${n + 100}`, {}));
-    renderConsole("#/tasks", recorded(tasksOf(many), DETAIL, deferred(), many));
-    await screen.findByTestId("stage-group-ready");
-    expect(shownIds()).toHaveLength(50);
-    expect(within(group("ready")).getByText("Ready (60)")).toBeTruthy();
-    expect(within(group("ready")).getByText("Showing 50 of 60 by priority; load more or filter to see the rest.")).toBeTruthy();
-    fireEvent.click(screen.getByText("Load more (50 of 60 shown)"));
-    await screen.findByTestId("task-row-OR-159");
-    expect(shownIds()).toEqual(many.map((entry) => entry.id));
-    expect(screen.queryByText(/^Load more/)).toBeNull();
-    expect(within(group("ready")).queryByText(/^Showing/)).toBeNull();
-  });
-
-  it("warns when stage evidence is degraded", async () => {
-    renderConsole("#/tasks", recorded({ ...TASKS, evidence: { repos: [], degraded: ["Open pull requests in example/orbit unread: offline"] } }));
-    expect(await screen.findByText(/Some stages lack evidence: Open pull requests in example\/orbit unread/)).toBeTruthy();
-  });
-});
 
 describe("a task's detail", () => {
   it("shows the task record with its stage, done-when and notes", async () => {
@@ -273,6 +74,63 @@ describe("a task's detail", () => {
     cleanup();
     renderConsole("#/tasks/OR-1", recorded(TASKS, { ...DETAIL, sessions: [], sessionsDegraded: { reason: "graph-missing", detail: "No session graph at the configured path" } }));
     expect(await screen.findByText("Session links are unavailable: No session graph at the configured path")).toBeTruthy();
+  });
+
+  it("links the parent, each dependency and each open child to its task page, with the child's status", async () => {
+    const related: TaskDetail = {
+      ...DETAIL,
+      task: { ...DETAIL.task, parent: "OR-10", dep: ["OR-11"] },
+      children: [{ id: "OR-12", title: "Child work", status: "open" }],
+    };
+    for (const id of ["OR-10", "OR-11", "OR-12"]) {
+      renderConsole("#/tasks/OR-1", recorded(TASKS, related), { inApp: true });
+      const panel = await screen.findByTestId("related-panel");
+      expect(within(panel).getByText("open")).toBeTruthy();
+      fireEvent.click(within(panel).getByText(new RegExp(`^${id}`)));
+      await waitFor(() => expect(window.location.hash).toBe(`#/tasks/${id}`));
+      cleanup();
+    }
+  });
+
+  it("names a deliverable's record title, or says it has no record", async () => {
+    const record = { id: "D-1", title: "Handshake guide", status: "active" as const, target: null, owner_seat: "docs", tags: [], tasks: { open: 1, done: 0 } };
+    renderConsole("#/tasks/OR-1", recorded(TASKS, { ...DETAIL, deliverables: [{ id: "D-1", record }, { id: "D-2", record: null }] }));
+    const panel = await screen.findByTestId("related-panel");
+    expect(within(panel).getByText("D-1 Handshake guide")).toBeTruthy();
+    expect(within(panel).getByText("D-2 no record")).toBeTruthy();
+  });
+
+  it("warns when the deliverable registry is degraded", async () => {
+    renderConsole("#/tasks/OR-1", recorded(TASKS, { ...DETAIL, deliverablesDegraded: "daemon too old" }));
+    expect(await screen.findByText("Deliverables are unavailable: daemon too old")).toBeTruthy();
+  });
+
+  it("says when a task has no related tasks", async () => {
+    renderConsole("#/tasks/OR-1", recorded());
+    expect(await screen.findByText("No related tasks")).toBeTruthy();
+  });
+
+  it("lists the agents working the task, each linking to its agent page", async () => {
+    const roster = rosterOf([rosterAgent("impl-a", "OR-1"), rosterAgent("impl-b", "OR-2")]);
+    renderConsole("#/tasks/OR-1", recorded(TASKS, DETAIL, { ...deferred(), [snapshotKey("agents.roster", {})]: successEnvelope(roster) }), { inApp: true });
+    const section = await screen.findByTestId("task-agents");
+    expect(await within(section).findByText("impl-a")).toBeTruthy();
+    expect(within(section).queryByText("impl-b")).toBeNull();
+    expect(within(section).getByText("working")).toBeTruthy();
+    fireEvent.click(within(section).getByText("impl-a"));
+    await waitFor(() => expect(window.location.hash).toBe("#/agents/impl-a"));
+  });
+
+  it("says when no agent works the task", async () => {
+    const roster = rosterOf([rosterAgent("impl-b", "OR-2")]);
+    renderConsole("#/tasks/OR-1", recorded(TASKS, DETAIL, { ...deferred(), [snapshotKey("agents.roster", {})]: successEnvelope(roster) }));
+    expect(await screen.findByText("No live agent on this task")).toBeTruthy();
+  });
+
+  it("warns when the agent roster cannot be read", async () => {
+    renderConsole("#/tasks/OR-1", recorded(TASKS, DETAIL, { ...deferred(), [snapshotKey("agents.roster", {})]: errorEnvelope("broker down", 69) }));
+    expect(await screen.findByText(/^Agents are unavailable: broker down/)).toBeTruthy();
+    expect(screen.queryByText("No live agent on this task")).toBeNull();
   });
 
   it("warns when pull request state is unavailable", async () => {

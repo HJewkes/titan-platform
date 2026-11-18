@@ -26,10 +26,13 @@ it("sizes in-test waits for a loaded runner and keeps them under the test timeou
   expect(WAIT_BUDGET_MS).toBeLessThan(config.test.testTimeout);
   expect(config.test.expect.poll.timeout).toBe(WAIT_BUDGET_MS);
   expect(config.test.setupFiles).toContain("scripts/vitest-wait-budget.mjs");
-  // extends: true appends a project's setupFiles to the root's, so active-work's sandbox-home adds and replaces nothing.
+  // extends: true appends a project's setupFiles to the root's, so active-work's sandbox-home and console's scheduler
+  // drain add and replace nothing.
   const ACTIVE_WORK_SETUP = ["products/active-work/src/test-support/sandbox-home.ts"];
+  const CONSOLE_SETUP = ["apps/console/server/vitest-setup.test-helpers.ts"];
   for (const project of config.test.projects) {
-    const expected = project.test.name.startsWith("active-work") ? ACTIVE_WORK_SETUP : undefined;
+    const name = project.test.name;
+    const expected = name.startsWith("active-work") ? ACTIVE_WORK_SETUP : name === "console" ? CONSOLE_SETUP : undefined;
     expect(project.test.setupFiles, project.test.name).toEqual(expected);
   }
 });

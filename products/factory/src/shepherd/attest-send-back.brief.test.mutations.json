@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the brief blames the correctness reviewer for an adversary's decline",
+      "file": "products/factory/src/shepherd/attest-send-back.ts",
+      "find": "const adversary = declined.filter(({ by }) => by === \"adversary\")",
+      "replace": "const adversary = declined.filter(({ by }) => by === \"correctness\")",
+      "kills": ["the declined-attestation brief names who declined (TP-5902) a correctness decline beside an adversary decline names each reviewer's steps"]
+    },
+    {
+      "name": "an adversary-missing row sends back like a decline",
+      "file": "products/factory/src/shepherd/attest-send-back.ts",
+      "find": "[\"adversary-declined\", \"adversary\"]]",
+      "replace": "[\"adversary-declined\", \"adversary\"], [\"adversary-missing\", \"adversary\"]]",
+      "kills": ["the declined-attestation brief names who declined (TP-5902) an adversary-missing row beside a decline sends nothing back"]
+    }
+  ]
+}

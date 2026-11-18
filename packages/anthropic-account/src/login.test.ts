@@ -65,6 +65,28 @@ describe("loginStateFromCredentials", () => {
     });
   });
 
+  it("reads the empty shape Claude Code writes after a timed-out sign-in as logged out with its reason", () => {
+    const credentials = fakeCredentials({ accessToken: "", refreshToken: "", expiresAt: 0, loginEnded: "time_limit" });
+
+    expect(loginStateFromCredentials(credentials, NOW)).toEqual({ status: "logged-out", reason: "time_limit" });
+  });
+
+  it("reports an unrecognisable login-ended reason as unknown rather than quoting it", () => {
+    const credentials = fakeCredentials({ accessToken: "", refreshToken: "", expiresAt: 0, loginEnded: FAKE_ACCESS_TOKEN });
+
+    expect(loginStateFromCredentials(credentials, NOW)).toEqual({ status: "logged-out", reason: "unknown" });
+  });
+
+  it.each([
+    ["empty tokens and a zero expiry without a login-ended reason", { accessToken: "", refreshToken: "", expiresAt: 0 }],
+    ["a login-ended reason beside a live access token", { loginEnded: "time_limit" }],
+    ["a login-ended reason with an empty token but a real expiry", { accessToken: "", loginEnded: "time_limit" }],
+  ])("keeps %s malformed or valid as before", (_case, overrides) => {
+    const state = loginStateFromCredentials(fakeCredentials(overrides), NOW);
+
+    expect(state.status).not.toBe("logged-out");
+  });
+
   it.each([Number.NaN, Number.POSITIVE_INFINITY])("rejects a now of %s rather than reading every login as live", (now) => {
     expect(() => loginStateFromCredentials(fakeCredentials(), now)).toThrow(
       new RangeError("now must be a finite epoch-ms time"),

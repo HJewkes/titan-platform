@@ -1,4 +1,7 @@
+import { readFileSync } from "node:fs";
 import { z } from "zod";
+import { parseWritingCheck } from "../writing-calibrate.js";
+import { scoreWriting } from "../writing-check.js";
 import { cuedTargets, loadBeatSpecs } from "../beat-load.js";
 import { claimFacts, withClaimFacts } from "../claim-facts.js";
 import { parseCoverage, withCoverage } from "../lint-coverage.js";
@@ -101,6 +104,22 @@ function rewriteTargetRows(input: CheckInput): Verdict {
   return { pass: red.length === 0, detail: `${red.length} of ${report.after.length} target rows red${red.length ? `: ${red.join(", ")}` : ""}` };
 }
 
+const SHIPPED_WRITING_TABLE = new URL("../../doctrine/writing-check.json", import.meta.url);
+
+/** The eval writing verdict on the script as it stands, reported so a run's final script carries it without anyone running `eval writing`. */
+function writingVerdict(input: CheckInput): Verdict {
+  const report = scoreWriting(script(input, "script").beats, parseWritingCheck(readFileSync(SHIPPED_WRITING_TABLE, "utf8")));
+  const failing = [
+    ...report.gate.filter((row) => !row.pass).map((row) => row.id),
+    ...report.rows.filter((row) => row.verdict === "fail").map((row) => `writing:${row.metric}`),
+  ];
+  const { gateFails, warnings } = report.verdict;
+  return {
+    pass: report.verdict.pass,
+    detail: `${report.words} words; bucket ${report.bucket ?? "none"}; ${gateFails} gate fails; ${warnings} warnings; failing rows: ${failing.join(", ") || "none"}`,
+  };
+}
+
 /**
  * The render manifest's page and mix lengths agree. renderVideo refuses a disagreeing render before it writes a
  * manifest; this re-asserts it over whatever manifest the stage stored, so no other path past it goes unchecked.
@@ -177,6 +196,13 @@ function cueResolution(input: CheckInput): Verdict {
  * gates inside its body, before the reported-only judge spends; render reports its two-run check from its body,
  * which is the step that rendered twice.
  */
+/** The checks a stage's body emits itself, outside STAGE_CHECKS: what the eval suites may read besides the table. */
+export const STAGE_BODY_CHECKS: Partial<Record<CachedStage, readonly string[]>> = {
+  script: ["script-schema", "l0-repair"],
+  eval: ["l0", "pace"],
+  render: ["two-run"],
+};
+
 export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
   gather: [],
   audition: [],
@@ -196,6 +222,7 @@ export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
     { name: "no-new-l0-error", gate: true, reads: ["draft", "script"], run: noNewL0Error },
     { name: "word-budget", gate: true, reads: ["script"], run: (input) => draftWordBudget(script(input, "script")) },
     { name: "rewrite-rows", gate: false, reads: ["rewrite-report"], run: rewriteTargetRows },
+    { name: "writing", gate: false, reads: ["script"], run: writingVerdict },
   ],
   eval: [],
   resolve: [

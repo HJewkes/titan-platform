@@ -1,5 +1,7 @@
 import path from "node:path";
-import { Command, CommanderError } from "commander";
+import { profilesRoot } from "@titan-design/anthropic-account/node";
+import { createEmbedder } from "@titan-design/embed";
+import { Command, CommanderError, Option } from "commander";
 import {
   EXIT,
   collectCliArgs,
@@ -22,7 +24,6 @@ import { DEFAULT_TOOL_ADOPTION_PORTS } from "./insights/tool-adoption.js";
 import { DEFAULT_TOOL_GAPS_PORTS } from "./insights/tool-gaps.js";
 import { DEFAULT_GAP_THRESHOLD, type GapThreshold } from "./tool-gap-weekly.js";
 import { activeWorkCli, notifyCommand, runToolGapWeekly } from "./tool-gap-weekly-run.js";
-import { defaultProfilesRoot } from "./friction-transcripts.js";
 import { defaultFrictionArchive, parseWindowMs, renderFrictionResult, runFrictionDaily, titanConsoleInbox, type ConsoleInboxPort } from "./friction-daily-run.js";
 import { attachReportIntake } from "./report-intake-run.js";
 import { attachTicketScorecard } from "./ticket-scorecard/cli.js";
@@ -50,6 +51,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
   program.option("--codex-home <dir>", "also index Codex sessions and archives (TITAN_MINER_CODEX_HOME)");
   program.option("--namespace <name>", "stable host/account corpus identity (TITAN_MINER_NAMESPACE)");
   program.option("--graph <file>", "read another owner's session graph, read-only, such as active-work's (TITAN_MINER_GRAPH)");
+  program.addOption(new Option("--embedder <backend>", "blend vector similarity into playbook recall").choices(["hash", "local", "ollama"]));
   program.hook("preAction", () => {
     try {
       resolveConfig(configOverrides(program.opts<RootOptions>()), io.env);
@@ -90,7 +92,8 @@ function attach(program: Command, cmd: AnyCommand<MinerContext>, registry: Comma
     const rawOpts = handlerArgs[cmd.cli?.positional?.length ?? 0];
     const opts = isObjectLike(rawOpts) ? rawOpts : {};
     const root = program.opts<RootOptions & { json?: boolean }>();
-    const ctx = createMinerContext(resolveConfig(configOverrides(root), io.env), { format: root.json ? "json" : "human", surface: "cli" });
+    const embedder = root.embedder ? await createEmbedder({ backend: root.embedder }) : undefined;
+    const ctx = createMinerContext(resolveConfig(configOverrides(root), io.env), { format: root.json ? "json" : "human", surface: "cli", embedder });
     try {
       const { envelope, exitCode } = await invokeCommand(cmd, collectCliArgs(cmd, positionals, opts), ctx, { invalidArgsCode: EXIT.USAGE });
       emit(io, envelope, ctx.format);
@@ -107,6 +110,7 @@ interface RootOptions {
   codexHome?: string;
   namespace?: string;
   graph?: string;
+  embedder?: "hash" | "local" | "ollama";
 }
 
 function configOverrides(root: RootOptions): ConfigOverrides {
@@ -202,7 +206,7 @@ function attachFrictionDaily(program: Command, io: CliIo, onExit: (code: number)
       const config = resolveConfig(configOverrides(program.opts()), io.env);
       const result = await runFrictionDaily({
         eventsDb: config.eventsDb,
-        profilesRoot: opts.profiles ?? defaultProfilesRoot(),
+        profilesRoot: opts.profiles ?? profilesRoot(),
         archiveDir: opts.archiveDir ?? defaultFrictionArchive(config.initiativesRoot),
         now: new Date(),
         windowMs,

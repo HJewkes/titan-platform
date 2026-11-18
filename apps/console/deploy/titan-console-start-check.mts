@@ -41,7 +41,7 @@ function readStamp(text: string | undefined): Stamp | undefined {
 }
 
 /** Why `dir` cannot start, or its stamp when its bin has bytes and its build-info parses. */
-export function inspectBuild(ports: StartPorts, dir: string): Stamp | string {
+function inspectBuild(ports: StartPorts, dir: string): Stamp | string {
   const size = ports.fileSize(path.join(dir, CLI));
   if (size === undefined || size === 0) return `${CLI} is ${size === undefined ? "missing" : "empty"}`;
   return readStamp(ports.readFile(path.join(dir, BUILD_INFO))) ?? `${BUILD_INFO} is unreadable`;

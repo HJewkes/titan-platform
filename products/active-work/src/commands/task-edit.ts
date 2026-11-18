@@ -6,6 +6,7 @@ import { TaskSchema, type Task } from '../schemas/task.js';
 import { getActiveRoot, getInitiativeDir, getLockPath } from '../utils/paths.js';
 import { withFileLock } from '../utils/fs-atomic.js';
 import { readYaml, writeYaml } from '../utils/yaml-io.js';
+import { formatIssues } from '../utils/schema-issues.js';
 import { nowIso, today } from '../utils/today.js';
 import { NotFoundError, UsageError, ValidationError } from '../errors.js';
 import { assertEdgeWrite } from '../tasks/edge-index.js';
@@ -15,6 +16,7 @@ import { assertCategories, CATEGORY_OPTIONS, changedCategoryFields } from './_ca
 import {
   ArgsSchema,
   PATCH_FIELDS,
+  type ClearField,
   coerceValue,
   parseEdit,
   type Args,
@@ -31,6 +33,23 @@ import { dispatchCheck } from '../session-index/task-dispatched.js';
 interface TaskChange {
   changes: Partial<Task>;
   notices: string[];
+  cleared?: ClearField[];
+}
+
+function presentClears(task: Task, edit: PatchEdit): ClearField[] {
+  return [...new Set(edit.clear ?? [])].filter((key) => task[key] !== undefined);
+}
+
+function clearNotices(task: Task, edit: PatchEdit): string[] {
+  return [...new Set(edit.clear ?? [])]
+    .filter((key) => task[key] === undefined)
+    .map((key) => `${key} already absent, nothing cleared`);
+}
+
+function withoutCleared(task: Task, cleared: readonly ClearField[]): Task {
+  const next = { ...task };
+  for (const key of cleared) delete next[key];
+  return next;
 }
 
 function appendLine(notes: string | undefined, line: string): string {
@@ -118,7 +137,8 @@ export function patchChange(task: Task, edit: PatchEdit): TaskChange {
   const tags = tagChange(current, edit);
   if (tags.tags !== undefined) changes.tags = tags.tags;
   notices.push(...tags.notices);
-  return { changes, notices };
+  notices.push(...clearNotices(task, edit));
+  return { changes, notices, cleared: presentClears(task, edit) };
 }
 
 function guardFieldEdit(task: Task, field: EditableField, value: unknown): void {
@@ -199,6 +219,7 @@ function editedLine(task: Task, edit: Edit): string {
   parts.push(...newDeliverables(task, edit).map((id) => `+deliverable ${id}`));
   parts.push(...newOwnerSteps(task, edit).map((step) => `+owner-step ${step.kind}`));
   parts.push(...newFields(task, edit).map(([key, value]) => `${key} ${value}`));
+  parts.push(...presentClears(task, edit).map((key) => `-${key}`));
   parts.push(...provenanceChange(task, edit.provenance).parts);
   return parts.length === 0 ? `${task.id} unchanged` : `${task.id} edited: ${parts.join(', ')}`;
 }
@@ -221,17 +242,22 @@ async function assertWritable(
   task: Task,
   next: Task,
   changes: Partial<Task>,
+  cleared: readonly ClearField[],
   edit: Edit,
   ctx: CommandContext,
   slug: string,
 ): Promise<void> {
   assertPromotable(ctx, task, next);
-  if (changes.bet !== undefined) await assertKnownBet(next);
+  if (changes.bet !== undefined) await assertKnownBet(next, undefined, slug);
   if (changes.field_origin !== undefined) {
     await assertNotRelabel(task, changes, dispatchCheck(slug));
     await assertProvenance(getActiveRoot(), next);
   }
-  await assertCategories(getActiveRoot(), next, changedCategoryFields(changes));
+  const clearedCategories = cleared.filter((key) => key !== 'parent' && key !== 'bet');
+  await assertCategories(getActiveRoot(), next, [
+    ...changedCategoryFields(changes),
+    ...clearedCategories,
+  ]);
   const added = edit.kind === 'patch' ? newDeliverables(task, edit) : [];
   if (added.length > 0) await assertKnownDeliverables(getActiveRoot(), added);
   if (addsEdge(task, changes)) {
@@ -243,16 +269,18 @@ async function editLocked(args: Args, ctx: CommandContext, edit: Edit): Promise<
   const file = path.join(getInitiativeDir(args.slug), 'tasks', `${args.id}.yml`);
   const task = await loadTask(file, args.id);
   const date = today();
-  const { changes, notices } = changeFor(task, edit, args.force === true);
+  const { changes, notices, cleared = [] } = changeFor(task, edit, args.force === true);
   announce(ctx, notices);
   const line = (): string => editedLine(task, edit);
-  if (Object.keys(changes).length === 0) return quietOr(args.quiet, ctx, task, line);
-  const next = { ...task, ...changes };
-  await assertWritable(task, next, changes, edit, ctx, args.slug);
+  if (Object.keys(changes).length === 0 && cleared.length === 0) {
+    return quietOr(args.quiet, ctx, task, line);
+  }
+  const next = withoutCleared({ ...task, ...changes }, cleared);
+  await assertWritable(task, next, changes, cleared, edit, ctx, args.slug);
   const parsed = TaskSchema.safeParse({ ...next, updated: date });
   if (!parsed.success) {
     const target = args.field ?? Object.keys(changes).join(', ');
-    throw new ValidationError(`Invalid value for ${target}: ${parsed.error.message}`);
+    throw new ValidationError(`Invalid value for ${target}: ${formatIssues(parsed.error)}`);
   }
   await writeYaml(file, parsed.data, TaskSchema);
   return quietOr(args.quiet, ctx, parsed.data, line);
@@ -268,6 +296,10 @@ export default defineCommand<Args, TaskOrLine>({
   cli: {
     positional: ['slug', 'id', 'field', 'value'],
     options: {
+      clear: {
+        long: '--clear',
+        description: 'Remove one of due, kind, cos, area, parent or bet. Repeat the flag for each value',
+      },
       append: {
         long: '--append',
         description: 'Append one line to notes, keeping the rest',

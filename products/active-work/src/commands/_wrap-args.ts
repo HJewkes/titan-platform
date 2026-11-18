@@ -5,6 +5,8 @@ import {
   SessionIdSchema,
   NextStepSchema,
   SessionResolveSchema,
+  SessionReportSchema,
+  type SessionReport,
   type NextStep,
   type SessionResolve,
 } from '../schemas/session.js';
@@ -21,6 +23,7 @@ const NoteInputSchema = z.object({
 });
 export const NotesSchema = z.array(NoteInputSchema);
 export const TaskIdsSchema = z.array(z.string().min(1));
+export const ReportsSchema = z.array(SessionReportSchema);
 
 // MCP callers pass structured arrays; the CLI passes a JSON string through a
 // single flag, since comma-splitting cannot express nested objects.
@@ -28,6 +31,7 @@ const nextStepsArg = z.union([z.string(), NextStepsSchema]);
 const resolvesArg = z.union([z.string(), ResolvesSchema]);
 const notesArg = z.union([z.string(), NotesSchema]);
 const taskIdsArg = z.union([z.string(), TaskIdsSchema]);
+const reportsArg = z.union([z.string(), ReportsSchema]);
 const factsArg = z.union([z.string(), WorkerRecordSchema]);
 
 export const ArgsSchema = z
@@ -47,6 +51,8 @@ export const ArgsSchema = z
     no_notes: z.boolean().optional(),
     tasks_filed: taskIdsArg.optional(),
     no_tasks: z.boolean().optional(),
+    reports: reportsArg.optional(),
+    no_reports: z.boolean().optional(),
     facts: factsArg.optional(),
   })
   .superRefine((value, ctx) => {
@@ -96,6 +102,14 @@ export const ResultSchema = z.object({
   updated: z.string(),
   /** Files this wrap touched, relative to the initiative directory. */
   files_updated: z.array(z.string()),
+  /** Notes the search hit log shows surfacing across several initiatives. */
+  promotion_candidates: z.array(
+    z.object({
+      ref: z.string(),
+      renders: z.number().int().positive(),
+      initiatives: z.number().int().positive(),
+    }),
+  ),
 });
 
 export type Args = z.infer<typeof ArgsSchema>;
@@ -176,6 +190,14 @@ const GATES = {
       'must outlive the session must be a task before wrap returns.',
     both: '--no-tasks asserts no tasks were filed this session; drop it to file --tasks-filed.',
   },
+  reports: {
+    empty:
+      'Refusing to wrap without an answer for reports. Pass --reports with one ' +
+      '{ref, answer} per report this session received (ref is a sources path or a ' +
+      'message id): answer with the task id that carries it, the seat that owns it, ' +
+      'or none. File whatever a report asked for before wrap returns.',
+    both: '--no-reports asserts this session received no reports; drop it to answer --reports.',
+  },
 } as const;
 
 function requireAnswer(
@@ -195,9 +217,11 @@ export function requireAnswers(
   ledger: Ledger,
   notes: NoteInput[],
   taskIds: string[],
+  reports: SessionReport[],
 ): void {
   const hasLoops = ledger.next_steps.length > 0 || ledger.resolves.length > 0;
   requireAnswer(hasLoops, args.no_loops ?? false, GATES.loops);
   requireAnswer(notes.length > 0, args.no_notes ?? false, GATES.notes);
   requireAnswer(taskIds.length > 0, args.no_tasks ?? false, GATES.tasks);
+  requireAnswer(reports.length > 0, args.no_reports ?? false, GATES.reports);
 }

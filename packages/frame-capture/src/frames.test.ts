@@ -110,6 +110,36 @@ describe('captureFrames', { timeout: BROWSER_TIMEOUT_MS }, () => {
     assert.deepEqual(readdirSync(spillDir), [])
   })
 
+  // Mutation: captureFrames returns the marks in the order the page listed them; the fixture lists them out of order.
+  test('the marks the page publishes come back on the result sorted by t', async () => {
+    const result = await captureLent({ ...OPTIONS, url: `${served.url('clock')}&marks=ok` }, async () => {})
+
+    assert.deepEqual(result.marks, [
+      { t: 0, beat: 0, kind: 'settled' },
+      { t: 0.5, beat: 1, kind: 'before' },
+      { t: 1.25, beat: 1, kind: 'hero' },
+    ])
+  })
+
+  // Mutation: the capture invents marks for a page without marks(), or throws on its absence.
+  test('a page with no marks() gives an empty list', async () => {
+    const result = await captureLent({ ...OPTIONS, url: served.url('clock') }, async () => {})
+
+    assert.deepEqual(result.marks, [])
+  })
+
+  // Mutation: the mark check skips t or kind; the bad mark rides through to the contact sheet.
+  for (const [variant, message] of [
+    ['bad-t', /^Error: window\.__titanMotion\.marks\(\)\[1\] \(beat 2\) has an invalid t: NaN$/],
+    ['bad-kind', /^Error: window\.__titanMotion\.marks\(\)\[0\] \(beat 3\) has an unknown kind: "wobble"$/],
+  ] as const) {
+    test(`a ${variant} mark fails the capture and names the mark`, async () => {
+      const capture = captureLent({ ...OPTIONS, url: `${served.url('clock')}&marks=${variant}` }, async () => {})
+
+      await assert.rejects(capture, message)
+    })
+  }
+
   // Mutation: spillParent falls back to tmpdir() with workers above 1, which on a tmpfs /tmp spills a video into RAM.
   test('parallel capture without a spill directory refuses before opening a page', async () => {
     const capture = captureLent({ ...PARALLEL, url: 'http://127.0.0.1:9/unreachable' }, async () => {})

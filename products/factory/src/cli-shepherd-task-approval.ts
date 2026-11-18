@@ -3,7 +3,7 @@ import type { Command } from "commander";
 import type { CliIo, Verbs } from "./cli-types.js";
 import { EXIT } from "./exit-codes.js";
 import { errorMessage } from "./narrow.js";
-import { activeWorkOrigin } from "./shepherd/cleanup-ports.js";
+import { activeWorkOrigin } from "./shepherd/active-work-origin.js";
 import { ownerValidateRefusal } from "./shepherd/g10-owner-validate.js";
 import { readOwnerValidateTask } from "./shepherd/g10-owner-validate-read.js";
 import { latestTaskApproval } from "./shepherd/owner-task-approval.js";

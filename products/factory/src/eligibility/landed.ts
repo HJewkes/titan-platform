@@ -58,10 +58,16 @@ const awaitsSwitchOn = (task: LandedTask): boolean =>
 /** Lane tasks whose PR merged but which still hold an owner step that turns the change on. */
 export function mergedNotSwitchedOn(
   tasks: readonly LandedTask[],
-  mergedTasks: ReadonlySet<string>
+  mergedTasks: ReadonlySet<string>,
+  awaitingDeploy: ReadonlySet<string> = new Set()
 ): number {
+  // A task still waiting on deploy cannot be switched on yet, so merged-not-deployed
+  // owns it; counting it here too would take two slots for one merge.
   return tasks.filter(
-    (task) => mergedTasks.has(task.key) && awaitsSwitchOn(task)
+    (task) =>
+      mergedTasks.has(task.key) &&
+      !awaitingDeploy.has(task.key) &&
+      awaitsSwitchOn(task)
   ).length;
 }
 
@@ -80,7 +86,11 @@ interface LandedInput {
 /** Candidates past the slots the unswitched merges leave are held, in dispatch order, so the shadow never over-admits. */
 function switchOnHolds(input: LandedInput): LandedHold[] {
   const { signals, limits } = input;
-  const count = mergedNotSwitchedOn(input.laneTasks, input.mergedTasks);
+  const count = mergedNotSwitchedOn(
+    input.laneTasks,
+    input.mergedTasks,
+    new Set(signals.mergedNotDeployedTasks)
+  );
   if (count === 0 || signals.openPrs === undefined) return [];
   const merged = signals.mergedNotDeployed ?? 0;
   const free = Math.max(

@@ -397,11 +397,11 @@ declare const costReportSchema: z.ZodObject<{
     }, z.core.$strip>;
     byTokenClass: z.ZodArray<z.ZodObject<{
         tokenClass: z.ZodEnum<{
-            output: "output";
-            input: "input";
             cache_read: "cache_read";
-            cache_write_5m: "cache_write_5m";
             cache_write_1h: "cache_write_1h";
+            cache_write_5m: "cache_write_5m";
+            input: "input";
+            output: "output";
         }>;
         tokens: z.ZodNumber;
         costUsd: z.ZodNumber;
@@ -441,18 +441,18 @@ declare const costReportSchema: z.ZodObject<{
     }, z.core.$strip>>;
     mechanicalShare: z.ZodObject<{
         classes: z.ZodArray<z.ZodEnum<{
-            "journal-write": "journal-write";
-            "pr-ci-check": "pr-ci-check";
-            merge: "merge";
-            dispatch: "dispatch";
-            retire: "retire";
-            "task-state": "task-state";
             "budget-status": "budget-status";
-            scorer: "scorer";
+            dispatch: "dispatch";
+            "journal-write": "journal-write";
+            merge: "merge";
             message: "message";
-            "read-investigate": "read-investigate";
-            "text-only": "text-only";
             other: "other";
+            "pr-ci-check": "pr-ci-check";
+            "read-investigate": "read-investigate";
+            retire: "retire";
+            scorer: "scorer";
+            "task-state": "task-state";
+            "text-only": "text-only";
         }>>;
         costUsd: z.ZodNumber;
         share: z.ZodNumber;
@@ -512,11 +512,11 @@ declare const costReportSchema: z.ZodObject<{
                 noActionEpisodes: z.ZodNumber;
                 noActionCostUsd: z.ZodNumber;
                 key: z.ZodEnum<{
-                    broadcast: "broadcast";
-                    seat: "seat";
                     agent: "agent";
+                    broadcast: "broadcast";
                     broker: "broker";
                     none: "none";
+                    seat: "seat";
                 }>;
             }, z.core.$strip>>;
             episodes: z.ZodNumber;
@@ -534,11 +534,11 @@ declare const costReportSchema: z.ZodObject<{
             noActionCostUsd: z.ZodNumber;
             from: z.ZodString;
             fromKind: z.ZodEnum<{
-                broadcast: "broadcast";
-                seat: "seat";
                 agent: "agent";
+                broadcast: "broadcast";
                 broker: "broker";
                 none: "none";
+                seat: "seat";
             }>;
             to: z.ZodString;
         }, z.core.$strip>>;
@@ -549,18 +549,18 @@ declare const costReportSchema: z.ZodObject<{
         noActionCostUsd: z.ZodNumber;
         roles: z.ZodArray<z.ZodString>;
         noActionClasses: z.ZodArray<z.ZodEnum<{
-            "journal-write": "journal-write";
-            "pr-ci-check": "pr-ci-check";
-            merge: "merge";
-            dispatch: "dispatch";
-            retire: "retire";
-            "task-state": "task-state";
             "budget-status": "budget-status";
-            scorer: "scorer";
+            dispatch: "dispatch";
+            "journal-write": "journal-write";
+            merge: "merge";
             message: "message";
-            "read-investigate": "read-investigate";
-            "text-only": "text-only";
             other: "other";
+            "pr-ci-check": "pr-ci-check";
+            "read-investigate": "read-investigate";
+            retire: "retire";
+            scorer: "scorer";
+            "task-state": "task-state";
+            "text-only": "text-only";
         }>>;
     }, z.core.$strip>;
     handoffThreshold: z.ZodObject<{
@@ -750,11 +750,11 @@ declare const causeSchema: z.ZodObject<{
         noActionEpisodes: z.ZodNumber;
         noActionCostUsd: z.ZodNumber;
         key: z.ZodEnum<{
-            broadcast: "broadcast";
-            seat: "seat";
             agent: "agent";
+            broadcast: "broadcast";
             broker: "broker";
             none: "none";
+            seat: "seat";
         }>;
     }, z.core.$strip>>;
     episodes: z.ZodNumber;
@@ -772,11 +772,11 @@ declare const pairSchema: z.ZodObject<{
     noActionCostUsd: z.ZodNumber;
     from: z.ZodString;
     fromKind: z.ZodEnum<{
-        broadcast: "broadcast";
-        seat: "seat";
         agent: "agent";
+        broadcast: "broadcast";
         broker: "broker";
         none: "none";
+        seat: "seat";
     }>;
     to: z.ZodString;
 }, z.core.$strip>;
@@ -796,11 +796,11 @@ declare const wakeEpisodesSchema: z.ZodObject<{
             noActionEpisodes: z.ZodNumber;
             noActionCostUsd: z.ZodNumber;
             key: z.ZodEnum<{
-                broadcast: "broadcast";
-                seat: "seat";
                 agent: "agent";
+                broadcast: "broadcast";
                 broker: "broker";
                 none: "none";
+                seat: "seat";
             }>;
         }, z.core.$strip>>;
         episodes: z.ZodNumber;
@@ -818,11 +818,11 @@ declare const wakeEpisodesSchema: z.ZodObject<{
         noActionCostUsd: z.ZodNumber;
         from: z.ZodString;
         fromKind: z.ZodEnum<{
-            broadcast: "broadcast";
-            seat: "seat";
             agent: "agent";
+            broadcast: "broadcast";
             broker: "broker";
             none: "none";
+            seat: "seat";
         }>;
         to: z.ZodString;
     }, z.core.$strip>>;
@@ -833,18 +833,18 @@ declare const wakeEpisodesSchema: z.ZodObject<{
     noActionCostUsd: z.ZodNumber;
     roles: z.ZodArray<z.ZodString>;
     noActionClasses: z.ZodArray<z.ZodEnum<{
-        "journal-write": "journal-write";
-        "pr-ci-check": "pr-ci-check";
-        merge: "merge";
-        dispatch: "dispatch";
-        retire: "retire";
-        "task-state": "task-state";
         "budget-status": "budget-status";
-        scorer: "scorer";
+        dispatch: "dispatch";
+        "journal-write": "journal-write";
+        merge: "merge";
         message: "message";
-        "read-investigate": "read-investigate";
-        "text-only": "text-only";
         other: "other";
+        "pr-ci-check": "pr-ci-check";
+        "read-investigate": "read-investigate";
+        retire: "retire";
+        scorer: "scorer";
+        "task-state": "task-state";
+        "text-only": "text-only";
     }>>;
 }, z.core.$strip>;
 type WakeEpisodes = z.infer<typeof wakeEpisodesSchema>;
@@ -1093,8 +1093,8 @@ declare const cacheTtlWhatIfSchema: z.ZodObject<{
     byGapCause: z.ZodArray<z.ZodObject<{
         cause: z.ZodEnum<{
             "ci-wait": "ci-wait";
-            "other-bash": "other-bash";
             "end-of-turn": "end-of-turn";
+            "other-bash": "other-bash";
         }>;
         rebuilds: z.ZodNumber;
         rebuildTokens: z.ZodNumber;
@@ -1306,20 +1306,20 @@ declare const blockedFlowSchema: z.ZodObject<{
     }, z.core.$strip>;
     splitAt: z.ZodOptional<z.ZodString>;
     sources: z.ZodRecord<z.ZodEnum<{
-        verdicts: "verdicts";
-        pulls: "pulls";
         denials: "denials";
         journals: "journals";
+        pulls: "pulls";
+        verdicts: "verdicts";
     }>, z.ZodObject<{
         command: z.ZodString;
         field: z.ZodString;
     }, z.core.$strip>>;
     verdictToMerge: z.ZodObject<{
         cites: z.ZodArray<z.ZodEnum<{
-            verdicts: "verdicts";
-            pulls: "pulls";
             denials: "denials";
             journals: "journals";
+            pulls: "pulls";
+            verdicts: "verdicts";
         }>>;
         rows: z.ZodArray<z.ZodObject<{
             repo: z.ZodString;
@@ -1364,19 +1364,19 @@ declare const blockedFlowSchema: z.ZodObject<{
     }, z.core.$strip>;
     refusedVerdicts: z.ZodObject<{
         cites: z.ZodArray<z.ZodEnum<{
-            verdicts: "verdicts";
-            pulls: "pulls";
             denials: "denials";
             journals: "journals";
+            pulls: "pulls";
+            verdicts: "verdicts";
         }>>;
         count: z.ZodNumber;
     }, z.core.$strip>;
     openHoldingMerge: z.ZodObject<{
         cites: z.ZodArray<z.ZodEnum<{
-            verdicts: "verdicts";
-            pulls: "pulls";
             denials: "denials";
             journals: "journals";
+            pulls: "pulls";
+            verdicts: "verdicts";
         }>>;
         prMinutes: z.ZodNumber;
         rows: z.ZodArray<z.ZodObject<{
@@ -1391,10 +1391,10 @@ declare const blockedFlowSchema: z.ZodObject<{
     }, z.core.$strip>;
     denials: z.ZodObject<{
         cites: z.ZodArray<z.ZodEnum<{
-            verdicts: "verdicts";
-            pulls: "pulls";
             denials: "denials";
             journals: "journals";
+            pulls: "pulls";
+            verdicts: "verdicts";
         }>>;
         total: z.ZodNumber;
         rows: z.ZodArray<z.ZodObject<{
@@ -1406,10 +1406,10 @@ declare const blockedFlowSchema: z.ZodObject<{
     }, z.core.$strip>;
     idleSlots: z.ZodObject<{
         cites: z.ZodArray<z.ZodEnum<{
-            verdicts: "verdicts";
-            pulls: "pulls";
             denials: "denials";
             journals: "journals";
+            pulls: "pulls";
+            verdicts: "verdicts";
         }>>;
         holdMaxMin: z.ZodNumber;
         total: z.ZodNumber;
@@ -1595,10 +1595,10 @@ declare const livenessSchema: z.ZodObject<{
     }, z.core.$strip>;
     sources: z.ZodRecord<z.ZodEnum<{
         exits: "exits";
+        prompts: "prompts";
         registrations: "registrations";
         routes: "routes";
         spawns: "spawns";
-        prompts: "prompts";
     }>, z.ZodObject<{
         command: z.ZodString;
         field: z.ZodString;
@@ -1606,10 +1606,10 @@ declare const livenessSchema: z.ZodObject<{
     darkSeats: z.ZodObject<{
         cites: z.ZodArray<z.ZodEnum<{
             exits: "exits";
+            prompts: "prompts";
             registrations: "registrations";
             routes: "routes";
             spawns: "spawns";
-            prompts: "prompts";
         }>>;
         withTeleport: z.ZodNumber;
         withoutTeleport: z.ZodNumber;
@@ -1629,10 +1629,10 @@ declare const livenessSchema: z.ZodObject<{
     routeFailures: z.ZodObject<{
         cites: z.ZodArray<z.ZodEnum<{
             exits: "exits";
+            prompts: "prompts";
             registrations: "registrations";
             routes: "routes";
             spawns: "spawns";
-            prompts: "prompts";
         }>>;
         failed: z.ZodNumber;
         partial: z.ZodNumber;
@@ -1650,10 +1650,10 @@ declare const livenessSchema: z.ZodObject<{
     unreportedExits: z.ZodObject<{
         cites: z.ZodArray<z.ZodEnum<{
             exits: "exits";
+            prompts: "prompts";
             registrations: "registrations";
             routes: "routes";
             spawns: "spawns";
-            prompts: "prompts";
         }>>;
         total: z.ZodNumber;
         rows: z.ZodArray<z.ZodObject<{
@@ -1673,10 +1673,10 @@ declare const livenessSchema: z.ZodObject<{
     stalePrompts: z.ZodObject<{
         cites: z.ZodArray<z.ZodEnum<{
             exits: "exits";
+            prompts: "prompts";
             registrations: "registrations";
             routes: "routes";
             spawns: "spawns";
-            prompts: "prompts";
         }>>;
         rows: z.ZodArray<z.ZodObject<{
             agent: z.ZodString;
@@ -1777,6 +1777,13 @@ declare const ERROR_CLASSES: readonly [...("classifier-denial" | "permission-den
 type ErrorClass = (typeof ERROR_CLASSES)[number];
 /** Insights Q5's classifier for a tool result's text. */
 declare function classifyError(text: string): ErrorClass;
+interface Denial {
+    kind: "classifier" | "permission" | "hook-deadline";
+    /** The classifier's bracketed reason, when the text carries one. */
+    reason?: string;
+}
+/** The one reading of Claude Code's refusal text: classifier denial, permission deny-list, or permission-hook deadline; null for any other text. */
+declare function denialOf(text: string): Denial | null;
 
 declare const FOLLOW_UP_CLASSES: readonly [...("brief-fix" | "poll" | "correction")[], "other"];
 type FollowUpClass = (typeof FOLLOW_UP_CLASSES)[number];
@@ -2042,14 +2049,32 @@ declare const seatGenerationsSchema: z.ZodArray<z.ZodObject<{
     start: z.ZodNullable<z.ZodString>;
     end: z.ZodNullable<z.ZodString>;
     endedBy: z.ZodEnum<{
+        exit: "exit";
         handoff: "handoff";
         open: "open";
         teleport: "teleport";
-        exit: "exit";
     }>;
 }, z.core.$strip>>;
 /** The seat's generations in start order: committed handoffs, completed teleports and exits end one; spawns and handoffs start one. */
 declare function seatGenerations(input: SeatGenerationsInput): SeatGeneration[];
+
+type ChainLinkKind = "generation" | "predecessor";
+/** One agent process in a session's chain. `kind` is how the walk back from the session reached it. */
+interface ChainLink {
+    agentName: string | null;
+    agentId: string | null;
+    sessionIds: string[];
+    start: string | null;
+    end: string | null;
+    kind: ChainLinkKind;
+}
+type PredecessorChainInput = Omit<SeatGenerationsInput, "seat" | "since">;
+/**
+ * The session's agent and every agent before it, oldest first: the seat's earlier generations, then
+ * the agent `session_origin.predecessor` names, then that agent's own generations, until no
+ * predecessor is left or one names a seat already walked.
+ */
+declare function predecessorChain(db: Db, sessionId: string, input: PredecessorChainInput): ChainLink[];
 
 interface SessionTimelineOptions {
     /** Idle time that counts as a gap. Defaults to `TIMELINE_GAP_MIN_MS`. */
@@ -2076,6 +2101,31 @@ declare class SessionTimelineAccumulator {
 }
 /** The read model behind every session view: turns, minute buckets, the token and cost series, and tool, file and error breakdowns. */
 declare function buildSessionTimeline(observations: Iterable<NormalizedSessionObservation>, options?: SessionTimelineOptions): SessionTimeline;
+
+interface ImplementerCoverage {
+    sessions: number;
+    withTasks: number;
+    /** A live `linked` edge to a PR ref. */
+    withPr: number;
+    /** Task ids, a linked PR and a known `pr.state` together. */
+    withTaskPrState: number;
+    taskShare: number;
+    prShare: number;
+    outcomeShare: number;
+}
+interface ReviewerCoverage {
+    sessions: number;
+    /** At least one `pr_review` row whose `pr_ref` is resolved. */
+    withResolvedReview: number;
+    share: number;
+}
+interface LinkCoverage {
+    window: ReportWindow;
+    implementer: ImplementerCoverage;
+    reviewer: ReviewerCoverage;
+}
+/** How many sessions active in the window carry the links retrieval needs: task, PR and outcome for implementers, a resolved review for reviewers. */
+declare function linkCoverage(db: Db, window: ReportWindow): LinkCoverage;
 
 declare const reviewFillSchema: z.ZodObject<{
     window: z.ZodObject<{
@@ -2418,6 +2468,35 @@ interface TaskActuals {
 /** One row per done task in the allowlist; a task no session links to still gets a row, flagged. */
 declare function taskActuals(minerDb: Db, tasks: readonly ActualsTask[], options: TaskActualsOptions): TaskActuals[];
 
+interface LedgerPr {
+    prRef: string;
+    state: string | null;
+    mergedAt: string | null;
+}
+interface LedgerVerdict {
+    prRef: string;
+    verdict: string;
+    ts: string;
+}
+/** One session that worked a task, with what it cost and the PRs and review verdicts it left. */
+interface LedgerRow {
+    sessionId: string;
+    agentName: string | null;
+    profile: string | null;
+    /** First and last request time; null for a session with no request in the graph. */
+    startedAt: string | null;
+    endedAt: string | null;
+    usd: number;
+    /** True when any request used a model with no price row, so `usd` undercounts. */
+    unpriced: boolean;
+    prs: LedgerPr[];
+    verdicts: LedgerVerdict[];
+}
+/** Every session linked to the task, open or done, with cost, PRs and review verdicts. */
+declare function taskLedger(db: Db, taskId: string): LedgerRow[];
+/** The initiative the graph's task node names; null when the graph has no such task. */
+declare function readTaskInitiative(db: Db, taskId: string): string | null;
+
 type EstimateBand = "0-1" | "2" | "3" | "4+" | "none";
 /** Whether the profile that ran is the one the table wanted; `none` when the row records no pick. */
 type RouteAgreement = "agree" | "differ" | "none";
@@ -2657,12 +2736,12 @@ declare const coordDutyTableSchema: z.ZodObject<{
     duties: z.ZodArray<z.ZodObject<{
         duty: z.ZodString;
         kind: z.ZodEnum<{
-            other: "other";
-            handoff: "handoff";
             det: "det";
-            judge: "judge";
             half: "half";
+            handoff: "handoff";
             incident: "incident";
+            judge: "judge";
+            other: "other";
         }>;
         group: z.ZodString;
         calls: z.ZodNumber;
@@ -3170,7 +3249,7 @@ declare function upsertFactoryHealth(db: Db, weeks: readonly FactoryHealth[], co
 /** The earliest spawn that dispatched the task, ties broken by spawner so the pick is stable. */
 declare function firstDispatch<S extends ScorecardSpawn>(spawns: readonly S[]): S | null;
 
-export { ACTION_CLASSES, AGENT_LIFECYCLE, ALL_REPOS, type ActionCall, type ActionClass, type ActionRule, type ActualsTask, type AgentLog, type AgentNameRow, type Agreement, type AgreementRow, type AgreementSummary, type Assignment, BLOCKED_FLOW_SOURCES, BOOT_TOOL, type Band, type BashRule, type BlockedFlowInput, type BlockedFlowReport, type BlockedFlowSource, type BrokerEntry, CHANNEL_CLUSTER_MS, CI_STATES, CONTEXT_BANDS, CONTEXT_RESET_TOKENS, COORDINATOR_MERGE_DEDUPE_REQUESTS, COORDINATOR_MIN_EPISODE_REQUESTS, COORDINATOR_WAVE_QUIET_REQUESTS, COST_REPORT_SECTIONS, type CacheTtlBucket, type CacheTtlWhatIf, type CacheWriteTtl, type CappedHours, type CiState, type ClassLabel, type ComparisonSpec, type ContractReport, type CoordDutyTable, type CostBucket, type CostPerOutcomeOptions, type CostPerOutcomeReport, type CostReport, type CostReportOptions, type CostReportSection, type CycleParams, DARK_MIN, DEFAULT_ACTION_RULES, DEFAULT_ACTIVE_CAP_MINUTES, DEFAULT_BOOT_REQUESTS, DEFAULT_CONFIGURED_K, DEFAULT_DONE_OUTCOMES, DEFAULT_EPISODE_ROLES, DEFAULT_K_SWEEP, DEFAULT_MECHANICAL_CLASSES, DEFAULT_MERGED_OUTCOMES, DEFAULT_NO_ACTION_CLASSES, DEFAULT_REVIEWER_PRS, DEFAULT_REVIEWER_ROLE, DEFAULT_STANDING_ROLE, DEFAULT_THRESHOLDS, DROP_REASONS, type DarkGap, type DenialRecord, type DispatchRecord, type Divergence, type DivergenceGroup, type DutyCall, type DutyKind, type DutyRuleSet, type DutyTableOptions, type DutyTurn, ERROR_CLASSES, EVENTS_TABLE_DDL, type EpisodeInbound, type EpisodeInput, type EpisodeNames, type EpisodeRequest, type EpisodeRequestRow, type EpisodeSignal, type ErrorClass, type EstimateBand, FOLLOW_UP_CLASSES, FRICTION_ASKER, FRICTION_CLUSTERS, type FactoryHealth, type FactoryHealthInput, type FiledTask, type FollowUpClass, type FrictionCluster, type FrictionClusterRow, type FrictionDailyReport, type FrictionLine, type FrictionRow, type FrictionSource, GAP_BANDS, type GenerationEnd, HANDOFFS_SQL, HEURISTIC_VERSIONS, type HandoffCohort, type HandoffOptions, type HandoffRecord, type HandoffRequestRow, type HandoffSession, type HandoffTeleport, type HandoffThreshold, type Heuristic, type HumanRole, IDLE_GAP_MS, type IdleSlotRow, type InheritMode, type KSweep, LAST_PROMPTS_SQL, LIST_PRICE_CAVEAT, LIVENESS_SOURCES, type Labelled, type LastEventRecord, type LatencyRow, type LatencyStats, type LivenessInput, type LivenessReport, type LivenessSource, type LogClusterRow, type LogSide, type LogSignal, type LogSignalKind, MIN_COST_COVERAGE, type MechanicalShare, type MergeOutcome, type MergeStatus, type MeterInputs, type MeterOptions, type MeterResult, NON_FRICTION, NOT_MEASURED, type Outcome, type OutcomeBucket, POOLED_REVIEWERS, PROFILE_ROLES, PROMPT_STALE_MIN, type ParsedVerdict, type PhaseRun, type PhaseWeek, type PoolTask, type PrDiff, type PrFeatures, type PrefixReuse, type PrefixReuseOptions, type PrefixRow, type ProposedItem, type Provenance, type PullState, REBUILD_GAP_BANDS, REPORT_STATUSES, REVIEW_FILL_COMPARISON, type RedFlag, type ReportScope, type ReportSide, type ReportStatus, type ReportWindow, type ReviewFillReport, type ReviewerComparison, type RoleActions, type RouteAgreement, type RouteFailureRow, type RouteMiss, type RouteMissKind, type RouteOutcomeGroup, type RouteOutcomesOptions, type RowDelta, type RulePick, type RulePlacement, SCORECARD_MIGRATIONS, SPAWNS_SQL, SPLITLESS_CACHE_WRITE_TTL, STANDING_PEER_MIN_ASSIGNMENTS, STANDING_PEER_MIN_HOURS, SUCCESSOR_REWORK_COMPARISON, type ScorecardActuals, type ScorecardFollowUp, type ScorecardGate, type ScorecardJournalInput, type ScorecardJournalRowId, type ScorecardLabels, type ScorecardPr, type ScorecardRegistration, type ScorecardRow, type ScorecardRun, type ScorecardRunLog, type ScorecardSpawn, type ScorecardTask, type ScorecardThresholds, type SeatContextOptions, type SeatContextRow, type SeatGeneration, type SeatGenerationsInput, type SeatJournal, type SeatSessions, type SessionClass, type SessionClassification, type SessionFacts, type SessionOrigin, SessionTimeline, SessionTimelineAccumulator, type SessionTimelineOptions, type SlotTick, type SpawnRecord, type StalePromptRow, type SuccessorReworkOptions, type SuccessorReworkReport, TELEPORT_COMPLETED_EVENT, TELEPORT_EVENT, TICK_HOLD_MAX_MIN, TOKEN_CLASSES, TP1550_RULES, type TaskActuals, type TaskActualsFlag, type TaskActualsOptions, type TaskClass, type TaskInitiative, type TaskPr, type TaskRow, type TaskRowInput, type TeleportEvent, type TokenClass, type ToolField, type ToolRule, type TranscriptCopy, type Trigger, type TtlRequestRow, UNKNOWN_PROFILE, UNSTATED_REASON, type UnreportedExit, type UnreportedExitRow, V3_RULES, VERDICTS_SQL, type VerdictRecord, WAKE_FROM_KINDS, type WakeCauseBucket, type WakeCauseEpisodes, type WakeCount, type WakeEpisode, type WakeEpisodes, type WakeEventRow, type WakeFromKind, type WakeGapCell, type WakePair, type WeekDimension, type WeekMetrics, type WeekRow, type WindowComparison, type WorkerFacts, type WorkerReportRecord, type WorkerRole, type WorkerSessionRecord, type WrittenEpisodes, assignmentCount, assignmentSchema, bandOf, blockedFlowReport, blockedFlowSchema, buildEpisodes, buildSessionTimeline, buildWakeEpisodes, cacheTtlReport, cacheTtlWhatIf, cacheTtlWhatIfSchema, classifyDeniedAction, classifyError, classifyFollowUp, classifyRequest, classifySession, clearDerivedRows, clusterOf, compareWindows, contextBand, coordDutyTableSchema, costPerOutcome, costPerOutcomeSchema, costPerRequest, costReport, costReportSchema, countMisses, darkGaps, dedupeDenials, dutyTable, episodeNames, eventsDbCommand, extractConcerns, extractFriction, factoryHealthSchema, factoryHealthWeeks, filerOf, firstDispatch, firstDivergence, followUpSignals, frictionDailyReport, frictionDeposit, frictionDepositId, gapBand, handoffThreshold, handoffThresholdSchema, heuristicFor, idleSlotMinutes, initiativeFromCwd, isBootAction, isoWeek, latencyStats, latencyStatsSchema, lineCluster, listMergedPrRefs, livenessReport, livenessSchema, mergeCopies, mergeOutcomes, parseBrokerLog, parseDenials, parsePrRef, parseReport, parseSeatJournal, parseTeleportEvents, parseVerdict, phaseWeeks, prFeaturesFor, prKey, prefixReuse, readAgentNames, readAgentSessions, readCoverage, readDispatchJournal, readEpisodeInput, readFactoryHealth, readHandoffs, readLastPrompts, readPhaseWeeks, readPoolSnapshot, readRequestToolCalls, readSpawnerMessages, readSpawns, readTaskRows, readTtlRows, readVerdicts, readWeekRows, readWorkerReports, readWorkerSessions, recordRun, redFlags, renderBlockedFlowText, renderCacheTtlText, renderCostPerOutcomeText, renderCostReportSections, renderCostReportText, renderFrictionMarkdown, renderLivenessText, renderLogTop, renderReportTop, renderReviewFillText, renderSuccessorReworkText, renderWindowComparisonText, reviewFillReport, reviewFillSchema, roleFromProfile, routeFailureRows, routeMisses, routeOutcomes, rulePick, rulePlacement, scopeFilter, scorecardJournalRows, scorecardRowText, seatContext, seatContextSchema, seatGenerations, seatGenerationsSchema, seatOf, sessionInitiative, sessionRole, staleEpisodeSessions, staleEpisodeSessionsYielding, stalePromptRows, successorReworkReport, successorReworkSchema, summarizeWakeEpisodes, sweepK, taskActuals, taskRow, transcriptSignals, unreportedExitRows, upsertFactoryHealth, upsertPhaseWeeks, upsertTaskRows, upsertWeekRows, wakeEpisodesSchema, weekRows, workerRole, writeEpisodes, writePoolSnapshot };
+export { ACTION_CLASSES, AGENT_LIFECYCLE, ALL_REPOS, type ActionCall, type ActionClass, type ActionRule, type ActualsTask, type AgentLog, type AgentNameRow, type Agreement, type AgreementRow, type AgreementSummary, type Assignment, BLOCKED_FLOW_SOURCES, BOOT_TOOL, type Band, type BashRule, type BlockedFlowInput, type BlockedFlowReport, type BlockedFlowSource, type BrokerEntry, CHANNEL_CLUSTER_MS, CI_STATES, CONTEXT_BANDS, CONTEXT_RESET_TOKENS, COORDINATOR_MERGE_DEDUPE_REQUESTS, COORDINATOR_MIN_EPISODE_REQUESTS, COORDINATOR_WAVE_QUIET_REQUESTS, COST_REPORT_SECTIONS, type CacheTtlBucket, type CacheTtlWhatIf, type CacheWriteTtl, type CappedHours, type ChainLink, type ChainLinkKind, type CiState, type ClassLabel, type ComparisonSpec, type ContractReport, type CoordDutyTable, type CostBucket, type CostPerOutcomeOptions, type CostPerOutcomeReport, type CostReport, type CostReportOptions, type CostReportSection, type CycleParams, DARK_MIN, DEFAULT_ACTION_RULES, DEFAULT_ACTIVE_CAP_MINUTES, DEFAULT_BOOT_REQUESTS, DEFAULT_CONFIGURED_K, DEFAULT_DONE_OUTCOMES, DEFAULT_EPISODE_ROLES, DEFAULT_K_SWEEP, DEFAULT_MECHANICAL_CLASSES, DEFAULT_MERGED_OUTCOMES, DEFAULT_NO_ACTION_CLASSES, DEFAULT_REVIEWER_PRS, DEFAULT_REVIEWER_ROLE, DEFAULT_STANDING_ROLE, DEFAULT_THRESHOLDS, DROP_REASONS, type DarkGap, type Denial, type DenialRecord, type DispatchRecord, type Divergence, type DivergenceGroup, type DutyCall, type DutyKind, type DutyRuleSet, type DutyTableOptions, type DutyTurn, ERROR_CLASSES, EVENTS_TABLE_DDL, type EpisodeInbound, type EpisodeInput, type EpisodeNames, type EpisodeRequest, type EpisodeRequestRow, type EpisodeSignal, type ErrorClass, type EstimateBand, FOLLOW_UP_CLASSES, FRICTION_ASKER, FRICTION_CLUSTERS, type FactoryHealth, type FactoryHealthInput, type FiledTask, type FollowUpClass, type FrictionCluster, type FrictionClusterRow, type FrictionDailyReport, type FrictionLine, type FrictionRow, type FrictionSource, GAP_BANDS, type GenerationEnd, HANDOFFS_SQL, HEURISTIC_VERSIONS, type HandoffCohort, type HandoffOptions, type HandoffRecord, type HandoffRequestRow, type HandoffSession, type HandoffTeleport, type HandoffThreshold, type Heuristic, type HumanRole, IDLE_GAP_MS, type IdleSlotRow, type ImplementerCoverage, type InheritMode, type KSweep, LAST_PROMPTS_SQL, LIST_PRICE_CAVEAT, LIVENESS_SOURCES, type Labelled, type LastEventRecord, type LatencyRow, type LatencyStats, type LedgerPr, type LedgerRow, type LedgerVerdict, type LinkCoverage, type LivenessInput, type LivenessReport, type LivenessSource, type LogClusterRow, type LogSide, type LogSignal, type LogSignalKind, MIN_COST_COVERAGE, type MechanicalShare, type MergeOutcome, type MergeStatus, type MeterInputs, type MeterOptions, type MeterResult, NON_FRICTION, NOT_MEASURED, type Outcome, type OutcomeBucket, POOLED_REVIEWERS, PROFILE_ROLES, PROMPT_STALE_MIN, type ParsedVerdict, type PhaseRun, type PhaseWeek, type PoolTask, type PrDiff, type PrFeatures, type PredecessorChainInput, type PrefixReuse, type PrefixReuseOptions, type PrefixRow, type ProposedItem, type Provenance, type PullState, REBUILD_GAP_BANDS, REPORT_STATUSES, REVIEW_FILL_COMPARISON, type RedFlag, type ReportScope, type ReportSide, type ReportStatus, type ReportWindow, type ReviewFillReport, type ReviewerComparison, type ReviewerCoverage, type RoleActions, type RouteAgreement, type RouteFailureRow, type RouteMiss, type RouteMissKind, type RouteOutcomeGroup, type RouteOutcomesOptions, type RowDelta, type RulePick, type RulePlacement, SCORECARD_MIGRATIONS, SPAWNS_SQL, SPLITLESS_CACHE_WRITE_TTL, STANDING_PEER_MIN_ASSIGNMENTS, STANDING_PEER_MIN_HOURS, SUCCESSOR_REWORK_COMPARISON, type ScorecardActuals, type ScorecardFollowUp, type ScorecardGate, type ScorecardJournalInput, type ScorecardJournalRowId, type ScorecardLabels, type ScorecardPr, type ScorecardRegistration, type ScorecardRow, type ScorecardRun, type ScorecardRunLog, type ScorecardSpawn, type ScorecardTask, type ScorecardThresholds, type SeatContextOptions, type SeatContextRow, type SeatGeneration, type SeatGenerationsInput, type SeatJournal, type SeatSessions, type SessionClass, type SessionClassification, type SessionFacts, type SessionOrigin, SessionTimeline, SessionTimelineAccumulator, type SessionTimelineOptions, type SlotTick, type SpawnRecord, type StalePromptRow, type SuccessorReworkOptions, type SuccessorReworkReport, TELEPORT_COMPLETED_EVENT, TELEPORT_EVENT, TICK_HOLD_MAX_MIN, TOKEN_CLASSES, TP1550_RULES, type TaskActuals, type TaskActualsFlag, type TaskActualsOptions, type TaskClass, type TaskInitiative, type TaskPr, type TaskRow, type TaskRowInput, type TeleportEvent, type TokenClass, type ToolField, type ToolRule, type TranscriptCopy, type Trigger, type TtlRequestRow, UNKNOWN_PROFILE, UNSTATED_REASON, type UnreportedExit, type UnreportedExitRow, V3_RULES, VERDICTS_SQL, type VerdictRecord, WAKE_FROM_KINDS, type WakeCauseBucket, type WakeCauseEpisodes, type WakeCount, type WakeEpisode, type WakeEpisodes, type WakeEventRow, type WakeFromKind, type WakeGapCell, type WakePair, type WeekDimension, type WeekMetrics, type WeekRow, type WindowComparison, type WorkerFacts, type WorkerReportRecord, type WorkerRole, type WorkerSessionRecord, type WrittenEpisodes, assignmentCount, assignmentSchema, bandOf, blockedFlowReport, blockedFlowSchema, buildEpisodes, buildSessionTimeline, buildWakeEpisodes, cacheTtlReport, cacheTtlWhatIf, cacheTtlWhatIfSchema, classifyDeniedAction, classifyError, classifyFollowUp, classifyRequest, classifySession, clearDerivedRows, clusterOf, compareWindows, contextBand, coordDutyTableSchema, costPerOutcome, costPerOutcomeSchema, costPerRequest, costReport, costReportSchema, countMisses, darkGaps, dedupeDenials, denialOf, dutyTable, episodeNames, eventsDbCommand, extractConcerns, extractFriction, factoryHealthSchema, factoryHealthWeeks, filerOf, firstDispatch, firstDivergence, followUpSignals, frictionDailyReport, frictionDeposit, frictionDepositId, gapBand, handoffThreshold, handoffThresholdSchema, heuristicFor, idleSlotMinutes, initiativeFromCwd, isBootAction, isoWeek, latencyStats, latencyStatsSchema, lineCluster, linkCoverage, listMergedPrRefs, livenessReport, livenessSchema, mergeCopies, mergeOutcomes, parseBrokerLog, parseDenials, parsePrRef, parseReport, parseSeatJournal, parseTeleportEvents, parseVerdict, phaseWeeks, prFeaturesFor, prKey, predecessorChain, prefixReuse, readAgentNames, readAgentSessions, readCoverage, readDispatchJournal, readEpisodeInput, readFactoryHealth, readHandoffs, readLastPrompts, readPhaseWeeks, readPoolSnapshot, readRequestToolCalls, readSpawnerMessages, readSpawns, readTaskInitiative, readTaskRows, readTtlRows, readVerdicts, readWeekRows, readWorkerReports, readWorkerSessions, recordRun, redFlags, renderBlockedFlowText, renderCacheTtlText, renderCostPerOutcomeText, renderCostReportSections, renderCostReportText, renderFrictionMarkdown, renderLivenessText, renderLogTop, renderReportTop, renderReviewFillText, renderSuccessorReworkText, renderWindowComparisonText, reviewFillReport, reviewFillSchema, roleFromProfile, routeFailureRows, routeMisses, routeOutcomes, rulePick, rulePlacement, scopeFilter, scorecardJournalRows, scorecardRowText, seatContext, seatContextSchema, seatGenerations, seatGenerationsSchema, seatOf, sessionInitiative, sessionRole, staleEpisodeSessions, staleEpisodeSessionsYielding, stalePromptRows, successorReworkReport, successorReworkSchema, summarizeWakeEpisodes, sweepK, taskActuals, taskLedger, taskRow, transcriptSignals, unreportedExitRows, upsertFactoryHealth, upsertPhaseWeeks, upsertTaskRows, upsertWeekRows, wakeEpisodesSchema, weekRows, workerRole, writeEpisodes, writePoolSnapshot };
 
 // ./dist/timeline-entry.d.ts
 import { ToolFamily } from '@titan-design/session-read';

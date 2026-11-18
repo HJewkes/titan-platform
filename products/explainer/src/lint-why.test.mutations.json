@@ -38,12 +38,13 @@
       ]
     },
     {
-      "name": "late facts start at 80 percent",
+      "name": "a teaser promise passes the promise row",
       "file": "products/explainer/src/lint-why.ts",
-      "find": "const LATE_FACTS_SHARE = 0.9;",
-      "replace": "const LATE_FACTS_SHARE = 0.8;",
+      "find": "|| TEASER_PROMISE.test(promise) ",
+      "replace": "",
       "kills": [
-        "why, value and thread lints no new facts in the last tenth passes a new fact in a beat that starts before 90 percent"
+        "why, value and thread lints fails a promise with a By the end opener",
+        "why, value and thread lints fails a promise with a be-able-to promise"
       ]
     }
   ]

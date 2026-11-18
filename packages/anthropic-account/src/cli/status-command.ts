@@ -48,8 +48,8 @@ function usageText(usage: UsageFileRead | null): string {
 }
 
 function textLine(status: ProfileStatus): string {
-  const login = status.login === null ? "unreadable" : loginText(status.login);
-  return `${printableLabel(status.profile.label)}: login ${login}; ${usageText(status.usage)}`;
+  const login = status.login === null ? "login unreadable" : loginText(status.login);
+  return `${printableLabel(status.profile.label)}: ${login}; ${usageText(status.usage)}`;
 }
 
 const STATUS_SCHEMA = 2;

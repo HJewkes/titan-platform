@@ -102,7 +102,9 @@ re-extracts the inbound rows of every transcript indexed under 7 or earlier. Ver
 - `chat_send` is an agent-chat `chat_send`, with the recipient as `detail`.
 - `status_report` is a `chat_send` whose text has `Status: DONE`, `DONE_WITH_CONCERNS`, `BLOCKED` or `NEEDS_*`, with the status word as `detail`.
 - `commit`, `push` and `pr_merge` come from a Bash command, via `parseGitIntent`. `pr_merge` carries the PR number.
-- `pr_create` is a Bash simple command that matches `gh pr create`, not a `parseGitIntent` result.
+- `pr_create` is a Bash simple command that matches `gh pr create`, not a `parseGitIntent` result. The
+  `pr_create` event's command half carries `headRef` (from `--head`/`-H`, else the checked-out branch) and `base`; the result
+  half carries the PR number, and a consumer joins them on `toolUseId`.
 - `task_wrap` is `active-work wrap` or `record` in Bash, or a `Skill` call whose skill is `active-work`.
 - `task_done` is `active-work task done`, with the task id as `detail`.
 - `doc_written` is a `Write` to a `.md` path.

@@ -22,7 +22,7 @@
     {
       "name": "the filer forgets titles already seen in the block",
       "file": "products/factory/src/shepherd/follow-ups-file.ts",
-      "find": "    if (seen.has(key)) continue;\n",
+      "find": "    if (seen.has(key)) return false;\n",
       "replace": "",
       "kills": [
         "fileFollowUps files two same-titled items in one block once"

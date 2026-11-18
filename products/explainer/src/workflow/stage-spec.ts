@@ -20,7 +20,7 @@ import { timingProfile, TimingProfileSchema, type TimingProfile } from "../qa/ti
 import { auditionConfig, profileRef } from "./audition-stage.js";
 import { GatherRequestSchema, type GatherRequest } from "./run-gather.js";
 import type { BridgeFile } from "./bridge.js";
-import { CACHED_STAGES, type CachedStage, type StageName } from "./records.js";
+import { CACHED_STAGES, StepUsageRowSchema, type CachedStage, type StageName, type StepUsageRow } from "./records.js";
 import { loadStageBumps, stageVersions } from "../stage-bumps.js";
 
 /**
@@ -55,7 +55,7 @@ const STAGE_INPUTS: Record<CachedStage, readonly string[]> = {
 /** Artifacts a stage reads when a pin or an earlier stage supplies them; absent, they stay out of its key. */
 const OPTIONAL_INPUTS: Partial<Record<CachedStage, readonly string[]>> = {
   script: ["coverage", "seed-draft"], rewrite: ["facts", "coverage"], eval: ["facts", "coverage"], resolve: ["code", "slots", "layout", "chapter-links", "facts", "custom-layers"],
-  render: ["code", "slots", "generated-slots", "custom-layers"], qa: ["visual", "code", "slots", "vtt"], sheets: ["render-manifest", "resolved", "slots", "qa", "visual"],
+  render: ["code", "slots", "generated-slots", "custom-layers", "voice"], qa: ["visual", "code", "slots", "vtt"], sheets: ["render-manifest", "resolved", "slots", "qa", "visual", "timeline", "marks"],
 };
 
 /** A stage variant file: settings for one stage, whose content hash goes into the stage key. */
@@ -87,7 +87,7 @@ const SheetsParamsSchema = z.strictObject({ take: z.string().min(1).optional(), 
 const RenderParamsSchema = z.strictObject({ workers: z.number().int().positive().optional(), twoRun: z.boolean().optional(), noQa: z.boolean().optional() });
 
 /** A video and every run of it, oldest first: the sidecar lists them, so a new linked run re-keys the sheets stage. */
-const VideoRefSchema = z.object({ id: z.string(), runIds: z.array(z.string()) });
+const VideoRefSchema = z.object({ id: z.string(), runIds: z.array(z.string()), position: z.number().int().positive().optional() });
 export type VideoRef = z.infer<typeof VideoRefSchema>;
 
 /** The voice a run with no profile speaks in: the bridge's voice at Kokoro's natural rate. */
@@ -113,7 +113,7 @@ const StageConfigSchema = z.object({
   /** The render variant's style pack, by content hash, so an edit to the pack's file misses the cache. */
   stylePack: z.object({ id: z.string(), sha: z.string() }).optional(),
   /** The sheets stage's sidecar take and status, the theater stem its poster is named after, and the structure registry by hash. */
-  sheets: z.object({ take: z.string(), status: z.enum(SIDECAR_STATUSES), stem: z.string(), structures: z.string() }).optional(),
+  sheets: z.object({ take: z.string().optional(), day: z.string().optional(), status: z.enum(SIDECAR_STATUSES), stem: z.string(), structures: z.string() }).optional(),
   video: VideoRefSchema.optional(),
   /** The qa stage's gate profile for the run's type, by content hash, whether it sweeps at 2 Hz, and the type's timing thresholds. */
   qa: z.object({ sha: z.string(), gate: z.array(z.string()), inspect: QaInspectSchema, sweep: z.boolean().optional(), timing: TimingProfileSchema.optional() }).optional(),
@@ -136,6 +136,8 @@ export const StageSpecSchema = z.object({
   sample: z.number().int().nonnegative(),
   /** Bounds a model call inside the stage; not part of the key. */
   remainingUsd: z.number(),
+  /** The earlier stages' StepUsage rows, which render copies into its manifest; not part of the key. */
+  steps: z.array(StepUsageRowSchema).optional(),
 });
 export type StageSpec = z.infer<typeof StageSpecSchema>;
 
@@ -170,7 +172,11 @@ function bandRates(): Record<SpeechBand, number> {
 }
 
 function sheetsConfig(settings: RunSettings, params: z.infer<typeof SheetsParamsSchema>, bridge: () => BridgeFile): StageConfig {
-  const sheets = { take: params.take ?? "v1", status: params.status ?? "review", stem: bridge().theater.stem, structures: registrySha(loadStructures()) };
+  const day = settings.gather && "day" in settings.gather ? settings.gather.day : undefined;
+  const sheets = {
+    ...(params.take ? { take: params.take } : {}), ...(day ? { day } : {}),
+    status: params.status ?? "review", stem: bridge().theater.stem, structures: registrySha(loadStructures()),
+  };
   return { sheets, ...(settings.profile ? { profile: profileRef(settings.profile) } : {}), ...(settings.video ? { video: settings.video() } : {}) };
 }
 
@@ -231,6 +237,8 @@ interface SpecRequest {
   stylePacks?: () => ReadonlyMap<string, StylePack>;
   /** The beat worker's builder, which only the resolve stage's key carries; absent, custom beats stay unbuilt. */
   builder?: BuilderRef;
+  /** The earlier stages' StepUsage rows; only render reads them. */
+  steps?: readonly StepUsageRow[];
 }
 
 let shipped: ReadonlyMap<string, StylePack> | undefined;
@@ -276,5 +284,6 @@ export function stageSpec(request: SpecRequest): StageSpec {
     ...(stage === "resolve" && request.builder ? { builder: request.builder } : {}),
   };
   const keyed = { stage, inputs, config, sample: request.sample };
-  return { ...keyed, key: stageKey(keyed), remainingUsd: request.remainingUsd };
+  const steps = stage === "render" && request.steps ? { steps: [...request.steps] } : {};
+  return { ...keyed, key: stageKey(keyed), remainingUsd: request.remainingUsd, ...steps };
 }

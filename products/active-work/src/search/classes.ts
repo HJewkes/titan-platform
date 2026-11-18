@@ -58,6 +58,8 @@ export const SEARCH_CLASSES: SearchClass[] = [
   { name: 'initiatives', scope: { ownerPrefix: 'initiative:' }, weight: 1.15, share: 0.2 },
   { name: 'sources', scope: { ownerPrefix: 'source:' }, weight: 1.1, share: 0.3 },
   { name: 'tasks', scope: { ownerPrefix: 'task:' }, weight: 1.0, share: 0.3 },
+  // Outcomes, bets and the owner's intent lines: a bet, its outcome and its intent lines must fit one default page together.
+  { name: 'plans', scope: { ownerPrefix: 'plan:' }, weight: 1.0, share: 0.5 },
   // Narrative restatements of the notes, written by the session that wrote
   // them: the workspace's own duplicate content, so low on both counts.
   {
@@ -73,6 +75,13 @@ export const SEARCH_CLASSES: SearchClass[] = [
     share: 0.2,
   },
 ];
+
+/**
+ * Owner decisions come from the precedent ledger, not the workspace graph, so
+ * this is not a `SearchClass`: only related context ranks it, and `search`
+ * never queries it.
+ */
+export const DECISIONS_CLASS = { name: 'decisions', share: 0.2 };
 
 /** How many candidates a class may contribute for a page of `limit`. */
 export function capFor(cls: SearchClass, limit: number): number {

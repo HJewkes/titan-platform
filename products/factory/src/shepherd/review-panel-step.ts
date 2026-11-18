@@ -166,10 +166,10 @@ function memberResultOf(awaited: AwaitedResult): MemberResult["result"] {
   return { ...verdict, verdict: "FIX_FIRST", text: awaited.text ?? "", ...(closer !== undefined && { closer }) };
 }
 
-/** Only the adversary's verdict has a form beyond the block, so only it gets the correctness member's one correction turn. */
-async function awaitMember(ctx: WorkflowContext, target: ReviewTarget, shape: OverlayShape, awaiting: AwaitVerdictInput & { shape: OverlayShape }): Promise<AwaitedResult> {
+/** The adversary's and the tests member's verdicts have a form beyond the block (Probes, CI-policy), so only they get the correctness member's one correction turn. */
+export async function awaitMember(ctx: WorkflowContext, target: ReviewTarget, shape: OverlayShape, awaiting: AwaitVerdictInput & { shape: OverlayShape }): Promise<AwaitedResult> {
   const awaited = await step(ctx, `${AWAIT_VERDICT_STEP}:${target.head}:${shape}`, awaiting, Awaited);
-  if (shape !== "adversary") return awaited;
+  if (shape !== "adversary" && shape !== "tests") return awaited;
   const replyStep = `${AWAIT_VERDICT_STEP}:${target.head}:${shape}:corrected`;
   return correctOnce(ctx, awaiting, awaited, { ownerBrief: false, replyStep, correctStep: `${CORRECT_VERDICT_STEP}:${target.head}:${shape}` });
 }

@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "why filters on the most-named initiative",
+      "file": "products/active-work/src/search/why.ts",
+      "find": "    .filter((s) => sessionShown(s, activeRoot, shown))\n",
+      "replace": "    .filter((s) => shown(initiativeOf(s, activeRoot)))\n",
+      "kills": [
+        "why keeps a session linked to a visible and an owner-only task from an agent",
+        "why keeps a session linked to a task of unknown visibility from an agent"
+      ]
+    }
+  ]
+}

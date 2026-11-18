@@ -44,6 +44,7 @@
     "@titan-design/agent-dispatch": "workspace:^",
     "@titan-design/agent-protocol": "workspace:^",
     "@titan-design/app-paths": "workspace:^",
+    "@titan-design/autoresearch": "workspace:^",
     "@titan-design/code-graph": "workspace:^",
     "@titan-design/code-read": "workspace:^",
     "@titan-design/evidence": "workspace:^",

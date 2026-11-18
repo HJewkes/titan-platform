@@ -83,22 +83,31 @@ function renderWorktrees(artifacts: Artifacts, slug: string): string | null {
   return `Worktrees (registered):\n${lines.join('\n')}`;
 }
 
-function renderStashes(artifacts: Artifacts): string | null {
+function capLines<T>(items: T[], render: (item: T) => string, slug: string): string {
+  const lines = items.slice(0, LIVE_RENDER_LIMIT).map(render);
+  const overflow = items.length - lines.length;
+  if (overflow > 0) lines.push(`(+${overflow} more — \`active-work artifact list ${slug}\`)`);
+  return lines.join('\n');
+}
+
+function renderStashes(artifacts: Artifacts, slug: string): string | null {
   if (artifacts.stashes.length === 0) return null;
-  return artifacts.stashes
-    .map((s) => `- ${s.repo}: ${s.label}${s.sha ? ` (${s.sha.slice(0, 12)})` : ''}`)
-    .join('\n');
+  return capLines(
+    artifacts.stashes,
+    (s) => `- ${s.repo}: ${s.label}${s.sha ? ` (${s.sha.slice(0, 12)})` : ''}`,
+    slug,
+  );
 }
 
 function renderStaticArtifacts(artifacts: Artifacts, slug: string): string | null {
   const sections: string[] = [];
   if (artifacts.branches.length > 0) {
-    const branchLines = artifacts.branches.map(renderStaticBranchLine).join('\n');
+    const branchLines = capLines(artifacts.branches, renderStaticBranchLine, slug);
     sections.push(`Branches:\n${branchLines}`);
   }
   const worktreeBody = renderWorktrees(artifacts, slug);
   if (worktreeBody) sections.push(worktreeBody);
-  const stashBody = renderStashes(artifacts);
+  const stashBody = renderStashes(artifacts, slug);
   if (stashBody) sections.push(`Stashes:\n${stashBody}`);
   return sections.length > 0 ? sections.join('\n\n') : null;
 }
@@ -116,30 +125,63 @@ function renderLiveArtifacts(
     const suffix = overflow > 0 ? `\n(+${overflow} more)` : '';
     sections.push(`Branches (live):\n${lines}${suffix}`);
   } else if (artifacts.branches.length > 0) {
-    const branchLines = artifacts.branches.map(renderStaticBranchLine).join('\n');
+    const branchLines = capLines(artifacts.branches, renderStaticBranchLine, slug);
     sections.push(`Branches:\n${branchLines}`);
   }
   const worktreeBody = renderWorktrees(artifacts, slug);
   if (worktreeBody) sections.push(worktreeBody);
-  const stashBody = renderStashes(artifacts);
+  const stashBody = renderStashes(artifacts, slug);
   if (stashBody) sections.push(`Stashes:\n${stashBody}`);
   return sections.length > 0 ? sections.join('\n\n') : null;
 }
+const LIVE_STATUS_DEADLINE_MS = 2500;
+
+type TimerHandle = ReturnType<typeof setTimeout>;
+
+interface Timer {
+  setTimeout: (fn: () => void, ms: number) => TimerHandle;
+  clearTimeout: (handle: TimerHandle) => void;
+}
+
+const realTimer: Timer = {
+  setTimeout: (fn, ms) => setTimeout(fn, ms),
+  clearTimeout: (handle) => clearTimeout(handle),
+};
+
+const TIMED_OUT = Symbol('live-status-timed-out');
+
+function renderTimedOut(artifacts: Artifacts, slug: string, deadlineMs: number): string {
+  const note = `_Live branch status timed out after ${deadlineMs} ms; showing static branches._`;
+  const body = renderStaticArtifacts(artifacts, slug);
+  return body ? `${body}\n\n${note}` : note;
+}
+
 export async function renderArtifactsBody(args: {
   artifacts: Artifacts;
   slug: string;
   includeLiveStatus: boolean;
   fetcher: LiveStatusFetcher;
+  deadlineMs?: number;
+  timer?: Timer;
 }): Promise<string | null> {
   const { artifacts, slug, includeLiveStatus, fetcher } = args;
+  const deadlineMs = args.deadlineMs ?? LIVE_STATUS_DEADLINE_MS;
+  const timer = args.timer ?? realTimer;
   if (!includeLiveStatus || artifacts.branches.length === 0) {
     return renderStaticArtifacts(artifacts, slug);
   }
+  let handle: TimerHandle | undefined;
+  const deadline = new Promise<typeof TIMED_OUT>((resolve) => {
+    handle = timer.setTimeout(() => resolve(TIMED_OUT), deadlineMs);
+  });
   try {
-    const statuses = await fetcher(artifacts.branches);
+    const statuses = await Promise.race([fetcher(artifacts.branches), deadline]);
+    if (statuses === TIMED_OUT) return renderTimedOut(artifacts, slug, deadlineMs);
     return renderLiveArtifacts(artifacts, statuses, slug);
   } catch {
     // Live fetch failed entirely — degrade to static rendering.
     return renderStaticArtifacts(artifacts, slug);
+  } finally {
+    if (handle !== undefined) timer.clearTimeout(handle);
   }
 }

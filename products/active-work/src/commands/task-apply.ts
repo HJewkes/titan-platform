@@ -7,6 +7,8 @@ import { today } from '../utils/today.js';
 import { NotFoundError, ValidationError } from '../errors.js';
 import { loadEdgeIndex } from '../tasks/edge-index.js';
 import { groupPlan, hasEdgeOps, parsePlan, type PlanEntry } from './_task-apply-plan.js';
+import { planBetLookup } from '../plan/store.js';
+import { loadValueChecks } from './_task-apply-values.js';
 import { applySlug, TASK_APPLY_IO, type LineResult, type TaskApplyIo } from './_task-apply-run.js';
 
 // Strict on purpose, like `task note`: the verb takes a plan and two flags, nothing else.
@@ -74,7 +76,9 @@ async function applyPlan(
 ): Promise<Line[]> {
   // Tag-only plans skip the whole-root read, so a malformed file elsewhere cannot block them.
   const edges = hasEdgeOps(entries) ? await loadEdgeIndex() : undefined;
-  const run = { date: today(), dryRun, edges, caller, io };
+  const activeRoot = getActiveRoot();
+  const values = await loadValueChecks(entries, activeRoot, planBetLookup(activeRoot));
+  const run = { date: today(), dryRun, edges, values, caller, io };
   const lines = entries.filter((entry) => entry.error !== undefined).map(failedLine);
   for (const [slug, tasks] of groupPlan(entries)) {
     lines.push(...(await applySlug(slug, tasks, run)));
@@ -153,7 +157,7 @@ export function createTaskApply(io: TaskApplyIo = TASK_APPLY_IO) {
   return defineCommand<Args, z.infer<typeof ResultSchema>>({
     name: 'task.apply',
     description:
-      'Apply a JSONL plan of tag, note, done, set_parent and add_dep ops to many tasks: one lock per initiative, one write per task, idempotent',
+      'Apply a JSONL plan of tag, note, done, set_parent, add_dep and set_<field> (bet, estimate, fold, kind, cos, area, due) ops to many tasks: one lock per initiative, one write per task, idempotent',
     args: ArgsSchema,
     result: ResultSchema,
     cli: {

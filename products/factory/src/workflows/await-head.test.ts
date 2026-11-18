@@ -53,6 +53,53 @@ describe("awaitHeadOrExit", () => {
   });
 });
 
+describe("awaitHeadOrExit with a review asked at the waited head", () => {
+  const abort = () => new AbortController().signal;
+  const asking = { ...target, untilAsked: true };
+
+  it("ends asked at the unchanged head once an untaken ask stands there", async () => {
+    const { fake, sleep } = world();
+    let reads = 0;
+
+    const outcome = await awaitHeadOrExit(githubPort(fake.wire), asking, abort(), { sleep, reviewAsked: (_repo, _pr, head) => ++reads >= 2 && head === H1 });
+
+    expect(outcome).toEqual({ pr: expect.objectContaining({ headSha: H1, state: "open" }), exited: false, asked: true });
+  });
+
+  it("keeps waiting while the ask stands at another head or was already taken", async () => {
+    const { fake, sleeps, sleep } = world();
+    fake.onGetPr = (pr, reads) => void (reads === 3 && (pr.headSha = H2));
+
+    const outcome = await awaitHeadOrExit(githubPort(fake.wire), asking, abort(), { sleep, reviewAsked: (_repo, _pr, head) => head === H2 });
+
+    expect(outcome.asked).toBeUndefined();
+    expect(outcome.pr.headSha).toBe(H2);
+    expect(sleeps.length).toBeGreaterThan(0);
+  });
+});
+
+describe("awaitHeadOrExit with an ask standing at a head not waited for review", () => {
+  it("keeps waiting at a ci-red head, where no land round takes the ask, until the head moves", async () => {
+    const { fake, sleep } = world();
+    fake.onGetPr = (pr, reads) => void (reads === 3 && (pr.headSha = H2));
+
+    const outcome = await awaitHeadOrExit(githubPort(fake.wire), { ...target, untilGreen: true }, new AbortController().signal, { sleep, reviewAsked: () => true });
+
+    expect(outcome.asked).toBeUndefined();
+    expect(outcome.pr.headSha).toBe(H2);
+  });
+
+  it("keeps waiting when the ask at the head was already taken", async () => {
+    const { fake, sleep } = world();
+    fake.onGetPr = (pr, reads) => void (reads === 3 && (pr.headSha = H2));
+
+    const outcome = await awaitHeadOrExit(githubPort(fake.wire), { ...target, untilAsked: true }, new AbortController().signal, { sleep, reviewAsked: () => false });
+
+    expect(outcome.asked).toBeUndefined();
+    expect(outcome.pr.headSha).toBe(H2);
+  });
+});
+
 describe("awaitHeadOrExit after a red ci-wait", () => {
   const afterRed = { ...target, agent: "impl-a", untilGreen: true };
   const runsAt = (fake: FakeGitHub, validate: string) => fake.setRuns(H1, [successRun("validate", 1, undefined, validate), successRun("dag-check", 2)]);

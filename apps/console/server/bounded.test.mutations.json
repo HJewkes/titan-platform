@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the pool starts one worker per item",
+      "file": "apps/console/server/bounded.ts",
+      "find": "Math.min(limit, items.length)",
+      "replace": "items.length",
+      "kills": ["settleBounded never has more than the limit in flight and runs every item"]
+    },
+    {
+      "name": "a rejection is not counted",
+      "file": "apps/console/server/bounded.ts",
+      "find": "void failed++",
+      "replace": "undefined",
+      "kills": ["settleBounded counts a rejection and goes on with the rest"]
+    }
+  ]
+}

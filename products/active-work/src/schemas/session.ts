@@ -58,7 +58,16 @@ export const SessionResolveSchema = z.object({
   note: z.string().min(1).optional(),
 });
 
-type NextStepInput = z.infer<typeof NextStepSchema>;
+/**
+ * What became of one report a session received. `ref` is a sources path or a
+ * message id; `answer` is a task id, a seat name, or the literal `none`.
+ */
+export const SessionReportSchema = z.object({
+  ref: z.string().min(1),
+  answer: z.string().min(1),
+});
+
+type NextStepInput =z.infer<typeof NextStepSchema>;
 type ResolveInput = z.infer<typeof SessionResolveSchema>;
 
 function checkUniqueStepIds(steps: NextStepInput[], ctx: z.RefinementCtx): void {
@@ -87,6 +96,19 @@ function checkAbandonedHasNote(entries: ResolveInput[], ctx: z.RefinementCtx): v
   });
 }
 
+function checkReportsExclusive(
+  value: { reports?: unknown; no_reports?: true },
+  ctx: z.RefinementCtx,
+): void {
+  if (value.no_reports === true && value.reports !== undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['no_reports'],
+      message: 'no_reports cannot be set alongside reports',
+    });
+  }
+}
+
 export const SessionFrontmatterSchema = z
   .object({
     session_id: SessionIdSchema,
@@ -98,6 +120,10 @@ export const SessionFrontmatterSchema = z
     // Written only by `wrap --no-loops`. An empty ledger alone cannot say
     // whether nothing was hanging or nothing was filed; this marker does.
     no_loops: z.literal(true).optional(),
+    // Written by `wrap --reports` / `wrap --no-reports`: the answer for each
+    // report the session received, or the assertion that it received none.
+    reports: z.array(SessionReportSchema).optional(),
+    no_reports: z.literal(true).optional(),
     // The session that spawned this one (AW-26). Set for agent-chat peers,
     // whose parentage is known only to the spawning hook — a peer runs as its
     // own `claude` process, so nothing in its transcript records who asked for
@@ -111,6 +137,9 @@ export const SessionFrontmatterSchema = z
     // Written only by `session recover` (TP-1711): the record was rebuilt from
     // the transcript of a session that ended without a wrap, not written by it.
     generated: z.literal(true).optional(),
+    // Written by `loop open` and `loop resolve` (TP-1016): the record only
+    // carries a ledger entry, so session views must not read it as a session.
+    ledger: z.literal(true).optional(),
     // The transcript a generated record was read from.
     transcript: z.string().min(1).optional(),
   })
@@ -133,6 +162,7 @@ export const SessionFrontmatterSchema = z
         message: 'no_loops cannot be set alongside next_steps or resolves',
       });
     }
+    checkReportsExclusive(value, ctx);
     if ((value.kind === 'worker') !== (value.worker !== undefined)) {
       ctx.addIssue({
         code: 'custom',
@@ -143,5 +173,6 @@ export const SessionFrontmatterSchema = z
   });
 
 export type NextStep = z.infer<typeof NextStepSchema>;
-export type SessionResolve = z.infer<typeof SessionResolveSchema>;
+export type SessionReport = z.infer<typeof SessionReportSchema>;
+export type SessionResolve =z.infer<typeof SessionResolveSchema>;
 export type SessionFrontmatter = z.infer<typeof SessionFrontmatterSchema>;

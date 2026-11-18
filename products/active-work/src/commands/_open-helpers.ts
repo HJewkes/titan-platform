@@ -59,9 +59,23 @@ function matchSlugPrefix(
   }
   const facetList = aliases.length > 0 ? `. Facets: ${aliases.join(', ')}` : '';
   throw new NotFoundError(
-    `No initiative matches '${input}'. Known: ${slugs.join(', ')}${facetList}`,
+    `No initiative matches '${input}'.${didYouMean(slugs, input)} Known: ${knownList(slugs)}${facetList}`,
     { reason: 'no_match' },
   );
+}
+
+const KNOWN_LIST_CAP = 12;
+
+function didYouMean(slugs: string[], input: string): string {
+  const needle = input.toLowerCase();
+  const near = slugs.filter((s) => s.toLowerCase().includes(needle));
+  return near.length > 0 ? ` Did you mean: ${near.join(', ')}.` : '';
+}
+
+function knownList(slugs: string[]): string {
+  if (slugs.length <= KNOWN_LIST_CAP) return slugs.join(', ');
+  const hidden = slugs.length - KNOWN_LIST_CAP;
+  return `${slugs.slice(0, KNOWN_LIST_CAP).join(', ')} (+${hidden} more — \`active-work list\`)`;
 }
 
 /**

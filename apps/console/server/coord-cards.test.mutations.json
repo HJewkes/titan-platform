@@ -13,8 +13,8 @@
     {
       "name": "a failed title read drops every card",
       "file": "apps/console/server/coord-cards.ts",
-      "find": "if (titles === null) return cards;",
-      "replace": "if (titles === null) return [];",
+      "find": "if (typeof titles === \"string\") return (gaps.push(titles), cards);",
+      "replace": "if (typeof titles === \"string\") return (gaps.push(titles), []);",
       "kills": [
         "coord.cards enrichment and failures keeps every card with task ids and no titles when the active-work read rejects"
       ]
@@ -29,21 +29,21 @@
       ]
     },
     {
-      "name": "a spawn before the day counts as an agent run that day",
+      "name": "titles come from the whole task tree again",
       "file": "apps/console/server/coord-cards.ts",
-      "find": "if (spawn.at >= window.from && spawn.at < window.to) addSpawn",
-      "replace": "if (spawn.at < window.to) addSpawn",
+      "find": "{ all_initiatives: true, id: ids.join(\",\") }",
+      "replace": "{ all_initiatives: true, status: \"all\" }",
       "kills": [
-        "coord.cards attribution attributes a PR merged today to the coordinator that spawned its agent yesterday, without counting that agent today"
+        "coord.cards enrichment and failures titles are read for the cards' task ids only"
       ]
     },
     {
-      "name": "no coordinator is tagged with its seat",
+      "name": "the cards wait on the titles read however long it takes",
       "file": "apps/console/server/coord-cards.ts",
-      "find": "seat: seats.has(coordinator) ? coordinator : null",
-      "replace": "seat: null",
+      "find": "const titles = await within(read, TITLES_WAIT_MS);",
+      "replace": "const titles = await read;",
       "kills": [
-        "coord.cards enrichment and failures counts live agents and sums exit costs, and tags a coordinator whose name has a seat file"
+        "coord.cards enrichment and failures serves the cards without titles when the titles read is still running, so a busy active-work never holds coord.cards"
       ]
     }
   ]

@@ -12,15 +12,17 @@ import { coordinatorSurfaces, type CoordinatorRoots } from "./config-surfaces/co
 import { configDriftCommands } from "./config-surfaces/drift.js";
 import { hostSurfaces as hostSurfaceReaders, type HostSurfaceRoots } from "./config-surfaces/host.js";
 import { hostReportsCommands, type HostReportsSource } from "./config-surfaces/host-reports.js";
+import { readCards } from "./coord-cards.js";
 import { coordinatorCommands, type CoordinatorSource } from "./coordinator.js";
 import type { RoundDecisionLog } from "./decision-log.js";
 import { graphCommands } from "./graph.js";
 import { inboxCommands, type InboxSource } from "./inbox.js";
 import { inboxActionCommands, type InboxActionOptions } from "./inbox-actions.js";
+import { prTapCommands } from "./pr-tap.js";
 import { retireTapCommands } from "./retire-tap.js";
 import { inboxViewCommands, type InboxSources } from "./inbox-view.js";
 import type { Invalidation } from "./invalidation.js";
-import { inboxReadCache } from "./inbox-rows.js";
+import { inboxReadCache, type InboxReadCache } from "./inbox-rows.js";
 import { ownerWriteCommand, ownerWriteRefusal, readCommand, type ConsoleContext } from "./owner-guard.js";
 import { roundFrameDeltaCommands } from "./round-frame-delta.js";
 import { roundFramesCommands } from "./round-frames.js";
@@ -36,11 +38,14 @@ import { roundsSubmitCommands, submitPipeline } from "./rounds-submit.js";
 import { sessionsCommands, type SessionsSource } from "./sessions.js";
 import { shepherdCommands, type ShepherdSource } from "./shepherd.js";
 import { shippedCommands, type ShippedOptions } from "./shipped.js";
+import { taskDoneCommand } from "./task-done.js";
+import type { EvidenceReader } from "./repo-evidence.js";
 import { tasksCommands } from "./tasks.js";
 import { UPSTREAM_IDS, probeUpstreams, type Upstream } from "./upstreams.js";
 import { summarizeNotes, videoNotesCommands } from "./video-notes.js";
 import { videoPropsCommands } from "./video-props.js";
 import { videosCommands, type VideoCatalog } from "./videos.js";
+import { weeklySheetCommands } from "./weekly-sheet.js";
 import { initiativeResult, knowledgeCommands, portfolioResult, readInitiative, readPortfolio, type WorkOptions } from "./work.js";
 import { loopBoardResult, loopTierCommand, readLoopBoard } from "./work-loops.js";
 
@@ -58,8 +63,12 @@ export interface ConsoleSources {
   agents: AgentsSource;
   sessions: SessionsSource;
   activeWork: ActiveWork;
+  /** Absent, `work.tasks` builds its own git and GitHub reader, which logs no upstream rows. */
+  evidence?: EvidenceReader;
   /** Optional so test sources need not build one; absent, relay frames drop no cached read. */
   invalidation?: Invalidation;
+  /** The inbox's kept reads, when the daemon primes them (TP-6703); absent, the commands build their own. */
+  inboxCache?: InboxReadCache;
   inbox: InboxSource;
   rounds: RoundsSource;
   shepherd: ShepherdSource;
@@ -75,7 +84,7 @@ export interface ConsoleSources {
   listeners?: RoundListeners;
   /** Optional so test sources need not build one; absent, `config.surfaces` answers one gap for this host's files. */
   hostSurfaces?: HostSurfaceRoots;
-  /** Optional so test sources need not build one; absent, `inbox.prepare`, `inbox.act`, `taps.prepare` and `taps.act` answer that inbox actions are off. */
+  /** Optional so test sources need not build one; absent, `inbox.prepare`, `inbox.act`, `taps.*` and `prTaps.*` answer that inbox actions are off. */
   inboxActions?: Omit<InboxActionOptions, "decisionLog">;
   /** Optional so test sources need not build one; absent, `config.report` and `config.hosts` are not served. */
   hostReports?: HostReportsSource;
@@ -122,9 +131,8 @@ type OwnerAnswerSources = Pick<ConsoleSources, "factory" | "rounds" | "inbox" | 
  * approvals.flow and the taps share the kept factory read (TP-4754). A factory frame only marks it stale: frames come every
  * few seconds live, so dropping it on each one left every inbox read waiting on a cold needs.list.
  */
-function ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decisionLog, listeners, inboxActions }: OwnerAnswerSources, invalidation: Invalidation | undefined) {
+function ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decisionLog, listeners, inboxActions }: OwnerAnswerSources, cache: InboxReadCache, invalidation: Invalidation | undefined) {
   const sources: InboxSources = { factory, rounds, inbox, shepherd, agents };
-  const cache = inboxReadCache(sources);
   invalidation?.on("factory", cache.stale);
   const cached = { ...sources, factory: cache.factory };
   const actions = { ...(inboxActions ?? ACTIONS_UNWIRED), ...(decisionLog && { decisionLog }) };
@@ -135,11 +143,13 @@ function ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decision
     ...inboxViewCommands(sources, cache),
     ...inboxActionCommands(cached, actions, cache.invalidate),
     ...retireTapCommands({ agents, shepherd }, actions, cache.invalidate),
+    ...prTapCommands(shepherd, actions, cache.invalidate),
   };
 }
 
 function workCommands(activeWork: ActiveWork, work: WorkOptions | undefined) {
   return {
+    ...weeklySheetCommands(activeWork, work),
     "work.portfolio": readCommand({
       name: "work.portfolio",
       description: "Every active-work initiative with its open-task rollup, note, source and session counts, newest activity and personal flag",
@@ -162,6 +172,7 @@ function workCommands(activeWork: ActiveWork, work: WorkOptions | undefined) {
       run: async (_args, ctx: ConsoleContext) => ({ ...(await readLoopBoard(activeWork, work)), tierWritesOff: ownerWriteRefusal(ctx) }),
     }),
     "work.loop-tier": ownerWriteCommand({ ...loopTierCommand(activeWork), ownerWrite: true }),
+    "work.task-done": ownerWriteCommand({ ...taskDoneCommand(activeWork), ownerWrite: true }),
   };
 }
 
@@ -182,29 +193,57 @@ function roundReads(rounds: RoundsSource) {
   };
 }
 
+/** One per inbox cache: the merge-time cache is keyed on this object, so the primer must fill the one the commands read (TP-6756). */
+const keptShepherds = new WeakMap<InboxReadCache, ShepherdSource>();
+
+/** Serves `list("finished")` from the inbox's kept read, so coord.cards and coord.shipped share its one 2.9 MB upstream read and its frame-driven staleness. */
+function keptFinished(shepherd: ShepherdSource, cache: InboxReadCache): ShepherdSource {
+  const known = keptShepherds.get(cache);
+  if (known !== undefined) return known;
+  const kept: ShepherdSource = { ...shepherd, list: (state) => (state === "finished" ? cache.finished.read() : shepherd.list(state)) };
+  keptShepherds.set(cache, kept);
+  return kept;
+}
+
+type CardsWarmSources = Pick<ConsoleSources, "coordinator" | "shepherd"> & Required<Pick<ConsoleSources, "inboxCache">>;
+
+/**
+ * TP-6756: after a restart, coord.cards' first read waited on a timeline per merged run and then on its titles read. The
+ * primer reads the cards once, so the merge times and the titles' kept answer are there before the owner's first read.
+ */
+export async function warmCards({ coordinator, shepherd, inboxCache }: CardsWarmSources): Promise<void> {
+  const cards = coordinator?.cards;
+  if (coordinator === undefined || cards === undefined) return;
+  const now = coordinator.now ?? Date.now;
+  await readCards({ ...cards, shepherd: keptFinished(shepherd, inboxCache) }, { roots: coordinator.roots, dayStart: coordinator.dayStart, now: now() });
+}
+
 /** The coordinator view's reads, each served only when its source is wired. */
-function coordinatorReads(coordinator: CoordinatorSource | undefined, shipped: ShippedOptions | undefined, shepherd: ShepherdSource) {
+function coordinatorReads(coordinator: CoordinatorSource | undefined, shipped: ShippedOptions | undefined, shepherd: ShepherdSource, cache: InboxReadCache) {
+  const kept = keptFinished(shepherd, cache);
+  const cards = coordinator?.cards;
   return {
-    ...(coordinator === undefined ? {} : coordinatorCommands(coordinator)),
-    ...(shipped === undefined ? {} : shippedCommands(shepherd, shipped)),
+    ...(coordinator === undefined ? {} : coordinatorCommands(cards === undefined ? coordinator : { ...coordinator, cards: { ...cards, shepherd: kept } })),
+    ...(shipped === undefined ? {} : shippedCommands(kept, shipped)),
   };
 }
 
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, videoNotify, explainerBin, work, coordinator, configStore, shipped, invalidation, blockerHours, scorecard }: ConsoleSources) {
+export function consoleCommands({ upstreams, agents, sessions, activeWork, evidence, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, inboxCache, videos, videoNotify, explainerBin, work, coordinator, configStore, shipped, invalidation, blockerHours, scorecard }: ConsoleSources) {
   const configReaders = surfaceReaders(coordinatorRoots, hostSurfaces);
+  const cache = inboxCache ?? inboxReadCache({ factory, rounds, inbox, shepherd, agents });
   return {
     ...upstreamsCommands(upstreams),
     ...buildInfoCommands(),
     ...configStoreCommands(configStore),
     ...agentsCommands(agents),
     ...sessionsCommands(sessions),
-    ...tasksCommands({ activeWork, sessions, work }),
+    ...tasksCommands({ activeWork, sessions, work, ...(evidence !== undefined && { evidence }) }),
     ...graphCommands({ activeWork, sessions }),
     ...knowledgeCommands(activeWork, work),
     ...inboxCommands(inbox),
     ...roundReads(rounds),
-    ...ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decisionLog, listeners, inboxActions }, invalidation),
+    ...ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decisionLog, listeners, inboxActions }, cache, invalidation),
     ...shepherdCommands(shepherd),
     ...blockersCommands({ spoolDir: inbox.dir, shepherd, ...(blockerHours !== undefined && { thresholdHours: blockerHours }) }, invalidation),
     ...(autoresearch === undefined ? {} : autoresearchCommands(autoresearch)),
@@ -216,7 +255,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...videoPropsCommands(videos, explainerBin),
     ...(reviews === undefined ? {} : reviewsCommands(reviews)),
     ...workCommands(activeWork, work),
-    ...coordinatorReads(coordinator, shipped, shepherd),
+    ...coordinatorReads(coordinator, shipped, shepherd, cache),
     ...(scorecard === undefined ? {} : scorecardCommands(scorecard)),
   };
 }

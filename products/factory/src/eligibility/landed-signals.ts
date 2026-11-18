@@ -2,7 +2,7 @@ import type { Task } from "@titan-design/pm";
 import type { WorkflowRun } from "@titan-design/workflow";
 import type { Verbs } from "../cli-types.js";
 import { EXIT } from "../exit-codes.js";
-import { activeWorkOrigin } from "../shepherd/cleanup-ports.js";
+import { activeWorkOrigin } from "../shepherd/active-work-origin.js";
 import { ShepherdStore } from "../shepherd/store.js";
 import { watchRow } from "../shepherd/view.js";
 import { readLaneTasks } from "./active-work.js";

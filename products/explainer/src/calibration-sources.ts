@@ -46,6 +46,7 @@ const RUBRIC_QUESTIONS: Record<string, string> = {
   J10: "Novelty: does it give a fresh angle in places that a search or the project's README would not?",
   J11: "Memorability: would at least one image or fact stick a month from now?",
   J12: "Visual consistency: is there one look, even with stretches of plain cards?",
+  J13: "Sounds spoken: does it read as a person talking, with concrete examples and an aside or opinion somewhere?",
 };
 
 const coldText = (kind: string | undefined) => Object.entries(COLD_QUESTION_TEXT).find(([k]) => k === kind)?.[1];

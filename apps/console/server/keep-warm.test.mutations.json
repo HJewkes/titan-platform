@@ -1,0 +1,53 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "serve start primes no active-work read",
+      "file": "apps/console/server/keep-warm.ts",
+      "find": "prime: () => warm([\"active-work\", \"factory\"])",
+      "replace": "prime: () => warm([\"factory\"])",
+      "kills": [
+        "keepWarm serve start reads each whole-tree read once"
+      ]
+    },
+    {
+      "name": "a reconnect re-primes every source",
+      "file": "apps/console/server/keep-warm.ts",
+      "find": "reconnected: (source) => warm([source])",
+      "replace": "reconnected: () => warm([\"active-work\", \"factory\"])",
+      "kills": [
+        "keepWarm a reconnected factory re-primes needs.list and finished runs",
+        "keepWarm a reconnected active-work re-primes only the whole-tree reads"
+      ]
+    },
+    {
+      "name": "a reconnected factory skips the finished runs",
+      "file": "apps/console/server/keep-warm.ts",
+      "find": "factory: () => [inbox.factory?.list(), inbox.finished.read(), strips(), inbox.shown(), cards?.()],",
+      "replace": "factory: () => [inbox.factory?.list(), strips(), inbox.shown(), cards?.()],",
+      "kills": [
+        "keepWarm serve start reads each whole-tree read once",
+        "keepWarm a reconnected factory re-primes needs.list and finished runs"
+      ]
+    },
+    {
+      "name": "the brief reads are unbounded",
+      "file": "apps/console/server/keep-warm.ts",
+      "find": "settleBounded(slugs, MAX_IN_FLIGHT,",
+      "replace": "settleBounded(slugs, slugs.length,",
+      "kills": [
+        "keepWarm the portfolio's brief reads never exceed six in flight"
+      ]
+    },
+    {
+      "name": "a reconnected factory skips the strips",
+      "file": "apps/console/server/keep-warm.ts",
+      "find": "inbox.finished.read(), strips(), inbox.shown(), cards?.()]",
+      "replace": "inbox.finished.read(), inbox.shown(), cards?.()]",
+      "kills": [
+        "keepWarm serve start reads each whole-tree read once",
+        "keepWarm a reconnected factory re-primes needs.list and finished runs"
+      ]
+    }
+  ]
+}

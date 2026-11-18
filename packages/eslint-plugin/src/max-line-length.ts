@@ -1,5 +1,6 @@
-import type { AST, Rule, SourceCode } from "eslint";
+import type { AST, SourceCode } from "eslint";
 import type * as ESTree from "estree";
+import type { TitanRule } from "./titan-rule.js";
 
 export const DEFAULT_MAX_LINE_LENGTH = 200;
 
@@ -48,10 +49,13 @@ function configuredMax(option: unknown): number {
   return typeof option.max === "number" ? option.max : DEFAULT_MAX_LINE_LENGTH;
 }
 
-export const maxLineLength: Rule.RuleModule = {
+export const maxLineLength: TitanRule = {
   meta: {
     type: "suggestion",
-    docs: { description: "Limit code lines to a fixed number of characters, skipping comments, imports and literal-dominated lines" },
+    docs: {
+      description: "Limit code lines to a fixed number of characters, skipping comments, imports and literal-dominated lines",
+      classes: ["formatting"],
+    },
     schema: [
       {
         type: "object",

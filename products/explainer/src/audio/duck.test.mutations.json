@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "words never merge into one run",
+      "file": "products/explainer/src/audio/duck.ts",
+      "find": "next.startS - prev.endS < params.mergeGapS",
+      "replace": "next.startS - prev.endS < 0",
+      "kills": [
+        "speechIntervals merges two words 0.2 s apart and widens the run by attack and release"
+      ]
+    },
+    {
+      "name": "the release widening is dropped",
+      "file": "products/explainer/src/audio/duck.ts",
+      "find": "endS: r.endS + params.releaseS",
+      "replace": "endS: r.endS",
+      "kills": [
+        "speechIntervals merges two words 0.2 s apart and widens the run by attack and release"
+      ]
+    },
+    {
+      "name": "the envelope never reaches underDb",
+      "file": "products/explainer/src/audio/duck.ts",
+      "find": "return params.gapDb - depth * Math.min(down, up);",
+      "replace": "return params.gapDb - (depth / 2) * Math.min(down, up);",
+      "kills": [
+        "duckGainDb is exactly underDb mid-speech"
+      ]
+    },
+    {
+      "name": "the attack ramp is a step",
+      "file": "products/explainer/src/audio/duck.ts",
+      "find": "const down = Math.min(1, (tS - run.startS) / params.attackS);",
+      "replace": "const down = 1;",
+      "kills": [
+        "duckGainDb ramps linearly halfway down over the attack"
+      ]
+    }
+  ]
+}

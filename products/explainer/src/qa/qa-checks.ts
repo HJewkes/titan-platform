@@ -2,6 +2,7 @@ import type { CaptionRule } from "./caption-check.js";
 import type { Check } from "../workflow/records.js";
 import { MAX_FLASHES_PER_S, type FlashReport } from "./flash-scan.js";
 import { QaReportSchema, qaSummary, type MediaScanReport, type QaReport } from "./qa-report.js";
+import { BEAT_MAX_WPM, OVERALL_WPM_BAND } from "./speech-rate.js";
 import { TIMING_GATES, type TimingGate } from "./timing-gates.js";
 
 type Verdict = Pick<Check, "pass" | "detail">;
@@ -122,4 +123,23 @@ export function chartMarkContrastVerdict(input: QaCheckInput): Verdict {
   const shown = below.slice(0, DETAIL_FINDINGS).map(({ beat, mark, colour, ground, ratio }) => `[${beat}] ${mark} ${colour} on ${ground} ${ratio.toFixed(2)}:1`).join("; ");
   const need = contrast.thresholds.nonText;
   return { pass: below.length === 0, detail: below.length === 0 ? `${checked} chart marks at ${need}:1 or more` : `${below.length}/${checked} chart marks under ${need}:1: ${shown}` };
+}
+
+const NOT_MEASURED: Verdict = { pass: true, detail: "not measured" };
+
+/** The overall measured rate against its band; a qa.json with no speech-rate report is not measured, so it passes. */
+export function speechRateOverallVerdict(input: QaCheckInput): Verdict {
+  const { speechRate } = report(input);
+  if (speechRate === undefined) return NOT_MEASURED;
+  const band = `${OVERALL_WPM_BAND.min}-${OVERALL_WPM_BAND.max}`;
+  if (speechRate.overallWpm === null) return { pass: speechRate.overallInBand, detail: `no voiced beats (band ${band} wpm)` };
+  return { pass: speechRate.overallInBand, detail: `${speechRate.overallWpm} wpm overall (band ${band} wpm)` };
+}
+
+/** Beats spoken faster than the per-beat limit, named; a qa.json with no speech-rate report is not measured, so it passes. */
+export function speechRateBeatsVerdict(input: QaCheckInput): Verdict {
+  const { speechRate } = report(input);
+  if (speechRate === undefined) return NOT_MEASURED;
+  const { fastBeats } = speechRate;
+  return { pass: fastBeats.length === 0, detail: fastBeats.length === 0 ? `no beat over ${BEAT_MAX_WPM} wpm` : `${fastBeats.length} beats over ${BEAT_MAX_WPM} wpm: ${fastBeats.join(", ")}` };
 }

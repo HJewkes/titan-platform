@@ -23,7 +23,7 @@ interface Acted {
 
 type Sheet<R> = { status: "reading" } | { status: "refused"; reason: string } | { status: "ready"; prepared: R } | { status: "acting"; prepared: R } | { status: "acted"; prepared: R; acted: Acted } | { status: "failed"; prepared?: R; error: string };
 
-const LANDED = new Set(["resolved", "released", "accepted", "approved", "retired", "pr-closed", "pause-cleared", "already"]);
+const LANDED = new Set(["resolved", "released", "accepted", "approved", "retired", "pr-closed", "pause-cleared", "already", "plan-applied", "plan-approved", "answered"]);
 
 const isRecord = (data: unknown): data is Record<string, unknown> => typeof data === "object" && data !== null;
 const isPrepared = <R extends TapReady>(data: unknown): data is Prepared<R> => isRecord(data) && (data.status === "ready" || data.status === "no-action");
@@ -95,13 +95,17 @@ interface TapSheetProps<R extends TapReady> {
   renderReadBack: (prepared: R) => ReactNode;
   /** The confirming taps a read-back offers; none, or no function, keeps the one Confirm. */
   choicesOf?: (prepared: R) => readonly TapConfirmChoice[];
+  /** Args the one Confirm adds to the act, such as the answer's typed text. */
+  confirmArgs?: Record<string, unknown>;
+  /** Holds the one Confirm off, such as while a required text field is empty. */
+  confirmDisabled?: boolean;
   /** The prefix of every test id on the sheet. */
   testID: string;
   onClose: () => void;
 }
 
 /** The confirm sheet: the read-back of what the tap does, then Confirm as the second tap. Cancel sends nothing. */
-export function TapSheet<R extends TapReady>({ commands, verb, reading, command, renderReadBack, choicesOf, testID, onClose }: TapSheetProps<R>): ReactNode {
+export function TapSheet<R extends TapReady>({ commands, verb, reading, command, renderReadBack, choicesOf, confirmArgs, confirmDisabled = false, testID, onClose }: TapSheetProps<R>): ReactNode {
   const { sheet, confirm } = useTap<R>(commands);
   const done = sheet.status === "acted" || sheet.status === "failed" || sheet.status === "refused";
   const choices = sheet.status === "ready" ? (choicesOf?.(sheet.prepared) ?? []) : [];
@@ -121,7 +125,7 @@ export function TapSheet<R extends TapReady>({ commands, verb, reading, command,
         ) : (
           // Pressable applies a changed isDisabled in a passive effect, so a press as the read-back paints would hit the
           // stale disabled config and drop. Remounting on each status builds the responder with the live config instead.
-          <Button key={sheet.status} color="success" className={PHONE_TAP} isDisabled={sheet.status !== "ready"} onPress={() => void confirm()} testID={`${testID}-ok`}>
+          <Button key={`${sheet.status}-${confirmDisabled}`} color="success" className={PHONE_TAP} isDisabled={sheet.status !== "ready" || confirmDisabled} onPress={() => void confirm(confirmArgs)} testID={`${testID}-ok`}>
             <ButtonText>Confirm</ButtonText>
           </Button>
         )}

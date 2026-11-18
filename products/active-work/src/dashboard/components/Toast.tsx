@@ -24,41 +24,40 @@ export function Toast({
   }, [onDismiss, durationMs]);
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        left: '50%',
-        bottom: sp[16],
-        transform: 'translateX(-50%)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: sp[8],
-        padding: `${sp[6]}px ${sp[8]}px`,
-        borderRadius: radii.md,
-        background: palette.surface3,
-        border: `1px solid ${palette.borderStrong}`,
-        color: palette.textPrimary,
-        fontSize: 13,
-        fontFamily: typography.body,
-        boxShadow: '0 8px 22px rgba(0,0,0,0.5)',
-        zIndex: 100,
-      }}
-    >
+    <div style={containerStyle}>
       <span>{message}</span>
-      <button
-        onClick={onAction}
-        style={{
-          background: 'none',
-          border: 'none',
-          color: palette.brand,
-          fontWeight: 600,
-          fontSize: 13,
-          cursor: 'pointer',
-          padding: 0,
-        }}
-      >
+      <button onClick={onAction} style={actionStyle}>
         {actionLabel}
       </button>
     </div>
   );
 }
+
+const containerStyle: React.CSSProperties = {
+  position: 'fixed',
+  left: '50%',
+  bottom: sp[16],
+  transform: 'translateX(-50%)',
+  display: 'flex',
+  alignItems: 'center',
+  gap: sp[8],
+  padding: `${sp[6]}px ${sp[8]}px`,
+  borderRadius: radii.md,
+  background: palette.surface3,
+  border: `1px solid ${palette.borderStrong}`,
+  color: palette.textPrimary,
+  fontSize: 13,
+  fontFamily: typography.body,
+  boxShadow: '0 8px 22px rgba(0,0,0,0.5)',
+  zIndex: 100,
+};
+
+const actionStyle: React.CSSProperties = {
+  background: 'none',
+  border: 'none',
+  color: palette.brand,
+  fontWeight: 600,
+  fontSize: 13,
+  cursor: 'pointer',
+  padding: 0,
+};

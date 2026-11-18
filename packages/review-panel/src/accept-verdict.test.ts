@@ -234,6 +234,41 @@ describe("acceptVerdict follow-ups", () => {
   });
 });
 
+describe("acceptVerdict check candidates", () => {
+  const said = (text: string): ReviewerMessage => ({ ...verdictMessage(DISPATCHED_AT + 1), text });
+  const block = (verdict: string) => `Verdict: ${verdict}\nPR: octo/demo#7\nHead: ${HEAD}`;
+  const candidates = "Check-candidates:\n- Parser edge case | test | An empty heading line parses as no block";
+  const parsed = [{ classKey: "parser-edge-case", route: "test", sketch: "An empty heading line parses as no block" }];
+
+  it("a MERGE carries its check candidates", () => {
+    const result = acceptVerdict(input, [said(`Fine.\n\n${candidates}\n\n${block("MERGE")}`)]);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE", checkCandidates: parsed });
+    expect(result).not.toHaveProperty("checkCandidatesWarning");
+  });
+
+  it("a FIX_FIRST carries its check candidates", () => {
+    const result = acceptVerdict(input, [said(`1. Broken.\n\n${candidates}\n\n${block("FIX_FIRST")}`)]);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST", checkCandidates: parsed });
+  });
+
+  it("a dropped block carries its warning and no items", () => {
+    const result = acceptVerdict(input, [said(`Fine.\n\nCheck-candidates:\n- Parser edge case | nowhere | A sketch\n\n${block("MERGE")}`)]);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE", checkCandidatesWarning: "bad_route" });
+    expect(result).not.toHaveProperty("checkCandidates");
+  });
+
+  it("a verdict without the block carries neither field", () => {
+    const result = acceptVerdict(input, [verdictMessage(DISPATCHED_AT + 1)]);
+
+    expect(result).toMatchObject({ kind: "verdict" });
+    expect(result).not.toHaveProperty("checkCandidates");
+    expect(result).not.toHaveProperty("checkCandidatesWarning");
+  });
+});
+
 describe("acceptVerdict CI-policy line", () => {
   const said = (text: string): ReviewerMessage => ({ ...verdictMessage(DISPATCHED_AT + 1), text });
   const ciPolicyOf = (result: ReturnType<typeof acceptVerdict>) => (result.kind === "verdict" && result.verdict === "MERGE" ? result.ciPolicy : "not a MERGE");

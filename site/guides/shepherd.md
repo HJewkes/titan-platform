@@ -945,6 +945,8 @@ causes, checked in this order (`products/factory/src/shepherd/view.ts`):
    when it recorded none.
 2. `MAX_NOT_STARTED_REVIEWS` (3) review dispatches in a row started no reviewer, because the
    broker kept refusing. The reason reads `3 review dispatches in a row started no reviewer`.
+   The run bounds this itself too: from the third dispatch at one head that starts no reviewer,
+   it takes the `no-reviewer` hold and alerts the seat instead of retrying (TP-5386).
 3. The run has sat in one phase past its `PHASE_STALL_LIMIT_MS` limit. The reason reads, for
    example, `75 min in ci, over the 60 min limit`.
 
@@ -1450,6 +1452,9 @@ reads the answered `feedback` rounds in `shepherd.visualDelivery.roundsDir` and 
 active-work task per non-blank note, from the round's PR and frame. The initiative is the
 prefix of the PR's task, else `--initiative`. A ledger of round id and note index in the
 factory state dir makes a re-run file nothing already filed; an unanswered round files nothing.
+A sweep holds `visual-feedback-notes.lock` in the state dir, so a second one started meanwhile
+exits 75. A note's key is written to the ledger before its task is added and removed again if
+the add fails, so a failed ledger write never files a note twice.
 
 ### Visual tiers {#visual-tiers}
 

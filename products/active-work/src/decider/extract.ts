@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { consoleAnswersPath } from '@titan-design/app-paths';
 import {
   extractSource,
   noteSource,
@@ -15,12 +16,14 @@ import { defaultGraphPath, openGraphReadOnly } from '../session-index/graph.js';
 import { loadHumanOnlyInitiatives } from '../sessions/charter.js';
 import { exclusionPolicy } from './human-only.js';
 import { ledgerPath, openLedger, v1PrecedentSource } from './ledger.js';
+import { consoleAnswersSource } from './console-answers-source.js';
 import { queueSource } from './queue-source.js';
 
 interface ExtractOptions {
   activeRoot: string;
   graphPath?: string;
   eventsDbPath?: string;
+  consoleAnswersPath?: string;
 }
 
 export interface ExtractResult {
@@ -86,6 +89,7 @@ export async function extractPrecedents(options: ExtractOptions): Promise<Extrac
       activeRoot,
       resolveInitiative,
     }),
+    consoleAnswersSource(options.consoleAnswersPath ?? consoleAnswersPath()),
   ];
   const store = openLedger(activeRoot);
   try {

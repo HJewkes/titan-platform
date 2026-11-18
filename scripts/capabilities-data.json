@@ -61,7 +61,6 @@
     {"id": "TP-171", "package": "registry", "title": "Six exports agent-chat needs: JSON Schema io and override, invalid-args formatter, CLI value names, variadic positionals, option defaults"},
     {"id": "TP-246", "package": "registry", "title": "No byte-budget head and tail truncator for tool output"},
     {"id": "TP-194", "package": "store-sqlite", "title": "No driver-neutral SQLite seam; packages call better-sqlite3 directly"},
-    {"id": "TP-220", "package": "store-sqlite", "title": "`CacheBlobTable` has no delete, eviction or TTL"},
     {"id": "TP-283", "package": "store-postgres", "title": "No Postgres store package"},
     {"id": "TP-285", "package": "scheduler", "title": "No engine-neutral scheduler or outbox"},
     {"id": "TP-240", "package": "md-chunk", "title": "No byte-range markdown and JSON chunker for embeddings"},

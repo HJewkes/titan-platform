@@ -3,7 +3,7 @@ import type { Verbs } from "../cli-types.js";
 import { configPath, loadConfig, type FactoryConfig } from "../config.js";
 import { EXIT } from "../exit-codes.js";
 import { errorMessage } from "../narrow.js";
-import { activeWorkOrigin } from "../shepherd/cleanup-ports.js";
+import { activeWorkOrigin } from "../shepherd/active-work-origin.js";
 import { isoWeek } from "../shepherd/stats.js";
 import { readEligibility, readLaneTasks } from "./active-work.js";
 import { admitLane, DEFAULT_LIMITS, filingFlow, holdsFor, type Admission, type BackPressureLimits, type Filing, type LaneSignals } from "./back-pressure.js";

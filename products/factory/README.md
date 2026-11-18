@@ -562,6 +562,22 @@ systemctl --user link ~/projects/titan-platform/ops/systemd/titan-dispatch-shado
 The tick needs the active-work daemon. Without it a lane cannot be read, so the tick writes a `refused` row with code
 `signal-unreadable` and exits 69.
 
+### Ready-stock floors
+
+A lane may set `floor`, its ready-stock floor, and `coordinator`, the agent-chat peer that refills it:
+
+```json
+"lanes": [{ "initiative": "<slug>", "tag": "<lane tag>", "floor": 20, "coordinator": "<peer name>" }]
+```
+
+After writing its rows, each tick counts a floored lane's dispatchable tasks by the work-supply census rule: an open task
+tagged `brief:ready` with no owner, needs-decision, parked or held, blocked, plan-first or superseded class
+(`src/eligibility/shadow/census.ts`). Under the floor, the tick sends one refill request naming the count and the floor
+to the lane's `coordinator`, or to `compare.operator` (default `tp-operator`) when the lane names none. It sends at most
+one per lane per UTC day, recorded in `<shadow dir>/refill/<YYYY-MM-DD>.jsonl`. A failed send is reported on stderr and
+not recorded, so the next tick tries again. The request goes over `shepherd.agentChatBin`; with none configured the tick
+reports the lane and sends nothing. Floors are absent by default, and a lane with no floor is never counted.
+
 ## Owner-queue sources
 
 `src/needs/` holds the factory's `QueueSource` adapters for `@titan-design/owner-queue`. Each
@@ -1029,6 +1045,7 @@ Two keys under `shepherd` in the config file turn the review phase on. Both are 
 | `shepherd.review.minFreeInodesPct` | Optional, default 15. The spawn gate defers a reviewer while that filesystem's free inodes are under this percent of its total, or under twice the inodes the last measured checkout took, whichever is more. A filesystem with no fixed inode table has no inode floor |
 | `shepherd.review.maxConcurrent` | Optional, default 3. The spawn gate defers a reviewer while this many reviewers run |
 | `shepherd.taskClose` | Optional, `keep` (default) or `last-slice-only`, read live. When a merged PR closes its `--task`; see `sh-cleanup` above |
+| `shepherd.checkCandidates` | Optional, `off`, `record` (default) or `propose`. Whether the reviewers' check candidates are kept in the `check_candidates` table (`src/shepherd/check-candidates-store.ts`): one row per repo, PR, head and class key, with each member's own verdict. `propose` records as `record` does; filing check-proposal tasks from the rows is not built yet. Any other value fails the load |
 | `shepherd.fixer.configDir` | Optional. The Claude config directory of the fixer a red main spawns; absent means agent-chat's default. Same rules as `review.configDir`. A red main's fixer and a fix-round successor start here (or on `review.configDir` when absent) and moves through `review.fallbackConfigDirs` while the account is out of usage |
 
 The load fails, with `invalid config <path>: <reason>`, on any of these:

@@ -2,7 +2,7 @@ import type { Command } from "commander";
 import type { Verbs } from "./cli-types.js";
 import { EXIT } from "./exit-codes.js";
 import { errorMessage } from "./narrow.js";
-import { activeWorkOrigin } from "./shepherd/cleanup-ports.js";
+import { activeWorkOrigin } from "./shepherd/active-work-origin.js";
 import { formatTaskKeyReport, readRegistrationTasks, taskKeyReport } from "./shepherd/task-key-report.js";
 import { loadTaskIndex, type TaskIndexLookup } from "./shepherd/task-ref.js";
 

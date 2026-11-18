@@ -2,7 +2,7 @@ import type { Command } from "commander";
 import type { QueueSource } from "@titan-design/owner-queue";
 import type { NeedsSources } from "../context.js";
 import type { FactoryHost } from "../host.js";
-import { activeWorkOrigin } from "../shepherd/cleanup-ports.js";
+import { activeWorkOrigin } from "../shepherd/active-work-origin.js";
 import { EXIT } from "../exit-codes.js";
 import { callerForShell } from "../caller.js";
 import { createActiveWorkSource } from "./active-work-source.js";

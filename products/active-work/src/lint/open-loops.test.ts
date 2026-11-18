@@ -97,9 +97,9 @@ describe('lintOpenLoops', () => {
       slug: 'slug',
       file: `sessions/${stem}.md`,
     });
-    expect(findings[0].message).toContain(`${stem}#a`);
-    expect(findings[0].message).toContain('57 days old');
-    expect(findings[0].message).toContain('abandoned');
+    expect(findings.at(0)?.message).toContain(`${stem}#a`);
+    expect(findings.at(0)?.message).toContain('57 days old');
+    expect(findings.at(0)?.message).toContain('abandoned');
   });
 
   // AW-74: a pr loop cannot close itself, because derivation stays offline and
@@ -114,9 +114,9 @@ describe('lintOpenLoops', () => {
 
     const findings = await lintOpenLoops('slug', initiativeDir, LIMITS, NOW);
     expect(findings).toHaveLength(1);
-    expect(findings[0].message).toContain('can never close itself');
-    expect(findings[0].message).toContain('outcome: done');
-    expect(findings[0].message).not.toMatch(/with outcome: abandoned/);
+    expect(findings.at(0)?.message).toContain('can never close itself');
+    expect(findings.at(0)?.message).toContain('outcome: done');
+    expect(findings.at(0)?.message).not.toMatch(/with outcome: abandoned/);
   });
 
   it('keeps the abandon advice for a non-pr stale loop', async () => {
@@ -127,8 +127,8 @@ describe('lintOpenLoops', () => {
     });
 
     const findings = await lintOpenLoops('slug', initiativeDir, LIMITS, NOW);
-    expect(findings[0].message).toContain('with outcome: abandoned');
-    expect(findings[0].message).not.toContain('can never close itself');
+    expect(findings.at(0)?.message).toContain('with outcome: abandoned');
+    expect(findings.at(0)?.message).not.toContain('can never close itself');
   });
 
   it('does not warn exactly at the threshold', async () => {

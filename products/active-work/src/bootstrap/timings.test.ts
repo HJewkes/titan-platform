@@ -65,8 +65,12 @@ describe('bootstrap timings_ms', () => {
     await withTempActiveRoot(async (root) => {
       const { metadata } = await assemble(root, steppingClock());
 
-      expect(metadata.timings_ms!.load).toBe(7);
-      expect(metadata.timings_ms!.rank_notes).toBe(7);
+      // Live status shares the clock and starts alongside the load, so its ticks can fall inside a span.
+      for (const phase of ['load', 'rank_notes'] as const) {
+        const span = metadata.timings_ms![phase];
+        expect(span).toBeGreaterThan(0);
+        expect(span % 7).toBe(0);
+      }
     });
   });
 });
@@ -112,7 +116,7 @@ describe('open timings_ms', () => {
       vi.stubEnv('AW_TIMING', '1');
       await run();
       expect(write).toHaveBeenCalledTimes(1);
-      expect(String(write.mock.calls[0][0])).toMatch(/^aw timing sample-initiative: load=\d+ms .* total=\d+ms\n$/);
+      expect(String(write.mock.calls.at(0)?.at(0))).toMatch(/^aw timing sample-initiative: load=\d+ms .* total=\d+ms\n$/);
     });
   });
 

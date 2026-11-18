@@ -290,3 +290,28 @@ describe("graph.ego mentions budget", () => {
     expect(data.edges.filter((entry) => entry.via === "context.graph")).toEqual([]);
   });
 });
+
+describe("graph.ego task and PR labels", () => {
+  const titled: Seed = (graph) => {
+    graph.db.prepare("INSERT INTO task (task_ref, task_id, initiative, title) VALUES ('task:OR-1', 'OR-1', 'orbit-relay', 'Retry the handshake with backoff')").run();
+    graph.db.prepare("INSERT INTO pr (pr_ref, number, repo, title) VALUES ('pr:example/orbit#41', 41, 'example/orbit', 'Add retry backoff')").run();
+  };
+
+  it("labels a task node with its title when the task has a row", async () => {
+    seed(relay, titled);
+    const { data } = await ego({ ref: "task:OR-1" });
+    expect(node(data, "task:OR-1")?.label).toBe("Retry the handshake with backoff");
+  });
+
+  it("labels a PR node with its title", async () => {
+    seed(relay, titled);
+    const { data } = await ego({ ref: `session:${RUN}` });
+    expect(node(data, "pr:example/orbit#41")?.label).toBe("Add retry backoff");
+  });
+
+  it("keeps the id as the label for a task with no row", async () => {
+    seed(relay);
+    const { data } = await ego({ ref: "task:OR-1" });
+    expect(node(data, "task:OR-1")?.label).toBe("OR-1");
+  });
+});

@@ -5,7 +5,7 @@ import type { FactoryContext } from "../context.js";
 import { stepOf } from "../coordinator-evidence.js";
 import { SHEPHERD_ACTOR } from "./events.js";
 import { classifyRegistered, restartRegistered, type Registered } from "./commands.js";
-import { mergeOnOwnerAnswer, type DivergedMerge } from "./diverged-merge.js";
+import { mergeOnOwnerAnswer, type DivergedHeld, type DivergedMerge } from "./diverged-merge.js";
 import type { RegisterArgs } from "./register-args.js";
 import { DIVERGED_PR_CLOSED, isReplayDiverged } from "./restart.js";
 import type { ShepherdServices } from "./services.js";
@@ -22,6 +22,8 @@ interface DivergedSweep {
   kept: Array<{ runId: string; gateId: string }>;
   /** Runs merged at the head the owner approved while they were parked; a restart would have spent that answer (TP-3918). */
   merged: DivergedMerge[];
+  /** Runs left parked on an owner's merge answer because the land loop's merge guard holds their PR (TP-5802). */
+  held: DivergedHeld[];
   /** A run the sweep could not read or restart; it stays parked for the next sweep. */
   errors: Array<{ runId: string; cause: string }>;
 }
@@ -65,9 +67,10 @@ async function restartOrKeep(ctx: FactoryContext, store: ShepherdStore, known: R
     sweep.kept.push({ runId: known.runId, gateId });
     return;
   }
-  const merged = await mergeOnOwnerAnswer(ctx.host, ctx.shepherd!.port, known, run);
-  if (merged !== undefined) {
-    sweep.merged.push(merged);
+  const carried = await mergeOnOwnerAnswer(ctx.host, ctx.shepherd!, known, run);
+  if (carried !== undefined) {
+    if ("merged" in carried) sweep.merged.push(carried.merged);
+    else sweep.held.push(carried.held);
     return;
   }
   const restarted = await restartRegistered(ctx, store, known, argsOf(known), known.policy);
@@ -82,7 +85,7 @@ async function restartOrKeep(ctx: FactoryContext, store: ShepherdStore, known: R
  * Runs are walked through their registrations, so a run this sweep already replaced is never seen again.
  */
 export async function restartDivergedRuns(ctx: FactoryContext, closing: () => boolean = () => false): Promise<DivergedSweep> {
-  const sweep: DivergedSweep = { restarted: [], ended: [], closed: [], kept: [], merged: [], errors: [] };
+  const sweep: DivergedSweep = { restarted: [], ended: [], closed: [], kept: [], merged: [], held: [], errors: [] };
   const services = ctx.shepherd;
   if (!services) return sweep;
   const store = services.store.get();
@@ -131,13 +134,14 @@ function keepRestarts(services: ShepherdServices, restarted: readonly DivergedRe
 /** Runs at the head of each adoption, so a deploy that changed the call sequence strands none of the runs it parked; a failure here never keeps the adopt step from running. */
 export async function restartDivergedLogged(host: FactoryHost, services: ShepherdServices, log: Logger, closing: () => boolean = () => false): Promise<void> {
   try {
-    const { restarted, ended, closed, kept, merged, errors } = await restartDivergedRuns({ host, caller: "agent", shepherd: services, warnings: [], format: "json" }, closing);
+    const { restarted, ended, closed, kept, merged, held, errors } = await restartDivergedRuns({ host, caller: "agent", shepherd: services, warnings: [], format: "json" }, closing);
     closedAtLastSweep.set(services, new Set(closed));
     keepRestarts(services, restarted);
     for (const run of restarted) log.info({ ...run }, "restarted a replay-diverged run");
     for (const run of ended) log.info({ ...run }, "ended a replay-diverged run whose PR is no longer open");
     for (const run of merged) log.info({ ...run }, "merged a replay-diverged run at the head its owner approved while it was parked");
     for (const run of kept) log.warn({ ...run }, "left a replay-diverged run parked: its owner gate is still pending");
+    for (const run of held) log.warn({ ...run }, "left a replay-diverged run parked: the merge guard holds its PR");
     for (const run of errors) log.warn({ ...run }, "left a replay-diverged run parked: it could not be restarted");
   } catch (error) {
     log.warn({ cause: error instanceof Error ? error.message : String(error) }, "the replay-diverged sweep failed; adoption goes on without it");

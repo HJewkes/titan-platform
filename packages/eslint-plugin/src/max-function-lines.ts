@@ -1,5 +1,6 @@
 import type { Rule } from "eslint";
 import type * as ESTree from "estree";
+import type { TitanRule } from "./titan-rule.js";
 
 export const DEFAULT_MAX_LINES = 30;
 
@@ -39,10 +40,10 @@ function configuredMax(option: unknown): number {
   return typeof option.max === "number" ? option.max : DEFAULT_MAX_LINES;
 }
 
-export const maxFunctionLines: Rule.RuleModule = {
+export const maxFunctionLines: TitanRule = {
   meta: {
     type: "suggestion",
-    docs: { description: "Limit every function to a fixed number of non-blank lines" },
+    docs: { description: "Limit every function to a fixed number of non-blank lines", classes: ["complexity"] },
     schema: [
       {
         type: "object",

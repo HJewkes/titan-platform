@@ -45,11 +45,14 @@ const TRACKED: UsageClass[] = ["fs-search", "bash-search", "recall-mcp", "recall
 
 export interface UptakeReport {
   since?: string;
+  until?: string;
   transcripts: number;
   transcriptsWithToolUse: number;
   byClass: Record<string, number>;
   /** How many transcripts used each tracked class at least once. */
   sessionsWith: Record<string, number>;
+  /** Transcripts that used a recall tool of either kind, counted once each. */
+  sessionsUsingRecall: number;
   recallToolNames: Record<string, number>;
   topTools: Record<string, number>;
 }
@@ -57,6 +60,8 @@ export interface UptakeReport {
 export interface UptakeOptions {
   /** ISO date; tool calls stamped before it are skipped. */
   since?: string;
+  /** ISO date; tool calls stamped at or after it are skipped. */
+  until?: string;
 }
 
 export async function countUptake(files: string[], options: UptakeOptions = {}): Promise<UptakeReport> {
@@ -65,11 +70,12 @@ export async function countUptake(files: string[], options: UptakeOptions = {}):
   const recallNames = new Map<string, number>();
   const sessionsWith = new Map<string, number>();
   let withToolUse = 0;
+  let usingRecall = 0;
   for (const file of files) {
     const seen = new Set<string>();
     let counted = false;
     for await (const tool of streamToolUses(file)) {
-      if (!inWindow(tool, options.since)) continue;
+      if (!inWindow(tool, options)) continue;
       counted = true;
       const usage = classify(tool.name, tool.input);
       bump(byClass, usage);
@@ -78,22 +84,26 @@ export async function countUptake(files: string[], options: UptakeOptions = {}):
       if (TRACKED.includes(usage)) seen.add(usage);
     }
     if (counted) withToolUse++;
+    if (seen.has("recall-mcp") || seen.has("recall-cli")) usingRecall++;
     for (const usage of seen) bump(sessionsWith, usage);
   }
   return {
     ...(options.since ? { since: options.since } : {}),
+    ...(options.until ? { until: options.until } : {}),
     transcripts: files.length,
     transcriptsWithToolUse: withToolUse,
     byClass: descending(byClass),
     sessionsWith: descending(sessionsWith),
+    sessionsUsingRecall: usingRecall,
     recallToolNames: descending(recallNames),
     topTools: descending(byName, 25),
   };
 }
 
-function inWindow(tool: ToolUse, since?: string): boolean {
-  if (since === undefined) return true;
-  return tool.timestamp !== undefined && tool.timestamp >= since;
+function inWindow(tool: ToolUse, { since, until }: UptakeOptions): boolean {
+  if (since === undefined && until === undefined) return true;
+  if (tool.timestamp === undefined) return false;
+  return (since === undefined || tool.timestamp >= since) && (until === undefined || tool.timestamp < until);
 }
 
 function bump(counter: Map<string, number>, key: string): void {

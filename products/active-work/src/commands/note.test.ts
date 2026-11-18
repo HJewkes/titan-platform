@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import noteAddCmd from './note-add.js';
 import noteListCmd from './note-list.js';
@@ -40,7 +40,12 @@ async function writeCharter(root: string, humanOnly: string[]): Promise<void> {
 }
 
 describe('note.add', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('round-trips through the validating writer', async () => {
+    vi.stubEnv('AGENT_CHAT_NAME', '');
     await withTempActiveRoot(async (root) => {
       const res = await noteAddCmd.run(
         {
@@ -62,9 +67,72 @@ describe('note.add', () => {
         kind: 'gotcha',
         title: 'Env Paths Ignores XDG on darwin',
         created: today(),
+        created_at: expect.any(String),
         tags: ['testing', 'fs'],
       });
       expect(body.trim()).toBe('Use ACTIVE_ROOT instead.');
+    });
+  });
+
+  it('writes --session to frontmatter', async () => {
+    await withTempActiveRoot(async () => {
+      const res = await noteAddCmd.run(
+        { slug: SLUG, kind: 'fyi', title: 'With Session', body: 'x', session: 'sess-42' },
+        ctx,
+      );
+
+      const { frontmatter } = await readFrontmatter(res.path, NoteFrontmatterSchema);
+      expect(frontmatter.session).toBe('sess-42');
+    });
+  });
+
+  it('writes agent from AGENT_CHAT_NAME when the caller is local', async () => {
+    vi.stubEnv('AGENT_CHAT_NAME', 'sample-agent');
+    await withTempActiveRoot(async () => {
+      const res = await noteAddCmd.run(
+        { slug: SLUG, kind: 'fyi', title: 'With Agent', body: 'x' },
+        ctx,
+      );
+
+      const { frontmatter } = await readFrontmatter(res.path, NoteFrontmatterSchema);
+      expect(frontmatter.agent).toBe('sample-agent');
+    });
+  });
+
+  it('ignores AGENT_CHAT_NAME for a remote ctx', async () => {
+    vi.stubEnv('AGENT_CHAT_NAME', 'daemon-agent');
+    await withTempActiveRoot(async () => {
+      const res = await noteAddCmd.run(
+        { slug: SLUG, kind: 'fyi', title: 'Remote Caller', body: 'x' },
+        { ...ctx, remote: true },
+      );
+
+      const { frontmatter } = await readFrontmatter(res.path, NoteFrontmatterSchema);
+      expect(frontmatter.agent).toBeUndefined();
+    });
+  });
+
+  it('stamps created_at as an ISO timestamp on the same day as created', async () => {
+    await withTempActiveRoot(async () => {
+      const res = await noteAddCmd.run(
+        { slug: SLUG, kind: 'fyi', title: 'Stamped', body: 'x' },
+        ctx,
+      );
+
+      const { frontmatter } = await readFrontmatter(res.path, NoteFrontmatterSchema);
+      const createdAt = frontmatter.created_at!;
+      expect(Number.isNaN(Date.parse(createdAt))).toBe(false);
+      expect(createdAt.slice(0, 10)).toBe(frontmatter.created);
+    });
+  });
+
+  it('still lists a legacy note without the stamps', async () => {
+    await withTempActiveRoot(async (root) => {
+      await writeNoteFixture(root, '2026-01-01-legacy.md', noteFixture('fyi', 'Legacy', '2026-01-01'));
+
+      const res = await noteListCmd.run({ slug: SLUG }, ctx);
+
+      expect(res.notes.map((n) => n.title)).toContain('Legacy');
     });
   });
 
@@ -163,7 +231,7 @@ describe('note read_if round trip', () => {
       const listed = await noteListCmd.run({ slug: SLUG }, ctx);
       const read = await noteReadCmd.run({ slug: SLUG, note: added.filename }, ctx);
 
-      for (const result of [added, listed.notes[0], read]) {
+      for (const result of [added, listed.notes.at(0) ?? added, read]) {
         expect(result).toMatchObject(expected);
         expect('read_if' in result).toBe('read_if' in expected);
       }
@@ -221,7 +289,7 @@ describe('note.list', () => {
       const res = await noteListCmd.run({ slug: SLUG }, ctx);
       expect(res.notes.map((n) => n.title)).toEqual(['Good']);
       expect(res.errors).toHaveLength(1);
-      expect(res.errors[0].filename).toBe('2026-01-03-bad.md');
+      expect(res.errors.at(0)?.filename).toBe('2026-01-03-bad.md');
     });
   });
 
@@ -298,6 +366,27 @@ describe('note.list', () => {
       });
     },
   );
+
+  it('pages across initiatives with limit and cursor, newest first, each note once', async () => {
+    await withEmptyActiveRoot(async (root) => {
+      await writeNoteIn(root, 'alpha', '2026-01-01-a.md', noteFixture('fyi', 'A', '2026-01-01'));
+      await writeNoteIn(root, 'alpha', '2026-04-01-d.md', noteFixture('fyi', 'D', '2026-04-01'));
+      await writeNoteIn(root, 'beta', '2026-02-01-b.md', noteFixture('fyi', 'B', '2026-02-01'));
+      await writeNoteIn(root, 'gamma', '2026-03-01-c.md', noteFixture('fyi', 'C', '2026-03-01'));
+      await writeNoteIn(root, 'gamma', '2026-05-01-e.md', noteFixture('fyi', 'E', '2026-05-01'));
+
+      const first = await noteListCmd.run({ all_initiatives: true, limit: 2 }, ctx);
+      expect(first).toMatchObject({ total: 5, truncated: true });
+      const titles = first.notes.map((n) => n.title);
+      let cursor = first.next_cursor;
+      while (cursor) {
+        const page = await noteListCmd.run({ all_initiatives: true, limit: 2, cursor }, ctx);
+        titles.push(...page.notes.map((n) => n.title));
+        cursor = page.next_cursor;
+      }
+      expect(titles).toEqual(['E', 'D', 'C', 'B', 'A']);
+    });
+  });
 
   it('flags errors rows from the human-only initiative only', async () => {
     await withEmptyActiveRoot(async (root) => {

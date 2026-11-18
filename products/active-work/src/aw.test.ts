@@ -1,20 +1,30 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { EventEmitter } from 'node:events';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type * as ChildProcessModule from 'node:child_process';
 import { describe, expect, it, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import { EXIT, NotFoundError } from './errors.js';
-import { PROFILE_ROOT_ENV } from './utils/profile-dir.js';
+import { PROFILE_ROOT_ENV } from '@titan-design/anthropic-account/node';
 
 import { helpText, main, type AwDeps } from './aw.js';
-import { openSlugOrInit } from './launcher-open.js';
+import { BUILD_VERSION } from './version.js';
+import { openSlugOrInit, runOpenSuccess, spawnClaude } from './launcher-open.js';
+import { withTempActiveRoot } from './test-support/test-helpers.js';
+import * as paths from './utils/paths.js';
 import resumeCommand from './commands/resume.js';
 
 const spawnSpy = vi.hoisted(() => vi.fn());
-vi.mock('node:child_process', async (importOriginal) => ({
-  ...(await importOriginal<typeof ChildProcessModule>()),
-  spawn: spawnSpy,
-}));
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof ChildProcessModule>();
+  const realSpawn: typeof actual.spawn = actual.spawn;
+  return {
+    ...actual,
+    // Only the `claude` launch is stubbed; open's own git/gh probes run for real.
+    spawn: (...args: Parameters<typeof actual.spawn>) =>
+      args[0] === 'claude' ? spawnSpy(...args) : realSpawn(...args),
+  };
+});
 
 function fakeDeps(): { [K in keyof AwDeps]: ReturnType<typeof vi.fn<AwDeps[K]>> } {
   return {
@@ -50,6 +60,21 @@ describe('openSlugOrInit (TP-356 reviewer nit)', () => {
       );
       return true;
     });
+  });
+});
+
+describe('aw --version', () => {
+  it.each(['--version', '-V'])('prints the running build version for %s', async (flag) => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const deps = fakeDeps();
+
+    await main(['node', 'aw', flag], deps);
+
+    const printed = stdout.mock.calls.map((c) => String(c[0])).join('');
+    stdout.mockRestore();
+    expect(printed).toBe(`${BUILD_VERSION}\n`);
+    expect(printed).not.toBe('0.1.0\n');
+    expect(deps.exit).toHaveBeenCalledWith(EXIT.OK);
   });
 });
 
@@ -109,5 +134,65 @@ describe('aw --profile', () => {
     expect(help).toContain('aw <slug> --profile <name>');
     expect(help).toContain('--profile=<name>');
     expect(help).toContain('aw resume <session_id> [--no-rc] [--profile <name>]');
+  });
+});
+
+describe('aw launch usage records (TP-6192)', () => {
+  let stateDir: string;
+
+  beforeEach(() => {
+    stateDir = mkdtempSync(path.join(tmpdir(), 'aw-launch-usage-'));
+    vi.spyOn(paths, 'getStateRoot').mockReturnValue(stateDir);
+    spawnSpy.mockReset();
+    spawnSpy.mockImplementation(() => {
+      const child = new EventEmitter();
+      queueMicrotask(() => child.emit('exit', 0, null));
+      return child;
+    });
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    rmSync(stateDir, { recursive: true, force: true });
+  });
+
+  function launchDeps(): AwDeps {
+    return {
+      exit: vi.fn<AwDeps['exit']>(async () => undefined),
+      open: (slug, adhoc) => runOpenSuccess({ slug, adhoc }),
+      launch: (opened, opts) => spawnClaude(opened, tmpdir(), opts),
+    };
+  }
+
+  it('writes an aw.launch line whose duration is at least the same slug\'s aw.open total', async () => {
+    await withTempActiveRoot(async () => {
+      await main(['node', 'aw', 'sample-initiative'], launchDeps());
+
+      const lines = readFileSync(path.join(stateDir, 'usage.jsonl'), 'utf8')
+        .split('\n')
+        .filter(Boolean)
+        .map((l): { command: string; args: { slug: string }; duration_ms: number; timings_ms?: { total: number } } =>
+          JSON.parse(l));
+      const open = lines.find((l) => l.command === 'aw.open');
+      const launch = lines.find((l) => l.command === 'aw.launch');
+      expect(launch?.args.slug).toBe(open?.args.slug);
+      expect(open?.timings_ms?.total).toBeGreaterThanOrEqual(0);
+      expect(launch?.duration_ms).toBeGreaterThanOrEqual(open?.timings_ms?.total ?? Infinity);
+    });
+  });
+
+  it('still spawns claude and exits 0 when the state dir is unwritable', async () => {
+    const sentinel = path.join(stateDir, 'sentinel');
+    writeFileSync(sentinel, 'x');
+    vi.spyOn(paths, 'getStateRoot').mockReturnValue(path.join(sentinel, 'nested'));
+    const deps = launchDeps();
+
+    await withTempActiveRoot(async () => {
+      await main(['node', 'aw', 'sample-initiative'], deps);
+    });
+
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
+    expect(deps.exit).toHaveBeenCalledWith(0);
   });
 });

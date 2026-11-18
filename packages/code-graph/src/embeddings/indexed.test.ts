@@ -7,7 +7,7 @@ import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { FIXTURE_TSCONFIG, openTestStore } from "../incremental.test-helpers.js";
 import { indexPaths } from "../indexer.js";
 import type { CodeGraphStore } from "../store.js";
-import { SYMBOL_EMBEDDING_NAMESPACE } from "./cache.js";
+import { pruneStaleSymbolVectors, SYMBOL_EMBEDDING_NAMESPACE } from "./cache.js";
 import { embedSnapshot, findSimilarCapability, tryEmbedSnapshot } from "./embeddings.js";
 
 const DURATION_TS = `/** Render a duration in milliseconds as a compact string like 1h30m. */
@@ -142,6 +142,30 @@ describe("embeddings over an indexed snapshot", () => {
     expect(second).toMatchObject({ newlyEmbedded: 3, reused: 0 });
     const rows = store.db.prepare<[], { model: string }>("SELECT DISTINCT model FROM blob_cache ORDER BY model").all();
     expect(rows.map((r) => r.model)).toEqual([nomic.embedder.model, raw.embedder.model].sort());
+  });
+
+  it("reports vectors left under another model identity as stale", async () => {
+    await embedSnapshot(store, snapshotId, countingEmbedder("model-old"));
+
+    const current = await embedSnapshot(store, snapshotId, countingEmbedder("model-new"));
+
+    expect(current).toMatchObject({ model: "model-new", staleVectors: 3 });
+  });
+
+  it("prunes stale symbol vectors and keeps the current model's and other namespaces' rows", async () => {
+    await embedSnapshot(store, snapshotId, countingEmbedder("model-old"));
+    await embedSnapshot(store, snapshotId, countingEmbedder("model-new"));
+    store.db.prepare("INSERT INTO blob_cache (namespace, model, content_hash, value) VALUES (?, ?, ?, ?)").run("other", "model-old", "h", Buffer.from([1]));
+
+    const pruned = pruneStaleSymbolVectors(store, "model-new");
+
+    expect(pruned).toEqual({ deleted: 3, models: [{ model: "model-old", rows: 3 }] });
+    const rows = store.db.prepare("SELECT namespace, model, count(*) AS n FROM blob_cache GROUP BY namespace, model ORDER BY namespace").all();
+    expect(rows).toEqual([
+      { namespace: SYMBOL_EMBEDDING_NAMESPACE, model: "model-new", n: 3 },
+      { namespace: "other", model: "model-old", n: 1 },
+    ]);
+    await expect(embedSnapshot(store, snapshotId, countingEmbedder("model-new"))).resolves.toMatchObject({ reused: 3, staleVectors: 0 });
   });
 
   it("does not serve vectors cached under the bare pre-0.2 model name", async () => {

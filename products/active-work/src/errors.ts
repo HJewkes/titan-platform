@@ -94,6 +94,16 @@ export class LockTimeoutError extends ActiveWorkError {
   }
 }
 
+/** The lock being held was lost (e.g. the machine slept past the stale window); the critical section cannot be trusted. */
+export class LockCompromisedError extends ActiveWorkError {
+  override readonly code: number = EXIT.TEMPFAIL;
+
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = 'LockCompromisedError';
+  }
+}
+
 export function formatError(err: unknown): { message: string; code: number } {
   if (err instanceof ActiveWorkError) {
     return { message: err.message, code: err.code };

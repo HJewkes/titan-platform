@@ -44,7 +44,7 @@ Before adding code:
 | [`agent-surface`](#cap-agent-surface) | 1 | A host must present a long-lived agent somewhere: detached and headless, or in an iTerm2 pane, tab or window it can later close and confirm closed. |
 | [`daemon`](#cap-daemon) | 1 | You want a registry reachable over loopback HTTP and MCP with health, SSE, file watching and a pid file, or just one of those utilities. |
 | [`egress-scan`](#cap-egress-scan) | 1 | Text is about to leave the machine for a public repo and you must refuse absolute home paths, active-work data directory paths, terms from a private list or credential tokens (GitHub, Anthropic, AWS, Slack, PEM private keys), reporting only `file:line`, the rule id and the token kind. |
-| [`frame-capture`](#cap-frame-capture) | 1 | You need deterministic PNG frames, or an MP4, of a web page that animates on a timeline: the page publishes `window.__titanMotion` (`seek(t)`, `ready()`, `duration`) and `captureFrames` drives it under a virtual clock (`VIRTUAL_TIME_SCRIPT`) across parallel Playwright browsers, failing on any page error or unloaded font face; `startEncoder` and `mixAudio` wrap ffmpeg; `checkPops` walks a grid of `t` and flags sudden visual pops (a mount, a cut, a jump) that fast smooth motion would not cause. |
+| [`frame-capture`](#cap-frame-capture) | 1 | You need deterministic PNG frames, or an MP4, of a web page that animates on a timeline: the page publishes `window.__titanMotion` (`seek(t)`, `ready()`, `duration`) and `captureFrames` drives it under a virtual clock (`VIRTUAL_TIME_SCRIPT`) across parallel Playwright browsers, failing on any page error or unloaded font face; `stills` takes true-size PNGs of one page at chosen seconds, with no encode; `startEncoder` and `mixAudio` wrap ffmpeg; `checkPops` walks a grid of `t` and flags sudden visual pops (a mount, a cut, a jump) that fast smooth motion would not cause. |
 | [`github`](#cap-github) | 1 | Code must read or change GitHub (refs, files, pull requests, required checks, check runs, App-posted pull request approvals and their dismissal, job logs, merges, reruns, branch deletes) over REST through the caller's `gh` login, with every write safe to repeat after a crash and polling paced by ETags and a shared rate budget. |
 | [`health`](#cap-health) | 1 | You emit or read a health route's payload and want one open contract: `healthReportSchema` for health/v1 (pass, warn or fail with named checks, after draft-inadarei-api-health-check) and `parseHealthReport` to read any payload, legacy `ok`-only ones included, without ever reading better than its worst check. |
 | [`hitl`](#cap-hitl) | 1 | A step must pause for a human decision and resume, possibly in another process, after a restart. |
@@ -53,10 +53,12 @@ Before adding code:
 | [`registry`](#cap-registry) | 1 | You define a command once and want it served as a CLI, an MCP tool and an HTTP route. |
 | [`retrieval`](#cap-retrieval) | 1 | You need search over a store-sqlite corpus that fuses FTS, vectors and graph hops and keeps answering when one retriever is down. |
 | [`rpc-client`](#cap-rpc-client) | 1 | Browser or Node code calls a registry-backed daemon, live over HTTP and SSE or from a static snapshot export, with typed commands. |
+| [`service-supervisor`](#cap-service-supervisor) | 1 | You need the text of a systemd user unit or a launchd LaunchAgent plist for a long-running job (argv, environment, log files, restart policy). |
 | [`speech-g2p`](#cap-speech-g2p) | 1 | You turn English text into misaki 0.9.4 phoneme tokens without Python, for Kokoro or for vetting pronunciations: `misakiEnglish()` gives per-token phonemes, the joined string and a cache `version`, honours `[word](/phonemes/)` overrides, and `ttsTokens` hands them to speech-tts. |
 | [`speech-stt`](#cap-speech-stt) | 1 | You compare a script with what a recogniser heard, or port Python that calls `difflib`: a CPython-parity `SequenceMatcher` and `roundHalfEven` (Python's `round`), `align` to time script words from a transcript, `diff` and `normalize` to score a take, the `Word` and `Transcript` schemas, and a pure TS `resample` (24 kHz to 16 kHz without ffmpeg). |
 | [`speech-tts`](#cap-speech-tts) | 1 | You need speech audio and the engine must differ per deployment: an in-process model, a GPU box behind a command or ssh, or a hosted HTTP API. |
 | [`test-timing`](#cap-test-timing) | 1 | You keep vitest per-file timing over many runs: `timingArtifactSchema` validates the `titan.test-timing/v1` record a reporter writes (unknown keys refused) and `parseTimingArtifact` reads one (unknown keys kept). |
+| [`text-ingest`](#cap-text-ingest) | 1 | You need to clean a transcript before indexing it (drop um, uh, you know, immediate repeats, caller-supplied sponsor segments and near-duplicate paragraphs) and still point every surviving byte at its original position in the source. |
 | [`worktree`](#cap-worktree) | 1 | You give each headless agent its own git worktree and branch under a per-repository budget, and must never lose its commits: allocation adopts a crashed agent's branch, release and park refuse a tree with uncommitted or unpushed work, and a sweep finds trees nobody released. |
 | [`autoresearch`](#cap-autoresearch) | 2 | An agent loop should propose changes to a system, measure each against a frozen evaluator, and keep only those that beat the best by more than run-to-run noise, with the metric, guards and gates read from the target's own config. |
 | [`code-graph`](#cap-code-graph) | 2 | A tool reasons about code structure (layering checks, dead code, impact analysis, metrics, findings) over TypeScript, TSX or Python. |
@@ -67,7 +69,7 @@ Before adding code:
 | [`graph-layout`](#cap-graph-layout) | 2 | A product draws a code-graph snapshot as boxes and routed edges: collapse files to packages, directories or one focused package, then lay the result out with ELK layered (flat or nested), with the same coordinates for any input order. |
 | [`memory`](#cap-memory) | 2 | An agent must carry lessons between sessions in a rule playbook whose confidence decays with evidence and stays small without manual curation. |
 | [`owner-queue`](#cap-owner-queue) | 2 | You gather the things only the owner can answer from several stores of record (chat questions, hitl gates, task notes, review rounds) into one list and need one `OwnerItem` shape, a `QueueSource` port for adapters, a merge that joins duplicates only on an exact shared key including a PR's head sha, a deterministic rank, and pure stale rules that label an item gone elsewhere from source facts (PR merged, head moved, task done, asker retired), and `buildOwnerRounds`, which turns open Decide items into titan-review round@2 manifests with `Principle:` batching and shadow-mode picks revealed only after the answer, plus `fromRoundQuestions`/`answeredFromFeedback` to read a round's questions and feedback back as OwnerItems, and `ask:`/`component:`/`token:`/`topic:` relation keys that relate items without merging them, and `consolidate`, which turns the open queue into the approvals Flow (per-PR and topic groups, influence order, holds, and a per-PR `shipBlockedBy` from open change requests), and an optional `audience` (owner or operator) with the `forAudience` reader filter, and owner card fields (`class`, `irreversible`, `shown`, `default`, `onSilence`, option `consequence`) checked by `cardLint`/`ownerCardSchema`. |
-| [`pm`](#cap-pm) | 2 | You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags, notes, parent, dep, deliverables, kind, cos, area and due), read a task's parent and dep edges with `readEdges`, check a proposed edge change for unknown ids and cycles with `checkEdges`, validate a task's kind, status, cos and area against the category registry with `CategoryRegistrySchema` and `checkCategories`, or validate the platform-wide deliverable registry with `DeliverableSchema` and `parseDeliverableRegistry`, or gate a repo review on every recommendation and P1 or P2 topic having a task, dup, fold, drop or pending-owner row with `summaryRecommendations`, `prioritizedTopics`, `parseDispositions` and `checkDispositions`, or decide whether an agent-facing reader may serve an initiative with `isAgentVisible` (a missing, unparsable or undeclared brief `visibility` is owner-only), or type an initiative's planning records (success statements, weekly bets with predictions, freezes with end conditions, out-of-scope rulings) with `OutcomeSchema`, `BetSchema`, `FreezeSchema` and `OutOfScopeSchema`, or read an owner-intent digest (`titan-intent-digest/v1`: six closed sections of dated, quoted, referenced `<slug>/I<n>` lines) with `parseIntentDigest`, which refuses the whole file on any malformed bullet and returns line-numbered errors. |
+| [`pm`](#cap-pm) | 2 | You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags, notes, parent, dep, deliverables, kind, cos, area and due), read a task's parent and dep edges with `readEdges`, check a proposed edge change for unknown ids and cycles with `checkEdges`, validate a task's kind, status, cos and area against the category registry with `CategoryRegistrySchema` and `checkCategories`, or validate the platform-wide deliverable registry with `DeliverableSchema` and `parseDeliverableRegistry`, or gate a repo review on every recommendation and P1 or P2 topic having a task, dup, fold, drop or pending-owner row with `summaryRecommendations`, `prioritizedTopics`, `parseDispositions` and `checkDispositions`, or decide whether an agent-facing reader may serve an initiative with `isAgentVisible` (a missing, unparsable or undeclared brief `visibility` is owner-only), or type an initiative's planning records (success statements, weekly bets with predictions, freezes with end conditions, out-of-scope rulings) with `OutcomeSchema`, `BetSchema`, `FreezeSchema` and `OutOfScopeSchema`, or type one owner-intent line (id `<initiative>/I<n>`, section, date, a one-line quote and its `msg:<id>` reference; a line without a quote or a date is refused) with `IntentLineSchema`, or read an owner-intent digest (`titan-intent-digest/v1`: six closed sections of dated, quoted, referenced `<slug>/I<n>` lines, each validated by `IntentLineSchema`) with `parseIntentDigest`, which refuses the whole file on any malformed bullet and returns line-numbered errors. |
 | [`queue-mirror`](#cap-queue-mirror) | 2 | A local queue of human decisions (approvals, hitl gates) should also be answerable from a Matrix room, with verdicts folded back. |
 | [`render-qa`](#cap-render-qa) | 2 | You need to check a rendered page's layout at chosen moments (overlaps, off-frame, small or low-contrast text, wraps, frame rules) and separate held errors from transient ones before encoding, sample a whole video on a fixed 2 Hz grid with a settled sample per beat (`sweepMoments`), measure text line boxes, clipping ancestors and content boxes at moments (`probeMoments`), count changed pixels per frame of an MP4 (`frameDiffs`, through ffmpeg), or find an MP4's black, silent (2 s and more) and frozen stretches (`mediaScan`, through ffmpeg). |
 | [`review-panel`](#cap-review-panel) | 2 | You start reviewers for a pull request and read their verdicts, and want Shepherd's panel types (`PrFacts`, `PrClass`, `PanelPlan`, `PanelVerdict`), `classifyPr` to class a PR from its paths and kind, `planPanel` to pick its reviewers by shape, profile and blocking flag, the reviewer ports (`ReviewerDispatch`, `ReviewerReader`) your adapters satisfy, `acceptVerdict` to decide whether a reviewer's final message is its verdict for this PR at this head, `aggregate` to turn the members' verdicts into one fail-closed panel verdict, and `reviewPullRequest` to run the whole panel for one head over those ports. |
@@ -95,6 +97,7 @@ Before adding code:
 | [`yt-scout`](#cap-yt-scout) | product | You are working on the owner's scheduled AI-video scout (Y-15): the YouTube watch list (`WatchlistSchema`, `loadWatchlist`, line-numbered `WatchlistError`), the `videos` state table (`openScoutDb`, `VIDEO_STATES`) and the one-off seen-set import (`importSeen`), behind the `titan-yt-scout` CLI. |
 | [`codewatch`](#cap-codewatch) | product | You want codewatch's layered code report, or a reference app that consumes react-app and code-read. |
 | [`titan-console`](#cap-console) | product | You want a view over active-work, the agent-chat broker or the session graph: add it here as a route and a command, not as a new app or a new daemon. |
+| [`titan-docs`](#cap-docs) | product | You want a titan-platform docs page rendered with react-ui: add it here as a route. |
 
 ## Proven runtime paths
 
@@ -127,7 +130,6 @@ under its task instead of inside a product. Edit the list in `scripts/capabiliti
 | TP-171 | `registry` | Six exports agent-chat needs: JSON Schema io and override, invalid-args formatter, CLI value names, variadic positionals, option defaults |
 | TP-246 | `registry` | No byte-budget head and tail truncator for tool output |
 | TP-194 | `store-sqlite` | No driver-neutral SQLite seam; packages call better-sqlite3 directly |
-| TP-220 | `store-sqlite` | `CacheBlobTable` has no delete, eviction or TTL |
 | TP-283 | `store-postgres` | No Postgres store package |
 | TP-285 | `scheduler` | No engine-neutral scheduler or outbox |
 | TP-240 | `md-chunk` | No byte-range markdown and JSON chunker for embeddings |
@@ -213,7 +215,7 @@ You need an app's per-user data, config, cache or log directory (`appDirs`, the 
 
 Key exports:
 
-- `app-paths`: `ACTIVE_WORK`, `activeWorkGraphPath`, `activeWorkRoot`, `appDataRoot`, `appDirs`, `AppDirs`, `AppSpec`, `PathOptions`
+- `app-paths`: `ACTIVE_WORK`, `activeWorkGraphPath`, `activeWorkRoot`, `appDataRoot`, `appDirs`, `consoleAnswersPath`, `consoleInboxDir`, `scorecardStorePath`, `AppDirs`, `AppSpec`, `PathOptions`
 
 <a id="cap-authority"></a>
 
@@ -347,10 +349,8 @@ A model returns cited evidence (file and line claims) and code must verify the c
 Key exports:
 
 - `line-source`: `lineSourceFromTexts`, `splitLines`
-- `citation`: `quoteFragments`, `quoteInRange`, `quoteInText`, `verifyCitation`, `verifyRange`
+- `citation`: `citationHolds`, `citationsIn`, `quoteFragments`, `quoteInRange`, `quoteInText`, `verifyCitation`, `verifyRange`
 - `anchor`: `isAnchorForm`, `isFullSha`, `parseAnchor`
-- `anchor-check`: `verifyAnchorText`
-- `overlap`: `groupByOverlap`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/evidence)
 
 <a id="cap-fix-proof"></a>
@@ -513,8 +513,8 @@ You are storing anything in SQLite and want an edge graph, a contentless FTS5 in
 Key exports:
 
 - `open`: `SchemaTooNewError`, `assertSchemaVersion`, `hasColumn`, `hasTable`, `nowIso`, `openDatabase`, `quoteIdent`
-- `migrations`: `MigrationIdentityError`, `appliedVersions`, `runMigrations`
-- `ref`: `isRef`, `parseRef`
+- `migrations`: `MigrationDriftError`, `MigrationIdentityError`, `appliedVersions`, `runMigrations`
+- `ref`: `isRef`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/store-sqlite)
 
 <a id="cap-test-kit"></a>
@@ -687,14 +687,14 @@ Tier 1, `@titan-design/frame-capture@0.2.0`. Deterministic frame capture of any 
 
 **Use this when:**
 
-You need deterministic PNG frames, or an MP4, of a web page that animates on a timeline: the page publishes `window.__titanMotion` (`seek(t)`, `ready()`, `duration`) and `captureFrames` drives it under a virtual clock (`VIRTUAL_TIME_SCRIPT`) across parallel Playwright browsers, failing on any page error or unloaded font face; `startEncoder` and `mixAudio` wrap ffmpeg; `checkPops` walks a grid of `t` and flags sudden visual pops (a mount, a cut, a jump) that fast smooth motion would not cause. It does not know what a beat or a timeline is: the motion runtime that publishes the protocol is titan-design's react-ui `/motion`, and composing a video is a product's job.
+You need deterministic PNG frames, or an MP4, of a web page that animates on a timeline: the page publishes `window.__titanMotion` (`seek(t)`, `ready()`, `duration`) and `captureFrames` drives it under a virtual clock (`VIRTUAL_TIME_SCRIPT`) across parallel Playwright browsers, failing on any page error or unloaded font face; `stills` takes true-size PNGs of one page at chosen seconds, with no encode; `startEncoder` and `mixAudio` wrap ffmpeg; `checkPops` walks a grid of `t` and flags sudden visual pops (a mount, a cut, a jump) that fast smooth motion would not cause. It does not know what a beat or a timeline is: the motion runtime that publishes the protocol is titan-design's react-ui `/motion`, and composing a video is a product's job.
 
 Key exports:
 
 - `capture`: `captureFrame`, `FontLoadError`, `launch`, `openCapturePage`, `screenshotFrame`, `settleFonts`, `withBrowser`, `withCapturePage`
 - `frames`: `captureFrames`
+- `stills`: `stills`
 - `encode`: `mixAudio`, `startEncoder`
-- `pops`: `changedPixels`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/frame-capture)
 
 <a id="cap-github"></a>
@@ -713,8 +713,9 @@ Key exports:
 - `write-read-back`: `WriteRetriesExhaustedError`
 - `file-bytes`: `BlobTooLargeError`
 - `force-pushes`: `ForcePushesTruncated`
+- `pr-outcome`: `PrOutcomeMalformed`
 - `backstop-read`: `BackstopTruncated`, `graphqlPoints`, `readBackstopSnapshot`, `snapshotRequests`
-- `checks`: `isConcluded`, `isPassing`
+- `checks`: `isConcluded`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
 
 <a id="cap-health"></a>
@@ -828,7 +829,7 @@ Key exports:
 - `retrievers/vector`: `BruteForceVectorIndex`, `vectorRetriever`
 - `retrievers/graph`: `expandGraph`, `graphRetriever`
 - `retrievers/walk`: `defaultHubDegree`, `walkGraph`
-- `rerank`: `crossEncoderReranker`
+- `retrievers/tree`: `collapsedTreeRetriever`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/retrieval)
 
 <a id="cap-rpc-client"></a>
@@ -850,6 +851,20 @@ Key exports:
 - `client/canonical-key`: `canonicalArgs`, `snapshotKey`, `wireArgs`
 - `client/sse-parser`: `createSseParser`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/rpc-client)
+
+<a id="cap-service-supervisor"></a>
+
+### [`service-supervisor`](https://hjewkes.github.io/titan-platform/reference/service-supervisor)
+
+Tier 1, `@titan-design/service-supervisor@0.0.0`. Render systemd user units and launchd plists for a long-running job
+
+**Use this when:**
+
+You need the text of a systemd user unit or a launchd LaunchAgent plist for a long-running job (argv, environment, log files, restart policy). It renders and escapes; it never writes a file or runs `systemctl` or `launchctl`, so installing and starting the job stays with the caller. For the escaping helpers alone, or a PATH for the job, use `daemon/service`.
+
+Key exports:
+
+- `render`: `LaunchdProcessType`, `RestartPolicy`, `ServiceSpec`, `renderLaunchAgentPlist`, `renderSystemdUserService`
 
 <a id="cap-speech-g2p"></a>
 
@@ -922,6 +937,20 @@ Key exports:
 - `archive`: `archiveRaw`, `fileSafeId`
 - `ingest`: `ghRunFetched`, `ingestGhArtifact`, `ingestRecord`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/test-timing)
+
+<a id="cap-text-ingest"></a>
+
+### [`text-ingest`](https://hjewkes.github.io/titan-platform/reference/text-ingest)
+
+Tier 1, `@titan-design/text-ingest@0.0.0`. 
+
+**Use this when:**
+
+You need to clean a transcript before indexing it (drop um, uh, you know, immediate repeats, caller-supplied sponsor segments and near-duplicate paragraphs) and still point every surviving byte at its original position in the source. For the byte-range pointer itself use `locator`; for ranking what was indexed use `retrieval`.
+
+Key exports:
+
+- `clean`: `cleanTranscript`, `ByteRange`, `CleanOptions`, `CleanResult`, `RemovalKind`, `RemovedSpan`
 
 <a id="cap-worktree"></a>
 
@@ -1137,7 +1166,7 @@ Tier 2, `@titan-design/pm@0.11.0`. Project-management schemas: the zod task sche
 
 **Use this when:**
 
-You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags, notes, parent, dep, deliverables, kind, cos, area and due), read a task's parent and dep edges with `readEdges`, check a proposed edge change for unknown ids and cycles with `checkEdges`, validate a task's kind, status, cos and area against the category registry with `CategoryRegistrySchema` and `checkCategories`, or validate the platform-wide deliverable registry with `DeliverableSchema` and `parseDeliverableRegistry`, or gate a repo review on every recommendation and P1 or P2 topic having a task, dup, fold, drop or pending-owner row with `summaryRecommendations`, `prioritizedTopics`, `parseDispositions` and `checkDispositions`, or decide whether an agent-facing reader may serve an initiative with `isAgentVisible` (a missing, unparsable or undeclared brief `visibility` is owner-only), or type an initiative's planning records (success statements, weekly bets with predictions, freezes with end conditions, out-of-scope rulings) with `OutcomeSchema`, `BetSchema`, `FreezeSchema` and `OutOfScopeSchema`, or read an owner-intent digest (`titan-intent-digest/v1`: six closed sections of dated, quoted, referenced `<slug>/I<n>` lines) with `parseIntentDigest`, which refuses the whole file on any malformed bullet and returns line-numbered errors. The root is pure code; it reads no files, so parse the task, registry and deliverable YAML in the host and hand the objects over. The `./node` subpath is the one file store for planning records: `readPlanRecord`, `loadPlanRecords` and `writePlanRecord` read and validate-then-atomically-write `<activeRoot>/<initiative>/plan/<kind>/<id suffix>.yml`, and `withPlanLock` holds the initiative's `plan/.lock`, so every plan writer (active-work's verbs, the console's owner ops) shares one layout and one lock. For a seat's front matter use `coordinator` instead.
+You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags, notes, parent, dep, deliverables, kind, cos, area and due), read a task's parent and dep edges with `readEdges`, check a proposed edge change for unknown ids and cycles with `checkEdges`, validate a task's kind, status, cos and area against the category registry with `CategoryRegistrySchema` and `checkCategories`, or validate the platform-wide deliverable registry with `DeliverableSchema` and `parseDeliverableRegistry`, or gate a repo review on every recommendation and P1 or P2 topic having a task, dup, fold, drop or pending-owner row with `summaryRecommendations`, `prioritizedTopics`, `parseDispositions` and `checkDispositions`, or decide whether an agent-facing reader may serve an initiative with `isAgentVisible` (a missing, unparsable or undeclared brief `visibility` is owner-only), or type an initiative's planning records (success statements, weekly bets with predictions, freezes with end conditions, out-of-scope rulings) with `OutcomeSchema`, `BetSchema`, `FreezeSchema` and `OutOfScopeSchema`, or type one owner-intent line (id `<initiative>/I<n>`, section, date, a one-line quote and its `msg:<id>` reference; a line without a quote or a date is refused) with `IntentLineSchema`, or read an owner-intent digest (`titan-intent-digest/v1`: six closed sections of dated, quoted, referenced `<slug>/I<n>` lines, each validated by `IntentLineSchema`) with `parseIntentDigest`, which refuses the whole file on any malformed bullet and returns line-numbered errors. The root is pure code; it reads no files, so parse the task, registry and deliverable YAML in the host and hand the objects over. The `./node` subpath is the one file store for planning records: `readPlanRecord`, `loadPlanRecords` and `writePlanRecord` read and validate-then-atomically-write `<activeRoot>/<initiative>/plan/<kind>/<id suffix>.yml` (intent lines under `plan/intent/`), and `withPlanLock` holds the initiative's `plan/.lock`, so every plan writer (active-work's verbs, the console's owner ops) shares one layout and one lock. It also holds the one reader for an initiative's task files: `readInitiativeTasks(activeRoot, slug, { archive })` reads `<slug>/tasks/*.yml` (and `tasks/archive/` on request) in filename order, validates each with `TaskSchema`, and returns unparsable files with a reason instead of throwing; it reads only the slug it is given and makes no visibility decision. For a seat's front matter use `coordinator` instead.
 
 Key exports:
 
@@ -1145,7 +1174,7 @@ Key exports:
 - `visibility`: `InitiativeVisibilitySchema`, `agentAccess`, `isAgentVisible`
 - `task-key`: `resolveTaskKey`
 - `provenance`: `betProblem`, `TaskRequireSchema`
-- `planning`: `BetSchema`, `FreezeEndConditionSchema`, `FreezeSchema`, `OutOfScopeSchema`, `OutcomeSchema`
+- `planning`: `BetSchema`, `FreezeEndConditionSchema`, `FreezeSchema`, `IntentLineSchema`, `OutOfScopeSchema`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/pm)
 
 <a id="cap-queue-mirror"></a>
@@ -1269,7 +1298,8 @@ Key exports:
 - `facet`: `backfillFacets`
 - `apply`: `applyDelta`
 - `purge`: `purgeTranscript`
-- `rollup`: `reconcile`, `rollupSessions`, `rollupYielding`
+- `drain`: `ingestDrain`, `listTemplates`
+- `rollup`: `reconcile`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-graph)
 
 <a id="cap-session-read"></a>
@@ -1431,8 +1461,8 @@ A React front end is served by a daemon or shipped as an offline report and need
 Key exports:
 
 - `hooks/provider`: `RpcProviderProps`, `RpcProvider`
-- `hooks/hooks`: `InvalidateOnOptions`, `QueryArgs`, `QueryResult`, `RpcHooks`, `createRpcHooks`
-- `hooks/query-store`: `QuerySettled`
+- `hooks/hooks`: `InvalidateOnOptions`, `QueryArgs`, `QueryResult`, `createRpcHooks`
+- `hooks/hash-route`: `safeDecode`, `useHashRoute`
 - `hooks/embedded-snapshot`: `SNAPSHOT_ELEMENT_ID`, `embedSnapshot`, `pageDataSource`, `readEmbeddedSnapshot`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/react-app)
 
@@ -1616,7 +1646,7 @@ When the review index has no snapshot at the pin, the fresh index covers only th
 For a PR video, `gatherPr` writes the pr-overview profile's `facts.jsonl` from the PR diff, its reviews and comments (through `gh`) and the code-graph calls between changed files at the head commit, with stable content-derived ids and coded refusals (`PR_GATHER_CODES`).
 `explainer pr trigger` (`runPrVideoTrigger`, `autoBriefTargets`) starts a decision-brief run (the `gather` stage, then the audition;
 with `--through script`, the script too, on the spine the audition writes from its pick, `pickSpine`, as pr-overview's `spine: { from: audition-pick }` declares)
-only for PRs Shepherd holds at the owner's visual gate (`visual-gate2`) on a head still current right before the start, with `--dry-run`, and
+for PRs Shepherd holds at the owner's visual gate (`visual-gate2`) and, with a repeatable `--visual-path <glob>`, for every open non-draft PR whose changed files (read through `gh pr diff --name-only`) match a glob (brief trigger `visual-path`), each on a head still current right before the start, with `--dry-run`, and
 `explainer pr gather` runs it on request.
 For the daily briefing, `gatherDaily` reads one UTC day into a `digest.json` and a `facts.md` whose ids come from their sources
 (PRs through `gh pr list`, sessions through `session-read`,
@@ -1815,6 +1845,20 @@ Tier product, private, `apps/console`. The titan console: one read-only loopback
 **Use this when:**
 
 You want a view over active-work, the agent-chat broker or the session graph: add it here as a route and a command, not as a new app or a new daemon. It is also the reference for a react-ui `AppShell` app served by one loopback daemon.
+
+Key exports:
+
+No library entry point.
+
+<a id="cap-docs"></a>
+
+### `titan-docs`
+
+Tier product, private, `apps/docs`. The titan-platform docs site on react-ui, prerendered to static HTML and hydrated in the browser
+
+**Use this when:**
+
+You want a titan-platform docs page rendered with react-ui: add it here as a route. It is also the reference for prerendering a react-ui app to static HTML and hydrating it without a mismatch.
 
 Key exports:
 

@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the check result is not stored on the bet",
+      "file": "packages/pm/src/node/prediction-record.ts",
+      "find": "{ ...bet, prediction_check: checkPrediction(bet, rows) }",
+      "replace": "{ ...bet }",
+      "kills": ["recordPredictionChecks stores missed on a bet whose week reads above expected", "recordPredictionChecks stores unread on a bet when no row matches"]
+    }
+  ]
+}

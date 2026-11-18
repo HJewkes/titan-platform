@@ -1,0 +1,22 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an adversary that declines reads as a missing adversary",
+      "file": "products/factory/src/registry/attest.ts",
+      "find": "if (shortfall === \"no-meeter\") return \"adversary-declined\";",
+      "replace": "if (shortfall === \"no-meeter\") return \"adversary-missing\";",
+      "kills": [
+        "judgeAttestations on an adversary that declines (TP-5902) an adversary MERGE at the head with no Attests line declines the row: adversary-declined, not adversary-missing",
+        "judgeAttestations on an adversary that declines (TP-5902) an adversary that attests some claimed steps declines only the one it left out"
+      ]
+    },
+    {
+      "name": "no adversary verdict reads as a declined adversary",
+      "file": "products/factory/src/registry/attest.ts",
+      "find": "if (adversary === undefined) return \"adversary-missing\";",
+      "replace": "if (adversary === undefined) return \"adversary-declined\";",
+      "kills": ["judgeAttestations on an adversary that declines (TP-5902) no adversary verdict at all is still adversary-missing"]
+    }
+  ]
+}

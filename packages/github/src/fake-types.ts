@@ -1,6 +1,8 @@
+import type { CleanMergeTree } from "./approved-head-walk.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
 import type { GitExec } from "./exec.js";
 import type { ForcePush } from "./force-pushes.js";
+import type { PrOutcome } from "./pr-outcome.js";
 import type { MergeIntoBranchResult } from "./merge-into-branch.js";
 import type { ReviewComment } from "./review-comment.js";
 import type { PullReview } from "./pull-reviews.js";
@@ -53,6 +55,8 @@ export interface FakeGitHub {
   setRuns(sha: string, runs: CheckRun[]): void;
   /** A foreign push: moves the PR head without this run doing it. */
   pushHead(number: number, sha: string): void;
+  /** The tree a clean merge of `baseParent` into `reviewed` has: the tree of the merge commit the fake's update-branch makes. */
+  cleanMergeTree: CleanMergeTree;
   /** When set, update-branch answers HTTP 422 "merge conflict between base and head", as GitHub does when the base cannot merge in. */
   updateBranchConflict?: boolean;
   /** Faults the next update-branch calls throw, one per call; `lands` means the update happened before the answer was lost. */
@@ -121,4 +125,6 @@ export interface FakeGitHub {
   appLogin: string;
   /** PR number to its head force-pushes, oldest first; unset means none. `listForcePushes` reads at most 100, like the GraphQL page. */
   forcePushes: Map<number, ForcePush[]>;
+  /** PR number to what `readPrOutcome` answers; unset reads the PR's own state with no reviews or commit dates, and a PR the fake lacks answers 404. */
+  outcomes: Map<number, PrOutcome>;
 }

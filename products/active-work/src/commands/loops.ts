@@ -13,15 +13,18 @@ import { findMergedPrLoops } from '../sessions/loop-pr-state.js';
 import { resolveLedgerPaths } from '../sessions/ledger-file.js';
 import { LoopSourceSchema, readLedgerLoops, sessionSourceOf } from '../session-index/loop-board.js';
 import type { LedgerLoop } from '../schemas/loop-ledger.js';
-import { loadTasks } from '../lint/load-tasks.js';
+import { loadTasks } from '../bootstrap/load.js';
 import type { Task } from '../schemas/task.js';
 import { assertValidSlug } from '../utils/slug.js';
-import { defineCommand } from '../registry/index.js';
+import { defineCommand, type CommandContext } from '../registry/index.js';
+import { UsageError } from '../errors.js';
+import { listSlugsForCaller } from '../sessions/visibility.js';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 const ArgsSchema = z.object({
-  slug: z.string().min(1),
+  slug: z.string().min(1).optional(),
+  all_initiatives: z.boolean().optional(),
   state: z.enum(['open', 'resolved', 'abandoned', 'all']).default('open'),
   due: z.boolean().optional(),
   offline: z.boolean().optional(),
@@ -40,6 +43,8 @@ const OpenLoopSchema = z.object({
   opened_at: z.string(),
   age_days: z.number().int().nonnegative(),
   source: LoopSourceSchema,
+  /** Set only by --all-initiatives, where the entry's initiative is otherwise lost. */
+  slug: z.string().optional(),
 });
 
 const ResolvedLoopSchema = z.object({
@@ -53,10 +58,12 @@ const ResolvedLoopSchema = z.object({
   opened_at: z.string(),
   closed_at: z.string(),
   age_days: z.number().int().nonnegative(),
+  slug: z.string().optional(),
 });
 
 const ResultSchema = z.object({
-  slug: z.string(),
+  /** Absent for --all-initiatives, whose entries carry their own slug. */
+  slug: z.string().optional(),
   open: z.array(OpenLoopSchema),
   resolved: z.array(ResolvedLoopSchema),
 });
@@ -65,6 +72,7 @@ type Args = z.infer<typeof ArgsSchema>;
 type Result = z.infer<typeof ResultSchema>;
 
 type OpenEntry = z.infer<typeof OpenLoopSchema>;
+type ResolvedEntry = z.infer<typeof ResolvedLoopSchema>;
 
 interface OpenContext {
   initiativeDir: string;
@@ -168,6 +176,10 @@ export default defineCommand<Args, Result>({
   cli: {
     positional: ['slug'],
     options: {
+      all_initiatives: {
+        long: '--all-initiatives',
+        description: 'List loops across every initiative visible to the caller, in place of a slug',
+      },
       state: {
         long: '--state',
         description: "'open' (default) | 'resolved' | 'abandoned' | 'all'",
@@ -182,33 +194,57 @@ export default defineCommand<Args, Result>({
         description: 'Skip the GitHub check for merged PRs; pr loops are then never marked',
       },
     },
-    usage: 'active-work loops <slug> [--state open|resolved|abandoned|all] [--due] [--offline]',
+    usage:
+      'active-work loops (<slug> | --all-initiatives) [--state open|resolved|abandoned|all] [--due] [--offline]',
   },
   async run(args, ctx) {
-    assertValidSlug(args.slug);
-    const initiativeDir = path.join(ctx.activeRoot, args.slug);
-    const [loaded, tasks] = await Promise.all([
-      loadSessionsFromDir(initiativeDir),
-      loadTasks(initiativeDir),
-    ]);
-    const context = {
-      initiativeDir,
-      activeRoot: ctx.activeRoot,
-      tasks,
-      now: new Date(),
-      warnings: ctx.warnings,
-    };
-    const dueOnly = args.due === true;
-    const wantOpen = dueOnly || args.state === 'open' || args.state === 'all';
-    const wantResolved = !dueOnly && args.state !== 'open';
-
-    const open = wantOpen
-      ? [...(await openEntries(loaded, args, context)), ...(await ledgerEntries(args.slug, context))]
-      : [];
-    return {
-      slug: args.slug,
-      open: dueOnly ? open.filter((loop) => loop.trigger_met !== undefined) : open,
-      resolved: wantResolved ? resolvedEntries(loaded, args, context) : [],
-    };
+    if (args.all_initiatives === true) return runAcrossInitiatives(args, ctx);
+    if (args.slug === undefined) {
+      throw new UsageError('loops requires a slug or --all-initiatives');
+    }
+    return runForSlug(args.slug, args, ctx);
   },
 });
+
+async function runAcrossInitiatives(args: Args, ctx: CommandContext): Promise<Result> {
+  if (args.slug !== undefined) {
+    throw new UsageError('loops takes a slug or --all-initiatives, not both');
+  }
+  const slugs = await listSlugsForCaller(ctx.activeRoot, ctx);
+  const open: OpenEntry[] = [];
+  const resolved: ResolvedEntry[] = [];
+  for (const slug of slugs) {
+    const one = await runForSlug(slug, args, ctx);
+    open.push(...one.open.map((loop) => ({ ...loop, slug })));
+    resolved.push(...one.resolved.map((loop) => ({ ...loop, slug })));
+  }
+  return { open, resolved };
+}
+
+async function runForSlug(slug: string, args: Args, ctx: CommandContext): Promise<Result> {
+  assertValidSlug(slug);
+  const initiativeDir = path.join(ctx.activeRoot, slug);
+  const [loaded, { tasks }] = await Promise.all([
+    loadSessionsFromDir(initiativeDir),
+    loadTasks(initiativeDir, { archive: true }),
+  ]);
+  const context = {
+    initiativeDir,
+    activeRoot: ctx.activeRoot,
+    tasks,
+    now: new Date(),
+    warnings: ctx.warnings,
+  };
+  const dueOnly = args.due === true;
+  const wantOpen = dueOnly || args.state === 'open' || args.state === 'all';
+  const wantResolved = !dueOnly && args.state !== 'open';
+
+  const open = wantOpen
+    ? [...(await openEntries(loaded, args, context)), ...(await ledgerEntries(slug, context))]
+    : [];
+  return {
+    slug,
+    open: dueOnly ? open.filter((loop) => loop.trigger_met !== undefined) : open,
+    resolved: wantResolved ? resolvedEntries(loaded, args, context) : [],
+  };
+}

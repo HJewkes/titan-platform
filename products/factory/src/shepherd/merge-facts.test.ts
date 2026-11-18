@@ -1022,7 +1022,7 @@ describe("the attestation guard", () => {
     const silent = await judged(claiming(), adversary([]));
     const attested = await judged(claiming(), adversary([TOKEN]));
 
-    expect(silent.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "attest-unmet" }, reason: "attestation unmet: ci-wait: adversary-missing" });
+    expect(silent.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "attest-unmet" }, reason: "attestation unmet: ci-wait: adversary-declined" });
     expect(attested.record.decision).toMatchObject({ outcome: "allow", rule: { rowId: "MRG-AU-RV" } });
   });
 

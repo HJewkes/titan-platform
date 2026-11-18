@@ -1,6 +1,6 @@
 import type * as ChildProcess from "node:child_process";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import { EXIT } from "../../cli.js";
@@ -10,7 +10,8 @@ import { enabledRules, fakeRpc, readRows, selectedBet, shadowHome, shadowTickCli
 /*
  * The shadow dispatcher may never spawn, message or start an agent (TP-5755 PLAN 4, row S2). Three proofs: no file of the
  * dispatcher's decision path imports a launch path, a full enabled tick calls no child process and no agent-chat runner,
- * and the row kind has no `dispatched` member to write.
+ * and the row kind has no `dispatched` member to write. The one outward message, a lane's ready-stock refill request, goes
+ * through the CLI's injected `refillSend`, so no fenced file imports how it is sent.
  */
 
 const childProcess = vi.hoisted(() => ({ calls: [] as string[] }));
@@ -24,6 +25,7 @@ vi.mock("node:child_process", async (original) => {
 });
 
 const ELIGIBILITY = fileURLToPath(new URL("..", import.meta.url));
+const SRC = fileURLToPath(new URL("../..", import.meta.url));
 
 /** The decision path's files today and the ones later slices add; a pattern with no file yet matches nothing. */
 const FENCED = [/^shadow\/.+\.ts$/, /^intake.*\.ts$/, /^upkeep.*\.ts$/, /^landed.*\.ts$/, /^stop-.*\.ts$/, /^sheets\/.+\.ts$/];
@@ -44,6 +46,70 @@ function launchImports(source: string): string[] {
 
 const isTest = (path: string): boolean => /\.test(-helpers)?\.ts$/.test(basename(path));
 
+/** Pure: the relative value-import specifiers of one source; a type-only import loads nothing at run time. */
+function localImports(source: string): string[] {
+  return [...source.matchAll(IMPORT)].filter(([, typeOnly]) => typeOnly === undefined).map(([, , from, dynamic]) => from ?? dynamic ?? "").filter((spec) => spec.startsWith("."));
+}
+
+const isFenced = (file: string): boolean => {
+  const path = relative(ELIGIBILITY, file);
+  return !path.startsWith("..") && FENCED.some((pattern) => pattern.test(path)) && !isTest(path);
+};
+
+function localTargets(file: string): string[] {
+  return localImports(readFileSync(file, "utf8")).map((spec) => resolve(dirname(file), spec.replace(/\.js$/, ".ts"))).filter((target) => existsSync(target));
+}
+
+/** Whether `start` or any module it reaches through local value imports value-imports a launch path. */
+function reachesLaunchPath(start: string, memo: Map<string, boolean>): boolean {
+  const cached = memo.get(start);
+  if (cached !== undefined) return cached;
+  const seen = new Set<string>();
+  const queue = [start];
+  for (let file = queue.pop(); file !== undefined; file = queue.pop()) {
+    if (seen.has(file)) continue;
+    seen.add(file);
+    if (launchImports(readFileSync(file, "utf8")).length > 0) return memo.set(start, true).get(start)!;
+    queue.push(...localTargets(file));
+  }
+  return memo.set(start, false).get(start)!;
+}
+
+/** The first import out of the fenced set whose target can reach a launch path, as `from -> to` relative to src. */
+function boundaryEdges(fenced: string[]): string[] {
+  const memo = new Map<string, boolean>();
+  const edges = new Set<string>();
+  const seen = new Set<string>();
+  const queue = [...fenced];
+  for (let file = queue.pop(); file !== undefined; file = queue.pop()) {
+    if (seen.has(file)) continue;
+    seen.add(file);
+    for (const target of localTargets(file)) {
+      if (isFenced(target)) queue.push(target);
+      else if (reachesLaunchPath(target, memo)) edges.add(`${relative(SRC, file)} -> ${relative(SRC, target)}`);
+    }
+  }
+  return [...edges].sort();
+}
+
+/*
+ * Ratchet (TP-6157): each entry is an edge from the fenced set into a module that can still reach a launch path. TP-6157
+ * decouples the decision path; the list must reach empty. A new edge fails the test, and so does an entry that no longer
+ * leads anywhere forbidden, so the list only shrinks.
+ */
+const ALLOWED_BOUNDARY_EDGES: string[] = [
+  "eligibility/intake-signals.ts -> shepherd/watch-rows.ts", // TP-6157
+  "eligibility/landed-signals.ts -> shepherd/view.ts", // TP-6157
+  "eligibility/shadow/rule-file.ts -> config.ts", // TP-6157
+  "eligibility/shadow/tick.ts -> config.ts", // TP-6157
+  "eligibility/shadow/tick.ts -> eligibility/command.ts", // TP-6157
+  "eligibility/shadow/tick.ts -> eligibility/lane-signals.ts", // TP-6157
+  "eligibility/stop-signals.ts -> shepherd/view.ts", // TP-6157
+  "eligibility/stop-signals.ts -> shepherd/wake.ts", // TP-6157
+  "eligibility/upkeep-signals.ts -> eligibility/gh-api-read.ts", // TP-6157
+  "eligibility/upkeep-signals.ts -> shepherd/view.ts", // TP-6157
+];
+
 describe("launchImports", () => {
   it("flags value imports of each launch path, dynamic and re-exports included, and ignores type-only ones", () => {
     const source = [
@@ -59,6 +125,14 @@ describe("launchImports", () => {
   });
 });
 
+describe("localImports", () => {
+  it("keeps relative value imports and drops type-only and package ones", () => {
+    const source = ['import { a } from "./a.js";', 'import type { B } from "./b.js";', 'export { c } from "../c.js";', 'import { d } from "node:fs";', 'const e = await import("./e.js");'].join("\n");
+
+    expect(localImports(source)).toEqual(["./a.js", "../c.js", "./e.js"]);
+  });
+});
+
 describe("shadow dispatcher fence", () => {
   afterEach(() => void vi.useRealTimers());
 
@@ -68,6 +142,14 @@ describe("shadow dispatcher fence", () => {
 
     expect(fenced).toEqual(expect.arrayContaining(["shadow/tick.ts", "shadow/command.ts", "shadow/providers.ts"]));
     expect(offenders).toEqual([]);
+  });
+
+  it("no module reachable from the decision path through value imports imports a launch path", () => {
+    const fenced = filesUnder(ELIGIBILITY).filter((path) => FENCED.some((pattern) => pattern.test(path)) && !isTest(path));
+    const edges = boundaryEdges(fenced.map((path) => join(ELIGIBILITY, path)));
+
+    expect(edges.filter((edge) => !ALLOWED_BOUNDARY_EDGES.includes(edge))).toEqual([]);
+    expect(ALLOWED_BOUNDARY_EDGES.filter((edge) => !edges.includes(edge))).toEqual([]);
   });
 
   it("a full enabled tick calls no child process and no agent-chat runner", async () => {

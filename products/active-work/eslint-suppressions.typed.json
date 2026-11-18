@@ -155,7 +155,7 @@
   },
   "products/active-work/src/commands/task-show.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
+      "count": 2
     }
   },
   "products/active-work/src/commands/track.ts": {
@@ -286,9 +286,6 @@
     }
   },
   "products/active-work/src/session-index/liveness.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 2
-    },
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }
@@ -313,7 +310,7 @@
   },
   "products/active-work/src/session-index/tasks.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
+      "count": 3
     }
   },
   "products/active-work/src/sessions/lease.ts": {

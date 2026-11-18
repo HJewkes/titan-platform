@@ -14,7 +14,7 @@ import { toRelative } from './refs.js';
  * design exists to avoid.
  */
 
-export type WorkspaceClass = 'initiative' | 'note' | 'task' | 'session' | 'source';
+export type WorkspaceClass = 'initiative' | 'note' | 'task' | 'session' | 'source' | 'plan';
 
 export interface WorkspaceFile {
   class: WorkspaceClass;
@@ -64,6 +64,19 @@ async function taskFiles(tasksDir: string): Promise<string[]> {
 }
 
 /**
+ * Outcomes, bets and intent digests (TP-5453 P10). Freezes and out-of-scope records stay out: they
+ * are looked up by id through `plan.*`, not found by text.
+ */
+async function planFiles(planDir: string): Promise<string[]> {
+  const [outcomes, bets, intents] = await Promise.all([
+    filesIn(path.join(planDir, 'outcomes'), ['.yml']),
+    filesIn(path.join(planDir, 'bets'), ['.yml']),
+    filesIn(path.join(planDir, 'intents'), ['.md']),
+  ]);
+  return [...outcomes, ...bets, ...intents];
+}
+
+/**
  * `sources/` top level only, matching `listSources`. `sources/notes/` is the
  * durable-notes store with its own class, and one large `sources/` subtree
  * alone holds thousands of ingested files that active-work has never called sources.
@@ -71,17 +84,19 @@ async function taskFiles(tasksDir: string): Promise<string[]> {
 async function collectSlug(activeRoot: string, slug: string): Promise<[WorkspaceClass, string][]> {
   const dir = path.join(activeRoot, slug);
   const brief = path.join(dir, 'brief.md');
-  const [notes, tasks, sessions, sources] = await Promise.all([
+  const [notes, tasks, sessions, sources, plans] = await Promise.all([
     filesIn(path.join(dir, 'sources', 'notes'), ['.md']),
     taskFiles(path.join(dir, 'tasks')),
     filesIn(path.join(dir, 'sessions'), ['.md']),
     filesIn(path.join(dir, 'sources'), ['.md']),
+    planFiles(path.join(dir, 'plan')),
   ]);
   return [
     ...notes.map((p): [WorkspaceClass, string] => ['note', p]),
     ...tasks.map((p): [WorkspaceClass, string] => ['task', p]),
     ...sessions.map((p): [WorkspaceClass, string] => ['session', p]),
     ...sources.map((p): [WorkspaceClass, string] => ['source', p]),
+    ...plans.map((p): [WorkspaceClass, string] => ['plan', p]),
     ...((await exists(brief)) ? [['initiative', brief] as [WorkspaceClass, string]] : []),
   ];
 }

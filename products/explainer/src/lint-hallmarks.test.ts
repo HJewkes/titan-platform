@@ -32,6 +32,19 @@ describe("hallmark:naming-refrain", () => {
     expect(row).toMatchObject({ value: 0, pass: true });
   });
 
+  it("counts a bare copula whose complement names a thing", () => {
+    const named = "That gas is the rise.";
+
+    const row = rowOf(withFiller(named, named), "hallmark:naming-refrain");
+
+    expect(row).toMatchObject({ value: 2, severity: "warning", pass: false });
+  });
+
+  it.each(["That's a good question.", "That's the plan."])("does not count the verdict %s", (verdict) => {
+    const row = rowOf(withFiller(verdict, verdict, verdict), "hallmark:naming-refrain");
+
+    expect(row).toMatchObject({ value: 0, pass: true });
+  });
 });
 
 describe("hallmark:named-before-defined", () => {

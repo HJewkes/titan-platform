@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { commandCwd, commandHeads, gitCommands,parseGitIntent, parsePrCreateTitle, parseTaskId, parseTaskIntent, parseTaskIntents, realCommand } from "./bash-parse.js";
+import { commandCwd, commandHeads, gitCommands, parseGitIntent, parsePrCreateBranches, parsePrCreateTitle, parseTaskId, parseTaskIntent, parseTaskIntents, realCommand } from "./bash-parse.js";
 
 describe("parseGitIntent", () => {
   it("captures a new branch with its start point, plus commit and push", () => {
@@ -76,6 +76,31 @@ describe("parseGitIntent", () => {
     expect(gitCommands("(git push origin $(git branch --show-current))")).toEqual([
       "git push origin $(git branch --show-current)",
     ]);
+  });
+});
+
+describe("parsePrCreateBranches (TP-80)", () => {
+  it("reads the head and base a create names, in long, short and = forms", () => {
+    expect(parsePrCreateBranches("gh pr create --head feat/x --base develop --title t", "main")).toEqual({ head: "feat/x", base: "develop" });
+    expect(parsePrCreateBranches("gh pr create -H feat/x -B develop --fill", "main")).toEqual({ head: "feat/x", base: "develop" });
+    expect(parsePrCreateBranches("gh pr create --head=feat/x --base=develop", null)).toEqual({ head: "feat/x", base: "develop" });
+  });
+
+  it("takes the checked-out branch when no head is named", () => {
+    expect(parsePrCreateBranches("gh pr create --base main --title t", "feat/y")).toEqual({ head: "feat/y", base: "main" });
+    expect(parsePrCreateBranches("gh pr create --fill", "feat/y")).toEqual({ head: "feat/y", base: null });
+  });
+
+  it("names no head when the checked-out branch cannot be trusted or the head is not a plain branch", () => {
+    expect(parsePrCreateBranches("git checkout -b feat/z && gh pr create --fill", "main")?.head).toBeNull();
+    expect(parsePrCreateBranches("gh pr create --head acme:feat/x", "main")?.head).toBeNull();
+    expect(parsePrCreateBranches("gh pr create --fill", null)?.head).toBeNull();
+  });
+
+  it("ignores flags inside quoted text and commands that are not a create", () => {
+    expect(parsePrCreateBranches('gh pr create --title "use -H feat/q" --fill', "feat/y")?.head).toBe("feat/y");
+    expect(parsePrCreateBranches('echo "gh pr create --head feat/x"', "main")).toBeNull();
+    expect(parsePrCreateBranches("gh pr view 7", "main")).toBeNull();
   });
 });
 

@@ -27,6 +27,8 @@ import { firstMotionCheck, headingWordsCheck } from "./lint-direction.js";
 import { cueGapCheck, fillFloorCheck, heldCountCheck } from "./lint-cadence.js";
 import { stillStretchCheck } from "./lint-still.js";
 import { hallmarkCheck } from "./lint-hallmarks.js";
+import { termSpokenShownCheck } from "./lint-terms.js";
+import { termMotivationCheck } from "./lint-term-motivation.js";
 import { writingGateCheck } from "./writing-gate.js";
 import type { SpineV1 } from "./spine-schema.js";
 import type { ScriptTiming } from "./timing.js";
@@ -77,7 +79,7 @@ export const L0_CHECKS: readonly L0Check[] = [
   numbersSpokenCheck, frameWordsCheck, labelEchoCheck, cueGapCheck, heldCountCheck, fillFloorCheck,
   headingWordsCheck, firstMotionCheck,
   stillStretchCheck,
-  writingGateCheck, hallmarkCheck,
+  writingGateCheck, hallmarkCheck, termSpokenShownCheck, termMotivationCheck,
 ];
 
 /** Every check's rows, less the rows of a rule scoped away from the script (`structures` or `except_profiles` in rules.yaml). */

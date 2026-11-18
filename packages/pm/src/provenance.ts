@@ -17,7 +17,7 @@ const TASK_SOURCES = ["owner", "plan", "follow-up", "review", "sweep", "audit", 
 
 const TASK_RANKS = ["p0", "p1", "p2", "p3"] as const;
 
-const DONE_REASONS = ["shipped", "superseded", "duplicate", "moot", "wont-do"] as const;
+const DONE_REASONS = ["shipped", "superseded", "duplicate", "moot", "wont-do", "moved"] as const;
 
 const BLOCKERS = ["owner", "decision", "task", "external"] as const;
 

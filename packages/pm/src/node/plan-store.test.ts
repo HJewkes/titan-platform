@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Bet } from "../planning.js";
-import { PlanStoreError, loadPlanRecords, nextPlanId, readPlanRecord, withPlanLock, writePlanRecord } from "./index.js";
+import { PlanStoreError, loadLaneIntentLines, loadPlanRecords, writeLaneIntentLine, nextPlanId, readPlanRecord, withPlanLock, writePlanRecord } from "./index.js";
 
 const bet: Bet = {
   id: "alpha/B1",
@@ -82,5 +82,21 @@ describe("the plan lock", () => {
     await Promise.all([hold("a"), hold("b")]);
 
     expect([order.slice(0, 2), order.slice(2)].map((pair) => pair[0]!.split(":")[0] === pair[1]!.split(":")[0])).toEqual([true, true]);
+  });
+});
+
+describe("lane intent lines", () => {
+  const line = { id: "lane-a/I1", section: "Taste" as const, date: "2026-11-01", quote: "Invented words", ref: "msg:x1" };
+
+  it("stores a lane's lines in its own folder, apart from the initiative's own intent lines", async () => {
+    await writeLaneIntentLine(root, "alpha", "lane-a", line);
+
+    expect(await loadLaneIntentLines(root, "alpha", "lane-a")).toEqual([line]);
+    expect(await loadLaneIntentLines(root, "alpha", "lane-b")).toEqual([]);
+    expect(await loadPlanRecords(root, "alpha", "intent")).toEqual([]);
+  });
+
+  it("refuses a line whose id is not in the lane", async () => {
+    await expect(writeLaneIntentLine(root, "alpha", "lane-b", line)).rejects.toBeInstanceOf(PlanStoreError);
   });
 });

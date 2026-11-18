@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "skip the token redaction",
+      "file": "apps/console/server/broker-post.ts",
+      "find": "if (token === \"\") return outcome;",
+      "replace": "return outcome;",
+      "kills": ["brokerPost replaces the token in a transport error with a marker"]
+    },
+    {
+      "name": "ignore the caller's refusal fallback",
+      "file": "apps/console/server/broker-post.ts",
+      "find": "body.reason ?? request.refusedFallback",
+      "replace": "body.reason ?? \"not decided\"",
+      "kills": ["brokerPost uses the caller's fallback when a 200 refusal carries no reason"]
+    },
+    {
+      "name": "drop the route from the 5xx detail",
+      "file": "apps/console/server/broker-post.ts",
+      "find": "agent-chat broker ${request.route} answered",
+      "replace": "agent-chat broker answered",
+      "kills": ["brokerPost names the route when the broker answers 5xx"]
+    }
+  ]
+}

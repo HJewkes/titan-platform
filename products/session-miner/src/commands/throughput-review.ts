@@ -99,15 +99,15 @@ export const throughputReview = defineCommand<ReviewArgs, ThroughputReviewResult
     },
   },
   async run(args, ctx) {
-    const result = review(args, ctx);
+    const result = await review(args, ctx);
     return ctx.format === "human" ? renderReview(result).join("\n") : result;
   },
 });
 
-function review(args: ReviewArgs, ctx: MinerContext): ThroughputReviewResult {
+async function review(args: ReviewArgs, ctx: MinerContext): Promise<ThroughputReviewResult> {
   const cachePath = prDiffCachePath(ctx.config.stateDir);
   const shepherdRuns = args.shepherdRuns === undefined ? undefined : readShepherdRuns(args.shepherdRuns);
-  const loaded = loadRows(ctx, args.cap, { prDiffs: readPrDiffCache(cachePath), shepherdRuns });
+  const loaded = await loadRows(ctx, args.cap, { prDiffs: readPrDiffCache(cachePath), shepherdRuns });
   if (!placeable(loaded.rows)) throw Object.assign(new Error(`no row carries PR features; run throughput pr-backfill to fill ${cachePath}`), { code: EXIT.DATAERR });
   const config = { halfLifeDays: args.halfLife, minN: args.minN, minerIndexedAt: loaded.minerIndexedAt ?? undefined };
   const table = reviewTable(loaded.rows, { ...config, asOf: args.asOf, key: "diff" });

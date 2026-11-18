@@ -24,7 +24,7 @@ export interface LongPromptPrice {
 }
 
 /** Bump on any edit to PRICE_TABLE. The cost report prints it in its footer. */
-export const PRICE_TABLE_VERSION = 5;
+export const PRICE_TABLE_VERSION = 6;
 
 const OPUS = { input: 5.0, cacheRead: 0.5, cacheWrite5m: 6.25, cacheWrite1h: 10.0, output: 25.0 };
 const OPUS_5_5 = { input: 4.0, cacheRead: 0.2, cacheWrite5m: 5.0, cacheWrite1h: 8.0, output: 20.0 };
@@ -33,6 +33,8 @@ const SONNET = { input: 2.0, cacheRead: 0.2, cacheWrite5m: 2.5, cacheWrite1h: 4.
 // Reading it as 0.1 overstated the 2026-09-20 audit by about $1,700; prices.test pins the ratio.
 const FABLE_5_1 = { input: 10.0, cacheRead: 0.25, cacheWrite5m: 12.5, cacheWrite1h: 20.0, output: 50.0 };
 const FABLE_5 = { ...FABLE_5_1, cacheRead: 1.0 };
+// Published Fable 5.2 rates, read 2026-11-15; the Claude CLI's costUSD sample fits them exactly.
+const FABLE_5_2 = { input: 8.0, cacheRead: 0.2, cacheWrite5m: 10.0, cacheWrite1h: 16.0, output: 40.0 };
 const SONNET_5_5 = { input: 2.0, cacheRead: 0.2, cacheWrite5m: 2.5, cacheWrite1h: 4.0, output: 10.0 };
 const SONNET_5_5_CHEAP_READ = { ...SONNET_5_5, cacheRead: 0.1 };
 const HAIKU = { input: 1.0, cacheRead: 0.1, cacheWrite5m: 1.25, cacheWrite1h: 2.0, output: 5.0 };
@@ -54,6 +56,7 @@ export const PRICE_TABLE: readonly PriceRow[] = [
   // Release notes: the Sonnet 5.5 cache read dropped to $0.10/MTok on 2026-10-07; no other rate changed.
   { modelPrefix: "claude-sonnet-5-5", effectiveFrom: "2026-10-07", ...SONNET_5_5_CHEAP_READ },
   { modelPrefix: "claude-sonnet-5", effectiveFrom: GENESIS, ...SONNET },
+  { modelPrefix: "claude-fable-5-2", effectiveFrom: GENESIS, ...FABLE_5_2 },
   { modelPrefix: "claude-fable-5-1", effectiveFrom: GENESIS, ...FABLE_5_1 },
   { modelPrefix: "claude-mythos-5-1", effectiveFrom: GENESIS, ...FABLE_5_1 },
   { modelPrefix: "claude-fable-5", effectiveFrom: GENESIS, ...FABLE_5 },

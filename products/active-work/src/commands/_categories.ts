@@ -12,14 +12,36 @@ import {
 import { ValidationError } from '../errors.js';
 import type { CommandContext } from '../registry/index.js';
 import type { Task } from '../schemas/task.js';
+import { today } from '../utils/today.js';
 
 const CATEGORY_FIELDS = ['status', 'kind', 'cos', 'area', 'due'] as const;
 
 type CategoryField = (typeof CATEGORY_FIELDS)[number];
 
+const DUE_FORMS = 'due must be YYYY-MM-DD, +Nd or +Nw (N a positive integer)';
+
+/** Resolves +Nd and +Nw against today, so the stored due is always an absolute date. */
+function resolveDue(value: string): string | null {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const match = /^\+([1-9]\d*)([dw])$/.exec(value);
+  if (match === null) return null;
+  const [year = 0, month = 1, day = 1] = today().split('-').map(Number);
+  const days = Number(match[1]) * (match[2] === 'w' ? 7 : 1);
+  return formatLocalDate(new Date(year, month - 1, day + days));
+}
+
+function formatLocalDate(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+// overwrite, not transform: a transform cannot be represented in the MCP tool's JSON schema,
+// which must keep advertising a plain string.
 export const DueArg = z
   .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'due must be YYYY-MM-DD')
+  .refine((value) => resolveDue(value) !== null, { message: DUE_FORMS, abort: true })
+  .overwrite((value) => resolveDue(value) ?? value)
   .optional();
 
 /** The shared CLI flags for the category fields of task add and task edit. */
@@ -27,7 +49,7 @@ export const CATEGORY_OPTIONS = {
   kind: { long: '--kind', description: 'Kind, from the category registry (e.g. feature, epic)' },
   cos: { long: '--cos', description: 'Class of service, from the category registry' },
   area: { long: '--area', description: 'Area (package or product), from the category registry' },
-  due: { long: '--due', description: 'Due date, YYYY-MM-DD (cos fixed needs one)' },
+  due: { long: '--due', description: 'Due date, YYYY-MM-DD, +Nd or +Nw (cos fixed needs one)' },
 };
 
 /**

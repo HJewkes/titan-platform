@@ -1,8 +1,9 @@
 import { WorkflowNotOwnedError, type WorkflowRun } from "@titan-design/workflow";
-import type { FactoryHost } from "../host.js";
+import type { FactoryHost, PendingGate } from "../host.js";
 import type { ShepherdServices } from "./services.js";
-import type { Registration } from "./store.js";
+import type { Registration, ShepherdStore } from "./store.js";
 import { runOutcome } from "./run-end.js";
+import { cancelUnlessSettled } from "./stale-gates.js";
 
 /**
  * Stops a new register can clear: a pushed fix may let a new head merge, and an owner abandon
@@ -64,5 +65,23 @@ export function endSuperseded(host: FactoryHost, runId: string, newRunId: string
     host.runtime.cancel(runId, `superseded: replay diverged; restarted as ${newRunId}`, { abandon: true });
   } catch (error) {
     if (!(error instanceof WorkflowNotOwnedError)) throw error;
+  }
+}
+
+/** The gates a run has pending, read before its end cancels them. */
+export function pendingGateIds(host: FactoryHost, runId: string): PendingGate[] {
+  return host.pendingGates().filter((pending) => pending.runId === runId);
+}
+
+/**
+ * The registration has moved to the new run, so a gate the superseded run had pending is cancelled and its event goes there:
+ * the old run's timeline is no longer reachable from the registration. A run with no pending gate writes nothing.
+ */
+export function cancelSupersededGates(host: FactoryHost, store: ShepherdStore, pending: PendingGate[], newRunId: string, at: string): void {
+  for (const { runId, stepId, gate } of pending) {
+    const reason = `superseded: run ${runId} replay diverged; its ${stepId} gate was cancelled when registration restarted as ${newRunId}`;
+    // Ending the run may already have cancelled the gate; either way it was cancelled by this supersede.
+    cancelUnlessSettled(host.gates, gate.id, reason, () => undefined);
+    if (host.gates.get(gate.id)?.status === "cancelled") store.recordGateCancel(newRunId, reason, at);
   }
 }

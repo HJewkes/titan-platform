@@ -10,12 +10,24 @@ export {
   BetSchema,
   FreezeEndConditionSchema,
   FreezeSchema,
+  INTENT_SECTIONS,
+  IntentLineSchema,
   OutOfScopeSchema,
   OutcomeSchema,
   OwnerIntentRefSchema,
   PredictionSchema,
 } from "./planning.js";
-export type { Bet, Freeze, FreezeEndCondition, OutOfScope, Outcome, OwnerIntentRef, Prediction } from "./planning.js";
+export type {
+  Bet,
+  Freeze,
+  FreezeEndCondition,
+  IntentLine,
+  IntentSection,
+  OutOfScope,
+  Outcome,
+  OwnerIntentRef,
+  Prediction,
+} from "./planning.js";
 export {
   DELIVERABLE_STATUSES,
   DeliverableSchema,
@@ -70,5 +82,7 @@ export type {
   CategoryRegistry,
   StatusEntry,
 } from "./categories.js";
-export { INTENT_DIGEST_SCHEMA, INTENT_SECTIONS, parseIntentDigest } from "./intent-digest.js";
-export type { IntentDigestError, IntentDigestResult, IntentLine, IntentSection } from "./intent-digest.js";
+export { INTENT_DIGEST_SCHEMA, parseIntentDigest } from "./intent-digest.js";
+export type { IntentDigestError, IntentDigestResult } from "./intent-digest.js";
+export { PREDICTION_CHECKS, checkPrediction, orderBetsForSheet } from "./prediction-check.js";
+export type { PredictionCheck, ScorecardWeekRow, SheetBet } from "./prediction-check.js";

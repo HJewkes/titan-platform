@@ -14,14 +14,14 @@ const WATCHED_PREFIX = "agent-chat/";
 const TRACKING_LOGS = ["logs", "refs", "remotes", "origin"];
 const REFLOG_LINE = /^([0-9a-f]{40}|[0-9a-f]{64}) ([0-9a-f]{40}|[0-9a-f]{64}) [^\t]*(?:\t(.*))?$/;
 
-export interface ReflogEntry {
+interface ReflogEntry {
   oldSha: string;
   newSha: string;
   message: string;
 }
 
 /** Where a branch's reflog had been read to; `last` is the sha its last line moved the branch to. */
-export interface PushCursor {
+interface PushCursor {
   offset: number;
   last?: string;
 }
@@ -125,7 +125,7 @@ export function pushSignal(clones: (repo: RepoSlug) => string | undefined): Push
   };
 }
 
-export interface HeadPollOptions {
+interface HeadPollOptions {
   /** Absent means no reflog is watched, so every tick is a backstop. */
   pushes?: PushWatch;
   repo: RepoSlug;
@@ -144,7 +144,7 @@ export interface HeadPollOptions {
   observe?: HeadObserver;
 }
 
-export type HeadPollRead = { read: false } | { read: true; pr: PullRequest | undefined };
+type HeadPollRead = { read: false } | { read: true; pr: PullRequest | undefined };
 
 export interface HeadPoll {
   /** How long the caller sleeps between calls of `next`. */

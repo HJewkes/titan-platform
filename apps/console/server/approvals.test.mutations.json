@@ -19,6 +19,15 @@
       "kills": [
         "approvals.flow reads the factory again after a factory relay frame, inside the fresh window"
       ]
+    },
+    {
+      "name": "the flow ignores Shepherd's live heads",
+      "file": "apps/console/server/approvals.ts",
+      "find": "answered: legs.flatMap((leg) => leg.answered), heads: live }",
+      "replace": "answered: legs.flatMap((leg) => leg.answered) }",
+      "kills": [
+        "approvals.flow live Shepherd heads withdraws a deposit pinned to an old head as new-head with the live sha"
+      ]
     }
   ]
 }

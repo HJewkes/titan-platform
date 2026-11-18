@@ -1,9 +1,12 @@
 /**
  * `titan-console rounds sweep [--dry-run|--apply] [--json] [--decisions <path>]` (TP-3990): a local verb, never an RPC
  * command, for the same reason as `rounds withdraw`. The decisions file is `--decisions`, else the console's
- * `TITAN_CONSOLE_DECISIONS_FILE`; with neither, only the structural rule runs.
+ * `TITAN_CONSOLE_DECISIONS_FILE`, else `<active-work root>/claude-channels/sources/autonomy/decisions.md` when that
+ * file exists; with none of them, only the structural rule runs.
  */
+import { existsSync } from "node:fs";
 import path from "node:path";
+import { activeWorkRoot } from "@titan-design/app-paths";
 import { runVerb } from "./cli-rounds.js";
 import type { ConsoleConfig } from "./config.js";
 import { sweepRounds, type SweepReport } from "./round-sweep.js";
@@ -35,7 +38,7 @@ function reportLines({ applied, superseded, decisions, gaps }: SweepReport): str
   const decisionLines =
     decisions === null
       ? ["decisions: no decisions file; pass --decisions <path> or set TITAN_CONSOLE_DECISIONS_FILE"]
-      : decisions.candidates.map(({ id, line, text, outcome }) => `${id}: ${outcome} (decisions line ${line}: ${text})`);
+      : [`decisions: ${decisions.file}`, ...decisions.candidates.map(({ id, line, text, outcome }) => `${id}: ${outcome} (decisions line ${line}: ${text})`)];
   return [
     ...supersededLines,
     ...decisionLines,
@@ -44,8 +47,15 @@ function reportLines({ applied, superseded, decisions, gaps }: SweepReport): str
   ];
 }
 
+const DEFAULT_DECISIONS_UNDER_ROOT = ["claude-channels", "sources", "autonomy", "decisions.md"];
+
+function defaultDecisionsFile(): string | null {
+  const file = path.join(activeWorkRoot({ env: process.env }), ...DEFAULT_DECISIONS_UNDER_ROOT);
+  return existsSync(file) ? file : null;
+}
+
 export async function sweepRoundsCli(config: ConsoleConfig, { apply, json, decisions }: SweepArgs): Promise<void> {
-  const decisionsFile = decisions === null ? config.decisionsFile : path.resolve(decisions);
+  const decisionsFile = decisions === null ? (config.decisionsFile ?? defaultDecisionsFile()) : path.resolve(decisions);
   await runVerb(
     () => sweepRounds({ roundsDir: config.roundsDir, decisionsFile, apply, now: new Date() }),
     (report) => (json ? JSON.stringify(report) : reportLines(report).join("\n")),

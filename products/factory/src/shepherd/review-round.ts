@@ -7,7 +7,7 @@ import { DEFAULT_ACCOUNT } from "./account-limit.js";
 import { convergenceFields } from "./fix-first-trail.js";
 import { workflowCiFieldOf, type readFixProofAt } from "./fix-proof.js";
 import { withReviewerProfile } from "./g10-release.js";
-import { notReviewed } from "./not-reviewed.js";
+import { notDispatched } from "./not-reviewed.js";
 import type { ReviewRequest, Verdict } from "./phases.js";
 import { withoutPlan } from "./review-panel-plan.js";
 import { panelOn, panelReview, type MemberBase } from "./review-panel-step.js";
@@ -59,7 +59,7 @@ export async function dispatchedRound(ctx: WorkflowContext, request: ReviewReque
   const rounds = { ...(fixFirsts > 0 && { fixFirsts }), ...(asksOwnerBrief(ctx) && { ownerBrief: true }) };
   const asked = { ...rounds, ...proofFields, ...convergenceFields(request.convergence), ...(scopedRereview && { scopedRereview }) };
   const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, runId: ctx.runId, intent: withoutPlan(intent), ...asked }, Dispatched);
-  if (dispatched.kind !== "dispatched") return { dispatched, verdict: await notReviewed(ctx, target, dispatched) };
+  if (dispatched.kind !== "dispatched") return { dispatched, verdict: await notDispatched(ctx, target, dispatched) };
   const dispatchedReviewer: AgentIdentity = { agentId: dispatched.agentId, sessionId: dispatched.sessionId };
   const awaiting = awaitingOf(target, dispatched);
   const account = typeof intent.account === "string" ? intent.account : DEFAULT_ACCOUNT;

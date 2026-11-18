@@ -31,6 +31,7 @@ import { getActiveRoot } from './utils/paths.js';
 import { formatError, EXIT } from './errors.js';
 import { color } from './utils/color.js';
 import { exitAfterFlush } from './utils/exit.js';
+import { BUILD_VERSION } from './version.js';
 
 const HELP_LAUNCH = [
   'aw — launch a Claude session for an active-work initiative.',
@@ -78,7 +79,7 @@ export function helpText(): string {
 /** Print help or version when asked; true when the invocation is fully handled. */
 function printInfoAndExit(args: string[]): boolean {
   if (args.includes('--help') || args.includes('-h')) process.stdout.write(helpText());
-  else if (args.includes('--version') || args.includes('-V')) process.stdout.write('0.1.0\n');
+  else if (args.includes('--version') || args.includes('-V')) process.stdout.write(`${BUILD_VERSION}\n`);
   else return false;
   return true;
 }

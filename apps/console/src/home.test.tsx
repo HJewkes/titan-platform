@@ -5,6 +5,7 @@ import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { errorEnvelope, successEnvelope, type JsonEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
 import { renderPage } from "./render-page.test-helpers.js";
+import { parseRoute } from "./router.js";
 
 // Local noon, so "today" and "the last 24 hours" never straddle midnight whatever zone the test runs in.
 const NOW = new Date(2031, 2, 5, 12, 0, 0).getTime();
@@ -43,7 +44,10 @@ const blocker = (id: string, summary: string, openedAt: string) => ({
 });
 const inbox = (items: unknown[], gaps: string[] = []) => ok({ items, gaps, fyiCount: 0, readAt: new Date(NOW).toISOString(), derived: [] });
 
-type Answers = Partial<Record<"health" | "portfolio" | "tasks" | "queue" | "roster" | "sessions" | "inbox", JsonEnvelope<unknown>>>;
+const ownerTask = (id: string, title: string, fields: Record<string, unknown> = {}) => ({ ...task(id, title, "ready", "No blockers"), ...fields });
+const ownerRows = (...tasks: unknown[]) => ok({ fetchedAt: "", evidence: { repos: [], degraded: [] }, tasks });
+
+type Answers = Partial<Record<"health" | "portfolio" | "tasks" | "owner" | "queue" | "roster" | "sessions" | "inbox", JsonEnvelope<unknown>>>;
 
 const ok = (data: unknown): JsonEnvelope<unknown> => successEnvelope(data);
 
@@ -59,6 +63,7 @@ function homeSnapshot(answers: Answers = {}): Snapshot {
         ok({ fetchedAt: "", personalKnown: true, parseErrors: [], initiatives: [initiative("orbit-relay", "Orbit relay", 3, ago(2 * HOUR)), initiative("kiln-tools", "Kiln tools", 4, ago(72 * HOUR))] }),
       [snapshotKey("work.tasks", { stage: "blocked" })]:
         answers.tasks ?? ok({ fetchedAt: "", evidence: { repos: [], degraded: [] }, tasks: [task("OR-7", "Route beacons", "blocked", "Waits on OR-3"), task("OR-8", "Tune relays", "ready", "No blockers")] }),
+      [snapshotKey("work.tasks", { ownerOnly: true, limit: 200 })]: answers.owner ?? ownerRows(),
       [snapshotKey("agents.queue", {})]: answers.queue ?? ok({ items: [question("m-1", "Ship the relay today?\nMore context", "relay-worker")], hidden: { "notice:exit": 9 }, open: 10, generatedAt: NOW }),
       [snapshotKey("agents.roster", {})]: answers.roster ?? ok({ agents: [agent("relay-worker", "presence"), agent("old-worker", "history")], brokerUptimeMs: HOUR, reconnecting: false, generatedAt: NOW }),
       [snapshotKey("sessions.list", { limit: 200 })]:
@@ -150,7 +155,7 @@ describe("the home page", () => {
   it("issues only reads", async () => {
     const called = renderHome(homeSnapshot(), { inApp: true });
     await screen.findByText("OR-7 Route beacons");
-    expect(new Set(called)).toEqual(new Set(["upstreams.health", "work.portfolio", "work.tasks", "agents.queue", "agents.roster", "sessions.list", "inbox.list", "console.build", "blockers.banner"]));
+    expect(new Set(called)).toEqual(new Set(["upstreams.health", "work.portfolio", "work.tasks", "agents.queue", "agents.roster", "sessions.list", "inbox.list", "videos.resolve", "console.build", "blockers.banner"]));
   });
 
   it("shows the inbox's blocking count and its newest three, each opening the inbox", async () => {
@@ -159,13 +164,57 @@ describe("the home page", () => {
     expect(await screen.findByText("Inbox: 4 blocking")).toBeTruthy();
     expect(screen.getAllByTestId(/^home-inbox-/).map((row) => row.getAttribute("data-testid"))).toEqual(["home-inbox-b-1", "home-inbox-b-2", "home-inbox-b-3"]);
     fireEvent.click(screen.getByText("Merge example/repo#2"));
+    await waitFor(() => expect(window.location.hash).toBe("#/inbox/b-2"));
+  });
+
+  it("opens the bare inbox from the blocking-count header link", async () => {
+    renderHome(homeSnapshot({ inbox: inbox([blocker("b-1", "Merge example/repo#1", ago(HOUR))]) }), { inApp: true });
+    fireEvent.click(await screen.findByText("Inbox: 1 blocking"));
     await waitFor(() => expect(window.location.hash).toBe("#/inbox"));
+  });
+
+  it("round-trips an item id holding a slash and a colon through the hash", async () => {
+    renderHome(homeSnapshot({ inbox: inbox([blocker("gate:run-1/approve-merge", "Approve the merge", ago(HOUR))]) }), { inApp: true });
+    fireEvent.click(await screen.findByText("Approve the merge"));
+    await waitFor(() => expect(window.location.hash).toMatch(/^#\/inbox\//));
+    expect(parseRoute(window.location.hash)).toMatchObject({ view: "inbox", id: "gate:run-1/approve-merge" });
   });
 
   it("never says nothing needs the owner while an inbox source is unreadable", async () => {
     renderHome(homeSnapshot({ ...quiet(), inbox: inbox([], ["factory: connect ECONNREFUSED"]) }));
     expect(await screen.findByText("Inbox: 0 blocking, 1 source unreadable")).toBeTruthy();
     expect(screen.queryByText("Nothing needs you")).toBeNull();
+  });
+});
+
+describe("the home page's owner-only steps", () => {
+  const steps = [
+    { kind: "release", note: "Publish the relay build" },
+    { kind: "credential", note: "Rotate the relay key" },
+  ];
+
+  it("shows each owner step of a task with its kind, note and initiative", async () => {
+    renderHome(homeSnapshot({ owner: ownerRows(ownerTask("OR-20", "Ship relay", { owner_steps: steps })) }));
+    expect(await screen.findByText("release: Publish the relay build")).toBeTruthy();
+    expect(screen.getByText("credential: Rotate the relay key")).toBeTruthy();
+    expect(screen.getAllByText(/OR-20 Ship relay · orbit-relay/).length).toBeGreaterThan(0);
+  });
+
+  it("shows the title of a human-action task that lists no steps", async () => {
+    renderHome(homeSnapshot({ owner: ownerRows(ownerTask("OR-21", "Sign the relay charter", { ownerTagged: true })) }));
+    expect(await screen.findByText("OR-21 Sign the relay charter")).toBeTruthy();
+  });
+
+  it("leaves out a task with neither steps nor an owner tag", async () => {
+    renderHome(homeSnapshot({ owner: ownerRows(ownerTask("OR-22", "Plain chore")) }));
+    await screen.findByText("OR-7 Route beacons");
+    expect(screen.queryByText(/OR-22/)).toBeNull();
+  });
+
+  it("opens the task page from a step row", async () => {
+    renderHome(homeSnapshot({ owner: ownerRows(ownerTask("OR-20", "Ship relay", { owner_steps: steps })) }), { inApp: true });
+    fireEvent.click(await screen.findByText("release: Publish the relay build"));
+    await waitFor(() => expect(window.location.hash).toBe("#/tasks/OR-20"));
   });
 });
 
@@ -185,8 +234,12 @@ describe("the home page, degraded", () => {
     expect(await screen.findByText("The agent-chat queue is unreadable: agent-chat broker not answering on port 7600: connect ECONNREFUSED.")).toBeTruthy();
     expect(screen.getByText("OR-7 Route beacons")).toBeTruthy();
     expect(screen.queryByText("Nothing needs you")).toBeNull();
-    fireEvent.click(screen.getByRole("link", { name: /Open agent-chat/ }));
-    expect(opened).toHaveBeenCalledWith("http://127.0.0.1:7600/ui#queue", "_blank", "noopener");
+    const link = screen.getByRole("link", { name: /Open agent-chat/ });
+    expect(link.getAttribute("href")).toBe("http://127.0.0.1:7600/ui#queue");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toContain("noopener");
+    fireEvent.click(link);
+    expect(opened).not.toHaveBeenCalled();
   });
 
   it("leaves an unreachable upstream's counts blank and lists it as needing the owner", async () => {
@@ -201,5 +254,49 @@ describe("the home page, degraded", () => {
   it("says so when the health command fails", async () => {
     renderHome(homeSnapshot({ health: errorEnvelope("daemon down", 69) }));
     expect(await screen.findByText("Could not load upstream health: daemon down")).toBeTruthy();
+  });
+});
+
+describe("the home page's video of the day", () => {
+  const utcDay = (offsetDays: number): string => new Date(NOW + offsetDays * 24 * HOUR).toISOString().slice(0, 10);
+  const found = (id: string) => ok({ found: true, id });
+  const missed = ok({ found: false, reason: "No current video matches" });
+  const withVideos = (answers: Record<string, JsonEnvelope<unknown>>): Snapshot => {
+    const snapshot = homeSnapshot(quiet());
+    for (const [day, answer] of Object.entries(answers)) snapshot.calls[snapshotKey("videos.resolve", { subject: day })] = answer;
+    return snapshot;
+  };
+  const linkTarget = (): string => (fireEvent.click(screen.getByTestId("home-video-link")), window.location.hash);
+
+  it("links today's video to the theater", async () => {
+    renderHome(withVideos({ [utcDay(0)]: found("vid-today") }), { inApp: true });
+    await screen.findByTestId("home-video-link");
+    expect(linkTarget()).toBe("#/theater/vid-today");
+    expect(screen.getByTestId("home-video-poster").getAttribute("src")).toBe("/media/videos/vid-today/poster");
+  });
+
+  it("falls back to yesterday's video when today has none", async () => {
+    renderHome(withVideos({ [utcDay(0)]: missed, [utcDay(-1)]: found("vid-yesterday") }), { inApp: true });
+    await screen.findByTestId("home-video-link");
+    expect(linkTarget()).toBe("#/theater/vid-yesterday");
+  });
+
+  it("shows one empty line and asks nothing more when both days miss", async () => {
+    const called = renderHome(withVideos({ [utcDay(0)]: missed, [utcDay(-1)]: missed }), { inApp: true });
+    expect(await screen.findByText("No video for today yet.")).toBeTruthy();
+    expect(screen.queryByTestId("home-video-link")).toBeNull();
+    expect(called.filter((name) => name === "videos.resolve")).toHaveLength(2);
+  });
+
+  it("does not ask for yesterday when today is found", async () => {
+    const called = renderHome(withVideos({ [utcDay(0)]: found("vid-today") }), { inApp: true });
+    await screen.findByTestId("home-video-link");
+    expect(called.filter((name) => name === "videos.resolve")).toHaveLength(1);
+  });
+
+  it("shows an error alert and still renders the rest of Home when the resolve fails", async () => {
+    renderHome(withVideos({ [utcDay(0)]: errorEnvelope("catalog unreadable", 1) }), { inApp: true });
+    expect(await screen.findByText("Could not load today's video: catalog unreadable")).toBeTruthy();
+    expect(await screen.findByText("Nothing needs you")).toBeTruthy();
   });
 });

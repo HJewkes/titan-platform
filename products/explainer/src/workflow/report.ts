@@ -202,6 +202,31 @@ export interface CompareRow {
   wallMsDelta: number;
   /** Output names whose sha differs between the two runs, or that only one run made. */
   changed: string[];
+  checks: CheckChanges;
+}
+
+/** How a stage's checks differ between two runs: verdicts that flipped, and names only one run has. */
+export interface CheckChanges {
+  flipped: { name: string; from: "pass" | "fail"; to: "pass" | "fail" }[];
+  added: string[];
+  removed: string[];
+}
+
+const verdict = (check: Check): "pass" | "fail" => (check.pass ? "pass" : "fail");
+
+function compareChecks(left: readonly Check[], right: readonly Check[]): CheckChanges {
+  const before = new Map(left.map((c) => [c.name, c]));
+  const after = new Map(right.map((c) => [c.name, c]));
+  return {
+    flipped: right.filter((c) => before.has(c.name) && before.get(c.name)!.pass !== c.pass).map((c) => ({ name: c.name, from: verdict(before.get(c.name)!), to: verdict(c) })),
+    added: right.filter((c) => !before.has(c.name)).map((c) => c.name),
+    removed: left.filter((c) => !after.has(c.name)).map((c) => c.name),
+  };
+}
+
+function checksChangedText({ flipped, added, removed }: CheckChanges): string {
+  const parts = [...flipped.map((f) => `${f.name} ${f.from} to ${f.to}`), ...added.map((n) => `${n} added`), ...removed.map((n) => `${n} removed`)];
+  return parts.join("; ") || "—";
 }
 
 /** Per stage, the second run against the first: spend and wall time deltas, cache hits and changed output shas. */
@@ -212,6 +237,7 @@ export function compareReports(a: RunReport, b: RunReport): CompareRow[] {
     return {
       stage: left.stage, status: [left.status, right.status], usdDelta: right.usd - left.usd, wallMsDelta: right.wallMs - left.wallMs,
       changed: names.filter((name) => left.outputs[name] !== right.outputs[name]),
+      checks: compareChecks(left.checkRows, right.checkRows),
     };
   });
 }
@@ -225,9 +251,12 @@ export function renderCompare(a: RunReport, b: RunReport): string {
     `- Model spend ${usd(a.totals.usd)} → ${usd(b.totals.usd)}; wall in stages ${secs(a.totals.wallMs)} s → ${secs(b.totals.wallMs)} s`,
     `- Cache hits in ${b.runId}: ${rows.filter((r) => r.status[1] === "cached" || r.status[1] === "reused").map((r) => r.stage).join(", ") || "none"}`,
     "",
-    "| Stage | Status | Δ USD | Δ wall s | Changed outputs |",
-    "|---|---|---|---|---|",
-    ...rows.map((r) => `| ${r.stage} | ${r.status[0]} → ${r.status[1]} | ${signed(r.usdDelta, usd(r.usdDelta))} | ${signed(r.wallMsDelta, secs(r.wallMsDelta))} | ${r.changed.join(", ") || "—"} |`),
+    "| Stage | Status | Δ USD | Δ wall s | Changed outputs | Checks changed |",
+    "|---|---|---|---|---|---|",
+    ...rows.map((r) => {
+      const cost = `${signed(r.usdDelta, usd(r.usdDelta))} | ${signed(r.wallMsDelta, secs(r.wallMsDelta))}`;
+      return `| ${r.stage} | ${r.status[0]} → ${r.status[1]} | ${cost} | ${r.changed.join(", ") || "—"} | ${checksChangedText(r.checks)} |`;
+    }),
     "",
   ].join("\n");
 }

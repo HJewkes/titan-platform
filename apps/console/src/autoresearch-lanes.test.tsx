@@ -138,13 +138,18 @@ describe("the autoresearch lanes board", () => {
     renderConsole(`${RUN_ROUTE}?idea=${KEPT}`);
     const move = within(await screen.findByTestId("autoresearch-ratchet-links"));
 
-    fireEvent.click(move.getByText(/^9e1d4b7/));
-    fireEvent.click(move.getByText(/^4a7c0e3/));
+    const links = [move.getByText(/^9e1d4b7/).closest("a"), move.getByText(/^4a7c0e3/).closest("a")];
 
-    expect(opened.mock.calls.map(([url]) => url)).toEqual([
+    expect(links.map((link) => link?.getAttribute("href"))).toEqual([
       `https://github.com/example-org/example-target/commit/${AR_RUN_FIXTURE.target.pin}`,
       `https://github.com/example-org/example-target/commit/${AR_RUN_FIXTURE.best.head}`,
     ]);
+    for (const link of links) {
+      expect(link?.getAttribute("target")).toBe("_blank");
+      expect(link?.getAttribute("rel")).toContain("noopener");
+      if (link) fireEvent.click(link);
+    }
+    expect(opened).not.toHaveBeenCalled();
   });
 
   it("shows a ratchet move as plain text when the target names no repository", async () => {

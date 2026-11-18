@@ -46,7 +46,7 @@ function stubGit(): string[][] {
   const calls: string[][] = [];
   const runner: CommandRunner = (_bin, args) => {
     calls.push(args);
-    const repoPath = args[1];
+    const repoPath = args.at(1) ?? '';
     const verb = args.slice(2).join(' ');
     let stdout = '';
     if (verb === 'remote get-url origin') stdout = `${ORIGINS[repoPath]}\n`;
@@ -103,7 +103,7 @@ describe('defaultLiveStatusFetcher', () => {
     expect(git.filter((args) => args.includes('get-url'))).toHaveLength(2);
     expect(statuses.map((s) => s.pr?.number ?? null)).toEqual([11, 12, null, 13]);
     expect(statuses[0]).toMatchObject({ present: true, ahead: 2, behind: 7 });
-    expect(statuses[0].pr?.checks).toBe('pass (1/1)');
+    expect(statuses[0]?.pr?.checks).toBe('pass (1/1)');
   });
 
   it('falls back to a per-branch query for heads a truncated bulk list missed', async () => {
@@ -148,14 +148,14 @@ describe('defaultLiveStatusFetcher', () => {
     const rollup = [{ conclusion: 'SUCCESS' }, { conclusion: 'FAILURE' }, { state: 'PENDING' }];
     const prs = [pr('feat/a', 21, rollup)];
     stubGh({ 'acme/widgets': prs });
-    const [fromBulk] = await defaultLiveStatusFetcher([branch(REPO_A, 'feat/a')]);
+    const fromBulk = (await defaultLiveStatusFetcher([branch(REPO_A, 'feat/a')])).at(0);
     const crowded = [...Array.from({ length: 200 }, (_, i) => pr(`x-${i}`, i)), ...prs];
     stubGh({ 'acme/widgets': crowded });
 
-    const [fromFallback] = await defaultLiveStatusFetcher([branch(REPO_A, 'feat/a')]);
+    const fromFallback = (await defaultLiveStatusFetcher([branch(REPO_A, 'feat/a')])).at(0);
 
-    expect(fromBulk.pr).toEqual(fromFallback.pr);
-    expect(fromBulk.pr?.checks).toBe('fail (1/3)');
+    expect(fromBulk?.pr).toEqual(fromFallback?.pr);
+    expect(fromBulk?.pr?.checks).toBe('fail (1/3)');
   });
 });
 

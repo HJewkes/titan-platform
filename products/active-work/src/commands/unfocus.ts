@@ -96,11 +96,12 @@ export default defineCommand<Args, Result>({
 
 async function applyLocked(slugs: string[], fn: () => Promise<void>): Promise<void> {
   const recurse = async (index: number): Promise<void> => {
-    if (index === slugs.length) {
+    const slug = slugs.at(index);
+    if (slug === undefined) {
       await fn();
       return;
     }
-    await withFileLock(getLockPath(slugs[index]), () => recurse(index + 1));
+    await withFileLock(getLockPath(slug), () => recurse(index + 1));
   };
   await recurse(0);
 }

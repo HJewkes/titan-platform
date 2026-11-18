@@ -115,29 +115,55 @@ export async function resolveSlugFromCwd(
 ): Promise<CwdMatch | null> {
   const resolvedCwd = await canonicalize(cwd);
   const slugs = await listInitiativeSlugsOrEmpty(activeRoot);
-  let best: { slug: string; worktreePath: string; depth: number } | null = null;
+  let best: DepthMatch | null = null;
   let tiedAtBest = false;
 
   for (const slug of slugs) {
+    const candidate = await deepestMatchForSlug(activeRoot, slug, resolvedCwd);
+    if (candidate === null) continue;
+    // Brief validity gates only an initiative that already matched the cwd.
     if (!(await hasValidBrief(activeRoot, slug))) continue;
-    // Only *registered* worktrees resolve a cwd. Swept ones are observations,
-    // not a claim that this directory belongs to the initiative (AW-67).
-    const registered = await readRegisteredWorktrees(path.join(activeRoot, slug));
-    for (const entry of registered) {
-      const displayPath = expandTilde(entry.path);
-      if (!path.isAbsolute(displayPath)) continue;
-      const canonical = await canonicalize(displayPath);
-      if (!isInside(resolvedCwd, canonical)) continue;
-      const depth = canonical.length;
-      if (best === null || depth > best.depth) {
-        best = { slug, worktreePath: displayPath, depth };
-        tiedAtBest = false;
-      } else if (depth === best.depth && slug !== best.slug) {
-        tiedAtBest = true;
-      }
+    if (best === null || candidate.depth > best.depth) {
+      best = candidate;
+      tiedAtBest = false;
+    } else if (candidate.depth === best.depth && slug !== best.slug) {
+      tiedAtBest = true;
     }
   }
 
   if (best === null || tiedAtBest) return null;
   return { slug: best.slug, worktreePath: best.worktreePath };
+}
+
+interface DepthMatch extends CwdMatch {
+  depth: number;
+}
+
+/**
+ * The deepest place within one initiative that contains `resolvedCwd`: a
+ * registered worktree, or the initiative's own directory, which is where `aw`
+ * launches every session. Only *registered* worktrees count; swept ones are
+ * observations, not a claim that this directory belongs to the initiative (AW-67).
+ */
+async function deepestMatchForSlug(
+  activeRoot: string,
+  slug: string,
+  resolvedCwd: string,
+): Promise<DepthMatch | null> {
+  const initiativeDir = path.join(activeRoot, slug);
+  let best: DepthMatch | null = null;
+  const consider = async (displayPath: string): Promise<void> => {
+    const canonical = await canonicalize(displayPath);
+    if (!isInside(resolvedCwd, canonical)) return;
+    if (best === null || canonical.length > best.depth) {
+      best = { slug, worktreePath: displayPath, depth: canonical.length };
+    }
+  };
+
+  for (const entry of await readRegisteredWorktrees(initiativeDir)) {
+    const displayPath = expandTilde(entry.path);
+    if (path.isAbsolute(displayPath)) await consider(displayPath);
+  }
+  await consider(initiativeDir);
+  return best;
 }

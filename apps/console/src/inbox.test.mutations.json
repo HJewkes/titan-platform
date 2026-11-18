@@ -15,8 +15,8 @@
     {
       "name": "a queued land run, an approval or a cleared pause shows as not landed",
       "file": "apps/console/src/pages/TapSheet.tsx",
-      "find": "const LANDED = new Set([\"resolved\", \"released\", \"accepted\", \"approved\", \"retired\", \"pr-closed\", \"pause-cleared\", \"already\"]);",
-      "replace": "const LANDED = new Set([\"resolved\", \"released\", \"retired\", \"pr-closed\", \"already\"]);",
+      "find": "const LANDED = new Set([\"resolved\", \"released\", \"accepted\", \"approved\", \"retired\", \"pr-closed\", \"pause-cleared\", \"already\", \"plan-applied\", \"plan-approved\", \"answered\"]);",
+      "replace": "const LANDED = new Set([\"resolved\", \"released\", \"retired\", \"pr-closed\", \"already\", \"plan-applied\", \"plan-approved\", \"answered\"]);",
       "kills": [
         "the inbox page, acting from the console taps a deposit's merge-at-head op, reads back the proposal as the agent's, and shows a queued land run as landed",
         "the inbox page, acting from the console offers a g10-held merge-at-head both taps, and the approve-and-wait tap prepares and acts with the wait and lands as approved",
@@ -24,12 +24,12 @@
       ]
     },
     {
-      "name": "the op read-back drops who proposed it",
-      "file": "apps/console/src/pages/InboxReadBack.tsx",
-      "find": "{`Proposed by ${readBack.proposedBy}: ${readBack.proposal}`}",
-      "replace": "{`Proposed: ${readBack.proposal}`}",
+      "name": "an answer-chat item is left on the terminal",
+      "file": "apps/console/src/pages/InboxPage.tsx",
+      "find": "\"approve-chat\", \"answer-chat\"]",
+      "replace": "\"approve-chat\"]",
       "kills": [
-        "the inbox page, acting from the console taps a deposit's merge-at-head op, reads back the proposal as the agent's, and shows a queued land run as landed"
+        "the inbox page, acting from the console labels each console tap with its verb and leaves the rest on the terminal"
       ]
     },
     {

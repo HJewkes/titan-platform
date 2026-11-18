@@ -58,6 +58,8 @@ export function layersFromTiers(tiers) {
 }
 
 const PRODUCT_ISOLATION = "product-isolation:";
+// The review-finding class key a product-isolation rule covers; scripts/checks-registry.mjs collects it (TP-6483).
+const IMPORT_BOUNDARY_CLASS = "other:import-boundary";
 
 // Products share one layer, and layered-deps allows same-layer imports. forbid-import has no
 // negation, so each ordered pair of products gets its own rule.
@@ -68,6 +70,7 @@ export function productIsolationRules(products = []) {
       .map((to) => ({
         id: `${PRODUCT_ISOLATION}${from}->${to}`,
         type: "forbid-import",
+        $classes: [IMPORT_BOUNDARY_CLASS],
         $comment: "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
         from: `${from}/**`,
         to: `${to}/**`,

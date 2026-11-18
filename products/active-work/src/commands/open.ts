@@ -150,14 +150,15 @@ async function collectInitiatives(
   activeRoot: string,
   ctx: Pick<CommandContext, 'caller' | 'warnings'>,
 ): Promise<InitiativeSummary[]> {
-  const slugs = await listSlugsForCaller(activeRoot, ctx);
-  const summaries: InitiativeSummary[] = [];
-  for (const slug of slugs) {
-    const summary = await loadInitiativeSummary(activeRoot, slug);
-    if (summary) summaries.push(summary);
+  try {
+    const slugs = await listSlugsForCaller(activeRoot, ctx);
+    const loaded = await Promise.all(slugs.map((slug) => loadInitiativeSummary(activeRoot, slug)));
+    return loaded.filter((s): s is InitiativeSummary => s !== null).sort(compareInitiatives);
+  } catch {
+    // A non-owner caller's visibility check may already have said so.
+    if (!ctx.warnings.some((w) => w.includes('root could not be read'))) ctx.warnings.push('the active root could not be read');
+    return [];
   }
-  summaries.sort(compareInitiatives);
-  return summaries;
 }
 
 /**
@@ -227,11 +228,13 @@ async function bootstrapInitiative(
   // not the brief's default worktree.
   const cwdHint = opts.cwdHintOverride ?? (await resolveCwdHint(activeRoot, slug));
   const archiveStart = clock();
-  const { archivedIds: archivedTaskIds, tasks, malformed } = await archiveStaleTasks(path.join(activeRoot, slug), {
+  // Not awaited here: live branch status starts inside assembleBootstrap while the archive runs.
+  const archivePending = archiveStaleTasks(path.join(activeRoot, slug), {
     retentionDays: ARCHIVE_DONE_AFTER_DAYS,
     now: new Date(),
   });
-  const archiveMs = clock() - archiveStart;
+  let archiveMs = 0;
+  const timedArchive = archivePending.finally(() => (archiveMs = clock() - archiveStart));
   const detectSiblings = opts.detectSiblings !== false;
   const { facet } = opts;
   const about = sessionAbout(opts.about, facet);
@@ -239,8 +242,7 @@ async function bootstrapInitiative(
     activeRoot,
     slug,
     includeLiveStatus: !opts.offline,
-    archivedTaskIds,
-    loadedTasks: { tasks, malformed },
+    pendingArchive: timedArchive,
     adhoc: opts.adhoc,
     init: opts.init,
     ...(about !== undefined ? { about } : {}),

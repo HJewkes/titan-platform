@@ -1,10 +1,8 @@
-import { fuseByRRF } from '@titan-design/retrieval';
+import { fuseByRRF, meaningfulTerms, orExpression, selectTerms } from '@titan-design/retrieval';
 import type { LoadedNote } from '../notes/note-file.js';
 import type { SpanHit } from '@titan-design/store-sqlite';
 import { defaultGraphPath, openGraph, type WorkspaceGraph } from '../session-index/graph.js';
-import { selectTerms } from '../search/derive-query.js';
 import { graphTermStatistics } from '../search/document-frequency.js';
-import { meaningfulTerms, orExpression } from '../search/terms.js';
 import { workspaceSpanReader } from '../search/workspace-spans.js';
 
 /**
@@ -111,16 +109,16 @@ export type NoteRelevance = (terms: string[]) => NoteHit[];
  * narrower question — the bootstrap wants notes, not the best of six classes —
  * and because it needs the BM25 score itself, which fusion discards.
  */
-export function graphNoteRelevance(dbPath?: string): NoteRelevance {
+export function graphNoteRelevance(dbPath?: string, shared?: WorkspaceGraph): NoteRelevance {
   return (terms) => {
-    const graph = openGraph(dbPath ?? defaultGraphPath());
+    const graph = shared ?? openGraph(dbPath ?? defaultGraphPath());
     try {
       const { df, maxDfFor } = graphTermStatistics(graph);
       const expression = orExpression(selectTerms(terms, df, { maxDf: maxDfFor(['notes']) }));
       const spans = workspaceSpanReader(graph);
       return noteHits(graph, spans.search(expression, SEARCH_DEPTH, { ownerPrefix: 'note:' }), terms);
     } finally {
-      graph.db.close();
+      if (shared === undefined) graph.db.close();
     }
   };
 }
@@ -152,6 +150,8 @@ interface RankNotesInput {
   subject: string;
   /** Injectable for tests; defaults to a query against the live graph. */
   relevance?: NoteRelevance;
+  /** An open graph the default relevance queries and leaves open. */
+  graph?: WorkspaceGraph;
   /** Foreign notes only from initiatives this allows; required so no caller can forget it (TP-5453 P6). */
   isVisible: (initiative: string) => boolean;
 }
@@ -197,7 +197,7 @@ export function rankNotes(input: RankNotesInput): NoteRanking {
 
   let hits: NoteHit[];
   try {
-    hits = (input.relevance ?? graphNoteRelevance())(terms);
+    hits = (input.relevance ?? graphNoteRelevance(undefined, input.graph))(terms);
   } catch {
     return dateOrder;
   }

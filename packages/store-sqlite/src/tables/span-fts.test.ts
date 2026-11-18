@@ -245,3 +245,92 @@ describe("SpanFtsTables contentlessDelete", () => {
     expect(() => new SpanFtsTables(old, { contentlessDelete: true })).toThrow(/contentlessDelete needs SQLite 3\.43/);
   });
 });
+
+describe("SpanFtsTables trigram twin", () => {
+  function setupTrigram(options: { contentlessDelete?: boolean } = {}): { db: Db; fts: SpanFtsTables } {
+    const db = openDatabase(":memory:");
+    db.exec(spanFtsTablesDdl({ trigram: true, ...options }));
+    return { db, fts: new SpanFtsTables(db, { trigram: true, ...options }) };
+  }
+
+  it("creates a contentless trigram table only when asked", () => {
+    const { db } = setupTrigram();
+    const sql = db.prepare("SELECT sql FROM sqlite_master WHERE name = 'search_tri'").pluck().get();
+    expect(sql).toContain("content=''");
+    expect(sql).toContain("tokenize='trigram'");
+    expect(spanFtsTablesDdl()).not.toContain("_tri");
+  });
+
+  it("finds a substring inside a token that the word index cannot", () => {
+    const { fts } = setupTrigram();
+    fts.index(span("session:a", 0), "pgTextRetriever", { trigram: true });
+
+    expect(fts.search("Retriever")).toEqual([]);
+    expect(fts.searchTrigram('"Retriever"').map((h) => h.ownerRef)).toEqual(["session:a"]);
+  });
+
+  it("never surfaces a purged owner's span", () => {
+    const { fts } = setupTrigram();
+    fts.index(span("session:a", 0), "pgTextRetriever", { trigram: true });
+    fts.index(span("session:b", 1), "otherRetriever", { trigram: true });
+
+    fts.purgeOwner("session:a");
+
+    expect(fts.searchTrigram('"Retriever"').map((h) => h.ownerRef)).toEqual(["session:b"]);
+  });
+
+  it("writes no twin row for a span indexed without the flag", () => {
+    const { db, fts } = setupTrigram();
+    fts.index(span("session:a", 0), "pgTextRetriever");
+
+    expect(db.prepare("SELECT count(*) FROM search_tri").pluck().get()).toBe(0);
+    expect(fts.searchTrigram('"Retriever"')).toEqual([]);
+  });
+
+  it("restores twin hits when the index is cleared and re-streamed", () => {
+    const { db, fts } = setupTrigram();
+    fts.index(span("session:a", 0), "pgTextRetriever", { trigram: true });
+
+    fts.clearIndex();
+    expect(db.prepare("SELECT count(*) FROM search_tri").pluck().get()).toBe(0);
+    expect(fts.searchTrigram('"Retriever"')).toEqual([]);
+
+    fts.index(span("session:a", 0), "pgTextRetriever", { trigram: true });
+    expect(fts.searchTrigram('"Retriever"').map((h) => h.ownerRef)).toEqual(["session:a"]);
+  });
+
+  it("narrows a trigram search by scope and limit", () => {
+    const { fts } = setupTrigram();
+    fts.index({ ...span("note:a", 0), field: "body" }, "pgTextRetriever", { trigram: true });
+    fts.index(span("session:a", 5), "pgTextRetriever", { trigram: true });
+
+    expect(fts.searchTrigram('"Retriever"', 10, { ownerPrefix: "note:" }).map((h) => h.ownerRef)).toEqual(["note:a"]);
+    expect(fts.searchTrigram('"Retriever"', 1)).toHaveLength(1);
+  });
+
+  it("counts stranded twin rows in the orphan ratio", () => {
+    const { fts } = setupTrigram();
+    fts.index(span("session:a", 0), "alpha", { trigram: true });
+    fts.index(span("session:b", 1), "beta", { trigram: true });
+
+    fts.purgeOwner("session:a");
+
+    expect(fts.orphanRatio()).toBe(0.5);
+  });
+
+  it("removes a purged owner's twin row when contentlessDelete is on", () => {
+    const { db, fts } = setupTrigram({ contentlessDelete: true });
+    fts.index(span("session:a", 0), "alpha", { trigram: true });
+    fts.index(span("session:b", 1), "beta", { trigram: true });
+
+    fts.purgeOwner("session:a");
+
+    expect(db.prepare("SELECT count(*) FROM search_tri").pluck().get()).toBe(1);
+    expect(fts.orphanRatio()).toBe(0);
+  });
+
+  it("rejects a twin write on a table built without the trigram option", () => {
+    const { fts } = setup();
+    expect(() => fts.index(span("session:a", 0), "alpha", { trigram: true })).toThrow(/trigram/);
+  });
+});

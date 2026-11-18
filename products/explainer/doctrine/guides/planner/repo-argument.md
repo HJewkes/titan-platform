@@ -150,4 +150,14 @@ One rung of a countdown: its rank, then and, but, therefore, so the item is a sm
 - **owner-FB2.1**: Keep a ledger of every item the video names, each with a kind and the beat that defines it, and define an item before using it.
 - **owner-FB4.1**: A list holds one kind of item.
 - **owner-FB6.1**: Seat each invariant in an architecture row that keeps it.
+- **talks-B4**: Keep a persistent map, the architecture overview, highlighting the current component when entering a deep dive and returning to it after. Never teleport between unrelated diagrams.
+- **talks-B8**: Open with a what-is beat showing the real pain: an error, slow UX or a messy before-state. Never open on a logo or title card longer than about 2 s.
+- **talks-B9**: End with a single contributions or takeaways beat that stays on screen while the closing narration plays. Never end on a thanks card.
+- **talks-O1**: Write a one-sentence throughline before anything else and check every section against it. Cut a section you cannot tie to it, or move it to the companion doc.
+- **talks-O2**: Write the commander's intent: if the viewer remembers one thing, it is this. The takeaways section never introduces that one thing for the first time.
+- **talks-O3**: Structure the body in three acts: what it does and why it matters, how it works, what to take or watch out for. At most 3 sub-points each; never 7 peer sections of equal weight.
+- **talks-O4**: Shape the arc from what is to what could be: the pain or status quo, the answer, then the issues that remain and the ideas to borrow. Never a flat tour of the directory tree.
+- **talks-O5**: Budget about one major concept per minute of runtime: 2 minutes is 2-3 concepts, 10 minutes is 8-10. Choose 1-3 deep dives; never cover every module.
+- **talks-O6**: Pick the deep-dive modules by what is surprising, central or borrowable, never by size or alphabetical order.
+- **talks-O7**: Choose one running example, a single request, file or user action, and carry it through the user view, the architecture and the deep dives. Never switch examples between sections.
 - **talks-ST11**: Plan each visual beat's headline first, as a short claim the picture proves: who or what does something, never a topic label. Write the narration after it, to back that claim.

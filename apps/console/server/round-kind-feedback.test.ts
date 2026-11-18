@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { fileRound } from "./round-file.js";
-import { FEEDBACK_MERGE_REFUSED, RoundSchema } from "./round-schema.js";
+import { FEEDBACK_DECISION_REFUSED, FEEDBACK_MERGE_REFUSED, FEEDBACK_PLAN_REFUSED, RoundSchema } from "./round-schema.js";
 
 // Synthetic: the shape `titan-factory shepherd visual-week-feedback` builds (TP-5409).
 const REPO = "example-org/example-design";
@@ -59,6 +59,23 @@ describe("a feedback round", () => {
     const parsed = RoundSchema.safeParse(withShip());
 
     expect(parsed.error?.issues.map((issue) => issue.message)).toEqual([`question ship-7: ${FEEDBACK_MERGE_REFUSED}`]);
+  });
+
+  it("is refused when it holds a pick-one question that binds no merge", () => {
+    const choice = { id: "pick-1", kind: "pick-one", prompt: "Which?", options: ["A", "B"], required: true, signsOff: "button" };
+    const section = { ...SECTION, parts: [{ id: "button", label: "Button", current: "a", proposed: "b" }], questionIds: ["notes-pr-7", "pick-1"] };
+    const parsed = RoundSchema.safeParse(feedbackRound([section], [NOTES, choice]));
+
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues.map((issue) => issue.message)).toEqual([`question pick-1: ${FEEDBACK_DECISION_REFUSED}`]);
+  });
+
+  it("is refused when it carries planApprovals", () => {
+    const binding = { questionId: "notes-pr-7", approve: "Approve the skill file", task: "example/TP-1", repo: REPO, gate: "skill", scope: { paths: [".claude/skills/example/SKILL.md"] } };
+    const parsed = RoundSchema.safeParse({ ...feedbackRound(), planApprovals: [binding] });
+
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues.map((issue) => issue.message)).toContain(FEEDBACK_PLAN_REFUSED);
   });
 
   it("refuses a round kind the console does not know", () => {

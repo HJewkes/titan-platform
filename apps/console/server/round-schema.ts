@@ -36,10 +36,17 @@ type RoundKind = z.infer<typeof RoundKind>;
 
 export const FEEDBACK_MERGE_REFUSED = "a feedback round asks nothing that merges: drop the merge binding";
 
-/** A post-merge feedback sheet (TP-5409) shows what already merged, so no question in it may bind a merge. */
-function feedbackProblems(kind: RoundKind | undefined, questions: readonly { id: string; kind: string; merge?: unknown }[]): string[] {
+export const FEEDBACK_DECISION_REFUSED = "a feedback round decides nothing: use a decisions round for a pick-one question";
+export const FEEDBACK_PLAN_REFUSED = "a feedback round decides nothing: use a decisions round for plan approvals";
+
+type Problem = { path: string; message: string };
+
+/** A post-merge feedback sheet (TP-5409) shows what already merged, so it holds no decision: a pick-one question or plan approval would hide one from the inbox. */
+function feedbackProblems(kind: RoundKind | undefined, questions: readonly { id: string; kind: string; merge?: unknown }[], planApprovals: readonly unknown[]): Problem[] {
   if (kind !== "feedback") return [];
-  return questions.filter((question) => question.kind === "pick-one" && question.merge !== undefined).map((question) => `question ${question.id}: ${FEEDBACK_MERGE_REFUSED}`);
+  const picks = questions.filter((question) => question.kind === "pick-one");
+  const asks = picks.map((question) => ({ path: "questions", message: `question ${question.id}: ${question.merge !== undefined ? FEEDBACK_MERGE_REFUSED : FEEDBACK_DECISION_REFUSED}` }));
+  return planApprovals.length > 0 ? [...asks, { path: "planApprovals", message: FEEDBACK_PLAN_REFUSED }] : asks;
 }
 
 const ConsoleFields = z.looseObject({ supersedes: Supersedes.optional(), planApprovals: PlanBindings.optional(), kind: RoundKind.optional() });
@@ -51,7 +58,7 @@ export const RoundSchema = ConsoleFields.transform(({ supersedes, planApprovals,
     return z.NEVER;
   }
   const bindings = planBindingProblems(planApprovals ?? [], parsed.data.questions).map((message) => ({ path: "planApprovals", message }));
-  const problems = [...bindings, ...feedbackProblems(kind, parsed.data.questions).map((message) => ({ path: "questions", message }))];
+  const problems = [...bindings, ...feedbackProblems(kind, parsed.data.questions, planApprovals ?? [])];
   if (problems.length > 0) {
     ctx.issues.push(...problems.map(({ path, message }) => ({ code: "custom" as const, path: [path], message, input: undefined })));
     return z.NEVER;

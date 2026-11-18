@@ -33,7 +33,11 @@ afterEach(() => {
 });
 
 /** One prompt and one billed request; `entrypoint` marks a headless run when set. */
-function exchange(sessionId: string, ts: string, entrypoint?: string): Record<string, unknown>[] {
+function exchange(
+  sessionId: string,
+  ts: string,
+  entrypoint?: string,
+): [Record<string, unknown>, Record<string, unknown>] {
   const common = { sessionId, cwd: dir, ...(entrypoint ? { entrypoint } : {}) };
   const requestId = `req-${sessionId}-${ts}`;
   return [

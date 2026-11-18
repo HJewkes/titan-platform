@@ -7,7 +7,7 @@ import { readPrFiles } from "../dispatch/collision.js";
 import type { Runner } from "../dispatch/runner.js";
 import { EXIT } from "../exit-codes.js";
 import { errorMessage } from "../narrow.js";
-import { activeWorkOrigin } from "../shepherd/cleanup-ports.js";
+import { activeWorkOrigin } from "../shepherd/active-work-origin.js";
 import { ShepherdStore } from "../shepherd/store.js";
 import { watchRow } from "../shepherd/view.js";
 import { readLaneTasks } from "./active-work.js";

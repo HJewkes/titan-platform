@@ -61,3 +61,5 @@ export const planFreezeShow = showCommand('freeze', 'alpha/F1');
 export const planFreezeList = listCommand('freeze');
 export const planOutOfScopeShow = showCommand('out-of-scope', 'alpha/X1');
 export const planOutOfScopeList = listCommand('out-of-scope');
+export const planIntentShow = showCommand('intent', 'alpha/I3');
+export const planIntentList = listCommand('intent');

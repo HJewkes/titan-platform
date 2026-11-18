@@ -110,13 +110,23 @@ export async function writeSpool(seed: string, spoolDir: string): Promise<void> 
   await utimes(path.join(spoolDir, WITHDRAW_LOG), dateAt(0), dateAt(0));
 }
 
+/** An `agent_spawned` row, the way `coord.cards` reads one to attribute a merged PR to its coordinator. */
+export interface SpawnEvent {
+  ts: number;
+  actor: string;
+  target: string;
+  meta: { repo: string; branch: string; task: string; work_role: "implementer" };
+}
+
 /** agent-chat's events table, the columns `agents.messages` reads; written without WAL so the file's bytes are the whole state. */
-export function writeEventsDb(file: string, state: BrokerState): void {
+export function writeEventsDb(file: string, state: BrokerState, spawns: readonly SpawnEvent[] = []): void {
   const db = openDatabase(file, { wal: false, foreignKeys: false });
   try {
     db.exec("CREATE TABLE events (id INTEGER PRIMARY KEY, ts INTEGER, kind TEXT, actor TEXT, target TEXT, msg_id TEXT, ref TEXT, body TEXT, meta TEXT)");
     const insert = db.prepare("INSERT INTO events (id, ts, kind, actor, target, msg_id, ref, body, meta) VALUES (@id, @ts, @kind, @actor, @target, @msgId, NULL, @body, NULL)");
     db.transaction(() => state.messages.forEach((message) => insert.run(message)))();
+    const insertSpawn = db.prepare("INSERT INTO events (id, ts, kind, actor, target, msg_id, ref, body, meta) VALUES (@id, @ts, 'agent_spawned', @actor, @target, NULL, NULL, NULL, @meta)");
+    db.transaction(() => spawns.forEach((spawn, index) => insertSpawn.run({ id: 1_000_000 + index, ts: spawn.ts, actor: spawn.actor, target: spawn.target, meta: JSON.stringify(spawn.meta) })))();
   } finally {
     db.close();
   }

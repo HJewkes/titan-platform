@@ -64,6 +64,23 @@ describe('hitTiers', () => {
     expect(tiers[2]).toHaveLength(seeLine(hitOver({})).length + 1 + 2000);
   });
 
+  it('a hit with readIf carries it on tiers 0, 1 and 2', async () => {
+    const file = path.join(dir, 'span.md');
+    writeFileSync(file, 'HEADER-SPANTEXT-TRAILER');
+    const hit = { ...spanHit(file, 7, 8), excerpt: 'Wick.', readIf: 'trimming the wick' };
+    const suffix = 'note:x/lighthouse.md "The lamp" (read if: trimming the wick)';
+
+    const tiers = await hitTiers(hit, dir);
+
+    expect(tiers).toEqual([suffix, `${suffix}\nWick.`, `${suffix}\nSPANTEXT`]);
+  });
+
+  it('a hit without readIf keeps the plain tier-0 line', async () => {
+    const tiers = await hitTiers(hitOver({}), dir);
+
+    expect(tiers[0]).toBe('note:x/lighthouse.md "The lamp"');
+  });
+
   it('a missing file leaves two tiers and does not throw', async () => {
     const tiers = await hitTiers(spanHit(path.join(dir, 'gone.md'), 0, 10), dir);
 

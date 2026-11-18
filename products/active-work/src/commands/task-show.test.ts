@@ -1,3 +1,5 @@
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
 import { describe, it, expect } from 'vitest';
 import taskShow from './task-show.js';
 import taskEdit from './task-edit.js';
@@ -10,6 +12,15 @@ function ctx(activeRoot: string, format: 'human' | 'json' = 'json'): CommandCont
 }
 
 const SLUG = 'sample-initiative';
+
+async function rewriteTask(
+  root: string,
+  id: string,
+  edit: (yaml: string) => string,
+): Promise<void> {
+  const file = path.join(root, SLUG, 'tasks', `${id}.yml`);
+  await fs.writeFile(file, edit(await fs.readFile(file, 'utf8')));
+}
 
 describe('task.show', () => {
   it('returns the full task as JSON for <slug> <id>', async () => {
@@ -49,6 +60,7 @@ describe('task.show', () => {
           'id: SI-1',
           'title: First sample task',
           'status: open',
+          'priority: 1',
           'severity: high',
           'estimate: 3',
           'tags: example',
@@ -68,7 +80,55 @@ describe('task.show', () => {
   it('omits absent optional fields from the human form', async () => {
     await withTempActiveRoot(async (root) => {
       const out = await taskShow.run({ slug: SLUG, id: 'SI-2' }, ctx(root, 'human'));
-      expect(out).toBe('id: SI-2\ntitle: Second sample task, already done\nstatus: done\n');
+      expect(out).not.toMatch(/^(due|dep|parent|kind|cos|area|bet|done_reason):/m);
+    });
+  });
+
+  it('prints due and comma-joined dep when the task has them', async () => {
+    await withTempActiveRoot(async (root) => {
+      await rewriteTask(root, 'SI-1', (y) => `${y}due: 2026-12-01\ndep:\n  - A-1\n  - A-2\n`);
+      const out = await taskShow.run({ slug: SLUG, id: 'SI-1' }, ctx(root, 'human'));
+      expect(out).toContain('due: 2026-12-01\n');
+      expect(out).toContain('dep: A-1, A-2\n');
+    });
+  });
+
+  it('prints neither due nor dep when the task lacks them', async () => {
+    await withTempActiveRoot(async (root) => {
+      const out = await taskShow.run({ slug: SLUG, id: 'SI-1' }, ctx(root, 'human'));
+      expect(out).not.toMatch(/^(due|dep):/m);
+    });
+  });
+
+  it('prints category, parent and bet fields when present', async () => {
+    await withTempActiveRoot(async (root) => {
+      await rewriteTask(
+        root,
+        'SI-1',
+        (y) => `${y}kind: feature\ncos: standard\narea: core\nparent: A-9\nbet: alpha/B1\n`,
+      );
+      const out = await taskShow.run({ slug: SLUG, id: 'SI-1' }, ctx(root, 'human'));
+      for (const line of ['kind: feature', 'cos: standard', 'area: core', 'parent: A-9']) {
+        expect(out).toContain(`${line}\n`);
+      }
+      expect(out).toContain('bet: alpha/B1\n');
+    });
+  });
+
+  it('prints done_at and done_reason for a closed task', async () => {
+    await withTempActiveRoot(async (root) => {
+      await rewriteTask(root, 'SI-2', (y) => `${y}done_reason: shipped\n`);
+      const out = await taskShow.run({ slug: SLUG, id: 'SI-2' }, ctx(root, 'human'));
+      expect(out).toContain('done_at: 2026-05-10\n');
+      expect(out).toContain('done_reason: shipped\n');
+    });
+  });
+
+  it('leaves --json output unchanged by the new compact lines', async () => {
+    await withTempActiveRoot(async (root) => {
+      const task = await taskShow.run({ slug: SLUG, id: 'SI-1' }, ctx(root));
+      expect(task).toMatchObject({ id: 'SI-1', done_at: null });
+      expect(task).not.toHaveProperty('due');
     });
   });
 
@@ -105,6 +165,58 @@ describe('task.show', () => {
       const run = taskShow.run({ slug: SLUG, id: 'SI-99' }, ctx(root));
       await expect(run).rejects.toBeInstanceOf(NotFoundError);
       await expect(run).rejects.toThrow('task SI-99 not found in sample-initiative');
+    });
+  });
+
+  describe('archived and misfiled ids', () => {
+    async function archive(root: string, slug: string, id: string): Promise<void> {
+      const live = path.join(root, slug, 'tasks', `${id}.yml`);
+      const dir = path.join(root, slug, 'tasks', 'archive');
+      await fs.mkdir(dir, { recursive: true });
+      await fs.rename(live, path.join(dir, `${id}.yml`));
+    }
+
+    it('shows an archived task in compact text with an archived line', async () => {
+      await withTempActiveRoot(async (root) => {
+        await archive(root, SLUG, 'SI-2');
+
+        const out = await taskShow.run({ slug: SLUG, id: 'SI-2' }, ctx(root, 'human'));
+
+        expect(out).toContain('id: SI-2\n');
+        expect(out).toContain('archived: yes\n');
+      });
+    });
+
+    it('returns an archived task as JSON', async () => {
+      await withTempActiveRoot(async (root) => {
+        await archive(root, SLUG, 'SI-2');
+
+        const task = await taskShow.run({ slug: SLUG, id: 'SI-2' }, ctx(root));
+
+        expect(task).toMatchObject({ id: 'SI-2', status: 'done' });
+      });
+    });
+
+    it('does not print an archived line for a live task', async () => {
+      await withTempActiveRoot(async (root) => {
+        const out = await taskShow.run({ slug: SLUG, id: 'SI-1' }, ctx(root, 'human'));
+        expect(out).not.toContain('archived:');
+      });
+    });
+
+    it('names the initiative that files an id missing from the one asked', async () => {
+      await withTempActiveRoot(async (root) => {
+        await fs.mkdir(path.join(root, 'other', 'tasks'), { recursive: true });
+        await fs.copyFile(
+          path.join(root, SLUG, 'tasks', 'SI-1.yml'),
+          path.join(root, 'other', 'tasks', 'SI-1.yml'),
+        );
+        await fs.rm(path.join(root, SLUG, 'tasks', 'SI-1.yml'));
+
+        await expect(taskShow.run({ slug: SLUG, id: 'SI-1' }, ctx(root))).rejects.toThrow(
+          'task SI-1 not found in sample-initiative; filed in other (task show other SI-1)',
+        );
+      });
     });
   });
 

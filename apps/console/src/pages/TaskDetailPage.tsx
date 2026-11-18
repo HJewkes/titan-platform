@@ -1,10 +1,12 @@
-import type { ReactNode } from "react";
-import { Alert, Badge, BreadcrumbItem, Breadcrumbs, Card, CardContent, DataRow, DateTime, HStack, Link, Typography, VStack } from "@titan-design/react-ui";
+import { useState, type ReactNode } from "react";
+import { Alert, Badge, BreadcrumbItem, Breadcrumbs, Button, ButtonText, Card, CardContent, DataRow, DateTime, HStack, Link, Typography, VStack } from "@titan-design/react-ui";
 import { Spinner } from "../shell/Loading.js";
 import { EXIT } from "@titan-design/registry";
 import type { ConsoleCommands } from "../../server/commands.js";
-import { useQuery } from "../data/rpc.js";
+import { useInvalidate, useQuery } from "../data/rpc.js";
+import { useAnswerSource } from "../data/submit.js";
 import { open } from "../router.js";
+import { StatePill } from "./AgentParts.js";
 import { GuessedCaption, RefLink, TaskStageBadge } from "./TaskParts.js";
 
 type Detail = ConsoleCommands["work.task"]["result"];
@@ -24,20 +26,38 @@ export function TaskDetailPage({ id }: { id: string }): ReactNode {
       </VStack>
     );
   }
+  return <Loaded id={id} detail={detail.data} />;
+}
+
+function Loaded({ id, detail }: { id: string; detail: Detail }): ReactNode {
   return (
     <VStack gap={4}>
       <Trail id={id} />
-      <Header task={detail.data.task} />
-      <Panel title="Pull requests">
-        <PullRequests detail={detail.data} />
+      <Header task={detail.task} />
+      <Panel title="Related">
+        <Related detail={detail} />
       </Panel>
+      <Panel title="Pull requests">
+        <PullRequests detail={detail} />
+      </Panel>
+      <Panel title="Agents">
+        <Agents id={id} />
+      </Panel>
+      <Records id={id} detail={detail} />
+    </VStack>
+  );
+}
+
+function Records({ id, detail }: { id: string; detail: Detail }): ReactNode {
+  return (
+    <>
       <Panel title="Mentions">
         <Mentions id={id} />
       </Panel>
       <Panel title="Linked sessions">
-        <Sessions detail={detail.data} />
+        <Sessions detail={detail} />
       </Panel>
-    </VStack>
+    </>
   );
 }
 
@@ -79,7 +99,35 @@ function Header({ task }: { task: Detail["task"] }): ReactNode {
       <DataRow label="Updated" value={task.updated} />
       {task.doneWhen ? <Field label="Done when" text={task.doneWhen} /> : null}
       {task.notes ? <Field label="Notes" text={task.notes} /> : null}
+      <DoneControl slug={task.slug} id={task.id} open={task.status === "open"} />
     </Panel>
+  );
+}
+
+/** Mark done on an open task, then Undo until the page is left; each write is followed by a fresh read of the task. */
+function DoneControl({ slug, id, open: isOpen }: { slug: string; id: string; open: boolean }): ReactNode {
+  const source = useAnswerSource();
+  const invalidate = useInvalidate();
+  const [justDone, setJustDone] = useState(false);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const send = async (undo: boolean): Promise<void> => {
+    if (source === null) return;
+    setRefusal(null);
+    const envelope = await source.call("work.task-done", { slug, id, ...(undo ? { undo } : {}) });
+    if (!envelope.ok) return setRefusal(envelope.error);
+    setJustDone(!undo);
+    invalidate(["work.task"]);
+  };
+  if (source === null || (!isOpen && !justDone)) return null;
+  return (
+    <VStack gap={2}>
+      {justDone ? (
+        <Button size="sm" variant="outline" onPress={() => void send(true)}><ButtonText>Undo</ButtonText></Button>
+      ) : (
+        <Button size="sm" onPress={() => void send(false)}><ButtonText>Mark done</ButtonText></Button>
+      )}
+      {refusal !== null ? <Alert status="warning" size="compact" message={`The task was not changed: ${refusal}`} /> : null}
+    </VStack>
   );
 }
 
@@ -88,6 +136,30 @@ function Field({ label, text }: { label: string; text: string }): ReactNode {
     <VStack gap={1}>
       <Typography variant="subtitle2">{label}</Typography>
       <Typography variant="body1">{text}</Typography>
+    </VStack>
+  );
+}
+
+function Related({ detail }: { detail: Detail }): ReactNode {
+  const { task, children, deliverables, deliverablesDegraded } = detail;
+  const empty = task.parent === null && task.dep.length === 0 && children.length === 0 && deliverables.length === 0 && deliverablesDegraded === null;
+  if (empty) return <Typography variant="body1">No related tasks</Typography>;
+  return (
+    <VStack gap={2} testID="related-panel">
+      {task.parent !== null ? <DataRow label="Parent" value={<RefLink refText={`task:${task.parent}`} label={task.parent} />} /> : null}
+      {task.dep.map((dep) => (
+        <DataRow key={dep} label="Depends on" value={<RefLink refText={`task:${dep}`} label={dep} />} />
+      ))}
+      {children.map((child) => (
+        <HStack key={child.id} gap={2} align="center" wrap>
+          <RefLink refText={`task:${child.id}`} label={`${child.id} ${child.title}`} />
+          <Badge variant="subtle" size="sm">{child.status}</Badge>
+        </HStack>
+      ))}
+      {deliverablesDegraded !== null ? <Alert status="warning" size="compact" message={`Deliverables are unavailable: ${deliverablesDegraded}`} /> : null}
+      {deliverables.map((entry) => (
+        <Typography key={entry.id} variant="body1">{`${entry.id} ${entry.record?.title ?? "no record"}`}</Typography>
+      ))}
     </VStack>
   );
 }
@@ -144,7 +216,25 @@ function BranchRow({ branch }: { branch: Branch }): ReactNode {
   );
 }
 
-const TASK_FILE = /^tasks\/(.+)\.yml$/;
+function Agents({ id }: { id: string }): ReactNode {
+  const roster = useQuery("agents.roster");
+  if (roster.status === "loading") return <Spinner size="sm" label="Loading agents" />;
+  if (roster.data === undefined) return <Alert status="warning" size="compact" message={`Agents are unavailable: ${roster.error.message}`} />;
+  const working = roster.data.agents.filter((agent) => agent.taskId === id);
+  if (working.length === 0) return <Typography variant="caption" color="secondary">No live agent on this task</Typography>;
+  return (
+    <VStack gap={2} testID="task-agents">
+      {working.map((agent) => (
+        <HStack key={agent.id} gap={2} align="center" wrap>
+          <RefLink refText={`agent:${agent.name}`} label={agent.name} />
+          <StatePill state={agent.state} />
+        </HStack>
+      ))}
+    </VStack>
+  );
+}
+
+const TASK_FILE =/^tasks\/(.+)\.yml$/;
 
 /** A mention in another task's file names that task; session and artifact mentions have no page yet. */
 function mentionRef(mention: Mention): string | undefined {

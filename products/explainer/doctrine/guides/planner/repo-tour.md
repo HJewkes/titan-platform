@@ -131,4 +131,10 @@ A question, a model run live to answer it, the reading, and what it means. (vide
 - **owner-FB2.1**: Keep a ledger of every item the video names, each with a kind and the beat that defines it, and define an item before using it.
 - **owner-FB4.1**: A list holds one kind of item.
 - **owner-FB6.1**: Seat each invariant in an architecture row that keeps it.
+- **talks-B4**: Keep a persistent map, the architecture overview, highlighting the current component when entering a deep dive and returning to it after. Never teleport between unrelated diagrams.
+- **talks-O1**: Write a one-sentence throughline before anything else and check every section against it. Cut a section you cannot tie to it, or move it to the companion doc.
+- **talks-O2**: Write the commander's intent: if the viewer remembers one thing, it is this. The takeaways section never introduces that one thing for the first time.
+- **talks-O6**: Pick the deep-dive modules by what is surprising, central or borrowable, never by size or alphabetical order.
+- **talks-O7**: Choose one running example, a single request, file or user action, and carry it through the user view, the architecture and the deep dives. Never switch examples between sections.
 - **talks-ST11**: Plan each visual beat's headline first, as a short claim the picture proves: who or what does something, never a topic label. Write the narration after it, to back that claim.
+- **talks-T6**: Show agenda and progress as a small persistent marker: the chapter rail or a highlighted map. Never spend a full beat on an agenda slide with more than 3 items.

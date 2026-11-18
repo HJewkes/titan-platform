@@ -132,6 +132,16 @@ describe("status", () => {
     expect(stderr).toEqual([`anthropic-account: agents: ${text}`]);
   });
 
+  it("reports a timed-out sign-in as logged out, not refused, in text and on stderr", async () => {
+    login("default");
+    login("agents", fakeCredentials({ accessToken: "", refreshToken: "", expiresAt: 0, loginEnded: "time_limit" }));
+
+    expect(await run(["status"])).toBe(2);
+
+    expect(stdout).toContain("agents: logged out (time_limit); no reading");
+    expect(stderr).toEqual(["anthropic-account: agents: logged out (time_limit)"]);
+  });
+
   it("prints schema 2 JSON with each account's login health and windows", async () => {
     login("default");
     writeReadingFile("default", 23, 41.5, 30);

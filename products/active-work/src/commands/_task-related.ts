@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { jaccard } from '@titan-design/memory';
 import type { CommandContext } from '../registry/index.js';
 import type { Task } from '../schemas/task.js';
 import type { RelatedHit, RelatedInput, RelatedResult } from '../search/related.js';
@@ -15,7 +16,7 @@ const RELATED_TASK_LIMIT = 3;
 // Well under the add's 1 s bound, because the deadline is added to the write.
 export const RELATED_DEADLINE_MS = 250;
 
-// From the TP-2544 replay: at 0.9 every flagged pair was a true duplicate, and
+// Measured by scripts/task-add-replay.mjs with the same memory `jaccard`; from the TP-2544 replay: at 0.9 every flagged pair was a true duplicate, and
 // at 0.8 templated titles that differ by one token start to fire.
 const POSSIBLE_DUP_THRESHOLD = 0.9;
 
@@ -66,19 +67,6 @@ function openNeighbours(hits: RelatedHit[], slug: string, existing: Task[]): Tas
     .slice(0, RELATED_TASK_LIMIT);
 }
 
-function titleTokens(title: string): Set<string> {
-  return new Set(title.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []);
-}
-
-export function titleJaccard(a: string, b: string): number {
-  const ta = titleTokens(a);
-  const tb = titleTokens(b);
-  if (ta.size === 0 && tb.size === 0) return 1;
-  let shared = 0;
-  for (const token of ta) if (tb.has(token)) shared++;
-  return shared / (ta.size + tb.size - shared);
-}
-
 async function writeTag(slug: string, taskId: string, tag: string): Promise<void> {
   await withFileLock(getLockPath(slug), async () => {
     const file = path.join(getInitiativeDir(slug), 'tasks', `${taskId}.yml`);
@@ -97,7 +85,7 @@ async function tagPossibleDup(
   best: Task | undefined,
   write: TagWriter,
 ): Promise<Task> {
-  if (best === undefined || titleJaccard(task.title, best.title) < POSSIBLE_DUP_THRESHOLD) {
+  if (best === undefined || jaccard(task.title, best.title) < POSSIBLE_DUP_THRESHOLD) {
     return task;
   }
   const tag = `possible-dup:${best.id}`;

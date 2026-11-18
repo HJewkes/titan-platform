@@ -1,4 +1,4 @@
-import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { scanMemory } from "./discover.js";
@@ -63,5 +63,24 @@ describe("scanMemory", () => {
 
     expect(scan.facts.map((f) => f.name)).toEqual(["g"]);
     expect(scan.unparsed.map(({ ref }) => path.basename(ref.path))).toEqual(["bad.md"]);
+  });
+
+  it("uses the file mtime as modified when the frontmatter has none", () => {
+    const dir = writeMemory(path.join(temp.home, ".claude"), "p1", { "a.md": fact("a", "first", "body") });
+    const old = new Date(Date.now() - 60 * 86_400_000);
+    utimesSync(path.join(dir, "a.md"), old, old);
+
+    const scan = scanMemory();
+
+    expect(scan.facts[0]?.modified).toBe(old.toISOString());
+  });
+
+  it("keeps a frontmatter modified date whatever the mtime", () => {
+    const text = "---\nname: a\ndescription: first\nmodified: 2026-10-01\nmetadata:\n  type: project\n---\n\nbody\n";
+    writeMemory(path.join(temp.home, ".claude"), "p1", { "a.md": text });
+
+    const scan = scanMemory();
+
+    expect(scan.facts[0]?.modified).toBe("2026-10-01");
   });
 });

@@ -15,7 +15,7 @@ import {
   type TaskRowInput,
 } from "@titan-design/session-analytics";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
-import { readScorecardTask, readScorecardTasks, readScorecardWeeks, scorecardStoreFrom } from "./scorecard-view.js";
+import { readScorecardTask, readScorecardTasks, readScorecardWeeks } from "./scorecard-view.js";
 
 let dir: string;
 let storeFile: string;
@@ -128,12 +128,5 @@ describe("the scorecard view's reads", () => {
 
     expect(readScorecardTask({ storeFile }, "orbit-relay", "OR-2").row?.classAtDispatch).toBe("upkeep");
     expect(readScorecardTask({ storeFile }, "orbit-relay", "OR-9").row).toBeNull();
-  });
-});
-
-describe("the scorecard store path", () => {
-  it("follows TITAN_SCORECARD_STORE, else the XDG data home session-miner writes under", () => {
-    expect(scorecardStoreFrom({ TITAN_SCORECARD_STORE: "~/sc/store.sqlite3" }, "/home/user")).toBe("/home/user/sc/store.sqlite3");
-    expect(scorecardStoreFrom({}, "/home/user")).toBe("/home/user/.local/share/titan-scorecard/scorecard.sqlite3");
   });
 });

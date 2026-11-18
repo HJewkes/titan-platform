@@ -52,6 +52,8 @@ export interface CliDeps {
   cliLink?: CliLinkPorts;
   /** What `shepherd register` resolves a bare task ID through; defaults to the global fetch. */
   fetch?: typeof fetch;
+  /** What `shepherd follow-ups` reads whether the PR's Shepherd run stopped through; defaults to the factory's own store. */
+  stoppedPrs?: (prs: ReadonlySet<string>) => Promise<ReadonlySet<string>>;
   /** What `dispatch eligible` reads a lane's back-pressure signals through; defaults to the factory's own stores and serve's /health. */
   laneSignals?: LaneSignalRead;
   /** How `shepherd register` reads a PR's head branch to infer a missing --task or --implementer; defaults to gh. */
@@ -70,6 +72,8 @@ export interface CliDeps {
   /** The serve verb's seat digest; absent, or undefined for an env, means serve sends none. */
   seatDigest?: (env: NodeJS.ProcessEnv) => SeatDigestPorts | undefined;
   ciTimingFallback?: (env: NodeJS.ProcessEnv) => CiTimingFallbackPorts | undefined;
+  /** How the shadow tick sends a ready-stock refill request; absent, or undefined for an env, means it reports the lane and sends none. */
+  refillSend?: (env: NodeJS.ProcessEnv) => ((to: string, text: string) => Promise<void>) | undefined;
   /** The serve verb's gate notifier; absent, or undefined for an env, means serve posts no gate to agent-chat. */
   gateNotify?: (env: NodeJS.ProcessEnv) => GateNotifyOptions | undefined;
   /** The serve verb's console Ship route; absent, or undefined for an env, means serve does not mount it. */

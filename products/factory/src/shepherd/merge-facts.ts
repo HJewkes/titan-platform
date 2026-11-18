@@ -1,5 +1,5 @@
 import { DEFAULT_TABLE, evaluate, type AgentIdentity, type CarryFact, type CheckRunFact, type MergeFacts } from "@titan-design/authority";
-import { GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type PrFile, type PullRequest, type RepoSlug } from "@titan-design/github";
+import { GITHUB_ACTIONS_APP_ID, latestPerName, type CheckRun, type GitHubPort, type PrFile, type PullRequest, type RepoSlug } from "@titan-design/github";
 import type { CiPolicy, SourceTextLocator } from "@titan-design/session-read";
 import type { AttestJudgment, AttestVerdicts } from "./attest-evidence.js";
 import { attestGate, type AttestDecided } from "./attest-read.js";
@@ -13,6 +13,7 @@ import { grantWithheldField, withGrantWithheld, type GrantWithheldField } from "
 import { SKILL_REASON_PREFIX, VISUAL_REASON_PREFIX, evidenceComment, evidenceMarker } from "./evidence-comment.js";
 import type { PlanApproval } from "./plan-approval.js";
 import { planHonour, type PlanHonour } from "./plan-approval-cover.js";
+import { withoutEditRunSkips } from "./fix-proof-jobs.js";
 import { pinnedPaths } from "./pr-changed-paths.js";
 import { REVIEW_CHECK_NAME } from "./publish-review.js";
 import { skillPathsIn } from "./skill-paths.js";
@@ -24,6 +25,7 @@ import { riskFactsOf, riskTier } from "./risk-tier.js";
 import { lowTierPolicyTouch } from "./g10-low-tier.js";
 import type { KindRead } from "./registered-kind.js";
 import { authorityLineOf, ownerTierGate, ownerTierNoted, ownerTierStamp, type OwnerTierField, type OwnerTierWiring } from "./owner-tier.js";
+import { withLaterGates } from "./owner-tier-next.js";
 import { ownerValidateDecided, ownerValidateOf, type OwnerValidateField, type OwnerValidateWiring } from "./g10-owner-validate-read.js";
 import type { CarryResult } from "./tree-carry.js";
 import { evidenceRecord, type EvidenceRecord } from "./evidence-record.js";
@@ -192,7 +194,7 @@ function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined,
     return { outcome: "gate", rule: guardRule("head-mismatch"), reason: `merge facts were collected at ${evidence.head}, not ${headSha}` };
   }
   const pathGate = changedFilesGate(evidence, visual, honour) ?? ownerTierGate(evidence, guardRule("owner-tier"));
-  if (pathGate) return pathGate;
+  if (pathGate) return withLaterGates(pathGate, evidence, honour, headSha);
   const policyGate = ciPolicyGate(evidence, honour, headSha);
   if (policyGate && policyGate.rule.rowId !== "ci-policy-budget") return policyGate;
   const decision = ownerTierNoted(decideAfterPolicy(headSha, evidence, visual, honour), evidence);
@@ -308,7 +310,7 @@ export async function collectMergeFacts(
   const pr = await settledPr(port, input.repo, input.pr, clock);
   const [required, runs, paths, frozen, bypassable] = await Promise.all([
     readRequiredChecks(port, input.repo, pr.baseRef),
-    port.latestCheckRuns(input.repo, input.head),
+    port.checkRuns(input.repo, input.head).then((all) => latestPerName(withoutEditRunSkips(all))),
     pinnedPaths(port, input, pr.headSha),
     isFrozen(input.repo, input.pr),
     reviewBypassable(port, input.repo, pr),

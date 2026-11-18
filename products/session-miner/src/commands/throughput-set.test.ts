@@ -50,21 +50,21 @@ describe("selectSetTasks by parent", () => {
     writeTask("alpha", { id: "A-5" });
   });
 
-  it("returns open descendants at every depth and across initiatives, never the parent", () => {
-    const selection = selectSetTasks(root, ALLOWED, { parent: "A-1" });
+  it("returns open descendants at every depth and across initiatives, never the parent", async () => {
+    const selection = await selectSetTasks(root, ALLOWED, { parent: "A-1" });
 
     expect(ids(selection)).toEqual(["A-2", "A-3", "B-1"]);
   });
 
-  it("lists a done descendant under skippedDone instead of forecasting it", () => {
-    const selection = selectSetTasks(root, ALLOWED, { parent: "A-1" });
+  it("lists a done descendant under skippedDone instead of forecasting it", async () => {
+    const selection = await selectSetTasks(root, ALLOWED, { parent: "A-1" });
 
     expect(selection.skippedDone).toEqual(["A-4"]);
     expect(selection.notFound).toEqual([]);
   });
 
-  it("reports a parent id that exists nowhere as notFound", () => {
-    const selection = selectSetTasks(root, ALLOWED, { parent: "Z-9" });
+  it("reports a parent id that exists nowhere as notFound", async () => {
+    const selection = await selectSetTasks(root, ALLOWED, { parent: "Z-9" });
 
     expect(selection.tasks).toEqual([]);
     expect(selection.notFound).toEqual(["Z-9"]);
@@ -80,59 +80,66 @@ describe("selectSetTasks by milestone", () => {
     writeTask("beta", { id: "B-1", tags: ["milestone:M4"] });
   });
 
-  it("refuses a milestone that recurs across initiatives without an initiative, naming both", () => {
-    expect(() => selectSetTasks(root, ALLOWED, { milestone: "M4" })).toThrow(/alpha, beta/);
+  it("refuses a milestone that recurs across initiatives without an initiative, naming both", async () => {
+    await expect(selectSetTasks(root, ALLOWED, { milestone: "M4" })).rejects.toThrow(/alpha, beta/);
   });
 
-  it("returns one initiative's open tasks on an exact tag match, trailing punctuation trimmed", () => {
-    const selection = selectSetTasks(root, ALLOWED, { milestone: "M4", initiative: "alpha" });
+  it("returns one initiative's open tasks on an exact tag match, trailing punctuation trimmed", async () => {
+    const selection = await selectSetTasks(root, ALLOWED, { milestone: "M4", initiative: "alpha" });
 
     expect(ids(selection)).toEqual(["A-1", "A-2"]);
     expect(selection.skippedDone).toEqual(["A-4"]);
   });
 
-  it("needs no initiative when the milestone lives in one initiative", () => {
-    const selection = selectSetTasks(root, ALLOWED, { milestone: "M4-candidate" });
+  it("needs no initiative when the milestone lives in one initiative", async () => {
+    const selection = await selectSetTasks(root, ALLOWED, { milestone: "M4-candidate" });
 
     expect(ids(selection)).toEqual(["A-3"]);
   });
 });
 
 describe("selectSetTasks by explicit ids", () => {
-  it("returns found ids and lists unknown or non-allowlisted ones as notFound", () => {
+  it("returns found ids and lists unknown or non-allowlisted ones as notFound", async () => {
     writeTask("alpha", { id: "A-9", estimate: 2 });
     writeTask("gamma", { id: "G-1" });
 
-    const selection = selectSetTasks(root, ALLOWED, { tasks: ["A-9", "Z-1", "G-1"] });
+    const selection = await selectSetTasks(root, ALLOWED, { tasks: ["A-9", "Z-1", "G-1"] });
 
     expect(selection.tasks).toEqual([{ taskId: "A-9", kind: null, estimate: 2, initiative: "alpha" }]);
     expect(selection.notFound).toEqual(["Z-1", "G-1"]);
   });
 
-  it("takes the kind from the kind: tag before the kind field", () => {
+  it("takes the kind from the kind: tag before the kind field", async () => {
     writeTask("alpha", { id: "A-1", tags: ["kind:security"] });
     writeTask("alpha", { id: "A-2", tags: ["kind:security"], kind: "feature" });
     writeTask("alpha", { id: "A-3", kind: "feature" });
 
-    const selection = selectSetTasks(root, ALLOWED, { tasks: ["A-1", "A-2", "A-3"] });
+    const selection = await selectSetTasks(root, ALLOWED, { tasks: ["A-1", "A-2", "A-3"] });
 
     expect(selection.tasks.map((task) => task.kind)).toEqual(["security", "security", "feature"]);
   });
 
-  it("refuses an id that appears in two initiatives", () => {
+  it("refuses an id that appears in two initiatives", async () => {
     writeTask("alpha", { id: "A-1" });
     writeTask("beta", { id: "A-1" });
 
-    expect(() => selectSetTasks(root, ALLOWED, { tasks: ["A-1"] })).toThrow(/A-1 appears in both alpha and beta/);
+    await expect(selectSetTasks(root, ALLOWED, { tasks: ["A-1"] })).rejects.toThrow(/A-1 appears in both alpha and beta/);
   });
 
-  it("counts an unparseable task file without failing the selection", () => {
+  it("refuses an id repeated in a .yaml file of the same initiative", async () => {
+    writeTask("alpha", { id: "A-1" });
+    writeFileSync(path.join(root, "alpha", "tasks", "A-1.yaml"), "id: A-1\ntitle: A-1\npriority: 1\nstatus: open\ncreated: 2026-08-01\nupdated: 2026-09-01\ndone_at: null\n");
+
+    await expect(selectSetTasks(root, ALLOWED, { tasks: ["A-1"] })).rejects.toThrow(/A-1 appears in both alpha and alpha/);
+  });
+
+  it("counts an unparseable task file without failing the selection", async () => {
     writeTask("alpha", { id: "A-1" });
     writeFileSync(path.join(root, "alpha", "tasks", "broken.yml"), "id: [\n");
 
-    const selection = selectSetTasks(root, ALLOWED, { tasks: ["A-1"] });
+    const selection = await selectSetTasks(root, ALLOWED, { tasks: ["A-1"] });
 
     expect(ids(selection)).toEqual(["A-1"]);
-    expect(selection.unparsed.map((entry) => entry.file)).toEqual([path.join("alpha", "tasks", "broken.yml")]);
+    expect(selection.unparsed.map((entry) => entry.file)).toEqual(["alpha/tasks/broken.yml"]);
   });
 });

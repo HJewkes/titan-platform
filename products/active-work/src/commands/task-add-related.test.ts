@@ -1,11 +1,11 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { jaccard } from '@titan-design/memory';
 import { z } from 'zod';
 import './index.js';
 import {
   RELATED_DEADLINE_MS,
-  titleJaccard,
   type TagWriter,
   warnRelatedTasks,
   type RelatedPort,
@@ -276,7 +276,26 @@ describe('possible-dup tag', () => {
 
     expect(write).toHaveBeenCalledWith(SLUG, 'RT-99', 'possible-dup:RT-1');
     expect(result.tags).toEqual(['possible-dup:RT-1']);
-    expect(titleJaccard('a b c d e f g h i', 'a b c d e f g h i j')).toBeCloseTo(0.9);
+  });
+
+  it('a title scoring exactly 0.9 on the shared jaccard is tagged', async () => {
+    const write = vi.fn<TagWriter>(async () => {});
+    const title = 'one two three four five six seven eight nine';
+    expect(jaccard(title, neighbour.title)).toBeCloseTo(0.9);
+
+    const { result } = await tagging(title, write);
+
+    expect(result.tags).toEqual(['possible-dup:RT-1']);
+  });
+
+  it('single-character tokens do not count against a duplicate, as in the replay that tuned 0.9', async () => {
+    const write = vi.fn<TagWriter>(async () => {});
+    const title = `${neighbour.title} a b c`;
+    expect(jaccard(title, neighbour.title)).toBe(1);
+
+    const { result } = await tagging(title, write);
+
+    expect(result.tags).toEqual(['possible-dup:RT-1']);
   });
 
   it('just under is not', async () => {

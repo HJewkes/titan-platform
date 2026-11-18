@@ -28,6 +28,8 @@ export type LoginState =
     }
   | { status: "expired"; expiresAt: number; canRefresh: boolean }
   | { status: "missing" }
+  // Claude Code's file after a sign-in ended without a token, e.g. `time_limit`.
+  | { status: "logged-out"; reason: string }
   | { status: "refused"; reason: RefusedReason };
 
 const LABEL = /^[A-Za-z0-9_.-]{1,64}$/;
@@ -58,6 +60,16 @@ function stateFromOAuth(oauth: OAuth, now: number): LoginState {
   return state;
 }
 
+// A sign-in that timed out leaves empty tokens, a zero expiry and the reason it ended, which
+// the schema would refuse as malformed. Only that exact shape reads as logged out.
+function loggedOutState(oauth: unknown): LoginState | null {
+  if (typeof oauth !== "object" || oauth === null) return null;
+  const loginEnded: unknown = Reflect.get(oauth, "loginEnded");
+  if (Reflect.get(oauth, "accessToken") !== "" || Reflect.get(oauth, "expiresAt") !== 0) return null;
+  if (typeof loginEnded !== "string") return null;
+  return { status: "logged-out", reason: safeLabel(loginEnded) ?? "unknown" };
+}
+
 function readOAuthField(credentials: unknown): unknown {
   if (typeof credentials !== "object" || credentials === null) return undefined;
   if (!Object.hasOwn(credentials, "claudeAiOauth")) return undefined;
@@ -76,6 +88,8 @@ export function loginStateFromCredentials(credentials: unknown, now: number): Lo
   try {
     const oauth = readOAuthField(credentials);
     if (oauth === undefined || oauth === null) return { status: "missing" };
+    const loggedOut = loggedOutState(oauth);
+    if (loggedOut !== null) return loggedOut;
     const parsed = oauthSchema.safeParse(oauth);
     return parsed.success ? stateFromOAuth(parsed.data, now) : { status: "refused", reason: "malformed" };
   } catch {

@@ -9,6 +9,9 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./shepherd/reviewer-reader": {
+      "import": "./dist/shepherd/reviewer-reader.js"
     }
   },
   "files": [
@@ -37,6 +40,7 @@
     "@pnpm/parse-overrides": "^1001.0.4",
     "@titan-design/agent": "workspace:^",
     "@titan-design/agent-dispatch": "workspace:^",
+    "@titan-design/anthropic-account": "workspace:^",
     "@titan-design/app-paths": "workspace:^",
     "@titan-design/authority": "workspace:^",
     "@titan-design/autoresearch": "workspace:^",

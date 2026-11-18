@@ -1,4 +1,4 @@
-import type { Rule } from "eslint";
+import type { TitanRule } from "./titan-rule.js";
 
 const TODO_MARKER = /\bTODO\b(.*?)(?=\bTODO\b|\n|$)/g;
 const KEY = String.raw`[A-Z][A-Z0-9]*-\d+`;
@@ -19,10 +19,10 @@ function needsTaskId(commentText: string): boolean {
   return [...commentText.matchAll(TODO_MARKER)].some((marker) => !namesTask(marker[1] ?? ""));
 }
 
-export const todoNeedsIssue: Rule.RuleModule = {
+export const todoNeedsIssue: TitanRule = {
   meta: {
     type: "suggestion",
-    docs: { description: "Require every TODO comment to name a tracking task" },
+    docs: { description: "Require every TODO comment to name a tracking task", classes: ["known-gap-stated"] },
     schema: [],
     messages: {
       missingTaskId:

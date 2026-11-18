@@ -23,8 +23,8 @@
     {
       "name": "qa.json pass ignores the timing gates",
       "file": "products/explainer/src/qa/qa-report.ts",
-      "find": " || base.timing.gates.some((gate) => TIMING_GATES.includes(gate.id) && !gate.pass)",
-      "replace": "",
+      "find": "check.gate !== true || check.pass",
+      "replace": "true",
       "kills": [
         "qa stage timing gates fails the stage on a 9 s beat with no cue-driven change and reports the gap",
         "qa stage timing gates fails the stage on a 3.1 s still picture with no text to read and counts it"

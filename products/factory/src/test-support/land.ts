@@ -45,6 +45,7 @@ export function landScenario(options: { policy?: GatePolicy; ciTimeoutMs?: numbe
   spaceUpdates(fake, (ms) => void (clock += ms), options.updateGapMs);
   const routes = landRoutes({
     port: githubPort(fake.wire),
+    mergeUpTree: () => fake.cleanMergeTree,
     now: () => clock,
     sleep: async (ms) => void (clock += ms),
     ciTimeoutMs: options.ciTimeoutMs ?? 45 * 60_000,

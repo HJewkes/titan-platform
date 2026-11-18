@@ -322,8 +322,8 @@ export type {
   SimilarResult,
 } from "./embeddings/types.js";
 export { buildEmbedText, hashEmbedText, listEmbeddableSymbols } from "./embeddings/corpus.js";
-export type { CachedEmbedResult } from "./embeddings/cache.js";
-export { embedTextsCached, SYMBOL_EMBEDDING_NAMESPACE } from "./embeddings/cache.js";
+export type { CachedEmbedResult, PruneStaleResult } from "./embeddings/cache.js";
+export { embedTextsCached, pruneStaleSymbolVectors, SYMBOL_EMBEDDING_NAMESPACE } from "./embeddings/cache.js";
 export { embedSnapshot, findSimilarCapability, tryEmbedSnapshot } from "./embeddings/embeddings.js";
 
 export type {

@@ -179,7 +179,7 @@ describe('task.apply', () => {
       expect(lines[0]).toMatchObject({
         id: 'SI-1',
         result: 'failed',
-        error: 'Unknown op: frobnicate',
+        error: expect.stringMatching(/^Unknown op: frobnicate \(valid: add_tag, .*set_due\)$/),
       });
       expect(lines[1]).toMatchObject({ id: 'SI-2', result: 'applied' });
       expect((await readTask(root, 'SI-2')).notes).toBe('First line\nKept line\n');
@@ -309,9 +309,9 @@ describe('task.apply', () => {
           'failed',
           'applied',
         ]);
-        expect(results[1].error).toContain('dep cycle');
-        expect(results[2].error).toContain('SI-404 is not a known task id');
-        expect(results[3].error).toContain(`parent OI-1 is in ${OTHER}`);
+        expect(results.at(1)?.error).toContain('dep cycle');
+        expect(results.at(2)?.error).toContain('SI-404 is not a known task id');
+        expect(results.at(3)?.error).toContain(`parent OI-1 is in ${OTHER}`);
         expect((await readTask(root, 'SI-2')).dep).toBeUndefined();
         expect(await readTask(root, 'SI-3')).toMatchObject({ parent: 'SI-1' });
         expect((await readTask(root, 'SI-3')).dep).toBeUndefined();
@@ -386,6 +386,153 @@ describe('task.apply draft promotion', () => {
       await seedTask(root, 'SI-1', SLUG, { tags: ['draft'] });
       const plan = await writePlan(root, REMOVE_DRAFT);
       expect(summaryOf((await apply(root, plan)).envelope).counts.applied).toBe(1);
+    });
+  });
+});
+
+const REGISTRY = {
+  kind: ['epic', 'feature', 'bug'],
+  status: [
+    { id: 'open', closed: false, dispatchable: true },
+    { id: 'done', closed: true, dispatchable: false },
+    { id: 'wont-do', closed: true, dispatchable: false },
+    { id: 'icebox', closed: false, dispatchable: false },
+  ],
+  cos: ['standard', 'fixed'],
+  area: [{ id: 'store', tier: 0, path: 'packages/store' }],
+};
+
+async function seedRegistry(root: string): Promise<void> {
+  const file = path.join(root, 'titan-platform', 'categories.yml');
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, YAML.stringify(REGISTRY));
+}
+
+async function seedBet(root: string, n: number): Promise<string> {
+  const id = `${SLUG}/B${n}`;
+  const dir = path.join(root, SLUG, 'plan', 'bets');
+  await fs.mkdir(dir, { recursive: true });
+  const record = {
+    id,
+    initiative: SLUG,
+    week: '2026-W47',
+    order: n,
+    outcome: `${SLUG}/faster-landing`,
+    tasks: [`${SLUG}/SI-1`],
+    prediction: { metric: 'p50 minutes', direction: 'decrease', baseline: 40, expected: 25, read_by: '2026-11-30' },
+    state: 'proposed',
+  };
+  await fs.writeFile(path.join(dir, `B${n}.yml`), YAML.stringify(record));
+  return id;
+}
+
+describe('task.apply set_<field> ops', () => {
+  it('applies set_bet and set_estimate to two tasks', async () => {
+    await withTempActiveRoot(async (root) => {
+      const bet = await seedBet(root, 1);
+      await seedTask(root, 'SI-1');
+      await seedTask(root, 'SI-2');
+      const plan = await writePlan(root, [
+        { slug: SLUG, id: 'SI-1', ops: [{ set_bet: bet }, { set_estimate: 2 }] },
+        { slug: SLUG, id: 'SI-2', ops: [{ set_bet: bet }, { set_estimate: 0.5 }] },
+      ]);
+
+      const out = summaryOf((await apply(root, plan)).envelope);
+
+      expect(out.counts.applied).toBe(2);
+      expect(await readTask(root, 'SI-1')).toMatchObject({ bet, estimate: 2 });
+      expect(await readTask(root, 'SI-2')).toMatchObject({ bet, estimate: 0.5 });
+    });
+  });
+
+  it('fails a line naming a bet outside the plan store while the other line applies', async () => {
+    await withTempActiveRoot(async (root) => {
+      const bet = await seedBet(root, 1);
+      await seedTask(root, 'SI-1');
+      await seedTask(root, 'SI-2');
+      const plan = await writePlan(root, [
+        { slug: SLUG, id: 'SI-1', ops: [{ set_bet: `${SLUG}/B9` }] },
+        { slug: SLUG, id: 'SI-2', ops: [{ set_bet: bet }] },
+      ]);
+      const report = path.join(root, 'report.jsonl');
+
+      await apply(root, plan, { report });
+
+      const lines = (await fs.readFile(report, 'utf8')).trim().split('\n').map((l) => JSON.parse(l));
+      expect(lines[0]).toMatchObject({ id: 'SI-1', result: 'failed' });
+      expect(lines[0].error).toContain(`Unknown bet id: ${SLUG}/B9`);
+      expect(lines[1]).toMatchObject({ id: 'SI-2', result: 'applied' });
+      expect((await readTask(root, 'SI-1')).bet).toBeUndefined();
+      expect((await readTask(root, 'SI-2')).bet).toBe(bet);
+    });
+  });
+
+  it('applies kind, cos, area, due and fold from the registry values', async () => {
+    await withTempActiveRoot(async (root) => {
+      await seedRegistry(root);
+      await seedTask(root, 'SI-1');
+      const ops = [
+        { set_kind: 'feature' },
+        { set_cos: 'fixed' },
+        { set_area: 'store' },
+        { set_due: '2026-12-31' },
+        { set_fold: 'independent' },
+      ];
+      const plan = await writePlan(root, [{ slug: SLUG, id: 'SI-1', ops }]);
+
+      await apply(root, plan);
+
+      expect(await readTask(root, 'SI-1')).toMatchObject({
+        kind: 'feature',
+        cos: 'fixed',
+        area: 'store',
+        due: '2026-12-31',
+        fold: 'independent',
+      });
+    });
+  });
+
+  it('fails a set_kind outside the registry naming the allowed values, and the other line applies', async () => {
+    await withTempActiveRoot(async (root) => {
+      await seedRegistry(root);
+      await seedTask(root, 'SI-1');
+      await seedTask(root, 'SI-2');
+      const plan = await writePlan(root, [
+        { slug: SLUG, id: 'SI-1', ops: [{ set_kind: 'chore' }] },
+        { slug: SLUG, id: 'SI-2', ops: [{ set_kind: 'bug' }] },
+      ]);
+      const report = path.join(root, 'report.jsonl');
+
+      await apply(root, plan, { report });
+
+      const lines = (await fs.readFile(report, 'utf8')).trim().split('\n').map((l) => JSON.parse(l));
+      expect(lines[0]).toMatchObject({ id: 'SI-1', result: 'failed' });
+      expect(lines[0].error).toContain('Unknown kind: chore (allowed: epic, feature, bug)');
+      expect(lines[1]).toMatchObject({ id: 'SI-2', result: 'applied' });
+    });
+  });
+
+  it('writes nothing on --dry-run but still checks the values', async () => {
+    await withTempActiveRoot(async (root) => {
+      await seedRegistry(root);
+      const before = await seedTask(root, 'SI-1');
+      const plan = await writePlan(root, [
+        { slug: SLUG, id: 'SI-1', ops: [{ set_kind: 'feature' }, { set_estimate: 3 }] },
+      ]);
+
+      const out = summaryOf((await apply(root, plan, { dry_run: true })).envelope);
+
+      expect(out.counts.applied).toBe(1);
+      expect(await fs.readFile(taskFile(root, 'SI-1'), 'utf8')).toBe(before);
+    });
+  });
+
+  it('reports a set value equal to the stored one as unchanged', async () => {
+    await withTempActiveRoot(async (root) => {
+      await seedTask(root, 'SI-1', SLUG, { estimate: 2 });
+      const plan = await writePlan(root, [{ slug: SLUG, id: 'SI-1', ops: [{ set_estimate: 2 }] }]);
+
+      expect(summaryOf((await apply(root, plan)).envelope).counts.unchanged).toBe(1);
     });
   });
 });

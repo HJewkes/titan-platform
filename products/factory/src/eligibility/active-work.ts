@@ -9,7 +9,7 @@ import { evaluateEligibility, type Eligibility, type PlanView, type RefusedTask 
 type Rows = { tasks: unknown[] };
 
 /** The read-only slice of active-work's command table the eligibility reader calls. */
-type EligibilityCommands = {
+export type EligibilityCommands = {
   "task.list": { args: { slug: string; status: "open" | "all"; tag?: string; id?: string }; result: Rows };
   "plan.bet.list": { args: { initiative: string; week: string; state: "selected" }; result: unknown[] };
   "plan.freeze.list": { args: { initiative: string }; result: unknown[] };
@@ -17,7 +17,7 @@ type EligibilityCommands = {
   "plan.outcome.list": { args: { initiative: string }; result: unknown[] };
 };
 
-interface EligibilityQuery {
+export interface EligibilityQuery {
   initiative: string;
   /** ISO week, `YYYY-Www`. */
   week: string;
@@ -36,7 +36,7 @@ async function taskIsDone(client: Client, key: string): Promise<boolean> {
 }
 
 /** Whether a freeze is still in force: not ended by the owner, and an end condition this reader cannot measure keeps it in force. */
-async function freezeActive(client: Client, freeze: Freeze, today: string): Promise<boolean> {
+export async function freezeActive(client: Client, freeze: Freeze, today: string): Promise<boolean> {
   if (freeze.ended_on !== undefined) return false;
   const end = freeze.end_condition;
   if (end.kind === "date") return today < end.date;
@@ -83,21 +83,22 @@ async function planView(client: Client, query: EligibilityQuery, records: PlanRe
 
 const readPlan = async (client: Client, query: EligibilityQuery): Promise<PlanView> => planView(client, query, await rpcPlanRecords(client, query, false));
 
-type PlanReadSource = "rpc" | "file";
+export type PlanReadSource = "rpc" | "file";
 
 const unknownCommand = (error: unknown): boolean => error instanceof RpcError && error.message.startsWith("Unknown command");
 
 /** A daemon built before `plan.*` answers Unknown command; only that answer falls back to the files, so an outage still fails closed. */
-async function shadowPlan(client: Client, query: EligibilityQuery, activeRoot: string): Promise<{ plan: PlanView; planRead: PlanReadSource }> {
-  let records: PlanRecords;
-  let planRead: PlanReadSource = "rpc";
+export async function readPlanRecords(client: Client, query: EligibilityQuery, activeRoot: string): Promise<{ records: PlanRecords; planRead: PlanReadSource }> {
   try {
-    records = await rpcPlanRecords(client, query, true);
+    return { records: await rpcPlanRecords(client, query, true), planRead: "rpc" };
   } catch (error) {
     if (!unknownCommand(error)) throw error;
-    records = await filePlanRecords(activeRoot, query);
-    planRead = "file";
+    return { records: await filePlanRecords(activeRoot, query), planRead: "file" };
   }
+}
+
+async function shadowPlan(client: Client, query: EligibilityQuery, activeRoot: string): Promise<{ plan: PlanView; planRead: PlanReadSource }> {
+  const { records, planRead } = await readPlanRecords(client, query, activeRoot);
   return { plan: await planView(client, query, records), planRead };
 }
 
@@ -151,6 +152,15 @@ export async function readLaneTasks(
       ownerSteps: row.owner_steps ?? [],
     })),
   };
+}
+
+const CensusRow = z.object({ tags: z.array(z.string()).optional(), notes: z.string().optional() });
+
+/** The lane's open tasks, with only the fields the ready-stock census reads. */
+export async function readLaneCensusRows(options: LiveSourceOptions, lane: { initiative: string; tag?: string }): Promise<z.infer<typeof CensusRow>[]> {
+  const client = createRpcClient<EligibilityCommands>(liveSource(options));
+  const { tasks: rows } = await client.call("task.list", { slug: lane.initiative, status: "open", ...(lane.tag !== undefined && { tag: lane.tag }) });
+  return rows.flatMap((row) => CensusRow.safeParse(row).data ?? []);
 }
 
 /** The open tasks of one initiative (or one lane of it), judged against the week's plan over active-work's loopback rpc. Reads only. */

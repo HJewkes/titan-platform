@@ -6,6 +6,7 @@ import { proofWaiverTable, type ProofWaivers } from "./proof-waiver-table.js";
 import { claimPlanApprovals, planApprovalTable, repointPlanApprovals, type PlanApprovals } from "./plan-approval.js";
 import { mergeBaseExceptionTable, repointMergeBaseException, type MergeBaseExceptions } from "./merge-base-exception.js";
 import { watchListTable, type WatchList } from "./watch-list.js";
+import { checkCandidatesTable, type CheckCandidates } from "./check-candidates-store.js";
 import { gateEvidenceTable, holdPassedAt, type GateEvidence } from "./lan-gates.js";
 import { registrationOf } from "./registration-of.js";
 import { appendEvent, eventsFor, latestChangeId, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
@@ -17,8 +18,7 @@ import { afterHold, isAdversaryHold, liftClass, liftTop, type HoldSlots, type Li
 import { isOwnerHold, liftOwnerHold, placeOwnerHold, recordOwnerAsked, type OwnerHold } from "./owner-hold-rows.js";
 import { writeRegistrant, writeRegistrationFacts, type RegistrationFacts, type RegistrationFactsInput } from "./registration-facts.js";
 import { RegistrationRefused, repeatedPolicy, type EffectivePolicy } from "./policy-schema.js";
-import { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
-import type { KindMove } from "./task-kind.js";
+import { TASK_KINDS, kindMoveRefusal, type KindMove, type TaskKind } from "./task-kind.js";
 
 export { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
 
@@ -240,14 +240,10 @@ export class ShepherdStore implements HoldLookup {
   readonly parkedHold = (runId: string): SlotHold | null => readSlots(this.db, runId).parked;
 
   /** Records a probe's proof that a head is a clean merge-up; a repeat changes nothing. */
-  vouch(runId: string, proof: Vouch): void {
-    recordVouch(this.db, runId, proof, this.stamp());
-  }
+  vouch(runId: string, proof: Vouch): void { recordVouch(this.db, runId, proof, this.stamp()); }
 
   /** `fromHead` and every head recorded as a clean merge-up of it onto `baseRef` for the run. */
-  vouchedLine(runId: string, fromHead: string, baseRef: string): Set<string> {
-    return vouchedLine(this.db, runId, fromHead, baseRef);
-  }
+  vouchedLine(runId: string, fromHead: string, baseRef: string): Set<string> { return vouchedLine(this.db, runId, fromHead, baseRef); }
 
   /** The seat's stops on fixer dispatch; apart from holds, so a stop never gates or releases a merge. */
   readonly repairStops = (): RepairStopTable => repairStopTable(this.db, () => this.stamp());
@@ -264,6 +260,9 @@ export class ShepherdStore implements HoldLookup {
   /** The seats' watches on PRs, read by the seat digest; a watch gates nothing. */
   readonly watches = (): WatchList => watchListTable(this.db, () => this.stamp());
 
+  /** Reviewers' check candidates per head and class (TP-6482); data that gates nothing. */
+  readonly checkCandidates = (): CheckCandidates => checkCandidatesTable(this.db, () => this.stamp());
+
   /** What gates outside GitHub Actions concluded at each head; a `lan-gates` hold stands aside at a head where they are green (`lan-gates.ts`). */
   readonly gateEvidence = (): GateEvidence => gateEvidenceTable(this.db, () => this.stamp());
 
@@ -277,6 +276,9 @@ export class ShepherdStore implements HoldLookup {
   recordGateCancel(runId: string, reason: string, at: string): void {
     if (this.byRun(runId)) this.record(runId, "gate-cancel", reason, at, {});
   }
+
+  /** Logs a reason the run's merge step started waiting on, so `shepherd timeline` shows it. */
+  recordMergeWait(runId: string, reason: string, at: string, headSha: string | undefined): void { this.record(runId, "merge-wait", reason, at, { headSha }); }
 
   private record(runId: string, kind: EventKind, reason: string | null, at: string, by: EventContext): void {
     const registration = this.byRun(runId)!;

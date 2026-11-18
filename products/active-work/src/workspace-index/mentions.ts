@@ -32,7 +32,7 @@ const NOTE_REF = /(?<![A-Za-z0-9])note:([A-Za-z0-9._-]+\/[A-Za-z0-9._-]+\.md)/g;
 const SOURCE_PATH = /sources\/([A-Za-z0-9._/-]+\.md)/g;
 
 function matches(body: string, pattern: RegExp): string[] {
-  return [...body.matchAll(pattern)].map((match) => match[1]);
+  return [...body.matchAll(pattern)].flatMap((match) => match.at(1) ?? []);
 }
 
 /**

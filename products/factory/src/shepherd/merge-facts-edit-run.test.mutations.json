@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an edit run's skip reads as the earlier run's success",
+      "file": "products/factory/src/shepherd/fix-proof-jobs.ts",
+      "find": "return runs.filter((run) => run.workflowRunId === null || !edits.has(run.workflowRunId) || !ranBefore(run));",
+      "replace": "return runs.map((run) => (run.workflowRunId !== null && edits.has(run.workflowRunId) && ranBefore(run) ? { ...run, conclusion: \"success\" } : run));",
+      "kills": [
+        "merge facts after a no-op edit fix-proof run stays red when the real run's mutants job failed before the edit run skipped it"
+      ]
+    },
+    {
+      "name": "a run that skipped only some fix-proof jobs counts as an edit run",
+      "file": "products/factory/src/shepherd/fix-proof-jobs.ts",
+      "find": "new Set(jobs.map((run) => run.name)).size === FIX_PROOF_JOBS.size && jobs.every((run) => run.conclusion === \"skipped\")",
+      "replace": "jobs.some((run) => run.conclusion === \"skipped\")",
+      "kills": [
+        "merge facts after a no-op edit fix-proof run keeps a later run's skips when that run did not skip every fix-proof job"
+      ]
+    },
+    {
+      "name": "merge facts read the newest run per name without dropping edit-run skips",
+      "file": "products/factory/src/shepherd/merge-facts.ts",
+      "find": "latestPerName(withoutEditRunSkips(all))",
+      "replace": "latestPerName(all)",
+      "kills": [
+        "merge facts after a no-op edit fix-proof run allows under MRG-AU-RV when a title edit's all-skipped run follows a green real run"
+      ]
+    }
+  ]
+}

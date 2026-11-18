@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -59,12 +60,15 @@ describe('context.related', () => {
         slug: 'alpha',
         trigger: 'spawn',
         query: text,
+        queryHash: createHash('sha256').update(text).digest('hex').slice(0, 16),
+        class: hit.class,
         ref: hit.ref,
         rank: i + 1,
         byteOffset: hit.byteOffset,
         byteLength: hit.byteLength,
       })),
     );
+    expect(log.entries.some((entry) => 'tier' in entry)).toBe(false);
     expect(log.entries.every((entry) => typeof entry.byteOffset === 'number')).toBe(true);
     expect(log.entries.every((entry) => (entry.byteLength ?? 0) > 0)).toBe(true);
   });
@@ -172,6 +176,26 @@ describe('context.related in context mode', () => {
     expect(log.entries.some((entry) => droppedRefs.includes(entry.ref))).toBe(false);
   });
 
+  it('a spawn trigger logs each placed hit with the tier and class it was served at', async () => {
+    const log = recorder();
+
+    const result = await runRelated(
+      {
+        for: 'the alpha lesson',
+        initiative: 'alpha',
+        trigger: 'spawn',
+        mode: 'context',
+        tokens: 2000,
+      },
+      { activeRoot: root, dbPath, hitLog: log.writer },
+    );
+
+    expect(result.entries!.length).toBeGreaterThan(0);
+    expect(log.entries.map((entry) => [entry.ref, entry.tier, entry.class])).toEqual(
+      result.entries!.map((entry) => [entry.ref, entry.tier, entry.class]),
+    );
+  });
+
   it('maxTier caps every entry', async () => {
     const run = (maxTier?: number) =>
       runRelated(
@@ -191,6 +215,22 @@ describe('context.related in context mode', () => {
     expect(deep.entries!.some((entry) => entry.tier > 0)).toBe(true);
     expect(shallow.entries!.length).toBeGreaterThan(0);
     expect(shallow.entries!.every((entry) => entry.tier === 0)).toBe(true);
+  });
+
+  it('a note with read_if shows the condition in its entry text', async () => {
+    writeFile(
+      root,
+      'alpha/sources/notes/2026-09-02-alpha-lesson.md',
+      '---\nkind: process\ntitle: The alpha lesson\ncreated: 2026-09-02\nread_if: migrating the sample store\n---\n\nThe alpha lesson body.\n',
+    );
+
+    const result = await runRelated(
+      { for: 'the alpha lesson', initiative: 'alpha', mode: 'context', tokens: 2000 },
+      { activeRoot: root, dbPath, hitLog: recorder().writer },
+    );
+
+    const entry = result.entries!.find((e) => e.ref === 'note:alpha/2026-09-02-alpha-lesson.md');
+    expect(entry?.text).toContain('(read if: migrating the sample store)');
   });
 
   it('the command result schema keeps the context fields', async () => {

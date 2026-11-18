@@ -29,16 +29,27 @@ async function readDeploy(verbs: Verbs): Promise<DeployHealth> {
   return block;
 }
 
-/** The instant before which every lane merge is in the running build; undefined when nothing waits to deploy. */
-const deployCutoff = (deploy: DeployHealth, now: number): number | undefined => (deploy.behind > 0 ? now - (deploy.behindMinutes + ROUNDING_SLACK_MIN) * 60_000 : undefined);
+/** The instant before which every lane merge is in the running build, grace window or not; undefined when nothing waits to deploy. */
+export function deployCutoff(deploy: DeployHealth, now: number): number | undefined {
+  if (deploy.waitingSince !== undefined) return deploy.waitingSince - ROUNDING_SLACK_MIN * 60_000;
+  return deploy.behind > 0 ? now - (deploy.behindMinutes + ROUNDING_SLACK_MIN) * 60_000 : undefined;
+}
+
+type MergeRow = { task: string; outcome?: { kind: string } | null | undefined; phaseSince: string };
+
+export const mergedSince = (rows: readonly MergeRow[], cutoff: number | undefined): MergeRow[] =>
+  rows.filter((row) => row.outcome?.kind === "merged" && cutoff !== undefined && Date.parse(row.phaseSince) >= cutoff);
 
 /** Lane PRs from Shepherd's watch rows: only lane runs still going, or finished since the cutoff, are loaded. */
-async function prCounts(host: FactoryHost, routes: FactoryRoutes, scope: LaneScope, cutoff: number | undefined): Promise<Pick<LaneSignals, "openPrs" | "mergedNotDeployed">> {
+type PrCounts = Pick<LaneSignals, "openPrs" | "mergedNotDeployed" | "mergedNotDeployedTasks">;
+
+async function prCounts(host: FactoryHost, routes: FactoryRoutes, scope: LaneScope, cutoff: number | undefined): Promise<PrCounts> {
   if (!routes.shepherd) throw new Error("this host was opened without the shepherd routes");
   const since = cutoff === undefined ? undefined : new Date(cutoff).toISOString();
   const rows = await watchRows(host, routes.shepherd, (registration, status) => scope.inLane(registration.task) && (!runFinished(status) || (since !== undefined && registration.updatedAt >= since)));
-  const merged = rows.filter((row) => row.outcome?.kind === "merged" && cutoff !== undefined && Date.parse(row.phaseSince) >= cutoff);
-  return { openPrs: rows.filter((row) => !FINISHED_PHASES.has(row.phase)).length, mergedNotDeployed: merged.length };
+  const undeployed = mergedSince(rows, cutoff);
+  const openPrs = rows.filter((row) => !FINISHED_PHASES.has(row.phase)).length;
+  return { openPrs, mergedNotDeployed: undeployed.length, mergedNotDeployedTasks: undeployed.map((row) => row.task) };
 }
 
 /** Every configured reviewer account, and how many the account-limit store holds exhausted now. */
@@ -64,7 +75,7 @@ async function attempt<T>(unread: Unread, names: readonly SignalName[], read: ()
   }
 }
 
-type HostSignals = Pick<LaneSignals, "openPrs" | "mergedNotDeployed" | "ownerQueue" | "reviewers" | "redMain">;
+type HostSignals = Pick<LaneSignals, "openPrs" | "mergedNotDeployed" | "mergedNotDeployedTasks" | "ownerQueue" | "reviewers" | "redMain">;
 
 /** Without the deploy reading no merge can be judged deployed, so the merged count is left unread with it. */
 async function readHost(verbs: Verbs, host: FactoryHost, routes: FactoryRoutes, scope: LaneScope, deploy: DeployHealth | undefined, unread: Unread): Promise<HostSignals> {
@@ -75,7 +86,7 @@ async function readHost(verbs: Verbs, host: FactoryHost, routes: FactoryRoutes, 
   const redMain = await attempt(unread, ["redMain"], () => new FreezeStore(host.db).activeFreezes().map((freeze) => freeze.repo));
   return {
     ...(prs?.openPrs !== undefined && { openPrs: prs.openPrs }),
-    ...(prs?.mergedNotDeployed !== undefined && deploy !== undefined && { mergedNotDeployed: prs.mergedNotDeployed }),
+    ...(prs?.mergedNotDeployed !== undefined && deploy !== undefined && { mergedNotDeployed: prs.mergedNotDeployed, mergedNotDeployedTasks: prs.mergedNotDeployedTasks }),
     ...(reviewers && { reviewers }),
     ...(ownerQueue !== undefined && { ownerQueue }),
     ...(redMain && { redMain }),

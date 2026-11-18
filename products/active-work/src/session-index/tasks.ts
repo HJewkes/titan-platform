@@ -1,10 +1,9 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { readInitiativeTasks } from '@titan-design/pm/node';
 import type { ResolvedTask, TaskResolution, TaskResolver } from '@titan-design/session-graph';
 
-import { TaskSchema } from '../schemas/task.js';
 import { getActiveRoot } from '../utils/paths.js';
-import { readYaml } from '../utils/yaml-io.js';
 
 /**
  * Resolve `task:<id>` refs against the active-work task store (AW-101).
@@ -47,42 +46,20 @@ async function initiativeSlugs(root: string): Promise<string[]> {
   }
 }
 
-type TaskReader = typeof readYaml;
-
-async function readInitiative(
-  root: string,
-  slug: string,
-  read: TaskReader,
-): Promise<[string, ResolvedTask][]> {
-  const dir = path.join(root, slug, 'tasks');
-  let files: string[];
-  try {
-    files = await fs.readdir(dir);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
-    throw err;
-  }
-  const found: [string, ResolvedTask][] = [];
-  for (const file of files) {
-    if (!file.endsWith('.yml')) continue;
-    // A malformed task file must not fail the whole refresh: the index is a
-    // read-only observer of this store and has no standing to reject it.
-    try {
-      const task = await read(path.join(dir, file), TaskSchema);
-      found.push([
-        task.id,
-        {
-          initiative: slug,
-          title: task.title,
-          status: task.status,
-          estimate: task.estimate ?? null,
-        },
-      ]);
-    } catch {
-      continue;
-    }
-  }
-  return found;
+async function readInitiative(root: string, slug: string): Promise<[string, ResolvedTask][]> {
+  // A malformed task file must not fail the whole refresh: the index is a
+  // read-only observer of this store and has no standing to reject it, so the
+  // reader's `unparsed` list is ignored.
+  const { tasks } = await readInitiativeTasks(root, slug);
+  return tasks.map(({ task }) => [
+    task.id,
+    {
+      initiative: slug,
+      title: task.title,
+      status: task.status,
+      estimate: task.estimate ?? null,
+    },
+  ]);
 }
 
 async function dirMtime(dir: string): Promise<string> {
@@ -134,14 +111,11 @@ async function memoized<T>(
  * Every task in the store, keyed by bare id; ambiguous ids map to null.
  * Memoized per root until a task directory changes; callers must not mutate it.
  */
-export async function loadTaskStore(
-  root: string = getActiveRoot(),
-  read: TaskReader = readYaml,
-): Promise<TaskStore> {
+export async function loadTaskStore(root: string = getActiveRoot()): Promise<TaskStore> {
   return memoized(storeMemo, root, async (slugs) => {
     const store: TaskStore = new Map();
     for (const slug of slugs) {
-      for (const [id, task] of await readInitiative(root, slug, read)) {
+      for (const [id, task] of await readInitiative(root, slug)) {
         if (store.has(id)) store.set(id, AMBIGUOUS);
         else store.set(id, task);
       }

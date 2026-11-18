@@ -57,6 +57,20 @@ When an already-applied version's recorded name differs from the declared one,
 version number, so neither believes in a schema it never applied. A migration with no
 declared name, or a row recorded before names were kept, is never compared.
 
+### Flagging an edited migration
+
+A migration may declare `definition`, the text that pins what it does (usually the SQL its
+`up` runs). Its SHA-256 is recorded in `_migration.hash` when the migration applies. When an
+already-applied version's definition later hashes differently, someone edited a shipped
+migration, so databases that ran the old one differ from new ones. `runMigrations` then
+throws `MigrationDriftError` (carrying `version`, `recordedHash`, and `declaredHash`), or,
+with `runMigrations(db, migrations, { onDrift: "warn" })`, emits it as a process warning
+and carries on. The source of `up` is never hashed, because a rebuild can rename
+identifiers in it without changing what it does. A migration with no `definition` is never
+compared. A row recorded before hashes were kept is unknown rather than drifted: the
+current definition's hash is backfilled, and an older `_migration` table gains the `hash`
+column on the next run.
+
 ## The primitives
 
 Every factory takes an optional `name` so a store can host several instances or keep a
@@ -67,7 +81,7 @@ legacy table name. All DDL is `IF NOT EXISTS`.
 | `edgeTableDdl` | interval bi-temporal edges: `source_ref`, `relation`, `target_ref`, `t_valid/t_invalid`, `t_created/t_expired`, `fact_id`, `confidence`, `attrs`; partial indexes on live rows | `EdgeTable`: `assert`, `expire`, `supersede`, `current`, `from`, `to` | the cross-domain graph; relation names are free strings, corrections expire rather than delete |
 | `entityTableDdl` | current-state entity keyed by ref, with `kind`, `name`, `parent_ref`, `attrs`, and soft expiry (`t_expired`); not interval bi-temporal | `EntityTable`: `upsert`, `get`, `expire`, `listByKind` | facts that change one at a time (memory, sessions) and only need their latest state |
 | `snapshotTableDdl` + `entitySnapTableDdl` | snapshot registry and snapshot-keyed entities (`PRIMARY KEY (snapshot_id, id)`) | none yet | a whole population re-indexed together (a code graph) |
-| `cacheBlobTableDdl` | `(namespace, model, content_hash)` to a blob plus JSON meta | `CacheBlobTable`: `get`, `put`, `getOrCompute`, `count` | embeddings and summaries: pure functions of text, stored once |
+| `cacheBlobTableDdl` | `(namespace, model, content_hash)` to a blob plus JSON meta | `CacheBlobTable`: `get`, `put`, `getOrCompute`, `count`, `delete(namespace, model)`, `models(namespace)` | embeddings and summaries: pure functions of text, stored once |
 | `spanFtsTablesDdl` | `<name>_span` locators plus a contentless FTS5 `<name>_fts` | `SpanFtsTables`: `index`, `search(query, limit?, scope?)`, `purgeOwner`, `orphanRatio`, `clearIndex`; `SpanScope` narrows a search by `ownerPrefix` and `fields` | full-text search where the text lives elsewhere |
 | `watermarkTableDdl` | per-source offset, prefix hash, size/mtime/content hash, status | `WatermarkTable`: `ensure`, `advance`, `rewind`, `markStatus`, `list`; call `ensure` first, since the other three return `false` and write nothing for a key never ensured | incremental ingest of append-mostly sources |
 

@@ -1,15 +1,10 @@
 import path from "node:path";
+import { touchedPaths as sharedTouchedPaths } from "@titan-design/daemon";
 import { z } from "zod";
 
 const CONSOLE_PACKAGE = "titan-console";
 /** pnpm's own view of the workspace packages the console build reaches, so a new dependency needs no list edit here. */
 export const CLOSURE_ARGS: readonly string[] = ["--filter", `${CONSOLE_PACKAGE}...`, "ls", "--depth", "-1", "--json"];
-
-/** Root files every workspace build reads; a lockfile bump for an unrelated package over-triggers, which costs one rebuild. */
-const ROOT_BUILD_INPUTS: readonly string[] = ["pnpm-lock.yaml", "package.json", "pnpm-workspace.yaml", ".npmrc"];
-const ROOT_TSCONFIG = /^tsconfig[^/]*\.json$/;
-/** Files inside a closure package that never reach its dist. */
-const NON_RUNTIME = /(\.(test|spec)\.[cm]?tsx?|\.md)$/;
 
 /**
  * The closure dirs relative to `root`, from `pnpm ls --json` run there. Undefined when the output is not the
@@ -28,10 +23,8 @@ export function closureDirs(lsJson: string, root: string): string[] | undefined 
   return dirs.length === 0 || dirs.some((dir) => dir === "" || dir.startsWith("..")) ? undefined : dirs.sort();
 }
 
-const isRootInput = (file: string): boolean => ROOT_BUILD_INPUTS.includes(file) || ROOT_TSCONFIG.test(file);
-
 /** The changed paths the console build reads; an unknown closure keeps every path. */
 export function touchedPaths(changed: readonly string[], closure: readonly string[] | undefined): string[] {
   if (closure === undefined) return [...changed];
-  return changed.filter((file) => isRootInput(file) || (!NON_RUNTIME.test(file) && closure.some((dir) => file.startsWith(`${dir}/`))));
+  return sharedTouchedPaths(changed, closure);
 }

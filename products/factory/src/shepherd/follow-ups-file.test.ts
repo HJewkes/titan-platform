@@ -6,13 +6,14 @@ import { fileFollowUps, type FollowUpWhere } from "./follow-ups-file.js";
 
 const ORIGIN = "http://127.0.0.1:7400";
 const WHERE: FollowUpWhere = { initiative: "demo", parent: "DM-1", repo: "octo/widget", pr: 7, head: "abcdef0123456789", reviewer: "rev-1" };
-const item = (title: string, severity: FollowUp["severity"] = "low"): FollowUp => ({ title, doneWhen: `${title} is done and verified.`, severity });
+const item = (title: string, severity: FollowUp["severity"] = "medium"): FollowUp => ({ title, doneWhen: `${title} is done and verified.`, severity });
 const parent = { id: "DM-1", status: "open", done_when: "Parent done.", notes: "", tags: [] };
 const other = (status: string, title: string) => ({ id: "DM-2", status, title, done_when: "x", notes: "", tags: [] });
 
 function setup(tasks: Parameters<typeof fakeActiveWork>[0] = [parent]) {
   const aw = fakeActiveWork(tasks);
-  return { aw, port: activeWorkFollowUpTasks({ origin: ORIGIN, fetch: aw.fetch }) };
+  const digest = { append: () => Promise.reject(new Error("no digest row expected")) };
+  return { aw, port: { tasks: activeWorkFollowUpTasks({ origin: ORIGIN, fetch: aw.fetch }), digest } };
 }
 
 describe("fileFollowUps", () => {

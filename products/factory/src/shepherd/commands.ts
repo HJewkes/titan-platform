@@ -20,7 +20,7 @@ import { prsCommand } from "./prs-command.js";
 import { kindMove, testOnlyHint } from "./register-kind.js";
 import type { KindMove } from "./task-kind.js";
 import { PrArg, RegisterArgs, RepoArg, coded, headBranch, policyFor, refuseKindMove, sliceAfter } from "./register-args.js";
-import { endSuperseded, isDivergedEnd, isReplayDiverged, restartFor } from "./restart.js";
+import { cancelSupersededGates, pendingGateIds, endSuperseded, isDivergedEnd, isReplayDiverged, restartFor } from "./restart.js";
 import { lastReadHead } from "./last-read-head.js";
 import { sizeFlagFor, type SliceFlag } from "./size-flag.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
@@ -44,6 +44,7 @@ import { visualWeekCommand } from "./visual-week-command.js";
 import { visualFeedbackCommand } from "./visual-feedback-command.js";
 import { visualFeedbackNotesCommand } from "./visual-feedback-notes-command.js";
 import { watchCommand } from "./watch-command.js";
+import { ownerMeterCommand } from "./owner-meter-command.js";
 import { timelineEntries, type PrTimeline } from "./view.js";
 import type { WatchRow } from "./view-schema.js";
 import { LIST_FILTER, mapRows, rowOf, runFinished, waitingFilter, watchRows, withOrder } from "./watch-rows.js";
@@ -125,7 +126,11 @@ export async function restartRegistered(ctx: FactoryContext, store: ShepherdStor
     }
     return refresh(store, winner, args, policy, move);
   }
-  if (isReplayDiverged(previousRun)) endSuperseded(ctx.host, previousRunId, runId);
+  if (isReplayDiverged(previousRun)) {
+    const pending = pendingGateIds(ctx.host, previousRunId);
+    endSuperseded(ctx.host, previousRunId, runId);
+    cancelSupersededGates(ctx.host, store, pending, runId, new Date(servicesOf(ctx).now?.() ?? Date.now()).toISOString());
+  }
   return { ...refresh(store, store.byRun(runId)!, seeded, policy, move), created: true, previousRunId, ...restart };
 }
 
@@ -371,6 +376,7 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.visual-week-feedback": visualFeedbackCommand,
   "shepherd.visual-feedback-notes": visualFeedbackNotesCommand,
   "shepherd.brief": briefCommand,
+  "shepherd.ownerMeter": ownerMeterCommand,
 };
 
 export type ShepherdCommandName = keyof typeof SHEPHERD_COMMAND_MAP;

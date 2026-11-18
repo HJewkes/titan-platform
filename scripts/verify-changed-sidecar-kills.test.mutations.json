@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the plan audits sidecar kills against no base",
+      "file": "scripts/verify-changed.mjs",
+      "find": "args: [\"run\", \"sidecar:kills\", \"--base\", base]",
+      "replace": "args: [\"run\", \"sidecar:kills\"]",
+      "kills": [
+        "planCommands sidecar kills step audits sidecar kills against the base"
+      ]
+    }
+  ]
+}

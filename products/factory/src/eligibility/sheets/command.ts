@@ -2,9 +2,9 @@ import type { Command } from "commander";
 import type { Verbs } from "../../cli-types.js";
 import { EXIT } from "../../exit-codes.js";
 import { errorMessage } from "../../narrow.js";
-import { activeWorkOrigin } from "../../shepherd/cleanup-ports.js";
+import { activeWorkOrigin } from "../../shepherd/active-work-origin.js";
 import { defaultRuleFilePath, loadRuleFile } from "../shadow/rule-file.js";
-import { applyImport, importPlan, PlanCommandsMissing, type ImportCall } from "./import.js";
+import { applyImport, importPlan, PlanCommandsMissing, type ImportCall, type ImportOutcome } from "./import.js";
 import { defaultDigestDir, readSheetDir, type SheetFile } from "./sheet-dir.js";
 
 interface DirOptions {
@@ -69,13 +69,15 @@ function plannedCalls(sheets: readonly SheetFile[], verbs: Verbs): ImportCall[] 
 }
 
 async function apply(calls: readonly ImportCall[], verbs: Verbs): Promise<number> {
+  let outcome: ImportOutcome;
   try {
-    await applyImport({ origin: activeWorkOrigin(verbs.io.env), ...(verbs.deps.fetch && { fetch: verbs.deps.fetch }) }, calls);
+    outcome = await applyImport({ origin: activeWorkOrigin(verbs.io.env), ...(verbs.deps.fetch && { fetch: verbs.deps.fetch }) }, calls);
   } catch (error) {
     verbs.io.stderr(`error: ${errorMessage(error)}\n`);
     return error instanceof PlanCommandsMissing ? EXIT.UNAVAILABLE : EXIT.FAILURE;
   }
-  verbs.io.stdout(`imported ${calls.length} record(s) as draft outcomes and proposed bets\n`);
+  const skipped = outcome.skipped === 0 ? "" : `; skipped ${outcome.skipped} existing`;
+  verbs.io.stdout(`imported ${outcome.written} record(s) as draft outcomes and proposed bets${skipped}\n`);
   return EXIT.OK;
 }
 

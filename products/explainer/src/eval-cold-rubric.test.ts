@@ -4,7 +4,9 @@ import {
   CANARY_MAX_SCORE,
   COLD_RUBRIC_CANARIES,
   COLD_RUBRIC_DIMS,
+  coldRubricEvalVersion,
   readColdRubric,
+  rubricNote,
   runColdRubric,
   scoreCandidates,
   type ColdRubricDim,
@@ -44,12 +46,12 @@ async function runWithCanary(dim: ColdRubricDim, harness: JudgeHarness): Promise
   throw new Error(`no run places the ${dim} canary`);
 }
 
-describe("the five cold-viewer rows in l1-script.md", () => {
+describe("the six cold-viewer rows in l1-script.md", () => {
   const rubric = readRubric("l1-script.md");
   const { core, reported } = scriptRubricParts(rubric);
 
-  it("lists J8 to J12 with anchors in the reported section, and none of them in judge A's rows", () => {
-    for (const [dim, name] of [["J8", "Motivation"], ["J9", "Clarity"], ["J10", "Novelty"], ["J11", "Memorability"], ["J12", "Visual consistency"]]) {
+  it("lists J8 to J13 with anchors in the reported section, and none of them in judge A's rows", () => {
+    for (const [dim, name] of [["J8", "Motivation"], ["J9", "Clarity"], ["J10", "Novelty"], ["J11", "Memorability"], ["J12", "Visual consistency"], ["J13", "Sounds spoken"]]) {
       const row = reported.split("\n").find((line) => line.startsWith(`| ${dim} ${name} |`));
       expect(row, dim).toBeDefined();
       expect(row!.split("|").filter((cell) => cell.trim() !== "")).toHaveLength(5);
@@ -73,10 +75,10 @@ describe("the five cold-viewer rows in l1-script.md", () => {
 });
 
 describe("cold rubric scores", () => {
-  it("scores all five rows with the quote each score rests on", async () => {
+  it("scores all six rows with the quote each score rests on", async () => {
     const result = await score();
 
-    expect(scores(result)).toEqual({ J8: 4, J9: 4, J10: 4, J11: 4, J12: 4 });
+    expect(scores(result)).toEqual({ J8: 4, J9: 4, J10: 4, J11: 4, J12: 4, J13: 4 });
     expect(result.dims.every((d) => d.verdict.evidence === "c1-1:A courier prints")).toBe(true);
     expect(result.mode).toBe("reported");
   });
@@ -135,6 +137,39 @@ describe("cold rubric canaries", () => {
   });
 });
 
+describe("the J13 sounds-spoken row", () => {
+  it("scores and quotes J13 for the subject", async () => {
+    const result = await score();
+
+    const row = result.dims.find((d) => d.dim === "J13")!;
+    expect(row.verdict.score).toBe(4);
+    expect(row.verdict.evidence).toBe("c1-1:A courier prints");
+  });
+
+  it("reports a J13 canary scored 4 as missed", async () => {
+    const result = await runWithCanary("J13", fakeRubricJudge({ lenient: true }).harness);
+
+    expect(result.canary).toMatchObject({ dim: "J13", got: "4", pass: false });
+    expect(rubricNote(result)).toContain("canary missed (J13=4)");
+  });
+
+  it("leaves trusted to the canary alone, whatever the subject scores on J13", async () => {
+    const low = await runWithCanary("J8", fakeRubricJudge({ score: 1 }).harness);
+    const high = await runWithCanary("J8", fakeRubricJudge({ score: 5 }).harness);
+
+    expect(low.dims.find((d) => d.dim === "J13")!.verdict.score).toBe(1);
+    expect(low.trusted).toBe(true);
+    expect(high.trusted).toBe(true);
+  });
+
+  it("changes coldRubricEvalVersion when the rubric text gains the row", () => {
+    const reported = readColdRubric();
+    const without = reported.split("\n").filter((line) => !line.startsWith("| J13 ")).join("\n");
+
+    expect(coldRubricEvalVersion({ rubric: reported, judge: sonnet })).not.toBe(coldRubricEvalVersion({ rubric: without, judge: sonnet }));
+  });
+});
+
 describe("audition candidates", () => {
   it("scores every candidate, none skipped", async () => {
     const judge = fakeRubricJudge();
@@ -144,6 +179,6 @@ describe("audition candidates", () => {
 
     expect(scored.map((s) => s.candidate)).toEqual(["a", "b", "c"]);
     expect(judge.calls).toHaveLength(3);
-    expect(scored.every((s) => s.rubric.dims.length === 5)).toBe(true);
+    expect(scored.every((s) => s.rubric.dims.length === 6)).toBe(true);
   });
 });

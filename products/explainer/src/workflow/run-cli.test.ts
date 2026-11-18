@@ -1,6 +1,6 @@
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { usePreCalibrationStatuses } from "../writing-statuses-fixtures.test-helpers.js";
-import { cpSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { runRunCli } from "./run-cli.js";
 import { z } from "zod";
@@ -11,7 +11,8 @@ import type { ScriptV1 } from "../script-schema.js";
 import { StageRecordSchema } from "./records.js";
 import { runStageCli } from "./stage-cli.js";
 
-const ReportRowsSchema = z.object({ rows: z.array(z.object({ stage: z.string(), outputs: z.record(z.string(), z.string()) })) });
+const VideoReportSchema = z.object({ videoId: z.string(), runs: z.array(z.object({ runId: z.string(), usd: z.number() })), totals: z.object({ usd: z.number() }) });
+const ReportRowsSchema =z.object({ rows: z.array(z.object({ stage: z.string(), outputs: z.record(z.string(), z.string()) })) });
 import { cloneFixture, dropSeeds, fakeRender, fakeBriefModels, fakeHost, fakeScriptModel, fixture, l0Check, seededRun, type Fixture } from "./run-fakes.test-helpers.js";
 
 // The rewrite stage's tests need a choppy draft the rewrite acts on, whatever the shipped status table says (TP-4662).
@@ -50,6 +51,34 @@ describe("explainer run CLI", () => {
     expect(out.join("")).toContain("| tts | ran | in-process |");
   });
 
+  it("`run report --video` prints the video's folded cost report as JSON and writes no report file", async () => {
+    fx = fixture();
+    const { run, out } = cli(fakeHost(fx, fakeScriptModel(), fakeRender()));
+    await run("--spine", fx.spine, "--facts", fx.facts);
+    const runId = /^run (\S+): completed/.exec(out[0] ?? "")?.[1];
+    out.length = 0;
+    rmSync(path.join(fx.dataDir, "runs", runId!, "run-report.json"));
+
+    const code = await run("report", "--video", runId!, "--json");
+
+    const report = VideoReportSchema.parse(JSON.parse(out.join("")));
+    expect(code).toBe(0);
+    expect(report.videoId).toBe(runId);
+    expect(report.runs.map((r) => r.runId)).toEqual([runId]);
+    expect(report.totals.usd).toBeCloseTo(report.runs[0]!.usd, 10);
+    expect(existsSync(path.join(fx.dataDir, "runs", runId!, "run-report.json"))).toBe(false);
+  });
+
+  it("`run report --video` exits 2 on a video no run belongs to", async () => {
+    fx = fixture();
+    const { run, err } = cli(fakeHost(fx, fakeScriptModel(), fakeRender()));
+
+    const code = await run("report", "--video", "no-such-video", "--json");
+
+    expect(code).toBe(2);
+    expect(err.join("")).toContain("no explainer-video run belongs to video no-such-video");
+  });
+
   it("exits 1 on a stopped run and prints how to resume it", async () => {
     fx = fixture();
     const { run, err } = cli(fakeHost(fx, fakeScriptModel(undefined, { usd: 0.05 }), fakeRender()));
@@ -58,6 +87,17 @@ describe("explainer run CLI", () => {
 
     expect(code).toBe(1);
     expect(err.join("")).toMatch(/continue with: explainer run resume \S+/);
+  });
+
+  it("names the failed stage and its failed gate when a red eval check fails the run", async () => {
+    fx = fixture();
+    const { run, err } = cli(fakeHost(fx, fakeScriptModel(), fakeRender(), { evalChecks: [l0Check(false)] }));
+
+    const code = await run("--spine", fx.spine, "--facts", fx.facts);
+
+    expect(code).toBe(1);
+    expect(err.join("")).toMatch(/failed at stage \w+\n {2}[\w-]+: .*\nrecord: runs\/\S+\/failed\/\w+\.json\n/);
+    expect(err.join("")).toContain("continue with: explainer run resume");
   });
 
   it("exits 2 on an unknown stage or a runaway cap", async () => {
@@ -102,7 +142,7 @@ describe("explainer stage and run variants CLI", () => {
 
     expect(lines.filter((l) => l.startsWith("stage rewrite:")).map((l) => l.split(";")[0])).toEqual(["stage rewrite: ran", "stage rewrite: cache hit"]);
     // The reported row's verdict is the fixture's register, not the cache; the fake's split beats leave it near a band edge.
-    expect(lines).toContainEqual(expect.stringMatching(/^checks: no-new-l0-error pass \(gate\), word-budget pass \(gate\), rewrite-rows (pass|FAIL) \(reported\)\n$/));
+    expect(lines).toContainEqual(expect.stringMatching(/^checks: no-new-l0-error pass \(gate\), word-budget pass \(gate\), rewrite-rows (pass|FAIL) \(reported\), writing (pass|FAIL) \(reported\)\n$/));
   });
 
   it("stage --json prints the failed record with its gate verdict and exits 1", async () => {
@@ -169,5 +209,57 @@ describe("explainer run --from gather --type daily-overview", () => {
     expect(cli.calls.map((argv) => argv.slice(0, 3).join(" "))).toContain("active-work miner cost");
     expect(writer.prompts[0]).toContain("## Coverage (coverage.json)");
     expect(writer.prompts[0]).toMatch(/^- .+ merged, counted by lane\/[a-z-]+\/rollup; name: /m);
+  });
+});
+
+describe("explainer run --day relative to the UTC clock", () => {
+  async function dryRun(day: string): Promise<{ code: number; out: string; err: string }> {
+    fx = fixture();
+    cpSync(path.join(DAILY_FIXTURE, "snapshots"), path.join(fx.dataDir, "task-snapshots"), { recursive: true });
+    const out: string[] = [];
+    const err: string[] = [];
+    const gather = { gh: fakeGh(), listTasks: async () => fixtureTasks(), cli: fakeCli() };
+    const argv = ["run", "--facts-from", "gatherDaily", "--day", day, "--repo", REPO, "--transcripts", path.join(DAILY_FIXTURE, "transcripts"), "--initiative", "demo",
+      "--type", "daily-overview", "--dry-run", "--data-dir", fx.dataDir];
+    const code = await runRunCli(argv, { host: fakeHost(fx, fakeBriefModels(fakeScriptModel(overGoalWalk())), fakeRender()), gather, out: (t) => out.push(t), err: (t) => err.push(t) });
+    return { code, out: out.join(""), err: err.join("") };
+  }
+
+  const atFirstMinutes = async (body: () => Promise<void>): Promise<void> => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-14T00:20:00Z"));
+    try { await body(); } finally { vi.useRealTimers(); }
+  };
+
+  it("gathers the previous UTC date for --day yesterday", async () => {
+    await atFirstMinutes(async () => {
+      const result = await dryRun("yesterday");
+      expect(result.out).toContain("daily-overview 2026-11-13");
+      expect(result.err).not.toContain("not closed");
+    });
+  });
+
+  it("notes once that the current UTC day's window is not closed", async () => {
+    await atFirstMinutes(async () => {
+      const result = await dryRun("2026-11-14");
+      expect(result.err.match(/not closed/g)).toHaveLength(1);
+    });
+  });
+
+  it("prints no open-day note for a closed day", async () => {
+    await atFirstMinutes(async () => {
+      expect((await dryRun("2026-11-13")).err).not.toContain("not closed");
+    });
+  });
+
+  it("exits 2 with the usage message for --day tomorrow", async () => {
+    await atFirstMinutes(async () => {
+      const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+      try {
+        const result = await dryRun("tomorrow");
+        expect(result.code).toBe(2);
+        expect(stderr.mock.calls.join("")).toContain("--day takes YYYY-MM-DD or yesterday");
+      } finally { stderr.mockRestore(); }
+    });
   });
 });
