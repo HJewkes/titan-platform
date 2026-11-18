@@ -132,7 +132,7 @@ async function followedAnswer(ctx: WorkflowContext, carry: ApprovalCarry, from: 
  * by `followingReleaseApproval` alone (TP-5591).
  */
 export function followingApprovals(ctx: WorkflowContext, assisted: WorkflowContext["assisted"], carry: ApprovalCarry): WorkflowContext["assisted"] {
-  if (carry.release === true) return followingReleaseApproval(ctx, assisted);
+  if (carry.release === true) return followingReleaseApproval(ctx, assisted, carry.target.repo);
   let approved: Approved | undefined;
   return async (stepId, prompt, options) => {
     const asked = landGateHead(stepId, prompt);

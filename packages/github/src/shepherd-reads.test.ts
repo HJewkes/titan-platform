@@ -381,3 +381,24 @@ describe("fakeGitHub reads", () => {
     expect((await port.compareFiles("o/r", "main", "other")).files).toEqual([]);
   });
 });
+
+describe("refActivity", () => {
+  const AFTER = fakeSha("release-head");
+  const BEFORE = fakeSha("release-before");
+  const push = (actor: unknown) => ({ id: 1, node_id: "n", before: BEFORE, after: AFTER, ref: "refs/heads/changeset-release/main", timestamp: "2026-01-01T00:00:00Z", activity_type: "push", actor });
+
+  it("reads each move of the branch with the account that pushed it", async () => {
+    const gh = scripted({ "repos/octo/demo/activity": [included({}, [push({ login: "demo-release[bot]", type: "Bot" })])] });
+
+    const activity = await wireOver(gh.exec).refActivity(REPO, "changeset-release/main");
+
+    expect(activity).toEqual([{ before: BEFORE, after: AFTER, ref: "refs/heads/changeset-release/main", activityType: "push", actor: "demo-release[bot]" }]);
+    expect(decodeURIComponent(gh.calls[0]!.args.join(" "))).toContain("ref=refs/heads/changeset-release/main");
+  });
+
+  it("reads a move GitHub names no actor for as a null actor", async () => {
+    const gh = scripted({ "repos/octo/demo/activity": [included({}, [push(null)])] });
+
+    expect((await wireOver(gh.exec).refActivity(REPO, "changeset-release/main"))[0]?.actor).toBeNull();
+  });
+});

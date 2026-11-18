@@ -219,6 +219,7 @@
   "packages/github/src/rate-limit-marker.ts",
   "packages/github/src/readiness.ts",
   "packages/github/src/redact.ts",
+  "packages/github/src/ref-activity.ts",
   "packages/github/src/ref-writes.ts",
   "packages/github/src/rest.ts",
   "packages/github/src/review-comment.ts",

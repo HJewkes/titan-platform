@@ -206,7 +206,7 @@ function supersedableHead(host: FactoryHost, pending: PendingGate): string | und
 async function keptRelease(services: ShepherdServices, runId: string, head: string): Promise<boolean> {
   const registration = services.store.get().byRun(runId);
   if (!registration || registration.pr === null) return false;
-  return regeneratedRelease(services.port, registration.repo, registration.pr, head);
+  return regeneratedRelease(services.port, registration.repo, registration.pr, head, services.releaseAppLogin);
 }
 
 /**

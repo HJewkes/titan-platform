@@ -371,6 +371,7 @@ const pull = { number: 7, changed_files: 0, state: "open", merged: false, merge_
 /** Answers by the REST path in argv, the element after `-X <method>`. */
 const ROUTES: [RegExp, unknown][] = [
   [/pulls\/7\/merge$/, { sha: "m1" }],
+  [/\/activity$/, []],
   [/\/merges$/, { sha: H2 }],
   [/pulls\/7\/update-branch$/, {}],
   [/pulls\/7$/, pull],
@@ -451,6 +452,7 @@ describe("gh api adapter, REST only", () => {
       latestCheckRuns: () => port.latestCheckRuns(REPO, H1),
       createCheckRun: () => port.createCheckRun(REPO, { name: "n", headSha: H1, conclusion: "success", title: "t", summary: "s", externalId: "e" }),
       getCommit: () => port.getCommit(REPO, H1),
+      refActivity: () => port.refActivity(REPO, "topic"),
       resolveCommit: () => port.resolveCommit(REPO, H1.slice(0, 7)),
       commitStatuses: () => port.commitStatuses(REPO, H1),
       jobLogTail: () => port.jobLogTail(REPO, 42, 2),

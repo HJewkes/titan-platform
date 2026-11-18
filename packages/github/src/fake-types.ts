@@ -6,6 +6,7 @@ import type { PrOutcome } from "./pr-outcome.js";
 import type { MergeIntoBranchResult } from "./merge-into-branch.js";
 import type { ReviewComment } from "./review-comment.js";
 import type { PullReview } from "./pull-reviews.js";
+import type { RefActivity } from "./port-records.js";
 import type { BranchCommit, CheckRun, Commit, CommitStatus, GitHubWire, IssueComment, JobStep, LoggedCommit, MergeMessage, PrFile, PullRequest, RequiredChecks, SquashSource } from "./port-types.js";
 
 /** Counts of calls that change GitHub; a crash test asserts each is at most one. */
@@ -23,7 +24,7 @@ export interface FakeEffects {
 }
 
 /** Reads a test can make fail, for a caller that must treat a failed read as transient. */
-export type FakeFaultyRead = "getDefaultBranch" | "getBranchRules" | "getClassicRequiredChecks" | "listCheckRuns" | "listCommitStatuses" | "resolveCommit" | "compareAncestry" | "lsRemote";
+export type FakeFaultyRead = "getDefaultBranch" | "getBranchRules" | "getClassicRequiredChecks" | "listCheckRuns" | "listCommitStatuses" | "resolveCommit" | "compareAncestry" | "lsRemote" | "listRefActivity";
 
 export interface FakeGitHub {
   wire: GitHubWire;
@@ -77,6 +78,8 @@ export interface FakeGitHub {
   createdCheckRuns: { id: number; repo: string; request: CreateCheckRunRequest }[];
   /** The synthetic history `compareAncestry` walks by parents; a sha that is no commit, parent, ref tip or PR head answers `missing`. */
   commits: Map<string, Commit>;
+  /** Branch to the moves `listRefActivity` answers, newest first; an unset branch reads as no activity. */
+  refActivity: Map<string, RefActivity[]>;
   /** Sha to its combined status, newest per context. */
   statuses: Map<string, CommitStatus[]>;
   /** Errors the next calls of a read throw, one per call, before it answers. */
