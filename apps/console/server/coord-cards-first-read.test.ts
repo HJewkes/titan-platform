@@ -10,6 +10,7 @@ import { cachedActiveWork } from "./active-work-cache.js";
 import { brokerReader } from "./broker.js";
 import { consoleCommands, warmCards, type ConsoleSources } from "./commands.js";
 import { inboxReadCache } from "./inbox-rows.js";
+import { keepWarm } from "./keep-warm.js";
 import type { ConsoleContext } from "./owner-guard.js";
 import type { ShepherdSource } from "./shepherd.js";
 import type { FinishedRow } from "./shipped.js";
@@ -77,4 +78,17 @@ describe("coord.cards' first read after a restart", () => {
     expect(envelope).toMatchObject({ ok: true, data: { cards: [{ coordinator: "coord-a", tasks: [{ id: "EX-1", title: "Title EX-1" }, { id: "EX-2", title: "Title EX-2" }] }] } });
     expect(world.state).toMatchObject({ timelines: 2, titleReads: 1 });
   }, 3_000);
+
+  it("is primed at serve start and on a factory reconnect, never on an active-work one", async () => {
+    const { shepherd, activeWork } = upstreams();
+    const inbox = { finished: { read: () => Promise.resolve([]) }, strips: { warm: () => Promise.resolve() }, shown: () => Promise.resolve() };
+    let cardReads = 0;
+    const warm = keepWarm({ activeWork, inbox, shepherd, cards: () => Promise.resolve(void (cardReads += 1)), logger: { warn: () => undefined } });
+
+    await warm.prime();
+    await warm.reconnected("factory");
+    await warm.reconnected("active-work");
+
+    expect(cardReads).toBe(2);
+  });
 });

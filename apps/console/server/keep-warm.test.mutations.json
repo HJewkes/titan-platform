@@ -23,8 +23,8 @@
     {
       "name": "a reconnected factory skips the finished runs",
       "file": "apps/console/server/keep-warm.ts",
-      "find": "factory: () => [inbox.factory?.list(), inbox.finished.read(), strips(), inbox.shown()],",
-      "replace": "factory: () => [inbox.factory?.list(), strips(), inbox.shown()],",
+      "find": "factory: () => [inbox.factory?.list(), inbox.finished.read(), strips(), inbox.shown(), cards?.()],",
+      "replace": "factory: () => [inbox.factory?.list(), strips(), inbox.shown(), cards?.()],",
       "kills": [
         "keepWarm serve start reads each whole-tree read once",
         "keepWarm a reconnected factory re-primes needs.list and finished runs"
@@ -42,8 +42,8 @@
     {
       "name": "a reconnected factory skips the strips",
       "file": "apps/console/server/keep-warm.ts",
-      "find": "inbox.finished.read(), strips(), inbox.shown()]",
-      "replace": "inbox.finished.read(), inbox.shown()]",
+      "find": "inbox.finished.read(), strips(), inbox.shown(), cards?.()]",
+      "replace": "inbox.finished.read(), inbox.shown(), cards?.()]",
       "kills": [
         "keepWarm serve start reads each whole-tree read once",
         "keepWarm a reconnected factory re-primes needs.list and finished runs"
