@@ -112,18 +112,18 @@ function marksRow({ words, marks }: Measured, rule: JudgedPolicy["judged"]["hall
   const level: GateSeverity = value !== null && value <= rule.errorAbove ? "warning" : rule.severity;
   const failing = rule.severity !== "report-only" && (value === null || value > rule.warnAbove);
   const beats = failing && passages !== null ? [...new Set(passages.map((p) => beatAt(p.start)))] : [];
-  return { id: "writing:hallmark-marks", value, threshold: rule.errorAbove, severity: failing ? level : rule.severity, pass: !failing, beats };
+  return { id: "writing:hallmark-marks", value, threshold: rule.errorAbove, severity: failing ? level : rule.severity, pass: !failing, beats, spans: [] };
 }
 
 function wordsPerTermRow({ words, terms }: Measured, rule: JudgedPolicy["judged"]["words-per-term"]): GateRow {
   const value = terms === null ? null : words / Math.max(terms.length, 1);
   const fails = value === null || (terms !== null && terms.length > rule.allowTerms && value < rule.floor);
-  return { id: "writing:words-per-term", value, threshold: rule.floor, severity: rule.severity, pass: rule.severity === "report-only" || !fails, beats: [] };
+  return { id: "writing:words-per-term", value, threshold: rule.floor, severity: rule.severity, pass: rule.severity === "report-only" || !fails, beats: [], spans: [] };
 }
 
 function firstWindowRow({ terms }: Measured, rule: JudgedPolicy["judged"]["terms-first-400"]): GateRow {
   const value = terms === null ? null : terms.filter((term) => term.atWord < rule.window).length;
-  return { id: "writing:terms-first-400", value, threshold: rule.window, severity: rule.severity, pass: true, beats: [] };
+  return { id: "writing:terms-first-400", value, threshold: rule.window, severity: rule.severity, pass: true, beats: [], spans: [] };
 }
 
 /** The judged rows; under the policy's minimum words each only reports, as every writing gate row does. */
