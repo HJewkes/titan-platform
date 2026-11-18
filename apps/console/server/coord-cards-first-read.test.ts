@@ -44,7 +44,9 @@ function seedSpawns(file: string): void {
 /** Upstreams that answer until `hang` is set, then never: a read still waiting on one after the prime never returns. */
 function upstreams() {
   const state = { hang: false, timelines: 0, titleReads: 0 };
-  const hangOr = <T>(value: T): Promise<T> => (state.hang ? new Promise<T>(() => undefined) : Promise.resolve(value));
+  function hangOr<T>(value: T): Promise<T> {
+    return state.hang ? new Promise<T>(() => undefined) : Promise.resolve(value);
+  }
   const shepherd = partialFake<ShepherdSource>({
     list: (which) => Promise.resolve(which === "finished" ? RUNS : []),
     timeline: () => ((state.timelines += 1), hangOr({ row: RUNS[0]!, entries: [LANDED] })),
